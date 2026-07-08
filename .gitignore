@@ -1,0 +1,26 @@
+# 构建产物
+*.exe
+*.pdb
+
+# 备份
+*.bak
+
+# 运行时生成的配置 / 日志（各机器不同，不入库）
+Aegis.log
+crash.log
+setup.log
+swap.log
+Aegis.games.txt
+Aegis.profiles.dat
+Aegis.whitelist.txt
+Aegis.reports.log
+Aegis.suppression.state
+Aegis.targets.txt
+Aegis.freeze.state
+Aegis.freeze.state.tmp.*
+Aegis.selftest.txt
+Aegis.selftest.*.txt
+.ui-v14/
+.app-*.txt
+
+# 保留：src/ / Aegis.ico / build.cmd / README.md / docs/
