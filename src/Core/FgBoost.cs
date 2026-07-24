@@ -1,0 +1,41 @@
+// @author bdth 2074055628@qq.com
+// 文件用途 调整并恢复前台调度权重
+
+using System;
+using Microsoft.Win32;
+
+namespace AegisApp
+{
+    internal static class FgBoost
+    {
+        private static readonly ReversibleReg Sep = new ReversibleReg(
+            Registry.LocalMachine, @"SYSTEM\CurrentControlSet\Control\PriorityControl",
+            "Win32PrioritySeparation", RegistryValueKind.DWord, "PrevWin32PriSep");
+        private static readonly object lk = new object();
+        private static bool active;
+
+        public static bool Activate()
+        {
+            lock (lk)
+            {
+                if (active) return true;
+                active = Sep.Apply(0x26);
+                Logger.Log(active ? "前台调度加权已启用（Win32PrioritySeparation → 0x26）"
+                    : "前台调度加权写入或回读失败，本轮未启用");
+                return active;
+            }
+        }
+
+        public static bool Restore()
+        {
+            lock (lk)
+            {
+                if (Sep.HasBackup && Sep.Restore()) Logger.Log("前台调度加权已还原");
+                active = false;
+                return !Sep.HasBackup;
+            }
+        }
+
+        public static void HealFromCrash() { if (Sep.HasBackup) Restore(); }
+    }
+}
