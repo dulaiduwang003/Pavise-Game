@@ -18,7 +18,7 @@ namespace AegisApp
     internal static class App
     {
         public const string DisplayName = "AEGIS";
-        public const string Version = "1.0";
+        public const string Version = "1.4.2";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string RepoName = "dulaiduwang003/Aegis";
