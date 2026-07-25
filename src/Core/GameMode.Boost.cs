@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace AegisApp
 {
@@ -29,9 +30,12 @@ namespace AegisApp
             if (useSvc != svcActive) { if (useSvc) svcActive = SvcPause.Activate(); else { SvcPause.Restore(); svcActive = false; } }
             if (useMmcss != mmcssActive) { if (useMmcss) mmcssActive = Mmcss.Activate(); else { Mmcss.Restore(); mmcssActive = false; } }
             if (useDvr != dvrActive) { if (useDvr) dvrActive = GameDvr.Activate(); else { GameDvr.Restore(); dvrActive = false; } }
+            if (visualFxOn != fxActive) { if (visualFxOn) fxActive = VisualFx.Activate(); else { VisualFx.Restore(); fxActive = false; } }
             bool aggressivePower = IsAggressive(mode, aggressiveOn);
-            if (planSwitch) PowerPlan.Enforce(aggressivePower);
+            if (planSwitch) PowerPlan.Enforce(aggressivePower, idleDisableOn);
             else PowerPlan.Restore();
+
+            ApplyStandbyClean();
 
             if (!timerRaised)
             {
@@ -48,14 +52,75 @@ namespace AegisApp
             }
         }
 
+        // 待机内存清理不是"设置"，是一次性动作，所以不走 EnvActive/RestoreEnv 那套还原流程。
+        // 全量清理实测清 2.3GB 要 ~530ms，游戏跑起来之后做必然引入卡顿，因此：
+        //   - 只在会话刚建立时做一次，此时游戏还在加载，且开在后台线程上不阻塞压制循环
+        //   - 会话中途一律只做低优先级清理（实测 5ms），且要同时满足空闲见底 + 确有低优先级可清
+        // 抽成静态纯函数便于单测：全量清理每局只能发生一次，之后无论轮询多少次
+        // 都只可能走到低优先级那条路，且必须等冷却过去。
+        // sessionFresh 表示"这是本局会话建立后的第一次调用"。没有它的话，
+        // 用户在对局进行中把开关关掉再打开，purged 被重置，下一轮立刻做一次全量清理——
+        // 实测清 2.3GB 要 ~530ms，且会把游戏刚建立的缓存全丢掉，正是本功能承诺绝不做的事。
+        internal static StandbyAction NextStandbyAction(bool cleanOn, bool midOn, ref bool purged,
+            bool cooldownElapsed, bool sessionFresh)
+        {
+            if (!cleanOn) { purged = true; return StandbyAction.None; }
+            if (!purged)
+            {
+                purged = true;
+                // 错过了会话建立那一刻就不再补做全量，只允许走保守的中途清理
+                if (sessionFresh) return StandbyAction.PurgeFull;
+            }
+            if (!midOn || !cooldownElapsed) return StandbyAction.None;
+            return StandbyAction.PurgeLowPriority;
+        }
+
+        private void ApplyStandbyClean()
+        {
+            long now = DateTime.UtcNow.Ticks;
+            bool cooldownElapsed = now - standbyMidLastTicks >= MidPurgeIntervalTicks;
+            bool sessionFresh = !standbySessionSeen;
+            standbySessionSeen = true;
+            StandbyAction action = NextStandbyAction(standbyCleanOn, standbyMidOn, ref standbyPurged,
+                cooldownElapsed, sessionFresh);
+            if (action == StandbyAction.None) return;
+            if (action == StandbyAction.PurgeLowPriority) standbyMidLastTicks = now;
+
+            // 一律丢到后台线程：全量清理实测数百毫秒，绝不能卡住压制循环
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    if (action == StandbyAction.PurgeFull) { StandbyMemory.PurgeAtSessionStart(); return; }
+                    StandbyStats s;
+                    if (!StandbyMemory.TryQuery(out s)) return;
+                    if (!StandbyMemory.ShouldPurgeMidSession(s, MidPurgeMinMemoryLoad, MidPurgeMinLowBytes)) return;
+                    StandbyMemory.PurgeLowPriority();
+                }
+                catch { }
+            });
+        }
+
+        private bool fxActive;
+        private bool standbyPurged;
+        private bool standbySessionSeen;
+        private long standbyMidLastTicks;
+        private const long MidPurgeIntervalTicks = 60L * 1000 * 10000;
+        private const int MidPurgeMinMemoryLoad = 80;
+        private const long MidPurgeMinLowBytes = 256L * 1024 * 1024;
+
         private bool EnvActive()
         {
-            return notifActive || doActive || hzActive || netActive || fgActive || svcActive || mmcssActive || dvrActive || timerRaised;
+            return notifActive || doActive || hzActive || netActive || fgActive || svcActive || mmcssActive || dvrActive || fxActive || timerRaised;
         }
 
         private bool RestoreEnv()
         {
             bool ok = true;
+            // 清理动作没有可还原的状态，只需为下一局重新武装那一次性触发
+            standbyPurged = false;
+            standbySessionSeen = false;
+            standbyMidLastTicks = 0;
             ok &= Notif.Restore(); notifActive = false;
             ok &= DoTweak.Restore(); doActive = false;
             ok &= DisplayGuard.Restore(); hzActive = false;
@@ -64,6 +129,7 @@ namespace AegisApp
             ok &= SvcPause.Restore(); svcActive = false;
             ok &= Mmcss.Restore(); mmcssActive = false;
             ok &= GameDvr.Restore(); dvrActive = false;
+            ok &= VisualFx.Restore(); fxActive = false;
             ok &= PowerPlan.Restore();
             if (timerRaised)
             {
@@ -175,11 +241,15 @@ namespace AegisApp
                             int gpuOld;
                             bool gpuKnown = Native.D3DKMTGetProcessSchedulingPriorityClass(h, out gpuOld) == 0;
                             if (!gpuKnown) gpuOld = -1;
+                            // 游戏进程也可能自带 PowerThrottling 设置，提优会覆盖它，还原必须写回原值
+                            int oqc, oqs;
+                            if (!Native.TryQueryPowerThrottling(h, out oqc, out oqs)) { oqc = -1; oqs = -1; }
                             var snap = new Snap { Pri = pri, Aff = oaff, Io = oio, Pg = opg,
-                                Name = p.ProcessName, Creation = currentCreation, CpuSets = ocpuSets };
+                                Name = p.ProcessName, Creation = currentCreation, CpuSets = ocpuSets,
+                                QoSControl = oqc, QoSState = oqs };
                             lock (sync) gameBoost[pid] = snap;
                             if (!CrashGuard.MarkBoostProcess(pid, currentCreation, p.ProcessName, pri, oaff,
-                                oio, opg, gpuOld, ocpuSets))
+                                oio, opg, gpuOld, ocpuSets, oqc, oqs))
                             {
                                 lock (sync) gameBoost.Remove(pid);
                                 Logger.Log("游戏提优：崩溃恢复快照无法持久化，已取消修改 " + p.ProcessName + " (pid " + pid + ")");
@@ -394,7 +464,7 @@ namespace AegisApp
                         if (identity)
                         {
                             done = SuppressionCore.RestoreValues(h, kv.Value.Pri, kv.Value.Aff, kv.Value.Io,
-                                kv.Value.Pg, allMask, kv.Value.CpuSets);
+                                kv.Value.Pg, allMask, kv.Value.CpuSets, kv.Value.QoSControl, kv.Value.QoSState);
                             int gpuOld;
                             if (done && gpus.TryGetValue(pid, out gpuOld))
                                 done = Native.D3DKMTSetProcessSchedulingPriorityClass(h, gpuOld) == 0;
@@ -412,13 +482,26 @@ namespace AegisApp
             lock (sync) return gameBoost.Count == 0;
         }
 
+        // 带请求序号：上一次超时后工作线程可能还在跑，它完成时不能去满足新的请求，
+        // 否则界面会为一次根本没执行的恢复报告成功。
         public bool PanicRestore()
         {
+            int mine = Interlocked.Increment(ref panicSeq);
             panicDone.Reset();
             panicResult = false;
             panicReq = true;
             kick.Set();
-            return panicDone.WaitOne(12000) && panicResult;
+            // 必须等到 worker 明确报告"我服务的就是这一次请求"。若被上一次超时请求的
+            // 完成信号提前唤醒，就继续等，直到轮到自己或真正超时。
+            long deadline = DateTime.UtcNow.Ticks + 12000L * TimeSpan.TicksPerMillisecond;
+            while (true)
+            {
+                long left = (deadline - DateTime.UtcNow.Ticks) / TimeSpan.TicksPerMillisecond;
+                if (left <= 0) return false;
+                if (!panicDone.WaitOne((int)left)) return false;
+                if (Volatile.Read(ref panicServed) == mine) return panicResult;
+                panicDone.Reset();
+            }
         }
 
         private bool Deactivate(string reason)

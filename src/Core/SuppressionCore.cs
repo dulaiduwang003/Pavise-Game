@@ -36,6 +36,12 @@ namespace AegisApp
             public int OrigIo = -1;
             public int OrigPg = -1;
             public uint[] OrigCpuSets;
+            // 进程原本的 PowerThrottling 状态。-1 表示读取失败/未知，
+            // 此时还原只能退回"交给系统托管"，其余情况必须原样写回：
+            // Edge / Teams / OneDrive 这类后台进程会自己主动开 EcoQoS，
+            // 一律写 0 等于把它们自愿的省电设置永久剥掉。
+            public int OrigQoSControl = -1;
+            public int OrigQoSState = -1;
             public long Creation;
             public SuppressionLevel Level;
             public SuppressionLevel AntiCheatLevel;
@@ -146,8 +152,11 @@ namespace AegisApp
             }
             try
             {
+                // 读不到映像名就不能当作"身份已确认"：Sweep 在把进程放进待处理队列时
+                // 已经要求路径可读（见 BasicBackgroundEligible），所以此刻读不到，本身
+                // 就说明这个 PID 已经换成了另一个受保护/加固的进程。宁可放过不压。
                 string img = Native.ImageName(h);
-                if (img != null && !SameName(img, name)) return AcquireResult.AlreadyProtected;
+                if (img == null || !SameName(img, name)) return AcquireResult.AlreadyProtected;
                 long currentCreation = 0, sampleCpu; ulong sampleIo;
                 bool identityKnown = Native.QueryProcessSample(h, out currentCreation, out sampleCpu, out sampleIo);
                 lock (sync)
@@ -178,8 +187,11 @@ namespace AegisApp
                     }
 
                     uint rawPri = Native.GetPriorityClass(h);
+                    // rawPri==0 表示查询失败，不是"这个进程是 Normal"。把它当 Normal 存进快照，
+                    // 还原时会把原本 HIGH/ABOVE_NORMAL 的进程永久降级，所以直接放弃这次压制。
+                    if (rawPri == 0) return AcquireResult.ApplyFailed;
                     bool residue = rawPri == Native.IDLE_PRIORITY_CLASS;
-                    uint orig = rawPri == 0 || residue ? Native.NORMAL_PRIORITY_CLASS : rawPri;
+                    uint orig = residue ? Native.NORMAL_PRIORITY_CLASS : rawPri;
                     ulong oaff = Native.QueryAffinity(h);
                     uint[] ocpuSets = Native.QueryCpuSets(h);
                     if (ocpuSets == null) return AcquireResult.ApplyFailed;
@@ -188,18 +200,23 @@ namespace AegisApp
                     if (residue && oio == 0) oio = -1;
                     int opg = Native.QueryPagePriority(h);
                     if (residue && opg == 1) opg = -1;
+                    int oqc, oqs;
+                    if (!Native.TryQueryPowerThrottling(h, out oqc, out oqs)) { oqc = -1; oqs = -1; }
+                    else if (residue && oqc == 1 && oqs == 1) { oqc = -1; oqs = -1; }
                     long creation = identityKnown ? currentCreation : 0;
 
                     if (known)
                     {
                         e.OrigPri = orig; e.OrigAff = oaff; e.OrigIo = oio; e.OrigPg = opg; e.OrigCpuSets = ocpuSets;
+                        e.OrigQoSControl = oqc; e.OrigQoSState = oqs;
                         e.Reasons |= reason; SetReasonLevel(e, reason, level); e.Creation = creation; e.Applied = false;
                         if (group != null && e.Group == null) e.Group = group;
                     }
                     else
                     {
                         var created = new Entry { Name = name, Group = group, OrigPri = orig, OrigAff = oaff,
-                            OrigIo = oio, OrigPg = opg, OrigCpuSets = ocpuSets, Reasons = reason, Creation = creation };
+                            OrigIo = oio, OrigPg = opg, OrigCpuSets = ocpuSets,
+                            OrigQoSControl = oqc, OrigQoSState = oqs, Reasons = reason, Creation = creation };
                         SetReasonLevel(created, reason, level);
                         map[pid] = created;
                     }
@@ -422,12 +439,23 @@ namespace AegisApp
             return list;
         }
 
+        private int lastThrottledCount;
+
+        // 这个计数只用来显示状态文字，却是从 UI 线程调用的，而 sync 会被整轮后台批处理
+        // 长时间持有（每个进程都要走一遍 OpenProcess/查询/写入）。UI 线程在这里等锁时
+        // 还握着 GameMode.sync，会把工作线程一起拖住，表现为游戏中界面每几秒卡一下。
+        // 拿不到锁就返回上一次的数字：状态文字晚几秒刷新无所谓，界面卡住不行。
         public int CountThrottled(SuppressReason reason)
         {
-            int n = 0;
-            lock (sync)
+            if (!Monitor.TryEnter(sync, 15)) return Volatile.Read(ref lastThrottledCount);
+            try
+            {
+                int n = 0;
                 foreach (var kv in map) if ((kv.Value.Reasons & reason) != 0 && kv.Value.OrigPri != uint.MaxValue && kv.Value.Applied) n++;
-            return n;
+                Volatile.Write(ref lastThrottledCount, n);
+                return n;
+            }
+            finally { Monitor.Exit(sync); }
         }
 
         public void AntiCheatGroupCounts(string groupKey, out int throttled, out int protectedCnt)
@@ -502,6 +530,13 @@ namespace AegisApp
         public static bool RestoreValues(IntPtr h, uint pri, ulong aff, int io, int pg, ulong allMask,
             uint[] cpuSets)
         {
+            // 不带 QoS 参数的旧入口（崩溃恢复日志里没有这个字段）：沿用"交给系统托管"
+            return RestoreValues(h, pri, aff, io, pg, allMask, cpuSets, -1, -1);
+        }
+
+        public static bool RestoreValues(IntPtr h, uint pri, ulong aff, int io, int pg, ulong allMask,
+            uint[] cpuSets, int qosControl, int qosState)
+        {
             bool ok = Native.RestoreCpuSetsVerified(h, cpuSets);
             uint desiredPriority = pri == 0 || pri == uint.MaxValue ? Native.NORMAL_PRIORITY_CLASS : pri;
             ok &= Native.SetPriorityClass(h, desiredPriority);
@@ -509,7 +544,7 @@ namespace AegisApp
             if (!CpuTopology.MultiGroup) ok &= Native.SetProcessAffinityMask(h, (UIntPtr)desiredAffinity);
             int rio = io >= 0 ? io : 2; ok &= Native.TrySetIoPriority(h, rio);
             int rpg = pg >= 0 ? pg : 5; ok &= Native.TrySetPagePriority(h, rpg);
-            ok &= Native.ReleasePowerThrottlingPolicy(h);
+            ok &= Native.RestorePowerThrottling(h, qosControl, qosState);
             ok &= Native.GetPriorityClass(h) == desiredPriority;
             ok &= Native.QueryIoPriority(h) == rio;
             ok &= Native.QueryPagePriority(h) == rpg;
@@ -545,7 +580,8 @@ namespace AegisApp
                     if (!Native.QueryProcessSample(h, out creation, out cpu, out io)) return RestoreResult.Protected;
                     if (creation != e.Creation) return RestoreResult.Gone;
                 }
-                return RestoreValues(h, e.OrigPri, e.OrigAff, e.OrigIo, e.OrigPg, allMask, e.OrigCpuSets)
+                return RestoreValues(h, e.OrigPri, e.OrigAff, e.OrigIo, e.OrigPg, allMask, e.OrigCpuSets,
+                        e.OrigQoSControl, e.OrigQoSState)
                     ? RestoreResult.Restored : RestoreResult.Protected;
             }
             finally { Native.CloseHandle(h); }

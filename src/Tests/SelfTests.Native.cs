@@ -2,6 +2,7 @@
 // Windows 进程恢复、优先级、亲和性与 CPU Sets 自测。
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
@@ -128,6 +129,75 @@ namespace AegisApp
                 throw new Exception("new report format missing verified boost state");
             if (current.IndexOf("FPS", StringComparison.OrdinalIgnoreCase) >= 0)
                 throw new Exception("legacy frame metrics leaked into current report");
+        }
+
+        // 真实进程验证：一个自己主动开了 EcoQoS 的进程，被压制再还原之后，
+        // 它的 EcoQoS 必须还在。写死"交给系统托管"会把这个自愿设置永久剥掉。
+        private static void TestEcoQoSRestore(string root)
+        {
+            string beat = Path.Combine(root, "qos.beat");
+            using (Process probe = StartProbe(beat))
+            {
+                WaitAdvance(beat, -1, 4000);
+                IntPtr h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION
+                    | Native.PROCESS_SET_LIMITED_INFORMATION | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, probe.Id);
+                if (h == IntPtr.Zero) throw new TestSkippedException("cannot open owned probe");
+                try
+                {
+                    // 模拟"进程自己开了 EcoQoS"
+                    if (!Native.ApplyEcoQoS(h)) throw new TestSkippedException("EcoQoS unsupported here");
+                    int c0, s0;
+                    if (!Native.TryQueryPowerThrottling(h, out c0, out s0)) throw new TestSkippedException("QoS query unsupported");
+                    if (c0 != 1 || s0 != 1) throw new TestSkippedException("EcoQoS did not stick");
+
+                    var core = new SuppressionCore(Path.Combine(root, "qos.state"));
+                    core.Acquire(probe.Id, probe.ProcessName, SuppressReason.Background, null, SuppressionLevel.Eco);
+                    core.Release(probe.Id, SuppressReason.Background);
+
+                    int c1, s1;
+                    if (!Native.TryQueryPowerThrottling(h, out c1, out s1)) throw new Exception("QoS unreadable after restore");
+                    if (c1 != 1 || s1 != 1)
+                        throw new Exception("process opted into EcoQoS but restore left ControlMask=" + c1 + " StateMask=" + s1);
+                }
+                finally { Native.CloseHandle(h); }
+            }
+        }
+
+        // 用独占锁模拟"文件被杀软/网盘/另一个实例占用"：此时读取会抛异常。
+        // 关键断言是——读失败之后哪怕再保存一次，原文件也必须原封不动。
+        private static void TestProfileLoadFailure(string dir)
+        {
+            string work = Path.Combine(dir, "profile-lock");
+            Directory.CreateDirectory(work);
+            string file = Path.Combine(work, GameProfileStore.FileName);
+
+            var seed = new GameProfileStore(work);
+            GameProfile p = GameProfileStore.NewProfile("KeepMe", Path.Combine(work, "GameRoot"));
+            p.ExecutablePath = Path.Combine(work, "GameRoot", "keep.exe");
+            seed.Save(new List<GameProfile> { p });
+            string before = File.ReadAllText(file);
+            if (before.Length == 0) throw new Exception("seed profile file is empty");
+
+            var store = new GameProfileStore(work);
+            // 只在读取期间锁住：模拟杀软/网盘短暂占用，之后文件恢复可写。
+            // 如果一直锁着，保存本来就写不进去，那测的就不是这条保护了。
+            using (new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                List<GameProfile> loaded = store.LoadOrMigrate(Path.Combine(work, "Aegis.games.txt"));
+                Eq(0, loaded.Count);
+            }
+            // 锁已释放、文件完全可写：此时用户在"空"库里新加一个游戏
+            GameProfile fresh = GameProfileStore.NewProfile("Newly", Path.Combine(work, "Other"));
+            store.Save(new List<GameProfile> { fresh });
+
+            string after = File.ReadAllText(file);
+            if (after != before) throw new Exception("profile file was overwritten after a read failure");
+            if (after.IndexOf("Newly", StringComparison.Ordinal) >= 0)
+                throw new Exception("the replacement list was written over the original file");
+
+            // 文件恢复可读之后，新的 store 必须能正常读回原有档案
+            var again = new GameProfileStore(work);
+            Eq(1, again.LoadOrMigrate(Path.Combine(work, "Aegis.games.txt")).Count);
         }
 
         private static void TestBoostReadback(string root)

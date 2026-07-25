@@ -74,12 +74,10 @@ namespace AegisApp
             int cy = ClientSize.Height / 2;
             Glyphs.Draw(e.Graphics, EmptyGlyph,
                 new Rectangle(cx - Theme.S(18), cy - Theme.S(72), Theme.S(36), Theme.S(36)), Theme.Accent);
-            using (Font titleFont = Theme.UI(9.25f, true))
-                TextRenderer.DrawText(e.Graphics, EmptyTitle, titleFont,
+            TextRenderer.DrawText(e.Graphics, EmptyTitle, Theme.UI(9.25f, true),
                     new Rectangle(Theme.S(24), cy - Theme.S(26), ClientSize.Width - Theme.S(48), Theme.S(24)),
                     Theme.Fg, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-            using (Font detailFont = Theme.UI(8.4f, false))
-                TextRenderer.DrawText(e.Graphics, EmptyDetail, detailFont,
+            TextRenderer.DrawText(e.Graphics, EmptyDetail, Theme.UI(8.4f, false),
                     new Rectangle(Theme.S(42), cy + Theme.S(8), ClientSize.Width - Theme.S(84), Theme.S(54)),
                     Theme.Faint, TextFormatFlags.HorizontalCenter | TextFormatFlags.Top | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
         }

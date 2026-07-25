@@ -44,7 +44,10 @@ namespace AegisApp
                                 return false;
                             }
                         }
-                        string snapshot = cur == null ? Absent : "=" + cur;
+                        string snapshot;
+                        if (cur == null) snapshot = Absent;
+                        else if (kind == RegistryValueKind.Binary) snapshot = "b" + Convert.ToBase64String((byte[])cur);
+                        else snapshot = "=" + cur;
                         Settings.SaveStr(slot, snapshot);
                         if (Settings.LoadStr(slot, "") != snapshot)
                         {
@@ -57,10 +60,20 @@ namespace AegisApp
                     if (actual == null) return false;
                     if (kind == RegistryValueKind.DWord)
                         return Convert.ToInt64(actual) == Convert.ToInt64(newVal);
+                    if (kind == RegistryValueKind.Binary)
+                        return BytesEqual((byte[])actual, (byte[])newVal);
                     return string.Equals(actual.ToString(), newVal == null ? "" : newVal.ToString(), StringComparison.Ordinal);
                 }
             }
             catch { return false; }
+        }
+
+        private static bool BytesEqual(byte[] a, byte[] b)
+        {
+            if (a == null || b == null) return a == b;
+            if (a.Length != b.Length) return false;
+            for (int i = 0; i < a.Length; i++) if (a[i] != b[i]) return false;
+            return true;
         }
 
         public bool Restore()
@@ -72,19 +85,38 @@ namespace AegisApp
             object val = null;
             if (!absent)
             {
-                string v = s[0] == '=' ? s.Substring(1) : s;
-                if (kind == RegistryValueKind.DWord)
+                if (kind == RegistryValueKind.Binary)
                 {
-                    long n;
-                    if (!long.TryParse(v, out n))
+                    if (s.Length < 1 || s[0] != 'b')
                     {
                         Settings.SaveStr(slot, "");
-                        Logger.Log("注册表快照损坏，放弃还原 " + valName + "（记录值 \"" + v + "\"）");
+                        Logger.Log("注册表快照损坏，放弃还原 " + valName + "（二进制快照格式不符）");
                         return false;
                     }
-                    val = unchecked((int)n);
+                    try { val = Convert.FromBase64String(s.Substring(1)); }
+                    catch
+                    {
+                        Settings.SaveStr(slot, "");
+                        Logger.Log("注册表快照损坏，放弃还原 " + valName + "（二进制快照解码失败）");
+                        return false;
+                    }
                 }
-                else val = v;
+                else
+                {
+                    string v = s[0] == '=' ? s.Substring(1) : s;
+                    if (kind == RegistryValueKind.DWord)
+                    {
+                        long n;
+                        if (!long.TryParse(v, out n))
+                        {
+                            Settings.SaveStr(slot, "");
+                            Logger.Log("注册表快照损坏，放弃还原 " + valName + "（记录值 \"" + v + "\"）");
+                            return false;
+                        }
+                        val = unchecked((int)n);
+                    }
+                    else val = v;
+                }
             }
 
             try
@@ -92,7 +124,10 @@ namespace AegisApp
                 bool restored = false;
                 using (var k = hive.OpenSubKey(subKey, true))
                 {
-                    if (k == null) restored = absent;
+                    // 键整个不存在了（设备被卸载、父键被删）：我们写进去的值也随之消失了，
+                    // 这就是"已经还原"。此前只有快照记录为"原本不存在"时才认，导致
+                    // 一个被拔掉的设备会让还原永远失败，进而让开关永久关不掉。
+                    if (k == null) restored = true;
                     else if (absent)
                     {
                         if (k.GetValue(valName) != null) k.DeleteValue(valName, false);
@@ -107,6 +142,8 @@ namespace AegisApp
                         restored = actual != null && actualKind == kind;
                         if (restored && kind == RegistryValueKind.DWord)
                             restored = Convert.ToInt64(actual) == Convert.ToInt64(val);
+                        else if (restored && kind == RegistryValueKind.Binary)
+                            restored = BytesEqual((byte[])actual, (byte[])val);
                         else if (restored)
                             restored = string.Equals(actual.ToString(), val == null ? "" : val.ToString(), StringComparison.Ordinal);
                     }

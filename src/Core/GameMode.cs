@@ -37,6 +37,8 @@ namespace AegisApp
             public string Name;
             public long Creation;
             public uint[] CpuSets;
+            public int QoSControl;
+            public int QoSState;
         }
 
         private readonly object sync = new object();
@@ -84,10 +86,16 @@ namespace AegisApp
         private volatile bool killGameDvr;
         private volatile bool hzGuard;
         private volatile bool planSwitch;
+        private volatile bool idleDisableOn;
+        private volatile bool visualFxOn;
+        private volatile bool standbyCleanOn;
+        private volatile bool standbyMidOn;
         private volatile bool strictCoreOn;
         private volatile bool deepFreezeOn;
         private volatile bool aggressiveOn;
         private volatile bool panicReq;
+        private int panicSeq;
+        private int panicServed;
         private volatile bool panicResult;
         private readonly ManualResetEvent panicDone = new ManualResetEvent(true);
         private bool netActive;
@@ -151,6 +159,10 @@ namespace AegisApp
             fgBoostOn = Settings.Load("GmFgBoost", true);
             svcPauseOn = Settings.Load("GmSvcPause", false);
             notifQuiet = Settings.Load("NotifQuiet", false);
+            idleDisableOn = Settings.Load("GmIdleDisable", true);
+            visualFxOn = Settings.Load("GmVisualFx", false);
+            standbyCleanOn = Settings.Load("GmStandbyClean", true);
+            standbyMidOn = Settings.Load("GmStandbyMid", false);
             trimWs = Settings.Load("TrimWS", false);
             gpuHighPerf = Settings.Load("GpuHighPerf", true);
             disableFso = Settings.Load("DisableFso", false);
@@ -174,7 +186,12 @@ namespace AegisApp
                 }
                 MigrateWhitelistHeader();
             }
-            catch { }
+            catch (Exception ex)
+            {
+                // 静默失败会得到一份空白名单，而竞技级下白名单是 explorer/ctfmon 这类
+                // 外壳进程唯一的保护，必须让用户在日志里看得见
+                Logger.Log("白名单加载失败，本次运行将只保护核心系统进程：" + ex.Message);
+            }
 
             try
             {
@@ -210,7 +227,7 @@ namespace AegisApp
             lines.Add("# 一行一个进程名(不带 .exe)，# 开头是注释。只控制当前用户会话的普通应用；");
             lines.Add("# Windows 核心、其它会话和 Aegis 自身受安全保护；其余例外只来自本白名单。");
             lines.AddRange(PresetWhitelist);
-            File.WriteAllLines(whitePath, lines.ToArray());
+            AtomicFile.WriteLines(whitePath, lines.ToArray(), "白名单预置");
         }
 
         private void AddWhiteNoSave(string n)
@@ -264,7 +281,7 @@ namespace AegisApp
                         changed = true;
                     }
                 }
-                if (changed) File.WriteAllLines(whitePath, lines);
+                if (changed) AtomicFile.WriteLines(whitePath, lines, "白名单表头迁移");
             }
             catch { }
         }
@@ -319,6 +336,30 @@ namespace AegisApp
         {
             get { return netOn; }
             set { netOn = value; Settings.Save("GmNet", value); kick.Set(); }
+        }
+
+        public bool IdleStateDisable
+        {
+            get { return idleDisableOn; }
+            set { idleDisableOn = value; Settings.Save("GmIdleDisable", value); kick.Set(); }
+        }
+
+        public bool VisualFxDowngrade
+        {
+            get { return visualFxOn; }
+            set { visualFxOn = value; Settings.Save("GmVisualFx", value); kick.Set(); }
+        }
+
+        public bool StandbyClean
+        {
+            get { return standbyCleanOn; }
+            set { standbyCleanOn = value; Settings.Save("GmStandbyClean", value); kick.Set(); }
+        }
+
+        public bool StandbyCleanMidSession
+        {
+            get { return standbyMidOn; }
+            set { standbyMidOn = value; Settings.Save("GmStandbyMid", value); kick.Set(); }
         }
 
         public bool MmcssPriority
@@ -479,8 +520,13 @@ namespace AegisApp
                 {
                     if (panicReq)
                     {
+                        // 记下自己开始服务的是哪个请求。只在请求端自增序号是不够的：
+                        // 上一个请求超时返回后 worker 仍在跑，它完成时会把 panicDone 置位，
+                        // 让新请求以为"自己那次恢复成功了"，而新请求的恢复其实一次都没跑。
+                        int serving = Volatile.Read(ref panicSeq);
                         panicReq = false;
                         panicResult = Deactivate("紧急恢复");
+                        Volatile.Write(ref panicServed, serving);
                         panicDone.Set();
                         kick.WaitOne(4000);
                         continue;

@@ -110,7 +110,7 @@ The project uses the .NET Framework C# compiler included with Windows. There are
 build.cmd
 ```
 
-The script generates the icon and then builds `Aegis.exe` with an administrator manifest, product metadata, and file version `1.4.2.0`.
+The script generates the icon and then builds `Aegis.exe` with an administrator manifest, product metadata, and file version `1.4.4.0`.
 
 Source builds are not Authenticode-signed by default, and an unsigned personal open-source release can still be distributed. A publisher may use its own trusted code-signing certificate to verify publisher identity or improve the SmartScreen experience.
 
