@@ -216,8 +216,17 @@ namespace AegisApp
             swAuto = MakeSwitch(TaskHelper.TaskExistsCached(), OnAutoToggle);
             MakeCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.autostart"), Lang.T("set.autostart.n"), swAuto); sy += 64;
 
+            swAutoHide = MakeSwitch(Settings.Load(AutoHideKey, false), OnAutoHideToggle);
+            MakeCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.autohide"), Lang.T("set.autohide.n"), swAutoHide); sy += 64;
+
             swHags = MakeSwitch(HagsTweak.EnabledByAegis || HagsTweak.CurrentlyOn(), OnHagsToggle);
             MakeCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.hags"), Lang.T("set.hags.n"), swHags); sy += 64;
+
+            swIrqAffinity = MakeSwitch(InterruptAffinityTweak.EnabledByAegis, OnIrqAffinityToggle);
+            MakeCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.irqaffinity"), Lang.T("set.irqaffinity.n"), swIrqAffinity); sy += 64;
+
+            swNetAffinity = MakeSwitch(NetworkAffinityTweak.EnabledByAegis, OnNetAffinityToggle);
+            MakeCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.netaffinity"), Lang.T("set.netaffinity.n"), swNetAffinity); sy += 64;
 
             swVbs = MakeSwitch(VbsTweak.DisabledByAegis, OnVbsToggle);
             cardVbs = MakeCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.vbs"), "…", swVbs); sy += 64;
@@ -319,7 +328,8 @@ namespace AegisApp
 
             int cardsY = y + 134;
             int infoW = 476, gap = 16, updateW = ContentW - infoW - gap;
-            var card = MakeConsolePanel(pageAbout, ContentX, cardsY, infoW, 230, false);
+            const int cardH = 268;
+            var card = MakeConsolePanel(pageAbout, ContentX, cardsY, infoW, cardH, false);
             CardLabel(card, "PROJECT // IDENTITY", 20, 15, infoW - 40, 20, 7.6f, true, Theme.Faint);
 
             string[] rowKeys = { "about.author", "about.repo", "about.lic" };
@@ -336,7 +346,21 @@ namespace AegisApp
                 }
             }
 
-            var update = MakeConsolePanel(pageAbout, ContentX + infoW + gap, cardsY, updateW, 230, true);
+            bool unseenNotes = ReleaseNotes.HasUnseen;
+            var btnNotes = new PillButton(Lang.T("notes.open") + (unseenNotes ? "  ·  NEW" : ""),
+                unseenNotes ? BtnKind.Primary : BtnKind.Normal);
+            btnNotes.Bg = Theme.Card;
+            btnNotes.SetBounds(Theme.S(20), Theme.S(214), Theme.S(infoW - 40), Theme.S(38));
+            btnNotes.Click += delegate
+            {
+                using (var dlg = new ReleaseNotesDialog()) dlg.ShowDialog(this);
+                btnNotes.Text = Lang.T("notes.open");
+                btnNotes.Kind = BtnKind.Normal;
+                btnNotes.Invalidate();
+            };
+            card.Controls.Add(btnNotes);
+
+            var update = MakeConsolePanel(pageAbout, ContentX + infoW + gap, cardsY, updateW, cardH, true);
             CardLabel(update, Lang.T("v15.about.update"), 20, 16, updateW - 40, 22, 9.5f, true, Theme.Fg);
             CardLabel(update, Lang.T("v15.about.update.sub"), 20, 45, updateW - 40, 42, 7.8f, false, Theme.Dim);
 

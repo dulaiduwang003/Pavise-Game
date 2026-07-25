@@ -9,6 +9,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
 namespace AegisApp
 {
@@ -72,6 +73,36 @@ namespace AegisApp
             if (args[0] == "--detect-live" && args.Length >= 2)
             {
                 RunDetectLive(args[1], args.Length >= 3 ? args[2] : null);
+                return true;
+            }
+            if (args[0] == "--irq-probe" && args.Length >= 2)
+            {
+                RunIrqProbe(args[1], args.Length >= 3 && args[2] == "--restart-device");
+                return true;
+            }
+            if (args[0] == "--net-probe" && args.Length >= 2)
+            {
+                RunNetProbe(args[1]);
+                return true;
+            }
+            if (args[0] == "--host-probe" && args.Length >= 2)
+            {
+                RunGameHostProbe(args[1], args.Length >= 3 ? args[2] : null);
+                return true;
+            }
+            if (args[0] == "--intro-probe" && args.Length >= 2)
+            {
+                RunIntroProbe(args[1]);
+                return true;
+            }
+            if (args[0] == "--menu-probe" && args.Length >= 2)
+            {
+                RunMenuProbe(args[1], args.Length >= 3 ? args[2] : null);
+                return true;
+            }
+            if (args[0] == "--notes-probe" && args.Length >= 2)
+            {
+                RunNotesProbe(args[1], args.Length >= 3 ? args[2] : "zh");
                 return true;
             }
             if (args[0] == "--profile-probe" && args.Length >= 3)
@@ -196,6 +227,373 @@ namespace AegisApp
                         }
                         catch { }
                     }
+                }
+                foreach (Process p in all) { try { p.Dispose(); } catch { } }
+            }
+            catch (Exception ex) { sb.AppendLine("ERROR: " + ex); }
+            string text = sb.ToString();
+            try { if (output != null) File.WriteAllText(output, text, Encoding.UTF8); } catch { }
+            Environment.ExitCode = 0;
+        }
+
+        private static string ReadIrqRegSnapshot(string deviceId)
+        {
+            string path = @"SYSTEM\CurrentControlSet\Enum\" + deviceId + @"\Device Parameters\Interrupt Management\Affinity Policy";
+            using (RegistryKey k = Registry.LocalMachine.OpenSubKey(path))
+            {
+                if (k == null) return "  (键不存在)";
+                object policy = k.GetValue("DevicePolicy");
+                object mask = k.GetValue("AssignmentSetOverride");
+                string maskStr = mask is byte[] ? BitConverter.ToString((byte[])mask) : (mask == null ? "(无)" : mask.ToString());
+                return "  DevicePolicy=" + (policy == null ? "(无)" : policy.ToString() + " (0x" + Convert.ToInt32(policy).ToString("X") + ")")
+                    + "  AssignmentSetOverride=" + maskStr;
+            }
+        }
+
+        private static void RunIrqProbe(string output, bool alsoRestartDevice)
+        {
+            var sb = new System.Text.StringBuilder();
+            try
+            {
+                sb.AppendLine("=== CpuTopology ===");
+                sb.AppendLine("Hybrid=" + CpuTopology.Hybrid + " AsymCache=" + CpuTopology.AsymCache + " MultiGroup=" + CpuTopology.MultiGroup);
+                sb.AppendLine("AllMask=0x" + CpuTopology.AllMask.ToString("X") + " BoostMask=0x" + CpuTopology.BoostMask.ToString("X")
+                    + " ThrottleMask=0x" + CpuTopology.ThrottleMask.ToString("X") + " StrictBoostMask=0x" + CpuTopology.StrictBoostMask.ToString("X"));
+                bool expectedUseMask = !CpuTopology.MultiGroup && CpuTopology.BoostMask != 0 && CpuTopology.BoostMask != CpuTopology.AllMask;
+                sb.AppendLine("expectedUseMask=" + expectedUseMask);
+                sb.AppendLine();
+
+                List<string> ids = InterruptAffinityTweak.EnumerateGpuDeviceIds();
+                sb.AppendLine("=== EnumerateGpuDeviceIds ===");
+                foreach (string id in ids) sb.AppendLine("  " + id);
+                if (ids.Count == 0) sb.AppendLine("  (未找到任何 Status=OK 的显卡设备)");
+                sb.AppendLine();
+
+                sb.AppendLine("=== 写入前基线（直接读注册表）===");
+                foreach (string id in ids) { sb.AppendLine(id); sb.AppendLine(ReadIrqRegSnapshot(id)); }
+                sb.AppendLine();
+
+                bool enableOk = InterruptAffinityTweak.Enable();
+                sb.AppendLine("Enable() 返回=" + enableOk);
+                sb.AppendLine("EnabledByAegis=" + InterruptAffinityTweak.EnabledByAegis);
+                sb.AppendLine("=== Enable 后（直接读注册表，独立于内部回读）===");
+                foreach (string id in ids) { sb.AppendLine(id); sb.AppendLine(ReadIrqRegSnapshot(id)); }
+                sb.AppendLine();
+
+                if (alsoRestartDevice && ids.Count > 0)
+                {
+                    string err;
+                    bool restarted = InterruptAffinityTweak.RestartDevice(ids[0], out err);
+                    sb.AppendLine("RestartDevice(" + ids[0] + ") 返回=" + restarted + (err != null ? " err=" + err : ""));
+                    Thread.Sleep(1500);
+                    sb.AppendLine("=== 设备重启后（直接读注册表）===");
+                    sb.AppendLine(ids[0]); sb.AppendLine(ReadIrqRegSnapshot(ids[0]));
+                }
+
+                bool disableOk = InterruptAffinityTweak.Disable();
+                sb.AppendLine("Disable() 返回=" + disableOk);
+                sb.AppendLine("EnabledByAegis=" + InterruptAffinityTweak.EnabledByAegis);
+                sb.AppendLine("=== Disable/Restore 后（直接读注册表，独立于内部回读，应恢复到写入前基线）===");
+                foreach (string id in ids) { sb.AppendLine(id); sb.AppendLine(ReadIrqRegSnapshot(id)); }
+            }
+            catch (Exception ex) { sb.AppendLine("ERROR: " + ex); }
+            string text = sb.ToString();
+            try { if (output != null) File.WriteAllText(output, text, Encoding.UTF8); } catch { }
+            Environment.ExitCode = 0;
+        }
+
+        private static bool RunPlainPowerShell(string script, out string stdout)
+        {
+            stdout = "";
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command " + "\"" + script.Replace("\"", "\\\"") + "\"",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                };
+                using (Process p = Process.Start(psi))
+                {
+                    stdout = p.StandardOutput.ReadToEnd();
+                    p.WaitForExit(10000);
+                    return p.ExitCode == 0;
+                }
+            }
+            catch { return false; }
+        }
+
+        private static void RunNetProbe(string output)
+        {
+            var sb = new System.Text.StringBuilder();
+            string dummyExe = null;
+            try
+            {
+                sb.AppendLine("=== Get-Command New-NetQosPolicy（前置能力检查）===");
+                string cmdCheck;
+                RunPlainPowerShell("if (Get-Command New-NetQosPolicy -ErrorAction SilentlyContinue) { 'FOUND' } else { 'MISSING' }", out cmdCheck);
+                sb.AppendLine("  " + cmdCheck.Trim());
+                sb.AppendLine();
+
+                List<string> ids = NetworkAffinityTweak.EnumerateNicDeviceIds();
+                sb.AppendLine("=== EnumerateNicDeviceIds ===");
+                foreach (string id in ids) sb.AppendLine("  " + id);
+                if (ids.Count == 0) sb.AppendLine("  (未找到任何真实 PCI/USB 网卡)");
+                sb.AppendLine();
+
+                sb.AppendLine("=== 写入前基线（直接读注册表）===");
+                foreach (string id in ids) { sb.AppendLine(id); sb.AppendLine(ReadIrqRegSnapshot(id)); }
+                sb.AppendLine();
+
+                dummyExe = Path.Combine(Path.GetTempPath(), "AegisNetProbeDummy_" + Guid.NewGuid().ToString("N") + ".exe");
+                File.WriteAllBytes(dummyExe, new byte[] { 0x4D, 0x5A });
+                string dummyName = NetworkAffinityTweak.SanitizePolicyName("AegisNetProbeDummyGame", dummyExe);
+                var games = new List<GameProfile> { new GameProfile { Name = "AegisNetProbeDummyGame", ExecutablePath = dummyExe } };
+
+                bool enableOk = NetworkAffinityTweak.Enable(games);
+                sb.AppendLine("Enable() 返回=" + enableOk);
+                sb.AppendLine("EnabledByAegis=" + NetworkAffinityTweak.EnabledByAegis);
+                sb.AppendLine("=== Enable 后网卡寄存器（直接读注册表，独立于内部回读）===");
+                foreach (string id in ids) { sb.AppendLine(id); sb.AppendLine(ReadIrqRegSnapshot(id)); }
+
+                string qosCheck;
+                RunPlainPowerShell("if (Get-NetQosPolicy -Name '" + dummyName.Replace("'", "''") + "' -ErrorAction SilentlyContinue) { 'EXISTS' } else { 'ABSENT' }", out qosCheck);
+                sb.AppendLine("独立查询 QoS 策略 " + dummyName + " ：" + qosCheck.Trim());
+                sb.AppendLine();
+
+                bool disableOk = NetworkAffinityTweak.Disable();
+                sb.AppendLine("Disable() 返回=" + disableOk);
+                sb.AppendLine("EnabledByAegis=" + NetworkAffinityTweak.EnabledByAegis);
+                sb.AppendLine("=== Disable 后网卡寄存器（直接读注册表，应恢复到写入前基线）===");
+                foreach (string id in ids) { sb.AppendLine(id); sb.AppendLine(ReadIrqRegSnapshot(id)); }
+
+                RunPlainPowerShell("if (Get-NetQosPolicy -Name '" + dummyName.Replace("'", "''") + "' -ErrorAction SilentlyContinue) { 'EXISTS' } else { 'ABSENT' }", out qosCheck);
+                sb.AppendLine("独立查询 QoS 策略 " + dummyName + "（应已删除）：" + qosCheck.Trim());
+            }
+            catch (Exception ex) { sb.AppendLine("ERROR: " + ex); }
+            finally { try { if (dummyExe != null) File.Delete(dummyExe); } catch { } }
+            string text = sb.ToString();
+            try { if (output != null) File.WriteAllText(output, text, Encoding.UTF8); } catch { }
+            Environment.ExitCode = 0;
+        }
+
+        // 真实构造主窗口并走一次 ShowPanel()，逐帧采样 Opacity/Top，
+        // 验证开场动画确实在渐变+上浮（而不是卡在 0、或直接跳到 1 等于没动画）。
+        private static void RunIntroProbe(string output)
+        {
+            var sb = new System.Text.StringBuilder();
+            string data = Path.Combine(Path.GetTempPath(), "AegisIntroProbe_" + Process.GetCurrentProcess().Id);
+            try
+            {
+                Directory.CreateDirectory(data);
+                Logger.LogPath = Path.Combine(data, "intro.log");
+                Dpi.Init();
+                Lang.Init();
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                var core = new SuppressionCore();
+                var tamer = new Tamer(core);
+                var mode = new GameMode(data, core);
+                using (var f = new PanelForm(tamer, mode, IconArt.MakeIcon(Dpi.S(24)), true))
+                {
+                    GC.KeepAlive(f.Handle);
+                    f.StartPosition = FormStartPosition.Manual;
+                    f.Location = new Point(-20000, -20000);
+                    f.ShowPanel();
+                    int settledTop = 0;
+                    var samples = new List<string>();
+                    double minOpacity = 2d, maxOpacity = -1d;
+                    int topSpread = 0, firstTop = f.Top;
+                    for (int i = 0; i < 40; i++)
+                    {
+                        Application.DoEvents();
+                        double op = f.Opacity;
+                        int top = f.Top;
+                        if (op < minOpacity) minOpacity = op;
+                        if (op > maxOpacity) maxOpacity = op;
+                        int delta = top - firstTop;
+                        if (Math.Abs(delta) > Math.Abs(topSpread)) topSpread = delta;
+                        if (i % 4 == 0) samples.Add("  frame " + i + ": opacity=" + op.ToString("0.000") + " top=" + top);
+                        settledTop = top;
+                        Thread.Sleep(20);
+                    }
+                    Application.DoEvents();
+                    sb.AppendLine("=== 开场动画逐帧采样 ===");
+                    foreach (string s in samples) sb.AppendLine(s);
+                    sb.AppendLine();
+                    sb.AppendLine("opacity 区间: " + minOpacity.ToString("0.000") + " → " + maxOpacity.ToString("0.000"));
+                    sb.AppendLine("Top 相对起点最大位移: " + topSpread + " px");
+                    sb.AppendLine("最终 opacity=" + f.Opacity.ToString("0.000") + " 最终 Top=" + settledTop);
+                    sb.AppendLine();
+                    sb.AppendLine("判定 渐变生效: " + (minOpacity < 0.35d && maxOpacity > 0.95d));
+                    sb.AppendLine("判定 上浮生效: " + (Math.Abs(topSpread) >= 4));
+                    sb.AppendLine("判定 最终完全不透明: " + (Math.Abs(f.Opacity - 1d) < 0.001d));
+                }
+            }
+            catch (Exception ex) { sb.AppendLine("ERROR: " + ex); }
+            finally { try { Directory.Delete(data, true); } catch { } }
+            string text = sb.ToString();
+            try { if (output != null) File.WriteAllText(output, text, Encoding.UTF8); } catch { }
+            Environment.ExitCode = 0;
+        }
+
+        // 把真实托盘右键菜单显示出来截图，并打印每项的高度/内边距/文字矩形，
+        // 用来判断文字到底有没有垂直居中——靠肉眼猜容易改错方向。
+        private static void RunMenuProbe(string output, string dumpPath)
+        {
+            string data = Path.Combine(Path.GetTempPath(), "AegisMenuProbe_" + Process.GetCurrentProcess().Id);
+            var sb = new System.Text.StringBuilder();
+            try
+            {
+                Directory.CreateDirectory(data);
+                Logger.LogPath = Path.Combine(data, "menu.log");
+                Dpi.Init();
+                Lang.Init();
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                var core = new SuppressionCore();
+                var tamer = new Tamer(core);
+                var mode = new GameMode(data, core);
+                var tray = new TrayMenu(tamer, mode, delegate { }, delegate { }, delegate { });
+                ContextMenuStrip strip = tray.Strip;
+                strip.Show(new Point(-20000, -20000));
+                for (int i = 0; i < 12; i++) { Application.DoEvents(); Thread.Sleep(20); }
+
+                sb.AppendLine("strip size=" + strip.Size + " padding=" + strip.Padding);
+                foreach (ToolStripItem it in strip.Items)
+                {
+                    if (it is ToolStripSeparator) { sb.AppendLine("  ---- separator h=" + it.Height); continue; }
+                    Size pref = it.GetPreferredSize(Size.Empty);
+                    Size text = TextRenderer.MeasureText(it.Text, it.Font, Size.Empty, TextFormatFlags.NoPadding);
+                    int topGap = it.Padding.Top;
+                    int bottomGap = it.Padding.Bottom;
+                    int slack = it.Height - it.Padding.Top - it.Padding.Bottom - text.Height;
+                    sb.AppendLine("  \"" + it.Text.Trim() + "\" h=" + it.Height
+                        + " pad=(t" + topGap + ",b" + bottomGap + ")"
+                        + " textH=" + text.Height + " pref=" + pref.Height
+                        + " 余量=" + slack + " textAlign=" + it.TextAlign);
+                }
+
+                using (var bmp = new Bitmap(strip.Width, strip.Height))
+                {
+                    strip.DrawToBitmap(bmp, new Rectangle(0, 0, strip.Width, strip.Height));
+                    bmp.Save(output, System.Drawing.Imaging.ImageFormat.Png);
+                }
+                strip.Close();
+            }
+            catch (Exception ex) { sb.AppendLine("ERROR: " + ex); }
+            finally { try { Directory.Delete(data, true); } catch { } }
+            try { if (dumpPath != null) File.WriteAllText(dumpPath, sb.ToString(), Encoding.UTF8); } catch { }
+            Environment.ExitCode = 0;
+        }
+
+        // 真实弹出版本说明窗口并截图。窗口构造时会把"已读版本"写进用户配置，
+        // 这里先存后还原，免得诊断run顺手把用户的 NEW 标记吃掉。
+        private static void RunNotesProbe(string output, string language)
+        {
+            const string seenKey = "LastSeenNotesVersion";
+            string prevSeen = null;
+            try
+            {
+                Dpi.Init();
+                Paths.Init();
+                Lang.Init();
+                Lang.Cur = language == "en" ? 1 : (language == "ja" ? 2 : 0);
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                prevSeen = Settings.LoadStr(seenKey, "");
+                using (var dlg = new ReleaseNotesDialog())
+                {
+                    dlg.StartPosition = FormStartPosition.Manual;
+                    dlg.Location = new Point(-20000, -20000);
+                    dlg.Show();
+                    for (int i = 0; i < 25; i++) { Application.DoEvents(); Thread.Sleep(20); }
+                    using (var bmp = new Bitmap(dlg.ClientSize.Width, dlg.ClientSize.Height))
+                    {
+                        dlg.DrawToBitmap(bmp, new Rectangle(Point.Empty, dlg.ClientSize));
+                        bmp.Save(output, System.Drawing.Imaging.ImageFormat.Png);
+                    }
+                    dlg.Hide();
+                }
+            }
+            catch (Exception ex) { try { File.WriteAllText(output + ".err.txt", ex.ToString(), Encoding.UTF8); } catch { } }
+            finally { try { if (prevSeen != null) Settings.SaveStr(seenKey, prevSeen); } catch { } }
+            Environment.ExitCode = 0;
+        }
+
+        private static void RunGameHostProbe(string dataDir, string output)
+        {
+            var sb = new System.Text.StringBuilder();
+            try
+            {
+                var store = new GameProfileStore(dataDir);
+                List<GameProfile> profiles = store.LoadOrMigrate(Path.Combine(dataDir, "Aegis.games.txt"));
+                Process[] all = Process.GetProcesses();
+                GameDetection hit = GameSessionDetector.Detect(all, profiles);
+                sb.AppendLine("DETECT RESULT: " + (hit == null ? "NULL (无活动游戏)"
+                    : hit.Profile.Name + " | renderer=" + hit.RendererName + " pid=" + hit.RendererPid));
+
+                int selfSession = -1;
+                try { selfSession = Process.GetCurrentProcess().SessionId; } catch { }
+
+                var parents = new Dictionary<int, int>();
+                var names = new Dictionary<int, string>();
+                foreach (Process p in all)
+                {
+                    try
+                    {
+                        int pid = p.Id;
+                        names[pid] = p.ProcessName;
+                        if (selfSession < 0 || p.SessionId != selfSession) continue;
+                        IntPtr h = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+                        if (h == IntPtr.Zero) continue;
+                        try { parents[pid] = Native.ParentProcessId(h); }
+                        finally { Native.CloseHandle(h); }
+                    }
+                    catch { }
+                }
+
+                if (hit != null && hit.RendererPid > 0)
+                {
+                    sb.AppendLine();
+                    sb.AppendLine("=== 原始父进程链（从渲染进程往上，不受任何逻辑过滤）===");
+                    int cur = hit.RendererPid;
+                    var seen = new HashSet<int>();
+                    for (int i = 0; i < 30 && cur > 4 && seen.Add(cur); i++)
+                    {
+                        string nm;
+                        names.TryGetValue(cur, out nm);
+                        sb.AppendLine("  " + (i == 0 ? "renderer" : "parent^" + i) + ": " + (nm ?? "?") + " (pid " + cur + ")");
+                        int parent;
+                        if (!parents.TryGetValue(cur, out parent)) break;
+                        cur = parent;
+                    }
+
+                    HashSet<int> ancestors = GameMode.WalkAncestorChain(parents, hit.RendererPid, -999999, 24);
+                    sb.AppendLine();
+                    sb.AppendLine("=== WalkAncestorChain 判定为“游戏宿主祖先”（豁免压制）的进程 ===");
+                    if (ancestors.Count == 0) sb.AppendLine("  (空)");
+                    foreach (int pid in ancestors)
+                    {
+                        string nm;
+                        names.TryGetValue(pid, out nm);
+                        sb.AppendLine("  " + (nm ?? "?") + " (pid " + pid + ")");
+                    }
+
+                    sb.AppendLine();
+                    sb.AppendLine("=== 兜底通道：结构上够不到、但按通用启动器类别豁免的进程 ===");
+                    bool anyFallback = false;
+                    foreach (var pair in names)
+                    {
+                        if (ancestors.Contains(pair.Key)) continue;
+                        if (!GameMode.IsKnownLauncherShell(pair.Value)) continue;
+                        sb.AppendLine("  " + pair.Value + " (pid " + pair.Key + ")");
+                        anyFallback = true;
+                    }
+                    if (!anyFallback) sb.AppendLine("  (空)");
                 }
                 foreach (Process p in all) { try { p.Dispose(); } catch { } }
             }
@@ -358,6 +756,82 @@ namespace AegisApp
                 sampler.ObserveCandidate(-1);
                 Eq(0UL, sampler.NoisyPhysicalMask);
             });
+            test("interrupt affinity: mask/byte round-trip is little-endian and lossless", () =>
+            {
+                Eq(0x000000FFUL, InterruptAffinityTweak.BytesToMask(InterruptAffinityTweak.MaskToBytes(0x000000FFUL)));
+                Eq(0x0FUL, InterruptAffinityTweak.BytesToMask(InterruptAffinityTweak.MaskToBytes(0x0FUL)));
+                Eq(0xFFFFFFFFFFFFFFFFUL, InterruptAffinityTweak.BytesToMask(InterruptAffinityTweak.MaskToBytes(0xFFFFFFFFFFFFFFFFUL)));
+                Eq(0UL, InterruptAffinityTweak.BytesToMask(InterruptAffinityTweak.MaskToBytes(0UL)));
+                byte[] b = InterruptAffinityTweak.MaskToBytes(0x0102030405060708UL);
+                Eq((byte)0x08, b[0]);
+                Eq((byte)0x01, b[7]);
+                Eq(0UL, InterruptAffinityTweak.BytesToMask(null));
+                Eq(0UL, InterruptAffinityTweak.BytesToMask(new byte[] { 1, 2, 3 }));
+            });
+            test("release notes: current version is documented and fully translated", () =>
+            {
+                if (ReleaseNotes.All.Length == 0) throw new Exception("no release notes are bundled");
+                ReleaseNote cur = ReleaseNotes.Current;
+                if (cur == null) throw new Exception("shipping version " + App.Version + " has no release-note entry");
+                if (cur.Count == 0) throw new Exception("current version's entry has no items");
+
+                List<string> missing = ReleaseNotes.MissingTranslations();
+                if (missing.Count > 0) throw new Exception("untranslated notes: " + string.Join(", ", missing.ToArray()));
+
+                // 版本按从新到旧排列，且日期字段不能为空
+                for (int i = 1; i < ReleaseNotes.All.Length; i++)
+                    if (!UpdateChecker.IsNewer(ReleaseNotes.All[i - 1].Version, ReleaseNotes.All[i].Version))
+                        throw new Exception("notes are not ordered newest-first at index " + i);
+                foreach (ReleaseNote n in ReleaseNotes.All)
+                {
+                    if (string.IsNullOrEmpty(n.Date)) throw new Exception(n.Version + " has no date");
+                    if (n.Tag != "v" + n.Version) throw new Exception("bad tag for " + n.Version);
+                }
+
+                // 越界索引必须返回空串而不是抛异常
+                Eq("", cur.Item(-1));
+                Eq("", cur.Item(cur.Count));
+            });
+            test("auto-hide: fires once per game session and re-arms only on the next one", () =>
+            {
+                bool last = false, armed = false;
+                // 开关关着：整局都不该收
+                Eq(AutoHideAction.None, PanelForm.NextAutoHide(true, ref last, ref armed, false, true));
+                Eq(AutoHideAction.Cancel, PanelForm.NextAutoHide(false, ref last, ref armed, false, true));
+
+                // 开关开着、窗口可见：这局收一次
+                last = false; armed = false;
+                Eq(AutoHideAction.Schedule, PanelForm.NextAutoHide(true, ref last, ref armed, true, true));
+                // 同一局内反复轮询不得重复安排
+                Eq(AutoHideAction.None, PanelForm.NextAutoHide(true, ref last, ref armed, true, true));
+                Eq(AutoHideAction.None, PanelForm.NextAutoHide(true, ref last, ref armed, true, true));
+                // 这局结束 → 撤销并重新武装
+                Eq(AutoHideAction.Cancel, PanelForm.NextAutoHide(false, ref last, ref armed, true, true));
+                Eq(false, armed);
+                // 下一局重新收一次
+                Eq(AutoHideAction.Schedule, PanelForm.NextAutoHide(true, ref last, ref armed, true, true));
+
+                // 游戏开始时窗口本来就没显示：消耗掉本局机会但不安排收起
+                last = false; armed = false;
+                Eq(AutoHideAction.None, PanelForm.NextAutoHide(true, ref last, ref armed, true, false));
+                Eq(true, armed);
+                // 用户对局中途自己打开窗口，也不该被再次收走
+                Eq(AutoHideAction.None, PanelForm.NextAutoHide(true, ref last, ref armed, true, true));
+            });
+            test("network QoS: policy names stay unique, ASCII-safe and bounded in length", () =>
+            {
+                string a = NetworkAffinityTweak.SanitizePolicyName("Valorant", @"C:\Games\Valorant\VALORANT.exe");
+                string b = NetworkAffinityTweak.SanitizePolicyName("Valorant", @"C:\Games\Valorant2\VALORANT.exe");
+                if (a == b) throw new Exception("different exe paths collided into the same policy name");
+                Eq(a, NetworkAffinityTweak.SanitizePolicyName("Valorant", @"C:\Games\Valorant\VALORANT.exe"));
+                string weird = NetworkAffinityTweak.SanitizePolicyName("!!!///###", @"C:\g.exe");
+                foreach (char c in weird) if (!(char.IsLetterOrDigit(c) || c == '_'))
+                    throw new Exception("sanitized name contains an unsafe character: " + c);
+                string longName = NetworkAffinityTweak.SanitizePolicyName(new string('A', 200), @"C:\g.exe");
+                if (longName.Length > 64) throw new Exception("policy name is too long: " + longName.Length);
+                string empty = NetworkAffinityTweak.SanitizePolicyName("", @"C:\g.exe");
+                if (!empty.StartsWith("Aegis_Game")) throw new Exception("empty game name did not fall back to a placeholder");
+            });
 
             string root = Path.Combine(Path.GetTempPath(), "AegisSelfTest_" + Process.GetCurrentProcess().Id + "_" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(root);
@@ -422,9 +896,9 @@ namespace AegisApp
         private static void TestReleaseMetadata()
         {
             Version assemblyVersion = typeof(App).Assembly.GetName().Version;
-            Eq("1.4.2.0", assemblyVersion == null ? "" : assemblyVersion.ToString());
+            Eq("1.4.3.0", assemblyVersion == null ? "" : assemblyVersion.ToString());
             FileVersionInfo info = FileVersionInfo.GetVersionInfo(Application.ExecutablePath);
-            Eq("1.4.2.0", info.FileVersion);
+            Eq("1.4.3.0", info.FileVersion);
             Eq("Aegis", info.ProductName);
             Eq("bdth", info.CompanyName);
         }
@@ -559,9 +1033,12 @@ namespace AegisApp
             Eq(false, GameMode.BasicBackgroundEligible(10, 99, "discord", @"D:\Apps\discord.exe", 1, 1, 20, true, win));
             Eq(false, GameMode.BasicBackgroundEligible(10, 99, "EasyAntiCheat_EOS", @"D:\Games\eac.exe", 1, 1, 20, false, win));
             Eq(false, GameMode.BasicBackgroundEligible(10, 99, "SGuard64", @"D:\WeGame\SGuard64.exe", 1, 1, 20, false, win));
+            // 没有被判定为"当前游戏的进程树祖先"时，任何名字（含 wegame）都不享受特殊待遇
             Eq(true, GameMode.BasicBackgroundEligible(10, 99, "wegame", @"C:\WeGame\wegame.exe", 1, 1, 20, false, win));
+            // 只要被判定为祖先，任何名字（不只是 wegame）都会被豁免——不认平台名字，只认进程树结构
             Eq(false, GameMode.BasicBackgroundEligible(10, 99, "wegame", @"C:\WeGame\wegame.exe", 1, 1, 20, false, win, true, null));
-            Eq(false, GameMode.BasicBackgroundEligible(10, 99, "railhelper", @"D:\LoL\TCLS\rail.exe", 1, 1, 20, false, win, false, @"D:\LoL\"));
+            Eq(false, GameMode.BasicBackgroundEligible(10, 99, "anylauncher", @"D:\Anything\launcher.exe", 1, 1, 20, false, win, true, null));
+            Eq(false, GameMode.BasicBackgroundEligible(10, 99, "railhelper", @"D:\SomeGame\TCLS\rail.exe", 1, 1, 20, false, win, false, @"D:\SomeGame\"));
 
             Eq(true, GameMode.BasicBackgroundEligible(10, 99, "worker", @"D:\Apps\worker.exe", 1, 1, 10, false, win, false, null, true));
             Eq(true, GameMode.BasicBackgroundEligible(10, 99, "discord", @"D:\Apps\discord.exe", 1, 1, 20, true, win, false, null, true));
@@ -573,7 +1050,38 @@ namespace AegisApp
             Eq(true, GameMode.BasicBackgroundEligible(10, 99, "svchost", @"D:\Malware\svchost.exe", 1, 1, 20, false, win, false, null, true));
             Eq(false, GameMode.BasicBackgroundEligible(10, 99, "SGuard64", @"D:\WeGame\SGuard64.exe", 1, 1, 20, false, win, false, null, true));
             Eq(false, GameMode.BasicBackgroundEligible(10, 99, "wegame", @"C:\WeGame\wegame.exe", 1, 1, 20, false, win, true, null, true));
-            Eq(false, GameMode.BasicBackgroundEligible(10, 99, "railhelper", @"D:\LoL\TCLS\rail.exe", 1, 1, 20, false, win, false, @"D:\LoL\", true));
+            Eq(false, GameMode.BasicBackgroundEligible(10, 99, "railhelper", @"D:\SomeGame\TCLS\rail.exe", 1, 1, 20, false, win, false, @"D:\SomeGame\", true));
+
+            // WalkAncestorChain：不查任何平台名单，纯粹沿父进程链网上走
+            var hostParents = new Dictionary<int, int> { { 100, 50 }, { 50, 20 }, { 20, 7 }, { 7, 3 } };
+            HashSet<int> ancestors = GameMode.WalkAncestorChain(hostParents, 100, 99, 24);
+            Eq(true, ancestors.Contains(50));
+            Eq(true, ancestors.Contains(20));
+            Eq(true, ancestors.Contains(7));
+            Eq(false, ancestors.Contains(100));
+            Eq(false, ancestors.Contains(3));
+            Eq(0, GameMode.WalkAncestorChain(hostParents, 3, 99, 24).Count);
+            Eq(0, GameMode.WalkAncestorChain(new Dictionary<int, int>(), 100, 99, 24).Count);
+            Eq(0, GameMode.WalkAncestorChain(hostParents, 4, 99, 24).Count);
+            var selfLoop = new Dictionary<int, int> { { 100, 50 }, { 50, 99 } };
+            Eq(false, GameMode.WalkAncestorChain(selfLoop, 100, 99, 24).Contains(99));
+            var cycle = new Dictionary<int, int> { { 100, 50 }, { 50, 20 }, { 20, 100 } };
+            HashSet<int> cycleResult = GameMode.WalkAncestorChain(cycle, 100, 99, 24);
+            Eq(true, cycleResult.Contains(50));
+            Eq(true, cycleResult.Contains(20));
+            var longChain = new Dictionary<int, int>();
+            for (int i = 1001; i <= 1039; i++) longChain[i] = i - 1;
+            Eq(24, GameMode.WalkAncestorChain(longChain, 1039, 99, 24).Count);
+
+            // 兜底通道：链路断掉够不到的常驻启动器外壳，仅在有活跃对局时按通用启动器类别豁免
+            Eq(true, GameMode.IsKnownLauncherShell("wegame"));
+            Eq(true, GameMode.IsKnownLauncherShell("Steam"));
+            Eq(true, GameMode.IsKnownLauncherShell("EpicGamesLauncher"));
+            Eq(true, GameMode.IsKnownLauncherShell("Battle.net"));
+            Eq(false, GameMode.IsKnownLauncherShell("chrome"));
+            Eq(false, GameMode.IsKnownLauncherShell("League of Legends"));
+            Eq(false, GameMode.IsKnownLauncherShell(null));
+            Eq(false, GameMode.IsKnownLauncherShell(""));
 
             var parents = new Dictionary<int, int> { { 2, 1 }, { 10, 1 }, { 11, 10 }, { 12, 11 }, { 20, 1 } };
             var names = new Dictionary<int, string>

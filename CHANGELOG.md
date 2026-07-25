@@ -5,6 +5,48 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.4.3] - 2026-07-25
+
+### Added
+
+- **GPU interrupt affinity tuning.** Steers GPU interrupt handling toward the cores the game runs
+  on, reducing cross-core/cross-cache overhead. Written to the device's Interrupt Affinity Policy
+  and reverted exactly on disable. Machines with more than one processor group use only the
+  lighter `IrqPolicyAllCloseProcessors` policy, because the `AssignmentSetOverride` binary format
+  is undocumented for that case. Takes effect after restarting the device or rebooting.
+- **Game network priority.** Applies the same interrupt-affinity steering to physical network
+  adapters, and tags traffic from executables in the game library with a QoS DSCP priority
+  marking. Policies are refreshed on each enable and removed on disable.
+- **Release notes viewer.** Trilingual notes ship inside the executable and are viewable offline
+  from the About page, with an unread marker on the first launch of a new version.
+- **Auto-hide on game start** (opt-in, off by default). Ten seconds after a game is detected the
+  main window returns to the tray. It fires at most once per game session and re-arms only when
+  the next session begins, so reopening the window during a match never gets it pulled away.
+- **Window intro animation.** The main window fades in with a subtle rise instead of appearing
+  abruptly.
+
+### Changed
+
+- Background-suppression exemptions no longer hard-code launcher platform names or probe a
+  game-specific registry key. The launcher host chain is discovered generically by walking up the
+  parent-process chain of the running renderer, so it applies to any platform and any title.
+  Long-lived launcher shells that detach from the process tree (the platform hands the game to a
+  transient intermediate process and then exits the chain) are covered by a generic
+  launcher-category fallback that only applies while a session is live.
+- The interrupt-affinity apply/read-back/rollback logic is shared by the GPU and network features
+  through a single engine rather than duplicated.
+
+### Fixed
+
+- Tray context-menu text rendered roughly 6-7 pixels above center on every row, because the
+  padding used to increase row height was not honored when laying out the text. Text is now
+  vertically centered against the full row height.
+- `ReversibleReg` could not correctly handle `RegistryValueKind.Binary` values: its generic path
+  compared `ToString()` results, which compares type names rather than content for byte arrays,
+  so a binary write could report success without matching and a restore could not be verified.
+- GPU enumeration counted software display adapters registered by remote-control software as real
+  hardware. Enumeration is now restricted to devices on the PCI bus.
+
 ## [1.4.2] - 2026-07-24
 
 ### Added
