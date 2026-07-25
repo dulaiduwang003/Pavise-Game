@@ -39,6 +39,37 @@ namespace AegisApp
 
         public static readonly ReleaseNote[] All = new[]
         {
+            new ReleaseNote("1.4.4", "2026-07-25", new[]
+            {
+                new[]{
+                    "这是最终功能版本。功能开发到此为止，后续只做维护：跟进 Windows 更新、跟进反作弊厂商的进程变化、修复发现的问题，不再新增功能。",
+                    "This is the final feature release. Feature work stops here; from now on Aegis only receives maintenance — keeping up with Windows updates and anti-cheat vendor changes, and fixing defects. No new features.",
+                    "これが最終機能リリースです。機能開発はここで終了し、以降は保守のみ（Windows 更新およびアンチチート各社の変更への追従と不具合修正）を行います。新機能の追加はありません。" },
+                new[]{
+                    "安全修复：后台压制的反作弊豁免此前用的是精确名单，而检测器用的是含子串的宽判定。两者宽度不一致时，程序自己认定为反作弊的进程仍可能被压制——被压的反作弊心跳超时可能导致掉线。现已统一为同一套判定，并在冻结路径上加了独立的第二道拦截。",
+                    "Security fix: background suppression exempted anti-cheat by exact-name list while detection used a broader substring match. Where the two disagreed, a process the app itself classified as anti-cheat could still be suppressed — and a throttled anti-cheat can time out its heartbeat and disconnect you. Both paths now share the broader check, with a second independent guard on the freeze path.",
+                    "セキュリティ修正：バックグラウンド抑制のアンチチート除外が完全一致リストのみで、検出側の部分一致より狭く、アプリ自身がアンチチートと判定したプロセスが抑制され得ました（ハートビート切れによる切断の恐れ）。両者を同一判定に統一し、凍結経路にも独立した保護を追加しました。" },
+                new[]{
+                    "安全修复：向 PowerShell 传递目录与策略名时使用字符串拼接。PowerShell 也把排版引号（U+2019 等）当作定界符，因此转义 ASCII 单引号并不足够；本程序以管理员身份运行，构造特定名称的目录可导致以管理员权限执行任意命令。现改为经环境变量传参、脚本以 -EncodedCommand 传入且不再落临时文件。",
+                    "Security fix: directory and policy names were concatenated into PowerShell scripts. PowerShell also treats typographic quotes (U+2019 and friends) as delimiters, so escaping ASCII apostrophes was not sufficient; since Aegis runs elevated, a specially named directory could lead to arbitrary command execution with administrator rights. Arguments now travel via environment variables and the script is passed with -EncodedCommand without a temporary file.",
+                    "セキュリティ修正：ディレクトリ名やポリシー名を PowerShell スクリプトへ文字列連結していました。PowerShell は U+2019 等の引用符も区切りとして扱うため ASCII 引用符のエスケープでは不十分で、管理者権限での任意コマンド実行に繋がり得ました。引数は環境変数経由とし、スクリプトは一時ファイルを介さず -EncodedCommand で渡します。" },
+                new[]{
+                    "修复：游戏档案文件读取失败时会被当成「档案为空」，界面显示空游戏库，此时新增任何一个游戏都会把原档案整份覆盖。现在读取失败会被识别并拒绝保存，原文件受到保护。",
+                    "Fixed: a failed read of the game profile file was indistinguishable from an empty library, so adding a single game afterwards overwrote the intact file. A read failure is now detected and blocks saving, protecting the original.",
+                    "修正：ゲームプロファイルの読み取り失敗が「空のライブラリ」と区別できず、直後にゲームを 1 つ追加すると元ファイルを丸ごと上書きしていました。読み取り失敗を検出し保存を中止するようにしました。" },
+                new[]{
+                    "修复：主界面部分说明文字因换行条件从不成立而被截断，被截掉的往往正是风险提示；托盘菜单文字偏上；游戏库列表与标题栏在重复绘制时可能因共享字体被释放而反复报错。",
+                    "Fixed: some descriptions in the UI were truncated because the word-wrap branch could never trigger — and the truncated part was often the risk disclaimer. Also fixed tray menu text sitting above centre, and repeated painting of the game library and title bar failing due to a shared font being disposed.",
+                    "修正：折り返し条件が成立せず一部の説明文が省略され（多くは注意書きの部分）、トレイメニューの文字が上寄り、共有フォントの解放によりゲームライブラリとタイトルバーの再描画が失敗する問題を修正しました。" },
+                new[]{
+                    "还原可靠性：进程原有的 EcoQoS 设置、逐游戏图形选项中由 Windows 写入的其它字段、中断亲和改动过的设备名单，现在都会被完整保留并还原，不再被覆盖或遗漏。",
+                    "Restore reliability: a process's own EcoQoS opt-in, the other fields Windows stores alongside per-game graphics preferences, and the list of devices whose interrupt affinity was modified are now all preserved and restored rather than overwritten or missed.",
+                    "復元の信頼性：プロセス自身の EcoQoS 設定、ゲームごとのグラフィック設定に Windows が併記する他フィールド、割り込みアフィニティを変更したデバイス一覧を、上書き・取りこぼしなく保持・復元します。" },
+                new[]{
+                    "本次共修复 26 个问题，自测用例从 39 项扩充到 59 项。",
+                    "26 defects fixed in this release; the built-in test suite grew from 39 to 59 cases.",
+                    "本リリースで 26 件の不具合を修正し、内蔵テストは 39 件から 59 件に拡充されました。" },
+            }),
             new ReleaseNote("1.4.3", "2026-07-25", new[]
             {
                 new[]{

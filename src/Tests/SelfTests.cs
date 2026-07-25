@@ -1152,9 +1152,9 @@ namespace AegisApp
         private static void TestReleaseMetadata()
         {
             Version assemblyVersion = typeof(App).Assembly.GetName().Version;
-            Eq("1.4.3.0", assemblyVersion == null ? "" : assemblyVersion.ToString());
+            Eq("1.4.4.0", assemblyVersion == null ? "" : assemblyVersion.ToString());
             FileVersionInfo info = FileVersionInfo.GetVersionInfo(Application.ExecutablePath);
-            Eq("1.4.3.0", info.FileVersion);
+            Eq("1.4.4.0", info.FileVersion);
             Eq("Aegis", info.ProductName);
             Eq("bdth", info.CompanyName);
         }

@@ -5,6 +5,76 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.4.4] - 2026-07-25
+
+**Final feature release.** Feature development ends here. Aegis will continue to receive
+maintenance — keeping pace with Windows updates and anti-cheat vendor changes, and fixing
+defects — but no new features are planned.
+
+### Security
+
+- Background suppression exempted anti-cheat processes using an exact-name catalog, while
+  detection used a broader substring match. Where the two disagreed, a process the application
+  itself classified as anti-cheat could still be suppressed to idle priority, core-locked and
+  EcoQoS — and in Extreme mode suspended outright. A throttled anti-cheat can time out its
+  heartbeat and disconnect the player. Both paths now share the broader check, and the freeze
+  path carries a second, independent guard.
+- Directory and policy names were concatenated into PowerShell script text. PowerShell also
+  treats typographic quotation marks (U+2018/U+2019 and related) as single-quote delimiters, so
+  doubling ASCII apostrophes was not sufficient escaping. Because Aegis runs with an
+  administrator manifest, a directory created with a crafted name could lead to arbitrary command
+  execution with administrator rights once the user added it to the library and enabled a feature
+  that referenced it. Arguments are now passed through environment variables, and the script body
+  is delivered via `-EncodedCommand` without a temporary file — which also removes the window in
+  which a user-writable temporary script could be replaced before the elevated process ran it.
+
+### Fixed
+
+- A failed read of `Aegis.profiles.dat` was indistinguishable from an empty library. The game
+  library appeared empty, and adding a single game then overwrote the intact file — with no
+  backup, because the backup branch only runs when a repair is detected. A read failure is now
+  recorded and blocks saving until the next launch.
+- Suppression restored a hardcoded "system managed" power-throttling policy instead of the
+  process's captured original, permanently stripping the EcoQoS opt-in of applications that had
+  chosen it themselves. The original mask is now snapshotted, persisted in the crash journal
+  (backward-compatibly), and written back.
+- The per-game GPU preference value was replaced wholesale rather than merged, discarding the
+  other fields Windows stores in the same value — including the per-game windowed-optimization
+  setting. Both the apply and restore paths now merge field-by-field.
+- Interrupt-affinity restore only covered devices that still enumerated, so a device that had
+  become unavailable was skipped silently while the operation reported success, leaving
+  unreachable snapshots. The modified device list is now persisted and used as the restore scope.
+- `CrashGuard.ClearBoost` wiped the entire boost journal, destroying entries deliberately retained
+  from a previous crashed session for a later retry. Per-process release already maintained the
+  journal precisely; the blanket wipe was removed.
+- `HagsTweak.Disable` wrote a hardcoded value with no snapshot when no backup existed, which could
+  create a registry value the user never had and that the application could not remove again.
+- Truncate-in-place writes for the whitelist, game list and suppression recovery journal were
+  replaced with atomic temp-and-replace writes. A torn whitelist previously survived the
+  "file exists" repair check and left the application running with no whitelist at all.
+- Directory containment used an unanchored prefix comparison, so a game root of `D:\Games\Apex`
+  also exempted `D:\Games\ApexBackup`. Comparison is now anchored on a path separator.
+- The background pressure controller had no minimum sampling window. Because sweeps are also
+  driven by process start/stop events, a ~200 ms window inflated the measured rate enough to
+  escalate an ordinary application to full isolation within about a second.
+- Process identity verification treated an unreadable image name as confirmation rather than
+  rejection, and a failed priority query was snapshotted as Normal — which would permanently
+  demote a process that had been running above Normal.
+- The shared font cache was disposed by paint handlers, so the title-bar mode button and the game
+  library list raised an exception on every repaint after the first.
+- Descriptions in the interface were truncated because the word-wrap branch required a card height
+  no card in the product used; the truncated portion was frequently the risk disclaimer. Tray menu
+  labels were drawn above centre. The overview status line never fit its container.
+- Language switching discarded the in-progress flag for cache cleaning, allowing a second
+  concurrent sweep. The tray menu displayed the stored Game DVR setting rather than the value the
+  active preset actually applies, contradicting the policy page.
+- Mid-session standby purging used the free/zero page lists to judge memory pressure. Windows
+  deliberately keeps free physical memory in the standby list, so that test was true almost
+  always; system memory load is now used instead. A full purge could also be triggered mid-game by
+  toggling the setting, which the feature explicitly promises never to do.
+- Panic restore could report success for a restore that had not run, because a timed-out earlier
+  request satisfied the wait of a later one. The worker now records which request it served.
+
 ## [1.4.3] - 2026-07-25
 
 ### Added
