@@ -52,7 +52,25 @@ namespace AegisApp
             }
         }
 
-        public int Count { get { lock (sync) return entries.Count; } }
+        private int lastCount;
+
+        // 同 SuppressionCore.CountThrottled：状态文字从 UI 线程读这个值，而 sync 可能正被
+        // Freeze 持有——那里会在锁内写状态文件并拉起看门狗进程，耗时不可控。
+        // UI 线程等在这里时握着 GameMode.sync，会连带拖住工作线程，所以拿不到锁就用上次的值。
+        public int Count
+        {
+            get
+            {
+                if (!Monitor.TryEnter(sync, 15)) return Volatile.Read(ref lastCount);
+                try
+                {
+                    int n = entries.Count;
+                    Volatile.Write(ref lastCount, n);
+                    return n;
+                }
+                finally { Monitor.Exit(sync); }
+            }
+        }
 
         public bool IsFrozen(int pid) { lock (sync) return entries.ContainsKey(pid); }
 

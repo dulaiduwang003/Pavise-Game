@@ -42,6 +42,15 @@ namespace AegisApp
             if (control.IsHandleCreated) apply(null, EventArgs.Empty);
         }
 
+        public const uint SPI_GETUIEFFECTS = 0x103E;
+        public const uint SPI_SETUIEFFECTS = 0x103F;
+        public const uint SPIF_SENDCHANGE = 0x0002;
+
+        [DllImport("user32.dll", SetLastError = true, EntryPoint = "SystemParametersInfoW")]
+        public static extern bool SystemParametersInfoGet(uint action, uint param, ref int value, uint winIni);
+        [DllImport("user32.dll", SetLastError = true, EntryPoint = "SystemParametersInfoW")]
+        public static extern bool SystemParametersInfoSet(uint action, uint param, IntPtr value, uint winIni);
+
         public static void RoundCorners(IntPtr hwnd)
         {
             try

@@ -90,6 +90,14 @@ namespace AegisApp
         protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
         {
             e.TextColor = e.Item.Enabled ? Theme.Fg : Theme.Faint;
+            // 菜单项靠 Padding 把行撑高后，WinForms 仍把文字排在上沿、不按内边距居中，
+            // 结果每行文字都明显偏上。这里按整行高度重算文字矩形，强制垂直居中。
+            Rectangle r = e.TextRectangle;
+            if (r.Height > 0 && r.Height < e.Item.Height)
+            {
+                int y = (e.Item.Height - r.Height) / 2;
+                if (y != r.Y) e.TextRectangle = new Rectangle(r.X, y, r.Width, r.Height);
+            }
             base.OnRenderItemText(e);
         }
 
@@ -134,6 +142,14 @@ namespace AegisApp
         }
 
         private void Changed() { var a = afterChange; if (a != null) { try { a(); } catch { } } }
+
+        private bool EffectiveDvr()
+        {
+            PerformancePreset mode = gameMode.ActivePreset;
+            return mode == PerformancePreset.Custom
+                ? gameMode.KillGameDvr
+                : mode == PerformancePreset.Competitive;
+        }
 
         private static void StyleDropDown(ToolStripDropDown dd)
         {
@@ -223,7 +239,9 @@ namespace AegisApp
 
             var set = SubMenu(Lang.T("nav.set"));
             set.DropDownItems.Add(Check(Lang.T("tm.gpu"), gameMode.GpuHighPerf, (s, e) => { gameMode.GpuHighPerf = !gameMode.GpuHighPerf; Changed(); }));
-            set.DropDownItems.Add(Check(Lang.T("tm.dvr"), gameMode.KillGameDvr, (s, e) => { gameMode.KillGameDvr = !gameMode.KillGameDvr; Changed(); }));
+            // 实际生效值是 custom ? killGameDvr : competitive（见 GameMode.ApplyEnv），
+            // 直接显示存储值会和策略页的"由预设强制"显示互相矛盾。
+            set.DropDownItems.Add(Check(Lang.T("tm.dvr"), EffectiveDvr(), (s, e) => { gameMode.KillGameDvr = !gameMode.KillGameDvr; Changed(); }));
             set.DropDownItems.Add(Check(Lang.T("tm.fso"), gameMode.DisableFso, (s, e) => { gameMode.DisableFso = !gameMode.DisableFso; Changed(); }));
             set.DropDownItems.Add(new ToolStripSeparator());
             set.DropDownItems.Add(Check(Lang.T("tm.notif"), gameMode.NotifQuiet, (s, e) => { gameMode.NotifQuiet = !gameMode.NotifQuiet; Changed(); }));
