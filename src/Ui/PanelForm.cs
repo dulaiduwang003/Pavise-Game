@@ -52,8 +52,10 @@ namespace AegisApp
         private SettingCard cardPolicyPauseDl, cardPolicyPauseSvc, cardPolicyDvr;
         private SettingCard cardPolicyAggressive;
         private readonly List<Action> policySync = new List<Action>();
-        private volatile bool shaderCleaning;
-        private volatile bool lolCleaning;
+        // 必须是静态：语言切换会走 RebuildUi 重建整页，实例字段上的忙碌标志会随之丢失，
+        // 新建的按钮是可用状态，于是能在清理still进行时再触发一次并发清理。
+        private static volatile bool shaderCleaning;
+        private static volatile bool lolCleaning;
         private string lolDir;
         private int slowBusy;
         private int restoreBusy;

@@ -143,6 +143,14 @@ namespace AegisApp
 
         private void Changed() { var a = afterChange; if (a != null) { try { a(); } catch { } } }
 
+        private bool EffectiveDvr()
+        {
+            PerformancePreset mode = gameMode.ActivePreset;
+            return mode == PerformancePreset.Custom
+                ? gameMode.KillGameDvr
+                : mode == PerformancePreset.Competitive;
+        }
+
         private static void StyleDropDown(ToolStripDropDown dd)
         {
             dd.Font = Theme.UI(9.5f, false);
@@ -231,7 +239,9 @@ namespace AegisApp
 
             var set = SubMenu(Lang.T("nav.set"));
             set.DropDownItems.Add(Check(Lang.T("tm.gpu"), gameMode.GpuHighPerf, (s, e) => { gameMode.GpuHighPerf = !gameMode.GpuHighPerf; Changed(); }));
-            set.DropDownItems.Add(Check(Lang.T("tm.dvr"), gameMode.KillGameDvr, (s, e) => { gameMode.KillGameDvr = !gameMode.KillGameDvr; Changed(); }));
+            // 实际生效值是 custom ? killGameDvr : competitive（见 GameMode.ApplyEnv），
+            // 直接显示存储值会和策略页的"由预设强制"显示互相矛盾。
+            set.DropDownItems.Add(Check(Lang.T("tm.dvr"), EffectiveDvr(), (s, e) => { gameMode.KillGameDvr = !gameMode.KillGameDvr; Changed(); }));
             set.DropDownItems.Add(Check(Lang.T("tm.fso"), gameMode.DisableFso, (s, e) => { gameMode.DisableFso = !gameMode.DisableFso; Changed(); }));
             set.DropDownItems.Add(new ToolStripSeparator());
             set.DropDownItems.Add(Check(Lang.T("tm.notif"), gameMode.NotifQuiet, (s, e) => { gameMode.NotifQuiet = !gameMode.NotifQuiet; Changed(); }));

@@ -656,6 +656,14 @@ namespace AegisApp
             finally { try { Directory.Delete(data, true); } catch { } }
         }
 
+        private static int CountPlaceholders(string s)
+        {
+            int n = 0;
+            for (int i = 0; i + 2 < (s ?? "").Length; i++)
+                if (s[i] == '{' && char.IsDigit(s[i + 1]) && s[i + 2] == '}') n++;
+            return n;
+        }
+
         private static void Run(string reportPath)
         {
             var log = new List<string>();
@@ -768,6 +776,252 @@ namespace AegisApp
                 Eq(0UL, InterruptAffinityTweak.BytesToMask(null));
                 Eq(0UL, InterruptAffinityTweak.BytesToMask(new byte[] { 1, 2, 3 }));
             });
+            test("visual effects: the animation snapshot is persisted so a crash can recover it", () =>
+            {
+                // 关键回归：窗口动画的原值必须落盘。只存在内存里的话，Aegis 被强杀后重启，
+                // Activate 会把"当前已关闭"当成用户本来的设置，动画整个登录会话都开不回来。
+                int before = 0;
+                if (!Native.SystemParametersInfoGet(Native.SPI_GETUIEFFECTS, 0, ref before, 0))
+                    throw new TestSkippedException("SPI_GETUIEFFECTS unavailable");
+                string slotBefore = Settings.LoadStr("PrevUiEffects", "");
+                try
+                {
+                    if (!VisualFx.Activate()) throw new TestSkippedException("visual downgrade unavailable");
+                    int during = 0;
+                    Native.SystemParametersInfoGet(Native.SPI_GETUIEFFECTS, 0, ref during, 0);
+                    if (before != 0)
+                    {
+                        Eq(0, during);
+                        if (Settings.LoadStr("PrevUiEffects", "").Length == 0)
+                            throw new Exception("animation snapshot was not persisted; a crash would strand it");
+                    }
+                }
+                finally { VisualFx.Restore(); }
+                int after = 0;
+                Native.SystemParametersInfoGet(Native.SPI_GETUIEFFECTS, 0, ref after, 0);
+                Eq(before, after);
+                Eq("", Settings.LoadStr("PrevUiEffects", ""));
+                Settings.SaveStr("PrevUiEffects", slotBefore);
+            });
+            test("powershell bridge: user data is passed as data, never parsed as script", () =>
+            {
+                // PowerShell 把 U+2019 等排版引号也当单引号定界符，所以"把 ' 翻倍"挡不住注入。
+                // Aegis 以管理员运行，被注入等于交出管理员权限，因此数据一律走环境变量。
+                string evil = "D:" + "\\" + "Evil" + (char)0x2019 + ";Write-Output PWNED;" + (char)0x2019;
+                var argv = new Dictionary<string, string> { { "AEGIS_PATH", evil } };
+                string outText;
+                if (!PsRunner.Run("Write-Output $env:AEGIS_PATH\r\n", "注入自测", 20000, argv, out outText))
+                    throw new TestSkippedException("powershell unavailable");
+                foreach (string line in outText.Split('\n'))
+                    if (line.Trim() == "PWNED")
+                        throw new Exception("injected command executed: user data reached the parser");
+                if (outText.IndexOf(evil, StringComparison.Ordinal) < 0)
+                    throw new Exception("payload was not echoed verbatim; quoting altered the data");
+            });
+            test("language table: every entry is trilingual and format placeholders are consistent", () =>
+            {
+                // 缺键时 Lang.T 会把键名本身当文本返回，界面上就会出现 "btn.open" 这种字样，
+                // 三种语言下都一样，光靠肉眼看很难发现，所以由测试兜住。
+                var missing = new List<string>();
+                foreach (string key in Lang.AllKeys())
+                {
+                    string[] row = Lang.Row(key);
+                    if (row == null || row.Length != 3) { missing.Add(key + "(译文不足3种)"); continue; }
+                    for (int i = 0; i < 3; i++)
+                        if (string.IsNullOrEmpty(row[i])) missing.Add(key + "(第" + i + "种语言为空)");
+                    // 同一条目的各语言占位符数量必须一致，否则切语言后 string.Format 会抛异常
+                    int zh = CountPlaceholders(row[0]);
+                    for (int i = 1; i < 3; i++)
+                        if (CountPlaceholders(row[i]) != zh)
+                            missing.Add(key + "(占位符数量各语言不一致)");
+                }
+                if (missing.Count > 0) throw new Exception(string.Join("; ", missing.ToArray()));
+            });
+            test("crash journal: old 9-field records still load after the QoS fields were added", () =>
+            {
+                string name = Convert.ToBase64String(Encoding.UTF8.GetBytes("game"));
+                // 旧格式（9 段，无 QoS）：必须照常读出，QoS 退化为 -1 = 交给系统托管，
+                // 也就是加字段之前的行为，升级不会作废已有的待恢复记录
+                Eq("1|-1|-1", CrashGuard.ProbeParse("111|222|" + name + "|32|255|2|5|-1|"));
+                // 新格式（11 段）：QoS 原样读回
+                Eq("1|1|1", CrashGuard.ProbeParse("111|222|" + name + "|32|255|2|5|-1||1|1"));
+                // 尾部字段损坏时退回 -1，而不是整条丢弃
+                Eq("1|-1|-1", CrashGuard.ProbeParse("111|222|" + name + "|32|255|2|5|-1||x|y"));
+                // CpuSets 列表正常携带时也不受影响
+                Eq("1|1|0", CrashGuard.ProbeParse("111|222|" + name + "|32|255|2|5|-1|3,4,5|1|0"));
+                // 段数不足仍然拒绝
+                Eq("0", CrashGuard.ProbeParse("111|222|" + name + "|32"));
+            });
+            test("suppression: game-root containment is anchored on a path segment", () =>
+            {
+                // 兄弟目录不能因为前缀相同就被当成同一个游戏目录
+                Eq(true, GameMode.UnderRoot(@"D:\Games\Apex\bin\game.exe", @"D:\Games\Apex"));
+                Eq(true, GameMode.UnderRoot(@"D:\Games\Apex\bin\game.exe", @"D:\Games\Apex\"));
+                Eq(false, GameMode.UnderRoot(@"D:\Games\ApexBackup\sync.exe", @"D:\Games\Apex"));
+                Eq(false, GameMode.UnderRoot(@"D:\Games\ApexTools\updater.exe", @"D:\Games\Apex\"));
+                Eq(false, GameMode.UnderRoot(@"D:\SteamLibrary\x\y.exe", @"D:\Steam"));
+                // 根目录本身不算"在根目录之下"，空值一律不匹配
+                Eq(false, GameMode.UnderRoot(@"D:\Games\Apex", @"D:\Games\Apex"));
+                Eq(false, GameMode.UnderRoot(null, @"D:\Games\Apex"));
+                Eq(false, GameMode.UnderRoot(@"D:\Games\Apex\a.exe", null));
+                Eq(false, GameMode.UnderRoot(@"D:\Games\Apex\a.exe", ""));
+
+                // 走真实资格判定：同名前缀的兄弟目录不该被豁免
+                const string win = @"C:\Windows\";
+                Eq(false, GameMode.BasicBackgroundEligible(10, 99, "game", @"D:\Games\Apex\bin\game.exe",
+                    1, 1, 20, false, win, false, @"D:\Games\Apex"));
+                Eq(true, GameMode.BasicBackgroundEligible(10, 99, "sync", @"D:\Games\ApexBackup\sync.exe",
+                    1, 1, 20, false, win, false, @"D:\Games\Apex"));
+            });
+            test("suppression: anti-cheat exemption is as broad as anti-cheat detection", () =>
+            {
+                const string win = @"C:\Windows\";
+                // 检测器认定为反作弊的名字，压制侧必须同样豁免。
+                // 两边用不同宽度的判定，就会出现"检测器说是反作弊、压制器照压不误"的致命缝隙。
+                string[] names = { "GameAntiCheat", "BattlEye", "SGuard64Helper", "EasyAntiCheat_x64",
+                                   "vgtray", "GameMon64", "TenSafe_1", "ACE-Helper" };
+                foreach (string n in names)
+                {
+                    if (!GameSessionDetector.IsAntiCheatLikeName(n))
+                        throw new Exception("detector no longer treats " + n + " as anti-cheat; test premise broken");
+                    // 常规强度
+                    Eq(false, GameMode.BasicBackgroundEligible(10, 99, n, @"C:\Program Files\AC\" + n + ".exe",
+                        1, 1, 20, false, win));
+                    // 竞技级强度（前台/可见窗口豁免全部取消，最容易误伤）
+                    Eq(false, GameMode.BasicBackgroundEligible(10, 99, n, @"C:\Program Files\AC\" + n + ".exe",
+                        1, 1, 20, false, win, false, null, true));
+                }
+            });
+            test("theme fonts: the shared font cache survives repeated painting", () =>
+            {
+                // Theme.UI 返回的是全局缓存实例。绘制代码若把它 using 掉，
+                // 缓存里留下的就是已释放对象，下一次取到它再绘制就会抛异常。
+                using (var panel = new EmptyStatePanel())
+                {
+                    panel.Size = new Size(320, 220);
+                    panel.ShowEmpty = true;
+                    panel.EmptyTitle = "TITLE";
+                    panel.EmptyDetail = "DETAIL";
+                    for (int i = 0; i < 3; i++)
+                        using (var bmp = new Bitmap(320, 220))
+                            panel.DrawToBitmap(bmp, new Rectangle(0, 0, 320, 220));
+                }
+                // 缓存中的字体必须仍然可用：对已释放的 Font 取 Height 会抛异常
+                foreach (float size in new[] { 9.25f, 8.4f, 10.2f, 7.8f, 7.6f })
+                {
+                    if (Theme.UI(size, true).Height <= 0) throw new Exception(size + "pt bold font is unusable");
+                    if (Theme.UI(size, false).Height <= 0) throw new Exception(size + "pt font is unusable");
+                }
+            });
+            test("defender exclusion: path matching never mistakes a neighbour for an owned entry", () =>
+            {
+                // 大小写、尾部反斜杠、引号、空白都不该影响判定
+                Eq(@"C:\Games\Foo", DefenderExclusion.Normalize(@"C:\Games\Foo\"));
+                Eq(@"C:\Games\Foo", DefenderExclusion.Normalize(@"  ""C:\Games\Foo""  "));
+                Eq("", DefenderExclusion.Normalize(null));
+                Eq("", DefenderExclusion.Normalize("   "));
+                // 盘符根目录不能被削成 "C:"
+                Eq(@"C:\", DefenderExclusion.Normalize(@"C:\"));
+
+                var owned = new List<string> { @"C:\Games\Foo", @"D:\Steam\Bar\" };
+                Eq(true, DefenderExclusion.Contains(owned, @"c:\games\foo"));
+                Eq(true, DefenderExclusion.Contains(owned, @"C:\Games\Foo\"));
+                Eq(true, DefenderExclusion.Contains(owned, @"D:\Steam\Bar"));
+                // 前缀相同但不是同一个目录，绝不能算命中——否则会误删用户自己的排除
+                Eq(false, DefenderExclusion.Contains(owned, @"C:\Games\Foobar"));
+                Eq(false, DefenderExclusion.Contains(owned, @"C:\Games"));
+                Eq(false, DefenderExclusion.Contains(owned, @"C:\Games\Foo\Sub"));
+                Eq(false, DefenderExclusion.Contains(new List<string>(), @"C:\Games\Foo"));
+            });
+            test("per-game GPU preference: merging never destroys fields Windows owns", () =>
+            {
+                // 回归钉子：Windows 把逐游戏「窗口化优化」存在 AppStatus 里，
+                // 写 GpuPreference 时整值覆盖会把它抹掉（本机真有游戏是 AppStatus=0; 这个形态）
+                Eq("AppStatus=0;GpuPreference=2;", GameExeTweaks.MergeField("AppStatus=0;", "GpuPreference", "2"));
+                Eq("AppStatus=4096;GpuPreference=2;", GameExeTweaks.MergeField("AppStatus=4096;GpuPreference=0;", "GpuPreference", "2"));
+                // 顺序保持不变，己方字段就地替换而不是挪到末尾
+                Eq("GpuPreference=2;AppStatus=0;", GameExeTweaks.MergeField("GpuPreference=0;AppStatus=0;", "GpuPreference", "2"));
+                // 空值/空白/仅分号
+                Eq("GpuPreference=2;", GameExeTweaks.MergeField(null, "GpuPreference", "2"));
+                Eq("GpuPreference=2;", GameExeTweaks.MergeField("", "GpuPreference", "2"));
+                Eq("GpuPreference=2;", GameExeTweaks.MergeField(";;", "GpuPreference", "2"));
+                // 畸形段（没有等号）原样保留，不因为解析不了就丢弃
+                Eq("Garbage;GpuPreference=2;", GameExeTweaks.MergeField("Garbage;", "GpuPreference", "2"));
+                // 重复字段只保留一份
+                Eq("GpuPreference=2;", GameExeTweaks.MergeField("GpuPreference=0;GpuPreference=1;", "GpuPreference", "2"));
+
+                // 读取：用于判断"已经是想要的值就别动"
+                Eq("2", GameExeTweaks.ReadField("AppStatus=4096;GpuPreference=2;", "GpuPreference"));
+                Eq("0", GameExeTweaks.ReadField("AppStatus=0;", "AppStatus"));
+                Eq(null, GameExeTweaks.ReadField("AppStatus=0;", "GpuPreference"));
+                Eq(null, GameExeTweaks.ReadField(null, "GpuPreference"));
+                // 不能被前缀相同的字段名骗到
+                Eq(null, GameExeTweaks.ReadField("XGpuPreference=2;", "GpuPreference"));
+            });
+            test("standby purge: mid-session admission refuses unless memory is truly exhausted", () =>
+            {
+                const long GB = 1024L * 1024 * 1024, MB = 1024L * 1024;
+                Func<int, long, StandbyStats> make = (loadPercent, lowBytes) =>
+                {
+                    var s = new StandbyStats();
+                    s.PageSize = 4096;
+                    s.MemoryLoadPercent = loadPercent;
+                    s.StandbyPagesByPriority[0] = lowBytes / 4096;
+                    s.StandbyPagesByPriority[5] = (8L * GB) / 4096;
+                    return s;
+                };
+                // 内存不紧张 → 不管低优先级多少都不动手
+                Eq(false, StandbyMemory.ShouldPurgeMidSession(make(40, 2 * GB), 80, 256 * MB));
+                // 内存吃紧但没有低优先级可清 → 不动手（宁可不清也不清高优先级缓存）
+                Eq(false, StandbyMemory.ShouldPurgeMidSession(make(95, 4 * MB), 80, 256 * MB));
+                // 两个条件同时满足才动手
+                Eq(true, StandbyMemory.ShouldPurgeMidSession(make(95, 512 * MB), 80, 256 * MB));
+                // 边界：恰好等于阈值算达标
+                Eq(true, StandbyMemory.ShouldPurgeMidSession(make(80, 256 * MB), 80, 256 * MB));
+                Eq(false, StandbyMemory.ShouldPurgeMidSession(make(79, 512 * MB), 80, 256 * MB));
+                Eq(false, StandbyMemory.ShouldPurgeMidSession(null, 80, 256 * MB));
+
+                // 回归钉子：判据不能再看 free+zero 链表。Windows 会主动把空闲物理内存
+                // 塞进待机列表，那两个链表长期只有几百 MB，用它判断"内存见底"会恒真，
+                // 克制的准入就退化成每 60 秒清一次。
+                StandbyStats plenty = make(30, 512 * MB);
+                plenty.FreePages = (200 * MB) / 4096;
+                Eq(false, StandbyMemory.ShouldPurgeMidSession(plenty, 80, 256 * MB));
+
+                // 统计口径：低优先级只算 0/1 档，不能把高优先级缓存算进去
+                StandbyStats stat = make(95, 512 * MB);
+                Eq(512 * MB, stat.LowPriorityBytes);
+                Eq(8 * GB + 512 * MB, stat.StandbyBytes);
+            });
+            test("standby purge: full purge happens once per session and never mid-game", () =>
+            {
+                bool purged = false;
+                // 会话建立的第一拍：全量清理一次
+                Eq(StandbyAction.PurgeFull, GameMode.NextStandbyAction(true, false, ref purged, true, true));
+                // 之后无论轮询多少次，中途开关关着就什么都不做
+                Eq(StandbyAction.None, GameMode.NextStandbyAction(true, false, ref purged, true, false));
+                Eq(StandbyAction.None, GameMode.NextStandbyAction(true, false, ref purged, true, false));
+
+                // 中途开关打开后，也只能是低优先级，绝不会再出现全量
+                Eq(StandbyAction.PurgeLowPriority, GameMode.NextStandbyAction(true, true, ref purged, true, false));
+                // 冷却未到 → 不动
+                Eq(StandbyAction.None, GameMode.NextStandbyAction(true, true, ref purged, false, false));
+
+                // 关键回归：对局进行中把开关关掉再打开，绝不能补做一次全量清理
+                bool mid = false;
+                Eq(StandbyAction.None, GameMode.NextStandbyAction(false, false, ref mid, true, false));
+                Eq(StandbyAction.None, GameMode.NextStandbyAction(true, false, ref mid, true, false));
+                Eq(StandbyAction.None, GameMode.NextStandbyAction(true, false, ref mid, true, false));
+
+                // 功能关闭时任何情况下都不动手
+                bool off = false;
+                Eq(StandbyAction.None, GameMode.NextStandbyAction(false, false, ref off, true, true));
+                Eq(StandbyAction.None, GameMode.NextStandbyAction(false, true, ref off, true, true));
+
+                // 下一局（sessionFresh 再次为真）才恢复全量
+                bool next = false;
+                Eq(StandbyAction.PurgeFull, GameMode.NextStandbyAction(true, false, ref next, true, true));
+            });
             test("release notes: current version is documented and fully translated", () =>
             {
                 if (ReleaseNotes.All.Length == 0) throw new Exception("no release notes are bundled");
@@ -840,12 +1094,14 @@ namespace AegisApp
                 test("freeze guard: expected-name mismatch is rejected", () => TestNameMismatch(root));
                 test("game catalog: legacy entry upgrades to a persisted install root", () => TestGameCatalogUpgrade(root));
                 test("game profiles: migration removes learning state and deduplicates", () => TestProfileStore(root));
+                test("game profiles: an unreadable file is never overwritten by a save", () => TestProfileLoadFailure(root));
                 test("game library: EXE/LNK resolve without executing the target", () => TestExecutableResolver(root));
                 test("LoL Cross cleaner: running-client guard and scoped deletion", () => TestLolCrossCleaner(root));
                 test("render detector: user-selected headless exe activates; legacy headless does not", () => TestHeadlessEntry(root));
                 test("render detector: bootstrap launcher's real process outside profile root is still protected", () => TestFallbackEntryOutsideRoot(root));
                 test("session reports: legacy frame telemetry is archived", () => TestReportMigration(root));
                 test("renderer boost: HIGH priority and IO3 are verified by readback", () => TestBoostReadback(root));
+                test("EcoQoS restore: a process' own power-saving opt-in survives suppression", () => TestEcoQoSRestore(root));
                 test("freeze journal: corrupt data is retained and blocks overwrite", () => TestCorruptJournal(root));
                 test("freeze journal: PID reuse identity is never resumed", () => TestPidReuseJournal(root));
                 test("freeze guard: real child suspend and exact restore", () => TestNormalFreeze(root));
@@ -935,6 +1191,27 @@ namespace AegisApp
             Eq(SuppressionLevel.Isolated, c.Observe(8, "worker", 1, cpu, 0, 116 * second, PerformancePreset.Standard));
             Eq(SuppressionLevel.Restrained, c.Observe(8, "worker", 1, cpu, 0, 120 * second, PerformancePreset.Standard));
             Eq(SuppressionLevel.None, c.Observe(8, "worker", 2, 99 * second, 0, 124 * second, PerformancePreset.Standard));
+
+            // 采样窗口过短时速率会被放大：扫描由进程启停事件驱动（200ms 合并窗口），
+            // 不做下限保护的话，几百毫秒内的一点 CPU 就会被算成越阈值并一路升到 Isolated。
+            var fast = new BackgroundPressureController();
+            long t = 200 * second, used = 0;
+            Eq(SuppressionLevel.None, fast.Observe(9, "burst", 1, used, 0, t, PerformancePreset.Standard));
+            for (int i = 0; i < 6; i++)
+            {
+                t += second / 5;                       // 200ms 一轮
+                used += (long)(second / 5 * 0.10);     // 期间真实占用 0.10 核，远超 0.08 阈值
+                Eq(SuppressionLevel.None, fast.Observe(9, "burst", 1, used, 0, t, PerformancePreset.Standard));
+            }
+            // 窗口够长之后仍然要能正常升级，不能因为加了下限就永远升不上去
+            t += 4 * second;
+            used += (long)(4 * second * 0.10);
+            Eq(SuppressionLevel.Eco, fast.Observe(9, "burst", 1, used, 0, t, PerformancePreset.Standard));
+
+            // 窗口过长（中间断过档）同样不该凭一次跨度极大的差值就判热
+            var stale = new BackgroundPressureController();
+            Eq(SuppressionLevel.None, stale.Observe(11, "idle", 1, 0, 0, 300 * second, PerformancePreset.Standard));
+            Eq(SuppressionLevel.None, stale.Observe(11, "idle", 1, (long)(60 * second * 0.5), 0, 360 * second, PerformancePreset.Standard));
         }
 
         private static void TestPresetBackgroundPolicy()

@@ -116,7 +116,7 @@ namespace AegisApp
             btnRepo.SetBounds(Theme.S(22), Theme.S(DlgH - 52), Theme.S(200), Theme.S(36));
             btnRepo.Click += delegate
             {
-                try { System.Diagnostics.Process.Start(App.ReleasesUrl); } catch { }
+                try { using (System.Diagnostics.Process.Start(App.ReleasesUrl)) { } } catch { }
             };
 
             var btnClose = new PillButton(Lang.T("notes.close"), BtnKind.Primary);

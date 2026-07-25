@@ -75,79 +75,51 @@ namespace AegisApp
             return list;
         }
 
-        private static void SavePolicyNames(List<string> names)
+        // 记账落盘后必须回读确认：策略名记不上的话，关闭时就找不到该删哪些，
+        // QoS 策略会永久留在系统里成为孤儿。确认失败就地把这批策略清掉。
+        private static bool SavePolicyNames(List<string> names)
         {
-            Settings.SaveStr(QosPolicyNamesKey, string.Join(";", names.ToArray()));
+            string joined = string.Join(";", names.ToArray());
+            Settings.SaveStr(QosPolicyNamesKey, joined);
+            return Settings.LoadStr(QosPolicyNamesKey, "") == joined;
         }
 
-        private static string PsQuote(string s)
+        // 策略名和路径一律经环境变量传给脚本，不拼进脚本文本。
+        // 只把 ASCII 单引号翻倍是挡不住注入的：PowerShell 同样把 U+2018/U+2019 等
+        // 排版引号当作单引号定界符，而本程序以管理员身份运行。
+        private static IDictionary<string, string> QosArgs(string name, string exePath)
         {
-            return "'" + (s ?? "").Replace("'", "''") + "'";
-        }
-
-        private static bool RunPowerShellScript(string script, out string stdout)
-        {
-            stdout = "";
-            string tmp = Path.Combine(Path.GetTempPath(), "Aegis.ps." + Guid.NewGuid().ToString("N") + ".ps1");
-            try
-            {
-                File.WriteAllText(tmp, script, Encoding.UTF8);
-                var psi = new ProcessStartInfo
-                {
-                    FileName = "powershell.exe",
-                    Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + tmp + "\"",
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true
-                };
-                using (Process p = Process.Start(psi))
-                {
-                    string outText = p.StandardOutput.ReadToEnd();
-                    string errText = p.StandardError.ReadToEnd();
-                    if (!p.WaitForExit(15000))
-                    {
-                        try { p.Kill(); } catch { }
-                        Logger.Log("网络优先级：PowerShell 执行超时");
-                        return false;
-                    }
-                    stdout = outText;
-                    if (p.ExitCode != 0)
-                    {
-                        Logger.Log("网络优先级：PowerShell 执行失败(exit=" + p.ExitCode + ")：" + errText.Trim());
-                        return false;
-                    }
-                    return true;
-                }
-            }
-            catch (Exception ex) { Logger.Log("网络优先级：无法执行 PowerShell：" + ex.Message); return false; }
-            finally { try { File.Delete(tmp); } catch { } }
+            var d = new Dictionary<string, string> { { "AEGIS_QOS_NAME", name ?? "" } };
+            if (exePath != null) d["AEGIS_QOS_PATH"] = exePath;
+            return d;
         }
 
         private static bool ApplyQosPolicy(string policyName, string exePath)
         {
             string script =
                 "$ErrorActionPreference = 'Stop'\r\n" +
-                "if (Get-NetQosPolicy -Name " + PsQuote(policyName) + " -ErrorAction SilentlyContinue) {\r\n" +
-                "    Remove-NetQosPolicy -Name " + PsQuote(policyName) + " -Confirm:$false\r\n" +
+                "$n = $env:AEGIS_QOS_NAME\r\n" +
+                "if (Get-NetQosPolicy -Name $n -ErrorAction SilentlyContinue) {\r\n" +
+                "    Remove-NetQosPolicy -Name $n -Confirm:$false\r\n" +
                 "}\r\n" +
-                "New-NetQosPolicy -Name " + PsQuote(policyName) + " -AppPathNameMatchCondition " + PsQuote(exePath) +
+                "New-NetQosPolicy -Name $n -AppPathNameMatchCondition $env:AEGIS_QOS_PATH" +
                 " -DSCPAction " + GamingDscp + " -NetworkProfile All | Out-Null\r\n" +
                 "Write-Output DONE\r\n";
             string stdout;
-            bool ok = RunPowerShellScript(script, out stdout);
+            bool ok = PsRunner.Run(script, "网络优先级", 15000, QosArgs(policyName, exePath), out stdout);
             return ok && stdout.IndexOf("DONE", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static bool RemoveQosPolicy(string policyName)
         {
             string script =
-                "if (Get-NetQosPolicy -Name " + PsQuote(policyName) + " -ErrorAction SilentlyContinue) {\r\n" +
-                "    Remove-NetQosPolicy -Name " + PsQuote(policyName) + " -Confirm:$false -ErrorAction Stop\r\n" +
+                "$n = $env:AEGIS_QOS_NAME\r\n" +
+                "if (Get-NetQosPolicy -Name $n -ErrorAction SilentlyContinue) {\r\n" +
+                "    Remove-NetQosPolicy -Name $n -Confirm:$false -ErrorAction Stop\r\n" +
                 "}\r\n" +
                 "Write-Output DONE\r\n";
             string stdout;
-            bool ok = RunPowerShellScript(script, out stdout);
+            bool ok = PsRunner.Run(script, "网络优先级", 15000, QosArgs(policyName, null), out stdout);
             return ok && stdout.IndexOf("DONE", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
@@ -171,7 +143,13 @@ namespace AegisApp
 
             List<string> oldNames = LoadPolicyNames();
             foreach (string old in oldNames) if (!newNames.Contains(old)) RemoveQosPolicy(old);
-            SavePolicyNames(newNames);
+
+            if (!SavePolicyNames(newNames))
+            {
+                foreach (string name in newNames) RemoveQosPolicy(name);
+                Logger.Log("网络优先级：策略名无法持久化，已撤回本轮创建的 QoS 策略");
+                return irqOk;
+            }
 
             bool anyOk = irqOk || newNames.Count > 0;
             if (anyOk) Settings.Save(EnabledKey, true);
@@ -185,7 +163,8 @@ namespace AegisApp
             List<string> names = LoadPolicyNames();
             bool qosOk = true;
             foreach (string name in names) if (!RemoveQosPolicy(name)) qosOk = false;
-            if (qosOk) SavePolicyNames(new List<string>());
+            // 策略已删但记账清不掉：保留 qosOk=false，下次 Disable 会重试，不谎报成功
+            if (qosOk && !SavePolicyNames(new List<string>())) qosOk = false;
 
             bool allOk = irqOk && qosOk;
             if (allOk) Settings.Save(EnabledKey, false);

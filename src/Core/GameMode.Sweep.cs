@@ -47,15 +47,27 @@ namespace AegisApp
             int session, int ownerSession, int foreground, bool userFacingFamily, string windowsRoot,
             bool gameHostAncestor = false, string activeGameRoot = null, bool aggressive = false)
         {
-            if (!string.IsNullOrEmpty(name) && AntiCheatCatalog.IsKnownProcess(name)) return false;
+            // 必须用与检测器同一套（更宽的）判定：AntiCheatCatalog 是精确名单，
+            // IsAntiCheatLikeName 在名单之外还认 anticheat/sguard/battleye 等子串。
+            // 两边宽度不一致的话，会出现"检测器认定是反作弊、压制器照压不误"的缝隙，
+            // 而被压的反作弊心跳超时 = 掉线甚至被判异常。宁可漏放也绝不错压。
+            if (GameSessionDetector.IsAntiCheatLikeName(name)) return false;
             if (gameHostAncestor) return false;
-            if (!string.IsNullOrEmpty(activeGameRoot) && !string.IsNullOrEmpty(path)
-                && path.StartsWith(activeGameRoot, StringComparison.OrdinalIgnoreCase)) return false;
+            if (UnderRoot(path, activeGameRoot)) return false;
             if (pid <= 4 || pid == self || session < 0 || session != ownerSession) return false;
             if (!aggressive && (pid == foreground || userFacingFamily)) return false;
             if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(path)) return false;
             if (aggressive) return !IsCoreSystemProcess(name, path, windowsRoot);
             return string.IsNullOrEmpty(windowsRoot) || !path.StartsWith(windowsRoot, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // 目录包含判断必须按路径分段锚定：裸 StartsWith 会让根目录 D:\Games\Apex
+        // 把兄弟目录 D:\Games\ApexBackup 也算进来，从而错误豁免不相干的进程。
+        internal static bool UnderRoot(string path, string root)
+        {
+            if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(root)) return false;
+            string prefix = root.TrimEnd('\\') + "\\";
+            return path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
         }
 
         private static readonly HashSet<string> CoreSystemProcesses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -371,6 +383,9 @@ namespace AegisApp
         {
             if (string.IsNullOrEmpty(path)
                 || string.Equals(name, "Aegis", StringComparison.OrdinalIgnoreCase)) return false;
+            // 纵深防御：挂起是这里最不可逆的动作，即使上游资格判定将来被改坏，
+            // 反作弊进程也绝不能走到冻结这一步
+            if (GameSessionDetector.IsAntiCheatLikeName(name)) return false;
             try
             {
                 if (selfSession < 0 || p.SessionId != selfSession) return false;
@@ -423,7 +438,7 @@ namespace AegisApp
             if (string.IsNullOrEmpty(path) || gameDirs.Count == 0) return false;
             if (GameSessionDetector.IsNonGameRole(processName, path)) return false;
             foreach (string d in gameDirs)
-                if (path.StartsWith(d, StringComparison.OrdinalIgnoreCase)) return true;
+                if (UnderRoot(path, d)) return true;
             return false;
         }
 

@@ -56,9 +56,11 @@ namespace AegisApp
         {
             try
             {
-                bool ok;
-                if (Sch.HasBackup) ok = Sch.Restore();
-                else ok = WriteMode(1);
+                // 没有快照说明 HAGS 是 Aegis 介入前就开着的（新驱动多数默认开）。
+                // 这种情况下要关掉它，同样得先存快照再写——直接硬写 1 的话，
+                // 万一原来这个值根本不存在，就等于凭空造了一个用户从未有过、
+                // 而且我们自己也再删不掉的注册表项。
+                bool ok = Sch.HasBackup ? Sch.Restore() : Sch.Apply(1);
                 if (ok)
                 {
                     Settings.Save("HagsOnByAegis", false);
@@ -70,15 +72,5 @@ namespace AegisApp
             catch { return false; }
         }
 
-        private static bool WriteMode(int v)
-        {
-            using (var k = Registry.LocalMachine.OpenSubKey(GfxKey, true))
-            {
-                if (k == null) return false;
-                k.SetValue(Val, v, RegistryValueKind.DWord);
-                object actual = k.GetValue(Val);
-                return actual is int && (int)actual == v;
-            }
-        }
     }
 }

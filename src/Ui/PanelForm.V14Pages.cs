@@ -27,7 +27,9 @@ namespace AegisApp
             CardLabel(guard, Lang.T("v15.guard.state"), 18, 12, rightW - 92, 18, 7.8f, true, Theme.Faint);
             statusDot = new StatusDot(); statusDot.SetBounds(Theme.S(15), Theme.S(39), Theme.S(22), Theme.S(22));
             statusDot.Bg = Theme.Card; statusDot.Color = Theme.Dim;
-            lblStatus = CardLabel(guard, "…", 47, 34, rightW - 120, 32, 11f, true, Theme.Fg);
+            // 原来是 11pt 单行、宽度还预留了 120px 给右上角开关（其实 y 上不重叠），
+            // 结果中文需 402px 只有 284px 可用，状态文字永远被截。缩字号并放开到两行。
+            lblStatus = CardLabel(guard, "…", 47, 30, rightW - 74, 44, 9.2f, true, Theme.Fg);
             swGame = MakeSwitch(gameMode.Enabled, delegate
             {
                 gameMode.Enabled = swGame.Checked;
@@ -159,17 +161,14 @@ namespace AegisApp
             int iconSize = Theme.S(38), ix = e.Bounds.X + Theme.S(14), iy = e.Bounds.Y + (e.Bounds.Height - iconSize) / 2;
             e.Graphics.DrawImage(GameIcon(item.Profile.ExecutablePath), new Rectangle(ix, iy, iconSize, iconSize));
             int tx = ix + iconSize + Theme.S(14), right = Theme.S(92);
-            using (Font nameFont = Theme.UI(10.2f, true))
-                TextRenderer.DrawText(e.Graphics, item.Profile.Name, nameFont,
+            TextRenderer.DrawText(e.Graphics, item.Profile.Name, Theme.UI(10.2f, true),
                     new Rectangle(tx, e.Bounds.Y + Theme.S(11), e.Bounds.Width - tx - right, Theme.S(22)),
                     Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
             string path = item.Profile.ExecutablePath ?? item.Profile.Root ?? "";
-            using (Font pathFont = Theme.UI(7.8f, false))
-                TextRenderer.DrawText(e.Graphics, path, pathFont,
+            TextRenderer.DrawText(e.Graphics, path, Theme.UI(7.8f, false),
                     new Rectangle(tx, e.Bounds.Y + Theme.S(37), e.Bounds.Width - tx - Theme.S(18), Theme.S(18)),
                     Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
-            using (Font statusFont = Theme.UI(7.6f, true))
-                TextRenderer.DrawText(e.Graphics, Lang.T(item.Running ? "v15.library.running" : "v15.library.ready"), statusFont,
+            TextRenderer.DrawText(e.Graphics, Lang.T(item.Running ? "v15.library.running" : "v15.library.ready"), Theme.UI(7.6f, true),
                     new Rectangle(e.Bounds.Right - right, e.Bounds.Y + Theme.S(12), right - Theme.S(16), Theme.S(20)),
                     item.Running ? Theme.Green : Theme.Faint, TextFormatFlags.Right | TextFormatFlags.NoPadding);
         }
@@ -221,12 +220,20 @@ namespace AegisApp
             cardPolicyPauseSvc = (SettingCard)swPolicyPauseSvc.Parent;
             swPolicyDvr = AddPolicyToggle(scroll, ref sy, Lang.T("set.dvr"), Lang.T("v15.custom.override"), delegate { return gameMode.KillGameDvr; }, delegate(bool v) { gameMode.KillGameDvr = v; });
             cardPolicyDvr = (SettingCard)swPolicyDvr.Parent;
+            AddPolicyToggle(scroll, ref sy, Lang.T("gm.idledisable"), Lang.T("gm.idledisable.sub"),
+                delegate { return gameMode.IdleStateDisable; }, delegate(bool v) { gameMode.IdleStateDisable = v; });
+            AddPolicyToggle(scroll, ref sy, Lang.T("gm.visualfx"), Lang.T("gm.visualfx.sub"),
+                delegate { return gameMode.VisualFxDowngrade; }, delegate(bool v) { gameMode.VisualFxDowngrade = v; });
 
             sy += 10; Section(scroll, Lang.T("v15.policy.extreme"), 6, sy); sy += 24;
             swPolicyFreeze = AddPolicyToggle(scroll, ref sy, Lang.T("v14.freeze"), Lang.T("v14.freeze.sub"),
                 delegate { return gameMode.DeepFreeze; }, SetDeepFreeze);
             AddPolicyToggle(scroll, ref sy, Lang.T("set.trim"), Lang.T("v15.trim.sub"),
                 delegate { return gameMode.TrimWorkingSet; }, delegate(bool v) { gameMode.TrimWorkingSet = v; });
+            AddPolicyToggle(scroll, ref sy, Lang.T("gm.standby"), Lang.T("gm.standby.sub"),
+                delegate { return gameMode.StandbyClean; }, delegate(bool v) { gameMode.StandbyClean = v; });
+            AddPolicyToggle(scroll, ref sy, Lang.T("gm.standbymid"), Lang.T("gm.standbymid.sub"),
+                delegate { return gameMode.StandbyCleanMidSession; }, delegate(bool v) { gameMode.StandbyCleanMidSession = v; });
             RefreshPolicyPresentation();
         }
 
@@ -234,7 +241,8 @@ namespace AegisApp
         {
             Toggle sw = MakeSwitch(read(), null);
             sw.CheckedChanged += delegate { write(sw.Checked); };
-            SettingCard card = MakeCard(parent, 6, y, ScrollContentW, 58, title, desc, sw); y += 66;
+            // 高度要能容下两行说明（描述区 = 高度 - S(40)），否则风险提示会被截掉
+            SettingCard card = MakeCard(parent, 6, y, ScrollContentW, 78, title, desc, sw); y += 86;
             policySync.Add(delegate { sw.SetSilently(read()); });
             return sw;
         }
@@ -309,7 +317,7 @@ namespace AegisApp
 
         private void OpenTextFile(string path)
         {
-            try { if (!File.Exists(path)) File.WriteAllText(path, "", System.Text.Encoding.UTF8); Process.Start(System.IO.Path.Combine(Environment.SystemDirectory, "notepad.exe"), path); }
+            try { if (!File.Exists(path)) File.WriteAllText(path, "", System.Text.Encoding.UTF8); using (Process.Start(System.IO.Path.Combine(Environment.SystemDirectory, "notepad.exe"), path)) { } }
             catch { }
         }
 

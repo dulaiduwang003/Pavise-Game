@@ -26,6 +26,10 @@ namespace AegisApp
             public int Page;
             public int Gpu;
             public uint[] CpuSets;
+            // 老格式（9 段）没有这两项，读出来是 -1，还原时退回"交给系统托管"，
+            // 与加字段之前的行为一致，因此升级不会打断已有的待恢复记录。
+            public int QoSControl = -1;
+            public int QoSState = -1;
         }
 
         public static void MarkThrottle(ulong mask)
@@ -41,6 +45,13 @@ namespace AegisApp
         public static bool MarkBoostProcess(int pid, long creation, string name,
             uint priority, ulong affinity, int io, int page, int gpu, uint[] cpuSets)
         {
+            return MarkBoostProcess(pid, creation, name, priority, affinity, io, page, gpu, cpuSets, -1, -1);
+        }
+
+        public static bool MarkBoostProcess(int pid, long creation, string name,
+            uint priority, ulong affinity, int io, int page, int gpu, uint[] cpuSets,
+            int qosControl, int qosState)
+        {
             if (pid <= 0 || creation <= 0 || string.IsNullOrEmpty(name)) return false;
             lock (sync)
             {
@@ -49,7 +60,8 @@ namespace AegisApp
                 entries.Add(new BoostEntry
                 {
                     Pid = pid, Creation = creation, Name = name, Priority = priority,
-                    Affinity = affinity, Io = io, Page = page, Gpu = gpu, CpuSets = cpuSets
+                    Affinity = affinity, Io = io, Page = page, Gpu = gpu, CpuSets = cpuSets,
+                    QoSControl = qosControl, QoSState = qosState
                 });
                 return SaveEntries(entries);
             }
@@ -65,9 +77,13 @@ namespace AegisApp
             }
         }
 
+        // 不再整表清空提优日志：UnboostGames 已经逐进程调用 ReleaseBoostProcess 精确销账，
+        // 这里再抹一次只会误伤两类记录——上一次崩溃后 HealFromCrash 还原不了而特意保留的条目，
+        // 以及本轮没能还原成功的条目。它们被抹掉之后，那些进程会一直停在被改过的状态，
+        // 而 HealFromCrash 是唯一的重试入口，它的输入刚好就是这张表。
+        // 只清掉早期版本遗留的两个旧键。
         public static void ClearBoost()
         {
-            lock (sync) Settings.SaveStr(KBoostEntries, "");
             Settings.SaveStr(KBoost, "");
             Settings.SaveStr(KBoostNames, "");
         }
@@ -101,7 +117,8 @@ namespace AegisApp
                 {
                     if (!IdentityMatches(h, entry)) continue;
                     bool ok = SuppressionCore.RestoreValues(h, entry.Priority, entry.Affinity,
-                        entry.Io, entry.Page, CpuTopology.AllMask, entry.CpuSets);
+                        entry.Io, entry.Page, CpuTopology.AllMask, entry.CpuSets,
+                        entry.QoSControl, entry.QoSState);
                     if (ok && entry.Gpu >= 0)
                         ok = Native.D3DKMTSetProcessSchedulingPriorityClass(h, entry.Gpu) == 0;
                     if (ok) restored++;
@@ -127,6 +144,20 @@ namespace AegisApp
             return Native.QueryProcessSample(h, out creation, out cpu, out io) && creation == entry.Creation;
         }
 
+        // 供自测校验格式向后兼容：返回 "条目数|第一条的QoSControl|第一条的QoSState"
+        internal static string ProbeParse(string raw)
+        {
+            string prev = Settings.LoadStr(KBoostEntries, "");
+            try
+            {
+                Settings.SaveStr(KBoostEntries, raw);
+                List<BoostEntry> list = LoadEntries();
+                if (list.Count == 0) return "0";
+                return list.Count + "|" + list[0].QoSControl + "|" + list[0].QoSState;
+            }
+            finally { Settings.SaveStr(KBoostEntries, prev); }
+        }
+
         private static List<BoostEntry> LoadEntries()
         {
             var entries = new List<BoostEntry>();
@@ -135,7 +166,7 @@ namespace AegisApp
             {
                 string[] a = line.TrimEnd('\r').Split('|');
                 int pid, io, page, gpu; long creation; uint pri; ulong aff;
-                if (a.Length != 9 || !int.TryParse(a[0], out pid) || !long.TryParse(a[1], out creation)
+                if (a.Length < 9 || !int.TryParse(a[0], out pid) || !long.TryParse(a[1], out creation)
                     || !uint.TryParse(a[3], out pri) || !ulong.TryParse(a[4], out aff)
                     || !int.TryParse(a[5], out io) || !int.TryParse(a[6], out page)
                     || !int.TryParse(a[7], out gpu)) continue;
@@ -144,10 +175,13 @@ namespace AegisApp
                 string name;
                 try { name = Encoding.UTF8.GetString(Convert.FromBase64String(a[2])); }
                 catch { continue; }
+                int qc = -1, qs = -1;
+                if (a.Length >= 11) { if (!int.TryParse(a[9], out qc)) qc = -1; if (!int.TryParse(a[10], out qs)) qs = -1; }
                 entries.Add(new BoostEntry
                 {
                     Pid = pid, Creation = creation, Name = name, Priority = pri,
-                    Affinity = aff, Io = io, Page = page, Gpu = gpu, CpuSets = cpuSets
+                    Affinity = aff, Io = io, Page = page, Gpu = gpu, CpuSets = cpuSets,
+                    QoSControl = qc, QoSState = qs
                 });
             }
             return entries;
@@ -160,7 +194,7 @@ namespace AegisApp
                 lines.Add(e.Pid + "|" + e.Creation + "|"
                     + Convert.ToBase64String(Encoding.UTF8.GetBytes(e.Name ?? "")) + "|"
                     + e.Priority + "|" + e.Affinity + "|" + e.Io + "|" + e.Page + "|" + e.Gpu
-                    + "|" + CpuSetsText(e.CpuSets));
+                    + "|" + CpuSetsText(e.CpuSets) + "|" + e.QoSControl + "|" + e.QoSState);
             string value = string.Join("\n", lines.ToArray());
             Settings.SaveStr(KBoostEntries, value);
             return Settings.LoadStr(KBoostEntries, "") == value;

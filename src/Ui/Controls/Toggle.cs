@@ -16,7 +16,9 @@ namespace AegisApp
 
         public Toggle()
         {
-            Height = Dpi.S(30);
+            // Control.DefaultSize 是 0x0：只设 Height 会得到宽度为 0 的开关，
+            // 画出来什么都没有。调用方仍可覆盖，但默认值必须是可见的。
+            Size = new Size(Dpi.S(46), Dpi.S(30));
             ForeColor = Theme.Fg;
             Font = Theme.UI(9.75f, false);
             pos.Speed = 0.32f;

@@ -127,7 +127,7 @@ namespace AegisApp
             tameGroups.Clear();
             tameCards.Clear();
             tameToggles.Clear();
-            int pitch = 72, idx = 0;
+            int pitch = 90, idx = 0;
             foreach (AcGroup g in AntiCheatCatalog.Groups)
             {
                 string note = Lang.T("ac." + g.Key + ".d") + "  ·  " + string.Join(" / ", g.Procs);
@@ -142,7 +142,7 @@ namespace AegisApp
             sw.CheckedChanged += (s, e) => tamer.SetGroupEnabled(key, sw.Checked);
 
             var card = new SettingCard();
-            card.SetBounds(Theme.S(6), Theme.S(y), Theme.S(ScrollContentW), Theme.S(64));
+            card.SetBounds(Theme.S(6), Theme.S(y), Theme.S(ScrollContentW), Theme.S(82));
             card.Title = title;
             card.Desc = note;
             card.Host(sw);
@@ -217,16 +217,16 @@ namespace AegisApp
             MakeCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.autostart"), Lang.T("set.autostart.n"), swAuto); sy += 64;
 
             swAutoHide = MakeSwitch(Settings.Load(AutoHideKey, false), OnAutoHideToggle);
-            MakeCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.autohide"), Lang.T("set.autohide.n"), swAutoHide); sy += 64;
+            MakeCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.autohide"), Lang.T("set.autohide.n"), swAutoHide); sy += 84;
 
             swHags = MakeSwitch(HagsTweak.EnabledByAegis || HagsTweak.CurrentlyOn(), OnHagsToggle);
             MakeCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.hags"), Lang.T("set.hags.n"), swHags); sy += 64;
 
             swIrqAffinity = MakeSwitch(InterruptAffinityTweak.EnabledByAegis, OnIrqAffinityToggle);
-            MakeCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.irqaffinity"), Lang.T("set.irqaffinity.n"), swIrqAffinity); sy += 64;
+            MakeCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.irqaffinity"), Lang.T("set.irqaffinity.n"), swIrqAffinity); sy += 84;
 
             swNetAffinity = MakeSwitch(NetworkAffinityTweak.EnabledByAegis, OnNetAffinityToggle);
-            MakeCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.netaffinity"), Lang.T("set.netaffinity.n"), swNetAffinity); sy += 64;
+            MakeCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.netaffinity"), Lang.T("set.netaffinity.n"), swNetAffinity); sy += 84;
 
             swVbs = MakeSwitch(VbsTweak.DisabledByAegis, OnVbsToggle);
             cardVbs = MakeCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.vbs"), "…", swVbs); sy += 64;
@@ -238,8 +238,24 @@ namespace AegisApp
             btnRestore.Bg = Theme.Card;
             btnRestore.Size = new Size(Theme.S(136), Theme.S(32));
             btnRestore.Click += delegate { RestoreAllNow(); };
-            MakeCard(scroll, 6, sy, ScrollContentW, 64, Lang.T("v15.restore.title"), Lang.T("v15.restore.desc"), btnRestore);
-            sy += 72;
+            MakeCard(scroll, 6, sy, ScrollContentW, 78, Lang.T("v15.restore.title"), Lang.T("v15.restore.desc"), btnRestore);
+            sy += 86;
+
+            var btnDefender = new PillButton(Lang.T("btn.open"), BtnKind.Normal);
+            btnDefender.Bg = Theme.Card;
+            btnDefender.Size = new Size(Theme.S(120), Theme.S(32));
+            btnDefender.Click += delegate
+            {
+                // 对话框构造时要跑 PowerShell 查 Defender 状态，可能要好几秒；
+                // 至少让指针变成等待态，不要让人以为按钮没反应
+                Cursor = Cursors.WaitCursor;
+                DefenderExclusionDialog dlg;
+                try { dlg = new DefenderExclusionDialog(gameMode); }
+                finally { Cursor = Cursors.Default; }
+                using (dlg) dlg.ShowDialog(this);
+            };
+            MakeCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("def.open"), Lang.T("def.open.sub"), btnDefender);
+            sy += 84;
 
             var btnShaderGo = new PillButton(Lang.T("btn.clean"));
             btnShaderGo.Size = new Size(Theme.S(88), Theme.S(30));
@@ -342,7 +358,7 @@ namespace AegisApp
                 if (i == 1)
                 {
                     lblV.Cursor = Cursors.Hand;
-                    lblV.Click += (s, e) => { try { Process.Start(App.RepoUrl); } catch { } };
+                    lblV.Click += (s, e) => { try { using (Process.Start(App.RepoUrl)) { } } catch { } };
                 }
             }
 
@@ -376,7 +392,7 @@ namespace AegisApp
             var lblUpd = CardLabel(update, App.VersionTag, 20, 150, updateW - 40, 58, 8f, false, Theme.Faint);
 
             string dlUrl = null;
-            btnDl.Click += (s, e) => { if (dlUrl != null && dlUrl.StartsWith("https://github.com/", StringComparison.OrdinalIgnoreCase)) try { Process.Start(dlUrl); } catch { } };
+            btnDl.Click += (s, e) => { if (dlUrl != null && dlUrl.StartsWith("https://github.com/", StringComparison.OrdinalIgnoreCase)) try { using (Process.Start(dlUrl)) { } } catch { } };
 
             btnCheck.Click += (s, e) =>
             {

@@ -78,6 +78,30 @@ namespace AegisApp
             { "v15.hz.sub", new[]{ "会话期间守护最高刷新率；显示配置异常时可关闭", "Keeps the highest refresh rate during the session; disable if a display misbehaves", "セッション中に最高リフレッシュレートを維持。表示異常時は無効化" } },
             { "v15.custom.override", new[]{ "用于自定义预设；竞技可能按固定策略强制启用", "Used by Custom; Competitive may force its fixed policy", "カスタム用。競技では固定ポリシーで強制される場合あり" } },
             { "v15.trim.sub", new[]{ "仅自定义重压时执行；可能触发后台重新读盘，默认关闭", "Custom heavy mode only; may cause background paging and stays off by default", "カスタム強抑制時のみ。再読込を起こすため既定オフ" } },
+            { "def.title", new[]{ "Defender 扫描排除", "Defender scan exclusions", "Defender スキャン除外" } },
+            { "def.warn.title", new[]{ "这是拿安全换性能，请先读完再决定", "This trades security for performance — read before deciding", "セキュリティと引き換えの設定です。必ずお読みください" } },
+            { "def.warn.body", new[]{ "被排除的目录不再被实时扫描，其中的恶意文件不会被拦截。游戏目录常混有破解版、第三方 mod 和修改器，风险高于普通目录。只排除你信任来源的游戏。", "Excluded folders are no longer scanned in real time, so malicious files inside them are not blocked. Game folders often contain cracks, third-party mods and trainers, making them riskier than ordinary folders. Only exclude games from sources you trust.", "除外したフォルダーはリアルタイム スキャンの対象外となり、内部の悪意あるファイルはブロックされません。ゲームフォルダーは改造版や第三者 MOD が混在しやすく、通常より危険です。信頼できる入手元のみ除外してください。" } },
+            { "def.state.on", new[]{ "已排除", "EXCLUDED", "除外中" } },
+            { "def.state.off", new[]{ "受保护", "PROTECTED", "保護中" } },
+            { "def.confirm", new[]{ "确定要把《{0}》的目录排除出 Defender 实时扫描吗？\r\n\r\n{1}\r\n\r\n该目录下的文件将不再被查杀。只有当你确信这个游戏的来源可靠时才继续。", "Exclude the folder of \"{0}\" from Defender real-time scanning?\r\n\r\n{1}\r\n\r\nFiles in this folder will no longer be scanned. Continue only if you trust where this game came from.", "「{0}」のフォルダーを Defender のリアルタイム スキャンから除外しますか？\r\n\r\n{1}\r\n\r\nこのフォルダー内はスキャンされなくなります。入手元を信頼できる場合のみ続行してください。" } },
+            { "def.notours", new[]{ "这条排除不是 Aegis 添加的（可能是你在 Windows 安全中心手动加的），Aegis 不会去动它。需要取消请到 Windows 安全中心操作。", "This exclusion was not added by Aegis (you likely added it in Windows Security), so Aegis will not touch it. Remove it from Windows Security instead.", "この除外は Aegis が追加したものではないため（Windows セキュリティで手動追加された可能性）、Aegis は変更しません。解除は Windows セキュリティから行ってください。" } },
+            { "def.failed", new[]{ "操作失败，系统未接受这次修改（可能被安全策略或第三方杀软阻止）。", "The change failed — the system did not accept it (it may be blocked by policy or third-party antivirus).", "変更に失敗しました。ポリシーまたは他社製ウイルス対策によりブロックされた可能性があります。" } },
+            { "def.unavailable", new[]{ "无法读取 Defender 设置：可能未安装、已被第三方杀软接管，或当前权限不足。", "Cannot read Defender settings: it may be absent, replaced by third-party antivirus, or unavailable at this privilege level.", "Defender の設定を読み取れません。未導入、他社製品による置き換え、または権限不足の可能性があります。" } },
+            { "def.off", new[]{ "Windows Defender 的实时保护当前是关闭的，本功能对你没有意义——没有实时扫描，也就没有扫描开销可省。如果之后重新启用了 Defender，再回来这里即可。", "Windows Defender real-time protection is currently off, so this feature does nothing for you: with no real-time scanning there is no scanning overhead to remove. Come back here if you re-enable Defender later.", "Windows Defender のリアルタイム保護が無効です。リアルタイム スキャンがないため削減できるオーバーヘッドもありません。Defender を再度有効にした場合はここに戻ってください。" } },
+            { "def.nogames", new[]{ "游戏库还是空的。先在「游戏库」里添加游戏，这里才会列出可排除的目录。", "Your game library is empty. Add games in the Library page first and their folders will appear here.", "ゲームライブラリが空です。先に「ライブラリ」でゲームを追加してください。" } },
+            { "def.clearall", new[]{ "全部取消排除", "Remove all exclusions", "すべての除外を解除" } },
+            { "def.clearall.none", new[]{ "Aegis 目前没有添加过任何排除项。", "Aegis has not added any exclusions.", "Aegis が追加した除外はありません。" } },
+            { "def.clearall.done", new[]{ "已取消 {0} 个由 Aegis 添加的排除项（你手工添加的不受影响）。", "Removed {0} exclusion(s) added by Aegis. Entries you added manually are untouched.", "Aegis が追加した除外を {0} 件解除しました。手動で追加した項目はそのままです。" } },
+            { "def.open", new[]{ "Defender 扫描排除", "Defender scan exclusions", "Defender スキャン除外" } },
+            { "def.open.sub", new[]{ "逐个游戏目录手动勾选；会降低这些目录的安全防护", "Opt in per game folder; lowers protection for those folders", "ゲームフォルダーごとに選択。該当フォルダーの保護は低下します" } },
+            { "gm.idledisable", new[]{ "竞技模式禁用 CPU 空闲状态", "Disable CPU idle states in Competitive", "競技モードで CPU アイドル状態を無効化" } },
+            { "gm.idledisable.sub", new[]{ "省掉核心唤醒延迟；仅竞技+交流供电生效，发热和功耗会上升", "Removes core wake-up latency; Competitive on AC only, raises heat and power draw", "コア復帰遅延を解消。競技かつAC電源時のみ。発熱と消費電力が増加" } },
+            { "gm.visualfx", new[]{ "游戏时降级桌面视觉效果", "Downgrade desktop visual effects during games", "ゲーム中はデスクトップの視覚効果を下げる" } },
+            { "gm.visualfx.sub", new[]{ "关闭桌面透明与窗口动画，退出后还原（默认关闭）", "Turns off desktop transparency and window animations, restored on exit (off by default)", "透明効果とウィンドウアニメーションを無効化し、終了後に復元（既定オフ）" } },
+            { "gm.standby", new[]{ "游戏开始时清理待机内存", "Purge standby memory when a game starts", "ゲーム開始時にスタンバイメモリを解放" } },
+            { "gm.standby.sub", new[]{ "只在会话开始、游戏仍在加载时清一次，后台线程执行", "Purged once at session start while the game is still loading, on a background thread", "ロード中に一度だけ、バックグラウンドスレッドで解放" } },
+            { "gm.standbymid", new[]{ "游戏进行中也按阈值清理（默认关闭）", "Also purge mid-game when memory runs low (off by default)", "ゲーム中もメモリ逼迫時に解放（既定オフ）" } },
+            { "gm.standbymid.sub", new[]{ "仅空闲见底时清最低优先级部分（约 5ms）；全量绝不在游戏中执行", "Lowest-priority only, when free memory runs out (~5 ms); never a full purge mid-game", "空きメモリ枯渇時に最低優先度のみ（約5ms）。全体解放はゲーム中に行いません" } },
             { "v15.anticheat.sub", new[]{ "独立于游戏性能预设，只控制下方明确列出的反作弊用户态组件。", "Independent of performance presets and limited to the explicitly listed user-mode anti-cheat components.", "性能プリセットと独立し、下記のユーザー態アンチチートのみ制御。" } },
             { "v14.overview.sub", new[]{ "按入口关系 窗口和路径筛选最可能的游戏画面候选；启动器和平台进程不会被提优。", "Selects the most likely game candidate from entry relationships windows and paths; launchers and platform clients are not boosted.", "入口関係 ウィンドウ パスから最も可能性の高いゲーム候補を選び ランチャーとプラットフォームは提優しません。" } },
             { "v14.master", new[]{ "Aegis 智能守护", "Aegis Smart Guard", "Aegis スマートガード" } },
@@ -219,6 +243,7 @@ namespace AegisApp
             { "sec.pergame", new[]{ "逐游戏", "PER-GAME", "ゲームごと" } },
             { "sec.system", new[]{ "系统", "SYSTEM", "システム" } },
             { "sec.maint", new[]{ "维护", "MAINTENANCE", "メンテナンス" } },
+            { "btn.open", new[]{ "打开", "Open", "開く" } },
             { "btn.clean", new[]{ "清理", "Clean", "削除" } },
             { "log.sub", new[]{ "最近 200 行 · 自动刷新", "Last 200 lines · auto-refresh", "直近 200 行・自動更新" } },
             { "set.about", new[]{ "Aegis {0} · {1} · 本地配置与用户白名单", "Aegis {0} · {1} · local configuration and user whitelist", "Aegis {0} · {1} · ローカル設定とユーザー許可リスト" } },
@@ -356,6 +381,19 @@ namespace AegisApp
         {
             Cur = i < 0 ? 0 : (i > 2 ? 2 : i);
             Settings.SaveStr("Lang", Cur == 1 ? "en" : (Cur == 2 ? "ja" : "zh"));
+        }
+
+        internal static List<string> AllKeys()
+        {
+            var keys = new List<string>();
+            foreach (var kv in M) keys.Add(kv.Key);
+            return keys;
+        }
+
+        internal static string[] Row(string key)
+        {
+            string[] a;
+            return M.TryGetValue(key, out a) ? a : null;
         }
 
         public static string T(string key)
