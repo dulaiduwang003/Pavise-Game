@@ -22,6 +22,7 @@ namespace AegisApp
 
         private static readonly Guid SubProcessor   = new Guid("54533251-82be-4824-96c1-47b60b740d00");
         private static readonly Guid CpMinCores     = new Guid("0cc5b647-c1df-4637-891a-dec35c318583");
+        private static readonly Guid IdleDisable    = new Guid("5d76a2ca-e8c0-402f-a133-2158492d58ad");
         private static readonly Guid ProcThrottleMin = new Guid("893dee8e-2bef-41e0-89c6-b55d0929964c");
         private static readonly Guid PerfBoostMode  = new Guid("be337238-0d82-4146-a960-4f3749d470c7");
         private static readonly Guid SubPcie        = new Guid("501a4d13-42af-4429-9fd1-a8218c268e20");
@@ -29,7 +30,7 @@ namespace AegisApp
         private static readonly Guid SubUsb         = new Guid("2a737441-1930-4402-8d77-b2bebba308a3");
         private static readonly Guid UsbSelSuspend  = new Guid("48e6b7a6-50f5-4782-a5d4-53bb8f07e226");
 
-        private static bool TuneTarget(Guid g, bool aggressive)
+        private static bool TuneTarget(Guid g, bool aggressive, bool idleDisable)
         {
             try
             {
@@ -39,13 +40,19 @@ namespace AegisApp
                 ok &= WritePair(g, SubProcessor, PerfBoostMode, aggressive ? 2u : 4u, aggressive ? 4u : 3u);
                 ok &= WritePair(g, SubPcie, PcieAspm, aggressive ? 0u : 1u, aggressive ? 1u : 2u);
                 ok &= WritePair(g, SubUsb, UsbSelSuspend, 0u, aggressive ? 0u : 1u);
+                // 处理器空闲禁用：不让核心进入深度 C-state，省掉 1~15ms 的唤醒延迟，
+                // 代价是发热和功耗明显上升。写在 Aegis 自建的方案上，切回用户原方案即自动失效，
+                // 所以只在竞技级 + 交流供电时开；电池下一律保持 0，避免续航和热衰减双输。
+                ok &= WritePair(g, SubProcessor, IdleDisable, (aggressive && idleDisable) ? 1u : 0u, 0u);
                 if (!ok)
                 {
                     Logger.Log("电源策略参数未能完整写入，未把本轮标记为成功");
                     return false;
                 }
                 Logger.Log(aggressive
-                    ? "电源策略：竞技级（交流电全核心/100%下限，电池降级以避免不可持续的热衰减）"
+                    ? "电源策略：竞技级（交流电全核心/100%下限"
+                        + (idleDisable ? "/禁用空闲降低唤醒延迟" : "，空闲状态保持系统默认")
+                        + "，电池降级以避免不可持续的热衰减）"
                     : "电源策略：常规持续性能（保留降频余量，减少热饱和后的频率回落）");
                 return true;
             }
@@ -73,7 +80,7 @@ namespace AegisApp
         private static bool active;
         private static Guid target;
         private static bool resolved;
-        private static int tunedAggressive = -1;
+        private static int tuneState = -1;
         private static bool targetOwned;
 
 
@@ -153,12 +160,17 @@ namespace AegisApp
             catch { g = Guid.Empty; return false; }
         }
 
-        private static void ActivateInner(bool aggressive)
+        private static int TuneKey(bool aggressive, bool idleDisable)
+        {
+            return (aggressive ? 1 : 0) | (idleDisable ? 2 : 0);
+        }
+
+        private static void ActivateInner(bool aggressive, bool idleDisable)
         {
             if (active) return;
             Guid tgt = ResolveTarget();
-            if (targetOwned && !TuneTarget(tgt, aggressive)) return;
-            tunedAggressive = aggressive ? 1 : 0;
+            if (targetOwned && !TuneTarget(tgt, aggressive, idleDisable)) return;
+            tuneState = TuneKey(aggressive, idleDisable);
             Guid? cur = Current();
             if (cur == null) return;
             if (cur.Value == tgt) { active = true; return; }
@@ -183,16 +195,16 @@ namespace AegisApp
             }
         }
 
-        public static void Enforce(bool aggressive)
+        public static void Enforce(bool aggressive, bool idleDisable)
         {
             lock (lk)
             {
-                if (!active) { ActivateInner(aggressive); return; }
+                if (!active) { ActivateInner(aggressive, idleDisable); return; }
                 Guid tgt = ResolveTarget();
-                if (tunedAggressive != (aggressive ? 1 : 0))
+                if (tuneState != TuneKey(aggressive, idleDisable))
                 {
-                    if (targetOwned && !TuneTarget(tgt, aggressive)) return;
-                    tunedAggressive = aggressive ? 1 : 0;
+                    if (targetOwned && !TuneTarget(tgt, aggressive, idleDisable)) return;
+                    tuneState = TuneKey(aggressive, idleDisable);
                     Set(tgt);
                 }
                 Guid? cur = Current();
@@ -234,7 +246,7 @@ namespace AegisApp
                         ok = false;
                     }
                 }
-                active = false; saved = Guid.Empty; tunedAggressive = -1;
+                active = false; saved = Guid.Empty; tuneState = -1;
                 return ok;
             }
         }

@@ -97,7 +97,7 @@ namespace AegisApp
                     finally { Native.CloseHandle(h); }
                 }
                 if (keep.Count == 1) File.Delete(statePath);
-                else File.WriteAllLines(statePath, keep.ToArray(), new UTF8Encoding(false));
+                else AtomicFile.WriteLines(statePath, keep.ToArray(), "压制恢复日志");
             }
             catch (Exception ex)
             {

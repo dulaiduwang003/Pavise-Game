@@ -15,6 +15,8 @@ using Microsoft.Win32;
 
 namespace AegisApp
 {
+    internal enum AutoHideAction { None, Schedule, Cancel }
+
     internal partial class PanelForm : Form
     {
         private readonly Tamer tamer;
@@ -25,7 +27,7 @@ namespace AegisApp
         private DBPanel[] pages;
         private DBPanel tameList;
         private NavRail nav;
-        private Toggle swGame, swTame, swAuto, swGpu, swFso, swVbs, swHags;
+        private Toggle swGame, swTame, swAuto, swGpu, swFso, swVbs, swHags, swIrqAffinity, swNetAffinity;
         private Label lblOverviewBoost, lblEvidenceLive;
         private Label lblHeroMode, lblHeroSource, lblPolicyMode;
         private Toggle swPolicyBackground, swPolicyStrict, swPolicyFreeze;
@@ -50,8 +52,10 @@ namespace AegisApp
         private SettingCard cardPolicyPauseDl, cardPolicyPauseSvc, cardPolicyDvr;
         private SettingCard cardPolicyAggressive;
         private readonly List<Action> policySync = new List<Action>();
-        private volatile bool shaderCleaning;
-        private volatile bool lolCleaning;
+        // 必须是静态：语言切换会走 RebuildUi 重建整页，实例字段上的忙碌标志会随之丢失，
+        // 新建的按钮是可用状态，于是能在清理still进行时再触发一次并发清理。
+        private static volatile bool shaderCleaning;
+        private static volatile bool lolCleaning;
         private string lolDir;
         private int slowBusy;
         private int restoreBusy;
@@ -67,6 +71,17 @@ namespace AegisApp
         private Motion pageSlide;
         private Icon appIcon;
         public bool RealExit;
+
+        private Motion introMotion;
+        private bool introActive, introPending;
+        private int introBaseTop;
+        private Toggle swAutoHide;
+        private System.Windows.Forms.Timer autoHideTimer;
+        private bool autoHideArmed, lastGameActive;
+
+        private const string AutoHideKey = "AutoHideOnGame";
+        private const int AutoHideDelayMs = 10000;
+        private const int IntroRise = 18;
 
         private const int WinW = 1040, WinH = 720, RailW = 208, TopH = 54;
         private const int PageW = WinW - RailW, PageH = WinH - TopH;
@@ -225,6 +240,48 @@ namespace AegisApp
                 curPage.Left = pageBaseLeft + (int)(pageSlide.Value * Theme.S(16));
             if (modeFlyout != null && modeFlyout.Visible && modeFlyoutMotion.Step())
                 modeFlyout.Top = Theme.S(56) + (int)(modeFlyoutMotion.Value * Theme.S(10));
+            StepIntro();
+        }
+
+        // 开场动画：窗口从略低处淡入并上浮到位，避免"啪"地直接出现。
+        // introMotion.Value 从 1（完全未就位）走到 0（就位），透明度取 1-Value。
+        private void StepIntro()
+        {
+            if (!introActive) return;
+            if (introMotion.Step())
+            {
+                double shown = 1d - introMotion.Value;
+                if (shown < 0d) shown = 0d; else if (shown > 1d) shown = 1d;
+                try { Opacity = shown; } catch { }
+                Top = introBaseTop + (int)(introMotion.Value * Theme.S(IntroRise));
+            }
+            else
+            {
+                introActive = false;
+                try { Opacity = 1d; } catch { }
+                Top = introBaseTop;
+            }
+        }
+
+        private void BeginIntro()
+        {
+            // 上一次动画没走完就又被显示：先把位置还原，避免每次都往下漂一截
+            if (introActive) { introActive = false; Top = introBaseTop; }
+            introPending = true;
+            try { Opacity = 0d; } catch { }
+        }
+
+        private void StartIntro()
+        {
+            if (!introPending) return;
+            introPending = false;
+            introBaseTop = Top;
+            introMotion.Speed = 0.24f;
+            introMotion.Set(1f);
+            introMotion.To(0f);
+            introActive = true;
+            Top = introBaseTop + Theme.S(IntroRise);
+            UiClock.Wake(90);
         }
 
         protected override void OnVisibleChanged(EventArgs e)
@@ -328,6 +385,34 @@ namespace AegisApp
             bool ok = swHags.Checked ? HagsTweak.Enable() : HagsTweak.Disable();
             if (ok) MessageBox.Show(this, Lang.T("hags.reboot"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Information);
             swHags.SetSilently(HagsTweak.EnabledByAegis || HagsTweak.CurrentlyOn());
+        }
+
+        private void OnIrqAffinityToggle(object s, EventArgs e)
+        {
+            if (!elevated)
+            {
+                MessageBox.Show(this, Lang.T("vbs.needadmin"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                swIrqAffinity.SetSilently(InterruptAffinityTweak.EnabledByAegis);
+                return;
+            }
+            bool ok = swIrqAffinity.Checked ? InterruptAffinityTweak.Enable() : InterruptAffinityTweak.Disable();
+            if (ok) MessageBox.Show(this, Lang.T("irqaffinity.reboot"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            swIrqAffinity.SetSilently(InterruptAffinityTweak.EnabledByAegis);
+        }
+
+        private void OnNetAffinityToggle(object s, EventArgs e)
+        {
+            if (!elevated)
+            {
+                MessageBox.Show(this, Lang.T("vbs.needadmin"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                swNetAffinity.SetSilently(NetworkAffinityTweak.EnabledByAegis);
+                return;
+            }
+            bool ok = swNetAffinity.Checked
+                ? NetworkAffinityTweak.Enable(gameMode.GetProfiles())
+                : NetworkAffinityTweak.Disable();
+            if (ok) MessageBox.Show(this, Lang.T("netaffinity.reboot"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            swNetAffinity.SetSilently(NetworkAffinityTweak.EnabledByAegis);
         }
 
         private void OnVbsToggle(object s, EventArgs e)
@@ -616,6 +701,8 @@ namespace AegisApp
 
         private void OnUiTick(object s, EventArgs e)
         {
+            // 放在可见性判断之前：窗口收起后也要继续跟踪对局起止，否则下一局无法重新武装
+            UpdateAutoHide(gameMode.Enabled && gameMode.IsActive);
             if (!Visible) return;
             lblStatus.Text = gameMode.StatusText;
             bool act = gameMode.Enabled && gameMode.IsActive;
@@ -643,6 +730,70 @@ namespace AegisApp
                 }
         }
 
+        // 每局对局只自动收起一次：收起后用户再手动打开就不会又被收走，
+        // 直到这局结束（IsActive 落回 false）才为下一局重新武装，避免窗口来回乱跳。
+        // 抽成静态纯函数是为了能脱离窗口单测——"只收一次"正是最容易写错的一条。
+        internal static AutoHideAction NextAutoHide(bool gameActive, ref bool lastActive, ref bool armed,
+            bool settingOn, bool visible)
+        {
+            if (gameActive == lastActive) return AutoHideAction.None;
+            lastActive = gameActive;
+            if (!gameActive) { armed = false; return AutoHideAction.Cancel; }
+            if (armed) return AutoHideAction.None;
+            armed = true;
+            if (!settingOn || !visible) return AutoHideAction.None;
+            return AutoHideAction.Schedule;
+        }
+
+        private void UpdateAutoHide(bool gameActive)
+        {
+            AutoHideAction action = NextAutoHide(gameActive, ref lastGameActive, ref autoHideArmed,
+                Settings.Load(AutoHideKey, false), Visible);
+            if (action == AutoHideAction.Cancel) { CancelAutoHide(); return; }
+            if (action != AutoHideAction.Schedule) return;
+            CancelAutoHide();
+            autoHideTimer = new System.Windows.Forms.Timer();
+            autoHideTimer.Interval = AutoHideDelayMs;
+            autoHideTimer.Tick += OnAutoHideTick;
+            autoHideTimer.Start();
+        }
+
+        private void OnAutoHideTick(object s, EventArgs e)
+        {
+            CancelAutoHide();
+            if (IsDisposed || !Visible) return;
+            if (AnyDialogOpen()) return;
+            Hide();
+        }
+
+        private void CancelAutoHide()
+        {
+            if (autoHideTimer == null) return;
+            autoHideTimer.Stop();
+            autoHideTimer.Tick -= OnAutoHideTick;
+            autoHideTimer.Dispose();
+            autoHideTimer = null;
+        }
+
+        // 有子对话框开着就不收——否则会把对话框的父窗口从它底下抽走
+        private bool AnyDialogOpen()
+        {
+            try
+            {
+                foreach (Form f in Application.OpenForms)
+                    if (!ReferenceEquals(f, this) && f.Visible) return true;
+            }
+            catch { }
+            return false;
+        }
+
+        private void OnAutoHideToggle(object s, EventArgs e)
+        {
+            Settings.Save(AutoHideKey, swAutoHide.Checked);
+            if (!swAutoHide.Checked) CancelAutoHide();
+            swAutoHide.SetSilently(Settings.Load(AutoHideKey, false));
+        }
+
         private void OnEscHide(object s, KeyEventArgs e)
         {
             if (e.KeyCode == Keys.Escape)
@@ -654,6 +805,7 @@ namespace AegisApp
 
         protected override void OnHandleDestroyed(EventArgs e)
         {
+            CancelAutoHide();
             UiClock.Frame -= OnFormFrame;
             foreach (Bitmap bitmap in gameIconCache.Values) try { bitmap.Dispose(); } catch { }
             gameIconCache.Clear();
@@ -674,9 +826,12 @@ namespace AegisApp
         {
             if (InvokeRequired) { BeginInvoke((MethodInvoker)ShowPanel); return; }
             if (IsDisposed) return;
+            bool wasVisible = Visible && WindowState != FormWindowState.Minimized;
+            if (!wasVisible) BeginIntro();
             Show();
             WindowState = FormWindowState.Normal;
             Activate();
+            StartIntro();
             SyncAllToggles();
         }
 
@@ -690,6 +845,7 @@ namespace AegisApp
             if (swGpu != null) swGpu.SetSilently(gameMode.GpuHighPerf);
             if (swFso != null) swFso.SetSilently(gameMode.DisableFso);
             if (swVbs != null) swVbs.SetSilently(VbsTweak.DisabledByAegis);
+            if (swAutoHide != null) swAutoHide.SetSilently(Settings.Load(AutoHideKey, false));
             if (swPolicyBackground != null) swPolicyBackground.SetSilently(gameMode.SuppressBackground);
             if (swPolicyFreeze != null) swPolicyFreeze.SetSilently(gameMode.DeepFreeze);
             for (int i = 0; i < policySync.Count; i++) policySync[i]();

@@ -33,6 +33,12 @@ namespace AegisApp
             { "nav.reports", new[]{ "报告", "Reports", "レポート" } },
             { "v15.about.sub", new[]{ "版本、开源仓库与更新通道集中在这里。", "Version, source repository, and update channel in one place.", "バージョン、ソースリポジトリ、更新経路をここに集約。" } },
             { "v15.about.identity", new[]{ "单文件 Windows 性能守护", "SINGLE-FILE WINDOWS PERFORMANCE GUARDIAN", "単一ファイル Windows パフォーマンスガード" } },
+            { "notes.title", new[]{ "版本说明", "Release notes", "リリースノート" } },
+            { "notes.sub", new[]{ "当前安装版本 {0}，以下说明随程序内置，离线也能查看。", "Currently installed: {0}. These notes ship with the app and work offline.", "現在のインストール版：{0}。このノートは本体に同梱され、オフラインでも閲覧できます。" } },
+            { "notes.current", new[]{ "当前版本", "CURRENT", "現行バージョン" } },
+            { "notes.open", new[]{ "查看版本说明", "View release notes", "リリースノートを見る" } },
+            { "notes.online", new[]{ "在 GitHub 查看全部", "View all on GitHub", "GitHub ですべて見る" } },
+            { "notes.close", new[]{ "关闭", "Close", "閉じる" } },
             { "v15.about.update", new[]{ "版本更新", "VERSION UPDATE", "バージョン更新" } },
             { "v15.about.update.sub", new[]{ "只读取 GitHub Releases 版本号，不上传任何设备数据。", "Reads only the GitHub Releases version; no device data is uploaded.", "GitHub Releases の版番号のみ取得し、端末情報は送信しません。" } },
             { "v15.restore.title", new[]{ "恢复已记录调度", "RESTORE RECORDED SCHEDULING", "記録済み調度を復元" } },
@@ -72,6 +78,30 @@ namespace AegisApp
             { "v15.hz.sub", new[]{ "会话期间守护最高刷新率；显示配置异常时可关闭", "Keeps the highest refresh rate during the session; disable if a display misbehaves", "セッション中に最高リフレッシュレートを維持。表示異常時は無効化" } },
             { "v15.custom.override", new[]{ "用于自定义预设；竞技可能按固定策略强制启用", "Used by Custom; Competitive may force its fixed policy", "カスタム用。競技では固定ポリシーで強制される場合あり" } },
             { "v15.trim.sub", new[]{ "仅自定义重压时执行；可能触发后台重新读盘，默认关闭", "Custom heavy mode only; may cause background paging and stays off by default", "カスタム強抑制時のみ。再読込を起こすため既定オフ" } },
+            { "def.title", new[]{ "Defender 扫描排除", "Defender scan exclusions", "Defender スキャン除外" } },
+            { "def.warn.title", new[]{ "这是拿安全换性能，请先读完再决定", "This trades security for performance — read before deciding", "セキュリティと引き換えの設定です。必ずお読みください" } },
+            { "def.warn.body", new[]{ "被排除的目录不再被实时扫描，其中的恶意文件不会被拦截。游戏目录常混有破解版、第三方 mod 和修改器，风险高于普通目录。只排除你信任来源的游戏。", "Excluded folders are no longer scanned in real time, so malicious files inside them are not blocked. Game folders often contain cracks, third-party mods and trainers, making them riskier than ordinary folders. Only exclude games from sources you trust.", "除外したフォルダーはリアルタイム スキャンの対象外となり、内部の悪意あるファイルはブロックされません。ゲームフォルダーは改造版や第三者 MOD が混在しやすく、通常より危険です。信頼できる入手元のみ除外してください。" } },
+            { "def.state.on", new[]{ "已排除", "EXCLUDED", "除外中" } },
+            { "def.state.off", new[]{ "受保护", "PROTECTED", "保護中" } },
+            { "def.confirm", new[]{ "确定要把《{0}》的目录排除出 Defender 实时扫描吗？\r\n\r\n{1}\r\n\r\n该目录下的文件将不再被查杀。只有当你确信这个游戏的来源可靠时才继续。", "Exclude the folder of \"{0}\" from Defender real-time scanning?\r\n\r\n{1}\r\n\r\nFiles in this folder will no longer be scanned. Continue only if you trust where this game came from.", "「{0}」のフォルダーを Defender のリアルタイム スキャンから除外しますか？\r\n\r\n{1}\r\n\r\nこのフォルダー内はスキャンされなくなります。入手元を信頼できる場合のみ続行してください。" } },
+            { "def.notours", new[]{ "这条排除不是 Aegis 添加的（可能是你在 Windows 安全中心手动加的），Aegis 不会去动它。需要取消请到 Windows 安全中心操作。", "This exclusion was not added by Aegis (you likely added it in Windows Security), so Aegis will not touch it. Remove it from Windows Security instead.", "この除外は Aegis が追加したものではないため（Windows セキュリティで手動追加された可能性）、Aegis は変更しません。解除は Windows セキュリティから行ってください。" } },
+            { "def.failed", new[]{ "操作失败，系统未接受这次修改（可能被安全策略或第三方杀软阻止）。", "The change failed — the system did not accept it (it may be blocked by policy or third-party antivirus).", "変更に失敗しました。ポリシーまたは他社製ウイルス対策によりブロックされた可能性があります。" } },
+            { "def.unavailable", new[]{ "无法读取 Defender 设置：可能未安装、已被第三方杀软接管，或当前权限不足。", "Cannot read Defender settings: it may be absent, replaced by third-party antivirus, or unavailable at this privilege level.", "Defender の設定を読み取れません。未導入、他社製品による置き換え、または権限不足の可能性があります。" } },
+            { "def.off", new[]{ "Windows Defender 的实时保护当前是关闭的，本功能对你没有意义——没有实时扫描，也就没有扫描开销可省。如果之后重新启用了 Defender，再回来这里即可。", "Windows Defender real-time protection is currently off, so this feature does nothing for you: with no real-time scanning there is no scanning overhead to remove. Come back here if you re-enable Defender later.", "Windows Defender のリアルタイム保護が無効です。リアルタイム スキャンがないため削減できるオーバーヘッドもありません。Defender を再度有効にした場合はここに戻ってください。" } },
+            { "def.nogames", new[]{ "游戏库还是空的。先在「游戏库」里添加游戏，这里才会列出可排除的目录。", "Your game library is empty. Add games in the Library page first and their folders will appear here.", "ゲームライブラリが空です。先に「ライブラリ」でゲームを追加してください。" } },
+            { "def.clearall", new[]{ "全部取消排除", "Remove all exclusions", "すべての除外を解除" } },
+            { "def.clearall.none", new[]{ "Aegis 目前没有添加过任何排除项。", "Aegis has not added any exclusions.", "Aegis が追加した除外はありません。" } },
+            { "def.clearall.done", new[]{ "已取消 {0} 个由 Aegis 添加的排除项（你手工添加的不受影响）。", "Removed {0} exclusion(s) added by Aegis. Entries you added manually are untouched.", "Aegis が追加した除外を {0} 件解除しました。手動で追加した項目はそのままです。" } },
+            { "def.open", new[]{ "Defender 扫描排除", "Defender scan exclusions", "Defender スキャン除外" } },
+            { "def.open.sub", new[]{ "逐个游戏目录手动勾选；会降低这些目录的安全防护", "Opt in per game folder; lowers protection for those folders", "ゲームフォルダーごとに選択。該当フォルダーの保護は低下します" } },
+            { "gm.idledisable", new[]{ "竞技模式禁用 CPU 空闲状态", "Disable CPU idle states in Competitive", "競技モードで CPU アイドル状態を無効化" } },
+            { "gm.idledisable.sub", new[]{ "省掉核心唤醒延迟；仅竞技+交流供电生效，发热和功耗会上升", "Removes core wake-up latency; Competitive on AC only, raises heat and power draw", "コア復帰遅延を解消。競技かつAC電源時のみ。発熱と消費電力が増加" } },
+            { "gm.visualfx", new[]{ "游戏时降级桌面视觉效果", "Downgrade desktop visual effects during games", "ゲーム中はデスクトップの視覚効果を下げる" } },
+            { "gm.visualfx.sub", new[]{ "关闭桌面透明与窗口动画，退出后还原（默认关闭）", "Turns off desktop transparency and window animations, restored on exit (off by default)", "透明効果とウィンドウアニメーションを無効化し、終了後に復元（既定オフ）" } },
+            { "gm.standby", new[]{ "游戏开始时清理待机内存", "Purge standby memory when a game starts", "ゲーム開始時にスタンバイメモリを解放" } },
+            { "gm.standby.sub", new[]{ "只在会话开始、游戏仍在加载时清一次，后台线程执行", "Purged once at session start while the game is still loading, on a background thread", "ロード中に一度だけ、バックグラウンドスレッドで解放" } },
+            { "gm.standbymid", new[]{ "游戏进行中也按阈值清理（默认关闭）", "Also purge mid-game when memory runs low (off by default)", "ゲーム中もメモリ逼迫時に解放（既定オフ）" } },
+            { "gm.standbymid.sub", new[]{ "仅空闲见底时清最低优先级部分（约 5ms）；全量绝不在游戏中执行", "Lowest-priority only, when free memory runs out (~5 ms); never a full purge mid-game", "空きメモリ枯渇時に最低優先度のみ（約5ms）。全体解放はゲーム中に行いません" } },
             { "v15.anticheat.sub", new[]{ "独立于游戏性能预设，只控制下方明确列出的反作弊用户态组件。", "Independent of performance presets and limited to the explicitly listed user-mode anti-cheat components.", "性能プリセットと独立し、下記のユーザー態アンチチートのみ制御。" } },
             { "v14.overview.sub", new[]{ "按入口关系 窗口和路径筛选最可能的游戏画面候选；启动器和平台进程不会被提优。", "Selects the most likely game candidate from entry relationships windows and paths; launchers and platform clients are not boosted.", "入口関係 ウィンドウ パスから最も可能性の高いゲーム候補を選び ランチャーとプラットフォームは提優しません。" } },
             { "v14.master", new[]{ "Aegis 智能守护", "Aegis Smart Guard", "Aegis スマートガード" } },
@@ -206,11 +236,14 @@ namespace AegisApp
             { "btn.gmcfg", new[]{ "高级策略配置", "Advanced policy", "詳細ポリシー設定" } },
             { "set.autostart", new[]{ "开机自启", "Start with Windows", "Windows 起動時に自動起動" } },
             { "set.autostart.n", new[]{ "走管理员权限的计划任务。", "Via an administrator scheduled task.", "管理者権限のタスクスケジューラ経由。" } },
+            { "set.autohide", new[]{ "检测到游戏后自动收起窗口", "Auto-hide the window once a game starts", "ゲーム開始後にウィンドウを自動的に隠す" } },
+            { "set.autohide.n", new[]{ "检测到游戏启动 10 秒后，把主窗口收回托盘。每局只收一次——之后你再打开它就不会又被收走，直到下一局开始。", "Ten seconds after a game is detected, the main window returns to the tray. Once per session only — if you open it again afterwards it stays open until the next game starts.", "ゲーム検出から 10 秒後にメインウィンドウをトレイに戻します。1 試合につき 1 回だけ——その後に開き直した場合は次の試合まで閉じられません。" } },
             { "set.hint", new[]{ "这里只保留持久系统设置和维护工具；游戏期间的调度行为统一放在「优化策略」。", "This page contains persistent system settings and maintenance only; in-game scheduling lives under Optimization.", "ここは永続システム設定と保守のみ。ゲーム中の調度は「最適化ポリシー」に集約。" } },
             { "set.lang", new[]{ "语言", "Language", "言語" } },
             { "sec.pergame", new[]{ "逐游戏", "PER-GAME", "ゲームごと" } },
             { "sec.system", new[]{ "系统", "SYSTEM", "システム" } },
             { "sec.maint", new[]{ "维护", "MAINTENANCE", "メンテナンス" } },
+            { "btn.open", new[]{ "打开", "Open", "開く" } },
             { "btn.clean", new[]{ "清理", "Clean", "削除" } },
             { "log.sub", new[]{ "最近 200 行 · 自动刷新", "Last 200 lines · auto-refresh", "直近 200 行・自動更新" } },
             { "set.about", new[]{ "Aegis {0} · {1} · 本地配置与用户白名单", "Aegis {0} · {1} · local configuration and user whitelist", "Aegis {0} · {1} · ローカル設定とユーザー許可リスト" } },
@@ -218,6 +251,12 @@ namespace AegisApp
             { "set.hags", new[]{ "开启 GPU 硬件调度 HAGS（需重启）", "Enable GPU Hardware Scheduling (needs reboot)", "GPU ハードウェアスケジューリング（要再起動）" } },
             { "set.hags.n", new[]{ "切换 Windows 的硬件 GPU 调度选项；效果取决于显卡驱动和游戏，部分帧生成功能可能要求开启。", "Toggles Windows hardware GPU scheduling. Results depend on the driver and game; some frame-generation features may require it.", "Windows のハードウェア GPU 調度を切り替えます 効果はドライバとゲーム次第で 一部のフレーム生成機能が必要とする場合があります" } },
             { "hags.reboot", new[]{ "已写入 HAGS 设置，重启电脑后生效。", "HAGS setting written — takes effect after a reboot.", "HAGS 設定を適用しました。再起動後に有効になります。" } },
+            { "set.irqaffinity", new[]{ "GPU 中断亲和优化（需重启设备或电脑）", "GPU interrupt affinity tuning (needs a device or system restart)", "GPU 割り込みアフィニティ最適化（デバイスまたは再起動が必要）" } },
+            { "set.irqaffinity.n", new[]{ "引导显卡中断靠近游戏所在的核心，减少跨核/跨缓存开销。多适配器或多处理器组系统可能只应用较轻的邻近策略。", "Steers GPU interrupt handling toward the cores your game runs on, reducing cross-core/cross-cache overhead. Multi-adapter or multi processor-group systems may only get the lighter proximity policy.", "GPU の割り込み処理をゲームが動作するコアに近づけ、コア/キャッシュをまたぐオーバーヘッドを減らします。複数アダプタや複数プロセッサグループ環境では軽量な近接ポリシーのみになる場合があります。" } },
+            { "irqaffinity.reboot", new[]{ "已写入中断亲和设置，重启该设备或重启电脑后生效。", "Interrupt affinity setting written — takes effect after restarting the device or rebooting.", "割り込みアフィニティ設定を適用しました。デバイスの再起動または再起動後に有効になります。" } },
+            { "set.netaffinity", new[]{ "游戏网络优先（需重启网卡或电脑）", "Game network priority (needs a NIC or system restart)", "ゲームネットワーク優先（NICまたはシステムの再起動が必要）" } },
+            { "set.netaffinity.n", new[]{ "引导网卡中断靠近游戏所在的核心，并给游戏目录中已添加的可执行文件的流量打上 QoS 优先级标记，减少排队和抖动。", "Steers NIC interrupt handling toward your game's cores and tags traffic from executables already added to your game library with a QoS priority marking, reducing queueing and jitter.", "NIC の割り込み処理をゲームが動作するコアに近づけ、ゲームライブラリに追加済みの実行ファイルの通信に QoS 優先マーキングを付与し、キューイングとジッターを減らします。" } },
+            { "netaffinity.reboot", new[]{ "网卡中断设置需要重启该网卡或重启电脑后生效；流量优先级标记会在新建立的网络连接上生效。", "The NIC interrupt setting takes effect after restarting the adapter or rebooting; the traffic priority marking applies to newly established connections.", "NIC の割り込み設定はアダプタの再起動または再起動後に有効になります。トラフィックの優先マーキングは新しく確立された接続に適用されます。" } },
             { "set.vbs", new[]{ "关闭 VBS + 停用 hypervisor（需重启）", "Disable VBS + stop the hypervisor (needs reboot)", "VBS 無効化 + hypervisor 停止（要再起動）" } },
             { "vbs.state.on", new[]{ "当前：VBS 正在运行 —— 关闭会降低系统安全性，性能影响需在本机单独测试", "Now: VBS is running — disabling it reduces system security and any performance effect must be measured on this machine.", "現在 VBS が動作中です 無効化は安全性を下げるため 性能差はこの PC で個別に測定してください" } },
             { "vbs.state.off", new[]{ "当前：VBS 未运行（本机已经没有这项开销）", "Now: VBS is not running (this overhead is already absent)", "現在：VBS は非稼働（このオーバーヘッドは既にありません）" } },
@@ -342,6 +381,19 @@ namespace AegisApp
         {
             Cur = i < 0 ? 0 : (i > 2 ? 2 : i);
             Settings.SaveStr("Lang", Cur == 1 ? "en" : (Cur == 2 ? "ja" : "zh"));
+        }
+
+        internal static List<string> AllKeys()
+        {
+            var keys = new List<string>();
+            foreach (var kv in M) keys.Add(kv.Key);
+            return keys;
+        }
+
+        internal static string[] Row(string key)
+        {
+            string[] a;
+            return M.TryGetValue(key, out a) ? a : null;
         }
 
         public static string T(string key)

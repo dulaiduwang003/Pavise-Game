@@ -135,7 +135,7 @@ namespace AegisApp
                 lines.Add("# 一行一个进程名(不带 .exe)，# 开头是注释。仅处理当前用户会话；");
                 lines.Add("# Windows 核心另有安全边界，这里也保留必要项并允许用户追加明确例外。");
                 lines.AddRange(white);
-                File.WriteAllLines(whitePath, lines.ToArray());
+                AtomicFile.WriteLines(whitePath, lines.ToArray(), "白名单");
             }
             catch (Exception error) { Logger.LogFailure("保存游戏模式白名单失败", error); }
         }
@@ -151,7 +151,7 @@ namespace AegisApp
                     gameRoots.TryGetValue(game, out root);
                     lines.Add(EncodeGameLine(game, root));
                 }
-                File.WriteAllLines(gamesPath, lines.ToArray());
+                AtomicFile.WriteLines(gamesPath, lines.ToArray(), "游戏列表");
             }
             catch (Exception error) { Logger.LogFailure("保存游戏列表失败", error); }
         }

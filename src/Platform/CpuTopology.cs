@@ -39,7 +39,9 @@ namespace AegisApp
             AllMask = nc >= 64 ? ulong.MaxValue : (1UL << nc) - 1UL;
             if (Hybrid) { ThrottleMask = EffMask; BoostMask = AllMask; }
             else if (AsymCache) { ThrottleMask = SmallL3Mask; BoostMask = BigL3Mask; }
-            else { ThrottleMask = nc >= 2 ? 3UL << (nc - 2) : 1UL; BoostMask = AllMask; }
+            // C# 会把 ulong 的移位量按 6 bit 取模，nc>64 时 3UL<<70 会变成 3UL<<6，
+            // 把 6/7 号核当成"后台核"。其余移位点都有 <64 保护，补上这一处。
+            else { ThrottleMask = nc >= 2 && nc <= 64 ? 3UL << (nc - 2) : (nc >= 2 ? 0UL : 1UL); BoostMask = AllMask; }
             StrictBoostMask = CpuPartitionPolicy.StrictMask(AllMask, ThrottleMask,
                 Hybrid ? PerfMask : 0, AsymCache ? BigL3Mask : 0);
         }

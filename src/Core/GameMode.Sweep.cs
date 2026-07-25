@@ -26,11 +26,6 @@ namespace AegisApp
             "epicgameslauncher", "battle.net", "galaxyclient", "ubisoftconnect"
         };
 
-        private static readonly HashSet<string> WeGameProcs = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "wegame", "wegame_env", "wegameclient"
-        };
-
         private static readonly HashSet<int> EmptyPidSet = new HashSet<int>();
 
         internal static bool IsAggressive(PerformancePreset mode, bool aggressiveOn)
@@ -50,17 +45,29 @@ namespace AegisApp
 
         internal static bool BasicBackgroundEligible(int pid, int self, string name, string path,
             int session, int ownerSession, int foreground, bool userFacingFamily, string windowsRoot,
-            bool weGameHostLive = false, string acTreePrefix = null, bool aggressive = false)
+            bool gameHostAncestor = false, string activeGameRoot = null, bool aggressive = false)
         {
-            if (!string.IsNullOrEmpty(name) && AntiCheatCatalog.IsKnownProcess(name)) return false;
-            if (weGameHostLive && !string.IsNullOrEmpty(name) && WeGameProcs.Contains(name)) return false;
-            if (!string.IsNullOrEmpty(acTreePrefix) && !string.IsNullOrEmpty(path)
-                && path.StartsWith(acTreePrefix, StringComparison.OrdinalIgnoreCase)) return false;
+            // 必须用与检测器同一套（更宽的）判定：AntiCheatCatalog 是精确名单，
+            // IsAntiCheatLikeName 在名单之外还认 anticheat/sguard/battleye 等子串。
+            // 两边宽度不一致的话，会出现"检测器认定是反作弊、压制器照压不误"的缝隙，
+            // 而被压的反作弊心跳超时 = 掉线甚至被判异常。宁可漏放也绝不错压。
+            if (GameSessionDetector.IsAntiCheatLikeName(name)) return false;
+            if (gameHostAncestor) return false;
+            if (UnderRoot(path, activeGameRoot)) return false;
             if (pid <= 4 || pid == self || session < 0 || session != ownerSession) return false;
             if (!aggressive && (pid == foreground || userFacingFamily)) return false;
             if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(path)) return false;
             if (aggressive) return !IsCoreSystemProcess(name, path, windowsRoot);
             return string.IsNullOrEmpty(windowsRoot) || !path.StartsWith(windowsRoot, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // 目录包含判断必须按路径分段锚定：裸 StartsWith 会让根目录 D:\Games\Apex
+        // 把兄弟目录 D:\Games\ApexBackup 也算进来，从而错误豁免不相干的进程。
+        internal static bool UnderRoot(string path, string root)
+        {
+            if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(root)) return false;
+            string prefix = root.TrimEnd('\\') + "\\";
+            return path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
         }
 
         private static readonly HashSet<string> CoreSystemProcesses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -83,18 +90,21 @@ namespace AegisApp
             bool aggressive = IsAggressive(mode, aggressiveOn);
             HashSet<int> userFacingFamily = aggressive ? EmptyPidSet : CollectUserFacingFamily(all, foregroundPid);
             bool safePartition = CpuTopology.HasSafeBackgroundPartition();
-            bool acAlive = false;
-            foreach (Process q in all)
+
+            int rendererPid = 0;
+            string activeGameRoot = null;
+            lock (sync)
             {
-                try { if (AntiCheatCatalog.IsKnownProcess(q.ProcessName)) { acAlive = true; break; } }
-                catch { }
+                if (activeDetection != null)
+                {
+                    rendererPid = activeDetection.RendererPid;
+                    if (activeDetection.Profile != null) activeGameRoot = activeDetection.Profile.Root;
+                }
             }
-            string lolPrefix = LolTreePrefix();
-            bool lolSessionLive = false;
-            if (!string.IsNullOrEmpty(lolPrefix))
-                lock (sync)
-                    lolSessionLive = activeDetection != null && !string.IsNullOrEmpty(activeDetection.RendererPath)
-                        && activeDetection.RendererPath.StartsWith(lolPrefix, StringComparison.OrdinalIgnoreCase);
+            bool gameSessionActive = rendererPid > 0;
+            HashSet<int> gameHostAncestors = gameSessionActive
+                ? WalkAncestorChain(BuildParentMap(all), rendererPid, selfPid, 24)
+                : EmptyPidSet;
 
             bool first;
             lock (sync) first = firstSweep;
@@ -154,9 +164,12 @@ namespace AegisApp
                         }
                         finally { Native.CloseHandle(hq); }
                     }
+                 
+                    bool knownLauncherDuringSession = gameSessionActive && IsKnownLauncherShell(nm);
                     if (!BasicBackgroundEligible(pid, selfPid, nm, ipath,
                         sameSession ? selfSession : -1, selfSession, foregroundPid,
-                        userFacingFamily.Contains(pid), windowsPrefix, acAlive || lolSessionLive, lolPrefix, aggressive))
+                        userFacingFamily.Contains(pid), windowsPrefix,
+                        gameHostAncestors.Contains(pid) || knownLauncherDuringSession, activeGameRoot, aggressive))
                     {
                         ReleaseBackgroundExemption(pid, nm, null);
                         continue;
@@ -370,6 +383,9 @@ namespace AegisApp
         {
             if (string.IsNullOrEmpty(path)
                 || string.Equals(name, "Aegis", StringComparison.OrdinalIgnoreCase)) return false;
+            // 纵深防御：挂起是这里最不可逆的动作，即使上游资格判定将来被改坏，
+            // 反作弊进程也绝不能走到冻结这一步
+            if (GameSessionDetector.IsAntiCheatLikeName(name)) return false;
             try
             {
                 if (selfSession < 0 || p.SessionId != selfSession) return false;
@@ -422,21 +438,52 @@ namespace AegisApp
             if (string.IsNullOrEmpty(path) || gameDirs.Count == 0) return false;
             if (GameSessionDetector.IsNonGameRole(processName, path)) return false;
             foreach (string d in gameDirs)
-                if (path.StartsWith(d, StringComparison.OrdinalIgnoreCase)) return true;
+                if (UnderRoot(path, d)) return true;
             return false;
         }
 
-        private string lolTreePrefix;
-        private bool lolTreeResolved;
-
-        private string LolTreePrefix()
+        private Dictionary<int, int> BuildParentMap(Process[] all)
         {
-            if (lolTreeResolved) return lolTreePrefix;
-            string dir = null;
-            try { dir = LolCross.FindLolDir(); } catch { }
-            if (!string.IsNullOrEmpty(dir)) { lolTreePrefix = dir.TrimEnd('\\') + "\\"; lolTreeResolved = true; }
-            return lolTreePrefix;
+            var parents = new Dictionary<int, int>();
+            foreach (Process p in all)
+            {
+                try
+                {
+                    int pid = p.Id;
+                    if (selfSession < 0 || p.SessionId != selfSession) continue;
+                    IntPtr h = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+                    if (h == IntPtr.Zero) continue;
+                    try { parents[pid] = Native.ParentProcessId(h); }
+                    finally { Native.CloseHandle(h); }
+                }
+                catch { }
+            }
+            return parents;
         }
 
+        // 从当前活跃渲染进程往上找它的启动器链条（父进程、祖父进程……）。
+        // 不认任何具体平台的名字——不管是哪家启动器，只要它现在真的是这局
+        // 游戏进程树上的祖先，就在会话存续期间豁免压制；遇到父进程已退出、
+        // 跨会话、绕回自身或起点这些断链情况就停，防止把无关进程也豁免掉。
+        internal static bool IsKnownLauncherShell(string name)
+        {
+            return !string.IsNullOrEmpty(name) && LauncherPlatforms.Contains(name);
+        }
+
+        internal static HashSet<int> WalkAncestorChain(Dictionary<int, int> parents, int startPid, int selfPid, int maxHops)
+        {
+            var result = new HashSet<int>();
+            if (parents == null || startPid <= 4) return result;
+            int current = startPid;
+            for (int hop = 0; hop < maxHops; hop++)
+            {
+                int parent;
+                if (!parents.TryGetValue(current, out parent)) break;
+                if (parent <= 4 || parent == selfPid || parent == startPid || result.Contains(parent)) break;
+                result.Add(parent);
+                current = parent;
+            }
+            return result;
+        }
     }
 }

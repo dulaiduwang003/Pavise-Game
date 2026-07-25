@@ -18,7 +18,7 @@ namespace AegisApp
     internal static class App
     {
         public const string DisplayName = "AEGIS";
-        public const string Version = "1.4.2";
+        public const string Version = "1.4.4";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string RepoName = "dulaiduwang003/Aegis";
@@ -178,6 +178,7 @@ namespace AegisApp
             Mmcss.HealFromCrash();
             Notif.HealFromCrash();
             DoTweak.HealFromCrash();
+            VisualFx.HealFromCrash();
             DisplayGuard.HealFromCrash();
             CrashGuard.HealFromCrash();
 
@@ -233,8 +234,11 @@ namespace AegisApp
             appIcon.Dispose();
             icon.Text = elevated ? Lang.T("tray.idle") : Lang.T("tray.noelev");
 
+            System.Windows.Forms.Timer trayTip = null;
             Action doExit = () =>
             {
+                // 先停托盘刷新定时器再释放图标：否则 Tick 会往已释放的 NotifyIcon 上写东西
+                try { trayTip.Stop(); trayTip.Dispose(); } catch { }
                 icon.Visible = false;
                 icon.Dispose();
                 try { procNotify.Stop(); } catch { }
@@ -262,7 +266,7 @@ namespace AegisApp
                 catch { }
             };
 
-            var trayTip = new System.Windows.Forms.Timer();
+            trayTip = new System.Windows.Forms.Timer();
             trayTip.Interval = 1500;
             trayTip.Tick += (s, e) =>
             {

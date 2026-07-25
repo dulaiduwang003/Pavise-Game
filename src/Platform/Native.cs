@@ -75,6 +75,64 @@ namespace AegisApp
             return Volatile.Read(ref boostPrivilegeState) > 0;
         }
 
+        private static int profilePrivilegeState;
+
+        // 清理待机内存列表需要 SeProfileSingleProcessPrivilege
+        public static bool EnsureProfilePrivilege()
+        {
+            int known = Volatile.Read(ref profilePrivilegeState);
+            if (known != 0) return known > 0;
+            bool enabled = EnablePrivilege("SeProfileSingleProcessPrivilege");
+            Interlocked.CompareExchange(ref profilePrivilegeState, enabled ? 1 : -1, 0);
+            return Volatile.Read(ref profilePrivilegeState) > 0;
+        }
+
+        [DllImport("ntdll.dll")]
+        public static extern int NtQuerySystemInformation(int infoClass, IntPtr buffer, int length, out int returned);
+        [DllImport("ntdll.dll")]
+        public static extern int NtSetSystemInformation(int infoClass, IntPtr buffer, int length);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct SystemInfoNative
+        {
+            public ushort ProcessorArchitecture, Reserved;
+            public uint PageSize;
+            public IntPtr MinimumApplicationAddress, MaximumApplicationAddress, ActiveProcessorMask;
+            public uint NumberOfProcessors, ProcessorType, AllocationGranularity;
+            public ushort ProcessorLevel, ProcessorRevision;
+        }
+
+        [DllImport("kernel32.dll")]
+        private static extern void GetNativeSystemInfo(ref SystemInfoNative info);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MemoryStatusEx
+        {
+            public uint Length;
+            public uint MemoryLoad;
+            public ulong TotalPhys, AvailPhys, TotalPageFile, AvailPageFile, TotalVirtual, AvailVirtual, AvailExtendedVirtual;
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool GlobalMemoryStatusEx(ref MemoryStatusEx buffer);
+
+        // 系统整体内存压力百分比（0~100）。比 free/zero 链表更能反映"内存是否吃紧"，
+        // 因为 Windows 会主动把空闲物理内存收进待机列表。
+        public static int MemoryLoadPercent()
+        {
+            var st = new MemoryStatusEx();
+            st.Length = (uint)Marshal.SizeOf(typeof(MemoryStatusEx));
+            try { return GlobalMemoryStatusEx(ref st) ? (int)st.MemoryLoad : 0; }
+            catch { return 0; }
+        }
+
+        public static int MemoryPageSize()
+        {
+            var info = new SystemInfoNative();
+            try { GetNativeSystemInfo(ref info); } catch { }
+            return info.PageSize > 0 ? (int)info.PageSize : 4096;
+        }
+
         private static bool EnablePrivilege(string name)
         {
             const uint TokenAdjustPrivileges = 0x20;
@@ -287,6 +345,14 @@ namespace AegisApp
         public static bool ApplyHighQoS(IntPtr process, bool ignoreTimerResolution)
         {
             return SetPowerThrottling(process, ignoreTimerResolution ? 5u : 1u, 0);
+        }
+
+        // 按快照原样写回 PowerThrottling：ReleasePowerThrottlingPolicy 写的是"交给系统托管"，
+        // 对本来就自己开了 EcoQoS 的进程而言那是抹掉设置而不是还原。
+        public static bool RestorePowerThrottling(IntPtr process, int controlMask, int stateMask)
+        {
+            if (controlMask < 0) return SetPowerThrottling(process, 0, 0);
+            return SetPowerThrottling(process, (uint)controlMask, (uint)(stateMask < 0 ? 0 : stateMask));
         }
 
         public static bool ReleasePowerThrottlingPolicy(IntPtr process)

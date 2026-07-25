@@ -70,7 +70,13 @@ namespace AegisApp
                     if (header.Length == 0 || header[0] != HeaderV2) repaired = true;
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                // 同一个文件读不出来，同样不能把它当成"需要修复"而触发重写
+                loadFailed = true;
+                repaired = false;
+                Logger.LogFailure("游戏档案表头读取失败，已保护现有文件不被覆盖", ex);
+            }
             if (loaded.Count > 0 || File.Exists(path))
             {
                 if (repaired)
@@ -128,6 +134,11 @@ namespace AegisApp
 
         public void Save(IList<GameProfile> profiles)
         {
+            if (loadFailed)
+            {
+                Logger.Log("游戏档案此前读取失败，本次保存已跳过以免覆盖原文件（重启 Aegis 后重试）");
+                return;
+            }
             try
             {
                 var lines = new List<string>();
@@ -138,13 +149,14 @@ namespace AegisApp
                     lines.Add("P|" + B64(p.Id) + "|" + B64(p.Name) + "|" + B64(p.Root)
                         + "|" + B64(p.ExecutablePath) + "|" + B64(Join(p.Entries)));
                 }
-                string tmp = path + ".tmp";
-                File.WriteAllLines(tmp, lines.ToArray(), new UTF8Encoding(false));
-                if (File.Exists(path)) File.Replace(tmp, path, null);
-                else File.Move(tmp, path);
+                AtomicFile.WriteLines(path, lines.ToArray(), "游戏档案");
             }
-            catch { }
+            catch (Exception ex) { Logger.LogFailure("游戏档案保存失败", ex); }
         }
+
+        // 读取失败绝不能和"档案本来就是空的"混为一谈：一旦混同，界面显示空游戏库，
+        // 用户随手再加一个游戏就会把完好的档案整份覆盖掉，两份副本一起没。
+        private bool loadFailed;
 
         private List<GameProfile> Load()
         {
@@ -182,7 +194,11 @@ namespace AegisApp
                     if (!string.IsNullOrEmpty(p.Id) && !string.IsNullOrEmpty(p.Name)) result.Add(p);
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                loadFailed = true;
+                Logger.LogFailure("游戏档案读取失败，已保护现有文件不被覆盖", ex);
+            }
             return result;
         }
 
