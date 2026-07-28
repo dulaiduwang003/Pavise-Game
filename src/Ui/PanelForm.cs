@@ -47,7 +47,6 @@ namespace AegisApp
         private Label lblSub;
         private SettingCard cardVbs;
         private SettingCard cardShader;
-        private SettingCard cardLol;
         private SettingCard cardPolicyStrict, cardPolicyNet, cardPolicyFg, cardPolicyMmcss;
         private SettingCard cardPolicyPauseDl, cardPolicyPauseSvc, cardPolicyDvr;
         private SettingCard cardPolicyAggressive;
@@ -55,10 +54,12 @@ namespace AegisApp
         // 必须是静态：语言切换会走 RebuildUi 重建整页，实例字段上的忙碌标志会随之丢失，
         // 新建的按钮是可用状态，于是能在清理still进行时再触发一次并发清理。
         private static volatile bool shaderCleaning;
-        private static volatile bool lolCleaning;
-        private string lolDir;
         private int slowBusy;
         private int restoreBusy;
+        private int runningBusy;
+        private int netQosBusy;
+        private string netQosSignature;
+        private static readonly object netQosSync = new object();
         private int builtLang;
         private StatusDot statusDot;
         private AegisCore aegisCore;
@@ -89,8 +90,13 @@ namespace AegisApp
         private const int ScrollContentW = ContentW - 24;
 
         public PanelForm(Tamer t, GameMode gm, Icon icon, bool isElevated)
+            : this(t, gm, icon, isElevated, new LolOptimizationService())
         {
-            tamer = t; gameMode = gm; elevated = isElevated; appIcon = (Icon)icon.Clone();
+        }
+
+        public PanelForm(Tamer t, GameMode gm, Icon icon, bool isElevated, LolOptimizationService leagueService)
+        {
+            tamer = t; gameMode = gm; elevated = isElevated; lolService = leagueService; appIcon = (Icon)icon.Clone();
             visualMode = gameMode.ActivePreset; visualEnabled = gameMode.Enabled;
             Theme.SetMode(visualMode, false);
             BuildUi(appIcon);
@@ -117,8 +123,9 @@ namespace AegisApp
             UiClock.Frame += OnFormFrame;
 
             nav = new NavRail(
-                new[] { Lang.T("nav.overview"), Lang.T("nav.library"), Lang.T("nav.policy"), Lang.T("v14.anticheat"), Lang.T("nav.reports"), Lang.T("nav.set"), Lang.T("nav.about") },
-                new[] { "game", "white", "settings", "shield", "log", "gear", "info" });
+                new[] { Lang.T("nav.overview"), LolText("英雄联盟", "League of Legends", "League of Legends"), Lang.T("nav.library"), Lang.T("nav.policy"), Lang.T("v14.anticheat"), Lang.T("nav.reports"), Lang.T("nav.set"), Lang.T("nav.about") },
+                new[] { "game", "lol", "white", "settings", "shield", "log", "gear", "info" },
+                new[] { 0, 2, 3, 4, 5, 1, 6, 7 }, 5, Lang.T("nav.columns"), 2);
             nav.SetBounds(0, 0, Theme.S(RailW), Theme.S(WinH));
             nav.SelectionChanged = ShowPage;
             nav.SetMode(visualMode, visualEnabled);
@@ -167,8 +174,10 @@ namespace AegisApp
             pageSettings = MakePage();
             pageAbout = MakePage();
             pageAnti = MakePage();
-            pages = new[] { pageGame, pageWhite, pageTame, pageAnti, pageReports, pageSettings, pageAbout };
+            pageLol = MakePage();
+            pages = new[] { pageGame, pageLol, pageWhite, pageTame, pageAnti, pageReports, pageSettings, pageAbout };
             BuildOverviewPageV14();
+            BuildLolPage();
             BuildLibraryPageV14();
             BuildPolicyPageV14();
             BuildAntiCheatPageV14();
@@ -225,6 +234,7 @@ namespace AegisApp
             pageSlide.Speed = 0.26f; pageSlide.Set(1f); pageSlide.To(0f);
             if (Visible) UiClock.Wake();
             if (aegisCore != null) aegisCore.SetAnimationEnabled(Visible && page == pageGame);
+            if (page == pageLol) RefreshLolPage();
             if (page == pageReports) RefreshReportsV14();
         }
 
@@ -408,9 +418,13 @@ namespace AegisApp
                 swNetAffinity.SetSilently(NetworkAffinityTweak.EnabledByAegis);
                 return;
             }
-            bool ok = swNetAffinity.Checked
-                ? NetworkAffinityTweak.Enable(gameMode.GetProfiles())
-                : NetworkAffinityTweak.Disable();
+            bool ok;
+            lock (netQosSync)
+            {
+                ok = swNetAffinity.Checked
+                    ? NetworkAffinityTweak.Enable(gameMode.GetProfiles())
+                    : NetworkAffinityTweak.Disable();
+            }
             if (ok) MessageBox.Show(this, Lang.T("netaffinity.reboot"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Information);
             swNetAffinity.SetSilently(NetworkAffinityTweak.EnabledByAegis);
         }
@@ -453,6 +467,11 @@ namespace AegisApp
 
         private void OnShaderClean(PillButton btn)
         {
+            if (shaderCleaning)
+            {
+                if (cardShader != null) cardShader.Value = Lang.T("shader.busy");
+                return;
+            }
             if (MessageBox.Show(this, Lang.T("shader.confirm"), "Aegis", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning) != DialogResult.OK) return;
             btn.Enabled = false;
             shaderCleaning = true;
@@ -475,43 +494,6 @@ namespace AegisApp
                         string msg = Lang.F("shader.freed", CacheSweep.FmtBytes(cr.FreedBytes))
                             + (cr.FailedFiles > 0 ? "\r\n" + Lang.F("shader.skip", cr.FailedFiles) : "")
                             + "\r\n\r\n" + Lang.T("shader.note");
-                        MessageBox.Show(this, msg, "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    }));
-                }
-                catch { }
-            });
-        }
-
-        private void OnLolCrossClean(PillButton btn)
-        {
-            if (lolDir == null) return;
-            if (LolCross.AnyLolProcessAlive(lolDir))
-            {
-                MessageBox.Show(this, Lang.T("lol.running"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-            if (MessageBox.Show(this, Lang.T("lol.confirm"), "Aegis", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning) != DialogResult.OK) return;
-            btn.Enabled = false;
-            lolCleaning = true;
-            if (cardLol != null) cardLol.Value = Lang.T("shader.busy");
-            ThreadPool.QueueUserWorkItem(_ =>
-            {
-                CacheSweep.Result cr = LolCross.Clean(lolDir);
-                long left = LolCross.MeasureBytes(lolDir);
-                Logger.Log("LOL Cross 清理：释放 " + CacheSweep.FmtBytes(cr.FreedBytes)
-                    + (cr.FailedFiles > 0 ? "，" + cr.FailedFiles + " 个文件被占用已跳过" : ""));
-                lolCleaning = false;
-                try
-                {
-                    BeginInvoke((MethodInvoker)(() =>
-                    {
-                        if (IsDisposed) return;
-                        if (!btn.IsDisposed) btn.Enabled = true;
-                        if (cardLol != null && !cardLol.IsDisposed)
-                            cardLol.Value = CacheSweep.FmtBytes(left);
-                        string msg = Lang.F("lol.freed", CacheSweep.FmtBytes(cr.FreedBytes))
-                            + (cr.FailedFiles > 0 ? "\r\n" + Lang.F("shader.skip", cr.FailedFiles) : "")
-                            + "\r\n\r\n" + Lang.T("lol.note");
                         MessageBox.Show(this, msg, "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     }));
                 }
@@ -546,8 +528,6 @@ namespace AegisApp
                 long shaderBytes = -1;
                 try { task = TaskHelper.TaskExists(); st = VbsTweak.Query(); } catch { }
                 try { if (!shaderCleaning) shaderBytes = ShaderCache.MeasureBytes(); } catch { }
-                long lolBytes = -1;
-                try { if (lolDir != null && !lolCleaning) lolBytes = LolCross.MeasureBytes(lolDir); } catch { }
                 Interlocked.Exchange(ref slowBusy, 0);
                 try
                 {
@@ -559,8 +539,6 @@ namespace AegisApp
                         ApplyVbsState(st);
                         if (cardShader != null && !shaderCleaning && shaderBytes >= 0)
                             cardShader.Value = CacheSweep.FmtBytes(shaderBytes);
-                        if (cardLol != null && !lolCleaning && lolBytes >= 0)
-                            cardLol.Value = CacheSweep.FmtBytes(lolBytes);
                     }));
                 }
                 catch { }
@@ -580,7 +558,13 @@ namespace AegisApp
             {
                 if (ShowDim(dlg) == DialogResult.OK && dlg.SelectedName != null)
                 {
-                    if (toGames) { gameMode.AddGameExecutable(dlg.SelectedName, dlg.SelectedPath); RefreshGames(); }
+                    if (toGames)
+                    {
+                        if (string.IsNullOrWhiteSpace(dlg.SelectedPath))
+                            MessageBox.Show(this, "读不到该进程的可执行文件路径（多半被反作弊保护），请改用「浏览」直接选择游戏 EXE。",
+                                "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        else { gameMode.AddGameExecutable(dlg.SelectedName, dlg.SelectedPath); RefreshGames(); }
+                    }
                     else { gameMode.AddWhitelist(dlg.SelectedName); RefreshWhite(); }
                 }
             }
@@ -610,28 +594,87 @@ namespace AegisApp
         private void RefreshGames()
         {
             if (lstGames == null) return;
+            List<GameProfile> profiles = gameMode.GetProfiles();
+            var paths = new List<string>();
+            foreach (GameProfile profile in profiles) paths.Add(profile.ExecutablePath);
+            Dictionary<string, bool> states = ProbeRunning(paths);
             lstGames.BeginUpdate();
             lstGames.Items.Clear();
-            foreach (GameProfile profile in gameMode.GetProfiles())
-                lstGames.Items.Add(new GameLibraryItem(profile, IsExecutableRunning(profile.ExecutablePath)));
+            foreach (GameProfile profile in profiles)
+                lstGames.Items.Add(new GameLibraryItem(profile, RunningIn(states, profile.ExecutablePath)));
             lstGames.EndUpdate();
             bool empty = lstGames.Items.Count == 0;
             lstGames.Visible = !empty;
             if (gameListPanel != null) { gameListPanel.ShowEmpty = empty; gameListPanel.Invalidate(); }
+            SyncNetQosPolicies(profiles);
         }
 
         private void RefreshGameRunningStates()
         {
             if (lstGames == null) return;
+            if (Interlocked.Exchange(ref runningBusy, 1) == 1) return;
+            var paths = new List<string>();
+            foreach (object value in lstGames.Items)
+            {
+                GameLibraryItem item = value as GameLibraryItem;
+                if (item != null && item.Profile != null) paths.Add(item.Profile.ExecutablePath);
+            }
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                Dictionary<string, bool> states = null;
+                try { states = ProbeRunning(paths); }
+                catch { }
+                Interlocked.Exchange(ref runningBusy, 0);
+                if (states == null) return;
+                try
+                {
+                    BeginInvoke((MethodInvoker)(() =>
+                    {
+                        if (IsDisposed || lstGames == null) return;
+                        ApplyRunningStates(states);
+                    }));
+                }
+                catch { }
+            });
+        }
+
+        private void ApplyRunningStates(Dictionary<string, bool> states)
+        {
             bool changed = false;
             foreach (object value in lstGames.Items)
             {
                 GameLibraryItem item = value as GameLibraryItem;
-                if (item == null) continue;
-                bool running = IsExecutableRunning(item.Profile.ExecutablePath);
+                if (item == null || item.Profile == null) continue;
+                string path = item.Profile.ExecutablePath;
+                bool running;
+                if (string.IsNullOrEmpty(path) || !states.TryGetValue(path, out running)) continue;
                 if (running != item.Running) { item.Running = running; changed = true; }
             }
             if (changed) lstGames.Invalidate();
+        }
+
+        private void SyncNetQosPolicies(List<GameProfile> profiles)
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (GameProfile profile in profiles)
+            {
+                if (string.IsNullOrEmpty(profile.ExecutablePath)) continue;
+                sb.Append(profile.Name).Append('>').Append(profile.ExecutablePath).Append('|');
+            }
+            string signature = sb.ToString();
+            if (netQosSignature == null || netQosSignature == signature) { netQosSignature = signature; return; }
+            netQosSignature = signature;
+            if (!NetworkAffinityTweak.EnabledByAegis) return;
+            if (Interlocked.Exchange(ref netQosBusy, 1) == 1) return;
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                lock (netQosSync)
+                {
+                    Interlocked.Exchange(ref netQosBusy, 0);
+                    try { NetworkAffinityTweak.Enable(gameMode.GetProfiles()); }
+                    catch { }
+                }
+            });
         }
 
         private void AddDroppedGames(string[] files)
@@ -645,28 +688,54 @@ namespace AegisApp
             RefreshGames();
         }
 
-        private static bool IsExecutableRunning(string executablePath)
+        private static bool RunningIn(Dictionary<string, bool> states, string executablePath)
         {
-            if (string.IsNullOrEmpty(executablePath)) return false;
-            string name = Path.GetFileNameWithoutExtension(executablePath);
-            Process[] matches = null;
+            bool running;
+            return !string.IsNullOrEmpty(executablePath)
+                && states.TryGetValue(executablePath, out running) && running;
+        }
+
+        private static Dictionary<string, bool> ProbeRunning(List<string> paths)
+        {
+            var result = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            var wanted = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+            foreach (string path in paths)
+            {
+                if (string.IsNullOrEmpty(path) || result.ContainsKey(path)) continue;
+                result[path] = false;
+                string name;
+                try { name = Path.GetFileNameWithoutExtension(path); }
+                catch { continue; }
+                if (string.IsNullOrEmpty(name)) continue;
+                List<string> bucket;
+                if (!wanted.TryGetValue(name, out bucket)) { bucket = new List<string>(); wanted[name] = bucket; }
+                bucket.Add(path);
+            }
+            if (wanted.Count == 0) return result;
+            Process[] all = null;
             try
             {
-                matches = Process.GetProcessesByName(name);
-                foreach (Process process in matches)
+                all = Process.GetProcesses();
+                foreach (Process process in all)
                 {
-                    IntPtr handle = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, process.Id);
+                    List<string> bucket = null;
+                    int pid = 0;
+                    try { wanted.TryGetValue(process.ProcessName, out bucket); pid = process.Id; }
+                    catch { continue; }
+                    if (bucket == null) continue;
+                    IntPtr handle = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
                     if (handle == IntPtr.Zero) continue;
-                    try
-                    {
-                        if (string.Equals(Native.ImagePath(handle), executablePath, StringComparison.OrdinalIgnoreCase)) return true;
-                    }
+                    string image;
+                    try { image = Native.ImagePath(handle); }
                     finally { Native.CloseHandle(handle); }
+                    if (string.IsNullOrEmpty(image)) continue;
+                    foreach (string path in bucket)
+                        if (string.Equals(path, image, StringComparison.OrdinalIgnoreCase)) result[path] = true;
                 }
             }
             catch { }
-            finally { if (matches != null) foreach (Process process in matches) process.Dispose(); }
-            return false;
+            finally { if (all != null) foreach (Process process in all) process.Dispose(); }
+            return result;
         }
 
         private Bitmap GameIcon(string executablePath)
@@ -775,11 +844,14 @@ namespace AegisApp
             autoHideTimer = null;
         }
 
+        [DllImport("user32.dll")] private static extern bool IsWindowEnabled(IntPtr hwnd);
+
         // 有子对话框开着就不收——否则会把对话框的父窗口从它底下抽走
         private bool AnyDialogOpen()
         {
             try
             {
+                if (IsHandleCreated && !IsWindowEnabled(Handle)) return true;
                 foreach (Form f in Application.OpenForms)
                     if (!ReferenceEquals(f, this) && f.Visible) return true;
             }
@@ -852,6 +924,7 @@ namespace AegisApp
             UpdateModePresentation(false);
             for (int i = 0; i < tameGroups.Count && i < tameToggles.Count; i++)
                 tameToggles[i].SetSilently(tamer.IsGroupEnabled(tameGroups[i].Key));
+            RefreshLolPage();
             RefreshSlowStateAsync();
         }
 
@@ -868,7 +941,7 @@ namespace AegisApp
                 if (curPage != null) curPage.Left = pageBaseLeft;
             }
             OnUiTick(null, EventArgs.Empty);
-            if (showAntiCheat) { nav.Select(3); nav.SnapToSelection(); if (curPage != null) curPage.Left = pageBaseLeft; }
+            if (showAntiCheat) { nav.Select(4); nav.SnapToSelection(); if (curPage != null) curPage.Left = pageBaseLeft; }
             PerformancePreset? preview = previewMode == "competitive" ? PerformancePreset.Competitive
                 : previewMode == "custom" ? PerformancePreset.Custom
                 : previewMode == "standard" ? PerformancePreset.Standard : (PerformancePreset?)null;

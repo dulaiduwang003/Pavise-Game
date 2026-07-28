@@ -136,7 +136,8 @@ namespace AegisApp
         private static void TestEcoQoSRestore(string root)
         {
             string beat = Path.Combine(root, "qos.beat");
-            using (Process probe = StartProbe(beat))
+            Process probe = StartProbe(beat);
+            try
             {
                 WaitAdvance(beat, -1, 4000);
                 IntPtr h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION
@@ -160,6 +161,11 @@ namespace AegisApp
                         throw new Exception("process opted into EcoQoS but restore left ControlMask=" + c1 + " StateMask=" + s1);
                 }
                 finally { Native.CloseHandle(h); }
+            }
+            finally
+            {
+                StopOwned(probe);
+                probe.Dispose();
             }
         }
 

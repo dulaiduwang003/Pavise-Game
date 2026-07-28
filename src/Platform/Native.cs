@@ -64,6 +64,9 @@ namespace AegisApp
         [DllImport("ntdll.dll", EntryPoint = "NtQueryInformationProcess")]
         private static extern int NtQueryInformationProcessBasic(IntPtr h, int infoClass,
             ref PROCESS_BASIC_INFORMATION info, int len, IntPtr retLen);
+        [DllImport("ntdll.dll", EntryPoint = "NtQueryInformationProcess")]
+        private static extern int NtQueryInformationProcessPower(IntPtr h, int infoClass,
+            ref PowerThrottlingState info, int len, IntPtr retLen);
         private static int boostPrivilegeState;
 
         public static bool EnsureBoostPrivilege()
@@ -362,9 +365,14 @@ namespace AegisApp
 
         public static bool TryQueryPowerThrottling(IntPtr process, out int controlMask, out int stateMask)
         {
+            int size = Marshal.SizeOf(typeof(PowerThrottlingState));
             var state = new PowerThrottlingState { Version = 1 };
-            bool ok = GetProcessInformation(process, ProcessPowerThrottling, ref state,
-                Marshal.SizeOf(typeof(PowerThrottlingState)));
+            bool ok = GetProcessInformation(process, ProcessPowerThrottling, ref state, size);
+            if (!ok)
+            {
+                state = new PowerThrottlingState { Version = 1 };
+                ok = NtQueryInformationProcessPower(process, ProcessPowerThrottlingNt, ref state, size, IntPtr.Zero) == 0;
+            }
             controlMask = (int)state.ControlMask;
             stateMask = (int)state.StateMask;
             return ok;
@@ -419,6 +427,7 @@ namespace AegisApp
         private const int ProcessIoPriorityNt = 33;
         private const int ProcessPagePriorityNt = 39;
         private const int ProcessPowerThrottling = 4;
+        private const int ProcessPowerThrottlingNt = 77;
     }
 
 

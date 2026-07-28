@@ -119,7 +119,9 @@ namespace AegisApp
                 return;
             }
 
-            if (profiles.Count == 0)
+            List<string> owned = DefenderExclusion.OwnedByAegis();
+
+            if (profiles.Count == 0 && owned.Count == 0)
             {
                 var empty = new Label();
                 empty.Text = Lang.T("def.nogames");
@@ -137,30 +139,49 @@ namespace AegisApp
                 string root = DefenderExclusion.Normalize(g.Root);
                 if (root.Length == 0 || DefenderExclusion.Contains(seen, root)) continue;
                 seen.Add(root);
-
-                bool excluded = DefenderExclusion.IsExcludedInSystem(systemList, root);
-                var row = new Row { Name = g.Name, Root = root, Excluded = excluded };
-
-                var sw = new Toggle();
-                sw.Size = new Size(Theme.S(46), Theme.S(24));
-                sw.Bg = Theme.Card;
-                sw.SetSilently(excluded);
-                row.Switch = sw;
-                sw.CheckedChanged += delegate { OnToggle(row); };
-
-                SettingCard card = MakeRowCard(parent, y, g.Name, root, sw);
-                row.State = new Label();
-                row.State.BackColor = Theme.Card;
-                row.State.Font = Theme.UI(8f, true);
-                row.State.UseCompatibleTextRendering = false;
-                row.State.TextAlign = ContentAlignment.MiddleRight;
-                row.State.SetBounds(Theme.S(DlgW - 44 - 190), Theme.S(20), Theme.S(96), Theme.S(20));
-                card.Controls.Add(row.State);
-                UpdateRowState(row);
-
-                rows.Add(row);
-                y += 74;
+                AddRow(parent, ref y, g.Name, root);
             }
+            foreach (string path in owned)
+            {
+                string root = DefenderExclusion.Normalize(path);
+                if (root.Length == 0 || DefenderExclusion.Contains(seen, root)) continue;
+                seen.Add(root);
+                AddRow(parent, ref y, LeafName(root), root);
+            }
+        }
+
+        private static string LeafName(string root)
+        {
+            string trimmed = root.TrimEnd('\\');
+            int cut = trimmed.LastIndexOf('\\');
+            string leaf = cut >= 0 && cut + 1 < trimmed.Length ? trimmed.Substring(cut + 1) : trimmed;
+            return leaf.Length == 0 ? root : leaf;
+        }
+
+        private void AddRow(Control parent, ref int y, string name, string root)
+        {
+            bool excluded = DefenderExclusion.IsExcludedInSystem(systemList, root);
+            var row = new Row { Name = name, Root = root, Excluded = excluded };
+
+            var sw = new Toggle();
+            sw.Size = new Size(Theme.S(46), Theme.S(24));
+            sw.Bg = Theme.Card;
+            sw.SetSilently(excluded);
+            row.Switch = sw;
+            sw.CheckedChanged += delegate { OnToggle(row); };
+
+            SettingCard card = MakeRowCard(parent, y, name, root, sw);
+            row.State = new Label();
+            row.State.BackColor = Theme.Card;
+            row.State.Font = Theme.UI(8f, true);
+            row.State.UseCompatibleTextRendering = false;
+            row.State.TextAlign = ContentAlignment.MiddleRight;
+            row.State.SetBounds(Theme.S(DlgW - 44 - 190), Theme.S(20), Theme.S(96), Theme.S(20));
+            card.Controls.Add(row.State);
+            UpdateRowState(row);
+
+            rows.Add(row);
+            y += 74;
         }
 
         private SettingCard MakeRowCard(Control parent, int y, string title, string desc, Control host)
@@ -184,6 +205,15 @@ namespace AegisApp
         {
             bool want = row.Switch.Checked;
             if (want == row.Excluded) return;
+
+            if (!want && !DefenderExclusion.IsOwned(row.Root))
+            {
+                MessageBox.Show(this, Lang.T("def.notours"), App.DisplayName,
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                row.Switch.SetSilently(row.Excluded);
+                UpdateRowState(row);
+                return;
+            }
 
             if (want)
             {
@@ -223,15 +253,22 @@ namespace AegisApp
             try { n = DefenderExclusion.RemoveAllOwned(); }
             finally { Cursor = Cursors.Default; }
 
-            systemList = DefenderExclusion.QuerySystem();
-            foreach (Row row in rows)
+            List<string> fresh = DefenderExclusion.QuerySystem();
+            if (fresh != null)
             {
-                row.Excluded = DefenderExclusion.IsExcludedInSystem(systemList, row.Root);
-                row.Switch.SetSilently(row.Excluded);
-                UpdateRowState(row);
+                systemList = fresh;
+                foreach (Row row in rows)
+                {
+                    row.Excluded = DefenderExclusion.IsExcludedInSystem(systemList, row.Root);
+                    row.Switch.SetSilently(row.Excluded);
+                    UpdateRowState(row);
+                }
             }
             MessageBox.Show(this, Lang.F("def.clearall.done", n), App.DisplayName,
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
+            if (fresh == null)
+                MessageBox.Show(this, Lang.T("def.unavailable"), App.DisplayName,
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
         protected override void OnHandleCreated(EventArgs e)

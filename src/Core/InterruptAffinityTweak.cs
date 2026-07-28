@@ -61,7 +61,8 @@ namespace AegisApp
             try
             {
                 using (var searcher = new ManagementObjectSearcher(
-                    "SELECT * FROM Win32_PnPEntity WHERE PNPDeviceID='" + pnpDeviceId.Replace("'", "''") + "'"))
+                    "SELECT * FROM Win32_PnPEntity WHERE PNPDeviceID='"
+                    + pnpDeviceId.Replace(@"\", @"\\").Replace("'", @"\'") + "'"))
                 using (ManagementObjectCollection results = searcher.Get())
                 {
                     foreach (ManagementObject mo in results)

@@ -67,6 +67,7 @@ namespace AegisApp
                         Logger.Log(label + "：PowerShell 执行超时（" + timeoutMs + "ms）");
                         return false;
                     }
+                    p.WaitForExit();
                     lock (outBuf) stdout = outBuf.ToString();
                     if (p.ExitCode != 0)
                     {

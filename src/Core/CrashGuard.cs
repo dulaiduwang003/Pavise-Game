@@ -14,6 +14,7 @@ namespace AegisApp
         private const string KBoostNames = "Crash_BoostNames";
         private const string KBoostEntries = "Crash_BoostEntriesV2";
         private static readonly object sync = new object();
+        private static readonly Dictionary<int, long> owned = new Dictionary<int, long>();
 
         private sealed class BoostEntry
         {
@@ -56,6 +57,8 @@ namespace AegisApp
             lock (sync)
             {
                 List<BoostEntry> entries = LoadEntries();
+                foreach (BoostEntry old in entries)
+                    if (old.Pid == pid && old.Creation == creation) return true;
                 entries.RemoveAll(e => e.Pid == pid);
                 entries.Add(new BoostEntry
                 {
@@ -63,7 +66,9 @@ namespace AegisApp
                     Affinity = affinity, Io = io, Page = page, Gpu = gpu, CpuSets = cpuSets,
                     QoSControl = qosControl, QoSState = qosState
                 });
-                return SaveEntries(entries);
+                bool saved = SaveEntries(entries);
+                if (saved) owned[pid] = creation; else owned.Remove(pid);
+                return saved;
             }
         }
 
@@ -71,6 +76,10 @@ namespace AegisApp
         {
             lock (sync)
             {
+                long mine;
+                if (!owned.TryGetValue(pid, out mine)) return;
+                if (creation > 0 && mine != creation) return;
+                owned.Remove(pid);
                 List<BoostEntry> entries = LoadEntries();
                 if (entries.RemoveAll(e => e.Pid == pid && (creation <= 0 || e.Creation == creation)) > 0)
                     SaveEntries(entries);

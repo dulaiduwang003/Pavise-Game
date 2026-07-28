@@ -35,13 +35,74 @@ namespace AegisApp
 
         public static int CreateStartupTask()
         {
-            int rc = Run("/Create /F /SC ONLOGON /RL HIGHEST /TN " + TaskName + " /TR \"\\\"" + Application.ExecutablePath + "\\\"\"");
+            int rc = CreateStartupTaskFromXml();
+            if (rc != 0)
+                rc = Run("/Create /F /SC ONLOGON /RL HIGHEST /TN " + TaskName + " /TR \"\\\"" + Application.ExecutablePath + "\\\"\"");
             if (rc == 0)
             {
                 cachedExists = 1;
                 Settings.SaveStr("AutostartExe", Application.ExecutablePath);
             }
             return rc;
+        }
+
+        private static int CreateStartupTaskFromXml()
+        {
+            string path = null;
+            try
+            {
+                string xml = BuildStartupTaskXml(Application.ExecutablePath);
+                if (xml == null) return -1;
+                path = Path.Combine(Path.GetTempPath(), "Aegis_" + Guid.NewGuid().ToString("N") + ".xml");
+                using (var fs = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read))
+                {
+                    byte[] bom = System.Text.Encoding.Unicode.GetPreamble();
+                    byte[] body = System.Text.Encoding.Unicode.GetBytes(xml);
+                    fs.Write(bom, 0, bom.Length);
+                    fs.Write(body, 0, body.Length);
+                    fs.Flush();
+                    return Run("/Create /F /TN " + TaskName + " /XML \"" + path + "\"");
+                }
+            }
+            catch { return -1; }
+            finally { try { if (path != null) File.Delete(path); } catch { } }
+        }
+
+        private static string BuildStartupTaskXml(string exePath)
+        {
+            string user;
+            try
+            {
+                using (var id = System.Security.Principal.WindowsIdentity.GetCurrent())
+                    user = id.User.Value;
+            }
+            catch { user = null; }
+            if (string.IsNullOrEmpty(user))
+            {
+                user = Environment.UserDomainName + "\\" + Environment.UserName;
+                if (user.Length <= 1) return null;
+            }
+            string cmd = XmlText(exePath);
+            string start = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
+            return "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\r\n"
+                + "<Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\r\n"
+                + "  <RegistrationInfo><URI>\\" + TaskName + "</URI></RegistrationInfo>\r\n"
+                + "  <Principals><Principal id=\"Author\"><UserId>" + XmlText(user) + "</UserId>"
+                + "<LogonType>InteractiveToken</LogonType><RunLevel>HighestAvailable</RunLevel>"
+                + "</Principal></Principals>\r\n"
+                + "  <Settings>"
+                + "<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>"
+                + "<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>"
+                + "<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>"
+                + "</Settings>\r\n"
+                + "  <Triggers><LogonTrigger><StartBoundary>" + start + "</StartBoundary></LogonTrigger></Triggers>\r\n"
+                + "  <Actions Context=\"Author\"><Exec><Command>\"" + cmd + "\"</Command></Exec></Actions>\r\n"
+                + "</Task>";
+        }
+
+        private static string XmlText(string value)
+        {
+            return value.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
         }
 
         public static int DeleteStartupTask()
@@ -109,11 +170,22 @@ namespace AegisApp
                 psi.RedirectStandardOutput = capture;
                 using (var p = Process.Start(psi))
                 {
-                    if (capture) stdout = p.StandardOutput.ReadToEnd();
+                    var buf = new System.Text.StringBuilder();
+                    if (capture)
+                    {
+                        p.OutputDataReceived += delegate(object s, DataReceivedEventArgs e)
+                        { if (e.Data != null) lock (buf) buf.AppendLine(e.Data); };
+                        p.BeginOutputReadLine();
+                    }
                     if (!p.WaitForExit(15000))
                     {
                         try { p.Kill(); } catch { }
                         return -1;
+                    }
+                    if (capture)
+                    {
+                        p.WaitForExit();
+                        lock (buf) stdout = buf.ToString();
                     }
                     return p.ExitCode;
                 }

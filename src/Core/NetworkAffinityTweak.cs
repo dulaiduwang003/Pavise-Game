@@ -142,9 +142,11 @@ namespace AegisApp
             }
 
             List<string> oldNames = LoadPolicyNames();
-            foreach (string old in oldNames) if (!newNames.Contains(old)) RemoveQosPolicy(old);
+            var keptNames = new List<string>(newNames);
+            foreach (string old in oldNames)
+                if (!keptNames.Contains(old) && !RemoveQosPolicy(old)) keptNames.Add(old);
 
-            if (!SavePolicyNames(newNames))
+            if (!SavePolicyNames(keptNames))
             {
                 foreach (string name in newNames) RemoveQosPolicy(name);
                 Logger.Log("网络优先级：策略名无法持久化，已撤回本轮创建的 QoS 策略");

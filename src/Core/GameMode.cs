@@ -188,9 +188,10 @@ namespace AegisApp
             }
             catch (Exception ex)
             {
-                // 静默失败会得到一份空白名单，而竞技级下白名单是 explorer/ctfmon 这类
-                // 外壳进程唯一的保护，必须让用户在日志里看得见
-                Logger.Log("白名单加载失败，本次运行将只保护核心系统进程：" + ex.Message);
+                // 读失败若得到一份空白名单，竞技级下 explorer/ctfmon 这类外壳进程就
+                // 失去了唯一的保护，所以退回预置名单，并且必须让用户在日志里看得见
+                foreach (string entry in PresetWhitelist) AddWhiteNoSave(entry);
+                Logger.Log("白名单加载失败，本次运行改用预置白名单（用户自定义项本次不生效）：" + ex.Message);
             }
 
             try
@@ -560,6 +561,8 @@ namespace AegisApp
                                     {
                                         lock (sync) activeGame = running;
                                         Logger.Log("游戏模式：检测目标变更 → " + running);
+                                        ReportFinish();
+                                        ReportBegin(running);
                                     }
                                     ApplyEnv();
                                     if (!deepFreezeOn)
@@ -580,6 +583,13 @@ namespace AegisApp
                                 {
                                     Deactivate("游戏已退出");
                                 }
+                                else
+                                {
+                                    bool boostResidue;
+                                    lock (sync) boostResidue = gameBoost.Count > 0;
+                                    if (boostResidue || EnvActive() || core.AnyWith(SuppressReason.Background) || freezer.Count > 0)
+                                        Deactivate("残留恢复重试");
+                                }
                             }
                             finally { foreach (Process p in all) p.Dispose(); }
                         }
@@ -588,7 +598,19 @@ namespace AegisApp
                 catch (Exception ex) { Logger.Log("游戏模式异常: " + ex.Message); }
                 kick.WaitOne(4000);
             }
-            if (active || freezer.Count > 0 || core.AnyWith(SuppressReason.Background) || EnvActive()) Deactivate("Aegis 退出");
+            bool exitResidue;
+            lock (sync) exitResidue = active || gameBoost.Count > 0;
+            bool exitClean = true;
+            if (exitResidue || freezer.Count > 0 || core.AnyWith(SuppressReason.Background) || EnvActive())
+                exitClean = Deactivate("Aegis 退出");
+            if (panicReq)
+            {
+                int servingAtExit = Volatile.Read(ref panicSeq);
+                panicReq = false;
+                panicResult = exitClean;
+                Volatile.Write(ref panicServed, servingAtExit);
+                panicDone.Set();
+            }
         }
 
         private string FindRunningGame(Process[] all, out HashSet<int> gamePids)
@@ -704,6 +726,16 @@ namespace AegisApp
             }
             if (hit.RendererPid > 0 && !fresh.ContainsKey(hit.RendererPid))
             {
+                int anchorPid = stickyDetection != null ? stickyDetection.RendererPid : 0;
+                List<int> gone = null;
+                foreach (var kv in stickyIds)
+                {
+                    if (fresh.ContainsKey(kv.Key) || kv.Key == hit.RendererPid || kv.Key == anchorPid) continue;
+                    if (AliveWithIdentity(kv.Key)) continue;
+                    if (gone == null) gone = new List<int>();
+                    gone.Add(kv.Key);
+                }
+                if (gone != null) foreach (int dead in gone) stickyIds.Remove(dead);
                 foreach (var kv in fresh) stickyIds[kv.Key] = kv.Value;
                 return;
             }

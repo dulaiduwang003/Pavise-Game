@@ -61,13 +61,17 @@ namespace AegisApp
 
         public void RemoveProfile(string profileId)
         {
+            bool dropSession;
             lock (sync)
             {
                 profiles.RemoveAll(p => string.Equals(p.Id, profileId, StringComparison.OrdinalIgnoreCase));
                 RebuildLegacyGameIndex();
                 profileStore.Save(profiles);
                 SaveGames();
+                dropSession = activeDetection != null && activeDetection.Profile != null
+                    && string.Equals(activeDetection.Profile.Id, profileId, StringComparison.OrdinalIgnoreCase);
             }
+            if (dropSession) panicReq = true;
             kick.Set();
         }
 

@@ -22,11 +22,11 @@ namespace AegisApp
         private float phase;
 
         public Color Color { get { return color; } set { if (color != value) { color = value; Invalidate(); } } }
-        public bool Pulse { get { return pulse; } set { if (pulse != value) { pulse = value; Invalidate(); } } }
+        public bool Pulse { get { return pulse; } set { if (pulse != value) { pulse = value; if (value) UiClock.Wake(); Invalidate(); } } }
 
         public StatusDot() { Cursor = Cursors.Default; }
 
-        protected override void OnFrame(object s, EventArgs e) { if (pulse) { phase += 0.09f; if (phase > 6.2832f) phase -= 6.2832f; Invalidate(); } }
+        protected override void OnFrame(object s, EventArgs e) { if (pulse) { if (Visible) UiClock.Wake(); phase += 0.09f; if (phase > 6.2832f) phase -= 6.2832f; Invalidate(); } }
 
         protected override void OnPaint(PaintEventArgs e)
         {

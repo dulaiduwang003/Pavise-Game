@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -15,7 +16,7 @@ namespace AegisApp
         private readonly Dictionary<int, long> repCreation = new Dictionary<int, long>();
         private readonly Dictionary<int, string> repProc = new Dictionary<int, string>();
         private readonly Dictionary<int, string> repFrozen = new Dictionary<int, string>();
-        private DateTime repStart;
+        private long repStart;
         private string repGame;
         private bool repBoosted;
 
@@ -30,7 +31,7 @@ namespace AegisApp
                 repProc.Clear();
                 repFrozen.Clear();
                 repGame = game;
-                repStart = DateTime.Now;
+                repStart = Stopwatch.GetTimestamp();
                 repBoosted = false;
             }
         }
@@ -79,7 +80,7 @@ namespace AegisApp
             Dictionary<int, long> creations;
             Dictionary<int, string> frozen;
             string game;
-            DateTime t0;
+            long t0;
             bool boosted;
             lock (sync)
             {
@@ -99,7 +100,7 @@ namespace AegisApp
             }
             if (game == null) return;
 
-            TimeSpan dur = DateTime.Now - t0;
+            TimeSpan dur = TimeSpan.FromSeconds((double)(Stopwatch.GetTimestamp() - t0) / Stopwatch.Frequency);
             long total = 0, top = 0;
             string topName = null;
             foreach (var kv in cpu)

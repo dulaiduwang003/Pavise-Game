@@ -241,7 +241,11 @@ namespace AegisApp
             set.DropDownItems.Add(Check(Lang.T("tm.gpu"), gameMode.GpuHighPerf, (s, e) => { gameMode.GpuHighPerf = !gameMode.GpuHighPerf; Changed(); }));
             // 实际生效值是 custom ? killGameDvr : competitive（见 GameMode.ApplyEnv），
             // 直接显示存储值会和策略页的"由预设强制"显示互相矛盾。
-            set.DropDownItems.Add(Check(Lang.T("tm.dvr"), EffectiveDvr(), (s, e) => { gameMode.KillGameDvr = !gameMode.KillGameDvr; Changed(); }));
+            bool dvrForced = gameMode.ActivePreset != PerformancePreset.Custom;
+            ToolStripMenuItem dvr = Check(Lang.T("tm.dvr") + (dvrForced ? " · " + Lang.T("v14.preset.forced") : ""), EffectiveDvr(),
+                (s, e) => { gameMode.KillGameDvr = !gameMode.KillGameDvr; Changed(); });
+            dvr.Enabled = !dvrForced;
+            set.DropDownItems.Add(dvr);
             set.DropDownItems.Add(Check(Lang.T("tm.fso"), gameMode.DisableFso, (s, e) => { gameMode.DisableFso = !gameMode.DisableFso; Changed(); }));
             set.DropDownItems.Add(new ToolStripSeparator());
             set.DropDownItems.Add(Check(Lang.T("tm.notif"), gameMode.NotifQuiet, (s, e) => { gameMode.NotifQuiet = !gameMode.NotifQuiet; Changed(); }));
@@ -294,6 +298,11 @@ namespace AegisApp
             gameMode.HzGuard = false;
             gameMode.StrictCoreIsolation = false;
             gameMode.DeepFreeze = false;
+            gameMode.AggressiveSuppression = false;
+            gameMode.IdleStateDisable = true;
+            gameMode.VisualFxDowngrade = false;
+            gameMode.StandbyClean = true;
+            gameMode.StandbyCleanMidSession = false;
             gameMode.Enabled = true; Settings.Save("GameModeOn", true);
             gameMode.Preset = PerformancePreset.Standard;
             gameMode.ResetWhitelist();

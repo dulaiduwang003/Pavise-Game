@@ -28,6 +28,7 @@ namespace AegisApp
         private int candidate = -1;
         private int candidateHits;
         private int cleanHits;
+        private int noisyCore = -1;
 
         public ulong NoisyPhysicalMask { get { return noisyMask; } }
 
@@ -78,17 +79,22 @@ namespace AegisApp
         {
             if (noisy >= 0)
             {
-                cleanHits = 0;
+                if (noisy == noisyCore) cleanHits = 0;
+                else if (++cleanHits >= 2) { noisyMask = 0; noisyCore = -1; }
                 if (candidate == noisy) candidateHits++;
                 else { candidate = noisy; candidateHits = 1; }
                 if (candidateHits >= 2)
+                {
                     noisyMask = CpuTopology.ExpandPhysicalCoreMask(1UL << noisy);
+                    noisyCore = noisy;
+                    cleanHits = 0;
+                }
             }
             else
             {
                 candidate = -1;
                 candidateHits = 0;
-                if (++cleanHits >= 2) noisyMask = 0;
+                if (++cleanHits >= 2) { noisyMask = 0; noisyCore = -1; }
             }
         }
     }

@@ -18,7 +18,7 @@ namespace AegisApp
     internal static class App
     {
         public const string DisplayName = "AEGIS";
-        public const string Version = "1.4.4";
+        public const string Version = "1.5.0";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string RepoName = "dulaiduwang003/Aegis";
@@ -34,6 +34,7 @@ namespace AegisApp
         private static void Main(string[] args)
         {
 
+            if (LolWatchdog.TryHandle(args)) return;
             if (SelfTests.TryHandleRuntimeMode(args)) return;
 
             if (args.Length > 0 && args[0] == "--genicon")
@@ -69,7 +70,7 @@ namespace AegisApp
                 try
                 {
                     var scMode = new GameMode(sdir, scCore);
-                    if (idx == 1)
+                    if (idx == 2)
                     {
                         string demoDir = Path.Combine(sdir, "NebulaStrike", "Binaries", "Win64");
                         Directory.CreateDirectory(demoDir);
@@ -125,16 +126,6 @@ namespace AegisApp
                 catch { }
             };
 
-            try
-            {
-                using (Mutex.OpenExisting("Aegis_SingleInstance"))
-                {
-                    try { EventWaitHandle.OpenExisting("Aegis_ShowPanel").Set(); } catch { }
-                    return;
-                }
-            }
-            catch { }
-
             bool created = false;
             Mutex mtx = null;
             try { mtx = new Mutex(true, "Global\\Aegis_SingleInstance", out created); }
@@ -173,11 +164,9 @@ namespace AegisApp
             PowerPlan.HealFromCrash();
             NetTweak.HealFromCrash();
             FgBoost.HealFromCrash();
-            SvcPause.HealFromCrash();
             GameDvr.HealFromCrash();
             Mmcss.HealFromCrash();
             Notif.HealFromCrash();
-            DoTweak.HealFromCrash();
             VisualFx.HealFromCrash();
             DisplayGuard.HealFromCrash();
             CrashGuard.HealFromCrash();
@@ -201,9 +190,24 @@ namespace AegisApp
 
             var gameMode = new GameMode(dir, core);
             gameMode.Enabled = Settings.Load("GameModeOn", true);
+            var lolService = new LolOptimizationService();
 
-            tamer.Start();
-            gameMode.Start();
+            var startGate = new object();
+            bool exiting = false;
+            var bootThread = new Thread(() =>
+            {
+                try { SvcPause.HealFromCrash(); } catch { }
+                try { DoTweak.HealFromCrash(); } catch { }
+                lock (startGate)
+                {
+                    if (exiting) return;
+                    tamer.Start();
+                    gameMode.Start();
+                    lolService.Start();
+                }
+            });
+            bootThread.IsBackground = true;
+            bootThread.Start();
 
             var procNotify = new ProcNotify();
             procNotify.Changed += () => { gameMode.Poke(); tamer.Poke(); };
@@ -215,7 +219,7 @@ namespace AegisApp
             PerformancePreset runtimeIconMode = gameMode.ActivePreset;
             bool runtimeIconEnabled = gameMode.Enabled;
             Icon appIcon = IconArt.MakeMultiIcon(runtimeIconMode, runtimeIconEnabled);
-            var panel = new PanelForm(tamer, gameMode, appIcon, elevated);
+            var panel = new PanelForm(tamer, gameMode, appIcon, elevated, lolService);
             GC.KeepAlive(panel.Handle);
 
             var evtThread = new Thread(() =>
@@ -241,7 +245,10 @@ namespace AegisApp
                 try { trayTip.Stop(); trayTip.Dispose(); } catch { }
                 icon.Visible = false;
                 icon.Dispose();
+                lock (startGate) exiting = true;
                 try { procNotify.Stop(); } catch { }
+                try { panel.WaitForLolIdle(4000); } catch { }
+                try { lolService.Dispose(); } catch { }
                 tamer.Stop();
                 gameMode.Stop();
                 panel.RealExit = true;
@@ -254,6 +261,17 @@ namespace AegisApp
                 () => panel.SyncAllToggles());
             icon.ContextMenuStrip = trayMenu.Strip;
             icon.Visible = true;
+            SystemEvents.SessionEnded += (s, e) =>
+            {
+                try { gameMode.Enabled = false; } catch { }
+                try { PowerPlan.Restore(); } catch { }
+                try { GameDvr.Restore(); } catch { }
+                try { Notif.Restore(); } catch { }
+                try { Mmcss.Restore(); } catch { }
+                try { NetTweak.Restore(); } catch { }
+                try { FgBoost.Restore(); } catch { }
+                try { VisualFx.Restore(); } catch { }
+            };
             gameMode.SessionEnded += msg =>
             {
                 try

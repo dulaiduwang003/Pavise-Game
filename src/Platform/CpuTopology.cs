@@ -325,13 +325,23 @@ namespace AegisApp
                             if (!RecordFits(size, 38, 2)) { pos += size; continue; }
                             uint csize = (uint)Marshal.ReadInt32(u, 4);
                             int gc = Marshal.ReadInt16(u, 30);
-                            if (!RecordArrayFits(size, 40, gc, 16)) { pos += size; continue; }
                             ulong m = 0;
-                            for (int i = 0; i < gc; i++)
+                            if (gc == 0)
                             {
-                                IntPtr ga = (IntPtr)((long)u + 32 + i * 16);
-                                if (Marshal.ReadInt16(ga, 8) != 0) { multiGroup = true; continue; }
-                                m |= (ulong)Marshal.ReadInt64(ga, 0);
+                                if (!RecordFits(size, 40, 16)) { pos += size; continue; }
+                                IntPtr ga = (IntPtr)((long)u + 32);
+                                if (Marshal.ReadInt16(ga, 8) != 0) multiGroup = true;
+                                else m = (ulong)Marshal.ReadInt64(ga, 0);
+                            }
+                            else
+                            {
+                                if (!RecordArrayFits(size, 40, gc, 16)) { pos += size; continue; }
+                                for (int i = 0; i < gc; i++)
+                                {
+                                    IntPtr ga = (IntPtr)((long)u + 32 + i * 16);
+                                    if (Marshal.ReadInt16(ga, 8) != 0) { multiGroup = true; continue; }
+                                    m |= (ulong)Marshal.ReadInt64(ga, 0);
+                                }
                             }
                             if (m != 0) l3.Add(new KeyValuePair<uint, ulong>(csize, m));
                         }

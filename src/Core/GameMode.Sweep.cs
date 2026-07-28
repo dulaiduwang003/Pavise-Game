@@ -205,8 +205,7 @@ namespace AegisApp
                             if (desired != SuppressionLevel.None && core.HasReason(pid, SuppressReason.Background)
                                 && core.IsThrottled(pid) && core.LevelOf(pid, SuppressReason.Background) == desired)
                             {
-                                core.Reapply(pid, nm, SuppressReason.Background);
-                                continue;
+                                if (core.Reapply(pid, nm, SuppressReason.Background)) continue;
                             }
                         }
                         else ReportUntrack(pid);
@@ -244,7 +243,8 @@ namespace AegisApp
             finally { core.EndBatch(); }
 
             foreach (BackgroundRequest request in pending)
-                if (!core.ConsumeBatchApplyResult(request.Pid)) request.Result = AcquireResult.ApplyFailed;
+                if ((request.Result == AcquireResult.NewlyThrottled || request.Result == AcquireResult.AlreadyThrottled)
+                    && !core.ConsumeBatchApplyResult(request.Pid)) request.Result = AcquireResult.ApplyFailed;
 
             foreach (BackgroundRequest request in pending)
             {

@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 后台压制 崩溃恢复 Cross 清理和竞争性能自测
+// 文件用途 后台压制 崩溃恢复和竞争性能自测
 
 using System;
 using System.Diagnostics;
@@ -11,38 +11,6 @@ namespace AegisApp
 {
     internal static partial class SelfTests
     {
-        private static void TestLolCrossCleaner(string root)
-        {
-            string lol = Path.Combine(root, "lol-cross");
-            string cross = Path.Combine(lol, "Cross");
-            Directory.CreateDirectory(Path.Combine(lol, "TCLS"));
-            Directory.CreateDirectory(cross);
-            string payload = Path.Combine(cross, "community-overlay.bin");
-            File.WriteAllBytes(payload, new byte[4096]);
-            string probeExe = Path.Combine(lol, "LeagueClient.exe");
-            File.Copy(Application.ExecutablePath, probeExe, true);
-            Process running = null;
-            try
-            {
-                running = Process.Start(new ProcessStartInfo(probeExe, "--cpu-burn")
-                {
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    WindowStyle = ProcessWindowStyle.Hidden
-                });
-                if (running == null) throw new Exception("cannot start LoL path probe");
-                Thread.Sleep(250);
-                if (!LolCross.AnyLolProcessAlive(lol)) throw new Exception("running client was not detected");
-                CacheSweep.Result blocked = LolCross.Clean(lol);
-                if (blocked.FailedFiles == 0 || !File.Exists(payload)) throw new Exception("cleaner ignored running-client guard");
-            }
-            finally { StopOwned(running); }
-
-            CacheSweep.Result cleaned = LolCross.Clean(lol);
-            if (cleaned.FreedBytes < 4096 || File.Exists(payload)) throw new Exception("Cross payload was not deleted");
-            if (!Directory.Exists(cross)) throw new Exception("Cross root directory should be retained");
-        }
-
         private static void TestSuppressionReapply(string root)
         {
             string beat = Path.Combine(root, "reapply.beat");

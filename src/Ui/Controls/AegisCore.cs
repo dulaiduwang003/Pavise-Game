@@ -31,9 +31,9 @@ namespace AegisApp
             timer.Tick += delegate
             {
                 Form f = FindForm();
-                if (!Visible || f == null || !f.Visible || f.WindowState == FormWindowState.Minimized)
+                if (!Visible || f == null || !f.Visible)
                     timer.Stop();
-                else Invalidate();
+                else if (f.WindowState != FormWindowState.Minimized) Invalidate();
             };
         }
 

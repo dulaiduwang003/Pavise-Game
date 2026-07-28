@@ -179,12 +179,20 @@ namespace AegisApp
                 psi.RedirectStandardError = true;
                 using (var p = Process.Start(psi))
                 {
+                    var sb = new System.Text.StringBuilder();
+                    p.OutputDataReceived += (s, e) => { if (e.Data != null) lock (sb) { sb.Append(e.Data).Append('\n'); } };
                     p.ErrorDataReceived += (s, e) => { };
+                    p.BeginOutputReadLine();
                     p.BeginErrorReadLine();
-                    string o = p.StandardOutput.ReadToEnd();
+                    if (!p.WaitForExit(15000))
+                    {
+                        try { p.Kill(); } catch { }
+                        Logger.Log("bcdedit 超过 15 秒未返回，已终止（" + args + "）");
+                        return "";
+                    }
                     p.WaitForExit();
                     code = p.ExitCode;
-                    return o;
+                    lock (sb) { return sb.ToString(); }
                 }
             }
             catch { return ""; }

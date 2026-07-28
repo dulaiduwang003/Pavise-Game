@@ -707,6 +707,13 @@ namespace AegisApp
             });
             test("game family: generic multi-folder layouts share one protected root", TestMultiFolderGameRoot);
             test("game catalog: protected root survives save format and legacy entries", TestGameCatalogFormat);
+            test("LoL runtime: LCU credentials reject malformed input", TestLolCredentialParsing);
+            test("LoL runtime: cleanup targets never include core, game or ACE paths", TestLolCleanupBoundary);
+            test("LoL quarantine: manifest fields round-trip without ambiguity", () =>
+            {
+                string error;
+                if (!LolQuarantineManager.SelfTestManifest(out error)) throw new Exception(error);
+            });
             test("render detector: Office and launchers cannot masquerade as games", TestRenderScoring);
             test("release metadata: product and file versions are present", TestReleaseMetadata);
             test("mode theme: graphite stays fixed while Standard, Competitive and Custom accents differ", () =>
@@ -783,25 +790,25 @@ namespace AegisApp
                 int before = 0;
                 if (!Native.SystemParametersInfoGet(Native.SPI_GETUIEFFECTS, 0, ref before, 0))
                     throw new TestSkippedException("SPI_GETUIEFFECTS unavailable");
-                string slotBefore = Settings.LoadStr("PrevUiEffects", "");
+                if (before == 0)
+                    throw new TestSkippedException("window animations are already off on this machine");
+                if (Settings.LoadStr("PrevUiEffects", "").Length > 0
+                    || Settings.LoadStr("PrevTransparency", "").Length > 0)
+                    throw new TestSkippedException("another Aegis instance is holding a visual effects snapshot");
                 try
                 {
                     if (!VisualFx.Activate()) throw new TestSkippedException("visual downgrade unavailable");
                     int during = 0;
                     Native.SystemParametersInfoGet(Native.SPI_GETUIEFFECTS, 0, ref during, 0);
-                    if (before != 0)
-                    {
-                        Eq(0, during);
-                        if (Settings.LoadStr("PrevUiEffects", "").Length == 0)
-                            throw new Exception("animation snapshot was not persisted; a crash would strand it");
-                    }
+                    Eq(0, during);
+                    if (Settings.LoadStr("PrevUiEffects", "").Length == 0)
+                        throw new Exception("animation snapshot was not persisted; a crash would strand it");
                 }
                 finally { VisualFx.Restore(); }
                 int after = 0;
                 Native.SystemParametersInfoGet(Native.SPI_GETUIEFFECTS, 0, ref after, 0);
                 Eq(before, after);
                 Eq("", Settings.LoadStr("PrevUiEffects", ""));
-                Settings.SaveStr("PrevUiEffects", slotBefore);
             });
             test("powershell bridge: user data is passed as data, never parsed as script", () =>
             {
@@ -1096,7 +1103,7 @@ namespace AegisApp
                 test("game profiles: migration removes learning state and deduplicates", () => TestProfileStore(root));
                 test("game profiles: an unreadable file is never overwritten by a save", () => TestProfileLoadFailure(root));
                 test("game library: EXE/LNK resolve without executing the target", () => TestExecutableResolver(root));
-                test("LoL Cross cleaner: running-client guard and scoped deletion", () => TestLolCrossCleaner(root));
+                test("LoL quarantine: atomic move, exact restore and no-overwrite conflict", () => TestLolQuarantineRoundTrip(root));
                 test("render detector: user-selected headless exe activates; legacy headless does not", () => TestHeadlessEntry(root));
                 test("render detector: bootstrap launcher's real process outside profile root is still protected", () => TestFallbackEntryOutsideRoot(root));
                 test("session reports: legacy frame telemetry is archived", () => TestReportMigration(root));
@@ -1152,9 +1159,9 @@ namespace AegisApp
         private static void TestReleaseMetadata()
         {
             Version assemblyVersion = typeof(App).Assembly.GetName().Version;
-            Eq("1.4.4.0", assemblyVersion == null ? "" : assemblyVersion.ToString());
+            Eq("1.5.0.0", assemblyVersion == null ? "" : assemblyVersion.ToString());
             FileVersionInfo info = FileVersionInfo.GetVersionInfo(Application.ExecutablePath);
-            Eq("1.4.4.0", info.FileVersion);
+            Eq("1.5.0.0", info.FileVersion);
             Eq("Aegis", info.ProductName);
             Eq("bdth", info.CompanyName);
         }
@@ -1197,16 +1204,32 @@ namespace AegisApp
             var fast = new BackgroundPressureController();
             long t = 200 * second, used = 0;
             Eq(SuppressionLevel.None, fast.Observe(9, "burst", 1, used, 0, t, PerformancePreset.Standard));
-            for (int i = 0; i < 6; i++)
+            for (int i = 0; i < 4; i++)
             {
-                t += second / 5;                       // 200ms 一轮
+                t += second / 5;                       // 200ms 一轮，累计不足 1 秒
                 used += (long)(second / 5 * 0.10);     // 期间真实占用 0.10 核，远超 0.08 阈值
                 Eq(SuppressionLevel.None, fast.Observe(9, "burst", 1, used, 0, t, PerformancePreset.Standard));
             }
-            // 窗口够长之后仍然要能正常升级，不能因为加了下限就永远升不上去
-            t += 4 * second;
-            used += (long)(4 * second * 0.10);
+            // 窗口不足时基线必须留着：如果每次都把 At 前移，进程频繁启停的机器上
+            // dt 永远攒不到 1 秒，热度再也不会增长，自适应隔离等于被彻底关掉。
+            // 累计满 1 秒后算出的 0.10 核是真实占用率，不是被短窗口放大的假值。
+            t += second / 5;
+            used += (long)(second / 5 * 0.10);
             Eq(SuppressionLevel.Eco, fast.Observe(9, "burst", 1, used, 0, t, PerformancePreset.Standard));
+
+            // 亚秒采样不得把已经生效的等级撤销：调用方把返回值直接当作目标等级，
+            // 回报 None 会让已经隔离到小核的进程被放回全部核心。
+            var keep = new BackgroundPressureController();
+            long k = 400 * second, kused = 0;
+            Eq(SuppressionLevel.None, keep.Observe(12, "hot", 1, kused, 0, k, PerformancePreset.Standard));
+            for (int i = 0; i < 3; i++)
+            {
+                k += 4 * second;
+                kused += (long)(4 * second * 0.10);
+                keep.Observe(12, "hot", 1, kused, 0, k, PerformancePreset.Standard);
+            }
+            Eq(SuppressionLevel.Isolated, keep.Observe(12, "hot", 1, kused, 0, k, PerformancePreset.Standard));
+            Eq(SuppressionLevel.Isolated, keep.Observe(12, "hot", 1, kused, 0, k + second / 5, PerformancePreset.Standard));
 
             // 窗口过长（中间断过档）同样不该凭一次跨度极大的差值就判热
             var stale = new BackgroundPressureController();

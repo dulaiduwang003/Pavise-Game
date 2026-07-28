@@ -39,12 +39,71 @@ namespace AegisApp
 
         public static readonly ReleaseNote[] All = new[]
         {
+            new ReleaseNote("1.5.0", "2026-07-28", new[]
+            {
+                new[]{
+                    "新增「英雄联盟专栏」：允许 WeGame 正常完成认证与启动，LCU 确认大厅可用后再按安装路径精确退出 WeGame、Cross、AI 教练、录制、反馈和网络助手等国服附加进程。",
+                    "Added the League of Legends column: WeGame completes sign-in and launch normally, then Aegis waits for an LCU-ready lobby before precisely closing WeGame, Cross, AI Coach, recording, feedback, and network-helper processes by verified install path.",
+                    "「League of Legends 専用」ページを追加。WeGame で通常どおり認証・起動し、LCU がロビー利用可能を確認してから、検証済みパスの WeGame、Cross、AI コーチ、録画、フィードバック、ネットワーク補助を正確に終了します。" },
+                new[]{
+                    "新增「对局真无头」：进入 InProgress 后调用客户端原生接口关闭完整 CEF/UX，保留 LeagueClient 后端和游戏；赛后自动预热并回显大厅，独立看门狗在 Aegis 退出后仍负责恢复。",
+                    "Added true in-game headless mode: once Gameflow reaches InProgress, the client's native endpoint closes the complete CEF/UX while keeping the LeagueClient backend and game alive. The lobby is prewarmed and shown after the match, with an independent watchdog that still restores it if Aegis exits.",
+                    "「対局中の完全ヘッドレス」を追加。InProgress 到達後にクライアント標準 API で CEF/UX 全体を閉じ、LeagueClient バックエンドとゲームは維持します。試合後にロビーを事前起動して表示し、Aegis 終了後も独立ウォッチドッグが復旧します。" },
+                new[]{
+                    "Cross、诊断助手、反馈、网络助手、TQM 和 TenioDL 统一使用版本化可逆隔离：先写清单再移动、同卷校验、恢复绝不覆盖。设置页原有的 Cross 永久删除入口已移除，专栏不提供任何不可逆的文件删除。",
+                    "Cross, Diagnostic Assistant, Feedback, NetworkAssist, TQM, and TenioDL all use versioned reversible quarantine: the manifest is written before anything moves, moves stay on one volume, and restore never overwrites. The old irreversible Cross cleaner in Settings is gone; the column performs no irreversible file deletion at all.",
+                    "Cross、診断、Feedback、NetworkAssist、TQM、TenioDL はすべて版別の可逆隔離を使用します。移動前に記録を書き、同一ボリュームに限定し、復元は決して上書きしません。設定ページの Cross 永久削除は廃止し、本ページに不可逆なファイル削除はありません。" },
+                new[]{
+                    "隔离批次新增「丢弃记录」出口：当客户端更新重新下载了组件、导致恢复无法覆盖时，可在确认每一项都已回到原位置后丢弃记录并重新隔离，不再卡死。",
+                    "Quarantine batches gained a discard action: when a client update re-downloads components and blocks restore from overwriting, the record can be discarded once every item is verified back in place, clearing the deadlock.",
+                    "隔離バッチに「記録を破棄」を追加。更新で部品が再取得されて復元が上書きできない場合、全項目が元の位置にあることを確認したうえで記録を破棄し、行き詰まりを解消できます。" },
+                new[]{
+                    "专栏不重复竞技模式的优先级、CPU、EcoQoS 或 ACE 策略；运行时不注入、不修改内存，不替换游戏核心文件。LCU 凭据只保存在内存中且不会写入日志或子进程参数。",
+                    "The column does not duplicate Competitive-mode priority, CPU, EcoQoS, or ACE policy. Runtime control performs no injection or memory editing and replaces no game-core files. LCU credentials remain memory-only and never enter logs or child-process arguments.",
+                    "競技モードの優先度・CPU・EcoQoS・ACE 設定は重複しません。実行時制御は注入やメモリ改変、ゲーム中核ファイルの置換を行わず、LCU 資格情報はメモリ内だけに保持してログや子プロセス引数へ出しません。" },
+                new[]{
+                    "新增 LoL 专用 ROG 指挥舱界面，实时显示安装、LCU、Gameflow、WeGame、Cross、CEF/UX 和本次释放内存，并集中提供启动、立即净化、客户端恢复与附加层隔离、恢复、丢弃。",
+                    "Added a ROG-style League command deck with live installation, LCU, Gameflow, WeGame, Cross, CEF/UX, and released-memory telemetry, centralizing launch, clean-now, client restore, and quarantine, restore, and discard.",
+                    "ROG スタイルの League 指令画面を追加。インストール、LCU、Gameflow、WeGame、Cross、CEF/UX、解放メモリを表示し、起動、即時クリーン、クライアント復帰、隔離・復元・破棄を集約します。" },
+                new[]{
+                    "运行时开销与权限修正：专栏停用时不再扫描磁盘或轮询客户端，安装未找到时改为指数退避；精准净化改为两段式，仅对确认目标申请终止权限；WeGame 以登录用户而非管理员身份启动，避免游戏与反作弊被连带提权。",
+                    "Runtime cost and privilege corrections: with the column disabled Aegis no longer scans disks or polls the client, and a missing installation now backs off exponentially. Cleanup is two-phase, requesting terminate rights only for confirmed targets. WeGame launches as the signed-in user rather than as administrator, so the game and its anti-cheat are no longer elevated with it.",
+                    "実行時コストと権限の修正：専用機能が無効ならディスク走査もクライアント監視も行わず、インストール未検出時は指数バックオフします。クリーンアップは二段階になり、確認済みの対象にのみ終了権限を要求します。WeGame はログインユーザーとして起動し、ゲームとアンチチートが巻き添えで昇格しません。" },
+                new[]{
+                    "对局无头状态改为落盘记录：只有确实由 Aegis 收起的界面才会被自动回显，客户端自身启动或用户主动关闭时不再被干预；独立恢复器不再自行拉起 WeGame，并在客户端后端消失或超时后退出。",
+                    "In-game headless state is now journaled to disk: only an interface Aegis actually closed is restored automatically, so client startup and a user-initiated exit are left alone. The detached recovery guard no longer launches WeGame on its own and exits once the client backend is gone or the watch times out.",
+                    "ヘッドレス状態をディスクに記録するようにしました。Aegis が実際に閉じた画面のみ自動復帰し、クライアント自身の起動やユーザーによる終了には介入しません。独立復旧ガードは WeGame を自ら起動せず、バックエンド消失またはタイムアウトで終了します。" },
+                new[]{
+                    "后台压制修正：采样窗口不足一秒时不再前移基线，也不再回报「无压制」。进程频繁启停的机器上热度以前永远攒不起来，自适应隔离在默认预设下等于没生效，而且一次亚秒采样会把已经隔离的进程放回全部核心。",
+                    "Background suppression corrections: a sub-second sample window no longer advances the baseline or reports \"no suppression\". On a machine with ordinary process churn heat could never accumulate, so adaptive isolation never engaged in the default preset, and a single short sample actively released a process that was already isolated.",
+                    "背景抑制の修正：1 秒未満のサンプル窓ではベースラインを進めず、「抑制なし」も返しません。プロセスの起動終了が多い環境では熱度が蓄積されず既定プリセットで適応分離が働かないうえ、短いサンプル一回で分離済みプロセスが全コアへ戻されていました。" },
+                new[]{
+                    "还原记录修正：抑制日志现在保存进程原本的 EcoQoS 状态，崩溃恢复不再把自愿省电的程序改成系统托管；崩溃后保留待重试的记录会在启动时重新载入，不再被本次会话的第一次写入抹掉。",
+                    "Restore-record corrections: the suppression journal now stores each process's original EcoQoS state, so crash recovery no longer strips the opt-in of applications that chose power saving themselves; and entries deliberately retained for a later retry are re-adopted at startup instead of being erased by the session's first journal write.",
+                    "復元記録の修正：抑制ジャーナルが各プロセス本来の EcoQoS 状態を保存するようになり、クラッシュ復旧が自発的な省電力設定を消さなくなりました。再試行のために保持された記録も起動時に再読込され、最初のジャーナル書き込みで消えることはありません。" },
+                new[]{
+                    "退出与关机修正：解除时先还原进程状态再还原耗时的环境项，退出预算被截断时不再丢掉最要紧的部分；新增注销/关机处理，以前系统关机完全不做任何还原。",
+                    "Exit and shutdown corrections: teardown now restores process state before the slow environment tweaks, so a truncated exit no longer loses the part that matters most, and a logoff/shutdown handler was added - an OS shutdown previously ran no restore at all.",
+                    "終了とシャットダウンの修正：解除時にプロセス状態を先に復元し、時間のかかる環境設定を後に回すため、終了が打ち切られても重要な部分が失われません。ログオフ/シャットダウン処理も追加しました（従来はシャットダウン時に一切復元されませんでした）。" },
+                new[]{
+                    "系统接口修正：单处理器组机器上 L3 缓存记录以前全部被丢弃，非对称缓存处理器（7950X3D 一类）从未被识别；Windows 10 上 EcoQoS 读取接口不受支持导致精确还原一直失败，现改用底层接口。",
+                    "Windows interop corrections: on single-processor-group machines every L3 cache record was discarded, so asymmetric-cache processors (7950X3D class) were never detected; and the EcoQoS query API is unsupported on Windows 10, which made exact restore silently degrade there. It now falls back to the lower-level call.",
+                    "システム接口の修正：単一プロセッサグループ環境で L3 キャッシュ情報がすべて破棄され、非対称キャッシュ CPU（7950X3D 系）が認識されていませんでした。Windows 10 では EcoQoS 取得 API が非対応で正確な復元が劣化していたため、下位 API へ切り替えました。" },
+                new[]{
+                    "配置写入修正：临时文件写到一半失败、或上次崩溃留下半截临时文件时，以前会把它覆盖到正式文件上并回报成功——所有配置与还原记录都走这条路径。现在只有确认临时文件完整才允许回退覆盖。",
+                    "Configuration-write correction: when the temporary file failed mid-write, or a truncated one was left by an earlier crash, it was copied over the real file and the save was reported as successful - and every configuration file and restore journal goes through this path. The fallback now runs only when the temporary file is known to be complete.",
+                    "設定書き込みの修正：一時ファイルの書き込みが途中で失敗した場合や、前回のクラッシュが残した不完全な一時ファイルがある場合、それを正式ファイルへ上書きして成功と報告していました。すべての設定と復元記録がこの経路を通ります。現在は一時ファイルの完全性を確認した場合のみ上書きします。" },
+                new[]{
+                    "界面修正：英文与日文下有九处卡片和标签说明被截断（中文放得下，所以一直没被发现），卡片高度改为按文字实际测量结果自适应；游戏库页面不再每 1.2 秒在界面线程上逐个枚举系统进程。",
+                    "Interface corrections: nine cards and labels clipped their description in English and Japanese - Chinese fits, which is why it went unnoticed - and card height is now derived from the text's measured height. The library page no longer enumerates system processes once per entry, on the interface thread, every 1.2 seconds.",
+                    "画面の修正：英語と日本語で 9 箇所の説明が途切れていました（中国語は収まるため見逃されていました）。カード高さは実測値から算出するようにしました。ライブラリ画面は 1.2 秒ごとに項目数だけシステムプロセスを列挙することもなくなりました。" },
+            }),
             new ReleaseNote("1.4.4", "2026-07-25", new[]
             {
                 new[]{
-                    "这是最终功能版本。功能开发到此为止，后续只做维护：跟进 Windows 更新、跟进反作弊厂商的进程变化、修复发现的问题，不再新增功能。",
-                    "This is the final feature release. Feature work stops here; from now on Aegis only receives maintenance — keeping up with Windows updates and anti-cheat vendor changes, and fixing defects. No new features.",
-                    "これが最終機能リリースです。機能開発はここで終了し、以降は保守のみ（Windows 更新およびアンチチート各社の変更への追従と不具合修正）を行います。新機能の追加はありません。" },
+                    "完成原有通用优化功能线；后续英雄联盟专项能力从 1.5.0 开始独立演进。",
+                    "Completed the original general-purpose optimization feature line; League-specific work begins as a separate track in 1.5.0.",
+                    "従来の汎用最適化機能を完成。League 専用機能は 1.5.0 から独立した系統として追加されます。" },
                 new[]{
                     "安全修复：后台压制的反作弊豁免此前用的是精确名单，而检测器用的是含子串的宽判定。两者宽度不一致时，程序自己认定为反作弊的进程仍可能被压制——被压的反作弊心跳超时可能导致掉线。现已统一为同一套判定，并在冻结路径上加了独立的第二道拦截。",
                     "Security fix: background suppression exempted anti-cheat by exact-name list while detection used a broader substring match. Where the two disagreed, a process the app itself classified as anti-cheat could still be suppressed — and a throttled anti-cheat can time out its heartbeat and disconnect you. Both paths now share the broader check, with a second independent guard on the freeze path.",

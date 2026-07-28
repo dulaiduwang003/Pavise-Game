@@ -48,7 +48,9 @@ namespace AegisApp
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
 
-            int tw = Dpi.S(44), th = Dpi.S(22), pad = Dpi.S(3);
+            int th = Dpi.S(22), pad = Dpi.S(3);
+            if (th > Height) th = Height;
+            int tw = string.IsNullOrEmpty(Text) ? Math.Max(Dpi.S(20), Width - 1) : Dpi.S(44);
             int kd = th - pad * 2;
             var track = new Rectangle(0, (Height - th) / 2, tw, th);
             float p = pos.Value;

@@ -22,18 +22,18 @@ namespace AegisApp
             bool useSvc = custom ? svcPauseOn : false;
             bool useMmcss = custom ? mmcssOn : competitive;
             bool useDvr = custom ? killGameDvr : competitive;
-            if (notifQuiet != notifActive) { if (notifQuiet) notifActive = Notif.Quiet(); else { Notif.Restore(); notifActive = false; } }
-            if (usePauseDl != doActive) { if (usePauseDl) doActive = DoTweak.Activate(); else { DoTweak.Restore(); doActive = false; } }
-            if (hzGuard != hzActive) { if (hzGuard) hzActive = DisplayGuard.Activate(); else { DisplayGuard.Restore(); hzActive = false; } }
-            if (useNet != netActive) { if (useNet) netActive = NetTweak.Activate(); else { NetTweak.Restore(); netActive = false; } }
-            if (useFg != fgActive) { if (useFg) fgActive = FgBoost.Activate(); else { FgBoost.Restore(); fgActive = false; } }
-            if (useSvc != svcActive) { if (useSvc) svcActive = SvcPause.Activate(); else { SvcPause.Restore(); svcActive = false; } }
-            if (useMmcss != mmcssActive) { if (useMmcss) mmcssActive = Mmcss.Activate(); else { Mmcss.Restore(); mmcssActive = false; } }
-            if (useDvr != dvrActive) { if (useDvr) dvrActive = GameDvr.Activate(); else { GameDvr.Restore(); dvrActive = false; } }
-            if (visualFxOn != fxActive) { if (visualFxOn) fxActive = VisualFx.Activate(); else { VisualFx.Restore(); fxActive = false; } }
+            if (notifQuiet != notifActive) { if (notifQuiet) notifActive = Notif.Quiet(); else if (Notif.Restore()) notifActive = false; }
+            if (usePauseDl != doActive) { if (usePauseDl) doActive = DoTweak.Activate(); else if (DoTweak.Restore()) doActive = false; }
+            if (hzGuard != hzActive) { if (hzGuard) hzActive = DisplayGuard.Activate(); else if (DisplayGuard.Restore()) hzActive = false; }
+            if (useNet != netActive) { if (useNet) netActive = NetTweak.Activate(); else if (NetTweak.Restore()) netActive = false; }
+            if (useFg != fgActive) { if (useFg) fgActive = FgBoost.Activate(); else if (FgBoost.Restore()) fgActive = false; }
+            if (useSvc != svcActive) { if (useSvc) svcActive = SvcPause.Activate(); else if (SvcPause.Restore()) svcActive = false; }
+            if (useMmcss != mmcssActive) { if (useMmcss) mmcssActive = Mmcss.Activate(); else if (Mmcss.Restore()) mmcssActive = false; }
+            if (useDvr != dvrActive) { if (useDvr) dvrActive = GameDvr.Activate(); else if (GameDvr.Restore()) dvrActive = false; }
+            if (visualFxOn != fxActive) { if (visualFxOn) fxActive = VisualFx.Activate(); else if (VisualFx.Restore()) fxActive = false; }
             bool aggressivePower = IsAggressive(mode, aggressiveOn);
-            if (planSwitch) PowerPlan.Enforce(aggressivePower, idleDisableOn);
-            else PowerPlan.Restore();
+            if (planSwitch) { PowerPlan.Enforce(aggressivePower, idleDisableOn); planActive = true; }
+            else if (PowerPlan.Restore()) planActive = false;
 
             ApplyStandbyClean();
 
@@ -58,9 +58,10 @@ namespace AegisApp
         //   - 会话中途一律只做低优先级清理（实测 5ms），且要同时满足空闲见底 + 确有低优先级可清
         // 抽成静态纯函数便于单测：全量清理每局只能发生一次，之后无论轮询多少次
         // 都只可能走到低优先级那条路，且必须等冷却过去。
-        // sessionFresh 表示"这是本局会话建立后的第一次调用"。没有它的话，
-        // 用户在对局进行中把开关关掉再打开，purged 被重置，下一轮立刻做一次全量清理——
-        // 实测清 2.3GB 要 ~530ms，且会把游戏刚建立的缓存全丢掉，正是本功能承诺绝不做的事。
+        // sessionFresh 表示"这是本局会话建立后的第一次调用"，由游戏进程本身（渲染 PID）
+        // 是否换过来判定：中途急救恢复或关开总开关会把 active 清掉再置上，可游戏根本没退，
+        // 此时若重新武装全量清理，实测清 2.3GB 要 ~530ms，且会把游戏刚建立的缓存全丢掉，
+        // 正是本功能承诺绝不做的事。
         internal static StandbyAction NextStandbyAction(bool cleanOn, bool midOn, ref bool purged,
             bool cooldownElapsed, bool sessionFresh)
         {
@@ -78,9 +79,16 @@ namespace AegisApp
         private void ApplyStandbyClean()
         {
             long now = DateTime.UtcNow.Ticks;
+            int renderer;
+            lock (sync) renderer = activeDetection != null ? activeDetection.RendererPid : 0;
+            bool sessionFresh = renderer != standbySessionPid;
+            if (sessionFresh)
+            {
+                standbySessionPid = renderer;
+                standbyPurged = false;
+                standbyMidLastTicks = 0;
+            }
             bool cooldownElapsed = now - standbyMidLastTicks >= MidPurgeIntervalTicks;
-            bool sessionFresh = !standbySessionSeen;
-            standbySessionSeen = true;
             StandbyAction action = NextStandbyAction(standbyCleanOn, standbyMidOn, ref standbyPurged,
                 cooldownElapsed, sessionFresh);
             if (action == StandbyAction.None) return;
@@ -102,8 +110,9 @@ namespace AegisApp
         }
 
         private bool fxActive;
+        private bool planActive;
         private bool standbyPurged;
-        private bool standbySessionSeen;
+        private int standbySessionPid = -1;
         private long standbyMidLastTicks;
         private const long MidPurgeIntervalTicks = 60L * 1000 * 10000;
         private const int MidPurgeMinMemoryLoad = 80;
@@ -111,26 +120,22 @@ namespace AegisApp
 
         private bool EnvActive()
         {
-            return notifActive || doActive || hzActive || netActive || fgActive || svcActive || mmcssActive || dvrActive || fxActive || timerRaised;
+            return notifActive || doActive || hzActive || netActive || fgActive || svcActive || mmcssActive || dvrActive || fxActive || planActive || timerRaised;
         }
 
         private bool RestoreEnv()
         {
             bool ok = true;
-            // 清理动作没有可还原的状态，只需为下一局重新武装那一次性触发
-            standbyPurged = false;
-            standbySessionSeen = false;
-            standbyMidLastTicks = 0;
-            ok &= Notif.Restore(); notifActive = false;
-            ok &= DoTweak.Restore(); doActive = false;
-            ok &= DisplayGuard.Restore(); hzActive = false;
-            ok &= NetTweak.Restore(); netActive = false;
-            ok &= FgBoost.Restore(); fgActive = false;
-            ok &= SvcPause.Restore(); svcActive = false;
-            ok &= Mmcss.Restore(); mmcssActive = false;
-            ok &= GameDvr.Restore(); dvrActive = false;
-            ok &= VisualFx.Restore(); fxActive = false;
-            ok &= PowerPlan.Restore();
+            if (Notif.Restore()) notifActive = false; else ok = false;
+            if (DoTweak.Restore()) doActive = false; else ok = false;
+            if (DisplayGuard.Restore()) hzActive = false; else ok = false;
+            if (NetTweak.Restore()) netActive = false; else ok = false;
+            if (FgBoost.Restore()) fgActive = false; else ok = false;
+            if (SvcPause.Restore()) svcActive = false; else ok = false;
+            if (Mmcss.Restore()) mmcssActive = false; else ok = false;
+            if (GameDvr.Restore()) dvrActive = false; else ok = false;
+            if (VisualFx.Restore()) fxActive = false; else ok = false;
+            if (PowerPlan.Restore()) planActive = false; else ok = false;
             if (timerRaised)
             {
                 try
@@ -221,7 +226,11 @@ namespace AegisApp
                                     boostStateWarned.Remove(pid); boostStateVerified.Remove(pid);
                                     tweakApplied.Remove(pid); reused = true; known = false;
                                 }
-                            if (reused) CrashGuard.ReleaseBoostProcess(pid, tracked.Creation);
+                            if (reused)
+                            {
+                                needPlacement = true;
+                                CrashGuard.ReleaseBoostProcess(pid, tracked.Creation);
+                            }
                         }
                         bool newlyTracked = false;
                         bool gpuOk = false;
@@ -514,12 +523,13 @@ namespace AegisApp
             }
 
             bool clean = UnboostGames();
-            bool envClean = RestoreEnv();
-
+            List<int> background = core.PidsWith(SuppressReason.Background);
             int ok = core.ReleaseReason(SuppressReason.Background);
             int thawed = freezer.RestoreAll();
-            bool backgroundClean = !core.AnyWith(SuppressReason.Background);
+            bool backgroundClean = true;
+            foreach (int pid in background) if (core.IsThrottled(pid)) { backgroundClean = false; break; }
             bool freezeClean = freezer.Count == 0;
+            bool envClean = RestoreEnv();
             interference.Clear();
             pressure.Clear();
             if (clean) CrashGuard.ClearBoost();

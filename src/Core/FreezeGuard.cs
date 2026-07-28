@@ -149,11 +149,21 @@ namespace AegisApp
 
         public void Prune(HashSet<int> live)
         {
+            List<Entry> snapshot;
+            lock (sync) snapshot = new List<Entry>(entries.Values);
             List<int> missing = null;
-            lock (sync)
-                foreach (int pid in entries.Keys)
-                    if (!live.Contains(pid)) { if (missing == null) missing = new List<int>(); missing.Add(pid); }
+            foreach (Entry e in snapshot)
+                if (!live.Contains(e.Pid) || Recycled(e))
+                { if (missing == null) missing = new List<int>(); missing.Add(e.Pid); }
             if (missing != null) foreach (int pid in missing) Restore(pid);
+        }
+
+        private static bool Recycled(Entry e)
+        {
+            IntPtr h = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, e.Pid);
+            if (h == IntPtr.Zero) return false;
+            try { return Identify(h, e) == IdentityResult.Mismatch; }
+            finally { Native.CloseHandle(h); }
         }
 
         private bool EnsureWatchdogLocked()
@@ -252,28 +262,66 @@ namespace AegisApp
             }
             if (!ownerFinished) return;
 
+            HashSet<string> owned = OwnedKeys(LoadEntries(statePath));
+
             for (int i = 0; i < 20 && File.Exists(statePath); i++)
             {
-                RestoreJournal(statePath);
+                RestoreJournal(statePath, owned);
                 if (File.Exists(statePath)) Thread.Sleep(250);
             }
         }
 
         internal static int RestoreJournal(string statePath)
         {
+            return RestoreJournal(statePath, null);
+        }
+
+        private static int RestoreJournal(string statePath, HashSet<string> owned)
+        {
             List<Entry> list = LoadEntries(statePath);
             if (list == null) return 0;
             if (list.Count == 0) { TryDelete(statePath); return 0; }
             int restored = 0;
-            var kept = new List<Entry>();
+            var done = new HashSet<string>();
             foreach (Entry e in list)
             {
+                if (owned != null && !owned.Contains(EntryKey(e))) continue;
                 ResumeResult r = ResumeOne(e);
-                if (r == ResumeResult.Protected) kept.Add(e);
-                else if (r == ResumeResult.Restored) restored++;
+                if (r == ResumeResult.Protected) continue;
+                done.Add(EntryKey(e));
+                if (r == ResumeResult.Restored) restored++;
             }
+            if (done.Count == 0) return restored;
+            List<Entry> latest = LoadEntries(statePath);
+            if (latest == null) latest = list;
+            var kept = new List<Entry>();
+            foreach (Entry e in latest) if (!done.Contains(EntryKey(e))) kept.Add(e);
             SaveEntries(statePath, kept);
             return restored;
+        }
+
+        private static string EntryKey(Entry e)
+        {
+            return e.Pid + "|" + e.Creation;
+        }
+
+        private static HashSet<string> OwnedKeys(List<Entry> list)
+        {
+            if (list == null) return null;
+            var keys = new HashSet<string>();
+            foreach (Entry e in list) keys.Add(EntryKey(e));
+            return keys;
+        }
+
+        private static string[] ReadLinesShared(string path)
+        {
+            for (int attempt = 0; ; attempt++)
+            {
+                try { return File.ReadAllLines(path, Encoding.UTF8); }
+                catch (FileNotFoundException) { return null; }
+                catch (DirectoryNotFoundException) { return null; }
+                catch (IOException) { if (attempt >= 2) return null; Thread.Sleep(60); }
+            }
         }
 
         private static List<Entry> LoadEntries(string path)
@@ -281,8 +329,8 @@ namespace AegisApp
             var list = new List<Entry>();
             try
             {
-                string[] lines = File.ReadAllLines(path, Encoding.UTF8);
-                if (lines.Length == 0 || lines[0] != Header) return null;
+                string[] lines = ReadLinesShared(path);
+                if (lines == null || lines.Length == 0 || lines[0] != Header) return null;
                 var seen = new HashSet<int>();
                 for (int i = 1; i < lines.Length; i++)
                 {

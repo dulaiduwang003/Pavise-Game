@@ -22,7 +22,13 @@ namespace AegisApp
             {
                 if (active) return true;
                 bool registryOk = BgBw.Apply(1);
-                bool stopped = SvcCtl.StopIfRunning(SvcName);
+                int before = SvcState.Query(SvcName);
+                if (before == 4) Settings.SaveStr(StopFlag, "1");
+                bool confirmedStop;
+                bool stopped = SvcCtl.StopIfRunning(SvcName, out confirmedStop);
+                if (!confirmedStop && before == 4 && SvcState.StopTaken(SvcState.Query(SvcName)))
+                    confirmedStop = true;
+                if (!stopped) stopped = confirmedStop;
                 if (stopped)
                 {
                     Settings.SaveStr(StopFlag, "1");
@@ -33,10 +39,11 @@ namespace AegisApp
                         Logger.Log("DoSvc 停止状态无法持久化，已重新启动服务");
                     }
                 }
+                else if (before == 4) Settings.SaveStr(StopFlag, "");
                 active = registryOk || stopped;
                 Logger.Log(active
                     ? "后台下载已暂停（" + (registryOk ? "传递优化带宽 → 1 KB/s" : "带宽策略写入失败")
-                        + (stopped ? "，DoSvc 已停止" : "") + "）"
+                        + (confirmedStop ? "，DoSvc 已停止" : "") + "）"
                     : "后台下载策略写入失败且 DoSvc 未停止，本轮未启用");
                 return active;
             }

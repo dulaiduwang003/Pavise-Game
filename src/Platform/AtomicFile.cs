@@ -15,9 +15,12 @@ namespace AegisApp
         {
             if (string.IsNullOrEmpty(path)) return false;
             string tmp = path + ".tmp";
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
+            bool tmpComplete = false;
             try
             {
                 File.WriteAllLines(tmp, lines ?? new string[0], new UTF8Encoding(false));
+                tmpComplete = true;
                 if (File.Exists(path)) File.Replace(tmp, path, null);
                 else File.Move(tmp, path);
                 return true;
@@ -28,7 +31,12 @@ namespace AegisApp
                 // 原子性弱一些，但比彻底写不进去强
                 try
                 {
-                    if (File.Exists(tmp)) { File.Copy(tmp, path, true); File.Delete(tmp); return true; }
+                    if (tmpComplete && File.Exists(tmp))
+                    {
+                        File.Copy(tmp, path, true);
+                        try { File.Delete(tmp); } catch { }
+                        return true;
+                    }
                 }
                 catch { }
                 try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }

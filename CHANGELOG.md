@@ -5,11 +5,167 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.5.0] - 2026-07-28
+
+### Added
+
+- A dedicated League of Legends column with a ROG-style live command deck.
+- WeGame launch bridging: authentication and launch remain untouched until the local League
+  Client API confirms a healthy signed-in lobby, after which only verified WeGame, Cross, coach,
+  recorder, feedback, network-helper, and download-helper process paths are closed.
+- True in-game headless mode through the client's native `kill-ux` endpoint. The LeagueClient
+  backend and game remain alive, while `launch-ux` and `ux-show` restore the lobby after the match.
+- A detached recovery watchdog that carries no LCU token in its command line or on disk and can
+  restore the lobby even when the main Aegis process exits during a match.
+- Versioned, same-volume reversible quarantine for Cross, DiagnosticAssistant, FeedBack,
+  NetworkAssist, TQM, and TenioDL, with a manifest written before moves and no-overwrite restore.
+- A discard action for quarantine batches. When a client update re-downloads a component, restore
+  can no longer overwrite it and the batch would otherwise stay active forever, blocking further
+  quarantine. Discard removes the record only after verifying every item is back in its original
+  location, so nothing that exists solely in quarantine can be lost.
+- Built-in tests for LCU credential parsing, strict process-path boundaries, containment against
+  sibling and out-of-root paths, atomic quarantine/restore, restore conflicts, and discard.
+
+### Changed
+
+- Removed the old irreversible Cross content cleaner from Settings. League file slimming now
+  lives only in the dedicated column and always has a recovery path.
+- LoL-specific runtime control intentionally does not duplicate Competitive-mode CPU, priority,
+  EcoQoS, network, or ACE policy.
+- With the column disabled the runtime no longer discovers installations, enumerates processes, or
+  contacts the League Client API. A failed installation discovery now backs off exponentially to
+  ten minutes instead of repeating a full drive, registry, and process sweep every cycle.
+- Download helpers (TenioDL, WeGameUpdate) are excluded from automatic cleanup so that an
+  in-progress download is not hard-terminated every few seconds. Manual cleanup still includes them.
+- WeGame is launched as the signed-in user through the shell token rather than inheriting the
+  administrator token, so the game and its anti-cheat no longer run elevated as a side effect.
+- The detached recovery watchdog no longer starts WeGame on its own. It exits when the client
+  backend is gone and carries a hard watch timeout.
+- Runtime and quarantine messages are translated; they previously appeared in Chinese regardless
+  of the selected language.
+
+### Fixed
+
+- Installation discovery re-ran a full drive, registry, and process sweep on every cycle whenever
+  League was not found, because the retry interval was bypassed by a condition that is true exactly
+  when the interval matters. On a machine without League installed this ran roughly every 1.5
+  seconds indefinitely, including when the column was switched off, which is the default.
+- Process cleanup opened every process on the system with terminate rights in order to read its
+  image path, including the game and anti-cheat. Cleanup is now two-phase: paths are read with
+  query-only access, and terminate rights are requested solely for confirmed targets, whose path is
+  verified a second time on the new handle.
+- The lobby interface was restored whenever the LeagueClient backend was running without a UX
+  process, which also matches ordinary client startup and shutdown. Aegis could force the window
+  open during startup, or reopen a client the user had just closed. Headless state is now journaled
+  to disk and only an interface Aegis actually closed is restored.
+- Exiting could block the interface for up to 35 seconds while waiting for the runtime worker to
+  finish a cycle that can legitimately take longer than that.
+- The snapshot read by the interface performed filesystem probes while holding the state lock,
+  stalling both the interface and the worker when the installation lived on a slow or disconnected
+  volume.
+- A directory containing a file reparse point was measured as safe to quarantine, so the move
+  would have carried the link along. Reparse points at any depth now reject the candidate.
+
+The remaining entries in this section come from a defect sweep of the whole product, not just the
+League column. They are grouped by subsystem.
+
+#### Background suppression and adaptive isolation
+
+- The pressure controller advanced its CPU/IO baseline on every observation, including windows
+  shorter than its own one-second minimum, and reported level `None` for them. Because sweeps are
+  also driven by process start/stop events with a 200 ms coalescing window, ordinary desktop
+  process churn kept the measured window under a second indefinitely, so heat never accumulated
+  and adaptive isolation never engaged in the default preset. Worse, callers treat the returned
+  level as the target level, so a sub-second sample actively released a process that was already
+  isolated. The baseline is now preserved on short windows and the accumulated level is reported.
+- The "leftover suppression" heuristic normalised priority, affinity, IO and page priority but not
+  CPU Sets, so a process still pinned to the background partition was snapshotted as if that
+  partition were its own placement and re-pinned by the restore.
+- `Reapply` and `ApplyQueued` re-checked the entry under the lock, released it, and only then wrote
+  the throttle. A whitelist release running on the interface thread could interleave, leaving a
+  process throttled with neither an in-memory snapshot nor a journal line - unrecoverable until it
+  restarted. The write now happens inside the same critical section as the check.
+- The anti-cheat page acquired the suppression lock without a bound 18 times per interface tick,
+  while a sweep can hold that lock across a whole batch of process queries.
+- A batch result lookup could not distinguish "no result recorded" from "the write failed", so
+  handle-protected processes were reported as failed writes on every sweep.
+
+#### Crash recovery and restore journals
+
+- The suppression journal never stored the captured Power Throttling snapshot, so crash recovery
+  wrote "system managed" back and permanently stripped the EcoQoS opt-in of applications that had
+  chosen it themselves. The journal format now carries both fields and still parses legacy lines.
+- `HealFromCrash` deliberately retains entries it could not restore, as the input for a later
+  retry - but nothing loaded that file back into the live instance, so the first journal write of
+  the new session erased them. The constructor now re-adopts them, matching what the freeze guard
+  already did.
+- Re-boosting a process whose journal entry survived a crash overwrote the true pre-Aegis values
+  with the already-boosted ones, and the matching release then deleted the only good record.
+- The detached freeze watchdog kept rewriting the journal after a successor instance had taken
+  ownership of it, so it could resume a process the successor believed frozen, or drop the
+  successor's own rows. It now only acts on the entries that existed when its owner died.
+- Services were stopped before the ownership record was persisted, leaving a window in which a
+  crash lost the undo record entirely.
+
+#### Exit and shutdown
+
+- `Deactivate` restored the slow, low-stakes environment tweaks - service restarts worth up to
+  ~19 seconds, a display mode switch, a synchronous broadcast to every top-level window - before
+  the high-stakes process state. Exit only budgets 8 seconds and then terminates the worker
+  regardless, so a truncated exit lost exactly the part that matters. Process state is now
+  restored first.
+- There was no logoff or shutdown handler at all, so an OS shutdown ran no restore whatsoever.
+- Exit did not wait for interface-initiated file operations, so quitting during a quarantine move
+  killed the process mid-operation.
+- `RestoreEnv` cleared each feature's active flag regardless of whether that feature's restore had
+  actually succeeded, so the residue check reported a clean state and the retry never ran.
+
+#### Windows interop
+
+- `CACHE_RELATIONSHIP.GroupCount` is zero in the ordinary single-processor-group case, and the
+  parser required it to be positive, so every L3 cache record was discarded. Asymmetric-cache
+  processors (7950X3D class) were therefore never detected and never got their cache-aware masks.
+- `GetProcessInformation(ProcessPowerThrottling)` is not supported on Windows 10 and always failed,
+  so the exact-QoS restore path silently degraded on every Windows 10 machine - and the self-test
+  covering it skipped for the same reason, which is why this was invisible. It now falls back to
+  `NtQueryInformationProcess`, and that test runs for real.
+- A WQL query did not escape backslashes, so the device restart it drove never matched any device.
+
+#### Files and configuration
+
+- The atomic-write fallback copied the temporary file over the target whenever anything in the try
+  block threw - including a failure of the write itself, and including a stale temporary file left
+  by an earlier crash - and then reported success. Every configuration file and restore journal in
+  the product goes through this path. The fallback now runs only when the temporary file is known
+  to be complete.
+- A failed whitelist read was indistinguishable from an empty whitelist, and the next edit
+  overwrote the good file.
+- A Defender exclusion was written to the system before ownership was recorded, and the
+  PowerShell-timeout path returned without rolling back, orphaning an exclusion Aegis could no
+  longer remove.
+
+#### Interface
+
+- Descriptions were clipped in English and Japanese on nine cards and labels. Chinese fits, which
+  is why this survived a previous round that claimed to have fixed the same class of defect. Card
+  height is now derived from the text's measured height rather than hardcoded.
+- The library page ran one full system process enumeration per library entry, on the interface
+  thread, every 1.2 seconds.
+- Releasing the mouse outside a settings card still toggled it, because the mouse is captured on
+  button-down.
+- "Restore defaults" left five persisted settings untouched and then logged success.
+
+### Security
+
+- LCU credentials are accepted only for loopback HTTPS, held in memory, and never written to
+  logs, snapshots, manifests, or child-process arguments.
+- Process cleanup is individually path-verified. It never uses tree-wide termination and never
+  targets LeagueClient core, the game executable, RiotClientServices, ACE, or game files.
+
 ## [1.4.4] - 2026-07-25
 
-**Final feature release.** Feature development ends here. Aegis will continue to receive
-maintenance — keeping pace with Windows updates and anti-cheat vendor changes, and fixing
-defects — but no new features are planned.
+This release completed the original general-purpose optimization feature line before the
+League-specific work introduced in 1.5.0.
 
 ### Security
 

@@ -75,6 +75,7 @@ namespace AegisApp
 
             long elapsed = wall - old.Wall;
             long cpuDelta = cpu - old.Cpu;
+            if (elapsed >= 0 && elapsed < TimeSpan.TicksPerSecond && cpuDelta >= 0 && io >= old.Io) return none;
             bool reset = elapsed < TimeSpan.TicksPerSecond || elapsed > TimeSpan.TicksPerSecond * 30
                       || cpuDelta < 0 || io < old.Io;
             samples[pid] = NewSample(name, creation, cpu, io, wall);

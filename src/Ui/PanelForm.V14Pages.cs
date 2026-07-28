@@ -23,13 +23,13 @@ namespace AegisApp
             aegisCore.SetState(gameMode.ActivePreset, gameMode.Enabled, gameMode.IsActive);
             pageGame.Controls.Add(aegisCore);
 
-            var guard = MakeConsolePanel(pageGame, rightX, y, rightW, 100, true);
+            var guard = MakeConsolePanel(pageGame, rightX, y, rightW, 112, true);
             CardLabel(guard, Lang.T("v15.guard.state"), 18, 12, rightW - 92, 18, 7.8f, true, Theme.Faint);
             statusDot = new StatusDot(); statusDot.SetBounds(Theme.S(15), Theme.S(39), Theme.S(22), Theme.S(22));
             statusDot.Bg = Theme.Card; statusDot.Color = Theme.Dim;
-            // 原来是 11pt 单行、宽度还预留了 120px 给右上角开关（其实 y 上不重叠），
+            // 原来是 11pt 单行、宽度还预留了 120px 给右上角开关，
             // 结果中文需 402px 只有 284px 可用，状态文字永远被截。缩字号并放开到两行。
-            lblStatus = CardLabel(guard, "…", 47, 30, rightW - 74, 44, 9.2f, true, Theme.Fg);
+            lblStatus = CardLabel(guard, "…", 47, 30, rightW - 114, 44, 9.2f, true, Theme.Fg);
             swGame = MakeSwitch(gameMode.Enabled, delegate
             {
                 gameMode.Enabled = swGame.Checked;
@@ -37,17 +37,17 @@ namespace AegisApp
                 UpdateModePresentation(true);
             });
             swGame.Bg = Theme.Card; swGame.Location = new Point(Theme.S(rightW - 66), Theme.S(14));
-            CardLabel(guard, Lang.T("v15.master.short"), 18, 72, rightW - 36, 18, 7.7f, false, Theme.Dim);
+            CardLabel(guard, Lang.T("v15.master.short"), 18, 72, rightW - 36, 34, 7.7f, false, Theme.Dim);
             guard.Controls.AddRange(new Control[] { statusDot, swGame });
 
-            var mode = MakeConsolePanel(pageGame, rightX, y + 110, rightW, 96, false);
+            var mode = MakeConsolePanel(pageGame, rightX, y + 122, rightW, 96, false);
             CardLabel(mode, Lang.T("v15.effective.mode"), 18, 12, rightW - 36, 17, 7.6f, true, Theme.Faint);
             lblHeroMode = CardLabel(mode, ModeButton.ModeName(gameMode.ActivePreset), 18, 31, rightW - 36, 31, 14.5f, true, Theme.Accent);
             lblHeroSource = CardLabel(mode, Lang.T("mode.source.global"), 18, 66, rightW - 36, 18, 7.7f, false, Theme.Dim);
 
-            var boost = MakeConsolePanel(pageGame, rightX, y + 216, rightW, 126, false);
+            var boost = MakeConsolePanel(pageGame, rightX, y + 228, rightW, 114, false);
             CardLabel(boost, Lang.T("v14.boost.status"), 18, 13, rightW - 36, 18, 7.7f, true, Theme.Faint);
-            lblOverviewBoost = CardLabel(boost, "…", 18, 37, rightW - 36, 74, 10.2f, false, Theme.Fg);
+            lblOverviewBoost = CardLabel(boost, "…", 18, 37, rightW - 36, 70, 10.2f, false, Theme.Fg);
 
             int tileY = y + coreH + 14;
             int tileW = (ContentW - 28) / 3;
@@ -115,7 +115,7 @@ namespace AegisApp
             listWrap.EmptyDetail = Lang.T("v15.library.empty");
             listWrap.Padding = new Padding(Theme.S(8));
             lstGames = new ListBox(); lstGames.Dock = DockStyle.Fill; Theme.StyleList(lstGames);
-            lstGames.ItemHeight = Theme.S(68);
+            lstGames.ItemHeight = Math.Min(255, Theme.S(68));
             lstGames.DrawItem += DrawGameLibraryItem;
             lstGames.KeyDown += delegate(object s, KeyEventArgs e)
             {
@@ -242,7 +242,9 @@ namespace AegisApp
             Toggle sw = MakeSwitch(read(), null);
             sw.CheckedChanged += delegate { write(sw.Checked); };
             // 高度要能容下两行说明（描述区 = 高度 - S(40)），否则风险提示会被截掉
-            SettingCard card = MakeCard(parent, 6, y, ScrollContentW, 78, title, desc, sw); y += 86;
+            int cardH;
+            SettingCard card = MakeAutoCard(parent, 6, y, ScrollContentW, 78, title, desc, sw, out cardH);
+            y += cardH + 8;
             policySync.Add(delegate { sw.SetSilently(read()); });
             return sw;
         }

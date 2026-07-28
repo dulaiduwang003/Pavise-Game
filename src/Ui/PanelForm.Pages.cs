@@ -76,6 +76,34 @@ namespace AegisApp
             return t;
         }
 
+        private int AutoCardHeight(string desc, int cardW, Control host, int minHeight)
+        {
+            if (string.IsNullOrEmpty(desc)) return minHeight;
+            int padL = Theme.S(18);
+            int reserve = padL + (host != null ? host.Width + Theme.S(14) : 0);
+            int textW = Theme.S(cardW) - padL - reserve;
+            if (textW <= 0) return minHeight;
+            Font font = Theme.UI(8.5f, false);
+            int lineH = TextRenderer.MeasureText("Ag", font).Height;
+            if (lineH <= 0) return minHeight;
+            int need = TextRenderer.MeasureText(
+                desc, font, new Size(textW, int.MaxValue), TextFormatFlags.WordBreak).Height;
+            int lines = (need + lineH - 1) / lineH;
+            if (lines < 1) lines = 1;
+            int scale100 = Theme.S(100);
+            if (scale100 <= 0) return minHeight;
+            int px = lines * lineH + Theme.S(44);
+            int logical = (px * 100 + scale100 - 1) / scale100;
+            return logical > minHeight ? logical : minHeight;
+        }
+
+        private SettingCard MakeAutoCard(
+            Control parent, int x, int y, int w, int minH, string title, string desc, Control host, out int used)
+        {
+            used = AutoCardHeight(desc, w, host, minH);
+            return MakeCard(parent, x, y, w, used, title, desc, host);
+        }
+
         private SettingCard MakeCard(Control parent, int x, int y, int w, int h, string title, string desc, Control host)
         {
             var c = new SettingCard();
@@ -204,32 +232,48 @@ namespace AegisApp
 
             swGpu = MakeSwitch(gameMode.GpuHighPerf, null);
             swGpu.CheckedChanged += (s, e) => gameMode.GpuHighPerf = swGpu.Checked;
-            MakeCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.gpu"), Lang.T("set.gpu.n"), swGpu); sy += 64;
+            int cardH0;
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.gpu"), Lang.T("set.gpu.n"), swGpu, out cardH0);
+            sy += cardH0 + 8;
 
             swFso = MakeSwitch(gameMode.DisableFso, null);
             swFso.CheckedChanged += (s, e) => gameMode.DisableFso = swFso.Checked;
-            MakeCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.fso"), Lang.T("set.fso.n"), swFso); sy += 64;
+            int cardH1;
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.fso"), Lang.T("set.fso.n"), swFso, out cardH1);
+            sy += cardH1 + 8;
 
             sy += 10;
             Section(scroll, Lang.T("sec.system"), 6, sy); sy += 24;
 
             swAuto = MakeSwitch(TaskHelper.TaskExistsCached(), OnAutoToggle);
-            MakeCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.autostart"), Lang.T("set.autostart.n"), swAuto); sy += 64;
+            int cardH2;
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.autostart"), Lang.T("set.autostart.n"), swAuto, out cardH2);
+            sy += cardH2 + 8;
 
             swAutoHide = MakeSwitch(Settings.Load(AutoHideKey, false), OnAutoHideToggle);
-            MakeCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.autohide"), Lang.T("set.autohide.n"), swAutoHide); sy += 84;
+            int cardH3;
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.autohide"), Lang.T("set.autohide.n"), swAutoHide, out cardH3);
+            sy += cardH3 + 8;
 
             swHags = MakeSwitch(HagsTweak.EnabledByAegis || HagsTweak.CurrentlyOn(), OnHagsToggle);
-            MakeCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.hags"), Lang.T("set.hags.n"), swHags); sy += 64;
+            int cardH4;
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.hags"), Lang.T("set.hags.n"), swHags, out cardH4);
+            sy += cardH4 + 8;
 
             swIrqAffinity = MakeSwitch(InterruptAffinityTweak.EnabledByAegis, OnIrqAffinityToggle);
-            MakeCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.irqaffinity"), Lang.T("set.irqaffinity.n"), swIrqAffinity); sy += 84;
+            int cardH5;
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.irqaffinity"), Lang.T("set.irqaffinity.n"), swIrqAffinity, out cardH5);
+            sy += cardH5 + 8;
 
             swNetAffinity = MakeSwitch(NetworkAffinityTweak.EnabledByAegis, OnNetAffinityToggle);
-            MakeCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.netaffinity"), Lang.T("set.netaffinity.n"), swNetAffinity); sy += 84;
+            int cardH6;
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.netaffinity"), Lang.T("set.netaffinity.n"), swNetAffinity, out cardH6);
+            sy += cardH6 + 8;
 
             swVbs = MakeSwitch(VbsTweak.DisabledByAegis, OnVbsToggle);
-            cardVbs = MakeCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.vbs"), "…", swVbs); sy += 64;
+            int cardH7;
+            cardVbs = MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.vbs"), "…", swVbs, out cardH7);
+            sy += cardH7 + 8;
 
             sy += 10;
             Section(scroll, Lang.T("sec.maint"), 6, sy); sy += 24;
@@ -238,8 +282,9 @@ namespace AegisApp
             btnRestore.Bg = Theme.Card;
             btnRestore.Size = new Size(Theme.S(136), Theme.S(32));
             btnRestore.Click += delegate { RestoreAllNow(); };
-            MakeCard(scroll, 6, sy, ScrollContentW, 78, Lang.T("v15.restore.title"), Lang.T("v15.restore.desc"), btnRestore);
-            sy += 86;
+            int cardH8;
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 78, Lang.T("v15.restore.title"), Lang.T("v15.restore.desc"), btnRestore, out cardH8);
+            sy += cardH8 + 8;
 
             var btnDefender = new PillButton(Lang.T("btn.open"), BtnKind.Normal);
             btnDefender.Bg = Theme.Card;
@@ -254,27 +299,17 @@ namespace AegisApp
                 finally { Cursor = Cursors.Default; }
                 using (dlg) dlg.ShowDialog(this);
             };
-            MakeCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("def.open"), Lang.T("def.open.sub"), btnDefender);
-            sy += 84;
+            int cardH9;
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("def.open"), Lang.T("def.open.sub"), btnDefender, out cardH9);
+            sy += cardH9 + 8;
 
             var btnShaderGo = new PillButton(Lang.T("btn.clean"));
             btnShaderGo.Size = new Size(Theme.S(88), Theme.S(30));
             btnShaderGo.Click += (s, e) => OnShaderClean(btnShaderGo);
-            cardShader = MakeCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("btn.shader"), Lang.T("set.shader.n"), btnShaderGo);
+            int cardH10;
+            cardShader = MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("btn.shader"), Lang.T("set.shader.n"), btnShaderGo, out cardH10);
             cardShader.Value = "…";
             sy += 64;
-
-            lolDir = LolCross.FindLolDir();
-            cardLol = null;
-            if (lolDir != null)
-            {
-                var btnLolGo = new PillButton(Lang.T("btn.clean"));
-                btnLolGo.Size = new Size(Theme.S(88), Theme.S(30));
-                btnLolGo.Click += (s, e) => OnLolCrossClean(btnLolGo);
-                cardLol = MakeCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("btn.lolcross"), Lang.T("set.lolcross.n"), btnLolGo);
-                cardLol.Value = "…";
-                sy += 64;
-            }
 
             sy += 10;
             Section(scroll, Lang.T("set.lang"), 6, sy); sy += 24;
@@ -328,9 +363,9 @@ namespace AegisApp
 
         private void BuildAboutPage()
         {
-            int y = PageHeader(pageAbout, Lang.T("nav.about"), Lang.T("v15.about.sub"), 2);
+            int y = PageHeader(pageAbout, Lang.T("nav.about"), "", 0);
 
-            var hero = MakeConsolePanel(pageAbout, ContentX, y, ContentW, 118, true);
+            var hero = MakeConsolePanel(pageAbout, ContentX, y, ContentW, 134, true);
             var pbIcon = new PictureBox();
             pbIcon.SetBounds(Theme.S(24), Theme.S(20), Theme.S(76), Theme.S(76));
             pbIcon.BackColor = Color.Transparent;
@@ -339,10 +374,10 @@ namespace AegisApp
 
             CardLabel(hero, App.DisplayName, 120, 17, 250, 35, 18f, true, Theme.Fg);
             CardLabel(hero, App.VersionTag + "  //  " + Lang.T("v15.about.identity"), 122, 52, ContentW - 150, 20, 8f, true, Theme.Accent);
-            CardLabel(hero, Lang.T("about.desc").Replace("\r\n", "  ·  "), 122, 77, ContentW - 150, 24, 8.2f, false, Theme.Dim);
+            CardLabel(hero, Lang.T("about.desc").Replace("\r\n", "  ·  "), 122, 75, ContentW - 150, 48, 8.2f, false, Theme.Dim);
             hero.Controls.Add(pbIcon);
 
-            int cardsY = y + 134;
+            int cardsY = y + 150;
             int infoW = 476, gap = 16, updateW = ContentW - infoW - gap;
             const int cardH = 268;
             var card = MakeConsolePanel(pageAbout, ContentX, cardsY, infoW, cardH, false);

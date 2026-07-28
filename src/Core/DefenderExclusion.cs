@@ -119,8 +119,18 @@ namespace AegisApp
             if (!PsRunner.Run(
                 "$ErrorActionPreference='Stop'\r\n" +
                 "Add-MpPreference -ExclusionPath $env:AEGIS_PATH\r\n" +
-                "Write-Output DONE\r\n", Label, 20000, PathArg(n), out outText)) return false;
-            if (outText.IndexOf("DONE", StringComparison.OrdinalIgnoreCase) < 0) return false;
+                "Write-Output DONE\r\n", Label, 20000, PathArg(n), out outText))
+            {
+                RemoveFromSystem(n);
+                Logger.Log(Label + "：执行未确认完成，已撤回可能已加上的排除 " + n);
+                return false;
+            }
+            if (outText.IndexOf("DONE", StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                RemoveFromSystem(n);
+                Logger.Log(Label + "：退出码为 0 但收不到执行确认，已撤回可能已加上的排除 " + n);
+                return false;
+            }
 
             // 从这里往下，排除项已经真的加进系统了。任何一步失败都必须撤回，
             // 否则它既不在记账里（Remove 会拒绝）又留在系统上，等于一个谁也删不掉的安全缺口。

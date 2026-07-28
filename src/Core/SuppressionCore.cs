@@ -59,6 +59,7 @@ namespace AegisApp
         private readonly string journalPath;
         private bool marked;
         private int batchDepth;
+        private int journalDefer;
         private bool batchJournalDirty;
         private readonly Dictionary<int, string> batchApply = new Dictionary<int, string>();
         private readonly Dictionary<int, bool> batchApplyResults = new Dictionary<int, bool>();
@@ -71,6 +72,7 @@ namespace AegisApp
             throttleMask = CpuTopology.ThrottleMask;
             allMask = CpuTopology.AllMask;
             journalPath = statePath;
+            LoadJournal();
         }
 
         public ulong ThrottleMask { get { return throttleMask; } }
@@ -190,15 +192,16 @@ namespace AegisApp
                     // rawPri==0 表示查询失败，不是"这个进程是 Normal"。把它当 Normal 存进快照，
                     // 还原时会把原本 HIGH/ABOVE_NORMAL 的进程永久降级，所以直接放弃这次压制。
                     if (rawPri == 0) return AcquireResult.ApplyFailed;
-                    bool residue = rawPri == Native.IDLE_PRIORITY_CLASS;
-                    uint orig = residue ? Native.NORMAL_PRIORITY_CLASS : rawPri;
                     ulong oaff = Native.QueryAffinity(h);
                     uint[] ocpuSets = Native.QueryCpuSets(h);
                     if (ocpuSets == null) return AcquireResult.ApplyFailed;
-                    if (residue && oaff == throttleMask) oaff = 0;
                     int oio = Native.QueryIoPriority(h);
-                    if (residue && oio == 0) oio = -1;
                     int opg = Native.QueryPagePriority(h);
+                    bool residue = rawPri == Native.IDLE_PRIORITY_CLASS && oio == 0 && opg == 1;
+                    uint orig = residue ? Native.NORMAL_PRIORITY_CLASS : rawPri;
+                    if (residue && oaff == throttleMask) oaff = 0;
+                    if (residue && SameCpuSets(ocpuSets, CpuTopology.BackgroundCpuSetIds())) ocpuSets = new uint[0];
+                    if (residue && oio == 0) oio = -1;
                     if (residue && opg == 1) opg = -1;
                     int oqc, oqs;
                     if (!Native.TryQueryPowerThrottling(h, out oqc, out oqs)) { oqc = -1; oqs = -1; }
@@ -242,7 +245,13 @@ namespace AegisApp
         public int ReleaseReason(SuppressReason reason)
         {
             int restored = 0; bool had;
-            foreach (int pid in PidsWith(reason)) restored += ReleaseOne(pid, reason, out had);
+            List<int> pids = PidsWith(reason);
+            BeginJournalDefer();
+            try
+            {
+                foreach (int pid in pids) restored += ReleaseOne(pid, reason, out had);
+            }
+            finally { EndJournalDefer(); }
             return restored;
         }
 
@@ -253,7 +262,12 @@ namespace AegisApp
                 foreach (var kv in map)
                     if ((kv.Value.Reasons & reason) != 0 && SameName(kv.Value.Name, name)) pids.Add(kv.Key);
             int restored = 0; bool had;
-            foreach (int pid in pids) restored += ReleaseOne(pid, reason, out had);
+            BeginJournalDefer();
+            try
+            {
+                foreach (int pid in pids) restored += ReleaseOne(pid, reason, out had);
+            }
+            finally { EndJournalDefer(); }
             return restored;
         }
 
@@ -274,9 +288,9 @@ namespace AegisApp
                 {
                     remaining = true;
                     adjust = e.OrigPri != uint.MaxValue;
-                    SaveJournalLocked();
+                    PersistJournalLocked();
                 }
-                else if (e.OrigPri == uint.MaxValue) { map.Remove(pid); SaveJournalLocked(); return 0; }
+                else if (e.OrigPri == uint.MaxValue) { map.Remove(pid); PersistJournalLocked(); return 0; }
             }
             if (adjust)
             {
@@ -340,7 +354,7 @@ namespace AegisApp
 
         private void TryClearMarkLocked()
         {
-            SaveJournalLocked();
+            PersistJournalLocked();
             if (!marked) return;
             foreach (var kv in map) if (kv.Value.OrigPri != uint.MaxValue) return;
             marked = false;
@@ -401,18 +415,15 @@ namespace AegisApp
                 if (current != null && !SameName(current, expectedName)) return false;
                 long creation, cpu; ulong io;
                 if (!Native.QueryProcessSample(h, out creation, out cpu, out io)) return false;
+                bool applied;
                 lock (sync)
                 {
                     Entry currentEntry;
                     if (!map.TryGetValue(pid, out currentEntry)
+                        || (currentEntry.Reasons & reason) == 0
                         || currentEntry.Creation > 0 && currentEntry.Creation != creation) return false;
-                }
-                bool applied = ApplyThrottle(h, level, pri, aff, cpuSets);
-                lock (sync)
-                {
-                    Entry currentEntry;
-                    if (map.TryGetValue(pid, out currentEntry) && SameName(currentEntry.Name, expectedName))
-                        currentEntry.Applied = applied;
+                    applied = ApplyThrottle(h, level, pri, aff, cpuSets);
+                    if (SameName(currentEntry.Name, expectedName)) currentEntry.Applied = applied;
                 }
                 return applied;
             }
@@ -458,15 +469,32 @@ namespace AegisApp
             finally { Monitor.Exit(sync); }
         }
 
+        private readonly Dictionary<string, int[]> lastGroupCounts = new Dictionary<string, int[]>();
+
         public void AntiCheatGroupCounts(string groupKey, out int throttled, out int protectedCnt)
         {
             int t = 0, f = 0;
-            lock (sync)
+            string cacheKey = groupKey ?? "";
+            if (!Monitor.TryEnter(sync, 15))
+            {
+                lock (lastGroupCounts)
+                {
+                    int[] last;
+                    if (lastGroupCounts.TryGetValue(cacheKey, out last)) { t = last[0]; f = last[1]; }
+                }
+                throttled = t; protectedCnt = f;
+                return;
+            }
+            try
+            {
                 foreach (var kv in map)
                     if ((kv.Value.Reasons & SuppressReason.AntiCheat) != 0 && SameName(kv.Value.Group, groupKey))
                     {
                         if (kv.Value.OrigPri == uint.MaxValue || !kv.Value.Applied) f++; else t++;
                     }
+            }
+            finally { Monitor.Exit(sync); }
+            lock (lastGroupCounts) lastGroupCounts[cacheKey] = new int[] { t, f };
             throttled = t; protectedCnt = f;
         }
 
@@ -530,7 +558,7 @@ namespace AegisApp
         public static bool RestoreValues(IntPtr h, uint pri, ulong aff, int io, int pg, ulong allMask,
             uint[] cpuSets)
         {
-            // 不带 QoS 参数的旧入口（崩溃恢复日志里没有这个字段）：沿用"交给系统托管"
+            // 不带 QoS 参数的旧入口：沿用"交给系统托管"
             return RestoreValues(h, pri, aff, io, pg, allMask, cpuSets, -1, -1);
         }
 
@@ -608,6 +636,14 @@ namespace AegisApp
             return string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
         }
 
+        private static bool SameCpuSets(uint[] a, uint[] b)
+        {
+            if (a == null || b == null || a.Length == 0 || a.Length != b.Length) return false;
+            var set = new HashSet<uint>(b);
+            foreach (uint id in a) if (!set.Contains(id)) return false;
+            return true;
+        }
+
         private static void SetReasonLevel(Entry e, SuppressReason reason, SuppressionLevel level)
         {
             if ((reason & SuppressReason.AntiCheat) != 0) e.AntiCheatLevel = level;
@@ -622,8 +658,27 @@ namespace AegisApp
 
         private bool PersistJournalLocked()
         {
-            if (batchDepth > 0) { batchJournalDirty = true; return true; }
+            if (batchDepth > 0 || journalDefer > 0) { batchJournalDirty = true; return true; }
             return SaveJournalLocked();
+        }
+
+        private void BeginJournalDefer()
+        {
+            lock (sync) journalDefer++;
+        }
+
+        private void EndJournalDefer()
+        {
+            lock (sync)
+            {
+                if (journalDefer <= 0) return;
+                journalDefer--;
+                if (journalDefer == 0 && batchDepth == 0 && batchJournalDirty)
+                {
+                    batchJournalDirty = false;
+                    SaveJournalLocked();
+                }
+            }
         }
 
         private bool QueueApplyLocked(int pid, string name)
@@ -660,12 +715,15 @@ namespace AegisApp
                     long creation, cpu; ulong io;
                     if (!Native.QueryProcessSample(h, out creation, out cpu, out io) || creation != expectedCreation) return false;
                 }
-                bool applied = ApplyThrottle(h, level, pri, aff, cpuSets);
+                bool applied;
                 lock (sync)
                 {
                     Entry currentEntry;
-                    if (map.TryGetValue(pid, out currentEntry) && SameName(currentEntry.Name, expectedName))
-                        currentEntry.Applied = applied;
+                    if (!map.TryGetValue(pid, out currentEntry)
+                        || currentEntry.Reasons == SuppressReason.None
+                        || !SameName(currentEntry.Name, expectedName)) return false;
+                    applied = ApplyThrottle(h, level, pri, aff, cpuSets);
+                    currentEntry.Applied = applied;
                 }
                 return applied;
             }

@@ -34,6 +34,16 @@ namespace AegisApp
                     };
                     g.FillPolygon(br, bolt);
                 }
+                else if (name == "lol")
+                {
+                    using (var ring = new Pen(c, Math.Max(1.2f, 1.45f * u)))
+                        g.DrawArc(ring, x + 3.5f * u, y + 3.5f * u, 17f * u, 17f * u, -68f, 272f);
+                    PointF[] blade = {
+                        P(x,y,u,10.5f,2.5f), P(x,y,u,14.5f,2.5f), P(x,y,u,13.4f,16.8f),
+                        P(x,y,u,19.4f,16.8f), P(x,y,u,17.5f,21.2f), P(x,y,u,8.8f,21.2f)
+                    };
+                    g.FillPolygon(br, blade);
+                }
                 else if (name == "shield")
                 {
                     using (var path = new GraphicsPath())
