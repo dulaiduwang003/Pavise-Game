@@ -182,40 +182,6 @@ namespace AegisApp
         }
 
 
-        private void BuildWhitePage()
-        {
-            int y = PageHeader(pageWhite, Lang.T("nav.white"), Lang.T("white.desc"), 2);
-
-            int listH = 592 - y - 16;
-            var listWrap = new RoundPanel();
-            listWrap.SetBounds(Theme.S(26), Theme.S(y), Theme.S(438), Theme.S(listH));
-            listWrap.BackColor = Theme.Bg; listWrap.Fill = Theme.Card; listWrap.Border = Theme.Stroke; listWrap.Radius = Theme.S(12);
-            listWrap.Padding = new Padding(Theme.S(8));
-            lstWhite = new ListBox();
-            lstWhite.Dock = DockStyle.Fill;
-            Theme.StyleList(lstWhite);
-            lstWhite.KeyDown += (s, e) =>
-            {
-                if (e.KeyCode == Keys.Delete && lstWhite.SelectedItem != null) { gameMode.RemoveWhitelist((string)lstWhite.SelectedItem); RefreshWhite(); }
-            };
-            listWrap.Controls.Add(lstWhite);
-
-            int bx = 476, bw = 188, bh = 36;
-            var btnPick = new PillButton(Lang.T("btn.pick"), BtnKind.Primary); btnPick.SetBounds(Theme.S(bx), Theme.S(y), Theme.S(bw), Theme.S(bh));
-            btnPick.Click += (s, e) => PickInto(false);
-            var btnBrowse = new PillButton(Lang.T("btn.browse")); btnBrowse.SetBounds(Theme.S(bx), Theme.S(y + 44), Theme.S(bw), Theme.S(bh));
-            btnBrowse.Click += (s, e) => BrowseInto(false);
-            var btnRemove = new PillButton(Lang.T("btn.remove")); btnRemove.SetBounds(Theme.S(bx), Theme.S(y + 104), Theme.S(bw), Theme.S(bh));
-            btnRemove.Click += (s, e) => { if (lstWhite.SelectedItem != null) { gameMode.RemoveWhitelist((string)lstWhite.SelectedItem); RefreshWhite(); } };
-
-            var btnReset = new PillButton(Lang.T("btn.reset"), BtnKind.Danger); btnReset.SetBounds(Theme.S(bx), Theme.S(y + listH - bh), Theme.S(bw), Theme.S(bh));
-            btnReset.Click += (s, e) => { gameMode.ResetWhitelist(); RefreshWhite(); };
-
-            pageWhite.Controls.AddRange(new Control[] { listWrap, btnPick, btnBrowse, btnRemove, btnReset });
-            RefreshWhite();
-        }
-
-
         private void BuildSettingsPage()
         {
             int y = PageHeader(pageSettings, Lang.T("nav.set"), Lang.T("set.hint"), 1);
@@ -341,23 +307,92 @@ namespace AegisApp
             Cursor = Cursors.WaitCursor;
             ThreadPool.QueueUserWorkItem(_ =>
             {
-                bool completed = gameMode.PanicRestore();
-                completed &= tamer.PanicRestore();
-                Logger.Log("一键全部恢复：" + (completed ? "恢复流程已完成" : "等待游戏模式恢复超时，快照保留"));
-                Interlocked.Exchange(ref restoreBusy, 0);
+                bool completed = false;
+                int attempted = 0;
+                int failed = 0;
                 try
                 {
-                    BeginInvoke((MethodInvoker)(() =>
+                    if (lolService.HasRecordedHeadlessState())
                     {
-                        if (IsDisposed) return;
-                        Cursor = Cursors.Default;
-                        MessageBox.Show(this, Lang.T(completed ? "panic.done" : "panic.timeout"), App.DisplayName,
-                            MessageBoxButtons.OK, completed ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
-                        SyncAllToggles();
-                    }));
+                        attempted++;
+                        if (!TryRestoreRecordedItem(
+                                "英雄联盟大厅界面",
+                                delegate { return lolService.RestoreNow(); }))
+                            failed++;
+                    }
+                    attempted++;
+                    if (!TryRestoreRecordedItem(
+                            "游戏模式",
+                            delegate { return gameMode.PanicRestore(); }))
+                        failed++;
+                    attempted++;
+                    if (!TryRestoreRecordedItem(
+                            "反作弊压制",
+                            delegate { return tamer.PanicRestore(); }))
+                        failed++;
+
+                    completed = failed == 0;
+                    Logger.Log("一键全部恢复：已执行 " + attempted
+                        + " 项，失败 " + failed + " 项；"
+                        + (completed ? "恢复流程已完成" : "未确认项保留并继续重试"));
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    completed = false;
+                    attempted++;
+                    failed++;
+                    Logger.LogFailure("一键全部恢复流程", ex);
+                }
+                finally
+                {
+                    Interlocked.Exchange(ref restoreBusy, 0);
+                    ShowRestoreAllResult(completed, failed, attempted);
+                }
             });
+        }
+
+        private static bool TryRestoreRecordedItem(
+            string name, Func<bool> restore)
+        {
+            try
+            {
+                bool restored = restore != null && restore();
+                if (!restored) Logger.Log("一键全部恢复：" + name + " 未确认完成");
+                return restored;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogFailure("一键全部恢复：" + name, ex);
+                return false;
+            }
+        }
+
+        private void ShowRestoreAllResult(
+            bool completed, int failed, int attempted)
+        {
+            try
+            {
+                BeginInvoke((MethodInvoker)(() =>
+                {
+                    if (IsDisposed) return;
+                    Cursor = Cursors.Default;
+                    string message = Lang.T(
+                        completed ? "panic.done" : "panic.timeout");
+                    if (!completed)
+                        message += "\r\n\r\n" + Lang.F(
+                            "panic.failedcount", failed, attempted);
+                    MessageBox.Show(
+                        this,
+                        message,
+                        App.DisplayName,
+                        MessageBoxButtons.OK,
+                        completed
+                            ? MessageBoxIcon.Information
+                            : MessageBoxIcon.Warning);
+                    SyncAllToggles();
+                }));
+            }
+            catch { }
         }
 
 

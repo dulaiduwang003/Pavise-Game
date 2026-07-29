@@ -15,49 +15,11 @@ namespace AegisApp
         private static void TestCorruptJournal(string root)
         {
             string state = Path.Combine(root, "corrupt.state");
-            string beat = Path.Combine(root, "corrupt.beat");
             File.WriteAllText(state, "not-a-valid-freeze-journal", Encoding.UTF8);
-            Eq(0, FreezeGuard.RestoreJournal(state));
+            Eq(0, LegacyFreezeRecovery.RestoreJournal(state));
             if (!File.Exists(state)) throw new Exception("corrupt recovery evidence was deleted");
-            using (Process probe = StartProbe(beat))
-            {
-                try
-                {
-                    WaitAdvance(beat, -1, 4000);
-                    var g = new FreezeGuard(state, false);
-                    if (g.Freeze(probe.Id, probe.ProcessName, "must-not-overwrite"))
-                        throw new Exception("freeze proceeded over corrupt recovery evidence");
-                    int before = ReadCounter(beat);
-                    WaitAdvance(beat, before, 2000);
-                    if (File.ReadAllText(state, Encoding.UTF8) != "not-a-valid-freeze-journal")
-                        throw new Exception("corrupt recovery evidence was overwritten");
-                }
-                finally { StopOwned(probe); }
-            }
-        }
-
-        private static void TestNormalFreeze(string root)
-        {
-            string beat = Path.Combine(root, "normal.beat");
-            string state = Path.Combine(root, "normal.state");
-            using (Process probe = StartProbe(beat))
-            {
-                try
-                {
-                    WaitAdvance(beat, -1, 4000);
-                    var g = new FreezeGuard(state, false);
-                    if (!g.Freeze(probe.Id, probe.ProcessName, "selftest")) throw new Exception("NtSuspendProcess failed");
-                    Thread.Sleep(250);
-                    int frozen = ReadCounter(beat);
-                    Thread.Sleep(450);
-                    Eq(frozen, ReadCounter(beat));
-                    if (!File.Exists(state)) throw new Exception("recovery journal missing while frozen");
-                    if (!g.Restore(probe.Id)) throw new Exception("NtResumeProcess failed");
-                    WaitAdvance(beat, frozen, 3000);
-                    if (File.Exists(state)) throw new Exception("journal remained after restore");
-                }
-                finally { StopOwned(probe); }
-            }
+            if (File.ReadAllText(state, Encoding.UTF8) != "not-a-valid-freeze-journal")
+                throw new Exception("corrupt recovery evidence was overwritten");
         }
 
         private static void TestPidReuseJournal(string root)
@@ -79,37 +41,9 @@ namespace AegisApp
                     string why64 = Convert.ToBase64String(Encoding.UTF8.GetBytes("reuse-test"));
                     File.WriteAllLines(state, new[] { "AEGIS_FREEZE_V1", probe.Id + "|" + (creation + 1) + "|" + name64 + "|" + why64 }, Encoding.UTF8);
                     int before = ReadCounter(beat);
-                    Eq(0, FreezeGuard.RestoreJournal(state));
+                    Eq(0, LegacyFreezeRecovery.RestoreJournal(state));
                     WaitAdvance(beat, before, 2000);
                     if (File.Exists(state)) throw new Exception("stale identity journal was retained");
-                }
-                finally { StopOwned(probe); }
-            }
-        }
-
-        private static void TestCrashRecovery(string root)
-        {
-            string beat = Path.Combine(root, "crash.beat");
-            string state = Path.Combine(root, "crash.state");
-            string armed = state + ".armed";
-            using (Process probe = StartProbe(beat))
-            {
-                try
-                {
-                    WaitAdvance(beat, -1, 4000);
-                    int before = ReadCounter(beat);
-                    var si = Hidden("--freeze-crash-parent " + probe.Id + " " + Quote(state));
-                    using (Process parent = Process.Start(si))
-                    {
-                        if (parent == null) throw new Exception("crash-parent did not start");
-                        if (!parent.WaitForExit(5000)) throw new Exception("crash-parent did not exit");
-                        if (parent.ExitCode != 0) throw new Exception("crash-parent exit " + parent.ExitCode);
-                    }
-                    WaitFile(armed, 3000);
-                    int afterOwnerExit = ReadCounter(beat);
-                    if (afterOwnerExit < before) throw new Exception("invalid heartbeat after owner exit");
-                    WaitAdvance(beat, afterOwnerExit, 5000);
-                    WaitGone(state, 5000);
                 }
                 finally { StopOwned(probe); }
             }
@@ -123,10 +57,16 @@ namespace AegisApp
             File.WriteAllText(path, "2026-01-01 | Game | 60 FPS | 1% Low 40", Encoding.UTF8);
             Eq(Lang.T("report.none"), SessionReportStore.ReadTail(dir, 20));
             if (!File.Exists(path + ".telemetry.bak")) throw new Exception("legacy report backup missing");
-            SessionReportStore.Append(dir, "Game", PerformancePreset.Competitive, TimeSpan.FromMinutes(3), true, 12, 1);
+            SessionReportStore.Append(
+                dir, "Game", PerformancePreset.Competitive,
+                TimeSpan.FromMinutes(3), true, 12, 0.25);
             string current = SessionReportStore.ReadTail(dir, 20);
             if (current.IndexOf(Lang.T("report.boost.ok"), StringComparison.OrdinalIgnoreCase) < 0)
                 throw new Exception("new report format missing verified boost state");
+            if (current.IndexOf(
+                    Lang.F("report.aegis.cpu", "0.25"),
+                    StringComparison.OrdinalIgnoreCase) < 0)
+                throw new Exception("new report format missing Aegis CPU evidence");
             if (current.IndexOf("FPS", StringComparison.OrdinalIgnoreCase) >= 0)
                 throw new Exception("legacy frame metrics leaked into current report");
         }
@@ -224,7 +164,13 @@ namespace AegisApp
                     uint actualPriority;
                     int actualIo, error;
                     if (!GameMode.ApplyAndVerifyBoostState(handle, out actualPriority, out actualIo, out error))
+                    {
+                        // 直接用 csc 构建的诊断 EXE 没有发布清单，因而不会像正式版那样
+                        // 自动提权；此时 Windows 会以 ERROR_PRIVILEGE_NOT_HELD 拒绝 HIGH。
+                        // 这是测试环境能力缺失，不应掩盖其它回读不一致。
+                        if (error == 1314) Skip("HIGH priority requires the elevated release manifest");
                         throw new Exception("readback failed: priority=0x" + actualPriority.ToString("X") + ", io=" + actualIo + ", error=" + error);
+                    }
                     Eq(Native.HIGH_PRIORITY_CLASS, actualPriority);
                     Eq(3, actualIo);
                 }
@@ -308,7 +254,34 @@ namespace AegisApp
                     Eq(originalPriority, probe.PriorityClass);
                     Eq((long)originalAffinity, (long)probe.ProcessorAffinity);
                     core.Acquire(probe.Id, probe.ProcessName, SuppressReason.Background, null, SuppressionLevel.Isolated);
-                    if (!core.Release(probe.Id, SuppressReason.Background)) throw new Exception("staged restore did not run");
+                    long expectedCreation;
+                    long expectedCpu;
+                    ulong expectedIo;
+                    IntPtr identityHandle = Native.OpenProcess(
+                        Native.PROCESS_QUERY_LIMITED_INFORMATION,
+                        false, probe.Id);
+                    if (identityHandle == IntPtr.Zero)
+                        throw new Exception(
+                            "staged restore identity handle failed");
+                    try
+                    {
+                        if (!Native.QueryProcessSample(
+                                identityHandle, out expectedCreation,
+                                out expectedCpu, out expectedIo))
+                            throw new Exception(
+                                "staged restore identity was unreadable");
+                    }
+                    finally { Native.CloseHandle(identityHandle); }
+                    Eq(false, core.ReleaseIfCreation(
+                        probe.Id, SuppressReason.Background,
+                        expectedCreation + 1));
+                    probe.Refresh();
+                    Eq(ProcessPriorityClass.Idle, probe.PriorityClass);
+                    if (!core.ReleaseIfCreation(
+                            probe.Id, SuppressReason.Background,
+                            expectedCreation))
+                        throw new Exception(
+                            "identity-bound staged restore did not run");
                     probe.Refresh();
                     Eq(originalPriority, probe.PriorityClass);
                     Eq((long)originalAffinity, (long)probe.ProcessorAffinity);

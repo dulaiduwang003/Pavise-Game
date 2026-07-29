@@ -39,14 +39,33 @@ namespace AegisApp
             processValue = processText ?? "";
             live = isLive;
             Invalidate();
-            if (live) UiClock.Wake();
+            if (live) UiClock.WakeSlow();
         }
 
-        protected override void OnFrame(object sender, EventArgs e)
+        protected override void OnHandleCreated(EventArgs e)
         {
-            if (!live) return;
-            if (Visible) UiClock.Wake();
-            phase += 0.07f;
+            base.OnHandleCreated(e);
+            UiClock.SlowFrame += OnSlowFrame;
+            if (live && Visible) UiClock.WakeSlow();
+        }
+
+        protected override void OnHandleDestroyed(EventArgs e)
+        {
+            UiClock.SlowFrame -= OnSlowFrame;
+            base.OnHandleDestroyed(e);
+        }
+
+        protected override void OnVisibleChanged(EventArgs e)
+        {
+            base.OnVisibleChanged(e);
+            if (live && Visible) UiClock.WakeSlow();
+        }
+
+        private void OnSlowFrame(object sender, EventArgs e)
+        {
+            if (!live || !Visible) return;
+            UiClock.WakeSlow();
+            phase += 0.56f;
             if (phase > 6.2832f) phase -= 6.2832f;
             Invalidate();
         }

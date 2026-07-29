@@ -36,6 +36,7 @@ namespace AegisApp
         private int lolQuarantineBusy;
         private DateTime lolInspectUtc;
         private string lolInspectRoot = "";
+        private int lolInspectSignature = -1;
         private bool lolCanQuarantine;
         private bool lolCanRestoreQuarantine;
         private bool lolCanDiscardQuarantine;
@@ -199,6 +200,11 @@ namespace AegisApp
 
         private void RefreshLolPage()
         {
+            RefreshLolPage(true);
+        }
+
+        private void RefreshLolPage(bool inspectFiles)
+        {
             if (lolService == null || lolDeck == null || lolDeck.IsDisposed) return;
             LolOptimizationSnapshot snapshot;
             try { snapshot = lolService.GetSnapshot(); }
@@ -250,7 +256,8 @@ namespace AegisApp
                     LolText("客户端未运行", "Client is not running", "クライアント未起動"),
                 snapshot.HeadlessActive ? Theme.Green : snapshot.UxProcessCount > 0 ? Theme.Accent : Theme.Faint);
 
-            if (pageLol != null && pageLol.Visible) QueueLolInspection(snapshot.LolRoot);
+            if (inspectFiles && pageLol != null && pageLol.Visible && !snapshot.GameRunning)
+                QueueLolInspection(snapshot);
             bool runtimeBusy = Interlocked.CompareExchange(ref lolUiBusy, 0, 0) != 0;
             bool fileBusy = Interlocked.CompareExchange(ref lolQuarantineBusy, 0, 0) != 0;
             bool inspectBusy = Interlocked.CompareExchange(ref lolInspectBusy, 0, 0) != 0;
@@ -375,24 +382,25 @@ namespace AegisApp
 
         private void OnLolServiceChanged()
         {
-            if (IsDisposed || !IsHandleCreated) return;
+            if (IsDisposed || !IsHandleCreated || !UiActive) return;
             try
             {
                 BeginInvoke((MethodInvoker)delegate
                 {
-                    if (pageLol != null && pageLol.Visible) RefreshLolPage();
+                    if (UiActive && pageLol != null && pageLol.Visible) RefreshLolPage();
                 });
             }
             catch { }
         }
 
-        private void QueueLolInspection(string root)
+        private void QueueLolInspection(LolOptimizationSnapshot snapshot)
         {
-            string normalized = root ?? "";
+            string normalized = (snapshot != null ? snapshot.LolRoot : null) ?? "";
             if (normalized.Length == 0)
             {
                 lolInspectRoot = "";
                 lolInspectUtc = DateTime.MinValue;
+                lolInspectSignature = -1;
                 lolCanQuarantine = false;
                 lolCanRestoreQuarantine = false;
                 lolCanDiscardQuarantine = false;
@@ -407,10 +415,20 @@ namespace AegisApp
                 return;
             }
             bool rootChanged = !string.Equals(normalized, lolInspectRoot, StringComparison.OrdinalIgnoreCase);
-            if (!rootChanged &&
-                DateTime.UtcNow - lolInspectUtc < TimeSpan.FromMinutes(2)) return;
+            int signature = (snapshot.ClientRunning ? 1 : 0)
+                | (snapshot.GameRunning ? 2 : 0)
+                | (snapshot.WeGameProcessCount > 0 ? 4 : 0)
+                | (snapshot.UxProcessCount > 0 ? 8 : 0)
+                | (snapshot.CrossProcessCount > 0 ? 16 : 0);
+            bool envChanged = signature != lolInspectSignature;
+            bool quietEnv = signature == 0;
+            TimeSpan maxAge = lolInspectBlocked && quietEnv
+                ? TimeSpan.FromSeconds(5) : TimeSpan.FromMinutes(2);
+            if (!rootChanged && !envChanged
+                && DateTime.UtcNow - lolInspectUtc < maxAge) return;
             if (Interlocked.CompareExchange(ref lolQuarantineBusy, 0, 0) != 0) return;
             if (Interlocked.CompareExchange(ref lolInspectBusy, 1, 0) != 0) return;
+            lolInspectSignature = signature;
             if (rootChanged)
             {
                 lolCanQuarantine = false;
@@ -471,11 +489,12 @@ namespace AegisApp
                 lolInspectError = error ?? "";
                 lolInspectUtc = DateTime.UtcNow;
                 Interlocked.Exchange(ref lolInspectBusy, 0);
+                if (!UiActive) return;
                 try
                 {
                     BeginInvoke((MethodInvoker)delegate
                     {
-                        if (!IsDisposed) RefreshLolPage();
+                        if (!IsDisposed && UiActive) RefreshLolPage();
                     });
                 }
                 catch { }

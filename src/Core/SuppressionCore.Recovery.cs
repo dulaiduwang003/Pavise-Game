@@ -14,7 +14,11 @@ namespace AegisApp
 
         private bool SaveJournalLocked()
         {
-            if (string.IsNullOrEmpty(journalPath)) return true;
+            if (string.IsNullOrEmpty(journalPath))
+            {
+                MarkJournaledLocked();
+                return true;
+            }
             try
             {
                 var lines = new List<string>();
@@ -30,12 +34,14 @@ namespace AegisApp
                 if (lines.Count == 1)
                 {
                     if (File.Exists(journalPath)) File.Delete(journalPath);
+                    MarkJournaledLocked();
                     return true;
                 }
                 string tmp = journalPath + ".tmp";
                 File.WriteAllLines(tmp, lines.ToArray(), new UTF8Encoding(false));
                 if (File.Exists(journalPath)) File.Replace(tmp, journalPath, null);
                 else File.Move(tmp, journalPath);
+                MarkJournaledLocked();
                 return true;
             }
             catch (Exception ex)
@@ -43,6 +49,12 @@ namespace AegisApp
                 Logger.LogFailure("压制恢复日志写入失败，已阻止新的进程状态修改", ex);
                 return false;
             }
+        }
+
+        private void MarkJournaledLocked()
+        {
+            foreach (Entry entry in map.Values)
+                if (entry.OrigPri != uint.MaxValue) entry.Journaled = true;
         }
 
         private void LoadJournal()
@@ -57,6 +69,7 @@ namespace AegisApp
                     int pid;
                     Entry e = ParseJournalLine(lines[i], out pid);
                     if (e == null || pid <= 0 || e.OrigPri == uint.MaxValue) continue;
+                    e.Journaled = true;
                     map[pid] = e;
                 }
             }
@@ -98,6 +111,7 @@ namespace AegisApp
 
         private static JournalIdentity IdentifyJournalEntry(IntPtr h, Entry e)
         {
+            if (e.Creation <= 0) return JournalIdentity.Unknown;
             string current = Native.ImageName(h);
             if (current != null && !SameName(current, e.Name)) return JournalIdentity.Mismatch;
             long currentCreation, cpu; ulong disk;
@@ -136,6 +150,10 @@ namespace AegisApp
                                 if (IdentifyJournalEntry(query, entry) != JournalIdentity.Mismatch) keep.Add(lines[i]);
                             }
                             finally { Native.CloseHandle(query); }
+                        }
+                        else if (!Native.LastOpenProcessFailureWasNoSuchProcess())
+                        {
+                            keep.Add(lines[i]);
                         }
                         continue;
                     }

@@ -17,6 +17,7 @@ namespace AegisApp
         private PerformancePreset mode = PerformancePreset.Standard;
         private bool guardEnabled = true;
         private bool gameActive;
+        private bool animationRequested;
         private Bitmap staticLayer;
         private Color cachedAccent = Color.Empty, cachedAccent2 = Color.Empty;
 
@@ -30,10 +31,8 @@ namespace AegisApp
             timer.Interval = 33;
             timer.Tick += delegate
             {
-                Form f = FindForm();
-                if (!Visible || f == null || !f.Visible)
-                    timer.Stop();
-                else if (f.WindowState != FormWindowState.Minimized) Invalidate();
+                if (!CanAnimate()) { timer.Stop(); return; }
+                Invalidate();
             };
         }
 
@@ -41,26 +40,30 @@ namespace AegisApp
         {
             if (mode == value && guardEnabled == enabled && gameActive == active) return;
             mode = value; guardEnabled = enabled; gameActive = active;
+            // 游戏运行时即使用户主动把面板留在前台，也只做低频状态动画，
+            // 避免一个纯装饰控件持续以 30 FPS 和游戏争用 UI/GDI 时间。
+            timer.Interval = gameActive ? 200 : 33;
             DropCache();
             Invalidate();
         }
 
         public void SetAnimationEnabled(bool value)
         {
-            if (value && IsHandleCreated) timer.Start(); else timer.Stop();
+            animationRequested = value;
+            SyncAnimationTimer();
             if (value) Invalidate();
         }
 
         protected override void OnVisibleChanged(EventArgs e)
         {
             base.OnVisibleChanged(e);
-            if (Visible && IsHandleCreated) timer.Start(); else timer.Stop();
+            SyncAnimationTimer();
         }
 
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
-            if (Visible) timer.Start();
+            SyncAnimationTimer();
         }
 
         protected override void OnHandleDestroyed(EventArgs e)
@@ -74,6 +77,30 @@ namespace AegisApp
         {
             if (disposing) { timer.Dispose(); DropCache(); }
             base.Dispose(disposing);
+        }
+
+        internal bool AnimationTimerEnabled
+        {
+            get { return timer.Enabled; }
+        }
+
+        internal static bool ShouldAnimate(bool requested, bool handleCreated, bool controlVisible,
+            bool formVisible, FormWindowState windowState)
+        {
+            return requested && handleCreated && controlVisible && formVisible
+                && windowState != FormWindowState.Minimized;
+        }
+
+        private bool CanAnimate()
+        {
+            Form f = FindForm();
+            return ShouldAnimate(animationRequested, IsHandleCreated, Visible,
+                f != null && f.Visible, f == null ? FormWindowState.Minimized : f.WindowState);
+        }
+
+        private void SyncAnimationTimer()
+        {
+            if (CanAnimate()) timer.Start(); else timer.Stop();
         }
 
         protected override void OnSizeChanged(EventArgs e)

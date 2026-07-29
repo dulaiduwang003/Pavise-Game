@@ -35,6 +35,7 @@ namespace AegisApp
         {
             public string Name;
             public long Mem;
+            public long Cpu0;
             public long Cpu1;
             public double Cpu;
             public string Title = "";
@@ -74,6 +75,7 @@ namespace AegisApp
             listWrap.Padding = new Padding(Theme.S(6));
             lst = new ListBox();
             lst.Dock = DockStyle.Fill;
+            lst.HorizontalScrollbar = true;
             Theme.StyleList(lst);
             lst.DoubleClick += (s, e) => Accept();
             listWrap.Controls.Add(lst);
@@ -150,7 +152,8 @@ namespace AegisApp
                 foreach (Row r in rows)
                 {
                     names.Add(r.Name);
-                    display.Add(r.Name + "   —   " + UsageText(r));
+                    display.Add(r.Name + "   —   " + UsageText(r)
+                        + (string.IsNullOrEmpty(r.Path) ? "" : "    " + r.Path));
                     paths.Add(r.Path);
                 }
                 lblInfo.Text = Lang.F("pick.count", rows.Count);
@@ -160,8 +163,15 @@ namespace AegisApp
 
         private static List<Row> Collect()
         {
-            var cpu0 = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
-            SnapCpu(cpu0);
+            int currentSession = -1;
+            try
+            {
+                using (Process current = Process.GetCurrentProcess())
+                    currentSession = current.SessionId;
+            }
+            catch { }
+            var cpu0 = new Dictionary<int, long>();
+            SnapCpu(cpu0, currentSession);
 
             var sw = Stopwatch.StartNew();
             Thread.Sleep(SampleMs);
@@ -179,26 +189,35 @@ namespace AegisApp
                 {
                     if (p.Id <= 4) continue;
                     string nm = p.ProcessName;
+                    int session = -1;
+                    try { session = p.SessionId; } catch { }
+                    if (currentSession < 0 || session != currentSession) continue;
+                    string path = null;
+                    IntPtr h = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, p.Id);
+                    if (h != IntPtr.Zero)
+                    {
+                        try { path = Native.ImagePath(h); }
+                        finally { Native.CloseHandle(h); }
+                    }
+                    string normalizedPath = WhitelistRule.NormalizeImagePath(path);
+                    string key = normalizedPath.Length > 0 ? "P:" + normalizedPath
+                        : "N:" + nm + "|S:" + session;
 
                     Row r;
-                    if (!agg.TryGetValue(nm, out r)) { r = new Row { Name = nm }; agg[nm] = r; }
+                    if (!agg.TryGetValue(key, out r))
+                    {
+                        r = new Row { Name = nm, Path = normalizedPath, Session = session };
+                        agg[key] = r;
+                    }
 
                     try { r.Mem += p.WorkingSet64; } catch { }
+                    long first;
+                    if (cpu0.TryGetValue(p.Id, out first)) r.Cpu0 += first;
                     try { r.Cpu1 += p.TotalProcessorTime.Ticks; } catch { }
-                    if (r.Session < 0) { try { r.Session = p.SessionId; } catch { } }
                     if (r.Title.Length == 0)
                     {
                         try { string t = p.MainWindowTitle; if (!string.IsNullOrEmpty(t)) r.Title = t; }
                         catch { }
-                    }
-                    if (string.IsNullOrEmpty(r.Path))
-                    {
-                        IntPtr h = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, p.Id);
-                        if (h != IntPtr.Zero)
-                        {
-                            try { r.Path = Native.ImagePath(h); }
-                            finally { Native.CloseHandle(h); }
-                        }
                     }
                 }
                 catch { }
@@ -208,9 +227,7 @@ namespace AegisApp
             var rows = new List<Row>(agg.Values);
             foreach (Row r in rows)
             {
-                long c0;
-                cpu0.TryGetValue(r.Name, out c0);
-                long delta = r.Cpu1 - c0;
+                long delta = r.Cpu1 - r.Cpu0;
                 if (delta < 0) delta = 0;
                 r.Cpu = elapsed > 0 ? delta * 100.0 / ((double)elapsed * cores) : 0;
             }
@@ -224,7 +241,7 @@ namespace AegisApp
             return rows;
         }
 
-        private static void SnapCpu(Dictionary<string, long> into)
+        private static void SnapCpu(Dictionary<int, long> into, int currentSession)
         {
             Process[] all;
             try { all = Process.GetProcesses(); } catch { return; }
@@ -233,12 +250,12 @@ namespace AegisApp
                 try
                 {
                     if (p.Id <= 4) continue;
-                    string nm = p.ProcessName;
+                    int session;
+                    try { session = p.SessionId; } catch { continue; }
+                    if (currentSession < 0 || session != currentSession) continue;
                     long t = 0;
                     try { t = p.TotalProcessorTime.Ticks; } catch { }
-                    long cur;
-                    into.TryGetValue(nm, out cur);
-                    into[nm] = cur + t;
+                    into[p.Id] = t;
                 }
                 catch { }
                 finally { p.Dispose(); }

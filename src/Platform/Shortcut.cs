@@ -16,20 +16,32 @@ namespace AegisApp
 
         public static string ResolveTarget(string lnkPath)
         {
-            if (!IsLnk(lnkPath)) return null;
+            string target;
+            string arguments;
+            return TryResolve(lnkPath, out target, out arguments) ? target : null;
+        }
+
+        public static bool TryResolve(string lnkPath, out string target, out string arguments)
+        {
+            target = null;
+            arguments = "";
+            if (!IsLnk(lnkPath)) return false;
             object shell = null, sc = null;
             try
             {
                 Type shellType = Type.GetTypeFromProgID("WScript.Shell");
-                if (shellType == null) return null;
+                if (shellType == null) return false;
                 shell = Activator.CreateInstance(shellType);
                 sc = shellType.InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, shell,
                     new object[] { lnkPath });
-                if (sc == null) return null;
-                string target = sc.GetType().InvokeMember("TargetPath", BindingFlags.GetProperty, null, sc, null) as string;
-                return string.IsNullOrEmpty(target) ? null : target;
+                if (sc == null) return false;
+                target = sc.GetType().InvokeMember(
+                    "TargetPath", BindingFlags.GetProperty, null, sc, null) as string;
+                arguments = sc.GetType().InvokeMember(
+                    "Arguments", BindingFlags.GetProperty, null, sc, null) as string ?? "";
+                return !string.IsNullOrEmpty(target);
             }
-            catch { return null; }
+            catch { target = null; arguments = ""; return false; }
             finally
             {
                 if (sc != null) try { Marshal.ReleaseComObject(sc); } catch { }

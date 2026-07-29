@@ -35,6 +35,43 @@ namespace AegisApp
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern IntPtr OpenProcess(int access, bool inherit, int pid);
         [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool ProcessIdToSessionId(
+            uint processId, out uint sessionId);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern uint WaitForSingleObject(
+            IntPtr handle, uint milliseconds);
+
+        private const uint WaitTimeout = 258;
+
+        // ProcessIdToSessionId is PID-based, so keep the sampled process handle
+        // open and require that exact process object to still be alive after
+        // the lookup. If the original process exited and its PID was reused,
+        // the old handle is signaled and the session result is rejected.
+        public static bool TryGetLiveProcessSessionId(
+            IntPtr processHandle, int pid, out int sessionId)
+        {
+            sessionId = -1;
+            if (processHandle == IntPtr.Zero || pid <= 0) return false;
+            uint value;
+            if (!ProcessIdToSessionId((uint)pid, out value)
+                || value > int.MaxValue)
+                return false;
+            if (WaitForSingleObject(processHandle, 0) != WaitTimeout)
+                return false;
+            sessionId = (int)value;
+            return true;
+        }
+
+        // OpenProcess reports ERROR_INVALID_PARAMETER when the PID no longer
+        // exists. Access denied and every other failure are deliberately not
+        // treated as proof of exit: anti-cheat/protected processes can become
+        // temporarily unqueryable while still retaining state we must restore.
+        public static bool LastOpenProcessFailureWasNoSuchProcess()
+        {
+            return Marshal.GetLastWin32Error() == 87;
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
         public static extern bool CloseHandle(IntPtr h);
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern bool SetPriorityClass(IntPtr h, uint cls);
@@ -78,64 +115,6 @@ namespace AegisApp
             return Volatile.Read(ref boostPrivilegeState) > 0;
         }
 
-        private static int profilePrivilegeState;
-
-        // 清理待机内存列表需要 SeProfileSingleProcessPrivilege
-        public static bool EnsureProfilePrivilege()
-        {
-            int known = Volatile.Read(ref profilePrivilegeState);
-            if (known != 0) return known > 0;
-            bool enabled = EnablePrivilege("SeProfileSingleProcessPrivilege");
-            Interlocked.CompareExchange(ref profilePrivilegeState, enabled ? 1 : -1, 0);
-            return Volatile.Read(ref profilePrivilegeState) > 0;
-        }
-
-        [DllImport("ntdll.dll")]
-        public static extern int NtQuerySystemInformation(int infoClass, IntPtr buffer, int length, out int returned);
-        [DllImport("ntdll.dll")]
-        public static extern int NtSetSystemInformation(int infoClass, IntPtr buffer, int length);
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct SystemInfoNative
-        {
-            public ushort ProcessorArchitecture, Reserved;
-            public uint PageSize;
-            public IntPtr MinimumApplicationAddress, MaximumApplicationAddress, ActiveProcessorMask;
-            public uint NumberOfProcessors, ProcessorType, AllocationGranularity;
-            public ushort ProcessorLevel, ProcessorRevision;
-        }
-
-        [DllImport("kernel32.dll")]
-        private static extern void GetNativeSystemInfo(ref SystemInfoNative info);
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct MemoryStatusEx
-        {
-            public uint Length;
-            public uint MemoryLoad;
-            public ulong TotalPhys, AvailPhys, TotalPageFile, AvailPageFile, TotalVirtual, AvailVirtual, AvailExtendedVirtual;
-        }
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern bool GlobalMemoryStatusEx(ref MemoryStatusEx buffer);
-
-        // 系统整体内存压力百分比（0~100）。比 free/zero 链表更能反映"内存是否吃紧"，
-        // 因为 Windows 会主动把空闲物理内存收进待机列表。
-        public static int MemoryLoadPercent()
-        {
-            var st = new MemoryStatusEx();
-            st.Length = (uint)Marshal.SizeOf(typeof(MemoryStatusEx));
-            try { return GlobalMemoryStatusEx(ref st) ? (int)st.MemoryLoad : 0; }
-            catch { return 0; }
-        }
-
-        public static int MemoryPageSize()
-        {
-            var info = new SystemInfoNative();
-            try { GetNativeSystemInfo(ref info); } catch { }
-            return info.PageSize > 0 ? (int)info.PageSize : 4096;
-        }
-
         private static bool EnablePrivilege(string name)
         {
             const uint TokenAdjustPrivileges = 0x20;
@@ -157,8 +136,6 @@ namespace AegisApp
         public static extern bool SetProcessWorkingSetSize(IntPtr h, IntPtr min, IntPtr max);
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool GetProcessAffinityMask(IntPtr h, out UIntPtr procMask, out UIntPtr sysMask);
-        [DllImport("ntdll.dll")]
-        public static extern int NtSuspendProcess(IntPtr h);
         [DllImport("ntdll.dll")]
         public static extern int NtResumeProcess(IntPtr h);
         [DllImport("kernel32.dll", SetLastError = true)]
@@ -419,6 +396,7 @@ namespace AegisApp
         public const int PROCESS_SET_LIMITED_INFORMATION = 0x2000;
         public const int PROCESS_SET_QUOTA = 0x0100;
         public const int PROCESS_SUSPEND_RESUME = 0x0800;
+        public const int SYNCHRONIZE = 0x00100000;
         public const int GpuPriorityHigh = 4;
         public const uint IDLE_PRIORITY_CLASS = 0x40;
         public const uint NORMAL_PRIORITY_CLASS = 0x20;

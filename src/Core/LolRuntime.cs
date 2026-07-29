@@ -36,11 +36,15 @@ namespace AegisApp
 
     internal sealed class LolProcessSnapshot
     {
+        public bool ScanSucceeded;
+        public bool CoreIdentityIndeterminate;
         public bool ClientRunning;
         public bool GameRunning;
+        public int GameProcessId;
         public int WeGameProcessCount;
         public int CrossProcessCount;
         public int UxProcessCount;
+        public int MainUxProcessCount;
     }
 
     internal static class LolCredentialParser
@@ -300,20 +304,27 @@ namespace AegisApp
             Process[] all;
             try { all = Process.GetProcesses(); }
             catch { return null; }
-            foreach (Process process in all)
+            try
             {
-                try
+                foreach (Process process in all)
                 {
-                    string name = process.ProcessName;
-                    if (!string.Equals(name, "LeagueClient", StringComparison.OrdinalIgnoreCase)
-                        && !string.Equals(name, "LeagueClientUx", StringComparison.OrdinalIgnoreCase)
-                        && !string.Equals(name, "League of Legends", StringComparison.OrdinalIgnoreCase))
-                        continue;
-                    string root = NormalizeLolRoot(LolRuntimeProcesses.GetImagePath(process));
-                    if (root != null) return root;
+                    try
+                    {
+                        string name = process.ProcessName;
+                        if (!string.Equals(name, "LeagueClient", StringComparison.OrdinalIgnoreCase)
+                            && !string.Equals(name, "LeagueClientUx", StringComparison.OrdinalIgnoreCase)
+                            && !string.Equals(name, "League of Legends", StringComparison.OrdinalIgnoreCase))
+                            continue;
+                        string root = NormalizeLolRoot(LolRuntimeProcesses.GetImagePath(process));
+                        if (root != null) return root;
+                    }
+                    catch { }
                 }
-                catch { }
-                finally { try { process.Dispose(); } catch { } }
+            }
+            finally
+            {
+                foreach (Process process in all)
+                    if (process != null) try { process.Dispose(); } catch { }
             }
             return null;
         }
@@ -323,21 +334,28 @@ namespace AegisApp
             Process[] all;
             try { all = Process.GetProcesses(); }
             catch { return null; }
-            foreach (Process process in all)
+            try
             {
-                try
+                foreach (Process process in all)
                 {
-                    string name = process.ProcessName;
-                    if (!string.Equals(name, "wegame", StringComparison.OrdinalIgnoreCase)
-                        && !string.Equals(name, "wegame_env", StringComparison.OrdinalIgnoreCase)
-                        && !string.Equals(name, "wegameclient", StringComparison.OrdinalIgnoreCase))
-                        continue;
-                    string path = LolRuntimeProcesses.GetImagePath(process);
-                    string root = NormalizeWeGameRoot(path);
-                    if (root != null) return root;
+                    try
+                    {
+                        string name = process.ProcessName;
+                        if (!string.Equals(name, "wegame", StringComparison.OrdinalIgnoreCase)
+                            && !string.Equals(name, "wegame_env", StringComparison.OrdinalIgnoreCase)
+                            && !string.Equals(name, "wegameclient", StringComparison.OrdinalIgnoreCase))
+                            continue;
+                        string path = LolRuntimeProcesses.GetImagePath(process);
+                        string root = NormalizeWeGameRoot(path);
+                        if (root != null) return root;
+                    }
+                    catch { }
                 }
-                catch { }
-                finally { try { process.Dispose(); } catch { } }
+            }
+            finally
+            {
+                foreach (Process process in all)
+                    if (process != null) try { process.Dispose(); } catch { }
             }
             return null;
         }
@@ -523,7 +541,91 @@ namespace AegisApp
             "wegame_env.exe", "pallas.exe", "rail.exe", "tcls_core.exe"
         };
 
+        private static readonly string[] ScanCandidateNames =
+        {
+            "leagueclient", "leagueclientux", "leagueclientuxrender", "league of legends",
+            "wegame", "wegame_env", "wegameclient", "pallas", "rail", "tcls_core",
+            "browser", "crashpad_handler", "teniodl", "wegameupdate",
+            "crossproxy", "lolaicoach", "aicoachapp", "icreatelol", "tqmcenter", "yxqxunyou"
+        };
+
+        private static readonly string[] CleanupCandidateNames =
+        {
+            "wegame", "wegame_env", "wegameclient", "pallas", "rail",
+            "tcls_core", "browser", "crashpad_handler", "teniodl",
+            "wegameupdate", "crossproxy", "lolaicoach", "aicoachapp",
+            "icreatelol", "tqmcenter", "yxqxunyou"
+        };
+
+        internal static bool IsScanCandidateName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            for (int i = 0; i < ScanCandidateNames.Length; i++)
+                if (string.Equals(name, ScanCandidateNames[i], StringComparison.OrdinalIgnoreCase))
+                    return true;
+            return false;
+        }
+
+        internal static bool IsCoreIdentityCandidateName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            string bare = name.EndsWith(
+                ".exe", StringComparison.OrdinalIgnoreCase)
+                ? name.Substring(0, name.Length - 4) : name;
+            return string.Equals(
+                    bare, "LeagueClient", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(
+                    bare, "LeagueClientUx", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(
+                    bare, "League of Legends",
+                    StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static bool IsCredentialSourceName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            string bare = name.EndsWith(
+                ".exe", StringComparison.OrdinalIgnoreCase)
+                ? name.Substring(0, name.Length - 4) : name;
+            return string.Equals(
+                    bare, "LeagueClient", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(
+                    bare, "LeagueClientUx", StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static bool IsCleanupCandidateName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            string bare = name.EndsWith(
+                ".exe", StringComparison.OrdinalIgnoreCase)
+                ? name.Substring(0, name.Length - 4) : name;
+            for (int i = 0; i < CleanupCandidateNames.Length; i++)
+                if (string.Equals(
+                    bare,
+                    CleanupCandidateNames[i],
+                    StringComparison.OrdinalIgnoreCase))
+                    return true;
+            return false;
+        }
+
+        internal static bool IsRelevantProcessChange(
+            string name, string path, string lolRoot, string weGameRoot)
+        {
+            if (!IsScanCandidateName(name)) return false;
+            if (!string.IsNullOrEmpty(path))
+                return IsUnder(path, lolRoot) || IsUnder(path, weGameRoot);
+            return !string.Equals(
+                    name, "browser", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(
+                    name, "crashpad_handler", StringComparison.OrdinalIgnoreCase);
+        }
+
         public static LolProcessSnapshot Scan(string lolRoot, string weGameRoot)
+        {
+            return Scan(lolRoot, weGameRoot, false);
+        }
+
+        public static LolProcessSnapshot Scan(string lolRoot, string weGameRoot, bool namesOnly)
         {
             var result = new LolProcessSnapshot();
             if (!LolInstallDiscovery.IsValidLolRoot(lolRoot)) lolRoot = null;
@@ -531,20 +633,38 @@ namespace AegisApp
             Process[] all;
             try { all = Process.GetProcesses(); }
             catch { return result; }
+            result.ScanSucceeded = true;
             foreach (Process process in all)
             {
+                string processName = null;
                 try
                 {
+                    processName = process.ProcessName;
+                    if (namesOnly && !IsScanCandidateName(processName)) continue;
                     string path = GetImagePath(process);
-                    if (string.IsNullOrEmpty(path)) continue;
+                    if (string.IsNullOrEmpty(path))
+                    {
+                        if (IsCoreIdentityCandidateName(processName))
+                            result.CoreIdentityIndeterminate = true;
+                        continue;
+                    }
                     string file = System.IO.Path.GetFileName(path);
                     if (IsLeagueClientProcess(path, file, lolRoot)) result.ClientRunning = true;
-                    if (IsGameProcess(path, file, lolRoot)) result.GameRunning = true;
+                    if (IsGameProcess(path, file, lolRoot))
+                    {
+                        result.GameRunning = true;
+                        result.GameProcessId = process.Id;
+                    }
                     if (IsUxProcess(path, file, lolRoot)) result.UxProcessCount++;
+                    if (IsMainUxProcess(path, file, lolRoot)) result.MainUxProcessCount++;
                     if (IsWeGameProcess(path, file, weGameRoot)) result.WeGameProcessCount++;
                     if (IsUnder(path, CombineSafe(lolRoot, "Cross"))) result.CrossProcessCount++;
                 }
-                catch { }
+                catch
+                {
+                    if (IsCoreIdentityCandidateName(processName))
+                        result.CoreIdentityIndeterminate = true;
+                }
                 finally { try { process.Dispose(); } catch { } }
             }
             return result;
@@ -576,6 +696,10 @@ namespace AegisApp
                 try
                 {
                     if (process.Id == currentPid) continue;
+                    string candidateName;
+                    try { candidateName = process.ProcessName; }
+                    catch { continue; }
+                    if (!IsCleanupCandidateName(candidateName)) continue;
                     probe = Native.OpenProcess(
                         Native.PROCESS_QUERY_LIMITED_INFORMATION, false, process.Id);
                     if (probe == IntPtr.Zero) continue;
@@ -645,6 +769,63 @@ namespace AegisApp
             return found;
         }
 
+        internal static bool TryGetGameIdentity(
+            string lolRoot, int preferredPid, out int pid, out long creation)
+        {
+            pid = 0;
+            creation = 0;
+            if (!LolInstallDiscovery.IsValidLolRoot(lolRoot)) return false;
+            if (preferredPid > 0
+                && TryGetGameIdentityCore(lolRoot, preferredPid, out creation))
+            {
+                pid = preferredPid;
+                return true;
+            }
+            Process[] processes;
+            try { processes = Process.GetProcessesByName("League of Legends"); }
+            catch { return false; }
+            try
+            {
+                foreach (Process process in processes)
+                {
+                    try
+                    {
+                        long candidateCreation;
+                        if (!TryGetGameIdentityCore(
+                            lolRoot, process.Id, out candidateCreation)) continue;
+                        pid = process.Id;
+                        creation = candidateCreation;
+                        return true;
+                    }
+                    catch { }
+                }
+            }
+            finally { DisposeProcesses(processes); }
+            return false;
+        }
+
+        private static bool TryGetGameIdentityCore(
+            string lolRoot, int pid, out long creation)
+        {
+            creation = 0;
+            IntPtr handle = IntPtr.Zero;
+            try
+            {
+                handle = Native.OpenProcess(
+                    Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+                if (handle == IntPtr.Zero) return false;
+                string path = Native.ImagePath(handle);
+                if (!IsGameProcess(path, System.IO.Path.GetFileName(path), lolRoot))
+                    return false;
+                long cpu;
+                ulong io;
+                return Native.QueryProcessSample(handle, out creation, out cpu, out io)
+                    && creation != 0;
+            }
+            catch { return false; }
+            finally { if (handle != IntPtr.Zero) Native.CloseHandle(handle); }
+        }
+
         public static bool IsWeGameRunning(string weGameRoot)
         {
             if (!LolInstallDiscovery.IsValidWeGameRoot(weGameRoot)) return false;
@@ -656,17 +837,25 @@ namespace AegisApp
                 Process[] processes;
                 try { processes = Process.GetProcessesByName(bare); }
                 catch { continue; }
-                foreach (Process process in processes)
+                bool found = false;
+                try
                 {
-                    try
+                    foreach (Process process in processes)
                     {
-                        string path = GetImagePath(process);
-                        if (IsWeGameProcess(path, System.IO.Path.GetFileName(path), weGameRoot))
-                            return true;
+                        try
+                        {
+                            string path = GetImagePath(process);
+                            if (IsWeGameProcess(path, System.IO.Path.GetFileName(path), weGameRoot))
+                            {
+                                found = true;
+                                break;
+                            }
+                        }
+                        catch { }
                     }
-                    catch { }
-                    finally { try { process.Dispose(); } catch { } }
                 }
+                finally { DisposeProcesses(processes); }
+                if (found) return true;
             }
             return false;
         }
@@ -724,6 +913,13 @@ namespace AegisApp
             }
             catch { return null; }
             finally { if (handle != IntPtr.Zero) Native.CloseHandle(handle); }
+        }
+
+        private static void DisposeProcesses(Process[] processes)
+        {
+            if (processes == null) return;
+            foreach (Process process in processes)
+                if (process != null) try { process.Dispose(); } catch { }
         }
 
         public static bool IsUnder(string path, string root)
@@ -785,14 +981,15 @@ namespace AegisApp
             return false;
         }
 
-        private static bool IsLeagueClientProcess(string path, string file, string lolRoot)
+        internal static bool IsLeagueClientProcess(string path, string file, string lolRoot)
         {
             if (string.IsNullOrEmpty(lolRoot) || !IsUnder(path, lolRoot)) return false;
-            return string.Equals(file, "LeagueClient.exe", StringComparison.OrdinalIgnoreCase)
-                || file.StartsWith("LeagueClientUx", StringComparison.OrdinalIgnoreCase);
+            // ClientRunning means the LeagueClient backend, not a surviving
+            // Chromium renderer. UX processes are counted independently below.
+            return string.Equals(file, "LeagueClient.exe", StringComparison.OrdinalIgnoreCase);
         }
 
-        private static bool IsGameProcess(string path, string file, string lolRoot)
+        internal static bool IsGameProcess(string path, string file, string lolRoot)
         {
             return !string.IsNullOrEmpty(lolRoot)
                 && string.Equals(file, "League of Legends.exe", StringComparison.OrdinalIgnoreCase)
@@ -803,6 +1000,13 @@ namespace AegisApp
         {
             return !string.IsNullOrEmpty(lolRoot)
                 && file.StartsWith("LeagueClientUx", StringComparison.OrdinalIgnoreCase)
+                && IsUnder(path, lolRoot);
+        }
+
+        internal static bool IsMainUxProcess(string path, string file, string lolRoot)
+        {
+            return !string.IsNullOrEmpty(lolRoot)
+                && string.Equals(file, "LeagueClientUx.exe", StringComparison.OrdinalIgnoreCase)
                 && IsUnder(path, lolRoot);
         }
 
@@ -825,17 +1029,139 @@ namespace AegisApp
 
     internal static class LolLcuCredentialSource
     {
+        private const int RecentLogLimit = 8;
+        private const int CredentialProbeLimit = 4;
+        private const int LockfileTailBytes = 4 * 1024;
+        private const int LogHeadBytes = 64 * 1024;
+        private const int LogTailBytes = 448 * 1024;
+        private static readonly object LogCacheLock = new object();
+        private static string cachedLogRoot;
+        private static string[] cachedLogPaths;
+        private static DateTime cachedLogPathsUntilUtc;
+
+        internal static long CredentialGenerationStamp(string lolRoot)
+        {
+            if (string.IsNullOrEmpty(lolRoot)) return 0;
+            unchecked
+            {
+                long stamp = 17;
+                string[] files =
+                {
+                    Path.Combine(lolRoot, "lockfile"),
+                    Path.Combine(lolRoot, "LeagueClient", "lockfile"),
+                    Path.Combine(lolRoot, "Riot Client", "lockfile")
+                };
+                for (int i = 0; i < files.Length; i++)
+                {
+                    try
+                    {
+                        var info = new FileInfo(files[i]);
+                        if (!info.Exists) continue;
+                        stamp = (stamp * 31) ^ info.LastWriteTimeUtc.Ticks;
+                        stamp = (stamp * 31) ^ info.Length;
+                    }
+                    catch { }
+                }
+                stamp = (stamp * 31) ^ CredentialProcessStamp(
+                    lolRoot, "LeagueClient");
+                stamp = (stamp * 31) ^ CredentialProcessStamp(
+                    lolRoot, "LeagueClientUx");
+                return stamp;
+            }
+        }
+
+        private static long CredentialProcessStamp(
+            string lolRoot, string processName)
+        {
+            Process[] processes;
+            try { processes = Process.GetProcessesByName(processName); }
+            catch { return 0; }
+            long newestCreation = 0;
+            int newestPid = 0;
+            try
+            {
+                foreach (Process process in processes)
+                {
+                    IntPtr handle = IntPtr.Zero;
+                    try
+                    {
+                        handle = Native.OpenProcess(
+                            Native.PROCESS_QUERY_LIMITED_INFORMATION,
+                            false, process.Id);
+                        if (handle == IntPtr.Zero) continue;
+                        string path = Native.ImagePath(handle);
+                        string file = Path.GetFileName(path);
+                        if (!LolRuntimeProcesses.IsUnder(path, lolRoot)
+                            || !string.Equals(
+                                file, processName + ".exe",
+                                StringComparison.OrdinalIgnoreCase))
+                            continue;
+                        long creation;
+                        long cpu;
+                        ulong io;
+                        if (!Native.QueryProcessSample(
+                                handle, out creation, out cpu, out io)
+                            || creation <= newestCreation)
+                            continue;
+                        newestCreation = creation;
+                        newestPid = process.Id;
+                    }
+                    catch { }
+                    finally
+                    {
+                        if (handle != IntPtr.Zero) Native.CloseHandle(handle);
+                    }
+                }
+            }
+            finally
+            {
+                foreach (Process process in processes)
+                    if (process != null) try { process.Dispose(); } catch { }
+            }
+            unchecked
+            {
+                return newestCreation ^ ((long)newestPid << 32);
+            }
+        }
+
         public static LolLcuCredentials Find(string lolRoot)
         {
             if (!LolInstallDiscovery.IsValidLolRoot(lolRoot)) return null;
-            LolLcuCredentials credentials = FindFromProcesses(lolRoot);
-            if (credentials != null) return credentials;
-            credentials = FindFromLockfile(lolRoot);
-            return credentials ?? FindFromLogs(lolRoot);
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            int probed;
+            LolLcuCredentials credentials = SelectReachable(
+                ReadProcessCandidates(lolRoot),
+                LolLcuClient.IsCredentialReachable,
+                Math.Min(2, CredentialProbeLimit),
+                seen,
+                out probed);
+            if (credentials != null || probed >= CredentialProbeLimit)
+                return credentials;
+
+            int lockfileProbed;
+            credentials = SelectReachable(
+                ReadLockfileCandidates(lolRoot),
+                LolLcuClient.IsCredentialReachable,
+                CredentialProbeLimit - probed,
+                seen,
+                out lockfileProbed);
+            probed += lockfileProbed;
+            if (credentials != null || probed >= CredentialProbeLimit)
+                return credentials;
+
+            int logProbed;
+            return SelectReachableLogCandidate(
+                lolRoot,
+                LolLcuClient.IsCredentialReachable,
+                CredentialProbeLimit - probed,
+                seen,
+                out logProbed);
         }
 
-        private static LolLcuCredentials FindFromProcesses(string lolRoot)
+        private static IList<LolLcuCredentials> ReadProcessCandidates(
+            string lolRoot)
         {
+            var candidates = new List<LolLcuCredentials>();
             const string query =
                 "SELECT ProcessId, ExecutablePath, CommandLine, Name FROM Win32_Process "
                 + "WHERE Name='LeagueClient.exe' OR Name='LeagueClientUx.exe'";
@@ -854,12 +1180,20 @@ namespace AegisApp
                             string b = Convert.ToString(right["Name"]);
                             bool ac = string.Equals(a, "LeagueClient.exe", StringComparison.OrdinalIgnoreCase);
                             bool bc = string.Equals(b, "LeagueClient.exe", StringComparison.OrdinalIgnoreCase);
-                            return ac == bc ? 0 : (ac ? -1 : 1);
+                            if (ac != bc) return ac ? -1 : 1;
+                            long apid;
+                            long bpid;
+                            long.TryParse(
+                                Convert.ToString(left["ProcessId"]), out apid);
+                            long.TryParse(
+                                Convert.ToString(right["ProcessId"]), out bpid);
+                            return bpid.CompareTo(apid);
                         });
-                        for (int i = 0; i < ordered.Count; i++)
+                        try
                         {
-                            using (ManagementObject row = ordered[i])
+                            for (int i = 0; i < ordered.Count; i++)
                             {
+                                ManagementObject row = ordered[i];
                                 string executablePath = Convert.ToString(row["ExecutablePath"]);
                                 if (string.IsNullOrEmpty(executablePath))
                                 {
@@ -872,17 +1206,24 @@ namespace AegisApp
                                 string token;
                                 if (LolCredentialParser.TryParseCommandLine(
                                     Convert.ToString(row["CommandLine"]), out port, out token))
-                                    return new LolLcuCredentials(port, token);
+                                    candidates.Add(
+                                        new LolLcuCredentials(port, token));
                             }
+                        }
+                        finally
+                        {
+                            foreach (ManagementObject row in ordered)
+                                if (row != null) try { row.Dispose(); } catch { }
                         }
                     }
                 }
             }
             catch { }
-            return null;
+            return candidates;
         }
 
-        private static LolLcuCredentials FindFromLockfile(string lolRoot)
+        private static IList<LolLcuCredentials> ReadLockfileCandidates(
+            string lolRoot)
         {
             string[] files =
             {
@@ -890,51 +1231,177 @@ namespace AegisApp
                 Path.Combine(lolRoot, "LeagueClient", "lockfile"),
                 Path.Combine(lolRoot, "Riot Client", "lockfile")
             };
+            files = OrderExistingCredentialFiles(files);
+            var candidates = new List<LolLcuCredentials>(files.Length);
             for (int i = 0; i < files.Length; i++)
             {
                 string content;
-                if (!TryReadTail(files[i], 64 * 1024, out content)) continue;
+                if (!TryReadTail(
+                    files[i], LockfileTailBytes, out content)) continue;
                 int port;
                 string token;
                 if (LolCredentialParser.TryParseLockfile(content, out port, out token))
-                    return new LolLcuCredentials(port, token);
+                    candidates.Add(new LolLcuCredentials(port, token));
             }
-            return null;
+            return candidates;
         }
 
-        private static LolLcuCredentials FindFromLogs(string lolRoot)
+        private static LolLcuCredentials SelectReachableLogCandidate(
+            string lolRoot,
+            Func<LolLcuCredentials, bool> probe,
+            int maximumProbes,
+            HashSet<string> seen,
+            out int probed)
         {
-            var logs = new List<FileInfo>();
-            AddLogs(logs, Path.Combine(lolRoot, "LeagueClient"));
-            AddLogs(logs, Path.Combine(lolRoot, "LeagueClient", "Logs"));
-            logs.Sort(delegate(FileInfo a, FileInfo b)
+            probed = 0;
+            if (probe == null || maximumProbes <= 0) return null;
+            if (seen == null) seen = new HashSet<string>(StringComparer.Ordinal);
+            string[] logs;
+            lock (LogCacheLock)
             {
-                return b.LastWriteTimeUtc.CompareTo(a.LastWriteTimeUtc);
-            });
-            int limit = Math.Min(logs.Count, 16);
-            for (int i = 0; i < limit; i++)
+                if (cachedLogPaths != null
+                    && DateTime.UtcNow < cachedLogPathsUntilUtc
+                    && string.Equals(
+                        cachedLogRoot, lolRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    logs = cachedLogPaths;
+                }
+                else
+                {
+                    logs = SelectRecentLogPaths(lolRoot, RecentLogLimit);
+                    cachedLogRoot = lolRoot;
+                    cachedLogPaths = logs;
+                    cachedLogPathsUntilUtc = DateTime.UtcNow.AddSeconds(10);
+                }
+            }
+            for (int i = 0; i < logs.Length; i++)
             {
+                if (probed >= maximumProbes) break;
                 string content;
-                if (!TryReadTail(logs[i].FullName, 2 * 1024 * 1024, out content)) continue;
+                if (!TryReadHeadAndTail(
+                        logs[i], LogHeadBytes, LogTailBytes, out content))
+                    continue;
                 int port;
                 string token;
-                if (LolCredentialParser.TryParseCommandLine(content, out port, out token))
-                    return new LolLcuCredentials(port, token);
+                if (!LolCredentialParser.TryParseCommandLine(
+                        content, out port, out token))
+                    continue;
+                string key = port + "\n" + token;
+                if (!seen.Add(key)) continue;
+                var candidate = new LolLcuCredentials(port, token);
+                probed++;
+                try
+                {
+                    if (probe(candidate)) return candidate;
+                }
+                catch { }
             }
             return null;
         }
 
-        private static void AddLogs(List<FileInfo> output, string directory)
+        internal static string[] OrderExistingCredentialFiles(string[] paths)
+        {
+            if (paths == null || paths.Length == 0) return new string[0];
+            var files = new List<FileInfo>(paths.Length);
+            for (int i = 0; i < paths.Length; i++)
+            {
+                try
+                {
+                    var file = new FileInfo(paths[i]);
+                    if (file.Exists) files.Add(file);
+                }
+                catch { }
+            }
+            files.Sort(delegate(FileInfo left, FileInfo right)
+            {
+                int byTime = right.LastWriteTimeUtc.CompareTo(
+                    left.LastWriteTimeUtc);
+                return byTime != 0
+                    ? byTime
+                    : StringComparer.OrdinalIgnoreCase.Compare(
+                        left.FullName, right.FullName);
+            });
+            string[] result = new string[files.Count];
+            for (int i = 0; i < files.Count; i++)
+                result[i] = files[i].FullName;
+            return result;
+        }
+
+        internal static LolLcuCredentials SelectReachable(
+            IList<LolLcuCredentials> candidates,
+            Func<LolLcuCredentials, bool> probe,
+            int maximumProbes,
+            out int probed)
+        {
+            return SelectReachable(
+                candidates, probe, maximumProbes,
+                new HashSet<string>(StringComparer.Ordinal), out probed);
+        }
+
+        internal static LolLcuCredentials SelectReachable(
+            IList<LolLcuCredentials> candidates,
+            Func<LolLcuCredentials, bool> probe,
+            int maximumProbes,
+            HashSet<string> seen,
+            out int probed)
+        {
+            probed = 0;
+            if (candidates == null || probe == null || maximumProbes <= 0)
+                return null;
+            if (seen == null) seen = new HashSet<string>(StringComparer.Ordinal);
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                LolLcuCredentials candidate = candidates[i];
+                if (candidate == null || candidate.Port <= 0
+                    || string.IsNullOrEmpty(candidate.Token))
+                    continue;
+                if (probed >= maximumProbes) break;
+                string key = candidate.Port + "\n" + candidate.Token;
+                if (!seen.Add(key)) continue;
+                probed++;
+                try
+                {
+                    if (probe(candidate)) return candidate;
+                }
+                catch { }
+            }
+            return null;
+        }
+
+        internal static string[] SelectRecentLogPaths(string lolRoot, int limit)
+        {
+            if (string.IsNullOrEmpty(lolRoot) || limit <= 0) return new string[0];
+            var logs = new List<FileInfo>(limit);
+            AddRecentLogs(logs, Path.Combine(lolRoot, "LeagueClient"), limit);
+            AddRecentLogs(logs, Path.Combine(lolRoot, "LeagueClient", "Logs"), limit);
+            string[] paths = new string[logs.Count];
+            for (int i = 0; i < logs.Count; i++) paths[i] = logs[i].FullName;
+            return paths;
+        }
+
+        private static void AddRecentLogs(
+            List<FileInfo> output, string directory, int limit)
         {
             try
             {
                 if (!Directory.Exists(directory)) return;
-                string[] files = Directory.GetFiles(directory, "*.log", SearchOption.TopDirectoryOnly);
-                for (int i = 0; i < files.Length; i++)
+                foreach (string path in Directory.EnumerateFiles(
+                    directory, "*.log", SearchOption.TopDirectoryOnly))
                 {
-                    string name = System.IO.Path.GetFileName(files[i]);
-                    if (name.IndexOf("LeagueClient", StringComparison.OrdinalIgnoreCase) >= 0)
-                        output.Add(new FileInfo(files[i]));
+                    string name = System.IO.Path.GetFileName(path);
+                    if (name.IndexOf(
+                        "LeagueClient", StringComparison.OrdinalIgnoreCase) < 0
+                        || name.IndexOf(
+                            "LeagueClientUxHelper", StringComparison.OrdinalIgnoreCase) >= 0)
+                        continue;
+                    var candidate = new FileInfo(path);
+                    int insert = 0;
+                    while (insert < output.Count
+                        && output[insert].LastWriteTimeUtc >= candidate.LastWriteTimeUtc)
+                        insert++;
+                    if (insert >= limit) continue;
+                    output.Insert(insert, candidate);
+                    if (output.Count > limit) output.RemoveAt(output.Count - 1);
                 }
             }
             catch { }
@@ -973,6 +1440,57 @@ namespace AegisApp
             }
             catch { return false; }
         }
+
+        internal static bool TryReadHeadAndTail(
+            string path, int headBytes, int tailBytes, out string content)
+        {
+            content = null;
+            if (headBytes <= 0 || tailBytes < 0) return false;
+            try
+            {
+                using (var stream = new FileStream(
+                    path, FileMode.Open, FileAccess.Read,
+                    FileShare.ReadWrite | FileShare.Delete))
+                {
+                    long total = (long)headBytes + tailBytes;
+                    if (stream.Length <= total)
+                    {
+                        using (var reader = new StreamReader(
+                            stream, Encoding.UTF8, true))
+                            content = reader.ReadToEnd();
+                        return true;
+                    }
+
+                    byte[] head = new byte[headBytes];
+                    int headRead = ReadAtMost(stream, head, head.Length);
+                    stream.Seek(-tailBytes, SeekOrigin.End);
+                    byte[] tail = new byte[tailBytes];
+                    int tailRead = ReadAtMost(stream, tail, tail.Length);
+                    string headText =
+                        Encoding.UTF8.GetString(head, 0, headRead);
+                    if (headText.Length > 0 && headText[0] == '\uFEFF')
+                        headText = headText.Substring(1);
+                    content = headText
+                        + Environment.NewLine
+                        + Encoding.UTF8.GetString(tail, 0, tailRead);
+                    return true;
+                }
+            }
+            catch { return false; }
+        }
+
+        private static int ReadAtMost(
+            Stream stream, byte[] buffer, int count)
+        {
+            int read = 0;
+            while (read < count)
+            {
+                int current = stream.Read(buffer, read, count - read);
+                if (current <= 0) break;
+                read += current;
+            }
+            return read;
+        }
     }
 
     internal sealed class LolHttpResult
@@ -989,6 +1507,15 @@ namespace AegisApp
 
     internal static class LolLcuClient
     {
+        private const int MaximumResponseChars = 32 * 1024;
+        private static readonly string[] GameflowPhases =
+        {
+            "None", "Lobby", "Matchmaking", "CheckedIntoTournament",
+            "ReadyCheck", "ChampSelect",
+            "GameStart", "FailedToLaunch", "InProgress", "Reconnect",
+            "WaitingForStats", "PreEndOfGame", "EndOfGame",
+            "TerminatedInError"
+        };
         private static readonly Regex LoginSucceededPattern = new Regex(
             @"\""state\""\s*:\s*\""SUCCEEDED\""",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
@@ -1004,11 +1531,45 @@ namespace AegisApp
         public static string GetGameflowPhase(LolLcuCredentials credentials)
         {
             LolHttpResult result = Send(credentials, "GET", "/lol-gameflow/v1/gameflow-phase");
-            if (!result.Success || string.IsNullOrEmpty(result.Body)) return null;
-            string phase = result.Body.Trim();
-            if (phase.Length >= 2 && phase[0] == '"' && phase[phase.Length - 1] == '"')
-                phase = phase.Substring(1, phase.Length - 2);
-            return phase.Replace("\\\"", "\"").Replace("\\\\", "\\");
+            string phase;
+            return result.Success
+                && TryParseGameflowPhaseBody(result.Body, out phase)
+                ? phase : null;
+        }
+
+        internal static bool IsCredentialReachable(
+            LolLcuCredentials credentials)
+        {
+            LolHttpResult result = Send(
+                credentials,
+                "GET",
+                "/lol-gameflow/v1/gameflow-phase",
+                1000);
+            string phase;
+            return result.Success
+                && TryParseGameflowPhaseBody(result.Body, out phase);
+        }
+
+        internal static bool TryParseGameflowPhaseBody(
+            string body, out string phase)
+        {
+            phase = null;
+            if (string.IsNullOrWhiteSpace(body)) return false;
+            string text = body.Trim();
+            if (text.Length < 3 || text[0] != '"'
+                || text[text.Length - 1] != '"')
+                return false;
+            string candidate = text.Substring(1, text.Length - 2);
+            for (int i = 0; i < GameflowPhases.Length; i++)
+            {
+                if (!string.Equals(
+                        candidate, GameflowPhases[i],
+                        StringComparison.OrdinalIgnoreCase))
+                    continue;
+                phase = GameflowPhases[i];
+                return true;
+            }
+            return false;
         }
 
         public static bool KillUx(LolLcuCredentials credentials, string lolRoot)
@@ -1019,24 +1580,71 @@ namespace AegisApp
 
         public static bool RestoreUx(LolLcuCredentials credentials, string lolRoot)
         {
+            Mutex restoreMutex = null;
+            bool held = false;
+            try
+            {
+                string suffix = LolHeadlessLease.StableHash(lolRoot);
+                try
+                {
+                    restoreMutex = new Mutex(
+                        false, "Global\\Aegis_LolUxRestore_" + suffix);
+                }
+                catch
+                {
+                    restoreMutex = new Mutex(
+                        false, "Aegis_LolUxRestore_" + suffix);
+                }
+                try { held = restoreMutex.WaitOne(15000); }
+                catch (AbandonedMutexException) { held = true; }
+                if (!held) return false;
+                return RestoreUxSingleWriter(credentials, lolRoot);
+            }
+            catch { return false; }
+            finally
+            {
+                if (held && restoreMutex != null)
+                    try { restoreMutex.ReleaseMutex(); } catch { }
+                if (restoreMutex != null)
+                    try { restoreMutex.Close(); } catch { }
+            }
+        }
+
+        private static bool RestoreUxSingleWriter(
+            LolLcuCredentials credentials, string lolRoot)
+        {
             if (LolRuntimeProcesses.IsUxRunning(lolRoot))
-            {
-                LolHttpResult showExisting = Send(credentials, "POST", "/riotclient/ux-show");
-                if (showExisting.Success && WaitForUx(lolRoot, 3000)) return true;
-            }
-            LolHttpResult launch = Send(credentials, "POST", "/riotclient/launch-ux");
-            if (launch.Success)
-            {
-                WaitForUx(lolRoot, 6000);
-                LolHttpResult show = Send(credentials, "POST", "/riotclient/ux-show");
-                if (show.Success && WaitForUx(lolRoot, 3000)) return true;
-            }
+                return TryShowExistingUx(credentials, lolRoot);
+
+            LolHttpResult launch = Send(
+                credentials, "POST", "/riotclient/launch-ux");
+            if (launch.Success && WaitForUx(lolRoot, 6000))
+                return TryShowExistingUx(credentials, lolRoot);
+
+            // launch 请求返回失败时 UX 仍可能已由客户端自行拉起。健康进程
+            // 绝不升级为 kill-and-restart，只在确认主 UX 仍不存在时兜底。
+            if (LolRuntimeProcesses.IsUxRunning(lolRoot))
+                return TryShowExistingUx(credentials, lolRoot);
             LolHttpResult restart = Send(
                 credentials, "POST", "/riotclient/kill-and-restart-ux");
             if (!restart.Success) return false;
             WaitForUx(lolRoot, 10000);
-            Send(credentials, "POST", "/riotclient/ux-show");
-            return WaitForUx(lolRoot, 3000);
+            return TryShowExistingUx(credentials, lolRoot);
+        }
+
+        private static bool TryShowExistingUx(
+            LolLcuCredentials credentials, string lolRoot)
+        {
+            if (!LolRuntimeProcesses.IsUxRunning(lolRoot)) return false;
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                LolHttpResult show = Send(
+                    credentials, "POST", "/riotclient/ux-show");
+                if (show.Success && WaitForUx(lolRoot, 1000)) return true;
+                if (!LolRuntimeProcesses.IsUxRunning(lolRoot)) return false;
+                Thread.Sleep(350);
+            }
+            return false;
         }
 
         private static bool WaitForUx(string lolRoot, int timeoutMs)
@@ -1070,6 +1678,15 @@ namespace AegisApp
         private static LolHttpResult Send(
             LolLcuCredentials credentials, string method, string relativePath)
         {
+            return Send(credentials, method, relativePath, 3000);
+        }
+
+        private static LolHttpResult Send(
+            LolLcuCredentials credentials,
+            string method,
+            string relativePath,
+            int timeoutMs)
+        {
             var result = new LolHttpResult();
             if (credentials == null || credentials.Port <= 0 || credentials.Port > 65535)
                 return result;
@@ -1084,9 +1701,9 @@ namespace AegisApp
                 request.Method = method;
                 request.Proxy = null;
                 request.AllowAutoRedirect = false;
-                request.KeepAlive = false;
-                request.Timeout = 3000;
-                request.ReadWriteTimeout = 3000;
+                request.KeepAlive = true;
+                request.Timeout = timeoutMs;
+                request.ReadWriteTimeout = timeoutMs;
                 request.Accept = "application/json";
                 request.UserAgent = "Aegis-LolRuntime";
                 request.Headers[HttpRequestHeader.Authorization] = "Basic " + Convert.ToBase64String(
@@ -1136,7 +1753,23 @@ namespace AegisApp
                 {
                     if (stream == null) return "";
                     using (var reader = new StreamReader(stream, Encoding.UTF8))
-                        return reader.ReadToEnd();
+                    {
+                        var text = new StringBuilder(Math.Min(
+                            MaximumResponseChars,
+                            response.ContentLength > 0
+                                ? (int)Math.Min(response.ContentLength, MaximumResponseChars)
+                                : 1024));
+                        var buffer = new char[2048];
+                        while (text.Length < MaximumResponseChars)
+                        {
+                            int count = reader.Read(
+                                buffer, 0,
+                                Math.Min(buffer.Length, MaximumResponseChars - text.Length));
+                            if (count <= 0) break;
+                            text.Append(buffer, 0, count);
+                        }
+                        return text.ToString();
+                    }
                 }
             }
             catch { return ""; }

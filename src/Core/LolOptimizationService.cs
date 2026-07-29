@@ -1,6 +1,7 @@
 // @author bdth 2074055628@qq.com
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
@@ -88,16 +89,42 @@ namespace AegisApp
         private const string HeadlessEnabledKey = "LolColumnHeadlessEnabled";
         private const string LolRootKey = "LolInstallPath";
         private const string WeGameRootKey = "LolWeGamePath";
-        private const string HeadlessMarkKey = "LolHeadlessEngagedRoot";
         private const int DiscoveryBaseSeconds = 15;
         private const int DiscoveryMaxSeconds = 600;
         private const int DiscoverySettledSeconds = 120;
-        private const int IdleCycleMs = 5000;
-        private const int ActiveCycleMs = 1500;
+        private const int DisabledCycleMs = 30000;
+        private const int DormantCycleMs = 15000;
+        private const int TransitionCycleMs = 5000;
+        private const int HeadlessStableCycleMs = 20000;
+        private const int ClientCycleMs = 6000;
+        private const int CleanupOnlyCycleMs = 10000;
+        private const int SessionVerifyRetrySeconds = 5;
+        private const int SessionVerifiedLobbySeconds = 15;
+        private const int SessionVerifiedGameSeconds = 60;
+        private const int CleanupFollowUpSeconds = 10;
+        private const int CleanupFallbackSeconds = 120;
+        private const int CleanupKillWindowSeconds = 60;
+        private const int CleanupKillLimit = 3;
+        private const int CleanupFollowUpLimit = 2;
+        // 普通候选进程突发最多每 5 秒唤醒一次轻量扫描；LeagueClient
+        // 凭据源和核心会话转换仍走下方 credentialSourceStarted 紧急通道。
+        private const int ProcessWakeThrottleMs = 5000;
+        internal static int ProcessEventWakeThrottleMs
+        {
+            get { return ProcessWakeThrottleMs; }
+        }
+        private const int RecoveryMinIntervalSeconds = 120;
+        private const int UxRespawnBackoffSeconds = 10;
+        private const int UxRespawnWindowSeconds = 60;
+        private const int UxRespawnLimit = 3;
+        private const int FullProcessScanSeconds = 60;
+        private const int ClientExitConfirmSamples = 4;
         private readonly object stateLock = new object();
         private readonly object actionLock = new object();
+        private readonly object publishLock = new object();
         private readonly ManualResetEvent stopEvent = new ManualResetEvent(false);
         private readonly AutoResetEvent pokeEvent = new AutoResetEvent(false);
+        private readonly Timer processWakeTimer;
         private Thread worker;
         private bool disposed;
         private bool running;
@@ -110,10 +137,16 @@ namespace AegisApp
         private bool weGameFound;
         private int discoveryMisses;
         private bool clientRunning;
+        private int clientAbsentSamples;
         private bool gameRunning;
         private bool lcuReady;
         private string phase;
         private bool headlessActive;
+        private string headlessLeaseRoot;
+        private int headlessLeaseGamePid;
+        private long headlessLeaseGameCreation;
+        private bool headlessLeaseLegacy;
+        private bool headlessLeaseReleasePending;
         private bool manualUxBypassGame;
         private int headlessExitSamples;
         private int weGameProcessCount;
@@ -126,16 +159,40 @@ namespace AegisApp
         private DateTime updatedUtc;
         private DateTime lastActionUtc;
         private DateTime nextCleanupUtc;
+        private bool cleanupMatchActive;
+        private bool cleanupDirty;
+        private bool cleanupBurstActive;
+        private int cleanupFollowUpsRemaining;
+        private bool cleanupCircuitOpen;
+        private readonly Queue<DateTime> cleanupKillCycles = new Queue<DateTime>();
+        private DateTime nextProcessWakeUtc;
+        private bool processWakePending;
         private DateTime nextDiscoveryUtc;
+        private DateTime nextFullProcessScanUtc;
         private LolLcuCredentials cachedCredentials;
         private string cachedCredentialRoot;
         private DateTime nextCredentialRefreshUtc;
+        private bool sessionVerified;
+        private DateTime nextSessionVerifyUtc;
+        private int lcuFailureStreak;
+        private int credentialLookupFailures;
+        private int credentialGenerationChanged;
+        private int restoreCredentialLookupFailures;
+        private DateTime nextRestoreCredentialLookupUtc;
+        private DateTime nextRecoveryUtc;
+        private readonly Queue<DateTime> uxRespawns = new Queue<DateTime>();
+        private DateTime nextUxKillUtc;
+        private LolOptimizationSnapshot lastPublishedSnapshot;
         private int runGeneration;
+        private int waitHandlesDisposed;
 
         public event Action Changed;
 
         public LolOptimizationService()
         {
+            processWakeTimer = new Timer(
+                ProcessWakeTimerElapsed, null,
+                Timeout.Infinite, Timeout.Infinite);
             enabled = Settings.Load(EnabledKey, false);
             cleanupEnabled = Settings.Load(CleanupEnabledKey, true);
             headlessEnabled = Settings.Load(HeadlessEnabledKey, true);
@@ -176,6 +233,17 @@ namespace AegisApp
                 {
                     changed = cleanupEnabled != value;
                     cleanupEnabled = value;
+                    if (value)
+                    {
+                        cleanupDirty = true;
+                        nextCleanupUtc = DateTime.MinValue;
+                    }
+                    else
+                    {
+                        cleanupDirty = false;
+                        cleanupBurstActive = false;
+                        cleanupFollowUpsRemaining = 0;
+                    }
                     updatedUtc = DateTime.UtcNow;
                 }
                 if (!changed) return;
@@ -215,6 +283,14 @@ namespace AegisApp
                 lolRoot = Settings.LoadStr(LolRootKey, lolRoot);
                 weGameRoot = Settings.LoadStr(WeGameRootKey, weGameRoot);
                 running = true;
+                processWakePending = false;
+                nextProcessWakeUtc = DateTime.MinValue;
+                try
+                {
+                    processWakeTimer.Change(
+                        Timeout.Infinite, Timeout.Infinite);
+                }
+                catch { }
                 lastError = "";
                 updatedUtc = DateTime.UtcNow;
                 stopEvent.Reset();
@@ -236,11 +312,18 @@ namespace AegisApp
                 current = worker;
                 changed = running || (current != null && current.IsAlive);
                 running = false;
+                processWakePending = false;
                 runGeneration++;
                 updatedUtc = DateTime.UtcNow;
             }
-            stopEvent.Set();
-            pokeEvent.Set();
+            try
+            {
+                processWakeTimer.Change(
+                    Timeout.Infinite, Timeout.Infinite);
+            }
+            catch { }
+            try { stopEvent.Set(); } catch { }
+            try { pokeEvent.Set(); } catch { }
             if (current != null && current != Thread.CurrentThread)
             {
                 try { current.Join(3000); } catch { }
@@ -264,6 +347,182 @@ namespace AegisApp
             Poke();
         }
 
+        public void NotifyProcessChanges(ProcessChangeBatch batch)
+        {
+            if (batch == null) return;
+            bool relevant = batch.Overflowed;
+            bool cleanupCandidateStarted = batch.Overflowed;
+            // 溢出只要求受 5 秒预算约束的重校准；它不是 LeagueClient
+            // 凭据源事件，不能让持续溢出每 750 ms 紧急唤醒一次全量快照。
+            bool credentialSourceStarted = false;
+            bool discoveryDirty = batch.Overflowed;
+            string root;
+            string weGame;
+            lock (stateLock)
+            {
+                if (!running || disposed) return;
+                root = lolRoot;
+                weGame = weGameRoot;
+            }
+            foreach (ProcessChange change in batch.Changes)
+            {
+                bool credentialDiscoveryStarted =
+                    IsCredentialDiscoveryStartEvent(change);
+                if (change == null || (!credentialDiscoveryStarted
+                    && !LolRuntimeProcesses.IsRelevantProcessChange(
+                        change.Name, change.Path, root, weGame)))
+                    continue;
+                relevant = true;
+                if (IsExactCleanupStartEvent(change, root, weGame))
+                {
+                    cleanupCandidateStarted = true;
+                }
+                if (IsCredentialSourceStartEvent(change, root))
+                    credentialSourceStarted = true;
+                if (credentialDiscoveryStarted)
+                {
+                    credentialSourceStarted = true;
+                    discoveryDirty = true;
+                }
+            }
+            if (!relevant) return;
+            if (discoveryDirty) InvalidateDiscovery();
+            if (credentialSourceStarted)
+                Interlocked.Exchange(ref credentialGenerationChanged, 1);
+            bool wake;
+            bool scheduleTrailing = false;
+            bool cancelTrailing = false;
+            int trailingDelay = Timeout.Infinite;
+            DateTime now = DateTime.UtcNow;
+            lock (stateLock)
+            {
+                if (batch.Overflowed) nextFullProcessScanUtc = DateTime.MinValue;
+                if (cleanupCandidateStarted) cleanupDirty = true;
+                wake = credentialSourceStarted || now >= nextProcessWakeUtc;
+                if (wake)
+                {
+                    nextProcessWakeUtc = now.AddMilliseconds(ProcessWakeThrottleMs);
+                    cancelTrailing = processWakePending;
+                    processWakePending = false;
+                }
+                else if (!processWakePending)
+                {
+                    // Leading edge 已经跑过时保留一个 trailing edge。独立计时器
+                    // 只负责到期 Poke，不在每个进程事件上执行全量扫描。
+                    processWakePending = true;
+                    scheduleTrailing = true;
+                    trailingDelay = ProcessWakeDelayMs(
+                        now, nextProcessWakeUtc);
+                }
+            }
+            if (cancelTrailing)
+                try
+                {
+                    processWakeTimer.Change(
+                        Timeout.Infinite, Timeout.Infinite);
+                }
+                catch { }
+            if (scheduleTrailing)
+                try
+                {
+                    processWakeTimer.Change(
+                        trailingDelay, Timeout.Infinite);
+                }
+                catch { }
+            if (wake) Poke();
+        }
+
+        private void ProcessWakeTimerElapsed(object unused)
+        {
+            bool wake = false;
+            bool reschedule = false;
+            int delay = Timeout.Infinite;
+            lock (stateLock)
+            {
+                if (disposed || !running || !processWakePending) return;
+                DateTime now = DateTime.UtcNow;
+                if (now < nextProcessWakeUtc)
+                {
+                    reschedule = true;
+                    delay = ProcessWakeDelayMs(now, nextProcessWakeUtc);
+                }
+                else
+                {
+                    processWakePending = false;
+                    nextProcessWakeUtc =
+                        now.AddMilliseconds(ProcessWakeThrottleMs);
+                    wake = true;
+                }
+            }
+            if (reschedule)
+                try
+                {
+                    processWakeTimer.Change(delay, Timeout.Infinite);
+                }
+                catch { }
+            if (wake) Poke();
+        }
+
+        internal static int ProcessWakeDelayMs(
+            DateTime nowUtc, DateTime deadlineUtc)
+        {
+            long remaining = deadlineUtc.Ticks - nowUtc.Ticks;
+            if (remaining <= 0) return 1;
+            long milliseconds = (remaining + TimeSpan.TicksPerMillisecond - 1)
+                / TimeSpan.TicksPerMillisecond;
+            return (int)Math.Min(int.MaxValue, Math.Max(1L, milliseconds));
+        }
+
+        internal static bool IsExactCleanupStartEvent(
+            ProcessChange change, string root, string weGame)
+        {
+            if (change == null || change.Kind != ProcessChangeKind.Started
+                || string.IsNullOrEmpty(change.Path))
+                return false;
+            try
+            {
+                return LolRuntimeProcesses.IsCleanupTarget(
+                    change.Path,
+                    Path.GetFileName(change.Path),
+                    root,
+                    weGame);
+            }
+            catch { return false; }
+        }
+
+        internal static bool IsCredentialSourceStartEvent(
+            ProcessChange change, string root)
+        {
+            if (change == null || change.Kind != ProcessChangeKind.Started
+                || !LolRuntimeProcesses.IsCredentialSourceName(change.Name))
+                return false;
+            if (string.IsNullOrEmpty(change.Path)) return true;
+            if (!LolRuntimeProcesses.IsUnder(change.Path, root)) return false;
+            string file;
+            try { file = Path.GetFileName(change.Path); }
+            catch { return false; }
+            return string.Equals(
+                    file, "LeagueClient.exe", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(
+                    file, "LeagueClientUx.exe", StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static bool IsCredentialDiscoveryStartEvent(
+            ProcessChange change)
+        {
+            if (change == null || change.Kind != ProcessChangeKind.Started
+                || !LolRuntimeProcesses.IsCredentialSourceName(change.Name))
+                return false;
+            if (string.IsNullOrEmpty(change.Path)) return true;
+            string file;
+            try { file = Path.GetFileName(change.Path); }
+            catch { return false; }
+            return string.Equals(
+                    file, "LeagueClient.exe", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(
+                    file, "LeagueClientUx.exe", StringComparison.OrdinalIgnoreCase);
+        }
+
         public bool CleanNow()
         {
             lock (actionLock)
@@ -277,6 +536,8 @@ namespace AegisApp
                     return false;
                 }
                 LolProcessSnapshot currentProcesses = LolRuntimeProcesses.Scan(root, weGame);
+                Interlocked.Exchange(ref credentialGenerationChanged, 0);
+                InvalidateCredentials();
                 bool initiallyReady;
                 LolLcuCredentials credentials = ResolveCredentials(
                     root, currentProcesses.ClientRunning, out initiallyReady);
@@ -284,6 +545,12 @@ namespace AegisApp
                 {
                     SetError(Lang.T("lol.err.notready"));
                     return false;
+                }
+                lock (stateLock)
+                {
+                    cleanupDirty = false;
+                    cleanupBurstActive = false;
+                    cleanupFollowUpsRemaining = 0;
                 }
                 LolCleanupResult result = LolRuntimeProcesses.Clean(root, weGame, true);
                 bool healthy = LolLcuClient.IsReady(credentials);
@@ -304,15 +571,29 @@ namespace AegisApp
                         lastAction = Lang.T("lol.act.recovering");
                         lastError = Lang.T("lol.err.sessionlost");
                     }
-                    nextCleanupUtc = DateTime.UtcNow.AddSeconds(3);
+                    lastActionUtc = DateTime.UtcNow;
+                    if (cleanupDirty)
+                    {
+                        cleanupBurstActive = true;
+                        cleanupFollowUpsRemaining = 0;
+                        nextCleanupUtc = DateTime.UtcNow.AddSeconds(
+                            CleanupFollowUpSeconds);
+                    }
+                    else
+                    {
+                        nextCleanupUtc = DateTime.UtcNow.AddSeconds(
+                            CleanupFallbackSeconds);
+                    }
                     updatedUtc = DateTime.UtcNow;
                 }
-                UpdateProcessState(LolRuntimeProcesses.Scan(root, weGame));
+                LolProcessSnapshot afterClean = LolRuntimeProcesses.Scan(root, weGame);
+                UpdateProcessState(afterClean);
                 Logger.Log("英雄联盟专栏：精准净化完成，结束 " + result.Count + " 个附加进程");
                 if (!healthy)
                 {
                     InvalidateCredentials();
-                    StartWeGame(weGame, false);
+                    TryRecoverLoginChain(
+                        weGame, afterClean, false, result.Count > 0);
                     RaiseChanged();
                     return false;
                 }
@@ -333,7 +614,9 @@ namespace AegisApp
                     SetError(Lang.T("lol.err.noinstall"));
                     return false;
                 }
-                LolLcuCredentials credentials = GetCredentialsForRestore(root);
+                RememberHeadlessLease(root);
+                LolLcuCredentials credentials =
+                    GetCredentialsForRestore(root, true);
                 if (credentials == null)
                 {
                     SetError(Lang.T("lol.err.nosession"));
@@ -343,14 +626,14 @@ namespace AegisApp
                 if (!restored)
                 {
                     InvalidateCredentials();
-                    credentials = GetCredentialsForRestore(root);
+                    credentials = GetCredentialsForRestore(root, true);
                     restored = credentials != null && LolLcuClient.RestoreUx(credentials, root);
+                    if (!restored && credentials != null)
+                        ScheduleRestoreCredentialRetry();
                 }
                 bool inGame = restored && (LolRuntimeProcesses.IsGameRunning(root)
-                    || string.Equals(
-                        LolLcuClient.GetGameflowPhase(credentials),
-                        "InProgress",
-                        StringComparison.OrdinalIgnoreCase));
+                    || IsSameMatchPhase(
+                        LolLcuClient.GetGameflowPhase(credentials)));
                 lock (stateLock)
                 {
                     if (restored)
@@ -365,16 +648,38 @@ namespace AegisApp
                     {
                         lastError = Lang.T("lol.err.restore");
                     }
+                    lastActionUtc = DateTime.UtcNow;
                     updatedUtc = DateTime.UtcNow;
                 }
+                bool completed = restored;
                 if (restored)
                 {
-                    ClearHeadlessMark();
+                    completed = ClearOwnedHeadlessMark();
+                    if (!completed)
+                    {
+                        lock (stateLock)
+                        {
+                            lastError = Lang.T("lol.err.leaseclear");
+                            lastActionUtc = DateTime.UtcNow;
+                            updatedUtc = DateTime.UtcNow;
+                        }
+                    }
                     Logger.Log("英雄联盟专栏：大厅界面已恢复");
                 }
                 RaiseChanged();
-                return restored;
+                return completed;
             }
+        }
+
+        public bool HasRecordedHeadlessState()
+        {
+            bool localState;
+            lock (stateLock)
+            {
+                localState = headlessActive
+                    || !string.IsNullOrEmpty(headlessLeaseRoot);
+            }
+            return localState || LolHeadlessLease.Exists();
         }
 
         public bool LaunchWeGame()
@@ -485,6 +790,13 @@ namespace AegisApp
             bool canDispose;
             lock (stateLock) canDispose = worker == null || !worker.IsAlive;
             if (!canDispose) return;
+            DisposeWaitHandles();
+        }
+
+        private void DisposeWaitHandles()
+        {
+            if (Interlocked.Exchange(ref waitHandlesDisposed, 1) != 0) return;
+            try { processWakeTimer.Dispose(); } catch { }
             try { stopEvent.Dispose(); } catch { }
             try { pokeEvent.Dispose(); } catch { }
         }
@@ -492,33 +804,94 @@ namespace AegisApp
         private void WorkerLoop(int generation)
         {
             WaitHandle[] waitHandles = new WaitHandle[] { stopEvent, pokeEvent };
-            while (Volatile.Read(ref runGeneration) == generation && !stopEvent.WaitOne(0))
+            try
             {
-                try { RunCycle(); }
-                catch
+                while (Volatile.Read(ref runGeneration) == generation && !stopEvent.WaitOne(0))
                 {
-                    SetError(Lang.T("lol.err.cycle"));
+                    try { RunCycle(); }
+                    catch
+                    {
+                        SetError(Lang.T("lol.err.cycle"));
+                    }
+                    if (Volatile.Read(ref runGeneration) != generation) break;
+                    int delay;
+                    bool enabled1;
+                    bool cleanup1;
+                    bool headless1;
+                    bool client1;
+                    bool game1;
+                    bool active1;
+                    bool marked;
+                    lock (stateLock)
+                    {
+                        enabled1 = enabled;
+                        cleanup1 = cleanupEnabled;
+                        headless1 = headlessEnabled;
+                        client1 = clientRunning;
+                        game1 = gameRunning;
+                        active1 = headlessActive;
+                        marked = !string.IsNullOrEmpty(headlessLeaseRoot);
+                    }
+                    delay = WorkerDelayMs(
+                        enabled1,
+                        cleanup1,
+                        headless1,
+                        client1,
+                        game1,
+                        active1,
+                        marked);
+                    int signaled = WaitHandle.WaitAny(waitHandles, delay);
+                    if (signaled == 0) break;
                 }
-                if (Volatile.Read(ref runGeneration) != generation) break;
-                bool idle;
-                lock (stateLock) idle = !enabled && !headlessActive;
-                int signaled = WaitHandle.WaitAny(waitHandles, idle ? IdleCycleMs : ActiveCycleMs);
-                if (signaled == 0) break;
             }
+            finally
+            {
+                bool disposeHandles;
+                lock (stateLock)
+                {
+                    if (ReferenceEquals(worker, Thread.CurrentThread)) worker = null;
+                    disposeHandles = disposed;
+                }
+                if (disposeHandles) DisposeWaitHandles();
+            }
+        }
+
+        internal static int WorkerDelayMs(
+            bool serviceEnabled,
+            bool cleanupEnabled,
+            bool headlessEnabled,
+            bool clientRunning,
+            bool gameRunning,
+            bool headlessActive,
+            bool recoveryMarked)
+        {
+            if (headlessActive || recoveryMarked)
+                return HeadlessStableCycleMs;
+            if (!serviceEnabled) return DisabledCycleMs;
+            if (!clientRunning && !gameRunning) return DormantCycleMs;
+            if (headlessEnabled)
+                return gameRunning ? TransitionCycleMs : ClientCycleMs;
+            if (cleanupEnabled) return CleanupOnlyCycleMs;
+            return DisabledCycleMs;
         }
 
         private void RunCycle()
         {
             lock (actionLock)
             {
+                if (Interlocked.Exchange(
+                        ref credentialGenerationChanged, 0) != 0)
+                    InvalidateCredentials();
                 bool active0;
                 bool enabled0;
                 lock (stateLock)
                 {
-                    enabled0 = enabled;
+                    enabled0 = enabled && (cleanupEnabled || headlessEnabled);
                     active0 = headlessActive;
                 }
-                if (!enabled0 && !active0 && !HasHeadlessMark())
+                bool recoveryMarked = HasHeadlessMark();
+                if (!recoveryMarked) ForgetRememberedHeadlessLease();
+                if (!enabled0 && !active0 && !recoveryMarked)
                 {
                     GoIdle();
                     return;
@@ -544,12 +917,25 @@ namespace AegisApp
                     RaiseChanged();
                     return;
                 }
+                RememberHeadlessLease(root);
+                bool releasePending;
+                lock (stateLock)
+                    releasePending = headlessLeaseReleasePending;
+                if (releasePending) ClearOwnedHeadlessMark();
 
-                LolProcessSnapshot processes = LolRuntimeProcesses.Scan(root, weGame);
+                bool lightScan;
+                lock (stateLock)
+                {
+                    lightScan = DateTime.UtcNow < nextFullProcessScanUtc;
+                    if (!lightScan)
+                        nextFullProcessScanUtc = DateTime.UtcNow.AddSeconds(
+                            FullProcessScanSeconds);
+                }
+                LolProcessSnapshot processes = LolRuntimeProcesses.Scan(root, weGame, lightScan);
+                string currentPhase;
                 bool ready;
-                LolLcuCredentials credentials = ResolveCredentials(
-                    root, processes.ClientRunning, out ready);
-                string currentPhase = ready ? LolLcuClient.GetGameflowPhase(credentials) : null;
+                LolLcuCredentials credentials = ProbeLcu(
+                    root, processes.ClientRunning, out currentPhase, out ready);
                 bool serviceEnabled;
                 bool cleanEnabled;
                 bool noUxEnabled;
@@ -557,12 +943,30 @@ namespace AegisApp
                 bool manualBypass;
                 bool inProgress = string.Equals(
                     currentPhase, "InProgress", StringComparison.OrdinalIgnoreCase);
-                bool phaseKnown = !string.IsNullOrEmpty(currentPhase);
+                bool sameMatch = IsSameMatchPhase(currentPhase);
+                bool clientExitConfirmed;
                 lock (stateLock)
                 {
-                    if (manualUxBypassGame && !processes.GameRunning
-                        && currentPhase != null && !inProgress)
-                        manualUxBypassGame = false;
+                    clientExitConfirmed = ConfirmClientExit(
+                        processes.ScanSucceeded
+                            && !processes.CoreIdentityIndeterminate,
+                        processes.ClientRunning,
+                        processes.GameRunning,
+                        ref clientAbsentSamples);
+                }
+                bool matchExitConfirmed = clientExitConfirmed
+                    || (!processes.GameRunning
+                        && IsConfirmedMatchExitPhase(currentPhase));
+                bool cleanupMatch;
+                lock (stateLock)
+                {
+                    if (matchExitConfirmed) ResetMatchSafetyStateLocked();
+                    else if (inProgress && !cleanupMatchActive)
+                    {
+                        cleanupMatchActive = true;
+                        cleanupDirty = true;
+                        nextCleanupUtc = DateTime.MinValue;
+                    }
                     serviceEnabled = enabled;
                     cleanEnabled = cleanupEnabled;
                     noUxEnabled = headlessEnabled;
@@ -575,34 +979,85 @@ namespace AegisApp
                     weGameProcessCount = processes.WeGameProcessCount;
                     crossProcessCount = processes.CrossProcessCount;
                     uxProcessCount = processes.UxProcessCount;
+                    cleanupMatch = cleanupMatchActive;
                     updatedUtc = DateTime.UtcNow;
                 }
 
-                if (active && !processes.ClientRunning)
+                if (!active && sameMatch && processes.GameRunning)
                 {
-                    lock (stateLock)
+                    int leasedGamePid;
+                    long leasedGameCreation;
+                    if (LolRuntimeProcesses.TryGetGameIdentity(
+                            root,
+                            processes.GameProcessId,
+                            out leasedGamePid,
+                            out leasedGameCreation)
+                        && LolHeadlessLease.Matches(
+                            root, leasedGamePid, leasedGameCreation))
                     {
-                        headlessActive = false;
-                        headlessExitSamples = 0;
-                        manualUxBypassGame = false;
+                        lock (stateLock)
+                        {
+                            headlessActive = true;
+                            active = true;
+                        }
                     }
-                    ClearHeadlessMark();
-                    active = false;
-                }
-                else if (!processes.ClientRunning)
-                {
-                    ClearHeadlessMark();
                 }
 
-                if (active && serviceEnabled && noUxEnabled && !manualBypass
-                    && inProgress && LolRuntimeProcesses.IsUxRunning(root))
+                if (active && clientExitConfirmed)
                 {
                     lock (stateLock)
                     {
                         headlessActive = false;
                         headlessExitSamples = 0;
+                        ResetMatchSafetyStateLocked();
+                    }
+                    ClearOwnedHeadlessMark();
+                    active = false;
+                }
+                else if (clientExitConfirmed)
+                {
+                    lock (stateLock)
+                    {
+                        ResetMatchSafetyStateLocked();
+                    }
+                    ClearOwnedHeadlessMark();
+                }
+
+                bool uxRespawnCircuitTripped = false;
+                if (active && serviceEnabled && noUxEnabled && !manualBypass
+                    && inProgress && processes.MainUxProcessCount > 0)
+                {
+                    lock (stateLock)
+                    {
+                        headlessActive = false;
+                        headlessExitSamples = 0;
+                        nextUxKillUtc = DateTime.UtcNow.AddSeconds(UxRespawnBackoffSeconds);
+                        uxRespawnCircuitTripped = RegisterUxRespawn(
+                            DateTime.UtcNow, uxRespawns);
+                        if (uxRespawnCircuitTripped)
+                            manualUxBypassGame = true;
                     }
                     active = false;
+                }
+
+                if (uxRespawnCircuitTripped)
+                {
+                    bool restoredAfterRespawns = RestoreCore(
+                        credentials, root, true);
+                    lock (stateLock)
+                    {
+                        headlessActive = !restoredAfterRespawns;
+                        headlessExitSamples = 0;
+                        manualUxBypassGame = true;
+                        active = !restoredAfterRespawns;
+                        manualBypass = true;
+                        lastAction = Lang.T("lol.act.uxcircuit");
+                        lastError = restoredAfterRespawns
+                            ? "" : Lang.T("lol.err.uxcircuitrestore");
+                        lastActionUtc = DateTime.UtcNow;
+                        updatedUtc = DateTime.UtcNow;
+                    }
+                    processes = LolRuntimeProcesses.Scan(root, weGame, true);
                 }
 
                 bool restoreActive = false;
@@ -610,12 +1065,12 @@ namespace AegisApp
                 {
                     lock (stateLock)
                     {
-                        if (!serviceEnabled || !noUxEnabled)
+                        if (!serviceEnabled || !noUxEnabled || manualBypass)
                         {
                             headlessExitSamples = 0;
                             restoreActive = true;
                         }
-                        else if (ready && phaseKnown && !inProgress && !processes.GameRunning)
+                        else if (ready && matchExitConfirmed)
                         {
                             if (headlessExitSamples < int.MaxValue) headlessExitSamples++;
                             restoreActive = headlessExitSamples >= 2;
@@ -630,61 +1085,148 @@ namespace AegisApp
                 if (restoreActive)
                 {
                     RestoreCore(credentials, root);
-                    processes = LolRuntimeProcesses.Scan(root, weGame);
+                    processes = LolRuntimeProcesses.Scan(root, weGame, true);
                 }
-                else if (!active && processes.ClientRunning && processes.UxProcessCount == 0
-                    && credentials != null && HasHeadlessMark(root))
+                else if (!active && processes.ClientRunning && processes.MainUxProcessCount == 0
+                    && credentials != null && HasHeadlessMark(root)
+                    && (!serviceEnabled || !noUxEnabled
+                        || matchExitConfirmed))
                 {
                     RestoreCore(credentials, root);
-                    processes = LolRuntimeProcesses.Scan(root, weGame);
+                    processes = LolRuntimeProcesses.Scan(root, weGame, true);
                 }
-                else if (processes.UxProcessCount > 0 && !active)
+                else if (processes.MainUxProcessCount > 0 && !active
+                    && matchExitConfirmed)
                 {
-                    ClearHeadlessMark();
+                    ClearOwnedHeadlessMark();
                 }
 
-                if (serviceEnabled && cleanEnabled && ready
-                    && DateTime.UtcNow >= nextCleanupUtc)
+                bool gameplayActive = cleanupMatch
+                    && inProgress && processes.GameRunning;
+                DateTime cleanupNow = DateTime.UtcNow;
+                bool cleanupPending;
+                bool cleanupSuspended;
+                lock (stateLock)
                 {
-                    LolCleanupResult clean = LolRuntimeProcesses.Clean(root, weGame);
-                    bool healthy = LolLcuClient.IsReady(credentials);
+                    cleanupPending = cleanupNow >= nextCleanupUtc
+                        || (cleanupDirty && !cleanupBurstActive);
+                    cleanupSuspended = cleanupCircuitOpen;
+                }
+                if (serviceEnabled && cleanEnabled && ready && gameplayActive
+                    && !cleanupSuspended && cleanupPending)
+                {
+                    lock (stateLock)
+                    {
+                        cleanupDirty = false;
+                        if (!cleanupBurstActive)
+                        {
+                            cleanupBurstActive = true;
+                            cleanupFollowUpsRemaining = CleanupFollowUpLimit;
+                        }
+                        else if (cleanupFollowUpsRemaining > 0)
+                        {
+                            cleanupFollowUpsRemaining--;
+                        }
+                    }
+
+                    LolCleanupResult clean =
+                        LolRuntimeProcesses.Clean(root, weGame);
+                    bool healthy = clean.Count == 0
+                        || LolLcuClient.IsReady(credentials);
+                    DateTime cleanupCompletedUtc = DateTime.UtcNow;
+                    bool circuitTripped = false;
                     lock (stateLock)
                     {
                         cleanedProcessCount += clean.Count;
                         releasedWorkingSetBytes += clean.WorkingSetBytes;
                         lcuReady = healthy;
-                        if (!healthy)
+                        if (clean.Count > 0)
+                        {
+                            circuitTripped = RegisterCleanupKillCycle(
+                                cleanupCompletedUtc, cleanupKillCycles)
+                                || !healthy;
+                            if (circuitTripped) cleanupCircuitOpen = true;
+                        }
+                        if (circuitTripped)
+                        {
+                            cleanupDirty = false;
+                            cleanupBurstActive = false;
+                            cleanupFollowUpsRemaining = 0;
+                            nextCleanupUtc = DateTime.MaxValue;
+                            lastAction = Lang.T("lol.act.cleanupcircuit");
+                            lastError = healthy
+                                ? "" : Lang.T("lol.err.sessionlost");
+                            lastActionUtc = cleanupCompletedUtc;
+                        }
+                        else if (!healthy)
                         {
                             lastAction = Lang.T("lol.act.recovering");
                             lastError = Lang.T("lol.err.sessionlost");
+                            lastActionUtc = cleanupCompletedUtc;
                         }
                         else if (clean.Count > 0)
                         {
                             lastAction = Lang.F("lol.act.cleaned", clean.Count.ToString());
                             lastError = "";
+                            lastActionUtc = cleanupCompletedUtc;
                             Logger.Log("英雄联盟专栏：自动精准净化 " + clean.Count + " 个附加进程");
                         }
-                        nextCleanupUtc = DateTime.UtcNow.AddSeconds(3);
-                        updatedUtc = DateTime.UtcNow;
+                        if (!circuitTripped)
+                        {
+                            if ((clean.Count > 0
+                                    && cleanupFollowUpsRemaining > 0)
+                                || cleanupDirty)
+                            {
+                                cleanupBurstActive = true;
+                                nextCleanupUtc = cleanupCompletedUtc.AddSeconds(
+                                    CleanupFollowUpSeconds);
+                            }
+                            else
+                            {
+                                cleanupBurstActive = false;
+                                cleanupFollowUpsRemaining = 0;
+                                nextCleanupUtc = cleanupCompletedUtc.AddSeconds(
+                                    CleanupFallbackSeconds);
+                            }
+                        }
+                        updatedUtc = cleanupCompletedUtc;
                     }
                     ready = healthy;
-                    if (!healthy)
+                    if (clean.Count > 0)
+                        processes = LolRuntimeProcesses.Scan(root, weGame, true);
+                    if (!healthy && clean.Count > 0)
                     {
-                        InvalidateCredentials();
-                        StartWeGame(weGame, false);
+                        InvalidateCredentials(false);
+                        ScheduleCredentialRetry(root);
+                        TryRecoverLoginChain(
+                            weGame, processes, inProgress, true);
                     }
-                    processes = LolRuntimeProcesses.Scan(root, weGame);
                 }
 
                 if (serviceEnabled && noUxEnabled && ready
                     && inProgress)
                 {
                     bool shouldKill;
-                    lock (stateLock) shouldKill = !headlessActive && !manualUxBypassGame;
+                    lock (stateLock) shouldKill = !headlessActive && !manualUxBypassGame
+                        && processes.MainUxProcessCount > 0
+                        && DateTime.UtcNow >= nextUxKillUtc;
                     if (shouldKill)
                     {
-                        if (LolRuntimeProcesses.IsUxRunning(root)) SetHeadlessMark(root);
-                        bool killed = LolLcuClient.KillUx(credentials, root);
+                        lock (stateLock)
+                            nextUxKillUtc = DateTime.UtcNow.AddSeconds(UxRespawnBackoffSeconds);
+                        int gamePid;
+                        long gameCreation;
+                        bool identityFound = LolRuntimeProcesses.TryGetGameIdentity(
+                            root, processes.GameProcessId, out gamePid, out gameCreation);
+                        bool leaseWritten = identityFound
+                            && SetHeadlessMark(root, gamePid, gameCreation);
+                        bool watchdogReady = leaseWritten
+                            && LolWatchdog.StartDetached(
+                                root, gamePid, gameCreation);
+                        bool killed = watchdogReady
+                            && LolLcuClient.KillUx(credentials, root);
+                        if (leaseWritten && !killed)
+                            ClearOwnedHeadlessMark();
                         lock (stateLock)
                         {
                             if (killed)
@@ -693,34 +1235,26 @@ namespace AegisApp
                                 headlessExitSamples = 0;
                                 lastAction = Lang.T("lol.act.headless");
                                 lastError = "";
+                                lastActionUtc = DateTime.UtcNow;
                             }
                             else
                             {
-                                ClearHeadlessMark();
-                                lastError = Lang.T("lol.err.killux");
+                                lastError = !identityFound
+                                    ? Lang.T("lol.err.gameidentity")
+                                    : (!leaseWritten
+                                        ? Lang.T("lol.err.lease")
+                                        : (!watchdogReady
+                                            ? Lang.T("lol.err.watchdog")
+                                            : Lang.T("lol.err.killux")));
+                                lastActionUtc = DateTime.UtcNow;
                             }
                             updatedUtc = DateTime.UtcNow;
                         }
                         if (killed)
                         {
-                            bool watchdogStarted = LolWatchdog.StartDetached(root);
-                            if (watchdogStarted)
-                            {
-                                Logger.Log("英雄联盟专栏：对局真无头已启用");
-                            }
-                            else
-                            {
-                                bool recovered = RestoreCore(credentials, root);
-                                lock (stateLock)
-                                {
-                                    lastError = recovered
-                                        ? "独立恢复器启动失败，本局已自动回显"
-                                        : "独立恢复器启动失败，大厅界面恢复失败";
-                                    updatedUtc = DateTime.UtcNow;
-                                }
-                            }
+                            Logger.Log("英雄联盟专栏：独立恢复器已确认守护，对局真无头已启用");
                             Thread.Sleep(400);
-                            processes = LolRuntimeProcesses.Scan(root, weGame);
+                            processes = LolRuntimeProcesses.Scan(root, weGame, true);
                         }
                     }
                 }
@@ -730,60 +1264,179 @@ namespace AegisApp
             }
         }
 
-        private bool RestoreCore(LolLcuCredentials credentials, string root)
+        private bool RestoreCore(
+            LolLcuCredentials credentials, string root)
         {
-            if (credentials == null) credentials = GetCredentialsForRestore(root);
+            return RestoreCore(credentials, root, false);
+        }
+
+        private bool RestoreCore(
+            LolLcuCredentials credentials, string root, bool force)
+        {
+            DateTime now = DateTime.UtcNow;
+            if (!force && now < nextRestoreCredentialLookupUtc)
+                return false;
+            if (credentials == null)
+                credentials = GetCredentialsForRestore(root, force);
             bool restored = credentials != null && LolLcuClient.RestoreUx(credentials, root);
-            if (!restored)
-            {
-                InvalidateCredentials();
-                credentials = GetCredentialsForRestore(root);
-                restored = credentials != null && LolLcuClient.RestoreUx(credentials, root);
-            }
             lock (stateLock)
             {
+                string previousAction = lastAction;
+                string previousError = lastError;
                 if (restored)
                 {
                     headlessActive = false;
                     headlessExitSamples = 0;
                     lastAction = Lang.T("lol.act.restored");
                     lastError = "";
+                    credentialLookupFailures = 0;
+                    restoreCredentialLookupFailures = 0;
+                    nextRestoreCredentialLookupUtc = DateTime.MinValue;
                 }
                 else
                 {
                     lastError = Lang.T("lol.err.restorepending");
+                    if (credentials != null)
+                        ScheduleRestoreCredentialRetry();
                 }
+                if (!string.Equals(previousAction, lastAction, StringComparison.Ordinal)
+                    || !string.Equals(previousError, lastError, StringComparison.Ordinal))
+                    lastActionUtc = DateTime.UtcNow;
                 updatedUtc = DateTime.UtcNow;
             }
             if (restored)
             {
-                ClearHeadlessMark();
+                ClearOwnedHeadlessMark();
                 Logger.Log("英雄联盟专栏：大厅界面已自动恢复");
             }
             return restored;
         }
 
-        private static void SetHeadlessMark(string root)
+        private bool SetHeadlessMark(
+            string root, int gamePid, long gameCreation)
         {
-            if (!string.IsNullOrEmpty(root)) Settings.SaveStr(HeadlessMarkKey, root);
+            if (!LolHeadlessLease.Set(root, gamePid, gameCreation))
+                return false;
+            lock (stateLock)
+            {
+                headlessLeaseRoot = root;
+                headlessLeaseGamePid = gamePid;
+                headlessLeaseGameCreation = gameCreation;
+                headlessLeaseLegacy = false;
+                headlessLeaseReleasePending = false;
+            }
+            return true;
         }
 
-        private static void ClearHeadlessMark()
+        private bool ClearOwnedHeadlessMark()
         {
-            if (HasHeadlessMark()) Settings.SaveStr(HeadlessMarkKey, "");
+            string root;
+            int pid;
+            long creation;
+            bool legacy;
+            lock (stateLock)
+            {
+                root = headlessLeaseRoot;
+                pid = headlessLeaseGamePid;
+                creation = headlessLeaseGameCreation;
+                legacy = headlessLeaseLegacy;
+            }
+            if (string.IsNullOrEmpty(root)) return true;
+            bool cleared = legacy
+                ? LolHeadlessLease.ClearLegacyIfMatches(root)
+                : (pid > 0 && creation > 0
+                    && LolHeadlessLease.ClearIfMatches(root, pid, creation));
+            bool stillOwned = legacy
+                ? LolHeadlessLease.MatchesLegacyRoot(root)
+                : LolHeadlessLease.Matches(root, pid, creation);
+            bool released = cleared || !stillOwned;
+            lock (stateLock)
+            {
+                if (SameLocalLeaseLocked(root, pid, creation, legacy))
+                {
+                    headlessLeaseReleasePending = !released;
+                    if (released)
+                    {
+                        headlessLeaseRoot = null;
+                        headlessLeaseGamePid = 0;
+                        headlessLeaseGameCreation = 0;
+                        headlessLeaseLegacy = false;
+                    }
+                }
+            }
+            return released;
+        }
+
+        private void RememberHeadlessLease(string root)
+        {
+            LolHeadlessLeaseInfo info;
+            bool found = LolHeadlessLease.TryRead(out info)
+                && SameRootPath(info.Root, root);
+            lock (stateLock)
+            {
+                if (found)
+                {
+                    bool same = SameLocalLeaseLocked(
+                        info.Root, info.GamePid, info.GameCreation, info.Legacy);
+                    headlessLeaseRoot = info.Root;
+                    headlessLeaseGamePid = info.GamePid;
+                    headlessLeaseGameCreation = info.GameCreation;
+                    headlessLeaseLegacy = info.Legacy;
+                    if (!same) headlessLeaseReleasePending = false;
+                }
+                else if (SameRootPath(headlessLeaseRoot, root))
+                {
+                    headlessLeaseRoot = null;
+                    headlessLeaseGamePid = 0;
+                    headlessLeaseGameCreation = 0;
+                    headlessLeaseLegacy = false;
+                    headlessLeaseReleasePending = false;
+                }
+            }
+        }
+
+        private bool SameLocalLeaseLocked(
+            string root, int pid, long creation, bool legacy)
+        {
+            return headlessLeaseLegacy == legacy
+                && headlessLeaseGamePid == pid
+                && headlessLeaseGameCreation == creation
+                && SameRootPath(headlessLeaseRoot, root);
+        }
+
+        private void ForgetRememberedHeadlessLease()
+        {
+            lock (stateLock)
+            {
+                headlessLeaseRoot = null;
+                headlessLeaseGamePid = 0;
+                headlessLeaseGameCreation = 0;
+                headlessLeaseLegacy = false;
+                headlessLeaseReleasePending = false;
+            }
+        }
+
+        private static bool SameRootPath(string left, string right)
+        {
+            try
+            {
+                string a = Path.GetFullPath(left ?? "").TrimEnd('\\');
+                string b = Path.GetFullPath(right ?? "").TrimEnd('\\');
+                return a.Length > 2 && b.Length > 2
+                    && string.Equals(
+                        a, b, StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return false; }
         }
 
         private static bool HasHeadlessMark()
         {
-            return !string.IsNullOrEmpty(Settings.LoadStr(HeadlessMarkKey, ""));
+            return LolHeadlessLease.Exists();
         }
 
         private static bool HasHeadlessMark(string root)
         {
-            string marked = Settings.LoadStr(HeadlessMarkKey, "");
-            return !string.IsNullOrEmpty(marked) && !string.IsNullOrEmpty(root)
-                && string.Equals(marked.TrimEnd('\\'), root.TrimEnd('\\'),
-                    StringComparison.OrdinalIgnoreCase);
+            return LolHeadlessLease.MatchesRoot(root);
         }
 
         private void GoIdle()
@@ -801,7 +1454,6 @@ namespace AegisApp
                 crossProcessCount = 0;
                 uxProcessCount = 0;
                 headlessExitSamples = 0;
-                manualUxBypassGame = false;
                 lastAction = Lang.T("lol.act.disabled");
                 lastError = "";
                 updatedUtc = DateTime.UtcNow;
@@ -826,8 +1478,11 @@ namespace AegisApp
             if (credentials != null)
             {
                 ready = LolLcuClient.IsReady(credentials);
+                sessionVerified = ready;
                 if (ready)
                 {
+                    lcuFailureStreak = 0;
+                    credentialLookupFailures = 0;
                     nextCredentialRefreshUtc = DateTime.MinValue;
                     return credentials;
                 }
@@ -838,33 +1493,266 @@ namespace AegisApp
                 return null;
             }
             credentials = LolLcuCredentialSource.Find(root);
+            if (credentials == null)
+            {
+                ScheduleCredentialRetry(root);
+                return null;
+            }
             cachedCredentials = credentials;
-            cachedCredentialRoot = credentials == null ? null : root;
-            nextCredentialRefreshUtc = DateTime.UtcNow.AddSeconds(
-                credentials == null ? 5 : 10);
-            ready = credentials != null && LolLcuClient.IsReady(credentials);
-            if (ready) nextCredentialRefreshUtc = DateTime.MinValue;
+            cachedCredentialRoot = root;
+            nextCredentialRefreshUtc = DateTime.UtcNow.AddSeconds(10);
+            ready = LolLcuClient.IsReady(credentials);
+            sessionVerified = ready;
+            if (ready)
+            {
+                lcuFailureStreak = 0;
+                credentialLookupFailures = 0;
+                nextCredentialRefreshUtc = DateTime.MinValue;
+                nextSessionVerifyUtc = DateTime.UtcNow.AddSeconds(
+                    SessionVerifiedLobbySeconds);
+            }
             return credentials;
         }
 
-        private LolLcuCredentials GetCredentialsForRestore(string root)
+        private LolLcuCredentials ProbeLcu(
+            string root, bool isClientRunning, out string currentPhase, out bool ready)
+        {
+            currentPhase = null;
+            ready = false;
+            if (!isClientRunning)
+            {
+                InvalidateCredentials();
+                return null;
+            }
+            if (!string.Equals(
+                cachedCredentialRoot, root, StringComparison.OrdinalIgnoreCase))
+                InvalidateCredentials();
+            LolLcuCredentials credentials = cachedCredentials;
+            if (credentials == null)
+            {
+                if (DateTime.UtcNow < nextCredentialRefreshUtc) return null;
+                credentials = LolLcuCredentialSource.Find(root);
+                if (credentials == null)
+                {
+                    ScheduleCredentialRetry(root);
+                    return null;
+                }
+                cachedCredentials = credentials;
+                cachedCredentialRoot = root;
+                nextCredentialRefreshUtc = DateTime.UtcNow.AddSeconds(10);
+                sessionVerified = false;
+                nextSessionVerifyUtc = DateTime.MinValue;
+            }
+            currentPhase = LolLcuClient.GetGameflowPhase(credentials);
+            if (currentPhase == null)
+            {
+                lcuFailureStreak++;
+                if (lcuFailureStreak >= 2)
+                {
+                    sessionVerified = false;
+                    nextSessionVerifyUtc = DateTime.MinValue;
+                }
+                if (lcuFailureStreak >= 3)
+                {
+                    InvalidateCredentials(false);
+                    ScheduleCredentialRetry(root);
+                }
+                return credentials;
+            }
+            lcuFailureStreak = 0;
+            credentialLookupFailures = 0;
+            bool inProgress = string.Equals(
+                currentPhase, "InProgress", StringComparison.OrdinalIgnoreCase);
+            if (DateTime.UtcNow >= nextSessionVerifyUtc)
+            {
+                sessionVerified = LolLcuClient.IsReady(credentials);
+                nextSessionVerifyUtc = DateTime.UtcNow.AddSeconds(
+                    sessionVerified
+                        ? (inProgress
+                            ? SessionVerifiedGameSeconds : SessionVerifiedLobbySeconds)
+                        : SessionVerifyRetrySeconds);
+            }
+            ready = sessionVerified;
+            return credentials;
+        }
+
+        private void TryRecoverLoginChain(
+            string weGame,
+            LolProcessSnapshot processes,
+            bool inProgress,
+            bool cleanupChangedProcesses)
+        {
+            if (!cleanupChangedProcesses || processes == null
+                || !processes.ClientRunning)
+                return;
+            if (inProgress || processes.GameRunning) return;
+            if (processes.WeGameProcessCount > 0) return;
+            if (DateTime.UtcNow < nextRecoveryUtc) return;
+            nextRecoveryUtc = DateTime.UtcNow.AddSeconds(RecoveryMinIntervalSeconds);
+            StartWeGame(weGame, false);
+        }
+
+        private LolLcuCredentials GetCredentialsForRestore(
+            string root, bool force)
         {
             if (!string.Equals(
                 cachedCredentialRoot, root, StringComparison.OrdinalIgnoreCase))
                 InvalidateCredentials();
             if (cachedCredentials != null) return cachedCredentials;
+            if (!force && DateTime.UtcNow < nextRestoreCredentialLookupUtc)
+                return null;
             cachedCredentials = LolLcuCredentialSource.Find(root);
-            cachedCredentialRoot = cachedCredentials == null ? null : root;
-            nextCredentialRefreshUtc = DateTime.UtcNow.AddSeconds(
-                cachedCredentials == null ? 5 : 10);
+            if (cachedCredentials == null)
+            {
+                ScheduleCredentialRetry(root);
+                ScheduleRestoreCredentialRetry();
+                return null;
+            }
+            cachedCredentialRoot = root;
+            nextCredentialRefreshUtc = DateTime.UtcNow.AddSeconds(10);
+            restoreCredentialLookupFailures = 0;
+            nextRestoreCredentialLookupUtc = DateTime.MinValue;
             return cachedCredentials;
         }
 
         private void InvalidateCredentials()
         {
+            InvalidateCredentials(true);
+        }
+
+        private void InvalidateCredentials(bool resetBackoff)
+        {
             cachedCredentials = null;
             cachedCredentialRoot = null;
-            nextCredentialRefreshUtc = DateTime.MinValue;
+            if (resetBackoff)
+            {
+                nextCredentialRefreshUtc = DateTime.MinValue;
+                credentialLookupFailures = 0;
+                nextRestoreCredentialLookupUtc = DateTime.MinValue;
+                restoreCredentialLookupFailures = 0;
+            }
+            sessionVerified = false;
+            nextSessionVerifyUtc = DateTime.MinValue;
+            lcuFailureStreak = 0;
+        }
+
+        private void ScheduleCredentialRetry(string root)
+        {
+            cachedCredentials = null;
+            cachedCredentialRoot = root;
+            if (credentialLookupFailures < int.MaxValue) credentialLookupFailures++;
+            nextCredentialRefreshUtc = DateTime.UtcNow.AddSeconds(
+                CredentialRetrySeconds(credentialLookupFailures));
+            sessionVerified = false;
+            nextSessionVerifyUtc = DateTime.MinValue;
+            lcuFailureStreak = 0;
+        }
+
+        private void ScheduleRestoreCredentialRetry()
+        {
+            if (restoreCredentialLookupFailures < int.MaxValue)
+                restoreCredentialLookupFailures++;
+            nextRestoreCredentialLookupUtc = DateTime.UtcNow.AddSeconds(
+                RestoreCredentialRetrySeconds(
+                    restoreCredentialLookupFailures));
+        }
+
+        internal static int CredentialRetrySeconds(int failures)
+        {
+            if (failures <= 1) return 5;
+            if (failures == 2) return 10;
+            if (failures == 3) return 30;
+            return 60;
+        }
+
+        internal static int RestoreCredentialRetrySeconds(int failures)
+        {
+            if (failures <= 1) return 2;
+            if (failures == 2) return 5;
+            if (failures == 3) return 10;
+            return 30;
+        }
+
+        internal static bool RegisterUxRespawn(
+            DateTime nowUtc, Queue<DateTime> recent)
+        {
+            if (recent == null) throw new ArgumentNullException("recent");
+            while (recent.Count > 0
+                && (nowUtc < recent.Peek()
+                    || (nowUtc - recent.Peek()).TotalSeconds >= UxRespawnWindowSeconds))
+                recent.Dequeue();
+            recent.Enqueue(nowUtc);
+            return recent.Count > UxRespawnLimit;
+        }
+
+        internal static bool RegisterCleanupKillCycle(
+            DateTime nowUtc, Queue<DateTime> recent)
+        {
+            if (recent == null) throw new ArgumentNullException("recent");
+            while (recent.Count > 0
+                && (nowUtc < recent.Peek()
+                    || (nowUtc - recent.Peek()).TotalSeconds
+                        >= CleanupKillWindowSeconds))
+                recent.Dequeue();
+            recent.Enqueue(nowUtc);
+            return recent.Count > CleanupKillLimit;
+        }
+
+        internal static bool IsConfirmedMatchExitPhase(string value)
+        {
+            if (string.IsNullOrEmpty(value)) return false;
+            return string.Equals(value, "None", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(value, "Lobby", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(value, "Matchmaking", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(
+                    value, "CheckedIntoTournament",
+                    StringComparison.OrdinalIgnoreCase)
+                || string.Equals(value, "ReadyCheck", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(value, "ChampSelect", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(value, "FailedToLaunch", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(value, "PreEndOfGame", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(value, "EndOfGame", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(value, "WaitingForStats", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(
+                    value, "TerminatedInError", StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static bool IsSameMatchPhase(string value)
+        {
+            return string.Equals(value, "InProgress",
+                    StringComparison.OrdinalIgnoreCase)
+                || string.Equals(value, "Reconnect",
+                    StringComparison.OrdinalIgnoreCase)
+                || string.Equals(value, "GameStart",
+                    StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static bool ConfirmClientExit(
+            bool scanSucceeded, bool clientRunning, bool gameRunning,
+            ref int absentSamples)
+        {
+            if (scanSucceeded)
+            {
+                if (clientRunning || gameRunning)
+                    absentSamples = 0;
+                else if (absentSamples < int.MaxValue)
+                    absentSamples++;
+            }
+            return absentSamples >= ClientExitConfirmSamples;
+        }
+
+        private void ResetMatchSafetyStateLocked()
+        {
+            manualUxBypassGame = false;
+            uxRespawns.Clear();
+            nextUxKillUtc = DateTime.MinValue;
+            cleanupDirty = false;
+            cleanupMatchActive = false;
+            cleanupBurstActive = false;
+            cleanupFollowUpsRemaining = 0;
+            cleanupCircuitOpen = false;
+            cleanupKillCycles.Clear();
+            nextCleanupUtc = DateTime.MinValue;
         }
 
         private void Discover(out string root, out string weGame, bool force)
@@ -967,13 +1855,45 @@ namespace AegisApp
             try { pokeEvent.Set(); } catch { }
         }
 
-        private void RaiseChanged()
+        internal static bool SamePublishedState(
+            LolOptimizationSnapshot left, LolOptimizationSnapshot right)
+        {
+            if (left == null || right == null) return left == right;
+            return left.Running == right.Running
+                && left.Enabled == right.Enabled
+                && left.CleanupEnabled == right.CleanupEnabled
+                && left.HeadlessEnabled == right.HeadlessEnabled
+                && string.Equals(left.LolRoot, right.LolRoot, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(
+                    left.WeGameRoot, right.WeGameRoot, StringComparison.OrdinalIgnoreCase)
+                && left.InstallationFound == right.InstallationFound
+                && left.WeGameFound == right.WeGameFound
+                && left.ClientRunning == right.ClientRunning
+                && left.GameRunning == right.GameRunning
+                && left.LcuReady == right.LcuReady
+                && string.Equals(left.Phase, right.Phase, StringComparison.Ordinal)
+                && left.HeadlessActive == right.HeadlessActive
+                && left.WeGameProcessCount == right.WeGameProcessCount
+                && left.CrossProcessCount == right.CrossProcessCount
+                && left.UxProcessCount == right.UxProcessCount
+                && left.CleanedProcessCount == right.CleanedProcessCount
+                && left.ReleasedWorkingSetBytes == right.ReleasedWorkingSetBytes
+                && string.Equals(left.LastAction, right.LastAction, StringComparison.Ordinal)
+                && string.Equals(left.LastError, right.LastError, StringComparison.Ordinal)
+                && left.LastActionUtc == right.LastActionUtc;
+        }
+
+        internal void RaiseChanged()
         {
             Action handler = Changed;
-            if (handler != null)
+            if (handler == null) return;
+            LolOptimizationSnapshot snapshot = GetSnapshot();
+            lock (publishLock)
             {
-                try { handler(); } catch { }
+                if (SamePublishedState(lastPublishedSnapshot, snapshot)) return;
+                lastPublishedSnapshot = snapshot;
             }
+            try { handler(); } catch { }
         }
     }
 }

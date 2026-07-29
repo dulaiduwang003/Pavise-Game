@@ -135,7 +135,7 @@ namespace AegisApp
             lstGames.DragEnter += enter; lstGames.DragDrop += drop;
             listWrap.Controls.Add(lstGames);
             int bx = ContentX + listW + 16, bw = ContentW - listW - 16, bh = 40;
-            var browse = new PillButton(Lang.T("v15.library.add"), BtnKind.Primary); browse.SetBounds(Theme.S(bx), Theme.S(y), Theme.S(bw), Theme.S(bh)); browse.Click += delegate { BrowseInto(true); };
+            var browse = new PillButton(Lang.T("v15.library.add"), BtnKind.Primary); browse.SetBounds(Theme.S(bx), Theme.S(y), Theme.S(bw), Theme.S(bh)); browse.Click += delegate { BrowseGameExecutable(); };
             var remove = new PillButton(Lang.T("btn.remove")); remove.SetBounds(Theme.S(bx), Theme.S(y + 50), Theme.S(bw), Theme.S(bh));
             remove.Click += delegate
             {
@@ -192,6 +192,18 @@ namespace AegisApp
             Section(scroll, Lang.T("v15.policy.core"), 6, sy); sy += 24;
             swPolicyBackground = AddPolicyToggle(scroll, ref sy, Lang.T("v14.bg.master"), Lang.T("v14.bg.master.sub"),
                 delegate { return gameMode.SuppressBackground; }, delegate(bool v) { gameMode.SuppressBackground = v; });
+            var btnPolicyWhite = new PillButton(Lang.T("v14.manage.white"), BtnKind.Primary);
+            // SettingCard 只负责定位 host，不会替按钮推导宽度；这里必须显式给宽，
+            // 否则 Control 默认 0px，入口虽然存在于控件树却完全不可见。
+            btnPolicyWhite.Size = new Size(Theme.S(164), Theme.S(34));
+            btnPolicyWhite.Click += delegate
+            {
+                using (var dlg = new WhitelistDialog(gameMode)) ShowDim(dlg);
+            };
+            int whiteCardH;
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 72, Lang.T("nav.white"), Lang.T("white.policy.sub"),
+                btnPolicyWhite, out whiteCardH);
+            sy += whiteCardH + 8;
             AddPolicyToggle(scroll, ref sy, Lang.T("gm.boost"), Lang.T("v15.boost.sub"),
                 delegate { return gameMode.BoostGame; }, delegate(bool v) { gameMode.BoostGame = v; });
             AddPolicyToggle(scroll, ref sy, Lang.T("set.plan"), Lang.T("v15.plan.sub"),
@@ -224,16 +236,8 @@ namespace AegisApp
                 delegate { return gameMode.IdleStateDisable; }, delegate(bool v) { gameMode.IdleStateDisable = v; });
             AddPolicyToggle(scroll, ref sy, Lang.T("gm.visualfx"), Lang.T("gm.visualfx.sub"),
                 delegate { return gameMode.VisualFxDowngrade; }, delegate(bool v) { gameMode.VisualFxDowngrade = v; });
-
-            sy += 10; Section(scroll, Lang.T("v15.policy.extreme"), 6, sy); sy += 24;
-            swPolicyFreeze = AddPolicyToggle(scroll, ref sy, Lang.T("v14.freeze"), Lang.T("v14.freeze.sub"),
-                delegate { return gameMode.DeepFreeze; }, SetDeepFreeze);
             AddPolicyToggle(scroll, ref sy, Lang.T("set.trim"), Lang.T("v15.trim.sub"),
                 delegate { return gameMode.TrimWorkingSet; }, delegate(bool v) { gameMode.TrimWorkingSet = v; });
-            AddPolicyToggle(scroll, ref sy, Lang.T("gm.standby"), Lang.T("gm.standby.sub"),
-                delegate { return gameMode.StandbyClean; }, delegate(bool v) { gameMode.StandbyClean = v; });
-            AddPolicyToggle(scroll, ref sy, Lang.T("gm.standbymid"), Lang.T("gm.standbymid.sub"),
-                delegate { return gameMode.StandbyCleanMidSession; }, delegate(bool v) { gameMode.StandbyCleanMidSession = v; });
             RefreshPolicyPresentation();
         }
 
@@ -247,17 +251,6 @@ namespace AegisApp
             y += cardH + 8;
             policySync.Add(delegate { sw.SetSilently(read()); });
             return sw;
-        }
-
-        private void SetDeepFreeze(bool enabled)
-        {
-            if (enabled && !gameMode.DeepFreeze)
-            {
-                DialogResult answer = MessageBox.Show(this, Lang.T("gm.freeze.warn"), "Aegis",
-                    MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
-                if (answer != DialogResult.Yes) { swPolicyFreeze.SetSilently(false); return; }
-            }
-            gameMode.DeepFreeze = enabled;
         }
 
         private void RefreshPolicyPresentation()
@@ -289,10 +282,7 @@ namespace AegisApp
         private void BuildAntiCheatPageV14()
         {
             int y = PageHeader(pageAnti, Lang.T("v14.anticheat"), Lang.T("v15.anticheat.sub"), 2);
-            var white = new PillButton(Lang.T("v14.manage.white"));
-            white.SetBounds(Theme.S(ContentX + ContentW - 222), Theme.S(y), Theme.S(222), Theme.S(36));
-            white.Click += delegate { using (var dlg = new WhitelistDialog(gameMode)) ShowDim(dlg); };
-            Section(pageAnti, Lang.T("v14.anticheat.boundary"), 26, y + 8); pageAnti.Controls.Add(white); y += 46;
+            Section(pageAnti, Lang.T("v14.anticheat.boundary"), 26, y + 8); y += 46;
             swTame = MakeSwitch(!tamer.Paused, delegate { tamer.Paused = !swTame.Checked; Settings.Save("TameOn", swTame.Checked); });
             MakeCard(pageAnti, ContentX, y, ContentW, 56, Lang.T("tame.toggle"), Lang.T("v14.anticheat.master.sub"), swTame); y += 66;
             tameList = new DBPanel();

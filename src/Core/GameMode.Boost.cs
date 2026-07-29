@@ -32,10 +32,26 @@ namespace AegisApp
             if (useDvr != dvrActive) { if (useDvr) dvrActive = GameDvr.Activate(); else if (GameDvr.Restore()) dvrActive = false; }
             if (visualFxOn != fxActive) { if (visualFxOn) fxActive = VisualFx.Activate(); else if (VisualFx.Restore()) fxActive = false; }
             bool aggressivePower = IsAggressive(mode, aggressiveOn);
-            if (planSwitch) { PowerPlan.Enforce(aggressivePower, idleDisableOn); planActive = true; }
-            else if (PowerPlan.Restore()) planActive = false;
-
-            ApplyStandbyClean();
+            int powerKey = (aggressivePower ? 1 : 0)
+                | (idleDisableOn ? 2 : 0) | (planSwitch ? 4 : 0);
+            long nowTicks = DateTime.UtcNow.Ticks;
+            if (planSwitch)
+            {
+                if (!planActive || powerKey != lastPowerPolicyKey
+                    || nowTicks >= nextPowerAuditTicks)
+                {
+                    PowerPlan.Enforce(aggressivePower, idleDisableOn);
+                    planActive = true;
+                    lastPowerPolicyKey = powerKey;
+                    nextPowerAuditTicks = DateTime.UtcNow.AddSeconds(30).Ticks;
+                }
+            }
+            else if (planActive && PowerPlan.Restore())
+            {
+                planActive = false;
+                lastPowerPolicyKey = -1;
+                nextPowerAuditTicks = 0;
+            }
 
             if (!timerRaised)
             {
@@ -52,71 +68,10 @@ namespace AegisApp
             }
         }
 
-        // 待机内存清理不是"设置"，是一次性动作，所以不走 EnvActive/RestoreEnv 那套还原流程。
-        // 全量清理实测清 2.3GB 要 ~530ms，游戏跑起来之后做必然引入卡顿，因此：
-        //   - 只在会话刚建立时做一次，此时游戏还在加载，且开在后台线程上不阻塞压制循环
-        //   - 会话中途一律只做低优先级清理（实测 5ms），且要同时满足空闲见底 + 确有低优先级可清
-        // 抽成静态纯函数便于单测：全量清理每局只能发生一次，之后无论轮询多少次
-        // 都只可能走到低优先级那条路，且必须等冷却过去。
-        // sessionFresh 表示"这是本局会话建立后的第一次调用"，由游戏进程本身（渲染 PID）
-        // 是否换过来判定：中途急救恢复或关开总开关会把 active 清掉再置上，可游戏根本没退，
-        // 此时若重新武装全量清理，实测清 2.3GB 要 ~530ms，且会把游戏刚建立的缓存全丢掉，
-        // 正是本功能承诺绝不做的事。
-        internal static StandbyAction NextStandbyAction(bool cleanOn, bool midOn, ref bool purged,
-            bool cooldownElapsed, bool sessionFresh)
-        {
-            if (!cleanOn) { purged = true; return StandbyAction.None; }
-            if (!purged)
-            {
-                purged = true;
-                // 错过了会话建立那一刻就不再补做全量，只允许走保守的中途清理
-                if (sessionFresh) return StandbyAction.PurgeFull;
-            }
-            if (!midOn || !cooldownElapsed) return StandbyAction.None;
-            return StandbyAction.PurgeLowPriority;
-        }
-
-        private void ApplyStandbyClean()
-        {
-            long now = DateTime.UtcNow.Ticks;
-            int renderer;
-            lock (sync) renderer = activeDetection != null ? activeDetection.RendererPid : 0;
-            bool sessionFresh = renderer != standbySessionPid;
-            if (sessionFresh)
-            {
-                standbySessionPid = renderer;
-                standbyPurged = false;
-                standbyMidLastTicks = 0;
-            }
-            bool cooldownElapsed = now - standbyMidLastTicks >= MidPurgeIntervalTicks;
-            StandbyAction action = NextStandbyAction(standbyCleanOn, standbyMidOn, ref standbyPurged,
-                cooldownElapsed, sessionFresh);
-            if (action == StandbyAction.None) return;
-            if (action == StandbyAction.PurgeLowPriority) standbyMidLastTicks = now;
-
-            // 一律丢到后台线程：全量清理实测数百毫秒，绝不能卡住压制循环
-            ThreadPool.QueueUserWorkItem(_ =>
-            {
-                try
-                {
-                    if (action == StandbyAction.PurgeFull) { StandbyMemory.PurgeAtSessionStart(); return; }
-                    StandbyStats s;
-                    if (!StandbyMemory.TryQuery(out s)) return;
-                    if (!StandbyMemory.ShouldPurgeMidSession(s, MidPurgeMinMemoryLoad, MidPurgeMinLowBytes)) return;
-                    StandbyMemory.PurgeLowPriority();
-                }
-                catch { }
-            });
-        }
-
         private bool fxActive;
         private bool planActive;
-        private bool standbyPurged;
-        private int standbySessionPid = -1;
-        private long standbyMidLastTicks;
-        private const long MidPurgeIntervalTicks = 60L * 1000 * 10000;
-        private const int MidPurgeMinMemoryLoad = 80;
-        private const long MidPurgeMinLowBytes = 256L * 1024 * 1024;
+        private int lastPowerPolicyKey = -1;
+        private long nextPowerAuditTicks;
 
         private bool EnvActive()
         {
@@ -135,7 +90,13 @@ namespace AegisApp
             if (Mmcss.Restore()) mmcssActive = false; else ok = false;
             if (GameDvr.Restore()) dvrActive = false; else ok = false;
             if (VisualFx.Restore()) fxActive = false; else ok = false;
-            if (PowerPlan.Restore()) planActive = false; else ok = false;
+            if (PowerPlan.Restore())
+            {
+                planActive = false;
+                lastPowerPolicyKey = -1;
+                nextPowerAuditTicks = 0;
+            }
+            else ok = false;
             if (timerRaised)
             {
                 try
@@ -165,18 +126,41 @@ namespace AegisApp
             bool aggressive = IsAggressive(mode, aggressiveOn);
             bool useStrict = (strictCoreOn || mode == PerformancePreset.Competitive)
                 && CpuTopology.HasSafeBackgroundPartition();
-            dpcSampler.Sample();
-            ulong avoidMask = useStrict && aggressive ? dpcSampler.NoisyPhysicalMask : 0;
+            ulong avoidMask = 0;
+            if (useStrict && aggressive)
+            {
+                dpcSampler.Sample();
+                avoidMask = dpcSampler.NoisyPhysicalMask;
+            }
             ulong desiredMask = (useStrict ? strictMask : gameMask) & ~avoidMask;
             if (desiredMask == 0) desiredMask = useStrict ? strictMask : gameMask;
             int rendererPid = -1;
+            long rendererCreation = 0;
+            string rendererName = null;
             lock (sync)
                 if (activeDetection != null && activeDetection.RendererCandidateSelected)
+                {
                     rendererPid = activeDetection.RendererPid;
+                    rendererCreation =
+                        activeDetection.RendererCreation;
+                    rendererName =
+                        activeDetection.RendererName;
+                }
             bool staleBoost = false;
             lock (sync)
-                foreach (int boostedPid in gameBoost.Keys)
-                    if (boostedPid != rendererPid) { staleBoost = true; break; }
+                foreach (KeyValuePair<int, Snap> boosted
+                    in gameBoost)
+                    if (boosted.Key != rendererPid
+                        || boosted.Value.Creation
+                            != rendererCreation
+                        || !string.Equals(
+                            boosted.Value.Name,
+                            rendererName,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        staleBoost = true;
+                        break;
+                    }
             if (staleBoost) UnboostGames();
             foreach (Process p in all)
             {
@@ -185,7 +169,7 @@ namespace AegisApp
                     int pid = p.Id;
                     live.Add(pid);
                     if (rendererPid <= 0 || pid != rendererPid) continue;
-                    bool known, retryEco, needTweak, needPlacement;
+                    bool known, retryEco, needTweak, needPlacement, auditDue;
                     lock (sync)
                     {
                         known = gameBoost.ContainsKey(pid);
@@ -194,23 +178,37 @@ namespace AegisApp
                         ulong placed; bool placedStrict;
                         needPlacement = !gamePlacement.TryGetValue(pid, out placed) || placed != desiredMask
                             || !gamePlacementStrict.TryGetValue(pid, out placedStrict) || placedStrict != useStrict;
+                        long nextAudit;
+                        auditDue = !known || retryEco || needTweak || needPlacement
+                            || !boostStateVerified.Contains(pid)
+                            || !gameBoostNextAudit.TryGetValue(pid, out nextAudit)
+                            || DateTime.UtcNow.Ticks >= nextAudit;
                     }
+                    if (!auditDue) continue;
                     IntPtr h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_SET_LIMITED_INFORMATION | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
                     if (h == IntPtr.Zero)
                     {
                         bool firstDeny;
                         lock (sync) firstDeny = boostDenied.Add(pid);
-                        if (firstDeny) Logger.Log("游戏提优：" + p.ProcessName + " (pid " + pid + ") 打不开句柄（多半被反作弊保护），本体提优跳过；后台压制不受影响");
+                        if (firstDeny) Logger.Log("游戏提优：" + rendererName + " (pid " + pid + ") 打不开句柄（多半被反作弊保护），本体提优跳过；后台压制不受影响");
                         continue;
                     }
                     try
                     {
                         string img = Native.ImageName(h);
-                        if (img != null && !string.Equals(img, p.ProcessName, StringComparison.OrdinalIgnoreCase)) continue;
                         long currentCreation, currentCpu; ulong currentDisk;
                         if (!Native.QueryProcessSample(h, out currentCreation, out currentCpu, out currentDisk))
                         {
-                            Logger.Log("游戏提优：无法读取 " + p.ProcessName + " (pid " + pid + ") 的创建时间，已按安全边界跳过");
+                            Logger.Log("游戏提优：无法读取 " + rendererName + " (pid " + pid + ") 的创建时间，已按安全边界跳过");
+                            continue;
+                        }
+                        if (!RendererIdentityMatches(
+                                rendererPid, rendererCreation,
+                                rendererName, pid,
+                                currentCreation, img))
+                        {
+                            Logger.Log("游戏提优：renderer 身份已变化，跳过 pid "
+                                + pid + " 的全部写入");
                             continue;
                         }
                         if (known)
@@ -224,6 +222,7 @@ namespace AegisApp
                                     gameBoost.Remove(pid); gameGpu.Remove(pid); gamePlacement.Remove(pid);
                                     gamePlacementStrict.Remove(pid); boostFail.Remove(pid);
                                     boostStateWarned.Remove(pid); boostStateVerified.Remove(pid);
+                                    gameBoostNextAudit.Remove(pid);
                                     tweakApplied.Remove(pid); reused = true; known = false;
                                 }
                             if (reused)
@@ -242,7 +241,7 @@ namespace AegisApp
                             uint[] ocpuSets = Native.QueryCpuSets(h);
                             if (ocpuSets == null)
                             {
-                                Logger.Log("游戏提优：无法读取原 CPU Sets，已按安全边界跳过 " + p.ProcessName + " (pid " + pid + ")");
+                                Logger.Log("游戏提优：无法读取原 CPU Sets，已按安全边界跳过 " + rendererName + " (pid " + pid + ")");
                                 continue;
                             }
                             int oio = Native.QueryIoPriority(h);
@@ -253,17 +252,29 @@ namespace AegisApp
                             // 游戏进程也可能自带 PowerThrottling 设置，提优会覆盖它，还原必须写回原值
                             int oqc, oqs;
                             if (!Native.TryQueryPowerThrottling(h, out oqc, out oqs)) { oqc = -1; oqs = -1; }
-                            var snap = new Snap { Pri = pri, Aff = oaff, Io = oio, Pg = opg,
-                                Name = p.ProcessName, Creation = currentCreation, CpuSets = ocpuSets,
-                                QoSControl = oqc, QoSState = oqs };
-                            lock (sync) gameBoost[pid] = snap;
-                            if (!CrashGuard.MarkBoostProcess(pid, currentCreation, p.ProcessName, pri, oaff,
-                                oio, opg, gpuOld, ocpuSets, oqc, oqs))
+                            CrashGuard.OriginalBoostState recovered;
+                            if (!CrashGuard.MarkBoostProcess(pid, currentCreation, rendererName, pri, oaff,
+                                oio, opg, gpuOld, ocpuSets, oqc, oqs, out recovered))
                             {
-                                lock (sync) gameBoost.Remove(pid);
-                                Logger.Log("游戏提优：崩溃恢复快照无法持久化，已取消修改 " + p.ProcessName + " (pid " + pid + ")");
+                                Logger.Log("游戏提优：崩溃恢复快照无法持久化，已取消修改 " + rendererName + " (pid " + pid + ")");
                                 continue;
                             }
+                            if (recovered != null)
+                            {
+                                pri = recovered.Priority;
+                                oaff = recovered.Affinity;
+                                oio = recovered.Io;
+                                opg = recovered.Page;
+                                gpuOld = recovered.Gpu;
+                                gpuKnown = gpuOld >= 0;
+                                ocpuSets = recovered.CpuSets;
+                                oqc = recovered.QoSControl;
+                                oqs = recovered.QoSState;
+                            }
+                            var snap = new Snap { Pri = pri, Aff = oaff, Io = oio, Pg = opg,
+                                Name = rendererName, Creation = currentCreation, CpuSets = ocpuSets,
+                                QoSControl = oqc, QoSState = oqs };
+                            lock (sync) gameBoost[pid] = snap;
                             newlyTracked = true;
                             gpuOk = gpuKnown && ApplyAndVerifyGpuBoost(h);
                             lock (sync) { if (gpuKnown) gameGpu[pid] = gpuOld; }
@@ -285,15 +296,20 @@ namespace AegisApp
                             {
                                 firstVerified = boostStateVerified.Add(pid);
                                 boostStateWarned.Remove(pid);
+                                int jitter = Math.Abs(pid % 11);
+                                gameBoostNextAudit[pid] =
+                                    DateTime.UtcNow.AddSeconds(20 + jitter).Ticks;
                             }
                             else
                             {
                                 boostStateVerified.Remove(pid);
                                 firstStateWarning = boostStateWarned.Add(pid);
+                                gameBoostNextAudit[pid] =
+                                    DateTime.UtcNow.AddSeconds(4).Ticks;
                             }
                         }
                         if (!stateOk && firstStateWarning)
-                            Logger.Log("游戏提优失败：" + p.ProcessName + " (pid " + pid + ") 回读仍为优先级 0x"
+                            Logger.Log("游戏提优失败：" + rendererName + " (pid " + pid + ") 回读仍为优先级 0x"
                                 + actualPriority.ToString("X") + " / IO " + actualIo + "，错误 " + writeError + "；下一轮继续纠偏");
 
                         string placementText = "";
@@ -331,16 +347,16 @@ namespace AegisApp
                                 if (placementOk) { gamePlacement[pid] = desiredMask; gamePlacementStrict[pid] = useStrict; }
                                 else { gamePlacement.Remove(pid); gamePlacementStrict.Remove(pid); }
                             }
-                            if (!placementOk) Logger.Log("游戏核心策略未完整生效：" + p.ProcessName + " (pid " + pid + ")，下一轮重试");
+                            if (!placementOk) Logger.Log("游戏核心策略未完整生效：" + rendererName + " (pid " + pid + ")，下一轮重试");
 
                             if (!newlyTracked)
-                                Logger.Log("游戏核心策略：" + p.ProcessName + " (pid " + pid + ")" + placementText);
+                                Logger.Log("游戏核心策略：" + rendererName + " (pid " + pid + ")" + placementText);
                         }
 
                         if (stateOk && firstVerified)
                         {
                             ReportBoostVerified();
-                            Logger.Log("游戏提优已验证：" + p.ProcessName + " (pid " + pid + ") → 高优先级(回读 0x"
+                            Logger.Log("游戏提优已验证：" + rendererName + " (pid " + pid + ") → 高优先级(回读 0x"
                                 + actualPriority.ToString("X") + ")" + placementText + " + 高IO(回读 " + actualIo + ")"
                                 + (gpuOk ? " + GPU高" : ""));
                         }
@@ -364,7 +380,7 @@ namespace AegisApp
                                     if (tries >= BoostRetryMax) boostFail.Remove(pid); else boostFail[pid] = tries;
                                 }
                                 if (tries >= BoostRetryMax)
-                                    Logger.Log("游戏提优：" + p.ProcessName + " (pid " + pid + ") 效率模式清不掉，重试 " + tries + " 次后放弃（多半被反作弊句柄保护，压不动）");
+                                    Logger.Log("游戏提优：" + rendererName + " (pid " + pid + ") 效率模式清不掉，重试 " + tries + " 次后放弃（多半被反作弊句柄保护，压不动）");
                             }
                         }
                     }
@@ -389,8 +405,25 @@ namespace AegisApp
                         CrashGuard.ReleaseBoostProcess(k, old.Creation);
                         gameBoost.Remove(k); gameGpu.Remove(k); gamePlacement.Remove(k); gamePlacementStrict.Remove(k);
                         boostFail.Remove(k); boostStateWarned.Remove(k); boostStateVerified.Remove(k);
+                        gameBoostNextAudit.Remove(k);
                     }
             }
+        }
+
+        internal static bool RendererIdentityMatches(
+            int expectedPid, long expectedCreation,
+            string expectedName, int actualPid,
+            long actualCreation, string actualName)
+        {
+            return expectedPid > 0
+                && expectedPid == actualPid
+                && expectedCreation > 0
+                && expectedCreation == actualCreation
+                && !string.IsNullOrEmpty(expectedName)
+                && !string.IsNullOrEmpty(actualName)
+                && string.Equals(
+                    expectedName, actualName,
+                    StringComparison.OrdinalIgnoreCase);
         }
 
         internal static bool ApplyAndVerifyBoostState(IntPtr process, out uint actualPriority, out int actualIo, out int error)
@@ -435,7 +468,9 @@ namespace AegisApp
                 if (gameBoost.Count == 0 && gameGpu.Count == 0) return true;
                 boosts = new List<KeyValuePair<int, Snap>>(gameBoost);
                 gpus = new Dictionary<int, int>(gameGpu);
-                boostFail.Clear(); boostDenied.Clear(); boostStateWarned.Clear(); boostStateVerified.Clear(); tweakApplied.Clear();
+                boostFail.Clear(); boostDenied.Clear(); boostStateWarned.Clear();
+                boostStateVerified.Clear(); gameBoostNextAudit.Clear();
+                tweakApplied.Clear();
             }
             foreach (var kv in boosts)
             {
@@ -445,17 +480,25 @@ namespace AegisApp
                 if (h == IntPtr.Zero)
                 {
                     IntPtr hq = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
-                    done = hq == IntPtr.Zero;
-                    if (!done)
+                    if (hq == IntPtr.Zero)
+                    {
+                        done = Native.LastOpenProcessFailureWasNoSuchProcess();
+                    }
+                    else
                     {
                         try
                         {
                             string name = Native.ImageName(hq);
                             long creation, cpu; ulong disk;
-                            bool same = string.Equals(name, kv.Value.Name, StringComparison.OrdinalIgnoreCase)
-                                && Native.QueryProcessSample(hq, out creation, out cpu, out disk)
+                            bool sampled = Native.QueryProcessSample(
+                                hq, out creation, out cpu, out disk);
+                            bool identityKnown = name != null && sampled;
+                            bool same = identityKnown
+                                && string.Equals(
+                                    name, kv.Value.Name,
+                                    StringComparison.OrdinalIgnoreCase)
                                 && creation == kv.Value.Creation;
-                            done = !same;
+                            done = identityKnown && !same;
                             if (same) Logger.Log("提优还原：" + kv.Value.Name + " (pid " + pid + ") 句柄被保护，身份快照保留待重试");
                         }
                         finally { Native.CloseHandle(hq); }
@@ -467,10 +510,19 @@ namespace AegisApp
                     {
                         string cur = Native.ImageName(h);
                         long creation, cpu; ulong disk;
-                        bool identity = cur != null && string.Equals(cur, kv.Value.Name, StringComparison.OrdinalIgnoreCase)
-                            && Native.QueryProcessSample(h, out creation, out cpu, out disk)
+                        bool sampled = Native.QueryProcessSample(
+                            h, out creation, out cpu, out disk);
+                        bool identityKnown = cur != null && sampled;
+                        bool identity = identityKnown
+                            && string.Equals(
+                                cur, kv.Value.Name,
+                                StringComparison.OrdinalIgnoreCase)
                             && creation == kv.Value.Creation;
-                        if (identity)
+                        if (!identityKnown)
+                        {
+                            done = false;
+                        }
+                        else if (identity)
                         {
                             done = SuppressionCore.RestoreValues(h, kv.Value.Pri, kv.Value.Aff, kv.Value.Io,
                                 kv.Value.Pg, allMask, kv.Value.CpuSets, kv.Value.QoSControl, kv.Value.QoSState);
@@ -485,7 +537,12 @@ namespace AegisApp
                 if (done)
                 {
                     CrashGuard.ReleaseBoostProcess(pid, kv.Value.Creation);
-                    lock (sync) { gameBoost.Remove(pid); gameGpu.Remove(pid); gamePlacement.Remove(pid); gamePlacementStrict.Remove(pid); }
+                    lock (sync)
+                    {
+                        gameBoost.Remove(pid); gameGpu.Remove(pid);
+                        gamePlacement.Remove(pid); gamePlacementStrict.Remove(pid);
+                        gameBoostNextAudit.Remove(pid);
+                    }
                 }
             }
             lock (sync) return gameBoost.Count == 0;
@@ -525,19 +582,21 @@ namespace AegisApp
             bool clean = UnboostGames();
             List<int> background = core.PidsWith(SuppressReason.Background);
             int ok = core.ReleaseReason(SuppressReason.Background);
-            int thawed = freezer.RestoreAll();
             bool backgroundClean = true;
             foreach (int pid in background) if (core.IsThrottled(pid)) { backgroundClean = false; break; }
-            bool freezeClean = freezer.Count == 0;
             bool envClean = RestoreEnv();
-            interference.Clear();
             pressure.Clear();
             if (clean) CrashGuard.ClearBoost();
-            Logger.Log("游戏模式解除（" + reason + "）：恢复 " + ok + " 个进程" + (thawed > 0 ? "，解冻 " + thawed + " 个高干扰后台" : ""));
+            Logger.Log("游戏模式解除（" + reason + "）：恢复 " + ok + " 个进程");
             ReportFinish();
-            lock (sync) activeDetection = null;
+            lock (sync)
+            {
+                activeDetection = null;
+                transitionProbeRendererPid = 0;
+                transitionProbeRendererCreation = 0;
+            }
             ClearSticky();
-            return clean && envClean && backgroundClean && freezeClean;
+            return clean && envClean && backgroundClean;
         }
 
     }

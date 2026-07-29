@@ -35,8 +35,12 @@ namespace AegisApp
     internal static class UiClock
     {
         private static System.Windows.Forms.Timer timer;
+        private static System.Windows.Forms.Timer slowTimer;
         private static int framesLeft;
+        private static int slowFramesLeft;
+        private static bool suspended;
         public static event EventHandler Frame;
+        public static event EventHandler SlowFrame;
 
         private static void Ensure()
         {
@@ -45,16 +49,54 @@ namespace AegisApp
             timer.Interval = 16;
             timer.Tick += (s, e) =>
             {
+                if (suspended) { framesLeft = 0; timer.Stop(); return; }
                 if (Frame != null) Frame(null, EventArgs.Empty);
                 if (--framesLeft <= 0) timer.Stop();
+            };
+            slowTimer = new System.Windows.Forms.Timer();
+            slowTimer.Interval = 200;
+            slowTimer.Tick += (s, e) =>
+            {
+                if (suspended) { slowFramesLeft = 0; slowTimer.Stop(); return; }
+                if (SlowFrame != null) SlowFrame(null, EventArgs.Empty);
+                if (--slowFramesLeft <= 0) slowTimer.Stop();
             };
         }
 
         public static void Wake(int frames = 48)
         {
             Ensure();
+            if (suspended) return;
             if (frames > framesLeft) framesLeft = frames;
             if (!timer.Enabled) timer.Start();
+        }
+
+        public static void WakeSlow(int frames = 12)
+        {
+            Ensure();
+            if (suspended) return;
+            if (frames > slowFramesLeft) slowFramesLeft = frames;
+            if (!slowTimer.Enabled) slowTimer.Start();
+        }
+
+        // A hidden/minimized panel owns no animation budget. This hard gate also
+        // prevents child controls from reviving the shared 16 ms timer via Wake().
+        public static bool Suspended
+        {
+            get { return suspended; }
+            set
+            {
+                Ensure();
+                if (suspended == value) return;
+                suspended = value;
+                if (value)
+                {
+                    framesLeft = 0;
+                    slowFramesLeft = 0;
+                    timer.Stop();
+                    slowTimer.Stop();
+                }
+            }
         }
 
         public static bool Running

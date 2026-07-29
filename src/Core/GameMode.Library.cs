@@ -10,6 +10,14 @@ namespace AegisApp
 {
     internal partial class GameMode
     {
+        private const string WhitelistFooterPrefix = "AEGIS_WHITELIST_END|";
+        private string whitelistLastError = "";
+
+        public string WhitelistLastError
+        {
+            get { lock (sync) return whitelistLastError; }
+        }
+
         public bool AddGameExecutable(string name, string executablePath)
         {
             string resolved, error;
@@ -30,7 +38,8 @@ namespace AegisApp
                         RebuildLegacyGameIndex();
                         profileStore.Save(profiles);
                         SaveGames();
-                        kick.Set();
+                        RequestFullGameDetection();
+                        RequestPolicyApply();
                         return true;
                     }
                 }
@@ -42,7 +51,8 @@ namespace AegisApp
                 profileStore.Save(profiles);
                 SaveGames();
             }
-            kick.Set();
+            RequestFullGameDetection();
+            RequestPolicyApply();
             return true;
         }
 
@@ -72,76 +82,221 @@ namespace AegisApp
                     && string.Equals(activeDetection.Profile.Id, profileId, StringComparison.OrdinalIgnoreCase);
             }
             if (dropSession) panicReq = true;
-            kick.Set();
+            RequestFullGameDetection();
+            RequestPolicyApply();
         }
 
         public List<string> GetWhitelist()
         {
+            var result = new List<string>();
             lock (sync)
+                foreach (WhitelistRule rule in whiteRules) result.Add(rule.Value);
+            result.Sort(StringComparer.OrdinalIgnoreCase);
+            return result;
+        }
+
+        public List<WhitelistRuleView> GetWhitelistRules()
+        {
+            List<WhitelistRuleView> result = SnapshotWhitelistRuleViews();
+            result.Sort(delegate(WhitelistRuleView a, WhitelistRuleView b)
             {
-                var copy = new List<string>(white);
-                copy.Sort(StringComparer.OrdinalIgnoreCase);
-                return copy;
-            }
+                int kind = a.Rule.Kind.CompareTo(b.Rule.Kind);
+                return kind != 0 ? kind : string.Compare(a.Rule.Value, b.Rule.Value, StringComparison.OrdinalIgnoreCase);
+            });
+            return result;
+        }
+
+        public List<WhitelistRuleView> GetWhitelistRulesFast()
+        {
+            var result = new List<WhitelistRuleView>();
+            lock (sync)
+                foreach (WhitelistRule rule in whiteRules)
+                    result.Add(new WhitelistRuleView(
+                        rule, -1, rule.Kind == WhitelistRuleKind.LegacyName
+                            && IsPresetWhitelistName(rule.Value)));
+            result.Sort(delegate(WhitelistRuleView a, WhitelistRuleView b)
+            {
+                int kind = a.Rule.Kind.CompareTo(b.Rule.Kind);
+                return kind != 0 ? kind : string.Compare(
+                    a.Rule.Value, b.Rule.Value, StringComparison.OrdinalIgnoreCase);
+            });
+            return result;
         }
 
         public bool AddWhitelist(string name)
         {
-            string normalized = StripExe(name.Trim());
-            if (normalized.Length == 0) return false;
-            lock (sync)
+            return AddWhitelistRule(WhitelistRuleKind.LegacyName, name);
+        }
+
+        public bool AddWhitelistPath(string executablePath)
+        {
+            return AddWhitelistRule(WhitelistRuleKind.ExactPath, executablePath);
+        }
+
+        public bool AddWhitelistFamily(string anchorExecutablePath)
+        {
+            return AddWhitelistRule(WhitelistRuleKind.ApplicationFamily, anchorExecutablePath);
+        }
+
+        private bool AddWhitelistRule(WhitelistRuleKind kind, string value)
+        {
+            WhitelistRule rule;
+            if (!WhitelistRule.TryCreate(kind, value, out rule))
             {
-                if (whiteSet.Contains(normalized)) return false;
-                whiteSet.Add(normalized);
-                white.Add(normalized);
-                SaveWhite();
+                lock (sync) whitelistLastError = Lang.T("white.duplicate");
+                return false;
             }
-            int freed = core.ReleaseByName(normalized, SuppressReason.Background);
-            int thawed = freezer.RestoreByName(normalized);
-            if (freed > 0) Logger.Log("白名单新增 " + normalized + "：已立即恢复 " + freed + " 个进程");
-            if (thawed > 0) Logger.Log("白名单新增 " + normalized + "：已立即解冻 " + thawed + " 个进程");
-            kick.Set();
+            lock (whiteEvalSync)
+            {
+                lock (sync)
+                {
+                    if (whiteRuleKeys.Contains(rule.Key))
+                    {
+                        whitelistLastError = Lang.T("white.duplicate");
+                        return false;
+                    }
+                    var next = new List<WhitelistRule>(whiteRules) { rule };
+                    if (!SaveWhite(next))
+                    {
+                        whitelistLastError = Lang.T("white.save.failed");
+                        return false;
+                    }
+                    AddWhiteRuleNoSave(rule);
+                    whitelistLastError = "";
+                }
+            }
+            int matched;
+            int freed = ReleaseCurrentWhitelistMatches(out matched);
+            Logger.Log("白名单新增 " + rule.Kind + " · " + rule.Value + "：当前匹配 " + matched
+                + " 个，立即恢复 " + freed + " 个后台压制");
+            RequestPolicyApply();
             return true;
         }
 
         public void RemoveWhitelist(string name)
         {
-            lock (sync)
-            {
-                string normalized = StripExe(name.Trim());
-                whiteSet.Remove(normalized);
-                white.RemoveAll(w => string.Equals(w, normalized, StringComparison.OrdinalIgnoreCase));
-                SaveWhite();
-            }
-            kick.Set();
+            WhitelistRule rule;
+            if (!WhitelistRule.TryCreate(WhitelistRuleKind.LegacyName, name, out rule)) return;
+            RemoveWhitelistRule(rule.Key);
         }
 
-        public void ResetWhitelist()
+        public bool RemoveWhitelistRule(string key)
         {
-            lock (sync)
+            if (string.IsNullOrEmpty(key)) return false;
+            lock (whiteEvalSync)
             {
-                white.Clear();
-                whiteSet.Clear();
-                foreach (string entry in PresetWhitelist) AddWhiteNoSave(entry);
-                try { WritePreset(); }
-                catch (Exception error) { Logger.LogFailure("恢复预设白名单失败", error); }
+                lock (sync)
+                {
+                    WhitelistRule target = whiteRules.Find(delegate(WhitelistRule rule)
+                    {
+                        return string.Equals(rule.Key, key, StringComparison.OrdinalIgnoreCase);
+                    });
+                    if (target == null) return false;
+                    if (target.Kind == WhitelistRuleKind.LegacyName
+                        && IsPresetWhitelistName(target.Value))
+                    {
+                        whitelistLastError = Lang.T("white.required");
+                        return false;
+                    }
+                    var next = new List<WhitelistRule>(whiteRules);
+                    next.Remove(target);
+                    if (!SaveWhite(next))
+                    {
+                        whitelistLastError = Lang.T("white.save.failed");
+                        return false;
+                    }
+                    whiteRules.Remove(target);
+                    whiteRuleKeys.Remove(key);
+                    whiteFamilyMembers.Remove(key);
+                    whiteRevision++;
+                    RefreshWhitelistFamilyFlagLocked();
+                    whitelistLastError = "";
+                }
             }
-            Logger.Log("白名单已恢复为预设（" + PresetWhitelist.Length + " 项）");
-            kick.Set();
+            RequestPolicyApply();
+            return true;
         }
 
-        private void SaveWhite()
+        public bool ResetWhitelist()
+        {
+            var next = new List<WhitelistRule>();
+            var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string entry in PresetWhitelist)
+            {
+                WhitelistRule rule;
+                if (WhitelistRule.TryCreate(WhitelistRuleKind.LegacyName, entry, out rule)
+                    && keys.Add(rule.Key)) next.Add(rule);
+            }
+            lock (whiteEvalSync)
+            {
+                lock (sync)
+                {
+                    if (!SaveWhite(next))
+                    {
+                        whitelistLastError = Lang.T("white.save.failed");
+                        return false;
+                    }
+                    whiteRules.Clear();
+                    whiteRuleKeys.Clear();
+                    whiteFamilyMembers.Clear();
+                    whiteRevision++;
+                    RefreshWhitelistFamilyFlagLocked();
+                    foreach (WhitelistRule rule in next)
+                        AddWhiteRuleNoSave(rule);
+                    whitelistLastError = "";
+                }
+            }
+            int matched;
+            int freed = ReleaseCurrentWhitelistMatches(out matched);
+            Logger.Log("白名单已恢复为预设（" + PresetWhitelist.Length + " 项，当前匹配 " + matched
+                + " 个，立即恢复 " + freed + " 个后台压制）");
+            RequestPolicyApply();
+            return true;
+        }
+
+        private bool SaveWhite(IList<WhitelistRule> rules)
         {
             try
             {
                 var lines = new List<string>();
-                lines.Add("# Aegis 游戏模式白名单（必要清单）—— 游戏模式激活时只有这些进程不被压制");
-                lines.Add("# 一行一个进程名(不带 .exe)，# 开头是注释。仅处理当前用户会话；");
+                lines.Add("# Aegis 后台策略豁免规则。旧版一行一个进程名的文件仍可直接读取。");
+                lines.Add("# V3：N=进程名兼容规则，P=精确 EXE，F=锚点 EXE 及其当前/后续子孙。");
                 lines.Add("# Windows 核心另有安全边界，这里也保留必要项并允许用户追加明确例外。");
-                lines.AddRange(white);
-                AtomicFile.WriteLines(whitePath, lines.ToArray(), "白名单");
+                lines.Add(WhitelistRule.Header);
+                if (rules != null)
+                    foreach (WhitelistRule rule in rules) lines.Add(rule.Serialize());
+                lines.Add(BuildWhitelistFooter(rules));
+                return AtomicFile.WriteLines(whitePath, lines.ToArray(), "白名单");
             }
-            catch (Exception error) { Logger.LogFailure("保存游戏模式白名单失败", error); }
+            catch (Exception error)
+            {
+                Logger.LogFailure("保存游戏模式白名单失败", error);
+                return false;
+            }
+        }
+
+        internal static string BuildWhitelistFooter(IList<WhitelistRule> rules)
+        {
+            ulong hash = 1469598103934665603UL;
+            int count = 0;
+            if (rules != null)
+                foreach (WhitelistRule rule in rules)
+                {
+                    if (rule == null) continue;
+                    string line = rule.Serialize();
+                    count++;
+                    unchecked
+                    {
+                        for (int i = 0; i < line.Length; i++)
+                        {
+                            hash ^= (byte)line[i];
+                            hash *= 1099511628211UL;
+                        }
+                        hash ^= (byte)'\n';
+                        hash *= 1099511628211UL;
+                    }
+                }
+            return WhitelistFooterPrefix + count + "|" + hash.ToString("X16");
         }
 
         private void SaveGames()

@@ -15,6 +15,19 @@ namespace AegisApp
         private const string KBoostEntries = "Crash_BoostEntriesV2";
         private static readonly object sync = new object();
         private static readonly Dictionary<int, long> owned = new Dictionary<int, long>();
+        private enum BoostIdentity { Match, Mismatch, Unknown }
+
+        internal sealed class OriginalBoostState
+        {
+            public uint Priority;
+            public ulong Affinity;
+            public int Io;
+            public int Page;
+            public int Gpu;
+            public uint[] CpuSets;
+            public int QoSControl;
+            public int QoSState;
+        }
 
         private sealed class BoostEntry
         {
@@ -53,12 +66,46 @@ namespace AegisApp
             uint priority, ulong affinity, int io, int page, int gpu, uint[] cpuSets,
             int qosControl, int qosState)
         {
+            OriginalBoostState ignored;
+            return MarkBoostProcess(
+                pid, creation, name, priority, affinity, io, page, gpu,
+                cpuSets, qosControl, qosState, out ignored);
+        }
+
+        internal static bool MarkBoostProcess(int pid, long creation, string name,
+            uint priority, ulong affinity, int io, int page, int gpu, uint[] cpuSets,
+            int qosControl, int qosState, out OriginalBoostState recovered)
+        {
+            recovered = null;
             if (pid <= 0 || creation <= 0 || string.IsNullOrEmpty(name)) return false;
             lock (sync)
             {
                 List<BoostEntry> entries = LoadEntries();
                 foreach (BoostEntry old in entries)
-                    if (old.Pid == pid && old.Creation == creation) return true;
+                    if (old.Pid == pid && old.Creation == creation)
+                    {
+                        if (!string.Equals(
+                                old.Name, name,
+                                StringComparison.OrdinalIgnoreCase))
+                            return false;
+                        // Re-adopt the pre-crash snapshot instead of replacing
+                        // it with the already-boosted state from this process.
+                        owned[pid] = creation;
+                        recovered = new OriginalBoostState
+                        {
+                            Priority = old.Priority,
+                            Affinity = old.Affinity,
+                            Io = old.Io,
+                            Page = old.Page,
+                            Gpu = old.Gpu,
+                            CpuSets = old.CpuSets == null
+                                ? new uint[0]
+                                : (uint[])old.CpuSets.Clone(),
+                            QoSControl = old.QoSControl,
+                            QoSState = old.QoSState
+                        };
+                        return true;
+                    }
                 entries.RemoveAll(e => e.Pid == pid);
                 entries.Add(new BoostEntry
                 {
@@ -115,16 +162,26 @@ namespace AegisApp
                     {
                         try
                         {
-                            if (IdentityMatches(query, entry)) keep.Add(entry);
+                            if (Identify(query, entry) != BoostIdentity.Mismatch) keep.Add(entry);
                         }
                         finally { Native.CloseHandle(query); }
+                    }
+                    else if (!Native.LastOpenProcessFailureWasNoSuchProcess())
+                    {
+                        keep.Add(entry);
                     }
                     continue;
                 }
 
                 try
                 {
-                    if (!IdentityMatches(h, entry)) continue;
+                    BoostIdentity identity = Identify(h, entry);
+                    if (identity == BoostIdentity.Mismatch) continue;
+                    if (identity == BoostIdentity.Unknown)
+                    {
+                        keep.Add(entry);
+                        continue;
+                    }
                     bool ok = SuppressionCore.RestoreValues(h, entry.Priority, entry.Affinity,
                         entry.Io, entry.Page, CpuTopology.AllMask, entry.CpuSets,
                         entry.QoSControl, entry.QoSState);
@@ -145,12 +202,16 @@ namespace AegisApp
             if (keep.Count > 0) Logger.Log("仍有 " + keep.Count + " 个提优进程暂时无法恢复，身份快照已保留待下次重试");
         }
 
-        private static bool IdentityMatches(IntPtr h, BoostEntry entry)
+        private static BoostIdentity Identify(IntPtr h, BoostEntry entry)
         {
             string name = Native.ImageName(h);
-            if (!string.Equals(name, entry.Name, StringComparison.OrdinalIgnoreCase)) return false;
+            if (name == null) return BoostIdentity.Unknown;
+            if (!string.Equals(name, entry.Name, StringComparison.OrdinalIgnoreCase))
+                return BoostIdentity.Mismatch;
             long creation, cpu; ulong io;
-            return Native.QueryProcessSample(h, out creation, out cpu, out io) && creation == entry.Creation;
+            if (!Native.QueryProcessSample(h, out creation, out cpu, out io))
+                return BoostIdentity.Unknown;
+            return creation == entry.Creation ? BoostIdentity.Match : BoostIdentity.Mismatch;
         }
 
         // 供自测校验格式向后兼容：返回 "条目数|第一条的QoSControl|第一条的QoSState"

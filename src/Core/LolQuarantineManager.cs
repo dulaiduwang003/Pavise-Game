@@ -10,12 +10,19 @@ namespace AegisApp
 {
     internal static class LolQuarantineManager
     {
-        private const string WarehouseName = ".aegis-quarantine";
+        private const string WarehouseName = ".aegis-lol-quarantine";
+        private const string LegacyWarehouseName = ".aegis-quarantine";
         private const string PayloadName = "payload";
         private const string ManifestName = "manifest.aegis";
+        private const string LockFileName = ".operation.lock";
         private const string ManifestHeader = "AEGIS_LOL_QUARANTINE_V1";
         private static readonly object Gate = new object();
         private static readonly string[] CandidatePaths =
+        {
+            "Cross"
+        };
+
+        private static readonly string[] KnownPaths =
         {
             "Cross",
             @"LeagueClient\DiagnosticAssistant",
@@ -125,6 +132,21 @@ namespace AegisApp
             public string Version;
             public long CreatedUtcTicks;
             public readonly List<ManifestItem> Items = new List<ManifestItem>();
+        }
+
+        private static string WarehousePath(string root)
+        {
+            string parent;
+            try { parent = Path.GetDirectoryName(Path.GetFullPath(root)); }
+            catch { return null; }
+            if (string.IsNullOrEmpty(parent)) return null;
+            return Path.Combine(parent, WarehouseName);
+        }
+
+        private static string LegacyWarehousePath(string root)
+        {
+            try { return Path.Combine(Path.GetFullPath(root), LegacyWarehouseName); }
+            catch { return null; }
         }
 
         public static string FindRoot()
@@ -264,139 +286,157 @@ namespace AegisApp
                 OperationResult rejected = RejectQuarantine(initial);
                 if (rejected != null) return rejected;
 
-                string warehouse = Path.Combine(initial.RootPath, WarehouseName);
                 FileStream operationLock;
                 string lockError;
                 if (!TryAcquireWarehouse(initial.RootPath, out operationLock, out lockError))
                     return Failure(lockError);
 
+                OperationResult result;
                 using (operationLock)
                 {
-                    Inspection current = Inspect(initial.RootPath);
-                    rejected = RejectQuarantine(current);
-                    if (rejected != null) return rejected;
+                    result = QuarantineLocked(initial.RootPath);
+                    SweepDeadSets(initial.RootPath);
+                }
+                TryRemoveEmptyWarehouse(initial.RootPath);
+                return result;
+            }
+        }
 
-                    string setName = BuildSetName(current.Version, warehouse);
-                    string setPath = Path.Combine(warehouse, setName);
-                    string payloadPath = Path.Combine(setPath, PayloadName);
-                    string manifestPath = Path.Combine(setPath, ManifestName);
-                    var manifest = new ManifestData();
-                    manifest.State = "active";
-                    manifest.RootPath = current.RootPath;
-                    manifest.Version = current.Version;
-                    manifest.CreatedUtcTicks = DateTime.UtcNow.Ticks;
-                    foreach (CandidateInfo candidate in current.Candidates)
-                    {
-                        if (!candidate.Exists) continue;
-                        var manifestItem = new ManifestItem();
-                        manifestItem.RelativePath = candidate.RelativePath;
-                        manifestItem.Bytes = candidate.Bytes;
-                        manifestItem.FileCount = candidate.FileCount;
-                        manifest.Items.Add(manifestItem);
-                    }
+        private static OperationResult QuarantineLocked(string rootPath)
+        {
+            Inspection current = Inspect(rootPath);
+            OperationResult rejected = RejectQuarantine(current);
+            if (rejected != null) return rejected;
 
-                    try
-                    {
-                        Directory.CreateDirectory(payloadPath);
-                        EnsureSafeParent(current.RootPath, payloadPath);
-                    }
-                    catch (Exception ex)
-                    {
-                        return Failure(Lang.F("lolq.err.createset", ex.Message));
-                    }
+            string warehouse = WarehousePath(current.RootPath);
+            if (string.IsNullOrEmpty(warehouse))
+                return Failure(Lang.T("lolq.err.warehousefile"));
+            string setName = BuildSetName(current.Version, warehouse);
+            string setPath = Path.Combine(warehouse, setName);
+            string payloadPath = Path.Combine(setPath, PayloadName);
+            string manifestPath = Path.Combine(setPath, ManifestName);
+            var manifest = new ManifestData();
+            manifest.State = "active";
+            manifest.RootPath = current.RootPath;
+            manifest.Version = current.Version;
+            manifest.CreatedUtcTicks = DateTime.UtcNow.Ticks;
+            foreach (CandidateInfo candidate in current.Candidates)
+            {
+                if (!candidate.Exists) continue;
+                var manifestItem = new ManifestItem();
+                manifestItem.RelativePath = candidate.RelativePath;
+                manifestItem.Bytes = candidate.Bytes;
+                manifestItem.FileCount = candidate.FileCount;
+                manifest.Items.Add(manifestItem);
+            }
 
-                    if (!WriteManifest(manifestPath, manifest))
-                        return Failure(Lang.T("lolq.err.writemanifest"));
+            try
+            {
+                Directory.CreateDirectory(payloadPath);
+                EnsureSafeParent(warehouse, payloadPath);
+            }
+            catch (Exception ex)
+            {
+                DeleteTree(new DirectoryInfo(setPath));
+                return Failure(Lang.F("lolq.err.createset", ex.Message));
+            }
 
-                    var result = new OperationResult();
-                    result.SetName = setName;
-                    foreach (ManifestItem item in manifest.Items)
-                    {
-                        var operationItem = NewOperationItem(current.RootPath, setPath, item);
-                        result.Items.Add(operationItem);
+            if (!WriteManifest(manifestPath, manifest))
+            {
+                DeleteTree(new DirectoryInfo(setPath));
+                return Failure(Lang.T("lolq.err.writemanifest"));
+            }
 
-                        List<string> blocking;
-                        if (HasBlockingProcesses(current.RootPath, out blocking))
-                        {
-                            operationItem.Message = Lang.F("lolq.err.clientrunning", string.Join("、", blocking.ToArray()));
-                            result.FailedCount++;
-                            continue;
-                        }
+            var result = new OperationResult();
+            result.SetName = setName;
+            foreach (ManifestItem item in manifest.Items)
+            {
+                var operationItem = NewOperationItem(current.RootPath, setPath, item);
+                result.Items.Add(operationItem);
 
-                        if (File.Exists(operationItem.SourcePath))
-                        {
-                            operationItem.Message = Lang.T("lolq.item.notdir");
-                            result.FailedCount++;
-                            continue;
-                        }
-                        if (!Directory.Exists(operationItem.SourcePath))
-                        {
-                            operationItem.Message = Lang.T("lolq.item.vanished");
-                            result.FailedCount++;
-                            continue;
-                        }
-                        if (Directory.Exists(operationItem.DestinationPath) || File.Exists(operationItem.DestinationPath))
-                        {
-                            operationItem.Message = Lang.T("lolq.item.destexists");
-                            result.FailedCount++;
-                            continue;
-                        }
+                List<string> blocking;
+                if (HasBlockingProcesses(current.RootPath, out blocking))
+                {
+                    operationItem.Message = Lang.F("lolq.err.clientrunning", string.Join("、", blocking.ToArray()));
+                    result.FailedCount++;
+                    continue;
+                }
 
-                        try
-                        {
-                            EnsureSafeParent(
-                                current.RootPath, Path.GetDirectoryName(operationItem.SourcePath));
-                            if (!SafeDirectory(operationItem.SourcePath))
-                                throw new IOException(Lang.T("lolq.err.srcreparse"));
-                            string destinationParent = Path.GetDirectoryName(operationItem.DestinationPath);
-                            Directory.CreateDirectory(destinationParent);
-                            EnsureSafeParent(current.RootPath, destinationParent);
-                            EnsureSameVolume(operationItem.SourcePath, operationItem.DestinationPath);
-                            Directory.Move(operationItem.SourcePath, operationItem.DestinationPath);
-                            operationItem.Success = true;
-                            operationItem.Message = Lang.T("lolq.item.quarantined");
-                            result.MovedCount++;
-                            result.Bytes = AddSaturated(result.Bytes, item.Bytes);
-                            result.Changed = true;
-                        }
-                        catch (Exception ex)
-                        {
-                            operationItem.Message = Lang.F("lolq.item.quarantinefail", ex.Message);
-                            result.FailedCount++;
-                        }
-                    }
+                if (File.Exists(operationItem.SourcePath))
+                {
+                    operationItem.Message = Lang.T("lolq.item.notdir");
+                    result.FailedCount++;
+                    continue;
+                }
+                if (!Directory.Exists(operationItem.SourcePath))
+                {
+                    operationItem.Message = Lang.T("lolq.item.vanished");
+                    result.FailedCount++;
+                    continue;
+                }
+                if (Directory.Exists(operationItem.DestinationPath) || File.Exists(operationItem.DestinationPath))
+                {
+                    operationItem.Message = Lang.T("lolq.item.destexists");
+                    result.FailedCount++;
+                    continue;
+                }
 
-                    if (!result.Changed)
-                    {
-                        manifest.State = "failed";
-                        WriteManifest(manifestPath, manifest);
-                    }
-                    else if (result.FailedCount > 0)
-                    {
-                        var moved = new List<ManifestItem>();
-                        foreach (OperationItem oi in result.Items)
-                        {
-                            if (!oi.Success) continue;
-                            foreach (ManifestItem mi in manifest.Items)
-                                if (string.Equals(mi.RelativePath, oi.RelativePath, StringComparison.OrdinalIgnoreCase))
-                                    moved.Add(mi);
-                        }
-                        if (moved.Count > 0 && moved.Count != manifest.Items.Count)
-                        {
-                            manifest.Items.Clear();
-                            manifest.Items.AddRange(moved);
-                            WriteManifest(manifestPath, manifest);
-                        }
-                    }
-                    result.Success = result.Changed && result.FailedCount == 0;
-                    result.Message = result.Success
-                        ? Lang.T("lolq.msg.qdone")
-                        : result.Changed
-                            ? Lang.T("lolq.msg.qpartial")
-                            : Lang.T("lolq.msg.qnone");
-                    return result;
+                try
+                {
+                    EnsureSafeParent(
+                        current.RootPath, Path.GetDirectoryName(operationItem.SourcePath));
+                    if (!SafeDirectory(operationItem.SourcePath))
+                        throw new IOException(Lang.T("lolq.err.srcreparse"));
+                    string destinationParent = Path.GetDirectoryName(operationItem.DestinationPath);
+                    Directory.CreateDirectory(destinationParent);
+                    EnsureSafeParent(warehouse, destinationParent);
+                    EnsureSameVolume(operationItem.SourcePath, operationItem.DestinationPath);
+                    Directory.Move(operationItem.SourcePath, operationItem.DestinationPath);
+                    operationItem.Success = true;
+                    operationItem.Message = Lang.T("lolq.item.quarantined");
+                    result.MovedCount++;
+                    result.Bytes = AddSaturated(result.Bytes, item.Bytes);
+                    result.Changed = true;
+                }
+                catch (Exception ex)
+                {
+                    operationItem.Message = Lang.F("lolq.item.quarantinefail", ex.Message);
+                    result.FailedCount++;
                 }
             }
+
+            if (!result.Changed)
+            {
+                if (!DeleteTree(new DirectoryInfo(setPath)))
+                {
+                    manifest.State = "failed";
+                    WriteManifest(manifestPath, manifest);
+                }
+            }
+            else if (result.FailedCount > 0)
+            {
+                var moved = new List<ManifestItem>();
+                foreach (OperationItem oi in result.Items)
+                {
+                    if (!oi.Success) continue;
+                    foreach (ManifestItem mi in manifest.Items)
+                        if (string.Equals(mi.RelativePath, oi.RelativePath, StringComparison.OrdinalIgnoreCase))
+                            moved.Add(mi);
+                }
+                if (moved.Count > 0 && moved.Count != manifest.Items.Count)
+                {
+                    manifest.Items.Clear();
+                    manifest.Items.AddRange(moved);
+                    WriteManifest(manifestPath, manifest);
+                }
+            }
+            result.Success = result.Changed && result.FailedCount == 0;
+            result.Message = result.Success
+                ? Lang.T("lolq.msg.qdone")
+                : result.Changed
+                    ? Lang.T("lolq.msg.qpartial")
+                    : Lang.T("lolq.msg.qnone");
+            return result;
         }
 
         public static OperationResult Restore(string root)
@@ -420,136 +460,148 @@ namespace AegisApp
                 if (!TryAcquireWarehouse(initial.RootPath, out operationLock, out lockError))
                     return Failure(lockError);
 
+                OperationResult result;
                 using (operationLock)
                 {
-                    Inspection current = Inspect(initial.RootPath);
-                    rejected = RejectRestore(current, setName);
-                    if (rejected != null) return rejected;
+                    result = RestoreLocked(initial.RootPath, setName);
+                    SweepDeadSets(initial.RootPath);
+                }
+                TryRemoveEmptyWarehouse(initial.RootPath);
+                return result;
+            }
+        }
 
-                    QuarantineInfo selected = null;
-                    foreach (QuarantineInfo info in current.Active)
-                        if (string.Equals(info.Name, setName, StringComparison.OrdinalIgnoreCase)) selected = info;
-                    if (selected == null) return Failure(Lang.T("lolq.err.nosuchset"));
+        private static OperationResult RestoreLocked(string rootPath, string setName)
+        {
+            Inspection current = Inspect(rootPath);
+            OperationResult rejected = RejectRestore(current, setName);
+            if (rejected != null) return rejected;
 
-                    string setPath = Path.GetDirectoryName(selected.ManifestPath);
-                    try
+            QuarantineInfo selected = null;
+            foreach (QuarantineInfo info in current.Active)
+                if (string.Equals(info.Name, setName, StringComparison.OrdinalIgnoreCase)) selected = info;
+            if (selected == null) return Failure(Lang.T("lolq.err.nosuchset"));
+
+            string setPath = Path.GetDirectoryName(selected.ManifestPath);
+            try
+            {
+                EnsureSafeParent(Path.GetDirectoryName(setPath), setPath);
+                if (!SafeDirectory(setPath)) return Failure(Lang.T("lolq.err.setreparse"));
+            }
+            catch (Exception ex)
+            {
+                return Failure(Lang.F("lolq.err.setinvalidex", ex.Message));
+            }
+            ManifestData manifest;
+            string manifestError;
+            if (!TryReadManifest(selected.ManifestPath, out manifest, out manifestError))
+                return Failure(Lang.F("lolq.err.manifestunavailable", manifestError));
+            if (!SamePath(manifest.RootPath, current.RootPath))
+                return Failure(Lang.T("lolq.err.manifestmismatch"));
+
+            var result = new OperationResult();
+            result.SetName = selected.Name;
+            bool missingContent = false;
+            foreach (ManifestItem item in manifest.Items)
+            {
+                var operationItem = NewRestoreItem(current.RootPath, setPath, item);
+                result.Items.Add(operationItem);
+
+                List<string> blocking;
+                if (HasBlockingProcesses(current.RootPath, out blocking))
+                {
+                    operationItem.Message = Lang.F("lolq.err.clientrunning", string.Join("、", blocking.ToArray()));
+                    result.FailedCount++;
+                    continue;
+                }
+
+                bool sourceDirectory = Directory.Exists(operationItem.SourcePath);
+                bool sourceFile = File.Exists(operationItem.SourcePath);
+                bool destinationDirectory = Directory.Exists(operationItem.DestinationPath);
+                bool destinationFile = File.Exists(operationItem.DestinationPath);
+                if (sourceFile)
+                {
+                    operationItem.Message = Lang.T("lolq.item.notdir");
+                    result.FailedCount++;
+                    continue;
+                }
+                if (!sourceDirectory)
+                {
+                    if (destinationDirectory || destinationFile)
                     {
-                        EnsureSafeParent(current.RootPath, setPath);
-                        if (!SafeDirectory(setPath)) return Failure(Lang.T("lolq.err.setreparse"));
+                        operationItem.Success = true;
+                        operationItem.Message = Lang.T("lolq.item.alreadyinplace");
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        return Failure(Lang.F("lolq.err.setinvalidex", ex.Message));
+                        operationItem.Message = Lang.T("lolq.item.payloadmissing");
+                        result.FailedCount++;
+                        missingContent = true;
                     }
-                    ManifestData manifest;
-                    string manifestError;
-                    if (!TryReadManifest(selected.ManifestPath, out manifest, out manifestError))
-                        return Failure(Lang.F("lolq.err.manifestunavailable", manifestError));
-                    if (!SamePath(manifest.RootPath, current.RootPath))
-                        return Failure(Lang.T("lolq.err.manifestmismatch"));
+                    continue;
+                }
+                if (destinationDirectory || destinationFile)
+                {
+                    operationItem.Message = Lang.T("lolq.item.occupied");
+                    result.FailedCount++;
+                    continue;
+                }
 
-                    var result = new OperationResult();
-                    result.SetName = selected.Name;
-                    bool missingContent = false;
-                    foreach (ManifestItem item in manifest.Items)
-                    {
-                        var operationItem = NewRestoreItem(current.RootPath, setPath, item);
-                        result.Items.Add(operationItem);
-
-                        List<string> blocking;
-                        if (HasBlockingProcesses(current.RootPath, out blocking))
-                        {
-                            operationItem.Message = Lang.F("lolq.err.clientrunning", string.Join("、", blocking.ToArray()));
-                            result.FailedCount++;
-                            continue;
-                        }
-
-                        bool sourceDirectory = Directory.Exists(operationItem.SourcePath);
-                        bool sourceFile = File.Exists(operationItem.SourcePath);
-                        bool destinationDirectory = Directory.Exists(operationItem.DestinationPath);
-                        bool destinationFile = File.Exists(operationItem.DestinationPath);
-                        if (sourceFile)
-                        {
-                            operationItem.Message = Lang.T("lolq.item.notdir");
-                            result.FailedCount++;
-                            continue;
-                        }
-                        if (!sourceDirectory)
-                        {
-                            if (destinationDirectory || destinationFile)
-                            {
-                                operationItem.Success = true;
-                                operationItem.Message = Lang.T("lolq.item.alreadyinplace");
-                            }
-                            else
-                            {
-                                operationItem.Message = Lang.T("lolq.item.payloadmissing");
-                                result.FailedCount++;
-                                missingContent = true;
-                            }
-                            continue;
-                        }
-                        if (destinationDirectory || destinationFile)
-                        {
-                            operationItem.Message = Lang.T("lolq.item.occupied");
-                            result.FailedCount++;
-                            continue;
-                        }
-
-                        try
-                        {
-                            EnsureSafeParent(
-                                setPath, Path.GetDirectoryName(operationItem.SourcePath));
-                            if (!SafeDirectory(operationItem.SourcePath))
-                                throw new IOException(Lang.T("lolq.err.payloadreparse"));
-                            string destinationParent = Path.GetDirectoryName(operationItem.DestinationPath);
-                            if (File.Exists(destinationParent)) throw new IOException(Lang.T("lolq.err.parentisfile"));
-                            EnsureSafeParent(current.RootPath, destinationParent);
-                            Directory.CreateDirectory(destinationParent);
-                            EnsureSafeParent(current.RootPath, destinationParent);
-                            EnsureSameVolume(operationItem.SourcePath, operationItem.DestinationPath);
-                            Directory.Move(operationItem.SourcePath, operationItem.DestinationPath);
-                            operationItem.Success = true;
-                            operationItem.Message = Lang.T("lolq.item.restored");
-                            result.MovedCount++;
-                            result.Bytes = AddSaturated(result.Bytes, item.Bytes);
-                            result.Changed = true;
-                        }
-                        catch (Exception ex)
-                        {
-                            operationItem.Message = Lang.F("lolq.item.restorefail", ex.Message);
-                            result.FailedCount++;
-                        }
-                    }
-
-                    bool remains = false;
-                    foreach (ManifestItem item in manifest.Items)
-                    {
-                        string payload = CombineRelative(Path.Combine(setPath, PayloadName), item.RelativePath);
-                        if (Directory.Exists(payload) || File.Exists(payload)) remains = true;
-                    }
-                    if (!remains && !missingContent)
-                    {
-                        manifest.State = "restored";
-                        if (!WriteManifest(selected.ManifestPath, manifest))
-                        {
-                            result.FailedCount++;
-                            result.Message = Lang.T("lolq.msg.rstatefail");
-                        }
-                    }
-
-                    result.Success = !remains && result.FailedCount == 0;
-                    if (string.IsNullOrEmpty(result.Message))
-                        result.Message = missingContent
-                            ? Lang.T("lolq.msg.rmissing")
-                            : result.Success
-                            ? Lang.T("lolq.msg.rdone")
-                            : result.Changed
-                                ? Lang.T("lolq.msg.rpartial")
-                                : Lang.T("lolq.msg.rnone");
-                    return result;
+                try
+                {
+                    EnsureSafeParent(
+                        setPath, Path.GetDirectoryName(operationItem.SourcePath));
+                    if (!SafeDirectory(operationItem.SourcePath))
+                        throw new IOException(Lang.T("lolq.err.payloadreparse"));
+                    string destinationParent = Path.GetDirectoryName(operationItem.DestinationPath);
+                    if (File.Exists(destinationParent)) throw new IOException(Lang.T("lolq.err.parentisfile"));
+                    EnsureSafeParent(current.RootPath, destinationParent);
+                    Directory.CreateDirectory(destinationParent);
+                    EnsureSafeParent(current.RootPath, destinationParent);
+                    EnsureSameVolume(operationItem.SourcePath, operationItem.DestinationPath);
+                    Directory.Move(operationItem.SourcePath, operationItem.DestinationPath);
+                    operationItem.Success = true;
+                    operationItem.Message = Lang.T("lolq.item.restored");
+                    result.MovedCount++;
+                    result.Bytes = AddSaturated(result.Bytes, item.Bytes);
+                    result.Changed = true;
+                }
+                catch (Exception ex)
+                {
+                    operationItem.Message = Lang.F("lolq.item.restorefail", ex.Message);
+                    result.FailedCount++;
                 }
             }
+
+            bool remains = false;
+            foreach (ManifestItem item in manifest.Items)
+            {
+                string payload = CombineRelative(Path.Combine(setPath, PayloadName), item.RelativePath);
+                if (Directory.Exists(payload) || File.Exists(payload)) remains = true;
+            }
+            if (!remains && !missingContent)
+            {
+                if (!DeleteTree(new DirectoryInfo(setPath)))
+                {
+                    manifest.State = "restored";
+                    if (!WriteManifest(selected.ManifestPath, manifest))
+                    {
+                        result.FailedCount++;
+                        result.Message = Lang.T("lolq.msg.rstatefail");
+                    }
+                }
+            }
+
+            result.Success = !remains && result.FailedCount == 0;
+            if (string.IsNullOrEmpty(result.Message))
+                result.Message = missingContent
+                    ? Lang.T("lolq.msg.rmissing")
+                    : result.Success
+                    ? Lang.T("lolq.msg.rdone")
+                    : result.Changed
+                        ? Lang.T("lolq.msg.rpartial")
+                        : Lang.T("lolq.msg.rnone");
+            return result;
         }
 
         public static OperationResult Discard(string root, string setName)
@@ -565,64 +617,145 @@ namespace AegisApp
                 if (!TryAcquireWarehouse(initial.RootPath, out operationLock, out lockError))
                     return Failure(lockError);
 
+                OperationResult result;
                 using (operationLock)
                 {
-                    Inspection current = Inspect(initial.RootPath);
-                    rejected = RejectDiscard(current, setName);
-                    if (rejected != null) return rejected;
+                    result = DiscardLocked(initial.RootPath, setName);
+                    SweepDeadSets(initial.RootPath);
+                }
+                TryRemoveEmptyWarehouse(initial.RootPath);
+                return result;
+            }
+        }
 
-                    QuarantineInfo selected = null;
-                    foreach (QuarantineInfo info in current.Active)
-                        if (string.Equals(info.Name, setName, StringComparison.OrdinalIgnoreCase)) selected = info;
-                    if (selected == null) return Failure(Lang.T("lolq.err.nosuchset"));
-                    if (!selected.Discardable)
-                        return Failure(Lang.T("lolq.err.stillunique"));
+        private static OperationResult DiscardLocked(string rootPath, string setName)
+        {
+            Inspection current = Inspect(rootPath);
+            OperationResult rejected = RejectDiscard(current, setName);
+            if (rejected != null) return rejected;
 
-                    string setPath = Path.GetDirectoryName(selected.ManifestPath);
-                    string warehouse = Path.Combine(current.RootPath, WarehouseName);
-                    try
-                    {
-                        EnsureSafeParent(warehouse, setPath);
-                        if (!SafeDirectory(setPath)) return Failure(Lang.T("lolq.err.setreparse"));
-                        if (SamePath(setPath, warehouse)) return Failure(Lang.T("lolq.err.setinvalid"));
-                    }
-                    catch (Exception ex)
-                    {
-                        return Failure(Lang.F("lolq.err.setinvalidex", ex.Message));
-                    }
+            QuarantineInfo selected = null;
+            foreach (QuarantineInfo info in current.Active)
+                if (string.Equals(info.Name, setName, StringComparison.OrdinalIgnoreCase)) selected = info;
+            if (selected == null) return Failure(Lang.T("lolq.err.nosuchset"));
+            if (!selected.Discardable)
+                return Failure(Lang.T("lolq.err.stillunique"));
 
+            string setPath = Path.GetDirectoryName(selected.ManifestPath);
+            string warehouse = Path.GetDirectoryName(setPath);
+            try
+            {
+                EnsureSafeParent(warehouse, setPath);
+                if (!SafeDirectory(setPath)) return Failure(Lang.T("lolq.err.setreparse"));
+                if (SamePath(setPath, warehouse)) return Failure(Lang.T("lolq.err.setinvalid"));
+            }
+            catch (Exception ex)
+            {
+                return Failure(Lang.F("lolq.err.setinvalidex", ex.Message));
+            }
+
+            ManifestData manifest;
+            string manifestError;
+            if (!TryReadManifest(selected.ManifestPath, out manifest, out manifestError))
+                return Failure(Lang.F("lolq.err.manifestunavailable", manifestError));
+            if (!SamePath(manifest.RootPath, current.RootPath))
+                return Failure(Lang.T("lolq.err.manifestmismatch"));
+
+            var result = new OperationResult();
+            result.SetName = selected.Name;
+            foreach (ManifestItem item in manifest.Items)
+            {
+                string payload = CombineRelative(Path.Combine(setPath, PayloadName), item.RelativePath);
+                string original = CombineRelative(current.RootPath, item.RelativePath);
+                if (!Directory.Exists(payload) && !File.Exists(payload)) continue;
+                if (!Directory.Exists(original) && !File.Exists(original))
+                    return Failure(Lang.T("lolq.err.stillunique"));
+            }
+
+            if (!DeleteTree(new DirectoryInfo(setPath)))
+            {
+                result.FailedCount++;
+                result.Message = Lang.T("lolq.msg.discardpartial");
+                return result;
+            }
+
+            result.Changed = true;
+            result.Success = true;
+            result.Bytes = selected.Bytes;
+            result.Message = Lang.T("lolq.msg.discarddone");
+            return result;
+        }
+
+        private static void SweepDeadSets(string rootPath)
+        {
+            SweepDeadSetsIn(WarehousePath(rootPath));
+            SweepDeadSetsIn(LegacyWarehousePath(rootPath));
+        }
+
+        private static void SweepDeadSetsIn(string warehousePath)
+        {
+            if (string.IsNullOrEmpty(warehousePath)) return;
+            DirectoryInfo[] sets;
+            try
+            {
+                var warehouse = new DirectoryInfo(warehousePath);
+                warehouse.Refresh();
+                if (!warehouse.Exists || IsReparse(warehouse)) return;
+                sets = warehouse.GetDirectories();
+            }
+            catch { return; }
+            foreach (DirectoryInfo set in sets)
+            {
+                try
+                {
+                    set.Refresh();
+                    if (IsReparse(set)) continue;
                     ManifestData manifest;
                     string manifestError;
-                    if (!TryReadManifest(selected.ManifestPath, out manifest, out manifestError))
-                        return Failure(Lang.F("lolq.err.manifestunavailable", manifestError));
-                    if (!SamePath(manifest.RootPath, current.RootPath))
-                        return Failure(Lang.T("lolq.err.manifestmismatch"));
-
-                    var result = new OperationResult();
-                    result.SetName = selected.Name;
-                    foreach (ManifestItem item in manifest.Items)
-                    {
-                        string payload = CombineRelative(Path.Combine(setPath, PayloadName), item.RelativePath);
-                        string original = CombineRelative(current.RootPath, item.RelativePath);
-                        if (!Directory.Exists(payload) && !File.Exists(payload)) continue;
-                        if (!Directory.Exists(original) && !File.Exists(original))
-                            return Failure(Lang.T("lolq.err.stillunique"));
-                    }
-
-                    if (!DeleteTree(new DirectoryInfo(setPath)))
-                    {
-                        result.FailedCount++;
-                        result.Message = Lang.T("lolq.msg.discardpartial");
-                        return result;
-                    }
-
-                    result.Changed = true;
-                    result.Success = true;
-                    result.Bytes = selected.Bytes;
-                    result.Message = Lang.T("lolq.msg.discarddone");
-                    return result;
+                    if (!TryReadManifest(Path.Combine(set.FullName, ManifestName), out manifest, out manifestError))
+                        continue;
+                    if (string.Equals(manifest.State, "active", StringComparison.Ordinal)) continue;
+                    if (PayloadHasContents(set.FullName)) continue;
+                    DeleteTree(set);
                 }
+                catch { }
             }
+        }
+
+        private static void TryRemoveEmptyWarehouse(string rootPath)
+        {
+            TryRemoveEmptyWarehouseAt(WarehousePath(rootPath));
+            TryRemoveEmptyWarehouseAt(LegacyWarehousePath(rootPath));
+        }
+
+        private static void TryRemoveEmptyWarehouseAt(string warehousePath)
+        {
+            if (string.IsNullOrEmpty(warehousePath)) return;
+            try
+            {
+                var warehouse = new DirectoryInfo(warehousePath);
+                warehouse.Refresh();
+                if (!warehouse.Exists || IsReparse(warehouse)) return;
+                if (warehouse.GetDirectories().Length > 0) return;
+                FileInfo[] files = warehouse.GetFiles();
+                foreach (FileInfo file in files)
+                    if (!string.Equals(file.Name, LockFileName, StringComparison.OrdinalIgnoreCase)) return;
+                foreach (FileInfo file in files)
+                {
+                    file.Refresh();
+                    if ((file.Attributes & (FileAttributes.ReadOnly | FileAttributes.Hidden
+                        | FileAttributes.System)) != 0)
+                        file.Attributes = FileAttributes.Normal;
+                    file.Delete();
+                }
+                warehouse.Refresh();
+                if (!warehouse.Exists) return;
+                if ((warehouse.Attributes & (FileAttributes.ReadOnly | FileAttributes.Hidden
+                    | FileAttributes.System)) != 0)
+                    warehouse.Attributes = FileAttributes.Normal;
+                warehouse.Delete(false);
+            }
+            catch { }
         }
 
         private static OperationResult RejectDiscard(Inspection inspection, string setName)
@@ -910,7 +1043,12 @@ namespace AegisApp
         {
             operationLock = null;
             error = null;
-            string warehouse = Path.Combine(root, WarehouseName);
+            string warehouse = WarehousePath(root);
+            if (string.IsNullOrEmpty(warehouse))
+            {
+                error = Lang.T("lolq.err.warehousefile");
+                return false;
+            }
             try
             {
                 if (File.Exists(warehouse))
@@ -927,7 +1065,7 @@ namespace AegisApp
                     return false;
                 }
                 directory.Attributes = directory.Attributes | FileAttributes.Hidden;
-                operationLock = new FileStream(Path.Combine(warehouse, ".operation.lock"),
+                operationLock = new FileStream(Path.Combine(warehouse, LockFileName),
                     FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
                 return true;
             }
@@ -947,13 +1085,29 @@ namespace AegisApp
         {
             error = null;
             var active = new List<QuarantineInfo>();
-            string warehouse = Path.Combine(root, WarehouseName);
+            string primaryError;
+            ReadWarehouse(root, WarehousePath(root), active, out primaryError);
+            string legacyError;
+            ReadWarehouse(root, LegacyWarehousePath(root), active, out legacyError);
+            error = JoinError(primaryError, legacyError);
+            active.Sort(delegate(QuarantineInfo left, QuarantineInfo right)
+            {
+                return right.CreatedUtc.CompareTo(left.CreatedUtc);
+            });
+            return active;
+        }
+
+        private static void ReadWarehouse(
+            string root, string warehouse, List<QuarantineInfo> active, out string error)
+        {
+            error = null;
+            if (string.IsNullOrEmpty(warehouse)) return;
             if (File.Exists(warehouse))
             {
                 error = Lang.T("lolq.err.warehousefile");
-                return active;
+                return;
             }
-            if (!Directory.Exists(warehouse)) return active;
+            if (!Directory.Exists(warehouse)) return;
 
             DirectoryInfo warehouseInfo;
             try
@@ -963,13 +1117,13 @@ namespace AegisApp
                 if (IsReparse(warehouseInfo))
                 {
                     error = Lang.T("lolq.err.warehousereparse");
-                    return active;
+                    return;
                 }
             }
             catch (Exception ex)
             {
                 error = Lang.F("lolq.err.readwarehouse", ex.Message);
-                return active;
+                return;
             }
 
             DirectoryInfo[] sets;
@@ -977,7 +1131,7 @@ namespace AegisApp
             catch (Exception ex)
             {
                 error = Lang.F("lolq.err.enumsets", ex.Message);
-                return active;
+                return;
             }
             foreach (DirectoryInfo set in sets)
             {
@@ -1045,11 +1199,6 @@ namespace AegisApp
                     error = JoinError(error, Lang.F("lolq.err.setreadfail", set.Name, ex.Message));
                 }
             }
-            active.Sort(delegate(QuarantineInfo left, QuarantineInfo right)
-            {
-                return right.CreatedUtc.CompareTo(left.CreatedUtc);
-            });
-            return active;
         }
 
         private static bool WriteManifest(string path, ManifestData manifest)
@@ -1234,7 +1383,7 @@ namespace AegisApp
                 catch { full = path; }
             }
             if (full != null && full.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase)) return true;
-            if (knownName) return full == null;
+            if (knownName) return true;
             if (full == null) return false;
             string slashPath = full.Replace('/', '\\');
             return slashPath.IndexOf(@"\WeGame\", StringComparison.OrdinalIgnoreCase) >= 0
@@ -1316,7 +1465,7 @@ namespace AegisApp
 
         private static bool IsAllowedRelativePath(string relativePath)
         {
-            foreach (string candidate in CandidatePaths)
+            foreach (string candidate in KnownPaths)
                 if (string.Equals(candidate, relativePath, StringComparison.OrdinalIgnoreCase)) return true;
             return false;
         }

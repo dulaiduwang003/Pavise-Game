@@ -297,21 +297,25 @@ namespace AegisApp
             gameMode.TrimWorkingSet = false;
             gameMode.HzGuard = false;
             gameMode.StrictCoreIsolation = false;
-            gameMode.DeepFreeze = false;
             gameMode.AggressiveSuppression = false;
             gameMode.IdleStateDisable = true;
             gameMode.VisualFxDowngrade = false;
-            gameMode.StandbyClean = true;
-            gameMode.StandbyCleanMidSession = false;
             gameMode.Enabled = true; Settings.Save("GameModeOn", true);
             gameMode.Preset = PerformancePreset.Standard;
-            gameMode.ResetWhitelist();
+            bool whitelistReset = gameMode.ResetWhitelist();
 
             foreach (AcGroup g in AntiCheatCatalog.Groups) tamer.SetGroupEnabled(g.Key, g.Default);
             tamer.Paused = false; Settings.Save("TameOn", true);
 
             Changed();
-            Logger.Log("已恢复默认配置");
+            if (!whitelistReset)
+            {
+                MessageBox.Show(
+                    gameMode.WhitelistLastError, "Aegis",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                Logger.Log("默认配置已部分恢复，但白名单写入失败");
+            }
+            else Logger.Log("已恢复默认配置");
         }
     }
 }

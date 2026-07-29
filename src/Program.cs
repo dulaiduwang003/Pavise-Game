@@ -34,6 +34,7 @@ namespace AegisApp
         private static void Main(string[] args)
         {
 
+            if (LegacyFreezeRecovery.TryHandle(args)) return;
             if (LolWatchdog.TryHandle(args)) return;
             if (SelfTests.TryHandleRuntimeMode(args)) return;
 
@@ -158,7 +159,7 @@ namespace AegisApp
             Lang.Init();
             string dir = Paths.Data;
             Logger.LogPath = Path.Combine(dir, "Aegis.log");
-            FreezeGuard.HealFromCrash(Path.Combine(dir, FreezeGuard.StateFileName));
+            LegacyFreezeRecovery.BeginHeal(Path.Combine(dir, LegacyFreezeRecovery.StateFileName));
             int healedSuppression = SuppressionCore.HealFromCrash(Path.Combine(dir, SuppressionCore.StateFileName));
             if (healedSuppression > 0) Logger.Log("检测到上次未还原的分级后台控制，已恢复 " + healedSuppression + " 个进程");
             PowerPlan.HealFromCrash();
@@ -210,8 +211,28 @@ namespace AegisApp
             bootThread.Start();
 
             var procNotify = new ProcNotify();
-            procNotify.Changed += () => { gameMode.Poke(); tamer.Poke(); };
+            procNotify.CaptureStartIdentity = delegate(string name, int session)
+            {
+                return gameMode.NeedsWhitelistParentIdentity(session)
+                    || gameMode.NeedsGameProcessIdentity(name, session)
+                    || LolRuntimeProcesses.IsScanCandidateName(name);
+            };
+            procNotify.CaptureParentIdentity =
+                delegate(int parentPid, string name, int session)
+                {
+                    return gameMode.NeedsWhitelistParentIdentity(session)
+                        || gameMode.NeedsLauncherChildParentIdentity(
+                            parentPid, name, session);
+                };
+            procNotify.BatchChanged += batch =>
+            {
+                gameMode.NotifyProcessChanges(batch);
+                tamer.NotifyProcessChanges(batch);
+                lolService.NotifyProcessChanges(batch);
+            };
             procNotify.Start();
+            gameMode.ProcessEventsAvailable = procNotify.IsActive;
+            tamer.ProcessEventsAvailable = procNotify.IsActive;
 
             if (elevated)
                 ThreadPool.QueueUserWorkItem(_ => TaskHelper.RefreshStartupTask());

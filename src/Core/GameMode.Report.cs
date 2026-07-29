@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -15,38 +16,31 @@ namespace AegisApp
         private readonly Dictionary<int, long> repCpu = new Dictionary<int, long>();
         private readonly Dictionary<int, long> repCreation = new Dictionary<int, long>();
         private readonly Dictionary<int, string> repProc = new Dictionary<int, string>();
-        private readonly Dictionary<int, string> repFrozen = new Dictionary<int, string>();
         private long repStart;
         private string repGame;
         private bool repBoosted;
+        private long repAegisCpuStart;
 
         public event Action<string> SessionEnded;
 
         private void ReportBegin(string game)
         {
+            long aegisCpu = CurrentProcessCpuTicks();
             lock (sync)
             {
                 repCpu.Clear();
                 repCreation.Clear();
                 repProc.Clear();
-                repFrozen.Clear();
                 repGame = game;
                 repStart = Stopwatch.GetTimestamp();
                 repBoosted = false;
+                repAegisCpuStart = aegisCpu;
             }
         }
 
         private void ReportBoostVerified()
         {
             lock (sync) if (repGame != null) repBoosted = true;
-        }
-
-        private void ReportFreeze(int pid, string name, string reason)
-        {
-            lock (sync)
-            {
-                if (repGame != null) repFrozen[pid] = name + (string.IsNullOrEmpty(reason) ? "" : " (" + reason + ")");
-            }
         }
 
         private void ReportUntrack(int pid)
@@ -78,10 +72,10 @@ namespace AegisApp
             Dictionary<int, long> cpu;
             Dictionary<int, string> names;
             Dictionary<int, long> creations;
-            Dictionary<int, string> frozen;
             string game;
             long t0;
             bool boosted;
+            long aegisCpuStart;
             lock (sync)
             {
                 game = repGame;
@@ -89,14 +83,14 @@ namespace AegisApp
                 cpu = new Dictionary<int, long>(repCpu);
                 names = new Dictionary<int, string>(repProc);
                 creations = new Dictionary<int, long>(repCreation);
-                frozen = new Dictionary<int, string>(repFrozen);
                 boosted = repBoosted;
+                aegisCpuStart = repAegisCpuStart;
                 repCpu.Clear();
                 repCreation.Clear();
                 repProc.Clear();
-                repFrozen.Clear();
                 repGame = null;
                 repBoosted = false;
+                repAegisCpuStart = 0;
             }
             if (game == null) return;
 
@@ -123,11 +117,21 @@ namespace AegisApp
             string msg = Lang.F("rep.done", game, FmtDur(dur), cpu.Count, FmtCpu(total));
             if (topName != null && top >= TimeSpan.TicksPerSecond)
                 msg += Lang.F("rep.top", topName, FmtCpu(top));
-            if (frozen.Count > 0) msg += Lang.F("rep.freeze", frozen.Count);
+            long aegisCpuEnd = CurrentProcessCpuTicks();
+            long aegisCpuDelta = aegisCpuStart > 0
+                && aegisCpuEnd >= aegisCpuStart
+                ? aegisCpuEnd - aegisCpuStart : 0;
+            double aegisCpuPercent = AverageCpuPercent(
+                aegisCpuDelta, dur);
+            msg += Lang.F(
+                "rep.aegis.cpu",
+                aegisCpuPercent.ToString("0.00", CultureInfo.InvariantCulture));
             Logger.Log("会话报告：" + msg);
             PerformancePreset usedPreset;
             lock (sync) usedPreset = preset;
-            SessionReportStore.Append(dataDir, game, usedPreset, dur, boosted, cpu.Count, frozen.Count);
+            SessionReportStore.Append(
+                dataDir, game, usedPreset, dur, boosted, cpu.Count,
+                aegisCpuPercent);
 
             if (dur.TotalSeconds >= 60)
             {
@@ -149,6 +153,26 @@ namespace AegisApp
                 return true;
             }
             finally { Native.CloseHandle(h); }
+        }
+
+        private static long CurrentProcessCpuTicks()
+        {
+            try
+            {
+                using (Process process = Process.GetCurrentProcess())
+                    return process.TotalProcessorTime.Ticks;
+            }
+            catch { return 0; }
+        }
+
+        internal static double AverageCpuPercent(
+            long cpuTicks, TimeSpan duration)
+        {
+            if (cpuTicks <= 0 || duration.Ticks <= 0) return 0;
+            int processors = Math.Max(1, Environment.ProcessorCount);
+            double percent = cpuTicks * 100.0
+                / (duration.Ticks * (double)processors);
+            return Math.Max(0, Math.Min(100, percent));
         }
 
         private static string FmtDur(TimeSpan t)
@@ -173,44 +197,62 @@ namespace AegisApp
     internal static class SessionReportStore
     {
         public const string FileName = "Aegis.reports.log";
+        private static readonly object FileSync = new object();
+        private static readonly HashSet<string> MigrationChecked =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         public static void Append(string dataDir, string game, PerformancePreset preset, TimeSpan duration,
-            bool boostVerified, int suppressed, int frozen)
+            bool boostVerified, int suppressed, double aegisCpuPercent)
         {
             try
             {
-                string path = CurrentPath(dataDir);
                 string line = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " | " + Safe(game) + " | "
                     + PresetName(preset) + " | " + FormatDuration(duration) + " | "
                     + Lang.T(boostVerified ? "report.boost.ok" : "report.boost.missed") + " | "
-                    + Lang.F("report.control", suppressed, frozen);
-                File.AppendAllText(path, line + Environment.NewLine, new UTF8Encoding(false));
+                    + Lang.F("report.control", suppressed) + " | "
+                    + Lang.F(
+                        "report.aegis.cpu",
+                        aegisCpuPercent.ToString(
+                            "0.00", CultureInfo.InvariantCulture));
+                lock (FileSync)
+                {
+                    string path = CurrentPathLocked(dataDir);
+                    File.AppendAllText(
+                        path, line + Environment.NewLine,
+                        new UTF8Encoding(false));
+                }
             }
-            catch { }
+            catch (Exception error)
+            {
+                Logger.LogFailure("会话报告写入失败", error);
+            }
         }
 
         public static string ReadTail(string dataDir, int maxLines)
         {
             try
             {
-                string path = CurrentPath(dataDir);
-                if (!File.Exists(path)) return Lang.T("report.none");
-                string[] lines = File.ReadAllLines(path, Encoding.UTF8);
-                int start = Math.Max(0, lines.Length - maxLines);
-                return string.Join(Environment.NewLine, lines, start, lines.Length - start);
+                lock (FileSync)
+                {
+                    string path = CurrentPathLocked(dataDir);
+                    if (!File.Exists(path)) return Lang.T("report.none");
+                    string tail = ReadTailLocked(path, maxLines);
+                    return tail.Length == 0 ? Lang.T("report.none") : tail;
+                }
             }
             catch { return Lang.T("report.read.error"); }
         }
 
-        private static string CurrentPath(string dataDir)
+        private static string CurrentPathLocked(string dataDir)
         {
             string path = Path.Combine(dataDir, FileName);
+            if (MigrationChecked.Contains(path)) return path;
+            MigrationChecked.Add(path);
             if (!File.Exists(path)) return path;
             try
             {
-                string[] lines = File.ReadAllLines(path, Encoding.UTF8);
                 bool legacyTelemetry = false;
-                foreach (string line in lines)
+                foreach (string line in File.ReadLines(path, Encoding.UTF8))
                     if (line.IndexOf("1% Low", StringComparison.OrdinalIgnoreCase) >= 0
                         || line.IndexOf(" FPS |", StringComparison.OrdinalIgnoreCase) >= 0)
                     { legacyTelemetry = true; break; }
@@ -222,6 +264,48 @@ namespace AegisApp
             }
             catch { }
             return path;
+        }
+
+        private static string ReadTailLocked(string path, int maxLines)
+        {
+            if (maxLines <= 0) return "";
+            using (var stream = new FileStream(
+                path, FileMode.Open, FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete))
+            {
+                long start = 0;
+                long length = stream.Length;
+                if (length > 0)
+                {
+                    var buffer = new byte[4096];
+                    int breaks = 0;
+                    long cursor = length;
+                    while (cursor > 0 && breaks < maxLines)
+                    {
+                        int take = (int)Math.Min(buffer.Length, cursor);
+                        cursor -= take;
+                        stream.Position = cursor;
+                        int read = stream.Read(buffer, 0, take);
+                        for (int i = read - 1; i >= 0; i--)
+                        {
+                            long absolute = cursor + i;
+                            if (buffer[i] != (byte)'\n'
+                                || absolute == length - 1)
+                                continue;
+                            breaks++;
+                            if (breaks == maxLines)
+                            {
+                                start = absolute + 1;
+                                break;
+                            }
+                        }
+                    }
+                }
+                stream.Position = start;
+                using (var reader = new StreamReader(
+                    stream, Encoding.UTF8, true, 4096, false))
+                    return reader.ReadToEnd().TrimEnd('\r', '\n');
+            }
         }
 
         private static string PresetName(PerformancePreset preset)

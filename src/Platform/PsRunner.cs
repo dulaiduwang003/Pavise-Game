@@ -35,7 +35,16 @@ namespace AegisApp
             stdout = "";
             try
             {
-                string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(script ?? ""));
+                // Windows PowerShell otherwise inherits an OEM/ANSI output
+                // encoding for redirected pipes. Paths containing typographic
+                // quotes or non-ASCII characters then appear corrupted even
+                // though they were passed safely through the environment.
+                string wrapped =
+                    "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)\r\n"
+                    + "$OutputEncoding = [Console]::OutputEncoding\r\n"
+                    + (script ?? "");
+                string encoded = Convert.ToBase64String(
+                    Encoding.Unicode.GetBytes(wrapped));
                 var psi = new ProcessStartInfo
                 {
                     FileName = "powershell.exe",
@@ -45,6 +54,8 @@ namespace AegisApp
                     RedirectStandardError = true,
                     CreateNoWindow = true
                 };
+                psi.StandardOutputEncoding = new UTF8Encoding(false);
+                psi.StandardErrorEncoding = new UTF8Encoding(false);
                 if (args != null)
                     foreach (KeyValuePair<string, string> kv in args)
                         psi.EnvironmentVariables[kv.Key] = kv.Value ?? "";

@@ -47,8 +47,6 @@ namespace AegisApp
         private readonly List<GameProfile> profiles = new List<GameProfile>();
         private readonly GameProfileStore profileStore;
         private readonly string dataDir;
-        private readonly List<string> white = new List<string>();
-        private readonly HashSet<string> whiteSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private readonly AutoResetEvent kick = new AutoResetEvent(true);
         private readonly string gamesPath;
         private readonly string whitePath;
@@ -67,6 +65,8 @@ namespace AegisApp
         private readonly Dictionary<int, ulong> gamePlacement = new Dictionary<int, ulong>();
         private readonly Dictionary<int, bool> gamePlacementStrict = new Dictionary<int, bool>();
         private readonly Dictionary<int, int> boostFail = new Dictionary<int, int>();
+        private readonly Dictionary<int, long> gameBoostNextAudit =
+            new Dictionary<int, long>();
         private readonly HashSet<int> tweakApplied = new HashSet<int>();
         private readonly HashSet<int> boostDenied = new HashSet<int>();
         private readonly HashSet<int> boostStateWarned = new HashSet<int>();
@@ -88,10 +88,7 @@ namespace AegisApp
         private volatile bool planSwitch;
         private volatile bool idleDisableOn;
         private volatile bool visualFxOn;
-        private volatile bool standbyCleanOn;
-        private volatile bool standbyMidOn;
         private volatile bool strictCoreOn;
-        private volatile bool deepFreezeOn;
         private volatile bool aggressiveOn;
         private volatile bool panicReq;
         private int panicSeq;
@@ -112,8 +109,6 @@ namespace AegisApp
         private readonly ulong allMask;
         private readonly ulong gameMask;
         private readonly ulong strictMask;
-        private readonly FreezeGuard freezer;
-        private readonly InterferenceSampler interference = new InterferenceSampler();
         private readonly BackgroundPressureController pressure = new BackgroundPressureController();
         private readonly DpcSampler dpcSampler = new DpcSampler();
         private PerformancePreset preset;
@@ -146,7 +141,6 @@ namespace AegisApp
             throttleMask = CpuTopology.ThrottleMask;
             gameMask = CpuTopology.BoostMask;
             strictMask = CpuTopology.StrictBoostMask;
-            freezer = new FreezeGuard(Path.Combine(dir, FreezeGuard.StateFileName));
             if (CpuTopology.Hybrid)
                 Logger.Log("CPU 拓扑：混合架构，后台压能效核 0x" + throttleMask.ToString("X") + "，游戏不硬绑核（P 核 0x" + CpuTopology.PerfMask.ToString("X") + " 交给 Thread Director 调度）");
             else if (CpuTopology.AsymCache)
@@ -161,8 +155,6 @@ namespace AegisApp
             notifQuiet = Settings.Load("NotifQuiet", false);
             idleDisableOn = Settings.Load("GmIdleDisable", true);
             visualFxOn = Settings.Load("GmVisualFx", false);
-            standbyCleanOn = Settings.Load("GmStandbyClean", true);
-            standbyMidOn = Settings.Load("GmStandbyMid", false);
             trimWs = Settings.Load("TrimWS", false);
             gpuHighPerf = Settings.Load("GpuHighPerf", true);
             disableFso = Settings.Load("DisableFso", false);
@@ -170,7 +162,6 @@ namespace AegisApp
             hzGuard = Settings.Load("HzGuardOn", false);
             planSwitch = Settings.Load("PowerPlanOn", true);
             strictCoreOn = Settings.Load("GmStrictCores", false);
-            deepFreezeOn = Settings.Load("GmDeepFreeze", false);
             aggressiveOn = Settings.Load("GmAggressive", false);
             int presetRaw;
             preset = int.TryParse(Settings.LoadStr("PerformancePreset", "0"), out presetRaw) && presetRaw >= 0 && presetRaw <= 2
@@ -178,12 +169,105 @@ namespace AegisApp
 
             try
             {
-                if (!File.Exists(whitePath)) WritePreset();
+                if (!File.Exists(whitePath) && !WritePreset())
+                    throw new IOException("无法创建默认白名单");
+                bool versioned = false;
+                bool legacyVersion = false;
+                bool sawRule = false;
+                bool sawFooter = false;
+                bool rewriteFormat = false;
+                string footer = null;
+                var loadedRules = new List<WhitelistRule>();
+                var loadedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (string line in File.ReadAllLines(whitePath))
                 {
                     string t = line.Trim();
-                    if (t.Length > 0 && !t.StartsWith("#")) AddWhiteNoSave(StripExe(t));
+                    if (t.Length == 0 || t.StartsWith("#")) continue;
+                    if (string.Equals(t, WhitelistRule.Header, StringComparison.Ordinal)
+                        || string.Equals(
+                            t, WhitelistRule.LegacyHeader, StringComparison.Ordinal))
+                    {
+                        if (versioned || sawRule || sawFooter)
+                            throw new InvalidDataException("白名单版本头位置无效");
+                        versioned = true;
+                        legacyVersion = string.Equals(
+                            t, WhitelistRule.LegacyHeader, StringComparison.Ordinal);
+                        continue;
+                    }
+                    if (t.StartsWith(WhitelistFooterPrefix, StringComparison.Ordinal))
+                    {
+                        if (!versioned || sawFooter)
+                            throw new InvalidDataException("白名单完整性尾标位置无效");
+                        sawFooter = true;
+                        footer = t;
+                        continue;
+                    }
+                    if (sawFooter)
+                        throw new InvalidDataException("白名单完整性尾标后仍有规则");
+
+                    WhitelistRule rule;
+                    if (versioned)
+                    {
+                        if (!WhitelistRule.TryParseVersioned(t, out rule))
+                            throw new InvalidDataException("白名单 V2 规则格式无效");
+                    }
+                    else
+                    {
+                        // 缺失 V2 头时，N|base64 绝不能降级成一个看似普通的进程名；
+                        // 这种文件是截断/手改损坏，必须整体回退安全预置。
+                        if (t.Length > 1 && t[1] == '|'
+                            && (t[0] == 'N' || t[0] == 'n' || t[0] == 'P'
+                                || t[0] == 'p' || t[0] == 'F' || t[0] == 'f'))
+                            throw new InvalidDataException("白名单缺少 V2 版本头");
+                        if (!WhitelistRule.TryCreate(
+                            WhitelistRuleKind.LegacyName, t, out rule))
+                            throw new InvalidDataException("旧版白名单规则无效");
+                    }
+                    sawRule = true;
+                    if (!loadedKeys.Add(rule.Key))
+                        throw new InvalidDataException("白名单含重复规则");
+                    loadedRules.Add(rule);
                 }
+                if (versioned && sawFooter)
+                {
+                    if (!string.Equals(
+                        footer, BuildWhitelistFooter(loadedRules),
+                        StringComparison.Ordinal))
+                        throw new InvalidDataException("白名单完整性校验失败");
+                    rewriteFormat = legacyVersion;
+                }
+                else if (versioned && !legacyVersion)
+                {
+                    throw new InvalidDataException("白名单 V3 缺少完整性尾标");
+                }
+                else if (versioned)
+                {
+                    // 旧 V2 的非空文件可无损迁移；header-only 无法区分“主动空”
+                    // 与截断，必须按损坏处理，不能 fail-open。
+                    if (!sawRule)
+                        throw new InvalidDataException("白名单缺少完整性尾标");
+                    rewriteFormat = true;
+                }
+                else if (!sawRule)
+                    throw new InvalidDataException("白名单为空且没有 V2 版本头");
+                else rewriteFormat = true;
+
+                // 受信系统路径上的预置项是竞技模式稳定性边界，不属于可删除
+                // 的用户例外。文件可存空自定义集，但这些内置规则始终补回。
+                foreach (string entry in PresetWhitelist)
+                {
+                    WhitelistRule presetRule;
+                    if (WhitelistRule.TryCreate(
+                        WhitelistRuleKind.LegacyName, entry, out presetRule)
+                        && loadedKeys.Add(presetRule.Key))
+                    {
+                        loadedRules.Add(presetRule);
+                        rewriteFormat = true;
+                    }
+                }
+                foreach (WhitelistRule rule in loadedRules) AddWhiteRuleNoSave(rule);
+                if (rewriteFormat && !SaveWhite(loadedRules))
+                    Logger.Log("白名单旧格式迁移失败；本次规则已安全载入，下次将重试");
                 MigrateWhitelistHeader();
             }
             catch (Exception ex)
@@ -221,19 +305,32 @@ namespace AegisApp
             catch { }
         }
 
-        private void WritePreset()
+        private bool WritePreset()
         {
             var lines = new List<string>();
             lines.Add("# Aegis 智能守护白名单——这些进程始终不进入后台控制");
-            lines.Add("# 一行一个进程名(不带 .exe)，# 开头是注释。只控制当前用户会话的普通应用；");
+            lines.Add("# V3 规则支持进程名、精确路径和应用家族，并带完整性尾标防止截断。");
             lines.Add("# Windows 核心、其它会话和 Aegis 自身受安全保护；其余例外只来自本白名单。");
-            lines.AddRange(PresetWhitelist);
-            AtomicFile.WriteLines(whitePath, lines.ToArray(), "白名单预置");
+            lines.Add(WhitelistRule.Header);
+            var rules = new List<WhitelistRule>();
+            foreach (string entry in PresetWhitelist)
+            {
+                WhitelistRule rule;
+                if (WhitelistRule.TryCreate(WhitelistRuleKind.LegacyName, entry, out rule))
+                {
+                    rules.Add(rule);
+                    lines.Add(rule.Serialize());
+                }
+            }
+            lines.Add(BuildWhitelistFooter(rules));
+            return AtomicFile.WriteLines(whitePath, lines.ToArray(), "白名单预置");
         }
 
         private void AddWhiteNoSave(string n)
         {
-            if (whiteSet.Add(n)) white.Add(n);
+            WhitelistRule rule;
+            if (WhitelistRule.TryCreate(WhitelistRuleKind.LegacyName, n, out rule))
+                AddWhiteRuleNoSave(rule);
         }
 
         private static string StripExe(string s)
@@ -244,7 +341,14 @@ namespace AegisApp
         public bool Enabled
         {
             get { return enabled; }
-            set { enabled = value; kick.Set(); }
+            set
+            {
+                bool changed = enabled != value;
+                enabled = value;
+                if (changed && value) RequestFullGameDetection();
+                if (changed && value) RequestPolicyApply();
+                else kick.Set();
+            }
         }
 
         public bool IsActive { get { lock (sync) return active; } }
@@ -259,7 +363,7 @@ namespace AegisApp
                 if ((int)value < 0 || (int)value > 2) value = PerformancePreset.Standard;
                 lock (sync) preset = value;
                 Settings.SaveStr("PerformancePreset", ((int)value).ToString());
-                kick.Set();
+                RequestPolicyApply();
             }
         }
 
@@ -306,97 +410,79 @@ namespace AegisApp
         public bool SuppressBackground
         {
             get { return bgSuppressOn; }
-            set { bgSuppressOn = value; Settings.Save("GmSuppress", value); kick.Set(); }
+            set { bgSuppressOn = value; Settings.Save("GmSuppress", value); RequestPolicyApply(); }
         }
 
         public bool BoostGame
         {
             get { return boostOn; }
-            set { boostOn = value; Settings.Save("GmBoost", value); kick.Set(); }
+            set { boostOn = value; Settings.Save("GmBoost", value); RequestPolicyApply(); }
         }
 
         public bool StrictCoreIsolation
         {
             get { return strictCoreOn; }
-            set { strictCoreOn = value; Settings.Save("GmStrictCores", value); kick.Set(); }
-        }
-
-        public bool DeepFreeze
-        {
-            get { return deepFreezeOn; }
-            set { deepFreezeOn = value; Settings.Save("GmDeepFreeze", value); kick.Set(); }
+            set { strictCoreOn = value; Settings.Save("GmStrictCores", value); RequestPolicyApply(); }
         }
 
         public bool AggressiveSuppression
         {
             get { return aggressiveOn; }
-            set { aggressiveOn = value; Settings.Save("GmAggressive", value); kick.Set(); }
+            set { aggressiveOn = value; Settings.Save("GmAggressive", value); RequestPolicyApply(); }
         }
 
         public bool NetOptimize
         {
             get { return netOn; }
-            set { netOn = value; Settings.Save("GmNet", value); kick.Set(); }
+            set { netOn = value; Settings.Save("GmNet", value); RequestPolicyApply(); }
         }
 
         public bool IdleStateDisable
         {
             get { return idleDisableOn; }
-            set { idleDisableOn = value; Settings.Save("GmIdleDisable", value); kick.Set(); }
+            set { idleDisableOn = value; Settings.Save("GmIdleDisable", value); RequestPolicyApply(); }
         }
 
         public bool VisualFxDowngrade
         {
             get { return visualFxOn; }
-            set { visualFxOn = value; Settings.Save("GmVisualFx", value); kick.Set(); }
-        }
-
-        public bool StandbyClean
-        {
-            get { return standbyCleanOn; }
-            set { standbyCleanOn = value; Settings.Save("GmStandbyClean", value); kick.Set(); }
-        }
-
-        public bool StandbyCleanMidSession
-        {
-            get { return standbyMidOn; }
-            set { standbyMidOn = value; Settings.Save("GmStandbyMid", value); kick.Set(); }
+            set { visualFxOn = value; Settings.Save("GmVisualFx", value); RequestPolicyApply(); }
         }
 
         public bool MmcssPriority
         {
             get { return mmcssOn; }
-            set { mmcssOn = value; Settings.Save("GmMmcss", value); kick.Set(); }
+            set { mmcssOn = value; Settings.Save("GmMmcss", value); RequestPolicyApply(); }
         }
 
         public bool PauseDownloads
         {
             get { return pauseDlOn; }
-            set { pauseDlOn = value; Settings.Save("GmPauseDl", value); kick.Set(); }
+            set { pauseDlOn = value; Settings.Save("GmPauseDl", value); RequestPolicyApply(); }
         }
 
         public bool FgSchedBoost
         {
             get { return fgBoostOn; }
-            set { fgBoostOn = value; Settings.Save("GmFgBoost", value); kick.Set(); }
+            set { fgBoostOn = value; Settings.Save("GmFgBoost", value); RequestPolicyApply(); }
         }
 
         public bool PauseSvcIndex
         {
             get { return svcPauseOn; }
-            set { svcPauseOn = value; Settings.Save("GmSvcPause", value); kick.Set(); }
+            set { svcPauseOn = value; Settings.Save("GmSvcPause", value); RequestPolicyApply(); }
         }
 
         public bool NotifQuiet
         {
             get { return notifQuiet; }
-            set { notifQuiet = value; Settings.Save("NotifQuiet", value); kick.Set(); }
+            set { notifQuiet = value; Settings.Save("NotifQuiet", value); RequestPolicyApply(); }
         }
 
         public bool TrimWorkingSet
         {
             get { return trimWs; }
-            set { trimWs = value; Settings.Save("TrimWS", value); kick.Set(); }
+            set { trimWs = value; Settings.Save("TrimWS", value); RequestPolicyApply(); }
         }
 
         public bool GpuHighPerf
@@ -407,7 +493,7 @@ namespace AegisApp
                 gpuHighPerf = value; Settings.Save("GpuHighPerf", value);
                 if (!value) GameExeTweaks.RestoreKind("gpu");
                 lock (sync) tweakApplied.Clear();
-                kick.Set();
+                RequestPolicyApply();
             }
         }
 
@@ -419,26 +505,26 @@ namespace AegisApp
                 disableFso = value; Settings.Save("DisableFso", value);
                 if (!value) GameExeTweaks.RestoreKind("fso");
                 lock (sync) tweakApplied.Clear();
-                kick.Set();
+                RequestPolicyApply();
             }
         }
 
         public bool KillGameDvr
         {
             get { return killGameDvr; }
-            set { killGameDvr = value; Settings.Save("GameDvrOff", value); kick.Set(); }
+            set { killGameDvr = value; Settings.Save("GameDvrOff", value); RequestPolicyApply(); }
         }
 
         public bool HzGuard
         {
             get { return hzGuard; }
-            set { hzGuard = value; Settings.Save("HzGuardOn", value); kick.Set(); }
+            set { hzGuard = value; Settings.Save("HzGuardOn", value); RequestPolicyApply(); }
         }
 
         public bool PowerPlanSwitch
         {
             get { return planSwitch; }
-            set { planSwitch = value; Settings.Save("PowerPlanOn", value); kick.Set(); }
+            set { planSwitch = value; Settings.Save("PowerPlanOn", value); RequestPolicyApply(); }
         }
 
         public string StatusText
@@ -453,7 +539,6 @@ namespace AegisApp
                     int b = boostStateVerified.Count;
                     string s = Lang.F("st.active", activeGame, n);
                     s += Lang.F("st.boost", b, Lang.T(planSwitch ? "st.hp" : "st.pr"));
-                    if (strictCoreOn || deepFreezeOn) s += Lang.F("st.extreme", freezer.Count);
                     return s;
                 }
             }
@@ -511,7 +596,7 @@ namespace AegisApp
             if (worker != null) worker.Join(8000);
         }
 
-        public void Poke() { kick.Set(); }
+        public void Poke() { RequestPolicyApply(); }
 
         private void Loop()
         {
@@ -536,17 +621,25 @@ namespace AegisApp
                     {
                         bool residue;
                         lock (sync) residue = active || gameBoost.Count > 0;
-                        if (residue || EnvActive() || core.AnyWith(SuppressReason.Background) || freezer.Count > 0)
+                        if (residue || EnvActive() || core.AnyWith(SuppressReason.Background))
                             Deactivate("手动关闭游戏模式");
                     }
                     else
                     {
+                        if (!ShouldRunProcessScan())
+                        {
+                            kick.WaitOne(ProcessScanWaitMs());
+                            continue;
+                        }
                         Process[] all = null;
-                        try { all = Process.GetProcesses(); } catch { }
+                        CountProcessScan();
+                        try { all = Process.GetProcesses(); }
+                        catch { RequeueProcessScanAfterFailure(); }
                         if (all != null)
                         {
                             try
                             {
+                                PruneWhitelistFamilyMembersIfDue(all);
                                 HashSet<int> gamePids;
                                 string running = FindRunningGame(all, out gamePids);
                                 if (running != null)
@@ -565,16 +658,7 @@ namespace AegisApp
                                         ReportBegin(running);
                                     }
                                     ApplyEnv();
-                                    if (!deepFreezeOn)
-                                    {
-                                        interference.Clear();
-                                        if (freezer.Count > 0)
-                                        {
-                                            int thawed = freezer.RestoreAll();
-                                            if (thawed > 0) Logger.Log("深度冻结已关闭：恢复 " + thawed + " 个后台进程");
-                                        }
-                                    }
-                                    if (bgSuppressOn || deepFreezeOn) Sweep(all, gamePids);
+                                    if (bgSuppressOn) Sweep(all, gamePids);
                                     if (!bgSuppressOn) ReleaseBackground();
                                     if (boostOn) Boost(all);
                                     else UnboostGames();
@@ -587,7 +671,7 @@ namespace AegisApp
                                 {
                                     bool boostResidue;
                                     lock (sync) boostResidue = gameBoost.Count > 0;
-                                    if (boostResidue || EnvActive() || core.AnyWith(SuppressReason.Background) || freezer.Count > 0)
+                                    if (boostResidue || EnvActive() || core.AnyWith(SuppressReason.Background))
                                         Deactivate("残留恢复重试");
                                 }
                             }
@@ -596,12 +680,13 @@ namespace AegisApp
                     }
                 }
                 catch (Exception ex) { Logger.Log("游戏模式异常: " + ex.Message); }
-                kick.WaitOne(4000);
+                kick.WaitOne(enabled
+                    ? ProcessScanWaitMs() : PollingSweepIntervalMs);
             }
             bool exitResidue;
             lock (sync) exitResidue = active || gameBoost.Count > 0;
             bool exitClean = true;
-            if (exitResidue || freezer.Count > 0 || core.AnyWith(SuppressReason.Background) || EnvActive())
+            if (exitResidue || core.AnyWith(SuppressReason.Background) || EnvActive())
                 exitClean = Deactivate("Aegis 退出");
             if (panicReq)
             {
@@ -622,11 +707,28 @@ namespace AegisApp
                 foreach (GameProfile p in profiles) copy.Add(p.Clone());
             }
             gamePids = new HashSet<int>();
-            GameDetection hit = GameSessionDetector.Detect(all, copy);
-            hit = ApplyStickiness(hit);
+            GameDetection hit;
+            if (ShouldRunFullGameDetection())
+                hit = ApplyStickiness(
+                    GameSessionDetector.Detect(
+                        all, copy, selfSession));
+            else
+                hit = ApplyStickiness(null);
             if (hit == null) return null;
             foreach (int pid in hit.FamilyPids) gamePids.Add(pid);
-            lock (sync) activeDetection = hit;
+            lock (sync)
+            {
+                // 持久 launcher 的一局 renderer 退出后会回落到同一个
+                // launcher。把这次回落视为新 epoch，使下一局仍有一次
+                // 有界的 5 秒 renderer 探测。
+                if (ShouldRearmLauncherTransition(
+                        activeDetection, hit))
+                {
+                    transitionProbeRendererPid = 0;
+                    transitionProbeRendererCreation = 0;
+                }
+                activeDetection = hit;
+            }
             return hit.Profile.Name;
         }
 
@@ -639,24 +741,33 @@ namespace AegisApp
                     && string.Equals(stickyDetection.Profile.Id, hit.Profile.Id, StringComparison.OrdinalIgnoreCase)
                     && stickyDetection.RendererPid > 0 && AliveWithIdentity(stickyDetection.RendererPid))
                 {
-                    bool freshIsNewer = false;
+                    bool freshMayReplace = false;
                     if (hit.RendererPid > 0 && hit.RendererPid != stickyDetection.RendererPid)
                     {
                         GameId anchorId; string nm; long cr;
                         if (stickyIds.TryGetValue(stickyDetection.RendererPid, out anchorId)
-                            && TryIdentity(hit.RendererPid, out nm, out cr) && cr > anchorId.Creation
-                            && string.Equals(nm, hit.RendererName, StringComparison.OrdinalIgnoreCase))
-                            freshIsNewer = true;
+                            && TryIdentity(hit.RendererPid, out nm, out cr)
+                            && FreshRendererMayReplaceSticky(
+                                hit, nm, cr,
+                                anchorId.Creation))
+                            freshMayReplace = true;
                     }
-                    if (!freshIsNewer)
+                    if (hit.RendererPid
+                            != stickyDetection.RendererPid
+                        && !freshMayReplace)
                     {
-                        hit.RendererPid = stickyDetection.RendererPid;
-                        hit.RendererName = stickyDetection.RendererName;
-                        hit.RendererPath = stickyDetection.RendererPath;
-                        hit.RendererCandidateSelected = true;
-                        hit.RendererUserSelected = stickyDetection.RendererUserSelected;
-                        hit.Evidence = stickyDetection.Evidence;
-                        foreach (string n in stickyDetection.FamilyNames) hit.FamilyNames.Add(n);
+                        List<int> retainedFamily =
+                            LiveStickyFamily();
+                        if (!ReanchorToStickyInstance(
+                                hit, stickyDetection,
+                                retainedFamily))
+                        {
+                            // The old anchor disappeared between the first
+                            // identity check and family reconstruction. Keep
+                            // the fresh detector result instead of joining two
+                            // process trees.
+                            ClearSticky();
+                        }
                     }
                 }
                 RememberSticky(hit);
@@ -671,8 +782,12 @@ namespace AegisApp
                 {
                     Profile = stickyDetection.Profile,
                     RendererPid = stickyDetection.RendererPid,
+                    RendererCreation =
+                        stickyDetection.RendererCreation,
                     RendererName = stickyDetection.RendererName,
                     RendererPath = stickyDetection.RendererPath,
+                    RendererForeground =
+                        stickyDetection.RendererForeground,
                     RendererCandidateSelected = true,
                     RendererUserSelected = stickyDetection.RendererUserSelected,
                     Evidence = stickyDetection.Evidence
@@ -686,10 +801,70 @@ namespace AegisApp
             if (stickyDetection != null && stickyMiss < StickyGraceMisses && !AnyStickyReused())
             {
                 stickyMiss++;
+                // A lost stop notification must not turn one conservative grace
+                // sample into another 20-second wait. Re-detect on the next
+                // 4-second budget boundary.
+                RequestFullGameDetection();
+                try { kick.Set(); } catch { }
                 return CloneWithAnchoredFamily(stickyDetection);
             }
             ClearSticky();
             return null;
+        }
+
+        internal static bool FreshRendererMayReplaceSticky(
+            GameDetection fresh, string verifiedName,
+            long verifiedCreation, long stickyCreation)
+        {
+            if (fresh == null || fresh.RendererPid <= 0
+                || string.IsNullOrEmpty(fresh.RendererName)
+                || string.IsNullOrEmpty(verifiedName)
+                || verifiedCreation <= 0 || stickyCreation <= 0
+                || !string.Equals(
+                    verifiedName, fresh.RendererName,
+                    StringComparison.OrdinalIgnoreCase))
+                return false;
+            if (fresh.RendererForeground
+                && !GameSessionDetector.IsLauncherLikeName(
+                    fresh.RendererName))
+                return true;
+            return verifiedCreation > stickyCreation;
+        }
+
+        internal static bool ReanchorToStickyInstance(
+            GameDetection fresh, GameDetection sticky,
+            IList<int> verifiedStickyPids)
+        {
+            if (fresh == null || sticky == null
+                || sticky.RendererPid <= 0
+                || verifiedStickyPids == null)
+                return false;
+            bool rendererVerified = false;
+            foreach (int pid in verifiedStickyPids)
+                if (pid == sticky.RendererPid)
+                {
+                    rendererVerified = true;
+                    break;
+                }
+            if (!rendererVerified) return false;
+
+            fresh.RendererPid = sticky.RendererPid;
+            fresh.RendererCreation = sticky.RendererCreation;
+            fresh.RendererName = sticky.RendererName;
+            fresh.RendererPath = sticky.RendererPath;
+            fresh.RendererForeground =
+                sticky.RendererForeground;
+            fresh.RendererCandidateSelected = true;
+            fresh.RendererUserSelected =
+                sticky.RendererUserSelected;
+            fresh.Evidence = sticky.Evidence;
+            fresh.FamilyPids.Clear();
+            foreach (int pid in verifiedStickyPids)
+                if (pid > 0) fresh.FamilyPids.Add(pid);
+            fresh.FamilyNames.Clear();
+            foreach (string name in sticky.FamilyNames)
+                fresh.FamilyNames.Add(name);
+            return true;
         }
 
         private GameDetection CloneWithAnchoredFamily(GameDetection src)
@@ -698,8 +873,11 @@ namespace AegisApp
             {
                 Profile = src.Profile,
                 RendererPid = src.RendererPid,
+                RendererCreation = src.RendererCreation,
                 RendererName = src.RendererName,
                 RendererPath = src.RendererPath,
+                RendererForeground =
+                    src.RendererForeground,
                 RendererCandidateSelected = src.RendererCandidateSelected,
                 RendererUserSelected = src.RendererUserSelected,
                 Evidence = src.Evidence
@@ -724,6 +902,10 @@ namespace AegisApp
                 string nm; long cr;
                 if (TryIdentity(hit.RendererPid, out nm, out cr)) fresh[hit.RendererPid] = new GameId { Name = nm, Creation = cr };
             }
+            GameId rendererIdentity;
+            if (fresh.TryGetValue(
+                    hit.RendererPid, out rendererIdentity))
+                hit.RendererCreation = rendererIdentity.Creation;
             if (hit.RendererPid > 0 && !fresh.ContainsKey(hit.RendererPid))
             {
                 int anchorPid = stickyDetection != null ? stickyDetection.RendererPid : 0;

@@ -41,7 +41,6 @@ namespace AegisApp
             AddRow(ref y, Lang.T("set.trim"), gameMode.TrimWorkingSet, v => gameMode.TrimWorkingSet = v);
             AddRow(ref y, Lang.T("gm.boost"), gameMode.BoostGame, v => gameMode.BoostGame = v);
             AddRow(ref y, Lang.T("gm.strict"), gameMode.StrictCoreIsolation, v => gameMode.StrictCoreIsolation = v);
-            AddFreezeRow(ref y);
             AddRow(ref y, Lang.T("set.plan"), gameMode.PowerPlanSwitch, v => gameMode.PowerPlanSwitch = v);
             AddRow(ref y, Lang.T("gm.net"), gameMode.NetOptimize, v => gameMode.NetOptimize = v);
             AddRow(ref y, Lang.T("gm.fgboost"), gameMode.FgSchedBoost, v => gameMode.FgSchedBoost = v);
@@ -79,26 +78,6 @@ namespace AegisApp
             sw.SetBounds(Theme.S(20), y, Theme.S(424), Theme.S(30));
             sw.SetSilently(value);
             sw.CheckedChanged += (s, e) => apply(sw.Checked);
-            Controls.Add(sw);
-            y += Theme.S(36);
-        }
-
-        private void AddFreezeRow(ref int y)
-        {
-            var sw = new Toggle();
-            sw.Text = Lang.T("gm.freeze");
-            sw.SetBounds(Theme.S(20), y, Theme.S(424), Theme.S(30));
-            sw.SetSilently(gameMode.DeepFreeze);
-            sw.CheckedChanged += (s, e) =>
-            {
-                if (sw.Checked && !gameMode.DeepFreeze)
-                {
-                    DialogResult r = MessageBox.Show(this, Lang.T("gm.freeze.warn"), "Aegis",
-                        MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
-                    if (r != DialogResult.Yes) { sw.SetSilently(false); return; }
-                }
-                gameMode.DeepFreeze = sw.Checked;
-            };
             Controls.Add(sw);
             y += Theme.S(36);
         }
