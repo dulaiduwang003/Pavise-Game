@@ -26,11 +26,9 @@ namespace AegisApp
         private PillButton btnLolLaunch;
         private PillButton btnLolClean;
         private PillButton btnLolRestore;
-        private PillButton btnLolQuarantine;
-        private PillButton btnLolQuarantineRestore;
-        private PillButton btnLolQuarantineDiscard;
+        private PillButton btnLolDelete;
         private Label lblLolAction;
-        private Label lblLolQuarantineStatus;
+        private Label lblLolAddonStatus;
         private PillButton btnLolGraphicsApply;
         private PillButton btnLolGraphicsRestore;
         private Label lblLolGraphicsStatus;
@@ -40,21 +38,16 @@ namespace AegisApp
         private LoadingOverlay lolScanOverlay;
         private int lolUiBusy;
         private int lolInspectBusy;
-        private int lolQuarantineBusy;
+        private int lolFileOpBusy;
         private DateTime lolInspectUtc;
         private string lolInspectRoot = "";
         private int lolInspectSignature = -1;
-        private bool lolCanQuarantine;
-        private bool lolCanRestoreQuarantine;
-        private bool lolCanDiscardQuarantine;
-        private string lolActiveSetName = "";
-        private int lolMissingCount;
+        private bool lolCanDelete;
         private bool lolInspectBlocked;
         private long lolCandidateBytes;
-        private long lolQuarantinedBytes;
         private int lolCandidateCount;
-        private bool lolHasActiveQuarantine;
         private string lolInspectError = "";
+        private LolGraphicsConfig.State lolGraphicsState;
 
         private void BuildLolPage()
         {
@@ -139,28 +132,19 @@ namespace AegisApp
             scroll.Controls.Add(lblLolAction);
             sy += 28;
 
-            Section(scroll, LolText("可逆附加层"), x, sy);
+            Section(scroll, LolText("附加层清理"), x, sy);
             sy += 24;
-            var quarantine = MakeConsolePanel(scroll, x, sy, w, 158, true);
-            CardLabel(quarantine, LolText("版本化隔离舱"), 18, 10, w - 280, 18, 8.2f, true, Theme.Fg);
-            CardLabel(quarantine,
-                LolText("隔离 AI 教练、iCreate 录制、诊断/网络助手与下载附加层；保留清单，可一键原位恢复。"),
+            var addons = MakeConsolePanel(scroll, x, sy, w, 110, true);
+            CardLabel(addons, LolText("附加层直接删除"), 18, 10, w - 280, 18, 8.2f, true, Theme.Fg);
+            CardLabel(addons,
+                LolText("直接删除 AI 教练、iCreate 录制等附加层；客户端更新会重新下载，无需保留副本。"),
                 18, 31, w - 290, 42, 7.6f, false, Theme.Dim);
-            lblLolQuarantineStatus = CardLabel(quarantine, "", 18, 79, w - 290, 19, 7.2f, false, Theme.Faint);
-            btnLolQuarantine = new ColumnActionButton(LolText("隔离附加层"), BtnKind.Danger);
-            btnLolQuarantine.SetBounds(Theme.S(w - 254), Theme.S(16), Theme.S(224), Theme.S(36));
-            btnLolQuarantine.Click += OnLolQuarantineClick;
-            btnLolQuarantineRestore = new ColumnActionButton(LolText("恢复附加层"));
-            btnLolQuarantineRestore.SetBounds(Theme.S(w - 254), Theme.S(62), Theme.S(224), Theme.S(36));
-            btnLolQuarantineRestore.Click += OnLolQuarantineRestoreClick;
-            btnLolQuarantineDiscard = new ColumnActionButton(LolText("丢弃隔离记录"));
-            btnLolQuarantineDiscard.SetBounds(Theme.S(w - 254), Theme.S(108), Theme.S(224), Theme.S(36));
-            btnLolQuarantineDiscard.Click += OnLolQuarantineDiscardClick;
-            quarantine.Controls.AddRange(new Control[]
-            {
-                btnLolQuarantine, btnLolQuarantineRestore, btnLolQuarantineDiscard
-            });
-            sy += 168;
+            lblLolAddonStatus = CardLabel(addons, "", 18, 79, w - 290, 19, 7.2f, false, Theme.Faint);
+            btnLolDelete = new ColumnActionButton(LolText("删除附加层"), BtnKind.Danger);
+            btnLolDelete.SetBounds(Theme.S(w - 254), Theme.S(16), Theme.S(224), Theme.S(36));
+            btnLolDelete.Click += OnLolDeleteClick;
+            addons.Controls.Add(btnLolDelete);
+            sy += 120;
 
             Section(scroll, Lang.T("lolgfx.title"), x, sy);
             sy += 24;
@@ -215,11 +199,11 @@ namespace AegisApp
             int waited = 0;
             while (waited < timeoutMs)
             {
-                if (Interlocked.CompareExchange(ref lolQuarantineBusy, 0, 0) == 0) return true;
+                if (Interlocked.CompareExchange(ref lolFileOpBusy, 0, 0) == 0) return true;
                 Thread.Sleep(50);
                 waited += 50;
             }
-            return Interlocked.CompareExchange(ref lolQuarantineBusy, 0, 0) == 0;
+            return Interlocked.CompareExchange(ref lolFileOpBusy, 0, 0) == 0;
         }
 
         private ColumnTelemetryCell MakeLolCell(Control parent, int x, int y, int w, int h, string caption, string glyph)
@@ -293,7 +277,7 @@ namespace AegisApp
             if (inspectFiles && pageLol != null && pageLol.Visible && !snapshot.GameRunning)
                 QueueLolInspection(snapshot);
             bool runtimeBusy = Interlocked.CompareExchange(ref lolUiBusy, 0, 0) != 0;
-            bool fileBusy = Interlocked.CompareExchange(ref lolQuarantineBusy, 0, 0) != 0;
+            bool fileBusy = Interlocked.CompareExchange(ref lolFileOpBusy, 0, 0) != 0;
             bool inspectBusy = Interlocked.CompareExchange(ref lolInspectBusy, 0, 0) != 0;
             bool busy = runtimeBusy || fileBusy;
             bool off = !snapshot.Enabled;
@@ -323,14 +307,10 @@ namespace AegisApp
             lblLolAction.ForeColor = !string.IsNullOrEmpty(snapshot.LastError) ? Theme.Danger : Theme.Dim;
 
             bool clientBlocksFiles = snapshot.ClientRunning || snapshot.GameRunning;
-            btnLolQuarantine.Enabled = !clientBlocksFiles && !locked && !inspectBusy &&
-                lolCanQuarantine;
-            btnLolQuarantineRestore.Enabled = !clientBlocksFiles && !locked && !inspectBusy &&
-                lolCanRestoreQuarantine;
-            btnLolQuarantineDiscard.Enabled = !clientBlocksFiles && !locked && !inspectBusy &&
-                lolCanDiscardQuarantine;
-            UpdateLolQuarantineStatus(clientBlocksFiles, off);
-            if (!busy && !inspectBusy) UpdateLolGraphicsStatus(snapshot.LolRoot, off);
+            btnLolDelete.Enabled = !clientBlocksFiles && !locked && !inspectBusy &&
+                lolCanDelete;
+            UpdateLolAddonStatus(clientBlocksFiles, off);
+            if (!busy && !inspectBusy) UpdateLolGraphicsStatus(off);
             UpdateLolScanOverlay(snapshot);
         }
 
@@ -384,7 +364,7 @@ namespace AegisApp
 
         private void RunLolAction(Func<bool> action, string busyText)
         {
-            if (action == null || Interlocked.CompareExchange(ref lolQuarantineBusy, 0, 0) != 0 ||
+            if (action == null || Interlocked.CompareExchange(ref lolFileOpBusy, 0, 0) != 0 ||
                 Interlocked.CompareExchange(ref lolUiBusy, 1, 0) != 0) return;
             SetLolButtonsBusy(true);
             lblLolAction.ForeColor = Theme.Accent;
@@ -423,9 +403,7 @@ namespace AegisApp
             if (btnLolLaunch != null) btnLolLaunch.Enabled = !busy;
             if (btnLolClean != null) btnLolClean.Enabled = !busy;
             if (btnLolRestore != null) btnLolRestore.Enabled = !busy;
-            if (btnLolQuarantine != null) btnLolQuarantine.Enabled = !busy;
-            if (btnLolQuarantineRestore != null) btnLolQuarantineRestore.Enabled = !busy;
-            if (btnLolQuarantineDiscard != null) btnLolQuarantineDiscard.Enabled = !busy;
+            if (btnLolDelete != null) btnLolDelete.Enabled = !busy;
             if (btnLolGraphicsApply != null) btnLolGraphicsApply.Enabled = !busy;
             if (btnLolGraphicsRestore != null) btnLolGraphicsRestore.Enabled = !busy;
             if (btnLolPresentApply != null) btnLolPresentApply.Enabled = !busy;
@@ -460,7 +438,7 @@ namespace AegisApp
             if (string.IsNullOrEmpty(root)
                 || Interlocked.CompareExchange(ref lolUiBusy, 0, 0) != 0
                 || Interlocked.CompareExchange(ref lolInspectBusy, 0, 0) != 0
-                || Interlocked.CompareExchange(ref lolQuarantineBusy, 1, 0) != 0) return;
+                || Interlocked.CompareExchange(ref lolFileOpBusy, 1, 0) != 0) return;
             SetLolButtonsBusy(true);
             ThreadPool.QueueUserWorkItem(delegate
             {
@@ -475,12 +453,13 @@ namespace AegisApp
                     message = success ? "" : (error ?? "");
                 }
                 catch (Exception ex) { message = ex.Message; }
-                Interlocked.Exchange(ref lolQuarantineBusy, 0);
+                Interlocked.Exchange(ref lolFileOpBusy, 0);
                 try
                 {
                     BeginInvoke((MethodInvoker)delegate
                     {
                         if (IsDisposed) return;
+                        lolInspectUtc = DateTime.MinValue;
                         RefreshLolPage();
                         if (!string.IsNullOrEmpty(message))
                             MessageBox.Show(this, message, "Aegis", MessageBoxButtons.OK,
@@ -491,12 +470,11 @@ namespace AegisApp
             });
         }
 
-        private void UpdateLolGraphicsStatus(string root, bool columnOff)
+        private void UpdateLolGraphicsStatus(bool columnOff)
         {
             if (lblLolGraphicsStatus == null) return;
-            LolGraphicsConfig.State state;
-            try { state = LolGraphicsConfig.Inspect(root); }
-            catch { state = null; }
+            // 状态来自后台检查缓存，UI 线程只渲染，不做磁盘与进程枚举
+            LolGraphicsConfig.State state = lolGraphicsState;
 
             ApplyGraphicsGroupUi(
                 state, LolGraphicsConfig.GraphicsGroup.Quality, columnOff,
@@ -521,10 +499,18 @@ namespace AegisApp
                 if (restore != null) restore.Enabled = false;
                 return;
             }
-            if (state == null || !state.Available)
+            if (state == null)
             {
                 status.ForeColor = Theme.Faint;
-                status.Text = state == null || string.IsNullOrEmpty(state.Error)
+                status.Text = LolText("正在检查 game.cfg…");
+                if (apply != null) apply.Enabled = false;
+                if (restore != null) restore.Enabled = false;
+                return;
+            }
+            if (!state.Available)
+            {
+                status.ForeColor = Theme.Faint;
+                status.Text = string.IsNullOrEmpty(state.Error)
                     ? Lang.T("lolgfx.err.noconfig") : state.Error;
                 if (apply != null) apply.Enabled = false;
                 if (restore != null) restore.Enabled = false;
@@ -573,17 +559,12 @@ namespace AegisApp
                 lolInspectRoot = "";
                 lolInspectUtc = DateTime.MinValue;
                 lolInspectSignature = -1;
-                lolCanQuarantine = false;
-                lolCanRestoreQuarantine = false;
-                lolCanDiscardQuarantine = false;
-                lolActiveSetName = "";
-                lolMissingCount = 0;
-                lolHasActiveQuarantine = false;
+                lolCanDelete = false;
                 lolInspectBlocked = false;
                 lolCandidateBytes = 0;
-                lolQuarantinedBytes = 0;
                 lolCandidateCount = 0;
                 lolInspectError = "";
+                lolGraphicsState = null;
                 return;
             }
             bool rootChanged = !string.Equals(normalized, lolInspectRoot, StringComparison.OrdinalIgnoreCase);
@@ -598,193 +579,107 @@ namespace AegisApp
                 ? TimeSpan.FromSeconds(5) : TimeSpan.FromMinutes(2);
             if (!rootChanged && !envChanged
                 && DateTime.UtcNow - lolInspectUtc < maxAge) return;
-            if (Interlocked.CompareExchange(ref lolQuarantineBusy, 0, 0) != 0) return;
+            if (Interlocked.CompareExchange(ref lolFileOpBusy, 0, 0) != 0) return;
             if (Interlocked.CompareExchange(ref lolInspectBusy, 1, 0) != 0) return;
             lolInspectSignature = signature;
             if (rootChanged)
             {
-                lolCanQuarantine = false;
-                lolCanRestoreQuarantine = false;
-                lolCanDiscardQuarantine = false;
-                lolActiveSetName = "";
-                lolHasActiveQuarantine = false;
+                lolCanDelete = false;
                 lolInspectBlocked = false;
                 lolCandidateBytes = 0;
-                lolQuarantinedBytes = 0;
                 lolCandidateCount = 0;
                 lolInspectError = "";
+                lolGraphicsState = null;
                 lolInspectUtc = DateTime.MinValue;
             }
             lolInspectRoot = normalized;
             ThreadPool.QueueUserWorkItem(delegate
             {
-                bool canQuarantine = false;
-                bool canRestore = false;
-                bool canDiscard = false;
-                string activeSetName = "";
-                int missingCount = 0;
+                bool canDelete = false;
                 bool blocked = false;
                 long candidateBytes = 0;
-                long quarantinedBytes = 0;
                 int candidateCount = 0;
-                bool hasActiveQuarantine = false;
                 string error = "";
+                LolGraphicsConfig.State graphics = null;
                 try
                 {
-                    var inspection = LolQuarantineManager.Inspect(normalized);
-                    canQuarantine = inspection.CanQuarantine;
-                    canRestore = inspection.CanRestore;
-                    canDiscard = inspection.CanDiscard;
-                    if (inspection.Active.Count == 1)
-                    {
-                        activeSetName = inspection.Active[0].Name;
-                        missingCount = inspection.Active[0].MissingCount;
-                    }
+                    var inspection = LolAddonCleaner.Inspect(normalized);
+                    canDelete = inspection.CanDelete;
                     blocked = inspection.IsBlocked;
                     candidateBytes = inspection.CandidateBytes;
-                    quarantinedBytes = inspection.QuarantinedBytes;
                     candidateCount = inspection.CandidateCount;
-                    hasActiveQuarantine = inspection.Active.Count > 0;
                     error = inspection.Error;
+                    graphics = LolGraphicsConfig.Inspect(
+                        normalized, inspection.IsBlocked, inspection.BlockingProcesses);
                 }
-                catch (Exception ex) { error = ex.Message; }
-                lolCanQuarantine = canQuarantine;
-                lolCanRestoreQuarantine = canRestore;
-                lolCanDiscardQuarantine = canDiscard;
-                lolActiveSetName = activeSetName ?? "";
-                lolMissingCount = missingCount;
-                lolInspectBlocked = blocked;
-                lolCandidateBytes = candidateBytes;
-                lolQuarantinedBytes = quarantinedBytes;
-                lolCandidateCount = candidateCount;
-                lolHasActiveQuarantine = hasActiveQuarantine;
-                lolInspectError = error ?? "";
-                lolInspectUtc = DateTime.UtcNow;
-                Interlocked.Exchange(ref lolInspectBusy, 0);
-                if (!UiActive) return;
+                catch (Exception ex)
+                {
+                    error = ex.Message;
+                    try { graphics = LolGraphicsConfig.Inspect(normalized); }
+                    catch { graphics = null; }
+                }
+                // 字段统一回到 UI 线程写入，与刷新读取互不竞争
                 try
                 {
                     BeginInvoke((MethodInvoker)delegate
                     {
-                        if (!IsDisposed && UiActive) RefreshLolPage();
+                        lolCanDelete = canDelete;
+                        lolInspectBlocked = blocked;
+                        lolCandidateBytes = candidateBytes;
+                        lolCandidateCount = candidateCount;
+                        lolInspectError = error ?? "";
+                        lolGraphicsState = graphics;
+                        lolInspectUtc = DateTime.UtcNow;
+                        Interlocked.Exchange(ref lolInspectBusy, 0);
+                        if (!IsDisposed && UiActive) RefreshLolPage(false);
                     });
                 }
-                catch { }
+                catch { Interlocked.Exchange(ref lolInspectBusy, 0); }
             });
         }
 
-        private void OnLolQuarantineClick(object sender, EventArgs e)
+        private void OnLolDeleteClick(object sender, EventArgs e)
         {
             if (lolService == null) return;
             LolOptimizationSnapshot snapshot = lolService.GetSnapshot();
-            if (snapshot.ClientRunning || snapshot.GameRunning || !lolCanQuarantine ||
+            if (snapshot.ClientRunning || snapshot.GameRunning || !lolCanDelete ||
                 Interlocked.CompareExchange(ref lolUiBusy, 0, 0) != 0 ||
-                Interlocked.CompareExchange(ref lolQuarantineBusy, 0, 0) != 0 ||
+                Interlocked.CompareExchange(ref lolFileOpBusy, 0, 0) != 0 ||
                 Interlocked.CompareExchange(ref lolInspectBusy, 0, 0) != 0) return;
             DialogResult result = MessageBox.Show(this,
-                LolText("将把当前版本识别出的英雄联盟附加层移动到 Aegis 隔离舱。\r\n\r\n范围包括 AI 教练、iCreate 录制、诊断/网络助手与下载组件。英雄联盟核心、登录链路、更新器和游戏文件不会进入隔离清单。\r\n\r\n客户端更新可能重新下载这些组件；隔离清单会保留，可在本页原位恢复。请确认英雄联盟与 WeGame 已完全退出。\r\n\r\n继续隔离吗？"),
+                LolText("将直接删除当前识别出的英雄联盟附加层目录（AI 教练、iCreate 录制等）。\r\n\r\n此操作不可恢复；客户端更新或修复时会重新下载这些组件。英雄联盟核心、登录链路、更新器和游戏文件不在删除范围内。\r\n\r\n请确认英雄联盟与 WeGame 已完全退出。继续删除吗？"),
                 "Aegis", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
             if (result != DialogResult.Yes) return;
-            RunLolQuarantine(snapshot.LolRoot, true);
+            RunLolDelete(snapshot.LolRoot);
         }
 
-        private void OnLolQuarantineRestoreClick(object sender, EventArgs e)
-        {
-            if (lolService == null) return;
-            LolOptimizationSnapshot snapshot = lolService.GetSnapshot();
-            if (snapshot.ClientRunning || snapshot.GameRunning || !lolCanRestoreQuarantine ||
-                Interlocked.CompareExchange(ref lolUiBusy, 0, 0) != 0 ||
-                Interlocked.CompareExchange(ref lolQuarantineBusy, 0, 0) != 0 ||
-                Interlocked.CompareExchange(ref lolInspectBusy, 0, 0) != 0) return;
-            RunLolQuarantine(snapshot.LolRoot, false);
-        }
-
-        private void OnLolQuarantineDiscardClick(object sender, EventArgs e)
-        {
-            if (lolService == null) return;
-            LolOptimizationSnapshot snapshot = lolService.GetSnapshot();
-            string setName = lolActiveSetName;
-            if (snapshot.ClientRunning || snapshot.GameRunning || !lolCanDiscardQuarantine ||
-                string.IsNullOrEmpty(setName) ||
-                Interlocked.CompareExchange(ref lolUiBusy, 0, 0) != 0 ||
-                Interlocked.CompareExchange(ref lolQuarantineBusy, 0, 0) != 0 ||
-                Interlocked.CompareExchange(ref lolInspectBusy, 0, 0) != 0) return;
-            DialogResult result = MessageBox.Show(this,
-                LolText("丢弃这条隔离记录？\r\n\r\n隔离仓中的副本将被删除，原位置的内容保持不变。仅当每一项都已经回到原位置时才可执行——通常是客户端更新重新下载了这些组件，导致恢复无法覆盖。\r\n\r\n丢弃后即可重新隔离。继续吗？"),
-                "Aegis", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
-            if (result != DialogResult.Yes) return;
-            RunLolDiscard(snapshot.LolRoot, setName);
-        }
-
-        private void RunLolDiscard(string root, string setName)
-        {
-            if (string.IsNullOrEmpty(root) || string.IsNullOrEmpty(setName) ||
-                Interlocked.CompareExchange(ref lolUiBusy, 0, 0) != 0 ||
-                Interlocked.CompareExchange(ref lolInspectBusy, 0, 0) != 0 ||
-                Interlocked.CompareExchange(ref lolQuarantineBusy, 1, 0) != 0) return;
-            SetLolButtonsBusy(true);
-            lblLolQuarantineStatus.ForeColor = Theme.Accent;
-            lblLolQuarantineStatus.Text = LolText("正在丢弃隔离记录…");
-            ThreadPool.QueueUserWorkItem(delegate
-            {
-                bool success = false;
-                string message = "";
-                try
-                {
-                    var result = LolQuarantineManager.Discard(root, setName);
-                    success = result.Success;
-                    message = result.Message;
-                    Logger.Log("英雄联盟隔离记录丢弃：" + message);
-                }
-                catch (Exception ex) { message = ex.Message; }
-                lolInspectUtc = DateTime.MinValue;
-                Interlocked.Exchange(ref lolQuarantineBusy, 0);
-                try
-                {
-                    BeginInvoke((MethodInvoker)delegate
-                    {
-                        if (IsDisposed) return;
-                        RefreshLolPage();
-                        if (!string.IsNullOrEmpty(message))
-                            MessageBox.Show(this, message, "Aegis", MessageBoxButtons.OK,
-                                success ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
-                    });
-                }
-                catch { }
-            });
-        }
-
-        private void RunLolQuarantine(string root, bool quarantine)
+        private void RunLolDelete(string root)
         {
             if (string.IsNullOrEmpty(root) || Interlocked.CompareExchange(ref lolUiBusy, 0, 0) != 0 ||
                 Interlocked.CompareExchange(ref lolInspectBusy, 0, 0) != 0 ||
-                Interlocked.CompareExchange(ref lolQuarantineBusy, 1, 0) != 0) return;
+                Interlocked.CompareExchange(ref lolFileOpBusy, 1, 0) != 0) return;
             SetLolButtonsBusy(true);
-            lblLolQuarantineStatus.ForeColor = Theme.Accent;
-            lblLolQuarantineStatus.Text = quarantine
-                ? LolText("正在建立隔离清单并移动附加层…")
-                : LolText("正在按清单原位恢复…");
+            lblLolAddonStatus.ForeColor = Theme.Accent;
+            lblLolAddonStatus.Text = LolText("正在删除附加层…");
             ThreadPool.QueueUserWorkItem(delegate
             {
                 bool success = false;
                 string message = "";
                 try
                 {
-                    var result = quarantine
-                        ? LolQuarantineManager.Quarantine(root)
-                        : LolQuarantineManager.Restore(root);
+                    var result = LolAddonCleaner.Delete(root);
                     success = result.Success;
                     message = result.Message;
-                    Logger.Log((quarantine ? "英雄联盟附加层隔离：" : "英雄联盟附加层恢复：") + message);
+                    Logger.Log("英雄联盟附加层删除：" + message);
                 }
                 catch (Exception ex) { message = ex.Message; }
-                lolInspectUtc = DateTime.MinValue;
-                Interlocked.Exchange(ref lolQuarantineBusy, 0);
+                Interlocked.Exchange(ref lolFileOpBusy, 0);
                 try
                 {
                     BeginInvoke((MethodInvoker)delegate
                     {
                         if (IsDisposed) return;
+                        lolInspectUtc = DateTime.MinValue;
                         RefreshLolPage();
                         if (!string.IsNullOrEmpty(message))
                             MessageBox.Show(this, message, "Aegis", MessageBoxButtons.OK,
@@ -795,64 +690,48 @@ namespace AegisApp
             });
         }
 
-        private void UpdateLolQuarantineStatus(bool clientBlocksFiles, bool columnOff)
+        private void UpdateLolAddonStatus(bool clientBlocksFiles, bool columnOff)
         {
-            if (lblLolQuarantineStatus == null) return;
+            if (lblLolAddonStatus == null) return;
             if (columnOff)
             {
-                lblLolQuarantineStatus.Text = Lang.T("lol.state.columnoff");
-                lblLolQuarantineStatus.ForeColor = Theme.Faint;
+                lblLolAddonStatus.Text = Lang.T("lol.state.columnoff");
+                lblLolAddonStatus.ForeColor = Theme.Faint;
                 return;
             }
             if (clientBlocksFiles)
             {
-                lblLolQuarantineStatus.Text = LolText("客户端运行中 · 文件操作已锁定");
-                lblLolQuarantineStatus.ForeColor = Theme.Danger;
+                lblLolAddonStatus.Text = LolText("客户端运行中 · 文件操作已锁定");
+                lblLolAddonStatus.ForeColor = Theme.Danger;
                 return;
             }
-            if (Interlocked.CompareExchange(ref lolQuarantineBusy, 0, 0) != 0)
+            if (Interlocked.CompareExchange(ref lolFileOpBusy, 0, 0) != 0)
             {
-                lblLolQuarantineStatus.Text = LolText("文件操作进行中…");
-                lblLolQuarantineStatus.ForeColor = Theme.Accent;
+                lblLolAddonStatus.Text = LolText("文件操作进行中…");
+                lblLolAddonStatus.ForeColor = Theme.Accent;
                 return;
             }
             if (!string.IsNullOrEmpty(lolInspectError))
             {
-                lblLolQuarantineStatus.Text = lolCanDiscardQuarantine
-                    ? LolText("记录已失效 · 可丢弃后重新隔离")
-                    : lolInspectError;
-                lblLolQuarantineStatus.ForeColor = Theme.Danger;
+                lblLolAddonStatus.Text = lolInspectError;
+                lblLolAddonStatus.ForeColor = Theme.Danger;
                 return;
             }
             if (lolInspectBlocked)
             {
-                lblLolQuarantineStatus.Text = LolText("检测到占用进程 · 请完全退出客户端");
-                lblLolQuarantineStatus.ForeColor = Theme.Danger;
-                return;
-            }
-            if (lolCanRestoreQuarantine)
-            {
-                lblLolQuarantineStatus.Text = LolText("隔离中 ") + CacheSweep.FmtBytes(lolQuarantinedBytes)
-                    + (lolMissingCount > 0
-                        ? LolText(" · 缺失 ") + lolMissingCount.ToString()
-                        : "");
-                lblLolQuarantineStatus.ForeColor = Theme.Accent;
-                return;
-            }
-            if (lolHasActiveQuarantine)
-            {
-                lblLolQuarantineStatus.Text = LolText("检测到活动隔离批次");
-                lblLolQuarantineStatus.ForeColor = Theme.Accent;
+                lblLolAddonStatus.Text = LolText("检测到占用进程 · 请完全退出客户端");
+                lblLolAddonStatus.ForeColor = Theme.Danger;
                 return;
             }
             if (lolCandidateCount > 0)
             {
-                lblLolQuarantineStatus.Text = LolText("可隔离 ") + lolCandidateCount.ToString() + " · " + CacheSweep.FmtBytes(lolCandidateBytes);
-                lblLolQuarantineStatus.ForeColor = Theme.Green;
+                lblLolAddonStatus.Text = LolText("可删除 ") + lolCandidateCount.ToString()
+                    + " · " + CacheSweep.FmtBytes(lolCandidateBytes);
+                lblLolAddonStatus.ForeColor = Theme.Green;
                 return;
             }
-            lblLolQuarantineStatus.Text = LolText("未发现可隔离附加层");
-            lblLolQuarantineStatus.ForeColor = Theme.Faint;
+            lblLolAddonStatus.Text = LolText("未发现可删除的附加层");
+            lblLolAddonStatus.ForeColor = Theme.Faint;
         }
 
         private static string LolText(string zh)

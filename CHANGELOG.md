@@ -17,10 +17,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   and page priority is also what `PROCESS_MODE_BACKGROUND_BEGIN` produces, so Aegis recorded a
   fabricated "original" state and, on restore, raised such a process to normal priority and cleared
   the EcoQoS it had set for itself. Residue is now only assumed when the core placement matches too.
-- The quarantine "discard" action could delete the only remaining copy. It checked merely whether a
-  path of the same name existed at the original location, which an empty directory re-created by a
-  client update satisfies. Discard now requires the in-place content to match the manifest's file
-  count and byte count, and refuses otherwise.
 - A single stale boost entry caused the running game's priority, core partition and GPU state to be
   torn down and re-applied on every scan cycle. Only mismatched entries are restored now, and a core
   partition that the machine genuinely cannot provide is recorded as handled instead of being
@@ -53,19 +49,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   backend and game remain alive, while `launch-ux` and `ux-show` restore the lobby after the match.
 - A detached recovery watchdog that carries no LCU token in its command line or on disk and can
   restore the lobby even when the main Aegis process exits during a match.
-- Versioned, same-volume reversible quarantine for Cross, DiagnosticAssistant, FeedBack,
-  NetworkAssist, TQM, and TenioDL, with a manifest written before moves and no-overwrite restore.
-- A discard action for quarantine batches. When a client update re-downloads a component, restore
-  can no longer overwrite it and the batch would otherwise stay active forever, blocking further
-  quarantine. Discard removes the record only after verifying every item is back in its original
-  location, so nothing that exists solely in quarantine can be lost.
+- Direct deletion of the Cross add-on layer (AI coach, iCreate recorder) behind a separate
+  confirmation. The client re-downloads these components on every update, so no copy is kept;
+  deletion refuses to run while any client, WeGame, or anti-cheat process is alive and never
+  touches the game core, login chain, or updater.
 - Built-in tests for LCU credential parsing, strict process-path boundaries, containment against
-  sibling and out-of-root paths, atomic quarantine/restore, restore conflicts, and discard.
+  sibling and out-of-root paths, and add-on deletion boundaries.
 
 ### Changed
 
-- Removed the old irreversible Cross content cleaner from Settings. League file slimming now
-  lives only in the dedicated column and always has a recovery path.
+- Removed the old irreversible Cross content cleaner from Settings. League add-on cleanup now
+  lives only in the dedicated column behind a separate confirmation.
 - LoL-specific runtime control intentionally does not duplicate Competitive-mode CPU, priority,
   EcoQoS, network, or ACE policy.
 - With the column disabled the runtime no longer discovers installations, enumerates processes, or
@@ -99,8 +93,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The snapshot read by the interface performed filesystem probes while holding the state lock,
   stalling both the interface and the worker when the installation lived on a slow or disconnected
   volume.
-- A directory containing a file reparse point was measured as safe to quarantine, so the move
-  would have carried the link along. Reparse points at any depth now reject the candidate.
+- A directory containing a file reparse point was measured as a safe add-on candidate, so the
+  operation would have followed the link. Reparse points at any depth now reject the candidate.
 
 The remaining entries in this section come from a defect sweep of the whole product, not just the
 League column. They are grouped by subsystem.
@@ -151,8 +145,8 @@ League column. They are grouped by subsystem.
   regardless, so a truncated exit lost exactly the part that matters. Process state is now
   restored first.
 - There was no logoff or shutdown handler at all, so an OS shutdown ran no restore whatsoever.
-- Exit did not wait for interface-initiated file operations, so quitting during a quarantine move
-  killed the process mid-operation.
+- Exit did not wait for interface-initiated file operations, so quitting during an add-on file
+  operation killed the process mid-operation.
 - `RestoreEnv` cleared each feature's active flag regardless of whether that feature's restore had
   actually succeeded, so the residue check reported a clean state and the retry never ran.
 

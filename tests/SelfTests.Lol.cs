@@ -659,6 +659,16 @@ namespace AegisApp
                 "V3|Performance.ShadowQuality=x", out owner, out parsed));
             Eq(false, LolGraphicsConfig.TryParseBackup("V3|root=!!!非法base64", out owner, out parsed));
             Eq(false, LolGraphicsConfig.TryParseBackup("", out owner, out parsed));
+
+            string[] trimmed = LolGraphicsConfig.RemoveKey(both, "Performance", "ShadowQuality");
+            Eq(both.Length - 1, trimmed.Length);
+            Eq(-1, LolGraphicsConfig.ReadInt(trimmed, "Performance", "ShadowQuality"));
+            Eq(0, LolGraphicsConfig.ReadInt(trimmed, "Performance", "EnableFXAA"));
+            Eq(10, LolGraphicsConfig.ReadInt(trimmed, "Performance", "FrameCapType"));
+            if (!ReferenceEquals(both, LolGraphicsConfig.RemoveKey(both, "Performance", "NotThere")))
+                throw new Exception("移除不存在的键不应产生新数组");
+            if (!ReferenceEquals(both, LolGraphicsConfig.RemoveKey(both, "Volume", "ShadowQuality")))
+                throw new Exception("其它 section 的同名键不得被移除");
         }
 
         private static void TestLolCleanupBoundary()
@@ -882,16 +892,16 @@ namespace AegisApp
             }
         }
 
-        private static void TestLolQuarantineRoundTrip(string testRoot)
+        private static void TestLolAddonDelete(string testRoot)
         {
-            string install = Path.Combine(testRoot, "lol-quarantine", "英雄联盟");
+            string install = Path.Combine(testRoot, "lol-addons", "英雄联盟");
             string crossPath = Path.Combine(install, "Cross");
             string feedbackPath = Path.Combine(install, "LeagueClient", "FeedBack");
             string gameSentinel = Path.Combine(install, "Game", "game.bin");
             string aceSentinel = Path.Combine(install, "ACE", "ace.bin");
             string launcherSentinel = Path.Combine(install, "Launcher", "launcher.bin");
             string siblingSentinel = Path.Combine(install, "CrossBackup", "outside.bin");
-            string outsideSentinel = Path.Combine(testRoot, "lol-quarantine", "outside", "outside.bin");
+            string outsideSentinel = Path.Combine(testRoot, "lol-addons", "outside", "outside.bin");
             Process probe = null;
             Directory.CreateDirectory(Path.Combine(install, "Game"));
             Directory.CreateDirectory(Path.Combine(install, "ACE"));
@@ -918,42 +928,13 @@ namespace AegisApp
 
             try
             {
-                LolQuarantineManager.Inspection inspection = LolQuarantineManager.Inspect(install);
+                LolAddonCleaner.Inspection inspection = LolAddonCleaner.Inspect(install);
                 if (inspection.IsBlocked)
                     Skip("League or WeGame is currently running: "
                         + string.Join(", ", inspection.BlockingProcesses.ToArray()));
                 if (!inspection.IsValidRoot) throw new Exception("initial root invalid: " + inspection.Error);
                 Eq(1, inspection.CandidateCount);
-                if (!inspection.CanQuarantine) throw new Exception("initial quarantine unavailable: " + inspection.Error);
-
-                LolQuarantineManager.OperationResult quarantined = LolQuarantineManager.Quarantine(install);
-                if (!quarantined.Success) throw new Exception("initial quarantine failed: " + quarantined.Message);
-                Eq(1, quarantined.MovedCount);
-                Eq(false, Directory.Exists(crossPath));
-                Eq(true, Directory.Exists(feedbackPath));
-                string warehouseRoot = Path.Combine(
-                    Path.GetDirectoryName(install), ".aegis-lol-quarantine");
-                if (Directory.Exists(Path.Combine(install, ".aegis-quarantine")))
-                    throw new Exception("quarantine warehouse must never live inside the game install tree");
-                string initialSetPath = Path.Combine(
-                    warehouseRoot, quarantined.SetName, "payload");
-                Eq(true, File.Exists(Path.Combine(initialSetPath, "Cross", "coach", "coach.bin")));
-
-                Eq("game", File.ReadAllText(gameSentinel, Encoding.UTF8));
-                Eq("ace", File.ReadAllText(aceSentinel, Encoding.UTF8));
-                Eq("launcher", File.ReadAllText(launcherSentinel, Encoding.UTF8));
-                Eq("sibling", File.ReadAllText(siblingSentinel, Encoding.UTF8));
-                Eq("outside", File.ReadAllText(outsideSentinel, Encoding.UTF8));
-
-                inspection = LolQuarantineManager.Inspect(install);
-                if (!inspection.CanRestore) throw new Exception("initial restore unavailable");
-
-                LolQuarantineManager.OperationResult restored = LolQuarantineManager.Restore(install);
-                if (!restored.Success) throw new Exception("initial restore failed: " + restored.Message);
-                Eq(true, File.Exists(Path.Combine(crossPath, "coach", "coach.bin")));
-                Eq(true, File.Exists(Path.Combine(feedbackPath, "feedback.bin")));
-                Eq("readonly", File.ReadAllText(readOnly, Encoding.UTF8));
-                Eq(false, Directory.Exists(warehouseRoot));
+                if (!inspection.CanDelete) throw new Exception("initial delete unavailable: " + inspection.Error);
 
                 string probePath = Path.Combine(crossPath, "CrossProbe.exe");
                 File.Copy(Application.ExecutablePath, probePath, true);
@@ -965,7 +946,7 @@ namespace AegisApp
                 });
                 if (probe == null) throw new Exception("Cross blocking probe did not start");
                 Thread.Sleep(250);
-                LolQuarantineManager.OperationResult blocked = LolQuarantineManager.Quarantine(install);
+                LolAddonCleaner.OperationResult blocked = LolAddonCleaner.Delete(install);
                 Eq(false, blocked.Success);
                 Eq(false, blocked.Changed);
                 Eq(true, File.Exists(Path.Combine(crossPath, "coach", "coach.bin")));
@@ -975,58 +956,25 @@ namespace AegisApp
                 probe = null;
                 File.Delete(probePath);
 
-                quarantined = LolQuarantineManager.Quarantine(install);
-                if (!quarantined.Success) throw new Exception("conflict quarantine failed: " + quarantined.Message);
-                Directory.CreateDirectory(crossPath);
-                File.WriteAllText(Path.Combine(crossPath, "new.bin"), "new", Encoding.UTF8);
-                restored = LolQuarantineManager.Restore(install);
-                Eq(false, restored.Success);
-                Eq("new", File.ReadAllText(Path.Combine(crossPath, "new.bin"), Encoding.UTF8));
-                LolQuarantineManager.Inspection conflicted = LolQuarantineManager.Inspect(install);
-                if (!conflicted.CanRestore) throw new Exception("conflict batch was not retained: " + conflicted.Error);
-
-                if (conflicted.CanDiscard)
-                    throw new Exception("a batch whose payload is still the only copy must not be discardable");
-                string conflictSet = Path.GetDirectoryName(conflicted.Active[0].ManifestPath);
-                string conflictPayload = Path.Combine(conflictSet, "payload", "Cross", "coach", "coach.bin");
-                Eq(true, File.Exists(conflictPayload));
-                Eq(false, LolQuarantineManager.Discard(install, conflicted.Active[0].Name).Success);
-                if (!File.Exists(conflictPayload))
-                    throw new Exception("a refused discard must not delete the quarantined copy");
-
-                string setPath = Path.GetDirectoryName(conflicted.Active[0].ManifestPath);
-                string stalePayload = Path.Combine(setPath, "payload", "Cross");
-                ClearReadOnlyTree(stalePayload);
-                Directory.Delete(stalePayload, true);
-                Directory.Delete(crossPath, true);
-                LolQuarantineManager.Inspection missing = LolQuarantineManager.Inspect(install);
-                Eq(1, missing.Active.Count);
-                Eq(1, missing.Active[0].MissingCount);
-                Eq(true, string.IsNullOrEmpty(missing.Error));
-                if (!missing.CanRestore)
-                    throw new Exception("a missing payload item must not veto restoring the intact ones");
-                Eq(false, LolQuarantineManager.Restore(install).Success);
-                Eq(1, LolQuarantineManager.Inspect(install).Active.Count);
-
-                Directory.CreateDirectory(Path.Combine(crossPath, "coach"));
-                File.WriteAllText(Path.Combine(crossPath, "coach", "coach.bin"), "coach", Encoding.UTF8);
-                LolQuarantineManager.Inspection stuck = LolQuarantineManager.Inspect(install);
-                if (!stuck.CanDiscard) throw new Exception("stuck batch was not discardable");
-                LolQuarantineManager.OperationResult discarded =
-                    LolQuarantineManager.Discard(install, stuck.Active[0].Name);
-                if (!discarded.Success) throw new Exception("discard failed: " + discarded.Message);
-                Eq(true, File.Exists(Path.Combine(crossPath, "coach", "coach.bin")));
-                LolQuarantineManager.Inspection afterDiscard = LolQuarantineManager.Inspect(install);
-                Eq(0, afterDiscard.Active.Count);
-                Eq(true, string.IsNullOrEmpty(afterDiscard.Error));
-                if (!afterDiscard.CanQuarantine) throw new Exception("deadlock was not cleared: " + afterDiscard.Error);
-                Eq(false, Directory.Exists(warehouseRoot));
+                LolAddonCleaner.OperationResult deleted = LolAddonCleaner.Delete(install);
+                if (!deleted.Success) throw new Exception("delete failed: " + deleted.Message);
+                Eq(1, deleted.DeletedCount);
+                Eq(false, Directory.Exists(crossPath));
+                Eq(true, Directory.Exists(feedbackPath));
+                Eq(true, File.Exists(Path.Combine(feedbackPath, "feedback.bin")));
+                Eq("game", File.ReadAllText(gameSentinel, Encoding.UTF8));
+                Eq("ace", File.ReadAllText(aceSentinel, Encoding.UTF8));
+                Eq("launcher", File.ReadAllText(launcherSentinel, Encoding.UTF8));
+                Eq("sibling", File.ReadAllText(siblingSentinel, Encoding.UTF8));
+                Eq("outside", File.ReadAllText(outsideSentinel, Encoding.UTF8));
+                Eq(false, LolAddonCleaner.Inspect(install).CanDelete);
+                Eq(false, LolAddonCleaner.Delete(install).Success);
             }
             finally
             {
                 StopOwned(probe);
                 if (probe != null) probe.Dispose();
-                ClearReadOnlyTree(Path.Combine(testRoot, "lol-quarantine"));
+                ClearReadOnlyTree(Path.Combine(testRoot, "lol-addons"));
             }
         }
 

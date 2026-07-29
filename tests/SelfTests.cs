@@ -712,11 +712,6 @@ namespace AegisApp
             });
             test("LoL runtime: LCU credentials reject malformed input", TestLolCredentialParsing);
             test("LoL runtime: cleanup targets never include core, game or ACE paths", TestLolCleanupBoundary);
-            test("LoL quarantine: manifest fields round-trip without ambiguity", () =>
-            {
-                string error;
-                if (!LolQuarantineManager.SelfTestManifest(out error)) throw new Exception(error);
-            });
             test("LoL graphics: game.cfg edits touch only the two target keys", TestLolGraphicsConfigEdit);
             test("environment tweaks: a failing step backs off instead of retrying every scan", () =>
             {
@@ -1215,7 +1210,7 @@ namespace AegisApp
                 test("game profiles: migration removes learning state and deduplicates", () => TestProfileStore(root));
                 test("game profiles: an unreadable file is never overwritten by a save", () => TestProfileLoadFailure(root));
                 test("game library: EXE/LNK resolve without executing the target", () => TestExecutableResolver(root));
-                test("LoL quarantine: atomic move, exact restore and no-overwrite conflict", () => TestLolQuarantineRoundTrip(root));
+                test("LoL addons: delete touches only add-on layers, never the game core", () => TestLolAddonDelete(root));
                 test("render detector: user-selected headless exe activates; legacy headless does not", () => TestHeadlessEntry(root));
                 test("render detector: suffix fallback stays inside the configured profile root", () => TestFallbackEntryRootBoundary(root));
                 test("session reports: legacy frame telemetry is archived", () => TestReportMigration(root));

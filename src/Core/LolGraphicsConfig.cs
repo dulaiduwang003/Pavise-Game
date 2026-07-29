@@ -85,6 +85,14 @@ namespace AegisApp
 
         public static State Inspect(string lolRoot)
         {
+            List<string> blocking;
+            bool blocked = LolAddonCleaner.HasBlockingProcesses(lolRoot, out blocking);
+            return Inspect(lolRoot, blocked, blocking);
+        }
+
+        // 调用方已经做过占用检查时走这个重载，省掉一次全进程枚举
+        public static State Inspect(string lolRoot, bool blocked, List<string> blocking)
+        {
             var state = new State();
             foreach (Tunable tunable in Tunables) state.Of(tunable.Group).Total++;
             state.ConfigPath = ConfigPathOf(lolRoot);
@@ -107,11 +115,10 @@ namespace AegisApp
             }
             state.Available = true;
 
-            List<string> blocking;
-            if (LolQuarantineManager.HasBlockingProcesses(lolRoot, out blocking))
+            if (blocked)
             {
                 state.Blocked = true;
-                state.BlockingProcesses = blocking;
+                state.BlockingProcesses = blocking ?? new List<string>();
             }
             return state;
         }
@@ -138,7 +145,7 @@ namespace AegisApp
             }
 
             List<string> blocking;
-            if (LolQuarantineManager.HasBlockingProcesses(lolRoot, out blocking))
+            if (LolAddonCleaner.HasBlockingProcesses(lolRoot, out blocking))
             {
                 error = Lang.F("lolgfx.err.running", string.Join(", ", blocking.ToArray()));
                 return false;
@@ -179,18 +186,30 @@ namespace AegisApp
 
                 int original;
                 if (!backup.TryGetValue(tunable.Identity, out original)) continue;
-                backup.Remove(tunable.Identity);
                 if (current != tunable.Competitive)
                 {
+                    backup.Remove(tunable.Identity);
                     releasedByUser++;
                     continue;
                 }
-                if (original < 0) continue;
+                backup.Remove(tunable.Identity);
+                if (original < 0)
+                {
+                    // 应用前原文件没有这个键：整行移除，让游戏回落内置默认值
+                    string[] trimmed = RemoveKey(updated, tunable.Section, tunable.Key);
+                    if (!ReferenceEquals(trimmed, updated))
+                    {
+                        updated = trimmed;
+                        written++;
+                    }
+                    continue;
+                }
                 updated = SetInt(updated, tunable.Section, tunable.Key, original);
                 written++;
             }
 
-            if (!Settings.SaveStr(BackupSettingKey, FormatBackup(lolRoot, backup)))
+            // 应用先落备份再改文件，还原先改文件再收备份：任一顺序断掉都不会丢原值
+            if (apply && !Settings.SaveStr(BackupSettingKey, FormatBackup(lolRoot, backup)))
             {
                 error = Lang.T("lolgfx.err.backupfail");
                 return false;
@@ -198,6 +217,11 @@ namespace AegisApp
             if (written > 0 && !AtomicFile.WriteLines(path, updated, "game.cfg"))
             {
                 error = Lang.T("lolgfx.err.writefail");
+                return false;
+            }
+            if (!apply && !Settings.SaveStr(BackupSettingKey, FormatBackup(lolRoot, backup)))
+            {
+                error = Lang.T("lolgfx.err.backupfail");
                 return false;
             }
             Logger.Log("英雄联盟画质：" + (apply ? "压到竞技档" : "还原原值")
@@ -310,6 +334,29 @@ namespace AegisApp
             while (insertAt > 0 && string.IsNullOrEmpty((output[insertAt - 1] ?? "").Trim())) insertAt--;
             output.Insert(insertAt, rendered);
             return output.ToArray();
+        }
+
+        internal static string[] RemoveKey(string[] lines, string section, string key)
+        {
+            if (lines == null) return lines;
+            bool inSection = false;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string line = lines[i] == null ? "" : lines[i].Trim();
+                if (line.Length == 0) continue;
+                if (line[0] == '[')
+                {
+                    inSection = IsSectionHeader(line, section);
+                    continue;
+                }
+                if (!inSection) continue;
+                string value;
+                if (!TryMatchKey(line, key, out value)) continue;
+                var output = new List<string>(lines);
+                output.RemoveAt(i);
+                return output.ToArray();
+            }
+            return lines;
         }
 
         private static bool IsSectionHeader(string line, string section)
