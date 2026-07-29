@@ -8,8 +8,6 @@
 
 `C#` · `WinForms` · `単一実行ファイル` · `中文 / English / 日本語`
 
-[简体中文](README.md) · [English](README.en.md) · **日本語**
-
 </div>
 
 ## 先に結論：本当に性能は上がる？

@@ -532,6 +532,135 @@ namespace AegisApp
             }
         }
 
+        private static void TestLolGraphicsConfigEdit()
+        {
+            string[] original =
+            {
+                "",
+                "[FloatingText]",
+                "Damage_Enabled=1",
+                "",
+                "[Performance]",
+                "ShadowQuality=4",
+                "FrameCapType=10",
+                "EnableFXAA=1",
+                "",
+                "[Volume]",
+                "MasterVolume=0.8900"
+            };
+
+            Eq(4, LolGraphicsConfig.ReadInt(original, "Performance", "ShadowQuality"));
+            Eq(1, LolGraphicsConfig.ReadInt(original, "Performance", "EnableFXAA"));
+            Eq(-1, LolGraphicsConfig.ReadInt(original, "Performance", "NotThere"));
+            Eq(-1, LolGraphicsConfig.ReadInt(original, "NoSuchSection", "ShadowQuality"));
+            Eq(-1, LolGraphicsConfig.ReadInt(original, "Volume", "ShadowQuality"));
+
+            string[] shadowOff = LolGraphicsConfig.SetInt(original, "Performance", "ShadowQuality", 0);
+            string[] both = LolGraphicsConfig.SetInt(shadowOff, "Performance", "EnableFXAA", 0);
+            Eq(0, LolGraphicsConfig.ReadInt(both, "Performance", "ShadowQuality"));
+            Eq(0, LolGraphicsConfig.ReadInt(both, "Performance", "EnableFXAA"));
+            Eq(original.Length, both.Length);
+            for (int i = 0; i < original.Length; i++)
+            {
+                if (i == 5 || i == 7) continue;
+                if (!string.Equals(original[i], both[i], StringComparison.Ordinal))
+                    throw new Exception("第 " + i + " 行被改动了：「" + original[i] + "」→「" + both[i] + "」");
+            }
+            Eq("ShadowQuality=0", both[5]);
+            Eq("EnableFXAA=0", both[7]);
+            Eq(10, LolGraphicsConfig.ReadInt(both, "Performance", "FrameCapType"));
+
+            string[] missing = { "[Performance]", "FrameCapType=10", "", "[Volume]", "MasterVolume=1" };
+            string[] added = LolGraphicsConfig.SetInt(missing, "Performance", "ShadowQuality", 0);
+            Eq(0, LolGraphicsConfig.ReadInt(added, "Performance", "ShadowQuality"));
+            Eq(1, LolGraphicsConfig.ReadInt(added, "Volume", "MasterVolume"));
+            Eq(missing.Length + 1, added.Length);
+            Eq("[Volume]", added[added.Length - 2]);
+
+            string[] noSection = { "[Volume]", "MasterVolume=1" };
+            string[] created = LolGraphicsConfig.SetInt(noSection, "Performance", "ShadowQuality", 0);
+            Eq(0, LolGraphicsConfig.ReadInt(created, "Performance", "ShadowQuality"));
+            Eq(1, LolGraphicsConfig.ReadInt(created, "Volume", "MasterVolume"));
+
+            string[] full =
+            {
+                "[General]", "HideEyeCandy=0", "ShowGodray=1", "WindowMode=1",
+                "WaitForVerticalSync=1", "",
+                "[Performance]", "ShadowQuality=4", "EnableFXAA=1", "EnvironmentQuality=4",
+                "EffectsQuality=4", "CharacterQuality=4", "EnableHUDAnimations=1"
+            };
+            string[] applied = full;
+            foreach (LolGraphicsConfig.Tunable tunable in LolGraphicsConfig.Tunables)
+                applied = LolGraphicsConfig.SetInt(
+                    applied, tunable.Section, tunable.Key, tunable.Competitive);
+            Eq(full.Length, applied.Length);
+            foreach (LolGraphicsConfig.Tunable tunable in LolGraphicsConfig.Tunables)
+            {
+                int actual = LolGraphicsConfig.ReadInt(applied, tunable.Section, tunable.Key);
+                if (actual != tunable.Competitive)
+                    throw new Exception(tunable.Section + "." + tunable.Key
+                        + " 未压到竞技取值：期望 " + tunable.Competitive + "，实际 " + actual);
+            }
+            Eq(0, LolGraphicsConfig.ReadInt(applied, "General", "WindowMode"));
+
+            int quality = 0, present = 0;
+            foreach (LolGraphicsConfig.Tunable tunable in LolGraphicsConfig.Tunables)
+            {
+                if (tunable.Group == LolGraphicsConfig.GraphicsGroup.Quality) quality++;
+                else present++;
+            }
+            if (quality == 0 || present == 0) throw new Exception("画质/呈现分组不能为空");
+            Eq(LolGraphicsConfig.Tunables.Length, quality + present);
+            foreach (LolGraphicsConfig.Tunable tunable in LolGraphicsConfig.Tunables)
+                if (tunable.Key == "WindowMode")
+                {
+                    Eq(LolGraphicsConfig.GraphicsGroup.Presentation, tunable.Group);
+                    Eq(0, tunable.Competitive);
+                }
+
+            var snapshot = new System.Collections.Generic.Dictionary<string, int>(
+                StringComparer.OrdinalIgnoreCase);
+            foreach (LolGraphicsConfig.Tunable tunable in LolGraphicsConfig.Tunables)
+                snapshot[tunable.Identity] =
+                    LolGraphicsConfig.ReadInt(full, tunable.Section, tunable.Key);
+            System.Collections.Generic.Dictionary<string, int> parsed;
+            string owner;
+            const string rootA = @"D:\Games\英雄联盟";
+            Eq(true, LolGraphicsConfig.TryParseBackup(
+                LolGraphicsConfig.FormatBackup(rootA, snapshot), out owner, out parsed));
+            Eq(rootA, owner);
+            foreach (var pair in snapshot)
+            {
+                int back;
+                if (!parsed.TryGetValue(pair.Key, out back) || back != pair.Value)
+                    throw new Exception("备份往返丢失：" + pair.Key);
+            }
+            const string rootB = @"E:\StartAI\data\LOL\WeGameApps\英雄联盟 PBE";
+            Eq(true, LolGraphicsConfig.TryParseBackup(
+                LolGraphicsConfig.FormatBackup(rootB, snapshot), out owner, out parsed));
+            Eq(rootB, owner);
+            var partial = new System.Collections.Generic.Dictionary<string, int>(
+                StringComparer.OrdinalIgnoreCase);
+            partial["Performance.ShadowQuality"] = 4;
+            Eq(true, LolGraphicsConfig.TryParseBackup(
+                LolGraphicsConfig.FormatBackup(rootA, partial), out owner, out parsed));
+            Eq(1, parsed.Count);
+            Eq(4, parsed["Performance.ShadowQuality"]);
+            Eq("", LolGraphicsConfig.FormatBackup(rootA,
+                new System.Collections.Generic.Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)));
+
+            Eq(true, LolGraphicsConfig.TryParseBackup("V1|4|1", out owner, out parsed));
+            Eq(null, owner);
+            Eq(4, parsed["Performance.ShadowQuality"]);
+            Eq(1, parsed["Performance.EnableFXAA"]);
+            Eq(false, LolGraphicsConfig.TryParseBackup("V1|4", out owner, out parsed));
+            Eq(false, LolGraphicsConfig.TryParseBackup("V9|a=1", out owner, out parsed));
+            Eq(false, LolGraphicsConfig.TryParseBackup(
+                "V3|Performance.ShadowQuality=x", out owner, out parsed));
+            Eq(false, LolGraphicsConfig.TryParseBackup("V3|root=!!!非法base64", out owner, out parsed));
+            Eq(false, LolGraphicsConfig.TryParseBackup("", out owner, out parsed));
+        }
+
         private static void TestLolCleanupBoundary()
         {
             const string lol = @"D:\Games\英雄联盟";
@@ -552,6 +681,32 @@ namespace AegisApp
                 lol + @"\Riot Client\RiotClientServices.exe", "RiotClientServices.exe", lol, weGame));
             Eq(false, LolRuntimeProcesses.IsCleanupTarget(
                 weGame + @"\unrelated.exe", "unrelated.exe", lol, weGame));
+            string[] declaredRoots =
+            {
+                lol + @"\Cross",
+                lol + @"\LeagueClient\FeedBack",
+                lol + @"\LeagueClient\NetworkAssist",
+                lol + @"\LeagueClient\TQM",
+                lol + @"\LeagueClient\DiagnosticAssistant",
+                lol + @"\Launcher\qbblinktrial"
+            };
+            foreach (string declared in declaredRoots)
+            {
+                string unlisted = declared + @"\某个从未列入名单的进程.exe";
+                if (!LolRuntimeProcesses.IsCleanupTarget(
+                        unlisted, "某个从未列入名单的进程.exe", lol, weGame))
+                    throw new Exception("已声明的清理根未生效：" + declared);
+            }
+            Eq(true, LolRuntimeProcesses.IsCleanupTarget(
+                lol + @"\LeagueClient\DiagnosticAssistant\diagnostic-assistant.exe",
+                "diagnostic-assistant.exe", lol, weGame));
+            Eq(true, LolRuntimeProcesses.IsCleanupTarget(
+                lol + @"\Launcher\qbblinktrial\minibrowser.exe", "minibrowser.exe", lol, weGame));
+            Eq(true, LolRuntimeProcesses.IsCleanupTarget(
+                lol + @"\Launcher\qbblinktrial\BugReport.exe", "BugReport.exe", lol, weGame));
+            Eq(false, LolRuntimeProcesses.IsCleanupTarget(
+                lol + @"\LeagueClient\FeedBackExtra\FeedBack.exe", "FeedBack.exe", lol, weGame));
+
             Eq(true, LolRuntimeProcesses.IsUnder(lol + @"\Cross\a.exe", lol + @"\Cross"));
             Eq(false, LolRuntimeProcesses.IsUnder(lol + @"Backup\Cross\a.exe", lol));
             Eq(true, LolRuntimeProcesses.IsMainUxProcess(
@@ -830,8 +985,6 @@ namespace AegisApp
                 LolQuarantineManager.Inspection conflicted = LolQuarantineManager.Inspect(install);
                 if (!conflicted.CanRestore) throw new Exception("conflict batch was not retained: " + conflicted.Error);
 
-                // 原位置只有客户端重新下载的 new.bin，隔离仓里那份才是唯一的原始内容。
-                // 丢弃会永久删除它，所以必须既不可用，调用了也必须拒绝并保住 payload。
                 if (conflicted.CanDiscard)
                     throw new Exception("a batch whose payload is still the only copy must not be discardable");
                 string conflictSet = Path.GetDirectoryName(conflicted.Active[0].ManifestPath);

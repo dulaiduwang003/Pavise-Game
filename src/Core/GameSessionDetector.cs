@@ -223,9 +223,6 @@ namespace AegisApp
                         {
                             Candidate renderer = BestRenderer(
                                 profile, family, entry);
-                            // 找不到画面进程时保留启动器作为锚点：用户明确注册的就是这个 exe，
-                            // 且 PID 复用场景下需要锚点仍然存在（见 SelfTests 的
-                            // "parallel instances and PID reuse stay isolated"）。
                             if (renderer != null)
                             {
                                 selected = renderer;

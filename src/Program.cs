@@ -18,7 +18,7 @@ namespace AegisApp
     internal static class App
     {
         public const string DisplayName = "AEGIS";
-        public const string Version = "1.5.1";
+        public const string Version = "1.5";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string RepoName = "dulaiduwang003/Aegis";
@@ -29,6 +29,8 @@ namespace AegisApp
 
     internal static class Program
     {
+        private const string PendingPanelKey = "ShowPanelOnNextStart";
+
         [STAThread]
         private static void Main(string[] args)
         {
@@ -138,13 +140,21 @@ namespace AegisApp
                 return;
             }
 
+            bool autoStarted = false;
+            if (args != null)
+                foreach (string a in args)
+                    if (string.Equals(a, TaskHelper.AutostartArgument, StringComparison.OrdinalIgnoreCase))
+                        autoStarted = true;
+
             bool elevated = IsElevated();
 
             if (!elevated && TaskHelper.TaskExists())
             {
                 mtx.ReleaseMutex();
                 mtx.Close();
+                Settings.Save(PendingPanelKey, true);
                 if (TaskHelper.Run("/Run /TN " + TaskHelper.TaskName) == 0) return;
+                Settings.Save(PendingPanelKey, false);
                 try { mtx = new Mutex(true, "Global\\Aegis_SingleInstance", out created); }
                 catch { created = false; }
                 if (!created)
@@ -243,6 +253,10 @@ namespace AegisApp
             Icon appIcon = IconArt.MakeMultiIcon(runtimeIconMode, runtimeIconEnabled);
             var panel = new PanelForm(tamer, gameMode, appIcon, elevated, lolService);
             GC.KeepAlive(panel.Handle);
+
+            bool pendingPanel = Settings.Load(PendingPanelKey, false);
+            if (pendingPanel) Settings.Save(PendingPanelKey, false);
+            if (!autoStarted || pendingPanel) panel.ShowPanel();
 
             var evtThread = new Thread(() =>
             {

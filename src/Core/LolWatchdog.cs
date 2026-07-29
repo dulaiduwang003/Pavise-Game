@@ -74,10 +74,6 @@ namespace AegisApp
                 lolRoot, pid, creation, out verifiedHandle)) return false;
             Native.CloseHandle(verifiedHandle);
 
-            // 守护对象的名字由 lolRoot|pid|creation 哈希而来，这三项对同用户进程都是公开信息，
-            // 对象本身也没有独占 DACL，所以"对象存在且被持有"并不能证明真有看门狗在跑。
-            // 一旦误信，客户端会被关成无头却没有任何恢复者。这里额外要求确实存在一个跑着本程序
-            // 映像的其它进程；判不出来就当作没有看门狗，重新拉一个——多起一个进程是安全的方向。
             if (ExistingGuardIsReady(lolRoot, pid, creation)
                 && SiblingAegisProcessAlive()) return true;
             EventWaitHandle readyEvent = null;
@@ -582,8 +578,6 @@ namespace AegisApp
                 : LolHeadlessLease.MatchesLegacyRoot(lolRoot);
         }
 
-        // 是否存在另一个运行着本程序映像的进程。这不是不可伪造的证明（同用户的攻击者
-        // 可以复制一份 exe 再跑），但足以挡住陈旧对象和无关进程抢占命名对象的情况。
         private static bool SiblingAegisProcessAlive()
         {
             string self;

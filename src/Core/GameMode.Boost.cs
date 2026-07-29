@@ -11,6 +11,75 @@ namespace AegisApp
 {
     internal partial class GameMode
     {
+        private const int EnvRetryBaseSeconds = 4;
+        private const int EnvRetryCapSeconds = 60;
+        private const int EnvRetryMaxSteps = 8;
+        private readonly Dictionary<string, long> envNextAttempt =
+            new Dictionary<string, long>(StringComparer.Ordinal);
+        private readonly Dictionary<string, int> envFailures =
+            new Dictionary<string, int>(StringComparer.Ordinal);
+
+        private bool EnvStep(
+            string key, bool want, bool active, Func<bool> activate, Func<bool> restore)
+        {
+            if (want == active) return active;
+            long now = DateTime.UtcNow.Ticks;
+            lock (sync)
+            {
+                long next;
+                if (envNextAttempt.TryGetValue(key, out next) && now < next) return active;
+            }
+
+            bool ok;
+            try { ok = want ? activate() : restore(); }
+            catch { ok = false; }
+
+            lock (sync)
+            {
+                if (ok)
+                {
+                    envNextAttempt.Remove(key);
+                    envFailures.Remove(key);
+                }
+                else
+                {
+                    int failures;
+                    envFailures.TryGetValue(key, out failures);
+                    if (failures < EnvRetryMaxSteps) failures++;
+                    envFailures[key] = failures;
+                    int seconds = EnvRetryBaseSeconds;
+                    for (int i = 1; i < failures && seconds < EnvRetryCapSeconds; i++)
+                        seconds = Math.Min(EnvRetryCapSeconds, seconds * 2);
+                    envNextAttempt[key] = DateTime.UtcNow.AddSeconds(seconds).Ticks;
+                }
+            }
+            return want ? ok : (ok ? false : active);
+        }
+
+#if AEGIS_SELFTEST
+        internal int EnvAttemptCountForTest(
+            string key, bool want, bool active, Func<bool> activate, Func<bool> restore, int rounds)
+        {
+            int attempts = 0;
+            Func<bool> countedActivate = delegate { attempts++; return activate(); };
+            Func<bool> countedRestore = delegate { attempts++; return restore(); };
+            for (int i = 0; i < rounds; i++)
+                active = EnvStep(key, want, active, countedActivate, countedRestore);
+            return attempts;
+        }
+
+        internal void ClearEnvRetryStateForTest() { ClearEnvRetryState(); }
+#endif
+
+        private void ClearEnvRetryState()
+        {
+            lock (sync)
+            {
+                envNextAttempt.Clear();
+                envFailures.Clear();
+            }
+        }
+
         private void ApplyEnv()
         {
             PerformancePreset mode = ActivePreset;
@@ -22,15 +91,15 @@ namespace AegisApp
             bool useSvc = custom ? svcPauseOn : false;
             bool useMmcss = custom ? mmcssOn : competitive;
             bool useDvr = custom ? killGameDvr : competitive;
-            if (notifQuiet != notifActive) { if (notifQuiet) notifActive = Notif.Quiet(); else if (Notif.Restore()) notifActive = false; }
-            if (usePauseDl != doActive) { if (usePauseDl) doActive = DoTweak.Activate(); else if (DoTweak.Restore()) doActive = false; }
-            if (hzGuard != hzActive) { if (hzGuard) hzActive = DisplayGuard.Activate(); else if (DisplayGuard.Restore()) hzActive = false; }
-            if (useNet != netActive) { if (useNet) netActive = NetTweak.Activate(); else if (NetTweak.Restore()) netActive = false; }
-            if (useFg != fgActive) { if (useFg) fgActive = FgBoost.Activate(); else if (FgBoost.Restore()) fgActive = false; }
-            if (useSvc != svcActive) { if (useSvc) svcActive = SvcPause.Activate(); else if (SvcPause.Restore()) svcActive = false; }
-            if (useMmcss != mmcssActive) { if (useMmcss) mmcssActive = Mmcss.Activate(); else if (Mmcss.Restore()) mmcssActive = false; }
-            if (useDvr != dvrActive) { if (useDvr) dvrActive = GameDvr.Activate(); else if (GameDvr.Restore()) dvrActive = false; }
-            if (visualFxOn != fxActive) { if (visualFxOn) fxActive = VisualFx.Activate(); else if (VisualFx.Restore()) fxActive = false; }
+            notifActive = EnvStep("notif", notifQuiet, notifActive, Notif.Quiet, Notif.Restore);
+            doActive = EnvStep("do", usePauseDl, doActive, DoTweak.Activate, DoTweak.Restore);
+            hzActive = EnvStep("hz", hzGuard, hzActive, DisplayGuard.Activate, DisplayGuard.Restore);
+            netActive = EnvStep("net", useNet, netActive, NetTweak.Activate, NetTweak.Restore);
+            fgActive = EnvStep("fg", useFg, fgActive, FgBoost.Activate, FgBoost.Restore);
+            svcActive = EnvStep("svc", useSvc, svcActive, SvcPause.Activate, SvcPause.Restore);
+            mmcssActive = EnvStep("mmcss", useMmcss, mmcssActive, Mmcss.Activate, Mmcss.Restore);
+            dvrActive = EnvStep("dvr", useDvr, dvrActive, GameDvr.Activate, GameDvr.Restore);
+            fxActive = EnvStep("fx", visualFxOn, fxActive, VisualFx.Activate, VisualFx.Restore);
             bool aggressivePower = IsAggressive(mode, aggressiveOn);
             int powerKey = (aggressivePower ? 1 : 0)
                 | (idleDisableOn ? 2 : 0) | (planSwitch ? 4 : 0);
@@ -343,15 +412,10 @@ namespace AegisApp
                             }
                             else
                             {
-                                // 走到这里表示这台机器没有可用的核心分区手段（CPU Sets 写不进去，
-                                // 且不满足亲和性回退条件），再重试多少次结果都一样。
-                                // 以前这里恒等于 false，导致每一轮审计都重下发一次 CPU Sets/亲和性
-                                // 且没有退避；记为已处理，避免对运行中的游戏反复写入。
                                 placementText = " + 不限核";
                                 if (useStrict) placementUnavailable = true;
                             }
                             if (soft) placementOk = true;
-                            // 能力性缺失记为已处理：重试不会有不同结果，反复重写只会打扰运行中的游戏。
                             if (placementUnavailable) placementOk = true;
                             lock (sync)
                             {
@@ -488,9 +552,6 @@ namespace AegisApp
                 && string.Equals(boosted.Value.Name, keepName, StringComparison.OrdinalIgnoreCase);
         }
 
-        // keepPid 为当前渲染进程时只还原其它（陈旧）条目。整批还原会把正在运行的游戏也
-        // 拆掉再重建：一个句柄被反作弊保护、永远无法标记完成的陈旧条目会让每一轮扫描都
-        // 触发这个过程，导致游戏的优先级/核心分区/GPU 状态被反复重写。
         private bool UnboostGames(int keepPid, long keepCreation, string keepName)
         {
             List<KeyValuePair<int, Snap>> boosts;
@@ -631,6 +692,7 @@ namespace AegisApp
             bool backgroundClean = true;
             foreach (int pid in background) if (core.IsThrottled(pid)) { backgroundClean = false; break; }
             bool envClean = RestoreEnv();
+            ClearEnvRetryState();
             pressure.Clear();
             if (clean) CrashGuard.ClearBoost();
             Logger.Log("游戏模式解除（" + reason + "）：恢复 " + ok + " 个进程");

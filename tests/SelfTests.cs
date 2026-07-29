@@ -717,8 +717,53 @@ namespace AegisApp
                 string error;
                 if (!LolQuarantineManager.SelfTestManifest(out error)) throw new Exception(error);
             });
+            test("LoL graphics: game.cfg edits touch only the two target keys", TestLolGraphicsConfigEdit);
+            test("environment tweaks: a failing step backs off instead of retrying every scan", () =>
+            {
+                string envDir = Path.Combine(
+                    Path.GetTempPath(), "AegisEnvRetry_" + Process.GetCurrentProcess().Id);
+                Directory.CreateDirectory(envDir);
+                var mode = new GameMode(envDir, new SuppressionCore());
+                mode.ClearEnvRetryStateForTest();
+                int attempts = mode.EnvAttemptCountForTest(
+                    "probe-fail", true, false,
+                    delegate { return false; }, delegate { return true; }, 50);
+                if (attempts != 1)
+                    throw new Exception("失败项在 50 轮扫描里尝试了 " + attempts + " 次，应为 1 次");
+
+                mode.ClearEnvRetryStateForTest();
+                int okAttempts = mode.EnvAttemptCountForTest(
+                    "probe-ok", true, false,
+                    delegate { return true; }, delegate { return true; }, 50);
+                Eq(1, okAttempts);
+
+                mode.ClearEnvRetryStateForTest();
+                int restoreAttempts = mode.EnvAttemptCountForTest(
+                    "probe-restore", false, true,
+                    delegate { return true; }, delegate { return false; }, 50);
+                if (restoreAttempts != 1)
+                    throw new Exception("还原失败项尝试了 " + restoreAttempts + " 次，应为 1 次");
+            });
             test("render detector: Office and launchers cannot masquerade as games", TestRenderScoring);
             test("render detector: parallel instances and PID reuse stay isolated", TestGameSessionInstanceIsolation);
+            test("autostart task: the logon instance is distinguishable from a manual launch", () =>
+            {
+                const string withArgs =
+                    "<Task><Actions Context=\"Author\"><Exec>"
+                    + "<Command>\"C:\\A\\Aegis.exe\"</Command>"
+                    + "<Arguments>--autostart</Arguments></Exec></Actions></Task>";
+                Eq("--autostart", TaskHelper.ParseTaskArgumentsXml(withArgs));
+                Eq("C:\\A\\Aegis.exe", TaskHelper.ParseTaskCommandXml(withArgs));
+
+                const string legacy =
+                    "<Task><Actions Context=\"Author\"><Exec>"
+                    + "<Command>\"C:\\A\\Aegis.exe\"</Command></Exec></Actions></Task>";
+                Eq("", TaskHelper.ParseTaskArgumentsXml(legacy));
+
+                Eq(null, TaskHelper.ParseTaskArgumentsXml(""));
+                Eq(null, TaskHelper.ParseTaskArgumentsXml("不是 XML"));
+                Eq(null, TaskHelper.ParseTaskArgumentsXml("<Task><Actions/></Task>"));
+            });
             test("release metadata: product and file versions are present", TestReleaseMetadata);
             test("mode theme: graphite stays fixed while Standard, Competitive and Custom accents differ", () =>
             {
@@ -954,8 +999,6 @@ namespace AegisApp
                 if (outText.IndexOf(evil, StringComparison.Ordinal) < 0)
                     throw new Exception("payload was not echoed verbatim; quoting altered the data");
             });
-            // 语种数量由文案表自身决定：目前只有中文，将来补回译文后同一条用例会自动
-            // 要求每个 key 都补齐，漏译一行就会失败。
             test("language table: every entry is complete and format placeholders are consistent", () =>
             {
                 int languages = 0;
@@ -1206,10 +1249,16 @@ namespace AegisApp
 
         private static void TestReleaseMetadata()
         {
+            var declared = new Version(App.Version);
+            string expected = new Version(
+                declared.Major,
+                declared.Minor,
+                declared.Build < 0 ? 0 : declared.Build,
+                declared.Revision < 0 ? 0 : declared.Revision).ToString();
             Version assemblyVersion = typeof(App).Assembly.GetName().Version;
-            Eq("1.5.0.0", assemblyVersion == null ? "" : assemblyVersion.ToString());
+            Eq(expected, assemblyVersion == null ? "" : assemblyVersion.ToString());
             FileVersionInfo info = FileVersionInfo.GetVersionInfo(Application.ExecutablePath);
-            Eq("1.5.0.0", info.FileVersion);
+            Eq(expected, info.FileVersion);
             Eq("Aegis", info.ProductName);
             Eq("bdth", info.CompanyName);
         }

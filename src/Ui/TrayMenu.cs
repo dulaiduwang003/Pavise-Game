@@ -252,7 +252,6 @@ namespace AegisApp
             set.DropDownItems.Add(new ToolStripSeparator());
             set.DropDownItems.Add(Check(Lang.T("tm.autostart"), TaskHelper.TaskExistsCached(), (s, e) => { ToggleAutostart(); Changed(); }));
 
-            // 语言子菜单随英文/日文译文一并移除；恢复多语言时加回来即可。
             strip.Items.Add(set);
 
             strip.Items.Add(new ToolStripSeparator());

@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 计算名称、精确路径和应用家族白名单的当前进程边界
+// 文件用途 计算名称 精确路径和应用家族白名单的当前进程边界
 
 using System;
 using System.Collections.Generic;

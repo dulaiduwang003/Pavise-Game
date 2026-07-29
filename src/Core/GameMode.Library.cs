@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 游戏列表、配置档案与白名单的持久化操作。
+// 文件用途 游戏列表 配置档案与白名单的持久化操作
 
 using System;
 using System.Collections.Generic;

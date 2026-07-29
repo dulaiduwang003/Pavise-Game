@@ -32,6 +32,7 @@ namespace AegisApp
         public string LastError { get; private set; }
         public DateTime UpdatedUtc { get; private set; }
         public DateTime LastActionUtc { get; private set; }
+        public bool Discovering { get; private set; }
 
         internal LolOptimizationSnapshot(
             bool running,
@@ -55,8 +56,10 @@ namespace AegisApp
             string lastAction,
             string lastError,
             DateTime updatedUtc,
-            DateTime lastActionUtc)
+            DateTime lastActionUtc,
+            bool discovering)
         {
+            Discovering = discovering;
             Running = running;
             Enabled = enabled;
             CleanupEnabled = cleanupEnabled;
@@ -141,6 +144,7 @@ namespace AegisApp
         private bool lcuReady;
         private string phase;
         private bool headlessActive;
+        private bool discovering;
         private string headlessLeaseRoot;
         private int headlessLeaseGamePid;
         private long headlessLeaseGameCreation;
@@ -771,7 +775,8 @@ namespace AegisApp
                     lastAction,
                     lastError,
                     updatedUtc,
-                    lastActionUtc);
+                    lastActionUtc,
+                    discovering);
             }
         }
 
@@ -1789,6 +1794,18 @@ namespace AegisApp
             nextCleanupUtc = DateTime.MinValue;
         }
 
+        private void SetDiscovering(bool value)
+        {
+            lock (stateLock)
+            {
+                if (discovering == value) return;
+                discovering = value;
+                updatedUtc = DateTime.UtcNow;
+            }
+            Action handler = Changed;
+            if (handler != null) { try { handler(); } catch { } }
+        }
+
         private void Discover(out string root, out string weGame, bool force)
         {
             string preferredRoot;
@@ -1802,9 +1819,16 @@ namespace AegisApp
             }
             if (shouldDiscover)
             {
-                string discoveredRoot = LolInstallDiscovery.FindLolRoot(preferredRoot);
-                string discoveredWeGame = LolInstallDiscovery.FindWeGameRoot(
-                    preferredWeGame, discoveredRoot);
+                SetDiscovering(true);
+                string discoveredRoot;
+                string discoveredWeGame;
+                try
+                {
+                    discoveredRoot = LolInstallDiscovery.FindLolRoot(preferredRoot);
+                    discoveredWeGame = LolInstallDiscovery.FindWeGameRoot(
+                        preferredWeGame, discoveredRoot);
+                }
+                finally { SetDiscovering(false); }
                 bool rootChanged;
                 bool weGameChanged;
                 lock (stateLock)

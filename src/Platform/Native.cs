@@ -221,8 +221,6 @@ namespace AegisApp
             public uint State, LocalAddr, LocalPort, RemoteAddr, RemotePort, OwningPid;
         }
 
-        // 查出某个 TCP 端口上处于监听状态的进程。用于确认一个端口确实属于我们认得的
-        // 进程，再往上面发凭据。
         public static bool TryGetTcpListenerOwner(int port, out int pid)
         {
             const int AfInet = 2;
@@ -244,7 +242,6 @@ namespace AegisApp
                 {
                     var row = (TcpRowOwnerPid)Marshal.PtrToStructure(
                         new IntPtr(cursor), typeof(TcpRowOwnerPid));
-                    // dwLocalPort 的低两字节是网络字节序
                     int local = (int)(((row.LocalPort & 0xFF) << 8) | ((row.LocalPort >> 8) & 0xFF));
                     if (local != port) continue;
                     pid = (int)row.OwningPid;

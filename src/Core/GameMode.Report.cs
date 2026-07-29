@@ -243,8 +243,6 @@ namespace AegisApp
             catch { return Lang.T("report.read.error"); }
         }
 
-        // 磁盘格式是单行管道分隔，等宽字体下中文占双倍宽，整行远超报告框可用宽度。
-        // 展示时拆成「时间 + 游戏」和缩进明细两行；无法解析的行原样保留。
         public static string FormatForDisplay(string tail)
         {
             if (string.IsNullOrEmpty(tail)) return tail;

@@ -141,8 +141,6 @@ namespace AegisApp
                     Entry entry = ParseJournalLine(lines[i], out pid);
                     if (entry == null)
                     {
-                        // 解析不了就无法判断该不该还原，但也不能当作"无事发生"删掉：
-                        // 保留原行并记一条日志，至少留下痕迹。
                         keep.Add(lines[i]);
                         Logger.Log("压制恢复日志存在无法解析的记录，已原样保留（第 " + (i + 1) + " 行）");
                         continue;
@@ -197,9 +195,6 @@ namespace AegisApp
             return Convert.ToBase64String(Encoding.UTF8.GetBytes(value ?? ""));
         }
 
-        // 解码失败必须让整行作废，不能退化成空串：空串会让后续每一次身份比对都判成
-        // "不是同一个进程"，于是这条记录被当作陈旧数据丢弃，而那个进程仍被压着，
-        // 再没有任何地方记得要还原它。
         private static string Un64(string value)
         {
             try { return Encoding.UTF8.GetString(Convert.FromBase64String(value)); }

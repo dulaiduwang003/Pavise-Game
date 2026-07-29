@@ -33,11 +33,14 @@ namespace AegisApp
             return cachedExists < 0 ? TaskExists() : cachedExists == 1;
         }
 
+        public const string AutostartArgument = "--autostart";
+
         public static int CreateStartupTask()
         {
             int rc = CreateStartupTaskFromXml();
             if (rc != 0)
-                rc = Run("/Create /F /SC ONLOGON /RL HIGHEST /TN " + TaskName + " /TR \"\\\"" + Application.ExecutablePath + "\\\"\"");
+                rc = Run("/Create /F /SC ONLOGON /RL HIGHEST /TN " + TaskName
+                    + " /TR \"\\\"" + Application.ExecutablePath + "\\\" " + AutostartArgument + "\"");
             if (rc == 0)
             {
                 cachedExists = 1;
@@ -96,7 +99,8 @@ namespace AegisApp
                 + "<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>"
                 + "</Settings>\r\n"
                 + "  <Triggers><LogonTrigger><StartBoundary>" + start + "</StartBoundary></LogonTrigger></Triggers>\r\n"
-                + "  <Actions Context=\"Author\"><Exec><Command>\"" + cmd + "\"</Command></Exec></Actions>\r\n"
+                + "  <Actions Context=\"Author\"><Exec><Command>\"" + cmd + "\"</Command>"
+                + "<Arguments>" + AutostartArgument + "</Arguments></Exec></Actions>\r\n"
                 + "</Task>";
         }
 
@@ -128,7 +132,12 @@ namespace AegisApp
                     Logger.Log("开机自启任务读取失败，本次不修改");
                     return;
                 }
-                if (!NeedsStartupTaskRefresh(cur, target))
+                string taskArguments;
+                bool argumentsKnown = TryReadTaskArguments(out taskArguments);
+                bool argumentsStale = argumentsKnown
+                    && (taskArguments ?? "").IndexOf(
+                        AutostartArgument, StringComparison.OrdinalIgnoreCase) < 0;
+                if (!NeedsStartupTaskRefresh(cur, target) && !argumentsStale)
                 {
                     Settings.SaveStr("AutostartExe", cur);
                     return;
@@ -173,6 +182,34 @@ namespace AegisApp
                 return false;
             command = ParseTaskCommandXml(xml);
             return !string.IsNullOrWhiteSpace(command);
+        }
+
+        private static bool TryReadTaskArguments(out string arguments)
+        {
+            arguments = null;
+            string xml;
+            if (RunCore("/Query /TN " + TaskName + " /XML", true, out xml) != 0) return false;
+            arguments = ParseTaskArgumentsXml(xml);
+            return arguments != null;
+        }
+
+        internal static string ParseTaskArgumentsXml(string xml)
+        {
+            if (string.IsNullOrWhiteSpace(xml)) return null;
+            try
+            {
+                var document = new System.Xml.XmlDocument();
+                document.XmlResolver = null;
+                document.LoadXml(xml.TrimStart('﻿'));
+                System.Xml.XmlNode exec = document.SelectSingleNode(
+                    "/*[local-name()='Task']"
+                    + "/*[local-name()='Actions']"
+                    + "/*[local-name()='Exec']");
+                if (exec == null) return null;
+                System.Xml.XmlNode node = exec.SelectSingleNode("*[local-name()='Arguments']");
+                return node == null ? "" : (node.InnerText ?? "").Trim();
+            }
+            catch { return null; }
         }
 
         internal static string ParseTaskCommandXml(string xml)

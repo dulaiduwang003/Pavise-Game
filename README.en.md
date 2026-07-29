@@ -8,8 +8,6 @@ A small Windows tool that keeps the resource boundary between a game and the des
 
 `C#` · `WinForms` · `single executable` · `中文 / English / 日本語`
 
-[简体中文](README.md) · **English** · [日本語](README.ja.md)
-
 </div>
 
 ## In plain English: will it actually improve performance?

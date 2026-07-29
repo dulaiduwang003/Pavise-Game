@@ -394,6 +394,26 @@ namespace AegisApp
             { "lolq.msg.rpartial", new[]{ "只恢复了一部分，冲突内容均保持原样" } },
             { "lolq.msg.rnone", new[]{ "未恢复任何目录，冲突内容均保持原样" } },
             { "lolq.err.stillunique", new[]{ "该批次仍有只存在于隔离仓的内容，请先恢复" } },
+            { "lolq.err.rootunresolved", new[]{ "安装目录形状暂时无法确认（客户端可能正在更新）" } },
+            { "lol.scan.overlay", new[]{ "正在扫描英雄联盟安装位置…\r\n磁盘休眠或路径在慢速卷上时会久一点" } },
+            { "lol.state.columnoff", new[]{ "专栏已停用 · 操作已锁定" } },
+            { "lolgfx.title", new[]{ "竞技画质" } },
+            { "lolgfx.group.quality", new[]{ "画质压制" } },
+            { "lolgfx.group.presentation", new[]{ "呈现模式" } },
+            { "lolgfx.quality.desc", new[]{ "阴影、环境、特效、角色降到最低，关闭抗锯齿、光束、装饰效果与 HUD 动画。纯粹用观感换 GPU 开销，弱显卡收益最大。" } },
+            { "lolgfx.present.desc", new[]{ "切换独占全屏并关闭垂直同步。呈现路径不经过 DWM 合成，延迟更低；代价是 alt-tab 切出切入会变生硬。" } },
+            { "lolgfx.apply", new[]{ "压到竞技档" } },
+            { "lolgfx.restore", new[]{ "还原原有画质" } },
+            { "lolgfx.state.off", new[]{ "竞技档已生效（{0} 项）" } },
+            { "lolgfx.state.partial", new[]{ "{0}/{1} 项已处于竞技取值" } },
+            { "lolgfx.state.blocked", new[]{ "客户端或游戏运行中 · 退出后才能写入" } },
+            { "lolgfx.err.noconfig", new[]{ "未找到 game.cfg，请先启动过一次游戏" } },
+            { "lolgfx.err.running", new[]{ "客户端或游戏正在运行（{0}），退出时会覆写设置，已取消" } },
+            { "lolgfx.err.readfail", new[]{ "读取 game.cfg 失败：{0}" } },
+            { "lolgfx.err.writefail", new[]{ "写入 game.cfg 失败" } },
+            { "lolgfx.err.backupfail", new[]{ "原值记录失败，已取消写入" } },
+            { "lolgfx.err.badbackup", new[]{ "原值记录已损坏，无法还原" } },
+            { "lolgfx.err.otherinstall", new[]{ "已有另一个安装的原值记录，请先在那个安装上还原" } },
             { "lolq.msg.discardpartial", new[]{ "隔离批次未能完全删除，请关闭占用项后重试" } },
             { "lolq.msg.discarddone", new[]{ "已丢弃隔离批次记录，原位置内容保持不变" } },
             { "lolq.err.nodiscard", new[]{ "没有检测到可丢弃的隔离批次" } },
@@ -458,9 +478,6 @@ namespace AegisApp
             { "ac.neac.d", new[]{ "部分网易游戏 · 另有内核组件" } },
         };
 
-        // 目前 M 里每个 key 只有中文一条，Cur 固定为 0。
-        // 恢复多语言时：给 M 的每行补上译文，把下面两个方法改回按设置项与系统区域选择语种，
-        // 并恢复设置页与托盘的语言选择器（见 PanelForm.Pages.cs / TrayMenu.cs）。
         public static void Init()
         {
             Cur = 0;

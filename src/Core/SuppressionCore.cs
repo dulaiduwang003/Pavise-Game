@@ -321,12 +321,6 @@ namespace AegisApp
                     if ((!CpuTopology.MultiGroup && oaff == 0)
                         || oio < 0 || opg < 0)
                         return AcquireResult.ApplyFailed;
-                    // Idle + IO 0 + 页面 1 同样是进程给自己下 PROCESS_MODE_BACKGROUND_BEGIN
-                    // （或任务管理器「效率模式」）后的特征，仅凭这三项无法区分「Aegis 上次留下的
-                    // 残留」和「进程自愿进入后台」。误判的代价是还原阶段会把一个本来自愿待在后台
-                    // 的进程提升到普通优先级、普通 IO、全核心，并清掉它自己设的 EcoQoS。
-                    // Aegis 的 Isolated 必定同时改了摆位，因此要求摆位也吻合才认定为残留；
-                    // 代价是没有安全后台分区的机器上认不出残留，那是更安全的失败方向。
                     bool placementLooksAegis =
                         SameCpuSets(ocpuSets, CpuTopology.BackgroundCpuSetIds())
                         || (!CpuTopology.MultiGroup && oaff == throttleMask);
@@ -883,8 +877,6 @@ namespace AegisApp
             return failed.Count == 0;
         }
 
-        // EcoQoS 状态由内核异步应用，写入后立即回读可能短暂读到旧值（实测通常 <0.1ms 内生效），
-        // 判定失败前先做有界重试；真失败最多多等约 3ms。
         private static bool EcoStateVisible(IntPtr h)
         {
             for (int attempt = 0; ; attempt++)
@@ -943,7 +935,13 @@ namespace AegisApp
                 {
                     if (!Native.StillActive(hq)) return RestoreResult.Gone;
                     string nm = Native.ImageName(hq);
-                    return nm == null || SameName(nm, e.Name) ? RestoreResult.Protected : RestoreResult.Gone;
+                    if (nm != null && !SameName(nm, e.Name)) return RestoreResult.Gone;
+                    long creation, cpu; ulong io;
+                    if (e.Creation > 0
+                        && Native.QueryProcessSample(hq, out creation, out cpu, out io)
+                        && creation != e.Creation)
+                        return RestoreResult.Gone;
+                    return RestoreResult.Protected;
                 }
                 finally { Native.CloseHandle(hq); }
             }

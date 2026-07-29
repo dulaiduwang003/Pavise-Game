@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 白名单规则格式、路径边界和应用家族身份自测。
+// 文件用途 白名单规则格式 路径边界和应用家族身份自测
 
 using System;
 using System.Collections.Generic;

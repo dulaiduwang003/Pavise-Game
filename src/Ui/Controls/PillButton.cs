@@ -27,7 +27,7 @@ namespace AegisApp
             var g = e.Graphics;
             FillBg(g);
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            float h = hover.Value;
+            float h = Enabled ? hover.Value : 0f;
             var r = new Rectangle(0, 0, Width - 1, Height - 1);
             int cut = Math.Max(Theme.S(6), Height / 4);
 
@@ -64,9 +64,13 @@ namespace AegisApp
                         g.DrawLine(hi, Theme.S(2), Theme.S(1), Width - cut - Theme.S(1), Theme.S(1));
                 }
                 if (pressed) using (var dk = new SolidBrush(Col.Alpha(Color.Black, 45))) g.FillPath(dk, path);
+                if (!Enabled)
+                    using (var veil = new SolidBrush(Col.Alpha(EffBg, 158)))
+                        g.FillPath(veil, path);
             }
 
-            Color txt = Kind == BtnKind.Primary ? Theme.OnAccent
+            Color txt = !Enabled ? Theme.Faint
+                : Kind == BtnKind.Primary ? Theme.OnAccent
                 : Kind == BtnKind.Danger ? Col.Lerp(Theme.Danger, Color.White, h * 0.45f)
                 : Col.Lerp(Theme.Fg, Color.White, h * 0.2f);
             TextRenderer.DrawText(g, Text, Kind == BtnKind.Primary ? Theme.UI(9f, true) : Font, ClientRectangle, txt,

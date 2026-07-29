@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 仅兼容恢复旧版本留下的冻结日志；本版本不再创建任何冻结
+// 文件用途 仅兼容恢复旧版本留下的冻结日志 本版本不再创建任何冻结
 
 using System;
 using System.Collections.Generic;

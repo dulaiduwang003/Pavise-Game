@@ -82,7 +82,6 @@ namespace AegisApp
                             ProcessChangeKind.Stopped, generation);
                         Interlocked.Exchange(ref accepting, 1);
                         active = true;
-                        Logger.Log("进程事件驱动已启用（WMI ETW，" + WindowMs + "ms 合并突发），轮询降为安全兜底");
                     }
                     catch (Exception ex)
                     {

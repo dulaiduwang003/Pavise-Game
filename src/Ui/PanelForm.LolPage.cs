@@ -31,6 +31,13 @@ namespace AegisApp
         private PillButton btnLolQuarantineDiscard;
         private Label lblLolAction;
         private Label lblLolQuarantineStatus;
+        private PillButton btnLolGraphicsApply;
+        private PillButton btnLolGraphicsRestore;
+        private Label lblLolGraphicsStatus;
+        private PillButton btnLolPresentApply;
+        private PillButton btnLolPresentRestore;
+        private Label lblLolPresentStatus;
+        private LoadingOverlay lolScanOverlay;
         private int lolUiBusy;
         private int lolInspectBusy;
         private int lolQuarantineBusy;
@@ -153,6 +160,43 @@ namespace AegisApp
             {
                 btnLolQuarantine, btnLolQuarantineRestore, btnLolQuarantineDiscard
             });
+            sy += 168;
+
+            Section(scroll, Lang.T("lolgfx.title"), x, sy);
+            sy += 24;
+            int gfxW = (w - 12) / 2;
+
+            var quality = MakeConsolePanel(scroll, x, sy, gfxW, 138, true);
+            CardLabel(quality, Lang.T("lolgfx.group.quality"), 18, 10, gfxW - 36, 18, 8.2f, true, Theme.Fg);
+            CardLabel(quality, Lang.T("lolgfx.quality.desc"), 18, 31, gfxW - 36, 46, 7.6f, false, Theme.Dim);
+            lblLolGraphicsStatus = CardLabel(quality, "", 18, 80, gfxW - 36, 17, 7.2f, false, Theme.Faint);
+            btnLolGraphicsApply = new ColumnActionButton(Lang.T("lolgfx.apply"), BtnKind.Primary);
+            btnLolGraphicsApply.SetBounds(Theme.S(18), Theme.S(100), Theme.S((gfxW - 46) / 2), Theme.S(30));
+            btnLolGraphicsApply.Click += OnLolGraphicsApplyClick;
+            btnLolGraphicsRestore = new ColumnActionButton(Lang.T("lolgfx.restore"));
+            btnLolGraphicsRestore.SetBounds(
+                Theme.S(18 + (gfxW - 46) / 2 + 10), Theme.S(100), Theme.S((gfxW - 46) / 2), Theme.S(30));
+            btnLolGraphicsRestore.Click += OnLolGraphicsRestoreClick;
+            quality.Controls.AddRange(new Control[] { btnLolGraphicsApply, btnLolGraphicsRestore });
+
+            var present = MakeConsolePanel(scroll, x + gfxW + 12, sy, gfxW, 138, true);
+            CardLabel(present, Lang.T("lolgfx.group.presentation"), 18, 10, gfxW - 36, 18, 8.2f, true, Theme.Fg);
+            CardLabel(present, Lang.T("lolgfx.present.desc"), 18, 31, gfxW - 36, 46, 7.6f, false, Theme.Dim);
+            lblLolPresentStatus = CardLabel(present, "", 18, 80, gfxW - 36, 17, 7.2f, false, Theme.Faint);
+            btnLolPresentApply = new ColumnActionButton(Lang.T("lolgfx.apply"), BtnKind.Primary);
+            btnLolPresentApply.SetBounds(Theme.S(18), Theme.S(100), Theme.S((gfxW - 46) / 2), Theme.S(30));
+            btnLolPresentApply.Click += OnLolPresentApplyClick;
+            btnLolPresentRestore = new ColumnActionButton(Lang.T("lolgfx.restore"));
+            btnLolPresentRestore.SetBounds(
+                Theme.S(18 + (gfxW - 46) / 2 + 10), Theme.S(100), Theme.S((gfxW - 46) / 2), Theme.S(30));
+            btnLolPresentRestore.Click += OnLolPresentRestoreClick;
+            present.Controls.AddRange(new Control[] { btnLolPresentApply, btnLolPresentRestore });
+
+            lolScanOverlay = new LoadingOverlay();
+            lolScanOverlay.SetBounds(
+                0, Theme.S(TopH), Theme.S(WinW), Theme.S(WinH - TopH));
+            Controls.Add(lolScanOverlay);
+            lolScanOverlay.BringToFront();
 
             if (lolService != null)
             {
@@ -252,13 +296,17 @@ namespace AegisApp
             bool fileBusy = Interlocked.CompareExchange(ref lolQuarantineBusy, 0, 0) != 0;
             bool inspectBusy = Interlocked.CompareExchange(ref lolInspectBusy, 0, 0) != 0;
             bool busy = runtimeBusy || fileBusy;
+            bool off = !snapshot.Enabled;
+            bool locked = busy || off;
+            swLolCleanup.Enabled = !off;
+            swLolHeadless.Enabled = !off;
             bool weGameUp = snapshot.WeGameProcessCount > 0;
             btnLolLaunch.Text = weGameUp
                 ? Lang.T("lol.btn.wegamerunning")
                 : LolText("启动 WeGame");
-            btnLolLaunch.Enabled = !busy && snapshot.WeGameFound && !snapshot.ClientRunning && !weGameUp;
-            btnLolClean.Enabled = !busy && snapshot.ClientRunning && snapshot.LcuReady;
-            btnLolRestore.Enabled = !busy && snapshot.ClientRunning && (snapshot.HeadlessActive || snapshot.UxProcessCount == 0);
+            btnLolLaunch.Enabled = !locked && snapshot.WeGameFound && !snapshot.ClientRunning && !weGameUp;
+            btnLolClean.Enabled = !locked && snapshot.ClientRunning && snapshot.LcuReady;
+            btnLolRestore.Enabled = !locked && snapshot.ClientRunning && (snapshot.HeadlessActive || snapshot.UxProcessCount == 0);
             cardLolCleanup.SetValue(snapshot.CleanupEnabled ? LolText("自动") : LolText("关闭"),
                 snapshot.CleanupEnabled ? Theme.Green : Theme.Faint);
             cardLolHeadless.SetValue(snapshot.HeadlessEnabled ? LolText("自动") : LolText("关闭"),
@@ -275,13 +323,24 @@ namespace AegisApp
             lblLolAction.ForeColor = !string.IsNullOrEmpty(snapshot.LastError) ? Theme.Danger : Theme.Dim;
 
             bool clientBlocksFiles = snapshot.ClientRunning || snapshot.GameRunning;
-            btnLolQuarantine.Enabled = !clientBlocksFiles && !busy && !inspectBusy &&
+            btnLolQuarantine.Enabled = !clientBlocksFiles && !locked && !inspectBusy &&
                 lolCanQuarantine;
-            btnLolQuarantineRestore.Enabled = !clientBlocksFiles && !busy && !inspectBusy &&
+            btnLolQuarantineRestore.Enabled = !clientBlocksFiles && !locked && !inspectBusy &&
                 lolCanRestoreQuarantine;
-            btnLolQuarantineDiscard.Enabled = !clientBlocksFiles && !busy && !inspectBusy &&
+            btnLolQuarantineDiscard.Enabled = !clientBlocksFiles && !locked && !inspectBusy &&
                 lolCanDiscardQuarantine;
-            UpdateLolQuarantineStatus(clientBlocksFiles);
+            UpdateLolQuarantineStatus(clientBlocksFiles, off);
+            if (!busy && !inspectBusy) UpdateLolGraphicsStatus(snapshot.LolRoot, off);
+            UpdateLolScanOverlay(snapshot);
+        }
+
+        private void UpdateLolScanOverlay(LolOptimizationSnapshot snapshot)
+        {
+            if (lolScanOverlay == null) return;
+            if (snapshot != null && snapshot.Discovering)
+                lolScanOverlay.ShowOverlay(Lang.T("lol.scan.overlay"));
+            else
+                lolScanOverlay.HideOverlay();
         }
 
         private void OnLolMasterChanged(object sender, EventArgs e)
@@ -367,6 +426,130 @@ namespace AegisApp
             if (btnLolQuarantine != null) btnLolQuarantine.Enabled = !busy;
             if (btnLolQuarantineRestore != null) btnLolQuarantineRestore.Enabled = !busy;
             if (btnLolQuarantineDiscard != null) btnLolQuarantineDiscard.Enabled = !busy;
+            if (btnLolGraphicsApply != null) btnLolGraphicsApply.Enabled = !busy;
+            if (btnLolGraphicsRestore != null) btnLolGraphicsRestore.Enabled = !busy;
+            if (btnLolPresentApply != null) btnLolPresentApply.Enabled = !busy;
+            if (btnLolPresentRestore != null) btnLolPresentRestore.Enabled = !busy;
+        }
+
+        private void OnLolGraphicsApplyClick(object sender, EventArgs e)
+        {
+            RunLolGraphics(LolGraphicsConfig.GraphicsGroup.Quality, true);
+        }
+
+        private void OnLolGraphicsRestoreClick(object sender, EventArgs e)
+        {
+            RunLolGraphics(LolGraphicsConfig.GraphicsGroup.Quality, false);
+        }
+
+        private void OnLolPresentApplyClick(object sender, EventArgs e)
+        {
+            RunLolGraphics(LolGraphicsConfig.GraphicsGroup.Presentation, true);
+        }
+
+        private void OnLolPresentRestoreClick(object sender, EventArgs e)
+        {
+            RunLolGraphics(LolGraphicsConfig.GraphicsGroup.Presentation, false);
+        }
+
+        private void RunLolGraphics(LolGraphicsConfig.GraphicsGroup group, bool apply)
+        {
+            if (lolService == null) return;
+            LolOptimizationSnapshot snapshot = lolService.GetSnapshot();
+            string root = snapshot == null ? null : snapshot.LolRoot;
+            if (string.IsNullOrEmpty(root)
+                || Interlocked.CompareExchange(ref lolUiBusy, 0, 0) != 0
+                || Interlocked.CompareExchange(ref lolInspectBusy, 0, 0) != 0
+                || Interlocked.CompareExchange(ref lolQuarantineBusy, 1, 0) != 0) return;
+            SetLolButtonsBusy(true);
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                bool success = false;
+                string message = "";
+                try
+                {
+                    string error;
+                    success = apply
+                        ? LolGraphicsConfig.Apply(root, group, out error)
+                        : LolGraphicsConfig.Restore(root, group, out error);
+                    message = success ? "" : (error ?? "");
+                }
+                catch (Exception ex) { message = ex.Message; }
+                Interlocked.Exchange(ref lolQuarantineBusy, 0);
+                try
+                {
+                    BeginInvoke((MethodInvoker)delegate
+                    {
+                        if (IsDisposed) return;
+                        RefreshLolPage();
+                        if (!string.IsNullOrEmpty(message))
+                            MessageBox.Show(this, message, "Aegis", MessageBoxButtons.OK,
+                                MessageBoxIcon.Warning);
+                    });
+                }
+                catch { }
+            });
+        }
+
+        private void UpdateLolGraphicsStatus(string root, bool columnOff)
+        {
+            if (lblLolGraphicsStatus == null) return;
+            LolGraphicsConfig.State state;
+            try { state = LolGraphicsConfig.Inspect(root); }
+            catch { state = null; }
+
+            ApplyGraphicsGroupUi(
+                state, LolGraphicsConfig.GraphicsGroup.Quality, columnOff,
+                lblLolGraphicsStatus, btnLolGraphicsApply, btnLolGraphicsRestore);
+            ApplyGraphicsGroupUi(
+                state, LolGraphicsConfig.GraphicsGroup.Presentation, columnOff,
+                lblLolPresentStatus, btnLolPresentApply, btnLolPresentRestore);
+        }
+
+        private static void ApplyGraphicsGroupUi(
+            LolGraphicsConfig.State state,
+            LolGraphicsConfig.GraphicsGroup group,
+            bool columnOff,
+            Label status, PillButton apply, PillButton restore)
+        {
+            if (status == null) return;
+            if (columnOff)
+            {
+                status.ForeColor = Theme.Faint;
+                status.Text = Lang.T("lol.state.columnoff");
+                if (apply != null) apply.Enabled = false;
+                if (restore != null) restore.Enabled = false;
+                return;
+            }
+            if (state == null || !state.Available)
+            {
+                status.ForeColor = Theme.Faint;
+                status.Text = state == null || string.IsNullOrEmpty(state.Error)
+                    ? Lang.T("lolgfx.err.noconfig") : state.Error;
+                if (apply != null) apply.Enabled = false;
+                if (restore != null) restore.Enabled = false;
+                return;
+            }
+
+            LolGraphicsConfig.GroupState g = state.Of(group);
+            bool writable = !state.Blocked;
+            if (apply != null) apply.Enabled = writable && !g.AllCompetitive;
+            if (restore != null) restore.Enabled = writable && g.Owned > 0;
+
+            if (state.Blocked)
+            {
+                status.ForeColor = Theme.Danger;
+                status.Text = Lang.T("lolgfx.state.blocked");
+                return;
+            }
+            if (g.AllCompetitive)
+            {
+                status.ForeColor = Theme.Green;
+                status.Text = Lang.F("lolgfx.state.off", g.Total);
+                return;
+            }
+            status.ForeColor = Theme.Faint;
+            status.Text = Lang.F("lolgfx.state.partial", g.AtCompetitive, g.Total);
         }
 
         private void OnLolServiceChanged()
@@ -612,9 +795,15 @@ namespace AegisApp
             });
         }
 
-        private void UpdateLolQuarantineStatus(bool clientBlocksFiles)
+        private void UpdateLolQuarantineStatus(bool clientBlocksFiles, bool columnOff)
         {
             if (lblLolQuarantineStatus == null) return;
+            if (columnOff)
+            {
+                lblLolQuarantineStatus.Text = Lang.T("lol.state.columnoff");
+                lblLolQuarantineStatus.ForeColor = Theme.Faint;
+                return;
+            }
             if (clientBlocksFiles)
             {
                 lblLolQuarantineStatus.Text = LolText("客户端运行中 · 文件操作已锁定");
@@ -666,8 +855,6 @@ namespace AegisApp
             lblLolQuarantineStatus.ForeColor = Theme.Faint;
         }
 
-        // 目前只内置中文。恢复多语言时把签名改回 (zh, en, ja) 并按 Lang.Cur 选择即可，
-        // 调用点保留了这层包装，补上译文参数就能直接生效。
         private static string LolText(string zh)
         {
             return zh;

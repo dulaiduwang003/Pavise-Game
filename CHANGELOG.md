@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [1.5.1] - 2026-07-29
+## [1.5] - 2026-07-29
 
 ### Fixed
 
@@ -42,8 +42,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The interface ships Simplified Chinese only. English and Japanese strings were removed, reducing
   the build from about 610 KB to about 507 KB. The localization mechanism and every text key are
   retained, so restoring a language only requires adding its strings back.
-
-## [1.5.0] - 2026-07-28
 
 ### Added
 
@@ -203,7 +201,7 @@ League column. They are grouped by subsystem.
 ## [1.4.4] - 2026-07-25
 
 This release completed the original general-purpose optimization feature line before the
-League-specific work introduced in 1.5.0.
+League-specific work introduced in 1.5.
 
 ### Security
 

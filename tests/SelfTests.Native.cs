@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// Windows 进程恢复、优先级、亲和性与 CPU Sets 自测。
+// 文件用途 Windows 进程恢复 优先级 亲和性与 CPU Sets 自测
 
 using System;
 using System.Collections.Generic;

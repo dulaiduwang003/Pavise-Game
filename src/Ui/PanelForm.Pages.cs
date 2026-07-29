@@ -242,7 +242,6 @@ namespace AegisApp
             sy += 64;
 
             sy += 10;
-            // 语言选择器随英文/日文译文一并移除；恢复多语言时把它和 Lang.Set 的调用一起加回来。
 
             var lblAbout = new Label();
             lblAbout.Text = Lang.F("set.about", App.VersionTag, Paths.Data);
