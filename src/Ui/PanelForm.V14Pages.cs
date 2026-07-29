@@ -295,7 +295,7 @@ namespace AegisApp
             var wrap = new RoundPanel();
             wrap.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(PageH - y - 66));
             wrap.BackColor = Theme.Bg; wrap.Fill = Theme.Inset; wrap.Border = Theme.Stroke; wrap.Radius = Theme.S(14); wrap.Padding = new Padding(Theme.S(14));
-            tbReports = new TextBox(); tbReports.Multiline = true; tbReports.ReadOnly = true; tbReports.ScrollBars = ScrollBars.Vertical;
+            tbReports = new TextBox(); tbReports.Multiline = true; tbReports.ReadOnly = true; tbReports.ScrollBars = ScrollBars.Both; tbReports.WordWrap = false;
             tbReports.BackColor = Theme.Inset; tbReports.ForeColor = Theme.Fg; tbReports.BorderStyle = BorderStyle.None; tbReports.Font = Theme.Mono(8.75f); tbReports.Dock = DockStyle.Fill;
             Native.Dark(tbReports); wrap.Controls.Add(tbReports);
             var openReport = new PillButton(Lang.T("v14.open.report")); openReport.SetBounds(Theme.S(ContentX), Theme.S(PageH - 48), Theme.S(190), Theme.S(36));
@@ -323,7 +323,8 @@ namespace AegisApp
         private void RefreshReportsV14()
         {
             if (tbReports == null) return;
-            string text = SessionReportStore.ReadTail(Paths.Data, 120);
+            string text = SessionReportStore.FormatForDisplay(
+                SessionReportStore.ReadTail(Paths.Data, 120));
             if (tbReports.Text != text) tbReports.Text = text;
         }
 

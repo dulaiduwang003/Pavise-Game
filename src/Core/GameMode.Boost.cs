@@ -161,7 +161,7 @@ namespace AegisApp
                         staleBoost = true;
                         break;
                     }
-            if (staleBoost) UnboostGames();
+            if (staleBoost) UnboostGames(rendererPid, rendererCreation, rendererName);
             foreach (Process p in all)
             {
                 try
@@ -323,6 +323,7 @@ namespace AegisApp
                                 placementOk &= Native.SetProcessAffinityMask(h, (UIntPtr)(original.Aff != 0 ? original.Aff : allMask));
                             uint[] ids = CpuTopology.AdaptiveGameCpuSetIds(useStrict, avoidMask);
                             bool soft = false;
+                            bool placementUnavailable = false;
                             if (useStrict || desiredMask != allMask)
                                 soft = Native.TrySetCpuSetsVerified(h, ids);
                             if (soft)
@@ -340,14 +341,28 @@ namespace AegisApp
                                     ? " + 严格绑核 0x" + desiredMask.ToString("X")
                                     : " + 绑核 0x" + desiredMask.ToString("X");
                             }
-                            else { placementText = " + 不限核"; placementOk = placementOk && !useStrict; }
+                            else
+                            {
+                                // 走到这里表示这台机器没有可用的核心分区手段（CPU Sets 写不进去，
+                                // 且不满足亲和性回退条件），再重试多少次结果都一样。
+                                // 以前这里恒等于 false，导致每一轮审计都重下发一次 CPU Sets/亲和性
+                                // 且没有退避；记为已处理，避免对运行中的游戏反复写入。
+                                placementText = " + 不限核";
+                                if (useStrict) placementUnavailable = true;
+                            }
                             if (soft) placementOk = true;
+                            // 能力性缺失记为已处理：重试不会有不同结果，反复重写只会打扰运行中的游戏。
+                            if (placementUnavailable) placementOk = true;
                             lock (sync)
                             {
                                 if (placementOk) { gamePlacement[pid] = desiredMask; gamePlacementStrict[pid] = useStrict; }
                                 else { gamePlacement.Remove(pid); gamePlacementStrict.Remove(pid); }
                             }
-                            if (!placementOk) Logger.Log("游戏核心策略未完整生效：" + rendererName + " (pid " + pid + ")，下一轮重试");
+                            if (placementUnavailable)
+                                Logger.Log("游戏核心策略：" + rendererName + " (pid " + pid
+                                    + ") 本机无可用核心分区手段，按不限核处理，不再重试");
+                            else if (!placementOk)
+                                Logger.Log("游戏核心策略未完整生效：" + rendererName + " (pid " + pid + ")，下一轮重试");
 
                             if (!newlyTracked)
                                 Logger.Log("游戏核心策略：" + rendererName + " (pid " + pid + ")" + placementText);
@@ -461,16 +476,50 @@ namespace AegisApp
 
         private bool UnboostGames()
         {
+            return UnboostGames(0, 0, null);
+        }
+
+        private static bool IsKeptBoost(
+            KeyValuePair<int, Snap> boosted, int keepPid, long keepCreation, string keepName)
+        {
+            return keepPid > 0
+                && boosted.Key == keepPid
+                && boosted.Value.Creation == keepCreation
+                && string.Equals(boosted.Value.Name, keepName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // keepPid 为当前渲染进程时只还原其它（陈旧）条目。整批还原会把正在运行的游戏也
+        // 拆掉再重建：一个句柄被反作弊保护、永远无法标记完成的陈旧条目会让每一轮扫描都
+        // 触发这个过程，导致游戏的优先级/核心分区/GPU 状态被反复重写。
+        private bool UnboostGames(int keepPid, long keepCreation, string keepName)
+        {
             List<KeyValuePair<int, Snap>> boosts;
             Dictionary<int, int> gpus;
             lock (sync)
             {
                 if (gameBoost.Count == 0 && gameGpu.Count == 0) return true;
-                boosts = new List<KeyValuePair<int, Snap>>(gameBoost);
-                gpus = new Dictionary<int, int>(gameGpu);
-                boostFail.Clear(); boostDenied.Clear(); boostStateWarned.Clear();
-                boostStateVerified.Clear(); gameBoostNextAudit.Clear();
-                tweakApplied.Clear();
+                boosts = new List<KeyValuePair<int, Snap>>();
+                foreach (KeyValuePair<int, Snap> boosted in gameBoost)
+                    if (!IsKeptBoost(boosted, keepPid, keepCreation, keepName))
+                        boosts.Add(boosted);
+                gpus = new Dictionary<int, int>();
+                foreach (KeyValuePair<int, int> gpu in gameGpu)
+                    if (keepPid <= 0 || gpu.Key != keepPid)
+                        gpus[gpu.Key] = gpu.Value;
+                if (boosts.Count == 0 && gpus.Count == 0) return true;
+                if (keepPid <= 0)
+                {
+                    boostFail.Clear(); boostDenied.Clear(); boostStateWarned.Clear();
+                    boostStateVerified.Clear(); gameBoostNextAudit.Clear();
+                    tweakApplied.Clear();
+                }
+                else
+                    foreach (KeyValuePair<int, Snap> stale in boosts)
+                    {
+                        boostFail.Remove(stale.Key); boostDenied.Remove(stale.Key);
+                        boostStateWarned.Remove(stale.Key); boostStateVerified.Remove(stale.Key);
+                        gameBoostNextAudit.Remove(stale.Key); tweakApplied.Remove(stale.Key);
+                    }
             }
             foreach (var kv in boosts)
             {

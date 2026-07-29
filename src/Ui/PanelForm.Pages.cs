@@ -242,20 +242,7 @@ namespace AegisApp
             sy += 64;
 
             sy += 10;
-            Section(scroll, Lang.T("set.lang"), 6, sy); sy += 24;
-
-            string[] langNames = { "中文", "English", "日本語" };
-            int lx = 6;
-            for (int i = 0; i < 3; i++)
-            {
-                int ii = i;
-                var lb = new PillButton(langNames[i], i == Lang.Cur ? BtnKind.Primary : BtnKind.Normal);
-                lb.SetBounds(Theme.S(lx), Theme.S(sy), Theme.S(110), Theme.S(32));
-                lb.Click += (s, e) => { if (Lang.Cur != ii) { Lang.Set(ii); BeginInvoke((MethodInvoker)RebuildUi); } };
-                scroll.Controls.Add(lb);
-                lx += 120;
-            }
-            sy += 48;
+            // 语言选择器随英文/日文译文一并移除；恢复多语言时把它和 Lang.Set 的调用一起加回来。
 
             var lblAbout = new Label();
             lblAbout.Text = Lang.F("set.about", App.VersionTag, Paths.Data);

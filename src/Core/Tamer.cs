@@ -39,6 +39,7 @@ namespace AegisApp
             public string Name;
             public string Group;
             public AcquireResult Result;
+            public string FailureDetail;
         }
 
         public Tamer(SuppressionCore core)
@@ -450,7 +451,10 @@ namespace AegisApp
                         || request.Result == AcquireResult.AlreadyThrottled)
                     && (batchResult == null
                         || !batchResult.WasApplied(request.Pid)))
+                {
                     request.Result = AcquireResult.ApplyFailed;
+                    request.FailureDetail = batchResult != null ? batchResult.FailureOf(request.Pid) : "batch-missing";
+                }
                 LogAcquireResult(request);
             }
         }
@@ -464,7 +468,9 @@ namespace AegisApp
                     + ") 失败（句柄被内核保护，压不动）");
             else if (request.Result == AcquireResult.ApplyFailed)
                 Logger.Log("压制 " + request.Name + " (pid " + request.Pid
-                    + ") 未完全生效，已保留快照，将按退避计划重试");
+                    + ") 未完全生效"
+                    + (string.IsNullOrEmpty(request.FailureDetail) ? "" : "，失败环节 [" + request.FailureDetail + "]")
+                    + "，已保留快照，将按退避计划重试");
         }
 
         private bool ReleaseAll(string reason)

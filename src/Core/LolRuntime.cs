@@ -497,10 +497,24 @@ namespace AegisApp
                 DirectoryInfo current = new DirectoryInfo(path);
                 for (int i = 0; current != null && i < 6; i++, current = current.Parent)
                     if (FindWeGameExecutableUnchecked(current.FullName) != null)
+                    {
+                        // 卷根（"D:\"）绝不能当作 WeGame 根：TrimEnd 后是 "D:"，
+                        // IsUnder 里 Path.GetFullPath("D:") 会解析成该盘的当前目录，
+                        // 等于整个盘都算"在 WeGame 目录下"。清理名单里有 browser.exe、
+                        // crashpad_handler.exe 这类通用名，那样会误杀全盘的同名进程。
+                        if (IsVolumeRoot(current)) return null;
                         return current.FullName.TrimEnd('\\');
+                    }
             }
             catch { }
             return null;
+        }
+
+        private static bool IsVolumeRoot(DirectoryInfo directory)
+        {
+            if (directory == null) return false;
+            try { return directory.Parent == null; }
+            catch { return true; }
         }
 
         private static string FindWeGameExecutableUnchecked(string root)
@@ -750,6 +764,20 @@ namespace AegisApp
         {
             return IsOwnedCredentialSourceProcess(
                 lolRoot, pid, expectedSession, 0);
+        }
+
+        // 确认某个回环端口上监听的确实是本次安装里的客户端进程。
+        // 日志里抓到的 port/token 可能来自上一次会话，那个端口可能已经被本机其它进程占用；
+        // 直接连过去就等于把 LCU 凭据交给它。WMI 与 lockfile 两条来源都会校验进程身份，
+        // 日志这条也必须校验。
+        internal static bool IsOwnedLcuListenerPort(string lolRoot, int port)
+        {
+            if (port <= 0) return false;
+            int currentSession;
+            if (!TryGetCurrentSessionId(out currentSession)) return false;
+            int listenerPid;
+            if (!Native.TryGetTcpListenerOwner(port, out listenerPid)) return false;
+            return IsOwnedCredentialSourceProcess(lolRoot, listenerPid, currentSession);
         }
 
         internal static bool IsOwnedCredentialSourceProcess(
@@ -1236,6 +1264,9 @@ namespace AegisApp
             {
                 string fullPath = System.IO.Path.GetFullPath(path);
                 string fullRoot = System.IO.Path.GetFullPath(root).TrimEnd('\\') + "\\";
+                // 卷根（"C:\"）不是有效的包含范围——那等于"整个盘"，任何按前缀判定的
+                // 清理或豁免都会失控。调用方必须给出具体目录。
+                if (fullRoot.Length <= 3) return false;
                 return fullPath.StartsWith(fullRoot, StringComparison.OrdinalIgnoreCase);
             }
             catch { return false; }
@@ -1638,6 +1669,8 @@ namespace AegisApp
                     continue;
                 string key = port + "\n" + token;
                 if (!seen.Add(key)) continue;
+                // 探测本身就会把凭据发出去，所以属主校验必须在探测之前。
+                if (!LolRuntimeProcesses.IsOwnedLcuListenerPort(lolRoot, port)) continue;
                 var candidate = new LolLcuCredentials(port, token);
                 probed++;
                 try

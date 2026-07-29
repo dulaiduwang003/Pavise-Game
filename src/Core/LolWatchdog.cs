@@ -74,7 +74,12 @@ namespace AegisApp
                 lolRoot, pid, creation, out verifiedHandle)) return false;
             Native.CloseHandle(verifiedHandle);
 
-            if (ExistingGuardIsReady(lolRoot, pid, creation)) return true;
+            // 守护对象的名字由 lolRoot|pid|creation 哈希而来，这三项对同用户进程都是公开信息，
+            // 对象本身也没有独占 DACL，所以"对象存在且被持有"并不能证明真有看门狗在跑。
+            // 一旦误信，客户端会被关成无头却没有任何恢复者。这里额外要求确实存在一个跑着本程序
+            // 映像的其它进程；判不出来就当作没有看门狗，重新拉一个——多起一个进程是安全的方向。
+            if (ExistingGuardIsReady(lolRoot, pid, creation)
+                && SiblingAegisProcessAlive()) return true;
             EventWaitHandle readyEvent = null;
             Process process = null;
             try
@@ -575,6 +580,56 @@ namespace AegisApp
                 ? LolHeadlessLease.Matches(
                     lolRoot, leasePid, leaseCreation)
                 : LolHeadlessLease.MatchesLegacyRoot(lolRoot);
+        }
+
+        // 是否存在另一个运行着本程序映像的进程。这不是不可伪造的证明（同用户的攻击者
+        // 可以复制一份 exe 再跑），但足以挡住陈旧对象和无关进程抢占命名对象的情况。
+        private static bool SiblingAegisProcessAlive()
+        {
+            string self;
+            int selfPid;
+            string baseName;
+            try
+            {
+                self = Path.GetFullPath(Application.ExecutablePath);
+                baseName = Path.GetFileNameWithoutExtension(self);
+                using (Process me = Process.GetCurrentProcess()) selfPid = me.Id;
+            }
+            catch { return false; }
+            if (string.IsNullOrEmpty(baseName)) return false;
+
+            Process[] all;
+            try { all = Process.GetProcessesByName(baseName); }
+            catch { return false; }
+            try
+            {
+                foreach (Process other in all)
+                {
+                    try
+                    {
+                        if (other.Id == selfPid) continue;
+                        IntPtr h = Native.OpenProcess(
+                            Native.PROCESS_QUERY_LIMITED_INFORMATION, false, other.Id);
+                        if (h == IntPtr.Zero) continue;
+                        try
+                        {
+                            string image = Native.ImagePath(h);
+                            if (image != null
+                                && string.Equals(
+                                    Path.GetFullPath(image), self,
+                                    StringComparison.OrdinalIgnoreCase))
+                                return true;
+                        }
+                        finally { Native.CloseHandle(h); }
+                    }
+                    catch { }
+                }
+            }
+            finally
+            {
+                foreach (Process other in all) try { other.Dispose(); } catch { }
+            }
+            return false;
         }
 
         internal static bool ExistingGuardIsReady(

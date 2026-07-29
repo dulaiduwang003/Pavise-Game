@@ -5,6 +5,44 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.5.1] - 2026-07-29
+
+### Fixed
+
+- Background suppression reported "write did not fully take effect" for large batches of processes.
+  EcoQoS is applied asynchronously by the kernel, so reading the state back immediately after the
+  write could still observe the old value; a measured 40% of writes were misjudged this way. The
+  readback now retries within a bounded window, and the failing step is named in the log.
+- Residue detection promoted processes that had backgrounded themselves. Idle priority with low IO
+  and page priority is also what `PROCESS_MODE_BACKGROUND_BEGIN` produces, so Aegis recorded a
+  fabricated "original" state and, on restore, raised such a process to normal priority and cleared
+  the EcoQoS it had set for itself. Residue is now only assumed when the core placement matches too.
+- The quarantine "discard" action could delete the only remaining copy. It checked merely whether a
+  path of the same name existed at the original location, which an empty directory re-created by a
+  client update satisfies. Discard now requires the in-place content to match the manifest's file
+  count and byte count, and refuses otherwise.
+- A single stale boost entry caused the running game's priority, core partition and GPU state to be
+  torn down and re-applied on every scan cycle. Only mismatched entries are restored now, and a core
+  partition that the machine genuinely cannot provide is recorded as handled instead of being
+  rewritten every audit without backoff.
+- A process name that failed to decode in the suppression journal silently became an empty string,
+  which made every later identity check report a mismatch; the entry was discarded while the process
+  stayed suppressed with nothing left to restore it. Such a line is now rejected, retained verbatim
+  and logged.
+- LCU credentials scraped from client logs are now only used after verifying that the process owning
+  the loopback port passes the same ownership check as the WMI and lockfile sources.
+- A WeGame root that normalizes to a bare volume root is rejected, so an entire drive can no longer
+  be treated as the cleanup scope and terminate unrelated processes that share a generic name.
+- Watchdog readiness is no longer inferred from named objects alone.
+- Session report rows wrapped mid-record because CJK characters are double-width in the monospace
+  font. Records are rendered on two lines; the on-disk format is unchanged.
+
+### Changed
+
+- The interface ships Simplified Chinese only. English and Japanese strings were removed, reducing
+  the build from about 610 KB to about 507 KB. The localization mechanism and every text key are
+  retained, so restoring a language only requires adding its strings back.
+
 ## [1.5.0] - 2026-07-28
 
 ### Added

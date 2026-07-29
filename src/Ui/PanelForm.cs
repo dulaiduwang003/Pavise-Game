@@ -130,7 +130,7 @@ namespace AegisApp
             AttachFormFrame();
 
             nav = new NavRail(
-                new[] { Lang.T("nav.overview"), LolText("英雄联盟", "League of Legends", "League of Legends"), Lang.T("nav.library"), Lang.T("nav.policy"), Lang.T("v14.anticheat"), Lang.T("nav.reports"), Lang.T("nav.set"), Lang.T("nav.about") },
+                new[] { Lang.T("nav.overview"), LolText("英雄联盟"), Lang.T("nav.library"), Lang.T("nav.policy"), Lang.T("v14.anticheat"), Lang.T("nav.reports"), Lang.T("nav.set"), Lang.T("nav.about") },
                 new[] { "game", "lol", "white", "settings", "shield", "log", "gear", "info" },
                 new[] { 0, 2, 3, 4, 5, 1, 6, 7 }, 5, Lang.T("nav.columns"), 2);
             nav.SetBounds(0, 0, Theme.S(RailW), Theme.S(WinH));

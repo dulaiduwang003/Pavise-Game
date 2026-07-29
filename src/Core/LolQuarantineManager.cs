@@ -17,6 +17,8 @@ namespace AegisApp
         private const string LockFileName = ".operation.lock";
         private const string ManifestHeader = "AEGIS_LOL_QUARANTINE_V1";
         private static readonly object Gate = new object();
+        // 当前只隔离 Cross（自测 "LoL quarantine" 明确断言 FeedBack 等留在原位）。
+        // KnownPaths 仍保留全部六项：清单解析要能读懂历史批次，将来放开范围也只改这里。
         private static readonly string[] CandidatePaths =
         {
             "Cross"
@@ -659,7 +661,8 @@ namespace AegisApp
                 string payload = CombineRelative(Path.Combine(setPath, PayloadName), item.RelativePath);
                 string original = CombineRelative(current.RootPath, item.RelativePath);
                 if (!Directory.Exists(payload) && !File.Exists(payload)) continue;
-                if (!Directory.Exists(original) && !File.Exists(original))
+                // 删除是不可逆的：必须确认原位置的内容与清单等价，仅有同名路径不算。
+                if (!RestoredInPlace(original, item))
                     return Failure(Lang.T("lolq.err.stillunique"));
             }
 
@@ -968,6 +971,33 @@ namespace AegisApp
             return result;
         }
 
+        // 判断原位置的内容是否真的就是当初被隔离的那一份。
+        // 只看同名路径是否存在是不够的：客户端更新会重建一个空的或残缺的同名目录，
+        // 那样"丢弃"就会删掉隔离仓里唯一的一份内容。清单里存了 Bytes 和 FileCount，
+        // 这里按它们做等价校验；任何读不动、对不上或是重解析点的情况一律判为"没回来"。
+        private static bool RestoredInPlace(string original, ManifestItem item)
+        {
+            if (item == null || string.IsNullOrEmpty(original)) return false;
+            try
+            {
+                if (File.Exists(original))
+                {
+                    var file = new FileInfo(original);
+                    if (IsReparse(file)) return false;
+                    return item.FileCount == 1 && file.Length == item.Bytes;
+                }
+                if (!Directory.Exists(original)) return false;
+                var directory = new DirectoryInfo(original);
+                if (IsReparse(directory)) return false;
+                long bytes;
+                int fileCount;
+                string error;
+                if (!MeasureDirectory(directory, out bytes, out fileCount, out error)) return false;
+                return fileCount == item.FileCount && bytes == item.Bytes;
+            }
+            catch { return false; }
+        }
+
         private static bool MeasureDirectory(DirectoryInfo root, out long bytes, out int fileCount, out string error)
         {
             bytes = 0;
@@ -1161,14 +1191,15 @@ namespace AegisApp
                         string payload = CombineRelative(Path.Combine(set.FullName, PayloadName), item.RelativePath);
                         string original = CombineRelative(root, item.RelativePath);
                         bool inPayload = Directory.Exists(payload) || File.Exists(payload);
-                        bool inPlace = Directory.Exists(original) || File.Exists(original);
+                        bool present = Directory.Exists(original) || File.Exists(original);
                         if (inPayload)
                         {
                             bytes = AddSaturated(bytes, item.Bytes);
                             count++;
-                            if (!inPlace) recoverable++;
+                            // 只有内容确实等价才算"已回到原位"，否则隔离仓里这份仍是唯一副本。
+                            if (!RestoredInPlace(original, item)) recoverable++;
                         }
-                        else if (!inPlace) missing++;
+                        else if (!present) missing++;
                     }
                     if (!string.Equals(manifest.State, "active", StringComparison.Ordinal))
                     {

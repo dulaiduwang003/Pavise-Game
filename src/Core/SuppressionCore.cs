@@ -78,22 +78,36 @@ namespace AegisApp
         private bool batchJournalDirty;
         private readonly Dictionary<int, string> batchApply = new Dictionary<int, string>();
         private readonly Dictionary<int, bool> batchApplyResults = new Dictionary<int, bool>();
+        private readonly Dictionary<int, string> batchApplyErrors = new Dictionary<int, string>();
         private long applyOperations;
         public string LastApplyError { get; private set; }
 
         public sealed class BatchResult
         {
             private readonly Dictionary<int, bool> applied;
+            private readonly Dictionary<int, string> errors;
 
             internal BatchResult(Dictionary<int, bool> values)
+                : this(values, null)
+            {
+            }
+
+            internal BatchResult(Dictionary<int, bool> values, Dictionary<int, string> errorValues)
             {
                 applied = values ?? new Dictionary<int, bool>();
+                errors = errorValues ?? new Dictionary<int, string>();
             }
 
             public bool WasApplied(int pid)
             {
                 bool value;
                 return applied.TryGetValue(pid, out value) && value;
+            }
+
+            public string FailureOf(int pid)
+            {
+                string value;
+                return errors.TryGetValue(pid, out value) ? value : null;
             }
         }
 
@@ -119,7 +133,7 @@ namespace AegisApp
                 Monitor.Exit(batchGate);
                 throw;
             }
-            if (batchDepth == 0) batchApplyResults.Clear();
+            if (batchDepth == 0) { batchApplyResults.Clear(); batchApplyErrors.Clear(); }
             batchDepth++;
         }
 
@@ -156,9 +170,19 @@ namespace AegisApp
                     foreach (KeyValuePair<int, string> item in pending)
                     {
                         bool ok;
-                        try { ok = journalOk && ApplyQueued(item.Key, item.Value); }
-                        catch { ok = false; }
-                        lock (sync) batchApplyResults[item.Key] = ok;
+                        string error = null;
+                        try
+                        {
+                            if (journalOk) ok = ApplyQueued(item.Key, item.Value, out error);
+                            else { ok = false; error = "journal-write"; }
+                        }
+                        catch (Exception ex) { ok = false; error = "apply-exception:" + ex.GetType().Name; }
+                        lock (sync)
+                        {
+                            batchApplyResults[item.Key] = ok;
+                            if (ok) batchApplyErrors.Remove(item.Key);
+                            else batchApplyErrors[item.Key] = error ?? "unknown";
+                        }
                     }
 
                 if (!outermost) return new BatchResult(null);
@@ -166,8 +190,10 @@ namespace AegisApp
                 {
                     var snapshot = new Dictionary<int, bool>(
                         batchApplyResults);
+                    var errorSnapshot = new Dictionary<int, string>(batchApplyErrors);
                     batchApplyResults.Clear();
-                    return new BatchResult(snapshot);
+                    batchApplyErrors.Clear();
+                    return new BatchResult(snapshot, errorSnapshot);
                 }
             }
             finally { Monitor.Exit(batchGate); }
@@ -261,19 +287,19 @@ namespace AegisApp
 
                         if (!e.Applied)
                         {
-                            RecordBatchApplyResultLocked(pid, false);
+                            RecordBatchApplyResultLocked(pid, false, "apply-pending-backoff");
                             return AcquireResult.AlreadyThrottled;
                         }
                         if (now < e.NextReconcileTicks)
                         {
-                            RecordBatchApplyResultLocked(pid, true);
+                            RecordBatchApplyResultLocked(pid, true, null);
                             return AcquireResult.AlreadyThrottled;
                         }
                         bool matches = ThrottleMatches(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets);
                         if (matches)
                         {
                             ScheduleAfterMatch(e, pid);
-                            RecordBatchApplyResultLocked(pid, true);
+                            RecordBatchApplyResultLocked(pid, true, null);
                             return AcquireResult.AlreadyThrottled;
                         }
                         if (QueueApplyLocked(pid, name)) return AcquireResult.AlreadyThrottled;
@@ -295,7 +321,17 @@ namespace AegisApp
                     if ((!CpuTopology.MultiGroup && oaff == 0)
                         || oio < 0 || opg < 0)
                         return AcquireResult.ApplyFailed;
-                    bool residue = rawPri == Native.IDLE_PRIORITY_CLASS && oio == 0 && opg == 1;
+                    // Idle + IO 0 + 页面 1 同样是进程给自己下 PROCESS_MODE_BACKGROUND_BEGIN
+                    // （或任务管理器「效率模式」）后的特征，仅凭这三项无法区分「Aegis 上次留下的
+                    // 残留」和「进程自愿进入后台」。误判的代价是还原阶段会把一个本来自愿待在后台
+                    // 的进程提升到普通优先级、普通 IO、全核心，并清掉它自己设的 EcoQoS。
+                    // Aegis 的 Isolated 必定同时改了摆位，因此要求摆位也吻合才认定为残留；
+                    // 代价是没有安全后台分区的机器上认不出残留，那是更安全的失败方向。
+                    bool placementLooksAegis =
+                        SameCpuSets(ocpuSets, CpuTopology.BackgroundCpuSetIds())
+                        || (!CpuTopology.MultiGroup && oaff == throttleMask);
+                    bool residue = rawPri == Native.IDLE_PRIORITY_CLASS && oio == 0 && opg == 1
+                        && placementLooksAegis;
                     uint orig = residue ? Native.NORMAL_PRIORITY_CLASS : rawPri;
                     if (residue && oaff == throttleMask) oaff = 0;
                     if (residue && SameCpuSets(ocpuSets, CpuTopology.BackgroundCpuSetIds())) ocpuSets = new uint[0];
@@ -604,12 +640,27 @@ namespace AegisApp
                         return true;
                     if (ThrottleMatches(h, level, pri, aff, cpuSets))
                     {
+                        if (!currentEntry.Applied && currentEntry.ReconcileFailures > 0)
+                            Logger.Log("后台策略核验已生效：" + expectedName + " (pid " + pid
+                                + ")，此前写入未完全生效 " + currentEntry.ReconcileFailures + " 次");
                         currentEntry.Applied = true;
                         ScheduleAfterMatch(currentEntry, pid);
                         return true;
                     }
+                    bool previouslyApplied = currentEntry.Applied;
+                    int previousFailures = currentEntry.ReconcileFailures;
                     currentEntry.Applied = ApplyThrottle(h, level, pri, aff, cpuSets);
                     ScheduleAfterApply(currentEntry, currentEntry.Applied, pid);
+                    if (currentEntry.Applied)
+                    {
+                        if (!previouslyApplied && previousFailures > 0)
+                            Logger.Log("后台策略重试已生效：" + expectedName + " (pid " + pid
+                                + ")，此前写入未完全生效 " + previousFailures + " 次");
+                    }
+                    else if (previousFailures < 3)
+                        Logger.Log("后台策略重写未完全生效：" + expectedName + " (pid " + pid + ")，失败环节 ["
+                            + (string.IsNullOrEmpty(LastApplyError) ? "unknown" : LastApplyError)
+                            + "]，将按退避继续重试");
                     return true;
                 }
             }
@@ -827,11 +878,24 @@ namespace AegisApp
             if (Native.GetPriorityClass(h) != desiredPriority) failed.Add("priority-readback");
             if (Native.QueryIoPriority(h) != io) failed.Add("io-readback");
             if (Native.QueryPagePriority(h) != pg) failed.Add("page-readback");
-            if (!Native.TryQueryPowerThrottling(h, out qosControl, out qosState)
-                || (qosControl & 1) == 0 || (qosState & 1) == 0)
-                failed.Add("eco-readback");
+            if (!EcoStateVisible(h)) failed.Add("eco-readback");
             LastApplyError = string.Join(",", failed.ToArray());
             return failed.Count == 0;
+        }
+
+        // EcoQoS 状态由内核异步应用，写入后立即回读可能短暂读到旧值（实测通常 <0.1ms 内生效），
+        // 判定失败前先做有界重试；真失败最多多等约 3ms。
+        private static bool EcoStateVisible(IntPtr h)
+        {
+            for (int attempt = 0; ; attempt++)
+            {
+                int qosControl, qosState;
+                if (Native.TryQueryPowerThrottling(h, out qosControl, out qosState)
+                    && (qosControl & 1) != 0 && (qosState & 1) != 0) return true;
+                if (attempt >= 80) return false;
+                if (attempt < 77) Thread.SpinWait(1000);
+                else Thread.Sleep(1);
+            }
         }
 
         public static bool RestoreValues(IntPtr h, uint pri, ulong aff, int io, int pg, ulong allMask)
@@ -877,6 +941,7 @@ namespace AegisApp
                         : RestoreResult.Protected;
                 try
                 {
+                    if (!Native.StillActive(hq)) return RestoreResult.Gone;
                     string nm = Native.ImageName(hq);
                     return nm == null || SameName(nm, e.Name) ? RestoreResult.Protected : RestoreResult.Gone;
                 }
@@ -884,6 +949,7 @@ namespace AegisApp
             }
             try
             {
+                if (!Native.StillActive(h)) return RestoreResult.Gone;
                 if (e.Creation <= 0) return RestoreResult.Protected;
                 if (e.Name != null)
                 {
@@ -897,9 +963,10 @@ namespace AegisApp
                     if (!Native.QueryProcessSample(h, out creation, out cpu, out io)) return RestoreResult.Protected;
                     if (creation != e.Creation) return RestoreResult.Gone;
                 }
-                return RestoreValues(h, e.OrigPri, e.OrigAff, e.OrigIo, e.OrigPg, allMask, e.OrigCpuSets,
-                        e.OrigQoSControl, e.OrigQoSState)
-                    ? RestoreResult.Restored : RestoreResult.Protected;
+                if (RestoreValues(h, e.OrigPri, e.OrigAff, e.OrigIo, e.OrigPg, allMask, e.OrigCpuSets,
+                        e.OrigQoSControl, e.OrigQoSState))
+                    return RestoreResult.Restored;
+                return Native.StillActive(h) ? RestoreResult.Protected : RestoreResult.Gone;
             }
             finally { Native.CloseHandle(h); }
         }
@@ -978,14 +1045,19 @@ namespace AegisApp
             return true;
         }
 
-        private void RecordBatchApplyResultLocked(int pid, bool applied)
+        private void RecordBatchApplyResultLocked(int pid, bool applied, string error)
         {
             if (batchDepth > 0 && !batchApply.ContainsKey(pid))
+            {
                 batchApplyResults[pid] = applied;
+                if (applied) batchApplyErrors.Remove(pid);
+                else batchApplyErrors[pid] = error ?? "unknown";
+            }
         }
 
-        private bool ApplyQueued(int pid, string expectedName)
+        private bool ApplyQueued(int pid, string expectedName, out string error)
         {
+            error = null;
             uint pri;
             ulong aff;
             uint[] cpuSets;
@@ -997,22 +1069,23 @@ namespace AegisApp
                 Entry e;
                 if (!map.TryGetValue(pid, out e) || e.Reasons == SuppressReason.None
                     || e.OrigPri == uint.MaxValue || !e.Journaled
-                    || !SameName(e.Name, expectedName)) return false;
+                    || !SameName(e.Name, expectedName)) { error = "entry-state"; return false; }
                 queuedEntry = e;
                 pri = e.OrigPri; aff = e.OrigAff; level = e.Level; expectedCreation = e.Creation;
                 cpuSets = e.OrigCpuSets;
             }
             IntPtr h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_SET_LIMITED_INFORMATION
                 | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
-            if (h == IntPtr.Zero) return false;
+            if (h == IntPtr.Zero) { error = "open-process"; return false; }
             try
             {
                 string current = Native.ImageName(h);
-                if (current == null || !SameName(current, expectedName)) return false;
+                if (current == null || !SameName(current, expectedName)) { error = "identity-image"; return false; }
                 if (expectedCreation > 0)
                 {
                     long creation, cpu; ulong io;
-                    if (!Native.QueryProcessSample(h, out creation, out cpu, out io) || creation != expectedCreation) return false;
+                    if (!Native.QueryProcessSample(h, out creation, out cpu, out io) || creation != expectedCreation)
+                    { error = "identity-creation"; return false; }
                 }
                 bool applied;
                 lock (sync)
@@ -1027,8 +1100,9 @@ namespace AegisApp
                         || currentEntry.OrigPri != pri
                         || currentEntry.OrigAff != aff
                         || !ReferenceEquals(currentEntry.OrigCpuSets, cpuSets))
-                        return false;
+                        { error = "entry-state"; return false; }
                     applied = ApplyThrottle(h, level, pri, aff, cpuSets);
+                    if (!applied) error = string.IsNullOrEmpty(LastApplyError) ? "apply" : LastApplyError;
                     currentEntry.Applied = applied;
                     ScheduleAfterApply(currentEntry, applied, pid);
                 }

@@ -954,19 +954,32 @@ namespace AegisApp
                 if (outText.IndexOf(evil, StringComparison.Ordinal) < 0)
                     throw new Exception("payload was not echoed verbatim; quoting altered the data");
             });
-            test("language table: every entry is trilingual and format placeholders are consistent", () =>
+            // 语种数量由文案表自身决定：目前只有中文，将来补回译文后同一条用例会自动
+            // 要求每个 key 都补齐，漏译一行就会失败。
+            test("language table: every entry is complete and format placeholders are consistent", () =>
             {
+                int languages = 0;
+                foreach (string key in Lang.AllKeys())
+                {
+                    string[] row = Lang.Row(key);
+                    if (row != null && row.Length > languages) languages = row.Length;
+                }
+                if (languages == 0) throw new Exception("文案表为空");
 
                 var missing = new List<string>();
                 foreach (string key in Lang.AllKeys())
                 {
                     string[] row = Lang.Row(key);
-                    if (row == null || row.Length != 3) { missing.Add(key + "(译文不足3种)"); continue; }
-                    for (int i = 0; i < 3; i++)
+                    if (row == null || row.Length != languages)
+                    {
+                        missing.Add(key + "(译文不足" + languages + "种)");
+                        continue;
+                    }
+                    for (int i = 0; i < languages; i++)
                         if (string.IsNullOrEmpty(row[i])) missing.Add(key + "(第" + i + "种语言为空)");
 
                     int zh = CountPlaceholders(row[0]);
-                    for (int i = 1; i < 3; i++)
+                    for (int i = 1; i < languages; i++)
                         if (CountPlaceholders(row[i]) != zh)
                             missing.Add(key + "(占位符数量各语言不一致)");
                 }

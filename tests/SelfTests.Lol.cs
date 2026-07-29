@@ -829,7 +829,17 @@ namespace AegisApp
                 Eq("new", File.ReadAllText(Path.Combine(crossPath, "new.bin"), Encoding.UTF8));
                 LolQuarantineManager.Inspection conflicted = LolQuarantineManager.Inspect(install);
                 if (!conflicted.CanRestore) throw new Exception("conflict batch was not retained: " + conflicted.Error);
-                if (!conflicted.CanDiscard) throw new Exception("conflict batch was not discardable");
+
+                // 原位置只有客户端重新下载的 new.bin，隔离仓里那份才是唯一的原始内容。
+                // 丢弃会永久删除它，所以必须既不可用，调用了也必须拒绝并保住 payload。
+                if (conflicted.CanDiscard)
+                    throw new Exception("a batch whose payload is still the only copy must not be discardable");
+                string conflictSet = Path.GetDirectoryName(conflicted.Active[0].ManifestPath);
+                string conflictPayload = Path.Combine(conflictSet, "payload", "Cross", "coach", "coach.bin");
+                Eq(true, File.Exists(conflictPayload));
+                Eq(false, LolQuarantineManager.Discard(install, conflicted.Active[0].Name).Success);
+                if (!File.Exists(conflictPayload))
+                    throw new Exception("a refused discard must not delete the quarantined copy");
 
                 string setPath = Path.GetDirectoryName(conflicted.Active[0].ManifestPath);
                 string stalePayload = Path.Combine(setPath, "payload", "Cross");

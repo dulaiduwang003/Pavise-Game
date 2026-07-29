@@ -51,6 +51,7 @@ namespace AegisApp
             public SuppressionLevel Previous;
             public bool HadBackgroundReason;
             public AcquireResult Result;
+            public string FailureDetail;
         }
 
         private static readonly HashSet<string> LauncherPlatforms = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -146,7 +147,7 @@ namespace AegisApp
 
             bool first;
             lock (sync) first = firstSweep;
-            int done = 0, fail = 0;
+            int done = 0, denied = 0, retrying = 0;
             var live = new HashSet<int>();
             var pending = new List<BackgroundRequest>();
 
@@ -276,7 +277,10 @@ namespace AegisApp
             foreach (BackgroundRequest request in pending)
                 if ((request.Result == AcquireResult.NewlyThrottled || request.Result == AcquireResult.AlreadyThrottled)
                     && (batchResult == null || !batchResult.WasApplied(request.Pid)))
+                {
                     request.Result = AcquireResult.ApplyFailed;
+                    request.FailureDetail = batchResult != null ? batchResult.FailureOf(request.Pid) : "batch-missing";
+                }
 
             foreach (BackgroundRequest request in pending)
             {
@@ -294,11 +298,13 @@ namespace AegisApp
                     if (!first && request.Previous != request.Desired)
                         Logger.Log("后台策略：" + request.Name + " (pid " + request.Pid + ") " + request.Previous + " → " + request.Desired);
                 }
-                else if (request.Result == AcquireResult.NewlyProtected) fail++;
+                else if (request.Result == AcquireResult.NewlyProtected) denied++;
                 else if (request.Result == AcquireResult.ApplyFailed)
                 {
-                    fail++;
-                    Logger.Log("后台策略写入未完全生效：" + request.Name + " (pid " + request.Pid + ")，保留快照并将在下一轮重试");
+                    retrying++;
+                    Logger.Log("后台策略写入未完全生效：" + request.Name + " (pid " + request.Pid + ")"
+                        + (string.IsNullOrEmpty(request.FailureDetail) ? "" : "，失败环节 [" + request.FailureDetail + "]")
+                        + "，保留快照并将在下一轮重试");
                 }
             }
 
@@ -321,7 +327,8 @@ namespace AegisApp
                                 : "自定义全局 Eco" + aggressiveNote)
                             : "常规全局 Eco，持续大户再升级");
                     Logger.Log("后台策略：" + policy + "，首轮处理 " + done + " 个用户后台"
-                        + (fail > 0 ? "（" + fail + " 个受保护进程已跳过）" : ""));
+                        + (retrying > 0 ? "（" + retrying + " 个写入未完全生效，按退避重试）" : "")
+                        + (denied > 0 ? "（" + denied + " 个句柄受保护已跳过）" : ""));
                 }
                 lock (sync) firstSweep = false;
             }
