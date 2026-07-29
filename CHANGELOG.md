@@ -36,7 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - The interface ships Simplified Chinese only. English and Japanese strings were removed, reducing
-  the build from about 610 KB to about 507 KB. The localization mechanism and every text key are
+  the build from about 610 KB to about 500 KB. The localization mechanism and every text key are
   retained, so restoring a language only requires adding its strings back.
 
 ### Added
