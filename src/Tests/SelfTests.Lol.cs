@@ -41,6 +41,47 @@ namespace AegisApp
             Eq("localToken", token);
             Eq(false, LolCredentialParser.TryParseLockfile(
                 "LeagueClient:1234:54321:localToken:http", out port, out token));
+            int lockPid;
+            Eq(true, LolCredentialParser.TryParseLockfile(
+                "LeagueClient:1234:54321:localToken:https",
+                out lockPid, out port, out token));
+            Eq(1234, lockPid);
+            Eq(false, LolCredentialParser.TryParseLockfile(
+                "LeagueClient:not-a-pid:54321:localToken:https",
+                out lockPid, out port, out token));
+            Eq(true, LolRuntimeProcesses.IsExpectedSession(7, 7));
+            Eq(false, LolRuntimeProcesses.IsExpectedSession(7, 8));
+            Eq(false, LolRuntimeProcesses.IsExpectedSession(-1, 7));
+            Eq(false, LolRuntimeProcesses.IsExpectedSession(7, -1));
+            const long creationTicks = 134000000000000000L;
+            Eq(true, LolRuntimeProcesses.CredentialCreationMatches(
+                creationTicks, creationTicks));
+            Eq(true, LolRuntimeProcesses.CredentialCreationMatches(
+                creationTicks,
+                creationTicks + TimeSpan.TicksPerMillisecond));
+            Eq(false, LolRuntimeProcesses.CredentialCreationMatches(
+                creationTicks,
+                creationTicks + TimeSpan.TicksPerMillisecond + 1));
+            Eq(false, LolRuntimeProcesses.CredentialCreationMatches(
+                0, creationTicks));
+            int currentSession;
+            Eq(true, LolRuntimeProcesses.TryGetCurrentSessionId(
+                out currentSession));
+            if (currentSession < 0)
+                throw new Exception("current process session was invalid");
+            using (Process current = Process.GetCurrentProcess())
+            {
+                string ownedPath;
+                Eq(true, LolRuntimeProcesses.TryGetOwnedImagePath(
+                    current, currentSession, out ownedPath));
+                if (string.IsNullOrEmpty(ownedPath))
+                    throw new Exception(
+                        "current-session image path was empty");
+                int foreignSession = currentSession == int.MaxValue
+                    ? currentSession - 1 : currentSession + 1;
+                Eq(false, LolRuntimeProcesses.TryGetOwnedImagePath(
+                    current, foreignSession, out ownedPath));
+            }
             string parsedPhase;
             if (!LolLcuClient.TryParseGameflowPhaseBody(
                     "\"InProgress\"", out parsedPhase))
@@ -100,12 +141,54 @@ namespace AegisApp
             Eq(true, LolOptimizationService.IsSameMatchPhase("Reconnect"));
             Eq(true, LolOptimizationService.IsSameMatchPhase("GameStart"));
             Eq(false, LolOptimizationService.IsSameMatchPhase("Lobby"));
+            Eq(true, LolOptimizationService.IsVerifiedCleanupSession(
+                true, true, "None", false, false));
+            Eq(true, LolOptimizationService.IsVerifiedCleanupSession(
+                true, true, "Lobby", false, false));
+            Eq(true, LolOptimizationService.IsVerifiedCleanupSession(
+                true, true, "Matchmaking", false, false));
+            Eq(false, LolOptimizationService.IsVerifiedCleanupSession(
+                true, true, "None", true, false));
+            Eq(false, LolOptimizationService.IsVerifiedCleanupSession(
+                true, false, "None", false, false));
+            Eq(false, LolOptimizationService.IsVerifiedCleanupSession(
+                false, true, "None", false, false));
+            Eq(false, LolOptimizationService.IsVerifiedCleanupSession(
+                true, true, null, false, false));
+            Eq(false, LolOptimizationService.IsVerifiedCleanupSession(
+                true, true, "InProgress", false, true));
+            Eq(false, LolOptimizationService.IsVerifiedCleanupSession(
+                true, true, "InProgress", true, false));
+            Eq(true, LolOptimizationService.IsVerifiedCleanupSession(
+                true, true, "InProgress", true, true));
+            Eq(false, LolOptimizationService.IsVerifiedCleanupSession(
+                true, true, "GameStart", false, false));
+            Eq(true, LolOptimizationService.IsVerifiedCleanupSession(
+                true, true, "GameStart", true, true));
+            Eq(false, LolOptimizationService.IsVerifiedCleanupSession(
+                true, true, "Reconnect", false, true));
+            Eq(false, LolOptimizationService.IsVerifiedCleanupSession(
+                true, true, "Unknown", false, false));
+            Eq(false, LolOptimizationService.ShouldResetMatchSafetyState(
+                false, true, false));
+            Eq(true, LolOptimizationService.ShouldResetMatchSafetyState(
+                false, true, true));
+            Eq(true, LolOptimizationService.ShouldResetMatchSafetyState(
+                true, false, false));
+            Eq(false, LolOptimizationService.ShouldResetMatchSafetyState(
+                false, false, true));
             Eq(true, LolRuntimeProcesses.IsCoreIdentityCandidateName(
                 "LeagueClientUx.exe"));
             Eq(true, LolRuntimeProcesses.IsCoreIdentityCandidateName(
                 "League of Legends"));
             Eq(false, LolRuntimeProcesses.IsCoreIdentityCandidateName(
                 "browser"));
+            Eq(true, LolRuntimeProcesses.IsWeGameDiscoveryCandidateName(
+                "WeGame.exe"));
+            Eq(true, LolRuntimeProcesses.IsWeGameDiscoveryCandidateName(
+                "wegame_env"));
+            Eq(false, LolRuntimeProcesses.IsWeGameDiscoveryCandidateName(
+                "browser.exe"));
             Eq(true, LolRuntimeProcesses.IsLeagueClientProcess(
                 @"D:\League\LeagueClient.exe",
                 "LeagueClient.exe", @"D:\League"));

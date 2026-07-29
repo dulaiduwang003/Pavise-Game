@@ -960,8 +960,15 @@ namespace AegisApp
                 bool cleanupMatch;
                 lock (stateLock)
                 {
-                    if (matchExitConfirmed) ResetMatchSafetyStateLocked();
-                    else if (inProgress && !cleanupMatchActive)
+                    if (ShouldResetMatchSafetyState(
+                            clientExitConfirmed,
+                            matchExitConfirmed,
+                            cleanupMatchActive))
+                    {
+                        ResetMatchSafetyStateLocked();
+                    }
+                    else if (sameMatch && processes.GameRunning
+                        && !cleanupMatchActive)
                     {
                         cleanupMatchActive = true;
                         cleanupDirty = true;
@@ -1101,8 +1108,12 @@ namespace AegisApp
                     ClearOwnedHeadlessMark();
                 }
 
-                bool gameplayActive = cleanupMatch
-                    && inProgress && processes.GameRunning;
+                bool cleanupSessionActive = IsVerifiedCleanupSession(
+                    processes.ClientRunning,
+                    ready,
+                    currentPhase,
+                    processes.GameRunning,
+                    cleanupMatch);
                 DateTime cleanupNow = DateTime.UtcNow;
                 bool cleanupPending;
                 bool cleanupSuspended;
@@ -1112,7 +1123,7 @@ namespace AegisApp
                         || (cleanupDirty && !cleanupBurstActive);
                     cleanupSuspended = cleanupCircuitOpen;
                 }
-                if (serviceEnabled && cleanEnabled && ready && gameplayActive
+                if (serviceEnabled && cleanEnabled && cleanupSessionActive
                     && !cleanupSuspended && cleanupPending)
                 {
                     lock (stateLock)
@@ -1671,6 +1682,38 @@ namespace AegisApp
             if (failures == 2) return 5;
             if (failures == 3) return 10;
             return 30;
+        }
+
+        internal static bool IsVerifiedCleanupSession(
+            bool clientRunning,
+            bool lcuReady,
+            string currentPhase,
+            bool gameRunning,
+            bool matchActive)
+        {
+            if (!clientRunning || !lcuReady
+                || string.IsNullOrEmpty(currentPhase))
+                return false;
+            if (IsSameMatchPhase(currentPhase))
+                return matchActive && gameRunning;
+            // A successful login + current-summoner probe and a recognized
+            // gameflow phase prove that the lobby no longer depends on
+            // WeGame. Keep the in-game path stricter because it also drives
+            // the bounded follow-up cleanup burst.
+            return !gameRunning
+                && IsConfirmedMatchExitPhase(currentPhase);
+        }
+
+        internal static bool ShouldResetMatchSafetyState(
+            bool clientExitConfirmed,
+            bool matchExitConfirmed,
+            bool matchStateActive)
+        {
+            // A stable lobby is itself a confirmed non-match phase. Resetting
+            // there on every poll would erase the cleanup deadline and circuit
+            // breaker, causing a full cleanup scan every worker cycle.
+            return clientExitConfirmed
+                || (matchExitConfirmed && matchStateActive);
         }
 
         internal static bool RegisterUxRespawn(

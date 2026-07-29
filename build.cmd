@@ -11,7 +11,7 @@ if not exist "%CSC%" (
     exit /b 1
 )
 
-set REFS=-reference:System.dll -reference:System.Drawing.dll -reference:System.Windows.Forms.dll -reference:System.Core.dll -reference:System.Management.dll
+set REFS=-reference:System.dll -reference:System.Drawing.dll -reference:System.Windows.Forms.dll -reference:System.Core.dll -reference:System.Management.dll -reference:System.Xml.dll
 set OUT=Aegis.exe
 if not "%~1"=="" set OUT=%~1
 

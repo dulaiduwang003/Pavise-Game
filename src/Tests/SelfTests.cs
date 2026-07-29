@@ -697,6 +697,25 @@ namespace AegisApp
             });
             test("game family: generic multi-folder layouts share one protected root", TestMultiFolderGameRoot);
             test("game catalog: protected root survives save format and legacy entries", TestGameCatalogFormat);
+            test("startup task: running binary replaces a stale executable target", () =>
+            {
+                Eq(false, TaskHelper.NeedsStartupTaskRefresh(
+                    @"C:\Code\Aegis\Aegis.exe",
+                    @"c:\code\aegis\AEGIS.exe"));
+                Eq(true, TaskHelper.NeedsStartupTaskRefresh(
+                    @"C:\Code\Aegis\Aegis.exe",
+                    @"C:\Users\Star\Desktop\Aegis.exe"));
+                Eq(false, TaskHelper.NeedsStartupTaskRefresh(
+                    @"C:\Code\Aegis\Aegis.exe", null));
+                Eq(@"C:\Apps\A & B\Aegis.exe",
+                    TaskHelper.ParseTaskCommandXml(
+                        "\uFEFF<?xml version=\"1.0\"?>"
+                        + "<Task xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">"
+                        + "<Actions><Exec><Command>\"C:\\Apps\\A &amp; B\\Aegis.exe\""
+                        + "</Command></Exec></Actions></Task>"));
+                Eq(null, TaskHelper.ParseTaskCommandXml(
+                    "<Task><Actions /></Task>"));
+            });
             test("LoL runtime: LCU credentials reject malformed input", TestLolCredentialParsing);
             test("LoL runtime: cleanup targets never include core, game or ACE paths", TestLolCleanupBoundary);
             test("LoL quarantine: manifest fields round-trip without ambiguity", () =>
@@ -962,6 +981,10 @@ namespace AegisApp
                 }
                 if (missing.Count > 0) throw new Exception(string.Join("; ", missing.ToArray()));
             });
+            // Everything above that changes real OS state keeps its persistent
+            // recovery journal. From here onward, isolate parser/CrashGuard
+            // settings from a concurrently running Aegis process.
+            Settings.UseTransientStoreForCurrentProcess();
             test("crash journal: old 9-field records still load after the QoS fields were added", () =>
             {
                 string name = Convert.ToBase64String(Encoding.UTF8.GetBytes("game"));

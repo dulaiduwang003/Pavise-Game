@@ -101,6 +101,15 @@ namespace AegisApp
 
         public static bool TryParseLockfile(string value, out int port, out string token)
         {
+            int pid;
+            return TryParseLockfile(
+                value, out pid, out port, out token);
+        }
+
+        internal static bool TryParseLockfile(
+            string value, out int pid, out int port, out string token)
+        {
+            pid = 0;
             port = 0;
             token = null;
             if (string.IsNullOrEmpty(value)) return false;
@@ -109,11 +118,14 @@ namespace AegisApp
             if (end >= 0) line = line.Substring(0, end);
             string[] parts = line.Split(':');
             if (parts.Length != 5) return false;
+            if (!int.TryParse(parts[1], out pid) || pid <= 0)
+                return false;
             if (!int.TryParse(parts[2], out port) || !ValidPort(port)) return false;
             token = parts[3];
             if (!ValidToken(token))
             {
                 port = 0;
+                pid = 0;
                 token = null;
                 return false;
             }
@@ -158,9 +170,9 @@ namespace AegisApp
 
         public static string FindLolRoot(string preferred)
         {
-            string root = NormalizeLolRoot(preferred);
+            string root = FindLolFromProcesses();
             if (root != null) return root;
-            root = FindLolFromProcesses();
+            root = NormalizeLolRoot(preferred);
             if (root != null) return root;
             for (int i = 0; i < LolRegistryKeys.Length; i++)
             {
@@ -174,9 +186,9 @@ namespace AegisApp
 
         public static string FindWeGameRoot(string preferred, string lolRoot)
         {
-            string root = NormalizeWeGameRoot(preferred);
+            string root = FindWeGameFromProcesses();
             if (root != null) return root;
-            root = FindWeGameFromProcesses();
+            root = NormalizeWeGameRoot(preferred);
             if (root != null) return root;
             root = FindWeGameFromAppPaths();
             if (root != null) return root;
@@ -301,61 +313,86 @@ namespace AegisApp
 
         private static string FindLolFromProcesses()
         {
-            Process[] all;
-            try { all = Process.GetProcesses(); }
-            catch { return null; }
-            try
+            int currentSession;
+            if (!LolRuntimeProcesses.TryGetCurrentSessionId(
+                    out currentSession))
+                return null;
+            string[] names =
             {
-                foreach (Process process in all)
+                "LeagueClient",
+                "LeagueClientUx",
+                "League of Legends"
+            };
+            for (int i = 0; i < names.Length; i++)
+            {
+                Process[] processes;
+                try { processes = Process.GetProcessesByName(names[i]); }
+                catch { continue; }
+                try
                 {
-                    try
+                    foreach (Process process in processes)
                     {
-                        string name = process.ProcessName;
-                        if (!string.Equals(name, "LeagueClient", StringComparison.OrdinalIgnoreCase)
-                            && !string.Equals(name, "LeagueClientUx", StringComparison.OrdinalIgnoreCase)
-                            && !string.Equals(name, "League of Legends", StringComparison.OrdinalIgnoreCase))
+                        string path;
+                        if (!LolRuntimeProcesses.TryGetOwnedImagePath(
+                                process, currentSession, out path))
                             continue;
-                        string root = NormalizeLolRoot(LolRuntimeProcesses.GetImagePath(process));
+                        if (!LolRuntimeProcesses
+                            .IsCoreIdentityCandidateName(
+                                Path.GetFileName(path)))
+                            continue;
+                        string root = NormalizeLolRoot(path);
                         if (root != null) return root;
                     }
-                    catch { }
                 }
-            }
-            finally
-            {
-                foreach (Process process in all)
-                    if (process != null) try { process.Dispose(); } catch { }
+                finally
+                {
+                    foreach (Process process in processes)
+                        if (process != null)
+                            try { process.Dispose(); } catch { }
+                }
             }
             return null;
         }
 
         private static string FindWeGameFromProcesses()
         {
-            Process[] all;
-            try { all = Process.GetProcesses(); }
-            catch { return null; }
-            try
+            int currentSession;
+            if (!LolRuntimeProcesses.TryGetCurrentSessionId(
+                    out currentSession))
+                return null;
+            string[] names =
             {
-                foreach (Process process in all)
+                "wegame",
+                "wegame_env",
+                "wegameclient"
+            };
+            for (int i = 0; i < names.Length; i++)
+            {
+                Process[] processes;
+                try { processes = Process.GetProcessesByName(names[i]); }
+                catch { continue; }
+                try
                 {
-                    try
+                    foreach (Process process in processes)
                     {
-                        string name = process.ProcessName;
-                        if (!string.Equals(name, "wegame", StringComparison.OrdinalIgnoreCase)
-                            && !string.Equals(name, "wegame_env", StringComparison.OrdinalIgnoreCase)
-                            && !string.Equals(name, "wegameclient", StringComparison.OrdinalIgnoreCase))
+                        string path;
+                        if (!LolRuntimeProcesses.TryGetOwnedImagePath(
+                                process, currentSession, out path))
                             continue;
-                        string path = LolRuntimeProcesses.GetImagePath(process);
+                        if (!LolRuntimeProcesses
+                            .IsWeGameDiscoveryCandidateName(
+                                Path.GetFileName(path)))
+                            continue;
                         string root = NormalizeWeGameRoot(path);
                         if (root != null) return root;
                     }
-                    catch { }
                 }
-            }
-            finally
-            {
-                foreach (Process process in all)
-                    if (process != null) try { process.Dispose(); } catch { }
+                finally
+                {
+                    foreach (Process process in processes)
+                        if (process != null)
+                            try { process.Dispose(); } catch { }
+                }
             }
             return null;
         }
@@ -557,6 +594,13 @@ namespace AegisApp
             "icreatelol", "tqmcenter", "yxqxunyou"
         };
 
+        private enum SessionRelation
+        {
+            Unknown,
+            Foreign,
+            Owned
+        }
+
         internal static bool IsScanCandidateName(string name)
         {
             if (string.IsNullOrEmpty(name)) return false;
@@ -593,6 +637,23 @@ namespace AegisApp
                     bare, "LeagueClientUx", StringComparison.OrdinalIgnoreCase);
         }
 
+        internal static bool IsWeGameDiscoveryCandidateName(
+            string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            string bare = name.EndsWith(
+                ".exe", StringComparison.OrdinalIgnoreCase)
+                ? name.Substring(0, name.Length - 4) : name;
+            return string.Equals(
+                    bare, "wegame", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(
+                    bare, "wegame_env",
+                    StringComparison.OrdinalIgnoreCase)
+                || string.Equals(
+                    bare, "wegameclient",
+                    StringComparison.OrdinalIgnoreCase);
+        }
+
         internal static bool IsCleanupCandidateName(string name)
         {
             if (string.IsNullOrEmpty(name)) return false;
@@ -606,6 +667,179 @@ namespace AegisApp
                     StringComparison.OrdinalIgnoreCase))
                     return true;
             return false;
+        }
+
+        internal static bool IsExpectedSession(
+            int expectedSession, int candidateSession)
+        {
+            return expectedSession >= 0
+                && candidateSession >= 0
+                && expectedSession == candidateSession;
+        }
+
+        internal static bool TryGetCurrentSessionId(out int sessionId)
+        {
+            sessionId = -1;
+            try
+            {
+                using (Process current = Process.GetCurrentProcess())
+                    sessionId = current.SessionId;
+                return sessionId >= 0;
+            }
+            catch { return false; }
+        }
+
+        private static bool TryGetVerifiedImagePath(
+            Process process,
+            int expectedSession,
+            out string path,
+            out SessionRelation sessionRelation)
+        {
+            path = null;
+            sessionRelation = SessionRelation.Unknown;
+            if (process == null || expectedSession < 0) return false;
+            IntPtr handle = IntPtr.Zero;
+            try
+            {
+                int pid = process.Id;
+                handle = Native.OpenProcess(
+                    Native.PROCESS_QUERY_LIMITED_INFORMATION | Synchronize,
+                    false, pid);
+                if (handle == IntPtr.Zero)
+                {
+                    int fallbackSession;
+                    try { fallbackSession = process.SessionId; }
+                    catch { fallbackSession = -1; }
+                    if (fallbackSession >= 0)
+                        sessionRelation = IsExpectedSession(
+                            expectedSession, fallbackSession)
+                            ? SessionRelation.Owned
+                            : SessionRelation.Foreign;
+                    return false;
+                }
+                int candidateSession;
+                if (!Native.TryGetLiveProcessSessionId(
+                        handle, pid, out candidateSession))
+                    return false;
+                sessionRelation = IsExpectedSession(
+                    expectedSession, candidateSession)
+                    ? SessionRelation.Owned
+                    : SessionRelation.Foreign;
+                if (sessionRelation != SessionRelation.Owned)
+                    return false;
+                path = Native.ImagePath(handle);
+                return !string.IsNullOrEmpty(path);
+            }
+            catch { return false; }
+            finally
+            {
+                if (handle != IntPtr.Zero) Native.CloseHandle(handle);
+            }
+        }
+
+        internal static bool TryGetOwnedImagePath(
+            Process process, int expectedSession, out string path)
+        {
+            SessionRelation relation;
+            return TryGetVerifiedImagePath(
+                process, expectedSession, out path, out relation);
+        }
+
+        internal static bool IsOwnedCredentialSourceProcess(
+            string lolRoot, int pid, int expectedSession)
+        {
+            return IsOwnedCredentialSourceProcess(
+                lolRoot, pid, expectedSession, 0);
+        }
+
+        internal static bool IsOwnedCredentialSourceProcess(
+            string lolRoot, int pid, int expectedSession,
+            long expectedCreation)
+        {
+            if (pid <= 0 || expectedSession < 0
+                || !LolInstallDiscovery.IsValidLolRoot(lolRoot))
+                return false;
+            IntPtr handle = Native.OpenProcess(
+                Native.PROCESS_QUERY_LIMITED_INFORMATION | Synchronize,
+                false, pid);
+            if (handle == IntPtr.Zero) return false;
+            try
+            {
+                int liveSession;
+                if (!Native.TryGetLiveProcessSessionId(
+                        handle, pid, out liveSession)
+                    || !IsExpectedSession(
+                        expectedSession, liveSession))
+                    return false;
+                if (expectedCreation > 0)
+                {
+                    long actualCreation;
+                    long cpu;
+                    ulong io;
+                    if (!Native.QueryProcessSample(
+                            handle, out actualCreation,
+                            out cpu, out io)
+                        || !CredentialCreationMatches(
+                            expectedCreation, actualCreation))
+                        return false;
+                }
+                string path = Native.ImagePath(handle);
+                return IsUnder(path, lolRoot)
+                    && IsCredentialSourceName(
+                        System.IO.Path.GetFileName(path));
+            }
+            finally { Native.CloseHandle(handle); }
+        }
+
+        internal static bool CredentialCreationMatches(
+            long expectedCreation, long actualCreation)
+        {
+            if (expectedCreation <= 0 || actualCreation <= 0)
+                return false;
+            long delta = expectedCreation >= actualCreation
+                ? expectedCreation - actualCreation
+                : actualCreation - expectedCreation;
+            // WMI CreationDate is serialized at microsecond precision while
+            // GetProcessTimes uses 100 ns FILETIME ticks.
+            return delta <= TimeSpan.TicksPerMillisecond;
+        }
+
+        internal static bool HasExclusiveCredentialSourceSession(
+            string lolRoot)
+        {
+            if (!LolInstallDiscovery.IsValidLolRoot(lolRoot))
+                return false;
+            int currentSession;
+            if (!TryGetCurrentSessionId(out currentSession))
+                return false;
+            bool owned = false;
+            string[] names = { "LeagueClient", "LeagueClientUx" };
+            for (int i = 0; i < names.Length; i++)
+            {
+                Process[] processes;
+                try { processes = Process.GetProcessesByName(names[i]); }
+                catch { return false; }
+                try
+                {
+                    foreach (Process process in processes)
+                    {
+                        string path;
+                        SessionRelation relation;
+                        if (!TryGetVerifiedImagePath(
+                                process, currentSession,
+                                out path, out relation))
+                            return false;
+                        if (relation != SessionRelation.Owned)
+                            return false;
+                        if (IsUnder(path, lolRoot)
+                            && IsCredentialSourceName(
+                                System.IO.Path.GetFileName(path)))
+                            owned = true;
+                    }
+                }
+                finally { DisposeProcesses(processes); }
+            }
+            return owned;
         }
 
         internal static bool IsRelevantProcessChange(
@@ -630,6 +864,8 @@ namespace AegisApp
             var result = new LolProcessSnapshot();
             if (!LolInstallDiscovery.IsValidLolRoot(lolRoot)) lolRoot = null;
             if (!LolInstallDiscovery.IsValidWeGameRoot(weGameRoot)) weGameRoot = null;
+            int currentSession;
+            if (!TryGetCurrentSessionId(out currentSession)) return result;
             Process[] all;
             try { all = Process.GetProcesses(); }
             catch { return result; }
@@ -641,7 +877,17 @@ namespace AegisApp
                 {
                     processName = process.ProcessName;
                     if (namesOnly && !IsScanCandidateName(processName)) continue;
-                    string path = GetImagePath(process);
+                    string path;
+                    SessionRelation sessionRelation;
+                    if (!TryGetVerifiedImagePath(
+                            process, currentSession,
+                            out path, out sessionRelation))
+                    {
+                        if (sessionRelation != SessionRelation.Foreign
+                            && IsCoreIdentityCandidateName(processName))
+                            result.CoreIdentityIndeterminate = true;
+                        continue;
+                    }
                     if (string.IsNullOrEmpty(path))
                     {
                         if (IsCoreIdentityCandidateName(processName))
@@ -682,6 +928,8 @@ namespace AegisApp
             if (!LolInstallDiscovery.IsValidLolRoot(lolRoot)) lolRoot = null;
             if (!LolInstallDiscovery.IsValidWeGameRoot(weGameRoot)) weGameRoot = null;
             if (lolRoot == null && weGameRoot == null) return result;
+            int currentSession;
+            if (!TryGetCurrentSessionId(out currentSession)) return result;
             Process[] all;
             try { all = Process.GetProcesses(); }
             catch { return result; }
@@ -690,6 +938,8 @@ namespace AegisApp
 
             var targets = new List<int>();
             var workingSets = new List<long>();
+            var creations = new List<long>();
+            var paths = new List<string>();
             foreach (Process process in all)
             {
                 IntPtr probe = IntPtr.Zero;
@@ -701,16 +951,32 @@ namespace AegisApp
                     catch { continue; }
                     if (!IsCleanupCandidateName(candidateName)) continue;
                     probe = Native.OpenProcess(
-                        Native.PROCESS_QUERY_LIMITED_INFORMATION, false, process.Id);
+                        Native.PROCESS_QUERY_LIMITED_INFORMATION | Synchronize,
+                        false, process.Id);
                     if (probe == IntPtr.Zero) continue;
+                    int candidateSession;
+                    if (!Native.TryGetLiveProcessSessionId(
+                            probe, process.Id, out candidateSession)
+                        || !IsExpectedSession(
+                            currentSession, candidateSession))
+                        continue;
                     string path = Native.ImagePath(probe);
                     if (string.IsNullOrEmpty(path)) continue;
                     if (!IsCleanupTarget(path, System.IO.Path.GetFileName(path),
                         lolRoot, weGameRoot, includeDownloaders)) continue;
+                    long creation;
+                    long cpu;
+                    ulong io;
+                    if (!Native.QueryProcessSample(
+                            probe, out creation, out cpu, out io)
+                        || creation <= 0)
+                        continue;
                     long workingSet = 0;
                     try { workingSet = process.WorkingSet64; } catch { }
                     targets.Add(process.Id);
                     workingSets.Add(workingSet);
+                    creations.Add(creation);
+                    paths.Add(path);
                 }
                 catch { }
                 finally
@@ -731,8 +997,24 @@ namespace AegisApp
                         false,
                         targets[i]);
                     if (handle == IntPtr.Zero) continue;
+                    int candidateSession;
+                    if (!Native.TryGetLiveProcessSessionId(
+                            handle, targets[i], out candidateSession)
+                        || !IsExpectedSession(
+                            currentSession, candidateSession))
+                        continue;
                     string path = Native.ImagePath(handle);
                     if (string.IsNullOrEmpty(path)) continue;
+                    long creation;
+                    long cpu;
+                    ulong io;
+                    if (!Native.QueryProcessSample(
+                            handle, out creation, out cpu, out io)
+                        || creation != creations[i]
+                        || !string.Equals(
+                            path, paths[i],
+                            StringComparison.OrdinalIgnoreCase))
+                        continue;
                     if (!IsCleanupTarget(path, System.IO.Path.GetFileName(path),
                         lolRoot, weGameRoot, includeDownloaders)) continue;
                     if (!TerminateProcess(handle, 0)) continue;
@@ -751,6 +1033,8 @@ namespace AegisApp
 
         public static bool IsGameRunning(string lolRoot)
         {
+            int currentSession;
+            if (!TryGetCurrentSessionId(out currentSession)) return false;
             Process[] processes;
             try { processes = Process.GetProcessesByName("League of Legends"); }
             catch { return false; }
@@ -759,7 +1043,12 @@ namespace AegisApp
             {
                 try
                 {
-                    string path = GetImagePath(process);
+                    string path;
+                    SessionRelation sessionRelation;
+                    if (!TryGetVerifiedImagePath(
+                            process, currentSession,
+                            out path, out sessionRelation))
+                        continue;
                     if (IsGameProcess(path, System.IO.Path.GetFileName(path), lolRoot))
                         found = true;
                 }
@@ -775,8 +1064,11 @@ namespace AegisApp
             pid = 0;
             creation = 0;
             if (!LolInstallDiscovery.IsValidLolRoot(lolRoot)) return false;
+            int currentSession;
+            if (!TryGetCurrentSessionId(out currentSession)) return false;
             if (preferredPid > 0
-                && TryGetGameIdentityCore(lolRoot, preferredPid, out creation))
+                && TryGetGameIdentityCore(
+                    lolRoot, preferredPid, currentSession, out creation))
             {
                 pid = preferredPid;
                 return true;
@@ -792,7 +1084,8 @@ namespace AegisApp
                     {
                         long candidateCreation;
                         if (!TryGetGameIdentityCore(
-                            lolRoot, process.Id, out candidateCreation)) continue;
+                            lolRoot, process.Id, currentSession,
+                            out candidateCreation)) continue;
                         pid = process.Id;
                         creation = candidateCreation;
                         return true;
@@ -805,15 +1098,23 @@ namespace AegisApp
         }
 
         private static bool TryGetGameIdentityCore(
-            string lolRoot, int pid, out long creation)
+            string lolRoot, int pid, int expectedSession,
+            out long creation)
         {
             creation = 0;
             IntPtr handle = IntPtr.Zero;
             try
             {
                 handle = Native.OpenProcess(
-                    Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+                    Native.PROCESS_QUERY_LIMITED_INFORMATION | Synchronize,
+                    false, pid);
                 if (handle == IntPtr.Zero) return false;
+                int candidateSession;
+                if (!Native.TryGetLiveProcessSessionId(
+                        handle, pid, out candidateSession)
+                    || !IsExpectedSession(
+                        expectedSession, candidateSession))
+                    return false;
                 string path = Native.ImagePath(handle);
                 if (!IsGameProcess(path, System.IO.Path.GetFileName(path), lolRoot))
                     return false;
@@ -829,6 +1130,8 @@ namespace AegisApp
         public static bool IsWeGameRunning(string weGameRoot)
         {
             if (!LolInstallDiscovery.IsValidWeGameRoot(weGameRoot)) return false;
+            int currentSession;
+            if (!TryGetCurrentSessionId(out currentSession)) return false;
             for (int i = 0; i < WeGameNames.Length; i++)
             {
                 string bare = WeGameNames[i];
@@ -844,7 +1147,12 @@ namespace AegisApp
                     {
                         try
                         {
-                            string path = GetImagePath(process);
+                            string path;
+                            SessionRelation sessionRelation;
+                            if (!TryGetVerifiedImagePath(
+                                    process, currentSession,
+                                    out path, out sessionRelation))
+                                continue;
                             if (IsWeGameProcess(path, System.IO.Path.GetFileName(path), weGameRoot))
                             {
                                 found = true;
@@ -863,6 +1171,8 @@ namespace AegisApp
         public static bool IsClientRunning(string lolRoot)
         {
             if (string.IsNullOrEmpty(lolRoot)) return false;
+            int currentSession;
+            if (!TryGetCurrentSessionId(out currentSession)) return false;
             Process[] processes;
             try { processes = Process.GetProcessesByName("LeagueClient"); }
             catch { return false; }
@@ -871,7 +1181,12 @@ namespace AegisApp
             {
                 try
                 {
-                    string path = GetImagePath(process);
+                    string path;
+                    SessionRelation sessionRelation;
+                    if (!TryGetVerifiedImagePath(
+                            process, currentSession,
+                            out path, out sessionRelation))
+                        continue;
                     if (IsLeagueClientProcess(path, System.IO.Path.GetFileName(path), lolRoot))
                         found = true;
                 }
@@ -883,6 +1198,8 @@ namespace AegisApp
 
         public static bool IsUxRunning(string lolRoot)
         {
+            int currentSession;
+            if (!TryGetCurrentSessionId(out currentSession)) return false;
             Process[] processes;
             try { processes = Process.GetProcessesByName("LeagueClientUx"); }
             catch { return false; }
@@ -891,7 +1208,12 @@ namespace AegisApp
             {
                 try
                 {
-                    string path = GetImagePath(process);
+                    string path;
+                    SessionRelation sessionRelation;
+                    if (!TryGetVerifiedImagePath(
+                            process, currentSession,
+                            out path, out sessionRelation))
+                        continue;
                     if (IsUxProcess(path, System.IO.Path.GetFileName(path), lolRoot))
                         found = true;
                 }
@@ -1148,6 +1470,9 @@ namespace AegisApp
             probed += lockfileProbed;
             if (credentials != null || probed >= CredentialProbeLimit)
                 return credentials;
+            if (!LolRuntimeProcesses
+                .HasExclusiveCredentialSourceSession(lolRoot))
+                return null;
 
             int logProbed;
             return SelectReachableLogCandidate(
@@ -1162,8 +1487,12 @@ namespace AegisApp
             string lolRoot)
         {
             var candidates = new List<LolLcuCredentials>();
+            int currentSession;
+            if (!LolRuntimeProcesses.TryGetCurrentSessionId(
+                    out currentSession))
+                return candidates;
             const string query =
-                "SELECT ProcessId, ExecutablePath, CommandLine, Name FROM Win32_Process "
+                "SELECT ProcessId, SessionId, CreationDate, ExecutablePath, CommandLine, Name FROM Win32_Process "
                 + "WHERE Name='LeagueClient.exe' OR Name='LeagueClientUx.exe'";
             try
             {
@@ -1194,20 +1523,33 @@ namespace AegisApp
                             for (int i = 0; i < ordered.Count; i++)
                             {
                                 ManagementObject row = ordered[i];
-                                string executablePath = Convert.ToString(row["ExecutablePath"]);
-                                if (string.IsNullOrEmpty(executablePath))
-                                {
-                                    int pid;
-                                    if (int.TryParse(Convert.ToString(row["ProcessId"]), out pid))
-                                        executablePath = ImagePath(pid);
-                                }
-                                if (!LolRuntimeProcesses.IsUnder(executablePath, lolRoot)) continue;
+                                int pid;
+                                int sessionId;
+                                long creation;
+                                if (!int.TryParse(
+                                        Convert.ToString(row["ProcessId"]),
+                                        out pid)
+                                    || !int.TryParse(
+                                        Convert.ToString(row["SessionId"]),
+                                        out sessionId)
+                                    || !TryParseWmiCreation(
+                                        row["CreationDate"], out creation)
+                                    || !LolRuntimeProcesses.IsExpectedSession(
+                                        currentSession, sessionId))
+                                    continue;
+                                if (!LolRuntimeProcesses
+                                    .IsOwnedCredentialSourceProcess(
+                                        lolRoot, pid, currentSession,
+                                        creation))
+                                    continue;
                                 int port;
                                 string token;
                                 if (LolCredentialParser.TryParseCommandLine(
-                                    Convert.ToString(row["CommandLine"]), out port, out token))
+                                    Convert.ToString(row["CommandLine"]),
+                                    out port, out token))
                                     candidates.Add(
-                                        new LolLcuCredentials(port, token));
+                                        new LolLcuCredentials(
+                                            port, token));
                             }
                         }
                         finally
@@ -1222,9 +1564,29 @@ namespace AegisApp
             return candidates;
         }
 
+        private static bool TryParseWmiCreation(
+            object value, out long fileTimeUtc)
+        {
+            fileTimeUtc = 0;
+            try
+            {
+                string text = Convert.ToString(value);
+                if (string.IsNullOrWhiteSpace(text)) return false;
+                DateTime created =
+                    ManagementDateTimeConverter.ToDateTime(text);
+                fileTimeUtc = created.ToUniversalTime().ToFileTimeUtc();
+                return fileTimeUtc > 0;
+            }
+            catch { return false; }
+        }
+
         private static IList<LolLcuCredentials> ReadLockfileCandidates(
             string lolRoot)
         {
+            int currentSession;
+            if (!LolRuntimeProcesses.TryGetCurrentSessionId(
+                    out currentSession))
+                return new List<LolLcuCredentials>();
             string[] files =
             {
                 Path.Combine(lolRoot, "lockfile"),
@@ -1238,9 +1600,13 @@ namespace AegisApp
                 string content;
                 if (!TryReadTail(
                     files[i], LockfileTailBytes, out content)) continue;
+                int pid;
                 int port;
                 string token;
-                if (LolCredentialParser.TryParseLockfile(content, out port, out token))
+                if (LolCredentialParser.TryParseLockfile(
+                        content, out pid, out port, out token)
+                    && LolRuntimeProcesses.IsOwnedCredentialSourceProcess(
+                        lolRoot, pid, currentSession))
                     candidates.Add(new LolLcuCredentials(port, token));
             }
             return candidates;

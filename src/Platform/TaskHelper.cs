@@ -121,42 +121,84 @@ namespace AegisApp
             try
             {
                 string cur = Application.ExecutablePath;
-                if (string.Equals(Settings.LoadStr("AutostartExe", ""), cur, StringComparison.OrdinalIgnoreCase)) return;
                 if (!TaskExists()) return;
-                string target = TaskCommand();
-                if (target != null && string.Equals(target, cur, StringComparison.OrdinalIgnoreCase))
+                string target;
+                if (!TryReadTaskCommand(out target))
+                {
+                    Logger.Log("开机自启任务读取失败，本次不修改");
+                    return;
+                }
+                if (!NeedsStartupTaskRefresh(cur, target))
                 {
                     Settings.SaveStr("AutostartExe", cur);
                     return;
                 }
-                if (target != null && File.Exists(target)) return;
-                Logger.Log("开机自启任务指向的程序已不存在，重建为当前路径：" + cur);
-                CreateStartupTask();
+                Logger.Log("开机自启任务迁移：" + (target ?? "未知目标") + " → " + cur);
+                if (CreateStartupTask() != 0)
+                    Logger.Log("开机自启任务迁移失败，稍后将重试");
             }
             catch { }
         }
 
-        private static string TaskCommand()
+        internal static bool NeedsStartupTaskRefresh(
+            string currentExecutable, string taskExecutable)
         {
-            string outp = RunRead("/Query /TN " + TaskName + " /XML");
-            if (outp == null) return null;
-            int a = outp.IndexOf("<Command>", StringComparison.OrdinalIgnoreCase);
-            int b = outp.IndexOf("</Command>", StringComparison.OrdinalIgnoreCase);
-            if (a < 0 || b < 0 || b <= a) return null;
-            string cmd = outp.Substring(a + 9, b - a - 9).Trim().Trim('"');
-            return cmd.Length == 0 ? null : cmd;
+            if (string.IsNullOrWhiteSpace(currentExecutable)) return false;
+            if (string.IsNullOrWhiteSpace(taskExecutable)) return false;
+            try
+            {
+                string current = Path.GetFullPath(
+                    currentExecutable.Trim().Trim('"'));
+                string target = Path.GetFullPath(
+                    taskExecutable.Trim().Trim('"'));
+                return !string.Equals(
+                    current, target, StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return !string.Equals(
+                    currentExecutable.Trim().Trim('"'),
+                    taskExecutable.Trim().Trim('"'),
+                    StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        private static bool TryReadTaskCommand(out string command)
+        {
+            command = null;
+            string xml;
+            if (RunCore(
+                    "/Query /TN " + TaskName + " /XML",
+                    true, out xml) != 0)
+                return false;
+            command = ParseTaskCommandXml(xml);
+            return !string.IsNullOrWhiteSpace(command);
+        }
+
+        internal static string ParseTaskCommandXml(string xml)
+        {
+            if (string.IsNullOrWhiteSpace(xml)) return null;
+            try
+            {
+                var document = new System.Xml.XmlDocument();
+                document.XmlResolver = null;
+                document.LoadXml(xml.TrimStart('\uFEFF'));
+                System.Xml.XmlNode command = document.SelectSingleNode(
+                    "/*[local-name()='Task']"
+                    + "/*[local-name()='Actions']"
+                    + "/*[local-name()='Exec']"
+                    + "/*[local-name()='Command']");
+                if (command == null) return null;
+                string value = (command.InnerText ?? "").Trim().Trim('"');
+                return value.Length == 0 ? null : value;
+            }
+            catch { return null; }
         }
 
         public static int Run(string arguments)
         {
             string ignored;
             return RunCore(arguments, false, out ignored);
-        }
-
-        private static string RunRead(string arguments)
-        {
-            string outp;
-            return RunCore(arguments, true, out outp) == 0 ? outp : null;
         }
 
         private static int RunCore(string arguments, bool capture, out string stdout)
