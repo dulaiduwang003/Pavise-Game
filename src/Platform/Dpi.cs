@@ -35,6 +35,4 @@ namespace AegisApp
         }
     }
 
-
-
 }

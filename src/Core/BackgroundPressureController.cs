@@ -16,7 +16,7 @@ namespace AegisApp
 
     internal sealed class BackgroundPressureController
     {
-        // 有效采样窗口：短于 1 秒速率失真，长于 30 秒说明中间断过档、基线不可信
+
         internal const long MinSampleTicks = TimeSpan.TicksPerSecond;
         internal const long MaxSampleTicks = TimeSpan.TicksPerSecond * 30;
 
@@ -44,12 +44,7 @@ namespace AegisApp
 
             long dt = now - old.At;
             long dcpu = cpu - old.Cpu;
-            // 采样窗口太短的话速率会被放大到失真：扫描不是固定 4 秒一轮，进程频繁启停时
-            // 会被事件驱动以 200ms 的合并窗口反复唤醒，dt≈0.2s 时 20ms 的 CPU 占用会算成
-            // 0.1 核、直接越过阈值，普通程序几百毫秒内就被升到 Isolated。
-            // 窗口不足时保留基线：一旦在这里前移，进程频繁启停的机器上 dt 永远攒不到 1 秒，
-            // 热度再也不会增长。同时必须回报已累积的热度，否则调用方会把 None 当成
-            // "降到最低档"，把已经生效的隔离撤销掉。
+
             if (dt < MinSampleTicks && dcpu >= 0) return LevelOfHeat(old.Heat);
 
             ulong dio = io >= old.Io ? io - old.Io : 0;

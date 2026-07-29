@@ -366,8 +366,6 @@ namespace AegisApp
             Environment.ExitCode = 0;
         }
 
-        // 真实构造主窗口并走一次 ShowPanel()，逐帧采样 Opacity/Top，
-        // 验证开场动画确实在渐变+上浮（而不是卡在 0、或直接跳到 1 等于没动画）。
         private static void RunIntroProbe(string output)
         {
             var sb = new System.Text.StringBuilder();
@@ -426,8 +424,6 @@ namespace AegisApp
             Environment.ExitCode = 0;
         }
 
-        // 把真实托盘右键菜单显示出来截图，并打印每项的高度/内边距/文字矩形，
-        // 用来判断文字到底有没有垂直居中——靠肉眼猜容易改错方向。
         private static void RunMenuProbe(string output, string dumpPath)
         {
             string data = Path.Combine(Path.GetTempPath(), "AegisMenuProbe_" + Process.GetCurrentProcess().Id);
@@ -476,8 +472,6 @@ namespace AegisApp
             Environment.ExitCode = 0;
         }
 
-        // 真实弹出版本说明窗口并截图。窗口构造时会把"已读版本"写进用户配置，
-        // 这里先存后还原，免得诊断run顺手把用户的 NEW 标记吃掉。
         private static void RunNotesProbe(string output, string language)
         {
             const string seenKey = "LastSeenNotesVersion";
@@ -922,8 +916,7 @@ namespace AegisApp
             });
             test("visual effects: the animation snapshot is persisted so a crash can recover it", () =>
             {
-                // 关键回归：窗口动画的原值必须落盘。只存在内存里的话，Aegis 被强杀后重启，
-                // Activate 会把"当前已关闭"当成用户本来的设置，动画整个登录会话都开不回来。
+
                 int before = 0;
                 if (!Native.SystemParametersInfoGet(Native.SPI_GETUIEFFECTS, 0, ref before, 0))
                     throw new TestSkippedException("SPI_GETUIEFFECTS unavailable");
@@ -949,8 +942,7 @@ namespace AegisApp
             });
             test("powershell bridge: user data is passed as data, never parsed as script", () =>
             {
-                // PowerShell 把 U+2019 等排版引号也当单引号定界符，所以"把 ' 翻倍"挡不住注入。
-                // Aegis 以管理员运行，被注入等于交出管理员权限，因此数据一律走环境变量。
+
                 string evil = "D:" + "\\" + "Evil" + (char)0x2019 + ";Write-Output PWNED;" + (char)0x2019;
                 var argv = new Dictionary<string, string> { { "AEGIS_PATH", evil } };
                 string outText;
@@ -964,8 +956,7 @@ namespace AegisApp
             });
             test("language table: every entry is trilingual and format placeholders are consistent", () =>
             {
-                // 缺键时 Lang.T 会把键名本身当文本返回，界面上就会出现 "btn.open" 这种字样，
-                // 三种语言下都一样，光靠肉眼看很难发现，所以由测试兜住。
+
                 var missing = new List<string>();
                 foreach (string key in Lang.AllKeys())
                 {
@@ -973,7 +964,7 @@ namespace AegisApp
                     if (row == null || row.Length != 3) { missing.Add(key + "(译文不足3种)"); continue; }
                     for (int i = 0; i < 3; i++)
                         if (string.IsNullOrEmpty(row[i])) missing.Add(key + "(第" + i + "种语言为空)");
-                    // 同一条目的各语言占位符数量必须一致，否则切语言后 string.Format 会抛异常
+
                     int zh = CountPlaceholders(row[0]);
                     for (int i = 1; i < 3; i++)
                         if (CountPlaceholders(row[i]) != zh)
@@ -981,40 +972,36 @@ namespace AegisApp
                 }
                 if (missing.Count > 0) throw new Exception(string.Join("; ", missing.ToArray()));
             });
-            // Everything above that changes real OS state keeps its persistent
-            // recovery journal. From here onward, isolate parser/CrashGuard
-            // settings from a concurrently running Aegis process.
+
             Settings.UseTransientStoreForCurrentProcess();
             test("crash journal: old 9-field records still load after the QoS fields were added", () =>
             {
                 string name = Convert.ToBase64String(Encoding.UTF8.GetBytes("game"));
-                // 旧格式（9 段，无 QoS）：必须照常读出，QoS 退化为 -1 = 交给系统托管，
-                // 也就是加字段之前的行为，升级不会作废已有的待恢复记录
+
                 Eq("1|-1|-1", CrashGuard.ProbeParse("111|222|" + name + "|32|255|2|5|-1|"));
-                // 新格式（11 段）：QoS 原样读回
+
                 Eq("1|1|1", CrashGuard.ProbeParse("111|222|" + name + "|32|255|2|5|-1||1|1"));
-                // 尾部字段损坏时退回 -1，而不是整条丢弃
+
                 Eq("1|-1|-1", CrashGuard.ProbeParse("111|222|" + name + "|32|255|2|5|-1||x|y"));
-                // CpuSets 列表正常携带时也不受影响
+
                 Eq("1|1|0", CrashGuard.ProbeParse("111|222|" + name + "|32|255|2|5|-1|3,4,5|1|0"));
-                // 段数不足仍然拒绝
+
                 Eq("0", CrashGuard.ProbeParse("111|222|" + name + "|32"));
             });
             test("suppression: game-root containment is anchored on a path segment", () =>
             {
-                // 兄弟目录不能因为前缀相同就被当成同一个游戏目录
+
                 Eq(true, GameMode.UnderRoot(@"D:\Games\Apex\bin\game.exe", @"D:\Games\Apex"));
                 Eq(true, GameMode.UnderRoot(@"D:\Games\Apex\bin\game.exe", @"D:\Games\Apex\"));
                 Eq(false, GameMode.UnderRoot(@"D:\Games\ApexBackup\sync.exe", @"D:\Games\Apex"));
                 Eq(false, GameMode.UnderRoot(@"D:\Games\ApexTools\updater.exe", @"D:\Games\Apex\"));
                 Eq(false, GameMode.UnderRoot(@"D:\SteamLibrary\x\y.exe", @"D:\Steam"));
-                // 根目录本身不算"在根目录之下"，空值一律不匹配
+
                 Eq(false, GameMode.UnderRoot(@"D:\Games\Apex", @"D:\Games\Apex"));
                 Eq(false, GameMode.UnderRoot(null, @"D:\Games\Apex"));
                 Eq(false, GameMode.UnderRoot(@"D:\Games\Apex\a.exe", null));
                 Eq(false, GameMode.UnderRoot(@"D:\Games\Apex\a.exe", ""));
 
-                // 走真实资格判定：同名前缀的兄弟目录不该被豁免
                 const string win = @"C:\Windows\";
                 Eq(false, GameMode.BasicBackgroundEligible(10, 99, "game", @"D:\Games\Apex\bin\game.exe",
                     1, 1, 20, false, win, false, @"D:\Games\Apex"));
@@ -1024,26 +1011,24 @@ namespace AegisApp
             test("suppression: anti-cheat exemption is as broad as anti-cheat detection", () =>
             {
                 const string win = @"C:\Windows\";
-                // 检测器认定为反作弊的名字，压制侧必须同样豁免。
-                // 两边用不同宽度的判定，就会出现"检测器说是反作弊、压制器照压不误"的致命缝隙。
+
                 string[] names = { "GameAntiCheat", "BattlEye", "SGuard64Helper", "EasyAntiCheat_x64",
                                    "vgtray", "GameMon64", "TenSafe_1", "ACE-Helper" };
                 foreach (string n in names)
                 {
                     if (!GameSessionDetector.IsAntiCheatLikeName(n))
                         throw new Exception("detector no longer treats " + n + " as anti-cheat; test premise broken");
-                    // 常规强度
+
                     Eq(false, GameMode.BasicBackgroundEligible(10, 99, n, @"C:\Program Files\AC\" + n + ".exe",
                         1, 1, 20, false, win));
-                    // 竞技级强度（前台/可见窗口豁免全部取消，最容易误伤）
+
                     Eq(false, GameMode.BasicBackgroundEligible(10, 99, n, @"C:\Program Files\AC\" + n + ".exe",
                         1, 1, 20, false, win, false, null, true));
                 }
             });
             test("theme fonts: the shared font cache survives repeated painting", () =>
             {
-                // Theme.UI 返回的是全局缓存实例。绘制代码若把它 using 掉，
-                // 缓存里留下的就是已释放对象，下一次取到它再绘制就会抛异常。
+
                 using (var panel = new EmptyStatePanel())
                 {
                     panel.Size = new Size(320, 220);
@@ -1054,7 +1039,7 @@ namespace AegisApp
                         using (var bmp = new Bitmap(320, 220))
                             panel.DrawToBitmap(bmp, new Rectangle(0, 0, 320, 220));
                 }
-                // 缓存中的字体必须仍然可用：对已释放的 Font 取 Height 会抛异常
+
                 foreach (float size in new[] { 9.25f, 8.4f, 10.2f, 7.8f, 7.6f })
                 {
                     if (Theme.UI(size, true).Height <= 0) throw new Exception(size + "pt bold font is unusable");
@@ -1063,19 +1048,19 @@ namespace AegisApp
             });
             test("defender exclusion: path matching never mistakes a neighbour for an owned entry", () =>
             {
-                // 大小写、尾部反斜杠、引号、空白都不该影响判定
+
                 Eq(@"C:\Games\Foo", DefenderExclusion.Normalize(@"C:\Games\Foo\"));
                 Eq(@"C:\Games\Foo", DefenderExclusion.Normalize(@"  ""C:\Games\Foo""  "));
                 Eq("", DefenderExclusion.Normalize(null));
                 Eq("", DefenderExclusion.Normalize("   "));
-                // 盘符根目录不能被削成 "C:"
+
                 Eq(@"C:\", DefenderExclusion.Normalize(@"C:\"));
 
                 var owned = new List<string> { @"C:\Games\Foo", @"D:\Steam\Bar\" };
                 Eq(true, DefenderExclusion.Contains(owned, @"c:\games\foo"));
                 Eq(true, DefenderExclusion.Contains(owned, @"C:\Games\Foo\"));
                 Eq(true, DefenderExclusion.Contains(owned, @"D:\Steam\Bar"));
-                // 前缀相同但不是同一个目录，绝不能算命中——否则会误删用户自己的排除
+
                 Eq(false, DefenderExclusion.Contains(owned, @"C:\Games\Foobar"));
                 Eq(false, DefenderExclusion.Contains(owned, @"C:\Games"));
                 Eq(false, DefenderExclusion.Contains(owned, @"C:\Games\Foo\Sub"));
@@ -1083,27 +1068,25 @@ namespace AegisApp
             });
             test("per-game GPU preference: merging never destroys fields Windows owns", () =>
             {
-                // 回归钉子：Windows 把逐游戏「窗口化优化」存在 AppStatus 里，
-                // 写 GpuPreference 时整值覆盖会把它抹掉（本机真有游戏是 AppStatus=0; 这个形态）
+
                 Eq("AppStatus=0;GpuPreference=2;", GameExeTweaks.MergeField("AppStatus=0;", "GpuPreference", "2"));
                 Eq("AppStatus=4096;GpuPreference=2;", GameExeTweaks.MergeField("AppStatus=4096;GpuPreference=0;", "GpuPreference", "2"));
-                // 顺序保持不变，己方字段就地替换而不是挪到末尾
+
                 Eq("GpuPreference=2;AppStatus=0;", GameExeTweaks.MergeField("GpuPreference=0;AppStatus=0;", "GpuPreference", "2"));
-                // 空值/空白/仅分号
+
                 Eq("GpuPreference=2;", GameExeTweaks.MergeField(null, "GpuPreference", "2"));
                 Eq("GpuPreference=2;", GameExeTweaks.MergeField("", "GpuPreference", "2"));
                 Eq("GpuPreference=2;", GameExeTweaks.MergeField(";;", "GpuPreference", "2"));
-                // 畸形段（没有等号）原样保留，不因为解析不了就丢弃
+
                 Eq("Garbage;GpuPreference=2;", GameExeTweaks.MergeField("Garbage;", "GpuPreference", "2"));
-                // 重复字段只保留一份
+
                 Eq("GpuPreference=2;", GameExeTweaks.MergeField("GpuPreference=0;GpuPreference=1;", "GpuPreference", "2"));
 
-                // 读取：用于判断"已经是想要的值就别动"
                 Eq("2", GameExeTweaks.ReadField("AppStatus=4096;GpuPreference=2;", "GpuPreference"));
                 Eq("0", GameExeTweaks.ReadField("AppStatus=0;", "AppStatus"));
                 Eq(null, GameExeTweaks.ReadField("AppStatus=0;", "GpuPreference"));
                 Eq(null, GameExeTweaks.ReadField(null, "GpuPreference"));
-                // 不能被前缀相同的字段名骗到
+
                 Eq(null, GameExeTweaks.ReadField("XGpuPreference=2;", "GpuPreference"));
             });
             test("release notes: current version is documented and fully translated", () =>
@@ -1116,7 +1099,6 @@ namespace AegisApp
                 List<string> missing = ReleaseNotes.MissingTranslations();
                 if (missing.Count > 0) throw new Exception("untranslated notes: " + string.Join(", ", missing.ToArray()));
 
-                // 版本按从新到旧排列，且日期字段不能为空
                 for (int i = 1; i < ReleaseNotes.All.Length; i++)
                     if (!UpdateChecker.IsNewer(ReleaseNotes.All[i - 1].Version, ReleaseNotes.All[i].Version))
                         throw new Exception("notes are not ordered newest-first at index " + i);
@@ -1126,34 +1108,31 @@ namespace AegisApp
                     if (n.Tag != "v" + n.Version) throw new Exception("bad tag for " + n.Version);
                 }
 
-                // 越界索引必须返回空串而不是抛异常
                 Eq("", cur.Item(-1));
                 Eq("", cur.Item(cur.Count));
             });
             test("auto-hide: fires once per game session and re-arms only on the next one", () =>
             {
                 bool last = false, armed = false;
-                // 开关关着：整局都不该收
+
                 Eq(AutoHideAction.None, PanelForm.NextAutoHide(true, ref last, ref armed, false, true));
                 Eq(AutoHideAction.Cancel, PanelForm.NextAutoHide(false, ref last, ref armed, false, true));
 
-                // 开关开着、窗口可见：这局收一次
                 last = false; armed = false;
                 Eq(AutoHideAction.Schedule, PanelForm.NextAutoHide(true, ref last, ref armed, true, true));
-                // 同一局内反复轮询不得重复安排
+
                 Eq(AutoHideAction.None, PanelForm.NextAutoHide(true, ref last, ref armed, true, true));
                 Eq(AutoHideAction.None, PanelForm.NextAutoHide(true, ref last, ref armed, true, true));
-                // 这局结束 → 撤销并重新武装
+
                 Eq(AutoHideAction.Cancel, PanelForm.NextAutoHide(false, ref last, ref armed, true, true));
                 Eq(false, armed);
-                // 下一局重新收一次
+
                 Eq(AutoHideAction.Schedule, PanelForm.NextAutoHide(true, ref last, ref armed, true, true));
 
-                // 游戏开始时窗口本来就没显示：消耗掉本局机会但不安排收起
                 last = false; armed = false;
                 Eq(AutoHideAction.None, PanelForm.NextAutoHide(true, ref last, ref armed, true, false));
                 Eq(true, armed);
-                // 用户对局中途自己打开窗口，也不该被再次收走
+
                 Eq(AutoHideAction.None, PanelForm.NextAutoHide(true, ref last, ref armed, true, true));
             });
             test("UI dormancy: hidden/minimized windows cannot revive animation timers", TestUiDormancyState);
@@ -1260,8 +1239,6 @@ namespace AegisApp
             Eq<string>(null,
                 GameSessionDetector.ImageNameFromVerifiedPath(null));
 
-            // Two live launchers under one root form two instances.  A renderer
-            // may select only the entry reached by a creation-valid parent tree.
             var parallel = new[]
             {
                 new GameProcessSnapshot
@@ -1321,9 +1298,6 @@ namespace AegisApp
                 parallel[3].Creation,
                 "reused-process"));
 
-            // If stickiness keeps instance B while a later fresh scan prefers
-            // instance A, rebuilding the anchor must replace—not union—the two
-            // trees.
             var otherInstance = new GameDetection
             {
                 Profile = profile.Clone(),
@@ -1372,8 +1346,6 @@ namespace AegisApp
                 unverifiable, hit, new[] { 200 }));
             Eq(true, unverifiable.FamilyPids.Contains(100));
 
-            // A stale child whose recorded parent PID now names a newer process
-            // must not inherit that new process's session.
             var reusedParent = new[]
             {
                 new GameProcessSnapshot
@@ -1397,9 +1369,6 @@ namespace AegisApp
             Eq(300, hit.RendererPid);
             Eq(false, hit.FamilyPids.Contains(301));
 
-            // Some launch stacks hand off through a service and lose the parent
-            // edge.  Admit that migration only while it is new, foreground and
-            // has exactly one possible launcher instance.
             var detached = new[]
             {
                 new GameProcessSnapshot
@@ -1458,8 +1427,6 @@ namespace AegisApp
             Eq(false, hit.RendererPid == 401);
             Eq(false, hit.FamilyPids.Contains(401));
 
-            // A legacy name-only profile may use its saved root, but the same
-            // executable name outside that root is not an entry.
             var legacy = GameProfileStore.NewProfile(
                 "Legacy", root);
             legacy.ExecutablePath = null;
@@ -1504,26 +1471,20 @@ namespace AegisApp
             Eq(SuppressionLevel.Restrained, c.Observe(8, "worker", 1, cpu, 0, 120 * second, PerformancePreset.Standard));
             Eq(SuppressionLevel.None, c.Observe(8, "worker", 2, 99 * second, 0, 124 * second, PerformancePreset.Standard));
 
-            // 采样窗口过短时速率会被放大：扫描由进程启停事件驱动（200ms 合并窗口），
-            // 不做下限保护的话，几百毫秒内的一点 CPU 就会被算成越阈值并一路升到 Isolated。
             var fast = new BackgroundPressureController();
             long t = 200 * second, used = 0;
             Eq(SuppressionLevel.None, fast.Observe(9, "burst", 1, used, 0, t, PerformancePreset.Standard));
             for (int i = 0; i < 4; i++)
             {
-                t += second / 5;                       // 200ms 一轮，累计不足 1 秒
-                used += (long)(second / 5 * 0.10);     // 期间真实占用 0.10 核，远超 0.08 阈值
+                t += second / 5;
+                used += (long)(second / 5 * 0.10);
                 Eq(SuppressionLevel.None, fast.Observe(9, "burst", 1, used, 0, t, PerformancePreset.Standard));
             }
-            // 窗口不足时基线必须留着：如果每次都把 At 前移，进程频繁启停的机器上
-            // dt 永远攒不到 1 秒，热度再也不会增长，自适应隔离等于被彻底关掉。
-            // 累计满 1 秒后算出的 0.10 核是真实占用率，不是被短窗口放大的假值。
+
             t += second / 5;
             used += (long)(second / 5 * 0.10);
             Eq(SuppressionLevel.Eco, fast.Observe(9, "burst", 1, used, 0, t, PerformancePreset.Standard));
 
-            // 亚秒采样不得把已经生效的等级撤销：调用方把返回值直接当作目标等级，
-            // 回报 None 会让已经隔离到小核的进程被放回全部核心。
             var keep = new BackgroundPressureController();
             long k = 400 * second, kused = 0;
             Eq(SuppressionLevel.None, keep.Observe(12, "hot", 1, kused, 0, k, PerformancePreset.Standard));
@@ -1536,7 +1497,6 @@ namespace AegisApp
             Eq(SuppressionLevel.Isolated, keep.Observe(12, "hot", 1, kused, 0, k, PerformancePreset.Standard));
             Eq(SuppressionLevel.Isolated, keep.Observe(12, "hot", 1, kused, 0, k + second / 5, PerformancePreset.Standard));
 
-            // 窗口过长（中间断过档）同样不该凭一次跨度极大的差值就判热
             var stale = new BackgroundPressureController();
             Eq(SuppressionLevel.None, stale.Observe(11, "idle", 1, 0, 0, 300 * second, PerformancePreset.Standard));
             Eq(SuppressionLevel.None, stale.Observe(11, "idle", 1, (long)(60 * second * 0.5), 0, 360 * second, PerformancePreset.Standard));
@@ -1638,9 +1598,9 @@ namespace AegisApp
             Eq(false, GameMode.BasicBackgroundEligible(10, 99, "discord", @"D:\Apps\discord.exe", 1, 1, 20, true, win));
             Eq(false, GameMode.BasicBackgroundEligible(10, 99, "EasyAntiCheat_EOS", @"D:\Games\eac.exe", 1, 1, 20, false, win));
             Eq(false, GameMode.BasicBackgroundEligible(10, 99, "SGuard64", @"D:\WeGame\SGuard64.exe", 1, 1, 20, false, win));
-            // 没有被判定为"当前游戏的进程树祖先"时，任何名字（含 wegame）都不享受特殊待遇
+
             Eq(true, GameMode.BasicBackgroundEligible(10, 99, "wegame", @"C:\WeGame\wegame.exe", 1, 1, 20, false, win));
-            // 只要被判定为祖先，任何名字（不只是 wegame）都会被豁免——不认平台名字，只认进程树结构
+
             Eq(false, GameMode.BasicBackgroundEligible(10, 99, "wegame", @"C:\WeGame\wegame.exe", 1, 1, 20, false, win, true, null));
             Eq(false, GameMode.BasicBackgroundEligible(10, 99, "anylauncher", @"D:\Anything\launcher.exe", 1, 1, 20, false, win, true, null));
             Eq(false, GameMode.BasicBackgroundEligible(10, 99, "railhelper", @"D:\SomeGame\TCLS\rail.exe", 1, 1, 20, false, win, false, @"D:\SomeGame\"));
@@ -1657,7 +1617,6 @@ namespace AegisApp
             Eq(false, GameMode.BasicBackgroundEligible(10, 99, "wegame", @"C:\WeGame\wegame.exe", 1, 1, 20, false, win, true, null, true));
             Eq(false, GameMode.BasicBackgroundEligible(10, 99, "railhelper", @"D:\SomeGame\TCLS\rail.exe", 1, 1, 20, false, win, false, @"D:\SomeGame\", true));
 
-            // WalkAncestorChain：不查任何平台名单，纯粹沿父进程链网上走
             var hostParents = new Dictionary<int, int> { { 100, 50 }, { 50, 20 }, { 20, 7 }, { 7, 3 } };
             HashSet<int> ancestors = GameMode.WalkAncestorChain(hostParents, 100, 99, 24);
             Eq(true, ancestors.Contains(50));
@@ -1678,7 +1637,6 @@ namespace AegisApp
             for (int i = 1001; i <= 1039; i++) longChain[i] = i - 1;
             Eq(24, GameMode.WalkAncestorChain(longChain, 1039, 99, 24).Count);
 
-            // 兜底通道：链路断掉够不到的常驻启动器外壳，仅在有活跃对局时按通用启动器类别豁免
             Eq(true, GameMode.IsKnownLauncherShell("wegame"));
             Eq(true, GameMode.IsKnownLauncherShell("Steam"));
             Eq(true, GameMode.IsKnownLauncherShell("EpicGamesLauncher"));

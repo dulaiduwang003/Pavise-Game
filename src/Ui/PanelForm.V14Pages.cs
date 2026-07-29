@@ -27,8 +27,7 @@ namespace AegisApp
             CardLabel(guard, Lang.T("v15.guard.state"), 18, 12, rightW - 92, 18, 7.8f, true, Theme.Faint);
             statusDot = new StatusDot(); statusDot.SetBounds(Theme.S(15), Theme.S(39), Theme.S(22), Theme.S(22));
             statusDot.Bg = Theme.Card; statusDot.Color = Theme.Dim;
-            // 原来是 11pt 单行、宽度还预留了 120px 给右上角开关，
-            // 结果中文需 402px 只有 284px 可用，状态文字永远被截。缩字号并放开到两行。
+
             lblStatus = CardLabel(guard, "…", 47, 30, rightW - 114, 44, 9.2f, true, Theme.Fg);
             swGame = MakeSwitch(gameMode.Enabled, delegate
             {
@@ -193,8 +192,7 @@ namespace AegisApp
             swPolicyBackground = AddPolicyToggle(scroll, ref sy, Lang.T("v14.bg.master"), Lang.T("v14.bg.master.sub"),
                 delegate { return gameMode.SuppressBackground; }, delegate(bool v) { gameMode.SuppressBackground = v; });
             var btnPolicyWhite = new PillButton(Lang.T("v14.manage.white"), BtnKind.Primary);
-            // SettingCard 只负责定位 host，不会替按钮推导宽度；这里必须显式给宽，
-            // 否则 Control 默认 0px，入口虽然存在于控件树却完全不可见。
+
             btnPolicyWhite.Size = new Size(Theme.S(164), Theme.S(34));
             btnPolicyWhite.Click += delegate
             {
@@ -245,7 +243,7 @@ namespace AegisApp
         {
             Toggle sw = MakeSwitch(read(), null);
             sw.CheckedChanged += delegate { write(sw.Checked); };
-            // 高度要能容下两行说明（描述区 = 高度 - S(40)），否则风险提示会被截掉
+
             int cardH;
             SettingCard card = MakeAutoCard(parent, 6, y, ScrollContentW, 78, title, desc, sw, out cardH);
             y += cardH + 8;

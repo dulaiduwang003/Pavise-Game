@@ -79,8 +79,6 @@ namespace AegisApp
             if (!slowTimer.Enabled) slowTimer.Start();
         }
 
-        // A hidden/minimized panel owns no animation budget. This hard gate also
-        // prevents child controls from reviving the shared 16 ms timer via Wake().
         public static bool Suspended
         {
             get { return suspended; }
@@ -110,7 +108,5 @@ namespace AegisApp
             }
         }
     }
-
-
 
 }

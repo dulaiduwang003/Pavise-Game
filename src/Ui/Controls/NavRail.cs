@@ -39,8 +39,6 @@ namespace AegisApp
         {
         }
 
-        // order 把"第几个槽位"和"是第几个页面"拆开：sel/hoverIdx/SelectionChanged 一律仍然存 item，
-        // 槽位只在 SlotY / SlotOfItem 内部出现，页面索引因此完全不受排版变化影响。
         public NavRail(string[] names, string[] icons, int[] displayOrder, int groupBeforeSlot, string groupTitle, int bottomAnchored)
         {
             labels = names; glyphs = icons;
@@ -188,6 +186,5 @@ namespace AegisApp
             }
         }
     }
-
 
 }

@@ -10,10 +10,11 @@ namespace AegisApp
 {
     internal partial class GameMode
     {
+#if AEGIS_PERFLAB
         private HashSet<string> performanceSuppressionScope;
+#endif
 
-        // PerfLab 可运行真实 Sweep，但只能修改明确的合成负载。正式入口不调用
-        // 此方法，因此 null 仍表示原有的完整策略范围。
+#if AEGIS_PERFLAB
         internal void RestrictBackgroundSuppressionToPaths(
             IEnumerable<string> executablePaths)
         {
@@ -26,15 +27,20 @@ namespace AegisApp
                 }
             lock (sync) performanceSuppressionScope = next;
         }
+#endif
 
         private bool PerformanceScopeAllows(string imagePath)
         {
+#if AEGIS_PERFLAB
             lock (sync)
             {
                 if (performanceSuppressionScope == null) return true;
                 return performanceSuppressionScope.Contains(
                     WhitelistRule.NormalizeImagePath(imagePath));
             }
+#else
+            return true;
+#endif
         }
 
         private sealed class BackgroundRequest
@@ -74,10 +80,7 @@ namespace AegisApp
             int session, int ownerSession, int foreground, bool userFacingFamily, string windowsRoot,
             bool gameHostAncestor = false, string activeGameRoot = null, bool aggressive = false)
         {
-            // 必须用与检测器同一套（更宽的）判定：AntiCheatCatalog 是精确名单，
-            // IsAntiCheatLikeName 在名单之外还认 anticheat/sguard/battleye 等子串。
-            // 两边宽度不一致的话，会出现"检测器认定是反作弊、压制器照压不误"的缝隙，
-            // 而被压的反作弊心跳超时 = 掉线甚至被判异常。宁可漏放也绝不错压。
+
             if (GameSessionDetector.IsAntiCheatLikeName(name)) return false;
             if (gameHostAncestor) return false;
             if (UnderRoot(path, activeGameRoot)) return false;
@@ -88,8 +91,6 @@ namespace AegisApp
             return string.IsNullOrEmpty(windowsRoot) || !path.StartsWith(windowsRoot, StringComparison.OrdinalIgnoreCase);
         }
 
-        // 目录包含判断必须按路径分段锚定：裸 StartsWith 会让根目录 D:\Games\Apex
-        // 把兄弟目录 D:\Games\ApexBackup 也算进来，从而错误豁免不相干的进程。
         internal static bool UnderRoot(string path, string root)
         {
             if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(root)) return false;
@@ -112,8 +113,7 @@ namespace AegisApp
 
         private void Sweep(Process[] all, HashSet<int> gamePids)
         {
-            // 白名单修改和策略应用必须线性化。否则 UI 新增规则并立即恢复后，
-            // 一个已拿到旧快照的 Sweep 仍可能把同一进程重新压制到下一轮校准。
+
             lock (whiteEvalSync)
                 SweepWithStableWhitelist(all, gamePids);
         }
@@ -204,7 +204,7 @@ namespace AegisApp
                             finally { Native.CloseHandle(hq); }
                         }
                     }
-                 
+
                     bool knownLauncherDuringSession = gameSessionActive && IsKnownLauncherShell(nm);
                     if (!PerformanceScopeAllows(ipath))
                     {
@@ -449,10 +449,6 @@ namespace AegisApp
             return false;
         }
 
-        // 从当前活跃渲染进程往上找它的启动器链条（父进程、祖父进程……）。
-        // 不认任何具体平台的名字——不管是哪家启动器，只要它现在真的是这局
-        // 游戏进程树上的祖先，就在会话存续期间豁免压制；遇到父进程已退出、
-        // 跨会话、绕回自身或起点这些断链情况就停，防止把无关进程也豁免掉。
         internal static bool IsKnownLauncherShell(string name)
         {
             return !string.IsNullOrEmpty(name) && LauncherPlatforms.Contains(name);

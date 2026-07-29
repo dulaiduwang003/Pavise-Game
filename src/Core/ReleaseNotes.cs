@@ -21,7 +21,6 @@ namespace AegisApp
 
         public int Count { get { return items == null ? 0 : items.Length; } }
 
-        // 缺译时回退到中文，避免某种语言下条目变空白
         public string Item(int index)
         {
             if (items == null || index < 0 || index >= items.Length) return "";
@@ -218,7 +217,6 @@ namespace AegisApp
             }
         }
 
-        // 首次运行到某个版本时为未读；点开看过之后记下版本号，之后不再提示。
         public static bool HasUnseen
         {
             get { return !string.Equals(Settings.LoadStr(SeenKey, ""), App.Version, StringComparison.OrdinalIgnoreCase); }
@@ -226,6 +224,7 @@ namespace AegisApp
 
         public static void MarkSeen() { Settings.SaveStr(SeenKey, App.Version); }
 
+#if AEGIS_SELFTEST
         internal static List<string> MissingTranslations()
         {
             var bad = new List<string>();
@@ -245,5 +244,6 @@ namespace AegisApp
                 }
             return bad;
         }
+#endif
     }
 }

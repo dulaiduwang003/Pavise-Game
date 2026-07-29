@@ -86,6 +86,7 @@ namespace AegisApp
             }
         }
 
+#if AEGIS_SELFTEST
         internal static bool CreateShortcutForTest(string shortcutPath, string executablePath)
         {
             IShellLinkW link = null;
@@ -103,6 +104,7 @@ namespace AegisApp
                     try { Marshal.FinalReleaseComObject(link); } catch { }
             }
         }
+#endif
 
         [ComImport, Guid("00021401-0000-0000-C000-000000000046")]
         private class ShellLink { }

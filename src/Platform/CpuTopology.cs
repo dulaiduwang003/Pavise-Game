@@ -21,7 +21,6 @@ namespace AegisApp
         public static bool MultiGroup;
         public static ulong PerfMask, EffMask, BigL3Mask, SmallL3Mask;
 
-
         public static ulong AllMask, ThrottleMask, BoostMask, StrictBoostMask;
 
         static CpuTopology()
@@ -32,15 +31,13 @@ namespace AegisApp
             try { BuildCpuSetPolicies(); } catch { }
         }
 
-
         private static void DeriveMasks()
         {
             int nc = Environment.ProcessorCount;
             AllMask = nc >= 64 ? ulong.MaxValue : (1UL << nc) - 1UL;
             if (Hybrid) { ThrottleMask = EffMask; BoostMask = AllMask; }
             else if (AsymCache) { ThrottleMask = SmallL3Mask; BoostMask = BigL3Mask; }
-            // C# 会把 ulong 的移位量按 6 bit 取模，nc>64 时 3UL<<70 会变成 3UL<<6，
-            // 把 6/7 号核当成"后台核"。其余移位点都有 <64 保护，补上这一处。
+
             else { ThrottleMask = nc >= 2 && nc <= 64 ? 3UL << (nc - 2) : (nc >= 2 ? 0UL : 1UL); BoostMask = AllMask; }
             StrictBoostMask = CpuPartitionPolicy.StrictMask(AllMask, ThrottleMask,
                 Hybrid ? PerfMask : 0, AsymCache ? BigL3Mask : 0);
@@ -375,7 +372,5 @@ namespace AegisApp
             finally { Marshal.FreeHGlobal(buf); }
         }
     }
-
-
 
 }

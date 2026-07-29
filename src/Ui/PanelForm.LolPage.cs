@@ -275,8 +275,7 @@ namespace AegisApp
                 snapshot.HeadlessEnabled ? Theme.Green : Theme.Faint);
 
             string action = !string.IsNullOrEmpty(snapshot.LastError) ? snapshot.LastError : snapshot.LastAction;
-            // lastAction 记录的是"刚才做了什么"，用户却会当"现在是什么状态"读。
-            // 过了保鲜期就退回默认文案，否则一条过去的成功消息会一直冒充当前状态。
+
             if (snapshot.LastActionUtc != DateTime.MinValue
                 && DateTime.UtcNow - snapshot.LastActionUtc > TimeSpan.FromSeconds(20))
                 action = "";

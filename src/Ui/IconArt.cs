@@ -140,5 +140,4 @@ namespace AegisApp
         public static void Save(string path, int[] sizes) { File.WriteAllBytes(path, Build(sizes)); }
     }
 
-
 }

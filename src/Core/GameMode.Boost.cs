@@ -249,7 +249,7 @@ namespace AegisApp
                             int gpuOld;
                             bool gpuKnown = Native.D3DKMTGetProcessSchedulingPriorityClass(h, out gpuOld) == 0;
                             if (!gpuKnown) gpuOld = -1;
-                            // 游戏进程也可能自带 PowerThrottling 设置，提优会覆盖它，还原必须写回原值
+
                             int oqc, oqs;
                             if (!Native.TryQueryPowerThrottling(h, out oqc, out oqs)) { oqc = -1; oqs = -1; }
                             CrashGuard.OriginalBoostState recovered;
@@ -548,8 +548,6 @@ namespace AegisApp
             lock (sync) return gameBoost.Count == 0;
         }
 
-        // 带请求序号：上一次超时后工作线程可能还在跑，它完成时不能去满足新的请求，
-        // 否则界面会为一次根本没执行的恢复报告成功。
         public bool PanicRestore()
         {
             int mine = Interlocked.Increment(ref panicSeq);
@@ -557,8 +555,7 @@ namespace AegisApp
             panicResult = false;
             panicReq = true;
             kick.Set();
-            // 必须等到 worker 明确报告"我服务的就是这一次请求"。若被上一次超时请求的
-            // 完成信号提前唤醒，就继续等，直到轮到自己或真正超时。
+
             long deadline = DateTime.UtcNow.Ticks + 12000L * TimeSpan.TicksPerMillisecond;
             while (true)
             {

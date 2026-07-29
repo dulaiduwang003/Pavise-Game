@@ -94,7 +94,6 @@ namespace AegisApp
                     probe.Refresh();
                     Eq(original, probe.PriorityClass);
 
-                    // 失败条目留作后续重试也不能让 Reconcile 绕过恢复日志。
                     Eq(false, core.Reconcile(
                         probe.Id, probe.ProcessName, SuppressReason.Background, true));
                     Eq(AcquireResult.ApplyFailed, core.Acquire(
@@ -102,7 +101,6 @@ namespace AegisApp
                         null, SuppressionLevel.Isolated));
                     Eq(0L, core.ApplyOperations);
 
-                    // 批处理必须先一次性落盘；EndBatch 写失败同样不能触碰内核。
                     core.BeginBatch();
                     core.Acquire(probe.Id, probe.ProcessName,
                         SuppressReason.Background, null, SuppressionLevel.Isolated);

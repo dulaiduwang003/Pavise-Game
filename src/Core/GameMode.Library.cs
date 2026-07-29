@@ -86,6 +86,7 @@ namespace AegisApp
             RequestPolicyApply();
         }
 
+#if AEGIS_SELFTEST
         public List<string> GetWhitelist()
         {
             var result = new List<string>();
@@ -94,6 +95,7 @@ namespace AegisApp
             result.Sort(StringComparer.OrdinalIgnoreCase);
             return result;
         }
+#endif
 
         public List<WhitelistRuleView> GetWhitelistRules()
         {
@@ -171,13 +173,6 @@ namespace AegisApp
                 + " 个，立即恢复 " + freed + " 个后台压制");
             RequestPolicyApply();
             return true;
-        }
-
-        public void RemoveWhitelist(string name)
-        {
-            WhitelistRule rule;
-            if (!WhitelistRule.TryCreate(WhitelistRuleKind.LegacyName, name, out rule)) return;
-            RemoveWhitelistRule(rule.Key);
         }
 
         public bool RemoveWhitelistRule(string key)

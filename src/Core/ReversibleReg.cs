@@ -124,9 +124,7 @@ namespace AegisApp
                 bool restored = false;
                 using (var k = hive.OpenSubKey(subKey, true))
                 {
-                    // 键整个不存在了（设备被卸载、父键被删）：我们写进去的值也随之消失了，
-                    // 这就是"已经还原"。此前只有快照记录为"原本不存在"时才认，导致
-                    // 一个被拔掉的设备会让还原永远失败，进而让开关永久关不掉。
+
                     if (k == null) restored = true;
                     else if (absent)
                     {

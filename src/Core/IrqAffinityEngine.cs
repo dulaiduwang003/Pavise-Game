@@ -42,10 +42,6 @@ namespace AegisApp
             }
         }
 
-        // AssignmentSetOverride 的格式是有官方定义的：REG_BINARY 时长度不得超过本平台
-        // KAFFINITY 的大小、字节序为小端（64 位 Windows 上 KAFFINITY 正好 8 字节）。
-        // 真正没有定义的是多处理器组下的「组归属」——KAFFINITY 描述的是某一个组内的处理器，
-        // 而这个注册表值没有任何方式指明是哪一组，所以多组系统一律跳过掩码。
         internal static byte[] MaskToBytes(ulong mask)
         {
             var b = new byte[8];
@@ -78,10 +74,6 @@ namespace AegisApp
             return list;
         }
 
-        // 只读体检：报告这些设备的 MSI（消息信号中断）开关状态。
-        // 现代驱动基本默认就开着，社区流传的「一键开 MSI」多数情况下是空操作；
-        // 而对确实不支持 MSI 的设备强行写 MSISupported=1 可能导致设备无法启动，
-        // 所以这里只报告、不代写，把判断留给用户。
         internal static void ReportMsiState(List<string> deviceIds)
         {
             if (deviceIds == null) return;
@@ -135,8 +127,6 @@ namespace AegisApp
             }
             if (!anyOk) return false;
 
-            // 先落盘"改过哪些设备"再置标志位：这份名单是唯一能在设备枚举不到时找回快照的凭据，
-            // 记不上就等于制造了一批还原不了的注册表改动，宁可整轮撤销。
             var touched = LoadTouched();
             foreach (Target t in applied) if (!touched.Contains(t.DeviceId)) touched.Add(t.DeviceId);
             if (!SaveTouched(touched))
@@ -160,10 +150,6 @@ namespace AegisApp
             return true;
         }
 
-        // 还原范围不能只依赖"当前还能枚举到的设备"：显卡状态变成非 OK、WMI 查询失败返回空表、
-        // USB 网卡被拔掉，这些情况下改过的设备都枚举不到，会被静默跳过；而快照槽位是按设备 ID
-        // 哈希命名的，一旦标志位被清掉就再也没有任何代码路径能找回它们。
-        // 所以开启时把设备 ID 落盘，关闭时用"落盘列表 ∪ 当前枚举"作为还原范围。
         private string TouchedKey { get { return slotPrefix + "Touched"; } }
 
         private List<string> LoadTouched()
@@ -202,7 +188,7 @@ namespace AegisApp
                 if (hadBackup && ok) restored++;
                 if (!ok) { allOk = false; stillDirty.Add(t.DeviceId); }
             }
-            // 没还原成功的设备必须继续留在落盘列表里，下次才有得重试
+
             SaveTouched(stillDirty);
             if (allOk)
             {

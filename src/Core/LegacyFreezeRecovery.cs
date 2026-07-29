@@ -42,8 +42,7 @@ namespace AegisApp
             int restored = RestoreJournal(statePath);
             if (restored > 0) Logger.Log("旧版深度冻结迁移：已恢复 " + restored + " 个后台进程");
             if (!File.Exists(statePath)) return;
-            // 句柄保护可能让首次恢复暂时失败。只做有界、指数退避的兼容重试；
-            // 损坏日志永不覆盖，留给用户排查。
+
             var retry = new Thread(() =>
             {
                 int delaySeconds = 8;

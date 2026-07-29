@@ -50,7 +50,6 @@ namespace AegisApp
             lblClose.SetBounds(Theme.S(DlgW - 46), Theme.S(16), Theme.S(26), Theme.S(26));
             lblClose.Click += delegate { Close(); };
 
-            // 风险必须摆在最显眼的位置，而不是折叠在说明里
             var warn = new RoundPanel();
             warn.SetBounds(Theme.S(22), Theme.S(56), Theme.S(DlgW - 44), Theme.S(94));
             warn.Fill = Theme.Card; warn.Border = Theme.Danger; warn.Radius = Theme.S(12);
@@ -239,7 +238,6 @@ namespace AegisApp
             UpdateRowState(row);
         }
 
-        // 只撤销 Aegis 自己加过的排除，用户手工加的不受影响
         private void ClearAll()
         {
             if (DefenderExclusion.OwnedByAegis().Count == 0)

@@ -19,7 +19,6 @@ namespace AegisApp
     {
         public static string Data;
 
-
         private static readonly string[] DataFiles =
         {
             "Aegis.games.txt", GameProfileStore.FileName, "Aegis.whitelist.txt", "Aegis.targets.txt",
@@ -80,7 +79,5 @@ namespace AegisApp
             }
         }
     }
-
-
 
 }

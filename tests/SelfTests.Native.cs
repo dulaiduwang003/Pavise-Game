@@ -71,8 +71,6 @@ namespace AegisApp
                 throw new Exception("legacy frame metrics leaked into current report");
         }
 
-        // 真实进程验证：一个自己主动开了 EcoQoS 的进程，被压制再还原之后，
-        // 它的 EcoQoS 必须还在。写死"交给系统托管"会把这个自愿设置永久剥掉。
         private static void TestEcoQoSRestore(string root)
         {
             string beat = Path.Combine(root, "qos.beat");
@@ -85,7 +83,7 @@ namespace AegisApp
                 if (h == IntPtr.Zero) throw new TestSkippedException("cannot open owned probe");
                 try
                 {
-                    // 模拟"进程自己开了 EcoQoS"
+
                     if (!Native.ApplyEcoQoS(h)) throw new TestSkippedException("EcoQoS unsupported here");
                     int c0, s0;
                     if (!Native.TryQueryPowerThrottling(h, out c0, out s0)) throw new TestSkippedException("QoS query unsupported");
@@ -109,8 +107,6 @@ namespace AegisApp
             }
         }
 
-        // 用独占锁模拟"文件被杀软/网盘/另一个实例占用"：此时读取会抛异常。
-        // 关键断言是——读失败之后哪怕再保存一次，原文件也必须原封不动。
         private static void TestProfileLoadFailure(string dir)
         {
             string work = Path.Combine(dir, "profile-lock");
@@ -125,14 +121,13 @@ namespace AegisApp
             if (before.Length == 0) throw new Exception("seed profile file is empty");
 
             var store = new GameProfileStore(work);
-            // 只在读取期间锁住：模拟杀软/网盘短暂占用，之后文件恢复可写。
-            // 如果一直锁着，保存本来就写不进去，那测的就不是这条保护了。
+
             using (new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.None))
             {
                 List<GameProfile> loaded = store.LoadOrMigrate(Path.Combine(work, "Aegis.games.txt"));
                 Eq(0, loaded.Count);
             }
-            // 锁已释放、文件完全可写：此时用户在"空"库里新加一个游戏
+
             GameProfile fresh = GameProfileStore.NewProfile("Newly", Path.Combine(work, "Other"));
             store.Save(new List<GameProfile> { fresh });
 
@@ -141,7 +136,6 @@ namespace AegisApp
             if (after.IndexOf("Newly", StringComparison.Ordinal) >= 0)
                 throw new Exception("the replacement list was written over the original file");
 
-            // 文件恢复可读之后，新的 store 必须能正常读回原有档案
             var again = new GameProfileStore(work);
             Eq(1, again.LoadOrMigrate(Path.Combine(work, "Aegis.games.txt")).Count);
         }
@@ -165,9 +159,7 @@ namespace AegisApp
                     int actualIo, error;
                     if (!GameMode.ApplyAndVerifyBoostState(handle, out actualPriority, out actualIo, out error))
                     {
-                        // 直接用 csc 构建的诊断 EXE 没有发布清单，因而不会像正式版那样
-                        // 自动提权；此时 Windows 会以 ERROR_PRIVILEGE_NOT_HELD 拒绝 HIGH。
-                        // 这是测试环境能力缺失，不应掩盖其它回读不一致。
+
                         if (error == 1314) Skip("HIGH priority requires the elevated release manifest");
                         throw new Exception("readback failed: priority=0x" + actualPriority.ToString("X") + ", io=" + actualIo + ", error=" + error);
                     }

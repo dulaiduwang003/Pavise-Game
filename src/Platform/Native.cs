@@ -43,10 +43,6 @@ namespace AegisApp
 
         private const uint WaitTimeout = 258;
 
-        // ProcessIdToSessionId is PID-based, so keep the sampled process handle
-        // open and require that exact process object to still be alive after
-        // the lookup. If the original process exited and its PID was reused,
-        // the old handle is signaled and the session result is rejected.
         public static bool TryGetLiveProcessSessionId(
             IntPtr processHandle, int pid, out int sessionId)
         {
@@ -62,10 +58,6 @@ namespace AegisApp
             return true;
         }
 
-        // OpenProcess reports ERROR_INVALID_PARAMETER when the PID no longer
-        // exists. Access denied and every other failure are deliberately not
-        // treated as proof of exit: anti-cheat/protected processes can become
-        // temporarily unqueryable while still retaining state we must restore.
         public static bool LastOpenProcessFailureWasNoSuchProcess()
         {
             return Marshal.GetLastWin32Error() == 87;
@@ -327,17 +319,10 @@ namespace AegisApp
             return SetPowerThrottling(process, ignoreTimerResolution ? 5u : 1u, 0);
         }
 
-        // 按快照原样写回 PowerThrottling：ReleasePowerThrottlingPolicy 写的是"交给系统托管"，
-        // 对本来就自己开了 EcoQoS 的进程而言那是抹掉设置而不是还原。
         public static bool RestorePowerThrottling(IntPtr process, int controlMask, int stateMask)
         {
             if (controlMask < 0) return SetPowerThrottling(process, 0, 0);
             return SetPowerThrottling(process, (uint)controlMask, (uint)(stateMask < 0 ? 0 : stateMask));
-        }
-
-        public static bool ReleasePowerThrottlingPolicy(IntPtr process)
-        {
-            return SetPowerThrottling(process, 0, 0);
         }
 
         public static bool TryQueryPowerThrottling(IntPtr process, out int controlMask, out int stateMask)
@@ -407,6 +392,5 @@ namespace AegisApp
         private const int ProcessPowerThrottling = 4;
         private const int ProcessPowerThrottlingNt = 77;
     }
-
 
 }

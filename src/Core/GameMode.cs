@@ -27,7 +27,6 @@ namespace AegisApp
             "vmmem", "vmmemwsl", "wslservice"
         };
 
-
         private struct Snap
         {
             public uint Pri;
@@ -213,8 +212,7 @@ namespace AegisApp
                     }
                     else
                     {
-                        // 缺失 V2 头时，N|base64 绝不能降级成一个看似普通的进程名；
-                        // 这种文件是截断/手改损坏，必须整体回退安全预置。
+
                         if (t.Length > 1 && t[1] == '|'
                             && (t[0] == 'N' || t[0] == 'n' || t[0] == 'P'
                                 || t[0] == 'p' || t[0] == 'F' || t[0] == 'f'))
@@ -242,8 +240,7 @@ namespace AegisApp
                 }
                 else if (versioned)
                 {
-                    // 旧 V2 的非空文件可无损迁移；header-only 无法区分“主动空”
-                    // 与截断，必须按损坏处理，不能 fail-open。
+
                     if (!sawRule)
                         throw new InvalidDataException("白名单缺少完整性尾标");
                     rewriteFormat = true;
@@ -252,8 +249,6 @@ namespace AegisApp
                     throw new InvalidDataException("白名单为空且没有 V2 版本头");
                 else rewriteFormat = true;
 
-                // 受信系统路径上的预置项是竞技模式稳定性边界，不属于可删除
-                // 的用户例外。文件可存空自定义集，但这些内置规则始终补回。
                 foreach (string entry in PresetWhitelist)
                 {
                     WhitelistRule presetRule;
@@ -272,8 +267,7 @@ namespace AegisApp
             }
             catch (Exception ex)
             {
-                // 读失败若得到一份空白名单，竞技级下 explorer/ctfmon 这类外壳进程就
-                // 失去了唯一的保护，所以退回预置名单，并且必须让用户在日志里看得见
+
                 foreach (string entry in PresetWhitelist) AddWhiteNoSave(entry);
                 Logger.Log("白名单加载失败，本次运行改用预置白名单（用户自定义项本次不生效）：" + ex.Message);
             }
@@ -395,7 +389,6 @@ namespace AegisApp
         {
             get { lock (sync) return preset; }
         }
-
 
         public List<GameProfile> GetProfiles()
         {
@@ -606,9 +599,7 @@ namespace AegisApp
                 {
                     if (panicReq)
                     {
-                        // 记下自己开始服务的是哪个请求。只在请求端自增序号是不够的：
-                        // 上一个请求超时返回后 worker 仍在跑，它完成时会把 panicDone 置位，
-                        // 让新请求以为"自己那次恢复成功了"，而新请求的恢复其实一次都没跑。
+
                         int serving = Volatile.Read(ref panicSeq);
                         panicReq = false;
                         panicResult = Deactivate("紧急恢复");
@@ -718,9 +709,7 @@ namespace AegisApp
             foreach (int pid in hit.FamilyPids) gamePids.Add(pid);
             lock (sync)
             {
-                // 持久 launcher 的一局 renderer 退出后会回落到同一个
-                // launcher。把这次回落视为新 epoch，使下一局仍有一次
-                // 有界的 5 秒 renderer 探测。
+
                 if (ShouldRearmLauncherTransition(
                         activeDetection, hit))
                 {
@@ -762,10 +751,7 @@ namespace AegisApp
                                 hit, stickyDetection,
                                 retainedFamily))
                         {
-                            // The old anchor disappeared between the first
-                            // identity check and family reconstruction. Keep
-                            // the fresh detector result instead of joining two
-                            // process trees.
+
                             ClearSticky();
                         }
                     }
@@ -801,9 +787,7 @@ namespace AegisApp
             if (stickyDetection != null && stickyMiss < StickyGraceMisses && !AnyStickyReused())
             {
                 stickyMiss++;
-                // A lost stop notification must not turn one conservative grace
-                // sample into another 20-second wait. Re-detect on the next
-                // 4-second budget boundary.
+
                 RequestFullGameDetection();
                 try { kick.Set(); } catch { }
                 return CloneWithAnchoredFamily(stickyDetection);

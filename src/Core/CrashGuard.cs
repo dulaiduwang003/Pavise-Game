@@ -40,8 +40,7 @@ namespace AegisApp
             public int Page;
             public int Gpu;
             public uint[] CpuSets;
-            // 老格式（9 段）没有这两项，读出来是 -1，还原时退回"交给系统托管"，
-            // 与加字段之前的行为一致，因此升级不会打断已有的待恢复记录。
+
             public int QoSControl = -1;
             public int QoSState = -1;
         }
@@ -88,8 +87,7 @@ namespace AegisApp
                                 old.Name, name,
                                 StringComparison.OrdinalIgnoreCase))
                             return false;
-                        // Re-adopt the pre-crash snapshot instead of replacing
-                        // it with the already-boosted state from this process.
+
                         owned[pid] = creation;
                         recovered = new OriginalBoostState
                         {
@@ -133,11 +131,6 @@ namespace AegisApp
             }
         }
 
-        // 不再整表清空提优日志：UnboostGames 已经逐进程调用 ReleaseBoostProcess 精确销账，
-        // 这里再抹一次只会误伤两类记录——上一次崩溃后 HealFromCrash 还原不了而特意保留的条目，
-        // 以及本轮没能还原成功的条目。它们被抹掉之后，那些进程会一直停在被改过的状态，
-        // 而 HealFromCrash 是唯一的重试入口，它的输入刚好就是这张表。
-        // 只清掉早期版本遗留的两个旧键。
         public static void ClearBoost()
         {
             Settings.SaveStr(KBoost, "");
@@ -214,7 +207,7 @@ namespace AegisApp
             return creation == entry.Creation ? BoostIdentity.Match : BoostIdentity.Mismatch;
         }
 
-        // 供自测校验格式向后兼容：返回 "条目数|第一条的QoSControl|第一条的QoSState"
+#if AEGIS_SELFTEST
         internal static string ProbeParse(string raw)
         {
             string prev = Settings.LoadStr(KBoostEntries, "");
@@ -227,6 +220,7 @@ namespace AegisApp
             }
             finally { Settings.SaveStr(KBoostEntries, prev); }
         }
+#endif
 
         private static List<BoostEntry> LoadEntries()
         {

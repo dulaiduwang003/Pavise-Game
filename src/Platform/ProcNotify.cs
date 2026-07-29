@@ -37,8 +37,7 @@ namespace AegisApp
 
     internal sealed class ProcNotify
     {
-        // Changed 保留给旧调用方；新代码应使用 BatchChanged，避免把所有进程事件
-        // 都退化成一次无差别的全系统扫描。
+
         public event Action Changed;
         public event Action<ProcessChangeBatch> BatchChanged;
         public Func<string, int, bool> CaptureStartIdentity;
@@ -63,9 +62,7 @@ namespace AegisApp
 
         public void Start()
         {
-            // Keep lifecycle transitions in the same dispatch -> lifecycle
-            // lock order as Stop(). A subscriber may call Stop() itself, and
-            // this order also avoids waiting for it while holding lifecycle.
+
             lock (dispatchSync)
             {
                 lock (lifecycleSync)
@@ -170,12 +167,7 @@ namespace AegisApp
                                 {
                                     int eventParentPid = change.ParentPid;
                                     int eventSession = change.Session;
-                                    // Path and Creation below describe the
-                                    // process currently behind pid. Clear the
-                                    // event-only identity until that same
-                                    // current process confirms both creation
-                                    // and session. The event is still queued
-                                    // as an ordinary set-change notification.
+
                                     change.ParentPid = 0;
                                     change.ParentCreation = 0;
                                     change.Session = -1;
@@ -228,9 +220,7 @@ namespace AegisApp
                                         finally { Native.CloseHandle(handle); }
                                     }
                                 }
-                                // 父 PID 单独不足以证明亲缘关系：父进程退出后 PID
-                                // 可能已被复用。事件到达时立即取父 creation，后续家族
-                                // 白名单只有二者完全一致才接受这条父子边。
+
                                 if (captureParent && change.ParentPid > 0)
                                 {
                                     IntPtr parent = Native.OpenProcess(
@@ -261,9 +251,7 @@ namespace AegisApp
             bool armTimer = false;
             lock (batchSync)
             {
-                // Recheck under the queue lock after doing identity work so
-                // an older WMI callback can never enqueue after Stop() has
-                // published its lifecycle boundary.
+
                 if (!IsAccepting(generation)) return;
                 long key = ((long)(uint)change.Pid << 1)
                     | (change.Kind == ProcessChangeKind.Stopped ? 1L : 0L);
@@ -290,8 +278,7 @@ namespace AegisApp
         private void OnWindow(object state)
         {
             int generation = state is int ? (int)state : -1;
-            // System.Threading.Timer 允许回调重入。串行派发可保证旧批次不会在
-            // 新批次之后才写入消费者的 pending 队列。
+
             lock (dispatchSync)
             {
                 if (!IsAccepting(generation)) return;
@@ -330,15 +317,12 @@ namespace AegisApp
 
         public void Stop()
         {
-            // Acquiring dispatchSync is the wait barrier for an in-flight
-            // subscriber. It is also reentrant when a subscriber calls Stop.
+
             lock (dispatchSync)
             {
                 lock (lifecycleSync)
                 {
-                    // This is the enqueue linearization boundary. Existing
-                    // event callbacks recheck it under batchSync; future timer
-                    // callbacks reject the invalidated generation.
+
                     Interlocked.Exchange(ref accepting, 0);
                     Interlocked.Increment(ref lifecycleGeneration);
                     active = false;

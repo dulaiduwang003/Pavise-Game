@@ -10,12 +10,10 @@ namespace AegisApp
     internal static class Settings
     {
         private const string Key = @"Software\Aegis";
+#if AEGIS_SELFTEST || AEGIS_PERFLAB
         private static readonly object transientSync = new object();
         private static Dictionary<string, object> transientValues;
 
-        // 性能实验与独立探针会把整套引擎装进单独进程。该模式必须在构造任何
-        // Aegis 组件前开启，确保实验既能覆盖真实配置调用路径，又不会读取或改写
-        // 用户的 HKCU\Software\Aegis。正式入口永远不会调用此方法。
         internal static void UseTransientStoreForCurrentProcess()
         {
             lock (transientSync)
@@ -46,12 +44,15 @@ namespace AegisApp
                 return true;
             }
         }
+#endif
 
         public static bool Load(string name, bool def)
         {
+#if AEGIS_SELFTEST || AEGIS_PERFLAB
             object transient;
             if (TryLoadTransient(name, out transient))
                 return transient == null ? def : Convert.ToInt32(transient) != 0;
+#endif
             try
             {
                 using (var k = Registry.CurrentUser.OpenSubKey(Key))
@@ -66,7 +67,9 @@ namespace AegisApp
 
         public static bool Save(string name, bool val)
         {
+#if AEGIS_SELFTEST || AEGIS_PERFLAB
             if (TrySaveTransient(name, val ? 1 : 0)) return true;
+#endif
             try
             {
                 using (var k = Registry.CurrentUser.CreateSubKey(Key))
@@ -85,9 +88,11 @@ namespace AegisApp
 
         public static string LoadStr(string name, string def)
         {
+#if AEGIS_SELFTEST || AEGIS_PERFLAB
             object transient;
             if (TryLoadTransient(name, out transient))
                 return transient == null ? def : transient.ToString();
+#endif
             try
             {
                 using (var k = Registry.CurrentUser.OpenSubKey(Key))
@@ -102,7 +107,9 @@ namespace AegisApp
 
         public static bool SaveStr(string name, string val)
         {
+#if AEGIS_SELFTEST || AEGIS_PERFLAB
             if (TrySaveTransient(name, val ?? "")) return true;
+#endif
             try
             {
                 using (var k = Registry.CurrentUser.CreateSubKey(Key))
@@ -119,6 +126,5 @@ namespace AegisApp
             }
         }
     }
-
 
 }

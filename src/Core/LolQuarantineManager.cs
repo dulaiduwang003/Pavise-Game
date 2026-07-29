@@ -149,15 +149,6 @@ namespace AegisApp
             catch { return null; }
         }
 
-        public static string FindRoot()
-        {
-            string root;
-            string error;
-            string discovered = null;
-            try { discovered = LolInstallDiscovery.FindLolRoot(null); } catch { }
-            return TryResolveRoot(discovered, out root, out error) ? root : null;
-        }
-
         public static bool TryResolveRoot(string input, out string root, out string error)
         {
             root = null;
@@ -817,6 +808,7 @@ namespace AegisApp
             return ok;
         }
 
+#if AEGIS_SELFTEST
         internal static bool SelfTestManifest(out string error)
         {
             error = null;
@@ -845,6 +837,7 @@ namespace AegisApp
             }
             return true;
         }
+#endif
 
         private static OperationResult RejectQuarantine(Inspection inspection)
         {

@@ -36,10 +36,7 @@ namespace AegisApp
             public int OrigIo = -1;
             public int OrigPg = -1;
             public uint[] OrigCpuSets;
-            // 进程原本的 PowerThrottling 状态。-1 表示读取失败/未知，
-            // 此时还原只能退回"交给系统托管"，其余情况必须原样写回：
-            // Edge / Teams / OneDrive 这类后台进程会自己主动开 EcoQoS，
-            // 一律写 0 等于把它们自愿的省电设置永久剥掉。
+
             public int OrigQoSControl = -1;
             public int OrigQoSState = -1;
             public long Creation;
@@ -48,18 +45,14 @@ namespace AegisApp
             public SuppressionLevel BackgroundLevel;
             public bool Applied;
             public SuppressReason Reasons;
-            // 内核保护的进程（反作弊等）用户态永远还原不了。无节制重试等于每轮
-            // 对它们反复开句柄：日志刷屏、白烧 CPU，还会撞上反作弊的句柄监控。
-            // 指数退避 + 只在首次落日志，快照始终保留以便进程退出后清账。
+
             public int ProtectedRetries;
             public long NextRetryTicks;
-            // 稳定进程不需要在每轮扫描时反复写相同的内核状态。按错峰期限做
-            // 只读校验；发现进程自行改回设置后才重施，并在短期内加密复查。
+
             public long NextReconcileTicks;
             public int ReconcileFailures;
             public int FastReconcileRemaining;
-            // 只有恢复快照已经安全落盘，才允许修改进程内核状态。批量模式下
-            // 新条目会保持 false，直到 EndBatch 的一次原子日志写入成功。
+
             public bool Journaled;
         }
 
@@ -180,18 +173,6 @@ namespace AegisApp
             finally { Monitor.Exit(batchGate); }
         }
 
-        [Obsolete("Use the BatchResult returned by EndBatch.")]
-        public bool ConsumeBatchApplyResult(int pid)
-        {
-            lock (sync)
-            {
-                bool ok;
-                if (!batchApplyResults.TryGetValue(pid, out ok)) return false;
-                batchApplyResults.Remove(pid);
-                return ok;
-            }
-        }
-
         public AcquireResult Acquire(int pid, string name, SuppressReason reason, string group)
         {
             return Acquire(pid, name, reason, group, SuppressionLevel.Isolated);
@@ -222,9 +203,7 @@ namespace AegisApp
             }
             try
             {
-                // 读不到映像名就不能当作"身份已确认"：Sweep 在把进程放进待处理队列时
-                // 已经要求路径可读（见 BasicBackgroundEligible），所以此刻读不到，本身
-                // 就说明这个 PID 已经换成了另一个受保护/加固的进程。宁可放过不压。
+
                 string img = Native.ImageName(h);
                 if (img == null || !SameName(img, name)) return AcquireResult.AlreadyProtected;
                 long currentCreation = 0, sampleCpu; ulong sampleIo;
@@ -236,8 +215,7 @@ namespace AegisApp
                     Entry e;
                     bool known = map.TryGetValue(pid, out e);
                     if (known && !SameName(e.Name, name)) { map.Remove(pid); known = false; e = null; }
-                    // creation=0 的旧日志无法抵御同名 PID 复用。绝不能拿这种
-                    // 未证明身份的快照继续压制；丢弃内存项后为当前进程重建快照。
+
                     if (known && e.OrigPri != uint.MaxValue && e.Creation <= 0)
                     {
                         map.Remove(pid);
@@ -301,23 +279,19 @@ namespace AegisApp
                         if (QueueApplyLocked(pid, name)) return AcquireResult.AlreadyThrottled;
                         e.Applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets);
                         ScheduleAfterApply(e, e.Applied, pid);
-                        // 这是稳定项的自愈审计；失败后按退避重试，不让同一轮调用方
-                        // 再次 Acquire 并立即重复整套系统调用。
+
                         return AcquireResult.AlreadyThrottled;
                     }
 
                     uint rawPri = Native.GetPriorityClass(h);
-                    // rawPri==0 表示查询失败，不是"这个进程是 Normal"。把它当 Normal 存进快照，
-                    // 还原时会把原本 HIGH/ABOVE_NORMAL 的进程永久降级，所以直接放弃这次压制。
+
                     if (rawPri == 0) return AcquireResult.ApplyFailed;
                     ulong oaff = Native.QueryAffinity(h);
                     uint[] ocpuSets = Native.QueryCpuSets(h);
                     if (ocpuSets == null) return AcquireResult.ApplyFailed;
                     int oio = Native.QueryIoPriority(h);
                     int opg = Native.QueryPagePriority(h);
-                    // 0 affinity / -1 IO/Page 都是读取失败，不是可恢复的默认值。
-                    // 未知原值若继续压制，释放时只能猜测并可能永久扩大绑核或
-                    // 改写优先级，因此整次快照必须失败关闭。
+
                     if ((!CpuTopology.MultiGroup && oaff == 0)
                         || oio < 0 || opg < 0)
                         return AcquireResult.ApplyFailed;
@@ -394,22 +368,6 @@ namespace AegisApp
             return restored;
         }
 
-        public int ReleaseByName(string name, SuppressReason reason)
-        {
-            var pids = new List<int>();
-            lock (sync)
-                foreach (var kv in map)
-                    if ((kv.Value.Reasons & reason) != 0 && SameName(kv.Value.Name, name)) pids.Add(kv.Key);
-            int restored = 0; bool had;
-            BeginJournalDefer();
-            try
-            {
-                foreach (int pid in pids) restored += ReleaseOne(pid, reason, out had);
-            }
-            finally { EndJournalDefer(); }
-            return restored;
-        }
-
         private int ReleaseOne(int pid, SuppressReason reason, out bool had)
         {
             return ReleaseOne(pid, reason, 0, false, out had);
@@ -444,7 +402,7 @@ namespace AegisApp
                 else if (e.OrigPri == uint.MaxValue) { map.Remove(pid); PersistJournalLocked(); return 0; }
                 else if (!e.Journaled && !e.Applied)
                 {
-                    // 日志失败挡住了所有内核写入；该项没有任何需要还原的状态。
+
                     map.Remove(pid);
                     batchApply.Remove(pid);
                     PersistJournalLocked();
@@ -586,15 +544,11 @@ namespace AegisApp
             }
         }
 
-        // 返回 true 表示该 PID 仍是有效的已跟踪项，调用方无需再次 Acquire。
-        // 稳定期只读校验；只有检测到目标进程把设置改回去时才真正重施。
         public bool Reconcile(int pid, string expectedName, SuppressReason reason)
         {
             return Reconcile(pid, expectedName, reason, false);
         }
 
-        // 兼容自测和显式修复入口：forceAudit 仅跳过校验期限，仍然不会在状态
-        // 完全一致时做任何写入。
         internal bool Reconcile(int pid, string expectedName, SuppressReason reason, bool forceAudit)
         {
             uint pri;
@@ -625,7 +579,7 @@ namespace AegisApp
                     if (map.TryGetValue(pid, out current) && current == entry)
                         ScheduleAfterApply(current, false, pid);
                 }
-                // Sweep 的 live 集合会负责清理已退出 PID；打开失败不能触发同轮重试。
+
                 return true;
             }
             try
@@ -642,8 +596,7 @@ namespace AegisApp
                         || (currentEntry.Reasons & reason) == 0
                         || currentEntry.Creation > 0 && currentEntry.Creation != creation)
                         return false;
-                    // 打开句柄期间另一个 reason 可能升级/降级了有效策略。旧读数
-                    // 绝不能覆盖新 level；保留跟踪，下一轮按新状态校准。
+
                     if (currentEntry.Level != level
                         || currentEntry.OrigPri != pri
                         || currentEntry.OrigAff != aff
@@ -661,12 +614,6 @@ namespace AegisApp
                 }
             }
             finally { Native.CloseHandle(h); }
-        }
-
-        [Obsolete("Use Reconcile; retained for compatibility with older internal callers.")]
-        public bool Reapply(int pid, string expectedName, SuppressReason reason)
-        {
-            return Reconcile(pid, expectedName, reason, true);
         }
 
         public bool AnyWith(SuppressReason reason)
@@ -691,10 +638,6 @@ namespace AegisApp
 
         private int lastThrottledCount;
 
-        // 这个计数只用来显示状态文字，却是从 UI 线程调用的，而 sync 会被整轮后台批处理
-        // 长时间持有（每个进程都要走一遍 OpenProcess/查询/写入）。UI 线程在这里等锁时
-        // 还握着 GameMode.sync，会把工作线程一起拖住，表现为游戏中界面每几秒卡一下。
-        // 拿不到锁就返回上一次的数字：状态文字晚几秒刷新无所谓，界面卡住不行。
         public int CountThrottled(SuppressReason reason)
         {
             if (!Monitor.TryEnter(sync, 15)) return Volatile.Read(ref lastThrottledCount);
@@ -899,7 +842,7 @@ namespace AegisApp
         public static bool RestoreValues(IntPtr h, uint pri, ulong aff, int io, int pg, ulong allMask,
             uint[] cpuSets)
         {
-            // 不带 QoS 参数的旧入口：沿用"交给系统托管"
+
             return RestoreValues(h, pri, aff, io, pg, allMask, cpuSets, -1, -1);
         }
 

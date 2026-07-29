@@ -56,10 +56,7 @@ namespace AegisApp
         {
             try
             {
-                // 没有快照说明 HAGS 是 Aegis 介入前就开着的（新驱动多数默认开）。
-                // 这种情况下要关掉它，同样得先存快照再写——直接硬写 1 的话，
-                // 万一原来这个值根本不存在，就等于凭空造了一个用户从未有过、
-                // 而且我们自己也再删不掉的注册表项。
+
                 bool ok = Sch.HasBackup ? Sch.Restore() : Sch.Apply(1);
                 if (ok && CurrentlyOn()) ok = Sch.Apply(1);
                 if (ok)

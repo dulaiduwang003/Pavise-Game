@@ -32,6 +32,7 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $sources = Get-ChildItem -LiteralPath (Join-Path $root "src") -Recurse -Filter *.cs |
     ForEach-Object { $_.FullName }
 & $compiler -nologo -target:exe -optimize+ -codepage:65001 `
+    -define:AEGIS_PERFLAB `
     -main:AegisApp.PerfEngineProgram `
     "-win32manifest:$PSScriptRoot\PerfLab.manifest" `
     "-out:$OutputDirectory\Aegis.PerfEngine.exe" `

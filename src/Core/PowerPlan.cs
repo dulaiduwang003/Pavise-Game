@@ -38,8 +38,6 @@ namespace AegisApp
         private const byte NoSystemBattery = 128;
         private static int portableState = -1;
 
-        // 有电池 = 便携机：整机共享功耗/散热预算，闲核被钉在高频会挤掉游戏线程的睿频空间。
-        // 读不到状态时按便携处理，因为误判台式机只损失一点唤醒延迟，误判笔记本要掉十几帧。
         private static bool IsThermallyConstrained()
         {
             if (portableState >= 0) return portableState == 1;
@@ -75,16 +73,11 @@ namespace AegisApp
                 bool killIdle = aggressive && idleDisable && !constrained;
                 ok &= WritePair(g, SubProcessor, CpMinCores, aggressive ? 100u : 50u, aggressive ? 50u : 20u);
                 ok &= WritePair(g, SubProcessor, ProcThrottleMin, holdFloor ? 100u : 35u, aggressive ? 60u : 10u);
-                // 交流供电下常规模式也保持 Windows 的 Aggressive 睿频语义。
-                // Efficient Aggressive(4) 会主动延后/压低睿频，可能把“优化工具”
-                // 变成帧率回退来源；常规模式的热预算由较低频率下限和核心停放负责。
+
                 ok &= WritePair(g, SubProcessor, PerfBoostMode, 2u, aggressive ? 4u : 3u);
                 ok &= WritePair(g, SubPcie, PcieAspm, aggressive ? 0u : 1u, aggressive ? 1u : 2u);
                 ok &= WritePair(g, SubUsb, UsbSelSuspend, 0u, aggressive ? 0u : 1u);
-                // 处理器空闲禁用：不让核心进入深度 C-state，省掉 1~15ms 的唤醒延迟，
-                // 代价是发热和功耗明显上升。写在 Aegis 自建的方案上，切回用户原方案即自动失效。
-                // 只在竞技级 + 交流供电 + 非便携机时开：笔记本整机共享功耗预算，
-                // 闲核不休眠会把睿频空间烧掉，实测反而掉帧。
+
                 ok &= WritePair(g, SubProcessor, IdleDisable, killIdle ? 1u : 0u, 0u);
                 if (!ok)
                 {
@@ -109,15 +102,6 @@ namespace AegisApp
                 && PowerWriteDCValueIndex(IntPtr.Zero, ref scheme, ref sb, ref set, dc) == 0;
         }
 
-        private static void WriteBoth(Guid scheme, Guid setting, uint v) { WriteBoth2(scheme, SubProcessor, setting, v); }
-
-        private static void WriteBoth2(Guid scheme, Guid sub, Guid setting, uint v)
-        {
-            Guid sb = sub, set = setting;
-            PowerWriteACValueIndex(IntPtr.Zero, ref scheme, ref sb, ref set, v);
-            PowerWriteDCValueIndex(IntPtr.Zero, ref scheme, ref sb, ref set, v);
-        }
-
         private static readonly object lk = new object();
         private static Guid saved;
         private static bool active;
@@ -125,7 +109,6 @@ namespace AegisApp
         private static bool resolved;
         private static int tuneState = -1;
         private static bool targetOwned;
-
 
         private static Guid? Current()
         {

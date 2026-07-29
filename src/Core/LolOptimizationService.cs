@@ -106,8 +106,7 @@ namespace AegisApp
         private const int CleanupKillWindowSeconds = 60;
         private const int CleanupKillLimit = 3;
         private const int CleanupFollowUpLimit = 2;
-        // 普通候选进程突发最多每 5 秒唤醒一次轻量扫描；LeagueClient
-        // 凭据源和核心会话转换仍走下方 credentialSourceStarted 紧急通道。
+
         private const int ProcessWakeThrottleMs = 5000;
         internal static int ProcessEventWakeThrottleMs
         {
@@ -352,8 +351,7 @@ namespace AegisApp
             if (batch == null) return;
             bool relevant = batch.Overflowed;
             bool cleanupCandidateStarted = batch.Overflowed;
-            // 溢出只要求受 5 秒预算约束的重校准；它不是 LeagueClient
-            // 凭据源事件，不能让持续溢出每 750 ms 紧急唤醒一次全量快照。
+
             bool credentialSourceStarted = false;
             bool discoveryDirty = batch.Overflowed;
             string root;
@@ -407,8 +405,7 @@ namespace AegisApp
                 }
                 else if (!processWakePending)
                 {
-                    // Leading edge 已经跑过时保留一个 trailing edge。独立计时器
-                    // 只负责到期 Poke，不在每个进程事件上执行全量扫描。
+
                     processWakePending = true;
                     scheduleTrailing = true;
                     trailingDelay = ProcessWakeDelayMs(
@@ -689,8 +686,7 @@ namespace AegisApp
                 string root;
                 string weGame;
                 Discover(out root, out weGame, true);
-                // WeGame 是单实例：已经在跑时再启动一个只会立刻自退，什么都不会发生。
-                // 不先问一句就报"已启动"，等于对着一个空动作宣布成功。
+
                 if (LolRuntimeProcesses.IsWeGameRunning(weGame))
                 {
                     SetAction(Lang.T("lol.act.wegamerunning"));
@@ -1696,10 +1692,7 @@ namespace AegisApp
                 return false;
             if (IsSameMatchPhase(currentPhase))
                 return matchActive && gameRunning;
-            // A successful login + current-summoner probe and a recognized
-            // gameflow phase prove that the lobby no longer depends on
-            // WeGame. Keep the in-game path stricter because it also drives
-            // the bounded follow-up cleanup burst.
+
             return !gameRunning
                 && IsConfirmedMatchExitPhase(currentPhase);
         }
@@ -1709,9 +1702,7 @@ namespace AegisApp
             bool matchExitConfirmed,
             bool matchStateActive)
         {
-            // A stable lobby is itself a confirmed non-match phase. Resetting
-            // there on every poll would erase the cleanup deadline and circuit
-            // breaker, causing a full cleanup scan every worker cycle.
+
             return clientExitConfirmed
                 || (matchExitConfirmed && matchStateActive);
         }

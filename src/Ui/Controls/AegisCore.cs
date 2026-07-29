@@ -40,8 +40,7 @@ namespace AegisApp
         {
             if (mode == value && guardEnabled == enabled && gameActive == active) return;
             mode = value; guardEnabled = enabled; gameActive = active;
-            // 游戏运行时即使用户主动把面板留在前台，也只做低频状态动画，
-            // 避免一个纯装饰控件持续以 30 FPS 和游戏争用 UI/GDI 时间。
+
             timer.Interval = gameActive ? 200 : 33;
             DropCache();
             Invalidate();

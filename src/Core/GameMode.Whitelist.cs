@@ -35,8 +35,7 @@ namespace AegisApp
 
         private readonly List<WhitelistRule> whiteRules = new List<WhitelistRule>();
         private readonly HashSet<string> whiteRuleKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        // 每条家族规则各自保存已经确认过的 (PID, creation)。父进程退出后，仍存活的
-        // 子进程继续受保护；PID 被复用时 creation 不同，不能继承旧家族身份。
+
         private readonly Dictionary<string, Dictionary<int, long>> whiteFamilyMembers =
             new Dictionary<string, Dictionary<int, long>>(StringComparer.OrdinalIgnoreCase);
         private readonly object whiteEvalSync = new object();
@@ -104,8 +103,7 @@ namespace AegisApp
                         WhitelistProcessInfo info = pair.Value;
                         if (info.Session != selfSession) continue;
                         if (!rule.MatchesNormalized(info.Name, info.Path)) continue;
-                        // 预置的 Windows 名称规则只兼容受 ACL 保护的系统位置。
-                        // 否则 C:\Temp\explorer.exe 这类同名程序会冒用默认豁免。
+
                         if (rule.Kind == WhitelistRuleKind.LegacyName
                             && IsPresetWhitelistName(rule.Value)
                             && !IsTrustedPresetProcessPath(rule.Value, info.Path))
@@ -179,8 +177,6 @@ namespace AegisApp
             return result;
         }
 
-        // retained 只在 creation 仍完全相同时才成为新一轮种子，因此既能跨父进程退出
-        // 延续家族，又不会让复用同一 PID 的无关进程继承豁免。
         internal static HashSet<int> ExpandApplicationFamily(Dictionary<int, int> parents,
             HashSet<int> anchors, Dictionary<int, long> retained, Dictionary<int, long> currentCreation)
         {
@@ -201,9 +197,7 @@ namespace AegisApp
                 foreach (var pair in parents)
                     if (!result.Contains(pair.Key) && result.Contains(pair.Value))
                     {
-                        // Windows 的 ParentProcessId 会在父进程退出后保留旧 PID。
-                        // 若该 PID 后来被锚点复用，旧进程不能倒挂进新家族；只有
-                        // creation 可确认且子进程不早于父进程时才接受这条边。
+
                         long childCreation;
                         long parentCreation;
                         if (currentCreation == null
@@ -318,10 +312,6 @@ namespace AegisApp
             }
         }
 
-        // WMI 启动事件在 750 ms 合并窗口内立即记录家族身份。这样短命的
-        // Update.exe 即使在下一次 4 秒 Sweep 前退出，它启动的应用仍可被识别；
-        // Stop 不携带原实例 creation，不能据此删除成员；20 秒全量快照会按
-        // creation 清掉退出项，Started 的新 creation 也会立即替换旧身份。
         private void ObserveWhitelistProcessChanges(ProcessChangeBatch batch)
         {
             if (batch == null || batch.Changes.Length == 0) return;
@@ -378,9 +368,6 @@ namespace AegisApp
                     }
                 }
 
-                // Sweep 与事件观察由 whiteEvalSync 线性化。若 Sweep 先拿到旧
-                // 家族快照并压制了刚启动的子进程，这里在确认 PID+creation
-                // 家族身份后立即解除 Background；不用等 20 秒全量校准。
                 foreach (KeyValuePair<int, long> entry in newlyAdmitted)
                     if (core.ReleaseIfCreation(
                             entry.Key, SuppressReason.Background, entry.Value))
@@ -388,10 +375,6 @@ namespace AegisApp
             }
         }
 
-        // 按事件序列维护一条家族规则。Started 必须携带自身 creation；
-        // 通过父节点扩展时还必须携带与已确认父节点一致的 ParentCreation。
-        // 这样即使 Stop/Start 在同一个合并批次交错，或 PID 被瞬间复用，
-        // 最终成员状态也不会取决于“先处理全部 start、再处理全部 stop”。
         internal static Dictionary<int, long> ApplyApplicationFamilyEvents(
             WhitelistRule rule,
             Dictionary<int, long> members, IList<ProcessChange> changes, int ownerSession)
@@ -420,9 +403,7 @@ namespace AegisApp
             {
                 if (change.Kind == ProcessChangeKind.Stopped)
                 {
-                    // Start/Stop 来自独立 watcher，迟到的旧 Stop 可能落在同
-                    // PID 新 Start 之后。只有明确“已不存在”或当前 creation
-                    // 不同才删除；同一实例仍存活/身份未知时保守保留。
+
                     long currentCreation;
                     long memberCreation;
                     if (stopIdentity != null
@@ -463,8 +444,6 @@ namespace AegisApp
                 }
             }
 
-            // WMI 通常按启动顺序送达，但不把安全性依赖在这一点上。只对批次
-            // 结束时仍存活的 start 做固定点扩展，并继续要求父 creation 完全一致。
             bool expanded;
             do
             {

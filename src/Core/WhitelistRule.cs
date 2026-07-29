@@ -14,23 +14,19 @@ namespace AegisApp
         ApplicationFamily = 2
     }
 
-    // 规则对象不可变。ApplicationFamily 的 Value 始终是锚点 EXE 的完整路径，
-    // 它不等价于目录白名单；只有该锚点进程和能够确认的子孙进程会被豁免。
     internal sealed class WhitelistRule
     {
         internal const string Header = "AEGIS_WHITELIST_V3";
         internal const string LegacyHeader = "AEGIS_WHITELIST_V2";
         private static readonly string[] UnsafeFamilyHosts =
         {
-            // Windows shells, brokers and generic executable hosts.
+
             "explorer", "cmd", "powershell", "powershell_ise", "pwsh",
             "wscript", "cscript", "mshta", "rundll32", "regsvr32",
             "conhost", "openconsole", "windowsterminal", "dllhost",
             "svchost", "taskhostw", "taskeng", "runtimebroker",
             "applicationframehost", "msiexec",
 
-            // Subsystem and script/runtime hosts. A family rule on one of these
-            // would protect unrelated invocations and every child they launch.
             "wsl", "wslhost", "wslservice", "bash", "sh",
             "python", "pythonw", "py", "pyw", "pypy", "pypy3",
             "node", "deno", "bun", "java", "javaw", "dotnet",
@@ -98,15 +94,15 @@ namespace AegisApp
             return tag + "|" + Convert.ToBase64String(Encoding.UTF8.GetBytes(Value));
         }
 
+#if AEGIS_SELFTEST
         public bool MatchesDirect(string processName, string imagePath)
         {
             if (Kind == WhitelistRuleKind.LegacyName)
                 return string.Equals(Value, NormalizeName(processName), StringComparison.OrdinalIgnoreCase);
             return PathEquals(Value, imagePath);
         }
+#endif
 
-        // GameMode 的进程快照已经统一规范化，热路径直接比较，避免每条规则 ×
-        // 每个进程重复 Path.GetFullPath / Path.GetFileName。
         internal bool MatchesNormalized(string normalizedName, string normalizedImagePath)
         {
             return Kind == WhitelistRuleKind.LegacyName

@@ -19,10 +19,7 @@ namespace AegisApp
         private long processScanRetryAfterTicks;
         private long lastFullGameDetectionTicks;
         private long processScanCount;
-        // 没有事件源时保留 4 秒兼容轮询；事件源可用时，普通进程突发只标脏，
-        // 由 20 秒全量校准统一处理。只有游戏会话边界或显式策略变更能够越过预算。
-        // 否则安装器/浏览器/遥测进程持续启停时，会把事件模式重新放大成每 4 秒
-        // 一次 Process.GetProcesses + 白名单全量快照。
+
         private const int PollingSweepIntervalMs = 4000;
         private const int EventBackedSweepIntervalMs = 20000;
         private const int FullGameDetectionIntervalMs = 20000;
@@ -86,15 +83,12 @@ namespace AegisApp
                             detectionRelevant = true;
                         continue;
                     }
-                    // 仅在用户入口/launcher 仍是当前 renderer 的过渡期跟踪
-                    // 它的直接子进程；普通游戏 helper 子进程不能绕过扫描预算。
+
                     if (IsActiveFamilyChildStart(
                             activeDetection, change, selfSession))
                     {
                         relevant = true;
-                        // 每个 launcher renderer 身份只给一次 5 秒过渡探测。
-                        // 若这次仍未迁移到真正 renderer，后续 helper 突发回到
-                        // 20 秒校准，不能永久把全量扫描锁在 5 秒。
+
                         long rendererCreation =
                             activeDetection.RendererCreation;
                         if (!IsSameTransitionEpoch(
@@ -125,9 +119,7 @@ namespace AegisApp
                     }
                 }
             }
-            // 溢出表示事件不完整，只要求下一轮全量校准，不能把持续溢出
-            // 当成游戏边界而每 750 ms 绕过扫描预算。若保留下来的事件中
-            // 确实命中入口或渲染进程退出，detectionRelevant 仍会立即处理。
+
             if (batch.Overflowed)
                 Interlocked.Exchange(ref gameDetectionDirty, 1);
             if (transitionRelevant)
@@ -144,8 +136,7 @@ namespace AegisApp
             }
             if (!relevant) return;
             Interlocked.Exchange(ref processSetDirty, 1);
-            // 普通进程突发已经受事件模式的校准期限覆盖。若每个合并批次仍唤醒
-            // worker，即使没有扫描到期，也会让 Aegis 与游戏争抢调度。
+
             if (immediate || transitionRelevant) kick.Set();
         }
 
@@ -193,8 +184,7 @@ namespace AegisApp
             int currentPid, long currentCreation)
         {
             if (storedPid <= 0 || storedPid != currentPid) return false;
-            // creation 暂不可读时按同一 epoch 处理，优先守住扫描预算；
-            // 一旦两侧都有身份，PID 复用会重新武装一次探测。
+
             return storedCreation <= 0 || currentCreation <= 0
                 || storedCreation == currentCreation;
         }
@@ -222,8 +212,6 @@ namespace AegisApp
                 ? EventBackedSweepIntervalMs : PollingSweepIntervalMs;
         }
 
-        // 事件模式下脏位不会缩短 20 秒预算。游戏会话变化走 urgent 分支，
-        // 显式设置变更走 RequestPolicyApply，两者仍然立即生效。
         private bool ShouldRunProcessScan()
         {
             long now = DateTime.UtcNow.Ticks;
@@ -334,8 +322,7 @@ namespace AegisApp
 
         private void RequestPolicyApply()
         {
-            // 显式策略变更本来就要拿一次完整进程快照；同时刷新游戏检测，
-            // 避免一次临近截止时间的策略扫描把 20 秒检测期限顺延到近 40 秒。
+
             Interlocked.Exchange(ref gameDetectionDirty, 1);
             Interlocked.Exchange(ref urgentProcessScan, 1);
             Interlocked.Exchange(ref processSetDirty, 1);

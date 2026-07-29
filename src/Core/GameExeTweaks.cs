@@ -79,9 +79,6 @@ namespace AegisApp
             catch { return false; }
         }
 
-        // UserGpuPreferences 里一个值是多个 "字段=值;" 拼起来的，Windows 会往同一个值里
-        // 放别的字段——逐游戏的「窗口化优化」开关就存在 AppStatus 里。所以只能替换
-        // 自己那一段：整值覆盖会把用户在 Windows 设置里做过的选择静默抹掉。
         internal static string MergeField(string current, string field, string value)
         {
             var parts = new List<string>();
@@ -107,8 +104,6 @@ namespace AegisApp
             return string.Join(";", parts.ToArray()) + ";";
         }
 
-        // Layers 是空格分隔的兼容性标志列表，同样要按标志还原：
-        // 只摘掉自己加的那一个，保留用户后来在"兼容性"选项卡里加的（RUNASADMIN 等）。
         internal static string RestoreLayer(string current, string original)
         {
             bool hadFlag = original != null
@@ -123,7 +118,7 @@ namespace AegisApp
                 if (string.Equals(seg, FsoFlag, StringComparison.OrdinalIgnoreCase)) continue;
                 parts.Add(seg);
             }
-            // 只剩一个孤零零的 "~" 前缀就等于没有任何标志了
+
             if (parts.Count == 0 || (parts.Count == 1 && parts[0] == "~")) return "";
             return string.Join(" ", parts.ToArray());
         }
@@ -147,8 +142,6 @@ namespace AegisApp
             return string.Join(";", parts.ToArray()) + ";";
         }
 
-        // 还原也必须按字段来：直接写回整条旧快照，会把用户在我们写入之后
-        // 才在 Windows 设置里改动的其它字段（比如 AppStatus）一起冲掉。
         internal static string RestoreField(string current, string original, string field)
         {
             string want = ReadField(original, field);

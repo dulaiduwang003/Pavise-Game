@@ -73,9 +73,7 @@ namespace AegisApp
             if (!TryOpenGameWaitHandle(
                 lolRoot, pid, creation, out verifiedHandle)) return false;
             Native.CloseHandle(verifiedHandle);
-            // A UX respawn does not end the match lease. The already-confirmed
-            // watchdog remains the recovery owner, so reuse it instead of
-            // starting a duplicate that can never acquire the lease mutex.
+
             if (ExistingGuardIsReady(lolRoot, pid, creation)) return true;
             EventWaitHandle readyEvent = null;
             Process process = null;
@@ -161,9 +159,6 @@ namespace AegisApp
                             lolRoot, pid, creation, readyToken)))
                     return;
 
-                // SignalReady 只会在本进程独占守护锁、复核严格租约并持有
-                // PID+creation 对应的游戏句柄之后发生；从这里起句柄所有权
-                // 交给等待循环，确保父进程收到握手后已有独立恢复主体。
                 IntPtr initialGameHandle = preparedGameHandle;
                 preparedGameHandle = IntPtr.Zero;
                 if (WaitForGameExit(
@@ -279,8 +274,7 @@ namespace AegisApp
                         || !OriginalGameIdentityGone(
                             lolRoot, pid, creation))
                         return false;
-                    // 父进程写入严格租约前已经验证过 PID/creation；若子进程
-                    // 启动时该身份已明确消失，说明正好撞上退场窗口，继续恢复判定。
+
                     initialVerified = true;
                 }
 
@@ -356,9 +350,6 @@ namespace AegisApp
                     bool sameMatch =
                         LolOptimizationService.IsSameMatchPhase(phase);
 
-                    // 只允许在原句柄确实存活并正常退出后、且 LCU 仍明确处于同一
-                    // InProgress 窗口时短暂换绑一次。严格 PID/creation 启动若校验
-                    // 失败，绝不退化成“找任意 League 进程”。
                     if (initialVerified && !rebound && sameMatch
                         && DateTime.UtcNow < reconnectDeadline)
                     {

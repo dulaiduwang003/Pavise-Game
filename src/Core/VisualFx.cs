@@ -6,12 +6,7 @@ using Microsoft.Win32;
 
 namespace AegisApp
 {
-    // 桌面的透明毛玻璃和窗口动画都由 DWM 合成，游戏以无边框窗口运行时这些开销真实存在。
-    //
-    // 窗口动画走 SystemParametersInfo 且不带 SPIF_UPDATEINIFILE，只改运行时状态不落盘。
-    // 但"不落盘"不等于"能自愈"：用户不会为了恢复动画专门注销一次。Aegis 被强杀后重启，
-    // 内存里的原值没了，Activate() 读到当前是 0 就当成"本来就关着"，于是整个登录会话内
-    // 动画再也开不回来。所以原值必须和透明度一样落盘，启动时按快照还原。
+
     internal static class VisualFx
     {
         private static readonly ReversibleReg Transparency = new ReversibleReg(
@@ -22,7 +17,6 @@ namespace AegisApp
         private static readonly object lk = new object();
         private static bool active;
 
-        // -1 表示没有待还原的快照
         private static int SavedUiEffects
         {
             get
@@ -66,7 +60,7 @@ namespace AegisApp
                     if (current == 0) animationsOff = true;
                     else
                     {
-                        // 先落盘快照再动手：写不进去就不改，免得留下还原不回来的状态
+
                         SavedUiEffects = current;
                         if (SavedUiEffects == current && SetUiEffects(false)) animationsOff = true;
                         else SavedUiEffects = -1;
@@ -104,7 +98,6 @@ namespace AegisApp
             }
         }
 
-        // 两半都有落盘快照，崩溃后启动时一并还原
         public static void HealFromCrash()
         {
             if (Transparency.HasBackup || SavedUiEffects >= 0) Restore();

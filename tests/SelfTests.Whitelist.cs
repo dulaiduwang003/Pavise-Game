@@ -23,7 +23,7 @@ namespace AegisApp
             Eq(true, WhitelistRule.TryCreate(WhitelistRuleKind.ExactPath,
                 @"C:\Apps\Capture\Capture.exe", out exact));
             Eq(true, exact.MatchesDirect("anything", @"c:\apps\capture\CAPTURE.exe"));
-            // 不能用裸 StartsWith：同前缀兄弟目录绝不等于所选 EXE。
+
             Eq(false, exact.MatchesDirect("anything", @"C:\Apps\CaptureBackup\Capture.exe"));
 
             WhitelistRule family;
@@ -77,8 +77,8 @@ namespace AegisApp
             var anchors = new HashSet<int> { 10 };
             var retained = new Dictionary<int, long>
             {
-                { 20, 2000 }, // 锚点已经退出后仍存活的旧子进程
-                { 30, 3000 }  // PID 已复用，creation 不同，必须丢弃
+                { 20, 2000 },
+                { 30, 3000 }
             };
             var current = new Dictionary<int, long>
             {
@@ -95,8 +95,8 @@ namespace AegisApp
             Eq(true, family.Contains(21));
             Eq(false, family.Contains(30));
             Eq(false, family.Contains(31));
-            Eq(false, family.Contains(41)); // 父 PID 被更晚启动的锚点复用
-            Eq(false, family.Contains(42)); // 相同 creation 也按不可证明处理，避免 PID 复用越界
+            Eq(false, family.Contains(41));
+            Eq(false, family.Contains(42));
 
             Eq(false, GameMode.IsTrustedPresetProcessPath(
                 "explorer", @"C:\Temp\explorer.exe"));
@@ -113,21 +113,18 @@ namespace AegisApp
                 string white = Path.Combine(root, "Aegis.whitelist.txt");
                 string state = Path.Combine(root, "suppress.state");
 
-                // V2 规则若丢了版本头，不能被降级解释成一个普通进程名。
                 File.WriteAllText(white, "N|c3lzdGVt\r\n");
                 var damaged = new GameMode(root, new SuppressionCore(state));
                 List<string> fallback = damaged.GetWhitelist();
                 Eq(true, fallback.Contains("system"));
                 damaged.Stop();
 
-                // 完整空文件是合法格式，但内置稳定性边界会自动补回。
                 File.WriteAllText(white, WhitelistRule.Header + "\r\n"
                     + GameMode.BuildWhitelistFooter(new List<WhitelistRule>()) + "\r\n");
                 var empty = new GameMode(root, new SuppressionCore(state));
                 Eq(true, empty.GetWhitelist().Contains("system"));
                 empty.Stop();
 
-                // header-only 更可能是原子写降级时的截断，必须回退安全预置。
                 File.WriteAllText(white, WhitelistRule.Header + "\r\n");
                 var truncated = new GameMode(root, new SuppressionCore(state));
                 Eq(true, truncated.GetWhitelist().Contains("system"));
@@ -143,7 +140,6 @@ namespace AegisApp
                 Eq(false, partial.GetWhitelist().Contains("only-one"));
                 partial.Stop();
 
-                // 原子落盘失败时，内存和 UI 结果必须保持未修改。
                 File.Delete(white);
                 var transactional = new GameMode(root, new SuppressionCore(state));
                 int before = transactional.GetWhitelistRulesFast().Count;
@@ -259,8 +255,7 @@ namespace AegisApp
                 },
                 new ProcessChange
                 {
-                    // 模拟父进程在 child 的 WMI 回调前已退出：ProcNotify 无法
-                    // 再开父句柄，但同批 parent start 的 creation 仍可安全作证。
+
                     Pid = 11, ParentPid = 10, ParentCreation = 0,
                     Session = 1, Name = "CaptureWorker",
                     Path = @"C:\Apps\Capture\CaptureWorker.exe",
@@ -271,14 +266,13 @@ namespace AegisApp
                     Pid = 10, Sequence = 3, Kind = ProcessChangeKind.Stopped
                 }
             }, 1);
-            // Stop 不携带 creation，事件层不能安全删除；全量快照会修剪。
+
             Eq(true, members.ContainsKey(10));
             Eq(true, members.ContainsKey(11));
             Eq(true, admitted.ContainsKey(10));
             Eq(true, admitted.ContainsKey(11));
             Eq(1100L, admitted[11]);
 
-            // 同一批次先退出、后复用时，新进程不能继承旧成员身份。
             GameMode.ApplyApplicationFamilyEvents(rule, members, new[]
             {
                 new ProcessChange
@@ -294,7 +288,6 @@ namespace AegisApp
             }, 1);
             Eq(false, members.ContainsKey(11));
 
-            // 即使父 PID 仍在成员表，父 creation 对不上也必须拒绝扩展。
             members[20] = 2000;
             GameMode.ApplyApplicationFamilyEvents(rule, members, new[]
             {
@@ -308,8 +301,6 @@ namespace AegisApp
             }, 1);
             Eq(false, members.ContainsKey(21));
 
-            // stop -> start 保留新锚点；start -> 无 identity 的 stop 也先
-            // 保留，避免旧实例 Stop 迟到后删掉已复用 PID 的新成员。
             GameMode.ApplyApplicationFamilyEvents(rule, members, new[]
             {
                 new ProcessChange { Pid = 30, Sequence = 7, Kind = ProcessChangeKind.Stopped },
@@ -333,8 +324,6 @@ namespace AegisApp
             }, 1);
             Eq(true, members.ContainsKey(31));
 
-            // 有明确退出证据时立即修剪；旧 Stop 落到同 creation 的新
-            // 成员上时必须保留。
             members[40] = 4000;
             GameMode.ApplyApplicationFamilyEvents(
                 rule, members, new[]

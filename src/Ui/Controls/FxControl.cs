@@ -45,5 +45,4 @@ namespace AegisApp
         protected void FillBg(Graphics g) { using (var b = new SolidBrush(EffBg)) g.FillRectangle(b, ClientRectangle); }
     }
 
-
 }

@@ -72,8 +72,7 @@ namespace AegisApp
                 if (Interlocked.Exchange(
                         ref processEventsAvailable, next) == next)
                     return;
-                // Availability changes alter the safety-fallback deadline. Reconcile
-                // once immediately, then use the matching 60s/8s cadence.
+
                 Poke();
             }
         }
@@ -86,9 +85,7 @@ namespace AegisApp
         public bool PanicRestore()
         {
             Interlocked.Exchange(ref panicUntilUtcTicks, DateTime.UtcNow.AddSeconds(4).Ticks);
-            // Keep one full reconciliation pending while the panic cooldown is
-            // active; otherwise the event-backed 60s deadline could leave live
-            // anti-cheat processes released for almost a minute.
+
             Interlocked.Exchange(ref fullSweepRequested, 1);
             kick.Set();
             lock (engineSync) return ReleaseAll("紧急恢复");
@@ -204,8 +201,7 @@ namespace AegisApp
                                 }
                                 else
                                 {
-                                    // 枚举失败不消费显式/溢出请求，也不把下一次
-                                    // 全量校准推迟 60 秒；短暂退避后重试。
+
                                     Interlocked.Exchange(ref fullSweepRequested, 1);
                                     if (overflowRequested)
                                         Interlocked.Exchange(
@@ -276,15 +272,11 @@ namespace AegisApp
             {
                 if (change.Kind == ProcessChangeKind.Stopped)
                 {
-                    // 绝大多数 StopTrace 与反作弊无关。只有已接管 PID 或同批
-                    // 待接管 PID 才值得开句柄核对存活，避免短进程风暴把事件
-                    // 增量路径退化成对每个退出进程一次 OpenProcess。
+
                     if (!tracked.Contains(change.Pid)
                         && !acquireByPid.ContainsKey(change.Pid))
                         continue;
-                    // StopTrace 不携带可靠 creation，且 Start/Stop watcher 可能
-                    // 跨流乱序。PID 当前仍活着就让全扫校准，不能让迟到的
-                    // 旧 Stop 解除一个刚复用同 PID 的新反作弊进程。
+
                     if (!IsPidCurrentlyAlive(change.Pid))
                     {
                         acquireByPid.Remove(change.Pid);
@@ -312,14 +304,9 @@ namespace AegisApp
             IntPtr handle = Native.OpenProcess(
                 Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
             if (handle == IntPtr.Zero)
-                // Access denied/unknown is not proof of exit. Treat only the
-                // kernel's explicit "no such process" failures as stopped so
-                // a protected process reusing a PID cannot be released by a
-                // delayed StopTrace event.
+
                 return !Native.LastOpenProcessFailureWasNoSuchProcess();
-            // A valid process handle is already positive liveness evidence.
-            // Image-name readback can fail transiently and must not turn that
-            // uncertainty into a destructive release decision.
+
             try { return true; }
             finally { Native.CloseHandle(handle); }
         }
@@ -352,8 +339,7 @@ namespace AegisApp
                 try { all = Process.GetProcesses(); }
                 catch
                 {
-                    // 枚举失败不是“全部目标已退出”的证据。保留现有压制，
-                    // 下一轮再校准，避免瞬时系统错误造成全量 fail-open。
+
                     return false;
                 }
                 foreach (Process p in all)
@@ -371,8 +357,7 @@ namespace AegisApp
                             if (tracked.Contains(pid)) seen.Add(pid);
                             continue;
                         }
-                        // 身份已读清楚但分组已关闭/名称已变时，不能放进 seen；
-                        // 尾部 prune 会安全解除旧项。
+
                         if (!active.TryGetValue(nm, out grp)) continue;
                         if (selfSession < 0 || session != selfSession && session != 0) continue;
                         seen.Add(pid);
@@ -385,8 +370,7 @@ namespace AegisApp
                     }
                     catch
                     {
-                        // 只有“仍被系统枚举到、但身份暂时读不清”的已跟踪 PID
-                        // 才保守保留；普通非目标 PID 不参与 seen。
+
                         if (pid > 0 && tracked.Contains(pid)) seen.Add(pid);
                     }
                     finally { p.Dispose(); }

@@ -27,7 +27,6 @@ namespace AegisApp
         public static string VersionTag { get { return "v" + Version; } }
     }
 
-
     internal static class Program
     {
         [STAThread]
@@ -36,7 +35,9 @@ namespace AegisApp
 
             if (LegacyFreezeRecovery.TryHandle(args)) return;
             if (LolWatchdog.TryHandle(args)) return;
+#if AEGIS_SELFTEST
             if (SelfTests.TryHandleRuntimeMode(args)) return;
+#endif
 
             if (args.Length > 0 && args[0] == "--genicon")
             {
@@ -262,7 +263,7 @@ namespace AegisApp
             System.Windows.Forms.Timer trayTip = null;
             Action doExit = () =>
             {
-                // 先停托盘刷新定时器再释放图标：否则 Tick 会往已释放的 NotifyIcon 上写东西
+
                 try { trayTip.Stop(); trayTip.Dispose(); } catch { }
                 icon.Visible = false;
                 icon.Dispose();

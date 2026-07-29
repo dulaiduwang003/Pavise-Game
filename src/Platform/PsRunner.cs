@@ -10,20 +10,7 @@ namespace AegisApp
 {
     internal static class PsRunner
     {
-        // 三条硬性约束，缺一条就会出事：
-        //
-        // 1) 用户数据一律走环境变量，绝不拼进脚本文本。
-        //    PowerShell 把 U+2018/U+2019 等排版引号也当作单引号定界符，所以"把 ' 翻倍"
-        //    这种转义挡不住注入——实测 'X’;Write-Output PWNED;’' 会真的执行，且退出码为 0。
-        //    Aegis 带管理员清单，被注入等于把管理员权限交出去。
-        //
-        // 2) 不落临时 .ps1 文件。写在用户可写的 %TEMP% 再由管理员进程执行，
-        //    中间存在被同用户中完整性进程替换文件的窗口。改用 -EncodedCommand，
-        //    脚本正文以 base64(UTF-16LE) 直接进命令行，既不落盘也不需要任何引号转义。
-        //
-        // 3) stdout 和 stderr 都必须异步读。同步 ReadToEnd 会一直阻塞到子进程关闭管道，
-        //    排在它后面的 WaitForExit(timeout) 就永远等不到超时——超时参数会变成死代码，
-        //    而这些调用有的跑在 UI 线程上。
+
         public static bool Run(string script, string label, int timeoutMs, out string stdout)
         {
             return Run(script, label, timeoutMs, null, out stdout);
@@ -35,10 +22,7 @@ namespace AegisApp
             stdout = "";
             try
             {
-                // Windows PowerShell otherwise inherits an OEM/ANSI output
-                // encoding for redirected pipes. Paths containing typographic
-                // quotes or non-ASCII characters then appear corrupted even
-                // though they were passed safely through the environment.
+
                 string wrapped =
                     "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)\r\n"
                     + "$OutputEncoding = [Console]::OutputEncoding\r\n"

@@ -1,7 +1,7 @@
+@rem @author bdth 2074055628@qq.com
+@rem file: build Aegis, icon, and manifest
 @echo off
 chcp 65001 >nul
-rem @author bdth 2074055628@qq.com
-rem 文件用途 编译 Aegis 并生成程序图标和运行清单
 setlocal
 cd /d "%~dp0"
 set CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe
@@ -14,9 +14,11 @@ if not exist "%CSC%" (
 set REFS=-reference:System.dll -reference:System.Drawing.dll -reference:System.Windows.Forms.dll -reference:System.Core.dll -reference:System.Management.dll -reference:System.Xml.dll
 set OUT=Aegis.exe
 if not "%~1"=="" set OUT=%~1
+set TESTARGS=
+if /i "%~2"=="--selftest" set TESTARGS=-define:AEGIS_SELFTEST -recurse:tests\*.cs
 
 echo [1/3] 编译临时 exe...
-"%CSC%" -nologo -target:winexe -optimize+ -codepage:65001 -out:Aegis.tmp.exe %REFS% -recurse:src\*.cs
+"%CSC%" -nologo -target:winexe -optimize+ -codepage:65001 -out:Aegis.tmp.exe %REFS% %TESTARGS% -recurse:src\*.cs
 if errorlevel 1 goto err
 
 echo [2/3] 生成 Aegis.ico...
@@ -40,7 +42,7 @@ set MANIFEST=Aegis.manifest.tmp
 >> "%MANIFEST%" echo     ^</windowsSettings^>
 >> "%MANIFEST%" echo   ^</application^>
 >> "%MANIFEST%" echo ^</assembly^>
-"%CSC%" -nologo -target:winexe -optimize+ -codepage:65001 -win32icon:Aegis.ico -win32manifest:"%MANIFEST%" -out:"%OUT%" %REFS% -recurse:src\*.cs
+"%CSC%" -nologo -target:winexe -optimize+ -codepage:65001 -win32icon:Aegis.ico -win32manifest:"%MANIFEST%" -out:"%OUT%" %REFS% %TESTARGS% -recurse:src\*.cs
 if errorlevel 1 goto err
 
 del Aegis.tmp.exe "%MANIFEST%" >nul 2>&1

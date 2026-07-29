@@ -115,40 +115,6 @@ namespace AegisApp
             return c;
         }
 
-        private static void SplitDot(string full, out string title, out string desc)
-        {
-            title = full; desc = "";
-            int di = full.IndexOf('·');
-            if (di > 0) { title = full.Substring(0, di).Trim(); desc = full.Substring(di + 1).Trim(); }
-        }
-
-
-        private void BuildTamePage()
-        {
-            int y = PageHeader(pageTame, Lang.T("nav.tame"), Lang.T("tame.caveat"), 2);
-
-            swTame = MakeSwitch(!tamer.Paused, (s, e) =>
-            { tamer.Paused = !swTame.Checked; Settings.Save("TameOn", swTame.Checked); });
-            MakeCard(pageTame, 26, y, 638, 56, Lang.T("tame.toggle"), "", swTame);
-            y += 68;
-
-            tameList = new DBPanel();
-            tameList.SetBounds(Theme.S(20), Theme.S(y), Theme.S(664), Theme.S(592 - y - 32));
-            tameList.BackColor = Theme.Bg;
-            tameList.AutoScroll = true;
-            Native.Dark(tameList);
-            pageTame.Controls.Add(tameList);
-
-            var lblCustom = new Label();
-            lblCustom.Text = Lang.T("tame.footer");
-            lblCustom.ForeColor = Theme.Faint; lblCustom.BackColor = Theme.Bg;
-            lblCustom.Font = Theme.UI(8.25f, false);
-            lblCustom.SetBounds(Theme.S(27), Theme.S(592 - 26), Theme.S(636), Theme.S(18));
-            pageTame.Controls.Add(lblCustom);
-
-            RefreshTameList();
-        }
-
         private void RefreshTameList()
         {
             while (tameList.Controls.Count > 0) tameList.Controls[0].Dispose();
@@ -180,7 +146,6 @@ namespace AegisApp
             tameCards.Add(card);
             tameToggles.Add(sw);
         }
-
 
         private void BuildSettingsPage()
         {
@@ -257,8 +222,7 @@ namespace AegisApp
             btnDefender.Size = new Size(Theme.S(120), Theme.S(32));
             btnDefender.Click += delegate
             {
-                // 对话框构造时要跑 PowerShell 查 Defender 状态，可能要好几秒；
-                // 至少让指针变成等待态，不要让人以为按钮没反应
+
                 Cursor = Cursors.WaitCursor;
                 DefenderExclusionDialog dlg;
                 try { dlg = new DefenderExclusionDialog(gameMode); }
@@ -394,7 +358,6 @@ namespace AegisApp
             }
             catch { }
         }
-
 
         private void BuildAboutPage()
         {

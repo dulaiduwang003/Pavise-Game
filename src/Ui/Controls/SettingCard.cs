@@ -142,9 +142,7 @@ namespace AegisApp
                     TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
                 var dr = new Rectangle(padL, Theme.S(33), textW, Height - Theme.S(40));
                 TextFormatFlags df = TextFormatFlags.Left | TextFormatFlags.EndEllipsis;
-                // 原来的门槛是卡片高度 >72px，而全项目卡片都是 56~66px，换行分支从不执行，
-                // 所有说明都被截成一行加省略号——被截掉的往往正是风险提示那半句。
-                // 改成看描述区本身还能不能容下第二行。
+
                 int lineH = TextRenderer.MeasureText("Ag", Theme.UI(8.5f, false)).Height;
                 if (dr.Height >= lineH * 2) df |= TextFormatFlags.WordBreak;
                 if (lineH > 0 && dr.Height >= lineH) dr.Height = dr.Height / lineH * lineH;
@@ -152,6 +150,5 @@ namespace AegisApp
             }
         }
     }
-
 
 }

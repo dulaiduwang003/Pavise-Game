@@ -61,7 +61,7 @@ namespace AegisApp
             bool repaired;
             List<GameProfile> loaded = Normalize(Load(), out repaired);
             bool legacyFormat = false;
-            // 同一个文件读不出来，同样不能把它当成"需要修复"而触发重写
+
             if (!loadFailed && File.Exists(path))
             {
                 legacyFormat = headerLine == HeaderV1;
@@ -144,8 +144,6 @@ namespace AegisApp
             catch (Exception ex) { Logger.LogFailure("游戏档案保存失败", ex); }
         }
 
-        // 读取失败绝不能和"档案本来就是空的"混为一谈：一旦混同，界面显示空游戏库，
-        // 用户随手再加一个游戏就会把完好的档案整份覆盖掉，两份副本一起没。
         private bool loadFailed;
         private string headerLine;
 

@@ -24,7 +24,6 @@ namespace AegisApp
         public string Evidence;
     }
 
-    // Identity evidence captured through one live process handle.
     internal sealed class GameProcessSnapshot
     {
         public int Pid;
@@ -83,9 +82,7 @@ namespace AegisApp
             if (all == null || profiles == null
                 || profiles.Count == 0 || ownerSession < 0)
                 return null;
-            // 路径、名称、会话、父 PID 和 creation 必须来自同一个仍存活的
-            // 进程句柄，不能把 Process.GetProcesses() 的旧缓存与复用后的 PID
-            // 拼接。所有 profile 共用这份快照，避免 profile × 全进程开句柄。
+
             var snapshot = new List<GameProcessSnapshot>();
             foreach (Process process in all)
             {
@@ -157,8 +154,7 @@ namespace AegisApp
                                     && (string.IsNullOrEmpty(
                                             profile.Root)
                                         || rooted);
-                        // 版本/位数后缀只能在已配置 Root 内替代所选入口。
-                        // 根外同名 game_x64.exe 绝不能仅凭名称激活策略。
+
                         bool fallbackEntry = rooted && !exactEntry
                             && IsFallbackEntryName(profile, name);
                         if (!rooted && !legacyEntry && !exactEntry) continue;
@@ -223,8 +219,6 @@ namespace AegisApp
                         selected = entry;
                         localBest = Score(profile, entry);
 
-                        // A selected launcher establishes one instance. It may
-                        // promote only a renderer proven to belong to that tree.
                         if (IsLauncherLikeName(entry.Name))
                         {
                             Candidate renderer = BestRenderer(
@@ -281,6 +275,7 @@ namespace AegisApp
             return best;
         }
 
+#if AEGIS_SELFTEST
         internal static int Score(GameProfile profile, string name, string path, bool visible, bool foreground)
         {
             return Score(profile, new Candidate { Name = name, Path = path, Visible = visible, Foreground = foreground });
@@ -291,6 +286,7 @@ namespace AegisApp
             return IsStrongRendererCandidate(profile,
                 new Candidate { Name = name, Path = path, Visible = visible, Foreground = foreground });
         }
+#endif
 
         private static readonly HashSet<string> LauncherRendererNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -516,8 +512,6 @@ namespace AegisApp
                     || soleLauncher.Pid != entry.Pid)
                     continue;
 
-                // Two independent foreground claims in one snapshot are
-                // contradictory. Do not resolve that ambiguity by PID order.
                 if (match != null) return null;
                 match = candidate;
             }
@@ -713,8 +707,6 @@ namespace AegisApp
                 if (!foregroundClaim && !visibleClaim)
                     continue;
 
-                // EnumWindows and GetForegroundWindow expose only PIDs. Reopen
-                // the small claimed subset and bind those flags to creation.
                 if (!IsLiveProcessCreation(
                         identity.Pid, identity.Creation))
                     continue;
@@ -750,6 +742,7 @@ namespace AegisApp
             finally { Native.CloseHandle(handle); }
         }
 
+#if AEGIS_SELFTEST
         internal static bool HasUserFacingWindow(Process p)
         {
             try
@@ -759,10 +752,8 @@ namespace AegisApp
             }
             catch { return false; }
         }
+#endif
 
-        // Process.MainWindowHandle 会为每个进程各自枚举顶层窗口。全局枚举一次再按
-        // PID 建集合，既更接近“用户可见顶层窗口”的语义，也把数百次 user32 往返
-        // 收敛成一次。
         internal static HashSet<int> VisibleWindowPids(bool includeMinimized)
         {
             var result = new HashSet<int>();

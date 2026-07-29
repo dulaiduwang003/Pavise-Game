@@ -232,9 +232,7 @@ namespace AegisApp
                             gameMode.ProcessScanCount;
                         nextDiscoverMs = cadence.ElapsedMilliseconds;
                         nextResourceSampleMs = nextDiscoverMs;
-                        // The renderer and load workers wait on this ACK rather
-                        // than the request event. Every engine baseline above is
-                        // therefore captured before the measured work begins.
+
                         startAckEvent.Set();
                     }
 
@@ -370,9 +368,7 @@ namespace AegisApp
             }
             finally
             {
-                // Capture the end of the measurement before any service is stopped.
-                // Shutdown restores priorities and writes journals/logs, which must not
-                // be charged to the renderer window.
+
                 if (!measurementEnded)
                 {
                     measurementEndedTicks = Stopwatch.GetTimestamp();
@@ -481,8 +477,7 @@ namespace AegisApp
             gameMode.SuppressBackground = policyLane;
             gameMode.BoostGame = policyLane;
             gameMode.StrictCoreIsolation = false;
-            // Policy lane models Competitive's visible-window boundary, while the
-            // exact-path scope above still confines every mutation to our load binary.
+
             gameMode.AggressiveSuppression = policyLane;
             gameMode.NetOptimize = false;
             gameMode.IdleStateDisable = false;
@@ -846,8 +841,7 @@ namespace AegisApp
             if (double.IsNaN(elapsedMs) || double.IsInfinity(elapsedMs)
                 || elapsedMs <= 0)
                 return 0;
-            // Sampling includes the start boundary plus roughly one observation
-            // for each elapsed second.
+
             double expected =
                 Math.Floor(elapsedMs / DiscoverIntervalMs) + 1;
             return expected >= int.MaxValue

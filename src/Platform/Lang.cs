@@ -492,6 +492,7 @@ namespace AegisApp
             Settings.SaveStr("Lang", Cur == 1 ? "en" : (Cur == 2 ? "ja" : "zh"));
         }
 
+#if AEGIS_SELFTEST
         internal static List<string> AllKeys()
         {
             var keys = new List<string>();
@@ -504,6 +505,7 @@ namespace AegisApp
             string[] a;
             return M.TryGetValue(key, out a) ? a : null;
         }
+#endif
 
         public static string T(string key)
         {
@@ -514,6 +516,5 @@ namespace AegisApp
 
         public static string F(string key, params object[] args) { return string.Format(T(key), args); }
     }
-
 
 }

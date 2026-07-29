@@ -119,16 +119,12 @@ namespace AegisPerfLab
                     "PerfLab must run elevated so the real boost/readback path can be verified.");
             PrepareOutputDirectory(options.OutputDirectory);
             string executable = Process.GetCurrentProcess().MainModule.FileName;
-            // Do not use a conventional "game" directory here. GameScan intentionally
-            // treats that directory as a child of the install root, which would make the
-            // sibling background load part of the protected game family.
+
             string gameDir = Path.Combine(options.OutputDirectory, "render-target");
             string loadDir = Path.Combine(options.OutputDirectory, "background-load");
             Directory.CreateDirectory(gameDir);
             Directory.CreateDirectory(loadDir);
-            // "Launcher" is deliberate: active child bursts must exercise the
-            // one-shot launcher-to-renderer transition budget, not only ordinary
-            // process churn.
+
             string renderer = Path.Combine(gameDir, "Aegis.PerfLauncher.exe");
             string background = Path.Combine(loadDir, "Aegis.PerfBackground.exe");
             File.Copy(executable, renderer, true);
@@ -273,8 +269,7 @@ namespace AegisPerfLab
                     }
                     else
                     {
-                        // Baseline has no engine host. Release the renderer and
-                        // workers at the same post-warmup boundary.
+
                         startAckEvent.Set();
                     }
 
@@ -937,8 +932,7 @@ namespace AegisPerfLab
         private static int ExpectedMeasurementSamples(double elapsedMs)
         {
             if (!ValidPositive(elapsedMs)) return 0;
-            // Sampling includes the start boundary plus roughly one observation
-            // for each elapsed second.
+
             double expected = Math.Floor(
                 elapsedMs / MeasurementSampleIntervalMs) + 1;
             return expected >= int.MaxValue
@@ -1261,18 +1255,12 @@ namespace AegisPerfLab
                 pairedAvgDelta.Count(x => x > 5.0);
             double rendererDelta = pairedMedianAvgDelta;
             bool rendererPointOk = pairedMedianAvgDelta <= 2.00
-                // Ten pairs make a nearest-rank p90 equal to the second-worst
-                // trial. Keep it as a diagnostic, but fail only when more than
-                // 20% of pairs cross the practical 5% regression boundary.
+
                 && avgRegressionsOverFive <= Math.Max(
                     2, (int)Math.Floor(requiredRounds * 0.20))
                 && pairedMedianP99Delta <= 5.00
                 && activeP99 <= baselineP99 * 1.05 + 0.25
-                // Use a long-frame bucket above the measured cadence. A fixed
-                // 25 ms threshold sits at the median on a 40 Hz compositor and
-                // turns harmless phase noise into a 50/50 miss-rate coin flip.
-                // The one-sided upper confidence bound must still exclude a
-                // practical regression of ten additional long frames per 1000.
+
                 && pairedMeanLongFrameDelta <= 10.0;
             bool longFrameConclusive = pairedLongFrameUpper95 <= 10.0;
             bool rendererOk = rendererPointOk && longFrameConclusive;
@@ -1497,9 +1485,7 @@ namespace AegisPerfLab
         private static double StudentTOneSided95(int degreesOfFreedom)
         {
             if (degreesOfFreedom <= 0) return double.MaxValue;
-            // Cornish-Fisher expansion around the one-sided 95% normal
-            // quantile. At df=9 it yields 1.8330 (table value 1.8331), and it
-            // converges monotonically to 1.64485 for larger samples.
+
             const double z = 1.64485362695147;
             double v = degreesOfFreedom;
             double z2 = z * z;
@@ -1686,9 +1672,7 @@ namespace AegisPerfLab
             {
                 if (!measuring && gate.WaitOne(0))
                 {
-                    // The start gate may race the calibration deadline. Resolve the
-                    // compositor decision before resetting measurement state so one
-                    // arm cannot keep a blocking DwmFlush while the other falls back.
+
                     if (!presentationCalibrated)
                         FinishPresentationCalibration(true);
                     measuring = true;
@@ -1706,8 +1690,7 @@ namespace AegisPerfLab
                 }
                 if (measuring && measurement.Elapsed.TotalSeconds >= seconds)
                 {
-                    // End the engine window before frame-report I/O and form
-                    // teardown can be charged to the measured renderer.
+
                     SignalMeasurementDone();
                     Finish();
                     Close();

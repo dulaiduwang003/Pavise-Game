@@ -799,8 +799,7 @@ namespace AegisApp
             long delta = expectedCreation >= actualCreation
                 ? expectedCreation - actualCreation
                 : actualCreation - expectedCreation;
-            // WMI CreationDate is serialized at microsecond precision while
-            // GetProcessTimes uses 100 ns FILETIME ticks.
+
             return delta <= TimeSpan.TicksPerMillisecond;
         }
 
@@ -1223,20 +1222,6 @@ namespace AegisApp
             return found;
         }
 
-        public static string GetImagePath(Process process)
-        {
-            if (process == null) return null;
-            IntPtr handle = IntPtr.Zero;
-            try
-            {
-                handle = Native.OpenProcess(
-                    Native.PROCESS_QUERY_LIMITED_INFORMATION, false, process.Id);
-                return handle == IntPtr.Zero ? null : Native.ImagePath(handle);
-            }
-            catch { return null; }
-            finally { if (handle != IntPtr.Zero) Native.CloseHandle(handle); }
-        }
-
         private static void DisposeProcesses(Process[] processes)
         {
             if (processes == null) return;
@@ -1306,8 +1291,7 @@ namespace AegisApp
         internal static bool IsLeagueClientProcess(string path, string file, string lolRoot)
         {
             if (string.IsNullOrEmpty(lolRoot) || !IsUnder(path, lolRoot)) return false;
-            // ClientRunning means the LeagueClient backend, not a surviving
-            // Chromium renderer. UX processes are counted independently below.
+
             return string.Equals(file, "LeagueClient.exe", StringComparison.OrdinalIgnoreCase);
         }
 
@@ -1987,8 +1971,6 @@ namespace AegisApp
             if (launch.Success && WaitForUx(lolRoot, 6000))
                 return TryShowExistingUx(credentials, lolRoot);
 
-            // launch 请求返回失败时 UX 仍可能已由客户端自行拉起。健康进程
-            // 绝不升级为 kill-and-restart，只在确认主 UX 仍不存在时兜底。
             if (LolRuntimeProcesses.IsUxRunning(lolRoot))
                 return TryShowExistingUx(credentials, lolRoot);
             LolHttpResult restart = Send(

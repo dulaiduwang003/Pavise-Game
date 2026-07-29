@@ -51,8 +51,7 @@ namespace AegisApp
         private SettingCard cardPolicyPauseDl, cardPolicyPauseSvc, cardPolicyDvr;
         private SettingCard cardPolicyAggressive;
         private readonly List<Action> policySync = new List<Action>();
-        // 必须是静态：语言切换会走 RebuildUi 重建整页，实例字段上的忙碌标志会随之丢失，
-        // 新建的按钮是可用状态，于是能在清理still进行时再触发一次并发清理。
+
         private static volatile bool shaderCleaning;
         private int slowBusy;
         private int restoreBusy;
@@ -278,8 +277,6 @@ namespace AegisApp
             formFrameAttached = false;
         }
 
-        // 开场动画：窗口从略低处淡入并上浮到位，避免"啪"地直接出现。
-        // introMotion.Value 从 1（完全未就位）走到 0（就位），透明度取 1-Value。
         private void StepIntro()
         {
             if (!introActive) return;
@@ -300,7 +297,7 @@ namespace AegisApp
 
         private void BeginIntro()
         {
-            // 上一次动画没走完就又被显示：先把位置还原，避免每次都往下漂一截
+
             if (introActive) { introActive = false; Top = introBaseTop; }
             introPending = true;
             try { Opacity = 0d; } catch { }
@@ -352,8 +349,6 @@ namespace AegisApp
             armed = gameActive;
         }
 
-        // All UI wake/sleep transitions come through here, including native taskbar
-        // minimize/restore. Hidden and minimized are deliberately the same power state.
         private void SyncUiActivity()
         {
             bool next = ShouldRunUi(IsHandleCreated && !IsDisposed && Visible, WindowState);
@@ -375,8 +370,6 @@ namespace AegisApp
 
             if (builtLang != Lang.Cur) { RebuildUi(); return; }
 
-            // Refresh cheap, already-cached state once while animation wakeups are
-            // still locked. Slow probes resume only through the normal visible path.
             RefreshLightweightUiState();
             SyncToggleValues();
             if (curPage == pageLol) RefreshLolPage();
@@ -886,9 +879,6 @@ namespace AegisApp
                 }
         }
 
-        // 每局对局只自动收起一次：收起后用户再手动打开就不会又被收走，
-        // 直到这局结束（IsActive 落回 false）才为下一局重新武装，避免窗口来回乱跳。
-        // 抽成静态纯函数是为了能脱离窗口单测——"只收一次"正是最容易写错的一条。
         internal static AutoHideAction NextAutoHide(bool gameActive, ref bool lastActive, ref bool armed,
             bool settingOn, bool visible)
         {
@@ -933,7 +923,6 @@ namespace AegisApp
 
         [DllImport("user32.dll")] private static extern bool IsWindowEnabled(IntPtr hwnd);
 
-        // 有子对话框开着就不收——否则会把对话框的父窗口从它底下抽走
         private bool AnyDialogOpen()
         {
             try
@@ -1078,6 +1067,5 @@ namespace AegisApp
             base.OnFormClosing(e);
         }
     }
-
 
 }

@@ -114,6 +114,4 @@ namespace AegisApp
         }
     }
 
-
-
 }
