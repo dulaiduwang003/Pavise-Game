@@ -473,7 +473,6 @@ namespace AegisApp
         private void UpdateLolGraphicsStatus(bool columnOff)
         {
             if (lblLolGraphicsStatus == null) return;
-            // 状态来自后台检查缓存，UI 线程只渲染，不做磁盘与进程枚举
             LolGraphicsConfig.State state = lolGraphicsState;
 
             ApplyGraphicsGroupUi(
@@ -618,7 +617,6 @@ namespace AegisApp
                     try { graphics = LolGraphicsConfig.Inspect(normalized); }
                     catch { graphics = null; }
                 }
-                // 字段统一回到 UI 线程写入，与刷新读取互不竞争
                 try
                 {
                     BeginInvoke((MethodInvoker)delegate

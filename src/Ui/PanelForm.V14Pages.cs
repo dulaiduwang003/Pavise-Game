@@ -122,20 +122,21 @@ namespace AegisApp
                 GameLibraryItem item = lstGames.SelectedItem as GameLibraryItem;
                 if (e.KeyCode == Keys.Delete && item != null) { gameMode.RemoveProfile(item.Profile.Id); RefreshGames(); }
             };
-            // 不注册 OLE 拖放（AllowDrop）：提权进程的 OLE 通道被 UIPI 封死，
-            // 注册了反而挡住旧式 WM_DROPFILES 的祖先回溯；拖放统一由主窗体的旧式通道处理
             listWrap.Controls.Add(lstGames);
             int bx = ContentX + listW + 16, bw = ContentW - listW - 16, bh = 40;
             var browse = new PillButton(Lang.T("v15.library.add"), BtnKind.Primary); browse.SetBounds(Theme.S(bx), Theme.S(y), Theme.S(bw), Theme.S(bh)); browse.Click += delegate { BrowseGameExecutable(); };
-            var remove = new PillButton(Lang.T("btn.remove")); remove.SetBounds(Theme.S(bx), Theme.S(y + 50), Theme.S(bw), Theme.S(bh));
+            var fromProc = new PillButton(Lang.T("v16.library.fromproc"));
+            fromProc.SetBounds(Theme.S(bx), Theme.S(y + 50), Theme.S(bw), Theme.S(bh));
+            fromProc.Click += delegate { AddGameFromRunningProcess(); };
+            var remove = new PillButton(Lang.T("btn.remove")); remove.SetBounds(Theme.S(bx), Theme.S(y + 100), Theme.S(bw), Theme.S(bh));
             remove.Click += delegate
             {
                 GameLibraryItem item = lstGames.SelectedItem as GameLibraryItem;
                 if (item != null) { gameMode.RemoveProfile(item.Profile.Id); RefreshGames(); }
             };
             Label hint = new Label(); hint.Text = Lang.T("v15.library.drop"); hint.ForeColor = Theme.Dim; hint.BackColor = Theme.Bg;
-            hint.Font = Theme.UI(8.2f, false); hint.AutoEllipsis = true; hint.SetBounds(Theme.S(bx + 4), Theme.S(y + 108), Theme.S(bw - 8), Theme.S(48));
-            pageWhite.Controls.AddRange(new Control[] { listWrap, browse, remove, hint });
+            hint.Font = Theme.UI(8.2f, false); hint.AutoEllipsis = true; hint.SetBounds(Theme.S(bx + 4), Theme.S(y + 158), Theme.S(bw - 8), Theme.S(64));
+            pageWhite.Controls.AddRange(new Control[] { listWrap, browse, fromProc, remove, hint });
             RefreshGames();
         }
 
@@ -231,6 +232,8 @@ namespace AegisApp
                 delegate { return gameMode.TrimWorkingSet; }, delegate(bool v) { gameMode.TrimWorkingSet = v; });
             AddPolicyToggle(scroll, ref sy, Lang.T("gm.standby"), Lang.T("gm.standby.sub"),
                 delegate { return gameMode.PurgeStandby; }, delegate(bool v) { gameMode.PurgeStandby = v; });
+            AddPolicyToggle(scroll, ref sy, Lang.T("gm.pausewu"), Lang.T("gm.pausewu.sub"),
+                delegate { return gameMode.PauseWindowsUpdate; }, delegate(bool v) { gameMode.PauseWindowsUpdate = v; });
             RefreshPolicyPresentation();
         }
 

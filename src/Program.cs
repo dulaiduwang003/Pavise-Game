@@ -167,8 +167,6 @@ namespace AegisApp
             }
 
             var showEvt = new EventWaitHandle(false, EventResetMode.AutoReset, "Global\\Aegis_ShowPanel");
-            // 提权进程的默认 DACL 只授 Administrators 组，非提权进程的过滤令牌对该组是 deny-only，
-            // 必须显式给当前用户 SID 授权，dev.cmd 等非提权工具才能发退出信号
             EventWaitHandle exitEvt;
             try
             {
@@ -194,6 +192,7 @@ namespace AegisApp
             int healedSuppression = SuppressionCore.HealFromCrash(Path.Combine(dir, SuppressionCore.StateFileName));
             if (healedSuppression > 0) Logger.Log("检测到上次未还原的分级后台控制，已恢复 " + healedSuppression + " 个进程");
             PowerPlan.HealFromCrash();
+            try { UpdatePause.HealFromCrash(); } catch { }
             try { EtwFrameTrace.StopStaleSession(); } catch { }
             NetTweak.HealFromCrash();
             FgBoost.HealFromCrash();
@@ -318,7 +317,6 @@ namespace AegisApp
                 doExit,
                 () => panel.SyncAllToggles());
 
-            // 外部（如 dev.cmd）可通过全局事件请求优雅退出，走与托盘退出相同的完整还原链
             var exitThread = new Thread(() =>
             {
                 exitEvt.WaitOne();

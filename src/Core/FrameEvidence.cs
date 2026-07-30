@@ -12,7 +12,6 @@ namespace AegisApp
     internal static class FrameEvidence
     {
         private const int MaxFrames = 1000000;
-        // 超过 1 秒的间隔按场景切换/加载处理，不计入帧时间分布
         private const long MaxIntervalUs = 1000000;
 
         private static readonly object sync = new object();
@@ -71,8 +70,6 @@ namespace AegisApp
                 frames);
         }
 
-        // 剔除加载/场景切换段：连续 ClusterMinRun 帧以上都超过阈值的簇按加载处理；
-        // 孤立的超阈值尖峰是真实卡顿，保留参与统计
         private const int ClusterThresholdUs = 250000;
         private const int ClusterMinRun = 3;
 
@@ -120,7 +117,6 @@ namespace AegisApp
             }
         }
 
-        // 1% Low / 0.1% Low 采用「最慢 1%/0.1% 帧的平均帧时间」换算 fps 的口径
         internal static bool ComputeStats(int[] intervalsUs, out double avgFps, out double low1Fps, out double low01Fps)
         {
             avgFps = 0; low1Fps = 0; low01Fps = 0;

@@ -105,7 +105,6 @@ namespace AegisApp
             }
         }
 
-        // 解析 "平均 116 fps · 1%Low 17 · 0.1%Low 5（32259 帧）"
         internal static bool TryParseFrameStats(
             string part, out string avg, out string low1, out string low01, out string frames)
         {

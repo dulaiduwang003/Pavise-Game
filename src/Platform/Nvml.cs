@@ -10,14 +10,13 @@ namespace AegisApp
 {
     internal static class Nvml
     {
-        // nvmlClocksThrottleReasons 位掩码（NVML 公开头文件定义，跨版本稳定）
         public const ulong ReasonSwPowerCap = 0x4;
         public const ulong ReasonHwSlowdown = 0x8;
         public const ulong ReasonSwThermal = 0x20;
         public const ulong ReasonHwThermal = 0x40;
         public const ulong ReasonHwPowerBrake = 0x80;
 
-        private static int state; // 0 未探测 1 可用 -1 不可用
+        private static int state;
         private static IntPtr device;
 
         [DllImport("nvml.dll", EntryPoint = "nvmlInit_v2")]
@@ -53,7 +52,6 @@ namespace AegisApp
 
         private static bool Probe()
         {
-            // 新驱动把 nvml.dll 装进 System32，老驱动在 NVSMI 目录；先按默认搜索，失败再显式加载
             for (int attempt = 0; attempt < 2; attempt++)
             {
                 try

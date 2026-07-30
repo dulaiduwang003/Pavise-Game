@@ -385,8 +385,6 @@ namespace AegisApp
             if (!string.IsNullOrEmpty(profile.ExecutablePath))
             {
                 if (SamePath(profile.ExecutablePath, path)) return true;
-                // 注意：这里不做同目录判定——刚启动的进程尚无窗口证据，立即扫描认不出
-                // 同目录兜底进程，反而会让游戏目录内的普通进程扰动击穿事件扫描预算
                 return profile.ContainsPath(path)
                     && IsFallbackEntryName(profile, name);
             }
@@ -396,9 +394,6 @@ namespace AegisApp
                     || profile.ContainsPath(path));
         }
 
-        // 同目录窗口兜底：部分游戏（如骑砍2）由同目录的 Launcher 命名进程在本进程内加载游戏本体，
-        // 用户添加的 exe 从不运行。用户指定 exe 同一目录内、有可见或前台窗口、
-        // 且不属于平台外壳/反作弊/非游戏角色的进程，按兜底入口对待
         internal static bool IsSiblingWindowFallback(
             GameProfile profile, string name, string path, bool visible, bool foreground)
         {

@@ -15,8 +15,16 @@ namespace AegisApp
 
         public static bool TryResolve(string urlPath, out string executablePath, out string error)
         {
+            string ignored;
+            return TryResolve(urlPath, out executablePath, out error, out ignored);
+        }
+
+        public static bool TryResolve(string urlPath, out string executablePath, out string error,
+            out string suggestedName)
+        {
             executablePath = null;
             error = null;
+            suggestedName = null;
             string content;
             try { content = File.ReadAllText(urlPath); }
             catch { error = "无法读取快捷方式文件"; return false; }
@@ -26,7 +34,6 @@ namespace AegisApp
                 error = "不是 Steam 游戏快捷方式（未找到 steam://rungameid 链接）";
                 return false;
             }
-            // Steam 给「非 Steam 游戏」生成的快捷方式 ID 远超真实 appid 区间，清单里不存在
             string steamRoot = FindSteamRoot();
             if (steamRoot == null)
             {
@@ -59,6 +66,7 @@ namespace AegisApp
                 return false;
             }
             executablePath = exe;
+            suggestedName = Path.GetFileName(gameRoot);
             return true;
         }
 
@@ -162,8 +170,6 @@ namespace AegisApp
             "easyanticheat", "battleye", "eac", "cleanup", "benchmark", "dotnet", "activation"
         };
 
-        // 目录内选主程序：布局与体积启发式打分；带 launcher 等角色名的直接跳过——
-        // 若真身确实是 launcher 命名（骑砍2 形态），运行时的同目录窗口兜底会接住
         internal static string PickMainExecutable(string root, string installDirName)
         {
             var candidates = new List<string>();
@@ -190,7 +196,6 @@ namespace AegisApp
                 if (normalizedInstall.Length >= 3
                     && (normalizedInstall.Contains(normalizedName) || normalizedName.Contains(normalizedInstall)))
                     score += 25;
-                // 同分时取更大的文件
                 score = score * 1000000000L + Math.Min(size, 999999999L);
                 if (score > bestScore) { bestScore = score; best = path; }
             }

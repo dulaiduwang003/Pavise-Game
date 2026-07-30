@@ -20,10 +20,12 @@ namespace AegisApp
 
         public bool AddGameExecutable(string name, string executablePath)
         {
-            string resolved, error;
-            if (!GameExecutableResolver.TryResolve(executablePath, out resolved, out error)) return false;
+            string resolved, error, suggestedName;
+            if (!GameExecutableResolver.TryResolve(executablePath, out resolved, out error, out suggestedName))
+                return false;
             string entry = StripExe(Path.GetFileName(resolved));
-            string display = DisplayName(resolved, name);
+            string display = DisplayName(resolved,
+                string.IsNullOrWhiteSpace(name) ? suggestedName : name);
             string root = NormalizeGameRoot(GameScan.InferGameRoot(resolved));
             lock (sync)
             {

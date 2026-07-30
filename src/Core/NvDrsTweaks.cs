@@ -26,8 +26,6 @@ namespace AegisApp
             return NvApi.SettingLowLatency;
         }
 
-        // 写入顺序：先持久化原值快照，快照落盘失败则放弃驱动写入（与压制核心的日志先行一致）
-        // frlFps <= 0 表示不动帧率上限
         public static void ApplyForGame(string exePath, bool maxPerf, bool lowLatency, int frlFps)
         {
             if (string.IsNullOrEmpty(exePath) || !maxPerf && !lowLatency && frlFps <= 0) return;
@@ -90,7 +88,6 @@ namespace AegisApp
             }
         }
 
-        // 关闭某个开关时按设置项恢复所有已记录游戏的原值
         public static void RestoreKind(string key)
         {
             if (!NvApi.Available) return;

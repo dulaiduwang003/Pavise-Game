@@ -7,8 +7,6 @@ using System.Threading;
 
 namespace AegisApp
 {
-    // 采样器是纯观察者：只读、无引擎写入口、任何失败跳过该样本。
-    // 5 秒一次的只读查询开销在 0.01% CPU 量级，且线程压最低优先级，不违反对局静默约束。
     internal sealed class SessionTelemetry
     {
         private const int SampleIntervalMs = 5000;
@@ -195,7 +193,6 @@ namespace AegisApp
                     var perf = (ProcessorPerf)Marshal.PtrToStructure(
                         new IntPtr(buffer.ToInt64() + (long)i * one), typeof(ProcessorPerf));
                     idle[i] = perf.IdleTime;
-                    // KernelTime 含 IdleTime，忙时间 = 内核 - 空闲 + 用户
                     busy[i] = perf.KernelTime - perf.IdleTime + perf.UserTime;
                 }
                 return true;
@@ -286,7 +283,6 @@ namespace AegisApp
             catch { }
         }
 
-        // 删除与指定会话同游戏且时间相近（±10s）的证据行
         public static bool DeleteNear(string dataDir, DateTime stamp, string game)
         {
             if (game == null) return false;

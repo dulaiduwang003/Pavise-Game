@@ -256,6 +256,11 @@ namespace AegisApp
             cardVbs = MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.vbs"), "…", swVbs, out cardH7);
             sy += cardH7 + 8;
 
+            swWindowedOpt = MakeSwitch(WindowedOptTweak.EnabledByAegis || WindowedOptTweak.CurrentlyOn(), OnWindowedOptToggle);
+            int cardHWin;
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.winopt"), Lang.T("set.winopt.n"), swWindowedOpt, out cardHWin);
+            sy += cardHWin + 8;
+
             swMpo = MakeSwitch(MpoTweak.DisabledByAegis || MpoTweak.CurrentlyDisabled(), OnMpoToggle);
             int cardHMpo;
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.mpo"), Lang.T("set.mpo.n"), swMpo, out cardHMpo);

@@ -7,8 +7,6 @@ using System.Threading;
 
 namespace AegisApp
 {
-    // 接口魔数已与 NVIDIA 官方 nvapi_interface.h 及社区实现核实；
-    // QueryInterface 对未知 ID 返回空指针，因此常量失配的最坏结果是功能整体跳过，不会误调用
     internal static class NvApi
     {
         private const uint IdInitialize = 0x0150E828;
@@ -23,7 +21,6 @@ namespace AegisApp
         private const uint IdDrsGetSetting = 0x73BF8338;
         private const uint IdDrsDeleteProfileSetting = 0xE4A26362;
 
-        // 驱动设置 ID（NvApiDriverSettings.h / nvidiaProfileInspector 双重来源）
         public const uint SettingPreferredPState = 0x1057EB71;
         public const uint SettingPreRenderLimit = 0x007BA09E;
         public const uint SettingLowLatency = 0x0005F543;
@@ -171,7 +168,6 @@ namespace AegisApp
             try { return drsSaveSettings(session) == 0; } catch { return false; }
         }
 
-        // 按 exe 名定位既有 profile，找不到则创建 Aegis 前缀的新 profile 并挂应用
         public static bool FindOrCreateAppProfile(IntPtr session, string exeName, out IntPtr profile)
         {
             profile = IntPtr.Zero;
@@ -199,7 +195,6 @@ namespace AegisApp
             catch { profile = IntPtr.Zero; return false; }
         }
 
-        // 返回 1 本 Profile 显式设置 0 未设置（含基础 Profile 继承值）-1 出错
         public static int TryGetDword(IntPtr session, IntPtr profile, uint settingId, out uint value)
         {
             value = 0;
@@ -209,8 +204,6 @@ namespace AegisApp
                 int status = drsGetSetting(session, profile, settingId, ref setting);
                 if (status != 0) return 0;
                 value = setting.CurrentValue;
-                // SettingLocation 0 = 当前 Profile；继承自基础/全局 Profile 的值按"未设置"处理，
-                // 否则恢复时会把继承值固化成显式覆盖
                 return setting.SettingLocation == 0 ? 1 : 0;
             }
             catch { return -1; }

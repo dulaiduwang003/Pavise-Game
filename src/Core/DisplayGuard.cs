@@ -19,7 +19,6 @@ namespace AegisApp
         private const int DM_PELSHEIGHT = 0x100000;
         private const int DM_DISPLAYFREQUENCY = 0x400000;
 
-        // 当前主屏刷新率（Hz），查询失败返回 0
         internal static int CurrentRefreshRate()
         {
             try

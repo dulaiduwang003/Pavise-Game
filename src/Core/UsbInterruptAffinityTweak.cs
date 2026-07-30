@@ -7,9 +7,6 @@ using System.Management;
 
 namespace AegisApp
 {
-    // 4K/8K 回报率鼠标每秒产生数千次中断，DPC 堆积在游戏主线程所在核心会造成
-    // 甩枪掉帧与爆音（社区大量实证）。把 XHCI 控制器的中断亲和引到后台核心分区，
-    // 与显卡（贴近游戏核）方向相反。
     internal static class UsbInterruptAffinityTweak
     {
         private static readonly IrqAffinityEngine irqEngine =
@@ -32,7 +29,6 @@ namespace AegisApp
                         {
                             string id = mo["PNPDeviceID"] as string;
                             if (string.IsNullOrEmpty(id)) continue;
-                            // 只收 PCI 真实控制器；ROOT\ 前缀的虚拟设备（如远程工具）排除
                             if (!id.StartsWith(@"PCI\", StringComparison.OrdinalIgnoreCase)) continue;
                             ids.Add(id);
                         }

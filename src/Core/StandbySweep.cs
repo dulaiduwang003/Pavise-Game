@@ -14,8 +14,6 @@ namespace AegisApp
         [DllImport("ntdll.dll")]
         private static extern int NtSetSystemInformation(int infoClass, ref int info, int length);
 
-        // 清空待机列表本身持内存管理锁、可能耗时数百毫秒，只允许在会话建立阶段调用一次，
-        // 对局中（InProgress）严禁触发
         public static bool PurgeOnce()
         {
             try

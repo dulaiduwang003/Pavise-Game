@@ -27,7 +27,7 @@ namespace AegisApp
         private DBPanel[] pages;
         private DBPanel tameList;
         private NavRail nav;
-        private Toggle swGame, swTame, swAuto, swGpu, swFso, swVbs, swHags, swIrqAffinity, swNetAffinity, swUsbAffinity, swMpo;
+        private Toggle swGame, swTame, swAuto, swGpu, swFso, swVbs, swHags, swIrqAffinity, swNetAffinity, swUsbAffinity, swMpo, swWindowedOpt;
         private Label lblOverviewBoost, lblEvidenceLive;
         private Label lblHeroMode, lblHeroSource, lblPolicyMode;
         private Toggle swPolicyBackground, swPolicyStrict;
@@ -111,8 +111,6 @@ namespace AegisApp
             get
             {
                 var cp = base.CreateParams;
-                // WS_EX_ACCEPTFILES 必须进 CreateParams：手动 DragAcceptFiles 设的位
-                // 会被 WinForms 后续按 CreateParams 重写 ExStyle 时抹掉
                 cp.ExStyle |= 0x10;
                 return cp;
             }
@@ -517,6 +515,13 @@ namespace AegisApp
             swHags.SetSilently(HagsTweak.EnabledByAegis || HagsTweak.CurrentlyOn());
         }
 
+        private void OnWindowedOptToggle(object s, EventArgs e)
+        {
+            bool ok = swWindowedOpt.Checked ? WindowedOptTweak.Enable() : WindowedOptTweak.Restore();
+            if (!ok) MessageBox.Show(this, Lang.T("winopt.failed"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByAegis || WindowedOptTweak.CurrentlyOn());
+        }
+
         private void OnUsbAffinityToggle(object s, EventArgs e)
         {
             if (!elevated)
@@ -698,6 +703,18 @@ namespace AegisApp
             Opacity = 0.55;
             try { return dlg.ShowDialog(this); }
             finally { Opacity = 1.0; }
+        }
+
+        private void AddGameFromRunningProcess()
+        {
+            using (var dlg = new ProcessPickerDialog())
+            {
+                if (ShowDim(dlg) != DialogResult.OK || string.IsNullOrEmpty(dlg.SelectedPath)) return;
+                string error;
+                if (!gameMode.AddGameFile(dlg.SelectedPath, out error) && !string.IsNullOrEmpty(error))
+                    MessageBox.Show(this, error, "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                RefreshGames();
+            }
         }
 
         private void BrowseGameExecutable()

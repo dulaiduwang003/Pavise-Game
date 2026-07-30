@@ -1228,7 +1228,6 @@ namespace AegisApp
                 if (low01 < 8 || low01 > 10) throw new Exception("0.1% low out of range: " + low01);
                 Eq(false, FrameEvidence.ComputeStats(new int[0], out avg, out low1, out low01));
 
-                // 加载簇剔除：连续 3 帧 300ms 是加载（剔），孤立 110ms 尖峰是真卡顿（留）
                 var mixed = new int[100];
                 for (int i = 0; i < 100; i++) mixed[i] = 10000;
                 mixed[10] = 110000;
@@ -1297,6 +1296,25 @@ namespace AegisApp
                     Eq(0, File.ReadAllText(Path.Combine(dir, EvidenceStore.FileName)).Length);
                 }
                 finally { try { Directory.Delete(dir, true); } catch { } }
+            });
+            test("windowed optimization: field merges and removes without touching siblings", () =>
+            {
+                string shared = "VRROptimizeEnable=1;AutoHDREnable=0;";
+                string on = GameExeTweaks.MergeField(shared, "SwapEffectUpgradeEnable", "1");
+                Eq("1", GameExeTweaks.ReadField(on, "SwapEffectUpgradeEnable"));
+                Eq("1", GameExeTweaks.ReadField(on, "VRROptimizeEnable"));
+                Eq("0", GameExeTweaks.ReadField(on, "AutoHDREnable"));
+
+                string off = GameExeTweaks.RemoveField(on, "SwapEffectUpgradeEnable");
+                Eq(null, GameExeTweaks.ReadField(off, "SwapEffectUpgradeEnable"));
+                Eq("1", GameExeTweaks.ReadField(off, "VRROptimizeEnable"));
+
+                string wasZero = GameExeTweaks.MergeField("SwapEffectUpgradeEnable=0;", "SwapEffectUpgradeEnable", "1");
+                Eq("1", GameExeTweaks.ReadField(wasZero, "SwapEffectUpgradeEnable"));
+                Eq("0", GameExeTweaks.ReadField(
+                    GameExeTweaks.RestoreField(wasZero, "SwapEffectUpgradeEnable=0;", "SwapEffectUpgradeEnable"),
+                    "SwapEffectUpgradeEnable"));
+                Eq("", GameExeTweaks.RemoveField("SwapEffectUpgradeEnable=1;", "SwapEffectUpgradeEnable"));
             });
             test("steam shortcut: rungameid/vdf parsing and main-exe heuristics", () =>
             {

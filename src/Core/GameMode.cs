@@ -91,6 +91,7 @@ namespace AegisApp
         private volatile bool idleDisableOn;
         private volatile bool visualFxOn;
         private volatile bool standbySweepOn;
+        private volatile bool pauseUpdateOn;
         private volatile bool strictCoreOn;
         private volatile bool aggressiveOn;
         private volatile bool panicReq;
@@ -159,6 +160,7 @@ namespace AegisApp
             idleDisableOn = Settings.Load("GmIdleDisable", true);
             visualFxOn = Settings.Load("GmVisualFx", false);
             standbySweepOn = Settings.Load("GmStandbySweep", false);
+            pauseUpdateOn = Settings.Load("GmPauseUpdate", false);
             trimWs = Settings.Load("TrimWS", false);
             gpuHighPerf = Settings.Load("GpuHighPerf", true);
             disableFso = Settings.Load("DisableFso", false);
@@ -454,6 +456,12 @@ namespace AegisApp
         {
             get { return standbySweepOn; }
             set { standbySweepOn = value; Settings.Save("GmStandbySweep", value); }
+        }
+
+        public bool PauseWindowsUpdate
+        {
+            get { return pauseUpdateOn; }
+            set { pauseUpdateOn = value; Settings.Save("GmPauseUpdate", value); RequestPolicyApply(); }
         }
 
         public bool MmcssPriority

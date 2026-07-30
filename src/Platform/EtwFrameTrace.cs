@@ -7,10 +7,6 @@ using System.Threading;
 
 namespace AegisApp
 {
-    // 纯被动消费内核事件：不打开游戏进程、不注入、不轮询。
-    // 事件常量已按 PresentMon 公开源码与 Windows manifest 核实：
-    //   Microsoft-Windows-DXGI {CA11C036-0102-4A2D-A6AD-F03CFED5D3C9} Present_Start = 42
-    //   Microsoft-Windows-Direct3D9 {783ACA0A-790E-4D7F-8451-AA850511C6B9} Present_Start = 1
     internal sealed class EtwFrameTrace
     {
         private const string SessionName = "AegisEvidenceTrace";
@@ -92,7 +88,6 @@ namespace AegisApp
             hi = BitConverter.ToInt64(bytes, 8);
         }
 
-        // 启动失败不抛异常，返回 false；崩溃残留的同名会话会先被停止
         public bool Start()
         {
             StopStaleSession();
@@ -158,7 +153,6 @@ namespace AegisApp
 
         private void HandleEvent(IntPtr record)
         {
-            // EVENT_HEADER 布局：ProcessId@12 TimeStamp@16 ProviderId@24 EventDescriptor.Id@40
             long provLo = Marshal.ReadInt64(record, 24);
             long provHi = Marshal.ReadInt64(record, 32);
             ushort id = (ushort)Marshal.ReadInt16(record, 40);
@@ -176,16 +170,16 @@ namespace AegisApp
             int total = PropsSize + NameBufBytes * 2;
             IntPtr props = Marshal.AllocHGlobal(total);
             for (int i = 0; i < total; i += 8) Marshal.WriteInt64(props, i, 0);
-            Marshal.WriteInt32(props, 0, total);                    // Wnode.BufferSize
-            Marshal.WriteInt32(props, 40, 1);                       // Wnode.ClientContext = QPC
+            Marshal.WriteInt32(props, 0, total);
+            Marshal.WriteInt32(props, 40, 1);
             Marshal.WriteInt32(props, 44, unchecked((int)WNODE_FLAG_TRACED_GUID));
-            Marshal.WriteInt32(props, 48, 64);                      // BufferSize KB
-            Marshal.WriteInt32(props, 52, 4);                       // MinimumBuffers
-            Marshal.WriteInt32(props, 56, 8);                       // MaximumBuffers
+            Marshal.WriteInt32(props, 48, 64);
+            Marshal.WriteInt32(props, 52, 4);
+            Marshal.WriteInt32(props, 56, 8);
             Marshal.WriteInt32(props, 64, unchecked((int)EVENT_TRACE_REAL_TIME_MODE));
-            Marshal.WriteInt32(props, 68, 1);                       // FlushTimer 1s
-            Marshal.WriteInt32(props, 112, PropsSize + NameBufBytes); // LogFileNameOffset
-            Marshal.WriteInt32(props, 116, PropsSize);              // LoggerNameOffset
+            Marshal.WriteInt32(props, 68, 1);
+            Marshal.WriteInt32(props, 112, PropsSize + NameBufBytes);
+            Marshal.WriteInt32(props, 116, PropsSize);
             return props;
         }
 

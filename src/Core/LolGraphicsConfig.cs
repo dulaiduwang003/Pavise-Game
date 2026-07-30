@@ -90,7 +90,6 @@ namespace AegisApp
             return Inspect(lolRoot, blocked, blocking);
         }
 
-        // 调用方已经做过占用检查时走这个重载，省掉一次全进程枚举
         public static State Inspect(string lolRoot, bool blocked, List<string> blocking)
         {
             var state = new State();
@@ -195,7 +194,6 @@ namespace AegisApp
                 backup.Remove(tunable.Identity);
                 if (original < 0)
                 {
-                    // 应用前原文件没有这个键：整行移除，让游戏回落内置默认值
                     string[] trimmed = RemoveKey(updated, tunable.Section, tunable.Key);
                     if (!ReferenceEquals(trimmed, updated))
                     {
@@ -208,7 +206,6 @@ namespace AegisApp
                 written++;
             }
 
-            // 应用先落备份再改文件，还原先改文件再收备份：任一顺序断掉都不会丢原值
             if (apply && !Settings.SaveStr(BackupSettingKey, FormatBackup(lolRoot, backup)))
             {
                 error = Lang.T("lolgfx.err.backupfail");

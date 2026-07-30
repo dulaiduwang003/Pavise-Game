@@ -101,7 +101,6 @@ namespace AegisApp
             return Enable(deviceIds, CpuTopology.BoostMask);
         }
 
-        // preferredMask 指定中断落点：显卡/网卡贴近游戏核（BoostMask），USB 等噪声源赶去后台核（ThrottleMask）
         public bool Enable(List<string> deviceIds, ulong preferredMask)
         {
             ReportMsiState(deviceIds);

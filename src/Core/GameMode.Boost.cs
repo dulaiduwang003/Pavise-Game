@@ -100,6 +100,7 @@ namespace AegisApp
             mmcssActive = EnvStep("mmcss", useMmcss, mmcssActive, Mmcss.Activate, Mmcss.Restore);
             dvrActive = EnvStep("dvr", useDvr, dvrActive, GameDvr.Activate, GameDvr.Restore);
             fxActive = EnvStep("fx", visualFxOn, fxActive, VisualFx.Activate, VisualFx.Restore);
+            wuActive = EnvStep("wu", pauseUpdateOn, wuActive, UpdatePause.Activate, UpdatePause.Restore);
             if (standbySweepOn && !standbyPurged)
             {
                 standbyPurged = true;
@@ -143,12 +144,12 @@ namespace AegisApp
         }
 
         private bool fxActive;
+        private bool wuActive;
         private bool standbyPurged;
         private bool planActive;
         private int lastPowerPolicyKey = -1;
         private long nextPowerAuditTicks;
 
-        // 「屏-3」= 当前主屏刷新率减 3（VRR 区间内封顶的社区通行做法）；查询失败则不动帧率
         internal static int ResolveFrlFps(string mode)
         {
             if (mode == "60") return 60;
@@ -163,7 +164,7 @@ namespace AegisApp
 
         private bool EnvActive()
         {
-            return notifActive || doActive || hzActive || netActive || fgActive || svcActive || mmcssActive || dvrActive || fxActive || planActive || timerRaised;
+            return notifActive || doActive || hzActive || netActive || fgActive || svcActive || mmcssActive || dvrActive || fxActive || wuActive || planActive || timerRaised;
         }
 
         private bool RestoreEnv()
@@ -179,6 +180,7 @@ namespace AegisApp
             if (Mmcss.Restore()) mmcssActive = false; else ok = false;
             if (GameDvr.Restore()) dvrActive = false; else ok = false;
             if (VisualFx.Restore()) fxActive = false; else ok = false;
+            if (UpdatePause.Restore()) wuActive = false; else ok = false;
             if (PowerPlan.Restore())
             {
                 planActive = false;

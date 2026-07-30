@@ -13,8 +13,16 @@ namespace AegisApp
     {
         public static bool TryResolve(string selectedPath, out string executablePath, out string error)
         {
+            string ignored;
+            return TryResolve(selectedPath, out executablePath, out error, out ignored);
+        }
+
+        public static bool TryResolve(string selectedPath, out string executablePath, out string error,
+            out string suggestedName)
+        {
             executablePath = null;
             error = null;
+            suggestedName = null;
             if (string.IsNullOrWhiteSpace(selectedPath)) { error = "未选择文件"; return false; }
 
             string source;
@@ -30,7 +38,7 @@ namespace AegisApp
             }
             else if (extension.Equals(".url", StringComparison.OrdinalIgnoreCase))
             {
-                if (!SteamShortcut.TryResolve(source, out target, out error)) return false;
+                if (!SteamShortcut.TryResolve(source, out target, out error, out suggestedName)) return false;
             }
             else if (!extension.Equals(".exe", StringComparison.OrdinalIgnoreCase))
             {

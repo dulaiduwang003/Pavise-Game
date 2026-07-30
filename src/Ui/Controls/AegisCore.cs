@@ -97,8 +97,6 @@ namespace AegisApp
                 && windowState != FormWindowState.Minimized;
         }
 
-        // 游戏会话进行中且前台不是本进程（对局在前台、面板挂副屏）才降到低频，
-        // 避免装饰动画与游戏争用 UI/GDI 时间；用户切回 Aegis 看面板时恢复全帧率。
         internal static int DesiredFrameInterval(bool gameActive, bool selfForeground)
         {
             return gameActive && !selfForeground ? 200 : 33;

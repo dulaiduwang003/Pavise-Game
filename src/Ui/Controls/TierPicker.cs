@@ -18,7 +18,6 @@ namespace AegisApp
         private int hoverIdx = -1;
         public Action<SuppressionLevel> Changed;
         public Action<int> IndexChanged;
-        // 覆盖默认的 温和/均衡/隔离 文案；长度即段数（≥2）
         public string[] Labels;
 
         public TierPicker()

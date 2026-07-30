@@ -56,7 +56,6 @@ namespace AegisApp
                 DeleteRequested(data);
         }
 
-        // 颜色阈值：小数值不亮色，避免用户对警示色脱敏
         private static Color ChipColor(string chip)
         {
             if (chip.Contains("热节流")) return Theme.Danger;
@@ -96,7 +95,6 @@ namespace AegisApp
             g.SmoothingMode = SmoothingMode.AntiAlias;
             int padL = Theme.S(16);
 
-            // 右上角删除按钮
             Rectangle close = CloseRect();
             Color closeColor = closeHover ? Theme.Danger : Theme.Faint;
             if (closeHover)
@@ -111,7 +109,6 @@ namespace AegisApp
                     close.X + inset, close.Bottom - inset);
             }
 
-            // 右侧三列帧统计（给右上角删除按钮留出位置）
             int statW = Theme.S(66);
             int statsX = Width - Theme.S(34) - statW * 3;
             string[] values = { data.AvgFps ?? "—", data.Low1Fps ?? "—", data.Low01Fps ?? "—" };
@@ -127,7 +124,6 @@ namespace AegisApp
                     TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
             }
 
-            // 标题与元信息
             int textW = statsX - padL - Theme.S(10);
             TextRenderer.DrawText(g, data.Game, Theme.UI(10f, true),
                 new Rectangle(padL, Theme.S(10), textW, Theme.S(20)), Theme.Fg,
@@ -141,7 +137,6 @@ namespace AegisApp
                 new Rectangle(padL, Theme.S(32), textW, Theme.S(16)), Theme.Dim,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
 
-            // 徽章行：提优状态 + 归因
             var chips = new List<KeyValuePair<string, Color>>();
             if (!string.IsNullOrEmpty(data.BoostText))
                 chips.Add(new KeyValuePair<string, Color>(data.BoostText,

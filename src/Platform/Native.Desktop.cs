@@ -28,8 +28,6 @@ namespace AegisApp
         [DllImport("winmm.dll")]
         public static extern uint timeEndPeriod(uint ms);
 
-        // 提权进程收不到资源管理器的 OLE 拖放（UIPI 拦截），只能走旧式 WM_DROPFILES 通道，
-        // 且必须显式放行相关消息穿过完整性级别边界
         public const int WM_DROPFILES = 0x0233;
         private const uint MSGFLT_ALLOW = 1;
 
@@ -48,10 +46,9 @@ namespace AegisApp
         {
             try
             {
-                // 程序级 + 窗口级双保险：外壳对提权目标的探测在不同版本上检查的层级不一致
                 ChangeWindowMessageFilter(WM_DROPFILES, MSGFLT_ALLOW);
-                ChangeWindowMessageFilter(0x004A, MSGFLT_ALLOW); // WM_COPYDATA
-                ChangeWindowMessageFilter(0x0049, MSGFLT_ALLOW); // WM_COPYGLOBALDATA
+                ChangeWindowMessageFilter(0x004A, MSGFLT_ALLOW);
+                ChangeWindowMessageFilter(0x0049, MSGFLT_ALLOW);
                 ChangeWindowMessageFilterEx(hwnd, WM_DROPFILES, MSGFLT_ALLOW, IntPtr.Zero);
                 ChangeWindowMessageFilterEx(hwnd, 0x004A, MSGFLT_ALLOW, IntPtr.Zero);
                 ChangeWindowMessageFilterEx(hwnd, 0x0049, MSGFLT_ALLOW, IntPtr.Zero);

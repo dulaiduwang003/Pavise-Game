@@ -54,7 +54,6 @@ namespace AegisApp
             foreach (AcGroup g in AntiCheatCatalog.Groups)
             {
                 enabled[g.Key] = Settings.Load("Tame_" + g.Key, g.Default);
-                // 默认最低档（温和）：力度升级由用户自行决定（2026-07-31 用户拍板）
                 levels[g.Key] = ParseLevel(Settings.LoadStr("TameLvl_" + g.Key, "eco"));
             }
         }

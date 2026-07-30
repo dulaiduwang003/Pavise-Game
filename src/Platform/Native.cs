@@ -402,8 +402,6 @@ namespace AegisApp
             return ok;
         }
 
-        // Power Throttling（EcoQoS）在 Win10 1709 之前的系统上没有对应接口，
-        // 相关写入与校验必须整体跳过，否则压制会因 eco 环节永远报未生效
         public static readonly bool PowerThrottlingSupported = ProbePowerThrottling();
 
         private static bool ProbePowerThrottling()
