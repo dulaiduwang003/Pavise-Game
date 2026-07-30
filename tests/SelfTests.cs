@@ -827,6 +827,54 @@ namespace AegisApp
                 }
                 finally { Dpi.Scale = old; Theme.DropFontCache(); }
             });
+            test("DPI defer gate: every reason is reported and the cooldown survives tick wrap", () =>
+            {
+                // 能重建的唯一条件：没销毁、可见、没最小化、不在对局、不在冷却里
+                Eq(null, PanelForm.DpiDeferReason(false, true, false, false, false));
+                Eq("面板已销毁", PanelForm.DpiDeferReason(true, true, false, false, false));
+                Eq("面板不可见", PanelForm.DpiDeferReason(false, false, false, false, false));
+                Eq("面板不可见", PanelForm.DpiDeferReason(false, true, true, false, false));
+                Eq("对局进行中", PanelForm.DpiDeferReason(false, true, false, true, false));
+                Eq("距上次重建过近", PanelForm.DpiDeferReason(false, true, false, false, true));
+                // 对局中即便面板开着也必须推迟：游戏切全屏会改变有效 DPI，
+                // 在那时动窗口就是反复把游戏挤出全屏
+                Eq("对局进行中", PanelForm.DpiDeferReason(false, true, false, true, true));
+
+                // 从未重建过时不该有冷却，否则开机头三秒的第一次缩放变化会被吞掉
+                Eq(false, PanelForm.WithinCooldown(1000, 0, false, 3000));
+                Eq(true, PanelForm.WithinCooldown(1000, 0, true, 3000));
+                Eq(true, PanelForm.WithinCooldown(2999, 0, true, 3000));
+                Eq(false, PanelForm.WithinCooldown(3000, 0, true, 3000));
+                Eq(false, PanelForm.WithinCooldown(int.MaxValue, 0, true, 3000));
+                // TickCount 约 49.7 天回绕成负数：补码减法在回绕处仍是正确间隔，
+                // 直接比大小会把冷却判成永远成立，界面从此不再重建
+                Eq(true, PanelForm.WithinCooldown(unchecked(int.MaxValue + 500), int.MaxValue - 500, true, 3000));
+                Eq(false, PanelForm.WithinCooldown(unchecked(int.MaxValue + 4000), int.MaxValue - 500, true, 3000));
+            });
+            test("DPI scale: only real changes count and probing never mutates the scale", () =>
+            {
+                float old = Dpi.Scale;
+                try
+                {
+                    Dpi.Scale = 1f;
+                    // 判断必须是纯读：先探再决定要不要连带重建，不能先改了再说
+                    Eq(false, Dpi.WouldChange(96));
+                    Eq(true, Dpi.WouldChange(144));
+                    Eq(false, Dpi.WouldChange(0));
+                    Eq(false, Dpi.WouldChange(-96));
+                    // 低于 100% 一律夹到 1，所以 72 相对 1.0 不算变化
+                    Eq(false, Dpi.WouldChange(72));
+                    Eq(1f, Dpi.Scale);
+
+                    Eq(true, Dpi.Update(144));
+                    Eq(1.5f, Dpi.Scale);
+                    Eq(true, Dpi.WouldChange(72));
+                    Eq(true, Dpi.Update(72));
+                    Eq(1f, Dpi.Scale);
+                    Eq(0, Dpi.WindowDpi(IntPtr.Zero));
+                }
+                finally { Dpi.Scale = old; Theme.DropFontCache(); }
+            });
             test("background controller: sustained pressure escalates and cools down", TestPressureController);
             test("game-mode event budget: ordinary process churn stays on the 20-second reconciliation", () =>
             {
