@@ -712,7 +712,6 @@ namespace AegisApp
             });
             test("LoL runtime: LCU credentials reject malformed input", TestLolCredentialParsing);
             test("LoL runtime: cleanup targets never include core, game or ACE paths", TestLolCleanupBoundary);
-            test("LoL graphics: game.cfg edits touch only the two target keys", TestLolGraphicsConfigEdit);
             test("environment tweaks: a failing step backs off instead of retrying every scan", () =>
             {
                 string envDir = Path.Combine(

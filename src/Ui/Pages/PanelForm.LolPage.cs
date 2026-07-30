@@ -29,12 +29,6 @@ namespace AegisApp
         private PillButton btnLolDelete;
         private Label lblLolAction;
         private Label lblLolAddonStatus;
-        private PillButton btnLolGraphicsApply;
-        private PillButton btnLolGraphicsRestore;
-        private Label lblLolGraphicsStatus;
-        private PillButton btnLolPresentApply;
-        private PillButton btnLolPresentRestore;
-        private Label lblLolPresentStatus;
         private LoadingOverlay lolScanOverlay;
         private int lolUiBusy;
         private int lolInspectBusy;
@@ -47,7 +41,6 @@ namespace AegisApp
         private long lolCandidateBytes;
         private int lolCandidateCount;
         private string lolInspectError = "";
-        private LolGraphicsConfig.State lolGraphicsState;
 
         private void BuildLolPage()
         {
@@ -145,36 +138,6 @@ namespace AegisApp
             btnLolDelete.Click += OnLolDeleteClick;
             addons.Controls.Add(btnLolDelete);
             sy += 120;
-
-            Section(scroll, Lang.T("lolgfx.title"), x, sy);
-            sy += 24;
-            int gfxW = (w - 12) / 2;
-
-            var quality = MakeConsolePanel(scroll, x, sy, gfxW, 138, true);
-            CardLabel(quality, Lang.T("lolgfx.group.quality"), 18, 10, gfxW - 36, 18, 8.2f, true, Theme.Fg);
-            CardLabel(quality, Lang.T("lolgfx.quality.desc"), 18, 31, gfxW - 36, 46, 7.6f, false, Theme.Dim);
-            lblLolGraphicsStatus = CardLabel(quality, "", 18, 80, gfxW - 36, 17, 7.2f, false, Theme.Faint);
-            btnLolGraphicsApply = new ColumnActionButton(Lang.T("lolgfx.apply"), BtnKind.Primary);
-            btnLolGraphicsApply.SetBounds(Theme.S(18), Theme.S(100), Theme.S((gfxW - 46) / 2), Theme.S(30));
-            btnLolGraphicsApply.Click += OnLolGraphicsApplyClick;
-            btnLolGraphicsRestore = new ColumnActionButton(Lang.T("lolgfx.restore"));
-            btnLolGraphicsRestore.SetBounds(
-                Theme.S(18 + (gfxW - 46) / 2 + 10), Theme.S(100), Theme.S((gfxW - 46) / 2), Theme.S(30));
-            btnLolGraphicsRestore.Click += OnLolGraphicsRestoreClick;
-            quality.Controls.AddRange(new Control[] { btnLolGraphicsApply, btnLolGraphicsRestore });
-
-            var present = MakeConsolePanel(scroll, x + gfxW + 12, sy, gfxW, 138, true);
-            CardLabel(present, Lang.T("lolgfx.group.presentation"), 18, 10, gfxW - 36, 18, 8.2f, true, Theme.Fg);
-            CardLabel(present, Lang.T("lolgfx.present.desc"), 18, 31, gfxW - 36, 46, 7.6f, false, Theme.Dim);
-            lblLolPresentStatus = CardLabel(present, "", 18, 80, gfxW - 36, 17, 7.2f, false, Theme.Faint);
-            btnLolPresentApply = new ColumnActionButton(Lang.T("lolgfx.apply"), BtnKind.Primary);
-            btnLolPresentApply.SetBounds(Theme.S(18), Theme.S(100), Theme.S((gfxW - 46) / 2), Theme.S(30));
-            btnLolPresentApply.Click += OnLolPresentApplyClick;
-            btnLolPresentRestore = new ColumnActionButton(Lang.T("lolgfx.restore"));
-            btnLolPresentRestore.SetBounds(
-                Theme.S(18 + (gfxW - 46) / 2 + 10), Theme.S(100), Theme.S((gfxW - 46) / 2), Theme.S(30));
-            btnLolPresentRestore.Click += OnLolPresentRestoreClick;
-            present.Controls.AddRange(new Control[] { btnLolPresentApply, btnLolPresentRestore });
 
             lolScanOverlay = new LoadingOverlay();
             lolScanOverlay.SetBounds(
@@ -310,7 +273,6 @@ namespace AegisApp
             btnLolDelete.Enabled = !clientBlocksFiles && !locked && !inspectBusy &&
                 lolCanDelete;
             UpdateLolAddonStatus(clientBlocksFiles, off);
-            if (!busy && !inspectBusy) UpdateLolGraphicsStatus(off);
             UpdateLolScanOverlay(snapshot);
         }
 
@@ -404,137 +366,6 @@ namespace AegisApp
             if (btnLolClean != null) btnLolClean.Enabled = !busy;
             if (btnLolRestore != null) btnLolRestore.Enabled = !busy;
             if (btnLolDelete != null) btnLolDelete.Enabled = !busy;
-            if (btnLolGraphicsApply != null) btnLolGraphicsApply.Enabled = !busy;
-            if (btnLolGraphicsRestore != null) btnLolGraphicsRestore.Enabled = !busy;
-            if (btnLolPresentApply != null) btnLolPresentApply.Enabled = !busy;
-            if (btnLolPresentRestore != null) btnLolPresentRestore.Enabled = !busy;
-        }
-
-        private void OnLolGraphicsApplyClick(object sender, EventArgs e)
-        {
-            RunLolGraphics(LolGraphicsConfig.GraphicsGroup.Quality, true);
-        }
-
-        private void OnLolGraphicsRestoreClick(object sender, EventArgs e)
-        {
-            RunLolGraphics(LolGraphicsConfig.GraphicsGroup.Quality, false);
-        }
-
-        private void OnLolPresentApplyClick(object sender, EventArgs e)
-        {
-            RunLolGraphics(LolGraphicsConfig.GraphicsGroup.Presentation, true);
-        }
-
-        private void OnLolPresentRestoreClick(object sender, EventArgs e)
-        {
-            RunLolGraphics(LolGraphicsConfig.GraphicsGroup.Presentation, false);
-        }
-
-        private void RunLolGraphics(LolGraphicsConfig.GraphicsGroup group, bool apply)
-        {
-            if (lolService == null) return;
-            LolOptimizationSnapshot snapshot = lolService.GetSnapshot();
-            string root = snapshot == null ? null : snapshot.LolRoot;
-            if (string.IsNullOrEmpty(root)
-                || Interlocked.CompareExchange(ref lolUiBusy, 0, 0) != 0
-                || Interlocked.CompareExchange(ref lolInspectBusy, 0, 0) != 0
-                || Interlocked.CompareExchange(ref lolFileOpBusy, 1, 0) != 0) return;
-            SetLolButtonsBusy(true);
-            ThreadPool.QueueUserWorkItem(delegate
-            {
-                bool success = false;
-                string message = "";
-                try
-                {
-                    string error;
-                    success = apply
-                        ? LolGraphicsConfig.Apply(root, group, out error)
-                        : LolGraphicsConfig.Restore(root, group, out error);
-                    message = success ? "" : (error ?? "");
-                }
-                catch (Exception ex) { message = ex.Message; }
-                Interlocked.Exchange(ref lolFileOpBusy, 0);
-                try
-                {
-                    BeginInvoke((MethodInvoker)delegate
-                    {
-                        if (IsDisposed) return;
-                        lolInspectUtc = DateTime.MinValue;
-                        RefreshLolPage();
-                        if (!string.IsNullOrEmpty(message))
-                            MessageBox.Show(this, message, "Aegis", MessageBoxButtons.OK,
-                                MessageBoxIcon.Warning);
-                    });
-                }
-                catch { }
-            });
-        }
-
-        private void UpdateLolGraphicsStatus(bool columnOff)
-        {
-            if (lblLolGraphicsStatus == null) return;
-            LolGraphicsConfig.State state = lolGraphicsState;
-
-            ApplyGraphicsGroupUi(
-                state, LolGraphicsConfig.GraphicsGroup.Quality, columnOff,
-                lblLolGraphicsStatus, btnLolGraphicsApply, btnLolGraphicsRestore);
-            ApplyGraphicsGroupUi(
-                state, LolGraphicsConfig.GraphicsGroup.Presentation, columnOff,
-                lblLolPresentStatus, btnLolPresentApply, btnLolPresentRestore);
-        }
-
-        private static void ApplyGraphicsGroupUi(
-            LolGraphicsConfig.State state,
-            LolGraphicsConfig.GraphicsGroup group,
-            bool columnOff,
-            Label status, PillButton apply, PillButton restore)
-        {
-            if (status == null) return;
-            if (columnOff)
-            {
-                status.ForeColor = Theme.Faint;
-                status.Text = Lang.T("lol.state.columnoff");
-                if (apply != null) apply.Enabled = false;
-                if (restore != null) restore.Enabled = false;
-                return;
-            }
-            if (state == null)
-            {
-                status.ForeColor = Theme.Faint;
-                status.Text = LolText("正在检查 game.cfg…");
-                if (apply != null) apply.Enabled = false;
-                if (restore != null) restore.Enabled = false;
-                return;
-            }
-            if (!state.Available)
-            {
-                status.ForeColor = Theme.Faint;
-                status.Text = string.IsNullOrEmpty(state.Error)
-                    ? Lang.T("lolgfx.err.noconfig") : state.Error;
-                if (apply != null) apply.Enabled = false;
-                if (restore != null) restore.Enabled = false;
-                return;
-            }
-
-            LolGraphicsConfig.GroupState g = state.Of(group);
-            bool writable = !state.Blocked;
-            if (apply != null) apply.Enabled = writable && !g.AllCompetitive;
-            if (restore != null) restore.Enabled = writable && g.Owned > 0;
-
-            if (state.Blocked)
-            {
-                status.ForeColor = Theme.Danger;
-                status.Text = Lang.T("lolgfx.state.blocked");
-                return;
-            }
-            if (g.AllCompetitive)
-            {
-                status.ForeColor = Theme.Green;
-                status.Text = Lang.F("lolgfx.state.off", g.Total);
-                return;
-            }
-            status.ForeColor = Theme.Faint;
-            status.Text = Lang.F("lolgfx.state.partial", g.AtCompetitive, g.Total);
         }
 
         private void OnLolServiceChanged()
@@ -563,7 +394,6 @@ namespace AegisApp
                 lolCandidateBytes = 0;
                 lolCandidateCount = 0;
                 lolInspectError = "";
-                lolGraphicsState = null;
                 return;
             }
             bool rootChanged = !string.Equals(normalized, lolInspectRoot, StringComparison.OrdinalIgnoreCase);
@@ -588,7 +418,6 @@ namespace AegisApp
                 lolCandidateBytes = 0;
                 lolCandidateCount = 0;
                 lolInspectError = "";
-                lolGraphicsState = null;
                 lolInspectUtc = DateTime.MinValue;
             }
             lolInspectRoot = normalized;
@@ -599,7 +428,6 @@ namespace AegisApp
                 long candidateBytes = 0;
                 int candidateCount = 0;
                 string error = "";
-                LolGraphicsConfig.State graphics = null;
                 try
                 {
                     var inspection = LolAddonCleaner.Inspect(normalized);
@@ -608,14 +436,10 @@ namespace AegisApp
                     candidateBytes = inspection.CandidateBytes;
                     candidateCount = inspection.CandidateCount;
                     error = inspection.Error;
-                    graphics = LolGraphicsConfig.Inspect(
-                        normalized, inspection.IsBlocked, inspection.BlockingProcesses);
                 }
                 catch (Exception ex)
                 {
                     error = ex.Message;
-                    try { graphics = LolGraphicsConfig.Inspect(normalized); }
-                    catch { graphics = null; }
                 }
                 try
                 {
@@ -626,7 +450,6 @@ namespace AegisApp
                         lolCandidateBytes = candidateBytes;
                         lolCandidateCount = candidateCount;
                         lolInspectError = error ?? "";
-                        lolGraphicsState = graphics;
                         lolInspectUtc = DateTime.UtcNow;
                         Interlocked.Exchange(ref lolInspectBusy, 0);
                         if (!IsDisposed && UiActive) RefreshLolPage(false);

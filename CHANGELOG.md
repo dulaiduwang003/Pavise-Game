@@ -7,7 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Removed
+
+- The League column's competitive graphics feature is gone, both of its groups: the quality
+  clamp (shadows, anti-aliasing, environment/effect/character quality, HUD animation, decorative
+  effects, light beams) and the presentation mode (exclusive fullscreen, vsync). It rewrote ten
+  known keys in the game's own `Game\Config\game.cfg`, which is the same file the in-game settings
+  screen writes — anything it did can be done from the game's own settings, and the original-value
+  snapshots it kept in the registry only existed to undo edits the user could undo themselves. Installs that already
+  applied it keep the competitive values; change them in the game's settings screen. Any leftover
+  snapshot under `HKCU\Software\Aegis` is inert.
+- NVIDIA low latency mode. Its Ultra half never worked: the driver does not recognise setting id
+  `0x0005F543` at all, returning `SETTING_NOT_FOUND` for both reads and writes, which is what the
+  session log had been reporting. The only thing that ever landed was the maximum pre-rendered
+  frames value written alongside it, i.e. plain "On" rather than the "Ultra" the switch advertised.
+
 ### Fixed
+
+- The per-game NVIDIA summary line reported settings by the user's switch rather than by what was
+  actually written, so a setting that had just failed still appeared in the success line as long as
+  any other setting in the same batch succeeded.
 
 - Switching monitors or changing display scaling left the window enlarged with its contents crammed
   into the top-left corner and the rest of the frame bare. The process declares PerMonitorV2, so
