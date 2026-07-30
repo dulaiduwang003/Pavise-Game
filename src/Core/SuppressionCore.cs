@@ -734,9 +734,12 @@ namespace AegisApp
             int desiredPage = level >= SuppressionLevel.Isolated ? 1 : 3;
             if (Native.QueryIoPriority(h) != desiredIo || Native.QueryPagePriority(h) != desiredPage) return false;
 
-            int qosControl, qosState;
-            if (!Native.TryQueryPowerThrottling(h, out qosControl, out qosState)
-                || (qosControl & 1) == 0 || (qosState & 1) == 0) return false;
+            if (Native.PowerThrottlingSupported)
+            {
+                int qosControl, qosState;
+                if (!Native.TryQueryPowerThrottling(h, out qosControl, out qosState)
+                    || (qosControl & 1) == 0 || (qosState & 1) == 0) return false;
+            }
 
             if (level >= SuppressionLevel.Isolated)
             {
@@ -761,7 +764,7 @@ namespace AegisApp
             return true;
         }
 
-        private static uint DesiredPriority(SuppressionLevel level, uint originalPriority)
+        internal static uint DesiredPriority(SuppressionLevel level, uint originalPriority)
         {
             uint desired = originalPriority == 0 || originalPriority == uint.MaxValue
                 ? Native.NORMAL_PRIORITY_CLASS : originalPriority;
@@ -863,16 +866,19 @@ namespace AegisApp
             if (Native.QueryPagePriority(h) != pg
                 && !Native.TrySetPagePriority(h, pg))
                 failed.Add("page-write");
-            int qosControl;
-            int qosState;
-            if ((!Native.TryQueryPowerThrottling(h, out qosControl, out qosState)
-                    || (qosControl & 1) == 0 || (qosState & 1) == 0)
-                && !Native.ApplyEcoQoS(h))
-                failed.Add("eco-write");
+            if (Native.PowerThrottlingSupported)
+            {
+                int qosControl;
+                int qosState;
+                if ((!Native.TryQueryPowerThrottling(h, out qosControl, out qosState)
+                        || (qosControl & 1) == 0 || (qosState & 1) == 0)
+                    && !Native.ApplyEcoQoS(h))
+                    failed.Add("eco-write");
+            }
             if (Native.GetPriorityClass(h) != desiredPriority) failed.Add("priority-readback");
             if (Native.QueryIoPriority(h) != io) failed.Add("io-readback");
             if (Native.QueryPagePriority(h) != pg) failed.Add("page-readback");
-            if (!EcoStateVisible(h)) failed.Add("eco-readback");
+            if (Native.PowerThrottlingSupported && !EcoStateVisible(h)) failed.Add("eco-readback");
             LastApplyError = string.Join(",", failed.ToArray());
             return failed.Count == 0;
         }
@@ -912,7 +918,8 @@ namespace AegisApp
             if (!CpuTopology.MultiGroup) ok &= Native.SetProcessAffinityMask(h, (UIntPtr)desiredAffinity);
             int rio = io >= 0 ? io : 2; ok &= Native.TrySetIoPriority(h, rio);
             int rpg = pg >= 0 ? pg : 5; ok &= Native.TrySetPagePriority(h, rpg);
-            ok &= Native.RestorePowerThrottling(h, qosControl, qosState);
+            if (Native.PowerThrottlingSupported)
+                ok &= Native.RestorePowerThrottling(h, qosControl, qosState);
             ok &= Native.GetPriorityClass(h) == desiredPriority;
             ok &= Native.QueryIoPriority(h) == rio;
             ok &= Native.QueryPagePriority(h) == rpg;

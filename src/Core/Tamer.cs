@@ -13,6 +13,7 @@ namespace AegisApp
         private readonly object sync = new object();
         private readonly object engineSync = new object();
         private readonly Dictionary<string, bool> enabled = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, SuppressionLevel> levels = new Dictionary<string, SuppressionLevel>(StringComparer.OrdinalIgnoreCase);
         private readonly object eventSync = new object();
         private readonly List<ProcessChange> pendingChanges = new List<ProcessChange>();
         private readonly AutoResetEvent kick = new AutoResetEvent(true);
@@ -51,7 +52,11 @@ namespace AegisApp
                 try { selfSession = self.SessionId; } catch { selfSession = -1; }
             }
             foreach (AcGroup g in AntiCheatCatalog.Groups)
+            {
                 enabled[g.Key] = Settings.Load("Tame_" + g.Key, g.Default);
+                // 默认最低档（温和）：力度升级由用户自行决定（2026-07-31 用户拍板）
+                levels[g.Key] = ParseLevel(Settings.LoadStr("TameLvl_" + g.Key, "eco"));
+            }
         }
 
         public bool Paused
@@ -81,6 +86,40 @@ namespace AegisApp
         public bool IsGroupEnabled(string key)
         {
             lock (sync) { bool v; return enabled.TryGetValue(key, out v) && v; }
+        }
+
+        public SuppressionLevel GroupLevel(string key)
+        {
+            if (string.IsNullOrEmpty(key)) return SuppressionLevel.Isolated;
+            lock (sync)
+            {
+                SuppressionLevel v;
+                return levels.TryGetValue(key, out v) ? v : SuppressionLevel.Isolated;
+            }
+        }
+
+        public void SetGroupLevel(string key, SuppressionLevel level)
+        {
+            if (level < SuppressionLevel.Eco || level > SuppressionLevel.Isolated)
+                level = SuppressionLevel.Isolated;
+            lock (sync) levels[key] = level;
+            Settings.SaveStr("TameLvl_" + key, LevelTag(level));
+            Poke();
+            Logger.Log("反作弊分组 " + key + " 压制档位 → " + LevelTag(level));
+        }
+
+        internal static SuppressionLevel ParseLevel(string tag)
+        {
+            if (tag == "eco") return SuppressionLevel.Eco;
+            if (tag == "res") return SuppressionLevel.Restrained;
+            return SuppressionLevel.Isolated;
+        }
+
+        internal static string LevelTag(SuppressionLevel level)
+        {
+            if (level == SuppressionLevel.Eco) return "eco";
+            if (level == SuppressionLevel.Restrained) return "res";
+            return "iso";
         }
 
         public bool PanicRestore()
@@ -433,7 +472,8 @@ namespace AegisApp
                         {
                             request.Result = core.Acquire(
                                 request.Pid, request.Name,
-                                SuppressReason.AntiCheat, request.Group);
+                                SuppressReason.AntiCheat, request.Group,
+                                GroupLevel(request.Group));
                         }
                         catch { request.Result = AcquireResult.ApplyFailed; }
                     }

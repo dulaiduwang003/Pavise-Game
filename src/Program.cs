@@ -9,6 +9,8 @@ using System.Drawing.Drawing2D;
 using System.IO;
 using System.Net;
 using System.Runtime.InteropServices;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
@@ -165,6 +167,24 @@ namespace AegisApp
             }
 
             var showEvt = new EventWaitHandle(false, EventResetMode.AutoReset, "Global\\Aegis_ShowPanel");
+            // 提权进程的默认 DACL 只授 Administrators 组，非提权进程的过滤令牌对该组是 deny-only，
+            // 必须显式给当前用户 SID 授权，dev.cmd 等非提权工具才能发退出信号
+            EventWaitHandle exitEvt;
+            try
+            {
+                var exitSec = new EventWaitHandleSecurity();
+                exitSec.AddAccessRule(new EventWaitHandleAccessRule(
+                    WindowsIdentity.GetCurrent().User,
+                    EventWaitHandleRights.Modify | EventWaitHandleRights.Synchronize,
+                    AccessControlType.Allow));
+                bool exitCreated;
+                exitEvt = new EventWaitHandle(false, EventResetMode.AutoReset, "Global\\Aegis_Exit",
+                    out exitCreated, exitSec);
+            }
+            catch
+            {
+                exitEvt = new EventWaitHandle(false, EventResetMode.AutoReset, "Global\\Aegis_Exit");
+            }
 
             Paths.Init();
             Lang.Init();
@@ -174,6 +194,7 @@ namespace AegisApp
             int healedSuppression = SuppressionCore.HealFromCrash(Path.Combine(dir, SuppressionCore.StateFileName));
             if (healedSuppression > 0) Logger.Log("检测到上次未还原的分级后台控制，已恢复 " + healedSuppression + " 个进程");
             PowerPlan.HealFromCrash();
+            try { EtwFrameTrace.StopStaleSession(); } catch { }
             NetTweak.HealFromCrash();
             FgBoost.HealFromCrash();
             GameDvr.HealFromCrash();
@@ -287,6 +308,7 @@ namespace AegisApp
                 try { lolService.Dispose(); } catch { }
                 tamer.Stop();
                 gameMode.Stop();
+                try { FrameEvidence.Finish(); } catch { }
                 panel.RealExit = true;
                 Application.Exit();
             };
@@ -295,6 +317,15 @@ namespace AegisApp
                 () => panel.ShowPanel(),
                 doExit,
                 () => panel.SyncAllToggles());
+
+            // 外部（如 dev.cmd）可通过全局事件请求优雅退出，走与托盘退出相同的完整还原链
+            var exitThread = new Thread(() =>
+            {
+                exitEvt.WaitOne();
+                try { panel.BeginInvoke(doExit); } catch { }
+            });
+            exitThread.IsBackground = true;
+            exitThread.Start();
             icon.ContextMenuStrip = trayMenu.Strip;
             icon.Visible = true;
             SystemEvents.SessionEnded += (s, e) =>

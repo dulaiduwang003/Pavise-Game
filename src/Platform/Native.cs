@@ -109,6 +109,17 @@ namespace AegisApp
             return Volatile.Read(ref boostPrivilegeState) > 0;
         }
 
+        private static int profilePrivilegeState;
+
+        public static bool EnsureProfilePrivilege()
+        {
+            int known = Volatile.Read(ref profilePrivilegeState);
+            if (known != 0) return known > 0;
+            bool enabled = EnablePrivilege("SeProfileSingleProcessPrivilege");
+            Interlocked.CompareExchange(ref profilePrivilegeState, enabled ? 1 : -1, 0);
+            return Volatile.Read(ref profilePrivilegeState) > 0;
+        }
+
         private static bool EnablePrivilege(string name)
         {
             const uint TokenAdjustPrivileges = 0x20;
@@ -389,6 +400,20 @@ namespace AegisApp
             controlMask = (int)state.ControlMask;
             stateMask = (int)state.StateMask;
             return ok;
+        }
+
+        // Power Throttling（EcoQoS）在 Win10 1709 之前的系统上没有对应接口，
+        // 相关写入与校验必须整体跳过，否则压制会因 eco 环节永远报未生效
+        public static readonly bool PowerThrottlingSupported = ProbePowerThrottling();
+
+        private static bool ProbePowerThrottling()
+        {
+            try
+            {
+                int control, state;
+                return TryQueryPowerThrottling((IntPtr)(-1), out control, out state);
+            }
+            catch { return false; }
         }
 
         private static bool SetPowerThrottling(IntPtr process, uint controlMask, uint stateMask)

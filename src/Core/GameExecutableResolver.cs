@@ -28,9 +28,13 @@ namespace AegisApp
             {
                 if (!TryResolveShortcut(source, out target)) { error = "快捷方式没有指向有效的 EXE"; return false; }
             }
+            else if (extension.Equals(".url", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!SteamShortcut.TryResolve(source, out target, out error)) return false;
+            }
             else if (!extension.Equals(".exe", StringComparison.OrdinalIgnoreCase))
             {
-                error = "只支持 EXE 和 Windows 快捷方式（LNK）";
+                error = "只支持 EXE、Windows 快捷方式（LNK）和 Steam 桌面快捷方式（URL）";
                 return false;
             }
 

@@ -156,7 +156,9 @@ namespace AegisApp
                                         || rooted);
 
                         bool fallbackEntry = rooted && !exactEntry
-                            && IsFallbackEntryName(profile, name);
+                            && (IsFallbackEntryName(profile, name)
+                                || IsSiblingWindowFallback(profile, name, path,
+                                    source.Visible, source.Foreground));
                         if (!rooted && !legacyEntry && !exactEntry) continue;
                         bool userSelected = (exactEntry || fallbackEntry) && !string.IsNullOrEmpty(profile.ExecutablePath);
                         if (!userSelected && IsNonGameRole(name, path)) continue;
@@ -383,6 +385,8 @@ namespace AegisApp
             if (!string.IsNullOrEmpty(profile.ExecutablePath))
             {
                 if (SamePath(profile.ExecutablePath, path)) return true;
+                // 注意：这里不做同目录判定——刚启动的进程尚无窗口证据，立即扫描认不出
+                // 同目录兜底进程，反而会让游戏目录内的普通进程扰动击穿事件扫描预算
                 return profile.ContainsPath(path)
                     && IsFallbackEntryName(profile, name);
             }
@@ -390,6 +394,34 @@ namespace AegisApp
                 && profile.Entries.Contains(name)
                 && (string.IsNullOrEmpty(profile.Root)
                     || profile.ContainsPath(path));
+        }
+
+        // 同目录窗口兜底：部分游戏（如骑砍2）由同目录的 Launcher 命名进程在本进程内加载游戏本体，
+        // 用户添加的 exe 从不运行。用户指定 exe 同一目录内、有可见或前台窗口、
+        // 且不属于平台外壳/反作弊/非游戏角色的进程，按兜底入口对待
+        internal static bool IsSiblingWindowFallback(
+            GameProfile profile, string name, string path, bool visible, bool foreground)
+        {
+            if (profile == null || string.IsNullOrEmpty(profile.ExecutablePath)
+                || string.IsNullOrEmpty(name) || string.IsNullOrEmpty(path)) return false;
+            if (!visible && !foreground) return false;
+            if (NeverGames.Contains(name) || IsAntiCheatLikeName(name)
+                || IsNonGameRole(name, path)) return false;
+            if (SamePath(profile.ExecutablePath, path)) return false;
+            return SameDirectory(profile.ExecutablePath, path);
+        }
+
+        private static bool SameDirectory(string executablePath, string candidatePath)
+        {
+            if (string.IsNullOrEmpty(executablePath) || string.IsNullOrEmpty(candidatePath)) return false;
+            try
+            {
+                string entryDir = Path.GetDirectoryName(executablePath);
+                string candidateDir = Path.GetDirectoryName(candidatePath);
+                return !string.IsNullOrEmpty(entryDir) && !string.IsNullOrEmpty(candidateDir)
+                    && string.Equals(entryDir, candidateDir, StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return false; }
         }
 
         private static bool IsFallbackEntryName(GameProfile profile, string name)

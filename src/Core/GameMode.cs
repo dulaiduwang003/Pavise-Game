@@ -82,11 +82,15 @@ namespace AegisApp
         private volatile bool trimWs;
         private volatile bool gpuHighPerf;
         private volatile bool disableFso;
+        private volatile bool nvMaxPerf;
+        private volatile bool nvLowLatency;
+        private volatile string nvFrlMode = "off";
         private volatile bool killGameDvr;
         private volatile bool hzGuard;
         private volatile bool planSwitch;
         private volatile bool idleDisableOn;
         private volatile bool visualFxOn;
+        private volatile bool standbySweepOn;
         private volatile bool strictCoreOn;
         private volatile bool aggressiveOn;
         private volatile bool panicReq;
@@ -154,9 +158,13 @@ namespace AegisApp
             notifQuiet = Settings.Load("NotifQuiet", false);
             idleDisableOn = Settings.Load("GmIdleDisable", true);
             visualFxOn = Settings.Load("GmVisualFx", false);
+            standbySweepOn = Settings.Load("GmStandbySweep", false);
             trimWs = Settings.Load("TrimWS", false);
             gpuHighPerf = Settings.Load("GpuHighPerf", true);
             disableFso = Settings.Load("DisableFso", false);
+            nvMaxPerf = Settings.Load("NvMaxPerf", false);
+            nvLowLatency = Settings.Load("NvLowLatency", false);
+            nvFrlMode = Settings.LoadStr("NvFrl", "off");
             killGameDvr = Settings.Load("GameDvrOff", true);
             hzGuard = Settings.Load("HzGuardOn", false);
             planSwitch = Settings.Load("PowerPlanOn", true);
@@ -442,6 +450,12 @@ namespace AegisApp
             set { visualFxOn = value; Settings.Save("GmVisualFx", value); RequestPolicyApply(); }
         }
 
+        public bool PurgeStandby
+        {
+            get { return standbySweepOn; }
+            set { standbySweepOn = value; Settings.Save("GmStandbySweep", value); }
+        }
+
         public bool MmcssPriority
         {
             get { return mmcssOn; }
@@ -485,6 +499,47 @@ namespace AegisApp
             {
                 gpuHighPerf = value; Settings.Save("GpuHighPerf", value);
                 if (!value) GameExeTweaks.RestoreKind("gpu");
+                lock (sync) tweakApplied.Clear();
+                RequestPolicyApply();
+            }
+        }
+
+        public bool NvMaxPerf
+        {
+            get { return nvMaxPerf; }
+            set
+            {
+                nvMaxPerf = value; Settings.Save("NvMaxPerf", value);
+                if (!value) NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyPState);
+                lock (sync) tweakApplied.Clear();
+                RequestPolicyApply();
+            }
+        }
+
+        public string NvFrlMode
+        {
+            get { return nvFrlMode; }
+            set
+            {
+                string mode = value == "60" || value == "120" || value == "screen" ? value : "off";
+                nvFrlMode = mode; Settings.SaveStr("NvFrl", mode);
+                if (mode == "off") NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyFrl);
+                lock (sync) tweakApplied.Clear();
+                RequestPolicyApply();
+            }
+        }
+
+        public bool NvLowLatency
+        {
+            get { return nvLowLatency; }
+            set
+            {
+                nvLowLatency = value; Settings.Save("NvLowLatency", value);
+                if (!value)
+                {
+                    NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyPreRender);
+                    NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyLowLatency);
+                }
                 lock (sync) tweakApplied.Clear();
                 RequestPolicyApply();
             }

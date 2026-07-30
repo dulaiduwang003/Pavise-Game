@@ -20,39 +20,6 @@ namespace AegisApp
         [DllImport("powrprof.dll")] private static extern uint PowerWriteACValueIndex(IntPtr root, ref Guid scheme, ref Guid sub, ref Guid setting, uint value);
         [DllImport("powrprof.dll")] private static extern uint PowerWriteDCValueIndex(IntPtr root, ref Guid scheme, ref Guid sub, ref Guid setting, uint value);
 
-        [StructLayout(LayoutKind.Sequential)]
-        private struct SystemPowerStatus
-        {
-            public byte ACLineStatus;
-            public byte BatteryFlag;
-            public byte BatteryLifePercent;
-            public byte SystemStatusFlag;
-            public uint BatteryLifeTime;
-            public uint BatteryFullLifeTime;
-        }
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool GetSystemPowerStatus(out SystemPowerStatus status);
-
-        private const byte NoSystemBattery = 128;
-        private static int portableState = -1;
-
-        private static bool IsThermallyConstrained()
-        {
-            if (portableState >= 0) return portableState == 1;
-            bool constrained = true;
-            try
-            {
-                SystemPowerStatus status;
-                if (GetSystemPowerStatus(out status))
-                    constrained = status.BatteryFlag != NoSystemBattery;
-            }
-            catch { }
-            portableState = constrained ? 1 : 0;
-            return constrained;
-        }
-
         private static readonly Guid SubProcessor   = new Guid("54533251-82be-4824-96c1-47b60b740d00");
         private static readonly Guid CpMinCores     = new Guid("0cc5b647-c1df-4637-891a-dec35c318583");
         private static readonly Guid IdleDisable    = new Guid("5d76a2ca-e8c0-402f-a133-2158492d58ad");
@@ -68,27 +35,24 @@ namespace AegisApp
             try
             {
                 bool ok = true;
-                bool constrained = IsThermallyConstrained();
-                bool holdFloor = aggressive && !constrained;
-                bool killIdle = aggressive && idleDisable && !constrained;
-                ok &= WritePair(g, SubProcessor, CpMinCores, aggressive ? 100u : 50u, aggressive ? 50u : 20u);
-                ok &= WritePair(g, SubProcessor, ProcThrottleMin, holdFloor ? 100u : 35u, aggressive ? 60u : 10u);
+                bool killIdle = aggressive && idleDisable;
+                ok &= WritePair(g, SubProcessor, CpMinCores, aggressive ? 100u : 50u, aggressive ? 100u : 20u);
+                ok &= WritePair(g, SubProcessor, ProcThrottleMin, aggressive ? 100u : 35u, aggressive ? 100u : 10u);
 
-                ok &= WritePair(g, SubProcessor, PerfBoostMode, 2u, aggressive ? 4u : 3u);
-                ok &= WritePair(g, SubPcie, PcieAspm, aggressive ? 0u : 1u, aggressive ? 1u : 2u);
+                ok &= WritePair(g, SubProcessor, PerfBoostMode, 2u, aggressive ? 2u : 3u);
+                ok &= WritePair(g, SubPcie, PcieAspm, aggressive ? 0u : 1u, aggressive ? 0u : 2u);
                 ok &= WritePair(g, SubUsb, UsbSelSuspend, 0u, aggressive ? 0u : 1u);
 
-                ok &= WritePair(g, SubProcessor, IdleDisable, killIdle ? 1u : 0u, 0u);
+                ok &= WritePair(g, SubProcessor, IdleDisable, killIdle ? 1u : 0u, killIdle ? 1u : 0u);
                 if (!ok)
                 {
                     Logger.Log("电源策略参数未能完整写入，未把本轮标记为成功");
                     return false;
                 }
                 Logger.Log(aggressive
-                    ? "电源策略：竞技级（交流电全核心/"
-                        + (holdFloor ? "100%下限" : "便携机保留降频余量")
+                    ? "电源策略：竞技级（交流/电池同满血：全核心/100%下限/激进睿频"
                         + (killIdle ? "/禁用空闲降低唤醒延迟" : "，空闲状态保持系统默认")
-                        + "，电池降级以避免不可持续的热衰减）"
+                        + "）"
                     : "电源策略：常规持续性能（保留降频余量，减少热饱和后的频率回落）");
                 return true;
             }

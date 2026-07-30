@@ -30,6 +30,11 @@ namespace AegisApp
             Eq(false, AegisCore.ShouldAnimate(false, true, true, true, FormWindowState.Normal));
             Eq(true, AegisCore.ShouldAnimate(true, true, true, true, FormWindowState.Normal));
 
+            Eq(33, AegisCore.DesiredFrameInterval(false, false));
+            Eq(33, AegisCore.DesiredFrameInterval(false, true));
+            Eq(33, AegisCore.DesiredFrameInterval(true, true));
+            Eq(200, AegisCore.DesiredFrameInterval(true, false));
+
             bool wasSuspended = UiClock.Suspended;
             try
             {

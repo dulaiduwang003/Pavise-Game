@@ -27,7 +27,7 @@ namespace AegisApp
         private DBPanel[] pages;
         private DBPanel tameList;
         private NavRail nav;
-        private Toggle swGame, swTame, swAuto, swGpu, swFso, swVbs, swHags, swIrqAffinity, swNetAffinity;
+        private Toggle swGame, swTame, swAuto, swGpu, swFso, swVbs, swHags, swIrqAffinity, swNetAffinity, swUsbAffinity, swMpo;
         private Label lblOverviewBoost, lblEvidenceLive;
         private Label lblHeroMode, lblHeroSource, lblPolicyMode;
         private Toggle swPolicyBackground, swPolicyStrict;
@@ -106,9 +106,22 @@ namespace AegisApp
             BuildUi(appIcon);
         }
 
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                var cp = base.CreateParams;
+                // WS_EX_ACCEPTFILES 必须进 CreateParams：手动 DragAcceptFiles 设的位
+                // 会被 WinForms 后续按 CreateParams 重写 ExStyle 时抹掉
+                cp.ExStyle |= 0x10;
+                return cp;
+            }
+        }
+
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
+            Native.EnableElevatedFileDrop(Handle);
             AttachFormFrame();
             Native.RoundCorners(Handle);
             uiActivityKnown = false;
@@ -504,6 +517,32 @@ namespace AegisApp
             swHags.SetSilently(HagsTweak.EnabledByAegis || HagsTweak.CurrentlyOn());
         }
 
+        private void OnUsbAffinityToggle(object s, EventArgs e)
+        {
+            if (!elevated)
+            {
+                MessageBox.Show(this, Lang.T("vbs.needadmin"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                swUsbAffinity.SetSilently(UsbInterruptAffinityTweak.EnabledByAegis);
+                return;
+            }
+            bool ok = swUsbAffinity.Checked ? UsbInterruptAffinityTweak.Enable() : UsbInterruptAffinityTweak.Disable();
+            if (ok) MessageBox.Show(this, Lang.T("irqaffinity.reboot"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            swUsbAffinity.SetSilently(UsbInterruptAffinityTweak.EnabledByAegis);
+        }
+
+        private void OnMpoToggle(object s, EventArgs e)
+        {
+            if (!elevated)
+            {
+                MessageBox.Show(this, Lang.T("vbs.needadmin"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                swMpo.SetSilently(MpoTweak.DisabledByAegis || MpoTweak.CurrentlyDisabled());
+                return;
+            }
+            bool ok = swMpo.Checked ? MpoTweak.Disable() : MpoTweak.Restore();
+            if (ok) MessageBox.Show(this, Lang.T("mpo.reboot"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            swMpo.SetSilently(MpoTweak.DisabledByAegis || MpoTweak.CurrentlyDisabled());
+        }
+
         private void OnIrqAffinityToggle(object s, EventArgs e)
         {
             if (!elevated)
@@ -764,6 +803,17 @@ namespace AegisApp
                     catch { }
                 }
             });
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == Native.WM_DROPFILES)
+            {
+                AddDroppedGames(Native.ReadDroppedFiles(m.WParam));
+                m.Result = IntPtr.Zero;
+                return;
+            }
+            base.WndProc(ref m);
         }
 
         private void AddDroppedGames(string[] files)

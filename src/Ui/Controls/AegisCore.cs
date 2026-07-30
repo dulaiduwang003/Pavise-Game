@@ -20,6 +20,12 @@ namespace AegisApp
         private bool animationRequested;
         private Bitmap staticLayer;
         private Color cachedAccent = Color.Empty, cachedAccent2 = Color.Empty;
+        private static readonly int selfPid;
+
+        static AegisCore()
+        {
+            using (Process self = Process.GetCurrentProcess()) selfPid = self.Id;
+        }
 
         public AegisCore()
         {
@@ -32,6 +38,7 @@ namespace AegisApp
             timer.Tick += delegate
             {
                 if (!CanAnimate()) { timer.Stop(); return; }
+                SyncFrameInterval();
                 Invalidate();
             };
         }
@@ -41,7 +48,7 @@ namespace AegisApp
             if (mode == value && guardEnabled == enabled && gameActive == active) return;
             mode = value; guardEnabled = enabled; gameActive = active;
 
-            timer.Interval = gameActive ? 200 : 33;
+            SyncFrameInterval();
             DropCache();
             Invalidate();
         }
@@ -88,6 +95,20 @@ namespace AegisApp
         {
             return requested && handleCreated && controlVisible && formVisible
                 && windowState != FormWindowState.Minimized;
+        }
+
+        // 游戏会话进行中且前台不是本进程（对局在前台、面板挂副屏）才降到低频，
+        // 避免装饰动画与游戏争用 UI/GDI 时间；用户切回 Aegis 看面板时恢复全帧率。
+        internal static int DesiredFrameInterval(bool gameActive, bool selfForeground)
+        {
+            return gameActive && !selfForeground ? 200 : 33;
+        }
+
+        private void SyncFrameInterval()
+        {
+            int next = DesiredFrameInterval(gameActive,
+                gameActive && GameSessionDetector.ForegroundPid() == selfPid);
+            if (timer.Interval != next) timer.Interval = next;
         }
 
         private bool CanAnimate()

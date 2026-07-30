@@ -28,6 +28,57 @@ namespace AegisApp
         [DllImport("winmm.dll")]
         public static extern uint timeEndPeriod(uint ms);
 
+        // 提权进程收不到资源管理器的 OLE 拖放（UIPI 拦截），只能走旧式 WM_DROPFILES 通道，
+        // 且必须显式放行相关消息穿过完整性级别边界
+        public const int WM_DROPFILES = 0x0233;
+        private const uint MSGFLT_ALLOW = 1;
+
+        [DllImport("shell32.dll")]
+        private static extern void DragAcceptFiles(IntPtr hwnd, bool accept);
+        [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+        private static extern uint DragQueryFileW(IntPtr hDrop, uint index, System.Text.StringBuilder file, uint cch);
+        [DllImport("shell32.dll")]
+        private static extern void DragFinish(IntPtr hDrop);
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool ChangeWindowMessageFilterEx(IntPtr hwnd, uint message, uint action, IntPtr changeInfo);
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool ChangeWindowMessageFilter(uint message, uint action);
+
+        public static void EnableElevatedFileDrop(IntPtr hwnd)
+        {
+            try
+            {
+                // 程序级 + 窗口级双保险：外壳对提权目标的探测在不同版本上检查的层级不一致
+                ChangeWindowMessageFilter(WM_DROPFILES, MSGFLT_ALLOW);
+                ChangeWindowMessageFilter(0x004A, MSGFLT_ALLOW); // WM_COPYDATA
+                ChangeWindowMessageFilter(0x0049, MSGFLT_ALLOW); // WM_COPYGLOBALDATA
+                ChangeWindowMessageFilterEx(hwnd, WM_DROPFILES, MSGFLT_ALLOW, IntPtr.Zero);
+                ChangeWindowMessageFilterEx(hwnd, 0x004A, MSGFLT_ALLOW, IntPtr.Zero);
+                ChangeWindowMessageFilterEx(hwnd, 0x0049, MSGFLT_ALLOW, IntPtr.Zero);
+                DragAcceptFiles(hwnd, true);
+            }
+            catch { }
+        }
+
+        public static string[] ReadDroppedFiles(IntPtr hDrop)
+        {
+            try
+            {
+                uint count = DragQueryFileW(hDrop, 0xFFFFFFFF, null, 0);
+                var files = new System.Collections.Generic.List<string>();
+                var buffer = new System.Text.StringBuilder(1024);
+                for (uint i = 0; i < count; i++)
+                {
+                    buffer.Length = 0;
+                    if (DragQueryFileW(hDrop, i, buffer, (uint)buffer.Capacity) > 0)
+                        files.Add(buffer.ToString());
+                }
+                return files.ToArray();
+            }
+            catch { return new string[0]; }
+            finally { try { DragFinish(hDrop); } catch { } }
+        }
+
         public const int WM_NCLBUTTONDOWN = 0xA1;
         public const int HT_CAPTION = 0x2;
 

@@ -100,6 +100,11 @@ namespace AegisApp
             mmcssActive = EnvStep("mmcss", useMmcss, mmcssActive, Mmcss.Activate, Mmcss.Restore);
             dvrActive = EnvStep("dvr", useDvr, dvrActive, GameDvr.Activate, GameDvr.Restore);
             fxActive = EnvStep("fx", visualFxOn, fxActive, VisualFx.Activate, VisualFx.Restore);
+            if (standbySweepOn && !standbyPurged)
+            {
+                standbyPurged = true;
+                StandbySweep.PurgeOnce();
+            }
             bool aggressivePower = IsAggressive(mode, aggressiveOn);
             int powerKey = (aggressivePower ? 1 : 0)
                 | (idleDisableOn ? 2 : 0) | (planSwitch ? 4 : 0);
@@ -138,9 +143,23 @@ namespace AegisApp
         }
 
         private bool fxActive;
+        private bool standbyPurged;
         private bool planActive;
         private int lastPowerPolicyKey = -1;
         private long nextPowerAuditTicks;
+
+        // 「屏-3」= 当前主屏刷新率减 3（VRR 区间内封顶的社区通行做法）；查询失败则不动帧率
+        internal static int ResolveFrlFps(string mode)
+        {
+            if (mode == "60") return 60;
+            if (mode == "120") return 120;
+            if (mode == "screen")
+            {
+                int hz = DisplayGuard.CurrentRefreshRate();
+                if (hz >= 48) return hz - 3;
+            }
+            return 0;
+        }
 
         private bool EnvActive()
         {
@@ -150,6 +169,7 @@ namespace AegisApp
         private bool RestoreEnv()
         {
             bool ok = true;
+            standbyPurged = false;
             if (Notif.Restore()) notifActive = false; else ok = false;
             if (DoTweak.Restore()) doActive = false; else ok = false;
             if (DisplayGuard.Restore()) hzActive = false; else ok = false;
@@ -243,7 +263,9 @@ namespace AegisApp
                     {
                         known = gameBoost.ContainsKey(pid);
                         retryEco = boostFail.ContainsKey(pid);
-                        needTweak = (gpuHighPerf || disableFso) && !tweakApplied.Contains(pid);
+                        needTweak = (gpuHighPerf || disableFso || nvMaxPerf || nvLowLatency
+                                || nvFrlMode != "off")
+                            && !tweakApplied.Contains(pid);
                         ulong placed; bool placedStrict;
                         needPlacement = !gamePlacement.TryGetValue(pid, out placed) || placed != desiredMask
                             || !gamePlacementStrict.TryGetValue(pid, out placedStrict) || placedStrict != useStrict;
@@ -345,6 +367,7 @@ namespace AegisApp
                                 QoSControl = oqc, QoSState = oqs };
                             lock (sync) gameBoost[pid] = snap;
                             newlyTracked = true;
+                            FrameEvidence.NoteRendererPid(pid);
                             gpuOk = gpuKnown && ApplyAndVerifyGpuBoost(h);
                             lock (sync) { if (gpuKnown) gameGpu[pid] = gpuOld; }
                         }
@@ -442,7 +465,11 @@ namespace AegisApp
 
                         if (needTweak)
                         {
-                            GameExeTweaks.ApplyForGame(Native.ImagePath(h), gpuHighPerf, disableFso);
+                            string imagePath = Native.ImagePath(h);
+                            GameExeTweaks.ApplyForGame(imagePath, gpuHighPerf, disableFso);
+                            int frlFps = ResolveFrlFps(nvFrlMode);
+                            if (nvMaxPerf || nvLowLatency || frlFps > 0)
+                                NvDrsTweaks.ApplyForGame(imagePath, nvMaxPerf, nvLowLatency, frlFps);
                             lock (sync) tweakApplied.Add(pid);
                         }
 

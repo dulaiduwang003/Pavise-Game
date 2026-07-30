@@ -98,6 +98,12 @@ namespace AegisApp
 
         public bool Enable(List<string> deviceIds)
         {
+            return Enable(deviceIds, CpuTopology.BoostMask);
+        }
+
+        // preferredMask 指定中断落点：显卡/网卡贴近游戏核（BoostMask），USB 等噪声源赶去后台核（ThrottleMask）
+        public bool Enable(List<string> deviceIds, ulong preferredMask)
+        {
             ReportMsiState(deviceIds);
             if (deviceIds == null || deviceIds.Count == 0)
             {
@@ -105,7 +111,7 @@ namespace AegisApp
                 return false;
             }
             List<Target> targets = BuildTargets(deviceIds);
-            bool useMask = !CpuTopology.MultiGroup && CpuTopology.BoostMask != 0 && CpuTopology.BoostMask != CpuTopology.AllMask;
+            bool useMask = !CpuTopology.MultiGroup && preferredMask != 0 && preferredMask != CpuTopology.AllMask;
             if (CpuTopology.MultiGroup)
                 Logger.Log(logPrefix + "：多处理器组系统，掩码无法指明处理器组归属，仅使用 AllCloseProcessors");
 
@@ -115,7 +121,7 @@ namespace AegisApp
             {
                 bool ok;
                 if (useMask)
-                    ok = t.Policy.Apply(PolicySpecifiedProcessors) & t.Mask.Apply(MaskToBytes(CpuTopology.BoostMask));
+                    ok = t.Policy.Apply(PolicySpecifiedProcessors) & t.Mask.Apply(MaskToBytes(preferredMask));
                 else
                     ok = t.Policy.Apply(PolicyAllCloseProcessors);
                 if (ok) { anyOk = true; applied.Add(t); }
@@ -145,7 +151,7 @@ namespace AegisApp
                 return false;
             }
             Logger.Log(logPrefix + "：已对 " + applied.Count + " 个设备写入"
-                + (useMask ? "指定处理器策略（掩码 0x" + CpuTopology.BoostMask.ToString("X") + "）" : "邻近处理器策略")
+                + (useMask ? "指定处理器策略（掩码 0x" + preferredMask.ToString("X") + "）" : "邻近处理器策略")
                 + "，需要重启该设备或重启电脑后生效");
             return true;
         }

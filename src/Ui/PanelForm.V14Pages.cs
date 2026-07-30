@@ -2,6 +2,7 @@
 // 文件用途 构建新版概览 策略和游戏库页面
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
@@ -121,17 +122,8 @@ namespace AegisApp
                 GameLibraryItem item = lstGames.SelectedItem as GameLibraryItem;
                 if (e.KeyCode == Keys.Delete && item != null) { gameMode.RemoveProfile(item.Profile.Id); RefreshGames(); }
             };
-            listWrap.AllowDrop = true; lstGames.AllowDrop = true;
-            DragEventHandler enter = delegate(object s, DragEventArgs e)
-            {
-                e.Effect = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Link : DragDropEffects.None;
-            };
-            DragEventHandler drop = delegate(object s, DragEventArgs e)
-            {
-                AddDroppedGames(e.Data.GetData(DataFormats.FileDrop) as string[]);
-            };
-            listWrap.DragEnter += enter; listWrap.DragDrop += drop;
-            lstGames.DragEnter += enter; lstGames.DragDrop += drop;
+            // 不注册 OLE 拖放（AllowDrop）：提权进程的 OLE 通道被 UIPI 封死，
+            // 注册了反而挡住旧式 WM_DROPFILES 的祖先回溯；拖放统一由主窗体的旧式通道处理
             listWrap.Controls.Add(lstGames);
             int bx = ContentX + listW + 16, bw = ContentW - listW - 16, bh = 40;
             var browse = new PillButton(Lang.T("v15.library.add"), BtnKind.Primary); browse.SetBounds(Theme.S(bx), Theme.S(y), Theme.S(bw), Theme.S(bh)); browse.Click += delegate { BrowseGameExecutable(); };
@@ -230,12 +222,15 @@ namespace AegisApp
             cardPolicyPauseSvc = (SettingCard)swPolicyPauseSvc.Parent;
             swPolicyDvr = AddPolicyToggle(scroll, ref sy, Lang.T("set.dvr"), Lang.T("v15.custom.override"), delegate { return gameMode.KillGameDvr; }, delegate(bool v) { gameMode.KillGameDvr = v; });
             cardPolicyDvr = (SettingCard)swPolicyDvr.Parent;
+            sy += 10; Section(scroll, Lang.T("v15.policy.extras"), 6, sy); sy += 24;
             AddPolicyToggle(scroll, ref sy, Lang.T("gm.idledisable"), Lang.T("gm.idledisable.sub"),
                 delegate { return gameMode.IdleStateDisable; }, delegate(bool v) { gameMode.IdleStateDisable = v; });
             AddPolicyToggle(scroll, ref sy, Lang.T("gm.visualfx"), Lang.T("gm.visualfx.sub"),
                 delegate { return gameMode.VisualFxDowngrade; }, delegate(bool v) { gameMode.VisualFxDowngrade = v; });
             AddPolicyToggle(scroll, ref sy, Lang.T("set.trim"), Lang.T("v15.trim.sub"),
                 delegate { return gameMode.TrimWorkingSet; }, delegate(bool v) { gameMode.TrimWorkingSet = v; });
+            AddPolicyToggle(scroll, ref sy, Lang.T("gm.standby"), Lang.T("gm.standby.sub"),
+                delegate { return gameMode.PurgeStandby; }, delegate(bool v) { gameMode.PurgeStandby = v; });
             RefreshPolicyPresentation();
         }
 
@@ -292,17 +287,94 @@ namespace AegisApp
         private void BuildReportsPageV14()
         {
             int y = PageHeader(pageReports, Lang.T("nav.reports"), Lang.T("v14.reports.sub"), 2);
-            var wrap = new RoundPanel();
-            wrap.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(PageH - y - 66));
-            wrap.BackColor = Theme.Bg; wrap.Fill = Theme.Inset; wrap.Border = Theme.Stroke; wrap.Radius = Theme.S(14); wrap.Padding = new Padding(Theme.S(14));
+
+            var swEvidence = MakeSwitch(Settings.Load("EvidenceMode", false), null);
+            swEvidence.CheckedChanged += delegate { Settings.Save("EvidenceMode", swEvidence.Checked); };
+            var evCard = new SettingCard();
+            evCard.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(64));
+            evCard.Title = Lang.T("ev.toggle");
+            evCard.Desc = Lang.T("ev.toggle.sub");
+            evCard.Host(swEvidence);
+            pageReports.Controls.Add(evCard);
+            y += 72;
+
+            tabReportsCards = new PillButton(Lang.T("rep.tab.cards"), BtnKind.Primary);
+            tabReportsCards.Bg = Theme.Bg;
+            tabReportsCards.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(126), Theme.S(30));
+            tabReportsCards.Click += delegate { SetReportsView(0); };
+            tabReportsLog = new PillButton(Lang.T("rep.tab.log"));
+            tabReportsLog.Bg = Theme.Bg;
+            tabReportsLog.SetBounds(Theme.S(ContentX + 134), Theme.S(y), Theme.S(126), Theme.S(30));
+            tabReportsLog.Click += delegate { SetReportsView(1); };
+            y += 38;
+
+            reportsCardsPanel = new DBPanel();
+            reportsCardsPanel.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(PageH - y - 58));
+            reportsCardsPanel.BackColor = Theme.Bg;
+            reportsCardsPanel.AutoScroll = true;
+            Native.Dark(reportsCardsPanel);
+
+            reportsLogWrap = new RoundPanel();
+            reportsLogWrap.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(PageH - y - 58));
+            reportsLogWrap.BackColor = Theme.Bg; reportsLogWrap.Fill = Theme.Inset; reportsLogWrap.Border = Theme.Stroke;
+            reportsLogWrap.Radius = Theme.S(14); reportsLogWrap.Padding = new Padding(Theme.S(14));
             tbReports = new TextBox(); tbReports.Multiline = true; tbReports.ReadOnly = true; tbReports.ScrollBars = ScrollBars.Both; tbReports.WordWrap = false;
             tbReports.BackColor = Theme.Inset; tbReports.ForeColor = Theme.Fg; tbReports.BorderStyle = BorderStyle.None; tbReports.Font = Theme.Mono(8.75f); tbReports.Dock = DockStyle.Fill;
-            Native.Dark(tbReports); wrap.Controls.Add(tbReports);
+            Native.Dark(tbReports); reportsLogWrap.Controls.Add(tbReports);
+            reportsLogWrap.Visible = false;
+
             var openReport = new PillButton(Lang.T("v14.open.report")); openReport.SetBounds(Theme.S(ContentX), Theme.S(PageH - 48), Theme.S(190), Theme.S(36));
             openReport.Click += delegate { OpenTextFile(Path.Combine(Paths.Data, SessionReportStore.FileName)); };
             var openLog = new PillButton(Lang.T("btn.openlog")); openLog.SetBounds(Theme.S(ContentX + 202), Theme.S(PageH - 48), Theme.S(190), Theme.S(36));
             openLog.Click += delegate { OpenTextFile(Logger.LogPath); };
-            pageReports.Controls.AddRange(new Control[] { wrap, openReport, openLog }); RefreshReportsV14();
+            btnClearLog = new PillButton(Lang.T("rep.clear.log"), BtnKind.Danger);
+            btnClearLog.SetBounds(Theme.S(ContentX + 404), Theme.S(PageH - 48), Theme.S(150), Theme.S(36));
+            btnClearLog.Visible = false;
+            btnClearLog.Click += delegate
+            {
+                if (MessageBox.Show(this, Lang.T("rep.clear.ask"), "Aegis",
+                        MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+                Logger.Clear();
+                Logger.Log("运行日志已手动清除");
+                RefreshReportsV14();
+            };
+            btnClearReports = new PillButton(Lang.T("rep.clear.cards"), BtnKind.Danger);
+            btnClearReports.SetBounds(Theme.S(ContentX + 404), Theme.S(PageH - 48), Theme.S(150), Theme.S(36));
+            btnClearReports.Click += delegate
+            {
+                if (MessageBox.Show(this, Lang.T("rep.clear.cards.ask"), "Aegis",
+                        MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+                SessionReportStore.ClearAll(Paths.Data);
+                EvidenceStore.ClearAll(Paths.Data);
+                reportsCardsSig = null;
+                RefreshReportsV14();
+            };
+            pageReports.Controls.AddRange(new Control[] {
+                tabReportsCards, tabReportsLog, reportsCardsPanel, reportsLogWrap,
+                openReport, openLog, btnClearLog, btnClearReports });
+            RefreshReportsV14();
+        }
+
+        private PillButton tabReportsCards, tabReportsLog, btnClearLog, btnClearReports;
+        private DBPanel reportsCardsPanel;
+        private RoundPanel reportsLogWrap;
+        private int reportsViewMode;
+        private string reportsCardsSig;
+
+        private void SetReportsView(int mode)
+        {
+            if (reportsViewMode == mode) return;
+            reportsViewMode = mode;
+            tabReportsCards.Kind = mode == 0 ? BtnKind.Primary : BtnKind.Normal;
+            tabReportsLog.Kind = mode == 1 ? BtnKind.Primary : BtnKind.Normal;
+            tabReportsCards.Invalidate();
+            tabReportsLog.Invalidate();
+            reportsCardsPanel.Visible = mode == 0;
+            reportsLogWrap.Visible = mode == 1;
+            btnClearLog.Visible = mode == 1;
+            btnClearReports.Visible = mode == 0;
+            reportsCardsSig = null;
+            RefreshReportsV14();
         }
 
         private void OpenTextFile(string path)
@@ -322,10 +394,59 @@ namespace AegisApp
 
         private void RefreshReportsV14()
         {
-            if (tbReports == null) return;
-            string text = SessionReportStore.FormatForDisplay(
-                SessionReportStore.ReadTail(Paths.Data, 120));
-            if (tbReports.Text != text) tbReports.Text = text;
+            if (reportsCardsPanel == null || tbReports == null) return;
+            if (reportsViewMode == 1)
+            {
+                string logText = SessionReportStore.TailOfFile(Logger.LogPath, 220);
+                if (logText.Length == 0) logText = Lang.T("rep.log.none");
+                if (tbReports.Text != logText)
+                {
+                    tbReports.Text = logText;
+                    try { tbReports.SelectionStart = tbReports.TextLength; tbReports.ScrollToCaret(); } catch { }
+                }
+                return;
+            }
+            string reportsRaw = SessionReportStore.ReadTail(Paths.Data, 60);
+            string evidenceRaw = EvidenceStore.ReadTail(Paths.Data, 80);
+            string sig = reportsRaw + "\n#\n" + evidenceRaw;
+            if (sig == reportsCardsSig) return;
+            reportsCardsSig = sig;
+            RebuildSessionCards(reportsRaw, evidenceRaw);
+        }
+
+        private void RebuildSessionCards(string reportsRaw, string evidenceRaw)
+        {
+            while (reportsCardsPanel.Controls.Count > 0) reportsCardsPanel.Controls[0].Dispose();
+            List<SessionSummary> sessions = SessionSummaries.Parse(reportsRaw, evidenceRaw, 30);
+            if (sessions.Count == 0)
+            {
+                var empty = new Label
+                {
+                    Text = Lang.T("rep.cards.none"), ForeColor = Theme.Dim, BackColor = Theme.Bg,
+                    Font = Theme.UI(9f, false), AutoEllipsis = true
+                };
+                empty.UseCompatibleTextRendering = false;
+                empty.SetBounds(Theme.S(8), Theme.S(16), Theme.S(ContentW - 20), Theme.S(22));
+                reportsCardsPanel.Controls.Add(empty);
+                return;
+            }
+            int cardW = ContentW - 24;
+            for (int i = 0; i < sessions.Count; i++)
+            {
+                var card = new SessionCardView();
+                card.SetBounds(Theme.S(2), Theme.S(2 + i * 94), Theme.S(cardW), Theme.S(86));
+                card.Bind(sessions[i]);
+                card.DeleteRequested = OnDeleteSessionCard;
+                reportsCardsPanel.Controls.Add(card);
+            }
+        }
+
+        private void OnDeleteSessionCard(SessionSummary session)
+        {
+            SessionReportStore.DeleteSession(Paths.Data, session.Time, session.Game);
+            EvidenceStore.DeleteNear(Paths.Data, session.Stamp, session.Game);
+            reportsCardsSig = null;
+            RefreshReportsV14();
         }
 
     }

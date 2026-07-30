@@ -1201,6 +1201,213 @@ namespace AegisApp
                 string empty = NetworkAffinityTweak.SanitizePolicyName("", @"C:\g.exe");
                 if (!empty.StartsWith("Aegis_Game")) throw new Exception("empty game name did not fall back to a placeholder");
             });
+            test("anti-cheat tiers: level tags round-trip and priority mapping per tier", () =>
+            {
+                Eq(SuppressionLevel.Eco, Tamer.ParseLevel(Tamer.LevelTag(SuppressionLevel.Eco)));
+                Eq(SuppressionLevel.Restrained, Tamer.ParseLevel(Tamer.LevelTag(SuppressionLevel.Restrained)));
+                Eq(SuppressionLevel.Isolated, Tamer.ParseLevel(Tamer.LevelTag(SuppressionLevel.Isolated)));
+                Eq(SuppressionLevel.Isolated, Tamer.ParseLevel("garbage"));
+                Eq(SuppressionLevel.Isolated, Tamer.ParseLevel(null));
+
+                Eq(Native.NORMAL_PRIORITY_CLASS, SuppressionCore.DesiredPriority(SuppressionLevel.Eco, Native.NORMAL_PRIORITY_CLASS));
+                Eq(Native.HIGH_PRIORITY_CLASS, SuppressionCore.DesiredPriority(SuppressionLevel.Eco, Native.HIGH_PRIORITY_CLASS));
+                Eq(Native.BELOW_NORMAL_PRIORITY_CLASS, SuppressionCore.DesiredPriority(SuppressionLevel.Restrained, Native.NORMAL_PRIORITY_CLASS));
+                Eq(Native.IDLE_PRIORITY_CLASS, SuppressionCore.DesiredPriority(SuppressionLevel.Isolated, Native.NORMAL_PRIORITY_CLASS));
+                Eq(Native.NORMAL_PRIORITY_CLASS, SuppressionCore.DesiredPriority(SuppressionLevel.Eco, 0));
+            });
+            test("evidence stats: frame percentiles, telemetry summary and DRS snapshots", () =>
+            {
+                Lang.Init();
+                var frames = new int[200];
+                for (int i = 0; i < 200; i++) frames[i] = 10000;
+                frames[0] = 110000;
+                double avg, low1, low01;
+                Eq(true, FrameEvidence.ComputeStats(frames, out avg, out low1, out low01));
+                if (avg < 90 || avg > 100) throw new Exception("avg fps out of range: " + avg);
+                if (low1 < 15 || low1 > 20) throw new Exception("1% low out of range: " + low1);
+                if (low01 < 8 || low01 > 10) throw new Exception("0.1% low out of range: " + low01);
+                Eq(false, FrameEvidence.ComputeStats(new int[0], out avg, out low1, out low01));
+
+                // 加载簇剔除：连续 3 帧 300ms 是加载（剔），孤立 110ms 尖峰是真卡顿（留）
+                var mixed = new int[100];
+                for (int i = 0; i < 100; i++) mixed[i] = 10000;
+                mixed[10] = 110000;
+                mixed[50] = 300000; mixed[51] = 320000; mixed[52] = 310000;
+                int excludedUs;
+                int[] cleaned = FrameEvidence.ExcludeLoadingClusters(mixed, out excludedUs);
+                Eq(97, cleaned.Length);
+                Eq(930000, excludedUs);
+                bool spikeKept = false;
+                foreach (int v in cleaned) if (v == 110000) spikeKept = true;
+                Eq(true, spikeKept);
+
+                Eq(60, GameMode.ResolveFrlFps("60"));
+                Eq(120, GameMode.ResolveFrlFps("120"));
+                Eq(0, GameMode.ResolveFrlFps("off"));
+                Eq(0, GameMode.ResolveFrlFps("junk"));
+                int screenFps = GameMode.ResolveFrlFps("screen");
+                if (screenFps != 0 && screenFps < 45)
+                    throw new Exception("screen frl out of range: " + screenFps);
+
+                string summary = SessionTelemetry.BuildSummary(10, 500, 74, 2, 0, 10, 8.5, 3, 3300, true);
+                if (summary == null || summary.IndexOf("50%") < 0 || summary.IndexOf("74") < 0
+                    || summary.IndexOf("85%") < 0 || summary.IndexOf("3.2") < 0)
+                    throw new Exception("summary missing fields: " + summary);
+                if (SessionTelemetry.BuildSummary(0, 0, 0, 0, 0, 0, 0, 0, ulong.MaxValue, true) != null)
+                    throw new Exception("empty telemetry must yield no summary");
+
+                var snap = NvDrsTweaks.ParseSnapshot("pstate=absent;prerender=2");
+                Eq("absent", snap["pstate"]);
+                Eq("2", snap["prerender"]);
+                Eq("prerender=2;pstate=absent", NvDrsTweaks.SerializeSnapshot(snap));
+                Eq(0, NvDrsTweaks.ParseSnapshot("").Count);
+            });
+            test("session records: single-session delete removes report and nearby evidence", () =>
+            {
+                string dir = Path.Combine(Path.GetTempPath(),
+                    "AegisDelTest_" + Process.GetCurrentProcess().Id);
+                Directory.CreateDirectory(dir);
+                try
+                {
+                    File.WriteAllLines(Path.Combine(dir, SessionReportStore.FileName), new[]
+                    {
+                        "2026-07-30 02:23:39 | GameX | P | 5m12s | a | b | c",
+                        "2026-07-30 03:00:00 | GameY | P | 1m | a | b | c"
+                    }, new UTF8Encoding(false));
+                    File.WriteAllLines(Path.Combine(dir, EvidenceStore.FileName), new[]
+                    {
+                        "2026-07-30 02:23:41 | GameX | 5m12s | data",
+                        "2026-07-30 03:00:00 | GameY | 1m | data"
+                    }, new UTF8Encoding(false));
+                    DateTime stamp = DateTime.ParseExact("2026-07-30 02:23:39", "yyyy-MM-dd HH:mm:ss",
+                        System.Globalization.CultureInfo.InvariantCulture);
+                    Eq(true, SessionReportStore.DeleteSession(dir, "2026-07-30 02:23:39", "GameX"));
+                    Eq(true, EvidenceStore.DeleteNear(dir, stamp, "GameX"));
+                    string reports = File.ReadAllText(Path.Combine(dir, SessionReportStore.FileName));
+                    string evidence = File.ReadAllText(Path.Combine(dir, EvidenceStore.FileName));
+                    if (reports.Contains("GameX") || evidence.Contains("GameX"))
+                        throw new Exception("GameX 记录未删除干净");
+                    if (!reports.Contains("GameY") || !evidence.Contains("GameY"))
+                        throw new Exception("GameY 记录被误删");
+                    Eq(false, SessionReportStore.DeleteSession(dir, "2026-07-30 02:23:39", "GameX"));
+
+                    SessionReportStore.ClearAll(dir);
+                    EvidenceStore.ClearAll(dir);
+                    Eq(0, File.ReadAllText(Path.Combine(dir, SessionReportStore.FileName)).Length);
+                    Eq(0, File.ReadAllText(Path.Combine(dir, EvidenceStore.FileName)).Length);
+                }
+                finally { try { Directory.Delete(dir, true); } catch { } }
+            });
+            test("steam shortcut: rungameid/vdf parsing and main-exe heuristics", () =>
+            {
+                long appId;
+                Eq(true, SteamShortcut.TryParseUrlFile(
+                    "[InternetShortcut]\r\nURL=steam://rungameid/730\r\nIconIndex=0", out appId));
+                Eq(730L, appId);
+                Eq(false, SteamShortcut.TryParseUrlFile(
+                    "[InternetShortcut]\r\nURL=https://example.com", out appId));
+                Eq(false, SteamShortcut.TryParseUrlFile("", out appId));
+
+                var libs = SteamShortcut.ParseLibraryPaths(
+                    "\"libraryfolders\"\n{\n\t\"0\"\n\t{\n\t\t\"path\"\t\t\"C:\\\\Program Files (x86)\\\\Steam\"\n\t}\n\t\"1\"\n\t{\n\t\t\"path\"\t\t\"D:\\\\SteamLibrary\"\n\t}\n}");
+                Eq(2, libs.Count);
+                Eq(@"C:\Program Files (x86)\Steam", libs[0]);
+                Eq(@"D:\SteamLibrary", libs[1]);
+                Eq("Counter-Strike Global Offensive", SteamShortcut.ParseVdfValue(
+                    "\"AppState\"\n{\n\t\"appid\"\t\t\"730\"\n\t\"installdir\"\t\t\"Counter-Strike Global Offensive\"\n}", "installdir"));
+
+                string exeRoot = Path.Combine(Path.GetTempPath(),
+                    "AegisSteamPick_" + Process.GetCurrentProcess().Id);
+                try
+                {
+                    Directory.CreateDirectory(Path.Combine(exeRoot, @"game\bin\win64"));
+                    Directory.CreateDirectory(Path.Combine(exeRoot, "redist"));
+                    File.WriteAllBytes(Path.Combine(exeRoot, @"game\bin\win64\cs2.exe"), new byte[6 * 1024 * 1024]);
+                    File.WriteAllBytes(Path.Combine(exeRoot, @"redist\vc_redist.x64.exe"), new byte[20 * 1024 * 1024]);
+                    File.WriteAllBytes(Path.Combine(exeRoot, "crashhandler64.exe"), new byte[1024]);
+                    string picked = SteamShortcut.PickMainExecutable(exeRoot, "Counter-Strike Global Offensive");
+                    if (picked == null || !picked.EndsWith("cs2.exe", StringComparison.OrdinalIgnoreCase))
+                        throw new Exception("main exe heuristic picked: " + picked);
+                }
+                finally { try { Directory.Delete(exeRoot, true); } catch { } }
+            });
+            test("session summaries: report and evidence lines round-trip into card data", () =>
+            {
+                Lang.Init();
+                string rline = "2026-07-30 02:23:39 | GameX | " + Lang.T("preset.competitive")
+                    + " | 5m12s | " + Lang.T("report.boost.ok") + " | " + Lang.F("report.control", 90)
+                    + " | " + Lang.F("report.aegis.cpu", "0.13");
+                string frame = Lang.F("ev.fps", "116", "17", "5", "32259");
+                string eline = "2026-07-30 02:23:41 | GameX | 5m12s | " + frame
+                    + " | " + Lang.F("ev.gpu", "63", "70") + Lang.F("ev.gpu.power", "72")
+                    + " | " + Lang.F("ev.cpu", "69") + " | " + Lang.F("ev.mem", "9.0");
+                var list = SessionSummaries.Parse(rline, eline, 10);
+                Eq(1, list.Count);
+                Eq("GameX", list[0].Game);
+                Eq(true, list[0].BoostVerified);
+                Eq("116", list[0].AvgFps);
+                Eq("17", list[0].Low1Fps);
+                Eq("5", list[0].Low01Fps);
+                Eq("32259", list[0].FrameCount);
+                if (list[0].Chips.Count < 4)
+                    throw new Exception("attribution chips missing: " + list[0].Chips.Count);
+
+                var stale = SessionSummaries.Parse(rline,
+                    "2026-07-30 03:00:00 | GameX | 5m | " + frame, 10);
+                Eq(null, stale[0].AvgFps);
+                Eq(0, stale[0].Chips.Count);
+            });
+            test("render detector: sibling window fallback anchors in-process launcher (Bannerlord pattern)", () =>
+            {
+                Lang.Init();
+                string gameDir = @"C:\g\Mount & Blade II Bannerlord\bin\Win64_Shipping_Client";
+                var profile = GameProfileStore.NewProfile("Bannerlord", gameDir,
+                    Path.Combine(gameDir, "Bannerlord.exe"));
+                long now = DateTime.UtcNow.ToFileTimeUtc();
+                long created = now - 60L * 10000000L;
+                var launcher = new GameProcessSnapshot
+                {
+                    Pid = 4242, ParentPid = 1, Creation = created,
+                    Name = "TaleWorlds.MountAndBlade.Launcher",
+                    Path = Path.Combine(gameDir, "TaleWorlds.MountAndBlade.Launcher.exe"),
+                    Visible = true, Foreground = true
+                };
+                GameDetection hit = GameSessionDetector.DetectSnapshot(
+                    new[] { launcher }, new[] { profile }, now);
+                if (hit == null) throw new Exception("sibling window fallback did not anchor");
+                Eq("TaleWorlds.MountAndBlade.Launcher", hit.RendererName);
+                Eq(true, hit.RendererUserSelected);
+
+                var otherDir = new GameProcessSnapshot
+                {
+                    Pid = 4243, ParentPid = 1, Creation = created,
+                    Name = "SomeClientLauncher",
+                    Path = @"C:\g\Mount & Blade II Bannerlord\ux\SomeClientLauncher.exe",
+                    Visible = true, Foreground = true
+                };
+                if (GameSessionDetector.DetectSnapshot(new[] { otherDir }, new[] { profile }, now) != null)
+                    throw new Exception("different-directory launcher must not anchor");
+
+                var headless = new GameProcessSnapshot
+                {
+                    Pid = 4244, ParentPid = 1, Creation = created,
+                    Name = "TaleWorlds.MountAndBlade.Launcher",
+                    Path = Path.Combine(gameDir, "TaleWorlds.MountAndBlade.Launcher.exe"),
+                    Visible = false, Foreground = false
+                };
+                if (GameSessionDetector.DetectSnapshot(new[] { headless }, new[] { profile }, now) != null)
+                    throw new Exception("windowless sibling must not anchor");
+
+                var updater = new GameProcessSnapshot
+                {
+                    Pid = 4245, ParentPid = 1, Creation = created,
+                    Name = "BannerlordUninstall",
+                    Path = Path.Combine(gameDir, "BannerlordUninstall.exe"),
+                    Visible = true, Foreground = true
+                };
+                if (GameSessionDetector.DetectSnapshot(new[] { updater }, new[] { profile }, now) != null)
+                    throw new Exception("non-game role sibling must not anchor");
+            });
 
             string root = Path.Combine(Path.GetTempPath(), "AegisSelfTest_" + Process.GetCurrentProcess().Id + "_" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(root);

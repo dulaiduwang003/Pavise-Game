@@ -20,6 +20,7 @@ namespace AegisApp
         private string repGame;
         private bool repBoosted;
         private long repAegisCpuStart;
+        private readonly SessionTelemetry telemetry = new SessionTelemetry();
 
         public event Action<string> SessionEnded;
 
@@ -35,6 +36,11 @@ namespace AegisApp
                 repStart = Stopwatch.GetTimestamp();
                 repBoosted = false;
                 repAegisCpuStart = aegisCpu;
+            }
+            if (Settings.Load("EvidenceMode", false))
+            {
+                telemetry.Begin();
+                FrameEvidence.Begin();
             }
         }
 
@@ -92,9 +98,17 @@ namespace AegisApp
                 repBoosted = false;
                 repAegisCpuStart = 0;
             }
+            string frames = FrameEvidence.Finish();
+            string evidence = telemetry.Finish();
             if (game == null) return;
 
             TimeSpan dur = TimeSpan.FromSeconds((double)(Stopwatch.GetTimestamp() - t0) / Stopwatch.Frequency);
+            string combined = frames != null && evidence != null ? frames + " | " + evidence
+                : (frames != null ? frames : evidence);
+            if (combined != null)
+                EvidenceStore.Append(dataDir,
+                    DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " | " + game
+                    + " | " + FmtDur(dur) + " | " + combined);
             long total = 0, top = 0;
             string topName = null;
             foreach (var kv in cpu)
@@ -241,6 +255,62 @@ namespace AegisApp
                 }
             }
             catch { return Lang.T("report.read.error"); }
+        }
+
+        public static void ClearAll(string dataDir)
+        {
+            try
+            {
+                lock (FileSync)
+                {
+                    string path = Path.Combine(dataDir, FileName);
+                    if (File.Exists(path)) File.WriteAllText(path, "", new UTF8Encoding(false));
+                }
+            }
+            catch (Exception error)
+            {
+                Logger.LogFailure("会话报告清空失败", error);
+            }
+        }
+
+        public static bool DeleteSession(string dataDir, string timeText, string game)
+        {
+            if (string.IsNullOrEmpty(timeText) || game == null) return false;
+            string prefix = timeText + " | " + game + " | ";
+            try
+            {
+                lock (FileSync)
+                {
+                    string path = Path.Combine(dataDir, FileName);
+                    if (!File.Exists(path)) return false;
+                    string[] all = File.ReadAllLines(path, Encoding.UTF8);
+                    var kept = new List<string>();
+                    bool removed = false;
+                    foreach (string line in all)
+                    {
+                        if (!removed && line.StartsWith(prefix, StringComparison.Ordinal)) { removed = true; continue; }
+                        kept.Add(line);
+                    }
+                    if (removed)
+                        File.WriteAllLines(path, kept.ToArray(), new UTF8Encoding(false));
+                    return removed;
+                }
+            }
+            catch (Exception error)
+            {
+                Logger.LogFailure("会话记录删除失败", error);
+                return false;
+            }
+        }
+
+        public static string TailOfFile(string path, int maxLines)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(path) || !File.Exists(path)) return "";
+                return ReadTailLocked(path, maxLines);
+            }
+            catch { return ""; }
         }
 
         public static string FormatForDisplay(string tail)

@@ -135,11 +135,24 @@ namespace AegisApp
             var sw = MakeSwitch(tamer.IsGroupEnabled(key), null);
             sw.CheckedChanged += (s, e) => tamer.SetGroupEnabled(key, sw.Checked);
 
+            var lvl = new TierPicker();
+            lvl.Size = new Size(Theme.S(168), Theme.S(28));
+            lvl.Value = tamer.GroupLevel(key);
+            lvl.Changed = delegate(SuppressionLevel v) { tamer.SetGroupLevel(key, v); };
+
+            var wrap = new DBPanel();
+            wrap.Size = new Size(lvl.Width + Theme.S(12) + sw.Width, Theme.S(30));
+            wrap.BackColor = Theme.Card;
+            lvl.Location = new Point(0, (wrap.Height - lvl.Height) / 2);
+            sw.Location = new Point(lvl.Width + Theme.S(12), (wrap.Height - sw.Height) / 2);
+            wrap.Controls.Add(lvl);
+            wrap.Controls.Add(sw);
+
             var card = new SettingCard();
             card.SetBounds(Theme.S(6), Theme.S(y), Theme.S(ScrollContentW), Theme.S(82));
             card.Title = title;
             card.Desc = note;
-            card.Host(sw);
+            card.Host(wrap);
 
             tameList.Controls.Add(card);
             tameGroups.Add(new AcGroup(key, title, "", false, new string[0]));
@@ -173,6 +186,38 @@ namespace AegisApp
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.fso"), Lang.T("set.fso.n"), swFso, out cardH1);
             sy += cardH1 + 8;
 
+            bool nvOk = NvApi.Available;
+            var swNvMax = MakeSwitch(gameMode.NvMaxPerf, null);
+            swNvMax.CheckedChanged += (s, e) => gameMode.NvMaxPerf = swNvMax.Checked;
+            swNvMax.Enabled = nvOk;
+            int cardHNv0;
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvmax"),
+                Lang.T(nvOk ? "set.nvmax.n" : "set.nv.none"), swNvMax, out cardHNv0);
+            sy += cardHNv0 + 8;
+
+            var swNvLat = MakeSwitch(gameMode.NvLowLatency, null);
+            swNvLat.CheckedChanged += (s, e) => gameMode.NvLowLatency = swNvLat.Checked;
+            swNvLat.Enabled = nvOk;
+            int cardHNv1;
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvlat"),
+                Lang.T(nvOk ? "set.nvlat.n" : "set.nv.none"), swNvLat, out cardHNv1);
+            sy += cardHNv1 + 8;
+
+            var frlPicker = new TierPicker();
+            frlPicker.Size = new Size(Theme.S(216), Theme.S(28));
+            frlPicker.Labels = new[] { Lang.T("frl.off"), "60", "120", Lang.T("frl.screen") };
+            string frlMode = gameMode.NvFrlMode;
+            frlPicker.Index = frlMode == "60" ? 1 : frlMode == "120" ? 2 : frlMode == "screen" ? 3 : 0;
+            frlPicker.IndexChanged = delegate(int i)
+            {
+                gameMode.NvFrlMode = i == 1 ? "60" : i == 2 ? "120" : i == 3 ? "screen" : "off";
+            };
+            frlPicker.Enabled = nvOk;
+            int cardHNv2;
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvfrl"),
+                Lang.T(nvOk ? "set.nvfrl.n" : "set.nv.none"), frlPicker, out cardHNv2);
+            sy += cardHNv2 + 8;
+
             sy += 10;
             Section(scroll, Lang.T("sec.system"), 6, sy); sy += 24;
 
@@ -201,10 +246,20 @@ namespace AegisApp
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.netaffinity"), Lang.T("set.netaffinity.n"), swNetAffinity, out cardH6);
             sy += cardH6 + 8;
 
+            swUsbAffinity = MakeSwitch(UsbInterruptAffinityTweak.EnabledByAegis, OnUsbAffinityToggle);
+            int cardHUsb;
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.usbaffinity"), Lang.T("set.usbaffinity.n"), swUsbAffinity, out cardHUsb);
+            sy += cardHUsb + 8;
+
             swVbs = MakeSwitch(VbsTweak.DisabledByAegis, OnVbsToggle);
             int cardH7;
             cardVbs = MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.vbs"), "…", swVbs, out cardH7);
             sy += cardH7 + 8;
+
+            swMpo = MakeSwitch(MpoTweak.DisabledByAegis || MpoTweak.CurrentlyDisabled(), OnMpoToggle);
+            int cardHMpo;
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.mpo"), Lang.T("set.mpo.n"), swMpo, out cardHMpo);
+            sy += cardHMpo + 8;
 
             sy += 10;
             Section(scroll, Lang.T("sec.maint"), 6, sy); sy += 24;
