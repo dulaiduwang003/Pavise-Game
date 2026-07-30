@@ -19,16 +19,27 @@ namespace AegisApp
         [DllImport("kernel32.dll")] private static extern IntPtr LocalFree(IntPtr h);
         [DllImport("powrprof.dll")] private static extern uint PowerWriteACValueIndex(IntPtr root, ref Guid scheme, ref Guid sub, ref Guid setting, uint value);
         [DllImport("powrprof.dll")] private static extern uint PowerWriteDCValueIndex(IntPtr root, ref Guid scheme, ref Guid sub, ref Guid setting, uint value);
+        [DllImport("powrprof.dll")] private static extern uint PowerReadACValueIndex(IntPtr root, ref Guid scheme, ref Guid sub, ref Guid setting, out uint value);
 
         private static readonly Guid SubProcessor   = new Guid("54533251-82be-4824-96c1-47b60b740d00");
         private static readonly Guid CpMinCores     = new Guid("0cc5b647-c1df-4637-891a-dec35c318583");
         private static readonly Guid IdleDisable    = new Guid("5d76a2ca-e8c0-402f-a133-2158492d58ad");
         private static readonly Guid ProcThrottleMin = new Guid("893dee8e-2bef-41e0-89c6-b55d0929964c");
         private static readonly Guid PerfBoostMode  = new Guid("be337238-0d82-4146-a960-4f3749d470c7");
+        // 处理器能效偏好（0 偏性能 / 100 偏省电），默认隐藏但可写；PerfEpp1 是异构 CPU 的效率核类
+        private static readonly Guid PerfEpp        = new Guid("36687f9e-e3a5-4dbf-b1dc-15eb381c6863");
+        private static readonly Guid PerfEpp1       = new Guid("36687f9e-e3a5-4dbf-b1dc-15eb381c6864");
         private static readonly Guid SubPcie        = new Guid("501a4d13-42af-4429-9fd1-a8218c268e20");
         private static readonly Guid PcieAspm       = new Guid("ee12f906-d277-404b-b6da-e5fa1a576df5");
         private static readonly Guid SubUsb         = new Guid("2a737441-1930-4402-8d77-b2bebba308a3");
         private static readonly Guid UsbSelSuspend  = new Guid("48e6b7a6-50f5-4782-a5d4-53bb8f07e226");
+
+        // 竞技档启用 EPP 后使用的最低处理器状态：这是下限而非目标，
+        // 让 CPU 空闲时能降下来腾出热预算，升频响应交给 EPP 而不是靠钉死频率。
+        private const uint AggressiveFloorWithEpp = 20u;
+        // 交流和电池都写最偏性能：降低下限只是让空闲时能歇下来，不削峰值，
+        // 竞技档原来"交流/电池同满血"的取舍照旧成立。
+        private const uint EppMaxPerf = 0u;
 
         private static bool TuneTarget(Guid g, bool aggressive, bool idleDisable)
         {
@@ -36,8 +47,17 @@ namespace AegisApp
             {
                 bool ok = true;
                 bool killIdle = aggressive && idleDisable;
+
+                // 把最低处理器状态钉在 100% 会让无负载时也持续积热，笔记本更早撞温度墙，
+                // 而且并不让主线程更快拿到睿频——真正决定升频积极性的是 EPP。
+                // 但没有 HWP/CPPC 的老 CPU 方案里读不到 EPP，那时降低下限只是净损失，
+                // 所以先确认这台机器认这个设置，认了才换策略，不认就保持原来的满血写法。
+                bool epp = aggressive && ApplyEpp(g);
+                uint floorAc = aggressive ? (epp ? AggressiveFloorWithEpp : 100u) : 35u;
+                uint floorDc = aggressive ? (epp ? AggressiveFloorWithEpp : 100u) : 10u;
+
                 ok &= WritePair(g, SubProcessor, CpMinCores, aggressive ? 100u : 50u, aggressive ? 100u : 20u);
-                ok &= WritePair(g, SubProcessor, ProcThrottleMin, aggressive ? 100u : 35u, aggressive ? 100u : 10u);
+                ok &= WritePair(g, SubProcessor, ProcThrottleMin, floorAc, floorDc);
 
                 ok &= WritePair(g, SubProcessor, PerfBoostMode, 2u, aggressive ? 2u : 3u);
                 ok &= WritePair(g, SubPcie, PcieAspm, aggressive ? 0u : 1u, aggressive ? 0u : 2u);
@@ -50,13 +70,34 @@ namespace AegisApp
                     return false;
                 }
                 Logger.Log(aggressive
-                    ? "电源策略：竞技级（交流/电池同满血：全核心/100%下限/激进睿频"
+                    ? "电源策略：竞技级（全核心/"
+                        + (epp ? AggressiveFloorWithEpp + "%下限+能效偏好偏性能" : "100%下限（本机无能效偏好设置）")
+                        + "/激进睿频"
                         + (killIdle ? "/禁用空闲降低唤醒延迟" : "，空闲状态保持系统默认")
                         + "）"
                     : "电源策略：常规持续性能（保留降频余量，减少热饱和后的频率回落）");
                 return true;
             }
             catch { return false; }
+        }
+
+        // 能效偏好是硬件相关的可选项，绝不并入必须成功的 ok 链：
+        // 写不进去只说明这台机器不支持，不该因此判定整轮电源策略失败。
+        private static bool ApplyEpp(Guid scheme)
+        {
+            if (!SettingPresent(scheme, SubProcessor, PerfEpp)) return false;
+            if (!WritePair(scheme, SubProcessor, PerfEpp, EppMaxPerf, EppMaxPerf)) return false;
+            // 异构 CPU 的效率核类单独有一份，缺了不影响性能核那份已经生效
+            if (CpuTopology.Hybrid && SettingPresent(scheme, SubProcessor, PerfEpp1))
+                WritePair(scheme, SubProcessor, PerfEpp1, EppMaxPerf, EppMaxPerf);
+            return true;
+        }
+
+        private static bool SettingPresent(Guid scheme, Guid sub, Guid setting)
+        {
+            Guid sb = sub, set = setting;
+            uint value;
+            return PowerReadACValueIndex(IntPtr.Zero, ref scheme, ref sb, ref set, out value) == 0;
         }
 
         private static bool WritePair(Guid scheme, Guid sub, Guid setting, uint ac, uint dc)
