@@ -13,8 +13,8 @@ namespace AegisApp
         private readonly string[] labels;
         private readonly string[] glyphs;
         private readonly int[] order;
-        private readonly int groupSlot;
-        private readonly string groupText;
+        private readonly int[] groupSlots;
+        private readonly string[] groupTexts;
         private readonly int anchorCount;
         private int sel;
         private int hoverIdx = -1;
@@ -26,6 +26,10 @@ namespace AegisApp
 
         public int Selected { get { return sel; } }
 
+        internal int ItemCount { get { return labels.Length; } }
+
+        internal int ItemAtSlot(int slot) { return slot >= 0 && slot < order.Length ? order[slot] : -1; }
+
         private int TopPad { get { return Dpi.S(94); } }
         private int ItemH { get { return Dpi.S(44); } }
         private int Gap { get { return Dpi.S(5); } }
@@ -35,11 +39,13 @@ namespace AegisApp
         private int BottomPad { get { return Dpi.S(18); } }
 
         public NavRail(string[] names, string[] icons)
-            : this(names, icons, null, -1, null, 0)
+            : this(names, icons, null, null, null, 0)
         {
         }
 
-        public NavRail(string[] names, string[] icons, int[] displayOrder, int groupBeforeSlot, string groupTitle, int bottomAnchored)
+        // groupBeforeSlots/groupTitles 一一对应，槽位必须升序；每个标题占据它那一槽之前的一行高度
+        public NavRail(string[] names, string[] icons, int[] displayOrder,
+            int[] groupBeforeSlots, string[] groupTitles, int bottomAnchored)
         {
             labels = names; glyphs = icons;
             if (displayOrder != null && displayOrder.Length == names.Length) order = displayOrder;
@@ -48,13 +54,27 @@ namespace AegisApp
                 order = new int[names.Length];
                 for (int i = 0; i < names.Length; i++) order[i] = i;
             }
-            groupSlot = groupTitle == null ? -1 : groupBeforeSlot;
-            groupText = groupTitle ?? "";
+            if (groupTitles != null && groupBeforeSlots != null && groupTitles.Length == groupBeforeSlots.Length)
+            {
+                groupSlots = groupBeforeSlots; groupTexts = groupTitles;
+            }
+            else { groupSlots = new int[0]; groupTexts = new string[0]; }
             anchorCount = bottomAnchored < 0 ? 0 : (bottomAnchored > order.Length ? order.Length : bottomAnchored);
             Cursor = Cursors.Default;
             ind.Speed = 0.30f; ind.Set(SlotY(SlotOfItem(0)));
             logo = IconArt.Render(Dpi.S(34), mode, modeEnabled);
         }
+
+        // 分组标题占一整行，因此它之后的每个槽位都要往下让出一个 GroupH
+        internal static int GroupsAbove(int slot, int[] groupBeforeSlots)
+        {
+            if (groupBeforeSlots == null) return 0;
+            int n = 0;
+            for (int i = 0; i < groupBeforeSlots.Length; i++) if (slot >= groupBeforeSlots[i]) n++;
+            return n;
+        }
+
+        private int GroupsAbove(int slot) { return GroupsAbove(slot, groupSlots); }
 
         private int SlotOfItem(int item)
         {
@@ -67,9 +87,7 @@ namespace AegisApp
             int flowCount = order.Length - anchorCount;
             if (slot >= flowCount && Height > 0)
                 return Height - BottomPad - ItemH - (order.Length - 1 - slot) * Pitch;
-            int y = TopPad + slot * Pitch;
-            if (groupSlot >= 0 && slot >= groupSlot) y += GroupH;
-            return y;
+            return TopPad + slot * Pitch + GroupsAbove(slot) * GroupH;
         }
 
         protected override void OnHandleDestroyed(EventArgs e)
@@ -155,12 +173,15 @@ namespace AegisApp
             using (var bp = Theme.Rounded(bar, Dpi.S(1)))
             using (var bb = new SolidBrush(Theme.Accent)) g.FillPath(bb, bp);
 
-            if (groupSlot >= 0 && groupSlot < order.Length)
+            for (int gi = 0; gi < groupSlots.Length; gi++)
             {
-                int gy = SlotY(groupSlot) - GroupH;
-                int textW = TextRenderer.MeasureText(g, groupText, Theme.Mono(6.5f)).Width;
+                int slot = groupSlots[gi];
+                if (slot < 0 || slot >= order.Length) continue;
+                string text = groupTexts[gi] ?? "";
+                int gy = SlotY(slot) - GroupH;
+                int textW = TextRenderer.MeasureText(g, text, Theme.Mono(6.5f)).Width;
                 int lineY = gy + GroupH / 2;
-                TextRenderer.DrawText(g, groupText, Theme.Mono(6.5f),
+                TextRenderer.DrawText(g, text, Theme.Mono(6.5f),
                     new Rectangle(Pad + Dpi.S(13), gy, Width - Pad * 2 - Dpi.S(13), GroupH), Theme.Faint,
                     TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
                 using (var gp = new Pen(Theme.Stroke))

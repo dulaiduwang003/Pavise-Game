@@ -95,6 +95,34 @@ namespace AegisApp
                         g.DrawLine(pen, x1, y1, x2, y2);
                     }
                 }
+                else if (name == "gpu")
+                {
+                    var board = new RectangleF(x + 2.5f * u, y + 6.5f * u, 19 * u, 11 * u);
+                    using (var path = Theme.Rounded(Rectangle.Round(board), (int)(2.5f * u))) g.DrawPath(pen, path);
+                    using (var fan = new Pen(c, Math.Max(1.2f, 1.5f * u)))
+                        g.DrawEllipse(fan, x + 5.2f * u, y + 8.7f * u, 6.6f * u, 6.6f * u);
+                    using (var vent = new Pen(c, Math.Max(1f, 1.3f * u)))
+                        for (int i = 0; i < 3; i++)
+                        {
+                            float vy = y + (9.6f + i * 2.4f) * u;
+                            g.DrawLine(vent, x + 14.6f * u, vy, x + 18.6f * u, vy);
+                        }
+                }
+                else if (name == "chip")
+                {
+                    var die = new RectangleF(x + 6.5f * u, y + 6.5f * u, 11 * u, 11 * u);
+                    using (var path = Theme.Rounded(Rectangle.Round(die), (int)(2f * u))) g.DrawPath(pen, path);
+                    g.FillRectangle(br, x + 10.6f * u, y + 10.6f * u, 2.8f * u, 2.8f * u);
+                    using (var leg = new Pen(c, Math.Max(1f, 1.4f * u)))
+                        for (int i = 0; i < 3; i++)
+                        {
+                            float t = (9.4f + i * 2.6f) * u;
+                            g.DrawLine(leg, x + t, y + 6.5f * u, x + t, y + 3.4f * u);
+                            g.DrawLine(leg, x + t, y + 17.5f * u, x + t, y + 20.6f * u);
+                            g.DrawLine(leg, x + 6.5f * u, y + t, x + 3.4f * u, y + t);
+                            g.DrawLine(leg, x + 17.5f * u, y + t, x + 20.6f * u, y + t);
+                        }
+                }
                 else if (name == "info")
                 {
                     g.DrawEllipse(pen, x + 3.5f * u, y + 3.5f * u, 17 * u, 17 * u);

@@ -17,55 +17,41 @@ namespace AegisApp
 {
     internal enum AutoHideAction { None, Schedule, Cancel }
 
+    // 导航项与 pages 数组共用这一套序号；新增页面必须同时在 BuildUi 的三个并列数组里补位
+    internal enum PageId
+    {
+        Overview = 0,
+        League = 1,
+        Library = 2,
+        Policy = 3,
+        AntiCheat = 4,
+        Graphics = 5,
+        Environment = 6,
+        Reports = 7,
+        Settings = 8,
+        About = 9,
+        Count = 10
+    }
+
     internal partial class PanelForm : Form
     {
         private readonly Tamer tamer;
         private readonly GameMode gameMode;
         private readonly bool elevated;
 
-        private DBPanel pageGame, pageTame, pageAnti, pageWhite, pageReports, pageSettings, pageAbout;
+        // 各页自己的控件字段声明在对应的 Pages\PanelForm.*Page.cs 里
+        private DBPanel pageOverview, pagePolicy, pageAntiCheat, pageLibrary, pageReports, pageSettings, pageAbout;
+        private DBPanel pageGraphics, pageEnvironment;
         private DBPanel[] pages;
-        private DBPanel tameList;
         private NavRail nav;
-        private Toggle swGame, swTame, swAuto, swGpu, swFso, swVbs, swHags, swIrqAffinity, swNetAffinity, swUsbAffinity, swMpo, swWindowedOpt;
-        private Label lblOverviewBoost, lblEvidenceLive;
-        private Label lblHeroMode, lblHeroSource, lblPolicyMode;
-        private Toggle swPolicyBackground, swPolicyStrict;
-        private Toggle swPolicyNet, swPolicyFg, swPolicyMmcss, swPolicyPauseDl, swPolicyPauseSvc, swPolicyDvr;
-        private Toggle swPolicyAggressive;
         private ModeButton modeButton;
         private ModePickerPanel modeFlyout;
         private PerformancePreset visualMode;
         private bool visualEnabled;
         private bool modeVisualInitialized;
         private Motion modeFlyoutMotion;
-        private TextBox tbReports;
-        private ListBox lstGames;
-        private EmptyStatePanel gameListPanel;
-        private readonly Dictionary<string, Bitmap> gameIconCache = new Dictionary<string, Bitmap>(StringComparer.OrdinalIgnoreCase);
-        private Label lblStatus;
         private Label lblSub;
-        private SettingCard cardVbs;
-        private SettingCard cardShader;
-        private SettingCard cardPolicyStrict, cardPolicyNet, cardPolicyFg, cardPolicyMmcss;
-        private SettingCard cardPolicyPauseDl, cardPolicyPauseSvc, cardPolicyDvr;
-        private SettingCard cardPolicyAggressive;
-        private readonly List<Action> policySync = new List<Action>();
-
-        private static volatile bool shaderCleaning;
-        private int slowBusy;
-        private int restoreBusy;
-        private int runningBusy;
-        private long nextRunningProbeTicks;
-        private int netQosBusy;
-        private string netQosSignature;
-        private static readonly object netQosSync = new object();
         private int builtLang;
-        private StatusDot statusDot;
-        private AegisCore aegisCore;
-        private readonly List<AcGroup> tameGroups = new List<AcGroup>();
-        private readonly List<SettingCard> tameCards = new List<SettingCard>();
-        private readonly List<Toggle> tameToggles = new List<Toggle>();
         private System.Windows.Forms.Timer uiTimer;
         private volatile bool uiActive;
         private bool uiActivityKnown;
@@ -79,14 +65,12 @@ namespace AegisApp
         private Motion introMotion;
         private bool introActive, introPending;
         private int introBaseTop;
-        private Toggle swAutoHide;
         private System.Windows.Forms.Timer autoHideTimer;
         private bool autoHideArmed, lastGameActive;
 
         private const string AutoHideKey = "AutoHideOnGame";
         private const int AutoHideDelayMs = 10000;
         private const int IntroRise = 18;
-        private static readonly long RunningProbeIntervalTicks = TimeSpan.FromSeconds(5).Ticks;
 
         private const int WinW = 1040, WinH = 720, RailW = 208, TopH = 54;
         private const int PageW = WinW - RailW, PageH = WinH - TopH;
@@ -140,10 +124,17 @@ namespace AegisApp
             Font = Theme.UI(9.5f, false);
             AttachFormFrame();
 
+            // 前两个数组按 PageId 顺序排列；第三个是视觉排序，显卡/系统环境与英雄联盟各自成组
             nav = new NavRail(
-                new[] { Lang.T("nav.overview"), LolText("英雄联盟"), Lang.T("nav.library"), Lang.T("nav.policy"), Lang.T("v14.anticheat"), Lang.T("nav.reports"), Lang.T("nav.set"), Lang.T("nav.about") },
-                new[] { "game", "lol", "white", "settings", "shield", "log", "gear", "info" },
-                new[] { 0, 2, 3, 4, 5, 1, 6, 7 }, 5, Lang.T("nav.columns"), 2);
+                new[] { Lang.T("nav.overview"), LolText("英雄联盟"), Lang.T("nav.library"), Lang.T("nav.policy"),
+                        Lang.T("v14.anticheat"), Lang.T("nav.graphics"), Lang.T("nav.env"), Lang.T("nav.reports"),
+                        Lang.T("nav.set"), Lang.T("nav.about") },
+                new[] { "game", "lol", "white", "settings", "shield", "gpu", "chip", "log", "gear", "info" },
+                new[] { (int)PageId.Overview, (int)PageId.Library, (int)PageId.Policy, (int)PageId.AntiCheat,
+                        (int)PageId.Reports, (int)PageId.Graphics, (int)PageId.Environment, (int)PageId.League,
+                        (int)PageId.Settings, (int)PageId.About },
+                new[] { 5, 7 }, new[] { Lang.T("nav.hardware"), Lang.T("nav.columns") }, 2);
+            AssertNavMatchesPageIds(nav);
             nav.SetBounds(0, 0, Theme.S(RailW), Theme.S(WinH));
             nav.SelectionChanged = ShowPage;
             nav.SetMode(visualMode, visualEnabled);
@@ -185,23 +176,28 @@ namespace AegisApp
 
             topBar.Controls.AddRange(new Control[] { lblSub, modeButton, btnMin, btnClose });
 
-            pageGame = MakePage();
-            pageTame = MakePage();
-            pageWhite = MakePage();
-            pageReports = MakePage();
-            pageSettings = MakePage();
-            pageAbout = MakePage();
-            pageAnti = MakePage();
-            pageLol = MakePage();
-            pages = new[] { pageGame, pageLol, pageWhite, pageTame, pageAnti, pageReports, pageSettings, pageAbout };
-            BuildOverviewPageV14();
+            pages = new DBPanel[(int)PageId.Count];
+            pages[(int)PageId.Overview] = pageOverview = MakePage();
+            pages[(int)PageId.League] = pageLol = MakePage();
+            pages[(int)PageId.Library] = pageLibrary = MakePage();
+            pages[(int)PageId.Policy] = pagePolicy = MakePage();
+            pages[(int)PageId.AntiCheat] = pageAntiCheat = MakePage();
+            pages[(int)PageId.Graphics] = pageGraphics = MakePage();
+            pages[(int)PageId.Environment] = pageEnvironment = MakePage();
+            pages[(int)PageId.Reports] = pageReports = MakePage();
+            pages[(int)PageId.Settings] = pageSettings = MakePage();
+            pages[(int)PageId.About] = pageAbout = MakePage();
+            BuildOverviewPage();
             BuildLolPage();
-            BuildLibraryPageV14();
-            BuildPolicyPageV14();
-            BuildAntiCheatPageV14();
-            BuildReportsPageV14();
+            BuildLibraryPage();
+            BuildPolicyPage();
+            BuildAntiCheatPage();
+            BuildGraphicsPage();
+            BuildEnvironmentPage();
+            BuildReportsPage();
             BuildSettingsPage();
             BuildAboutPage();
+            RegisterPages();
 
             Controls.Add(topBar);
             foreach (var p in pages) Controls.Add(p);
@@ -218,13 +214,30 @@ namespace AegisApp
             KeyDown -= OnEscHide;
             KeyDown += OnEscHide;
 
-            nav.Select(0);
+            nav.Select((int)PageId.Overview);
 
             uiTimer = new System.Windows.Forms.Timer();
             uiTimer.Interval = 1200;
             uiTimer.Tick += OnUiTick;
             uiActivityKnown = false;
             SyncUiActivity();
+        }
+
+        // 标题/图标数组必须按 PageId 顺序逐一对应，视觉排序必须恰好是每个 PageId 各出现一次。
+        // 漏一项在运行时只会表现成点错页面，所以在这里直接炸掉，自测构造窗体时就能撞上。
+        private static void AssertNavMatchesPageIds(NavRail rail)
+        {
+            int expected = (int)PageId.Count;
+            if (rail.ItemCount != expected)
+                throw new InvalidOperationException("导航项数量 " + rail.ItemCount + " 与 PageId.Count " + expected + " 不一致");
+            var seen = new bool[expected];
+            for (int slot = 0; slot < expected; slot++)
+            {
+                int item = rail.ItemAtSlot(slot);
+                if (item < 0 || item >= expected) throw new InvalidOperationException("导航视觉排序含越界项 " + item);
+                if (seen[item]) throw new InvalidOperationException("导航视觉排序重复了 " + (PageId)item);
+                seen[item] = true;
+            }
         }
 
         private DBPanel MakePage()
@@ -236,10 +249,53 @@ namespace AegisApp
             return p;
         }
 
-        private static void OwnedImage(PictureBox pb, Image img)
+        // 页面钩子：换页与休眠/唤醒时每页各被告知一次自己是否当前活动页，
+        // 活动页另外按 UI 心跳收到 OnTick。新增页面只在 RegisterPages 里补一行。
+        private sealed class PageHook
         {
-            pb.Image = img;
-            pb.Disposed += delegate { try { img.Dispose(); } catch { } };
+            public readonly DBPanel Panel;
+            public readonly Action<bool> OnActiveChanged;
+            public readonly Action OnTick;
+
+            public PageHook(DBPanel panel, Action<bool> onActiveChanged, Action onTick)
+            {
+                Panel = panel; OnActiveChanged = onActiveChanged; OnTick = onTick;
+            }
+        }
+
+        private PageHook[] pageHooks;
+
+        private void RegisterPages()
+        {
+            pageHooks = new PageHook[(int)PageId.Count];
+            pageHooks[(int)PageId.Overview] = new PageHook(pageOverview,
+                delegate(bool active) { if (aegisCore != null) aegisCore.SetAnimationEnabled(active); }, null);
+            pageHooks[(int)PageId.League] = new PageHook(pageLol,
+                delegate(bool active) { if (active) RefreshLolPage(); }, null);
+            pageHooks[(int)PageId.Library] = new PageHook(pageLibrary,
+                delegate(bool active) { if (active) RefreshGameRunningStates(true); },
+                delegate { RefreshGameRunningStates(); });
+            pageHooks[(int)PageId.Policy] = new PageHook(pagePolicy, null, null);
+            pageHooks[(int)PageId.AntiCheat] = new PageHook(pageAntiCheat, null, RefreshAcGroupStates);
+            pageHooks[(int)PageId.Graphics] = new PageHook(pageGraphics, null, null);
+            pageHooks[(int)PageId.Environment] = new PageHook(pageEnvironment,
+                delegate(bool active) { if (active) RefreshEnvironmentStateAsync(); }, null);
+            pageHooks[(int)PageId.Reports] = new PageHook(pageReports,
+                delegate(bool active) { if (active) RefreshReports(); }, RefreshReports);
+            pageHooks[(int)PageId.Settings] = new PageHook(pageSettings,
+                delegate(bool active) { if (active) RefreshSlowStateAsync(); }, null);
+            pageHooks[(int)PageId.About] = new PageHook(pageAbout, null, null);
+        }
+
+        private void NotifyPageActivation()
+        {
+            if (pageHooks == null) return;
+            for (int i = 0; i < pageHooks.Length; i++)
+            {
+                PageHook hook = pageHooks[i];
+                if (hook == null || hook.OnActiveChanged == null) continue;
+                hook.OnActiveChanged(UiActive && hook.Panel == curPage);
+            }
         }
 
         private void ShowPage(int index)
@@ -252,11 +308,7 @@ namespace AegisApp
             page.Left = pageBaseLeft + Theme.S(16);
             pageSlide.Speed = 0.26f; pageSlide.Set(1f); pageSlide.To(0f);
             if (UiActive) UiClock.Wake();
-            if (aegisCore != null) aegisCore.SetAnimationEnabled(UiActive && page == pageGame);
-            if (UiActive && page == pageLol) RefreshLolPage();
-            if (UiActive && page == pageWhite) RefreshGameRunningStates(true);
-            if (UiActive && page == pageReports) RefreshReportsV14();
-            if (UiActive && page == pageSettings) RefreshSlowStateAsync();
+            NotifyPageActivation();
         }
 
         private void OnFormFrame(object s, EventArgs e)
@@ -383,14 +435,12 @@ namespace AegisApp
 
             RefreshLightweightUiState();
             SyncToggleValues();
-            if (curPage == pageLol) RefreshLolPage();
 
             UiClock.Suspended = false;
-            if (aegisCore != null) aegisCore.SetAnimationEnabled(curPage == pageGame);
             if (uiTimer != null) uiTimer.Start();
             UiClock.Wake();
             UiClock.WakeSlow();
-            if (curPage == pageSettings) RefreshSlowStateAsync();
+            NotifyPageActivation();
         }
 
         private void RefreshLightweightUiState()
@@ -486,340 +536,10 @@ namespace AegisApp
             foreach (Control c in Controls) old.Add(c);
             Controls.Clear();
             foreach (var c in old) c.Dispose();
-            tameGroups.Clear(); tameCards.Clear(); tameToggles.Clear();
+            acGroups.Clear(); acCards.Clear(); acToggles.Clear();
             BuildUi(appIcon);
             nav.Select(keep);
             if (UiActive) RefreshSlowStateAsync();
-        }
-
-        private void OnAutoToggle(object s, EventArgs e)
-        {
-            int rc = swAuto.Checked ? TaskHelper.CreateStartupTask() : TaskHelper.DeleteStartupTask();
-            if (rc != 0)
-            {
-                MessageBox.Show(this, Lang.T("msg.taskfail"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                swAuto.SetSilently(TaskHelper.TaskExists());
-            }
-        }
-
-        private void OnHagsToggle(object s, EventArgs e)
-        {
-            if (!elevated)
-            {
-                MessageBox.Show(this, Lang.T("vbs.needadmin"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                swHags.SetSilently(HagsTweak.EnabledByAegis || HagsTweak.CurrentlyOn());
-                return;
-            }
-            bool ok = swHags.Checked ? HagsTweak.Enable() : HagsTweak.Disable();
-            if (ok) MessageBox.Show(this, Lang.T("hags.reboot"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            swHags.SetSilently(HagsTweak.EnabledByAegis || HagsTweak.CurrentlyOn());
-        }
-
-        private void OnWindowedOptToggle(object s, EventArgs e)
-        {
-            bool ok = swWindowedOpt.Checked ? WindowedOptTweak.Enable() : WindowedOptTweak.Restore();
-            if (!ok) MessageBox.Show(this, Lang.T("winopt.failed"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByAegis || WindowedOptTweak.CurrentlyOn());
-        }
-
-        private void OnUsbAffinityToggle(object s, EventArgs e)
-        {
-            if (!elevated)
-            {
-                MessageBox.Show(this, Lang.T("vbs.needadmin"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                swUsbAffinity.SetSilently(UsbInterruptAffinityTweak.EnabledByAegis);
-                return;
-            }
-            bool ok = swUsbAffinity.Checked ? UsbInterruptAffinityTweak.Enable() : UsbInterruptAffinityTweak.Disable();
-            if (ok) MessageBox.Show(this, Lang.T("irqaffinity.reboot"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            swUsbAffinity.SetSilently(UsbInterruptAffinityTweak.EnabledByAegis);
-        }
-
-        private void OnMpoToggle(object s, EventArgs e)
-        {
-            if (!elevated)
-            {
-                MessageBox.Show(this, Lang.T("vbs.needadmin"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                swMpo.SetSilently(MpoTweak.DisabledByAegis || MpoTweak.CurrentlyDisabled());
-                return;
-            }
-            bool ok = swMpo.Checked ? MpoTweak.Disable() : MpoTweak.Restore();
-            if (ok) MessageBox.Show(this, Lang.T("mpo.reboot"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            swMpo.SetSilently(MpoTweak.DisabledByAegis || MpoTweak.CurrentlyDisabled());
-        }
-
-        private void OnIrqAffinityToggle(object s, EventArgs e)
-        {
-            if (!elevated)
-            {
-                MessageBox.Show(this, Lang.T("vbs.needadmin"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                swIrqAffinity.SetSilently(InterruptAffinityTweak.EnabledByAegis);
-                return;
-            }
-            bool ok = swIrqAffinity.Checked ? InterruptAffinityTweak.Enable() : InterruptAffinityTweak.Disable();
-            if (ok) MessageBox.Show(this, Lang.T("irqaffinity.reboot"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            swIrqAffinity.SetSilently(InterruptAffinityTweak.EnabledByAegis);
-        }
-
-        private void OnNetAffinityToggle(object s, EventArgs e)
-        {
-            if (!elevated)
-            {
-                MessageBox.Show(this, Lang.T("vbs.needadmin"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                swNetAffinity.SetSilently(NetworkAffinityTweak.EnabledByAegis);
-                return;
-            }
-            bool ok;
-            lock (netQosSync)
-            {
-                ok = swNetAffinity.Checked
-                    ? NetworkAffinityTweak.Enable(gameMode.GetProfiles())
-                    : NetworkAffinityTweak.Disable();
-            }
-            if (ok) MessageBox.Show(this, Lang.T("netaffinity.reboot"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            swNetAffinity.SetSilently(NetworkAffinityTweak.EnabledByAegis);
-        }
-
-        private void OnVbsToggle(object s, EventArgs e)
-        {
-            if (swVbs.Checked)
-            {
-                if (!elevated)
-                {
-                    MessageBox.Show(this, Lang.T("vbs.needadmin"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    swVbs.SetSilently(false); return;
-                }
-                var r = MessageBox.Show(this, Lang.T("vbs.warn"), "Aegis", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning);
-                if (r != DialogResult.OK || !VbsTweak.Disable())
-                {
-                    swVbs.SetSilently(false); RefreshVbsState(); return;
-                }
-                RefreshVbsState();
-                MessageBox.Show(this, Lang.T("vbs.done"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            }
-            else
-            {
-                if (!elevated)
-                {
-                    MessageBox.Show(this, Lang.T("vbs.needadmin"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    swVbs.SetSilently(true); return;
-                }
-                if (!VbsTweak.Restore())
-                {
-                    swVbs.SetSilently(VbsTweak.DisabledByAegis);
-                    RefreshVbsState();
-                    MessageBox.Show(this, Lang.T("vbs.restorefail"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    return;
-                }
-                RefreshVbsState();
-                MessageBox.Show(this, Lang.T("vbs.restored"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            }
-        }
-
-        private void OnShaderClean(PillButton btn)
-        {
-            if (shaderCleaning)
-            {
-                if (cardShader != null) cardShader.Value = Lang.T("shader.busy");
-                return;
-            }
-            if (MessageBox.Show(this, Lang.T("shader.confirm"), "Aegis", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning) != DialogResult.OK) return;
-            btn.Enabled = false;
-            shaderCleaning = true;
-            if (cardShader != null) cardShader.Value = Lang.T("shader.busy");
-            ThreadPool.QueueUserWorkItem(_ =>
-            {
-                CacheSweep.Result cr = ShaderCache.Clean();
-                long left = ShaderCache.MeasureBytes();
-                Logger.Log("着色器缓存清理：释放 " + CacheSweep.FmtBytes(cr.FreedBytes)
-                    + (cr.FailedFiles > 0 ? "，" + cr.FailedFiles + " 个文件被占用已跳过" : ""));
-                shaderCleaning = false;
-                try
-                {
-                    BeginInvoke((MethodInvoker)(() =>
-                    {
-                        if (IsDisposed) return;
-                        if (!btn.IsDisposed) btn.Enabled = true;
-                        if (cardShader != null && !cardShader.IsDisposed)
-                            cardShader.Value = CacheSweep.FmtBytes(left);
-                        string msg = Lang.F("shader.freed", CacheSweep.FmtBytes(cr.FreedBytes))
-                            + (cr.FailedFiles > 0 ? "\r\n" + Lang.F("shader.skip", cr.FailedFiles) : "")
-                            + "\r\n\r\n" + Lang.T("shader.note");
-                        MessageBox.Show(this, msg, "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    }));
-                }
-                catch { }
-            });
-        }
-
-        private void RefreshVbsState()
-        {
-            if (cardVbs == null) return;
-            ApplyVbsState(VbsTweak.Query());
-        }
-
-        private void ApplyVbsState(VbsTweak.State st)
-        {
-            if (cardVbs == null) return;
-            string key;
-            if (VbsTweak.DisabledByAegis && (!st.WmiOk || st.VbsRunning)) key = "vbs.state.pending";
-            else if (!st.WmiOk) key = "vbs.state.unknown";
-            else if (st.VbsRunning) key = "vbs.state.on";
-            else key = "vbs.state.off";
-            cardVbs.Desc = Lang.T(key);
-        }
-
-        private void RefreshSlowStateAsync()
-        {
-            if (!UiActive) return;
-            if (Interlocked.Exchange(ref slowBusy, 1) == 1) return;
-            ThreadPool.QueueUserWorkItem(_ =>
-            {
-                bool task = false;
-                var st = new VbsTweak.State();
-                long shaderBytes = -1;
-                try { task = TaskHelper.TaskExists(); st = VbsTweak.Query(); } catch { }
-                try { if (!shaderCleaning) shaderBytes = ShaderCache.MeasureBytes(); } catch { }
-                Interlocked.Exchange(ref slowBusy, 0);
-                if (!UiActive) return;
-                try
-                {
-                    BeginInvoke((MethodInvoker)(() =>
-                    {
-                        if (IsDisposed || !UiActive) return;
-                        if (swAuto != null) swAuto.SetSilently(task);
-                        if (swVbs != null) swVbs.SetSilently(VbsTweak.DisabledByAegis);
-                        ApplyVbsState(st);
-                        if (cardShader != null && !shaderCleaning && shaderBytes >= 0)
-                            cardShader.Value = CacheSweep.FmtBytes(shaderBytes);
-                    }));
-                }
-                catch { }
-            });
-        }
-
-        private DialogResult ShowDim(Form dlg)
-        {
-            Opacity = 0.55;
-            try { return dlg.ShowDialog(this); }
-            finally { Opacity = 1.0; }
-        }
-
-        private void AddGameFromRunningProcess()
-        {
-            using (var dlg = new ProcessPickerDialog())
-            {
-                if (ShowDim(dlg) != DialogResult.OK || string.IsNullOrEmpty(dlg.SelectedPath)) return;
-                string error;
-                if (!gameMode.AddGameFile(dlg.SelectedPath, out error) && !string.IsNullOrEmpty(error))
-                    MessageBox.Show(this, error, "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                RefreshGames();
-            }
-        }
-
-        private void BrowseGameExecutable()
-        {
-            using (var dlg = new OpenFileDialog())
-            {
-                dlg.Title = Lang.T("ofd.game");
-                dlg.Filter = Lang.T("ofd.filter");
-                if (dlg.ShowDialog(this) == DialogResult.OK)
-                {
-                    string error;
-                    if (!gameMode.AddGameFile(dlg.FileName, out error))
-                        MessageBox.Show(this, error, "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    RefreshGames();
-                }
-            }
-        }
-
-        private void RefreshGames()
-        {
-            if (lstGames == null) return;
-            List<GameProfile> profiles = gameMode.GetProfiles();
-            var paths = new List<string>();
-            foreach (GameProfile profile in profiles) paths.Add(profile.ExecutablePath);
-            Dictionary<string, bool> states = ProbeRunning(paths);
-            lstGames.BeginUpdate();
-            lstGames.Items.Clear();
-            foreach (GameProfile profile in profiles)
-                lstGames.Items.Add(new GameLibraryItem(profile, RunningIn(states, profile.ExecutablePath)));
-            lstGames.EndUpdate();
-            bool empty = lstGames.Items.Count == 0;
-            lstGames.Visible = !empty;
-            if (gameListPanel != null) { gameListPanel.ShowEmpty = empty; gameListPanel.Invalidate(); }
-            SyncNetQosPolicies(profiles);
-        }
-
-        private void RefreshGameRunningStates(bool force = false)
-        {
-            if (!UiActive || lstGames == null) return;
-            long now = DateTime.UtcNow.Ticks;
-            if (!force && now < Interlocked.Read(ref nextRunningProbeTicks)) return;
-            if (Interlocked.Exchange(ref runningBusy, 1) == 1) return;
-            Interlocked.Exchange(ref nextRunningProbeTicks, now + RunningProbeIntervalTicks);
-            var paths = new List<string>();
-            foreach (object value in lstGames.Items)
-            {
-                GameLibraryItem item = value as GameLibraryItem;
-                if (item != null && item.Profile != null) paths.Add(item.Profile.ExecutablePath);
-            }
-            ThreadPool.QueueUserWorkItem(_ =>
-            {
-                Dictionary<string, bool> states = null;
-                try { states = ProbeRunning(paths); }
-                catch { }
-                Interlocked.Exchange(ref runningBusy, 0);
-                if (states == null || !UiActive) return;
-                try
-                {
-                    BeginInvoke((MethodInvoker)(() =>
-                    {
-                        if (IsDisposed || !UiActive || lstGames == null) return;
-                        ApplyRunningStates(states);
-                    }));
-                }
-                catch { }
-            });
-        }
-
-        private void ApplyRunningStates(Dictionary<string, bool> states)
-        {
-            bool changed = false;
-            foreach (object value in lstGames.Items)
-            {
-                GameLibraryItem item = value as GameLibraryItem;
-                if (item == null || item.Profile == null) continue;
-                string path = item.Profile.ExecutablePath;
-                bool running;
-                if (string.IsNullOrEmpty(path) || !states.TryGetValue(path, out running)) continue;
-                if (running != item.Running) { item.Running = running; changed = true; }
-            }
-            if (changed) lstGames.Invalidate();
-        }
-
-        private void SyncNetQosPolicies(List<GameProfile> profiles)
-        {
-            var sb = new System.Text.StringBuilder();
-            foreach (GameProfile profile in profiles)
-            {
-                if (string.IsNullOrEmpty(profile.ExecutablePath)) continue;
-                sb.Append(profile.Name).Append('>').Append(profile.ExecutablePath).Append('|');
-            }
-            string signature = sb.ToString();
-            if (netQosSignature == null || netQosSignature == signature) { netQosSignature = signature; return; }
-            netQosSignature = signature;
-            if (!NetworkAffinityTweak.EnabledByAegis) return;
-            if (Interlocked.Exchange(ref netQosBusy, 1) == 1) return;
-            ThreadPool.QueueUserWorkItem(_ =>
-            {
-                lock (netQosSync)
-                {
-                    Interlocked.Exchange(ref netQosBusy, 0);
-                    try { NetworkAffinityTweak.Enable(gameMode.GetProfiles()); }
-                    catch { }
-                }
-            });
         }
 
         protected override void WndProc(ref Message m)
@@ -833,117 +553,22 @@ namespace AegisApp
             base.WndProc(ref m);
         }
 
-        private void AddDroppedGames(string[] files)
+        private PageHook CurrentPageHook()
         {
-            if (files == null) return;
-            string error = null;
-            foreach (string file in files)
-                if (!gameMode.AddGameFile(file, out error) && error != "该游戏已经在列表中") break;
-            if (!string.IsNullOrEmpty(error) && error != "该游戏已经在列表中")
-                MessageBox.Show(this, error, "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            RefreshGames();
-        }
-
-        private static bool RunningIn(Dictionary<string, bool> states, string executablePath)
-        {
-            bool running;
-            return !string.IsNullOrEmpty(executablePath)
-                && states.TryGetValue(executablePath, out running) && running;
-        }
-
-        private static Dictionary<string, bool> ProbeRunning(List<string> paths)
-        {
-            var result = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
-            var wanted = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
-            foreach (string path in paths)
-            {
-                if (string.IsNullOrEmpty(path) || result.ContainsKey(path)) continue;
-                result[path] = false;
-                string name;
-                try { name = Path.GetFileNameWithoutExtension(path); }
-                catch { continue; }
-                if (string.IsNullOrEmpty(name)) continue;
-                List<string> bucket;
-                if (!wanted.TryGetValue(name, out bucket)) { bucket = new List<string>(); wanted[name] = bucket; }
-                bucket.Add(path);
-            }
-            if (wanted.Count == 0) return result;
-            Process[] all = null;
-            try
-            {
-                all = Process.GetProcesses();
-                foreach (Process process in all)
-                {
-                    List<string> bucket = null;
-                    int pid = 0;
-                    try { wanted.TryGetValue(process.ProcessName, out bucket); pid = process.Id; }
-                    catch { continue; }
-                    if (bucket == null) continue;
-                    IntPtr handle = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
-                    if (handle == IntPtr.Zero) continue;
-                    string image;
-                    try { image = Native.ImagePath(handle); }
-                    finally { Native.CloseHandle(handle); }
-                    if (string.IsNullOrEmpty(image)) continue;
-                    foreach (string path in bucket)
-                        if (string.Equals(path, image, StringComparison.OrdinalIgnoreCase)) result[path] = true;
-                }
-            }
-            catch { }
-            finally { if (all != null) foreach (Process process in all) process.Dispose(); }
-            return result;
-        }
-
-        private Bitmap GameIcon(string executablePath)
-        {
-            string key = executablePath ?? "";
-            Bitmap bitmap;
-            if (gameIconCache.TryGetValue(key, out bitmap)) return bitmap;
-            try
-            {
-                using (Icon icon = Icon.ExtractAssociatedIcon(executablePath)) bitmap = icon.ToBitmap();
-            }
-            catch { bitmap = appIcon == null ? new Bitmap(32, 32) : appIcon.ToBitmap(); }
-            gameIconCache[key] = bitmap;
-            return bitmap;
-        }
-
-        private sealed class GameLibraryItem
-        {
-            public readonly GameProfile Profile;
-            public bool Running;
-            public GameLibraryItem(GameProfile profile, bool running) { Profile = profile; Running = running; }
-            public override string ToString() { return Profile == null ? "" : Profile.Name; }
+            if (pageHooks == null || curPage == null) return null;
+            for (int i = 0; i < pageHooks.Length; i++)
+                if (pageHooks[i] != null && pageHooks[i].Panel == curPage) return pageHooks[i];
+            return null;
         }
 
         private void OnUiTick(object s, EventArgs e)
         {
             if (!UiActive) return;
             UpdateAutoHide(gameMode.Enabled && gameMode.IsActive);
-            lblStatus.Text = gameMode.StatusText;
-            bool act = gameMode.Enabled && gameMode.IsActive;
-            statusDot.Color = !gameMode.Enabled ? Theme.Dim : (act ? Theme.Green : Theme.Accent);
-            statusDot.Pulse = act;
-            if (aegisCore != null) aegisCore.SetState(gameMode.ActivePreset, gameMode.Enabled, act);
-            if (lblSub != null && elevated)
-            {
-                string g = gameMode.ActiveGame;
-                string st = Lang.T("title.admin") + " · " + (g != null ? Lang.F("title.guard", g) : Lang.T("title.idle"));
-                if (lblSub.Text != st) lblSub.Text = st;
-                lblSub.ForeColor = g != null ? Theme.Green : Theme.Faint;
-            }
-            RefreshBoostPresentation();
+            RefreshLightweightUiState();
             UpdateModePresentation(true);
-            if (pageReports.Visible) RefreshReportsV14();
-            if (pageWhite.Visible) RefreshGameRunningStates();
-            if (pageAnti.Visible)
-                for (int i = 0; i < tameGroups.Count; i++)
-                {
-                    string key = tameGroups[i].Key;
-                    int state = tamer.GroupState(key);
-                    tameCards[i].SetValue(tamer.GroupStatus(key),
-                        state == 1 ? Theme.Green : state == 0 ? Theme.Dim : Theme.Accent);
-                }
+            PageHook hook = CurrentPageHook();
+            if (hook != null && hook.OnTick != null) hook.OnTick();
         }
 
         internal static AutoHideAction NextAutoHide(bool gameActive, ref bool lastActive, ref bool armed,
@@ -1064,22 +689,22 @@ namespace AegisApp
             SyncToggleValues();
             RefreshLolPage();
             RefreshSlowStateAsync();
+            RefreshEnvironmentStateAsync();
         }
 
         private void SyncToggleValues()
         {
             if (gameMode == null || tamer == null) return;
             if (swGame != null) swGame.SetSilently(gameMode.Enabled);
-            if (swTame != null) swTame.SetSilently(!tamer.Paused);
-            if (swGpu != null) swGpu.SetSilently(gameMode.GpuHighPerf);
-            if (swFso != null) swFso.SetSilently(gameMode.DisableFso);
-            if (swVbs != null) swVbs.SetSilently(VbsTweak.DisabledByAegis);
+            if (swAcMaster != null) swAcMaster.SetSilently(!tamer.Paused);
             if (swAutoHide != null) swAutoHide.SetSilently(Settings.Load(AutoHideKey, false));
             if (swPolicyBackground != null) swPolicyBackground.SetSilently(gameMode.SuppressBackground);
             for (int i = 0; i < policySync.Count; i++) policySync[i]();
+            SyncGraphicsToggles();
+            SyncEnvironmentToggles();
             UpdateModePresentation(false);
-            for (int i = 0; i < tameGroups.Count && i < tameToggles.Count; i++)
-                tameToggles[i].SetSilently(tamer.IsGroupEnabled(tameGroups[i].Key));
+            for (int i = 0; i < acGroups.Count && i < acToggles.Count; i++)
+                acToggles[i].SetSilently(tamer.IsGroupEnabled(acGroups[i].Key));
         }
 
         public void RenderTo(string path, int pageIndex, bool showAntiCheat = false, bool showModePicker = false, string previewMode = null)
@@ -1095,7 +720,7 @@ namespace AegisApp
                 if (curPage != null) curPage.Left = pageBaseLeft;
             }
             OnUiTick(null, EventArgs.Empty);
-            if (showAntiCheat) { nav.Select(4); nav.SnapToSelection(); if (curPage != null) curPage.Left = pageBaseLeft; }
+            if (showAntiCheat) { nav.Select((int)PageId.AntiCheat); nav.SnapToSelection(); if (curPage != null) curPage.Left = pageBaseLeft; }
             PerformancePreset? preview = previewMode == "competitive" ? PerformancePreset.Competitive
                 : previewMode == "custom" ? PerformancePreset.Custom
                 : previewMode == "standard" ? PerformancePreset.Standard : (PerformancePreset?)null;

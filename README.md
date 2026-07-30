@@ -97,7 +97,7 @@ HAGS 开关会修改系统 GPU 调度设置，需要重启后生效，原值会�
 
 VBS 开关会修改 DeviceGuard 相关注册表值和 `hypervisorlaunchtype`，同样需要重启，关闭后会影响内存完整性、WSL2、Docker、Hyper-V 和 Windows 沙盒，这个取舍需要用户自己决定。
 
-这两项都是持久系统设置，不属于自动会话调度，恢复失败时快照会保留。
+这两项都是持久系统设置，不属于自动会话调度，恢复失败时快照会保留。它们和 MPO、显卡/网卡/USB 中断亲和一起集中在「系统环境」页——这一页的六项全部需要重启才生效，而且卸载 Aegis 之后依然留在机器上，所以和随会话来去的调度项分开放。
 
 ## 界面
 
@@ -152,7 +152,7 @@ dev.cmd test   rem 构建含自测的版本，跑完自测并输出结果摘要
 
 - `src/Core` 放目标识别、调度、压制和恢复逻辑
 - `src/Platform` 放 Windows 原生接口、设置、路径和系统服务封装
-- `src/Ui` 放 WinForms 界面和自绘控件
+- `src/Ui` 放 WinForms 界面和自绘控件；`src/Ui/Pages` 一页一个文件，`src/Ui/Controls` 放自绘控件
 - `tests` 放项目自测（仅在 `build.cmd xxx.exe --selftest` 时编入，发布构建不含测试代码）
 - `scripts` 放应用冒烟测试
 

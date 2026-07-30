@@ -5,6 +5,36 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- The Settings page had grown into a dump for three unrelated kinds of switch: per-game GPU tweaks,
+  reboot-level kernel changes, and app preferences. Scrolling for the autostart toggle put VBS and
+  MPO one mis-click away. It is now split by risk. A new **Graphics** page holds the per-game GPU
+  items (high-performance preference, FSO, NVIDIA power/latency/frame cap) plus the windowed-game
+  optimization; a new **System environment** page holds the six changes that need a reboot and
+  survive uninstalling Aegis (HAGS, VBS, MPO, GPU/NIC/USB interrupt affinity), behind a banner that
+  says so. Settings keeps only app preferences and the maintenance tools. No switch changed what it
+  does, and no stored setting key moved.
+- The navigation rail now supports more than one group heading; Graphics and System environment sit
+  under a new "hardware and system" group.
+
+### Internal
+
+- Page code is one file per page under `src/Ui/Pages`, replacing `PanelForm.Pages.cs` and
+  `PanelForm.V14Pages.cs`, whose names had stopped matching their contents. Each page now declares
+  its own controls instead of sharing one field block in `PanelForm.cs`, which drops that file from
+  1138 to about 700 lines.
+- Page switching, the UI heartbeat and the sleep/wake path used to each carry their own chain of
+  `if (page == ...)` branches that had to be edited in lockstep. They now dispatch through one page
+  hook table, so adding a page touches a single registration. `OnUiTick` also stopped re-implementing
+  `RefreshLightweightUiState` inline.
+- Page identity is a `PageId` enum instead of bare integers that were duplicated across the nav
+  arrays, the screenshot harness and the page array ordering. Misleading names are gone:
+  `pageTame` was the policy page while `tameList` belonged to the anti-cheat page, and `pageWhite`
+  was the game library, not the whitelist.
+
 ## [1.5] - 2026-07-29
 
 ### Fixed

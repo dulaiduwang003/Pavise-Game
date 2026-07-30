@@ -76,7 +76,7 @@ namespace AegisApp
                 try
                 {
                     var scMode = new GameMode(sdir, scCore);
-                    if (idx == 2)
+                    if (idx == (int)PageId.Library)
                     {
                         string demoDir = Path.Combine(sdir, "NebulaStrike", "Binaries", "Win64");
                         Directory.CreateDirectory(demoDir);

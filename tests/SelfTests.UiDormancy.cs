@@ -35,6 +35,27 @@ namespace AegisApp
             Eq(33, AegisCore.DesiredFrameInterval(true, true));
             Eq(200, AegisCore.DesiredFrameInterval(true, false));
 
+            // 导航多分组：标题只把它之后的槽位往下推，之前的不受影响
+            int[] groups = { 5, 7 };
+            Eq(0, NavRail.GroupsAbove(0, groups));
+            Eq(0, NavRail.GroupsAbove(4, groups));
+            Eq(1, NavRail.GroupsAbove(5, groups));
+            Eq(1, NavRail.GroupsAbove(6, groups));
+            Eq(2, NavRail.GroupsAbove(7, groups));
+            Eq(2, NavRail.GroupsAbove(9, groups));
+            Eq(0, NavRail.GroupsAbove(3, null));
+            Eq(0, NavRail.GroupsAbove(3, new int[0]));
+
+            // 帧率上限档位与写入 DRS 的模式串必须双向一致，越界索引落回「关」
+            Eq("off", PanelForm.FrlModeOf(0));
+            Eq("60", PanelForm.FrlModeOf(1));
+            Eq("120", PanelForm.FrlModeOf(2));
+            Eq("screen", PanelForm.FrlModeOf(3));
+            Eq("off", PanelForm.FrlModeOf(9));
+            for (int i = 0; i <= 3; i++) Eq(i, PanelForm.FrlIndexOf(PanelForm.FrlModeOf(i)));
+            Eq(0, PanelForm.FrlIndexOf("nonsense"));
+            Eq(0, PanelForm.FrlIndexOf(null));
+
             bool wasSuspended = UiClock.Suspended;
             try
             {
