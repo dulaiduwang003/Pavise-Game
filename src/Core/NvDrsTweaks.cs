@@ -12,8 +12,6 @@ namespace AegisApp
         private const string ListKey = "NvDrsList";
         private const string SnapPrefix = "NvDrs_";
         public const string KeyPState = "pstate";
-        public const string KeyPreRender = "prerender";
-        public const string KeyLowLatency = "latency";
         public const string KeyFrl = "frl";
 
         private static readonly object sync = new object();
@@ -21,24 +19,17 @@ namespace AegisApp
         private static uint SettingIdOf(string key)
         {
             if (key == KeyPState) return NvApi.SettingPreferredPState;
-            if (key == KeyPreRender) return NvApi.SettingPreRenderLimit;
-            if (key == KeyFrl) return NvApi.SettingFrlFps;
-            return NvApi.SettingLowLatency;
+            return NvApi.SettingFrlFps;
         }
 
-        public static void ApplyForGame(string exePath, bool maxPerf, bool lowLatency, int frlFps)
+        public static void ApplyForGame(string exePath, bool maxPerf, int frlFps)
         {
-            if (string.IsNullOrEmpty(exePath) || !maxPerf && !lowLatency && frlFps <= 0) return;
+            if (string.IsNullOrEmpty(exePath) || !maxPerf && frlFps <= 0) return;
             if (!NvApi.Available) return;
             string exeName = Path.GetFileName(exePath);
             if (string.IsNullOrEmpty(exeName)) return;
             var desired = new List<KeyValuePair<string, uint>>();
             if (maxPerf) desired.Add(new KeyValuePair<string, uint>(KeyPState, NvApi.PStatePreferMax));
-            if (lowLatency)
-            {
-                desired.Add(new KeyValuePair<string, uint>(KeyPreRender, 1));
-                desired.Add(new KeyValuePair<string, uint>(KeyLowLatency, 2));
-            }
             if (frlFps > 0) desired.Add(new KeyValuePair<string, uint>(KeyFrl, (uint)frlFps));
             lock (sync)
             {
@@ -71,18 +62,28 @@ namespace AegisApp
                         }
                     }
                     bool wrote = false;
+                    var failed = new List<string>();
                     foreach (var item in desired)
                     {
                         uint current;
                         if (NvApi.TryGetDword(session, profile, SettingIdOf(item.Key), out current) == 1
                             && current == item.Value) continue;
                         if (NvApi.SetDword(session, profile, SettingIdOf(item.Key), item.Value)) wrote = true;
-                        else Logger.Log("NVIDIA 驱动调优：写入 " + item.Key + " 失败 (" + exeName + ")");
+                        else
+                        {
+                            failed.Add(item.Key);
+                            Logger.Log("NVIDIA 驱动调优：写入 " + item.Key + " 失败 (" + exeName + ")");
+                        }
                     }
                     if (wrote && NvApi.SaveSession(session))
-                        Logger.Log("NVIDIA 驱动调优：" + exeName
-                            + (maxPerf ? " 电源最高性能" : "") + (lowLatency ? " 低延迟Ultra" : "")
-                            + (frlFps > 0 ? " 帧上限" + frlFps : ""));
+                    {
+                        // 按逐项的实际写入结果汇报，不按用户开关。之前这里用的是入参，
+                        // 只要有任意一项写成功就把每一项都报成生效，写失败的那项照样
+                        // 出现在成功行里，跟"不为了显示好看而报成功"这条自相矛盾。
+                        string done = (maxPerf && !failed.Contains(KeyPState) ? " 电源最高性能" : "")
+                            + (frlFps > 0 && !failed.Contains(KeyFrl) ? " 帧上限" + frlFps : "");
+                        if (done.Length > 0) Logger.Log("NVIDIA 驱动调优：" + exeName + done);
+                    }
                 }
                 finally { NvApi.CloseSession(session); }
             }

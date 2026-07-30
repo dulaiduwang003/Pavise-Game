@@ -106,12 +106,6 @@ namespace AegisApp
             Native.EnableElevatedFileDrop(Handle);
             AttachFormFrame();
             Native.RoundCorners(Handle);
-            // 启动时用的是系统 DPI；窗口若开在缩放不同的另一块屏上这里会不一致。
-            // 不在句柄刚创建时重建（那会在构造途中拆掉刚建好的控件），只记下目标 DPI，
-            // 由 ShowPanel 在真正要显示之前连同重建一起处理——这里同样不能只改
-            // Dpi.Scale 就走，那会让整个界面按旧缩放建、按新缩放画。
-            int handleDpi = Dpi.WindowDpi(Handle);
-            if (handleDpi > 0 && Dpi.WouldChange(handleDpi)) pendingDpi = handleDpi;
             uiActivityKnown = false;
             SyncUiActivity();
             if (UiActive) RefreshSlowStateAsync();
@@ -548,18 +542,6 @@ namespace AegisApp
             if (UiActive) RefreshSlowStateAsync();
         }
 
-        private const int WM_DPICHANGED = 0x02E0;
-        private const int DpiRebuildCooldownMs = 3000;
-        // 重试要落在冷却窗口之外，否则第一次重试必然又判成"距上次重建过近"
-        private const int DpiRetryMs = 3200;
-        // 待重建的目标 DPI；0 表示没有积压。存 DPI 而不是 bool，是因为推迟时
-        // 一律不动 Dpi.Scale，真正要重建时还得知道目标值是多少。
-        private int pendingDpi;
-        private int dpiHandling;
-        private int lastDpiRebuildTicks;
-        private bool haveRebuiltForDpi;
-        private System.Windows.Forms.Timer dpiRetry;
-
         protected override void WndProc(ref Message m)
         {
             if (m.Msg == Native.WM_DROPFILES)
@@ -568,135 +550,30 @@ namespace AegisApp
                 m.Result = IntPtr.Zero;
                 return;
             }
-            if (m.Msg == WM_DPICHANGED)
-            {
-                ApplyDpiChange(m.WParam, m.LParam);
-                m.Result = IntPtr.Zero;
-                return;
-            }
             base.WndProc(ref m);
         }
 
-        // 推迟重建的理由。抽成静态纯函数是为了能自测——这一段的分支组合正是
-        // 整个 DPI 处理里唯一有风险的地方，靠界面没法覆盖。
-        internal static string DpiDeferReason(bool disposed, bool visible, bool minimized,
-            bool gameActive, bool withinCooldown)
-        {
-            if (disposed) return "面板已销毁";
-            if (!visible || minimized) return "面板不可见";
-            // 对局期间即使面板开着也不能重建：游戏切换全屏会改变有效 DPI，
-            // 在这里动窗口等于反复把游戏挤出全屏。
-            if (gameActive) return "对局进行中";
-            // 兜底：拖窗过屏是一次性的用户动作，几秒内连续到达只可能是反馈震荡
-            if (withinCooldown) return "距上次重建过近";
-            return null;
-        }
-
-        // Environment.TickCount 每约 49.7 天回绕成负数，补码减法在回绕处依然给出
-        // 正确的间隔，所以只能用差值比较，不能直接比大小。用它而不是 DateTime 是
-        // 因为系统时间被 NTP 或用户往前拨会让墙上时钟的差值变负，那会把冷却判成
-        // 永远成立，界面就再也不重建了。
-        internal static bool WithinCooldown(int now, int last, bool everRebuilt, int cooldownMs)
-        {
-            if (!everRebuilt) return false;
-            int elapsed = unchecked(now - last);
-            return elapsed >= 0 && elapsed < cooldownMs;
-        }
-
-        private string CurrentDeferReason()
-        {
-            return DpiDeferReason(IsDisposed, Visible,
-                WindowState == FormWindowState.Minimized,
-                gameMode != null && gameMode.Enabled && gameMode.IsActive,
-                WithinCooldown(Environment.TickCount, lastDpiRebuildTicks,
-                    haveRebuiltForDpi, DpiRebuildCooldownMs));
-        }
-
-        // PerMonitorV2 下切换显示器或改缩放时，系统只按新 DPI 放大顶层窗口，
-        // 子控件的像素坐标仍是用旧缩放算死的，于是内容缩在左上角、其余是空背景。
+        // 进程声明的是 PerMonitorV2，换屏或改缩放后系统会按新 DPI 放大窗口，而界面里
+        // 九百多处控件坐标和缓存字体都是按启动时那个缩放算死的，于是内容缩在左上角、
+        // 放大出来的部分是空背景。
         //
-        // 但重建绝不能无条件立刻做。重建会改变窗口尺寸和位置，跨到另一块缩放不同的屏上
-        // 就会再收到一条 WM_DPICHANGED，两块屏之间来回弹、每次都整窗重建；而游戏切换全屏
-        // 本身就会改变有效 DPI，于是在对局期间反复把游戏挤出全屏。实测 45 秒内弹了 10 次。
-        //
-        // 关键是：推迟必须是"什么都没发生"。改了 Dpi.Scale 或丢了字体缓存却不重建，
-        // 界面就停在布局旧、自绘文字新的混排状态，而且没有任何东西会来纠正它——
-        // 实测过一次，导航栏字号放大到只剩四项、模式下拉框文字溢出红框。
-        private void ApplyDpiChange(IntPtr wParam, IntPtr lParam)
-        {
-            int dpi = (int)((uint)wParam.ToInt64() & 0xFFFF);
-            if (dpi <= 0) return;
-            if (Interlocked.Exchange(ref dpiHandling, 1) == 1) return;
-            try
-            {
-                if (!Dpi.WouldChange(dpi)) return;
-                string defer = CurrentDeferReason();
-                if (defer != null)
-                {
-                    if (pendingDpi != dpi)
-                        Logger.Log("界面缩放已变化（DPI " + dpi + "），" + defer + "，推迟重建");
-                    pendingDpi = dpi;
-                    ScheduleDpiRetry();
-                    return;
-                }
-                RebuildForDpi(dpi);
-            }
-            finally { Interlocked.Exchange(ref dpiHandling, 0); }
-        }
-
-        // 改缩放的唯一入口：Scale、字体缓存和整窗重建必须一起发生，分开就是混排。
-        // 不移动窗口：系统在发这条消息前已经把窗口摆到新位置了，我们只需要按新缩放
-        // 重设自己的尺寸并重建内容。再去写 Location 会把窗口推向另一块屏，
-        // 正是之前来回震荡的起因。
-        private void RebuildForDpi(int dpi)
-        {
-            Dpi.Update(dpi);
-            Theme.DropFontCache();
-            pendingDpi = 0;
-            lastDpiRebuildTicks = Environment.TickCount;
-            haveRebuiltForDpi = true;
-            Logger.Log("界面缩放随显示器变化重建：DPI " + dpi);
-            RebuildUi();
-        }
-
-        // 推迟的理由迟早会自己消失（冷却到期、对局结束），但没有任何外部事件会来
-        // 通知，而面板已经显示着的话 ShowPanel 也不会再被调用——不自己排一次重试，
-        // 积压的缩放就永远落不了地。重试里重新判断，条件还不满足就再排一次。
-        private void ScheduleDpiRetry()
-        {
-            if (IsDisposed || pendingDpi <= 0) return;
-            if (dpiRetry == null)
-            {
-                dpiRetry = new System.Windows.Forms.Timer();
-                dpiRetry.Interval = DpiRetryMs;
-                dpiRetry.Tick += OnDpiRetryTick;
-            }
-            dpiRetry.Stop();
-            dpiRetry.Start();
-        }
-
-        private void OnDpiRetryTick(object sender, EventArgs e)
-        {
-            if (dpiRetry != null) dpiRetry.Stop();
-            if (IsDisposed) return;
-            int dpi = pendingDpi;
-            if (dpi <= 0) return;
-            // 期间可能已经被别的路径重建过（比如用户重开了面板），那就没得可做
-            if (!Dpi.WouldChange(dpi)) { pendingDpi = 0; return; }
-            if (CurrentDeferReason() != null) { ScheduleDpiRetry(); return; }
-            RebuildForDpi(dpi);
-        }
-
-        // 面板即将显示：先按窗口当前所在的显示器校正，再把积压的缩放落地。
-        // 这条路径不看可见性和冷却——用户主动打开面板本身就要重建窗口内容，
-        // 而且此刻 Show() 还没执行，用可见性判断会把自己永久挡在门外。
+        // 这里只在面板即将显示时校正，不去监听 WM_DPICHANGED。自动响应那条路要正确
+        // 就得回答"什么时候可以动窗口"：重建会改变窗口尺寸，跨到另一块缩放不同的屏上
+        // 又会收到新的消息，两块屏之间来回弹，而游戏切全屏也会改变有效 DPI——为了不
+        // 在对局中动窗口，得加推迟条件、冷却、补偿重试，一整套状态机，而它守护的只是
+        // 一个纯外观问题。改成只在打开面板时校正，重建就只发生在用户主动切出来的时刻，
+        // 那类风险不是被挡住而是不存在了；代价仅仅是面板正开着时改缩放要关掉再打开。
         private void ApplyPendingDpiRebuild()
         {
             if (IsDisposed) return;
             int dpi = Dpi.WindowDpi(Handle);
-            if (dpi > 0 && Dpi.WouldChange(dpi)) pendingDpi = dpi;
-            if (pendingDpi <= 0) return;
-            RebuildForDpi(pendingDpi);
+            if (dpi <= 0 || !Dpi.WouldChange(dpi)) return;
+            // Scale、字体缓存和整窗重建必须一起发生：只改前两样而不重建，界面会停在
+            // 布局按旧缩放、自绘文字按新缩放的混排状态。
+            Dpi.Update(dpi);
+            Theme.DropFontCache();
+            Logger.Log("界面缩放校正后重建：DPI " + dpi);
+            RebuildUi();
         }
 
 
@@ -794,7 +671,6 @@ namespace AegisApp
         {
             CancelAutoHide();
             if (uiTimer != null) uiTimer.Stop();
-            if (dpiRetry != null) { dpiRetry.Stop(); dpiRetry.Dispose(); dpiRetry = null; }
             uiActive = false;
             uiActivityKnown = true;
             UiClock.Suspended = true;

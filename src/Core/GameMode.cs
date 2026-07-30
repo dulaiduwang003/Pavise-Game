@@ -83,7 +83,6 @@ namespace AegisApp
         private volatile bool gpuHighPerf;
         private volatile bool disableFso;
         private volatile bool nvMaxPerf;
-        private volatile bool nvLowLatency;
         private volatile string nvFrlMode = "off";
         private volatile bool killGameDvr;
         private volatile bool hzGuard;
@@ -165,7 +164,6 @@ namespace AegisApp
             gpuHighPerf = Settings.Load("GpuHighPerf", true);
             disableFso = Settings.Load("DisableFso", false);
             nvMaxPerf = Settings.Load("NvMaxPerf", false);
-            nvLowLatency = Settings.Load("NvLowLatency", false);
             nvFrlMode = Settings.LoadStr("NvFrl", "off");
             killGameDvr = Settings.Load("GameDvrOff", true);
             hzGuard = Settings.Load("HzGuardOn", false);
@@ -532,22 +530,6 @@ namespace AegisApp
                 string mode = value == "60" || value == "120" || value == "screen" ? value : "off";
                 nvFrlMode = mode; Settings.SaveStr("NvFrl", mode);
                 if (mode == "off") NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyFrl);
-                lock (sync) tweakApplied.Clear();
-                RequestPolicyApply();
-            }
-        }
-
-        public bool NvLowLatency
-        {
-            get { return nvLowLatency; }
-            set
-            {
-                nvLowLatency = value; Settings.Save("NvLowLatency", value);
-                if (!value)
-                {
-                    NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyPreRender);
-                    NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyLowLatency);
-                }
                 lock (sync) tweakApplied.Clear();
                 RequestPolicyApply();
             }

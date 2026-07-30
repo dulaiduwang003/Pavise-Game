@@ -9,7 +9,7 @@ namespace AegisApp
 {
     internal partial class PanelForm
     {
-        private Toggle swGpu, swFso, swNvMax, swNvLat, swWindowedOpt;
+        private Toggle swGpu, swFso, swNvMax, swWindowedOpt;
         private TierPicker frlPicker;
 
         private void BuildGraphicsPage()
@@ -36,7 +36,7 @@ namespace AegisApp
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.fso"), Lang.T("set.fso.n"), swFso, out cardH);
             sy += cardH + 8;
 
-            // 没有 NVIDIA 驱动时这三项整体置灰，描述换成缺少驱动的说明
+            // 没有 NVIDIA 驱动时这两项整体置灰，描述换成缺少驱动的说明
             bool nvOk = NvApi.Available;
             string nvNone = Lang.T("set.nv.none");
 
@@ -45,13 +45,6 @@ namespace AegisApp
             swNvMax.Enabled = nvOk;
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvmax"),
                 nvOk ? Lang.T("set.nvmax.n") : nvNone, swNvMax, out cardH);
-            sy += cardH + 8;
-
-            swNvLat = MakeSwitch(gameMode.NvLowLatency, null);
-            swNvLat.CheckedChanged += (s, e) => gameMode.NvLowLatency = swNvLat.Checked;
-            swNvLat.Enabled = nvOk;
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvlat"),
-                nvOk ? Lang.T("set.nvlat.n") : nvNone, swNvLat, out cardH);
             sy += cardH + 8;
 
             frlPicker = new TierPicker();
@@ -94,7 +87,6 @@ namespace AegisApp
             if (swGpu != null) swGpu.SetSilently(gameMode.GpuHighPerf);
             if (swFso != null) swFso.SetSilently(gameMode.DisableFso);
             if (swNvMax != null) swNvMax.SetSilently(gameMode.NvMaxPerf);
-            if (swNvLat != null) swNvLat.SetSilently(gameMode.NvLowLatency);
             if (frlPicker != null) frlPicker.Index = FrlIndexOf(gameMode.NvFrlMode);
             if (swWindowedOpt != null)
                 swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByAegis || WindowedOptTweak.CurrentlyOn());

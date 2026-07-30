@@ -22,8 +22,6 @@ namespace AegisApp
         private const uint IdDrsDeleteProfileSetting = 0xE4A26362;
 
         public const uint SettingPreferredPState = 0x1057EB71;
-        public const uint SettingPreRenderLimit = 0x007BA09E;
-        public const uint SettingLowLatency = 0x0005F543;
         public const uint SettingFrlFps = 0x10835002;
         public const uint PStatePreferMax = 0x1;
 

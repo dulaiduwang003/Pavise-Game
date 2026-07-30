@@ -13,16 +13,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   into the top-left corner and the rest of the frame bare. The process declares PerMonitorV2, so
   Windows resizes the window on a DPI change, but the scale factor was computed once at startup and
   never updated, leaving all 900-odd scaled control coordinates and every cached font at the old
-  scale. Recovering used to require restarting Aegis. The window now rebuilds itself on WM_DPICHANGED.
+  scale. Recovering used to require restarting Aegis. The panel now checks the DPI of the monitor it
+  is on each time it is shown, and rebuilds itself when the scale no longer matches.
 
-  Rebuilding is deliberately conservative, because the first attempt at this made things much worse:
-  it wrote the window position on every DPI change, which pushed the window toward the other monitor
-  and produced another DPI change, so the two monitors ping-ponged and rebuilt the whole window ten
-  times in 45 seconds — and because a game entering fullscreen changes the effective DPI itself, that
-  loop repeatedly threw the running game out of fullscreen. The window is therefore no longer moved
-  at all (Windows has already placed it before the message arrives), and a rebuild is deferred to the
-  next time the panel is shown whenever the panel is hidden or minimized, a game session is active,
-  or the previous rebuild was under three seconds ago. Re-entrant messages are dropped.
+  It deliberately does not listen for WM_DPICHANGED. Reacting automatically raises a question that has
+  no cheap answer — when is it safe to move the window? A rebuild resizes it; crossing onto a monitor
+  with a different scale produces another DPI change, and the two monitors ping-pong. An early attempt
+  that also wrote the window position rebuilt the whole window ten times in 45 seconds and, because a
+  game entering fullscreen changes the effective DPI too, repeatedly threw the running game out of
+  fullscreen. Guarding that path needs deferral conditions, a cooldown and a compensating retry — a
+  state machine protecting what is only a cosmetic problem, and one whose defects are invisible in the
+  log until someone reproduces them. Rebuilding only when the panel is opened means it happens solely
+  at a moment the user has already switched away from the game, so that class of risk does not exist
+  rather than being fenced off. The cost is that changing scale while the panel is open requires
+  closing and reopening it.
 
 ### Added
 
@@ -48,12 +52,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   denies this is expected and is recorded as a plain fact, not retried or worked around. Both
   additions are gated behind evidence mode, which stays off by default.
 
+### Removed
+
+- The NVIDIA low-latency toggle is gone. It wrote ULTRA_LATENCY (0x0005F543), and this driver does not
+  know that setting id at all — reads and writes both return SETTING_NOT_FOUND, confirmed by asking the
+  driver to enumerate the ids it supports. The only part that ever landed was the "maximum pre-rendered
+  frames = 1" written alongside it, which is the plain low-latency mode rather than the Ultra tier the
+  switch claimed. Rather than hunt for the correct id for a feature whose benefit was never measured
+  here, the toggle and both settings it wrote are removed. The feature was never released.
+- The success line for NVIDIA tuning used to be built from the user's switches, so a single successful
+  write reported every requested item as applied — including one that had just logged a failure on the
+  line above. It now reports only the items that actually landed.
+
 ### Changed
 
 - The Settings page had grown into a dump for three unrelated kinds of switch: per-game GPU tweaks,
   reboot-level kernel changes, and app preferences. Scrolling for the autostart toggle put VBS and
   MPO one mis-click away. It is now split by risk. A new **Graphics** page holds the per-game GPU
-  items (high-performance preference, FSO, NVIDIA power/latency/frame cap) plus the windowed-game
+  items (high-performance preference, FSO, NVIDIA power mode and frame cap) plus the windowed-game
   optimization; a new **System environment** page holds the six changes that need a reboot and
   survive uninstalling Aegis (HAGS, VBS, MPO, GPU/NIC/USB interrupt affinity), behind a banner that
   says so. Settings keeps only app preferences and the maintenance tools. No switch changed what it
