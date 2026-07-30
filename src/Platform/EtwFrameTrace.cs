@@ -27,7 +27,7 @@ namespace AegisApp
         private const int PropsSize = 120;
         private const int NameBufBytes = 2048;
 
-        private readonly Action<int, long> onPresent;
+        private readonly Action<int, int, long> onPresent;
         private readonly EventRecordCallback callback;
         private ulong sessionHandle;
         private ulong traceHandle = INVALID_PROCESSTRACE_HANDLE;
@@ -73,7 +73,7 @@ namespace AegisApp
         [DllImport("advapi32.dll")]
         private static extern int CloseTrace(ulong handle);
 
-        public EtwFrameTrace(Action<int, long> presentSink)
+        public EtwFrameTrace(Action<int, int, long> presentSink)
         {
             onPresent = presentSink;
             callback = HandleEvent;
@@ -160,9 +160,13 @@ namespace AegisApp
                 provLo == dxgiLo && provHi == dxgiHi && id == DxgiPresentStart
                 || provLo == d3d9Lo && provHi == d3d9Hi && id == D3D9PresentStart;
             if (!present) return;
+            // EVENT_RECORD 开头即 EVENT_HEADER：Size(2) HeaderType(2) Flags(2) EventProperty(2)
+            // ThreadId(4)@8 ProcessId(4)@12 TimeStamp(8)@16 ProviderId(16)@24 EventDescriptor@40。
+            // 线程号是内核填进事件头的，取它不需要打开游戏进程或线程句柄。
+            int tid = Marshal.ReadInt32(record, 8);
             int pid = Marshal.ReadInt32(record, 12);
             long qpc = Marshal.ReadInt64(record, 16);
-            onPresent(pid, qpc);
+            onPresent(pid, tid, qpc);
         }
 
         private static IntPtr BuildProperties()

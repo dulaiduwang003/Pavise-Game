@@ -18,14 +18,39 @@ namespace AegisApp
         private static EtwFrameTrace trace;
         private static List<int> intervalsUs = new List<int>();
         private static long lastQpc;
+        private static long baseQpc;
         private static int targetPid;
+        private static readonly PresentThreadTracker threads = new PresentThreadTracker();
+        private static string threadProbeNote;
+        private static int threadProbeDone;
 
         public static void NoteRendererPid(int pid)
         {
+            NoteRendererPid(pid, null);
+        }
+
+        public static void NoteRendererPid(int pid, string rendererName)
+        {
+            bool probe;
             lock (sync)
             {
-                if (targetPid != pid) { targetPid = pid; lastQpc = 0; }
+                if (targetPid != pid) { targetPid = pid; lastQpc = 0; baseQpc = 0; }
+                probe = trace != null;
             }
+            // 只在证据模式已经开起采集时探一次；探针只开关句柄，不做任何写入
+            if (probe && Interlocked.Exchange(ref threadProbeDone, 1) == 0)
+                QueueThreadProbe(pid, rendererName);
+        }
+
+        private static void QueueThreadProbe(int pid, string rendererName)
+        {
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                string note = null;
+                try { note = ThreadAccessProbe.ProbeAndDescribe(pid, rendererName); }
+                catch { }
+                lock (sync) threadProbeNote = note;
+            });
         }
 
         public static void Begin()
@@ -35,6 +60,10 @@ namespace AegisApp
                 if (trace != null) return;
                 intervalsUs = new List<int>();
                 lastQpc = 0;
+                baseQpc = 0;
+                threads.Reset();
+                threadProbeNote = null;
+                Interlocked.Exchange(ref threadProbeDone, 0);
                 var t = new EtwFrameTrace(OnPresent);
                 if (t.Start()) trace = t;
             }
@@ -42,8 +71,19 @@ namespace AegisApp
 
         public static string Finish()
         {
+            string note;
+            return Finish(out note);
+        }
+
+        // threadNote 是给决策看的旁证：主 Present 线程是否稳定、线程句柄能不能拿到。
+        // 它和帧率统计各占证据行里的一段，缺任何一段都不影响另一段。
+        public static string Finish(out string threadNote)
+        {
             EtwFrameTrace t;
             int[] snapshot;
+            PresentThreadSummary threadSummary;
+            bool haveThreads;
+            string probeNote;
             lock (sync)
             {
                 t = trace;
@@ -51,8 +91,21 @@ namespace AegisApp
                 snapshot = intervalsUs.ToArray();
                 intervalsUs = new List<int>();
                 lastQpc = 0;
+                baseQpc = 0;
+                threads.Seal();
+                haveThreads = threads.TryDescribe(out threadSummary);
+                threads.Reset();
+                probeNote = threadProbeNote;
+                threadProbeNote = null;
             }
             if (t != null) t.Stop();
+            threadNote = null;
+            if (t != null)
+            {
+                string present = haveThreads ? PresentThreadTracker.Describe(threadSummary) : null;
+                if (present != null && probeNote != null) threadNote = present + "，" + probeNote;
+                else threadNote = present != null ? present : probeNote;
+            }
             if (t == null || snapshot.Length < 30) return null;
             int excludedUs;
             int[] gameplay = ExcludeLoadingClusters(snapshot, out excludedUs);
@@ -102,11 +155,14 @@ namespace AegisApp
             return result.ToArray();
         }
 
-        private static void OnPresent(int pid, long qpc)
+        private static void OnPresent(int pid, int tid, long qpc)
         {
             lock (sync)
             {
                 if (pid != targetPid) return;
+                if (baseQpc == 0) baseQpc = qpc;
+                if (qpc >= baseQpc)
+                    threads.Add(tid, (qpc - baseQpc) * 1000000 / Stopwatch.Frequency);
                 if (lastQpc != 0 && qpc > lastQpc)
                 {
                     long us = (qpc - lastQpc) * 1000000 / Stopwatch.Frequency;

@@ -1187,6 +1187,7 @@ namespace AegisApp
                 Eq(AutoHideAction.None, PanelForm.NextAutoHide(true, ref last, ref armed, true, true));
             });
             test("UI dormancy: hidden/minimized windows cannot revive animation timers", TestUiDormancyState);
+            test("present threads: dominant-thread attribution and thread-handle probe reporting", TestPresentThreadAttribution);
             test("network QoS: policy names stay unique, ASCII-safe and bounded in length", () =>
             {
                 string a = NetworkAffinityTweak.SanitizePolicyName("Valorant", @"C:\Games\Valorant\VALORANT.exe");

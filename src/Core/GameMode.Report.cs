@@ -98,13 +98,17 @@ namespace AegisApp
                 repBoosted = false;
                 repAegisCpuStart = 0;
             }
-            string frames = FrameEvidence.Finish();
+            string threadNote;
+            string frames = FrameEvidence.Finish(out threadNote);
             string evidence = telemetry.Finish();
             if (game == null) return;
 
             TimeSpan dur = TimeSpan.FromSeconds((double)(Stopwatch.GetTimestamp() - t0) / Stopwatch.Frequency);
-            string combined = frames != null && evidence != null ? frames + " | " + evidence
-                : (frames != null ? frames : evidence);
+            var parts = new List<string>(3);
+            if (frames != null) parts.Add(frames);
+            if (evidence != null) parts.Add(evidence);
+            if (threadNote != null) parts.Add(threadNote);
+            string combined = parts.Count == 0 ? null : string.Join(" | ", parts.ToArray());
             if (combined != null)
                 EvidenceStore.Append(dataDir,
                     DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " | " + game

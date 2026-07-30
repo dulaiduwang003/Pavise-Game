@@ -369,7 +369,7 @@ namespace AegisApp
                                 QoSControl = oqc, QoSState = oqs };
                             lock (sync) gameBoost[pid] = snap;
                             newlyTracked = true;
-                            FrameEvidence.NoteRendererPid(pid);
+                            FrameEvidence.NoteRendererPid(pid, rendererName);
                             gpuOk = gpuKnown && ApplyAndVerifyGpuBoost(h);
                             lock (sync) { if (gpuKnown) gameGpu[pid] = gpuOld; }
                         }
