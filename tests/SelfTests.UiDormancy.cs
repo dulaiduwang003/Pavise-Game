@@ -50,9 +50,10 @@ namespace AegisApp
             Eq("off", PanelForm.FrlModeOf(0));
             Eq("60", PanelForm.FrlModeOf(1));
             Eq("120", PanelForm.FrlModeOf(2));
-            Eq("screen", PanelForm.FrlModeOf(3));
+            Eq("240", PanelForm.FrlModeOf(3));
+            Eq("screen", PanelForm.FrlModeOf(4));
             Eq("off", PanelForm.FrlModeOf(9));
-            for (int i = 0; i <= 3; i++) Eq(i, PanelForm.FrlIndexOf(PanelForm.FrlModeOf(i)));
+            for (int i = 0; i <= 4; i++) Eq(i, PanelForm.FrlIndexOf(PanelForm.FrlModeOf(i)));
             Eq(0, PanelForm.FrlIndexOf("nonsense"));
             Eq(0, PanelForm.FrlIndexOf(null));
 

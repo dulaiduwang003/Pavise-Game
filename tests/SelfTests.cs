@@ -1298,6 +1298,7 @@ namespace AegisApp
 
                 Eq(60, GameMode.ResolveFrlFps("60"));
                 Eq(120, GameMode.ResolveFrlFps("120"));
+                Eq(240, GameMode.ResolveFrlFps("240"));
                 Eq(0, GameMode.ResolveFrlFps("off"));
                 Eq(0, GameMode.ResolveFrlFps("junk"));
                 int screenFps = GameMode.ResolveFrlFps("screen");

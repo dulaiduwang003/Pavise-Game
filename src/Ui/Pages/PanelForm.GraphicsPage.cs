@@ -48,8 +48,9 @@ namespace AegisApp
             sy += cardH + 8;
 
             frlPicker = new TierPicker();
-            frlPicker.Size = new Size(Theme.S(216), Theme.S(28));
-            frlPicker.Labels = new[] { Lang.T("frl.off"), "60", "120", Lang.T("frl.screen") };
+            // 每档 54 宽，档位数变了要同步改，否则最后那个「屏-3」会被挤窄
+            frlPicker.Size = new Size(Theme.S(270), Theme.S(28));
+            frlPicker.Labels = new[] { Lang.T("frl.off"), "60", "120", "240", Lang.T("frl.screen") };
             frlPicker.Index = FrlIndexOf(gameMode.NvFrlMode);
             frlPicker.IndexChanged = delegate(int i) { gameMode.NvFrlMode = FrlModeOf(i); };
             frlPicker.Enabled = nvOk;
@@ -65,14 +66,17 @@ namespace AegisApp
             sy += cardH + 8;
         }
 
+        // 存的是档位名而不是下标，所以插入新档不会让已保存的设置错位
         internal static int FrlIndexOf(string mode)
         {
-            return mode == "60" ? 1 : mode == "120" ? 2 : mode == "screen" ? 3 : 0;
+            return mode == "60" ? 1 : mode == "120" ? 2 : mode == "240" ? 3
+                : mode == "screen" ? 4 : 0;
         }
 
         internal static string FrlModeOf(int index)
         {
-            return index == 1 ? "60" : index == 2 ? "120" : index == 3 ? "screen" : "off";
+            return index == 1 ? "60" : index == 2 ? "120" : index == 3 ? "240"
+                : index == 4 ? "screen" : "off";
         }
 
         private void OnWindowedOptToggle(object s, EventArgs e)

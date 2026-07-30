@@ -154,6 +154,7 @@ namespace AegisApp
         {
             if (mode == "60") return 60;
             if (mode == "120") return 120;
+            if (mode == "240") return 240;
             if (mode == "screen")
             {
                 int hz = DisplayGuard.CurrentRefreshRate();
