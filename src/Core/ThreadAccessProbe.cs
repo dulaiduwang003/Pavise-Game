@@ -7,10 +7,6 @@ using System.Runtime.InteropServices;
 
 namespace AegisApp
 {
-    // 线程级车道（SetThreadSelectedCpuSets）要求对游戏线程拿到 THREAD_SET_LIMITED_INFORMATION。
-    // 带内核组件的反作弊通常按进程整体剥夺访问权，所以这里只需要问一次"能不能开"，
-    // 不需要挑特定线程。探针只打开再关闭句柄，不读线程状态、不写任何调度参数，
-    // 失败就照实记录错误码——这是决定线程级方案是否值得实现的唯一依据。
     internal static class ThreadAccessProbe
     {
         internal struct Result
@@ -48,7 +44,6 @@ namespace AegisApp
             return true;
         }
 
-        // 线程枚举走的是系统进程信息，不需要游戏进程句柄
         private static int FirstThreadId(int pid, out int count)
         {
             count = 0;
@@ -73,7 +68,6 @@ namespace AegisApp
             return Lang.F("probe.thread.denied", r.QueryError, r.SetError);
         }
 
-        // 只在证据模式下调用；结果同时写运行日志，便于跨会话对比不同反作弊的表现
         public static string ProbeAndDescribe(int pid, string game)
         {
             Result r;

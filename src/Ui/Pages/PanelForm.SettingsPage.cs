@@ -123,7 +123,6 @@ namespace AegisApp
             });
         }
 
-        // 计划任务查询与着色器缓存测量都会碰磁盘，放后台线程
         private void RefreshSlowStateAsync()
         {
             if (!UiActive) return;

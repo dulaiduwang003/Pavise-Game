@@ -802,21 +802,17 @@ namespace AegisApp
                 try
                 {
                     Dpi.Scale = 1f;
-                    // 同一个 DPI 不该触发重建，否则每次收到消息都白重建一次界面
                     Eq(false, Dpi.Update(96));
                     Eq(1f, Dpi.Scale);
                     Eq(true, Dpi.Update(144));
                     Eq(1.5f, Dpi.Scale);
                     Eq(false, Dpi.Update(144));
-                    // 低于 100% 的缩放会把固定布局压塌，一律夹到 1
                     Eq(true, Dpi.Update(72));
                     Eq(1f, Dpi.Scale);
-                    // 非法值不能改动当前缩放
                     Eq(false, Dpi.Update(0));
                     Eq(false, Dpi.Update(-96));
                     Eq(1f, Dpi.Scale);
 
-                    // 缓存字体按旧缩放算的字号必须作废，丢弃后同一请求要拿到新字号
                     Dpi.Scale = 1f;
                     float at100 = Theme.UI(9.5f, false).SizeInPoints;
                     Eq(true, Dpi.Update(192));
@@ -833,12 +829,10 @@ namespace AegisApp
                 try
                 {
                     Dpi.Scale = 1f;
-                    // 判断必须是纯读：先探再决定要不要连带重建，不能先改了再说
                     Eq(false, Dpi.WouldChange(96));
                     Eq(true, Dpi.WouldChange(144));
                     Eq(false, Dpi.WouldChange(0));
                     Eq(false, Dpi.WouldChange(-96));
-                    // 低于 100% 一律夹到 1，所以 72 相对 1.0 不算变化
                     Eq(false, Dpi.WouldChange(72));
                     Eq(1f, Dpi.Scale);
 

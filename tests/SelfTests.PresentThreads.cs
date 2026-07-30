@@ -11,12 +11,10 @@ namespace AegisApp
         {
             Lang.Init();
 
-            // 单一帧关键线程：一条线程提交绝大多数帧，每个窗口都是它领先
             var single = new PresentThreadTracker();
             long us = 0;
             for (int frame = 0; frame < 600; frame++)
             {
-                // 每 16.7ms 一帧，主线程 9 帧里占 8 帧，另一条线程偶发提交
                 single.Add(frame % 9 == 0 ? 4242 : 1001, us);
                 us += 16700;
             }
@@ -29,11 +27,9 @@ namespace AegisApp
             if (s.DominantSharePercent < 85)
                 throw new Exception("dominant share too low: " + s.DominantSharePercent);
             Eq(true, PresentThreadTracker.LooksSingleThreaded(s));
-            // 10 秒的帧按 2 秒窗口切，应得到 5 个窗口
             Eq(5, s.Windows);
             Eq(600L, s.Samples);
 
-            // 多线程均匀提交：每个窗口的领先者都在换，不该被当成有单一关键线程
             var spread = new PresentThreadTracker();
             us = 0;
             for (int frame = 0; frame < 600; frame++)
@@ -49,14 +45,12 @@ namespace AegisApp
                 throw new Exception("spread share unexpectedly high: " + p.DominantSharePercent);
             Eq(false, PresentThreadTracker.LooksSingleThreaded(p));
 
-            // 窗口太少不给结论：一个 2 秒窗口内的"稳定"没有意义
             var brief = new PresentThreadTracker();
             for (int frame = 0; frame < 60; frame++) brief.Add(7, frame * 16700);
             brief.Seal();
             PresentThreadSummary b;
             Eq(false, brief.TryDescribe(out b));
 
-            // 加载停顿不该稀释稳定性：跨过 60 秒空档只推进一个窗口，而不是 30 个空窗口
             var gap = new PresentThreadTracker();
             gap.Add(9, 0);
             gap.Add(9, 1000);
@@ -69,7 +63,6 @@ namespace AegisApp
             Eq(3, g.Windows);
             Eq(100, g.StabilityPercent);
 
-            // 平票取较小 TID，保证同样输入总得到同样结论
             var tie = new PresentThreadTracker();
             us = 0;
             for (int frame = 0; frame < 480; frame++)
@@ -85,7 +78,6 @@ namespace AegisApp
             Eq(true, PresentThreadTracker.Describe(s).Length > 0);
             Eq(true, PresentThreadTracker.Describe(p).Length > 0);
 
-            // 探针描述：读写都可 / 只读 / 全拒 / 枚举失败，四种都要有可读结论
             var ok = new ThreadAccessProbe.Result
             { Enumerated = true, ThreadCount = 30, CanQuery = true, CanSet = true };
             var readonlyCase = new ThreadAccessProbe.Result
@@ -99,7 +91,6 @@ namespace AegisApp
             if (ThreadAccessProbe.Describe(readonlyCase) == ThreadAccessProbe.Describe(denied))
                 throw new Exception("read-only and fully denied must be distinguishable");
 
-            // 探针对本进程必须成功：自己的线程一定打得开，否则说明探针本身有问题
             ThreadAccessProbe.Result self;
             Eq(true, ThreadAccessProbe.TryProbe(
                 System.Diagnostics.Process.GetCurrentProcess().Id, out self));

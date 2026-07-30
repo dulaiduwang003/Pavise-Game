@@ -13,7 +13,6 @@ namespace AegisApp
         private Toggle swHags, swVbs, swMpo, swIrqAffinity, swNetAffinity, swUsbAffinity;
         private SettingCard cardVbs;
         private int envBusy;
-        // 本页拥有网卡亲和开关；游戏库改动后重下 QoS 策略也要拿这把锁，避免与开关互相打断
         private static readonly object netQosSync = new object();
 
         private void BuildEnvironmentPage()
@@ -62,7 +61,6 @@ namespace AegisApp
             sy += cardH + 8;
         }
 
-        // 这页的六项改动都要求管理员权限，未提权时统一挡在同一处
         private bool RequireElevationFor(Toggle sw, bool restoredState)
         {
             if (elevated) return true;
@@ -162,7 +160,6 @@ namespace AegisApp
             cardVbs.Desc = Lang.T(key);
         }
 
-        // VBS 状态要走 WMI 查询，几百毫秒起，放后台线程避免卡住换页动画
         private void RefreshEnvironmentStateAsync()
         {
             if (!UiActive) return;

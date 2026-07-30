@@ -457,7 +457,6 @@ namespace AegisApp
         public const int PROCESS_SET_LIMITED_INFORMATION = 0x2000;
         public const int PROCESS_SET_QUOTA = 0x0100;
         public const int PROCESS_SUSPEND_RESUME = 0x0800;
-        // 读线程 CPU 时间只要 QUERY_LIMITED；线程级 CPU Sets 要 SET_LIMITED，是强得多的请求
         public const int THREAD_SET_LIMITED_INFORMATION = 0x0400;
         public const int THREAD_QUERY_LIMITED_INFORMATION = 0x0800;
         public const int SYNCHRONIZE = 0x00100000;

@@ -160,9 +160,6 @@ namespace AegisApp
                 provLo == dxgiLo && provHi == dxgiHi && id == DxgiPresentStart
                 || provLo == d3d9Lo && provHi == d3d9Hi && id == D3D9PresentStart;
             if (!present) return;
-            // EVENT_RECORD 开头即 EVENT_HEADER：Size(2) HeaderType(2) Flags(2) EventProperty(2)
-            // ThreadId(4)@8 ProcessId(4)@12 TimeStamp(8)@16 ProviderId(16)@24 EventDescriptor@40。
-            // 线程号是内核填进事件头的，取它不需要打开游戏进程或线程句柄。
             int tid = Marshal.ReadInt32(record, 8);
             int pid = Marshal.ReadInt32(record, 12);
             long qpc = Marshal.ReadInt64(record, 16);

@@ -37,7 +37,6 @@ namespace AegisApp
                 if (targetPid != pid) { targetPid = pid; lastQpc = 0; baseQpc = 0; }
                 probe = trace != null;
             }
-            // 只在证据模式已经开起采集时探一次；探针只开关句柄，不做任何写入
             if (probe && Interlocked.Exchange(ref threadProbeDone, 1) == 0)
                 QueueThreadProbe(pid, rendererName);
         }
@@ -75,8 +74,6 @@ namespace AegisApp
             return Finish(out note);
         }
 
-        // threadNote 是给决策看的旁证：主 Present 线程是否稳定、线程句柄能不能拿到。
-        // 它和帧率统计各占证据行里的一段，缺任何一段都不影响另一段。
         public static string Finish(out string threadNote)
         {
             EtwFrameTrace t;

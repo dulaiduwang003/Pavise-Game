@@ -77,9 +77,6 @@ namespace AegisApp
                     }
                     if (wrote && NvApi.SaveSession(session))
                     {
-                        // 按逐项的实际写入结果汇报，不按用户开关。之前这里用的是入参，
-                        // 只要有任意一项写成功就把每一项都报成生效，写失败的那项照样
-                        // 出现在成功行里，跟"不为了显示好看而报成功"这条自相矛盾。
                         string done = (maxPerf && !failed.Contains(KeyPState) ? " 电源最高性能" : "")
                             + (frlFps > 0 && !failed.Contains(KeyFrl) ? " 帧上限" + frlFps : "");
                         if (done.Length > 0) Logger.Log("NVIDIA 驱动调优：" + exeName + done);

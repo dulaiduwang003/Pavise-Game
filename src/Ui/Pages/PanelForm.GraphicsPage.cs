@@ -36,7 +36,6 @@ namespace AegisApp
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.fso"), Lang.T("set.fso.n"), swFso, out cardH);
             sy += cardH + 8;
 
-            // 没有 NVIDIA 驱动时这两项整体置灰，描述换成缺少驱动的说明
             bool nvOk = NvApi.Available;
             string nvNone = Lang.T("set.nv.none");
 
@@ -48,7 +47,6 @@ namespace AegisApp
             sy += cardH + 8;
 
             frlPicker = new TierPicker();
-            // 每档 54 宽，档位数变了要同步改，否则最后那个「屏-3」会被挤窄
             frlPicker.Size = new Size(Theme.S(270), Theme.S(28));
             frlPicker.Labels = new[] { Lang.T("frl.off"), "60", "120", "240", Lang.T("frl.screen") };
             frlPicker.Index = FrlIndexOf(gameMode.NvFrlMode);
@@ -66,7 +64,6 @@ namespace AegisApp
             sy += cardH + 8;
         }
 
-        // 存的是档位名而不是下标，所以插入新档不会让已保存的设置错位
         internal static int FrlIndexOf(string mode)
         {
             return mode == "60" ? 1 : mode == "120" ? 2 : mode == "240" ? 3

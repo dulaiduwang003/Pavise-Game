@@ -43,7 +43,6 @@ namespace AegisApp
         {
         }
 
-        // groupBeforeSlots/groupTitles 一一对应，槽位必须升序；每个标题占据它那一槽之前的一行高度
         public NavRail(string[] names, string[] icons, int[] displayOrder,
             int[] groupBeforeSlots, string[] groupTitles, int bottomAnchored)
         {
@@ -65,7 +64,6 @@ namespace AegisApp
             logo = IconArt.Render(Dpi.S(34), mode, modeEnabled);
         }
 
-        // 分组标题占一整行，因此它之后的每个槽位都要往下让出一个 GroupH
         internal static int GroupsAbove(int slot, int[] groupBeforeSlots)
         {
             if (groupBeforeSlots == null) return 0;

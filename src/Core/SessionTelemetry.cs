@@ -9,9 +9,6 @@ namespace AegisApp
 {
     internal sealed class SessionTelemetry
     {
-        // 采样器是纯观察者：只读、无引擎写入口、任何失败跳过该样本。
-        // 5 秒一次的只读查询开销在 0.01% CPU 量级，且线程压最低优先级，不违反对局静默约束。
-        // 往这里加更重的采样前，先重新论证这个预算，别默认它还成立。
         private const int SampleIntervalMs = 5000;
         private const double CoreSaturation = 0.95;
 

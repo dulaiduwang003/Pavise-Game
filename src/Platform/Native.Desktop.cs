@@ -19,7 +19,6 @@ namespace AegisApp
         public static extern bool SetProcessDpiAwarenessContext(IntPtr value);
         [DllImport("user32.dll")]
         public static extern uint GetDpiForSystem();
-        // 窗口所在显示器的 DPI；多显示器混合缩放时它和系统 DPI 可以不同
         [DllImport("user32.dll")]
         public static extern uint GetDpiForWindow(IntPtr hwnd);
         [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]

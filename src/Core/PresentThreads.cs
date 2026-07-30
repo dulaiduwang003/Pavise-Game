@@ -17,13 +17,9 @@ namespace AegisApp
         public bool Truncated;
     }
 
-    // 只做观察，不产生任何调度动作。存在的意义是回答一个决策问题：
-    // 主 Present 线程占比高且跨窗口稳定，说明有单一帧关键路径，线程级车道才可能有收益；
-    // 占比分散或每个窗口的主线程都在换，说明是多线程均匀提交，钉线程只会造成迁移抖动。
     internal sealed class PresentThreadTracker
     {
         internal const long WindowUs = 2000000;
-        // 窗口太少时"稳定"没有意义，不给结论
         internal const int MinWindows = 3;
         private const int MaxTrackedThreads = 64;
 
@@ -41,7 +37,6 @@ namespace AegisApp
             windowStartUs = -1; windows = 0; samples = 0; truncated = false;
         }
 
-        // atUs 是相对本次会话起点的单调微秒；空窗口不计数，加载停顿不会稀释稳定性
         public void Add(int tid, long atUs)
         {
             if (windowStartUs < 0) windowStartUs = atUs;
@@ -70,7 +65,6 @@ namespace AegisApp
             current.Clear();
         }
 
-        // 平票取较小 TID，保证同样的输入总得到同样的结论
         private static int Leader(Dictionary<int, int> map)
         {
             int bestTid = 0, best = -1;
@@ -98,7 +92,6 @@ namespace AegisApp
             return true;
         }
 
-        // 判定阈值只用于给结论着色，不驱动任何写操作
         internal const int StrongSharePercent = 80;
         internal const int StrongStabilityPercent = 80;
 

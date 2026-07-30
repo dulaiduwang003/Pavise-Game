@@ -28,7 +28,6 @@ namespace AegisApp
             RefreshAcList();
         }
 
-        // 每张分组卡右侧的实时压制状态；只在反作弊页当前可见时按 UI 心跳刷新
         private void RefreshAcGroupStates()
         {
             for (int i = 0; i < acGroups.Count && i < acCards.Count; i++)

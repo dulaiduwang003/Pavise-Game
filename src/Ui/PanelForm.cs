@@ -17,7 +17,6 @@ namespace AegisApp
 {
     internal enum AutoHideAction { None, Schedule, Cancel }
 
-    // 导航项与 pages 数组共用这一套序号；新增页面必须同时在 BuildUi 的三个并列数组里补位
     internal enum PageId
     {
         Overview = 0,
@@ -39,7 +38,6 @@ namespace AegisApp
         private readonly GameMode gameMode;
         private readonly bool elevated;
 
-        // 各页自己的控件字段声明在对应的 Pages\PanelForm.*Page.cs 里
         private DBPanel pageOverview, pagePolicy, pageAntiCheat, pageLibrary, pageReports, pageSettings, pageAbout;
         private DBPanel pageGraphics, pageEnvironment;
         private DBPanel[] pages;
@@ -124,7 +122,6 @@ namespace AegisApp
             Font = Theme.UI(9.5f, false);
             AttachFormFrame();
 
-            // 前两个数组按 PageId 顺序排列；第三个是视觉排序，显卡/系统环境与英雄联盟各自成组
             nav = new NavRail(
                 new[] { Lang.T("nav.overview"), LolText("英雄联盟"), Lang.T("nav.library"), Lang.T("nav.policy"),
                         Lang.T("v14.anticheat"), Lang.T("nav.graphics"), Lang.T("nav.env"), Lang.T("nav.reports"),
@@ -223,8 +220,6 @@ namespace AegisApp
             SyncUiActivity();
         }
 
-        // 标题/图标数组必须按 PageId 顺序逐一对应，视觉排序必须恰好是每个 PageId 各出现一次。
-        // 漏一项在运行时只会表现成点错页面，所以在这里直接炸掉，自测构造窗体时就能撞上。
         private static void AssertNavMatchesPageIds(NavRail rail)
         {
             int expected = (int)PageId.Count;
@@ -249,8 +244,6 @@ namespace AegisApp
             return p;
         }
 
-        // 页面钩子：换页与休眠/唤醒时每页各被告知一次自己是否当前活动页，
-        // 活动页另外按 UI 心跳收到 OnTick。新增页面只在 RegisterPages 里补一行。
         private sealed class PageHook
         {
             public readonly DBPanel Panel;
@@ -553,23 +546,11 @@ namespace AegisApp
             base.WndProc(ref m);
         }
 
-        // 进程声明的是 PerMonitorV2，换屏或改缩放后系统会按新 DPI 放大窗口，而界面里
-        // 九百多处控件坐标和缓存字体都是按启动时那个缩放算死的，于是内容缩在左上角、
-        // 放大出来的部分是空背景。
-        //
-        // 这里只在面板即将显示时校正，不去监听 WM_DPICHANGED。自动响应那条路要正确
-        // 就得回答"什么时候可以动窗口"：重建会改变窗口尺寸，跨到另一块缩放不同的屏上
-        // 又会收到新的消息，两块屏之间来回弹，而游戏切全屏也会改变有效 DPI——为了不
-        // 在对局中动窗口，得加推迟条件、冷却、补偿重试，一整套状态机，而它守护的只是
-        // 一个纯外观问题。改成只在打开面板时校正，重建就只发生在用户主动切出来的时刻，
-        // 那类风险不是被挡住而是不存在了；代价仅仅是面板正开着时改缩放要关掉再打开。
         private void ApplyPendingDpiRebuild()
         {
             if (IsDisposed) return;
             int dpi = Dpi.WindowDpi(Handle);
             if (dpi <= 0 || !Dpi.WouldChange(dpi)) return;
-            // Scale、字体缓存和整窗重建必须一起发生：只改前两样而不重建，界面会停在
-            // 布局按旧缩放、自绘文字按新缩放的混排状态。
             Dpi.Update(dpi);
             Theme.DropFontCache();
             Logger.Log("界面缩放校正后重建：DPI " + dpi);
