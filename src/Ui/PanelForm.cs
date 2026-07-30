@@ -106,6 +106,10 @@ namespace AegisApp
             Native.EnableElevatedFileDrop(Handle);
             AttachFormFrame();
             Native.RoundCorners(Handle);
+            // 启动时用的是系统 DPI；窗口若开在缩放不同的另一块屏上这里会不一致。
+            // 不在句柄刚创建时重建（那会在构造途中拆掉刚建好的控件），只标记待办，
+            // 由 ShowPanel 在真正要显示之前处理。
+            if (Dpi.SyncToWindow(Handle)) { Theme.DropFontCache(); dpiRebuildPending = true; }
             uiActivityKnown = false;
             SyncUiActivity();
             if (UiActive) RefreshSlowStateAsync();
@@ -542,6 +546,12 @@ namespace AegisApp
             if (UiActive) RefreshSlowStateAsync();
         }
 
+        private const int WM_DPICHANGED = 0x02E0;
+        private bool dpiRebuildPending;
+        private int dpiHandling;
+        private long lastDpiRebuildTicks;
+        private static readonly long DpiRebuildCooldownTicks = TimeSpan.FromSeconds(3).Ticks;
+
         protected override void WndProc(ref Message m)
         {
             if (m.Msg == Native.WM_DROPFILES)
@@ -550,8 +560,76 @@ namespace AegisApp
                 m.Result = IntPtr.Zero;
                 return;
             }
+            if (m.Msg == WM_DPICHANGED)
+            {
+                ApplyDpiChange(m.WParam, m.LParam);
+                m.Result = IntPtr.Zero;
+                return;
+            }
             base.WndProc(ref m);
         }
+
+        // PerMonitorV2 下切换显示器或改缩放时，系统只按新 DPI 放大顶层窗口，
+        // 子控件的像素坐标仍是用旧缩放算死的，于是内容缩在左上角、其余是空背景。
+        //
+        // 但重建绝不能无条件立刻做。重建会改变窗口尺寸和位置，跨到另一块缩放不同的屏上
+        // 就会再收到一条 WM_DPICHANGED，两块屏之间来回弹、每次都整窗重建；而游戏切换全屏
+        // 本身就会改变有效 DPI，于是在对局期间反复把游戏挤出全屏。实测 45 秒内弹了 10 次。
+        // 所以：面板不可见时只记下缩放、不动窗口，推迟到下次显示时重建。
+        private void ApplyDpiChange(IntPtr wParam, IntPtr lParam)
+        {
+            int dpi = (int)((uint)wParam.ToInt64() & 0xFFFF);
+            if (dpi <= 0) return;
+            if (Interlocked.Exchange(ref dpiHandling, 1) == 1) return;
+            try
+            {
+                if (!Dpi.Update(dpi)) return;
+                Theme.DropFontCache();
+
+                // 对局期间即使面板开着也不能重建：游戏切换全屏会改变有效 DPI，
+                // 在这里动窗口等于反复把游戏挤出全屏。
+                bool gameActive = gameMode != null && gameMode.Enabled && gameMode.IsActive;
+                // 兜底：拖窗过屏是一次性的用户动作，几秒内连续到达只可能是反馈震荡
+                long now = DateTime.UtcNow.Ticks;
+                bool tooSoon = now - lastDpiRebuildTicks < DpiRebuildCooldownTicks;
+
+                if (!Visible || WindowState == FormWindowState.Minimized || IsDisposed
+                    || gameActive || tooSoon)
+                {
+                    if (!dpiRebuildPending)
+                        Logger.Log("界面缩放已变化（DPI " + dpi + "），"
+                            + (gameActive ? "对局进行中" : tooSoon ? "距上次重建过近" : "面板不可见")
+                            + "，推迟到下次显示时重建");
+                    dpiRebuildPending = true;
+                    return;
+                }
+                RebuildForDpi(dpi);
+            }
+            finally { Interlocked.Exchange(ref dpiHandling, 0); }
+        }
+
+        // 不移动窗口：系统在发这条消息前已经把窗口摆到新位置了，
+        // 我们只需要按新缩放重设自己的尺寸并重建内容。再去写 Location
+        // 会把窗口推向另一块屏，正是之前来回震荡的起因。
+        private void RebuildForDpi(int dpi)
+        {
+            lastDpiRebuildTicks = DateTime.UtcNow.Ticks;
+            Logger.Log("界面缩放随显示器变化重建：DPI " + dpi);
+            RebuildUi();
+        }
+
+        // 隐藏期间换过屏或改过缩放的话，在这里按窗口当前所在显示器校正后重建一次
+        private void ApplyPendingDpiRebuild()
+        {
+            bool scaleChanged = Dpi.SyncToWindow(Handle);
+            if (!scaleChanged && !dpiRebuildPending) return;
+            dpiRebuildPending = false;
+            lastDpiRebuildTicks = DateTime.UtcNow.Ticks;
+            Theme.DropFontCache();
+            Logger.Log("界面缩放校正后重建：DPI " + (int)Math.Round(Dpi.Scale * 96f));
+            RebuildUi();
+        }
+
 
         private PageHook CurrentPageHook()
         {
@@ -671,6 +749,7 @@ namespace AegisApp
         {
             if (InvokeRequired) { BeginInvoke((MethodInvoker)ShowPanel); return; }
             if (IsDisposed) return;
+            ApplyPendingDpiRebuild();
             bool wasVisible = Visible && WindowState != FormWindowState.Minimized;
             if (!wasVisible) BeginIntro();
             Show();

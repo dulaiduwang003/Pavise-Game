@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Switching monitors or changing display scaling left the window enlarged with its contents crammed
+  into the top-left corner and the rest of the frame bare. The process declares PerMonitorV2, so
+  Windows resizes the window on a DPI change, but the scale factor was computed once at startup and
+  never updated, leaving all 900-odd scaled control coordinates and every cached font at the old
+  scale. Recovering used to require restarting Aegis. The window now rebuilds itself on WM_DPICHANGED.
+
+  Rebuilding is deliberately conservative, because the first attempt at this made things much worse:
+  it wrote the window position on every DPI change, which pushed the window toward the other monitor
+  and produced another DPI change, so the two monitors ping-ponged and rebuilt the whole window ten
+  times in 45 seconds — and because a game entering fullscreen changes the effective DPI itself, that
+  loop repeatedly threw the running game out of fullscreen. The window is therefore no longer moved
+  at all (Windows has already placed it before the message arrives), and a rebuild is deferred to the
+  next time the panel is shown whenever the panel is hidden or minimized, a game session is active,
+  or the previous rebuild was under three seconds ago. Re-entrant messages are dropped.
+
+### Added
+
+- Competitive power tuning now writes the processor energy performance preference (EPP, and the
+  efficiency-class variant on hybrid CPUs) instead of relying on a pinned 100% minimum processor
+  state. A 100% floor keeps clocks up even with no load, which soaks heat and makes a laptop reach
+  its thermal or power limit sooner, and it does not make the render thread reach turbo any faster —
+  EPP is what governs how eagerly the CPU ramps. The floor drops to 20% only when the machine
+  actually exposes EPP in its power scheme; where it does not, the previous 100% behaviour is kept
+  verbatim so nothing regresses on CPUs without HWP/CPPC. Both settings are written into the private
+  duplicated scheme Aegis already owns, so restoring is still just switching schemes. This also fixes
+  an inconsistency in the old competitive profile: on battery it pinned the frequency floor to 100%
+  while leaving the energy preference at the balanced default of 50.
+- Evidence mode now records which thread submits frames. The Present thread id comes from the ETW
+  event header, so this needs no handle on the game, no injection and no memory access. The session
+  record reports the dominant thread's share, how many threads submit, and how stable the dominant
+  thread is across time windows — the evidence needed to tell a single frame-critical path from a
+  game that submits evenly from many threads. Loading pauses no longer dilute the stability figure,
+  because windows without frames are not counted.
+- Evidence mode also probes once per session whether Aegis can obtain the thread handle that
+  thread-level scheduling would require, recording the outcome and the Win32 error. The probe opens
+  and immediately closes the handle; it reads no thread state and writes nothing. Anti-cheat that
+  denies this is expected and is recorded as a plain fact, not retried or worked around. Both
+  additions are gated behind evidence mode, which stays off by default.
+
 ### Changed
 
 - The Settings page had grown into a dump for three unrelated kinds of switch: per-game GPU tweaks,

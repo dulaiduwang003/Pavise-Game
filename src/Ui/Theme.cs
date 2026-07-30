@@ -110,6 +110,14 @@ namespace AegisApp
             }
         }
 
+        // DPI 变了以后缓存里的字体全是按旧缩放算出来的字号，必须整批丢掉。
+        // 只解除引用、不 Dispose：发出去的 Font 可能还挂在别的窗口或控件上，
+        // 提前释放会变成使用已销毁对象；交给 GC 回收是安全的，而 DPI 变化本身很少发生。
+        public static void DropFontCache()
+        {
+            lock (fontLk) { fontCache.Clear(); monoCache.Clear(); }
+        }
+
         private static readonly Dictionary<int, Font> monoCache = new Dictionary<int, Font>();
         public static Font Mono(float size)
         {

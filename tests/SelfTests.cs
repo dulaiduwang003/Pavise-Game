@@ -796,6 +796,37 @@ namespace AegisApp
                 }
                 finally { Dpi.Scale = old; }
             });
+            test("DPI change: scale updates only on a real change and cached fonts are dropped", () =>
+            {
+                float old = Dpi.Scale;
+                try
+                {
+                    Dpi.Scale = 1f;
+                    // 同一个 DPI 不该触发重建，否则每次收到消息都白重建一次界面
+                    Eq(false, Dpi.Update(96));
+                    Eq(1f, Dpi.Scale);
+                    Eq(true, Dpi.Update(144));
+                    Eq(1.5f, Dpi.Scale);
+                    Eq(false, Dpi.Update(144));
+                    // 低于 100% 的缩放会把固定布局压塌，一律夹到 1
+                    Eq(true, Dpi.Update(72));
+                    Eq(1f, Dpi.Scale);
+                    // 非法值不能改动当前缩放
+                    Eq(false, Dpi.Update(0));
+                    Eq(false, Dpi.Update(-96));
+                    Eq(1f, Dpi.Scale);
+
+                    // 缓存字体按旧缩放算的字号必须作废，丢弃后同一请求要拿到新字号
+                    Dpi.Scale = 1f;
+                    float at100 = Theme.UI(9.5f, false).SizeInPoints;
+                    Eq(true, Dpi.Update(192));
+                    Theme.DropFontCache();
+                    float at200 = Theme.UI(9.5f, false).SizeInPoints;
+                    if (Math.Abs(at100 - at200) < 0.01f)
+                        throw new Exception("font cache survived a DPI change: " + at100 + " vs " + at200);
+                }
+                finally { Dpi.Scale = old; Theme.DropFontCache(); }
+            });
             test("background controller: sustained pressure escalates and cools down", TestPressureController);
             test("game-mode event budget: ordinary process churn stays on the 20-second reconciliation", () =>
             {
