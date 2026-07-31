@@ -151,11 +151,11 @@ namespace AegisApp
                 g.DrawLine(live, dividerX, Theme.S(18), dividerX, Theme.S(35));
 
             TextRenderer.DrawText(g, Title, Theme.UI(9.1f, true),
-                new Rectangle(Theme.S(72), Theme.S(11), Width - Theme.S(116), Theme.S(23)), Theme.Fg,
+                new Rectangle(Theme.S(72), Theme.S(11), Width - Theme.S(119), Theme.S(23)), Theme.Fg,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
             TextRenderer.DrawText(g, Detail, Theme.UI(7.45f, false),
-                new Rectangle(Theme.S(72), Theme.S(37), Width - Theme.S(86), Theme.S(19)), Theme.Dim,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
+                new Rectangle(Theme.S(72), Theme.S(35), Width - Theme.S(84), Theme.S(30)), Theme.Dim,
+                TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.NoPadding | TextFormatFlags.WordBreak | TextFormatFlags.EndEllipsis);
             TextRenderer.DrawText(g, Channel.ToString("00"), Theme.Mono(6.2f),
                 new Rectangle(Width - Theme.S(39), Theme.S(11), Theme.S(24), Theme.S(16)), Theme.Faint,
                 TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
@@ -167,6 +167,5 @@ namespace AegisApp
                 g.DrawLine(track, Theme.S(72), trackY, Theme.S(72) + trackW + offset, trackY);
         }
     }
-
 
 }

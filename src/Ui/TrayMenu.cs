@@ -90,8 +90,7 @@ namespace AegisApp
         protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
         {
             e.TextColor = e.Item.Enabled ? Theme.Fg : Theme.Faint;
-            // 菜单项靠 Padding 把行撑高后，WinForms 仍把文字排在上沿、不按内边距居中，
-            // 结果每行文字都明显偏上。这里按整行高度重算文字矩形，强制垂直居中。
+
             Rectangle r = e.TextRectangle;
             if (r.Height > 0 && r.Height < e.Item.Height)
             {
@@ -239,9 +238,12 @@ namespace AegisApp
 
             var set = SubMenu(Lang.T("nav.set"));
             set.DropDownItems.Add(Check(Lang.T("tm.gpu"), gameMode.GpuHighPerf, (s, e) => { gameMode.GpuHighPerf = !gameMode.GpuHighPerf; Changed(); }));
-            // 实际生效值是 custom ? killGameDvr : competitive（见 GameMode.ApplyEnv），
-            // 直接显示存储值会和策略页的"由预设强制"显示互相矛盾。
-            set.DropDownItems.Add(Check(Lang.T("tm.dvr"), EffectiveDvr(), (s, e) => { gameMode.KillGameDvr = !gameMode.KillGameDvr; Changed(); }));
+
+            bool dvrForced = gameMode.ActivePreset != PerformancePreset.Custom;
+            ToolStripMenuItem dvr = Check(Lang.T("tm.dvr") + (dvrForced ? " · " + Lang.T("v14.preset.forced") : ""), EffectiveDvr(),
+                (s, e) => { gameMode.KillGameDvr = !gameMode.KillGameDvr; Changed(); });
+            dvr.Enabled = !dvrForced;
+            set.DropDownItems.Add(dvr);
             set.DropDownItems.Add(Check(Lang.T("tm.fso"), gameMode.DisableFso, (s, e) => { gameMode.DisableFso = !gameMode.DisableFso; Changed(); }));
             set.DropDownItems.Add(new ToolStripSeparator());
             set.DropDownItems.Add(Check(Lang.T("tm.notif"), gameMode.NotifQuiet, (s, e) => { gameMode.NotifQuiet = !gameMode.NotifQuiet; Changed(); }));
@@ -250,14 +252,6 @@ namespace AegisApp
             set.DropDownItems.Add(new ToolStripSeparator());
             set.DropDownItems.Add(Check(Lang.T("tm.autostart"), TaskHelper.TaskExistsCached(), (s, e) => { ToggleAutostart(); Changed(); }));
 
-            var lang = SubMenu(Lang.T("set.lang"));
-            string[] names = { "中文", "English", "日本語" };
-            for (int i = 0; i < 3; i++)
-            {
-                int ii = i;
-                lang.DropDownItems.Add(Check(names[i], Lang.Cur == i, (s, e) => { if (Lang.Cur != ii) { Lang.Set(ii); Changed(); } }));
-            }
-            set.DropDownItems.Add(lang);
             strip.Items.Add(set);
 
             strip.Items.Add(new ToolStripSeparator());
@@ -293,16 +287,25 @@ namespace AegisApp
             gameMode.TrimWorkingSet = false;
             gameMode.HzGuard = false;
             gameMode.StrictCoreIsolation = false;
-            gameMode.DeepFreeze = false;
+            gameMode.AggressiveSuppression = false;
+            gameMode.IdleStateDisable = true;
+            gameMode.VisualFxDowngrade = false;
             gameMode.Enabled = true; Settings.Save("GameModeOn", true);
             gameMode.Preset = PerformancePreset.Standard;
-            gameMode.ResetWhitelist();
+            bool whitelistReset = gameMode.ResetWhitelist();
 
             foreach (AcGroup g in AntiCheatCatalog.Groups) tamer.SetGroupEnabled(g.Key, g.Default);
             tamer.Paused = false; Settings.Save("TameOn", true);
 
             Changed();
-            Logger.Log("已恢复默认配置");
+            if (!whitelistReset)
+            {
+                MessageBox.Show(
+                    gameMode.WhitelistLastError, "Aegis",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                Logger.Log("默认配置已部分恢复，但白名单写入失败");
+            }
+            else Logger.Log("已恢复默认配置");
         }
     }
 }

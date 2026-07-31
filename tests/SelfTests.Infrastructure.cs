@@ -54,27 +54,10 @@ namespace AegisApp
             }
         }
 
-        private static void RunCrashParent(int pid, string state)
-        {
-            try
-            {
-                using (Process p = Process.GetProcessById(pid))
-                {
-                    var guard = new FreezeGuard(state, true);
-                    if (!guard.Freeze(pid, p.ProcessName, "crash-selftest"))
-                    {
-                        Environment.ExitCode = 3;
-                        return;
-                    }
-                }
-                File.WriteAllText(state + ".armed", "frozen");
-            }
-            catch { Environment.ExitCode = 4; }
-        }
-
         private static Process StartProbe(string beat)
         {
-            Process process = Process.Start(Hidden("--freeze-probe " + Quote(beat)));
+            Process process = Process.Start(Hidden(
+                "--test-heartbeat-probe " + Quote(beat)));
             if (process == null) throw new Exception("probe did not start");
             return process;
         }

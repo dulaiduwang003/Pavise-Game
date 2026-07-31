@@ -61,21 +61,11 @@ namespace AegisApp
             bool repaired;
             List<GameProfile> loaded = Normalize(Load(), out repaired);
             bool legacyFormat = false;
-            try
+
+            if (!loadFailed && File.Exists(path))
             {
-                if (File.Exists(path))
-                {
-                    string[] header = File.ReadAllLines(path, Encoding.UTF8);
-                    legacyFormat = header.Length > 0 && header[0] == HeaderV1;
-                    if (header.Length == 0 || header[0] != HeaderV2) repaired = true;
-                }
-            }
-            catch (Exception ex)
-            {
-                // 同一个文件读不出来，同样不能把它当成"需要修复"而触发重写
-                loadFailed = true;
-                repaired = false;
-                Logger.LogFailure("游戏档案表头读取失败，已保护现有文件不被覆盖", ex);
+                legacyFormat = headerLine == HeaderV1;
+                if (headerLine != HeaderV2) repaired = true;
             }
             if (loaded.Count > 0 || File.Exists(path))
             {
@@ -154,17 +144,18 @@ namespace AegisApp
             catch (Exception ex) { Logger.LogFailure("游戏档案保存失败", ex); }
         }
 
-        // 读取失败绝不能和"档案本来就是空的"混为一谈：一旦混同，界面显示空游戏库，
-        // 用户随手再加一个游戏就会把完好的档案整份覆盖掉，两份副本一起没。
         private bool loadFailed;
+        private string headerLine;
 
         private List<GameProfile> Load()
         {
             var result = new List<GameProfile>();
+            headerLine = null;
             try
             {
                 if (!File.Exists(path)) return result;
                 string[] lines = File.ReadAllLines(path, Encoding.UTF8);
+                if (lines.Length > 0) headerLine = lines[0];
                 if (lines.Length == 0 || (lines[0] != HeaderV1 && lines[0] != HeaderV2)) return result;
                 bool legacy = lines[0] == HeaderV1;
                 for (int i = 1; i < lines.Length; i++)

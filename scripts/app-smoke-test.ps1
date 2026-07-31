@@ -2,7 +2,7 @@
 # 文件用途 启动测试程序并检查游戏会话识别结果
 
 param([string]$AegisPath)
-$defaultAegis = Join-Path $PSScriptRoot '..\Aegis.exe'
+$defaultAegis = Join-Path $PSScriptRoot '..\Aegis.test.exe'
 if ([string]::IsNullOrWhiteSpace($AegisPath)) { $AegisPath = $defaultAegis }
 
 $ErrorActionPreference = 'Stop'

@@ -26,6 +26,32 @@ namespace AegisApp
             if (Scale < 1f) Scale = 1f;
         }
 
+        public static float ScaleFor(int dpi)
+        {
+            float next = dpi / 96f;
+            return next < 1f ? 1f : next;
+        }
+
+        public static bool WouldChange(int dpi)
+        {
+            if (dpi <= 0) return false;
+            return Math.Abs(ScaleFor(dpi) - Scale) >= 0.001f;
+        }
+
+        public static bool Update(int dpi)
+        {
+            if (!WouldChange(dpi)) return false;
+            Scale = ScaleFor(dpi);
+            return true;
+        }
+
+        public static int WindowDpi(IntPtr hwnd)
+        {
+            if (hwnd == IntPtr.Zero) return 0;
+            try { return (int)Native.GetDpiForWindow(hwnd); }
+            catch { return 0; }
+        }
+
         public static int S(int v) { return (int)Math.Round(v * Scale); }
 
         public static float CrispPoint(float points)
@@ -34,7 +60,5 @@ namespace AegisApp
             return pixels * 72f / (96f * Scale);
         }
     }
-
-
 
 }

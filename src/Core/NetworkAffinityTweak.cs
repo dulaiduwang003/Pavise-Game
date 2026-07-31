@@ -22,8 +22,6 @@ namespace AegisApp
 
         public static bool EnabledByAegis { get { return Settings.Load(EnabledKey, false); } }
 
-        // 只读枚举：真实物理网卡（PhysicalAdapter=TRUE），只留 PCI/USB 总线设备，
-        // 排除虚拟网卡（VPN、Hyper-V 虚拟交换机、蓝牙 PAN 等 PhysicalAdapter 已为 FALSE 的情形）。
         internal static List<string> EnumerateNicDeviceIds()
         {
             var ids = new List<string>();
@@ -50,8 +48,6 @@ namespace AegisApp
             return ids;
         }
 
-        // QoS 策略名 = 前缀 + 净化后的游戏名 + 可执行文件路径的短哈希，
-        // 哈希保证同名不同游戏、或名字含有大量非法字符时依然唯一且长度可控。
         internal static string SanitizePolicyName(string gameName, string exePath)
         {
             var sb = new StringBuilder(PolicyPrefix);
@@ -75,8 +71,6 @@ namespace AegisApp
             return list;
         }
 
-        // 记账落盘后必须回读确认：策略名记不上的话，关闭时就找不到该删哪些，
-        // QoS 策略会永久留在系统里成为孤儿。确认失败就地把这批策略清掉。
         private static bool SavePolicyNames(List<string> names)
         {
             string joined = string.Join(";", names.ToArray());
@@ -84,9 +78,6 @@ namespace AegisApp
             return Settings.LoadStr(QosPolicyNamesKey, "") == joined;
         }
 
-        // 策略名和路径一律经环境变量传给脚本，不拼进脚本文本。
-        // 只把 ASCII 单引号翻倍是挡不住注入的：PowerShell 同样把 U+2018/U+2019 等
-        // 排版引号当作单引号定界符，而本程序以管理员身份运行。
         private static IDictionary<string, string> QosArgs(string name, string exePath)
         {
             var d = new Dictionary<string, string> { { "AEGIS_QOS_NAME", name ?? "" } };
@@ -123,8 +114,6 @@ namespace AegisApp
             return ok && stdout.IndexOf("DONE", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
-        // 对目录里每个有可执行文件路径的游戏都打上 QoS 优先级标记；
-        // 可重复调用来刷新——会自动补上新加的游戏、摘掉已经不在目录里的游戏对应的策略。
         public static bool Enable(List<GameProfile> games)
         {
             bool irqOk = irqEngine.Enable(EnumerateNicDeviceIds());
@@ -142,9 +131,11 @@ namespace AegisApp
             }
 
             List<string> oldNames = LoadPolicyNames();
-            foreach (string old in oldNames) if (!newNames.Contains(old)) RemoveQosPolicy(old);
+            var keptNames = new List<string>(newNames);
+            foreach (string old in oldNames)
+                if (!keptNames.Contains(old) && !RemoveQosPolicy(old)) keptNames.Add(old);
 
-            if (!SavePolicyNames(newNames))
+            if (!SavePolicyNames(keptNames))
             {
                 foreach (string name in newNames) RemoveQosPolicy(name);
                 Logger.Log("网络优先级：策略名无法持久化，已撤回本轮创建的 QoS 策略");
@@ -163,7 +154,7 @@ namespace AegisApp
             List<string> names = LoadPolicyNames();
             bool qosOk = true;
             foreach (string name in names) if (!RemoveQosPolicy(name)) qosOk = false;
-            // 策略已删但记账清不掉：保留 qosOk=false，下次 Disable 会重试，不谎报成功
+
             if (qosOk && !SavePolicyNames(new List<string>())) qosOk = false;
 
             bool allOk = irqOk && qosOk;

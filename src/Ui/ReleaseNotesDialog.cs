@@ -47,8 +47,6 @@ namespace AegisApp
             scroll.AutoScroll = true;
             Native.Dark(scroll);
 
-            // 这一段统一用设备像素计算：字体测量返回的就是设备像素，
-            // 再套一次 Theme.S 会二次缩放，高分屏下条目会被裁掉。
             int cardW = Theme.S(DlgW - 44 - 24);
             int textW = cardW - Theme.S(60);
             Font bodyFont = Theme.UI(8.8f, false);
@@ -150,8 +148,6 @@ namespace AegisApp
             }
         }
 
-        // 按实际换行后的高度排版，长句不会被裁掉。
-        // 注意 Theme.UI 返回的是全局缓存字体，这里只能借用不能 Dispose。
         private static int MeasureItem(string text, int widthPx, Font font)
         {
             if (string.IsNullOrEmpty(text)) return Theme.S(18);
