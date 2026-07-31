@@ -9,25 +9,16 @@ namespace AegisApp
 {
     internal enum DefenderState
     {
-        Unavailable,   // 查询不到（未安装 / 被第三方接管 / 权限不足）
-        Disabled,      // 装着但实时保护关闭 —— 此时排除目录毫无意义
+        Unavailable,
+        Disabled,
         Active
     }
 
-    // 把游戏目录排除出 Defender 实时扫描能省掉加载时逐文件过扫的开销，
-    // 但代价是这些路径下的恶意文件也不再被拦截——游戏目录恰恰是破解版、
-    // 第三方 mod、修改器的聚集地，所以这里刻意做得很克制：
-    //   - 只允许排除游戏库里已登记的目录，不接受任意路径
-    //   - 逐目录手动勾选，没有"一键全加"
-    //   - 只移除 Aegis 自己加过的项，绝不动用户手工加的排除
     internal static class DefenderExclusion
     {
         private const string TrackKey = "DefenderExclusions";
         private const string Label = "Defender 排除";
 
-        // 先判断 Defender 到底在不在工作：实时保护关着的话，排除目录一点用都没有，
-        // 与其让用户点了再失败，不如一进来就说清楚。
-        // 这两个查询跑在 UI 线程上，超时给短一点：正常时是秒回，卡到十几秒说明它已经不健康。
         public static DefenderState QueryState()
         {
             string outText;
@@ -76,15 +67,11 @@ namespace AegisApp
 
         public static List<string> OwnedByAegis() { return LoadOwned(); }
 
-        // 路径一律经环境变量传给脚本，不参与 PowerShell 的文本解析。
-        // 拼字符串再转义单引号是挡不住的：PowerShell 把 U+2018/U+2019 等排版引号
-        // 同样当作单引号定界符，而 Aegis 是以管理员身份运行的。
         private static IDictionary<string, string> PathArg(string path)
         {
             return new Dictionary<string, string> { { "AEGIS_PATH", path } };
         }
 
-        // 读系统当前真实的排除列表，用来判断状态和做写入后的独立回读校验
         public static List<string> QuerySystem()
         {
             var list = new List<string>();
@@ -119,11 +106,19 @@ namespace AegisApp
             if (!PsRunner.Run(
                 "$ErrorActionPreference='Stop'\r\n" +
                 "Add-MpPreference -ExclusionPath $env:AEGIS_PATH\r\n" +
-                "Write-Output DONE\r\n", Label, 20000, PathArg(n), out outText)) return false;
-            if (outText.IndexOf("DONE", StringComparison.OrdinalIgnoreCase) < 0) return false;
+                "Write-Output DONE\r\n", Label, 20000, PathArg(n), out outText))
+            {
+                RemoveFromSystem(n);
+                Logger.Log(Label + "：执行未确认完成，已撤回可能已加上的排除 " + n);
+                return false;
+            }
+            if (outText.IndexOf("DONE", StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                RemoveFromSystem(n);
+                Logger.Log(Label + "：退出码为 0 但收不到执行确认，已撤回可能已加上的排除 " + n);
+                return false;
+            }
 
-            // 从这里往下，排除项已经真的加进系统了。任何一步失败都必须撤回，
-            // 否则它既不在记账里（Remove 会拒绝）又留在系统上，等于一个谁也删不掉的安全缺口。
             List<string> system = QuerySystem();
             if (system == null || !Contains(system, n))
             {
@@ -160,7 +155,6 @@ namespace AegisApp
 
         public static bool IsOwned(string path) { return Contains(LoadOwned(), path); }
 
-        // 只移除记账里有的项：用户手工加的排除永远不碰
         public static bool Remove(string path)
         {
             string n = Normalize(path);
@@ -186,7 +180,6 @@ namespace AegisApp
             return true;
         }
 
-        // 对话框里的"全部取消排除"调用：只撤 Aegis 自己加过的
         public static int RemoveAllOwned()
         {
             int n = 0;

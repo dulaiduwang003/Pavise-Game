@@ -1,26 +1,22 @@
-# 构建产物
+
+*.bak
 *.exe
 *.pdb
-
-# 备份
-*.bak
-
-# 运行时生成的配置 / 日志（各机器不同，不入库）
-Aegis.log
-crash.log
-setup.log
-swap.log
-Aegis.games.txt
-Aegis.profiles.dat
-Aegis.whitelist.txt
-Aegis.reports.log
-Aegis.suppression.state
-Aegis.targets.txt
+.app-*.txt
+.ui-v14/
+Aegis-v1.5.1.zip
 Aegis.freeze.state
 Aegis.freeze.state.tmp.*
-Aegis.selftest.txt
+Aegis.games.txt
+Aegis.log
+Aegis.profiles.dat
+Aegis.reports.log
 Aegis.selftest.*.txt
-.ui-v14/
-.app-*.txt
-
-# 保留：src/ / Aegis.ico / build.cmd / README.md / docs/
+Aegis.selftest.txt
+Aegis.suppression.state
+Aegis.targets.txt
+Aegis.whitelist.txt
+crash.log
+release-v1.5.1/
+setup.log
+swap.log

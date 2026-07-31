@@ -13,8 +13,16 @@ namespace AegisApp
     {
         public static bool TryResolve(string selectedPath, out string executablePath, out string error)
         {
+            string ignored;
+            return TryResolve(selectedPath, out executablePath, out error, out ignored);
+        }
+
+        public static bool TryResolve(string selectedPath, out string executablePath, out string error,
+            out string suggestedName)
+        {
             executablePath = null;
             error = null;
+            suggestedName = null;
             if (string.IsNullOrWhiteSpace(selectedPath)) { error = "未选择文件"; return false; }
 
             string source;
@@ -28,9 +36,13 @@ namespace AegisApp
             {
                 if (!TryResolveShortcut(source, out target)) { error = "快捷方式没有指向有效的 EXE"; return false; }
             }
+            else if (extension.Equals(".url", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!SteamShortcut.TryResolve(source, out target, out error, out suggestedName)) return false;
+            }
             else if (!extension.Equals(".exe", StringComparison.OrdinalIgnoreCase))
             {
-                error = "只支持 EXE 和 Windows 快捷方式（LNK）";
+                error = "只支持 EXE、Windows 快捷方式（LNK）和 Steam 桌面快捷方式（URL）";
                 return false;
             }
 
@@ -86,6 +98,7 @@ namespace AegisApp
             }
         }
 
+#if AEGIS_SELFTEST
         internal static bool CreateShortcutForTest(string shortcutPath, string executablePath)
         {
             IShellLinkW link = null;
@@ -103,6 +116,7 @@ namespace AegisApp
                     try { Marshal.FinalReleaseComObject(link); } catch { }
             }
         }
+#endif
 
         [ComImport, Guid("00021401-0000-0000-C000-000000000046")]
         private class ShellLink { }

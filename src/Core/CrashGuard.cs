@@ -14,6 +14,20 @@ namespace AegisApp
         private const string KBoostNames = "Crash_BoostNames";
         private const string KBoostEntries = "Crash_BoostEntriesV2";
         private static readonly object sync = new object();
+        private static readonly Dictionary<int, long> owned = new Dictionary<int, long>();
+        private enum BoostIdentity { Match, Mismatch, Unknown }
+
+        internal sealed class OriginalBoostState
+        {
+            public uint Priority;
+            public ulong Affinity;
+            public int Io;
+            public int Page;
+            public int Gpu;
+            public uint[] CpuSets;
+            public int QoSControl;
+            public int QoSState;
+        }
 
         private sealed class BoostEntry
         {
@@ -26,8 +40,7 @@ namespace AegisApp
             public int Page;
             public int Gpu;
             public uint[] CpuSets;
-            // 老格式（9 段）没有这两项，读出来是 -1，还原时退回"交给系统托管"，
-            // 与加字段之前的行为一致，因此升级不会打断已有的待恢复记录。
+
             public int QoSControl = -1;
             public int QoSState = -1;
         }
@@ -52,10 +65,45 @@ namespace AegisApp
             uint priority, ulong affinity, int io, int page, int gpu, uint[] cpuSets,
             int qosControl, int qosState)
         {
+            OriginalBoostState ignored;
+            return MarkBoostProcess(
+                pid, creation, name, priority, affinity, io, page, gpu,
+                cpuSets, qosControl, qosState, out ignored);
+        }
+
+        internal static bool MarkBoostProcess(int pid, long creation, string name,
+            uint priority, ulong affinity, int io, int page, int gpu, uint[] cpuSets,
+            int qosControl, int qosState, out OriginalBoostState recovered)
+        {
+            recovered = null;
             if (pid <= 0 || creation <= 0 || string.IsNullOrEmpty(name)) return false;
             lock (sync)
             {
                 List<BoostEntry> entries = LoadEntries();
+                foreach (BoostEntry old in entries)
+                    if (old.Pid == pid && old.Creation == creation)
+                    {
+                        if (!string.Equals(
+                                old.Name, name,
+                                StringComparison.OrdinalIgnoreCase))
+                            return false;
+
+                        owned[pid] = creation;
+                        recovered = new OriginalBoostState
+                        {
+                            Priority = old.Priority,
+                            Affinity = old.Affinity,
+                            Io = old.Io,
+                            Page = old.Page,
+                            Gpu = old.Gpu,
+                            CpuSets = old.CpuSets == null
+                                ? new uint[0]
+                                : (uint[])old.CpuSets.Clone(),
+                            QoSControl = old.QoSControl,
+                            QoSState = old.QoSState
+                        };
+                        return true;
+                    }
                 entries.RemoveAll(e => e.Pid == pid);
                 entries.Add(new BoostEntry
                 {
@@ -63,7 +111,9 @@ namespace AegisApp
                     Affinity = affinity, Io = io, Page = page, Gpu = gpu, CpuSets = cpuSets,
                     QoSControl = qosControl, QoSState = qosState
                 });
-                return SaveEntries(entries);
+                bool saved = SaveEntries(entries);
+                if (saved) owned[pid] = creation; else owned.Remove(pid);
+                return saved;
             }
         }
 
@@ -71,17 +121,16 @@ namespace AegisApp
         {
             lock (sync)
             {
+                long mine;
+                if (!owned.TryGetValue(pid, out mine)) return;
+                if (creation > 0 && mine != creation) return;
+                owned.Remove(pid);
                 List<BoostEntry> entries = LoadEntries();
                 if (entries.RemoveAll(e => e.Pid == pid && (creation <= 0 || e.Creation == creation)) > 0)
                     SaveEntries(entries);
             }
         }
 
-        // 不再整表清空提优日志：UnboostGames 已经逐进程调用 ReleaseBoostProcess 精确销账，
-        // 这里再抹一次只会误伤两类记录——上一次崩溃后 HealFromCrash 还原不了而特意保留的条目，
-        // 以及本轮没能还原成功的条目。它们被抹掉之后，那些进程会一直停在被改过的状态，
-        // 而 HealFromCrash 是唯一的重试入口，它的输入刚好就是这张表。
-        // 只清掉早期版本遗留的两个旧键。
         public static void ClearBoost()
         {
             Settings.SaveStr(KBoost, "");
@@ -106,16 +155,26 @@ namespace AegisApp
                     {
                         try
                         {
-                            if (IdentityMatches(query, entry)) keep.Add(entry);
+                            if (Identify(query, entry) != BoostIdentity.Mismatch) keep.Add(entry);
                         }
                         finally { Native.CloseHandle(query); }
+                    }
+                    else if (!Native.LastOpenProcessFailureWasNoSuchProcess())
+                    {
+                        keep.Add(entry);
                     }
                     continue;
                 }
 
                 try
                 {
-                    if (!IdentityMatches(h, entry)) continue;
+                    BoostIdentity identity = Identify(h, entry);
+                    if (identity == BoostIdentity.Mismatch) continue;
+                    if (identity == BoostIdentity.Unknown)
+                    {
+                        keep.Add(entry);
+                        continue;
+                    }
                     bool ok = SuppressionCore.RestoreValues(h, entry.Priority, entry.Affinity,
                         entry.Io, entry.Page, CpuTopology.AllMask, entry.CpuSets,
                         entry.QoSControl, entry.QoSState);
@@ -136,15 +195,19 @@ namespace AegisApp
             if (keep.Count > 0) Logger.Log("仍有 " + keep.Count + " 个提优进程暂时无法恢复，身份快照已保留待下次重试");
         }
 
-        private static bool IdentityMatches(IntPtr h, BoostEntry entry)
+        private static BoostIdentity Identify(IntPtr h, BoostEntry entry)
         {
             string name = Native.ImageName(h);
-            if (!string.Equals(name, entry.Name, StringComparison.OrdinalIgnoreCase)) return false;
+            if (name == null) return BoostIdentity.Unknown;
+            if (!string.Equals(name, entry.Name, StringComparison.OrdinalIgnoreCase))
+                return BoostIdentity.Mismatch;
             long creation, cpu; ulong io;
-            return Native.QueryProcessSample(h, out creation, out cpu, out io) && creation == entry.Creation;
+            if (!Native.QueryProcessSample(h, out creation, out cpu, out io))
+                return BoostIdentity.Unknown;
+            return creation == entry.Creation ? BoostIdentity.Match : BoostIdentity.Mismatch;
         }
 
-        // 供自测校验格式向后兼容：返回 "条目数|第一条的QoSControl|第一条的QoSState"
+#if AEGIS_SELFTEST
         internal static string ProbeParse(string raw)
         {
             string prev = Settings.LoadStr(KBoostEntries, "");
@@ -157,6 +220,7 @@ namespace AegisApp
             }
             finally { Settings.SaveStr(KBoostEntries, prev); }
         }
+#endif
 
         private static List<BoostEntry> LoadEntries()
         {

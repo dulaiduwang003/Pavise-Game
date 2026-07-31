@@ -21,7 +21,6 @@ namespace AegisApp
         public static bool MultiGroup;
         public static ulong PerfMask, EffMask, BigL3Mask, SmallL3Mask;
 
-
         public static ulong AllMask, ThrottleMask, BoostMask, StrictBoostMask;
 
         static CpuTopology()
@@ -32,15 +31,13 @@ namespace AegisApp
             try { BuildCpuSetPolicies(); } catch { }
         }
 
-
         private static void DeriveMasks()
         {
             int nc = Environment.ProcessorCount;
             AllMask = nc >= 64 ? ulong.MaxValue : (1UL << nc) - 1UL;
             if (Hybrid) { ThrottleMask = EffMask; BoostMask = AllMask; }
             else if (AsymCache) { ThrottleMask = SmallL3Mask; BoostMask = BigL3Mask; }
-            // C# 会把 ulong 的移位量按 6 bit 取模，nc>64 时 3UL<<70 会变成 3UL<<6，
-            // 把 6/7 号核当成"后台核"。其余移位点都有 <64 保护，补上这一处。
+
             else { ThrottleMask = nc >= 2 && nc <= 64 ? 3UL << (nc - 2) : (nc >= 2 ? 0UL : 1UL); BoostMask = AllMask; }
             StrictBoostMask = CpuPartitionPolicy.StrictMask(AllMask, ThrottleMask,
                 Hybrid ? PerfMask : 0, AsymCache ? BigL3Mask : 0);
@@ -325,13 +322,23 @@ namespace AegisApp
                             if (!RecordFits(size, 38, 2)) { pos += size; continue; }
                             uint csize = (uint)Marshal.ReadInt32(u, 4);
                             int gc = Marshal.ReadInt16(u, 30);
-                            if (!RecordArrayFits(size, 40, gc, 16)) { pos += size; continue; }
                             ulong m = 0;
-                            for (int i = 0; i < gc; i++)
+                            if (gc == 0)
                             {
-                                IntPtr ga = (IntPtr)((long)u + 32 + i * 16);
-                                if (Marshal.ReadInt16(ga, 8) != 0) { multiGroup = true; continue; }
-                                m |= (ulong)Marshal.ReadInt64(ga, 0);
+                                if (!RecordFits(size, 40, 16)) { pos += size; continue; }
+                                IntPtr ga = (IntPtr)((long)u + 32);
+                                if (Marshal.ReadInt16(ga, 8) != 0) multiGroup = true;
+                                else m = (ulong)Marshal.ReadInt64(ga, 0);
+                            }
+                            else
+                            {
+                                if (!RecordArrayFits(size, 40, gc, 16)) { pos += size; continue; }
+                                for (int i = 0; i < gc; i++)
+                                {
+                                    IntPtr ga = (IntPtr)((long)u + 32 + i * 16);
+                                    if (Marshal.ReadInt16(ga, 8) != 0) { multiGroup = true; continue; }
+                                    m |= (ulong)Marshal.ReadInt64(ga, 0);
+                                }
                             }
                             if (m != 0) l3.Add(new KeyValuePair<uint, ulong>(csize, m));
                         }
@@ -365,7 +372,5 @@ namespace AegisApp
             finally { Marshal.FreeHGlobal(buf); }
         }
     }
-
-
 
 }

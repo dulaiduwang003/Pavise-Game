@@ -110,6 +110,11 @@ namespace AegisApp
             }
         }
 
+        public static void DropFontCache()
+        {
+            lock (fontLk) { fontCache.Clear(); monoCache.Clear(); }
+        }
+
         private static readonly Dictionary<int, Font> monoCache = new Dictionary<int, Font>();
         public static Font Mono(float size)
         {
@@ -212,6 +217,5 @@ namespace AegisApp
             return t;
         }
     }
-
 
 }

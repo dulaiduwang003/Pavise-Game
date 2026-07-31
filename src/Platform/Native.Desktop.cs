@@ -19,6 +19,8 @@ namespace AegisApp
         public static extern bool SetProcessDpiAwarenessContext(IntPtr value);
         [DllImport("user32.dll")]
         public static extern uint GetDpiForSystem();
+        [DllImport("user32.dll")]
+        public static extern uint GetDpiForWindow(IntPtr hwnd);
         [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
         private static extern int SetWindowTheme(IntPtr hwnd, string sub, string list);
         [DllImport("uxtheme.dll", EntryPoint = "#135")]
@@ -27,6 +29,54 @@ namespace AegisApp
         public static extern uint timeBeginPeriod(uint ms);
         [DllImport("winmm.dll")]
         public static extern uint timeEndPeriod(uint ms);
+
+        public const int WM_DROPFILES = 0x0233;
+        private const uint MSGFLT_ALLOW = 1;
+
+        [DllImport("shell32.dll")]
+        private static extern void DragAcceptFiles(IntPtr hwnd, bool accept);
+        [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+        private static extern uint DragQueryFileW(IntPtr hDrop, uint index, System.Text.StringBuilder file, uint cch);
+        [DllImport("shell32.dll")]
+        private static extern void DragFinish(IntPtr hDrop);
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool ChangeWindowMessageFilterEx(IntPtr hwnd, uint message, uint action, IntPtr changeInfo);
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool ChangeWindowMessageFilter(uint message, uint action);
+
+        public static void EnableElevatedFileDrop(IntPtr hwnd)
+        {
+            try
+            {
+                ChangeWindowMessageFilter(WM_DROPFILES, MSGFLT_ALLOW);
+                ChangeWindowMessageFilter(0x004A, MSGFLT_ALLOW);
+                ChangeWindowMessageFilter(0x0049, MSGFLT_ALLOW);
+                ChangeWindowMessageFilterEx(hwnd, WM_DROPFILES, MSGFLT_ALLOW, IntPtr.Zero);
+                ChangeWindowMessageFilterEx(hwnd, 0x004A, MSGFLT_ALLOW, IntPtr.Zero);
+                ChangeWindowMessageFilterEx(hwnd, 0x0049, MSGFLT_ALLOW, IntPtr.Zero);
+                DragAcceptFiles(hwnd, true);
+            }
+            catch { }
+        }
+
+        public static string[] ReadDroppedFiles(IntPtr hDrop)
+        {
+            try
+            {
+                uint count = DragQueryFileW(hDrop, 0xFFFFFFFF, null, 0);
+                var files = new System.Collections.Generic.List<string>();
+                var buffer = new System.Text.StringBuilder(1024);
+                for (uint i = 0; i < count; i++)
+                {
+                    buffer.Length = 0;
+                    if (DragQueryFileW(hDrop, i, buffer, (uint)buffer.Capacity) > 0)
+                        files.Add(buffer.ToString());
+                }
+                return files.ToArray();
+            }
+            catch { return new string[0]; }
+            finally { try { DragFinish(hDrop); } catch { } }
+        }
 
         public const int WM_NCLBUTTONDOWN = 0xA1;
         public const int HT_CAPTION = 0x2;
