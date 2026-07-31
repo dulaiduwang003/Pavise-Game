@@ -60,7 +60,6 @@ namespace AegisApp
             return hits;
         }
 
-
         private static bool UnderRoot(string dir, string root)
         {
             string r = root.TrimEnd('\\') + "\\";
@@ -257,7 +256,6 @@ namespace AegisApp
                 }
             }
         }
-
 
         private static void Visit(string dir, string scanRoot, int depth,
             List<ScanHit> hits, HashSet<string> roots, int[] dirs, Func<bool> canceled, Action<int, int> progress)

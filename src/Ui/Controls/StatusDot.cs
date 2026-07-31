@@ -22,11 +22,37 @@ namespace AegisApp
         private float phase;
 
         public Color Color { get { return color; } set { if (color != value) { color = value; Invalidate(); } } }
-        public bool Pulse { get { return pulse; } set { if (pulse != value) { pulse = value; Invalidate(); } } }
+        public bool Pulse { get { return pulse; } set { if (pulse != value) { pulse = value; if (value) UiClock.WakeSlow(); Invalidate(); } } }
 
         public StatusDot() { Cursor = Cursors.Default; }
 
-        protected override void OnFrame(object s, EventArgs e) { if (pulse) { phase += 0.09f; if (phase > 6.2832f) phase -= 6.2832f; Invalidate(); } }
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            UiClock.SlowFrame += OnSlowFrame;
+            if (pulse && Visible) UiClock.WakeSlow();
+        }
+
+        protected override void OnHandleDestroyed(EventArgs e)
+        {
+            UiClock.SlowFrame -= OnSlowFrame;
+            base.OnHandleDestroyed(e);
+        }
+
+        protected override void OnVisibleChanged(EventArgs e)
+        {
+            base.OnVisibleChanged(e);
+            if (pulse && Visible) UiClock.WakeSlow();
+        }
+
+        private void OnSlowFrame(object sender, EventArgs e)
+        {
+            if (!pulse || !Visible) return;
+            UiClock.WakeSlow();
+            phase += 0.72f;
+            if (phase > 6.2832f) phase -= 6.2832f;
+            Invalidate();
+        }
 
         protected override void OnPaint(PaintEventArgs e)
         {
@@ -44,6 +70,5 @@ namespace AegisApp
             using (var b = new SolidBrush(color)) g.FillEllipse(b, cx - r, cy - r, r * 2, r * 2);
         }
     }
-
 
 }

@@ -9,6 +9,8 @@ using System.Drawing.Drawing2D;
 using System.IO;
 using System.Net;
 using System.Runtime.InteropServices;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
@@ -18,23 +20,29 @@ namespace AegisApp
     internal static class App
     {
         public const string DisplayName = "AEGIS";
-        public const string Version = "1.4.4";
+        public const string Version = "1.5.1";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
+        public const string WeChat = "Ssssssstyle";
         public const string RepoName = "dulaiduwang003/Aegis";
         public const string RepoUrl = "https://github.com/" + RepoName;
         public const string ReleasesUrl = RepoUrl + "/releases";
         public static string VersionTag { get { return "v" + Version; } }
     }
 
-
     internal static class Program
     {
+        private const string PendingPanelKey = "ShowPanelOnNextStart";
+
         [STAThread]
         private static void Main(string[] args)
         {
 
+            if (LegacyFreezeRecovery.TryHandle(args)) return;
+            if (LolWatchdog.TryHandle(args)) return;
+#if AEGIS_SELFTEST
             if (SelfTests.TryHandleRuntimeMode(args)) return;
+#endif
 
             if (args.Length > 0 && args[0] == "--genicon")
             {
@@ -69,7 +77,7 @@ namespace AegisApp
                 try
                 {
                     var scMode = new GameMode(sdir, scCore);
-                    if (idx == 1)
+                    if (idx == (int)PageId.Library)
                     {
                         string demoDir = Path.Combine(sdir, "NebulaStrike", "Binaries", "Win64");
                         Directory.CreateDirectory(demoDir);
@@ -125,16 +133,6 @@ namespace AegisApp
                 catch { }
             };
 
-            try
-            {
-                using (Mutex.OpenExisting("Aegis_SingleInstance"))
-                {
-                    try { EventWaitHandle.OpenExisting("Aegis_ShowPanel").Set(); } catch { }
-                    return;
-                }
-            }
-            catch { }
-
             bool created = false;
             Mutex mtx = null;
             try { mtx = new Mutex(true, "Global\\Aegis_SingleInstance", out created); }
@@ -145,13 +143,21 @@ namespace AegisApp
                 return;
             }
 
+            bool autoStarted = false;
+            if (args != null)
+                foreach (string a in args)
+                    if (string.Equals(a, TaskHelper.AutostartArgument, StringComparison.OrdinalIgnoreCase))
+                        autoStarted = true;
+
             bool elevated = IsElevated();
 
             if (!elevated && TaskHelper.TaskExists())
             {
                 mtx.ReleaseMutex();
                 mtx.Close();
+                Settings.Save(PendingPanelKey, true);
                 if (TaskHelper.Run("/Run /TN " + TaskHelper.TaskName) == 0) return;
+                Settings.Save(PendingPanelKey, false);
                 try { mtx = new Mutex(true, "Global\\Aegis_SingleInstance", out created); }
                 catch { created = false; }
                 if (!created)
@@ -162,22 +168,38 @@ namespace AegisApp
             }
 
             var showEvt = new EventWaitHandle(false, EventResetMode.AutoReset, "Global\\Aegis_ShowPanel");
+            EventWaitHandle exitEvt;
+            try
+            {
+                var exitSec = new EventWaitHandleSecurity();
+                exitSec.AddAccessRule(new EventWaitHandleAccessRule(
+                    WindowsIdentity.GetCurrent().User,
+                    EventWaitHandleRights.Modify | EventWaitHandleRights.Synchronize,
+                    AccessControlType.Allow));
+                bool exitCreated;
+                exitEvt = new EventWaitHandle(false, EventResetMode.AutoReset, "Global\\Aegis_Exit",
+                    out exitCreated, exitSec);
+            }
+            catch
+            {
+                exitEvt = new EventWaitHandle(false, EventResetMode.AutoReset, "Global\\Aegis_Exit");
+            }
 
             Paths.Init();
             Lang.Init();
             string dir = Paths.Data;
             Logger.LogPath = Path.Combine(dir, "Aegis.log");
-            FreezeGuard.HealFromCrash(Path.Combine(dir, FreezeGuard.StateFileName));
+            LegacyFreezeRecovery.BeginHeal(Path.Combine(dir, LegacyFreezeRecovery.StateFileName));
             int healedSuppression = SuppressionCore.HealFromCrash(Path.Combine(dir, SuppressionCore.StateFileName));
             if (healedSuppression > 0) Logger.Log("检测到上次未还原的分级后台控制，已恢复 " + healedSuppression + " 个进程");
             PowerPlan.HealFromCrash();
+            try { UpdatePause.HealFromCrash(); } catch { }
+            try { EtwFrameTrace.StopStaleSession(); } catch { }
             NetTweak.HealFromCrash();
             FgBoost.HealFromCrash();
-            SvcPause.HealFromCrash();
             GameDvr.HealFromCrash();
             Mmcss.HealFromCrash();
             Notif.HealFromCrash();
-            DoTweak.HealFromCrash();
             VisualFx.HealFromCrash();
             DisplayGuard.HealFromCrash();
             CrashGuard.HealFromCrash();
@@ -201,13 +223,48 @@ namespace AegisApp
 
             var gameMode = new GameMode(dir, core);
             gameMode.Enabled = Settings.Load("GameModeOn", true);
+            var lolService = new LolOptimizationService();
 
-            tamer.Start();
-            gameMode.Start();
+            var startGate = new object();
+            bool exiting = false;
+            var bootThread = new Thread(() =>
+            {
+                try { SvcPause.HealFromCrash(); } catch { }
+                try { DoTweak.HealFromCrash(); } catch { }
+                lock (startGate)
+                {
+                    if (exiting) return;
+                    tamer.Start();
+                    gameMode.Start();
+                    lolService.Start();
+                }
+            });
+            bootThread.IsBackground = true;
+            bootThread.Start();
 
             var procNotify = new ProcNotify();
-            procNotify.Changed += () => { gameMode.Poke(); tamer.Poke(); };
+            procNotify.CaptureStartIdentity = delegate(string name, int session)
+            {
+                return gameMode.NeedsWhitelistParentIdentity(session)
+                    || gameMode.NeedsGameProcessIdentity(name, session)
+                    || LolRuntimeProcesses.IsScanCandidateName(name);
+            };
+            procNotify.CaptureParentIdentity =
+                delegate(int parentPid, string name, int session)
+                {
+                    return gameMode.NeedsWhitelistParentIdentity(session)
+                        || gameMode.NeedsLauncherChildParentIdentity(
+                            parentPid, name, session);
+                };
+            procNotify.BatchChanged += batch =>
+            {
+                gameMode.NotifyProcessChanges(batch);
+                tamer.NotifyProcessChanges(batch);
+                lolService.NotifyProcessChanges(batch);
+            };
             procNotify.Start();
+            gameMode.ProcessEventsAvailable = procNotify.IsActive;
+            tamer.ProcessEventsAvailable = procNotify.IsActive;
 
             if (elevated)
                 ThreadPool.QueueUserWorkItem(_ => TaskHelper.RefreshStartupTask());
@@ -215,8 +272,12 @@ namespace AegisApp
             PerformancePreset runtimeIconMode = gameMode.ActivePreset;
             bool runtimeIconEnabled = gameMode.Enabled;
             Icon appIcon = IconArt.MakeMultiIcon(runtimeIconMode, runtimeIconEnabled);
-            var panel = new PanelForm(tamer, gameMode, appIcon, elevated);
+            var panel = new PanelForm(tamer, gameMode, appIcon, elevated, lolService);
             GC.KeepAlive(panel.Handle);
+
+            bool pendingPanel = Settings.Load(PendingPanelKey, false);
+            if (pendingPanel) Settings.Save(PendingPanelKey, false);
+            if (!autoStarted || pendingPanel) panel.ShowPanel();
 
             var evtThread = new Thread(() =>
             {
@@ -237,13 +298,17 @@ namespace AegisApp
             System.Windows.Forms.Timer trayTip = null;
             Action doExit = () =>
             {
-                // 先停托盘刷新定时器再释放图标：否则 Tick 会往已释放的 NotifyIcon 上写东西
+
                 try { trayTip.Stop(); trayTip.Dispose(); } catch { }
                 icon.Visible = false;
                 icon.Dispose();
+                lock (startGate) exiting = true;
                 try { procNotify.Stop(); } catch { }
+                try { panel.WaitForLolIdle(4000); } catch { }
+                try { lolService.Dispose(); } catch { }
                 tamer.Stop();
                 gameMode.Stop();
+                try { FrameEvidence.Finish(); } catch { }
                 panel.RealExit = true;
                 Application.Exit();
             };
@@ -252,8 +317,27 @@ namespace AegisApp
                 () => panel.ShowPanel(),
                 doExit,
                 () => panel.SyncAllToggles());
+
+            var exitThread = new Thread(() =>
+            {
+                exitEvt.WaitOne();
+                try { panel.BeginInvoke(doExit); } catch { }
+            });
+            exitThread.IsBackground = true;
+            exitThread.Start();
             icon.ContextMenuStrip = trayMenu.Strip;
             icon.Visible = true;
+            SystemEvents.SessionEnded += (s, e) =>
+            {
+                try { gameMode.Enabled = false; } catch { }
+                try { PowerPlan.Restore(); } catch { }
+                try { GameDvr.Restore(); } catch { }
+                try { Notif.Restore(); } catch { }
+                try { Mmcss.Restore(); } catch { }
+                try { NetTweak.Restore(); } catch { }
+                try { FgBoost.Restore(); } catch { }
+                try { VisualFx.Restore(); } catch { }
+            };
             gameMode.SessionEnded += msg =>
             {
                 try

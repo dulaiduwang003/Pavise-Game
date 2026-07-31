@@ -23,14 +23,7 @@ namespace AegisApp
         public static bool TryHandleRuntimeMode(string[] args)
         {
             if (args == null || args.Length == 0) return false;
-            if (args[0] == "--freeze-watchdog" && args.Length >= 4)
-            {
-                int owner; long creation;
-                if (int.TryParse(args[1], out owner) && long.TryParse(args[2], out creation))
-                    FreezeGuard.WatchOwnerAndRestore(owner, creation, args[3]);
-                return true;
-            }
-            if (args[0] == "--freeze-probe" && args.Length >= 2)
+            if (args[0] == "--test-heartbeat-probe" && args.Length >= 2)
             {
                 RunProbe(args[1]);
                 return true;
@@ -38,13 +31,6 @@ namespace AegisApp
             if (args[0] == "--cpu-burn")
             {
                 RunCpuBurn();
-                return true;
-            }
-            if (args[0] == "--freeze-crash-parent" && args.Length >= 3)
-            {
-                int pid;
-                if (!int.TryParse(args[1], out pid)) { Environment.ExitCode = 2; return true; }
-                RunCrashParent(pid, args[2]);
                 return true;
             }
             if (args[0] == "--selftest")
@@ -63,6 +49,13 @@ namespace AegisApp
                 int pid;
                 if (!int.TryParse(args[1], out pid)) { Environment.ExitCode = 2; return true; }
                 RunDetectorProbe(pid, args[2], args[3]);
+                return true;
+            }
+            if (args[0] == "--gpu-demote-probe" && args.Length >= 3)
+            {
+                int pid;
+                if (!int.TryParse(args[1], out pid)) { Environment.ExitCode = 2; return true; }
+                RunGpuDemoteProbe(pid, args[2]);
                 return true;
             }
             if (args[0] == "--live-repro" && args.Length >= 4)
@@ -380,8 +373,6 @@ namespace AegisApp
             Environment.ExitCode = 0;
         }
 
-        // 真实构造主窗口并走一次 ShowPanel()，逐帧采样 Opacity/Top，
-        // 验证开场动画确实在渐变+上浮（而不是卡在 0、或直接跳到 1 等于没动画）。
         private static void RunIntroProbe(string output)
         {
             var sb = new System.Text.StringBuilder();
@@ -440,8 +431,6 @@ namespace AegisApp
             Environment.ExitCode = 0;
         }
 
-        // 把真实托盘右键菜单显示出来截图，并打印每项的高度/内边距/文字矩形，
-        // 用来判断文字到底有没有垂直居中——靠肉眼猜容易改错方向。
         private static void RunMenuProbe(string output, string dumpPath)
         {
             string data = Path.Combine(Path.GetTempPath(), "AegisMenuProbe_" + Process.GetCurrentProcess().Id);
@@ -490,8 +479,6 @@ namespace AegisApp
             Environment.ExitCode = 0;
         }
 
-        // 真实弹出版本说明窗口并截图。窗口构造时会把"已读版本"写进用户配置，
-        // 这里先存后还原，免得诊断run顺手把用户的 NEW 标记吃掉。
         private static void RunNotesProbe(string output, string language)
         {
             const string seenKey = "LastSeenNotesVersion";
@@ -668,7 +655,6 @@ namespace AegisApp
         {
             var log = new List<string>();
             int passed = 0, failed = 0, skipped = 0;
-            double contentionGain = 0;
             Action<string, Action> test = (name, body) =>
             {
                 try { body(); log.Add("PASS  " + name); passed++; }
@@ -697,7 +683,12 @@ namespace AegisApp
                 Eq(3, CpuPartitionPolicy.BackgroundCoreCount(24));
                 Eq(4, CpuPartitionPolicy.BackgroundCoreCount(64));
             });
-            test("resource sampler: threshold and PID reuse", TestSampler);
+            test("whitelist rules: legacy names, versioned paths and exact boundaries", TestWhitelistRules);
+            test("whitelist family: descendants persist only while PID identity matches", TestWhitelistFamilyIdentity);
+            test("whitelist family events: order and parent creation prevent PID inheritance", TestWhitelistFamilyEvents);
+            test("process events: delayed starts cannot splice stale parent identity", TestProcNotifyParentIdentity);
+            test("whitelist storage: corrupt data fails safe and writes are transactional", TestWhitelistStorageSafety);
+            test("whitelist concurrency: edits serialize with in-flight policy snapshots", TestWhitelistMutationSerialization);
             test("extreme exclusions: anti-cheat names are case-insensitive", () =>
             {
                 Eq(true, AntiCheatCatalog.IsKnownProcess("VGC"));
@@ -707,7 +698,73 @@ namespace AegisApp
             });
             test("game family: generic multi-folder layouts share one protected root", TestMultiFolderGameRoot);
             test("game catalog: protected root survives save format and legacy entries", TestGameCatalogFormat);
+            test("startup task: running binary replaces a stale executable target", () =>
+            {
+                Eq(false, TaskHelper.NeedsStartupTaskRefresh(
+                    @"C:\Code\Aegis\Aegis.exe",
+                    @"c:\code\aegis\AEGIS.exe"));
+                Eq(true, TaskHelper.NeedsStartupTaskRefresh(
+                    @"C:\Code\Aegis\Aegis.exe",
+                    @"C:\Users\Star\Desktop\Aegis.exe"));
+                Eq(false, TaskHelper.NeedsStartupTaskRefresh(
+                    @"C:\Code\Aegis\Aegis.exe", null));
+                Eq(@"C:\Apps\A & B\Aegis.exe",
+                    TaskHelper.ParseTaskCommandXml(
+                        "\uFEFF<?xml version=\"1.0\"?>"
+                        + "<Task xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">"
+                        + "<Actions><Exec><Command>\"C:\\Apps\\A &amp; B\\Aegis.exe\""
+                        + "</Command></Exec></Actions></Task>"));
+                Eq(null, TaskHelper.ParseTaskCommandXml(
+                    "<Task><Actions /></Task>"));
+            });
+            test("LoL runtime: LCU credentials reject malformed input", TestLolCredentialParsing);
+            test("LoL runtime: cleanup targets never include core, game or ACE paths", TestLolCleanupBoundary);
+            test("environment tweaks: a failing step backs off instead of retrying every scan", () =>
+            {
+                string envDir = Path.Combine(
+                    Path.GetTempPath(), "AegisEnvRetry_" + Process.GetCurrentProcess().Id);
+                Directory.CreateDirectory(envDir);
+                var mode = new GameMode(envDir, new SuppressionCore());
+                mode.ClearEnvRetryStateForTest();
+                int attempts = mode.EnvAttemptCountForTest(
+                    "probe-fail", true, false,
+                    delegate { return false; }, delegate { return true; }, 50);
+                if (attempts != 1)
+                    throw new Exception("失败项在 50 轮扫描里尝试了 " + attempts + " 次，应为 1 次");
+
+                mode.ClearEnvRetryStateForTest();
+                int okAttempts = mode.EnvAttemptCountForTest(
+                    "probe-ok", true, false,
+                    delegate { return true; }, delegate { return true; }, 50);
+                Eq(1, okAttempts);
+
+                mode.ClearEnvRetryStateForTest();
+                int restoreAttempts = mode.EnvAttemptCountForTest(
+                    "probe-restore", false, true,
+                    delegate { return true; }, delegate { return false; }, 50);
+                if (restoreAttempts != 1)
+                    throw new Exception("还原失败项尝试了 " + restoreAttempts + " 次，应为 1 次");
+            });
             test("render detector: Office and launchers cannot masquerade as games", TestRenderScoring);
+            test("render detector: parallel instances and PID reuse stay isolated", TestGameSessionInstanceIsolation);
+            test("autostart task: the logon instance is distinguishable from a manual launch", () =>
+            {
+                const string withArgs =
+                    "<Task><Actions Context=\"Author\"><Exec>"
+                    + "<Command>\"C:\\A\\Aegis.exe\"</Command>"
+                    + "<Arguments>--autostart</Arguments></Exec></Actions></Task>";
+                Eq("--autostart", TaskHelper.ParseTaskArgumentsXml(withArgs));
+                Eq("C:\\A\\Aegis.exe", TaskHelper.ParseTaskCommandXml(withArgs));
+
+                const string legacy =
+                    "<Task><Actions Context=\"Author\"><Exec>"
+                    + "<Command>\"C:\\A\\Aegis.exe\"</Command></Exec></Actions></Task>";
+                Eq("", TaskHelper.ParseTaskArgumentsXml(legacy));
+
+                Eq(null, TaskHelper.ParseTaskArgumentsXml(""));
+                Eq(null, TaskHelper.ParseTaskArgumentsXml("不是 XML"));
+                Eq(null, TaskHelper.ParseTaskArgumentsXml("<Task><Actions/></Task>"));
+            });
             test("release metadata: product and file versions are present", TestReleaseMetadata);
             test("mode theme: graphite stays fixed while Standard, Competitive and Custom accents differ", () =>
             {
@@ -745,7 +802,183 @@ namespace AegisApp
                 }
                 finally { Dpi.Scale = old; }
             });
+            test("DPI change: scale updates only on a real change and cached fonts are dropped", () =>
+            {
+                float old = Dpi.Scale;
+                try
+                {
+                    Dpi.Scale = 1f;
+                    Eq(false, Dpi.Update(96));
+                    Eq(1f, Dpi.Scale);
+                    Eq(true, Dpi.Update(144));
+                    Eq(1.5f, Dpi.Scale);
+                    Eq(false, Dpi.Update(144));
+                    Eq(true, Dpi.Update(72));
+                    Eq(1f, Dpi.Scale);
+                    Eq(false, Dpi.Update(0));
+                    Eq(false, Dpi.Update(-96));
+                    Eq(1f, Dpi.Scale);
+
+                    Dpi.Scale = 1f;
+                    float at100 = Theme.UI(9.5f, false).SizeInPoints;
+                    Eq(true, Dpi.Update(192));
+                    Theme.DropFontCache();
+                    float at200 = Theme.UI(9.5f, false).SizeInPoints;
+                    if (Math.Abs(at100 - at200) < 0.01f)
+                        throw new Exception("font cache survived a DPI change: " + at100 + " vs " + at200);
+                }
+                finally { Dpi.Scale = old; Theme.DropFontCache(); }
+            });
+            test("DPI scale: only real changes count and probing never mutates the scale", () =>
+            {
+                float old = Dpi.Scale;
+                try
+                {
+                    Dpi.Scale = 1f;
+                    Eq(false, Dpi.WouldChange(96));
+                    Eq(true, Dpi.WouldChange(144));
+                    Eq(false, Dpi.WouldChange(0));
+                    Eq(false, Dpi.WouldChange(-96));
+                    Eq(false, Dpi.WouldChange(72));
+                    Eq(1f, Dpi.Scale);
+
+                    Eq(true, Dpi.Update(144));
+                    Eq(1.5f, Dpi.Scale);
+                    Eq(true, Dpi.WouldChange(72));
+                    Eq(true, Dpi.Update(72));
+                    Eq(1f, Dpi.Scale);
+                    Eq(0, Dpi.WindowDpi(IntPtr.Zero));
+                }
+                finally { Dpi.Scale = old; Theme.DropFontCache(); }
+            });
             test("background controller: sustained pressure escalates and cools down", TestPressureController);
+            test("game-mode event budget: ordinary process churn stays on the 20-second reconciliation", () =>
+            {
+                Eq(4000, GameMode.ProcessScanIntervalMs(false));
+                Eq(20000, GameMode.ProcessScanIntervalMs(true));
+                Eq(false, GameMode.ProcessEventNeedsImmediateScan(false));
+                Eq(true, GameMode.ProcessEventNeedsImmediateScan(true));
+                Eq(5000, GameMode.GameTransitionScanIntervalMs);
+                Eq(1000, GameMode.FailedProcessScanRetryMs);
+                Eq(8000, Tamer.OverflowSweepIntervalMs);
+                Eq(1000, Tamer.FailedSweepRetryMs);
+                Eq(5000, LolOptimizationService.ProcessEventWakeThrottleMs);
+                DateTime wakeNow = new DateTime(638000000000000000L, DateTimeKind.Utc);
+                Eq(1250, LolOptimizationService.ProcessWakeDelayMs(
+                    wakeNow, wakeNow.AddMilliseconds(1250)));
+                GameProfile eventProfile = GameProfileStore.NewProfile(
+                    "EventProbe", @"C:\Games\EventProbe",
+                    @"C:\Games\EventProbe\EventProbe.exe");
+                eventProfile.Entries.Clear();
+                eventProfile.Entries.Add("EventProbe");
+                Eq(true, GameSessionDetector.IsProfileEntryName(
+                    eventProfile, "EventProbe"));
+                Eq(true, GameSessionDetector.IsProfileEntryName(
+                    eventProfile, "EventProbe_x64"));
+                Eq(false, GameSessionDetector.IsProfileEntryName(
+                    eventProfile, "EventProbeHelper"));
+                Eq(true, GameSessionDetector.IsProfileEntryProcess(
+                    eventProfile, "anything",
+                    @"C:\Games\EventProbe\EventProbe.exe"));
+                Eq(true, GameSessionDetector.IsProfileEntryProcess(
+                    eventProfile, "EventProbe_x64",
+                    @"C:\Games\EventProbe\EventProbe_x64.exe"));
+                Eq(false, GameSessionDetector.IsProfileEntryProcess(
+                    eventProfile, "EventProbeHelper",
+                    @"C:\Games\EventProbe\EventProbeHelper.exe"));
+                Eq(false, GameSessionDetector.IsProfileEntryProcess(
+                    eventProfile, "EventProbe_x64",
+                    @"C:\Other\EventProbe_x64.exe"));
+                var detection = new GameDetection();
+                detection.RendererPid = 41;
+                detection.RendererName = "EventProbeLauncher";
+                detection.RendererCreation = 1000;
+                Eq(true, GameMode.ShouldCaptureLauncherParentIdentity(
+                    detection, 41));
+                Eq(false, GameMode.ShouldCaptureLauncherParentIdentity(
+                    detection, 40));
+                detection.RendererCreation = 0;
+                Eq(false, GameMode.ShouldCaptureLauncherParentIdentity(
+                    detection, 41));
+                detection.RendererCreation = 1000;
+                Eq(true, GameMode.IsActiveFamilyChildStart(
+                    detection, new ProcessChange
+                    {
+                        Kind = ProcessChangeKind.Started,
+                        Pid = 42,
+                        ParentPid = 41,
+                        ParentCreation = 1000,
+                        Creation = 1100,
+                        Session = 7
+                    }, 7));
+                Eq(false, GameMode.IsActiveFamilyChildStart(
+                    detection, new ProcessChange
+                    {
+                        Kind = ProcessChangeKind.Started,
+                        Pid = 42,
+                        ParentPid = 41,
+                        ParentCreation = 999,
+                        Creation = 1100,
+                        Session = 7
+                    }, 7));
+                Eq(false, GameMode.IsActiveFamilyChildStart(
+                    detection, new ProcessChange
+                    {
+                        Kind = ProcessChangeKind.Started,
+                        Pid = 42,
+                        ParentPid = 41,
+                        ParentCreation = 1000,
+                        Creation = 1100,
+                        Session = 8
+                    }, 7));
+                Eq(false, GameMode.IsActiveFamilyChildStart(
+                    detection, new ProcessChange
+                    {
+                        Kind = ProcessChangeKind.Started,
+                        Pid = 42,
+                        ParentPid = 41,
+                        ParentCreation = 1000,
+                        Creation = 900,
+                        Session = 7
+                    }, 7));
+                detection.FamilyPids.Add(43);
+                Eq(false, GameMode.IsActiveFamilyChildStart(
+                    detection, new ProcessChange
+                    {
+                        Kind = ProcessChangeKind.Started,
+                        Pid = 44,
+                        ParentPid = 43,
+                        ParentCreation = 1000,
+                        Creation = 1100,
+                        Session = 7
+                    }, 7));
+                detection.RendererName = "EventProbe";
+                Eq(false, GameMode.ShouldCaptureLauncherParentIdentity(
+                    detection, 41));
+                Eq(false, GameMode.IsActiveFamilyChildStart(
+                    detection, new ProcessChange
+                    {
+                        Kind = ProcessChangeKind.Stopped,
+                        Pid = 42,
+                        ParentPid = 41,
+                        ParentCreation = 1000,
+                        Creation = 1100,
+                        Session = 7
+                    }, 7));
+                Eq(true, GameMode.IsSameTransitionEpoch(
+                    41, 1000, 41, 1000));
+                Eq(false, GameMode.IsSameTransitionEpoch(
+                    41, 1000, 41, 2000));
+                var returnedLauncher = new GameDetection
+                {
+                    RendererPid = 41,
+                    RendererName = "EventProbeLauncher"
+                };
+                Eq(true, GameMode.ShouldRearmLauncherTransition(
+                    detection, returnedLauncher));
+                Eq(false, GameMode.ShouldRearmLauncherTransition(
+                    returnedLauncher, returnedLauncher));
+            });
             test("preset policy: eligible background escalates and Competitive isolates immediately", TestPresetBackgroundPolicy);
             test("background boundary: foreground and user-facing apps stay protected", TestBackgroundBoundary);
             test("game protection: sticky-launcher guard and any-process targeting", TestGameProtectionRedesign);
@@ -778,35 +1011,33 @@ namespace AegisApp
             });
             test("visual effects: the animation snapshot is persisted so a crash can recover it", () =>
             {
-                // 关键回归：窗口动画的原值必须落盘。只存在内存里的话，Aegis 被强杀后重启，
-                // Activate 会把"当前已关闭"当成用户本来的设置，动画整个登录会话都开不回来。
+
                 int before = 0;
                 if (!Native.SystemParametersInfoGet(Native.SPI_GETUIEFFECTS, 0, ref before, 0))
                     throw new TestSkippedException("SPI_GETUIEFFECTS unavailable");
-                string slotBefore = Settings.LoadStr("PrevUiEffects", "");
+                if (before == 0)
+                    throw new TestSkippedException("window animations are already off on this machine");
+                if (Settings.LoadStr("PrevUiEffects", "").Length > 0
+                    || Settings.LoadStr("PrevTransparency", "").Length > 0)
+                    throw new TestSkippedException("another Aegis instance is holding a visual effects snapshot");
                 try
                 {
                     if (!VisualFx.Activate()) throw new TestSkippedException("visual downgrade unavailable");
                     int during = 0;
                     Native.SystemParametersInfoGet(Native.SPI_GETUIEFFECTS, 0, ref during, 0);
-                    if (before != 0)
-                    {
-                        Eq(0, during);
-                        if (Settings.LoadStr("PrevUiEffects", "").Length == 0)
-                            throw new Exception("animation snapshot was not persisted; a crash would strand it");
-                    }
+                    Eq(0, during);
+                    if (Settings.LoadStr("PrevUiEffects", "").Length == 0)
+                        throw new Exception("animation snapshot was not persisted; a crash would strand it");
                 }
                 finally { VisualFx.Restore(); }
                 int after = 0;
                 Native.SystemParametersInfoGet(Native.SPI_GETUIEFFECTS, 0, ref after, 0);
                 Eq(before, after);
                 Eq("", Settings.LoadStr("PrevUiEffects", ""));
-                Settings.SaveStr("PrevUiEffects", slotBefore);
             });
             test("powershell bridge: user data is passed as data, never parsed as script", () =>
             {
-                // PowerShell 把 U+2019 等排版引号也当单引号定界符，所以"把 ' 翻倍"挡不住注入。
-                // Aegis 以管理员运行，被注入等于交出管理员权限，因此数据一律走环境变量。
+
                 string evil = "D:" + "\\" + "Evil" + (char)0x2019 + ";Write-Output PWNED;" + (char)0x2019;
                 var argv = new Dictionary<string, string> { { "AEGIS_PATH", evil } };
                 string outText;
@@ -818,84 +1049,110 @@ namespace AegisApp
                 if (outText.IndexOf(evil, StringComparison.Ordinal) < 0)
                     throw new Exception("payload was not echoed verbatim; quoting altered the data");
             });
-            test("language table: every entry is trilingual and format placeholders are consistent", () =>
+            test("language table: every entry is complete and format placeholders are consistent", () =>
             {
-                // 缺键时 Lang.T 会把键名本身当文本返回，界面上就会出现 "btn.open" 这种字样，
-                // 三种语言下都一样，光靠肉眼看很难发现，所以由测试兜住。
+                int languages = 0;
+                foreach (string key in Lang.AllKeys())
+                {
+                    string[] row = Lang.Row(key);
+                    if (row != null && row.Length > languages) languages = row.Length;
+                }
+                if (languages == 0) throw new Exception("文案表为空");
+
                 var missing = new List<string>();
                 foreach (string key in Lang.AllKeys())
                 {
                     string[] row = Lang.Row(key);
-                    if (row == null || row.Length != 3) { missing.Add(key + "(译文不足3种)"); continue; }
-                    for (int i = 0; i < 3; i++)
+                    if (row == null || row.Length != languages)
+                    {
+                        missing.Add(key + "(译文不足" + languages + "种)");
+                        continue;
+                    }
+                    for (int i = 0; i < languages; i++)
                         if (string.IsNullOrEmpty(row[i])) missing.Add(key + "(第" + i + "种语言为空)");
-                    // 同一条目的各语言占位符数量必须一致，否则切语言后 string.Format 会抛异常
+
                     int zh = CountPlaceholders(row[0]);
-                    for (int i = 1; i < 3; i++)
+                    for (int i = 1; i < languages; i++)
                         if (CountPlaceholders(row[i]) != zh)
                             missing.Add(key + "(占位符数量各语言不一致)");
                 }
                 if (missing.Count > 0) throw new Exception(string.Join("; ", missing.ToArray()));
             });
+
+            Settings.UseTransientStoreForCurrentProcess();
             test("crash journal: old 9-field records still load after the QoS fields were added", () =>
             {
                 string name = Convert.ToBase64String(Encoding.UTF8.GetBytes("game"));
-                // 旧格式（9 段，无 QoS）：必须照常读出，QoS 退化为 -1 = 交给系统托管，
-                // 也就是加字段之前的行为，升级不会作废已有的待恢复记录
+
                 Eq("1|-1|-1", CrashGuard.ProbeParse("111|222|" + name + "|32|255|2|5|-1|"));
-                // 新格式（11 段）：QoS 原样读回
+
                 Eq("1|1|1", CrashGuard.ProbeParse("111|222|" + name + "|32|255|2|5|-1||1|1"));
-                // 尾部字段损坏时退回 -1，而不是整条丢弃
+
                 Eq("1|-1|-1", CrashGuard.ProbeParse("111|222|" + name + "|32|255|2|5|-1||x|y"));
-                // CpuSets 列表正常携带时也不受影响
+
                 Eq("1|1|0", CrashGuard.ProbeParse("111|222|" + name + "|32|255|2|5|-1|3,4,5|1|0"));
-                // 段数不足仍然拒绝
+
                 Eq("0", CrashGuard.ProbeParse("111|222|" + name + "|32"));
             });
             test("suppression: game-root containment is anchored on a path segment", () =>
             {
-                // 兄弟目录不能因为前缀相同就被当成同一个游戏目录
+
                 Eq(true, GameMode.UnderRoot(@"D:\Games\Apex\bin\game.exe", @"D:\Games\Apex"));
                 Eq(true, GameMode.UnderRoot(@"D:\Games\Apex\bin\game.exe", @"D:\Games\Apex\"));
                 Eq(false, GameMode.UnderRoot(@"D:\Games\ApexBackup\sync.exe", @"D:\Games\Apex"));
                 Eq(false, GameMode.UnderRoot(@"D:\Games\ApexTools\updater.exe", @"D:\Games\Apex\"));
                 Eq(false, GameMode.UnderRoot(@"D:\SteamLibrary\x\y.exe", @"D:\Steam"));
-                // 根目录本身不算"在根目录之下"，空值一律不匹配
+
                 Eq(false, GameMode.UnderRoot(@"D:\Games\Apex", @"D:\Games\Apex"));
                 Eq(false, GameMode.UnderRoot(null, @"D:\Games\Apex"));
                 Eq(false, GameMode.UnderRoot(@"D:\Games\Apex\a.exe", null));
                 Eq(false, GameMode.UnderRoot(@"D:\Games\Apex\a.exe", ""));
 
-                // 走真实资格判定：同名前缀的兄弟目录不该被豁免
                 const string win = @"C:\Windows\";
                 Eq(false, GameMode.BasicBackgroundEligible(10, 99, "game", @"D:\Games\Apex\bin\game.exe",
                     1, 1, 20, false, win, false, @"D:\Games\Apex"));
                 Eq(true, GameMode.BasicBackgroundEligible(10, 99, "sync", @"D:\Games\ApexBackup\sync.exe",
                     1, 1, 20, false, win, false, @"D:\Games\Apex"));
             });
+            test("suppression: every library game root is exempt, not just the active one", () =>
+            {
+                var roots = new List<string> { @"D:\Games\Apex", @"E:\Genshin Impact\Genshin Impact Game" };
+                Eq(@"E:\Genshin Impact\Genshin Impact Game", GameMode.LibraryRootOf(
+                    @"E:\Genshin Impact\Genshin Impact Game\YuanShen.exe", roots));
+                Eq(@"D:\Games\Apex", GameMode.LibraryRootOf(@"D:\Games\Apex\bin\game.exe", roots));
+                Eq((string)null, GameMode.LibraryRootOf(@"E:\Genshin Impact\Genshin Impact GameBackup\x.exe", roots));
+                Eq((string)null, GameMode.LibraryRootOf(@"C:\Apps\a.exe", roots));
+                Eq((string)null, GameMode.LibraryRootOf(null, roots));
+                Eq((string)null, GameMode.LibraryRootOf(@"D:\Games\Apex\bin\game.exe", null));
+                Eq((string)null, GameMode.LibraryRootOf(@"D:\anything\x.exe", new List<string> { @"D:\", @"D:" }));
+                Eq(true, TaskHelper.IsVolatileAutostartPath(@"D:\应用\微信\xwechat_files\wxid_x\msg\file\2026-07\Aegis(1).exe"));
+                Eq(true, TaskHelper.IsVolatileAutostartPath(@"C:\Users\a\AppData\Local\Temp\Aegis.exe"));
+                Eq(false, TaskHelper.IsVolatileAutostartPath(@"D:\游戏\Aegis.exe"));
+                Eq(false, GameMode.BasicBackgroundEligible(10, 99, "YuanShen", @"E:\Genshin Impact\Genshin Impact Game\YuanShen.exe",
+                    1, 1, 20, false, @"C:\Windows\", false,
+                    GameMode.LibraryRootOf(@"E:\Genshin Impact\Genshin Impact Game\YuanShen.exe", roots), true));
+            });
             test("suppression: anti-cheat exemption is as broad as anti-cheat detection", () =>
             {
                 const string win = @"C:\Windows\";
-                // 检测器认定为反作弊的名字，压制侧必须同样豁免。
-                // 两边用不同宽度的判定，就会出现"检测器说是反作弊、压制器照压不误"的致命缝隙。
+
                 string[] names = { "GameAntiCheat", "BattlEye", "SGuard64Helper", "EasyAntiCheat_x64",
                                    "vgtray", "GameMon64", "TenSafe_1", "ACE-Helper" };
                 foreach (string n in names)
                 {
                     if (!GameSessionDetector.IsAntiCheatLikeName(n))
                         throw new Exception("detector no longer treats " + n + " as anti-cheat; test premise broken");
-                    // 常规强度
+
                     Eq(false, GameMode.BasicBackgroundEligible(10, 99, n, @"C:\Program Files\AC\" + n + ".exe",
                         1, 1, 20, false, win));
-                    // 竞技级强度（前台/可见窗口豁免全部取消，最容易误伤）
+
                     Eq(false, GameMode.BasicBackgroundEligible(10, 99, n, @"C:\Program Files\AC\" + n + ".exe",
                         1, 1, 20, false, win, false, null, true));
                 }
             });
             test("theme fonts: the shared font cache survives repeated painting", () =>
             {
-                // Theme.UI 返回的是全局缓存实例。绘制代码若把它 using 掉，
-                // 缓存里留下的就是已释放对象，下一次取到它再绘制就会抛异常。
+
                 using (var panel = new EmptyStatePanel())
                 {
                     panel.Size = new Size(320, 220);
@@ -906,7 +1163,7 @@ namespace AegisApp
                         using (var bmp = new Bitmap(320, 220))
                             panel.DrawToBitmap(bmp, new Rectangle(0, 0, 320, 220));
                 }
-                // 缓存中的字体必须仍然可用：对已释放的 Font 取 Height 会抛异常
+
                 foreach (float size in new[] { 9.25f, 8.4f, 10.2f, 7.8f, 7.6f })
                 {
                     if (Theme.UI(size, true).Height <= 0) throw new Exception(size + "pt bold font is unusable");
@@ -915,19 +1172,19 @@ namespace AegisApp
             });
             test("defender exclusion: path matching never mistakes a neighbour for an owned entry", () =>
             {
-                // 大小写、尾部反斜杠、引号、空白都不该影响判定
+
                 Eq(@"C:\Games\Foo", DefenderExclusion.Normalize(@"C:\Games\Foo\"));
                 Eq(@"C:\Games\Foo", DefenderExclusion.Normalize(@"  ""C:\Games\Foo""  "));
                 Eq("", DefenderExclusion.Normalize(null));
                 Eq("", DefenderExclusion.Normalize("   "));
-                // 盘符根目录不能被削成 "C:"
+
                 Eq(@"C:\", DefenderExclusion.Normalize(@"C:\"));
 
                 var owned = new List<string> { @"C:\Games\Foo", @"D:\Steam\Bar\" };
                 Eq(true, DefenderExclusion.Contains(owned, @"c:\games\foo"));
                 Eq(true, DefenderExclusion.Contains(owned, @"C:\Games\Foo\"));
                 Eq(true, DefenderExclusion.Contains(owned, @"D:\Steam\Bar"));
-                // 前缀相同但不是同一个目录，绝不能算命中——否则会误删用户自己的排除
+
                 Eq(false, DefenderExclusion.Contains(owned, @"C:\Games\Foobar"));
                 Eq(false, DefenderExclusion.Contains(owned, @"C:\Games"));
                 Eq(false, DefenderExclusion.Contains(owned, @"C:\Games\Foo\Sub"));
@@ -935,92 +1192,26 @@ namespace AegisApp
             });
             test("per-game GPU preference: merging never destroys fields Windows owns", () =>
             {
-                // 回归钉子：Windows 把逐游戏「窗口化优化」存在 AppStatus 里，
-                // 写 GpuPreference 时整值覆盖会把它抹掉（本机真有游戏是 AppStatus=0; 这个形态）
+
                 Eq("AppStatus=0;GpuPreference=2;", GameExeTweaks.MergeField("AppStatus=0;", "GpuPreference", "2"));
                 Eq("AppStatus=4096;GpuPreference=2;", GameExeTweaks.MergeField("AppStatus=4096;GpuPreference=0;", "GpuPreference", "2"));
-                // 顺序保持不变，己方字段就地替换而不是挪到末尾
+
                 Eq("GpuPreference=2;AppStatus=0;", GameExeTweaks.MergeField("GpuPreference=0;AppStatus=0;", "GpuPreference", "2"));
-                // 空值/空白/仅分号
+
                 Eq("GpuPreference=2;", GameExeTweaks.MergeField(null, "GpuPreference", "2"));
                 Eq("GpuPreference=2;", GameExeTweaks.MergeField("", "GpuPreference", "2"));
                 Eq("GpuPreference=2;", GameExeTweaks.MergeField(";;", "GpuPreference", "2"));
-                // 畸形段（没有等号）原样保留，不因为解析不了就丢弃
+
                 Eq("Garbage;GpuPreference=2;", GameExeTweaks.MergeField("Garbage;", "GpuPreference", "2"));
-                // 重复字段只保留一份
+
                 Eq("GpuPreference=2;", GameExeTweaks.MergeField("GpuPreference=0;GpuPreference=1;", "GpuPreference", "2"));
 
-                // 读取：用于判断"已经是想要的值就别动"
                 Eq("2", GameExeTweaks.ReadField("AppStatus=4096;GpuPreference=2;", "GpuPreference"));
                 Eq("0", GameExeTweaks.ReadField("AppStatus=0;", "AppStatus"));
                 Eq(null, GameExeTweaks.ReadField("AppStatus=0;", "GpuPreference"));
                 Eq(null, GameExeTweaks.ReadField(null, "GpuPreference"));
-                // 不能被前缀相同的字段名骗到
+
                 Eq(null, GameExeTweaks.ReadField("XGpuPreference=2;", "GpuPreference"));
-            });
-            test("standby purge: mid-session admission refuses unless memory is truly exhausted", () =>
-            {
-                const long GB = 1024L * 1024 * 1024, MB = 1024L * 1024;
-                Func<int, long, StandbyStats> make = (loadPercent, lowBytes) =>
-                {
-                    var s = new StandbyStats();
-                    s.PageSize = 4096;
-                    s.MemoryLoadPercent = loadPercent;
-                    s.StandbyPagesByPriority[0] = lowBytes / 4096;
-                    s.StandbyPagesByPriority[5] = (8L * GB) / 4096;
-                    return s;
-                };
-                // 内存不紧张 → 不管低优先级多少都不动手
-                Eq(false, StandbyMemory.ShouldPurgeMidSession(make(40, 2 * GB), 80, 256 * MB));
-                // 内存吃紧但没有低优先级可清 → 不动手（宁可不清也不清高优先级缓存）
-                Eq(false, StandbyMemory.ShouldPurgeMidSession(make(95, 4 * MB), 80, 256 * MB));
-                // 两个条件同时满足才动手
-                Eq(true, StandbyMemory.ShouldPurgeMidSession(make(95, 512 * MB), 80, 256 * MB));
-                // 边界：恰好等于阈值算达标
-                Eq(true, StandbyMemory.ShouldPurgeMidSession(make(80, 256 * MB), 80, 256 * MB));
-                Eq(false, StandbyMemory.ShouldPurgeMidSession(make(79, 512 * MB), 80, 256 * MB));
-                Eq(false, StandbyMemory.ShouldPurgeMidSession(null, 80, 256 * MB));
-
-                // 回归钉子：判据不能再看 free+zero 链表。Windows 会主动把空闲物理内存
-                // 塞进待机列表，那两个链表长期只有几百 MB，用它判断"内存见底"会恒真，
-                // 克制的准入就退化成每 60 秒清一次。
-                StandbyStats plenty = make(30, 512 * MB);
-                plenty.FreePages = (200 * MB) / 4096;
-                Eq(false, StandbyMemory.ShouldPurgeMidSession(plenty, 80, 256 * MB));
-
-                // 统计口径：低优先级只算 0/1 档，不能把高优先级缓存算进去
-                StandbyStats stat = make(95, 512 * MB);
-                Eq(512 * MB, stat.LowPriorityBytes);
-                Eq(8 * GB + 512 * MB, stat.StandbyBytes);
-            });
-            test("standby purge: full purge happens once per session and never mid-game", () =>
-            {
-                bool purged = false;
-                // 会话建立的第一拍：全量清理一次
-                Eq(StandbyAction.PurgeFull, GameMode.NextStandbyAction(true, false, ref purged, true, true));
-                // 之后无论轮询多少次，中途开关关着就什么都不做
-                Eq(StandbyAction.None, GameMode.NextStandbyAction(true, false, ref purged, true, false));
-                Eq(StandbyAction.None, GameMode.NextStandbyAction(true, false, ref purged, true, false));
-
-                // 中途开关打开后，也只能是低优先级，绝不会再出现全量
-                Eq(StandbyAction.PurgeLowPriority, GameMode.NextStandbyAction(true, true, ref purged, true, false));
-                // 冷却未到 → 不动
-                Eq(StandbyAction.None, GameMode.NextStandbyAction(true, true, ref purged, false, false));
-
-                // 关键回归：对局进行中把开关关掉再打开，绝不能补做一次全量清理
-                bool mid = false;
-                Eq(StandbyAction.None, GameMode.NextStandbyAction(false, false, ref mid, true, false));
-                Eq(StandbyAction.None, GameMode.NextStandbyAction(true, false, ref mid, true, false));
-                Eq(StandbyAction.None, GameMode.NextStandbyAction(true, false, ref mid, true, false));
-
-                // 功能关闭时任何情况下都不动手
-                bool off = false;
-                Eq(StandbyAction.None, GameMode.NextStandbyAction(false, false, ref off, true, true));
-                Eq(StandbyAction.None, GameMode.NextStandbyAction(false, true, ref off, true, true));
-
-                // 下一局（sessionFresh 再次为真）才恢复全量
-                bool next = false;
-                Eq(StandbyAction.PurgeFull, GameMode.NextStandbyAction(true, false, ref next, true, true));
             });
             test("release notes: current version is documented and fully translated", () =>
             {
@@ -1032,7 +1223,6 @@ namespace AegisApp
                 List<string> missing = ReleaseNotes.MissingTranslations();
                 if (missing.Count > 0) throw new Exception("untranslated notes: " + string.Join(", ", missing.ToArray()));
 
-                // 版本按从新到旧排列，且日期字段不能为空
                 for (int i = 1; i < ReleaseNotes.All.Length; i++)
                     if (!UpdateChecker.IsNewer(ReleaseNotes.All[i - 1].Version, ReleaseNotes.All[i].Version))
                         throw new Exception("notes are not ordered newest-first at index " + i);
@@ -1042,36 +1232,35 @@ namespace AegisApp
                     if (n.Tag != "v" + n.Version) throw new Exception("bad tag for " + n.Version);
                 }
 
-                // 越界索引必须返回空串而不是抛异常
                 Eq("", cur.Item(-1));
                 Eq("", cur.Item(cur.Count));
             });
             test("auto-hide: fires once per game session and re-arms only on the next one", () =>
             {
                 bool last = false, armed = false;
-                // 开关关着：整局都不该收
+
                 Eq(AutoHideAction.None, PanelForm.NextAutoHide(true, ref last, ref armed, false, true));
                 Eq(AutoHideAction.Cancel, PanelForm.NextAutoHide(false, ref last, ref armed, false, true));
 
-                // 开关开着、窗口可见：这局收一次
                 last = false; armed = false;
                 Eq(AutoHideAction.Schedule, PanelForm.NextAutoHide(true, ref last, ref armed, true, true));
-                // 同一局内反复轮询不得重复安排
+
                 Eq(AutoHideAction.None, PanelForm.NextAutoHide(true, ref last, ref armed, true, true));
                 Eq(AutoHideAction.None, PanelForm.NextAutoHide(true, ref last, ref armed, true, true));
-                // 这局结束 → 撤销并重新武装
+
                 Eq(AutoHideAction.Cancel, PanelForm.NextAutoHide(false, ref last, ref armed, true, true));
                 Eq(false, armed);
-                // 下一局重新收一次
+
                 Eq(AutoHideAction.Schedule, PanelForm.NextAutoHide(true, ref last, ref armed, true, true));
 
-                // 游戏开始时窗口本来就没显示：消耗掉本局机会但不安排收起
                 last = false; armed = false;
                 Eq(AutoHideAction.None, PanelForm.NextAutoHide(true, ref last, ref armed, true, false));
                 Eq(true, armed);
-                // 用户对局中途自己打开窗口，也不该被再次收走
+
                 Eq(AutoHideAction.None, PanelForm.NextAutoHide(true, ref last, ref armed, true, true));
             });
+            test("UI dormancy: hidden/minimized windows cannot revive animation timers", TestUiDormancyState);
+            test("present threads: dominant-thread attribution and thread-handle probe reporting", TestPresentThreadAttribution);
             test("network QoS: policy names stay unique, ASCII-safe and bounded in length", () =>
             {
                 string a = NetworkAffinityTweak.SanitizePolicyName("Valorant", @"C:\Games\Valorant\VALORANT.exe");
@@ -1086,43 +1275,290 @@ namespace AegisApp
                 string empty = NetworkAffinityTweak.SanitizePolicyName("", @"C:\g.exe");
                 if (!empty.StartsWith("Aegis_Game")) throw new Exception("empty game name did not fall back to a placeholder");
             });
+            test("anti-cheat tiers: level tags round-trip and priority mapping per tier", () =>
+            {
+                Eq(SuppressionLevel.Eco, Tamer.ParseLevel(Tamer.LevelTag(SuppressionLevel.Eco)));
+                Eq(SuppressionLevel.Restrained, Tamer.ParseLevel(Tamer.LevelTag(SuppressionLevel.Restrained)));
+                Eq(SuppressionLevel.Isolated, Tamer.ParseLevel(Tamer.LevelTag(SuppressionLevel.Isolated)));
+                Eq(SuppressionLevel.Isolated, Tamer.ParseLevel("garbage"));
+                Eq(SuppressionLevel.Isolated, Tamer.ParseLevel(null));
+
+                Eq(Native.NORMAL_PRIORITY_CLASS, SuppressionCore.DesiredPriority(SuppressionLevel.Eco, Native.NORMAL_PRIORITY_CLASS));
+                Eq(Native.HIGH_PRIORITY_CLASS, SuppressionCore.DesiredPriority(SuppressionLevel.Eco, Native.HIGH_PRIORITY_CLASS));
+                Eq(Native.BELOW_NORMAL_PRIORITY_CLASS, SuppressionCore.DesiredPriority(SuppressionLevel.Restrained, Native.NORMAL_PRIORITY_CLASS));
+                Eq(Native.IDLE_PRIORITY_CLASS, SuppressionCore.DesiredPriority(SuppressionLevel.Isolated, Native.NORMAL_PRIORITY_CLASS));
+                Eq(Native.NORMAL_PRIORITY_CLASS, SuppressionCore.DesiredPriority(SuppressionLevel.Eco, 0));
+            });
+            test("evidence stats: frame percentiles, telemetry summary and DRS snapshots", () =>
+            {
+                Lang.Init();
+                var frames = new int[200];
+                for (int i = 0; i < 200; i++) frames[i] = 10000;
+                frames[0] = 110000;
+                double avg, low1, low01;
+                Eq(true, FrameEvidence.ComputeStats(frames, out avg, out low1, out low01));
+                if (avg < 90 || avg > 100) throw new Exception("avg fps out of range: " + avg);
+                if (low1 < 15 || low1 > 20) throw new Exception("1% low out of range: " + low1);
+                if (low01 < 8 || low01 > 10) throw new Exception("0.1% low out of range: " + low01);
+                Eq(false, FrameEvidence.ComputeStats(new int[0], out avg, out low1, out low01));
+
+                var mixed = new int[100];
+                for (int i = 0; i < 100; i++) mixed[i] = 10000;
+                mixed[10] = 110000;
+                mixed[50] = 300000; mixed[51] = 320000; mixed[52] = 310000;
+                int excludedUs;
+                int[] cleaned = FrameEvidence.ExcludeLoadingClusters(mixed, out excludedUs);
+                Eq(97, cleaned.Length);
+                Eq(930000, excludedUs);
+                bool spikeKept = false;
+                foreach (int v in cleaned) if (v == 110000) spikeKept = true;
+                Eq(true, spikeKept);
+
+                Eq(60, GameMode.ResolveFrlFps("60"));
+                Eq(120, GameMode.ResolveFrlFps("120"));
+                Eq(240, GameMode.ResolveFrlFps("240"));
+                Eq(0, GameMode.ResolveFrlFps("off"));
+                Eq(0, GameMode.ResolveFrlFps("junk"));
+                int screenFps = GameMode.ResolveFrlFps("screen");
+                if (screenFps != 0 && screenFps < 45)
+                    throw new Exception("screen frl out of range: " + screenFps);
+
+                var filter = new FocusIntervalFilter();
+                var admitted = new List<int>();
+                for (int i = 0; i < 300; i++) if (filter.Admit(1500)) admitted.Add(1500);
+                filter.NoteFocus(false);
+                for (int i = 0; i < 100; i++) if (filter.Admit(33000)) admitted.Add(33000);
+                filter.NoteFocus(true);
+                if (filter.Admit(20000)) admitted.Add(20000);
+                for (int i = 0; i < 300; i++) if (filter.Admit(1500)) admitted.Add(1500);
+                Eq(600, admitted.Count);
+                foreach (int v in admitted) Eq(1500, v);
+                Eq(101, filter.UnfocusedFrames);
+                Eq(100 * 33000L + 20000L, filter.UnfocusedUs);
+                double fAvg, fLow1, fLow01;
+                Eq(true, FrameEvidence.ComputeStats(admitted.ToArray(), out fAvg, out fLow1, out fLow01));
+                if (fLow1 < 600 || fLow1 > 700) throw new Exception("focused 1% low polluted: " + fLow1);
+                filter.Reset();
+                Eq(0L, filter.UnfocusedUs);
+                Eq(0, filter.UnfocusedFrames);
+                filter.NoteFocus(true);
+                Eq(true, filter.Admit(1000));
+                filter.NoteFocus(false);
+                filter.NoteFocus(true);
+                Eq(false, filter.Admit(1000));
+                Eq(true, filter.Admit(1000));
+
+                string summary = SessionTelemetry.BuildSummary(10, 500, 74, 2, 0, 10, 8.5, 3, 3300, true);
+                if (summary == null || summary.IndexOf("50%") < 0 || summary.IndexOf("74") < 0
+                    || summary.IndexOf("85%") < 0 || summary.IndexOf("3.2") < 0)
+                    throw new Exception("summary missing fields: " + summary);
+                if (SessionTelemetry.BuildSummary(0, 0, 0, 0, 0, 0, 0, 0, ulong.MaxValue, true) != null)
+                    throw new Exception("empty telemetry must yield no summary");
+
+                var snap = NvDrsTweaks.ParseSnapshot("pstate=absent;prerender=2");
+                Eq("absent", snap["pstate"]);
+                Eq("2", snap["prerender"]);
+                Eq("prerender=2;pstate=absent", NvDrsTweaks.SerializeSnapshot(snap));
+                Eq(0, NvDrsTweaks.ParseSnapshot("").Count);
+            });
+            test("session records: single-session delete removes report and nearby evidence", () =>
+            {
+                string dir = Path.Combine(Path.GetTempPath(),
+                    "AegisDelTest_" + Process.GetCurrentProcess().Id);
+                Directory.CreateDirectory(dir);
+                try
+                {
+                    File.WriteAllLines(Path.Combine(dir, SessionReportStore.FileName), new[]
+                    {
+                        "2026-07-30 02:23:39 | GameX | P | 5m12s | a | b | c",
+                        "2026-07-30 03:00:00 | GameY | P | 1m | a | b | c"
+                    }, new UTF8Encoding(false));
+                    File.WriteAllLines(Path.Combine(dir, EvidenceStore.FileName), new[]
+                    {
+                        "2026-07-30 02:23:41 | GameX | 5m12s | data",
+                        "2026-07-30 03:00:00 | GameY | 1m | data"
+                    }, new UTF8Encoding(false));
+                    DateTime stamp = DateTime.ParseExact("2026-07-30 02:23:39", "yyyy-MM-dd HH:mm:ss",
+                        System.Globalization.CultureInfo.InvariantCulture);
+                    Eq(true, SessionReportStore.DeleteSession(dir, "2026-07-30 02:23:39", "GameX"));
+                    Eq(true, EvidenceStore.DeleteNear(dir, stamp, "GameX"));
+                    string reports = File.ReadAllText(Path.Combine(dir, SessionReportStore.FileName));
+                    string evidence = File.ReadAllText(Path.Combine(dir, EvidenceStore.FileName));
+                    if (reports.Contains("GameX") || evidence.Contains("GameX"))
+                        throw new Exception("GameX 记录未删除干净");
+                    if (!reports.Contains("GameY") || !evidence.Contains("GameY"))
+                        throw new Exception("GameY 记录被误删");
+                    Eq(false, SessionReportStore.DeleteSession(dir, "2026-07-30 02:23:39", "GameX"));
+
+                    SessionReportStore.ClearAll(dir);
+                    EvidenceStore.ClearAll(dir);
+                    Eq(0, File.ReadAllText(Path.Combine(dir, SessionReportStore.FileName)).Length);
+                    Eq(0, File.ReadAllText(Path.Combine(dir, EvidenceStore.FileName)).Length);
+                }
+                finally { try { Directory.Delete(dir, true); } catch { } }
+            });
+            test("windowed optimization: field merges and removes without touching siblings", () =>
+            {
+                string shared = "VRROptimizeEnable=1;AutoHDREnable=0;";
+                string on = GameExeTweaks.MergeField(shared, "SwapEffectUpgradeEnable", "1");
+                Eq("1", GameExeTweaks.ReadField(on, "SwapEffectUpgradeEnable"));
+                Eq("1", GameExeTweaks.ReadField(on, "VRROptimizeEnable"));
+                Eq("0", GameExeTweaks.ReadField(on, "AutoHDREnable"));
+
+                string off = GameExeTweaks.RemoveField(on, "SwapEffectUpgradeEnable");
+                Eq(null, GameExeTweaks.ReadField(off, "SwapEffectUpgradeEnable"));
+                Eq("1", GameExeTweaks.ReadField(off, "VRROptimizeEnable"));
+
+                string wasZero = GameExeTweaks.MergeField("SwapEffectUpgradeEnable=0;", "SwapEffectUpgradeEnable", "1");
+                Eq("1", GameExeTweaks.ReadField(wasZero, "SwapEffectUpgradeEnable"));
+                Eq("0", GameExeTweaks.ReadField(
+                    GameExeTweaks.RestoreField(wasZero, "SwapEffectUpgradeEnable=0;", "SwapEffectUpgradeEnable"),
+                    "SwapEffectUpgradeEnable"));
+                Eq("", GameExeTweaks.RemoveField("SwapEffectUpgradeEnable=1;", "SwapEffectUpgradeEnable"));
+            });
+            test("steam shortcut: rungameid/vdf parsing and main-exe heuristics", () =>
+            {
+                long appId;
+                Eq(true, SteamShortcut.TryParseUrlFile(
+                    "[InternetShortcut]\r\nURL=steam://rungameid/730\r\nIconIndex=0", out appId));
+                Eq(730L, appId);
+                Eq(false, SteamShortcut.TryParseUrlFile(
+                    "[InternetShortcut]\r\nURL=https://example.com", out appId));
+                Eq(false, SteamShortcut.TryParseUrlFile("", out appId));
+
+                var libs = SteamShortcut.ParseLibraryPaths(
+                    "\"libraryfolders\"\n{\n\t\"0\"\n\t{\n\t\t\"path\"\t\t\"C:\\\\Program Files (x86)\\\\Steam\"\n\t}\n\t\"1\"\n\t{\n\t\t\"path\"\t\t\"D:\\\\SteamLibrary\"\n\t}\n}");
+                Eq(2, libs.Count);
+                Eq(@"C:\Program Files (x86)\Steam", libs[0]);
+                Eq(@"D:\SteamLibrary", libs[1]);
+                Eq("Counter-Strike Global Offensive", SteamShortcut.ParseVdfValue(
+                    "\"AppState\"\n{\n\t\"appid\"\t\t\"730\"\n\t\"installdir\"\t\t\"Counter-Strike Global Offensive\"\n}", "installdir"));
+
+                string exeRoot = Path.Combine(Path.GetTempPath(),
+                    "AegisSteamPick_" + Process.GetCurrentProcess().Id);
+                try
+                {
+                    Directory.CreateDirectory(Path.Combine(exeRoot, @"game\bin\win64"));
+                    Directory.CreateDirectory(Path.Combine(exeRoot, "redist"));
+                    File.WriteAllBytes(Path.Combine(exeRoot, @"game\bin\win64\cs2.exe"), new byte[6 * 1024 * 1024]);
+                    File.WriteAllBytes(Path.Combine(exeRoot, @"redist\vc_redist.x64.exe"), new byte[20 * 1024 * 1024]);
+                    File.WriteAllBytes(Path.Combine(exeRoot, "crashhandler64.exe"), new byte[1024]);
+                    string picked = SteamShortcut.PickMainExecutable(exeRoot, "Counter-Strike Global Offensive");
+                    if (picked == null || !picked.EndsWith("cs2.exe", StringComparison.OrdinalIgnoreCase))
+                        throw new Exception("main exe heuristic picked: " + picked);
+                }
+                finally { try { Directory.Delete(exeRoot, true); } catch { } }
+            });
+            test("session summaries: report and evidence lines round-trip into card data", () =>
+            {
+                Lang.Init();
+                string rline = "2026-07-30 02:23:39 | GameX | " + Lang.T("preset.competitive")
+                    + " | 5m12s | " + Lang.T("report.boost.ok") + " | " + Lang.F("report.control", 90)
+                    + " | " + Lang.F("report.aegis.cpu", "0.13");
+                string frame = Lang.F("ev.fps", "116", "17", "5", "32259");
+                string eline = "2026-07-30 02:23:41 | GameX | 5m12s | " + frame
+                    + " | " + Lang.F("ev.gpu", "63", "70") + Lang.F("ev.gpu.power", "72")
+                    + " | " + Lang.F("ev.cpu", "69") + " | " + Lang.F("ev.mem", "9.0");
+                var list = SessionSummaries.Parse(rline, eline, 10);
+                Eq(1, list.Count);
+                Eq("GameX", list[0].Game);
+                Eq(true, list[0].BoostVerified);
+                Eq("116", list[0].AvgFps);
+                Eq("17", list[0].Low1Fps);
+                Eq("5", list[0].Low01Fps);
+                Eq("32259", list[0].FrameCount);
+                if (list[0].Chips.Count < 4)
+                    throw new Exception("attribution chips missing: " + list[0].Chips.Count);
+
+                var stale = SessionSummaries.Parse(rline,
+                    "2026-07-30 03:00:00 | GameX | 5m | " + frame, 10);
+                Eq(null, stale[0].AvgFps);
+                Eq(0, stale[0].Chips.Count);
+            });
+            test("render detector: sibling window fallback anchors in-process launcher (Bannerlord pattern)", () =>
+            {
+                Lang.Init();
+                string gameDir = @"C:\g\Mount & Blade II Bannerlord\bin\Win64_Shipping_Client";
+                var profile = GameProfileStore.NewProfile("Bannerlord", gameDir,
+                    Path.Combine(gameDir, "Bannerlord.exe"));
+                long now = DateTime.UtcNow.ToFileTimeUtc();
+                long created = now - 60L * 10000000L;
+                var launcher = new GameProcessSnapshot
+                {
+                    Pid = 4242, ParentPid = 1, Creation = created,
+                    Name = "TaleWorlds.MountAndBlade.Launcher",
+                    Path = Path.Combine(gameDir, "TaleWorlds.MountAndBlade.Launcher.exe"),
+                    Visible = true, Foreground = true
+                };
+                GameDetection hit = GameSessionDetector.DetectSnapshot(
+                    new[] { launcher }, new[] { profile }, now);
+                if (hit == null) throw new Exception("sibling window fallback did not anchor");
+                Eq("TaleWorlds.MountAndBlade.Launcher", hit.RendererName);
+                Eq(true, hit.RendererUserSelected);
+
+                var otherDir = new GameProcessSnapshot
+                {
+                    Pid = 4243, ParentPid = 1, Creation = created,
+                    Name = "SomeClientLauncher",
+                    Path = @"C:\g\Mount & Blade II Bannerlord\ux\SomeClientLauncher.exe",
+                    Visible = true, Foreground = true
+                };
+                if (GameSessionDetector.DetectSnapshot(new[] { otherDir }, new[] { profile }, now) != null)
+                    throw new Exception("different-directory launcher must not anchor");
+
+                var headless = new GameProcessSnapshot
+                {
+                    Pid = 4244, ParentPid = 1, Creation = created,
+                    Name = "TaleWorlds.MountAndBlade.Launcher",
+                    Path = Path.Combine(gameDir, "TaleWorlds.MountAndBlade.Launcher.exe"),
+                    Visible = false, Foreground = false
+                };
+                if (GameSessionDetector.DetectSnapshot(new[] { headless }, new[] { profile }, now) != null)
+                    throw new Exception("windowless sibling must not anchor");
+
+                var updater = new GameProcessSnapshot
+                {
+                    Pid = 4245, ParentPid = 1, Creation = created,
+                    Name = "BannerlordUninstall",
+                    Path = Path.Combine(gameDir, "BannerlordUninstall.exe"),
+                    Visible = true, Foreground = true
+                };
+                if (GameSessionDetector.DetectSnapshot(new[] { updater }, new[] { profile }, now) != null)
+                    throw new Exception("non-game role sibling must not anchor");
+            });
 
             string root = Path.Combine(Path.GetTempPath(), "AegisSelfTest_" + Process.GetCurrentProcess().Id + "_" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(root);
             try
             {
-                test("freeze guard: expected-name mismatch is rejected", () => TestNameMismatch(root));
                 test("game catalog: legacy entry upgrades to a persisted install root", () => TestGameCatalogUpgrade(root));
                 test("game profiles: migration removes learning state and deduplicates", () => TestProfileStore(root));
                 test("game profiles: an unreadable file is never overwritten by a save", () => TestProfileLoadFailure(root));
                 test("game library: EXE/LNK resolve without executing the target", () => TestExecutableResolver(root));
-                test("LoL Cross cleaner: running-client guard and scoped deletion", () => TestLolCrossCleaner(root));
+                test("LoL addons: delete touches only add-on layers, never the game core", () => TestLolAddonDelete(root));
                 test("render detector: user-selected headless exe activates; legacy headless does not", () => TestHeadlessEntry(root));
-                test("render detector: bootstrap launcher's real process outside profile root is still protected", () => TestFallbackEntryOutsideRoot(root));
+                test("render detector: suffix fallback stays inside the configured profile root", () => TestFallbackEntryRootBoundary(root));
                 test("session reports: legacy frame telemetry is archived", () => TestReportMigration(root));
                 test("renderer boost: HIGH priority and IO3 are verified by readback", () => TestBoostReadback(root));
+                test("renderer boost: retained crash snapshot is re-adopted exactly", TestCrashBoostReAdoption);
                 test("EcoQoS restore: a process' own power-saving opt-in survives suppression", () => TestEcoQoSRestore(root));
-                test("freeze journal: corrupt data is retained and blocks overwrite", () => TestCorruptJournal(root));
-                test("freeze journal: PID reuse identity is never resumed", () => TestPidReuseJournal(root));
-                test("freeze guard: real child suspend and exact restore", () => TestNormalFreeze(root));
-                test("freeze watchdog: owner exit restores real child", () => TestCrashRecovery(root));
-                test("freeze watchdog: reused owner PID restores without waiting", () => TestReusedOwnerRecovery(root));
+                test("legacy freeze journal: corrupt evidence is retained", () => TestCorruptJournal(root));
+                test("legacy freeze journal: PID reuse identity is never resumed", () => TestPidReuseJournal(root));
                 test("strict placement: hard-affinity fallback restores exactly", () => TestAffinityRestore(root));
                 test("CPU Sets: pre-existing process policy restores exactly", () => TestExistingCpuSetRestore(root));
                 test("staged suppression: queryable state and CPU Sets restore", () => TestStagedSuppression(root));
-                test("competitive suppression: target resets are re-applied", () => TestSuppressionReapply(root));
-                test("staged suppression: crash journal restores a live process", () => TestSuppressionCrashRecovery(root));
-                test("synthetic contention: freezing a same-core contender restores CPU time", () =>
-                {
-                    contentionGain = TestContentionGain(root);
-                    if (contentionGain < 1.20d) throw new Exception("measured gain only " + contentionGain.ToString("0.00") + "x");
-                });
+            test("competitive suppression: target resets are re-applied", () => TestSuppressionReapply(root));
+            test("suppression journal: failed persistence blocks every kernel write", () => TestSuppressionJournalGate(root));
+            test("staged suppression: crash journal restores a live process", () => TestSuppressionCrashRecovery(root));
+            test("GPU demote: class mapping follows the background tier only", TestGpuDemoteMapping);
+            test("GPU demote: journal parses the gpu field and accepts legacy lines", TestGpuJournalField);
+            test("GPU demote: scheduling class write and restore verified on self", TestGpuPriorityRoundtrip);
+            test("GPU demote: a GPU-less process still suppresses and restores cleanly", () => TestGpuDemoteGpulessProcess(root));
             }
             finally { try { Directory.Delete(root, true); } catch { } }
 
             log.Insert(0, "Aegis " + App.Version + " self-test @ " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
             log.Add("");
-            if (contentionGain > 0) log.Add("SYNTHETIC same-core contention -> frozen throughput ratio: " + contentionGain.ToString("0.00") + "x");
             log.Add("TOTAL " + (passed + failed + skipped) + "  PASS " + passed
                 + "  FAIL " + failed + "  SKIP " + skipped);
             try
@@ -1135,26 +1571,18 @@ namespace AegisApp
             Environment.ExitCode = failed == 0 ? 0 : 1;
         }
 
-        private static void TestSampler()
-        {
-            var s = new InterferenceSampler(0.35, 32d * 1024d * 1024d);
-            long t0 = TimeSpan.TicksPerSecond * 100;
-            Eq(InterferenceKind.None, s.Observe(7, "worker", 11, 100, 1000, t0).Kind);
-            Eq(InterferenceKind.None, s.Observe(7, "worker", 11,
-                100 + (long)(TimeSpan.TicksPerSecond * 4 * 0.2), 1000, t0 + TimeSpan.TicksPerSecond * 4).Kind);
-            long t1 = t0 + TimeSpan.TicksPerSecond * 8;
-            long cpu = 100 + (long)(TimeSpan.TicksPerSecond * 4 * 0.7);
-            ulong io = 1000 + (ulong)(40d * 1024d * 1024d * 4d);
-            Eq(InterferenceKind.Cpu | InterferenceKind.Io, s.Observe(7, "worker", 11, cpu, io, t1).Kind);
-            Eq(InterferenceKind.None, s.Observe(7, "worker", 12, cpu + TimeSpan.TicksPerSecond * 9, io, t1 + TimeSpan.TicksPerSecond * 4).Kind);
-        }
-
         private static void TestReleaseMetadata()
         {
+            var declared = new Version(App.Version);
+            string expected = new Version(
+                declared.Major,
+                declared.Minor,
+                declared.Build < 0 ? 0 : declared.Build,
+                declared.Revision < 0 ? 0 : declared.Revision).ToString();
             Version assemblyVersion = typeof(App).Assembly.GetName().Version;
-            Eq("1.4.4.0", assemblyVersion == null ? "" : assemblyVersion.ToString());
+            Eq(expected, assemblyVersion == null ? "" : assemblyVersion.ToString());
             FileVersionInfo info = FileVersionInfo.GetVersionInfo(Application.ExecutablePath);
-            Eq("1.4.4.0", info.FileVersion);
+            Eq(expected, info.FileVersion);
             Eq("Aegis", info.ProductName);
             Eq("bdth", info.CompanyName);
         }
@@ -1176,6 +1604,243 @@ namespace AegisApp
             Eq(-1000, GameSessionDetector.Score(profile, "LeagueClientUxRender", Path.Combine(profile.Root, "LeagueClient", "LeagueClientUxRender.exe"), true, true));
         }
 
+        private static void TestGameSessionInstanceIsolation()
+        {
+            const long now = 140000000000000000L;
+            string root = @"C:\Games\League";
+            string launcher = Path.Combine(
+                root, "LeagueClient.exe");
+            string renderer = Path.Combine(
+                root, "Game", "League of Legends.exe");
+            var profile = GameProfileStore.NewProfile(
+                "League", root, launcher);
+            profile.Entries.Clear();
+            profile.Entries.Add("LeagueClient");
+            Eq("LeagueClient",
+                GameSessionDetector.ImageNameFromVerifiedPath(
+                    launcher));
+            Eq<string>(null,
+                GameSessionDetector.ImageNameFromVerifiedPath(
+                    root + "\\"));
+            Eq<string>(null,
+                GameSessionDetector.ImageNameFromVerifiedPath(null));
+
+            var parallel = new[]
+            {
+                new GameProcessSnapshot
+                {
+                    Pid = 100, ParentPid = 10,
+                    Creation = now - 20000000,
+                    Name = "LeagueClient", Path = launcher
+                },
+                new GameProcessSnapshot
+                {
+                    Pid = 101, ParentPid = 100,
+                    Creation = now - 19000000,
+                    Name = "League of Legends", Path = renderer,
+                    Visible = true
+                },
+                new GameProcessSnapshot
+                {
+                    Pid = 200, ParentPid = 10,
+                    Creation = now - 10000000,
+                    Name = "LeagueClient", Path = launcher
+                },
+                new GameProcessSnapshot
+                {
+                    Pid = 201, ParentPid = 200,
+                    Creation = now - 9000000,
+                    Name = "League of Legends", Path = renderer,
+                    Visible = true, Foreground = true
+                }
+            };
+            GameDetection hit = GameSessionDetector.DetectSnapshot(
+                parallel, new[] { profile }, now);
+            if (hit == null)
+                throw new Exception("parallel instance was not detected");
+            Eq(201, hit.RendererPid);
+            Eq(true, hit.FamilyPids.Contains(200));
+            Eq(true, hit.FamilyPids.Contains(201));
+            Eq(false, hit.FamilyPids.Contains(100));
+            Eq(false, hit.FamilyPids.Contains(101));
+            Eq(true, GameMode.RendererIdentityMatches(
+                201, parallel[3].Creation,
+                parallel[3].Name, 201,
+                parallel[3].Creation,
+                parallel[3].Name.ToUpperInvariant()));
+            Eq(false, GameMode.RendererIdentityMatches(
+                201, parallel[3].Creation,
+                parallel[3].Name, 201,
+                parallel[3].Creation + 1,
+                parallel[3].Name));
+            Eq(false, GameMode.RendererIdentityMatches(
+                201, parallel[3].Creation,
+                parallel[3].Name, 202,
+                parallel[3].Creation,
+                parallel[3].Name));
+            Eq(false, GameMode.RendererIdentityMatches(
+                201, parallel[3].Creation,
+                parallel[3].Name, 201,
+                parallel[3].Creation,
+                "reused-process"));
+
+            var otherInstance = new GameDetection
+            {
+                Profile = profile.Clone(),
+                RendererPid = 101,
+                RendererCreation = parallel[1].Creation,
+                RendererName = parallel[1].Name,
+                RendererPath = parallel[1].Path,
+                RendererForeground = true,
+                RendererCandidateSelected = true,
+                Evidence = "other"
+            };
+            otherInstance.FamilyPids.Add(100);
+            otherInstance.FamilyPids.Add(101);
+            otherInstance.FamilyNames.Add("other-family");
+            Eq(true, GameMode.FreshRendererMayReplaceSticky(
+                otherInstance, otherInstance.RendererName,
+                otherInstance.RendererCreation,
+                hit.RendererCreation));
+            Eq(true, otherInstance.FamilyPids.Contains(100));
+            Eq(true, otherInstance.FamilyPids.Contains(101));
+            Eq(false, otherInstance.FamilyPids.Contains(200));
+            Eq(false, otherInstance.FamilyPids.Contains(201));
+
+            otherInstance.RendererForeground = false;
+            Eq(false, GameMode.FreshRendererMayReplaceSticky(
+                otherInstance, otherInstance.RendererName,
+                otherInstance.RendererCreation,
+                hit.RendererCreation));
+            Eq(true, GameMode.ReanchorToStickyInstance(
+                otherInstance, hit, new[] { 200, 201 }));
+            Eq(201, otherInstance.RendererPid);
+            Eq(false, otherInstance.FamilyPids.Contains(100));
+            Eq(false, otherInstance.FamilyPids.Contains(101));
+            Eq(true, otherInstance.FamilyPids.Contains(200));
+            Eq(true, otherInstance.FamilyPids.Contains(201));
+            Eq(false,
+                otherInstance.FamilyNames.Contains(
+                    "other-family"));
+
+            var unverifiable = new GameDetection
+            {
+                RendererPid = 101
+            };
+            unverifiable.FamilyPids.Add(100);
+            Eq(false, GameMode.ReanchorToStickyInstance(
+                unverifiable, hit, new[] { 200 }));
+            Eq(true, unverifiable.FamilyPids.Contains(100));
+
+            var reusedParent = new[]
+            {
+                new GameProcessSnapshot
+                {
+                    Pid = 300, ParentPid = 10,
+                    Creation = now - 1000000,
+                    Name = "LeagueClient", Path = launcher
+                },
+                new GameProcessSnapshot
+                {
+                    Pid = 301, ParentPid = 300,
+                    Creation = now - 2000000,
+                    Name = "League of Legends", Path = renderer,
+                    Visible = true, Foreground = true
+                }
+            };
+            hit = GameSessionDetector.DetectSnapshot(
+                reusedParent, new[] { profile }, now);
+            if (hit == null)
+                throw new Exception("launcher anchor disappeared");
+            Eq(300, hit.RendererPid);
+            Eq(false, hit.FamilyPids.Contains(301));
+
+            var detached = new[]
+            {
+                new GameProcessSnapshot
+                {
+                    Pid = 400, ParentPid = 10,
+                    Creation = now
+                        - 5 * TimeSpan.TicksPerHour,
+                    Name = "LeagueClient", Path = launcher
+                },
+                new GameProcessSnapshot
+                {
+                    Pid = 401, ParentPid = 999,
+                    Creation = now
+                        - 10 * TimeSpan.TicksPerSecond,
+                    Name = "League of Legends", Path = renderer,
+                    Visible = true, Foreground = true
+                },
+                new GameProcessSnapshot
+                {
+                    Pid = 402, ParentPid = 401,
+                    Creation = now
+                        - 9 * TimeSpan.TicksPerSecond,
+                    Name = "LeagueWorker",
+                    Path = Path.Combine(
+                        root, "Game", "LeagueWorker.exe")
+                }
+            };
+            hit = GameSessionDetector.DetectSnapshot(
+                detached, new[] { profile }, now);
+            if (hit == null)
+                throw new Exception(
+                    "safe launcher handoff was not detected");
+            Eq(401, hit.RendererPid);
+            Eq(detached[1].Creation, hit.RendererCreation);
+            Eq(true, hit.FamilyPids.Contains(400));
+            Eq(true, hit.FamilyPids.Contains(401));
+            Eq(true, hit.FamilyPids.Contains(402));
+
+            var ambiguous = new[]
+            {
+                detached[0],
+                new GameProcessSnapshot
+                {
+                    Pid = 500, ParentPid = 10,
+                    Creation = now
+                        - 4 * TimeSpan.TicksPerMinute,
+                    Name = "LeagueClient", Path = launcher
+                },
+                detached[1]
+            };
+            hit = GameSessionDetector.DetectSnapshot(
+                ambiguous, new[] { profile }, now);
+            if (hit == null)
+                throw new Exception(
+                    "parallel launchers lost their safe anchors");
+            Eq(false, hit.RendererPid == 401);
+            Eq(false, hit.FamilyPids.Contains(401));
+
+            var legacy = GameProfileStore.NewProfile(
+                "Legacy", root);
+            legacy.ExecutablePath = null;
+            legacy.Entries.Clear();
+            legacy.Entries.Add("LegacyGame");
+            var outOfRoot = new[]
+            {
+                new GameProcessSnapshot
+                {
+                    Pid = 600, ParentPid = 10,
+                    Creation = now
+                        - TimeSpan.TicksPerSecond,
+                    Name = "LegacyGame",
+                    Path = @"C:\Other\Game\LegacyGame.exe",
+                    Visible = true, Foreground = true
+                }
+            };
+            Eq<GameDetection>(null,
+                GameSessionDetector.DetectSnapshot(
+                    outOfRoot, new[] { legacy }, now));
+            outOfRoot[0].Path = Path.Combine(
+                root, "Game", "LegacyGame.exe");
+            if (GameSessionDetector.DetectSnapshot(
+                    outOfRoot, new[] { legacy }, now) == null)
+                throw new Exception(
+                    "in-root legacy entry was not detected");
+        }
+
         private static void TestPressureController()
         {
             var c = new BackgroundPressureController();
@@ -1192,23 +1857,32 @@ namespace AegisApp
             Eq(SuppressionLevel.Restrained, c.Observe(8, "worker", 1, cpu, 0, 120 * second, PerformancePreset.Standard));
             Eq(SuppressionLevel.None, c.Observe(8, "worker", 2, 99 * second, 0, 124 * second, PerformancePreset.Standard));
 
-            // 采样窗口过短时速率会被放大：扫描由进程启停事件驱动（200ms 合并窗口），
-            // 不做下限保护的话，几百毫秒内的一点 CPU 就会被算成越阈值并一路升到 Isolated。
             var fast = new BackgroundPressureController();
             long t = 200 * second, used = 0;
             Eq(SuppressionLevel.None, fast.Observe(9, "burst", 1, used, 0, t, PerformancePreset.Standard));
-            for (int i = 0; i < 6; i++)
+            for (int i = 0; i < 4; i++)
             {
-                t += second / 5;                       // 200ms 一轮
-                used += (long)(second / 5 * 0.10);     // 期间真实占用 0.10 核，远超 0.08 阈值
+                t += second / 5;
+                used += (long)(second / 5 * 0.10);
                 Eq(SuppressionLevel.None, fast.Observe(9, "burst", 1, used, 0, t, PerformancePreset.Standard));
             }
-            // 窗口够长之后仍然要能正常升级，不能因为加了下限就永远升不上去
-            t += 4 * second;
-            used += (long)(4 * second * 0.10);
+
+            t += second / 5;
+            used += (long)(second / 5 * 0.10);
             Eq(SuppressionLevel.Eco, fast.Observe(9, "burst", 1, used, 0, t, PerformancePreset.Standard));
 
-            // 窗口过长（中间断过档）同样不该凭一次跨度极大的差值就判热
+            var keep = new BackgroundPressureController();
+            long k = 400 * second, kused = 0;
+            Eq(SuppressionLevel.None, keep.Observe(12, "hot", 1, kused, 0, k, PerformancePreset.Standard));
+            for (int i = 0; i < 3; i++)
+            {
+                k += 4 * second;
+                kused += (long)(4 * second * 0.10);
+                keep.Observe(12, "hot", 1, kused, 0, k, PerformancePreset.Standard);
+            }
+            Eq(SuppressionLevel.Isolated, keep.Observe(12, "hot", 1, kused, 0, k, PerformancePreset.Standard));
+            Eq(SuppressionLevel.Isolated, keep.Observe(12, "hot", 1, kused, 0, k + second / 5, PerformancePreset.Standard));
+
             var stale = new BackgroundPressureController();
             Eq(SuppressionLevel.None, stale.Observe(11, "idle", 1, 0, 0, 300 * second, PerformancePreset.Standard));
             Eq(SuppressionLevel.None, stale.Observe(11, "idle", 1, (long)(60 * second * 0.5), 0, 360 * second, PerformancePreset.Standard));
@@ -1310,9 +1984,9 @@ namespace AegisApp
             Eq(false, GameMode.BasicBackgroundEligible(10, 99, "discord", @"D:\Apps\discord.exe", 1, 1, 20, true, win));
             Eq(false, GameMode.BasicBackgroundEligible(10, 99, "EasyAntiCheat_EOS", @"D:\Games\eac.exe", 1, 1, 20, false, win));
             Eq(false, GameMode.BasicBackgroundEligible(10, 99, "SGuard64", @"D:\WeGame\SGuard64.exe", 1, 1, 20, false, win));
-            // 没有被判定为"当前游戏的进程树祖先"时，任何名字（含 wegame）都不享受特殊待遇
+
             Eq(true, GameMode.BasicBackgroundEligible(10, 99, "wegame", @"C:\WeGame\wegame.exe", 1, 1, 20, false, win));
-            // 只要被判定为祖先，任何名字（不只是 wegame）都会被豁免——不认平台名字，只认进程树结构
+
             Eq(false, GameMode.BasicBackgroundEligible(10, 99, "wegame", @"C:\WeGame\wegame.exe", 1, 1, 20, false, win, true, null));
             Eq(false, GameMode.BasicBackgroundEligible(10, 99, "anylauncher", @"D:\Anything\launcher.exe", 1, 1, 20, false, win, true, null));
             Eq(false, GameMode.BasicBackgroundEligible(10, 99, "railhelper", @"D:\SomeGame\TCLS\rail.exe", 1, 1, 20, false, win, false, @"D:\SomeGame\"));
@@ -1329,7 +2003,6 @@ namespace AegisApp
             Eq(false, GameMode.BasicBackgroundEligible(10, 99, "wegame", @"C:\WeGame\wegame.exe", 1, 1, 20, false, win, true, null, true));
             Eq(false, GameMode.BasicBackgroundEligible(10, 99, "railhelper", @"D:\SomeGame\TCLS\rail.exe", 1, 1, 20, false, win, false, @"D:\SomeGame\", true));
 
-            // WalkAncestorChain：不查任何平台名单，纯粹沿父进程链网上走
             var hostParents = new Dictionary<int, int> { { 100, 50 }, { 50, 20 }, { 20, 7 }, { 7, 3 } };
             HashSet<int> ancestors = GameMode.WalkAncestorChain(hostParents, 100, 99, 24);
             Eq(true, ancestors.Contains(50));
@@ -1350,7 +2023,6 @@ namespace AegisApp
             for (int i = 1001; i <= 1039; i++) longChain[i] = i - 1;
             Eq(24, GameMode.WalkAncestorChain(longChain, 1039, 99, 24).Count);
 
-            // 兜底通道：链路断掉够不到的常驻启动器外壳，仅在有活跃对局时按通用启动器类别豁免
             Eq(true, GameMode.IsKnownLauncherShell("wegame"));
             Eq(true, GameMode.IsKnownLauncherShell("Steam"));
             Eq(true, GameMode.IsKnownLauncherShell("EpicGamesLauncher"));
@@ -1465,23 +2137,6 @@ namespace AegisApp
             Eq<string>(null, parsed);
         }
 
-        private static void TestNameMismatch(string root)
-        {
-            string beat = Path.Combine(root, "mismatch.beat");
-            using (Process probe = StartProbe(beat))
-            {
-                try
-                {
-                    WaitAdvance(beat, -1, 4000);
-                    var g = new FreezeGuard(Path.Combine(root, "mismatch.state"), false);
-                    if (g.Freeze(probe.Id, "definitely-not-this-process", "test")) throw new Exception("mismatched identity was frozen");
-                    int before = ReadCounter(beat);
-                    WaitAdvance(beat, before, 2000);
-                }
-                finally { StopOwned(probe); }
-            }
-        }
-
         private static void TestGameCatalogUpgrade(string root)
         {
             string data = Path.Combine(root, "catalog-upgrade");
@@ -1537,7 +2192,8 @@ namespace AegisApp
             Process[] all = null;
             try
             {
-                ProcessStartInfo start = Hidden("--freeze-probe " + Quote(beat));
+                ProcessStartInfo start = Hidden(
+                    "--test-heartbeat-probe " + Quote(beat));
                 start.FileName = executable;
                 probe = Process.Start(start);
                 if (probe == null) throw new Exception("headless entry did not start");
@@ -1547,8 +2203,35 @@ namespace AegisApp
                 var selectedProfile = GameProfileStore.NewProfile("Headless", dir, executable);
                 selectedProfile.Entries.Clear();
                 selectedProfile.Entries.Add("HeadlessProbe");
+                int currentSession =
+                    Process.GetCurrentProcess().SessionId;
+                GameProcessSnapshot identity;
+                if (!GameSessionDetector.TryCaptureProcessIdentity(
+                        probe.Id, currentSession, out identity))
+                    throw new Exception(
+                        "same-handle process identity was unavailable");
+                if (identity.Creation <= 0
+                    || !string.Equals(
+                        "HeadlessProbe", identity.Name,
+                        StringComparison.OrdinalIgnoreCase)
+                    || !string.Equals(
+                        Path.GetFullPath(executable),
+                        Path.GetFullPath(identity.Path),
+                        StringComparison.OrdinalIgnoreCase))
+                    throw new Exception(
+                        "same-handle process identity fields disagree");
+                if (GameSessionDetector.TryCaptureProcessIdentity(
+                        probe.Id, currentSession + 1,
+                        out identity))
+                    throw new Exception(
+                        "same-handle identity crossed login sessions");
                 if (GameSessionDetector.Detect(all, new[] { selectedProfile }) == null)
                     throw new Exception("user-selected headless exe did NOT activate (regression: 客户端/大厅将无法被识别)");
+                if (GameSessionDetector.Detect(
+                        all, new[] { selectedProfile },
+                        currentSession + 1) != null)
+                    throw new Exception(
+                        "another login session activated game policy");
 
                 var legacyProfile = GameProfileStore.NewProfile("HeadlessLegacy", dir);
                 legacyProfile.Entries.Clear();
@@ -1564,7 +2247,7 @@ namespace AegisApp
             }
         }
 
-        private static void TestFallbackEntryOutsideRoot(string root)
+        private static void TestFallbackEntryRootBoundary(string root)
         {
             string dir = Path.Combine(root, "fallback-entry");
             string gameRoot = Path.Combine(dir, "game");
@@ -1572,33 +2255,37 @@ namespace AegisApp
             Directory.CreateDirectory(gameRoot);
             Directory.CreateDirectory(elsewhere);
             string stubExe = Path.Combine(gameRoot, "aegisfbtest.exe");
-            string realExe = Path.Combine(elsewhere, "aegisfbtest64.exe");
-            string benchExe = Path.Combine(elsewhere, "aegisfbtestbench.exe");
+            string realExe = Path.Combine(gameRoot, "aegisfbtest64.exe");
+            string rogueExe = Path.Combine(elsewhere, "aegisfbtest_x64.exe");
             string updaterExe = Path.Combine(elsewhere, "aegisfbtest_updater.exe");
             File.Copy(Application.ExecutablePath, stubExe, true);
             File.Copy(Application.ExecutablePath, realExe, true);
-            File.Copy(Application.ExecutablePath, benchExe, true);
+            File.Copy(Application.ExecutablePath, rogueExe, true);
             File.Copy(Application.ExecutablePath, updaterExe, true);
             string beatReal = Path.Combine(dir, "real.beat");
-            string beatBench = Path.Combine(dir, "bench.beat");
+            string beatRogue = Path.Combine(dir, "rogue.beat");
             string beatUpdater = Path.Combine(dir, "updater.beat");
-            Process real = null, bench = null, updater = null;
+            Process real = null, rogue = null, updater = null;
             Process[] all = null;
             try
             {
-                ProcessStartInfo startReal = Hidden("--freeze-probe " + Quote(beatReal));
+                ProcessStartInfo startReal = Hidden(
+                    "--test-heartbeat-probe " + Quote(beatReal));
                 startReal.FileName = realExe;
                 real = Process.Start(startReal);
                 if (real == null) throw new Exception("fallback probe did not start");
                 WaitAdvance(beatReal, -1, 4000);
 
-                ProcessStartInfo startBench = Hidden("--freeze-probe " + Quote(beatBench));
-                startBench.FileName = benchExe;
-                bench = Process.Start(startBench);
-                if (bench == null) throw new Exception("bench probe did not start");
-                WaitAdvance(beatBench, -1, 4000);
+                ProcessStartInfo startRogue = Hidden(
+                    "--test-heartbeat-probe " + Quote(beatRogue));
+                startRogue.FileName = rogueExe;
+                rogue = Process.Start(startRogue);
+                if (rogue == null)
+                    throw new Exception("out-of-root suffix probe did not start");
+                WaitAdvance(beatRogue, -1, 4000);
 
-                ProcessStartInfo startUpdater = Hidden("--freeze-probe " + Quote(beatUpdater));
+                ProcessStartInfo startUpdater = Hidden(
+                    "--test-heartbeat-probe " + Quote(beatUpdater));
                 startUpdater.FileName = updaterExe;
                 updater = Process.Start(startUpdater);
                 if (updater == null) throw new Exception("updater probe did not start");
@@ -1610,13 +2297,19 @@ namespace AegisApp
                 profile.Entries.Add("aegisfbtest");
 
                 GameDetection hit = GameSessionDetector.Detect(all, new[] { profile });
-                if (hit == null) throw new Exception("fallback entry outside profile root was not detected at all");
+                if (hit == null)
+                    throw new Exception(
+                        "in-root suffix fallback was not detected");
                 if (!string.Equals(hit.RendererName, "aegisfbtest64", StringComparison.OrdinalIgnoreCase))
-                    throw new Exception("renderer should resolve to the real out-of-root process, got " + hit.RendererName);
+                    throw new Exception(
+                        "renderer should resolve to the in-root suffix process, got "
+                        + hit.RendererName);
                 if (!hit.FamilyPids.Contains(real.Id))
-                    throw new Exception("real out-of-root process must be in game family (protected from suppression)");
-                if (hit.FamilyPids.Contains(bench.Id))
-                    throw new Exception("letter-continuation name (bench) must NOT be treated as the same app — over-broad match");
+                    throw new Exception(
+                        "in-root suffix process must be in the game family");
+                if (hit.FamilyPids.Contains(rogue.Id))
+                    throw new Exception(
+                        "out-of-root suffix process must not enter the game family");
                 if (hit.FamilyPids.Contains(updater.Id))
                     throw new Exception("underscore-plus-word name (_updater) must NOT be treated as the same app — an unrelated third-party process could collide on prefix alone");
                 if (!hit.RendererUserSelected)
@@ -1626,7 +2319,7 @@ namespace AegisApp
             {
                 if (all != null) foreach (Process process in all) process.Dispose();
                 if (real != null) { StopOwned(real); real.Dispose(); }
-                if (bench != null) { StopOwned(bench); bench.Dispose(); }
+                if (rogue != null) { StopOwned(rogue); rogue.Dispose(); }
                 if (updater != null) { StopOwned(updater); updater.Dispose(); }
             }
         }

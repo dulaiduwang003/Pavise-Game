@@ -16,8 +16,7 @@ namespace AegisApp
 
         public Toggle()
         {
-            // Control.DefaultSize 是 0x0：只设 Height 会得到宽度为 0 的开关，
-            // 画出来什么都没有。调用方仍可覆盖，但默认值必须是可见的。
+
             Size = new Size(Dpi.S(46), Dpi.S(30));
             ForeColor = Theme.Fg;
             Font = Theme.UI(9.75f, false);
@@ -48,7 +47,9 @@ namespace AegisApp
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
 
-            int tw = Dpi.S(44), th = Dpi.S(22), pad = Dpi.S(3);
+            int th = Dpi.S(22), pad = Dpi.S(3);
+            if (th > Height) th = Height;
+            int tw = string.IsNullOrEmpty(Text) ? Math.Max(Dpi.S(20), Width - 1) : Dpi.S(44);
             int kd = th - pad * 2;
             var track = new Rectangle(0, (Height - th) / 2, tw, th);
             float p = pos.Value;
@@ -87,6 +88,5 @@ namespace AegisApp
                     g.FillRectangle(veil, ClientRectangle);
         }
     }
-
 
 }

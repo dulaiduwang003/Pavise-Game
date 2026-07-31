@@ -19,44 +19,73 @@ namespace AegisApp
         [DllImport("kernel32.dll")] private static extern IntPtr LocalFree(IntPtr h);
         [DllImport("powrprof.dll")] private static extern uint PowerWriteACValueIndex(IntPtr root, ref Guid scheme, ref Guid sub, ref Guid setting, uint value);
         [DllImport("powrprof.dll")] private static extern uint PowerWriteDCValueIndex(IntPtr root, ref Guid scheme, ref Guid sub, ref Guid setting, uint value);
+        [DllImport("powrprof.dll")] private static extern uint PowerReadACValueIndex(IntPtr root, ref Guid scheme, ref Guid sub, ref Guid setting, out uint value);
 
         private static readonly Guid SubProcessor   = new Guid("54533251-82be-4824-96c1-47b60b740d00");
         private static readonly Guid CpMinCores     = new Guid("0cc5b647-c1df-4637-891a-dec35c318583");
         private static readonly Guid IdleDisable    = new Guid("5d76a2ca-e8c0-402f-a133-2158492d58ad");
         private static readonly Guid ProcThrottleMin = new Guid("893dee8e-2bef-41e0-89c6-b55d0929964c");
         private static readonly Guid PerfBoostMode  = new Guid("be337238-0d82-4146-a960-4f3749d470c7");
+        private static readonly Guid PerfEpp        = new Guid("36687f9e-e3a5-4dbf-b1dc-15eb381c6863");
+        private static readonly Guid PerfEpp1       = new Guid("36687f9e-e3a5-4dbf-b1dc-15eb381c6864");
         private static readonly Guid SubPcie        = new Guid("501a4d13-42af-4429-9fd1-a8218c268e20");
         private static readonly Guid PcieAspm       = new Guid("ee12f906-d277-404b-b6da-e5fa1a576df5");
         private static readonly Guid SubUsb         = new Guid("2a737441-1930-4402-8d77-b2bebba308a3");
         private static readonly Guid UsbSelSuspend  = new Guid("48e6b7a6-50f5-4782-a5d4-53bb8f07e226");
+
+        private const uint AggressiveFloorWithEpp = 20u;
+        private const uint EppMaxPerf = 0u;
 
         private static bool TuneTarget(Guid g, bool aggressive, bool idleDisable)
         {
             try
             {
                 bool ok = true;
-                ok &= WritePair(g, SubProcessor, CpMinCores, aggressive ? 100u : 50u, aggressive ? 50u : 20u);
-                ok &= WritePair(g, SubProcessor, ProcThrottleMin, aggressive ? 100u : 35u, aggressive ? 60u : 10u);
-                ok &= WritePair(g, SubProcessor, PerfBoostMode, aggressive ? 2u : 4u, aggressive ? 4u : 3u);
-                ok &= WritePair(g, SubPcie, PcieAspm, aggressive ? 0u : 1u, aggressive ? 1u : 2u);
+                bool killIdle = aggressive && idleDisable;
+
+                bool epp = aggressive && ApplyEpp(g);
+                uint floorAc = aggressive ? (epp ? AggressiveFloorWithEpp : 100u) : 35u;
+                uint floorDc = aggressive ? (epp ? AggressiveFloorWithEpp : 100u) : 10u;
+
+                ok &= WritePair(g, SubProcessor, CpMinCores, aggressive ? 100u : 50u, aggressive ? 100u : 20u);
+                ok &= WritePair(g, SubProcessor, ProcThrottleMin, floorAc, floorDc);
+
+                ok &= WritePair(g, SubProcessor, PerfBoostMode, 2u, aggressive ? 2u : 3u);
+                ok &= WritePair(g, SubPcie, PcieAspm, aggressive ? 0u : 1u, aggressive ? 0u : 2u);
                 ok &= WritePair(g, SubUsb, UsbSelSuspend, 0u, aggressive ? 0u : 1u);
-                // 处理器空闲禁用：不让核心进入深度 C-state，省掉 1~15ms 的唤醒延迟，
-                // 代价是发热和功耗明显上升。写在 Aegis 自建的方案上，切回用户原方案即自动失效，
-                // 所以只在竞技级 + 交流供电时开；电池下一律保持 0，避免续航和热衰减双输。
-                ok &= WritePair(g, SubProcessor, IdleDisable, (aggressive && idleDisable) ? 1u : 0u, 0u);
+
+                ok &= WritePair(g, SubProcessor, IdleDisable, killIdle ? 1u : 0u, killIdle ? 1u : 0u);
                 if (!ok)
                 {
                     Logger.Log("电源策略参数未能完整写入，未把本轮标记为成功");
                     return false;
                 }
                 Logger.Log(aggressive
-                    ? "电源策略：竞技级（交流电全核心/100%下限"
-                        + (idleDisable ? "/禁用空闲降低唤醒延迟" : "，空闲状态保持系统默认")
-                        + "，电池降级以避免不可持续的热衰减）"
+                    ? "电源策略：竞技级（全核心/"
+                        + (epp ? AggressiveFloorWithEpp + "%下限+能效偏好偏性能" : "100%下限（本机无能效偏好设置）")
+                        + "/激进睿频"
+                        + (killIdle ? "/禁用空闲降低唤醒延迟" : "，空闲状态保持系统默认")
+                        + "）"
                     : "电源策略：常规持续性能（保留降频余量，减少热饱和后的频率回落）");
                 return true;
             }
             catch { return false; }
+        }
+
+        private static bool ApplyEpp(Guid scheme)
+        {
+            if (!SettingPresent(scheme, SubProcessor, PerfEpp)) return false;
+            if (!WritePair(scheme, SubProcessor, PerfEpp, EppMaxPerf, EppMaxPerf)) return false;
+            if (CpuTopology.Hybrid && SettingPresent(scheme, SubProcessor, PerfEpp1))
+                WritePair(scheme, SubProcessor, PerfEpp1, EppMaxPerf, EppMaxPerf);
+            return true;
+        }
+
+        private static bool SettingPresent(Guid scheme, Guid sub, Guid setting)
+        {
+            Guid sb = sub, set = setting;
+            uint value;
+            return PowerReadACValueIndex(IntPtr.Zero, ref scheme, ref sb, ref set, out value) == 0;
         }
 
         private static bool WritePair(Guid scheme, Guid sub, Guid setting, uint ac, uint dc)
@@ -66,15 +95,6 @@ namespace AegisApp
                 && PowerWriteDCValueIndex(IntPtr.Zero, ref scheme, ref sb, ref set, dc) == 0;
         }
 
-        private static void WriteBoth(Guid scheme, Guid setting, uint v) { WriteBoth2(scheme, SubProcessor, setting, v); }
-
-        private static void WriteBoth2(Guid scheme, Guid sub, Guid setting, uint v)
-        {
-            Guid sb = sub, set = setting;
-            PowerWriteACValueIndex(IntPtr.Zero, ref scheme, ref sb, ref set, v);
-            PowerWriteDCValueIndex(IntPtr.Zero, ref scheme, ref sb, ref set, v);
-        }
-
         private static readonly object lk = new object();
         private static Guid saved;
         private static bool active;
@@ -82,7 +102,6 @@ namespace AegisApp
         private static bool resolved;
         private static int tuneState = -1;
         private static bool targetOwned;
-
 
         private static Guid? Current()
         {

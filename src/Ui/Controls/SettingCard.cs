@@ -12,6 +12,7 @@ namespace AegisApp
         private string title = "", desc = "", val = "";
         private Control host;
         private bool hoverOn;
+        private bool pressed;
         private Motion cardHover;
         public Color ValueColor = Theme.Dim;
 
@@ -52,8 +53,14 @@ namespace AegisApp
         {
             host = c;
             Controls.Add(c);
+            c.MouseLeave += OnHostMouseLeave;
             LayoutHost();
             if (c is Toggle) Cursor = Cursors.Hand;
+        }
+
+        private void OnHostMouseLeave(object sender, EventArgs e)
+        {
+            ClearHoverIfOutside();
         }
 
         protected override void OnSizeChanged(EventArgs e) { base.OnSizeChanged(e); LayoutHost(); }
@@ -64,11 +71,20 @@ namespace AegisApp
             host.Location = new Point(Width - Theme.S(18) - host.Width, (Height - host.Height) / 2);
         }
 
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+            if (e.Button == MouseButtons.Left) pressed = true;
+        }
+
         protected override void OnMouseUp(MouseEventArgs e)
         {
             base.OnMouseUp(e);
+            bool was = pressed;
+            if (e.Button == MouseButtons.Left) pressed = false;
             var t = host as Toggle;
-            if (t != null && t.Enabled && e.Button == MouseButtons.Left) t.Checked = !t.Checked;
+            if (was && t != null && t.Enabled && e.Button == MouseButtons.Left &&
+                ClientRectangle.Contains(e.Location)) t.Checked = !t.Checked;
         }
 
         protected override void OnMouseEnter(EventArgs e)
@@ -80,8 +96,17 @@ namespace AegisApp
         protected override void OnMouseLeave(EventArgs e)
         {
             base.OnMouseLeave(e);
-            if (hoverOn && !ClientRectangle.Contains(PointToClient(Cursor.Position)))
-            { hoverOn = false; cardHover.To(0f); UiClock.Wake(); }
+            ClearHoverIfOutside();
+        }
+
+        private void ClearHoverIfOutside()
+        {
+            if (!hoverOn || IsDisposed) return;
+            Point p;
+            try { p = PointToClient(Cursor.Position); }
+            catch { return; }
+            if (ClientRectangle.Contains(p)) return;
+            hoverOn = false; cardHover.To(0f); UiClock.Wake();
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -117,15 +142,13 @@ namespace AegisApp
                     TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
                 var dr = new Rectangle(padL, Theme.S(33), textW, Height - Theme.S(40));
                 TextFormatFlags df = TextFormatFlags.Left | TextFormatFlags.EndEllipsis;
-                // 原来的门槛是卡片高度 >72px，而全项目卡片都是 56~66px，换行分支从不执行，
-                // 所有说明都被截成一行加省略号——被截掉的往往正是风险提示那半句。
-                // 改成看描述区本身还能不能容下第二行。
+
                 int lineH = TextRenderer.MeasureText("Ag", Theme.UI(8.5f, false)).Height;
                 if (dr.Height >= lineH * 2) df |= TextFormatFlags.WordBreak;
+                if (lineH > 0 && dr.Height >= lineH) dr.Height = dr.Height / lineH * lineH;
                 TextRenderer.DrawText(g, desc, Theme.UI(8.5f, false), dr, Theme.Dim, df);
             }
         }
     }
-
 
 }

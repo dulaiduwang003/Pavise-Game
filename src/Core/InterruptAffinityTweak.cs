@@ -18,7 +18,6 @@ namespace AegisApp
         internal static byte[] MaskToBytes(ulong mask) { return IrqAffinityEngine.MaskToBytes(mask); }
         internal static ulong BytesToMask(byte[] b) { return IrqAffinityEngine.BytesToMask(b); }
 
-
         internal static List<string> EnumerateGpuDeviceIds()
         {
             var ids = new List<string>();
@@ -52,16 +51,15 @@ namespace AegisApp
 
         public static bool Disable() { return engine.Disable(EnumerateGpuDeviceIds()); }
 
-        // 用 WMI 让指定设备走一次禁用再启用（PnP 重新枚举），驱动会在启用时重新读取
-        // 中断亲和策略，不需要整机重启就能让刚写入的值生效。仅供诊断/验证使用，正常
-        // 开关流程不会自动触发——设备瞬时下线，调用方需自行承担时机风险。
+#if AEGIS_SELFTEST
         internal static bool RestartDevice(string pnpDeviceId, out string error)
         {
             error = null;
             try
             {
                 using (var searcher = new ManagementObjectSearcher(
-                    "SELECT * FROM Win32_PnPEntity WHERE PNPDeviceID='" + pnpDeviceId.Replace("'", "''") + "'"))
+                    "SELECT * FROM Win32_PnPEntity WHERE PNPDeviceID='"
+                    + pnpDeviceId.Replace(@"\", @"\\").Replace("'", @"\'") + "'"))
                 using (ManagementObjectCollection results = searcher.Get())
                 {
                     foreach (ManagementObject mo in results)
@@ -87,5 +85,6 @@ namespace AegisApp
             }
             catch (Exception ex) { error = ex.Message; return false; }
         }
+#endif
     }
 }

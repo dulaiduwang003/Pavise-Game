@@ -19,11 +19,11 @@ namespace AegisApp
     {
         public static string Data;
 
-
         private static readonly string[] DataFiles =
         {
             "Aegis.games.txt", GameProfileStore.FileName, "Aegis.whitelist.txt", "Aegis.targets.txt",
-            SessionReportStore.FileName, "Aegis.log", "crash.log", FreezeGuard.StateFileName, SuppressionCore.StateFileName
+            SessionReportStore.FileName, "Aegis.log", "crash.log",
+            LegacyFreezeRecovery.StateFileName, SuppressionCore.StateFileName
         };
 
         public static void Init()
@@ -79,7 +79,5 @@ namespace AegisApp
             }
         }
     }
-
-
 
 }

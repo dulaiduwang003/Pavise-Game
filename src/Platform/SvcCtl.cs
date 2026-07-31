@@ -11,6 +11,13 @@ namespace AegisApp
     {
         public static bool StopIfRunning(string name)
         {
+            bool confirmedStopped;
+            return StopIfRunning(name, out confirmedStopped);
+        }
+
+        public static bool StopIfRunning(string name, out bool confirmedStopped)
+        {
+            confirmedStopped = false;
             IntPtr scm = OpenSCManagerW(null, null, 1 );
             if (scm == IntPtr.Zero) return false;
             try
@@ -26,10 +33,10 @@ namespace AegisApp
                     for (int i = 0; i < 10; i++)
                     {
                         Thread.Sleep(500);
-                        if (!QueryServiceStatus(svc, out st)) return false;
-                        if (st.State == 1 ) return true;
+                        if (!QueryServiceStatus(svc, out st)) break;
+                        if (st.State == 1 ) { confirmedStopped = true; break; }
                     }
-                    return false;
+                    return true;
                 }
                 finally { CloseServiceHandle(svc); }
             }

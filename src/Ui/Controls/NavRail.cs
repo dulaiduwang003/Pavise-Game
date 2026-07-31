@@ -12,6 +12,10 @@ namespace AegisApp
     {
         private readonly string[] labels;
         private readonly string[] glyphs;
+        private readonly int[] order;
+        private readonly int[] groupSlots;
+        private readonly string[] groupTexts;
+        private readonly int anchorCount;
         private int sel;
         private int hoverIdx = -1;
         private Motion ind;
@@ -22,18 +26,66 @@ namespace AegisApp
 
         public int Selected { get { return sel; } }
 
+        internal int ItemCount { get { return labels.Length; } }
+
+        internal int ItemAtSlot(int slot) { return slot >= 0 && slot < order.Length ? order[slot] : -1; }
+
         private int TopPad { get { return Dpi.S(94); } }
-        private int ItemH { get { return Dpi.S(44); } }
+        private int ItemH { get { return Dpi.S(36); } }
         private int Gap { get { return Dpi.S(5); } }
         private int Pad { get { return Dpi.S(12); } }
         private int Pitch { get { return ItemH + Gap; } }
+        private int GroupH { get { return Dpi.S(30); } }
+        private int BottomPad { get { return Dpi.S(18); } }
 
         public NavRail(string[] names, string[] icons)
+            : this(names, icons, null, null, null, 0)
+        {
+        }
+
+        public NavRail(string[] names, string[] icons, int[] displayOrder,
+            int[] groupBeforeSlots, string[] groupTitles, int bottomAnchored)
         {
             labels = names; glyphs = icons;
+            if (displayOrder != null && displayOrder.Length == names.Length) order = displayOrder;
+            else
+            {
+                order = new int[names.Length];
+                for (int i = 0; i < names.Length; i++) order[i] = i;
+            }
+            if (groupTitles != null && groupBeforeSlots != null && groupTitles.Length == groupBeforeSlots.Length)
+            {
+                groupSlots = groupBeforeSlots; groupTexts = groupTitles;
+            }
+            else { groupSlots = new int[0]; groupTexts = new string[0]; }
+            anchorCount = bottomAnchored < 0 ? 0 : (bottomAnchored > order.Length ? order.Length : bottomAnchored);
             Cursor = Cursors.Default;
-            ind.Speed = 0.30f; ind.Set(TopPad);
+            ind.Speed = 0.30f; ind.Set(SlotY(SlotOfItem(0)));
             logo = IconArt.Render(Dpi.S(34), mode, modeEnabled);
+        }
+
+        internal static int GroupsAbove(int slot, int[] groupBeforeSlots)
+        {
+            if (groupBeforeSlots == null) return 0;
+            int n = 0;
+            for (int i = 0; i < groupBeforeSlots.Length; i++) if (slot >= groupBeforeSlots[i]) n++;
+            return n;
+        }
+
+        private int GroupsAbove(int slot) { return GroupsAbove(slot, groupSlots); }
+
+        private int SlotOfItem(int item)
+        {
+            for (int s = 0; s < order.Length; s++) if (order[s] == item) return s;
+            return item;
+        }
+
+        private int SlotY(int slot)
+        {
+            int flowCount = order.Length - anchorCount;
+            if (slot >= flowCount && Height > 0)
+                return Height - BottomPad - ItemH - (order.Length - 1 - slot) * Pitch;
+            return TopPad + slot * Pitch + GroupsAbove(slot) * GroupH;
         }
 
         protected override void OnHandleDestroyed(EventArgs e)
@@ -46,12 +98,12 @@ namespace AegisApp
         {
             if (i < 0 || i >= labels.Length) return;
             sel = i;
-            ind.To(TopPad + i * Pitch);
+            ind.To(SlotY(SlotOfItem(i)));
             UiClock.Wake(); Invalidate();
             if (SelectionChanged != null) SelectionChanged(i);
         }
 
-        public void SnapToSelection() { ind.Set(TopPad + sel * Pitch); Invalidate(); }
+        public void SnapToSelection() { ind.Set(SlotY(SlotOfItem(sel))); Invalidate(); }
 
         public void SetMode(PerformancePreset value, bool enabled)
         {
@@ -67,10 +119,10 @@ namespace AegisApp
 
         private int HitTest(int y)
         {
-            for (int i = 0; i < labels.Length; i++)
+            for (int s = 0; s < order.Length; s++)
             {
-                int t = TopPad + i * Pitch;
-                if (y >= t && y < t + ItemH) return i;
+                int t = SlotY(s);
+                if (y >= t && y < t + ItemH) return order[s];
             }
             return -1;
         }
@@ -119,9 +171,25 @@ namespace AegisApp
             using (var bp = Theme.Rounded(bar, Dpi.S(1)))
             using (var bb = new SolidBrush(Theme.Accent)) g.FillPath(bb, bp);
 
-            for (int i = 0; i < labels.Length; i++)
+            for (int gi = 0; gi < groupSlots.Length; gi++)
             {
-                int y = TopPad + i * Pitch;
+                int slot = groupSlots[gi];
+                if (slot < 0 || slot >= order.Length) continue;
+                string text = groupTexts[gi] ?? "";
+                int gy = SlotY(slot) - GroupH;
+                int textW = TextRenderer.MeasureText(g, text, Theme.Mono(6.5f)).Width;
+                int lineY = gy + GroupH / 2;
+                TextRenderer.DrawText(g, text, Theme.Mono(6.5f),
+                    new Rectangle(Pad + Dpi.S(13), gy, Width - Pad * 2 - Dpi.S(13), GroupH), Theme.Faint,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                using (var gp = new Pen(Theme.Stroke))
+                    g.DrawLine(gp, Pad + Dpi.S(17) + textW + Dpi.S(8), lineY, Width - Pad - Dpi.S(2), lineY);
+            }
+
+            for (int s = 0; s < order.Length; s++)
+            {
+                int i = order[s];
+                int y = SlotY(s);
                 bool on = (i == sel);
                 if (!on && i == hoverIdx)
                 {
@@ -137,6 +205,5 @@ namespace AegisApp
             }
         }
     }
-
 
 }

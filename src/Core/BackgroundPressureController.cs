@@ -16,7 +16,7 @@ namespace AegisApp
 
     internal sealed class BackgroundPressureController
     {
-        // 有效采样窗口：短于 1 秒速率失真，长于 30 秒说明中间断过档、基线不可信
+
         internal const long MinSampleTicks = TimeSpan.TicksPerSecond;
         internal const long MaxSampleTicks = TimeSpan.TicksPerSecond * 30;
 
@@ -44,16 +44,15 @@ namespace AegisApp
 
             long dt = now - old.At;
             long dcpu = cpu - old.Cpu;
+
+            if (dt < MinSampleTicks && dcpu >= 0) return LevelOfHeat(old.Heat);
+
             ulong dio = io >= old.Io ? io - old.Io : 0;
             old.Cpu = cpu; old.Io = io; old.At = now;
-            // 采样窗口太短的话速率会被放大到失真：扫描不是固定 4 秒一轮，进程频繁启停时
-            // 会被事件驱动以 200ms 的合并窗口反复唤醒，dt≈0.2s 时 20ms 的 CPU 占用会算成
-            // 0.1 核、直接越过阈值，普通程序几百毫秒内就被升到 Isolated。
-            // 窗口不足时只更新基线、不计热度，与 InterferenceSampler 的做法保持一致。
             if (dt < MinSampleTicks || dt > MaxSampleTicks || dcpu < 0)
             {
                 if (dcpu < 0) { old.Heat = 0; old.Cool = 0; }
-                return SuppressionLevel.None;
+                return LevelOfHeat(old.Heat);
             }
 
             double cpuCores = (double)dcpu / dt;
@@ -74,9 +73,14 @@ namespace AegisApp
                 old.Heat = Math.Max(0, old.Heat - 1);
             }
 
-            if (old.Heat >= 3) return SuppressionLevel.Isolated;
-            if (old.Heat >= 2) return SuppressionLevel.Restrained;
-            if (old.Heat >= 1) return SuppressionLevel.Eco;
+            return LevelOfHeat(old.Heat);
+        }
+
+        private static SuppressionLevel LevelOfHeat(int heat)
+        {
+            if (heat >= 3) return SuppressionLevel.Isolated;
+            if (heat >= 2) return SuppressionLevel.Restrained;
+            if (heat >= 1) return SuppressionLevel.Eco;
             return SuppressionLevel.None;
         }
 

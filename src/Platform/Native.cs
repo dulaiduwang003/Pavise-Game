@@ -35,7 +35,40 @@ namespace AegisApp
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern IntPtr OpenProcess(int access, bool inherit, int pid);
         [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern IntPtr OpenThread(int access, bool inherit, int tid);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool ProcessIdToSessionId(
+            uint processId, out uint sessionId);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern uint WaitForSingleObject(
+            IntPtr handle, uint milliseconds);
+
+        private const uint WaitTimeout = 258;
+
+        public static bool TryGetLiveProcessSessionId(
+            IntPtr processHandle, int pid, out int sessionId)
+        {
+            sessionId = -1;
+            if (processHandle == IntPtr.Zero || pid <= 0) return false;
+            uint value;
+            if (!ProcessIdToSessionId((uint)pid, out value)
+                || value > int.MaxValue)
+                return false;
+            if (WaitForSingleObject(processHandle, 0) != WaitTimeout)
+                return false;
+            sessionId = (int)value;
+            return true;
+        }
+
+        public static bool LastOpenProcessFailureWasNoSuchProcess()
+        {
+            return Marshal.GetLastWin32Error() == 87;
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
         public static extern bool CloseHandle(IntPtr h);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool GetExitCodeProcess(IntPtr h, out uint code);
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern bool SetPriorityClass(IntPtr h, uint cls);
         [DllImport("kernel32.dll", SetLastError = true)]
@@ -64,6 +97,9 @@ namespace AegisApp
         [DllImport("ntdll.dll", EntryPoint = "NtQueryInformationProcess")]
         private static extern int NtQueryInformationProcessBasic(IntPtr h, int infoClass,
             ref PROCESS_BASIC_INFORMATION info, int len, IntPtr retLen);
+        [DllImport("ntdll.dll", EntryPoint = "NtQueryInformationProcess")]
+        private static extern int NtQueryInformationProcessPower(IntPtr h, int infoClass,
+            ref PowerThrottlingState info, int len, IntPtr retLen);
         private static int boostPrivilegeState;
 
         public static bool EnsureBoostPrivilege()
@@ -77,7 +113,6 @@ namespace AegisApp
 
         private static int profilePrivilegeState;
 
-        // 清理待机内存列表需要 SeProfileSingleProcessPrivilege
         public static bool EnsureProfilePrivilege()
         {
             int known = Volatile.Read(ref profilePrivilegeState);
@@ -85,52 +120,6 @@ namespace AegisApp
             bool enabled = EnablePrivilege("SeProfileSingleProcessPrivilege");
             Interlocked.CompareExchange(ref profilePrivilegeState, enabled ? 1 : -1, 0);
             return Volatile.Read(ref profilePrivilegeState) > 0;
-        }
-
-        [DllImport("ntdll.dll")]
-        public static extern int NtQuerySystemInformation(int infoClass, IntPtr buffer, int length, out int returned);
-        [DllImport("ntdll.dll")]
-        public static extern int NtSetSystemInformation(int infoClass, IntPtr buffer, int length);
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct SystemInfoNative
-        {
-            public ushort ProcessorArchitecture, Reserved;
-            public uint PageSize;
-            public IntPtr MinimumApplicationAddress, MaximumApplicationAddress, ActiveProcessorMask;
-            public uint NumberOfProcessors, ProcessorType, AllocationGranularity;
-            public ushort ProcessorLevel, ProcessorRevision;
-        }
-
-        [DllImport("kernel32.dll")]
-        private static extern void GetNativeSystemInfo(ref SystemInfoNative info);
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct MemoryStatusEx
-        {
-            public uint Length;
-            public uint MemoryLoad;
-            public ulong TotalPhys, AvailPhys, TotalPageFile, AvailPageFile, TotalVirtual, AvailVirtual, AvailExtendedVirtual;
-        }
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern bool GlobalMemoryStatusEx(ref MemoryStatusEx buffer);
-
-        // 系统整体内存压力百分比（0~100）。比 free/zero 链表更能反映"内存是否吃紧"，
-        // 因为 Windows 会主动把空闲物理内存收进待机列表。
-        public static int MemoryLoadPercent()
-        {
-            var st = new MemoryStatusEx();
-            st.Length = (uint)Marshal.SizeOf(typeof(MemoryStatusEx));
-            try { return GlobalMemoryStatusEx(ref st) ? (int)st.MemoryLoad : 0; }
-            catch { return 0; }
-        }
-
-        public static int MemoryPageSize()
-        {
-            var info = new SystemInfoNative();
-            try { GetNativeSystemInfo(ref info); } catch { }
-            return info.PageSize > 0 ? (int)info.PageSize : 4096;
         }
 
         private static bool EnablePrivilege(string name)
@@ -154,8 +143,6 @@ namespace AegisApp
         public static extern bool SetProcessWorkingSetSize(IntPtr h, IntPtr min, IntPtr max);
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool GetProcessAffinityMask(IntPtr h, out UIntPtr procMask, out UIntPtr sysMask);
-        [DllImport("ntdll.dll")]
-        public static extern int NtSuspendProcess(IntPtr h);
         [DllImport("ntdll.dll")]
         public static extern int NtResumeProcess(IntPtr h);
         [DllImport("kernel32.dll", SetLastError = true)]
@@ -235,6 +222,55 @@ namespace AegisApp
                 return path.Length == 0 ? null : path;
             }
             catch { return null; }
+        }
+
+        [DllImport("iphlpapi.dll", SetLastError = true)]
+        private static extern uint GetExtendedTcpTable(IntPtr table, ref int size,
+            bool order, int addressFamily, int tableClass, int reserved);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct TcpRowOwnerPid
+        {
+            public uint State, LocalAddr, LocalPort, RemoteAddr, RemotePort, OwningPid;
+        }
+
+        public static bool TryGetTcpListenerOwner(int port, out int pid)
+        {
+            const int AfInet = 2;
+            const int TcpTableOwnerPidListener = 3;
+            pid = 0;
+            if (port <= 0 || port > 65535) return false;
+            int size = 0;
+            GetExtendedTcpTable(IntPtr.Zero, ref size, false, AfInet, TcpTableOwnerPidListener, 0);
+            if (size <= 0) return false;
+            IntPtr buffer = Marshal.AllocHGlobal(size);
+            try
+            {
+                if (GetExtendedTcpTable(buffer, ref size, false, AfInet, TcpTableOwnerPidListener, 0) != 0)
+                    return false;
+                int count = Marshal.ReadInt32(buffer);
+                int rowSize = Marshal.SizeOf(typeof(TcpRowOwnerPid));
+                long cursor = buffer.ToInt64() + 4;
+                for (int i = 0; i < count; i++, cursor += rowSize)
+                {
+                    var row = (TcpRowOwnerPid)Marshal.PtrToStructure(
+                        new IntPtr(cursor), typeof(TcpRowOwnerPid));
+                    int local = (int)(((row.LocalPort & 0xFF) << 8) | ((row.LocalPort >> 8) & 0xFF));
+                    if (local != port) continue;
+                    pid = (int)row.OwningPid;
+                    return pid > 0;
+                }
+            }
+            catch { return false; }
+            finally { Marshal.FreeHGlobal(buffer); }
+            return false;
+        }
+
+        public static bool StillActive(IntPtr h)
+        {
+            uint code;
+            if (!GetExitCodeProcess(h, out code)) return true;
+            return code == 259;
         }
 
         public static string ImageName(IntPtr h)
@@ -347,27 +383,37 @@ namespace AegisApp
             return SetPowerThrottling(process, ignoreTimerResolution ? 5u : 1u, 0);
         }
 
-        // 按快照原样写回 PowerThrottling：ReleasePowerThrottlingPolicy 写的是"交给系统托管"，
-        // 对本来就自己开了 EcoQoS 的进程而言那是抹掉设置而不是还原。
         public static bool RestorePowerThrottling(IntPtr process, int controlMask, int stateMask)
         {
             if (controlMask < 0) return SetPowerThrottling(process, 0, 0);
             return SetPowerThrottling(process, (uint)controlMask, (uint)(stateMask < 0 ? 0 : stateMask));
         }
 
-        public static bool ReleasePowerThrottlingPolicy(IntPtr process)
-        {
-            return SetPowerThrottling(process, 0, 0);
-        }
-
         public static bool TryQueryPowerThrottling(IntPtr process, out int controlMask, out int stateMask)
         {
+            int size = Marshal.SizeOf(typeof(PowerThrottlingState));
             var state = new PowerThrottlingState { Version = 1 };
-            bool ok = GetProcessInformation(process, ProcessPowerThrottling, ref state,
-                Marshal.SizeOf(typeof(PowerThrottlingState)));
+            bool ok = GetProcessInformation(process, ProcessPowerThrottling, ref state, size);
+            if (!ok)
+            {
+                state = new PowerThrottlingState { Version = 1 };
+                ok = NtQueryInformationProcessPower(process, ProcessPowerThrottlingNt, ref state, size, IntPtr.Zero) == 0;
+            }
             controlMask = (int)state.ControlMask;
             stateMask = (int)state.StateMask;
             return ok;
+        }
+
+        public static readonly bool PowerThrottlingSupported = ProbePowerThrottling();
+
+        private static bool ProbePowerThrottling()
+        {
+            try
+            {
+                int control, state;
+                return TryQueryPowerThrottling((IntPtr)(-1), out control, out state);
+            }
+            catch { return false; }
         }
 
         private static bool SetPowerThrottling(IntPtr process, uint controlMask, uint stateMask)
@@ -411,7 +457,13 @@ namespace AegisApp
         public const int PROCESS_SET_LIMITED_INFORMATION = 0x2000;
         public const int PROCESS_SET_QUOTA = 0x0100;
         public const int PROCESS_SUSPEND_RESUME = 0x0800;
+        public const int THREAD_SET_LIMITED_INFORMATION = 0x0400;
+        public const int THREAD_QUERY_LIMITED_INFORMATION = 0x0800;
+        public const int SYNCHRONIZE = 0x00100000;
         public const int GpuPriorityHigh = 4;
+        public const int GpuPriorityIdle = 0;
+        public const int GpuPriorityBelowNormal = 1;
+        public const int GpuPriorityNormal = 2;
         public const uint IDLE_PRIORITY_CLASS = 0x40;
         public const uint NORMAL_PRIORITY_CLASS = 0x20;
         public const uint BELOW_NORMAL_PRIORITY_CLASS = 0x4000;
@@ -419,7 +471,7 @@ namespace AegisApp
         private const int ProcessIoPriorityNt = 33;
         private const int ProcessPagePriorityNt = 39;
         private const int ProcessPowerThrottling = 4;
+        private const int ProcessPowerThrottlingNt = 77;
     }
-
 
 }

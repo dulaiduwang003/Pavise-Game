@@ -10,6 +10,39 @@ namespace AegisApp
 {
     internal partial class GameMode
     {
+#if AEGIS_PERFLAB
+        private HashSet<string> performanceSuppressionScope;
+#endif
+
+#if AEGIS_PERFLAB
+        internal void RestrictBackgroundSuppressionToPaths(
+            IEnumerable<string> executablePaths)
+        {
+            var next = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (executablePaths != null)
+                foreach (string path in executablePaths)
+                {
+                    string normalized = WhitelistRule.NormalizeImagePath(path);
+                    if (!string.IsNullOrEmpty(normalized)) next.Add(normalized);
+                }
+            lock (sync) performanceSuppressionScope = next;
+        }
+#endif
+
+        private bool PerformanceScopeAllows(string imagePath)
+        {
+#if AEGIS_PERFLAB
+            lock (sync)
+            {
+                if (performanceSuppressionScope == null) return true;
+                return performanceSuppressionScope.Contains(
+                    WhitelistRule.NormalizeImagePath(imagePath));
+            }
+#else
+            return true;
+#endif
+        }
+
         private sealed class BackgroundRequest
         {
             public int Pid;
@@ -18,6 +51,7 @@ namespace AegisApp
             public SuppressionLevel Previous;
             public bool HadBackgroundReason;
             public AcquireResult Result;
+            public string FailureDetail;
         }
 
         private static readonly HashSet<string> LauncherPlatforms = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -47,10 +81,7 @@ namespace AegisApp
             int session, int ownerSession, int foreground, bool userFacingFamily, string windowsRoot,
             bool gameHostAncestor = false, string activeGameRoot = null, bool aggressive = false)
         {
-            // 必须用与检测器同一套（更宽的）判定：AntiCheatCatalog 是精确名单，
-            // IsAntiCheatLikeName 在名单之外还认 anticheat/sguard/battleye 等子串。
-            // 两边宽度不一致的话，会出现"检测器认定是反作弊、压制器照压不误"的缝隙，
-            // 而被压的反作弊心跳超时 = 掉线甚至被判异常。宁可漏放也绝不错压。
+
             if (GameSessionDetector.IsAntiCheatLikeName(name)) return false;
             if (gameHostAncestor) return false;
             if (UnderRoot(path, activeGameRoot)) return false;
@@ -61,13 +92,22 @@ namespace AegisApp
             return string.IsNullOrEmpty(windowsRoot) || !path.StartsWith(windowsRoot, StringComparison.OrdinalIgnoreCase);
         }
 
-        // 目录包含判断必须按路径分段锚定：裸 StartsWith 会让根目录 D:\Games\Apex
-        // 把兄弟目录 D:\Games\ApexBackup 也算进来，从而错误豁免不相干的进程。
         internal static bool UnderRoot(string path, string root)
         {
             if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(root)) return false;
             string prefix = root.TrimEnd('\\') + "\\";
             return path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static string LibraryRootOf(string path, IList<string> roots)
+        {
+            if (roots == null) return null;
+            foreach (string root in roots)
+            {
+                if (root == null || root.TrimEnd('\\').Length <= 2) continue;
+                if (UnderRoot(path, root)) return root;
+            }
+            return null;
         }
 
         private static readonly HashSet<string> CoreSystemProcesses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -85,14 +125,25 @@ namespace AegisApp
 
         private void Sweep(Process[] all, HashSet<int> gamePids)
         {
+
+            lock (whiteEvalSync)
+                SweepWithStableWhitelist(all, gamePids);
+        }
+
+        private void SweepWithStableWhitelist(
+            Process[] all, HashSet<int> gamePids)
+        {
             PerformancePreset mode = ActivePreset;
             int foregroundPid = GameSessionDetector.ForegroundPid();
             bool aggressive = IsAggressive(mode, aggressiveOn);
-            HashSet<int> userFacingFamily = aggressive ? EmptyPidSet : CollectUserFacingFamily(all, foregroundPid);
+            WhitelistEvaluation whitelist = EvaluateWhitelist(all);
+            HashSet<int> userFacingFamily = aggressive ? EmptyPidSet
+                : CollectUserFacingFamily(foregroundPid, whitelist);
             bool safePartition = CpuTopology.HasSafeBackgroundPartition();
 
             int rendererPid = 0;
             string activeGameRoot = null;
+            var libraryRoots = new List<string>();
             lock (sync)
             {
                 if (activeDetection != null)
@@ -100,15 +151,17 @@ namespace AegisApp
                     rendererPid = activeDetection.RendererPid;
                     if (activeDetection.Profile != null) activeGameRoot = activeDetection.Profile.Root;
                 }
+                foreach (GameProfile p in profiles)
+                    if (!string.IsNullOrEmpty(p.Root)) libraryRoots.Add(p.Root);
             }
             bool gameSessionActive = rendererPid > 0;
             HashSet<int> gameHostAncestors = gameSessionActive
-                ? WalkAncestorChain(BuildParentMap(all), rendererPid, selfPid, 24)
+                ? WalkAncestorChain(whitelist.Parents, rendererPid, selfPid, 24)
                 : EmptyPidSet;
 
             bool first;
             lock (sync) first = firstSweep;
-            int done = 0, fail = 0;
+            int done = 0, denied = 0, retrying = 0;
             var live = new HashSet<int>();
             var pending = new List<BackgroundRequest>();
 
@@ -117,21 +170,21 @@ namespace AegisApp
                 try
                 {
                     int pid = p.Id;
+                    WhitelistProcessInfo processInfo;
+                    whitelist.Processes.TryGetValue(pid, out processInfo);
                     live.Add(pid);
                     if (pid <= 4 || pid == selfPid) continue;
 
-                    string nm = p.ProcessName;
+                    string nm = processInfo != null ? processInfo.Name : p.ProcessName;
 
                     if (string.Equals(nm, selfName, StringComparison.OrdinalIgnoreCase))
                     {
                         if (core.Release(pid, SuppressReason.Background)) ReportUntrack(pid);
-                        bool thawed = freezer.Restore(pid);
-                        if (thawed) Logger.Log("Aegis 自身保护：已解冻看门狗 (pid " + pid + ")");
                         continue;
                     }
 
-                    bool sameSession = false;
-                    try { sameSession = selfSession >= 0 && p.SessionId == selfSession; } catch { }
+                    bool sameSession = processInfo != null && selfSession >= 0 && processInfo.Session == selfSession;
+                    if (processInfo == null) { try { sameSession = selfSession >= 0 && p.SessionId == selfSession; } catch { } }
                     if (!sameSession)
                     {
                         ReleaseBackgroundExemption(pid, nm, null);
@@ -142,52 +195,46 @@ namespace AegisApp
                     lock (sync) boosted = gameBoost.ContainsKey(pid);
                     if (boosted) continue;
 
-                    bool white;
-                    lock (sync) white = whiteSet.Contains(nm);
+                    bool white = whitelist.Protected.Contains(pid);
                     if (white || gamePids.Contains(pid))
                     {
                         if (core.Release(pid, SuppressReason.Background)) ReportUntrack(pid);
-                        bool thawed = freezer.Restore(pid);
-                        if (thawed) Logger.Log("游戏/白名单豁免：已解冻 " + nm + " (pid " + pid + ")");
                         continue;
                     }
 
-                    string ipath = null;
-                    long creation = 0, cpu = 0; ulong io = 0;
-                    IntPtr hq = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
-                    if (hq != IntPtr.Zero)
+                    string ipath = processInfo != null ? processInfo.Path : null;
+                    long creation = processInfo != null ? processInfo.Creation : 0;
+                    long cpu = processInfo != null ? processInfo.Cpu : 0;
+                    ulong io = processInfo != null ? processInfo.Io : 0;
+                    if (processInfo == null)
                     {
-                        try
+                        IntPtr hq = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+                        if (hq != IntPtr.Zero)
                         {
-                            ipath = Native.ImagePath(hq);
-                            Native.QueryProcessSample(hq, out creation, out cpu, out io);
+                            try
+                            {
+                                ipath = Native.ImagePath(hq);
+                                Native.QueryProcessSample(hq, out creation, out cpu, out io);
+                            }
+                            finally { Native.CloseHandle(hq); }
                         }
-                        finally { Native.CloseHandle(hq); }
                     }
-                 
+
                     bool knownLauncherDuringSession = gameSessionActive && IsKnownLauncherShell(nm);
-                    if (!BasicBackgroundEligible(pid, selfPid, nm, ipath,
-                        sameSession ? selfSession : -1, selfSession, foregroundPid,
-                        userFacingFamily.Contains(pid), windowsPrefix,
-                        gameHostAncestors.Contains(pid) || knownLauncherDuringSession, activeGameRoot, aggressive))
+                    if (!PerformanceScopeAllows(ipath))
                     {
                         ReleaseBackgroundExemption(pid, nm, null);
                         continue;
                     }
-
-                    if (freezer.IsFrozen(pid)) continue;
-
-                    if (deepFreezeOn && creation > 0 && CanDeepFreeze(p, nm, ipath))
+                    string containRoot = LibraryRootOf(ipath, libraryRoots);
+                    if (containRoot == null) containRoot = activeGameRoot;
+                    if (!BasicBackgroundEligible(pid, selfPid, nm, ipath,
+                        sameSession ? selfSession : -1, selfSession, foregroundPid,
+                        userFacingFamily.Contains(pid), windowsPrefix,
+                        gameHostAncestors.Contains(pid) || knownLauncherDuringSession, containRoot, aggressive))
                     {
-                        InterferenceResult hot = interference.Observe(pid, nm, creation, cpu, io, DateTime.UtcNow.Ticks);
-                        if (hot.Kind != InterferenceKind.None && freezer.Freeze(pid, nm, hot.Describe()))
-                        {
-                            string why = hot.Describe();
-                            ReportFreeze(pid, nm, why);
-                            interference.Forget(pid);
-                            Logger.Log("极限模式：冻结高干扰后台 " + nm + " (pid " + pid + ", " + why + ")");
-                            continue;
-                        }
+                        ReleaseBackgroundExemption(pid, nm, null);
+                        continue;
                     }
 
                     SuppressionLevel adaptive = SuppressionLevel.None;
@@ -203,10 +250,9 @@ namespace AegisApp
                         if (string.Equals(tracked, nm, StringComparison.OrdinalIgnoreCase))
                         {
                             if (desired != SuppressionLevel.None && core.HasReason(pid, SuppressReason.Background)
-                                && core.IsThrottled(pid) && core.LevelOf(pid, SuppressReason.Background) == desired)
+                                && core.LevelOf(pid, SuppressReason.Background) == desired)
                             {
-                                core.Reapply(pid, nm, SuppressReason.Background);
-                                continue;
+                                if (core.Reconcile(pid, nm, SuppressReason.Background)) continue;
                             }
                         }
                         else ReportUntrack(pid);
@@ -232,6 +278,7 @@ namespace AegisApp
                 catch { }
             }
 
+            SuppressionCore.BatchResult batchResult = null;
             core.BeginBatch();
             try
             {
@@ -241,10 +288,15 @@ namespace AegisApp
                     catch { request.Result = AcquireResult.AlreadyProtected; }
                 }
             }
-            finally { core.EndBatch(); }
+            finally { batchResult = core.EndBatch(); }
 
             foreach (BackgroundRequest request in pending)
-                if (!core.ConsumeBatchApplyResult(request.Pid)) request.Result = AcquireResult.ApplyFailed;
+                if ((request.Result == AcquireResult.NewlyThrottled || request.Result == AcquireResult.AlreadyThrottled)
+                    && (batchResult == null || !batchResult.WasApplied(request.Pid)))
+                {
+                    request.Result = AcquireResult.ApplyFailed;
+                    request.FailureDetail = batchResult != null ? batchResult.FailureOf(request.Pid) : "batch-missing";
+                }
 
             foreach (BackgroundRequest request in pending)
             {
@@ -262,19 +314,19 @@ namespace AegisApp
                     if (!first && request.Previous != request.Desired)
                         Logger.Log("后台策略：" + request.Name + " (pid " + request.Pid + ") " + request.Previous + " → " + request.Desired);
                 }
-                else if (request.Result == AcquireResult.NewlyProtected) fail++;
+                else if (request.Result == AcquireResult.NewlyProtected) denied++;
                 else if (request.Result == AcquireResult.ApplyFailed)
                 {
-                    fail++;
-                    Logger.Log("后台策略写入未完全生效：" + request.Name + " (pid " + request.Pid + ")，保留快照并将在下一轮重试");
+                    retrying++;
+                    Logger.Log("后台策略写入未完全生效：" + request.Name + " (pid " + request.Pid + ")"
+                        + (string.IsNullOrEmpty(request.FailureDetail) ? "" : "，失败环节 [" + request.FailureDetail + "]")
+                        + "，保留快照并将在下一轮重试");
                 }
             }
 
             foreach (int pid in core.PidsWith(SuppressReason.Background))
                 if (!live.Contains(pid)) { if (core.Release(pid, SuppressReason.Background)) ReportUntrack(pid); }
 
-            freezer.Prune(live);
-            interference.Prune(live);
             pressure.Prune(live);
 
             if (first)
@@ -290,38 +342,37 @@ namespace AegisApp
                                 ? (safePartition ? "自定义立即隔离（Idle + EcoQoS + 锁核" + aggressiveNote + "）" : "自定义隔离（核心数不足，Idle + EcoQoS，不锁核" + aggressiveNote + "）")
                                 : "自定义全局 Eco" + aggressiveNote)
                             : "常规全局 Eco，持续大户再升级");
-                    Logger.Log("后台策略：" + policy + "，首轮处理 " + done + " 个用户后台"
-                        + (fail > 0 ? "（" + fail + " 个受保护进程已跳过）" : ""));
+                    Logger.Log("后台策略：" + policy
+                        + (SuppressionCore.GpuDemoteEnabled ? "，GPU 让位已启用" : "")
+                        + "，首轮处理 " + done + " 个用户后台"
+                        + (retrying > 0 ? "（" + retrying + " 个写入未完全生效，按退避重试）" : "")
+                        + (denied > 0 ? "（" + denied + " 个句柄受保护已跳过）" : ""));
                 }
-                else if (deepFreezeOn)
-                    Logger.Log("极限模式：首轮资源基线已建立，持续高 CPU / IO 的用户后台将在下一采样窗口冻结");
                 lock (sync) firstSweep = false;
             }
         }
 
-        private HashSet<int> CollectUserFacingFamily(Process[] all, int foregroundPid)
+        private HashSet<int> CollectUserFacingFamily(
+            int foregroundPid, WhitelistEvaluation whitelist)
         {
-            var parents = new Dictionary<int, int>();
-            var names = new Dictionary<int, string>();
             var roots = new HashSet<int>();
-            foreach (Process p in all)
+            HashSet<int> visible = GameSessionDetector.VisibleWindowPids(true);
+            foreach (var pair in whitelist.Processes)
             {
                 try
                 {
-                    int pid = p.Id;
-                    if (selfSession < 0 || p.SessionId != selfSession) continue;
-                    string name = p.ProcessName;
-                    names[pid] = name;
+                    int pid = pair.Key;
+                    WhitelistProcessInfo info = pair.Value;
+                    if (selfSession < 0 || info.Session != selfSession) continue;
+                    string name = info.Name;
                     bool isLauncher = name != null && LauncherPlatforms.Contains(name);
-                    if (pid == foregroundPid || (!isLauncher && GameSessionDetector.HasUserFacingWindow(p))) roots.Add(pid);
-                    IntPtr h = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
-                    if (h == IntPtr.Zero) continue;
-                    try { parents[pid] = Native.ParentProcessId(h); }
-                    finally { Native.CloseHandle(h); }
+                    if (pid == foregroundPid || (!isLauncher && visible.Contains(pid)))
+                        roots.Add(pid);
                 }
                 catch { }
             }
-            return ExpandUserFacingFamily(parents, names, roots);
+            return ExpandUserFacingFamily(
+                whitelist.Parents, whitelist.Names, roots);
         }
 
         internal static HashSet<int> ExpandUserFacingFamily(Dictionary<int, int> parents,
@@ -373,26 +424,7 @@ namespace AegisApp
                 ReportUntrack(pid);
                 if (!string.IsNullOrEmpty(reason)) Logger.Log(reason + "：已恢复 " + name + " (pid " + pid + ")");
             }
-            if (freezer.Restore(pid) && !string.IsNullOrEmpty(reason))
-                Logger.Log(reason + "：已解冻 " + name + " (pid " + pid + ")");
             pressure.Forget(pid);
-            interference.Forget(pid);
-        }
-
-        private bool CanDeepFreeze(Process p, string name, string path)
-        {
-            if (string.IsNullOrEmpty(path)
-                || string.Equals(name, "Aegis", StringComparison.OrdinalIgnoreCase)) return false;
-            // 纵深防御：挂起是这里最不可逆的动作，即使上游资格判定将来被改坏，
-            // 反作弊进程也绝不能走到冻结这一步
-            if (GameSessionDetector.IsAntiCheatLikeName(name)) return false;
-            try
-            {
-                if (selfSession < 0 || p.SessionId != selfSession) return false;
-                if (path.StartsWith(windowsPrefix, StringComparison.OrdinalIgnoreCase)) return false;
-            }
-            catch { return false; }
-            return true;
         }
 
         private static void TrimWorkingSetOf(int pid)
@@ -442,29 +474,6 @@ namespace AegisApp
             return false;
         }
 
-        private Dictionary<int, int> BuildParentMap(Process[] all)
-        {
-            var parents = new Dictionary<int, int>();
-            foreach (Process p in all)
-            {
-                try
-                {
-                    int pid = p.Id;
-                    if (selfSession < 0 || p.SessionId != selfSession) continue;
-                    IntPtr h = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
-                    if (h == IntPtr.Zero) continue;
-                    try { parents[pid] = Native.ParentProcessId(h); }
-                    finally { Native.CloseHandle(h); }
-                }
-                catch { }
-            }
-            return parents;
-        }
-
-        // 从当前活跃渲染进程往上找它的启动器链条（父进程、祖父进程……）。
-        // 不认任何具体平台的名字——不管是哪家启动器，只要它现在真的是这局
-        // 游戏进程树上的祖先，就在会话存续期间豁免压制；遇到父进程已退出、
-        // 跨会话、绕回自身或起点这些断链情况就停，防止把无关进程也豁免掉。
         internal static bool IsKnownLauncherShell(string name)
         {
             return !string.IsNullOrEmpty(name) && LauncherPlatforms.Contains(name);

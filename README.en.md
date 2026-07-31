@@ -8,8 +8,6 @@ A small Windows tool that keeps the resource boundary between a game and the des
 
 `C#` · `WinForms` · `single executable` · `中文 / English / 日本語`
 
-[简体中文](README.md) · **English** · [日本語](README.ja.md)
-
 </div>
 
 ## In plain English: will it actually improve performance?
@@ -30,7 +28,7 @@ Some programs — self-extracting launchers in particular — run their real lon
 
 I originally wrote it to deal with programs that kept using resources after a game closed. Target detection, CPU partitioning, anti-cheat controls, crash recovery, and the UI were added over time. It is still a local utility. It installs no service, includes no frame collector, and uploads no runtime data.
 
-Automatic scheduling does not inject into the target process, edit its memory, or modify its files. Priority, I/O, page priority, CPU Sets, and hard affinity are read back where the API supports it. Windows provides no reliable process-level readback for Power Throttling, so that setting is judged by the write result only. Use an in-game benchmark or your usual monitoring tool to measure performance.
+Automatic scheduling does not inject into the target process, edit its memory, or modify its files. Priority, I/O, page priority, CPU Sets, and hard affinity are read back where the API supports it. Windows provides no reliable process-level readback for Power Throttling, so that setting is judged by the write result only. The League column has exactly one file action, separately confirmed: reversible quarantine, which moves the optional layers and restores them in place from a manifest. The column offers no irreversible deletion. Use an in-game benchmark or your usual monitoring tool to measure performance.
 
 ## How it works
 
@@ -39,8 +37,8 @@ A process name alone is not enough to activate protection. Aegis combines the se
 The selected preset controls what happens next.
 
 - **Standard** applies a light Eco policy to current-session processes without a user-facing window and escalates only sustained heavy workloads; the foreground window and apps you're actively using keep their exemption.
-- **Competitive** establishes the strictest CPU and priority boundary on its first pass — the foreground/visible-window exemption is dropped entirely, so everything except genuine Windows core services (session setup, authentication, service management, the desktop compositor, audio processing) is suppression-eligible.
-- **Custom** lets you choose background control, service pauses, network changes, notification quieting, refresh-rate handling, and freezing separately — including, as an independent toggle, whether to adopt Competitive's suppression scope and power-plan intensity without switching preset.
+- **Competitive** establishes the strictest CPU and priority boundary on its first pass — foreground and visible-window apps are no longer automatically exempt. Game families, anti-cheat, the whitelist, other user sessions, and genuine Windows core services remain hard safety boundaries.
+- **Custom** lets you choose background control, service pauses, network changes, notification quieting, and refresh-rate handling separately — including, as an independent toggle, whether to adopt Competitive's suppression scope and power-plan intensity without switching preset.
 
 The selected target process can receive High priority, higher I/O priority, GPU scheduling priority, and CPU Sets suited to the current processor. Background processes can receive lower priority or be moved to background cores. A failed write or mismatched readback is not reported as success for settings that support readback.
 
@@ -57,8 +55,8 @@ Recovery records include PID, creation time, image name, queryable original sche
 - Vendor-neutral CPU Sets: hybrid CPUs follow OS-reported efficiency classes and retain full SMT, homogeneous CPUs with 6 cores or fewer are never hard-partitioned, and only CPUs with 8 or more cores reserve a small background partition
 - Competitive placement can avoid physical cores with sustained abnormal DPC or interrupt activity
 - Boost and suppression use both API results and readback where Windows supports it
+- The League of Legends column provides WeGame-assisted launch, an LCU readiness gate, verified-path cleanup, true headless matches, and an independent recovery watchdog
 - Anti-cheat controls are grouped by vendor with only the more conservative ACE group enabled by default
-- Extreme Freeze targets sustained non-target offenders in the current user session and stays off by default
 - Power plan, network throttling, MMCSS, Game DVR, notifications, and selected services can be restored
 - HAGS and VBS are explicit persistent system settings and are not tied to automatic sessions
 - Local session reports record duration and verified scheduling results
@@ -68,19 +66,21 @@ Recovery records include PID, creation time, image name, queryable original sche
 
 Anti-cheat processes, a live match's session host and its install directory, Windows core services (session setup, authentication, service management, the compositor, audio processing, and similar), other login sessions, and Aegis itself are never treated as a suppression target at any preset or intensity — this boundary does not change with settings.
 
-Below Competitive-grade intensity, Aegis does not treat the foreground process, applications with a visible main window, or their same-name processes and descendants as normal background targets. This keeps browsers, IDEs, and other front-end tools from protecting only their UI process. Additional exceptions come from the user-managed whitelist. Competitive-grade intensity (Competitive mode, or an explicit Custom toggle) drops that exemption — only the core-service boundary remains, and the foreground window is no longer protected. That is a deliberate, user-chosen tradeoff.
+Below Competitive-grade intensity, Aegis does not treat the foreground process, applications with a visible main window, or their same-name processes and descendants as normal background targets. This keeps browsers, IDEs, and other front-end tools from protecting only their UI process. Additional exceptions come from the user-managed whitelist. Competitive-grade intensity (Competitive mode, or an explicit Custom toggle) drops the foreground/window exemption. Game families, anti-cheat, the whitelist, other user sessions, and Windows core services remain hard safety boundaries.
 
 Anti-cheat suppression itself is intentionally aggressive. A protected program may reject a handle or immediately rewrite its state. Aegis logs that outcome and keeps recovery data instead of presenting a false success.
 
-Extreme Freeze has an independent watchdog. Recovery data is written before suspension. Target exit, disabling the option, normal shutdown, and crash recovery all attempt to resume the exact process. Unconfirmed entries stay available for another recovery attempt.
+Logging off or shutting down Windows restores the changes that persist across a reboot (power plan, registry-backed switches), because those do not clear themselves. On exit the teardown is ordered by risk: process state first (priority, affinity, EcoQoS, core partitioning), then the slow service and display restores. If the exit budget runs out, what survives is the half a reboot cannot undo on its own.
 
-## LoL CN Cross cleaner
+## League of Legends column
 
-Cross contains optional CN-client features such as TV, Hero Moments, and post-game coaching.
+The column lets WeGame perform normal authentication and launch. Aegis waits until the LCU login state succeeds and the current-summoner endpoint is available, then terminates only verified WeGame and optional-component processes. When a match starts, it closes the lobby UX through the client's native LCU endpoint. An independent watchdog reacquires local credentials and restores the lobby after the match. Manual restore bypasses headless mode for the rest of that session.
 
-The community has long reported smoother play or FPS improvements after cleaning it, but results vary with client version, hardware, and feature use. Aegis promises no fixed gain.
+The irreversible Cross cleaner that used to live in Settings has been removed. `Cross` now goes through the same reversible quarantine as every other optional layer, so no unrecoverable deletion path remains.
 
-Cleaning requires separate confirmation and is blocked while the game or WeGame is running. Only content inside the Cross directory is removed and the directory itself remains. The related features stop working, and the client may repair or download them again. Cross is separate from ACE anti-cheat in the current layout, but a future client version may change that layout.
+Reversible quarantine handles Cross, DiagnosticAssistant, FeedBack, NetworkAssist, TQM, and TenioDL. It moves them into a hidden same-volume warehouse after writing a manifest, never deletes or overwrites, refuses to run while League or WeGame is active, and preserves both sides of restore conflicts. If a client update re-downloads a component so restore can no longer overwrite it, the batch record can be discarded once every item is verified back in place, and quarantine becomes available again.
+
+The runtime path performs no process injection, memory editing, or game-core file modification. It never targets `League of Legends.exe`, Riot core/authentication/patching components, or ACE. LCU credentials remain short-lived in memory and are never logged, persisted, or passed to a child process. Game-directory changes occur only after separate confirmation of reversible quarantine. With the column disabled Aegis does not scan disks, enumerate processes, or contact the client API, and WeGame is launched as the signed-in user rather than as administrator, so the game and its anti-cheat are not elevated with it.
 
 ## HAGS and VBS
 
@@ -110,7 +110,7 @@ The project uses the .NET Framework C# compiler included with Windows. There are
 build.cmd
 ```
 
-The script generates the icon and then builds `Aegis.exe` with an administrator manifest, product metadata, and file version `1.4.4.0`.
+The script generates the icon and then builds `Aegis.exe` with an administrator manifest, product metadata, and file version `1.5.0.0`.
 
 Source builds are not Authenticode-signed by default, and an unsigned personal open-source release can still be distributed. A publisher may use its own trusted code-signing certificate to verify publisher identity or improve the SmartScreen experience.
 
@@ -144,7 +144,7 @@ The implementation uses Windows APIs including `SetPriorityClass`, `SetProcessDe
 
 ## Validation scope
 
-The built-in suite currently contains `42` tests covering CPU topology and core-count tiering, CPU Sets and hard-affinity recovery, PID reuse, real child-process boosting, staged suppression, the bitness/version fallback-matching boundary, focus-independent session protection, foreground and user-window protection, the freeze watchdog, session boundaries, Cross cleanup boundaries, session reports, release metadata, and off-screen UI rendering. A missing platform capability is reported as `SKIP` rather than `PASS`.
+The built-in suite currently contains `63` tests covering CPU topology and core-count tiering, CPU Sets and hard-affinity recovery, PID reuse, real child-process boosting, staged suppression, the bitness/version fallback-matching boundary, focus-independent session protection, foreground and user-window protection, event-driven scan budgeting, session boundaries, League credential parsing, strict cleanup boundaries, reversible quarantine round-trips and conflict protection, session reports, release metadata, and off-screen UI rendering. A missing platform capability is reported as `SKIP` rather than `PASS`.
 
 The same-core contention test deliberately places two compute processes on one core and suspends the contender. It only shows that throughput recovers when CPU time is released. It is not evidence of real-game FPS or 1% Low gains.
 
@@ -166,6 +166,6 @@ Author  bdth
 
 Email  2074055628@qq.com
 
-Released under the [MIT License](LICENSE).
+Released under the [GNU GPL v3.0](LICENSE).
 
 This is a personal open-source project provided as is. Performance and compatibility are not guaranteed. Anti-cheat suppression, VBS changes, service pauses, and cache deletion can all have side effects. Use it only on computers you control and review the relevant risk first.
