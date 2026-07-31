@@ -85,9 +85,15 @@ namespace AegisApp
                 {
 
                     if (!Native.ApplyEcoQoS(h)) throw new TestSkippedException("EcoQoS unsupported here");
-                    int c0, s0;
-                    if (!Native.TryQueryPowerThrottling(h, out c0, out s0)) throw new TestSkippedException("QoS query unsupported");
-                    if (c0 != 1 || s0 != 1) throw new TestSkippedException("EcoQoS did not stick");
+                    int c0 = 0, s0 = 0;
+                    bool visible = false;
+                    for (int attempt = 0; attempt < 40 && !visible; attempt++)
+                    {
+                        if (!Native.TryQueryPowerThrottling(h, out c0, out s0)) throw new TestSkippedException("QoS query unsupported");
+                        visible = c0 == 1 && s0 == 1;
+                        if (!visible) Thread.Sleep(25);
+                    }
+                    if (!visible) throw new TestSkippedException("EcoQoS did not stick");
 
                     var core = new SuppressionCore(Path.Combine(root, "qos.state"));
                     core.Acquire(probe.Id, probe.ProcessName, SuppressReason.Background, null, SuppressionLevel.Eco);

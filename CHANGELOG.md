@@ -24,6 +24,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- One-time whitelist cleanup: builds from earlier today merged eleven third-party exemptions
+  (OBS, DingTalk, Zoom and friends) into the user whitelist file; the preset has since been reduced
+  to system-core-only, and on next start those eleven names are removed once from existing files.
+  Anything the user re-adds afterwards stays.
+- Library-root exemption ignores drive-root profile paths (a profile whose root resolved to `D:\`
+  would have exempted every process on the drive from background suppression).
+- Startup-task migration refuses volatile locations (Temp, WeChat received-files cache, INetCache,
+  recycle bin): an exe run from such a folder no longer captures the autostart task, since the file
+  is likely to be cleaned up and break autostart until the next self-heal.
+- When a session shows the GPU pinned against its power or thermal limit for 5% of the session or
+  more, competitive power tuning falls back to conservative on later sessions — idle states stay
+  enabled and boost drops from aggressive — and says so in the log. Pushing clocks on a machine
+  that is already wall-limited only buys frame-time spikes. Toggling the power-plan switch re-arms
+  the aggressive profile.
+
+- With two library games running at once (say Genshin Impact idling while League of Legends is the
+  detected session), competitive mode treated the second game as an ordinary background process —
+  idle priority, EcoQoS, efficiency cores — because the sweep only exempted the active game's
+  install root. Background eligibility now checks the process path against every library game's
+  root, so being in the game library is itself protection. Only one game still gets boost, per-game
+  driver settings and frame evidence: the detected session does not change.
+
+- The League install-location scan no longer takes over the whole window on startup. The scan
+  overlay was parented to the form and covered every page; it now covers only the League column
+  page. Background rescans were also both loud and expensive: even with a valid cached install the
+  service re-ran full discovery every two minutes, and because a TCLS-layout install has no
+  wegame.exe the WeGame hunt fell through to probing common paths on every drive each time — a
+  multi-second stall whenever a disk had spun down. Background passes now stay silent while the
+  cached root is still valid and skip the all-drives probe entirely; the full hunt with the overlay
+  is reserved for user-initiated actions or a genuinely unknown install location. When the install
+  location is unknown or stale (uninstalled, moved to another disk), the hunt no longer starts on
+  app launch at all — not everyone plays League. It waits until something League-shaped actually
+  happens: the column page is opened, the column switch is turned on, a column action runs, or a
+  League/WeGame process appears. Until then the column simply reports that no install is known. The
+  scan overlay
+  now carries a cancel button — cancelling aborts the drive walk between probes and holds further
+  automatic discovery for ten minutes, until a user action or a League process appearing re-arms it.
+  While a scan is running the mode switcher is locked, so a mode change can never race a discovery
+  pass.
+
 - The per-game NVIDIA summary line reported settings by the user's switch rather than by what was
   actually written, so a setting that had just failed still appeared in the success line as long as
   any other setting in the same batch succeeded.
@@ -49,6 +89,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Background GPU demotion, off by default, as a new switch in the custom policy dialog. When enabled,
+  background processes suppressed at the restrained tier or above also have their GPU scheduling
+  priority class lowered — restrained maps to below-normal, isolated to idle — so their rendering
+  and compute submissions yield to the game when the GPU is saturated. The original class is read
+  before the first write, carried in the suppression journal (legacy journal lines still parse),
+  verified by readback on the existing reconcile cadence, and restored together with everything else
+  on release or crash recovery. Anti-cheat-reason suppression never touches GPU state. Processes
+  without a GPU context are skipped; if one creates a context mid-session, the next reconcile pass
+  snapshots and demotes it. Streaming, recording or conferencing software that must keep working
+  while a game runs should be whitelisted before turning this on, since idle-class GPU work is
+  starved while the game keeps the GPU busy; the preset whitelist deliberately stays
+  system-core-only, exemptions are the user's call.
+- Frame evidence no longer counts frames rendered while the game is unfocused. Games cap their frame
+  rate in the background (League drops to roughly 30 fps), and those slow frames all landed in the
+  tail statistics, so the 1% and 0.1% lows measured the background frame limiter instead of real
+  stutter, and every alt-tabbed minute diluted the session average. The Present callback now polls
+  the foreground process at most once per 100 ms and drops unfocused intervals plus the single
+  interval straddling each focus change; the evidence line reports how much unfocused time was
+  excluded, and a session with fewer than 30 focused frames says so instead of reporting polluted
+  numbers.
 - Competitive power tuning now writes the processor energy performance preference (EPP, and the
   efficiency-class variant on hybrid CPUs) instead of relying on a pinned 100% minimum processor
   state. A 100% floor keeps clocks up even with no load, which soaks heat and makes a laptop reach

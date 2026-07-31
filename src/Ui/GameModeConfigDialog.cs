@@ -17,7 +17,7 @@ namespace AegisApp
 
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(Theme.S(460), Theme.S(650));
+            ClientSize = new Size(Theme.S(460), Theme.S(686));
             BackColor = Theme.Bg;
             Font = Theme.UI(9.5f, false);
 
@@ -38,6 +38,7 @@ namespace AegisApp
 
             int y = Theme.S(48);
             AddRow(ref y, Lang.T("gm.suppress"), gameMode.SuppressBackground, v => gameMode.SuppressBackground = v);
+            AddRow(ref y, Lang.T("gm.gpudemote"), gameMode.GpuDemote, v => gameMode.GpuDemote = v);
             AddRow(ref y, Lang.T("set.trim"), gameMode.TrimWorkingSet, v => gameMode.TrimWorkingSet = v);
             AddRow(ref y, Lang.T("gm.boost"), gameMode.BoostGame, v => gameMode.BoostGame = v);
             AddRow(ref y, Lang.T("gm.strict"), gameMode.StrictCoreIsolation, v => gameMode.StrictCoreIsolation = v);

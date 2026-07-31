@@ -170,6 +170,11 @@ namespace AegisApp
 
         public static string FindLolRoot(string preferred)
         {
+            return FindLolRoot(preferred, true, null);
+        }
+
+        public static string FindLolRoot(string preferred, bool deep, Func<bool> cancelled)
+        {
             string root = FindLolFromProcesses();
             if (root != null) return root;
             root = NormalizeLolRoot(preferred);
@@ -181,10 +186,16 @@ namespace AegisApp
                 root = FindRegistryLolRoot(Registry.LocalMachine, LolRegistryKeys[i]);
                 if (root != null) return root;
             }
-            return FindCommonLolRoot();
+            if (!deep || (cancelled != null && cancelled())) return null;
+            return FindCommonLolRoot(cancelled);
         }
 
         public static string FindWeGameRoot(string preferred, string lolRoot)
+        {
+            return FindWeGameRoot(preferred, lolRoot, true, null);
+        }
+
+        public static string FindWeGameRoot(string preferred, string lolRoot, bool deep, Func<bool> cancelled)
         {
             string root = FindWeGameFromProcesses();
             if (root != null) return root;
@@ -200,7 +211,9 @@ namespace AegisApp
                 if (root != null) return root;
             }
             root = FindWeGameFromLaunchFile(lolRoot);
-            return root ?? FindCommonWeGameRoot();
+            if (root != null) return root;
+            if (!deep || (cancelled != null && cancelled())) return null;
+            return FindCommonWeGameRoot(cancelled);
         }
 
         public static string FindWeGameExecutable(string root)
@@ -397,12 +410,13 @@ namespace AegisApp
             return null;
         }
 
-        private static string FindCommonLolRoot()
+        private static string FindCommonLolRoot(Func<bool> cancelled)
         {
             try
             {
                 foreach (DriveInfo drive in DriveInfo.GetDrives())
                 {
+                    if (cancelled != null && cancelled()) return null;
                     if (!drive.IsReady || drive.DriveType != DriveType.Fixed) continue;
                     string basePath = drive.RootDirectory.FullName;
                     string[] candidates =
@@ -414,6 +428,7 @@ namespace AegisApp
                     };
                     for (int i = 0; i < candidates.Length; i++)
                     {
+                        if (cancelled != null && cancelled()) return null;
                         string root = NormalizeLolRoot(candidates[i]);
                         if (root != null) return root;
                     }
@@ -423,7 +438,7 @@ namespace AegisApp
             return null;
         }
 
-        private static string FindCommonWeGameRoot()
+        private static string FindCommonWeGameRoot(Func<bool> cancelled)
         {
             var candidates = new List<string>();
             try
@@ -443,6 +458,7 @@ namespace AegisApp
             catch { }
             for (int i = 0; i < candidates.Count; i++)
             {
+                if (cancelled != null && cancelled()) return null;
                 string root = NormalizeWeGameRoot(candidates[i]);
                 if (root != null) return root;
             }

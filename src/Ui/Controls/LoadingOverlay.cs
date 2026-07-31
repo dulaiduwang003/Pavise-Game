@@ -12,6 +12,8 @@ namespace AegisApp
     {
         private float angle;
         private string caption = "";
+        private PillButton cancelButton;
+        private Action cancelAction;
 
         public LoadingOverlay()
         {
@@ -38,7 +40,27 @@ namespace AegisApp
 
         public void ShowOverlay(string text)
         {
+            ShowOverlay(text, null, null);
+        }
+
+        public void ShowOverlay(string text, string cancelText, Action onCancel)
+        {
             Caption = text;
+            cancelAction = onCancel;
+            if (onCancel != null)
+            {
+                if (cancelButton == null)
+                {
+                    cancelButton = new PillButton("", BtnKind.Normal);
+                    cancelButton.Click += OnCancelClick;
+                    Controls.Add(cancelButton);
+                }
+                cancelButton.Text = cancelText ?? "";
+                cancelButton.Enabled = true;
+                cancelButton.Visible = true;
+                LayoutCancelButton();
+            }
+            else if (cancelButton != null) cancelButton.Visible = false;
             if (Visible) return;
             angle = 0f;
             Visible = true;
@@ -49,9 +71,32 @@ namespace AegisApp
 
         public void HideOverlay()
         {
+            cancelAction = null;
             if (!Visible) return;
             UiClock.Frame -= OnFrame;
             Visible = false;
+        }
+
+        private void OnCancelClick(object sender, EventArgs e)
+        {
+            Action pending = cancelAction;
+            cancelAction = null;
+            if (cancelButton != null) cancelButton.Enabled = false;
+            if (pending != null) { try { pending(); } catch { } }
+        }
+
+        private void LayoutCancelButton()
+        {
+            if (cancelButton == null) return;
+            int bw = Theme.S(132);
+            int bh = Theme.S(32);
+            cancelButton.SetBounds((Width - bw) / 2, Height / 2 + Theme.S(88), bw, bh);
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            LayoutCancelButton();
         }
 
         protected override void OnHandleDestroyed(EventArgs e)

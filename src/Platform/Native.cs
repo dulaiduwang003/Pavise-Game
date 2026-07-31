@@ -461,6 +461,9 @@ namespace AegisApp
         public const int THREAD_QUERY_LIMITED_INFORMATION = 0x0800;
         public const int SYNCHRONIZE = 0x00100000;
         public const int GpuPriorityHigh = 4;
+        public const int GpuPriorityIdle = 0;
+        public const int GpuPriorityBelowNormal = 1;
+        public const int GpuPriorityNormal = 2;
         public const uint IDLE_PRIORITY_CLASS = 0x40;
         public const uint NORMAL_PRIORITY_CLASS = 0x20;
         public const uint BELOW_NORMAL_PRIORITY_CLASS = 0x4000;

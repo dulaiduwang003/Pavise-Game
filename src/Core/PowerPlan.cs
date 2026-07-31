@@ -41,7 +41,8 @@ namespace AegisApp
             try
             {
                 bool ok = true;
-                bool killIdle = aggressive && idleDisable;
+                bool powerWall = aggressive && Settings.Load("PowerWallSeen", false);
+                bool killIdle = aggressive && idleDisable && !powerWall;
 
                 bool epp = aggressive && ApplyEpp(g);
                 uint floorAc = aggressive ? (epp ? AggressiveFloorWithEpp : 100u) : 35u;
@@ -50,7 +51,7 @@ namespace AegisApp
                 ok &= WritePair(g, SubProcessor, CpMinCores, aggressive ? 100u : 50u, aggressive ? 100u : 20u);
                 ok &= WritePair(g, SubProcessor, ProcThrottleMin, floorAc, floorDc);
 
-                ok &= WritePair(g, SubProcessor, PerfBoostMode, 2u, aggressive ? 2u : 3u);
+                ok &= WritePair(g, SubProcessor, PerfBoostMode, powerWall ? 3u : 2u, aggressive && !powerWall ? 2u : 3u);
                 ok &= WritePair(g, SubPcie, PcieAspm, aggressive ? 0u : 1u, aggressive ? 0u : 2u);
                 ok &= WritePair(g, SubUsb, UsbSelSuspend, 0u, aggressive ? 0u : 1u);
 
@@ -63,7 +64,7 @@ namespace AegisApp
                 Logger.Log(aggressive
                     ? "电源策略：竞技级（全核心/"
                         + (epp ? AggressiveFloorWithEpp + "%下限+能效偏好偏性能" : "100%下限（本机无能效偏好设置）")
-                        + "/激进睿频"
+                        + (powerWall ? "/因检测到功耗墙回退保守睿频" : "/激进睿频")
                         + (killIdle ? "/禁用空闲降低唤醒延迟" : "，空闲状态保持系统默认")
                         + "）"
                     : "电源策略：常规持续性能（保留降频余量，减少热饱和后的频率回落）");

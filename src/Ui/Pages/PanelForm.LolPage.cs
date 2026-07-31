@@ -30,6 +30,7 @@ namespace AegisApp
         private Label lblLolAction;
         private Label lblLolAddonStatus;
         private LoadingOverlay lolScanOverlay;
+        private volatile bool lolDiscoveringUi;
         private int lolUiBusy;
         private int lolInspectBusy;
         private int lolFileOpBusy;
@@ -64,7 +65,7 @@ namespace AegisApp
             lolDeck.Title = LolText("英雄联盟 · 极限链路");
             lolDeck.Subtitle = LolText("不注入、不改内存、不触碰游戏核心文件。");
             lolDeck.MemoryLabel = LolText("本次累计释放");
-            swLolMaster = MakeSwitch(true, OnLolMasterChanged);
+            swLolMaster = MakeSwitch(false, OnLolMasterChanged);
             swLolMaster.Bg = Theme.Card;
             swLolMaster.SetBounds(Theme.S(w - 66), Theme.S(10), Theme.S(46), Theme.S(24));
             lolDeck.Controls.Add(swLolMaster);
@@ -72,12 +73,12 @@ namespace AegisApp
             sy += 138;
 
             int protocolW = (w - 12) / 2;
-            swLolCleanup = MakeSwitch(true, OnLolCleanupChanged);
+            swLolCleanup = MakeSwitch(false, OnLolCleanupChanged);
             cardLolCleanup = MakeCard(scroll, x, sy, protocolW, 94,
                 LolText("WeGame 借壳启动"),
                 LolText("允许正常登录与启动；LCU 确认大厅可用后，精确退出 WeGame、Cross 与腾讯附加进程。"),
                 swLolCleanup);
-            swLolHeadless = MakeSwitch(true, OnLolHeadlessChanged);
+            swLolHeadless = MakeSwitch(false, OnLolHeadlessChanged);
             cardLolHeadless = MakeCard(scroll, x + protocolW + 12, sy, protocolW, 94,
                 LolText("对局真无头"),
                 LolText("进入对局后通过客户端原生接口关闭 CEF/UX；游戏结束由守护链自动拉起并回显大厅。"),
@@ -140,9 +141,8 @@ namespace AegisApp
             sy += 120;
 
             lolScanOverlay = new LoadingOverlay();
-            lolScanOverlay.SetBounds(
-                0, Theme.S(TopH), Theme.S(WinW), Theme.S(WinH - TopH));
-            Controls.Add(lolScanOverlay);
+            lolScanOverlay.Dock = DockStyle.Fill;
+            pageLol.Controls.Add(lolScanOverlay);
             lolScanOverlay.BringToFront();
 
             if (lolService != null)
@@ -278,11 +278,21 @@ namespace AegisApp
 
         private void UpdateLolScanOverlay(LolOptimizationSnapshot snapshot)
         {
+            UpdateLolDiscoveryLock(snapshot);
             if (lolScanOverlay == null) return;
             if (snapshot != null && snapshot.Discovering)
-                lolScanOverlay.ShowOverlay(Lang.T("lol.scan.overlay"));
+                lolScanOverlay.ShowOverlay(Lang.T("lol.scan.overlay"), Lang.T("lol.scan.cancel"),
+                    delegate { if (lolService != null) lolService.CancelDiscovery(); });
             else
                 lolScanOverlay.HideOverlay();
+        }
+
+        private void UpdateLolDiscoveryLock(LolOptimizationSnapshot snapshot)
+        {
+            bool discovering = snapshot != null && snapshot.Discovering;
+            lolDiscoveringUi = discovering;
+            if (modeButton != null) modeButton.Enabled = !discovering;
+            if (discovering) SetModeFlyout(false);
         }
 
         private void OnLolMasterChanged(object sender, EventArgs e)
@@ -375,6 +385,9 @@ namespace AegisApp
             {
                 BeginInvoke((MethodInvoker)delegate
                 {
+                    if (IsDisposed) return;
+                    try { UpdateLolDiscoveryLock(lolService != null ? lolService.GetSnapshot() : null); }
+                    catch { }
                     if (UiActive && pageLol != null && pageLol.Visible) RefreshLolPage();
                 });
             }

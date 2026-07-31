@@ -29,7 +29,7 @@ namespace AegisApp
                     if (e.OrigPri == uint.MaxValue) continue;
                     lines.Add(kv.Key + "|" + e.Creation + "|" + B64(e.Name) + "|" + e.OrigPri + "|"
                         + e.OrigAff + "|" + e.OrigIo + "|" + e.OrigPg + "|" + CpuSetsText(e.OrigCpuSets)
-                        + "|" + e.OrigQoSControl + "|" + e.OrigQoSState);
+                        + "|" + e.OrigQoSControl + "|" + e.OrigQoSState + "|" + e.OrigGpu);
                 }
                 if (lines.Count == 1)
                 {
@@ -84,7 +84,8 @@ namespace AegisApp
             pid = 0;
             string[] a = line.Split('|');
             int io, pg; long creation; uint pri; ulong aff;
-            if ((a.Length != 7 && a.Length != 8 && a.Length != 10) || !int.TryParse(a[0], out pid) || !long.TryParse(a[1], out creation)
+            if ((a.Length != 7 && a.Length != 8 && a.Length != 10 && a.Length != 11)
+                || !int.TryParse(a[0], out pid) || !long.TryParse(a[1], out creation)
                 || !uint.TryParse(a[3], out pri) || !ulong.TryParse(a[4], out aff)
                 || !int.TryParse(a[5], out io) || !int.TryParse(a[6], out pg)) return null;
             uint[] cpuSets = a.Length >= 8 ? ParseCpuSets(a[7]) : new uint[0];
@@ -95,6 +96,8 @@ namespace AegisApp
                 if (!int.TryParse(a[8], out qosControl)) qosControl = -1;
                 if (!int.TryParse(a[9], out qosState)) qosState = -1;
             }
+            int gpu = -1;
+            if (a.Length >= 11 && !int.TryParse(a[10], out gpu)) gpu = -1;
             string name = Un64(a[2]);
             if (name == null) return null;
             return new Entry
@@ -107,7 +110,8 @@ namespace AegisApp
                 OrigPg = pg,
                 OrigCpuSets = cpuSets,
                 OrigQoSControl = qosControl,
-                OrigQoSState = qosState
+                OrigQoSState = qosState,
+                OrigGpu = gpu
             };
         }
 
@@ -170,7 +174,7 @@ namespace AegisApp
                         if (identity == JournalIdentity.Mismatch) continue;
                         if (identity == JournalIdentity.Unknown) { keep.Add(lines[i]); continue; }
                         if (RestoreValues(h, entry.OrigPri, entry.OrigAff, entry.OrigIo, entry.OrigPg, CpuTopology.AllMask,
-                            entry.OrigCpuSets, entry.OrigQoSControl, entry.OrigQoSState)) restored++;
+                            entry.OrigCpuSets, entry.OrigQoSControl, entry.OrigQoSState, entry.OrigGpu)) restored++;
                         else keep.Add(lines[i]);
                     }
                     catch (Exception ex)
@@ -189,6 +193,16 @@ namespace AegisApp
             }
             return restored;
         }
+
+#if AEGIS_SELFTEST
+        internal static string ProbeJournalLine(string raw)
+        {
+            int pid;
+            Entry e = ParseJournalLine(raw, out pid);
+            if (e == null) return "null";
+            return pid + "|" + e.OrigQoSControl + "|" + e.OrigQoSState + "|" + e.OrigGpu;
+        }
+#endif
 
         private static string B64(string value)
         {

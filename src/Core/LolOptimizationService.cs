@@ -171,6 +171,8 @@ namespace AegisApp
         private DateTime nextProcessWakeUtc;
         private bool processWakePending;
         private DateTime nextDiscoveryUtc;
+        private int discoveryCancelRequested;
+        private bool discoveryRequested;
         private DateTime nextFullProcessScanUtc;
         private LolLcuCredentials cachedCredentials;
         private string cachedCredentialRoot;
@@ -197,8 +199,8 @@ namespace AegisApp
                 ProcessWakeTimerElapsed, null,
                 Timeout.Infinite, Timeout.Infinite);
             enabled = Settings.Load(EnabledKey, false);
-            cleanupEnabled = Settings.Load(CleanupEnabledKey, true);
-            headlessEnabled = Settings.Load(HeadlessEnabledKey, true);
+            cleanupEnabled = Settings.Load(CleanupEnabledKey, false);
+            headlessEnabled = Settings.Load(HeadlessEnabledKey, false);
             lolRoot = Settings.LoadStr(LolRootKey, null);
             weGameRoot = Settings.LoadStr(WeGameRootKey, null);
             phase = "";
@@ -217,6 +219,12 @@ namespace AegisApp
                 {
                     changed = enabled != value;
                     enabled = value;
+                    if (changed && value)
+                    {
+                        discoveryRequested = true;
+                        discoveryMisses = 0;
+                        nextDiscoveryUtc = DateTime.MinValue;
+                    }
                     updatedUtc = DateTime.UtcNow;
                 }
                 if (!changed) return;
@@ -224,6 +232,17 @@ namespace AegisApp
                 Poke();
                 RaiseChanged();
             }
+        }
+
+        public void RequestDiscovery()
+        {
+            lock (stateLock)
+            {
+                discoveryRequested = true;
+                discoveryMisses = 0;
+                nextDiscoveryUtc = DateTime.MinValue;
+            }
+            Poke();
         }
 
         public bool CleanupEnabled
@@ -1794,6 +1813,16 @@ namespace AegisApp
             nextCleanupUtc = DateTime.MinValue;
         }
 
+        public void CancelDiscovery()
+        {
+            Interlocked.Exchange(ref discoveryCancelRequested, 1);
+        }
+
+        private bool DiscoveryCancelRequested()
+        {
+            return Volatile.Read(ref discoveryCancelRequested) != 0;
+        }
+
         private void SetDiscovering(bool value)
         {
             lock (stateLock)
@@ -1819,20 +1848,42 @@ namespace AegisApp
             }
             if (shouldDiscover)
             {
-                SetDiscovering(true);
+                bool cacheValid = LolInstallDiscovery.IsValidLolRoot(preferredRoot);
+                if (!force && !cacheValid)
+                {
+                    bool armed;
+                    lock (stateLock) armed = discoveryRequested;
+                    if (!armed)
+                    {
+                        lock (stateLock) nextDiscoveryUtc = DateTime.UtcNow.AddSeconds(DiscoverySettledSeconds);
+                        root = null;
+                        weGame = preferredWeGame;
+                        return;
+                    }
+                }
                 string discoveredRoot;
                 string discoveredWeGame;
+                bool announce = force || !cacheValid;
+                Func<bool> cancelled = null;
+                if (announce)
+                {
+                    Interlocked.Exchange(ref discoveryCancelRequested, 0);
+                    cancelled = DiscoveryCancelRequested;
+                    SetDiscovering(true);
+                }
                 try
                 {
-                    discoveredRoot = LolInstallDiscovery.FindLolRoot(preferredRoot);
+                    discoveredRoot = LolInstallDiscovery.FindLolRoot(preferredRoot, force, cancelled);
                     discoveredWeGame = LolInstallDiscovery.FindWeGameRoot(
-                        preferredWeGame, discoveredRoot);
+                        preferredWeGame, discoveredRoot, force, cancelled);
                 }
-                finally { SetDiscovering(false); }
+                finally { if (announce) SetDiscovering(false); }
+                bool wasCancelled = announce && DiscoveryCancelRequested();
                 bool rootChanged;
                 bool weGameChanged;
                 lock (stateLock)
                 {
+                    discoveryRequested = false;
                     rootChanged = !string.Equals(
                         lolRoot, discoveredRoot, StringComparison.OrdinalIgnoreCase);
                     weGameChanged = !string.Equals(
@@ -1845,15 +1896,20 @@ namespace AegisApp
                     weGameFound = LolInstallDiscovery.IsValidWeGameRoot(discoveredWeGame);
                     if (discoveredRoot == null)
                     {
-                        if (discoveryMisses < 8) discoveryMisses++;
-                        int backoff = DiscoveryBaseSeconds;
-                        for (int i = 1; i < discoveryMisses; i++)
+                        if (wasCancelled)
+                            nextDiscoveryUtc = DateTime.UtcNow.AddSeconds(DiscoveryMaxSeconds);
+                        else
                         {
-                            backoff *= 2;
-                            if (backoff >= DiscoveryMaxSeconds) break;
+                            if (discoveryMisses < 8) discoveryMisses++;
+                            int backoff = DiscoveryBaseSeconds;
+                            for (int i = 1; i < discoveryMisses; i++)
+                            {
+                                backoff *= 2;
+                                if (backoff >= DiscoveryMaxSeconds) break;
+                            }
+                            if (backoff > DiscoveryMaxSeconds) backoff = DiscoveryMaxSeconds;
+                            nextDiscoveryUtc = DateTime.UtcNow.AddSeconds(backoff);
                         }
-                        if (backoff > DiscoveryMaxSeconds) backoff = DiscoveryMaxSeconds;
-                        nextDiscoveryUtc = DateTime.UtcNow.AddSeconds(backoff);
                     }
                     else
                     {
@@ -1878,6 +1934,7 @@ namespace AegisApp
         {
             lock (stateLock)
             {
+                discoveryRequested = true;
                 discoveryMisses = 0;
                 nextDiscoveryUtc = DateTime.MinValue;
             }

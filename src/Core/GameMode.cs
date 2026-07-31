@@ -27,6 +27,12 @@ namespace AegisApp
             "vmmem", "vmmemwsl", "wslservice"
         };
 
+        private static readonly HashSet<string> PurgedPresetNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "obs64", "obs32", "streamlabs obs", "xsplit.core", "livehime", "直播伴侣",
+            "zoom", "teams", "ms-teams", "wemeetapp", "dingtalk"
+        };
+
         private struct Snap
         {
             public uint Pri;
@@ -93,6 +99,7 @@ namespace AegisApp
         private volatile bool pauseUpdateOn;
         private volatile bool strictCoreOn;
         private volatile bool aggressiveOn;
+        private volatile bool gpuDemoteOn;
         private volatile bool panicReq;
         private int panicSeq;
         private int panicServed;
@@ -170,6 +177,8 @@ namespace AegisApp
             planSwitch = Settings.Load("PowerPlanOn", true);
             strictCoreOn = Settings.Load("GmStrictCores", false);
             aggressiveOn = Settings.Load("GmAggressive", false);
+            gpuDemoteOn = Settings.Load("GmGpuDemote", false);
+            SuppressionCore.GpuDemoteEnabled = gpuDemoteOn;
             int presetRaw;
             preset = int.TryParse(Settings.LoadStr("PerformancePreset", "0"), out presetRaw) && presetRaw >= 0 && presetRaw <= 2
                 ? (PerformancePreset)presetRaw : PerformancePreset.Standard;
@@ -267,6 +276,17 @@ namespace AegisApp
                         loadedRules.Add(presetRule);
                         rewriteFormat = true;
                     }
+                }
+                if (!Settings.Load("WhitelistPurge1Done", false))
+                {
+                    int purged = loadedRules.RemoveAll(r => r.Kind == WhitelistRuleKind.LegacyName
+                        && PurgedPresetNames.Contains(r.Value));
+                    if (purged > 0)
+                    {
+                        rewriteFormat = true;
+                        Logger.Log("白名单清理：移除旧版本预置的 " + purged + " 条第三方豁免（预设收敛为系统核心，需要的例外请自行重新添加）");
+                    }
+                    Settings.Save("WhitelistPurge1Done", true);
                 }
                 foreach (WhitelistRule rule in loadedRules) AddWhiteRuleNoSave(rule);
                 if (rewriteFormat && !SaveWhite(loadedRules))
@@ -432,6 +452,12 @@ namespace AegisApp
             set { aggressiveOn = value; Settings.Save("GmAggressive", value); RequestPolicyApply(); }
         }
 
+        public bool GpuDemote
+        {
+            get { return gpuDemoteOn; }
+            set { gpuDemoteOn = value; SuppressionCore.GpuDemoteEnabled = value; Settings.Save("GmGpuDemote", value); RequestPolicyApply(); }
+        }
+
         public bool NetOptimize
         {
             get { return netOn; }
@@ -562,7 +588,13 @@ namespace AegisApp
         public bool PowerPlanSwitch
         {
             get { return planSwitch; }
-            set { planSwitch = value; Settings.Save("PowerPlanOn", value); RequestPolicyApply(); }
+            set
+            {
+                planSwitch = value;
+                if (value) Settings.Save("PowerWallSeen", false);
+                Settings.Save("PowerPlanOn", value);
+                RequestPolicyApply();
+            }
         }
 
         public string StatusText

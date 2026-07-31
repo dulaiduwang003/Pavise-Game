@@ -20,6 +20,8 @@ namespace AegisApp
         private static long lastQpc;
         private static long baseQpc;
         private static int targetPid;
+        private static readonly FocusIntervalFilter focus = new FocusIntervalFilter();
+        private static long focusCheckQpc;
         private static readonly PresentThreadTracker threads = new PresentThreadTracker();
         private static string threadProbeNote;
         private static int threadProbeDone;
@@ -34,7 +36,7 @@ namespace AegisApp
             bool probe;
             lock (sync)
             {
-                if (targetPid != pid) { targetPid = pid; lastQpc = 0; baseQpc = 0; }
+                if (targetPid != pid) { targetPid = pid; lastQpc = 0; baseQpc = 0; focusCheckQpc = 0; }
                 probe = trace != null;
             }
             if (probe && Interlocked.Exchange(ref threadProbeDone, 1) == 0)
@@ -60,6 +62,8 @@ namespace AegisApp
                 intervalsUs = new List<int>();
                 lastQpc = 0;
                 baseQpc = 0;
+                focus.Reset();
+                focusCheckQpc = 0;
                 threads.Reset();
                 threadProbeNote = null;
                 Interlocked.Exchange(ref threadProbeDone, 0);
@@ -81,6 +85,8 @@ namespace AegisApp
             PresentThreadSummary threadSummary;
             bool haveThreads;
             string probeNote;
+            long unfocusedUs;
+            int unfocusedFrames;
             lock (sync)
             {
                 t = trace;
@@ -89,6 +95,10 @@ namespace AegisApp
                 intervalsUs = new List<int>();
                 lastQpc = 0;
                 baseQpc = 0;
+                unfocusedUs = focus.UnfocusedUs;
+                unfocusedFrames = focus.UnfocusedFrames;
+                focus.Reset();
+                focusCheckQpc = 0;
                 threads.Seal();
                 haveThreads = threads.TryDescribe(out threadSummary);
                 threads.Reset();
@@ -103,16 +113,29 @@ namespace AegisApp
                 if (present != null && probeNote != null) threadNote = present + "，" + probeNote;
                 else threadNote = present != null ? present : probeNote;
             }
-            if (t == null || snapshot.Length < 30) return null;
+            if (t == null) return null;
+            if (snapshot.Length < 30)
+                return unfocusedFrames >= 30
+                    ? Lang.F("ev.fps.unfocused.only",
+                        (unfocusedUs / 1000000.0).ToString("0.0", CultureInfo.InvariantCulture))
+                    : null;
             int excludedUs;
             int[] gameplay = ExcludeLoadingClusters(snapshot, out excludedUs);
             if (gameplay.Length < 30) gameplay = snapshot;
             double avgFps, low1, low01;
             if (!ComputeStats(gameplay, out avgFps, out low1, out low01)) return null;
-            string frames = gameplay.Length.ToString();
+            string frames = Lang.F("ev.fps.frames", gameplay.Length);
             if (excludedUs > 0)
                 frames += Lang.F("ev.fps.excluded",
                     (excludedUs / 1000000.0).ToString("0.0", CultureInfo.InvariantCulture));
+            if (unfocusedUs > 0)
+            {
+                long sessionUs = unfocusedUs + excludedUs;
+                foreach (int us in snapshot) sessionUs += us;
+                int pct = sessionUs > 0 ? (int)(unfocusedUs * 100 / sessionUs) : 0;
+                frames += Lang.F("ev.fps.unfocused",
+                    (unfocusedUs / 1000000.0).ToString("0.0", CultureInfo.InvariantCulture), pct);
+            }
             return Lang.F("ev.fps",
                 avgFps.ToString("0", CultureInfo.InvariantCulture),
                 low1.ToString("0", CultureInfo.InvariantCulture),
@@ -157,13 +180,19 @@ namespace AegisApp
             lock (sync)
             {
                 if (pid != targetPid) return;
+                if (focusCheckQpc == 0 || qpc - focusCheckQpc >= Stopwatch.Frequency / 10)
+                {
+                    focusCheckQpc = qpc;
+                    focus.NoteFocus(GameSessionDetector.ForegroundPid() == pid);
+                }
                 if (baseQpc == 0) baseQpc = qpc;
                 if (qpc >= baseQpc)
                     threads.Add(tid, (qpc - baseQpc) * 1000000 / Stopwatch.Frequency);
                 if (lastQpc != 0 && qpc > lastQpc)
                 {
                     long us = (qpc - lastQpc) * 1000000 / Stopwatch.Frequency;
-                    if (us > 0 && us <= MaxIntervalUs && intervalsUs.Count < MaxFrames)
+                    if (us > 0 && us <= MaxIntervalUs && intervalsUs.Count < MaxFrames
+                        && focus.Admit((int)us))
                         intervalsUs.Add((int)us);
                 }
                 lastQpc = qpc;

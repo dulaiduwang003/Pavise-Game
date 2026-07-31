@@ -27,6 +27,7 @@ namespace AegisApp
     internal sealed partial class SuppressionCore
     {
         public const string StateFileName = "Aegis.suppression.state";
+        public static volatile bool GpuDemoteEnabled;
         private sealed class Entry
         {
             public string Name;
@@ -36,6 +37,7 @@ namespace AegisApp
             public int OrigIo = -1;
             public int OrigPg = -1;
             public uint[] OrigCpuSets;
+            public int OrigGpu = -1;
 
             public int OrigQoSControl = -1;
             public int OrigQoSState = -1;
@@ -280,7 +282,7 @@ namespace AegisApp
                         if (mustWrite)
                         {
                             if (QueueApplyLocked(pid, name)) return AcquireResult.AlreadyThrottled;
-                            e.Applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets);
+                            e.Applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e));
                             ScheduleAfterApply(e, e.Applied, pid);
                             return e.Applied ? AcquireResult.AlreadyThrottled : AcquireResult.ApplyFailed;
                         }
@@ -295,7 +297,7 @@ namespace AegisApp
                             RecordBatchApplyResultLocked(pid, true, null);
                             return AcquireResult.AlreadyThrottled;
                         }
-                        bool matches = ThrottleMatches(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets);
+                        bool matches = ThrottleMatches(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e));
                         if (matches)
                         {
                             ScheduleAfterMatch(e, pid);
@@ -303,7 +305,7 @@ namespace AegisApp
                             return AcquireResult.AlreadyThrottled;
                         }
                         if (QueueApplyLocked(pid, name)) return AcquireResult.AlreadyThrottled;
-                        e.Applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets);
+                        e.Applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e));
                         ScheduleAfterApply(e, e.Applied, pid);
 
                         return AcquireResult.AlreadyThrottled;
@@ -334,27 +336,34 @@ namespace AegisApp
                     int oqc, oqs;
                     if (!Native.TryQueryPowerThrottling(h, out oqc, out oqs)) { oqc = -1; oqs = -1; }
                     else if (residue && oqc == 1 && oqs == 1) { oqc = -1; oqs = -1; }
+                    int ogpu;
+                    if (Native.D3DKMTGetProcessSchedulingPriorityClass(h, out ogpu) != 0) ogpu = -1;
+                    else if (residue && ogpu == Native.GpuPriorityIdle) ogpu = Native.GpuPriorityNormal;
                     long creation = currentCreation;
 
+                    Entry active;
                     if (known)
                     {
                         e.OrigPri = orig; e.OrigAff = oaff; e.OrigIo = oio; e.OrigPg = opg; e.OrigCpuSets = ocpuSets;
+                        e.OrigGpu = ogpu;
                         e.OrigQoSControl = oqc; e.OrigQoSState = oqs;
                         e.Reasons |= reason; SetReasonLevel(e, reason, level); e.Creation = creation; e.Applied = false;
                         e.Journaled = false;
                         if (group != null && e.Group == null) e.Group = group;
+                        active = e;
                     }
                     else
                     {
                         var created = new Entry { Name = name, Group = group, OrigPri = orig, OrigAff = oaff,
-                            OrigIo = oio, OrigPg = opg, OrigCpuSets = ocpuSets,
+                            OrigIo = oio, OrigPg = opg, OrigCpuSets = ocpuSets, OrigGpu = ogpu,
                             OrigQoSControl = oqc, OrigQoSState = oqs, Reasons = reason, Creation = creation };
                         SetReasonLevel(created, reason, level);
                         map[pid] = created;
+                        active = created;
                     }
                     if (!PersistJournalLocked()) return AcquireResult.ApplyFailed;
                     bool queued = QueueApplyLocked(pid, name);
-                    bool applied = queued || ApplyThrottle(h, level, orig, oaff, ocpuSets);
+                    bool applied = queued || ApplyThrottle(h, level, orig, oaff, ocpuSets, DesiredGpu(active));
                     Entry appliedEntry;
                     if (map.TryGetValue(pid, out appliedEntry) && !queued)
                     {
@@ -444,7 +453,7 @@ namespace AegisApp
                 IntPtr h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_SET_LIMITED_INFORMATION
                     | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
                 bool applied = false;
-                if (h != IntPtr.Zero) { try { if (SameProcess(h, e)) applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets); } finally { Native.CloseHandle(h); } }
+                if (h != IntPtr.Zero) { try { if (SameProcess(h, e)) applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e)); } finally { Native.CloseHandle(h); } }
                 lock (sync)
                 {
                     Entry cur;
@@ -482,7 +491,7 @@ namespace AegisApp
                 IntPtr h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_SET_LIMITED_INFORMATION
                     | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
                 bool applied = false;
-                if (h != IntPtr.Zero) { try { if (SameProcess(h, e)) applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets); } finally { Native.CloseHandle(h); } }
+                if (h != IntPtr.Zero) { try { if (SameProcess(h, e)) applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e)); } finally { Native.CloseHandle(h); } }
                 lock (sync)
                 {
                     Entry cur;
@@ -501,17 +510,27 @@ namespace AegisApp
                     Entry cur;
                     if (map.TryGetValue(pid, out cur) && cur == e)
                     {
-                        if (e.ProtectedRetries == 0)
+                        if (e.ProtectedRetries == 0 && ShouldLogProtected(e.Name))
                             Logger.Log("还原 " + e.Name + " (pid " + pid + ") 暂被句柄保护挡住，快照保留待重试");
                         if (e.ProtectedRetries < ProtectedBackoffMax) e.ProtectedRetries++;
-                        int delay = ProtectedBackoffBaseSeconds;
-                        for (int i = 1; i < e.ProtectedRetries; i++)
+                        if (e.ProtectedRetries >= ProtectedBackoffMax)
                         {
-                            delay *= 2;
-                            if (delay >= ProtectedBackoffCapSeconds) break;
+                            e.NextRetryTicks = DateTime.MaxValue.Ticks;
+                            if (ShouldLogProtected(e.Name + "-parked"))
+                                Logger.Log("还原 " + e.Name + " (pid " + pid
+                                    + ") 多次被句柄保护挡住，停止周期重试；快照与恢复日志已保留，下次启动自动恢复");
                         }
-                        if (delay > ProtectedBackoffCapSeconds) delay = ProtectedBackoffCapSeconds;
-                        e.NextRetryTicks = DateTime.UtcNow.AddSeconds(delay).Ticks;
+                        else
+                        {
+                            int delay = ProtectedBackoffBaseSeconds;
+                            for (int i = 1; i < e.ProtectedRetries; i++)
+                            {
+                                delay *= 2;
+                                if (delay >= ProtectedBackoffCapSeconds) break;
+                            }
+                            if (delay > ProtectedBackoffCapSeconds) delay = ProtectedBackoffCapSeconds;
+                            e.NextRetryTicks = DateTime.UtcNow.AddSeconds(delay).Ticks;
+                        }
                     }
                 }
             }
@@ -632,7 +651,21 @@ namespace AegisApp
                         || currentEntry.OrigAff != aff
                         || !ReferenceEquals(currentEntry.OrigCpuSets, cpuSets))
                         return true;
-                    if (ThrottleMatches(h, level, pri, aff, cpuSets))
+                    if (currentEntry.OrigGpu < 0 && GpuDemoteEnabled
+                        && (currentEntry.Reasons & SuppressReason.Background) != 0
+                        && currentEntry.BackgroundLevel >= SuppressionLevel.Restrained)
+                    {
+                        int gpuNow;
+                        if (Native.D3DKMTGetProcessSchedulingPriorityClass(h, out gpuNow) == 0)
+                        {
+                            currentEntry.OrigGpu = gpuNow;
+                            if (!PersistJournalLocked()) currentEntry.OrigGpu = -1;
+                            else Logger.Log("后台策略：" + expectedName + " (pid " + pid
+                                + ") 检测到新建 GPU 上下文，纳入 GPU 调度让位");
+                        }
+                    }
+                    int desiredGpu = DesiredGpu(currentEntry);
+                    if (ThrottleMatches(h, level, pri, aff, cpuSets, desiredGpu))
                     {
                         if (!currentEntry.Applied && currentEntry.ReconcileFailures > 0)
                             Logger.Log("后台策略核验已生效：" + expectedName + " (pid " + pid
@@ -643,7 +676,7 @@ namespace AegisApp
                     }
                     bool previouslyApplied = currentEntry.Applied;
                     int previousFailures = currentEntry.ReconcileFailures;
-                    currentEntry.Applied = ApplyThrottle(h, level, pri, aff, cpuSets);
+                    currentEntry.Applied = ApplyThrottle(h, level, pri, aff, cpuSets, desiredGpu);
                     ScheduleAfterApply(currentEntry, currentEntry.Applied, pid);
                     if (currentEntry.Applied)
                     {
@@ -726,10 +759,16 @@ namespace AegisApp
         }
 
         private bool ThrottleMatches(IntPtr h, SuppressionLevel level, uint originalPriority, ulong originalAffinity,
-            uint[] originalCpuSets)
+            uint[] originalCpuSets, int desiredGpu)
         {
             uint desiredPriority = DesiredPriority(level, originalPriority);
             if (Native.GetPriorityClass(h) != desiredPriority) return false;
+            if (desiredGpu >= 0)
+            {
+                int gpuCur;
+                if (Native.D3DKMTGetProcessSchedulingPriorityClass(h, out gpuCur) == 0
+                    && gpuCur != desiredGpu) return false;
+            }
             int desiredIo = level >= SuppressionLevel.Isolated ? 0 : 1;
             int desiredPage = level >= SuppressionLevel.Isolated ? 1 : 3;
             if (Native.QueryIoPriority(h) != desiredIo || Native.QueryPagePriority(h) != desiredPage) return false;
@@ -774,6 +813,21 @@ namespace AegisApp
             return desired;
         }
 
+        internal static int DesiredGpuClass(bool demoteEnabled, SuppressReason reasons,
+            SuppressionLevel backgroundLevel, int origGpu)
+        {
+            if (origGpu < 0) return -1;
+            if (!demoteEnabled || (reasons & SuppressReason.Background) == 0
+                || backgroundLevel < SuppressionLevel.Restrained) return origGpu;
+            return backgroundLevel >= SuppressionLevel.Isolated
+                ? Native.GpuPriorityIdle : Native.GpuPriorityBelowNormal;
+        }
+
+        private static int DesiredGpu(Entry e)
+        {
+            return DesiredGpuClass(GpuDemoteEnabled, e.Reasons, e.BackgroundLevel, e.OrigGpu);
+        }
+
         private static void ScheduleAfterMatch(Entry e, int pid)
         {
             e.ReconcileFailures = 0;
@@ -812,13 +866,23 @@ namespace AegisApp
         }
 
         private bool ApplyThrottle(IntPtr h, SuppressionLevel level, uint originalPriority, ulong originalAffinity,
-            uint[] originalCpuSets)
+            uint[] originalCpuSets, int desiredGpu)
         {
             Interlocked.Increment(ref applyOperations);
             var failed = new List<string>();
             uint desiredPriority = DesiredPriority(level, originalPriority);
             if (Native.GetPriorityClass(h) != desiredPriority)
                 if (!Native.SetPriorityClass(h, desiredPriority)) failed.Add("priority-write");
+            if (desiredGpu >= 0)
+            {
+                int gpuCur;
+                if (Native.D3DKMTGetProcessSchedulingPriorityClass(h, out gpuCur) == 0 && gpuCur != desiredGpu)
+                {
+                    if (Native.D3DKMTSetProcessSchedulingPriorityClass(h, desiredGpu) != 0) failed.Add("gpu-write");
+                    else if (Native.D3DKMTGetProcessSchedulingPriorityClass(h, out gpuCur) != 0
+                        || gpuCur != desiredGpu) failed.Add("gpu-readback");
+                }
+            }
 
             if (level >= SuppressionLevel.Isolated)
             {
@@ -911,6 +975,12 @@ namespace AegisApp
         public static bool RestoreValues(IntPtr h, uint pri, ulong aff, int io, int pg, ulong allMask,
             uint[] cpuSets, int qosControl, int qosState)
         {
+            return RestoreValues(h, pri, aff, io, pg, allMask, cpuSets, qosControl, qosState, -1);
+        }
+
+        public static bool RestoreValues(IntPtr h, uint pri, ulong aff, int io, int pg, ulong allMask,
+            uint[] cpuSets, int qosControl, int qosState, int gpu)
+        {
             bool ok = Native.RestoreCpuSetsVerified(h, cpuSets);
             uint desiredPriority = pri == 0 || pri == uint.MaxValue ? Native.NORMAL_PRIORITY_CLASS : pri;
             ok &= Native.SetPriorityClass(h, desiredPriority);
@@ -924,6 +994,15 @@ namespace AegisApp
             ok &= Native.QueryIoPriority(h) == rio;
             ok &= Native.QueryPagePriority(h) == rpg;
             if (!CpuTopology.MultiGroup) ok &= Native.QueryAffinity(h) == desiredAffinity;
+            if (gpu >= 0)
+            {
+                int gpuCur;
+                if (Native.D3DKMTGetProcessSchedulingPriorityClass(h, out gpuCur) == 0 && gpuCur != gpu)
+                {
+                    Native.D3DKMTSetProcessSchedulingPriorityClass(h, gpu);
+                    ok &= Native.D3DKMTGetProcessSchedulingPriorityClass(h, out gpuCur) == 0 && gpuCur == gpu;
+                }
+            }
             return ok;
         }
 
@@ -969,7 +1048,7 @@ namespace AegisApp
                     if (creation != e.Creation) return RestoreResult.Gone;
                 }
                 if (RestoreValues(h, e.OrigPri, e.OrigAff, e.OrigIo, e.OrigPg, allMask, e.OrigCpuSets,
-                        e.OrigQoSControl, e.OrigQoSState))
+                        e.OrigQoSControl, e.OrigQoSState, e.OrigGpu))
                     return RestoreResult.Restored;
                 return Native.StillActive(h) ? RestoreResult.Protected : RestoreResult.Gone;
             }
@@ -996,6 +1075,23 @@ namespace AegisApp
         private static bool SameName(string a, string b)
         {
             return string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static readonly Dictionary<string, long> protectedLogTimes =
+            new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+
+        private static bool ShouldLogProtected(string name)
+        {
+            long now = DateTime.UtcNow.Ticks;
+            lock (protectedLogTimes)
+            {
+                long last;
+                string key = name ?? "";
+                if (protectedLogTimes.TryGetValue(key, out last)
+                    && now - last < TimeSpan.FromMinutes(10).Ticks) return false;
+                protectedLogTimes[key] = now;
+                return true;
+            }
         }
 
         private static bool SameCpuSets(uint[] a, uint[] b)
@@ -1106,7 +1202,7 @@ namespace AegisApp
                         || currentEntry.OrigAff != aff
                         || !ReferenceEquals(currentEntry.OrigCpuSets, cpuSets))
                         { error = "entry-state"; return false; }
-                    applied = ApplyThrottle(h, level, pri, aff, cpuSets);
+                    applied = ApplyThrottle(h, level, pri, aff, cpuSets, DesiredGpu(currentEntry));
                     if (!applied) error = string.IsNullOrEmpty(LastApplyError) ? "apply" : LastApplyError;
                     currentEntry.Applied = applied;
                     ScheduleAfterApply(currentEntry, applied, pid);

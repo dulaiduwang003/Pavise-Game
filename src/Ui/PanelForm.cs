@@ -301,6 +301,7 @@ namespace AegisApp
             page.Left = pageBaseLeft + Theme.S(16);
             pageSlide.Speed = 0.26f; pageSlide.Set(1f); pageSlide.To(0f);
             if (UiActive) UiClock.Wake();
+            if (index == (int)PageId.League && lolService != null) lolService.RequestDiscovery();
             NotifyPageActivation();
         }
 
@@ -460,6 +461,7 @@ namespace AegisApp
 
         private void ToggleModeFlyout()
         {
+            if (lolDiscoveringUi) { SetModeFlyout(false); return; }
             SetModeFlyout(modeFlyout == null || !modeFlyout.Visible);
         }
 
@@ -477,6 +479,7 @@ namespace AegisApp
 
         private void ChooseGlobalMode(PerformancePreset mode)
         {
+            if (lolDiscoveringUi) { SetModeFlyout(false); return; }
             gameMode.Preset = mode;
             SetModeFlyout(false);
             UpdateModePresentation(true);

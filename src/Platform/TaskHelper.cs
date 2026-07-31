@@ -109,6 +109,15 @@ namespace AegisApp
             return value.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
         }
 
+        internal static bool IsVolatileAutostartPath(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return true;
+            string low = path.Replace('/', '\\').ToLowerInvariant();
+            return low.Contains(@"\temp\") || low.Contains(@"\tmp\")
+                || low.Contains(@"\xwechat_files\") || low.Contains(@"\wechat files\")
+                || low.Contains(@"\inetcache\") || low.Contains(@"\$recycle.bin\");
+        }
+
         public static int DeleteStartupTask()
         {
             int rc = Run("/Delete /F /TN " + TaskName);
@@ -140,6 +149,12 @@ namespace AegisApp
                 if (!NeedsStartupTaskRefresh(cur, target) && !argumentsStale)
                 {
                     Settings.SaveStr("AutostartExe", cur);
+                    return;
+                }
+                if (IsVolatileAutostartPath(cur))
+                {
+                    Logger.Log("开机自启任务迁移已跳过：当前程序位于临时/易失目录（" + cur
+                        + "），文件可能被清理导致自启失效；请把程序移到固定目录后再启动");
                     return;
                 }
                 Logger.Log("开机自启任务迁移：" + (target ?? "未知目标") + " → " + cur);

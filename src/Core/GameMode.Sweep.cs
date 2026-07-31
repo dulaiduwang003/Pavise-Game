@@ -99,6 +99,17 @@ namespace AegisApp
             return path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
         }
 
+        internal static string LibraryRootOf(string path, IList<string> roots)
+        {
+            if (roots == null) return null;
+            foreach (string root in roots)
+            {
+                if (root == null || root.TrimEnd('\\').Length <= 2) continue;
+                if (UnderRoot(path, root)) return root;
+            }
+            return null;
+        }
+
         private static readonly HashSet<string> CoreSystemProcesses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "smss", "csrss", "wininit", "winlogon", "services", "lsass",
@@ -132,6 +143,7 @@ namespace AegisApp
 
             int rendererPid = 0;
             string activeGameRoot = null;
+            var libraryRoots = new List<string>();
             lock (sync)
             {
                 if (activeDetection != null)
@@ -139,6 +151,8 @@ namespace AegisApp
                     rendererPid = activeDetection.RendererPid;
                     if (activeDetection.Profile != null) activeGameRoot = activeDetection.Profile.Root;
                 }
+                foreach (GameProfile p in profiles)
+                    if (!string.IsNullOrEmpty(p.Root)) libraryRoots.Add(p.Root);
             }
             bool gameSessionActive = rendererPid > 0;
             HashSet<int> gameHostAncestors = gameSessionActive
@@ -212,10 +226,12 @@ namespace AegisApp
                         ReleaseBackgroundExemption(pid, nm, null);
                         continue;
                     }
+                    string containRoot = LibraryRootOf(ipath, libraryRoots);
+                    if (containRoot == null) containRoot = activeGameRoot;
                     if (!BasicBackgroundEligible(pid, selfPid, nm, ipath,
                         sameSession ? selfSession : -1, selfSession, foregroundPid,
                         userFacingFamily.Contains(pid), windowsPrefix,
-                        gameHostAncestors.Contains(pid) || knownLauncherDuringSession, activeGameRoot, aggressive))
+                        gameHostAncestors.Contains(pid) || knownLauncherDuringSession, containRoot, aggressive))
                     {
                         ReleaseBackgroundExemption(pid, nm, null);
                         continue;
@@ -326,7 +342,9 @@ namespace AegisApp
                                 ? (safePartition ? "自定义立即隔离（Idle + EcoQoS + 锁核" + aggressiveNote + "）" : "自定义隔离（核心数不足，Idle + EcoQoS，不锁核" + aggressiveNote + "）")
                                 : "自定义全局 Eco" + aggressiveNote)
                             : "常规全局 Eco，持续大户再升级");
-                    Logger.Log("后台策略：" + policy + "，首轮处理 " + done + " 个用户后台"
+                    Logger.Log("后台策略：" + policy
+                        + (SuppressionCore.GpuDemoteEnabled ? "，GPU 让位已启用" : "")
+                        + "，首轮处理 " + done + " 个用户后台"
                         + (retrying > 0 ? "（" + retrying + " 个写入未完全生效，按退避重试）" : "")
                         + (denied > 0 ? "（" + denied + " 个句柄受保护已跳过）" : ""));
                 }

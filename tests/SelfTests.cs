@@ -51,6 +51,13 @@ namespace AegisApp
                 RunDetectorProbe(pid, args[2], args[3]);
                 return true;
             }
+            if (args[0] == "--gpu-demote-probe" && args.Length >= 3)
+            {
+                int pid;
+                if (!int.TryParse(args[1], out pid)) { Environment.ExitCode = 2; return true; }
+                RunGpuDemoteProbe(pid, args[2]);
+                return true;
+            }
             if (args[0] == "--live-repro" && args.Length >= 4)
             {
                 RunLiveRepro(args[1], args[2], args[3], args.Length >= 5 ? args[4] : null);
@@ -1107,6 +1114,28 @@ namespace AegisApp
                 Eq(true, GameMode.BasicBackgroundEligible(10, 99, "sync", @"D:\Games\ApexBackup\sync.exe",
                     1, 1, 20, false, win, false, @"D:\Games\Apex"));
             });
+            test("suppression: every library game root is exempt, not just the active one", () =>
+            {
+                var roots = new List<string> { @"D:\Games\Apex", @"E:\Genshin Impact\Genshin Impact Game" };
+                Eq(@"E:\Genshin Impact\Genshin Impact Game", GameMode.LibraryRootOf(
+                    @"E:\Genshin Impact\Genshin Impact Game\YuanShen.exe", roots));
+                Eq(@"D:\Games\Apex", GameMode.LibraryRootOf(@"D:\Games\Apex\bin\game.exe", roots));
+                Eq((string)null, GameMode.LibraryRootOf(@"E:\Genshin Impact\Genshin Impact GameBackup\x.exe", roots));
+                Eq((string)null, GameMode.LibraryRootOf(@"C:\Apps\a.exe", roots));
+                Eq((string)null, GameMode.LibraryRootOf(null, roots));
+                Eq((string)null, GameMode.LibraryRootOf(@"D:\Games\Apex\bin\game.exe", null));
+                Eq((string)null, GameMode.LibraryRootOf(@"D:\anything\x.exe", new List<string> { @"D:\", @"D:" }));
+                Eq(true, TaskHelper.IsVolatileAutostartPath(@"D:\应用\微信\xwechat_files\wxid_x\msg\file\2026-07\Aegis(1).exe"));
+                Eq(true, TaskHelper.IsVolatileAutostartPath(@"C:\Users\a\AppData\Local\Temp\Aegis.exe"));
+                Eq(false, TaskHelper.IsVolatileAutostartPath(@"D:\游戏\Aegis.exe"));
+                Eq(false, SessionTelemetry.PowerWallSeen(0, 0));
+                Eq(false, SessionTelemetry.PowerWallSeen(4, 4));
+                Eq(true, SessionTelemetry.PowerWallSeen(5, 0));
+                Eq(true, SessionTelemetry.PowerWallSeen(0, 7));
+                Eq(false, GameMode.BasicBackgroundEligible(10, 99, "YuanShen", @"E:\Genshin Impact\Genshin Impact Game\YuanShen.exe",
+                    1, 1, 20, false, @"C:\Windows\", false,
+                    GameMode.LibraryRootOf(@"E:\Genshin Impact\Genshin Impact Game\YuanShen.exe", roots), true));
+            });
             test("suppression: anti-cheat exemption is as broad as anti-cheat detection", () =>
             {
                 const string win = @"C:\Windows\";
@@ -1297,6 +1326,31 @@ namespace AegisApp
                 int screenFps = GameMode.ResolveFrlFps("screen");
                 if (screenFps != 0 && screenFps < 45)
                     throw new Exception("screen frl out of range: " + screenFps);
+
+                var filter = new FocusIntervalFilter();
+                var admitted = new List<int>();
+                for (int i = 0; i < 300; i++) if (filter.Admit(1500)) admitted.Add(1500);
+                filter.NoteFocus(false);
+                for (int i = 0; i < 100; i++) if (filter.Admit(33000)) admitted.Add(33000);
+                filter.NoteFocus(true);
+                if (filter.Admit(20000)) admitted.Add(20000);
+                for (int i = 0; i < 300; i++) if (filter.Admit(1500)) admitted.Add(1500);
+                Eq(600, admitted.Count);
+                foreach (int v in admitted) Eq(1500, v);
+                Eq(101, filter.UnfocusedFrames);
+                Eq(100 * 33000L + 20000L, filter.UnfocusedUs);
+                double fAvg, fLow1, fLow01;
+                Eq(true, FrameEvidence.ComputeStats(admitted.ToArray(), out fAvg, out fLow1, out fLow01));
+                if (fLow1 < 600 || fLow1 > 700) throw new Exception("focused 1% low polluted: " + fLow1);
+                filter.Reset();
+                Eq(0L, filter.UnfocusedUs);
+                Eq(0, filter.UnfocusedFrames);
+                filter.NoteFocus(true);
+                Eq(true, filter.Admit(1000));
+                filter.NoteFocus(false);
+                filter.NoteFocus(true);
+                Eq(false, filter.Admit(1000));
+                Eq(true, filter.Admit(1000));
 
                 string summary = SessionTelemetry.BuildSummary(10, 500, 74, 2, 0, 10, 8.5, 3, 3300, true);
                 if (summary == null || summary.IndexOf("50%") < 0 || summary.IndexOf("74") < 0
@@ -1500,6 +1554,10 @@ namespace AegisApp
             test("competitive suppression: target resets are re-applied", () => TestSuppressionReapply(root));
             test("suppression journal: failed persistence blocks every kernel write", () => TestSuppressionJournalGate(root));
             test("staged suppression: crash journal restores a live process", () => TestSuppressionCrashRecovery(root));
+            test("GPU demote: class mapping follows the background tier only", TestGpuDemoteMapping);
+            test("GPU demote: journal parses the gpu field and accepts legacy lines", TestGpuJournalField);
+            test("GPU demote: scheduling class write and restore verified on self", TestGpuPriorityRoundtrip);
+            test("GPU demote: a GPU-less process still suppresses and restores cleanly", () => TestGpuDemoteGpulessProcess(root));
             }
             finally { try { Directory.Delete(root, true); } catch { } }
 
