@@ -33,12 +33,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Startup-task migration refuses volatile locations (Temp, WeChat received-files cache, INetCache,
   recycle bin): an exe run from such a folder no longer captures the autostart task, since the file
   is likely to be cleaned up and break autostart until the next self-heal.
-- When a session shows the GPU pinned against its power or thermal limit for 5% of the session or
-  more, competitive power tuning falls back to conservative on later sessions — idle states stay
-  enabled and boost drops from aggressive — and says so in the log. Pushing clocks on a machine
-  that is already wall-limited only buys frame-time spikes. Toggling the power-plan switch re-arms
-  the aggressive profile.
-
 - With two library games running at once (say Genshin Impact idling while League of Legends is the
   detected session), competitive mode treated the second game as an ordinary background process —
   idle priority, EcoQoS, efficiency cores — because the sweep only exempted the active game's

@@ -20,7 +20,7 @@ namespace AegisApp
         private void BuildComingSoonPage(DBPanel page, string title, string subtitle, Color accent)
         {
             int y = PageHeader(page, title, subtitle, 2);
-            var preview = new ComingSoonPreview(title, LolText("开发中 · v1.6.0 发布"), accent);
+            var preview = new ComingSoonPreview(title, LolText("自测完毕后随 v1.6.0 发布"), accent);
             preview.SetBounds(Theme.S(20), Theme.S(y), Theme.S(PageW - 40), Theme.S(PageH - y - 8));
             page.Controls.Add(preview);
         }

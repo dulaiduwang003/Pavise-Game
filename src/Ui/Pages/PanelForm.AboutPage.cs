@@ -28,29 +28,31 @@ namespace AegisApp
 
             int cardsY = y + 150;
             int infoW = 476, gap = 16, updateW = ContentW - infoW - gap;
-            const int cardH = 268;
+            const int cardH = 306;
             var card = MakeConsolePanel(pageAbout, ContentX, cardsY, infoW, cardH, false);
             CardLabel(card, "PROJECT // IDENTITY", 20, 15, infoW - 40, 20, 7.6f, true, Theme.Faint);
 
-            string[] rowKeys = { "about.author", "about.repo", "about.lic" };
-            string[] rowVals = { App.Author + " · " + App.AuthorEmail, App.RepoUrl.Replace("https://", ""), "GNU GPL v3.0" };
-            for (int i = 0; i < 3; i++)
+            string[] rowKeys = { "about.author", "about.wechat", "about.repo", "about.lic" };
+            string[] rowVals = { App.Author + " · " + App.AuthorEmail, App.WeChat,
+                App.RepoUrl.Replace("https://", ""), "GNU GPL v3.0" };
+            for (int i = 0; i < 4; i++)
             {
-                int ry = 45 + i * 56;
+                int ry = 44 + i * 42;
                 CardLabel(card, Lang.T(rowKeys[i]).ToUpperInvariant(), 20, ry, 108, 18, 7.4f, true, Theme.Faint);
-                var lblV = CardLabel(card, rowVals[i], 132, ry - 2, infoW - 152, 24, 9.2f, i == 1, i == 1 ? Theme.Accent : Theme.Fg);
-                if (i == 1)
+                var lblV = CardLabel(card, rowVals[i], 132, ry - 2, infoW - 152, 24, 9.2f, i == 2, i == 2 ? Theme.Accent : Theme.Fg);
+                if (i == 2)
                 {
                     lblV.Cursor = Cursors.Hand;
                     lblV.Click += (s, e) => { try { using (Process.Start(App.RepoUrl)) { } } catch { } };
                 }
             }
+            CardLabel(card, Lang.T("about.contact.hint"), 20, 216, infoW - 40, 32, 7.6f, false, Theme.Dim);
 
             bool unseenNotes = ReleaseNotes.HasUnseen;
             var btnNotes = new PillButton(Lang.T("notes.open") + (unseenNotes ? "  ·  NEW" : ""),
                 unseenNotes ? BtnKind.Primary : BtnKind.Normal);
             btnNotes.Bg = Theme.Card;
-            btnNotes.SetBounds(Theme.S(20), Theme.S(214), Theme.S(infoW - 40), Theme.S(38));
+            btnNotes.SetBounds(Theme.S(20), Theme.S(252), Theme.S(infoW - 40), Theme.S(38));
             btnNotes.Click += delegate
             {
                 using (var dlg = new ReleaseNotesDialog()) dlg.ShowDialog(this);

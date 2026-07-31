@@ -1128,10 +1128,6 @@ namespace AegisApp
                 Eq(true, TaskHelper.IsVolatileAutostartPath(@"D:\应用\微信\xwechat_files\wxid_x\msg\file\2026-07\Aegis(1).exe"));
                 Eq(true, TaskHelper.IsVolatileAutostartPath(@"C:\Users\a\AppData\Local\Temp\Aegis.exe"));
                 Eq(false, TaskHelper.IsVolatileAutostartPath(@"D:\游戏\Aegis.exe"));
-                Eq(false, SessionTelemetry.PowerWallSeen(0, 0));
-                Eq(false, SessionTelemetry.PowerWallSeen(4, 4));
-                Eq(true, SessionTelemetry.PowerWallSeen(5, 0));
-                Eq(true, SessionTelemetry.PowerWallSeen(0, 7));
                 Eq(false, GameMode.BasicBackgroundEligible(10, 99, "YuanShen", @"E:\Genshin Impact\Genshin Impact Game\YuanShen.exe",
                     1, 1, 20, false, @"C:\Windows\", false,
                     GameMode.LibraryRootOf(@"E:\Genshin Impact\Genshin Impact Game\YuanShen.exe", roots), true));

@@ -61,14 +61,6 @@ namespace AegisApp
             lock (stateSync)
             {
                 if (samples < 2) return null;
-                if (gpuSamples > 0 && PowerWallSeen(
-                        thermalThrottleSamples * 100 / gpuSamples,
-                        powerThrottleSamples * 100 / gpuSamples)
-                    && !Settings.Load("PowerWallSeen", false))
-                {
-                    Settings.Save("PowerWallSeen", true);
-                    Logger.Log("检测到本局 GPU 明显受功耗/温度墙限制，下局竞技电源档回退保守（不再禁用空闲与激进睿频；重开电源计划开关可重置）");
-                }
                 return BuildSummary(
                     gpuSamples, gpuUtilSum, gpuTempMax,
                     thermalThrottleSamples, powerThrottleSamples,
@@ -77,12 +69,6 @@ namespace AegisApp
             }
         }
 
-        internal const int PowerWallArmPercent = 5;
-
-        internal static bool PowerWallSeen(int thermalPct, int powerPct)
-        {
-            return thermalPct >= PowerWallArmPercent || powerPct >= PowerWallArmPercent;
-        }
 
         private void Loop()
         {

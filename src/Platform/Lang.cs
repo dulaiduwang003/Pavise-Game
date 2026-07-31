@@ -364,6 +364,8 @@ namespace AegisApp
             { "about.author", new[]{ "作者" } },
             { "about.repo", new[]{ "开源仓库" } },
             { "about.lic", new[]{ "开源协议" } },
+            { "about.wechat", new[]{ "微信" } },
+            { "about.contact.hint", new[]{ "反馈 Bug、提交新功能建议或交流使用问题，可加作者微信；也欢迎在 GitHub 提 Issue" } },
             { "btn.checkupd", new[]{ "检查更新" } },
             { "btn.download", new[]{ "前往下载" } },
             { "upd.checking", new[]{ "正在检查更新…" } },

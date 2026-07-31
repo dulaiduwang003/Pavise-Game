@@ -588,13 +588,7 @@ namespace AegisApp
         public bool PowerPlanSwitch
         {
             get { return planSwitch; }
-            set
-            {
-                planSwitch = value;
-                if (value) Settings.Save("PowerWallSeen", false);
-                Settings.Save("PowerPlanOn", value);
-                RequestPolicyApply();
-            }
+            set { planSwitch = value; Settings.Save("PowerPlanOn", value); RequestPolicyApply(); }
         }
 
         public string StatusText
