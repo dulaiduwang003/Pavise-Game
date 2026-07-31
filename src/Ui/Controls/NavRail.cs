@@ -31,7 +31,7 @@ namespace AegisApp
         internal int ItemAtSlot(int slot) { return slot >= 0 && slot < order.Length ? order[slot] : -1; }
 
         private int TopPad { get { return Dpi.S(94); } }
-        private int ItemH { get { return Dpi.S(44); } }
+        private int ItemH { get { return Dpi.S(36); } }
         private int Gap { get { return Dpi.S(5); } }
         private int Pad { get { return Dpi.S(12); } }
         private int Pitch { get { return ItemH + Gap; } }

@@ -21,12 +21,12 @@ namespace AegisApp
             var swEvidence = MakeSwitch(Settings.Load("EvidenceMode", false), null);
             swEvidence.CheckedChanged += delegate { Settings.Save("EvidenceMode", swEvidence.Checked); };
             var evCard = new SettingCard();
-            evCard.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(64));
+            evCard.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(84));
             evCard.Title = Lang.T("ev.toggle");
             evCard.Desc = Lang.T("ev.toggle.sub");
             evCard.Host(swEvidence);
             pageReports.Controls.Add(evCard);
-            y += 72;
+            y += 92;
 
             tabReportsCards = new PillButton(Lang.T("rep.tab.cards"), BtnKind.Primary);
             tabReportsCards.Bg = Theme.Bg;
