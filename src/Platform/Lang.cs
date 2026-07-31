@@ -32,7 +32,7 @@ namespace AegisApp
             { "nav.library", new[]{ "游戏库" } },
             { "nav.policy", new[]{ "优化策略" } },
             { "nav.reports", new[]{ "报告" } },
-            { "v15.about.identity", new[]{ "单文件 Windows 性能守护" } },
+            { "v15.about.identity", new[]{ "Windows 性能守护" } },
             { "notes.title", new[]{ "版本说明" } },
             { "notes.sub", new[]{ "当前安装版本 {0}" } },
             { "notes.current", new[]{ "当前版本" } },
@@ -360,7 +360,7 @@ namespace AegisApp
             { "tm.plan", new[]{ "游戏时切换电源计划" } },
             { "tm.autostart", new[]{ "开机自启" } },
 
-            { "about.desc", new[]{ "管理游戏与无用户窗口后台资源边界的 Windows 工具。\r\n单文件 C# / WinForms · 无第三方依赖 · 为已记录改动提供恢复路径" } },
+            { "about.desc", new[]{ "管理游戏与无用户窗口后台资源边界的 Windows 工具。\r\n无第三方依赖 · 为已记录改动提供恢复路径" } },
             { "about.author", new[]{ "作者" } },
             { "about.repo", new[]{ "开源仓库" } },
             { "about.lic", new[]{ "开源协议" } },

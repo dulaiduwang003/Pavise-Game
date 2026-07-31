@@ -33,7 +33,7 @@ namespace AegisApp
             CardLabel(card, "PROJECT // IDENTITY", 20, 15, infoW - 40, 20, 7.6f, true, Theme.Faint);
 
             string[] rowKeys = { "about.author", "about.repo", "about.lic" };
-            string[] rowVals = { App.Author + " · " + App.AuthorEmail, App.RepoUrl.Replace("https://", ""), "MIT License" };
+            string[] rowVals = { App.Author + " · " + App.AuthorEmail, App.RepoUrl.Replace("https://", ""), "GNU GPL v3.0" };
             for (int i = 0; i < 3; i++)
             {
                 int ry = 45 + i * 56;

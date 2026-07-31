@@ -166,6 +166,6 @@ Author  bdth
 
 Email  2074055628@qq.com
 
-Released under the [MIT License](LICENSE).
+Released under the [GNU GPL v3.0](LICENSE).
 
 This is a personal open-source project provided as is. Performance and compatibility are not guaranteed. Anti-cheat suppression, VBS changes, service pauses, and cache deletion can all have side effects. Use it only on computers you control and review the relevant risk first.
