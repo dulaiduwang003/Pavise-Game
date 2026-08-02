@@ -20,7 +20,7 @@ namespace PaviseApp
         private void BuildOverviewPage()
         {
             int y = PageHeader(pageOverview, Lang.T("nav.overview"), Lang.T("v15.overview.sub"), 2);
-            const int coreW = 360, coreH = 400, gap = 16;
+            const int coreW = 360, coreH = 352, gap = 16;
             int rightX = ContentX + coreW + gap;
             int rightW = ContentW - coreW - gap;
 
@@ -29,7 +29,7 @@ namespace PaviseApp
             paviseCore.SetState(gameMode.ActivePreset, gameMode.Enabled, gameMode.IsActive);
             pageOverview.Controls.Add(paviseCore);
 
-            var guard = MakeConsolePanel(pageOverview, rightX, y, rightW, 128, true);
+            var guard = MakeConsolePanel(pageOverview, rightX, y, rightW, 120, true);
             CardLabel(guard, Lang.T("v15.guard.state"), 18, 12, rightW - 92, 18, 7.8f, true, Theme.Faint);
             statusDot = new StatusDot(); statusDot.SetBounds(Theme.S(15), Theme.S(39), Theme.S(22), Theme.S(22));
             statusDot.Bg = Theme.Card; statusDot.Color = Theme.Dim;
@@ -45,29 +45,29 @@ namespace PaviseApp
             CardLabel(guard, Lang.T("v15.master.short"), 18, 72, rightW - 36, 34, 7.7f, false, Theme.Dim);
             guard.Controls.AddRange(new Control[] { statusDot, swGame });
 
-            var mode = MakeConsolePanel(pageOverview, rightX, y + 140, rightW, 112, false);
+            var mode = MakeConsolePanel(pageOverview, rightX, y + 132, rightW, 100, false);
             CardLabel(mode, Lang.T("v15.effective.mode"), 18, 12, rightW - 36, 17, 7.6f, true, Theme.Faint);
             lblHeroMode = CardLabel(mode, ModeButton.ModeName(gameMode.ActivePreset), 18, 31, rightW - 36, 31, 14.5f, true, Theme.Accent);
             lblHeroSource = CardLabel(mode, Lang.T("mode.source.global"), 18, 66, rightW - 36, 18, 7.7f, false, Theme.Dim);
 
-            var boost = MakeConsolePanel(pageOverview, rightX, y + 264, rightW, 136, false);
+            var boost = MakeConsolePanel(pageOverview, rightX, y + 244, rightW, 108, false);
             CardLabel(boost, Lang.T("v14.boost.status"), 18, 13, rightW - 36, 18, 7.7f, true, Theme.Faint);
-            lblOverviewBoost = CardLabel(boost, "…", 18, 37, rightW - 36, 92, 10.2f, false, Theme.Fg);
+            lblOverviewBoost = CardLabel(boost, "…", 18, 33, rightW - 36, 72, 10.2f, false, Theme.Fg);
 
-            int tileY = y + coreH + 14;
+            int tileY = y + coreH + 10;
             int tileW = (ContentW - 28) / 3;
             MakeDashboardTile(pageOverview, ContentX, tileY, tileW, Lang.T("v15.tile.game"), Lang.T("v15.tile.game.sub"), "game", 1);
             MakeDashboardTile(pageOverview, ContentX + tileW + 14, tileY, tileW, Lang.T("v15.tile.background"), Lang.T("v15.tile.background.sub"), "settings", 2);
             MakeDashboardTile(pageOverview, ContentX + (tileW + 14) * 2, tileY, tileW, Lang.T("v15.tile.environment"), Lang.T("v15.tile.environment.sub"), "shield", 3);
 
-            int topologyY = tileY + 84;
+            int topologyY = tileY + 80;
             var topology = MakeConsolePanel(pageOverview, ContentX, topologyY, ContentW, 68, false);
             CardLabel(topology, Lang.T("v14.cpu.topology"), 18, 10, ContentW - 36, 17, 7.7f, true, Theme.Faint);
             lblEvidenceLive = CardLabel(topology, CpuTopologySummary(), 18, 30, ContentW - 36, 27, 9.5f, false, Theme.Fg);
             lblEvidenceLive.Text = CpuTopologySummary();
 
             deviceBar = new DeviceSpecBar();
-            deviceBar.SetBounds(Theme.S(ContentX), Theme.S(topologyY + 78), Theme.S(ContentW), Theme.S(66));
+            deviceBar.SetBounds(Theme.S(ContentX), Theme.S(topologyY + 74), Theme.S(ContentW), Theme.S(66));
             pageOverview.Controls.Add(deviceBar);
             LoadDeviceInfoAsync();
             UpdateModePresentation(false);

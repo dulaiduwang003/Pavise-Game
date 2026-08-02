@@ -70,7 +70,7 @@ namespace PaviseApp
         private const int AutoHideDelayMs = 10000;
         private const int IntroRise = 18;
 
-        private const int WinW = 1196, WinH = 828, RailW = 208, TopH = 54;
+        private const int WinW = 1196, WinH = 768, RailW = 208, TopH = 54;
         private const int PageW = WinW - RailW, PageH = WinH - TopH;
         private const int ContentX = 26, ContentW = PageW - ContentX * 2;
         private const int ScrollContentW = PageW - 40 - 12 - 20;

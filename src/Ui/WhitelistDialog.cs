@@ -14,7 +14,7 @@ namespace PaviseApp
     {
         private readonly GameMode mode;
         private readonly ListBox list = new ListBox();
-        private readonly ComboBox scope = new ComboBox();
+        private readonly FlatCombo scope = new FlatCombo();
         private readonly object refreshSync = new object();
         private bool refreshWorker;
         private bool refreshPending;
@@ -50,15 +50,25 @@ namespace PaviseApp
         {
             mode = gameMode;
             Text = Lang.T("nav.white");
-            FormBorderStyle = FormBorderStyle.FixedDialog;
+            FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.CenterParent;
-            MaximizeBox = false; MinimizeBox = false; ShowInTaskbar = false;
+            ShowInTaskbar = false;
             ClientSize = new Size(Theme.S(760), Theme.S(470));
             BackColor = Theme.Bg; ForeColor = Theme.Fg; Font = Theme.UI(9.5f, false);
 
             var title = new Label();
             title.Text = Lang.T("nav.white"); title.ForeColor = Theme.Fg; title.BackColor = Theme.Bg; title.Font = Theme.UI(14f, true);
             title.SetBounds(Theme.S(22), Theme.S(18), Theme.S(700), Theme.S(30));
+            title.MouseDown += DragMove;
+
+            var lblClose = new Label();
+            lblClose.Text = "✕";
+            lblClose.ForeColor = Theme.Dim;
+            lblClose.BackColor = Theme.Bg;
+            lblClose.SetBounds(Theme.S(722), Theme.S(12), Theme.S(26), Theme.S(26));
+            lblClose.TextAlign = ContentAlignment.MiddleCenter;
+            lblClose.Cursor = Cursors.Hand;
+            lblClose.Click += delegate { Close(); };
             var note = new Label();
             note.Text = Lang.T("white.desc"); note.ForeColor = Theme.Dim; note.BackColor = Theme.Bg; note.Font = Theme.UI(8.5f, false);
             note.SetBounds(Theme.S(22), Theme.S(50), Theme.S(716), Theme.S(38));
@@ -71,9 +81,6 @@ namespace PaviseApp
             var scopeLabel = new Label();
             scopeLabel.Text = Lang.T("white.scope"); scopeLabel.ForeColor = Theme.Dim; scopeLabel.BackColor = Theme.Bg;
             scopeLabel.SetBounds(Theme.S(548), Theme.S(98), Theme.S(190), Theme.S(20));
-            scope.DropDownStyle = ComboBoxStyle.DropDownList;
-            scope.FlatStyle = FlatStyle.Flat;
-            scope.BackColor = Theme.Card; scope.ForeColor = Theme.Fg;
             scope.SetBounds(Theme.S(548), Theme.S(121), Theme.S(190), Theme.S(32));
             scope.Items.Add(new ScopeChoice(
                 WhitelistRuleKind.ApplicationFamily,
@@ -95,10 +102,40 @@ namespace PaviseApp
                 if (!mode.ResetWhitelist()) ShowMutationError();
                 RefreshList();
             };
-            Controls.AddRange(new Control[] { title, note, wrap, scopeLabel, scope, running, browse, remove, reset });
+            Controls.AddRange(new Control[] { title, lblClose, note, wrap, scopeLabel, scope, running, browse, remove, reset });
             FormClosed += delegate { closed = true; };
             Shown += delegate { RefreshList(); };
+            MouseDown += DragMove;
+            KeyPreview = true;
+            KeyDown += (s, e) => { if (e.KeyCode == Keys.Escape) Close(); };
             FillList(mode.GetWhitelistRulesFast());
+        }
+
+        protected override CreateParams CreateParams
+        {
+            get { var cp = base.CreateParams; cp.ClassStyle |= 0x20000; return cp; }
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            using (var pen = new Pen(Theme.Accent))
+                e.Graphics.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            Native.RoundCorners(Handle);
+        }
+
+        private void DragMove(object s, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                Native.ReleaseCapture();
+                Native.SendMessage(Handle, Native.WM_NCLBUTTONDOWN, (IntPtr)Native.HT_CAPTION, IntPtr.Zero);
+            }
         }
 
         private PillButton Button(string text, int x, int y, BtnKind kind)
