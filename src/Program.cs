@@ -24,7 +24,7 @@ namespace PaviseApp
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string WeChat = "Ssssssstyle";
-        public const string RepoName = "dulaiduwang003/Pavise";
+        public const string RepoName = "dulaiduwang003/Pavise-Game";
         public const string RepoUrl = "https://github.com/" + RepoName;
         public const string ReleasesUrl = RepoUrl + "/releases";
         public static string VersionTag { get { return "v" + Version; } }
