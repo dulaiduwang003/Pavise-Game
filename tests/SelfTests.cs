@@ -73,6 +73,11 @@ namespace PaviseApp
                 RunNetProbe(args[1]);
                 return true;
             }
+            if (args[0] == "--lane-live" && args.Length >= 3)
+            {
+                RunLaneLive(args[1], args[2]);
+                return true;
+            }
             if (args[0] == "--lane-probe" && args.Length >= 2)
             {
                 RunLaneProbe(args[1], args.Length >= 3 ? args[2] : null,
@@ -318,6 +323,65 @@ namespace PaviseApp
                 }
             }
             catch { return false; }
+        }
+
+        // 用法：--lane-live <输出文件> <pid>
+        // 在真实游戏上跑完整回路：建立通道 → 回读确认 → 撤销 → 确认原值归位
+        private static void RunLaneLive(string output, string pidArg)
+        {
+            var sb = new System.Text.StringBuilder();
+            int pid;
+            if (!int.TryParse(pidArg, out pid)) { File.WriteAllText(output, "pid 无效", Encoding.UTF8); Environment.ExitCode = 2; return; }
+            try
+            {
+                long creation;
+                string name;
+                using (Process target = Process.GetProcessById(pid))
+                {
+                    creation = target.StartTime.ToUniversalTime().Ticks;
+                    name = target.ProcessName;
+                }
+                sb.AppendLine("=== 渲染主权域实机回路 ===");
+                sb.AppendLine("目标：" + name + " (pid " + pid + ")");
+
+                RenderLane.Candidate best;
+                bool identified = RenderLane.TryIdentify(pid, out best);
+                sb.AppendLine("识别：" + (identified
+                    ? "线程 " + best.Tid + " 占 " + (best.Share * 100).ToString("F1") + "%，共 " + best.ThreadCount + " 线程"
+                    : "失败"));
+                if (!identified) { File.WriteAllText(output, sb.ToString(), Encoding.UTF8); Environment.ExitCode = 3; return; }
+
+                int before = ReadThreadPriority(best.Tid);
+                sb.AppendLine("介入前线程优先级：" + before);
+
+                RenderLane.EnsureForGame(pid, creation, name);
+                bool active = RenderLane.IsActiveFor(pid, creation);
+                int during = ReadThreadPriority(best.Tid);
+                sb.AppendLine("建立通道：" + (active ? "成功" : "未建立（可能已自带高权重或被拒）"));
+                sb.AppendLine("介入后线程优先级：" + during);
+
+                bool released = RenderLane.Release();
+                int after = ReadThreadPriority(best.Tid);
+                sb.AppendLine("撤销：" + (released ? "成功" : "失败"));
+                sb.AppendLine("撤销后线程优先级：" + after);
+                sb.AppendLine();
+                bool clean = after == before;
+                sb.AppendLine("结论：" + (active && during > before && clean
+                    ? "写入生效且完整还原，渲染主权域在本游戏上可用"
+                    : !active ? "未建立通道，见上方原因"
+                    : clean ? "已还原，但未观察到优先级抬升" : "还原不一致，需排查"));
+                Environment.ExitCode = clean ? 0 : 4;
+            }
+            catch (Exception ex) { sb.AppendLine("异常：" + ex.Message); Environment.ExitCode = 5; }
+            File.WriteAllText(output, sb.ToString(), Encoding.UTF8);
+        }
+
+        private static int ReadThreadPriority(int tid)
+        {
+            IntPtr h = Native.OpenThread(Native.THREAD_QUERY_LIMITED_INFORMATION, false, tid);
+            if (h == IntPtr.Zero) return int.MinValue;
+            try { return Native.GetThreadPriority(h); }
+            finally { Native.CloseHandle(h); }
         }
 
         // 用法：--lane-probe <输出文件> [进程名或pid] [轮次]
@@ -1578,6 +1642,8 @@ namespace PaviseApp
             test("nv drs: snapshot codec round-trips all four keys", TestDrsSnapshotRoundtrip);
             test("nagle: interface list codec handles empty and multi entries", TestNagleListCodec);
             test("ifeo: sandbox roundtrip registers priority and leaves zero residue", TestIfeoSandboxRoundtrip);
+            test("render lane: the busy thread is the one identified", TestRenderLaneIdentifiesBusyThread);
+            test("render lane: journal codec rejects malformed lines", TestRenderLaneJournalCodec);
             }
             finally { try { Directory.Delete(root, true); } catch { } }
 

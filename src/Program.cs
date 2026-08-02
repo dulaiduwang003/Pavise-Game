@@ -202,6 +202,7 @@ namespace PaviseApp
             Notif.HealFromCrash();
             VisualFx.HealFromCrash();
             DisplayGuard.HealFromCrash();
+            RenderLane.HealFromCrash();
             CrashGuard.HealFromCrash();
 
             Application.EnableVisualStyles();

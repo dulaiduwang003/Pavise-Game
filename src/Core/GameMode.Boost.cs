@@ -460,6 +460,10 @@ namespace PaviseApp
                                 Logger.Log("游戏核心策略：" + rendererName + " (pid " + pid + ")" + placementText);
                         }
 
+                        // 提优确认生效后才建通道，且一局只走一次识别采样
+                        if (renderLaneOn && stateOk && !RenderLane.IsActiveFor(pid, currentCreation))
+                            RenderLane.EnsureForGame(pid, currentCreation, rendererName);
+
                         if (stateOk && firstVerified)
                         {
                             ReportBoostVerified();
@@ -614,6 +618,8 @@ namespace PaviseApp
                         gameBoostNextAudit.Remove(stale.Key); tweakApplied.Remove(stale.Key);
                     }
             }
+            foreach (var kv in boosts)
+                if (RenderLane.IsActiveFor(kv.Key, kv.Value.Creation)) RenderLane.Release();
             foreach (var kv in boosts)
             {
                 int pid = kv.Key;

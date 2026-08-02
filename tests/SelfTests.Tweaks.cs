@@ -50,6 +50,44 @@ namespace PaviseApp
             Eq("{bbb}", two[1]);
         }
 
+        // 主导线程识别必须在真实进程上验证：自测进程自己制造一个满载线程，
+        // 断言它被识别出来且占比压倒性——识别错线程等于把加速给了错误的路径。
+        private static void TestRenderLaneIdentifiesBusyThread()
+        {
+            using (var stop = new System.Threading.ManualResetEvent(false))
+            {
+                var busy = new System.Threading.Thread(delegate ()
+                {
+                    while (!stop.WaitOne(0)) { }
+                });
+                busy.IsBackground = true;
+                busy.Start();
+                try
+                {
+                    RenderLane.Candidate best;
+                    int self = System.Diagnostics.Process.GetCurrentProcess().Id;
+                    if (!RenderLane.TryIdentify(self, out best))
+                        throw new Exception("thread identification failed on the test process itself");
+                    if (best.Share < RenderLane.MinDominantShare)
+                        throw new Exception("the spinning thread did not dominate: share=" + best.Share.ToString("F2"));
+                }
+                finally { stop.Set(); busy.Join(2000); }
+            }
+        }
+
+        private static void TestRenderLaneJournalCodec()
+        {
+            int pid, tid, pri; long creation;
+            Eq(false, RenderLane.ParseJournal("", out pid, out creation, out tid, out pri));
+            Eq(false, RenderLane.ParseJournal("1|2|3", out pid, out creation, out tid, out pri));
+            Eq(false, RenderLane.ParseJournal("0|2|3|4", out pid, out creation, out tid, out pri));
+            Eq(true, RenderLane.ParseJournal("1234|99887766|4321|1", out pid, out creation, out tid, out pri));
+            Eq(1234, pid);
+            Eq(99887766L, creation);
+            Eq(4321, tid);
+            Eq(1, pri);
+        }
+
         // 全回路走 HKCU 沙箱：登记→值为 3→撤销→键无残留。
         // IFEO 残留会出现在各类劫持检查工具的报告里，清不干净等于自我抹黑。
         private static void TestIfeoSandboxRoundtrip()

@@ -102,6 +102,7 @@ namespace PaviseApp
         private volatile bool aggressiveOn;
         private volatile bool freezeOn;
         private volatile bool ifeoOn;
+        private volatile bool renderLaneOn;
         private volatile bool gpuDemoteOn;
         private volatile bool panicReq;
         private int panicSeq;
@@ -184,6 +185,7 @@ namespace PaviseApp
             aggressiveOn = Settings.Load("GmAggressive", false);
             freezeOn = Settings.Load("GmFreeze", false);
             ifeoOn = Settings.Load("GmIfeoBoost", false);
+            renderLaneOn = Settings.Load("GmRenderLane", false);
             gpuDemoteOn = Settings.Load("GmGpuDemote", false);
             SuppressionCore.GpuDemoteEnabled = gpuDemoteOn;
             int presetRaw;
@@ -469,6 +471,17 @@ namespace PaviseApp
         {
             get { return freezeOn; }
             set { freezeOn = value; Settings.Save("GmFreeze", value); RequestPolicyApply(); }
+        }
+
+        public bool RenderLaneOn
+        {
+            get { return renderLaneOn; }
+            set
+            {
+                renderLaneOn = value; Settings.Save("GmRenderLane", value);
+                if (!value) RenderLane.Release();
+                RequestPolicyApply();
+            }
         }
 
         public bool IfeoBoostFallback
