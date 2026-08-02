@@ -56,6 +56,14 @@ namespace PaviseApp
             public int FastReconcileRemaining;
 
             public bool Journaled;
+
+            // 冻结状态机。FreezeIntent 随日志持久化，语义是"必须假定这个进程已被挂起"，
+            // 它必须在 NtSuspendProcess 之前落盘：反过来的话，挂起成功但日志未落盘时崩溃，
+            // 进程会永久冻结且无任何记录可恢复。先写日志的失败模式是良性的（对未挂起的
+            // 进程调 resume 无副作用）。FreezeApplied 只在本进程内有效，用于保证挂起
+            // 不重入——NtSuspendProcess 累加挂起计数，多调一次就多欠一次 resume。
+            public bool FreezeIntent;
+            public bool FreezeApplied;
         }
 
         private enum RestoreResult { Restored, Gone, Protected }
@@ -282,7 +290,7 @@ namespace PaviseApp
                         if (mustWrite)
                         {
                             if (QueueApplyLocked(pid, name)) return AcquireResult.AlreadyThrottled;
-                            e.Applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e));
+                            e.Applied = ApplyThrottleWithFreeze(h, e, pid, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e));
                             ScheduleAfterApply(e, e.Applied, pid);
                             return e.Applied ? AcquireResult.AlreadyThrottled : AcquireResult.ApplyFailed;
                         }
@@ -297,7 +305,8 @@ namespace PaviseApp
                             RecordBatchApplyResultLocked(pid, true, null);
                             return AcquireResult.AlreadyThrottled;
                         }
-                        bool matches = ThrottleMatches(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e));
+                        bool matches = ThrottleMatches(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e))
+                            && FreezeSettled(e);
                         if (matches)
                         {
                             ScheduleAfterMatch(e, pid);
@@ -305,7 +314,7 @@ namespace PaviseApp
                             return AcquireResult.AlreadyThrottled;
                         }
                         if (QueueApplyLocked(pid, name)) return AcquireResult.AlreadyThrottled;
-                        e.Applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e));
+                        e.Applied = ApplyThrottleWithFreeze(h, e, pid, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e));
                         ScheduleAfterApply(e, e.Applied, pid);
 
                         return AcquireResult.AlreadyThrottled;
@@ -363,7 +372,7 @@ namespace PaviseApp
                     }
                     if (!PersistJournalLocked()) return AcquireResult.ApplyFailed;
                     bool queued = QueueApplyLocked(pid, name);
-                    bool applied = queued || ApplyThrottle(h, level, orig, oaff, ocpuSets, DesiredGpu(active));
+                    bool applied = queued || ApplyThrottleWithFreeze(h, active, pid, level, orig, oaff, ocpuSets, DesiredGpu(active));
                     Entry appliedEntry;
                     if (map.TryGetValue(pid, out appliedEntry) && !queued)
                     {
@@ -453,7 +462,7 @@ namespace PaviseApp
                 IntPtr h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_SET_LIMITED_INFORMATION
                     | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
                 bool applied = false;
-                if (h != IntPtr.Zero) { try { if (SameProcess(h, e)) applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e)); } finally { Native.CloseHandle(h); } }
+                if (h != IntPtr.Zero) { try { if (SameProcess(h, e)) applied = ApplyThrottleWithFreeze(h, e, pid, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e)); } finally { Native.CloseHandle(h); } }
                 lock (sync)
                 {
                     Entry cur;
@@ -491,7 +500,7 @@ namespace PaviseApp
                 IntPtr h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_SET_LIMITED_INFORMATION
                     | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
                 bool applied = false;
-                if (h != IntPtr.Zero) { try { if (SameProcess(h, e)) applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e)); } finally { Native.CloseHandle(h); } }
+                if (h != IntPtr.Zero) { try { if (SameProcess(h, e)) applied = ApplyThrottleWithFreeze(h, e, pid, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e)); } finally { Native.CloseHandle(h); } }
                 lock (sync)
                 {
                     Entry cur;
@@ -665,7 +674,7 @@ namespace PaviseApp
                         }
                     }
                     int desiredGpu = DesiredGpu(currentEntry);
-                    if (ThrottleMatches(h, level, pri, aff, cpuSets, desiredGpu))
+                    if (ThrottleMatches(h, level, pri, aff, cpuSets, desiredGpu) && FreezeSettled(currentEntry))
                     {
                         if (!currentEntry.Applied && currentEntry.ReconcileFailures > 0)
                             Logger.Log("后台策略核验已生效：" + expectedName + " (pid " + pid
@@ -676,7 +685,7 @@ namespace PaviseApp
                     }
                     bool previouslyApplied = currentEntry.Applied;
                     int previousFailures = currentEntry.ReconcileFailures;
-                    currentEntry.Applied = ApplyThrottle(h, level, pri, aff, cpuSets, desiredGpu);
+                    currentEntry.Applied = ApplyThrottleWithFreeze(h, currentEntry, pid, level, pri, aff, cpuSets, desiredGpu);
                     ScheduleAfterApply(currentEntry, currentEntry.Applied, pid);
                     if (currentEntry.Applied)
                     {
@@ -1006,6 +1015,84 @@ namespace PaviseApp
             return ok;
         }
 
+        // 挂起/恢复刻意不放进 ApplyThrottle：后者会被 Acquire、Reconcile、RetryPending
+        // 和批量 apply 反复调用，而挂起计数是累加的，重入一次就多欠一次 resume。
+        // 这里只在状态边沿动手，且调用方必须已经确认过进程身份。
+        // 挂起/解冻单独开句柄：主路径的访问掩码里没有 PROCESS_SUSPEND_RESUME，
+        // 硬加进去会让一部分原本能压制的进程直接开不出句柄。开完必须重验身份——
+        // 这里的 pid 复用窗口意味着挂起一个完全无关的进程。
+        // 返回 Gone 表示进程已经不在了，对调用方等同于"无需处理"。
+        private enum FreezeIoResult { Done, Failed, Gone }
+
+        private static FreezeIoResult TrySuspendResume(int pid, string name, long creation, bool suspend)
+        {
+            IntPtr h = Native.OpenProcess(
+                Native.PROCESS_SUSPEND_RESUME | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+            if (h == IntPtr.Zero)
+                return Native.LastOpenProcessFailureWasNoSuchProcess() ? FreezeIoResult.Gone : FreezeIoResult.Failed;
+            try
+            {
+                if (!Native.StillActive(h)) return FreezeIoResult.Gone;
+                string current = Native.ImageName(h);
+                if (current == null) return FreezeIoResult.Failed;
+                if (!SameName(current, name)) return FreezeIoResult.Gone;
+                if (creation > 0)
+                {
+                    long actual, cpu; ulong io;
+                    if (!Native.QueryProcessSample(h, out actual, out cpu, out io)) return FreezeIoResult.Failed;
+                    if (actual != creation) return FreezeIoResult.Gone;
+                }
+                return (suspend ? Native.NtSuspendProcess(h) : Native.NtResumeProcess(h)) == 0
+                    ? FreezeIoResult.Done : FreezeIoResult.Failed;
+            }
+            finally { Native.CloseHandle(h); }
+        }
+
+        private static bool SuspendForEntry(Entry e, int pid)
+        {
+            if (e.FreezeApplied) return true;
+            // 进程没了就别记成已挂起，让后续核验按常规路径收敛
+            if (TrySuspendResume(pid, e.Name, e.Creation, true) != FreezeIoResult.Done) return false;
+            e.FreezeApplied = true;
+            return true;
+        }
+
+        private static bool ResumeForEntry(Entry e, int pid)
+        {
+            if (!e.FreezeIntent && !e.FreezeApplied) return true;
+            if (TrySuspendResume(pid, e.Name, e.Creation, false) == FreezeIoResult.Failed) return false;
+            e.FreezeApplied = false;
+            e.FreezeIntent = false;
+            return true;
+        }
+
+        // 冻结状态是否已经和目标档位一致。ThrottleMatches 无法回读挂起状态
+        // （Windows 没有这个查询），所以核验路径必须额外过这一关，
+        // 否则"设置全对但还没挂起"会被当成已生效，永远不再重试。
+        private static bool FreezeSettled(Entry e)
+        {
+            return (e.Level >= SuppressionLevel.Frozen) == e.FreezeApplied;
+        }
+
+        // 挂起只允许发生在日志已落盘之后；日志还没写就先放过，
+        // 交给下一轮核验，绝不抢在记账前面动手。
+        private static bool SettleFreeze(Entry e, int pid)
+        {
+            if (e.Level >= SuppressionLevel.Frozen)
+                return !e.Journaled || !e.FreezeIntent || SuspendForEntry(e, pid);
+            return ResumeForEntry(e, pid);
+        }
+
+        private bool ApplyThrottleWithFreeze(IntPtr h, Entry e, int pid, SuppressionLevel level,
+            uint originalPriority, ulong originalAffinity, uint[] originalCpuSets, int desiredGpu)
+        {
+            bool applied = ApplyThrottle(h, level, originalPriority, originalAffinity, originalCpuSets, desiredGpu);
+            if (!applied) return false;
+            if (SettleFreeze(e, pid)) return true;
+            LastApplyError = e.Level >= SuppressionLevel.Frozen ? "suspend" : "resume";
+            return false;
+        }
+
         private RestoreResult RestoreOne(int pid, Entry e)
         {
             IntPtr h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_SET_LIMITED_INFORMATION
@@ -1047,6 +1134,9 @@ namespace PaviseApp
                     if (!Native.QueryProcessSample(h, out creation, out cpu, out io)) return RestoreResult.Protected;
                     if (creation != e.Creation) return RestoreResult.Gone;
                 }
+                // 先唤醒再还原设置：解冻失败就保留记账等下一轮，
+                // 否则会出现"设置已还原、日志已清、进程仍冻着"的不可恢复态。
+                if (!ResumeForEntry(e, pid)) return RestoreResult.Protected;
                 if (RestoreValues(h, e.OrigPri, e.OrigAff, e.OrigIo, e.OrigPg, allMask, e.OrigCpuSets,
                         e.OrigQoSControl, e.OrigQoSState, e.OrigGpu))
                     return RestoreResult.Restored;
@@ -1107,6 +1197,15 @@ namespace PaviseApp
             if ((reason & SuppressReason.AntiCheat) != 0) e.AntiCheatLevel = level;
             if ((reason & SuppressReason.Background) != 0) e.BackgroundLevel = level;
             e.Level = EffectiveLevel(e);
+            // 反作弊理由永不参与冻结：即使上游资格判定将来被改坏，
+            // 挂起这个最不可逆的动作也不能落到反作弊进程头上。
+            if (e.AntiCheatLevel >= SuppressionLevel.Frozen)
+                e.AntiCheatLevel = SuppressionLevel.Isolated;
+            if ((e.Reasons & SuppressReason.AntiCheat) != 0 && e.Level >= SuppressionLevel.Frozen)
+                e.Level = SuppressionLevel.Isolated;
+            // 置位必须先于日志落盘，清位则等 resume 成功后由 ResumeForEntry 负责，
+            // 所以这里只升不降——降档由 ApplyQueued 走 resume 分支处理。
+            if (e.Level >= SuppressionLevel.Frozen) e.FreezeIntent = true;
         }
 
         private static SuppressionLevel EffectiveLevel(Entry e)
@@ -1202,7 +1301,8 @@ namespace PaviseApp
                         || currentEntry.OrigAff != aff
                         || !ReferenceEquals(currentEntry.OrigCpuSets, cpuSets))
                         { error = "entry-state"; return false; }
-                    applied = ApplyThrottle(h, level, pri, aff, cpuSets, DesiredGpu(currentEntry));
+                    // 入口处的 e.Journaled 前置条件保证了 FreezeIntent 此刻必然已落盘
+                    applied = ApplyThrottleWithFreeze(h, currentEntry, pid, level, pri, aff, cpuSets, DesiredGpu(currentEntry));
                     if (!applied) error = string.IsNullOrEmpty(LastApplyError) ? "apply" : LastApplyError;
                     currentEntry.Applied = applied;
                     ScheduleAfterApply(currentEntry, applied, pid);

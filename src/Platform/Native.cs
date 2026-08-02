@@ -145,6 +145,8 @@ namespace PaviseApp
         private static extern bool GetProcessAffinityMask(IntPtr h, out UIntPtr procMask, out UIntPtr sysMask);
         [DllImport("ntdll.dll")]
         public static extern int NtResumeProcess(IntPtr h);
+        [DllImport("ntdll.dll")]
+        public static extern int NtSuspendProcess(IntPtr h);
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool GetProcessTimes(IntPtr h, out long creation, out long exit, out long kernel, out long user);
 

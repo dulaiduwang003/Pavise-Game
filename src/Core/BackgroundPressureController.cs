@@ -11,7 +11,10 @@ namespace PaviseApp
         None = 0,
         Eco = 1,
         Restrained = 2,
-        Isolated = 3
+        Isolated = 3,
+        // 冻结 = Isolated 的全部设置 + 挂起。排在 Isolated 之上，
+        // 现有所有 level >= Isolated 的判断因此自动适用于本档。
+        Frozen = 4
     }
 
     internal sealed class BackgroundPressureController

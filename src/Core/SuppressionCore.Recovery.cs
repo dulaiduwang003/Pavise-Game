@@ -29,7 +29,8 @@ namespace PaviseApp
                     if (e.OrigPri == uint.MaxValue) continue;
                     lines.Add(kv.Key + "|" + e.Creation + "|" + B64(e.Name) + "|" + e.OrigPri + "|"
                         + e.OrigAff + "|" + e.OrigIo + "|" + e.OrigPg + "|" + CpuSetsText(e.OrigCpuSets)
-                        + "|" + e.OrigQoSControl + "|" + e.OrigQoSState + "|" + e.OrigGpu);
+                        + "|" + e.OrigQoSControl + "|" + e.OrigQoSState + "|" + e.OrigGpu
+                        + "|" + (e.FreezeIntent ? 1 : 0));
                 }
                 if (lines.Count == 1)
                 {
@@ -84,7 +85,7 @@ namespace PaviseApp
             pid = 0;
             string[] a = line.Split('|');
             int io, pg; long creation; uint pri; ulong aff;
-            if ((a.Length != 7 && a.Length != 8 && a.Length != 10 && a.Length != 11)
+            if ((a.Length != 7 && a.Length != 8 && a.Length != 10 && a.Length != 11 && a.Length != 12)
                 || !int.TryParse(a[0], out pid) || !long.TryParse(a[1], out creation)
                 || !uint.TryParse(a[3], out pri) || !ulong.TryParse(a[4], out aff)
                 || !int.TryParse(a[5], out io) || !int.TryParse(a[6], out pg)) return null;
@@ -98,6 +99,13 @@ namespace PaviseApp
             }
             int gpu = -1;
             if (a.Length >= 11 && !int.TryParse(a[10], out gpu)) gpu = -1;
+            // 无法解析的冻结位一律按"可能冻着"处理：多解冻一次无害，漏解冻是不可恢复的
+            bool frozen = false;
+            if (a.Length >= 12)
+            {
+                int flag;
+                frozen = !int.TryParse(a[11], out flag) || flag != 0;
+            }
             string name = Un64(a[2]);
             if (name == null) return null;
             return new Entry
@@ -111,7 +119,8 @@ namespace PaviseApp
                 OrigCpuSets = cpuSets,
                 OrigQoSControl = qosControl,
                 OrigQoSState = qosState,
-                OrigGpu = gpu
+                OrigGpu = gpu,
+                FreezeIntent = frozen
             };
         }
 
@@ -133,7 +142,7 @@ namespace PaviseApp
         public static int HealFromCrash(string statePath)
         {
             if (string.IsNullOrEmpty(statePath) || !File.Exists(statePath)) return 0;
-            int restored = 0;
+            int restored = 0, thawed = 0;
             var keep = new List<string>(); keep.Add("PAVISE_SUPPRESSION_V1");
             try
             {
@@ -171,8 +180,21 @@ namespace PaviseApp
                     try
                     {
                         JournalIdentity identity = IdentifyJournalEntry(h, entry);
+                        // 身份不符说明 pid 已被复用，绝不能对无关进程调 resume
                         if (identity == JournalIdentity.Mismatch) continue;
                         if (identity == JournalIdentity.Unknown) { keep.Add(lines[i]); continue; }
+                        if (entry.FreezeIntent)
+                        {
+                            // 主句柄没有 PROCESS_SUSPEND_RESUME，唤醒要另开一把并重验身份
+                            FreezeIoResult wake = TrySuspendResume(pid, entry.Name, entry.Creation, false);
+                            if (wake == FreezeIoResult.Failed)
+                            {
+                                keep.Add(lines[i]);
+                                Logger.Log("上次残留的冻结进程唤醒失败，已保留记录待重试 [pid " + pid + "]");
+                                continue;
+                            }
+                            if (wake == FreezeIoResult.Done) thawed++;
+                        }
                         if (RestoreValues(h, entry.OrigPri, entry.OrigAff, entry.OrigIo, entry.OrigPg, CpuTopology.AllMask,
                             entry.OrigCpuSets, entry.OrigQoSControl, entry.OrigQoSState, entry.OrigGpu)) restored++;
                         else keep.Add(lines[i]);
@@ -186,6 +208,7 @@ namespace PaviseApp
                 }
                 if (keep.Count == 1) File.Delete(statePath);
                 else AtomicFile.WriteLines(statePath, keep.ToArray(), "压制恢复日志");
+                if (thawed > 0) Logger.Log("崩溃恢复：已唤醒 " + thawed + " 个上次残留的冻结进程");
             }
             catch (Exception ex)
             {
@@ -200,7 +223,8 @@ namespace PaviseApp
             int pid;
             Entry e = ParseJournalLine(raw, out pid);
             if (e == null) return "null";
-            return pid + "|" + e.OrigQoSControl + "|" + e.OrigQoSState + "|" + e.OrigGpu;
+            return pid + "|" + e.OrigQoSControl + "|" + e.OrigQoSState + "|" + e.OrigGpu
+                + "|" + (e.FreezeIntent ? 1 : 0);
         }
 #endif
 
