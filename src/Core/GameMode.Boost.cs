@@ -86,7 +86,6 @@ namespace PaviseApp
             bool competitive = mode == PerformancePreset.Competitive;
             bool custom = mode == PerformancePreset.Custom;
             bool usePauseDl = custom ? pauseDlOn : competitive;
-            bool useNet = custom ? netOn : competitive;
             bool useFg = custom ? fgBoostOn : true;
             bool useSvc = custom ? svcPauseOn : false;
             bool useMmcss = custom ? mmcssOn : competitive;
@@ -94,7 +93,6 @@ namespace PaviseApp
             notifActive = EnvStep("notif", notifQuiet, notifActive, Notif.Quiet, Notif.Restore);
             doActive = EnvStep("do", usePauseDl, doActive, DoTweak.Activate, DoTweak.Restore);
             hzActive = EnvStep("hz", hzGuard, hzActive, DisplayGuard.Activate, DisplayGuard.Restore);
-            netActive = EnvStep("net", useNet, netActive, NetTweak.Activate, NetTweak.Restore);
             fgActive = EnvStep("fg", useFg, fgActive, FgBoost.Activate, FgBoost.Restore);
             svcActive = EnvStep("svc", useSvc, svcActive, SvcPause.Activate, SvcPause.Restore);
             mmcssActive = EnvStep("mmcss", useMmcss, mmcssActive, Mmcss.Activate, Mmcss.Restore);
@@ -165,7 +163,7 @@ namespace PaviseApp
 
         private bool EnvActive()
         {
-            return notifActive || doActive || hzActive || netActive || fgActive || svcActive || mmcssActive || dvrActive || fxActive || wuActive || planActive || timerRaised;
+            return notifActive || doActive || hzActive || fgActive || svcActive || mmcssActive || dvrActive || fxActive || wuActive || planActive || timerRaised;
         }
 
         private bool RestoreEnv()
@@ -175,7 +173,6 @@ namespace PaviseApp
             if (Notif.Restore()) notifActive = false; else ok = false;
             if (DoTweak.Restore()) doActive = false; else ok = false;
             if (DisplayGuard.Restore()) hzActive = false; else ok = false;
-            if (NetTweak.Restore()) netActive = false; else ok = false;
             if (FgBoost.Restore()) fgActive = false; else ok = false;
             if (SvcPause.Restore()) svcActive = false; else ok = false;
             if (Mmcss.Restore()) mmcssActive = false; else ok = false;

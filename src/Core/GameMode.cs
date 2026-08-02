@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 维护游戏模式状态 配置和工作线程
 
 using System;
@@ -79,7 +79,6 @@ namespace PaviseApp
         private const int BoostRetryMax = 3;
         private volatile bool bgSuppressOn;
         private volatile bool boostOn;
-        private volatile bool netOn;
         private volatile bool mmcssOn;
         private volatile bool pauseDlOn;
         private volatile bool fgBoostOn;
@@ -109,7 +108,6 @@ namespace PaviseApp
         private int panicServed;
         private volatile bool panicResult;
         private readonly ManualResetEvent panicDone = new ManualResetEvent(true);
-        private bool netActive;
         private bool fgActive;
         private bool svcActive;
         private bool mmcssActive;
@@ -162,7 +160,6 @@ namespace PaviseApp
                 Logger.Log("CPU 拓扑：非对称 L3（X3D），游戏绑大缓存 CCD 0x" + gameMask.ToString("X") + "，后台压另一 CCD 0x" + throttleMask.ToString("X"));
             bgSuppressOn = Settings.Load("GmSuppress", true);
             boostOn = Settings.Load("GmBoost", true);
-            netOn = Settings.Load("GmNet", true);
             mmcssOn = Settings.Load("GmMmcss", true);
             pauseDlOn = Settings.Load("GmPauseDl", true);
             fgBoostOn = Settings.Load("GmFgBoost", true);
@@ -493,12 +490,6 @@ namespace PaviseApp
                 if (!value) IfeoBoost.RestoreAll();
                 RequestPolicyApply();
             }
-        }
-
-        public bool NetOptimize
-        {
-            get { return netOn; }
-            set { netOn = value; Settings.Save("GmNet", value); RequestPolicyApply(); }
         }
 
         public bool IdleStateDisable

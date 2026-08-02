@@ -1638,6 +1638,9 @@ namespace PaviseApp
             test("ifeo: sandbox roundtrip registers priority and leaves zero residue", TestIfeoSandboxRoundtrip);
             test("render lane: the busy thread is the one identified", TestRenderLaneIdentifiesBusyThread);
             test("render lane: journal codec rejects malformed lines", TestRenderLaneJournalCodec);
+            test("net throttle: only out-of-range values are flagged for repair", TestNetThrottleRangeJudgement);
+            test("device power: only the no-power-down bit is touched", TestDevicePowerBitMerge);
+            test("msi mode: scan yields PCI display/net devices only", TestMsiScanClassFilter);
             }
             finally { try { Directory.Delete(root, true); } catch { } }
 

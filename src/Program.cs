@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 启动程序并处理单实例 自愈和命令行入口
 
 using System;
@@ -195,7 +195,6 @@ namespace PaviseApp
             PowerPlan.HealFromCrash();
             try { UpdatePause.HealFromCrash(); } catch { }
             try { EtwFrameTrace.StopStaleSession(); } catch { }
-            NetTweak.HealFromCrash();
             FgBoost.HealFromCrash();
             GameDvr.HealFromCrash();
             Mmcss.HealFromCrash();
@@ -335,7 +334,6 @@ namespace PaviseApp
                 try { GameDvr.Restore(); } catch { }
                 try { Notif.Restore(); } catch { }
                 try { Mmcss.Restore(); } catch { }
-                try { NetTweak.Restore(); } catch { }
                 try { FgBoost.Restore(); } catch { }
                 try { VisualFx.Restore(); } catch { }
             };

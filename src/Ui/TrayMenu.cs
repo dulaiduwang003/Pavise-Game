@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 构建托盘菜单并同步运行状态
 
 using System;
@@ -275,7 +275,6 @@ namespace PaviseApp
             gameMode.SuppressBackground = true;
             gameMode.BoostGame = true;
             gameMode.PowerPlanSwitch = true;
-            gameMode.NetOptimize = true;
             gameMode.MmcssPriority = true;
             gameMode.PauseDownloads = true;
             gameMode.FgSchedBoost = true;

@@ -11,7 +11,8 @@ namespace PaviseApp
     internal partial class PanelForm
     {
         private Toggle swHags, swVbs, swMpo, swIrqAffinity, swNetAffinity, swUsbAffinity, swGmGuard, swNagle;
-        private SettingCard cardVbs;
+        private Toggle swNetThrottle, swMsi, swDevPower;
+        private SettingCard cardVbs, cardNetThrottle, cardMsi;
         private int envBusy;
         private static readonly object netQosSync = new object();
 
@@ -67,6 +68,47 @@ namespace PaviseApp
             swNagle = MakeSwitch(NagleTweak.EnabledByPavise, OnNagleToggle);
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nagle"), Lang.T("set.nagle.n"), swNagle, out cardH);
             sy += cardH + 8;
+
+            swNetThrottle = MakeSwitch(NetTweak.RepairedByPavise, OnNetThrottleToggle);
+            swNetThrottle.Enabled = NetTweak.NeedsRepair() || NetTweak.RepairedByPavise;
+            cardNetThrottle = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76,
+                Lang.T("set.netthrottle"), Lang.T("set.netthrottle.n") + "\r\n" + NetTweak.Describe(), swNetThrottle, out cardH);
+            sy += cardH + 8;
+
+            swDevPower = MakeSwitch(DevicePowerTweak.EnabledByPavise, OnDevPowerToggle);
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.devpower"), Lang.T("set.devpower.n"), swDevPower, out cardH);
+            sy += cardH + 8;
+
+            bool msiIdle = MsiModeTweak.Disabled().Count == 0 && !MsiModeTweak.EnabledByPavise;
+            swMsi = MakeSwitch(MsiModeTweak.EnabledByPavise, OnMsiToggle);
+            swMsi.Enabled = !msiIdle;
+            cardMsi = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.msi"),
+                msiIdle ? Lang.T("msi.none") : Lang.T("set.msi.n"), swMsi, out cardH);
+            sy += cardH + 8;
+        }
+
+        private void OnNetThrottleToggle(object s, EventArgs e)
+        {
+            if (!RequireElevationFor(swNetThrottle, NetTweak.RepairedByPavise)) return;
+            if (swNetThrottle.Checked) NetTweak.Repair(); else NetTweak.Restore();
+            swNetThrottle.SetSilently(NetTweak.RepairedByPavise);
+            if (cardNetThrottle != null)
+                cardNetThrottle.Desc = Lang.T("set.netthrottle.n") + "\r\n" + NetTweak.Describe();
+        }
+
+        private void OnDevPowerToggle(object s, EventArgs e)
+        {
+            if (!RequireElevationFor(swDevPower, DevicePowerTweak.EnabledByPavise)) return;
+            if (swDevPower.Checked) DevicePowerTweak.Enable(); else DevicePowerTweak.Restore();
+            swDevPower.SetSilently(DevicePowerTweak.EnabledByPavise);
+        }
+
+        private void OnMsiToggle(object s, EventArgs e)
+        {
+            if (!RequireElevationFor(swMsi, MsiModeTweak.EnabledByPavise)) return;
+            bool ok = swMsi.Checked ? MsiModeTweak.Enable() : MsiModeTweak.Restore();
+            if (ok) MessageBox.Show(this, Lang.T("irqaffinity.reboot"), "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            swMsi.SetSilently(MsiModeTweak.EnabledByPavise);
         }
 
         private void OnGameModeGuardToggle(object s, EventArgs e)
@@ -216,6 +258,9 @@ namespace PaviseApp
             if (swUsbAffinity != null) swUsbAffinity.SetSilently(UsbInterruptAffinityTweak.EnabledByPavise);
             if (swGmGuard != null) swGmGuard.SetSilently(GameModeGuard.EnabledByPavise);
             if (swNagle != null) swNagle.SetSilently(NagleTweak.EnabledByPavise);
+            if (swNetThrottle != null) swNetThrottle.SetSilently(NetTweak.RepairedByPavise);
+            if (swDevPower != null) swDevPower.SetSilently(DevicePowerTweak.EnabledByPavise);
+            if (swMsi != null) swMsi.SetSilently(MsiModeTweak.EnabledByPavise);
         }
     }
 }

@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 集中维护界面多语言文本
 
 using System;
@@ -244,6 +244,16 @@ namespace PaviseApp
             { "set.gmguard", new[]{ "Windows 游戏模式守护" } },
             { "set.gmguard.n", new[]{ "把被旧优化教程关掉的系统游戏模式拨回开启：对局中阻止驱动安装与重启弹窗、调度优先游戏。现代系统实测平均帧不变、1% 低帧略有改善；本来就开着则此项无变化。原值可恢复，立即生效" } },
             { "set.nagle", new[]{ "TCP 低延迟（禁用 Nagle 合包与延迟 ACK）" } },
+            { "set.netthrottle", new[]{ "网络限流值校正" } },
+            { "set.netthrottle.n", new[]{ "大量优化教程教人把 NetworkThrottlingIndex 改成 0xFFFFFFFF「解除限流」。实测这样做会抬高网络驱动的 DPC 延迟，而游戏流量比限流阈值低三个数量级、根本碰不到它——纯亏。本项检测到被改坏时改回系统默认值 10，重启后生效。当前值正常则不做任何改动" } },
+            { "netthrottle.ok", new[]{ "当前值 {0}，在正常范围内，无需校正" } },
+            { "netthrottle.broken", new[]{ "当前值 {0} 已超出有效范围，建议校正回系统默认 10" } },
+            { "netthrottle.absent", new[]{ "当前未设置该值，即系统默认，无需校正" } },
+            { "set.msi", new[]{ "启用 MSI 消息信号中断（显卡 / 网卡）" } },
+            { "set.msi.n", new[]{ "消息信号中断比传统线式中断更快，且能避开共享 IRQ 造成的延迟。仅对本机显卡与网卡中被驱动显式关闭的设备启用；存储与音频控制器有蓝屏和爆音先例，一律不碰。需重启生效，关闭本项即删键回到系统默认" } },
+            { "msi.none", new[]{ "本机显卡与网卡均已启用 MSI，此项无事可做" } },
+            { "set.devpower", new[]{ "禁止系统为省电关闭网卡" } },
+            { "set.devpower.n", new[]{ "对应设备管理器里网卡属性的「允许计算机关闭此设备以节约电源」。笔记本上网卡被断电再唤醒会造成可感知的卡顿与丢包，无线尤其明显。只改这一位，不动唤醒相关设置，原值可恢复，立即生效" } },
             { "set.nagle.n", new[]{ "逐网卡写入 TcpAckFrequency / TCPNoDelay。只对走 TCP 的游戏有效（MMO、回合制、Minecraft 等，历史实测最多降百毫秒级）；MOBA / FPS 对局流量走 UDP，严格无收益。新建连接生效，原值逐项可恢复" } },
             { "nagle.applied", new[]{ "已写入所有网卡，TCP 新建连接后生效；部分常驻在线的游戏需要重启游戏才会重新建连。" } },
             { "set.mpo", new[]{ "禁用多平面叠加（MPO）" } },
@@ -304,7 +314,6 @@ namespace PaviseApp
             { "gm.ifeo.sub", new[]{ "游戏进程打不开句柄时，登记 IFEO PerfOptions 让系统在进程创建时直接给高优先级——Process Lasso 同款机制，EAC 系游戏已被官方支持文档采纳。只写 CpuPriorityClass=3，绝不碰 Debugger 等劫持向量；下次启动游戏生效。极小概率某次反作弊更新后拒绝启动，关闭本开关即清干净" } },
             { "gm.aggressive", new[]{ "竞技级压制范围" } },
             { "gm.aggressive.sub", new[]{ "开启后与竞技模式完全一致：前台窗口和可见窗口程序（浏览器 / 语音 / IDE 等）不再自动豁免。游戏家族、反作弊、白名单、其它会话及会话 / 认证 / 合成器 / 音频等核心服务仍受保护（不是整个 C:\\Windows 目录）；电源计划按竞技档调参。竞技始终启用；仅自定义可选，默认关闭" } },
-            { "gm.net", new[]{ "解除多媒体网络限流（仅边玩边放视频 / 音乐时可能有影响）" } },
             { "gm.fgboost", new[]{ "前台调度稳定（固定时间片，防满载时语音 / 推流被饿死）" } },
             { "gm.mmcss", new[]{ "MMCSS 多媒体调度优先" } },
             { "gm.pausedl", new[]{ "暂停后台下载（Windows 更新 / 传递优化）" } },

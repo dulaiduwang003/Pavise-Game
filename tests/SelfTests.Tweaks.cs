@@ -71,6 +71,48 @@ namespace PaviseApp
             }
         }
 
+        // 校正器只该在值被改坏时动手：正常值和未设置都必须判为无需改动，
+        // 否则会把用户机器上本来正确的默认值反复重写。
+        private static void TestNetThrottleRangeJudgement()
+        {
+            Eq(10, NetTweak.SystemDefault);
+            int? cur = NetTweak.Current();
+            bool needs = NetTweak.NeedsRepair();
+            if (!cur.HasValue) Eq(false, needs);
+            else Eq(cur.Value < 1 || cur.Value > 70, needs);
+            if (string.IsNullOrEmpty(NetTweak.Describe()))
+                throw new Exception("net throttle description was empty");
+        }
+
+        // 只该置位 0x08（禁止断电），不得抹掉用户原有的唤醒位
+        private static void TestDevicePowerBitMerge()
+        {
+            Eq(0x08, DevicePowerTweak.Merge(null, true));
+            Eq(0x18, DevicePowerTweak.Merge(0x10, true));
+            Eq(0x18, DevicePowerTweak.Merge(0x18, true));
+            Eq(0x10, DevicePowerTweak.Merge(0x18, false));
+            Eq(0, DevicePowerTweak.Merge(0x08, false));
+        }
+
+        // MSI 扫描必须只返回显卡与网卡：存储控制器强开有蓝屏先例
+        private static void TestMsiScanClassFilter()
+        {
+            foreach (MsiModeTweak.Candidate c in MsiModeTweak.Scan())
+            {
+                if (string.IsNullOrEmpty(c.InstanceId))
+                    throw new Exception("MSI candidate had an empty instance id");
+                if (!c.InstanceId.StartsWith(@"PCI\", StringComparison.OrdinalIgnoreCase))
+                    throw new Exception("MSI candidate was not a PCI device: " + c.InstanceId);
+            }
+            foreach (MsiModeTweak.Candidate c in MsiModeTweak.Disabled())
+            {
+                Eq(true, c.HasKey);
+                Eq(0, c.Value.Value);
+            }
+            Eq(0, MsiModeTweak.ParseList("").Length);
+            Eq(2, MsiModeTweak.ParseList("a;b").Length);
+        }
+
         private static void TestRenderLaneJournalCodec()
         {
             int pid, tid, pri; long creation;
