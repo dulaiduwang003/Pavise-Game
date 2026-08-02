@@ -121,6 +121,66 @@ namespace PaviseApp
             }
         }
 
+        // 静默驻留闸：有活动就清零，必须连续静默满窗口才放行
+        private static void TestFreezeDwellGate()
+        {
+            var gate = new FreezeDwellTracker();
+            long t = DateTime.UtcNow.Ticks;
+            long second = TimeSpan.TicksPerSecond;
+            long busyPerSecond = (long)(second * 0.5); // 半个核，远超静默阈值
+
+            // 首次观察只建基线，不可能立即放行
+            Eq(false, gate.Observe(100, "probe", 7, 0, t));
+
+            long cpu = 0;
+            for (int i = 1; i <= FreezeDwellTracker.DwellSeconds; i++)
+                Eq(i >= FreezeDwellTracker.DwellSeconds + 1,
+                    gate.Observe(100, "probe", 7, cpu, t + second * i));
+            // 静默满 30 秒之后才放行
+            Eq(true, gate.Observe(100, "probe", 7, cpu, t + second * (FreezeDwellTracker.DwellSeconds + 1)));
+
+            // 出现活动立即清零，必须重新累积
+            cpu += busyPerSecond;
+            long busyAt = t + second * (FreezeDwellTracker.DwellSeconds + 2);
+            Eq(false, gate.Observe(100, "probe", 7, cpu, busyAt));
+            Eq(false, gate.Observe(100, "probe", 7, cpu, busyAt + second * 5));
+
+            // pid 复用（创建时间变了）也必须重新累积
+            var reuse = new FreezeDwellTracker();
+            Eq(false, reuse.Observe(101, "probe", 7, 0, t));
+            Eq(false, reuse.Observe(101, "probe", 9, 0, t + second * 60));
+        }
+
+        // 反作弊理由永远够不到冻结档，即使上游资格判定被改坏
+        private static void TestAntiCheatNeverFreezes()
+        {
+            var core = new SuppressionCore();
+            using (Process probe = Process.Start(new ProcessStartInfo("cmd.exe", "/c pause")
+            { UseShellExecute = false, RedirectStandardInput = true, CreateNoWindow = true }))
+            {
+                Thread.Sleep(250);
+                try
+                {
+                    core.Acquire(probe.Id, probe.ProcessName, SuppressReason.AntiCheat, null,
+                        SuppressionLevel.Frozen);
+                    SuppressionLevel actual = core.LevelOf(probe.Id, SuppressReason.AntiCheat);
+                    if (actual >= SuppressionLevel.Frozen)
+                        throw new Exception("an anti-cheat reason reached the frozen tier: " + actual);
+                    if (core.LevelOf(probe.Id) >= SuppressionLevel.Frozen)
+                        throw new Exception("the effective tier reached frozen through an anti-cheat reason");
+                    // 进程必须仍在运行——被冻住的话下面这句读不到响应
+                    probe.StandardInput.Close();
+                    if (!probe.WaitForExit(5000))
+                        throw new Exception("the anti-cheat probe was suspended despite the guard");
+                }
+                finally
+                {
+                    core.Release(probe.Id, SuppressReason.AntiCheat);
+                    try { if (!probe.HasExited) probe.Kill(); } catch { }
+                }
+            }
+        }
+
         // 挂起计数是累加的：多挂一次就多欠一次 resume，
         // 所以核验路径反复走过之后，一次解冻仍必须能唤醒进程
         private static void TestSuspendIsNotReentrant()

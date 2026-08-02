@@ -17,7 +17,7 @@ namespace PaviseApp
 
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(Theme.S(460), Theme.S(686));
+            ClientSize = new Size(Theme.S(460), Theme.S(722));
             BackColor = Theme.Bg;
             Font = Theme.UI(9.5f, false);
 
@@ -39,6 +39,8 @@ namespace PaviseApp
             int y = Theme.S(48);
             AddRow(ref y, Lang.T("gm.suppress"), gameMode.SuppressBackground, v => gameMode.SuppressBackground = v);
             AddRow(ref y, Lang.T("gm.gpudemote"), gameMode.GpuDemote, v => gameMode.GpuDemote = v);
+            AddConfirmRow(ref y, Lang.T("gm.freeze"), gameMode.FreezeBackground,
+                Lang.T("gm.freeze.warn"), v => gameMode.FreezeBackground = v);
             AddRow(ref y, Lang.T("set.trim"), gameMode.TrimWorkingSet, v => gameMode.TrimWorkingSet = v);
             AddRow(ref y, Lang.T("gm.boost"), gameMode.BoostGame, v => gameMode.BoostGame = v);
             AddRow(ref y, Lang.T("gm.strict"), gameMode.StrictCoreIsolation, v => gameMode.StrictCoreIsolation = v);
@@ -70,6 +72,29 @@ namespace PaviseApp
             MouseDown += DragMove;
             KeyPreview = true;
             KeyDown += (s, e) => { if (e.KeyCode == Keys.Escape || e.KeyCode == Keys.Enter) DialogResult = DialogResult.OK; };
+        }
+
+        // 开启前必须让用户看到代价：挂起是压制链条里唯一不可逆的动作
+        private void AddConfirmRow(ref int y, string text, bool value, string warning, Action<bool> apply)
+        {
+            var sw = new Toggle();
+            sw.Text = text;
+            sw.SetBounds(Theme.S(20), y, Theme.S(424), Theme.S(30));
+            sw.SetSilently(value);
+            sw.CheckedChanged += delegate
+            {
+                if (!sw.Checked) { apply(false); return; }
+                if (MessageBox.Show(this, warning, "Pavise",
+                        MessageBoxButtons.OKCancel, MessageBoxIcon.Warning,
+                        MessageBoxDefaultButton.Button2) != DialogResult.OK)
+                {
+                    sw.SetSilently(false);
+                    return;
+                }
+                apply(true);
+            };
+            Controls.Add(sw);
+            y += Theme.S(36);
         }
 
         private void AddRow(ref int y, string text, bool value, Action<bool> apply)

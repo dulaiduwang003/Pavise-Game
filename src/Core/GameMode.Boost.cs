@@ -204,6 +204,8 @@ namespace PaviseApp
         private void ReleaseBackground()
         {
             pressure.Clear();
+            // 驻留历史必须一起清：否则关掉再开时会拿陈旧的静默记录立即重冻
+            freezeDwell.Clear();
             if (!core.AnyWith(SuppressReason.Background)) return;
             int n = 0;
             foreach (int pid in core.PidsWith(SuppressReason.Background))
@@ -723,6 +725,7 @@ namespace PaviseApp
             bool envClean = RestoreEnv();
             ClearEnvRetryState();
             pressure.Clear();
+            freezeDwell.Clear();
             if (clean) CrashGuard.ClearBoost();
             Logger.Log("游戏模式解除（" + reason + "）：恢复 " + ok + " 个进程");
             ReportFinish();

@@ -1574,6 +1574,8 @@ namespace PaviseApp
             test("GPU demote: journal parses the gpu field and accepts legacy lines", TestGpuJournalField);
             test("GPU demote: scheduling class write and restore verified on self", TestGpuPriorityRoundtrip);
             test("GPU demote: a GPU-less process still suppresses and restores cleanly", () => TestGpuDemoteGpulessProcess(root));
+            test("freeze: dwell gate needs uninterrupted quiet before it opens", TestFreezeDwellGate);
+            test("freeze: an anti-cheat reason can never reach the frozen tier", TestAntiCheatNeverFreezes);
             test("freeze: crash journal wakes a process left suspended", TestFrozenJournalThaw);
             test("freeze: crash recovery never resumes a reused pid", TestFrozenJournalRejectsPidReuse);
             test("freeze: one resume wakes a singly-suspended process", TestSuspendIsNotReentrant);

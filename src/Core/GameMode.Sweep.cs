@@ -140,6 +140,14 @@ namespace PaviseApp
             HashSet<int> userFacingFamily = aggressive ? EmptyPidSet
                 : CollectUserFacingFamily(foregroundPid, whitelist);
             bool safePartition = CpuTopology.HasSafeBackgroundPartition();
+            // 冻结只在激进档生效：常规档的 Isolated 是给"持续大户"的，
+            // 而大户按定义不静默，静默闸本就会拦下；把范围收窄可以让
+            // 常规档完全不受这个不可逆动作影响。
+            bool freezeEligible = freezeOn && bgSuppressOn && aggressive;
+            // 有可见顶层窗口（含最小化）的进程永不冻结：冻死的窗口不重绘、
+            // 关不掉、切过去是白板，未保存内容直接丢。枚举只在冻结开启时做。
+            HashSet<int> visibleWindows = freezeEligible
+                ? GameSessionDetector.VisibleWindowPids(true) : EmptyPidSet;
 
             int rendererPid = 0;
             string activeGameRoot = null;
@@ -243,6 +251,13 @@ namespace PaviseApp
                     else pressure.Forget(pid);
                     SuppressionLevel desired = ResolveBackgroundLevel(mode, strictCoreOn, adaptive, safePartition);
                     if (!bgSuppressOn) desired = SuppressionLevel.None;
+                    if (freezeEligible && desired >= SuppressionLevel.Isolated
+                        && creation > 0
+                        && pid != foregroundPid
+                        && !visibleWindows.Contains(pid)
+                        && freezeDwell.Observe(pid, nm, creation, cpu, DateTime.UtcNow.Ticks))
+                        desired = SuppressionLevel.Frozen;
+                    else if (!freezeEligible) freezeDwell.Forget(pid);
 
                     string tracked = core.NameOf(pid);
                     if (tracked != null)
@@ -328,6 +343,7 @@ namespace PaviseApp
                 if (!live.Contains(pid)) { if (core.Release(pid, SuppressReason.Background)) ReportUntrack(pid); }
 
             pressure.Prune(live);
+            freezeDwell.Prune(live);
 
             if (first)
             {
@@ -344,6 +360,8 @@ namespace PaviseApp
                             : "常规全局 Eco，持续大户再升级");
                     Logger.Log("后台策略：" + policy
                         + (SuppressionCore.GpuDemoteEnabled ? "，GPU 让位已启用" : "")
+                        + (freezeEligible ? "，冻结已启用（静默 " + FreezeDwellTracker.DwellSeconds
+                            + "s 且无可见窗口才冻）" : "")
                         + "，首轮处理 " + done + " 个用户后台"
                         + (retrying > 0 ? "（" + retrying + " 个写入未完全生效，按退避重试）" : "")
                         + (denied > 0 ? "（" + denied + " 个句柄受保护已跳过）" : ""));

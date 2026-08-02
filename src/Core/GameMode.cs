@@ -99,6 +99,7 @@ namespace PaviseApp
         private volatile bool pauseUpdateOn;
         private volatile bool strictCoreOn;
         private volatile bool aggressiveOn;
+        private volatile bool freezeOn;
         private volatile bool gpuDemoteOn;
         private volatile bool panicReq;
         private int panicSeq;
@@ -120,6 +121,7 @@ namespace PaviseApp
         private readonly ulong gameMask;
         private readonly ulong strictMask;
         private readonly BackgroundPressureController pressure = new BackgroundPressureController();
+        private readonly FreezeDwellTracker freezeDwell = new FreezeDwellTracker();
         private readonly DpcSampler dpcSampler = new DpcSampler();
         private PerformancePreset preset;
         private GameDetection activeDetection;
@@ -177,6 +179,7 @@ namespace PaviseApp
             planSwitch = Settings.Load("PowerPlanOn", true);
             strictCoreOn = Settings.Load("GmStrictCores", false);
             aggressiveOn = Settings.Load("GmAggressive", false);
+            freezeOn = Settings.Load("GmFreeze", false);
             gpuDemoteOn = Settings.Load("GmGpuDemote", false);
             SuppressionCore.GpuDemoteEnabled = gpuDemoteOn;
             int presetRaw;
@@ -456,6 +459,12 @@ namespace PaviseApp
         {
             get { return gpuDemoteOn; }
             set { gpuDemoteOn = value; SuppressionCore.GpuDemoteEnabled = value; Settings.Save("GmGpuDemote", value); RequestPolicyApply(); }
+        }
+
+        public bool FreezeBackground
+        {
+            get { return freezeOn; }
+            set { freezeOn = value; Settings.Save("GmFreeze", value); RequestPolicyApply(); }
         }
 
         public bool NetOptimize
