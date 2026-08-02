@@ -36,6 +36,10 @@ namespace PaviseApp
             Section(scroll, Lang.T("v15.policy.core"), 6, sy); sy += 24;
             swPolicyBackground = AddPolicyToggle(scroll, ref sy, Lang.T("v14.bg.master"), Lang.T("v14.bg.master.sub"),
                 delegate { return gameMode.SuppressBackground; }, delegate(bool v) { gameMode.SuppressBackground = v; });
+            AddPolicyToggle(scroll, ref sy, Lang.T("gm.gpudemote"), Lang.T("gm.gpudemote.sub"),
+                delegate { return gameMode.GpuDemote; }, delegate(bool v) { gameMode.GpuDemote = v; });
+            AddPolicyConfirmToggle(scroll, ref sy, Lang.T("gm.freeze"), Lang.T("gm.freeze.sub"), Lang.T("gm.freeze.warn"),
+                delegate { return gameMode.FreezeBackground; }, delegate(bool v) { gameMode.FreezeBackground = v; });
             var btnPolicyWhite = new PillButton(Lang.T("v14.manage.white"), BtnKind.Primary);
 
             btnPolicyWhite.Size = new Size(Theme.S(164), Theme.S(34));
@@ -87,6 +91,30 @@ namespace PaviseApp
             AddPolicyToggle(scroll, ref sy, Lang.T("gm.pausewu"), Lang.T("gm.pausewu.sub"),
                 delegate { return gameMode.PauseWindowsUpdate; }, delegate(bool v) { gameMode.PauseWindowsUpdate = v; });
             RefreshPolicyPresentation();
+        }
+
+        // 开启前必须让用户看到代价：挂起是压制链条里唯一不可逆的动作
+        private Toggle AddPolicyConfirmToggle(
+            Control parent, ref int y, string title, string desc, string warning, Func<bool> read, Action<bool> write)
+        {
+            Toggle sw = MakeSwitch(read(), null);
+            sw.CheckedChanged += delegate
+            {
+                if (!sw.Checked) { write(false); return; }
+                if (MessageBox.Show(this, warning, "Pavise",
+                        MessageBoxButtons.OKCancel, MessageBoxIcon.Warning,
+                        MessageBoxDefaultButton.Button2) != DialogResult.OK)
+                {
+                    sw.SetSilently(false);
+                    return;
+                }
+                write(true);
+            };
+            int cardH;
+            MakeAutoCard(parent, 6, y, ScrollContentW, 78, title, desc, sw, out cardH);
+            y += cardH + 8;
+            policySync.Add(delegate { sw.SetSilently(read()); });
+            return sw;
         }
 
         private Toggle AddPolicyToggle(Control parent, ref int y, string title, string desc, Func<bool> read, Action<bool> write)

@@ -39,11 +39,6 @@ namespace PaviseApp
                 Run(report);
                 return true;
             }
-            if (args[0] == "--config-screenshot" && args.Length >= 2)
-            {
-                RunConfigScreenshot(args[1], args.Length >= 3 ? args[2] : "zh");
-                return true;
-            }
             if (args[0] == "--detector-probe" && args.Length >= 4)
             {
                 int pid;
@@ -608,39 +603,6 @@ namespace PaviseApp
             }
             catch (Exception ex) { File.WriteAllText(output, "ERROR|" + ex.Message, Encoding.UTF8); Environment.ExitCode = 4; }
             finally { if (all != null) foreach (Process p in all) p.Dispose(); }
-        }
-
-        private static void RunConfigScreenshot(string output, string language)
-        {
-            string data = Path.Combine(Path.GetTempPath(), "PaviseConfigShot_" + Process.GetCurrentProcess().Id);
-            try
-            {
-                Directory.CreateDirectory(data);
-                Dpi.Init();
-                Lang.Init();
-                Lang.Cur = language == "en" ? 1 : (language == "ja" ? 2 : 0);
-                Application.EnableVisualStyles();
-                Application.SetCompatibleTextRenderingDefault(false);
-                using (var dlg = new GameModeConfigDialog(new GameMode(data, new SuppressionCore())))
-                {
-                    dlg.StartPosition = FormStartPosition.Manual;
-                    dlg.Location = new Point(-20000, -20000);
-                    dlg.Show();
-                    DateTime paintReady = DateTime.UtcNow.AddMilliseconds(450);
-                    while (DateTime.UtcNow < paintReady)
-                    {
-                        Application.DoEvents();
-                        Thread.Sleep(15);
-                    }
-                    using (var bmp = new Bitmap(dlg.ClientSize.Width, dlg.ClientSize.Height))
-                    {
-                        dlg.DrawToBitmap(bmp, new Rectangle(Point.Empty, dlg.ClientSize));
-                        bmp.Save(output, System.Drawing.Imaging.ImageFormat.Png);
-                    }
-                    dlg.Hide();
-                }
-            }
-            finally { try { Directory.Delete(data, true); } catch { } }
         }
 
         private static int CountPlaceholders(string s)
