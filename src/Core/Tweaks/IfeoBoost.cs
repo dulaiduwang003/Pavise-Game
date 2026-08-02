@@ -12,8 +12,13 @@ namespace PaviseApp
         private const string ListKey = "IfeoList";
         private const int HighPriority = 3;
 
+#if PAVISE_SELFTEST
         internal static RegistryKey Hive = Registry.LocalMachine;
         internal static string RootOverride;
+#else
+        private static readonly RegistryKey Hive = Registry.LocalMachine;
+        private static readonly string RootOverride = null;
+#endif
 
         private static readonly object lk = new object();
 
