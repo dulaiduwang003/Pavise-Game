@@ -73,6 +73,12 @@ namespace PaviseApp
                 RunNetProbe(args[1]);
                 return true;
             }
+            if (args[0] == "--lane-probe" && args.Length >= 2)
+            {
+                RunLaneProbe(args[1], args.Length >= 3 ? args[2] : null,
+                    args.Length >= 4 ? args[3] : null);
+                return true;
+            }
             if (args[0] == "--host-probe" && args.Length >= 2)
             {
                 RunGameHostProbe(args[1], args.Length >= 3 ? args[2] : null);
@@ -312,6 +318,33 @@ namespace PaviseApp
                 }
             }
             catch { return false; }
+        }
+
+        // 用法：--lane-probe <输出文件> [进程名或pid] [轮次]
+        // 不给目标时自动找当前会话里 CPU 占用最高的游戏候选
+        private static void RunLaneProbe(string output, string target, string roundsArg)
+        {
+            int rounds;
+            if (!int.TryParse(roundsArg ?? "", out rounds) || rounds < 3) rounds = 12;
+            int pid = -1;
+            if (!string.IsNullOrEmpty(target) && !int.TryParse(target, out pid)) pid = -1;
+            if (pid <= 0 && !string.IsNullOrEmpty(target))
+            {
+                string want = target.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                    ? target.Substring(0, target.Length - 4) : target;
+                Process[] found = Process.GetProcessesByName(want);
+                try { if (found.Length > 0) pid = found[0].Id; }
+                finally { foreach (Process p in found) p.Dispose(); }
+            }
+            if (pid <= 0)
+            {
+                File.WriteAllText(output, "未找到目标进程，请传入进程名或 pid。", Encoding.UTF8);
+                Environment.ExitCode = 2;
+                return;
+            }
+            ThreadLaneProbe.Report report = ThreadLaneProbe.Run(pid, rounds, 500);
+            File.WriteAllText(output, ThreadLaneProbe.Format(report), Encoding.UTF8);
+            Environment.ExitCode = string.IsNullOrEmpty(report.Error) ? 0 : 3;
         }
 
         private static void RunNetProbe(string output)
