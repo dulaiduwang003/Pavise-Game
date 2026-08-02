@@ -31,10 +31,11 @@ namespace PaviseApp
 
             var guard = MakeConsolePanel(pageOverview, rightX, y, rightW, 120, true);
             CardLabel(guard, Lang.T("v15.guard.state"), 18, 12, rightW - 92, 18, 7.8f, true, Theme.Faint);
-            statusDot = new StatusDot(); statusDot.SetBounds(Theme.S(15), Theme.S(39), Theme.S(22), Theme.S(22));
+            statusDot = new StatusDot(); statusDot.SetBounds(Theme.S(15), Theme.S(41), Theme.S(22), Theme.S(22));
             statusDot.Bg = Theme.Card; statusDot.Color = Theme.Dim;
 
             lblStatus = CardLabel(guard, "…", 47, 30, rightW - 114, 44, 9.2f, true, Theme.Fg);
+            lblStatus.TextAlign = ContentAlignment.MiddleLeft;
             swGame = MakeSwitch(gameMode.Enabled, delegate
             {
                 gameMode.Enabled = swGame.Checked;
