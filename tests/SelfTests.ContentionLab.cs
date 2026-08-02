@@ -111,6 +111,7 @@ namespace PaviseApp
 
             var lowGains = new List<double>();
             var medGains = new List<double>();
+            var partGains = new List<double>();
             try
             {
                 for (int i = 0; i < hogs; i++)
@@ -123,36 +124,38 @@ namespace PaviseApp
                 victim.Start();
                 Thread.Sleep(2000);
 
-                sb.AppendLine("轮次  段  帧数     中位ms   p99ms    1%最差ms");
+                sb.AppendLine("本机分区: 后台核 " + MaskText(CpuTopology.ThrottleMask)
+                    + " | 竞技游戏核 " + MaskText(CpuTopology.StrictBoostMask)
+                    + " | 分区可用=" + CpuTopology.HasSafeBackgroundPartition());
+                sb.AppendLine();
+                sb.AppendLine("轮次  段            帧数     中位ms   p99ms    1%最差ms");
                 for (int r = 1; r <= rounds; r++)
                 {
                     PhaseStat a = RunPhase(victim, seconds);
-                    sb.AppendLine(Row(r, "A 放任", a));
+                    sb.AppendLine(Row(r, "A 放任      ", a));
 
-                    int applied = 0;
-                    foreach (Process p in spawned)
-                    {
-                        try
-                        {
-                            if (core.Acquire(p.Id, p.ProcessName, SuppressReason.Background, null,
-                                    SuppressionLevel.Isolated) != AcquireResult.ApplyFailed) applied++;
-                        }
-                        catch { }
-                    }
+                    int nPri = Apply(core, spawned, SuppressionLevel.Restrained);
                     Thread.Sleep(1200);
                     PhaseStat b = RunPhase(victim, seconds);
-                    sb.AppendLine(Row(r, "B 压制", b));
-
+                    sb.AppendLine(Row(r, "B 仅降优先级", b));
                     core.ReleaseReason(SuppressReason.Background);
                     Thread.Sleep(1200);
 
-                    if (a.OnePercentLow > 0 && b.OnePercentLow > 0 && applied == hogs)
+                    int nIso = Apply(core, spawned, SuppressionLevel.Isolated);
+                    Thread.Sleep(1200);
+                    PhaseStat c = RunPhase(victim, seconds);
+                    sb.AppendLine(Row(r, "C 降级+分区 ", c));
+                    core.ReleaseReason(SuppressReason.Background);
+                    Thread.Sleep(1200);
+
+                    if (a.OnePercentLow > 0 && b.OnePercentLow > 0 && c.OnePercentLow > 0
+                        && nPri == hogs && nIso == hogs)
                     {
                         lowGains.Add((a.OnePercentLow - b.OnePercentLow) / a.OnePercentLow * 100.0);
-                        medGains.Add((a.Median - b.Median) / a.Median * 100.0);
+                        medGains.Add((a.OnePercentLow - c.OnePercentLow) / a.OnePercentLow * 100.0);
+                        partGains.Add((b.OnePercentLow - c.OnePercentLow) / b.OnePercentLow * 100.0);
                     }
                 }
-
                 sb.AppendLine();
                 sb.AppendLine("=== 结论 ===");
                 if (lowGains.Count < 2)
@@ -161,31 +164,30 @@ namespace PaviseApp
                 }
                 else
                 {
-                    var sortedLow = lowGains.ToArray(); Array.Sort(sortedLow);
-                    var sortedMed = medGains.ToArray(); Array.Sort(sortedMed);
-                    double medLow = sortedLow[sortedLow.Length / 2];
-                    double medMed = sortedMed[sortedMed.Length / 2];
-                    int positive = 0;
-                    foreach (double g in lowGains) if (g > 0) positive++;
-
-                    sb.AppendLine("有效配对: " + lowGains.Count);
-                    sb.AppendLine("1% 最差帧改善（各轮中位）: " + medLow.ToString("F1") + "%");
-                    sb.AppendLine("中位帧改善（各轮中位）: " + medMed.ToString("F1") + "%");
-                    sb.AppendLine("改善为正的轮次: " + positive + "/" + lowGains.Count);
-                    sb.AppendLine("各轮 1% 改善: " + string.Join(", ",
-                        Array.ConvertAll(lowGains.ToArray(), g => g.ToString("F0") + "%")));
+                    sb.AppendLine("以 1% 最差帧为准，各轮改善的中位值：");
+                    sb.AppendLine("  仅降优先级 vs 放任 : " + Med(lowGains).ToString("F1") + "%");
+                    sb.AppendLine("  降级+分区 vs 放任  : " + Med(medGains).ToString("F1") + "%");
+                    sb.AppendLine("  分区的额外贡献     : " + Med(partGains).ToString("F1") + "%");
                     sb.AppendLine();
-                    bool consistent = positive == lowGains.Count;
-                    if (consistent && medLow > 20)
-                        sb.AppendLine("判定: 压制对卡顿有效 —— 每一轮尾部帧都改善，中位改善 "
-                            + medLow.ToString("F0") + "%。中位帧" +
-                            (Math.Abs(medMed) < 3 ? "基本不变，符合「压制减少卡顿而非提高平均帧」的预期。"
-                                                  : "同时变化 " + medMed.ToString("F1") + "%。"));
-                    else if (positive * 2 < lowGains.Count)
-                        sb.AppendLine("判定: 未见收益 —— 多数轮次尾部帧未改善。");
+                    sb.AppendLine("  仅降优先级各轮: " + Join(lowGains));
+                    sb.AppendLine("  降级+分区各轮 : " + Join(medGains));
+                    sb.AppendLine("  分区增量各轮  : " + Join(partGains));
+                    sb.AppendLine();
+                    int partPositive = 0;
+                    foreach (double g in partGains) if (g > 0) partPositive++;
+                    double partMed = Med(partGains);
+                    if (partPositive == partGains.Count && partMed > 10)
+                        sb.AppendLine("判定: 分区有额外收益 —— 每一轮都优于仅降优先级，中位再改善 "
+                            + partMed.ToString("F0") + "%。");
+                    else if (partMed < -10)
+                        sb.AppendLine("判定: 分区有害 —— 把后台挤进少数核心后，受害者反而更差，"
+                            + "说明本机核心数下分区的代价超过收益。");
+                    else if (partPositive * 2 < partGains.Count)
+                        sb.AppendLine("判定: 分区无额外收益 —— 多数轮次不优于仅降优先级，"
+                            + "收益基本来自降优先级本身。");
                     else
-                        sb.AppendLine("判定: 方向为正但不稳定 —— " + positive + "/" + lowGains.Count
-                            + " 轮改善，需要更多轮次或更长采样才能定论。");
+                        sb.AppendLine("判定: 分区增量方向不稳定 —— " + partPositive + "/" + partGains.Count
+                            + " 轮为正，需要更多轮次才能定论。");
                 }
             }
             catch (Exception ex) { sb.AppendLine("异常: " + ex); }
@@ -202,6 +204,39 @@ namespace PaviseApp
 
             File.WriteAllText(output, sb.ToString(), Encoding.UTF8);
             Console.Write(sb.ToString());
+        }
+
+        private static int Apply(SuppressionCore core, List<Process> targets, SuppressionLevel level)
+        {
+            int ok = 0;
+            foreach (Process p in targets)
+            {
+                try
+                {
+                    if (core.Acquire(p.Id, p.ProcessName, SuppressReason.Background, null, level)
+                        != AcquireResult.ApplyFailed) ok++;
+                }
+                catch { }
+            }
+            return ok;
+        }
+
+        private static double Med(List<double> v)
+        {
+            var a = v.ToArray(); Array.Sort(a);
+            return a.Length == 0 ? 0 : a[a.Length / 2];
+        }
+
+        private static string Join(List<double> v)
+        {
+            return string.Join(", ", Array.ConvertAll(v.ToArray(), g => g.ToString("F0") + "%"));
+        }
+
+        private static string MaskText(ulong mask)
+        {
+            var cores = new List<string>();
+            for (int i = 0; i < 64; i++) if (((mask >> i) & 1UL) != 0) cores.Add(i.ToString());
+            return "[" + string.Join(",", cores.ToArray()) + "]";
         }
 
         private static string Row(int round, string phase, PhaseStat s)
