@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // GPU scheduling demotion: tier mapping, journal gpu field, native roundtrip, GPU-less tolerance.
 
 using System;
@@ -35,12 +35,10 @@ namespace PaviseApp
                 "4242|123456789|" + name + "|32|255|2|5|1,3|1|0"));
             Eq("4242|-1|-1|-1|0", SuppressionCore.ProbeJournalLine(
                 "4242|123456789|" + name + "|32|255|2|5"));
-            // 第 12 位是冻结标记：旧版日志没有这一列，读到时按未冻结处理
             Eq("4242|1|0|1|1", SuppressionCore.ProbeJournalLine(
                 "4242|123456789|" + name + "|32|255|2|5|1,3|1|0|1|1"));
             Eq("4242|1|0|1|0", SuppressionCore.ProbeJournalLine(
                 "4242|123456789|" + name + "|32|255|2|5|1,3|1|0|1|0"));
-            // 冻结位无法解析时必须按"可能冻着"处理：多解冻一次无害，漏解冻不可恢复
             Eq("4242|1|0|1|1", SuppressionCore.ProbeJournalLine(
                 "4242|123456789|" + name + "|32|255|2|5|1,3|1|0|1|x"));
             Eq("null", SuppressionCore.ProbeJournalLine(
@@ -157,7 +155,6 @@ namespace PaviseApp
                     string[] parts = lines[1].TrimEnd('\r').Split('|');
                     Eq(12, parts.Length);
                     int journaledGpu = int.Parse(parts[10]);
-                    // 非冻结档写出的记录，冻结位必须是 0
                     Eq("0", parts[11]);
 
                     IntPtr hp = Native.OpenProcess(

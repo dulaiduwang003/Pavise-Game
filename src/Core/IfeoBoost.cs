@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 句柄被反作弊拒绝时的后备提优 经 IFEO PerfOptions 由系统在进程创建时应用高优先级
 
 using System;
@@ -6,18 +6,12 @@ using Microsoft.Win32;
 
 namespace PaviseApp
 {
-    // 只写 CpuPriorityClass=3（High 封顶，不写 4）。绝不碰同键下的
-    // Debugger / GlobalFlag / MonitorProcess——那些才是恶意软件劫持向量，
-    // 也是 EDR 与反作弊的打击面（MITRE T1546.012 与 Elastic 规则只匹配它们）。
-    // IoPriority 走 IFEO 的上限即系统默认值，写了无意义，所以不写。
-    // 关闭开关时逐值还原并清掉我们创建的空键，不给 IFEO 检查工具留残留。
     internal static class IfeoBoost
     {
         private const string Root = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options";
         private const string ListKey = "IfeoList";
         private const int HighPriority = 3;
 
-        // 自测用：改挂到 HKCU 沙箱，避免真机 IFEO 被测试触碰
         internal static RegistryKey Hive = Registry.LocalMachine;
         internal static string RootOverride;
 
@@ -87,7 +81,6 @@ namespace PaviseApp
             }
         }
 
-        // 只删自己创建且已空的键：PerfOptions 无值无子键才删；exe 键同理
         private static void CleanupEmpty(string exe, string marker)
         {
             try

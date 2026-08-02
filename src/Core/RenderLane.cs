@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 识别游戏的帧关键线程并单独抬高其调度权重 一次识别 全程不再轮询
 
 using System;
@@ -7,16 +7,9 @@ using System.Diagnostics;
 
 namespace PaviseApp
 {
-    // 进程级提优把游戏的几十上百个线程一视同仁，决定帧何时呈现的其实只有一个。
-    // 本模块只做一次识别：连采两轮找出 CPU 主导线程，抬高它的相对优先级，然后
-    // 彻底停手——对局中绝不重复枚举线程（151 个线程的反复开句柄正是对局掉帧的
-    // 老病根，见"对局静默铁律"）。线程优先级随进程消亡，游戏退出即自然归零，
-    // 但仍记账并在退出 / 恢复 / 关开关时主动还原，不依赖进程死亡兜底。
     internal static class RenderLane
     {
-        // 主导线程至少要占进程 CPU 这么多，才认为存在单一帧关键路径
         internal const double MinDominantShare = 0.35;
-        // 识别用的两次采样间隔：够长才能拉开差距，又不至于拖慢提优链
         private const int SampleGapMs = 800;
         private const int MaxThreads = 512;
 
@@ -26,7 +19,6 @@ namespace PaviseApp
         private static int laneTid;
         private static int laneOriginalPriority;
         private static bool laneApplied;
-        // 识别失败也要记住，否则每轮审计都重采 151 个线程——那正是对局掉帧的老病根
         private static int triedPid;
         private static long triedCreation;
 
@@ -37,7 +29,6 @@ namespace PaviseApp
             public int ThreadCount;
         }
 
-        // 只读采样：两次线程 CPU 快照的差值最大者即主导线程
         internal static bool TryIdentify(int pid, out Candidate best)
         {
             best = new Candidate();
@@ -96,7 +87,6 @@ namespace PaviseApp
             lock (sync) return laneApplied && lanePid == pid && laneCreation == creation;
         }
 
-        // 一局只走一次：识别 → 抬权重 → 记账，之后不再碰线程枚举
         public static void EnsureForGame(int pid, long creation, string gameName)
         {
             lock (sync)
@@ -139,7 +129,6 @@ namespace PaviseApp
                     Logger.Log("渲染主权域：" + (gameName ?? "?") + " 的帧关键线程已自带高于常规的权重，无需介入");
                     return;
                 }
-                // 记账必须先于写入落盘，否则崩在中间就找不回原值
                 if (!SaveJournal(pid, creation, best.Tid, original))
                 {
                     Logger.Log("渲染主权域：记账无法持久化，已放弃写入");
@@ -195,7 +184,6 @@ namespace PaviseApp
             return ok;
         }
 
-        // 崩溃后重启时调用：进程还活着才还原，pid 复用一律拒绝
         public static void HealFromCrash()
         {
             string raw = Settings.LoadStr("RenderLane", "");

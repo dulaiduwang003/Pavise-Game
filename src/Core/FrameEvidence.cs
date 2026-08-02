@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 汇聚目标游戏进程的逐帧时间并计算 1% Low 等统计
 
 using System;
@@ -148,10 +148,6 @@ namespace PaviseApp
                 frames);
         }
 
-        // 开局预热窗口。加载画面、进图后的着色器编译会产出大量 50~240ms 的帧，
-        // 它们够慢到污染 0.1%Low，却够不上加载簇的 250ms 门槛，于是原样计入统计。
-        // 更糟的是这种污染在两次对照之间不对称：一局的卡顿刚好跨过门槛被剔掉、
-        // 另一局刚好没跨过，量出来的差异就完全是量具造成的。统一切掉开局这段。
         private const int WarmupUs = 60 * 1000000;
 
         internal static int[] ExcludeWarmup(int[] intervalsUs, out int warmupUs)
@@ -165,7 +161,6 @@ namespace PaviseApp
                 elapsed += intervalsUs[cut];
                 cut++;
             }
-            // 整局都没超过预热窗口：短会话宁可保留全部样本，也不要清空后无据可依
             if (cut >= intervalsUs.Length) return intervalsUs;
             warmupUs = (int)Math.Min(elapsed, int.MaxValue);
             var rest = new int[intervalsUs.Length - cut];

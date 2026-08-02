@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 负责游戏提优 环境调整和退出恢复
 
 using System;
@@ -204,7 +204,6 @@ namespace PaviseApp
         private void ReleaseBackground()
         {
             pressure.Clear();
-            // 驻留历史必须一起清：否则关掉再开时会拿陈旧的静默记录立即重冻
             freezeDwell.Clear();
             if (!core.AnyWith(SuppressReason.Background)) return;
             int n = 0;
@@ -460,7 +459,6 @@ namespace PaviseApp
                                 Logger.Log("游戏核心策略：" + rendererName + " (pid " + pid + ")" + placementText);
                         }
 
-                        // 提优确认生效后才建通道，且一局只走一次识别采样
                         if (renderLaneOn && stateOk && !RenderLane.IsActiveFor(pid, currentCreation))
                             RenderLane.EnsureForGame(pid, currentCreation, rendererName);
 

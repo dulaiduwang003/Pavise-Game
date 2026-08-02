@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 逐网卡禁用 Nagle 与延迟 ACK 只惠及 TCP 联网的游戏 逐值快照可逆
 
 using System;
@@ -7,10 +7,6 @@ using Microsoft.Win32;
 
 namespace PaviseApp
 {
-    // Nagle 合包 + 延迟 ACK 叠加最坏可到 200ms 级（老 MMO 时代有大量实测），
-    // 但只作用于 TCP——UDP 系竞技游戏（MOBA / FPS）严格零收益，文案必须写明。
-    // 每块网卡的两个原值都走 ReversibleReg 独立快照，关闭时逐值还原；
-    // 开启后新插的网卡不会被覆盖，重新开关一次即可。
     internal static class NagleTweak
     {
         private const string IfRoot = @"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces";

@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 构建优化策略页 并按当前预设锁定或放开自定义项
 
 using System;
@@ -97,7 +97,6 @@ namespace PaviseApp
             RefreshPolicyPresentation();
         }
 
-        // 开启前必须让用户看到代价：挂起是压制链条里唯一不可逆的动作
         private Toggle AddPolicyConfirmToggle(
             Control parent, ref int y, string title, string desc, string warning, Func<bool> read, Action<bool> write)
         {

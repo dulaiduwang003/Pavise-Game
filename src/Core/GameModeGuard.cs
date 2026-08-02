@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 确保 Windows 游戏模式未被关闭 大量旧优化教程教人关它而实测它只有收益
 
 using System;
@@ -6,10 +6,6 @@ using Microsoft.Win32;
 
 namespace PaviseApp
 {
-    // Game Mode 是微软自家的对局保障：游戏期间阻止驱动安装与重启弹窗、
-    // 调度上优先游戏。现代系统实测平均帧不变、1% low 略有改善，
-    // 而 2017-2019 年"必关 Game Mode"的教程流传极广——本守护只做一件事：
-    // 把被教程关掉的开关拨回来，且保留原值可随时还原。
     internal static class GameModeGuard
     {
         private const string BarKey = @"Software\Microsoft\GameBar";
@@ -20,7 +16,6 @@ namespace PaviseApp
 
         public static bool EnabledByPavise { get { return Settings.Load("GameModeGuardByPavise", false); } }
 
-        // 值缺省即开启，这是系统默认；只有显式 0 才是被关掉
         public static bool CurrentlyOn()
         {
             try

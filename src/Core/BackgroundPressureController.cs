@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 根据后台资源压力调整压制等级
 
 using System;
@@ -12,8 +12,6 @@ namespace PaviseApp
         Eco = 1,
         Restrained = 2,
         Isolated = 3,
-        // 冻结 = Isolated 的全部设置 + 挂起。排在 Isolated 之上，
-        // 现有所有 level >= Isolated 的判断因此自动适用于本档。
         Frozen = 4
     }
 

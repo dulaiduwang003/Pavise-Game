@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 NVAPI 驱动配置与数码振动封装 全部函数经 QueryInterface 动态解析 驱动缺失时整体降级
 
 using System;
@@ -24,9 +24,6 @@ namespace PaviseApp
         public const uint SettingPreferredPState = 0x1057EB71;
         public const uint SettingFrlFps = 0x10835002;
         public const uint PStatePreferMax = 0x1;
-        // 低延迟模式走 NVCP"开"的组合：预渲染队列压到 1 + CPL 状态标 1。
-        // 刻意不做 Ultra——只有 GPU 打满的窄场景有增量，用错反而加延迟，
-        // 且 DRS 侧复刻 Ultra 有已知偏差（nvidiaProfileInspector #318）。
         public const uint SettingPreRenderLimit = 0x007BA09E;
         public const uint SettingLowLatencyCpl = 0x0005F543;
 

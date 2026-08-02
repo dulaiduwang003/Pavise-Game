@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 运行不依赖测试框架的项目自测
 
 using System;
@@ -325,8 +325,6 @@ namespace PaviseApp
             catch { return false; }
         }
 
-        // 用法：--lane-live <输出文件> <pid>
-        // 在真实游戏上跑完整回路：建立通道 → 回读确认 → 撤销 → 确认原值归位
         private static void RunLaneLive(string output, string pidArg)
         {
             var sb = new System.Text.StringBuilder();
@@ -384,8 +382,6 @@ namespace PaviseApp
             finally { Native.CloseHandle(h); }
         }
 
-        // 用法：--lane-probe <输出文件> [进程名或pid] [轮次]
-        // 不给目标时自动找当前会话里 CPU 占用最高的游戏候选
         private static void RunLaneProbe(string output, string target, string roundsArg)
         {
             int rounds;
@@ -1373,10 +1369,9 @@ namespace PaviseApp
                 foreach (int v in cleaned) if (v == 110000) spikeKept = true;
                 Eq(true, spikeKept);
 
-                // 开局预热：前 60 秒整段剔除，够不上加载簇门槛的开局卡顿也一并带走
                 var warm = new int[8000];
-                for (int i = 0; i < 8000; i++) warm[i] = 10000;   // 80s @ 100fps
-                for (int i = 0; i < 40; i++) warm[i] = 150000;    // 开局 40 帧 150ms，低于 250ms 门槛
+                for (int i = 0; i < 8000; i++) warm[i] = 10000;
+                for (int i = 0; i < 40; i++) warm[i] = 150000;
                 int warmupUs;
                 int[] settled = FrameEvidence.ExcludeWarmup(warm, out warmupUs);
                 if (warmupUs < 60000000) throw new Exception("warm-up window closed too early: " + warmupUs);
@@ -1386,7 +1381,6 @@ namespace PaviseApp
                 Eq(true, FrameEvidence.ComputeStats(settled, out wAvg, out wLow1, out wLow01));
                 if (wLow01 < 95) throw new Exception("0.1% low still polluted by warm-up: " + wLow01);
 
-                // 整局都短于预热窗口时不能把样本清空，否则短会话彻底无据
                 var brief = new int[100];
                 for (int i = 0; i < 100; i++) brief[i] = 10000;
                 int briefWarmupUs;

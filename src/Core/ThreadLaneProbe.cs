@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 采样游戏各线程的 CPU 占用找出帧关键线程 并探测其调度句柄 全程只读不写
 
 using System;
@@ -8,10 +8,6 @@ using System.Runtime.InteropServices;
 
 namespace PaviseApp
 {
-    // Render Lane 的前置证据采集：进程级提优把游戏几十个线程一视同仁，
-    // 真正决定帧何时呈现的只有一两个。本探针回答三件事——
-    // 是否存在稳定的主导线程、它占多少 CPU、能否拿到它的调度写句柄。
-    // 只调 OpenThread + GetThreadTimes，绝不写入任何调度参数。
     internal static class ThreadLaneProbe
     {
         [DllImport("kernel32.dll", SetLastError = true)]

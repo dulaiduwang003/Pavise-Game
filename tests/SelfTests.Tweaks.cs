@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 驱动调优键位映射与网卡清单编解码的自测
 
 using System;
@@ -8,8 +8,6 @@ namespace PaviseApp
 {
     internal static partial class SelfTests
     {
-        // 键名→SettingId 一旦错位，快照会以错误 ID 记录原值，
-        // 恢复时就把 A 设置的旧值写进 B 设置——静默毁掉用户驱动配置。
         private static void TestDrsKeyIdMapping()
         {
             Eq(NvApi.SettingPreferredPState, NvDrsTweaks.SettingIdOf(NvDrsTweaks.KeyPState));
@@ -50,8 +48,6 @@ namespace PaviseApp
             Eq("{bbb}", two[1]);
         }
 
-        // 主导线程识别必须在真实进程上验证：自测进程自己制造一个满载线程，
-        // 断言它被识别出来且占比压倒性——识别错线程等于把加速给了错误的路径。
         private static void TestRenderLaneIdentifiesBusyThread()
         {
             using (var stop = new System.Threading.ManualResetEvent(false))
@@ -88,8 +84,6 @@ namespace PaviseApp
             Eq(1, pri);
         }
 
-        // 全回路走 HKCU 沙箱：登记→值为 3→撤销→键无残留。
-        // IFEO 残留会出现在各类劫持检查工具的报告里，清不干净等于自我抹黑。
         private static void TestIfeoSandboxRoundtrip()
         {
             string sandbox = @"Software\PaviseTest\IFEO_" + System.Diagnostics.Process.GetCurrentProcess().Id;

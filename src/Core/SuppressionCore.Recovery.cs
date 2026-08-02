@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 持久化并恢复进程压制快照
 
 using System;
@@ -99,7 +99,6 @@ namespace PaviseApp
             }
             int gpu = -1;
             if (a.Length >= 11 && !int.TryParse(a[10], out gpu)) gpu = -1;
-            // 无法解析的冻结位一律按"可能冻着"处理：多解冻一次无害，漏解冻是不可恢复的
             bool frozen = false;
             if (a.Length >= 12)
             {
@@ -180,12 +179,10 @@ namespace PaviseApp
                     try
                     {
                         JournalIdentity identity = IdentifyJournalEntry(h, entry);
-                        // 身份不符说明 pid 已被复用，绝不能对无关进程调 resume
                         if (identity == JournalIdentity.Mismatch) continue;
                         if (identity == JournalIdentity.Unknown) { keep.Add(lines[i]); continue; }
                         if (entry.FreezeIntent)
                         {
-                            // 主句柄没有 PROCESS_SUSPEND_RESUME，唤醒要另开一把并重验身份
                             FreezeIoResult wake = TrySuspendResume(pid, entry.Name, entry.Creation, false);
                             if (wake == FreezeIoResult.Failed)
                             {
