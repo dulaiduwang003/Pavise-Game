@@ -193,6 +193,7 @@ namespace PaviseApp
             { "frl.screen", new[]{ "屏-3" } },
             { "ev.fps", new[]{ "平均 {0} fps · 1%Low {1} · 0.1%Low {2}（{3}）" } },
             { "ev.fps.frames", new[]{ "{0} 帧" } },
+            { "ev.fps.warmup", new[]{ "，剔开局 {0}s" } },
             { "ev.fps.excluded", new[]{ "，剔加载 {0}s" } },
             { "ev.fps.unfocused", new[]{ "，剔失焦 {0}s 占 {1}%" } },
             { "ev.fps.unfocused.only", new[]{ "失焦 {0}s 已剔除，对焦帧不足，本局无法给出可信帧率统计" } },

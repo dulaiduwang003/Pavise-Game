@@ -1314,6 +1314,26 @@ namespace PaviseApp
                 foreach (int v in cleaned) if (v == 110000) spikeKept = true;
                 Eq(true, spikeKept);
 
+                // 开局预热：前 60 秒整段剔除，够不上加载簇门槛的开局卡顿也一并带走
+                var warm = new int[8000];
+                for (int i = 0; i < 8000; i++) warm[i] = 10000;   // 80s @ 100fps
+                for (int i = 0; i < 40; i++) warm[i] = 150000;    // 开局 40 帧 150ms，低于 250ms 门槛
+                int warmupUs;
+                int[] settled = FrameEvidence.ExcludeWarmup(warm, out warmupUs);
+                if (warmupUs < 60000000) throw new Exception("warm-up window closed too early: " + warmupUs);
+                foreach (int v in settled) if (v == 150000)
+                    throw new Exception("a warm-up stutter survived the warm-up cut");
+                double wAvg, wLow1, wLow01;
+                Eq(true, FrameEvidence.ComputeStats(settled, out wAvg, out wLow1, out wLow01));
+                if (wLow01 < 95) throw new Exception("0.1% low still polluted by warm-up: " + wLow01);
+
+                // 整局都短于预热窗口时不能把样本清空，否则短会话彻底无据
+                var brief = new int[100];
+                for (int i = 0; i < 100; i++) brief[i] = 10000;
+                int briefWarmupUs;
+                Eq(100, FrameEvidence.ExcludeWarmup(brief, out briefWarmupUs).Length);
+                Eq(0, briefWarmupUs);
+
                 Eq(60, GameMode.ResolveFrlFps("60"));
                 Eq(120, GameMode.ResolveFrlFps("120"));
                 Eq(240, GameMode.ResolveFrlFps("240"));
