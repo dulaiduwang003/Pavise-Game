@@ -1541,6 +1541,9 @@ namespace PaviseApp
             test("freeze: crash journal wakes a process left suspended", TestFrozenJournalThaw);
             test("freeze: crash recovery never resumes a reused pid", TestFrozenJournalRejectsPidReuse);
             test("freeze: one resume wakes a singly-suspended process", TestSuspendIsNotReentrant);
+            test("nv drs: key-to-settingid mapping is exact and collision-free", TestDrsKeyIdMapping);
+            test("nv drs: snapshot codec round-trips all four keys", TestDrsSnapshotRoundtrip);
+            test("nagle: interface list codec handles empty and multi entries", TestNagleListCodec);
             }
             finally { try { Directory.Delete(root, true); } catch { } }
 

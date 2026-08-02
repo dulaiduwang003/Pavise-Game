@@ -13,24 +13,33 @@ namespace PaviseApp
         private const string SnapPrefix = "NvDrs_";
         public const string KeyPState = "pstate";
         public const string KeyFrl = "frl";
+        public const string KeyPreRender = "prerender";
+        public const string KeyLowLatCpl = "lowlatcpl";
 
         private static readonly object sync = new object();
 
-        private static uint SettingIdOf(string key)
+        internal static uint SettingIdOf(string key)
         {
             if (key == KeyPState) return NvApi.SettingPreferredPState;
+            if (key == KeyPreRender) return NvApi.SettingPreRenderLimit;
+            if (key == KeyLowLatCpl) return NvApi.SettingLowLatencyCpl;
             return NvApi.SettingFrlFps;
         }
 
-        public static void ApplyForGame(string exePath, bool maxPerf, int frlFps)
+        public static void ApplyForGame(string exePath, bool maxPerf, int frlFps, bool lowLatency)
         {
-            if (string.IsNullOrEmpty(exePath) || !maxPerf && frlFps <= 0) return;
+            if (string.IsNullOrEmpty(exePath) || !maxPerf && frlFps <= 0 && !lowLatency) return;
             if (!NvApi.Available) return;
             string exeName = Path.GetFileName(exePath);
             if (string.IsNullOrEmpty(exeName)) return;
             var desired = new List<KeyValuePair<string, uint>>();
             if (maxPerf) desired.Add(new KeyValuePair<string, uint>(KeyPState, NvApi.PStatePreferMax));
             if (frlFps > 0) desired.Add(new KeyValuePair<string, uint>(KeyFrl, (uint)frlFps));
+            if (lowLatency)
+            {
+                desired.Add(new KeyValuePair<string, uint>(KeyPreRender, 1u));
+                desired.Add(new KeyValuePair<string, uint>(KeyLowLatCpl, 1u));
+            }
             lock (sync)
             {
                 IntPtr session;
@@ -78,7 +87,8 @@ namespace PaviseApp
                     if (wrote && NvApi.SaveSession(session))
                     {
                         string done = (maxPerf && !failed.Contains(KeyPState) ? " 电源最高性能" : "")
-                            + (frlFps > 0 && !failed.Contains(KeyFrl) ? " 帧上限" + frlFps : "");
+                            + (frlFps > 0 && !failed.Contains(KeyFrl) ? " 帧上限" + frlFps : "")
+                            + (lowLatency && !failed.Contains(KeyPreRender) ? " 低延迟(预渲染1)" : "");
                         if (done.Length > 0) Logger.Log("NVIDIA 驱动调优：" + exeName + done);
                     }
                 }

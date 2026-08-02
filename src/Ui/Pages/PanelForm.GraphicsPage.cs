@@ -9,7 +9,7 @@ namespace PaviseApp
 {
     internal partial class PanelForm
     {
-        private Toggle swGpu, swFso, swNvMax, swWindowedOpt;
+        private Toggle swGpu, swFso, swNvMax, swNvLowLat, swWindowedOpt;
         private TierPicker frlPicker;
 
         private void BuildGraphicsPage()
@@ -44,6 +44,13 @@ namespace PaviseApp
             swNvMax.Enabled = nvOk;
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvmax"),
                 nvOk ? Lang.T("set.nvmax.n") : nvNone, swNvMax, out cardH);
+            sy += cardH + 8;
+
+            swNvLowLat = MakeSwitch(gameMode.NvLowLatency, null);
+            swNvLowLat.CheckedChanged += (s, e) => gameMode.NvLowLatency = swNvLowLat.Checked;
+            swNvLowLat.Enabled = nvOk;
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvll"),
+                nvOk ? Lang.T("set.nvll.n") : nvNone, swNvLowLat, out cardH);
             sy += cardH + 8;
 
             frlPicker = new TierPicker();
@@ -88,6 +95,7 @@ namespace PaviseApp
             if (swGpu != null) swGpu.SetSilently(gameMode.GpuHighPerf);
             if (swFso != null) swFso.SetSilently(gameMode.DisableFso);
             if (swNvMax != null) swNvMax.SetSilently(gameMode.NvMaxPerf);
+            if (swNvLowLat != null) swNvLowLat.SetSilently(gameMode.NvLowLatency);
             if (frlPicker != null) frlPicker.Index = FrlIndexOf(gameMode.NvFrlMode);
             if (swWindowedOpt != null)
                 swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByPavise || WindowedOptTweak.CurrentlyOn());

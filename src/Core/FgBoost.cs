@@ -19,9 +19,12 @@ namespace PaviseApp
             lock (lk)
             {
                 if (active) return true;
-                active = Sep.Apply(0x26);
-                Logger.Log(active ? "前台调度加权已启用（Win32PrioritySeparation → 0x26）"
-                    : "前台调度加权写入或回读失败，本轮未启用");
+                // 0x28 = 短量子/固定：前后台平权，防止游戏满载时语音、音频、
+                // 推流线程被饿死。此前写的 0x26 解析后与系统默认 0x2 行为等价，
+                // 是个空操作（FPSHeaven / tenforums 均有拆解），2026-08 修正。
+                active = Sep.Apply(0x28);
+                Logger.Log(active ? "前台调度稳定已启用（Win32PrioritySeparation → 0x28 固定量子）"
+                    : "前台调度稳定写入或回读失败，本轮未启用");
                 return active;
             }
         }

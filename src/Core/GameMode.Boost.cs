@@ -268,7 +268,7 @@ namespace PaviseApp
                     {
                         known = gameBoost.ContainsKey(pid);
                         retryEco = boostFail.ContainsKey(pid);
-                        needTweak = (gpuHighPerf || disableFso || nvMaxPerf || nvFrlMode != "off")
+                        needTweak = (gpuHighPerf || disableFso || nvMaxPerf || nvLowLatency || nvFrlMode != "off")
                             && !tweakApplied.Contains(pid);
                         ulong placed; bool placedStrict;
                         needPlacement = !gamePlacement.TryGetValue(pid, out placed) || placed != desiredMask
@@ -472,8 +472,8 @@ namespace PaviseApp
                             string imagePath = Native.ImagePath(h);
                             GameExeTweaks.ApplyForGame(imagePath, gpuHighPerf, disableFso);
                             int frlFps = ResolveFrlFps(nvFrlMode);
-                            if (nvMaxPerf || frlFps > 0)
-                                NvDrsTweaks.ApplyForGame(imagePath, nvMaxPerf, frlFps);
+                            if (nvMaxPerf || frlFps > 0 || nvLowLatency)
+                                NvDrsTweaks.ApplyForGame(imagePath, nvMaxPerf, frlFps, nvLowLatency);
                             lock (sync) tweakApplied.Add(pid);
                         }
 
