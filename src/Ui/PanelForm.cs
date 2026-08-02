@@ -29,9 +29,7 @@ namespace PaviseApp
         Reports = 7,
         Settings = 8,
         About = 9,
-        DeltaForce = 10,
-        Cs2 = 11,
-        Count = 12
+        Count = 10
     }
 
     internal partial class PanelForm : Form
@@ -42,7 +40,6 @@ namespace PaviseApp
 
         private DBPanel pageOverview, pagePolicy, pageAntiCheat, pageLibrary, pageReports, pageSettings, pageAbout;
         private DBPanel pageGraphics, pageEnvironment;
-        private DBPanel pageDelta, pageCs2;
         private DBPanel[] pages;
         private NavRail nav;
         private ModeButton modeButton;
@@ -128,11 +125,10 @@ namespace PaviseApp
             nav = new NavRail(
                 new[] { Lang.T("nav.overview"), LolText("英雄联盟（国服）"), Lang.T("nav.library"), Lang.T("nav.policy"),
                         Lang.T("v14.anticheat"), Lang.T("nav.graphics"), Lang.T("nav.env"), Lang.T("nav.reports"),
-                        Lang.T("nav.set"), Lang.T("nav.about"), LolText("三角洲行动"), LolText("CS2") },
-                new[] { "game", "lol", "white", "settings", "shield", "gpu", "chip", "log", "gear", "info", "delta", "cs2" },
+                        Lang.T("nav.set"), Lang.T("nav.about") },
+                new[] { "game", "lol", "white", "settings", "shield", "gpu", "chip", "log", "gear", "info" },
                 new[] { (int)PageId.Overview, (int)PageId.Library, (int)PageId.Policy, (int)PageId.AntiCheat,
                         (int)PageId.Reports, (int)PageId.Graphics, (int)PageId.Environment, (int)PageId.League,
-                        (int)PageId.DeltaForce, (int)PageId.Cs2,
                         (int)PageId.Settings, (int)PageId.About },
                 new[] { 5, 7 }, new[] { Lang.T("nav.hardware"), Lang.T("nav.columns") }, 2);
             AssertNavMatchesPageIds(nav);
@@ -188,11 +184,8 @@ namespace PaviseApp
             pages[(int)PageId.Reports] = pageReports = MakePage();
             pages[(int)PageId.Settings] = pageSettings = MakePage();
             pages[(int)PageId.About] = pageAbout = MakePage();
-            pages[(int)PageId.DeltaForce] = pageDelta = MakePage();
-            pages[(int)PageId.Cs2] = pageCs2 = MakePage();
             BuildOverviewPage();
             BuildLolPage();
-            BuildComingSoonPages();
             BuildLibraryPage();
             BuildPolicyPage();
             BuildAntiCheatPage();
