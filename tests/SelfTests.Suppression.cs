@@ -7,7 +7,7 @@ using System.IO;
 using System.Threading;
 using System.Windows.Forms;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static partial class SelfTests
     {
@@ -123,7 +123,7 @@ namespace AegisApp
             const string key = "Crash_BoostEntriesV2";
             const int pid = 424242;
             const long creation = 987654321;
-            const string name = "AegisBoostProbe";
+            const string name = "PaviseBoostProbe";
             string previous = Settings.LoadStr(key, "");
             string encoded = Convert.ToBase64String(
                 System.Text.Encoding.UTF8.GetBytes(name));

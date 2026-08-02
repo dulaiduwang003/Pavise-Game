@@ -7,7 +7,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal partial class GameMode
     {
@@ -56,7 +56,7 @@ namespace AegisApp
             return want ? ok : (ok ? false : active);
         }
 
-#if AEGIS_SELFTEST
+#if PAVISE_SELFTEST
         internal int EnvAttemptCountForTest(
             string key, bool want, bool active, Func<bool> activate, Func<bool> restore, int rounds)
         {

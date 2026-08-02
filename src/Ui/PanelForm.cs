@@ -13,7 +13,7 @@ using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal enum AutoHideAction { None, Schedule, Cancel }
 
@@ -269,7 +269,7 @@ namespace AegisApp
         {
             pageHooks = new PageHook[(int)PageId.Count];
             pageHooks[(int)PageId.Overview] = new PageHook(pageOverview,
-                delegate(bool active) { if (aegisCore != null) aegisCore.SetAnimationEnabled(active); }, null);
+                delegate(bool active) { if (paviseCore != null) paviseCore.SetAnimationEnabled(active); }, null);
             pageHooks[(int)PageId.League] = new PageHook(pageLol,
                 delegate(bool active) { if (active) RefreshLolPage(); }, null);
             pageHooks[(int)PageId.Library] = new PageHook(pageLibrary,
@@ -428,7 +428,7 @@ namespace AegisApp
                 if (uiTimer != null) uiTimer.Stop();
                 CancelAutoHide();
                 UiClock.Suspended = true;
-                if (aegisCore != null) aegisCore.SetAnimationEnabled(false);
+                if (paviseCore != null) paviseCore.SetAnimationEnabled(false);
                 return;
             }
 
@@ -454,7 +454,7 @@ namespace AegisApp
                 statusDot.Color = !gameMode.Enabled ? Theme.Dim : (act ? Theme.Green : Theme.Accent);
                 statusDot.Pulse = act;
             }
-            if (aegisCore != null) aegisCore.SetState(gameMode.ActivePreset, gameMode.Enabled, act);
+            if (paviseCore != null) paviseCore.SetState(gameMode.ActivePreset, gameMode.Enabled, act);
             if (lblSub != null && elevated)
             {
                 string game = gameMode.ActiveGame;
@@ -502,7 +502,7 @@ namespace AegisApp
             if (lblHeroMode != null) lblHeroMode.Text = ModeButton.ModeName(effective);
             if (lblHeroSource != null) lblHeroSource.Text = Lang.T("mode.source.global");
             if (lblPolicyMode != null) lblPolicyMode.Text = Lang.F("mode.policy.active", ModeButton.ModeName(effective));
-            if (aegisCore != null) aegisCore.SetState(effective, enabled, gameMode.IsActive);
+            if (paviseCore != null) paviseCore.SetState(effective, enabled, gameMode.IsActive);
             if (effective != visualMode)
             {
                 visualMode = effective;
@@ -532,7 +532,7 @@ namespace AegisApp
             uiActive = false;
             uiActivityKnown = false;
             UiClock.Suspended = true;
-            if (aegisCore != null) aegisCore.SetAnimationEnabled(false);
+            if (paviseCore != null) paviseCore.SetAnimationEnabled(false);
             DetachFormFrame();
             var old = new List<Control>();
             int keep = nav != null ? nav.Selected : 0;
@@ -665,7 +665,7 @@ namespace AegisApp
             uiActive = false;
             uiActivityKnown = true;
             UiClock.Suspended = true;
-            if (aegisCore != null) aegisCore.SetAnimationEnabled(false);
+            if (paviseCore != null) paviseCore.SetAnimationEnabled(false);
             DetachFormFrame();
             foreach (Bitmap bitmap in gameIconCache.Values) try { bitmap.Dispose(); } catch { }
             gameIconCache.Clear();
@@ -745,7 +745,7 @@ namespace AegisApp
                 Theme.SetMode(preview.Value, false);
                 modeButton.SetMode(preview.Value); nav.SetMode(preview.Value, true);
                 if (lblHeroMode != null) { lblHeroMode.Text = ModeButton.ModeName(preview.Value); lblHeroMode.ForeColor = Theme.Accent; }
-                if (aegisCore != null) aegisCore.SetState(preview.Value, true, false);
+                if (paviseCore != null) paviseCore.SetState(preview.Value, true, false);
             }
             if (showModePicker && modeButton != null) modeButton.PerformClick();
             Application.DoEvents();

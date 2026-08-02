@@ -5,7 +5,7 @@ using System;
 using System.Runtime.InteropServices;
 using System.Threading;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal sealed class SessionTelemetry
     {
@@ -233,7 +233,7 @@ namespace AegisApp
 
     internal static class EvidenceStore
     {
-        public const string FileName = "Aegis.evidence.log";
+        public const string FileName = "Pavise.evidence.log";
         private static readonly object FileSync = new object();
 
         public static void Append(string dataDir, string line)

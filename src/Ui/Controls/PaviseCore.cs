@@ -8,9 +8,9 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Windows.Forms;
 
-namespace AegisApp
+namespace PaviseApp
 {
-    internal sealed class AegisCore : Control
+    internal sealed class PaviseCore : Control
     {
         private readonly Stopwatch clock = Stopwatch.StartNew();
         private readonly Timer timer;
@@ -22,12 +22,12 @@ namespace AegisApp
         private Color cachedAccent = Color.Empty, cachedAccent2 = Color.Empty;
         private static readonly int selfPid;
 
-        static AegisCore()
+        static PaviseCore()
         {
             using (Process self = Process.GetCurrentProcess()) selfPid = self.Id;
         }
 
-        public AegisCore()
+        public PaviseCore()
         {
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
                 ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.Opaque, true);
@@ -418,7 +418,7 @@ namespace AegisApp
             string state = gameActive ? "ACTIVE" : guardEnabled ? "STANDBY" : "OFFLINE";
             Color stateColor = gameActive ? Theme.Green : guardEnabled ? accent : Theme.Faint;
             Rectangle top = new Rectangle((int)(cx - Theme.S(70)), (int)(cy - Theme.S(67)), Theme.S(140), Theme.S(16));
-            TextRenderer.DrawText(g, "AEGIS CORE", Theme.Mono(7f), top, Theme.Dim,
+            TextRenderer.DrawText(g, "PAVISE CORE", Theme.Mono(7f), top, Theme.Dim,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             Rectangle modeBox = new Rectangle((int)(cx - Theme.S(76)), (int)(cy + Theme.S(42)), Theme.S(152), Theme.S(22));
             TextRenderer.DrawText(g, ModeButton.ModeName(mode), Theme.UI(10f, true), modeBox, Theme.Fg,

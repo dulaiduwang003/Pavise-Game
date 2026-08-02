@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal sealed partial class SuppressionCore
     {
@@ -22,7 +22,7 @@ namespace AegisApp
             try
             {
                 var lines = new List<string>();
-                lines.Add("AEGIS_SUPPRESSION_V1");
+                lines.Add("PAVISE_SUPPRESSION_V1");
                 foreach (var kv in map)
                 {
                     Entry e = kv.Value;
@@ -63,7 +63,7 @@ namespace AegisApp
             try
             {
                 string[] lines = File.ReadAllLines(journalPath, Encoding.UTF8);
-                if (lines.Length == 0 || lines[0] != "AEGIS_SUPPRESSION_V1") return;
+                if (lines.Length == 0 || lines[0] != "PAVISE_SUPPRESSION_V1") return;
                 for (int i = 1; i < lines.Length; i++)
                 {
                     int pid;
@@ -134,11 +134,11 @@ namespace AegisApp
         {
             if (string.IsNullOrEmpty(statePath) || !File.Exists(statePath)) return 0;
             int restored = 0;
-            var keep = new List<string>(); keep.Add("AEGIS_SUPPRESSION_V1");
+            var keep = new List<string>(); keep.Add("PAVISE_SUPPRESSION_V1");
             try
             {
                 string[] lines = File.ReadAllLines(statePath, Encoding.UTF8);
-                if (lines.Length == 0 || lines[0] != "AEGIS_SUPPRESSION_V1") return 0;
+                if (lines.Length == 0 || lines[0] != "PAVISE_SUPPRESSION_V1") return 0;
                 for (int i = 1; i < lines.Length; i++)
                 {
                     int pid;
@@ -194,7 +194,7 @@ namespace AegisApp
             return restored;
         }
 
-#if AEGIS_SELFTEST
+#if PAVISE_SELFTEST
         internal static string ProbeJournalLine(string raw)
         {
             int pid;

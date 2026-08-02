@@ -13,11 +13,11 @@ using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static class TaskHelper
     {
-        public const string TaskName = "Aegis";
+        public const string TaskName = "Pavise";
 
         private static int cachedExists = -1;
 
@@ -56,7 +56,7 @@ namespace AegisApp
             {
                 string xml = BuildStartupTaskXml(Application.ExecutablePath);
                 if (xml == null) return -1;
-                path = Path.Combine(Path.GetTempPath(), "Aegis_" + Guid.NewGuid().ToString("N") + ".xml");
+                path = Path.Combine(Path.GetTempPath(), "Pavise_" + Guid.NewGuid().ToString("N") + ".xml");
                 using (var fs = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read))
                 {
                     byte[] bom = System.Text.Encoding.Unicode.GetPreamble();
@@ -146,7 +146,8 @@ namespace AegisApp
                 bool argumentsStale = argumentsKnown
                     && (taskArguments ?? "").IndexOf(
                         AutostartArgument, StringComparison.OrdinalIgnoreCase) < 0;
-                if (!NeedsStartupTaskRefresh(cur, target) && !argumentsStale)
+                bool pathChanged = NeedsStartupTaskRefresh(cur, target);
+                if (!pathChanged && !argumentsStale)
                 {
                     Settings.SaveStr("AutostartExe", cur);
                     return;
@@ -157,9 +158,12 @@ namespace AegisApp
                         + "），文件可能被清理导致自启失效；请把程序移到固定目录后再启动");
                     return;
                 }
-                Logger.Log("开机自启任务迁移：" + (target ?? "未知目标") + " → " + cur);
+                string action = pathChanged
+                    ? "开机自启任务迁移：" + (target ?? "未知目标") + " → " + cur
+                    : "开机自启任务参数刷新：旧任务缺少 " + AutostartArgument + " 静默启动参数，重建任务补齐";
+                Logger.Log(action);
                 if (CreateStartupTask() != 0)
-                    Logger.Log("开机自启任务迁移失败，稍后将重试");
+                    Logger.Log(pathChanged ? "开机自启任务迁移失败，稍后将重试" : "开机自启任务参数刷新失败，稍后将重试");
             }
             catch { }
         }

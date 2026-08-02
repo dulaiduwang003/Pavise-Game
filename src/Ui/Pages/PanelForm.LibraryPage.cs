@@ -9,7 +9,7 @@ using System.IO;
 using System.Threading;
 using System.Windows.Forms;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal partial class PanelForm
     {
@@ -20,6 +20,7 @@ namespace AegisApp
         private long nextRunningProbeTicks;
         private int netQosBusy;
         private string netQosSignature;
+        private bool netQosDeferred;
         private static readonly long RunningProbeIntervalTicks = TimeSpan.FromSeconds(5).Ticks;
 
         private void BuildLibraryPage()
@@ -31,7 +32,7 @@ namespace AegisApp
             gameListPanel = listWrap;
             listWrap.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(listW), Theme.S(listH));
             listWrap.BackColor = Theme.Bg; listWrap.Fill = Theme.Card; listWrap.Border = Theme.Stroke; listWrap.Radius = Theme.S(14);
-            listWrap.EmptyTitle = "AEGIS LIBRARY";
+            listWrap.EmptyTitle = "PAVISE LIBRARY";
             listWrap.EmptyDetail = Lang.T("v15.library.empty");
             listWrap.Padding = new Padding(Theme.S(8));
             lstGames = new ListBox(); lstGames.Dock = DockStyle.Fill; Theme.StyleList(lstGames);
@@ -92,7 +93,7 @@ namespace AegisApp
                 if (ShowDim(dlg) != DialogResult.OK || string.IsNullOrEmpty(dlg.SelectedPath)) return;
                 string error;
                 if (!gameMode.AddGameFile(dlg.SelectedPath, out error) && !string.IsNullOrEmpty(error))
-                    MessageBox.Show(this, error, "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show(this, error, "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 RefreshGames();
             }
         }
@@ -107,7 +108,7 @@ namespace AegisApp
                 {
                     string error;
                     if (!gameMode.AddGameFile(dlg.FileName, out error))
-                        MessageBox.Show(this, error, "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        MessageBox.Show(this, error, "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     RefreshGames();
                 }
             }
@@ -134,6 +135,8 @@ namespace AegisApp
         private void RefreshGameRunningStates(bool force = false)
         {
             if (!UiActive || lstGames == null) return;
+            if (netQosDeferred && gameMode.ActiveGame == null)
+                SyncNetQosPolicies(gameMode.GetProfiles());
             long now = DateTime.UtcNow.Ticks;
             if (!force && now < Interlocked.Read(ref nextRunningProbeTicks)) return;
             if (Interlocked.Exchange(ref runningBusy, 1) == 1) return;
@@ -187,9 +190,17 @@ namespace AegisApp
                 sb.Append(profile.Name).Append('>').Append(profile.ExecutablePath).Append('|');
             }
             string signature = sb.ToString();
-            if (netQosSignature == null || netQosSignature == signature) { netQosSignature = signature; return; }
+            if (netQosSignature == null) { netQosSignature = signature; return; }
+            if (netQosSignature == signature && !netQosDeferred) return;
             netQosSignature = signature;
-            if (!NetworkAffinityTweak.EnabledByAegis) return;
+            if (!NetworkAffinityTweak.EnabledByPavise) { netQosDeferred = false; return; }
+            if (gameMode.ActiveGame != null)
+            {
+                if (!netQosDeferred) Logger.Log("网络优先级：游戏会话进行中，游戏库变更的策略同步推迟到退出游戏后执行");
+                netQosDeferred = true;
+                return;
+            }
+            netQosDeferred = false;
             if (Interlocked.Exchange(ref netQosBusy, 1) == 1) return;
             ThreadPool.QueueUserWorkItem(_ =>
             {
@@ -209,7 +220,7 @@ namespace AegisApp
             foreach (string file in files)
                 if (!gameMode.AddGameFile(file, out error) && error != "该游戏已经在列表中") break;
             if (!string.IsNullOrEmpty(error) && error != "该游戏已经在列表中")
-                MessageBox.Show(this, error, "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(this, error, "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             RefreshGames();
         }
 

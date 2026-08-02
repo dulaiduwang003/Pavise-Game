@@ -5,7 +5,7 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal partial class PanelForm
     {
@@ -59,7 +59,7 @@ namespace AegisApp
             sy += 10;
             Section(scroll, Lang.T("sec.graphics.present"), 6, sy); sy += 24;
 
-            swWindowedOpt = MakeSwitch(WindowedOptTweak.EnabledByAegis || WindowedOptTweak.CurrentlyOn(), OnWindowedOptToggle);
+            swWindowedOpt = MakeSwitch(WindowedOptTweak.EnabledByPavise || WindowedOptTweak.CurrentlyOn(), OnWindowedOptToggle);
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.winopt"), Lang.T("set.winopt.n"), swWindowedOpt, out cardH);
             sy += cardH + 8;
         }
@@ -79,8 +79,8 @@ namespace AegisApp
         private void OnWindowedOptToggle(object s, EventArgs e)
         {
             bool ok = swWindowedOpt.Checked ? WindowedOptTweak.Enable() : WindowedOptTweak.Restore();
-            if (!ok) MessageBox.Show(this, Lang.T("winopt.failed"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByAegis || WindowedOptTweak.CurrentlyOn());
+            if (!ok) MessageBox.Show(this, Lang.T("winopt.failed"), "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByPavise || WindowedOptTweak.CurrentlyOn());
         }
 
         private void SyncGraphicsToggles()
@@ -90,7 +90,7 @@ namespace AegisApp
             if (swNvMax != null) swNvMax.SetSilently(gameMode.NvMaxPerf);
             if (frlPicker != null) frlPicker.Index = FrlIndexOf(gameMode.NvFrlMode);
             if (swWindowedOpt != null)
-                swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByAegis || WindowedOptTweak.CurrentlyOn());
+                swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByPavise || WindowedOptTweak.CurrentlyOn());
         }
     }
 }

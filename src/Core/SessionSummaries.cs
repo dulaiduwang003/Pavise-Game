@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal sealed class SessionSummary
     {
@@ -17,7 +17,7 @@ namespace AegisApp
         public string BoostText;
         public bool BoostVerified;
         public string ControlText;
-        public string AegisCpuText;
+        public string PaviseCpuText;
         public string AvgFps;
         public string Low1Fps;
         public string Low01Fps;
@@ -65,7 +65,7 @@ namespace AegisApp
                 summary.BoostVerified = f[4] == Lang.T("report.boost.ok");
             }
             if (f.Length > 5) summary.ControlText = f[5];
-            if (f.Length > 6) summary.AegisCpuText = f[6];
+            if (f.Length > 6) summary.PaviseCpuText = f[6];
             return summary;
         }
 

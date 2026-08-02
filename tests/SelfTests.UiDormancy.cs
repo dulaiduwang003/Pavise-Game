@@ -4,7 +4,7 @@
 using System;
 using System.Windows.Forms;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static partial class SelfTests
     {
@@ -25,15 +25,15 @@ namespace AegisApp
             Eq(false, armed);
             Eq(AutoHideAction.Schedule, PanelForm.NextAutoHide(true, ref last, ref armed, true, true));
 
-            Eq(false, AegisCore.ShouldAnimate(true, true, true, true, FormWindowState.Minimized));
-            Eq(false, AegisCore.ShouldAnimate(true, true, true, false, FormWindowState.Normal));
-            Eq(false, AegisCore.ShouldAnimate(false, true, true, true, FormWindowState.Normal));
-            Eq(true, AegisCore.ShouldAnimate(true, true, true, true, FormWindowState.Normal));
+            Eq(false, PaviseCore.ShouldAnimate(true, true, true, true, FormWindowState.Minimized));
+            Eq(false, PaviseCore.ShouldAnimate(true, true, true, false, FormWindowState.Normal));
+            Eq(false, PaviseCore.ShouldAnimate(false, true, true, true, FormWindowState.Normal));
+            Eq(true, PaviseCore.ShouldAnimate(true, true, true, true, FormWindowState.Normal));
 
-            Eq(33, AegisCore.DesiredFrameInterval(false, false));
-            Eq(33, AegisCore.DesiredFrameInterval(false, true));
-            Eq(33, AegisCore.DesiredFrameInterval(true, true));
-            Eq(200, AegisCore.DesiredFrameInterval(true, false));
+            Eq(33, PaviseCore.DesiredFrameInterval(false, false));
+            Eq(33, PaviseCore.DesiredFrameInterval(false, true));
+            Eq(33, PaviseCore.DesiredFrameInterval(true, true));
+            Eq(200, PaviseCore.DesiredFrameInterval(true, false));
 
             int[] groups = { 5, 7 };
             Eq(0, NavRail.GroupsAbove(0, groups));

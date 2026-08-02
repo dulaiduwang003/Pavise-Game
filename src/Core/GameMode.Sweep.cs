@@ -6,15 +6,15 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal partial class GameMode
     {
-#if AEGIS_PERFLAB
+#if PAVISE_PERFLAB
         private HashSet<string> performanceSuppressionScope;
 #endif
 
-#if AEGIS_PERFLAB
+#if PAVISE_PERFLAB
         internal void RestrictBackgroundSuppressionToPaths(
             IEnumerable<string> executablePaths)
         {
@@ -31,7 +31,7 @@ namespace AegisApp
 
         private bool PerformanceScopeAllows(string imagePath)
         {
-#if AEGIS_PERFLAB
+#if PAVISE_PERFLAB
             lock (sync)
             {
                 if (performanceSuppressionScope == null) return true;

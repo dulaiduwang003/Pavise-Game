@@ -7,7 +7,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Threading;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal partial class GameMode
     {
@@ -135,8 +135,8 @@ namespace AegisApp
         public GameMode(string dir, SuppressionCore core)
         {
             dataDir = dir;
-            gamesPath = Path.Combine(dir, "Aegis.games.txt");
-            whitePath = Path.Combine(dir, "Aegis.whitelist.txt");
+            gamesPath = Path.Combine(dir, "Pavise.games.txt");
+            whitePath = Path.Combine(dir, "Pavise.whitelist.txt");
             profileStore = new GameProfileStore(dir);
             using (Process self = Process.GetCurrentProcess())
             {
@@ -330,9 +330,9 @@ namespace AegisApp
         private bool WritePreset()
         {
             var lines = new List<string>();
-            lines.Add("# Aegis 智能守护白名单——这些进程始终不进入后台控制");
+            lines.Add("# Pavise 智能守护白名单——这些进程始终不进入后台控制");
             lines.Add("# V3 规则支持进程名、精确路径和应用家族，并带完整性尾标防止截断。");
-            lines.Add("# Windows 核心、其它会话和 Aegis 自身受安全保护；其余例外只来自本白名单。");
+            lines.Add("# Windows 核心、其它会话和 Pavise 自身受安全保护；其余例外只来自本白名单。");
             lines.Add(WhitelistRule.Header);
             var rules = new List<WhitelistRule>();
             foreach (string entry in PresetWhitelist)
@@ -399,7 +399,7 @@ namespace AegisApp
                 {
                     if (lines[i].Contains("Windows、前台、音频/直播、驱动、游戏家族和反作弊"))
                     {
-                        lines[i] = "# Windows 核心、其它会话和 Aegis 自身受安全保护；其余例外只来自本白名单。";
+                        lines[i] = "# Windows 核心、其它会话和 Pavise 自身受安全保护；其余例外只来自本白名单。";
                         changed = true;
                     }
                     else if (lines[i].Contains("压制会扫全部会话、不因会话 0 而豁免"))
@@ -749,7 +749,7 @@ namespace AegisApp
             lock (sync) exitResidue = active || gameBoost.Count > 0;
             bool exitClean = true;
             if (exitResidue || core.AnyWith(SuppressReason.Background) || EnvActive())
-                exitClean = Deactivate("Aegis 退出");
+                exitClean = Deactivate("Pavise 退出");
             if (panicReq)
             {
                 int servingAtExit = Volatile.Read(ref panicSeq);

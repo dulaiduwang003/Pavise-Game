@@ -9,7 +9,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal partial class GameMode
     {
@@ -19,14 +19,14 @@ namespace AegisApp
         private long repStart;
         private string repGame;
         private bool repBoosted;
-        private long repAegisCpuStart;
+        private long repPaviseCpuStart;
         private readonly SessionTelemetry telemetry = new SessionTelemetry();
 
         public event Action<string> SessionEnded;
 
         private void ReportBegin(string game)
         {
-            long aegisCpu = CurrentProcessCpuTicks();
+            long paviseCpu = CurrentProcessCpuTicks();
             lock (sync)
             {
                 repCpu.Clear();
@@ -35,7 +35,7 @@ namespace AegisApp
                 repGame = game;
                 repStart = Stopwatch.GetTimestamp();
                 repBoosted = false;
-                repAegisCpuStart = aegisCpu;
+                repPaviseCpuStart = paviseCpu;
             }
             if (Settings.Load("EvidenceMode", false))
             {
@@ -81,7 +81,7 @@ namespace AegisApp
             string game;
             long t0;
             bool boosted;
-            long aegisCpuStart;
+            long paviseCpuStart;
             lock (sync)
             {
                 game = repGame;
@@ -90,13 +90,13 @@ namespace AegisApp
                 names = new Dictionary<int, string>(repProc);
                 creations = new Dictionary<int, long>(repCreation);
                 boosted = repBoosted;
-                aegisCpuStart = repAegisCpuStart;
+                paviseCpuStart = repPaviseCpuStart;
                 repCpu.Clear();
                 repCreation.Clear();
                 repProc.Clear();
                 repGame = null;
                 repBoosted = false;
-                repAegisCpuStart = 0;
+                repPaviseCpuStart = 0;
             }
             string threadNote;
             string frames = FrameEvidence.Finish(out threadNote);
@@ -135,21 +135,21 @@ namespace AegisApp
             string msg = Lang.F("rep.done", game, FmtDur(dur), cpu.Count, FmtCpu(total));
             if (topName != null && top >= TimeSpan.TicksPerSecond)
                 msg += Lang.F("rep.top", topName, FmtCpu(top));
-            long aegisCpuEnd = CurrentProcessCpuTicks();
-            long aegisCpuDelta = aegisCpuStart > 0
-                && aegisCpuEnd >= aegisCpuStart
-                ? aegisCpuEnd - aegisCpuStart : 0;
-            double aegisCpuPercent = AverageCpuPercent(
-                aegisCpuDelta, dur);
+            long paviseCpuEnd = CurrentProcessCpuTicks();
+            long paviseCpuDelta = paviseCpuStart > 0
+                && paviseCpuEnd >= paviseCpuStart
+                ? paviseCpuEnd - paviseCpuStart : 0;
+            double paviseCpuPercent = AverageCpuPercent(
+                paviseCpuDelta, dur);
             msg += Lang.F(
-                "rep.aegis.cpu",
-                aegisCpuPercent.ToString("0.00", CultureInfo.InvariantCulture));
+                "rep.pavise.cpu",
+                paviseCpuPercent.ToString("0.00", CultureInfo.InvariantCulture));
             Logger.Log("会话报告：" + msg);
             PerformancePreset usedPreset;
             lock (sync) usedPreset = preset;
             SessionReportStore.Append(
                 dataDir, game, usedPreset, dur, boosted, cpu.Count,
-                aegisCpuPercent);
+                paviseCpuPercent);
 
             if (dur.TotalSeconds >= 60)
             {
@@ -214,13 +214,13 @@ namespace AegisApp
 
     internal static class SessionReportStore
     {
-        public const string FileName = "Aegis.reports.log";
+        public const string FileName = "Pavise.reports.log";
         private static readonly object FileSync = new object();
         private static readonly HashSet<string> MigrationChecked =
             new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         public static void Append(string dataDir, string game, PerformancePreset preset, TimeSpan duration,
-            bool boostVerified, int suppressed, double aegisCpuPercent)
+            bool boostVerified, int suppressed, double paviseCpuPercent)
         {
             try
             {
@@ -229,8 +229,8 @@ namespace AegisApp
                     + Lang.T(boostVerified ? "report.boost.ok" : "report.boost.missed") + " | "
                     + Lang.F("report.control", suppressed) + " | "
                     + Lang.F(
-                        "report.aegis.cpu",
-                        aegisCpuPercent.ToString(
+                        "report.pavise.cpu",
+                        paviseCpuPercent.ToString(
                             "0.00", CultureInfo.InvariantCulture));
                 lock (FileSync)
                 {

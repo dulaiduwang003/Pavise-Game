@@ -4,10 +4,10 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
 
-[assembly: AssemblyTitle("Aegis")]
+[assembly: AssemblyTitle("Pavise")]
 [assembly: AssemblyDescription("Windows game resource scheduling utility")]
 [assembly: AssemblyCompany("bdth")]
-[assembly: AssemblyProduct("Aegis")]
+[assembly: AssemblyProduct("Pavise")]
 [assembly: AssemblyCopyright("Copyright 2026 bdth")]
 [assembly: AssemblyTrademark("")]
 [assembly: ComVisible(false)]

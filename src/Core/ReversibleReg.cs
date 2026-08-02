@@ -4,11 +4,11 @@
 using System;
 using Microsoft.Win32;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal sealed class ReversibleReg
     {
-        public const string Absent = "__aegis_absent__";
+        public const string Absent = "__pavise_absent__";
         private const string LegacyAbsent = "none";
 
         private readonly RegistryKey hive;
@@ -74,6 +74,24 @@ namespace AegisApp
             if (a.Length != b.Length) return false;
             for (int i = 0; i < a.Length; i++) if (a[i] != b[i]) return false;
             return true;
+        }
+
+        public bool Matches(object expected)
+        {
+            try
+            {
+                using (var k = hive.OpenSubKey(subKey))
+                {
+                    object cur = k == null ? null : k.GetValue(valName);
+                    if (cur == null) return false;
+                    if (kind == RegistryValueKind.DWord)
+                        return Convert.ToInt64(cur) == Convert.ToInt64(expected);
+                    if (kind == RegistryValueKind.Binary)
+                        return BytesEqual(cur as byte[], expected as byte[]);
+                    return string.Equals(cur.ToString(), expected == null ? "" : expected.ToString(), StringComparison.Ordinal);
+                }
+            }
+            catch { return false; }
         }
 
         public bool Restore()

@@ -5,12 +5,12 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal partial class PanelForm
     {
         private Toggle swGame;
-        private AegisCore aegisCore;
+        private PaviseCore paviseCore;
         private StatusDot statusDot;
         private Label lblStatus;
         private Label lblOverviewBoost, lblEvidenceLive;
@@ -24,10 +24,10 @@ namespace AegisApp
             int rightX = ContentX + coreW + gap;
             int rightW = ContentW - coreW - gap;
 
-            aegisCore = new AegisCore();
-            aegisCore.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(coreW), Theme.S(coreH));
-            aegisCore.SetState(gameMode.ActivePreset, gameMode.Enabled, gameMode.IsActive);
-            pageOverview.Controls.Add(aegisCore);
+            paviseCore = new PaviseCore();
+            paviseCore.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(coreW), Theme.S(coreH));
+            paviseCore.SetState(gameMode.ActivePreset, gameMode.Enabled, gameMode.IsActive);
+            pageOverview.Controls.Add(paviseCore);
 
             var guard = MakeConsolePanel(pageOverview, rightX, y, rightW, 128, true);
             CardLabel(guard, Lang.T("v15.guard.state"), 18, 12, rightW - 92, 18, 7.8f, true, Theme.Faint);

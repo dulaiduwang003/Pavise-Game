@@ -14,7 +14,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using Microsoft.Win32;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal sealed class LolLcuCredentials
     {
@@ -1975,12 +1975,12 @@ namespace AegisApp
                 try
                 {
                     restoreMutex = new Mutex(
-                        false, "Global\\Aegis_LolUxRestore_" + suffix);
+                        false, "Global\\Pavise_LolUxRestore_" + suffix);
                 }
                 catch
                 {
                     restoreMutex = new Mutex(
-                        false, "Aegis_LolUxRestore_" + suffix);
+                        false, "Pavise_LolUxRestore_" + suffix);
                 }
                 try { held = restoreMutex.WaitOne(15000); }
                 catch (AbandonedMutexException) { held = true; }
@@ -2090,7 +2090,7 @@ namespace AegisApp
                 request.Timeout = timeoutMs;
                 request.ReadWriteTimeout = timeoutMs;
                 request.Accept = "application/json";
-                request.UserAgent = "Aegis-LolRuntime";
+                request.UserAgent = "Pavise-LolRuntime";
                 request.Headers[HttpRequestHeader.Authorization] = "Basic " + Convert.ToBase64String(
                     Encoding.UTF8.GetBytes("riot:" + credentials.Token));
                 request.ServerCertificateValidationCallback = ValidateLoopbackCertificate;

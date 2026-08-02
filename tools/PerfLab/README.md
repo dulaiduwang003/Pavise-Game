@@ -1,18 +1,18 @@
-# Aegis PerfLab
+# Pavise PerfLab
 
-PerfLab is an isolated A/B performance test for the real Aegis engine. It creates:
+PerfLab is an isolated A/B performance test for the real Pavise engine. It creates:
 
 - a visible renderer with calibrated `DwmFlush` presentation telemetry and an
   explicit `gdi_timer` fallback when `DwmFlush` cannot be calibrated;
 - several bounded background CPU/memory workers;
 - short-lived child bursts launched by a launcher-like renderer anchor itself,
   exercising the one-shot launcher transition budget and process notifications;
-- an Aegis engine host using an in-memory settings store and a private data directory.
+- an Pavise engine host using an in-memory settings store and a private data directory.
 
 The `overhead` lane observes the synthetic workload without changing its scheduling.
 The `policy` lane boosts only the synthetic renderer and suppresses only workers whose
 full image path matches the private PerfLab copy. Neither lane modifies the user's
-`HKCU\Software\Aegis` settings or uses normal user processes as test targets.
+`HKCU\Software\Pavise` settings or uses normal user processes as test targets.
 The controller requests elevation once because a non-elevated process cannot validate
 the real priority/IO/GPU boost path.
 
@@ -25,19 +25,19 @@ Build:
 Run ten paired rounds:
 
 ```powershell
-$bin = "$env:TEMP\Aegis-PerfLab-bin"
-$out = "$env:TEMP\Aegis-PerfLab-results"
+$bin = "$env:TEMP\Pavise-PerfLab-bin"
+$out = "$env:TEMP\Pavise-PerfLab-results"
 $args = @(
-  "--run", "--engine", "$bin\Aegis.PerfEngine.exe",
+  "--run", "--engine", "$bin\Pavise.PerfEngine.exe",
   "--lane", "overhead", "--rounds", "10", "--warmup", "10",
   "--seconds", "20", "--cooldown", "10", "--workers", "6",
   "--out", $out
 )
-Start-Process "$bin\Aegis.PerfLab.exe" -ArgumentList $args -Verb RunAs -Wait
+Start-Process "$bin\Pavise.PerfLab.exe" -ArgumentList $args -Verb RunAs -Wait
 Get-Content "$out\summary.txt"
 ```
 
-`trials.csv` contains every raw trial, including the Aegis engine's CPU, I/O,
+`trials.csv` contains every raw trial, including the Pavise engine's CPU, I/O,
 resource footprint, policy writes, and GameMode full-snapshot count. `summary.txt`
 uses medians and reports separate renderer, engine-overhead, scan-budget, and
 suppression gates. The scan budget is tied to the production 20-second
@@ -94,11 +94,11 @@ visible GDI renderer and must sustain at least 20 measured frames per second
 with bounded frame time; it is never labeled as compositor telemetry.
 
 The output directory must either be empty or already contain PerfLab's
-`.aegis-perflab-owner` marker. PerfLab creates the marker on first use and
+`.pavise-perflab-owner` marker. PerfLab creates the marker on first use and
 refuses to overwrite a non-empty unowned directory.
 
 The `overhead` lane keeps the synthetic renderer and workers at the same
-scheduling policy in both arms, so Aegis cannot hide its observation cost behind
+scheduling policy in both arms, so Pavise cannot hide its observation cost behind
 policy gains. Run a second output directory with `--lane policy` to exercise the
 real GameMode sweep, boost, whitelist and suppression paths. That lane is scoped
 to the private synthetic worker path and leaves normal user processes untouched.

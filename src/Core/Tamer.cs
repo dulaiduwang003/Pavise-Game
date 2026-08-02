@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal class Tamer
     {
@@ -274,7 +274,7 @@ namespace AegisApp
                         Math.Max(1, remainingTicks / TimeSpan.TicksPerMillisecond));
                 kick.WaitOne(wait);
             }
-            ReleaseAll("Aegis 退出");
+            ReleaseAll("Pavise 退出");
         }
 
         internal static int FullSweepInterval(bool eventsAvailable)

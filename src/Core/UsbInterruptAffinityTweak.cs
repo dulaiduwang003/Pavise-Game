@@ -5,14 +5,14 @@ using System;
 using System.Collections.Generic;
 using System.Management;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static class UsbInterruptAffinityTweak
     {
         private static readonly IrqAffinityEngine irqEngine =
-            new IrqAffinityEngine("UsbAffinityOnByAegis", "UsbAff_", "USB 控制器中断亲和");
+            new IrqAffinityEngine("UsbAffinityOnByPavise", "UsbAff_", "USB 控制器中断亲和");
 
-        public static bool EnabledByAegis { get { return irqEngine.EnabledByAegis; } }
+        public static bool EnabledByPavise { get { return irqEngine.EnabledByPavise; } }
 
         internal static List<string> EnumerateUsbControllerIds()
         {

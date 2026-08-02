@@ -6,7 +6,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal sealed class LolHeadlessLeaseInfo
     {
@@ -20,8 +20,8 @@ namespace AegisApp
     {
         private const string Key = "LolHeadlessEngagedRoot";
         private const string Prefix = "V2|";
-        private const string GlobalMutex = "Global\\Aegis_LolHeadlessLease";
-        private const string LocalMutex = "Aegis_LolHeadlessLease";
+        private const string GlobalMutex = "Global\\Pavise_LolHeadlessLease";
+        private const string LocalMutex = "Pavise_LolHeadlessLease";
 
         public static bool Exists()
         {

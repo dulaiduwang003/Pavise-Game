@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途：在隔离配置中运行真实 Aegis 核心，供 PerfLab 做可重复 A/B 测量
+// 文件用途：在隔离配置中运行真实 Pavise 核心，供 PerfLab 做可重复 A/B 测量
 
 using System;
 using System.Collections.Generic;
@@ -10,13 +10,13 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static class PerfEngineProgram
     {
-        private const string ReportSchema = "aegis-perflab-engine-v4";
+        private const string ReportSchema = "pavise-perflab-engine-v4";
         private const string WorkerRosterSchema =
-            "aegis-perflab-worker-roster-v1";
+            "pavise-perflab-worker-roster-v1";
         private const int DiscoverIntervalMs = 1000;
         private const int MeasurementPollMs = 100;
         private const int RequiredPolicyCoveragePercent = 90;
@@ -68,7 +68,7 @@ namespace AegisApp
             if (args.Length != 13)
             {
                 Console.Error.WriteLine(
-                    "usage: Aegis.PerfEngine.exe <renderer.exe> <background.exe> <max-seconds>"
+                    "usage: Pavise.PerfEngine.exe <renderer.exe> <background.exe> <max-seconds>"
                     + " <report> <armed-event> <ready-event> <start-event>"
                     + " <start-ack-event> <done-event>"
                     + " <worker-roster> <roster-ready-event>"
@@ -109,7 +109,7 @@ namespace AegisApp
             Directory.CreateDirectory(runDir);
 
             Settings.UseTransientStoreForCurrentProcess();
-            Logger.LogPath = Path.Combine(runDir, "Aegis.perf.log");
+            Logger.LogPath = Path.Combine(runDir, "Pavise.perf.log");
 
             var engineCore = new SuppressionCore(Path.Combine(
                 runDir, "engine." + SuppressionCore.StateFileName));
@@ -495,7 +495,7 @@ namespace AegisApp
             gameMode.PowerPlanSwitch = false;
             gameMode.RestrictBackgroundSuppressionToPaths(
                 new[] { backgroundPath });
-            gameMode.AddGameExecutable("AEGIS PERF RENDERER", rendererPath);
+            gameMode.AddGameExecutable("PAVISE PERF RENDERER", rendererPath);
             gameMode.Enabled = true;
         }
 

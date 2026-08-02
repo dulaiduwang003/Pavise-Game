@@ -6,7 +6,7 @@ using System.Diagnostics;
 using System.Management;
 using Microsoft.Win32;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static class VbsTweak
     {
@@ -26,7 +26,7 @@ namespace AegisApp
             public bool VbsRunning;
         }
 
-        public static bool DisabledByAegis { get { return Settings.Load("VbsDisabledByAegis", false); } }
+        public static bool DisabledByPavise { get { return Settings.Load("VbsDisabledByPavise", false); } }
 
         public static State Query()
         {
@@ -87,8 +87,8 @@ namespace AegisApp
                         Logger.Log("停用 hypervisor 失败（bcdedit rc=" + code + "），已回滚注册表改动");
                         return false;
                     }
-                    Settings.Save("VbsDisabledByAegis", true);
-                    if (!Settings.Load("VbsDisabledByAegis", false))
+                    Settings.Save("VbsDisabledByPavise", true);
+                    if (!Settings.Load("VbsDisabledByPavise", false))
                     {
                         int rollbackCode;
                         RunBcd("/set hypervisorlaunchtype "
@@ -112,7 +112,7 @@ namespace AegisApp
                 try
                 {
                     string savedHvLaunch = Settings.LoadStr("PrevHvLaunch", "");
-                    if (!Vbs.HasBackup && !Hvci.HasBackup && savedHvLaunch.Length == 0 && !DisabledByAegis)
+                    if (!Vbs.HasBackup && !Hvci.HasBackup && savedHvLaunch.Length == 0 && !DisabledByPavise)
                         return true;
                     bool ok = Vbs.Restore() & Hvci.Restore();
                     string hv = NormHvLaunch(savedHvLaunch.Length == 0 ? "auto" : savedHvLaunch);
@@ -121,8 +121,8 @@ namespace AegisApp
                     if (code != 0) ok = false;
                     if (ok)
                     {
-                        Settings.Save("VbsDisabledByAegis", false);
-                        if (Settings.Load("VbsDisabledByAegis", true))
+                        Settings.Save("VbsDisabledByPavise", false);
+                        if (Settings.Load("VbsDisabledByPavise", true))
                         {
                             Logger.Log("系统设置已还原，但状态标志写入失败；下次启动将再次校正");
                             return false;

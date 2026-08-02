@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 
-namespace AegisApp
+namespace PaviseApp
 {
     [Flags]
     internal enum SuppressReason
@@ -26,7 +26,7 @@ namespace AegisApp
 
     internal sealed partial class SuppressionCore
     {
-        public const string StateFileName = "Aegis.suppression.state";
+        public const string StateFileName = "Pavise.suppression.state";
         public static volatile bool GpuDemoteEnabled;
         private sealed class Entry
         {
@@ -323,11 +323,11 @@ namespace AegisApp
                     if ((!CpuTopology.MultiGroup && oaff == 0)
                         || oio < 0 || opg < 0)
                         return AcquireResult.ApplyFailed;
-                    bool placementLooksAegis =
+                    bool placementLooksPavise =
                         SameCpuSets(ocpuSets, CpuTopology.BackgroundCpuSetIds())
                         || (!CpuTopology.MultiGroup && oaff == throttleMask);
                     bool residue = rawPri == Native.IDLE_PRIORITY_CLASS && oio == 0 && opg == 1
-                        && placementLooksAegis;
+                        && placementLooksPavise;
                     uint orig = residue ? Native.NORMAL_PRIORITY_CLASS : rawPri;
                     if (residue && oaff == throttleMask) oaff = 0;
                     if (residue && SameCpuSets(ocpuSets, CpuTopology.BackgroundCpuSetIds())) ocpuSets = new uint[0];

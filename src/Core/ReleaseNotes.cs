@@ -4,7 +4,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal sealed class ReleaseNote
     {
@@ -50,7 +50,7 @@ namespace AegisApp
             }),
             new ReleaseNote("1.5", "2026-07-29", new[]
             {
-                new[]{ "新增「英雄联盟专栏」：WeGame 只负责认证与拉起，LCU 确认大厅可用后按安装路径精确退出国服附加进程；对局中通过客户端原生接口关闭 CEF/UX，赛后自动回显，独立看门狗在 Aegis 退出后仍负责恢复。" },
+                new[]{ "新增「英雄联盟专栏」：WeGame 只负责认证与拉起，LCU 确认大厅可用后按安装路径精确退出国服附加进程；对局中通过客户端原生接口关闭 CEF/UX，赛后自动回显，独立看门狗在 Pavise 退出后仍负责恢复。" },
                 new[]{ "新增附加层直接删除：单独确认后删除 Cross 附加层（AI 教练、iCreate 录制），客户端更新会重新下载这些组件；客户端、WeGame 或反作弊运行时拒绝操作，删除范围不含游戏本体、登录链路与更新器。" },
                 new[]{ "新增「竞技画质」：一组可逆的 game.cfg 设置（阴影、抗锯齿、光束、装饰效果、画质档位、独占全屏），原值连同安装路径一并记录，可一键还原。" },
                 new[]{ "界面仅保留简体中文，构建体积由约 610 KB 降至约 500 KB；多语言机制与全部文案键保留，补回译文即可恢复。" },
@@ -114,7 +114,7 @@ namespace AegisApp
 
         public static void MarkSeen() { Settings.SaveStr(SeenKey, App.Version); }
 
-#if AEGIS_SELFTEST
+#if PAVISE_SELFTEST
         internal static List<string> MissingTranslations()
         {
             var bad = new List<string>();

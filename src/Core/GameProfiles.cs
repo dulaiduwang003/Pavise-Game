@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal enum PerformancePreset
     {
@@ -46,9 +46,9 @@ namespace AegisApp
 
     internal sealed class GameProfileStore
     {
-        internal const string FileName = "Aegis.profiles.dat";
-        private const string HeaderV1 = "AEGIS_PROFILES_V1";
-        private const string HeaderV2 = "AEGIS_PROFILES_V2";
+        internal const string FileName = "Pavise.profiles.dat";
+        private const string HeaderV1 = "PAVISE_PROFILES_V1";
+        private const string HeaderV2 = "PAVISE_PROFILES_V2";
         private readonly string path;
 
         public GameProfileStore(string dir)
@@ -126,7 +126,7 @@ namespace AegisApp
         {
             if (loadFailed)
             {
-                Logger.Log("游戏档案此前读取失败，本次保存已跳过以免覆盖原文件（重启 Aegis 后重试）");
+                Logger.Log("游戏档案此前读取失败，本次保存已跳过以免覆盖原文件（重启 Pavise 后重试）");
                 return;
             }
             try

@@ -4,7 +4,7 @@
 using System;
 using Microsoft.Win32;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static class GameDvr
     {

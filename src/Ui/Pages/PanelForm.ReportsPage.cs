@@ -8,7 +8,7 @@ using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal partial class PanelForm
     {
@@ -62,7 +62,7 @@ namespace AegisApp
             btnClearLog.Visible = false;
             btnClearLog.Click += delegate
             {
-                if (MessageBox.Show(this, Lang.T("rep.clear.ask"), "Aegis",
+                if (MessageBox.Show(this, Lang.T("rep.clear.ask"), "Pavise",
                         MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
                 Logger.Clear();
                 Logger.Log("运行日志已手动清除");
@@ -72,7 +72,7 @@ namespace AegisApp
             btnClearReports.SetBounds(Theme.S(ContentX + 404), Theme.S(PageH - 48), Theme.S(150), Theme.S(36));
             btnClearReports.Click += delegate
             {
-                if (MessageBox.Show(this, Lang.T("rep.clear.cards.ask"), "Aegis",
+                if (MessageBox.Show(this, Lang.T("rep.clear.cards.ask"), "Pavise",
                         MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
                 SessionReportStore.ClearAll(Paths.Data);
                 EvidenceStore.ClearAll(Paths.Data);

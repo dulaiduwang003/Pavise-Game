@@ -6,7 +6,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Threading;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal sealed class LolOptimizationSnapshot
     {
@@ -319,7 +319,7 @@ namespace AegisApp
                 int generation = ++runGeneration;
                 worker = new Thread(new ThreadStart(delegate { WorkerLoop(generation); }));
                 worker.IsBackground = true;
-                worker.Name = "Aegis LoL Runtime";
+                worker.Name = "Pavise LoL Runtime";
                 worker.Start();
             }
             RaiseChanged();

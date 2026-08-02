@@ -8,7 +8,7 @@ using System.IO;
 using System.Threading;
 using System.Windows.Forms;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal sealed class WhitelistDialog : Form
     {
@@ -89,7 +89,7 @@ namespace AegisApp
             var reset = Button(Lang.T("btn.reset"), 548, 406, BtnKind.Danger);
             reset.Click += delegate
             {
-                if (MessageBox.Show(this, Lang.T("white.reset.confirm"), "Aegis",
+                if (MessageBox.Show(this, Lang.T("white.reset.confirm"), "Pavise",
                     MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
                     MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
                 if (!mode.ResetWhitelist()) ShowMutationError();
@@ -128,7 +128,7 @@ namespace AegisApp
                         string arguments;
                         if (!Shortcut.TryResolve(file, out target, out arguments))
                         {
-                            MessageBox.Show(this, Lang.T("white.shortcut.invalid"), "Aegis",
+                            MessageBox.Show(this, Lang.T("white.shortcut.invalid"), "Pavise",
                                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
                             return;
                         }
@@ -148,14 +148,14 @@ namespace AegisApp
             WhitelistRuleKind kind = selected == null ? WhitelistRuleKind.ExactPath : selected.Kind;
             if (kind != WhitelistRuleKind.LegacyName && string.IsNullOrWhiteSpace(path))
             {
-                MessageBox.Show(this, Lang.T("white.path.required"), "Aegis",
+                MessageBox.Show(this, Lang.T("white.path.required"), "Pavise",
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
             if (kind == WhitelistRuleKind.ApplicationFamily
                 && (parameterizedShortcut || WhitelistRule.IsUnsafeFamilyAnchor(path)))
             {
-                MessageBox.Show(this, Lang.T("white.family.unsafe"), "Aegis",
+                MessageBox.Show(this, Lang.T("white.family.unsafe"), "Pavise",
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
@@ -179,7 +179,7 @@ namespace AegisApp
         {
             string message = mode.WhitelistLastError;
             if (string.IsNullOrEmpty(message)) message = Lang.T("white.duplicate");
-            MessageBox.Show(this, message, "Aegis",
+            MessageBox.Show(this, message, "Pavise",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 

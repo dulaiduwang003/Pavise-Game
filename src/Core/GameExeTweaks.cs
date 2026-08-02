@@ -5,13 +5,13 @@ using System;
 using System.Collections.Generic;
 using Microsoft.Win32;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static class GameExeTweaks
     {
         private const string GpuKey = @"SOFTWARE\Microsoft\DirectX\UserGpuPreferences";
         private const string FsoKey = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers";
-        private const string BakKey = @"Software\Aegis\ExeTweakBak";
+        private const string BakKey = @"Software\Pavise\ExeTweakBak";
         private const string FsoFlag = "DISABLEDXMAXIMIZEDWINDOWEDMODE";
         private static readonly object lk = new object();
 

@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static class LolAddonCleaner
     {

@@ -4,7 +4,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static class UpdatePause
     {

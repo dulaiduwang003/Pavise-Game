@@ -13,7 +13,7 @@ using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static class Lang
     {
@@ -52,7 +52,7 @@ namespace AegisApp
             { "mode.pick.competitive", new[]{ "取消前台 / 窗口豁免 · 其余符合条件进程立即隔离" } },
             { "mode.pick.custom", new[]{ "完全按策略开关执行 · 高风险功能不自动开启" } },
             { "v15.overview.sub", new[]{ "模式从右上角切换。" } },
-            { "v15.guard.state", new[]{ "AEGIS 守护状态" } },
+            { "v15.guard.state", new[]{ "PAVISE 守护状态" } },
             { "v15.effective.mode", new[]{ "实际生效模式" } },
             { "v15.master.short", new[]{ "筛选到最可能的游戏画面进程后接管，退出时恢复已记录状态" } },
             { "v15.tile.game", new[]{ "游戏资源" } },
@@ -85,14 +85,14 @@ namespace AegisApp
             { "def.state.on", new[]{ "已排除" } },
             { "def.state.off", new[]{ "受保护" } },
             { "def.confirm", new[]{ "确定要把《{0}》的目录排除出 Defender 实时扫描吗？\r\n\r\n{1}\r\n\r\n该目录下的文件将不再被查杀。只有当你确信这个游戏的来源可靠时才继续。" } },
-            { "def.notours", new[]{ "这条排除不是 Aegis 添加的（可能是你在 Windows 安全中心手动加的），Aegis 不会去动它。需要取消请到 Windows 安全中心操作。" } },
+            { "def.notours", new[]{ "这条排除不是 Pavise 添加的（可能是你在 Windows 安全中心手动加的），Pavise 不会去动它。需要取消请到 Windows 安全中心操作。" } },
             { "def.failed", new[]{ "操作失败，系统未接受这次修改（可能被安全策略或第三方杀软阻止）。" } },
             { "def.unavailable", new[]{ "无法读取 Defender 设置：可能未安装、已被第三方杀软接管，或当前权限不足。" } },
             { "def.off", new[]{ "Windows Defender 的实时保护当前是关闭的，本功能对你没有意义——没有实时扫描，也就没有扫描开销可省。如果之后重新启用了 Defender，再回来这里即可。" } },
             { "def.nogames", new[]{ "游戏库还是空的。先在「游戏库」里添加游戏，这里才会列出可排除的目录。" } },
             { "def.clearall", new[]{ "全部取消排除" } },
-            { "def.clearall.none", new[]{ "Aegis 目前没有添加过任何排除项。" } },
-            { "def.clearall.done", new[]{ "已取消 {0} 个由 Aegis 添加的排除项（你手工添加的不受影响）。" } },
+            { "def.clearall.none", new[]{ "Pavise 目前没有添加过任何排除项。" } },
+            { "def.clearall.done", new[]{ "已取消 {0} 个由 Pavise 添加的排除项（你手工添加的不受影响）。" } },
             { "def.open", new[]{ "Defender 扫描排除" } },
             { "def.open.sub", new[]{ "逐个游戏目录手动勾选；会降低这些目录的安全防护" } },
             { "gm.idledisable", new[]{ "竞技模式禁用 CPU 空闲状态" } },
@@ -101,7 +101,7 @@ namespace AegisApp
             { "gm.visualfx.sub", new[]{ "关闭桌面透明与窗口动画，退出后还原（默认关闭）" } },
             { "v15.anticheat.sub", new[]{ "独立于游戏性能预设，只控制下方明确列出的反作弊用户态组件。" } },
             { "v14.overview.sub", new[]{ "按入口关系 窗口和路径筛选最可能的游戏画面候选；启动器和平台进程不会被提优。" } },
-            { "v14.master", new[]{ "Aegis 智能守护" } },
+            { "v14.master", new[]{ "Pavise 智能守护" } },
             { "v14.master.sub", new[]{ "全局总开关；所有游戏共享当前性能预设" } },
             { "v14.preset", new[]{ "性能预设" } },
             { "preset.standard", new[]{ "常规" } },
@@ -116,13 +116,13 @@ namespace AegisApp
             { "v14.boost.no.renderer", new[]{ "已检测到游戏入口，但尚未筛选到画面候选" } },
             { "v14.boost.applying", new[]{ "正在验证并提优：{0}" } },
             { "v14.boost.verified", new[]{ "已验证：{0}\r\n高优先级 + 高 I/O 已回读确认" } },
-            { "v14.boost.failed", new[]{ "提优未落地：{0}\r\nAegis 正在持续纠偏，请查看日志" } },
+            { "v14.boost.failed", new[]{ "提优未落地：{0}\r\nPavise 正在持续纠偏，请查看日志" } },
             { "v14.policy.sub", new[]{ "先选择性能预设，再检查安全边界。" } },
             { "v14.policy.performance", new[]{ "性能策略" } },
             { "v14.preset.choose", new[]{ "选择性能预设" } },
             { "v14.policy.boundary", new[]{ "安全边界与额外开关" } },
             { "v14.bg.master", new[]{ "后台调度 · 总开关" } },
-            { "v14.bg.master.sub", new[]{ "关闭后不再控制普通后台；游戏家族、反作弊、Windows 核心、其它用户会话、Aegis 和白名单始终豁免。前台 / 主窗口家族仅在常规及非激进自定义中豁免，竞技会纳入控制" } },
+            { "v14.bg.master.sub", new[]{ "关闭后不再控制普通后台；游戏家族、反作弊、Windows 核心、其它用户会话、Pavise 和白名单始终豁免。前台 / 主窗口家族仅在常规及非激进自定义中豁免，竞技会纳入控制" } },
             { "v14.cpu.adaptive.sub2", new[]{ "竞技始终启用；常规/自定义可在此额外强制。无安全分区时会自动降级，不伪装成功" } },
             { "v14.preset.forced", new[]{ "当前预设强制" } },
             { "v14.anticheat.boundary", new[]{ "反作弊只由此处控制，不跟随性能预设" } },
@@ -145,7 +145,7 @@ namespace AegisApp
             { "v14.cpu.adaptive.sub", new[]{ "适配 SMT、混合架构、X3D 与多处理器组；竞技预设自动启用" } },
             { "v14.anticheat", new[]{ "反作弊专项" } },
             { "v14.manage.white", new[]{ "管理白名单" } },
-            { "v14.reports.sub", new[]{ "每局保存持续时间、提权回读、后台压制数量与 Aegis 主进程平均 CPU；不运行帧采集器。" } },
+            { "v14.reports.sub", new[]{ "每局保存持续时间、提权回读、后台压制数量与 Pavise 主进程平均 CPU；不运行帧采集器。" } },
             { "v14.open.report", new[]{ "打开报告文件" } },
             { "v14.cpu.multigroup", new[]{ "多处理器组 · CPU Sets 跨组调度 · 竞技模式物理核优先" } },
             { "v14.cpu.hybrid", new[]{ "混合架构 · 后台能效核 · 竞技模式性能核优先" } },
@@ -159,7 +159,7 @@ namespace AegisApp
             { "report.boost.ok", new[]{ "提权已回读验证" } },
             { "report.boost.missed", new[]{ "本局未验证提权" } },
             { "report.control", new[]{ "压制 {0}" } },
-            { "report.aegis.cpu", new[]{ "Aegis 主进程平均 CPU {0}%" } },
+            { "report.pavise.cpu", new[]{ "Pavise 主进程平均 CPU {0}%" } },
             { "report.unknown.game", new[]{ "未知游戏" } },
             { "btn.ok", new[]{ "保存" } },
 
@@ -210,7 +210,7 @@ namespace AegisApp
             { "rep.cards.none", new[]{ "还没有会话记录 · 打完一局游戏后这里会出现摘要卡片" } },
             { "rep.log.none", new[]{ "日志为空" } },
             { "rep.clear.log", new[]{ "清除日志" } },
-            { "rep.clear.ask", new[]{ "清空运行日志？\r\n\r\nAegis.log 将被清空；已归档的 Aegis.log.old 不受影响。" } },
+            { "rep.clear.ask", new[]{ "清空运行日志？\r\n\r\nPavise.log 将被清空；已归档的 Pavise.log.old 不受影响。" } },
             { "rep.clear.cards", new[]{ "清空摘要" } },
             { "rep.clear.cards.ask", new[]{ "清空全部会话摘要？\r\n\r\n会话报告与证据记录（帧时间/归因数据）将一并清空，且无法恢复。" } },
             { "rep.stat.avg", new[]{ "平均 fps" } },
@@ -252,7 +252,7 @@ namespace AegisApp
             { "gs.thr", new[]{ "已压制 {0}" } },
             { "gs.prot", new[]{ "（{0} 个受内核保护压不动）" } },
 
-            { "white.desc", new[]{ "后台策略硬豁免。应用家族保护所选 EXE，以及 Aegis 本次运行期间观察到的子孙进程，不会放开整个安装目录；新增后立即恢复匹配进程。" } },
+            { "white.desc", new[]{ "后台策略硬豁免。应用家族保护所选 EXE，以及 Pavise 本次运行期间观察到的子孙进程，不会放开整个安装目录；新增后立即恢复匹配进程。" } },
             { "white.scope", new[]{ "新增规则类型" } },
             { "white.kind.family", new[]{ "应用家族" } },
             { "white.kind.family.recommended", new[]{ "应用家族（推荐）" } },
@@ -312,13 +312,13 @@ namespace AegisApp
             { "nav.env", new[]{ "系统环境" } },
             { "nav.hardware", new[]{ "硬件与系统" } },
             { "v16.graphics.sub", new[]{ "显卡驱动与呈现路径。逐游戏项只在对局期间生效，退出后自动还原。" } },
-            { "v16.env.sub", new[]{ "改动内核与驱动配置，全部需要重启才生效，且在卸载 Aegis 之后依然保留。" } },
+            { "v16.env.sub", new[]{ "改动内核与驱动配置，全部需要重启才生效，且在卸载 Pavise 之后依然保留。" } },
             { "sec.graphics.present", new[]{ "呈现路径 · 全局生效" } },
-            { "sec.env.kernel", new[]{ "内核与驱动 · 需重启，改动不随 Aegis 卸载消失" } },
+            { "sec.env.kernel", new[]{ "内核与驱动 · 需重启，改动不随 Pavise 卸载消失" } },
             { "btn.open", new[]{ "打开" } },
             { "btn.clean", new[]{ "清理" } },
             { "log.sub", new[]{ "最近 200 行 · 自动刷新" } },
-            { "set.about", new[]{ "Aegis {0} · {1} · 本地配置与用户白名单" } },
+            { "set.about", new[]{ "Pavise {0} · {1} · 本地配置与用户白名单" } },
 
             { "set.hags", new[]{ "开启 GPU 硬件调度 HAGS（需重启）" } },
             { "set.hags.n", new[]{ "切换 Windows 的硬件 GPU 调度选项；效果取决于显卡驱动和游戏，部分帧生成功能可能要求开启。" } },
@@ -334,8 +334,8 @@ namespace AegisApp
             { "vbs.state.off", new[]{ "当前：VBS 未运行（本机已经没有这项开销）" } },
             { "vbs.state.pending", new[]{ "已设为关闭，重启电脑后生效" } },
             { "vbs.state.unknown", new[]{ "当前状态未知（无法查询 WMI）" } },
-            { "vbs.warn", new[]{ "关闭 VBS / 内存完整性，并停用 hypervisor。\r\n\r\n这会降低系统安全性，并让 WSL2 / Docker / Hyper-V 虚拟机 / Windows 沙盒无法使用。性能变化没有通用结论，Aegis 也没有真实游戏基准，请只在理解风险并准备自行对照测试时使用。\r\n\r\n需重启才生效，全机器生效，恢复后也需要再次重启。\r\n\r\n继续吗？" } },
-            { "vbs.needadmin", new[]{ "修改 VBS / hypervisor 需要管理员权限，请以管理员身份运行 Aegis。" } },
+            { "vbs.warn", new[]{ "关闭 VBS / 内存完整性，并停用 hypervisor。\r\n\r\n这会降低系统安全性，并让 WSL2 / Docker / Hyper-V 虚拟机 / Windows 沙盒无法使用。性能变化没有通用结论，Pavise 也没有真实游戏基准，请只在理解风险并准备自行对照测试时使用。\r\n\r\n需重启才生效，全机器生效，恢复后也需要再次重启。\r\n\r\n继续吗？" } },
+            { "vbs.needadmin", new[]{ "修改 VBS / hypervisor 需要管理员权限，请以管理员身份运行 Pavise。" } },
             { "vbs.done", new[]{ "已关闭 VBS 并停用 hypervisor。\r\n请重启电脑生效。重启后 WSL2 / Docker / Hyper-V / 沙盒将无法使用；要恢复请回到这里关掉此开关再重启。" } },
             { "vbs.restored", new[]{ "已恢复 VBS 与 hypervisor（hypervisorlaunchtype → 原值）。\r\n请重启电脑生效，之后 WSL2 / Docker 等恢复可用。" } },
             { "vbs.restorefail", new[]{ "还原未完全成功（bcdedit 可能失败），原状态快照已保留，可再试一次。详见日志。" } },
@@ -344,7 +344,7 @@ namespace AegisApp
             { "set.shader.n", new[]{ "怀疑缓存损坏或不兼容时可尝试清理；随后会重新编译着色器，首次运行可能更卡。" } },
             { "shader.size", new[]{ "当前占用约 {0}（NVIDIA / AMD / Intel / DirectX）" } },
             { "shader.busy", new[]{ "正在清理…" } },
-            { "shader.confirm", new[]{ "清空显卡着色器缓存（NVIDIA / AMD / Intel / DirectX）？\r\n\r\n当你怀疑驱动更新后存在损坏或不兼容缓存时可以把清理作为排查步骤，但 Aegis 无法判断卡顿原因，也不保证清理会改善性能。\r\n\r\n只删缓存文件并保留目录；清理前请退出游戏。之后游戏需要重新编译着色器，首次运行可能出现额外卡顿。\r\n\r\n继续吗？" } },
+            { "shader.confirm", new[]{ "清空显卡着色器缓存（NVIDIA / AMD / Intel / DirectX）？\r\n\r\n当你怀疑驱动更新后存在损坏或不兼容缓存时可以把清理作为排查步骤，但 Pavise 无法判断卡顿原因，也不保证清理会改善性能。\r\n\r\n只删缓存文件并保留目录；清理前请退出游戏。之后游戏需要重新编译着色器，首次运行可能出现额外卡顿。\r\n\r\n继续吗？" } },
             { "shader.freed", new[]{ "已清理着色器缓存，释放 {0}。" } },
             { "shader.skip", new[]{ "{0} 个文件正被占用已跳过（关闭游戏后可再清一次）。" } },
             { "shader.note", new[]{ "每个游戏下次启动都可能重新编译着色器，首次运行可能出现额外卡顿。" } },
@@ -383,21 +383,21 @@ namespace AegisApp
             { "ofd.filter", new[]{ "游戏程序或快捷方式 (*.exe;*.lnk;*.url)|*.exe;*.lnk;*.url|程序 (*.exe)|*.exe|快捷方式 (*.lnk;*.url)|*.lnk;*.url" } },
             { "pick.busy", new[]{ "正在统计资源占用…" } },
             { "pick.count", new[]{ "共 {0} 个可执行程序 · 同路径实例合并显示" } },
-            { "msg.taskfail", new[]{ "计划任务操作失败（需要管理员权限运行 Aegis）" } },
+            { "msg.taskfail", new[]{ "计划任务操作失败（需要管理员权限运行 Pavise）" } },
 
             { "tray.open", new[]{ "打开面板" } },
             { "btn.panic", new[]{ "一键恢复已记录项" } },
             { "tray.exit", new[]{ "退出" } },
-            { "tray.active", new[]{ "Aegis - 守护中（{0}）" } },
-            { "tray.idle", new[]{ "Aegis - 待命，未检测到游戏" } },
-            { "tray.noelev", new[]{ "Aegis - 未提权！压制类功能无效" } },
+            { "tray.active", new[]{ "Pavise - 守护中（{0}）" } },
+            { "tray.idle", new[]{ "Pavise - 待命，未检测到游戏" } },
+            { "tray.noelev", new[]{ "Pavise - 未提权！压制类功能无效" } },
             { "bal.noelev", new[]{ "当前未以管理员运行，压制类功能不会生效。" } },
             { "panic.done", new[]{ "已恢复能够确认的压制 / 提优 / 电源 / 网络 / 通知记录；若存在英雄联盟无头记录，大厅界面也已恢复。Power Throttling 已交还系统管理。\r\n若游戏仍在运行，几秒后会重新进入压制；想彻底停用请关闭游戏模式与反作弊压制开关。" } },
             { "panic.timeout", new[]{ "恢复流程未全部确认完成。未确认还原的进程快照或恢复租约仍会保留并继续重试；如需彻底停用，请关闭游戏模式与反作弊压制开关。" } },
             { "panic.failedcount", new[]{ "未确认完成：{0}/{1} 项" } },
             { "rep.done", new[]{ "{0} 本局 {1}，压制 {2} 个后台进程，期间它们合计只用了 {3} CPU" } },
             { "rep.top", new[]{ "，占用最高 {0}（{1}）" } },
-            { "rep.aegis.cpu", new[]{ "；Aegis 主进程平均 CPU {0}%" } },
+            { "rep.pavise.cpu", new[]{ "；Pavise 主进程平均 CPU {0}%" } },
 
             { "lol.act.waitclient", new[]{ "等待英雄联盟客户端" } },
             { "lol.act.waitinstall", new[]{ "等待英雄联盟安装目录" } },
@@ -495,7 +495,7 @@ namespace AegisApp
             Settings.SaveStr("Lang", "zh");
         }
 
-#if AEGIS_SELFTEST
+#if PAVISE_SELFTEST
         internal static List<string> AllKeys()
         {
             var keys = new List<string>();

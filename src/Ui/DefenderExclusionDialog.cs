@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal sealed class DefenderExclusionDialog : Form
     {
@@ -118,7 +118,7 @@ namespace AegisApp
                 return;
             }
 
-            List<string> owned = DefenderExclusion.OwnedByAegis();
+            List<string> owned = DefenderExclusion.OwnedByPavise();
 
             if (profiles.Count == 0 && owned.Count == 0)
             {
@@ -240,7 +240,7 @@ namespace AegisApp
 
         private void ClearAll()
         {
-            if (DefenderExclusion.OwnedByAegis().Count == 0)
+            if (DefenderExclusion.OwnedByPavise().Count == 0)
             {
                 MessageBox.Show(this, Lang.T("def.clearall.none"), App.DisplayName,
                     MessageBoxButtons.OK, MessageBoxIcon.Information);

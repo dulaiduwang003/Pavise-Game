@@ -1,6 +1,6 @@
 // Deterministic identity tests for delayed WMI process-start events.
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static partial class SelfTests
     {

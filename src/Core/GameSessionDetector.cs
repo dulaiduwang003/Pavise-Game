@@ -7,7 +7,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal sealed class GameDetection
     {
@@ -276,7 +276,7 @@ namespace AegisApp
             return best;
         }
 
-#if AEGIS_SELFTEST
+#if PAVISE_SELFTEST
         internal static int Score(GameProfile profile, string name, string path, bool visible, bool foreground)
         {
             return Score(profile, new Candidate { Name = name, Path = path, Visible = visible, Foreground = foreground });
@@ -768,7 +768,7 @@ namespace AegisApp
             finally { Native.CloseHandle(handle); }
         }
 
-#if AEGIS_SELFTEST
+#if PAVISE_SELFTEST
         internal static bool HasUserFacingWindow(Process p)
         {
             try

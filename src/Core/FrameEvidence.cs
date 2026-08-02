@@ -7,7 +7,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Threading;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static class FrameEvidence
     {

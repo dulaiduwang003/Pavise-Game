@@ -3,7 +3,7 @@
 
 using System.Drawing;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal partial class PanelForm
     {

@@ -8,7 +8,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static partial class SelfTests
     {
@@ -72,7 +72,7 @@ namespace AegisApp
             var log = new List<string>();
             bool previous = SuppressionCore.GpuDemoteEnabled;
             string state = Path.Combine(Path.GetTempPath(),
-                "AegisGpuDemoteProbe_" + Process.GetCurrentProcess().Id + ".state");
+                "PaviseGpuDemoteProbe_" + Process.GetCurrentProcess().Id + ".state");
             var core = new SuppressionCore(state);
             try
             {

@@ -4,7 +4,7 @@
 using System;
 using Microsoft.Win32;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static class WindowedOptTweak
     {
@@ -14,7 +14,7 @@ namespace AegisApp
         private const string BackupSlot = "PrevSwapEffectUpgrade";
         private static readonly object lk = new object();
 
-        public static bool EnabledByAegis { get { return Settings.Load("WindowedOptOnByAegis", false); } }
+        public static bool EnabledByPavise { get { return Settings.Load("WindowedOptOnByPavise", false); } }
 
         public static bool CurrentlyOn()
         {
@@ -51,8 +51,8 @@ namespace AegisApp
                         string next = GameExeTweaks.MergeField(cur, Field, "1");
                         k.SetValue(ValueName, next, RegistryValueKind.String);
                         if (!CurrentlyOn()) return false;
-                        Settings.Save("WindowedOptOnByAegis", true);
-                        if (!Settings.Load("WindowedOptOnByAegis", false)) { Restore(); return false; }
+                        Settings.Save("WindowedOptOnByPavise", true);
+                        if (!Settings.Load("WindowedOptOnByPavise", false)) { Restore(); return false; }
                         Logger.Log("窗口化游戏优化已开启，重启游戏后生效");
                         return true;
                     }
@@ -82,7 +82,7 @@ namespace AegisApp
                         else k.SetValue(ValueName, next, RegistryValueKind.String);
                     }
                     Settings.SaveStr(BackupSlot, "");
-                    Settings.Save("WindowedOptOnByAegis", false);
+                    Settings.Save("WindowedOptOnByPavise", false);
                     Logger.Log("窗口化游戏优化已还原，重启游戏后生效");
                     return true;
                 }

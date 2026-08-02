@@ -5,7 +5,7 @@ using System;
 using System.Reflection;
 using System.Runtime.InteropServices;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static class Shortcut
     {

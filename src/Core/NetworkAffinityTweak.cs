@@ -8,19 +8,19 @@ using System.IO;
 using System.Management;
 using System.Text;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static class NetworkAffinityTweak
     {
         private static readonly IrqAffinityEngine irqEngine =
-            new IrqAffinityEngine("NicAffinityOnByAegis", "NicAff_", "网卡中断亲和");
+            new IrqAffinityEngine("NicAffinityOnByPavise", "NicAff_", "网卡中断亲和");
 
         private const string QosPolicyNamesKey = "NetQosPolicyNames";
-        private const string EnabledKey = "NetPriorityOnByAegis";
-        private const string PolicyPrefix = "Aegis_";
+        private const string EnabledKey = "NetPriorityOnByPavise";
+        private const string PolicyPrefix = "Pavise_";
         private const int GamingDscp = 46;
 
-        public static bool EnabledByAegis { get { return Settings.Load(EnabledKey, false); } }
+        public static bool EnabledByPavise { get { return Settings.Load(EnabledKey, false); } }
 
         internal static List<string> EnumerateNicDeviceIds()
         {
@@ -80,8 +80,8 @@ namespace AegisApp
 
         private static IDictionary<string, string> QosArgs(string name, string exePath)
         {
-            var d = new Dictionary<string, string> { { "AEGIS_QOS_NAME", name ?? "" } };
-            if (exePath != null) d["AEGIS_QOS_PATH"] = exePath;
+            var d = new Dictionary<string, string> { { "PAVISE_QOS_NAME", name ?? "" } };
+            if (exePath != null) d["PAVISE_QOS_PATH"] = exePath;
             return d;
         }
 
@@ -89,11 +89,11 @@ namespace AegisApp
         {
             string script =
                 "$ErrorActionPreference = 'Stop'\r\n" +
-                "$n = $env:AEGIS_QOS_NAME\r\n" +
+                "$n = $env:PAVISE_QOS_NAME\r\n" +
                 "if (Get-NetQosPolicy -Name $n -ErrorAction SilentlyContinue) {\r\n" +
                 "    Remove-NetQosPolicy -Name $n -Confirm:$false\r\n" +
                 "}\r\n" +
-                "New-NetQosPolicy -Name $n -AppPathNameMatchCondition $env:AEGIS_QOS_PATH" +
+                "New-NetQosPolicy -Name $n -AppPathNameMatchCondition $env:PAVISE_QOS_PATH" +
                 " -DSCPAction " + GamingDscp + " -NetworkProfile All | Out-Null\r\n" +
                 "Write-Output DONE\r\n";
             string stdout;
@@ -104,7 +104,7 @@ namespace AegisApp
         private static bool RemoveQosPolicy(string policyName)
         {
             string script =
-                "$n = $env:AEGIS_QOS_NAME\r\n" +
+                "$n = $env:PAVISE_QOS_NAME\r\n" +
                 "if (Get-NetQosPolicy -Name $n -ErrorAction SilentlyContinue) {\r\n" +
                 "    Remove-NetQosPolicy -Name $n -Confirm:$false -ErrorAction Stop\r\n" +
                 "}\r\n" +

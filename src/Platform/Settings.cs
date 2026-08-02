@@ -5,12 +5,12 @@ using System;
 using System.Collections.Generic;
 using Microsoft.Win32;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static class Settings
     {
-        private const string Key = @"Software\Aegis";
-#if AEGIS_SELFTEST || AEGIS_PERFLAB
+        private const string Key = @"Software\Pavise";
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
         private static readonly object transientSync = new object();
         private static Dictionary<string, object> transientValues;
 
@@ -48,7 +48,7 @@ namespace AegisApp
 
         public static bool Load(string name, bool def)
         {
-#if AEGIS_SELFTEST || AEGIS_PERFLAB
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
             object transient;
             if (TryLoadTransient(name, out transient))
                 return transient == null ? def : Convert.ToInt32(transient) != 0;
@@ -67,7 +67,7 @@ namespace AegisApp
 
         public static bool Save(string name, bool val)
         {
-#if AEGIS_SELFTEST || AEGIS_PERFLAB
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
             if (TrySaveTransient(name, val ? 1 : 0)) return true;
 #endif
             try
@@ -88,7 +88,7 @@ namespace AegisApp
 
         public static string LoadStr(string name, string def)
         {
-#if AEGIS_SELFTEST || AEGIS_PERFLAB
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
             object transient;
             if (TryLoadTransient(name, out transient))
                 return transient == null ? def : transient.ToString();
@@ -107,7 +107,7 @@ namespace AegisApp
 
         public static bool SaveStr(string name, string val)
         {
-#if AEGIS_SELFTEST || AEGIS_PERFLAB
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
             if (TrySaveTransient(name, val ?? "")) return true;
 #endif
             try

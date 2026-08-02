@@ -4,7 +4,7 @@
 using System;
 using Microsoft.Win32;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static class HagsTweak
     {
@@ -14,7 +14,7 @@ namespace AegisApp
         private static readonly ReversibleReg Sch = new ReversibleReg(
             Registry.LocalMachine, GfxKey, Val, RegistryValueKind.DWord, "PrevHwSch");
 
-        public static bool EnabledByAegis { get { return Settings.Load("HagsOnByAegis", false); } }
+        public static bool EnabledByPavise { get { return Settings.Load("HagsOnByPavise", false); } }
 
         public static bool CurrentlyOn()
         {
@@ -39,8 +39,8 @@ namespace AegisApp
                     Logger.Log("GPU 硬件调度（HAGS）写入或回读失败，未标记为已开启");
                     return false;
                 }
-                Settings.Save("HagsOnByAegis", true);
-                if (!Settings.Load("HagsOnByAegis", false))
+                Settings.Save("HagsOnByPavise", true);
+                if (!Settings.Load("HagsOnByPavise", false))
                 {
                     Sch.Restore();
                     Logger.Log("HAGS 状态标志无法持久化，已还原注册表修改");
@@ -61,8 +61,8 @@ namespace AegisApp
                 if (ok && CurrentlyOn()) ok = Sch.Apply(1);
                 if (ok)
                 {
-                    Settings.Save("HagsOnByAegis", false);
-                    if (Settings.Load("HagsOnByAegis", true)) return false;
+                    Settings.Save("HagsOnByPavise", false);
+                    if (Settings.Load("HagsOnByPavise", true)) return false;
                     Logger.Log("GPU 硬件调度（HAGS）已关闭，重启后生效");
                 }
                 return ok;

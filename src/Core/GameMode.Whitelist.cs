@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal partial class GameMode
     {

@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途：生成合成渲染/后台负载并对 Aegis 核心执行可复现 A/B 性能测量
+// 文件用途：生成合成渲染/后台负载并对 Pavise 核心执行可复现 A/B 性能测量
 
 using System;
 using System.Collections.Generic;
@@ -14,15 +14,15 @@ using System.Security.Principal;
 using System.Threading;
 using System.Windows.Forms;
 
-namespace AegisPerfLab
+namespace PavisePerfLab
 {
     internal static class Program
     {
-        private const string OutputOwnerFileName = ".aegis-perflab-owner";
-        private const string OutputOwnerSignature = "AEGIS_PERFLAB_OUTPUT_V1";
-        private const string EngineReportSchema = "aegis-perflab-engine-v4";
+        private const string OutputOwnerFileName = ".pavise-perflab-owner";
+        private const string OutputOwnerSignature = "PAVISE_PERFLAB_OUTPUT_V1";
+        private const string EngineReportSchema = "pavise-perflab-engine-v4";
         private const string WorkerRosterSchema =
-            "aegis-perflab-worker-roster-v1";
+            "pavise-perflab-worker-roster-v1";
         private const int RequiredPolicyCoveragePercent = 90;
         private const int RequiredMeasurementDensityPercent = 80;
         private const int MeasurementSampleIntervalMs = 1000;
@@ -125,8 +125,8 @@ namespace AegisPerfLab
             Directory.CreateDirectory(gameDir);
             Directory.CreateDirectory(loadDir);
 
-            string renderer = Path.Combine(gameDir, "Aegis.PerfLauncher.exe");
-            string background = Path.Combine(loadDir, "Aegis.PerfBackground.exe");
+            string renderer = Path.Combine(gameDir, "Pavise.PerfLauncher.exe");
+            string background = Path.Combine(loadDir, "Pavise.PerfBackground.exe");
             File.Copy(executable, renderer, true);
             File.Copy(executable, background, true);
 
@@ -173,7 +173,7 @@ namespace AegisPerfLab
             Process renderer = null;
             var workers = new List<Process>();
             var rendererStats = new ProcessSampler();
-            string token = "AegisPerf_" + Process.GetCurrentProcess().Id.ToString(
+            string token = "PavisePerf_" + Process.GetCurrentProcess().Id.ToString(
                 CultureInfo.InvariantCulture) + "_" + Guid.NewGuid().ToString("N");
             string armedName = "Global\\" + token + "_armed";
             string readyName = "Global\\" + token + "_ready";
@@ -1072,7 +1072,7 @@ namespace AegisPerfLab
                 throw new InvalidOperationException(
                     "non-finite cpu_percent was accepted");
             valid["cpu_percent"] = "0.0125";
-            valid["report_schema"] = "aegis-perflab-engine-v3";
+            valid["report_schema"] = "pavise-perflab-engine-v3";
             if (ValidateEngineReport(
                     valid, "overhead", "self-test-nonce", 6, out error))
                 throw new InvalidOperationException(
@@ -1333,7 +1333,7 @@ namespace AegisPerfLab
 
             string[] lines =
             {
-                "Aegis PerfLab",
+                "Pavise PerfLab",
                 "lane=" + options.Lane,
                 "rounds=" + baseline.Count.ToString(CultureInfo.InvariantCulture),
                 "baseline_median_avg_ms=" + F(baselineAvg),
@@ -1547,10 +1547,10 @@ namespace AegisPerfLab
                 else throw new ArgumentException("Unknown or incomplete argument: " + args[i]);
             }
             if (string.IsNullOrEmpty(result.EnginePath) || !File.Exists(result.EnginePath))
-                throw new ArgumentException("--engine must name an existing Aegis.PerfEngine.exe");
+                throw new ArgumentException("--engine must name an existing Pavise.PerfEngine.exe");
             if (string.IsNullOrEmpty(result.OutputDirectory))
                 result.OutputDirectory = Path.Combine(Path.GetTempPath(),
-                    "Aegis-PerfLab-" + DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture));
+                    "Pavise-PerfLab-" + DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture));
             if (result.Rounds < 1 || result.Rounds > 50
                 || result.Seconds < 3 || result.Seconds > 120
                 || result.Workers < 1 || result.Workers > 24
@@ -1635,7 +1635,7 @@ namespace AegisPerfLab
                     "Unable to open measurement events ["
                     + gateName + ", " + completionGateName + "]", ex);
             }
-            Text = "Aegis PerfLab Renderer";
+            Text = "Pavise PerfLab Renderer";
             ClientSize = new Size(960, 540);
             StartPosition = FormStartPosition.CenterScreen;
             FormBorderStyle = FormBorderStyle.FixedSingle;
@@ -1754,7 +1754,7 @@ namespace AegisPerfLab
                 graphics.FillEllipse(palette[i % palette.Length], x, y, size, size);
             }
             graphics.DrawArc(arcPen, 230, 90, 500, 360, frameIndex % 360, 250);
-            graphics.DrawString("AEGIS PERF LAB", titleFont, titleBrush, 24, 24);
+            graphics.DrawString("PAVISE PERF LAB", titleFont, titleBrush, 24, 24);
             if (targetGraphics != null)
                 targetGraphics.DrawImageUnscaled(frame, 0, 0);
             if (useDwm)

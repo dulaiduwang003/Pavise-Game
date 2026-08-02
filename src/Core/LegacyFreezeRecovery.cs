@@ -8,12 +8,12 @@ using System.IO;
 using System.Text;
 using System.Threading;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static class LegacyFreezeRecovery
     {
-        public const string StateFileName = "Aegis.freeze.state";
-        private const string Header = "AEGIS_FREEZE_V1";
+        public const string StateFileName = "Pavise.freeze.state";
+        private const string Header = "PAVISE_FREEZE_V1";
 
         private sealed class Entry
         {
@@ -57,7 +57,7 @@ namespace AegisApp
                     Logger.Log("旧版深度冻结恢复仍有未确认项，已保留恢复日志：" + statePath);
             });
             retry.IsBackground = true;
-            retry.Name = "Aegis.LegacyFreezeRecovery";
+            retry.Name = "Pavise.LegacyFreezeRecovery";
             retry.Start();
         }
 

@@ -5,7 +5,7 @@ using System;
 using System.Runtime.InteropServices;
 using System.Threading;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static class NvApi
     {
@@ -177,7 +177,7 @@ namespace AegisApp
                 var prof = new DrsProfile
                 {
                     Version = VersionOf<DrsProfile>(1),
-                    ProfileName = "Aegis - " + exeName
+                    ProfileName = "Pavise - " + exeName
                 };
                 int status = drsCreateProfile(session, ref prof, out profile);
                 if (status != 0 || profile == IntPtr.Zero) return false;

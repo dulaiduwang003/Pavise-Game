@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.Win32;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal sealed class IrqAffinityEngine
     {
@@ -23,7 +23,7 @@ namespace AegisApp
             this.logPrefix = logPrefix;
         }
 
-        public bool EnabledByAegis { get { return Settings.Load(settingsKey, false); } }
+        public bool EnabledByPavise { get { return Settings.Load(settingsKey, false); } }
 
         private sealed class Target
         {
@@ -114,15 +114,23 @@ namespace AegisApp
             if (CpuTopology.MultiGroup)
                 Logger.Log(logPrefix + "：多处理器组系统，掩码无法指明处理器组归属，仅使用 AllCloseProcessors");
 
+            var touched = LoadTouched();
+            object policyValue = useMask ? PolicySpecifiedProcessors : PolicyAllCloseProcessors;
+            byte[] maskBytes = useMask ? MaskToBytes(preferredMask) : null;
+
             bool anyOk = false;
             var applied = new List<Target>();
             foreach (Target t in targets)
             {
+                if (touched.Contains(t.DeviceId)
+                    && t.Policy.Matches(policyValue)
+                    && (!useMask || t.Mask.Matches(maskBytes)))
+                { anyOk = true; continue; }
                 bool ok;
                 if (useMask)
-                    ok = t.Policy.Apply(PolicySpecifiedProcessors) & t.Mask.Apply(MaskToBytes(preferredMask));
+                    ok = t.Policy.Apply(policyValue) & t.Mask.Apply(maskBytes);
                 else
-                    ok = t.Policy.Apply(PolicyAllCloseProcessors);
+                    ok = t.Policy.Apply(policyValue);
                 if (ok) { anyOk = true; applied.Add(t); }
                 else
                 {
@@ -132,26 +140,29 @@ namespace AegisApp
             }
             if (!anyOk) return false;
 
-            var touched = LoadTouched();
-            foreach (Target t in applied) if (!touched.Contains(t.DeviceId)) touched.Add(t.DeviceId);
-            if (!SaveTouched(touched))
+            if (applied.Count > 0)
             {
-                foreach (Target t in applied) { t.Policy.Restore(); t.Mask.Restore(); }
-                Logger.Log(logPrefix + "：设备名单无法持久化，已撤销本轮注册表修改");
-                return false;
+                foreach (Target t in applied) if (!touched.Contains(t.DeviceId)) touched.Add(t.DeviceId);
+                if (!SaveTouched(touched))
+                {
+                    foreach (Target t in applied) { t.Policy.Restore(); t.Mask.Restore(); }
+                    Logger.Log(logPrefix + "：设备名单无法持久化，已撤销本轮注册表修改");
+                    return false;
+                }
             }
 
             Settings.Save(settingsKey, true);
             if (!Settings.Load(settingsKey, false))
             {
                 foreach (Target t in applied) { t.Policy.Restore(); t.Mask.Restore(); }
-                SaveTouched(new List<string>());
+                if (applied.Count > 0) SaveTouched(new List<string>());
                 Logger.Log(logPrefix + "状态标志无法持久化，已还原注册表修改");
                 return false;
             }
-            Logger.Log(logPrefix + "：已对 " + applied.Count + " 个设备写入"
-                + (useMask ? "指定处理器策略（掩码 0x" + preferredMask.ToString("X") + "）" : "邻近处理器策略")
-                + "，需要重启该设备或重启电脑后生效");
+            if (applied.Count > 0)
+                Logger.Log(logPrefix + "：已对 " + applied.Count + " 个设备写入"
+                    + (useMask ? "指定处理器策略（掩码 0x" + preferredMask.ToString("X") + "）" : "邻近处理器策略")
+                    + "，需要重启该设备或重启电脑后生效");
             return true;
         }
 

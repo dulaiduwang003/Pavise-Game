@@ -5,7 +5,7 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal partial class PanelForm
     {
@@ -16,7 +16,7 @@ namespace AegisApp
             page.Controls.Add(rail);
 
             var sys = new Label();
-            sys.Text = "AEGIS  //  CONTROL";
+            sys.Text = "PAVISE  //  CONTROL";
             sys.ForeColor = Theme.Faint; sys.BackColor = Theme.Bg;
             sys.Font = Theme.Mono(6.75f);
             sys.UseCompatibleTextRendering = false;

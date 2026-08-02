@@ -6,14 +6,14 @@ using System.Collections.Generic;
 using System.Management;
 using Microsoft.Win32;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static class InterruptAffinityTweak
     {
         private static readonly IrqAffinityEngine engine =
-            new IrqAffinityEngine("IrqAffinityOnByAegis", "IrqAff_", "中断亲和优化");
+            new IrqAffinityEngine("IrqAffinityOnByPavise", "IrqAff_", "中断亲和优化");
 
-        public static bool EnabledByAegis { get { return engine.EnabledByAegis; } }
+        public static bool EnabledByPavise { get { return engine.EnabledByPavise; } }
 
         internal static byte[] MaskToBytes(ulong mask) { return IrqAffinityEngine.MaskToBytes(mask); }
         internal static ulong BytesToMask(byte[] b) { return IrqAffinityEngine.BytesToMask(b); }
@@ -51,7 +51,7 @@ namespace AegisApp
 
         public static bool Disable() { return engine.Disable(EnumerateGpuDeviceIds()); }
 
-#if AEGIS_SELFTEST
+#if PAVISE_SELFTEST
         internal static bool RestartDevice(string pnpDeviceId, out string error)
         {
             error = null;

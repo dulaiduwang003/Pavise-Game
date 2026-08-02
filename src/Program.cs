@@ -15,16 +15,16 @@ using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static class App
     {
-        public const string DisplayName = "AEGIS";
+        public const string DisplayName = "PAVISE";
         public const string Version = "1.5.1";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string WeChat = "Ssssssstyle";
-        public const string RepoName = "dulaiduwang003/Aegis";
+        public const string RepoName = "dulaiduwang003/Pavise";
         public const string RepoUrl = "https://github.com/" + RepoName;
         public const string ReleasesUrl = RepoUrl + "/releases";
         public static string VersionTag { get { return "v" + Version; } }
@@ -40,13 +40,13 @@ namespace AegisApp
 
             if (LegacyFreezeRecovery.TryHandle(args)) return;
             if (LolWatchdog.TryHandle(args)) return;
-#if AEGIS_SELFTEST
+#if PAVISE_SELFTEST
             if (SelfTests.TryHandleRuntimeMode(args)) return;
 #endif
 
             if (args.Length > 0 && args[0] == "--genicon")
             {
-                try { IcoWriter.Save(Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "Aegis.ico"), new[] { 16, 20, 24, 32, 48, 64, 128, 256 }); }
+                try { IcoWriter.Save(Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "Pavise.ico"), new[] { 16, 20, 24, 32, 48, 64, 128, 256 }); }
                 catch { }
                 return;
             }
@@ -68,9 +68,9 @@ namespace AegisApp
                 if (args.Length >= 4) Lang.Cur = args[3] == "en" ? 1 : (args[3] == "ja" ? 2 : 0);
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
-                string sdir = Path.Combine(Path.GetTempPath(), "AegisShot_" + Process.GetCurrentProcess().Id);
+                string sdir = Path.Combine(Path.GetTempPath(), "PaviseShot_" + Process.GetCurrentProcess().Id);
                 Directory.CreateDirectory(sdir);
-                Logger.LogPath = Path.Combine(sdir, "Aegis.log");
+                Logger.LogPath = Path.Combine(sdir, "Pavise.log");
                 int idx = args.Length >= 3 ? int.Parse(args[2]) : 0;
                 var scCore = new SuppressionCore();
                 var scTamer = new Tamer(scCore);
@@ -103,7 +103,7 @@ namespace AegisApp
             {
                 Dpi.Init(); Paths.Init(); Lang.Init();
                 Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
-                Logger.LogPath = Path.Combine(Paths.Data, "Aegis.preview.log");
+                Logger.LogPath = Path.Combine(Paths.Data, "Pavise.preview.log");
                 var previewCore = new SuppressionCore();
                 var previewTamer = new Tamer(previewCore);
                 var previewMode = new GameMode(Paths.Data, previewCore);
@@ -135,11 +135,11 @@ namespace AegisApp
 
             bool created = false;
             Mutex mtx = null;
-            try { mtx = new Mutex(true, "Global\\Aegis_SingleInstance", out created); }
+            try { mtx = new Mutex(true, "Global\\Pavise_SingleInstance", out created); }
             catch { created = false; }
             if (!created)
             {
-                try { EventWaitHandle.OpenExisting("Global\\Aegis_ShowPanel").Set(); } catch { }
+                try { EventWaitHandle.OpenExisting("Global\\Pavise_ShowPanel").Set(); } catch { }
                 return;
             }
 
@@ -158,16 +158,16 @@ namespace AegisApp
                 Settings.Save(PendingPanelKey, true);
                 if (TaskHelper.Run("/Run /TN " + TaskHelper.TaskName) == 0) return;
                 Settings.Save(PendingPanelKey, false);
-                try { mtx = new Mutex(true, "Global\\Aegis_SingleInstance", out created); }
+                try { mtx = new Mutex(true, "Global\\Pavise_SingleInstance", out created); }
                 catch { created = false; }
                 if (!created)
                 {
-                    try { EventWaitHandle.OpenExisting("Global\\Aegis_ShowPanel").Set(); } catch { }
+                    try { EventWaitHandle.OpenExisting("Global\\Pavise_ShowPanel").Set(); } catch { }
                     return;
                 }
             }
 
-            var showEvt = new EventWaitHandle(false, EventResetMode.AutoReset, "Global\\Aegis_ShowPanel");
+            var showEvt = new EventWaitHandle(false, EventResetMode.AutoReset, "Global\\Pavise_ShowPanel");
             EventWaitHandle exitEvt;
             try
             {
@@ -177,18 +177,18 @@ namespace AegisApp
                     EventWaitHandleRights.Modify | EventWaitHandleRights.Synchronize,
                     AccessControlType.Allow));
                 bool exitCreated;
-                exitEvt = new EventWaitHandle(false, EventResetMode.AutoReset, "Global\\Aegis_Exit",
+                exitEvt = new EventWaitHandle(false, EventResetMode.AutoReset, "Global\\Pavise_Exit",
                     out exitCreated, exitSec);
             }
             catch
             {
-                exitEvt = new EventWaitHandle(false, EventResetMode.AutoReset, "Global\\Aegis_Exit");
+                exitEvt = new EventWaitHandle(false, EventResetMode.AutoReset, "Global\\Pavise_Exit");
             }
 
             Paths.Init();
             Lang.Init();
             string dir = Paths.Data;
-            Logger.LogPath = Path.Combine(dir, "Aegis.log");
+            Logger.LogPath = Path.Combine(dir, "Pavise.log");
             LegacyFreezeRecovery.BeginHeal(Path.Combine(dir, LegacyFreezeRecovery.StateFileName));
             int healedSuppression = SuppressionCore.HealFromCrash(Path.Combine(dir, SuppressionCore.StateFileName));
             if (healedSuppression > 0) Logger.Log("检测到上次未还原的分级后台控制，已恢复 " + healedSuppression + " 个进程");

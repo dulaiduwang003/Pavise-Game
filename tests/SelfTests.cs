@@ -11,7 +11,7 @@ using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static partial class SelfTests
     {
@@ -35,7 +35,7 @@ namespace AegisApp
             }
             if (args[0] == "--selftest")
             {
-                string report = args.Length >= 2 ? args[1] : Path.Combine(Path.GetTempPath(), "Aegis.selftest.txt");
+                string report = args.Length >= 2 ? args[1] : Path.Combine(Path.GetTempPath(), "Pavise.selftest.txt");
                 Run(report);
                 return true;
             }
@@ -103,7 +103,7 @@ namespace AegisApp
                 try
                 {
                     var store = new GameProfileStore(args[1]);
-                    List<GameProfile> profiles = store.LoadOrMigrate(Path.Combine(args[1], "Aegis.games.txt"));
+                    List<GameProfile> profiles = store.LoadOrMigrate(Path.Combine(args[1], "Pavise.games.txt"));
                     int entries = 0;
                     foreach (GameProfile profile in profiles) entries += profile.Entries.Count;
                     File.WriteAllText(args[2], "PROFILES=" + profiles.Count + "\r\nENTRIES=" + entries
@@ -191,7 +191,7 @@ namespace AegisApp
             try
             {
                 var store = new GameProfileStore(dataDir);
-                List<GameProfile> profiles = store.LoadOrMigrate(Path.Combine(dataDir, "Aegis.games.txt"));
+                List<GameProfile> profiles = store.LoadOrMigrate(Path.Combine(dataDir, "Pavise.games.txt"));
                 Process[] all = Process.GetProcesses();
                 int fg = GameSessionDetector.ForegroundPid();
                 sb.AppendLine("foreground pid=" + fg);
@@ -268,7 +268,7 @@ namespace AegisApp
 
                 bool enableOk = InterruptAffinityTweak.Enable();
                 sb.AppendLine("Enable() 返回=" + enableOk);
-                sb.AppendLine("EnabledByAegis=" + InterruptAffinityTweak.EnabledByAegis);
+                sb.AppendLine("EnabledByPavise=" + InterruptAffinityTweak.EnabledByPavise);
                 sb.AppendLine("=== Enable 后（直接读注册表，独立于内部回读）===");
                 foreach (string id in ids) { sb.AppendLine(id); sb.AppendLine(ReadIrqRegSnapshot(id)); }
                 sb.AppendLine();
@@ -285,7 +285,7 @@ namespace AegisApp
 
                 bool disableOk = InterruptAffinityTweak.Disable();
                 sb.AppendLine("Disable() 返回=" + disableOk);
-                sb.AppendLine("EnabledByAegis=" + InterruptAffinityTweak.EnabledByAegis);
+                sb.AppendLine("EnabledByPavise=" + InterruptAffinityTweak.EnabledByPavise);
                 sb.AppendLine("=== Disable/Restore 后（直接读注册表，独立于内部回读，应恢复到写入前基线）===");
                 foreach (string id in ids) { sb.AppendLine(id); sb.AppendLine(ReadIrqRegSnapshot(id)); }
             }
@@ -341,14 +341,14 @@ namespace AegisApp
                 foreach (string id in ids) { sb.AppendLine(id); sb.AppendLine(ReadIrqRegSnapshot(id)); }
                 sb.AppendLine();
 
-                dummyExe = Path.Combine(Path.GetTempPath(), "AegisNetProbeDummy_" + Guid.NewGuid().ToString("N") + ".exe");
+                dummyExe = Path.Combine(Path.GetTempPath(), "PaviseNetProbeDummy_" + Guid.NewGuid().ToString("N") + ".exe");
                 File.WriteAllBytes(dummyExe, new byte[] { 0x4D, 0x5A });
-                string dummyName = NetworkAffinityTweak.SanitizePolicyName("AegisNetProbeDummyGame", dummyExe);
-                var games = new List<GameProfile> { new GameProfile { Name = "AegisNetProbeDummyGame", ExecutablePath = dummyExe } };
+                string dummyName = NetworkAffinityTweak.SanitizePolicyName("PaviseNetProbeDummyGame", dummyExe);
+                var games = new List<GameProfile> { new GameProfile { Name = "PaviseNetProbeDummyGame", ExecutablePath = dummyExe } };
 
                 bool enableOk = NetworkAffinityTweak.Enable(games);
                 sb.AppendLine("Enable() 返回=" + enableOk);
-                sb.AppendLine("EnabledByAegis=" + NetworkAffinityTweak.EnabledByAegis);
+                sb.AppendLine("EnabledByPavise=" + NetworkAffinityTweak.EnabledByPavise);
                 sb.AppendLine("=== Enable 后网卡寄存器（直接读注册表，独立于内部回读）===");
                 foreach (string id in ids) { sb.AppendLine(id); sb.AppendLine(ReadIrqRegSnapshot(id)); }
 
@@ -359,7 +359,7 @@ namespace AegisApp
 
                 bool disableOk = NetworkAffinityTweak.Disable();
                 sb.AppendLine("Disable() 返回=" + disableOk);
-                sb.AppendLine("EnabledByAegis=" + NetworkAffinityTweak.EnabledByAegis);
+                sb.AppendLine("EnabledByPavise=" + NetworkAffinityTweak.EnabledByPavise);
                 sb.AppendLine("=== Disable 后网卡寄存器（直接读注册表，应恢复到写入前基线）===");
                 foreach (string id in ids) { sb.AppendLine(id); sb.AppendLine(ReadIrqRegSnapshot(id)); }
 
@@ -376,7 +376,7 @@ namespace AegisApp
         private static void RunIntroProbe(string output)
         {
             var sb = new System.Text.StringBuilder();
-            string data = Path.Combine(Path.GetTempPath(), "AegisIntroProbe_" + Process.GetCurrentProcess().Id);
+            string data = Path.Combine(Path.GetTempPath(), "PaviseIntroProbe_" + Process.GetCurrentProcess().Id);
             try
             {
                 Directory.CreateDirectory(data);
@@ -433,7 +433,7 @@ namespace AegisApp
 
         private static void RunMenuProbe(string output, string dumpPath)
         {
-            string data = Path.Combine(Path.GetTempPath(), "AegisMenuProbe_" + Process.GetCurrentProcess().Id);
+            string data = Path.Combine(Path.GetTempPath(), "PaviseMenuProbe_" + Process.GetCurrentProcess().Id);
             var sb = new System.Text.StringBuilder();
             try
             {
@@ -517,7 +517,7 @@ namespace AegisApp
             try
             {
                 var store = new GameProfileStore(dataDir);
-                List<GameProfile> profiles = store.LoadOrMigrate(Path.Combine(dataDir, "Aegis.games.txt"));
+                List<GameProfile> profiles = store.LoadOrMigrate(Path.Combine(dataDir, "Pavise.games.txt"));
                 Process[] all = Process.GetProcesses();
                 GameDetection hit = GameSessionDetector.Detect(all, profiles);
                 sb.AppendLine("DETECT RESULT: " + (hit == null ? "NULL (无活动游戏)"
@@ -612,7 +612,7 @@ namespace AegisApp
 
         private static void RunConfigScreenshot(string output, string language)
         {
-            string data = Path.Combine(Path.GetTempPath(), "AegisConfigShot_" + Process.GetCurrentProcess().Id);
+            string data = Path.Combine(Path.GetTempPath(), "PaviseConfigShot_" + Process.GetCurrentProcess().Id);
             try
             {
                 Directory.CreateDirectory(data);
@@ -701,18 +701,18 @@ namespace AegisApp
             test("startup task: running binary replaces a stale executable target", () =>
             {
                 Eq(false, TaskHelper.NeedsStartupTaskRefresh(
-                    @"C:\Code\Aegis\Aegis.exe",
-                    @"c:\code\aegis\AEGIS.exe"));
+                    @"C:\Code\Pavise\Pavise.exe",
+                    @"c:\code\pavise\PAVISE.exe"));
                 Eq(true, TaskHelper.NeedsStartupTaskRefresh(
-                    @"C:\Code\Aegis\Aegis.exe",
-                    @"C:\Users\Star\Desktop\Aegis.exe"));
+                    @"C:\Code\Pavise\Pavise.exe",
+                    @"C:\Users\Star\Desktop\Pavise.exe"));
                 Eq(false, TaskHelper.NeedsStartupTaskRefresh(
-                    @"C:\Code\Aegis\Aegis.exe", null));
-                Eq(@"C:\Apps\A & B\Aegis.exe",
+                    @"C:\Code\Pavise\Pavise.exe", null));
+                Eq(@"C:\Apps\A & B\Pavise.exe",
                     TaskHelper.ParseTaskCommandXml(
                         "\uFEFF<?xml version=\"1.0\"?>"
                         + "<Task xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">"
-                        + "<Actions><Exec><Command>\"C:\\Apps\\A &amp; B\\Aegis.exe\""
+                        + "<Actions><Exec><Command>\"C:\\Apps\\A &amp; B\\Pavise.exe\""
                         + "</Command></Exec></Actions></Task>"));
                 Eq(null, TaskHelper.ParseTaskCommandXml(
                     "<Task><Actions /></Task>"));
@@ -722,7 +722,7 @@ namespace AegisApp
             test("environment tweaks: a failing step backs off instead of retrying every scan", () =>
             {
                 string envDir = Path.Combine(
-                    Path.GetTempPath(), "AegisEnvRetry_" + Process.GetCurrentProcess().Id);
+                    Path.GetTempPath(), "PaviseEnvRetry_" + Process.GetCurrentProcess().Id);
                 Directory.CreateDirectory(envDir);
                 var mode = new GameMode(envDir, new SuppressionCore());
                 mode.ClearEnvRetryStateForTest();
@@ -751,14 +751,14 @@ namespace AegisApp
             {
                 const string withArgs =
                     "<Task><Actions Context=\"Author\"><Exec>"
-                    + "<Command>\"C:\\A\\Aegis.exe\"</Command>"
+                    + "<Command>\"C:\\A\\Pavise.exe\"</Command>"
                     + "<Arguments>--autostart</Arguments></Exec></Actions></Task>";
                 Eq("--autostart", TaskHelper.ParseTaskArgumentsXml(withArgs));
-                Eq("C:\\A\\Aegis.exe", TaskHelper.ParseTaskCommandXml(withArgs));
+                Eq("C:\\A\\Pavise.exe", TaskHelper.ParseTaskCommandXml(withArgs));
 
                 const string legacy =
                     "<Task><Actions Context=\"Author\"><Exec>"
-                    + "<Command>\"C:\\A\\Aegis.exe\"</Command></Exec></Actions></Task>";
+                    + "<Command>\"C:\\A\\Pavise.exe\"</Command></Exec></Actions></Task>";
                 Eq("", TaskHelper.ParseTaskArgumentsXml(legacy));
 
                 Eq(null, TaskHelper.ParseTaskArgumentsXml(""));
@@ -1019,7 +1019,7 @@ namespace AegisApp
                     throw new TestSkippedException("window animations are already off on this machine");
                 if (Settings.LoadStr("PrevUiEffects", "").Length > 0
                     || Settings.LoadStr("PrevTransparency", "").Length > 0)
-                    throw new TestSkippedException("another Aegis instance is holding a visual effects snapshot");
+                    throw new TestSkippedException("another Pavise instance is holding a visual effects snapshot");
                 try
                 {
                     if (!VisualFx.Activate()) throw new TestSkippedException("visual downgrade unavailable");
@@ -1039,9 +1039,9 @@ namespace AegisApp
             {
 
                 string evil = "D:" + "\\" + "Evil" + (char)0x2019 + ";Write-Output PWNED;" + (char)0x2019;
-                var argv = new Dictionary<string, string> { { "AEGIS_PATH", evil } };
+                var argv = new Dictionary<string, string> { { "PAVISE_PATH", evil } };
                 string outText;
-                if (!PsRunner.Run("Write-Output $env:AEGIS_PATH\r\n", "注入自测", 20000, argv, out outText))
+                if (!PsRunner.Run("Write-Output $env:PAVISE_PATH\r\n", "注入自测", 20000, argv, out outText))
                     throw new TestSkippedException("powershell unavailable");
                 foreach (string line in outText.Split('\n'))
                     if (line.Trim() == "PWNED")
@@ -1125,9 +1125,9 @@ namespace AegisApp
                 Eq((string)null, GameMode.LibraryRootOf(null, roots));
                 Eq((string)null, GameMode.LibraryRootOf(@"D:\Games\Apex\bin\game.exe", null));
                 Eq((string)null, GameMode.LibraryRootOf(@"D:\anything\x.exe", new List<string> { @"D:\", @"D:" }));
-                Eq(true, TaskHelper.IsVolatileAutostartPath(@"D:\应用\微信\xwechat_files\wxid_x\msg\file\2026-07\Aegis(1).exe"));
-                Eq(true, TaskHelper.IsVolatileAutostartPath(@"C:\Users\a\AppData\Local\Temp\Aegis.exe"));
-                Eq(false, TaskHelper.IsVolatileAutostartPath(@"D:\游戏\Aegis.exe"));
+                Eq(true, TaskHelper.IsVolatileAutostartPath(@"D:\应用\微信\xwechat_files\wxid_x\msg\file\2026-07\Pavise(1).exe"));
+                Eq(true, TaskHelper.IsVolatileAutostartPath(@"C:\Users\a\AppData\Local\Temp\Pavise.exe"));
+                Eq(false, TaskHelper.IsVolatileAutostartPath(@"D:\游戏\Pavise.exe"));
                 Eq(false, GameMode.BasicBackgroundEligible(10, 99, "YuanShen", @"E:\Genshin Impact\Genshin Impact Game\YuanShen.exe",
                     1, 1, 20, false, @"C:\Windows\", false,
                     GameMode.LibraryRootOf(@"E:\Genshin Impact\Genshin Impact Game\YuanShen.exe", roots), true));
@@ -1273,7 +1273,7 @@ namespace AegisApp
                 string longName = NetworkAffinityTweak.SanitizePolicyName(new string('A', 200), @"C:\g.exe");
                 if (longName.Length > 64) throw new Exception("policy name is too long: " + longName.Length);
                 string empty = NetworkAffinityTweak.SanitizePolicyName("", @"C:\g.exe");
-                if (!empty.StartsWith("Aegis_Game")) throw new Exception("empty game name did not fall back to a placeholder");
+                if (!empty.StartsWith("Pavise_Game")) throw new Exception("empty game name did not fall back to a placeholder");
             });
             test("anti-cheat tiers: level tags round-trip and priority mapping per tier", () =>
             {
@@ -1364,7 +1364,7 @@ namespace AegisApp
             test("session records: single-session delete removes report and nearby evidence", () =>
             {
                 string dir = Path.Combine(Path.GetTempPath(),
-                    "AegisDelTest_" + Process.GetCurrentProcess().Id);
+                    "PaviseDelTest_" + Process.GetCurrentProcess().Id);
                 Directory.CreateDirectory(dir);
                 try
                 {
@@ -1435,7 +1435,7 @@ namespace AegisApp
                     "\"AppState\"\n{\n\t\"appid\"\t\t\"730\"\n\t\"installdir\"\t\t\"Counter-Strike Global Offensive\"\n}", "installdir"));
 
                 string exeRoot = Path.Combine(Path.GetTempPath(),
-                    "AegisSteamPick_" + Process.GetCurrentProcess().Id);
+                    "PaviseSteamPick_" + Process.GetCurrentProcess().Id);
                 try
                 {
                     Directory.CreateDirectory(Path.Combine(exeRoot, @"game\bin\win64"));
@@ -1454,7 +1454,7 @@ namespace AegisApp
                 Lang.Init();
                 string rline = "2026-07-30 02:23:39 | GameX | " + Lang.T("preset.competitive")
                     + " | 5m12s | " + Lang.T("report.boost.ok") + " | " + Lang.F("report.control", 90)
-                    + " | " + Lang.F("report.aegis.cpu", "0.13");
+                    + " | " + Lang.F("report.pavise.cpu", "0.13");
                 string frame = Lang.F("ev.fps", "116", "17", "5", "32259");
                 string eline = "2026-07-30 02:23:41 | GameX | 5m12s | " + frame
                     + " | " + Lang.F("ev.gpu", "63", "70") + Lang.F("ev.gpu.power", "72")
@@ -1527,7 +1527,7 @@ namespace AegisApp
                     throw new Exception("non-game role sibling must not anchor");
             });
 
-            string root = Path.Combine(Path.GetTempPath(), "AegisSelfTest_" + Process.GetCurrentProcess().Id + "_" + Guid.NewGuid().ToString("N"));
+            string root = Path.Combine(Path.GetTempPath(), "PaviseSelfTest_" + Process.GetCurrentProcess().Id + "_" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(root);
             try
             {
@@ -1557,7 +1557,7 @@ namespace AegisApp
             }
             finally { try { Directory.Delete(root, true); } catch { } }
 
-            log.Insert(0, "Aegis " + App.Version + " self-test @ " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+            log.Insert(0, "Pavise " + App.Version + " self-test @ " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
             log.Add("");
             log.Add("TOTAL " + (passed + failed + skipped) + "  PASS " + passed
                 + "  FAIL " + failed + "  SKIP " + skipped);
@@ -1583,7 +1583,7 @@ namespace AegisApp
             Eq(expected, assemblyVersion == null ? "" : assemblyVersion.ToString());
             FileVersionInfo info = FileVersionInfo.GetVersionInfo(Application.ExecutablePath);
             Eq(expected, info.FileVersion);
-            Eq("Aegis", info.ProductName);
+            Eq("Pavise", info.ProductName);
             Eq("bdth", info.CompanyName);
         }
 
@@ -1919,7 +1919,7 @@ namespace AegisApp
             Theme.SetMode(PerformancePreset.Competitive, false);
             try
             {
-                using (var core = new AegisCore())
+                using (var core = new PaviseCore())
                 using (var first = new Bitmap(360, 342))
                 using (var second = new Bitmap(360, 342))
                 {
@@ -2077,7 +2077,7 @@ namespace AegisApp
         {
             string dir = Path.Combine(root, "profiles");
             Directory.CreateDirectory(dir);
-            string legacy = Path.Combine(dir, "Aegis.games.txt");
+            string legacy = Path.Combine(dir, "Pavise.games.txt");
             string gameRoot = Path.Combine(dir, "GenericGame");
             File.WriteAllLines(legacy, new[] { GameMode.EncodeGameLine("GenericGame", gameRoot), GameMode.EncodeGameLine("GenericHelper", gameRoot) }, Encoding.UTF8);
             var store = new GameProfileStore(dir);
@@ -2095,7 +2095,7 @@ namespace AegisApp
 
         private static void TestMultiFolderGameRoot()
         {
-            string sandbox = Path.Combine(Path.GetTempPath(), "AegisFamily_" + Guid.NewGuid().ToString("N"));
+            string sandbox = Path.Combine(Path.GetTempPath(), "PaviseFamily_" + Guid.NewGuid().ToString("N"));
             string install = Path.Combine(sandbox, "英雄联盟");
             try
             {
@@ -2125,7 +2125,7 @@ namespace AegisApp
 
         private static void TestGameCatalogFormat()
         {
-            string root = Path.Combine(Path.GetTempPath(), "AegisGames", "英雄联盟");
+            string root = Path.Combine(Path.GetTempPath(), "PaviseGames", "英雄联盟");
             string line = GameMode.EncodeGameLine("LeagueClient.exe", root);
             string name, parsed;
             Eq(true, GameMode.TryParseGameLine(line, out name, out parsed));
@@ -2141,7 +2141,7 @@ namespace AegisApp
         {
             string data = Path.Combine(root, "catalog-upgrade");
             Directory.CreateDirectory(data);
-            string games = Path.Combine(data, "Aegis.games.txt");
+            string games = Path.Combine(data, "Pavise.games.txt");
             File.WriteAllText(games, "LeagueClient\r\n", Encoding.UTF8);
 
             var mode = new GameMode(data, new SuppressionCore());
@@ -2254,10 +2254,10 @@ namespace AegisApp
             string elsewhere = Path.Combine(dir, "elsewhere");
             Directory.CreateDirectory(gameRoot);
             Directory.CreateDirectory(elsewhere);
-            string stubExe = Path.Combine(gameRoot, "aegisfbtest.exe");
-            string realExe = Path.Combine(gameRoot, "aegisfbtest64.exe");
-            string rogueExe = Path.Combine(elsewhere, "aegisfbtest_x64.exe");
-            string updaterExe = Path.Combine(elsewhere, "aegisfbtest_updater.exe");
+            string stubExe = Path.Combine(gameRoot, "pavisefbtest.exe");
+            string realExe = Path.Combine(gameRoot, "pavisefbtest64.exe");
+            string rogueExe = Path.Combine(elsewhere, "pavisefbtest_x64.exe");
+            string updaterExe = Path.Combine(elsewhere, "pavisefbtest_updater.exe");
             File.Copy(Application.ExecutablePath, stubExe, true);
             File.Copy(Application.ExecutablePath, realExe, true);
             File.Copy(Application.ExecutablePath, rogueExe, true);
@@ -2294,13 +2294,13 @@ namespace AegisApp
                 all = Process.GetProcesses();
                 var profile = GameProfileStore.NewProfile("FallbackTest", gameRoot, stubExe);
                 profile.Entries.Clear();
-                profile.Entries.Add("aegisfbtest");
+                profile.Entries.Add("pavisefbtest");
 
                 GameDetection hit = GameSessionDetector.Detect(all, new[] { profile });
                 if (hit == null)
                     throw new Exception(
                         "in-root suffix fallback was not detected");
-                if (!string.Equals(hit.RendererName, "aegisfbtest64", StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(hit.RendererName, "pavisefbtest64", StringComparison.OrdinalIgnoreCase))
                     throw new Exception(
                         "renderer should resolve to the in-root suffix process, got "
                         + hit.RendererName);

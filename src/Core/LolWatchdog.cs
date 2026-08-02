@@ -9,7 +9,7 @@ using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static class LolWatchdog
     {
@@ -24,9 +24,9 @@ namespace AegisApp
         private const uint HandlePollMs = 5000;
         private const int ReadyTimeoutMs = 5000;
         private const int ReadyTokenBytes = 32;
-        private const string ReadyEventPrefix = "Aegis_LolWatchdogReady_";
-        private const string GuardMutexPrefix = "Aegis_LolWatchdog_";
-        private const string AliveEventPrefix = "Aegis_LolWatchdogAlive_";
+        private const string ReadyEventPrefix = "Pavise_LolWatchdogReady_";
+        private const string GuardMutexPrefix = "Pavise_LolWatchdog_";
+        private const string AliveEventPrefix = "Pavise_LolWatchdogAlive_";
 
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern uint WaitForSingleObject(IntPtr handle, uint milliseconds);
@@ -75,7 +75,7 @@ namespace AegisApp
             Native.CloseHandle(verifiedHandle);
 
             if (ExistingGuardIsReady(lolRoot, pid, creation)
-                && SiblingAegisProcessAlive()) return true;
+                && SiblingPaviseProcessAlive()) return true;
             EventWaitHandle readyEvent = null;
             Process process = null;
             try
@@ -578,7 +578,7 @@ namespace AegisApp
                 : LolHeadlessLease.MatchesLegacyRoot(lolRoot);
         }
 
-        private static bool SiblingAegisProcessAlive()
+        private static bool SiblingPaviseProcessAlive()
         {
             string self;
             int selfPid;

@@ -7,7 +7,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using System.Text;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static class GameExecutableResolver
     {
@@ -98,7 +98,7 @@ namespace AegisApp
             }
         }
 
-#if AEGIS_SELFTEST
+#if PAVISE_SELFTEST
         internal static bool CreateShortcutForTest(string shortcutPath, string executablePath)
         {
             IShellLinkW link = null;

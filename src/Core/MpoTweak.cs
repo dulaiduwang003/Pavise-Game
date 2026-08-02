@@ -4,7 +4,7 @@
 using System;
 using Microsoft.Win32;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static class MpoTweak
     {
@@ -15,7 +15,7 @@ namespace AegisApp
         private static readonly ReversibleReg Overlay = new ReversibleReg(
             Registry.LocalMachine, DwmKey, Val, RegistryValueKind.DWord, "PrevMpoOverlay");
 
-        public static bool DisabledByAegis { get { return Settings.Load("MpoOffByAegis", false); } }
+        public static bool DisabledByPavise { get { return Settings.Load("MpoOffByPavise", false); } }
 
         public static bool CurrentlyDisabled()
         {
@@ -40,8 +40,8 @@ namespace AegisApp
                     Logger.Log("MPO 禁用写入或回读失败，未标记为已禁用");
                     return false;
                 }
-                Settings.Save("MpoOffByAegis", true);
-                if (!Settings.Load("MpoOffByAegis", false))
+                Settings.Save("MpoOffByPavise", true);
+                if (!Settings.Load("MpoOffByPavise", false))
                 {
                     Overlay.Restore();
                     Logger.Log("MPO 状态标志无法持久化，已还原注册表修改");
@@ -61,8 +61,8 @@ namespace AegisApp
                 if (ok && CurrentlyDisabled()) ok = RemoveValue();
                 if (ok)
                 {
-                    Settings.Save("MpoOffByAegis", false);
-                    if (Settings.Load("MpoOffByAegis", true)) return false;
+                    Settings.Save("MpoOffByPavise", false);
+                    if (Settings.Load("MpoOffByPavise", true)) return false;
                     Logger.Log("多平面叠加（MPO）设置已恢复，重启或重新登录后生效");
                 }
                 return ok;

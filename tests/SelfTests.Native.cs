@@ -8,7 +8,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static partial class SelfTests
     {
@@ -39,7 +39,7 @@ namespace AegisApp
 
                     string name64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(probe.ProcessName));
                     string why64 = Convert.ToBase64String(Encoding.UTF8.GetBytes("reuse-test"));
-                    File.WriteAllLines(state, new[] { "AEGIS_FREEZE_V1", probe.Id + "|" + (creation + 1) + "|" + name64 + "|" + why64 }, Encoding.UTF8);
+                    File.WriteAllLines(state, new[] { "PAVISE_FREEZE_V1", probe.Id + "|" + (creation + 1) + "|" + name64 + "|" + why64 }, Encoding.UTF8);
                     int before = ReadCounter(beat);
                     Eq(0, LegacyFreezeRecovery.RestoreJournal(state));
                     WaitAdvance(beat, before, 2000);
@@ -64,9 +64,9 @@ namespace AegisApp
             if (current.IndexOf(Lang.T("report.boost.ok"), StringComparison.OrdinalIgnoreCase) < 0)
                 throw new Exception("new report format missing verified boost state");
             if (current.IndexOf(
-                    Lang.F("report.aegis.cpu", "0.25"),
+                    Lang.F("report.pavise.cpu", "0.25"),
                     StringComparison.OrdinalIgnoreCase) < 0)
-                throw new Exception("new report format missing Aegis CPU evidence");
+                throw new Exception("new report format missing Pavise CPU evidence");
             if (current.IndexOf("FPS", StringComparison.OrdinalIgnoreCase) >= 0)
                 throw new Exception("legacy frame metrics leaked into current report");
         }
@@ -130,7 +130,7 @@ namespace AegisApp
 
             using (new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.None))
             {
-                List<GameProfile> loaded = store.LoadOrMigrate(Path.Combine(work, "Aegis.games.txt"));
+                List<GameProfile> loaded = store.LoadOrMigrate(Path.Combine(work, "Pavise.games.txt"));
                 Eq(0, loaded.Count);
             }
 
@@ -143,7 +143,7 @@ namespace AegisApp
                 throw new Exception("the replacement list was written over the original file");
 
             var again = new GameProfileStore(work);
-            Eq(1, again.LoadOrMigrate(Path.Combine(work, "Aegis.games.txt")).Count);
+            Eq(1, again.LoadOrMigrate(Path.Combine(work, "Pavise.games.txt")).Count);
         }
 
         private static void TestBoostReadback(string root)
