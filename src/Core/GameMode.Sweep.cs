@@ -161,6 +161,9 @@ namespace PaviseApp
             HashSet<int> gameHostAncestors = gameSessionActive
                 ? WalkAncestorChain(whitelist.Parents, rendererPid, selfPid, 24)
                 : EmptyPidSet;
+            HashSet<int> gameDescendants = gameSessionActive
+                ? WalkDescendants(whitelist.Parents, gamePids, selfPid, 24)
+                : EmptyPidSet;
 
             bool first;
             lock (sync) first = firstSweep;
@@ -199,7 +202,7 @@ namespace PaviseApp
                     if (boosted) continue;
 
                     bool white = whitelist.Protected.Contains(pid);
-                    if (white || gamePids.Contains(pid))
+                    if (white || gamePids.Contains(pid) || gameDescendants.Contains(pid))
                     {
                         if (core.Release(pid, SuppressReason.Background)) ReportUntrack(pid);
                         continue;
@@ -490,6 +493,29 @@ namespace PaviseApp
         internal static bool IsKnownLauncherShell(string name)
         {
             return !string.IsNullOrEmpty(name) && LauncherPlatforms.Contains(name);
+        }
+
+        internal static HashSet<int> WalkDescendants(
+            Dictionary<int, int> parents, ICollection<int> rootPids, int selfPid, int maxDepth)
+        {
+            var result = new HashSet<int>();
+            if (parents == null || rootPids == null || rootPids.Count == 0) return result;
+            var roots = new HashSet<int>(rootPids);
+            foreach (KeyValuePair<int, int> kv in parents)
+            {
+                int pid = kv.Key;
+                if (pid <= 4 || pid == selfPid || roots.Contains(pid) || result.Contains(pid)) continue;
+                int current = pid;
+                for (int depth = 0; depth < maxDepth; depth++)
+                {
+                    int parent;
+                    if (!parents.TryGetValue(current, out parent) || parent <= 4 || parent == current) break;
+                    if (roots.Contains(parent)) { result.Add(pid); break; }
+                    if (parent == selfPid) break;
+                    current = parent;
+                }
+            }
+            return result;
         }
 
         internal static HashSet<int> WalkAncestorChain(Dictionary<int, int> parents, int startPid, int selfPid, int maxHops)

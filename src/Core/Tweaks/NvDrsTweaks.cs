@@ -38,7 +38,6 @@ namespace PaviseApp
             if (lowLatency)
             {
                 desired.Add(new KeyValuePair<string, uint>(KeyPreRender, 1u));
-                desired.Add(new KeyValuePair<string, uint>(KeyLowLatCpl, 1u));
             }
             lock (sync)
             {

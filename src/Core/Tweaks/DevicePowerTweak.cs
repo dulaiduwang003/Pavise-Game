@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 阻止系统为省电关闭网卡 免除唤醒延迟造成的对局卡顿
 
 using System;
@@ -7,9 +7,6 @@ using Microsoft.Win32;
 
 namespace PaviseApp
 {
-    // 只处理网卡：笔记本上网卡被系统断电再唤醒会造成可感知的卡顿与丢包。
-    // PnPCapabilities 位 0x08 表示不允许系统关闭此设备，0x10 表示不允许唤醒系统；
-    // 只置 0x08 位，保留原有唤醒语义，不越权改用户的唤醒设置。
     internal static class DevicePowerTweak
     {
         private const string NetClass =
@@ -44,7 +41,6 @@ namespace PaviseApp
                         {
                             if (node == null) continue;
                             string desc = node.GetValue("DriverDesc") as string;
-                            // 没有实例 ID 的是虚拟/微端口适配器，跳过
                             if (string.IsNullOrEmpty(desc) || node.GetValue("NetCfgInstanceId") == null) continue;
                             object v = node.GetValue("PnPCapabilities");
                             int? cur = v is int ? (int?)(int)v : null;

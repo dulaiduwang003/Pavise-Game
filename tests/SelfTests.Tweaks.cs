@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Threading;
 
 namespace PaviseApp
 {
@@ -71,8 +73,56 @@ namespace PaviseApp
             }
         }
 
-        // 校正器只该在值被改坏时动手：正常值和未设置都必须判为无需改动，
-        // 否则会把用户机器上本来正确的默认值反复重写。
+        private static void TestGameDescendantsExemption()
+        {
+            var parents = new Dictionary<int, int>
+            {
+                { 200, 100 }, { 300, 200 }, { 500, 400 }, { 600, 100 }, { 700, 600 }
+            };
+            var roots = new HashSet<int> { 100 };
+            HashSet<int> got = GameMode.WalkDescendants(parents, roots, 600, 24);
+
+            Eq(true, got.Contains(200));
+            Eq(true, got.Contains(300));
+            Eq(false, got.Contains(100));
+            Eq(false, got.Contains(500));
+            Eq(false, got.Contains(600));
+            Eq(false, got.Contains(700));
+            Eq(2, got.Count);
+
+            var cycle = new Dictionary<int, int> { { 1000, 1100 }, { 1100, 1000 } };
+            GameMode.WalkDescendants(cycle, new HashSet<int> { 9900 }, 0, 24);
+            Eq(0, GameMode.WalkDescendants(null, roots, 0, 24).Count);
+            Eq(0, GameMode.WalkDescendants(parents, new HashSet<int>(), 0, 24).Count);
+        }
+
+        private static void TestBoostClearsEfficiencyMode()
+        {
+            if (!Native.PowerThrottlingSupported) Skip("power throttling unavailable");
+            using (Process probe = Process.Start(new ProcessStartInfo("cmd.exe", "/c pause")
+            { UseShellExecute = false, RedirectStandardInput = true, CreateNoWindow = true }))
+            {
+                Thread.Sleep(250);
+                IntPtr h = Native.OpenProcess(
+                    Native.PROCESS_SET_INFORMATION | Native.PROCESS_SET_LIMITED_INFORMATION
+                    | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, probe.Id);
+                if (h == IntPtr.Zero) Skip("cannot open the probe process");
+                try
+                {
+                    Native.ApplyEcoQoS(h);
+                    Eq(false, GameMode.HighQoSVerified(h));
+
+                    Native.ApplyHighQoS(h, Native.OsBuild() >= 22000);
+                    Eq(true, GameMode.HighQoSVerified(h));
+                }
+                finally
+                {
+                    Native.CloseHandle(h);
+                    try { probe.StandardInput.Close(); if (!probe.WaitForExit(3000)) probe.Kill(); } catch { }
+                }
+            }
+        }
+
         private static void TestNetThrottleRangeJudgement()
         {
             Eq(10, NetTweak.SystemDefault);
@@ -84,7 +134,6 @@ namespace PaviseApp
                 throw new Exception("net throttle description was empty");
         }
 
-        // 只该置位 0x08（禁止断电），不得抹掉用户原有的唤醒位
         private static void TestDevicePowerBitMerge()
         {
             Eq(0x08, DevicePowerTweak.Merge(null, true));
@@ -94,7 +143,6 @@ namespace PaviseApp
             Eq(0, DevicePowerTweak.Merge(0x08, false));
         }
 
-        // MSI 扫描必须只返回显卡与网卡：存储控制器强开有蓝屏先例
         private static void TestMsiScanClassFilter()
         {
             foreach (MsiModeTweak.Candidate c in MsiModeTweak.Scan())

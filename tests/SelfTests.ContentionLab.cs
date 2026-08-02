@@ -12,9 +12,6 @@ namespace PaviseApp
 {
     internal static partial class SelfTests
     {
-        // PerfLab 的合成渲染器由 DwmFlush 节流，对 CPU 争抢不敏感，测不出压制收益。
-        // 这里的受害者是纯 CPU 帧循环：每帧固定工作量、不节流、不等垂直同步，
-        // 帧时间直接反映它拿到多少 CPU 时间片，因此对争抢高度敏感。
         private sealed class FrameVictim
         {
             private readonly List<double> frames = new List<double>();
@@ -23,7 +20,6 @@ namespace PaviseApp
             private volatile bool collect;
             private Thread worker;
 
-            // 每帧的固定工作量。数值本身不重要，重要的是它在各阶段完全一致。
             private const int WorkPerFrame = 260000;
 
             public void Start()
@@ -69,8 +65,6 @@ namespace PaviseApp
             public double OnePercentLow;
         }
 
-        // 帧时间用中位数与高分位描述：均值会被个别长帧带偏，
-        // 而争抢造成的伤害恰恰集中在尾部。
         private static PhaseStat Summarize(double[] samples)
         {
             var s = new PhaseStat();
@@ -87,9 +81,6 @@ namespace PaviseApp
             return s;
         }
 
-        // 用法：--contention-lab <输出文件> [每段秒数] [抢占进程数] [轮数]
-        // 多轮 A/B 交替：压制的主战场是尾部帧而非中位帧，而尾部指标噪声大，
-        // 单轮对照不足以定论，必须靠配对重复观察改善方向是否稳定。
         private static void RunContentionLab(string output, string secondsArg, string hogsArg, string roundsArg)
         {
             int seconds, hogs, rounds;
@@ -210,8 +201,6 @@ namespace PaviseApp
                     double fz = Med(freezeGains);
                     int fzPos = 0;
                     foreach (double g in freezeGains) if (g > 0) fzPos++;
-                    // 冻结与其它档位的本质区别在中位帧：降优先级只改变排队顺序，
-                    // 抢占者仍在消耗 CPU 周期；冻结让它彻底停摆，于是吞吐也跟着变。
                     double fzMed = Med(freezeMedGains);
                     int fzMedPos = 0;
                     foreach (double g in freezeMedGains) if (g > 1) fzMedPos++;
@@ -261,8 +250,6 @@ namespace PaviseApp
             return ok;
         }
 
-        // 冻结必须自证：日志未落盘时挂起会被跳过，此时档位显示已施加但进程仍在跑。
-        // 采两次 CPU 时间，全部停止增长才认定真的冻住了。
         private static bool VerifyFrozen(List<Process> targets)
         {
             var before = new List<TimeSpan>();

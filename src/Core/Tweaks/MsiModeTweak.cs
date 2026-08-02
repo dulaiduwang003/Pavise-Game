@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 为支持但未启用消息信号中断的设备开启 MSI 还原时删键回到系统默认
 
 using System;
@@ -15,8 +15,6 @@ namespace PaviseApp
 
         private static readonly object lk = new object();
 
-        // 只碰显卡与网卡。存储控制器强开 MSI 有蓝屏先例，音频控制器强开有爆音报告，
-        // 两类都排除；其余设备收益不明，不做无依据的批量写入。
         private static readonly string[] AllowedClasses = { "Display", "Net" };
 
         public static bool EnabledByPavise { get { return Settings.Load("MsiOnByPavise", false); } }

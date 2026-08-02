@@ -73,6 +73,11 @@ namespace PaviseApp
                 RunNetProbe(args[1]);
                 return true;
             }
+            if (args[0] == "--qos-probe" && args.Length >= 3)
+            {
+                RunQosProbe(args[1], args[2]);
+                return true;
+            }
             if (args[0] == "--contention-lab" && args.Length >= 2)
             {
                 RunContentionLab(args[1], args.Length >= 3 ? args[2] : null,
@@ -1644,6 +1649,8 @@ namespace PaviseApp
             test("ifeo: sandbox roundtrip registers priority and leaves zero residue", TestIfeoSandboxRoundtrip);
             test("render lane: the busy thread is the one identified", TestRenderLaneIdentifiesBusyThread);
             test("render lane: journal codec rejects malformed lines", TestRenderLaneJournalCodec);
+            test("sweep: a game's detached descendant is never suppressed", TestGameDescendantsExemption);
+            test("boost: a process already in efficiency mode is brought out of it", TestBoostClearsEfficiencyMode);
             test("net throttle: only out-of-range values are flagged for repair", TestNetThrottleRangeJudgement);
             test("device power: only the no-power-down bit is touched", TestDevicePowerBitMerge);
             test("msi mode: scan yields PCI display/net devices only", TestMsiScanClassFilter);

@@ -456,31 +456,12 @@ namespace PaviseApp
                                 Logger.Log("游戏核心策略：" + rendererName + " (pid " + pid + ")" + placementText);
                         }
 
-                        if (renderLaneOn && stateOk && !RenderLane.IsActiveFor(pid, currentCreation))
-                            RenderLane.EnsureForGame(pid, currentCreation, rendererName);
-
-                        if (stateOk && firstVerified)
+                        bool ecoCleared = HighQoSVerified(h);
+                        if (!ecoCleared)
                         {
-                            ReportBoostVerified();
-                            Logger.Log("游戏提优已验证：" + rendererName + " (pid " + pid + ") → 高优先级(回读 0x"
-                                + actualPriority.ToString("X") + ")" + placementText + " + 高IO(回读 " + actualIo + ")"
-                                + (gpuOk ? " + GPU高" : ""));
-                        }
-
-                        if (needTweak)
-                        {
-                            string imagePath = Native.ImagePath(h);
-                            GameExeTweaks.ApplyForGame(imagePath, gpuHighPerf, disableFso);
-                            int frlFps = ResolveFrlFps(nvFrlMode);
-                            if (nvMaxPerf || frlFps > 0 || nvLowLatency)
-                                NvDrsTweaks.ApplyForGame(imagePath, nvMaxPerf, frlFps, nvLowLatency);
-                            lock (sync) tweakApplied.Add(pid);
-                        }
-
-                        if (newlyTracked || retryEco)
-                        {
-                            bool okEco = Native.ApplyHighQoS(h, Native.OsBuild() >= 22000);
-                            if (okEco) { lock (sync) boostFail.Remove(pid); }
+                            Native.ApplyHighQoS(h, Native.OsBuild() >= 22000);
+                            ecoCleared = HighQoSVerified(h);
+                            if (ecoCleared) { lock (sync) boostFail.Remove(pid); }
                             else
                             {
                                 int tries;
@@ -493,6 +474,30 @@ namespace PaviseApp
                                     Logger.Log("游戏提优：" + rendererName + " (pid " + pid + ") 效率模式清不掉，重试 " + tries + " 次后放弃（多半被反作弊句柄保护，压不动）");
                             }
                         }
+
+                        if (renderLaneOn && stateOk && !RenderLane.IsActiveFor(pid, currentCreation))
+                            RenderLane.EnsureForGame(pid, currentCreation, rendererName);
+
+                        if (stateOk && firstVerified)
+                        {
+                            ReportBoostVerified();
+                            Logger.Log("游戏提优已验证：" + rendererName + " (pid " + pid + ") → 高优先级(回读 0x"
+                                + actualPriority.ToString("X") + ")" + placementText + " + 高IO(回读 " + actualIo + ")"
+                                + (gpuOk ? " + GPU高" : "")
+                                + (!Native.PowerThrottlingSupported ? ""
+                                    : ecoCleared ? " + 已退出效率模式" : " + 效率模式未清除" + QoSDump(h)));
+                        }
+
+                        if (needTweak)
+                        {
+                            string imagePath = Native.ImagePath(h);
+                            GameExeTweaks.ApplyForGame(imagePath, gpuHighPerf, disableFso);
+                            int frlFps = ResolveFrlFps(nvFrlMode);
+                            if (nvMaxPerf || frlFps > 0 || nvLowLatency)
+                                NvDrsTweaks.ApplyForGame(imagePath, nvMaxPerf, frlFps, nvLowLatency);
+                            lock (sync) tweakApplied.Add(pid);
+                        }
+
                     }
                     finally { Native.CloseHandle(h); }
                 }
@@ -557,6 +562,29 @@ namespace PaviseApp
             actualPriority = Native.GetPriorityClass(process);
             actualIo = Native.QueryIoPriority(process);
             return actualPriority == Native.HIGH_PRIORITY_CLASS && actualIo == 3;
+        }
+
+        internal static string QoSDump(IntPtr process)
+        {
+            int control, state;
+            if (!Native.TryQueryPowerThrottling(process, out control, out state)) return "(读取失败)";
+            return "(control=0x" + control.ToString("X") + " state=0x" + state.ToString("X") + ")";
+        }
+
+        internal static bool InEfficiencyMode(IntPtr process)
+        {
+            if (!Native.PowerThrottlingSupported) return false;
+            int control, state;
+            if (!Native.TryQueryPowerThrottling(process, out control, out state)) return false;
+            return (state & 1) != 0;
+        }
+
+        internal static bool HighQoSVerified(IntPtr process)
+        {
+            if (!Native.PowerThrottlingSupported) return true;
+            int control, state;
+            if (!Native.TryQueryPowerThrottling(process, out control, out state)) return false;
+            return (control & 1) != 0 && (state & 1) == 0;
         }
 
         private static bool ApplyAndVerifyGpuBoost(IntPtr process)
