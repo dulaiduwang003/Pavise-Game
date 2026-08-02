@@ -102,3 +102,39 @@ scheduling policy in both arms, so Pavise cannot hide its observation cost behin
 policy gains. Run a second output directory with `--lane policy` to exercise the
 real GameMode sweep, boost, whitelist and suppression paths. That lane is scoped
 to the private synthetic worker path and leaves normal user processes untouched.
+
+`--duty <ms>` overrides the per-worker duty cycle (milliseconds of spin per 100 ms
+window). The default of 10-12 ms is a light regression load: six workers occupy
+roughly 11% of a six-core machine, so nothing is actually contended.
+
+## What this harness can and cannot measure
+
+PerfLab is a **regression guard**, not a benefit meter. It answers "does Pavise
+make things worse, and what does it cost to run", not "how much does suppression
+gain".
+
+Measured on a 6-core / 240 Hz laptop, an isolated copy of the synthetic renderer
+holds ~20.2 ms per frame whether it runs alone, alongside eight workers at 70%
+duty (~5.6 cores of load), or with a child process spawned every 750 ms. The
+frame time moves by less than 1 ms across all three. The renderer is therefore
+insensitive to CPU contention by construction, and a policy-lane A/B cannot show
+a suppression gain no matter how the load is configured. Reading a null result
+there as "suppression does not help" is a misreading of the instrument.
+
+## Known limitation: results drift after roughly ten minutes
+
+Every observed run shows the renderer stepping to a distinctly faster frame time
+around 590 seconds into the run - round 8 of a default ten-round run - and
+staying there. It reproduced in four independent runs at the same offset.
+
+Ruled out so far, each by a dedicated isolation probe: display idle timeout (the
+controller now holds `ES_DISPLAY_REQUIRED` for the whole run and the step still
+appears), CPU contention from the workers, child-process spawn cost, `DwmFlush`
+pacing, and display refresh changes (a constant 240 Hz was logged across a full
+13-minute probe). None of those reproduce the step outside PerfLab, and the
+isolated probes stay flat for 13 minutes.
+
+The paired A/B design absorbs it - both arms of a round sit next to each other -
+but rounds before and after the step measure different system states. Until the
+cause is found, prefer `--rounds 7` for a clean single-state run, and treat any
+comparison that spans the step with suspicion.

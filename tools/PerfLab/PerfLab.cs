@@ -74,6 +74,28 @@ namespace PavisePerfLab
         internal const string PresentationDwm = "dwm_flush";
         internal const string PresentationGdi = "gdi_timer";
 
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern uint SetThreadExecutionState(uint flags);
+
+        private const uint EsContinuous = 0x80000000;
+        private const uint EsSystemRequired = 0x00000001;
+        private const uint EsDisplayRequired = 0x00000002;
+
+        // 整轮跑十几分钟，中途会越过系统的显示器空闲超时。显示器一关，
+        // 渲染器那次窗口 blit 不再真正上屏，帧时间会突然变快（实测两次
+        // 运行都在同一时刻从 26ms 跳到 19.6ms），此后各轮量的已经不是
+        // 同一个系统状态。基准运行期间必须按住显示器与系统不进入空闲。
+        private static void HoldDisplayAwake(bool hold)
+        {
+            try
+            {
+                SetThreadExecutionState(hold
+                    ? EsContinuous | EsSystemRequired | EsDisplayRequired
+                    : EsContinuous);
+            }
+            catch { }
+        }
+
         // Process.MainModule 依赖模块列表可枚举，进程刚起来或正在退出时
         // 会返回 FileName 为 null 的模块并在取值时抛 NullReferenceException。
         // 走 QueryFullProcessImageName 只需要句柄本身，不受模块枚举时机影响。
@@ -147,6 +169,13 @@ namespace PavisePerfLab
             if (!IsElevated())
                 throw new InvalidOperationException(
                     "PerfLab must run elevated so the real boost/readback path can be verified.");
+            HoldDisplayAwake(true);
+            try { return RunControllerCore(options); }
+            finally { HoldDisplayAwake(false); }
+        }
+
+        private static int RunControllerCore(Options options)
+        {
             PrepareOutputDirectory(options.OutputDirectory);
             string executable = Process.GetCurrentProcess().MainModule.FileName;
 
@@ -264,7 +293,9 @@ namespace PavisePerfLab
                         workers.Add(Start(backgroundPath,
                             "--background " + (options.Seconds + 2)
                                 .ToString(CultureInfo.InvariantCulture)
-                            + " " + (10 + i % 3).ToString(CultureInfo.InvariantCulture)
+                            + " " + (options.WorkerDuty > 0
+                                ? options.WorkerDuty : 10 + i % 3)
+                                .ToString(CultureInfo.InvariantCulture)
                             + " " + Quote(startAckName) + " "
                             + (options.WarmupSeconds + 20)
                                 .ToString(CultureInfo.InvariantCulture), true));
@@ -1575,6 +1606,9 @@ namespace PavisePerfLab
         public int Rounds = 10;
         public int Seconds = 20;
         public int Workers = 6;
+        // 每个后台 worker 的占空比（毫秒/100ms）。默认 10~12 只有约 11% 全机负载，
+        // 那是回归护栏用的轻载；要观察压制在争抢下的收益必须显式调高。
+        public int WorkerDuty;
         public int WarmupSeconds = 10;
         public int CooldownSeconds = 10;
         public string Lane = "overhead";
@@ -1590,6 +1624,7 @@ namespace PavisePerfLab
                 else if (args[i] == "--rounds" && value != null) { result.Rounds = int.Parse(value, CultureInfo.InvariantCulture); i++; }
                 else if (args[i] == "--seconds" && value != null) { result.Seconds = int.Parse(value, CultureInfo.InvariantCulture); i++; }
                 else if (args[i] == "--workers" && value != null) { result.Workers = int.Parse(value, CultureInfo.InvariantCulture); i++; }
+                else if (args[i] == "--duty" && value != null) { result.WorkerDuty = int.Parse(value, CultureInfo.InvariantCulture); i++; }
                 else if (args[i] == "--warmup" && value != null) { result.WarmupSeconds = int.Parse(value, CultureInfo.InvariantCulture); i++; }
                 else if (args[i] == "--cooldown" && value != null) { result.CooldownSeconds = int.Parse(value, CultureInfo.InvariantCulture); i++; }
                 else if (args[i] == "--lane" && value != null) { result.Lane = value.ToLowerInvariant(); i++; }
