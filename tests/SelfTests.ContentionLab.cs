@@ -112,6 +112,8 @@ namespace PaviseApp
             var lowGains = new List<double>();
             var medGains = new List<double>();
             var partGains = new List<double>();
+            var freezeGains = new List<double>();
+            var freezeMedGains = new List<double>();
             try
             {
                 for (int i = 0; i < hogs; i++)
@@ -148,12 +150,23 @@ namespace PaviseApp
                     core.ReleaseReason(SuppressReason.Background);
                     Thread.Sleep(1200);
 
+                    int nFrz = Apply(core, spawned, SuppressionLevel.Frozen);
+                    Thread.Sleep(1200);
+                    bool reallyFrozen = VerifyFrozen(spawned);
+                    PhaseStat d = RunPhase(victim, seconds);
+                    sb.AppendLine(Row(r, "D 冻结" + (reallyFrozen ? "(已验证)" : "(未生效!)"), d));
+                    core.ReleaseReason(SuppressReason.Background);
+                    Thread.Sleep(1500);
+
                     if (a.OnePercentLow > 0 && b.OnePercentLow > 0 && c.OnePercentLow > 0
-                        && nPri == hogs && nIso == hogs)
+                        && d.OnePercentLow > 0 && nPri == hogs && nIso == hogs && nFrz == hogs
+                        && reallyFrozen)
                     {
                         lowGains.Add((a.OnePercentLow - b.OnePercentLow) / a.OnePercentLow * 100.0);
                         medGains.Add((a.OnePercentLow - c.OnePercentLow) / a.OnePercentLow * 100.0);
                         partGains.Add((b.OnePercentLow - c.OnePercentLow) / b.OnePercentLow * 100.0);
+                        freezeGains.Add((c.OnePercentLow - d.OnePercentLow) / c.OnePercentLow * 100.0);
+                        freezeMedGains.Add((c.Median - d.Median) / c.Median * 100.0);
                     }
                 }
                 sb.AppendLine();
@@ -188,6 +201,33 @@ namespace PaviseApp
                     else
                         sb.AppendLine("判定: 分区增量方向不稳定 —— " + partPositive + "/" + partGains.Count
                             + " 轮为正，需要更多轮次才能定论。");
+
+                    sb.AppendLine();
+                    sb.AppendLine("--- 冻结档增量（相对已隔离压制）---");
+                    sb.AppendLine("  1% 最差帧再改善: " + Med(freezeGains).ToString("F1") + "%");
+                    sb.AppendLine("  中位帧再改善   : " + Med(freezeMedGains).ToString("F1") + "%");
+                    sb.AppendLine("  各轮: " + Join(freezeGains));
+                    double fz = Med(freezeGains);
+                    int fzPos = 0;
+                    foreach (double g in freezeGains) if (g > 0) fzPos++;
+                    // 冻结与其它档位的本质区别在中位帧：降优先级只改变排队顺序，
+                    // 抢占者仍在消耗 CPU 周期；冻结让它彻底停摆，于是吞吐也跟着变。
+                    double fzMed = Med(freezeMedGains);
+                    int fzMedPos = 0;
+                    foreach (double g in freezeMedGains) if (g > 1) fzMedPos++;
+                    if (fzMedPos == freezeMedGains.Count && fzMed > 3)
+                        sb.AppendLine("  判定: 冻结是唯一能改善中位帧的档位 —— 中位帧再降 "
+                            + fzMed.ToString("F1") + "%（每轮一致），说明它真正释放了 CPU 周期"
+                            + "而非仅调整排队顺序；尾部帧的额外收益则不稳定（" + fzPos + "/"
+                            + freezeGains.Count + " 轮为正），因为隔离档已把尾部压到接近噪声底。");
+                    else if (fzPos == freezeGains.Count && fz > 20)
+                        sb.AppendLine("  判定: 冻结有显著额外收益，尾部中位再改善 " + fz.ToString("F0") + "%。");
+                    else if (Math.Abs(fz) < 10 && Math.Abs(fzMed) < 3)
+                        sb.AppendLine("  判定: 冻结相对隔离压制无显著增量 —— "
+                            + "隔离档已经把争抢压到接近极限，不可逆的挂起换不到多少额外收益。");
+                    else
+                        sb.AppendLine("  判定: 冻结增量不稳定（尾部 " + fzPos + "/" + freezeGains.Count
+                            + " 轮为正，中位 " + fzMedPos + "/" + freezeMedGains.Count + " 轮为正）。");
                 }
             }
             catch (Exception ex) { sb.AppendLine("异常: " + ex); }
@@ -219,6 +259,29 @@ namespace PaviseApp
                 catch { }
             }
             return ok;
+        }
+
+        // 冻结必须自证：日志未落盘时挂起会被跳过，此时档位显示已施加但进程仍在跑。
+        // 采两次 CPU 时间，全部停止增长才认定真的冻住了。
+        private static bool VerifyFrozen(List<Process> targets)
+        {
+            var before = new List<TimeSpan>();
+            foreach (Process p in targets)
+            {
+                try { p.Refresh(); before.Add(p.TotalProcessorTime); }
+                catch { before.Add(TimeSpan.Zero); }
+            }
+            Thread.Sleep(1200);
+            for (int i = 0; i < targets.Count; i++)
+            {
+                try
+                {
+                    targets[i].Refresh();
+                    if ((targets[i].TotalProcessorTime - before[i]).TotalMilliseconds > 30) return false;
+                }
+                catch { return false; }
+            }
+            return true;
         }
 
         private static double Med(List<double> v)
