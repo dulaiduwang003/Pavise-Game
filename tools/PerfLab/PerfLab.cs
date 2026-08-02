@@ -61,6 +61,36 @@ namespace PavisePerfLab
             IntPtr process, out long creation, out long exit,
             out long kernel, out long user);
 
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern bool QueryFullProcessImageName(
+            IntPtr process, int flags, StringBuilder buffer, ref int size);
+
+        // 呈现模式必须整轮统一。DwmFlush 的等待中位数在高刷新率屏幕上
+        // 贴着校准阈值（240Hz 期望约 2.1ms，阈值 3.0ms），后台争抢一变
+        // 判定就翻面；而 active 臂的负载被压制、baseline 臂没有，于是
+        // 被测变量透过争抢反过来决定了量具模式，两种模式本身又差约 11%
+        // 帧时间。首个 trial 校准一次，其余全部沿用，杜绝这条混杂路径。
+        internal const string PresentationAuto = "auto";
+        internal const string PresentationDwm = "dwm_flush";
+        internal const string PresentationGdi = "gdi_timer";
+
+        // Process.MainModule 依赖模块列表可枚举，进程刚起来或正在退出时
+        // 会返回 FileName 为 null 的模块并在取值时抛 NullReferenceException。
+        // 走 QueryFullProcessImageName 只需要句柄本身，不受模块枚举时机影响。
+        private static string LiveImagePath(Process process)
+        {
+            try
+            {
+                var buffer = new StringBuilder(1024);
+                int size = buffer.Capacity;
+                if (QueryFullProcessImageName(process.Handle, 0, buffer, ref size)
+                    && size > 0)
+                    return buffer.ToString(0, size);
+            }
+            catch { }
+            return null;
+        }
+
         [STAThread]
         private static int Main(string[] args)
         {
@@ -131,6 +161,8 @@ namespace PavisePerfLab
             File.Copy(executable, background, true);
 
             var rows = new List<TrialResult>();
+            // 首个 trial 自行校准呈现模式，其余全部沿用它的结果
+            string presentationLock = PresentationAuto;
             for (int round = 1; round <= options.Rounds; round++)
             {
                 bool activeFirst = round % 2 == 0;
@@ -138,8 +170,16 @@ namespace PavisePerfLab
                 {
                     bool active = order == 0 ? activeFirst : !activeFirst;
                     TrialResult result = RunTrial(
-                        options, round, order + 1, active, renderer, background);
+                        options, round, order + 1, active, renderer, background,
+                        presentationLock);
                     rows.Add(result);
+                    if (presentationLock == PresentationAuto
+                        && !string.IsNullOrEmpty(result.PresentationMode))
+                    {
+                        presentationLock = result.PresentationMode;
+                        Console.WriteLine(
+                            "presentation_lock=" + presentationLock);
+                    }
                     Console.WriteLine(result.ToConsoleLine());
                     Thread.Sleep(options.CooldownSeconds * 1000);
                 }
@@ -156,7 +196,8 @@ namespace PavisePerfLab
 
         private static TrialResult RunTrial(
             Options options, int round, int order, bool active,
-            string rendererPath, string backgroundPath)
+            string rendererPath, string backgroundPath,
+            string presentationLock)
         {
             string tag = "r" + round.ToString("D2", CultureInfo.InvariantCulture)
                 + "-" + (active ? "active" : "baseline");
@@ -239,7 +280,8 @@ namespace PavisePerfLab
                         "--renderer " + options.Seconds.ToString(CultureInfo.InvariantCulture)
                         + " " + (options.WarmupSeconds + 20).ToString(CultureInfo.InvariantCulture)
                         + " " + Quote(frameReport) + " " + Quote(startAckName)
-                        + " " + Quote(backgroundPath) + " " + Quote(doneName),
+                        + " " + Quote(backgroundPath) + " " + Quote(doneName)
+                        + " " + (presentationLock ?? PresentationAuto),
                         false);
 
                     Stopwatch warmup = Stopwatch.StartNew();
@@ -381,18 +423,23 @@ namespace PavisePerfLab
 
         private static int RunRenderer(string[] args)
         {
-            if (args.Length != 7) return 2;
+            if (args.Length != 7 && args.Length != 8) return 2;
             int seconds;
             int warmupLimit;
             if (!int.TryParse(args[1], out seconds)
                 || !int.TryParse(args[2], out warmupLimit)
                 || seconds < 1 || warmupLimit < 1)
                 return 2;
+            string forcedMode = args.Length == 8 ? args[7] : PresentationAuto;
+            if (forcedMode != PresentationAuto
+                && forcedMode != PresentationDwm
+                && forcedMode != PresentationGdi)
+                return 2;
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             using (var form = new RenderForm(seconds, warmupLimit,
                 Path.GetFullPath(args[3]), args[4],
-                Path.GetFullPath(args[5]), args[6]))
+                Path.GetFullPath(args[5]), args[6], forcedMode))
                 Application.Run(form);
             return 0;
         }
@@ -556,8 +603,11 @@ namespace PavisePerfLab
                     throw new InvalidOperationException(
                         "A long-lived worker exited or reused a PID before roster publication.");
 
-                string livePath = Path.GetFullPath(
-                    worker.MainModule.FileName);
+                string liveImage = LiveImagePath(worker);
+                if (liveImage == null)
+                    throw new InvalidOperationException(
+                        "A long-lived worker image path could not be read.");
+                string livePath = Path.GetFullPath(liveImage);
                 if (!string.Equals(
                         livePath, expectedPath,
                         StringComparison.OrdinalIgnoreCase))
@@ -1615,12 +1665,25 @@ namespace PavisePerfLab
         public RenderForm(
             int seconds, int warmupLimit, string reportPath,
             string gateName, string childBurstPath,
-            string completionGateName)
+            string completionGateName, string forcedPresentationMode)
         {
             this.seconds = seconds;
             this.warmupLimit = warmupLimit;
             this.reportPath = reportPath;
             this.childBurstPath = childBurstPath;
+            // 被指定模式时跳过校准，整轮各 trial 因此共用同一量具
+            if (forcedPresentationMode == Program.PresentationGdi)
+            {
+                useDwm = false;
+                presentValid = false;
+                presentationCalibrated = true;
+            }
+            else if (forcedPresentationMode == Program.PresentationDwm)
+            {
+                useDwm = true;
+                presentValid = true;
+                presentationCalibrated = true;
+            }
             try
             {
                 gate = EventWaitHandle.OpenExisting(gateName);
