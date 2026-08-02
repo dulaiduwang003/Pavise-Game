@@ -286,6 +286,7 @@ namespace PaviseApp
                         bool firstDeny;
                         lock (sync) firstDeny = boostDenied.Add(pid);
                         if (firstDeny) Logger.Log("游戏提优：" + rendererName + " (pid " + pid + ") 打不开句柄（多半被反作弊保护），本体提优跳过；后台压制不受影响");
+                        if (ifeoOn && boostOn) IfeoBoost.EnsureForGame(rendererName);
                         continue;
                     }
                     try

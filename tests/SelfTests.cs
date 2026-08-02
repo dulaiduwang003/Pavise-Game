@@ -1544,6 +1544,7 @@ namespace PaviseApp
             test("nv drs: key-to-settingid mapping is exact and collision-free", TestDrsKeyIdMapping);
             test("nv drs: snapshot codec round-trips all four keys", TestDrsSnapshotRoundtrip);
             test("nagle: interface list codec handles empty and multi entries", TestNagleListCodec);
+            test("ifeo: sandbox roundtrip registers priority and leaves zero residue", TestIfeoSandboxRoundtrip);
             }
             finally { try { Directory.Delete(root, true); } catch { } }
 

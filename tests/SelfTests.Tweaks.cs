@@ -49,5 +49,36 @@ namespace PaviseApp
             Eq("{aaa}", two[0]);
             Eq("{bbb}", two[1]);
         }
+
+        // 全回路走 HKCU 沙箱：登记→值为 3→撤销→键无残留。
+        // IFEO 残留会出现在各类劫持检查工具的报告里，清不干净等于自我抹黑。
+        private static void TestIfeoSandboxRoundtrip()
+        {
+            string sandbox = @"Software\PaviseTest\IFEO_" + System.Diagnostics.Process.GetCurrentProcess().Id;
+            IfeoBoost.Hive = Microsoft.Win32.Registry.CurrentUser;
+            IfeoBoost.RootOverride = sandbox;
+            try
+            {
+                using (var k = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(sandbox)) { }
+                IfeoBoost.EnsureForGame("probe");
+                using (var p = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(sandbox + @"\probe.exe\PerfOptions"))
+                {
+                    if (p == null) throw new Exception("IFEO PerfOptions key was not created");
+                    Eq(3, (int)p.GetValue("CpuPriorityClass", -1));
+                }
+                IfeoBoost.EnsureForGame("probe.exe");
+                Eq(1, IfeoBoost.ParseList(Settings.LoadStr("IfeoList", "")).Length);
+                Eq(true, IfeoBoost.RestoreAll());
+                using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(sandbox + @"\probe.exe"))
+                    if (k != null) throw new Exception("IFEO exe key left behind after restore");
+                Eq(0, IfeoBoost.ParseList(Settings.LoadStr("IfeoList", "")).Length);
+            }
+            finally
+            {
+                IfeoBoost.Hive = Microsoft.Win32.Registry.LocalMachine;
+                IfeoBoost.RootOverride = null;
+                try { Microsoft.Win32.Registry.CurrentUser.DeleteSubKeyTree(sandbox, false); } catch { }
+            }
+        }
     }
 }
