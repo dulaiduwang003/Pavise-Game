@@ -167,7 +167,7 @@ namespace PaviseApp
 
             bool first;
             lock (sync) first = firstSweep;
-            int done = 0, denied = 0, retrying = 0;
+            int done = 0, denied = 0, retrying = 0, rosterSkipped = 0;
             var live = new HashSet<int>();
             var pending = new List<BackgroundRequest>();
 
@@ -243,6 +243,13 @@ namespace PaviseApp
                         continue;
                     }
 
+                    if (SelfProtectedRoster.Contains(nm))
+                    {
+                        ReleaseBackgroundExemption(pid, nm, null);
+                        rosterSkipped++;
+                        continue;
+                    }
+
                     SuppressionLevel adaptive = SuppressionLevel.None;
                     if (mode == PerformancePreset.Standard && creation > 0)
                         adaptive = pressure.Observe(pid, nm, creation, cpu, io, DateTime.UtcNow.Ticks, mode);
@@ -307,8 +314,14 @@ namespace PaviseApp
                 if ((request.Result == AcquireResult.NewlyThrottled || request.Result == AcquireResult.AlreadyThrottled)
                     && (batchResult == null || !batchResult.WasApplied(request.Pid)))
                 {
+                    string detail = batchResult != null ? batchResult.FailureOf(request.Pid) : "batch-missing";
+                    if (detail == SuppressionCore.SelfProtectedDetail)
+                    {
+                        request.Result = AcquireResult.NewlyProtected;
+                        continue;
+                    }
                     request.Result = AcquireResult.ApplyFailed;
-                    request.FailureDetail = batchResult != null ? batchResult.FailureOf(request.Pid) : "batch-missing";
+                    request.FailureDetail = detail;
                 }
 
             foreach (BackgroundRequest request in pending)
@@ -362,7 +375,8 @@ namespace PaviseApp
                             + "s 且无可见窗口才冻）" : "")
                         + "，首轮处理 " + done + " 个用户后台"
                         + (retrying > 0 ? "（" + retrying + " 个写入未完全生效，按退避重试）" : "")
-                        + (denied > 0 ? "（" + denied + " 个句柄受保护已跳过）" : ""));
+                        + (denied > 0 ? "（" + denied + " 个句柄受保护已跳过）" : "")
+                        + (rosterSkipped > 0 ? "（" + rosterSkipped + " 个自保护进程按名单跳过）" : ""));
                 }
                 lock (sync) firstSweep = false;
             }

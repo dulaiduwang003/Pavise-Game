@@ -23,9 +23,14 @@ namespace PaviseApp
 
         private static readonly Guid SubProcessor   = new Guid("54533251-82be-4824-96c1-47b60b740d00");
         private static readonly Guid CpMinCores     = new Guid("0cc5b647-c1df-4637-891a-dec35c318583");
+        private static readonly Guid CpMinCores1    = new Guid("0cc5b647-c1df-4637-891a-dec35c318584");
         private static readonly Guid IdleDisable    = new Guid("5d76a2ca-e8c0-402f-a133-2158492d58ad");
         private static readonly Guid ProcThrottleMin = new Guid("893dee8e-2bef-41e0-89c6-b55d0929964c");
+        private static readonly Guid ProcThrottleMax = new Guid("bc5038f7-23e0-4960-96da-33abaf5935ec");
         private static readonly Guid PerfBoostMode  = new Guid("be337238-0d82-4146-a960-4f3749d470c7");
+        private static readonly Guid PerfIncPolicy  = new Guid("465e1f50-b610-473a-ab58-00d1077dc418");
+        private static readonly Guid PerfDecPolicy  = new Guid("40fbefc7-2e9d-4d25-a185-0cfd8574bac6");
+        private static readonly Guid LatencyHintPerf = new Guid("619b7505-003b-4e82-b7a6-4dd29c300971");
         private static readonly Guid PerfEpp        = new Guid("36687f9e-e3a5-4dbf-b1dc-15eb381c6863");
         private static readonly Guid PerfEpp1       = new Guid("36687f9e-e3a5-4dbf-b1dc-15eb381c6864");
         private static readonly Guid SubPcie        = new Guid("501a4d13-42af-4429-9fd1-a8218c268e20");
@@ -49,10 +54,27 @@ namespace PaviseApp
 
                 ok &= WritePair(g, SubProcessor, CpMinCores, aggressive ? 100u : 50u, aggressive ? 100u : 20u);
                 ok &= WritePair(g, SubProcessor, ProcThrottleMin, floorAc, floorDc);
+                ok &= WritePair(g, SubProcessor, ProcThrottleMax, 100u, 100u);
 
                 ok &= WritePair(g, SubProcessor, PerfBoostMode, 2u, aggressive ? 2u : 3u);
                 ok &= WritePair(g, SubPcie, PcieAspm, aggressive ? 0u : 1u, aggressive ? 0u : 2u);
                 ok &= WritePair(g, SubUsb, UsbSelSuspend, 0u, aggressive ? 0u : 1u);
+
+                bool governor = false;
+                if (aggressive)
+                {
+                    if (SettingPresent(g, SubProcessor, PerfIncPolicy))
+                    {
+                        governor = WritePair(g, SubProcessor, PerfIncPolicy, 2u, 2u);
+                        ok &= governor;
+                    }
+                    if (SettingPresent(g, SubProcessor, PerfDecPolicy))
+                        ok &= WritePair(g, SubProcessor, PerfDecPolicy, 1u, 1u);
+                    if (SettingPresent(g, SubProcessor, LatencyHintPerf))
+                        ok &= WritePair(g, SubProcessor, LatencyHintPerf, 100u, 100u);
+                    if (CpuTopology.Hybrid && SettingPresent(g, SubProcessor, CpMinCores1))
+                        ok &= WritePair(g, SubProcessor, CpMinCores1, 100u, 100u);
+                }
 
                 ok &= WritePair(g, SubProcessor, IdleDisable, killIdle ? 1u : 0u, killIdle ? 1u : 0u);
                 if (!ok)
@@ -61,9 +83,10 @@ namespace PaviseApp
                     return false;
                 }
                 Logger.Log(aggressive
-                    ? "电源策略：竞技级（全核心/"
+                    ? "电源策略：竞技级（全核心" + (CpuTopology.Hybrid ? "含E核不停核" : "") + "/"
                         + (epp ? AggressiveFloorWithEpp + "%下限+能效偏好偏性能" : "100%下限（本机无能效偏好设置）")
                         + "/激进睿频"
+                        + (governor ? "/升频Rocket·降频缓退·延迟敏感全速" : "")
                         + (killIdle ? "/禁用空闲降低唤醒延迟" : "，空闲状态保持系统默认")
                         + "）"
                     : "电源策略：常规持续性能（保留降频余量，减少热饱和后的频率回落）");
@@ -184,45 +207,47 @@ namespace PaviseApp
             return (aggressive ? 1 : 0) | (idleDisable ? 2 : 0);
         }
 
-        private static void ActivateInner(bool aggressive, bool idleDisable)
+        private static bool ActivateInner(bool aggressive, bool idleDisable)
         {
-            if (active) return;
+            if (active) return true;
             Guid tgt = ResolveTarget();
-            if (targetOwned && !TuneTarget(tgt, aggressive, idleDisable)) return;
-            tuneState = TuneKey(aggressive, idleDisable);
+            if (tuneState != TuneKey(aggressive, idleDisable))
+            {
+                if (targetOwned && !TuneTarget(tgt, aggressive, idleDisable)) return false;
+                tuneState = TuneKey(aggressive, idleDisable);
+            }
             Guid? cur = Current();
-            if (cur == null) return;
-            if (cur.Value == tgt) { active = true; return; }
+            if (cur == null) return false;
+            if (cur.Value == tgt) { active = true; return true; }
             saved = cur.Value;
             Settings.SaveStr("PrevPowerPlan", saved.ToString());
             if (Settings.LoadStr("PrevPowerPlan", "") != saved.ToString())
             {
                 saved = Guid.Empty;
                 Logger.Log("电源计划原值快照无法持久化，已取消切换");
-                return;
+                return false;
             }
             if (Set(tgt))
             {
                 active = true;
                 Logger.Log("电源计划 → " + PlanName(tgt) + "（原 " + saved + "）");
+                return true;
             }
-            else
-            {
-                Settings.SaveStr("PrevPowerPlan", "");
-                saved = Guid.Empty;
-                Logger.Log("电源计划切换失败，本轮未启用");
-            }
+            Settings.SaveStr("PrevPowerPlan", "");
+            saved = Guid.Empty;
+            Logger.Log("电源计划切换失败，本轮未启用");
+            return false;
         }
 
-        public static void Enforce(bool aggressive, bool idleDisable)
+        public static bool Enforce(bool aggressive, bool idleDisable)
         {
             lock (lk)
             {
-                if (!active) { ActivateInner(aggressive, idleDisable); return; }
+                if (!active) return ActivateInner(aggressive, idleDisable);
                 Guid tgt = ResolveTarget();
                 if (tuneState != TuneKey(aggressive, idleDisable))
                 {
-                    if (targetOwned && !TuneTarget(tgt, aggressive, idleDisable)) return;
+                    if (targetOwned && !TuneTarget(tgt, aggressive, idleDisable)) return false;
                     tuneState = TuneKey(aggressive, idleDisable);
                     Set(tgt);
                 }
@@ -230,7 +255,9 @@ namespace PaviseApp
                 if (cur != null && cur.Value != tgt)
                 {
                     if (Set(tgt)) Logger.Log("电源计划被改动，已强制拉回 " + PlanName(tgt));
+                    else return false;
                 }
+                return true;
             }
         }
 

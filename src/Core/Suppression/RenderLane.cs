@@ -98,7 +98,8 @@ namespace PaviseApp
             Candidate best;
             if (!TryIdentify(pid, out best))
             {
-                Logger.Log("渲染主权域：无法采样 " + (gameName ?? "?") + " 的线程，本局跳过");
+                Logger.Log("渲染主权域：无法采样 " + (gameName ?? "?") + " (pid " + pid
+                    + ") 的线程（进程可能刚退出或是启动器壳），该进程不再尝试；若真身另有进程会继续探测");
                 return;
             }
             if (best.Share < MinDominantShare)

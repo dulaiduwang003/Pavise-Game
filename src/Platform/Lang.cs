@@ -207,6 +207,7 @@ namespace PaviseApp
             { "v16.device.hags.off", new[]{ "已关闭" } },
             { "v16.device.hags.none", new[]{ "不支持" } },
             { "ev.toggle", new[]{ "证据模式 · 帧时间与归因采集" } },
+            { "ev.toggle.warn", new[]{ "证据模式会被动监听 Present 事件并周期采样系统状态，采集本身有开销，理论上可能轻微影响游戏性能。\r\n\r\n仅供测试与排查使用，日常游玩建议保持关闭。\r\n\r\n确定开启？" } },
             { "ev.toggle.sub", new[]{ "被动监听 Present 事件与提交线程 + 每 5 秒只读采样 GPU/CPU/内存；另对游戏线程做一次只开关、不读写的句柄可行性探测。对局结束写入证据记录。采集本身有极小开销（<1%），理论上可能轻微影响帧率；不改动游戏任何状态，默认关闭" } },
             { "rep.tab.cards", new[]{ "会话摘要" } },
             { "rep.tab.log", new[]{ "运行日志" } },

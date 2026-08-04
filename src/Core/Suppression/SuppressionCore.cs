@@ -287,6 +287,8 @@ namespace PaviseApp
                             if (QueueApplyLocked(pid, name)) return AcquireResult.AlreadyThrottled;
                             e.Applied = ApplyThrottleWithFreeze(h, e, pid, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e));
                             ScheduleAfterApply(e, e.Applied, pid);
+                            if (!e.Applied && TryNeutralizeUnwritableLocked(h, pid, e))
+                                return AcquireResult.AlreadyProtected;
                             return e.Applied ? AcquireResult.AlreadyThrottled : AcquireResult.ApplyFailed;
                         }
 
@@ -311,6 +313,8 @@ namespace PaviseApp
                         if (QueueApplyLocked(pid, name)) return AcquireResult.AlreadyThrottled;
                         e.Applied = ApplyThrottleWithFreeze(h, e, pid, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e));
                         ScheduleAfterApply(e, e.Applied, pid);
+                        if (!e.Applied && TryNeutralizeUnwritableLocked(h, pid, e))
+                            return AcquireResult.AlreadyProtected;
 
                         return AcquireResult.AlreadyThrottled;
                     }
@@ -373,6 +377,8 @@ namespace PaviseApp
                     {
                         appliedEntry.Applied = applied;
                         ScheduleAfterApply(appliedEntry, applied, pid);
+                        if (!applied && TryNeutralizeUnwritableLocked(h, pid, appliedEntry))
+                            return AcquireResult.NewlyProtected;
                     }
                     if (!marked) { marked = true; CrashGuard.MarkThrottle(throttleMask); }
                     return applied ? AcquireResult.NewlyThrottled : AcquireResult.ApplyFailed;
@@ -688,6 +694,7 @@ namespace PaviseApp
                             Logger.Log("后台策略重试已生效：" + expectedName + " (pid " + pid
                                 + ")，此前写入未完全生效 " + previousFailures + " 次");
                     }
+                    else if (TryNeutralizeUnwritableLocked(h, pid, currentEntry)) return true;
                     else if (previousFailures < 3)
                         Logger.Log("后台策略重写未完全生效：" + expectedName + " (pid " + pid + ")，失败环节 ["
                             + (string.IsNullOrEmpty(LastApplyError) ? "unknown" : LastApplyError)
@@ -1147,6 +1154,69 @@ namespace PaviseApp
             return string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
         }
 
+        internal const string SelfProtectedDetail = "self-protected";
+
+        internal static bool FullyBlockedDetail(string detail)
+        {
+            return detail != null
+                && detail.Contains("priority-write")
+                && detail.Contains("io-write")
+                && detail.Contains("page-write");
+        }
+
+        internal static bool SnapshotMatchesCurrent(IntPtr h, uint pri, ulong aff, int io, int pg,
+            uint[] cpuSets, int qosControl, int qosState, int gpu)
+        {
+            if (pri == 0 || pri == uint.MaxValue || io < 0 || pg < 0) return false;
+            if (Native.GetPriorityClass(h) != pri) return false;
+            if (Native.QueryIoPriority(h) != io) return false;
+            if (Native.QueryPagePriority(h) != pg) return false;
+            if (!CpuTopology.MultiGroup && Native.QueryAffinity(h) != aff) return false;
+            if (!Native.CpuSetsMatch(h, cpuSets ?? new uint[0])) return false;
+            if (qosControl >= 0 && Native.PowerThrottlingSupported)
+            {
+                int qc, qs;
+                if (!Native.TryQueryPowerThrottling(h, out qc, out qs)
+                    || qc != qosControl || qs != qosState) return false;
+            }
+            if (gpu >= 0)
+            {
+                int g;
+                if (Native.D3DKMTGetProcessSchedulingPriorityClass(h, out g) != 0 || g != gpu) return false;
+            }
+            return true;
+        }
+
+        private bool TryNeutralizeUnwritableLocked(IntPtr h, int pid, Entry e)
+        {
+            if (e == null || e.OrigPri == uint.MaxValue || e.FreezeApplied) return false;
+            if (!FullyBlockedDetail(LastApplyError)) return false;
+
+            if (Native.PowerThrottlingSupported)
+                Native.RestorePowerThrottling(h, e.OrigQoSControl, e.OrigQoSState);
+            if (e.OrigGpu >= 0)
+            {
+                int gpuCur;
+                if (Native.D3DKMTGetProcessSchedulingPriorityClass(h, out gpuCur) == 0 && gpuCur != e.OrigGpu)
+                    Native.D3DKMTSetProcessSchedulingPriorityClass(h, e.OrigGpu);
+            }
+            if (!SnapshotMatchesCurrent(h, e.OrigPri, e.OrigAff, e.OrigIo, e.OrigPg,
+                    e.OrigCpuSets, e.OrigQoSControl, e.OrigQoSState, e.OrigGpu))
+                return false;
+
+            e.OrigPri = uint.MaxValue;
+            e.Applied = false;
+            e.FreezeIntent = false;
+            e.NextRetryTicks = 0;
+            PersistJournalLocked();
+            bool newlyListed = SelfProtectedRoster.Mark(e.Name);
+            if (newlyListed || ShouldLogProtected(e.Name + "-unwritable"))
+                Logger.Log("进程 " + e.Name + " (pid " + pid
+                    + ") 拒绝全部策略写入且状态未被改动（自保护驱动），按句柄受保护处理"
+                    + (newlyListed ? "，已记入免压制名单，后续对局直接跳过" : ""));
+            return true;
+        }
+
         private static readonly Dictionary<string, long> protectedLogTimes =
             new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
 
@@ -1278,6 +1348,11 @@ namespace PaviseApp
                         || !ReferenceEquals(currentEntry.OrigCpuSets, cpuSets))
                         { error = "entry-state"; return false; }
                     applied = ApplyThrottleWithFreeze(h, currentEntry, pid, level, pri, aff, cpuSets, DesiredGpu(currentEntry));
+                    if (!applied && TryNeutralizeUnwritableLocked(h, pid, currentEntry))
+                    {
+                        error = SelfProtectedDetail;
+                        return false;
+                    }
                     if (!applied) error = string.IsNullOrEmpty(LastApplyError) ? "apply" : LastApplyError;
                     currentEntry.Applied = applied;
                     ScheduleAfterApply(currentEntry, applied, pid);

@@ -19,7 +19,18 @@ namespace PaviseApp
             int y = PageHeader(pageReports, Lang.T("nav.reports"), Lang.T("v14.reports.sub"), 2);
 
             var swEvidence = MakeSwitch(Settings.Load("EvidenceMode", false), null);
-            swEvidence.CheckedChanged += delegate { Settings.Save("EvidenceMode", swEvidence.Checked); };
+            swEvidence.CheckedChanged += delegate
+            {
+                if (!swEvidence.Checked) { Settings.Save("EvidenceMode", false); return; }
+                if (MessageBox.Show(this, Lang.T("ev.toggle.warn"), "Pavise",
+                        MessageBoxButtons.OKCancel, MessageBoxIcon.Warning,
+                        MessageBoxDefaultButton.Button2) != DialogResult.OK)
+                {
+                    swEvidence.SetSilently(false);
+                    return;
+                }
+                Settings.Save("EvidenceMode", true);
+            };
             var evCard = new SettingCard();
             evCard.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(84));
             evCard.Title = Lang.T("ev.toggle");

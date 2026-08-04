@@ -211,6 +211,12 @@ namespace PaviseApp
 
         public static bool SetDword(IntPtr session, IntPtr profile, uint settingId, uint value)
         {
+            int status;
+            return SetDword(session, profile, settingId, value, out status);
+        }
+
+        public static bool SetDword(IntPtr session, IntPtr profile, uint settingId, uint value, out int status)
+        {
             try
             {
                 var setting = new DrsSetting
@@ -220,9 +226,10 @@ namespace PaviseApp
                     SettingType = 0,
                     CurrentValue = value
                 };
-                return drsSetSetting(session, profile, ref setting) == 0;
+                status = drsSetSetting(session, profile, ref setting);
+                return status == 0;
             }
-            catch { return false; }
+            catch { status = int.MinValue; return false; }
         }
 
         public static bool DeleteSetting(IntPtr session, IntPtr profile, uint settingId)

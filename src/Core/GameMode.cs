@@ -135,6 +135,9 @@ namespace PaviseApp
         private int stickyMiss;
         private const int StickyGraceMisses = 1;
 
+        private const int ExitGraceSeconds = 15;
+        private long gameGoneSinceTicks;
+
         public GameMode(string dir, SuppressionCore core)
         {
             dataDir = dir;
@@ -184,6 +187,8 @@ namespace PaviseApp
             ifeoOn = Settings.Load("GmIfeoBoost", false);
             renderLaneOn = Settings.Load("GmRenderLane", false);
             gpuDemoteOn = Settings.Load("GmGpuDemote", false);
+            foreach (string envKey in EnvKeys)
+                if (Settings.Load("EnvFuse_" + envKey, false)) envFused.Add(envKey);
             SuppressionCore.GpuDemoteEnabled = gpuDemoteOn;
             int presetRaw;
             preset = int.TryParse(Settings.LoadStr("PerformancePreset", "0"), out presetRaw) && presetRaw >= 0 && presetRaw <= 2
@@ -501,7 +506,7 @@ namespace PaviseApp
         public bool VisualFxDowngrade
         {
             get { return visualFxOn; }
-            set { visualFxOn = value; Settings.Save("GmVisualFx", value); RequestPolicyApply(); }
+            set { visualFxOn = value; Settings.Save("GmVisualFx", value); if (value) ClearEnvFuse("fx"); RequestPolicyApply(); }
         }
 
         public bool PurgeStandby
@@ -513,37 +518,37 @@ namespace PaviseApp
         public bool PauseWindowsUpdate
         {
             get { return pauseUpdateOn; }
-            set { pauseUpdateOn = value; Settings.Save("GmPauseUpdate", value); RequestPolicyApply(); }
+            set { pauseUpdateOn = value; Settings.Save("GmPauseUpdate", value); if (value) ClearEnvFuse("wu"); RequestPolicyApply(); }
         }
 
         public bool MmcssPriority
         {
             get { return mmcssOn; }
-            set { mmcssOn = value; Settings.Save("GmMmcss", value); RequestPolicyApply(); }
+            set { mmcssOn = value; Settings.Save("GmMmcss", value); if (value) ClearEnvFuse("mmcss"); RequestPolicyApply(); }
         }
 
         public bool PauseDownloads
         {
             get { return pauseDlOn; }
-            set { pauseDlOn = value; Settings.Save("GmPauseDl", value); RequestPolicyApply(); }
+            set { pauseDlOn = value; Settings.Save("GmPauseDl", value); if (value) ClearEnvFuse("do"); RequestPolicyApply(); }
         }
 
         public bool FgSchedBoost
         {
             get { return fgBoostOn; }
-            set { fgBoostOn = value; Settings.Save("GmFgBoost", value); RequestPolicyApply(); }
+            set { fgBoostOn = value; Settings.Save("GmFgBoost", value); if (value) ClearEnvFuse("fg"); RequestPolicyApply(); }
         }
 
         public bool PauseSvcIndex
         {
             get { return svcPauseOn; }
-            set { svcPauseOn = value; Settings.Save("GmSvcPause", value); RequestPolicyApply(); }
+            set { svcPauseOn = value; Settings.Save("GmSvcPause", value); if (value) ClearEnvFuse("svc"); RequestPolicyApply(); }
         }
 
         public bool NotifQuiet
         {
             get { return notifQuiet; }
-            set { notifQuiet = value; Settings.Save("NotifQuiet", value); RequestPolicyApply(); }
+            set { notifQuiet = value; Settings.Save("NotifQuiet", value); if (value) ClearEnvFuse("notif"); RequestPolicyApply(); }
         }
 
         public bool TrimWorkingSet
@@ -571,6 +576,7 @@ namespace PaviseApp
             {
                 nvMaxPerf = value; Settings.Save("NvMaxPerf", value);
                 if (!value) NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyPState);
+                else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyPState, 0);
                 lock (sync) tweakApplied.Clear();
                 RequestPolicyApply();
             }
@@ -587,6 +593,7 @@ namespace PaviseApp
                     NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyPreRender);
                     NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyLowLatCpl);
                 }
+                else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyPreRender, 0);
                 lock (sync) tweakApplied.Clear();
                 RequestPolicyApply();
             }
@@ -600,6 +607,7 @@ namespace PaviseApp
                 string mode = value == "60" || value == "120" || value == "screen" ? value : "off";
                 nvFrlMode = mode; Settings.SaveStr("NvFrl", mode);
                 if (mode == "off") NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyFrl);
+                else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyFrl, 0);
                 lock (sync) tweakApplied.Clear();
                 RequestPolicyApply();
             }
@@ -620,19 +628,24 @@ namespace PaviseApp
         public bool KillGameDvr
         {
             get { return killGameDvr; }
-            set { killGameDvr = value; Settings.Save("GameDvrOff", value); RequestPolicyApply(); }
+            set { killGameDvr = value; Settings.Save("GameDvrOff", value); if (value) ClearEnvFuse("dvr"); RequestPolicyApply(); }
         }
 
         public bool HzGuard
         {
             get { return hzGuard; }
-            set { hzGuard = value; Settings.Save("HzGuardOn", value); RequestPolicyApply(); }
+            set { hzGuard = value; Settings.Save("HzGuardOn", value); if (value) ClearEnvFuse("hz"); RequestPolicyApply(); }
         }
 
         public bool PowerPlanSwitch
         {
             get { return planSwitch; }
-            set { planSwitch = value; Settings.Save("PowerPlanOn", value); RequestPolicyApply(); }
+            set
+            {
+                planSwitch = value; Settings.Save("PowerPlanOn", value);
+                if (value) SaveCounter(PowerFailStreakKey, 0);
+                RequestPolicyApply();
+            }
         }
 
         public string StatusText
@@ -750,6 +763,11 @@ namespace PaviseApp
                                 string running = FindRunningGame(all, out gamePids);
                                 if (running != null)
                                 {
+                                    if (gameGoneSinceTicks != 0)
+                                    {
+                                        gameGoneSinceTicks = 0;
+                                        if (active) Logger.Log("游戏在宽限期内重新出现（启动器换壳/快速重启），游戏模式保持不中断");
+                                    }
                                     if (!active)
                                     {
                                         lock (sync) { active = true; activeGame = running; firstSweep = true; }
@@ -771,7 +789,19 @@ namespace PaviseApp
                                 }
                                 else if (active)
                                 {
-                                    Deactivate("游戏已退出");
+                                    long nowTicks = DateTime.UtcNow.Ticks;
+                                    if (gameGoneSinceTicks == 0)
+                                    {
+                                        gameGoneSinceTicks = nowTicks;
+                                        Logger.Log("游戏进程消失，进入 " + ExitGraceSeconds + " 秒还原宽限期");
+                                    }
+                                    else if (nowTicks - gameGoneSinceTicks
+                                        >= ExitGraceSeconds * TimeSpan.TicksPerSecond)
+                                    {
+                                        Deactivate("游戏已退出");
+                                    }
+                                    if (gameGoneSinceTicks != 0)
+                                        Interlocked.Exchange(ref transitionScanPending, 1);
                                 }
                                 else
                                 {

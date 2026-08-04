@@ -110,10 +110,10 @@ namespace PaviseApp
                 try
                 {
                     Native.ApplyEcoQoS(h);
-                    Eq(false, GameMode.HighQoSVerified(h));
+                    Eq(true, WaitQoSState(h, false));
 
                     Native.ApplyHighQoS(h, Native.OsBuild() >= 22000);
-                    Eq(true, GameMode.HighQoSVerified(h));
+                    Eq(true, WaitQoSState(h, true));
                 }
                 finally
                 {
@@ -121,6 +121,17 @@ namespace PaviseApp
                     try { probe.StandardInput.Close(); if (!probe.WaitForExit(3000)) probe.Kill(); } catch { }
                 }
             }
+        }
+
+        private static bool WaitQoSState(IntPtr h, bool expectCleared)
+        {
+            bool ok = GameMode.HighQoSVerified(h) == expectCleared;
+            for (int i = 0; !ok && i < 40; i++)
+            {
+                Thread.Sleep(25);
+                ok = GameMode.HighQoSVerified(h) == expectCleared;
+            }
+            return ok;
         }
 
         private static void TestNetThrottleRangeJudgement()

@@ -192,7 +192,12 @@ namespace PaviseApp
                             }
                             if (wake == FreezeIoResult.Done) thawed++;
                         }
-                        if (RestoreValues(h, entry.OrigPri, entry.OrigAff, entry.OrigIo, entry.OrigPg, CpuTopology.AllMask,
+                        if (SnapshotMatchesCurrent(h, entry.OrigPri, entry.OrigAff, entry.OrigIo, entry.OrigPg,
+                            entry.OrigCpuSets, entry.OrigQoSControl, entry.OrigQoSState, entry.OrigGpu))
+                        {
+                            restored++;
+                        }
+                        else if (RestoreValues(h, entry.OrigPri, entry.OrigAff, entry.OrigIo, entry.OrigPg, CpuTopology.AllMask,
                             entry.OrigCpuSets, entry.OrigQoSControl, entry.OrigQoSState, entry.OrigGpu)) restored++;
                         else keep.Add(lines[i]);
                     }

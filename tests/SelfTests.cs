@@ -1633,6 +1633,9 @@ namespace PaviseApp
                 test("staged suppression: queryable state and CPU Sets restore", () => TestStagedSuppression(root));
             test("competitive suppression: target resets are re-applied", () => TestSuppressionReapply(root));
             test("suppression journal: failed persistence blocks every kernel write", () => TestSuppressionJournalGate(root));
+            test("suppression: a fully write-refused detail is recognized as self-protected", TestFullyBlockedDetailJudgement);
+            test("suppression: an untouched process matches its own snapshot exactly", () => TestSnapshotMatchJudgement(root));
+            test("self-protected roster: mark/contains round-trips case-insensitively", TestSelfProtectedRoster);
             test("staged suppression: crash journal restores a live process", () => TestSuppressionCrashRecovery(root));
             test("GPU demote: class mapping follows the background tier only", TestGpuDemoteMapping);
             test("GPU demote: journal parses the gpu field and accepts legacy lines", TestGpuJournalField);

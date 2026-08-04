@@ -26,12 +26,12 @@ namespace PaviseApp
             return NvApi.SettingFrlFps;
         }
 
-        public static void ApplyForGame(string exePath, bool maxPerf, int frlFps, bool lowLatency)
+        public static List<string> ApplyForGame(string exePath, bool maxPerf, int frlFps, bool lowLatency)
         {
-            if (string.IsNullOrEmpty(exePath) || !maxPerf && frlFps <= 0 && !lowLatency) return;
-            if (!NvApi.Available) return;
+            if (string.IsNullOrEmpty(exePath) || !maxPerf && frlFps <= 0 && !lowLatency) return null;
+            if (!NvApi.Available) return null;
             string exeName = Path.GetFileName(exePath);
-            if (string.IsNullOrEmpty(exeName)) return;
+            if (string.IsNullOrEmpty(exeName)) return null;
             var desired = new List<KeyValuePair<string, uint>>();
             if (maxPerf) desired.Add(new KeyValuePair<string, uint>(KeyPState, NvApi.PStatePreferMax));
             if (frlFps > 0) desired.Add(new KeyValuePair<string, uint>(KeyFrl, (uint)frlFps));
@@ -42,11 +42,11 @@ namespace PaviseApp
             lock (sync)
             {
                 IntPtr session;
-                if (!NvApi.TryOpenSession(out session)) return;
+                if (!NvApi.TryOpenSession(out session)) return null;
                 try
                 {
                     IntPtr profile;
-                    if (!NvApi.FindOrCreateAppProfile(session, exeName, out profile)) return;
+                    if (!NvApi.FindOrCreateAppProfile(session, exeName, out profile)) return null;
                     var snapshot = ParseSnapshot(Settings.LoadStr(SnapPrefix + exeName, ""));
                     bool snapshotDirty = false;
                     foreach (var item in desired)
@@ -66,7 +66,7 @@ namespace PaviseApp
                             || !AddToList(exeName))
                         {
                             Logger.Log("NVIDIA 驱动调优：快照无法持久化，已跳过 " + exeName);
-                            return;
+                            return null;
                         }
                     }
                     bool wrote = false;
@@ -76,20 +76,30 @@ namespace PaviseApp
                         uint current;
                         if (NvApi.TryGetDword(session, profile, SettingIdOf(item.Key), out current) == 1
                             && current == item.Value) continue;
-                        if (NvApi.SetDword(session, profile, SettingIdOf(item.Key), item.Value)) wrote = true;
+                        int status;
+                        if (NvApi.SetDword(session, profile, SettingIdOf(item.Key), item.Value, out status)) wrote = true;
                         else
                         {
                             failed.Add(item.Key);
-                            Logger.Log("NVIDIA 驱动调优：写入 " + item.Key + " 失败 (" + exeName + ")");
+                            Logger.Log("NVIDIA 驱动调优：写入 " + item.Key + " 失败 (" + exeName
+                                + ", NVAPI 状态 " + status + ")");
                         }
                     }
-                    if (wrote && NvApi.SaveSession(session))
+                    bool saved = !wrote || NvApi.SaveSession(session);
+                    if (wrote && saved)
                     {
                         string done = (maxPerf && !failed.Contains(KeyPState) ? " 电源最高性能" : "")
                             + (frlFps > 0 && !failed.Contains(KeyFrl) ? " 帧上限" + frlFps : "")
                             + (lowLatency && !failed.Contains(KeyPreRender) ? " 低延迟(预渲染1)" : "");
                         if (done.Length > 0) Logger.Log("NVIDIA 驱动调优：" + exeName + done);
                     }
+                    if (!saved)
+                    {
+                        failed.Clear();
+                        foreach (var item in desired) failed.Add(item.Key);
+                        Logger.Log("NVIDIA 驱动调优：保存驱动会话失败 (" + exeName + ")");
+                    }
+                    return failed;
                 }
                 finally { NvApi.CloseSession(session); }
             }

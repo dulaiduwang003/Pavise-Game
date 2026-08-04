@@ -75,6 +75,69 @@ namespace PaviseApp
             }
         }
 
+        private static void TestFullyBlockedDetailJudgement()
+        {
+            if (!SuppressionCore.FullyBlockedDetail(
+                    "priority-write,io-write,page-write,priority-readback,io-readback,page-readback"))
+                throw new Exception("full write refusal must be recognized");
+            if (SuppressionCore.FullyBlockedDetail("eco-readback"))
+                throw new Exception("partial failure must not count as fully blocked");
+            if (SuppressionCore.FullyBlockedDetail("priority-write,priority-readback"))
+                throw new Exception("a single refused write must not count as fully blocked");
+            if (SuppressionCore.FullyBlockedDetail(null))
+                throw new Exception("null detail must not count as fully blocked");
+        }
+
+        private static void TestSnapshotMatchJudgement(string root)
+        {
+            string beat = Path.Combine(root, "snapshot-match.beat");
+            using (Process probe = StartProbe(beat))
+            {
+                IntPtr h = IntPtr.Zero;
+                try
+                {
+                    WaitAdvance(beat, -1, 4000);
+                    h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_SET_LIMITED_INFORMATION
+                        | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, probe.Id);
+                    if (h == IntPtr.Zero) throw new Exception("probe handle unavailable");
+                    uint pri = Native.GetPriorityClass(h);
+                    ulong aff = Native.QueryAffinity(h);
+                    uint[] cpuSets = Native.QueryCpuSets(h);
+                    int io = Native.QueryIoPriority(h);
+                    int pg = Native.QueryPagePriority(h);
+                    int qc, qs;
+                    if (!Native.TryQueryPowerThrottling(h, out qc, out qs)) { qc = -1; qs = -1; }
+                    if (!SuppressionCore.SnapshotMatchesCurrent(h, pri, aff, io, pg, cpuSets, qc, qs, -1))
+                        throw new Exception("untouched process must match its own snapshot");
+                    probe.PriorityClass = ProcessPriorityClass.Idle;
+                    if (SuppressionCore.SnapshotMatchesCurrent(h, pri, aff, io, pg, cpuSets, qc, qs, -1))
+                        throw new Exception("a drifted priority must break the match");
+                }
+                finally
+                {
+                    if (h != IntPtr.Zero) Native.CloseHandle(h);
+                    StopOwned(probe);
+                }
+            }
+        }
+
+        private static void TestSelfProtectedRoster()
+        {
+            SelfProtectedRoster.Clear();
+            try
+            {
+                if (SelfProtectedRoster.Contains("HipsTrayProbe"))
+                    throw new Exception("empty roster must not contain anything");
+                if (!SelfProtectedRoster.Mark("HipsTrayProbe"))
+                    throw new Exception("first mark must report newly listed");
+                if (SelfProtectedRoster.Mark("HipsTrayProbe"))
+                    throw new Exception("second mark must be idempotent");
+                if (!SelfProtectedRoster.Contains("hipstrayprobe"))
+                    throw new Exception("roster lookup must be case-insensitive");
+            }
+            finally { SelfProtectedRoster.Clear(); }
+        }
+
         private static void TestSuppressionJournalGate(string root)
         {
             string beat = Path.Combine(root, "journal-gate.beat");

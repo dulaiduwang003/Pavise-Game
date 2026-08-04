@@ -99,6 +99,7 @@ namespace PaviseApp
                     if (cur.dmDisplayFrequency == hz)
                     {
                         Settings.SaveStr(Slot, "");
+                        Logger.Log("刷新率守护：当前已是 " + hz + "Hz（游戏或系统已自行切回），无需还原");
                         return Settings.LoadStr(Slot, "").Length == 0;
                     }
 
