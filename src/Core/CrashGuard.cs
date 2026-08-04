@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static class CrashGuard
     {
@@ -207,7 +207,7 @@ namespace AegisApp
             return creation == entry.Creation ? BoostIdentity.Match : BoostIdentity.Mismatch;
         }
 
-#if AEGIS_SELFTEST
+#if PAVISE_SELFTEST
         internal static string ProbeParse(string raw)
         {
             string prev = Settings.LoadStr(KBoostEntries, "");

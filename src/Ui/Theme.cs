@@ -7,7 +7,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static class Col
     {

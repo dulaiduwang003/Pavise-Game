@@ -24,6 +24,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Self-protecting processes (HIPS-style security software) that refuse every policy write no longer
+  leave dead restore snapshots behind. When the three core writes are all refused and readback shows
+  the process was never actually modified, the entry is reclassified as handle-protected, the name
+  goes onto a persistent skip roster consulted by later sessions, and nothing is queued for restore.
+  Crash recovery likewise drops journal lines whose snapshot already matches the live process, so
+  stale HIPS records stop surviving restarts. "Restore recorded scheduling" clears the roster.
+- Game-exit churn: when the game process disappears, deactivation now waits out a 15-second grace
+  window (with a 5-second transition scan cadence) before tearing the session down, so launcher
+  shells and instant restarts no longer trigger a full restore-and-reapply cycle within seconds.
+- The power-plan retry storm: activation failures now propagate back to the caller, retries back
+  off from 30 seconds up to 5 minutes instead of firing every audit, and the parameter-tuning log
+  line is emitted once per policy change instead of on every failed attempt.
+- Session log polish: render-lane sampling failure names the pid and explains the launcher case,
+  the refresh-rate guard says so when the game already switched the rate back itself, deactivation
+  counts are labelled as session-cumulative, and NVIDIA DRS write failures include the NVAPI status
+  code.
 - One-time whitelist cleanup: builds from earlier today merged eleven third-party exemptions
   (OBS, DingTalk, Zoom and friends) into the user whitelist file; the preset has since been reduced
   to system-core-only, and on next start those eleven names are removed once from existing files.
@@ -83,6 +99,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Write-failure fuses on every UI-backed switch: two consecutive failed writes turn the switch off,
+  persist the decision and say so in the log; re-enabling the switch resets the counter and resumes
+  attempts. Covers the nine environment steps (notifications, download pause, refresh-rate guard,
+  foreground scheduling, service pause, MMCSS, Game DVR, visual effects, Windows Update pause), the
+  power plan, and the per-game NVIDIA driver tweaks (max performance, frame limiter, low latency —
+  a failed session save counts against every key it carried). Restore direction is never fused.
+  "Restore recorded scheduling" resets all fuses and counters; the switches stay off until the user
+  re-enables them.
+- Competitive power policy now also writes the hidden governor knobs when the machine exposes them
+  (probed read-first, skipped silently otherwise): explicit 100% maximum processor state, rocket
+  performance-increase policy, single-step decrease policy, full latency-sensitivity-hint
+  performance, and unparked efficiency cores on hybrid CPUs.
+- Evidence mode asks for confirmation before turning on, stating that collection itself has a cost,
+  may slightly affect frame rate, and is meant for testing and diagnosis.
 - Background GPU demotion, off by default, as a new switch in the custom policy dialog. When enabled,
   background processes suppressed at the restrained tier or above also have their GPU scheduling
   priority class lowered — restrained maps to below-normal, isolated to idle — so their rendering

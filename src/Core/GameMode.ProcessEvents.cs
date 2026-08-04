@@ -4,7 +4,7 @@
 using System;
 using System.Threading;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal partial class GameMode
     {

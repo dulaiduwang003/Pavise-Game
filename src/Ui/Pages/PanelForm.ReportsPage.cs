@@ -8,7 +8,7 @@ using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal partial class PanelForm
     {
@@ -19,7 +19,18 @@ namespace AegisApp
             int y = PageHeader(pageReports, Lang.T("nav.reports"), Lang.T("v14.reports.sub"), 2);
 
             var swEvidence = MakeSwitch(Settings.Load("EvidenceMode", false), null);
-            swEvidence.CheckedChanged += delegate { Settings.Save("EvidenceMode", swEvidence.Checked); };
+            swEvidence.CheckedChanged += delegate
+            {
+                if (!swEvidence.Checked) { Settings.Save("EvidenceMode", false); return; }
+                if (MessageBox.Show(this, Lang.T("ev.toggle.warn"), "Pavise",
+                        MessageBoxButtons.OKCancel, MessageBoxIcon.Warning,
+                        MessageBoxDefaultButton.Button2) != DialogResult.OK)
+                {
+                    swEvidence.SetSilently(false);
+                    return;
+                }
+                Settings.Save("EvidenceMode", true);
+            };
             var evCard = new SettingCard();
             evCard.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(84));
             evCard.Title = Lang.T("ev.toggle");
@@ -62,7 +73,7 @@ namespace AegisApp
             btnClearLog.Visible = false;
             btnClearLog.Click += delegate
             {
-                if (MessageBox.Show(this, Lang.T("rep.clear.ask"), "Aegis",
+                if (MessageBox.Show(this, Lang.T("rep.clear.ask"), "Pavise",
                         MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
                 Logger.Clear();
                 Logger.Log("运行日志已手动清除");
@@ -72,7 +83,7 @@ namespace AegisApp
             btnClearReports.SetBounds(Theme.S(ContentX + 404), Theme.S(PageH - 48), Theme.S(150), Theme.S(36));
             btnClearReports.Click += delegate
             {
-                if (MessageBox.Show(this, Lang.T("rep.clear.cards.ask"), "Aegis",
+                if (MessageBox.Show(this, Lang.T("rep.clear.cards.ask"), "Pavise",
                         MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
                 SessionReportStore.ClearAll(Paths.Data);
                 EvidenceStore.ClearAll(Paths.Data);

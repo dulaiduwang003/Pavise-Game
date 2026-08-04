@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 扫描并压制游戏之外的后台进程
 
 using System;
@@ -6,15 +6,15 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal partial class GameMode
     {
-#if AEGIS_PERFLAB
+#if PAVISE_PERFLAB
         private HashSet<string> performanceSuppressionScope;
 #endif
 
-#if AEGIS_PERFLAB
+#if PAVISE_PERFLAB
         internal void RestrictBackgroundSuppressionToPaths(
             IEnumerable<string> executablePaths)
         {
@@ -31,7 +31,7 @@ namespace AegisApp
 
         private bool PerformanceScopeAllows(string imagePath)
         {
-#if AEGIS_PERFLAB
+#if PAVISE_PERFLAB
             lock (sync)
             {
                 if (performanceSuppressionScope == null) return true;
@@ -140,6 +140,9 @@ namespace AegisApp
             HashSet<int> userFacingFamily = aggressive ? EmptyPidSet
                 : CollectUserFacingFamily(foregroundPid, whitelist);
             bool safePartition = CpuTopology.HasSafeBackgroundPartition();
+            bool freezeEligible = freezeOn && bgSuppressOn && aggressive;
+            HashSet<int> visibleWindows = freezeEligible
+                ? GameSessionDetector.VisibleWindowPids(true) : EmptyPidSet;
 
             int rendererPid = 0;
             string activeGameRoot = null;
@@ -158,10 +161,13 @@ namespace AegisApp
             HashSet<int> gameHostAncestors = gameSessionActive
                 ? WalkAncestorChain(whitelist.Parents, rendererPid, selfPid, 24)
                 : EmptyPidSet;
+            HashSet<int> gameDescendants = gameSessionActive
+                ? WalkDescendants(whitelist.Parents, gamePids, selfPid, 24)
+                : EmptyPidSet;
 
             bool first;
             lock (sync) first = firstSweep;
-            int done = 0, denied = 0, retrying = 0;
+            int done = 0, denied = 0, retrying = 0, rosterSkipped = 0;
             var live = new HashSet<int>();
             var pending = new List<BackgroundRequest>();
 
@@ -196,7 +202,7 @@ namespace AegisApp
                     if (boosted) continue;
 
                     bool white = whitelist.Protected.Contains(pid);
-                    if (white || gamePids.Contains(pid))
+                    if (white || gamePids.Contains(pid) || gameDescendants.Contains(pid))
                     {
                         if (core.Release(pid, SuppressReason.Background)) ReportUntrack(pid);
                         continue;
@@ -237,12 +243,26 @@ namespace AegisApp
                         continue;
                     }
 
+                    if (SelfProtectedRoster.Contains(nm))
+                    {
+                        ReleaseBackgroundExemption(pid, nm, null);
+                        rosterSkipped++;
+                        continue;
+                    }
+
                     SuppressionLevel adaptive = SuppressionLevel.None;
                     if (mode == PerformancePreset.Standard && creation > 0)
                         adaptive = pressure.Observe(pid, nm, creation, cpu, io, DateTime.UtcNow.Ticks, mode);
                     else pressure.Forget(pid);
                     SuppressionLevel desired = ResolveBackgroundLevel(mode, strictCoreOn, adaptive, safePartition);
                     if (!bgSuppressOn) desired = SuppressionLevel.None;
+                    if (freezeEligible && desired >= SuppressionLevel.Isolated
+                        && creation > 0
+                        && pid != foregroundPid
+                        && !visibleWindows.Contains(pid)
+                        && freezeDwell.Observe(pid, nm, creation, cpu, DateTime.UtcNow.Ticks))
+                        desired = SuppressionLevel.Frozen;
+                    else if (!freezeEligible) freezeDwell.Forget(pid);
 
                     string tracked = core.NameOf(pid);
                     if (tracked != null)
@@ -294,8 +314,14 @@ namespace AegisApp
                 if ((request.Result == AcquireResult.NewlyThrottled || request.Result == AcquireResult.AlreadyThrottled)
                     && (batchResult == null || !batchResult.WasApplied(request.Pid)))
                 {
+                    string detail = batchResult != null ? batchResult.FailureOf(request.Pid) : "batch-missing";
+                    if (detail == SuppressionCore.SelfProtectedDetail)
+                    {
+                        request.Result = AcquireResult.NewlyProtected;
+                        continue;
+                    }
                     request.Result = AcquireResult.ApplyFailed;
-                    request.FailureDetail = batchResult != null ? batchResult.FailureOf(request.Pid) : "batch-missing";
+                    request.FailureDetail = detail;
                 }
 
             foreach (BackgroundRequest request in pending)
@@ -328,6 +354,7 @@ namespace AegisApp
                 if (!live.Contains(pid)) { if (core.Release(pid, SuppressReason.Background)) ReportUntrack(pid); }
 
             pressure.Prune(live);
+            freezeDwell.Prune(live);
 
             if (first)
             {
@@ -344,9 +371,12 @@ namespace AegisApp
                             : "常规全局 Eco，持续大户再升级");
                     Logger.Log("后台策略：" + policy
                         + (SuppressionCore.GpuDemoteEnabled ? "，GPU 让位已启用" : "")
+                        + (freezeEligible ? "，冻结已启用（静默 " + FreezeDwellTracker.DwellSeconds
+                            + "s 且无可见窗口才冻）" : "")
                         + "，首轮处理 " + done + " 个用户后台"
                         + (retrying > 0 ? "（" + retrying + " 个写入未完全生效，按退避重试）" : "")
-                        + (denied > 0 ? "（" + denied + " 个句柄受保护已跳过）" : ""));
+                        + (denied > 0 ? "（" + denied + " 个句柄受保护已跳过）" : "")
+                        + (rosterSkipped > 0 ? "（" + rosterSkipped + " 个自保护进程按名单跳过）" : ""));
                 }
                 lock (sync) firstSweep = false;
             }
@@ -477,6 +507,29 @@ namespace AegisApp
         internal static bool IsKnownLauncherShell(string name)
         {
             return !string.IsNullOrEmpty(name) && LauncherPlatforms.Contains(name);
+        }
+
+        internal static HashSet<int> WalkDescendants(
+            Dictionary<int, int> parents, ICollection<int> rootPids, int selfPid, int maxDepth)
+        {
+            var result = new HashSet<int>();
+            if (parents == null || rootPids == null || rootPids.Count == 0) return result;
+            var roots = new HashSet<int>(rootPids);
+            foreach (KeyValuePair<int, int> kv in parents)
+            {
+                int pid = kv.Key;
+                if (pid <= 4 || pid == selfPid || roots.Contains(pid) || result.Contains(pid)) continue;
+                int current = pid;
+                for (int depth = 0; depth < maxDepth; depth++)
+                {
+                    int parent;
+                    if (!parents.TryGetValue(current, out parent) || parent <= 4 || parent == current) break;
+                    if (roots.Contains(parent)) { result.Add(pid); break; }
+                    if (parent == selfPid) break;
+                    current = parent;
+                }
+            }
+            return result;
         }
 
         internal static HashSet<int> WalkAncestorChain(Dictionary<int, int> parents, int startPid, int selfPid, int maxHops)

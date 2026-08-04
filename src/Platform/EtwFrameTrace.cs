@@ -5,11 +5,11 @@ using System;
 using System.Runtime.InteropServices;
 using System.Threading;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal sealed class EtwFrameTrace
     {
-        private const string SessionName = "AegisEvidenceTrace";
+        private const string SessionName = "PaviseEvidenceTrace";
         private static readonly Guid DxgiProvider = new Guid("CA11C036-0102-4A2D-A6AD-F03CFED5D3C9");
         private static readonly Guid D3D9Provider = new Guid("783ACA0A-790E-4D7F-8451-AA850511C6B9");
         private const ushort DxgiPresentStart = 42;

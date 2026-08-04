@@ -1,5 +1,5 @@
 @rem @author bdth 2074055628@qq.com
-@rem file: build Aegis, icon, and manifest
+@rem file: build Pavise, icon, and manifest
 @echo off
 chcp 65001 >nul
 setlocal
@@ -12,20 +12,20 @@ if not exist "%CSC%" (
 )
 
 set REFS=-reference:System.dll -reference:System.Drawing.dll -reference:System.Windows.Forms.dll -reference:System.Core.dll -reference:System.Management.dll -reference:System.Xml.dll
-set OUT=Aegis.exe
+set OUT=Pavise.exe
 if not "%~1"=="" set OUT=%~1
 set TESTARGS=
-if /i "%~2"=="--selftest" set TESTARGS=-define:AEGIS_SELFTEST -recurse:tests\*.cs
+if /i "%~2"=="--selftest" set TESTARGS=-define:PAVISE_SELFTEST -recurse:tests\*.cs
 
 echo [1/3] 编译临时 exe...
-"%CSC%" -nologo -target:winexe -optimize+ -codepage:65001 -out:Aegis.tmp.exe %REFS% %TESTARGS% -recurse:src\*.cs
+"%CSC%" -nologo -target:winexe -optimize+ -codepage:65001 -out:Pavise.tmp.exe %REFS% %TESTARGS% -recurse:src\*.cs
 if errorlevel 1 goto err
 
-echo [2/3] 生成 Aegis.ico...
-.\Aegis.tmp.exe --genicon
+echo [2/3] 生成 Pavise.ico...
+.\Pavise.tmp.exe --genicon
 
 echo [3/3] 编译...
-set MANIFEST=Aegis.manifest.tmp
+set MANIFEST=Pavise.manifest.tmp
 >  "%MANIFEST%" echo ^<?xml version="1.0" encoding="UTF-8" standalone="yes"?^>
 >> "%MANIFEST%" echo ^<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0"^>
 >> "%MANIFEST%" echo   ^<trustInfo xmlns="urn:schemas-microsoft-com:asm.v3"^>
@@ -42,15 +42,15 @@ set MANIFEST=Aegis.manifest.tmp
 >> "%MANIFEST%" echo     ^</windowsSettings^>
 >> "%MANIFEST%" echo   ^</application^>
 >> "%MANIFEST%" echo ^</assembly^>
-"%CSC%" -nologo -target:winexe -optimize+ -codepage:65001 -win32icon:Aegis.ico -win32manifest:"%MANIFEST%" -out:"%OUT%" %REFS% %TESTARGS% -recurse:src\*.cs
+"%CSC%" -nologo -target:winexe -optimize+ -codepage:65001 -win32icon:Pavise.ico -win32manifest:"%MANIFEST%" -out:"%OUT%" %REFS% %TESTARGS% -recurse:src\*.cs
 if errorlevel 1 goto err
 
-del Aegis.tmp.exe "%MANIFEST%" >nul 2>&1
+del Pavise.tmp.exe "%MANIFEST%" >nul 2>&1
 echo.
 echo 构建成功 -^> %OUT%
 goto :eof
 
 :err
 echo 构建失败
-del Aegis.tmp.exe "%MANIFEST%" >nul 2>&1
+del Pavise.tmp.exe "%MANIFEST%" >nul 2>&1
 exit /b 1

@@ -13,7 +13,7 @@ using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static class Paths
     {
@@ -21,8 +21,8 @@ namespace AegisApp
 
         private static readonly string[] DataFiles =
         {
-            "Aegis.games.txt", GameProfileStore.FileName, "Aegis.whitelist.txt", "Aegis.targets.txt",
-            SessionReportStore.FileName, "Aegis.log", "crash.log",
+            "Pavise.games.txt", GameProfileStore.FileName, "Pavise.whitelist.txt", "Pavise.targets.txt",
+            SessionReportStore.FileName, "Pavise.log", "crash.log",
             LegacyFreezeRecovery.StateFileName, SuppressionCore.StateFileName
         };
 
@@ -35,7 +35,7 @@ namespace AegisApp
             try
             {
                 string appData = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Aegis");
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Pavise");
                 Directory.CreateDirectory(appData);
                 Migrate(exeDir, appData);
                 Data = appData;
@@ -50,7 +50,7 @@ namespace AegisApp
         {
             try
             {
-                if (!File.Exists(Path.Combine(exeDir, "Aegis.portable"))) return false;
+                if (!File.Exists(Path.Combine(exeDir, "Pavise.portable"))) return false;
                 string probe = Path.Combine(exeDir, ".w" + Process.GetCurrentProcess().Id);
                 File.WriteAllText(probe, "");
                 File.Delete(probe);

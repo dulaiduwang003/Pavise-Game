@@ -5,7 +5,7 @@ using System;
 using System.IO;
 using System.Text;
 
-namespace AegisApp
+namespace PaviseApp
 {
 
     internal static class AtomicFile

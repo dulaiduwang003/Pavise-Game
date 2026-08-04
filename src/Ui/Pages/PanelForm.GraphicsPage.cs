@@ -5,11 +5,11 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal partial class PanelForm
     {
-        private Toggle swGpu, swFso, swNvMax, swWindowedOpt;
+        private Toggle swGpu, swFso, swNvMax, swNvLowLat, swWindowedOpt;
         private TierPicker frlPicker;
 
         private void BuildGraphicsPage()
@@ -46,6 +46,13 @@ namespace AegisApp
                 nvOk ? Lang.T("set.nvmax.n") : nvNone, swNvMax, out cardH);
             sy += cardH + 8;
 
+            swNvLowLat = MakeSwitch(gameMode.NvLowLatency, null);
+            swNvLowLat.CheckedChanged += (s, e) => gameMode.NvLowLatency = swNvLowLat.Checked;
+            swNvLowLat.Enabled = nvOk;
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvll"),
+                nvOk ? Lang.T("set.nvll.n") : nvNone, swNvLowLat, out cardH);
+            sy += cardH + 8;
+
             frlPicker = new TierPicker();
             frlPicker.Size = new Size(Theme.S(270), Theme.S(28));
             frlPicker.Labels = new[] { Lang.T("frl.off"), "60", "120", "240", Lang.T("frl.screen") };
@@ -59,7 +66,7 @@ namespace AegisApp
             sy += 10;
             Section(scroll, Lang.T("sec.graphics.present"), 6, sy); sy += 24;
 
-            swWindowedOpt = MakeSwitch(WindowedOptTweak.EnabledByAegis || WindowedOptTweak.CurrentlyOn(), OnWindowedOptToggle);
+            swWindowedOpt = MakeSwitch(WindowedOptTweak.EnabledByPavise || WindowedOptTweak.CurrentlyOn(), OnWindowedOptToggle);
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.winopt"), Lang.T("set.winopt.n"), swWindowedOpt, out cardH);
             sy += cardH + 8;
         }
@@ -79,8 +86,8 @@ namespace AegisApp
         private void OnWindowedOptToggle(object s, EventArgs e)
         {
             bool ok = swWindowedOpt.Checked ? WindowedOptTweak.Enable() : WindowedOptTweak.Restore();
-            if (!ok) MessageBox.Show(this, Lang.T("winopt.failed"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByAegis || WindowedOptTweak.CurrentlyOn());
+            if (!ok) MessageBox.Show(this, Lang.T("winopt.failed"), "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByPavise || WindowedOptTweak.CurrentlyOn());
         }
 
         private void SyncGraphicsToggles()
@@ -88,9 +95,10 @@ namespace AegisApp
             if (swGpu != null) swGpu.SetSilently(gameMode.GpuHighPerf);
             if (swFso != null) swFso.SetSilently(gameMode.DisableFso);
             if (swNvMax != null) swNvMax.SetSilently(gameMode.NvMaxPerf);
+            if (swNvLowLat != null) swNvLowLat.SetSilently(gameMode.NvLowLatency);
             if (frlPicker != null) frlPicker.Index = FrlIndexOf(gameMode.NvFrlMode);
             if (swWindowedOpt != null)
-                swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByAegis || WindowedOptTweak.CurrentlyOn());
+                swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByPavise || WindowedOptTweak.CurrentlyOn());
         }
     }
 }

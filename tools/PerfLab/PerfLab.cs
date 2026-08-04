@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途：生成合成渲染/后台负载并对 Aegis 核心执行可复现 A/B 性能测量
+// 文件用途：生成合成渲染/后台负载并对 Pavise 核心执行可复现 A/B 性能测量
 
 using System;
 using System.Collections.Generic;
@@ -14,15 +14,15 @@ using System.Security.Principal;
 using System.Threading;
 using System.Windows.Forms;
 
-namespace AegisPerfLab
+namespace PavisePerfLab
 {
     internal static class Program
     {
-        private const string OutputOwnerFileName = ".aegis-perflab-owner";
-        private const string OutputOwnerSignature = "AEGIS_PERFLAB_OUTPUT_V1";
-        private const string EngineReportSchema = "aegis-perflab-engine-v4";
+        private const string OutputOwnerFileName = ".pavise-perflab-owner";
+        private const string OutputOwnerSignature = "PAVISE_PERFLAB_OUTPUT_V1";
+        private const string EngineReportSchema = "pavise-perflab-engine-v4";
         private const string WorkerRosterSchema =
-            "aegis-perflab-worker-roster-v1";
+            "pavise-perflab-worker-roster-v1";
         private const int RequiredPolicyCoveragePercent = 90;
         private const int RequiredMeasurementDensityPercent = 80;
         private const int MeasurementSampleIntervalMs = 1000;
@@ -60,6 +60,58 @@ namespace AegisPerfLab
         private static extern bool GetProcessTimes(
             IntPtr process, out long creation, out long exit,
             out long kernel, out long user);
+
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern bool QueryFullProcessImageName(
+            IntPtr process, int flags, StringBuilder buffer, ref int size);
+
+        // 呈现模式必须整轮统一。DwmFlush 的等待中位数在高刷新率屏幕上
+        // 贴着校准阈值（240Hz 期望约 2.1ms，阈值 3.0ms），后台争抢一变
+        // 判定就翻面；而 active 臂的负载被压制、baseline 臂没有，于是
+        // 被测变量透过争抢反过来决定了量具模式，两种模式本身又差约 11%
+        // 帧时间。首个 trial 校准一次，其余全部沿用，杜绝这条混杂路径。
+        internal const string PresentationAuto = "auto";
+        internal const string PresentationDwm = "dwm_flush";
+        internal const string PresentationGdi = "gdi_timer";
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern uint SetThreadExecutionState(uint flags);
+
+        private const uint EsContinuous = 0x80000000;
+        private const uint EsSystemRequired = 0x00000001;
+        private const uint EsDisplayRequired = 0x00000002;
+
+        // 整轮跑十几分钟，中途会越过系统的显示器空闲超时。显示器一关，
+        // 渲染器那次窗口 blit 不再真正上屏，帧时间会突然变快（实测两次
+        // 运行都在同一时刻从 26ms 跳到 19.6ms），此后各轮量的已经不是
+        // 同一个系统状态。基准运行期间必须按住显示器与系统不进入空闲。
+        private static void HoldDisplayAwake(bool hold)
+        {
+            try
+            {
+                SetThreadExecutionState(hold
+                    ? EsContinuous | EsSystemRequired | EsDisplayRequired
+                    : EsContinuous);
+            }
+            catch { }
+        }
+
+        // Process.MainModule 依赖模块列表可枚举，进程刚起来或正在退出时
+        // 会返回 FileName 为 null 的模块并在取值时抛 NullReferenceException。
+        // 走 QueryFullProcessImageName 只需要句柄本身，不受模块枚举时机影响。
+        private static string LiveImagePath(Process process)
+        {
+            try
+            {
+                var buffer = new StringBuilder(1024);
+                int size = buffer.Capacity;
+                if (QueryFullProcessImageName(process.Handle, 0, buffer, ref size)
+                    && size > 0)
+                    return buffer.ToString(0, size);
+            }
+            catch { }
+            return null;
+        }
 
         [STAThread]
         private static int Main(string[] args)
@@ -117,6 +169,13 @@ namespace AegisPerfLab
             if (!IsElevated())
                 throw new InvalidOperationException(
                     "PerfLab must run elevated so the real boost/readback path can be verified.");
+            HoldDisplayAwake(true);
+            try { return RunControllerCore(options); }
+            finally { HoldDisplayAwake(false); }
+        }
+
+        private static int RunControllerCore(Options options)
+        {
             PrepareOutputDirectory(options.OutputDirectory);
             string executable = Process.GetCurrentProcess().MainModule.FileName;
 
@@ -125,12 +184,14 @@ namespace AegisPerfLab
             Directory.CreateDirectory(gameDir);
             Directory.CreateDirectory(loadDir);
 
-            string renderer = Path.Combine(gameDir, "Aegis.PerfLauncher.exe");
-            string background = Path.Combine(loadDir, "Aegis.PerfBackground.exe");
+            string renderer = Path.Combine(gameDir, "Pavise.PerfLauncher.exe");
+            string background = Path.Combine(loadDir, "Pavise.PerfBackground.exe");
             File.Copy(executable, renderer, true);
             File.Copy(executable, background, true);
 
             var rows = new List<TrialResult>();
+            // 首个 trial 自行校准呈现模式，其余全部沿用它的结果
+            string presentationLock = PresentationAuto;
             for (int round = 1; round <= options.Rounds; round++)
             {
                 bool activeFirst = round % 2 == 0;
@@ -138,8 +199,16 @@ namespace AegisPerfLab
                 {
                     bool active = order == 0 ? activeFirst : !activeFirst;
                     TrialResult result = RunTrial(
-                        options, round, order + 1, active, renderer, background);
+                        options, round, order + 1, active, renderer, background,
+                        presentationLock);
                     rows.Add(result);
+                    if (presentationLock == PresentationAuto
+                        && !string.IsNullOrEmpty(result.PresentationMode))
+                    {
+                        presentationLock = result.PresentationMode;
+                        Console.WriteLine(
+                            "presentation_lock=" + presentationLock);
+                    }
                     Console.WriteLine(result.ToConsoleLine());
                     Thread.Sleep(options.CooldownSeconds * 1000);
                 }
@@ -156,7 +225,8 @@ namespace AegisPerfLab
 
         private static TrialResult RunTrial(
             Options options, int round, int order, bool active,
-            string rendererPath, string backgroundPath)
+            string rendererPath, string backgroundPath,
+            string presentationLock)
         {
             string tag = "r" + round.ToString("D2", CultureInfo.InvariantCulture)
                 + "-" + (active ? "active" : "baseline");
@@ -173,7 +243,7 @@ namespace AegisPerfLab
             Process renderer = null;
             var workers = new List<Process>();
             var rendererStats = new ProcessSampler();
-            string token = "AegisPerf_" + Process.GetCurrentProcess().Id.ToString(
+            string token = "PavisePerf_" + Process.GetCurrentProcess().Id.ToString(
                 CultureInfo.InvariantCulture) + "_" + Guid.NewGuid().ToString("N");
             string armedName = "Global\\" + token + "_armed";
             string readyName = "Global\\" + token + "_ready";
@@ -223,7 +293,9 @@ namespace AegisPerfLab
                         workers.Add(Start(backgroundPath,
                             "--background " + (options.Seconds + 2)
                                 .ToString(CultureInfo.InvariantCulture)
-                            + " " + (10 + i % 3).ToString(CultureInfo.InvariantCulture)
+                            + " " + (options.WorkerDuty > 0
+                                ? options.WorkerDuty : 10 + i % 3)
+                                .ToString(CultureInfo.InvariantCulture)
                             + " " + Quote(startAckName) + " "
                             + (options.WarmupSeconds + 20)
                                 .ToString(CultureInfo.InvariantCulture), true));
@@ -239,7 +311,8 @@ namespace AegisPerfLab
                         "--renderer " + options.Seconds.ToString(CultureInfo.InvariantCulture)
                         + " " + (options.WarmupSeconds + 20).ToString(CultureInfo.InvariantCulture)
                         + " " + Quote(frameReport) + " " + Quote(startAckName)
-                        + " " + Quote(backgroundPath) + " " + Quote(doneName),
+                        + " " + Quote(backgroundPath) + " " + Quote(doneName)
+                        + " " + (presentationLock ?? PresentationAuto),
                         false);
 
                     Stopwatch warmup = Stopwatch.StartNew();
@@ -381,18 +454,23 @@ namespace AegisPerfLab
 
         private static int RunRenderer(string[] args)
         {
-            if (args.Length != 7) return 2;
+            if (args.Length != 7 && args.Length != 8) return 2;
             int seconds;
             int warmupLimit;
             if (!int.TryParse(args[1], out seconds)
                 || !int.TryParse(args[2], out warmupLimit)
                 || seconds < 1 || warmupLimit < 1)
                 return 2;
+            string forcedMode = args.Length == 8 ? args[7] : PresentationAuto;
+            if (forcedMode != PresentationAuto
+                && forcedMode != PresentationDwm
+                && forcedMode != PresentationGdi)
+                return 2;
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             using (var form = new RenderForm(seconds, warmupLimit,
                 Path.GetFullPath(args[3]), args[4],
-                Path.GetFullPath(args[5]), args[6]))
+                Path.GetFullPath(args[5]), args[6], forcedMode))
                 Application.Run(form);
             return 0;
         }
@@ -556,8 +634,11 @@ namespace AegisPerfLab
                     throw new InvalidOperationException(
                         "A long-lived worker exited or reused a PID before roster publication.");
 
-                string livePath = Path.GetFullPath(
-                    worker.MainModule.FileName);
+                string liveImage = LiveImagePath(worker);
+                if (liveImage == null)
+                    throw new InvalidOperationException(
+                        "A long-lived worker image path could not be read.");
+                string livePath = Path.GetFullPath(liveImage);
                 if (!string.Equals(
                         livePath, expectedPath,
                         StringComparison.OrdinalIgnoreCase))
@@ -1072,7 +1153,7 @@ namespace AegisPerfLab
                 throw new InvalidOperationException(
                     "non-finite cpu_percent was accepted");
             valid["cpu_percent"] = "0.0125";
-            valid["report_schema"] = "aegis-perflab-engine-v3";
+            valid["report_schema"] = "pavise-perflab-engine-v3";
             if (ValidateEngineReport(
                     valid, "overhead", "self-test-nonce", 6, out error))
                 throw new InvalidOperationException(
@@ -1333,7 +1414,7 @@ namespace AegisPerfLab
 
             string[] lines =
             {
-                "Aegis PerfLab",
+                "Pavise PerfLab",
                 "lane=" + options.Lane,
                 "rounds=" + baseline.Count.ToString(CultureInfo.InvariantCulture),
                 "baseline_median_avg_ms=" + F(baselineAvg),
@@ -1525,6 +1606,9 @@ namespace AegisPerfLab
         public int Rounds = 10;
         public int Seconds = 20;
         public int Workers = 6;
+        // 每个后台 worker 的占空比（毫秒/100ms）。默认 10~12 只有约 11% 全机负载，
+        // 那是回归护栏用的轻载；要观察压制在争抢下的收益必须显式调高。
+        public int WorkerDuty;
         public int WarmupSeconds = 10;
         public int CooldownSeconds = 10;
         public string Lane = "overhead";
@@ -1540,6 +1624,7 @@ namespace AegisPerfLab
                 else if (args[i] == "--rounds" && value != null) { result.Rounds = int.Parse(value, CultureInfo.InvariantCulture); i++; }
                 else if (args[i] == "--seconds" && value != null) { result.Seconds = int.Parse(value, CultureInfo.InvariantCulture); i++; }
                 else if (args[i] == "--workers" && value != null) { result.Workers = int.Parse(value, CultureInfo.InvariantCulture); i++; }
+                else if (args[i] == "--duty" && value != null) { result.WorkerDuty = int.Parse(value, CultureInfo.InvariantCulture); i++; }
                 else if (args[i] == "--warmup" && value != null) { result.WarmupSeconds = int.Parse(value, CultureInfo.InvariantCulture); i++; }
                 else if (args[i] == "--cooldown" && value != null) { result.CooldownSeconds = int.Parse(value, CultureInfo.InvariantCulture); i++; }
                 else if (args[i] == "--lane" && value != null) { result.Lane = value.ToLowerInvariant(); i++; }
@@ -1547,10 +1632,10 @@ namespace AegisPerfLab
                 else throw new ArgumentException("Unknown or incomplete argument: " + args[i]);
             }
             if (string.IsNullOrEmpty(result.EnginePath) || !File.Exists(result.EnginePath))
-                throw new ArgumentException("--engine must name an existing Aegis.PerfEngine.exe");
+                throw new ArgumentException("--engine must name an existing Pavise.PerfEngine.exe");
             if (string.IsNullOrEmpty(result.OutputDirectory))
                 result.OutputDirectory = Path.Combine(Path.GetTempPath(),
-                    "Aegis-PerfLab-" + DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture));
+                    "Pavise-PerfLab-" + DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture));
             if (result.Rounds < 1 || result.Rounds > 50
                 || result.Seconds < 3 || result.Seconds > 120
                 || result.Workers < 1 || result.Workers > 24
@@ -1615,12 +1700,25 @@ namespace AegisPerfLab
         public RenderForm(
             int seconds, int warmupLimit, string reportPath,
             string gateName, string childBurstPath,
-            string completionGateName)
+            string completionGateName, string forcedPresentationMode)
         {
             this.seconds = seconds;
             this.warmupLimit = warmupLimit;
             this.reportPath = reportPath;
             this.childBurstPath = childBurstPath;
+            // 被指定模式时跳过校准，整轮各 trial 因此共用同一量具
+            if (forcedPresentationMode == Program.PresentationGdi)
+            {
+                useDwm = false;
+                presentValid = false;
+                presentationCalibrated = true;
+            }
+            else if (forcedPresentationMode == Program.PresentationDwm)
+            {
+                useDwm = true;
+                presentValid = true;
+                presentationCalibrated = true;
+            }
             try
             {
                 gate = EventWaitHandle.OpenExisting(gateName);
@@ -1635,7 +1733,7 @@ namespace AegisPerfLab
                     "Unable to open measurement events ["
                     + gateName + ", " + completionGateName + "]", ex);
             }
-            Text = "Aegis PerfLab Renderer";
+            Text = "Pavise PerfLab Renderer";
             ClientSize = new Size(960, 540);
             StartPosition = FormStartPosition.CenterScreen;
             FormBorderStyle = FormBorderStyle.FixedSingle;
@@ -1754,7 +1852,7 @@ namespace AegisPerfLab
                 graphics.FillEllipse(palette[i % palette.Length], x, y, size, size);
             }
             graphics.DrawArc(arcPen, 230, 90, 500, 360, frameIndex % 360, 250);
-            graphics.DrawString("AEGIS PERF LAB", titleFont, titleBrush, 24, 24);
+            graphics.DrawString("PAVISE PERF LAB", titleFont, titleBrush, 24, 24);
             if (targetGraphics != null)
                 targetGraphics.DrawImageUnscaled(frame, 0, 0);
             if (useDwm)

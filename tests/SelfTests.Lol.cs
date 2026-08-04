@@ -8,7 +8,7 @@ using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static partial class SelfTests
     {
@@ -390,8 +390,8 @@ namespace AegisApp
 
             string guardSuffix = Process.GetCurrentProcess().Id + "_"
                 + Guid.NewGuid().ToString("N");
-            string guardMutexName = "Aegis_TestLolGuard_" + guardSuffix;
-            string guardAliveName = "Aegis_TestLolAlive_" + guardSuffix;
+            string guardMutexName = "Pavise_TestLolGuard_" + guardSuffix;
+            string guardAliveName = "Pavise_TestLolAlive_" + guardSuffix;
             Exception guardThreadError = null;
             using (var holderReady = new ManualResetEvent(false))
             using (var holderRelease = new ManualResetEvent(false))
@@ -455,7 +455,7 @@ namespace AegisApp
             service.Dispose();
 
             string logRoot = Path.Combine(Path.GetTempPath(),
-                "AegisLolLogs_" + Process.GetCurrentProcess().Id + "_"
+                "PaviseLolLogs_" + Process.GetCurrentProcess().Id + "_"
                 + Guid.NewGuid().ToString("N"));
             try
             {
@@ -669,7 +669,7 @@ namespace AegisApp
                 "leagueclient", null, lol, weGame));
 
             string root = Path.Combine(Path.GetTempPath(),
-                "AegisLolCleanup_" + Process.GetCurrentProcess().Id + "_" + Guid.NewGuid().ToString("N"));
+                "PaviseLolCleanup_" + Process.GetCurrentProcess().Id + "_" + Guid.NewGuid().ToString("N"));
             Process probe = null;
             Process gameProbe = null;
             try

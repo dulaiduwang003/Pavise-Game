@@ -6,7 +6,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static class UserLaunch
     {

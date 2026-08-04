@@ -5,7 +5,7 @@ using System.Drawing;
 using System.Threading;
 using System.Windows.Forms;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal partial class PanelForm
     {
@@ -61,7 +61,7 @@ namespace AegisApp
 
             lolDeck = new ColumnCommandDeck();
             lolDeck.SetBounds(Theme.S(x), Theme.S(sy), Theme.S(w), Theme.S(124));
-            lolDeck.Eyebrow = "AEGIS  //  LEAGUE DIRECTIVE";
+            lolDeck.Eyebrow = "PAVISE  //  LEAGUE DIRECTIVE";
             lolDeck.Title = LolText("英雄联盟 · 极限链路");
             lolDeck.Subtitle = LolText("不注入、不改内存、不触碰游戏核心文件。");
             lolDeck.MemoryLabel = LolText("本次累计释放");
@@ -363,7 +363,7 @@ namespace AegisApp
                         if (IsDisposed) return;
                         RefreshLolPage();
                         if (!ok && !string.IsNullOrEmpty(error))
-                            MessageBox.Show(this, error, "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            MessageBox.Show(this, error, "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     });
                 }
                 catch { }
@@ -482,7 +482,7 @@ namespace AegisApp
                 Interlocked.CompareExchange(ref lolInspectBusy, 0, 0) != 0) return;
             DialogResult result = MessageBox.Show(this,
                 LolText("将直接删除当前识别出的英雄联盟附加层目录（AI 教练、iCreate 录制等）。\r\n\r\n此操作不可恢复；客户端更新或修复时会重新下载这些组件。英雄联盟核心、登录链路、更新器和游戏文件不在删除范围内。\r\n\r\n请确认英雄联盟与 WeGame 已完全退出。继续删除吗？"),
-                "Aegis", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
+                "Pavise", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
             if (result != DialogResult.Yes) return;
             RunLolDelete(snapshot.LolRoot);
         }
@@ -516,7 +516,7 @@ namespace AegisApp
                         lolInspectUtc = DateTime.MinValue;
                         RefreshLolPage();
                         if (!string.IsNullOrEmpty(message))
-                            MessageBox.Show(this, message, "Aegis", MessageBoxButtons.OK,
+                            MessageBox.Show(this, message, "Pavise", MessageBoxButtons.OK,
                                 success ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
                     });
                 }
