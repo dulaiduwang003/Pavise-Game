@@ -1,18 +1,18 @@
-# Aegis PerfLab
+# Pavise PerfLab
 
-PerfLab is an isolated A/B performance test for the real Aegis engine. It creates:
+PerfLab is an isolated A/B performance test for the real Pavise engine. It creates:
 
 - a visible renderer with calibrated `DwmFlush` presentation telemetry and an
   explicit `gdi_timer` fallback when `DwmFlush` cannot be calibrated;
 - several bounded background CPU/memory workers;
 - short-lived child bursts launched by a launcher-like renderer anchor itself,
   exercising the one-shot launcher transition budget and process notifications;
-- an Aegis engine host using an in-memory settings store and a private data directory.
+- an Pavise engine host using an in-memory settings store and a private data directory.
 
 The `overhead` lane observes the synthetic workload without changing its scheduling.
 The `policy` lane boosts only the synthetic renderer and suppresses only workers whose
 full image path matches the private PerfLab copy. Neither lane modifies the user's
-`HKCU\Software\Aegis` settings or uses normal user processes as test targets.
+`HKCU\Software\Pavise` settings or uses normal user processes as test targets.
 The controller requests elevation once because a non-elevated process cannot validate
 the real priority/IO/GPU boost path.
 
@@ -25,19 +25,19 @@ Build:
 Run ten paired rounds:
 
 ```powershell
-$bin = "$env:TEMP\Aegis-PerfLab-bin"
-$out = "$env:TEMP\Aegis-PerfLab-results"
+$bin = "$env:TEMP\Pavise-PerfLab-bin"
+$out = "$env:TEMP\Pavise-PerfLab-results"
 $args = @(
-  "--run", "--engine", "$bin\Aegis.PerfEngine.exe",
+  "--run", "--engine", "$bin\Pavise.PerfEngine.exe",
   "--lane", "overhead", "--rounds", "10", "--warmup", "10",
   "--seconds", "20", "--cooldown", "10", "--workers", "6",
   "--out", $out
 )
-Start-Process "$bin\Aegis.PerfLab.exe" -ArgumentList $args -Verb RunAs -Wait
+Start-Process "$bin\Pavise.PerfLab.exe" -ArgumentList $args -Verb RunAs -Wait
 Get-Content "$out\summary.txt"
 ```
 
-`trials.csv` contains every raw trial, including the Aegis engine's CPU, I/O,
+`trials.csv` contains every raw trial, including the Pavise engine's CPU, I/O,
 resource footprint, policy writes, and GameMode full-snapshot count. `summary.txt`
 uses medians and reports separate renderer, engine-overhead, scan-budget, and
 suppression gates. The scan budget is tied to the production 20-second
@@ -94,11 +94,47 @@ visible GDI renderer and must sustain at least 20 measured frames per second
 with bounded frame time; it is never labeled as compositor telemetry.
 
 The output directory must either be empty or already contain PerfLab's
-`.aegis-perflab-owner` marker. PerfLab creates the marker on first use and
+`.pavise-perflab-owner` marker. PerfLab creates the marker on first use and
 refuses to overwrite a non-empty unowned directory.
 
 The `overhead` lane keeps the synthetic renderer and workers at the same
-scheduling policy in both arms, so Aegis cannot hide its observation cost behind
+scheduling policy in both arms, so Pavise cannot hide its observation cost behind
 policy gains. Run a second output directory with `--lane policy` to exercise the
 real GameMode sweep, boost, whitelist and suppression paths. That lane is scoped
 to the private synthetic worker path and leaves normal user processes untouched.
+
+`--duty <ms>` overrides the per-worker duty cycle (milliseconds of spin per 100 ms
+window). The default of 10-12 ms is a light regression load: six workers occupy
+roughly 11% of a six-core machine, so nothing is actually contended.
+
+## What this harness can and cannot measure
+
+PerfLab is a **regression guard**, not a benefit meter. It answers "does Pavise
+make things worse, and what does it cost to run", not "how much does suppression
+gain".
+
+Measured on a 6-core / 240 Hz laptop, an isolated copy of the synthetic renderer
+holds ~20.2 ms per frame whether it runs alone, alongside eight workers at 70%
+duty (~5.6 cores of load), or with a child process spawned every 750 ms. The
+frame time moves by less than 1 ms across all three. The renderer is therefore
+insensitive to CPU contention by construction, and a policy-lane A/B cannot show
+a suppression gain no matter how the load is configured. Reading a null result
+there as "suppression does not help" is a misreading of the instrument.
+
+## Known limitation: results drift after roughly ten minutes
+
+Every observed run shows the renderer stepping to a distinctly faster frame time
+around 590 seconds into the run - round 8 of a default ten-round run - and
+staying there. It reproduced in four independent runs at the same offset.
+
+Ruled out so far, each by a dedicated isolation probe: display idle timeout (the
+controller now holds `ES_DISPLAY_REQUIRED` for the whole run and the step still
+appears), CPU contention from the workers, child-process spawn cost, `DwmFlush`
+pacing, and display refresh changes (a constant 240 Hz was logged across a full
+13-minute probe). None of those reproduce the step outside PerfLab, and the
+isolated probes stay flat for 13 minutes.
+
+The paired A/B design absorbs it - both arms of a round sit next to each other -
+but rounds before and after the step measure different system states. Until the
+cause is found, prefer `--rounds 7` for a clean single-state run, and treat any
+comparison that spans the step with suspicion.

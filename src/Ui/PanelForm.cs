@@ -13,7 +13,7 @@ using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal enum AutoHideAction { None, Schedule, Cancel }
 
@@ -29,9 +29,7 @@ namespace AegisApp
         Reports = 7,
         Settings = 8,
         About = 9,
-        DeltaForce = 10,
-        Cs2 = 11,
-        Count = 12
+        Count = 10
     }
 
     internal partial class PanelForm : Form
@@ -42,7 +40,6 @@ namespace AegisApp
 
         private DBPanel pageOverview, pagePolicy, pageAntiCheat, pageLibrary, pageReports, pageSettings, pageAbout;
         private DBPanel pageGraphics, pageEnvironment;
-        private DBPanel pageDelta, pageCs2;
         private DBPanel[] pages;
         private NavRail nav;
         private ModeButton modeButton;
@@ -73,7 +70,7 @@ namespace AegisApp
         private const int AutoHideDelayMs = 10000;
         private const int IntroRise = 18;
 
-        private const int WinW = 1196, WinH = 828, RailW = 208, TopH = 54;
+        private const int WinW = 1196, WinH = 768, RailW = 208, TopH = 54;
         private const int PageW = WinW - RailW, PageH = WinH - TopH;
         private const int ContentX = 26, ContentW = PageW - ContentX * 2;
         private const int ScrollContentW = PageW - 40 - 12 - 20;
@@ -128,11 +125,10 @@ namespace AegisApp
             nav = new NavRail(
                 new[] { Lang.T("nav.overview"), LolText("英雄联盟（国服）"), Lang.T("nav.library"), Lang.T("nav.policy"),
                         Lang.T("v14.anticheat"), Lang.T("nav.graphics"), Lang.T("nav.env"), Lang.T("nav.reports"),
-                        Lang.T("nav.set"), Lang.T("nav.about"), LolText("三角洲行动"), LolText("CS2") },
-                new[] { "game", "lol", "white", "settings", "shield", "gpu", "chip", "log", "gear", "info", "delta", "cs2" },
+                        Lang.T("nav.set"), Lang.T("nav.about") },
+                new[] { "game", "lol", "white", "settings", "shield", "gpu", "chip", "log", "gear", "info" },
                 new[] { (int)PageId.Overview, (int)PageId.Library, (int)PageId.Policy, (int)PageId.AntiCheat,
                         (int)PageId.Reports, (int)PageId.Graphics, (int)PageId.Environment, (int)PageId.League,
-                        (int)PageId.DeltaForce, (int)PageId.Cs2,
                         (int)PageId.Settings, (int)PageId.About },
                 new[] { 5, 7 }, new[] { Lang.T("nav.hardware"), Lang.T("nav.columns") }, 2);
             AssertNavMatchesPageIds(nav);
@@ -188,11 +184,8 @@ namespace AegisApp
             pages[(int)PageId.Reports] = pageReports = MakePage();
             pages[(int)PageId.Settings] = pageSettings = MakePage();
             pages[(int)PageId.About] = pageAbout = MakePage();
-            pages[(int)PageId.DeltaForce] = pageDelta = MakePage();
-            pages[(int)PageId.Cs2] = pageCs2 = MakePage();
             BuildOverviewPage();
             BuildLolPage();
-            BuildComingSoonPages();
             BuildLibraryPage();
             BuildPolicyPage();
             BuildAntiCheatPage();
@@ -269,7 +262,7 @@ namespace AegisApp
         {
             pageHooks = new PageHook[(int)PageId.Count];
             pageHooks[(int)PageId.Overview] = new PageHook(pageOverview,
-                delegate(bool active) { if (aegisCore != null) aegisCore.SetAnimationEnabled(active); }, null);
+                delegate(bool active) { if (paviseCore != null) paviseCore.SetAnimationEnabled(active); }, null);
             pageHooks[(int)PageId.League] = new PageHook(pageLol,
                 delegate(bool active) { if (active) RefreshLolPage(); }, null);
             pageHooks[(int)PageId.Library] = new PageHook(pageLibrary,
@@ -428,7 +421,7 @@ namespace AegisApp
                 if (uiTimer != null) uiTimer.Stop();
                 CancelAutoHide();
                 UiClock.Suspended = true;
-                if (aegisCore != null) aegisCore.SetAnimationEnabled(false);
+                if (paviseCore != null) paviseCore.SetAnimationEnabled(false);
                 return;
             }
 
@@ -454,7 +447,7 @@ namespace AegisApp
                 statusDot.Color = !gameMode.Enabled ? Theme.Dim : (act ? Theme.Green : Theme.Accent);
                 statusDot.Pulse = act;
             }
-            if (aegisCore != null) aegisCore.SetState(gameMode.ActivePreset, gameMode.Enabled, act);
+            if (paviseCore != null) paviseCore.SetState(gameMode.ActivePreset, gameMode.Enabled, act);
             if (lblSub != null && elevated)
             {
                 string game = gameMode.ActiveGame;
@@ -502,7 +495,7 @@ namespace AegisApp
             if (lblHeroMode != null) lblHeroMode.Text = ModeButton.ModeName(effective);
             if (lblHeroSource != null) lblHeroSource.Text = Lang.T("mode.source.global");
             if (lblPolicyMode != null) lblPolicyMode.Text = Lang.F("mode.policy.active", ModeButton.ModeName(effective));
-            if (aegisCore != null) aegisCore.SetState(effective, enabled, gameMode.IsActive);
+            if (paviseCore != null) paviseCore.SetState(effective, enabled, gameMode.IsActive);
             if (effective != visualMode)
             {
                 visualMode = effective;
@@ -532,7 +525,7 @@ namespace AegisApp
             uiActive = false;
             uiActivityKnown = false;
             UiClock.Suspended = true;
-            if (aegisCore != null) aegisCore.SetAnimationEnabled(false);
+            if (paviseCore != null) paviseCore.SetAnimationEnabled(false);
             DetachFormFrame();
             var old = new List<Control>();
             int keep = nav != null ? nav.Selected : 0;
@@ -665,7 +658,7 @@ namespace AegisApp
             uiActive = false;
             uiActivityKnown = true;
             UiClock.Suspended = true;
-            if (aegisCore != null) aegisCore.SetAnimationEnabled(false);
+            if (paviseCore != null) paviseCore.SetAnimationEnabled(false);
             DetachFormFrame();
             foreach (Bitmap bitmap in gameIconCache.Values) try { bitmap.Dispose(); } catch { }
             gameIconCache.Clear();
@@ -745,7 +738,7 @@ namespace AegisApp
                 Theme.SetMode(preview.Value, false);
                 modeButton.SetMode(preview.Value); nav.SetMode(preview.Value, true);
                 if (lblHeroMode != null) { lblHeroMode.Text = ModeButton.ModeName(preview.Value); lblHeroMode.ForeColor = Theme.Accent; }
-                if (aegisCore != null) aegisCore.SetState(preview.Value, true, false);
+                if (paviseCore != null) paviseCore.SetState(preview.Value, true, false);
             }
             if (showModePicker && modeButton != null) modeButton.PerformClick();
             Application.DoEvents();

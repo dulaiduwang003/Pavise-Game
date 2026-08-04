@@ -8,7 +8,7 @@ using System.IO;
 using System.Reflection;
 using System.Threading;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static partial class SelfTests
     {
@@ -105,12 +105,12 @@ namespace AegisApp
         private static void TestWhitelistStorageSafety()
         {
             string root = Path.Combine(Path.GetTempPath(),
-                "AegisWhitelist_" + Process.GetCurrentProcess().Id + "_"
+                "PaviseWhitelist_" + Process.GetCurrentProcess().Id + "_"
                 + Guid.NewGuid().ToString("N"));
             try
             {
                 Directory.CreateDirectory(root);
-                string white = Path.Combine(root, "Aegis.whitelist.txt");
+                string white = Path.Combine(root, "Pavise.whitelist.txt");
                 string state = Path.Combine(root, "suppress.state");
 
                 File.WriteAllText(white, "N|c3lzdGVt\r\n");
@@ -162,7 +162,7 @@ namespace AegisApp
         private static void TestWhitelistMutationSerialization()
         {
             string root = Path.Combine(Path.GetTempPath(),
-                "AegisWhitelistLock_" + Process.GetCurrentProcess().Id + "_"
+                "PaviseWhitelistLock_" + Process.GetCurrentProcess().Id + "_"
                 + Guid.NewGuid().ToString("N"));
             GameMode mode = null;
             var held = new ManualResetEvent(false);

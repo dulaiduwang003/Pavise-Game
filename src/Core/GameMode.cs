@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 维护游戏模式状态 配置和工作线程
 
 using System;
@@ -7,7 +7,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Threading;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal partial class GameMode
     {
@@ -79,7 +79,6 @@ namespace AegisApp
         private const int BoostRetryMax = 3;
         private volatile bool bgSuppressOn;
         private volatile bool boostOn;
-        private volatile bool netOn;
         private volatile bool mmcssOn;
         private volatile bool pauseDlOn;
         private volatile bool fgBoostOn;
@@ -89,6 +88,7 @@ namespace AegisApp
         private volatile bool gpuHighPerf;
         private volatile bool disableFso;
         private volatile bool nvMaxPerf;
+        private volatile bool nvLowLatency;
         private volatile string nvFrlMode = "off";
         private volatile bool killGameDvr;
         private volatile bool hzGuard;
@@ -99,13 +99,15 @@ namespace AegisApp
         private volatile bool pauseUpdateOn;
         private volatile bool strictCoreOn;
         private volatile bool aggressiveOn;
+        private volatile bool freezeOn;
+        private volatile bool ifeoOn;
+        private volatile bool renderLaneOn;
         private volatile bool gpuDemoteOn;
         private volatile bool panicReq;
         private int panicSeq;
         private int panicServed;
         private volatile bool panicResult;
         private readonly ManualResetEvent panicDone = new ManualResetEvent(true);
-        private bool netActive;
         private bool fgActive;
         private bool svcActive;
         private bool mmcssActive;
@@ -120,6 +122,7 @@ namespace AegisApp
         private readonly ulong gameMask;
         private readonly ulong strictMask;
         private readonly BackgroundPressureController pressure = new BackgroundPressureController();
+        private readonly FreezeDwellTracker freezeDwell = new FreezeDwellTracker();
         private readonly DpcSampler dpcSampler = new DpcSampler();
         private PerformancePreset preset;
         private GameDetection activeDetection;
@@ -132,11 +135,14 @@ namespace AegisApp
         private int stickyMiss;
         private const int StickyGraceMisses = 1;
 
+        private const int ExitGraceSeconds = 15;
+        private long gameGoneSinceTicks;
+
         public GameMode(string dir, SuppressionCore core)
         {
             dataDir = dir;
-            gamesPath = Path.Combine(dir, "Aegis.games.txt");
-            whitePath = Path.Combine(dir, "Aegis.whitelist.txt");
+            gamesPath = Path.Combine(dir, "Pavise.games.txt");
+            whitePath = Path.Combine(dir, "Pavise.whitelist.txt");
             profileStore = new GameProfileStore(dir);
             using (Process self = Process.GetCurrentProcess())
             {
@@ -157,7 +163,6 @@ namespace AegisApp
                 Logger.Log("CPU 拓扑：非对称 L3（X3D），游戏绑大缓存 CCD 0x" + gameMask.ToString("X") + "，后台压另一 CCD 0x" + throttleMask.ToString("X"));
             bgSuppressOn = Settings.Load("GmSuppress", true);
             boostOn = Settings.Load("GmBoost", true);
-            netOn = Settings.Load("GmNet", true);
             mmcssOn = Settings.Load("GmMmcss", true);
             pauseDlOn = Settings.Load("GmPauseDl", true);
             fgBoostOn = Settings.Load("GmFgBoost", true);
@@ -171,13 +176,19 @@ namespace AegisApp
             gpuHighPerf = Settings.Load("GpuHighPerf", true);
             disableFso = Settings.Load("DisableFso", false);
             nvMaxPerf = Settings.Load("NvMaxPerf", false);
+            nvLowLatency = Settings.Load("NvLowLatency", false);
             nvFrlMode = Settings.LoadStr("NvFrl", "off");
             killGameDvr = Settings.Load("GameDvrOff", true);
             hzGuard = Settings.Load("HzGuardOn", false);
             planSwitch = Settings.Load("PowerPlanOn", true);
             strictCoreOn = Settings.Load("GmStrictCores", false);
             aggressiveOn = Settings.Load("GmAggressive", false);
+            freezeOn = Settings.Load("GmFreeze", false);
+            ifeoOn = Settings.Load("GmIfeoBoost", false);
+            renderLaneOn = Settings.Load("GmRenderLane", false);
             gpuDemoteOn = Settings.Load("GmGpuDemote", false);
+            foreach (string envKey in EnvKeys)
+                if (Settings.Load("EnvFuse_" + envKey, false)) envFused.Add(envKey);
             SuppressionCore.GpuDemoteEnabled = gpuDemoteOn;
             int presetRaw;
             preset = int.TryParse(Settings.LoadStr("PerformancePreset", "0"), out presetRaw) && presetRaw >= 0 && presetRaw <= 2
@@ -330,9 +341,9 @@ namespace AegisApp
         private bool WritePreset()
         {
             var lines = new List<string>();
-            lines.Add("# Aegis 智能守护白名单——这些进程始终不进入后台控制");
+            lines.Add("# Pavise 智能守护白名单——这些进程始终不进入后台控制");
             lines.Add("# V3 规则支持进程名、精确路径和应用家族，并带完整性尾标防止截断。");
-            lines.Add("# Windows 核心、其它会话和 Aegis 自身受安全保护；其余例外只来自本白名单。");
+            lines.Add("# Windows 核心、其它会话和 Pavise 自身受安全保护；其余例外只来自本白名单。");
             lines.Add(WhitelistRule.Header);
             var rules = new List<WhitelistRule>();
             foreach (string entry in PresetWhitelist)
@@ -399,7 +410,7 @@ namespace AegisApp
                 {
                     if (lines[i].Contains("Windows、前台、音频/直播、驱动、游戏家族和反作弊"))
                     {
-                        lines[i] = "# Windows 核心、其它会话和 Aegis 自身受安全保护；其余例外只来自本白名单。";
+                        lines[i] = "# Windows 核心、其它会话和 Pavise 自身受安全保护；其余例外只来自本白名单。";
                         changed = true;
                     }
                     else if (lines[i].Contains("压制会扫全部会话、不因会话 0 而豁免"))
@@ -458,10 +469,32 @@ namespace AegisApp
             set { gpuDemoteOn = value; SuppressionCore.GpuDemoteEnabled = value; Settings.Save("GmGpuDemote", value); RequestPolicyApply(); }
         }
 
-        public bool NetOptimize
+        public bool FreezeBackground
         {
-            get { return netOn; }
-            set { netOn = value; Settings.Save("GmNet", value); RequestPolicyApply(); }
+            get { return freezeOn; }
+            set { freezeOn = value; Settings.Save("GmFreeze", value); RequestPolicyApply(); }
+        }
+
+        public bool RenderLaneOn
+        {
+            get { return renderLaneOn; }
+            set
+            {
+                renderLaneOn = value; Settings.Save("GmRenderLane", value);
+                if (!value) RenderLane.Release();
+                RequestPolicyApply();
+            }
+        }
+
+        public bool IfeoBoostFallback
+        {
+            get { return ifeoOn; }
+            set
+            {
+                ifeoOn = value; Settings.Save("GmIfeoBoost", value);
+                if (!value) IfeoBoost.RestoreAll();
+                RequestPolicyApply();
+            }
         }
 
         public bool IdleStateDisable
@@ -473,7 +506,7 @@ namespace AegisApp
         public bool VisualFxDowngrade
         {
             get { return visualFxOn; }
-            set { visualFxOn = value; Settings.Save("GmVisualFx", value); RequestPolicyApply(); }
+            set { visualFxOn = value; Settings.Save("GmVisualFx", value); if (value) ClearEnvFuse("fx"); RequestPolicyApply(); }
         }
 
         public bool PurgeStandby
@@ -485,37 +518,37 @@ namespace AegisApp
         public bool PauseWindowsUpdate
         {
             get { return pauseUpdateOn; }
-            set { pauseUpdateOn = value; Settings.Save("GmPauseUpdate", value); RequestPolicyApply(); }
+            set { pauseUpdateOn = value; Settings.Save("GmPauseUpdate", value); if (value) ClearEnvFuse("wu"); RequestPolicyApply(); }
         }
 
         public bool MmcssPriority
         {
             get { return mmcssOn; }
-            set { mmcssOn = value; Settings.Save("GmMmcss", value); RequestPolicyApply(); }
+            set { mmcssOn = value; Settings.Save("GmMmcss", value); if (value) ClearEnvFuse("mmcss"); RequestPolicyApply(); }
         }
 
         public bool PauseDownloads
         {
             get { return pauseDlOn; }
-            set { pauseDlOn = value; Settings.Save("GmPauseDl", value); RequestPolicyApply(); }
+            set { pauseDlOn = value; Settings.Save("GmPauseDl", value); if (value) ClearEnvFuse("do"); RequestPolicyApply(); }
         }
 
         public bool FgSchedBoost
         {
             get { return fgBoostOn; }
-            set { fgBoostOn = value; Settings.Save("GmFgBoost", value); RequestPolicyApply(); }
+            set { fgBoostOn = value; Settings.Save("GmFgBoost", value); if (value) ClearEnvFuse("fg"); RequestPolicyApply(); }
         }
 
         public bool PauseSvcIndex
         {
             get { return svcPauseOn; }
-            set { svcPauseOn = value; Settings.Save("GmSvcPause", value); RequestPolicyApply(); }
+            set { svcPauseOn = value; Settings.Save("GmSvcPause", value); if (value) ClearEnvFuse("svc"); RequestPolicyApply(); }
         }
 
         public bool NotifQuiet
         {
             get { return notifQuiet; }
-            set { notifQuiet = value; Settings.Save("NotifQuiet", value); RequestPolicyApply(); }
+            set { notifQuiet = value; Settings.Save("NotifQuiet", value); if (value) ClearEnvFuse("notif"); RequestPolicyApply(); }
         }
 
         public bool TrimWorkingSet
@@ -543,6 +576,24 @@ namespace AegisApp
             {
                 nvMaxPerf = value; Settings.Save("NvMaxPerf", value);
                 if (!value) NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyPState);
+                else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyPState, 0);
+                lock (sync) tweakApplied.Clear();
+                RequestPolicyApply();
+            }
+        }
+
+        public bool NvLowLatency
+        {
+            get { return nvLowLatency; }
+            set
+            {
+                nvLowLatency = value; Settings.Save("NvLowLatency", value);
+                if (!value)
+                {
+                    NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyPreRender);
+                    NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyLowLatCpl);
+                }
+                else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyPreRender, 0);
                 lock (sync) tweakApplied.Clear();
                 RequestPolicyApply();
             }
@@ -556,6 +607,7 @@ namespace AegisApp
                 string mode = value == "60" || value == "120" || value == "screen" ? value : "off";
                 nvFrlMode = mode; Settings.SaveStr("NvFrl", mode);
                 if (mode == "off") NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyFrl);
+                else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyFrl, 0);
                 lock (sync) tweakApplied.Clear();
                 RequestPolicyApply();
             }
@@ -576,19 +628,24 @@ namespace AegisApp
         public bool KillGameDvr
         {
             get { return killGameDvr; }
-            set { killGameDvr = value; Settings.Save("GameDvrOff", value); RequestPolicyApply(); }
+            set { killGameDvr = value; Settings.Save("GameDvrOff", value); if (value) ClearEnvFuse("dvr"); RequestPolicyApply(); }
         }
 
         public bool HzGuard
         {
             get { return hzGuard; }
-            set { hzGuard = value; Settings.Save("HzGuardOn", value); RequestPolicyApply(); }
+            set { hzGuard = value; Settings.Save("HzGuardOn", value); if (value) ClearEnvFuse("hz"); RequestPolicyApply(); }
         }
 
         public bool PowerPlanSwitch
         {
             get { return planSwitch; }
-            set { planSwitch = value; Settings.Save("PowerPlanOn", value); RequestPolicyApply(); }
+            set
+            {
+                planSwitch = value; Settings.Save("PowerPlanOn", value);
+                if (value) SaveCounter(PowerFailStreakKey, 0);
+                RequestPolicyApply();
+            }
         }
 
         public string StatusText
@@ -706,6 +763,11 @@ namespace AegisApp
                                 string running = FindRunningGame(all, out gamePids);
                                 if (running != null)
                                 {
+                                    if (gameGoneSinceTicks != 0)
+                                    {
+                                        gameGoneSinceTicks = 0;
+                                        if (active) Logger.Log("游戏在宽限期内重新出现（启动器换壳/快速重启），游戏模式保持不中断");
+                                    }
                                     if (!active)
                                     {
                                         lock (sync) { active = true; activeGame = running; firstSweep = true; }
@@ -727,7 +789,19 @@ namespace AegisApp
                                 }
                                 else if (active)
                                 {
-                                    Deactivate("游戏已退出");
+                                    long nowTicks = DateTime.UtcNow.Ticks;
+                                    if (gameGoneSinceTicks == 0)
+                                    {
+                                        gameGoneSinceTicks = nowTicks;
+                                        Logger.Log("游戏进程消失，进入 " + ExitGraceSeconds + " 秒还原宽限期");
+                                    }
+                                    else if (nowTicks - gameGoneSinceTicks
+                                        >= ExitGraceSeconds * TimeSpan.TicksPerSecond)
+                                    {
+                                        Deactivate("游戏已退出");
+                                    }
+                                    if (gameGoneSinceTicks != 0)
+                                        Interlocked.Exchange(ref transitionScanPending, 1);
                                 }
                                 else
                                 {
@@ -749,7 +823,7 @@ namespace AegisApp
             lock (sync) exitResidue = active || gameBoost.Count > 0;
             bool exitClean = true;
             if (exitResidue || core.AnyWith(SuppressReason.Background) || EnvActive())
-                exitClean = Deactivate("Aegis 退出");
+                exitClean = Deactivate("Pavise 退出");
             if (panicReq)
             {
                 int servingAtExit = Volatile.Read(ref panicSeq);

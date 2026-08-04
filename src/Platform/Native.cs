@@ -5,7 +5,7 @@ using System;
 using System.Runtime.InteropServices;
 using System.Threading;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static partial class Native
     {
@@ -36,6 +36,12 @@ namespace AegisApp
         public static extern IntPtr OpenProcess(int access, bool inherit, int pid);
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern IntPtr OpenThread(int access, bool inherit, int tid);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool SetThreadPriority(IntPtr thread, int priority);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern int GetThreadPriority(IntPtr thread);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool GetThreadTimes(IntPtr thread, out long creation, out long exit, out long kernel, out long user);
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool ProcessIdToSessionId(
             uint processId, out uint sessionId);
@@ -145,6 +151,8 @@ namespace AegisApp
         private static extern bool GetProcessAffinityMask(IntPtr h, out UIntPtr procMask, out UIntPtr sysMask);
         [DllImport("ntdll.dll")]
         public static extern int NtResumeProcess(IntPtr h);
+        [DllImport("ntdll.dll")]
+        public static extern int NtSuspendProcess(IntPtr h);
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool GetProcessTimes(IntPtr h, out long creation, out long exit, out long kernel, out long user);
 
@@ -459,6 +467,8 @@ namespace AegisApp
         public const int PROCESS_SUSPEND_RESUME = 0x0800;
         public const int THREAD_SET_LIMITED_INFORMATION = 0x0400;
         public const int THREAD_QUERY_LIMITED_INFORMATION = 0x0800;
+        public const int THREAD_PRIORITY_ABOVE_NORMAL = 1;
+        public const int THREAD_PRIORITY_ERROR_RETURN = 0x7FFFFFFF;
         public const int SYNCHRONIZE = 0x00100000;
         public const int GpuPriorityHigh = 4;
         public const int GpuPriorityIdle = 0;

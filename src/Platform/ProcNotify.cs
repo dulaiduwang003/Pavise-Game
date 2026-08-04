@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Management;
 using System.Threading;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal enum ProcessChangeKind { Started, Stopped }
 

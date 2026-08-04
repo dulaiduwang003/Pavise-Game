@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 构建托盘菜单并同步运行状态
 
 using System;
@@ -7,7 +7,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal sealed class DarkMenuColors : ProfessionalColorTable
     {
@@ -270,12 +270,11 @@ namespace AegisApp
 
         private void ResetDefaults()
         {
-            if (MessageBox.Show(Lang.T("tray.resetask"), "Aegis", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
+            if (MessageBox.Show(Lang.T("tray.resetask"), "Pavise", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
 
             gameMode.SuppressBackground = true;
             gameMode.BoostGame = true;
             gameMode.PowerPlanSwitch = true;
-            gameMode.NetOptimize = true;
             gameMode.MmcssPriority = true;
             gameMode.PauseDownloads = true;
             gameMode.FgSchedBoost = true;
@@ -301,7 +300,7 @@ namespace AegisApp
             if (!whitelistReset)
             {
                 MessageBox.Show(
-                    gameMode.WhitelistLastError, "Aegis",
+                    gameMode.WhitelistLastError, "Pavise",
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 Logger.Log("默认配置已部分恢复，但白名单写入失败");
             }

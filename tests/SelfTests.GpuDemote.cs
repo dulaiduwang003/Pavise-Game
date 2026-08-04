@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // GPU scheduling demotion: tier mapping, journal gpu field, native roundtrip, GPU-less tolerance.
 
 using System;
@@ -8,7 +8,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static partial class SelfTests
     {
@@ -29,14 +29,20 @@ namespace AegisApp
         private static void TestGpuJournalField()
         {
             string name = Convert.ToBase64String(Encoding.UTF8.GetBytes("probe.exe"));
-            Eq("4242|1|0|1", SuppressionCore.ProbeJournalLine(
+            Eq("4242|1|0|1|0", SuppressionCore.ProbeJournalLine(
                 "4242|123456789|" + name + "|32|255|2|5|1,3|1|0|1"));
-            Eq("4242|1|0|-1", SuppressionCore.ProbeJournalLine(
+            Eq("4242|1|0|-1|0", SuppressionCore.ProbeJournalLine(
                 "4242|123456789|" + name + "|32|255|2|5|1,3|1|0"));
-            Eq("4242|-1|-1|-1", SuppressionCore.ProbeJournalLine(
+            Eq("4242|-1|-1|-1|0", SuppressionCore.ProbeJournalLine(
                 "4242|123456789|" + name + "|32|255|2|5"));
+            Eq("4242|1|0|1|1", SuppressionCore.ProbeJournalLine(
+                "4242|123456789|" + name + "|32|255|2|5|1,3|1|0|1|1"));
+            Eq("4242|1|0|1|0", SuppressionCore.ProbeJournalLine(
+                "4242|123456789|" + name + "|32|255|2|5|1,3|1|0|1|0"));
+            Eq("4242|1|0|1|1", SuppressionCore.ProbeJournalLine(
+                "4242|123456789|" + name + "|32|255|2|5|1,3|1|0|1|x"));
             Eq("null", SuppressionCore.ProbeJournalLine(
-                "4242|123456789|" + name + "|32|255|2|5|1,3|1|0|1|9"));
+                "4242|123456789|" + name + "|32|255|2|5|1,3|1|0|1|1|9"));
         }
 
         private static void TestGpuPriorityRoundtrip()
@@ -72,7 +78,7 @@ namespace AegisApp
             var log = new List<string>();
             bool previous = SuppressionCore.GpuDemoteEnabled;
             string state = Path.Combine(Path.GetTempPath(),
-                "AegisGpuDemoteProbe_" + Process.GetCurrentProcess().Id + ".state");
+                "PaviseGpuDemoteProbe_" + Process.GetCurrentProcess().Id + ".state");
             var core = new SuppressionCore(state);
             try
             {
@@ -147,8 +153,9 @@ namespace AegisApp
                     string[] lines = File.ReadAllLines(state);
                     Eq(2, lines.Length);
                     string[] parts = lines[1].TrimEnd('\r').Split('|');
-                    Eq(11, parts.Length);
+                    Eq(12, parts.Length);
                     int journaledGpu = int.Parse(parts[10]);
+                    Eq("0", parts[11]);
 
                     IntPtr hp = Native.OpenProcess(
                         Native.PROCESS_SET_INFORMATION | Native.PROCESS_SET_LIMITED_INFORMATION

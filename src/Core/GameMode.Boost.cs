@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 负责游戏提优 环境调整和退出恢复
 
 using System;
@@ -7,21 +7,45 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal partial class GameMode
     {
         private const int EnvRetryBaseSeconds = 4;
         private const int EnvRetryCapSeconds = 60;
         private const int EnvRetryMaxSteps = 8;
+        private const int EnvFuseAttempts = 2;
         private readonly Dictionary<string, long> envNextAttempt =
             new Dictionary<string, long>(StringComparer.Ordinal);
         private readonly Dictionary<string, int> envFailures =
             new Dictionary<string, int>(StringComparer.Ordinal);
+        private readonly HashSet<string> envFused =
+            new HashSet<string>(StringComparer.Ordinal);
+
+        internal static readonly string[] EnvKeys =
+            { "notif", "do", "hz", "fg", "svc", "mmcss", "dvr", "fx", "wu" };
+
+        private static string EnvLabel(string key)
+        {
+            switch (key)
+            {
+                case "notif": return "通知免打扰";
+                case "do": return "后台下载暂停";
+                case "hz": return "刷新率守护";
+                case "fg": return "前台调度稳定";
+                case "svc": return "服务暂停";
+                case "mmcss": return "MMCSS 调度";
+                case "dvr": return "Game DVR 关闭";
+                case "fx": return "视觉效果降级";
+                case "wu": return "Windows 更新暂停";
+                default: return key;
+            }
+        }
 
         private bool EnvStep(
             string key, bool want, bool active, Func<bool> activate, Func<bool> restore)
         {
+            if (want) lock (sync) { if (envFused.Contains(key)) want = false; }
             if (want == active) return active;
             long now = DateTime.UtcNow.Ticks;
             lock (sync)
@@ -45,18 +69,26 @@ namespace AegisApp
                 {
                     int failures;
                     envFailures.TryGetValue(key, out failures);
-                    if (failures < EnvRetryMaxSteps) failures++;
+                    if (failures < EnvFuseAttempts) failures++;
                     envFailures[key] = failures;
                     int seconds = EnvRetryBaseSeconds;
-                    for (int i = 1; i < failures && seconds < EnvRetryCapSeconds; i++)
+                    int backoffSteps = Math.Min(failures, EnvRetryMaxSteps);
+                    for (int i = 1; i < backoffSteps && seconds < EnvRetryCapSeconds; i++)
                         seconds = Math.Min(EnvRetryCapSeconds, seconds * 2);
                     envNextAttempt[key] = DateTime.UtcNow.AddSeconds(seconds).Ticks;
+                    if (want && failures >= EnvFuseAttempts && envFused.Add(key))
+                    {
+                        Settings.Save("EnvFuse_" + key, true);
+                        DisableEnvSwitch(key);
+                        Logger.Log("环境项「" + EnvLabel(key) + "」连续 " + failures
+                            + " 次写入失败，已自动关闭对应开关并停用；重新打开该开关即恢复尝试");
+                    }
                 }
             }
             return want ? ok : (ok ? false : active);
         }
 
-#if AEGIS_SELFTEST
+#if PAVISE_SELFTEST
         internal int EnvAttemptCountForTest(
             string key, bool want, bool active, Func<bool> activate, Func<bool> restore, int rounds)
         {
@@ -80,13 +112,41 @@ namespace AegisApp
             }
         }
 
+        private void DisableEnvSwitch(string key)
+        {
+            switch (key)
+            {
+                case "notif": notifQuiet = false; Settings.Save("NotifQuiet", false); break;
+                case "do": pauseDlOn = false; Settings.Save("GmPauseDl", false); break;
+                case "hz": hzGuard = false; Settings.Save("HzGuardOn", false); break;
+                case "fg": fgBoostOn = false; Settings.Save("GmFgBoost", false); break;
+                case "svc": svcPauseOn = false; Settings.Save("GmSvcPause", false); break;
+                case "mmcss": mmcssOn = false; Settings.Save("GmMmcss", false); break;
+                case "dvr": killGameDvr = false; Settings.Save("GameDvrOff", false); break;
+                case "fx": visualFxOn = false; Settings.Save("GmVisualFx", false); break;
+                case "wu": pauseUpdateOn = false; Settings.Save("GmPauseUpdate", false); break;
+            }
+        }
+
+        private void ClearEnvFuse(string key)
+        {
+            bool wasFused;
+            lock (sync)
+            {
+                wasFused = envFused.Remove(key);
+                envFailures.Remove(key);
+                envNextAttempt.Remove(key);
+            }
+            if (Settings.Load("EnvFuse_" + key, false)) Settings.Save("EnvFuse_" + key, false);
+            if (wasFused) Logger.Log("环境项「" + EnvLabel(key) + "」开关重新打开，恢复写入尝试");
+        }
+
         private void ApplyEnv()
         {
             PerformancePreset mode = ActivePreset;
             bool competitive = mode == PerformancePreset.Competitive;
             bool custom = mode == PerformancePreset.Custom;
             bool usePauseDl = custom ? pauseDlOn : competitive;
-            bool useNet = custom ? netOn : competitive;
             bool useFg = custom ? fgBoostOn : true;
             bool useSvc = custom ? svcPauseOn : false;
             bool useMmcss = custom ? mmcssOn : competitive;
@@ -94,7 +154,6 @@ namespace AegisApp
             notifActive = EnvStep("notif", notifQuiet, notifActive, Notif.Quiet, Notif.Restore);
             doActive = EnvStep("do", usePauseDl, doActive, DoTweak.Activate, DoTweak.Restore);
             hzActive = EnvStep("hz", hzGuard, hzActive, DisplayGuard.Activate, DisplayGuard.Restore);
-            netActive = EnvStep("net", useNet, netActive, NetTweak.Activate, NetTweak.Restore);
             fgActive = EnvStep("fg", useFg, fgActive, FgBoost.Activate, FgBoost.Restore);
             svcActive = EnvStep("svc", useSvc, svcActive, SvcPause.Activate, SvcPause.Restore);
             mmcssActive = EnvStep("mmcss", useMmcss, mmcssActive, Mmcss.Activate, Mmcss.Restore);
@@ -115,10 +174,37 @@ namespace AegisApp
                 if (!planActive || powerKey != lastPowerPolicyKey
                     || nowTicks >= nextPowerAuditTicks)
                 {
-                    PowerPlan.Enforce(aggressivePower, idleDisableOn);
+                    bool planOk = PowerPlan.Enforce(aggressivePower, idleDisableOn);
                     planActive = true;
                     lastPowerPolicyKey = powerKey;
-                    nextPowerAuditTicks = DateTime.UtcNow.AddSeconds(30).Ticks;
+                    if (planOk)
+                    {
+                        planFailStreak = 0;
+                        if (LoadCounter(PowerFailStreakKey) != 0) SaveCounter(PowerFailStreakKey, 0);
+                        nextPowerAuditTicks = DateTime.UtcNow.AddSeconds(30).Ticks;
+                    }
+                    else
+                    {
+                        planFailStreak++;
+                        int persistedStreak = LoadCounter(PowerFailStreakKey) + 1;
+                        SaveCounter(PowerFailStreakKey, persistedStreak);
+                        if (persistedStreak >= PowerPlanAutoOffThreshold)
+                        {
+                            planSwitch = false;
+                            Settings.Save("PowerPlanOn", false);
+                            SaveCounter(PowerFailStreakKey, 0);
+                            Logger.Log("电源计划累计连续 " + persistedStreak
+                                + " 次切换失败（多半被其他电源/优化类软件接管），已自动关闭「电源计划切换」开关，不再重试；"
+                                + "排除冲突软件后可在策略页重新开启");
+                        }
+                        else
+                        {
+                            int delay = 30;
+                            for (int i = 1; i < planFailStreak && delay < 300; i++) delay *= 2;
+                            if (delay > 300) delay = 300;
+                            nextPowerAuditTicks = DateTime.UtcNow.AddSeconds(delay).Ticks;
+                        }
+                    }
                 }
             }
             else if (planActive && PowerPlan.Restore())
@@ -150,6 +236,49 @@ namespace AegisApp
         private int lastPowerPolicyKey = -1;
         private long nextPowerAuditTicks;
 
+        private const string PowerFailStreakKey = "PowerPlanFailStreak";
+        private const int PowerPlanAutoOffThreshold = EnvFuseAttempts;
+        private int planFailStreak;
+
+        private static int LoadCounter(string key)
+        {
+            int value;
+            return int.TryParse(Settings.LoadStr(key, "0"), out value) && value > 0 ? value : 0;
+        }
+
+        private static void SaveCounter(string key, int value)
+        {
+            Settings.SaveStr(key, value.ToString());
+        }
+
+        private void HandleNvTweakOutcome(List<string> failed, bool wantPState, bool wantFrl, bool wantPreRender)
+        {
+            if (failed == null) return;
+            NoteNvKey(NvDrsTweaks.KeyPState, wantPState, failed);
+            NoteNvKey(NvDrsTweaks.KeyFrl, wantFrl, failed);
+            NoteNvKey(NvDrsTweaks.KeyPreRender, wantPreRender, failed);
+        }
+
+        private void NoteNvKey(string key, bool wanted, List<string> failed)
+        {
+            if (!wanted) return;
+            string counterKey = "NvFailStreak_" + key;
+            if (!failed.Contains(key))
+            {
+                if (LoadCounter(counterKey) != 0) SaveCounter(counterKey, 0);
+                return;
+            }
+            int streak = LoadCounter(counterKey) + 1;
+            if (streak < EnvFuseAttempts) { SaveCounter(counterKey, streak); return; }
+            SaveCounter(counterKey, 0);
+            string label;
+            if (key == NvDrsTweaks.KeyPState) { nvMaxPerf = false; Settings.Save("NvMaxPerf", false); label = "NVIDIA 电源最高性能"; }
+            else if (key == NvDrsTweaks.KeyFrl) { nvFrlMode = "off"; Settings.SaveStr("NvFrl", "off"); label = "NVIDIA 帧率上限"; }
+            else { nvLowLatency = false; Settings.Save("NvLowLatency", false); label = "NVIDIA 低延迟"; }
+            Logger.Log("「" + label + "」连续 " + EnvFuseAttempts
+                + " 次写入失败，已自动关闭该开关；重新打开即恢复尝试");
+        }
+
         internal static int ResolveFrlFps(string mode)
         {
             if (mode == "60") return 60;
@@ -165,7 +294,7 @@ namespace AegisApp
 
         private bool EnvActive()
         {
-            return notifActive || doActive || hzActive || netActive || fgActive || svcActive || mmcssActive || dvrActive || fxActive || wuActive || planActive || timerRaised;
+            return notifActive || doActive || hzActive || fgActive || svcActive || mmcssActive || dvrActive || fxActive || wuActive || planActive || timerRaised;
         }
 
         private bool RestoreEnv()
@@ -175,7 +304,6 @@ namespace AegisApp
             if (Notif.Restore()) notifActive = false; else ok = false;
             if (DoTweak.Restore()) doActive = false; else ok = false;
             if (DisplayGuard.Restore()) hzActive = false; else ok = false;
-            if (NetTweak.Restore()) netActive = false; else ok = false;
             if (FgBoost.Restore()) fgActive = false; else ok = false;
             if (SvcPause.Restore()) svcActive = false; else ok = false;
             if (Mmcss.Restore()) mmcssActive = false; else ok = false;
@@ -204,6 +332,7 @@ namespace AegisApp
         private void ReleaseBackground()
         {
             pressure.Clear();
+            freezeDwell.Clear();
             if (!core.AnyWith(SuppressReason.Background)) return;
             int n = 0;
             foreach (int pid in core.PidsWith(SuppressReason.Background))
@@ -266,7 +395,7 @@ namespace AegisApp
                     {
                         known = gameBoost.ContainsKey(pid);
                         retryEco = boostFail.ContainsKey(pid);
-                        needTweak = (gpuHighPerf || disableFso || nvMaxPerf || nvFrlMode != "off")
+                        needTweak = (gpuHighPerf || disableFso || nvMaxPerf || nvLowLatency || nvFrlMode != "off")
                             && !tweakApplied.Contains(pid);
                         ulong placed; bool placedStrict;
                         needPlacement = !gamePlacement.TryGetValue(pid, out placed) || placed != desiredMask
@@ -284,6 +413,7 @@ namespace AegisApp
                         bool firstDeny;
                         lock (sync) firstDeny = boostDenied.Add(pid);
                         if (firstDeny) Logger.Log("游戏提优：" + rendererName + " (pid " + pid + ") 打不开句柄（多半被反作弊保护），本体提优跳过；后台压制不受影响");
+                        if (ifeoOn && boostOn) IfeoBoost.EnsureForGame(rendererName);
                         continue;
                     }
                     try
@@ -457,28 +587,12 @@ namespace AegisApp
                                 Logger.Log("游戏核心策略：" + rendererName + " (pid " + pid + ")" + placementText);
                         }
 
-                        if (stateOk && firstVerified)
+                        bool ecoCleared = HighQoSVerified(h);
+                        if (!ecoCleared)
                         {
-                            ReportBoostVerified();
-                            Logger.Log("游戏提优已验证：" + rendererName + " (pid " + pid + ") → 高优先级(回读 0x"
-                                + actualPriority.ToString("X") + ")" + placementText + " + 高IO(回读 " + actualIo + ")"
-                                + (gpuOk ? " + GPU高" : ""));
-                        }
-
-                        if (needTweak)
-                        {
-                            string imagePath = Native.ImagePath(h);
-                            GameExeTweaks.ApplyForGame(imagePath, gpuHighPerf, disableFso);
-                            int frlFps = ResolveFrlFps(nvFrlMode);
-                            if (nvMaxPerf || frlFps > 0)
-                                NvDrsTweaks.ApplyForGame(imagePath, nvMaxPerf, frlFps);
-                            lock (sync) tweakApplied.Add(pid);
-                        }
-
-                        if (newlyTracked || retryEco)
-                        {
-                            bool okEco = Native.ApplyHighQoS(h, Native.OsBuild() >= 22000);
-                            if (okEco) { lock (sync) boostFail.Remove(pid); }
+                            Native.ApplyHighQoS(h, Native.OsBuild() >= 22000);
+                            ecoCleared = HighQoSVerified(h);
+                            if (ecoCleared) { lock (sync) boostFail.Remove(pid); }
                             else
                             {
                                 int tries;
@@ -491,6 +605,33 @@ namespace AegisApp
                                     Logger.Log("游戏提优：" + rendererName + " (pid " + pid + ") 效率模式清不掉，重试 " + tries + " 次后放弃（多半被反作弊句柄保护，压不动）");
                             }
                         }
+
+                        if (renderLaneOn && stateOk && !RenderLane.IsActiveFor(pid, currentCreation))
+                            RenderLane.EnsureForGame(pid, currentCreation, rendererName);
+
+                        if (stateOk && firstVerified)
+                        {
+                            ReportBoostVerified();
+                            Logger.Log("游戏提优已验证：" + rendererName + " (pid " + pid + ") → 高优先级(回读 0x"
+                                + actualPriority.ToString("X") + ")" + placementText + " + 高IO(回读 " + actualIo + ")"
+                                + (gpuOk ? " + GPU高" : "")
+                                + (!Native.PowerThrottlingSupported ? ""
+                                    : ecoCleared ? " + 已退出效率模式" : " + 效率模式未清除" + QoSDump(h)));
+                        }
+
+                        if (needTweak)
+                        {
+                            string imagePath = Native.ImagePath(h);
+                            GameExeTweaks.ApplyForGame(imagePath, gpuHighPerf, disableFso);
+                            int frlFps = ResolveFrlFps(nvFrlMode);
+                            if (nvMaxPerf || frlFps > 0 || nvLowLatency)
+                            {
+                                List<string> nvFailed = NvDrsTweaks.ApplyForGame(imagePath, nvMaxPerf, frlFps, nvLowLatency);
+                                HandleNvTweakOutcome(nvFailed, nvMaxPerf, frlFps > 0, nvLowLatency);
+                            }
+                            lock (sync) tweakApplied.Add(pid);
+                        }
+
                     }
                     finally { Native.CloseHandle(h); }
                 }
@@ -557,6 +698,29 @@ namespace AegisApp
             return actualPriority == Native.HIGH_PRIORITY_CLASS && actualIo == 3;
         }
 
+        internal static string QoSDump(IntPtr process)
+        {
+            int control, state;
+            if (!Native.TryQueryPowerThrottling(process, out control, out state)) return "(读取失败)";
+            return "(control=0x" + control.ToString("X") + " state=0x" + state.ToString("X") + ")";
+        }
+
+        internal static bool InEfficiencyMode(IntPtr process)
+        {
+            if (!Native.PowerThrottlingSupported) return false;
+            int control, state;
+            if (!Native.TryQueryPowerThrottling(process, out control, out state)) return false;
+            return (state & 1) != 0;
+        }
+
+        internal static bool HighQoSVerified(IntPtr process)
+        {
+            if (!Native.PowerThrottlingSupported) return true;
+            int control, state;
+            if (!Native.TryQueryPowerThrottling(process, out control, out state)) return false;
+            return (control & 1) != 0 && (state & 1) == 0;
+        }
+
         private static bool ApplyAndVerifyGpuBoost(IntPtr process)
         {
             int current;
@@ -611,6 +775,8 @@ namespace AegisApp
                         gameBoostNextAudit.Remove(stale.Key); tweakApplied.Remove(stale.Key);
                     }
             }
+            foreach (var kv in boosts)
+                if (RenderLane.IsActiveFor(kv.Key, kv.Value.Creation)) RenderLane.Release();
             foreach (var kv in boosts)
             {
                 int pid = kv.Key;
@@ -689,6 +855,19 @@ namespace AegisApp
 
         public bool PanicRestore()
         {
+            int cleared = SelfProtectedRoster.Clear();
+            if (cleared > 0)
+                Logger.Log("免压制名单已清空（" + cleared + " 项），下次对局重新探测这些进程");
+            int fusesCleared;
+            lock (sync) { fusesCleared = envFused.Count; envFused.Clear(); }
+            foreach (string envKey in EnvKeys)
+                if (Settings.Load("EnvFuse_" + envKey, false)) Settings.Save("EnvFuse_" + envKey, false);
+            SaveCounter(PowerFailStreakKey, 0);
+            SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyPState, 0);
+            SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyFrl, 0);
+            SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyPreRender, 0);
+            if (fusesCleared > 0)
+                Logger.Log("已重置 " + fusesCleared + " 个因写入失败自动停用的环境项（对应开关仍为关，需要请手动打开）");
             int mine = Interlocked.Increment(ref panicSeq);
             panicDone.Reset();
             panicResult = false;
@@ -714,6 +893,7 @@ namespace AegisApp
                 activeGame = null;
                 firstSweep = true;
             }
+            gameGoneSinceTicks = 0;
 
             bool clean = UnboostGames();
             List<int> background = core.PidsWith(SuppressReason.Background);
@@ -723,8 +903,9 @@ namespace AegisApp
             bool envClean = RestoreEnv();
             ClearEnvRetryState();
             pressure.Clear();
+            freezeDwell.Clear();
             if (clean) CrashGuard.ClearBoost();
-            Logger.Log("游戏模式解除（" + reason + "）：恢复 " + ok + " 个进程");
+            Logger.Log("游戏模式解除（" + reason + "）：恢复 " + ok + " 个后台进程（本局累计，含中途新增）");
             ReportFinish();
             lock (sync)
             {

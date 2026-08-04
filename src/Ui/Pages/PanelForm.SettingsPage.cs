@@ -6,7 +6,7 @@ using System.Drawing;
 using System.Threading;
 using System.Windows.Forms;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal partial class PanelForm
     {
@@ -82,7 +82,7 @@ namespace AegisApp
             int rc = swAuto.Checked ? TaskHelper.CreateStartupTask() : TaskHelper.DeleteStartupTask();
             if (rc != 0)
             {
-                MessageBox.Show(this, Lang.T("msg.taskfail"), "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(this, Lang.T("msg.taskfail"), "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 swAuto.SetSilently(TaskHelper.TaskExists());
             }
         }
@@ -94,7 +94,7 @@ namespace AegisApp
                 if (cardShader != null) cardShader.Value = Lang.T("shader.busy");
                 return;
             }
-            if (MessageBox.Show(this, Lang.T("shader.confirm"), "Aegis", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning) != DialogResult.OK) return;
+            if (MessageBox.Show(this, Lang.T("shader.confirm"), "Pavise", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning) != DialogResult.OK) return;
             btn.Enabled = false;
             shaderCleaning = true;
             if (cardShader != null) cardShader.Value = Lang.T("shader.busy");
@@ -116,7 +116,7 @@ namespace AegisApp
                         string msg = Lang.F("shader.freed", CacheSweep.FmtBytes(cr.FreedBytes))
                             + (cr.FailedFiles > 0 ? "\r\n" + Lang.F("shader.skip", cr.FailedFiles) : "")
                             + "\r\n\r\n" + Lang.T("shader.note");
-                        MessageBox.Show(this, msg, "Aegis", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        MessageBox.Show(this, msg, "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     }));
                 }
                 catch { }

@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 构建优化策略页 并按当前预设锁定或放开自定义项
 
 using System;
@@ -6,14 +6,14 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal partial class PanelForm
     {
         private Label lblPolicyMode;
         private Toggle swPolicyBackground, swPolicyStrict, swPolicyAggressive;
-        private Toggle swPolicyNet, swPolicyFg, swPolicyMmcss, swPolicyPauseDl, swPolicyPauseSvc, swPolicyDvr;
-        private SettingCard cardPolicyStrict, cardPolicyAggressive, cardPolicyNet, cardPolicyFg, cardPolicyMmcss;
+        private Toggle swPolicyFg, swPolicyMmcss, swPolicyPauseDl, swPolicyPauseSvc, swPolicyDvr;
+        private SettingCard cardPolicyStrict, cardPolicyAggressive, cardPolicyFg, cardPolicyMmcss;
         private SettingCard cardPolicyPauseDl, cardPolicyPauseSvc, cardPolicyDvr;
         private readonly List<Action> policySync = new List<Action>();
 
@@ -36,6 +36,10 @@ namespace AegisApp
             Section(scroll, Lang.T("v15.policy.core"), 6, sy); sy += 24;
             swPolicyBackground = AddPolicyToggle(scroll, ref sy, Lang.T("v14.bg.master"), Lang.T("v14.bg.master.sub"),
                 delegate { return gameMode.SuppressBackground; }, delegate(bool v) { gameMode.SuppressBackground = v; });
+            AddPolicyToggle(scroll, ref sy, Lang.T("gm.gpudemote"), Lang.T("gm.gpudemote.sub"),
+                delegate { return gameMode.GpuDemote; }, delegate(bool v) { gameMode.GpuDemote = v; });
+            AddPolicyConfirmToggle(scroll, ref sy, Lang.T("gm.freeze"), Lang.T("gm.freeze.sub"), Lang.T("gm.freeze.warn"),
+                delegate { return gameMode.FreezeBackground; }, delegate(bool v) { gameMode.FreezeBackground = v; });
             var btnPolicyWhite = new PillButton(Lang.T("v14.manage.white"), BtnKind.Primary);
 
             btnPolicyWhite.Size = new Size(Theme.S(164), Theme.S(34));
@@ -49,6 +53,10 @@ namespace AegisApp
             sy += whiteCardH + 8;
             AddPolicyToggle(scroll, ref sy, Lang.T("gm.boost"), Lang.T("v15.boost.sub"),
                 delegate { return gameMode.BoostGame; }, delegate(bool v) { gameMode.BoostGame = v; });
+            AddPolicyToggle(scroll, ref sy, Lang.T("gm.ifeo"), Lang.T("gm.ifeo.sub"),
+                delegate { return gameMode.IfeoBoostFallback; }, delegate(bool v) { gameMode.IfeoBoostFallback = v; });
+            AddPolicyToggle(scroll, ref sy, Lang.T("gm.lane"), Lang.T("gm.lane.sub"),
+                delegate { return gameMode.RenderLaneOn; }, delegate(bool v) { gameMode.RenderLaneOn = v; });
             AddPolicyToggle(scroll, ref sy, Lang.T("set.plan"), Lang.T("v15.plan.sub"),
                 delegate { return gameMode.PowerPlanSwitch; }, delegate(bool v) { gameMode.PowerPlanSwitch = v; });
             AddPolicyToggle(scroll, ref sy, Lang.T("set.notif"), Lang.T("v15.notif.sub"),
@@ -63,8 +71,6 @@ namespace AegisApp
             swPolicyAggressive = AddPolicyToggle(scroll, ref sy, Lang.T("gm.aggressive"), Lang.T("gm.aggressive.sub"),
                 delegate { return gameMode.AggressiveSuppression; }, delegate(bool v) { gameMode.AggressiveSuppression = v; });
             cardPolicyAggressive = (SettingCard)swPolicyAggressive.Parent;
-            swPolicyNet = AddPolicyToggle(scroll, ref sy, Lang.T("gm.net"), Lang.T("v15.custom.override"), delegate { return gameMode.NetOptimize; }, delegate(bool v) { gameMode.NetOptimize = v; });
-            cardPolicyNet = (SettingCard)swPolicyNet.Parent;
             swPolicyFg = AddPolicyToggle(scroll, ref sy, Lang.T("gm.fgboost"), Lang.T("v15.custom.override"), delegate { return gameMode.FgSchedBoost; }, delegate(bool v) { gameMode.FgSchedBoost = v; });
             cardPolicyFg = (SettingCard)swPolicyFg.Parent;
             swPolicyMmcss = AddPolicyToggle(scroll, ref sy, Lang.T("gm.mmcss"), Lang.T("v15.custom.override"), delegate { return gameMode.MmcssPriority; }, delegate(bool v) { gameMode.MmcssPriority = v; });
@@ -89,6 +95,29 @@ namespace AegisApp
             RefreshPolicyPresentation();
         }
 
+        private Toggle AddPolicyConfirmToggle(
+            Control parent, ref int y, string title, string desc, string warning, Func<bool> read, Action<bool> write)
+        {
+            Toggle sw = MakeSwitch(read(), null);
+            sw.CheckedChanged += delegate
+            {
+                if (!sw.Checked) { write(false); return; }
+                if (MessageBox.Show(this, warning, "Pavise",
+                        MessageBoxButtons.OKCancel, MessageBoxIcon.Warning,
+                        MessageBoxDefaultButton.Button2) != DialogResult.OK)
+                {
+                    sw.SetSilently(false);
+                    return;
+                }
+                write(true);
+            };
+            int cardH;
+            MakeAutoCard(parent, 6, y, ScrollContentW, 78, title, desc, sw, out cardH);
+            y += cardH + 8;
+            policySync.Add(delegate { sw.SetSilently(read()); });
+            return sw;
+        }
+
         private Toggle AddPolicyToggle(Control parent, ref int y, string title, string desc, Func<bool> read, Action<bool> write)
         {
             Toggle sw = MakeSwitch(read(), null);
@@ -109,7 +138,6 @@ namespace AegisApp
             bool custom = mode == PerformancePreset.Custom;
             ApplyPresetPolicy(swPolicyStrict, cardPolicyStrict, Lang.T("v14.cpu.adaptive"), competitive, true);
             ApplyPresetPolicy(swPolicyAggressive, cardPolicyAggressive, Lang.T("gm.aggressive"), !custom, competitive);
-            ApplyPresetPolicy(swPolicyNet, cardPolicyNet, Lang.T("gm.net"), !custom, competitive);
             ApplyPresetPolicy(swPolicyFg, cardPolicyFg, Lang.T("gm.fgboost"), !custom, true);
             ApplyPresetPolicy(swPolicyMmcss, cardPolicyMmcss, Lang.T("gm.mmcss"), !custom, competitive);
             ApplyPresetPolicy(swPolicyPauseDl, cardPolicyPauseDl, Lang.T("gm.pausedl"), !custom, competitive);

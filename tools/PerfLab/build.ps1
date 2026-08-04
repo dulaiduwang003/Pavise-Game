@@ -1,5 +1,5 @@
 param(
-    [string]$OutputDirectory = "$env:TEMP\Aegis-PerfLab-bin"
+    [string]$OutputDirectory = "$env:TEMP\Pavise-PerfLab-bin"
 )
 
 $ErrorActionPreference = "Stop"
@@ -24,7 +24,7 @@ $references = @(
 
 & $compiler -nologo -target:winexe -optimize+ -codepage:65001 `
     "-win32manifest:$PSScriptRoot\PerfLab.manifest" `
-    "-out:$OutputDirectory\Aegis.PerfLab.exe" `
+    "-out:$OutputDirectory\Pavise.PerfLab.exe" `
     $references `
     "$PSScriptRoot\PerfLab.cs"
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -32,14 +32,14 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $sources = Get-ChildItem -LiteralPath (Join-Path $root "src") -Recurse -Filter *.cs |
     ForEach-Object { $_.FullName }
 & $compiler -nologo -target:exe -optimize+ -codepage:65001 `
-    -define:AEGIS_PERFLAB `
-    -main:AegisApp.PerfEngineProgram `
+    -define:PAVISE_PERFLAB `
+    -main:PaviseApp.PerfEngineProgram `
     "-win32manifest:$PSScriptRoot\PerfLab.manifest" `
-    "-out:$OutputDirectory\Aegis.PerfEngine.exe" `
+    "-out:$OutputDirectory\Pavise.PerfEngine.exe" `
     $references `
     $sources `
     "$PSScriptRoot\PerfEngine.cs"
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-Write-Output "$OutputDirectory\Aegis.PerfLab.exe"
-Write-Output "$OutputDirectory\Aegis.PerfEngine.exe"
+Write-Output "$OutputDirectory\Pavise.PerfLab.exe"
+Write-Output "$OutputDirectory\Pavise.PerfEngine.exe"
