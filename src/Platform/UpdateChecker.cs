@@ -13,7 +13,7 @@ using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal class UpdateResult
     {
@@ -71,7 +71,7 @@ namespace AegisApp
             try
             {
                 var req = (HttpWebRequest)WebRequest.Create(url);
-                req.UserAgent = "Aegis-Update-Check";
+                req.UserAgent = "Pavise-Update-Check";
                 req.AllowAutoRedirect = false;
                 req.Timeout = 10000;
                 req.ReadWriteTimeout = 10000;

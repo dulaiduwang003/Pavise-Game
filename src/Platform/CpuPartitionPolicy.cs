@@ -3,7 +3,7 @@
 
 using System;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static class CpuPartitionPolicy
     {

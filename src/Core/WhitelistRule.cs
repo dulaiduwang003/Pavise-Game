@@ -5,7 +5,7 @@ using System;
 using System.IO;
 using System.Text;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal enum WhitelistRuleKind
     {
@@ -16,8 +16,8 @@ namespace AegisApp
 
     internal sealed class WhitelistRule
     {
-        internal const string Header = "AEGIS_WHITELIST_V3";
-        internal const string LegacyHeader = "AEGIS_WHITELIST_V2";
+        internal const string Header = "PAVISE_WHITELIST_V3";
+        internal const string LegacyHeader = "PAVISE_WHITELIST_V2";
         private static readonly string[] UnsafeFamilyHosts =
         {
 
@@ -94,7 +94,7 @@ namespace AegisApp
             return tag + "|" + Convert.ToBase64String(Encoding.UTF8.GetBytes(Value));
         }
 
-#if AEGIS_SELFTEST
+#if PAVISE_SELFTEST
         public bool MatchesDirect(string processName, string imagePath)
         {
             if (Kind == WhitelistRuleKind.LegacyName)

@@ -6,11 +6,11 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal partial class GameMode
     {
-        private const string WhitelistFooterPrefix = "AEGIS_WHITELIST_END|";
+        private const string WhitelistFooterPrefix = "PAVISE_WHITELIST_END|";
         private string whitelistLastError = "";
 
         public string WhitelistLastError
@@ -88,7 +88,7 @@ namespace AegisApp
             RequestPolicyApply();
         }
 
-#if AEGIS_SELFTEST
+#if PAVISE_SELFTEST
         public List<string> GetWhitelist()
         {
             var result = new List<string>();
@@ -256,7 +256,7 @@ namespace AegisApp
             try
             {
                 var lines = new List<string>();
-                lines.Add("# Aegis 后台策略豁免规则。旧版一行一个进程名的文件仍可直接读取。");
+                lines.Add("# Pavise 后台策略豁免规则。旧版一行一个进程名的文件仍可直接读取。");
                 lines.Add("# V3：N=进程名兼容规则，P=精确 EXE，F=锚点 EXE 及其当前/后续子孙。");
                 lines.Add("# Windows 核心另有安全边界，这里也保留必要项并允许用户追加明确例外。");
                 lines.Add(WhitelistRule.Header);

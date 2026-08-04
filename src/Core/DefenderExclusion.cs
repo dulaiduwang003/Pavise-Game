@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal enum DefenderState
     {
@@ -65,11 +65,11 @@ namespace AegisApp
             return false;
         }
 
-        public static List<string> OwnedByAegis() { return LoadOwned(); }
+        public static List<string> OwnedByPavise() { return LoadOwned(); }
 
         private static IDictionary<string, string> PathArg(string path)
         {
-            return new Dictionary<string, string> { { "AEGIS_PATH", path } };
+            return new Dictionary<string, string> { { "PAVISE_PATH", path } };
         }
 
         public static List<string> QuerySystem()
@@ -105,7 +105,7 @@ namespace AegisApp
             string outText;
             if (!PsRunner.Run(
                 "$ErrorActionPreference='Stop'\r\n" +
-                "Add-MpPreference -ExclusionPath $env:AEGIS_PATH\r\n" +
+                "Add-MpPreference -ExclusionPath $env:PAVISE_PATH\r\n" +
                 "Write-Output DONE\r\n", Label, 20000, PathArg(n), out outText))
             {
                 RemoveFromSystem(n);
@@ -148,7 +148,7 @@ namespace AegisApp
             string outText;
             if (!PsRunner.Run(
                 "$ErrorActionPreference='Stop'\r\n" +
-                "Remove-MpPreference -ExclusionPath $env:AEGIS_PATH\r\n" +
+                "Remove-MpPreference -ExclusionPath $env:PAVISE_PATH\r\n" +
                 "Write-Output DONE\r\n", Label, 20000, PathArg(n), out outText)) return false;
             return outText.IndexOf("DONE", StringComparison.OrdinalIgnoreCase) >= 0;
         }
@@ -161,7 +161,7 @@ namespace AegisApp
             List<string> owned = LoadOwned();
             if (!Contains(owned, n))
             {
-                Logger.Log(Label + "：" + n + " 不是 Aegis 添加的，拒绝移除");
+                Logger.Log(Label + "：" + n + " 不是 Pavise 添加的，拒绝移除");
                 return false;
             }
             if (!RemoveFromSystem(n)) return false;

@@ -4,7 +4,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static class StandbySweep
     {

@@ -7,7 +7,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal sealed class SessionCardView : RoundPanel
     {
@@ -132,7 +132,7 @@ namespace AegisApp
                     ? data.Time.Substring(5, 11) : data.Time)
                 + " · " + data.Preset + " · " + data.Duration
                 + (string.IsNullOrEmpty(data.ControlText) ? "" : " · " + data.ControlText)
-                + (string.IsNullOrEmpty(data.AegisCpuText) ? "" : " · " + data.AegisCpuText);
+                + (string.IsNullOrEmpty(data.PaviseCpuText) ? "" : " · " + data.PaviseCpuText);
             TextRenderer.DrawText(g, meta, Theme.UI(7.8f, false),
                 new Rectangle(padL, Theme.S(32), textW, Theme.S(16)), Theme.Dim,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);

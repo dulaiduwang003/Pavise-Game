@@ -1,11 +1,11 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 NVAPI 驱动配置与数码振动封装 全部函数经 QueryInterface 动态解析 驱动缺失时整体降级
 
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal static class NvApi
     {
@@ -24,6 +24,8 @@ namespace AegisApp
         public const uint SettingPreferredPState = 0x1057EB71;
         public const uint SettingFrlFps = 0x10835002;
         public const uint PStatePreferMax = 0x1;
+        public const uint SettingPreRenderLimit = 0x007BA09E;
+        public const uint SettingLowLatencyCpl = 0x0005F543;
 
         [DllImport("nvapi64.dll", EntryPoint = "nvapi_QueryInterface", CallingConvention = CallingConvention.Cdecl)]
         private static extern IntPtr QueryInterface(uint id);
@@ -177,7 +179,7 @@ namespace AegisApp
                 var prof = new DrsProfile
                 {
                     Version = VersionOf<DrsProfile>(1),
-                    ProfileName = "Aegis - " + exeName
+                    ProfileName = "Pavise - " + exeName
                 };
                 int status = drsCreateProfile(session, ref prof, out profile);
                 if (status != 0 || profile == IntPtr.Zero) return false;
@@ -209,6 +211,12 @@ namespace AegisApp
 
         public static bool SetDword(IntPtr session, IntPtr profile, uint settingId, uint value)
         {
+            int status;
+            return SetDword(session, profile, settingId, value, out status);
+        }
+
+        public static bool SetDword(IntPtr session, IntPtr profile, uint settingId, uint value, out int status)
+        {
             try
             {
                 var setting = new DrsSetting
@@ -218,9 +226,10 @@ namespace AegisApp
                     SettingType = 0,
                     CurrentValue = value
                 };
-                return drsSetSetting(session, profile, ref setting) == 0;
+                status = drsSetSetting(session, profile, ref setting);
+                return status == 0;
             }
-            catch { return false; }
+            catch { status = int.MinValue; return false; }
         }
 
         public static bool DeleteSetting(IntPtr session, IntPtr profile, uint settingId)

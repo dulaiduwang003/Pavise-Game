@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 
-namespace AegisApp
+namespace PaviseApp
 {
     internal class Tamer
     {
@@ -274,7 +274,7 @@ namespace AegisApp
                         Math.Max(1, remainingTicks / TimeSpan.TicksPerMillisecond));
                 kick.WaitOne(wait);
             }
-            ReleaseAll("Aegis 退出");
+            ReleaseAll("Pavise 退出");
         }
 
         internal static int FullSweepInterval(bool eventsAvailable)
@@ -491,8 +491,17 @@ namespace AegisApp
                     && (batchResult == null
                         || !batchResult.WasApplied(request.Pid)))
                 {
-                    request.Result = AcquireResult.ApplyFailed;
-                    request.FailureDetail = batchResult != null ? batchResult.FailureOf(request.Pid) : "batch-missing";
+                    string detail = batchResult != null ? batchResult.FailureOf(request.Pid) : "batch-missing";
+                    if (detail == SuppressionCore.SelfProtectedDetail)
+                    {
+                        request.Result = AcquireResult.NewlyProtected;
+                        request.FailureDetail = detail;
+                    }
+                    else
+                    {
+                        request.Result = AcquireResult.ApplyFailed;
+                        request.FailureDetail = detail;
+                    }
                 }
                 LogAcquireResult(request);
             }
@@ -502,7 +511,8 @@ namespace AegisApp
         {
             if (request.Result == AcquireResult.NewlyThrottled)
                 Logger.Log("压制 " + request.Name + " (pid " + request.Pid + ")");
-            else if (request.Result == AcquireResult.NewlyProtected)
+            else if (request.Result == AcquireResult.NewlyProtected
+                && request.FailureDetail != SuppressionCore.SelfProtectedDetail)
                 Logger.Log("打开 " + request.Name + " (pid " + request.Pid
                     + ") 失败（句柄被内核保护，压不动）");
             else if (request.Result == AcquireResult.ApplyFailed)
