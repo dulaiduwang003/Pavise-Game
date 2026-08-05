@@ -1199,6 +1199,28 @@ namespace PaviseApp
                 if (Program.CompareVersions("1.0", "garbage") <= 0) throw new Exception("unparsable version must be treated as older");
             });
             test("audit page: rebuilding a scrolled list starts back at the top", TestScrolledRebuild);
+            test("system audit: EcoQoS capability separates interface from full behaviour", () =>
+            {
+                int build = SystemAudit.WindowsBuild();
+                if (build <= 0) throw new Exception("windows build was not resolved");
+                if (SystemAudit.EcoQosFullBuild != 22000)
+                    throw new Exception("EcoQoS full-behaviour boundary moved unexpectedly");
+
+                AuditReport report = SystemAudit.Collect(300);
+                AuditRow eco = null;
+                foreach (AuditRow row in report.Capability)
+                    if (row.Name.IndexOf("EcoQoS", StringComparison.Ordinal) >= 0) eco = row;
+                if (eco == null) throw new Exception("EcoQoS row missing from the capability group");
+
+                bool supported = Native.PowerThrottlingSupported;
+                if (!supported) { if (eco.Value != "不支持") throw new Exception("unsupported machine must say so"); }
+                else if (build >= SystemAudit.EcoQosFullBuild)
+                {
+                    if (eco.Value != "支持") throw new Exception("modern build should report full support");
+                }
+                else if (eco.Value != "接口可用")
+                    throw new Exception("older build must not claim full EcoQoS, got: " + eco.Value);
+            });
             test("system audit: interrupt tiers split at 1% and 5%", () =>
             {
                 Eq(0, SystemAudit.InterruptTier(0.0));

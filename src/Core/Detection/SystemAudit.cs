@@ -123,6 +123,28 @@ namespace PaviseApp
             catch { return Environment.OSVersion.VersionString; }
         }
 
+        public const int EcoQosFullBuild = 22000;
+
+        public static int WindowsBuild()
+        {
+            try
+            {
+                using (RegistryKey key = Registry.LocalMachine.OpenSubKey(
+                    @"SOFTWARE\Microsoft\Windows NT\CurrentVersion"))
+                {
+                    if (key != null)
+                    {
+                        object build = key.GetValue("CurrentBuildNumber");
+                        int parsed;
+                        if (build != null && int.TryParse(build.ToString(), out parsed)) return parsed;
+                    }
+                }
+            }
+            catch { }
+            try { return Environment.OSVersion.Version.Build; }
+            catch { return 0; }
+        }
+
         private static bool GameDvrOn()
         {
             try
@@ -245,12 +267,17 @@ namespace PaviseApp
 
             bool eco = false;
             try { eco = Native.PowerThrottlingSupported; } catch { }
+            bool ecoFull = eco && WindowsBuild() >= EcoQosFullBuild;
             report.Capability.Add(new AuditRow
             {
                 Name = "效率模式 EcoQoS",
-                Value = eco ? "支持" : "不支持",
-                Note = eco ? "温和档压制可将后台进程放入效率模式"
-                    : "旧版 Windows 10 无此接口，温和档自动跳过该项",
+                Value = !eco ? "不支持" : (ecoFull ? "支持" : "接口可用"),
+                Note = !eco
+                    ? "本机查询不到进程节流状态，温和档自动跳过该项"
+                    : (ecoFull
+                        ? "温和档压制可把后台进程放入 EcoQoS，系统会降频并优先调度到能效核"
+                        : "节流接口自 Windows 10 1709 起就存在，但降频与能效核调度的完整 EcoQoS 是 Windows 11 才落地的；"
+                          + "此前该标志表现为传统的后台执行节流，压制仍然生效，只是机制不同"),
                 Evidence = EvMeasuredLocal,
                 Warn = !eco
             });
@@ -259,7 +286,7 @@ namespace PaviseApp
             {
                 Name = "操作系统",
                 Value = WindowsText(),
-                Note = "内部版本决定哪些接口可用：效率模式、CPU Sets 和部分电源参数在旧版本上会自动跳过",
+                Note = "内部版本决定接口的可用性与实际行为：同一个节流标志在不同版本上生效的机制并不一样",
                 Evidence = EvMeasuredLocal,
                 Warn = false
             });
