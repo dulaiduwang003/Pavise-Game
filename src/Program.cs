@@ -20,7 +20,7 @@ namespace PaviseApp
     internal static class App
     {
         public const string DisplayName = "PAVISE";
-        public const string Version = "1.6.5";
+        public const string Version = "1.7.0";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string WeChat = "Ssssssstyle";
@@ -224,6 +224,8 @@ namespace PaviseApp
             Notif.HealFromCrash();
             VisualFx.HealFromCrash();
             DisplayGuard.HealFromCrash();
+            try { NvGlobalTweaks.HealFromCrash(); } catch { }
+            try { AdlxTweaks.HealFromCrash(); } catch { }
             RenderLane.HealFromCrash();
             CrashGuard.HealFromCrash();
 
@@ -362,6 +364,11 @@ namespace PaviseApp
                 try { Mmcss.Restore(); } catch { }
                 try { FgBoost.Restore(); } catch { }
                 try { VisualFx.Restore(); } catch { }
+                try { NvGlobalTweaks.Restore(); } catch { }
+                try { AdlxTweaks.RestoreAntiLag(); } catch { }
+                try { AdlxTweaks.RestoreChill(); } catch { }
+                try { AdlxTweaks.RestoreEnhancedSync(); } catch { }
+                try { AdlxTweaks.RestoreRis(); } catch { }
             };
             gameMode.SessionEnded += msg =>
             {

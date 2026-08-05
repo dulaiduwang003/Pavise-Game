@@ -2,6 +2,7 @@
 // 文件用途 实测 NVIDIA 驱动 Profile 的写入与回读是否真的生效
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
@@ -53,8 +54,22 @@ namespace PaviseApp
                 sb.AppendLine("应用 Profile 已就绪");
                 sb.AppendLine();
 
-                var keys = new[] { NvDrsTweaks.KeyPState, NvDrsTweaks.KeyFrl, NvDrsTweaks.KeyPreRender, NvDrsTweaks.KeyLowLatCpl };
-                var writeValues = new uint[] { NvApi.PStatePreferMax, 120u, 1u, 3u };
+                sb.AppendLine("驱动版本: " + NvDrsTweaks.FormatDriver(NvApi.DriverVersion())
+                    + "，DLSS 覆写门槛(566.14): " + (NvDrsTweaks.DlssOverrideSupported() ? "满足" : "不满足"));
+                sb.AppendLine();
+
+                var keys = new[]
+                {
+                    NvDrsTweaks.KeyPState, NvDrsTweaks.KeyFrl, NvDrsTweaks.KeyPreRender, NvDrsTweaks.KeyLowLatCpl,
+                    NvDrsTweaks.KeyAnsel, NvDrsTweaks.KeyRebarFeat, NvDrsTweaks.KeyRebarOpt, NvDrsTweaks.KeyRebarSize,
+                    NvDrsTweaks.KeyDlssOvr, NvDrsTweaks.KeyDlssPreset, NvDrsTweaks.KeyBattFps
+                };
+                var writeValues = new uint[]
+                {
+                    NvApi.PStatePreferMax, 120u, 1u, 3u,
+                    0u, 1u, 1u, NvApi.RebarSizeDefault,
+                    1u, NvApi.DlssPresetK, NvApi.BatteryFpsUncapped
+                };
 
                 sb.AppendLine("项目        设置 ID      原值         写入      回读         结论");
                 for (int i = 0; i < keys.Length; i++)
@@ -91,10 +106,78 @@ namespace PaviseApp
                 sb.AppendLine();
                 sb.AppendLine("已按原值还原（原本未设置的项已删除）。");
                 sb.AppendLine();
-                sb.AppendLine("说明: pstate = 电源管理模式最高性能, frl = 帧率上限,");
-                sb.AppendLine("      prerender = 最大预渲染帧数, lowlatcpl = 低延迟模式(已于 1.6.1 移除)");
+                sb.AppendLine("说明: pstate = 电源最高性能, frl = 帧率上限, prerender = 最大预渲染帧数,");
+                sb.AppendLine("      lowlatcpl = 低延迟模式(已于 1.6.1 移除), ansel = Ansel 注入开关,");
+                sb.AppendLine("      rebar* = ReBAR 强开三件套, dlss* = DLSS 覆写(566+ 驱动生效),");
+                sb.AppendLine("      battfps = 电池限帧覆盖(0x3FF = 顶到上限)");
+                sb.AppendLine();
+                sb.AppendLine("后台硬限帧（设置 ID 按名称从驱动数据库运行时发现）:");
+                uint bgId;
+                string bgName;
+                if (!NvGlobalTweaks.TryResolveBgSetting(out bgId, out bgName))
+                {
+                    uint[] allIds = NvApi.EnumAvailableSettingIds();
+                    sb.AppendLine("  未发现后台帧率上限项（驱动可用设置枚举: "
+                        + (allIds == null ? "失败" : allIds.Length + " 项") + "），该功能在本机停用");
+                }
+                else
+                {
+                    sb.AppendLine("  发现「" + bgName + "」= 0x" + bgId.ToString("X8"));
+                    IntPtr baseProfile;
+                    if (!NvApi.TryGetBaseProfile(session, out baseProfile))
+                        sb.AppendLine("  基础 Profile 获取失败，写入实测跳过");
+                    else
+                    {
+                        uint bgBefore;
+                        int bgFound = NvApi.TryGetDword(session, baseProfile, bgId, out bgBefore);
+                        int bgStatus;
+                        bool bgWrote = NvApi.SetDword(session, baseProfile, bgId, 20u, out bgStatus);
+                        bool bgSaved = bgWrote && NvApi.SaveSession(session);
+                        uint bgAfter;
+                        int bgFoundAfter = NvApi.TryGetDword(session, baseProfile, bgId, out bgAfter);
+                        string bgVerdict = !bgWrote ? "写入被拒绝 (NVAPI " + bgStatus + ")"
+                            : !bgSaved ? "写入接受但保存失败"
+                            : bgFoundAfter == 1 && bgAfter == 20u ? "生效"
+                            : "写入报成功但回读不符";
+                        sb.AppendLine("  基础 Profile 写入实测(20fps): " + bgVerdict
+                            + "（原值 " + NvFound(bgFound, bgBefore) + "，已按原值还原）");
+                        if (bgWrote)
+                        {
+                            if (bgFound == 1) NvApi.SetDword(session, baseProfile, bgId, bgBefore);
+                            else NvApi.DeleteSetting(session, baseProfile, bgId);
+                            NvApi.SaveSession(session);
+                        }
+                    }
+                }
             }
             finally { NvApi.CloseSession(session); }
+
+            sb.AppendLine();
+            {
+                bool rebarOn;
+                ulong rebarWindow;
+                string rebarGpu;
+                sb.AppendLine("ReBAR 检测: " + (RebarProbe.TryDetect(out rebarOn, out rebarWindow, out rebarGpu)
+                    ? (rebarOn ? "已开启" : "未开启") + " · 窗口 " + RebarProbe.WindowText(rebarWindow)
+                        + (rebarGpu == null ? "" : " · " + rebarGpu)
+                    : "读取失败或无独显"));
+            }
+
+            sb.AppendLine();
+            sb.AppendLine("驱动命名设置全量（诊断用）:");
+            uint[] namedIds = NvApi.EnumAvailableSettingIds();
+            if (namedIds != null)
+            {
+                var lines = new List<string>();
+                foreach (uint id in namedIds)
+                {
+                    string nm;
+                    if (NvApi.TryGetSettingName(id, out nm))
+                        lines.Add("  0x" + id.ToString("X8") + "  " + nm);
+                }
+                lines.Sort(StringComparer.OrdinalIgnoreCase);
+                foreach (string line in lines) sb.AppendLine(line);
+            }
 
             string text = sb.ToString();
             File.WriteAllText(output, text, Encoding.UTF8);

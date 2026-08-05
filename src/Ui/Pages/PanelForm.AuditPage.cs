@@ -20,9 +20,10 @@ namespace PaviseApp
         private AuditScanView auditScan;
         private PillButton btnAuditStart;
         private Label lblAuditStatus;
-        private PillButton btnAuditQuick, btnAuditPrecise, btnAuditNv;
+        private PillButton btnAuditQuick, btnAuditPrecise, btnAuditNv, btnAuditAmd;
         private int auditBusy;
         private string auditNvProbeText;
+        private string auditAmdProbeText;
         private bool auditRendered;
         private Stopwatch auditClock;
         private int auditTotalMs;
@@ -48,7 +49,18 @@ namespace PaviseApp
             btnAuditNv.Click += delegate { StartNvProbe(); };
             pageAudit.Controls.Add(btnAuditNv);
 
-            lblAuditStatus = CardLabel(pageAudit, "", ContentX + 516, y + 8, ContentW - 516, 20, 8.0f, false, Theme.Dim);
+            bool amdProbe = AdlxTweaks.Available;
+            if (amdProbe)
+            {
+                btnAuditAmd = new PillButton(Lang.T("audit.amdprobe"), BtnKind.Normal);
+                btnAuditAmd.SetBounds(Theme.S(ContentX + 514), Theme.S(y), Theme.S(160), Theme.S(34));
+                btnAuditAmd.Click += delegate { StartAmdProbe(); };
+                pageAudit.Controls.Add(btnAuditAmd);
+            }
+
+            int statusOffset = amdProbe ? 682 : 516;
+            lblAuditStatus = CardLabel(pageAudit, "", ContentX + statusOffset, y + 8,
+                ContentW - statusOffset, 20, 8.0f, false, Theme.Dim);
             y += 44;
 
             auditScroll = new DBPanel();
@@ -89,12 +101,14 @@ namespace PaviseApp
             btnAuditQuick.Visible = visible;
             btnAuditPrecise.Visible = visible;
             btnAuditNv.Visible = visible;
+            if (btnAuditAmd != null) btnAuditAmd.Visible = visible;
         }
 
         private void StartAudit(int windowMs)
         {
             if (Interlocked.Exchange(ref auditBusy, 1) == 1) return;
             auditNvProbeText = null;
+            auditAmdProbeText = null;
             SetAuditButtons(false);
             btnAuditStart.Visible = false;
             auditScroll.Visible = false;
@@ -183,6 +197,61 @@ namespace PaviseApp
             });
         }
 
+        private void StartAmdProbe()
+        {
+            if (!AdlxTweaks.Available)
+            {
+                lblAuditStatus.Text = Lang.T("audit.amd.unavailable");
+                return;
+            }
+            if (Interlocked.Exchange(ref auditBusy, 1) == 1) return;
+            SetAuditButtons(false);
+            btnAuditStart.Visible = false;
+            auditScroll.Visible = false;
+            auditScan.Visible = true;
+            auditScan.BeginScan(Lang.T("audit.nv.probing"));
+            BeginAuditProgress(QuickAuditWindowMs);
+
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                string summary;
+                try
+                {
+                    var rows = AdlxTweaks.ProbeWriteback();
+                    if (rows.Count == 0) summary = Lang.T("audit.amd.failed");
+                    else
+                    {
+                        int ok = 0;
+                        var parts = new List<string>();
+                        foreach (var r in rows)
+                        {
+                            if (r.Ok) ok++;
+                            parts.Add(r.Name + "=" + r.Outcome);
+                        }
+                        summary = Lang.F("audit.nv.summary", ok, rows.Count)
+                            + "（" + string.Join("，", parts.ToArray()) + "）";
+                    }
+                }
+                catch (Exception ex) { summary = Lang.T("audit.amd.failed") + " " + ex.Message; }
+                auditAmdProbeText = summary;
+                AuditReport report = null;
+                try { report = SystemAudit.Collect(QuickAuditWindowMs); } catch { }
+                Interlocked.Exchange(ref auditBusy, 0);
+                try
+                {
+                    BeginInvoke((MethodInvoker)(() =>
+                    {
+                        EndAuditProgress();
+                        SetAuditButtons(true);
+                        lblAuditStatus.Text = "";
+                        if (report != null) RenderAudit(report);
+                        else if (!auditRendered) ShowAuditIdle();
+                    }));
+                }
+                catch { }
+            });
+        }
+
         private void BeginAuditProgress(int windowMs)
         {
             auditTotalMs = windowMs + Math.Max(600, Math.Min(3000, windowMs / 10)) + 900;
@@ -221,6 +290,7 @@ namespace PaviseApp
             btnAuditQuick.Enabled = enabled;
             btnAuditPrecise.Enabled = enabled;
             btnAuditNv.Enabled = enabled;
+            if (btnAuditAmd != null) btnAuditAmd.Enabled = enabled;
         }
 
         private void RenderAudit(AuditReport report)
@@ -301,6 +371,8 @@ namespace PaviseApp
                 string note = row.Note ?? "";
                 if (auditNvProbeText != null && row.Name == "NVIDIA 驱动接口")
                     note = Lang.T("audit.nv.result") + auditNvProbeText;
+                if (auditAmdProbeText != null && row.Name == "AMD 驱动接口")
+                    note = Lang.T("audit.nv.result") + auditAmdProbeText;
                 CardLabel(panel, note, 16, 34, ScrollContentW - 32, 24, 7.8f, false, Theme.Dim);
                 auditEntering.Add(panel);
                 sy += 72;

@@ -20,12 +20,32 @@ namespace PaviseApp
         private const uint IdDrsSetSetting = 0x577DD202;
         private const uint IdDrsGetSetting = 0x73BF8338;
         private const uint IdDrsDeleteProfileSetting = 0xE4A26362;
+        private const uint IdDrsGetBaseProfile = 0xDA8466A0;
+        private const uint IdDrsGetSettingNameFromId = 0xD61CBE6E;
+        private const uint IdDrsEnumAvailableSettingIds = 0xF020614A;
+        private const uint IdEnumPhysicalGPUs = 0xE5AC921F;
+        private const uint IdGpuGetPerfDecreaseInfo = 0x7F7F4600;
+        private const uint IdSysGetDriverAndBranchVersion = 0x2926AAAD;
 
         public const uint SettingPreferredPState = 0x1057EB71;
         public const uint SettingFrlFps = 0x10835002;
         public const uint PStatePreferMax = 0x1;
         public const uint SettingPreRenderLimit = 0x007BA09E;
         public const uint SettingLowLatencyCpl = 0x0005F543;
+        public const uint SettingFrlFpsBackground = 0x10835006;
+        public const uint SettingAnselAllow = 0x1035DB89;
+        public const uint SettingRebarFeature = 0x000F00BA;
+        public const uint SettingRebarOptions = 0x000F00BB;
+        public const uint SettingRebarSizeLimit = 0x000F00FF;
+        public const uint SettingDlssSrOverride = 0x10E41E01;
+        public const uint SettingDlssSrPreset = 0x10E41DF3;
+        public const uint SettingBatteryBoostAppFps = 0x10115C8C;
+        public const uint RebarSizeDefault = 0x40000000;
+        public const uint DlssPresetJ = 0x0000000A;
+        public const uint DlssPresetK = 0x0000000B;
+        public const uint DlssPresetLatest = 0x00FFFFFF;
+        public const uint BatteryFpsUncapped = 0x3FF;
+        public const uint MinDriverForDlssOverride = 56614;
 
         [DllImport("nvapi64.dll", EntryPoint = "nvapi_QueryInterface", CallingConvention = CallingConvention.Cdecl)]
         private static extern IntPtr QueryInterface(uint id);
@@ -242,5 +262,136 @@ namespace PaviseApp
             catch { return false; }
         }
 
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate int FnGetBaseProfile(IntPtr session, out IntPtr profile);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate int FnSettingName(uint settingId, IntPtr nameBuffer);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate int FnEnumSettingIds([Out] uint[] ids, ref uint maxCount);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate int FnEnumGpus([Out] IntPtr[] handles, out uint count);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate int FnGpuDwordOut(IntPtr gpu, out uint value);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate int FnDriverVersion(out uint version, IntPtr branchBuffer);
+
+        private static int extState;
+        private static FnGetBaseProfile drsGetBaseProfile;
+        private static FnSettingName drsSettingName;
+        private static FnEnumSettingIds drsEnumSettingIds;
+        private static FnEnumGpus enumGpus;
+        private static FnGpuDwordOut gpuPerfDecrease;
+        private static FnDriverVersion sysDriverVersion;
+        private static int driverVersionCache = -1;
+
+        private static void EnsureExtResolved()
+        {
+            if (Volatile.Read(ref extState) != 0 || !Available) return;
+            try
+            {
+                drsGetBaseProfile = Resolve<FnGetBaseProfile>(IdDrsGetBaseProfile);
+                drsSettingName = Resolve<FnSettingName>(IdDrsGetSettingNameFromId);
+                drsEnumSettingIds = Resolve<FnEnumSettingIds>(IdDrsEnumAvailableSettingIds);
+                enumGpus = Resolve<FnEnumGpus>(IdEnumPhysicalGPUs);
+                gpuPerfDecrease = Resolve<FnGpuDwordOut>(IdGpuGetPerfDecreaseInfo);
+                sysDriverVersion = Resolve<FnDriverVersion>(IdSysGetDriverAndBranchVersion);
+            }
+            catch { }
+            Interlocked.CompareExchange(ref extState, 1, 0);
+        }
+
+        public static bool TryGetBaseProfile(IntPtr session, out IntPtr profile)
+        {
+            profile = IntPtr.Zero;
+            EnsureExtResolved();
+            if (drsGetBaseProfile == null) return false;
+            try { return drsGetBaseProfile(session, out profile) == 0 && profile != IntPtr.Zero; }
+            catch { profile = IntPtr.Zero; return false; }
+        }
+
+        public static bool TryGetSettingName(uint settingId, out string name)
+        {
+            name = null;
+            EnsureExtResolved();
+            if (drsSettingName == null) return false;
+            IntPtr buffer = Marshal.AllocHGlobal(4096);
+            try
+            {
+                Marshal.WriteInt16(buffer, 0, 0);
+                if (drsSettingName(settingId, buffer) != 0) return false;
+                name = Marshal.PtrToStringUni(buffer);
+                return !string.IsNullOrEmpty(name);
+            }
+            catch { return false; }
+            finally { Marshal.FreeHGlobal(buffer); }
+        }
+
+        public static uint[] EnumAvailableSettingIds()
+        {
+            EnsureExtResolved();
+            if (drsEnumSettingIds == null) return null;
+            try
+            {
+                uint count = 2048;
+                var ids = new uint[2048];
+                if (drsEnumSettingIds(ids, ref count) != 0 || count == 0 || count > 2048) return null;
+                var result = new uint[count];
+                Array.Copy(ids, result, (int)count);
+                return result;
+            }
+            catch { return null; }
+        }
+
+        public static IntPtr[] EnumGpuHandles()
+        {
+            EnsureExtResolved();
+            if (enumGpus == null) return null;
+            try
+            {
+                var handles = new IntPtr[64];
+                uint count;
+                if (enumGpus(handles, out count) != 0 || count == 0 || count > 64) return null;
+                var result = new IntPtr[count];
+                Array.Copy(handles, result, (int)count);
+                return result;
+            }
+            catch { return null; }
+        }
+
+        public const uint PerfDecreaseThermal = 0x00000001;
+        public const uint PerfDecreasePower = 0x00000002;
+        public const uint PerfDecreaseAcBatt = 0x00000004;
+        public const uint PerfDecreaseApi = 0x00000008;
+        public const uint PerfDecreaseInsufficientPower = 0x00000010;
+
+        public static bool TryGetPerfDecrease(IntPtr gpu, out uint mask)
+        {
+            mask = 0;
+            EnsureExtResolved();
+            if (gpuPerfDecrease == null || gpu == IntPtr.Zero) return false;
+            try { return gpuPerfDecrease(gpu, out mask) == 0; }
+            catch { return false; }
+        }
+
+        public static uint DriverVersion()
+        {
+            int cached = Volatile.Read(ref driverVersionCache);
+            if (cached >= 0) return (uint)cached;
+            uint version = 0;
+            EnsureExtResolved();
+            if (sysDriverVersion != null)
+            {
+                IntPtr buffer = Marshal.AllocHGlobal(64);
+                try
+                {
+                    uint raw;
+                    if (sysDriverVersion(out raw, buffer) == 0) version = raw;
+                }
+                catch { }
+                finally { Marshal.FreeHGlobal(buffer); }
+            }
+            Interlocked.CompareExchange(ref driverVersionCache, (int)version, -1);
+            return version;
+        }
     }
 }

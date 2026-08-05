@@ -298,6 +298,19 @@ namespace PaviseApp
                 Warn = false
             });
 
+            bool amd = false;
+            try { amd = AdlxApi.Available; } catch { }
+            report.Capability.Add(new AuditRow
+            {
+                Name = "AMD 驱动接口",
+                Value = amd ? "可用" : "不可用",
+                Note = amd
+                    ? "显卡页 AMD 区可用。效果未经实机验证，可用「AMD 写入实测」核对写入"
+                    : "无 A 卡或驱动太老，显卡页 AMD 区不可用",
+                Evidence = amd ? EvUnverified : EvMeasuredLocal,
+                Warn = false
+            });
+
             report.Capability.Add(new AuditRow
             {
                 Name = "CPU Sets 分区",
@@ -403,6 +416,41 @@ namespace PaviseApp
                 Evidence = EvMeasuredLocal,
                 Warn = !hzOk || !hzRead
             });
+
+            string throttleNow = null;
+            try { throttleNow = GpuThrottleProbe.InstantText(); } catch { }
+            if (throttleNow != null)
+            {
+                bool throttled = throttleNow != "无限制";
+                report.Machine.Add(new AuditRow
+                {
+                    Name = "NVIDIA 降频状态",
+                    Value = throttleNow,
+                    Note = throttled
+                        ? "显卡正被这些原因压着；若游戏中长期如此，瓶颈在散热或供电，不在调度"
+                        : "当前无降频；游戏中如被压制，每局结束写进运行日志",
+                    Evidence = EvMeasuredLocal,
+                    Warn = throttled
+                });
+            }
+
+            bool rebarOn = false;
+            ulong rebarWindow = 0;
+            string rebarGpu = null;
+            bool rebarRead = false;
+            try { rebarRead = RebarProbe.TryDetect(out rebarOn, out rebarWindow, out rebarGpu); } catch { }
+            if (rebarRead)
+            {
+                report.Machine.Add(new AuditRow
+                {
+                    Name = "ReBAR 显存直通",
+                    Value = (rebarOn ? "已开启" : "未开启") + " · 窗口 " + RebarProbe.WindowText(rebarWindow),
+                    Note = (string.IsNullOrEmpty(rebarGpu) ? "" : rebarGpu + "；")
+                        + (rebarOn ? "显卡页「ReBAR 强开」可用" : "未开启时「ReBAR 强开」无效，要在 BIOS 里打开"),
+                    Evidence = EvMeasuredLocal,
+                    Warn = false
+                });
+            }
 
             if (facts.MemOk)
             {

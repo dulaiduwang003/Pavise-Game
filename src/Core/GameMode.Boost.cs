@@ -23,7 +23,7 @@ namespace PaviseApp
             new HashSet<string>(StringComparer.Ordinal);
 
         internal static readonly string[] EnvKeys =
-            { "notif", "do", "hz", "fg", "svc", "mmcss", "dvr", "fx", "wu" };
+            { "notif", "do", "hz", "fg", "svc", "mmcss", "dvr", "fx", "wu", "nvbg", "alag", "chill", "esync", "ris" };
 
         private static string EnvLabel(string key)
         {
@@ -38,6 +38,11 @@ namespace PaviseApp
                 case "dvr": return "Game DVR 关闭";
                 case "fx": return "视觉效果降级";
                 case "wu": return "Windows 更新暂停";
+                case "nvbg": return "后台硬限帧";
+                case "alag": return "AMD Anti-Lag";
+                case "chill": return "AMD Chill 限帧";
+                case "esync": return "AMD Enhanced Sync";
+                case "ris": return "AMD 锐化";
                 default: return key;
             }
         }
@@ -125,6 +130,11 @@ namespace PaviseApp
                 case "dvr": killGameDvr = false; Settings.Save("GameDvrOff", false); break;
                 case "fx": visualFxOn = false; Settings.Save("GmVisualFx", false); break;
                 case "wu": pauseUpdateOn = false; Settings.Save("GmPauseUpdate", false); break;
+                case "nvbg": nvBgFrlOn = false; Settings.Save("NvBgFrl", false); break;
+                case "alag": amdAntiLagOn = false; Settings.Save("AmdAntiLag", false); break;
+                case "chill": amdChillMode = "off"; Settings.SaveStr("AmdChill", "off"); break;
+                case "esync": amdEnhSyncOn = false; Settings.Save("AmdEnhSync", false); break;
+                case "ris": amdRisOn = false; Settings.Save("AmdRis", false); break;
             }
         }
 
@@ -160,6 +170,12 @@ namespace PaviseApp
             dvrActive = EnvStep("dvr", useDvr, dvrActive, GameDvr.Activate, GameDvr.Restore);
             fxActive = EnvStep("fx", visualFxOn, fxActive, VisualFx.Activate, VisualFx.Restore);
             wuActive = EnvStep("wu", pauseUpdateOn, wuActive, UpdatePause.Activate, UpdatePause.Restore);
+            nvbgActive = EnvStep("nvbg", nvBgFrlOn, nvbgActive, NvGlobalTweaks.Activate, NvGlobalTweaks.Restore);
+            alagActive = EnvStep("alag", amdAntiLagOn, alagActive, AdlxTweaks.ActivateAntiLag, AdlxTweaks.RestoreAntiLag);
+            chillActive = EnvStep("chill", ResolveFrlFps(amdChillMode) > 0, chillActive,
+                delegate { return AdlxTweaks.ActivateChill(ResolveFrlFps(amdChillMode)); }, AdlxTweaks.RestoreChill);
+            esyncActive = EnvStep("esync", amdEnhSyncOn, esyncActive, AdlxTweaks.ActivateEnhancedSync, AdlxTweaks.RestoreEnhancedSync);
+            risActive = EnvStep("ris", amdRisOn, risActive, AdlxTweaks.ActivateRis, AdlxTweaks.RestoreRis);
             if (standbySweepOn && !standbyPurged)
             {
                 standbyPurged = true;
@@ -251,19 +267,27 @@ namespace PaviseApp
             Settings.SaveStr(key, value.ToString());
         }
 
-        private void HandleNvTweakOutcome(List<string> failed, bool wantPState, bool wantFrl, bool wantPreRender)
+        private void HandleNvTweakOutcome(List<string> failed, NvGamePlan plan)
         {
-            if (failed == null) return;
-            NoteNvKey(NvDrsTweaks.KeyPState, wantPState, failed);
-            NoteNvKey(NvDrsTweaks.KeyFrl, wantFrl, failed);
-            NoteNvKey(NvDrsTweaks.KeyPreRender, wantPreRender, failed);
+            if (failed == null || plan == null) return;
+            NoteNvKey(NvDrsTweaks.KeyPState, plan.MaxPerf, failed.Contains(NvDrsTweaks.KeyPState));
+            NoteNvKey(NvDrsTweaks.KeyFrl, plan.FrlFps > 0, failed.Contains(NvDrsTweaks.KeyFrl));
+            NoteNvKey(NvDrsTweaks.KeyPreRender, plan.LowLatency, failed.Contains(NvDrsTweaks.KeyPreRender));
+            NoteNvKey(NvDrsTweaks.KeyAnsel, plan.AnselOff, failed.Contains(NvDrsTweaks.KeyAnsel));
+            NoteNvKey(NvDrsTweaks.KeyRebarFeat, plan.Rebar,
+                NvDrsTweaks.ContainsAny(failed, NvDrsTweaks.RebarKeys));
+            bool dlssWanted = (plan.DlssMode == "latest" || plan.DlssMode == "j" || plan.DlssMode == "k")
+                && NvDrsTweaks.DlssOverrideSupported();
+            NoteNvKey(NvDrsTweaks.KeyDlssOvr, dlssWanted,
+                NvDrsTweaks.ContainsAny(failed, NvDrsTweaks.DlssKeys));
+            NoteNvKey(NvDrsTweaks.KeyBattFps, plan.BattFull, failed.Contains(NvDrsTweaks.KeyBattFps));
         }
 
-        private void NoteNvKey(string key, bool wanted, List<string> failed)
+        private void NoteNvKey(string key, bool wanted, bool didFail)
         {
             if (!wanted) return;
             string counterKey = "NvFailStreak_" + key;
-            if (!failed.Contains(key))
+            if (!didFail)
             {
                 if (LoadCounter(counterKey) != 0) SaveCounter(counterKey, 0);
                 return;
@@ -274,6 +298,10 @@ namespace PaviseApp
             string label;
             if (key == NvDrsTweaks.KeyPState) { nvMaxPerf = false; Settings.Save("NvMaxPerf", false); label = "NVIDIA 电源最高性能"; }
             else if (key == NvDrsTweaks.KeyFrl) { nvFrlMode = "off"; Settings.SaveStr("NvFrl", "off"); label = "NVIDIA 帧率上限"; }
+            else if (key == NvDrsTweaks.KeyAnsel) { nvAnselOff = false; Settings.Save("NvAnselOff", false); label = "NVIDIA Ansel 关闭"; }
+            else if (key == NvDrsTweaks.KeyRebarFeat) { nvRebarOn = false; Settings.Save("NvRebar", false); label = "NVIDIA ReBAR 强开"; }
+            else if (key == NvDrsTweaks.KeyDlssOvr) { nvDlssMode = "off"; Settings.SaveStr("NvDlss", "off"); label = "NVIDIA DLSS 覆写"; }
+            else if (key == NvDrsTweaks.KeyBattFps) { nvBattFull = false; Settings.Save("NvBattFull", false); label = "NVIDIA 电池满血"; }
             else { nvLowLatency = false; Settings.Save("NvLowLatency", false); label = "NVIDIA 低延迟"; }
             Logger.Log("「" + label + "」连续 " + EnvFuseAttempts
                 + " 次写入失败，已自动关闭该开关；重新打开即恢复尝试");
@@ -294,7 +322,7 @@ namespace PaviseApp
 
         private bool EnvActive()
         {
-            return notifActive || doActive || hzActive || fgActive || svcActive || mmcssActive || dvrActive || fxActive || wuActive || planActive || timerRaised;
+            return notifActive || doActive || hzActive || fgActive || svcActive || mmcssActive || dvrActive || fxActive || wuActive || nvbgActive || alagActive || chillActive || esyncActive || risActive || planActive || timerRaised;
         }
 
         private bool RestoreEnv()
@@ -310,6 +338,11 @@ namespace PaviseApp
             if (GameDvr.Restore()) dvrActive = false; else ok = false;
             if (VisualFx.Restore()) fxActive = false; else ok = false;
             if (UpdatePause.Restore()) wuActive = false; else ok = false;
+            if (NvGlobalTweaks.Restore()) nvbgActive = false; else ok = false;
+            if (AdlxTweaks.RestoreAntiLag()) alagActive = false; else ok = false;
+            if (AdlxTweaks.RestoreChill()) chillActive = false; else ok = false;
+            if (AdlxTweaks.RestoreEnhancedSync()) esyncActive = false; else ok = false;
+            if (AdlxTweaks.RestoreRis()) risActive = false; else ok = false;
             if (PowerPlan.Restore())
             {
                 planActive = false;
@@ -639,11 +672,20 @@ namespace PaviseApp
                         {
                             string imagePath = Native.ImagePath(h);
                             GameExeTweaks.ApplyForGame(imagePath, gpuHighPerf, disableFso);
-                            int frlFps = ResolveFrlFps(nvFrlMode);
-                            if (nvMaxPerf || frlFps > 0 || nvLowLatency)
+                            var nvPlan = new NvGamePlan
                             {
-                                List<string> nvFailed = NvDrsTweaks.ApplyForGame(imagePath, nvMaxPerf, frlFps, nvLowLatency);
-                                HandleNvTweakOutcome(nvFailed, nvMaxPerf, frlFps > 0, nvLowLatency);
+                                MaxPerf = nvMaxPerf,
+                                FrlFps = ResolveFrlFps(nvFrlMode),
+                                LowLatency = nvLowLatency,
+                                AnselOff = nvAnselOff,
+                                Rebar = nvRebarOn,
+                                DlssMode = nvDlssMode,
+                                BattFull = nvBattFull
+                            };
+                            if (!nvPlan.Empty)
+                            {
+                                List<string> nvFailed = NvDrsTweaks.ApplyForGame(imagePath, nvPlan);
+                                HandleNvTweakOutcome(nvFailed, nvPlan);
                             }
                             lock (sync) tweakApplied.Add(pid);
                         }
@@ -882,6 +924,10 @@ namespace PaviseApp
             SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyPState, 0);
             SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyFrl, 0);
             SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyPreRender, 0);
+            SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyAnsel, 0);
+            SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyRebarFeat, 0);
+            SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyDlssOvr, 0);
+            SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyBattFps, 0);
             if (fusesCleared > 0)
                 Logger.Log("已重置 " + fusesCleared + " 个因写入失败自动停用的环境项（对应开关仍为关，需要请手动打开）");
             int mine = Interlocked.Increment(ref panicSeq);

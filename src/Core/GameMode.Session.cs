@@ -22,6 +22,7 @@ namespace PaviseApp
 
         private void ReportBegin(string game)
         {
+            GpuThrottleProbe.Reset();
             long paviseCpu = CurrentProcessCpuTicks();
             lock (sync)
             {
@@ -114,6 +115,8 @@ namespace PaviseApp
             msg += Lang.F(
                 "rep.pavise.cpu",
                 paviseCpuPercent.ToString("0.00", CultureInfo.InvariantCulture));
+            string throttle = GpuThrottleProbe.Summarize();
+            if (throttle != null) msg += Lang.F("rep.gputhrottle", throttle);
             Logger.Log("本局结束：" + msg);
 
             if (dur.TotalSeconds >= 60)

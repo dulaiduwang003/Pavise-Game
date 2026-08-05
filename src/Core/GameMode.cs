@@ -90,6 +90,20 @@ namespace PaviseApp
         private volatile bool nvMaxPerf;
         private volatile bool nvLowLatency;
         private volatile string nvFrlMode = "off";
+        private volatile bool nvAnselOff;
+        private volatile bool nvRebarOn;
+        private volatile string nvDlssMode = "off";
+        private volatile bool nvBattFull;
+        private volatile bool nvBgFrlOn;
+        private bool nvbgActive;
+        private volatile bool amdAntiLagOn;
+        private volatile string amdChillMode = "off";
+        private volatile bool amdEnhSyncOn;
+        private volatile bool amdRisOn;
+        private bool alagActive;
+        private bool chillActive;
+        private bool esyncActive;
+        private bool risActive;
         private volatile bool killGameDvr;
         private volatile bool hzGuard;
         private volatile bool planSwitch;
@@ -181,6 +195,15 @@ namespace PaviseApp
             nvMaxPerf = Settings.Load("NvMaxPerf", false);
             nvLowLatency = Settings.Load("NvLowLatency", false);
             nvFrlMode = Settings.LoadStr("NvFrl", "off");
+            nvAnselOff = Settings.Load("NvAnselOff", false);
+            nvRebarOn = Settings.Load("NvRebar", false);
+            nvDlssMode = Settings.LoadStr("NvDlss", "off");
+            nvBattFull = Settings.Load("NvBattFull", false);
+            nvBgFrlOn = Settings.Load("NvBgFrl", false);
+            amdAntiLagOn = Settings.Load("AmdAntiLag", false);
+            amdChillMode = Settings.LoadStr("AmdChill", "off");
+            amdEnhSyncOn = Settings.Load("AmdEnhSync", false);
+            amdRisOn = Settings.Load("AmdRis", false);
             killGameDvr = Settings.Load("GameDvrOff", true);
             hzGuard = Settings.Load("HzGuardOn", false);
             planSwitch = Settings.Load("PowerPlanOn", true);
@@ -609,12 +632,121 @@ namespace PaviseApp
             }
         }
 
+        public bool NvAnselOff
+        {
+            get { return nvAnselOff; }
+            set
+            {
+                nvAnselOff = value; Settings.Save("NvAnselOff", value);
+                if (!value) NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyAnsel);
+                else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyAnsel, 0);
+                lock (sync) tweakApplied.Clear();
+                RequestPolicyApply();
+            }
+        }
+
+        public bool NvRebar
+        {
+            get { return nvRebarOn; }
+            set
+            {
+                nvRebarOn = value; Settings.Save("NvRebar", value);
+                if (!value) NvDrsTweaks.RestoreKinds(NvDrsTweaks.RebarKeys);
+                else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyRebarFeat, 0);
+                lock (sync) tweakApplied.Clear();
+                RequestPolicyApply();
+            }
+        }
+
+        public string NvDlssMode
+        {
+            get { return nvDlssMode; }
+            set
+            {
+                string mode = value == "latest" || value == "j" || value == "k" ? value : "off";
+                nvDlssMode = mode; Settings.SaveStr("NvDlss", mode);
+                if (mode == "off") NvDrsTweaks.RestoreKinds(NvDrsTweaks.DlssKeys);
+                else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyDlssOvr, 0);
+                lock (sync) tweakApplied.Clear();
+                RequestPolicyApply();
+            }
+        }
+
+        public bool NvBattFull
+        {
+            get { return nvBattFull; }
+            set
+            {
+                nvBattFull = value; Settings.Save("NvBattFull", value);
+                if (!value) NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyBattFps);
+                else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyBattFps, 0);
+                lock (sync) tweakApplied.Clear();
+                RequestPolicyApply();
+            }
+        }
+
+        public bool NvBgFrl
+        {
+            get { return nvBgFrlOn; }
+            set
+            {
+                nvBgFrlOn = value; Settings.Save("NvBgFrl", value);
+                if (value) ClearEnvFuse("nvbg");
+                RequestPolicyApply();
+            }
+        }
+
+        public bool AmdAntiLag
+        {
+            get { return amdAntiLagOn; }
+            set
+            {
+                amdAntiLagOn = value; Settings.Save("AmdAntiLag", value);
+                if (value) ClearEnvFuse("alag");
+                RequestPolicyApply();
+            }
+        }
+
+        public string AmdChillMode
+        {
+            get { return amdChillMode; }
+            set
+            {
+                string mode = value == "60" || value == "120" || value == "240" || value == "screen" ? value : "off";
+                amdChillMode = mode; Settings.SaveStr("AmdChill", mode);
+                if (mode != "off") ClearEnvFuse("chill");
+                RequestPolicyApply();
+            }
+        }
+
+        public bool AmdEnhSync
+        {
+            get { return amdEnhSyncOn; }
+            set
+            {
+                amdEnhSyncOn = value; Settings.Save("AmdEnhSync", value);
+                if (value) ClearEnvFuse("esync");
+                RequestPolicyApply();
+            }
+        }
+
+        public bool AmdRis
+        {
+            get { return amdRisOn; }
+            set
+            {
+                amdRisOn = value; Settings.Save("AmdRis", value);
+                if (value) ClearEnvFuse("ris");
+                RequestPolicyApply();
+            }
+        }
+
         public string NvFrlMode
         {
             get { return nvFrlMode; }
             set
             {
-                string mode = value == "60" || value == "120" || value == "screen" ? value : "off";
+                string mode = value == "60" || value == "120" || value == "240" || value == "screen" ? value : "off";
                 nvFrlMode = mode; Settings.SaveStr("NvFrl", mode);
                 if (mode == "off") NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyFrl);
                 else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyFrl, 0);
@@ -809,6 +941,7 @@ namespace PaviseApp
                                         ReportBegin(running);
                                     }
                                     ApplyEnv();
+                                    GpuThrottleProbe.SampleIfDue();
                                     if (bgSuppressOn) Sweep(all, gamePids);
                                     if (!bgSuppressOn) ReleaseBackground();
                                     if (boostOn) Boost(all);

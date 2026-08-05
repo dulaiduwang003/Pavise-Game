@@ -1351,6 +1351,12 @@ namespace PaviseApp
 
                 Eq("0", CrashGuard.ProbeParse("111|222|" + name + "|32"));
             });
+            test("GPU tuning: BuildDesired maps every switch to its DRS keys", TestNvBuildDesired);
+            test("GPU tuning: FRL/DLSS mode round-trips keep every option including 240", TestGpuModeRoundTrips);
+            test("GPU tuning: an empty plan never reaches the driver", TestNvPlanEmpty);
+            test("GPU throttle: verdict needs enough samples and formats percentages", TestGpuThrottleSummary);
+            test("ADLX: a machine without AMD driver degrades to safe no-ops", TestAdlxDegrade);
+            test("ReBAR probe: PCI filtering, thresholds and a live window read", TestRebarProbe);
             test("suppression: game-root containment is anchored on a path segment", () =>
             {
 
