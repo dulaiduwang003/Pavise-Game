@@ -1122,6 +1122,73 @@ namespace PaviseApp
                     CpuPartitionPolicy.InterruptAvoidMinPhysicalCores) == 0)
                     throw new Exception("at the core-count threshold the outlier should be picked");
             });
+            test("game resolver: unreadable store executables are still accepted", () =>
+            {
+                string dir = Path.Combine(Path.GetTempPath(), "PaviseAclTest_" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(dir);
+                string exe = Path.Combine(dir, "StoreGame.exe");
+                try
+                {
+                    // 造一个真实 PE 头，再用 ACL 拒绝当前用户读取，模拟 WindowsApps / XboxGames 的情形
+                    var pe = new byte[512];
+                    pe[0] = 0x4D; pe[1] = 0x5A;
+                    pe[0x3C] = 0x80;
+                    pe[0x80] = 0x50; pe[0x81] = 0x45;
+                    File.WriteAllBytes(exe, pe);
+                    if (!GameExecutableResolver.IsPortableExecutable(exe))
+                        throw new Exception("readable PE was not recognised");
+
+                    var acl = File.GetAccessControl(exe);
+                    acl.SetAccessRuleProtection(true, false);
+                    acl.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(
+                        System.Security.Principal.WindowsIdentity.GetCurrent().User,
+                        System.Security.AccessControl.FileSystemRights.Read,
+                        System.Security.AccessControl.AccessControlType.Deny));
+                    File.SetAccessControl(exe, acl);
+
+                    if (!File.Exists(exe)) throw new Exception("file vanished after ACL change");
+                    if (GameExecutableResolver.IsPortableExecutable(exe))
+                        throw new Exception("PE check should fail once reading is denied");
+                    if (!GameExecutableResolver.IsUnreadable(exe))
+                        throw new Exception("denied file was not classified as unreadable");
+
+                    string resolved, error;
+                    if (!GameExecutableResolver.TryResolve(exe, out resolved, out error))
+                        throw new Exception("unreadable store exe was rejected: " + error);
+                    Eq(exe, resolved);
+                }
+                finally
+                {
+                    try
+                    {
+                        var acl = File.GetAccessControl(exe);
+                        acl.SetAccessRuleProtection(false, true);
+                        foreach (System.Security.AccessControl.FileSystemAccessRule r in acl.GetAccessRules(
+                            true, false, typeof(System.Security.Principal.SecurityIdentifier)))
+                            if (r.AccessControlType == System.Security.AccessControl.AccessControlType.Deny)
+                                acl.RemoveAccessRule(r);
+                        File.SetAccessControl(exe, acl);
+                    }
+                    catch { }
+                    try { Directory.Delete(dir, true); } catch { }
+                }
+            });
+            test("game resolver: a non-existent path is still rejected", () =>
+            {
+                string missing = Path.Combine(Path.GetTempPath(), "PaviseMissing_" + Guid.NewGuid().ToString("N") + ".exe");
+                string resolved, error;
+                if (GameExecutableResolver.TryResolve(missing, out resolved, out error))
+                    throw new Exception("a missing path must not resolve");
+                // 非 EXE 也仍然要拒绝，放行只针对读不到内容的 EXE
+                string txt = Path.Combine(Path.GetTempPath(), "PaviseNot_" + Guid.NewGuid().ToString("N") + ".txt");
+                File.WriteAllText(txt, "not an exe");
+                try
+                {
+                    if (GameExecutableResolver.TryResolve(txt, out resolved, out error))
+                        throw new Exception("a non-exe file must not resolve");
+                }
+                finally { try { File.Delete(txt); } catch { } }
+            });
             test("system audit: interrupt tiers split at 1% and 5%", () =>
             {
                 Eq(0, SystemAudit.InterruptTier(0.0));

@@ -48,8 +48,12 @@ namespace PaviseApp
 
             try { target = Path.GetFullPath(Environment.ExpandEnvironmentVariables(target.Trim().Trim('"'))); }
             catch { error = "快捷方式目标路径无效"; return false; }
-            if (!Path.GetExtension(target).Equals(".exe", StringComparison.OrdinalIgnoreCase) || !File.Exists(target)
-                || !IsPortableExecutable(target))
+            if (!Path.GetExtension(target).Equals(".exe", StringComparison.OrdinalIgnoreCase) || !File.Exists(target))
+            {
+                error = "目标必须是本机存在的有效 EXE 文件";
+                return false;
+            }
+            if (!IsPortableExecutable(target) && !IsUnreadable(target))
             {
                 error = "目标必须是本机存在的有效 EXE 文件";
                 return false;
@@ -73,6 +77,20 @@ namespace PaviseApp
                     return reader.ReadUInt32() == 0x00004550;
                 }
             }
+            catch { return false; }
+        }
+
+        // Xbox / 微软商店游戏装在 WindowsApps、XboxGames 一类目录里 那里的 ACL 连管理员都拒绝读 exe
+        // 文件确实存在但打不开时 无法校验 PE 头 此时以文件存在为准放行 不因读不到内容就拒绝添加
+        internal static bool IsUnreadable(string path)
+        {
+            try
+            {
+                using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete)) { }
+                return false;
+            }
+            catch (UnauthorizedAccessException) { return true; }
+            catch (IOException) { return false; }
             catch { return false; }
         }
 

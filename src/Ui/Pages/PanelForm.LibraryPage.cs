@@ -104,6 +104,10 @@ namespace PaviseApp
             {
                 dlg.Title = Lang.T("ofd.game");
                 dlg.Filter = Lang.T("ofd.filter");
+                // Xbox / 微软商店游戏目录拒绝读取 exe，对话框自校验会直接弹系统权限错误
+                // 让它只回传路径，存在性与有效性由解析器判断
+                dlg.CheckFileExists = false;
+                dlg.DereferenceLinks = false;
                 if (dlg.ShowDialog(this) == DialogResult.OK)
                 {
                     string error;

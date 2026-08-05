@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [1.6.3] - 2026-08-05
 
+### Fixed
+
+- Xbox / Microsoft Store games (Forza Horizon 5 among them) could not be added to the library at
+  all. They install under `WindowsApps` / `XboxGames`, where the ACL denies reading the executable
+  even to administrators, which broke both entry paths: the file dialog's own existence check opens
+  the file and surfaced a system-level "no permission to open this file" error before Pavise saw
+  anything, and "add from running process" failed the PE-header check because the content could not
+  be read. A file that demonstrably exists but cannot be read is now accepted on the strength of its
+  existence; non-existent paths and non-executables are still rejected. Runtime detection was never
+  affected — process paths come from `QueryFullProcessImageName`, which does not read the file.
+
 ### Added
 
 - System audit page (hardware & system group). A read-only aggregation of four groups: write
