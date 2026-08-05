@@ -21,6 +21,7 @@ namespace PaviseApp
         public string Name;
         public string Root;
         public string ExecutablePath;
+        public string LearnedExecutablePath;
         public readonly HashSet<string> Entries = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         public GameProfile Clone()
@@ -30,7 +31,8 @@ namespace PaviseApp
                 Id = Id,
                 Name = Name,
                 Root = Root,
-                ExecutablePath = ExecutablePath
+                ExecutablePath = ExecutablePath,
+                LearnedExecutablePath = LearnedExecutablePath
             };
             foreach (string s in Entries) p.Entries.Add(s);
             return p;
@@ -47,8 +49,10 @@ namespace PaviseApp
     internal sealed class GameProfileStore
     {
         internal const string FileName = "Pavise.profiles.dat";
+        private const string HeaderPrefix = "PAVISE_PROFILES_";
         private const string HeaderV1 = "PAVISE_PROFILES_V1";
         private const string HeaderV2 = "PAVISE_PROFILES_V2";
+        private const string HeaderV3 = "PAVISE_PROFILES_V3";
         private readonly string path;
 
         public GameProfileStore(string dir)
@@ -64,18 +68,18 @@ namespace PaviseApp
 
             if (!loadFailed && File.Exists(path))
             {
-                legacyFormat = headerLine == HeaderV1;
+                legacyFormat = headerLine == HeaderV1 || headerLine == HeaderV3;
                 if (headerLine != HeaderV2) repaired = true;
             }
-            if (loaded.Count > 0 || File.Exists(path))
+            if (loadFailed || loaded.Count > 0 || File.Exists(path))
             {
-                if (repaired)
+                if (!loadFailed && repaired)
                 {
                     if (legacyFormat)
                     {
                         try
                         {
-                            string backup = path + ".v1.bak";
+                            string backup = path + (headerLine == HeaderV1 ? ".v1.bak" : ".v3.bak");
                             if (!File.Exists(backup)) File.Copy(path, backup, false);
                         }
                         catch { }
@@ -132,13 +136,17 @@ namespace PaviseApp
             try
             {
                 var lines = new List<string>();
+                var learned = new List<string>();
                 lines.Add(HeaderV2);
                 foreach (GameProfile p in profiles)
                 {
                     if (p == null || string.IsNullOrEmpty(p.Id) || string.IsNullOrEmpty(p.Name)) continue;
                     lines.Add("P|" + B64(p.Id) + "|" + B64(p.Name) + "|" + B64(p.Root)
                         + "|" + B64(p.ExecutablePath) + "|" + B64(Join(p.Entries)));
+                    if (!string.IsNullOrEmpty(p.LearnedExecutablePath))
+                        learned.Add("L|" + B64(p.Id) + "|" + B64(p.LearnedExecutablePath));
                 }
+                lines.AddRange(learned);
                 AtomicFile.WriteLines(path, lines.ToArray(), "游戏档案");
             }
             catch (Exception ex) { Logger.LogFailure("游戏档案保存失败", ex); }
@@ -156,19 +164,38 @@ namespace PaviseApp
                 if (!File.Exists(path)) return result;
                 string[] lines = File.ReadAllLines(path, Encoding.UTF8);
                 if (lines.Length > 0) headerLine = lines[0];
-                if (lines.Length == 0 || (lines[0] != HeaderV1 && lines[0] != HeaderV2)) return result;
+                if (lines.Length == 0) return result;
+                if (lines[0] != HeaderV1 && lines[0] != HeaderV2 && lines[0] != HeaderV3)
+                {
+                    if (lines[0].StartsWith(HeaderPrefix, StringComparison.Ordinal))
+                    {
+                        loadFailed = true;
+                        Logger.Log("游戏档案由更高版本的 Pavise 写入（" + lines[0]
+                            + "），本版本已切换为只读，不会改写该文件");
+                    }
+                    return result;
+                }
                 bool legacy = lines[0] == HeaderV1;
+                var learnedById = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                 for (int i = 1; i < lines.Length; i++)
                 {
                     string[] a = lines[i].Split('|');
+                    if (a[0] == "L" && a.Length == 3)
+                    {
+                        string id = Un64(a[1]);
+                        string learnedPath = NormalizePath(Un64(a[2]));
+                        if (!string.IsNullOrEmpty(id) && learnedPath != null) learnedById[id] = learnedPath;
+                        continue;
+                    }
                     if (a[0] != "P") continue;
                     GameProfile p;
-                    if (!legacy && a.Length == 6)
+                    if (!legacy && (a.Length == 6 || a.Length == 7))
                     {
                         p = new GameProfile
                         {
                             Id = Un64(a[1]), Name = Un64(a[2]), Root = NormalizeRoot(Un64(a[3])),
-                            ExecutablePath = NormalizePath(Un64(a[4]))
+                            ExecutablePath = NormalizePath(Un64(a[4])),
+                            LearnedExecutablePath = a.Length == 7 ? NormalizePath(Un64(a[6])) : null
                         };
                         AddLines(p.Entries, Un64(a[5]));
                     }
@@ -183,6 +210,13 @@ namespace PaviseApp
                     }
                     else continue;
                     if (!string.IsNullOrEmpty(p.Id) && !string.IsNullOrEmpty(p.Name)) result.Add(p);
+                }
+                foreach (GameProfile p in result)
+                {
+                    string learnedPath;
+                    if (p.LearnedExecutablePath == null && p.Id != null
+                        && learnedById.TryGetValue(p.Id, out learnedPath))
+                        p.LearnedExecutablePath = learnedPath;
                 }
             }
             catch (Exception ex)
@@ -221,6 +255,28 @@ namespace PaviseApp
                 if (raw == null || string.IsNullOrWhiteSpace(raw.Name)) { changed = true; continue; }
                 raw.Root = NormalizeRoot(raw.Root);
                 raw.ExecutablePath = NormalizePath(raw.ExecutablePath);
+                raw.LearnedExecutablePath = NormalizePath(raw.LearnedExecutablePath);
+                if (raw.LearnedExecutablePath != null && string.Equals(
+                        raw.LearnedExecutablePath, raw.ExecutablePath, StringComparison.OrdinalIgnoreCase))
+                {
+                    raw.LearnedExecutablePath = null;
+                    changed = true;
+                }
+                if (raw.LearnedExecutablePath != null && !string.IsNullOrEmpty(raw.Root))
+                {
+                    bool rootAlive = false, learnedAlive = false;
+                    try
+                    {
+                        rootAlive = Directory.Exists(raw.Root);
+                        learnedAlive = File.Exists(raw.LearnedExecutablePath);
+                    }
+                    catch { }
+                    if (rootAlive && !learnedAlive)
+                    {
+                        raw.LearnedExecutablePath = null;
+                        changed = true;
+                    }
+                }
                 if (string.IsNullOrEmpty(raw.ExecutablePath))
                 {
                     string migratedExecutable = FindExistingExecutable(raw.Root, raw.Entries);
@@ -242,6 +298,7 @@ namespace PaviseApp
                 changed = true;
                 foreach (string entry in raw.Entries) keep.Entries.Add(entry);
                 if (string.IsNullOrEmpty(keep.ExecutablePath)) keep.ExecutablePath = raw.ExecutablePath;
+                if (string.IsNullOrEmpty(keep.LearnedExecutablePath)) keep.LearnedExecutablePath = raw.LearnedExecutablePath;
             }
             return result;
         }

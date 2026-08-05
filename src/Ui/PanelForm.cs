@@ -27,7 +27,7 @@ namespace PaviseApp
         Graphics = 5,
         Environment = 6,
         Audit = 7,
-        Reports = 8,
+        Log = 8,
         Settings = 9,
         About = 10,
         Count = 11
@@ -39,7 +39,7 @@ namespace PaviseApp
         private readonly GameMode gameMode;
         private readonly bool elevated;
 
-        private DBPanel pageOverview, pagePolicy, pageAntiCheat, pageLibrary, pageReports, pageSettings, pageAbout;
+        private DBPanel pageOverview, pagePolicy, pageAntiCheat, pageLibrary, pageLog, pageSettings, pageAbout;
         private DBPanel pageGraphics, pageEnvironment;
         private DBPanel[] pages;
         private NavRail nav;
@@ -126,10 +126,10 @@ namespace PaviseApp
             nav = new NavRail(
                 new[] { Lang.T("nav.overview"), LolText("英雄联盟（国服）"), Lang.T("nav.library"), Lang.T("nav.policy"),
                         Lang.T("v14.anticheat"), Lang.T("nav.graphics"), Lang.T("nav.env"), Lang.T("nav.audit"),
-                        Lang.T("nav.reports"), Lang.T("nav.set"), Lang.T("nav.about") },
+                        Lang.T("nav.log"), Lang.T("nav.set"), Lang.T("nav.about") },
                 new[] { "game", "lol", "white", "settings", "shield", "gpu", "chip", "chart", "log", "gear", "info" },
                 new[] { (int)PageId.Overview, (int)PageId.Library, (int)PageId.Policy, (int)PageId.AntiCheat,
-                        (int)PageId.Reports, (int)PageId.Graphics, (int)PageId.Environment, (int)PageId.Audit,
+                        (int)PageId.Log, (int)PageId.Graphics, (int)PageId.Environment, (int)PageId.Audit,
                         (int)PageId.League, (int)PageId.Settings, (int)PageId.About },
                 new[] { 5, 8 }, new[] { Lang.T("nav.hardware"), Lang.T("nav.columns") }, 2);
             AssertNavMatchesPageIds(nav);
@@ -183,7 +183,7 @@ namespace PaviseApp
             pages[(int)PageId.Graphics] = pageGraphics = MakePage();
             pages[(int)PageId.Environment] = pageEnvironment = MakePage();
             pages[(int)PageId.Audit] = pageAudit = MakePage();
-            pages[(int)PageId.Reports] = pageReports = MakePage();
+            pages[(int)PageId.Log] = pageLog = MakePage();
             pages[(int)PageId.Settings] = pageSettings = MakePage();
             pages[(int)PageId.About] = pageAbout = MakePage();
             BuildOverviewPage();
@@ -194,7 +194,7 @@ namespace PaviseApp
             BuildGraphicsPage();
             BuildEnvironmentPage();
             BuildAuditPage();
-            BuildReportsPage();
+            BuildLogPage();
             BuildSettingsPage();
             BuildAboutPage();
             RegisterPages();
@@ -277,9 +277,9 @@ namespace PaviseApp
             pageHooks[(int)PageId.Environment] = new PageHook(pageEnvironment,
                 delegate(bool active) { if (active) RefreshEnvironmentStateAsync(); }, null);
             pageHooks[(int)PageId.Audit] = new PageHook(pageAudit,
-                delegate(bool active) { if (active) StartAudit(QuickAuditWindowMs); }, null);
-            pageHooks[(int)PageId.Reports] = new PageHook(pageReports,
-                delegate(bool active) { if (active) RefreshReports(); }, RefreshReports);
+                null, null);
+            pageHooks[(int)PageId.Log] = new PageHook(pageLog,
+                delegate(bool active) { if (active) RefreshLog(); }, RefreshLog);
             pageHooks[(int)PageId.Settings] = new PageHook(pageSettings,
                 delegate(bool active) { if (active) RefreshSlowStateAsync(); }, null);
             pageHooks[(int)PageId.About] = new PageHook(pageAbout, null, null);

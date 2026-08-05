@@ -358,6 +358,9 @@ namespace PaviseApp
             int rendererPid = -1;
             long rendererCreation = 0;
             string rendererName = null;
+            string rendererPath = null;
+            string rendererProfileId = null;
+            bool rendererLearnable = false;
             lock (sync)
                 if (activeDetection != null && activeDetection.RendererCandidateSelected)
                 {
@@ -366,6 +369,13 @@ namespace PaviseApp
                         activeDetection.RendererCreation;
                     rendererName =
                         activeDetection.RendererName;
+                    rendererPath =
+                        activeDetection.RendererPath;
+                    rendererProfileId =
+                        activeDetection.Profile != null
+                            ? activeDetection.Profile.Id : null;
+                    rendererLearnable =
+                        activeDetection.RendererLearnable;
                 }
             bool staleBoost = false;
             lock (sync)
@@ -499,7 +509,8 @@ namespace PaviseApp
                                 QoSControl = oqc, QoSState = oqs };
                             lock (sync) gameBoost[pid] = snap;
                             newlyTracked = true;
-                            FrameEvidence.NoteRendererPid(pid, rendererName);
+                            if (rendererLearnable)
+                                TryLearnRenderer(rendererProfileId, rendererPath, rendererName);
                             gpuOk = gpuKnown && ApplyAndVerifyGpuBoost(h);
                             lock (sync) { if (gpuKnown) gameGpu[pid] = gpuOld; }
                         }
@@ -611,7 +622,6 @@ namespace PaviseApp
 
                         if (stateOk && firstVerified)
                         {
-                            ReportBoostVerified();
                             Logger.Log("游戏提优已验证：" + rendererName + " (pid " + pid + ") → 高优先级(回读 0x"
                                 + actualPriority.ToString("X") + ")" + placementText + " + 高IO(回读 " + actualIo + ")"
                                 + (gpuOk ? " + GPU高" : "")

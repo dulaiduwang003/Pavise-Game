@@ -19,6 +19,7 @@ namespace PaviseApp
         public bool RendererForeground;
         public bool RendererCandidateSelected;
         public bool RendererUserSelected;
+        public bool RendererLearnable;
         public readonly HashSet<string> FamilyNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         public readonly HashSet<int> FamilyPids = new HashSet<int>();
         public string Evidence;
@@ -147,13 +148,15 @@ namespace PaviseApp
                         bool namedEntry = profile.Entries.Contains(name);
                         bool legacyEntry =
                             string.IsNullOrEmpty(profile.Root) && namedEntry;
-                        bool exactEntry =
-                            !string.IsNullOrEmpty(profile.ExecutablePath)
+                        bool learnedEntry = SamePath(
+                            profile.LearnedExecutablePath, path);
+                        bool exactEntry = learnedEntry
+                            || (!string.IsNullOrEmpty(profile.ExecutablePath)
                                 ? SamePath(profile.ExecutablePath, path)
                                 : namedEntry
                                     && (string.IsNullOrEmpty(
                                             profile.Root)
-                                        || rooted);
+                                        || rooted));
 
                         bool fallbackEntry = rooted && !exactEntry
                             && (IsFallbackEntryName(profile, name)
@@ -215,6 +218,7 @@ namespace PaviseApp
 
                     int localBest;
                     Candidate selected;
+                    bool learnable = false;
                     if (!string.IsNullOrEmpty(
                             profile.ExecutablePath))
                     {
@@ -229,6 +233,7 @@ namespace PaviseApp
                             {
                                 selected = renderer;
                                 localBest = Score(profile, renderer);
+                                learnable = true;
                             }
                         }
                     }
@@ -254,6 +259,7 @@ namespace PaviseApp
                             selected.ExactEntry
                                 || selected.FallbackEntry,
                         RendererCandidateSelected = true,
+                        RendererLearnable = learnable,
                         Evidence = Evidence(
                             profile, selected, localBest)
                     };
@@ -320,7 +326,8 @@ namespace PaviseApp
         private static int Score(GameProfile profile, Candidate c)
         {
             bool selected = c.FallbackEntry
-                || (!string.IsNullOrEmpty(profile.ExecutablePath) && SamePath(profile.ExecutablePath, c.Path));
+                || (!string.IsNullOrEmpty(profile.ExecutablePath) && SamePath(profile.ExecutablePath, c.Path))
+                || SamePath(profile.LearnedExecutablePath, c.Path);
             if (IsAntiCheatLikeName(c.Name)) return -1000;
             if (!selected && IsNonGameRole(c.Name, c.Path)) return -1000;
             int score = 0;
@@ -342,7 +349,8 @@ namespace PaviseApp
             bool renderLayout = low.Contains("\\binaries\\") || low.Contains("\\win64\\")
                 || low.Contains("shipping") || low.Contains("\\game\\");
             bool selectedExecutable = candidate.FallbackEntry || (!string.IsNullOrEmpty(profile.ExecutablePath)
-                && SamePath(profile.ExecutablePath, candidate.Path));
+                && SamePath(profile.ExecutablePath, candidate.Path))
+                || SamePath(profile.LearnedExecutablePath, candidate.Path);
             return (renderLayout || selectedExecutable) && (candidate.Visible || candidate.Foreground);
         }
 
@@ -382,6 +390,7 @@ namespace PaviseApp
             GameProfile profile, string name, string path)
         {
             if (profile == null) return false;
+            if (SamePath(profile.LearnedExecutablePath, path)) return true;
             if (!string.IsNullOrEmpty(profile.ExecutablePath))
             {
                 if (SamePath(profile.ExecutablePath, path)) return true;

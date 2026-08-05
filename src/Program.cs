@@ -20,7 +20,7 @@ namespace PaviseApp
     internal static class App
     {
         public const string DisplayName = "PAVISE";
-        public const string Version = "1.6.4";
+        public const string Version = "1.6.5";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string WeChat = "Ssssssstyle";
@@ -211,12 +211,12 @@ namespace PaviseApp
             Lang.Init();
             string dir = Paths.Data;
             Logger.LogPath = Path.Combine(dir, "Pavise.log");
+            Settings.Remove("EvidenceMode");
             LegacyFreezeRecovery.BeginHeal(Path.Combine(dir, LegacyFreezeRecovery.StateFileName));
             int healedSuppression = SuppressionCore.HealFromCrash(Path.Combine(dir, SuppressionCore.StateFileName));
             if (healedSuppression > 0) Logger.Log("检测到上次未还原的分级后台控制，已恢复 " + healedSuppression + " 个进程");
             PowerPlan.HealFromCrash();
             try { UpdatePause.HealFromCrash(); } catch { }
-            try { EtwFrameTrace.StopStaleSession(); } catch { }
             FgBoost.HealFromCrash();
             GameDvr.HealFromCrash();
             Mmcss.HealFromCrash();
@@ -334,7 +334,6 @@ namespace PaviseApp
                 try { lolService.Dispose(); } catch { }
                 tamer.Stop();
                 gameMode.Stop();
-                try { FrameEvidence.Finish(); } catch { }
                 panel.RealExit = true;
                 Application.Exit();
             };

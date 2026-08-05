@@ -45,19 +45,22 @@ namespace PaviseApp
             };
             listWrap.Controls.Add(lstGames);
             int bx = ContentX + listW + 16, bw = ContentW - listW - 16, bh = 40;
-            var browse = new PillButton(Lang.T("v15.library.add"), BtnKind.Primary); browse.SetBounds(Theme.S(bx), Theme.S(y), Theme.S(bw), Theme.S(bh)); browse.Click += delegate { BrowseGameExecutable(); };
+            var scan = new PillButton(Lang.T("v17.library.scan"), BtnKind.Primary);
+            scan.SetBounds(Theme.S(bx), Theme.S(y), Theme.S(bw), Theme.S(bh));
+            scan.Click += delegate { ScanInstalledGames(); };
+            var browse = new PillButton(Lang.T("v15.library.add")); browse.SetBounds(Theme.S(bx), Theme.S(y + 50), Theme.S(bw), Theme.S(bh)); browse.Click += delegate { BrowseGameExecutable(); };
             var fromProc = new PillButton(Lang.T("v16.library.fromproc"));
-            fromProc.SetBounds(Theme.S(bx), Theme.S(y + 50), Theme.S(bw), Theme.S(bh));
+            fromProc.SetBounds(Theme.S(bx), Theme.S(y + 100), Theme.S(bw), Theme.S(bh));
             fromProc.Click += delegate { AddGameFromRunningProcess(); };
-            var remove = new PillButton(Lang.T("btn.remove")); remove.SetBounds(Theme.S(bx), Theme.S(y + 100), Theme.S(bw), Theme.S(bh));
+            var remove = new PillButton(Lang.T("btn.remove")); remove.SetBounds(Theme.S(bx), Theme.S(y + 150), Theme.S(bw), Theme.S(bh));
             remove.Click += delegate
             {
                 GameLibraryItem item = lstGames.SelectedItem as GameLibraryItem;
                 if (item != null) { gameMode.RemoveProfile(item.Profile.Id); RefreshGames(); }
             };
             Label hint = new Label(); hint.Text = Lang.T("v15.library.drop"); hint.ForeColor = Theme.Dim; hint.BackColor = Theme.Bg;
-            hint.Font = Theme.UI(8.2f, false); hint.AutoEllipsis = true; hint.SetBounds(Theme.S(bx + 4), Theme.S(y + 158), Theme.S(bw - 8), Theme.S(64));
-            pageLibrary.Controls.AddRange(new Control[] { listWrap, browse, fromProc, remove, hint });
+            hint.Font = Theme.UI(8.2f, false); hint.AutoEllipsis = true; hint.SetBounds(Theme.S(bx + 4), Theme.S(y + 208), Theme.S(bw - 8), Theme.S(64));
+            pageLibrary.Controls.AddRange(new Control[] { listWrap, scan, browse, fromProc, remove, hint });
             RefreshGames();
         }
 
@@ -84,6 +87,27 @@ namespace PaviseApp
             TextRenderer.DrawText(e.Graphics, Lang.T(item.Running ? "v15.library.running" : "v15.library.ready"), Theme.UI(7.6f, true),
                     new Rectangle(e.Bounds.Right - right, e.Bounds.Y + Theme.S(12), right - Theme.S(16), Theme.S(20)),
                     item.Running ? Theme.Green : Theme.Faint, TextFormatFlags.Right | TextFormatFlags.NoPadding);
+        }
+
+        private void ScanInstalledGames()
+        {
+            var known = new List<string>();
+            foreach (GameProfile p in gameMode.GetProfiles())
+            {
+                if (!string.IsNullOrEmpty(p.ExecutablePath)) known.Add(p.ExecutablePath);
+                if (!string.IsNullOrEmpty(p.LearnedExecutablePath)) known.Add(p.LearnedExecutablePath);
+            }
+
+            using (var dlg = new GameScanDialog(known))
+            {
+                if (ShowDim(dlg) != DialogResult.OK || dlg.Selected.Count == 0) return;
+                string lastError;
+                int added = gameMode.AddScannedGames(dlg.Selected, out lastError);
+                RefreshGames();
+                if (added > 0) Logger.Log(Lang.F("scan.added", added));
+                else if (lastError != null)
+                    MessageBox.Show(this, lastError, "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
         }
 
         private void AddGameFromRunningProcess()

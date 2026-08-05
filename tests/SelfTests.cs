@@ -1199,6 +1199,8 @@ namespace PaviseApp
                 if (Program.CompareVersions("1.0", "garbage") <= 0) throw new Exception("unparsable version must be treated as older");
             });
             test("audit page: rebuilding a scrolled list starts back at the top", TestScrolledRebuild);
+            test("audit page: the entry slide never flashes a horizontal scrollbar", TestEnterSlideKeepsScrollbarsStable);
+            test("language table: no page shows a raw lang key", TestNoUntranslatedKeysOnScreen);
             test("system audit: EcoQoS capability separates interface from full behaviour", () =>
             {
                 int build = SystemAudit.WindowsBuild();
@@ -1406,6 +1408,74 @@ namespace PaviseApp
                         1, 1, 20, false, win, false, null, true));
                 }
             });
+            test("suppression: the foreground window is never background material, aggressive or not", () =>
+            {
+                const string win = @"C:\Windows\";
+
+                const string roblox =
+                    @"C:\Users\a\AppData\Local\Roblox\Versions\version-1a2b\RobloxPlayerBeta.exe";
+                foreach (bool aggressive in new[] { false, true })
+                {
+
+                    Eq(false, GameMode.BasicBackgroundEligible(4321, 99, "RobloxPlayerBeta", roblox,
+                        1, 1, 4321, false, win, false, null, aggressive));
+
+                    Eq(true, GameMode.BasicBackgroundEligible(4321, 99, "RobloxPlayerBeta", roblox,
+                        1, 1, 20, false, win, false, null, aggressive));
+                }
+            });
+            test("suppression: network accelerators are exempt as broadly as anti-cheat", () =>
+            {
+                const string win = @"C:\Windows\";
+
+                string[] names = { "uu", "uu_ball", "xunyou", "leigod", "leigod_launcher",
+                                   "leishenSdk", "qiyou", "biubiu", "bbservice", "DolphinQ",
+                                   "wtfast", "ExitLag", "NoPing", "GameAccelerator", "网易加速器" };
+                foreach (string n in names)
+                {
+                    if (!NetAcceleratorCatalog.IsAcceleratorLikeName(n))
+                        throw new Exception("catalog no longer treats " + n + " as an accelerator; test premise broken");
+
+                    foreach (bool aggressive in new[] { false, true })
+                        Eq(false, GameMode.BasicBackgroundEligible(10, 99, n,
+                            @"C:\Program Files\Acc\" + n + ".exe",
+                            1, 1, 20, false, win, false, null, aggressive));
+                }
+
+                string[] innocent = { "chrome", "explorer", "worker", "steam", "discord", "obs64" };
+                foreach (string n in innocent)
+                    if (NetAcceleratorCatalog.IsAcceleratorLikeName(n))
+                        throw new Exception(n + " must not be mistaken for an accelerator");
+
+                string[] displayNames = { "网易UU加速器", "腾讯网游加速器", "雷神加速器", "迅游加速器", "GearUP Booster" };
+                foreach (string n in displayNames)
+                    if (!NetAcceleratorCatalog.IsAcceleratorLikeName(n))
+                        throw new Exception("display name " + n + " must be recognized as an accelerator");
+            });
+            test("freeze: nothing under the Windows directory is ever suspended", () =>
+            {
+                const string win = @"C:\Windows\";
+
+                Eq(true, GameMode.FreezeForbidden("ChsIME", @"C:\Windows\System32\InputMethod\CHS\ChsIME.exe", win));
+
+                Eq(true, GameMode.FreezeForbidden("atieclxx", @"C:\Windows\System32\atieclxx.exe", win));
+                Eq(true, GameMode.FreezeForbidden("SearchIndexer", @"C:\Windows\System32\SearchIndexer.exe", win));
+                Eq(true, GameMode.FreezeForbidden("SystemSettings", @"C:\Windows\ImmersiveControlPanel\SystemSettings.exe", win));
+
+                Eq(true, GameMode.FreezeForbidden("adb", @"D:\Emulator\adb.exe", win));
+                Eq(true, GameMode.FreezeForbidden("CAudioFilterAgent64", @"C:\Program Files\Conexant\CAudioFilterAgent64.exe", win));
+
+                Eq(false, GameMode.FreezeForbidden("SogouCloud", @"C:\Program Files (x86)\SogouInput\16.6.0.4385\SogouCloud.exe", win));
+
+                Eq(false, GameMode.FreezeForbidden("QQ", @"C:\Program Files\Tencent\QQ\QQ.exe", win));
+                Eq(false, GameMode.FreezeForbidden("worker", @"D:\Apps\worker.exe", win));
+                Eq(false, GameMode.FreezeForbidden("crashpad_handler", @"D:\Apps\crashpad_handler.exe", win));
+
+                Eq(true, GameMode.BasicBackgroundEligible(10, 99, "SearchIndexer",
+                    @"C:\Windows\System32\SearchIndexer.exe", 1, 1, 20, false, win, false, null, true));
+                Eq(true, GameMode.BasicBackgroundEligible(9652, 99, "ChsIME",
+                    @"C:\Windows\System32\InputMethod\CHS\ChsIME.exe", 1, 1, 20, false, win, false, null, true));
+            });
             test("theme fonts: the shared font cache survives repeated painting", () =>
             {
 
@@ -1516,7 +1586,6 @@ namespace PaviseApp
                 Eq(AutoHideAction.None, PanelForm.NextAutoHide(true, ref last, ref armed, true, true));
             });
             test("UI dormancy: hidden/minimized windows cannot revive animation timers", TestUiDormancyState);
-            test("present threads: dominant-thread attribution and thread-handle probe reporting", TestPresentThreadAttribution);
             test("network QoS: policy names stay unique, ASCII-safe and bounded in length", () =>
             {
                 string a = NetworkAffinityTweak.SanitizePolicyName("Valorant", @"C:\Games\Valorant\VALORANT.exe");
@@ -1545,49 +1614,9 @@ namespace PaviseApp
                 Eq(Native.IDLE_PRIORITY_CLASS, SuppressionCore.DesiredPriority(SuppressionLevel.Isolated, Native.NORMAL_PRIORITY_CLASS));
                 Eq(Native.NORMAL_PRIORITY_CLASS, SuppressionCore.DesiredPriority(SuppressionLevel.Eco, 0));
             });
-            test("evidence stats: frame percentiles, telemetry summary and DRS snapshots", () =>
+            test("frame cap and DRS snapshots: value mapping round-trips", () =>
             {
                 Lang.Init();
-                var frames = new int[200];
-                for (int i = 0; i < 200; i++) frames[i] = 10000;
-                frames[0] = 110000;
-                double avg, low1, low01;
-                Eq(true, FrameEvidence.ComputeStats(frames, out avg, out low1, out low01));
-                if (avg < 90 || avg > 100) throw new Exception("avg fps out of range: " + avg);
-                if (low1 < 15 || low1 > 20) throw new Exception("1% low out of range: " + low1);
-                if (low01 < 8 || low01 > 10) throw new Exception("0.1% low out of range: " + low01);
-                Eq(false, FrameEvidence.ComputeStats(new int[0], out avg, out low1, out low01));
-
-                var mixed = new int[100];
-                for (int i = 0; i < 100; i++) mixed[i] = 10000;
-                mixed[10] = 110000;
-                mixed[50] = 300000; mixed[51] = 320000; mixed[52] = 310000;
-                int excludedUs;
-                int[] cleaned = FrameEvidence.ExcludeLoadingClusters(mixed, out excludedUs);
-                Eq(97, cleaned.Length);
-                Eq(930000, excludedUs);
-                bool spikeKept = false;
-                foreach (int v in cleaned) if (v == 110000) spikeKept = true;
-                Eq(true, spikeKept);
-
-                var warm = new int[8000];
-                for (int i = 0; i < 8000; i++) warm[i] = 10000;
-                for (int i = 0; i < 40; i++) warm[i] = 150000;
-                int warmupUs;
-                int[] settled = FrameEvidence.ExcludeWarmup(warm, out warmupUs);
-                if (warmupUs < 60000000) throw new Exception("warm-up window closed too early: " + warmupUs);
-                foreach (int v in settled) if (v == 150000)
-                    throw new Exception("a warm-up stutter survived the warm-up cut");
-                double wAvg, wLow1, wLow01;
-                Eq(true, FrameEvidence.ComputeStats(settled, out wAvg, out wLow1, out wLow01));
-                if (wLow01 < 95) throw new Exception("0.1% low still polluted by warm-up: " + wLow01);
-
-                var brief = new int[100];
-                for (int i = 0; i < 100; i++) brief[i] = 10000;
-                int briefWarmupUs;
-                Eq(100, FrameEvidence.ExcludeWarmup(brief, out briefWarmupUs).Length);
-                Eq(0, briefWarmupUs);
-
                 Eq(60, GameMode.ResolveFrlFps("60"));
                 Eq(120, GameMode.ResolveFrlFps("120"));
                 Eq(240, GameMode.ResolveFrlFps("240"));
@@ -1597,79 +1626,11 @@ namespace PaviseApp
                 if (screenFps != 0 && screenFps < 45)
                     throw new Exception("screen frl out of range: " + screenFps);
 
-                var filter = new FocusIntervalFilter();
-                var admitted = new List<int>();
-                for (int i = 0; i < 300; i++) if (filter.Admit(1500)) admitted.Add(1500);
-                filter.NoteFocus(false);
-                for (int i = 0; i < 100; i++) if (filter.Admit(33000)) admitted.Add(33000);
-                filter.NoteFocus(true);
-                if (filter.Admit(20000)) admitted.Add(20000);
-                for (int i = 0; i < 300; i++) if (filter.Admit(1500)) admitted.Add(1500);
-                Eq(600, admitted.Count);
-                foreach (int v in admitted) Eq(1500, v);
-                Eq(101, filter.UnfocusedFrames);
-                Eq(100 * 33000L + 20000L, filter.UnfocusedUs);
-                double fAvg, fLow1, fLow01;
-                Eq(true, FrameEvidence.ComputeStats(admitted.ToArray(), out fAvg, out fLow1, out fLow01));
-                if (fLow1 < 600 || fLow1 > 700) throw new Exception("focused 1% low polluted: " + fLow1);
-                filter.Reset();
-                Eq(0L, filter.UnfocusedUs);
-                Eq(0, filter.UnfocusedFrames);
-                filter.NoteFocus(true);
-                Eq(true, filter.Admit(1000));
-                filter.NoteFocus(false);
-                filter.NoteFocus(true);
-                Eq(false, filter.Admit(1000));
-                Eq(true, filter.Admit(1000));
-
-                string summary = SessionTelemetry.BuildSummary(10, 500, 74, 2, 0, 10, 8.5, 3, 3300, true);
-                if (summary == null || summary.IndexOf("50%") < 0 || summary.IndexOf("74") < 0
-                    || summary.IndexOf("85%") < 0 || summary.IndexOf("3.2") < 0)
-                    throw new Exception("summary missing fields: " + summary);
-                if (SessionTelemetry.BuildSummary(0, 0, 0, 0, 0, 0, 0, 0, ulong.MaxValue, true) != null)
-                    throw new Exception("empty telemetry must yield no summary");
-
                 var snap = NvDrsTweaks.ParseSnapshot("pstate=absent;prerender=2");
                 Eq("absent", snap["pstate"]);
                 Eq("2", snap["prerender"]);
                 Eq("prerender=2;pstate=absent", NvDrsTweaks.SerializeSnapshot(snap));
                 Eq(0, NvDrsTweaks.ParseSnapshot("").Count);
-            });
-            test("session records: single-session delete removes report and nearby evidence", () =>
-            {
-                string dir = Path.Combine(Path.GetTempPath(),
-                    "PaviseDelTest_" + Process.GetCurrentProcess().Id);
-                Directory.CreateDirectory(dir);
-                try
-                {
-                    File.WriteAllLines(Path.Combine(dir, SessionReportStore.FileName), new[]
-                    {
-                        "2026-07-30 02:23:39 | GameX | P | 5m12s | a | b | c",
-                        "2026-07-30 03:00:00 | GameY | P | 1m | a | b | c"
-                    }, new UTF8Encoding(false));
-                    File.WriteAllLines(Path.Combine(dir, EvidenceStore.FileName), new[]
-                    {
-                        "2026-07-30 02:23:41 | GameX | 5m12s | data",
-                        "2026-07-30 03:00:00 | GameY | 1m | data"
-                    }, new UTF8Encoding(false));
-                    DateTime stamp = DateTime.ParseExact("2026-07-30 02:23:39", "yyyy-MM-dd HH:mm:ss",
-                        System.Globalization.CultureInfo.InvariantCulture);
-                    Eq(true, SessionReportStore.DeleteSession(dir, "2026-07-30 02:23:39", "GameX"));
-                    Eq(true, EvidenceStore.DeleteNear(dir, stamp, "GameX"));
-                    string reports = File.ReadAllText(Path.Combine(dir, SessionReportStore.FileName));
-                    string evidence = File.ReadAllText(Path.Combine(dir, EvidenceStore.FileName));
-                    if (reports.Contains("GameX") || evidence.Contains("GameX"))
-                        throw new Exception("GameX 记录未删除干净");
-                    if (!reports.Contains("GameY") || !evidence.Contains("GameY"))
-                        throw new Exception("GameY 记录被误删");
-                    Eq(false, SessionReportStore.DeleteSession(dir, "2026-07-30 02:23:39", "GameX"));
-
-                    SessionReportStore.ClearAll(dir);
-                    EvidenceStore.ClearAll(dir);
-                    Eq(0, File.ReadAllText(Path.Combine(dir, SessionReportStore.FileName)).Length);
-                    Eq(0, File.ReadAllText(Path.Combine(dir, EvidenceStore.FileName)).Length);
-                }
-                finally { try { Directory.Delete(dir, true); } catch { } }
             });
             test("windowed optimization: field merges and removes without touching siblings", () =>
             {
@@ -1723,32 +1684,6 @@ namespace PaviseApp
                 }
                 finally { try { Directory.Delete(exeRoot, true); } catch { } }
             });
-            test("session summaries: report and evidence lines round-trip into card data", () =>
-            {
-                Lang.Init();
-                string rline = "2026-07-30 02:23:39 | GameX | " + Lang.T("preset.competitive")
-                    + " | 5m12s | " + Lang.T("report.boost.ok") + " | " + Lang.F("report.control", 90)
-                    + " | " + Lang.F("report.pavise.cpu", "0.13");
-                string frame = Lang.F("ev.fps", "116", "17", "5", "32259");
-                string eline = "2026-07-30 02:23:41 | GameX | 5m12s | " + frame
-                    + " | " + Lang.F("ev.gpu", "63", "70") + Lang.F("ev.gpu.power", "72")
-                    + " | " + Lang.F("ev.cpu", "69") + " | " + Lang.F("ev.mem", "9.0");
-                var list = SessionSummaries.Parse(rline, eline, 10);
-                Eq(1, list.Count);
-                Eq("GameX", list[0].Game);
-                Eq(true, list[0].BoostVerified);
-                Eq("116", list[0].AvgFps);
-                Eq("17", list[0].Low1Fps);
-                Eq("5", list[0].Low01Fps);
-                Eq("32259", list[0].FrameCount);
-                if (list[0].Chips.Count < 4)
-                    throw new Exception("attribution chips missing: " + list[0].Chips.Count);
-
-                var stale = SessionSummaries.Parse(rline,
-                    "2026-07-30 03:00:00 | GameX | 5m | " + frame, 10);
-                Eq(null, stale[0].AvgFps);
-                Eq(0, stale[0].Chips.Count);
-            });
             test("render detector: sibling window fallback anchors in-process launcher (Bannerlord pattern)", () =>
             {
                 Lang.Init();
@@ -1769,6 +1704,7 @@ namespace PaviseApp
                 if (hit == null) throw new Exception("sibling window fallback did not anchor");
                 Eq("TaleWorlds.MountAndBlade.Launcher", hit.RendererName);
                 Eq(true, hit.RendererUserSelected);
+                Eq(false, hit.RendererLearnable);
 
                 var otherDir = new GameProcessSnapshot
                 {
@@ -1800,6 +1736,85 @@ namespace PaviseApp
                 if (GameSessionDetector.DetectSnapshot(new[] { updater }, new[] { profile }, now) != null)
                     throw new Exception("non-game role sibling must not anchor");
             });
+            test("render detector: learned renderer anchors without the launcher (LOL pattern)", () =>
+            {
+                Lang.Init();
+                string lolRoot = @"C:\g\WeGameApps\英雄联盟";
+                var profile = GameProfileStore.NewProfile("英雄联盟", lolRoot,
+                    Path.Combine(lolRoot, "Riot Client\\RiotClientServices.exe"));
+                profile.LearnedExecutablePath = Path.Combine(lolRoot, "Game\\League of Legends.exe");
+                long now = DateTime.UtcNow.ToFileTimeUtc();
+                long created = now - 60L * 10000000L;
+
+                var game = new GameProcessSnapshot
+                {
+                    Pid = 5301, ParentPid = 1, Creation = created,
+                    Name = "League of Legends",
+                    Path = Path.Combine(lolRoot, "Game\\League of Legends.exe"),
+                    Visible = true, Foreground = true
+                };
+                GameDetection hit = GameSessionDetector.DetectSnapshot(
+                    new[] { game }, new[] { profile }, now);
+                if (hit == null) throw new Exception("learned renderer did not anchor the session");
+                Eq("League of Legends", hit.RendererName);
+                Eq(true, hit.RendererUserSelected);
+                Eq(false, hit.RendererLearnable);
+
+                var stranger = new GameProcessSnapshot
+                {
+                    Pid = 5302, ParentPid = 1, Creation = created,
+                    Name = "LeagueClientUxRender",
+                    Path = Path.Combine(lolRoot, "LeagueClient\\LeagueClientUxRender.exe"),
+                    Visible = false, Foreground = false
+                };
+                if (GameSessionDetector.DetectSnapshot(new[] { stranger }, new[] { profile }, now) != null)
+                    throw new Exception("unlearned sibling must not anchor");
+
+                var impostor = new GameProcessSnapshot
+                {
+                    Pid = 5303, ParentPid = 1, Creation = created,
+                    Name = "League of Legends",
+                    Path = @"D:\Fake\Game\League of Legends.exe",
+                    Visible = true, Foreground = true
+                };
+                if (GameSessionDetector.DetectSnapshot(new[] { impostor }, new[] { profile }, now) != null)
+                    throw new Exception("same-name impostor outside the root must not anchor");
+            });
+            test("render detector: only the launcher-to-renderer promotion is learnable", () =>
+            {
+                Lang.Init();
+                string lolRoot = @"C:\g\WeGameApps\英雄联盟";
+                var profile = GameProfileStore.NewProfile("英雄联盟", lolRoot,
+                    Path.Combine(lolRoot, "Riot Client\\RiotClientServices.exe"));
+                long now = DateTime.UtcNow.ToFileTimeUtc();
+                long created = now - 60L * 10000000L;
+
+                var launcher = new GameProcessSnapshot
+                {
+                    Pid = 6001, ParentPid = 1, Creation = created,
+                    Name = "RiotClientServices",
+                    Path = Path.Combine(lolRoot, "Riot Client\\RiotClientServices.exe"),
+                    Visible = true, Foreground = false
+                };
+                var game = new GameProcessSnapshot
+                {
+                    Pid = 6002, ParentPid = 6001, Creation = created + 1000,
+                    Name = "League of Legends",
+                    Path = Path.Combine(lolRoot, "Game\\League of Legends.exe"),
+                    Visible = true, Foreground = true
+                };
+                GameDetection hit = GameSessionDetector.DetectSnapshot(
+                    new[] { launcher, game }, new[] { profile }, now);
+                if (hit == null) throw new Exception("launcher promotion did not anchor");
+                Eq("League of Legends", hit.RendererName);
+                Eq(true, hit.RendererLearnable);
+
+                GameDetection launcherOnly = GameSessionDetector.DetectSnapshot(
+                    new[] { launcher }, new[] { profile }, now);
+                if (launcherOnly == null) throw new Exception("launcher entry did not anchor");
+                Eq("RiotClientServices", launcherOnly.RendererName);
+                Eq(false, launcherOnly.RendererLearnable);
+            });
 
             string root = Path.Combine(Path.GetTempPath(), "PaviseSelfTest_" + Process.GetCurrentProcess().Id + "_" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(root);
@@ -1807,12 +1822,18 @@ namespace PaviseApp
             {
                 test("game catalog: legacy entry upgrades to a persisted install root", () => TestGameCatalogUpgrade(root));
                 test("game profiles: migration removes learning state and deduplicates", () => TestProfileStore(root));
+                test("game profiles: learned renderer survives the roundtrip in V2-compatible lines", () => TestLearnedRendererStore(root));
+                test("game profiles: a newer-format file is read-only and never overwritten", () => TestFutureProfileFormatProtected(root));
+                test("game profiles: transitional V3 files migrate back to the V2 format", () => TestV3ProfileMigration(root));
+                test("game scan: uninstall registry hits drop net accelerators", () => TestUninstallScanFiltersAccelerators(root));
+                test("game scan: main-exe pick follows structure, not size (LOL / Unity patterns)", () => TestPickMainExeStructure(root));
+                test("game scan: fake Steam library resolves games across libraries and filters junk", () => TestSteamLibraryScan(root));
+                test("game scan: store package repository accepts Xbox fingerprints only", () => TestStorePackageScan(root));
                 test("game profiles: an unreadable file is never overwritten by a save", () => TestProfileLoadFailure(root));
                 test("game library: EXE/LNK resolve without executing the target", () => TestExecutableResolver(root));
                 test("LoL addons: delete touches only add-on layers, never the game core", () => TestLolAddonDelete(root));
                 test("render detector: user-selected headless exe activates; legacy headless does not", () => TestHeadlessEntry(root));
                 test("render detector: suffix fallback stays inside the configured profile root", () => TestFallbackEntryRootBoundary(root));
-                test("session reports: legacy frame telemetry is archived", () => TestReportMigration(root));
                 test("renderer boost: HIGH priority and IO3 are verified by readback", () => TestBoostReadback(root));
                 test("renderer boost: retained crash snapshot is re-adopted exactly", TestCrashBoostReAdoption);
                 test("EcoQoS restore: a process' own power-saving opt-in survives suppression", () => TestEcoQoSRestore(root));
@@ -2207,6 +2228,39 @@ namespace PaviseApp
             if (standard == competitive || competitive == custom || standard == custom) throw new Exception("mode icons are not visually distinct");
         }
 
+        private static void TestEnterSlideKeepsScrollbarsStable()
+        {
+            using (var scroll = new Panel())
+            {
+                scroll.AutoScroll = true;
+                scroll.SetBounds(0, 0, 300, 400);
+                scroll.CreateControl();
+                int rowWidth = scroll.ClientSize.Width - 6;
+                for (int i = 0; i < 3; i++)
+                {
+                    var row = new Panel();
+                    row.SetBounds(6, i * 40, rowWidth, 32);
+                    scroll.Controls.Add(row);
+                }
+                scroll.PerformLayout();
+                if (scroll.HorizontalScroll.Visible)
+                    throw new Exception("precondition failed: rows already overflow horizontally");
+
+                foreach (Control row in scroll.Controls) row.Left = 6 - 22;
+                scroll.PerformLayout();
+                if (scroll.HorizontalScroll.Visible)
+                    throw new Exception("负向入场偏移不应撑出横向滚动条");
+
+                foreach (Control row in scroll.Controls) row.Left = 6 + 22;
+                scroll.PerformLayout();
+                if (!scroll.HorizontalScroll.Visible)
+                    throw new Exception("precondition failed: 正向偏移本应撑出横向滚动条");
+
+                foreach (Control row in scroll.Controls) row.Left = 6;
+                scroll.PerformLayout();
+            }
+        }
+
         private static void TestScrolledRebuild()
         {
             using (var scroll = new Panel())
@@ -2319,8 +2373,9 @@ namespace PaviseApp
             Eq(false, GameMode.BasicBackgroundEligible(10, 99, "anylauncher", @"D:\Anything\launcher.exe", 1, 1, 20, false, win, true, null));
             Eq(false, GameMode.BasicBackgroundEligible(10, 99, "railhelper", @"D:\SomeGame\TCLS\rail.exe", 1, 1, 20, false, win, false, @"D:\SomeGame\"));
 
-            Eq(true, GameMode.BasicBackgroundEligible(10, 99, "worker", @"D:\Apps\worker.exe", 1, 1, 10, false, win, false, null, true));
-            Eq(true, GameMode.BasicBackgroundEligible(10, 99, "discord", @"D:\Apps\discord.exe", 1, 1, 20, true, win, false, null, true));
+            Eq(false, GameMode.BasicBackgroundEligible(10, 99, "worker", @"D:\Apps\worker.exe", 1, 1, 10, false, win, false, null, true));
+            Eq(false, GameMode.BasicBackgroundEligible(10, 99, "discord", @"D:\Apps\discord.exe", 1, 1, 20, true, win, false, null, true));
+            Eq(true, GameMode.BasicBackgroundEligible(10, 99, "discord", @"D:\Apps\discord.exe", 1, 1, 20, false, win, false, null, true));
             Eq(false, GameMode.BasicBackgroundEligible(10, 99, "dwm", @"C:\Windows\System32\dwm.exe", 1, 1, 20, false, win, false, null, true));
             Eq(false, GameMode.BasicBackgroundEligible(10, 99, "lsass", @"C:\Windows\System32\lsass.exe", 1, 1, 20, false, win, false, null, true));
             Eq(false, GameMode.BasicBackgroundEligible(10, 99, "audiodg", @"C:\Windows\System32\audiodg.exe", 1, 1, 20, false, win, false, null, true));
@@ -2421,6 +2476,283 @@ namespace PaviseApp
             Eq(3, second[0].Entries.Count);
         }
 
+        private static void TestLearnedRendererStore(string root)
+        {
+            string dir = Path.Combine(root, "profilesV3");
+            Directory.CreateDirectory(dir);
+            string legacy = Path.Combine(dir, "Pavise.games.txt");
+            string gameRoot = Path.Combine(dir, "英雄联盟");
+
+            var store = new GameProfileStore(dir);
+            GameProfile p = GameProfileStore.NewProfile("英雄联盟", gameRoot,
+                Path.Combine(gameRoot, "Riot Client\\RiotClientServices.exe"));
+            p.LearnedExecutablePath = Path.Combine(gameRoot, "Game\\League of Legends.exe");
+            store.Save(new[] { p });
+
+            string[] raw = File.ReadAllLines(Path.Combine(dir, GameProfileStore.FileName), Encoding.UTF8);
+            Eq("PAVISE_PROFILES_V2", raw[0]);
+            int pLines = 0, lLines = 0;
+            for (int i = 1; i < raw.Length; i++)
+            {
+                if (raw[i].StartsWith("P|")) { Eq(6, raw[i].Split('|').Length); pLines++; }
+                else if (raw[i].StartsWith("L|")) { Eq(3, raw[i].Split('|').Length); lLines++; }
+                else throw new Exception("unexpected profile line: " + raw[i]);
+            }
+            Eq(1, pLines);
+            Eq(1, lLines);
+
+            var reload = new GameProfileStore(dir);
+            List<GameProfile> loaded = reload.LoadOrMigrate(legacy);
+            Eq(1, loaded.Count);
+            Eq(Path.Combine(gameRoot, "Game\\League of Legends.exe"), loaded[0].LearnedExecutablePath);
+
+            Directory.CreateDirectory(gameRoot);
+            List<GameProfile> pruned = new GameProfileStore(dir).LoadOrMigrate(legacy);
+            Eq(1, pruned.Count);
+            Eq(null, pruned[0].LearnedExecutablePath);
+
+            Directory.CreateDirectory(Path.Combine(gameRoot, "Game"));
+            File.WriteAllBytes(Path.Combine(gameRoot, "Game\\League of Legends.exe"), new byte[16]);
+            pruned[0].LearnedExecutablePath = Path.Combine(gameRoot, "Game\\League of Legends.exe");
+            new GameProfileStore(dir).Save(pruned);
+            List<GameProfile> kept = new GameProfileStore(dir).LoadOrMigrate(legacy);
+            Eq(1, kept.Count);
+            Eq(Path.Combine(gameRoot, "Game\\League of Legends.exe"), kept[0].LearnedExecutablePath);
+
+            kept[0].LearnedExecutablePath = kept[0].ExecutablePath;
+            new GameProfileStore(dir).Save(kept);
+            List<GameProfile> again = new GameProfileStore(dir).LoadOrMigrate(legacy);
+            Eq(1, again.Count);
+            Eq(null, again[0].LearnedExecutablePath);
+        }
+
+        private static void TestFutureProfileFormatProtected(string root)
+        {
+            string dir = Path.Combine(root, "profilesFuture");
+            Directory.CreateDirectory(dir);
+            string file = Path.Combine(dir, GameProfileStore.FileName);
+            File.WriteAllLines(file, new[] { "PAVISE_PROFILES_V9", "X|future|payload" }, Encoding.UTF8);
+
+            var store = new GameProfileStore(dir);
+            List<GameProfile> loaded = store.LoadOrMigrate(Path.Combine(dir, "Pavise.games.txt"));
+            Eq(0, loaded.Count);
+
+            store.Save(new[] { GameProfileStore.NewProfile("Nope", null) });
+            string[] raw = File.ReadAllLines(file, Encoding.UTF8);
+            Eq(2, raw.Length);
+            Eq("PAVISE_PROFILES_V9", raw[0]);
+            Eq("X|future|payload", raw[1]);
+        }
+
+        private static void TestV3ProfileMigration(string root)
+        {
+            string dir = Path.Combine(root, "profilesV3migrate");
+            Directory.CreateDirectory(dir);
+            string file = Path.Combine(dir, GameProfileStore.FileName);
+            string gameRoot = Path.Combine(dir, "GameX");
+            Func<string, string> b64 = delegate(string s)
+            {
+                return Convert.ToBase64String(Encoding.UTF8.GetBytes(s ?? ""));
+            };
+            File.WriteAllLines(file, new[]
+            {
+                "PAVISE_PROFILES_V3",
+                "P|" + b64("id123") + "|" + b64("GameX") + "|" + b64(gameRoot)
+                    + "|" + b64(Path.Combine(gameRoot, "GameX.exe"))
+                    + "|" + b64("GameX") + "|" + b64(Path.Combine(gameRoot, "Real.exe"))
+            }, Encoding.UTF8);
+
+            var store = new GameProfileStore(dir);
+            List<GameProfile> loaded = store.LoadOrMigrate(Path.Combine(dir, "Pavise.games.txt"));
+            Eq(1, loaded.Count);
+            Eq(Path.Combine(gameRoot, "Real.exe"), loaded[0].LearnedExecutablePath);
+
+            string[] raw = File.ReadAllLines(file, Encoding.UTF8);
+            Eq("PAVISE_PROFILES_V2", raw[0]);
+            foreach (string line in raw)
+                if (line.StartsWith("P|")) Eq(6, line.Split('|').Length);
+            Eq(true, File.Exists(file + ".v3.bak"));
+        }
+
+        private static void TestUninstallScanFiltersAccelerators(string root)
+        {
+            string gameDir = Path.Combine(root, "uninstall\\SomeNetEaseGame");
+            string accDir = Path.Combine(root, "uninstall\\UUBooster");
+            Directory.CreateDirectory(gameDir);
+            Directory.CreateDirectory(accDir);
+            File.WriteAllBytes(Path.Combine(gameDir, "SomeNetEaseGame.exe"), new byte[160 * 1024]);
+            File.WriteAllBytes(Path.Combine(accDir, "uu.exe"), new byte[160 * 1024]);
+
+            const string upKey = "Software\\PaviseSelfTest\\Uninstall";
+            try
+            {
+                using (var k = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(upKey + "\\NetEaseGame"))
+                {
+                    k.SetValue("DisplayName", "永劫无间");
+                    k.SetValue("Publisher", "网易(杭州)网络有限公司");
+                    k.SetValue("InstallLocation", gameDir);
+                }
+                using (var k = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(upKey + "\\UU"))
+                {
+                    k.SetValue("DisplayName", "网易UU加速器");
+                    k.SetValue("Publisher", "网易(杭州)网络有限公司");
+                    k.SetValue("InstallLocation", accDir);
+                }
+
+                var hits = new List<ScanHit>();
+                var roots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                GameScan.ScanUninstallHive(Microsoft.Win32.Registry.CurrentUser, upKey, null, hits, roots, seen, null);
+                Eq(1, hits.Count);
+                Eq("永劫无间", hits[0].Name);
+                Eq(Path.Combine(gameDir, "SomeNetEaseGame.exe"), hits[0].Exe);
+            }
+            finally
+            {
+                try { Microsoft.Win32.Registry.CurrentUser.DeleteSubKeyTree("Software\\PaviseSelfTest", false); }
+                catch { }
+            }
+        }
+
+        private static void TestPickMainExeStructure(string root)
+        {
+            string sandbox = Path.Combine(root, "scanpick");
+            var big = new byte[300 * 1024];
+
+            string lol = Path.Combine(sandbox, "英雄联盟");
+            Directory.CreateDirectory(Path.Combine(lol, "Game"));
+            Directory.CreateDirectory(Path.Combine(lol, "LeagueClient"));
+            Directory.CreateDirectory(Path.Combine(lol, "Riot Client"));
+            Directory.CreateDirectory(Path.Combine(lol, "TCLS"));
+            File.WriteAllBytes(Path.Combine(lol, "Game\\League of Legends.exe"), new byte[160 * 1024]);
+            File.WriteAllBytes(Path.Combine(lol, "LeagueClient\\LeagueClient.exe"), big);
+            File.WriteAllBytes(Path.Combine(lol, "Riot Client\\RiotClientServices.exe"), new byte[400 * 1024]);
+            File.WriteAllBytes(Path.Combine(lol, "TCLS\\tcls_core.exe"), big);
+            Eq(Path.Combine(lol, "Game\\League of Legends.exe"), GameScan.PickMainExe(lol));
+
+            string unity = Path.Combine(sandbox, "SomeIndie");
+            Directory.CreateDirectory(Path.Combine(unity, "SomeIndie_Data"));
+            File.WriteAllBytes(Path.Combine(unity, "SomeIndie.exe"), new byte[160 * 1024]);
+            File.WriteAllBytes(Path.Combine(unity, "UnityCrashHandler64.exe"), big);
+            Eq(Path.Combine(unity, "SomeIndie.exe"), GameScan.PickMainExe(unity));
+
+            string ue = Path.Combine(sandbox, "GenericUE");
+            Directory.CreateDirectory(Path.Combine(ue, "Binaries\\Win64"));
+            File.WriteAllBytes(Path.Combine(ue, "GenericUE.exe"), big);
+            File.WriteAllBytes(Path.Combine(ue, "Binaries\\Win64\\Generic-Win64-Shipping.exe"), new byte[160 * 1024]);
+            Eq(Path.Combine(ue, "Binaries\\Win64\\Generic-Win64-Shipping.exe"), GameScan.PickMainExe(ue));
+
+            string named = Path.Combine(sandbox, "StardewValley");
+            Directory.CreateDirectory(named);
+            File.WriteAllBytes(Path.Combine(named, "StardewValley.exe"), new byte[160 * 1024]);
+            File.WriteAllBytes(Path.Combine(named, "MapEditor.exe"), big);
+            Eq(Path.Combine(named, "StardewValley.exe"), GameScan.PickMainExe(named));
+        }
+
+        private static void TestSteamLibraryScan(string root)
+        {
+            string steam = Path.Combine(root, "fakesteam\\Steam");
+            string lib2 = Path.Combine(root, "fakesteam\\SteamLibrary");
+            string sa1 = Path.Combine(steam, "steamapps");
+            string sa2 = Path.Combine(lib2, "steamapps");
+            Directory.CreateDirectory(sa1);
+            Directory.CreateDirectory(sa2);
+
+            File.WriteAllText(Path.Combine(sa1, "libraryfolders.vdf"),
+                "\"libraryfolders\"\n{\n"
+                + "\t\"0\"\n\t{\n\t\t\"path\"\t\t\"" + steam.Replace("\\", "\\\\") + "\"\n"
+                + "\t\t\"label\"\t\t\"\"\n\t\t\"contentid\"\t\t\"7484950635125073964\"\n\t}\n"
+                + "\t\"1\"\n\t{\n\t\t\"path\"\t\t\"" + lib2.Replace("\\", "\\\\") + "\"\n\t}\n}\n",
+                Encoding.UTF8);
+
+            Action<string, string, string, string> acf = delegate(string dir, string appid, string name, string installdir)
+            {
+                File.WriteAllText(Path.Combine(dir, "appmanifest_" + appid + ".acf"),
+                    "\"AppState\"\n{\n"
+                    + "\t\"appid\"\t\t\"" + appid + "\"\n"
+                    + "\t\"universe\"\t\t\"1\"\n"
+                    + "\t\"name\"\t\t\"" + name + "\"\n"
+                    + "\t\"StateFlags\"\t\t\"4\"\n"
+                    + "\t\"installdir\"\t\t\"" + installdir + "\"\n"
+                    + "\t\"buildid\"\t\t\"14160737\"\n}\n", Encoding.UTF8);
+            };
+
+            acf(sa1, "367520", "Hollow Knight", "Hollow Knight");
+            acf(sa1, "228980", "Steamworks Common Redistributables", "Steamworks Shared");
+            string hk = Path.Combine(sa1, "common\\Hollow Knight");
+            Directory.CreateDirectory(Path.Combine(hk, "hollow_knight_Data"));
+            Directory.CreateDirectory(Path.Combine(sa1, "common\\Steamworks Shared"));
+            File.WriteAllBytes(Path.Combine(hk, "hollow_knight.exe"), new byte[160 * 1024]);
+            File.WriteAllBytes(Path.Combine(hk, "UnityCrashHandler64.exe"), new byte[300 * 1024]);
+
+            acf(sa2, "261550", "Mount & Blade II: Bannerlord", "Mount & Blade II Bannerlord");
+            string mb = Path.Combine(sa2, "common\\Mount & Blade II Bannerlord");
+            Directory.CreateDirectory(Path.Combine(mb, "bin\\Win64_Shipping_Client"));
+            Directory.CreateDirectory(Path.Combine(mb, "Modules\\Native"));
+            File.WriteAllBytes(Path.Combine(mb, "bin\\Win64_Shipping_Client\\Bannerlord.exe"), new byte[160 * 1024]);
+            File.WriteAllBytes(Path.Combine(mb, "bin\\Win64_Shipping_Client\\TaleWorlds.MountAndBlade.Launcher.exe"), new byte[300 * 1024]);
+
+            var hits = new List<ScanHit>();
+            var seenRoots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            GameScan.FromSteamLibraries(steam, null, hits, seenRoots);
+
+            Eq(2, hits.Count);
+            ScanHit hollow = null, bannerlord = null;
+            foreach (ScanHit h in hits)
+            {
+                if (h.Name == "Hollow Knight") hollow = h;
+                if (h.Name == "Mount & Blade II: Bannerlord") bannerlord = h;
+            }
+            if (hollow == null || bannerlord == null)
+                throw new Exception("steam hits missing: " + hits.Count);
+            Eq(Path.Combine(hk, "hollow_knight.exe"), hollow.Exe);
+            Eq(Path.Combine(mb, "bin\\Win64_Shipping_Client\\Bannerlord.exe"), bannerlord.Exe);
+        }
+
+        private static void TestStorePackageScan(string root)
+        {
+            string appsDir = Path.Combine(root, "WindowsApps");
+            string pkgFull = "FakeStudio.MineTest_1.2.0.0_x64__abc123def456";
+            string gamePkg = Path.Combine(appsDir, pkgFull);
+            string appPkg = Path.Combine(appsDir, "Vendor.NetdiskService_1.0.0.0_x64__zzz999");
+            Directory.CreateDirectory(gamePkg);
+            Directory.CreateDirectory(appPkg);
+            File.WriteAllText(Path.Combine(gamePkg, "xboxservices.config"),
+                "{\r\n  \"TitleId\": \"1828326430\",\r\n  \"PrimaryServiceConfigId\": \"00000000-0000-0000-0000-00006ca0f6ac\"\r\n}", Encoding.UTF8);
+            File.WriteAllText(Path.Combine(gamePkg, "AppxManifest.xml"),
+                "<?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n<Package xmlns=\"http://schemas.microsoft.com/appx/manifest/foundation/windows10\">\r\n"
+                + "  <Applications>\r\n    <Application Id=\"App\" Executable=\"MineTest.exe\" EntryPoint=\"GameActivate\" />\r\n  </Applications>\r\n</Package>", Encoding.UTF8);
+            File.WriteAllBytes(Path.Combine(gamePkg, "MineTest.exe"), new byte[160 * 1024]);
+            File.WriteAllBytes(Path.Combine(appPkg, "NetdiskService.exe"), new byte[160 * 1024]);
+
+            const string repoKey = "Software\\PaviseSelfTest\\Repository\\Packages";
+            try
+            {
+                using (var k = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(repoKey + "\\" + pkgFull))
+                {
+                    k.SetValue("PackageRootFolder", gamePkg);
+                    k.SetValue("DisplayName", "@{" + pkgFull + "?ms-resource://MineTest/AppName}");
+                }
+                using (var k = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(repoKey + "\\Vendor.NetdiskService_1.0.0.0_x64__zzz999"))
+                {
+                    k.SetValue("PackageRootFolder", appPkg);
+                    k.SetValue("DisplayName", "NetdiskService");
+                }
+
+                var hits = new List<ScanHit>();
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                GameScan.FromPackageRepository(null, repoKey, hits, seen);
+                Eq(1, hits.Count);
+                Eq("MineTest", hits[0].Name);
+                Eq(Path.Combine(gamePkg, "MineTest.exe"), hits[0].Exe);
+            }
+            finally
+            {
+                try { Microsoft.Win32.Registry.CurrentUser.DeleteSubKeyTree("Software\\PaviseSelfTest", false); }
+                catch { }
+            }
+        }
+
         private static void TestMultiFolderGameRoot()
         {
             string sandbox = Path.Combine(Path.GetTempPath(), "PaviseFamily_" + Guid.NewGuid().ToString("N"));
@@ -2447,6 +2779,11 @@ namespace PaviseApp
                 string other = Path.Combine(sandbox, "GenericUnrealGame");
                 string shipping = Path.Combine(other, "Binaries", "Win64", "Generic-Win64-Shipping.exe");
                 Eq(Path.GetFullPath(other), GameScan.InferGameRoot(shipping));
+
+                Eq(@"C:\g\Mount & Blade II Bannerlord", GameScan.InferGameRoot(
+                    @"C:\g\Mount & Blade II Bannerlord\bin\Win64_Shipping_Client\Bannerlord.exe"));
+                Eq(@"C:\g\SomeGame\Win64_Shipping_Server", GameScan.InferGameRoot(
+                    @"C:\g\SomeGame\Win64_Shipping_Server\server.exe"));
             }
             finally { try { Directory.Delete(sandbox, true); } catch { } }
         }

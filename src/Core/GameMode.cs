@@ -921,6 +921,7 @@ namespace PaviseApp
                         stickyDetection.RendererForeground,
                     RendererCandidateSelected = true,
                     RendererUserSelected = stickyDetection.RendererUserSelected,
+                    RendererLearnable = stickyDetection.RendererLearnable,
                     Evidence = stickyDetection.Evidence
                 };
                 r.FamilyPids.Add(stickyDetection.RendererPid);
@@ -1009,6 +1010,7 @@ namespace PaviseApp
                     src.RendererForeground,
                 RendererCandidateSelected = src.RendererCandidateSelected,
                 RendererUserSelected = src.RendererUserSelected,
+                RendererLearnable = src.RendererLearnable,
                 Evidence = src.Evidence
             };
             foreach (int pid in src.FamilyPids) if (stickyIds.ContainsKey(pid)) g.FamilyPids.Add(pid);

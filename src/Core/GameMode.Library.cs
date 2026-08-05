@@ -20,28 +20,40 @@ namespace PaviseApp
 
         public bool AddGameExecutable(string name, string executablePath)
         {
-            string resolved, error, suggestedName;
+            string error;
+            return AddGameExecutableCore(name, executablePath, null, true, out error);
+        }
+
+        private bool AddGameExecutableCore(string name, string executablePath,
+            string preferredRoot, bool persist, out string error)
+        {
+            string resolved, suggestedName;
             if (!GameExecutableResolver.TryResolve(executablePath, out resolved, out error, out suggestedName))
                 return false;
             string entry = StripExe(Path.GetFileName(resolved));
             string display = DisplayName(resolved,
                 string.IsNullOrWhiteSpace(name) ? suggestedName : name);
-            string root = NormalizeGameRoot(GameScan.InferGameRoot(resolved));
+            string root = null;
+            if (!string.IsNullOrEmpty(preferredRoot))
+            {
+                string normalized = NormalizeGameRoot(preferredRoot);
+                if (normalized != null && UnderRoot(resolved, normalized)) root = normalized;
+            }
+            if (root == null) root = NormalizeGameRoot(GameScan.InferGameRoot(resolved));
             lock (sync)
             {
                 foreach (GameProfile p in profiles)
                 {
                     if (string.Equals(p.ExecutablePath, resolved, StringComparison.OrdinalIgnoreCase)) return false;
+                    if (string.Equals(p.LearnedExecutablePath, resolved, StringComparison.OrdinalIgnoreCase)) return false;
                     if (string.IsNullOrEmpty(p.ExecutablePath) && p.Entries.Contains(entry))
                     {
                         p.ExecutablePath = resolved;
                         p.Root = root;
                         p.Name = display;
-                        RebuildLegacyGameIndex();
-                        profileStore.Save(profiles);
-                        SaveGames();
-                        RequestFullGameDetection();
-                        RequestPolicyApply();
+                        p.LearnedExecutablePath = null;
+                        if (persist) PersistLibraryLocked();
+                        if (persist) KickLibraryChanged();
                         return true;
                     }
                 }
@@ -49,13 +61,23 @@ namespace PaviseApp
                 profile.Entries.Clear();
                 profile.Entries.Add(entry);
                 profiles.Add(profile);
-                RebuildLegacyGameIndex();
-                profileStore.Save(profiles);
-                SaveGames();
+                if (persist) PersistLibraryLocked();
             }
+            if (persist) KickLibraryChanged();
+            return true;
+        }
+
+        private void PersistLibraryLocked()
+        {
+            RebuildLegacyGameIndex();
+            profileStore.Save(profiles);
+            SaveGames();
+        }
+
+        private void KickLibraryChanged()
+        {
             RequestFullGameDetection();
             RequestPolicyApply();
-            return true;
         }
 
         public bool AddGameFile(string selectedPath, out string error)
@@ -69,6 +91,52 @@ namespace PaviseApp
             }
             error = null;
             return true;
+        }
+
+        public int AddScannedGames(IList<ScanHit> hits, out string lastError)
+        {
+            lastError = null;
+            int added = 0;
+            if (hits == null) return 0;
+            foreach (ScanHit hit in hits)
+            {
+                if (hit == null || string.IsNullOrEmpty(hit.Exe)) continue;
+                string error;
+                if (AddGameExecutableCore(hit.Name, hit.Exe, hit.Root, false, out error)) added++;
+                else if (!string.IsNullOrEmpty(error)) lastError = error;
+            }
+            if (added > 0)
+            {
+                lock (sync) PersistLibraryLocked();
+                KickLibraryChanged();
+            }
+            return added;
+        }
+
+        private void TryLearnRenderer(string profileId, string rendererPath, string rendererName)
+        {
+            if (string.IsNullOrEmpty(profileId) || string.IsNullOrEmpty(rendererPath)) return;
+            if (GameSessionDetector.IsLauncherLikeName(rendererName)
+                || GameSessionDetector.IsAntiCheatLikeName(rendererName)
+                || GameSessionDetector.IsNonGameRole(rendererName, rendererPath)) return;
+            string learnedGame = null;
+            lock (sync)
+            {
+                foreach (GameProfile p in profiles)
+                {
+                    if (!string.Equals(p.Id, profileId, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (string.Equals(p.ExecutablePath, rendererPath, StringComparison.OrdinalIgnoreCase)) return;
+                    if (string.Equals(p.LearnedExecutablePath, rendererPath, StringComparison.OrdinalIgnoreCase)) return;
+                    if (!p.ContainsPath(rendererPath)) return;
+                    p.LearnedExecutablePath = GameProfileStore.NormalizePath(rendererPath);
+                    profileStore.Save(profiles);
+                    learnedGame = p.Name;
+                    break;
+                }
+            }
+            if (learnedGame != null)
+                Logger.Log("已确认《" + learnedGame + "》的实际渲染进程是 " + rendererName
+                    + "，档案已更新，之后可直接按它识别（" + rendererPath + "）");
         }
 
         public void RemoveProfile(string profileId)

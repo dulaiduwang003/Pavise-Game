@@ -165,12 +165,19 @@ namespace PaviseApp
             public double Ratio;
         }
 
+        private sealed class Sample
+        {
+            public string Name;
+            public long Started;
+            public TimeSpan Cpu;
+        }
+
         public static List<LoadEntry> TopConsumers(int windowMs, int take)
         {
             var result = new List<LoadEntry>();
             try
             {
-                var before = new Dictionary<int, KeyValuePair<string, TimeSpan>>();
+                var before = new Dictionary<int, Sample>();
                 foreach (Process p in Process.GetProcesses())
                 {
                     using (p)
@@ -178,7 +185,10 @@ namespace PaviseApp
                         try
                         {
                             if (p.Id <= 4) continue;
-                            before[p.Id] = new KeyValuePair<string, TimeSpan>(p.ProcessName, p.TotalProcessorTime);
+                            before[p.Id] = new Sample
+                            {
+                                Name = p.ProcessName, Started = p.StartTime.Ticks, Cpu = p.TotalProcessorTime
+                            };
                         }
                         catch { }
                     }
@@ -193,11 +203,12 @@ namespace PaviseApp
                     {
                         try
                         {
-                            KeyValuePair<string, TimeSpan> old;
+                            Sample old;
                             if (!before.TryGetValue(p.Id, out old)) continue;
-                            double delta = (p.TotalProcessorTime - old.Value).TotalSeconds;
+                            if (p.StartTime.Ticks != old.Started) continue;
+                            double delta = (p.TotalProcessorTime - old.Cpu).TotalSeconds;
                             if (delta <= 0) continue;
-                            result.Add(new LoadEntry { Name = old.Key, Ratio = delta / span });
+                            result.Add(new LoadEntry { Name = old.Name, Ratio = delta / span });
                         }
                         catch { }
                     }
@@ -207,6 +218,41 @@ namespace PaviseApp
             result.Sort(delegate(LoadEntry a, LoadEntry b) { return b.Ratio.CompareTo(a.Ratio); });
             if (result.Count > take) result.RemoveRange(take, result.Count - take);
             return result;
+        }
+
+        private sealed class Facts
+        {
+            public bool Nv;
+            public bool Partition;
+            public bool Eco;
+            public bool EcoFull;
+            public bool Hags;
+            public VbsTweak.State Vbs = new VbsTweak.State();
+            public bool GameMode;
+            public bool MpoOff;
+            public bool Dvr;
+            public bool SuppressOn;
+            public string Plan = "读取失败";
+            public bool MemOk;
+            public double UsedRatio, TotalGb, AvailGb;
+        }
+
+        private static Facts Gather()
+        {
+            var f = new Facts();
+            try { f.Nv = NvApi.Available; } catch { }
+            try { f.Partition = CpuTopology.HasSafeBackgroundPartition(); } catch { }
+            try { f.Eco = Native.PowerThrottlingSupported; } catch { }
+            f.EcoFull = f.Eco && WindowsBuild() >= EcoQosFullBuild;
+            try { f.Hags = HagsTweak.CurrentlyOn(); } catch { }
+            try { f.Vbs = VbsTweak.Query(); } catch { }
+            try { f.GameMode = GameModeGuard.CurrentlyOn(); } catch { }
+            try { f.MpoOff = MpoTweak.CurrentlyDisabled(); } catch { }
+            f.Dvr = GameDvrOn();
+            try { f.SuppressOn = Settings.Load("GmSuppress", true); } catch { f.SuppressOn = true; }
+            try { f.Plan = PowerPlan.CurrentPlanLabel(); } catch { }
+            f.MemOk = TryMemory(out f.UsedRatio, out f.TotalGb, out f.AvailGb);
+            return f;
         }
 
         public static AuditReport Collect(int measureWindowMs)
@@ -232,67 +278,60 @@ namespace PaviseApp
             int hzCur, hzBest;
             DisplayGuard.QueryRefreshRates(out hzCur, out hzBest);
 
-            BuildCapability(report);
-            BuildMachine(report, cpuBusy, worstIrq, worstCore, hzCur, hzBest);
-            BuildPersistent(report);
-            BuildVerdicts(report, worstIrq, hzCur, hzBest);
+            Facts facts = Gather();
+            BuildCapability(report, facts);
+            BuildMachine(report, facts, cpuBusy, worstIrq, worstCore, hzCur, hzBest);
+            BuildPersistent(report, facts);
+            BuildVerdicts(report, facts, worstIrq, hzCur, hzBest);
             return report;
         }
 
-        private static void BuildCapability(AuditReport report)
+        private static void BuildCapability(AuditReport report, Facts facts)
         {
-            bool nv = false;
-            try { nv = NvApi.Available; } catch { }
             report.Capability.Add(new AuditRow
             {
                 Name = "NVIDIA 驱动接口",
-                Value = nv ? "可用" : "不可用",
-                Note = nv ? "深度调优（电源 / 帧率上限 / 预渲染）可按游戏写入驱动 Profile，可用「写入实测」按钮验证真实生效"
+                Value = facts.Nv ? "可用" : "不可用",
+                Note = facts.Nv ? "显卡深度调优（电源 / 帧率上限 / 预渲染）在本机可用；用「写入实测」能验证是不是真写进去了"
                     : "本机没有可用的 NVIDIA 驱动，显卡页的深度调优整体停用",
                 Evidence = EvMeasuredLocal,
                 Warn = false
             });
 
-            bool partition = false;
-            try { partition = CpuTopology.HasSafeBackgroundPartition(); } catch { }
             report.Capability.Add(new AuditRow
             {
                 Name = "CPU Sets 分区",
-                Value = partition ? "可用" : "不可用",
-                Note = partition ? "严格分区与后台核心迁移可以生效"
-                    : "核心数不足或系统接口缺失，压制退化为纯优先级调整（实测优先级已占绝大部分收益）",
+                Value = facts.Partition ? "可用" : "不可用",
+                Note = facts.Partition ? "可以把后台赶去单独的核心，好核心留给游戏"
+                    : "核心不够分，压制只降优先级——实测这一步已占绝大部分收益",
                 Evidence = EvMeasuredLocal,
                 Warn = false
             });
 
-            bool eco = false;
-            try { eco = Native.PowerThrottlingSupported; } catch { }
-            bool ecoFull = eco && WindowsBuild() >= EcoQosFullBuild;
             report.Capability.Add(new AuditRow
             {
                 Name = "效率模式 EcoQoS",
-                Value = !eco ? "不支持" : (ecoFull ? "支持" : "接口可用"),
-                Note = !eco
-                    ? "本机查询不到进程节流状态，温和档自动跳过该项"
-                    : (ecoFull
-                        ? "温和档压制可把后台进程放入 EcoQoS，系统会降频并优先调度到能效核"
-                        : "节流接口自 Windows 10 1709 起就存在，但降频与能效核调度的完整 EcoQoS 是 Windows 11 才落地的；"
-                          + "此前该标志表现为传统的后台执行节流，压制仍然生效，只是机制不同"),
+                Value = !facts.Eco ? "不支持" : (facts.EcoFull ? "支持" : "接口可用"),
+                Note = !facts.Eco
+                    ? "本机查不到这个状态，温和档会自动跳过这一手段"
+                    : (facts.EcoFull
+                        ? "温和档能让系统把后台降频、挪去省电核心"
+                        : "Windows 10 上也能压，只是没有 Windows 11 压得彻底；效果仍然有"),
                 Evidence = EvMeasuredLocal,
-                Warn = !eco
+                Warn = !facts.Eco
             });
 
             report.Capability.Add(new AuditRow
             {
                 Name = "操作系统",
                 Value = WindowsText(),
-                Note = "内部版本决定接口的可用性与实际行为：同一个节流标志在不同版本上生效的机制并不一样",
+                Note = "系统版本决定哪些手段可用：同一个开关在不同版本上干的事并不一样",
                 Evidence = EvMeasuredLocal,
                 Warn = false
             });
         }
 
-        private static void BuildMachine(AuditReport report, double cpuBusy, double worstIrq, ulong worstCore,
+        private static void BuildMachine(AuditReport report, Facts facts, double cpuBusy, double worstIrq, ulong worstCore,
             int hzCur, int hzBest)
         {
             int logical = Environment.ProcessorCount;
@@ -347,34 +386,36 @@ namespace PaviseApp
                 });
             }
 
+            bool hzRead = hzCur > 0 && hzBest > 0;
             bool hzOk = RefreshRateIsBest(hzCur, hzBest);
             report.Machine.Add(new AuditRow
             {
                 Name = "主屏刷新率",
-                Value = hzCur > 0
+                Value = hzRead
                     ? hzCur + " Hz" + (hzOk ? "（已是最高）" : " · 可用 " + hzBest + " Hz")
                     : "读取失败",
-                Note = hzOk
-                    ? "当前分辨率下没有更高的刷新率可选"
-                    : "系统跑在 " + hzCur + "Hz，而这块屏在同分辨率下支持 " + hzBest
-                        + "Hz——这是实打实的帧数损失，开启刷新率守护或在系统显示设置里改掉",
+                Note = !hzRead
+                    ? "读不到显示模式，远程桌面和部分虚拟显示器上会这样；这一项本次不做判断"
+                    : (hzOk
+                        ? "当前分辨率下没有更高的刷新率可选"
+                        : "系统跑在 " + hzCur + "Hz，而这块屏在同分辨率下支持 " + hzBest
+                            + "Hz——这是实打实的帧数损失，开启刷新率守护或在系统显示设置里改掉"),
                 Evidence = EvMeasuredLocal,
-                Warn = !hzOk
+                Warn = !hzOk || !hzRead
             });
 
-            double usedRatio, totalGb, availGb;
-            if (TryMemory(out usedRatio, out totalGb, out availGb))
+            if (facts.MemOk)
             {
                 report.Machine.Add(new AuditRow
                 {
                     Name = "内存",
-                    Value = totalGb.ToString("F1") + " GB · 已用 " + PercentText(usedRatio)
-                        + " · 可用 " + availGb.ToString("F1") + " GB",
-                    Note = usedRatio >= 0.85
-                        ? "可用内存偏少，大型游戏可能触发换页导致卡顿，建议关掉部分后台或开启待机内存清理"
+                    Value = facts.TotalGb.ToString("F1") + " GB · 已用 " + PercentText(facts.UsedRatio)
+                        + " · 可用 " + facts.AvailGb.ToString("F1") + " GB",
+                    Note = facts.UsedRatio >= 0.85
+                        ? "可用内存偏少，大型游戏可能被挤去拿硬盘顶内存而卡顿，建议关掉部分后台或开启待机内存清理"
                         : "内存余量充足",
                     Evidence = EvMeasuredLocal,
-                    Warn = usedRatio >= 0.85
+                    Warn = facts.UsedRatio >= 0.85
                 });
             }
 
@@ -397,7 +438,8 @@ namespace PaviseApp
             }
             catch { }
 
-            var top = TopConsumers(600, 3);
+            int topWindow = Math.Max(600, Math.Min(3000, report.MeasureWindowMs / 10));
+            var top = TopConsumers(topWindow, 3);
             if (top.Count > 0)
             {
                 var parts = new List<string>();
@@ -406,87 +448,77 @@ namespace PaviseApp
                 {
                     Name = "后台占用前三",
                     Value = string.Join(" · ", parts.ToArray()),
-                    Note = "采样窗口内 CPU 时间增量最大的进程（占整机算力比例）。这几个就是压制最能回收资源的对象；确认要保护的可加入白名单",
+                    Note = "最近 " + (topWindow / 1000.0).ToString("0.#")
+                        + " 秒内最吃 CPU 的程序。压制最能从它们身上抢回资源；有想保护的就加白名单",
                     Evidence = EvMeasuredLocal,
                     Warn = false
                 });
             }
         }
 
-        private static void BuildPersistent(AuditReport report)
+        private static void BuildPersistent(AuditReport report, Facts facts)
         {
-            bool hags = false;
-            try { hags = HagsTweak.CurrentlyOn(); } catch { }
             report.Persistent.Add(new AuditRow
             {
                 Name = "HAGS 硬件加速 GPU 调度",
-                Value = hags ? "开启" : "关闭",
+                Value = facts.Hags ? "开启" : "关闭",
                 Note = "改动需重启生效；收益因机而异，没有普适结论",
                 Evidence = EvUnverified,
                 Warn = false
             });
 
-            var vbs = new VbsTweak.State();
-            try { vbs = VbsTweak.Query(); } catch { }
             report.Persistent.Add(new AuditRow
             {
                 Name = "VBS 基于虚拟化的安全",
-                Value = !vbs.WmiOk ? "读取失败" : (vbs.VbsRunning ? "运行中" : "未运行"),
-                Note = vbs.VbsRunning ? "关闭可能带来性能提升，但会影响内存完整性、WSL2、Docker 和 Windows 沙盒，取舍需要自己决定"
+                Value = !facts.Vbs.WmiOk ? "读取失败" : (facts.Vbs.VbsRunning ? "运行中" : "未运行"),
+                Note = facts.Vbs.VbsRunning ? "关闭可能带来性能提升，代价是内存完整性、WSL2、Docker 和 Windows 沙盒都会受影响"
                     : "已经处于关闭状态，无需处理",
                 Evidence = EvMechanism,
                 Warn = false
             });
 
-            bool gameMode = false;
-            try { gameMode = GameModeGuard.CurrentlyOn(); } catch { }
             report.Persistent.Add(new AuditRow
             {
                 Name = "Windows 游戏模式",
-                Value = gameMode ? "开启" : "关闭",
-                Note = gameMode ? "系统会在游戏时抑制部分后台活动，保持即可"
+                Value = facts.GameMode ? "开启" : "关闭",
+                Note = facts.GameMode ? "系统会在游戏时抑制部分后台活动，保持即可"
                     : "被关闭状态（常见于旧优化教程），建议在系统环境页开启守护",
                 Evidence = EvMechanism,
-                Warn = !gameMode
+                Warn = !facts.GameMode
             });
 
-            bool mpoOff = false;
-            try { mpoOff = MpoTweak.CurrentlyDisabled(); } catch { }
             report.Persistent.Add(new AuditRow
             {
                 Name = "MPO 多平面叠加",
-                Value = mpoOff ? "已禁用" : "系统默认",
+                Value = facts.MpoOff ? "已禁用" : "系统默认",
                 Note = "只有出现花屏、闪烁等兼容问题时才需要禁用，正常情况保持默认",
                 Evidence = EvMechanism,
                 Warn = false
             });
 
-            bool dvr = GameDvrOn();
             report.Persistent.Add(new AuditRow
             {
                 Name = "Game DVR 后台录制",
-                Value = dvr ? "开启" : "关闭",
-                Note = dvr ? "Xbox Game Bar 的后台录制会常驻捕获管线，对帧时间有实际开销，建议在优化策略页开启关闭项"
+                Value = facts.Dvr ? "开启" : "关闭",
+                Note = facts.Dvr ? "Xbox Game Bar 一直在后台悄悄录着画面，占帧数，建议在优化策略页关掉"
                     : "已关闭，无需处理",
                 Evidence = EvMechanism,
-                Warn = dvr
+                Warn = facts.Dvr
             });
 
-            string plan = "读取失败";
-            try { plan = PowerPlan.CurrentPlanLabel(); } catch { }
             report.Persistent.Add(new AuditRow
             {
                 Name = "当前电源计划",
-                Value = plan,
+                Value = facts.Plan,
                 Note = "开启电源计划开关后，对局中会自动切到高性能/卓越性能并在结束后还原，无需手动改",
                 Evidence = EvMechanism,
                 Warn = false
             });
         }
 
-        private static void BuildVerdicts(AuditReport report, double worstIrq, int hzCur, int hzBest)
+        private static void BuildVerdicts(AuditReport report, Facts facts, double worstIrq, int hzCur, int hzBest)
         {
-            if (!RefreshRateIsBest(hzCur, hzBest))
+            if (hzCur > 0 && hzBest > 0 && !RefreshRateIsBest(hzCur, hzBest))
             {
                 report.Verdicts.Add(new AuditRow
                 {
@@ -502,32 +534,28 @@ namespace PaviseApp
             report.Verdicts.Add(new AuditRow
             {
                 Name = "后台压制",
-                Value = "建议开启",
+                Value = facts.SuppressOn ? "已开启，无需处理" : "建议开启",
                 Note = "合成台架六轮配对实测：1% 最差帧改善中位 90.7%，且免疫随时间累积的恶化",
                 Evidence = EvMeasuredBench,
                 Warn = false
             });
 
-            bool gameMode = false;
-            try { gameMode = GameModeGuard.CurrentlyOn(); } catch { }
             report.Verdicts.Add(new AuditRow
             {
                 Name = "Windows 游戏模式",
-                Value = gameMode ? "已开启，无需处理" : "建议开启",
+                Value = facts.GameMode ? "已开启，无需处理" : "建议开启",
                 Note = "系统原生的游戏时段后台抑制，无兼容风险",
                 Evidence = EvMechanism,
                 Warn = false
             });
 
-            bool nv = false;
-            try { nv = NvApi.Available; } catch { }
             report.Verdicts.Add(new AuditRow
             {
                 Name = "NVIDIA 深度调优",
-                Value = nv ? "可以尝试" : "本机不适用",
-                Note = nv ? "先用「写入实测」确认本机驱动接受写入，再按游戏开启"
+                Value = facts.Nv ? "可以尝试" : "本机不适用",
+                Note = facts.Nv ? "先用「写入实测」确认本机驱动接受写入，再按游戏开启"
                     : "无 NVIDIA 驱动接口",
-                Evidence = nv ? EvMeasuredLocal : EvMeasuredLocal,
+                Evidence = EvMeasuredLocal,
                 Warn = false
             });
 
@@ -539,42 +567,39 @@ namespace PaviseApp
                     Name = "中断负载",
                     Value = tier == 2 ? "建议处理" : "无需处理",
                     Note = tier == 2
-                        ? "最脏核占用超过 5%，建议排查该核上的设备，或用系统环境页的中断亲和把设备中断引走"
-                        : "中断的单次干扰是微秒级，当前量级（" + PercentText(worstIrq) + "）不足以造成可感知的卡顿",
+                        ? "有个核心被硬件打扰得厉害（超过 5%），建议排查它上面的设备，或用系统环境页的中断亲和把干扰引走"
+                        : "当前量级（" + PercentText(worstIrq) + "）很小，感觉不出来，不用管",
                     Evidence = EvMeasuredLocal,
                     Warn = tier == 2
                 });
             }
 
-            if (GameDvrOn())
+            if (facts.Dvr)
             {
                 report.Verdicts.Add(new AuditRow
                 {
                     Name = "Game DVR 后台录制",
                     Value = "建议关闭",
-                    Note = "常驻捕获管线有实际开销，且多数人并不使用 Xbox Game Bar 录制",
+                    Note = "后台录制一直开着就一直有开销，而多数人根本不用 Xbox Game Bar 录制",
                     Evidence = EvMechanism,
                     Warn = false
                 });
             }
 
-            double usedRatio, totalGb, availGb;
-            if (TryMemory(out usedRatio, out totalGb, out availGb) && usedRatio >= 0.85)
+            if (facts.MemOk && facts.UsedRatio >= 0.85)
             {
                 report.Verdicts.Add(new AuditRow
                 {
                     Name = "内存余量",
                     Value = "建议处理",
-                    Note = "可用仅 " + availGb.ToString("F1") + " GB。内存吃紧会触发换页，那是毫秒级的磁盘等待，"
-                        + "比任何 CPU 调度问题都更容易造成明显卡顿",
+                    Note = "可用仅 " + facts.AvailGb.ToString("F1") + " GB。内存不够时系统会拿硬盘顶内存，那是毫秒级的等待，"
+                        + "比任何调度问题都更容易造成明显卡顿",
                     Evidence = EvMechanism,
                     Warn = true
                 });
             }
 
-            var vbs = new VbsTweak.State();
-            try { vbs = VbsTweak.Query(); } catch { }
-            if (vbs.WmiOk && vbs.VbsRunning)
+            if (facts.Vbs.WmiOk && facts.Vbs.VbsRunning)
             {
                 report.Verdicts.Add(new AuditRow
                 {

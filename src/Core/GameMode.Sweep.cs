@@ -83,10 +83,14 @@ namespace PaviseApp
         {
 
             if (GameSessionDetector.IsAntiCheatLikeName(name)) return false;
+
+            if (NetAcceleratorCatalog.IsAcceleratorLikeName(name)) return false;
             if (gameHostAncestor) return false;
             if (UnderRoot(path, activeGameRoot)) return false;
             if (pid <= 4 || pid == self || session < 0 || session != ownerSession) return false;
-            if (!aggressive && (pid == foreground || userFacingFamily)) return false;
+
+            if (pid == foreground) return false;
+            if (userFacingFamily) return false;
             if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(path)) return false;
             if (aggressive) return !IsCoreSystemProcess(name, path, windowsRoot);
             return string.IsNullOrEmpty(windowsRoot) || !path.StartsWith(windowsRoot, StringComparison.OrdinalIgnoreCase);
@@ -123,6 +127,21 @@ namespace PaviseApp
                 && path.StartsWith(windowsRoot, StringComparison.OrdinalIgnoreCase);
         }
 
+        private static readonly HashSet<string> DeviceBridgeProcesses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+
+            "adb", "caudiofilteragent64", "caudiofilteragent"
+        };
+
+        internal static bool FreezeForbidden(string name, string path, string windowsRoot)
+        {
+
+            if (!string.IsNullOrEmpty(name) && DeviceBridgeProcesses.Contains(name)) return true;
+
+            return !string.IsNullOrEmpty(windowsRoot) && !string.IsNullOrEmpty(path)
+                && path.StartsWith(windowsRoot, StringComparison.OrdinalIgnoreCase);
+        }
+
         private void Sweep(Process[] all, HashSet<int> gamePids)
         {
 
@@ -137,7 +156,8 @@ namespace PaviseApp
             int foregroundPid = GameSessionDetector.ForegroundPid();
             bool aggressive = IsAggressive(mode, aggressiveOn);
             WhitelistEvaluation whitelist = EvaluateWhitelist(all);
-            HashSet<int> userFacingFamily = aggressive ? EmptyPidSet
+            HashSet<int> userFacingFamily = aggressive
+                ? CollectForegroundFamily(foregroundPid, whitelist)
                 : CollectUserFacingFamily(foregroundPid, whitelist);
             bool safePartition = CpuTopology.HasSafeBackgroundPartition();
             bool freezeEligible = freezeOn && bgSuppressOn && aggressive;
@@ -260,6 +280,7 @@ namespace PaviseApp
                         && creation > 0
                         && pid != foregroundPid
                         && !visibleWindows.Contains(pid)
+                        && !FreezeForbidden(nm, ipath, windowsPrefix)
                         && freezeDwell.Observe(pid, nm, creation, cpu, DateTime.UtcNow.Ticks))
                         desired = SuppressionLevel.Frozen;
                     else if (!freezeEligible) freezeDwell.Forget(pid);
@@ -360,7 +381,7 @@ namespace PaviseApp
             {
                 if (bgSuppressOn)
                 {
-                    string aggressiveNote = aggressive ? "，前台/可见窗口不再豁免，仅核心系统服务例外" : "";
+                    string aggressiveNote = aggressive ? "，可见窗口不再豁免（前台程序及其子进程除外），仅核心系统服务例外" : "";
                     string policy = mode == PerformancePreset.Competitive
                         ? (safePartition ? "竞技确定性隔离（Idle + EcoQoS + 锁核" + aggressiveNote + "）"
                             : "竞技隔离（核心数不足，Idle + EcoQoS 降优先级，不锁核" + aggressiveNote + "）")
@@ -380,6 +401,21 @@ namespace PaviseApp
                 }
                 lock (sync) firstSweep = false;
             }
+        }
+
+        private HashSet<int> CollectForegroundFamily(
+            int foregroundPid, WhitelistEvaluation whitelist)
+        {
+            var roots = new HashSet<int>();
+            if (foregroundPid > 4 && foregroundPid != selfPid)
+            {
+                WhitelistProcessInfo info;
+                if (!whitelist.Processes.TryGetValue(foregroundPid, out info)
+                    || selfSession < 0 || info.Session == selfSession)
+                    roots.Add(foregroundPid);
+            }
+            return ExpandUserFacingFamily(
+                whitelist.Parents, whitelist.Names, roots);
         }
 
         private HashSet<int> CollectUserFacingFamily(
