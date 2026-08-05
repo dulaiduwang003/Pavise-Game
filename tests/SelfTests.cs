@@ -1129,7 +1129,6 @@ namespace PaviseApp
                 string exe = Path.Combine(dir, "StoreGame.exe");
                 try
                 {
-                    // 造一个真实 PE 头，再用 ACL 拒绝当前用户读取，模拟 WindowsApps / XboxGames 的情形
                     var pe = new byte[512];
                     pe[0] = 0x4D; pe[1] = 0x5A;
                     pe[0x3C] = 0x80;
@@ -1179,7 +1178,6 @@ namespace PaviseApp
                 string resolved, error;
                 if (GameExecutableResolver.TryResolve(missing, out resolved, out error))
                     throw new Exception("a missing path must not resolve");
-                // 非 EXE 也仍然要拒绝，放行只针对读不到内容的 EXE
                 string txt = Path.Combine(Path.GetTempPath(), "PaviseNot_" + Guid.NewGuid().ToString("N") + ".txt");
                 File.WriteAllText(txt, "not an exe");
                 try
@@ -1195,10 +1193,8 @@ namespace PaviseApp
                 if (Program.CompareVersions("1.7.0", "1.6.9") <= 0) throw new Exception("minor bump must win");
                 if (Program.CompareVersions("1.6.3", "1.6.3") != 0) throw new Exception("same build must tie");
                 if (Program.CompareVersions("1.6.2", "1.6.3") >= 0) throw new Exception("older build must lose");
-                // 带 v 前缀与四段号都要能解析
                 if (Program.CompareVersions("v1.6.3", "1.6.2") <= 0) throw new Exception("v-prefix must parse");
                 if (Program.CompareVersions("1.6.3", "1.6.3.0") != 0) throw new Exception("1.6.3 must equal 1.6.3.0");
-                // 读不到版本的实例按更旧处理，才能被新版本接管
                 if (Program.CompareVersions("1.0", null) <= 0) throw new Exception("unknown version must be treated as older");
                 if (Program.CompareVersions("1.0", "garbage") <= 0) throw new Exception("unparsable version must be treated as older");
             });
@@ -2207,14 +2203,12 @@ namespace PaviseApp
                 if (scroll.AutoScrollPosition.Y == 0)
                     throw new Exception("panel did not scroll, precondition not met");
 
-                // 复现体检页的重建：先归位再清空，否则新控件会带上滚动偏移
                 scroll.AutoScrollPosition = Point.Empty;
                 var stale = new Control[scroll.Controls.Count];
                 scroll.Controls.CopyTo(stale, 0);
                 scroll.Controls.Clear();
                 int disposed = 0;
                 foreach (Control c in stale) { c.Dispose(); disposed++; }
-                // 遍历中 Dispose 会摘掉集合元素，只有先复制才能全部释放
                 if (disposed != stale.Length) throw new Exception("not every stale control was released");
                 if (scroll.Controls.Count != 0) throw new Exception("controls survived the clear");
 

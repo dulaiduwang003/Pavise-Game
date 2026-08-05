@@ -20,7 +20,7 @@ namespace PaviseApp
     internal static class App
     {
         public const string DisplayName = "PAVISE";
-        public const string Version = "1.6.3";
+        public const string Version = "1.6.4";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string WeChat = "Ssssssstyle";
@@ -300,7 +300,6 @@ namespace PaviseApp
             bool pendingPanel = Settings.Load(PendingPanelKey, false);
             if (pendingPanel) Settings.Save(PendingPanelKey, false);
             bool showingPanel = !autoStarted || pendingPanel;
-            // 开机自启进托盘时不打断用户，只在用户主动打开界面的这次启动里提示
             if (showingPanel && ContactDialog.ShouldShow())
                 try { using (var contact = new ContactDialog()) contact.ShowDialog(); }
                 catch { }
@@ -440,7 +439,6 @@ namespace PaviseApp
             GC.KeepAlive(mtx);
         }
 
-        // 比较两个版本号 前者更新时返回正数 无法解析的一律当作更旧
         internal static int CompareVersions(string left, string right)
         {
             Version a, b;
@@ -454,14 +452,11 @@ namespace PaviseApp
             if (string.IsNullOrWhiteSpace(raw)) return "0.0.0.0";
             string text = raw.Trim();
             if (text.StartsWith("v", StringComparison.OrdinalIgnoreCase)) text = text.Substring(1);
-            // App.Version 是三段而文件版本是四段，不补齐的话 1.6.3 会被判成小于 1.6.3.0
             int parts = text.Split('.').Length;
             for (int i = parts; i < 4; i++) text += ".0";
             return text;
         }
 
-        // 已有实例跑着旧版本时请它退出 让新版本接管
-        // 走的是它自己的退出事件 会完整还原进程调度与系统设置 不是强杀
         private static bool TryReplaceOlderInstance()
         {
             Process older = null;
@@ -482,7 +477,6 @@ namespace PaviseApp
 
                 try { EventWaitHandle.OpenExisting("Global\\Pavise_Exit").Set(); }
                 catch { return false; }
-                // 旧实例要还原调度和系统设置才退出，给足时间，超时就放弃接管而不是强杀
                 if (!older.WaitForExit(20000)) return false;
                 return true;
             }

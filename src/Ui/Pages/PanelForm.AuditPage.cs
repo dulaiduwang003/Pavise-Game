@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 构建系统体检页 聚合展示本机能力 实测数据 持久设置与带依据的结论
 
 using System;
@@ -131,10 +131,7 @@ namespace PaviseApp
         private void RenderAudit(AuditReport report)
         {
             auditScroll.SuspendLayout();
-            // 先滚回顶部再重建：AutoScroll 容器会把滚动偏移加到新控件坐标上，
-            // 带着偏移重建会在列表顶部留下一段空白
             auditScroll.AutoScrollPosition = Point.Empty;
-            // 复制后再释放：Dispose 会把控件从 Controls 里摘掉，直接在 foreach 里做会跳过一半
             var stale = new Control[auditScroll.Controls.Count];
             auditScroll.Controls.CopyTo(stale, 0);
             auditScroll.Controls.Clear();

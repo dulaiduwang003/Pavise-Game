@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 解析游戏程序和快捷方式的真实路径
 
 using System;
@@ -80,8 +80,6 @@ namespace PaviseApp
             catch { return false; }
         }
 
-        // Xbox / 微软商店游戏装在 WindowsApps、XboxGames 一类目录里 那里的 ACL 连管理员都拒绝读 exe
-        // 文件确实存在但打不开时 无法校验 PE 头 此时以文件存在为准放行 不因读不到内容就拒绝添加
         internal static bool IsUnreadable(string path)
         {
             try

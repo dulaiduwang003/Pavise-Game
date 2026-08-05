@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 实测 NVIDIA 驱动 Profile 的写入与回读是否真的生效
 
 using System;
@@ -83,7 +83,6 @@ namespace PaviseApp
                         + NvFound(foundAfter, after).PadRight(13)
                         + verdict);
 
-                    // 还原本项：原来没有就删掉，原来有值就写回
                     if (foundBefore == 1) NvApi.SetDword(session, profile, settingId, before);
                     else if (foundBefore == 0) NvApi.DeleteSetting(session, profile, settingId);
                     NvApi.SaveSession(session);

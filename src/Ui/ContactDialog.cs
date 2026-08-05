@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 启动时的联系方式弹窗 提供反馈渠道并可选择不再提示
 
 using System;
@@ -132,7 +132,6 @@ namespace PaviseApp
             lbl.SetBounds(Theme.S(18), Theme.S(12), Theme.S(200), Theme.S(16));
             card.Controls.Add(lbl);
 
-            // 值与右侧说明不能有交集：先 Add 的控件 Z 序在上，重叠会把说明文字裁掉
             int valW = Theme.S(178);
             var val = new Label();
             val.Text = value;
@@ -169,7 +168,6 @@ namespace PaviseApp
             card.Controls.Add(copy);
         }
 
-        // ROG 风格外框：斜切角、accent 斜纹带、顶部扫描线
         private void PaintChrome(object sender, PaintEventArgs e)
         {
             Graphics g = e.Graphics;
@@ -190,7 +188,6 @@ namespace PaviseApp
                 Region = new Region(path);
             }
 
-            // 左上角的 accent 折角
             using (var pen = new Pen(Theme.Accent, Theme.S(2)))
             {
                 g.DrawLine(pen, 0, cut, cut, 0);
@@ -198,12 +195,10 @@ namespace PaviseApp
                 g.DrawLine(pen, 0, cut, 0, cut + Theme.S(70));
             }
 
-            // 顶部斜纹带：压在标题块下方，不能盖住版本号那一行
             var band = new Rectangle(0, Theme.S(68), w, Theme.S(3));
             using (var grad = new LinearGradientBrush(band, Theme.Accent, Col.Alpha(Theme.Accent, 0), LinearGradientMode.Horizontal))
                 g.FillRectangle(grad, band);
 
-            // 斜线纹理
             using (var pen = new Pen(Col.Alpha(Theme.Accent, 26), Theme.S(1)))
                 for (int i = 0; i < Theme.S(150); i += Theme.S(7))
                     g.DrawLine(pen, w - Theme.S(190) + i, Theme.S(14), w - Theme.S(150) + i, Theme.S(50));

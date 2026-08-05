@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [1.6.3] - 2026-08-05
+## [1.6.4] - 2026-08-05
 
 ### Added
 
@@ -30,6 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   container adds its scroll offset to newly added child coordinates, so the position has to be reset
   before rebuilding. The rebuild also disposed controls while enumerating `Controls`, which mutates
   the collection mid-iteration and left roughly half of them alive and leaked.
+- Feedback dialog layout: the version line sat underneath the accent gradient band, and the
+  right-hand note was clipped by the value label's rectangle overlapping it.
+
+## [1.6.3] - 2026-08-05
+
+### Fixed
 
 - Xbox / Microsoft Store games (Forza Horizon 5 among them) could not be added to the library at
   all. They install under `WindowsApps` / `XboxGames`, where the ACL denies reading the executable

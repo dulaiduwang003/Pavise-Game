@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 编辑用户白名单和排除项
 
 using System;
@@ -156,7 +156,6 @@ namespace PaviseApp
             {
                 dlg.Title = Lang.T("ofd.white");
                 dlg.Filter = Lang.T("ofd.filter");
-                // 同游戏库：商店类目录拒绝读取 exe 时，对话框自校验会弹系统权限错误
                 dlg.CheckFileExists = false;
                 if (dlg.ShowDialog(this) == DialogResult.OK)
                 {

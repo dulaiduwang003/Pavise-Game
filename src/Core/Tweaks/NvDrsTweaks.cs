@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 按游戏写入 NVIDIA 驱动 Profile 设置 快照先行 可按项恢复
 
 using System;
@@ -155,7 +155,6 @@ namespace PaviseApp
             public string Outcome;
         }
 
-        // 对一个专用的探测 Profile 做一轮写入-回读-还原 验证驱动接口在本机是否真的接受写入
         public static List<ProbeResult> ProbeWriteback()
         {
             var results = new List<ProbeResult>();

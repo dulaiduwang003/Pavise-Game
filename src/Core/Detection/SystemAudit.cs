@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 系统体检 聚合本机能力 实测数据与持久设置 输出带依据等级的结论清单
 
 using System;
@@ -35,7 +35,6 @@ namespace PaviseApp
         public const string EvMechanism = "机制明确";
         public const string EvUnverified = "未验证";
 
-        // 中断分层：<1% 干净，1%~5% 正常，>=5% 异常（微秒级干扰，5% 以下不构成可感知卡顿）
         public static int InterruptTier(double worstRate)
         {
             if (worstRate < 0.01) return 0;
@@ -95,7 +94,6 @@ namespace PaviseApp
             catch { return false; }
         }
 
-        // 刷新率是否已经跑在同分辨率可用的最高档 差一档就是实打实的帧数损失
         public static bool RefreshRateIsBest(int current, int best)
         {
             return current <= 0 || best <= 0 || current >= best;
@@ -114,7 +112,6 @@ namespace PaviseApp
                     object build = key.GetValue("CurrentBuildNumber");
                     object ubr = key.GetValue("UBR");
                     string text = string.IsNullOrEmpty(name) ? "Windows" : name;
-                    // 注册表在 Win11 上仍写着 Windows 10，按内部版本号纠正
                     int buildNumber;
                     if (build != null && int.TryParse(build.ToString(), out buildNumber) && buildNumber >= 22000)
                         text = text.Replace("Windows 10", "Windows 11");
@@ -146,7 +143,6 @@ namespace PaviseApp
             public double Ratio;
         }
 
-        // 采样窗口内 CPU 时间增量最大的几个非系统进程 用来回答"该压制谁"
         public static List<LoadEntry> TopConsumers(int windowMs, int take)
         {
             var result = new List<LoadEntry>();

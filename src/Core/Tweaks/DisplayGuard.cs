@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 切换并恢复主显示器刷新率
 
 using System;
@@ -31,7 +31,6 @@ namespace PaviseApp
             catch { return 0; }
         }
 
-        // 只读：当前刷新率与同分辨率下可用的最高刷新率 都为 0 表示读取失败
         internal static void QueryRefreshRates(out int current, out int best)
         {
             current = 0; best = 0;
