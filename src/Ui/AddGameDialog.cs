@@ -1,8 +1,9 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 扫描本机已安装的游戏并批量勾选加入目标库
+// 文件用途 统一的添加游戏对话框 打开即扫描已安装游戏并混排运行中的候选进程 浏览文件兜底
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Threading;
@@ -10,8 +11,10 @@ using System.Windows.Forms;
 
 namespace PaviseApp
 {
-    internal class GameScanDialog : Form
+    internal class AddGameDialog : Form
     {
+        private enum RowKind { Installed, Running }
+
         private class Row
         {
             public string Name;
@@ -19,23 +22,28 @@ namespace PaviseApp
             public string Root;
             public bool Checked;
             public bool Already;
+            public RowKind Kind;
+            public double Gpu;
+            public bool RendererLike;
         }
 
         public readonly List<ScanHit> Selected = new List<ScanHit>();
 
+        private readonly bool allowGpuProbe;
         private readonly HashSet<string> existing;
         private readonly List<Row> rows = new List<Row>();
         private readonly List<Row> shown = new List<Row>();
         private ListBox lst;
         private TextBox tbFilter;
         private Label lblInfo;
-        private PillButton btnAdd, btnDeep, btnAll;
+        private PillButton btnAdd, btnDeep, btnAll, btnBrowse;
         private volatile bool closed;
         private volatile bool scanning;
         private int hover = -1;
 
-        public GameScanDialog(IEnumerable<string> alreadyInLibrary)
+        public AddGameDialog(IEnumerable<string> alreadyInLibrary, bool allowGpuProbe)
         {
+            this.allowGpuProbe = allowGpuProbe;
             existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             if (alreadyInLibrary != null)
                 foreach (string p in alreadyInLibrary)
@@ -43,7 +51,7 @@ namespace PaviseApp
 
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(Theme.S(560), Theme.S(560));
+            ClientSize = new Size(Theme.S(620), Theme.S(560));
             BackColor = Theme.Bg;
             Font = Theme.UI(9.5f, false);
 
@@ -57,20 +65,20 @@ namespace PaviseApp
             var lblClose = new Label();
             lblClose.Text = "✕";
             lblClose.ForeColor = Theme.Dim;
-            lblClose.SetBounds(Theme.S(524), Theme.S(10), Theme.S(26), Theme.S(26));
+            lblClose.SetBounds(Theme.S(584), Theme.S(10), Theme.S(26), Theme.S(26));
             lblClose.TextAlign = ContentAlignment.MiddleCenter;
             lblClose.Cursor = Cursors.Hand;
             lblClose.Click += delegate { DialogResult = DialogResult.Cancel; };
 
-            tbFilter = Theme.MakeTextBox(Theme.S(16), Theme.S(44), Theme.S(430));
+            tbFilter = Theme.MakeTextBox(Theme.S(16), Theme.S(44), Theme.S(488));
             tbFilter.TextChanged += delegate { Refill(); };
 
             btnAll = new PillButton(Lang.T("scan.all"));
-            btnAll.SetBounds(Theme.S(454), Theme.S(44), Theme.S(94), Theme.S(30));
+            btnAll.SetBounds(Theme.S(512), Theme.S(44), Theme.S(92), Theme.S(30));
             btnAll.Click += delegate { ToggleAll(); };
 
             var listWrap = new RoundPanel();
-            listWrap.SetBounds(Theme.S(16), Theme.S(84), Theme.S(532), Theme.S(392));
+            listWrap.SetBounds(Theme.S(16), Theme.S(84), Theme.S(588), Theme.S(392));
             listWrap.BackColor = Theme.Bg; listWrap.Fill = Theme.Card; listWrap.Border = Theme.Stroke; listWrap.Radius = Theme.S(12);
             listWrap.Padding = new Padding(Theme.S(6));
             lst = new ListBox();
@@ -94,6 +102,15 @@ namespace PaviseApp
                 int idx = lst.IndexFromPoint(e.Location);
                 if (idx >= 0) ToggleAt(idx);
             };
+            lst.DoubleClick += delegate
+            {
+                int idx = lst.SelectedIndex;
+                if (idx < 0 || idx >= shown.Count) return;
+                Row r = shown[idx];
+                if (r.Already) return;
+                r.Checked = true;
+                Accept();
+            };
             listWrap.Controls.Add(lst);
 
             lblInfo = new Label();
@@ -102,22 +119,26 @@ namespace PaviseApp
             lblInfo.BackColor = Theme.Bg;
             lblInfo.Font = Theme.UI(8.25f, false);
             lblInfo.TextAlign = ContentAlignment.MiddleLeft;
-            lblInfo.SetBounds(Theme.S(16), Theme.S(490), Theme.S(240), Theme.S(28));
+            lblInfo.SetBounds(Theme.S(16), Theme.S(490), Theme.S(178), Theme.S(28));
+
+            btnBrowse = new PillButton(Lang.T("scan.browse"));
+            btnBrowse.SetBounds(Theme.S(200), Theme.S(486), Theme.S(104), Theme.S(34));
+            btnBrowse.Click += delegate { BrowseFile(); };
 
             btnDeep = new PillButton(Lang.T("scan.deep"));
-            btnDeep.SetBounds(Theme.S(262), Theme.S(486), Theme.S(112), Theme.S(34));
+            btnDeep.SetBounds(Theme.S(312), Theme.S(486), Theme.S(104), Theme.S(34));
             btnDeep.Click += delegate { DeepScan(); };
 
             btnAdd = new PillButton(Lang.T("btn.add"), BtnKind.Primary);
-            btnAdd.SetBounds(Theme.S(382), Theme.S(486), Theme.S(80), Theme.S(34));
+            btnAdd.SetBounds(Theme.S(424), Theme.S(486), Theme.S(88), Theme.S(34));
             btnAdd.Click += delegate { Accept(); };
 
             var btnCancel = new PillButton(Lang.T("btn.cancel"));
-            btnCancel.SetBounds(Theme.S(470), Theme.S(486), Theme.S(78), Theme.S(34));
+            btnCancel.SetBounds(Theme.S(520), Theme.S(486), Theme.S(84), Theme.S(34));
             btnCancel.Click += delegate { DialogResult = DialogResult.Cancel; };
 
-            Controls.AddRange(new Control[] { title, lblClose, tbFilter, btnAll, listWrap, lblInfo, btnDeep, btnAdd, btnCancel });
-            Load += delegate { StartScan(null); };
+            Controls.AddRange(new Control[] { title, lblClose, tbFilter, btnAll, listWrap, lblInfo, btnBrowse, btnDeep, btnAdd, btnCancel });
+            Load += delegate { StartRunningCollect(); StartScan(null); };
             FormClosed += delegate { closed = true; };
             MouseDown += DragMove;
             KeyPreview = true;
@@ -156,6 +177,133 @@ namespace PaviseApp
             }
         }
 
+        private void StartRunningCollect()
+        {
+            var worker = new Thread(delegate()
+            {
+                List<ScanHit> hits;
+                Dictionary<string, int> pidByPath;
+                try { hits = CollectRunningCandidates(out pidByPath); }
+                catch { hits = new List<ScanHit>(); pidByPath = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase); }
+                Post(delegate { Merge(hits, RowKind.Running); });
+
+                if (!allowGpuProbe || closed || pidByPath.Count == 0) return;
+                Dictionary<int, double> util = null;
+                try
+                {
+                    util = GpuEvidence.Sample3D(
+                        GpuEvidence.BurstRounds, GpuEvidence.BurstIntervalMs, IsClosed);
+                }
+                catch { }
+                if (util == null || closed) return;
+                var utilByPath = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+                foreach (KeyValuePair<string, int> kv in pidByPath)
+                {
+                    double u;
+                    if (util.TryGetValue(kv.Value, out u) && u > 0) utilByPath[kv.Key] = u;
+                }
+                Post(delegate { ApplyGpuTags(utilByPath); });
+            });
+            worker.IsBackground = true;
+            worker.Start();
+        }
+
+        private void ApplyGpuTags(Dictionary<string, double> utilByPath)
+        {
+            Row best = null;
+            foreach (Row r in rows)
+            {
+                if (r.Kind != RowKind.Running) continue;
+                double u;
+                if (!utilByPath.TryGetValue(r.Path, out u)) continue;
+                r.Gpu = u;
+                if (best == null || u > best.Gpu) best = r;
+            }
+            if (best != null && best.Gpu >= GpuEvidence.MinElectUtilization)
+            {
+                best.RendererLike = true;
+                if (!best.Already) best.Checked = true;
+            }
+            SortRows();
+            Refill();
+        }
+
+        private static List<ScanHit> CollectRunningCandidates(out Dictionary<string, int> pidByPath)
+        {
+            pidByPath = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var hits = new List<ScanHit>();
+            int session = -1, selfPid = 0;
+            try
+            {
+                using (Process current = Process.GetCurrentProcess())
+                {
+                    session = current.SessionId;
+                    selfPid = current.Id;
+                }
+            }
+            catch { }
+            if (session < 0) return hits;
+            string windowsRoot = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+            windowsRoot = string.IsNullOrEmpty(windowsRoot) ? @"C:\Windows\" : windowsRoot.TrimEnd('\\') + "\\";
+            HashSet<int> visible = GameSessionDetector.VisibleWindowPids(true);
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            Process[] all = null;
+            try
+            {
+                all = Process.GetProcesses();
+                foreach (Process p in all)
+                {
+                    try
+                    {
+                        if (p.Id <= 4 || p.Id == selfPid || !visible.Contains(p.Id)) continue;
+                        int processSession = -1;
+                        try { processSession = p.SessionId; } catch { }
+                        if (processSession != session) continue;
+                        string path = null;
+                        IntPtr h = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, p.Id);
+                        if (h != IntPtr.Zero)
+                        {
+                            try { path = Native.ImagePath(h); }
+                            finally { Native.CloseHandle(h); }
+                        }
+                        if (string.IsNullOrEmpty(path) || !seen.Add(path)) continue;
+                        string name = GameSessionDetector.ImageNameFromVerifiedPath(path);
+                        if (!GameSessionDetector.IsLibraryCandidate(name, path, windowsRoot)) continue;
+                        if (SteamCatalog.IsSteamFamily(name, path)) continue;
+                        pidByPath[path] = p.Id;
+                        hits.Add(new ScanHit
+                        {
+                            Name = DisplayNameOf(path, name),
+                            Proc = name,
+                            Root = GameScan.InferGameRoot(path),
+                            Exe = path
+                        });
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+            finally { if (all != null) foreach (Process p in all) { try { p.Dispose(); } catch { } } }
+            return hits;
+        }
+
+        private static string DisplayNameOf(string executablePath, string fallback)
+        {
+            try
+            {
+                FileVersionInfo info = FileVersionInfo.GetVersionInfo(executablePath);
+                string value = !string.IsNullOrWhiteSpace(info.FileDescription) ? info.FileDescription : info.ProductName;
+                if (!string.IsNullOrWhiteSpace(value)) return value.Trim();
+            }
+            catch { }
+            return fallback;
+        }
+
+        private bool IsClosed()
+        {
+            return closed;
+        }
+
         private void StartScan(string deepRoot)
         {
             if (scanning) return;
@@ -173,15 +321,10 @@ namespace PaviseApp
                         : GameScan.Run(deepRoot, IsClosed, null);
                 }
                 catch { hits = new List<ScanHit>(); }
-                Post(delegate { Merge(hits); });
+                Post(delegate { scanning = false; btnDeep.Enabled = true; Merge(hits, RowKind.Installed); });
             });
             worker.IsBackground = true;
             worker.Start();
-        }
-
-        private bool IsClosed()
-        {
-            return closed;
         }
 
         private void DeepScan()
@@ -196,18 +339,37 @@ namespace PaviseApp
             }
         }
 
-        private void Merge(List<ScanHit> hits)
+        private void BrowseFile()
         {
-            scanning = false;
-            btnDeep.Enabled = true;
+            using (var dlg = new OpenFileDialog())
+            {
+                dlg.Title = Lang.T("ofd.game");
+                dlg.Filter = Lang.T("ofd.filter");
+                dlg.CheckFileExists = false;
+                dlg.DereferenceLinks = false;
+                if (dlg.ShowDialog(this) != DialogResult.OK) return;
+                string resolved, error;
+                if (!GameExecutableResolver.TryResolve(dlg.FileName, out resolved, out error))
+                {
+                    if (!string.IsNullOrEmpty(error))
+                        MessageBox.Show(this, error, "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                Selected.Clear();
+                Selected.Add(new ScanHit { Name = null, Root = GameScan.InferGameRoot(resolved), Exe = resolved });
+                DialogResult = DialogResult.OK;
+            }
+        }
 
+        private void Merge(List<ScanHit> hits, RowKind kind)
+        {
             var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (Row r in rows) known.Add(r.Path);
 
-            int added = 0;
             foreach (ScanHit h in hits)
             {
-                if (h == null || string.IsNullOrEmpty(h.Root)) continue;
+                if (h == null) continue;
+                if (kind == RowKind.Installed && string.IsNullOrEmpty(h.Root)) continue;
                 string exe = ResolveExe(h);
                 if (exe == null || !known.Add(exe)) continue;
                 rows.Add(new Row
@@ -216,23 +378,37 @@ namespace PaviseApp
                     Path = exe,
                     Root = h.Root,
                     Already = existing.Contains(exe),
-                    Checked = false
+                    Checked = false,
+                    Kind = kind
                 });
-                added++;
             }
 
-            rows.Sort(delegate(Row a, Row b)
-            {
-                if (a.Already != b.Already) return a.Already ? 1 : -1;
-                return string.Compare(a.Name, b.Name, StringComparison.CurrentCultureIgnoreCase);
-            });
+            SortRows();
 
             int fresh = 0;
             foreach (Row r in rows) if (!r.Already) fresh++;
             lblInfo.Text = rows.Count == 0
-                ? Lang.T("scan.none")
+                ? Lang.T(scanning ? "scan.busy" : "scan.none")
                 : Lang.F("scan.count", rows.Count, fresh);
             Refill();
+        }
+
+        private void SortRows()
+        {
+            rows.Sort(delegate(Row a, Row b)
+            {
+                int ga = RowGroup(a);
+                int gb = RowGroup(b);
+                if (ga != gb) return ga - gb;
+                return string.Compare(a.Name, b.Name, StringComparison.CurrentCultureIgnoreCase);
+            });
+        }
+
+        private static int RowGroup(Row r)
+        {
+            if (r.Already) return 3;
+            if (r.RendererLike) return 0;
+            return r.Kind == RowKind.Running ? 1 : 2;
         }
 
         private static string ResolveExe(ScanHit h)
@@ -342,6 +518,14 @@ namespace PaviseApp
                 TextRenderer.DrawText(e.Graphics, Lang.T("scan.already"), Theme.UI(7.6f, true),
                     new Rectangle(e.Bounds.Right - right, e.Bounds.Y + Theme.S(6), right - Theme.S(14), Theme.S(18)),
                     Theme.Faint, TextFormatFlags.Right | TextFormatFlags.NoPadding);
+            else if (r.RendererLike)
+                TextRenderer.DrawText(e.Graphics, Lang.F("scan.renderer.tag", (int)r.Gpu), Theme.UI(7.6f, true),
+                    new Rectangle(e.Bounds.Right - Theme.S(128), e.Bounds.Y + Theme.S(6), Theme.S(114), Theme.S(18)),
+                    Theme.Accent, TextFormatFlags.Right | TextFormatFlags.NoPadding);
+            else if (r.Kind == RowKind.Running)
+                TextRenderer.DrawText(e.Graphics, Lang.T("scan.running.tag"), Theme.UI(7.6f, true),
+                    new Rectangle(e.Bounds.Right - right, e.Bounds.Y + Theme.S(6), right - Theme.S(14), Theme.S(18)),
+                    Theme.Green, TextFormatFlags.Right | TextFormatFlags.NoPadding);
         }
 
         private void Post(Action a)

@@ -331,13 +331,19 @@ namespace PaviseApp
 
         private void ReleaseBackground()
         {
+            ReleaseBackground("后台压制已关闭");
+        }
+
+        private int ReleaseBackground(string reasonPrefix)
+        {
             pressure.Clear();
             freezeDwell.Clear();
-            if (!core.AnyWith(SuppressReason.Background)) return;
+            if (!core.AnyWith(SuppressReason.Background)) return 0;
             int n = 0;
             foreach (int pid in core.PidsWith(SuppressReason.Background))
                 if (core.Release(pid, SuppressReason.Background)) { ReportUntrack(pid); n++; }
-            if (n > 0) Logger.Log("后台压制已关闭：解除 " + n + " 个进程的压制（个别被句柄保护的会自动补还原）");
+            if (n > 0) Logger.Log(reasonPrefix + "：解除 " + n + " 个进程的压制（个别被句柄保护的会自动补还原）");
+            return n;
         }
 
         private void Boost(Process[] all)
@@ -915,7 +921,10 @@ namespace PaviseApp
             pressure.Clear();
             freezeDwell.Clear();
             if (clean) CrashGuard.ClearBoost();
-            Logger.Log("游戏模式解除（" + reason + "）：恢复 " + ok + " 个后台进程（本局累计，含中途新增）");
+            int restoredTotal = ok + gracePreReleased;
+            gracePreReleased = 0;
+            Logger.Log("游戏模式解除（" + reason + "）：恢复 " + restoredTotal
+                + " 个后台进程（本局累计，含中途新增与宽限期先行还原）");
             ReportFinish();
             lock (sync)
             {

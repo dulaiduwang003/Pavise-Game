@@ -241,10 +241,9 @@ namespace PaviseApp
                             if (path == null || !profile.ContainsPath(path)) continue;
                             bool visible = GameSessionDetector.HasUserFacingWindow(p);
                             bool foreground = pid == fg;
-                            int score = GameSessionDetector.Score(profile, p.ProcessName, path, visible, foreground);
-                            bool qual = GameSessionDetector.QualifiesRenderer(profile, p.ProcessName, path, visible, foreground);
+                            bool vetoed = GameSessionDetector.ElectionVetoed(p.ProcessName, path);
                             sb.AppendLine("   " + p.ProcessName + " pid=" + pid + " vis=" + visible
-                                + " fg=" + foreground + " score=" + score + " renderer=" + qual);
+                                + " fg=" + foreground + " vetoed=" + vetoed);
                         }
                         catch { }
                     }
@@ -960,7 +959,7 @@ namespace PaviseApp
                 Eq(true, GameSessionDetector.IsProfileEntryProcess(
                     eventProfile, "EventProbe_x64",
                     @"C:\Games\EventProbe\EventProbe_x64.exe"));
-                Eq(false, GameSessionDetector.IsProfileEntryProcess(
+                Eq(true, GameSessionDetector.IsProfileEntryProcess(
                     eventProfile, "EventProbeHelper",
                     @"C:\Games\EventProbe\EventProbeHelper.exe"));
                 Eq(false, GameSessionDetector.IsProfileEntryProcess(
@@ -968,7 +967,7 @@ namespace PaviseApp
                     @"C:\Other\EventProbe_x64.exe"));
                 var detection = new GameDetection();
                 detection.RendererPid = 41;
-                detection.RendererName = "EventProbeLauncher";
+                detection.RendererName = "RiotClientServices";
                 detection.RendererCreation = 1000;
                 Eq(true, GameMode.ShouldCaptureLauncherParentIdentity(
                     detection, 41));
@@ -1049,7 +1048,7 @@ namespace PaviseApp
                 var returnedLauncher = new GameDetection
                 {
                     RendererPid = 41,
-                    RendererName = "EventProbeLauncher"
+                    RendererName = "RiotClientServices"
                 };
                 Eq(true, GameMode.ShouldRearmLauncherTransition(
                     detection, returnedLauncher));
@@ -1684,7 +1683,7 @@ namespace PaviseApp
                 }
                 finally { try { Directory.Delete(exeRoot, true); } catch { } }
             });
-            test("render detector: sibling window fallback anchors in-process launcher (Bannerlord pattern)", () =>
+            test("render election: windowed sibling waits for GPU; fullscreen elects at once (Bannerlord pattern)", () =>
             {
                 Lang.Init();
                 string gameDir = @"C:\g\Mount & Blade II Bannerlord\bin\Win64_Shipping_Client";
@@ -1699,22 +1698,34 @@ namespace PaviseApp
                     Path = Path.Combine(gameDir, "TaleWorlds.MountAndBlade.Launcher.exe"),
                     Visible = true, Foreground = true
                 };
+                bool armed;
                 GameDetection hit = GameSessionDetector.DetectSnapshot(
-                    new[] { launcher }, new[] { profile }, now);
-                if (hit == null) throw new Exception("sibling window fallback did not anchor");
+                    new[] { launcher }, new[] { profile }, out armed);
+                if (hit == null) throw new Exception("windowed in-root candidate disappeared");
+                Eq(true, armed);
+                Eq(true, hit.RequiresGpuConfirm);
+                Eq(false, hit.RendererCandidateSelected);
                 Eq("TaleWorlds.MountAndBlade.Launcher", hit.RendererName);
-                Eq(true, hit.RendererUserSelected);
-                Eq(false, hit.RendererLearnable);
+
+                launcher.FullscreenLike = true;
+                hit = GameSessionDetector.DetectSnapshot(
+                    new[] { launcher }, new[] { profile }, out armed);
+                if (hit == null) throw new Exception("fullscreen candidate was not elected");
+                Eq(false, hit.RequiresGpuConfirm);
+                Eq(true, hit.RendererCandidateSelected);
+                Eq(true, hit.RendererLearnable);
+                Eq("TaleWorlds.MountAndBlade.Launcher", hit.RendererName);
 
                 var otherDir = new GameProcessSnapshot
                 {
                     Pid = 4243, ParentPid = 1, Creation = created,
                     Name = "SomeClientLauncher",
                     Path = @"C:\g\Mount & Blade II Bannerlord\ux\SomeClientLauncher.exe",
-                    Visible = true, Foreground = true
+                    Visible = true, Foreground = true, FullscreenLike = true
                 };
-                if (GameSessionDetector.DetectSnapshot(new[] { otherDir }, new[] { profile }, now) != null)
-                    throw new Exception("different-directory launcher must not anchor");
+                if (GameSessionDetector.DetectSnapshot(new[] { otherDir }, new[] { profile }, out armed) != null)
+                    throw new Exception("out-of-root process must not anchor");
+                Eq(false, armed);
 
                 var headless = new GameProcessSnapshot
                 {
@@ -1723,18 +1734,19 @@ namespace PaviseApp
                     Path = Path.Combine(gameDir, "TaleWorlds.MountAndBlade.Launcher.exe"),
                     Visible = false, Foreground = false
                 };
-                if (GameSessionDetector.DetectSnapshot(new[] { headless }, new[] { profile }, now) != null)
-                    throw new Exception("windowless sibling must not anchor");
+                if (GameSessionDetector.DetectSnapshot(new[] { headless }, new[] { profile }, out armed) != null)
+                    throw new Exception("windowless family must stay armed, not engaged");
+                Eq(true, armed);
 
                 var updater = new GameProcessSnapshot
                 {
                     Pid = 4245, ParentPid = 1, Creation = created,
                     Name = "BannerlordUninstall",
                     Path = Path.Combine(gameDir, "BannerlordUninstall.exe"),
-                    Visible = true, Foreground = true
+                    Visible = true, Foreground = true, FullscreenLike = true
                 };
-                if (GameSessionDetector.DetectSnapshot(new[] { updater }, new[] { profile }, now) != null)
-                    throw new Exception("non-game role sibling must not anchor");
+                if (GameSessionDetector.DetectSnapshot(new[] { updater }, new[] { profile }, out armed) != null)
+                    throw new Exception("non-game role must never be elected");
             });
             test("render detector: learned renderer anchors without the launcher (LOL pattern)", () =>
             {
@@ -1753,12 +1765,20 @@ namespace PaviseApp
                     Path = Path.Combine(lolRoot, "Game\\League of Legends.exe"),
                     Visible = true, Foreground = true
                 };
+                bool armed;
                 GameDetection hit = GameSessionDetector.DetectSnapshot(
-                    new[] { game }, new[] { profile }, now);
+                    new[] { game }, new[] { profile }, out armed);
                 if (hit == null) throw new Exception("learned renderer did not anchor the session");
                 Eq("League of Legends", hit.RendererName);
                 Eq(true, hit.RendererUserSelected);
                 Eq(false, hit.RendererLearnable);
+                Eq(false, hit.RequiresGpuConfirm);
+
+                game.Foreground = false;
+                hit = GameSessionDetector.DetectSnapshot(
+                    new[] { game }, new[] { profile }, out armed);
+                if (hit == null) throw new Exception("learned renderer must elect on visibility alone");
+                Eq(false, hit.RequiresGpuConfirm);
 
                 var stranger = new GameProcessSnapshot
                 {
@@ -1767,20 +1787,21 @@ namespace PaviseApp
                     Path = Path.Combine(lolRoot, "LeagueClient\\LeagueClientUxRender.exe"),
                     Visible = false, Foreground = false
                 };
-                if (GameSessionDetector.DetectSnapshot(new[] { stranger }, new[] { profile }, now) != null)
+                if (GameSessionDetector.DetectSnapshot(new[] { stranger }, new[] { profile }, out armed) != null)
                     throw new Exception("unlearned sibling must not anchor");
+                Eq(true, armed);
 
                 var impostor = new GameProcessSnapshot
                 {
                     Pid = 5303, ParentPid = 1, Creation = created,
                     Name = "League of Legends",
                     Path = @"D:\Fake\Game\League of Legends.exe",
-                    Visible = true, Foreground = true
+                    Visible = true, Foreground = true, FullscreenLike = true
                 };
-                if (GameSessionDetector.DetectSnapshot(new[] { impostor }, new[] { profile }, now) != null)
+                if (GameSessionDetector.DetectSnapshot(new[] { impostor }, new[] { profile }, out armed) != null)
                     throw new Exception("same-name impostor outside the root must not anchor");
             });
-            test("render detector: only the launcher-to-renderer promotion is learnable", () =>
+            test("render election: client shell arms only; the real game engages and is learnable", () =>
             {
                 Lang.Init();
                 string lolRoot = @"C:\g\WeGameApps\英雄联盟";
@@ -1794,8 +1815,16 @@ namespace PaviseApp
                     Pid = 6001, ParentPid = 1, Creation = created,
                     Name = "RiotClientServices",
                     Path = Path.Combine(lolRoot, "Riot Client\\RiotClientServices.exe"),
-                    Visible = true, Foreground = false
+                    Visible = true, Foreground = true, FullscreenLike = true
                 };
+                bool armed;
+                GameDetection launcherOnly = GameSessionDetector.DetectSnapshot(
+                    new[] { launcher }, new[] { profile }, out armed);
+                Eq<GameDetection>(null, launcherOnly);
+                Eq(true, armed);
+
+                launcher.Foreground = false;
+                launcher.FullscreenLike = false;
                 var game = new GameProcessSnapshot
                 {
                     Pid = 6002, ParentPid = 6001, Creation = created + 1000,
@@ -1803,28 +1832,98 @@ namespace PaviseApp
                     Path = Path.Combine(lolRoot, "Game\\League of Legends.exe"),
                     Visible = true, Foreground = true
                 };
-                GameDetection hit = GameSessionDetector.DetectSnapshot(
-                    new[] { launcher, game }, new[] { profile }, now);
-                if (hit == null) throw new Exception("launcher promotion did not anchor");
-                Eq("League of Legends", hit.RendererName);
-                Eq(true, hit.RendererLearnable);
+                GameDetection pending = GameSessionDetector.DetectSnapshot(
+                    new[] { launcher, game }, new[] { profile }, out armed);
+                if (pending == null) throw new Exception("real game candidate disappeared");
+                Eq(true, pending.RequiresGpuConfirm);
+                Eq("League of Legends", pending.RendererName);
 
-                GameDetection launcherOnly = GameSessionDetector.DetectSnapshot(
-                    new[] { launcher }, new[] { profile }, now);
-                if (launcherOnly == null) throw new Exception("launcher entry did not anchor");
-                Eq("RiotClientServices", launcherOnly.RendererName);
-                Eq(false, launcherOnly.RendererLearnable);
+                game.FullscreenLike = true;
+                GameDetection hit = GameSessionDetector.DetectSnapshot(
+                    new[] { launcher, game }, new[] { profile }, out armed);
+                if (hit == null) throw new Exception("fullscreen game was not elected");
+                Eq("League of Legends", hit.RendererName);
+                Eq(false, hit.RequiresGpuConfirm);
+                Eq(true, hit.RendererLearnable);
+                Eq(true, hit.FamilyPids.Contains(6001));
+                Eq(true, hit.FamilyPids.Contains(6002));
+            });
+            test("render election: fullscreen game outranks a stale learned launcher (Bannerlord handover)", () =>
+            {
+                Lang.Init();
+                string blRoot = @"C:\g\Mount & Blade II Bannerlord";
+                string binDir = Path.Combine(blRoot, "bin", "Win64_Shipping_Client");
+                var profile = GameProfileStore.NewProfile("Bannerlord", blRoot,
+                    Path.Combine(binDir, "Launcher.Native.exe"));
+                profile.LearnedExecutablePath = Path.Combine(binDir, "TaleWorlds.MountAndBlade.Launcher.exe");
+                long now = DateTime.UtcNow.ToFileTimeUtc();
+                long created = now - 60L * 10000000L;
+
+                var stale = new GameProcessSnapshot
+                {
+                    Pid = 8001, ParentPid = 1, Creation = created,
+                    Name = "TaleWorlds.MountAndBlade.Launcher",
+                    Path = profile.LearnedExecutablePath,
+                    Visible = true
+                };
+                var game = new GameProcessSnapshot
+                {
+                    Pid = 8002, ParentPid = 8001, Creation = created + 1000,
+                    Name = "Bannerlord",
+                    Path = Path.Combine(binDir, "Bannerlord.exe"),
+                    Visible = true, Foreground = true, FullscreenLike = true
+                };
+                bool armed;
+                GameDetection hit = GameSessionDetector.DetectSnapshot(
+                    new[] { stale, game }, new[] { profile }, out armed);
+                if (hit == null) throw new Exception("handover election failed");
+                Eq("Bannerlord", hit.RendererName);
+                Eq(true, hit.RendererLearnable);
+                Eq(false, hit.RequiresGpuConfirm);
+
+                game.Foreground = false;
+                game.FullscreenLike = false;
+                hit = GameSessionDetector.DetectSnapshot(
+                    new[] { stale, game }, new[] { profile }, out armed);
+                if (hit == null) throw new Exception("learned fallback disappeared");
+                Eq("TaleWorlds.MountAndBlade.Launcher", hit.RendererName);
+            });
+            test("evidence plumbing: GPU pid parse, fullscreen geometry, library candidate filter", () =>
+            {
+                Eq(4242, GpuEvidence.ParsePid("pid_4242_luid_0x00000000_0x0000ABCD_phys_0_eng_0_engtype_3D"));
+                Eq(0, GpuEvidence.ParsePid("luid_0x0_phys_0"));
+                Eq(0, GpuEvidence.ParsePid(null));
+                Eq(0, GpuEvidence.ParsePid("pid__"));
+
+                var monitor = new GameSessionDetector.NativeRect { Left = 0, Top = 0, Right = 2560, Bottom = 1440 };
+                Eq(true, GameSessionDetector.RectCoversMonitor(monitor, monitor));
+                var windowed = new GameSessionDetector.NativeRect { Left = 100, Top = 100, Right = 1380, Bottom = 820 };
+                Eq(false, GameSessionDetector.RectCoversMonitor(windowed, monitor));
+                var spill = new GameSessionDetector.NativeRect { Left = -8, Top = -8, Right = 2568, Bottom = 1448 };
+                Eq(true, GameSessionDetector.RectCoversMonitor(spill, monitor));
+
+                string win = @"C:\Windows\";
+                Eq(false, GameSessionDetector.IsLibraryCandidate("chrome", @"D:\Apps\chrome.exe", win));
+                Eq(false, GameSessionDetector.IsLibraryCandidate("steam", @"C:\Program Files (x86)\Steam\steam.exe", win));
+                Eq(false, GameSessionDetector.IsLibraryCandidate("dwm", @"C:\Windows\System32\dwm.exe", win));
+                Eq(false, GameSessionDetector.IsLibraryCandidate("SGuard64", @"D:\g\SGuard64.exe", win));
+                Eq(false, GameSessionDetector.IsLibraryCandidate("vlc", @"D:\Apps\vlc.exe", win));
+                Eq(false, GameSessionDetector.IsLibraryCandidate("LeagueClientUx", @"D:\g\lol\LeagueClient\LeagueClientUx.exe", win));
+                Eq(true, GameSessionDetector.IsLibraryCandidate("cs2", @"D:\Steam\steamapps\common\cs2\game\bin\win64\cs2.exe", win));
+                Eq(true, GameSessionDetector.IsLibraryCandidate("League of Legends", @"D:\g\lol\Game\League of Legends.exe", win));
+                Eq(false, GameSessionDetector.IsLibraryCandidate(null, @"D:\x.exe", win));
+                Eq(false, GameSessionDetector.IsLibraryCandidate("x", null, win));
             });
 
             string root = Path.Combine(Path.GetTempPath(), "PaviseSelfTest_" + Process.GetCurrentProcess().Id + "_" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(root);
             try
             {
-                test("game catalog: legacy entry upgrades to a persisted install root", () => TestGameCatalogUpgrade(root));
-                test("game profiles: migration removes learning state and deduplicates", () => TestProfileStore(root));
-                test("game profiles: learned renderer survives the roundtrip in V2-compatible lines", () => TestLearnedRendererStore(root));
+                test("game catalog: legacy list is cleared with a backup; fresh add persists install root", () => TestGameCatalogUpgrade(root));
+                test("game profiles: pre-election legacy list is cleared; fresh saves deduplicate", () => TestProfileStore(root));
+                test("game profiles: learned renderer survives the V4 roundtrip", () => TestLearnedRendererStore(root));
                 test("game profiles: a newer-format file is read-only and never overwritten", () => TestFutureProfileFormatProtected(root));
-                test("game profiles: transitional V3 files migrate back to the V2 format", () => TestV3ProfileMigration(root));
+                test("game profiles: pre-election era stores are cleared with a backup", () => TestV3ProfileMigration(root));
                 test("game scan: uninstall registry hits drop net accelerators", () => TestUninstallScanFiltersAccelerators(root));
                 test("game scan: main-exe pick follows structure, not size (LOL / Unity patterns)", () => TestPickMainExeStructure(root));
                 test("game scan: fake Steam library resolves games across libraries and filters junk", () => TestSteamLibraryScan(root));
@@ -1832,8 +1931,8 @@ namespace PaviseApp
                 test("game profiles: an unreadable file is never overwritten by a save", () => TestProfileLoadFailure(root));
                 test("game library: EXE/LNK resolve without executing the target", () => TestExecutableResolver(root));
                 test("LoL addons: delete touches only add-on layers, never the game core", () => TestLolAddonDelete(root));
-                test("render detector: user-selected headless exe activates; legacy headless does not", () => TestHeadlessEntry(root));
-                test("render detector: suffix fallback stays inside the configured profile root", () => TestFallbackEntryRootBoundary(root));
+                test("render detector: headless entry arms only; sessions need window evidence", () => TestHeadlessEntry(root));
+                test("render detector: family follows the profile root, not name prefixes", () => TestFallbackEntryRootBoundary(root));
                 test("renderer boost: HIGH priority and IO3 are verified by readback", () => TestBoostReadback(root));
                 test("renderer boost: retained crash snapshot is re-adopted exactly", TestCrashBoostReAdoption);
                 test("EcoQoS restore: a process' own power-saving opt-in survives suppression", () => TestEcoQoSRestore(root));
@@ -1903,19 +2002,43 @@ namespace PaviseApp
 
         private static void TestRenderScoring()
         {
+            Lang.Init();
             var profile = GameProfileStore.NewProfile("Example", Path.Combine(Path.GetTempPath(), "ExampleGame"));
             profile.Entries.Add("ExampleGame");
             string game = Path.Combine(profile.Root, "Binaries", "Win64", "ExampleGame-Win64-Shipping.exe");
-            string launcher = Path.Combine(profile.Root, "Launcher", "ExampleLauncher.exe");
             Eq(true, profile.ContainsPath(game));
             Eq(false, profile.ContainsPath(Path.Combine(profile.Root + "-backup", "game.exe")));
-            if (GameSessionDetector.Score(profile, "ExampleGame", game, true, true) < 65) throw new Exception("game candidate score too low");
-            if (GameSessionDetector.Score(profile, "ExampleLauncher", launcher, true, true) >= 65) throw new Exception("launcher activated profile");
-            Eq(true, GameSessionDetector.QualifiesRenderer(profile, "ExampleGame", game, true, true));
-            Eq(false, GameSessionDetector.QualifiesRenderer(profile, "ExampleLauncher", launcher, true, true));
-            Eq(-1000, GameSessionDetector.Score(profile, "POWERPNT", @"C:\Program Files\Microsoft Office\POWERPNT.EXE", true, true));
-            Eq(-1000, GameSessionDetector.Score(profile, "ACE-Helper", Path.Combine(profile.Root, "ACE-Helper.exe"), true, true));
-            Eq(-1000, GameSessionDetector.Score(profile, "LeagueClientUxRender", Path.Combine(profile.Root, "LeagueClient", "LeagueClientUxRender.exe"), true, true));
+
+            Eq(true, GameSessionDetector.ElectionVetoed("POWERPNT", @"C:\Program Files\Microsoft Office\POWERPNT.EXE"));
+            Eq(true, GameSessionDetector.ElectionVetoed("ACE-Helper", Path.Combine(profile.Root, "ACE-Helper.exe")));
+            Eq(true, GameSessionDetector.ElectionVetoed("LeagueClientUxRender", Path.Combine(profile.Root, "LeagueClient", "LeagueClientUxRender.exe")));
+            Eq(true, GameSessionDetector.ElectionVetoed("cs2CrashHandler64", Path.Combine(profile.Root, "cs2CrashHandler64.exe")));
+            Eq(true, GameSessionDetector.ElectionVetoed("chrome", @"D:\Apps\chrome.exe"));
+            Eq(true, GameSessionDetector.ElectionVetoed("steam", @"C:\Program Files (x86)\Steam\steam.exe"));
+            Eq(false, GameSessionDetector.ElectionVetoed("ExampleGame", game));
+            Eq(false, GameSessionDetector.ElectionVetoed("League of Legends", @"C:\g\lol\Game\League of Legends.exe"));
+
+            long created = DateTime.UtcNow.ToFileTimeUtc() - 60L * 10000000L;
+            var snapshot = new[]
+            {
+                new GameProcessSnapshot
+                {
+                    Pid = 7001, ParentPid = 1, Creation = created,
+                    Name = "ExampleGame", Path = game,
+                    Visible = true, Foreground = true, FullscreenLike = true
+                },
+                new GameProcessSnapshot
+                {
+                    Pid = 7002, ParentPid = 7001, Creation = created + 1000,
+                    Name = "ExampleHelperWorker",
+                    Path = Path.Combine(profile.Root, "Binaries", "Win64", "ExampleHelperWorker.exe")
+                }
+            };
+            bool armed;
+            GameDetection hit = GameSessionDetector.DetectSnapshot(snapshot, new[] { profile }, out armed);
+            if (hit == null) throw new Exception("fullscreen root process was not elected");
+            Eq(7001, hit.RendererPid);
+            Eq(true, hit.FamilyPids.Contains(7002));
         }
 
         private static void TestGameSessionInstanceIsolation()
@@ -1965,18 +2088,20 @@ namespace PaviseApp
                     Pid = 201, ParentPid = 200,
                     Creation = now - 9000000,
                     Name = "League of Legends", Path = renderer,
-                    Visible = true, Foreground = true
+                    Visible = true, Foreground = true,
+                    FullscreenLike = true
                 }
             };
+            bool armed;
             GameDetection hit = GameSessionDetector.DetectSnapshot(
-                parallel, new[] { profile }, now);
+                parallel, new[] { profile }, out armed);
             if (hit == null)
                 throw new Exception("parallel instance was not detected");
             Eq(201, hit.RendererPid);
             Eq(true, hit.FamilyPids.Contains(200));
             Eq(true, hit.FamilyPids.Contains(201));
-            Eq(false, hit.FamilyPids.Contains(100));
-            Eq(false, hit.FamilyPids.Contains(101));
+            Eq(true, hit.FamilyPids.Contains(100));
+            Eq(true, hit.FamilyPids.Contains(101));
             Eq(true, GameMode.RendererIdentityMatches(
                 201, parallel[3].Creation,
                 parallel[3].Name, 201,
@@ -2046,86 +2171,56 @@ namespace PaviseApp
                 unverifiable, hit, new[] { 200 }));
             Eq(true, unverifiable.FamilyPids.Contains(100));
 
-            var reusedParent = new[]
+            var outsideChildren = new[]
             {
                 new GameProcessSnapshot
                 {
                     Pid = 300, ParentPid = 10,
                     Creation = now - 1000000,
-                    Name = "LeagueClient", Path = launcher
+                    Name = "League of Legends", Path = renderer,
+                    Visible = true, Foreground = true,
+                    FullscreenLike = true
                 },
                 new GameProcessSnapshot
                 {
                     Pid = 301, ParentPid = 300,
                     Creation = now - 2000000,
-                    Name = "League of Legends", Path = renderer,
-                    Visible = true, Foreground = true
+                    Name = "LeagueWorkerStale",
+                    Path = @"C:\Other\LeagueWorkerStale.exe"
+                },
+                new GameProcessSnapshot
+                {
+                    Pid = 302, ParentPid = 300,
+                    Creation = now - 500000,
+                    Name = "LeagueWorker",
+                    Path = @"C:\Other\LeagueWorker.exe"
                 }
             };
             hit = GameSessionDetector.DetectSnapshot(
-                reusedParent, new[] { profile }, now);
+                outsideChildren, new[] { profile }, out armed);
             if (hit == null)
-                throw new Exception("launcher anchor disappeared");
+                throw new Exception("fullscreen renderer was not elected");
             Eq(300, hit.RendererPid);
             Eq(false, hit.FamilyPids.Contains(301));
+            Eq(true, hit.FamilyPids.Contains(302));
 
-            var detached = new[]
+            var detachedOnly = new[]
             {
-                new GameProcessSnapshot
-                {
-                    Pid = 400, ParentPid = 10,
-                    Creation = now
-                        - 5 * TimeSpan.TicksPerHour,
-                    Name = "LeagueClient", Path = launcher
-                },
                 new GameProcessSnapshot
                 {
                     Pid = 401, ParentPid = 999,
-                    Creation = now
-                        - 10 * TimeSpan.TicksPerSecond,
+                    Creation = now - 10 * TimeSpan.TicksPerSecond,
                     Name = "League of Legends", Path = renderer,
-                    Visible = true, Foreground = true
-                },
-                new GameProcessSnapshot
-                {
-                    Pid = 402, ParentPid = 401,
-                    Creation = now
-                        - 9 * TimeSpan.TicksPerSecond,
-                    Name = "LeagueWorker",
-                    Path = Path.Combine(
-                        root, "Game", "LeagueWorker.exe")
+                    Visible = true, Foreground = true,
+                    FullscreenLike = true
                 }
             };
             hit = GameSessionDetector.DetectSnapshot(
-                detached, new[] { profile }, now);
+                detachedOnly, new[] { profile }, out armed);
             if (hit == null)
-                throw new Exception(
-                    "safe launcher handoff was not detected");
+                throw new Exception("detached renderer was not elected");
             Eq(401, hit.RendererPid);
-            Eq(detached[1].Creation, hit.RendererCreation);
-            Eq(true, hit.FamilyPids.Contains(400));
-            Eq(true, hit.FamilyPids.Contains(401));
-            Eq(true, hit.FamilyPids.Contains(402));
-
-            var ambiguous = new[]
-            {
-                detached[0],
-                new GameProcessSnapshot
-                {
-                    Pid = 500, ParentPid = 10,
-                    Creation = now
-                        - 4 * TimeSpan.TicksPerMinute,
-                    Name = "LeagueClient", Path = launcher
-                },
-                detached[1]
-            };
-            hit = GameSessionDetector.DetectSnapshot(
-                ambiguous, new[] { profile }, now);
-            if (hit == null)
-                throw new Exception(
-                    "parallel launchers lost their safe anchors");
-            Eq(false, hit.RendererPid == 401);
-            Eq(false, hit.FamilyPids.Contains(401));
+            Eq(detachedOnly[0].Creation, hit.RendererCreation);
 
             var legacy = GameProfileStore.NewProfile(
                 "Legacy", root);
@@ -2141,16 +2236,17 @@ namespace PaviseApp
                         - TimeSpan.TicksPerSecond,
                     Name = "LegacyGame",
                     Path = @"C:\Other\Game\LegacyGame.exe",
-                    Visible = true, Foreground = true
+                    Visible = true, Foreground = true,
+                    FullscreenLike = true
                 }
             };
             Eq<GameDetection>(null,
                 GameSessionDetector.DetectSnapshot(
-                    outOfRoot, new[] { legacy }, now));
+                    outOfRoot, new[] { legacy }));
             outOfRoot[0].Path = Path.Combine(
                 root, "Game", "LegacyGame.exe");
             if (GameSessionDetector.DetectSnapshot(
-                    outOfRoot, new[] { legacy }, now) == null)
+                    outOfRoot, new[] { legacy }) == null)
                 throw new Exception(
                     "in-root legacy entry was not detected");
         }
@@ -2447,13 +2543,25 @@ namespace PaviseApp
             Eq(false, GameSessionDetector.IsAntiCheatLikeName("League of Legends"));
             Eq(false, GameSessionDetector.IsAntiCheatLikeName(null));
 
-            var selected = new GameProfile { Name = "MyTool", ExecutablePath = @"D:\Apps\chrome.exe" };
-            Eq(true, GameSessionDetector.QualifiesRenderer(selected, "chrome", @"D:\Apps\chrome.exe", true, false));
-            Eq(false, GameSessionDetector.QualifiesRenderer(selected, "chrome", @"D:\Other\chrome.exe", true, false));
-            var acSel = new GameProfile { Name = "AC", ExecutablePath = @"D:\Games\SGuard64.exe" };
-            Eq(false, GameSessionDetector.QualifiesRenderer(acSel, "SGuard64", @"D:\Games\SGuard64.exe", true, true));
-            var acVariant = new GameProfile { Name = "BE", ExecutablePath = @"D:\Games\BattlEye.exe" };
-            Eq(false, GameSessionDetector.QualifiesRenderer(acVariant, "BattlEye", @"D:\Games\BattlEye.exe", true, true));
+            Eq(true, GameSessionDetector.ElectionVetoed("chrome", @"D:\Apps\chrome.exe"));
+            Eq(true, GameSessionDetector.ElectionVetoed("SGuard64", @"D:\Games\SGuard64.exe"));
+            Eq(true, GameSessionDetector.ElectionVetoed("BattlEye", @"D:\Games\BattlEye.exe"));
+            Eq(false, GameSessionDetector.ElectionVetoed("Bannerlord", @"D:\Games\Bannerlord.exe"));
+            Eq(false, GameSessionDetector.ElectionVetoed(
+                "TaleWorlds.MountAndBlade.Launcher", @"D:\Games\TaleWorlds.MountAndBlade.Launcher.exe"));
+
+            var steamRoots = new List<string> { @"C:\Program Files (x86)\Steam" };
+            Eq(true, SteamCatalog.IsSteamFamilyWithRoots(
+                "steam", @"C:\Program Files (x86)\Steam\steam.exe", steamRoots));
+            Eq(true, SteamCatalog.IsSteamFamilyWithRoots(
+                "gameoverlayui", @"C:\Program Files (x86)\Steam\gameoverlayui.exe", steamRoots));
+            Eq(true, SteamCatalog.IsSteamFamilyWithRoots(
+                "steamwebhelper", @"C:\Program Files (x86)\Steam\bin\cef\cef.win7x64\steamwebhelper.exe", steamRoots));
+            Eq(false, SteamCatalog.IsSteamFamilyWithRoots(
+                "steam", @"D:\Malware\steam.exe", steamRoots));
+            Eq(false, SteamCatalog.IsSteamFamilyWithRoots(
+                "cs2", @"C:\Program Files (x86)\Steam\steamapps\common\cs2\cs2.exe", steamRoots));
+            Eq(false, SteamCatalog.IsSteamFamilyWithRoots("steam", @"C:\Program Files (x86)\Steam\steam.exe", null));
         }
 
         private static void TestProfileStore(string root)
@@ -2465,15 +2573,18 @@ namespace PaviseApp
             File.WriteAllLines(legacy, new[] { GameMode.EncodeGameLine("GenericGame", gameRoot), GameMode.EncodeGameLine("GenericHelper", gameRoot) }, Encoding.UTF8);
             var store = new GameProfileStore(dir);
             List<GameProfile> first = store.LoadOrMigrate(legacy);
-            Eq(1, first.Count);
-            Eq(2, first[0].Entries.Count);
-            first[0].ExecutablePath = Path.Combine(gameRoot, "GenericGame.exe");
-            var duplicate = first[0].Clone();
+            Eq(0, first.Count);
+            Eq(true, store.ClearedLegacyLibrary);
+            Eq(true, File.Exists(legacy + ".pre-election.bak"));
+
+            var fresh = GameProfileStore.NewProfile("GenericGame", gameRoot,
+                Path.Combine(gameRoot, "GenericGame.exe"));
+            var duplicate = fresh.Clone();
             duplicate.Entries.Add("DuplicateHelper");
-            store.Save(new[] { first[0], duplicate });
-            List<GameProfile> second = store.LoadOrMigrate(legacy);
+            store.Save(new[] { fresh, duplicate });
+            List<GameProfile> second = new GameProfileStore(dir).LoadOrMigrate(legacy);
             Eq(1, second.Count);
-            Eq(3, second[0].Entries.Count);
+            Eq(2, second[0].Entries.Count);
         }
 
         private static void TestLearnedRendererStore(string root)
@@ -2490,7 +2601,7 @@ namespace PaviseApp
             store.Save(new[] { p });
 
             string[] raw = File.ReadAllLines(Path.Combine(dir, GameProfileStore.FileName), Encoding.UTF8);
-            Eq("PAVISE_PROFILES_V2", raw[0]);
+            Eq("PAVISE_PROFILES_V4", raw[0]);
             int pLines = 0, lLines = 0;
             for (int i = 1; i < raw.Length; i++)
             {
@@ -2564,14 +2675,13 @@ namespace PaviseApp
 
             var store = new GameProfileStore(dir);
             List<GameProfile> loaded = store.LoadOrMigrate(Path.Combine(dir, "Pavise.games.txt"));
-            Eq(1, loaded.Count);
-            Eq(Path.Combine(gameRoot, "Real.exe"), loaded[0].LearnedExecutablePath);
+            Eq(0, loaded.Count);
+            Eq(true, store.ClearedLegacyLibrary);
+            Eq(true, File.Exists(file + ".pre-election.bak"));
 
             string[] raw = File.ReadAllLines(file, Encoding.UTF8);
-            Eq("PAVISE_PROFILES_V2", raw[0]);
-            foreach (string line in raw)
-                if (line.StartsWith("P|")) Eq(6, line.Split('|').Length);
-            Eq(true, File.Exists(file + ".v3.bak"));
+            Eq("PAVISE_PROFILES_V4", raw[0]);
+            Eq(1, raw.Length);
         }
 
         private static void TestUninstallScanFiltersAccelerators(string root)
@@ -2768,6 +2878,12 @@ namespace PaviseApp
                 string root = GameScan.InferGameRoot(selected);
                 Eq(Path.GetFullPath(install), root);
 
+                Directory.CreateDirectory(Path.Combine(install, "TCLS"));
+                Eq(Path.GetFullPath(install), GameScan.InferGameRoot(
+                    Path.Combine(install, "TCLS", "client.exe")));
+                Eq(Path.GetFullPath(install), GameScan.InferGameRoot(
+                    Path.Combine(install, "Game", "League of Legends.exe")));
+
                 var roots = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { root.TrimEnd('\\') + "\\" };
                 Eq(true, GameMode.IsGameFamily(Path.Combine(install, "Riot Client", "RiotClientServices.exe"), roots));
                 Eq(true, GameMode.IsGameFamily(Path.Combine(install, "Game", "League of Legends.exe"), roots));
@@ -2810,6 +2926,9 @@ namespace PaviseApp
             File.WriteAllText(games, "LeagueClient\r\n", Encoding.UTF8);
 
             var mode = new GameMode(data, new SuppressionCore());
+            Eq(true, File.Exists(games + ".pre-election.bak"));
+            string[] afterClear = File.ReadAllLines(games, Encoding.UTF8);
+            Eq(0, afterClear.Length);
             string install = Path.Combine(data, "英雄联盟");
             Directory.CreateDirectory(Path.Combine(install, "Game"));
             Directory.CreateDirectory(Path.Combine(install, "LeagueClient"));
@@ -2890,13 +3009,17 @@ namespace PaviseApp
                         out identity))
                     throw new Exception(
                         "same-handle identity crossed login sessions");
-                if (GameSessionDetector.Detect(all, new[] { selectedProfile }) == null)
-                    throw new Exception("user-selected headless exe did NOT activate (regression: 客户端/大厅将无法被识别)");
+                bool armed;
+                if (GameSessionDetector.Detect(all, new[] { selectedProfile }, out armed) != null)
+                    throw new Exception("headless exe engaged a session (must stay armed only)");
+                if (!armed)
+                    throw new Exception("user-selected headless exe did not arm the profile");
+                bool crossArmed;
                 if (GameSessionDetector.Detect(
                         all, new[] { selectedProfile },
-                        currentSession + 1) != null)
+                        currentSession + 1, out crossArmed) != null || crossArmed)
                     throw new Exception(
-                        "another login session activated game policy");
+                        "another login session armed or activated game policy");
 
                 var legacyProfile = GameProfileStore.NewProfile("HeadlessLegacy", dir);
                 legacyProfile.Entries.Clear();
@@ -2961,24 +3084,41 @@ namespace PaviseApp
                 profile.Entries.Clear();
                 profile.Entries.Add("pavisefbtest");
 
-                GameDetection hit = GameSessionDetector.Detect(all, new[] { profile });
+                bool armed;
+                if (GameSessionDetector.Detect(all, new[] { profile }, out armed) != null)
+                    throw new Exception("windowless in-root process engaged a session");
+                if (!armed)
+                    throw new Exception("in-root process did not arm the profile");
+
+                int session = Process.GetCurrentProcess().SessionId;
+                GameProcessSnapshot realId, rogueId, updaterId;
+                if (!GameSessionDetector.TryCaptureProcessIdentity(real.Id, session, out realId)
+                    || !GameSessionDetector.TryCaptureProcessIdentity(rogue.Id, session, out rogueId)
+                    || !GameSessionDetector.TryCaptureProcessIdentity(updater.Id, session, out updaterId))
+                    throw new Exception("probe identities unavailable");
+                realId.Visible = true;
+                realId.Foreground = true;
+                realId.FullscreenLike = true;
+                rogueId.Visible = true;
+                updaterId.Visible = true;
+                GameDetection hit = GameSessionDetector.DetectSnapshot(
+                    new[] { realId, rogueId, updaterId }, new[] { profile }, out armed);
                 if (hit == null)
-                    throw new Exception(
-                        "in-root suffix fallback was not detected");
+                    throw new Exception("in-root fullscreen process was not elected");
                 if (!string.Equals(hit.RendererName, "pavisefbtest64", StringComparison.OrdinalIgnoreCase))
                     throw new Exception(
-                        "renderer should resolve to the in-root suffix process, got "
+                        "renderer should resolve to the in-root process, got "
                         + hit.RendererName);
                 if (!hit.FamilyPids.Contains(real.Id))
                     throw new Exception(
-                        "in-root suffix process must be in the game family");
+                        "in-root process must be in the game family");
                 if (hit.FamilyPids.Contains(rogue.Id))
                     throw new Exception(
-                        "out-of-root suffix process must not enter the game family");
+                        "out-of-root prefix-collision process must not enter the game family");
                 if (hit.FamilyPids.Contains(updater.Id))
                     throw new Exception("underscore-plus-word name (_updater) must NOT be treated as the same app — an unrelated third-party process could collide on prefix alone");
-                if (!hit.RendererUserSelected)
-                    throw new Exception("fallback-matched renderer must be marked RendererUserSelected (sticky anchor depends on this truth, not a path string guess)");
+                if (!hit.RendererLearnable)
+                    throw new Exception("geometry-elected non-anchor renderer must be learnable");
             }
             finally
             {

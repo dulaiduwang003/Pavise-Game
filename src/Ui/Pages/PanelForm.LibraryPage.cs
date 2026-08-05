@@ -45,23 +45,32 @@ namespace PaviseApp
             };
             listWrap.Controls.Add(lstGames);
             int bx = ContentX + listW + 16, bw = ContentW - listW - 16, bh = 40;
-            var scan = new PillButton(Lang.T("v17.library.scan"), BtnKind.Primary);
-            scan.SetBounds(Theme.S(bx), Theme.S(y), Theme.S(bw), Theme.S(bh));
-            scan.Click += delegate { ScanInstalledGames(); };
-            var browse = new PillButton(Lang.T("v15.library.add")); browse.SetBounds(Theme.S(bx), Theme.S(y + 50), Theme.S(bw), Theme.S(bh)); browse.Click += delegate { BrowseGameExecutable(); };
-            var fromProc = new PillButton(Lang.T("v16.library.fromproc"));
-            fromProc.SetBounds(Theme.S(bx), Theme.S(y + 100), Theme.S(bw), Theme.S(bh));
-            fromProc.Click += delegate { AddGameFromRunningProcess(); };
-            var remove = new PillButton(Lang.T("btn.remove")); remove.SetBounds(Theme.S(bx), Theme.S(y + 150), Theme.S(bw), Theme.S(bh));
+            var add = new PillButton(Lang.T("v15.library.add"), BtnKind.Primary);
+            add.SetBounds(Theme.S(bx), Theme.S(y), Theme.S(bw), Theme.S(bh));
+            add.Click += delegate { ShowAddGameDialog(); };
+            var remove = new PillButton(Lang.T("btn.remove")); remove.SetBounds(Theme.S(bx), Theme.S(y + 50), Theme.S(bw), Theme.S(bh));
             remove.Click += delegate
             {
                 GameLibraryItem item = lstGames.SelectedItem as GameLibraryItem;
                 if (item != null) { gameMode.RemoveProfile(item.Profile.Id); RefreshGames(); }
             };
             Label hint = new Label(); hint.Text = Lang.T("v15.library.drop"); hint.ForeColor = Theme.Dim; hint.BackColor = Theme.Bg;
-            hint.Font = Theme.UI(8.2f, false); hint.AutoEllipsis = true; hint.SetBounds(Theme.S(bx + 4), Theme.S(y + 208), Theme.S(bw - 8), Theme.S(64));
-            pageLibrary.Controls.AddRange(new Control[] { listWrap, scan, browse, fromProc, remove, hint });
+            hint.Font = Theme.UI(8.2f, false); hint.AutoEllipsis = true; hint.SetBounds(Theme.S(bx + 4), Theme.S(y + 108), Theme.S(bw - 8), Theme.S(64));
+            pageLibrary.Controls.AddRange(new Control[] { listWrap, add, remove, hint });
             RefreshGames();
+        }
+
+        public void NotifyLibraryChanged()
+        {
+            try
+            {
+                if (!IsHandleCreated || IsDisposed) return;
+                BeginInvoke((MethodInvoker)delegate
+                {
+                    if (!IsDisposed && lstGames != null) RefreshGames();
+                });
+            }
+            catch { }
         }
 
         private void DrawGameLibraryItem(object sender, DrawItemEventArgs e)
@@ -89,7 +98,7 @@ namespace PaviseApp
                     item.Running ? Theme.Green : Theme.Faint, TextFormatFlags.Right | TextFormatFlags.NoPadding);
         }
 
-        private void ScanInstalledGames()
+        private void ShowAddGameDialog()
         {
             var known = new List<string>();
             foreach (GameProfile p in gameMode.GetProfiles())
@@ -98,7 +107,7 @@ namespace PaviseApp
                 if (!string.IsNullOrEmpty(p.LearnedExecutablePath)) known.Add(p.LearnedExecutablePath);
             }
 
-            using (var dlg = new GameScanDialog(known))
+            using (var dlg = new AddGameDialog(known, gameMode.ActiveGame == null))
             {
                 if (ShowDim(dlg) != DialogResult.OK || dlg.Selected.Count == 0) return;
                 string lastError;
@@ -107,36 +116,6 @@ namespace PaviseApp
                 if (added > 0) Logger.Log(Lang.F("scan.added", added));
                 else if (lastError != null)
                     MessageBox.Show(this, lastError, "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            }
-        }
-
-        private void AddGameFromRunningProcess()
-        {
-            using (var dlg = new ProcessPickerDialog())
-            {
-                if (ShowDim(dlg) != DialogResult.OK || string.IsNullOrEmpty(dlg.SelectedPath)) return;
-                string error;
-                if (!gameMode.AddGameFile(dlg.SelectedPath, out error) && !string.IsNullOrEmpty(error))
-                    MessageBox.Show(this, error, "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                RefreshGames();
-            }
-        }
-
-        private void BrowseGameExecutable()
-        {
-            using (var dlg = new OpenFileDialog())
-            {
-                dlg.Title = Lang.T("ofd.game");
-                dlg.Filter = Lang.T("ofd.filter");
-                dlg.CheckFileExists = false;
-                dlg.DereferenceLinks = false;
-                if (dlg.ShowDialog(this) == DialogResult.OK)
-                {
-                    string error;
-                    if (!gameMode.AddGameFile(dlg.FileName, out error))
-                        MessageBox.Show(this, error, "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    RefreshGames();
-                }
             }
         }
 

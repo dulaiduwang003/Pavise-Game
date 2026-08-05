@@ -84,6 +84,7 @@ namespace PaviseApp
 
             if (GameSessionDetector.IsAntiCheatLikeName(name)) return false;
 
+            if (SteamCatalog.IsSteamFamily(name, path)) return false;
             if (NetAcceleratorCatalog.IsAcceleratorLikeName(name)) return false;
             if (gameHostAncestor) return false;
             if (UnderRoot(path, activeGameRoot)) return false;

@@ -209,6 +209,7 @@ namespace PaviseApp
 
             Paths.Init();
             Lang.Init();
+            try { Theme.SetLight(Settings.Load("UiLight", false)); } catch { }
             string dir = Paths.Data;
             Logger.LogPath = Path.Combine(dir, "Pavise.log");
             Settings.Remove("EvidenceMode");
@@ -373,6 +374,21 @@ namespace PaviseApp
                 }
                 catch { }
             };
+            gameMode.GameAutoAdded += name =>
+            {
+                try
+                {
+                    panel.BeginInvoke((MethodInvoker)(() =>
+                    {
+                        try { icon.ShowBalloonTip(10000, App.DisplayName, Lang.F("bal.autoadd", name), ToolTipIcon.Info); } catch { }
+                    }));
+                }
+                catch { }
+            };
+            gameMode.LibraryChanged += () =>
+            {
+                try { panel.NotifyLibraryChanged(); } catch { }
+            };
 
             trayTip = new System.Windows.Forms.Timer();
             trayTip.Interval = 1500;
@@ -396,7 +412,9 @@ namespace PaviseApp
                 else
                 {
                     string g = gameMode.ActiveGame;
-                    txt = g != null ? Lang.F("tray.active", g) : Lang.T("tray.idle");
+                    string a = g == null ? gameMode.ArmedGame : null;
+                    txt = g != null ? Lang.F("tray.active", g)
+                        : (a != null ? Lang.F("tray.armed", a) : Lang.T("tray.idle"));
                 }
                 if (txt.Length > 63) txt = txt.Substring(0, 62) + "…";
                 if (icon.Text != txt) icon.Text = txt;

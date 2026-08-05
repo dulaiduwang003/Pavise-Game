@@ -53,6 +53,7 @@ namespace PaviseApp
         private const string HeaderV1 = "PAVISE_PROFILES_V1";
         private const string HeaderV2 = "PAVISE_PROFILES_V2";
         private const string HeaderV3 = "PAVISE_PROFILES_V3";
+        private const string HeaderV4 = "PAVISE_PROFILES_V4";
         private readonly string path;
 
         public GameProfileStore(string dir)
@@ -60,70 +61,65 @@ namespace PaviseApp
             path = Path.Combine(dir, FileName);
         }
 
+        public bool ClearedLegacyLibrary
+        {
+            get { return legacyCleared; }
+        }
+
         public List<GameProfile> LoadOrMigrate(string legacyPath)
         {
             bool repaired;
             List<GameProfile> loaded = Normalize(Load(), out repaired);
-            bool legacyFormat = false;
 
-            if (!loadFailed && File.Exists(path))
+            if (!legacyCleared && !loadFailed && !File.Exists(path)
+                && LegacyGamesFileHasEntries(legacyPath))
             {
-                legacyFormat = headerLine == HeaderV1 || headerLine == HeaderV3;
-                if (headerLine != HeaderV2) repaired = true;
+                legacyCleared = true;
+                TryBackup(legacyPath, legacyPath + ".pre-election.bak");
             }
+            if (legacyCleared)
+            {
+                loaded.Clear();
+                Save(loaded);
+                Logger.Log("检测到旧版本的游戏库，已备份并自动清空：识别机制已重构为证据选举制，"
+                    + "旧档案不再适用；打开游戏进到画面即可自动重建");
+                return loaded;
+            }
+
             if (loadFailed || loaded.Count > 0 || File.Exists(path))
             {
                 if (!loadFailed && repaired)
                 {
-                    if (legacyFormat)
-                    {
-                        try
-                        {
-                            string backup = path + (headerLine == HeaderV1 ? ".v1.bak" : ".v3.bak");
-                            if (!File.Exists(backup)) File.Copy(path, backup, false);
-                        }
-                        catch { }
-                    }
-                    else if (loaded.Count == 0 && File.Exists(path))
-                    {
-                        try
-                        {
-                            string backup = path + ".corrupt.bak";
-                            if (!File.Exists(backup)) File.Copy(path, backup, false);
-                        }
-                        catch { }
-                    }
+                    if (loaded.Count == 0 && File.Exists(path))
+                        TryBackup(path, path + ".corrupt.bak");
                     Save(loaded);
                 }
                 return loaded;
             }
 
-            var profiles = new List<GameProfile>();
-            var byRoot = new Dictionary<string, GameProfile>(StringComparer.OrdinalIgnoreCase);
+            Save(loaded);
+            return loaded;
+        }
+
+        private static bool LegacyGamesFileHasEntries(string legacyPath)
+        {
             try
             {
-                if (File.Exists(legacyPath))
+                if (string.IsNullOrEmpty(legacyPath) || !File.Exists(legacyPath)) return false;
+                foreach (string line in File.ReadAllLines(legacyPath))
                 {
-                    foreach (string line in File.ReadAllLines(legacyPath))
-                    {
-                        string name, root;
-                        if (!GameMode.TryParseGameLine(line, out name, out root)) continue;
-                        GameProfile profile = null;
-                        if (root != null) byRoot.TryGetValue(root, out profile);
-                        if (profile == null)
-                        {
-                            profile = NewProfile(name, root);
-                            profiles.Add(profile);
-                            if (root != null) byRoot[root] = profile;
-                        }
-                        profile.Entries.Add(name);
-                    }
+                    string name, root;
+                    if (GameMode.TryParseGameLine(line, out name, out root)) return true;
                 }
             }
             catch { }
-            profiles = Normalize(profiles, out repaired);
-            Save(profiles);
-            return profiles;
+            return false;
+        }
+
+        private static void TryBackup(string source, string backup)
+        {
+            try { if (!File.Exists(backup)) File.Copy(source, backup, false); }
+            catch { }
         }
 
         public void Save(IList<GameProfile> profiles)
@@ -137,7 +133,7 @@ namespace PaviseApp
             {
                 var lines = new List<string>();
                 var learned = new List<string>();
-                lines.Add(HeaderV2);
+                lines.Add(HeaderV4);
                 foreach (GameProfile p in profiles)
                 {
                     if (p == null || string.IsNullOrEmpty(p.Id) || string.IsNullOrEmpty(p.Name)) continue;
@@ -153,19 +149,23 @@ namespace PaviseApp
         }
 
         private bool loadFailed;
-        private string headerLine;
+        private bool legacyCleared;
 
         private List<GameProfile> Load()
         {
             var result = new List<GameProfile>();
-            headerLine = null;
             try
             {
                 if (!File.Exists(path)) return result;
                 string[] lines = File.ReadAllLines(path, Encoding.UTF8);
-                if (lines.Length > 0) headerLine = lines[0];
                 if (lines.Length == 0) return result;
-                if (lines[0] != HeaderV1 && lines[0] != HeaderV2 && lines[0] != HeaderV3)
+                if (lines[0] == HeaderV1 || lines[0] == HeaderV2 || lines[0] == HeaderV3)
+                {
+                    legacyCleared = true;
+                    TryBackup(path, path + ".pre-election.bak");
+                    return result;
+                }
+                if (lines[0] != HeaderV4)
                 {
                     if (lines[0].StartsWith(HeaderPrefix, StringComparison.Ordinal))
                     {
@@ -175,7 +175,6 @@ namespace PaviseApp
                     }
                     return result;
                 }
-                bool legacy = lines[0] == HeaderV1;
                 var learnedById = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                 for (int i = 1; i < lines.Length; i++)
                 {
@@ -188,27 +187,14 @@ namespace PaviseApp
                         continue;
                     }
                     if (a[0] != "P") continue;
-                    GameProfile p;
-                    if (!legacy && (a.Length == 6 || a.Length == 7))
+                    if (a.Length != 6 && a.Length != 7) continue;
+                    var p = new GameProfile
                     {
-                        p = new GameProfile
-                        {
-                            Id = Un64(a[1]), Name = Un64(a[2]), Root = NormalizeRoot(Un64(a[3])),
-                            ExecutablePath = NormalizePath(Un64(a[4])),
-                            LearnedExecutablePath = a.Length == 7 ? NormalizePath(Un64(a[6])) : null
-                        };
-                        AddLines(p.Entries, Un64(a[5]));
-                    }
-                    else if (legacy && a.Length == 10)
-                    {
-                        p = new GameProfile
-                        {
-                            Id = Un64(a[1]), Name = Un64(a[2]), Root = NormalizeRoot(Un64(a[3])),
-                            ExecutablePath = null
-                        };
-                        AddLines(p.Entries, Un64(a[8]));
-                    }
-                    else continue;
+                        Id = Un64(a[1]), Name = Un64(a[2]), Root = NormalizeRoot(Un64(a[3])),
+                        ExecutablePath = NormalizePath(Un64(a[4])),
+                        LearnedExecutablePath = a.Length == 7 ? NormalizePath(Un64(a[6])) : null
+                    };
+                    AddLines(p.Entries, Un64(a[5]));
                     if (!string.IsNullOrEmpty(p.Id) && !string.IsNullOrEmpty(p.Name)) result.Add(p);
                 }
                 foreach (GameProfile p in result)

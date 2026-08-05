@@ -85,7 +85,11 @@ namespace PaviseApp
         {
             EventHandler apply = delegate
             {
-                try { SetWindowTheme(control.Handle, "DarkMode_Explorer", null); }
+                try
+                {
+                    SetWindowTheme(control.Handle,
+                        Theme.LightMode ? "Explorer" : "DarkMode_Explorer", null);
+                }
                 catch { }
             };
             control.HandleCreated += apply;

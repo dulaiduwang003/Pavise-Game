@@ -27,19 +27,22 @@ namespace PaviseApp
     {
         public static int S(int v) { return Dpi.S(v); }
 
-        public static readonly Color Bg        = Color.FromArgb(9, 10, 12);
-        public static readonly Color Nav       = Color.FromArgb(6, 7, 9);
-        public static readonly Color Card      = Color.FromArgb(17, 19, 23);
-        public static readonly Color CardHover = Color.FromArgb(23, 27, 33);
-        public static readonly Color Inset     = Color.FromArgb(7, 8, 10);
-        public static readonly Color Stroke    = Color.FromArgb(39, 44, 52);
-        public static readonly Color StrokeHi  = Color.FromArgb(72, 81, 94);
-        public static readonly Color Fg        = Color.FromArgb(244, 246, 249);
-        public static readonly Color Dim       = Color.FromArgb(163, 170, 181);
-        public static readonly Color Faint     = Color.FromArgb(91, 100, 113);
-        public static readonly Color Green     = Color.FromArgb(69, 224, 154);
-        public static readonly Color Danger    = Color.FromArgb(255, 72, 88);
-        public static readonly Color TrackOff  = Color.FromArgb(43, 48, 57);
+        private static bool light;
+        public static bool LightMode { get { return light; } }
+
+        public static Color Bg        { get { return light ? Color.FromArgb(243, 245, 248) : Color.FromArgb(9, 10, 12); } }
+        public static Color Nav       { get { return light ? Color.FromArgb(232, 235, 240) : Color.FromArgb(6, 7, 9); } }
+        public static Color Card      { get { return light ? Color.FromArgb(255, 255, 255) : Color.FromArgb(17, 19, 23); } }
+        public static Color CardHover { get { return light ? Color.FromArgb(244, 247, 251) : Color.FromArgb(23, 27, 33); } }
+        public static Color Inset     { get { return light ? Color.FromArgb(233, 236, 241) : Color.FromArgb(7, 8, 10); } }
+        public static Color Stroke    { get { return light ? Color.FromArgb(211, 217, 226) : Color.FromArgb(39, 44, 52); } }
+        public static Color StrokeHi  { get { return light ? Color.FromArgb(165, 174, 188) : Color.FromArgb(72, 81, 94); } }
+        public static Color Fg        { get { return light ? Color.FromArgb(26, 30, 38)    : Color.FromArgb(244, 246, 249); } }
+        public static Color Dim       { get { return light ? Color.FromArgb(96, 105, 118)  : Color.FromArgb(163, 170, 181); } }
+        public static Color Faint     { get { return light ? Color.FromArgb(146, 154, 166) : Color.FromArgb(91, 100, 113); } }
+        public static Color Green     { get { return light ? Color.FromArgb(16, 150, 92)   : Color.FromArgb(69, 224, 154); } }
+        public static Color Danger    { get { return light ? Color.FromArgb(208, 30, 50)   : Color.FromArgb(255, 72, 88); } }
+        public static Color TrackOff  { get { return light ? Color.FromArgb(200, 206, 215) : Color.FromArgb(43, 48, 57); } }
         private static Color accent = Color.FromArgb(239, 190, 66);
         private static Color accent2 = Color.FromArgb(184, 117, 24);
         private static Color fromAccent = accent, fromAccent2 = accent2;
@@ -52,22 +55,41 @@ namespace PaviseApp
         public static Color Sel { get { return Col.Lerp(Card, accent, 0.20f); } }
         public static Color OnAccent
         {
-            get { return currentMode == PerformancePreset.Standard ? Color.FromArgb(23, 19, 10) : Color.White; }
+            get
+            {
+                if (currentMode != PerformancePreset.Standard) return Color.White;
+                return light ? Color.White : Color.FromArgb(23, 19, 10);
+            }
         }
         public static PerformancePreset CurrentMode { get { return currentMode; } }
 
         public static Color ModeColor(PerformancePreset mode)
         {
-            if (mode == PerformancePreset.Competitive) return Color.FromArgb(255, 61, 82);
-            if (mode == PerformancePreset.Custom) return Color.FromArgb(48, 180, 255);
-            return Color.FromArgb(239, 190, 66);
+            if (mode == PerformancePreset.Competitive)
+                return light ? Color.FromArgb(222, 36, 58) : Color.FromArgb(255, 61, 82);
+            if (mode == PerformancePreset.Custom)
+                return light ? Color.FromArgb(16, 128, 216) : Color.FromArgb(48, 180, 255);
+            return light ? Color.FromArgb(188, 132, 12) : Color.FromArgb(239, 190, 66);
         }
 
         public static Color ModeColor2(PerformancePreset mode)
         {
-            if (mode == PerformancePreset.Competitive) return Color.FromArgb(178, 22, 48);
-            if (mode == PerformancePreset.Custom) return Color.FromArgb(20, 99, 222);
-            return Color.FromArgb(184, 117, 24);
+            if (mode == PerformancePreset.Competitive)
+                return light ? Color.FromArgb(152, 14, 36) : Color.FromArgb(178, 22, 48);
+            if (mode == PerformancePreset.Custom)
+                return light ? Color.FromArgb(12, 78, 168) : Color.FromArgb(20, 99, 222);
+            return light ? Color.FromArgb(142, 88, 8) : Color.FromArgb(184, 117, 24);
+        }
+
+        public static void SetLight(bool value)
+        {
+            if (light == value) return;
+            light = value;
+            accent = ModeColor(currentMode);
+            accent2 = ModeColor2(currentMode);
+            fromAccent = toAccent = accent;
+            fromAccent2 = toAccent2 = accent2;
+            themeT = 1f;
         }
 
         public static void SetMode(PerformancePreset mode, bool animate)
@@ -97,13 +119,15 @@ namespace PaviseApp
 
         public static Font UI(float size, bool bold)
         {
+            if (size < 9f) size = Math.Min(9f, size + 0.7f);
             int key = ((int)Math.Round(size * 100) << 1) | (bold ? 1 : 0);
             lock (fontLk)
             {
                 Font f;
                 if (!fontCache.TryGetValue(key, out f))
                 {
-                    f = new Font("Microsoft YaHei UI", Dpi.CrispPoint(size), bold ? FontStyle.Bold : FontStyle.Regular, GraphicsUnit.Point);
+                    f = SmoothFont("Microsoft YaHei UI", size,
+                        bold ? FontStyle.Bold : FontStyle.Regular);
                     fontCache[key] = f;
                 }
                 return f;
@@ -124,11 +148,56 @@ namespace PaviseApp
                 Font f;
                 if (!monoCache.TryGetValue(key, out f))
                 {
-                    f = new Font("Consolas", Dpi.CrispPoint(size), FontStyle.Regular, GraphicsUnit.Point);
+                    f = SmoothFont("Consolas", size, FontStyle.Regular);
                     monoCache[key] = f;
                 }
                 return f;
             }
+        }
+
+        private const byte ClearTypeQuality = 5;
+
+        private static Font SmoothFont(string family, float size, FontStyle style)
+        {
+            try
+            {
+                int pixels = (int)Math.Max(1, Math.Round(size * Dpi.Scale * 96f / 72f));
+                var lf = new LogFont();
+                lf.lfHeight = -pixels;
+                lf.lfWeight = (style & FontStyle.Bold) != 0 ? 700 : 400;
+                lf.lfItalic = (byte)((style & FontStyle.Italic) != 0 ? 1 : 0);
+                lf.lfCharSet = 1;
+                lf.lfQuality = ClearTypeQuality;
+                lf.lfFaceName = family;
+                return Font.FromLogFont(lf);
+            }
+            catch
+            {
+                return new Font(family, Dpi.CrispPoint(size), style, GraphicsUnit.Point);
+            }
+        }
+
+        [System.Runtime.InteropServices.StructLayout(
+            System.Runtime.InteropServices.LayoutKind.Sequential,
+            CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+        private class LogFont
+        {
+            public int lfHeight;
+            public int lfWidth;
+            public int lfEscapement;
+            public int lfOrientation;
+            public int lfWeight;
+            public byte lfItalic;
+            public byte lfUnderline;
+            public byte lfStrikeOut;
+            public byte lfCharSet;
+            public byte lfOutPrecision;
+            public byte lfClipPrecision;
+            public byte lfQuality;
+            public byte lfPitchAndFamily;
+            [System.Runtime.InteropServices.MarshalAs(
+                System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 32)]
+            public string lfFaceName = "";
         }
 
         public static GraphicsPath Rounded(Rectangle r, int rad)

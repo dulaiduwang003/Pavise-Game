@@ -10,7 +10,7 @@ namespace PaviseApp
 {
     internal partial class PanelForm
     {
-        private Toggle swAuto, swAutoHide, swContact;
+        private Toggle swAuto, swAutoHide, swContact, swLight;
         private SettingCard cardShader;
         private static volatile bool shaderCleaning;
         private int slowBusy;
@@ -32,6 +32,10 @@ namespace PaviseApp
 
             swAuto = MakeSwitch(TaskHelper.TaskExistsCached(), OnAutoToggle);
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.autostart"), Lang.T("set.autostart.n"), swAuto, out cardH);
+            sy += cardH + 8;
+
+            swLight = MakeSwitch(Theme.LightMode, OnLightToggle);
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.light"), Lang.T("set.light.n"), swLight, out cardH);
             sy += cardH + 8;
 
             swAutoHide = MakeSwitch(Settings.Load(AutoHideKey, false), OnAutoHideToggle);
@@ -82,6 +86,14 @@ namespace PaviseApp
             lblAbout.Font = Theme.UI(8.25f, false);
             lblAbout.SetBounds(Theme.S(10), Theme.S(sy), Theme.S(ScrollContentW - 10), Theme.S(18));
             scroll.Controls.Add(lblAbout);
+        }
+
+        private void OnLightToggle(object s, EventArgs e)
+        {
+            bool on = swLight.Checked;
+            Settings.Save("UiLight", on);
+            Theme.SetLight(on);
+            BeginInvoke((MethodInvoker)delegate { if (!IsDisposed) RebuildUi(); });
         }
 
         private void OnAutoToggle(object s, EventArgs e)

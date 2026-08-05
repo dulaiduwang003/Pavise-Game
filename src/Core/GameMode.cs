@@ -135,7 +135,8 @@ namespace PaviseApp
         private int stickyMiss;
         private const int StickyGraceMisses = 1;
 
-        private const int ExitGraceSeconds = 15;
+        private const int ExitGraceSeconds = 8;
+        private int gracePreReleased;
         private long gameGoneSinceTicks;
 
         public GameMode(string dir, SuppressionCore core)
@@ -143,6 +144,8 @@ namespace PaviseApp
             dataDir = dir;
             gamesPath = Path.Combine(dir, "Pavise.games.txt");
             whitePath = Path.Combine(dir, "Pavise.whitelist.txt");
+            autoIgnorePath = Path.Combine(dir, "Pavise.autoignore.txt");
+            LoadAutoIgnore();
             profileStore = new GameProfileStore(dir);
             using (Process self = Process.GetCurrentProcess())
             {
@@ -333,7 +336,13 @@ namespace PaviseApp
             try
             {
                 profiles.AddRange(profileStore.LoadOrMigrate(gamesPath));
-                if (profiles.Count > 0) RebuildLegacyGameIndex();
+                if (profileStore.ClearedLegacyLibrary)
+                {
+                    games.Clear();
+                    gameRoots.Clear();
+                    SaveGames();
+                }
+                else if (profiles.Count > 0) RebuildLegacyGameIndex();
             }
             catch { }
         }
@@ -344,6 +353,7 @@ namespace PaviseApp
             lines.Add("# Pavise 智能守护白名单——这些进程始终不进入后台控制");
             lines.Add("# V3 规则支持进程名、精确路径和应用家族，并带完整性尾标防止截断。");
             lines.Add("# Windows 核心、其它会话和 Pavise 自身受安全保护；其余例外只来自本白名单。");
+            lines.Add("# Steam 客户端家族（steam/steamservice/steamwebhelper/gameoverlayui）由程序内置豁免，无需在此列出。");
             lines.Add(WhitelistRule.Header);
             var rules = new List<WhitelistRule>();
             foreach (string entry in PresetWhitelist)
@@ -655,7 +665,20 @@ namespace PaviseApp
                 if (!enabled) return Lang.T("st.off");
                 lock (sync)
                 {
-                    if (!active) return Lang.T("st.mon");
+                    if (!active)
+                    {
+                        string armedName = armedGameName;
+                        return armedName != null
+                            ? Lang.F("st.armed", armedName) : Lang.T("st.mon");
+                    }
+                    long gone = gameGoneSinceTicks;
+                    if (gone != 0)
+                    {
+                        int remain = ExitGraceSeconds
+                            - (int)((DateTime.UtcNow.Ticks - gone) / TimeSpan.TicksPerSecond);
+                        if (remain < 0) remain = 0;
+                        return Lang.F("st.grace", activeGame, remain);
+                    }
                     int n = core.CountThrottled(SuppressReason.Background);
                     int b = boostStateVerified.Count;
                     string s = Lang.F("st.active", activeGame, n);
@@ -766,7 +789,11 @@ namespace PaviseApp
                                     if (gameGoneSinceTicks != 0)
                                     {
                                         gameGoneSinceTicks = 0;
-                                        if (active) Logger.Log("游戏在宽限期内重新出现（启动器换壳/快速重启），游戏模式保持不中断");
+                                        if (active)
+                                        {
+                                            Logger.Log("游戏在宽限期内重新出现（启动器换壳/快速重启），游戏模式保持不中断，后台重新静默接管");
+                                            lock (sync) firstSweep = true;
+                                        }
                                     }
                                     if (!active)
                                     {
@@ -793,7 +820,9 @@ namespace PaviseApp
                                     if (gameGoneSinceTicks == 0)
                                     {
                                         gameGoneSinceTicks = nowTicks;
-                                        Logger.Log("游戏进程消失，进入 " + ExitGraceSeconds + " 秒还原宽限期");
+                                        Logger.Log("游戏进程消失：后台压制立即还原，电源/环境保留 "
+                                            + ExitGraceSeconds + " 秒宽限（防换壳/快速重启抖动）");
+                                        gracePreReleased += ReleaseBackground("游戏退出宽限");
                                     }
                                     else if (nowTicks - gameGoneSinceTicks
                                         >= ExitGraceSeconds * TimeSpan.TicksPerSecond)
@@ -809,6 +838,7 @@ namespace PaviseApp
                                     lock (sync) boostResidue = gameBoost.Count > 0;
                                     if (boostResidue || EnvActive() || core.AnyWith(SuppressReason.Background))
                                         Deactivate("残留恢复重试");
+                                    TryAutoAddForegroundGame();
                                 }
                             }
                             finally { foreach (Process p in all) p.Dispose(); }
@@ -845,9 +875,16 @@ namespace PaviseApp
             gamePids = new HashSet<int>();
             GameDetection hit;
             if (ShouldRunFullGameDetection())
-                hit = ApplyStickiness(
-                    GameSessionDetector.Detect(
-                        all, copy, selfSession));
+            {
+                string armedName;
+                GameDetection raw = GameSessionDetector.Detect(
+                    all, copy, selfSession, out armedName);
+                if (raw != null && raw.RequiresGpuConfirm)
+                    raw = ConfirmRendererByGpu(raw);
+                hit = ApplyStickiness(raw);
+                armedAwaitingElection = armedName != null && hit == null;
+                UpdateArmedStatus(hit == null ? armedName : null, hit != null);
+            }
             else
                 hit = ApplyStickiness(null);
             if (hit == null) return null;
@@ -864,6 +901,69 @@ namespace PaviseApp
                 activeDetection = hit;
             }
             return hit.Profile.Name;
+        }
+
+        private const int GpuProbeCooldownMs = 8000;
+        private long gpuProbeGateTicks;
+        private bool gpuEvidenceWarned;
+
+        private volatile string armedGameName;
+        private string lastArmedLogged;
+
+        public string ArmedGame
+        {
+            get { lock (sync) return active ? null : armedGameName; }
+        }
+
+        private void UpdateArmedStatus(string name, bool engaged)
+        {
+            armedGameName = name;
+            if (string.Equals(name, lastArmedLogged, StringComparison.OrdinalIgnoreCase)) return;
+            if (name != null)
+                Logger.Log("待命：《" + name + "》的家族进程在运行；客户端/大厅阶段零介入，"
+                    + "出现对局画面（前台全屏或 GPU 3D 主导）后自动升格接管");
+            else if (lastArmedLogged != null && !engaged)
+                Logger.Log("待命解除：《" + lastArmedLogged + "》的家族进程已全部退出");
+            lastArmedLogged = name;
+        }
+
+        private GameDetection ConfirmRendererByGpu(GameDetection pending)
+        {
+            if (pending == null || pending.RendererPid <= 0) return null;
+            bool sessionActive;
+            lock (sync) sessionActive = active;
+            if (sessionActive || stopping || !enabled) return null;
+            long now = DateTime.UtcNow.Ticks;
+            if (now < gpuProbeGateTicks) return null;
+            gpuProbeGateTicks = now + GpuProbeCooldownMs * TimeSpan.TicksPerMillisecond;
+            Dictionary<int, double> util = GpuEvidence.Sample3D(
+                GpuEvidence.BurstRounds, GpuEvidence.BurstIntervalMs,
+                delegate { return stopping || panicReq; });
+            if (util == null)
+            {
+                if (!gpuEvidenceWarned)
+                {
+                    gpuEvidenceWarned = true;
+                    Logger.Log("GPU 证据不可用（PDH GPU Engine 计数器读取失败），窗口化候选将等待全屏几何证据或用户直选命中");
+                }
+                return null;
+            }
+            double candidate;
+            if (!util.TryGetValue(pending.RendererPid, out candidate)) candidate = 0;
+            if (candidate < GpuEvidence.MinElectUtilization) return null;
+            foreach (int pid in pending.FamilyPids)
+            {
+                double other;
+                if (pid != pending.RendererPid
+                    && util.TryGetValue(pid, out other) && other > candidate)
+                    return null;
+            }
+            pending.RequiresGpuConfirm = false;
+            pending.RendererCandidateSelected = true;
+            pending.Evidence = Lang.F("detect.gpu", (int)candidate);
+            Logger.Log("渲染进程选举：GPU 证据确认《" + pending.Profile.Name + "》的真身是 "
+                + pending.RendererName + "（3D 引擎 " + (int)candidate + "%，pid " + pending.RendererPid + "）");
+            return pending;
         }
 
         private GameDetection ApplyStickiness(GameDetection hit)

@@ -782,24 +782,34 @@ namespace PaviseApp
             try { selectedName = Path.GetFileName(selectedDir.TrimEnd('\\')); }
             catch { return false; }
             string low = (selectedName ?? "").ToLowerInvariant();
-            bool clientLike = low.Contains("client") || low.Contains("launcher")
-                           || low.Contains("客户端") || low.Contains("启动器");
-            if (!clientLike) return false;
+            bool clientLike = IsClientComponentDirName(low);
+            bool gameLike = string.Equals(low, "game", StringComparison.Ordinal)
+                || string.Equals(low, "binaries", StringComparison.Ordinal);
+            if (!clientLike && !gameLike) return false;
 
             try
             {
                 foreach (string dir in Directory.GetDirectories(candidate))
                 {
                     if (string.Equals(dir.TrimEnd('\\'), selectedDir.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)) continue;
-                    string n = Path.GetFileName(dir.TrimEnd('\\'));
-                    if (string.Equals(n, "game", StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(n, "binaries", StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(n, "engine", StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(n, "content", StringComparison.OrdinalIgnoreCase)) return true;
+                    string n = (Path.GetFileName(dir.TrimEnd('\\')) ?? "").ToLowerInvariant();
+                    if (clientLike && (string.Equals(n, "game", StringComparison.Ordinal)
+                        || string.Equals(n, "binaries", StringComparison.Ordinal)
+                        || string.Equals(n, "engine", StringComparison.Ordinal)
+                        || string.Equals(n, "content", StringComparison.Ordinal))) return true;
+                    if (gameLike && IsClientComponentDirName(n)) return true;
                 }
             }
             catch { }
             return false;
+        }
+
+        private static bool IsClientComponentDirName(string lower)
+        {
+            if (string.IsNullOrEmpty(lower)) return false;
+            return lower.Contains("client") || lower.Contains("launcher")
+                || lower.Contains("tcls")
+                || lower.Contains("客户端") || lower.Contains("启动器");
         }
 
         private static bool IsJunkName(string lower)

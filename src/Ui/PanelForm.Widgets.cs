@@ -131,9 +131,7 @@ namespace PaviseApp
 
         private DialogResult ShowDim(Form dlg)
         {
-            Opacity = 0.55;
-            try { return dlg.ShowDialog(this); }
-            finally { Opacity = 1.0; }
+            return dlg.ShowDialog(this);
         }
     }
 }

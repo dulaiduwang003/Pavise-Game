@@ -343,16 +343,10 @@ namespace PaviseApp
         {
             if (!introActive) return;
             if (introMotion.Step())
-            {
-                double shown = 1d - introMotion.Value;
-                if (shown < 0d) shown = 0d; else if (shown > 1d) shown = 1d;
-                try { Opacity = shown; } catch { }
                 Top = introBaseTop + (int)(introMotion.Value * Theme.S(IntroRise));
-            }
             else
             {
                 introActive = false;
-                try { Opacity = 1d; } catch { }
                 Top = introBaseTop;
             }
         }
@@ -362,7 +356,6 @@ namespace PaviseApp
 
             if (introActive) { introActive = false; Top = introBaseTop; }
             introPending = true;
-            try { Opacity = 0d; } catch { }
         }
 
         private void StartIntro()

@@ -42,6 +42,7 @@ namespace PaviseApp
             if (root == null) root = NormalizeGameRoot(GameScan.InferGameRoot(resolved));
             lock (sync)
             {
+                if (autoAddIgnore.Remove(resolved)) SaveAutoIgnoreLocked();
                 foreach (GameProfile p in profiles)
                 {
                     if (string.Equals(p.ExecutablePath, resolved, StringComparison.OrdinalIgnoreCase)) return false;
@@ -78,6 +79,7 @@ namespace PaviseApp
         {
             RequestFullGameDetection();
             RequestPolicyApply();
+            RaiseLibraryChanged();
         }
 
         public bool AddGameFile(string selectedPath, out string error)
@@ -127,8 +129,8 @@ namespace PaviseApp
                     if (!string.Equals(p.Id, profileId, StringComparison.OrdinalIgnoreCase)) continue;
                     if (string.Equals(p.ExecutablePath, rendererPath, StringComparison.OrdinalIgnoreCase)) return;
                     if (string.Equals(p.LearnedExecutablePath, rendererPath, StringComparison.OrdinalIgnoreCase)) return;
-                    if (!p.ContainsPath(rendererPath)) return;
                     p.LearnedExecutablePath = GameProfileStore.NormalizePath(rendererPath);
+                    if (!string.IsNullOrEmpty(rendererName)) p.Entries.Add(StripExe(rendererName));
                     profileStore.Save(profiles);
                     learnedGame = p.Name;
                     break;
@@ -144,6 +146,16 @@ namespace PaviseApp
             bool dropSession;
             lock (sync)
             {
+                bool ignoreChanged = false;
+                foreach (GameProfile p in profiles)
+                {
+                    if (!string.Equals(p.Id, profileId, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (!string.IsNullOrEmpty(p.ExecutablePath) && autoAddIgnore.Add(p.ExecutablePath))
+                        ignoreChanged = true;
+                    if (!string.IsNullOrEmpty(p.LearnedExecutablePath) && autoAddIgnore.Add(p.LearnedExecutablePath))
+                        ignoreChanged = true;
+                }
+                if (ignoreChanged) SaveAutoIgnoreLocked();
                 profiles.RemoveAll(p => string.Equals(p.Id, profileId, StringComparison.OrdinalIgnoreCase));
                 RebuildLegacyGameIndex();
                 profileStore.Save(profiles);
@@ -154,6 +166,7 @@ namespace PaviseApp
             if (dropSession) panicReq = true;
             RequestFullGameDetection();
             RequestPolicyApply();
+            RaiseLibraryChanged();
         }
 
 #if PAVISE_SELFTEST
