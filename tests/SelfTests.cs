@@ -78,6 +78,11 @@ namespace PaviseApp
                 RunQosProbe(args[1], args[2]);
                 return true;
             }
+            if (args[0] == "--nv-probe" && args.Length >= 2)
+            {
+                RunNvProbe(args[1], args.Length >= 3 ? args[2] : null);
+                return true;
+            }
             if (args[0] == "--irq-map" && args.Length >= 2)
             {
                 RunIrqMap(args[1], args.Length >= 3 ? args[2] : null,
@@ -1106,30 +1111,6 @@ namespace PaviseApp
                 Eq(3.0, CpuPartitionPolicy.Median(new double[] { 1, 3, 9 }));
                 Eq(0.0, CpuPartitionPolicy.Median(null));
             });
-            test("interrupt core probe: one measurement per session, restartable after reset", () =>
-            {
-                var probe = new InterruptCoreProbe(250);
-                Eq(0UL, probe.AvoidMask);
-                probe.Begin();
-                if (!probe.WaitForCompletion(15000)) throw new Exception("probe did not finish");
-
-                ulong picked = probe.AvoidMask;
-                if (picked != 0)
-                {
-                    bool known = false;
-                    foreach (ulong core in CpuTopology.PhysicalCoreMasks()) if (core == picked) known = true;
-                    if (!known) throw new Exception("probe returned a mask that is not a physical core: 0x" + picked.ToString("X"));
-                    ulong partition = CpuTopology.StrictBoostMask;
-                    if (partition != 0 && (partition & picked) == 0)
-                        throw new Exception("probe gave up a core that was never in the game partition");
-                }
-
-                probe.Begin();
-                Eq(picked, probe.AvoidMask);
-
-                probe.Reset();
-                Eq(0UL, probe.AvoidMask);
-            });
             test("interrupt core probe: low-core machines never give up a core", () =>
             {
                 var cores = new ulong[] { 0x3, 0xC, 0x30, 0xC0 };
@@ -1140,6 +1121,38 @@ namespace PaviseApp
                 if (CpuPartitionPolicy.FindInterruptCore(rates, cores,
                     CpuPartitionPolicy.InterruptAvoidMinPhysicalCores) == 0)
                     throw new Exception("at the core-count threshold the outlier should be picked");
+            });
+            test("system audit: interrupt tiers split at 1% and 5%", () =>
+            {
+                Eq(0, SystemAudit.InterruptTier(0.0));
+                Eq(0, SystemAudit.InterruptTier(0.0099));
+                Eq(1, SystemAudit.InterruptTier(0.01));
+                Eq(1, SystemAudit.InterruptTier(0.0265));
+                Eq(1, SystemAudit.InterruptTier(0.0499));
+                Eq(2, SystemAudit.InterruptTier(0.05));
+                Eq(2, SystemAudit.InterruptTier(0.30));
+                Eq("干净", SystemAudit.InterruptTierText(0));
+                Eq("正常", SystemAudit.InterruptTierText(1));
+                Eq("异常", SystemAudit.InterruptTierText(2));
+            });
+            test("system audit: report always carries all four groups with evidence tags", () =>
+            {
+                AuditReport report = SystemAudit.Collect(300);
+                if (report.Capability.Count < 3) throw new Exception("capability rows missing");
+                if (report.Machine.Count < 2) throw new Exception("machine rows missing");
+                if (report.Persistent.Count < 5) throw new Exception("persistent rows missing");
+                if (report.Verdicts.Count < 3) throw new Exception("verdict rows missing");
+                var all = new List<AuditRow>();
+                all.AddRange(report.Capability); all.AddRange(report.Machine);
+                all.AddRange(report.Persistent); all.AddRange(report.Verdicts);
+                foreach (AuditRow row in all)
+                {
+                    if (string.IsNullOrEmpty(row.Name) || string.IsNullOrEmpty(row.Value))
+                        throw new Exception("row missing name or value");
+                    if (row.Evidence != SystemAudit.EvMeasuredLocal && row.Evidence != SystemAudit.EvMeasuredBench
+                        && row.Evidence != SystemAudit.EvMechanism && row.Evidence != SystemAudit.EvUnverified)
+                        throw new Exception("row \"" + row.Name + "\" has unknown evidence tag: " + row.Evidence);
+                }
             });
             test("interrupt affinity: mask/byte round-trip is little-endian and lossless", () =>
             {

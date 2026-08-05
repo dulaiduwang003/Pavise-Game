@@ -146,6 +146,56 @@ namespace PaviseApp
             }
         }
 
+        public const string ProbeProfileExe = "PaviseNvProbe.exe";
+
+        public sealed class ProbeResult
+        {
+            public string Key;
+            public bool Ok;
+            public string Outcome;
+        }
+
+        // 对一个专用的探测 Profile 做一轮写入-回读-还原 验证驱动接口在本机是否真的接受写入
+        public static List<ProbeResult> ProbeWriteback()
+        {
+            var results = new List<ProbeResult>();
+            if (!NvApi.Available) return results;
+            var keys = new[] { KeyPState, KeyFrl, KeyPreRender };
+            var values = new uint[] { NvApi.PStatePreferMax, 120u, 1u };
+            lock (sync)
+            {
+                IntPtr session;
+                if (!NvApi.TryOpenSession(out session)) return results;
+                try
+                {
+                    IntPtr profile;
+                    if (!NvApi.FindOrCreateAppProfile(session, ProbeProfileExe, out profile)) return results;
+                    for (int i = 0; i < keys.Length; i++)
+                    {
+                        uint settingId = SettingIdOf(keys[i]);
+                        uint before;
+                        int foundBefore = NvApi.TryGetDword(session, profile, settingId, out before);
+                        int status;
+                        bool wrote = NvApi.SetDword(session, profile, settingId, values[i], out status);
+                        bool saved = wrote && NvApi.SaveSession(session);
+                        uint after;
+                        int foundAfter = NvApi.TryGetDword(session, profile, settingId, out after);
+                        var r = new ProbeResult { Key = keys[i] };
+                        if (!wrote) { r.Outcome = "写入被拒绝 (NVAPI " + status + ")"; }
+                        else if (!saved) { r.Outcome = "写入接受但保存失败"; }
+                        else if (foundAfter == 1 && after == values[i]) { r.Ok = true; r.Outcome = "生效"; }
+                        else { r.Outcome = "写入报成功但回读不符"; }
+                        results.Add(r);
+                        if (foundBefore == 1) NvApi.SetDword(session, profile, settingId, before);
+                        else if (foundBefore == 0) NvApi.DeleteSetting(session, profile, settingId);
+                        NvApi.SaveSession(session);
+                    }
+                }
+                finally { NvApi.CloseSession(session); }
+            }
+            return results;
+        }
+
         private static uint ParseUInt(string value)
         {
             uint parsed;

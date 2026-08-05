@@ -26,10 +26,11 @@ namespace PaviseApp
         AntiCheat = 4,
         Graphics = 5,
         Environment = 6,
-        Reports = 7,
-        Settings = 8,
-        About = 9,
-        Count = 10
+        Audit = 7,
+        Reports = 8,
+        Settings = 9,
+        About = 10,
+        Count = 11
     }
 
     internal partial class PanelForm : Form
@@ -124,13 +125,13 @@ namespace PaviseApp
 
             nav = new NavRail(
                 new[] { Lang.T("nav.overview"), LolText("英雄联盟（国服）"), Lang.T("nav.library"), Lang.T("nav.policy"),
-                        Lang.T("v14.anticheat"), Lang.T("nav.graphics"), Lang.T("nav.env"), Lang.T("nav.reports"),
-                        Lang.T("nav.set"), Lang.T("nav.about") },
-                new[] { "game", "lol", "white", "settings", "shield", "gpu", "chip", "log", "gear", "info" },
+                        Lang.T("v14.anticheat"), Lang.T("nav.graphics"), Lang.T("nav.env"), Lang.T("nav.audit"),
+                        Lang.T("nav.reports"), Lang.T("nav.set"), Lang.T("nav.about") },
+                new[] { "game", "lol", "white", "settings", "shield", "gpu", "chip", "chart", "log", "gear", "info" },
                 new[] { (int)PageId.Overview, (int)PageId.Library, (int)PageId.Policy, (int)PageId.AntiCheat,
-                        (int)PageId.Reports, (int)PageId.Graphics, (int)PageId.Environment, (int)PageId.League,
-                        (int)PageId.Settings, (int)PageId.About },
-                new[] { 5, 7 }, new[] { Lang.T("nav.hardware"), Lang.T("nav.columns") }, 2);
+                        (int)PageId.Reports, (int)PageId.Graphics, (int)PageId.Environment, (int)PageId.Audit,
+                        (int)PageId.League, (int)PageId.Settings, (int)PageId.About },
+                new[] { 5, 8 }, new[] { Lang.T("nav.hardware"), Lang.T("nav.columns") }, 2);
             AssertNavMatchesPageIds(nav);
             nav.SetBounds(0, 0, Theme.S(RailW), Theme.S(WinH));
             nav.SelectionChanged = ShowPage;
@@ -181,6 +182,7 @@ namespace PaviseApp
             pages[(int)PageId.AntiCheat] = pageAntiCheat = MakePage();
             pages[(int)PageId.Graphics] = pageGraphics = MakePage();
             pages[(int)PageId.Environment] = pageEnvironment = MakePage();
+            pages[(int)PageId.Audit] = pageAudit = MakePage();
             pages[(int)PageId.Reports] = pageReports = MakePage();
             pages[(int)PageId.Settings] = pageSettings = MakePage();
             pages[(int)PageId.About] = pageAbout = MakePage();
@@ -191,6 +193,7 @@ namespace PaviseApp
             BuildAntiCheatPage();
             BuildGraphicsPage();
             BuildEnvironmentPage();
+            BuildAuditPage();
             BuildReportsPage();
             BuildSettingsPage();
             BuildAboutPage();
@@ -273,6 +276,8 @@ namespace PaviseApp
             pageHooks[(int)PageId.Graphics] = new PageHook(pageGraphics, null, null);
             pageHooks[(int)PageId.Environment] = new PageHook(pageEnvironment,
                 delegate(bool active) { if (active) RefreshEnvironmentStateAsync(); }, null);
+            pageHooks[(int)PageId.Audit] = new PageHook(pageAudit,
+                delegate(bool active) { if (active) StartAudit(QuickAuditWindowMs); }, null);
             pageHooks[(int)PageId.Reports] = new PageHook(pageReports,
                 delegate(bool active) { if (active) RefreshReports(); }, RefreshReports);
             pageHooks[(int)PageId.Settings] = new PageHook(pageSettings,
@@ -741,6 +746,11 @@ namespace PaviseApp
                 if (paviseCore != null) paviseCore.SetState(preview.Value, true, false);
             }
             if (showModePicker && modeButton != null) modeButton.PerformClick();
+            if (previewMode == "audit" && pageIndex == (int)PageId.Audit)
+            {
+                try { RenderAudit(SystemAudit.Collect(400)); } catch { }
+                if (lblAuditStatus != null) lblAuditStatus.Text = "";
+            }
             Application.DoEvents();
             using (var bmp = new Bitmap(ClientSize.Width, ClientSize.Height))
             {

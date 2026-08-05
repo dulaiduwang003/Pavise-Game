@@ -57,8 +57,6 @@ namespace PaviseApp
                 delegate { return gameMode.IfeoBoostFallback; }, delegate(bool v) { gameMode.IfeoBoostFallback = v; });
             AddPolicyToggle(scroll, ref sy, Lang.T("gm.lane"), Lang.T("gm.lane.sub"),
                 delegate { return gameMode.RenderLaneOn; }, delegate(bool v) { gameMode.RenderLaneOn = v; });
-            AddPolicyToggle(scroll, ref sy, Lang.T("gm.irqavoid"), Lang.T("gm.irqavoid.sub"),
-                delegate { return gameMode.InterruptCoreAvoid; }, delegate(bool v) { gameMode.InterruptCoreAvoid = v; });
             AddPolicyToggle(scroll, ref sy, Lang.T("set.plan"), Lang.T("v15.plan.sub"),
                 delegate { return gameMode.PowerPlanSwitch; }, delegate(bool v) { gameMode.PowerPlanSwitch = v; });
             AddPolicyToggle(scroll, ref sy, Lang.T("set.notif"), Lang.T("v15.notif.sub"),

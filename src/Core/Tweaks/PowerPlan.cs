@@ -135,6 +135,21 @@ namespace PaviseApp
             finally { LocalFree(p); }
         }
 
+        private static readonly Guid Balanced = new Guid("381b4222-f694-41f0-9685-ff5bb260df2e");
+        private static readonly Guid PowerSaver = new Guid("a1841308-3541-4fab-bc81-f71556f20b4a");
+
+        public static string CurrentPlanLabel()
+        {
+            Guid? cur = Current();
+            if (!cur.HasValue) return "读取失败";
+            Guid g = cur.Value;
+            if (g == Ultimate) return "卓越性能";
+            if (g == HighPerf) return "高性能";
+            if (g == Balanced) return "平衡";
+            if (g == PowerSaver) return "节能";
+            return "自定义计划";
+        }
+
         private static bool Set(Guid g)
         {
             if (PowerSetActiveScheme(IntPtr.Zero, ref g) != 0) return false;

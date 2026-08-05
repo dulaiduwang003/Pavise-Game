@@ -5,7 +5,32 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.6.3] - 2026-08-05
+
+### Added
+
+- System audit page (hardware & system group). A read-only aggregation of four groups: write
+  capability (NVIDIA driver interface, CPU Sets partitioning, EcoQoS), local measurements (CPU
+  topology, whole-machine load, interrupt distribution), persistent system settings (HAGS, VBS,
+  Game Mode, MPO, power plan), and a verdict list. Every verdict carries an evidence grade —
+  measured on this machine / measured on the bench rig / mechanism-clear / unverified — and
+  features that tested as useless simply do not appear as recommendations.
+- The audit page's NVIDIA write probe: a write-readback-restore pass against a dedicated probe
+  profile, verifying the driver actually accepts the three deep-tuning writes rather than trusting
+  the write call's return value. All three verified effective on the dev machine's RTX 3090.
+
+### Removed
+
+- The v1.6.2 interrupt-core avoidance. It reliably picked the right core every round; what changed
+  on re-evaluation was the magnitude argument. A single interrupt costs microseconds, so a steady
+  2–3% interrupt share spread over tens of thousands of tiny events cannot produce a perceptible
+  stutter, while surrendering a physical core is a certain cost (12.5% of the P-cores on a hybrid
+  part). Trading a certain cost for a benefit that most likely drowns in measurement noise is not a
+  trade. The pre-existing 4% DPC-storm threshold turns out to be the right design — only genuine
+  interrupt storms (high-report-rate mice, broken drivers, 10%+ shares) justify giving up a core —
+  and it stays unchanged. The `--irq-map` diagnostic stays; the audit page embeds its quick form.
+
+## [1.6.2] - 2026-08-05
 
 ### Added
 

@@ -103,7 +103,6 @@ namespace PaviseApp
         private volatile bool ifeoOn;
         private volatile bool renderLaneOn;
         private volatile bool gpuDemoteOn;
-        private volatile bool irqAvoidOn;
         private volatile bool panicReq;
         private int panicSeq;
         private int panicServed;
@@ -125,7 +124,6 @@ namespace PaviseApp
         private readonly BackgroundPressureController pressure = new BackgroundPressureController();
         private readonly FreezeDwellTracker freezeDwell = new FreezeDwellTracker();
         private readonly DpcSampler dpcSampler = new DpcSampler();
-        private readonly InterruptCoreProbe irqProbe = new InterruptCoreProbe();
         private PerformancePreset preset;
         private GameDetection activeDetection;
         private Thread worker;
@@ -184,7 +182,6 @@ namespace PaviseApp
             hzGuard = Settings.Load("HzGuardOn", false);
             planSwitch = Settings.Load("PowerPlanOn", true);
             strictCoreOn = Settings.Load("GmStrictCores", false);
-            irqAvoidOn = Settings.Load("GmIrqAvoid", false);
             aggressiveOn = Settings.Load("GmAggressive", false);
             freezeOn = Settings.Load("GmFreeze", false);
             ifeoOn = Settings.Load("GmIfeoBoost", false);
@@ -458,18 +455,6 @@ namespace PaviseApp
         {
             get { return strictCoreOn; }
             set { strictCoreOn = value; Settings.Save("GmStrictCores", value); RequestPolicyApply(); }
-        }
-
-        public bool InterruptCoreAvoid
-        {
-            get { return irqAvoidOn; }
-            set
-            {
-                irqAvoidOn = value;
-                if (!value) irqProbe.Reset();
-                Settings.Save("GmIrqAvoid", value);
-                RequestPolicyApply();
-            }
         }
 
         public bool AggressiveSuppression
