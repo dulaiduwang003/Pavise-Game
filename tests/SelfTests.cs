@@ -78,6 +78,12 @@ namespace PaviseApp
                 RunQosProbe(args[1], args[2]);
                 return true;
             }
+            if (args[0] == "--irq-map" && args.Length >= 2)
+            {
+                RunIrqMap(args[1], args.Length >= 3 ? args[2] : null,
+                    args.Length >= 4 ? args[3] : null);
+                return true;
+            }
             if (args[0] == "--contention-lab" && args.Length >= 2)
             {
                 RunContentionLab(args[1], args.Length >= 3 ? args[2] : null,
@@ -1062,6 +1068,78 @@ namespace PaviseApp
                 if (sampler.NoisyPhysicalMask == 0) throw new Exception("DPC avoidance cooled down too early");
                 sampler.ObserveCandidate(-1);
                 Eq(0UL, sampler.NoisyPhysicalMask);
+            });
+            test("interrupt core avoidance: only a clearly outlying core is given up", () =>
+            {
+                var cores = new ulong[] { 0x3, 0xC, 0x30, 0xC0, 0x300, 0xC00, 0x3000, 0xC000 };
+                var measured = new double[16];
+                measured[4] = 0.0265; measured[5] = 0.0265;
+                measured[8] = 0.0089;
+                measured[1] = 0.0010;
+                Eq(0x30UL, CpuPartitionPolicy.FindInterruptCore(measured, cores, 16));
+
+                Eq(0UL, CpuPartitionPolicy.FindInterruptCore(measured, cores, 6));
+
+                var faint = new double[16];
+                faint[4] = 0.004; faint[5] = 0.004;
+                Eq(0UL, CpuPartitionPolicy.FindInterruptCore(faint, cores, 16));
+
+                var tied = new double[16];
+                tied[4] = 0.03; tied[8] = 0.025;
+                Eq(0UL, CpuPartitionPolicy.FindInterruptCore(tied, cores, 16));
+
+                Eq(0UL, CpuPartitionPolicy.FindInterruptCore(null, cores, 16));
+                Eq(0UL, CpuPartitionPolicy.FindInterruptCore(measured, null, 16));
+            });
+            test("interrupt core avoidance: rate is the peak across a core's SMT threads", () =>
+            {
+                var rates = new double[] { 0.001, 0.020, 0.003, 0.004 };
+                if (Math.Abs(CpuPartitionPolicy.CoreInterruptRate(rates, 0x3) - 0.020) > 1e-9)
+                    throw new Exception("SMT peak was not taken");
+                Eq(0.0, CpuPartitionPolicy.CoreInterruptRate(rates, 0));
+                Eq(0.0, CpuPartitionPolicy.CoreInterruptRate(null, 0x3));
+            });
+            test("interrupt core avoidance: median ignores zero-heavy distributions correctly", () =>
+            {
+                Eq(0.0, CpuPartitionPolicy.Median(new double[] { 0, 0, 0, 0.5 }));
+                Eq(2.0, CpuPartitionPolicy.Median(new double[] { 1, 3 }));
+                Eq(3.0, CpuPartitionPolicy.Median(new double[] { 1, 3, 9 }));
+                Eq(0.0, CpuPartitionPolicy.Median(null));
+            });
+            test("interrupt core probe: one measurement per session, restartable after reset", () =>
+            {
+                var probe = new InterruptCoreProbe(250);
+                Eq(0UL, probe.AvoidMask);
+                probe.Begin();
+                if (!probe.WaitForCompletion(15000)) throw new Exception("probe did not finish");
+
+                ulong picked = probe.AvoidMask;
+                if (picked != 0)
+                {
+                    bool known = false;
+                    foreach (ulong core in CpuTopology.PhysicalCoreMasks()) if (core == picked) known = true;
+                    if (!known) throw new Exception("probe returned a mask that is not a physical core: 0x" + picked.ToString("X"));
+                    ulong partition = CpuTopology.StrictBoostMask;
+                    if (partition != 0 && (partition & picked) == 0)
+                        throw new Exception("probe gave up a core that was never in the game partition");
+                }
+
+                probe.Begin();
+                Eq(picked, probe.AvoidMask);
+
+                probe.Reset();
+                Eq(0UL, probe.AvoidMask);
+            });
+            test("interrupt core probe: low-core machines never give up a core", () =>
+            {
+                var cores = new ulong[] { 0x3, 0xC, 0x30, 0xC0 };
+                var rates = new double[8];
+                rates[4] = 0.05;
+                Eq(0UL, CpuPartitionPolicy.FindInterruptCore(rates, cores,
+                    CpuPartitionPolicy.InterruptAvoidMinPhysicalCores - 1));
+                if (CpuPartitionPolicy.FindInterruptCore(rates, cores,
+                    CpuPartitionPolicy.InterruptAvoidMinPhysicalCores) == 0)
+                    throw new Exception("at the core-count threshold the outlier should be picked");
             });
             test("interrupt affinity: mask/byte round-trip is little-endian and lossless", () =>
             {

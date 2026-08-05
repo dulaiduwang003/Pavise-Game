@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Interrupt-core avoidance (off by default; requires strict CPU partitioning or competitive mode,
+  and at least 8 physical cores). Device interrupts and DPCs concentrate on a few cores, and a game
+  thread scheduled there waits behind interrupt servicing. Once a session is active, the interrupt
+  load of every core is measured once, and if one physical core is a clear outlier it is taken out
+  of the game partition. At most one core is ever given up, and a DPC storm already being avoided
+  takes precedence over the steady-state pick.
+- `--irq-map`, a diagnostic that reports the DPC + interrupt share of every core, which core would
+  be picked, and whether that core is even inside the game partition.
+
+### Changed
+
+- Interrupt avoidance does **not** target CPU 0. Measurement on the development machine (Intel
+  hybrid, 24 physical cores / 32 threads) found the opposite of the folklore: interrupts sit
+  steadily on physical core 4/5 at 1.7%–2.9%, while the core carrying CPU 0 measures 0.05%–0.10%,
+  i.e. 2%–4% of the dirtiest core. MSI-X spreads interrupts across cores, so which core carries them
+  is a property of the machine — masking threads 0/1 here would give up a clean core and leave the
+  genuinely dirty one inside the game partition. The avoidance target is therefore always measured.
+- The existing DPC avoidance could not reach real loads. It only triggered on storms of 4% or more,
+  but the dirtiest core on the development machine peaks at 2.9% and never qualified. Interrupt time
+  accumulates per clock tick, so a 3-second window resolves only to 0.52% and anything below that
+  quantises to zero — the old check was mostly reading quantisation noise. The new steady-state check
+  measures over a 30-second window (0.05% resolution), which is also why avoidance only takes effect
+  about half a minute into a session.
+
+- Licence: the project moves off the GNU GPL v3 to the Pavise License, a source-available licence
+  that keeps the source public and free to use, copy, modify and redistribute — for any purpose,
+  personal or organisational — but prohibits taking money for distributing it in any form:
+  no sold copies, no paid downloads or unlocks, no bundling into paid products, no preinstalls on
+  machines sold for money. Voluntary donations remain fine as long as payment is never a condition
+  of obtaining the software, a feature or support. The "Pavise" name and icon are outside the
+  grant, so modified builds must ship under their own name. Commercial use requires prior written
+  authorisation from the author. The About page now reports the licence accordingly.
+
 ### Removed
 
 - The League column's competitive graphics feature is gone, both of its groups: the quality

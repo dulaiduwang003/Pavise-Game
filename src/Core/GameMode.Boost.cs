@@ -353,6 +353,11 @@ namespace PaviseApp
                 dpcSampler.Sample();
                 avoidMask = dpcSampler.NoisyPhysicalMask;
             }
+            if (useStrict && irqAvoidOn)
+            {
+                irqProbe.Begin();
+                if (avoidMask == 0) avoidMask = irqProbe.AvoidMask;
+            }
             ulong desiredMask = (useStrict ? strictMask : gameMask) & ~avoidMask;
             if (desiredMask == 0) desiredMask = useStrict ? strictMask : gameMask;
             int rendererPid = -1;
@@ -904,6 +909,7 @@ namespace PaviseApp
             ClearEnvRetryState();
             pressure.Clear();
             freezeDwell.Clear();
+            irqProbe.Reset();
             if (clean) CrashGuard.ClearBoost();
             Logger.Log("游戏模式解除（" + reason + "）：恢复 " + ok + " 个后台进程（本局累计，含中途新增）");
             ReportFinish();

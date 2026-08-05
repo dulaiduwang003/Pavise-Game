@@ -32,6 +32,45 @@ namespace PaviseApp
 
         public ulong NoisyPhysicalMask { get { return noisyMask; } }
 
+        internal static long[] ReadBusyTicks()
+        {
+            int count = Math.Min(64, Environment.ProcessorCount);
+            int stride = Marshal.SizeOf(typeof(ProcessorPerf));
+            IntPtr mem = Marshal.AllocHGlobal(stride * count);
+            try
+            {
+                int returned;
+                if (NtQuerySystemInformation(8, mem, stride * count, out returned) != 0) return null;
+                int actual = Math.Min(count, returned / stride);
+                if (actual <= 0) return null;
+                var now = new long[actual];
+                for (int i = 0; i < actual; i++)
+                {
+                    var row = (ProcessorPerf)Marshal.PtrToStructure((IntPtr)((long)mem + i * stride), typeof(ProcessorPerf));
+                    now[i] = row.DpcTime + row.InterruptTime;
+                }
+                return now;
+            }
+            catch { return null; }
+            finally { Marshal.FreeHGlobal(mem); }
+        }
+
+        public static double[] MeasureInterruptRates(int windowMs)
+        {
+            if (windowMs < 200) windowMs = 200;
+            long[] first = ReadBusyTicks();
+            if (first == null) return null;
+            long startAt = DateTime.UtcNow.Ticks;
+            System.Threading.Thread.Sleep(windowMs);
+            long[] second = ReadBusyTicks();
+            long endAt = DateTime.UtcNow.Ticks;
+            if (second == null || second.Length != first.Length || endAt <= startAt) return null;
+            var rates = new double[first.Length];
+            for (int i = 0; i < first.Length; i++)
+                rates[i] = Math.Max(0, second[i] - first[i]) / (double)(endAt - startAt);
+            return rates;
+        }
+
         public void Sample()
         {
             int count = Math.Min(64, Environment.ProcessorCount);

@@ -112,7 +112,7 @@ build.cmd
 
 The script generates the icon and then builds `Pavise.exe` with an administrator manifest, product metadata, and file version `1.5.0.0`.
 
-Source builds are not Authenticode-signed by default, and an unsigned personal open-source release can still be distributed. A publisher may use its own trusted code-signing certificate to verify publisher identity or improve the SmartScreen experience.
+Source builds are not Authenticode-signed by default, and an unsigned personal release can still be distributed. A publisher may use its own trusted code-signing certificate to verify publisher identity or improve the SmartScreen experience.
 
 ## Running and data storage
 
@@ -166,6 +166,39 @@ Author  bdth
 
 Email  2074055628@qq.com
 
-Released under the [GNU GPL v3.0](LICENSE).
+Released under the [Pavise License](LICENSE): the source is public and free to use and modify, but **selling it is prohibited**.
 
-This is a personal open-source project provided as is. Performance and compatibility are not guaranteed. Anti-cheat suppression, VBS changes, service pauses, and cache deletion can all have side effects. Use it only on computers you control and review the relevant risk first.
+This is a personal project provided as is. Performance and compatibility are not guaranteed. Anti-cheat suppression, VBS changes, service pauses, and cache deletion can all have side effects. Use it only on computers you control and review the relevant risk first.
+
+### What you may do
+
+Free of charge, no need to ask me:
+
+- Use it for any purpose — personally, or inside a company, internet cafe or esports venue
+- Copy it and distribute it to anyone free of charge
+- Modify the source, build your own version, and distribute that free of charge
+- Read, study and reference the source code
+
+### No sale
+
+**Taking money in any form for distributing Pavise or a modified version is not allowed.** This includes, without limitation:
+
+- Selling copies, activation keys, accounts or download access
+- Supplying it as part of, as a bonus to, or as added value for a paid product, paid service or subscription
+- Paywalls, paid downloads, paid unlocks, donation gates
+- Preinstalling it on complete machines, devices or system images that are sold for money
+- Trading it for revenue sharing, or using it to drive traffic towards other paid offerings
+
+Voluntary donations are fine — provided that paying or not paying never affects whether you get the software, any of its features, or any support.
+
+Commercial use requires prior written authorisation. Email 2074055628@qq.com.
+
+### When you distribute it
+
+- Retain the licence, the copyright notice and the author information in full
+- Tell recipients that this may not be sold and that they are bound by the same licence
+- When distributing a modified version, state who changed it and what was changed
+
+**The "Pavise" name and icon are not covered by the licence grant.** A modified version must be released under your own name and icon, not as Pavise — I cannot verify what a modified build does, and sharing the name would send the responsibility to the wrong place.
+
+The latest version is always free on [GitHub](https://github.com/dulaiduwang003/Pavise-Game). **If you paid for it, you were scammed** — ask for a refund, then download it for free from the link above.

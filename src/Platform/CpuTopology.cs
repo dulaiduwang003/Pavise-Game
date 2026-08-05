@@ -155,6 +155,15 @@ namespace PaviseApp
             return logicalMask;
         }
 
+        public static int PhysicalCoreCount { get { return physicalCoreMasks.Count; } }
+
+        public static ulong PrimaryCoreMask
+        {
+            get { return physicalCoreMasks.Count > 0 ? ExpandPhysicalCoreMask(1UL) : 0; }
+        }
+
+        public static ulong[] PhysicalCoreMasks() { return physicalCoreMasks.ToArray(); }
+
         private static void BuildCpuSetPolicies()
         {
             try { MultiGroup = GetActiveProcessorGroupCount() > 1; }
