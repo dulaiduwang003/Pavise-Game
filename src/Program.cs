@@ -99,6 +99,25 @@ namespace PaviseApp
                 return;
             }
 
+            if (args.Length >= 2 && args[0] == "--shot-contact")
+            {
+                Dpi.Init(); Paths.Init(); Lang.Init();
+                Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
+                using (var dlg = new ContactDialog())
+                {
+                    dlg.StartPosition = FormStartPosition.Manual;
+                    dlg.Location = new Point(-20000, -20000);
+                    dlg.Show();
+                    Application.DoEvents();
+                    using (var bmp = new Bitmap(dlg.ClientSize.Width, dlg.ClientSize.Height))
+                    {
+                        dlg.DrawToBitmap(bmp, new Rectangle(0, 0, bmp.Width, bmp.Height));
+                        bmp.Save(args[1], System.Drawing.Imaging.ImageFormat.Png);
+                    }
+                }
+                return;
+            }
+
             if (args.Length > 0 && args[0] == "--ui-preview")
             {
                 Dpi.Init(); Paths.Init(); Lang.Init();
@@ -137,6 +156,9 @@ namespace PaviseApp
             Mutex mtx = null;
             try { mtx = new Mutex(true, "Global\\Pavise_SingleInstance", out created); }
             catch { created = false; }
+            if (!created && TryReplaceOlderInstance())
+                try { mtx = new Mutex(true, "Global\\Pavise_SingleInstance", out created); }
+                catch { created = false; }
             if (!created)
             {
                 try { EventWaitHandle.OpenExisting("Global\\Pavise_ShowPanel").Set(); } catch { }
@@ -277,7 +299,12 @@ namespace PaviseApp
 
             bool pendingPanel = Settings.Load(PendingPanelKey, false);
             if (pendingPanel) Settings.Save(PendingPanelKey, false);
-            if (!autoStarted || pendingPanel) panel.ShowPanel();
+            bool showingPanel = !autoStarted || pendingPanel;
+            // 开机自启进托盘时不打断用户，只在用户主动打开界面的这次启动里提示
+            if (showingPanel && ContactDialog.ShouldShow())
+                try { using (var contact = new ContactDialog()) contact.ShowDialog(); }
+                catch { }
+            if (showingPanel) panel.ShowPanel();
 
             var evtThread = new Thread(() =>
             {
@@ -411,6 +438,56 @@ namespace PaviseApp
 
             Application.Run();
             GC.KeepAlive(mtx);
+        }
+
+        // 比较两个版本号 前者更新时返回正数 无法解析的一律当作更旧
+        internal static int CompareVersions(string left, string right)
+        {
+            Version a, b;
+            if (!Version.TryParse(NormalizeVersion(left), out a)) a = new Version(0, 0);
+            if (!Version.TryParse(NormalizeVersion(right), out b)) b = new Version(0, 0);
+            return a.CompareTo(b);
+        }
+
+        private static string NormalizeVersion(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return "0.0.0.0";
+            string text = raw.Trim();
+            if (text.StartsWith("v", StringComparison.OrdinalIgnoreCase)) text = text.Substring(1);
+            // App.Version 是三段而文件版本是四段，不补齐的话 1.6.3 会被判成小于 1.6.3.0
+            int parts = text.Split('.').Length;
+            for (int i = parts; i < 4; i++) text += ".0";
+            return text;
+        }
+
+        // 已有实例跑着旧版本时请它退出 让新版本接管
+        // 走的是它自己的退出事件 会完整还原进程调度与系统设置 不是强杀
+        private static bool TryReplaceOlderInstance()
+        {
+            Process older = null;
+            try
+            {
+                int self = Process.GetCurrentProcess().Id;
+                foreach (Process p in Process.GetProcessesByName(
+                    Path.GetFileNameWithoutExtension(Application.ExecutablePath)))
+                {
+                    if (p.Id == self) { p.Dispose(); continue; }
+                    string version = null;
+                    try { version = p.MainModule.FileVersionInfo.FileVersion; }
+                    catch { }
+                    if (version != null && CompareVersions(App.Version, version) > 0 && older == null) older = p;
+                    else p.Dispose();
+                }
+                if (older == null) return false;
+
+                try { EventWaitHandle.OpenExisting("Global\\Pavise_Exit").Set(); }
+                catch { return false; }
+                // 旧实例要还原调度和系统设置才退出，给足时间，超时就放弃接管而不是强杀
+                if (!older.WaitForExit(20000)) return false;
+                return true;
+            }
+            catch { return false; }
+            finally { if (older != null) older.Dispose(); }
         }
 
         private static bool IsElevated()

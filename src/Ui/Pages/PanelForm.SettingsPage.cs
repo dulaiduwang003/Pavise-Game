@@ -10,7 +10,7 @@ namespace PaviseApp
 {
     internal partial class PanelForm
     {
-        private Toggle swAuto, swAutoHide;
+        private Toggle swAuto, swAutoHide, swContact;
         private SettingCard cardShader;
         private static volatile bool shaderCleaning;
         private int slowBusy;
@@ -36,6 +36,13 @@ namespace PaviseApp
 
             swAutoHide = MakeSwitch(Settings.Load(AutoHideKey, false), OnAutoHideToggle);
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.autohide"), Lang.T("set.autohide.n"), swAutoHide, out cardH);
+            sy += cardH + 8;
+
+            swContact = MakeSwitch(ContactDialog.ShouldShow(), delegate
+            {
+                if (swContact.Checked) ContactDialog.ResetHidden(); else ContactDialog.MarkHidden();
+            });
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.contact"), Lang.T("set.contact.n"), swContact, out cardH);
             sy += cardH + 8;
 
             sy += 10;

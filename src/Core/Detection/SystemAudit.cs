@@ -3,6 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using Microsoft.Win32;
 
 namespace PaviseApp
 {
@@ -58,6 +61,136 @@ namespace PaviseApp
             return string.Join("/", parts.ToArray());
         }
 
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MemoryStatusEx
+        {
+            public uint Length, MemoryLoad;
+            public ulong TotalPhys, AvailPhys, TotalPageFile, AvailPageFile, TotalVirtual, AvailVirtual, AvailExtendedVirtual;
+        }
+
+        [DllImport("kernel32.dll")] private static extern bool GlobalMemoryStatusEx(ref MemoryStatusEx buffer);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct SystemPowerStatus
+        {
+            public byte AcLineStatus, BatteryFlag, BatteryLifePercent, SystemStatusFlag;
+            public int BatteryLifeTime, BatteryFullLifeTime;
+        }
+
+        [DllImport("kernel32.dll")] private static extern bool GetSystemPowerStatus(out SystemPowerStatus status);
+
+        public static bool TryMemory(out double usedRatio, out double totalGb, out double availGb)
+        {
+            usedRatio = 0; totalGb = 0; availGb = 0;
+            try
+            {
+                var status = new MemoryStatusEx();
+                status.Length = (uint)Marshal.SizeOf(typeof(MemoryStatusEx));
+                if (!GlobalMemoryStatusEx(ref status) || status.TotalPhys == 0) return false;
+                totalGb = status.TotalPhys / 1073741824.0;
+                availGb = status.AvailPhys / 1073741824.0;
+                usedRatio = 1.0 - (status.AvailPhys / (double)status.TotalPhys);
+                return true;
+            }
+            catch { return false; }
+        }
+
+        // 刷新率是否已经跑在同分辨率可用的最高档 差一档就是实打实的帧数损失
+        public static bool RefreshRateIsBest(int current, int best)
+        {
+            return current <= 0 || best <= 0 || current >= best;
+        }
+
+        private static string WindowsText()
+        {
+            try
+            {
+                using (RegistryKey key = Registry.LocalMachine.OpenSubKey(
+                    @"SOFTWARE\Microsoft\Windows NT\CurrentVersion"))
+                {
+                    if (key == null) return Environment.OSVersion.VersionString;
+                    string name = key.GetValue("ProductName") as string;
+                    string display = key.GetValue("DisplayVersion") as string;
+                    object build = key.GetValue("CurrentBuildNumber");
+                    object ubr = key.GetValue("UBR");
+                    string text = string.IsNullOrEmpty(name) ? "Windows" : name;
+                    // 注册表在 Win11 上仍写着 Windows 10，按内部版本号纠正
+                    int buildNumber;
+                    if (build != null && int.TryParse(build.ToString(), out buildNumber) && buildNumber >= 22000)
+                        text = text.Replace("Windows 10", "Windows 11");
+                    if (!string.IsNullOrEmpty(display)) text += " " + display;
+                    if (build != null) text += " (" + build + (ubr != null ? "." + ubr : "") + ")";
+                    return text;
+                }
+            }
+            catch { return Environment.OSVersion.VersionString; }
+        }
+
+        private static bool GameDvrOn()
+        {
+            try
+            {
+                using (RegistryKey key = Registry.CurrentUser.OpenSubKey(@"System\GameConfigStore"))
+                {
+                    if (key == null) return false;
+                    object value = key.GetValue("GameDVR_Enabled");
+                    return value == null || Convert.ToInt32(value) != 0;
+                }
+            }
+            catch { return false; }
+        }
+
+        public sealed class LoadEntry
+        {
+            public string Name;
+            public double Ratio;
+        }
+
+        // 采样窗口内 CPU 时间增量最大的几个非系统进程 用来回答"该压制谁"
+        public static List<LoadEntry> TopConsumers(int windowMs, int take)
+        {
+            var result = new List<LoadEntry>();
+            try
+            {
+                var before = new Dictionary<int, KeyValuePair<string, TimeSpan>>();
+                foreach (Process p in Process.GetProcesses())
+                {
+                    using (p)
+                    {
+                        try
+                        {
+                            if (p.Id <= 4) continue;
+                            before[p.Id] = new KeyValuePair<string, TimeSpan>(p.ProcessName, p.TotalProcessorTime);
+                        }
+                        catch { }
+                    }
+                }
+                if (before.Count == 0) return result;
+                System.Threading.Thread.Sleep(windowMs);
+                double span = windowMs / 1000.0 * Environment.ProcessorCount;
+                if (span <= 0) return result;
+                foreach (Process p in Process.GetProcesses())
+                {
+                    using (p)
+                    {
+                        try
+                        {
+                            KeyValuePair<string, TimeSpan> old;
+                            if (!before.TryGetValue(p.Id, out old)) continue;
+                            double delta = (p.TotalProcessorTime - old.Value).TotalSeconds;
+                            if (delta <= 0) continue;
+                            result.Add(new LoadEntry { Name = old.Key, Ratio = delta / span });
+                        }
+                        catch { }
+                    }
+                }
+            }
+            catch { return result; }
+            result.Sort(delegate(LoadEntry a, LoadEntry b) { return b.Ratio.CompareTo(a.Ratio); });
+            if (result.Count > take) result.RemoveRange(take, result.Count - take);
+            return result;
+        }
+
         public static AuditReport Collect(int measureWindowMs)
         {
             var report = new AuditReport();
@@ -78,10 +211,13 @@ namespace PaviseApp
                 }
             }
 
+            int hzCur, hzBest;
+            DisplayGuard.QueryRefreshRates(out hzCur, out hzBest);
+
             BuildCapability(report);
-            BuildMachine(report, cpuBusy, worstIrq, worstCore);
+            BuildMachine(report, cpuBusy, worstIrq, worstCore, hzCur, hzBest);
             BuildPersistent(report);
-            BuildVerdicts(report, worstIrq);
+            BuildVerdicts(report, worstIrq, hzCur, hzBest);
             return report;
         }
 
@@ -122,9 +258,19 @@ namespace PaviseApp
                 Evidence = EvMeasuredLocal,
                 Warn = !eco
             });
+
+            report.Capability.Add(new AuditRow
+            {
+                Name = "操作系统",
+                Value = WindowsText(),
+                Note = "内部版本决定哪些接口可用：效率模式、CPU Sets 和部分电源参数在旧版本上会自动跳过",
+                Evidence = EvMeasuredLocal,
+                Warn = false
+            });
         }
 
-        private static void BuildMachine(AuditReport report, double cpuBusy, double worstIrq, ulong worstCore)
+        private static void BuildMachine(AuditReport report, double cpuBusy, double worstIrq, ulong worstCore,
+            int hzCur, int hzBest)
         {
             int logical = Environment.ProcessorCount;
             int physical = 0;
@@ -177,6 +323,71 @@ namespace PaviseApp
                     Warn = true
                 });
             }
+
+            bool hzOk = RefreshRateIsBest(hzCur, hzBest);
+            report.Machine.Add(new AuditRow
+            {
+                Name = "主屏刷新率",
+                Value = hzCur > 0
+                    ? hzCur + " Hz" + (hzOk ? "（已是最高）" : " · 可用 " + hzBest + " Hz")
+                    : "读取失败",
+                Note = hzOk
+                    ? "当前分辨率下没有更高的刷新率可选"
+                    : "系统跑在 " + hzCur + "Hz，而这块屏在同分辨率下支持 " + hzBest
+                        + "Hz——这是实打实的帧数损失，开启刷新率守护或在系统显示设置里改掉",
+                Evidence = EvMeasuredLocal,
+                Warn = !hzOk
+            });
+
+            double usedRatio, totalGb, availGb;
+            if (TryMemory(out usedRatio, out totalGb, out availGb))
+            {
+                report.Machine.Add(new AuditRow
+                {
+                    Name = "内存",
+                    Value = totalGb.ToString("F1") + " GB · 已用 " + PercentText(usedRatio)
+                        + " · 可用 " + availGb.ToString("F1") + " GB",
+                    Note = usedRatio >= 0.85
+                        ? "可用内存偏少，大型游戏可能触发换页导致卡顿，建议关掉部分后台或开启待机内存清理"
+                        : "内存余量充足",
+                    Evidence = EvMeasuredLocal,
+                    Warn = usedRatio >= 0.85
+                });
+            }
+
+            try
+            {
+                SystemPowerStatus power;
+                if (GetSystemPowerStatus(out power) && power.BatteryFlag != 128)
+                {
+                    bool onAc = power.AcLineStatus == 1;
+                    report.Machine.Add(new AuditRow
+                    {
+                        Name = "供电方式",
+                        Value = onAc ? "外接电源" : "电池供电",
+                        Note = onAc ? "笔记本已接电源，性能不受电池策略限制"
+                            : "电池供电时厂商固件通常会限制 CPU/GPU 功耗，此时任何调度优化都补不回损失的性能，插上电源再对比",
+                        Evidence = EvMechanism,
+                        Warn = !onAc
+                    });
+                }
+            }
+            catch { }
+
+            var top = TopConsumers(600, 3);
+            if (top.Count > 0)
+            {
+                var parts = new List<string>();
+                foreach (LoadEntry e in top) parts.Add(e.Name + " " + PercentText(e.Ratio));
+                report.Machine.Add(new AuditRow
+                {
+                    Name = "后台占用前三",
+                    Value = string.Join(" · ", parts.ToArray()),
+                    Note = "采样窗口内 CPU 时间增量最大的进程（占整机算力比例）。这几个就是压制最能回收资源的对象；确认要保护的可加入白名单",
+                    Evidence = EvMeasuredLocal,
+                    Warn = false
+                });
+            }
         }
 
         private static void BuildPersistent(AuditReport report)
@@ -227,6 +438,17 @@ namespace PaviseApp
                 Warn = false
             });
 
+            bool dvr = GameDvrOn();
+            report.Persistent.Add(new AuditRow
+            {
+                Name = "Game DVR 后台录制",
+                Value = dvr ? "开启" : "关闭",
+                Note = dvr ? "Xbox Game Bar 的后台录制会常驻捕获管线，对帧时间有实际开销，建议在优化策略页开启关闭项"
+                    : "已关闭，无需处理",
+                Evidence = EvMechanism,
+                Warn = dvr
+            });
+
             string plan = "读取失败";
             try { plan = PowerPlan.CurrentPlanLabel(); } catch { }
             report.Persistent.Add(new AuditRow
@@ -239,8 +461,21 @@ namespace PaviseApp
             });
         }
 
-        private static void BuildVerdicts(AuditReport report, double worstIrq)
+        private static void BuildVerdicts(AuditReport report, double worstIrq, int hzCur, int hzBest)
         {
+            if (!RefreshRateIsBest(hzCur, hzBest))
+            {
+                report.Verdicts.Add(new AuditRow
+                {
+                    Name = "主屏刷新率",
+                    Value = "强烈建议处理",
+                    Note = "当前 " + hzCur + "Hz，可用 " + hzBest + "Hz。这一项比本页任何调度优化的收益都直接——"
+                        + "帧数上限直接翻倍级别的差距，且没有任何代价",
+                    Evidence = EvMechanism,
+                    Warn = true
+                });
+            }
+
             report.Verdicts.Add(new AuditRow
             {
                 Name = "后台压制",
@@ -285,6 +520,32 @@ namespace PaviseApp
                         : "中断的单次干扰是微秒级，当前量级（" + PercentText(worstIrq) + "）不足以造成可感知的卡顿",
                     Evidence = EvMeasuredLocal,
                     Warn = tier == 2
+                });
+            }
+
+            if (GameDvrOn())
+            {
+                report.Verdicts.Add(new AuditRow
+                {
+                    Name = "Game DVR 后台录制",
+                    Value = "建议关闭",
+                    Note = "常驻捕获管线有实际开销，且多数人并不使用 Xbox Game Bar 录制",
+                    Evidence = EvMechanism,
+                    Warn = false
+                });
+            }
+
+            double usedRatio, totalGb, availGb;
+            if (TryMemory(out usedRatio, out totalGb, out availGb) && usedRatio >= 0.85)
+            {
+                report.Verdicts.Add(new AuditRow
+                {
+                    Name = "内存余量",
+                    Value = "建议处理",
+                    Note = "可用仅 " + availGb.ToString("F1") + " GB。内存吃紧会触发换页，那是毫秒级的磁盘等待，"
+                        + "比任何 CPU 调度问题都更容易造成明显卡顿",
+                    Evidence = EvMechanism,
+                    Warn = true
                 });
             }
 

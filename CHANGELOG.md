@@ -7,7 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [1.6.3] - 2026-08-05
 
+### Added
+
+- Six more audit checks: primary-display refresh rate (current vs. the highest available at this
+  resolution — a mismatch goes straight into the verdict list, since it is the most direct and
+  entirely cost-free gain on the page), memory total and headroom, laptop power source, the top
+  three background CPU consumers, Game DVR recording state, and the OS build (correcting the
+  registry's habit of still reporting Windows 11 as Windows 10).
+- A startup feedback dialog carrying the author's WeChat and the QQ group (copyable), plus a plain
+  statement that the software is free and anyone who paid for it was scammed. It appears only on a
+  launch where you open the window yourself — autostart into the tray never interrupts — and can be
+  dismissed permanently, with a switch in settings to bring it back.
+- A newer build now takes over a running older one. File versions are compared and only a strictly
+  newer build asks the old instance to quit; that goes through the instance's own exit path, which
+  fully restores process scheduling and system settings before exiting, rather than killing it. If
+  the wait times out the takeover is abandoned rather than forced. Equal versions keep the previous
+  behaviour of simply raising the existing window.
+
 ### Fixed
+
+- Re-running the audit after scrolling left a blank gap at the top of the list: an `AutoScroll`
+  container adds its scroll offset to newly added child coordinates, so the position has to be reset
+  before rebuilding. The rebuild also disposed controls while enumerating `Controls`, which mutates
+  the collection mid-iteration and left roughly half of them alive and leaked.
 
 - Xbox / Microsoft Store games (Forza Horizon 5 among them) could not be added to the library at
   all. They install under `WindowsApps` / `XboxGames`, where the ACL denies reading the executable

@@ -131,8 +131,14 @@ namespace PaviseApp
         private void RenderAudit(AuditReport report)
         {
             auditScroll.SuspendLayout();
-            foreach (Control c in auditScroll.Controls) c.Dispose();
+            // 先滚回顶部再重建：AutoScroll 容器会把滚动偏移加到新控件坐标上，
+            // 带着偏移重建会在列表顶部留下一段空白
+            auditScroll.AutoScrollPosition = Point.Empty;
+            // 复制后再释放：Dispose 会把控件从 Controls 里摘掉，直接在 foreach 里做会跳过一半
+            var stale = new Control[auditScroll.Controls.Count];
+            auditScroll.Controls.CopyTo(stale, 0);
             auditScroll.Controls.Clear();
+            foreach (Control c in stale) c.Dispose();
 
             int sy = 2;
             sy = RenderAuditGroup(Lang.T("audit.sec.capability"), report.Capability, sy);
@@ -142,6 +148,8 @@ namespace PaviseApp
 
             CardLabel(auditScroll, Lang.T("audit.footer"), 8, sy + 4, ScrollContentW - 16, 34, 7.6f, false, Theme.Faint);
             auditScroll.ResumeLayout();
+            auditScroll.PerformLayout();
+            auditScroll.AutoScrollPosition = Point.Empty;
         }
 
         private int RenderAuditGroup(string title, System.Collections.Generic.List<AuditRow> rows, int sy)

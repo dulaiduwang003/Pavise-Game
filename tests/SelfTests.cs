@@ -1189,6 +1189,20 @@ namespace PaviseApp
                 }
                 finally { try { File.Delete(txt); } catch { } }
             });
+            test("instance takeover: only a strictly newer build replaces the running one", () =>
+            {
+                if (Program.CompareVersions("1.6.3", "1.6.2") <= 0) throw new Exception("newer build must win");
+                if (Program.CompareVersions("1.7.0", "1.6.9") <= 0) throw new Exception("minor bump must win");
+                if (Program.CompareVersions("1.6.3", "1.6.3") != 0) throw new Exception("same build must tie");
+                if (Program.CompareVersions("1.6.2", "1.6.3") >= 0) throw new Exception("older build must lose");
+                // 带 v 前缀与四段号都要能解析
+                if (Program.CompareVersions("v1.6.3", "1.6.2") <= 0) throw new Exception("v-prefix must parse");
+                if (Program.CompareVersions("1.6.3", "1.6.3.0") != 0) throw new Exception("1.6.3 must equal 1.6.3.0");
+                // 读不到版本的实例按更旧处理，才能被新版本接管
+                if (Program.CompareVersions("1.0", null) <= 0) throw new Exception("unknown version must be treated as older");
+                if (Program.CompareVersions("1.0", "garbage") <= 0) throw new Exception("unparsable version must be treated as older");
+            });
+            test("audit page: rebuilding a scrolled list starts back at the top", TestScrolledRebuild);
             test("system audit: interrupt tiers split at 1% and 5%", () =>
             {
                 Eq(0, SystemAudit.InterruptTier(0.0));
@@ -2173,6 +2187,43 @@ namespace PaviseApp
             using (Bitmap c = IconArt.Render(32, PerformancePreset.Competitive, true)) competitive = IconFingerprint(c, false);
             using (Bitmap x = IconArt.Render(32, PerformancePreset.Custom, true)) custom = IconFingerprint(x, false);
             if (standard == competitive || competitive == custom || standard == custom) throw new Exception("mode icons are not visually distinct");
+        }
+
+        private static void TestScrolledRebuild()
+        {
+            using (var scroll = new Panel())
+            {
+                scroll.AutoScroll = true;
+                scroll.SetBounds(0, 0, 300, 160);
+                scroll.CreateControl();
+                for (int i = 0; i < 24; i++)
+                {
+                    var filler = new Label();
+                    filler.SetBounds(0, i * 40, 200, 32);
+                    scroll.Controls.Add(filler);
+                }
+                scroll.PerformLayout();
+                scroll.AutoScrollPosition = new Point(0, 500);
+                if (scroll.AutoScrollPosition.Y == 0)
+                    throw new Exception("panel did not scroll, precondition not met");
+
+                // 复现体检页的重建：先归位再清空，否则新控件会带上滚动偏移
+                scroll.AutoScrollPosition = Point.Empty;
+                var stale = new Control[scroll.Controls.Count];
+                scroll.Controls.CopyTo(stale, 0);
+                scroll.Controls.Clear();
+                int disposed = 0;
+                foreach (Control c in stale) { c.Dispose(); disposed++; }
+                // 遍历中 Dispose 会摘掉集合元素，只有先复制才能全部释放
+                if (disposed != stale.Length) throw new Exception("not every stale control was released");
+                if (scroll.Controls.Count != 0) throw new Exception("controls survived the clear");
+
+                var first = new Label();
+                first.SetBounds(0, 2, 200, 32);
+                scroll.Controls.Add(first);
+                if (first.Top != 2)
+                    throw new Exception("rebuilt content starts at " + first.Top + " instead of 2");
+            }
         }
 
         private static void TestDashboardMotion()

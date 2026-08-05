@@ -31,6 +31,29 @@ namespace PaviseApp
             catch { return 0; }
         }
 
+        // 只读：当前刷新率与同分辨率下可用的最高刷新率 都为 0 表示读取失败
+        internal static void QueryRefreshRates(out int current, out int best)
+        {
+            current = 0; best = 0;
+            try
+            {
+                string dev = Screen.PrimaryScreen.DeviceName;
+                DEVMODE cur = NewDm();
+                if (!EnumDisplaySettingsW(dev, ENUM_CURRENT_SETTINGS, ref cur)) return;
+                current = cur.dmDisplayFrequency;
+                best = current;
+                DEVMODE m = NewDm();
+                for (int i = 0; EnumDisplaySettingsW(dev, i, ref m); i++)
+                {
+                    if (m.dmPelsWidth == cur.dmPelsWidth && m.dmPelsHeight == cur.dmPelsHeight
+                        && m.dmBitsPerPel == cur.dmBitsPerPel && m.dmDisplayFrequency > best)
+                        best = m.dmDisplayFrequency;
+                    m = NewDm();
+                }
+            }
+            catch { }
+        }
+
         public static bool Activate()
         {
             lock (lk)
