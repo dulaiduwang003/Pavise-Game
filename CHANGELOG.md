@@ -33,6 +33,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Feedback dialog layout: the version line sat underneath the accent gradient band, and the
   right-hand note was clipped by the value label's rectangle overlapping it.
 
+## [1.6.4] - 2026-08-05
+
+### Added
+
+- System audit gained six checks: primary-display refresh rate (current versus the highest available
+  at the same resolution — the single highest-value, zero-cost item on the page), memory headroom,
+  laptop power source, the top three background CPU consumers, Game DVR state, and the OS build.
+- A startup feedback dialog carrying the author's WeChat and the QQ group, with the group number
+  copyable, plus a statement that the software is free and anyone who paid for it was scammed.
+- A newer build now takes over a running older one. It compares file versions, and only a strictly
+  newer build asks the old instance to exit — through that instance's own shutdown path, so process
+  scheduling and system settings are fully restored first. It is not a kill, and a timeout abandons
+  the takeover rather than risking leftovers.
+
+### Fixed
+
+- Re-running the audit after scrolling left a gap at the top of the list: an `AutoScroll` container
+  adds the scroll offset to newly placed children, so the position has to be reset before rebuilding.
+  The rebuild also released controls while enumerating them, which skipped half the collection.
+- The feedback dialog's version line sat under the accent gradient, and the right-hand note was
+  clipped by the value label's rectangle.
+- The EcoQoS capability was described by the wrong version boundary. Both the UI and the docs claimed
+  older Windows 10 lacks the interface, which contradicts Microsoft's documentation:
+  `PROCESS_POWER_THROTTLING_EXECUTION_SPEED` has been callable since Windows 10 1709, but the full
+  EcoQoS behaviour — frequency reduction and efficiency-core scheduling — only landed with Windows 11
+  (build 22000). Before that the same flag behaves as classic background execution throttling. An
+  available interface is not the same as identical behaviour, and the old wording collapsed that
+  distinction. The audit page now reports three states — unsupported, interface available, supported —
+  derived from the live probe plus the build number rather than a version assertion.
+
 ## [1.6.3] - 2026-08-05
 
 ### Fixed
