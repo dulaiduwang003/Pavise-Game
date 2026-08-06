@@ -1,17 +1,22 @@
 @rem @author bdth 2074055628@qq.com
 @rem file: build Pavise, icon, and manifest
+@rem ASCII ONLY. cmd decodes this file with the codepage the console had at
+@rem startup (936 here) and chcp does NOT change that. One UTF-8 CJK char
+@rem shifts the parser and comment text gets executed as a command.
 @echo off
-rem 记下宿主控制台原来的码页，退出前还原：直接改掉不还原会让调用方
-rem 交互式 PowerShell 的 PSReadLine 读键线程抛异常并崩掉整个终端
+rem when called from dev.cmd it owns the codepage; do not restore it early
+rem or the caller's remaining output lands on the wrong codepage.
+if defined PAVISE_CP_OWNED goto cpready
 for /f "tokens=2 delims=:" %%a in ('chcp') do set "PAVISE_OLDCP=%%a"
 set "PAVISE_OLDCP=%PAVISE_OLDCP: =%"
 chcp 65001 >nul
+:cpready
 setlocal
 cd /d "%~dp0"
 set CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe
 if not exist "%CSC%" set CSC=%WINDIR%\Microsoft.NET\Framework\v4.0.30319\csc.exe
 if not exist "%CSC%" (
-    echo 找不到 csc.exe 请确认已安装 .NET Framework 4.x
+    echo csc.exe not found - install .NET Framework 4.x
     exit /b 1
 )
 
@@ -21,14 +26,14 @@ if not "%~1"=="" set OUT=%~1
 set TESTARGS=
 if /i "%~2"=="--selftest" set TESTARGS=-define:PAVISE_SELFTEST -recurse:tests\*.cs
 
-echo [1/3] 编译临时 exe...
+echo [1/3] compiling temp exe...
 "%CSC%" -nologo -target:winexe -optimize+ -codepage:65001 -out:Pavise.tmp.exe %REFS% %TESTARGS% -recurse:src\*.cs
 if errorlevel 1 goto err
 
-echo [2/3] 生成 Pavise.ico...
+echo [2/3] generating Pavise.ico...
 .\Pavise.tmp.exe --genicon
 
-echo [3/3] 编译...
+echo [3/3] compiling...
 set MANIFEST=Pavise.manifest.tmp
 >  "%MANIFEST%" echo ^<?xml version="1.0" encoding="UTF-8" standalone="yes"?^>
 >> "%MANIFEST%" echo ^<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0"^>
@@ -51,16 +56,17 @@ if errorlevel 1 goto err
 
 del Pavise.tmp.exe "%MANIFEST%" >nul 2>&1
 echo.
-echo 构建成功 -^> %OUT%
+echo Build OK -^> %OUT%
 call :restorecp
 goto :eof
 
 :err
-echo 构建失败
+echo Build failed
 del Pavise.tmp.exe "%MANIFEST%" >nul 2>&1
 call :restorecp
 exit /b 1
 
 :restorecp
+if defined PAVISE_CP_OWNED goto :eof
 if defined PAVISE_OLDCP chcp %PAVISE_OLDCP% >nul 2>&1
 goto :eof
