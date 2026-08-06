@@ -858,22 +858,13 @@ namespace PaviseApp
             }
         }
 
-        public bool BoostStateFailed
-        {
-            get
-            {
-                lock (sync) return active && activeDetection != null
-                    && boostStateWarned.Contains(activeDetection.RendererPid)
-                    && !boostHandleStripped.Contains(activeDetection.RendererPid);
-            }
-        }
-
         public bool BoostHandleProtected
         {
             get
             {
                 lock (sync) return active && activeDetection != null
-                    && boostHandleStripped.Contains(activeDetection.RendererPid);
+                    && (boostHandleStripped.Contains(activeDetection.RendererPid)
+                        || boostStateWarned.Contains(activeDetection.RendererPid));
             }
         }
 
@@ -890,10 +881,9 @@ namespace PaviseApp
                     string name = activeDetection.RendererName ?? activeGame ?? "Game";
                     if (boostStateVerified.Contains(activeDetection.RendererPid))
                         return Lang.F("v14.boost.verified", name);
-                    if (boostHandleStripped.Contains(activeDetection.RendererPid))
+                    if (boostHandleStripped.Contains(activeDetection.RendererPid)
+                        || boostStateWarned.Contains(activeDetection.RendererPid))
                         return Lang.F("v14.boost.protected", name);
-                    if (boostStateWarned.Contains(activeDetection.RendererPid))
-                        return Lang.F("v14.boost.failed", name);
                     return Lang.F("v14.boost.applying", name);
                 }
             }
