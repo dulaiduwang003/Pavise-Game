@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 运行不依赖测试框架的项目自测
 
 using System;
@@ -851,6 +851,7 @@ namespace PaviseApp
                 Eq(3, CpuPartitionPolicy.BackgroundCoreCount(24));
                 Eq(4, CpuPartitionPolicy.BackgroundCoreCount(64));
             });
+            test("文案：源码里引用到的键全部有定义", TestEveryLangKeyIsDefined);
             test("白名单规则：旧版名称、带版本号路径与精确边界", TestWhitelistRules);
             test("白名单家族：后代仅在 PID 身份一致时保留", TestWhitelistFamilyIdentity);
             test("白名单家族事件：事件顺序与父进程创建时间阻断 PID 继承", TestWhitelistFamilyEvents);
@@ -885,8 +886,6 @@ namespace PaviseApp
                 Eq(null, TaskHelper.ParseTaskCommandXml(
                     "<Task><Actions /></Task>"));
             });
-            test("英雄联盟：LCU 凭据拒绝格式错误的输入", TestLolCredentialParsing);
-            test("英雄联盟：清理目标绝不包含核心、游戏本体或 ACE 路径", TestLolCleanupBoundary);
             test("环境优化项：写入失败改为退避，不再每轮重试", () =>
             {
                 string envDir = Path.Combine(
@@ -1030,10 +1029,7 @@ namespace PaviseApp
                 Eq(1000, GameMode.FailedProcessScanRetryMs);
                 Eq(8000, Tamer.OverflowSweepIntervalMs);
                 Eq(1000, Tamer.FailedSweepRetryMs);
-                Eq(5000, LolOptimizationService.ProcessEventWakeThrottleMs);
                 DateTime wakeNow = new DateTime(638000000000000000L, DateTimeKind.Utc);
-                Eq(1250, LolOptimizationService.ProcessWakeDelayMs(
-                    wakeNow, wakeNow.AddMilliseconds(1250)));
                 GameProfile eventProfile = GameProfileStore.NewProfile(
                     "EventProbe", @"C:\Games\EventProbe",
                     @"C:\Games\EventProbe\EventProbe.exe");

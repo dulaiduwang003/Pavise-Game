@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 启动程序并处理单实例 自愈和命令行入口
 
 using System;
@@ -39,7 +39,6 @@ namespace PaviseApp
         {
 
             if (LegacyFreezeRecovery.TryHandle(args)) return;
-            if (LolWatchdog.TryHandle(args)) return;
 #if PAVISE_SELFTEST
             if (SelfTests.TryHandleRuntimeMode(args)) return;
 #endif
@@ -261,7 +260,6 @@ namespace PaviseApp
 
             var gameMode = new GameMode(dir, core);
             gameMode.Enabled = Settings.Load("GameModeOn", true);
-            var lolService = new LolOptimizationService();
 
             var startGate = new object();
             bool exiting = false;
@@ -274,7 +272,6 @@ namespace PaviseApp
                     if (exiting) return;
                     tamer.Start();
                     gameMode.Start();
-                    lolService.Start();
                 }
             });
             bootThread.IsBackground = true;
@@ -285,7 +282,7 @@ namespace PaviseApp
             {
                 return gameMode.NeedsWhitelistParentIdentity(session)
                     || gameMode.NeedsGameProcessIdentity(name, session)
-                    || LolRuntimeProcesses.IsScanCandidateName(name);
+                    ;
             };
             procNotify.CaptureParentIdentity =
                 delegate(int parentPid, string name, int session)
@@ -298,7 +295,6 @@ namespace PaviseApp
             {
                 gameMode.NotifyProcessChanges(batch);
                 tamer.NotifyProcessChanges(batch);
-                lolService.NotifyProcessChanges(batch);
             };
             procNotify.Start();
             gameMode.ProcessEventsAvailable = procNotify.IsActive;
@@ -310,7 +306,7 @@ namespace PaviseApp
             PerformancePreset runtimeIconMode = gameMode.ActivePreset;
             bool runtimeIconEnabled = gameMode.Enabled;
             Icon appIcon = IconArt.MakeMultiIcon(runtimeIconMode, runtimeIconEnabled);
-            var panel = new PanelForm(tamer, gameMode, appIcon, elevated, lolService);
+            var panel = new PanelForm(tamer, gameMode, appIcon, elevated);
             GC.KeepAlive(panel.Handle);
 
             bool pendingPanel = Settings.Load(PendingPanelKey, false);
@@ -346,8 +342,6 @@ namespace PaviseApp
                 icon.Dispose();
                 lock (startGate) exiting = true;
                 try { procNotify.Stop(); } catch { }
-                try { panel.WaitForLolIdle(4000); } catch { }
-                try { lolService.Dispose(); } catch { }
                 tamer.Stop();
                 gameMode.Stop();
                 panel.RealExit = true;

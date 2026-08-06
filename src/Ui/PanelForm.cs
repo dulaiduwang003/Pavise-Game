@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 维护主窗口状态和主要交互事件
 
 using System;
@@ -20,18 +20,17 @@ namespace PaviseApp
     internal enum PageId
     {
         Overview = 0,
-        League = 1,
-        Library = 2,
-        Policy = 3,
-        AntiCheat = 4,
-        Graphics = 5,
-        Environment = 6,
-        Audit = 7,
-        Log = 8,
-        Settings = 9,
-        About = 10,
-        Whitelist = 11,
-        Count = 12
+        Library = 1,
+        Policy = 2,
+        AntiCheat = 3,
+        Graphics = 4,
+        Environment = 5,
+        Audit = 6,
+        Log = 7,
+        Settings = 8,
+        About = 9,
+        Whitelist = 10,
+        Count = 11
     }
 
     internal partial class PanelForm : Form
@@ -79,13 +78,8 @@ namespace PaviseApp
         private const int ScrollContentW = PageW - 40 - 12 - 20;
 
         public PanelForm(Tamer t, GameMode gm, Icon icon, bool isElevated)
-            : this(t, gm, icon, isElevated, new LolOptimizationService())
         {
-        }
-
-        public PanelForm(Tamer t, GameMode gm, Icon icon, bool isElevated, LolOptimizationService leagueService)
-        {
-            tamer = t; gameMode = gm; elevated = isElevated; lolService = leagueService; appIcon = (Icon)icon.Clone();
+            tamer = t; gameMode = gm; elevated = isElevated; appIcon = (Icon)icon.Clone();
             visualMode = gameMode.ActivePreset; visualEnabled = gameMode.Enabled;
             Theme.SetMode(visualMode, false);
             BuildUi(appIcon);
@@ -126,14 +120,14 @@ namespace PaviseApp
             AttachFormFrame();
 
             nav = new NavRail(
-                new[] { Lang.T("nav.overview"), LolText("英雄联盟（国服）"), Lang.T("nav.library"), Lang.T("nav.policy"),
+                new[] { Lang.T("nav.overview"), Lang.T("nav.library"), Lang.T("nav.policy"),
                         Lang.T("v14.anticheat"), Lang.T("nav.graphics"), Lang.T("nav.env"), Lang.T("nav.audit"),
                         Lang.T("nav.log"), Lang.T("nav.set"), Lang.T("nav.about"), Lang.T("nav.white") },
-                new[] { "game", "lol", "white", "settings", "shield", "gpu", "chip", "chart", "log", "gear", "info", "shield" },
+                new[] { "game", "white", "settings", "shield", "gpu", "chip", "chart", "log", "gear", "info", "shield" },
                 new[] { (int)PageId.Overview, (int)PageId.Library, (int)PageId.Whitelist, (int)PageId.Policy,
                         (int)PageId.AntiCheat, (int)PageId.Log, (int)PageId.Graphics, (int)PageId.Environment,
-                        (int)PageId.Audit, (int)PageId.League, (int)PageId.Settings, (int)PageId.About },
-                new[] { 6, 9 }, new[] { Lang.T("nav.hardware"), Lang.T("nav.columns") }, 2);
+                        (int)PageId.Audit, (int)PageId.Settings, (int)PageId.About },
+                new[] { 6 }, new[] { Lang.T("nav.hardware") }, 2);
             AssertNavMatchesPageIds(nav);
             nav.SetBounds(0, 0, Theme.S(RailW), Theme.S(WinH));
             nav.SelectionChanged = ShowPage;
@@ -182,7 +176,6 @@ namespace PaviseApp
 
             pages = new DBPanel[(int)PageId.Count];
             pages[(int)PageId.Overview] = pageOverview = MakePage();
-            pages[(int)PageId.League] = pageLol = MakePage();
             pages[(int)PageId.Library] = pageLibrary = MakePage();
             pages[(int)PageId.Whitelist] = pageWhitelist = MakePage();
             pages[(int)PageId.Policy] = pagePolicy = MakePage();
@@ -194,7 +187,6 @@ namespace PaviseApp
             pages[(int)PageId.Settings] = pageSettings = MakePage();
             pages[(int)PageId.About] = pageAbout = MakePage();
             BuildOverviewPage();
-            BuildLolPage();
             BuildLibraryPage();
             BuildWhitelistPage();
             BuildPolicyPage();
@@ -275,8 +267,6 @@ namespace PaviseApp
             pageHooks = new PageHook[(int)PageId.Count];
             pageHooks[(int)PageId.Overview] = new PageHook(pageOverview,
                 delegate(bool active) { if (paviseCore != null) paviseCore.SetAnimationEnabled(active); }, null);
-            pageHooks[(int)PageId.League] = new PageHook(pageLol,
-                delegate(bool active) { if (active) RefreshLolPage(); }, null);
             pageHooks[(int)PageId.Library] = new PageHook(pageLibrary,
                 delegate(bool active) { if (active) RefreshGameRunningStates(true); },
                 delegate { RefreshGameRunningStates(); });
@@ -317,7 +307,6 @@ namespace PaviseApp
             page.Left = pageBaseLeft + Theme.S(16);
             pageSlide.Speed = 0.26f; pageSlide.Set(1f); pageSlide.To(0f);
             if (UiActive) UiClock.Wake();
-            if (index == (int)PageId.League && lolService != null) lolService.RequestDiscovery();
             NotifyPageActivation();
         }
 
@@ -470,7 +459,6 @@ namespace PaviseApp
 
         private void ToggleModeFlyout()
         {
-            if (lolDiscoveringUi) { SetModeFlyout(false); return; }
             SetModeFlyout(modeFlyout == null || !modeFlyout.Visible);
         }
 
@@ -488,7 +476,6 @@ namespace PaviseApp
 
         private void ChooseGlobalMode(PerformancePreset mode)
         {
-            if (lolDiscoveringUi) { SetModeFlyout(false); return; }
             gameMode.Preset = mode;
             SetModeFlyout(false);
             UpdateModePresentation(true);
@@ -713,7 +700,6 @@ namespace PaviseApp
             if (IsDisposed || !UiActive) return;
             if (builtLang != Lang.Cur) { RebuildUi(); return; }
             SyncToggleValues();
-            RefreshLolPage();
             RefreshSlowStateAsync();
             RefreshEnvironmentStateAsync();
         }
