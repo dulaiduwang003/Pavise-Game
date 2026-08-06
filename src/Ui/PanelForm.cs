@@ -45,6 +45,7 @@ namespace PaviseApp
         private DBPanel[] pages;
         private NavRail nav;
         private ModeButton modeButton;
+        private ThemeSwitch themeSwitch;
         private ModePickerPanel modeFlyout;
         private PerformancePreset visualMode;
         private bool visualEnabled;
@@ -163,6 +164,10 @@ namespace PaviseApp
             modeButton.Clicked = ToggleModeFlyout;
             modeButton.SetMode(gameMode.ActivePreset);
 
+            themeSwitch = new ThemeSwitch(Theme.LightMode);
+            themeSwitch.SetBounds(Theme.S(PageW - 430), Theme.S(4), Theme.S(78), Theme.S(46));
+            themeSwitch.Toggled = OnThemeToggled;
+
             int tw = Theme.S(WinW - RailW);
             var btnMin = new CaptionButton(false);
             btnMin.SetBounds(tw - Theme.S(92), 0, Theme.S(44), Theme.S(TopH));
@@ -173,7 +178,7 @@ namespace PaviseApp
             btnClose.Bg = Theme.Bg;
             btnClose.Click += (s, e) => Hide();
 
-            topBar.Controls.AddRange(new Control[] { lblSub, modeButton, btnMin, btnClose });
+            topBar.Controls.AddRange(new Control[] { lblSub, themeSwitch, modeButton, btnMin, btnClose });
 
             pages = new DBPanel[(int)PageId.Count];
             pages[(int)PageId.Overview] = pageOverview = MakePage();
@@ -511,6 +516,14 @@ namespace PaviseApp
             if (visualChanged)
                 using (Icon icon = IconArt.MakeMultiIcon(effective, enabled)) SetRuntimeIcon(icon);
             RefreshPolicyPresentation();
+        }
+
+        private void OnThemeToggled(bool light)
+        {
+            Settings.Save("UiLight", light);
+            Theme.SetLight(light);
+            Logger.Log("界面主题切换：" + (light ? "亮色" : "暗色"));
+            BeginInvoke((MethodInvoker)delegate { if (!IsDisposed) RebuildUi(); });
         }
 
         public void SetRuntimeIcon(Icon value)
