@@ -117,6 +117,7 @@ namespace PaviseApp
         private volatile bool hzGuard;
         private volatile bool planSwitch;
         private volatile bool idleDisableOn;
+        private volatile bool cpuFloorLockOn;
         private volatile bool visualFxOn;
         private volatile bool standbySweepOn;
         private volatile bool pauseUpdateOn;
@@ -199,6 +200,7 @@ namespace PaviseApp
             svcPauseOn = Settings.Load("GmSvcPause", false);
             notifQuiet = Settings.Load("NotifQuiet", false);
             idleDisableOn = Settings.Load("GmIdleDisable", true);
+            cpuFloorLockOn = Settings.Load("GmCpuFloorLock", false);
             visualFxOn = Settings.Load("GmVisualFx", false);
             standbySweepOn = Settings.Load("GmStandbySweep", false);
             pauseUpdateOn = Settings.Load("GmPauseUpdate", false);
@@ -555,6 +557,12 @@ namespace PaviseApp
         {
             get { return idleDisableOn; }
             set { idleDisableOn = value; Settings.Save("GmIdleDisable", value); RequestPolicyApply(); }
+        }
+
+        public bool CpuFloorLock
+        {
+            get { return cpuFloorLockOn; }
+            set { cpuFloorLockOn = value; Settings.Save("GmCpuFloorLock", value); RequestPolicyApply(); }
         }
 
         public bool VisualFxDowngrade

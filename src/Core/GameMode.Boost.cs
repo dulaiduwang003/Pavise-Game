@@ -185,14 +185,14 @@ namespace PaviseApp
             }
             bool aggressivePower = IsAggressive(mode, aggressiveOn);
             int powerKey = (aggressivePower ? 1 : 0)
-                | (idleDisableOn ? 2 : 0) | (planSwitch ? 4 : 0);
+                | (idleDisableOn ? 2 : 0) | (planSwitch ? 4 : 0) | (cpuFloorLockOn ? 8 : 0);
             long nowTicks = DateTime.UtcNow.Ticks;
             if (planSwitch)
             {
                 if (!planActive || powerKey != lastPowerPolicyKey
                     || nowTicks >= nextPowerAuditTicks)
                 {
-                    bool planOk = PowerPlan.Enforce(aggressivePower, idleDisableOn);
+                    bool planOk = PowerPlan.Enforce(aggressivePower, idleDisableOn, cpuFloorLockOn);
                     planActive = true;
                     lastPowerPolicyKey = powerKey;
                     if (planOk)

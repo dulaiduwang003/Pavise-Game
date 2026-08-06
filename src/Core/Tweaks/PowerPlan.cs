@@ -39,9 +39,11 @@ namespace PaviseApp
         private static readonly Guid UsbSelSuspend  = new Guid("48e6b7a6-50f5-4782-a5d4-53bb8f07e226");
 
         private const uint AggressiveFloorWithEpp = 20u;
+        private const uint AggressiveFloorNoEpp = 50u;
+        private const uint LockedFloor = 100u;
         private const uint EppMaxPerf = 0u;
 
-        private static bool TuneTarget(Guid g, bool aggressive, bool idleDisable)
+        private static bool TuneTarget(Guid g, bool aggressive, bool idleDisable, bool floorLock)
         {
             try
             {
@@ -49,8 +51,9 @@ namespace PaviseApp
                 bool killIdle = aggressive && idleDisable;
 
                 bool epp = aggressive && ApplyEpp(g);
-                uint floorAc = aggressive ? (epp ? AggressiveFloorWithEpp : 100u) : 35u;
-                uint floorDc = aggressive ? (epp ? AggressiveFloorWithEpp : 100u) : 10u;
+                uint baseFloor = aggressive ? (epp ? AggressiveFloorWithEpp : AggressiveFloorNoEpp) : 35u;
+                uint floorAc = floorLock ? LockedFloor : baseFloor;
+                uint floorDc = floorLock ? LockedFloor : (aggressive ? baseFloor : 10u);
 
                 ok &= WritePair(g, SubProcessor, CpMinCores, aggressive ? 100u : 50u, aggressive ? 100u : 20u);
                 ok &= WritePair(g, SubProcessor, ProcThrottleMin, floorAc, floorDc);
@@ -82,14 +85,20 @@ namespace PaviseApp
                     Logger.Log("电源策略参数未能完整写入，未把本轮标记为成功");
                     return false;
                 }
+                string floorText = floorLock
+                    ? LockedFloor + "%下限（已锁定最低频率）"
+                    : (epp ? AggressiveFloorWithEpp + "%下限+能效偏好偏性能"
+                        : AggressiveFloorNoEpp + "%下限（本机无能效偏好设置）");
                 Logger.Log(aggressive
                     ? "电源策略：竞技级（全核心" + (CpuTopology.Hybrid ? "含E核不停核" : "") + "/"
-                        + (epp ? AggressiveFloorWithEpp + "%下限+能效偏好偏性能" : "100%下限（本机无能效偏好设置）")
+                        + floorText
                         + "/激进睿频"
                         + (governor ? "/升频Rocket·降频缓退·延迟敏感全速" : "")
                         + (killIdle ? "/禁用空闲降低唤醒延迟" : "，空闲状态保持系统默认")
                         + "）"
-                    : "电源策略：常规持续性能（保留降频余量，减少热饱和后的频率回落）");
+                    : "电源策略：常规持续性能（"
+                        + (floorLock ? LockedFloor + "%下限（已锁定最低频率）"
+                            : "保留降频余量，减少热饱和后的频率回落") + "）");
                 return true;
             }
             catch { return false; }
@@ -217,19 +226,19 @@ namespace PaviseApp
             catch { g = Guid.Empty; return false; }
         }
 
-        private static int TuneKey(bool aggressive, bool idleDisable)
+        private static int TuneKey(bool aggressive, bool idleDisable, bool floorLock)
         {
-            return (aggressive ? 1 : 0) | (idleDisable ? 2 : 0);
+            return (aggressive ? 1 : 0) | (idleDisable ? 2 : 0) | (floorLock ? 4 : 0);
         }
 
-        private static bool ActivateInner(bool aggressive, bool idleDisable)
+        private static bool ActivateInner(bool aggressive, bool idleDisable, bool floorLock)
         {
             if (active) return true;
             Guid tgt = ResolveTarget();
-            if (tuneState != TuneKey(aggressive, idleDisable))
+            if (tuneState != TuneKey(aggressive, idleDisable, floorLock))
             {
-                if (targetOwned && !TuneTarget(tgt, aggressive, idleDisable)) return false;
-                tuneState = TuneKey(aggressive, idleDisable);
+                if (targetOwned && !TuneTarget(tgt, aggressive, idleDisable, floorLock)) return false;
+                tuneState = TuneKey(aggressive, idleDisable, floorLock);
             }
             Guid? cur = Current();
             if (cur == null) return false;
@@ -254,16 +263,16 @@ namespace PaviseApp
             return false;
         }
 
-        public static bool Enforce(bool aggressive, bool idleDisable)
+        public static bool Enforce(bool aggressive, bool idleDisable, bool floorLock)
         {
             lock (lk)
             {
-                if (!active) return ActivateInner(aggressive, idleDisable);
+                if (!active) return ActivateInner(aggressive, idleDisable, floorLock);
                 Guid tgt = ResolveTarget();
-                if (tuneState != TuneKey(aggressive, idleDisable))
+                if (tuneState != TuneKey(aggressive, idleDisable, floorLock))
                 {
-                    if (targetOwned && !TuneTarget(tgt, aggressive, idleDisable)) return false;
-                    tuneState = TuneKey(aggressive, idleDisable);
+                    if (targetOwned && !TuneTarget(tgt, aggressive, idleDisable, floorLock)) return false;
+                    tuneState = TuneKey(aggressive, idleDisable, floorLock);
                     Set(tgt);
                 }
                 Guid? cur = Current();
