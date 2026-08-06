@@ -239,6 +239,10 @@ namespace PaviseApp
         private sealed class Facts
         {
             public bool Nv;
+            public GpuAdapter[] Gpus = new GpuAdapter[0];
+            public bool NvHardware;
+            public bool AmdHardware;
+            public bool IntegratedOnly;
             public bool Partition;
             public bool Eco;
             public bool EcoFull;
@@ -257,6 +261,17 @@ namespace PaviseApp
         {
             var f = new Facts();
             try { f.Nv = NvApi.Available; } catch { }
+            try
+            {
+                f.Gpus = GpuInventory.Adapters();
+                foreach (GpuAdapter g in f.Gpus)
+                {
+                    if (g.Vendor == GpuVendor.Nvidia) f.NvHardware = true;
+                    if (g.Vendor == GpuVendor.Amd) f.AmdHardware = true;
+                }
+                f.IntegratedOnly = GpuInventory.IntegratedOnly;
+            }
+            catch { }
             try { f.Partition = CpuTopology.HasSafeBackgroundPartition(); } catch { }
             try { f.Eco = Native.PowerThrottlingSupported; } catch { }
             f.EcoFull = f.Eco && WindowsBuild() >= EcoQosFullBuild;
@@ -304,12 +319,29 @@ namespace PaviseApp
 
         private static void BuildCapability(AuditReport report, Facts facts)
         {
+            if (facts.Gpus.Length > 0)
+            {
+                report.Capability.Add(new AuditRow
+                {
+                    Name = "显卡",
+                    Value = GpuInventory.Describe(),
+                    Note = facts.IntegratedOnly
+                        ? "本机只有核显。显卡页的驱动深度调优不适用，但后台压制、绑核、电源计划这些照常有效，帧数收益主要从那边来"
+                        : "带独显。显卡页的驱动项能不能用，看下面两行接口检测",
+                    Evidence = EvMeasuredLocal,
+                    Warn = false
+                });
+            }
+
             report.Capability.Add(new AuditRow
             {
                 Name = "NVIDIA 驱动接口",
                 Value = facts.Nv ? "可用" : "不可用",
-                Note = facts.Nv ? "显卡深度调优（电源 / 帧率上限 / 预渲染）在本机可用；用「写入实测」能验证是不是真写进去了"
-                    : "本机没有可用的 NVIDIA 驱动，显卡页的深度调优整体停用",
+                Note = facts.Nv
+                    ? "显卡深度调优（电源 / 帧率上限 / 预渲染）在本机可用；用「写入实测」能验证是不是真写进去了"
+                    : facts.NvHardware
+                        ? "有 N 卡但驱动接口调不起来，多半是驱动太老或装的是精简版，显卡页 NVIDIA 区整体停用"
+                        : "本机没有 NVIDIA 显卡，显卡页 NVIDIA 区整体停用",
                 Evidence = EvMeasuredLocal,
                 Warn = false
             });
@@ -322,7 +354,9 @@ namespace PaviseApp
                 Value = amd ? "可用" : "不可用",
                 Note = amd
                     ? "显卡页 AMD 区可用。效果未经实机验证，可用「AMD 写入实测」核对写入"
-                    : "无 A 卡或驱动太老，显卡页 AMD 区不可用",
+                    : facts.AmdHardware
+                        ? "有 A 卡但 ADLX 调不起来，驱动太老或没装 Adrenalin，显卡页 AMD 区不可用"
+                        : "本机没有 AMD 显卡，显卡页 AMD 区不可用",
                 Evidence = amd ? EvUnverified : EvMeasuredLocal,
                 Warn = false
             });
@@ -646,7 +680,9 @@ namespace PaviseApp
                 Name = "NVIDIA 深度调优",
                 Value = facts.Nv ? "可以尝试" : "本机不适用",
                 Note = facts.Nv ? "先用「写入实测」确认本机驱动接受写入，再按游戏开启"
-                    : "无 NVIDIA 驱动接口",
+                    : facts.IntegratedOnly
+                        ? "核显没有对应的调优接口，这一项跳过，收益从压制、绑核和电源那边拿"
+                        : "无 NVIDIA 驱动接口",
                 Evidence = EvMeasuredLocal,
                 Warn = false
             });

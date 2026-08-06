@@ -170,6 +170,59 @@ namespace PaviseApp
             }
         }
 
+        private const string AntiCheatCountProbeGroup = "probe-group";
+
+        private static void TestThrottledCountSurvivesBatchLock()
+        {
+            var core = new SuppressionCore();
+            using (Process probe = Process.Start(new ProcessStartInfo("cmd.exe", "/c pause")
+            { UseShellExecute = false, RedirectStandardInput = true, CreateNoWindow = true }))
+            {
+                Thread.Sleep(250);
+                var holding = new ManualResetEvent(false);
+                var release = new ManualResetEvent(false);
+                Thread holder = null;
+                try
+                {
+                    core.BeginBatch();
+                    try
+                    {
+                        core.Acquire(probe.Id, probe.ProcessName, SuppressReason.Background, null, SuppressionLevel.Eco);
+                        core.Acquire(probe.Id, probe.ProcessName, SuppressReason.AntiCheat,
+                            AntiCheatCountProbeGroup, SuppressionLevel.Eco);
+                    }
+                    finally { core.EndBatch(); }
+                    if (!core.IsThrottled(probe.Id))
+                        throw new TestSkippedException("探针未进入压制，无法验证锁竞争下的计数");
+
+                    holder = new Thread(delegate()
+                    {
+                        core.BeginBatch();
+                        holding.Set();
+                        release.WaitOne(5000);
+                        core.EndBatch();
+                    });
+                    holder.IsBackground = true;
+                    holder.Start();
+                    if (!holding.WaitOne(3000)) throw new TestSkippedException("占锁线程未能进入批处理");
+
+                    Eq(1, core.CountThrottled(SuppressReason.Background));
+
+                    int grouped, guarded;
+                    core.AntiCheatGroupCounts(AntiCheatCountProbeGroup, out grouped, out guarded);
+                    Eq(1, grouped + guarded);
+                }
+                finally
+                {
+                    release.Set();
+                    if (holder != null) holder.Join(5000);
+                    core.Release(probe.Id, SuppressReason.AntiCheat);
+                    core.Release(probe.Id, SuppressReason.Background);
+                    try { if (!probe.HasExited) probe.Kill(); } catch { }
+                }
+            }
+        }
+
         private static void TestSuspendIsNotReentrant()
         {
             Process victim = StartFreezeVictim();

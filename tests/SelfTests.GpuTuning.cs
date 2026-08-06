@@ -129,6 +129,49 @@ namespace PaviseApp
                 throw new Exception("检测到的显存窗口小得不合理: " + window);
         }
 
+        private static void TestGpuInventoryClassify()
+        {
+            Eq(GpuVendor.Nvidia, GpuInventory.VendorOf(@"PCI\VEN_10DE&DEV_1F10&SUBSYS_132F1043"));
+            Eq(GpuVendor.Amd, GpuInventory.VendorOf(@"PCI\VEN_1002&DEV_73BF"));
+            Eq(GpuVendor.Intel, GpuInventory.VendorOf(@"PCI\VEN_8086&DEV_3E9B"));
+            Eq(GpuVendor.Unknown, GpuInventory.VendorOf(@"Root\GameViewerIddDriver"));
+
+            Eq(true, GpuInventory.IsPciAdapter(@"PCI\VEN_8086&DEV_3E9B"));
+            Eq(false, GpuInventory.IsPciAdapter(@"Root\GameViewerIddDriver"));
+            Eq(false, GpuInventory.IsPciAdapter(@"ROOT\DISPLAY\0000"));
+            Eq(false, GpuInventory.IsPciAdapter(null));
+
+            Eq("VEN_8086&DEV_3E9B", GpuInventory.VenDevKey(
+                @"PCI\VEN_8086&DEV_3E9B&SUBSYS_17511043&REV_00\3&11583659&0&10"));
+            Eq("VEN_10DE&DEV_1F10", GpuInventory.VenDevKey(@"pci\ven_10de&dev_1f10&subsys_132f1043"));
+            Eq(null, GpuInventory.VenDevKey(@"Root\GameViewerIddDriver"));
+
+            Eq(false, GpuInventory.IntegratedFrom(GpuVendor.Nvidia, 0, 0));
+            Eq(true, GpuInventory.IntegratedFrom(GpuVendor.Intel, 0, 1073741824L));
+            Eq(false, GpuInventory.IntegratedFrom(GpuVendor.Intel, 3, 8589934592L));
+            Eq(true, GpuInventory.IntegratedFrom(GpuVendor.Amd, 0, 4294967296L));
+            Eq(false, GpuInventory.IntegratedFrom(GpuVendor.Amd, 1, 8589934592L));
+            Eq(false, GpuInventory.IntegratedFrom(GpuVendor.Amd, -1, 8589934592L));
+            Eq(true, GpuInventory.IntegratedFrom(GpuVendor.Amd, -1, 1073741824L));
+        }
+
+        private static void TestGpuInventoryLocalMachine()
+        {
+            GpuAdapter[] all = GpuInventory.Adapters();
+            if (all.Length == 0) throw new TestSkippedException("枚举不到 PCI 显示适配器");
+            foreach (GpuAdapter a in all)
+            {
+                if (!GpuInventory.IsPciAdapter(a.HardwareId))
+                    throw new Exception("虚拟适配器混入枚举: " + a.Name);
+                if (a.Vendor == GpuVendor.Nvidia && a.Integrated)
+                    throw new Exception("NVIDIA 被判成核显: " + a.Name);
+                if (a.BusNumber >= 0 && a.Integrated != (a.BusNumber == 0))
+                    throw new Exception("总线位置与核显判定不一致: " + a.Name + " bus=" + a.BusNumber);
+            }
+            if (GpuInventory.Primary() == null) throw new Exception("有适配器却选不出主显卡");
+            Eq(true, GpuInventory.IntegratedOnly != GpuInventory.HasDiscrete);
+        }
+
         private static void TestAdlxDegrade()
         {
             if (AdlxTweaks.Available)

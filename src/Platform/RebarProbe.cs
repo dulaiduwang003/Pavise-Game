@@ -72,6 +72,7 @@ namespace PaviseApp
                     if (!SetupDiGetDeviceInstanceIdW(devInfo, ref data, id, 512, out required)) continue;
                     string instance = id.ToString();
                     if (!IsDiscretePciGpu(instance)) continue;
+                    if (GpuInventory.IsIntegratedDevice(instance)) continue;
                     ulong window = LargestMemoryWindow(data.DevInst);
                     if (window <= windowBytes) continue;
                     windowBytes = window;

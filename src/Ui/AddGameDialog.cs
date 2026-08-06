@@ -94,9 +94,19 @@ namespace PaviseApp
             lst.MouseMove += delegate(object s, MouseEventArgs e)
             {
                 int idx = lst.IndexFromPoint(e.Location);
-                if (idx != hover) { hover = idx; lst.Invalidate(); }
+                if (idx == hover) return;
+                int was = hover;
+                hover = idx;
+                InvalidateRow(was);
+                InvalidateRow(idx);
             };
-            lst.MouseLeave += delegate { if (hover != -1) { hover = -1; lst.Invalidate(); } };
+            lst.MouseLeave += delegate
+            {
+                if (hover < 0) return;
+                int was = hover;
+                hover = -1;
+                InvalidateRow(was);
+            };
             lst.MouseClick += delegate(object s, MouseEventArgs e)
             {
                 int idx = lst.IndexFromPoint(e.Location);
@@ -467,6 +477,12 @@ namespace PaviseApp
             btnAdd.Text = n > 0 ? Lang.F("scan.add.n", n) : Lang.T("btn.add");
             btnAdd.Enabled = n > 0;
             btnAdd.Invalidate();
+        }
+
+        private void InvalidateRow(int index)
+        {
+            if (index < 0 || index >= lst.Items.Count) return;
+            lst.Invalidate(lst.GetItemRectangle(index));
         }
 
         private void DrawRow(object sender, DrawItemEventArgs e)

@@ -71,7 +71,7 @@ namespace PaviseApp
             wrap.BackColor = Theme.Bg; wrap.Fill = Theme.Card; wrap.Border = Theme.Stroke;
             wrap.Radius = Theme.S(12); wrap.Padding = new Padding(Theme.S(8));
             list.Dock = DockStyle.Fill;
-            Theme.StyleList(list);
+            Theme.StyleList(list, false);
             list.ItemHeight = Math.Min(255, Theme.S(52));
             list.DrawItem += DrawEntry;
             list.MouseDown += OnListMouseDown;
@@ -287,7 +287,7 @@ namespace PaviseApp
             Graphics g = e.Graphics;
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             Rectangle r = e.Bounds;
-            bool hot = (e.State & DrawItemState.Selected) != 0;
+            bool hot = (e.State & DrawItemState.Selected) != 0 || e.Index == Theme.HoverIndex(list);
 
             using (var b = new SolidBrush(entry.Checked ? Theme.Sel : (hot ? Theme.CardHover : Theme.Card)))
                 g.FillRectangle(b, r);

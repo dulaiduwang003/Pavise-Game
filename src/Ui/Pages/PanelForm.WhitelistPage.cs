@@ -40,7 +40,7 @@ namespace PaviseApp
 
             lstWhite = new TechListBox();
             lstWhite.Dock = DockStyle.Fill;
-            Theme.StyleList(lstWhite);
+            Theme.StyleList(lstWhite, false);
             lstWhite.ItemHeight = Math.Min(255, Theme.S(64));
             lstWhite.DrawItem += DrawWhitelistItem;
             lstWhite.KeyDown += delegate(object s, KeyEventArgs e)
@@ -307,10 +307,11 @@ namespace PaviseApp
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             Rectangle r = e.Bounds;
             bool selected = (e.State & DrawItemState.Selected) != 0;
+            bool hover = !selected && e.Index == Theme.HoverIndex(lstWhite);
             bool family = item.View.Rule.Kind == WhitelistRuleKind.ApplicationFamily;
             bool live = item.View.CurrentMatches > 0;
 
-            using (var b = new SolidBrush(selected ? Theme.Sel : Theme.Card))
+            using (var b = new SolidBrush(selected ? Theme.Sel : (hover ? Theme.CardHover : Theme.Card)))
                 g.FillRectangle(b, r);
             if (selected)
                 using (var p = new Pen(Theme.Accent, Math.Max(1.5f, Theme.S(2))))

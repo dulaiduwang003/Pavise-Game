@@ -851,6 +851,7 @@ namespace PaviseApp
                 Eq(3, CpuPartitionPolicy.BackgroundCoreCount(24));
                 Eq(4, CpuPartitionPolicy.BackgroundCoreCount(64));
             });
+            test("本局统计：宽限期先行还原的进程仍然结账", TestSessionReportCountsSealedProcesses);
             test("文案：源码里引用到的键全部有定义", TestEveryLangKeyIsDefined);
             test("白名单规则：旧版名称、带版本号路径与精确边界", TestWhitelistRules);
             test("白名单家族：后代仅在 PID 身份一致时保留", TestWhitelistFamilyIdentity);
@@ -1402,6 +1403,8 @@ namespace PaviseApp
             test("显卡限制判定：样本足够才出结论，百分比格式正确", TestGpuThrottleSummary);
             test("ADLX：没有 A 卡驱动的机器安全降级为空操作", TestAdlxDegrade);
             test("ReBAR 探测：PCI 过滤、阈值判定与实时窗口读取", TestRebarProbe);
+            test("显卡枚举：厂商与核显判定按 PCI 厂商号和总线位置", TestGpuInventoryClassify);
+            test("显卡枚举：本机适配器全部命中 PCI 且核显判定自洽", TestGpuInventoryLocalMachine);
             test("白名单：作用范围自动判定，命令行与脚本宿主不会获得家族豁免", TestWhitelistAutoScope);
             test("白名单：只接受 EXE 与快捷方式拖入", TestWhitelistDropTargets);
             test("白名单：自动添加后收窄或放宽，每个程序始终只有一条规则", TestWhitelistAutoAddAndReshape);
@@ -2009,6 +2012,7 @@ namespace PaviseApp
             test("后台 GPU 让位：无 GPU 的进程照样压制并干净还原", () => TestGpuDemoteGpulessProcess(root));
             test("后台冻结：静默计时需连续无动静才放行", TestFreezeDwellGate);
             test("后台冻结：带反作弊理由的进程永不进入冻结档", TestAntiCheatNeverFreezes);
+            test("压制计数：批量清扫占着锁时状态栏仍报真实数量", TestThrottledCountSurvivesBatchLock);
             test("后台冻结：崩溃日志可唤醒遗留的挂起进程", TestFrozenJournalThaw);
             test("后台冻结：崩溃恢复绝不唤醒被复用的 PID", TestFrozenJournalRejectsPidReuse);
             test("后台冻结：单次挂起的进程一次唤醒即可恢复", TestSuspendIsNotReentrant);

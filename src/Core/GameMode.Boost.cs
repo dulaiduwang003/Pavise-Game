@@ -377,7 +377,7 @@ namespace PaviseApp
             if (!core.AnyWith(SuppressReason.Background)) return 0;
             int n = 0;
             foreach (int pid in core.PidsWith(SuppressReason.Background))
-                if (core.Release(pid, SuppressReason.Background)) { ReportUntrack(pid); n++; }
+                if (core.Release(pid, SuppressReason.Background)) { ReportSeal(pid); n++; }
             if (n > 0) Logger.Log(reasonPrefix + "：解除 " + n + " 个进程的压制（个别被句柄保护的会自动补还原）");
             return n;
         }

@@ -14,6 +14,7 @@ namespace PaviseApp
         private readonly Dictionary<int, long> repCpu = new Dictionary<int, long>();
         private readonly Dictionary<int, long> repCreation = new Dictionary<int, long>();
         private readonly Dictionary<int, string> repProc = new Dictionary<int, string>();
+        private readonly Dictionary<int, long> repSealed = new Dictionary<int, long>();
         private long repStart;
         private string repGame;
         private long repPaviseCpuStart;
@@ -29,6 +30,7 @@ namespace PaviseApp
                 repCpu.Clear();
                 repCreation.Clear();
                 repProc.Clear();
+                repSealed.Clear();
                 repGame = game;
                 repStart = Stopwatch.GetTimestamp();
                 repPaviseCpuStart = paviseCpu;
@@ -42,6 +44,29 @@ namespace PaviseApp
                 repCpu.Remove(pid);
                 repCreation.Remove(pid);
                 repProc.Remove(pid);
+                repSealed.Remove(pid);
+            }
+        }
+
+        private void ReportSeal(int pid)
+        {
+            long start, creation;
+            lock (sync)
+            {
+                if (!repCpu.TryGetValue(pid, out start)) return;
+                repCreation.TryGetValue(pid, out creation);
+                repCpu.Remove(pid);
+                repCreation.Remove(pid);
+            }
+            long now, nowCreation, delta = 0;
+            if (CpuTicks(pid, out now, out nowCreation)
+                && nowCreation == creation && now > start)
+                delta = now - start;
+            lock (sync)
+            {
+                long prev;
+                repSealed.TryGetValue(pid, out prev);
+                repSealed[pid] = prev + delta;
             }
         }
 
@@ -64,6 +89,7 @@ namespace PaviseApp
             Dictionary<int, long> cpu;
             Dictionary<int, string> names;
             Dictionary<int, long> creations;
+            Dictionary<int, long> used;
             string game;
             long t0;
             long paviseCpuStart;
@@ -74,36 +100,45 @@ namespace PaviseApp
                 cpu = new Dictionary<int, long>(repCpu);
                 names = new Dictionary<int, string>(repProc);
                 creations = new Dictionary<int, long>(repCreation);
+                used = new Dictionary<int, long>(repSealed);
                 paviseCpuStart = repPaviseCpuStart;
                 repCpu.Clear();
                 repCreation.Clear();
                 repProc.Clear();
+                repSealed.Clear();
                 repGame = null;
                 repPaviseCpuStart = 0;
             }
             if (game == null) return;
 
             TimeSpan dur = TimeSpan.FromSeconds((double)(Stopwatch.GetTimestamp() - t0) / Stopwatch.Frequency);
-            long total = 0, top = 0;
-            string topName = null;
             foreach (var kv in cpu)
             {
+                long prev;
+                if (!used.TryGetValue(kv.Key, out prev)) { prev = 0; used[kv.Key] = 0; }
                 long now, creation;
                 if (!CpuTicks(kv.Key, out now, out creation)) continue;
                 long expectedCreation;
                 if (!creations.TryGetValue(kv.Key, out expectedCreation) || creation != expectedCreation) continue;
                 long d = now - kv.Value;
                 if (d < 0) continue;
-                total += d;
-                if (d > top)
+                used[kv.Key] = prev + d;
+            }
+
+            long total = 0, top = 0;
+            string topName = null;
+            foreach (var kv in used)
+            {
+                total += kv.Value;
+                if (kv.Value > top)
                 {
-                    top = d;
+                    top = kv.Value;
                     string nm;
                     if (names.TryGetValue(kv.Key, out nm)) topName = nm;
                 }
             }
 
-            string msg = Lang.F("rep.done", game, FmtDur(dur), cpu.Count, FmtCpu(total));
+            string msg = Lang.F("rep.done", game, FmtDur(dur), used.Count, FmtCpu(total));
             if (topName != null && top >= TimeSpan.TicksPerSecond)
                 msg += Lang.F("rep.top", topName, FmtCpu(top));
             long paviseCpuEnd = CurrentProcessCpuTicks();
@@ -175,6 +210,18 @@ namespace PaviseApp
             if (t.TotalMinutes >= 1) return (int)t.TotalMinutes + "m" + t.Seconds.ToString("00") + "s";
             return t.TotalSeconds.ToString("0.0") + "s";
         }
+
+#if PAVISE_SELFTEST
+        internal void ProbeSessionBegin(string game) { ReportBegin(game); }
+
+        internal void ProbeSessionTrack(int pid, string name) { ReportTrack(pid, name); }
+
+        internal void ProbeSessionSeal(int pid) { ReportSeal(pid); }
+
+        internal void ProbeSessionUntrack(int pid) { ReportUntrack(pid); }
+
+        internal void ProbeSessionFinish() { ReportFinish(); }
+#endif
 
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool GetProcessTimes(IntPtr handle, out long creation, out long exit, out long kernel, out long user);

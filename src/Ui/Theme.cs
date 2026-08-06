@@ -236,6 +236,11 @@ namespace PaviseApp
 
         public static void StyleList(ListBox lb)
         {
+            StyleList(lb, true);
+        }
+
+        public static void StyleList(ListBox lb, bool defaultDraw)
+        {
             lb.BackColor = Card;
             lb.ForeColor = Fg;
             lb.BorderStyle = BorderStyle.None;
@@ -244,7 +249,7 @@ namespace PaviseApp
             lb.IntegralHeight = false;
             lb.Font = UI(9.5f, false);
             lb.Tag = -1;
-            lb.DrawItem += DrawListItem;
+            if (defaultDraw) lb.DrawItem += DrawListItem;
             lb.MouseMove += (s, e) =>
             {
                 var l = (ListBox)s;
@@ -264,6 +269,11 @@ namespace PaviseApp
                 if (was < l.Items.Count) l.Invalidate(l.GetItemRectangle(was));
             };
             Native.Dark(lb);
+        }
+
+        public static int HoverIndex(ListBox lb)
+        {
+            return lb != null && lb.Tag is int ? (int)lb.Tag : -1;
         }
 
         private static void DrawListItem(object s, DrawItemEventArgs e)

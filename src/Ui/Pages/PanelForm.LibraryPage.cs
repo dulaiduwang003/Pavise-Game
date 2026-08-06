@@ -35,7 +35,7 @@ namespace PaviseApp
             listWrap.EmptyTitle = "PAVISE LIBRARY";
             listWrap.EmptyDetail = Lang.T("v15.library.empty");
             listWrap.Padding = new Padding(Theme.S(8));
-            lstGames = new TechListBox(); lstGames.Dock = DockStyle.Fill; Theme.StyleList(lstGames);
+            lstGames = new TechListBox(); lstGames.Dock = DockStyle.Fill; Theme.StyleList(lstGames, false);
             lstGames.ItemHeight = Math.Min(255, Theme.S(68));
             lstGames.DrawItem += DrawGameLibraryItem;
             lstGames.KeyDown += delegate(object s, KeyEventArgs e)
@@ -79,7 +79,7 @@ namespace PaviseApp
             GameLibraryItem item = lstGames.Items[e.Index] as GameLibraryItem;
             if (item == null || item.Profile == null) return;
             bool selected = (e.State & DrawItemState.Selected) != 0;
-            int hover = lstGames.Tag is int ? (int)lstGames.Tag : -1;
+            int hover = Theme.HoverIndex(lstGames);
             Rectangle row = Rectangle.Inflate(e.Bounds, -Theme.S(4), -Theme.S(3));
             using (var back = new SolidBrush(Theme.Card)) e.Graphics.FillRectangle(back, e.Bounds);
             Theme.FillRound(e.Graphics, row, Theme.S(10), selected ? Theme.Sel : (e.Index == hover ? Theme.CardHover : Theme.Card));

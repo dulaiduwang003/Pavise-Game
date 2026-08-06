@@ -358,24 +358,30 @@ namespace PaviseApp
         {
             if (!introActive) return;
             if (introMotion.Step())
-                Top = introBaseTop + (int)(introMotion.Value * Theme.S(IntroRise));
-            else
             {
-                introActive = false;
-                Top = introBaseTop;
+                Top = introBaseTop + (int)(introMotion.Value * Theme.S(IntroRise));
+                Opacity = 1.0 - introMotion.Value;
             }
+            else FinishIntro();
+        }
+
+        private void FinishIntro()
+        {
+            introActive = false;
+            Top = introBaseTop;
+            if (Opacity < 1.0) Opacity = 1.0;
         }
 
         private void BeginIntro()
         {
-
             if (introActive) { introActive = false; Top = introBaseTop; }
             introPending = true;
+            Opacity = 0.0;
         }
 
         private void StartIntro()
         {
-            if (!introPending) return;
+            if (!introPending) { if (Opacity < 1.0) Opacity = 1.0; return; }
             introPending = false;
             introBaseTop = Top;
             introMotion.Speed = 0.24f;
@@ -383,13 +389,23 @@ namespace PaviseApp
             introMotion.To(0f);
             introActive = true;
             Top = introBaseTop + Theme.S(IntroRise);
+            PaintTree(this);
             UiClock.Wake(90);
+            if (!UiClock.Running) FinishIntro();
+        }
+
+        private static void PaintTree(Control c)
+        {
+            if (!c.IsHandleCreated || !c.Visible) return;
+            c.Update();
+            for (int i = 0; i < c.Controls.Count; i++) PaintTree(c.Controls[i]);
         }
 
         protected override void OnVisibleChanged(EventArgs e)
         {
             base.OnVisibleChanged(e);
             if (Visible) { CenterRoot(); ScheduleFit(); }
+            else if (introActive) FinishIntro();
             SyncUiActivity();
         }
 
