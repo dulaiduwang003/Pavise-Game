@@ -85,7 +85,6 @@ namespace PaviseApp
         private volatile bool bgSuppressOn;
         private volatile bool boostOn;
         private volatile bool pauseDlOn;
-        private volatile bool fgBoostOn;
         private volatile bool svcPauseOn;
         private volatile bool notifQuiet;
         private volatile bool trimWs;
@@ -132,7 +131,6 @@ namespace PaviseApp
         private int panicServed;
         private volatile bool panicResult;
         private readonly ManualResetEvent panicDone = new ManualResetEvent(true);
-        private bool fgActive;
         private bool svcActive;
         private bool dvrActive;
         private bool timerRaised;
@@ -198,7 +196,6 @@ namespace PaviseApp
             bgSuppressOn = Settings.Load("GmSuppress", true);
             boostOn = Settings.Load("GmBoost", true);
             pauseDlOn = Settings.Load("GmPauseDl", true);
-            fgBoostOn = Settings.Load("GmFgBoost", true);
             svcPauseOn = Settings.Load("GmSvcPause", false);
             notifQuiet = Settings.Load("NotifQuiet", false);
             idleDisableOn = Settings.Load("GmIdleDisable", true);
@@ -582,12 +579,6 @@ namespace PaviseApp
         {
             get { return pauseDlOn; }
             set { pauseDlOn = value; Settings.Save("GmPauseDl", value); if (value) ClearEnvFuse("do"); RequestPolicyApply(); }
-        }
-
-        public bool FgSchedBoost
-        {
-            get { return fgBoostOn; }
-            set { fgBoostOn = value; Settings.Save("GmFgBoost", value); if (value) ClearEnvFuse("fg"); RequestPolicyApply(); }
         }
 
         public bool PauseSvcIndex

@@ -218,7 +218,7 @@ namespace PaviseApp
             if (healedSuppression > 0) Logger.Log("检测到上次未还原的分级后台控制，已恢复 " + healedSuppression + " 个进程");
             PowerPlan.HealFromCrash();
             try { UpdatePause.HealFromCrash(); } catch { }
-            FgBoost.HealFromCrash();
+            try { FgBoost.PurgeLegacy(); } catch { }
             GameDvr.HealFromCrash();
             try { Mmcss.PurgeLegacy(); } catch { }
             Notif.HealFromCrash();

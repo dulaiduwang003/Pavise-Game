@@ -23,7 +23,7 @@ namespace PaviseApp
             new HashSet<string>(StringComparer.Ordinal);
 
         internal static readonly string[] EnvKeys =
-            { "notif", "do", "hz", "fg", "svc", "dvr", "fx", "wu", "nvbg", "alag", "chill", "esync", "ris",
+            { "notif", "do", "hz", "svc", "dvr", "fx", "wu", "nvbg", "alag", "chill", "esync", "ris",
               "pqos", "awake", "overlay" };
 
         private static string EnvLabel(string key)
@@ -33,7 +33,6 @@ namespace PaviseApp
                 case "notif": return "通知免打扰";
                 case "do": return "后台下载暂停";
                 case "hz": return "刷新率守护";
-                case "fg": return "前台调度稳定";
                 case "svc": return "服务暂停";
                 case "dvr": return "Game DVR 关闭";
                 case "fx": return "视觉效果降级";
@@ -127,7 +126,6 @@ namespace PaviseApp
                 case "notif": notifQuiet = false; Settings.Save("NotifQuiet", false); break;
                 case "do": pauseDlOn = false; Settings.Save("GmPauseDl", false); break;
                 case "hz": hzGuard = false; Settings.Save("HzGuardOn", false); break;
-                case "fg": fgBoostOn = false; Settings.Save("GmFgBoost", false); break;
                 case "svc": svcPauseOn = false; Settings.Save("GmSvcPause", false); break;
                 case "dvr": killGameDvr = false; Settings.Save("GameDvrOff", false); break;
                 case "fx": visualFxOn = false; Settings.Save("GmVisualFx", false); break;
@@ -162,13 +160,11 @@ namespace PaviseApp
             bool competitive = mode == PerformancePreset.Competitive;
             bool custom = mode == PerformancePreset.Custom;
             bool usePauseDl = custom ? pauseDlOn : competitive;
-            bool useFg = custom ? fgBoostOn : true;
             bool useSvc = custom ? svcPauseOn : false;
             bool useDvr = custom ? killGameDvr : competitive;
             notifActive = EnvStep("notif", notifQuiet, notifActive, Notif.Quiet, Notif.Restore);
             doActive = EnvStep("do", usePauseDl, doActive, DoTweak.Activate, DoTweak.Restore);
             hzActive = EnvStep("hz", hzGuard, hzActive, DisplayGuard.Activate, DisplayGuard.Restore);
-            fgActive = EnvStep("fg", useFg, fgActive, FgBoost.Activate, FgBoost.Restore);
             svcActive = EnvStep("svc", useSvc, svcActive, SvcPause.Activate, SvcPause.Restore);
             dvrActive = EnvStep("dvr", useDvr, dvrActive, GameDvr.Activate, GameDvr.Restore);
             fxActive = EnvStep("fx", visualFxOn, fxActive, VisualFx.Activate, VisualFx.Restore);
@@ -328,7 +324,7 @@ namespace PaviseApp
 
         private bool EnvActive()
         {
-            return notifActive || doActive || hzActive || fgActive || svcActive || dvrActive || fxActive || wuActive || nvbgActive || alagActive || chillActive || esyncActive || risActive || pqosActive || awakeActive || overlayActive || planActive || timerRaised;
+            return notifActive || doActive || hzActive || svcActive || dvrActive || fxActive || wuActive || nvbgActive || alagActive || chillActive || esyncActive || risActive || pqosActive || awakeActive || overlayActive || planActive || timerRaised;
         }
 
         private bool RestoreEnv()
@@ -338,7 +334,6 @@ namespace PaviseApp
             if (Notif.Restore()) notifActive = false; else ok = false;
             if (DoTweak.Restore()) doActive = false; else ok = false;
             if (DisplayGuard.Restore()) hzActive = false; else ok = false;
-            if (FgBoost.Restore()) fgActive = false; else ok = false;
             if (SvcPause.Restore()) svcActive = false; else ok = false;
             if (GameDvr.Restore()) dvrActive = false; else ok = false;
             if (VisualFx.Restore()) fxActive = false; else ok = false;

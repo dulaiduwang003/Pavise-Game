@@ -482,7 +482,6 @@ namespace PaviseApp
             gameMode.IdleStateDisable = false;
             gameMode.VisualFxDowngrade = false;
             gameMode.PauseDownloads = false;
-            gameMode.FgSchedBoost = false;
             gameMode.PauseSvcIndex = false;
             gameMode.NotifQuiet = false;
             gameMode.TrimWorkingSet = false;

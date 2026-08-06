@@ -12,8 +12,8 @@ namespace PaviseApp
     {
         private Label lblPolicyMode;
         private Toggle swPolicyBackground, swPolicyStrict, swPolicyAggressive;
-        private Toggle swPolicyFg, swPolicyPauseDl, swPolicyPauseSvc, swPolicyDvr;
-        private SettingCard cardPolicyStrict, cardPolicyAggressive, cardPolicyFg;
+        private Toggle swPolicyPauseDl, swPolicyPauseSvc, swPolicyDvr;
+        private SettingCard cardPolicyStrict, cardPolicyAggressive;
         private SettingCard cardPolicyPauseDl, cardPolicyPauseSvc, cardPolicyDvr;
         private readonly List<Action> policySync = new List<Action>();
 
@@ -60,8 +60,6 @@ namespace PaviseApp
             swPolicyAggressive = AddPolicyToggle(scroll, ref sy, Lang.T("gm.aggressive"), Lang.T("gm.aggressive.sub"),
                 delegate { return gameMode.AggressiveSuppression; }, delegate(bool v) { gameMode.AggressiveSuppression = v; });
             cardPolicyAggressive = (SettingCard)swPolicyAggressive.Parent;
-            swPolicyFg = AddPolicyToggle(scroll, ref sy, Lang.T("gm.fgboost"), Lang.T("v15.custom.override"), delegate { return gameMode.FgSchedBoost; }, delegate(bool v) { gameMode.FgSchedBoost = v; });
-            cardPolicyFg = (SettingCard)swPolicyFg.Parent;
             swPolicyPauseDl = AddPolicyToggle(scroll, ref sy, Lang.T("gm.pausedl"), Lang.T("v15.custom.override"), delegate { return gameMode.PauseDownloads; }, delegate(bool v) { gameMode.PauseDownloads = v; });
             cardPolicyPauseDl = (SettingCard)swPolicyPauseDl.Parent;
             swPolicyPauseSvc = AddPolicyToggle(scroll, ref sy, Lang.T("gm.pausesvc"), Lang.T("v15.custom.override"), delegate { return gameMode.PauseSvcIndex; }, delegate(bool v) { gameMode.PauseSvcIndex = v; });
@@ -131,7 +129,6 @@ namespace PaviseApp
             bool custom = mode == PerformancePreset.Custom;
             ApplyPresetPolicy(swPolicyStrict, cardPolicyStrict, Lang.T("v14.cpu.adaptive"), false, true);
             ApplyPresetPolicy(swPolicyAggressive, cardPolicyAggressive, Lang.T("gm.aggressive"), !custom, competitive);
-            ApplyPresetPolicy(swPolicyFg, cardPolicyFg, Lang.T("gm.fgboost"), !custom, true);
             ApplyPresetPolicy(swPolicyPauseDl, cardPolicyPauseDl, Lang.T("gm.pausedl"), !custom, competitive);
             ApplyPresetPolicy(swPolicyPauseSvc, cardPolicyPauseSvc, Lang.T("gm.pausesvc"), !custom, false);
             ApplyPresetPolicy(swPolicyDvr, cardPolicyDvr, Lang.T("set.dvr"), !custom, competitive);
