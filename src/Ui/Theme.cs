@@ -249,12 +249,19 @@ namespace PaviseApp
             {
                 var l = (ListBox)s;
                 int idx = l.IndexFromPoint(e.Location);
-                if (!object.Equals(l.Tag, idx)) { l.Tag = idx; l.Invalidate(); }
+                int was = l.Tag is int ? (int)l.Tag : -1;
+                if (was == idx) return;
+                l.Tag = idx;
+                if (was >= 0 && was < l.Items.Count) l.Invalidate(l.GetItemRectangle(was));
+                if (idx >= 0 && idx < l.Items.Count) l.Invalidate(l.GetItemRectangle(idx));
             };
             lb.MouseLeave += (s, e) =>
             {
                 var l = (ListBox)s;
-                if (!object.Equals(l.Tag, -1)) { l.Tag = -1; l.Invalidate(); }
+                int was = l.Tag is int ? (int)l.Tag : -1;
+                if (was < 0) return;
+                l.Tag = -1;
+                if (was < l.Items.Count) l.Invalidate(l.GetItemRectangle(was));
             };
             Native.Dark(lb);
         }

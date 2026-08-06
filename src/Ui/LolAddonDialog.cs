@@ -13,7 +13,7 @@ namespace PaviseApp
     {
         private readonly TextBox pathBox = new TextBox();
         private readonly Label status = new Label();
-        private readonly ListBox list = new ListBox();
+        private readonly ListBox list = new TechListBox();
         private readonly PillButton btnDelete;
         private readonly IList<string> hints;
         private string resolvedRoot;

@@ -35,7 +35,7 @@ namespace PaviseApp
             listWrap.EmptyTitle = "PAVISE LIBRARY";
             listWrap.EmptyDetail = Lang.T("v15.library.empty");
             listWrap.Padding = new Padding(Theme.S(8));
-            lstGames = new ListBox(); lstGames.Dock = DockStyle.Fill; Theme.StyleList(lstGames);
+            lstGames = new TechListBox(); lstGames.Dock = DockStyle.Fill; Theme.StyleList(lstGames);
             lstGames.ItemHeight = Math.Min(255, Theme.S(68));
             lstGames.DrawItem += DrawGameLibraryItem;
             lstGames.KeyDown += delegate(object s, KeyEventArgs e)

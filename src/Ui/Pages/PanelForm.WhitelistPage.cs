@@ -38,7 +38,7 @@ namespace PaviseApp
             whitePanel.EmptyGlyph = "white";
             whitePanel.Padding = new Padding(Theme.S(8));
 
-            lstWhite = new ListBox();
+            lstWhite = new TechListBox();
             lstWhite.Dock = DockStyle.Fill;
             Theme.StyleList(lstWhite);
             lstWhite.ItemHeight = Math.Min(255, Theme.S(64));

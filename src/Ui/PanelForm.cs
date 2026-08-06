@@ -67,6 +67,9 @@ namespace PaviseApp
         private int introBaseTop;
         private System.Windows.Forms.Timer autoHideTimer;
         private bool autoHideArmed, lastGameActive;
+        private DBPanel root;
+        private System.Windows.Forms.Timer fitTimer;
+        private bool fitting;
 
         private const string AutoHideKey = "AutoHideOnGame";
         private const int AutoHideDelayMs = 10000;
@@ -102,6 +105,8 @@ namespace PaviseApp
             AttachFormFrame();
             Native.RoundCorners(Handle);
             uiActivityKnown = false;
+            CenterRoot();
+            ScheduleFit();
             SyncUiActivity();
             if (UiActive) RefreshSlowStateAsync();
         }
@@ -114,7 +119,11 @@ namespace PaviseApp
             AutoScaleMode = AutoScaleMode.None;
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(Theme.S(WinW), Theme.S(WinH));
+            if (!fitting)
+            {
+                Dpi.SetDesignSize(WinW, WinH);
+                ClientSize = new Size(Theme.S(WinW), Theme.S(WinH));
+            }
             BackColor = Theme.Bg;
             Font = Theme.UI(9.5f, false);
             AttachFormFrame();
@@ -199,17 +208,23 @@ namespace PaviseApp
             BuildAboutPage();
             RegisterPages();
 
-            Controls.Add(topBar);
-            foreach (var p in pages) Controls.Add(p);
-            Controls.Add(nav);
+            root = new DBPanel();
+            root.SetBounds(0, 0, Theme.S(WinW), Theme.S(WinH));
+            root.BackColor = Theme.Bg;
 
+            root.Controls.Add(topBar);
+            foreach (var p in pages) root.Controls.Add(p);
+            root.Controls.Add(nav);
 
             modeFlyout = new ModePickerPanel();
             modeFlyout.SetBounds(Theme.S(WinW - 420), Theme.S(56), Theme.S(396), Theme.S(282));
             modeFlyout.Visible = false;
             modeFlyout.ModeChosen = ChooseGlobalMode;
-            Controls.Add(modeFlyout);
+            root.Controls.Add(modeFlyout);
             modeFlyout.BringToFront();
+
+            Controls.Add(root);
+            CenterRoot();
 
             KeyPreview = true;
             KeyDown -= OnEscHide;
@@ -374,13 +389,62 @@ namespace PaviseApp
         protected override void OnVisibleChanged(EventArgs e)
         {
             base.OnVisibleChanged(e);
+            if (Visible) { CenterRoot(); ScheduleFit(); }
             SyncUiActivity();
         }
 
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
+            CenterRoot();
+            ScheduleFit();
             SyncUiActivity();
+        }
+
+        private void CenterRoot()
+        {
+            if (root == null || root.IsDisposed) return;
+            int x = (ClientSize.Width - root.Width) / 2;
+            int y = (ClientSize.Height - root.Height) / 2;
+            if (x < 0) x = 0;
+            if (y < 0) y = 0;
+            if (root.Left != x || root.Top != y) root.Location = new Point(x, y);
+        }
+
+        private void ScheduleFit()
+        {
+            if (fitting || IsDisposed || !IsHandleCreated) return;
+            if (WindowState == FormWindowState.Minimized) return;
+            if (!Dpi.FitDiffers(ClientSize.Width, ClientSize.Height)) return;
+            if (fitTimer == null)
+            {
+                fitTimer = new System.Windows.Forms.Timer();
+                fitTimer.Interval = 220;
+                fitTimer.Tick += OnFitTick;
+            }
+            fitTimer.Stop();
+            fitTimer.Start();
+        }
+
+        private void OnFitTick(object sender, EventArgs e)
+        {
+            if (fitTimer != null) fitTimer.Stop();
+            if (fitting || IsDisposed || !IsHandleCreated) return;
+            if (WindowState == FormWindowState.Minimized) return;
+            int w = ClientSize.Width, h = ClientSize.Height;
+            if (!Dpi.FitDiffers(w, h)) return;
+            float target = Dpi.FitScale(w, h);
+            fitting = true;
+            try
+            {
+                Dpi.Scale = target;
+                Theme.DropFontCache();
+                Logger.Log("界面按窗口尺寸重排：客户区 " + w + "x" + h
+                    + "，缩放 " + target.ToString("F2"));
+                RebuildUi();
+            }
+            finally { fitting = false; }
+            CenterRoot();
         }
 
         internal bool UiActive
@@ -659,6 +723,7 @@ namespace PaviseApp
         {
             CancelAutoHide();
             if (uiTimer != null) uiTimer.Stop();
+            if (fitTimer != null) { fitTimer.Stop(); fitTimer.Dispose(); fitTimer = null; }
             uiActive = false;
             uiActivityKnown = true;
             UiClock.Suspended = true;

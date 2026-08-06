@@ -26,7 +26,7 @@ namespace PaviseApp
         private readonly HashSet<string> known;
         private readonly List<Entry> all = new List<Entry>();
         private readonly List<Entry> shown = new List<Entry>();
-        private readonly ListBox list = new ListBox();
+        private readonly ListBox list = new TechListBox();
         private readonly TextBox search = new TextBox();
         private readonly Label status = new Label();
         private readonly PillButton confirm;

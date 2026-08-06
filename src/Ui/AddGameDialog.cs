@@ -81,7 +81,7 @@ namespace PaviseApp
             listWrap.SetBounds(Theme.S(16), Theme.S(84), Theme.S(588), Theme.S(392));
             listWrap.BackColor = Theme.Bg; listWrap.Fill = Theme.Card; listWrap.Border = Theme.Stroke; listWrap.Radius = Theme.S(12);
             listWrap.Padding = new Padding(Theme.S(6));
-            lst = new ListBox();
+            lst = new TechListBox();
             lst.Dock = DockStyle.Fill;
             lst.BackColor = Theme.Card;
             lst.ForeColor = Theme.Fg;
