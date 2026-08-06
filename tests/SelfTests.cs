@@ -227,11 +227,87 @@ namespace PaviseApp
                 List<GameProfile> profiles = store.LoadOrMigrate(Path.Combine(dataDir, "Pavise.games.txt"));
                 Process[] all = Process.GetProcesses();
                 int fg = GameSessionDetector.ForegroundPid();
-                sb.AppendLine("foreground pid=" + fg);
-                GameDetection hit = GameSessionDetector.Detect(all, profiles);
+                int ownerSession;
+                using (Process me = Process.GetCurrentProcess()) ownerSession = me.SessionId;
+                sb.AppendLine("本机会话 session=" + ownerSession + "  foreground pid=" + fg);
+                bool elevated;
+                try
+                {
+                    using (var wid = System.Security.Principal.WindowsIdentity.GetCurrent())
+                        elevated = new System.Security.Principal.WindowsPrincipal(wid)
+                            .IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+                }
+                catch { elevated = false; }
+                sb.AppendLine("已提权=" + elevated);
+                sb.AppendLine("档案数=" + profiles.Count);
+                foreach (GameProfile profile in profiles)
+                    sb.AppendLine("   档案《" + profile.Name + "》root=" + profile.Root
+                        + " exe=" + profile.ExecutablePath
+                        + " learned=" + (profile.LearnedExecutablePath ?? "(无)"));
+                sb.AppendLine();
+
+                string armed;
+                GameDetection hit = GameSessionDetector.Detect(all, profiles, ownerSession, out armed);
                 sb.AppendLine("DETECT RESULT: " + (hit == null ? "NULL (无活动游戏)"
                     : hit.Profile.Name + " | renderer=" + hit.RendererName + " pid=" + hit.RendererPid));
+                sb.AppendLine("ARMED (待命): " + (armed ?? "无"));
                 sb.AppendLine();
+
+                sb.AppendLine("=== 身份采集失败的进程（这些进程检测器完全看不见） ===");
+                int blind = 0;
+                foreach (Process p in all)
+                {
+                    int pid;
+                    string pname;
+                    try { pid = p.Id; pname = p.ProcessName; }
+                    catch { continue; }
+                    if (pid <= 4) continue;
+                    GameProcessSnapshot identity;
+                    if (GameSessionDetector.TryCaptureProcessIdentity(pid, ownerSession, out identity)) continue;
+                    IntPtr probe = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+                    string why = probe == IntPtr.Zero
+                        ? "打不开句柄(错误 " + System.Runtime.InteropServices.Marshal.GetLastWin32Error() + ")"
+                        : "句柄可开但身份不全或不同会话";
+                    if (probe != IntPtr.Zero) Native.CloseHandle(probe);
+                    bool interesting = false;
+                    foreach (GameProfile profile in profiles)
+                        if (pname.IndexOf("client", StringComparison.OrdinalIgnoreCase) >= 0
+                            || pname.IndexOf("league", StringComparison.OrdinalIgnoreCase) >= 0
+                            || pname.IndexOf("tcls", StringComparison.OrdinalIgnoreCase) >= 0
+                            || pname.IndexOf("wegame", StringComparison.OrdinalIgnoreCase) >= 0)
+                        { interesting = true; break; }
+                    if (!interesting) { blind++; continue; }
+                    sb.AppendLine("   ★ " + pname + " pid=" + pid + " :: " + why);
+                }
+                sb.AppendLine("   （另有 " + blind + " 个无关进程同样采集失败，已折叠）");
+                sb.AppendLine();
+                sb.AppendLine("=== 所有名字像英雄联盟/腾讯平台的进程（不管匹不匹配档案） ===");
+                foreach (Process p in all)
+                {
+                    try
+                    {
+                        string pname = p.ProcessName;
+                        if (pname.IndexOf("client", StringComparison.OrdinalIgnoreCase) < 0
+                            && pname.IndexOf("league", StringComparison.OrdinalIgnoreCase) < 0
+                            && pname.IndexOf("tcls", StringComparison.OrdinalIgnoreCase) < 0
+                            && pname.IndexOf("wegame", StringComparison.OrdinalIgnoreCase) < 0
+                            && pname.IndexOf("riot", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                        int pid = p.Id;
+                        string path = "(读不到)";
+                        IntPtr h = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+                        if (h != IntPtr.Zero) { try { path = Native.ImagePath(h) ?? "(空)"; } finally { Native.CloseHandle(h); } }
+                        string matched = "否";
+                        foreach (GameProfile profile in profiles)
+                            if (profile.ContainsPath(path)) { matched = "是《" + profile.Name + "》"; break; }
+                        sb.AppendLine("   " + pname + " pid=" + pid
+                            + " 反作弊过滤=" + GameSessionDetector.IsAntiCheatLikeName(pname)
+                            + " 命中档案=" + matched);
+                        sb.AppendLine("      路径 " + path);
+                    }
+                    catch { }
+                }
+                sb.AppendLine();
+
                 foreach (GameProfile profile in profiles)
                 {
                     sb.AppendLine("=== profile: " + profile.Name + " (exe=" + profile.ExecutablePath + ")");
