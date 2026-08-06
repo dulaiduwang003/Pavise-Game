@@ -65,11 +65,6 @@ namespace PavisePerfLab
         private static extern bool QueryFullProcessImageName(
             IntPtr process, int flags, StringBuilder buffer, ref int size);
 
-        // 呈现模式必须整轮统一。DwmFlush 的等待中位数在高刷新率屏幕上
-        // 贴着校准阈值（240Hz 期望约 2.1ms，阈值 3.0ms），后台争抢一变
-        // 判定就翻面；而 active 臂的负载被压制、baseline 臂没有，于是
-        // 被测变量透过争抢反过来决定了量具模式，两种模式本身又差约 11%
-        // 帧时间。首个 trial 校准一次，其余全部沿用，杜绝这条混杂路径。
         internal const string PresentationAuto = "auto";
         internal const string PresentationDwm = "dwm_flush";
         internal const string PresentationGdi = "gdi_timer";
@@ -81,10 +76,6 @@ namespace PavisePerfLab
         private const uint EsSystemRequired = 0x00000001;
         private const uint EsDisplayRequired = 0x00000002;
 
-        // 整轮跑十几分钟，中途会越过系统的显示器空闲超时。显示器一关，
-        // 渲染器那次窗口 blit 不再真正上屏，帧时间会突然变快（实测两次
-        // 运行都在同一时刻从 26ms 跳到 19.6ms），此后各轮量的已经不是
-        // 同一个系统状态。基准运行期间必须按住显示器与系统不进入空闲。
         private static void HoldDisplayAwake(bool hold)
         {
             try
@@ -96,9 +87,6 @@ namespace PavisePerfLab
             catch { }
         }
 
-        // Process.MainModule 依赖模块列表可枚举，进程刚起来或正在退出时
-        // 会返回 FileName 为 null 的模块并在取值时抛 NullReferenceException。
-        // 走 QueryFullProcessImageName 只需要句柄本身，不受模块枚举时机影响。
         private static string LiveImagePath(Process process)
         {
             try
@@ -190,7 +178,6 @@ namespace PavisePerfLab
             File.Copy(executable, background, true);
 
             var rows = new List<TrialResult>();
-            // 首个 trial 自行校准呈现模式，其余全部沿用它的结果
             string presentationLock = PresentationAuto;
             for (int round = 1; round <= options.Rounds; round++)
             {
@@ -1606,8 +1593,6 @@ namespace PavisePerfLab
         public int Rounds = 10;
         public int Seconds = 20;
         public int Workers = 6;
-        // 每个后台 worker 的占空比（毫秒/100ms）。默认 10~12 只有约 11% 全机负载，
-        // 那是回归护栏用的轻载；要观察压制在争抢下的收益必须显式调高。
         public int WorkerDuty;
         public int WarmupSeconds = 10;
         public int CooldownSeconds = 10;
@@ -1706,7 +1691,6 @@ namespace PavisePerfLab
             this.warmupLimit = warmupLimit;
             this.reportPath = reportPath;
             this.childBurstPath = childBurstPath;
-            // 被指定模式时跳过校准，整轮各 trial 因此共用同一量具
             if (forcedPresentationMode == Program.PresentationGdi)
             {
                 useDwm = false;

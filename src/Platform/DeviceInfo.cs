@@ -58,54 +58,8 @@ namespace PaviseApp
 
         private static string GpuFromRegistry()
         {
-            string best = null;
-            long bestScore = -1;
-            try
-            {
-                using (RegistryKey root = Registry.LocalMachine.OpenSubKey(
-                    @"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"))
-                {
-                    if (root == null) return null;
-                    foreach (string sub in root.GetSubKeyNames())
-                    {
-                        if (sub.Length != 4) continue;
-                        using (RegistryKey key = root.OpenSubKey(sub))
-                        {
-                            if (key == null) continue;
-                            string compact = Compact(key.GetValue("DriverDesc") as string);
-                            if (compact.Length == 0 || IsVirtualAdapter(compact)) continue;
-                            long score = VideoMemoryBytes(key);
-                            if (IsDiscrete(compact)) score += 1L << 60;
-                            if (score > bestScore) { bestScore = score; best = compact; }
-                        }
-                    }
-                }
-            }
-            catch { }
-            return best;
-        }
-
-        private static long VideoMemoryBytes(RegistryKey key)
-        {
-            string[] names = { "HardwareInformation.qwMemorySize", "HardwareInformation.MemorySize" };
-            foreach (string name in names)
-            {
-                try
-                {
-                    object raw = key.GetValue(name);
-                    if (raw is long) return (long)raw;
-                    if (raw is int) return (uint)(int)raw;
-                    var bytes = raw as byte[];
-                    if (bytes != null && bytes.Length >= 4)
-                    {
-                        long value = 0;
-                        for (int i = Math.Min(8, bytes.Length) - 1; i >= 0; i--) value = (value << 8) | bytes[i];
-                        if (value > 0) return value;
-                    }
-                }
-                catch { }
-            }
-            return 0;
+            GpuAdapter primary = GpuInventory.Primary();
+            return primary == null ? null : primary.Name;
         }
 
         private static string GpuFromWmi()
@@ -114,40 +68,21 @@ namespace PaviseApp
             try
             {
                 using (var searcher = new ManagementObjectSearcher(
-                    "SELECT Name FROM Win32_VideoController"))
+                    "SELECT Name, PNPDeviceID FROM Win32_VideoController"))
                 using (ManagementObjectCollection results = searcher.Get())
                     foreach (ManagementObject item in results)
                         using (item)
                         {
+                            string pnp = item["PNPDeviceID"] as string;
+                            if (!GpuInventory.IsPciAdapter(pnp)) continue;
                             string compact = Compact(item["Name"] as string);
-                            if (compact.Length == 0 || IsVirtualAdapter(compact)) continue;
-                            if (IsDiscrete(compact)) return compact;
+                            if (compact.Length == 0) continue;
+                            if (GpuInventory.VendorOf(pnp) == GpuVendor.Nvidia) return compact;
                             if (best == null) best = compact;
                         }
             }
             catch { }
             return best;
-        }
-
-        private static bool IsDiscrete(string name)
-        {
-            return name.IndexOf("NVIDIA", StringComparison.OrdinalIgnoreCase) >= 0
-                || name.IndexOf("GeForce", StringComparison.OrdinalIgnoreCase) >= 0
-                || name.IndexOf("Radeon", StringComparison.OrdinalIgnoreCase) >= 0
-                || name.IndexOf("Arc", StringComparison.OrdinalIgnoreCase) >= 0;
-        }
-
-        private static readonly string[] VirtualAdapterHints =
-        {
-            "Virtual", "Basic", "Remote", "Mirror", "Todesk", "MuMu",
-            "GameViewer", "Parsec", "Sunshine", "IddSample", "Meta", "Citrix"
-        };
-
-        private static bool IsVirtualAdapter(string name)
-        {
-            foreach (string hint in VirtualAdapterHints)
-                if (name.IndexOf(hint, StringComparison.OrdinalIgnoreCase) >= 0) return true;
-            return false;
         }
 
         [StructLayout(LayoutKind.Sequential)]

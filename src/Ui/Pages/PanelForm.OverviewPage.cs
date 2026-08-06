@@ -125,7 +125,7 @@ namespace PaviseApp
             string text = gameMode.BoostStatusText;
             if (lblOverviewBoost.Text != text) lblOverviewBoost.Text = text;
             lblOverviewBoost.ForeColor = gameMode.BoostStateVerified ? Theme.Green
-                : (gameMode.BoostStateFailed ? Theme.Danger : Theme.Fg);
+                : (gameMode.BoostHandleProtected ? Theme.Dim : Theme.Fg);
         }
 
     }

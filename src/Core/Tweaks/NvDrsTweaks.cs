@@ -7,6 +7,26 @@ using System.IO;
 
 namespace PaviseApp
 {
+    internal sealed class NvGamePlan
+    {
+        public bool MaxPerf;
+        public int FrlFps;
+        public bool LowLatency;
+        public bool AnselOff;
+        public bool Rebar;
+        public string DlssMode;
+        public bool BattFull;
+
+        public bool Empty
+        {
+            get
+            {
+                return !MaxPerf && FrlFps <= 0 && !LowLatency && !AnselOff && !Rebar && !BattFull
+                    && (DlssMode == null || DlssMode == "off");
+            }
+        }
+    }
+
     internal static class NvDrsTweaks
     {
         private const string ListKey = "NvDrsList";
@@ -15,30 +35,91 @@ namespace PaviseApp
         public const string KeyFrl = "frl";
         public const string KeyPreRender = "prerender";
         public const string KeyLowLatCpl = "lowlatcpl";
+        public const string KeyAnsel = "ansel";
+        public const string KeyRebarFeat = "rebarfeat";
+        public const string KeyRebarOpt = "rebaropt";
+        public const string KeyRebarSize = "rebarsize";
+        public const string KeyDlssOvr = "dlssovr";
+        public const string KeyDlssPreset = "dlsspreset";
+        public const string KeyBattFps = "battfps";
+
+        public static readonly string[] RebarKeys = { KeyRebarFeat, KeyRebarOpt, KeyRebarSize };
+        public static readonly string[] DlssKeys = { KeyDlssOvr, KeyDlssPreset };
 
         private static readonly object sync = new object();
+        private static bool dlssGateLogged;
 
         internal static uint SettingIdOf(string key)
         {
-            if (key == KeyPState) return NvApi.SettingPreferredPState;
-            if (key == KeyPreRender) return NvApi.SettingPreRenderLimit;
-            if (key == KeyLowLatCpl) return NvApi.SettingLowLatencyCpl;
-            return NvApi.SettingFrlFps;
+            switch (key)
+            {
+                case KeyPState: return NvApi.SettingPreferredPState;
+                case KeyPreRender: return NvApi.SettingPreRenderLimit;
+                case KeyLowLatCpl: return NvApi.SettingLowLatencyCpl;
+                case KeyAnsel: return NvApi.SettingAnselAllow;
+                case KeyRebarFeat: return NvApi.SettingRebarFeature;
+                case KeyRebarOpt: return NvApi.SettingRebarOptions;
+                case KeyRebarSize: return NvApi.SettingRebarSizeLimit;
+                case KeyDlssOvr: return NvApi.SettingDlssSrOverride;
+                case KeyDlssPreset: return NvApi.SettingDlssSrPreset;
+                case KeyBattFps: return NvApi.SettingBatteryBoostAppFps;
+                default: return NvApi.SettingFrlFps;
+            }
         }
 
-        public static List<string> ApplyForGame(string exePath, bool maxPerf, int frlFps, bool lowLatency)
+        public static bool DlssOverrideSupported()
         {
-            if (string.IsNullOrEmpty(exePath) || !maxPerf && frlFps <= 0 && !lowLatency) return null;
+            return NvApi.Available && NvApi.DriverVersion() >= NvApi.MinDriverForDlssOverride;
+        }
+
+        internal static List<KeyValuePair<string, uint>> BuildDesired(NvGamePlan plan)
+        {
+            var desired = new List<KeyValuePair<string, uint>>();
+            if (plan == null) return desired;
+            if (plan.MaxPerf) desired.Add(new KeyValuePair<string, uint>(KeyPState, NvApi.PStatePreferMax));
+            if (plan.FrlFps > 0) desired.Add(new KeyValuePair<string, uint>(KeyFrl, (uint)plan.FrlFps));
+            if (plan.LowLatency) desired.Add(new KeyValuePair<string, uint>(KeyPreRender, 1u));
+            if (plan.AnselOff) desired.Add(new KeyValuePair<string, uint>(KeyAnsel, 0u));
+            if (plan.Rebar)
+            {
+                desired.Add(new KeyValuePair<string, uint>(KeyRebarFeat, 1u));
+                desired.Add(new KeyValuePair<string, uint>(KeyRebarOpt, 1u));
+                desired.Add(new KeyValuePair<string, uint>(KeyRebarSize, NvApi.RebarSizeDefault));
+            }
+            string dlss = plan.DlssMode;
+            if (dlss == "latest" || dlss == "j" || dlss == "k")
+            {
+                if (DlssOverrideSupported())
+                {
+                    desired.Add(new KeyValuePair<string, uint>(KeyDlssOvr, 1u));
+                    desired.Add(new KeyValuePair<string, uint>(KeyDlssPreset,
+                        dlss == "j" ? NvApi.DlssPresetJ : dlss == "k" ? NvApi.DlssPresetK : NvApi.DlssPresetLatest));
+                }
+                else if (!dlssGateLogged)
+                {
+                    dlssGateLogged = true;
+                    Logger.Log("DLSS 覆写：需要 566.14 及以上驱动（本机 "
+                        + FormatDriver(NvApi.DriverVersion()) + "），该项跳过");
+                }
+            }
+            if (plan.BattFull) desired.Add(new KeyValuePair<string, uint>(KeyBattFps, NvApi.BatteryFpsUncapped));
+            return desired;
+        }
+
+        internal static string FormatDriver(uint version)
+        {
+            if (version == 0) return "未知版本";
+            return (version / 100) + "." + (version % 100).ToString("00");
+        }
+
+        public static List<string> ApplyForGame(string exePath, NvGamePlan plan)
+        {
+            if (string.IsNullOrEmpty(exePath) || plan == null || plan.Empty) return null;
             if (!NvApi.Available) return null;
             string exeName = Path.GetFileName(exePath);
             if (string.IsNullOrEmpty(exeName)) return null;
-            var desired = new List<KeyValuePair<string, uint>>();
-            if (maxPerf) desired.Add(new KeyValuePair<string, uint>(KeyPState, NvApi.PStatePreferMax));
-            if (frlFps > 0) desired.Add(new KeyValuePair<string, uint>(KeyFrl, (uint)frlFps));
-            if (lowLatency)
-            {
-                desired.Add(new KeyValuePair<string, uint>(KeyPreRender, 1u));
-            }
+            var desired = BuildDesired(plan);
+            if (desired.Count == 0) return null;
             lock (sync)
             {
                 IntPtr session;
@@ -88,9 +169,14 @@ namespace PaviseApp
                     bool saved = !wrote || NvApi.SaveSession(session);
                     if (wrote && saved)
                     {
-                        string done = (maxPerf && !failed.Contains(KeyPState) ? " 电源最高性能" : "")
-                            + (frlFps > 0 && !failed.Contains(KeyFrl) ? " 帧上限" + frlFps : "")
-                            + (lowLatency && !failed.Contains(KeyPreRender) ? " 低延迟(预渲染1)" : "");
+                        string done = (plan.MaxPerf && !failed.Contains(KeyPState) ? " 电源最高性能" : "")
+                            + (plan.FrlFps > 0 && !failed.Contains(KeyFrl) ? " 帧上限" + plan.FrlFps : "")
+                            + (plan.LowLatency && !failed.Contains(KeyPreRender) ? " 低延迟(预渲染1)" : "")
+                            + (plan.AnselOff && !failed.Contains(KeyAnsel) ? " Ansel关" : "")
+                            + (plan.Rebar && !ContainsAny(failed, RebarKeys) ? " ReBAR强开" : "")
+                            + (DesiredHasDlss(desired) && !ContainsAny(failed, DlssKeys)
+                                ? " DLSS覆写(" + plan.DlssMode + ")" : "")
+                            + (plan.BattFull && !failed.Contains(KeyBattFps) ? " 电池满血" : "");
                         if (done.Length > 0) Logger.Log("NVIDIA 驱动调优：" + exeName + done);
                     }
                     if (!saved)
@@ -103,6 +189,18 @@ namespace PaviseApp
                 }
                 finally { NvApi.CloseSession(session); }
             }
+        }
+
+        private static bool DesiredHasDlss(List<KeyValuePair<string, uint>> desired)
+        {
+            foreach (var item in desired) if (item.Key == KeyDlssOvr) return true;
+            return false;
+        }
+
+        internal static bool ContainsAny(List<string> list, string[] keys)
+        {
+            foreach (string key in keys) if (list.Contains(key)) return true;
+            return false;
         }
 
         public static void RestoreKind(string key)
@@ -144,6 +242,60 @@ namespace PaviseApp
                     finally { NvApi.CloseSession(session); }
                 }
             }
+        }
+
+        public static void RestoreKinds(string[] keys)
+        {
+            foreach (string key in keys) RestoreKind(key);
+        }
+
+        public const string ProbeProfileExe = "PaviseNvProbe.exe";
+
+        public sealed class ProbeResult
+        {
+            public string Key;
+            public bool Ok;
+            public string Outcome;
+        }
+
+        public static List<ProbeResult> ProbeWriteback()
+        {
+            var results = new List<ProbeResult>();
+            if (!NvApi.Available) return results;
+            var keys = new[] { KeyPState, KeyFrl, KeyPreRender, KeyAnsel, KeyRebarFeat, KeyDlssOvr, KeyBattFps };
+            var values = new uint[] { NvApi.PStatePreferMax, 120u, 1u, 0u, 1u, 1u, NvApi.BatteryFpsUncapped };
+            lock (sync)
+            {
+                IntPtr session;
+                if (!NvApi.TryOpenSession(out session)) return results;
+                try
+                {
+                    IntPtr profile;
+                    if (!NvApi.FindOrCreateAppProfile(session, ProbeProfileExe, out profile)) return results;
+                    for (int i = 0; i < keys.Length; i++)
+                    {
+                        uint settingId = SettingIdOf(keys[i]);
+                        uint before;
+                        int foundBefore = NvApi.TryGetDword(session, profile, settingId, out before);
+                        int status;
+                        bool wrote = NvApi.SetDword(session, profile, settingId, values[i], out status);
+                        bool saved = wrote && NvApi.SaveSession(session);
+                        uint after;
+                        int foundAfter = NvApi.TryGetDword(session, profile, settingId, out after);
+                        var r = new ProbeResult { Key = keys[i] };
+                        if (!wrote) { r.Outcome = "写入被拒绝 (NVAPI " + status + ")"; }
+                        else if (!saved) { r.Outcome = "写入接受但保存失败"; }
+                        else if (foundAfter == 1 && after == values[i]) { r.Ok = true; r.Outcome = "生效"; }
+                        else { r.Outcome = "写入报成功但回读不符"; }
+                        results.Add(r);
+                        if (foundBefore == 1) NvApi.SetDword(session, profile, settingId, before);
+                        else if (foundBefore == 0) NvApi.DeleteSetting(session, profile, settingId);
+                        NvApi.SaveSession(session);
+                    }
+                }
+                finally { NvApi.CloseSession(session); }
+            }
+            return results;
         }
 
         private static uint ParseUInt(string value)

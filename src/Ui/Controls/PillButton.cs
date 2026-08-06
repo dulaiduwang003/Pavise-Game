@@ -45,12 +45,17 @@ namespace PaviseApp
                 }
                 else if (Kind == BtnKind.Danger)
                 {
-                    Color top = Col.Lerp(Color.FromArgb(38, 19, 24), Theme.Danger, 0.10f + h * 0.13f);
-                    Color bottom = Col.Lerp(Color.FromArgb(21, 15, 18), Theme.Danger, 0.04f + h * 0.10f);
+                    Color top = Theme.LightMode
+                        ? Col.Lerp(Color.White, Theme.Danger, 0.05f + h * 0.05f)
+                        : Col.Lerp(Color.FromArgb(38, 19, 24), Theme.Danger, 0.10f + h * 0.13f);
+                    Color bottom = Theme.LightMode
+                        ? Col.Lerp(Color.White, Theme.Danger, 0.11f + h * 0.07f)
+                        : Col.Lerp(Color.FromArgb(21, 15, 18), Theme.Danger, 0.04f + h * 0.10f);
                     using (var lg = new LinearGradientBrush(r, top, bottom, LinearGradientMode.Vertical)) g.FillPath(lg, path);
-                    using (var pen = new Pen(Col.Alpha(Theme.Danger, (int)(125 + 80 * h)))) g.DrawPath(pen, path);
-                    using (var hi = new Pen(Col.Alpha(Color.White, (int)(24 + 24 * h))))
-                        g.DrawLine(hi, Theme.S(2), Theme.S(1), Width - cut - Theme.S(1), Theme.S(1));
+                    using (var pen = new Pen(Col.Alpha(Theme.Danger, (int)(Theme.LightMode ? 150 + 70 * h : 125 + 80 * h)))) g.DrawPath(pen, path);
+                    if (!Theme.LightMode)
+                        using (var hi = new Pen(Col.Alpha(Color.White, (int)(24 + 24 * h))))
+                            g.DrawLine(hi, Theme.S(2), Theme.S(1), Width - cut - Theme.S(1), Theme.S(1));
                     using (var energy = new Pen(Theme.Danger, Math.Max(1f, Theme.S(2))))
                         g.DrawLine(energy, Theme.S(1), Theme.S(10), Theme.S(1), Height - Theme.S(10));
                 }
@@ -71,8 +76,8 @@ namespace PaviseApp
 
             Color txt = !Enabled ? Theme.Faint
                 : Kind == BtnKind.Primary ? Theme.OnAccent
-                : Kind == BtnKind.Danger ? Col.Lerp(Theme.Danger, Color.White, h * 0.45f)
-                : Col.Lerp(Theme.Fg, Color.White, h * 0.2f);
+                : Kind == BtnKind.Danger ? Col.Lerp(Theme.Danger, Color.White, Theme.LightMode ? 0f : h * 0.45f)
+                : (Theme.LightMode ? Theme.Fg : Col.Lerp(Theme.Fg, Color.White, h * 0.2f));
             TextRenderer.DrawText(g, Text, Kind == BtnKind.Primary ? Theme.UI(9f, true) : Font, ClientRectangle, txt,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
         }

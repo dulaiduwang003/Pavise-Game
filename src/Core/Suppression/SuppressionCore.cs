@@ -198,6 +198,8 @@ namespace PaviseApp
                     var errorSnapshot = new Dictionary<int, string>(batchApplyErrors);
                     batchApplyResults.Clear();
                     batchApplyErrors.Clear();
+                    RefreshThrottledCacheLocked();
+                    RefreshGroupCountsLocked();
                     return new BatchResult(snapshot, errorSnapshot);
                 }
             }
@@ -732,15 +734,47 @@ namespace PaviseApp
             if (!Monitor.TryEnter(sync, 15)) return Volatile.Read(ref lastThrottledCount);
             try
             {
-                int n = 0;
-                foreach (var kv in map) if ((kv.Value.Reasons & reason) != 0 && kv.Value.OrigPri != uint.MaxValue && kv.Value.Applied) n++;
+                int n = CountThrottledLocked(reason);
                 Volatile.Write(ref lastThrottledCount, n);
                 return n;
             }
             finally { Monitor.Exit(sync); }
         }
 
-        private readonly Dictionary<string, int[]> lastGroupCounts = new Dictionary<string, int[]>();
+        private int CountThrottledLocked(SuppressReason reason)
+        {
+            int n = 0;
+            foreach (var kv in map)
+                if ((kv.Value.Reasons & reason) != 0 && kv.Value.OrigPri != uint.MaxValue && kv.Value.Applied) n++;
+            return n;
+        }
+
+        private void RefreshThrottledCacheLocked()
+        {
+            Volatile.Write(ref lastThrottledCount, CountThrottledLocked(SuppressReason.Background));
+        }
+
+        private readonly Dictionary<string, int[]> lastGroupCounts =
+            new Dictionary<string, int[]>(StringComparer.OrdinalIgnoreCase);
+
+        private void RefreshGroupCountsLocked()
+        {
+            var fresh = new Dictionary<string, int[]>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in map)
+            {
+                if ((kv.Value.Reasons & SuppressReason.AntiCheat) == 0) continue;
+                string key = kv.Value.Group ?? "";
+                int[] slot;
+                if (!fresh.TryGetValue(key, out slot)) { slot = new int[2]; fresh[key] = slot; }
+                if (kv.Value.OrigPri == uint.MaxValue || !kv.Value.Applied) slot[1]++; else slot[0]++;
+            }
+            lock (lastGroupCounts)
+            {
+                foreach (KeyValuePair<string, int[]> kv in fresh) lastGroupCounts[kv.Key] = kv.Value;
+                foreach (string key in new List<string>(lastGroupCounts.Keys))
+                    if (!fresh.ContainsKey(key)) lastGroupCounts[key] = new int[2];
+            }
+        }
 
         public void AntiCheatGroupCounts(string groupKey, out int throttled, out int protectedCnt)
         {

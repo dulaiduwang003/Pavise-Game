@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 判定候选进程形成有效游戏会话的条件
+// 文件用途 证据选举制的游戏会话判定 用户的选择只圈定家族 渲染进程由硬证据现场选举
 
 using System;
 using System.Collections.Generic;
@@ -19,6 +19,8 @@ namespace PaviseApp
         public bool RendererForeground;
         public bool RendererCandidateSelected;
         public bool RendererUserSelected;
+        public bool RendererLearnable;
+        public bool RequiresGpuConfirm;
         public readonly HashSet<string> FamilyNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         public readonly HashSet<int> FamilyPids = new HashSet<int>();
         public string Evidence;
@@ -33,26 +35,19 @@ namespace PaviseApp
         public string Path;
         public bool Visible;
         public bool Foreground;
+        public bool FullscreenLike;
     }
 
     internal static class GameSessionDetector
     {
-        internal const int DetachedMigrationObservationMs = 45000;
-        private const int CreationClockSkewMs = 5000;
-
-        private static readonly string[] RendererRejectTokens =
-        {
-            "launcher", "leagueclient", "riotclient", "updater", "update", "patch", "bootstrap", "crash",
-            "reporter", "browser", "cef", "helper", "service", "install", "uninstall"
-        };
-
-        private static readonly string[] LauncherRendererTokens = { "launcher", "leagueclient", "riotclient" };
+        internal const int FullscreenCoveragePercent = 97;
 
         private static readonly string[] NonGameRoleTokens =
         {
             "anticheat", "anti-cheat", "ace-helper", "ace-base", "sguard", "tensafe",
             "easyanticheat", "beservice", "battleye", "gameguard", "gamemon", "vgtray",
-            "crashreport", "crash_report", "crashpad", "telemetry", "uninstall"
+            "crashreport", "crash_report", "crashpad", "crashhandler", "crashsender",
+            "telemetry", "uninstall"
         };
 
         private static readonly HashSet<string> NeverGames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -60,11 +55,37 @@ namespace PaviseApp
             "powerpnt", "winword", "excel", "outlook", "acrord32", "notepad", "mspaint",
             "chrome", "msedge", "firefox", "brave", "opera", "vivaldi",
             "explorer", "wegame", "wegame_env", "steam", "steamwebhelper", "epicgameslauncher",
-            "battle.net", "agent", "galaxyclient", "ubisoftconnect"
+            "battle.net", "agent", "galaxyclient", "ubisoftconnect",
+            "vlc", "mpv", "wmplayer", "video.ui",
+            "potplayermini64", "potplayermini", "mpc-hc64", "mpc-hc"
+        };
+
+        private static readonly HashSet<string> StorefrontShellNames = BuildStorefrontShellNames();
+
+        private static HashSet<string> BuildStorefrontShellNames()
+        {
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string name in GamePlatformCatalog.PlatformShellNames()) names.Add(name);
+            return names;
+        }
+
+        private static readonly string[] ClientShellTokens = { "leagueclient", "riotclient" };
+
+        private static readonly string[] AntiCheatTokens =
+        {
+            "anticheat", "anti-cheat", "sguard", "tensafe", "easyanticheat",
+            "beservice", "battleye", "gameguard", "gamemon", "vgtray", "ace-helper", "ace-base"
         };
 
         public static GameDetection Detect(Process[] all, IList<GameProfile> profiles)
         {
+            bool armed;
+            return Detect(all, profiles, out armed);
+        }
+
+        public static GameDetection Detect(Process[] all, IList<GameProfile> profiles, out bool armed)
+        {
+            armed = false;
             int ownerSession;
             try
             {
@@ -72,13 +93,31 @@ namespace PaviseApp
                     ownerSession = current.SessionId;
             }
             catch { return null; }
-            return Detect(all, profiles, ownerSession);
+            return Detect(all, profiles, ownerSession, out armed);
+        }
+
+        public static GameDetection Detect(
+            Process[] all, IList<GameProfile> profiles, int ownerSession)
+        {
+            bool armed;
+            return Detect(all, profiles, ownerSession, out armed);
         }
 
         public static GameDetection Detect(
             Process[] all, IList<GameProfile> profiles,
-            int ownerSession)
+            int ownerSession, out bool armed)
         {
+            string armedProfile;
+            GameDetection hit = Detect(all, profiles, ownerSession, out armedProfile);
+            armed = armedProfile != null;
+            return hit;
+        }
+
+        public static GameDetection Detect(
+            Process[] all, IList<GameProfile> profiles,
+            int ownerSession, out string armedProfile)
+        {
+            armedProfile = null;
             if (all == null || profiles == null
                 || profiles.Count == 0 || ownerSession < 0)
                 return null;
@@ -101,205 +140,218 @@ namespace PaviseApp
             }
 
             CaptureWindowEvidence(snapshot);
-
-            long nowFileTime;
-            try { nowFileTime = DateTime.UtcNow.ToFileTimeUtc(); }
-            catch { return null; }
-            return DetectSnapshot(snapshot, profiles, nowFileTime);
+            return DetectSnapshot(snapshot, profiles, out armedProfile);
         }
 
         internal static GameDetection DetectSnapshot(
             IList<GameProcessSnapshot> snapshot,
-            IList<GameProfile> profiles, long nowFileTime)
+            IList<GameProfile> profiles)
         {
-            if (snapshot == null || profiles == null
-                || profiles.Count == 0 || nowFileTime <= 0)
+            bool armed;
+            return DetectSnapshot(snapshot, profiles, out armed);
+        }
+
+        internal static GameDetection DetectSnapshot(
+            IList<GameProcessSnapshot> snapshot,
+            IList<GameProfile> profiles, out bool armed)
+        {
+            string armedProfile;
+            GameDetection hit = DetectSnapshot(snapshot, profiles, out armedProfile);
+            armed = armedProfile != null;
+            return hit;
+        }
+
+        internal static GameDetection DetectSnapshot(
+            IList<GameProcessSnapshot> snapshot,
+            IList<GameProfile> profiles, out string armedProfile)
+        {
+            armedProfile = null;
+            if (snapshot == null || profiles == null || profiles.Count == 0)
                 return null;
-            GameDetection best = null;
-            Candidate bestSelected = null;
-            int bestScore = int.MinValue;
-            var seenSnapshotPids = new HashSet<int>();
-            var duplicateSnapshotPids = new HashSet<int>();
+
+            var seenPids = new HashSet<int>();
+            var duplicatePids = new HashSet<int>();
             foreach (GameProcessSnapshot identity in snapshot)
                 if (identity != null && identity.Pid > 0
-                    && !seenSnapshotPids.Add(identity.Pid))
-                    duplicateSnapshotPids.Add(identity.Pid);
+                    && !seenPids.Add(identity.Pid))
+                    duplicatePids.Add(identity.Pid);
 
+            var byPid = new Dictionary<int, GameProcessSnapshot>();
+            foreach (GameProcessSnapshot identity in snapshot)
+            {
+                if (identity == null || identity.Pid <= 0
+                    || identity.Creation <= 0
+                    || duplicatePids.Contains(identity.Pid)
+                    || string.IsNullOrEmpty(identity.Name)
+                    || string.IsNullOrEmpty(identity.Path))
+                    continue;
+                byPid[identity.Pid] = identity;
+            }
+            if (byPid.Count == 0) return null;
+
+            GameDetection best = null;
             foreach (GameProfile profile in profiles)
             {
                 if (profile == null) continue;
-                var candidates = new List<Candidate>();
-                var byPid = new Dictionary<int, Candidate>();
-                var entries = new List<Candidate>();
-                foreach (GameProcessSnapshot source in snapshot)
+                var memberPids = new HashSet<int>();
+                var members = new List<GameProcessSnapshot>();
+                foreach (GameProcessSnapshot identity in byPid.Values)
+                    if (IsDirectMember(profile, identity))
+                    {
+                        memberPids.Add(identity.Pid);
+                        members.Add(identity);
+                    }
+                if (members.Count == 0) continue;
+                foreach (GameProcessSnapshot identity in byPid.Values)
+                    if (!memberPids.Contains(identity.Pid)
+                        && HasMemberAncestor(identity, byPid, memberPids))
+                    {
+                        memberPids.Add(identity.Pid);
+                        members.Add(identity);
+                    }
+
+                if (armedProfile == null) armedProfile = profile.Name;
+                GameDetection hit = Elect(profile, members);
+                if (hit == null) continue;
+                foreach (GameProcessSnapshot member in members)
                 {
-                    try
-                    {
-                        if (source == null || source.Pid <= 0
-                            || source.Creation <= 0
-                            || duplicateSnapshotPids.Contains(
-                                source.Pid)
-                            || string.IsNullOrEmpty(source.Name))
-                            continue;
-                        string name = source.Name;
-                        string path = source.Path;
-                        bool rooted = profile.ContainsPath(path);
-                        bool namedEntry = profile.Entries.Contains(name);
-                        bool legacyEntry =
-                            string.IsNullOrEmpty(profile.Root) && namedEntry;
-                        bool exactEntry =
-                            !string.IsNullOrEmpty(profile.ExecutablePath)
-                                ? SamePath(profile.ExecutablePath, path)
-                                : namedEntry
-                                    && (string.IsNullOrEmpty(
-                                            profile.Root)
-                                        || rooted);
-
-                        bool fallbackEntry = rooted && !exactEntry
-                            && (IsFallbackEntryName(profile, name)
-                                || IsSiblingWindowFallback(profile, name, path,
-                                    source.Visible, source.Foreground));
-                        if (!rooted && !legacyEntry && !exactEntry) continue;
-                        bool userSelected = (exactEntry || fallbackEntry) && !string.IsNullOrEmpty(profile.ExecutablePath);
-                        if (!userSelected && IsNonGameRole(name, path)) continue;
-                        var candidate = new Candidate
-                        {
-                            Pid = source.Pid, ParentPid = source.ParentPid, Name = name, Path = path,
-                            Creation = source.Creation,
-                            Visible = source.Visible, Foreground = source.Foreground,
-                            ExactEntry = exactEntry, FallbackEntry = fallbackEntry
-                        };
-                        candidates.Add(candidate);
-                        byPid[candidate.Pid] = candidate;
-                        if (exactEntry || fallbackEntry)
-                            entries.Add(candidate);
-                    }
-                    catch { }
+                    hit.FamilyNames.Add(member.Name);
+                    hit.FamilyPids.Add(member.Pid);
                 }
-                if (candidates.Count == 0 || entries.Count == 0)
-                    continue;
-
-                var entryPids = new HashSet<int>();
-                foreach (Candidate entry in entries)
-                    entryPids.Add(entry.Pid);
-
-                var ownerByPid = new Dictionary<int, int>();
-                foreach (Candidate candidate in candidates)
-                {
-                    int owner = OwningEntry(
-                        candidate, byPid, entryPids);
-                    if (owner > 0)
-                        ownerByPid[candidate.Pid] = owner;
-                }
-
-                foreach (Candidate entry in entries)
-                {
-                    var family = new List<Candidate>();
-                    foreach (Candidate candidate in candidates)
-                    {
-                        int owner;
-                        if (ownerByPid.TryGetValue(
-                                candidate.Pid, out owner)
-                            && owner == entry.Pid)
-                            family.Add(candidate);
-                    }
-
-                    Candidate detached = FindDetachedRenderer(
-                        profile, entry, entries, candidates,
-                        byPid, entryPids, ownerByPid,
-                        nowFileTime);
-                    if (detached != null)
-                        AddDetachedTree(
-                            detached, candidates, byPid,
-                            entryPids, family);
-
-                    int localBest;
-                    Candidate selected;
-                    if (!string.IsNullOrEmpty(
-                            profile.ExecutablePath))
-                    {
-                        selected = entry;
-                        localBest = Score(profile, entry);
-
-                        if (IsLauncherLikeName(entry.Name))
-                        {
-                            Candidate renderer = BestRenderer(
-                                profile, family, entry);
-                            if (renderer != null)
-                            {
-                                selected = renderer;
-                                localBest = Score(profile, renderer);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        selected = BestRenderer(
-                            profile, family, null);
-                        if (selected == null) continue;
-                        localBest = Score(profile, selected);
-                        if (localBest < 65) continue;
-                    }
-
-                    var hit = new GameDetection
-                    {
-                        Profile = profile.Clone(),
-                        RendererPid = selected.Pid,
-                        RendererCreation = selected.Creation,
-                        RendererName = selected.Name,
-                        RendererPath = selected.Path,
-                        RendererForeground =
-                            selected.Foreground,
-                        RendererUserSelected =
-                            selected.ExactEntry
-                                || selected.FallbackEntry,
-                        RendererCandidateSelected = true,
-                        Evidence = Evidence(
-                            profile, selected, localBest)
-                    };
-                    foreach (Candidate member in family)
-                    {
-                        hit.FamilyNames.Add(member.Name);
-                        hit.FamilyPids.Add(member.Pid);
-                    }
-
-                    if (localBest < bestScore
-                        || localBest == bestScore
-                            && !Preferred(
-                                selected, bestSelected))
-                        continue;
-                    best = hit;
-                    bestSelected = selected;
-                    bestScore = localBest;
-                }
+                if (BetterHit(hit, best)) best = hit;
             }
             return best;
         }
 
-#if PAVISE_SELFTEST
-        internal static int Score(GameProfile profile, string name, string path, bool visible, bool foreground)
+        private static bool IsDirectMember(GameProfile profile, GameProcessSnapshot identity)
         {
-            return Score(profile, new Candidate { Name = name, Path = path, Visible = visible, Foreground = foreground });
+            if (SamePath(profile.ExecutablePath, identity.Path)) return true;
+            if (SamePath(profile.LearnedExecutablePath, identity.Path)) return true;
+            return profile.ContainsPath(identity.Path);
         }
 
-        internal static bool QualifiesRenderer(GameProfile profile, string name, string path, bool visible, bool foreground)
+        private static bool HasMemberAncestor(
+            GameProcessSnapshot identity,
+            Dictionary<int, GameProcessSnapshot> byPid,
+            HashSet<int> memberPids)
         {
-            return IsStrongRendererCandidate(profile,
-                new Candidate { Name = name, Path = path, Visible = visible, Foreground = foreground });
+            GameProcessSnapshot child = identity;
+            var visited = new HashSet<int>();
+            visited.Add(identity.Pid);
+            for (int depth = 0; child.ParentPid > 0 && depth < 24; depth++)
+            {
+                int parentPid = child.ParentPid;
+                if (!visited.Add(parentPid)) return false;
+                GameProcessSnapshot parent;
+                if (!byPid.TryGetValue(parentPid, out parent)) return false;
+                if (child.Creation <= 0 || parent.Creation <= 0
+                    || child.Creation < parent.Creation) return false;
+                if (memberPids.Contains(parentPid)) return true;
+                child = parent;
+            }
+            return false;
         }
-#endif
 
-        private static readonly HashSet<string> LauncherRendererNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        private static GameDetection Elect(GameProfile profile, List<GameProcessSnapshot> members)
         {
-            "wegame", "wegame_env", "wegameclient", "steam", "steamwebhelper",
-            "epicgameslauncher", "battle.net", "galaxyclient", "ubisoftconnect"
-        };
+            GameProcessSnapshot learned = null;
+            GameProcessSnapshot foreground = null;
+            foreach (GameProcessSnapshot member in members)
+            {
+                if (!member.Visible && !member.Foreground) continue;
+                if (ElectionVetoed(member.Name, member.Path)) continue;
+                if (SamePath(profile.LearnedExecutablePath, member.Path)
+                    && (learned == null || PreferSnapshot(member, learned)))
+                    learned = member;
+                if (member.Foreground
+                    && (foreground == null || member.Creation > foreground.Creation))
+                    foreground = member;
+            }
 
-        private static readonly string[] AntiCheatTokens =
+            if (foreground != null && foreground.FullscreenLike)
+                return Elected(profile, foreground,
+                    !SamePath(profile.ExecutablePath, foreground.Path)
+                        && !SamePath(profile.LearnedExecutablePath, foreground.Path),
+                    Lang.T("detect.fullscreen"));
+            if (learned != null)
+                return Elected(profile, learned, false, Lang.T("detect.learned"));
+            if (foreground == null) return null;
+            if (SamePath(profile.ExecutablePath, foreground.Path))
+                return Elected(profile, foreground, false, Lang.T("detect.window"));
+            return PendingGpuConfirm(profile, foreground);
+        }
+
+        internal static bool ElectionVetoed(string name, string path)
         {
-            "anticheat", "anti-cheat", "sguard", "tensafe", "easyanticheat",
-            "beservice", "battleye", "gameguard", "gamemon", "vgtray", "ace-helper", "ace-base"
-        };
+            if (string.IsNullOrEmpty(name)) return true;
+            if (IsAntiCheatLikeName(name)) return true;
+            if (NeverGames.Contains(name)) return true;
+            if (IsLauncherLikeName(name)) return true;
+            return IsNonGameRole(name, path);
+        }
+
+        private static GameDetection Elected(
+            GameProfile profile, GameProcessSnapshot selected,
+            bool learnable, string evidence)
+        {
+            return new GameDetection
+            {
+                Profile = profile.Clone(),
+                RendererPid = selected.Pid,
+                RendererCreation = selected.Creation,
+                RendererName = selected.Name,
+                RendererPath = selected.Path,
+                RendererForeground = selected.Foreground,
+                RendererCandidateSelected = true,
+                RendererUserSelected =
+                    SamePath(profile.ExecutablePath, selected.Path)
+                        || SamePath(profile.LearnedExecutablePath, selected.Path),
+                RendererLearnable = learnable,
+                Evidence = evidence
+            };
+        }
+
+        private static GameDetection PendingGpuConfirm(
+            GameProfile profile, GameProcessSnapshot candidate)
+        {
+            return new GameDetection
+            {
+                Profile = profile.Clone(),
+                RendererPid = candidate.Pid,
+                RendererCreation = candidate.Creation,
+                RendererName = candidate.Name,
+                RendererPath = candidate.Path,
+                RendererForeground = candidate.Foreground,
+                RendererCandidateSelected = false,
+                RendererUserSelected = false,
+                RendererLearnable = true,
+                RequiresGpuConfirm = true,
+                Evidence = Lang.T("detect.gpu.pending")
+            };
+        }
+
+        private static bool PreferSnapshot(
+            GameProcessSnapshot candidate, GameProcessSnapshot current)
+        {
+            if (candidate.Foreground != current.Foreground) return candidate.Foreground;
+            if (candidate.Creation != current.Creation)
+                return candidate.Creation > current.Creation;
+            return candidate.Pid < current.Pid;
+        }
+
+        private static bool BetterHit(GameDetection candidate, GameDetection current)
+        {
+            if (candidate == null) return false;
+            if (current == null) return true;
+            bool candidateElected = !candidate.RequiresGpuConfirm;
+            bool currentElected = !current.RequiresGpuConfirm;
+            if (candidateElected != currentElected) return candidateElected;
+            if (candidate.RendererForeground != current.RendererForeground)
+                return candidate.RendererForeground;
+            if (candidate.RendererCreation != current.RendererCreation)
+                return candidate.RendererCreation > current.RendererCreation;
+            return candidate.RendererPid < current.RendererPid;
+        }
 
         internal static bool IsAntiCheatLikeName(string name)
         {
@@ -312,45 +364,10 @@ namespace PaviseApp
         internal static bool IsLauncherLikeName(string name)
         {
             string low = (name ?? "").ToLowerInvariant();
-            if (LauncherRendererNames.Contains(low)) return true;
-            foreach (string token in LauncherRendererTokens) if (low.Contains(token)) return true;
+            if (low.Length == 0) return false;
+            if (StorefrontShellNames.Contains(low)) return true;
+            foreach (string token in ClientShellTokens) if (low.Contains(token)) return true;
             return false;
-        }
-
-        private static int Score(GameProfile profile, Candidate c)
-        {
-            bool selected = c.FallbackEntry
-                || (!string.IsNullOrEmpty(profile.ExecutablePath) && SamePath(profile.ExecutablePath, c.Path));
-            if (IsAntiCheatLikeName(c.Name)) return -1000;
-            if (!selected && IsNonGameRole(c.Name, c.Path)) return -1000;
-            int score = 0;
-            if (selected) score += 35;
-            if (c.Foreground) score += 45;
-            if (c.Visible) score += 30;
-            string low = ((c.Path ?? "") + "\\" + (c.Name ?? "")).ToLowerInvariant();
-            if (low.Contains("win64") || low.Contains("shipping") || low.Contains("binaries") || low.Contains("\\game\\")) score += 20;
-            if (!selected)
-                foreach (string token in RendererRejectTokens) if (low.Contains(token)) return -1000;
-            return score;
-        }
-
-        private static bool IsStrongRendererCandidate(GameProfile profile, Candidate candidate)
-        {
-            int score = Score(profile, candidate);
-            if (score < 65) return false;
-            string low = (candidate.Path ?? "").ToLowerInvariant();
-            bool renderLayout = low.Contains("\\binaries\\") || low.Contains("\\win64\\")
-                || low.Contains("shipping") || low.Contains("\\game\\");
-            bool selectedExecutable = candidate.FallbackEntry || (!string.IsNullOrEmpty(profile.ExecutablePath)
-                && SamePath(profile.ExecutablePath, candidate.Path));
-            return (renderLayout || selectedExecutable) && (candidate.Visible || candidate.Foreground);
-        }
-
-        private static string Evidence(GameProfile profile, Candidate c, int score)
-        {
-            if (c.Foreground) return Lang.F("detect.foreground", score);
-            if (c.Visible) return Lang.F("detect.visible", score);
-            return Lang.F("detect.candidate", score);
         }
 
         internal static bool IsNonGameRole(string name, string path)
@@ -361,6 +378,14 @@ namespace PaviseApp
             foreach (string token in NonGameRoleTokens)
                 if (low.Contains(token)) return true;
             return false;
+        }
+
+        internal static bool IsLibraryCandidate(string name, string path, string windowsRoot)
+        {
+            if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(path)) return false;
+            if (ElectionVetoed(name, path)) return false;
+            return string.IsNullOrEmpty(windowsRoot)
+                || !path.StartsWith(windowsRoot, StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool SamePath(string a, string b)
@@ -382,41 +407,9 @@ namespace PaviseApp
             GameProfile profile, string name, string path)
         {
             if (profile == null) return false;
-            if (!string.IsNullOrEmpty(profile.ExecutablePath))
-            {
-                if (SamePath(profile.ExecutablePath, path)) return true;
-                return profile.ContainsPath(path)
-                    && IsFallbackEntryName(profile, name);
-            }
-            return profile.Entries != null
-                && profile.Entries.Contains(name)
-                && (string.IsNullOrEmpty(profile.Root)
-                    || profile.ContainsPath(path));
-        }
-
-        internal static bool IsSiblingWindowFallback(
-            GameProfile profile, string name, string path, bool visible, bool foreground)
-        {
-            if (profile == null || string.IsNullOrEmpty(profile.ExecutablePath)
-                || string.IsNullOrEmpty(name) || string.IsNullOrEmpty(path)) return false;
-            if (!visible && !foreground) return false;
-            if (NeverGames.Contains(name) || IsAntiCheatLikeName(name)
-                || IsNonGameRole(name, path)) return false;
-            if (SamePath(profile.ExecutablePath, path)) return false;
-            return SameDirectory(profile.ExecutablePath, path);
-        }
-
-        private static bool SameDirectory(string executablePath, string candidatePath)
-        {
-            if (string.IsNullOrEmpty(executablePath) || string.IsNullOrEmpty(candidatePath)) return false;
-            try
-            {
-                string entryDir = Path.GetDirectoryName(executablePath);
-                string candidateDir = Path.GetDirectoryName(candidatePath);
-                return !string.IsNullOrEmpty(entryDir) && !string.IsNullOrEmpty(candidateDir)
-                    && string.Equals(entryDir, candidateDir, StringComparison.OrdinalIgnoreCase);
-            }
-            catch { return false; }
+            if (SamePath(profile.LearnedExecutablePath, path)) return true;
+            if (SamePath(profile.ExecutablePath, path)) return true;
+            return profile.ContainsPath(path);
         }
 
         private static bool IsFallbackEntryName(GameProfile profile, string name)
@@ -447,211 +440,6 @@ namespace PaviseApp
                 if (tailDigits) return true;
             }
             return false;
-        }
-
-        private static int OwningEntry(
-            Candidate candidate,
-            Dictionary<int, Candidate> byPid,
-            HashSet<int> entryPids)
-        {
-            if (candidate == null) return 0;
-            if (entryPids.Contains(candidate.Pid))
-                return candidate.Pid;
-
-            Candidate child = candidate;
-            var visited = new HashSet<int>();
-            visited.Add(candidate.Pid);
-            for (int depth = 0;
-                child.ParentPid > 0 && depth < 24;
-                depth++)
-            {
-                int parentPid = child.ParentPid;
-                if (!visited.Add(parentPid)) return 0;
-                Candidate parent;
-                if (!byPid.TryGetValue(
-                        parentPid, out parent))
-                    return 0;
-                if (!ValidParentEdge(child, parent))
-                    return 0;
-                if (entryPids.Contains(parentPid))
-                    return parentPid;
-                child = parent;
-            }
-            return 0;
-        }
-
-        private static bool ValidParentEdge(
-            Candidate child, Candidate parent)
-        {
-            return child != null && parent != null
-                && child.Creation > 0
-                && parent.Creation > 0
-                && child.Creation >= parent.Creation;
-        }
-
-        private static Candidate FindDetachedRenderer(
-            GameProfile profile, Candidate entry,
-            IList<Candidate> entries,
-            IList<Candidate> candidates,
-            Dictionary<int, Candidate> byPid,
-            HashSet<int> entryPids,
-            Dictionary<int, int> ownerByPid,
-            long nowFileTime)
-        {
-            if (!IsLauncherLikeName(entry.Name))
-                return null;
-
-            Candidate match = null;
-            foreach (Candidate candidate in candidates)
-            {
-                if (candidate.ExactEntry
-                    || candidate.FallbackEntry
-                    || ownerByPid.ContainsKey(candidate.Pid)
-                    || !candidate.Foreground
-                    || !IsStrongRendererCandidate(
-                        profile, candidate)
-                    || candidate.Creation < entry.Creation
-                    || HasEntryAncestorIgnoringCreation(
-                        candidate, byPid, entryPids))
-                    continue;
-
-                long age = nowFileTime - candidate.Creation;
-                if (age < -CreationClockSkewMs
-                        * TimeSpan.TicksPerMillisecond
-                    || age > DetachedMigrationObservationMs
-                        * TimeSpan.TicksPerMillisecond)
-                    continue;
-
-                Candidate soleLauncher = null;
-                int eligibleLaunchers = 0;
-                foreach (Candidate possible in entries)
-                {
-                    if (!IsLauncherLikeName(possible.Name)
-                        || possible.Creation <= 0
-                        || possible.Creation
-                            > candidate.Creation)
-                        continue;
-                    soleLauncher = possible;
-                    eligibleLaunchers++;
-                }
-                if (eligibleLaunchers != 1
-                    || soleLauncher.Pid != entry.Pid)
-                    continue;
-
-                if (match != null) return null;
-                match = candidate;
-            }
-            return match;
-        }
-
-        private static bool HasEntryAncestorIgnoringCreation(
-            Candidate candidate,
-            Dictionary<int, Candidate> byPid,
-            HashSet<int> entryPids)
-        {
-            int parentPid = candidate.ParentPid;
-            var visited = new HashSet<int>();
-            for (int depth = 0;
-                parentPid > 0 && depth < 24
-                    && visited.Add(parentPid);
-                depth++)
-            {
-                if (entryPids.Contains(parentPid))
-                    return true;
-                Candidate parent;
-                if (!byPid.TryGetValue(parentPid, out parent))
-                    return false;
-                parentPid = parent.ParentPid;
-            }
-            return false;
-        }
-
-        private static void AddDetachedTree(
-            Candidate renderer,
-            IList<Candidate> candidates,
-            Dictionary<int, Candidate> byPid,
-            HashSet<int> entryPids,
-            IList<Candidate> family)
-        {
-            foreach (Candidate candidate in candidates)
-            {
-                if (candidate.ExactEntry
-                    || candidate.FallbackEntry)
-                    continue;
-                if (candidate.Pid != renderer.Pid
-                    && !IsDescendantOfRoot(
-                        candidate, renderer.Pid,
-                        byPid, entryPids))
-                    continue;
-                if (!family.Contains(candidate))
-                    family.Add(candidate);
-            }
-        }
-
-        private static bool IsDescendantOfRoot(
-            Candidate candidate, int rootPid,
-            Dictionary<int, Candidate> byPid,
-            HashSet<int> entryPids)
-        {
-            Candidate child = candidate;
-            var visited = new HashSet<int>();
-            visited.Add(candidate.Pid);
-            for (int depth = 0;
-                child.ParentPid > 0 && depth < 24;
-                depth++)
-            {
-                int parentPid = child.ParentPid;
-                if (!visited.Add(parentPid)) return false;
-                Candidate parent;
-                if (!byPid.TryGetValue(parentPid, out parent))
-                    return false;
-                if (!ValidParentEdge(child, parent))
-                    return false;
-                if (parentPid == rootPid) return true;
-                if (entryPids.Contains(parentPid))
-                    return false;
-                child = parent;
-            }
-            return false;
-        }
-
-        private static Candidate BestRenderer(
-            GameProfile profile,
-            IList<Candidate> family,
-            Candidate excludedEntry)
-        {
-            Candidate best = null;
-            int bestScore = int.MinValue;
-            foreach (Candidate candidate in family)
-            {
-                if (ReferenceEquals(candidate, excludedEntry)
-                    || !IsStrongRendererCandidate(
-                        profile, candidate))
-                    continue;
-                int score = Score(profile, candidate);
-                if (score > bestScore
-                    || score == bestScore
-                        && Preferred(candidate, best))
-                {
-                    best = candidate;
-                    bestScore = score;
-                }
-            }
-            return best;
-        }
-
-        private static bool Preferred(
-            Candidate candidate, Candidate current)
-        {
-            if (candidate == null) return false;
-            if (current == null) return true;
-            if (candidate.Foreground != current.Foreground)
-                return candidate.Foreground;
-            if (candidate.Visible != current.Visible)
-                return candidate.Visible;
-            if (candidate.Creation != current.Creation)
-                return candidate.Creation > current.Creation;
-            return candidate.Pid < current.Pid;
         }
 
         internal static bool TryCaptureProcessIdentity(
@@ -720,6 +508,8 @@ namespace PaviseApp
             if (snapshot == null || snapshot.Count == 0)
                 return;
             int foreground = ForegroundPid();
+            bool foregroundFullscreen = foreground > 0
+                && ForegroundWindowFullscreenLike(foreground);
             HashSet<int> visible = VisibleWindowPids(false);
             foreach (GameProcessSnapshot identity in snapshot)
             {
@@ -738,6 +528,8 @@ namespace PaviseApp
                     continue;
                 identity.Foreground = foregroundClaim;
                 identity.Visible = visibleClaim;
+                identity.FullscreenLike =
+                    foregroundClaim && foregroundFullscreen;
             }
         }
 
@@ -779,6 +571,61 @@ namespace PaviseApp
             catch { return false; }
         }
 #endif
+
+        internal static bool TryForegroundFullscreen(out int pid)
+        {
+            pid = 0;
+            try
+            {
+                IntPtr window = GetForegroundWindow();
+                if (window == IntPtr.Zero) return false;
+                uint owner;
+                GetWindowThreadProcessId(window, out owner);
+                if (owner == 0 || owner > int.MaxValue) return false;
+                pid = (int)owner;
+                if (!IsWindowVisible(window) || IsIconic(window)) return false;
+                NativeRect rect;
+                if (!GetWindowRect(window, out rect)) return false;
+                return IsFullscreenLikeWindow(window, rect);
+            }
+            catch { return false; }
+        }
+
+        private static bool ForegroundWindowFullscreenLike(int pid)
+        {
+            int owner;
+            return TryForegroundFullscreen(out owner) && owner == pid;
+        }
+
+        internal static bool IsFullscreenLikeWindow(IntPtr window, NativeRect rect)
+        {
+            try
+            {
+                int style = GetWindowLong(window, GwlStyle);
+                if ((style & WsCaption) == WsCaption) return false;
+                IntPtr monitor = MonitorFromWindow(window, MonitorDefaultToNearest);
+                if (monitor == IntPtr.Zero) return false;
+                var info = new MonitorInfo();
+                info.Size = Marshal.SizeOf(typeof(MonitorInfo));
+                if (!GetMonitorInfo(monitor, ref info)) return false;
+                return RectCoversMonitor(rect, info.Monitor);
+            }
+            catch { return false; }
+        }
+
+        internal static bool RectCoversMonitor(NativeRect rect, NativeRect monitor)
+        {
+            long monitorArea = (long)(monitor.Right - monitor.Left)
+                * (monitor.Bottom - monitor.Top);
+            if (monitorArea <= 0) return false;
+            int left = Math.Max(rect.Left, monitor.Left);
+            int top = Math.Max(rect.Top, monitor.Top);
+            int right = Math.Min(rect.Right, monitor.Right);
+            int bottom = Math.Min(rect.Bottom, monitor.Bottom);
+            long covered = right > left && bottom > top
+                ? (long)(right - left) * (bottom - top) : 0;
+            return covered * 100 >= monitorArea * FullscreenCoveragePercent;
+        }
 
         internal static HashSet<int> VisibleWindowPids(bool includeMinimized)
         {
@@ -826,22 +673,9 @@ namespace PaviseApp
             catch { return -1; }
         }
 
-        private sealed class Candidate
-        {
-            public int Pid;
-            public int ParentPid;
-            public long Creation;
-            public string Name;
-            public string Path;
-            public bool Visible;
-            public bool Foreground;
-            public bool ExactEntry;
-            public bool FallbackEntry;
-        }
-
         private delegate bool EnumWindowsCallback(IntPtr window, IntPtr state);
         [StructLayout(LayoutKind.Sequential)]
-        private struct NativeRect
+        internal struct NativeRect
         {
             public int Left;
             public int Top;
@@ -849,10 +683,22 @@ namespace PaviseApp
             public int Bottom;
         }
 
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MonitorInfo
+        {
+            public int Size;
+            public NativeRect Monitor;
+            public NativeRect Work;
+            public uint Flags;
+        }
+
         private const uint GwOwner = 4;
+        private const int GwlStyle = -16;
         private const int GwlExStyle = -20;
         private const int WsExToolWindow = 0x80;
+        private const int WsCaption = 0x00C00000;
         private const uint DwmwaCloaked = 14;
+        private const uint MonitorDefaultToNearest = 2;
         [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll")] private static extern bool EnumWindows(
             EnumWindowsCallback callback, IntPtr state);
@@ -865,6 +711,10 @@ namespace PaviseApp
         [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
         [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hwnd);
         [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr hwnd);
+        [DllImport("user32.dll")] private static extern IntPtr MonitorFromWindow(
+            IntPtr hwnd, uint flags);
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool GetProcessTimes(
             IntPtr process, out long creation, out long exit,

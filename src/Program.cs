@@ -20,7 +20,7 @@ namespace PaviseApp
     internal static class App
     {
         public const string DisplayName = "PAVISE";
-        public const string Version = "1.6.1";
+        public const string Version = "1.6.7";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string WeChat = "Ssssssstyle";
@@ -39,7 +39,6 @@ namespace PaviseApp
         {
 
             if (LegacyFreezeRecovery.TryHandle(args)) return;
-            if (LolWatchdog.TryHandle(args)) return;
 #if PAVISE_SELFTEST
             if (SelfTests.TryHandleRuntimeMode(args)) return;
 #endif
@@ -99,6 +98,25 @@ namespace PaviseApp
                 return;
             }
 
+            if (args.Length >= 2 && args[0] == "--shot-contact")
+            {
+                Dpi.Init(); Paths.Init(); Lang.Init();
+                Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
+                using (var dlg = new ContactDialog())
+                {
+                    dlg.StartPosition = FormStartPosition.Manual;
+                    dlg.Location = new Point(-20000, -20000);
+                    dlg.Show();
+                    Application.DoEvents();
+                    using (var bmp = new Bitmap(dlg.ClientSize.Width, dlg.ClientSize.Height))
+                    {
+                        dlg.DrawToBitmap(bmp, new Rectangle(0, 0, bmp.Width, bmp.Height));
+                        bmp.Save(args[1], System.Drawing.Imaging.ImageFormat.Png);
+                    }
+                }
+                return;
+            }
+
             if (args.Length > 0 && args[0] == "--ui-preview")
             {
                 Dpi.Init(); Paths.Init(); Lang.Init();
@@ -137,6 +155,9 @@ namespace PaviseApp
             Mutex mtx = null;
             try { mtx = new Mutex(true, "Global\\Pavise_SingleInstance", out created); }
             catch { created = false; }
+            if (!created && TryReplaceOlderInstance())
+                try { mtx = new Mutex(true, "Global\\Pavise_SingleInstance", out created); }
+                catch { created = false; }
             if (!created)
             {
                 try { EventWaitHandle.OpenExisting("Global\\Pavise_ShowPanel").Set(); } catch { }
@@ -187,22 +208,38 @@ namespace PaviseApp
 
             Paths.Init();
             Lang.Init();
+            try { Theme.SetLight(Settings.Load("UiLight", false)); } catch { }
             string dir = Paths.Data;
             Logger.LogPath = Path.Combine(dir, "Pavise.log");
+            Settings.Remove("EvidenceMode");
             LegacyFreezeRecovery.BeginHeal(Path.Combine(dir, LegacyFreezeRecovery.StateFileName));
             int healedSuppression = SuppressionCore.HealFromCrash(Path.Combine(dir, SuppressionCore.StateFileName));
             if (healedSuppression > 0) Logger.Log("检测到上次未还原的分级后台控制，已恢复 " + healedSuppression + " 个进程");
             PowerPlan.HealFromCrash();
             try { UpdatePause.HealFromCrash(); } catch { }
-            try { EtwFrameTrace.StopStaleSession(); } catch { }
-            FgBoost.HealFromCrash();
+            try { FgBoost.PurgeLegacy(); } catch { }
             GameDvr.HealFromCrash();
-            Mmcss.HealFromCrash();
+            try { Mmcss.PurgeLegacy(); } catch { }
             Notif.HealFromCrash();
             VisualFx.HealFromCrash();
             DisplayGuard.HealFromCrash();
+            try { NvGlobalTweaks.HealFromCrash(); } catch { }
+            try { AdlxTweaks.HealFromCrash(); } catch { }
+            try { PresenceQos.HealFromCrash(); } catch { }
+            try { PowerOverlay.HealFromCrash(); } catch { }
             RenderLane.HealFromCrash();
             CrashGuard.HealFromCrash();
+
+            try { LegacyPurge.RunOnce(dir); } catch { }
+
+            if (Settings.Load("GmIfeoBoost", false))
+                try
+                {
+                    int preArmed = IfeoBoost.PreArmAll();
+                    if (preArmed > 0)
+                        Logger.Log("后备提优：已预置 " + preArmed + " 个游戏");
+                }
+                catch { }
 
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
@@ -223,7 +260,6 @@ namespace PaviseApp
 
             var gameMode = new GameMode(dir, core);
             gameMode.Enabled = Settings.Load("GameModeOn", true);
-            var lolService = new LolOptimizationService();
 
             var startGate = new object();
             bool exiting = false;
@@ -236,7 +272,6 @@ namespace PaviseApp
                     if (exiting) return;
                     tamer.Start();
                     gameMode.Start();
-                    lolService.Start();
                 }
             });
             bootThread.IsBackground = true;
@@ -247,7 +282,7 @@ namespace PaviseApp
             {
                 return gameMode.NeedsWhitelistParentIdentity(session)
                     || gameMode.NeedsGameProcessIdentity(name, session)
-                    || LolRuntimeProcesses.IsScanCandidateName(name);
+                    ;
             };
             procNotify.CaptureParentIdentity =
                 delegate(int parentPid, string name, int session)
@@ -260,7 +295,6 @@ namespace PaviseApp
             {
                 gameMode.NotifyProcessChanges(batch);
                 tamer.NotifyProcessChanges(batch);
-                lolService.NotifyProcessChanges(batch);
             };
             procNotify.Start();
             gameMode.ProcessEventsAvailable = procNotify.IsActive;
@@ -272,12 +306,16 @@ namespace PaviseApp
             PerformancePreset runtimeIconMode = gameMode.ActivePreset;
             bool runtimeIconEnabled = gameMode.Enabled;
             Icon appIcon = IconArt.MakeMultiIcon(runtimeIconMode, runtimeIconEnabled);
-            var panel = new PanelForm(tamer, gameMode, appIcon, elevated, lolService);
+            var panel = new PanelForm(tamer, gameMode, appIcon, elevated);
             GC.KeepAlive(panel.Handle);
 
             bool pendingPanel = Settings.Load(PendingPanelKey, false);
             if (pendingPanel) Settings.Save(PendingPanelKey, false);
-            if (!autoStarted || pendingPanel) panel.ShowPanel();
+            bool showingPanel = !autoStarted || pendingPanel;
+            if (showingPanel && ContactDialog.ShouldShow())
+                try { using (var contact = new ContactDialog()) contact.ShowDialog(); }
+                catch { }
+            if (showingPanel) panel.ShowPanel();
 
             var evtThread = new Thread(() =>
             {
@@ -304,11 +342,8 @@ namespace PaviseApp
                 icon.Dispose();
                 lock (startGate) exiting = true;
                 try { procNotify.Stop(); } catch { }
-                try { panel.WaitForLolIdle(4000); } catch { }
-                try { lolService.Dispose(); } catch { }
                 tamer.Stop();
                 gameMode.Stop();
-                try { FrameEvidence.Finish(); } catch { }
                 panel.RealExit = true;
                 Application.Exit();
             };
@@ -336,6 +371,13 @@ namespace PaviseApp
                 try { Mmcss.Restore(); } catch { }
                 try { FgBoost.Restore(); } catch { }
                 try { VisualFx.Restore(); } catch { }
+                try { NvGlobalTweaks.Restore(); } catch { }
+                try { AdlxTweaks.RestoreAntiLag(); } catch { }
+                try { AdlxTweaks.RestoreChill(); } catch { }
+                try { AdlxTweaks.RestoreEnhancedSync(); } catch { }
+                try { AdlxTweaks.RestoreRis(); } catch { }
+                try { PresenceQos.Restore(); } catch { }
+                try { PowerOverlay.Restore(); } catch { }
             };
             gameMode.SessionEnded += msg =>
             {
@@ -347,6 +389,21 @@ namespace PaviseApp
                     }));
                 }
                 catch { }
+            };
+            gameMode.GameAutoAdded += name =>
+            {
+                try
+                {
+                    panel.BeginInvoke((MethodInvoker)(() =>
+                    {
+                        try { icon.ShowBalloonTip(10000, App.DisplayName, Lang.F("bal.autoadd", name), ToolTipIcon.Info); } catch { }
+                    }));
+                }
+                catch { }
+            };
+            gameMode.LibraryChanged += () =>
+            {
+                try { panel.NotifyLibraryChanged(); } catch { }
             };
 
             trayTip = new System.Windows.Forms.Timer();
@@ -371,7 +428,9 @@ namespace PaviseApp
                 else
                 {
                     string g = gameMode.ActiveGame;
-                    txt = g != null ? Lang.F("tray.active", g) : Lang.T("tray.idle");
+                    string a = g == null ? gameMode.ArmedGame : null;
+                    txt = g != null ? Lang.F("tray.active", g)
+                        : (a != null ? Lang.F("tray.armed", a) : Lang.T("tray.idle"));
                 }
                 if (txt.Length > 63) txt = txt.Substring(0, 62) + "…";
                 if (icon.Text != txt) icon.Text = txt;
@@ -411,6 +470,51 @@ namespace PaviseApp
 
             Application.Run();
             GC.KeepAlive(mtx);
+        }
+
+        internal static int CompareVersions(string left, string right)
+        {
+            Version a, b;
+            if (!Version.TryParse(NormalizeVersion(left), out a)) a = new Version(0, 0);
+            if (!Version.TryParse(NormalizeVersion(right), out b)) b = new Version(0, 0);
+            return a.CompareTo(b);
+        }
+
+        private static string NormalizeVersion(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return "0.0.0.0";
+            string text = raw.Trim();
+            if (text.StartsWith("v", StringComparison.OrdinalIgnoreCase)) text = text.Substring(1);
+            int parts = text.Split('.').Length;
+            for (int i = parts; i < 4; i++) text += ".0";
+            return text;
+        }
+
+        private static bool TryReplaceOlderInstance()
+        {
+            Process older = null;
+            try
+            {
+                int self = Process.GetCurrentProcess().Id;
+                foreach (Process p in Process.GetProcessesByName(
+                    Path.GetFileNameWithoutExtension(Application.ExecutablePath)))
+                {
+                    if (p.Id == self) { p.Dispose(); continue; }
+                    string version = null;
+                    try { version = p.MainModule.FileVersionInfo.FileVersion; }
+                    catch { }
+                    if (version != null && CompareVersions(App.Version, version) > 0 && older == null) older = p;
+                    else p.Dispose();
+                }
+                if (older == null) return false;
+
+                try { EventWaitHandle.OpenExisting("Global\\Pavise_Exit").Set(); }
+                catch { return false; }
+                if (!older.WaitForExit(20000)) return false;
+                return true;
+            }
+            catch { return false; }
+            finally { if (older != null) older.Dispose(); }
         }
 
         private static bool IsElevated()

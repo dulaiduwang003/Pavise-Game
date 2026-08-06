@@ -86,6 +86,16 @@ namespace PaviseApp
             }
         }
 
+        public static void Remove(string name)
+        {
+            try
+            {
+                using (var k = Registry.CurrentUser.OpenSubKey(Key, true))
+                    if (k != null && k.GetValue(name) != null) k.DeleteValue(name, false);
+            }
+            catch { }
+        }
+
         public static string LoadStr(string name, string def)
         {
 #if PAVISE_SELFTEST || PAVISE_PERFLAB

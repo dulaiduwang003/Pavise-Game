@@ -105,6 +105,15 @@ namespace PaviseApp
 
         public void SnapToSelection() { ind.Set(SlotY(SlotOfItem(sel))); Invalidate(); }
 
+#if PAVISE_SELFTEST
+        internal void SetSelectedForTest(int i)
+        {
+            if (i < 0 || i >= labels.Length) return;
+            sel = i;
+            SnapToSelection();
+        }
+#endif
+
         public void SetMode(PerformancePreset value, bool enabled)
         {
             if (mode == value && modeEnabled == enabled) return;
@@ -194,10 +203,11 @@ namespace PaviseApp
                 if (!on && i == hoverIdx)
                 {
                     var hr = new Rectangle(Pad, y, Width - Pad * 2, ItemH);
-                    using (var b = new SolidBrush(Col.Alpha(Color.White, 9)))
+                    using (var b = new SolidBrush(Col.Alpha(Theme.Fg, 9)))
                     using (var path = Theme.TechPath(hr, Dpi.S(8))) g.FillPath(b, path);
                 }
-                Color c = on ? Color.White : (i == hoverIdx ? Theme.Fg : Theme.Dim);
+                Color c = on ? (Theme.LightMode ? Theme.Accent : Color.White)
+                    : (i == hoverIdx ? Theme.Fg : Theme.Dim);
                 var iconBox = new Rectangle(Pad + Dpi.S(13), y + (ItemH - Dpi.S(18)) / 2, Dpi.S(18), Dpi.S(18));
                 Glyphs.Draw(g, glyphs[i], iconBox, on ? Theme.Accent : c);
                 var tr = new Rectangle(iconBox.Right + Dpi.S(12), y, Width - iconBox.Right - Dpi.S(14), ItemH);
