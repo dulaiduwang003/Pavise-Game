@@ -1,6 +1,10 @@
 @rem @author bdth 2074055628@qq.com
 @rem file: build Pavise, icon, and manifest
 @echo off
+rem 记下宿主控制台原来的码页，退出前还原：直接改掉不还原会让调用方
+rem 交互式 PowerShell 的 PSReadLine 读键线程抛异常并崩掉整个终端
+for /f "tokens=2 delims=:" %%a in ('chcp') do set "PAVISE_OLDCP=%%a"
+set "PAVISE_OLDCP=%PAVISE_OLDCP: =%"
 chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
@@ -48,9 +52,15 @@ if errorlevel 1 goto err
 del Pavise.tmp.exe "%MANIFEST%" >nul 2>&1
 echo.
 echo 构建成功 -^> %OUT%
+call :restorecp
 goto :eof
 
 :err
 echo 构建失败
 del Pavise.tmp.exe "%MANIFEST%" >nul 2>&1
+call :restorecp
 exit /b 1
+
+:restorecp
+if defined PAVISE_OLDCP chcp %PAVISE_OLDCP% >nul 2>&1
+goto :eof

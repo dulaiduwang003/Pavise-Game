@@ -30,7 +30,8 @@ namespace PaviseApp
         Log = 8,
         Settings = 9,
         About = 10,
-        Count = 11
+        Whitelist = 11,
+        Count = 12
     }
 
     internal partial class PanelForm : Form
@@ -40,7 +41,7 @@ namespace PaviseApp
         private readonly bool elevated;
 
         private DBPanel pageOverview, pagePolicy, pageAntiCheat, pageLibrary, pageLog, pageSettings, pageAbout;
-        private DBPanel pageGraphics, pageEnvironment;
+        private DBPanel pageGraphics, pageEnvironment, pageWhitelist;
         private DBPanel[] pages;
         private NavRail nav;
         private ModeButton modeButton;
@@ -126,12 +127,12 @@ namespace PaviseApp
             nav = new NavRail(
                 new[] { Lang.T("nav.overview"), LolText("英雄联盟（国服）"), Lang.T("nav.library"), Lang.T("nav.policy"),
                         Lang.T("v14.anticheat"), Lang.T("nav.graphics"), Lang.T("nav.env"), Lang.T("nav.audit"),
-                        Lang.T("nav.log"), Lang.T("nav.set"), Lang.T("nav.about") },
-                new[] { "game", "lol", "white", "settings", "shield", "gpu", "chip", "chart", "log", "gear", "info" },
-                new[] { (int)PageId.Overview, (int)PageId.Library, (int)PageId.Policy, (int)PageId.AntiCheat,
-                        (int)PageId.Log, (int)PageId.Graphics, (int)PageId.Environment, (int)PageId.Audit,
-                        (int)PageId.League, (int)PageId.Settings, (int)PageId.About },
-                new[] { 5, 8 }, new[] { Lang.T("nav.hardware"), Lang.T("nav.columns") }, 2);
+                        Lang.T("nav.log"), Lang.T("nav.set"), Lang.T("nav.about"), Lang.T("nav.white") },
+                new[] { "game", "lol", "white", "settings", "shield", "gpu", "chip", "chart", "log", "gear", "info", "shield" },
+                new[] { (int)PageId.Overview, (int)PageId.Library, (int)PageId.Whitelist, (int)PageId.Policy,
+                        (int)PageId.AntiCheat, (int)PageId.Log, (int)PageId.Graphics, (int)PageId.Environment,
+                        (int)PageId.Audit, (int)PageId.League, (int)PageId.Settings, (int)PageId.About },
+                new[] { 6, 9 }, new[] { Lang.T("nav.hardware"), Lang.T("nav.columns") }, 2);
             AssertNavMatchesPageIds(nav);
             nav.SetBounds(0, 0, Theme.S(RailW), Theme.S(WinH));
             nav.SelectionChanged = ShowPage;
@@ -178,6 +179,7 @@ namespace PaviseApp
             pages[(int)PageId.Overview] = pageOverview = MakePage();
             pages[(int)PageId.League] = pageLol = MakePage();
             pages[(int)PageId.Library] = pageLibrary = MakePage();
+            pages[(int)PageId.Whitelist] = pageWhitelist = MakePage();
             pages[(int)PageId.Policy] = pagePolicy = MakePage();
             pages[(int)PageId.AntiCheat] = pageAntiCheat = MakePage();
             pages[(int)PageId.Graphics] = pageGraphics = MakePage();
@@ -189,6 +191,7 @@ namespace PaviseApp
             BuildOverviewPage();
             BuildLolPage();
             BuildLibraryPage();
+            BuildWhitelistPage();
             BuildPolicyPage();
             BuildAntiCheatPage();
             BuildGraphicsPage();
@@ -202,6 +205,7 @@ namespace PaviseApp
             Controls.Add(topBar);
             foreach (var p in pages) Controls.Add(p);
             Controls.Add(nav);
+
 
             modeFlyout = new ModePickerPanel();
             modeFlyout.SetBounds(Theme.S(WinW - 420), Theme.S(56), Theme.S(396), Theme.S(282));
@@ -271,6 +275,8 @@ namespace PaviseApp
             pageHooks[(int)PageId.Library] = new PageHook(pageLibrary,
                 delegate(bool active) { if (active) RefreshGameRunningStates(true); },
                 delegate { RefreshGameRunningStates(); });
+            pageHooks[(int)PageId.Whitelist] = new PageHook(pageWhitelist,
+                delegate(bool active) { if (active) RefreshWhitelist(true); }, null);
             pageHooks[(int)PageId.Policy] = new PageHook(pagePolicy, null, null);
             pageHooks[(int)PageId.AntiCheat] = new PageHook(pageAntiCheat, null, RefreshAcGroupStates);
             pageHooks[(int)PageId.Graphics] = new PageHook(pageGraphics, null, null);

@@ -105,6 +105,15 @@ namespace PaviseApp
 
         public void SnapToSelection() { ind.Set(SlotY(SlotOfItem(sel))); Invalidate(); }
 
+#if PAVISE_SELFTEST
+        internal void SetSelectedForTest(int i)
+        {
+            if (i < 0 || i >= labels.Length) return;
+            sel = i;
+            SnapToSelection();
+        }
+#endif
+
         public void SetMode(PerformancePreset value, bool enabled)
         {
             if (mode == value && modeEnabled == enabled) return;

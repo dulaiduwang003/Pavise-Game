@@ -43,10 +43,7 @@ namespace PaviseApp
             var btnPolicyWhite = new PillButton(Lang.T("v14.manage.white"), BtnKind.Primary);
 
             btnPolicyWhite.Size = new Size(Theme.S(164), Theme.S(34));
-            btnPolicyWhite.Click += delegate
-            {
-                using (var dlg = new WhitelistDialog(gameMode)) ShowDim(dlg);
-            };
+            btnPolicyWhite.Click += delegate { nav.Select((int)PageId.Whitelist); };
             int whiteCardH;
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 72, Lang.T("nav.white"), Lang.T("white.policy.sub"),
                 btnPolicyWhite, out whiteCardH);
@@ -92,6 +89,12 @@ namespace PaviseApp
                 delegate { return gameMode.PurgeStandby; }, delegate(bool v) { gameMode.PurgeStandby = v; });
             AddPolicyToggle(scroll, ref sy, Lang.T("gm.pausewu"), Lang.T("gm.pausewu.sub"),
                 delegate { return gameMode.PauseWindowsUpdate; }, delegate(bool v) { gameMode.PauseWindowsUpdate = v; });
+            AddPolicyToggle(scroll, ref sy, Lang.T("set.pqos"), Lang.T("set.pqos.n"),
+                delegate { return gameMode.PresenceQosOff; }, delegate(bool v) { gameMode.PresenceQosOff = v; });
+            AddPolicyToggle(scroll, ref sy, Lang.T("set.awake"), Lang.T("set.awake.n"),
+                delegate { return gameMode.KeepAwake; }, delegate(bool v) { gameMode.KeepAwake = v; });
+            AddPolicyToggle(scroll, ref sy, Lang.T("set.overlay"), Lang.T("set.overlay.n"),
+                delegate { return gameMode.PowerOverlayMax; }, delegate(bool v) { gameMode.PowerOverlayMax = v; });
             RefreshPolicyPresentation();
         }
 

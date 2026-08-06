@@ -1,6 +1,10 @@
 @rem @author bdth 2074055628@qq.com
 @rem file: dev loop - kill running instance, rebuild, relaunch
 @echo off
+rem 记下宿主控制台原来的码页，退出前还原：直接改掉不还原会让调用方
+rem 交互式 PowerShell 的 PSReadLine 读键线程抛异常并崩掉整个终端
+for /f "tokens=2 delims=:" %%a in ('chcp') do set "PAVISE_OLDCP=%%a"
+set "PAVISE_OLDCP=%PAVISE_OLDCP: =%"
 chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
@@ -29,16 +33,19 @@ if /i "%MODE%"=="test" goto test
 call "%~dp0build.cmd" %OUT%
 if errorlevel 1 (
     echo 构建失败，未启动
+    call :restorecp
     exit /b 1
 )
 echo 启动 %OUT% ...
 start "" "%~dp0%OUT%"
+call :restorecp
 exit /b 0
 
 :test
 call "%~dp0build.cmd" Pavise.selftest.work.exe --selftest
 if errorlevel 1 (
     echo 构建失败，未运行自测
+    call :restorecp
     exit /b 1
 )
 set REPORT=%TEMP%\Pavise.selftest.txt
@@ -47,4 +54,9 @@ start /wait "" "%~dp0Pavise.selftest.work.exe" --selftest "%REPORT%"
 echo.
 findstr /b /c:"FAIL" /c:"TOTAL" "%REPORT%"
 echo 完整报告: %REPORT%
+call :restorecp
 exit /b 0
+
+:restorecp
+if defined PAVISE_OLDCP chcp %PAVISE_OLDCP% >nul 2>&1
+goto :eof

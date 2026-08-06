@@ -223,6 +223,45 @@ namespace PaviseApp
             return AddWhitelistRule(WhitelistRuleKind.ApplicationFamily, anchorExecutablePath);
         }
 
+        public bool AddWhitelistAuto(string executablePath)
+        {
+            return AddWhitelistRule(ResolveAutoKind(executablePath), executablePath);
+        }
+
+        internal static WhitelistRuleKind ResolveAutoKind(string executablePath)
+        {
+            return WhitelistRule.IsUnsafeFamilyAnchor(executablePath)
+                ? WhitelistRuleKind.ExactPath
+                : WhitelistRuleKind.ApplicationFamily;
+        }
+
+        public bool NarrowWhitelistRule(string key)
+        {
+            WhitelistRule found = null;
+            lock (sync)
+                foreach (WhitelistRule rule in whiteRules)
+                    if (rule.Key == key) { found = rule; break; }
+            if (found == null || found.Kind != WhitelistRuleKind.ApplicationFamily) return false;
+            if (!RemoveWhitelistRule(key)) return false;
+            if (AddWhitelistRule(WhitelistRuleKind.ExactPath, found.Value)) return true;
+            AddWhitelistRule(WhitelistRuleKind.ApplicationFamily, found.Value);
+            return false;
+        }
+
+        public bool WidenWhitelistRule(string key)
+        {
+            WhitelistRule found = null;
+            lock (sync)
+                foreach (WhitelistRule rule in whiteRules)
+                    if (rule.Key == key) { found = rule; break; }
+            if (found == null || found.Kind != WhitelistRuleKind.ExactPath) return false;
+            if (WhitelistRule.IsUnsafeFamilyAnchor(found.Value)) return false;
+            if (!RemoveWhitelistRule(key)) return false;
+            if (AddWhitelistRule(WhitelistRuleKind.ApplicationFamily, found.Value)) return true;
+            AddWhitelistRule(WhitelistRuleKind.ExactPath, found.Value);
+            return false;
+        }
+
         private bool AddWhitelistRule(WhitelistRuleKind kind, string value)
         {
             WhitelistRule rule;

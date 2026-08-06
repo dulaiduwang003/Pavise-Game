@@ -104,6 +104,12 @@ namespace PaviseApp
         private bool chillActive;
         private bool esyncActive;
         private bool risActive;
+        private volatile bool presenceQosOn;
+        private volatile bool awakeOn;
+        private volatile bool powerOverlayOn;
+        private bool pqosActive;
+        private bool awakeActive;
+        private bool overlayActive;
         private volatile bool killGameDvr;
         private volatile bool hzGuard;
         private volatile bool planSwitch;
@@ -204,6 +210,9 @@ namespace PaviseApp
             amdChillMode = Settings.LoadStr("AmdChill", "off");
             amdEnhSyncOn = Settings.Load("AmdEnhSync", false);
             amdRisOn = Settings.Load("AmdRis", false);
+            presenceQosOn = Settings.Load("GmPresenceQos", true);
+            awakeOn = Settings.Load("GmAwake", true);
+            powerOverlayOn = Settings.Load("GmPowerOverlay", false);
             killGameDvr = Settings.Load("GameDvrOff", true);
             hzGuard = Settings.Load("HzGuardOn", false);
             planSwitch = Settings.Load("PowerPlanOn", true);
@@ -418,6 +427,10 @@ namespace PaviseApp
         }
 
         public bool IsActive { get { lock (sync) return active; } }
+
+#if PAVISE_SELFTEST
+        internal void SimulateActiveForTest(bool value) { lock (sync) active = value; }
+#endif
 
         public string ActiveGame { get { lock (sync) return active ? activeGame : null; } }
 
@@ -692,6 +705,39 @@ namespace PaviseApp
             {
                 nvBgFrlOn = value; Settings.Save("NvBgFrl", value);
                 if (value) ClearEnvFuse("nvbg");
+                RequestPolicyApply();
+            }
+        }
+
+        public bool PresenceQosOff
+        {
+            get { return presenceQosOn; }
+            set
+            {
+                presenceQosOn = value; Settings.Save("GmPresenceQos", value);
+                if (value) ClearEnvFuse("pqos");
+                RequestPolicyApply();
+            }
+        }
+
+        public bool KeepAwake
+        {
+            get { return awakeOn; }
+            set
+            {
+                awakeOn = value; Settings.Save("GmAwake", value);
+                if (value) ClearEnvFuse("awake");
+                RequestPolicyApply();
+            }
+        }
+
+        public bool PowerOverlayMax
+        {
+            get { return powerOverlayOn; }
+            set
+            {
+                powerOverlayOn = value; Settings.Save("GmPowerOverlay", value);
+                if (value) ClearEnvFuse("overlay");
                 RequestPolicyApply();
             }
         }

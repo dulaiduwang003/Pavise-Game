@@ -83,6 +83,11 @@ namespace PaviseApp
                 RunNvProbe(args[1], args.Length >= 3 ? args[2] : null);
                 return true;
             }
+            if (args[0] == "--white-shot" && args.Length >= 2)
+            {
+                RunWhitelistShot(args[1]);
+                return true;
+            }
             if (args[0] == "--irq-map" && args.Length >= 2)
             {
                 RunIrqMap(args[1], args.Length >= 3 ? args[2] : null,
@@ -1357,6 +1362,11 @@ namespace PaviseApp
             test("GPU throttle: verdict needs enough samples and formats percentages", TestGpuThrottleSummary);
             test("ADLX: a machine without AMD driver degrades to safe no-ops", TestAdlxDegrade);
             test("ReBAR probe: PCI filtering, thresholds and a live window read", TestRebarProbe);
+            test("whitelist: scope is decided automatically, shell and script hosts never get family", TestWhitelistAutoScope);
+            test("whitelist: only exe and shortcut drops are accepted", TestWhitelistDropTargets);
+            test("whitelist: auto-add then narrow and widen keep one rule per program", TestWhitelistAutoAddAndReshape);
+            test("whitelist picker: system, anti-cheat and already-listed programs are hidden", TestRunningPickerHidesSystemAndDuplicates);
+            test("whitelist picker: memory sizes format correctly", TestMemoryFormatting);
             test("suppression: game-root containment is anchored on a path segment", () =>
             {
 

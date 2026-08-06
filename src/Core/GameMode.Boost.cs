@@ -23,7 +23,8 @@ namespace PaviseApp
             new HashSet<string>(StringComparer.Ordinal);
 
         internal static readonly string[] EnvKeys =
-            { "notif", "do", "hz", "fg", "svc", "mmcss", "dvr", "fx", "wu", "nvbg", "alag", "chill", "esync", "ris" };
+            { "notif", "do", "hz", "fg", "svc", "mmcss", "dvr", "fx", "wu", "nvbg", "alag", "chill", "esync", "ris",
+              "pqos", "awake", "overlay" };
 
         private static string EnvLabel(string key)
         {
@@ -43,6 +44,9 @@ namespace PaviseApp
                 case "chill": return "AMD Chill 限帧";
                 case "esync": return "AMD Enhanced Sync";
                 case "ris": return "AMD 锐化";
+                case "pqos": return "无输入降级关闭";
+                case "awake": return "息屏防护";
+                case "overlay": return "电源滑块最佳性能";
                 default: return key;
             }
         }
@@ -135,6 +139,9 @@ namespace PaviseApp
                 case "chill": amdChillMode = "off"; Settings.SaveStr("AmdChill", "off"); break;
                 case "esync": amdEnhSyncOn = false; Settings.Save("AmdEnhSync", false); break;
                 case "ris": amdRisOn = false; Settings.Save("AmdRis", false); break;
+                case "pqos": presenceQosOn = false; Settings.Save("GmPresenceQos", false); break;
+                case "awake": awakeOn = false; Settings.Save("GmAwake", false); break;
+                case "overlay": powerOverlayOn = false; Settings.Save("GmPowerOverlay", false); break;
             }
         }
 
@@ -176,6 +183,9 @@ namespace PaviseApp
                 delegate { return AdlxTweaks.ActivateChill(ResolveFrlFps(amdChillMode)); }, AdlxTweaks.RestoreChill);
             esyncActive = EnvStep("esync", amdEnhSyncOn, esyncActive, AdlxTweaks.ActivateEnhancedSync, AdlxTweaks.RestoreEnhancedSync);
             risActive = EnvStep("ris", amdRisOn, risActive, AdlxTweaks.ActivateRis, AdlxTweaks.RestoreRis);
+            pqosActive = EnvStep("pqos", presenceQosOn, pqosActive, PresenceQos.Activate, PresenceQos.Restore);
+            awakeActive = EnvStep("awake", awakeOn, awakeActive, DisplayAwake.Activate, DisplayAwake.Restore);
+            overlayActive = EnvStep("overlay", powerOverlayOn, overlayActive, PowerOverlay.Activate, PowerOverlay.Restore);
             if (standbySweepOn && !standbyPurged)
             {
                 standbyPurged = true;
@@ -322,7 +332,7 @@ namespace PaviseApp
 
         private bool EnvActive()
         {
-            return notifActive || doActive || hzActive || fgActive || svcActive || mmcssActive || dvrActive || fxActive || wuActive || nvbgActive || alagActive || chillActive || esyncActive || risActive || planActive || timerRaised;
+            return notifActive || doActive || hzActive || fgActive || svcActive || mmcssActive || dvrActive || fxActive || wuActive || nvbgActive || alagActive || chillActive || esyncActive || risActive || pqosActive || awakeActive || overlayActive || planActive || timerRaised;
         }
 
         private bool RestoreEnv()
@@ -343,6 +353,9 @@ namespace PaviseApp
             if (AdlxTweaks.RestoreChill()) chillActive = false; else ok = false;
             if (AdlxTweaks.RestoreEnhancedSync()) esyncActive = false; else ok = false;
             if (AdlxTweaks.RestoreRis()) risActive = false; else ok = false;
+            if (PresenceQos.Restore()) pqosActive = false; else ok = false;
+            if (DisplayAwake.Restore()) awakeActive = false; else ok = false;
+            if (PowerOverlay.Restore()) overlayActive = false; else ok = false;
             if (PowerPlan.Restore())
             {
                 planActive = false;

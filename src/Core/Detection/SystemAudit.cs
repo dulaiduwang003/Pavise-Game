@@ -78,6 +78,22 @@ namespace PaviseApp
 
         [DllImport("kernel32.dll")] private static extern bool GetSystemPowerStatus(out SystemPowerStatus status);
 
+        public const byte EnergySaverOn = 1;
+
+        public static bool TryEnergySaver(out bool on)
+        {
+            on = false;
+            try
+            {
+                SystemPowerStatus status;
+                if (!GetSystemPowerStatus(out status)) return false;
+                if (status.SystemStatusFlag > 1) return false;
+                on = status.SystemStatusFlag == EnergySaverOn;
+                return true;
+            }
+            catch { return false; }
+        }
+
         public static bool TryMemory(out double usedRatio, out double totalGb, out double availGb)
         {
             usedRatio = 0; totalGb = 0; availGb = 0;
@@ -433,6 +449,34 @@ namespace PaviseApp
                     Warn = throttled
                 });
             }
+
+            bool saverOn;
+            if (TryEnergySaver(out saverOn))
+            {
+                report.Machine.Add(new AuditRow
+                {
+                    Name = "节能模式",
+                    Value = saverOn ? "开着" : "关着",
+                    Note = saverOn
+                        ? "系统正在省电：会限亮度、拦后台，而且电源模式被锁住改不了，Pavise 的电源优化会失效。打游戏前去设置里关掉"
+                        : "没有拦着电源优化",
+                    Evidence = EvMeasuredLocal,
+                    Warn = saverOn
+                });
+            }
+
+            bool presenceOff = false;
+            try { presenceOff = PresenceQos.CurrentlyDisabled(); } catch { }
+            report.Machine.Add(new AuditRow
+            {
+                Name = "无输入降级",
+                Value = presenceOff ? "已关闭" : "生效中",
+                Note = presenceOff
+                    ? "长时间不碰键鼠也不会把前台程序降级"
+                    : "系统默认会在长时间没有键鼠输入后给前台程序降级——手柄游戏、过场动画、挂机正好中招。策略页可以关掉它",
+                Evidence = EvMeasuredLocal,
+                Warn = false
+            });
 
             bool rebarOn = false;
             ulong rebarWindow = 0;

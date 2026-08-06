@@ -92,6 +92,12 @@ namespace PaviseApp
             catch { return false; }
         }
 
+        public static string ResolveShortcut(string shortcutPath)
+        {
+            string target;
+            return TryResolveShortcut(shortcutPath, out target) ? target : null;
+        }
+
         private static bool TryResolveShortcut(string shortcutPath, out string target)
         {
             target = null;

@@ -461,7 +461,11 @@ namespace PaviseApp
         }
 
         public const int PROCESS_SET_INFORMATION = 0x0200;
+        public const int PROCESS_TERMINATE = 0x0001;
         public const int PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool TerminateProcess(IntPtr process, uint exitCode);
         public const int PROCESS_SET_LIMITED_INFORMATION = 0x2000;
         public const int PROCESS_SET_QUOTA = 0x0100;
         public const int PROCESS_SUSPEND_RESUME = 0x0800;
