@@ -69,8 +69,6 @@ namespace PaviseApp
             sy += 10; Section(scroll, Lang.T("v15.policy.extras"), 6, sy); sy += 24;
             AddPolicyToggle(scroll, ref sy, Lang.T("gm.idledisable"), Lang.T("gm.idledisable.sub"),
                 delegate { return gameMode.IdleStateDisable; }, delegate(bool v) { gameMode.IdleStateDisable = v; });
-            AddPolicyToggle(scroll, ref sy, Lang.T("gm.cpufloor"), Lang.T("gm.cpufloor.sub"),
-                delegate { return gameMode.CpuFloorLock; }, delegate(bool v) { gameMode.CpuFloorLock = v; });
             AddPolicyToggle(scroll, ref sy, Lang.T("gm.visualfx"), Lang.T("gm.visualfx.sub"),
                 delegate { return gameMode.VisualFxDowngrade; }, delegate(bool v) { gameMode.VisualFxDowngrade = v; });
             AddPolicyToggle(scroll, ref sy, Lang.T("set.trim"), Lang.T("v15.trim.sub"),
@@ -83,8 +81,6 @@ namespace PaviseApp
                 delegate { return gameMode.PresenceQosOff; }, delegate(bool v) { gameMode.PresenceQosOff = v; });
             AddPolicyToggle(scroll, ref sy, Lang.T("set.awake"), Lang.T("set.awake.n"),
                 delegate { return gameMode.KeepAwake; }, delegate(bool v) { gameMode.KeepAwake = v; });
-            AddPolicyToggle(scroll, ref sy, Lang.T("set.overlay"), Lang.T("set.overlay.n"),
-                delegate { return gameMode.PowerOverlayMax; }, delegate(bool v) { gameMode.PowerOverlayMax = v; });
             RefreshPolicyPresentation();
         }
 

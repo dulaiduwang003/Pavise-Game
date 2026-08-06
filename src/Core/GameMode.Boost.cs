@@ -137,7 +137,7 @@ namespace PaviseApp
                 case "ris": amdRisOn = false; Settings.Save("AmdRis", false); break;
                 case "pqos": presenceQosOn = false; Settings.Save("GmPresenceQos", false); break;
                 case "awake": awakeOn = false; Settings.Save("GmAwake", false); break;
-                case "overlay": powerOverlayOn = false; Settings.Save("GmPowerOverlay", false); break;
+                case "overlay": break;
             }
         }
 
@@ -177,22 +177,22 @@ namespace PaviseApp
             risActive = EnvStep("ris", amdRisOn, risActive, AdlxTweaks.ActivateRis, AdlxTweaks.RestoreRis);
             pqosActive = EnvStep("pqos", presenceQosOn, pqosActive, PresenceQos.Activate, PresenceQos.Restore);
             awakeActive = EnvStep("awake", awakeOn, awakeActive, DisplayAwake.Activate, DisplayAwake.Restore);
-            overlayActive = EnvStep("overlay", powerOverlayOn, overlayActive, PowerOverlay.Activate, PowerOverlay.Restore);
+            bool aggressivePower = IsAggressive(mode, aggressiveOn);
+            overlayActive = EnvStep("overlay", planSwitch && aggressivePower, overlayActive, PowerOverlay.Activate, PowerOverlay.Restore);
             if (standbySweepOn && !standbyPurged)
             {
                 standbyPurged = true;
                 StandbySweep.PurgeOnce();
             }
-            bool aggressivePower = IsAggressive(mode, aggressiveOn);
             int powerKey = (aggressivePower ? 1 : 0)
-                | (idleDisableOn ? 2 : 0) | (planSwitch ? 4 : 0) | (cpuFloorLockOn ? 8 : 0);
+                | (idleDisableOn ? 2 : 0) | (planSwitch ? 4 : 0);
             long nowTicks = DateTime.UtcNow.Ticks;
             if (planSwitch)
             {
                 if (!planActive || powerKey != lastPowerPolicyKey
                     || nowTicks >= nextPowerAuditTicks)
                 {
-                    bool planOk = PowerPlan.Enforce(aggressivePower, idleDisableOn, cpuFloorLockOn);
+                    bool planOk = PowerPlan.Enforce(aggressivePower, idleDisableOn);
                     planActive = true;
                     lastPowerPolicyKey = powerKey;
                     if (planOk)

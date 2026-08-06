@@ -109,7 +109,6 @@ namespace PaviseApp
         private bool risActive;
         private volatile bool presenceQosOn;
         private volatile bool awakeOn;
-        private volatile bool powerOverlayOn;
         private bool pqosActive;
         private bool awakeActive;
         private bool overlayActive;
@@ -117,7 +116,6 @@ namespace PaviseApp
         private volatile bool hzGuard;
         private volatile bool planSwitch;
         private volatile bool idleDisableOn;
-        private volatile bool cpuFloorLockOn;
         private volatile bool visualFxOn;
         private volatile bool standbySweepOn;
         private volatile bool pauseUpdateOn;
@@ -200,7 +198,6 @@ namespace PaviseApp
             svcPauseOn = Settings.Load("GmSvcPause", false);
             notifQuiet = Settings.Load("NotifQuiet", false);
             idleDisableOn = Settings.Load("GmIdleDisable", true);
-            cpuFloorLockOn = Settings.Load("GmCpuFloorLock", false);
             visualFxOn = Settings.Load("GmVisualFx", false);
             standbySweepOn = Settings.Load("GmStandbySweep", false);
             pauseUpdateOn = Settings.Load("GmPauseUpdate", false);
@@ -221,7 +218,6 @@ namespace PaviseApp
             amdRisOn = Settings.Load("AmdRis", false);
             presenceQosOn = Settings.Load("GmPresenceQos", true);
             awakeOn = Settings.Load("GmAwake", true);
-            powerOverlayOn = Settings.Load("GmPowerOverlay", false);
             killGameDvr = Settings.Load("GameDvrOff", true);
             hzGuard = Settings.Load("HzGuardOn", false);
             planSwitch = Settings.Load("PowerPlanOn", true);
@@ -559,12 +555,6 @@ namespace PaviseApp
             set { idleDisableOn = value; Settings.Save("GmIdleDisable", value); RequestPolicyApply(); }
         }
 
-        public bool CpuFloorLock
-        {
-            get { return cpuFloorLockOn; }
-            set { cpuFloorLockOn = value; Settings.Save("GmCpuFloorLock", value); RequestPolicyApply(); }
-        }
-
         public bool VisualFxDowngrade
         {
             get { return visualFxOn; }
@@ -735,17 +725,6 @@ namespace PaviseApp
             }
         }
 
-        public bool PowerOverlayMax
-        {
-            get { return powerOverlayOn; }
-            set
-            {
-                powerOverlayOn = value; Settings.Save("GmPowerOverlay", value);
-                if (value) ClearEnvFuse("overlay");
-                RequestPolicyApply();
-            }
-        }
-
         public bool AmdAntiLag
         {
             get { return amdAntiLagOn; }
@@ -835,7 +814,7 @@ namespace PaviseApp
             set
             {
                 planSwitch = value; Settings.Save("PowerPlanOn", value);
-                if (value) SaveCounter(PowerFailStreakKey, 0);
+                if (value) { SaveCounter(PowerFailStreakKey, 0); ClearEnvFuse("overlay"); }
                 RequestPolicyApply();
             }
         }

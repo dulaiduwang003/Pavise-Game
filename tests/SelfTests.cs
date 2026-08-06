@@ -2032,6 +2032,15 @@ namespace PaviseApp
             test("网络限流：只有超出范围的值才标记为需修复", TestNetThrottleRangeJudgement);
             test("设备电源：只改动禁止断电这一位", TestDevicePowerBitMerge);
             test("MSI 模式：扫描只产出 PCI 显卡与网卡设备", TestMsiScanClassFilter);
+            test("竞技电源：参数表没有重复的 GUID 与项名", TestPowerKnobTableHasNoDuplicates);
+            test("竞技电源：竞技档与常规档该不同的项确实不同", TestPowerArenaDiffersFromCalm);
+            test("竞技电源：真机写入后能原样读回竞技档与常规档", TestPowerPlanWritesArenaValues);
+            test("竞技电源：方案改名写得进也读得出", TestPowerPlanNameRoundtrip);
+            test("竞技电源：删除临时方案不动当前激活的方案", TestPowerPlanDeleteLeavesActiveIntact);
+            test("竞技电源：重复的同名方案会被清理到只剩一个", TestPowerPlanPurgesDuplicateClones);
+            test("竞技电源：清理绝不碰用户自己的方案", TestPowerPlanPurgeSparesForeignSchemes);
+            test("竞技电源：旧版遗留的方案副本会被迁移删除", TestPowerPlanMigratesLegacyClone);
+            test("竞技电源：反复解析目标计划只会有一个方案", TestPowerPlanResolveIsIdempotent);
             }
             finally { try { Directory.Delete(root, true); } catch { } }
 
