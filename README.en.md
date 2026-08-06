@@ -275,4 +275,4 @@ Commercial use requires prior written authorisation. Email 2074055628@qq.com.
 
 **The "Pavise" name and icon are not covered by the licence grant.** A modified version must be released under your own name and icon, not as Pavise — I cannot verify what a modified build does, and sharing the name would send the responsibility to the wrong place.
 
-The latest version is always free on [GitHub](https://github.com/dulaiduwang003/Pavise-Game). **If you paid for it, you were scammed** — ask for a refund, then download it for free from the link above.
+The latest version and source updates are always provided free in the WeChat and QQ groups (QQ group 1051472054; WeChat Ssssssstyle, mention Pavise). **If you paid for it, you were scammed** — ask for a refund, then get it for free from the groups.

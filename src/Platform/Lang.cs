@@ -361,7 +361,7 @@ namespace PaviseApp
             { "contact.copied", new[]{ "已复制" } },
             { "contact.copyfail", new[]{ "复制失败" } },
             { "contact.free", new[]{ "Pavise 完全免费，禁止倒卖" } },
-            { "contact.free.n", new[]{ "最新版永远在 GitHub 免费提供。如果你是花钱买到的，那是被骗了——去要求退款。" } },
+            { "contact.free.n", new[]{ "最新版和源码更新永远在微信群、QQ 群免费提供。花钱买到的是被骗了——去要求退款。" } },
             { "contact.dontshow", new[]{ "不再显示（设置页可重新开启）" } },
             { "contact.enter", new[]{ "进入 Pavise" } },
             { "set.contact", new[]{ "启动时显示反馈弹窗" } },
