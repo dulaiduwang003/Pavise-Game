@@ -71,6 +71,7 @@ namespace PaviseApp
         public Action<PerformancePreset> Chosen;
 
         public ModeChoice(PerformancePreset value) { mode = value; Bg = Theme.Card; }
+        public PerformancePreset Mode { get { return mode; } }
         public void SetSelected(bool value) { if (selected != value) { selected = value; Invalidate(); } }
 
         protected override void OnClick(EventArgs e)
@@ -155,7 +156,7 @@ namespace PaviseApp
 
         public void Sync(PerformancePreset global)
         {
-            for (int i = 0; i < choices.Length; i++) choices[i].SetSelected((int)global == i);
+            for (int i = 0; i < choices.Length; i++) choices[i].SetSelected(choices[i].Mode == global);
             source.Text = Lang.T("mode.global.sub");
         }
     }

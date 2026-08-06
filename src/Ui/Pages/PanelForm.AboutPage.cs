@@ -34,7 +34,7 @@ namespace PaviseApp
 
             string[] rowKeys = { "about.author", "about.wechat", "about.repo", "about.lic" };
             string[] rowVals = { App.Author + " · " + App.AuthorEmail, App.WeChat,
-                App.RepoUrl.Replace("https://", ""), "GNU GPL v3.0" };
+                App.RepoUrl.Replace("https://", ""), Lang.T("about.lic.value") };
             for (int i = 0; i < 4; i++)
             {
                 int ry = 44 + i * 42;

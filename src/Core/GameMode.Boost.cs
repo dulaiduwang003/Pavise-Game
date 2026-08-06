@@ -1,4 +1,4 @@
-﻿// @author bdth 2074055628@qq.com
+// @author bdth 2074055628@qq.com
 // 文件用途 负责游戏提优 环境调整和退出恢复
 
 using System;
@@ -23,7 +23,8 @@ namespace PaviseApp
             new HashSet<string>(StringComparer.Ordinal);
 
         internal static readonly string[] EnvKeys =
-            { "notif", "do", "hz", "fg", "svc", "mmcss", "dvr", "fx", "wu" };
+            { "notif", "do", "hz", "svc", "dvr", "fx", "wu", "nvbg", "alag", "chill", "esync", "ris",
+              "pqos", "awake", "overlay" };
 
         private static string EnvLabel(string key)
         {
@@ -32,12 +33,18 @@ namespace PaviseApp
                 case "notif": return "通知免打扰";
                 case "do": return "后台下载暂停";
                 case "hz": return "刷新率守护";
-                case "fg": return "前台调度稳定";
                 case "svc": return "服务暂停";
-                case "mmcss": return "MMCSS 调度";
                 case "dvr": return "Game DVR 关闭";
                 case "fx": return "视觉效果降级";
                 case "wu": return "Windows 更新暂停";
+                case "nvbg": return "后台硬限帧";
+                case "alag": return "AMD Anti-Lag";
+                case "chill": return "AMD Chill 限帧";
+                case "esync": return "AMD Enhanced Sync";
+                case "ris": return "AMD 锐化";
+                case "pqos": return "无输入降级关闭";
+                case "awake": return "息屏防护";
+                case "overlay": return "电源滑块最佳性能";
                 default: return key;
             }
         }
@@ -119,12 +126,18 @@ namespace PaviseApp
                 case "notif": notifQuiet = false; Settings.Save("NotifQuiet", false); break;
                 case "do": pauseDlOn = false; Settings.Save("GmPauseDl", false); break;
                 case "hz": hzGuard = false; Settings.Save("HzGuardOn", false); break;
-                case "fg": fgBoostOn = false; Settings.Save("GmFgBoost", false); break;
                 case "svc": svcPauseOn = false; Settings.Save("GmSvcPause", false); break;
-                case "mmcss": mmcssOn = false; Settings.Save("GmMmcss", false); break;
                 case "dvr": killGameDvr = false; Settings.Save("GameDvrOff", false); break;
                 case "fx": visualFxOn = false; Settings.Save("GmVisualFx", false); break;
                 case "wu": pauseUpdateOn = false; Settings.Save("GmPauseUpdate", false); break;
+                case "nvbg": nvBgFrlOn = false; Settings.Save("NvBgFrl", false); break;
+                case "alag": amdAntiLagOn = false; Settings.Save("AmdAntiLag", false); break;
+                case "chill": amdChillMode = "off"; Settings.SaveStr("AmdChill", "off"); break;
+                case "esync": amdEnhSyncOn = false; Settings.Save("AmdEnhSync", false); break;
+                case "ris": amdRisOn = false; Settings.Save("AmdRis", false); break;
+                case "pqos": presenceQosOn = false; Settings.Save("GmPresenceQos", false); break;
+                case "awake": awakeOn = false; Settings.Save("GmAwake", false); break;
+                case "overlay": break;
             }
         }
 
@@ -147,25 +160,30 @@ namespace PaviseApp
             bool competitive = mode == PerformancePreset.Competitive;
             bool custom = mode == PerformancePreset.Custom;
             bool usePauseDl = custom ? pauseDlOn : competitive;
-            bool useFg = custom ? fgBoostOn : true;
             bool useSvc = custom ? svcPauseOn : false;
-            bool useMmcss = custom ? mmcssOn : competitive;
             bool useDvr = custom ? killGameDvr : competitive;
             notifActive = EnvStep("notif", notifQuiet, notifActive, Notif.Quiet, Notif.Restore);
             doActive = EnvStep("do", usePauseDl, doActive, DoTweak.Activate, DoTweak.Restore);
             hzActive = EnvStep("hz", hzGuard, hzActive, DisplayGuard.Activate, DisplayGuard.Restore);
-            fgActive = EnvStep("fg", useFg, fgActive, FgBoost.Activate, FgBoost.Restore);
             svcActive = EnvStep("svc", useSvc, svcActive, SvcPause.Activate, SvcPause.Restore);
-            mmcssActive = EnvStep("mmcss", useMmcss, mmcssActive, Mmcss.Activate, Mmcss.Restore);
             dvrActive = EnvStep("dvr", useDvr, dvrActive, GameDvr.Activate, GameDvr.Restore);
             fxActive = EnvStep("fx", visualFxOn, fxActive, VisualFx.Activate, VisualFx.Restore);
             wuActive = EnvStep("wu", pauseUpdateOn, wuActive, UpdatePause.Activate, UpdatePause.Restore);
+            nvbgActive = EnvStep("nvbg", nvBgFrlOn, nvbgActive, NvGlobalTweaks.Activate, NvGlobalTweaks.Restore);
+            alagActive = EnvStep("alag", amdAntiLagOn, alagActive, AdlxTweaks.ActivateAntiLag, AdlxTweaks.RestoreAntiLag);
+            chillActive = EnvStep("chill", ResolveFrlFps(amdChillMode) > 0, chillActive,
+                delegate { return AdlxTweaks.ActivateChill(ResolveFrlFps(amdChillMode)); }, AdlxTweaks.RestoreChill);
+            esyncActive = EnvStep("esync", amdEnhSyncOn, esyncActive, AdlxTweaks.ActivateEnhancedSync, AdlxTweaks.RestoreEnhancedSync);
+            risActive = EnvStep("ris", amdRisOn, risActive, AdlxTweaks.ActivateRis, AdlxTweaks.RestoreRis);
+            pqosActive = EnvStep("pqos", presenceQosOn, pqosActive, PresenceQos.Activate, PresenceQos.Restore);
+            awakeActive = EnvStep("awake", awakeOn, awakeActive, DisplayAwake.Activate, DisplayAwake.Restore);
+            bool aggressivePower = IsAggressive(mode, aggressiveOn);
+            overlayActive = EnvStep("overlay", planSwitch && aggressivePower, overlayActive, PowerOverlay.Activate, PowerOverlay.Restore);
             if (standbySweepOn && !standbyPurged)
             {
                 standbyPurged = true;
                 StandbySweep.PurgeOnce();
             }
-            bool aggressivePower = IsAggressive(mode, aggressiveOn);
             int powerKey = (aggressivePower ? 1 : 0)
                 | (idleDisableOn ? 2 : 0) | (planSwitch ? 4 : 0);
             long nowTicks = DateTime.UtcNow.Ticks;
@@ -251,19 +269,27 @@ namespace PaviseApp
             Settings.SaveStr(key, value.ToString());
         }
 
-        private void HandleNvTweakOutcome(List<string> failed, bool wantPState, bool wantFrl, bool wantPreRender)
+        private void HandleNvTweakOutcome(List<string> failed, NvGamePlan plan)
         {
-            if (failed == null) return;
-            NoteNvKey(NvDrsTweaks.KeyPState, wantPState, failed);
-            NoteNvKey(NvDrsTweaks.KeyFrl, wantFrl, failed);
-            NoteNvKey(NvDrsTweaks.KeyPreRender, wantPreRender, failed);
+            if (failed == null || plan == null) return;
+            NoteNvKey(NvDrsTweaks.KeyPState, plan.MaxPerf, failed.Contains(NvDrsTweaks.KeyPState));
+            NoteNvKey(NvDrsTweaks.KeyFrl, plan.FrlFps > 0, failed.Contains(NvDrsTweaks.KeyFrl));
+            NoteNvKey(NvDrsTweaks.KeyPreRender, plan.LowLatency, failed.Contains(NvDrsTweaks.KeyPreRender));
+            NoteNvKey(NvDrsTweaks.KeyAnsel, plan.AnselOff, failed.Contains(NvDrsTweaks.KeyAnsel));
+            NoteNvKey(NvDrsTweaks.KeyRebarFeat, plan.Rebar,
+                NvDrsTweaks.ContainsAny(failed, NvDrsTweaks.RebarKeys));
+            bool dlssWanted = (plan.DlssMode == "latest" || plan.DlssMode == "j" || plan.DlssMode == "k")
+                && NvDrsTweaks.DlssOverrideSupported();
+            NoteNvKey(NvDrsTweaks.KeyDlssOvr, dlssWanted,
+                NvDrsTweaks.ContainsAny(failed, NvDrsTweaks.DlssKeys));
+            NoteNvKey(NvDrsTweaks.KeyBattFps, plan.BattFull, failed.Contains(NvDrsTweaks.KeyBattFps));
         }
 
-        private void NoteNvKey(string key, bool wanted, List<string> failed)
+        private void NoteNvKey(string key, bool wanted, bool didFail)
         {
             if (!wanted) return;
             string counterKey = "NvFailStreak_" + key;
-            if (!failed.Contains(key))
+            if (!didFail)
             {
                 if (LoadCounter(counterKey) != 0) SaveCounter(counterKey, 0);
                 return;
@@ -274,6 +300,10 @@ namespace PaviseApp
             string label;
             if (key == NvDrsTweaks.KeyPState) { nvMaxPerf = false; Settings.Save("NvMaxPerf", false); label = "NVIDIA 电源最高性能"; }
             else if (key == NvDrsTweaks.KeyFrl) { nvFrlMode = "off"; Settings.SaveStr("NvFrl", "off"); label = "NVIDIA 帧率上限"; }
+            else if (key == NvDrsTweaks.KeyAnsel) { nvAnselOff = false; Settings.Save("NvAnselOff", false); label = "NVIDIA Ansel 关闭"; }
+            else if (key == NvDrsTweaks.KeyRebarFeat) { nvRebarOn = false; Settings.Save("NvRebar", false); label = "NVIDIA ReBAR 强开"; }
+            else if (key == NvDrsTweaks.KeyDlssOvr) { nvDlssMode = "off"; Settings.SaveStr("NvDlss", "off"); label = "NVIDIA DLSS 覆写"; }
+            else if (key == NvDrsTweaks.KeyBattFps) { nvBattFull = false; Settings.Save("NvBattFull", false); label = "NVIDIA 电池满血"; }
             else { nvLowLatency = false; Settings.Save("NvLowLatency", false); label = "NVIDIA 低延迟"; }
             Logger.Log("「" + label + "」连续 " + EnvFuseAttempts
                 + " 次写入失败，已自动关闭该开关；重新打开即恢复尝试");
@@ -294,7 +324,7 @@ namespace PaviseApp
 
         private bool EnvActive()
         {
-            return notifActive || doActive || hzActive || fgActive || svcActive || mmcssActive || dvrActive || fxActive || wuActive || planActive || timerRaised;
+            return notifActive || doActive || hzActive || svcActive || dvrActive || fxActive || wuActive || nvbgActive || alagActive || chillActive || esyncActive || risActive || pqosActive || awakeActive || overlayActive || planActive || timerRaised;
         }
 
         private bool RestoreEnv()
@@ -304,12 +334,18 @@ namespace PaviseApp
             if (Notif.Restore()) notifActive = false; else ok = false;
             if (DoTweak.Restore()) doActive = false; else ok = false;
             if (DisplayGuard.Restore()) hzActive = false; else ok = false;
-            if (FgBoost.Restore()) fgActive = false; else ok = false;
             if (SvcPause.Restore()) svcActive = false; else ok = false;
-            if (Mmcss.Restore()) mmcssActive = false; else ok = false;
             if (GameDvr.Restore()) dvrActive = false; else ok = false;
             if (VisualFx.Restore()) fxActive = false; else ok = false;
             if (UpdatePause.Restore()) wuActive = false; else ok = false;
+            if (NvGlobalTweaks.Restore()) nvbgActive = false; else ok = false;
+            if (AdlxTweaks.RestoreAntiLag()) alagActive = false; else ok = false;
+            if (AdlxTweaks.RestoreChill()) chillActive = false; else ok = false;
+            if (AdlxTweaks.RestoreEnhancedSync()) esyncActive = false; else ok = false;
+            if (AdlxTweaks.RestoreRis()) risActive = false; else ok = false;
+            if (PresenceQos.Restore()) pqosActive = false; else ok = false;
+            if (DisplayAwake.Restore()) awakeActive = false; else ok = false;
+            if (PowerOverlay.Restore()) overlayActive = false; else ok = false;
             if (PowerPlan.Restore())
             {
                 planActive = false;
@@ -331,33 +367,33 @@ namespace PaviseApp
 
         private void ReleaseBackground()
         {
+            ReleaseBackground("后台压制已关闭");
+        }
+
+        private int ReleaseBackground(string reasonPrefix)
+        {
             pressure.Clear();
             freezeDwell.Clear();
-            if (!core.AnyWith(SuppressReason.Background)) return;
+            if (!core.AnyWith(SuppressReason.Background)) return 0;
             int n = 0;
             foreach (int pid in core.PidsWith(SuppressReason.Background))
-                if (core.Release(pid, SuppressReason.Background)) { ReportUntrack(pid); n++; }
-            if (n > 0) Logger.Log("后台压制已关闭：解除 " + n + " 个进程的压制（个别被句柄保护的会自动补还原）");
+                if (core.Release(pid, SuppressReason.Background)) { ReportSeal(pid); n++; }
+            if (n > 0) Logger.Log(reasonPrefix + "：解除 " + n + " 个进程的压制（个别被句柄保护的会自动补还原）");
+            return n;
         }
 
         private void Boost(Process[] all)
         {
             var live = new HashSet<int>();
             PerformancePreset mode = ActivePreset;
-            bool aggressive = IsAggressive(mode, aggressiveOn);
-            bool useStrict = (strictCoreOn || mode == PerformancePreset.Competitive)
-                && CpuTopology.HasSafeBackgroundPartition();
-            ulong avoidMask = 0;
-            if (useStrict && aggressive)
-            {
-                dpcSampler.Sample();
-                avoidMask = dpcSampler.NoisyPhysicalMask;
-            }
-            ulong desiredMask = (useStrict ? strictMask : gameMask) & ~avoidMask;
-            if (desiredMask == 0) desiredMask = useStrict ? strictMask : gameMask;
+            bool useStrict = strictCoreOn && CpuTopology.HasSafeBackgroundPartition();
+            ulong desiredMask = useStrict ? strictMask : gameMask;
             int rendererPid = -1;
             long rendererCreation = 0;
             string rendererName = null;
+            string rendererPath = null;
+            string rendererProfileId = null;
+            bool rendererLearnable = false;
             lock (sync)
                 if (activeDetection != null && activeDetection.RendererCandidateSelected)
                 {
@@ -366,6 +402,13 @@ namespace PaviseApp
                         activeDetection.RendererCreation;
                     rendererName =
                         activeDetection.RendererName;
+                    rendererPath =
+                        activeDetection.RendererPath;
+                    rendererProfileId =
+                        activeDetection.Profile != null
+                            ? activeDetection.Profile.Id : null;
+                    rendererLearnable =
+                        activeDetection.RendererLearnable;
                 }
             bool staleBoost = false;
             lock (sync)
@@ -390,21 +433,24 @@ namespace PaviseApp
                     int pid = p.Id;
                     live.Add(pid);
                     if (rendererPid <= 0 || pid != rendererPid) continue;
-                    bool known, retryEco, needTweak, needPlacement, auditDue;
+                    bool known, retryEco, needTweak, needPlacement, auditDue, stripped;
                     lock (sync)
                     {
+                        stripped = boostHandleStripped.Contains(pid);
                         known = gameBoost.ContainsKey(pid);
-                        retryEco = boostFail.ContainsKey(pid);
+                        retryEco = boostFail.ContainsKey(pid) && !boostEcoGaveUp.Contains(pid);
                         needTweak = (gpuHighPerf || disableFso || nvMaxPerf || nvLowLatency || nvFrlMode != "off")
                             && !tweakApplied.Contains(pid);
                         ulong placed; bool placedStrict;
-                        needPlacement = !gamePlacement.TryGetValue(pid, out placed) || placed != desiredMask
-                            || !gamePlacementStrict.TryGetValue(pid, out placedStrict) || placedStrict != useStrict;
+                        needPlacement = !placementGaveUp.Contains(pid)
+                            && (!gamePlacement.TryGetValue(pid, out placed) || placed != desiredMask
+                                || !gamePlacementStrict.TryGetValue(pid, out placedStrict) || placedStrict != useStrict);
                         long nextAudit;
                         auditDue = !known || retryEco || needTweak || needPlacement
                             || !boostStateVerified.Contains(pid)
                             || !gameBoostNextAudit.TryGetValue(pid, out nextAudit)
                             || DateTime.UtcNow.Ticks >= nextAudit;
+                        if (stripped) auditDue = needTweak;
                     }
                     if (!auditDue) continue;
                     IntPtr h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_SET_LIMITED_INFORMATION | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
@@ -412,7 +458,7 @@ namespace PaviseApp
                     {
                         bool firstDeny;
                         lock (sync) firstDeny = boostDenied.Add(pid);
-                        if (firstDeny) Logger.Log("游戏提优：" + rendererName + " (pid " + pid + ") 打不开句柄（多半被反作弊保护），本体提优跳过；后台压制不受影响");
+                        if (firstDeny) Logger.Log("游戏提优：" + rendererName + " (pid " + pid + ") 打不开句柄，本体提优跳过，后台压制不受影响");
                         if (ifeoOn && boostOn) IfeoBoost.EnsureForGame(rendererName);
                         continue;
                     }
@@ -446,6 +492,8 @@ namespace PaviseApp
                                     gamePlacementStrict.Remove(pid); boostFail.Remove(pid);
                                     boostStateWarned.Remove(pid); boostStateVerified.Remove(pid);
                                     gameBoostNextAudit.Remove(pid);
+                                    boostHandleStripped.Remove(pid); boostEcoGaveUp.Remove(pid);
+                                    placementFail.Remove(pid); placementGaveUp.Remove(pid);
                                     tweakApplied.Remove(pid); reused = true; known = false;
                                 }
                             if (reused)
@@ -499,7 +547,8 @@ namespace PaviseApp
                                 QoSControl = oqc, QoSState = oqs };
                             lock (sync) gameBoost[pid] = snap;
                             newlyTracked = true;
-                            FrameEvidence.NoteRendererPid(pid, rendererName);
+                            if (rendererLearnable)
+                                TryLearnRenderer(rendererProfileId, rendererPath, rendererName);
                             gpuOk = gpuKnown && ApplyAndVerifyGpuBoost(h);
                             lock (sync) { if (gpuKnown) gameGpu[pid] = gpuOld; }
                         }
@@ -513,6 +562,28 @@ namespace PaviseApp
                         uint actualPriority;
                         int actualIo, writeError;
                         bool stateOk = ApplyAndVerifyBoostState(h, out actualPriority, out actualIo, out writeError);
+
+                        uint grantedAccess = 0;
+                        bool handleStripped = !stateOk
+                            && Native.HandleWriteAccessStripped(h, out grantedAccess);
+                        if (handleStripped)
+                        {
+                            bool firstStrip;
+                            lock (sync)
+                            {
+                                firstStrip = boostHandleStripped.Add(pid);
+                                boostStateVerified.Remove(pid);
+                                boostFail.Remove(pid);
+                                placementFail.Remove(pid);
+                                placementGaveUp.Add(pid);
+                                boostEcoGaveUp.Add(pid);
+                                gamePlacement.Remove(pid);
+                                gamePlacementStrict.Remove(pid);
+                            }
+                            if (firstStrip) OnGameHandleStripped(pid, rendererName, grantedAccess);
+                            if (!needTweak) continue;
+                        }
+
                         bool firstVerified = false, firstStateWarning = false;
                         lock (sync)
                         {
@@ -532,7 +603,7 @@ namespace PaviseApp
                                     DateTime.UtcNow.AddSeconds(4).Ticks;
                             }
                         }
-                        if (!stateOk && firstStateWarning)
+                        if (!stateOk && firstStateWarning && !handleStripped)
                             Logger.Log("游戏提优失败：" + rendererName + " (pid " + pid + ") 回读仍为优先级 0x"
                                 + actualPriority.ToString("X") + " / IO " + actualIo + "，错误 " + writeError + "；下一轮继续纠偏");
 
@@ -545,7 +616,7 @@ namespace PaviseApp
                             bool placementOk = Native.RestoreCpuSetsVerified(h, original.CpuSets);
                             if (!CpuTopology.MultiGroup)
                                 placementOk &= Native.SetProcessAffinityMask(h, (UIntPtr)(original.Aff != 0 ? original.Aff : allMask));
-                            uint[] ids = CpuTopology.AdaptiveGameCpuSetIds(useStrict, avoidMask);
+                            uint[] ids = CpuTopology.AdaptiveGameCpuSetIds(useStrict);
                             bool soft = false;
                             bool placementUnavailable = false;
                             if (useStrict || desiredMask != allMask)
@@ -572,37 +643,64 @@ namespace PaviseApp
                             }
                             if (soft) placementOk = true;
                             if (placementUnavailable) placementOk = true;
+                            int placeTries = 0;
+                            bool placementNowGaveUp = false, firstPlacementWarning = false;
                             lock (sync)
                             {
-                                if (placementOk) { gamePlacement[pid] = desiredMask; gamePlacementStrict[pid] = useStrict; }
-                                else { gamePlacement.Remove(pid); gamePlacementStrict.Remove(pid); }
+                                if (placementOk)
+                                {
+                                    gamePlacement[pid] = desiredMask; gamePlacementStrict[pid] = useStrict;
+                                    placementFail.Remove(pid); placementGaveUp.Remove(pid);
+                                }
+                                else
+                                {
+                                    gamePlacement.Remove(pid); gamePlacementStrict.Remove(pid);
+                                    placementFail.TryGetValue(pid, out placeTries); placeTries++;
+                                    if (placeTries >= PlacementRetryMax)
+                                    {
+                                        placementFail.Remove(pid);
+                                        placementNowGaveUp = placementGaveUp.Add(pid);
+                                    }
+                                    else { placementFail[pid] = placeTries; firstPlacementWarning = placeTries == 1; }
+                                }
                             }
                             if (placementUnavailable)
                                 Logger.Log("游戏核心策略：" + rendererName + " (pid " + pid
-                                    + ") 本机无可用核心分区手段，按不限核处理，不再重试");
-                            else if (!placementOk)
+                                    + ") 本机无可用核心分区手段，按不限核处理");
+                            else if (placementNowGaveUp)
+                                Logger.Log("游戏核心策略：" + rendererName + " (pid " + pid + ") 重试 "
+                                    + PlacementRetryMax + " 次仍未生效，已放弃");
+                            else if (!placementOk && firstPlacementWarning)
                                 Logger.Log("游戏核心策略未完整生效：" + rendererName + " (pid " + pid + ")，下一轮重试");
 
-                            if (!newlyTracked)
+                            if (!newlyTracked && placementOk)
                                 Logger.Log("游戏核心策略：" + rendererName + " (pid " + pid + ")" + placementText);
                         }
 
-                        bool ecoCleared = HighQoSVerified(h);
+                        bool ecoGaveUp;
+                        lock (sync) ecoGaveUp = boostEcoGaveUp.Contains(pid);
+                        bool ecoCleared = ecoGaveUp || HighQoSVerified(h);
                         if (!ecoCleared)
                         {
                             Native.ApplyHighQoS(h, Native.OsBuild() >= 22000);
                             ecoCleared = HighQoSVerified(h);
-                            if (ecoCleared) { lock (sync) boostFail.Remove(pid); }
+                            if (ecoCleared) { lock (sync) { boostFail.Remove(pid); boostEcoGaveUp.Remove(pid); } }
                             else
                             {
                                 int tries;
+                                bool nowGaveUp = false;
                                 lock (sync)
                                 {
                                     boostFail.TryGetValue(pid, out tries); tries++;
-                                    if (tries >= BoostRetryMax) boostFail.Remove(pid); else boostFail[pid] = tries;
+                                    if (tries >= BoostRetryMax)
+                                    {
+                                        boostFail.Remove(pid);
+                                        nowGaveUp = boostEcoGaveUp.Add(pid);
+                                    }
+                                    else boostFail[pid] = tries;
                                 }
-                                if (tries >= BoostRetryMax)
-                                    Logger.Log("游戏提优：" + rendererName + " (pid " + pid + ") 效率模式清不掉，重试 " + tries + " 次后放弃（多半被反作弊句柄保护，压不动）");
+                                if (nowGaveUp)
+                                    Logger.Log("游戏提优：" + rendererName + " (pid " + pid + ") 效率模式清不掉，重试 " + tries + " 次后放弃");
                             }
                         }
 
@@ -611,7 +709,6 @@ namespace PaviseApp
 
                         if (stateOk && firstVerified)
                         {
-                            ReportBoostVerified();
                             Logger.Log("游戏提优已验证：" + rendererName + " (pid " + pid + ") → 高优先级(回读 0x"
                                 + actualPriority.ToString("X") + ")" + placementText + " + 高IO(回读 " + actualIo + ")"
                                 + (gpuOk ? " + GPU高" : "")
@@ -623,11 +720,20 @@ namespace PaviseApp
                         {
                             string imagePath = Native.ImagePath(h);
                             GameExeTweaks.ApplyForGame(imagePath, gpuHighPerf, disableFso);
-                            int frlFps = ResolveFrlFps(nvFrlMode);
-                            if (nvMaxPerf || frlFps > 0 || nvLowLatency)
+                            var nvPlan = new NvGamePlan
                             {
-                                List<string> nvFailed = NvDrsTweaks.ApplyForGame(imagePath, nvMaxPerf, frlFps, nvLowLatency);
-                                HandleNvTweakOutcome(nvFailed, nvMaxPerf, frlFps > 0, nvLowLatency);
+                                MaxPerf = nvMaxPerf,
+                                FrlFps = ResolveFrlFps(nvFrlMode),
+                                LowLatency = nvLowLatency,
+                                AnselOff = nvAnselOff,
+                                Rebar = nvRebarOn,
+                                DlssMode = nvDlssMode,
+                                BattFull = nvBattFull
+                            };
+                            if (!nvPlan.Empty)
+                            {
+                                List<string> nvFailed = NvDrsTweaks.ApplyForGame(imagePath, nvPlan);
+                                HandleNvTweakOutcome(nvFailed, nvPlan);
                             }
                             lock (sync) tweakApplied.Add(pid);
                         }
@@ -643,6 +749,9 @@ namespace PaviseApp
                 boostDenied.RemoveWhere(x => !live.Contains(x));
                 boostStateWarned.RemoveWhere(x => !live.Contains(x));
                 boostStateVerified.RemoveWhere(x => !live.Contains(x));
+                boostHandleStripped.RemoveWhere(x => !live.Contains(x));
+                boostEcoGaveUp.RemoveWhere(x => !live.Contains(x));
+                placementGaveUp.RemoveWhere(x => !live.Contains(x));
                 tweakApplied.RemoveWhere(x => !live.Contains(x));
                 List<int> dead = null;
                 foreach (int k in gameBoost.Keys)
@@ -654,7 +763,7 @@ namespace PaviseApp
                         CrashGuard.ReleaseBoostProcess(k, old.Creation);
                         gameBoost.Remove(k); gameGpu.Remove(k); gamePlacement.Remove(k); gamePlacementStrict.Remove(k);
                         boostFail.Remove(k); boostStateWarned.Remove(k); boostStateVerified.Remove(k);
-                        gameBoostNextAudit.Remove(k);
+                        gameBoostNextAudit.Remove(k); placementFail.Remove(k);
                     }
             }
         }
@@ -673,6 +782,20 @@ namespace PaviseApp
                 && string.Equals(
                     expectedName, actualName,
                     StringComparison.OrdinalIgnoreCase);
+        }
+
+        private void OnGameHandleStripped(int pid, string rendererName, uint granted)
+        {
+            string ac = KernelAntiCheat.Describe(rendererName);
+            Logger.Log("游戏提优：" + rendererName + " (pid " + pid + ") 句柄写入权限被"
+                + (ac == null ? "反作弊" : ac) + "剥离（授予 0x" + granted.ToString("X")
+                + "），本体提优已停止，后台压制不受影响");
+
+            if (ifeoOn && boostOn)
+            {
+                IfeoBoost.Arm(rendererName);
+                IfeoBoost.EnsureForGame(rendererName);
+            }
         }
 
         internal static bool ApplyAndVerifyBoostState(IntPtr process, out uint actualPriority, out int actualIo, out int error)
@@ -765,7 +888,8 @@ namespace PaviseApp
                 {
                     boostFail.Clear(); boostDenied.Clear(); boostStateWarned.Clear();
                     boostStateVerified.Clear(); gameBoostNextAudit.Clear();
-                    tweakApplied.Clear();
+                    tweakApplied.Clear(); boostHandleStripped.Clear(); boostEcoGaveUp.Clear();
+                    placementFail.Clear(); placementGaveUp.Clear();
                 }
                 else
                     foreach (KeyValuePair<int, Snap> stale in boosts)
@@ -773,6 +897,8 @@ namespace PaviseApp
                         boostFail.Remove(stale.Key); boostDenied.Remove(stale.Key);
                         boostStateWarned.Remove(stale.Key); boostStateVerified.Remove(stale.Key);
                         gameBoostNextAudit.Remove(stale.Key); tweakApplied.Remove(stale.Key);
+                        boostHandleStripped.Remove(stale.Key); boostEcoGaveUp.Remove(stale.Key);
+                        placementFail.Remove(stale.Key); placementGaveUp.Remove(stale.Key);
                     }
             }
             foreach (var kv in boosts)
@@ -858,6 +984,9 @@ namespace PaviseApp
             int cleared = SelfProtectedRoster.Clear();
             if (cleared > 0)
                 Logger.Log("免压制名单已清空（" + cleared + " 项），下次对局重新探测这些进程");
+            int unarmed = IfeoBoost.ClearArmed();
+            if (unarmed > 0)
+                Logger.Log("内核反作弊预置名单已清空（" + unarmed + " 项），下次对局重新探测这些游戏");
             int fusesCleared;
             lock (sync) { fusesCleared = envFused.Count; envFused.Clear(); }
             foreach (string envKey in EnvKeys)
@@ -866,6 +995,10 @@ namespace PaviseApp
             SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyPState, 0);
             SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyFrl, 0);
             SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyPreRender, 0);
+            SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyAnsel, 0);
+            SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyRebarFeat, 0);
+            SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyDlssOvr, 0);
+            SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyBattFps, 0);
             if (fusesCleared > 0)
                 Logger.Log("已重置 " + fusesCleared + " 个因写入失败自动停用的环境项（对应开关仍为关，需要请手动打开）");
             int mine = Interlocked.Increment(ref panicSeq);
@@ -905,7 +1038,10 @@ namespace PaviseApp
             pressure.Clear();
             freezeDwell.Clear();
             if (clean) CrashGuard.ClearBoost();
-            Logger.Log("游戏模式解除（" + reason + "）：恢复 " + ok + " 个后台进程（本局累计，含中途新增）");
+            int restoredTotal = ok + gracePreReleased;
+            gracePreReleased = 0;
+            Logger.Log("游戏模式解除（" + reason + "）：恢复 " + restoredTotal
+                + " 个后台进程（本局累计，含中途新增与宽限期先行还原）");
             ReportFinish();
             lock (sync)
             {

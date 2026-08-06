@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 维护主窗口状态和主要交互事件
 
 using System;
@@ -20,16 +20,17 @@ namespace PaviseApp
     internal enum PageId
     {
         Overview = 0,
-        League = 1,
-        Library = 2,
-        Policy = 3,
-        AntiCheat = 4,
-        Graphics = 5,
-        Environment = 6,
-        Reports = 7,
+        Library = 1,
+        Policy = 2,
+        AntiCheat = 3,
+        Graphics = 4,
+        Environment = 5,
+        Audit = 6,
+        Log = 7,
         Settings = 8,
         About = 9,
-        Count = 10
+        Whitelist = 10,
+        Count = 11
     }
 
     internal partial class PanelForm : Form
@@ -38,11 +39,12 @@ namespace PaviseApp
         private readonly GameMode gameMode;
         private readonly bool elevated;
 
-        private DBPanel pageOverview, pagePolicy, pageAntiCheat, pageLibrary, pageReports, pageSettings, pageAbout;
-        private DBPanel pageGraphics, pageEnvironment;
+        private DBPanel pageOverview, pagePolicy, pageAntiCheat, pageLibrary, pageLog, pageSettings, pageAbout;
+        private DBPanel pageGraphics, pageEnvironment, pageWhitelist;
         private DBPanel[] pages;
         private NavRail nav;
         private ModeButton modeButton;
+        private ThemeSwitch themeSwitch;
         private ModePickerPanel modeFlyout;
         private PerformancePreset visualMode;
         private bool visualEnabled;
@@ -65,6 +67,9 @@ namespace PaviseApp
         private int introBaseTop;
         private System.Windows.Forms.Timer autoHideTimer;
         private bool autoHideArmed, lastGameActive;
+        private DBPanel root;
+        private System.Windows.Forms.Timer fitTimer;
+        private bool fitting;
 
         private const string AutoHideKey = "AutoHideOnGame";
         private const int AutoHideDelayMs = 10000;
@@ -76,13 +81,8 @@ namespace PaviseApp
         private const int ScrollContentW = PageW - 40 - 12 - 20;
 
         public PanelForm(Tamer t, GameMode gm, Icon icon, bool isElevated)
-            : this(t, gm, icon, isElevated, new LolOptimizationService())
         {
-        }
-
-        public PanelForm(Tamer t, GameMode gm, Icon icon, bool isElevated, LolOptimizationService leagueService)
-        {
-            tamer = t; gameMode = gm; elevated = isElevated; lolService = leagueService; appIcon = (Icon)icon.Clone();
+            tamer = t; gameMode = gm; elevated = isElevated; appIcon = (Icon)icon.Clone();
             visualMode = gameMode.ActivePreset; visualEnabled = gameMode.Enabled;
             Theme.SetMode(visualMode, false);
             BuildUi(appIcon);
@@ -105,6 +105,8 @@ namespace PaviseApp
             AttachFormFrame();
             Native.RoundCorners(Handle);
             uiActivityKnown = false;
+            CenterRoot();
+            ScheduleFit();
             SyncUiActivity();
             if (UiActive) RefreshSlowStateAsync();
         }
@@ -117,20 +119,24 @@ namespace PaviseApp
             AutoScaleMode = AutoScaleMode.None;
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(Theme.S(WinW), Theme.S(WinH));
+            if (!fitting)
+            {
+                Dpi.SetDesignSize(WinW, WinH);
+                ClientSize = new Size(Theme.S(WinW), Theme.S(WinH));
+            }
             BackColor = Theme.Bg;
             Font = Theme.UI(9.5f, false);
             AttachFormFrame();
 
             nav = new NavRail(
-                new[] { Lang.T("nav.overview"), LolText("英雄联盟（国服）"), Lang.T("nav.library"), Lang.T("nav.policy"),
-                        Lang.T("v14.anticheat"), Lang.T("nav.graphics"), Lang.T("nav.env"), Lang.T("nav.reports"),
-                        Lang.T("nav.set"), Lang.T("nav.about") },
-                new[] { "game", "lol", "white", "settings", "shield", "gpu", "chip", "log", "gear", "info" },
-                new[] { (int)PageId.Overview, (int)PageId.Library, (int)PageId.Policy, (int)PageId.AntiCheat,
-                        (int)PageId.Reports, (int)PageId.Graphics, (int)PageId.Environment, (int)PageId.League,
-                        (int)PageId.Settings, (int)PageId.About },
-                new[] { 5, 7 }, new[] { Lang.T("nav.hardware"), Lang.T("nav.columns") }, 2);
+                new[] { Lang.T("nav.overview"), Lang.T("nav.library"), Lang.T("nav.policy"),
+                        Lang.T("v14.anticheat"), Lang.T("nav.graphics"), Lang.T("nav.env"), Lang.T("nav.audit"),
+                        Lang.T("nav.log"), Lang.T("nav.set"), Lang.T("nav.about"), Lang.T("nav.white") },
+                new[] { "game", "white", "settings", "shield", "gpu", "chip", "chart", "log", "gear", "info", "shield" },
+                new[] { (int)PageId.Overview, (int)PageId.Library, (int)PageId.Whitelist, (int)PageId.Policy,
+                        (int)PageId.AntiCheat, (int)PageId.Log, (int)PageId.Graphics, (int)PageId.Environment,
+                        (int)PageId.Audit, (int)PageId.Settings, (int)PageId.About },
+                new[] { 6 }, new[] { Lang.T("nav.hardware") }, 2);
             AssertNavMatchesPageIds(nav);
             nav.SetBounds(0, 0, Theme.S(RailW), Theme.S(WinH));
             nav.SelectionChanged = ShowPage;
@@ -161,6 +167,10 @@ namespace PaviseApp
             modeButton.Clicked = ToggleModeFlyout;
             modeButton.SetMode(gameMode.ActivePreset);
 
+            themeSwitch = new ThemeSwitch(Theme.LightMode);
+            themeSwitch.SetBounds(Theme.S(PageW - 430), Theme.S(4), Theme.S(78), Theme.S(46));
+            themeSwitch.Toggled = OnThemeToggled;
+
             int tw = Theme.S(WinW - RailW);
             var btnMin = new CaptionButton(false);
             btnMin.SetBounds(tw - Theme.S(92), 0, Theme.S(44), Theme.S(TopH));
@@ -171,41 +181,50 @@ namespace PaviseApp
             btnClose.Bg = Theme.Bg;
             btnClose.Click += (s, e) => Hide();
 
-            topBar.Controls.AddRange(new Control[] { lblSub, modeButton, btnMin, btnClose });
+            topBar.Controls.AddRange(new Control[] { lblSub, themeSwitch, modeButton, btnMin, btnClose });
 
             pages = new DBPanel[(int)PageId.Count];
             pages[(int)PageId.Overview] = pageOverview = MakePage();
-            pages[(int)PageId.League] = pageLol = MakePage();
             pages[(int)PageId.Library] = pageLibrary = MakePage();
+            pages[(int)PageId.Whitelist] = pageWhitelist = MakePage();
             pages[(int)PageId.Policy] = pagePolicy = MakePage();
             pages[(int)PageId.AntiCheat] = pageAntiCheat = MakePage();
             pages[(int)PageId.Graphics] = pageGraphics = MakePage();
             pages[(int)PageId.Environment] = pageEnvironment = MakePage();
-            pages[(int)PageId.Reports] = pageReports = MakePage();
+            pages[(int)PageId.Audit] = pageAudit = MakePage();
+            pages[(int)PageId.Log] = pageLog = MakePage();
             pages[(int)PageId.Settings] = pageSettings = MakePage();
             pages[(int)PageId.About] = pageAbout = MakePage();
             BuildOverviewPage();
-            BuildLolPage();
             BuildLibraryPage();
+            BuildWhitelistPage();
             BuildPolicyPage();
             BuildAntiCheatPage();
             BuildGraphicsPage();
             BuildEnvironmentPage();
-            BuildReportsPage();
+            BuildAuditPage();
+            BuildLogPage();
             BuildSettingsPage();
             BuildAboutPage();
             RegisterPages();
 
-            Controls.Add(topBar);
-            foreach (var p in pages) Controls.Add(p);
-            Controls.Add(nav);
+            root = new DBPanel();
+            root.SetBounds(0, 0, Theme.S(WinW), Theme.S(WinH));
+            root.BackColor = Theme.Bg;
+
+            root.Controls.Add(topBar);
+            foreach (var p in pages) root.Controls.Add(p);
+            root.Controls.Add(nav);
 
             modeFlyout = new ModePickerPanel();
             modeFlyout.SetBounds(Theme.S(WinW - 420), Theme.S(56), Theme.S(396), Theme.S(282));
             modeFlyout.Visible = false;
             modeFlyout.ModeChosen = ChooseGlobalMode;
-            Controls.Add(modeFlyout);
+            root.Controls.Add(modeFlyout);
             modeFlyout.BringToFront();
+
+            Controls.Add(root);
+            CenterRoot();
 
             KeyPreview = true;
             KeyDown -= OnEscHide;
@@ -263,18 +282,20 @@ namespace PaviseApp
             pageHooks = new PageHook[(int)PageId.Count];
             pageHooks[(int)PageId.Overview] = new PageHook(pageOverview,
                 delegate(bool active) { if (paviseCore != null) paviseCore.SetAnimationEnabled(active); }, null);
-            pageHooks[(int)PageId.League] = new PageHook(pageLol,
-                delegate(bool active) { if (active) RefreshLolPage(); }, null);
             pageHooks[(int)PageId.Library] = new PageHook(pageLibrary,
                 delegate(bool active) { if (active) RefreshGameRunningStates(true); },
                 delegate { RefreshGameRunningStates(); });
+            pageHooks[(int)PageId.Whitelist] = new PageHook(pageWhitelist,
+                delegate(bool active) { if (active) RefreshWhitelist(true); }, null);
             pageHooks[(int)PageId.Policy] = new PageHook(pagePolicy, null, null);
             pageHooks[(int)PageId.AntiCheat] = new PageHook(pageAntiCheat, null, RefreshAcGroupStates);
             pageHooks[(int)PageId.Graphics] = new PageHook(pageGraphics, null, null);
             pageHooks[(int)PageId.Environment] = new PageHook(pageEnvironment,
                 delegate(bool active) { if (active) RefreshEnvironmentStateAsync(); }, null);
-            pageHooks[(int)PageId.Reports] = new PageHook(pageReports,
-                delegate(bool active) { if (active) RefreshReports(); }, RefreshReports);
+            pageHooks[(int)PageId.Audit] = new PageHook(pageAudit,
+                null, null);
+            pageHooks[(int)PageId.Log] = new PageHook(pageLog,
+                delegate(bool active) { if (active) RefreshLog(); }, RefreshLog);
             pageHooks[(int)PageId.Settings] = new PageHook(pageSettings,
                 delegate(bool active) { if (active) RefreshSlowStateAsync(); }, null);
             pageHooks[(int)PageId.About] = new PageHook(pageAbout, null, null);
@@ -301,7 +322,6 @@ namespace PaviseApp
             page.Left = pageBaseLeft + Theme.S(16);
             pageSlide.Speed = 0.26f; pageSlide.Set(1f); pageSlide.To(0f);
             if (UiActive) UiClock.Wake();
-            if (index == (int)PageId.League && lolService != null) lolService.RequestDiscovery();
             NotifyPageActivation();
         }
 
@@ -339,30 +359,29 @@ namespace PaviseApp
             if (!introActive) return;
             if (introMotion.Step())
             {
-                double shown = 1d - introMotion.Value;
-                if (shown < 0d) shown = 0d; else if (shown > 1d) shown = 1d;
-                try { Opacity = shown; } catch { }
                 Top = introBaseTop + (int)(introMotion.Value * Theme.S(IntroRise));
+                Opacity = 1.0 - introMotion.Value;
             }
-            else
-            {
-                introActive = false;
-                try { Opacity = 1d; } catch { }
-                Top = introBaseTop;
-            }
+            else FinishIntro();
+        }
+
+        private void FinishIntro()
+        {
+            introActive = false;
+            Top = introBaseTop;
+            if (Opacity < 1.0) Opacity = 1.0;
         }
 
         private void BeginIntro()
         {
-
             if (introActive) { introActive = false; Top = introBaseTop; }
             introPending = true;
-            try { Opacity = 0d; } catch { }
+            Opacity = 0.0;
         }
 
         private void StartIntro()
         {
-            if (!introPending) return;
+            if (!introPending) { if (Opacity < 1.0) Opacity = 1.0; return; }
             introPending = false;
             introBaseTop = Top;
             introMotion.Speed = 0.24f;
@@ -370,19 +389,78 @@ namespace PaviseApp
             introMotion.To(0f);
             introActive = true;
             Top = introBaseTop + Theme.S(IntroRise);
+            PaintTree(this);
             UiClock.Wake(90);
+            if (!UiClock.Running) FinishIntro();
+        }
+
+        private static void PaintTree(Control c)
+        {
+            if (!c.IsHandleCreated || !c.Visible) return;
+            c.Update();
+            for (int i = 0; i < c.Controls.Count; i++) PaintTree(c.Controls[i]);
         }
 
         protected override void OnVisibleChanged(EventArgs e)
         {
             base.OnVisibleChanged(e);
+            if (Visible) { CenterRoot(); ScheduleFit(); }
+            else if (introActive) FinishIntro();
             SyncUiActivity();
         }
 
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
+            CenterRoot();
+            ScheduleFit();
             SyncUiActivity();
+        }
+
+        private void CenterRoot()
+        {
+            if (root == null || root.IsDisposed) return;
+            int x = (ClientSize.Width - root.Width) / 2;
+            int y = (ClientSize.Height - root.Height) / 2;
+            if (x < 0) x = 0;
+            if (y < 0) y = 0;
+            if (root.Left != x || root.Top != y) root.Location = new Point(x, y);
+        }
+
+        private void ScheduleFit()
+        {
+            if (fitting || IsDisposed || !IsHandleCreated) return;
+            if (WindowState == FormWindowState.Minimized) return;
+            if (!Dpi.FitDiffers(ClientSize.Width, ClientSize.Height)) return;
+            if (fitTimer == null)
+            {
+                fitTimer = new System.Windows.Forms.Timer();
+                fitTimer.Interval = 220;
+                fitTimer.Tick += OnFitTick;
+            }
+            fitTimer.Stop();
+            fitTimer.Start();
+        }
+
+        private void OnFitTick(object sender, EventArgs e)
+        {
+            if (fitTimer != null) fitTimer.Stop();
+            if (fitting || IsDisposed || !IsHandleCreated) return;
+            if (WindowState == FormWindowState.Minimized) return;
+            int w = ClientSize.Width, h = ClientSize.Height;
+            if (!Dpi.FitDiffers(w, h)) return;
+            float target = Dpi.FitScale(w, h);
+            fitting = true;
+            try
+            {
+                Dpi.Scale = target;
+                Theme.DropFontCache();
+                Logger.Log("界面按窗口尺寸重排：客户区 " + w + "x" + h
+                    + "，缩放 " + target.ToString("F2"));
+                RebuildUi();
+            }
+            finally { fitting = false; }
+            CenterRoot();
         }
 
         internal bool UiActive
@@ -461,7 +539,6 @@ namespace PaviseApp
 
         private void ToggleModeFlyout()
         {
-            if (lolDiscoveringUi) { SetModeFlyout(false); return; }
             SetModeFlyout(modeFlyout == null || !modeFlyout.Visible);
         }
 
@@ -479,7 +556,6 @@ namespace PaviseApp
 
         private void ChooseGlobalMode(PerformancePreset mode)
         {
-            if (lolDiscoveringUi) { SetModeFlyout(false); return; }
             gameMode.Preset = mode;
             SetModeFlyout(false);
             UpdateModePresentation(true);
@@ -507,6 +583,14 @@ namespace PaviseApp
             if (visualChanged)
                 using (Icon icon = IconArt.MakeMultiIcon(effective, enabled)) SetRuntimeIcon(icon);
             RefreshPolicyPresentation();
+        }
+
+        private void OnThemeToggled(bool light)
+        {
+            Settings.Save("UiLight", light);
+            Theme.SetLight(light);
+            Logger.Log("界面主题切换：" + (light ? "亮色" : "暗色"));
+            BeginInvoke((MethodInvoker)delegate { if (!IsDisposed) RebuildUi(); });
         }
 
         public void SetRuntimeIcon(Icon value)
@@ -655,6 +739,7 @@ namespace PaviseApp
         {
             CancelAutoHide();
             if (uiTimer != null) uiTimer.Stop();
+            if (fitTimer != null) { fitTimer.Stop(); fitTimer.Dispose(); fitTimer = null; }
             uiActive = false;
             uiActivityKnown = true;
             UiClock.Suspended = true;
@@ -696,7 +781,6 @@ namespace PaviseApp
             if (IsDisposed || !UiActive) return;
             if (builtLang != Lang.Cur) { RebuildUi(); return; }
             SyncToggleValues();
-            RefreshLolPage();
             RefreshSlowStateAsync();
             RefreshEnvironmentStateAsync();
         }
@@ -741,6 +825,11 @@ namespace PaviseApp
                 if (paviseCore != null) paviseCore.SetState(preview.Value, true, false);
             }
             if (showModePicker && modeButton != null) modeButton.PerformClick();
+            if (previewMode == "audit" && pageIndex == (int)PageId.Audit)
+            {
+                try { RenderAudit(SystemAudit.Collect(400)); } catch { }
+                if (lblAuditStatus != null) lblAuditStatus.Text = "";
+            }
             Application.DoEvents();
             using (var bmp = new Bitmap(ClientSize.Width, ClientSize.Height))
             {

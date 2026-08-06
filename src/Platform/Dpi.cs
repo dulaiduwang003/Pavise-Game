@@ -19,17 +19,61 @@ namespace PaviseApp
     {
         public static float Scale = 1f;
 
+        private static int fitW, fitH;
+
         public static void Init()
         {
             try { Native.SetProcessDpiAwarenessContext((IntPtr)(-4)); } catch { }
             try { Scale = Native.GetDpiForSystem() / 96f; } catch { Scale = 1f; }
             if (Scale < 1f) Scale = 1f;
+            Scale = Fit(Scale);
+        }
+
+        public static bool SetDesignSize(int width, int height)
+        {
+            fitW = width; fitH = height;
+            float next = Fit(Scale);
+            if (Math.Abs(next - Scale) < 0.001f) return false;
+            Scale = next;
+            return true;
+        }
+
+        internal static float Fit(float scale)
+        {
+            if (fitW <= 0 || fitH <= 0) return scale;
+            try
+            {
+                Rectangle area = Screen.PrimaryScreen.WorkingArea;
+                if (area.Width <= 0 || area.Height <= 0) return scale;
+                float cap = Math.Min(area.Width / (float)fitW, area.Height / (float)fitH);
+                if (cap < 1f) cap = 1f;
+                return scale > cap ? cap : scale;
+            }
+            catch { return scale; }
         }
 
         public static float ScaleFor(int dpi)
         {
             float next = dpi / 96f;
-            return next < 1f ? 1f : next;
+            if (next < 1f) next = 1f;
+            return Fit(next);
+        }
+
+        public const float MaxScale = 3f;
+        public const float FitEpsilon = 0.02f;
+
+        public static float FitScale(int clientW, int clientH)
+        {
+            if (fitW <= 0 || fitH <= 0 || clientW <= 0 || clientH <= 0) return Scale;
+            float next = Math.Min(clientW / (float)fitW, clientH / (float)fitH);
+            if (next < 1f) next = 1f;
+            if (next > MaxScale) next = MaxScale;
+            return next;
+        }
+
+        public static bool FitDiffers(int clientW, int clientH)
+        {
+            return Math.Abs(FitScale(clientW, clientH) - Scale) >= FitEpsilon;
         }
 
         public static bool WouldChange(int dpi)

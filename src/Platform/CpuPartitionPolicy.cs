@@ -21,5 +21,14 @@ namespace PaviseApp
             if (physicalCoreCount <= 10) return 1;
             return Math.Min(4, Math.Max(2, physicalCoreCount / 8));
         }
+
+        public static double CoreInterruptRate(double[] rates, ulong coreMask)
+        {
+            if (rates == null || coreMask == 0) return 0;
+            double peak = 0;
+            for (int i = 0; i < rates.Length && i < 64; i++)
+                if (((coreMask >> i) & 1UL) != 0 && rates[i] > peak) peak = rates[i];
+            return peak;
+        }
     }
 }

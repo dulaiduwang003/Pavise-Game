@@ -129,8 +129,53 @@ namespace PaviseApp
                     g.DrawLine(pen, P(x, y, u, 12, 11.2f), P(x, y, u, 12, 16.8f));
                     g.FillEllipse(br, x + 10.6f * u, y + 6.2f * u, 2.8f * u, 2.8f * u);
                 }
+                else if (name == "sun")
+                {
+                    using (var thin = new Pen(c, Math.Max(1.1f, 1.55f * u)))
+                    {
+                        thin.StartCap = LineCap.Round; thin.EndCap = LineCap.Round;
+                        g.DrawEllipse(thin, x + 7.6f * u, y + 7.6f * u, 8.8f * u, 8.8f * u);
+                        for (int i = 0; i < 8; i++)
+                        {
+                            double a = i * Math.PI / 4.0;
+                            float ca = (float)Math.Cos(a), sa = (float)Math.Sin(a);
+                            g.DrawLine(thin,
+                                x + (12f + ca * 7.6f) * u, y + (12f + sa * 7.6f) * u,
+                                x + (12f + ca * 10.4f) * u, y + (12f + sa * 10.4f) * u);
+                        }
+                    }
+                }
+                else if (name == "moon")
+                {
+                    using (var thin = new Pen(c, Math.Max(1.1f, 1.55f * u)))
+                    using (var path = Crescent(x + 12f * u, y + 12f * u, 8.6f * u, 7.4f * u, -38f))
+                    {
+                        thin.LineJoin = LineJoin.Round;
+                        g.DrawPath(thin, path);
+                    }
+                }
             }
             g.SmoothingMode = old;
+        }
+
+        private static GraphicsPath Crescent(float cx, float cy, float r, float d, float tilt)
+        {
+            if (d > r * 1.94f) d = r * 1.94f;
+            if (d < r * 0.2f) d = r * 0.2f;
+            float half = (float)(Math.Acos(d / (2.0 * r)) * 180.0 / Math.PI);
+            double rad = tilt * Math.PI / 180.0;
+            float bx = cx + d * (float)Math.Cos(rad), by = cy + d * (float)Math.Sin(rad);
+            var p = new GraphicsPath();
+            p.AddArc(cx - r, cy - r, r * 2f, r * 2f, tilt + half, 360f - 2f * half);
+            p.AddArc(bx - r, by - r, r * 2f, r * 2f, 180f + tilt + half, -2f * half);
+            p.CloseFigure();
+            RectangleF bb = p.GetBounds();
+            using (var m = new Matrix())
+            {
+                m.Translate(cx - (bb.Left + bb.Right) / 2f, cy - (bb.Top + bb.Bottom) / 2f);
+                p.Transform(m);
+            }
+            return p;
         }
 
         private static PointF P(float ox, float oy, float u, float px, float py) { return new PointF(ox + px * u, oy + py * u); }

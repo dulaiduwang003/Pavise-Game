@@ -49,28 +49,6 @@ namespace PaviseApp
             }
         }
 
-        private static void TestReportMigration(string root)
-        {
-            string dir = Path.Combine(root, "report-migration");
-            Directory.CreateDirectory(dir);
-            string path = Path.Combine(dir, SessionReportStore.FileName);
-            File.WriteAllText(path, "2026-01-01 | Game | 60 FPS | 1% Low 40", Encoding.UTF8);
-            Eq(Lang.T("report.none"), SessionReportStore.ReadTail(dir, 20));
-            if (!File.Exists(path + ".telemetry.bak")) throw new Exception("legacy report backup missing");
-            SessionReportStore.Append(
-                dir, "Game", PerformancePreset.Competitive,
-                TimeSpan.FromMinutes(3), true, 12, 0.25);
-            string current = SessionReportStore.ReadTail(dir, 20);
-            if (current.IndexOf(Lang.T("report.boost.ok"), StringComparison.OrdinalIgnoreCase) < 0)
-                throw new Exception("new report format missing verified boost state");
-            if (current.IndexOf(
-                    Lang.F("report.pavise.cpu", "0.25"),
-                    StringComparison.OrdinalIgnoreCase) < 0)
-                throw new Exception("new report format missing Pavise CPU evidence");
-            if (current.IndexOf("FPS", StringComparison.OrdinalIgnoreCase) >= 0)
-                throw new Exception("legacy frame metrics leaked into current report");
-        }
-
         private static void TestEcoQoSRestore(string root)
         {
             string beat = Path.Combine(root, "qos.beat");

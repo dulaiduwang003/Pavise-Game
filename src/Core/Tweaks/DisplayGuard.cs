@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 切换并恢复主显示器刷新率
 
 using System;
@@ -29,6 +29,28 @@ namespace PaviseApp
                 return cur.dmDisplayFrequency;
             }
             catch { return 0; }
+        }
+
+        internal static void QueryRefreshRates(out int current, out int best)
+        {
+            current = 0; best = 0;
+            try
+            {
+                string dev = Screen.PrimaryScreen.DeviceName;
+                DEVMODE cur = NewDm();
+                if (!EnumDisplaySettingsW(dev, ENUM_CURRENT_SETTINGS, ref cur)) return;
+                current = cur.dmDisplayFrequency;
+                best = current;
+                DEVMODE m = NewDm();
+                for (int i = 0; EnumDisplaySettingsW(dev, i, ref m); i++)
+                {
+                    if (m.dmPelsWidth == cur.dmPelsWidth && m.dmPelsHeight == cur.dmPelsHeight
+                        && m.dmBitsPerPel == cur.dmBitsPerPel && m.dmDisplayFrequency > best)
+                        best = m.dmDisplayFrequency;
+                    m = NewDm();
+                }
+            }
+            catch { }
         }
 
         public static bool Activate()

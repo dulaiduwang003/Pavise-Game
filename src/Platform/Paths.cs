@@ -22,7 +22,7 @@ namespace PaviseApp
         private static readonly string[] DataFiles =
         {
             "Pavise.games.txt", GameProfileStore.FileName, "Pavise.whitelist.txt", "Pavise.targets.txt",
-            SessionReportStore.FileName, "Pavise.log", "crash.log",
+            "Pavise.log", "crash.log",
             LegacyFreezeRecovery.StateFileName, SuppressionCore.StateFileName
         };
 
