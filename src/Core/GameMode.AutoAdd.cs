@@ -50,7 +50,7 @@ namespace PaviseApp
                 return;
             if (!GameSessionDetector.IsLibraryCandidate(identity.Name, identity.Path, windowsPrefix))
                 return;
-            if (SteamCatalog.IsSteamFamily(identity.Name, identity.Path)) return;
+            if (GamePlatformCatalog.IsPlatformProcess(identity.Name, identity.Path)) return;
             string path = identity.Path;
             lock (sync)
             {

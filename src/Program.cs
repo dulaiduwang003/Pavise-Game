@@ -1,4 +1,4 @@
-﻿// @author bdth 2074055628@qq.com
+// @author bdth 2074055628@qq.com
 // 文件用途 启动程序并处理单实例 自愈和命令行入口
 
 using System;
@@ -20,7 +20,7 @@ namespace PaviseApp
     internal static class App
     {
         public const string DisplayName = "PAVISE";
-        public const string Version = "1.8.0";
+        public const string Version = "1.6.6";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string WeChat = "Ssssssstyle";
@@ -220,7 +220,7 @@ namespace PaviseApp
             try { UpdatePause.HealFromCrash(); } catch { }
             FgBoost.HealFromCrash();
             GameDvr.HealFromCrash();
-            Mmcss.HealFromCrash();
+            try { Mmcss.PurgeLegacy(); } catch { }
             Notif.HealFromCrash();
             VisualFx.HealFromCrash();
             DisplayGuard.HealFromCrash();
@@ -230,6 +230,17 @@ namespace PaviseApp
             try { PowerOverlay.HealFromCrash(); } catch { }
             RenderLane.HealFromCrash();
             CrashGuard.HealFromCrash();
+
+            try { LegacyPurge.RunOnce(dir); } catch { }
+
+            if (Settings.Load("GmIfeoBoost", false))
+                try
+                {
+                    int preArmed = IfeoBoost.PreArmAll();
+                    if (preArmed > 0)
+                        Logger.Log("后备提优：已预置 " + preArmed + " 个游戏");
+                }
+                catch { }
 
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);

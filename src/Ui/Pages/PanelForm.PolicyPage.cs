@@ -1,4 +1,4 @@
-﻿// @author bdth 2074055628@qq.com
+// @author bdth 2074055628@qq.com
 // 文件用途 构建优化策略页 并按当前预设锁定或放开自定义项
 
 using System;
@@ -12,8 +12,8 @@ namespace PaviseApp
     {
         private Label lblPolicyMode;
         private Toggle swPolicyBackground, swPolicyStrict, swPolicyAggressive;
-        private Toggle swPolicyFg, swPolicyMmcss, swPolicyPauseDl, swPolicyPauseSvc, swPolicyDvr;
-        private SettingCard cardPolicyStrict, cardPolicyAggressive, cardPolicyFg, cardPolicyMmcss;
+        private Toggle swPolicyFg, swPolicyPauseDl, swPolicyPauseSvc, swPolicyDvr;
+        private SettingCard cardPolicyStrict, cardPolicyAggressive, cardPolicyFg;
         private SettingCard cardPolicyPauseDl, cardPolicyPauseSvc, cardPolicyDvr;
         private readonly List<Action> policySync = new List<Action>();
 
@@ -40,14 +40,6 @@ namespace PaviseApp
                 delegate { return gameMode.GpuDemote; }, delegate(bool v) { gameMode.GpuDemote = v; });
             AddPolicyConfirmToggle(scroll, ref sy, Lang.T("gm.freeze"), Lang.T("gm.freeze.sub"), Lang.T("gm.freeze.warn"),
                 delegate { return gameMode.FreezeBackground; }, delegate(bool v) { gameMode.FreezeBackground = v; });
-            var btnPolicyWhite = new PillButton(Lang.T("v14.manage.white"), BtnKind.Primary);
-
-            btnPolicyWhite.Size = new Size(Theme.S(164), Theme.S(34));
-            btnPolicyWhite.Click += delegate { nav.Select((int)PageId.Whitelist); };
-            int whiteCardH;
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 72, Lang.T("nav.white"), Lang.T("white.policy.sub"),
-                btnPolicyWhite, out whiteCardH);
-            sy += whiteCardH + 8;
             AddPolicyToggle(scroll, ref sy, Lang.T("gm.boost"), Lang.T("v15.boost.sub"),
                 delegate { return gameMode.BoostGame; }, delegate(bool v) { gameMode.BoostGame = v; });
             AddPolicyToggle(scroll, ref sy, Lang.T("gm.ifeo"), Lang.T("gm.ifeo.sub"),
@@ -70,8 +62,6 @@ namespace PaviseApp
             cardPolicyAggressive = (SettingCard)swPolicyAggressive.Parent;
             swPolicyFg = AddPolicyToggle(scroll, ref sy, Lang.T("gm.fgboost"), Lang.T("v15.custom.override"), delegate { return gameMode.FgSchedBoost; }, delegate(bool v) { gameMode.FgSchedBoost = v; });
             cardPolicyFg = (SettingCard)swPolicyFg.Parent;
-            swPolicyMmcss = AddPolicyToggle(scroll, ref sy, Lang.T("gm.mmcss"), Lang.T("v15.custom.override"), delegate { return gameMode.MmcssPriority; }, delegate(bool v) { gameMode.MmcssPriority = v; });
-            cardPolicyMmcss = (SettingCard)swPolicyMmcss.Parent;
             swPolicyPauseDl = AddPolicyToggle(scroll, ref sy, Lang.T("gm.pausedl"), Lang.T("v15.custom.override"), delegate { return gameMode.PauseDownloads; }, delegate(bool v) { gameMode.PauseDownloads = v; });
             cardPolicyPauseDl = (SettingCard)swPolicyPauseDl.Parent;
             swPolicyPauseSvc = AddPolicyToggle(scroll, ref sy, Lang.T("gm.pausesvc"), Lang.T("v15.custom.override"), delegate { return gameMode.PauseSvcIndex; }, delegate(bool v) { gameMode.PauseSvcIndex = v; });
@@ -139,10 +129,9 @@ namespace PaviseApp
             PerformancePreset mode = gameMode.ActivePreset;
             bool competitive = mode == PerformancePreset.Competitive;
             bool custom = mode == PerformancePreset.Custom;
-            ApplyPresetPolicy(swPolicyStrict, cardPolicyStrict, Lang.T("v14.cpu.adaptive"), competitive, true);
+            ApplyPresetPolicy(swPolicyStrict, cardPolicyStrict, Lang.T("v14.cpu.adaptive"), false, true);
             ApplyPresetPolicy(swPolicyAggressive, cardPolicyAggressive, Lang.T("gm.aggressive"), !custom, competitive);
             ApplyPresetPolicy(swPolicyFg, cardPolicyFg, Lang.T("gm.fgboost"), !custom, true);
-            ApplyPresetPolicy(swPolicyMmcss, cardPolicyMmcss, Lang.T("gm.mmcss"), !custom, competitive);
             ApplyPresetPolicy(swPolicyPauseDl, cardPolicyPauseDl, Lang.T("gm.pausedl"), !custom, competitive);
             ApplyPresetPolicy(swPolicyPauseSvc, cardPolicyPauseSvc, Lang.T("gm.pausesvc"), !custom, false);
             ApplyPresetPolicy(swPolicyDvr, cardPolicyDvr, Lang.T("set.dvr"), !custom, competitive);

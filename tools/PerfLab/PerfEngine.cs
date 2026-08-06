@@ -479,10 +479,8 @@ namespace PaviseApp
             gameMode.StrictCoreIsolation = false;
 
             gameMode.AggressiveSuppression = policyLane;
-            gameMode.NetOptimize = false;
             gameMode.IdleStateDisable = false;
             gameMode.VisualFxDowngrade = false;
-            gameMode.MmcssPriority = false;
             gameMode.PauseDownloads = false;
             gameMode.FgSchedBoost = false;
             gameMode.PauseSvcIndex = false;

@@ -1,5 +1,7 @@
-﻿// @author bdth 2074055628@qq.com
-// 文件用途 句柄被反作弊拒绝时的后备提优 经 IFEO PerfOptions 由系统在进程创建时应用高优先级
+// @author bdth 2074055628@qq.com
+// 文件用途 内核反作弊下的本体提优主路径 经 IFEO PerfOptions 由内核在进程创建时应用
+// 内核在 NtCreateUserProcess 阶段读这些值 早于反作弊驱动为该进程注册句柄保护 因此拦不住
+// 代价是只对"下次启动"生效 所以必须在游戏启动前就位 见 PreArmAll
 
 using System;
 using Microsoft.Win32;
@@ -10,7 +12,10 @@ namespace PaviseApp
     {
         private const string Root = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options";
         private const string ListKey = "IfeoList";
+        private const string ArmKey = "IfeoArm";
         private const int HighPriority = 3;
+        private const int HighIoPriority = 3;
+        private const int HighPagePriority = 5;
 
 #if PAVISE_SELFTEST
         internal static RegistryKey Hive = Registry.LocalMachine;
@@ -30,20 +35,87 @@ namespace PaviseApp
                 "CpuPriorityClass", RegistryValueKind.DWord, "IfeoPri_" + exe);
         }
 
+        private static ReversibleReg IoRegOf(string exe)
+        {
+            return new ReversibleReg(Hive, RootPath + "\\" + exe + "\\PerfOptions",
+                "IoPriority", RegistryValueKind.DWord, "IfeoIo_" + exe);
+        }
+
+        private static ReversibleReg PageRegOf(string exe)
+        {
+            return new ReversibleReg(Hive, RootPath + "\\" + exe + "\\PerfOptions",
+                "PagePriority", RegistryValueKind.DWord, "IfeoPg_" + exe);
+        }
+
+        internal static string NormalizeExe(string rendererName)
+        {
+            if (string.IsNullOrEmpty(rendererName)) return null;
+            return rendererName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                ? rendererName : rendererName + ".exe";
+        }
+
+        public static bool Arm(string rendererName)
+        {
+            string exe = NormalizeExe(rendererName);
+            if (string.IsNullOrEmpty(exe) || exe.IndexOf(';') >= 0) return false;
+            lock (lk)
+            {
+                foreach (string s in ParseList(Settings.LoadStr(ArmKey, "")))
+                    if (string.Equals(s, exe, StringComparison.OrdinalIgnoreCase)) return false;
+                string cur = Settings.LoadStr(ArmKey, "");
+                string next = cur.Length == 0 ? exe : cur + ";" + exe;
+                return Settings.SaveStr(ArmKey, next);
+            }
+        }
+
+        public static string[] Armed()
+        {
+            lock (lk) return ParseList(Settings.LoadStr(ArmKey, ""));
+        }
+
+        public static int ClearArmed()
+        {
+            lock (lk)
+            {
+                int n = ParseList(Settings.LoadStr(ArmKey, "")).Length;
+                Settings.SaveStr(ArmKey, "");
+                return n;
+            }
+        }
+
+        public static int PreArmAll()
+        {
+            int armed = 0;
+            foreach (string exe in Armed())
+            {
+                if (Listed(exe)) { armed++; continue; }
+                if (ApplyFor(exe, true)) armed++;
+            }
+            return armed;
+        }
+
         public static void EnsureForGame(string rendererName)
         {
-            if (string.IsNullOrEmpty(rendererName)) return;
-            string exe = rendererName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
-                ? rendererName : rendererName + ".exe";
+            string exe = NormalizeExe(rendererName);
+            if (string.IsNullOrEmpty(exe)) return;
             lock (lk)
             {
                 if (Listed(exe)) return;
+            }
+            ApplyFor(exe, false);
+        }
+
+        private static bool ApplyFor(string exe, bool preArm)
+        {
+            lock (lk)
+            {
+                if (Listed(exe)) return true;
                 try
                 {
                     bool keyExisted, perfExisted;
                     using (var root = Hive.OpenSubKey(RootPath))
                     {
-                        if (root == null && RootOverride == null) return;
+                        if (root == null && RootOverride == null) return false;
                         using (var k = root == null ? null : root.OpenSubKey(exe))
                         {
                             keyExisted = k != null;
@@ -53,18 +125,24 @@ namespace PaviseApp
                     if (!RegOf(exe).Apply(HighPriority))
                     {
                         Logger.Log("后备提优：IFEO 写入失败（" + exe + "），本轮跳过");
-                        return;
+                        return false;
                     }
+                    bool ioOk = IoRegOf(exe).Apply(HighIoPriority);
+                    bool pgOk = PageRegOf(exe).Apply(HighPagePriority);
                     string marker = (keyExisted ? "1" : "0") + (perfExisted ? "1" : "0");
                     if (!Settings.SaveStr("IfeoMk_" + exe, marker) || !AddToList(exe))
                     {
                         RegOf(exe).Restore();
+                        if (ioOk) IoRegOf(exe).Restore();
+                        if (pgOk) PageRegOf(exe).Restore();
                         Logger.Log("后备提优：记账无法持久化，已还原 IFEO（" + exe + "）");
-                        return;
+                        return false;
                     }
-                    Logger.Log("后备提优已登记：" + exe + " 自下次启动起由系统以高优先级创建（IFEO PerfOptions）");
+                    string extra = "高优先级" + (ioOk ? " + 高IO" : "") + (pgOk ? " + 高页面优先级" : "");
+                    Logger.Log((preArm ? "后备提优已预置：" : "后备提优已登记：") + exe + "（" + extra + "）");
+                    return true;
                 }
-                catch { }
+                catch { return false; }
             }
         }
 
@@ -75,7 +153,10 @@ namespace PaviseApp
                 bool all = true;
                 foreach (string exe in ParseList(Settings.LoadStr(ListKey, "")))
                 {
-                    if (!RegOf(exe).Restore()) { all = false; continue; }
+                    bool ok = RegOf(exe).Restore();
+                    ok &= IoRegOf(exe).Restore();
+                    ok &= PageRegOf(exe).Restore();
+                    if (!ok) { all = false; continue; }
                     CleanupEmpty(exe, Settings.LoadStr("IfeoMk_" + exe, "11"));
                     Settings.SaveStr("IfeoMk_" + exe, "");
                     RemoveFromList(exe);

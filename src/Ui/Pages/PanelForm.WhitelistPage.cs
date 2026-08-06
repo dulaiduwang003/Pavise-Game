@@ -85,7 +85,8 @@ namespace PaviseApp
             lblWhiteHint.ForeColor = Theme.Dim;
             lblWhiteHint.BackColor = Theme.Bg;
             lblWhiteHint.Font = Theme.UI(8.2f, false);
-            lblWhiteHint.SetBounds(Theme.S(bx + 4), Theme.S(y + 158), Theme.S(bw - 8), Theme.S(120));
+            lblWhiteHint.SetBounds(Theme.S(bx + 4), Theme.S(y + 158), Theme.S(bw - 8), Theme.S(220));
+            AppendDetectedPlatformHint();
 
             var reset = new PillButton(Lang.T("btn.reset"), BtnKind.Danger);
             reset.SetBounds(Theme.S(bx), Theme.S(y + listH - bh), Theme.S(bw), Theme.S(bh));
@@ -100,6 +101,18 @@ namespace PaviseApp
 
             pageWhitelist.Controls.AddRange(new Control[] { whitePanel, pick, browse, remove, lblWhiteHint, reset });
             RefreshWhitelist(false);
+        }
+
+        private void AppendDetectedPlatformHint()
+        {
+            try
+            {
+                List<string> detected = GamePlatformCatalog.DetectedPlatforms();
+                if (detected.Count == 0) return;
+                lblWhiteHint.Text += "\r\n\r\n"
+                    + Lang.F("white.page.platforms", string.Join("、", detected.ToArray()));
+            }
+            catch { }
         }
 
         private void OnWhiteDragEnter(object sender, DragEventArgs e)

@@ -1,4 +1,4 @@
-﻿// @author bdth 2074055628@qq.com
+// @author bdth 2074055628@qq.com
 // 文件用途 维护游戏模式状态 配置和工作线程
 
 using System;
@@ -76,10 +76,14 @@ namespace PaviseApp
         private readonly HashSet<int> boostDenied = new HashSet<int>();
         private readonly HashSet<int> boostStateWarned = new HashSet<int>();
         private readonly HashSet<int> boostStateVerified = new HashSet<int>();
+        private readonly HashSet<int> boostHandleStripped = new HashSet<int>();
+        private readonly HashSet<int> boostEcoGaveUp = new HashSet<int>();
+        private readonly Dictionary<int, int> placementFail = new Dictionary<int, int>();
+        private readonly HashSet<int> placementGaveUp = new HashSet<int>();
         private const int BoostRetryMax = 3;
+        private const int PlacementRetryMax = 3;
         private volatile bool bgSuppressOn;
         private volatile bool boostOn;
-        private volatile bool mmcssOn;
         private volatile bool pauseDlOn;
         private volatile bool fgBoostOn;
         private volatile bool svcPauseOn;
@@ -130,7 +134,6 @@ namespace PaviseApp
         private readonly ManualResetEvent panicDone = new ManualResetEvent(true);
         private bool fgActive;
         private bool svcActive;
-        private bool mmcssActive;
         private bool dvrActive;
         private bool timerRaised;
         private bool timerSkipLogged;
@@ -143,7 +146,6 @@ namespace PaviseApp
         private readonly ulong strictMask;
         private readonly BackgroundPressureController pressure = new BackgroundPressureController();
         private readonly FreezeDwellTracker freezeDwell = new FreezeDwellTracker();
-        private readonly DpcSampler dpcSampler = new DpcSampler();
         private PerformancePreset preset;
         private GameDetection activeDetection;
         private Thread worker;
@@ -181,12 +183,20 @@ namespace PaviseApp
             gameMask = CpuTopology.BoostMask;
             strictMask = CpuTopology.StrictBoostMask;
             if (CpuTopology.Hybrid)
-                Logger.Log("CPU 拓扑：混合架构，后台压能效核 0x" + throttleMask.ToString("X") + "，游戏不硬绑核（P 核 0x" + CpuTopology.PerfMask.ToString("X") + " 交给 Thread Director 调度）");
+                Logger.Log("CPU 拓扑：混合架构，性能核 0x" + CpuTopology.PerfMask.ToString("X")
+                    + "，能效核 0x" + CpuTopology.EffMask.ToString("X")
+                    + "；后台压 0x" + throttleMask.ToString("X")
+                    + "，严格分区绑 0x" + strictMask.ToString("X"));
             else if (CpuTopology.AsymCache)
                 Logger.Log("CPU 拓扑：非对称 L3（X3D），游戏绑大缓存 CCD 0x" + gameMask.ToString("X") + "，后台压另一 CCD 0x" + throttleMask.ToString("X"));
+            else
+                Logger.Log("CPU 拓扑：同构，游戏不绑核");
+            if (CpuTopology.CpuSetPartitionRejected)
+                Logger.Log("CPU 拓扑：CPU Set 分区与性能核判定矛盾，已弃用该分区");
+            if (CpuTopology.StrictMaskUnsafe)
+                Logger.Log("CPU 拓扑：绑核目标未通过校验，已退回不限核");
             bgSuppressOn = Settings.Load("GmSuppress", true);
             boostOn = Settings.Load("GmBoost", true);
-            mmcssOn = Settings.Load("GmMmcss", true);
             pauseDlOn = Settings.Load("GmPauseDl", true);
             fgBoostOn = Settings.Load("GmFgBoost", true);
             svcPauseOn = Settings.Load("GmSvcPause", false);
@@ -385,7 +395,8 @@ namespace PaviseApp
             lines.Add("# Pavise 智能守护白名单——这些进程始终不进入后台控制");
             lines.Add("# V3 规则支持进程名、精确路径和应用家族，并带完整性尾标防止截断。");
             lines.Add("# Windows 核心、其它会话和 Pavise 自身受安全保护；其余例外只来自本白名单。");
-            lines.Add("# Steam 客户端家族（steam/steamservice/steamwebhelper/gameoverlayui）由程序内置豁免，无需在此列出。");
+            lines.Add("# Steam / Epic / EA / 育碧 / 战网 / GOG / R星 / Riot / WeGame / Xbox / HoYoPlay 等");
+            lines.Add("# 游戏平台的客户端家族由程序内置豁免（按各平台安装目录校验），无需在此列出。");
             lines.Add(WhitelistRule.Header);
             var rules = new List<WhitelistRule>();
             foreach (string entry in PresetWhitelist)
@@ -565,12 +576,6 @@ namespace PaviseApp
         {
             get { return pauseUpdateOn; }
             set { pauseUpdateOn = value; Settings.Save("GmPauseUpdate", value); if (value) ClearEnvFuse("wu"); RequestPolicyApply(); }
-        }
-
-        public bool MmcssPriority
-        {
-            get { return mmcssOn; }
-            set { mmcssOn = value; Settings.Save("GmMmcss", value); if (value) ClearEnvFuse("mmcss"); RequestPolicyApply(); }
         }
 
         public bool PauseDownloads

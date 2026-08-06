@@ -1,4 +1,4 @@
-﻿// @author bdth 2074055628@qq.com
+// @author bdth 2074055628@qq.com
 // 文件用途 扫描并压制游戏之外的后台进程
 
 using System;
@@ -54,11 +54,14 @@ namespace PaviseApp
             public string FailureDetail;
         }
 
-        private static readonly HashSet<string> LauncherPlatforms = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        private static readonly HashSet<string> LauncherPlatforms = BuildLauncherPlatforms();
+
+        private static HashSet<string> BuildLauncherPlatforms()
         {
-            "wegame", "wegame_env", "wegameclient", "steam", "steamwebhelper",
-            "epicgameslauncher", "battle.net", "galaxyclient", "ubisoftconnect"
-        };
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string name in GamePlatformCatalog.PlatformShellNames()) names.Add(name);
+            return names;
+        }
 
         private static readonly HashSet<int> EmptyPidSet = new HashSet<int>();
 
@@ -84,7 +87,7 @@ namespace PaviseApp
 
             if (GameSessionDetector.IsAntiCheatLikeName(name)) return false;
 
-            if (SteamCatalog.IsSteamFamily(name, path)) return false;
+            if (GamePlatformCatalog.IsPlatformProcess(name, path)) return false;
             if (NetAcceleratorCatalog.IsAcceleratorLikeName(name)) return false;
             if (gameHostAncestor) return false;
             if (UnderRoot(path, activeGameRoot)) return false;

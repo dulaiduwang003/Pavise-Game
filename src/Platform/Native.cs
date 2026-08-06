@@ -106,6 +106,49 @@ namespace PaviseApp
         [DllImport("ntdll.dll", EntryPoint = "NtQueryInformationProcess")]
         private static extern int NtQueryInformationProcessPower(IntPtr h, int infoClass,
             ref PowerThrottlingState info, int len, IntPtr retLen);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct PublicObjectBasicInformation
+        {
+            public uint Attributes;
+            public uint GrantedAccess;
+            public uint HandleCount;
+            public uint PointerCount;
+        }
+
+        [DllImport("ntdll.dll")]
+        private static extern int NtQueryObject(IntPtr handle, int infoClass,
+            IntPtr buffer, int length, out int returned);
+
+        private const int ObjectBasicInformation = 0;
+        private const int PublicObjectBasicInformationSize = 14 * 4;
+
+        public static bool TryQueryGrantedAccess(IntPtr handle, out uint granted)
+        {
+            granted = 0;
+            if (handle == IntPtr.Zero) return false;
+            IntPtr mem = Marshal.AllocHGlobal(PublicObjectBasicInformationSize);
+            try
+            {
+                for (int i = 0; i < PublicObjectBasicInformationSize; i += 4) Marshal.WriteInt32(mem, i, 0);
+                int returned;
+                if (NtQueryObject(handle, ObjectBasicInformation, mem,
+                        PublicObjectBasicInformationSize, out returned) != 0) return false;
+                var info = (PublicObjectBasicInformation)Marshal.PtrToStructure(
+                    mem, typeof(PublicObjectBasicInformation));
+                granted = info.GrantedAccess;
+                return true;
+            }
+            catch { return false; }
+            finally { Marshal.FreeHGlobal(mem); }
+        }
+
+        public static bool HandleWriteAccessStripped(IntPtr handle, out uint granted)
+        {
+            if (!TryQueryGrantedAccess(handle, out granted)) return false;
+            return (granted & PROCESS_SET_INFORMATION) == 0;
+        }
+
         private static int boostPrivilegeState;
 
         public static bool EnsureBoostPrivilege()

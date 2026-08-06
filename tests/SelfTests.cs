@@ -1,4 +1,4 @@
-﻿// @author bdth 2074055628@qq.com
+// @author bdth 2074055628@qq.com
 // 文件用途 运行不依赖测试框架的项目自测
 
 using System;
@@ -696,6 +696,17 @@ namespace PaviseApp
                     }
                     if (!anyFallback) sb.AppendLine("  (空)");
                 }
+
+                sb.AppendLine();
+                sb.AppendLine("=== 本机认出的游戏平台安装目录（客户端家族按目录内置豁免）===");
+                List<string> detected = GamePlatformCatalog.DetectedPlatforms();
+                if (detected.Count == 0) sb.AppendLine("  (空)");
+                foreach (string platform in detected)
+                {
+                    sb.AppendLine("  " + platform);
+                    foreach (string root in GamePlatformCatalog.ResolvedRoots(platform))
+                        sb.AppendLine("      " + root);
+                }
                 foreach (Process p in all) { try { p.Dispose(); } catch { } }
             }
             catch (Exception ex) { sb.AppendLine("ERROR: " + ex); }
@@ -743,20 +754,20 @@ namespace PaviseApp
                 catch (Exception ex) { log.Add("FAIL  " + name + " :: " + ex.Message); failed++; }
             };
 
-            test("strict mask: ordinary CPU partitions background cores", () =>
+            test("严格掩码：普通 CPU 划出后台核", () =>
                 Eq(0x3FUL, CpuPartitionPolicy.StrictMask(0xFF, 0xC0, 0, 0)));
-            test("strict mask: hybrid prefers reported P cores", () =>
+            test("严格掩码：混合架构优先用上报的性能核", () =>
                 Eq(0x0FUL, CpuPartitionPolicy.StrictMask(0xFF, 0xF0, 0x0F, 0)));
-            test("strict mask: X3D cache CCD wins", () =>
+            test("严格掩码：X3D 大缓存 CCD 优先", () =>
                 Eq(0xF0UL, CpuPartitionPolicy.StrictMask(0xFF, 0x0F, 0, 0xF0)));
-            test("strict mask: invalid empty partition falls back all", () =>
+            test("严格掩码：无效空分区退回全核", () =>
                 Eq(0x03UL, CpuPartitionPolicy.StrictMask(0x03, 0x03, 0, 0)));
-            test("CPU tiering: low-core homogeneous CPUs are never hard-partitioned", () =>
+            test("CPU 分级：核心少的同构 CPU 不做硬分区", () =>
             {
                 Eq(0, CpuPartitionPolicy.BackgroundCoreCount(4));
                 Eq(0, CpuPartitionPolicy.BackgroundCoreCount(6));
             });
-            test("CPU tiering: high-core homogeneous CPUs reserve proportionally", () =>
+            test("CPU 分级：核心多的同构 CPU 按比例预留后台核", () =>
             {
                 Eq(1, CpuPartitionPolicy.BackgroundCoreCount(8));
                 Eq(1, CpuPartitionPolicy.BackgroundCoreCount(10));
@@ -764,22 +775,22 @@ namespace PaviseApp
                 Eq(3, CpuPartitionPolicy.BackgroundCoreCount(24));
                 Eq(4, CpuPartitionPolicy.BackgroundCoreCount(64));
             });
-            test("whitelist rules: legacy names, versioned paths and exact boundaries", TestWhitelistRules);
-            test("whitelist family: descendants persist only while PID identity matches", TestWhitelistFamilyIdentity);
-            test("whitelist family events: order and parent creation prevent PID inheritance", TestWhitelistFamilyEvents);
-            test("process events: delayed starts cannot splice stale parent identity", TestProcNotifyParentIdentity);
-            test("whitelist storage: corrupt data fails safe and writes are transactional", TestWhitelistStorageSafety);
-            test("whitelist concurrency: edits serialize with in-flight policy snapshots", TestWhitelistMutationSerialization);
-            test("extreme exclusions: anti-cheat names are case-insensitive", () =>
+            test("白名单规则：旧版名称、带版本号路径与精确边界", TestWhitelistRules);
+            test("白名单家族：后代仅在 PID 身份一致时保留", TestWhitelistFamilyIdentity);
+            test("白名单家族事件：事件顺序与父进程创建时间阻断 PID 继承", TestWhitelistFamilyEvents);
+            test("进程事件：延迟启动不会接上过期的父进程身份", TestProcNotifyParentIdentity);
+            test("白名单存储：数据损坏时安全失败，写入为事务性", TestWhitelistStorageSafety);
+            test("白名单并发：编辑与进行中的策略快照串行化", TestWhitelistMutationSerialization);
+            test("极端豁免：反作弊名称匹配不区分大小写", () =>
             {
                 Eq(true, AntiCheatCatalog.IsKnownProcess("VGC"));
                 Eq(true, AntiCheatCatalog.IsKnownProcess("EasyAntiCheat_EOS"));
                 Eq(true, AntiCheatCatalog.IsKnownProcess("ace-helper"));
                 Eq(false, AntiCheatCatalog.IsKnownProcess("ordinary-app"));
             });
-            test("game family: generic multi-folder layouts share one protected root", TestMultiFolderGameRoot);
-            test("game catalog: protected root survives save format and legacy entries", TestGameCatalogFormat);
-            test("startup task: running binary replaces a stale executable target", () =>
+            test("游戏家族：多层目录结构共用同一个受保护根目录", TestMultiFolderGameRoot);
+            test("游戏库：受保护根目录在存档格式与旧条目间保持不变", TestGameCatalogFormat);
+            test("开机任务：以当前程序替换失效的可执行目标", () =>
             {
                 Eq(false, TaskHelper.NeedsStartupTaskRefresh(
                     @"C:\Code\Pavise\Pavise.exe",
@@ -798,9 +809,9 @@ namespace PaviseApp
                 Eq(null, TaskHelper.ParseTaskCommandXml(
                     "<Task><Actions /></Task>"));
             });
-            test("LoL runtime: LCU credentials reject malformed input", TestLolCredentialParsing);
-            test("LoL runtime: cleanup targets never include core, game or ACE paths", TestLolCleanupBoundary);
-            test("environment tweaks: a failing step backs off instead of retrying every scan", () =>
+            test("英雄联盟：LCU 凭据拒绝格式错误的输入", TestLolCredentialParsing);
+            test("英雄联盟：清理目标绝不包含核心、游戏本体或 ACE 路径", TestLolCleanupBoundary);
+            test("环境优化项：写入失败改为退避，不再每轮重试", () =>
             {
                 string envDir = Path.Combine(
                     Path.GetTempPath(), "PaviseEnvRetry_" + Process.GetCurrentProcess().Id);
@@ -826,9 +837,9 @@ namespace PaviseApp
                 if (restoreAttempts != 1)
                     throw new Exception("还原失败项尝试了 " + restoreAttempts + " 次，应为 1 次");
             });
-            test("render detector: Office and launchers cannot masquerade as games", TestRenderScoring);
-            test("render detector: parallel instances and PID reuse stay isolated", TestGameSessionInstanceIsolation);
-            test("autostart task: the logon instance is distinguishable from a manual launch", () =>
+            test("渲染识别：Office 与启动器不会被当成游戏", TestRenderScoring);
+            test("渲染识别：多开实例与 PID 复用互不串扰", TestGameSessionInstanceIsolation);
+            test("开机自启：可区分登录启动与手动启动", () =>
             {
                 const string withArgs =
                     "<Task><Actions Context=\"Author\"><Exec>"
@@ -846,8 +857,8 @@ namespace PaviseApp
                 Eq(null, TaskHelper.ParseTaskArgumentsXml("不是 XML"));
                 Eq(null, TaskHelper.ParseTaskArgumentsXml("<Task><Actions/></Task>"));
             });
-            test("release metadata: product and file versions are present", TestReleaseMetadata);
-            test("mode theme: graphite stays fixed while Standard, Competitive and Custom accents differ", () =>
+            test("版本元数据：产品版本与文件版本齐全", TestReleaseMetadata);
+            test("模式配色：底色固定，常规 / 竞技 / 自定义强调色各不相同", () =>
             {
                 Color bg = Theme.Bg;
                 if (Theme.ModeColor(PerformancePreset.Standard) == Theme.ModeColor(PerformancePreset.Competitive)) throw new Exception("Standard and Competitive accents match");
@@ -863,9 +874,9 @@ namespace PaviseApp
                 Eq(Theme.ModeColor(PerformancePreset.Custom), Theme.Accent);
                 Theme.SetMode(PerformancePreset.Standard, false);
             });
-            test("runtime icon: tray artwork fills the canvas and changes with effective mode", TestModeIcons);
-            test("dashboard motion: independent layers advance between frames", TestDashboardMotion);
-            test("high-DPI typography: body sizes land on whole device pixels from 100% to 200%", () =>
+            test("运行时图标：托盘图标铺满画布并随生效模式变化", TestModeIcons);
+            test("仪表盘动效：各图层逐帧独立推进", TestDashboardMotion);
+            test("高 DPI 字体：100% 到 200% 缩放下正文字号都落在整数像素上", () =>
             {
                 float old = Dpi.Scale;
                 try
@@ -883,7 +894,7 @@ namespace PaviseApp
                 }
                 finally { Dpi.Scale = old; }
             });
-            test("DPI change: scale updates only on a real change and cached fonts are dropped", () =>
+            test("DPI 变化：仅在真实变化时更新缩放并丢弃字体缓存", () =>
             {
                 float old = Dpi.Scale;
                 try
@@ -910,7 +921,7 @@ namespace PaviseApp
                 }
                 finally { Dpi.Scale = old; Theme.DropFontCache(); }
             });
-            test("DPI scale: only real changes count and probing never mutates the scale", () =>
+            test("DPI 缩放：只认真实变化，探测本身不改变缩放值", () =>
             {
                 float old = Dpi.Scale;
                 try
@@ -932,8 +943,8 @@ namespace PaviseApp
                 }
                 finally { Dpi.Scale = old; Theme.DropFontCache(); }
             });
-            test("background controller: sustained pressure escalates and cools down", TestPressureController);
-            test("game-mode event budget: ordinary process churn stays on the 20-second reconciliation", () =>
+            test("后台压力控制：持续高压升档，压力消失后降档", TestPressureController);
+            test("游戏模式事件预算：普通进程增删仍走 20 秒对账，不退化为高频扫描", () =>
             {
                 Eq(4000, GameMode.ProcessScanIntervalMs(false));
                 Eq(20000, GameMode.ProcessScanIntervalMs(true));
@@ -1060,47 +1071,14 @@ namespace PaviseApp
                 Eq(false, GameMode.ShouldRearmLauncherTransition(
                     returnedLauncher, returnedLauncher));
             });
-            test("preset policy: eligible background escalates and Competitive isolates immediately", TestPresetBackgroundPolicy);
-            test("background boundary: foreground and user-facing apps stay protected", TestBackgroundBoundary);
-            test("game protection: sticky-launcher guard and any-process targeting", TestGameProtectionRedesign);
-            test("CPU Sets: game and background partitions never overlap", TestCpuSetPartition);
-            test("DPC policy: only sustained outlier cores are avoided", () =>
-            {
-                Eq(-1, DpcSampler.FindNoisy(new[] { 0.01, 0.02, 0.015, 0.01 }));
-                Eq(2, DpcSampler.FindNoisy(new[] { 0.01, 0.02, 0.20, 0.01 }));
-                var sampler = new DpcSampler();
-                sampler.ObserveCandidate(2);
-                Eq(0UL, sampler.NoisyPhysicalMask);
-                sampler.ObserveCandidate(2);
-                if (sampler.NoisyPhysicalMask == 0) throw new Exception("sustained DPC spike was not activated");
-                sampler.ObserveCandidate(-1);
-                if (sampler.NoisyPhysicalMask == 0) throw new Exception("DPC avoidance cooled down too early");
-                sampler.ObserveCandidate(-1);
-                Eq(0UL, sampler.NoisyPhysicalMask);
-            });
-            test("interrupt core avoidance: only a clearly outlying core is given up", () =>
-            {
-                var cores = new ulong[] { 0x3, 0xC, 0x30, 0xC0, 0x300, 0xC00, 0x3000, 0xC000 };
-                var measured = new double[16];
-                measured[4] = 0.0265; measured[5] = 0.0265;
-                measured[8] = 0.0089;
-                measured[1] = 0.0010;
-                Eq(0x30UL, CpuPartitionPolicy.FindInterruptCore(measured, cores, 16));
-
-                Eq(0UL, CpuPartitionPolicy.FindInterruptCore(measured, cores, 6));
-
-                var faint = new double[16];
-                faint[4] = 0.004; faint[5] = 0.004;
-                Eq(0UL, CpuPartitionPolicy.FindInterruptCore(faint, cores, 16));
-
-                var tied = new double[16];
-                tied[4] = 0.03; tied[8] = 0.025;
-                Eq(0UL, CpuPartitionPolicy.FindInterruptCore(tied, cores, 16));
-
-                Eq(0UL, CpuPartitionPolicy.FindInterruptCore(null, cores, 16));
-                Eq(0UL, CpuPartitionPolicy.FindInterruptCore(measured, null, 16));
-            });
-            test("interrupt core avoidance: rate is the peak across a core's SMT threads", () =>
+            test("档位策略：符合条件的后台逐级加压，竞技档立即隔离", TestPresetBackgroundPolicy);
+            test("后台边界：前台与用户正在用的程序始终受保护", TestBackgroundBoundary);
+            test("游戏保护：启动器粘滞防护与任意进程作为目标", TestGameProtectionRedesign);
+            test("平台目录：启动器家族仅在自身安装目录内豁免", TestGamePlatformCatalog);
+            test("CPU Sets：游戏分区与后台分区永不重叠", TestCpuSetPartition);
+            test("CPU 拓扑：绑核掩码不安全时退回不绑核", TestStrictMaskNeverLandsOnEfficiencyCores);
+            test("CPU 拓扑：CPU Set 分区必须与性能核 / 能效核判定一致", TestCpuSetPartitionCrossCheck);
+            test("中断读数：取一个物理核内各超线程的峰值", () =>
             {
                 var rates = new double[] { 0.001, 0.020, 0.003, 0.004 };
                 if (Math.Abs(CpuPartitionPolicy.CoreInterruptRate(rates, 0x3) - 0.020) > 1e-9)
@@ -1108,25 +1086,15 @@ namespace PaviseApp
                 Eq(0.0, CpuPartitionPolicy.CoreInterruptRate(rates, 0));
                 Eq(0.0, CpuPartitionPolicy.CoreInterruptRate(null, 0x3));
             });
-            test("interrupt core avoidance: median ignores zero-heavy distributions correctly", () =>
+            test("游戏分区：中断负载不会再从游戏分区里拿走核心", () =>
             {
-                Eq(0.0, CpuPartitionPolicy.Median(new double[] { 0, 0, 0, 0.5 }));
-                Eq(2.0, CpuPartitionPolicy.Median(new double[] { 1, 3 }));
-                Eq(3.0, CpuPartitionPolicy.Median(new double[] { 1, 3, 9 }));
-                Eq(0.0, CpuPartitionPolicy.Median(null));
+                uint[] strict = CpuTopology.AdaptiveGameCpuSetIds(true);
+                uint[] again = CpuTopology.AdaptiveGameCpuSetIds(true);
+                if (strict == null || again == null) return;
+                Eq(strict.Length, again.Length);
+                for (int i = 0; i < strict.Length; i++) Eq(strict[i], again[i]);
             });
-            test("interrupt core probe: low-core machines never give up a core", () =>
-            {
-                var cores = new ulong[] { 0x3, 0xC, 0x30, 0xC0 };
-                var rates = new double[8];
-                rates[4] = 0.05;
-                Eq(0UL, CpuPartitionPolicy.FindInterruptCore(rates, cores,
-                    CpuPartitionPolicy.InterruptAvoidMinPhysicalCores - 1));
-                if (CpuPartitionPolicy.FindInterruptCore(rates, cores,
-                    CpuPartitionPolicy.InterruptAvoidMinPhysicalCores) == 0)
-                    throw new Exception("at the core-count threshold the outlier should be picked");
-            });
-            test("game resolver: unreadable store executables are still accepted", () =>
+            test("游戏识别：读不出内容的商店版程序仍可加入", () =>
             {
                 string dir = Path.Combine(Path.GetTempPath(), "PaviseAclTest_" + Guid.NewGuid().ToString("N"));
                 Directory.CreateDirectory(dir);
@@ -1176,7 +1144,7 @@ namespace PaviseApp
                     try { Directory.Delete(dir, true); } catch { }
                 }
             });
-            test("game resolver: a non-existent path is still rejected", () =>
+            test("游戏识别：不存在的路径仍然拒绝", () =>
             {
                 string missing = Path.Combine(Path.GetTempPath(), "PaviseMissing_" + Guid.NewGuid().ToString("N") + ".exe");
                 string resolved, error;
@@ -1191,7 +1159,7 @@ namespace PaviseApp
                 }
                 finally { try { File.Delete(txt); } catch { } }
             });
-            test("instance takeover: only a strictly newer build replaces the running one", () =>
+            test("实例接管：只有严格更新的版本才能接管正在运行的实例", () =>
             {
                 if (Program.CompareVersions("1.6.3", "1.6.2") <= 0) throw new Exception("newer build must win");
                 if (Program.CompareVersions("1.7.0", "1.6.9") <= 0) throw new Exception("minor bump must win");
@@ -1202,10 +1170,10 @@ namespace PaviseApp
                 if (Program.CompareVersions("1.0", null) <= 0) throw new Exception("unknown version must be treated as older");
                 if (Program.CompareVersions("1.0", "garbage") <= 0) throw new Exception("unparsable version must be treated as older");
             });
-            test("audit page: rebuilding a scrolled list starts back at the top", TestScrolledRebuild);
-            test("audit page: the entry slide never flashes a horizontal scrollbar", TestEnterSlideKeepsScrollbarsStable);
-            test("language table: no page shows a raw lang key", TestNoUntranslatedKeysOnScreen);
-            test("system audit: EcoQoS capability separates interface from full behaviour", () =>
+            test("体检页：滚动后重建列表会回到顶部", TestScrolledRebuild);
+            test("体检页：条目滑入动画不会闪出横向滚动条", TestEnterSlideKeepsScrollbarsStable);
+            test("语言表：任何页面都不会显示未翻译的原始键名", TestNoUntranslatedKeysOnScreen);
+            test("系统体检：效率模式区分接口可用与完整生效", () =>
             {
                 int build = SystemAudit.WindowsBuild();
                 if (build <= 0) throw new Exception("windows build was not resolved");
@@ -1227,7 +1195,7 @@ namespace PaviseApp
                 else if (eco.Value != "接口可用")
                     throw new Exception("older build must not claim full EcoQoS, got: " + eco.Value);
             });
-            test("system audit: interrupt tiers split at 1% and 5%", () =>
+            test("系统体检：中断占比按 1% 与 5% 分档", () =>
             {
                 Eq(0, SystemAudit.InterruptTier(0.0));
                 Eq(0, SystemAudit.InterruptTier(0.0099));
@@ -1240,7 +1208,7 @@ namespace PaviseApp
                 Eq("正常", SystemAudit.InterruptTierText(1));
                 Eq("异常", SystemAudit.InterruptTierText(2));
             });
-            test("system audit: report always carries all four groups with evidence tags", () =>
+            test("系统体检：报告始终包含四个分组且带依据标注", () =>
             {
                 AuditReport report = SystemAudit.Collect(300);
                 if (report.Capability.Count < 3) throw new Exception("capability rows missing");
@@ -1259,7 +1227,7 @@ namespace PaviseApp
                         throw new Exception("row \"" + row.Name + "\" has unknown evidence tag: " + row.Evidence);
                 }
             });
-            test("interrupt affinity: mask/byte round-trip is little-endian and lossless", () =>
+            test("中断亲和：掩码与字节序列小端往返且无损", () =>
             {
                 Eq(0x000000FFUL, InterruptAffinityTweak.BytesToMask(InterruptAffinityTweak.MaskToBytes(0x000000FFUL)));
                 Eq(0x0FUL, InterruptAffinityTweak.BytesToMask(InterruptAffinityTweak.MaskToBytes(0x0FUL)));
@@ -1271,7 +1239,7 @@ namespace PaviseApp
                 Eq(0UL, InterruptAffinityTweak.BytesToMask(null));
                 Eq(0UL, InterruptAffinityTweak.BytesToMask(new byte[] { 1, 2, 3 }));
             });
-            test("visual effects: the animation snapshot is persisted so a crash can recover it", () =>
+            test("视觉效果：动画原值已持久化，崩溃后可还原", () =>
             {
 
                 int before = 0;
@@ -1297,7 +1265,7 @@ namespace PaviseApp
                 Eq(before, after);
                 Eq("", Settings.LoadStr("PrevUiEffects", ""));
             });
-            test("powershell bridge: user data is passed as data, never parsed as script", () =>
+            test("PowerShell 调用：用户数据只作为数据传入，绝不被当脚本解析", () =>
             {
 
                 string evil = "D:" + "\\" + "Evil" + (char)0x2019 + ";Write-Output PWNED;" + (char)0x2019;
@@ -1311,7 +1279,7 @@ namespace PaviseApp
                 if (outText.IndexOf(evil, StringComparison.Ordinal) < 0)
                     throw new Exception("payload was not echoed verbatim; quoting altered the data");
             });
-            test("language table: every entry is complete and format placeholders are consistent", () =>
+            test("语言表：条目完整且格式占位符前后一致", () =>
             {
                 int languages = 0;
                 foreach (string key in Lang.AllKeys())
@@ -1342,7 +1310,7 @@ namespace PaviseApp
             });
 
             Settings.UseTransientStoreForCurrentProcess();
-            test("crash journal: old 9-field records still load after the QoS fields were added", () =>
+            test("崩溃日志：加入 QoS 字段后仍能读取旧的 9 字段记录", () =>
             {
                 string name = Convert.ToBase64String(Encoding.UTF8.GetBytes("game"));
 
@@ -1356,18 +1324,18 @@ namespace PaviseApp
 
                 Eq("0", CrashGuard.ProbeParse("111|222|" + name + "|32"));
             });
-            test("GPU tuning: BuildDesired maps every switch to its DRS keys", TestNvBuildDesired);
-            test("GPU tuning: FRL/DLSS mode round-trips keep every option including 240", TestGpuModeRoundTrips);
-            test("GPU tuning: an empty plan never reaches the driver", TestNvPlanEmpty);
-            test("GPU throttle: verdict needs enough samples and formats percentages", TestGpuThrottleSummary);
-            test("ADLX: a machine without AMD driver degrades to safe no-ops", TestAdlxDegrade);
-            test("ReBAR probe: PCI filtering, thresholds and a live window read", TestRebarProbe);
-            test("whitelist: scope is decided automatically, shell and script hosts never get family", TestWhitelistAutoScope);
-            test("whitelist: only exe and shortcut drops are accepted", TestWhitelistDropTargets);
-            test("whitelist: auto-add then narrow and widen keep one rule per program", TestWhitelistAutoAddAndReshape);
-            test("whitelist picker: system, anti-cheat and already-listed programs are hidden", TestRunningPickerHidesSystemAndDuplicates);
-            test("whitelist picker: memory sizes format correctly", TestMemoryFormatting);
-            test("suppression: game-root containment is anchored on a path segment", () =>
+            test("显卡调优：每个开关都正确映射到对应的驱动键", TestNvBuildDesired);
+            test("显卡调优：限帧与 DLSS 档位往返保留全部选项（含 240）", TestGpuModeRoundTrips);
+            test("显卡调优：空方案不会下发到驱动", TestNvPlanEmpty);
+            test("显卡限制判定：样本足够才出结论，百分比格式正确", TestGpuThrottleSummary);
+            test("ADLX：没有 A 卡驱动的机器安全降级为空操作", TestAdlxDegrade);
+            test("ReBAR 探测：PCI 过滤、阈值判定与实时窗口读取", TestRebarProbe);
+            test("白名单：作用范围自动判定，命令行与脚本宿主不会获得家族豁免", TestWhitelistAutoScope);
+            test("白名单：只接受 EXE 与快捷方式拖入", TestWhitelistDropTargets);
+            test("白名单：自动添加后收窄或放宽，每个程序始终只有一条规则", TestWhitelistAutoAddAndReshape);
+            test("白名单选取器：系统进程、反作弊与已在名单中的程序不显示", TestRunningPickerHidesSystemAndDuplicates);
+            test("白名单选取器：内存占用格式化正确", TestMemoryFormatting);
+            test("后台压制：游戏根目录判定按完整路径段锚定", () =>
             {
 
                 Eq(true, GameMode.UnderRoot(@"D:\Games\Apex\bin\game.exe", @"D:\Games\Apex"));
@@ -1387,7 +1355,7 @@ namespace PaviseApp
                 Eq(true, GameMode.BasicBackgroundEligible(10, 99, "sync", @"D:\Games\ApexBackup\sync.exe",
                     1, 1, 20, false, win, false, @"D:\Games\Apex"));
             });
-            test("suppression: every library game root is exempt, not just the active one", () =>
+            test("后台压制：游戏库里所有游戏根目录都豁免，不只当前这个", () =>
             {
                 var roots = new List<string> { @"D:\Games\Apex", @"E:\Genshin Impact\Genshin Impact Game" };
                 Eq(@"E:\Genshin Impact\Genshin Impact Game", GameMode.LibraryRootOf(
@@ -1405,7 +1373,7 @@ namespace PaviseApp
                     1, 1, 20, false, @"C:\Windows\", false,
                     GameMode.LibraryRootOf(@"E:\Genshin Impact\Genshin Impact Game\YuanShen.exe", roots), true));
             });
-            test("suppression: anti-cheat exemption is as broad as anti-cheat detection", () =>
+            test("后台压制：反作弊豁免范围与反作弊识别范围一致", () =>
             {
                 const string win = @"C:\Windows\";
 
@@ -1423,7 +1391,7 @@ namespace PaviseApp
                         1, 1, 20, false, win, false, null, true));
                 }
             });
-            test("suppression: the foreground window is never background material, aggressive or not", () =>
+            test("后台压制：前台窗口在任何激进档下都不作为后台处理", () =>
             {
                 const string win = @"C:\Windows\";
 
@@ -1439,7 +1407,7 @@ namespace PaviseApp
                         1, 1, 20, false, win, false, null, aggressive));
                 }
             });
-            test("suppression: network accelerators are exempt as broadly as anti-cheat", () =>
+            test("后台压制：网络加速器的豁免范围与反作弊一致", () =>
             {
                 const string win = @"C:\Windows\";
 
@@ -1467,7 +1435,7 @@ namespace PaviseApp
                     if (!NetAcceleratorCatalog.IsAcceleratorLikeName(n))
                         throw new Exception("display name " + n + " must be recognized as an accelerator");
             });
-            test("freeze: nothing under the Windows directory is ever suspended", () =>
+            test("后台冻结：Windows 目录下的进程一律不挂起", () =>
             {
                 const string win = @"C:\Windows\";
 
@@ -1491,7 +1459,7 @@ namespace PaviseApp
                 Eq(true, GameMode.BasicBackgroundEligible(9652, 99, "ChsIME",
                     @"C:\Windows\System32\InputMethod\CHS\ChsIME.exe", 1, 1, 20, false, win, false, null, true));
             });
-            test("theme fonts: the shared font cache survives repeated painting", () =>
+            test("主题字体：共享字体缓存可承受反复绘制", () =>
             {
 
                 using (var panel = new EmptyStatePanel())
@@ -1511,7 +1479,7 @@ namespace PaviseApp
                     if (Theme.UI(size, false).Height <= 0) throw new Exception(size + "pt font is unusable");
                 }
             });
-            test("defender exclusion: path matching never mistakes a neighbour for an owned entry", () =>
+            test("Defender 排除项：路径匹配不会把邻近目录误认成自己添加的条目", () =>
             {
 
                 Eq(@"C:\Games\Foo", DefenderExclusion.Normalize(@"C:\Games\Foo\"));
@@ -1531,7 +1499,7 @@ namespace PaviseApp
                 Eq(false, DefenderExclusion.Contains(owned, @"C:\Games\Foo\Sub"));
                 Eq(false, DefenderExclusion.Contains(new List<string>(), @"C:\Games\Foo"));
             });
-            test("per-game GPU preference: merging never destroys fields Windows owns", () =>
+            test("逐游戏显卡偏好：合并写入不会破坏 Windows 自己的字段", () =>
             {
 
                 Eq("AppStatus=0;GpuPreference=2;", GameExeTweaks.MergeField("AppStatus=0;", "GpuPreference", "2"));
@@ -1554,7 +1522,7 @@ namespace PaviseApp
 
                 Eq(null, GameExeTweaks.ReadField("XGpuPreference=2;", "GpuPreference"));
             });
-            test("release notes: current version is documented and fully translated", () =>
+            test("版本说明：当前版本已记录且翻译完整", () =>
             {
                 if (ReleaseNotes.All.Length == 0) throw new Exception("no release notes are bundled");
                 ReleaseNote cur = ReleaseNotes.Current;
@@ -1576,7 +1544,7 @@ namespace PaviseApp
                 Eq("", cur.Item(-1));
                 Eq("", cur.Item(cur.Count));
             });
-            test("auto-hide: fires once per game session and re-arms only on the next one", () =>
+            test("自动隐藏：每局只触发一次，下一局才重新武装", () =>
             {
                 bool last = false, armed = false;
 
@@ -1600,8 +1568,8 @@ namespace PaviseApp
 
                 Eq(AutoHideAction.None, PanelForm.NextAutoHide(true, ref last, ref armed, true, true));
             });
-            test("UI dormancy: hidden/minimized windows cannot revive animation timers", TestUiDormancyState);
-            test("network QoS: policy names stay unique, ASCII-safe and bounded in length", () =>
+            test("界面休眠：隐藏或最小化的窗口不会唤醒动画定时器", TestUiDormancyState);
+            test("网络 QoS：策略名唯一、纯 ASCII 且长度受限", () =>
             {
                 string a = NetworkAffinityTweak.SanitizePolicyName("Valorant", @"C:\Games\Valorant\VALORANT.exe");
                 string b = NetworkAffinityTweak.SanitizePolicyName("Valorant", @"C:\Games\Valorant2\VALORANT.exe");
@@ -1615,7 +1583,7 @@ namespace PaviseApp
                 string empty = NetworkAffinityTweak.SanitizePolicyName("", @"C:\g.exe");
                 if (!empty.StartsWith("Pavise_Game")) throw new Exception("empty game name did not fall back to a placeholder");
             });
-            test("anti-cheat tiers: level tags round-trip and priority mapping per tier", () =>
+            test("反作弊分级：档位标记往返一致，各档优先级映射正确", () =>
             {
                 Eq(SuppressionLevel.Eco, Tamer.ParseLevel(Tamer.LevelTag(SuppressionLevel.Eco)));
                 Eq(SuppressionLevel.Restrained, Tamer.ParseLevel(Tamer.LevelTag(SuppressionLevel.Restrained)));
@@ -1629,7 +1597,7 @@ namespace PaviseApp
                 Eq(Native.IDLE_PRIORITY_CLASS, SuppressionCore.DesiredPriority(SuppressionLevel.Isolated, Native.NORMAL_PRIORITY_CLASS));
                 Eq(Native.NORMAL_PRIORITY_CLASS, SuppressionCore.DesiredPriority(SuppressionLevel.Eco, 0));
             });
-            test("frame cap and DRS snapshots: value mapping round-trips", () =>
+            test("帧率上限与驱动快照：数值映射往返一致", () =>
             {
                 Lang.Init();
                 Eq(60, GameMode.ResolveFrlFps("60"));
@@ -1647,7 +1615,7 @@ namespace PaviseApp
                 Eq("prerender=2;pstate=absent", NvDrsTweaks.SerializeSnapshot(snap));
                 Eq(0, NvDrsTweaks.ParseSnapshot("").Count);
             });
-            test("windowed optimization: field merges and removes without touching siblings", () =>
+            test("窗口化优化：字段增删不影响同级其它字段", () =>
             {
                 string shared = "VRROptimizeEnable=1;AutoHDREnable=0;";
                 string on = GameExeTweaks.MergeField(shared, "SwapEffectUpgradeEnable", "1");
@@ -1666,7 +1634,7 @@ namespace PaviseApp
                     "SwapEffectUpgradeEnable"));
                 Eq("", GameExeTweaks.RemoveField("SwapEffectUpgradeEnable=1;", "SwapEffectUpgradeEnable"));
             });
-            test("steam shortcut: rungameid/vdf parsing and main-exe heuristics", () =>
+            test("Steam 快捷方式：rungameid 与 vdf 解析、主程序推断", () =>
             {
                 long appId;
                 Eq(true, SteamShortcut.TryParseUrlFile(
@@ -1699,7 +1667,7 @@ namespace PaviseApp
                 }
                 finally { try { Directory.Delete(exeRoot, true); } catch { } }
             });
-            test("render election: windowed sibling waits for GPU; fullscreen elects at once (Bannerlord pattern)", () =>
+            test("渲染选举：窗口化同级进程等待 GPU 证据，全屏则立即选定（骑砍2 场景）", () =>
             {
                 Lang.Init();
                 string gameDir = @"C:\g\Mount & Blade II Bannerlord\bin\Win64_Shipping_Client";
@@ -1764,7 +1732,7 @@ namespace PaviseApp
                 if (GameSessionDetector.DetectSnapshot(new[] { updater }, new[] { profile }, out armed) != null)
                     throw new Exception("non-game role must never be elected");
             });
-            test("render detector: learned renderer anchors without the launcher (LOL pattern)", () =>
+            test("渲染识别：已学习的渲染进程脱离启动器也能锚定（英雄联盟场景）", () =>
             {
                 Lang.Init();
                 string lolRoot = @"C:\g\WeGameApps\英雄联盟";
@@ -1817,7 +1785,7 @@ namespace PaviseApp
                 if (GameSessionDetector.DetectSnapshot(new[] { impostor }, new[] { profile }, out armed) != null)
                     throw new Exception("same-name impostor outside the root must not anchor");
             });
-            test("render election: client shell arms only; the real game engages and is learnable", () =>
+            test("渲染选举：客户端外壳只做预备，真正的游戏才接管且可被学习", () =>
             {
                 Lang.Init();
                 string lolRoot = @"C:\g\WeGameApps\英雄联盟";
@@ -1864,7 +1832,7 @@ namespace PaviseApp
                 Eq(true, hit.FamilyPids.Contains(6001));
                 Eq(true, hit.FamilyPids.Contains(6002));
             });
-            test("render election: fullscreen game outranks a stale learned launcher (Bannerlord handover)", () =>
+            test("渲染选举：全屏游戏优先于已过期的已学习启动器（骑砍2 交接）", () =>
             {
                 Lang.Init();
                 string blRoot = @"C:\g\Mount & Blade II Bannerlord";
@@ -1904,7 +1872,7 @@ namespace PaviseApp
                 if (hit == null) throw new Exception("learned fallback disappeared");
                 Eq("TaleWorlds.MountAndBlade.Launcher", hit.RendererName);
             });
-            test("evidence plumbing: GPU pid parse, fullscreen geometry, library candidate filter", () =>
+            test("证据链路：GPU 进程号解析、全屏几何判定、游戏库候选过滤", () =>
             {
                 Eq(4242, GpuEvidence.ParsePid("pid_4242_luid_0x00000000_0x0000ABCD_phys_0_eng_0_engtype_3D"));
                 Eq(0, GpuEvidence.ParsePid("luid_0x0_phys_0"));
@@ -1935,54 +1903,59 @@ namespace PaviseApp
             Directory.CreateDirectory(root);
             try
             {
-                test("game catalog: legacy list is cleared with a backup; fresh add persists install root", () => TestGameCatalogUpgrade(root));
-                test("game profiles: pre-election legacy list is cleared; fresh saves deduplicate", () => TestProfileStore(root));
-                test("game profiles: learned renderer survives the V4 roundtrip", () => TestLearnedRendererStore(root));
-                test("game profiles: a newer-format file is read-only and never overwritten", () => TestFutureProfileFormatProtected(root));
-                test("game profiles: pre-election era stores are cleared with a backup", () => TestV3ProfileMigration(root));
-                test("game scan: uninstall registry hits drop net accelerators", () => TestUninstallScanFiltersAccelerators(root));
-                test("game scan: main-exe pick follows structure, not size (LOL / Unity patterns)", () => TestPickMainExeStructure(root));
-                test("game scan: fake Steam library resolves games across libraries and filters junk", () => TestSteamLibraryScan(root));
-                test("game scan: store package repository accepts Xbox fingerprints only", () => TestStorePackageScan(root));
-                test("game profiles: an unreadable file is never overwritten by a save", () => TestProfileLoadFailure(root));
-                test("game library: EXE/LNK resolve without executing the target", () => TestExecutableResolver(root));
-                test("LoL addons: delete touches only add-on layers, never the game core", () => TestLolAddonDelete(root));
-                test("render detector: headless entry arms only; sessions need window evidence", () => TestHeadlessEntry(root));
-                test("render detector: family follows the profile root, not name prefixes", () => TestFallbackEntryRootBoundary(root));
-                test("renderer boost: HIGH priority and IO3 are verified by readback", () => TestBoostReadback(root));
-                test("renderer boost: retained crash snapshot is re-adopted exactly", TestCrashBoostReAdoption);
-                test("EcoQoS restore: a process' own power-saving opt-in survives suppression", () => TestEcoQoSRestore(root));
-                test("legacy freeze journal: corrupt evidence is retained", () => TestCorruptJournal(root));
-                test("legacy freeze journal: PID reuse identity is never resumed", () => TestPidReuseJournal(root));
-                test("strict placement: hard-affinity fallback restores exactly", () => TestAffinityRestore(root));
-                test("CPU Sets: pre-existing process policy restores exactly", () => TestExistingCpuSetRestore(root));
-                test("staged suppression: queryable state and CPU Sets restore", () => TestStagedSuppression(root));
-            test("competitive suppression: target resets are re-applied", () => TestSuppressionReapply(root));
-            test("suppression journal: failed persistence blocks every kernel write", () => TestSuppressionJournalGate(root));
-            test("suppression: a fully write-refused detail is recognized as self-protected", TestFullyBlockedDetailJudgement);
-            test("suppression: an untouched process matches its own snapshot exactly", () => TestSnapshotMatchJudgement(root));
-            test("self-protected roster: mark/contains round-trips case-insensitively", TestSelfProtectedRoster);
-            test("staged suppression: crash journal restores a live process", () => TestSuppressionCrashRecovery(root));
-            test("GPU demote: class mapping follows the background tier only", TestGpuDemoteMapping);
-            test("GPU demote: journal parses the gpu field and accepts legacy lines", TestGpuJournalField);
-            test("GPU demote: scheduling class write and restore verified on self", TestGpuPriorityRoundtrip);
-            test("GPU demote: a GPU-less process still suppresses and restores cleanly", () => TestGpuDemoteGpulessProcess(root));
-            test("freeze: dwell gate needs uninterrupted quiet before it opens", TestFreezeDwellGate);
-            test("freeze: an anti-cheat reason can never reach the frozen tier", TestAntiCheatNeverFreezes);
-            test("freeze: crash journal wakes a process left suspended", TestFrozenJournalThaw);
-            test("freeze: crash recovery never resumes a reused pid", TestFrozenJournalRejectsPidReuse);
-            test("freeze: one resume wakes a singly-suspended process", TestSuspendIsNotReentrant);
-            test("nv drs: key-to-settingid mapping is exact and collision-free", TestDrsKeyIdMapping);
-            test("nv drs: snapshot codec round-trips all four keys", TestDrsSnapshotRoundtrip);
-            test("nagle: interface list codec handles empty and multi entries", TestNagleListCodec);
-            test("ifeo: sandbox roundtrip registers priority and leaves zero residue", TestIfeoSandboxRoundtrip);
-            test("render lane: the busy thread is the one identified", TestRenderLaneIdentifiesBusyThread);
-            test("render lane: journal codec rejects malformed lines", TestRenderLaneJournalCodec);
-            test("sweep: a game's detached descendant is never suppressed", TestGameDescendantsExemption);
-            test("boost: a process already in efficiency mode is brought out of it", TestBoostClearsEfficiencyMode);
-            test("net throttle: only out-of-range values are flagged for repair", TestNetThrottleRangeJudgement);
-            test("device power: only the no-power-down bit is touched", TestDevicePowerBitMerge);
-            test("msi mode: scan yields PCI display/net devices only", TestMsiScanClassFilter);
+                test("游戏库：旧列表清理前先备份，新增条目持久化安装目录", () => TestGameCatalogUpgrade(root));
+                test("游戏档案：选举机制之前的旧列表被清理，新存档自动去重", () => TestProfileStore(root));
+                test("游戏档案：已学习的渲染进程在 V4 格式往返后保留", () => TestLearnedRendererStore(root));
+                test("游戏档案：更新格式的文件只读，绝不覆写", () => TestFutureProfileFormatProtected(root));
+                test("游戏档案：选举机制之前的存档清理前先备份", () => TestV3ProfileMigration(root));
+                test("游戏扫描：卸载注册表命中项中剔除网络加速器", () => TestUninstallScanFiltersAccelerators(root));
+                test("游戏扫描：主程序按目录结构挑选而非文件大小（英雄联盟 / Unity 场景）", () => TestPickMainExeStructure(root));
+                test("游戏扫描：跨 Steam 库解析游戏并过滤无关项", () => TestSteamLibraryScan(root));
+                test("游戏扫描：商店包仓库只接受 Xbox 特征", () => TestStorePackageScan(root));
+                test("游戏档案：读不出的文件不会被保存覆盖", () => TestProfileLoadFailure(root));
+                test("游戏库：解析 EXE 与快捷方式时不执行目标程序", () => TestExecutableResolver(root));
+                test("英雄联盟附加层：删除只涉及附加组件，绝不动游戏本体", () => TestLolAddonDelete(root));
+                test("渲染识别：无窗口入口只做预备，成局需要窗口证据", () => TestHeadlessEntry(root));
+                test("渲染识别：家族按档案根目录判定，而非名称前缀", () => TestFallbackEntryRootBoundary(root));
+                test("游戏提优：高优先级与 IO 3 均经回读验证", () => TestBoostReadback(root));
+                test("游戏提优：保留的崩溃快照被精确重新接管", TestCrashBoostReAdoption);
+                test("效率模式还原：进程自己选择的省电设置在压制后保留", () => TestEcoQoSRestore(root));
+                test("旧版冻结日志：损坏的证据予以保留", () => TestCorruptJournal(root));
+                test("旧版冻结日志：PID 复用的进程绝不恢复", () => TestPidReuseJournal(root));
+                test("严格绑核：硬亲和性兜底路径可精确还原", () => TestAffinityRestore(root));
+                test("CPU Sets：进程原有策略精确还原", () => TestExistingCpuSetRestore(root));
+                test("分级压制：状态可查询且 CPU Sets 可还原", () => TestStagedSuppression(root));
+            test("竞技压制：目标被重置后会重新施加", () => TestSuppressionReapply(root));
+            test("压制日志：记账写入失败则阻止一切内核写入", () => TestSuppressionJournalGate(root));
+            test("后台压制：完全拒绝写入的进程被识别为自保护", TestFullyBlockedDetailJudgement);
+            test("后台压制：未被改动的进程与自身快照完全一致", () => TestSnapshotMatchJudgement(root));
+            test("自保护名单：登记与查询往返一致且不区分大小写", TestSelfProtectedRoster);
+            test("分级压制：崩溃日志可还原仍在运行的进程", () => TestSuppressionCrashRecovery(root));
+            test("后台 GPU 让位：等级映射只跟随后台档位", TestGpuDemoteMapping);
+            test("后台 GPU 让位：日志能解析 gpu 字段并兼容旧行", TestGpuJournalField);
+            test("后台 GPU 让位：调度等级的写入与还原在自身进程上验证", TestGpuPriorityRoundtrip);
+            test("后台 GPU 让位：无 GPU 的进程照样压制并干净还原", () => TestGpuDemoteGpulessProcess(root));
+            test("后台冻结：静默计时需连续无动静才放行", TestFreezeDwellGate);
+            test("后台冻结：带反作弊理由的进程永不进入冻结档", TestAntiCheatNeverFreezes);
+            test("后台冻结：崩溃日志可唤醒遗留的挂起进程", TestFrozenJournalThaw);
+            test("后台冻结：崩溃恢复绝不唤醒被复用的 PID", TestFrozenJournalRejectsPidReuse);
+            test("后台冻结：单次挂起的进程一次唤醒即可恢复", TestSuspendIsNotReentrant);
+            test("NVIDIA 驱动：键名到设置 ID 的映射精确且无冲突", TestDrsKeyIdMapping);
+            test("NVIDIA 驱动：快照编解码四个键往返一致", TestDrsSnapshotRoundtrip);
+            test("Nagle：网卡列表编解码可处理空列表与多条目", TestNagleListCodec);
+            test("后备提优：沙箱往返写入优先级且零残留", TestIfeoSandboxRoundtrip);
+            test("后备提优：PerfOptions 三项写入且完整还原", TestIfeoWritesFullPerfOptionsTriple);
+            test("后备提优：预置发生在游戏启动之前而非之后", TestIfeoPreArmAppliesBeforeGameStarts);
+            test("反作弊识别：认不出的产品绝不编造名称", TestKernelAntiCheatNamingIsHonest);
+            test("清除旧数据：还原失败时绝不删除任何数据", TestLegacyPurgeKeepsDataWhenRestoreFails);
+            test("清除旧数据：只删除 Pavise 自己的文件", TestLegacyPurgeNeverTouchesForeignFiles);
+            test("渲染主权域：识别出的正是真正繁忙的线程", TestRenderLaneIdentifiesBusyThread);
+            test("渲染主权域：日志编解码拒绝格式错误的行", TestRenderLaneJournalCodec);
+            test("后台扫描：游戏脱离出去的子进程绝不被压制", TestGameDescendantsExemption);
+            test("游戏提优：已处于效率模式的进程会被带出该模式", TestBoostClearsEfficiencyMode);
+            test("网络限流：只有超出范围的值才标记为需修复", TestNetThrottleRangeJudgement);
+            test("设备电源：只改动禁止断电这一位", TestDevicePowerBitMerge);
+            test("MSI 模式：扫描只产出 PCI 显卡与网卡设备", TestMsiScanClassFilter);
             }
             finally { try { Directory.Delete(root, true); } catch { } }
 
@@ -2467,6 +2440,49 @@ namespace PaviseApp
             }
         }
 
+        private static void TestStrictMaskNeverLandsOnEfficiencyCores()
+        {
+            const ulong all = 0xFFF;
+            const ulong perf = 0x0FF;
+            const ulong eff = 0xF00;
+
+            Eq(perf, CpuTopology.SafeStrictMask(perf, eff, all, eff, true));
+
+            Eq(all, CpuTopology.SafeStrictMask(eff, eff, all, eff, true));
+            Eq(all, CpuTopology.SafeStrictMask(perf | 0x100, eff, all, eff, true));
+            Eq(all, CpuTopology.SafeStrictMask(0x1FF, 0x100, all, 0, false));
+            Eq(all, CpuTopology.SafeStrictMask(0, eff, all, eff, true));
+            Eq(all, CpuTopology.SafeStrictMask(0xF0000, eff, all, eff, true));
+
+            Eq(0x3FUL, CpuTopology.SafeStrictMask(0x3F, 0xC0, 0xFF, 0, false));
+        }
+
+        private static void TestCpuSetPartitionCrossCheck()
+        {
+            bool hybrid = CpuTopology.Hybrid;
+            ulong perf = CpuTopology.PerfMask, eff = CpuTopology.EffMask;
+            try
+            {
+                CpuTopology.Hybrid = true;
+                CpuTopology.PerfMask = 0x0FF;
+                CpuTopology.EffMask = 0xF00;
+
+                Eq(true, CpuTopology.PartitionAgreesWithEfficiency(0x0FF, 0xF00));
+                Eq(false, CpuTopology.PartitionAgreesWithEfficiency(0xF00, 0x0FF));
+                Eq(false, CpuTopology.PartitionAgreesWithEfficiency(0x1FF, 0xE00));
+                Eq(false, CpuTopology.PartitionAgreesWithEfficiency(0x0F0, 0xF0F));
+
+                CpuTopology.Hybrid = false;
+                Eq(true, CpuTopology.PartitionAgreesWithEfficiency(0xF00, 0x0FF));
+            }
+            finally
+            {
+                CpuTopology.Hybrid = hybrid;
+                CpuTopology.PerfMask = perf;
+                CpuTopology.EffMask = eff;
+            }
+        }
+
         private static void TestBackgroundBoundary()
         {
             const string win = @"C:\Windows\";
@@ -2567,17 +2583,72 @@ namespace PaviseApp
                 "TaleWorlds.MountAndBlade.Launcher", @"D:\Games\TaleWorlds.MountAndBlade.Launcher.exe"));
 
             var steamRoots = new List<string> { @"C:\Program Files (x86)\Steam" };
-            Eq(true, SteamCatalog.IsSteamFamilyWithRoots(
+            Eq(true, GamePlatformCatalog.MatchesWithRoots("Steam",
                 "steam", @"C:\Program Files (x86)\Steam\steam.exe", steamRoots));
-            Eq(true, SteamCatalog.IsSteamFamilyWithRoots(
+            Eq(true, GamePlatformCatalog.MatchesWithRoots("Steam",
                 "gameoverlayui", @"C:\Program Files (x86)\Steam\gameoverlayui.exe", steamRoots));
-            Eq(true, SteamCatalog.IsSteamFamilyWithRoots(
+            Eq(true, GamePlatformCatalog.MatchesWithRoots("Steam",
                 "steamwebhelper", @"C:\Program Files (x86)\Steam\bin\cef\cef.win7x64\steamwebhelper.exe", steamRoots));
-            Eq(false, SteamCatalog.IsSteamFamilyWithRoots(
+            Eq(false, GamePlatformCatalog.MatchesWithRoots("Steam",
                 "steam", @"D:\Malware\steam.exe", steamRoots));
-            Eq(false, SteamCatalog.IsSteamFamilyWithRoots(
+            Eq(false, GamePlatformCatalog.MatchesWithRoots("Steam",
                 "cs2", @"C:\Program Files (x86)\Steam\steamapps\common\cs2\cs2.exe", steamRoots));
-            Eq(false, SteamCatalog.IsSteamFamilyWithRoots("steam", @"C:\Program Files (x86)\Steam\steam.exe", null));
+            Eq(false, GamePlatformCatalog.MatchesWithRoots("Steam",
+                "steam", @"C:\Program Files (x86)\Steam\steam.exe", null));
+        }
+
+        private static void TestGamePlatformCatalog()
+        {
+
+            Eq(true, GamePlatformCatalog.IsPlatformShellName("EpicGamesLauncher"));
+            Eq(true, GamePlatformCatalog.IsPlatformShellName("EADesktop"));
+            Eq(true, GamePlatformCatalog.IsPlatformShellName("UbisoftConnect"));
+            Eq(true, GamePlatformCatalog.IsPlatformShellName("Battle.net"));
+            Eq(true, GamePlatformCatalog.IsPlatformShellName("GalaxyClient"));
+            Eq(true, GamePlatformCatalog.IsPlatformShellName("RiotClientServices"));
+            Eq(true, GamePlatformCatalog.IsPlatformShellName("wegame"));
+            Eq(true, GamePlatformCatalog.IsPlatformShellName("XboxPcApp"));
+            Eq(true, GamePlatformCatalog.IsPlatformShellName("RockstarService"));
+            Eq(true, GamePlatformCatalog.IsPlatformShellName("HYP"));
+
+            Eq(false, GamePlatformCatalog.IsPlatformShellName("launcher"));
+            Eq(false, GamePlatformCatalog.IsPlatformShellName("agent"));
+            Eq(false, GamePlatformCatalog.IsPlatformShellName("origin"));
+            Eq(false, GamePlatformCatalog.IsPlatformShellName("upc"));
+            Eq(false, GamePlatformCatalog.IsPlatformShellName("gamecenter"));
+            Eq(false, GamePlatformCatalog.IsPlatformShellName("Bannerlord"));
+            Eq(false, GamePlatformCatalog.IsPlatformShellName(null));
+            Eq(false, GamePlatformCatalog.IsPlatformShellName(""));
+
+            var rockstar = new List<string> { @"C:\Program Files\Rockstar Games\Launcher" };
+            Eq(true, GamePlatformCatalog.MatchesWithRoots("Rockstar Games",
+                "launcher", @"C:\Program Files\Rockstar Games\Launcher\Launcher.exe", rockstar));
+            Eq(true, GamePlatformCatalog.MatchesWithRoots("Rockstar Games",
+                "RockstarService", @"C:\Program Files\Rockstar Games\Launcher\RockstarService.exe", rockstar));
+
+            Eq(false, GamePlatformCatalog.MatchesWithRoots("Rockstar Games",
+                "launcher", @"D:\Games\Bannerlord\bin\Win64_Shipping_Client\Launcher.exe", rockstar));
+            Eq(false, GamePlatformCatalog.OwnsName("Steam", "launcher"));
+            Eq(true, GamePlatformCatalog.OwnsName("HoYoPlay", "launcher"));
+            Eq(true, GamePlatformCatalog.OwnsName("Battle.net", "agent"));
+
+            var battlenet = new List<string> { @"C:\ProgramData\Battle.net" };
+            Eq(true, GamePlatformCatalog.MatchesWithRoots("Battle.net",
+                "agent", @"C:\ProgramData\Battle.net\Agent\Agent.7269\Agent.exe", battlenet));
+            Eq(false, GamePlatformCatalog.MatchesWithRoots("Battle.net",
+                "agent", @"D:\Games\Agent\Agent.exe", battlenet));
+
+            Eq(false, GamePlatformCatalog.MatchesWithRoots("Epic Games", "Fortnite",
+                @"C:\Program Files\Epic Games\Launcher\Fortnite.exe",
+                new List<string> { @"C:\Program Files\Epic Games\Launcher" }));
+
+            foreach (string root in GamePlatformCatalog.ResolvedRoots("Steam"))
+            {
+                Eq(true, root.Length > 3);
+                Eq(false, string.Equals(root.TrimEnd('\\'),
+                    (Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86) ?? "@").TrimEnd('\\'),
+                    StringComparison.OrdinalIgnoreCase));
+            }
         }
 
         private static void TestProfileStore(string root)

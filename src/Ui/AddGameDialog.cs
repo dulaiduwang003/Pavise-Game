@@ -269,7 +269,7 @@ namespace PaviseApp
                         if (string.IsNullOrEmpty(path) || !seen.Add(path)) continue;
                         string name = GameSessionDetector.ImageNameFromVerifiedPath(path);
                         if (!GameSessionDetector.IsLibraryCandidate(name, path, windowsRoot)) continue;
-                        if (SteamCatalog.IsSteamFamily(name, path)) continue;
+                        if (GamePlatformCatalog.IsPlatformProcess(name, path)) continue;
                         pidByPath[path] = p.Id;
                         hits.Add(new ScanHit
                         {

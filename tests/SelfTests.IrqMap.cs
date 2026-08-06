@@ -17,6 +17,22 @@ namespace PaviseApp
             return string.Join("/", parts.ToArray());
         }
 
+        private static ulong DirtiestCore(double[] rates, ulong[] coreMasks)
+        {
+            if (rates == null || coreMasks == null) return 0;
+            ulong worst = 0;
+            double worstRate = 0;
+            foreach (ulong mask in coreMasks)
+            {
+                if (mask == 0) continue;
+                double rate = CpuPartitionPolicy.CoreInterruptRate(rates, mask);
+                if (rate > worstRate) { worstRate = rate; worst = mask; }
+            }
+            return worst;
+        }
+
+        private const double IrqConcernRate = 0.05;
+
         private static void RunIrqMap(string output, string windowArg, string passesArg)
         {
             int window, passes;
@@ -67,13 +83,12 @@ namespace PaviseApp
                 }
 
                 double primaryRate = CpuPartitionPolicy.CoreInterruptRate(rates, primary);
-                ulong pick = CpuPartitionPolicy.FindInterruptCore(
-                    rates, cores, CpuTopology.PhysicalCoreCount);
+                ulong pick = DirtiestCore(rates, cores);
 
                 sb.AppendLine("  最脏的核占比    : " + (worstRate * 100.0).ToString("F4") + " %");
                 sb.AppendLine("  承载 CPU 0 的核 : " + (primaryRate * 100.0).ToString("F4") + " %"
                     + (worstRate > 0 ? "（是最脏核的 " + (primaryRate / worstRate * 100.0).ToString("F1") + "%）" : ""));
-                sb.AppendLine("  本轮离群判定    : " + (pick == 0 ? "无离群核" : "核 " + CoreLabel(pick)));
+                sb.AppendLine("  本轮最脏的核    : " + (pick == 0 ? "无法判定" : "核 " + CoreLabel(pick)));
                 sb.AppendLine();
 
                 perPassPrimary.Add(primaryRate);
@@ -88,51 +103,49 @@ namespace PaviseApp
             }
             else
             {
-                sb.AppendLine("当前阈值: 物理核 >= " + CpuPartitionPolicy.InterruptAvoidMinPhysicalCores
-                    + " 且 最脏核占比 >= " + (CpuPartitionPolicy.InterruptAvoidMinRate * 100.0).ToString("F2")
-                    + " % 且 >= 第二脏核的 " + CpuPartitionPolicy.InterruptAvoidRatio.ToString("F1") + " 倍");
+                sb.AppendLine("关注阈值: 最脏核占比 >= " + (IrqConcernRate * 100.0).ToString("F0")
+                    + " % 才值得排查该核上的设备（Pavise 不会因此让出任何核，中断规避已于 v1.6.3 移除）");
                 sb.AppendLine("最脏核占比各轮  : " + JoinPercent(perPassWorst));
                 sb.AppendLine("CPU 0 所在核各轮: " + JoinPercent(perPassPrimary));
 
-                int picked = 0, primaryPicked = 0;
+                int primaryPicked = 0;
                 ulong stable = picks[0];
                 foreach (ulong p in picks)
                 {
-                    if (p != 0) picked++;
                     if (p != 0 && p == primary) primaryPicked++;
                     if (p != stable) stable = 0;
                 }
                 var labels = new List<string>();
                 foreach (ulong p in picks) labels.Add(p == 0 ? "无" : CoreLabel(p));
-                sb.AppendLine("各轮离群核      : " + string.Join("  ", labels.ToArray()));
+                sb.AppendLine("各轮最脏的核    : " + string.Join("  ", labels.ToArray()));
                 sb.AppendLine();
 
+                double topRate = Med(perPassWorst);
                 if (stable != 0)
                 {
                     ulong partition = CpuTopology.StrictBoostMask;
                     sb.AppendLine("竞技游戏分区    : 0x" + partition.ToString("X"));
-                    sb.AppendLine("离群核是否在分区内: "
+                    sb.AppendLine("最脏核是否在分区内: "
                         + ((partition & stable) != 0 ? "是，游戏线程会被调度到它上面" : "否，游戏线程不会碰到它"));
                     sb.AppendLine();
-                }
 
-                if (picked == 0)
-                    sb.AppendLine("判定: 本机没有明显离群的中断核，中断分布正常，无需处理。");
-                else if (stable != 0 && picked == picks.Count)
-                {
-                    double topRate = Med(perPassWorst);
                     sb.AppendLine("判定: 中断稳定集中在核 " + CoreLabel(stable)
                         + "（中位占比 " + (topRate * 100.0).ToString("F2") + "%）。");
-                    sb.AppendLine("      中断的单次干扰是微秒级，5% 以下通常不足以造成可感知的卡顿；"
-                        + "超过 5% 建议排查该核上的设备（系统环境页的中断亲和可将其引走）。");
+                    if (topRate < IrqConcernRate)
+                        sb.AppendLine("      中断的单次干扰是微秒级，"
+                            + (IrqConcernRate * 100.0).ToString("F0")
+                            + "% 以下不足以造成可感知的卡顿，无需处理。");
+                    else
+                        sb.AppendLine("      已超过 " + (IrqConcernRate * 100.0).ToString("F0")
+                            + "%，建议排查该核上的设备（系统环境页的中断亲和可将其引走）。");
                     if (primaryPicked != picks.Count)
                         sb.AppendLine("      注意: 该核不是承载 CPU 0 的核。本机上"
                             + "「屏蔽线程 0/1」的民间做法躲错了核。");
                 }
                 else
-                    sb.AppendLine("判定: 结果不稳定（" + picked + "/" + picks.Count
-                        + " 轮出现离群核，且目标核在轮次间变化），中断分布随负载漂移，"
-                        + "建议在有真实外设和网络活动时重测。");
+                    sb.AppendLine("判定: 最脏的核在轮次间变化（中位占比 "
+                        + (topRate * 100.0).ToString("F2") + "%），中断分布随负载漂移，"
+                        + "没有稳定的热点核；建议在有真实外设和网络活动时重测。");
             }
 
             string text = sb.ToString();

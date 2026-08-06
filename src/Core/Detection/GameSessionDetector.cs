@@ -60,11 +60,14 @@ namespace PaviseApp
             "potplayermini64", "potplayermini", "mpc-hc64", "mpc-hc"
         };
 
-        private static readonly HashSet<string> StorefrontShellNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        private static readonly HashSet<string> StorefrontShellNames = BuildStorefrontShellNames();
+
+        private static HashSet<string> BuildStorefrontShellNames()
         {
-            "wegame", "wegame_env", "wegameclient", "steam", "steamwebhelper",
-            "epicgameslauncher", "battle.net", "galaxyclient", "ubisoftconnect"
-        };
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string name in GamePlatformCatalog.PlatformShellNames()) names.Add(name);
+            return names;
+        }
 
         private static readonly string[] ClientShellTokens = { "leagueclient", "riotclient" };
 
