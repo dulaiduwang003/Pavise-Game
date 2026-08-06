@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 解析游戏程序和快捷方式的真实路径
 
 using System;
@@ -48,8 +48,12 @@ namespace PaviseApp
 
             try { target = Path.GetFullPath(Environment.ExpandEnvironmentVariables(target.Trim().Trim('"'))); }
             catch { error = "快捷方式目标路径无效"; return false; }
-            if (!Path.GetExtension(target).Equals(".exe", StringComparison.OrdinalIgnoreCase) || !File.Exists(target)
-                || !IsPortableExecutable(target))
+            if (!Path.GetExtension(target).Equals(".exe", StringComparison.OrdinalIgnoreCase) || !File.Exists(target))
+            {
+                error = "目标必须是本机存在的有效 EXE 文件";
+                return false;
+            }
+            if (!IsPortableExecutable(target) && !IsUnreadable(target))
             {
                 error = "目标必须是本机存在的有效 EXE 文件";
                 return false;
@@ -74,6 +78,24 @@ namespace PaviseApp
                 }
             }
             catch { return false; }
+        }
+
+        internal static bool IsUnreadable(string path)
+        {
+            try
+            {
+                using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete)) { }
+                return false;
+            }
+            catch (UnauthorizedAccessException) { return true; }
+            catch (IOException) { return false; }
+            catch { return false; }
+        }
+
+        public static string ResolveShortcut(string shortcutPath)
+        {
+            string target;
+            return TryResolveShortcut(shortcutPath, out target) ? target : null;
         }
 
         private static bool TryResolveShortcut(string shortcutPath, out string target)

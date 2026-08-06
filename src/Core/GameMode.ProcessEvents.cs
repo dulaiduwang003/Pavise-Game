@@ -10,6 +10,7 @@ namespace PaviseApp
     {
         private int processSetDirty;
         private int urgentProcessScan;
+        private volatile bool armedAwaitingElection;
         private int transitionScanPending;
         private int transitionProbeRendererPid;
         private long transitionProbeRendererCreation;
@@ -242,6 +243,8 @@ namespace PaviseApp
                 return true;
             }
             int fallback = ProcessScanIntervalMs(ProcessEventsAvailable);
+            if (armedAwaitingElection)
+                fallback = Math.Min(fallback, PollingSweepIntervalMs);
             long fallbackTicks = fallback * TimeSpan.TicksPerMillisecond;
             if (last <= 0 || elapsed < 0 || elapsed >= fallbackTicks)
             {
@@ -264,6 +267,8 @@ namespace PaviseApp
                     ref urgentProcessScan, 0, 0) != 0)
                 return 1;
             int interval = ProcessScanIntervalMs(ProcessEventsAvailable);
+            if (armedAwaitingElection)
+                interval = Math.Min(interval, PollingSweepIntervalMs);
             long last = Interlocked.Read(ref lastProcessScanTicks);
             if (last <= 0 || now < last) return 1;
             long elapsedMs = (now - last) / TimeSpan.TicksPerMillisecond;
@@ -303,6 +308,8 @@ namespace PaviseApp
             int interval = ProcessEventsAvailable
                 ? FullGameDetectionIntervalMs
                 : PollingSweepIntervalMs;
+            if (armedAwaitingElection)
+                interval = PollingSweepIntervalMs;
             bool due = last <= 0 || now < last
                 || now - last >= interval * TimeSpan.TicksPerMillisecond;
             if (Interlocked.Exchange(ref gameDetectionDirty, 0) != 0 || due)

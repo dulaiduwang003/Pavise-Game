@@ -29,7 +29,19 @@ namespace PaviseApp
             catch { Hybrid = false; AsymCache = false; }
             DeriveMasks();
             try { BuildCpuSetPolicies(); } catch { }
+            ValidateMasks();
         }
+
+        internal static bool PartitionAgreesWithEfficiency(ulong gamePartition, ulong background)
+        {
+            if (!Hybrid || PerfMask == 0 || EffMask == 0) return true;
+            if ((gamePartition & EffMask) != 0) return false;
+            if ((background & PerfMask) != 0) return false;
+            return true;
+        }
+
+        public static bool CpuSetPartitionRejected;
+        public static bool StrictMaskUnsafe;
 
         private static void DeriveMasks()
         {
@@ -41,6 +53,26 @@ namespace PaviseApp
             else { ThrottleMask = nc >= 2 && nc <= 64 ? 3UL << (nc - 2) : (nc >= 2 ? 0UL : 1UL); BoostMask = AllMask; }
             StrictBoostMask = CpuPartitionPolicy.StrictMask(AllMask, ThrottleMask,
                 Hybrid ? PerfMask : 0, AsymCache ? BigL3Mask : 0);
+        }
+
+        internal static ulong SafeStrictMask(ulong strict, ulong throttle, ulong all, ulong eff, bool hybrid)
+        {
+            if (strict == 0 || (strict & all) == 0) return all;
+            if ((strict & throttle) != 0) return all;
+            if (hybrid && eff != 0 && (strict & eff) != 0) return all;
+            return strict;
+        }
+
+        private static void ValidateMasks()
+        {
+            ulong safe = SafeStrictMask(StrictBoostMask, ThrottleMask, AllMask, EffMask, Hybrid);
+            if (safe != StrictBoostMask)
+            {
+                StrictMaskUnsafe = true;
+                StrictBoostMask = safe;
+                partitionGameIds = null;
+                backgroundIds = null;
+            }
         }
 
         private static uint[] boostIds;
@@ -113,7 +145,6 @@ namespace PaviseApp
         private static uint[] backgroundIds;
         private static uint[] allIds;
         private static uint[] partitionGameIds;
-        private static readonly Dictionary<uint, int> cpuSetLogical = new Dictionary<uint, int>();
         private static readonly List<ulong> physicalCoreMasks = new List<ulong>();
 
         public static uint[] BackgroundCpuSetIds()
@@ -129,24 +160,10 @@ namespace PaviseApp
 
         public static uint[] AdaptiveGameCpuSetIds(bool competitive)
         {
-            return AdaptiveGameCpuSetIds(competitive, 0);
-        }
-
-        public static uint[] AdaptiveGameCpuSetIds(bool competitive, ulong avoidMask)
-        {
-            uint[] ids;
-            if (!competitive) ids = MultiGroup ? allIds : BoostCpuSetIds();
-            else ids = partitionGameIds != null && partitionGameIds.Length > 0
+            if (!competitive) return MultiGroup ? allIds : BoostCpuSetIds();
+            return partitionGameIds != null && partitionGameIds.Length > 0
                 ? partitionGameIds
                 : (MultiGroup ? allIds : BoostCpuSetIds());
-            if (ids == null || avoidMask == 0) return ids;
-            var filtered = new List<uint>();
-            foreach (uint id in ids)
-            {
-                int logical;
-                if (!cpuSetLogical.TryGetValue(id, out logical) || logical < 0 || logical >= 64 || ((avoidMask >> logical) & 1UL) == 0) filtered.Add(id);
-            }
-            return filtered.Count > 0 ? filtered.ToArray() : ids;
         }
 
         public static ulong ExpandPhysicalCoreMask(ulong logicalMask)
@@ -154,6 +171,15 @@ namespace PaviseApp
             foreach (ulong core in physicalCoreMasks) if ((core & logicalMask) != 0) return core;
             return logicalMask;
         }
+
+        public static int PhysicalCoreCount { get { return physicalCoreMasks.Count; } }
+
+        public static ulong PrimaryCoreMask
+        {
+            get { return physicalCoreMasks.Count > 0 ? ExpandPhysicalCoreMask(1UL) : 0; }
+        }
+
+        public static ulong[] PhysicalCoreMasks() { return physicalCoreMasks.ToArray(); }
 
         private static void BuildCpuSetPolicies()
         {
@@ -186,10 +212,6 @@ namespace PaviseApp
                             Core = Marshal.ReadByte(rec, 15),
                             Efficiency = Marshal.ReadByte(rec, 18)
                         });
-                        short group = Marshal.ReadInt16(rec, 12);
-                        byte logical = Marshal.ReadByte(rec, 14);
-                        uint cpuSetId = (uint)Marshal.ReadInt32(rec, 8);
-                        cpuSetLogical[cpuSetId] = group == 0 ? logical : -1;
                     }
                     pos += size;
                 }
@@ -266,8 +288,17 @@ namespace PaviseApp
 
                 if (!MultiGroup && !AsymCache && backgroundMask != 0 && gamePartitionMask != 0)
                 {
-                    ThrottleMask = backgroundMask;
-                    StrictBoostMask = gamePartitionMask;
+                    if (PartitionAgreesWithEfficiency(gamePartitionMask, backgroundMask))
+                    {
+                        ThrottleMask = backgroundMask;
+                        StrictBoostMask = gamePartitionMask;
+                    }
+                    else
+                    {
+                        CpuSetPartitionRejected = true;
+                        backgroundIds = null;
+                        partitionGameIds = null;
+                    }
                 }
             }
             finally { Marshal.FreeHGlobal(buf); }

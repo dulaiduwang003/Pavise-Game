@@ -32,7 +32,7 @@ namespace PaviseApp
                 Theme.FillRound(e.Graphics, Rectangle.Inflate(e.Bounds, -Theme.S(3), -Theme.S(2)), Theme.S(6), Theme.Sel);
             TextRenderer.DrawText(e.Graphics, Items[e.Index].ToString(), Font,
                 new Rectangle(e.Bounds.X + Theme.S(10), e.Bounds.Y, e.Bounds.Width - Theme.S(14), e.Bounds.Height),
-                inList && sel ? Color.White : Theme.Fg,
+                inList && sel && !Theme.LightMode ? Color.White : Theme.Fg,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
         }
 

@@ -24,7 +24,7 @@ namespace PaviseApp
             if (h > 0.01f)
             {
                 int rr = Dpi.S(15);
-                Color hi = close ? Col.Alpha(Theme.Danger, (int)(210 * h)) : Col.Alpha(Color.White, (int)(22 * h));
+                Color hi = close ? Col.Alpha(Theme.Danger, (int)(210 * h)) : Col.Alpha(Theme.Fg, (int)(22 * h));
                 using (var b = new SolidBrush(hi)) g.FillEllipse(b, cx - rr, cy - rr, rr * 2, rr * 2);
             }
 

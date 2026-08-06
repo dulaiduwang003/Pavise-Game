@@ -1,7 +1,8 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 构建设置页 只放应用自身的偏好与维护工具
 
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Threading;
 using System.Windows.Forms;
@@ -10,7 +11,7 @@ namespace PaviseApp
 {
     internal partial class PanelForm
     {
-        private Toggle swAuto, swAutoHide;
+        private Toggle swAuto, swAutoHide, swContact;
         private SettingCard cardShader;
         private static volatile bool shaderCleaning;
         private int slowBusy;
@@ -38,6 +39,13 @@ namespace PaviseApp
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.autohide"), Lang.T("set.autohide.n"), swAutoHide, out cardH);
             sy += cardH + 8;
 
+            swContact = MakeSwitch(ContactDialog.ShouldShow(), delegate
+            {
+                if (swContact.Checked) ContactDialog.ResetHidden(); else ContactDialog.MarkHidden();
+            });
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.contact"), Lang.T("set.contact.n"), swContact, out cardH);
+            sy += cardH + 8;
+
             sy += 10;
             Section(scroll, Lang.T("sec.maint"), 6, sy); sy += 24;
 
@@ -60,6 +68,19 @@ namespace PaviseApp
                 using (dlg) dlg.ShowDialog(this);
             };
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("def.open"), Lang.T("def.open.sub"), btnDefender, out cardH);
+            sy += cardH + 8;
+
+            var btnAddon = new PillButton(Lang.T("btn.open"), BtnKind.Normal);
+            btnAddon.Bg = Theme.Card;
+            btnAddon.Size = new Size(Theme.S(120), Theme.S(32));
+            btnAddon.Click += delegate
+            {
+                var roots = new List<string>();
+                foreach (GameProfile profile in gameMode.GetProfiles())
+                    if (!string.IsNullOrEmpty(profile.Root)) roots.Add(profile.Root);
+                using (var dlg = new LolAddonDialog(roots)) ShowDim(dlg);
+            };
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("addon.open"), Lang.T("addon.open.sub"), btnAddon, out cardH);
             sy += cardH + 8;
 
             var btnShaderGo = new PillButton(Lang.T("btn.clean"));
@@ -160,14 +181,6 @@ namespace PaviseApp
                 int failed = 0;
                 try
                 {
-                    if (lolService.HasRecordedHeadlessState())
-                    {
-                        attempted++;
-                        if (!TryRestoreRecordedItem(
-                                "英雄联盟大厅界面",
-                                delegate { return lolService.RestoreNow(); }))
-                            failed++;
-                    }
                     attempted++;
                     if (!TryRestoreRecordedItem(
                             "游戏模式",

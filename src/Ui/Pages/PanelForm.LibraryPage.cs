@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 构建游戏库页 并维护条目的运行状态与网络策略同步
 
 using System;
@@ -35,7 +35,7 @@ namespace PaviseApp
             listWrap.EmptyTitle = "PAVISE LIBRARY";
             listWrap.EmptyDetail = Lang.T("v15.library.empty");
             listWrap.Padding = new Padding(Theme.S(8));
-            lstGames = new ListBox(); lstGames.Dock = DockStyle.Fill; Theme.StyleList(lstGames);
+            lstGames = new TechListBox(); lstGames.Dock = DockStyle.Fill; Theme.StyleList(lstGames, false);
             lstGames.ItemHeight = Math.Min(255, Theme.S(68));
             lstGames.DrawItem += DrawGameLibraryItem;
             lstGames.KeyDown += delegate(object s, KeyEventArgs e)
@@ -45,20 +45,32 @@ namespace PaviseApp
             };
             listWrap.Controls.Add(lstGames);
             int bx = ContentX + listW + 16, bw = ContentW - listW - 16, bh = 40;
-            var browse = new PillButton(Lang.T("v15.library.add"), BtnKind.Primary); browse.SetBounds(Theme.S(bx), Theme.S(y), Theme.S(bw), Theme.S(bh)); browse.Click += delegate { BrowseGameExecutable(); };
-            var fromProc = new PillButton(Lang.T("v16.library.fromproc"));
-            fromProc.SetBounds(Theme.S(bx), Theme.S(y + 50), Theme.S(bw), Theme.S(bh));
-            fromProc.Click += delegate { AddGameFromRunningProcess(); };
-            var remove = new PillButton(Lang.T("btn.remove")); remove.SetBounds(Theme.S(bx), Theme.S(y + 100), Theme.S(bw), Theme.S(bh));
+            var add = new PillButton(Lang.T("v15.library.add"), BtnKind.Primary);
+            add.SetBounds(Theme.S(bx), Theme.S(y), Theme.S(bw), Theme.S(bh));
+            add.Click += delegate { ShowAddGameDialog(); };
+            var remove = new PillButton(Lang.T("btn.remove")); remove.SetBounds(Theme.S(bx), Theme.S(y + 50), Theme.S(bw), Theme.S(bh));
             remove.Click += delegate
             {
                 GameLibraryItem item = lstGames.SelectedItem as GameLibraryItem;
                 if (item != null) { gameMode.RemoveProfile(item.Profile.Id); RefreshGames(); }
             };
             Label hint = new Label(); hint.Text = Lang.T("v15.library.drop"); hint.ForeColor = Theme.Dim; hint.BackColor = Theme.Bg;
-            hint.Font = Theme.UI(8.2f, false); hint.AutoEllipsis = true; hint.SetBounds(Theme.S(bx + 4), Theme.S(y + 158), Theme.S(bw - 8), Theme.S(64));
-            pageLibrary.Controls.AddRange(new Control[] { listWrap, browse, fromProc, remove, hint });
+            hint.Font = Theme.UI(8.2f, false); hint.AutoEllipsis = true; hint.SetBounds(Theme.S(bx + 4), Theme.S(y + 108), Theme.S(bw - 8), Theme.S(64));
+            pageLibrary.Controls.AddRange(new Control[] { listWrap, add, remove, hint });
             RefreshGames();
+        }
+
+        public void NotifyLibraryChanged()
+        {
+            try
+            {
+                if (!IsHandleCreated || IsDisposed) return;
+                BeginInvoke((MethodInvoker)delegate
+                {
+                    if (!IsDisposed && lstGames != null) RefreshGames();
+                });
+            }
+            catch { }
         }
 
         private void DrawGameLibraryItem(object sender, DrawItemEventArgs e)
@@ -67,7 +79,7 @@ namespace PaviseApp
             GameLibraryItem item = lstGames.Items[e.Index] as GameLibraryItem;
             if (item == null || item.Profile == null) return;
             bool selected = (e.State & DrawItemState.Selected) != 0;
-            int hover = lstGames.Tag is int ? (int)lstGames.Tag : -1;
+            int hover = Theme.HoverIndex(lstGames);
             Rectangle row = Rectangle.Inflate(e.Bounds, -Theme.S(4), -Theme.S(3));
             using (var back = new SolidBrush(Theme.Card)) e.Graphics.FillRectangle(back, e.Bounds);
             Theme.FillRound(e.Graphics, row, Theme.S(10), selected ? Theme.Sel : (e.Index == hover ? Theme.CardHover : Theme.Card));
@@ -86,31 +98,24 @@ namespace PaviseApp
                     item.Running ? Theme.Green : Theme.Faint, TextFormatFlags.Right | TextFormatFlags.NoPadding);
         }
 
-        private void AddGameFromRunningProcess()
+        private void ShowAddGameDialog()
         {
-            using (var dlg = new ProcessPickerDialog())
+            var known = new List<string>();
+            foreach (GameProfile p in gameMode.GetProfiles())
             {
-                if (ShowDim(dlg) != DialogResult.OK || string.IsNullOrEmpty(dlg.SelectedPath)) return;
-                string error;
-                if (!gameMode.AddGameFile(dlg.SelectedPath, out error) && !string.IsNullOrEmpty(error))
-                    MessageBox.Show(this, error, "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                RefreshGames();
+                if (!string.IsNullOrEmpty(p.ExecutablePath)) known.Add(p.ExecutablePath);
+                if (!string.IsNullOrEmpty(p.LearnedExecutablePath)) known.Add(p.LearnedExecutablePath);
             }
-        }
 
-        private void BrowseGameExecutable()
-        {
-            using (var dlg = new OpenFileDialog())
+            using (var dlg = new AddGameDialog(known, gameMode.ActiveGame == null))
             {
-                dlg.Title = Lang.T("ofd.game");
-                dlg.Filter = Lang.T("ofd.filter");
-                if (dlg.ShowDialog(this) == DialogResult.OK)
-                {
-                    string error;
-                    if (!gameMode.AddGameFile(dlg.FileName, out error))
-                        MessageBox.Show(this, error, "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    RefreshGames();
-                }
+                if (ShowDim(dlg) != DialogResult.OK || dlg.Selected.Count == 0) return;
+                string lastError;
+                int added = gameMode.AddScannedGames(dlg.Selected, out lastError);
+                RefreshGames();
+                if (added > 0) Logger.Log(Lang.F("scan.added", added));
+                else if (lastError != null)
+                    MessageBox.Show(this, lastError, "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
 
