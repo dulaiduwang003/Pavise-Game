@@ -146,7 +146,7 @@ namespace PaviseApp
                 && path.StartsWith(windowsRoot, StringComparison.OrdinalIgnoreCase);
         }
 
-        private void Sweep(Process[] all, HashSet<int> gamePids)
+        private void Sweep(ProcessSnapshot all, HashSet<int> gamePids)
         {
 
             lock (whiteEvalSync)
@@ -154,7 +154,7 @@ namespace PaviseApp
         }
 
         private void SweepWithStableWhitelist(
-            Process[] all, HashSet<int> gamePids)
+            ProcessSnapshot all, HashSet<int> gamePids)
         {
             PerformancePreset mode = ActivePreset;
             int foregroundPid = GameSessionDetector.ForegroundPid();
@@ -195,17 +195,17 @@ namespace PaviseApp
             var live = new HashSet<int>();
             var pending = new List<BackgroundRequest>();
 
-            foreach (Process p in all)
+            foreach (ProcEntry p in all.Entries)
             {
                 try
                 {
-                    int pid = p.Id;
+                    int pid = p.Pid;
                     WhitelistProcessInfo processInfo;
                     whitelist.Processes.TryGetValue(pid, out processInfo);
                     live.Add(pid);
                     if (pid <= 4 || pid == selfPid) continue;
 
-                    string nm = processInfo != null ? processInfo.Name : p.ProcessName;
+                    string nm = processInfo != null ? processInfo.Name : p.Name;
 
                     if (string.Equals(nm, selfName, StringComparison.OrdinalIgnoreCase))
                     {
@@ -214,7 +214,7 @@ namespace PaviseApp
                     }
 
                     bool sameSession = processInfo != null && selfSession >= 0 && processInfo.Session == selfSession;
-                    if (processInfo == null) { try { sameSession = selfSession >= 0 && p.SessionId == selfSession; } catch { } }
+                    if (processInfo == null) sameSession = selfSession >= 0 && p.Session == selfSession;
                     if (!sameSession)
                     {
                         ReleaseBackgroundExemption(pid, nm, null);

@@ -1644,6 +1644,8 @@ namespace PaviseApp
                 Eq(AutoHideAction.None, PanelForm.NextAutoHide(true, ref last, ref armed, true, true));
             });
             test("界面休眠：隐藏或最小化的窗口不会唤醒动画定时器", TestUiDormancyState);
+            test("进程快照：单次系统调用的字段与逐句柄查询一致", TestSnapshotFieldsMatchHandleQuery);
+            test("进程快照：路径缓存复用，热轮次不再逐进程开句柄", TestSnapshotPathCacheStaysWarm);
             test("网络 QoS：策略名唯一、纯 ASCII 且长度受限", () =>
             {
                 string a = NetworkAffinityTweak.SanitizePolicyName("Valorant", @"C:\Games\Valorant\VALORANT.exe");

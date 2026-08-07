@@ -936,14 +936,13 @@ namespace PaviseApp
                             kick.WaitOne(ProcessScanWaitMs());
                             continue;
                         }
-                        Process[] all = null;
+                        ProcessSnapshot all = null;
                         CountProcessScan();
-                        try { all = Process.GetProcesses(); }
-                        catch { RequeueProcessScanAfterFailure(); }
-                        if (all != null)
+                        try { all = ProcessSnapshotSource.Capture(selfSession); }
+                        catch { all = null; }
+                        if (all == null) RequeueProcessScanAfterFailure();
+                        else
                         {
-                            try
-                            {
                                 PruneWhitelistFamilyMembersIfDue(all);
                                 HashSet<int> gamePids;
                                 string running = FindRunningGame(all, out gamePids);
@@ -1004,8 +1003,6 @@ namespace PaviseApp
                                         Deactivate("残留恢复重试");
                                     TryAutoAddForegroundGame();
                                 }
-                            }
-                            finally { foreach (Process p in all) p.Dispose(); }
                         }
                     }
                 }
@@ -1028,7 +1025,7 @@ namespace PaviseApp
             }
         }
 
-        private string FindRunningGame(Process[] all, out HashSet<int> gamePids)
+        private string FindRunningGame(ProcessSnapshot all, out HashSet<int> gamePids)
         {
             List<GameProfile> copy;
             lock (sync)

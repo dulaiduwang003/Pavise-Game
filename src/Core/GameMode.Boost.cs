@@ -382,7 +382,7 @@ namespace PaviseApp
             return n;
         }
 
-        private void Boost(Process[] all)
+        private void Boost(ProcessSnapshot all)
         {
             var live = new HashSet<int>();
             PerformancePreset mode = ActivePreset;
@@ -426,11 +426,11 @@ namespace PaviseApp
                         break;
                     }
             if (staleBoost) UnboostGames(rendererPid, rendererCreation, rendererName);
-            foreach (Process p in all)
+            foreach (ProcEntry p in all.Entries)
             {
                 try
                 {
-                    int pid = p.Id;
+                    int pid = p.Pid;
                     live.Add(pid);
                     if (rendererPid <= 0 || pid != rendererPid) continue;
                     bool known, retryEco, needTweak, needPlacement, auditDue, stripped;

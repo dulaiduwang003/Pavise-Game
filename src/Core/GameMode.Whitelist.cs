@@ -73,7 +73,7 @@ namespace PaviseApp
             Interlocked.Exchange(ref whiteHasFamilyRules, found);
         }
 
-        private WhitelistEvaluation EvaluateWhitelist(Process[] all)
+        private WhitelistEvaluation EvaluateWhitelist(ProcessSnapshot all)
         {
             lock (whiteEvalSync)
             {
@@ -144,33 +144,29 @@ namespace PaviseApp
             }
         }
 
-        private WhitelistEvaluation BuildWhitelistProcessSnapshot(Process[] all)
+        private WhitelistEvaluation BuildWhitelistProcessSnapshot(ProcessSnapshot all)
         {
             var result = new WhitelistEvaluation();
             if (all == null) return result;
-            foreach (Process process in all)
+            foreach (ProcEntry entry in all.Entries)
             {
                 try
                 {
-                    int pid = process.Id;
+                    int pid = entry.Pid;
                     var info = new WhitelistProcessInfo { Pid = pid };
-                    try { info.Name = WhitelistRule.NormalizeName(process.ProcessName); }
-                    catch { info.Name = ""; }
-                    try { info.Session = process.SessionId; } catch { info.Session = -1; }
+                    info.Name = WhitelistRule.NormalizeName(entry.Name);
+                    info.Session = entry.Session;
                     result.Processes[pid] = info;
                     result.Names[pid] = info.Name;
                     if (pid <= 4 || selfSession < 0 || info.Session != selfSession) continue;
+                    if (entry.Path == null) continue;
 
-                    IntPtr handle = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
-                    if (handle == IntPtr.Zero) continue;
-                    try
-                    {
-                        info.Path = WhitelistRule.NormalizeImagePath(Native.ImagePath(handle));
-                        info.Parent = Native.ParentProcessId(handle);
-                        Native.QueryProcessSample(handle, out info.Creation, out info.Cpu, out info.Io);
-                        result.Parents[pid] = info.Parent;
-                    }
-                    finally { Native.CloseHandle(handle); }
+                    info.Path = WhitelistRule.NormalizeImagePath(entry.Path);
+                    info.Parent = entry.ParentPid;
+                    info.Creation = entry.Creation;
+                    info.Cpu = entry.Cpu;
+                    info.Io = entry.Io;
+                    result.Parents[pid] = info.Parent;
                 }
                 catch { }
             }
@@ -254,25 +250,19 @@ namespace PaviseApp
 
         private List<WhitelistRuleView> SnapshotWhitelistRuleViews()
         {
-            Process[] all;
-            try { all = Process.GetProcesses(); }
-            catch { all = new Process[0]; }
-            try
-            {
-                WhitelistEvaluation evaluation = EvaluateWhitelist(all);
-                var views = new List<WhitelistRuleView>();
-                lock (sync)
-                    foreach (WhitelistRule rule in whiteRules)
-                    {
-                        HashSet<int> matches;
-                        int count = evaluation.ByRule.TryGetValue(rule.Key, out matches) ? matches.Count : 0;
-                        views.Add(new WhitelistRuleView(
-                            rule, count, rule.Kind == WhitelistRuleKind.LegacyName
-                                && IsPresetWhitelistName(rule.Value)));
-                    }
-                return views;
-            }
-            finally { foreach (Process process in all) process.Dispose(); }
+            ProcessSnapshot all = ProcessSnapshotSource.Capture(selfSession);
+            WhitelistEvaluation evaluation = EvaluateWhitelist(all);
+            var views = new List<WhitelistRuleView>();
+            lock (sync)
+                foreach (WhitelistRule rule in whiteRules)
+                {
+                    HashSet<int> matches;
+                    int count = evaluation.ByRule.TryGetValue(rule.Key, out matches) ? matches.Count : 0;
+                    views.Add(new WhitelistRuleView(
+                        rule, count, rule.Kind == WhitelistRuleKind.LegacyName
+                            && IsPresetWhitelistName(rule.Value)));
+                }
+            return views;
         }
 
         private int ReleaseCurrentWhitelistMatches(out int matched)
@@ -280,35 +270,26 @@ namespace PaviseApp
             matched = 0;
             lock (whiteEvalSync)
             {
-                Process[] all;
-                try { all = Process.GetProcesses(); }
-                catch { all = new Process[0]; }
-                try
+                ProcessSnapshot all = ProcessSnapshotSource.Capture(selfSession);
+                WhitelistEvaluation evaluation = EvaluateWhitelist(all);
+                matched = evaluation.Protected.Count;
+                int restored = 0;
+                foreach (int pid in evaluation.Protected)
                 {
-                    WhitelistEvaluation evaluation = EvaluateWhitelist(all);
-                    matched = evaluation.Protected.Count;
-                    int restored = 0;
-                    foreach (int pid in evaluation.Protected)
+                    WhitelistProcessInfo info;
+                    if (!evaluation.Processes.TryGetValue(
+                            pid, out info)
+                        || info.Creation <= 0)
+                        continue;
+                    if (core.ReleaseIfCreation(
+                            pid, SuppressReason.Background,
+                            info.Creation))
                     {
-                        WhitelistProcessInfo info;
-                        if (!evaluation.Processes.TryGetValue(
-                                pid, out info)
-                            || info.Creation <= 0)
-                            continue;
-                        if (core.ReleaseIfCreation(
-                                pid, SuppressReason.Background,
-                                info.Creation))
-                        {
-                            ReportUntrack(pid);
-                            restored++;
-                        }
+                        ReportUntrack(pid);
+                        restored++;
                     }
-                    return restored;
                 }
-                finally
-                {
-                    foreach (Process process in all) process.Dispose();
-                }
+                return restored;
             }
         }
 
@@ -493,7 +474,7 @@ namespace PaviseApp
             return result;
         }
 
-        private void PruneWhitelistFamilyMembersIfDue(Process[] all)
+        private void PruneWhitelistFamilyMembersIfDue(ProcessSnapshot all)
         {
             if (all == null
                 || Interlocked.CompareExchange(
@@ -519,15 +500,14 @@ namespace PaviseApp
                 if (retained.Count == 0) return;
 
                 var live = new HashSet<int>();
-                foreach (Process process in all)
-                    try
-                    {
-                        int pid = process.Id;
-                        if (retained.Contains(pid)) live.Add(pid);
-                    }
-                    catch { }
-                Dictionary<int, long> current =
-                    CaptureStoppedProcessIdentity(live);
+                var current = new Dictionary<int, long>();
+                foreach (ProcEntry process in all.Entries)
+                {
+                    int pid = process.Pid;
+                    if (!retained.Contains(pid)) continue;
+                    live.Add(pid);
+                    current[pid] = process.Creation;
+                }
 
                 lock (sync)
                     foreach (Dictionary<int, long> members
