@@ -11,8 +11,8 @@ namespace PaviseApp
     internal partial class PanelForm
     {
         private Toggle swHags, swVbs, swMpo, swIrqAffinity, swNetAffinity, swUsbAffinity, swGmGuard, swNagle;
-        private Toggle swNetThrottle, swMsi, swDevPower;
-        private SettingCard cardVbs, cardNetThrottle, cardMsi;
+        private Toggle swNetThrottle, swDevPower;
+        private SettingCard cardVbs, cardNetThrottle;
         private int envBusy;
         private static readonly object netQosSync = new object();
 
@@ -79,12 +79,6 @@ namespace PaviseApp
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.devpower"), Lang.T("set.devpower.n"), swDevPower, out cardH);
             sy += cardH + 8;
 
-            bool msiIdle = MsiModeTweak.Disabled().Count == 0 && !MsiModeTweak.EnabledByPavise;
-            swMsi = MakeSwitch(MsiModeTweak.EnabledByPavise, OnMsiToggle);
-            swMsi.Enabled = !msiIdle;
-            cardMsi = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.msi"),
-                msiIdle ? Lang.T("msi.none") : Lang.T("set.msi.n"), swMsi, out cardH);
-            sy += cardH + 8;
         }
 
         private void OnNetThrottleToggle(object s, EventArgs e)
@@ -101,14 +95,6 @@ namespace PaviseApp
             if (!RequireElevationFor(swDevPower, DevicePowerTweak.EnabledByPavise)) return;
             if (swDevPower.Checked) DevicePowerTweak.Enable(); else DevicePowerTweak.Restore();
             swDevPower.SetSilently(DevicePowerTweak.EnabledByPavise);
-        }
-
-        private void OnMsiToggle(object s, EventArgs e)
-        {
-            if (!RequireElevationFor(swMsi, MsiModeTweak.EnabledByPavise)) return;
-            bool ok = swMsi.Checked ? MsiModeTweak.Enable() : MsiModeTweak.Restore();
-            if (ok) MessageBox.Show(this, Lang.T("irqaffinity.reboot"), "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            swMsi.SetSilently(MsiModeTweak.EnabledByPavise);
         }
 
         private void OnGameModeGuardToggle(object s, EventArgs e)
@@ -260,7 +246,6 @@ namespace PaviseApp
             if (swNagle != null) swNagle.SetSilently(NagleTweak.EnabledByPavise);
             if (swNetThrottle != null) swNetThrottle.SetSilently(NetTweak.RepairedByPavise);
             if (swDevPower != null) swDevPower.SetSilently(DevicePowerTweak.EnabledByPavise);
-            if (swMsi != null) swMsi.SetSilently(MsiModeTweak.EnabledByPavise);
         }
     }
 }

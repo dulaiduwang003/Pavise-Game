@@ -2067,7 +2067,7 @@ namespace PaviseApp
             test("游戏提优：已处于效率模式的进程会被带出该模式", TestBoostClearsEfficiencyMode);
             test("网络限流：只有超出范围的值才标记为需修复", TestNetThrottleRangeJudgement);
             test("设备电源：只改动禁止断电这一位", TestDevicePowerBitMerge);
-            test("MSI 模式：扫描只产出 PCI 显卡与网卡设备", TestMsiScanClassFilter);
+            test("废弃功能：每条都登记了移除版本与原因", TestRetiredFeaturesRegistry);
             test("竞技电源：参数表没有重复的 GUID 与项名", TestPowerKnobTableHasNoDuplicates);
             test("竞技电源：竞技档与常规档该不同的项确实不同", TestPowerArenaDiffersFromCalm);
             test("竞技电源：真机写入后能原样读回竞技档与常规档", TestPowerPlanWritesArenaValues);

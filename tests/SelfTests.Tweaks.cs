@@ -155,22 +155,24 @@ namespace PaviseApp
             Eq(0, DevicePowerTweak.Merge(0x08, false));
         }
 
-        private static void TestMsiScanClassFilter()
+        private static void TestRetiredFeaturesRegistry()
         {
-            foreach (MsiModeTweak.Candidate c in MsiModeTweak.Scan())
-            {
-                if (string.IsNullOrEmpty(c.InstanceId))
-                    throw new Exception("MSI candidate had an empty instance id");
-                if (!c.InstanceId.StartsWith(@"PCI\", StringComparison.OrdinalIgnoreCase))
-                    throw new Exception("MSI candidate was not a PCI device: " + c.InstanceId);
-            }
-            foreach (MsiModeTweak.Candidate c in MsiModeTweak.Disabled())
-            {
-                Eq(true, c.HasKey);
-                Eq(0, c.Value.Value);
-            }
             Eq(0, MsiModeTweak.ParseList("").Length);
             Eq(2, MsiModeTweak.ParseList("a;b").Length);
+
+            int count = 0;
+            foreach (RetiredFeature f in RetiredFeatures.Entries)
+            {
+                count++;
+                if (string.IsNullOrEmpty(f.Name))
+                    throw new Exception("retired feature had an empty name");
+                if (string.IsNullOrEmpty(f.RemovedIn))
+                    throw new Exception("retired feature missing removal version: " + f.Name);
+                if (string.IsNullOrEmpty(f.Reason))
+                    throw new Exception("retired feature missing reason: " + f.Name);
+                f.HasResidue();
+            }
+            Eq(true, count >= 3);
         }
 
         private static void TestRenderLaneJournalCodec()

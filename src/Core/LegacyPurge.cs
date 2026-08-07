@@ -80,9 +80,9 @@ namespace PaviseApp
 
             Step("电源计划", PowerPlan.Restore, failed);
             Step("Windows 更新暂停", UpdatePause.Restore, failed);
-            Step("前台调度稳定", FgBoost.Restore, failed);
+            foreach (RetiredFeature f in RetiredFeatures.Entries)
+                Step(f.Name, f.Restore, failed);
             Step("Game DVR", GameDvr.Restore, failed);
-            Step("MMCSS", Mmcss.Restore, failed);
             Step("通知免打扰", Notif.Restore, failed);
             Step("视觉效果", VisualFx.Restore, failed);
             Step("刷新率守护", DisplayGuard.Restore, failed);
@@ -93,7 +93,6 @@ namespace PaviseApp
             Step("服务暂停", SvcPause.Restore, failed);
             Step("网络优化", NetTweak.Restore, failed);
             Step("Nagle", NagleTweak.Restore, failed);
-            Step("MSI 模式", MsiModeTweak.Restore, failed);
             Step("MPO", MpoTweak.Restore, failed);
             Step("VBS", VbsTweak.Restore, failed);
             Step("游戏模式守护", GameModeGuard.Restore, failed);
