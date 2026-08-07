@@ -31,7 +31,7 @@ namespace PaviseApp
             ProcessPriorityClass origPriority = me.PriorityClass;
 
             sb.AppendLine("=== 提优的增量价值 ===");
-            sb.AppendLine("问题: 产品里后台压制默认开启，提优在此基础上还值多少");
+            sb.AppendLine("对照: 后台压制默认开启，测量提优在此基础上的增量");
             sb.AppendLine("逻辑处理器 " + Environment.ProcessorCount + " | 抢占进程 " + hogs
                 + " | 受害者 " + victimThreads + " 线程 | 每段 " + seconds + "s | " + rounds + " 轮");
             sb.AppendLine();
@@ -101,14 +101,14 @@ namespace PaviseApp
                 }
                 else
                 {
-                    sb.AppendLine("参照组  仅压制 vs 放任       : " + Med(suppressAlone).ToString("F1") + "%");
-                    sb.AppendLine("        仅提优 vs 放任       : " + Med(boostAlone).ToString("F1")
+                    sb.AppendLine("仅压制 vs 放任       : " + Med(suppressAlone).ToString("F1") + "%");
+                    sb.AppendLine("仅提优 vs 放任       : " + Med(boostAlone).ToString("F1")
                         + "%   各轮: " + Join(boostAlone));
                     sb.AppendLine();
                     double bt = Med(boostOnTop), lt = Med(laneOnTop);
-                    sb.AppendLine("关键    提优在压制之上的增量 : " + bt.ToString("F1")
+                    sb.AppendLine("提优在压制之上的增量 : " + bt.ToString("F1")
                         + "%   各轮: " + Join(boostOnTop));
-                    sb.AppendLine("        主权域在压制之上增量 : " + lt.ToString("F1")
+                    sb.AppendLine("主权域在压制之上增量 : " + lt.ToString("F1")
                         + "%   各轮: " + Join(laneOnTop));
                     sb.AppendLine();
 
@@ -117,11 +117,9 @@ namespace PaviseApp
                     foreach (double g in laneOnTop) if (g > 2) ltPos++;
 
                     if (Math.Abs(bt) < 5)
-                        sb.AppendLine("判定 GmBoost: 无增量 —— 后台已被压制时，把游戏提到 High 优先级"
-                            + "带来的尾部帧变化落在噪声内（" + bt.ToString("F1") + "%）。");
+                        sb.AppendLine("判定 GmBoost: 无增量，尾部帧变化落在噪声内（" + bt.ToString("F1") + "%）。");
                     else if (btPos == boostOnTop.Count && bt > 5)
-                        sb.AppendLine("判定 GmBoost: 有增量 —— 每轮为正，尾部再改善 "
-                            + bt.ToString("F1") + "%，应当保留。");
+                        sb.AppendLine("判定 GmBoost: 有增量，每轮为正，尾部再改善 " + bt.ToString("F1") + "%。");
                     else
                         sb.AppendLine("判定 GmBoost: 不稳定（" + btPos + "/" + boostOnTop.Count
                             + " 轮为正，中位 " + bt.ToString("F1") + "%）。");
@@ -129,18 +127,15 @@ namespace PaviseApp
                     double lb = Med(laneOnBoost);
                     int lbPos = 0;
                     foreach (double g in laneOnBoost) if (g > 2) lbPos++;
-                    sb.AppendLine("        主权域在提优之上增量 : " + lb.ToString("F1")
+                    sb.AppendLine("主权域在提优之上增量 : " + lb.ToString("F1")
                         + "%   各轮: " + Join(laneOnBoost));
-                    sb.AppendLine("        （产品里 GmBoost 默认开，这一行才是 GmRenderLane 的真实处境）");
-                    sb.AppendLine();
+                                        sb.AppendLine();
 
                     if (Math.Abs(lb) < 5)
-                        sb.AppendLine("判定 GmRenderLane: 无增量 —— 整个进程已是 High 时，"
-                            + "再单独抬计帧线程的变化落在噪声内（" + lb.ToString("F1")
-                            + "%）。进程级提优已经覆盖了它。");
+                        sb.AppendLine("判定 GmRenderLane: 无增量，进程已是 High 时再抬计帧线程的变化落在噪声内（"
+                            + lb.ToString("F1") + "%）。");
                     else if (lbPos == laneOnBoost.Count && lb > 5)
-                        sb.AppendLine("判定 GmRenderLane: 有增量 —— 在提优之上每轮为正，尾部再改善 "
-                            + lb.ToString("F1") + "%，应当保留。");
+                        sb.AppendLine("判定 GmRenderLane: 有增量，在提优之上每轮为正，尾部再改善 " + lb.ToString("F1") + "%。");
                     else
                         sb.AppendLine("判定 GmRenderLane: 不稳定（" + lbPos + "/" + laneOnBoost.Count
                             + " 轮为正，中位 " + lb.ToString("F1") + "%）。");

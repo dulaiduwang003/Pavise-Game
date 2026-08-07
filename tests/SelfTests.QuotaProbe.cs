@@ -27,9 +27,9 @@ namespace PaviseApp
             var quota = new JobQuota();
 
             sb.AppendLine("=== 崩溃残留配额的可恢复性验证 ===");
-            sb.AppendLine("场景: 施加配额后不清空直接丢弃句柄（等同 Pavise 崩溃），");
-            sb.AppendLine("      作业随成员进程存活，配额继续生效且无人能解除。");
-            sb.AppendLine("      验证下次启动时 ClearOrphaned 能否按名取回并解除。");
+            sb.AppendLine("场景: 施加配额后不清空直接丢弃句柄，等同 Pavise 崩溃。");
+            sb.AppendLine("      作业随成员进程存活，配额继续生效。");
+            sb.AppendLine("      测量 ClearOrphaned 能否按名取回并解除。");
             sb.AppendLine();
 
             try
@@ -77,15 +77,14 @@ namespace PaviseApp
                 sb.AppendLine();
                 sb.AppendLine("=== 结论 ===");
                 if (orphaned > capped * 2)
-                    sb.AppendLine("? 丢弃句柄后配额似乎自行失效，与预期不符，需复核作业生命周期。");
+                    sb.AppendLine("? 丢弃句柄后配额自行失效，与预期不符，需复核作业生命周期。");
                 else
-                    sb.AppendLine("√ 残留问题真实存在：丢弃句柄后配额仍压着进程（"
-                        + orphaned.ToString("F1") + "%），确认这是必须处理的坑。");
+                    sb.AppendLine("√ 丢弃句柄后配额仍压着进程（" + orphaned.ToString("F1") + "%）。");
                 if (!found)
                     sb.AppendLine("× ClearOrphaned 没找到遗留作业，恢复机制无效。");
                 else if (healed > before * 0.8)
                     sb.AppendLine("√ 恢复有效：占用回到 " + healed.ToString("F1")
-                        + "%（基线 " + before.ToString("F1") + "%），崩溃后重启即可自愈。");
+                        + "%（基线 " + before.ToString("F1") + "%）。");
                 else
                     sb.AppendLine("× 恢复失败：占用仍只有 " + healed.ToString("F1")
                         + "%，配额没有真正解除。");
@@ -178,7 +177,7 @@ namespace PaviseApp
                 if (joined == 0)
                 {
                     sb.AppendLine();
-                    sb.AppendLine("判定: 硬配额路线不可行 —— 一个进程都塞不进作业。");
+                    sb.AppendLine("判定: 一个进程都未能加入作业。");
                     Finish(output, sb, victim, spawned, quota);
                     return;
                 }

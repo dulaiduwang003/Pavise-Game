@@ -22,7 +22,7 @@ namespace PaviseApp
 
             var sb = new StringBuilder();
             sb.AppendLine("=== 新进程检测的两种成本 ===");
-            sb.AppendLine("目标: 高频轮询要付多少 CPU，取决于每次轮询做什么");
+            sb.AppendLine("测量每次轮询的成本 用于换算不同间隔下的 CPU 占比");
             sb.AppendLine();
 
             var pids = new uint[4096];
@@ -75,10 +75,10 @@ namespace PaviseApp
             sb.AppendLine("  4MB 复用缓冲区            : " + msReuse.ToString("F3")
                 + " ms，平均内核调用 " + callsReuse + " 次/轮");
             if (calls512 > calls4m)
-                sb.AppendLine("  → 现状每轮多一次内核调用，512KB 不够装下本机 "
+                sb.AppendLine("  512KB 每轮多一次内核调用，不足以装下本机 "
                     + pidCount + " 个进程的线程数组");
             if (ms512 > 0)
-                sb.AppendLine("  → 复用大缓冲区相对现状省 "
+                sb.AppendLine("  复用大缓冲区相对现状省 "
                     + ((ms512 - msReuse) / ms512 * 100).ToString("F0") + "%");
             sb.AppendLine();
 
@@ -92,14 +92,13 @@ namespace PaviseApp
                 double at200 = enumMs / 200 * 100;
                 sb.AppendLine("按 200ms 间隔：全量快照 " + (snapMs / 200 * 100).ToString("F2")
                     + "% → 仅枚举 PID " + at200.ToString("F2") + "%");
-                sb.AppendLine("发现新 PID 后才付一次全量快照的钱，稳态下新进程为零，");
-                sb.AppendLine("因此平均开销就是上面这个数。");
+                sb.AppendLine("发现新 PID 后才做一次全量快照，稳态下新进程为零。");
                 if (at200 < 0.3)
-                    sb.AppendLine("判定: 可行 —— 200ms 轮询的开销低于 Pavise 现有自身开销（0.243%），");
+                    sb.AppendLine("判定: 200ms 轮询开销低于 Pavise 现有自身开销（0.243%）。");
                 else if (at200 < 0.6)
-                    sb.AppendLine("判定: 勉强 —— 200ms 轮询与 Pavise 现有自身开销同量级，需要权衡。");
+                    sb.AppendLine("判定: 200ms 轮询与 Pavise 现有自身开销同量级。");
                 else
-                    sb.AppendLine("判定: 不可行 —— 仅枚举 PID 仍然太贵，需另寻检测手段。");
+                    sb.AppendLine("判定: 仅枚举 PID 的开销仍高于可接受范围。");
             }
 
             File.WriteAllText(output, sb.ToString(), Encoding.UTF8);

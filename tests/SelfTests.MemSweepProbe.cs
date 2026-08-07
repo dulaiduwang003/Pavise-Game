@@ -59,8 +59,8 @@ namespace PaviseApp
         {
             var sb = new StringBuilder();
             sb.AppendLine("=== 内存清理命令逐项实测 ===");
-            sb.AppendLine("每项测量：调用耗时、可用物理内存变化、系统缓存变化");
-            sb.AppendLine("判据：耗时进入百毫秒级即不适合放在开局路径上");
+            sb.AppendLine("逐项测量调用耗时、可用物理内存变化与系统缓存变化");
+            sb.AppendLine("开局路径可接受的耗时上限为百毫秒级");
             sb.AppendLine();
 
             if (!Native.EnsureProfilePrivilege())
@@ -88,9 +88,9 @@ namespace PaviseApp
             CombineCmd(sb);
 
             sb.AppendLine();
-            sb.AppendLine("=== 判读要点 ===");
-            sb.AppendLine("耗时高的项放在开局会直接拖慢游戏启动；");
-            sb.AppendLine("清缓存类的项释放的是系统文件缓存，紧接着的游戏加载要重新读盘。");
+            sb.AppendLine("=== 备注 ===");
+            sb.AppendLine("耗时高的项会拖慢游戏启动。");
+            sb.AppendLine("清缓存类的项释放系统文件缓存，随后的游戏加载需重新读盘。");
 
             File.WriteAllText(output, sb.ToString(), Encoding.UTF8);
             Console.Write(sb.ToString());

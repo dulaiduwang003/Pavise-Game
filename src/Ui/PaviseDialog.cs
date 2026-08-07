@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 统一的自绘弹窗 机能面板风格 取代系统 MessageBox
-// 全项目只经此组件出弹窗 不再直接调用 MessageBox.Show
+// 文件用途 统一的自绘弹窗 机能面板风格 UI 层不直接调用 MessageBox
 
 using System;
 using System.Drawing;

@@ -58,7 +58,7 @@ Recovery works from records: for every process it touches, Pavise stores the sta
 - USB interrupt steering: the interrupt storm from a 4K/8K polling mouse can be moved off the game's cores
 - League of Legends column: WeGame-assisted launch, precise cleanup, truly headless matches, independent recovery watchdog
 - Anti-cheat controls grouped by vendor, three intensity tiers each, all defaulting to the gentlest
-- Power plan, network, MMCSS, Game DVR, notifications and service pauses are all restorable
+- Power plan, network, Game DVR and notifications are all restorable
 - NVIDIA tuning: maximum-performance power and a frame cap, original values snapshotted, off restores them
 - Standby-memory cleanup before a match (off by default) and an MPO troubleshooting switch
 - Each session's outcome goes to the runtime log: how long you played, how many background processes were suppressed, how much CPU they used in total
@@ -220,7 +220,7 @@ The `--irq-map` diagnostic stays: it tells you whether this machine's interrupt 
 
 The three NVIDIA tuning writes (maximum-performance power, frame cap, pre-rendered frame limit) were write-read-restore tested on the development machine's RTX 3090 via `--nv-probe` and **all three genuinely take effect**. The low-latency mode setting ID that was removed is rejected by the driver (NVAPI -160), which confirms the decision to drop it in 1.6.1. The audit page offers the same one-click test so any machine can verify for itself.
 
-HAGS, VBS, power plans, MMCSS, network throttling, service pauses and compatibility with real anti-cheat products have no end-to-end automated tests. They need validating on the target machine.
+HAGS, VBS, MPO and compatibility with real anti-cheat products have no end-to-end automated tests. They need validating on the target machine.
 
 ## Buy the author a coffee
 
