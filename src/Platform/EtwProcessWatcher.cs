@@ -12,7 +12,14 @@ namespace PaviseApp
         private static readonly Guid KernelProcessProvider =
             new Guid("22FB2CD6-0E7B-422B-A0C7-2FAD1FD0E716");
         private const ulong KeywordProcess = 0x10;
+        private const ulong KeywordThread = 0x20;
+        private const ulong KeywordImage = 0x40;
         private const ushort EventIdProcessStart = 1;
+
+        private long eventsSeen;
+
+        public long EventsSeen { get { return Interlocked.Read(ref eventsSeen); } }
+        public ulong Keywords = KeywordProcess;
 
         private readonly string sessionName;
         private ulong session;
@@ -64,7 +71,7 @@ namespace PaviseApp
             enableParams.Version = 2;
             Guid provider = KernelProcessProvider;
             rc = Native.EnableTraceEx2(session, ref provider,
-                Native.EventControlCodeEnableProvider, 4, KeywordProcess, 0, 0, ref enableParams);
+                Native.EventControlCodeEnableProvider, 4, Keywords, 0, 0, ref enableParams);
             if (rc != 0)
             {
                 LastError = "EnableTraceEx2 失败 rc=" + rc;
@@ -121,6 +128,7 @@ namespace PaviseApp
         private void OnEvent(ref Native.EventRecord record)
         {
             if (stopping) return;
+            Interlocked.Increment(ref eventsSeen);
             if (record.EventHeader.EventDescriptor.Id != EventIdProcessStart) return;
             if (record.UserData == IntPtr.Zero || record.UserDataLength < 4) return;
             int pid;

@@ -35,6 +35,8 @@ namespace PaviseApp
             try
             {
                 etwWatcher = new EtwProcessWatcher("Pavise.LatProbe");
+                etwWatcher.Keywords = 0x10 | 0x20 | 0x40;
+                sb.AppendLine("ETW 关键字: PROCESS|THREAD|IMAGE（靠高频事件顶满缓冲区提前刷新）");
                 etwWatcher.ProcessStarted += delegate(int pid, long stamp)
                 {
                     double now = clock.Elapsed.TotalMilliseconds;
@@ -89,7 +91,20 @@ namespace PaviseApp
 
                 double[] w, t;
                 lock (sync) { w = wmi.ToArray(); t = etw.ToArray(); }
+                double selfCpu = 0;
+                try
+                {
+                    Process me = Process.GetCurrentProcess();
+                    me.Refresh();
+                    selfCpu = me.TotalProcessorTime.TotalMilliseconds
+                        / clock.Elapsed.TotalMilliseconds / Environment.ProcessorCount * 100.0;
+                }
+                catch { }
+
                 sb.AppendLine("=== 结果 ===");
+                sb.AppendLine("ETW 回调收到事件总数: " + etwWatcher.EventsSeen
+                    + "（含镜像/线程事件，本进程整体 CPU 占用 " + selfCpu.ToString("F2") + "%）");
+                sb.AppendLine();
                 sb.AppendLine("路径   收到    最小ms    中位ms     p99ms     最大ms");
                 sb.AppendLine(LatRow("WMI ", w, count));
                 sb.AppendLine(LatRow("ETW ", t, count));
