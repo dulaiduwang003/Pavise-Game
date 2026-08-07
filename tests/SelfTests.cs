@@ -94,6 +94,13 @@ namespace PaviseApp
                     args.Length >= 4 ? args[3] : null);
                 return true;
             }
+            if (args[0] == "--burst-lab" && args.Length >= 2)
+            {
+                RunBurstLab(args[1], args.Length >= 3 ? args[2] : null,
+                    args.Length >= 4 ? args[3] : null, args.Length >= 5 ? args[4] : null,
+                    args.Length >= 6 ? args[5] : null);
+                return true;
+            }
             if (args[0] == "--pid-scan" && args.Length >= 2)
             {
                 RunPidScanBench(args[1], args.Length >= 3 ? args[2] : null);
@@ -1046,6 +1053,11 @@ namespace PaviseApp
             {
                 Eq(4000, GameMode.ProcessScanIntervalMs(false));
                 Eq(20000, GameMode.ProcessScanIntervalMs(true));
+                Eq(4000, GameMode.ProcessScanIntervalMs(false, false));
+                Eq(20000, GameMode.ProcessScanIntervalMs(true, false));
+                Eq(GameMode.ActiveGameSweepIntervalMs, GameMode.ProcessScanIntervalMs(true, true));
+                Eq(GameMode.ActiveGameSweepIntervalMs, GameMode.ProcessScanIntervalMs(false, true));
+                Eq(true, GameMode.ActiveGameSweepIntervalMs < 20000);
                 Eq(false, GameMode.ProcessEventNeedsImmediateScan(false));
                 Eq(true, GameMode.ProcessEventNeedsImmediateScan(true));
                 Eq(5000, GameMode.GameTransitionScanIntervalMs);

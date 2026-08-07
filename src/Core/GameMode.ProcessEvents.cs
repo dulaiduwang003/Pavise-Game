@@ -23,6 +23,7 @@ namespace PaviseApp
 
         private const int PollingSweepIntervalMs = 4000;
         private const int EventBackedSweepIntervalMs = 20000;
+        internal const int ActiveGameSweepIntervalMs = 500;
         private const int FullGameDetectionIntervalMs = 20000;
         internal const int GameTransitionScanIntervalMs = 5000;
         internal const int FailedProcessScanRetryMs = 1000;
@@ -213,6 +214,12 @@ namespace PaviseApp
                 ? EventBackedSweepIntervalMs : PollingSweepIntervalMs;
         }
 
+        internal static int ProcessScanIntervalMs(bool eventsAvailable, bool gameActive)
+        {
+            if (gameActive) return ActiveGameSweepIntervalMs;
+            return ProcessScanIntervalMs(eventsAvailable);
+        }
+
         private bool ShouldRunProcessScan()
         {
             long now = DateTime.UtcNow.Ticks;
@@ -242,7 +249,7 @@ namespace PaviseApp
                 Interlocked.Exchange(ref lastProcessScanTicks, now);
                 return true;
             }
-            int fallback = ProcessScanIntervalMs(ProcessEventsAvailable);
+            int fallback = ProcessScanIntervalMs(ProcessEventsAvailable, IsActive);
             if (armedAwaitingElection)
                 fallback = Math.Min(fallback, PollingSweepIntervalMs);
             long fallbackTicks = fallback * TimeSpan.TicksPerMillisecond;
@@ -266,7 +273,7 @@ namespace PaviseApp
             if (Interlocked.CompareExchange(
                     ref urgentProcessScan, 0, 0) != 0)
                 return 1;
-            int interval = ProcessScanIntervalMs(ProcessEventsAvailable);
+            int interval = ProcessScanIntervalMs(ProcessEventsAvailable, IsActive);
             if (armedAwaitingElection)
                 interval = Math.Min(interval, PollingSweepIntervalMs);
             long last = Interlocked.Read(ref lastProcessScanTicks);
