@@ -180,8 +180,8 @@ namespace PaviseApp
                     BeginInvoke((MethodInvoker)(() =>
                     {
                         btnAmdCache.Enabled = AdlxTweaks.Available;
-                        MessageBox.Show(this, ok ? Lang.T("amd.cache.done") : Lang.T("amd.cache.fail"),
-                            "Pavise", MessageBoxButtons.OK, ok ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+                        if (ok) PaviseDialog.Success(this, App.DisplayName, Lang.T("amd.cache.done"));
+                        else PaviseDialog.Warn(this, App.DisplayName, Lang.T("amd.cache.fail"));
                     }));
                 }
                 catch { }
@@ -213,7 +213,7 @@ namespace PaviseApp
         private void OnWindowedOptToggle(object s, EventArgs e)
         {
             bool ok = swWindowedOpt.Checked ? WindowedOptTweak.Enable() : WindowedOptTweak.Restore();
-            if (!ok) MessageBox.Show(this, Lang.T("winopt.failed"), "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            if (!ok) PaviseDialog.Warn(this, App.DisplayName, Lang.T("winopt.failed"));
             swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByPavise || WindowedOptTweak.CurrentlyOn());
         }
 

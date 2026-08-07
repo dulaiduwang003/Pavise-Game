@@ -93,9 +93,7 @@ namespace PaviseApp
             sw.CheckedChanged += delegate
             {
                 if (!sw.Checked) { write(false); return; }
-                if (MessageBox.Show(this, warning, "Pavise",
-                        MessageBoxButtons.OKCancel, MessageBoxIcon.Warning,
-                        MessageBoxDefaultButton.Button2) != DialogResult.OK)
+                if (!PaviseDialog.Confirm(this, App.DisplayName, warning, DlgKind.Warn))
                 {
                     sw.SetSilently(false);
                     return;

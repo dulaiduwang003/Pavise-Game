@@ -269,7 +269,7 @@ namespace PaviseApp
 
         private void ResetDefaults()
         {
-            if (MessageBox.Show(Lang.T("tray.resetask"), "Pavise", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
+            if (!PaviseDialog.Confirm(null, App.DisplayName, Lang.T("tray.resetask"), DlgKind.Warn)) return;
 
             gameMode.SuppressBackground = true;
             gameMode.BoostGame = true;
@@ -293,9 +293,7 @@ namespace PaviseApp
             Changed();
             if (!whitelistReset)
             {
-                MessageBox.Show(
-                    gameMode.WhitelistLastError, "Pavise",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                PaviseDialog.Warn(null, App.DisplayName, gameMode.WhitelistLastError);
                 Logger.Log("默认配置已部分恢复，但白名单写入失败");
             }
             else Logger.Log("已恢复默认配置");

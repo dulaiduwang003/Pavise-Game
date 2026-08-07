@@ -112,7 +112,7 @@ namespace PaviseApp
                 RefreshGames();
                 if (added > 0) Logger.Log(Lang.F("scan.added", added));
                 else if (lastError != null)
-                    MessageBox.Show(this, lastError, "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    PaviseDialog.Warn(this, App.DisplayName, lastError);
             }
         }
 
@@ -187,7 +187,7 @@ namespace PaviseApp
             foreach (string file in files)
                 if (!gameMode.AddGameFile(file, out error) && error != "该游戏已经在列表中") break;
             if (!string.IsNullOrEmpty(error) && error != "该游戏已经在列表中")
-                MessageBox.Show(this, error, "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                PaviseDialog.Warn(this, App.DisplayName, error);
             RefreshGames();
         }
 

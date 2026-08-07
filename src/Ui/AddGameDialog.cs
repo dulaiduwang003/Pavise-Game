@@ -362,7 +362,7 @@ namespace PaviseApp
                 if (!GameExecutableResolver.TryResolve(dlg.FileName, out resolved, out error))
                 {
                     if (!string.IsNullOrEmpty(error))
-                        MessageBox.Show(this, error, "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        PaviseDialog.Warn(this, App.DisplayName, error);
                     return;
                 }
                 Selected.Clear();

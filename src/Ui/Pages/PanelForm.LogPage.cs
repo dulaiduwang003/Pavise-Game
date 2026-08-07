@@ -33,8 +33,7 @@ namespace PaviseApp
             clearLog.SetBounds(Theme.S(ContentX + 202), Theme.S(PageH - 48), Theme.S(150), Theme.S(36));
             clearLog.Click += delegate
             {
-                if (MessageBox.Show(this, Lang.T("rep.clear.ask"), "Pavise",
-                        MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+                if (!PaviseDialog.Confirm(this, App.DisplayName, Lang.T("rep.clear.ask"), DlgKind.Warn)) return;
                 Logger.Clear();
                 Logger.Log("运行日志已手动清除");
                 RefreshLog();

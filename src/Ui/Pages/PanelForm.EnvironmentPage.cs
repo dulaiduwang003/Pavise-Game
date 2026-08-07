@@ -101,7 +101,7 @@ namespace PaviseApp
         private bool RequireElevationFor(Toggle sw, bool restoredState)
         {
             if (elevated) return true;
-            MessageBox.Show(this, Lang.T("vbs.needadmin"), "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            PaviseDialog.Warn(this, App.DisplayName, Lang.T("vbs.needadmin"));
             sw.SetSilently(restoredState);
             return false;
         }
@@ -110,7 +110,7 @@ namespace PaviseApp
         {
             if (!RequireElevationFor(swHags, HagsTweak.EnabledByPavise || HagsTweak.CurrentlyOn())) return;
             bool ok = swHags.Checked ? HagsTweak.Enable() : HagsTweak.Disable();
-            if (ok) MessageBox.Show(this, Lang.T("hags.reboot"), "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            if (ok) PaviseDialog.Info(this, App.DisplayName, Lang.T("hags.reboot"));
             swHags.SetSilently(HagsTweak.EnabledByPavise || HagsTweak.CurrentlyOn());
         }
 
@@ -118,7 +118,7 @@ namespace PaviseApp
         {
             if (!RequireElevationFor(swMpo, MpoTweak.DisabledByPavise || MpoTweak.CurrentlyDisabled())) return;
             bool ok = swMpo.Checked ? MpoTweak.Disable() : MpoTweak.Restore();
-            if (ok) MessageBox.Show(this, Lang.T("mpo.reboot"), "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            if (ok) PaviseDialog.Info(this, App.DisplayName, Lang.T("mpo.reboot"));
             swMpo.SetSilently(MpoTweak.DisabledByPavise || MpoTweak.CurrentlyDisabled());
         }
 
@@ -126,7 +126,7 @@ namespace PaviseApp
         {
             if (!RequireElevationFor(swIrqAffinity, InterruptAffinityTweak.EnabledByPavise)) return;
             bool ok = swIrqAffinity.Checked ? InterruptAffinityTweak.Enable() : InterruptAffinityTweak.Disable();
-            if (ok) MessageBox.Show(this, Lang.T("irqaffinity.reboot"), "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            if (ok) PaviseDialog.Info(this, App.DisplayName, Lang.T("irqaffinity.reboot"));
             swIrqAffinity.SetSilently(InterruptAffinityTweak.EnabledByPavise);
         }
 
@@ -134,7 +134,7 @@ namespace PaviseApp
         {
             if (!RequireElevationFor(swUsbAffinity, UsbInterruptAffinityTweak.EnabledByPavise)) return;
             bool ok = swUsbAffinity.Checked ? UsbInterruptAffinityTweak.Enable() : UsbInterruptAffinityTweak.Disable();
-            if (ok) MessageBox.Show(this, Lang.T("irqaffinity.reboot"), "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            if (ok) PaviseDialog.Info(this, App.DisplayName, Lang.T("irqaffinity.reboot"));
             swUsbAffinity.SetSilently(UsbInterruptAffinityTweak.EnabledByPavise);
         }
 
@@ -143,13 +143,13 @@ namespace PaviseApp
             if (swVbs.Checked)
             {
                 if (!RequireElevationFor(swVbs, false)) return;
-                var r = MessageBox.Show(this, Lang.T("vbs.warn"), "Pavise", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning);
-                if (r != DialogResult.OK || !VbsTweak.Disable())
+                bool agreed = PaviseDialog.Confirm(this, App.DisplayName, Lang.T("vbs.warn"), DlgKind.Warn);
+                if (!agreed || !VbsTweak.Disable())
                 {
                     swVbs.SetSilently(false); RefreshVbsState(); return;
                 }
                 RefreshVbsState();
-                MessageBox.Show(this, Lang.T("vbs.done"), "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                PaviseDialog.Info(this, App.DisplayName, Lang.T("vbs.done"));
             }
             else
             {
@@ -158,11 +158,11 @@ namespace PaviseApp
                 {
                     swVbs.SetSilently(VbsTweak.DisabledByPavise);
                     RefreshVbsState();
-                    MessageBox.Show(this, Lang.T("vbs.restorefail"), "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    PaviseDialog.Warn(this, App.DisplayName, Lang.T("vbs.restorefail"));
                     return;
                 }
                 RefreshVbsState();
-                MessageBox.Show(this, Lang.T("vbs.restored"), "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                PaviseDialog.Info(this, App.DisplayName, Lang.T("vbs.restored"));
             }
         }
 
