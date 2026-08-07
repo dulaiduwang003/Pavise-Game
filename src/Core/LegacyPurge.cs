@@ -91,7 +91,6 @@ namespace PaviseApp
             Step("电源滑块", PowerOverlay.Restore, failed);
             Step("后台下载暂停", DoTweak.Restore, failed);
             Step("网络优化", NetTweak.Restore, failed);
-            Step("Nagle", NagleTweak.Restore, failed);
             Step("MPO", MpoTweak.Restore, failed);
             Step("VBS", VbsTweak.Restore, failed);
             Step("游戏模式守护", GameModeGuard.Restore, failed);

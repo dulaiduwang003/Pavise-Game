@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 管理按游戏程序保存的图形兼容设置
 
 using System;
@@ -15,13 +15,35 @@ namespace PaviseApp
         private const string FsoFlag = "DISABLEDXMAXIMIZEDWINDOWEDMODE";
         private static readonly object lk = new object();
 
-        public static void ApplyForGame(string exePath, bool gpuHighPerf, bool disableFso)
+        public static void ApplyForGame(string exePath, bool gpuHighPerf)
         {
             if (string.IsNullOrEmpty(exePath)) return;
             lock (lk)
             {
                 if (gpuHighPerf) SetGpuPref(exePath);
-                if (disableFso) SetFso(exePath);
+            }
+        }
+
+        public static bool HasKindResidue(string kind)
+        {
+            lock (lk)
+            {
+                try
+                {
+                    using (var bak = Registry.CurrentUser.OpenSubKey(BakKey))
+                    {
+                        if (bak == null) return false;
+                        foreach (string name in bak.GetValueNames())
+                        {
+                            int bar = name.IndexOf('|');
+                            if (bar <= 0) continue;
+                            if (string.Equals(name.Substring(0, bar), kind, StringComparison.OrdinalIgnoreCase))
+                                return true;
+                        }
+                    }
+                }
+                catch { }
+                return false;
             }
         }
 

@@ -10,7 +10,7 @@ namespace PaviseApp
 {
     internal partial class PanelForm
     {
-        private Toggle swHags, swVbs, swMpo, swIrqAffinity, swUsbAffinity, swGmGuard, swNagle;
+        private Toggle swHags, swVbs, swMpo, swIrqAffinity, swUsbAffinity, swGmGuard;
         private Toggle swNetThrottle, swDevPower;
         private SettingCard cardVbs, cardNetThrottle;
         private int envBusy;
@@ -64,10 +64,6 @@ namespace PaviseApp
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.gmguard"), Lang.T("set.gmguard.n"), swGmGuard, out cardH);
             sy += cardH + 8;
 
-            swNagle = MakeSwitch(NagleTweak.EnabledByPavise, OnNagleToggle);
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nagle"), Lang.T("set.nagle.n"), swNagle, out cardH);
-            sy += cardH + 8;
-
             swNetThrottle = MakeSwitch(NetTweak.RepairedByPavise, OnNetThrottleToggle);
             swNetThrottle.Enabled = NetTweak.NeedsRepair() || NetTweak.RepairedByPavise;
             cardNetThrottle = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76,
@@ -100,15 +96,6 @@ namespace PaviseApp
         {
             if (swGmGuard.Checked) GameModeGuard.Enable(); else GameModeGuard.Restore();
             swGmGuard.SetSilently(GameModeGuard.EnabledByPavise);
-        }
-
-        private void OnNagleToggle(object s, EventArgs e)
-        {
-            if (!RequireElevationFor(swNagle, NagleTweak.EnabledByPavise)) return;
-            bool ok = swNagle.Checked ? NagleTweak.Enable() : NagleTweak.Restore();
-            if (ok && swNagle.Checked)
-                MessageBox.Show(this, Lang.T("nagle.applied"), "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            swNagle.SetSilently(NagleTweak.EnabledByPavise);
         }
 
         private bool RequireElevationFor(Toggle sw, bool restoredState)
@@ -227,7 +214,6 @@ namespace PaviseApp
             if (swIrqAffinity != null) swIrqAffinity.SetSilently(InterruptAffinityTweak.EnabledByPavise);
             if (swUsbAffinity != null) swUsbAffinity.SetSilently(UsbInterruptAffinityTweak.EnabledByPavise);
             if (swGmGuard != null) swGmGuard.SetSilently(GameModeGuard.EnabledByPavise);
-            if (swNagle != null) swNagle.SetSilently(NagleTweak.EnabledByPavise);
             if (swNetThrottle != null) swNetThrottle.SetSilently(NetTweak.RepairedByPavise);
             if (swDevPower != null) swDevPower.SetSilently(DevicePowerTweak.EnabledByPavise);
         }

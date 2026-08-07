@@ -244,7 +244,6 @@ namespace PaviseApp
                 (s, e) => { gameMode.KillGameDvr = !gameMode.KillGameDvr; Changed(); });
             dvr.Enabled = !dvrForced;
             set.DropDownItems.Add(dvr);
-            set.DropDownItems.Add(Check(Lang.T("tm.fso"), gameMode.DisableFso, (s, e) => { gameMode.DisableFso = !gameMode.DisableFso; Changed(); }));
             set.DropDownItems.Add(new ToolStripSeparator());
             set.DropDownItems.Add(Check(Lang.T("tm.notif"), gameMode.NotifQuiet, (s, e) => { gameMode.NotifQuiet = !gameMode.NotifQuiet; Changed(); }));
             set.DropDownItems.Add(Check(Lang.T("tm.trim"), gameMode.TrimWorkingSet, (s, e) => { gameMode.TrimWorkingSet = !gameMode.TrimWorkingSet; Changed(); }));
@@ -278,13 +277,11 @@ namespace PaviseApp
             gameMode.PauseDownloads = true;
             gameMode.GpuHighPerf = true;
             gameMode.KillGameDvr = true;
-            gameMode.DisableFso = false;
             gameMode.NotifQuiet = false;
             gameMode.TrimWorkingSet = false;
             gameMode.HzGuard = false;
             gameMode.StrictCoreIsolation = false;
             gameMode.AggressiveSuppression = false;
-            gameMode.IdleStateDisable = false;
             gameMode.VisualFxDowngrade = false;
             gameMode.Enabled = true; Settings.Save("GameModeOn", true);
             gameMode.Preset = PerformancePreset.Standard;

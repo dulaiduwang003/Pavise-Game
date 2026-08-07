@@ -182,14 +182,14 @@ namespace PaviseApp
                 StandbySweep.PurgeOnce();
             }
             int powerKey = (aggressivePower ? 1 : 0)
-                | (idleDisableOn ? 2 : 0) | (planSwitch ? 4 : 0);
+                | (planSwitch ? 4 : 0);
             long nowTicks = DateTime.UtcNow.Ticks;
             if (planSwitch)
             {
                 if (!planActive || powerKey != lastPowerPolicyKey
                     || nowTicks >= nextPowerAuditTicks)
                 {
-                    bool planOk = PowerPlan.Enforce(aggressivePower, idleDisableOn);
+                    bool planOk = PowerPlan.Enforce(aggressivePower, false);
                     planActive = true;
                     lastPowerPolicyKey = powerKey;
                     if (planOk)
@@ -435,7 +435,7 @@ namespace PaviseApp
                         stripped = boostHandleStripped.Contains(pid);
                         known = gameBoost.ContainsKey(pid);
                         retryEco = boostFail.ContainsKey(pid) && !boostEcoGaveUp.Contains(pid);
-                        needTweak = (gpuHighPerf || disableFso || nvMaxPerf || nvLowLatency || nvFrlMode != "off")
+                        needTweak = (gpuHighPerf || nvMaxPerf || nvLowLatency || nvFrlMode != "off")
                             && !tweakApplied.Contains(pid);
                         ulong placed; bool placedStrict;
                         needPlacement = !placementGaveUp.Contains(pid)
@@ -712,7 +712,7 @@ namespace PaviseApp
                         if (needTweak)
                         {
                             string imagePath = Native.ImagePath(h);
-                            GameExeTweaks.ApplyForGame(imagePath, gpuHighPerf, disableFso);
+                            GameExeTweaks.ApplyForGame(imagePath, gpuHighPerf);
                             var nvPlan = new NvGamePlan
                             {
                                 MaxPerf = nvMaxPerf,

@@ -88,7 +88,6 @@ namespace PaviseApp
         private volatile bool notifQuiet;
         private volatile bool trimWs;
         private volatile bool gpuHighPerf;
-        private volatile bool disableFso;
         private volatile bool nvMaxPerf;
         private volatile bool nvLowLatency;
         private volatile string nvFrlMode = "off";
@@ -114,7 +113,6 @@ namespace PaviseApp
         private volatile bool killGameDvr;
         private volatile bool hzGuard;
         private volatile bool planSwitch;
-        private volatile bool idleDisableOn;
         private volatile bool visualFxOn;
         private volatile bool standbySweepOn;
         private volatile bool pauseUpdateOn;
@@ -193,13 +191,11 @@ namespace PaviseApp
             pauseDlOn = Settings.Load("GmPauseDl", true);
             notifQuiet = Settings.Load("NotifQuiet", false);
             VersionMigrations.EnsureSettingsMigrated();
-            idleDisableOn = Settings.Load("GmIdleDisable", false);
             visualFxOn = Settings.Load("GmVisualFx", false);
             standbySweepOn = Settings.Load("GmStandbySweep", false);
             pauseUpdateOn = Settings.Load("GmPauseUpdate", false);
             trimWs = Settings.Load("TrimWS", false);
             gpuHighPerf = Settings.Load("GpuHighPerf", true);
-            disableFso = Settings.Load("DisableFso", false);
             nvMaxPerf = Settings.Load("NvMaxPerf", false);
             nvLowLatency = Settings.Load("NvLowLatency", false);
             nvFrlMode = Settings.LoadStr("NvFrl", "off");
@@ -525,12 +521,6 @@ namespace PaviseApp
             }
         }
 
-        public bool IdleStateDisable
-        {
-            get { return idleDisableOn; }
-            set { idleDisableOn = value; Settings.Save("GmIdleDisable", value); RequestPolicyApply(); }
-        }
-
         public bool VisualFxDowngrade
         {
             get { return visualFxOn; }
@@ -749,18 +739,6 @@ namespace PaviseApp
                 nvFrlMode = mode; Settings.SaveStr("NvFrl", mode);
                 if (mode == "off") NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyFrl);
                 else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyFrl, 0);
-                lock (sync) tweakApplied.Clear();
-                RequestPolicyApply();
-            }
-        }
-
-        public bool DisableFso
-        {
-            get { return disableFso; }
-            set
-            {
-                disableFso = value; Settings.Save("DisableFso", value);
-                if (!value) GameExeTweaks.RestoreKind("fso");
                 lock (sync) tweakApplied.Clear();
                 RequestPolicyApply();
             }

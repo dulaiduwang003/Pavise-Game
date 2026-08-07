@@ -64,11 +64,6 @@ namespace PaviseApp
             swPolicyDvr = AddPolicyToggle(scroll, ref sy, Lang.T("set.dvr"), Lang.T("v15.custom.override"), delegate { return gameMode.KillGameDvr; }, delegate(bool v) { gameMode.KillGameDvr = v; });
             cardPolicyDvr = (SettingCard)swPolicyDvr.Parent;
             sy += 10; Section(scroll, Lang.T("v15.policy.extras"), 6, sy); sy += 24;
-            Toggle swPolicyIdle = AddPolicyConfirmToggle(scroll, ref sy, Lang.T("gm.idledisable"), Lang.T("gm.idledisable.sub"),
-                Lang.T("gm.idledisable.confirm"),
-                delegate { return gameMode.IdleStateDisable; }, delegate(bool v) { gameMode.IdleStateDisable = v; },
-                ValueTextWidth(Lang.T("gm.idledisable.warn")));
-            ((SettingCard)swPolicyIdle.Parent).SetValue(Lang.T("gm.idledisable.warn"), Theme.Danger);
             AddPolicyToggle(scroll, ref sy, Lang.T("gm.visualfx"), Lang.T("gm.visualfx.sub"),
                 delegate { return gameMode.VisualFxDowngrade; }, delegate(bool v) { gameMode.VisualFxDowngrade = v; });
             AddPolicyToggle(scroll, ref sy, Lang.T("set.trim"), Lang.T("v15.trim.sub"),

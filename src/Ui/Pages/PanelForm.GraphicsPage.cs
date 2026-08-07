@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 构建显卡页 逐游戏的驱动项与全局呈现路径开关
 
 using System;
@@ -9,7 +9,7 @@ namespace PaviseApp
 {
     internal partial class PanelForm
     {
-        private Toggle swGpu, swFso, swNvMax, swNvLowLat, swNvBg, swWindowedOpt;
+        private Toggle swGpu, swNvMax, swNvLowLat, swNvBg, swWindowedOpt;
         private Toggle swNvRebar, swNvAnsel, swNvBatt;
         private Toggle swAmdAlag, swAmdEsync, swAmdRis;
         private TierPicker frlPicker, dlssPicker, amdChillPicker;
@@ -32,11 +32,6 @@ namespace PaviseApp
             swGpu = MakeSwitch(gameMode.GpuHighPerf, null);
             swGpu.CheckedChanged += (s, e) => gameMode.GpuHighPerf = swGpu.Checked;
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.gpu"), Lang.T("set.gpu.n"), swGpu, out cardH);
-            sy += cardH + 8;
-
-            swFso = MakeSwitch(gameMode.DisableFso, null);
-            swFso.CheckedChanged += (s, e) => gameMode.DisableFso = swFso.Checked;
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.fso"), Lang.T("set.fso.n"), swFso, out cardH);
             sy += cardH + 8;
 
             bool nvOk = NvApi.Available;
@@ -225,7 +220,6 @@ namespace PaviseApp
         private void SyncGraphicsToggles()
         {
             if (swGpu != null) swGpu.SetSilently(gameMode.GpuHighPerf);
-            if (swFso != null) swFso.SetSilently(gameMode.DisableFso);
             if (swNvMax != null) swNvMax.SetSilently(gameMode.NvMaxPerf);
             if (swNvLowLat != null) swNvLowLat.SetSilently(gameMode.NvLowLatency);
             if (swNvBg != null) swNvBg.SetSilently(gameMode.NvBgFrl);

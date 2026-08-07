@@ -96,14 +96,23 @@ namespace PaviseApp
             new RetiredFeature("服务暂停", "1.7",
                 "Intel 与普遍建议均为不应禁用 SysMain，缺乏支持证据且有反对立场",
                 SvcPause.HasResidue, SvcPause.Restore),
+
+            new RetiredFeature("Nagle 与延迟 ACK", "1.7",
+                "现代游戏的实时流量走 UDP，与 Nagle 无关；用 TCP 的多在代码里已设 NODELAY。该注册表项源自 XP 时代",
+                NagleTweak.HasResidue, NagleTweak.Restore),
+
+            new RetiredFeature("禁用全屏优化", "1.7",
+                "微软已把全屏优化路径改进到接近独占全屏，禁用会丢失 Auto HDR 与可变刷新率，且往往更不稳定",
+                delegate { return GameExeTweaks.HasKindResidue("fso"); },
+                delegate { GameExeTweaks.RestoreKind("fso"); return true; }),
+
+            new RetiredFeature("竞技模式禁用 CPU 空闲状态", "1.7",
+                "非 K 处理器或非 Z 主板上禁用 C-State 会连带禁用睿频，性能反而下降；空闲功耗上升也压缩散热余量",
+                delegate { return Settings.Load("GmIdleDisable", false); },
+                delegate { Settings.Save("GmIdleDisable", false); return true; }),
         };
 
-        private static readonly DefaultReset[] Resets =
-        {
-            new DefaultReset("竞技模式禁用 CPU 空闲状态", "1.7.0",
-                "默认开启过于激进，改回默认关闭由用户自行选择",
-                "GmIdleDisable", false, "IdleDefaultResetV170Done"),
-        };
+        private static readonly DefaultReset[] Resets = new DefaultReset[0];
 
         public static IEnumerable<RetiredFeature> Entries { get { return Retired; } }
 
