@@ -409,6 +409,7 @@ namespace PaviseApp
             { "hags.reboot", new[]{ "已写入 HAGS 设置，重启电脑后生效。" } },
             { "set.irqaffinity", new[]{ "GPU 中断亲和优化（需重启设备或电脑）" } },
             { "set.irqaffinity.n", new[]{ "让显卡的中断信号走游戏核心附近，少绕路。重启生效。" } },
+            { "irqaffinity.igpuonly", new[]{ "本机只有核显。核显在 CPU 内部，不存在需要引导的独立中断路径，此项跳过" } },
             { "irqaffinity.reboot", new[]{ "已写入中断亲和设置，重启该设备或重启电脑后生效。" } },
             { "set.netaffinity", new[]{ "游戏网络优先（需重启网卡或电脑）" } },
             { "set.netaffinity.n", new[]{ "网卡中断靠近游戏核心，游戏流量优先发，少排队、少抖动。重启生效。" } },

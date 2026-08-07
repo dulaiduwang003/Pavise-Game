@@ -49,8 +49,12 @@ namespace PaviseApp
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.mpo"), Lang.T("set.mpo.n"), swMpo, out cardH);
             sy += cardH + 8;
 
+            bool discreteGpu = GpuInventory.HasDiscrete;
             swIrqAffinity = MakeSwitch(InterruptAffinityTweak.EnabledByPavise, OnIrqAffinityToggle);
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.irqaffinity"), Lang.T("set.irqaffinity.n"), swIrqAffinity, out cardH);
+            swIrqAffinity.Enabled = discreteGpu || InterruptAffinityTweak.EnabledByPavise;
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.irqaffinity"),
+                discreteGpu ? Lang.T("set.irqaffinity.n") : Lang.T("irqaffinity.igpuonly"),
+                swIrqAffinity, out cardH);
             sy += cardH + 8;
 
             swNetAffinity = MakeSwitch(NetworkAffinityTweak.EnabledByPavise, OnNetAffinityToggle);

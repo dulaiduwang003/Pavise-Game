@@ -38,6 +38,7 @@ namespace PaviseApp
                             if (string.IsNullOrEmpty(id)) continue;
                             if (!string.IsNullOrEmpty(status) && !string.Equals(status, "OK", StringComparison.OrdinalIgnoreCase)) continue;
                             if (!id.StartsWith(@"PCI\", StringComparison.OrdinalIgnoreCase)) continue;
+                            if (GpuInventory.IsIntegratedDevice(id)) continue;
                             ids.Add(id);
                         }
                     }
