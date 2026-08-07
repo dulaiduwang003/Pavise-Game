@@ -46,13 +46,6 @@ namespace PaviseApp
                 RunDetectorProbe(pid, args[2], args[3]);
                 return true;
             }
-            if (args[0] == "--gpu-demote-probe" && args.Length >= 3)
-            {
-                int pid;
-                if (!int.TryParse(args[1], out pid)) { Environment.ExitCode = 2; return true; }
-                RunGpuDemoteProbe(pid, args[2]);
-                return true;
-            }
             if (args[0] == "--live-repro" && args.Length >= 4)
             {
                 RunLiveRepro(args[1], args[2], args[3], args.Length >= 5 ? args[4] : null);
@@ -92,6 +85,13 @@ namespace PaviseApp
             {
                 RunIrqMap(args[1], args.Length >= 3 ? args[2] : null,
                     args.Length >= 4 ? args[3] : null);
+                return true;
+            }
+            if (args[0] == "--boost-lab" && args.Length >= 2)
+            {
+                RunBoostLab(args[1], args.Length >= 3 ? args[2] : null,
+                    args.Length >= 4 ? args[3] : null, args.Length >= 5 ? args[4] : null,
+                    args.Length >= 6 ? args[5] : null);
                 return true;
             }
             if (args[0] == "--burst-lab" && args.Length >= 2)
@@ -2042,10 +2042,6 @@ namespace PaviseApp
             test("后台压制：未被改动的进程与自身快照完全一致", () => TestSnapshotMatchJudgement(root));
             test("自保护名单：登记与查询往返一致且不区分大小写", TestSelfProtectedRoster);
             test("分级压制：崩溃日志可还原仍在运行的进程", () => TestSuppressionCrashRecovery(root));
-            test("后台 GPU 让位：等级映射只跟随后台档位", TestGpuDemoteMapping);
-            test("后台 GPU 让位：日志能解析 gpu 字段并兼容旧行", TestGpuJournalField);
-            test("后台 GPU 让位：调度等级的写入与还原在自身进程上验证", TestGpuPriorityRoundtrip);
-            test("后台 GPU 让位：无 GPU 的进程照样压制并干净还原", () => TestGpuDemoteGpulessProcess(root));
             test("后台冻结：静默计时需连续无动静才放行", TestFreezeDwellGate);
             test("后台冻结：带反作弊理由的进程永不进入冻结档", TestAntiCheatNeverFreezes);
             test("压制计数：批量清扫占着锁时状态栏仍报真实数量", TestThrottledCountSurvivesBatchLock);
@@ -2068,6 +2064,7 @@ namespace PaviseApp
             test("网络限流：只有超出范围的值才标记为需修复", TestNetThrottleRangeJudgement);
             test("设备电源：只改动禁止断电这一位", TestDevicePowerBitMerge);
             test("废弃功能：每条都登记了移除版本与原因", TestRetiredFeaturesRegistry);
+            test("中断亲和：混合架构不把中断引到能效核", TestInterruptMaskAvoidsEfficiencyCores);
             test("竞技电源：参数表没有重复的 GUID 与项名", TestPowerKnobTableHasNoDuplicates);
             test("竞技电源：竞技档与常规档该不同的项确实不同", TestPowerArenaDiffersFromCalm);
             test("竞技电源：真机写入后能原样读回竞技档与常规档", TestPowerPlanWritesArenaValues);

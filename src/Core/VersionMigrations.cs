@@ -80,6 +80,22 @@ namespace PaviseApp
             new RetiredFeature("MSI 模式", "1.7",
                 "无法验证设备真的支持消息信号中断，写错可能导致设备不工作或无法开机",
                 MsiModeTweak.HasResidue, MsiModeTweak.Restore),
+
+            new RetiredFeature("渲染主权域", "1.7",
+                "台架实测：整个进程已提优时，再单独抬计帧线程的增量为 1.1%，五轮中两轮为负",
+                RenderLane.HasResidue, RenderLane.Release),
+
+            new RetiredFeature("GPU 让位", "1.7",
+                "无任何实测数据，台架为纯 CPU 负载无法验证，收益不明",
+                delegate { return false; }, delegate { return true; }),
+
+            new RetiredFeature("网卡中断亲和", "1.7",
+                "无任何实测数据，外部资料亦无可信量化结论",
+                NetworkAffinityTweak.HasResidue, NetworkAffinityTweak.Disable),
+
+            new RetiredFeature("服务暂停", "1.7",
+                "Intel 与普遍建议均为不应禁用 SysMain，缺乏支持证据且有反对立场",
+                SvcPause.HasResidue, SvcPause.Restore),
         };
 
         private static readonly DefaultReset[] Resets =

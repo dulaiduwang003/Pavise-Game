@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 构建优化策略页 并按当前预设锁定或放开自定义项
 
 using System;
@@ -12,9 +12,9 @@ namespace PaviseApp
     {
         private Label lblPolicyMode;
         private Toggle swPolicyBackground, swPolicyStrict, swPolicyAggressive, swPolicyFreeze;
-        private Toggle swPolicyPauseDl, swPolicyPauseSvc, swPolicyDvr;
+        private Toggle swPolicyPauseDl, swPolicyDvr;
         private SettingCard cardPolicyStrict, cardPolicyAggressive, cardPolicyFreeze;
-        private SettingCard cardPolicyPauseDl, cardPolicyPauseSvc, cardPolicyDvr;
+        private SettingCard cardPolicyPauseDl, cardPolicyDvr;
         private readonly List<Action> policySync = new List<Action>();
 
         private void BuildPolicyPage()
@@ -36,8 +36,6 @@ namespace PaviseApp
             Section(scroll, Lang.T("v15.policy.core"), 6, sy); sy += 24;
             swPolicyBackground = AddPolicyToggle(scroll, ref sy, Lang.T("v14.bg.master"), Lang.T("v14.bg.master.sub"),
                 delegate { return gameMode.SuppressBackground; }, delegate(bool v) { gameMode.SuppressBackground = v; });
-            AddPolicyToggle(scroll, ref sy, Lang.T("gm.gpudemote"), Lang.T("gm.gpudemote.sub"),
-                delegate { return gameMode.GpuDemote; }, delegate(bool v) { gameMode.GpuDemote = v; });
             swPolicyFreeze = AddPolicyConfirmToggle(scroll, ref sy, Lang.T("gm.freeze"), Lang.T("gm.freeze.sub"), Lang.T("gm.freeze.warn"),
                 delegate { return gameMode.FreezeBackground; }, delegate(bool v) { gameMode.FreezeBackground = v; });
             cardPolicyFreeze = (SettingCard)swPolicyFreeze.Parent;
@@ -45,8 +43,6 @@ namespace PaviseApp
                 delegate { return gameMode.BoostGame; }, delegate(bool v) { gameMode.BoostGame = v; });
             AddPolicyToggle(scroll, ref sy, Lang.T("gm.ifeo"), Lang.T("gm.ifeo.sub"),
                 delegate { return gameMode.IfeoBoostFallback; }, delegate(bool v) { gameMode.IfeoBoostFallback = v; });
-            AddPolicyToggle(scroll, ref sy, Lang.T("gm.lane"), Lang.T("gm.lane.sub"),
-                delegate { return gameMode.RenderLaneOn; }, delegate(bool v) { gameMode.RenderLaneOn = v; });
             AddPolicyToggle(scroll, ref sy, Lang.T("set.plan"), Lang.T("v15.plan.sub"),
                 delegate { return gameMode.PowerPlanSwitch; }, delegate(bool v) { gameMode.PowerPlanSwitch = v; });
             AddPolicyToggle(scroll, ref sy, Lang.T("set.notif"), Lang.T("v15.notif.sub"),
@@ -65,8 +61,6 @@ namespace PaviseApp
             swPolicyAggressive.CheckedChanged += delegate { RefreshPolicyPresentation(); };
             swPolicyPauseDl = AddPolicyToggle(scroll, ref sy, Lang.T("gm.pausedl"), Lang.T("v15.custom.override"), delegate { return gameMode.PauseDownloads; }, delegate(bool v) { gameMode.PauseDownloads = v; });
             cardPolicyPauseDl = (SettingCard)swPolicyPauseDl.Parent;
-            swPolicyPauseSvc = AddPolicyToggle(scroll, ref sy, Lang.T("gm.pausesvc"), Lang.T("v15.custom.override"), delegate { return gameMode.PauseSvcIndex; }, delegate(bool v) { gameMode.PauseSvcIndex = v; });
-            cardPolicyPauseSvc = (SettingCard)swPolicyPauseSvc.Parent;
             swPolicyDvr = AddPolicyToggle(scroll, ref sy, Lang.T("set.dvr"), Lang.T("v15.custom.override"), delegate { return gameMode.KillGameDvr; }, delegate(bool v) { gameMode.KillGameDvr = v; });
             cardPolicyDvr = (SettingCard)swPolicyDvr.Parent;
             sy += 10; Section(scroll, Lang.T("v15.policy.extras"), 6, sy); sy += 24;
@@ -147,7 +141,6 @@ namespace PaviseApp
             ApplyPresetPolicy(swPolicyStrict, cardPolicyStrict, Lang.T("v14.cpu.adaptive"), false, true);
             ApplyPresetPolicy(swPolicyAggressive, cardPolicyAggressive, Lang.T("gm.aggressive"), !custom, competitive);
             ApplyPresetPolicy(swPolicyPauseDl, cardPolicyPauseDl, Lang.T("gm.pausedl"), !custom, competitive);
-            ApplyPresetPolicy(swPolicyPauseSvc, cardPolicyPauseSvc, Lang.T("gm.pausesvc"), !custom, false);
             ApplyPresetPolicy(swPolicyDvr, cardPolicyDvr, Lang.T("set.dvr"), !custom, competitive);
             bool freezeScope = GameMode.IsAggressive(mode, gameMode.AggressiveSuppression);
             bool freezeDepth = GameMode.ResolveBackgroundLevel(mode, gameMode.StrictCoreIsolation,

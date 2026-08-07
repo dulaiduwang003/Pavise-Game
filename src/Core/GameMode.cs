@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 维护游戏模式状态 配置和工作线程
 
 using System;
@@ -85,7 +85,6 @@ namespace PaviseApp
         private volatile bool bgSuppressOn;
         private volatile bool boostOn;
         private volatile bool pauseDlOn;
-        private volatile bool svcPauseOn;
         private volatile bool notifQuiet;
         private volatile bool trimWs;
         private volatile bool gpuHighPerf;
@@ -123,14 +122,11 @@ namespace PaviseApp
         private volatile bool aggressiveOn;
         private volatile bool freezeOn;
         private volatile bool ifeoOn;
-        private volatile bool renderLaneOn;
-        private volatile bool gpuDemoteOn;
         private volatile bool panicReq;
         private int panicSeq;
         private int panicServed;
         private volatile bool panicResult;
         private readonly ManualResetEvent panicDone = new ManualResetEvent(true);
-        private bool svcActive;
         private bool dvrActive;
         private bool timerRaised;
         private bool timerSkipLogged;
@@ -195,7 +191,6 @@ namespace PaviseApp
             bgSuppressOn = Settings.Load("GmSuppress", true);
             boostOn = Settings.Load("GmBoost", true);
             pauseDlOn = Settings.Load("GmPauseDl", true);
-            svcPauseOn = Settings.Load("GmSvcPause", false);
             notifQuiet = Settings.Load("NotifQuiet", false);
             VersionMigrations.EnsureSettingsMigrated();
             idleDisableOn = Settings.Load("GmIdleDisable", false);
@@ -226,11 +221,8 @@ namespace PaviseApp
             aggressiveOn = Settings.Load("GmAggressive", false);
             freezeOn = Settings.Load("GmFreeze", false);
             ifeoOn = Settings.Load("GmIfeoBoost", false);
-            renderLaneOn = Settings.Load("GmRenderLane", false);
-            gpuDemoteOn = Settings.Load("GmGpuDemote", false);
             foreach (string envKey in EnvKeys)
                 if (Settings.Load("EnvFuse_" + envKey, false)) envFused.Add(envKey);
-            SuppressionCore.GpuDemoteEnabled = gpuDemoteOn;
             int presetRaw;
             preset = int.TryParse(Settings.LoadStr("PerformancePreset", "0"), out presetRaw) && presetRaw >= 0 && presetRaw <= 2
                 ? (PerformancePreset)presetRaw : PerformancePreset.Standard;
@@ -516,27 +508,10 @@ namespace PaviseApp
             set { aggressiveOn = value; Settings.Save("GmAggressive", value); RequestPolicyApply(); }
         }
 
-        public bool GpuDemote
-        {
-            get { return gpuDemoteOn; }
-            set { gpuDemoteOn = value; SuppressionCore.GpuDemoteEnabled = value; Settings.Save("GmGpuDemote", value); RequestPolicyApply(); }
-        }
-
         public bool FreezeBackground
         {
             get { return freezeOn; }
             set { freezeOn = value; Settings.Save("GmFreeze", value); RequestPolicyApply(); }
-        }
-
-        public bool RenderLaneOn
-        {
-            get { return renderLaneOn; }
-            set
-            {
-                renderLaneOn = value; Settings.Save("GmRenderLane", value);
-                if (!value) RenderLane.Release();
-                RequestPolicyApply();
-            }
         }
 
         public bool IfeoBoostFallback
@@ -578,12 +553,6 @@ namespace PaviseApp
         {
             get { return pauseDlOn; }
             set { pauseDlOn = value; Settings.Save("GmPauseDl", value); if (value) ClearEnvFuse("do"); RequestPolicyApply(); }
-        }
-
-        public bool PauseSvcIndex
-        {
-            get { return svcPauseOn; }
-            set { svcPauseOn = value; Settings.Save("GmSvcPause", value); if (value) ClearEnvFuse("svc"); RequestPolicyApply(); }
         }
 
         public bool NotifQuiet

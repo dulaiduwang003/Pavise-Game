@@ -64,6 +64,12 @@ namespace PaviseApp
                 }
             }
 
+            public void SetFrameThreadPriority(ThreadPriority p)
+            {
+                try { if (worker != null) worker.Priority = p; }
+                catch { }
+            }
+
             public void BeginPhase() { lock (gate) frames.Clear(); collect = true; }
 
             public double[] EndPhase()

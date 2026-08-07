@@ -41,7 +41,7 @@ namespace PaviseApp
 
         public static bool Enable()
         {
-            return irqEngine.Enable(EnumerateUsbControllerIds(), CpuTopology.ThrottleMask);
+            return irqEngine.Enable(EnumerateUsbControllerIds(), CpuTopology.InterruptMask);
         }
 
         public static bool Disable()

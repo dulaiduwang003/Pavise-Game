@@ -226,7 +226,6 @@ namespace PaviseApp
             try { AdlxTweaks.HealFromCrash(); } catch { }
             try { PresenceQos.HealFromCrash(); } catch { }
             try { PowerOverlay.HealFromCrash(); } catch { }
-            RenderLane.HealFromCrash();
             CrashGuard.HealFromCrash();
 
             try { LegacyPurge.RunOnce(dir); } catch { }
@@ -264,7 +263,6 @@ namespace PaviseApp
             bool exiting = false;
             var bootThread = new Thread(() =>
             {
-                try { SvcPause.HealFromCrash(); } catch { }
                 try { DoTweak.HealFromCrash(); } catch { }
                 lock (startGate)
                 {

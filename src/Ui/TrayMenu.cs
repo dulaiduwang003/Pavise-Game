@@ -276,7 +276,6 @@ namespace PaviseApp
             gameMode.BoostGame = true;
             gameMode.PowerPlanSwitch = true;
             gameMode.PauseDownloads = true;
-            gameMode.PauseSvcIndex = false;
             gameMode.GpuHighPerf = true;
             gameMode.KillGameDvr = true;
             gameMode.DisableFso = false;

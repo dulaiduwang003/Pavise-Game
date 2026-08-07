@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 扫描并压制游戏之外的后台进程
 
 using System;
@@ -395,7 +395,6 @@ namespace PaviseApp
                                 : "自定义全局 Eco" + aggressiveNote)
                             : "常规全局 Eco，持续大户再升级");
                     Logger.Log("后台策略：" + policy
-                        + (SuppressionCore.GpuDemoteEnabled ? "，GPU 让位已启用" : "")
                         + (freezeEligible ? "，冻结已启用（静默 " + FreezeDwellTracker.DwellSeconds
                             + "s 且无可见窗口才冻）" : "")
                         + "，首轮处理 " + done + " 个用户后台"

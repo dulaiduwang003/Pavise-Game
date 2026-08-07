@@ -27,7 +27,6 @@ namespace PaviseApp
     internal sealed partial class SuppressionCore
     {
         public const string StateFileName = "Pavise.suppression.state";
-        public static volatile bool GpuDemoteEnabled;
         private sealed class Entry
         {
             public string Name;
@@ -663,19 +662,6 @@ namespace PaviseApp
                         || currentEntry.OrigAff != aff
                         || !ReferenceEquals(currentEntry.OrigCpuSets, cpuSets))
                         return true;
-                    if (currentEntry.OrigGpu < 0 && GpuDemoteEnabled
-                        && (currentEntry.Reasons & SuppressReason.Background) != 0
-                        && currentEntry.BackgroundLevel >= SuppressionLevel.Restrained)
-                    {
-                        int gpuNow;
-                        if (Native.D3DKMTGetProcessSchedulingPriorityClass(h, out gpuNow) == 0)
-                        {
-                            currentEntry.OrigGpu = gpuNow;
-                            if (!PersistJournalLocked()) currentEntry.OrigGpu = -1;
-                            else Logger.Log("后台策略：" + expectedName + " (pid " + pid
-                                + ") 检测到新建 GPU 上下文，纳入 GPU 调度让位");
-                        }
-                    }
                     int desiredGpu = DesiredGpu(currentEntry);
                     if (ThrottleMatches(h, level, pri, aff, cpuSets, desiredGpu) && FreezeSettled(currentEntry))
                     {
@@ -870,7 +856,7 @@ namespace PaviseApp
 
         private static int DesiredGpu(Entry e)
         {
-            return DesiredGpuClass(GpuDemoteEnabled, e.Reasons, e.BackgroundLevel, e.OrigGpu);
+            return DesiredGpuClass(false, e.Reasons, e.BackgroundLevel, e.OrigGpu);
         }
 
         private static void ScheduleAfterMatch(Entry e, int pid)

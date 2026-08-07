@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 负责游戏提优 环境调整和退出恢复
 
 using System;
@@ -126,7 +126,6 @@ namespace PaviseApp
                 case "notif": notifQuiet = false; Settings.Save("NotifQuiet", false); break;
                 case "do": pauseDlOn = false; Settings.Save("GmPauseDl", false); break;
                 case "hz": hzGuard = false; Settings.Save("HzGuardOn", false); break;
-                case "svc": svcPauseOn = false; Settings.Save("GmSvcPause", false); break;
                 case "dvr": killGameDvr = false; Settings.Save("GameDvrOff", false); break;
                 case "fx": visualFxOn = false; Settings.Save("GmVisualFx", false); break;
                 case "wu": pauseUpdateOn = false; Settings.Save("GmPauseUpdate", false); break;
@@ -160,12 +159,10 @@ namespace PaviseApp
             bool competitive = mode == PerformancePreset.Competitive;
             bool custom = mode == PerformancePreset.Custom;
             bool usePauseDl = custom ? pauseDlOn : competitive;
-            bool useSvc = custom ? svcPauseOn : false;
             bool useDvr = custom ? killGameDvr : competitive;
             notifActive = EnvStep("notif", notifQuiet, notifActive, Notif.Quiet, Notif.Restore);
             doActive = EnvStep("do", usePauseDl, doActive, DoTweak.Activate, DoTweak.Restore);
             hzActive = EnvStep("hz", hzGuard, hzActive, DisplayGuard.Activate, DisplayGuard.Restore);
-            svcActive = EnvStep("svc", useSvc, svcActive, SvcPause.Activate, SvcPause.Restore);
             dvrActive = EnvStep("dvr", useDvr, dvrActive, GameDvr.Activate, GameDvr.Restore);
             fxActive = EnvStep("fx", visualFxOn, fxActive, VisualFx.Activate, VisualFx.Restore);
             wuActive = EnvStep("wu", pauseUpdateOn, wuActive, UpdatePause.Activate, UpdatePause.Restore);
@@ -324,7 +321,7 @@ namespace PaviseApp
 
         private bool EnvActive()
         {
-            return notifActive || doActive || hzActive || svcActive || dvrActive || fxActive || wuActive || nvbgActive || alagActive || chillActive || esyncActive || risActive || pqosActive || awakeActive || overlayActive || planActive || timerRaised;
+            return notifActive || doActive || hzActive || dvrActive || fxActive || wuActive || nvbgActive || alagActive || chillActive || esyncActive || risActive || pqosActive || awakeActive || overlayActive || planActive || timerRaised;
         }
 
         private bool RestoreEnv()
@@ -334,7 +331,6 @@ namespace PaviseApp
             if (Notif.Restore()) notifActive = false; else ok = false;
             if (DoTweak.Restore()) doActive = false; else ok = false;
             if (DisplayGuard.Restore()) hzActive = false; else ok = false;
-            if (SvcPause.Restore()) svcActive = false; else ok = false;
             if (GameDvr.Restore()) dvrActive = false; else ok = false;
             if (VisualFx.Restore()) fxActive = false; else ok = false;
             if (UpdatePause.Restore()) wuActive = false; else ok = false;
@@ -704,9 +700,6 @@ namespace PaviseApp
                             }
                         }
 
-                        if (renderLaneOn && stateOk && !RenderLane.IsActiveFor(pid, currentCreation))
-                            RenderLane.EnsureForGame(pid, currentCreation, rendererName);
-
                         if (stateOk && firstVerified)
                         {
                             Logger.Log("游戏提优已验证：" + rendererName + " (pid " + pid + ") → 高优先级(回读 0x"
@@ -901,8 +894,6 @@ namespace PaviseApp
                         placementFail.Remove(stale.Key); placementGaveUp.Remove(stale.Key);
                     }
             }
-            foreach (var kv in boosts)
-                if (RenderLane.IsActiveFor(kv.Key, kv.Value.Creation)) RenderLane.Release();
             foreach (var kv in boosts)
             {
                 int pid = kv.Key;
