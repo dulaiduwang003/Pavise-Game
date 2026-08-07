@@ -57,9 +57,13 @@ namespace PaviseApp
         private const int OffsetSessionId = 0x64;
         private const int OffsetReadTransferCount = 0xE8;
         private const int OffsetWriteTransferCount = 0xF0;
-        private const int InitialBufferBytes = 512 * 1024;
-        private const int BufferHeadroomBytes = 128 * 1024;
+        private const int InitialBufferBytes = 1024 * 1024;
+        private const int BufferHeadroomBytes = 256 * 1024;
         private const int MaxBufferBytes = 64 * 1024 * 1024;
+
+        private static readonly object bufferSync = new object();
+        private static IntPtr sharedBuffer;
+        private static int sharedBufferBytes;
 
         private sealed class PathCacheEntry
         {
@@ -108,27 +112,42 @@ namespace PaviseApp
 
         private static ProcEntry[] Enumerate()
         {
-            int size = InitialBufferBytes;
-            IntPtr buffer = IntPtr.Zero;
-            try
+            lock (bufferSync)
             {
-                while (true)
+                try
                 {
-                    if (buffer != IntPtr.Zero) Marshal.FreeHGlobal(buffer);
-                    buffer = Marshal.AllocHGlobal(size);
-                    int need;
-                    int status = NtQuerySystemInformation(
-                        SystemProcessInformation, buffer, size, out need);
-                    if (status == 0) return Parse(buffer);
-                    if (status != StatusInfoLengthMismatch) return null;
-                    int next = need + BufferHeadroomBytes;
-                    if (next <= size) next = size * 2;
-                    if (next > MaxBufferBytes) return null;
-                    size = next;
+                    if (sharedBuffer == IntPtr.Zero)
+                    {
+                        sharedBufferBytes = InitialBufferBytes;
+                        sharedBuffer = Marshal.AllocHGlobal(sharedBufferBytes);
+                    }
+                    while (true)
+                    {
+                        int need;
+                        int status = NtQuerySystemInformation(
+                            SystemProcessInformation, sharedBuffer, sharedBufferBytes, out need);
+                        if (status == 0) return Parse(sharedBuffer);
+                        if (status != StatusInfoLengthMismatch) return null;
+                        int next = need + BufferHeadroomBytes;
+                        if (next <= sharedBufferBytes) next = sharedBufferBytes * 2;
+                        if (next > MaxBufferBytes) return null;
+                        Marshal.FreeHGlobal(sharedBuffer);
+                        sharedBuffer = IntPtr.Zero;
+                        sharedBuffer = Marshal.AllocHGlobal(next);
+                        sharedBufferBytes = next;
+                    }
+                }
+                catch
+                {
+                    if (sharedBuffer != IntPtr.Zero)
+                    {
+                        Marshal.FreeHGlobal(sharedBuffer);
+                        sharedBuffer = IntPtr.Zero;
+                        sharedBufferBytes = 0;
+                    }
+                    return null;
                 }
             }
-            catch { return null; }
-            finally { if (buffer != IntPtr.Zero) Marshal.FreeHGlobal(buffer); }
         }
 
         private static ProcEntry[] Parse(IntPtr buffer)
