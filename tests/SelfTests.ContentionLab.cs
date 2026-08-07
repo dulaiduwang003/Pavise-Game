@@ -81,6 +81,19 @@ namespace PaviseApp
         }
 
         private const int MinFramesForTail = 2000;
+        private const double MaxTailRatio = 20.0;
+        private const double MedianResolutionFloor = 3.0;
+
+        private static bool Sane(PhaseStat s)
+        {
+            if (s.Count < MinFramesForTail || s.Median <= 0 || s.OnePercentLow <= 0) return false;
+            return s.OnePercentLow / s.Median <= MaxTailRatio;
+        }
+
+        private static string Ratio(PhaseStat s)
+        {
+            return s.Median > 0 ? (s.OnePercentLow / s.Median).ToString("F0") : "?";
+        }
 
         private struct PhaseStat
         {
@@ -156,6 +169,8 @@ namespace PaviseApp
             var pinNetLow = new List<double>();
             var driftMed = new List<double>();
             var driftLow = new List<double>();
+            var driftCount = new List<double>();
+            var medianSpread = new List<double>();
             Process selfProc = Process.GetCurrentProcess();
             IntPtr origAffinity = selfProc.ProcessorAffinity;
             ulong pinMask = CpuTopology.StrictBoostMask;
@@ -282,15 +297,21 @@ namespace PaviseApp
                     sb.AppendLine(Row(r, "A'放任(轮末)", a2));
                     double baseMed = (a.Median + a2.Median) / 2.0;
                     double baseLow = (a.OnePercentLow + a2.OnePercentLow) / 2.0;
-                    if (a.Median > 0 && a2.Median > 0 && a.OnePercentLow > 0 && a2.OnePercentLow > 0)
+
+                    bool aSane = Sane(a), a2Sane = Sane(a2);
+                    if (aSane && a2Sane)
                     {
+                        driftCount.Add((a.Count - a2.Count) / (double)a.Count * 100.0);
                         driftMed.Add((a2.Median - a.Median) / a.Median * 100.0);
                         driftLow.Add((a2.OnePercentLow - a.OnePercentLow) / a.OnePercentLow * 100.0);
                     }
-                    if (a.Count < MinFramesForTail || a2.Count < MinFramesForTail)
-                        sb.AppendLine("      ! 轮 " + r + " 放任段帧数不足（A=" + a.Count + " A'=" + a2.Count
-                            + "），1% 最差帧仅由 " + Math.Max(1, Math.Min(a.Count, a2.Count) / 100)
-                            + " 个样本决定，本轮百分比不可信");
+                    else
+                        sb.AppendLine("      ! 轮 " + r + " 放任段失控（A 帧数 " + a.Count + " 尾/中 "
+                            + Ratio(a) + "x，A' 帧数 " + a2.Count + " 尾/中 " + Ratio(a2)
+                            + "），本轮不计入漂移与增益统计");
+
+                    if (a.Median > 0 && d.Median > 0)
+                        medianSpread.Add(Math.Abs(a.Median - d.Median) / a.Median * 100.0);
                     Thread.Sleep(1500);
 
                     if (pinOk && iSeg.OnePercentLow > 0 && iSeg.Median > 0 && jSeg.OnePercentLow > 0
@@ -325,7 +346,7 @@ namespace PaviseApp
 
                     if (baseLow > 0 && baseMed > 0 && b.OnePercentLow > 0 && c.OnePercentLow > 0
                         && d.OnePercentLow > 0 && nPri == hogs && nIso == hogs && nFrz == hogs
-                        && reallyFrozen && a.Count >= MinFramesForTail && a2.Count >= MinFramesForTail)
+                        && reallyFrozen && aSane && a2Sane)
                     {
                         lowGains.Add((baseLow - b.OnePercentLow) / baseLow * 100.0);
                         medGains.Add((baseLow - c.OnePercentLow) / baseLow * 100.0);
@@ -344,26 +365,44 @@ namespace PaviseApp
                 }
                 sb.AppendLine();
                 sb.AppendLine("=== 结论 ===");
-                sb.AppendLine("--- 轮内热漂移（A' 轮末放任 相对 A 轮首放任）---");
-                if (driftMed.Count < 2)
+                sb.AppendLine("--- 指标分辨力自检（先看这里，它决定下面哪些结论可用）---");
+                double medRes = medianSpread.Count > 0 ? Med(medianSpread) : 0;
+                bool medianUsable = medRes >= MedianResolutionFloor;
+                sb.AppendLine("  中位帧在放任与冻结之间的差异: " + medRes.ToString("F1") + "%");
+                if (!medianUsable)
+                    sb.AppendLine("  ! 中位帧在本机没有分辨力 —— 最极端的两个档位都测不出差别，"
+                        + "说明它被负载结构钉死了。下面所有带「中位帧」字样的判定一律无效，"
+                        + "不要据此认为某个手段没生效；请只看 1% 最差帧。"
+                        + "跨机比较时，本机的中位帧栏不可与其它机器对比。");
+                else
+                    sb.AppendLine("  中位帧有分辨力，但它在本台架里是双峰量（独占核 / 共享核），"
+                        + "只能判方向，其百分比不是连续测量精度。");
+                sb.AppendLine();
+
+                sb.AppendLine("--- 轮内热漂移（A' 轮末放任 相对 A 轮首放任，以吞吐为准）---");
+                if (driftCount.Count < 2)
                 {
-                    sb.AppendLine("  样本不足，无法评估漂移。");
+                    sb.AppendLine("  有效轮次不足（" + driftCount.Count + "/" + rounds
+                        + "），放任段失控太多，漂移无法评估。");
                 }
                 else
                 {
-                    double dMedM = Med(driftMed), dLowM = Med(driftLow);
-                    sb.AppendLine("  中位帧漂移: " + dMedM.ToString("F1") + "%   1%最差帧漂移: "
-                        + dLowM.ToString("F1") + "%（正数=轮末更差）");
-                    sb.AppendLine("  各轮中位漂移: " + Join(driftMed));
-                    if (Math.Abs(dMedM) < 3)
-                        sb.AppendLine("  判定: 漂移可忽略 —— 本机在一轮内性能稳定，段序不构成系统性偏差。");
-                    else if (dMedM > 3)
-                        sb.AppendLine("  判定: 存在热漂移 —— 轮末比轮首慢 " + dMedM.ToString("F1")
+                    double dCnt = Med(driftCount);
+                    sb.AppendLine("  吞吐漂移: " + dCnt.ToString("F1") + "%（正数=轮末更慢）  各轮: "
+                        + Join(driftCount));
+                    sb.AppendLine("  参考: 中位帧漂移 " + Med(driftMed).ToString("F1")
+                        + "%（分辨力不足时无意义）  尾部漂移 " + Med(driftLow).ToString("F1")
+                        + "%（方差极大，仅供参考）");
+                    sb.AppendLine("  有效轮次: " + driftCount.Count + "/" + rounds);
+                    if (Math.Abs(dCnt) < 3)
+                        sb.AppendLine("  判定: 漂移可忽略 —— 轮首轮末吞吐一致，段序不构成系统性偏差。");
+                    else if (dCnt > 3)
+                        sb.AppendLine("  判定: 存在热漂移 —— 轮末吞吐比轮首低 " + dCnt.ToString("F1")
                             + "%，越晚测的档位系统性吃亏，压制档收益被低估。"
                             + "跨机比较时必须与对方机器的漂移量一并考虑。");
                     else
-                        sb.AppendLine("  判定: 反向漂移 —— 轮末反而更快 " + Math.Abs(dMedM).ToString("F1")
-                            + "%，可能是预热未完成，前几轮数据需谨慎。");
+                        sb.AppendLine("  判定: 反向漂移 —— 轮末吞吐反而高 " + Math.Abs(dCnt).ToString("F1")
+                            + "%，预热可能未完成，前几轮需谨慎。");
                 }
                 sb.AppendLine();
                 if (lowGains.Count < 2)
@@ -408,7 +447,10 @@ namespace PaviseApp
                     double fzMed = Med(freezeMedGains);
                     int fzMedPos = 0;
                     foreach (double g in freezeMedGains) if (g > 1) fzMedPos++;
-                    if (fzMedPos == freezeMedGains.Count && fzMed > 3)
+                    if (!medianUsable)
+                        sb.AppendLine("  判定: 中位帧无分辨力，本项不作判定。尾部帧相对隔离档 "
+                            + fz.ToString("F1") + "%（" + fzPos + "/" + freezeGains.Count + " 轮为正）。");
+                    else if (fzMedPos == freezeMedGains.Count && fzMed > 3)
                         sb.AppendLine("  判定: 冻结是唯一能改善中位帧的档位 —— 中位帧再降 "
                             + fzMed.ToString("F1") + "%（每轮一致），说明它真正释放了 CPU 周期"
                             + "而非仅调整排队顺序；尾部帧的额外收益则不稳定（" + fzPos + "/"
@@ -448,9 +490,14 @@ namespace PaviseApp
                         else if (qPriPos == quotaVsPriMed.Count && qPri > 3)
                             sb.AppendLine("  判定: 硬配额优于仅降优先级（中位再降 " + qPri.ToString("F1")
                                 + "%），但与冻结仍有 " + qFrz.ToString("F1") + "% 差距。");
+                        else if (!medianUsable)
+                            sb.AppendLine("  判定: 无法由中位帧判定 —— 该指标在本机没有分辨力，"
+                                + "中位增量 " + qPri.ToString("F1") + "% 不代表配额未生效。"
+                                + "配额是否真的施加，以 --quota-probe 的回读与实测占用为准；"
+                                + "收益请只看上面的尾部帧数字。");
                         else if (Math.Abs(qPri) < 3)
-                            sb.AppendLine("  判定: 硬配额相对降优先级无显著增量 —— 与预期不符，"
-                                + "说明配额并未真正释放周期，需检查配额是否生效。");
+                            sb.AppendLine("  判定: 硬配额相对降优先级无显著中位帧增量 —— 与预期不符，"
+                                + "配额可能未真正释放周期，需结合 --quota-probe 的实测占用核对。");
                         else
                             sb.AppendLine("  判定: 硬配额增量不稳定（" + qPriPos + "/"
                                 + quotaVsPriMed.Count + " 轮优于降优先级）。");
