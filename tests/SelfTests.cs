@@ -94,10 +94,17 @@ namespace PaviseApp
                     args.Length >= 4 ? args[3] : null);
                 return true;
             }
+            if (args[0] == "--quota-probe" && args.Length >= 2)
+            {
+                RunQuotaProbe(args[1], args.Length >= 3 ? args[2] : null,
+                    args.Length >= 4 ? args[3] : null);
+                return true;
+            }
             if (args[0] == "--contention-lab" && args.Length >= 2)
             {
                 RunContentionLab(args[1], args.Length >= 3 ? args[2] : null,
-                    args.Length >= 4 ? args[3] : null, args.Length >= 5 ? args[4] : null);
+                    args.Length >= 4 ? args[3] : null, args.Length >= 5 ? args[4] : null,
+                    args.Length >= 6 ? args[5] : null);
                 return true;
             }
             if (args[0] == "--lane-live" && args.Length >= 3)
