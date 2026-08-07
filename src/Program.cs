@@ -218,7 +218,7 @@ namespace PaviseApp
             PowerPlan.HealFromCrash();
             try { UpdatePause.HealFromCrash(); } catch { }
             GameDvr.HealFromCrash();
-            try { RetiredFeatures.PurgeAll(); } catch { }
+            try { VersionMigrations.PurgeRetired(); } catch { }
             Notif.HealFromCrash();
             VisualFx.HealFromCrash();
             DisplayGuard.HealFromCrash();
@@ -367,7 +367,7 @@ namespace PaviseApp
                 try { PowerPlan.Restore(); } catch { }
                 try { GameDvr.Restore(); } catch { }
                 try { Notif.Restore(); } catch { }
-                try { RetiredFeatures.RestoreAll(); } catch { }
+                try { VersionMigrations.RestoreAll(); } catch { }
                 try { VisualFx.Restore(); } catch { }
                 try { NvGlobalTweaks.Restore(); } catch { }
                 try { AdlxTweaks.RestoreAntiLag(); } catch { }

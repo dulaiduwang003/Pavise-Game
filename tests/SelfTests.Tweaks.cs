@@ -161,7 +161,7 @@ namespace PaviseApp
             Eq(2, MsiModeTweak.ParseList("a;b").Length);
 
             int count = 0;
-            foreach (RetiredFeature f in RetiredFeatures.Entries)
+            foreach (RetiredFeature f in VersionMigrations.Entries)
             {
                 count++;
                 if (string.IsNullOrEmpty(f.Name))

@@ -80,7 +80,7 @@ namespace PaviseApp
 
             Step("电源计划", PowerPlan.Restore, failed);
             Step("Windows 更新暂停", UpdatePause.Restore, failed);
-            foreach (RetiredFeature f in RetiredFeatures.Entries)
+            foreach (RetiredFeature f in VersionMigrations.Entries)
                 Step(f.Name, f.Restore, failed);
             Step("Game DVR", GameDvr.Restore, failed);
             Step("通知免打扰", Notif.Restore, failed);
