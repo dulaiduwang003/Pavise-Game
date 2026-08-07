@@ -12,10 +12,59 @@ namespace PaviseApp
     internal partial class PanelForm
     {
         private Toggle swAuto, swAutoHide, swContact;
-        private SettingCard cardShader;
+        private SettingCard cardShader, cardMemSweep;
+        private PillButton btnMemSweep;
+        private int memSweepBusy;
         private static volatile bool shaderCleaning;
         private int slowBusy;
         private int restoreBusy;
+
+        private void RefreshMemoryState()
+        {
+            if (cardMemSweep == null) return;
+            MemoryState st = MemorySweep.Snapshot();
+            cardMemSweep.SetValue(string.Format(Lang.T("mem.state"),
+                st.AvailableMb.ToString("F0"), st.CacheMb.ToString("F0"),
+                (st.TotalMb / 1024.0).ToString("F0")), Theme.Dim);
+        }
+
+        private void RunMemorySweep()
+        {
+            if (gameMode.IsActive)
+            {
+                MessageBox.Show(this, Lang.T("mem.ingame"), "Pavise",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            if (MessageBox.Show(this, Lang.T("mem.confirm"), "Pavise",
+                    MessageBoxButtons.OKCancel, MessageBoxIcon.Warning,
+                    MessageBoxDefaultButton.Button2) != DialogResult.OK) return;
+            if (Interlocked.Exchange(ref memSweepBusy, 1) == 1) return;
+            btnMemSweep.Enabled = false;
+            if (cardMemSweep != null) cardMemSweep.SetValue(Lang.T("mem.busy"), Theme.Accent);
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                MemorySweepResult r = null;
+                try { r = MemorySweep.Run(true, true, true, false); }
+                catch { }
+                try
+                {
+                    BeginInvoke((Action)delegate
+                    {
+                        Interlocked.Exchange(ref memSweepBusy, 0);
+                        btnMemSweep.Enabled = true;
+                        RefreshMemoryState();
+                        if (r == null) return;
+                        MessageBox.Show(this, string.Format(Lang.T("mem.done"),
+                                (r.ElapsedMs / 1000.0).ToString("F1"),
+                                (r.AvailableDeltaMb >= 0 ? "+" : "") + r.AvailableDeltaMb.ToString("F0"),
+                                (r.CacheDeltaMb >= 0 ? "+" : "") + r.CacheDeltaMb.ToString("F0")),
+                            "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    });
+                }
+                catch { Interlocked.Exchange(ref memSweepBusy, 0); }
+            });
+        }
 
         private void BuildSettingsPage()
         {
@@ -54,6 +103,15 @@ namespace PaviseApp
             btnRestore.Size = new Size(Theme.S(136), Theme.S(32));
             btnRestore.Click += delegate { RestoreAllNow(); };
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 78, Lang.T("v15.restore.title"), Lang.T("v15.restore.desc"), btnRestore, out cardH);
+            sy += cardH + 8;
+
+            btnMemSweep = new PillButton(Lang.T("mem.btn"), BtnKind.Normal);
+            btnMemSweep.Bg = Theme.Card;
+            btnMemSweep.Size = new Size(Theme.S(120), Theme.S(32));
+            btnMemSweep.Click += delegate { RunMemorySweep(); };
+            cardMemSweep = MakeAutoCard(scroll, 6, sy, ScrollContentW, 90, Lang.T("mem.title"),
+                Lang.T("mem.sub"), btnMemSweep, out cardH);
+            RefreshMemoryState();
             sy += cardH + 8;
 
             var btnDefender = new PillButton(Lang.T("btn.open"), BtnKind.Normal);
