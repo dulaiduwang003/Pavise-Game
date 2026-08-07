@@ -197,7 +197,13 @@ namespace PaviseApp
             pauseDlOn = Settings.Load("GmPauseDl", true);
             svcPauseOn = Settings.Load("GmSvcPause", false);
             notifQuiet = Settings.Load("NotifQuiet", false);
-            idleDisableOn = Settings.Load("GmIdleDisable", true);
+            if (!Settings.Load("IdleDefaultResetV170Done", false))
+            {
+                Settings.Save("GmIdleDisable", false);
+                Settings.Save("IdleDefaultResetV170Done", true);
+                Logger.Log("v1.7.0 迁移：竞技模式禁用 CPU 空闲状态已重置为默认关闭");
+            }
+            idleDisableOn = Settings.Load("GmIdleDisable", false);
             visualFxOn = Settings.Load("GmVisualFx", false);
             standbySweepOn = Settings.Load("GmStandbySweep", false);
             pauseUpdateOn = Settings.Load("GmPauseUpdate", false);

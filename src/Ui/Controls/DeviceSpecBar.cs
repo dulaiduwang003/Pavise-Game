@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 概览页设备规格条 斜切分段与扫描线的机能面板风格
+// 文件用途 概览页设备规格条 斜切分段的机能面板风格
 
 using System;
 using System.Drawing;
@@ -13,7 +13,6 @@ namespace PaviseApp
         private static readonly string[] Keys = { "v16.spec.cpu", "v16.spec.gpu", "v16.spec.mem", "v16.spec.hags" };
         private static readonly string[] Icons = { "chip", "gpu", "settings", "shield" };
         private string[] values = { "…", "…", "…", "…" };
-        private float sweep;
 
         public DeviceSpecBar()
         {
@@ -32,11 +31,7 @@ namespace PaviseApp
 
         protected override bool StepAll()
         {
-            base.StepAll();
-            if (!Visible || Parent == null || !Parent.Visible) return false;
-            sweep += 0.0045f;
-            if (sweep > 1f) sweep -= 1f;
-            return true;
+            return false;
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -58,17 +53,6 @@ namespace PaviseApp
                 if (i > 0)
                     using (var pen = new Pen(Color.FromArgb(70, accent), Math.Max(1f, Theme.S(1))))
                         g.DrawLine(pen, x + skew, 0, x - skew, Height);
-            }
-
-            using (var glow = new LinearGradientBrush(
-                new Rectangle(0, 0, Math.Max(1, Width), Math.Max(1, Height)),
-                Color.FromArgb(0, accent), Color.FromArgb(46, accent), LinearGradientMode.Horizontal))
-            {
-                var band = new Rectangle((int)(sweep * (Width + Theme.S(220))) - Theme.S(220), 0, Theme.S(220), Height);
-                Region old = g.Clip;
-                g.SetClip(full, CombineMode.Replace);
-                g.FillRectangle(glow, band);
-                g.Clip = old;
             }
 
             using (var top = new Pen(Color.FromArgb(150, accent), Math.Max(1f, Theme.S(2))))

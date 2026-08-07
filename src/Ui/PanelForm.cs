@@ -72,6 +72,7 @@ namespace PaviseApp
         private bool fitting;
 
         private const string AutoHideKey = "AutoHideOnGame";
+        private const bool AutoHideDefault = true;
         private const int AutoHideDelayMs = 10000;
         private const int IntroRise = 18;
 
@@ -699,7 +700,7 @@ namespace PaviseApp
         private void UpdateAutoHide(bool gameActive)
         {
             AutoHideAction action = NextAutoHide(gameActive, ref lastGameActive, ref autoHideArmed,
-                Settings.Load(AutoHideKey, false), UiActive);
+                Settings.Load(AutoHideKey, AutoHideDefault), UiActive);
             if (action == AutoHideAction.Cancel) { CancelAutoHide(); return; }
             if (action != AutoHideAction.Schedule) return;
             CancelAutoHide();
@@ -744,7 +745,7 @@ namespace PaviseApp
         {
             Settings.Save(AutoHideKey, swAutoHide.Checked);
             if (!swAutoHide.Checked) CancelAutoHide();
-            swAutoHide.SetSilently(Settings.Load(AutoHideKey, false));
+            swAutoHide.SetSilently(Settings.Load(AutoHideKey, AutoHideDefault));
         }
 
         private void OnEscHide(object s, KeyEventArgs e)
@@ -811,7 +812,7 @@ namespace PaviseApp
             if (gameMode == null || tamer == null) return;
             if (swGame != null) swGame.SetSilently(gameMode.Enabled);
             if (swAcMaster != null) swAcMaster.SetSilently(!tamer.Paused);
-            if (swAutoHide != null) swAutoHide.SetSilently(Settings.Load(AutoHideKey, false));
+            if (swAutoHide != null) swAutoHide.SetSilently(Settings.Load(AutoHideKey, AutoHideDefault));
             if (swPolicyBackground != null) swPolicyBackground.SetSilently(gameMode.SuppressBackground);
             for (int i = 0; i < policySync.Count; i++) policySync[i]();
             SyncGraphicsToggles();

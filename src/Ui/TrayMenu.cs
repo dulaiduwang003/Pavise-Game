@@ -285,7 +285,7 @@ namespace PaviseApp
             gameMode.HzGuard = false;
             gameMode.StrictCoreIsolation = false;
             gameMode.AggressiveSuppression = false;
-            gameMode.IdleStateDisable = true;
+            gameMode.IdleStateDisable = false;
             gameMode.VisualFxDowngrade = false;
             gameMode.Enabled = true; Settings.Save("GameModeOn", true);
             gameMode.Preset = PerformancePreset.Standard;

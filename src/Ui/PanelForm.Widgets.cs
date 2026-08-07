@@ -73,10 +73,15 @@ namespace PaviseApp
 
         private int AutoCardHeight(string desc, int cardW, Control host, int minHeight)
         {
+            return AutoCardHeight(desc, cardW, host, minHeight, 0);
+        }
+
+        private int AutoCardHeight(string desc, int cardW, Control host, int minHeight, int valueReserve)
+        {
             if (string.IsNullOrEmpty(desc)) return minHeight;
             int padL = Theme.S(18);
             int reserve = padL + (host != null ? host.Width + Theme.S(14) : 0);
-            int textW = Theme.S(cardW) - padL - reserve;
+            int textW = Theme.S(cardW) - padL - reserve - valueReserve;
             if (textW <= 0) return minHeight;
             Font font = Theme.UI(8.5f, false);
             int lineH = TextRenderer.MeasureText("Ag", font).Height;
@@ -97,6 +102,20 @@ namespace PaviseApp
         {
             used = AutoCardHeight(desc, w, host, minH);
             return MakeCard(parent, x, y, w, used, title, desc, host);
+        }
+
+        private SettingCard MakeAutoCard(
+            Control parent, int x, int y, int w, int minH, string title, string desc, Control host,
+            int valueReserve, out int used)
+        {
+            used = AutoCardHeight(desc, w, host, minH, valueReserve);
+            return MakeCard(parent, x, y, w, used, title, desc, host);
+        }
+
+        internal static int ValueTextWidth(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return 0;
+            return TextRenderer.MeasureText(text, Theme.UI(9f, false)).Width + Theme.S(16);
         }
 
         private SettingCard MakeCard(Control parent, int x, int y, int w, int h, string title, string desc, Control host)

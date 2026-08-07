@@ -35,7 +35,7 @@ namespace PaviseApp
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.autostart"), Lang.T("set.autostart.n"), swAuto, out cardH);
             sy += cardH + 8;
 
-            swAutoHide = MakeSwitch(Settings.Load(AutoHideKey, false), OnAutoHideToggle);
+            swAutoHide = MakeSwitch(Settings.Load(AutoHideKey, AutoHideDefault), OnAutoHideToggle);
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.autohide"), Lang.T("set.autohide.n"), swAutoHide, out cardH);
             sy += cardH + 8;
 
