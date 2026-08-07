@@ -19,8 +19,16 @@ namespace PaviseApp
         public const uint JobCpuRateHardCap = 0x4;
         public const int JobObjectCpuRateControlInformation = 15;
 
+        public const int ErrorAlreadyExists = 183;
+
         [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
         public static extern IntPtr CreateJobObject(IntPtr security, string name);
+
+        public const uint JobObjectAllAccess = 0x1F001F;
+
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        public static extern IntPtr OpenJobObject(uint desiredAccess,
+            [MarshalAs(UnmanagedType.Bool)] bool inherit, string name);
 
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]

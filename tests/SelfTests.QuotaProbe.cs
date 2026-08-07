@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 
@@ -16,6 +17,116 @@ namespace PaviseApp
         {
             public double CpuPercent;
             public PhaseStat Frames;
+        }
+
+        private static void RunQuotaOrphanProbe(string output)
+        {
+            var sb = new StringBuilder();
+            string self = Process.GetCurrentProcess().MainModule.FileName;
+            var spawned = new List<Process>();
+            var quota = new JobQuota();
+
+            sb.AppendLine("=== 崩溃残留配额的可恢复性验证 ===");
+            sb.AppendLine("场景: 施加配额后不清空直接丢弃句柄（等同 Pavise 崩溃），");
+            sb.AppendLine("      作业随成员进程存活，配额继续生效且无人能解除。");
+            sb.AppendLine("      验证下次启动时 ClearOrphaned 能否按名取回并解除。");
+            sb.AppendLine();
+
+            try
+            {
+                for (int i = 0; i < 4; i++)
+                {
+                    var psi = new ProcessStartInfo(self, "--cpu-burn")
+                    { UseShellExecute = false, CreateNoWindow = true };
+                    spawned.Add(Process.Start(psi));
+                }
+                Thread.Sleep(2000);
+
+                double before = MeasureGroupCpu(spawned, 4);
+                sb.AppendLine("1) 未施加配额        : " + before.ToString("F1") + "%");
+
+                if (!quota.Open()) { sb.AppendLine("失败: " + quota.LastError); return; }
+                int joined = 0;
+                foreach (Process p in spawned) if (quota.Add(p.Id)) joined++;
+                if (!quota.SetCap(5)) { sb.AppendLine("失败: " + quota.LastError); return; }
+                Thread.Sleep(1500);
+                double capped = MeasureGroupCpu(spawned, 4);
+                sb.AppendLine("2) 施加 5% 配额      : " + capped.ToString("F1") + "%（已纳入 "
+                    + joined + "/" + spawned.Count + "）");
+
+                quota.AbandonWithoutClear();
+                Thread.Sleep(1500);
+                double orphaned = MeasureGroupCpu(spawned, 4);
+                sb.AppendLine("3) 丢弃句柄后        : " + orphaned.ToString("F1") + "%");
+
+                IntPtr reopened = Native.OpenJobObject(Native.JobObjectAllAccess, false,
+                    "Pavise.BackgroundQuota");
+                int openErr = Marshal.GetLastWin32Error();
+                sb.AppendLine("3b) 按名重新打开     : "
+                    + (reopened != IntPtr.Zero ? "成功" : "失败 win32=" + openErr
+                        + "（2=名字已不存在）"));
+                if (reopened != IntPtr.Zero) Native.CloseHandle(reopened);
+
+                bool found;
+                bool cleared = JobQuota.ClearOrphaned(out found);
+                Thread.Sleep(1500);
+                double healed = MeasureGroupCpu(spawned, 4);
+                sb.AppendLine("4) ClearOrphaned 后  : " + healed.ToString("F1") + "%（找到遗留作业="
+                    + found + " 清空成功=" + cleared + "）");
+
+                sb.AppendLine();
+                sb.AppendLine("=== 结论 ===");
+                if (orphaned > capped * 2)
+                    sb.AppendLine("? 丢弃句柄后配额似乎自行失效，与预期不符，需复核作业生命周期。");
+                else
+                    sb.AppendLine("√ 残留问题真实存在：丢弃句柄后配额仍压着进程（"
+                        + orphaned.ToString("F1") + "%），确认这是必须处理的坑。");
+                if (!found)
+                    sb.AppendLine("× ClearOrphaned 没找到遗留作业，恢复机制无效。");
+                else if (healed > before * 0.8)
+                    sb.AppendLine("√ 恢复有效：占用回到 " + healed.ToString("F1")
+                        + "%（基线 " + before.ToString("F1") + "%），崩溃后重启即可自愈。");
+                else
+                    sb.AppendLine("× 恢复失败：占用仍只有 " + healed.ToString("F1")
+                        + "%，配额没有真正解除。");
+            }
+            catch (Exception ex) { sb.AppendLine("异常: " + ex); }
+            finally
+            {
+                try { quota.Dispose(); } catch { }
+                foreach (Process p in spawned)
+                {
+                    try { if (!p.HasExited) p.Kill(); } catch { }
+                    try { p.Dispose(); } catch { }
+                }
+                File.WriteAllText(output, sb.ToString(), Encoding.UTF8);
+                Console.Write(sb.ToString());
+            }
+        }
+
+        private static double MeasureGroupCpu(List<Process> targets, int seconds)
+        {
+            var before = new List<TimeSpan>();
+            foreach (Process p in targets)
+            {
+                try { p.Refresh(); before.Add(p.TotalProcessorTime); }
+                catch { before.Add(TimeSpan.Zero); }
+            }
+            var sw = Stopwatch.StartNew();
+            Thread.Sleep(seconds * 1000);
+            sw.Stop();
+            double busy = 0;
+            for (int i = 0; i < targets.Count; i++)
+            {
+                try
+                {
+                    targets[i].Refresh();
+                    busy += (targets[i].TotalProcessorTime - before[i]).TotalMilliseconds;
+                }
+                catch { }
+            }
+            double wall = sw.Elapsed.TotalMilliseconds * Environment.ProcessorCount;
+            return wall > 0 ? busy / wall * 100.0 : 0;
         }
 
         private static void RunQuotaProbe(string output, string hogsArg, string secondsArg)

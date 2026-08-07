@@ -1,6 +1,10 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 用作业对象给一组后台进程施加 CPU 硬配额 内核在配额用尽后停止派发时间片
-// 进程一旦加入作业便无法移出 因此解除限制靠清空控制标志 而不是关闭句柄
+// 文件用途 用作业对象给一组后台进程施加 CPU 硬配额 仅供台架实测 不可接入产品
+// 致命缺陷 崩溃后配额无法解除 已由 --quota-orphan 实测确认
+// 句柄一旦丢失 作业因仍有成员进程而继续存活 配额继续压着它们
+// 而具名作业的名字在最后一个句柄关闭时即从命名空间移除 OpenJobObject 返回 win32=2
+// 进程又无法移出作业 于是它们被永久限在上限上直到各自退出 重启 Pavise 也救不回
+// 结论 接入产品等于把一次崩溃变成用户电脑长期变慢 没有补救路径
 
 using System;
 using System.Collections.Generic;
@@ -18,16 +22,35 @@ namespace PaviseApp
         public bool IsOpen { get { return job != IntPtr.Zero; } }
         public string LastError { get; private set; }
 
+        private const string JobName = "Pavise.BackgroundQuota";
+
         public bool Open()
         {
             if (job != IntPtr.Zero) return true;
-            job = Native.CreateJobObject(IntPtr.Zero, null);
+            job = Native.CreateJobObject(IntPtr.Zero, JobName);
             if (job == IntPtr.Zero)
             {
                 LastError = "CreateJobObject 失败 win32=" + Marshal.GetLastWin32Error();
                 return false;
             }
             return true;
+        }
+
+        public static bool ClearOrphaned(out bool found)
+        {
+            found = false;
+            IntPtr h = Native.OpenJobObject(Native.JobObjectAllAccess, false, JobName);
+            if (h == IntPtr.Zero) return true;
+            found = true;
+            try
+            {
+                var info = new Native.JobCpuRateControl();
+                info.ControlFlags = 0;
+                info.RateOrWeight = 0;
+                return Native.SetInformationJobObject(h, Native.JobObjectCpuRateControlInformation,
+                    ref info, Marshal.SizeOf(typeof(Native.JobCpuRateControl)));
+            }
+            finally { Native.CloseHandle(h); }
         }
 
         public bool Add(int pid)
@@ -101,6 +124,16 @@ namespace PaviseApp
             appliedRate = 0;
             return true;
         }
+
+#if PAVISE_SELFTEST
+        internal void AbandonWithoutClear()
+        {
+            if (job == IntPtr.Zero) return;
+            Native.CloseHandle(job);
+            job = IntPtr.Zero;
+            members.Clear();
+        }
+#endif
 
         public void Dispose()
         {

@@ -94,6 +94,11 @@ namespace PaviseApp
                     args.Length >= 4 ? args[3] : null);
                 return true;
             }
+            if (args[0] == "--quota-orphan" && args.Length >= 2)
+            {
+                RunQuotaOrphanProbe(args[1]);
+                return true;
+            }
             if (args[0] == "--quota-probe" && args.Length >= 2)
             {
                 RunQuotaProbe(args[1], args.Length >= 3 ? args[2] : null,
