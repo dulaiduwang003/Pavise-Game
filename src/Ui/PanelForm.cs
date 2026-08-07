@@ -484,6 +484,27 @@ namespace PaviseApp
             armed = gameActive;
         }
 
+        protected override void OnActivated(EventArgs e)
+        {
+            base.OnActivated(e);
+            SyncUiForeground(true);
+        }
+
+        protected override void OnDeactivate(EventArgs e)
+        {
+            base.OnDeactivate(e);
+            SyncUiForeground(false);
+        }
+
+        private void SyncUiForeground(bool foreground)
+        {
+            UiClock.Background = !foreground;
+            if (paviseCore != null) paviseCore.NotifyForegroundChanged();
+            if (!foreground || !UiActive) return;
+            UiClock.Wake();
+            UiClock.WakeSlow();
+        }
+
         private void SyncUiActivity()
         {
             bool next = ShouldRunUi(IsHandleCreated && !IsDisposed && Visible, WindowState);
