@@ -1,5 +1,6 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 用受控争抢负载量化后台压制的真实收益 A-B-A 三段自带漂移检验
+// 文件用途 用受控争抢负载量化后台压制的真实收益 每轮首尾各测一次放任段
+// 增益以两次放任的均值为基线 首尾之差即本轮热漂移 移动平台上必须看这个数
 
 using System;
 using System.Collections.Generic;
@@ -79,6 +80,8 @@ namespace PaviseApp
             }
         }
 
+        private const int MinFramesForTail = 2000;
+
         private struct PhaseStat
         {
             public int Count;
@@ -151,6 +154,8 @@ namespace PaviseApp
             var quotaNetLow = new List<double>();
             var quotaNetMed = new List<double>();
             var pinNetLow = new List<double>();
+            var driftMed = new List<double>();
+            var driftLow = new List<double>();
             Process selfProc = Process.GetCurrentProcess();
             IntPtr origAffinity = selfProc.ProcessorAffinity;
             ulong pinMask = CpuTopology.StrictBoostMask;
@@ -273,14 +278,29 @@ namespace PaviseApp
                     else sb.AppendLine("      绑核段跳过：StrictBoostMask 不可用");
                     Thread.Sleep(1500);
 
+                    PhaseStat a2 = RunPhase(victim, seconds);
+                    sb.AppendLine(Row(r, "A'放任(轮末)", a2));
+                    double baseMed = (a.Median + a2.Median) / 2.0;
+                    double baseLow = (a.OnePercentLow + a2.OnePercentLow) / 2.0;
+                    if (a.Median > 0 && a2.Median > 0 && a.OnePercentLow > 0 && a2.OnePercentLow > 0)
+                    {
+                        driftMed.Add((a2.Median - a.Median) / a.Median * 100.0);
+                        driftLow.Add((a2.OnePercentLow - a.OnePercentLow) / a.OnePercentLow * 100.0);
+                    }
+                    if (a.Count < MinFramesForTail || a2.Count < MinFramesForTail)
+                        sb.AppendLine("      ! 轮 " + r + " 放任段帧数不足（A=" + a.Count + " A'=" + a2.Count
+                            + "），1% 最差帧仅由 " + Math.Max(1, Math.Min(a.Count, a2.Count) / 100)
+                            + " 个样本决定，本轮百分比不可信");
+                    Thread.Sleep(1500);
+
                     if (pinOk && iSeg.OnePercentLow > 0 && iSeg.Median > 0 && jSeg.OnePercentLow > 0
                         && b.Median > 0 && c.OnePercentLow > 0 && h.OnePercentLow > 0 && a.OnePercentLow > 0)
                     {
                         pinMedVsPri.Add((b.Median - iSeg.Median) / b.Median * 100.0);
                         pinLowVsIso.Add((c.OnePercentLow - iSeg.OnePercentLow) / c.OnePercentLow * 100.0);
                         pinLowVsQuota.Add((h.OnePercentLow - iSeg.OnePercentLow) / h.OnePercentLow * 100.0);
-                        pinOnlyLow.Add((a.OnePercentLow - jSeg.OnePercentLow) / a.OnePercentLow * 100.0);
-                        pinOnlyMed.Add((a.Median - jSeg.Median) / a.Median * 100.0);
+                        pinOnlyLow.Add((baseLow - jSeg.OnePercentLow) / baseLow * 100.0);
+                        pinOnlyMed.Add((baseMed - jSeg.Median) / baseMed * 100.0);
                     }
                     if (pinIsoOk && kSeg.OnePercentLow > 0 && iSeg.OnePercentLow > 0
                         && c.OnePercentLow > 0 && kSeg.Median > 0 && iSeg.Median > 0)
@@ -303,20 +323,20 @@ namespace PaviseApp
                         q1LowVsPri.Add((b.OnePercentLow - h.OnePercentLow) / b.OnePercentLow * 100.0);
                     }
 
-                    if (a.OnePercentLow > 0 && b.OnePercentLow > 0 && c.OnePercentLow > 0
+                    if (baseLow > 0 && baseMed > 0 && b.OnePercentLow > 0 && c.OnePercentLow > 0
                         && d.OnePercentLow > 0 && nPri == hogs && nIso == hogs && nFrz == hogs
-                        && reallyFrozen)
+                        && reallyFrozen && a.Count >= MinFramesForTail && a2.Count >= MinFramesForTail)
                     {
-                        lowGains.Add((a.OnePercentLow - b.OnePercentLow) / a.OnePercentLow * 100.0);
-                        medGains.Add((a.OnePercentLow - c.OnePercentLow) / a.OnePercentLow * 100.0);
+                        lowGains.Add((baseLow - b.OnePercentLow) / baseLow * 100.0);
+                        medGains.Add((baseLow - c.OnePercentLow) / baseLow * 100.0);
                         partGains.Add((b.OnePercentLow - c.OnePercentLow) / b.OnePercentLow * 100.0);
                         freezeGains.Add((c.OnePercentLow - d.OnePercentLow) / c.OnePercentLow * 100.0);
                         freezeMedGains.Add((c.Median - d.Median) / c.Median * 100.0);
 
                         if (q5ok && f.OnePercentLow > 0 && f.Median > 0 && d.Median > 0 && b.Median > 0)
                         {
-                            quotaMedGains.Add((a.Median - f.Median) / a.Median * 100.0);
-                            quotaLowGains.Add((a.OnePercentLow - f.OnePercentLow) / a.OnePercentLow * 100.0);
+                            quotaMedGains.Add((baseMed - f.Median) / baseMed * 100.0);
+                            quotaLowGains.Add((baseLow - f.OnePercentLow) / baseLow * 100.0);
                             quotaVsFreezeMed.Add((d.Median - f.Median) / d.Median * 100.0);
                             quotaVsPriMed.Add((b.Median - f.Median) / b.Median * 100.0);
                         }
@@ -324,6 +344,28 @@ namespace PaviseApp
                 }
                 sb.AppendLine();
                 sb.AppendLine("=== 结论 ===");
+                sb.AppendLine("--- 轮内热漂移（A' 轮末放任 相对 A 轮首放任）---");
+                if (driftMed.Count < 2)
+                {
+                    sb.AppendLine("  样本不足，无法评估漂移。");
+                }
+                else
+                {
+                    double dMedM = Med(driftMed), dLowM = Med(driftLow);
+                    sb.AppendLine("  中位帧漂移: " + dMedM.ToString("F1") + "%   1%最差帧漂移: "
+                        + dLowM.ToString("F1") + "%（正数=轮末更差）");
+                    sb.AppendLine("  各轮中位漂移: " + Join(driftMed));
+                    if (Math.Abs(dMedM) < 3)
+                        sb.AppendLine("  判定: 漂移可忽略 —— 本机在一轮内性能稳定，段序不构成系统性偏差。");
+                    else if (dMedM > 3)
+                        sb.AppendLine("  判定: 存在热漂移 —— 轮末比轮首慢 " + dMedM.ToString("F1")
+                            + "%，越晚测的档位系统性吃亏，压制档收益被低估。"
+                            + "跨机比较时必须与对方机器的漂移量一并考虑。");
+                    else
+                        sb.AppendLine("  判定: 反向漂移 —— 轮末反而更快 " + Math.Abs(dMedM).ToString("F1")
+                            + "%，可能是预热未完成，前几轮数据需谨慎。");
+                }
+                sb.AppendLine();
                 if (lowGains.Count < 2)
                 {
                     sb.AppendLine("有效配对不足（" + lowGains.Count + "），无法判定。");
