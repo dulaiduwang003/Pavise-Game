@@ -101,6 +101,11 @@ namespace PaviseApp
                     args.Length >= 6 ? args[5] : null);
                 return true;
             }
+            if (args[0] == "--dialog-shot" && args.Length >= 2)
+            {
+                RunDialogShot(args[1]);
+                return true;
+            }
             if (args[0] == "--mem-sweep" && args.Length >= 2)
             {
                 RunMemSweepProbe(args[1]);

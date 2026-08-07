@@ -103,8 +103,8 @@ namespace PaviseApp
 
         private int MeasureBody(int width)
         {
+            Font f = Theme.UI(9.5f, false);
             using (var g = CreateGraphics())
-            using (Font f = Theme.UI(9.5f, false))
             {
                 SizeF sz = g.MeasureString(body, f, width);
                 return Math.Max(Theme.S(28), (int)Math.Ceiling(sz.Height) + Theme.S(10));
@@ -176,17 +176,17 @@ namespace PaviseApp
                 g.FillPolygon(tagFill, tagPts);
             using (var tagPen = new Pen(Color.FromArgb(120, accent), Math.Max(1f, Theme.S(1))))
                 g.DrawPolygon(tagPen, tagPts);
-            using (var tf = Theme.UI(7.2f, true))
+            Font tagFont = Theme.UI(7.2f, true);
             using (var tb = new SolidBrush(accent))
             using (var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
-                g.DrawString(KindTag, tf, tb,
+                g.DrawString(KindTag, tagFont, tb,
                     new RectangleF(Theme.S(PadX), Theme.S(14), Theme.S(74), Theme.S(15)), fmt);
 
-            using (var titleFont = Theme.UI(12.5f, true))
+            Font titleFont = Theme.UI(12.5f, true);
             using (var tb = new SolidBrush(Theme.Fg))
                 g.DrawString(title, titleFont, tb, Theme.S(PadX) - Theme.S(2), Theme.S(TitleTop));
 
-            using (var bodyFont = Theme.UI(9.5f, false))
+            Font bodyFont = Theme.UI(9.5f, false);
             using (var bb = new SolidBrush(Theme.Dim))
                 g.DrawString(body, bodyFont, bb, bodyRect);
 
