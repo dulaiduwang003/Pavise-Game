@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 维护游戏模式状态 配置和工作线程
 
 using System;
@@ -89,7 +89,6 @@ namespace PaviseApp
         private volatile bool notifQuiet;
         private volatile bool trimWs;
         private volatile bool gpuHighPerf;
-        private volatile bool disableFso;
         private volatile bool nvMaxPerf;
         private volatile bool nvLowLatency;
         private volatile string nvFrlMode = "off";
@@ -99,14 +98,6 @@ namespace PaviseApp
         private volatile bool nvBattFull;
         private volatile bool nvBgFrlOn;
         private bool nvbgActive;
-        private volatile bool amdAntiLagOn;
-        private volatile string amdChillMode = "off";
-        private volatile bool amdEnhSyncOn;
-        private volatile bool amdRisOn;
-        private bool alagActive;
-        private bool chillActive;
-        private bool esyncActive;
-        private bool risActive;
         private volatile bool presenceQosOn;
         private volatile bool awakeOn;
         private bool pqosActive;
@@ -115,7 +106,6 @@ namespace PaviseApp
         private volatile bool killGameDvr;
         private volatile bool hzGuard;
         private volatile bool planSwitch;
-        private volatile bool idleDisableOn;
         private volatile bool visualFxOn;
         private volatile bool standbySweepOn;
         private volatile bool pauseUpdateOn;
@@ -124,7 +114,13 @@ namespace PaviseApp
         private volatile bool freezeOn;
         private volatile bool ifeoOn;
         private volatile bool renderLaneOn;
+        private volatile bool memResidencyOn;
+        private volatile bool prewarmOn;
+        private volatile bool uploadYieldOn;
+        private long uploadYieldAtTicks;
+        private bool uploadYieldDone;
         private volatile bool gpuDemoteOn;
+        private volatile bool idleDisableOn;
         private volatile bool panicReq;
         private int panicSeq;
         private int panicServed;
@@ -143,6 +139,8 @@ namespace PaviseApp
         private readonly ulong strictMask;
         private readonly BackgroundPressureController pressure = new BackgroundPressureController();
         private readonly FreezeDwellTracker freezeDwell = new FreezeDwellTracker();
+        private readonly CpuSaturation cpuSaturation = new CpuSaturation();
+        private uint boostPriorityTarget = Native.HIGH_PRIORITY_CLASS;
         private PerformancePreset preset;
         private GameDetection activeDetection;
         private Thread worker;
@@ -197,13 +195,13 @@ namespace PaviseApp
             pauseDlOn = Settings.Load("GmPauseDl", true);
             svcPauseOn = Settings.Load("GmSvcPause", false);
             notifQuiet = Settings.Load("NotifQuiet", false);
-            idleDisableOn = Settings.Load("GmIdleDisable", true);
+            VersionMigrations.EnsureSettingsMigrated();
+            idleDisableOn = Settings.Load("GmIdleDisable", false);
             visualFxOn = Settings.Load("GmVisualFx", false);
             standbySweepOn = Settings.Load("GmStandbySweep", false);
             pauseUpdateOn = Settings.Load("GmPauseUpdate", false);
             trimWs = Settings.Load("TrimWS", false);
             gpuHighPerf = Settings.Load("GpuHighPerf", true);
-            disableFso = Settings.Load("DisableFso", false);
             nvMaxPerf = Settings.Load("NvMaxPerf", false);
             nvLowLatency = Settings.Load("NvLowLatency", false);
             nvFrlMode = Settings.LoadStr("NvFrl", "off");
@@ -212,10 +210,6 @@ namespace PaviseApp
             nvDlssMode = Settings.LoadStr("NvDlss", "off");
             nvBattFull = Settings.Load("NvBattFull", false);
             nvBgFrlOn = Settings.Load("NvBgFrl", false);
-            amdAntiLagOn = Settings.Load("AmdAntiLag", false);
-            amdChillMode = Settings.LoadStr("AmdChill", "off");
-            amdEnhSyncOn = Settings.Load("AmdEnhSync", false);
-            amdRisOn = Settings.Load("AmdRis", false);
             presenceQosOn = Settings.Load("GmPresenceQos", true);
             awakeOn = Settings.Load("GmAwake", true);
             killGameDvr = Settings.Load("GameDvrOff", true);
@@ -225,13 +219,16 @@ namespace PaviseApp
             aggressiveOn = Settings.Load("GmAggressive", false);
             freezeOn = Settings.Load("GmFreeze", false);
             ifeoOn = Settings.Load("GmIfeoBoost", false);
-            renderLaneOn = Settings.Load("GmRenderLane", false);
+            renderLaneOn = Settings.Load("GmRenderLane", true);
+            memResidencyOn = Settings.Load("GmMemResidency", false);
+            prewarmOn = Settings.Load("GmPrewarm", false);
+            uploadYieldOn = Settings.Load("GmUploadYield", false);
             gpuDemoteOn = Settings.Load("GmGpuDemote", false);
+            SuppressionCore.GpuDemoteEnabled = gpuDemoteOn;
             foreach (string envKey in EnvKeys)
                 if (Settings.Load("EnvFuse_" + envKey, false)) envFused.Add(envKey);
-            SuppressionCore.GpuDemoteEnabled = gpuDemoteOn;
             int presetRaw;
-            preset = int.TryParse(Settings.LoadStr("PerformancePreset", "0"), out presetRaw) && presetRaw >= 0 && presetRaw <= 2
+            preset = int.TryParse(Settings.LoadStr("PerformancePreset", "0"), out presetRaw) && presetRaw >= 0 && presetRaw <= 3
                 ? (PerformancePreset)presetRaw : PerformancePreset.Standard;
 
             try
@@ -434,6 +431,7 @@ namespace PaviseApp
 
         public bool IsActive { get { lock (sync) return active; } }
 
+
 #if PAVISE_SELFTEST
         internal void SimulateActiveForTest(bool value) { lock (sync) active = value; }
 #endif
@@ -445,7 +443,7 @@ namespace PaviseApp
             get { lock (sync) return preset; }
             set
             {
-                if ((int)value < 0 || (int)value > 2) value = PerformancePreset.Standard;
+                if ((int)value < 0 || (int)value > 3) value = PerformancePreset.Standard;
                 lock (sync) preset = value;
                 Settings.SaveStr("PerformancePreset", ((int)value).ToString());
                 RequestPolicyApply();
@@ -480,6 +478,14 @@ namespace PaviseApp
         {
             get { lock (sync) return preset; }
         }
+
+        private bool ExtremeNow { get { lock (sync) return preset == PerformancePreset.Extreme; } }
+        private bool EffSuppress { get { return bgSuppressOn || ExtremeNow; } }
+        private bool EffBoost { get { return boostOn || ExtremeNow; } }
+        private bool EffFreeze { get { return freezeOn || ExtremeNow; } }
+        private bool EffIfeo { get { return ifeoOn || ExtremeNow; } }
+        private bool EffStrictCores { get { return strictCoreOn || ExtremeNow; } }
+        private bool EffGpuDemote { get { return gpuDemoteOn || ExtremeNow; } }
 
         public List<GameProfile> GetProfiles()
         {
@@ -527,6 +533,17 @@ namespace PaviseApp
             set { freezeOn = value; Settings.Save("GmFreeze", value); RequestPolicyApply(); }
         }
 
+        public bool IfeoBoostFallback
+        {
+            get { return ifeoOn; }
+            set
+            {
+                ifeoOn = value; Settings.Save("GmIfeoBoost", value);
+                if (!value) IfeoBoost.RestoreAll();
+                RequestPolicyApply();
+            }
+        }
+
         public bool RenderLaneOn
         {
             get { return renderLaneOn; }
@@ -538,14 +555,33 @@ namespace PaviseApp
             }
         }
 
-        public bool IfeoBoostFallback
+        public bool UploadYieldOn
         {
-            get { return ifeoOn; }
+            get { return uploadYieldOn; }
             set
             {
-                ifeoOn = value; Settings.Save("GmIfeoBoost", value);
-                if (!value) IfeoBoost.RestoreAll();
-                RequestPolicyApply();
+                uploadYieldOn = value; Settings.Save("GmUploadYield", value);
+                if (!value) UploadYield.Clear();
+            }
+        }
+
+        public bool GamePrewarmOn
+        {
+            get { return prewarmOn; }
+            set
+            {
+                prewarmOn = value; Settings.Save("GmPrewarm", value);
+                if (!value) GamePrewarm.Cancel();
+            }
+        }
+
+        public bool MemoryResidencyOn
+        {
+            get { return memResidencyOn; }
+            set
+            {
+                memResidencyOn = value; Settings.Save("GmMemResidency", value);
+                if (!value) MemoryResidency.ReleaseAll();
             }
         }
 
@@ -725,51 +761,6 @@ namespace PaviseApp
             }
         }
 
-        public bool AmdAntiLag
-        {
-            get { return amdAntiLagOn; }
-            set
-            {
-                amdAntiLagOn = value; Settings.Save("AmdAntiLag", value);
-                if (value) ClearEnvFuse("alag");
-                RequestPolicyApply();
-            }
-        }
-
-        public string AmdChillMode
-        {
-            get { return amdChillMode; }
-            set
-            {
-                string mode = value == "60" || value == "120" || value == "240" || value == "screen" ? value : "off";
-                amdChillMode = mode; Settings.SaveStr("AmdChill", mode);
-                if (mode != "off") ClearEnvFuse("chill");
-                RequestPolicyApply();
-            }
-        }
-
-        public bool AmdEnhSync
-        {
-            get { return amdEnhSyncOn; }
-            set
-            {
-                amdEnhSyncOn = value; Settings.Save("AmdEnhSync", value);
-                if (value) ClearEnvFuse("esync");
-                RequestPolicyApply();
-            }
-        }
-
-        public bool AmdRis
-        {
-            get { return amdRisOn; }
-            set
-            {
-                amdRisOn = value; Settings.Save("AmdRis", value);
-                if (value) ClearEnvFuse("ris");
-                RequestPolicyApply();
-            }
-        }
-
         public string NvFrlMode
         {
             get { return nvFrlMode; }
@@ -779,18 +770,6 @@ namespace PaviseApp
                 nvFrlMode = mode; Settings.SaveStr("NvFrl", mode);
                 if (mode == "off") NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyFrl);
                 else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyFrl, 0);
-                lock (sync) tweakApplied.Clear();
-                RequestPolicyApply();
-            }
-        }
-
-        public bool DisableFso
-        {
-            get { return disableFso; }
-            set
-            {
-                disableFso = value; Settings.Save("DisableFso", value);
-                if (!value) GameExeTweaks.RestoreKind("fso");
                 lock (sync) tweakApplied.Clear();
                 RequestPolicyApply();
             }
@@ -872,7 +851,7 @@ namespace PaviseApp
         {
             get
             {
-                if (!enabled || !boostOn) return Lang.T("v14.boost.disabled");
+                if (!enabled || !EffBoost) return Lang.T("v14.boost.disabled");
                 lock (sync)
                 {
                     if (!active) return Lang.T("v14.boost.wait");
@@ -927,7 +906,7 @@ namespace PaviseApp
                         bool residue;
                         lock (sync) residue = active || gameBoost.Count > 0;
                         if (residue || EnvActive() || core.AnyWith(SuppressReason.Background))
-                            Deactivate("手动关闭游戏模式");
+                            RetryDeactivate("手动关闭游戏模式");
                     }
                     else
                     {
@@ -936,14 +915,13 @@ namespace PaviseApp
                             kick.WaitOne(ProcessScanWaitMs());
                             continue;
                         }
-                        Process[] all = null;
+                        ProcessSnapshot all = null;
                         CountProcessScan();
-                        try { all = Process.GetProcesses(); }
-                        catch { RequeueProcessScanAfterFailure(); }
-                        if (all != null)
+                        try { all = ProcessSnapshotSource.Capture(selfSession); }
+                        catch { all = null; }
+                        if (all == null) RequeueProcessScanAfterFailure();
+                        else
                         {
-                            try
-                            {
                                 PruneWhitelistFamilyMembersIfDue(all);
                                 HashSet<int> gamePids;
                                 string running = FindRunningGame(all, out gamePids);
@@ -963,6 +941,16 @@ namespace PaviseApp
                                         lock (sync) { active = true; activeGame = running; firstSweep = true; }
                                         Logger.Log("游戏模式激活：检测到 " + running);
                                         ReportBegin(running);
+                                        uploadYieldDone = false;
+                                        uploadYieldAtTicks = DateTime.UtcNow.AddSeconds(10).Ticks;
+                                        if (prewarmOn)
+                                        {
+                                            string warmRoot;
+                                            lock (sync) warmRoot = activeDetection != null
+                                                && activeDetection.Profile != null
+                                                ? activeDetection.Profile.Root : null;
+                                            GamePrewarm.Begin(warmRoot, MemoryResidency.AvailPhysBytes());
+                                        }
                                     }
                                     else if (!string.Equals(activeGame, running, StringComparison.OrdinalIgnoreCase))
                                     {
@@ -973,10 +961,12 @@ namespace PaviseApp
                                     }
                                     ApplyEnv();
                                     GpuThrottleProbe.SampleIfDue();
-                                    if (bgSuppressOn) Sweep(all, gamePids);
-                                    if (!bgSuppressOn) ReleaseBackground();
-                                    if (boostOn) Boost(all);
+                                    if (EffSuppress) Sweep(all, gamePids);
+                                    if (!EffSuppress) ReleaseBackground();
+                                    if (EffBoost) Boost(all);
                                     else UnboostGames();
+                                    MemResidencyTick();
+                                    UploadYieldTick(all);
                                 }
                                 else if (active)
                                 {
@@ -1001,11 +991,9 @@ namespace PaviseApp
                                     bool boostResidue;
                                     lock (sync) boostResidue = gameBoost.Count > 0;
                                     if (boostResidue || EnvActive() || core.AnyWith(SuppressReason.Background))
-                                        Deactivate("残留恢复重试");
+                                        RetryDeactivate("残留恢复重试");
                                     TryAutoAddForegroundGame();
                                 }
-                            }
-                            finally { foreach (Process p in all) p.Dispose(); }
                         }
                     }
                 }
@@ -1028,7 +1016,7 @@ namespace PaviseApp
             }
         }
 
-        private string FindRunningGame(Process[] all, out HashSet<int> gamePids)
+        private string FindRunningGame(ProcessSnapshot all, out HashSet<int> gamePids)
         {
             List<GameProfile> copy;
             lock (sync)
@@ -1128,6 +1116,34 @@ namespace PaviseApp
             Logger.Log("渲染进程选举：GPU 证据确认《" + pending.Profile.Name + "》的真身是 "
                 + pending.RendererName + "（3D 引擎 " + (int)candidate + "%，pid " + pending.RendererPid + "）");
             return pending;
+        }
+
+        private void UploadYieldTick(ProcessSnapshot all)
+        {
+            if (!uploadYieldOn || uploadYieldDone || all == null) return;
+            if (DateTime.UtcNow.Ticks < uploadYieldAtTicks) return;
+            uploadYieldDone = true;
+            var names = new List<string>();
+            foreach (int pid in core.PidsWith(SuppressReason.Background))
+            {
+                ProcEntry entry = all.Find(pid);
+                if (entry != null && !string.IsNullOrEmpty(entry.Name)) names.Add(entry.Name);
+            }
+            if (names.Count > 0) UploadYield.Apply(names);
+        }
+
+        private void MemResidencyTick()
+        {
+            if (!memResidencyOn) { MemoryResidency.ReleaseAll(); return; }
+            int pid = 0;
+            long creation = 0;
+            lock (sync)
+                if (active && activeDetection != null)
+                {
+                    pid = activeDetection.RendererPid;
+                    creation = activeDetection.RendererCreation;
+                }
+            MemoryResidency.Tick(pid, creation);
         }
 
         private GameDetection ApplyStickiness(GameDetection hit)

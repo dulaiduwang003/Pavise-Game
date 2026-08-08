@@ -12,7 +12,8 @@ namespace PaviseApp
     {
         Standard = 0,
         Competitive = 1,
-        Custom = 2
+        Custom = 2,
+        Extreme = 3
     }
 
     internal sealed class GameProfile

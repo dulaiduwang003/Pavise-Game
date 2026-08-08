@@ -84,8 +84,6 @@ namespace PaviseApp
             Eq("k", mode.NvDlssMode);
             mode.NvDlssMode = "x";
             Eq("off", mode.NvDlssMode);
-            mode.AmdChillMode = "240";
-            Eq("240", mode.AmdChillMode);
         }
 
         private static void TestNvPlanEmpty()

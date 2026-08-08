@@ -207,8 +207,7 @@ namespace PaviseApp
 
             if (!want && !DefenderExclusion.IsOwned(row.Root))
             {
-                MessageBox.Show(this, Lang.T("def.notours"), App.DisplayName,
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                PaviseDialog.Info(this, App.DisplayName, Lang.T("def.notours"));
                 row.Switch.SetSilently(row.Excluded);
                 UpdateRowState(row);
                 return;
@@ -217,8 +216,7 @@ namespace PaviseApp
             if (want)
             {
                 string ask = Lang.F("def.confirm", row.Name, row.Root);
-                if (MessageBox.Show(this, ask, App.DisplayName,
-                        MessageBoxButtons.OKCancel, MessageBoxIcon.Warning) != DialogResult.OK)
+                if (!PaviseDialog.Confirm(this, App.DisplayName, ask, DlgKind.Warn))
                 {
                     row.Switch.SetSilently(false);
                     return;
@@ -231,8 +229,7 @@ namespace PaviseApp
             finally { Cursor = Cursors.Default; }
 
             if (ok) row.Excluded = want;
-            else MessageBox.Show(this, Lang.T("def.failed"), App.DisplayName,
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            else PaviseDialog.Error(this, App.DisplayName, Lang.T("def.failed"));
 
             row.Switch.SetSilently(row.Excluded);
             UpdateRowState(row);
@@ -242,8 +239,7 @@ namespace PaviseApp
         {
             if (DefenderExclusion.OwnedByPavise().Count == 0)
             {
-                MessageBox.Show(this, Lang.T("def.clearall.none"), App.DisplayName,
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                PaviseDialog.Info(this, App.DisplayName, Lang.T("def.clearall.none"));
                 return;
             }
             Cursor = Cursors.WaitCursor;
@@ -262,11 +258,9 @@ namespace PaviseApp
                     UpdateRowState(row);
                 }
             }
-            MessageBox.Show(this, Lang.F("def.clearall.done", n), App.DisplayName,
-                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            PaviseDialog.Info(this, App.DisplayName, Lang.F("def.clearall.done", n));
             if (fresh == null)
-                MessageBox.Show(this, Lang.T("def.unavailable"), App.DisplayName,
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                PaviseDialog.Warn(this, App.DisplayName, Lang.T("def.unavailable"));
         }
 
         protected override void OnHandleCreated(EventArgs e)

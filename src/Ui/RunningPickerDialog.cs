@@ -32,9 +32,11 @@ namespace PaviseApp
         private readonly PillButton confirm;
 
         public readonly List<string> Selected = new List<string>();
+        private readonly string confirmLabel;
 
-        public RunningPickerDialog(HashSet<string> alreadyListed)
+        public RunningPickerDialog(HashSet<string> alreadyListed, string confirmText = null)
         {
+            confirmLabel = confirmText ?? Lang.T("white.pick.add");
             known = alreadyListed ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             Text = Lang.T("white.pick.title");
             FormBorderStyle = FormBorderStyle.None;
@@ -81,7 +83,7 @@ namespace PaviseApp
             status.ForeColor = Theme.Dim; status.BackColor = Theme.Bg; status.Font = Theme.UI(8.5f, false);
             status.Text = Lang.T("white.pick.busy");
 
-            confirm = new PillButton(Lang.T("white.pick.add"), BtnKind.Primary);
+            confirm = new PillButton(confirmLabel, BtnKind.Primary);
             confirm.SetBounds(Theme.S(478), Theme.S(492), Theme.S(200), Theme.S(36));
             confirm.Enabled = false;
             confirm.Click += delegate
@@ -275,7 +277,7 @@ namespace PaviseApp
             list.Invalidate();
             int picked = 0;
             foreach (Entry entry in all) if (entry.Checked) picked++;
-            confirm.Text = picked > 0 ? Lang.F("white.pick.add.n", picked) : Lang.T("white.pick.add");
+            confirm.Text = picked > 0 ? Lang.F("white.pick.add.n", picked) : confirmLabel;
             confirm.Enabled = picked > 0;
             confirm.Invalidate();
         }

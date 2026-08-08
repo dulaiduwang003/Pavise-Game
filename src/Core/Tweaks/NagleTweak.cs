@@ -14,6 +14,8 @@ namespace PaviseApp
 
         private static readonly object lk = new object();
 
+        public static bool HasResidue() { return Settings.Load("NagleOffByPavise", false); }
+
         public static bool EnabledByPavise { get { return Settings.Load("NagleOffByPavise", false); } }
 
         private static ReversibleReg RegOf(string guid, string valName)

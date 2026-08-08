@@ -185,6 +185,8 @@ namespace PaviseApp
             return ok;
         }
 
+        public static bool HasResidue() { return Settings.LoadStr("RenderLane", "").Length > 0; }
+
         public static void HealFromCrash()
         {
             string raw = Settings.LoadStr("RenderLane", "");
