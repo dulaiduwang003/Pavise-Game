@@ -113,16 +113,17 @@ namespace PaviseApp
         {
             try
             {
-                using (RegistryKey key = Registry.LocalMachine.OpenSubKey(
-                    @"SYSTEM\CurrentControlSet\Control\GraphicsDrivers"))
-                {
-                    object raw = key == null ? null : key.GetValue("HwSchMode");
-                    if (raw == null) return Lang.T("v16.device.hags.none");
-                    int mode = Convert.ToInt32(raw);
-                    return mode == 2 ? Lang.T("v16.device.hags.on") : Lang.T("v16.device.hags.off");
-                }
+                bool supported, enabled;
+                bool capsOk = HagsTweak.TryQueryState(out supported, out enabled);
+                if (capsOk && !supported) return Lang.T("v16.device.hags.none");
+                int? mode = HagsTweak.ConfiguredMode();
+                if (mode.HasValue)
+                    return mode.Value == 2 ? Lang.T("v16.device.hags.on") : Lang.T("v16.device.hags.off");
+                if (capsOk)
+                    return enabled ? Lang.T("v16.device.hags.on") : Lang.T("v16.device.hags.off");
+                return Lang.T("v16.device.hags.unknown");
             }
-            catch { return Lang.T("v16.device.hags.none"); }
+            catch { return Lang.T("v16.device.hags.unknown"); }
         }
 
         private static string Compact(string value)

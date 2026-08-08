@@ -36,7 +36,7 @@ namespace PaviseApp
         private ListBox lst;
         private TextBox tbFilter;
         private Label lblInfo;
-        private PillButton btnAdd, btnDeep, btnAll, btnBrowse;
+        private PillButton btnAdd, btnDeep, btnAll, btnBrowse, btnRunning;
         private volatile bool closed;
         private volatile bool scanning;
         private int hover = -1;
@@ -129,25 +129,30 @@ namespace PaviseApp
             lblInfo.BackColor = Theme.Bg;
             lblInfo.Font = Theme.UI(8.25f, false);
             lblInfo.TextAlign = ContentAlignment.MiddleLeft;
-            lblInfo.SetBounds(Theme.S(16), Theme.S(490), Theme.S(178), Theme.S(28));
+            lblInfo.SetBounds(Theme.S(16), Theme.S(490), Theme.S(146), Theme.S(28));
+            lblInfo.AutoEllipsis = true;
+
+            btnRunning = new PillButton(Lang.T("scan.running.btn"));
+            btnRunning.SetBounds(Theme.S(166), Theme.S(486), Theme.S(94), Theme.S(34));
+            btnRunning.Click += delegate { PickRunning(); };
 
             btnBrowse = new PillButton(Lang.T("scan.browse"));
-            btnBrowse.SetBounds(Theme.S(200), Theme.S(486), Theme.S(104), Theme.S(34));
+            btnBrowse.SetBounds(Theme.S(266), Theme.S(486), Theme.S(90), Theme.S(34));
             btnBrowse.Click += delegate { BrowseFile(); };
 
             btnDeep = new PillButton(Lang.T("scan.deep"));
-            btnDeep.SetBounds(Theme.S(312), Theme.S(486), Theme.S(104), Theme.S(34));
+            btnDeep.SetBounds(Theme.S(362), Theme.S(486), Theme.S(90), Theme.S(34));
             btnDeep.Click += delegate { DeepScan(); };
 
             btnAdd = new PillButton(Lang.T("btn.add"), BtnKind.Primary);
-            btnAdd.SetBounds(Theme.S(424), Theme.S(486), Theme.S(88), Theme.S(34));
+            btnAdd.SetBounds(Theme.S(458), Theme.S(486), Theme.S(74), Theme.S(34));
             btnAdd.Click += delegate { Accept(); };
 
             var btnCancel = new PillButton(Lang.T("btn.cancel"));
-            btnCancel.SetBounds(Theme.S(520), Theme.S(486), Theme.S(84), Theme.S(34));
+            btnCancel.SetBounds(Theme.S(538), Theme.S(486), Theme.S(66), Theme.S(34));
             btnCancel.Click += delegate { DialogResult = DialogResult.Cancel; };
 
-            Controls.AddRange(new Control[] { title, lblClose, tbFilter, btnAll, listWrap, lblInfo, btnBrowse, btnDeep, btnAdd, btnCancel });
+            Controls.AddRange(new Control[] { title, lblClose, tbFilter, btnAll, listWrap, lblInfo, btnRunning, btnBrowse, btnDeep, btnAdd, btnCancel });
             Load += delegate { StartRunningCollect(); StartScan(null); };
             FormClosed += delegate { closed = true; };
             MouseDown += DragMove;
@@ -349,6 +354,33 @@ namespace PaviseApp
             }
         }
 
+        private void PickRunning()
+        {
+            using (var dlg = new RunningPickerDialog(existing, Lang.T("scan.pick.confirm")))
+            {
+                if (dlg.ShowDialog(this) != DialogResult.OK || dlg.Selected.Count == 0) return;
+                Selected.Clear();
+                string firstError = null;
+                foreach (string path in dlg.Selected)
+                {
+                    string resolved, error;
+                    if (!GameExecutableResolver.TryResolve(path, out resolved, out error))
+                    {
+                        if (firstError == null) firstError = error;
+                        continue;
+                    }
+                    Selected.Add(new ScanHit { Name = null, Root = GameScan.InferGameRoot(resolved), Exe = resolved });
+                }
+                if (Selected.Count == 0)
+                {
+                    if (!string.IsNullOrEmpty(firstError))
+                        PaviseDialog.Warn(this, App.DisplayName, firstError);
+                    return;
+                }
+                DialogResult = DialogResult.OK;
+            }
+        }
+
         private void BrowseFile()
         {
             using (var dlg = new OpenFileDialog())
@@ -362,7 +394,7 @@ namespace PaviseApp
                 if (!GameExecutableResolver.TryResolve(dlg.FileName, out resolved, out error))
                 {
                     if (!string.IsNullOrEmpty(error))
-                        MessageBox.Show(this, error, "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        PaviseDialog.Warn(this, App.DisplayName, error);
                     return;
                 }
                 Selected.Clear();

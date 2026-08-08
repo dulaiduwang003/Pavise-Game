@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 扫描并压制游戏之外的后台进程
 
 using System;
@@ -68,13 +68,14 @@ namespace PaviseApp
         internal static bool IsAggressive(PerformancePreset mode, bool aggressiveOn)
         {
             return mode == PerformancePreset.Competitive
+                || mode == PerformancePreset.Extreme
                 || (mode == PerformancePreset.Custom && aggressiveOn);
         }
 
         internal static SuppressionLevel ResolveBackgroundLevel(PerformancePreset mode, bool customStrict,
             SuppressionLevel adaptive, bool safePartition)
         {
-            if (mode == PerformancePreset.Competitive) return SuppressionLevel.Isolated;
+            if (mode == PerformancePreset.Competitive || mode == PerformancePreset.Extreme) return SuppressionLevel.Isolated;
             if (mode == PerformancePreset.Custom)
                 return customStrict ? SuppressionLevel.Isolated : SuppressionLevel.Eco;
             return adaptive > SuppressionLevel.Eco ? adaptive : SuppressionLevel.Eco;
@@ -89,6 +90,7 @@ namespace PaviseApp
 
             if (GamePlatformCatalog.IsPlatformProcess(name, path)) return false;
             if (NetAcceleratorCatalog.IsAcceleratorLikeName(name)) return false;
+            if (IsInputChainProcess(name, path)) return false;
             if (gameHostAncestor) return false;
             if (UnderRoot(path, activeGameRoot)) return false;
             if (pid <= 4 || pid == self || session < 0 || session != ownerSession) return false;
@@ -137,16 +139,93 @@ namespace PaviseApp
             "adb", "caudiofilteragent64", "caudiofilteragent"
         };
 
+        private static readonly string[] InputAudioKeywords =
+        {
+            "keyboard", "mouse", "hotkey", "keymap", "macro", "autohotkey",
+            "hid", "input", "ime", "pinyin", "qqpy", "sogou", "sgtool", "wetype", "iflyime", "wubi",
+            "audio", "sound", "voice", "headset", "nahimic", "realtek", "rtkaud", "creative",
+            "logi", "lghub", "lcore", "razer", "synapse", "icue", "corsair",
+            "steelseries", "armoury", "wooting", "keychron", "dareu", "rapoo",
+            "bloody", "a4tech", "vgn", "langtu", "gamepp"
+        };
+
+        private static readonly string[] InputAudioDescWords =
+        {
+            "keyboard", "mouse", "headset", "earphone", "audio", "sound", "voice",
+            "microphone", "input method", "ime", "hotkey", "macro", "peripheral",
+            "gamepad", "joystick", "controller", "hid",
+            "键盘", "鼠标", "耳机", "音频", "声卡", "麦克", "输入法", "按键", "外设", "手柄", "灯效", "搜狗", "讯飞输入"
+        };
+
+        internal static bool DescriptionLooksInputAudio(string description)
+        {
+            if (string.IsNullOrEmpty(description)) return false;
+            string lower = description.ToLowerInvariant();
+            foreach (string word in InputAudioDescWords)
+                if (lower.Contains(word)) return true;
+            return false;
+        }
+
+        internal static bool IsInputChainProcess(string name, string path)
+        {
+            return IsInputAudioLike(name) || FileLooksInputAudio(path);
+        }
+
+
+        private static readonly object descCacheSync = new object();
+        private static readonly Dictionary<string, bool> descCache =
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+
+        private static bool FileLooksInputAudio(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return false;
+            lock (descCacheSync)
+            {
+                bool cached;
+                if (descCache.TryGetValue(path, out cached)) return cached;
+            }
+            bool hit = false;
+            try
+            {
+                var info = System.Diagnostics.FileVersionInfo.GetVersionInfo(path);
+                hit = DescriptionLooksInputAudio(info.FileDescription)
+                    || DescriptionLooksInputAudio(info.ProductName)
+                    || DescriptionLooksInputAudio(info.CompanyName);
+            }
+            catch { }
+            lock (descCacheSync)
+            {
+                if (descCache.Count > 512) descCache.Clear();
+                descCache[path] = hit;
+            }
+            return hit;
+        }
+
+        internal static bool IsInputAudioLike(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            string lower = name.ToLowerInvariant();
+            foreach (string keyword in InputAudioKeywords)
+                if (lower.Contains(keyword)) return true;
+            return false;
+        }
+
         internal static bool FreezeForbidden(string name, string path, string windowsRoot)
         {
 
             if (!string.IsNullOrEmpty(name) && DeviceBridgeProcesses.Contains(name)) return true;
 
+            if (GamePlatformCatalog.IsPlatformShellName(name)) return true;
+
+            if (IsInputAudioLike(name)) return true;
+
+            if (FileLooksInputAudio(path)) return true;
+
             return !string.IsNullOrEmpty(windowsRoot) && !string.IsNullOrEmpty(path)
                 && path.StartsWith(windowsRoot, StringComparison.OrdinalIgnoreCase);
         }
 
-        private void Sweep(Process[] all, HashSet<int> gamePids)
+        private void Sweep(ProcessSnapshot all, HashSet<int> gamePids)
         {
 
             lock (whiteEvalSync)
@@ -154,7 +233,7 @@ namespace PaviseApp
         }
 
         private void SweepWithStableWhitelist(
-            Process[] all, HashSet<int> gamePids)
+            ProcessSnapshot all, HashSet<int> gamePids)
         {
             PerformancePreset mode = ActivePreset;
             int foregroundPid = GameSessionDetector.ForegroundPid();
@@ -164,7 +243,7 @@ namespace PaviseApp
                 ? CollectForegroundFamily(foregroundPid, whitelist)
                 : CollectUserFacingFamily(foregroundPid, whitelist);
             bool safePartition = CpuTopology.HasSafeBackgroundPartition();
-            bool freezeEligible = freezeOn && bgSuppressOn && aggressive;
+            bool freezeEligible = EffFreeze && EffSuppress && aggressive;
             HashSet<int> visibleWindows = freezeEligible
                 ? GameSessionDetector.VisibleWindowPids(true) : EmptyPidSet;
 
@@ -195,17 +274,17 @@ namespace PaviseApp
             var live = new HashSet<int>();
             var pending = new List<BackgroundRequest>();
 
-            foreach (Process p in all)
+            foreach (ProcEntry p in all.Entries)
             {
                 try
                 {
-                    int pid = p.Id;
+                    int pid = p.Pid;
                     WhitelistProcessInfo processInfo;
                     whitelist.Processes.TryGetValue(pid, out processInfo);
                     live.Add(pid);
                     if (pid <= 4 || pid == selfPid) continue;
 
-                    string nm = processInfo != null ? processInfo.Name : p.ProcessName;
+                    string nm = processInfo != null ? processInfo.Name : p.Name;
 
                     if (string.Equals(nm, selfName, StringComparison.OrdinalIgnoreCase))
                     {
@@ -214,7 +293,7 @@ namespace PaviseApp
                     }
 
                     bool sameSession = processInfo != null && selfSession >= 0 && processInfo.Session == selfSession;
-                    if (processInfo == null) { try { sameSession = selfSession >= 0 && p.SessionId == selfSession; } catch { } }
+                    if (processInfo == null) sameSession = selfSession >= 0 && p.Session == selfSession;
                     if (!sameSession)
                     {
                         ReleaseBackgroundExemption(pid, nm, null);
@@ -383,15 +462,16 @@ namespace PaviseApp
 
             if (first)
             {
-                if (bgSuppressOn)
+                if (EffSuppress)
                 {
                     string aggressiveNote = aggressive ? "，可见窗口不再豁免（前台程序及其子进程除外），仅核心系统服务例外" : "";
-                    string policy = mode == PerformancePreset.Competitive
-                        ? (safePartition ? "竞技确定性隔离（Idle + EcoQoS + 锁核" + aggressiveNote + "）"
-                            : "竞技隔离（核心数不足，Idle + EcoQoS 降优先级，不锁核" + aggressiveNote + "）")
+                    string strong = mode == PerformancePreset.Extreme ? "极限" : "竞技";
+                    string policy = (mode == PerformancePreset.Competitive || mode == PerformancePreset.Extreme)
+                        ? (safePartition ? strong + "强力压制（Idle + EcoQoS + 锁核" + aggressiveNote + "）"
+                            : strong + "强力压制（核心数不足，Idle + EcoQoS 降优先级，不锁核" + aggressiveNote + "）")
                         : (mode == PerformancePreset.Custom
                             ? (strictCoreOn
-                                ? (safePartition ? "自定义立即隔离（Idle + EcoQoS + 锁核" + aggressiveNote + "）" : "自定义隔离（核心数不足，Idle + EcoQoS，不锁核" + aggressiveNote + "）")
+                                ? (safePartition ? "自定义立即强力压制（Idle + EcoQoS + 锁核" + aggressiveNote + "）" : "自定义强力压制（核心数不足，Idle + EcoQoS，不锁核" + aggressiveNote + "）")
                                 : "自定义全局 Eco" + aggressiveNote)
                             : "常规全局 Eco，持续大户再升级");
                     Logger.Log("后台策略：" + policy

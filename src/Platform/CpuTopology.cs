@@ -21,7 +21,7 @@ namespace PaviseApp
         public static bool MultiGroup;
         public static ulong PerfMask, EffMask, BigL3Mask, SmallL3Mask;
 
-        public static ulong AllMask, ThrottleMask, BoostMask, StrictBoostMask;
+        public static ulong AllMask, ThrottleMask, BoostMask, StrictBoostMask, InterruptMask;
 
         static CpuTopology()
         {
@@ -53,6 +53,22 @@ namespace PaviseApp
             else { ThrottleMask = nc >= 2 && nc <= 64 ? 3UL << (nc - 2) : (nc >= 2 ? 0UL : 1UL); BoostMask = AllMask; }
             StrictBoostMask = CpuPartitionPolicy.StrictMask(AllMask, ThrottleMask,
                 Hybrid ? PerfMask : 0, AsymCache ? BigL3Mask : 0);
+            InterruptMask = DeriveInterruptMask(Hybrid, PerfMask, ThrottleMask);
+        }
+
+        internal static ulong DeriveInterruptMask(bool hybrid, ulong perfMask, ulong throttle)
+        {
+            if (!hybrid || perfMask == 0) return throttle;
+            ulong top = 0;
+            int taken = 0;
+            for (int i = 63; i >= 0 && taken < 2; i--)
+            {
+                ulong bit = 1UL << i;
+                if ((perfMask & bit) == 0) continue;
+                top |= bit;
+                taken++;
+            }
+            return top != 0 ? top : throttle;
         }
 
         internal static ulong SafeStrictMask(ulong strict, ulong throttle, ulong all, ulong eff, bool hybrid)

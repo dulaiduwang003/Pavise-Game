@@ -143,6 +143,49 @@ namespace PaviseApp
             return DetectSnapshot(snapshot, profiles, out armedProfile);
         }
 
+        public static GameDetection Detect(
+            ProcessSnapshot processes, IList<GameProfile> profiles,
+            int ownerSession, out string armedProfile)
+        {
+            armedProfile = null;
+            if (processes == null || profiles == null
+                || profiles.Count == 0 || ownerSession < 0)
+                return null;
+
+            var snapshot = new List<GameProcessSnapshot>();
+            foreach (ProcEntry entry in processes.Entries)
+            {
+                GameProcessSnapshot identity;
+                if (!TryCaptureProcessIdentity(entry, ownerSession, out identity))
+                    continue;
+                if (IsAntiCheatLikeName(identity.Name)) continue;
+                snapshot.Add(identity);
+            }
+
+            CaptureWindowEvidence(snapshot);
+            return DetectSnapshot(snapshot, profiles, out armedProfile);
+        }
+
+        internal static bool TryCaptureProcessIdentity(
+            ProcEntry entry, int ownerSession,
+            out GameProcessSnapshot identity)
+        {
+            identity = null;
+            if (entry == null || entry.Pid <= 0 || ownerSession < 0) return false;
+            if (entry.Creation <= 0 || entry.Session != ownerSession) return false;
+            string name = ImageNameFromVerifiedPath(entry.Path);
+            if (string.IsNullOrEmpty(name)) return false;
+            identity = new GameProcessSnapshot
+            {
+                Pid = entry.Pid,
+                ParentPid = entry.ParentPid,
+                Creation = entry.Creation,
+                Name = name,
+                Path = entry.Path
+            };
+            return true;
+        }
+
         internal static GameDetection DetectSnapshot(
             IList<GameProcessSnapshot> snapshot,
             IList<GameProfile> profiles)

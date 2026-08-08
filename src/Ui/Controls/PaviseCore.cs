@@ -60,6 +60,12 @@ namespace PaviseApp
             if (value) Invalidate();
         }
 
+        internal void NotifyForegroundChanged()
+        {
+            SyncFrameInterval();
+            SyncAnimationTimer();
+        }
+
         protected override void OnVisibleChanged(EventArgs e)
         {
             base.OnVisibleChanged(e);
@@ -97,15 +103,20 @@ namespace PaviseApp
                 && windowState != FormWindowState.Minimized;
         }
 
+        internal const int ActiveFrameMs = 33;
+        internal const int BackgroundFrameMs = 500;
+        internal const int GameBackgroundFrameMs = 2000;
+
         internal static int DesiredFrameInterval(bool gameActive, bool selfForeground)
         {
-            return gameActive && !selfForeground ? 200 : 33;
+            if (selfForeground) return ActiveFrameMs;
+            return gameActive ? GameBackgroundFrameMs : BackgroundFrameMs;
         }
 
         private void SyncFrameInterval()
         {
             int next = DesiredFrameInterval(gameActive,
-                gameActive && GameSessionDetector.ForegroundPid() == selfPid);
+                GameSessionDetector.ForegroundPid() == selfPid);
             if (timer.Interval != next) timer.Interval = next;
         }
 

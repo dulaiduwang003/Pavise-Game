@@ -30,10 +30,19 @@ namespace PaviseApp
             Eq(false, PaviseCore.ShouldAnimate(false, true, true, true, FormWindowState.Normal));
             Eq(true, PaviseCore.ShouldAnimate(true, true, true, true, FormWindowState.Normal));
 
-            Eq(33, PaviseCore.DesiredFrameInterval(false, false));
-            Eq(33, PaviseCore.DesiredFrameInterval(false, true));
-            Eq(33, PaviseCore.DesiredFrameInterval(true, true));
-            Eq(200, PaviseCore.DesiredFrameInterval(true, false));
+            Eq(PaviseCore.ActiveFrameMs, PaviseCore.DesiredFrameInterval(false, true));
+            Eq(PaviseCore.ActiveFrameMs, PaviseCore.DesiredFrameInterval(true, true));
+            Eq(PaviseCore.BackgroundFrameMs, PaviseCore.DesiredFrameInterval(false, false));
+            Eq(PaviseCore.GameBackgroundFrameMs, PaviseCore.DesiredFrameInterval(true, false));
+            Eq(true, PaviseCore.BackgroundFrameMs > PaviseCore.ActiveFrameMs);
+            Eq(true, PaviseCore.GameBackgroundFrameMs > PaviseCore.BackgroundFrameMs);
+
+            Eq(UiClock.ForegroundFrameMs, UiClock.DesiredFrameMs(false));
+            Eq(UiClock.BackgroundFrameMs, UiClock.DesiredFrameMs(true));
+            Eq(UiClock.ForegroundSlowMs, UiClock.DesiredSlowMs(false));
+            Eq(UiClock.BackgroundSlowMs, UiClock.DesiredSlowMs(true));
+            Eq(true, UiClock.BackgroundFrameMs > UiClock.ForegroundFrameMs);
+            Eq(true, UiClock.BackgroundSlowMs > UiClock.ForegroundSlowMs);
 
             int[] groups = { 5, 7 };
             Eq(0, NavRail.GroupsAbove(0, groups));

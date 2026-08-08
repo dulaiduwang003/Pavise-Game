@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 v1.6.6 首次启动时清除旧版本的全部数据 回到全新安装状态
 //
 // 顺序是这个功能的全部要害：Pavise 改过的系统设置（Win32PrioritySeparation、电源节流、
@@ -80,9 +80,9 @@ namespace PaviseApp
 
             Step("电源计划", PowerPlan.Restore, failed);
             Step("Windows 更新暂停", UpdatePause.Restore, failed);
-            Step("前台调度稳定", FgBoost.Restore, failed);
+            foreach (RetiredFeature f in VersionMigrations.Entries)
+                Step(f.Name, f.Restore, failed);
             Step("Game DVR", GameDvr.Restore, failed);
-            Step("MMCSS", Mmcss.Restore, failed);
             Step("通知免打扰", Notif.Restore, failed);
             Step("视觉效果", VisualFx.Restore, failed);
             Step("刷新率守护", DisplayGuard.Restore, failed);
@@ -92,23 +92,17 @@ namespace PaviseApp
             Step("后台下载暂停", DoTweak.Restore, failed);
             Step("服务暂停", SvcPause.Restore, failed);
             Step("网络优化", NetTweak.Restore, failed);
-            Step("Nagle", NagleTweak.Restore, failed);
-            Step("MSI 模式", MsiModeTweak.Restore, failed);
+            Step("时间片校正", QuantumTweak.Restore, failed);
             Step("MPO", MpoTweak.Restore, failed);
             Step("VBS", VbsTweak.Restore, failed);
             Step("游戏模式守护", GameModeGuard.Restore, failed);
             Step("设备电源", DevicePowerTweak.Restore, failed);
             Step("窗口化优化", WindowedOptTweak.Restore, failed);
             Step("NVIDIA 全局项", NvGlobalTweaks.Restore, failed);
-            Step("AMD Anti-Lag", AdlxTweaks.RestoreAntiLag, failed);
-            Step("AMD Chill", AdlxTweaks.RestoreChill, failed);
-            Step("AMD Enhanced Sync", AdlxTweaks.RestoreEnhancedSync, failed);
-            Step("AMD 锐化", AdlxTweaks.RestoreRis, failed);
             Step("后备提优 IFEO", IfeoBoost.RestoreAll, failed);
 
             StepIf("HAGS", delegate { return HagsTweak.EnabledByPavise; }, HagsTweak.Disable, failed);
             StepIf("GPU 中断亲和", delegate { return InterruptAffinityTweak.EnabledByPavise; }, InterruptAffinityTweak.Disable, failed);
-            StepIf("网卡中断亲和", delegate { return NetworkAffinityTweak.EnabledByPavise; }, NetworkAffinityTweak.Disable, failed);
             StepIf("USB 中断避让", delegate { return UsbInterruptAffinityTweak.EnabledByPavise; }, UsbInterruptAffinityTweak.Disable, failed);
 
             foreach (string kind in new[]

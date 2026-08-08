@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 网卡中断亲和优化与游戏流量 QoS 优先级标记 开启 关闭并恢复
 
 using System;
@@ -146,6 +146,8 @@ namespace PaviseApp
             if (anyOk) Settings.Save(EnabledKey, true);
             return anyOk;
         }
+
+        public static bool HasResidue() { return Settings.Load(EnabledKey, false); }
 
         public static bool Disable()
         {
