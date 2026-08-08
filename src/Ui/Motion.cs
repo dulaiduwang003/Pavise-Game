@@ -34,19 +34,50 @@ namespace PaviseApp
 
     internal static class UiClock
     {
+        internal const int ForegroundFrameMs = 16;
+        internal const int BackgroundFrameMs = 200;
+        internal const int ForegroundSlowMs = 200;
+        internal const int BackgroundSlowMs = 1000;
+
         private static System.Windows.Forms.Timer timer;
         private static System.Windows.Forms.Timer slowTimer;
         private static int framesLeft;
         private static int slowFramesLeft;
         private static bool suspended;
+        private static bool background;
         public static event EventHandler Frame;
         public static event EventHandler SlowFrame;
+
+        internal static int DesiredFrameMs(bool isBackground)
+        {
+            return isBackground ? BackgroundFrameMs : ForegroundFrameMs;
+        }
+
+        internal static int DesiredSlowMs(bool isBackground)
+        {
+            return isBackground ? BackgroundSlowMs : ForegroundSlowMs;
+        }
+
+        public static bool Background
+        {
+            get { return background; }
+            set
+            {
+                if (background == value) return;
+                background = value;
+                if (timer == null) return;
+                int frameMs = DesiredFrameMs(value);
+                if (timer.Interval != frameMs) timer.Interval = frameMs;
+                int slowMs = DesiredSlowMs(value);
+                if (slowTimer.Interval != slowMs) slowTimer.Interval = slowMs;
+            }
+        }
 
         private static void Ensure()
         {
             if (timer != null) return;
             timer = new System.Windows.Forms.Timer();
-            timer.Interval = 16;
+            timer.Interval = DesiredFrameMs(background);
             timer.Tick += (s, e) =>
             {
                 if (suspended) { framesLeft = 0; timer.Stop(); return; }
@@ -54,7 +85,7 @@ namespace PaviseApp
                 if (--framesLeft <= 0) timer.Stop();
             };
             slowTimer = new System.Windows.Forms.Timer();
-            slowTimer.Interval = 200;
+            slowTimer.Interval = DesiredSlowMs(background);
             slowTimer.Tick += (s, e) =>
             {
                 if (suspended) { slowFramesLeft = 0; slowTimer.Stop(); return; }

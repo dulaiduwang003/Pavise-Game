@@ -92,9 +92,7 @@ namespace PaviseApp
             reset.SetBounds(Theme.S(bx), Theme.S(y + listH - bh), Theme.S(bw), Theme.S(bh));
             reset.Click += delegate
             {
-                if (MessageBox.Show(this, Lang.T("white.reset.confirm"), "Pavise",
-                    MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
-                    MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+                if (!PaviseDialog.Confirm(this, App.DisplayName, Lang.T("white.reset.confirm"), DlgKind.Warn)) return;
                 if (!gameMode.ResetWhitelist()) ShowWhitelistError();
                 RefreshWhitelist(true);
             };
@@ -140,7 +138,7 @@ namespace PaviseApp
                 else if (firstError == null) firstError = gameMode.WhitelistLastError;
             }
             if (added == 0 && firstError != null)
-                MessageBox.Show(this, firstError, "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                PaviseDialog.Warn(this, App.DisplayName, firstError);
             if (added > 0) RefreshWhitelist(true);
         }
 
@@ -190,8 +188,7 @@ namespace PaviseApp
             if (item == null || item.View == null) return;
             if (item.View.Required)
             {
-                MessageBox.Show(this, Lang.T("white.required.locked"), "Pavise",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                PaviseDialog.Info(this, App.DisplayName, Lang.T("white.required.locked"));
                 return;
             }
             if (!gameMode.RemoveWhitelistRule(item.View.Rule.Key)) ShowWhitelistError();
@@ -202,7 +199,7 @@ namespace PaviseApp
         {
             string error = gameMode.WhitelistLastError;
             if (string.IsNullOrEmpty(error)) return;
-            MessageBox.Show(this, error, "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            PaviseDialog.Warn(this, App.DisplayName, error);
         }
 
         private void OnWhiteMenuOpening(object sender, System.ComponentModel.CancelEventArgs e)

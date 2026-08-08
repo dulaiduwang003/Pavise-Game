@@ -18,9 +18,6 @@ namespace PaviseApp
         private readonly Dictionary<string, Bitmap> gameIconCache = new Dictionary<string, Bitmap>(StringComparer.OrdinalIgnoreCase);
         private int runningBusy;
         private long nextRunningProbeTicks;
-        private int netQosBusy;
-        private string netQosSignature;
-        private bool netQosDeferred;
         private static readonly long RunningProbeIntervalTicks = TimeSpan.FromSeconds(5).Ticks;
 
         private void BuildLibraryPage()
@@ -115,7 +112,7 @@ namespace PaviseApp
                 RefreshGames();
                 if (added > 0) Logger.Log(Lang.F("scan.added", added));
                 else if (lastError != null)
-                    MessageBox.Show(this, lastError, "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    PaviseDialog.Warn(this, App.DisplayName, lastError);
             }
         }
 
@@ -134,14 +131,11 @@ namespace PaviseApp
             bool empty = lstGames.Items.Count == 0;
             lstGames.Visible = !empty;
             if (gameListPanel != null) { gameListPanel.ShowEmpty = empty; gameListPanel.Invalidate(); }
-            SyncNetQosPolicies(profiles);
         }
 
         private void RefreshGameRunningStates(bool force = false)
         {
             if (!UiActive || lstGames == null) return;
-            if (netQosDeferred && gameMode.ActiveGame == null)
-                SyncNetQosPolicies(gameMode.GetProfiles());
             long now = DateTime.UtcNow.Ticks;
             if (!force && now < Interlocked.Read(ref nextRunningProbeTicks)) return;
             if (Interlocked.Exchange(ref runningBusy, 1) == 1) return;
@@ -186,38 +180,6 @@ namespace PaviseApp
             if (changed) lstGames.Invalidate();
         }
 
-        private void SyncNetQosPolicies(List<GameProfile> profiles)
-        {
-            var sb = new System.Text.StringBuilder();
-            foreach (GameProfile profile in profiles)
-            {
-                if (string.IsNullOrEmpty(profile.ExecutablePath)) continue;
-                sb.Append(profile.Name).Append('>').Append(profile.ExecutablePath).Append('|');
-            }
-            string signature = sb.ToString();
-            if (netQosSignature == null) { netQosSignature = signature; return; }
-            if (netQosSignature == signature && !netQosDeferred) return;
-            netQosSignature = signature;
-            if (!NetworkAffinityTweak.EnabledByPavise) { netQosDeferred = false; return; }
-            if (gameMode.ActiveGame != null)
-            {
-                if (!netQosDeferred) Logger.Log("网络优先级：游戏会话进行中，游戏库变更的策略同步推迟到退出游戏后执行");
-                netQosDeferred = true;
-                return;
-            }
-            netQosDeferred = false;
-            if (Interlocked.Exchange(ref netQosBusy, 1) == 1) return;
-            ThreadPool.QueueUserWorkItem(_ =>
-            {
-                lock (netQosSync)
-                {
-                    Interlocked.Exchange(ref netQosBusy, 0);
-                    try { NetworkAffinityTweak.Enable(gameMode.GetProfiles()); }
-                    catch { }
-                }
-            });
-        }
-
         private void AddDroppedGames(string[] files)
         {
             if (files == null) return;
@@ -225,7 +187,7 @@ namespace PaviseApp
             foreach (string file in files)
                 if (!gameMode.AddGameFile(file, out error) && error != "该游戏已经在列表中") break;
             if (!string.IsNullOrEmpty(error) && error != "该游戏已经在列表中")
-                MessageBox.Show(this, error, "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                PaviseDialog.Warn(this, App.DisplayName, error);
             RefreshGames();
         }
 

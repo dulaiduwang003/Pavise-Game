@@ -94,10 +94,96 @@ namespace PaviseApp
                     args.Length >= 4 ? args[3] : null);
                 return true;
             }
+            if (args[0] == "--boost-lab" && args.Length >= 2)
+            {
+                RunBoostLab(args[1], args.Length >= 3 ? args[2] : null,
+                    args.Length >= 4 ? args[3] : null, args.Length >= 5 ? args[4] : null,
+                    args.Length >= 6 ? args[5] : null);
+                return true;
+            }
+            if (args[0] == "--burst-lab" && args.Length >= 2)
+            {
+                RunBurstLab(args[1], args.Length >= 3 ? args[2] : null,
+                    args.Length >= 4 ? args[3] : null, args.Length >= 5 ? args[4] : null,
+                    args.Length >= 6 ? args[5] : null);
+                return true;
+            }
+            if (args[0] == "--dialog-shot" && args.Length >= 2)
+            {
+                RunDialogShot(args[1]);
+                return true;
+            }
+            if (args[0] == "--mem-sweep" && args.Length >= 2)
+            {
+                RunMemSweepProbe(args[1]);
+                return true;
+            }
+            if (args[0] == "--pid-scan" && args.Length >= 2)
+            {
+                RunPidScanBench(args[1], args.Length >= 3 ? args[2] : null);
+                return true;
+            }
+            if (args[0] == "--proc-latency" && args.Length >= 2)
+            {
+                RunProcLatencyProbe(args[1], args.Length >= 3 ? args[2] : null);
+                return true;
+            }
+            if (args[0] == "--quota-orphan" && args.Length >= 2)
+            {
+                RunQuotaOrphanProbe(args[1]);
+                return true;
+            }
+            if (args[0] == "--quota-probe" && args.Length >= 2)
+            {
+                RunQuotaProbe(args[1], args.Length >= 3 ? args[2] : null,
+                    args.Length >= 4 ? args[3] : null);
+                return true;
+            }
+            if (args[0] == "--smt-lab" && args.Length >= 2)
+            {
+                RunSmtLab(args[1], args.Length >= 3 ? args[2] : null, args.Length >= 4 ? args[3] : null);
+                return true;
+            }
+            if (args[0] == "--hook-lab" && args.Length >= 2)
+            {
+                RunHookLab(args[1]);
+                return true;
+            }
+            if (args[0] == "--hook-child" && args.Length >= 2)
+            {
+                RunHookChild(args[1]);
+                return true;
+            }
+            if (args[0] == "--prewarm-lab" && args.Length >= 2)
+            {
+                RunPrewarmLab(args[1], args.Length >= 3 ? args[2] : null);
+                return true;
+            }
+            if (args[0] == "--quantum-lab" && args.Length >= 2)
+            {
+                RunQuantumLab(args[1], args.Length >= 3 ? args[2] : null, args.Length >= 4 ? args[3] : null);
+                return true;
+            }
+            if (args[0] == "--qos-lab" && args.Length >= 2)
+            {
+                RunQosLab(args[1], args.Length >= 3 ? args[2] : null);
+                return true;
+            }
+            if (args[0] == "--memlock-lab" && args.Length >= 2)
+            {
+                RunMemLockLab(args[1], args.Length >= 3 ? args[2] : null, args.Length >= 4 ? args[3] : null);
+                return true;
+            }
+            if (args[0] == "--memlock-child" && args.Length >= 4)
+            {
+                RunMemLockChild(args[1], args[2], args[3]);
+                return true;
+            }
             if (args[0] == "--contention-lab" && args.Length >= 2)
             {
                 RunContentionLab(args[1], args.Length >= 3 ? args[2] : null,
-                    args.Length >= 4 ? args[3] : null, args.Length >= 5 ? args[4] : null);
+                    args.Length >= 4 ? args[3] : null, args.Length >= 5 ? args[4] : null,
+                    args.Length >= 6 ? args[5] : null);
                 return true;
             }
             if (args[0] == "--lane-live" && args.Length >= 3)
@@ -124,6 +210,11 @@ namespace PaviseApp
             if (args[0] == "--menu-probe" && args.Length >= 2)
             {
                 RunMenuProbe(args[1], args.Length >= 3 ? args[2] : null);
+                return true;
+            }
+            if (args[0] == "--page-shots" && args.Length >= 2)
+            {
+                RunPageShots(args[1]);
                 return true;
             }
             if (args[0] == "--notes-probe" && args.Length >= 2)
@@ -621,6 +712,58 @@ namespace PaviseApp
             Environment.ExitCode = 0;
         }
 
+        private static void RunPageShots(string outDir)
+        {
+            string data = Path.Combine(Path.GetTempPath(), "PavisePageShots_" + Process.GetCurrentProcess().Id);
+            try
+            {
+                Directory.CreateDirectory(outDir);
+                Directory.CreateDirectory(data);
+                Logger.LogPath = Path.Combine(data, "shots.log");
+                Dpi.Init();
+                Lang.Init();
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                var core = new SuppressionCore();
+                var tamer = new Tamer(core);
+                var mode = new GameMode(data, core);
+                using (var f = new PanelForm(tamer, mode, IconArt.MakeIcon(Dpi.S(24)), true))
+                {
+                    GC.KeepAlive(f.Handle);
+                    f.StartPosition = FormStartPosition.Manual;
+                    f.Location = new Point(-20000, -20000);
+                    f.ShowPanel();
+                    for (int i = 0; i < 40; i++) { Application.DoEvents(); Thread.Sleep(20); }
+                    var shots = new[]
+                    {
+                        new KeyValuePair<PageId, string>(PageId.Overview, "overview"),
+                        new KeyValuePair<PageId, string>(PageId.Policy, "policy"),
+                        new KeyValuePair<PageId, string>(PageId.AntiCheat, "anticheat"),
+                        new KeyValuePair<PageId, string>(PageId.Graphics, "graphics"),
+                        new KeyValuePair<PageId, string>(PageId.Environment, "environment"),
+                        new KeyValuePair<PageId, string>(PageId.Settings, "settings"),
+                    };
+                    foreach (var shot in shots)
+                    {
+                        f.ShowPageForShot(shot.Key);
+                        for (int i = 0; i < 12; i++) { Application.DoEvents(); Thread.Sleep(20); }
+                        using (var bmp = new Bitmap(f.Width, f.Height))
+                        {
+                            f.DrawToBitmap(bmp, new Rectangle(0, 0, f.Width, f.Height));
+                            bmp.Save(Path.Combine(outDir, "guide-" + shot.Value + ".png"),
+                                System.Drawing.Imaging.ImageFormat.Png);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                try { File.WriteAllText(Path.Combine(outDir, "shots.err.txt"), ex.ToString(), Encoding.UTF8); } catch { }
+            }
+            finally { try { Directory.Delete(data, true); } catch { } }
+            Environment.ExitCode = 0;
+        }
+
         private static void RunMenuProbe(string output, string dumpPath)
         {
             string data = Path.Combine(Path.GetTempPath(), "PaviseMenuProbe_" + Process.GetCurrentProcess().Id);
@@ -851,6 +994,133 @@ namespace PaviseApp
                 Eq(3, CpuPartitionPolicy.BackgroundCoreCount(24));
                 Eq(4, CpuPartitionPolicy.BackgroundCoreCount(64));
             });
+            test("智能保帧：CPU 利用率纯函数拒绝非法输入", () =>
+            {
+                Eq(0.75, CpuSaturation.Utilization(25, 100));
+                Eq(0.0, CpuSaturation.Utilization(100, 100));
+                Eq(1.0, CpuSaturation.Utilization(0, 100));
+                Eq(true, double.IsNaN(CpuSaturation.Utilization(10, 0)));
+                Eq(true, double.IsNaN(CpuSaturation.Utilization(-1, 100)));
+                Eq(true, double.IsNaN(CpuSaturation.Utilization(101, 100)));
+            });
+            test("智能保帧：饱和判定带滞回且需连续样本", () =>
+            {
+                var s = new CpuSaturation();
+                Eq(false, s.Update(0.95));
+                Eq(true, s.Update(0.95));
+                Eq(true, s.Update(0.85));
+                Eq(true, s.Update(0.75));
+                Eq(false, s.Update(0.75));
+                var t = new CpuSaturation();
+                Eq(false, t.Update(0.95));
+                Eq(false, t.Update(0.85));
+                Eq(false, t.Update(0.95));
+                Eq(true, t.Update(0.95));
+                Eq(true, t.Update(double.NaN));
+                Eq(true, t.Update(0.70));
+                Eq(true, t.Update(double.NaN));
+                Eq(true, t.Update(0.70));
+                Eq(false, t.Update(0.70));
+            });
+            test("内存驻留：紧张判定与锁定目标的边界", () =>
+            {
+                Eq(false, MemoryResidency.IsTight(8L << 30, 32L << 30));
+                Eq(true, MemoryResidency.IsTight(2L << 30, 32L << 30));
+                Eq(true, MemoryResidency.IsTight(2L << 30, 8L << 30));
+                Eq(false, MemoryResidency.IsTight(4L << 30, 8L << 30));
+                Eq(false, MemoryResidency.IsTight(0, 0));
+                Eq(0L, MemoryResidency.PinTarget(0, 1L << 30));
+                long ws = 1L << 30;
+                Eq(ws + MemoryResidency.SlackBytes, MemoryResidency.PinTarget(ws, 8L << 30));
+                Eq(MemoryResidency.MaxPinBytes, MemoryResidency.PinTarget(4L << 30, 32L << 30));
+            });
+            test("文件预热：预算取可用内存三分之一且封顶", () =>
+            {
+                Eq(1L << 30, GamePrewarm.Budget(3L << 30));
+                Eq(GamePrewarm.MaxBudgetBytes, GamePrewarm.Budget(64L << 30));
+            });
+            test("时间片校正：只认系统默认值", () =>
+            {
+                Eq(2, QuantumTweak.SystemDefault);
+            });
+            test("智能保帧：只在吃满且帧线程未接管时降档", () =>
+            {
+                Eq(Native.HIGH_PRIORITY_CLASS, GameMode.BoostPriorityTarget(false, false));
+                Eq(Native.HIGH_PRIORITY_CLASS, GameMode.BoostPriorityTarget(false, true));
+                Eq(Native.HIGH_PRIORITY_CLASS, GameMode.BoostPriorityTarget(true, true));
+                Eq(Native.NORMAL_PRIORITY_CLASS, GameMode.BoostPriorityTarget(true, false));
+            });
+            test("智能保帧：降档与恢复的优先级写入在真实进程上往返", () =>
+            {
+                using (Process probe = Process.Start(new ProcessStartInfo("cmd.exe", "/c pause")
+                { UseShellExecute = false, RedirectStandardInput = true, CreateNoWindow = true }))
+                {
+                    Thread.Sleep(250);
+                    IntPtr h = Native.OpenProcess(
+                        Native.PROCESS_SET_INFORMATION | Native.PROCESS_SET_LIMITED_INFORMATION
+                        | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, probe.Id);
+                    if (h == IntPtr.Zero) throw new TestSkippedException("cannot open the probe process");
+                    try
+                    {
+                        uint pri; int io, err;
+                        GameMode.ApplyAndVerifyBoostState(h, Native.HIGH_PRIORITY_CLASS, out pri, out io, out err);
+                        Eq(Native.HIGH_PRIORITY_CLASS, pri);
+                        GameMode.ApplyAndVerifyBoostState(h, Native.NORMAL_PRIORITY_CLASS, out pri, out io, out err);
+                        Eq(Native.NORMAL_PRIORITY_CLASS, pri);
+                        GameMode.ApplyAndVerifyBoostState(h, Native.HIGH_PRIORITY_CLASS, out pri, out io, out err);
+                        Eq(Native.HIGH_PRIORITY_CLASS, pri);
+                    }
+                    finally
+                    {
+                        Native.CloseHandle(h);
+                        try { probe.StandardInput.Close(); if (!probe.WaitForExit(3000)) probe.Kill(); } catch { }
+                    }
+                }
+            });
+            test("HAGS：驱动能力查询不抛异常且已启用必意味着支持", () =>
+            {
+                bool supported, enabled;
+                bool ok = HagsTweak.TryQueryState(out supported, out enabled);
+                if (ok && enabled) Eq(true, supported);
+            });
+            test("可超频平台识别：K+Z 与 AMD 桌面放行，移动端与锁频平台拦下", () =>
+            {
+                string why;
+                Eq(true, OcPlatform.Evaluate(
+                    "Intel(R) Core(TM) i9-13900K", "ROG STRIX Z790-E GAMING WIFI", out why));
+                Eq(true, OcPlatform.Evaluate(
+                    "Intel(R) Core(TM) i7-9700KF CPU @ 3.60GHz", "Z390 AORUS PRO", out why));
+                Eq(true, OcPlatform.Evaluate(
+                    "Intel(R) Core(TM) Ultra 9 285K", "MAG Z890 TOMAHAWK WIFI", out why));
+                Eq(false, OcPlatform.Evaluate(
+                    "Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz", "GL703GM", out why));
+                Eq("cpu-locked", why);
+                Eq(false, OcPlatform.Evaluate(
+                    "Intel(R) Core(TM) i5-12400F", "PRO B660M-A WIFI", out why));
+                Eq(false, OcPlatform.Evaluate(
+                    "Intel(R) Core(TM) i9-13900K", "PRO B760M-P", out why));
+                Eq("board-locked", why);
+                Eq(true, OcPlatform.Evaluate(
+                    "AMD Ryzen 7 7800X3D 8-Core Processor", "B650 AORUS ELITE AX", out why));
+                Eq(true, OcPlatform.Evaluate(
+                    "AMD Ryzen 5 5600 6-Core Processor", "X570 Phantom Gaming 4", out why));
+                Eq(true, OcPlatform.Evaluate(
+                    "AMD Ryzen 9 7950X 16-Core Processor", "ProArt X670E-CREATOR WIFI", out why));
+                Eq(true, OcPlatform.Evaluate(
+                    "AMD Ryzen 5 5600X 6-Core Processor", "B550M AORUS ELITE", out why));
+                Eq(true, OcPlatform.Evaluate(
+                    "Intel(R) Core(TM) i5-13600KF", "ROG STRIX Z690-A GAMING WIFI D4", out why));
+                Eq(true, OcPlatform.Evaluate(
+                    "Intel(R) Core(TM) i7-14700K", "MPG Z790M EDGE TI MAX WIFI", out why));
+                Eq(false, OcPlatform.Evaluate(
+                    "AMD Ryzen 7 5800H with Radeon Graphics", "GA402RJ", out why));
+                Eq("cpu-mobile", why);
+                Eq(false, OcPlatform.Evaluate(
+                    "AMD Ryzen 5 3600 6-Core Processor", "A320M-HDV R4.0", out why));
+                Eq("board-locked", why);
+                Eq(false, OcPlatform.Evaluate("", "", out why));
+                Eq("cpu-unknown", why);
+            });
             test("本局统计：宽限期先行还原的进程仍然结账", TestSessionReportCountsSealedProcesses);
             test("文案：源码里引用到的键全部有定义", TestEveryLangKeyIsDefined);
             test("白名单规则：旧版名称、带版本号路径与精确边界", TestWhitelistRules);
@@ -934,11 +1204,14 @@ namespace PaviseApp
                 Eq(null, TaskHelper.ParseTaskArgumentsXml("<Task><Actions/></Task>"));
             });
             test("版本元数据：产品版本与文件版本齐全", TestReleaseMetadata);
-            test("模式配色：底色固定，常规 / 竞技 / 自定义强调色各不相同", () =>
+            test("模式配色：底色固定，常规 / 竞技 / 极限 / 自定义强调色各不相同", () =>
             {
                 Color bg = Theme.Bg;
                 if (Theme.ModeColor(PerformancePreset.Standard) == Theme.ModeColor(PerformancePreset.Competitive)) throw new Exception("Standard and Competitive accents match");
                 if (Theme.ModeColor(PerformancePreset.Competitive) == Theme.ModeColor(PerformancePreset.Custom)) throw new Exception("Competitive and Custom accents match");
+                if (Theme.ModeColor(PerformancePreset.Extreme) == Theme.ModeColor(PerformancePreset.Competitive)) throw new Exception("Extreme and Competitive accents match");
+                if (Theme.ModeColor(PerformancePreset.Extreme) == Theme.ModeColor(PerformancePreset.Custom)) throw new Exception("Extreme and Custom accents match");
+                Eq("极限", ModeButton.ModeName(PerformancePreset.Extreme));
                 Theme.SetMode(PerformancePreset.Competitive, false);
                 Eq(Theme.ModeColor(PerformancePreset.Competitive), Theme.Accent);
                 Eq(bg, Theme.Bg);
@@ -1024,6 +1297,11 @@ namespace PaviseApp
             {
                 Eq(4000, GameMode.ProcessScanIntervalMs(false));
                 Eq(20000, GameMode.ProcessScanIntervalMs(true));
+                Eq(4000, GameMode.ProcessScanIntervalMs(false, false));
+                Eq(20000, GameMode.ProcessScanIntervalMs(true, false));
+                Eq(GameMode.ActiveGameSweepIntervalMs, GameMode.ProcessScanIntervalMs(true, true));
+                Eq(GameMode.ActiveGameSweepIntervalMs, GameMode.ProcessScanIntervalMs(false, true));
+                Eq(true, GameMode.ActiveGameSweepIntervalMs < 20000);
                 Eq(false, GameMode.ProcessEventNeedsImmediateScan(false));
                 Eq(true, GameMode.ProcessEventNeedsImmediateScan(true));
                 Eq(5000, GameMode.GameTransitionScanIntervalMs);
@@ -1521,9 +1799,14 @@ namespace PaviseApp
                 Eq(true, GameMode.FreezeForbidden("SystemSettings", @"C:\Windows\ImmersiveControlPanel\SystemSettings.exe", win));
 
                 Eq(true, GameMode.FreezeForbidden("adb", @"D:\Emulator\adb.exe", win));
+                Eq(true, GameMode.FreezeForbidden("gameoverlayui", @"D:\GreenSteam\gameoverlayui.exe", win));
+                Eq(true, GameMode.FreezeForbidden("epicwebhelper", @"D:\Epic\EpicWebHelper.exe", win));
                 Eq(true, GameMode.FreezeForbidden("CAudioFilterAgent64", @"C:\Program Files\Conexant\CAudioFilterAgent64.exe", win));
 
-                Eq(false, GameMode.FreezeForbidden("SogouCloud", @"C:\Program Files (x86)\SogouInput\16.6.0.4385\SogouCloud.exe", win));
+                Eq(true, GameMode.FreezeForbidden("SogouCloud", @"C:\Program Files (x86)\SogouInput\16.6.0.4385\SogouCloud.exe", win));
+                Eq(true, GameMode.FreezeForbidden("lghub_agent", @"C:\Program Files\LGHUB\lghub_agent.exe", win));
+                Eq(true, GameMode.FreezeForbidden("NahimicService", @"C:\Program Files\Nahimic\NahimicService.exe", win));
+                Eq(true, GameMode.FreezeForbidden("RtkAudUService64", @"C:\Program Files\Realtek\RtkAudUService64.exe", win));
 
                 Eq(false, GameMode.FreezeForbidden("QQ", @"C:\Program Files\Tencent\QQ\QQ.exe", win));
                 Eq(false, GameMode.FreezeForbidden("worker", @"D:\Apps\worker.exe", win));
@@ -1531,8 +1814,39 @@ namespace PaviseApp
 
                 Eq(true, GameMode.BasicBackgroundEligible(10, 99, "SearchIndexer",
                     @"C:\Windows\System32\SearchIndexer.exe", 1, 1, 20, false, win, false, null, true));
-                Eq(true, GameMode.BasicBackgroundEligible(9652, 99, "ChsIME",
+                Eq(false, GameMode.BasicBackgroundEligible(9652, 99, "ChsIME",
                     @"C:\Windows\System32\InputMethod\CHS\ChsIME.exe", 1, 1, 20, false, win, false, null, true));
+            });
+            test("后台冻结：外设/输入法/音频关键词识别准确", () =>
+            {
+                Eq(true, GameMode.IsInputAudioLike("SogouImeBroker"));
+                Eq(true, GameMode.IsInputAudioLike("MouseWithoutBorders"));
+                Eq(true, GameMode.IsInputAudioLike("SteelSeriesGG"));
+                Eq(true, GameMode.IsInputAudioLike("ASUSKeyboardHotkeys"));
+                Eq(true, GameMode.IsInputAudioLike("VoiceMeeter"));
+                Eq(false, GameMode.IsInputAudioLike("QQ"));
+                Eq(false, GameMode.IsInputAudioLike("chrome"));
+                Eq(false, GameMode.IsInputAudioLike("BaiduNetdisk"));
+                Eq(false, GameMode.IsInputAudioLike(""));
+
+                Eq(true, GameMode.DescriptionLooksInputAudio("狼途键盘驱动程序"));
+                Eq(true, GameMode.DescriptionLooksInputAudio("LangTu Keyboard Driver"));
+                Eq(true, GameMode.DescriptionLooksInputAudio("XX 无线耳机管理器"));
+                Eq(true, GameMode.DescriptionLooksInputAudio("Sonic Studio Audio Engine"));
+                Eq(true, GameMode.DescriptionLooksInputAudio("某某输入法云服务"));
+                Eq(false, GameMode.DescriptionLooksInputAudio("Baidu NetDisk"));
+                Eq(false, GameMode.DescriptionLooksInputAudio("Tencent QQ"));
+                Eq(false, GameMode.DescriptionLooksInputAudio(null));
+
+                Eq(true, GameMode.IsInputAudioLike("QQPYUserCenter"));
+                Eq(true, GameMode.IsInputAudioLike("SGTool"));
+            });
+            test("输入法识别：搜狗全家族三层覆盖", () =>
+            {
+                Eq(true, GameMode.IsInputAudioLike("SogouCloud"));
+                Eq(true, GameMode.DescriptionLooksInputAudio("北京搜狗科技发展有限公司"));
+                Eq(true, GameMode.DescriptionLooksInputAudio("搜狗输入法 云计算代理"));
+                Eq(true, GameMode.DescriptionLooksInputAudio("小狼毫输入法服务"));
             });
             test("主题字体：共享字体缓存可承受反复绘制", () =>
             {
@@ -1644,6 +1958,8 @@ namespace PaviseApp
                 Eq(AutoHideAction.None, PanelForm.NextAutoHide(true, ref last, ref armed, true, true));
             });
             test("界面休眠：隐藏或最小化的窗口不会唤醒动画定时器", TestUiDormancyState);
+            test("进程快照：单次系统调用的字段与逐句柄查询一致", TestSnapshotFieldsMatchHandleQuery);
+            test("进程快照：路径缓存复用，热轮次不再逐进程开句柄", TestSnapshotPathCacheStaysWarm);
             test("网络 QoS：策略名唯一、纯 ASCII 且长度受限", () =>
             {
                 string a = NetworkAffinityTweak.SanitizePolicyName("Valorant", @"C:\Games\Valorant\VALORANT.exe");
@@ -2031,10 +2347,12 @@ namespace PaviseApp
             test("游戏提优：已处于效率模式的进程会被带出该模式", TestBoostClearsEfficiencyMode);
             test("网络限流：只有超出范围的值才标记为需修复", TestNetThrottleRangeJudgement);
             test("设备电源：只改动禁止断电这一位", TestDevicePowerBitMerge);
-            test("MSI 模式：扫描只产出 PCI 显卡与网卡设备", TestMsiScanClassFilter);
+            test("废弃功能：每条都登记了移除版本与原因", TestRetiredFeaturesRegistry);
+            test("中断亲和：混合架构不把中断引到能效核", TestInterruptMaskAvoidsEfficiencyCores);
             test("竞技电源：参数表没有重复的 GUID 与项名", TestPowerKnobTableHasNoDuplicates);
             test("竞技电源：竞技档与常规档该不同的项确实不同", TestPowerArenaDiffersFromCalm);
             test("竞技电源：真机写入后能原样读回竞技档与常规档", TestPowerPlanWritesArenaValues);
+            test("竞技电源：切换前把用户计划的亮度同步进来 屏幕不变暗", TestPowerPlanBrightnessSync);
             test("竞技电源：方案改名写得进也读得出", TestPowerPlanNameRoundtrip);
             test("竞技电源：删除临时方案不动当前激活的方案", TestPowerPlanDeleteLeavesActiveIntact);
             test("竞技电源：重复的同名方案会被清理到只剩一个", TestPowerPlanPurgesDuplicateClones);
@@ -2381,12 +2699,16 @@ namespace PaviseApp
             Eq(SuppressionLevel.Eco, GameMode.ResolveBackgroundLevel(PerformancePreset.Custom, false, SuppressionLevel.Isolated, true));
             Eq(SuppressionLevel.Isolated, GameMode.ResolveBackgroundLevel(PerformancePreset.Custom, true, SuppressionLevel.None, true));
             Eq(SuppressionLevel.Isolated, GameMode.ResolveBackgroundLevel(PerformancePreset.Custom, true, SuppressionLevel.None, false));
+            Eq(SuppressionLevel.Isolated, GameMode.ResolveBackgroundLevel(PerformancePreset.Extreme, false, SuppressionLevel.None, true));
+            Eq(SuppressionLevel.Isolated, GameMode.ResolveBackgroundLevel(PerformancePreset.Extreme, false, SuppressionLevel.None, false));
 
             Eq(true, GameMode.IsAggressive(PerformancePreset.Competitive, false));
             Eq(true, GameMode.IsAggressive(PerformancePreset.Competitive, true));
             Eq(false, GameMode.IsAggressive(PerformancePreset.Standard, true));
             Eq(false, GameMode.IsAggressive(PerformancePreset.Custom, false));
             Eq(true, GameMode.IsAggressive(PerformancePreset.Custom, true));
+            Eq(true, GameMode.IsAggressive(PerformancePreset.Extreme, false));
+
         }
 
         private static void TestModeIcons()

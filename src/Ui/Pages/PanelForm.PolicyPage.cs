@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 构建优化策略页 并按当前预设锁定或放开自定义项
 
 using System;
@@ -11,10 +11,12 @@ namespace PaviseApp
     internal partial class PanelForm
     {
         private Label lblPolicyMode;
-        private Toggle swPolicyBackground, swPolicyStrict, swPolicyAggressive;
+        private Toggle swPolicyBackground, swPolicyStrict, swPolicyAggressive, swPolicyFreeze;
         private Toggle swPolicyPauseDl, swPolicyPauseSvc, swPolicyDvr;
-        private SettingCard cardPolicyStrict, cardPolicyAggressive;
+        private Toggle swPolicyGpuDemote, swPolicyBoost, swPolicyIfeo, swPolicyLane, swPolicyPlan, swPolicyNotif, swPolicyHz;
+        private SettingCard cardPolicyStrict, cardPolicyAggressive, cardPolicyFreeze;
         private SettingCard cardPolicyPauseDl, cardPolicyPauseSvc, cardPolicyDvr;
+        private SettingCard cardPolicyBackground, cardPolicyGpuDemote, cardPolicyBoost, cardPolicyIfeo, cardPolicyLane, cardPolicyPlan, cardPolicyNotif, cardPolicyHz;
         private readonly List<Action> policySync = new List<Action>();
 
         private void BuildPolicyPage()
@@ -36,30 +38,41 @@ namespace PaviseApp
             Section(scroll, Lang.T("v15.policy.core"), 6, sy); sy += 24;
             swPolicyBackground = AddPolicyToggle(scroll, ref sy, Lang.T("v14.bg.master"), Lang.T("v14.bg.master.sub"),
                 delegate { return gameMode.SuppressBackground; }, delegate(bool v) { gameMode.SuppressBackground = v; });
-            AddPolicyToggle(scroll, ref sy, Lang.T("gm.gpudemote"), Lang.T("gm.gpudemote.sub"),
+            cardPolicyBackground = (SettingCard)swPolicyBackground.Parent;
+            swPolicyGpuDemote = AddPolicyToggle(scroll, ref sy, Lang.T("gm.gpudemote"), Lang.T("gm.gpudemote.sub"),
                 delegate { return gameMode.GpuDemote; }, delegate(bool v) { gameMode.GpuDemote = v; });
-            AddPolicyConfirmToggle(scroll, ref sy, Lang.T("gm.freeze"), Lang.T("gm.freeze.sub"), Lang.T("gm.freeze.warn"),
+            cardPolicyGpuDemote = (SettingCard)swPolicyGpuDemote.Parent;
+            swPolicyFreeze = AddPolicyConfirmToggle(scroll, ref sy, Lang.T("gm.freeze"), Lang.T("gm.freeze.sub"), Lang.T("gm.freeze.warn"),
                 delegate { return gameMode.FreezeBackground; }, delegate(bool v) { gameMode.FreezeBackground = v; });
-            AddPolicyToggle(scroll, ref sy, Lang.T("gm.boost"), Lang.T("v15.boost.sub"),
+            cardPolicyFreeze = (SettingCard)swPolicyFreeze.Parent;
+            swPolicyBoost = AddPolicyToggle(scroll, ref sy, Lang.T("gm.boost"), Lang.T("v15.boost.sub"),
                 delegate { return gameMode.BoostGame; }, delegate(bool v) { gameMode.BoostGame = v; });
-            AddPolicyToggle(scroll, ref sy, Lang.T("gm.ifeo"), Lang.T("gm.ifeo.sub"),
+            cardPolicyBoost = (SettingCard)swPolicyBoost.Parent;
+            swPolicyIfeo = AddPolicyToggle(scroll, ref sy, Lang.T("gm.ifeo"), Lang.T("gm.ifeo.sub"),
                 delegate { return gameMode.IfeoBoostFallback; }, delegate(bool v) { gameMode.IfeoBoostFallback = v; });
-            AddPolicyToggle(scroll, ref sy, Lang.T("gm.lane"), Lang.T("gm.lane.sub"),
+            cardPolicyIfeo = (SettingCard)swPolicyIfeo.Parent;
+            swPolicyLane = AddPolicyToggle(scroll, ref sy, Lang.T("gm.lane"), Lang.T("gm.lane.sub"),
                 delegate { return gameMode.RenderLaneOn; }, delegate(bool v) { gameMode.RenderLaneOn = v; });
-            AddPolicyToggle(scroll, ref sy, Lang.T("set.plan"), Lang.T("v15.plan.sub"),
+            cardPolicyLane = (SettingCard)swPolicyLane.Parent;
+            swPolicyPlan = AddPolicyToggle(scroll, ref sy, Lang.T("set.plan"), Lang.T("v15.plan.sub"),
                 delegate { return gameMode.PowerPlanSwitch; }, delegate(bool v) { gameMode.PowerPlanSwitch = v; });
-            AddPolicyToggle(scroll, ref sy, Lang.T("set.notif"), Lang.T("v15.notif.sub"),
+            cardPolicyPlan = (SettingCard)swPolicyPlan.Parent;
+            swPolicyNotif = AddPolicyToggle(scroll, ref sy, Lang.T("set.notif"), Lang.T("v15.notif.sub"),
                 delegate { return gameMode.NotifQuiet; }, delegate(bool v) { gameMode.NotifQuiet = v; });
-            AddPolicyToggle(scroll, ref sy, Lang.T("set.hz"), Lang.T("v15.hz.sub"),
+            cardPolicyNotif = (SettingCard)swPolicyNotif.Parent;
+            swPolicyHz = AddPolicyToggle(scroll, ref sy, Lang.T("set.hz"), Lang.T("v15.hz.sub"),
                 delegate { return gameMode.HzGuard; }, delegate(bool v) { gameMode.HzGuard = v; });
+            cardPolicyHz = (SettingCard)swPolicyHz.Parent;
 
             sy += 10; Section(scroll, Lang.T("v15.policy.custom"), 6, sy); sy += 24;
             swPolicyStrict = AddPolicyToggle(scroll, ref sy, Lang.T("v14.cpu.adaptive"), Lang.T("v14.cpu.adaptive.sub2"),
                 delegate { return gameMode.StrictCoreIsolation; }, delegate(bool v) { gameMode.StrictCoreIsolation = v; });
             cardPolicyStrict = (SettingCard)swPolicyStrict.Parent;
+            swPolicyStrict.CheckedChanged += delegate { RefreshPolicyPresentation(); };
             swPolicyAggressive = AddPolicyToggle(scroll, ref sy, Lang.T("gm.aggressive"), Lang.T("gm.aggressive.sub"),
                 delegate { return gameMode.AggressiveSuppression; }, delegate(bool v) { gameMode.AggressiveSuppression = v; });
             cardPolicyAggressive = (SettingCard)swPolicyAggressive.Parent;
+            swPolicyAggressive.CheckedChanged += delegate { RefreshPolicyPresentation(); };
             swPolicyPauseDl = AddPolicyToggle(scroll, ref sy, Lang.T("gm.pausedl"), Lang.T("v15.custom.override"), delegate { return gameMode.PauseDownloads; }, delegate(bool v) { gameMode.PauseDownloads = v; });
             cardPolicyPauseDl = (SettingCard)swPolicyPauseDl.Parent;
             swPolicyPauseSvc = AddPolicyToggle(scroll, ref sy, Lang.T("gm.pausesvc"), Lang.T("v15.custom.override"), delegate { return gameMode.PauseSvcIndex; }, delegate(bool v) { gameMode.PauseSvcIndex = v; });
@@ -67,12 +80,29 @@ namespace PaviseApp
             swPolicyDvr = AddPolicyToggle(scroll, ref sy, Lang.T("set.dvr"), Lang.T("v15.custom.override"), delegate { return gameMode.KillGameDvr; }, delegate(bool v) { gameMode.KillGameDvr = v; });
             cardPolicyDvr = (SettingCard)swPolicyDvr.Parent;
             sy += 10; Section(scroll, Lang.T("v15.policy.extras"), 6, sy); sy += 24;
-            AddPolicyToggle(scroll, ref sy, Lang.T("gm.idledisable"), Lang.T("gm.idledisable.sub"),
-                delegate { return gameMode.IdleStateDisable; }, delegate(bool v) { gameMode.IdleStateDisable = v; });
+            bool idleUsable = OcPlatform.IdleDisableSupported;
+            Toggle swPolicyIdle = AddPolicyConfirmToggle(scroll, ref sy, Lang.T("gm.idledisable"), Lang.T("gm.idledisable.sub"),
+                Lang.T("gm.idledisable.confirm"),
+                delegate { return gameMode.IdleStateDisable; }, delegate(bool v) { gameMode.IdleStateDisable = v; },
+                ValueTextWidth(Lang.T(idleUsable ? "gm.idledisable.warn" : "gm.idledisable.gated")));
+            var cardPolicyIdle = (SettingCard)swPolicyIdle.Parent;
+            if (idleUsable) cardPolicyIdle.SetValue(Lang.T("gm.idledisable.warn"), Theme.Danger);
+            else
+            {
+                swPolicyIdle.Enabled = false;
+                swPolicyIdle.SetSilently(false);
+                cardPolicyIdle.SetValue(Lang.T("gm.idledisable.gated"), Theme.Dim);
+            }
             AddPolicyToggle(scroll, ref sy, Lang.T("gm.visualfx"), Lang.T("gm.visualfx.sub"),
                 delegate { return gameMode.VisualFxDowngrade; }, delegate(bool v) { gameMode.VisualFxDowngrade = v; });
             AddPolicyToggle(scroll, ref sy, Lang.T("set.trim"), Lang.T("v15.trim.sub"),
                 delegate { return gameMode.TrimWorkingSet; }, delegate(bool v) { gameMode.TrimWorkingSet = v; });
+            AddPolicyToggle(scroll, ref sy, Lang.T("gm.memres"), Lang.T("gm.memres.sub"),
+                delegate { return gameMode.MemoryResidencyOn; }, delegate(bool v) { gameMode.MemoryResidencyOn = v; });
+            AddPolicyToggle(scroll, ref sy, Lang.T("gm.prewarm"), Lang.T("gm.prewarm.sub"),
+                delegate { return gameMode.GamePrewarmOn; }, delegate(bool v) { gameMode.GamePrewarmOn = v; });
+            AddPolicyToggle(scroll, ref sy, Lang.T("gm.upyield"), Lang.T("gm.upyield.sub"),
+                delegate { return gameMode.UploadYieldOn; }, delegate(bool v) { gameMode.UploadYieldOn = v; });
             AddPolicyToggle(scroll, ref sy, Lang.T("gm.standby"), Lang.T("gm.standby.sub"),
                 delegate { return gameMode.PurgeStandby; }, delegate(bool v) { gameMode.PurgeStandby = v; });
             AddPolicyToggle(scroll, ref sy, Lang.T("gm.pausewu"), Lang.T("gm.pausewu.sub"),
@@ -87,13 +117,18 @@ namespace PaviseApp
         private Toggle AddPolicyConfirmToggle(
             Control parent, ref int y, string title, string desc, string warning, Func<bool> read, Action<bool> write)
         {
+            return AddPolicyConfirmToggle(parent, ref y, title, desc, warning, read, write, 0);
+        }
+
+        private Toggle AddPolicyConfirmToggle(
+            Control parent, ref int y, string title, string desc, string warning, Func<bool> read, Action<bool> write,
+            int valueReserve)
+        {
             Toggle sw = MakeSwitch(read(), null);
             sw.CheckedChanged += delegate
             {
                 if (!sw.Checked) { write(false); return; }
-                if (MessageBox.Show(this, warning, "Pavise",
-                        MessageBoxButtons.OKCancel, MessageBoxIcon.Warning,
-                        MessageBoxDefaultButton.Button2) != DialogResult.OK)
+                if (!PaviseDialog.Confirm(this, App.DisplayName, warning, DlgKind.Warn))
                 {
                     sw.SetSilently(false);
                     return;
@@ -101,7 +136,7 @@ namespace PaviseApp
                 write(true);
             };
             int cardH;
-            MakeAutoCard(parent, 6, y, ScrollContentW, 78, title, desc, sw, out cardH);
+            MakeAutoCard(parent, 6, y, ScrollContentW, 78, title, desc, sw, valueReserve, out cardH);
             y += cardH + 8;
             policySync.Add(delegate { sw.SetSilently(read()); });
             return sw;
@@ -109,11 +144,17 @@ namespace PaviseApp
 
         private Toggle AddPolicyToggle(Control parent, ref int y, string title, string desc, Func<bool> read, Action<bool> write)
         {
+            return AddPolicyToggle(parent, ref y, title, desc, read, write, 0);
+        }
+
+        private Toggle AddPolicyToggle(Control parent, ref int y, string title, string desc, Func<bool> read, Action<bool> write,
+            int valueReserve)
+        {
             Toggle sw = MakeSwitch(read(), null);
             sw.CheckedChanged += delegate { write(sw.Checked); };
 
             int cardH;
-            SettingCard card = MakeAutoCard(parent, 6, y, ScrollContentW, 78, title, desc, sw, out cardH);
+            SettingCard card = MakeAutoCard(parent, 6, y, ScrollContentW, 78, title, desc, sw, valueReserve, out cardH);
             y += cardH + 8;
             policySync.Add(delegate { sw.SetSilently(read()); });
             return sw;
@@ -125,11 +166,42 @@ namespace PaviseApp
             PerformancePreset mode = gameMode.ActivePreset;
             bool competitive = mode == PerformancePreset.Competitive;
             bool custom = mode == PerformancePreset.Custom;
-            ApplyPresetPolicy(swPolicyStrict, cardPolicyStrict, Lang.T("v14.cpu.adaptive"), false, true);
-            ApplyPresetPolicy(swPolicyAggressive, cardPolicyAggressive, Lang.T("gm.aggressive"), !custom, competitive);
-            ApplyPresetPolicy(swPolicyPauseDl, cardPolicyPauseDl, Lang.T("gm.pausedl"), !custom, competitive);
-            ApplyPresetPolicy(swPolicyPauseSvc, cardPolicyPauseSvc, Lang.T("gm.pausesvc"), !custom, false);
-            ApplyPresetPolicy(swPolicyDvr, cardPolicyDvr, Lang.T("set.dvr"), !custom, competitive);
+            bool extreme = mode == PerformancePreset.Extreme;
+            ApplyPresetPolicy(swPolicyBackground, cardPolicyBackground, Lang.T("v14.bg.master"), extreme, true);
+            ApplyPresetPolicy(swPolicyGpuDemote, cardPolicyGpuDemote, Lang.T("gm.gpudemote"), extreme, true);
+            ApplyPresetPolicy(swPolicyBoost, cardPolicyBoost, Lang.T("gm.boost"), extreme, true);
+            ApplyPresetPolicy(swPolicyIfeo, cardPolicyIfeo, Lang.T("gm.ifeo"), extreme, true);
+            ApplyPresetPolicy(swPolicyLane, cardPolicyLane, Lang.T("gm.lane"), extreme, true);
+            ApplyPresetPolicy(swPolicyPlan, cardPolicyPlan, Lang.T("set.plan"), extreme, true);
+            ApplyPresetPolicy(swPolicyNotif, cardPolicyNotif, Lang.T("set.notif"), extreme, true);
+            ApplyPresetPolicy(swPolicyHz, cardPolicyHz, Lang.T("set.hz"), extreme, true);
+            ApplyPresetPolicy(swPolicyStrict, cardPolicyStrict, Lang.T("v14.cpu.adaptive"), extreme, extreme);
+            ApplyPresetPolicy(swPolicyAggressive, cardPolicyAggressive, Lang.T("gm.aggressive"), !custom, competitive || extreme);
+            ApplyPresetPolicy(swPolicyPauseDl, cardPolicyPauseDl, Lang.T("gm.pausedl"), !custom, competitive || extreme);
+            ApplyPresetPolicy(swPolicyPauseSvc, cardPolicyPauseSvc, Lang.T("gm.pausesvc"), !custom, extreme);
+            ApplyPresetPolicy(swPolicyDvr, cardPolicyDvr, Lang.T("set.dvr"), !custom, competitive || extreme);
+            if (extreme)
+            {
+                ApplyPresetPolicy(swPolicyFreeze, cardPolicyFreeze, Lang.T("gm.freeze"), true, true);
+            }
+            else
+            {
+                bool freezeScope = GameMode.IsAggressive(mode, gameMode.AggressiveSuppression);
+                bool freezeDepth = GameMode.ResolveBackgroundLevel(mode, gameMode.StrictCoreIsolation,
+                    SuppressionLevel.None, false) >= SuppressionLevel.Isolated;
+                ApplyGatedPolicy(swPolicyFreeze, cardPolicyFreeze, Lang.T("gm.freeze"), freezeScope && freezeDepth,
+                    Lang.T(freezeScope ? "v17.freeze.needstrict" : "v17.freeze.gated"));
+            }
+        }
+
+        private static void ApplyGatedPolicy(Toggle toggle, SettingCard card, string title, bool usable, string reason)
+        {
+            if (toggle != null)
+            {
+                toggle.Enabled = usable;
+                if (!usable) toggle.SetSilently(false);
+            }
+            if (card != null) card.Title = title + (usable ? "" : " · " + reason);
         }
 
         private static void ApplyPresetPolicy(Toggle toggle, SettingCard card, string title, bool forced, bool effective)

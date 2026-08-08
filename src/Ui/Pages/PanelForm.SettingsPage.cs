@@ -11,11 +11,55 @@ namespace PaviseApp
 {
     internal partial class PanelForm
     {
-        private Toggle swAuto, swAutoHide, swContact;
-        private SettingCard cardShader;
+        private Toggle swAuto, swAutoHide;
+        private SettingCard cardShader, cardMemSweep;
+        private PillButton btnMemSweep;
+        private int memSweepBusy;
         private static volatile bool shaderCleaning;
         private int slowBusy;
         private int restoreBusy;
+
+        private void RefreshMemoryState()
+        {
+            if (cardMemSweep == null) return;
+            MemoryState st = MemorySweep.Snapshot();
+            cardMemSweep.SetValue(string.Format(Lang.T("mem.state"),
+                st.AvailableMb.ToString("F0"), st.CacheMb.ToString("F0"),
+                (st.TotalMb / 1024.0).ToString("F0")), Theme.Dim);
+        }
+
+        private void RunMemorySweep()
+        {
+            if (gameMode.IsActive)
+            {
+                PaviseDialog.Warn(this, App.DisplayName, Lang.T("mem.ingame"));
+                return;
+            }
+            if (Interlocked.Exchange(ref memSweepBusy, 1) == 1) return;
+            btnMemSweep.Enabled = false;
+            if (cardMemSweep != null) cardMemSweep.SetValue(Lang.T("mem.busy"), Theme.Accent);
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                MemorySweepResult r = null;
+                try { r = MemorySweep.Run(false, true, false, false); }
+                catch { }
+                try
+                {
+                    BeginInvoke((Action)delegate
+                    {
+                        Interlocked.Exchange(ref memSweepBusy, 0);
+                        btnMemSweep.Enabled = true;
+                        RefreshMemoryState();
+                        if (r == null) return;
+                        PaviseDialog.Info(this, App.DisplayName, string.Format(Lang.T("mem.done"),
+                                (r.ElapsedMs / 1000.0).ToString("F1"),
+                                (r.AvailableDeltaMb >= 0 ? "+" : "") + r.AvailableDeltaMb.ToString("F0"),
+                                (r.CacheDeltaMb >= 0 ? "+" : "") + r.CacheDeltaMb.ToString("F0")));
+                    });
+                }
+                catch { Interlocked.Exchange(ref memSweepBusy, 0); }
+            });
+        }
 
         private void BuildSettingsPage()
         {
@@ -35,15 +79,8 @@ namespace PaviseApp
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.autostart"), Lang.T("set.autostart.n"), swAuto, out cardH);
             sy += cardH + 8;
 
-            swAutoHide = MakeSwitch(Settings.Load(AutoHideKey, false), OnAutoHideToggle);
+            swAutoHide = MakeSwitch(Settings.Load(AutoHideKey, AutoHideDefault), OnAutoHideToggle);
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.autohide"), Lang.T("set.autohide.n"), swAutoHide, out cardH);
-            sy += cardH + 8;
-
-            swContact = MakeSwitch(ContactDialog.ShouldShow(), delegate
-            {
-                if (swContact.Checked) ContactDialog.ResetHidden(); else ContactDialog.MarkHidden();
-            });
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.contact"), Lang.T("set.contact.n"), swContact, out cardH);
             sy += cardH + 8;
 
             sy += 10;
@@ -54,6 +91,15 @@ namespace PaviseApp
             btnRestore.Size = new Size(Theme.S(136), Theme.S(32));
             btnRestore.Click += delegate { RestoreAllNow(); };
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 78, Lang.T("v15.restore.title"), Lang.T("v15.restore.desc"), btnRestore, out cardH);
+            sy += cardH + 8;
+
+            btnMemSweep = new PillButton(Lang.T("mem.btn"), BtnKind.Normal);
+            btnMemSweep.Bg = Theme.Card;
+            btnMemSweep.Size = new Size(Theme.S(120), Theme.S(32));
+            btnMemSweep.Click += delegate { RunMemorySweep(); };
+            cardMemSweep = MakeAutoCard(scroll, 6, sy, ScrollContentW, 90, Lang.T("mem.title"),
+                Lang.T("mem.sub"), btnMemSweep, out cardH);
+            RefreshMemoryState();
             sy += cardH + 8;
 
             var btnDefender = new PillButton(Lang.T("btn.open"), BtnKind.Normal);
@@ -103,7 +149,7 @@ namespace PaviseApp
             int rc = swAuto.Checked ? TaskHelper.CreateStartupTask() : TaskHelper.DeleteStartupTask();
             if (rc != 0)
             {
-                MessageBox.Show(this, Lang.T("msg.taskfail"), "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                PaviseDialog.Warn(this, App.DisplayName, Lang.T("msg.taskfail"));
                 swAuto.SetSilently(TaskHelper.TaskExists());
             }
         }
@@ -115,7 +161,7 @@ namespace PaviseApp
                 if (cardShader != null) cardShader.Value = Lang.T("shader.busy");
                 return;
             }
-            if (MessageBox.Show(this, Lang.T("shader.confirm"), "Pavise", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning) != DialogResult.OK) return;
+            if (!PaviseDialog.Confirm(this, App.DisplayName, Lang.T("shader.confirm"), DlgKind.Warn)) return;
             btn.Enabled = false;
             shaderCleaning = true;
             if (cardShader != null) cardShader.Value = Lang.T("shader.busy");
@@ -137,7 +183,7 @@ namespace PaviseApp
                         string msg = Lang.F("shader.freed", CacheSweep.FmtBytes(cr.FreedBytes))
                             + (cr.FailedFiles > 0 ? "\r\n" + Lang.F("shader.skip", cr.FailedFiles) : "")
                             + "\r\n\r\n" + Lang.T("shader.note");
-                        MessageBox.Show(this, msg, "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        PaviseDialog.Info(this, App.DisplayName, msg);
                     }));
                 }
                 catch { }
@@ -242,14 +288,8 @@ namespace PaviseApp
                     if (!completed)
                         message += "\r\n\r\n" + Lang.F(
                             "panic.failedcount", failed, attempted);
-                    MessageBox.Show(
-                        this,
-                        message,
-                        App.DisplayName,
-                        MessageBoxButtons.OK,
-                        completed
-                            ? MessageBoxIcon.Information
-                            : MessageBoxIcon.Warning);
+                    if (completed) PaviseDialog.Success(this, App.DisplayName, message);
+                    else PaviseDialog.Warn(this, App.DisplayName, message);
                     SyncAllToggles();
                 }));
             }

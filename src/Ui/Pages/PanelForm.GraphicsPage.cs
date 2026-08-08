@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 构建显卡页 逐游戏的驱动项与全局呈现路径开关
 
 using System;
@@ -9,11 +9,9 @@ namespace PaviseApp
 {
     internal partial class PanelForm
     {
-        private Toggle swGpu, swFso, swNvMax, swNvLowLat, swNvBg, swWindowedOpt;
+        private Toggle swGpu, swNvMax, swNvLowLat, swNvBg, swWindowedOpt;
         private Toggle swNvRebar, swNvAnsel, swNvBatt;
-        private Toggle swAmdAlag, swAmdEsync, swAmdRis;
-        private TierPicker frlPicker, dlssPicker, amdChillPicker;
-        private PillButton btnAmdCache;
+        private TierPicker frlPicker, dlssPicker;
 
         private void BuildGraphicsPage()
         {
@@ -32,11 +30,6 @@ namespace PaviseApp
             swGpu = MakeSwitch(gameMode.GpuHighPerf, null);
             swGpu.CheckedChanged += (s, e) => gameMode.GpuHighPerf = swGpu.Checked;
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.gpu"), Lang.T("set.gpu.n"), swGpu, out cardH);
-            sy += cardH + 8;
-
-            swFso = MakeSwitch(gameMode.DisableFso, null);
-            swFso.CheckedChanged += (s, e) => gameMode.DisableFso = swFso.Checked;
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.fso"), Lang.T("set.fso.n"), swFso, out cardH);
             sy += cardH + 8;
 
             bool nvOk = NvApi.Available;
@@ -125,72 +118,6 @@ namespace PaviseApp
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.winopt"), Lang.T("set.winopt.n"), swWindowedOpt, out cardH);
             sy += cardH + 8;
 
-            sy += 10;
-            Section(scroll, Lang.T("sec.amd"), 6, sy); sy += 24;
-
-            bool amdOk = AdlxTweaks.Available;
-            string amdNone = Lang.T("set.amd.none");
-
-            swAmdAlag = MakeSwitch(gameMode.AmdAntiLag, null);
-            swAmdAlag.CheckedChanged += (s, e) => gameMode.AmdAntiLag = swAmdAlag.Checked;
-            swAmdAlag.Enabled = amdOk;
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.alag"),
-                amdOk ? Lang.T("set.alag.n") : amdNone, swAmdAlag, out cardH);
-            sy += cardH + 8;
-
-            amdChillPicker = new TierPicker();
-            amdChillPicker.Size = new Size(Theme.S(270), Theme.S(28));
-            amdChillPicker.Labels = new[] { Lang.T("frl.off"), "60", "120", "240", Lang.T("frl.screen") };
-            amdChillPicker.Index = FrlIndexOf(gameMode.AmdChillMode);
-            amdChillPicker.IndexChanged = delegate(int i) { gameMode.AmdChillMode = FrlModeOf(i); };
-            amdChillPicker.Enabled = amdOk;
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.achill"),
-                amdOk ? Lang.T("set.achill.n") : amdNone, amdChillPicker, out cardH);
-            sy += cardH + 8;
-
-            swAmdEsync = MakeSwitch(gameMode.AmdEnhSync, null);
-            swAmdEsync.CheckedChanged += (s, e) => gameMode.AmdEnhSync = swAmdEsync.Checked;
-            swAmdEsync.Enabled = amdOk;
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.aesync"),
-                amdOk ? Lang.T("set.aesync.n") : amdNone, swAmdEsync, out cardH);
-            sy += cardH + 8;
-
-            swAmdRis = MakeSwitch(gameMode.AmdRis, null);
-            swAmdRis.CheckedChanged += (s, e) => gameMode.AmdRis = swAmdRis.Checked;
-            swAmdRis.Enabled = amdOk;
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.aris"),
-                amdOk ? Lang.T("set.aris.n") : amdNone, swAmdRis, out cardH);
-            sy += cardH + 8;
-
-            btnAmdCache = new PillButton(Lang.T("amd.cache.btn"));
-            btnAmdCache.Size = new Size(Theme.S(150), Theme.S(32));
-            btnAmdCache.Enabled = amdOk;
-            btnAmdCache.Click += OnAmdCacheClick;
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.acache"),
-                amdOk ? Lang.T("set.acache.n") : amdNone, btnAmdCache, out cardH);
-            sy += cardH + 8;
-        }
-
-        private void OnAmdCacheClick(object sender, EventArgs e)
-        {
-            btnAmdCache.Enabled = false;
-            System.Threading.ThreadPool.QueueUserWorkItem(_ =>
-            {
-                int done;
-                bool ok = false;
-                try { ok = AdlxTweaks.ResetShaderCacheAll(out done); }
-                catch { done = 0; }
-                try
-                {
-                    BeginInvoke((MethodInvoker)(() =>
-                    {
-                        btnAmdCache.Enabled = AdlxTweaks.Available;
-                        MessageBox.Show(this, ok ? Lang.T("amd.cache.done") : Lang.T("amd.cache.fail"),
-                            "Pavise", MessageBoxButtons.OK, ok ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
-                    }));
-                }
-                catch { }
-            });
         }
 
         internal static int DlssIndexOf(string mode)
@@ -218,14 +145,13 @@ namespace PaviseApp
         private void OnWindowedOptToggle(object s, EventArgs e)
         {
             bool ok = swWindowedOpt.Checked ? WindowedOptTweak.Enable() : WindowedOptTweak.Restore();
-            if (!ok) MessageBox.Show(this, Lang.T("winopt.failed"), "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            if (!ok) PaviseDialog.Warn(this, App.DisplayName, Lang.T("winopt.failed"));
             swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByPavise || WindowedOptTweak.CurrentlyOn());
         }
 
         private void SyncGraphicsToggles()
         {
             if (swGpu != null) swGpu.SetSilently(gameMode.GpuHighPerf);
-            if (swFso != null) swFso.SetSilently(gameMode.DisableFso);
             if (swNvMax != null) swNvMax.SetSilently(gameMode.NvMaxPerf);
             if (swNvLowLat != null) swNvLowLat.SetSilently(gameMode.NvLowLatency);
             if (swNvBg != null) swNvBg.SetSilently(gameMode.NvBgFrl);
@@ -234,10 +160,6 @@ namespace PaviseApp
             if (swNvRebar != null) swNvRebar.SetSilently(gameMode.NvRebar);
             if (swNvAnsel != null) swNvAnsel.SetSilently(gameMode.NvAnselOff);
             if (swNvBatt != null) swNvBatt.SetSilently(gameMode.NvBattFull);
-            if (swAmdAlag != null) swAmdAlag.SetSilently(gameMode.AmdAntiLag);
-            if (amdChillPicker != null) amdChillPicker.Index = FrlIndexOf(gameMode.AmdChillMode);
-            if (swAmdEsync != null) swAmdEsync.SetSilently(gameMode.AmdEnhSync);
-            if (swAmdRis != null) swAmdRis.SetSilently(gameMode.AmdRis);
             if (swWindowedOpt != null)
                 swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByPavise || WindowedOptTweak.CurrentlyOn());
         }

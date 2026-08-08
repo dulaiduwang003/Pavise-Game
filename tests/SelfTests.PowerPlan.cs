@@ -34,6 +34,26 @@ namespace PaviseApp
             Eq(false, PowerPlan.SelfTestArenaDiffersFromCalm("处理器最大频率"));
         }
 
+        private static void TestPowerPlanBrightnessSync()
+        {
+            uint userBrightness;
+            if (!PowerPlan.SelfTestReadBrightnessAc(PowerPlan.BalancedGuid, out userBrightness))
+                Skip("本机电源计划没有亮度设置");
+            Guid probe;
+            if (!PowerPlan.SelfTestDuplicate(out probe)) Skip("本机无法复制电源计划");
+            try
+            {
+                uint wrong = (userBrightness + 37) % 100;
+                if (!PowerPlan.SelfTestWriteBrightnessAc(probe, wrong))
+                    throw new Exception("写入干扰亮度失败");
+                PowerPlan.SyncDisplayFeel(PowerPlan.BalancedGuid, probe);
+                uint after;
+                Eq(true, PowerPlan.SelfTestReadBrightnessAc(probe, out after));
+                Eq(userBrightness, after);
+            }
+            finally { PowerPlan.SelfTestDelete(probe); }
+        }
+
         private static void TestPowerPlanWritesArenaValues()
         {
             Guid probe;

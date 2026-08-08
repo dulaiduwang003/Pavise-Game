@@ -39,8 +39,13 @@ namespace PaviseApp
         [DllImport("powrprof.dll")] private static extern uint PowerWriteACValueIndex(IntPtr root, ref Guid scheme, ref Guid sub, ref Guid setting, uint value);
         [DllImport("powrprof.dll")] private static extern uint PowerWriteDCValueIndex(IntPtr root, ref Guid scheme, ref Guid sub, ref Guid setting, uint value);
         [DllImport("powrprof.dll")] private static extern uint PowerReadACValueIndex(IntPtr root, ref Guid scheme, ref Guid sub, ref Guid setting, out uint value);
+        [DllImport("powrprof.dll")] private static extern uint PowerReadDCValueIndex(IntPtr root, ref Guid scheme, ref Guid sub, ref Guid setting, out uint value);
 
         private static readonly Guid SubNone      = new Guid("fea3413e-7e05-4911-9a71-700331f1c294");
+        private static readonly Guid SubVideo     = new Guid("7516b95f-f776-4464-8c53-06167f40cc99");
+        private static readonly Guid VideoBrightness    = new Guid("aded5e82-b909-4619-9949-f5d71dac0bcb");
+        private static readonly Guid VideoDimBrightness = new Guid("f1fbfde2-a960-4165-9f88-50667911ce96");
+        private static readonly Guid VideoAdaptive      = new Guid("fbd9aa66-9553-4097-ba44-ed6e9d65eab8");
         private static readonly Guid SubProcessor = new Guid("54533251-82be-4824-96c1-47b60b740d00");
         private static readonly Guid SubPcie      = new Guid("501a4d13-42af-4429-9fd1-a8218c268e20");
         private static readonly Guid SubUsb       = new Guid("2a737441-1930-4402-8d77-b2bebba308a3");
@@ -408,6 +413,20 @@ namespace PaviseApp
             return target;
         }
 
+        internal static void SyncDisplayFeel(Guid src, Guid dst)
+        {
+            Guid[] settings = { VideoBrightness, VideoDimBrightness, VideoAdaptive };
+            foreach (Guid setting in settings)
+            {
+                Guid s = src, d = dst, sub = SubVideo, st = setting;
+                uint value;
+                if (PowerReadACValueIndex(IntPtr.Zero, ref s, ref sub, ref st, out value) == 0)
+                    PowerWriteACValueIndex(IntPtr.Zero, ref d, ref sub, ref st, value);
+                if (PowerReadDCValueIndex(IntPtr.Zero, ref s, ref sub, ref st, out value) == 0)
+                    PowerWriteDCValueIndex(IntPtr.Zero, ref d, ref sub, ref st, value);
+            }
+        }
+
         private static bool Duplicate(Guid src, out Guid created)
         {
             created = Guid.Empty;
@@ -445,6 +464,7 @@ namespace PaviseApp
             if (cur == null) return false;
             if (cur.Value == tgt) { active = true; return true; }
             saved = cur.Value;
+            if (targetOwned) SyncDisplayFeel(cur.Value, tgt);
             Settings.SaveStr("PrevPowerPlan", saved.ToString());
             if (Settings.LoadStr("PrevPowerPlan", "") != saved.ToString())
             {
@@ -547,6 +567,20 @@ namespace PaviseApp
 
 #if PAVISE_SELFTEST
         internal static bool SelfTestDuplicate(out Guid created) { return Duplicate(HighPerf, out created); }
+
+        internal static Guid BalancedGuid { get { return Balanced; } }
+
+        internal static bool SelfTestReadBrightnessAc(Guid scheme, out uint value)
+        {
+            Guid s = scheme, sub = SubVideo, st = VideoBrightness;
+            return PowerReadACValueIndex(IntPtr.Zero, ref s, ref sub, ref st, out value) == 0;
+        }
+
+        internal static bool SelfTestWriteBrightnessAc(Guid scheme, uint value)
+        {
+            Guid s = scheme, sub = SubVideo, st = VideoBrightness;
+            return PowerWriteACValueIndex(IntPtr.Zero, ref s, ref sub, ref st, value) == 0;
+        }
 
         internal static void SelfTestPurge(Guid keep) { PurgeStaleClones(keep); }
 

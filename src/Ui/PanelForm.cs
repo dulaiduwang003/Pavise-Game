@@ -72,6 +72,7 @@ namespace PaviseApp
         private bool fitting;
 
         private const string AutoHideKey = "AutoHideOnGame";
+        private const bool AutoHideDefault = true;
         private const int AutoHideDelayMs = 10000;
         private const int IntroRise = 18;
 
@@ -217,7 +218,7 @@ namespace PaviseApp
             root.Controls.Add(nav);
 
             modeFlyout = new ModePickerPanel();
-            modeFlyout.SetBounds(Theme.S(WinW - 420), Theme.S(56), Theme.S(396), Theme.S(282));
+            modeFlyout.SetBounds(Theme.S(WinW - 420), Theme.S(56), Theme.S(396), Theme.S(356));
             modeFlyout.Visible = false;
             modeFlyout.ModeChosen = ChooseGlobalMode;
             root.Controls.Add(modeFlyout);
@@ -310,6 +311,12 @@ namespace PaviseApp
                 if (hook == null || hook.OnActiveChanged == null) continue;
                 hook.OnActiveChanged(UiActive && hook.Panel == curPage);
             }
+        }
+
+        internal void ShowPageForShot(PageId id)
+        {
+            nav.Select((int)id);
+            if (curPage != null) curPage.Left = Theme.S(RailW);
         }
 
         private void ShowPage(int index)
@@ -482,6 +489,27 @@ namespace PaviseApp
         {
             lastActive = gameActive;
             armed = gameActive;
+        }
+
+        protected override void OnActivated(EventArgs e)
+        {
+            base.OnActivated(e);
+            SyncUiForeground(true);
+        }
+
+        protected override void OnDeactivate(EventArgs e)
+        {
+            base.OnDeactivate(e);
+            SyncUiForeground(false);
+        }
+
+        private void SyncUiForeground(bool foreground)
+        {
+            UiClock.Background = !foreground;
+            if (paviseCore != null) paviseCore.NotifyForegroundChanged();
+            if (!foreground || !UiActive) return;
+            UiClock.Wake();
+            UiClock.WakeSlow();
         }
 
         private void SyncUiActivity()
@@ -678,7 +706,7 @@ namespace PaviseApp
         private void UpdateAutoHide(bool gameActive)
         {
             AutoHideAction action = NextAutoHide(gameActive, ref lastGameActive, ref autoHideArmed,
-                Settings.Load(AutoHideKey, false), UiActive);
+                Settings.Load(AutoHideKey, AutoHideDefault), UiActive);
             if (action == AutoHideAction.Cancel) { CancelAutoHide(); return; }
             if (action != AutoHideAction.Schedule) return;
             CancelAutoHide();
@@ -723,7 +751,7 @@ namespace PaviseApp
         {
             Settings.Save(AutoHideKey, swAutoHide.Checked);
             if (!swAutoHide.Checked) CancelAutoHide();
-            swAutoHide.SetSilently(Settings.Load(AutoHideKey, false));
+            swAutoHide.SetSilently(Settings.Load(AutoHideKey, AutoHideDefault));
         }
 
         private void OnEscHide(object s, KeyEventArgs e)
@@ -790,7 +818,7 @@ namespace PaviseApp
             if (gameMode == null || tamer == null) return;
             if (swGame != null) swGame.SetSilently(gameMode.Enabled);
             if (swAcMaster != null) swAcMaster.SetSilently(!tamer.Paused);
-            if (swAutoHide != null) swAutoHide.SetSilently(Settings.Load(AutoHideKey, false));
+            if (swAutoHide != null) swAutoHide.SetSilently(Settings.Load(AutoHideKey, AutoHideDefault));
             if (swPolicyBackground != null) swPolicyBackground.SetSilently(gameMode.SuppressBackground);
             for (int i = 0; i < policySync.Count; i++) policySync[i]();
             SyncGraphicsToggles();
@@ -815,6 +843,7 @@ namespace PaviseApp
             OnUiTick(null, EventArgs.Empty);
             if (showAntiCheat) { nav.Select((int)PageId.AntiCheat); nav.SnapToSelection(); if (curPage != null) curPage.Left = pageBaseLeft; }
             PerformancePreset? preview = previewMode == "competitive" ? PerformancePreset.Competitive
+                : previewMode == "extreme" ? PerformancePreset.Extreme
                 : previewMode == "custom" ? PerformancePreset.Custom
                 : previewMode == "standard" ? PerformancePreset.Standard : (PerformancePreset?)null;
             if (preview.HasValue)

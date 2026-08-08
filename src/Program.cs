@@ -20,7 +20,7 @@ namespace PaviseApp
     internal static class App
     {
         public const string DisplayName = "PAVISE";
-        public const string Version = "1.6.7";
+        public const string Version = "1.7.0.1";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string WeChat = "Ssssssstyle";
@@ -53,7 +53,8 @@ namespace PaviseApp
             if (args.Length >= 2 && args[0] == "--geniconpng")
             {
                 PerformancePreset mode = args.Length >= 3 && args[2] == "competitive" ? PerformancePreset.Competitive
-                    : (args.Length >= 3 && args[2] == "custom" ? PerformancePreset.Custom : PerformancePreset.Standard);
+                    : (args.Length >= 3 && args[2] == "extreme" ? PerformancePreset.Extreme
+                    : (args.Length >= 3 && args[2] == "custom" ? PerformancePreset.Custom : PerformancePreset.Standard));
                 try { using (Bitmap bitmap = IconArt.Render(256, mode, true)) bitmap.Save(args[1], System.Drawing.Imaging.ImageFormat.Png); }
                 catch { Environment.ExitCode = 1; }
                 return;
@@ -105,6 +106,7 @@ namespace PaviseApp
                 using (var dlg = new ContactDialog())
                 {
                     dlg.StartPosition = FormStartPosition.Manual;
+                    dlg.ShowInTaskbar = false;
                     dlg.Location = new Point(-20000, -20000);
                     dlg.Show();
                     Application.DoEvents();
@@ -217,14 +219,13 @@ namespace PaviseApp
             if (healedSuppression > 0) Logger.Log("检测到上次未还原的分级后台控制，已恢复 " + healedSuppression + " 个进程");
             PowerPlan.HealFromCrash();
             try { UpdatePause.HealFromCrash(); } catch { }
-            try { FgBoost.PurgeLegacy(); } catch { }
+            try { UploadYield.HealFromCrash(); } catch { }
             GameDvr.HealFromCrash();
-            try { Mmcss.PurgeLegacy(); } catch { }
+            try { VersionMigrations.PurgeRetired(); } catch { }
             Notif.HealFromCrash();
             VisualFx.HealFromCrash();
             DisplayGuard.HealFromCrash();
             try { NvGlobalTweaks.HealFromCrash(); } catch { }
-            try { AdlxTweaks.HealFromCrash(); } catch { }
             try { PresenceQos.HealFromCrash(); } catch { }
             try { PowerOverlay.HealFromCrash(); } catch { }
             RenderLane.HealFromCrash();
@@ -312,7 +313,7 @@ namespace PaviseApp
             bool pendingPanel = Settings.Load(PendingPanelKey, false);
             if (pendingPanel) Settings.Save(PendingPanelKey, false);
             bool showingPanel = !autoStarted || pendingPanel;
-            if (showingPanel && ContactDialog.ShouldShow())
+            if (showingPanel)
                 try { using (var contact = new ContactDialog()) contact.ShowDialog(); }
                 catch { }
             if (showingPanel) panel.ShowPanel();
@@ -368,14 +369,9 @@ namespace PaviseApp
                 try { PowerPlan.Restore(); } catch { }
                 try { GameDvr.Restore(); } catch { }
                 try { Notif.Restore(); } catch { }
-                try { Mmcss.Restore(); } catch { }
-                try { FgBoost.Restore(); } catch { }
+                try { VersionMigrations.RestoreAll(); } catch { }
                 try { VisualFx.Restore(); } catch { }
                 try { NvGlobalTweaks.Restore(); } catch { }
-                try { AdlxTweaks.RestoreAntiLag(); } catch { }
-                try { AdlxTweaks.RestoreChill(); } catch { }
-                try { AdlxTweaks.RestoreEnhancedSync(); } catch { }
-                try { AdlxTweaks.RestoreRis(); } catch { }
                 try { PresenceQos.Restore(); } catch { }
                 try { PowerOverlay.Restore(); } catch { }
             };

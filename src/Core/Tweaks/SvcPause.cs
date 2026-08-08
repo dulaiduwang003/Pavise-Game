@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 暂停并恢复索引和预取服务
 
 using System;
@@ -92,6 +92,8 @@ namespace PaviseApp
                 return Settings.LoadStr(Flag, "").Length == 0;
             }
         }
+
+        public static bool HasResidue() { return Settings.LoadStr(Flag, "").Length > 0; }
 
         public static void HealFromCrash() { if (Settings.LoadStr(Flag, "").Length > 0) Restore(); }
     }

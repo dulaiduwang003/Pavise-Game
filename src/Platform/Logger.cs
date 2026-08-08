@@ -10,8 +10,12 @@ namespace PaviseApp
 {
     internal static class Logger
     {
+        private const long RotateBytes = 512 * 1024;
+
         private static readonly object lk = new object();
         public static string LogPath;
+        private static long knownLength = -1;
+        private static string knownPath;
 
         public static void Log(string msg)
         {
@@ -19,21 +23,34 @@ namespace PaviseApp
             {
                 lock (lk)
                 {
-                    var fi = new FileInfo(LogPath);
-                    if (fi.Exists && fi.Length > 512 * 1024)
+                    string line = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
+                        + "  " + msg + Environment.NewLine;
+                    if (knownLength < 0 || !string.Equals(knownPath, LogPath, StringComparison.OrdinalIgnoreCase))
                     {
-                        string old = LogPath + ".old";
-                        try
-                        {
-                            if (File.Exists(old)) File.Delete(old);
-                            fi.MoveTo(old);
-                        }
-                        catch { try { fi.Delete(); } catch { } }
+                        var probe = new FileInfo(LogPath);
+                        knownLength = probe.Exists ? probe.Length : 0;
+                        knownPath = LogPath;
                     }
-                    File.AppendAllText(LogPath, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  " + msg + Environment.NewLine);
+                    if (knownLength > RotateBytes)
+                    {
+                        var fi = new FileInfo(LogPath);
+                        if (fi.Exists && fi.Length > RotateBytes)
+                        {
+                            string old = LogPath + ".old";
+                            try
+                            {
+                                if (File.Exists(old)) File.Delete(old);
+                                fi.MoveTo(old);
+                            }
+                            catch { try { fi.Delete(); } catch { } }
+                        }
+                        knownLength = 0;
+                    }
+                    File.AppendAllText(LogPath, line);
+                    knownLength += Encoding.UTF8.GetByteCount(line);
                 }
             }
-            catch { }
+            catch { knownLength = -1; }
         }
 
         public static void LogFailure(string context, Exception error)
@@ -45,7 +62,8 @@ namespace PaviseApp
 
         public static void Clear()
         {
-            try { lock (lk) File.WriteAllText(LogPath, ""); } catch { }
+            try { lock (lk) { File.WriteAllText(LogPath, ""); knownLength = 0; knownPath = LogPath; } }
+            catch { lock (lk) knownLength = -1; }
         }
 
         public static string Tail(int maxLines)

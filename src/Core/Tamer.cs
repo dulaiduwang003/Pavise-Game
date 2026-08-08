@@ -374,28 +374,19 @@ namespace PaviseApp
             var acquisitions = new List<AcquireRequest>();
             if (active.Count > 0)
             {
-                Process[] all;
-                try { all = Process.GetProcesses(); }
-                catch
-                {
-
-                    return false;
-                }
-                foreach (Process p in all)
+                ProcessSnapshot all;
+                try { all = ProcessSnapshotSource.Capture(); }
+                catch { all = null; }
+                if (all == null) return false;
+                foreach (ProcEntry p in all.Entries)
                 {
                     int pid = -1;
                     try
                     {
-                        pid = p.Id;
-                        string grp, nm = p.ProcessName;
+                        pid = p.Pid;
+                        string grp, nm = p.Name;
                         if (pid == selfPid) continue;
-                        int session;
-                        try { session = p.SessionId; }
-                        catch
-                        {
-                            if (tracked.Contains(pid)) seen.Add(pid);
-                            continue;
-                        }
+                        int session = p.Session;
 
                         if (!active.TryGetValue(nm, out grp)) continue;
                         if (selfSession < 0 || session != selfSession && session != 0) continue;
@@ -412,7 +403,6 @@ namespace PaviseApp
 
                         if (pid > 0 && tracked.Contains(pid)) seen.Add(pid);
                     }
-                    finally { p.Dispose(); }
                 }
             }
 

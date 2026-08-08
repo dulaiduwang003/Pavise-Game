@@ -332,6 +332,8 @@ namespace PaviseApp
             finally { AdlxApi.ReleaseAll(gpus); }
         }
 
+        public static bool HasResidue() { return Settings.LoadStr(SnapKey, "").Length > 0; }
+
         public static void HealFromCrash()
         {
             if (Settings.LoadStr(SnapKey, "").Length == 0) return;

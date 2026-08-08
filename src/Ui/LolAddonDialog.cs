@@ -210,9 +210,7 @@ namespace PaviseApp
         private void Execute()
         {
             if (string.IsNullOrEmpty(resolvedRoot)) return;
-            if (MessageBox.Show(this, Lang.F("addon.confirm", resolvedRoot), "Pavise",
-                    MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
-                    MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+            if (!PaviseDialog.Confirm(this, App.DisplayName, Lang.F("addon.confirm", resolvedRoot), DlgKind.Warn)) return;
             if (Interlocked.Exchange(ref busy, 1) == 1) return;
             btnDelete.Enabled = false;
             status.Text = Lang.T("addon.hint.deleting");

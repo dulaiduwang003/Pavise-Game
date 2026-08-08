@@ -65,6 +65,8 @@ namespace PaviseApp
 
         public static Color ModeColor(PerformancePreset mode)
         {
+            if (mode == PerformancePreset.Extreme)
+                return light ? Color.FromArgb(122, 40, 210) : Color.FromArgb(178, 102, 255);
             if (mode == PerformancePreset.Competitive)
                 return light ? Color.FromArgb(222, 36, 58) : Color.FromArgb(255, 61, 82);
             if (mode == PerformancePreset.Custom)
@@ -74,6 +76,8 @@ namespace PaviseApp
 
         public static Color ModeColor2(PerformancePreset mode)
         {
+            if (mode == PerformancePreset.Extreme)
+                return light ? Color.FromArgb(84, 22, 152) : Color.FromArgb(122, 56, 208);
             if (mode == PerformancePreset.Competitive)
                 return light ? Color.FromArgb(152, 14, 36) : Color.FromArgb(178, 22, 48);
             if (mode == PerformancePreset.Custom)

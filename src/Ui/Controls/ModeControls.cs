@@ -59,7 +59,8 @@ namespace PaviseApp
 
         internal static string ModeName(PerformancePreset value)
         {
-            return value == PerformancePreset.Competitive ? Lang.T("preset.competitive")
+            return value == PerformancePreset.Extreme ? Lang.T("preset.extreme")
+                : value == PerformancePreset.Competitive ? Lang.T("preset.competitive")
                 : value == PerformancePreset.Custom ? Lang.T("preset.custom") : Lang.T("preset.standard");
         }
     }
@@ -108,6 +109,7 @@ namespace PaviseApp
 
         private string DetailKey(PerformancePreset value)
         {
+            if (value == PerformancePreset.Extreme) return Lang.T("mode.pick.extreme");
             if (value == PerformancePreset.Competitive) return Lang.T("mode.pick.competitive");
             if (value == PerformancePreset.Custom) return Lang.T("mode.pick.custom");
             return Lang.T("mode.pick.standard");
@@ -142,11 +144,12 @@ namespace PaviseApp
             choices = new[] {
                 new ModeChoice(PerformancePreset.Standard),
                 new ModeChoice(PerformancePreset.Competitive),
+                new ModeChoice(PerformancePreset.Extreme),
                 new ModeChoice(PerformancePreset.Custom)
             };
             for (int i = 0; i < choices.Length; i++)
             {
-                choices[i].SetBounds(Theme.S(14), Theme.S(66 + i * 66), Theme.S(368), Theme.S(58));
+                choices[i].SetBounds(Theme.S(14), Theme.S(66 + i * 70), Theme.S(368), Theme.S(62));
                 choices[i].Chosen = Choose;
                 Controls.Add(choices[i]);
             }

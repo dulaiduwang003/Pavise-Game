@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 构建系统环境页 集中放置需要重启且会留在机器上的内核与驱动改动
 
 using System;
@@ -10,11 +10,10 @@ namespace PaviseApp
 {
     internal partial class PanelForm
     {
-        private Toggle swHags, swVbs, swMpo, swIrqAffinity, swNetAffinity, swUsbAffinity, swGmGuard, swNagle;
-        private Toggle swNetThrottle, swMsi, swDevPower;
-        private SettingCard cardVbs, cardNetThrottle, cardMsi;
+        private Toggle swHags, swVbs, swMpo, swIrqAffinity, swUsbAffinity, swGmGuard;
+        private Toggle swNetThrottle, swDevPower, swQuantum;
+        private SettingCard cardVbs, cardNetThrottle, cardQuantum;
         private int envBusy;
-        private static readonly object netQosSync = new object();
 
         private void BuildEnvironmentPage()
         {
@@ -24,7 +23,7 @@ namespace PaviseApp
             warn.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(46));
             warn.BackColor = Theme.Bg; warn.Fill = Theme.Card; warn.Border = Theme.Stroke;
             warn.Radius = Theme.S(12); warn.AccentEdge = true;
-            CardLabel(warn, Lang.T("sec.env.kernel"), 18, 14, ContentW - 36, 20, 8.2f, true, Theme.Accent);
+            CardLabel(warn, Lang.T("sec.env.kernel"), 18, 14, ContentW - 36, 20, 8.2f, true, Theme.Danger);
             pageEnvironment.Controls.Add(warn);
             y += 58;
 
@@ -49,12 +48,12 @@ namespace PaviseApp
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.mpo"), Lang.T("set.mpo.n"), swMpo, out cardH);
             sy += cardH + 8;
 
+            bool discreteGpu = GpuInventory.HasDiscrete;
             swIrqAffinity = MakeSwitch(InterruptAffinityTweak.EnabledByPavise, OnIrqAffinityToggle);
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.irqaffinity"), Lang.T("set.irqaffinity.n"), swIrqAffinity, out cardH);
-            sy += cardH + 8;
-
-            swNetAffinity = MakeSwitch(NetworkAffinityTweak.EnabledByPavise, OnNetAffinityToggle);
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.netaffinity"), Lang.T("set.netaffinity.n"), swNetAffinity, out cardH);
+            swIrqAffinity.Enabled = discreteGpu || InterruptAffinityTweak.EnabledByPavise;
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.irqaffinity"),
+                discreteGpu ? Lang.T("set.irqaffinity.n") : Lang.T("irqaffinity.igpuonly"),
+                swIrqAffinity, out cardH);
             sy += cardH + 8;
 
             swUsbAffinity = MakeSwitch(UsbInterruptAffinityTweak.EnabledByPavise, OnUsbAffinityToggle);
@@ -63,10 +62,6 @@ namespace PaviseApp
 
             swGmGuard = MakeSwitch(GameModeGuard.EnabledByPavise, OnGameModeGuardToggle);
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.gmguard"), Lang.T("set.gmguard.n"), swGmGuard, out cardH);
-            sy += cardH + 8;
-
-            swNagle = MakeSwitch(NagleTweak.EnabledByPavise, OnNagleToggle);
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nagle"), Lang.T("set.nagle.n"), swNagle, out cardH);
             sy += cardH + 8;
 
             swNetThrottle = MakeSwitch(NetTweak.RepairedByPavise, OnNetThrottleToggle);
@@ -79,12 +74,21 @@ namespace PaviseApp
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.devpower"), Lang.T("set.devpower.n"), swDevPower, out cardH);
             sy += cardH + 8;
 
-            bool msiIdle = MsiModeTweak.Disabled().Count == 0 && !MsiModeTweak.EnabledByPavise;
-            swMsi = MakeSwitch(MsiModeTweak.EnabledByPavise, OnMsiToggle);
-            swMsi.Enabled = !msiIdle;
-            cardMsi = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.msi"),
-                msiIdle ? Lang.T("msi.none") : Lang.T("set.msi.n"), swMsi, out cardH);
+            swQuantum = MakeSwitch(QuantumTweak.RepairedByPavise, OnQuantumToggle);
+            swQuantum.Enabled = QuantumTweak.NeedsRepair() || QuantumTweak.RepairedByPavise;
+            cardQuantum = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76,
+                Lang.T("set.quantum"), Lang.T("set.quantum.n") + "\r\n" + QuantumTweak.Describe(), swQuantum, out cardH);
             sy += cardH + 8;
+
+        }
+
+        private void OnQuantumToggle(object s, EventArgs e)
+        {
+            if (!RequireElevationFor(swQuantum, QuantumTweak.RepairedByPavise)) return;
+            if (swQuantum.Checked) QuantumTweak.Repair(); else QuantumTweak.Restore();
+            swQuantum.SetSilently(QuantumTweak.RepairedByPavise);
+            if (cardQuantum != null)
+                cardQuantum.Desc = Lang.T("set.quantum.n") + "\r\n" + QuantumTweak.Describe();
         }
 
         private void OnNetThrottleToggle(object s, EventArgs e)
@@ -103,33 +107,16 @@ namespace PaviseApp
             swDevPower.SetSilently(DevicePowerTweak.EnabledByPavise);
         }
 
-        private void OnMsiToggle(object s, EventArgs e)
-        {
-            if (!RequireElevationFor(swMsi, MsiModeTweak.EnabledByPavise)) return;
-            bool ok = swMsi.Checked ? MsiModeTweak.Enable() : MsiModeTweak.Restore();
-            if (ok) MessageBox.Show(this, Lang.T("irqaffinity.reboot"), "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            swMsi.SetSilently(MsiModeTweak.EnabledByPavise);
-        }
-
         private void OnGameModeGuardToggle(object s, EventArgs e)
         {
             if (swGmGuard.Checked) GameModeGuard.Enable(); else GameModeGuard.Restore();
             swGmGuard.SetSilently(GameModeGuard.EnabledByPavise);
         }
 
-        private void OnNagleToggle(object s, EventArgs e)
-        {
-            if (!RequireElevationFor(swNagle, NagleTweak.EnabledByPavise)) return;
-            bool ok = swNagle.Checked ? NagleTweak.Enable() : NagleTweak.Restore();
-            if (ok && swNagle.Checked)
-                MessageBox.Show(this, Lang.T("nagle.applied"), "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            swNagle.SetSilently(NagleTweak.EnabledByPavise);
-        }
-
         private bool RequireElevationFor(Toggle sw, bool restoredState)
         {
             if (elevated) return true;
-            MessageBox.Show(this, Lang.T("vbs.needadmin"), "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            PaviseDialog.Warn(this, App.DisplayName, Lang.T("vbs.needadmin"));
             sw.SetSilently(restoredState);
             return false;
         }
@@ -138,7 +125,7 @@ namespace PaviseApp
         {
             if (!RequireElevationFor(swHags, HagsTweak.EnabledByPavise || HagsTweak.CurrentlyOn())) return;
             bool ok = swHags.Checked ? HagsTweak.Enable() : HagsTweak.Disable();
-            if (ok) MessageBox.Show(this, Lang.T("hags.reboot"), "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            if (ok) PaviseDialog.Info(this, App.DisplayName, Lang.T("hags.reboot"));
             swHags.SetSilently(HagsTweak.EnabledByPavise || HagsTweak.CurrentlyOn());
         }
 
@@ -146,7 +133,7 @@ namespace PaviseApp
         {
             if (!RequireElevationFor(swMpo, MpoTweak.DisabledByPavise || MpoTweak.CurrentlyDisabled())) return;
             bool ok = swMpo.Checked ? MpoTweak.Disable() : MpoTweak.Restore();
-            if (ok) MessageBox.Show(this, Lang.T("mpo.reboot"), "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            if (ok) PaviseDialog.Info(this, App.DisplayName, Lang.T("mpo.reboot"));
             swMpo.SetSilently(MpoTweak.DisabledByPavise || MpoTweak.CurrentlyDisabled());
         }
 
@@ -154,7 +141,7 @@ namespace PaviseApp
         {
             if (!RequireElevationFor(swIrqAffinity, InterruptAffinityTweak.EnabledByPavise)) return;
             bool ok = swIrqAffinity.Checked ? InterruptAffinityTweak.Enable() : InterruptAffinityTweak.Disable();
-            if (ok) MessageBox.Show(this, Lang.T("irqaffinity.reboot"), "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            if (ok) PaviseDialog.Info(this, App.DisplayName, Lang.T("irqaffinity.reboot"));
             swIrqAffinity.SetSilently(InterruptAffinityTweak.EnabledByPavise);
         }
 
@@ -162,22 +149,8 @@ namespace PaviseApp
         {
             if (!RequireElevationFor(swUsbAffinity, UsbInterruptAffinityTweak.EnabledByPavise)) return;
             bool ok = swUsbAffinity.Checked ? UsbInterruptAffinityTweak.Enable() : UsbInterruptAffinityTweak.Disable();
-            if (ok) MessageBox.Show(this, Lang.T("irqaffinity.reboot"), "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            if (ok) PaviseDialog.Info(this, App.DisplayName, Lang.T("irqaffinity.reboot"));
             swUsbAffinity.SetSilently(UsbInterruptAffinityTweak.EnabledByPavise);
-        }
-
-        private void OnNetAffinityToggle(object s, EventArgs e)
-        {
-            if (!RequireElevationFor(swNetAffinity, NetworkAffinityTweak.EnabledByPavise)) return;
-            bool ok;
-            lock (netQosSync)
-            {
-                ok = swNetAffinity.Checked
-                    ? NetworkAffinityTweak.Enable(gameMode.GetProfiles())
-                    : NetworkAffinityTweak.Disable();
-            }
-            if (ok) MessageBox.Show(this, Lang.T("netaffinity.reboot"), "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            swNetAffinity.SetSilently(NetworkAffinityTweak.EnabledByPavise);
         }
 
         private void OnVbsToggle(object s, EventArgs e)
@@ -185,13 +158,13 @@ namespace PaviseApp
             if (swVbs.Checked)
             {
                 if (!RequireElevationFor(swVbs, false)) return;
-                var r = MessageBox.Show(this, Lang.T("vbs.warn"), "Pavise", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning);
-                if (r != DialogResult.OK || !VbsTweak.Disable())
+                bool agreed = PaviseDialog.Confirm(this, App.DisplayName, Lang.T("vbs.warn"), DlgKind.Warn);
+                if (!agreed || !VbsTweak.Disable())
                 {
                     swVbs.SetSilently(false); RefreshVbsState(); return;
                 }
                 RefreshVbsState();
-                MessageBox.Show(this, Lang.T("vbs.done"), "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                PaviseDialog.Info(this, App.DisplayName, Lang.T("vbs.done"));
             }
             else
             {
@@ -200,11 +173,11 @@ namespace PaviseApp
                 {
                     swVbs.SetSilently(VbsTweak.DisabledByPavise);
                     RefreshVbsState();
-                    MessageBox.Show(this, Lang.T("vbs.restorefail"), "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    PaviseDialog.Warn(this, App.DisplayName, Lang.T("vbs.restorefail"));
                     return;
                 }
                 RefreshVbsState();
-                MessageBox.Show(this, Lang.T("vbs.restored"), "Pavise", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                PaviseDialog.Info(this, App.DisplayName, Lang.T("vbs.restored"));
             }
         }
 
@@ -254,13 +227,11 @@ namespace PaviseApp
             if (swVbs != null) swVbs.SetSilently(VbsTweak.DisabledByPavise);
             if (swMpo != null) swMpo.SetSilently(MpoTweak.DisabledByPavise || MpoTweak.CurrentlyDisabled());
             if (swIrqAffinity != null) swIrqAffinity.SetSilently(InterruptAffinityTweak.EnabledByPavise);
-            if (swNetAffinity != null) swNetAffinity.SetSilently(NetworkAffinityTweak.EnabledByPavise);
             if (swUsbAffinity != null) swUsbAffinity.SetSilently(UsbInterruptAffinityTweak.EnabledByPavise);
             if (swGmGuard != null) swGmGuard.SetSilently(GameModeGuard.EnabledByPavise);
-            if (swNagle != null) swNagle.SetSilently(NagleTweak.EnabledByPavise);
             if (swNetThrottle != null) swNetThrottle.SetSilently(NetTweak.RepairedByPavise);
+            if (swQuantum != null) swQuantum.SetSilently(QuantumTweak.RepairedByPavise);
             if (swDevPower != null) swDevPower.SetSilently(DevicePowerTweak.EnabledByPavise);
-            if (swMsi != null) swMsi.SetSilently(MsiModeTweak.EnabledByPavise);
         }
     }
 }
