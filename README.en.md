@@ -47,35 +47,62 @@ In every mode, anti-cheat, the host process of a running game, Windows core serv
 
 ## Features
 
+**Processes and cores**
+
 - The game receives high priority, elevated disk IO and GPU scheduling priority and dedicated cores; background processes are demoted or migrated to other cores according to the mode
 - CPU partitioning supports hybrid architectures, X3D and multiple processor groups. No core splitting on 6 cores or fewer
+- Core allocation can be set core by core, with presets for all cores, SMT off, P-cores only and invert; changes take effect when you press Apply. Most people should leave it alone — the scheduler already puts game threads on P-cores
+- Background affinity squeeze: already-suppressed background processes are pulled from every core down to a handful of physical ones. The target is their concurrent memory access eating bandwidth, which neither priority nor efficiency mode can touch. The landing zone is computed live from the cores you gave the game, and on multi-CCD parts it avoids the game's L3 entirely. Bench-measured 33 fps to 95 fps
 - Smart frame protection: the thread determining the frame rate is identified and boosted separately. Bench-measured improvement of 77%–96% in 1% lows when the CPU is saturated
+- Fallback boost: for games whose handles are blocked by kernel anti-cheat, the system assigns high priority at process creation instead, effective from the next launch
+- Service yielding: selected service processes are steered onto background cores during a session — steered, not stopped
+
+**Graphics**
+
 - Background GPU yielding: background processes using the GPU have their GPU scheduling priority lowered as well
 - NVIDIA tuning: maximum performance power mode, DLSS4 Transformer override, per-game ReBAR, Ansel injection disabled, battery frame cap removed. Original values are snapshotted and restored on disable
-- Input latency: Filter Keys and Sticky Keys are turned off (Microsoft defines them as ignoring brief keystrokes, so enabling them introduces delay), system suspension of mouse and keyboard is blocked, and input queue sizes altered by other tools are repaired
-- Interrupt storms from 4K/8K polling mice are steered away from the game's cores
+- On dual-GPU machines, suppressed background processes using the discrete GPU are moved to the integrated one
+
+**Input and interrupts**
+
+- Filter Keys, Sticky Keys and Toggle Keys are turned off. Microsoft defines them as ignoring brief keystrokes, so leaving them on necessarily costs latency
+- System suspension of mouse and keyboard is blocked, which fixes the first input feeling vague after a short idle. It touches input devices only, not USB drives or audio interfaces
+- Input queue sizes altered by other tools are repaired, and Enhance Pointer Precision (the system mouse acceleration curve) can be turned off
+- Interrupt storms from 4K/8K polling mice are steered away from the game's cores. The cost is explained before you enable it: below 1000 Hz there is essentially nothing to gain
+- Disk controller completion interrupts are moved to idle cores
+
+**Memory and power**
+
+- Purge low-priority standby pages before a session, trim background working sets once the session is stable, and empty the standby list when it crosses a threshold. All three are off by default, each with its cost written under the switch
+- The session switches to the Ultimate Performance power plan, creating one if the machine lacks it and using yours if it has one
 - Power plan, network, Game DVR, notifications and indexing services are all restored after the game ends
-- Health check page: read-only inspection of the machine's capabilities, with each conclusion tagged by evidence level. Supports one-click verification of whether NVIDIA writes took effect, live measurement of mouse polling rate, and the GPU's current power or thermal throttling state
+
+**What you can see**
+
+- Health check page: read-only inspection of the machine's capabilities, with each conclusion tagged by evidence level. Supports one-click verification of whether NVIDIA writes took effect, live measurement of mouse polling rate, and the GPU's current power or thermal throttling state. The interrupt row uses kernel ETW to trace DPC and ISR activity and names the top source directly
 - Session report: play duration, number of suppressed processes and their CPU usage, and the share of time spent against a power or thermal limit
+- The library supports forced takeover for things that cannot be detected, such as emulators and cloud gaming: the moment the process appears, the session begins
 - Whitelist on its own page; drag items in and the scope is determined automatically
 
 A purely local tool: no service is installed, no data is uploaded, and the game process, its memory and its files are never modified. Writes are read back and verified wherever possible; a value that does not read back as expected is not counted as success.
 
 ## What it does not do
 
-Most of the circulated registry tweaks for input latency act at the scale of a fraction of a millisecond, while the main source of latency is the render queue. Pavise reports these but does not change them, including Bluetooth mice, 125 Hz polling rates and Enhance Pointer Precision.
+Most of the circulated registry tweaks for input latency act at the scale of a fraction of a millisecond, while the main source of latency is the render queue. Pavise reports these but does not change them, including Bluetooth mice and 125 Hz polling rates — the health check page points them out and leaves the decision to you.
 
-MSI mode, low-latency mode, background frame caps and masking off CPU 0/1 by position were all implemented and later removed, for reasons of no measurable effect, the risk of writing a device into an unbootable state, and misread semantics respectively — the driver's background frame cap actually applies to applications that have lost focus, so the game itself is what gets limited after you alt-tab.
+MSI mode, low-latency mode, background frame caps, fullscreen-window optimisation, game file prewarming and masking off CPU 0/1 by position were all implemented and later removed, for reasons of no measurable effect, the risk of writing a device into an unbootable state, and misread semantics respectively — the driver's background frame cap actually applies to applications that have lost focus, so the game itself is what gets limited after you alt-tab. Anything removed has the values written by older versions restored automatically on upgrade.
 
 The same applies to memory cleaning. Purging the entire standby list adds only 382 MB of available memory at the cost of discarding 18.9 GB of file cache, which the game then has to re-read from disk. The default therefore purges only the pages the system marks as least likely to be needed again, taking 13 ms.
 
 ## Screenshots
 
 <div align="center">
-<img src="docs/overview-v14.png" width="49%" alt="Overview">
-<img src="docs/library-v14.png" width="49%" alt="Library">
-<img src="docs/policy-v14.png" width="49%" alt="Policy">
-<img src="docs/anticheat-v14.png" width="49%" alt="Anti-cheat">
+<img src="docs/guide-overview.png" width="49%" alt="Overview">
+<img src="docs/guide-library.png" width="49%" alt="Library">
+<img src="docs/guide-policy.png" width="49%" alt="Policy">
+<img src="docs/guide-core.png" width="49%" alt="Core allocation">
+<img src="docs/guide-anticheat.png" width="49%" alt="Anti-cheat">
+<img src="docs/guide-audit.png" width="49%" alt="Health check">
 </div>
 
 ## Building
@@ -85,7 +112,6 @@ Uses the .NET Framework compiler included with Windows. Visual Studio is not req
 ```cmd
 build.cmd      rem produces Pavise.exe
 dev.cmd        rem kill old instance -> build -> launch
-dev.cmd test   rem run the built-in self-tests (currently 175)
 ```
 
 Source builds are unsigned, so SmartScreen will show a warning.
@@ -112,7 +138,7 @@ bdth ｜ 2074055628@qq.com ｜ WeChat: Ssssssstyle (bugs, suggestions and usage 
 
 Released under the [Pavise Licence](LICENSE): the source is open and may be freely used, modified and distributed at no charge, but **selling it is prohibited**.
 
-Taking money in any form for distributing Pavise or a modified version is not permitted. This includes selling copies, activation keys or download access; bundling it into a paid product or subscription; paywalls, paid unlocks and donation gates; preinstalling it on machines or system images sold for money; and using it to obtain traffic revenue. Voluntary donations are excluded, provided that paying or not paying has no effect on obtaining the software or support. Commercial use requires prior written authorisation by email.
+Taking money in any form for distributing Pavise or a modified version is not permitted. This includes selling copies, activation keys or download access; bundling it into a paid product or subscription; paywalls, paid unlocks and donation gates.
 
 When distributing, keep the licence and author information intact, inform recipients that the software may not be sold, and when distributing a modified version, state who modified it and what was changed.
 
