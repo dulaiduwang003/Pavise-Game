@@ -27,8 +27,6 @@ namespace PaviseApp
             flash.Speed = 0.12f; flash.Set(0f);
         }
 
-        public bool LightOn { get { return lightOn; } }
-
         public void SetSilently(bool light)
         {
             if (lightOn == light) return;
@@ -39,7 +37,7 @@ namespace PaviseApp
 
         protected override bool StepAll()
         {
-            bool a = hover.Step();
+            bool a = base.StepAll();
             bool b = slide.Step();
             bool c = flash.Step();
             return a || b || c;

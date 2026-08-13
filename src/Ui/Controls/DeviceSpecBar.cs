@@ -12,7 +12,7 @@ namespace PaviseApp
     {
         private static readonly string[] Keys = { "v16.spec.cpu", "v16.spec.gpu", "v16.spec.mem", "v16.spec.hags" };
         private static readonly string[] Icons = { "chip", "gpu", "settings", "shield" };
-        private string[] values = { "…", "…", "…", "…" };
+        private string[] values = { " ", " ", " ", " " };
 
         public DeviceSpecBar()
         {

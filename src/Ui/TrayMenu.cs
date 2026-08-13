@@ -240,13 +240,14 @@ namespace PaviseApp
             set.DropDownItems.Add(Check(Lang.T("tm.gpu"), gameMode.GpuHighPerf, (s, e) => { gameMode.GpuHighPerf = !gameMode.GpuHighPerf; Changed(); }));
 
             bool dvrForced = gameMode.ActivePreset != PerformancePreset.Custom;
-            ToolStripMenuItem dvr = Check(Lang.T("tm.dvr") + (dvrForced ? " · " + Lang.T("v14.preset.forced") : ""), EffectiveDvr(),
+            ToolStripMenuItem dvr = Check(Lang.T("tm.dvr")
+                    + (dvrForced ? " " + Lang.T(EffectiveDvr() ? "v14.preset.forced.on" : "v14.preset.forced.off") : ""),
+                EffectiveDvr(),
                 (s, e) => { gameMode.KillGameDvr = !gameMode.KillGameDvr; Changed(); });
             dvr.Enabled = !dvrForced;
             set.DropDownItems.Add(dvr);
             set.DropDownItems.Add(new ToolStripSeparator());
             set.DropDownItems.Add(Check(Lang.T("tm.notif"), gameMode.NotifQuiet, (s, e) => { gameMode.NotifQuiet = !gameMode.NotifQuiet; Changed(); }));
-            set.DropDownItems.Add(Check(Lang.T("tm.trim"), gameMode.TrimWorkingSet, (s, e) => { gameMode.TrimWorkingSet = !gameMode.TrimWorkingSet; Changed(); }));
             set.DropDownItems.Add(Check(Lang.T("tm.plan"), gameMode.PowerPlanSwitch, (s, e) => { gameMode.PowerPlanSwitch = !gameMode.PowerPlanSwitch; Changed(); }));
             set.DropDownItems.Add(new ToolStripSeparator());
             set.DropDownItems.Add(Check(Lang.T("tm.autostart"), TaskHelper.TaskExistsCached(), (s, e) => { ToggleAutostart(); Changed(); }));
@@ -279,12 +280,9 @@ namespace PaviseApp
             gameMode.GpuHighPerf = true;
             gameMode.KillGameDvr = true;
             gameMode.NotifQuiet = false;
-            gameMode.TrimWorkingSet = false;
-            gameMode.HzGuard = false;
-            gameMode.StrictCoreIsolation = false;
+            gameMode.CorePartitionEnabled = false;
+            gameMode.CoreDomainAlt = false;
             gameMode.AggressiveSuppression = false;
-            gameMode.IdleStateDisable = false;
-            gameMode.VisualFxDowngrade = false;
             gameMode.Enabled = true; Settings.Save("GameModeOn", true);
             gameMode.Preset = PerformancePreset.Standard;
             bool whitelistReset = gameMode.ResetWhitelist();
@@ -296,7 +294,7 @@ namespace PaviseApp
             if (!whitelistReset)
             {
                 PaviseDialog.Warn(null, App.DisplayName, gameMode.WhitelistLastError);
-                Logger.Log("默认配置已部分恢复，但白名单写入失败");
+                Logger.Log("默认配置已部分恢复 但白名单写入失败");
             }
             else Logger.Log("已恢复默认配置");
         }

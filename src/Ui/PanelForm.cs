@@ -45,11 +45,12 @@ namespace PaviseApp
         private NavRail nav;
         private ModeButton modeButton;
         private ThemeSwitch themeSwitch;
+        private SearchButton searchButton;
+        private SearchFlyout searchFlyout;
         private ModePickerPanel modeFlyout;
         private PerformancePreset visualMode;
         private bool visualEnabled;
         private bool modeVisualInitialized;
-        private Motion modeFlyoutMotion;
         private Label lblSub;
         private int builtLang;
         private System.Windows.Forms.Timer uiTimer;
@@ -61,6 +62,7 @@ namespace PaviseApp
         private Motion pageSlide;
         private Icon appIcon;
         public bool RealExit;
+        public Action ExitApp;
 
         private Motion introMotion;
         private bool introActive, introPending;
@@ -70,6 +72,8 @@ namespace PaviseApp
         private DBPanel root;
         private System.Windows.Forms.Timer fitTimer;
         private bool fitting;
+        private bool moveSizeLoop;
+        private bool fitDeferredByDrag;
 
         private const string AutoHideKey = "AutoHideOnGame";
         private const bool AutoHideDefault = true;
@@ -122,7 +126,7 @@ namespace PaviseApp
             StartPosition = FormStartPosition.CenterScreen;
             if (!fitting)
             {
-                Dpi.SetDesignSize(WinW, WinH);
+                if (Dpi.SetDesignSize(WinW, WinH)) Theme.DropFontCache();
                 ClientSize = new Size(Theme.S(WinW), Theme.S(WinH));
             }
             BackColor = Theme.Bg;
@@ -154,7 +158,7 @@ namespace PaviseApp
             };
 
             lblSub = new Label();
-            lblSub.Text = elevated ? Lang.T("title.admin") + " · " + Lang.T("title.idle") : Lang.T("title.noelev");
+            lblSub.Text = elevated ? Lang.T("title.admin") + " " + Lang.T("title.idle") : Lang.T("title.noelev");
             lblSub.ForeColor = elevated ? Theme.Faint : Theme.Danger;
             lblSub.BackColor = Theme.Bg;
             lblSub.Font = Theme.UI(8.25f, false);
@@ -172,6 +176,10 @@ namespace PaviseApp
             themeSwitch.SetBounds(Theme.S(PageW - 430), Theme.S(4), Theme.S(78), Theme.S(46));
             themeSwitch.Toggled = OnThemeToggled;
 
+            searchButton = new SearchButton();
+            searchButton.SetBounds(Theme.S(PageW - 484), Theme.S(4), Theme.S(46), Theme.S(46));
+            searchButton.Clicked = ToggleSearchFlyout;
+
             int tw = Theme.S(WinW - RailW);
             var btnMin = new CaptionButton(false);
             btnMin.SetBounds(tw - Theme.S(92), 0, Theme.S(44), Theme.S(TopH));
@@ -182,7 +190,7 @@ namespace PaviseApp
             btnClose.Bg = Theme.Bg;
             btnClose.Click += (s, e) => Hide();
 
-            topBar.Controls.AddRange(new Control[] { lblSub, themeSwitch, modeButton, btnMin, btnClose });
+            topBar.Controls.AddRange(new Control[] { lblSub, searchButton, themeSwitch, modeButton, btnMin, btnClose });
 
             pages = new DBPanel[(int)PageId.Count];
             pages[(int)PageId.Overview] = pageOverview = MakePage();
@@ -223,6 +231,15 @@ namespace PaviseApp
             modeFlyout.ModeChosen = ChooseGlobalMode;
             root.Controls.Add(modeFlyout);
             modeFlyout.BringToFront();
+
+            searchFlyout = new SearchFlyout();
+            searchFlyout.SetBounds(Theme.S(WinW - 420), Theme.S(56), Theme.S(396), Theme.S(432));
+            searchFlyout.Visible = false;
+            searchFlyout.Query = QuerySettingCards;
+            searchFlyout.Chosen = OnSearchHitChosen;
+            searchFlyout.Dismiss = delegate { SetSearchFlyout(false); };
+            root.Controls.Add(searchFlyout);
+            searchFlyout.BringToFront();
 
             Controls.Add(root);
             CenterRoot();
@@ -319,9 +336,43 @@ namespace PaviseApp
             if (curPage != null) curPage.Left = Theme.S(RailW);
         }
 
+        internal void ShowPolicyTabForShot(int index)
+        {
+            if (policyTabs != null) policyTabs.Index = index;
+        }
+
+        internal void SetCoreModeForShot(bool manual)
+        {
+            coreManualPicked = manual;
+            if (pickPolicyCores != null)
+                pickPolicyCores.Index = manual ? coreManualIndex : 0;
+            SyncCorePage();
+        }
+
+        internal ulong SetCoreSelectionForShot(ulong mask)
+        {
+            if (coreMatrix == null) return ulong.MaxValue;
+            gameMode.CustomCoreMask = 0;
+            SetCoreModeForShot(true);
+            corePending = mask;
+            coreMatrix.Selected = mask;
+            SyncCorePage();
+            coreMatrix.Refresh();
+            return coreMatrix.Selected;
+        }
+
+        internal void CommitCoreSelectionForShot()
+        {
+            ulong clean = CpuTopology.SanitizeCustomMask(corePending, CpuTopology.AllMask);
+            if (clean == 0) return;
+            gameMode.CustomCoreMask = clean == CpuTopology.AllMask ? 0 : clean;
+            SyncCorePage();
+        }
+
         private void ShowPage(int index)
         {
             SetModeFlyout(false);
+            SetSearchFlyout(false);
             var page = pages[index];
             foreach (var p in pages) p.Visible = (p == page);
             curPage = page;
@@ -342,9 +393,8 @@ namespace PaviseApp
             }
             if (curPage != null && pageSlide.Step())
                 curPage.Left = pageBaseLeft + (int)(pageSlide.Value * Theme.S(16));
-            if (modeFlyout != null && modeFlyout.Visible && modeFlyoutMotion.Step())
-                modeFlyout.Top = Theme.S(56) + (int)(modeFlyoutMotion.Value * Theme.S(10));
             StepIntro();
+            if (!introActive && !introPending && AllowTransparency) DropLayeredStyle();
         }
 
         private void AttachFormFrame()
@@ -377,6 +427,19 @@ namespace PaviseApp
             introActive = false;
             Top = introBaseTop;
             if (Opacity < 1.0) Opacity = 1.0;
+            DropLayeredStyle();
+        }
+
+        private void DropLayeredStyle()
+        {
+            if (!AllowTransparency) return;
+            try
+            {
+                Opacity = 1.0;
+                AllowTransparency = false;
+                Invalidate(true);
+            }
+            catch { }
         }
 
         private void BeginIntro()
@@ -388,7 +451,7 @@ namespace PaviseApp
 
         private void StartIntro()
         {
-            if (!introPending) { if (Opacity < 1.0) Opacity = 1.0; return; }
+            if (!introPending) { DropLayeredStyle(); return; }
             introPending = false;
             introBaseTop = Top;
             introMotion.Speed = 0.24f;
@@ -439,6 +502,7 @@ namespace PaviseApp
             if (fitting || IsDisposed || !IsHandleCreated) return;
             if (WindowState == FormWindowState.Minimized) return;
             if (!Dpi.FitDiffers(ClientSize.Width, ClientSize.Height)) return;
+            if (moveSizeLoop) { fitDeferredByDrag = true; return; }
             if (fitTimer == null)
             {
                 fitTimer = new System.Windows.Forms.Timer();
@@ -453,6 +517,7 @@ namespace PaviseApp
         {
             if (fitTimer != null) fitTimer.Stop();
             if (fitting || IsDisposed || !IsHandleCreated) return;
+            if (moveSizeLoop) { fitDeferredByDrag = true; return; }
             if (WindowState == FormWindowState.Minimized) return;
             int w = ClientSize.Width, h = ClientSize.Height;
             if (!Dpi.FitDiffers(w, h)) return;
@@ -462,8 +527,8 @@ namespace PaviseApp
             {
                 Dpi.Scale = target;
                 Theme.DropFontCache();
-                Logger.Log("界面按窗口尺寸重排：客户区 " + w + "x" + h
-                    + "，缩放 " + target.ToString("F2"));
+                Logger.Log("界面按窗口尺寸重排 客户区 " + w + "x" + h
+                    + " 缩放 " + target.ToString("F2"));
                 RebuildUi();
             }
             finally { fitting = false; }
@@ -473,11 +538,6 @@ namespace PaviseApp
         internal bool UiActive
         {
             get { return uiActive; }
-        }
-
-        internal bool UiTimerEnabled
-        {
-            get { return uiTimer != null && uiTimer.Enabled; }
         }
 
         internal static bool ShouldRunUi(bool visible, FormWindowState windowState)
@@ -557,7 +617,7 @@ namespace PaviseApp
             if (lblSub != null && elevated)
             {
                 string game = gameMode.ActiveGame;
-                string state = Lang.T("title.admin") + " · "
+                string state = Lang.T("title.admin") + " "
                     + (game != null ? Lang.F("title.guard", game) : Lang.T("title.idle"));
                 if (lblSub.Text != state) lblSub.Text = state;
                 lblSub.ForeColor = game != null ? Theme.Green : Theme.Faint;
@@ -573,13 +633,110 @@ namespace PaviseApp
         private void SetModeFlyout(bool visible)
         {
             if (modeFlyout == null) return;
-            if (visible) modeFlyout.Sync(gameMode.Preset);
+            if (visible)
+            {
+                modeFlyout.Sync(gameMode.Preset);
+                SetSearchFlyout(false);
+            }
+            if (!visible) Fx.Settle(modeFlyout);
             modeFlyout.Visible = visible;
             if (visible)
             {
-                modeFlyoutMotion.Speed = 0.24f; modeFlyoutMotion.Set(-1f); modeFlyoutMotion.To(0f);
-                modeFlyout.BringToFront(); UiClock.Wake();
+                modeFlyout.BringToFront();
+                Fx.DropIn(modeFlyout);
             }
+        }
+
+        private void ToggleSearchFlyout()
+        {
+            SetSearchFlyout(searchFlyout == null || !searchFlyout.Visible);
+        }
+
+        private void SetSearchFlyout(bool visible)
+        {
+            if (searchFlyout == null) return;
+            if (visible && modeFlyout != null) { Fx.Settle(modeFlyout); modeFlyout.Visible = false; }
+            if (!visible) Fx.Settle(searchFlyout);
+            searchFlyout.Visible = visible;
+            if (visible)
+            {
+                searchFlyout.BringToFront();
+                searchFlyout.Open();
+                Fx.DropIn(searchFlyout);
+            }
+        }
+
+        private List<SearchHit> QuerySettingCards(string text)
+        {
+            var titleHits = new List<SearchHit>();
+            var descHits = new List<SearchHit>();
+            string needle = text != null ? text.Trim() : "";
+            if (pages == null) return titleHits;
+            for (int i = 0; i < pages.Length; i++)
+                if (pages[i] != null) CollectCards(pages[i], i, needle, titleHits, descHits);
+            titleHits.AddRange(descHits);
+            return titleHits;
+        }
+
+        private static void CollectCards(Control root, int pageId, string needle,
+            List<SearchHit> titleHits, List<SearchHit> descHits)
+        {
+            foreach (Control c in root.Controls)
+            {
+                var card = c as SettingCard;
+                if (card != null && card.Title.Length > 0)
+                {
+                    bool inTitle = needle.Length == 0
+                        || card.Title.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0;
+                    bool inDesc = !inTitle && card.Desc.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0;
+                    if (inTitle || inDesc)
+                        (inTitle ? titleHits : descHits).Add(new SearchHit
+                        {
+                            Card = card,
+                            PageId = pageId,
+                            PageName = PageTitleOf(pageId)
+                        });
+                }
+                if (c.Controls.Count > 0) CollectCards(c, pageId, needle, titleHits, descHits);
+            }
+        }
+
+        private static string PageTitleOf(int pageId)
+        {
+            switch ((PageId)pageId)
+            {
+                case PageId.Overview: return Lang.T("nav.overview");
+                case PageId.Library: return Lang.T("nav.library");
+                case PageId.Policy: return Lang.T("nav.policy");
+                case PageId.AntiCheat: return Lang.T("v14.anticheat");
+                case PageId.Graphics: return Lang.T("nav.graphics");
+                case PageId.Environment: return Lang.T("nav.env");
+                case PageId.Audit: return Lang.T("nav.audit");
+                case PageId.Log: return Lang.T("nav.log");
+                case PageId.Settings: return Lang.T("nav.set");
+                case PageId.About: return Lang.T("nav.about");
+                default: return Lang.T("nav.white");
+            }
+        }
+
+        private void OnSearchHitChosen(SearchHit hit)
+        {
+            if (hit == null || hit.Card == null || hit.Card.IsDisposed) return;
+            SetSearchFlyout(false);
+            nav.Select(hit.PageId);
+            EnsureTabFor(hit.Card);
+            Control ancestor = hit.Card.Parent;
+            while (ancestor != null)
+            {
+                var scrollable = ancestor as ScrollableControl;
+                if (scrollable != null && scrollable.AutoScroll)
+                {
+                    scrollable.ScrollControlIntoView(hit.Card);
+                    break;
+                }
+                ancestor = ancestor.Parent;
+            }
+            hit.Card.Flash();
         }
 
         private void ChooseGlobalMode(PerformancePreset mode)
@@ -617,7 +774,7 @@ namespace PaviseApp
         {
             Settings.Save("UiLight", light);
             Theme.SetLight(light);
-            Logger.Log("界面主题切换：" + (light ? "亮色" : "暗色"));
+            Logger.Log("界面主题切换 " + (light ? "亮色" : "暗色"));
             BeginInvoke((MethodInvoker)delegate { if (!IsDisposed) RebuildUi(); });
         }
 
@@ -658,6 +815,8 @@ namespace PaviseApp
                 m.Result = IntPtr.Zero;
                 return;
             }
+            if (m.Msg == Native.WM_ENTERSIZEMOVE) BeginMoveSizeLoop();
+            else if (m.Msg == Native.WM_EXITSIZEMOVE) EndMoveSizeLoop();
             base.WndProc(ref m);
         }
 
@@ -668,10 +827,9 @@ namespace PaviseApp
             if (dpi <= 0 || !Dpi.WouldChange(dpi)) return;
             Dpi.Update(dpi);
             Theme.DropFontCache();
-            Logger.Log("界面缩放校正后重建：DPI " + dpi);
+            Logger.Log("界面缩放校正后重建 DPI " + dpi);
             RebuildUi();
         }
-
 
         private PageHook CurrentPageHook()
         {
@@ -681,9 +839,33 @@ namespace PaviseApp
             return null;
         }
 
+        private void BeginMoveSizeLoop()
+        {
+            if (moveSizeLoop) return;
+            moveSizeLoop = true;
+            if (introActive)
+            {
+                introActive = false;
+                introPending = false;
+                DropLayeredStyle();
+            }
+            if (uiTimer != null) uiTimer.Stop();
+            if (fitTimer != null) fitTimer.Stop();
+        }
+
+        private void EndMoveSizeLoop()
+        {
+            if (!moveSizeLoop) return;
+            moveSizeLoop = false;
+            if (IsDisposed || !UiActive) return;
+            if (uiTimer != null) uiTimer.Start();
+            OnUiTick(null, EventArgs.Empty);
+            if (fitDeferredByDrag) { fitDeferredByDrag = false; ScheduleFit(); }
+        }
+
         private void OnUiTick(object s, EventArgs e)
         {
-            if (!UiActive) return;
+            if (!UiActive || moveSizeLoop) return;
             UpdateAutoHide(gameMode.Enabled && gameMode.IsActive);
             RefreshLightweightUiState();
             UpdateModePresentation(true);
@@ -718,6 +900,7 @@ namespace PaviseApp
 
         private void OnAutoHideTick(object s, EventArgs e)
         {
+            if (moveSizeLoop) return;
             CancelAutoHide();
             if (IsDisposed || !UiActive) return;
             if (AnyDialogOpen()) return;
@@ -758,7 +941,8 @@ namespace PaviseApp
         {
             if (e.KeyCode == Keys.Escape)
             {
-                if (modeFlyout != null && modeFlyout.Visible) SetModeFlyout(false);
+                if (searchFlyout != null && searchFlyout.Visible) SetSearchFlyout(false);
+                else if (modeFlyout != null && modeFlyout.Visible) SetModeFlyout(false);
                 else Hide();
             }
         }
@@ -854,6 +1038,12 @@ namespace PaviseApp
                 if (paviseCore != null) paviseCore.SetState(preview.Value, true, false);
             }
             if (showModePicker && modeButton != null) modeButton.PerformClick();
+            if (previewMode == "search" && searchFlyout != null) SetSearchFlyout(true);
+            if (previewMode == "search-hit" && searchFlyout != null)
+            {
+                SetSearchFlyout(true);
+                searchFlyout.SetQuery("后台");
+            }
             if (previewMode == "audit" && pageIndex == (int)PageId.Audit)
             {
                 try { RenderAudit(SystemAudit.Collect(400)); } catch { }
@@ -869,6 +1059,13 @@ namespace PaviseApp
                     {
                         modeFlyout.DrawToBitmap(overlay, new Rectangle(0, 0, overlay.Width, overlay.Height));
                         g.DrawImageUnscaled(overlay, modeFlyout.Left, modeFlyout.Top);
+                    }
+                if (searchFlyout != null && searchFlyout.Visible)
+                    using (var overlay = new Bitmap(searchFlyout.Width, searchFlyout.Height))
+                    using (Graphics g = Graphics.FromImage(bmp))
+                    {
+                        searchFlyout.DrawToBitmap(overlay, new Rectangle(0, 0, overlay.Width, overlay.Height));
+                        g.DrawImageUnscaled(overlay, searchFlyout.Left, searchFlyout.Top);
                     }
                 bmp.Save(path, System.Drawing.Imaging.ImageFormat.Png);
             }

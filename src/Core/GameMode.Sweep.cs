@@ -72,12 +72,17 @@ namespace PaviseApp
                 || (mode == PerformancePreset.Custom && aggressiveOn);
         }
 
-        internal static SuppressionLevel ResolveBackgroundLevel(PerformancePreset mode, bool customStrict,
+        internal static bool ResolvePowerPlanEnabled(PerformancePreset mode, bool manuallyEnabled)
+        {
+            return manuallyEnabled;
+        }
+
+        internal static SuppressionLevel ResolveBackgroundLevel(PerformancePreset mode, bool customAggressive,
             SuppressionLevel adaptive, bool safePartition)
         {
             if (mode == PerformancePreset.Competitive || mode == PerformancePreset.Extreme) return SuppressionLevel.Isolated;
             if (mode == PerformancePreset.Custom)
-                return customStrict ? SuppressionLevel.Isolated : SuppressionLevel.Eco;
+                return customAggressive ? SuppressionLevel.Isolated : SuppressionLevel.Eco;
             return adaptive > SuppressionLevel.Eco ? adaptive : SuppressionLevel.Eco;
         }
 
@@ -133,12 +138,6 @@ namespace PaviseApp
                 && path.StartsWith(windowsRoot, StringComparison.OrdinalIgnoreCase);
         }
 
-        private static readonly HashSet<string> DeviceBridgeProcesses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-
-            "adb", "caudiofilteragent64", "caudiofilteragent"
-        };
-
         private static readonly string[] InputAudioKeywords =
         {
             "keyboard", "mouse", "hotkey", "keymap", "macro", "autohotkey",
@@ -170,7 +169,6 @@ namespace PaviseApp
         {
             return IsInputAudioLike(name) || FileLooksInputAudio(path);
         }
-
 
         private static readonly object descCacheSync = new object();
         private static readonly Dictionary<string, bool> descCache =
@@ -210,21 +208,6 @@ namespace PaviseApp
             return false;
         }
 
-        internal static bool FreezeForbidden(string name, string path, string windowsRoot)
-        {
-
-            if (!string.IsNullOrEmpty(name) && DeviceBridgeProcesses.Contains(name)) return true;
-
-            if (GamePlatformCatalog.IsPlatformShellName(name)) return true;
-
-            if (IsInputAudioLike(name)) return true;
-
-            if (FileLooksInputAudio(path)) return true;
-
-            return !string.IsNullOrEmpty(windowsRoot) && !string.IsNullOrEmpty(path)
-                && path.StartsWith(windowsRoot, StringComparison.OrdinalIgnoreCase);
-        }
-
         private void Sweep(ProcessSnapshot all, HashSet<int> gamePids)
         {
 
@@ -243,9 +226,6 @@ namespace PaviseApp
                 ? CollectForegroundFamily(foregroundPid, whitelist)
                 : CollectUserFacingFamily(foregroundPid, whitelist);
             bool safePartition = CpuTopology.HasSafeBackgroundPartition();
-            bool freezeEligible = EffFreeze && EffSuppress && aggressive;
-            HashSet<int> visibleWindows = freezeEligible
-                ? GameSessionDetector.VisibleWindowPids(true) : EmptyPidSet;
 
             int rendererPid = 0;
             string activeGameRoot = null;
@@ -357,16 +337,8 @@ namespace PaviseApp
                     if (mode == PerformancePreset.Standard && creation > 0)
                         adaptive = pressure.Observe(pid, nm, creation, cpu, io, DateTime.UtcNow.Ticks, mode);
                     else pressure.Forget(pid);
-                    SuppressionLevel desired = ResolveBackgroundLevel(mode, strictCoreOn, adaptive, safePartition);
-                    if (!bgSuppressOn) desired = SuppressionLevel.None;
-                    if (freezeEligible && desired >= SuppressionLevel.Isolated
-                        && creation > 0
-                        && pid != foregroundPid
-                        && !visibleWindows.Contains(pid)
-                        && !FreezeForbidden(nm, ipath, windowsPrefix)
-                        && freezeDwell.Observe(pid, nm, creation, cpu, DateTime.UtcNow.Ticks))
-                        desired = SuppressionLevel.Frozen;
-                    else if (!freezeEligible) freezeDwell.Forget(pid);
+                    SuppressionLevel desired = ResolveBackgroundLevel(mode, aggressive, adaptive, safePartition);
+                    if (!EffSuppress) desired = SuppressionLevel.None;
 
                     string tracked = core.NameOf(pid);
                     if (tracked != null)
@@ -388,7 +360,7 @@ namespace PaviseApp
                         continue;
                     }
 
-                    if (!bgSuppressOn) continue;
+                    if (!EffSuppress) continue;
 
                     pending.Add(new BackgroundRequest
                     {
@@ -434,23 +406,23 @@ namespace PaviseApp
                 {
                     done++;
                     ReportTrack(request.Pid, request.Name);
-                    if (trimWs && mode == PerformancePreset.Custom && request.Desired >= SuppressionLevel.Restrained)
-                        TrimWorkingSetOf(request.Pid);
-                    if (!first) Logger.Log("后台策略：" + request.Name + " (pid " + request.Pid + ") → " + request.Desired);
+                    if (!first) Logger.Log("后台压制 " + request.Name + "(pid " + request.Pid + ") "
+                        + SuppressionLevelText.Of(request.Desired));
                 }
                 else if (request.Result == AcquireResult.AlreadyThrottled)
                 {
                     if (!request.HadBackgroundReason) ReportTrack(request.Pid, request.Name);
                     if (!first && request.Previous != request.Desired)
-                        Logger.Log("后台策略：" + request.Name + " (pid " + request.Pid + ") " + request.Previous + " → " + request.Desired);
+                        Logger.Log("后台压制 " + request.Name + "(pid " + request.Pid + ") "
+                            + SuppressionLevelText.Of(request.Previous) + " → "
+                            + SuppressionLevelText.Of(request.Desired));
                 }
                 else if (request.Result == AcquireResult.NewlyProtected) denied++;
                 else if (request.Result == AcquireResult.ApplyFailed)
                 {
                     retrying++;
-                    Logger.Log("后台策略写入未完全生效：" + request.Name + " (pid " + request.Pid + ")"
-                        + (string.IsNullOrEmpty(request.FailureDetail) ? "" : "，失败环节 [" + request.FailureDetail + "]")
-                        + "，保留快照并将在下一轮重试");
+                    Logger.Log("后台压制 " + request.Name + "(pid " + request.Pid + ") "
+                        + ApplyFailureText.Of(request.FailureDetail) + " 下一轮重试");
                 }
             }
 
@@ -458,30 +430,26 @@ namespace PaviseApp
                 if (!live.Contains(pid)) { if (core.Release(pid, SuppressReason.Background)) ReportUntrack(pid); }
 
             pressure.Prune(live);
-            freezeDwell.Prune(live);
 
             if (first)
             {
                 if (EffSuppress)
                 {
-                    string aggressiveNote = aggressive ? "，可见窗口不再豁免（前台程序及其子进程除外），仅核心系统服务例外" : "";
-                    string strong = mode == PerformancePreset.Extreme ? "极限" : "竞技";
-                    string policy = (mode == PerformancePreset.Competitive || mode == PerformancePreset.Extreme)
-                        ? (safePartition ? strong + "强力压制（Idle + EcoQoS + 锁核" + aggressiveNote + "）"
-                            : strong + "强力压制（核心数不足，Idle + EcoQoS 降优先级，不锁核" + aggressiveNote + "）")
-                        : (mode == PerformancePreset.Custom
-                            ? (strictCoreOn
-                                ? (safePartition ? "自定义立即强力压制（Idle + EcoQoS + 锁核" + aggressiveNote + "）" : "自定义强力压制（核心数不足，Idle + EcoQoS，不锁核" + aggressiveNote + "）")
-                                : "自定义全局 Eco" + aggressiveNote)
-                            : "常规全局 Eco，持续大户再升级");
-                    Logger.Log("后台策略：" + policy
-                        + (SuppressionCore.GpuDemoteEnabled ? "，GPU 让位已启用" : "")
-                        + (freezeEligible ? "，冻结已启用（静默 " + FreezeDwellTracker.DwellSeconds
-                            + "s 且无可见窗口才冻）" : "")
-                        + "，首轮处理 " + done + " 个用户后台"
-                        + (retrying > 0 ? "（" + retrying + " 个写入未完全生效，按退避重试）" : "")
-                        + (denied > 0 ? "（" + denied + " 个句柄受保护已跳过）" : "")
-                        + (rosterSkipped > 0 ? "（" + rosterSkipped + " 个自保护进程按名单跳过）" : ""));
+                    string preset = mode == PerformancePreset.Extreme ? "极限"
+                        : mode == PerformancePreset.Competitive ? "竞技"
+                        : mode == PerformancePreset.Custom ? "自定义" : "常规";
+                    bool strong = mode == PerformancePreset.Competitive
+                        || mode == PerformancePreset.Extreme
+                        || (mode == PerformancePreset.Custom && aggressive);
+                    string policy = preset + (strong ? " 强力压制" : " 省电压制")
+                        + (strong && safePartition ? " 后台归到后台核" : "")
+                        + (aggressive ? " 只放行前台程序" : "");
+                    Logger.Log("后台压制 " + policy
+                        + (SuppressionCore.GpuDemoteEnabled ? " 显卡让位" : "")
+                        + " 首轮 " + done + " 个"
+                        + (retrying > 0 ? " " + retrying + " 个待重试" : "")
+                        + (denied > 0 ? " " + denied + " 个受保护跳过" : "")
+                        + (rosterSkipped > 0 ? " " + rosterSkipped + " 个免压名单跳过" : ""));
                 }
                 lock (sync) firstSweep = false;
             }
@@ -572,17 +540,9 @@ namespace PaviseApp
             if (core.Release(pid, SuppressReason.Background))
             {
                 ReportUntrack(pid);
-                if (!string.IsNullOrEmpty(reason)) Logger.Log(reason + "：已恢复 " + name + " (pid " + pid + ")");
+                if (!string.IsNullOrEmpty(reason)) Logger.Log(reason + " 已恢复 " + name + " pid " + pid);
             }
             pressure.Forget(pid);
-        }
-
-        private static void TrimWorkingSetOf(int pid)
-        {
-            IntPtr hq = Native.OpenProcess(Native.PROCESS_SET_QUOTA, false, pid);
-            if (hq == IntPtr.Zero) return;
-            try { Native.SetProcessWorkingSetSize(hq, (IntPtr)(-1), (IntPtr)(-1)); }
-            finally { Native.CloseHandle(hq); }
         }
 
         private static readonly Environment.SpecialFolder[] UnsafeRoots =

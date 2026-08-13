@@ -10,6 +10,7 @@ namespace PaviseApp
     internal sealed class ReleaseNotesDialog : Form
     {
         private const int DlgW = 640, DlgH = 520;
+        private bool clockWasSuspended;
 
         public ReleaseNotesDialog()
         {
@@ -63,47 +64,10 @@ namespace PaviseApp
                     bodyH += heights[i] + Theme.S(9);
                 }
 
-                var card = new RoundPanel();
+                var card = new NoteCard(rn, current, textW, bodyFont, heights);
                 card.SetBounds(Theme.S(2), sy, cardW, Theme.S(46) + bodyH + Theme.S(10));
                 card.Fill = Theme.Card; card.Border = Theme.Stroke; card.AccentEdge = current;
                 card.Radius = Theme.S(12);
-
-                var ver = new Label();
-                ver.Text = rn.Tag + (current ? "  //  " + Lang.T("notes.current") : "");
-                ver.ForeColor = current ? Theme.Accent : Theme.Fg;
-                ver.BackColor = Theme.Card; ver.Font = Theme.UI(11f, true);
-                ver.UseCompatibleTextRendering = false;
-                ver.SetBounds(Theme.S(20), Theme.S(12), cardW - Theme.S(140), Theme.S(24));
-
-                var date = new Label();
-                date.Text = rn.Date;
-                date.ForeColor = Theme.Faint; date.BackColor = Theme.Card; date.Font = Theme.UI(8f, false);
-                date.TextAlign = ContentAlignment.MiddleRight;
-                date.UseCompatibleTextRendering = false;
-                date.SetBounds(cardW - Theme.S(118), Theme.S(14), Theme.S(98), Theme.S(20));
-
-                card.Controls.Add(ver);
-                card.Controls.Add(date);
-
-                int iy = Theme.S(44);
-                for (int i = 0; i < rn.Count; i++)
-                {
-                    var dot = new Label();
-                    dot.Text = "·";
-                    dot.ForeColor = Theme.Accent; dot.BackColor = Theme.Card; dot.Font = Theme.UI(10f, true);
-                    dot.UseCompatibleTextRendering = false;
-                    dot.SetBounds(Theme.S(22), iy, Theme.S(12), Theme.S(18));
-
-                    var body = new Label();
-                    body.Text = rn.Item(i);
-                    body.ForeColor = Theme.Dim; body.BackColor = Theme.Card; body.Font = bodyFont;
-                    body.UseCompatibleTextRendering = false;
-                    body.SetBounds(Theme.S(38), iy, textW, heights[i]);
-
-                    card.Controls.Add(dot);
-                    card.Controls.Add(body);
-                    iy += heights[i] + Theme.S(9);
-                }
 
                 scroll.Controls.Add(card);
                 sy += card.Height + Theme.S(14);
@@ -133,6 +97,19 @@ namespace PaviseApp
             Native.RoundCorners(Handle);
         }
 
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            clockWasSuspended = UiClock.Borrow();
+            Fx.EnterForm(this);
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            UiClock.Return(clockWasSuspended);
+            base.OnFormClosed(e);
+        }
+
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
             if (keyData == Keys.Escape) { Close(); return true; }
@@ -145,6 +122,55 @@ namespace PaviseApp
             {
                 Native.ReleaseCapture();
                 Native.SendMessage(Handle, Native.WM_NCLBUTTONDOWN, (IntPtr)Native.HT_CAPTION, IntPtr.Zero);
+            }
+        }
+
+        private sealed class NoteCard : RoundPanel
+        {
+            private const TextFormatFlags LineFlags =
+                TextFormatFlags.NoPrefix | TextFormatFlags.VerticalCenter;
+            private const TextFormatFlags BodyFlags =
+                TextFormatFlags.NoPrefix | TextFormatFlags.WordBreak;
+
+            private readonly string verText, dateText;
+            private readonly string[] items;
+            private readonly int[] heights;
+            private readonly int textW;
+            private readonly Font verFont, dateFont, bodyFont;
+            private readonly Color verInk;
+
+            public NoteCard(ReleaseNote rn, bool current, int textWidth, Font body, int[] itemHeights)
+            {
+                verText = rn.Tag + (current ? " " + Lang.T("notes.current") : "");
+                dateText = rn.Date;
+                items = new string[rn.Count];
+                for (int i = 0; i < rn.Count; i++) items[i] = rn.Item(i);
+                heights = itemHeights;
+                textW = textWidth;
+                bodyFont = body;
+                verFont = Theme.UI(11f, true);
+                dateFont = Theme.UI(8f, false);
+                verInk = current ? Theme.Accent : Theme.Fg;
+            }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                base.OnPaint(e);
+                Graphics g = e.Graphics;
+                TextRenderer.DrawText(g, verText, verFont,
+                    new Rectangle(Theme.S(20), Theme.S(12), Width - Theme.S(140), Theme.S(24)),
+                    verInk, LineFlags);
+                TextRenderer.DrawText(g, dateText, dateFont,
+                    new Rectangle(Width - Theme.S(118), Theme.S(14), Theme.S(98), Theme.S(20)),
+                    Theme.Faint, LineFlags | TextFormatFlags.Right);
+
+                int iy = Theme.S(44);
+                for (int i = 0; i < items.Length; i++)
+                {
+                    TextRenderer.DrawText(g, items[i], bodyFont,
+                        new Rectangle(Theme.S(38), iy, textW, heights[i]), Theme.Dim, BodyFlags);
+                    iy += heights[i] + Theme.S(9);
+                }
             }
         }
 

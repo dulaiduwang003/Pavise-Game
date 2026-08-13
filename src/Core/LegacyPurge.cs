@@ -1,12 +1,6 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 v1.6.6 首次启动时清除旧版本的全部数据 回到全新安装状态
-//
-// 顺序是这个功能的全部要害：Pavise 改过的系统设置（Win32PrioritySeparation、电源节流、
-// 传输优化策略、DWM/HAGS/VBS、网卡与 USB 中断亲和、IFEO、逐游戏 GPU 偏好…）
-// 它们的原值快照统统存在 HKCU\Software\Pavise 里。
-// 先删键再还原是不可能的——快照没了，那些改动就永远留在用户机器上，卸载都救不回来。
-// 所以必须：先还原干净 → 确认全部成功 → 才允许删数据。
-// 任何一项还原失败就整体中止、不写完成标记，下次启动重试。
+// 文件用途 清除本机数据 首次启动清旧版本 升级越过数据基线 以及设置页手动清除三条路径共用
+// 铁律 必须先还原全部系统改动并确认成功再删快照 任何一项失败就整体中止
 
 using System;
 using System.Collections.Generic;
@@ -53,7 +47,7 @@ namespace PaviseApp
             "Pavise.games.txt", "Pavise.whitelist.txt", "Pavise.targets.txt",
             "Pavise.autoignore.txt", GameProfileStore.FileName,
             "Pavise.log", "Pavise.log.old", "crash.log", "Pavise.preview.log",
-            LegacyFreezeRecovery.StateFileName, SuppressionCore.StateFileName
+            "Pavise.freeze.state", SuppressionCore.StateFileName
         };
 
         private static void Step(string name, Func<bool> restore, List<string> failed)
@@ -79,6 +73,8 @@ namespace PaviseApp
             var failed = new List<string>();
 
             Step("电源计划", PowerPlan.Restore, failed);
+            Step("Pavise 建的卓越性能计划", PowerPlan.RemoveCreatedPlan, failed);
+            Step("Pavise 托管电源方案", PowerPlan.RemoveManagedPlan, failed);
             Step("Windows 更新暂停", UpdatePause.Restore, failed);
             foreach (RetiredFeature f in VersionMigrations.Entries)
                 Step(f.Name, f.Restore, failed);
@@ -91,19 +87,25 @@ namespace PaviseApp
             Step("电源滑块", PowerOverlay.Restore, failed);
             Step("后台下载暂停", DoTweak.Restore, failed);
             Step("服务暂停", SvcPause.Restore, failed);
+            Step("服务让路", SvcYield.Restore, failed);
+            Step("无线扫描抑制", WlanGuard.Restore, failed);
+            Step("平台时钟校正", PlatformClockTweak.Restore, failed);
             Step("网络优化", NetTweak.Restore, failed);
             Step("时间片校正", QuantumTweak.Restore, failed);
             Step("MPO", MpoTweak.Restore, failed);
             Step("VBS", VbsTweak.Restore, failed);
             Step("游戏模式守护", GameModeGuard.Restore, failed);
             Step("设备电源", DevicePowerTweak.Restore, failed);
-            Step("窗口化优化", WindowedOptTweak.Restore, failed);
+            Step("辅助功能拦截", AccessibilityKeysTweak.Restore, failed);
+            Step("键鼠设备省电", HidPowerTweak.Restore, failed);
+            Step("键鼠队列校正", InputMythTweak.Restore, failed);
+            Step("指针精度增强", PointerPrecisionTweak.Restore, failed);
             Step("NVIDIA 全局项", NvGlobalTweaks.Restore, failed);
             Step("后备提优 IFEO", IfeoBoost.RestoreAll, failed);
 
             StepIf("HAGS", delegate { return HagsTweak.EnabledByPavise; }, HagsTweak.Disable, failed);
             StepIf("GPU 中断亲和", delegate { return InterruptAffinityTweak.EnabledByPavise; }, InterruptAffinityTweak.Disable, failed);
-            StepIf("USB 中断避让", delegate { return UsbInterruptAffinityTweak.EnabledByPavise; }, UsbInterruptAffinityTweak.Disable, failed);
+            StepIf("USB 中断避让", delegate { return UsbInterruptAffinityTweak.HasResidue; }, UsbInterruptAffinityTweak.Disable, failed);
 
             foreach (string kind in new[]
             {
@@ -117,6 +119,7 @@ namespace PaviseApp
                 StepVoid("NVIDIA Profile:" + k, delegate { NvDrsTweaks.RestoreKind(k); }, failed);
             }
             StepVoid("逐游戏 GPU 偏好", delegate { GameExeTweaks.RestoreKind("gpu"); }, failed);
+            StepVoid("后台集显偏好", delegate { GameExeTweaks.RestoreKind("igpu"); }, failed);
             StepVoid("逐游戏全屏优化", delegate { GameExeTweaks.RestoreKind("fso"); }, failed);
 
             return failed;
@@ -126,16 +129,27 @@ namespace PaviseApp
         {
             if (Settings.Load(DoneKey, false)) return;
 
-            Logger.Log("首次运行 v1.6.6：清除旧版本数据，先还原全部系统改动");
+            Logger.Log("首次运行 v1.6.6 清除旧版本数据 先还原全部系统改动");
 
             List<string> failed = RestoreOrHook();
             if (failed.Count > 0)
             {
-                Logger.Log("清除已中止：" + failed.Count + " 项未能还原（"
-                    + string.Join("、", failed.ToArray()) + "），下次启动重试");
+                Logger.Log("清除已中止 " + failed.Count + " 项未能还原 "
+                    + string.Join(" ", failed.ToArray()) + " 下次启动重试");
                 return;
             }
 
+            int files = DeleteDataFiles(dataDir);
+            bool regCleared = DeleteRegistryTree();
+
+            Settings.Save(DoneKey, true);
+
+            Logger.Log("旧版本数据已清除 系统改动已还原 删除 " + files + " 个文件"
+                + (regCleared ? " 配置已重置" : " 配置未能完全清空"));
+        }
+
+        private static int DeleteDataFiles(string dataDir)
+        {
             int files = 0;
             foreach (string name in DataFiles)
             {
@@ -146,13 +160,32 @@ namespace PaviseApp
                 }
                 catch { }
             }
+            return files;
+        }
 
-            bool regCleared = DeleteRegistryTree();
+        public static bool WipeAll(string dataDir, bool includeSettings, string why,
+            out int files, out string unrestored)
+        {
+            files = 0;
+            unrestored = null;
+            Logger.Log(why + " 先还原 Pavise 改过的全部系统项");
 
+            List<string> failed = RestoreOrHook();
+            if (failed.Count > 0)
+            {
+                unrestored = string.Join(" ", failed.ToArray());
+                Logger.Log(why + " 已中止 " + failed.Count + " 项未能还原 " + unrestored
+                    + " 没有删除任何文件");
+                return false;
+            }
+
+            files = DeleteDataFiles(dataDir);
+            bool regCleared = includeSettings && DeleteRegistryTree();
             Settings.Save(DoneKey, true);
 
-            Logger.Log("旧版本数据已清除：系统改动已还原，删除 " + files + " 个文件"
-                + (regCleared ? "，配置已重置" : "，配置未能完全清空"));
+            Logger.Log(why + " 完成 系统改动已还原 删除 " + files + " 个文件"
+                + (includeSettings ? regCleared ? " 开关已重置" : " 开关未能完全清空" : " 开关保留"));
+            return true;
         }
     }
 }

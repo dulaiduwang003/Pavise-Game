@@ -124,7 +124,7 @@ namespace PaviseApp
                     }
                     if (!RegOf(exe).Apply(HighPriority))
                     {
-                        Logger.Log("后备提优：IFEO 写入失败（" + exe + "），本轮跳过");
+                        Logger.Log("后备提优 IFEO 写入失败 " + exe + " 本轮跳过");
                         return false;
                     }
                     bool ioOk = IoRegOf(exe).Apply(HighIoPriority);
@@ -135,11 +135,11 @@ namespace PaviseApp
                         RegOf(exe).Restore();
                         if (ioOk) IoRegOf(exe).Restore();
                         if (pgOk) PageRegOf(exe).Restore();
-                        Logger.Log("后备提优：记账无法持久化，已还原 IFEO（" + exe + "）");
+                        Logger.Log("后备提优 记账无法持久化 已还原 IFEO " + exe + " ");
                         return false;
                     }
                     string extra = "高优先级" + (ioOk ? " + 高IO" : "") + (pgOk ? " + 高页面优先级" : "");
-                    Logger.Log((preArm ? "后备提优已预置：" : "后备提优已登记：") + exe + "（" + extra + "）");
+                    Logger.Log((preArm ? "后备提优已预置 " : "后备提优已登记") + exe + " " + extra + " ");
                     return true;
                 }
                 catch { return false; }
@@ -160,9 +160,9 @@ namespace PaviseApp
                     CleanupEmpty(exe, Settings.LoadStr("IfeoMk_" + exe, "11"));
                     Settings.SaveStr("IfeoMk_" + exe, "");
                     RemoveFromList(exe);
-                    Logger.Log("后备提优已撤销：" + exe);
+                    Logger.Log("后备提优已撤销 " + exe);
                 }
-                if (!all) Logger.Log("后备提优：部分 IFEO 还原失败，快照保留待下次重试");
+                if (!all) Logger.Log("后备提优 部分 IFEO 还原失败 快照保留待下次重试");
                 return all;
             }
         }

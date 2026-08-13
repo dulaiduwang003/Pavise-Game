@@ -12,8 +12,6 @@ namespace PaviseApp
         private static readonly Guid KernelProcessProvider =
             new Guid("22FB2CD6-0E7B-422B-A0C7-2FAD1FD0E716");
         private const ulong KeywordProcess = 0x10;
-        private const ulong KeywordThread = 0x20;
-        private const ulong KeywordImage = 0x40;
         private const ushort EventIdProcessStart = 1;
 
         private long eventsSeen;
@@ -62,7 +60,7 @@ namespace PaviseApp
             int rc = Native.StartTrace(out session, sessionName, propsBuffer);
             if (rc != 0)
             {
-                LastError = "StartTrace 失败 rc=" + rc;
+                LastError = "StartTrace 失败 rc " + rc;
                 Cleanup();
                 return false;
             }
@@ -74,7 +72,7 @@ namespace PaviseApp
                 Native.EventControlCodeEnableProvider, 4, Keywords, 0, 0, ref enableParams);
             if (rc != 0)
             {
-                LastError = "EnableTraceEx2 失败 rc=" + rc;
+                LastError = "EnableTraceEx2 失败 rc " + rc;
                 Cleanup();
                 return false;
             }
@@ -91,7 +89,7 @@ namespace PaviseApp
             Marshal.FreeHGlobal(logfile.LoggerName);
             if (trace == Native.InvalidProcessTraceHandle)
             {
-                LastError = "OpenTrace 失败 win32=" + Marshal.GetLastWin32Error();
+                LastError = "OpenTrace 失败 win32 " + Marshal.GetLastWin32Error();
                 Cleanup();
                 return false;
             }

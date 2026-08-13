@@ -92,7 +92,7 @@ namespace PaviseApp
                         Kill(ref stopW);
                         DisposeTimer();
                         DrainPending();
-                        Logger.Log("进程事件订阅失败，退回轮询：" + ex.Message);
+                        Logger.Log("进程事件订阅失败 退回轮询 " + ex.Message);
                     }
                 }
             }

@@ -1,5 +1,8 @@
 
 .claude/
+tests/
+tools/
+scripts/
 *.bak
 *.exe
 *.pdb
@@ -10,6 +13,9 @@ Pavise.freeze.state
 Pavise.freeze.state.tmp.*
 Pavise.games.txt
 Pavise.log
+Pavise.*.log
+crash.*.log
+*.7z
 Pavise.profiles.dat
 Pavise.reports.log
 Pavise.selftest.*.txt

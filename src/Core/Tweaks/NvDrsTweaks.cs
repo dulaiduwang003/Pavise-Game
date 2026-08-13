@@ -67,9 +67,32 @@ namespace PaviseApp
             }
         }
 
-        public static bool DlssOverrideSupported()
+        internal static bool IsDlssCapableName(string gpuName)
+        {
+            if (string.IsNullOrEmpty(gpuName)) return false;
+            return System.Text.RegularExpressions.Regex.IsMatch(
+                gpuName, @"\bRTX\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        }
+
+        public static bool DlssGpuCapable()
+        {
+            try
+            {
+                foreach (GpuAdapter a in GpuInventory.Adapters())
+                    if (a.Vendor == GpuVendor.Nvidia && IsDlssCapableName(a.Name)) return true;
+            }
+            catch { }
+            return false;
+        }
+
+        public static bool DlssDriverSupported()
         {
             return NvApi.Available && NvApi.DriverVersion() >= NvApi.MinDriverForDlssOverride;
+        }
+
+        public static bool DlssOverrideSupported()
+        {
+            return DlssDriverSupported() && DlssGpuCapable();
         }
 
         internal static List<KeyValuePair<string, uint>> BuildDesired(NvGamePlan plan)
@@ -98,8 +121,10 @@ namespace PaviseApp
                 else if (!dlssGateLogged)
                 {
                     dlssGateLogged = true;
-                    Logger.Log("DLSS 覆写：需要 566.14 及以上驱动（本机 "
-                        + FormatDriver(NvApi.DriverVersion()) + "），该项跳过");
+                    Logger.Log(!DlssGpuCapable()
+                        ? "DLSS 覆写 本机显卡不是 RTX 卡 没有 DLSS 超分能力 该项跳过"
+                        : "DLSS 覆写 需要 566.14 及以上驱动 本机 "
+                            + FormatDriver(NvApi.DriverVersion()) + " 该项跳过");
                 }
             }
             if (plan.BattFull) desired.Add(new KeyValuePair<string, uint>(KeyBattFps, NvApi.BatteryFpsUncapped));
@@ -146,7 +171,7 @@ namespace PaviseApp
                         if (!Settings.SaveStr(SnapPrefix + exeName, SerializeSnapshot(snapshot))
                             || !AddToList(exeName))
                         {
-                            Logger.Log("NVIDIA 驱动调优：快照无法持久化，已跳过 " + exeName);
+                            Logger.Log("NVIDIA 驱动调优 快照无法持久化 已跳过 " + exeName);
                             return null;
                         }
                     }
@@ -162,8 +187,8 @@ namespace PaviseApp
                         else
                         {
                             failed.Add(item.Key);
-                            Logger.Log("NVIDIA 驱动调优：写入 " + item.Key + " 失败 (" + exeName
-                                + ", NVAPI 状态 " + status + ")");
+                            Logger.Log("NVIDIA 驱动调优 写入 " + item.Key + " 失败 " + exeName
+                                + " NVAPI 状态 " + status);
                         }
                     }
                     bool saved = !wrote || NvApi.SaveSession(session);
@@ -171,19 +196,19 @@ namespace PaviseApp
                     {
                         string done = (plan.MaxPerf && !failed.Contains(KeyPState) ? " 电源最高性能" : "")
                             + (plan.FrlFps > 0 && !failed.Contains(KeyFrl) ? " 帧上限" + plan.FrlFps : "")
-                            + (plan.LowLatency && !failed.Contains(KeyPreRender) ? " 低延迟(预渲染1)" : "")
+                            + (plan.LowLatency && !failed.Contains(KeyPreRender) ? " 低延迟 预渲染1 " : "")
                             + (plan.AnselOff && !failed.Contains(KeyAnsel) ? " Ansel关" : "")
                             + (plan.Rebar && !ContainsAny(failed, RebarKeys) ? " ReBAR强开" : "")
                             + (DesiredHasDlss(desired) && !ContainsAny(failed, DlssKeys)
-                                ? " DLSS覆写(" + plan.DlssMode + ")" : "")
+                                ? " " + DlssText(plan.DlssMode) : "")
                             + (plan.BattFull && !failed.Contains(KeyBattFps) ? " 电池满血" : "");
-                        if (done.Length > 0) Logger.Log("NVIDIA 驱动调优：" + exeName + done);
+                        if (done.Length > 0) Logger.Log("显卡驱动调优 " + exeName + done);
                     }
                     if (!saved)
                     {
                         failed.Clear();
                         foreach (var item in desired) failed.Add(item.Key);
-                        Logger.Log("NVIDIA 驱动调优：保存驱动会话失败 (" + exeName + ")");
+                        Logger.Log("NVIDIA 驱动调优 保存驱动会话失败 " + exeName);
                     }
                     return failed;
                 }
@@ -195,6 +220,14 @@ namespace PaviseApp
         {
             foreach (var item in desired) if (item.Key == KeyDlssOvr) return true;
             return false;
+        }
+
+        internal static string DlssText(string mode)
+        {
+            if (mode == "latest") return "DLSS 覆写为最新";
+            if (mode == "j") return "DLSS 覆写为预设 J";
+            if (mode == "k") return "DLSS 覆写为预设 K";
+            return "DLSS 覆写";
         }
 
         internal static bool ContainsAny(List<string> list, string[] keys)
@@ -234,9 +267,9 @@ namespace PaviseApp
                                     RemoveFromList(exeName);
                                 }
                                 else Settings.SaveStr(SnapPrefix + exeName, SerializeSnapshot(snapshot));
-                                Logger.Log("NVIDIA 驱动调优：已恢复 " + exeName + " 的 " + key);
+                                Logger.Log("NVIDIA 驱动调优 已恢复 " + exeName + " 的 " + key);
                             }
-                            else Logger.Log("NVIDIA 驱动调优：恢复 " + exeName + " 的 " + key + " 失败，快照保留");
+                            else Logger.Log("NVIDIA 驱动调优 恢复 " + exeName + " 的 " + key + " 失败 快照保留");
                         }
                     }
                     finally { NvApi.CloseSession(session); }
@@ -283,7 +316,7 @@ namespace PaviseApp
                         uint after;
                         int foundAfter = NvApi.TryGetDword(session, profile, settingId, out after);
                         var r = new ProbeResult { Key = keys[i] };
-                        if (!wrote) { r.Outcome = "写入被拒绝 (NVAPI " + status + ")"; }
+                        if (!wrote) { r.Outcome = "写入被拒绝 NVAPI " + status; }
                         else if (!saved) { r.Outcome = "写入接受但保存失败"; }
                         else if (foundAfter == 1 && after == values[i]) { r.Ok = true; r.Outcome = "生效"; }
                         else { r.Outcome = "写入报成功但回读不符"; }

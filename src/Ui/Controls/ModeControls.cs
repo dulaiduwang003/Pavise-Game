@@ -69,11 +69,27 @@ namespace PaviseApp
     {
         private readonly PerformancePreset mode;
         private bool selected;
+        private Motion pick;
         public Action<PerformancePreset> Chosen;
 
-        public ModeChoice(PerformancePreset value) { mode = value; Bg = Theme.Card; }
+        public ModeChoice(PerformancePreset value) { mode = value; Bg = Theme.Card; pick.Speed = 0.30f; }
         public PerformancePreset Mode { get { return mode; } }
-        public void SetSelected(bool value) { if (selected != value) { selected = value; Invalidate(); } }
+
+        public void SetSelected(bool value)
+        {
+            if (selected == value) return;
+            selected = value;
+            if (IsHandleCreated) { pick.To(value ? 1f : 0f); UiClock.Wake(); }
+            else pick.Set(value ? 1f : 0f);
+            Invalidate();
+        }
+
+        protected override bool StepAll()
+        {
+            bool a = base.StepAll();
+            bool b = pick.Step();
+            return a || b;
+        }
 
         protected override void OnClick(EventArgs e)
         {
@@ -85,12 +101,15 @@ namespace PaviseApp
         {
             Graphics g = e.Graphics; FillBg(g); g.SmoothingMode = SmoothingMode.AntiAlias;
             Color accent = Theme.ModeColor(mode);
+            float sel = pick.Value;
             Rectangle r = new Rectangle(0, 0, Width - 1, Height - 1);
             using (GraphicsPath p = Theme.TechPath(r, Theme.S(8)))
             {
-                Color fill = selected ? Col.Lerp(Theme.Card, accent, 0.12f) : Col.Lerp(Theme.Card, Theme.CardHover, hover.Value * 0.7f);
+                Color fill = Col.Lerp(Col.Lerp(Theme.Card, Theme.CardHover, hover.Value * 0.7f),
+                    Col.Lerp(Theme.Card, accent, 0.12f), sel);
                 using (var b = new SolidBrush(fill)) g.FillPath(b, p);
-                using (var pen = new Pen(selected ? Col.Alpha(accent, 210) : Col.Lerp(Theme.Stroke, Theme.StrokeHi, hover.Value))) g.DrawPath(pen, p);
+                using (var pen = new Pen(Col.Lerp(Col.Lerp(Theme.Stroke, Theme.StrokeHi, hover.Value),
+                    Col.Alpha(accent, 210), sel))) g.DrawPath(pen, p);
             }
             using (var b = new SolidBrush(accent)) g.FillEllipse(b, Theme.S(15), Theme.S(15), Theme.S(8), Theme.S(8));
             TextRenderer.DrawText(g, ModeButton.ModeName(mode), Theme.UI(9.75f, true),
@@ -99,12 +118,28 @@ namespace PaviseApp
             TextRenderer.DrawText(g, DetailKey(mode), Theme.UI(7.9f, false),
                 new Rectangle(Theme.S(34), Theme.S(28), Width - Theme.S(50), Height - Theme.S(32)), Theme.Dim,
                 TextFormatFlags.Left | TextFormatFlags.WordBreak | TextFormatFlags.EndEllipsis);
-            if (selected)
+            if (sel > 0.01f) DrawCheck(g, accent, sel);
+        }
+
+        private void DrawCheck(Graphics g, Color accent, float t)
+        {
+            Rectangle box = new Rectangle(Width - Theme.S(31), Theme.S(15), Theme.S(16), Theme.S(16));
+            var a = new PointF(box.X + Theme.S(2), box.Y + Theme.S(8));
+            var b = new PointF(box.X + Theme.S(6), box.Y + Theme.S(12));
+            var c = new PointF(box.X + Theme.S(14), box.Y + Theme.S(3));
+            int alpha = (int)(255 * Math.Min(1f, t * 2.5f));
+            using (var pen = new Pen(Col.Alpha(accent, alpha), Math.Max(1.4f, Theme.S(1))))
             {
-                Rectangle check = new Rectangle(Width - Theme.S(31), Theme.S(15), Theme.S(16), Theme.S(16));
-                using (var pen = new Pen(accent, Math.Max(1.4f, Theme.S(1))))
-                    g.DrawLines(pen, new[] { new Point(check.X + Theme.S(2), check.Y + Theme.S(8)), new Point(check.X + Theme.S(6), check.Y + Theme.S(12)), new Point(check.X + Theme.S(14), check.Y + Theme.S(3)) });
+                pen.StartCap = LineCap.Round; pen.EndCap = LineCap.Round; pen.LineJoin = LineJoin.Round;
+                if (t < 0.45f) g.DrawLine(pen, a, Between(a, b, t / 0.45f));
+                else g.DrawLines(pen, new[] { a, b, Between(b, c, (t - 0.45f) / 0.55f) });
             }
+        }
+
+        private static PointF Between(PointF from, PointF to, float t)
+        {
+            if (t < 0f) t = 0f; else if (t > 1f) t = 1f;
+            return new PointF(from.X + (to.X - from.X) * t, from.Y + (to.Y - from.Y) * t);
         }
 
         private string DetailKey(PerformancePreset value)

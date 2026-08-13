@@ -23,7 +23,7 @@ namespace PaviseApp
         {
             "Pavise.games.txt", GameProfileStore.FileName, "Pavise.whitelist.txt", "Pavise.targets.txt",
             "Pavise.log", "crash.log",
-            LegacyFreezeRecovery.StateFileName, SuppressionCore.StateFileName
+            "Pavise.freeze.state", SuppressionCore.StateFileName
         };
 
         public static void Init()

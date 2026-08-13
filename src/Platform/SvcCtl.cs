@@ -30,11 +30,11 @@ namespace PaviseApp
                     if (!QueryServiceStatus(svc, out st)) return false;
                     if (st.State == 1 ) return false;
                     if (!ControlService(svc, 1 , ref st)) return false;
-                    for (int i = 0; i < 10; i++)
+                    for (int i = 0; i < 25; i++)
                     {
-                        Thread.Sleep(500);
                         if (!QueryServiceStatus(svc, out st)) break;
                         if (st.State == 1 ) { confirmedStopped = true; break; }
+                        Thread.Sleep(100);
                     }
                     return true;
                 }

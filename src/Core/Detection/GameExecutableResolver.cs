@@ -42,7 +42,7 @@ namespace PaviseApp
             }
             else if (!extension.Equals(".exe", StringComparison.OrdinalIgnoreCase))
             {
-                error = "只支持 EXE、Windows 快捷方式（LNK）和 Steam 桌面快捷方式（URL）";
+                error = "只支持 EXE Windows 快捷方式 LNK 和 Steam 桌面快捷方式 URL";
                 return false;
             }
 

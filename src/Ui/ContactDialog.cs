@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 启动时的联系方式弹窗 反馈渠道与版本更新检查
+// 文件用途 关于页手动打开的联系方式弹窗 反馈渠道与版本更新检查 不再随启动自动弹出
 
 using System;
 using System.Diagnostics;
@@ -17,21 +17,15 @@ namespace PaviseApp
         private const int BodyX = RailW + 26;
         private const int BodyW = DlgW - BodyX - 30;
 
-        public const string QqGroup = "1051472054";
-        public const string QqGroup2 = "1101249532";
-        public const string QqGroup3 = "383761286";
-        public const string WeChat = "Ssssssstyle";
-        public const string Douyin = "44601770838";
-        public const string BiliUrl = "https://space.bilibili.com/3461581985811085";
-
         private Bitmap logo;
+        private bool clockWasSuspended;
 
         public ContactDialog()
         {
             Text = Lang.T("contact.title");
             FormBorderStyle = FormBorderStyle.None;
-            StartPosition = FormStartPosition.CenterScreen;
-            MaximizeBox = false; MinimizeBox = false; ShowInTaskbar = true;
+            StartPosition = FormStartPosition.CenterParent;
+            MaximizeBox = false; MinimizeBox = false; ShowInTaskbar = false;
             Icon taskbarIcon = IconArt.MakeIcon(Theme.S(24));
             Icon = taskbarIcon;
             ClientSize = new Size(Theme.S(DlgW), Theme.S(DlgH));
@@ -64,16 +58,21 @@ namespace PaviseApp
             int rightX = BodyX + half + 10;
             int y = 102;
 
-            AddRow(BodyX, y, BodyW, Lang.T("contact.wechat"), WeChat, CopyAction(WeChat), Lang.T("contact.copy"));
+            AddRow(BodyX, y, BodyW, Lang.T("contact.wechat"), App.WeChat,
+                CopyAction(App.WeChat), Lang.T("contact.copy"));
             y += 58;
-            AddRow(BodyX, y, half, Lang.T("contact.qq"), QqGroup, CopyAction(QqGroup), Lang.T("contact.copy"));
-            AddRow(rightX, y, half, Lang.T("contact.qq2"), QqGroup2, CopyAction(QqGroup2), Lang.T("contact.copy"));
+            AddRow(BodyX, y, half, Lang.T("contact.qq"), App.QqGroup,
+                CopyAction(App.QqGroup), Lang.T("contact.copy"));
+            AddRow(rightX, y, half, Lang.T("contact.qq2"), App.QqGroup2,
+                CopyAction(App.QqGroup2), Lang.T("contact.copy"));
             y += 58;
-            AddRow(BodyX, y, half, Lang.T("contact.qq3"), QqGroup3, CopyAction(QqGroup3), Lang.T("contact.copy"));
-            AddRow(rightX, y, half, Lang.T("contact.douyin"), Douyin, CopyAction(Douyin), Lang.T("contact.copy"));
+            AddRow(BodyX, y, half, Lang.T("contact.qq3"), App.QqGroup3,
+                CopyAction(App.QqGroup3), Lang.T("contact.copy"));
+            AddRow(rightX, y, half, Lang.T("contact.douyin"), App.Douyin,
+                CopyAction(App.Douyin), Lang.T("contact.copy"));
             y += 58;
-            AddRow(BodyX, y, BodyW, Lang.T("contact.bili") + " · " + Lang.T("contact.bili.note"),
-                "space.bilibili.com", OpenAction(BiliUrl), Lang.T("contact.open"));
+            AddRow(BodyX, y, BodyW, Lang.F("contact.pan", App.PanCode), Lang.T("contact.pan.value"),
+                OpenAction(App.PanUrl), Lang.T("contact.open"));
             y += 70;
 
             BuildUpdateArea(BodyX, y, BodyW);
@@ -83,10 +82,10 @@ namespace PaviseApp
             freeNote.ForeColor = Theme.Dim; freeNote.BackColor = Theme.Bg;
             freeNote.Font = Theme.UI(7.5f, false);
             freeNote.UseCompatibleTextRendering = false;
-            freeNote.SetBounds(Theme.S(BodyX + 2), Theme.S(DlgH - 104), Theme.S(BodyW - 4), Theme.S(38));
+            freeNote.SetBounds(Theme.S(BodyX + 2), Theme.S(DlgH - 110), Theme.S(BodyW - 4), Theme.S(44));
             Controls.Add(freeNote);
 
-            var ok = new PillButton(Lang.T("contact.enter"), BtnKind.Primary);
+            var ok = new PillButton(Lang.T("contact.close"), BtnKind.Primary);
             ok.SetBounds(Theme.S(DlgW - 176), Theme.S(DlgH - 58), Theme.S(146), Theme.S(38));
             ok.Click += delegate { Finish(); };
             Controls.Add(ok);
@@ -126,7 +125,7 @@ namespace PaviseApp
         private void BuildUpdateArea(int x, int y, int w)
         {
             var ver = new Label();
-            ver.Text = Lang.T("contact.update") + "  ·  " + App.VersionTag;
+            ver.Text = Lang.T("contact.update") + " " + App.VersionTag;
             ver.ForeColor = Theme.Fg; ver.BackColor = Theme.Bg;
             ver.Font = Theme.UI(9.5f, true);
             ver.UseCompatibleTextRendering = false;
@@ -150,7 +149,7 @@ namespace PaviseApp
             {
                 if (dlUrl != null)
                 {
-                    if (dlUrl.StartsWith("https://github.com/", StringComparison.OrdinalIgnoreCase))
+                    if (UpdateChecker.IsTrustedDownloadUrl(dlUrl))
                         try { using (Process.Start(dlUrl)) { } } catch { }
                     return;
                 }
@@ -175,12 +174,14 @@ namespace PaviseApp
                                 dlUrl = r.Url;
                                 btn.Text = Lang.T("btn.download");
                                 status.ForeColor = Theme.Green;
-                                status.Text = Lang.F("upd.newver", r.Latest, App.VersionTag);
+                                status.Text = Lang.F("upd.newver", r.Latest, App.VersionTag)
+                                    + " " + Lang.F("upd.route", r.Source);
                             }
                             else
                             {
                                 status.ForeColor = Theme.Green;
-                                status.Text = Lang.F("upd.latest", App.VersionTag);
+                                status.Text = Lang.F("upd.latest", App.VersionTag)
+                                    + " " + Lang.F("upd.route", r.Source);
                             }
                         });
                     }
@@ -188,6 +189,19 @@ namespace PaviseApp
                 });
             };
             Controls.Add(btn);
+        }
+
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            clockWasSuspended = UiClock.Borrow();
+            Fx.EnterForm(this);
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            UiClock.Return(clockWasSuspended);
+            base.OnFormClosed(e);
         }
 
         private void Finish()

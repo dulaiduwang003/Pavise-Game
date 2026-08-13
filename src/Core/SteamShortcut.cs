@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 解析 Steam 桌面快捷方式（.url）定位游戏安装目录与主程序
+// 文件用途 解析 Steam 桌面快捷方式 url 定位游戏安装目录与主程序
 
 using System;
 using System.Collections.Generic;
@@ -31,13 +31,13 @@ namespace PaviseApp
             long appId;
             if (!TryParseUrlFile(content, out appId))
             {
-                error = "不是 Steam 游戏快捷方式（未找到 steam://rungameid 链接）";
+                error = "不是 Steam 游戏快捷方式 未找到 steam://rungameid 链接";
                 return false;
             }
             string steamRoot = FindSteamRoot();
             if (steamRoot == null)
             {
-                error = "未找到 Steam 安装（注册表无 SteamPath）";
+                error = "未找到 Steam 安装 注册表无 SteamPath";
                 return false;
             }
             string gameRoot = null;
@@ -56,13 +56,13 @@ namespace PaviseApp
             }
             if (gameRoot == null)
             {
-                error = "Steam 清单中找不到该游戏（appid " + appId + "），可能是非 Steam 游戏的快捷方式或游戏未安装";
+                error = "Steam 清单中找不到该游戏 appid " + appId + " 可能是非 Steam 游戏的快捷方式或游戏未安装";
                 return false;
             }
             string exe = PickMainExecutable(gameRoot, Path.GetFileName(gameRoot));
             if (exe == null)
             {
-                error = "在游戏目录里没有找到合适的主程序：" + gameRoot;
+                error = "在游戏目录里没有找到合适的主程序 " + gameRoot;
                 return false;
             }
             executablePath = exe;

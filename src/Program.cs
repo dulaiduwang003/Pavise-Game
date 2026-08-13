@@ -20,10 +20,17 @@ namespace PaviseApp
     internal static class App
     {
         public const string DisplayName = "PAVISE";
-        public const string Version = "1.7.0.1";
+        public const string Version = "1.7.1";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string WeChat = "Ssssssstyle";
+        public const string QqGroup = "1051472054";
+        public const string QqGroup2 = "1101249532";
+        public const string QqGroup3 = "383761286";
+        public const string Douyin = "44601770838";
+        public const string PanUrl = "https://pan.baidu.com/s/1v8RBh-9rQCQp51j8hwrSyQ?pwd=62dw";
+        public const string PanCode = "62dw";
+
         public const string RepoName = "dulaiduwang003/Pavise-Game";
         public const string RepoUrl = "https://github.com/" + RepoName;
         public const string ReleasesUrl = RepoUrl + "/releases";
@@ -33,12 +40,12 @@ namespace PaviseApp
     internal static class Program
     {
         private const string PendingPanelKey = "ShowPanelOnNextStart";
+        internal const int TrayTipIdleMs = 1500;
+        internal const int TrayTipInGameMs = 6000;
 
         [STAThread]
         private static void Main(string[] args)
         {
-
-            if (LegacyFreezeRecovery.TryHandle(args)) return;
 #if PAVISE_SELFTEST
             if (SelfTests.TryHandleRuntimeMode(args)) return;
 #endif
@@ -59,6 +66,8 @@ namespace PaviseApp
                 catch { Environment.ExitCode = 1; }
                 return;
             }
+
+            try { CpuTopology.ApplyDomainPreference(Settings.Load("GmCoreDomainAlt", false)); } catch { }
 
             if (args.Length >= 2 && args[0] == "--screenshot")
             {
@@ -213,10 +222,10 @@ namespace PaviseApp
             try { Theme.SetLight(Settings.Load("UiLight", false)); } catch { }
             string dir = Paths.Data;
             Logger.LogPath = Path.Combine(dir, "Pavise.log");
+            try { VersionMigrations.ClearLogsOnUpgrade(dir); } catch { }
             Settings.Remove("EvidenceMode");
-            LegacyFreezeRecovery.BeginHeal(Path.Combine(dir, LegacyFreezeRecovery.StateFileName));
             int healedSuppression = SuppressionCore.HealFromCrash(Path.Combine(dir, SuppressionCore.StateFileName));
-            if (healedSuppression > 0) Logger.Log("检测到上次未还原的分级后台控制，已恢复 " + healedSuppression + " 个进程");
+            if (healedSuppression > 0) Logger.Log("检测到上次未还原的分级后台控制 已恢复 " + healedSuppression + " 个进程");
             PowerPlan.HealFromCrash();
             try { UpdatePause.HealFromCrash(); } catch { }
             try { UploadYield.HealFromCrash(); } catch { }
@@ -224,13 +233,15 @@ namespace PaviseApp
             try { VersionMigrations.PurgeRetired(); } catch { }
             Notif.HealFromCrash();
             VisualFx.HealFromCrash();
-            DisplayGuard.HealFromCrash();
-            try { NvGlobalTweaks.HealFromCrash(); } catch { }
             try { PresenceQos.HealFromCrash(); } catch { }
             try { PowerOverlay.HealFromCrash(); } catch { }
             RenderLane.HealFromCrash();
             CrashGuard.HealFromCrash();
+            try { UsbInterruptAffinityTweak.HealStaleMask(); } catch { }
+            try { InterruptAffinityTweak.HealStaleMask(); } catch { }
+            try { NetworkAffinityTweak.HealStaleMask(); } catch { }
 
+            try { VersionMigrations.ResetDataOnUpgrade(dir); } catch { }
             try { LegacyPurge.RunOnce(dir); } catch { }
 
             if (Settings.Load("GmIfeoBoost", false))
@@ -238,7 +249,7 @@ namespace PaviseApp
                 {
                     int preArmed = IfeoBoost.PreArmAll();
                     if (preArmed > 0)
-                        Logger.Log("后备提优：已预置 " + preArmed + " 个游戏");
+                        Logger.Log("后备提优 已预置 " + preArmed + " 个游戏");
                 }
                 catch { }
 
@@ -267,6 +278,7 @@ namespace PaviseApp
             var bootThread = new Thread(() =>
             {
                 try { SvcPause.HealFromCrash(); } catch { }
+                try { SvcYield.HealFromCrash(); } catch { }
                 try { DoTweak.HealFromCrash(); } catch { }
                 lock (startGate)
                 {
@@ -313,9 +325,6 @@ namespace PaviseApp
             bool pendingPanel = Settings.Load(PendingPanelKey, false);
             if (pendingPanel) Settings.Save(PendingPanelKey, false);
             bool showingPanel = !autoStarted || pendingPanel;
-            if (showingPanel)
-                try { using (var contact = new ContactDialog()) contact.ShowDialog(); }
-                catch { }
             if (showingPanel) panel.ShowPanel();
 
             var evtThread = new Thread(() =>
@@ -348,6 +357,8 @@ namespace PaviseApp
                 panel.RealExit = true;
                 Application.Exit();
             };
+
+            panel.ExitApp = doExit;
 
             var trayMenu = new TrayMenu(tamer, gameMode,
                 () => panel.ShowPanel(),
@@ -386,26 +397,17 @@ namespace PaviseApp
                 }
                 catch { }
             };
-            gameMode.GameAutoAdded += name =>
-            {
-                try
-                {
-                    panel.BeginInvoke((MethodInvoker)(() =>
-                    {
-                        try { icon.ShowBalloonTip(10000, App.DisplayName, Lang.F("bal.autoadd", name), ToolTipIcon.Info); } catch { }
-                    }));
-                }
-                catch { }
-            };
             gameMode.LibraryChanged += () =>
             {
                 try { panel.NotifyLibraryChanged(); } catch { }
             };
 
             trayTip = new System.Windows.Forms.Timer();
-            trayTip.Interval = 1500;
+            trayTip.Interval = TrayTipIdleMs;
             trayTip.Tick += (s, e) =>
             {
+                int wanted = gameMode.IsActive ? TrayTipInGameMs : TrayTipIdleMs;
+                if (trayTip.Interval != wanted) trayTip.Interval = wanted;
                 PerformancePreset nextIconMode = gameMode.ActivePreset;
                 bool nextIconEnabled = gameMode.Enabled;
                 if (nextIconMode != runtimeIconMode || nextIconEnabled != runtimeIconEnabled)
@@ -428,7 +430,7 @@ namespace PaviseApp
                     txt = g != null ? Lang.F("tray.active", g)
                         : (a != null ? Lang.F("tray.armed", a) : Lang.T("tray.idle"));
                 }
-                if (txt.Length > 63) txt = txt.Substring(0, 62) + "…";
+                if (txt.Length > 63) txt = txt.Substring(0, 62) + " ";
                 if (icon.Text != txt) icon.Text = txt;
             };
             trayTip.Start();
@@ -443,7 +445,7 @@ namespace PaviseApp
                 {
                     if (r.Ok && r.Newer)
                     {
-                        Logger.Log("启动检查更新：发现新版本 " + r.Latest + "（当前 " + App.VersionTag + "）");
+                        Logger.Log("启动检查更新 发现新版本 " + r.Latest + " 当前 " + App.VersionTag + " ");
                         try
                         {
                             panel.BeginInvoke((MethodInvoker)(() =>
@@ -453,8 +455,8 @@ namespace PaviseApp
                         }
                         catch { }
                     }
-                    else if (r.Ok) Logger.Log("启动检查更新：已是最新版本（" + App.VersionTag + "）");
-                    else Logger.Log("启动检查更新失败：" + r.Error);
+                    else if (r.Ok) Logger.Log("启动检查更新 已是最新版本 " + App.VersionTag + " ");
+                    else Logger.Log("启动检查更新失败 " + r.Error);
                 });
             };
             updTimer.Start();

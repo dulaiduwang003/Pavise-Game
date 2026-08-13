@@ -34,7 +34,7 @@ namespace PaviseApp
             statusDot = new StatusDot(); statusDot.SetBounds(Theme.S(15), Theme.S(41), Theme.S(22), Theme.S(22));
             statusDot.Bg = Theme.Card; statusDot.Color = Theme.Dim;
 
-            lblStatus = CardLabel(guard, "…", 47, 30, rightW - 114, 44, 9.2f, true, Theme.Fg);
+            lblStatus = CardLabel(guard, " ", 47, 30, rightW - 114, 44, 9.2f, true, Theme.Fg);
             lblStatus.TextAlign = ContentAlignment.MiddleLeft;
             swGame = MakeSwitch(gameMode.Enabled, delegate
             {
@@ -53,7 +53,7 @@ namespace PaviseApp
 
             var boost = MakeConsolePanel(pageOverview, rightX, y + 244, rightW, 108, false);
             CardLabel(boost, Lang.T("v14.boost.status"), 18, 13, rightW - 36, 18, 7.7f, true, Theme.Faint);
-            lblOverviewBoost = CardLabel(boost, "…", 18, 33, rightW - 36, 72, 10.2f, false, Theme.Fg);
+            lblOverviewBoost = CardLabel(boost, " ", 18, 33, rightW - 36, 72, 10.2f, false, Theme.Fg);
 
             int tileY = y + coreH + 10;
             int tileW = (ContentW - 28) / 3;
@@ -78,9 +78,9 @@ namespace PaviseApp
         {
             string[] fast;
             try { fast = DeviceInfo.Specs(); }
-            catch { fast = new[] { "—", "—", "—", "—" }; }
+            catch { fast = new[] { " ", " ", " ", " " }; }
             deviceBar.SetValues(fast);
-            if (fast[1] != "—") return;
+            if (fast[1] != " ") return;
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
                 string[] full;

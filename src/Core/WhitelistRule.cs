@@ -220,10 +220,10 @@ namespace PaviseApp
         {
             string kind = Rule.Kind == WhitelistRuleKind.ApplicationFamily ? Lang.T("white.kind.family")
                 : (Rule.Kind == WhitelistRuleKind.ExactPath ? Lang.T("white.kind.path") : Lang.T("white.kind.name"));
-            return "[" + kind + "] " + Rule.Value + " · "
+            return "[" + kind + "] " + Rule.Value + " "
                 + (CurrentMatches < 0
                     ? Lang.T("white.matches.pending") : Lang.F("white.matches", CurrentMatches))
-                + (Required ? " · " + Lang.T("white.required.badge") : "");
+                + (Required ? " " + Lang.T("white.required.badge") : "");
         }
     }
 }

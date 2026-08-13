@@ -57,8 +57,6 @@ namespace PaviseApp
 
             public bool Journaled;
 
-            public bool FreezeIntent;
-            public bool FreezeApplied;
         }
 
         private enum RestoreResult { Restored, Gone, Protected }
@@ -74,7 +72,7 @@ namespace PaviseApp
         private readonly object sync = new object();
         private readonly object batchGate = new object();
         private readonly Dictionary<int, Entry> map = new Dictionary<int, Entry>();
-        private readonly ulong throttleMask;
+        private ulong throttleMask;
         private readonly ulong allMask;
         private readonly string journalPath;
         private bool marked;
@@ -127,6 +125,10 @@ namespace PaviseApp
         }
 
         public ulong ThrottleMask { get { return throttleMask; } }
+
+        public static volatile bool SqueezeBackground;
+
+        public void RefreshTopologyMasks() { throttleMask = CpuTopology.ThrottleMask; }
         internal long ApplyOperations { get { return Interlocked.Read(ref applyOperations); } }
 
         public void BeginBatch()
@@ -287,7 +289,7 @@ namespace PaviseApp
                         if (mustWrite)
                         {
                             if (QueueApplyLocked(pid, name)) return AcquireResult.AlreadyThrottled;
-                            e.Applied = ApplyThrottleWithFreeze(h, e, pid, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e));
+                            e.Applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e));
                             ScheduleAfterApply(e, e.Applied, pid);
                             if (!e.Applied && TryNeutralizeUnwritableLocked(h, pid, e))
                                 return AcquireResult.AlreadyProtected;
@@ -305,7 +307,7 @@ namespace PaviseApp
                             return AcquireResult.AlreadyThrottled;
                         }
                         bool matches = ThrottleMatches(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e))
-                            && FreezeSettled(e);
+;
                         if (matches)
                         {
                             ScheduleAfterMatch(e, pid);
@@ -313,7 +315,7 @@ namespace PaviseApp
                             return AcquireResult.AlreadyThrottled;
                         }
                         if (QueueApplyLocked(pid, name)) return AcquireResult.AlreadyThrottled;
-                        e.Applied = ApplyThrottleWithFreeze(h, e, pid, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e));
+                        e.Applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e));
                         ScheduleAfterApply(e, e.Applied, pid);
                         if (!e.Applied && TryNeutralizeUnwritableLocked(h, pid, e))
                             return AcquireResult.AlreadyProtected;
@@ -333,14 +335,15 @@ namespace PaviseApp
                     if ((!CpuTopology.MultiGroup && oaff == 0)
                         || oio < 0 || opg < 0)
                         return AcquireResult.ApplyFailed;
-                    bool placementLooksPavise =
-                        SameCpuSets(ocpuSets, CpuTopology.BackgroundCpuSetIds())
-                        || (!CpuTopology.MultiGroup && oaff == throttleMask);
+                    bool cpuSetsLookPavise = SameCpuSets(ocpuSets, CpuTopology.BackgroundCpuSetIds())
+                        || SameCpuSets(ocpuSets, CpuTopology.InactiveBackgroundCpuSetIds());
+                    bool affinityLooksPavise = !CpuTopology.MultiGroup && (oaff == throttleMask
+                        || CpuTopology.InactiveThrottleMask != 0 && oaff == CpuTopology.InactiveThrottleMask);
                     bool residue = rawPri == Native.IDLE_PRIORITY_CLASS && oio == 0 && opg == 1
-                        && placementLooksPavise;
+                        && (cpuSetsLookPavise || affinityLooksPavise);
                     uint orig = residue ? Native.NORMAL_PRIORITY_CLASS : rawPri;
-                    if (residue && oaff == throttleMask) oaff = 0;
-                    if (residue && SameCpuSets(ocpuSets, CpuTopology.BackgroundCpuSetIds())) ocpuSets = new uint[0];
+                    if (residue && affinityLooksPavise) oaff = 0;
+                    if (residue && cpuSetsLookPavise) ocpuSets = new uint[0];
                     if (residue && oio == 0) oio = -1;
                     if (residue && opg == 1) opg = -1;
                     int oqc, oqs;
@@ -373,7 +376,7 @@ namespace PaviseApp
                     }
                     if (!PersistJournalLocked()) return AcquireResult.ApplyFailed;
                     bool queued = QueueApplyLocked(pid, name);
-                    bool applied = queued || ApplyThrottleWithFreeze(h, active, pid, level, orig, oaff, ocpuSets, DesiredGpu(active));
+                    bool applied = queued || ApplyThrottle(h, level, orig, oaff, ocpuSets, DesiredGpu(active));
                     Entry appliedEntry;
                     if (map.TryGetValue(pid, out appliedEntry) && !queued)
                     {
@@ -465,7 +468,7 @@ namespace PaviseApp
                 IntPtr h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_SET_LIMITED_INFORMATION
                     | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
                 bool applied = false;
-                if (h != IntPtr.Zero) { try { if (SameProcess(h, e)) applied = ApplyThrottleWithFreeze(h, e, pid, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e)); } finally { Native.CloseHandle(h); } }
+                if (h != IntPtr.Zero) { try { if (SameProcess(h, e)) applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e)); } finally { Native.CloseHandle(h); } }
                 lock (sync)
                 {
                     Entry cur;
@@ -503,7 +506,7 @@ namespace PaviseApp
                 IntPtr h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_SET_LIMITED_INFORMATION
                     | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
                 bool applied = false;
-                if (h != IntPtr.Zero) { try { if (SameProcess(h, e)) applied = ApplyThrottleWithFreeze(h, e, pid, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e)); } finally { Native.CloseHandle(h); } }
+                if (h != IntPtr.Zero) { try { if (SameProcess(h, e)) applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e)); } finally { Native.CloseHandle(h); } }
                 lock (sync)
                 {
                     Entry cur;
@@ -523,14 +526,14 @@ namespace PaviseApp
                     if (map.TryGetValue(pid, out cur) && cur == e)
                     {
                         if (e.ProtectedRetries == 0 && ShouldLogProtected(e.Name))
-                            Logger.Log("还原 " + e.Name + " (pid " + pid + ") 暂被句柄保护挡住，快照保留待重试");
+                            Logger.Log("还原 " + e.Name + " pid " + pid + " 暂被句柄保护挡住 快照保留待重试");
                         if (e.ProtectedRetries < ProtectedBackoffMax) e.ProtectedRetries++;
                         if (e.ProtectedRetries >= ProtectedBackoffMax)
                         {
                             e.NextRetryTicks = DateTime.MaxValue.Ticks;
                             if (ShouldLogProtected(e.Name + "-parked"))
-                                Logger.Log("还原 " + e.Name + " (pid " + pid
-                                    + ") 多次被句柄保护挡住，停止周期重试；快照与恢复日志已保留，下次启动自动恢复");
+                                Logger.Log("还原 " + e.Name + " pid " + pid
+                                    + " 多次被句柄保护挡住 停止周期重试 快照与恢复日志已保留 下次启动自动恢复");
                         }
                         else
                         {
@@ -547,7 +550,7 @@ namespace PaviseApp
                 }
             }
             else if (r == RestoreResult.Restored && e.ProtectedRetries > 0)
-                Logger.Log("补还原成功：" + e.Name + " (pid " + pid + ")，此前被句柄保护挡住 " + e.ProtectedRetries + " 次");
+                Logger.Log("补还原成功 " + e.Name + " pid " + pid + " 此前被句柄保护挡住 " + e.ProtectedRetries + " 次");
             return r == RestoreResult.Restored;
         }
 
@@ -565,7 +568,7 @@ namespace PaviseApp
             if (pending == null) return;
             foreach (var kv in pending)
                 if (TryRestore(kv.Key, kv.Value) && kv.Value.ProtectedRetries == 0)
-                    Logger.Log("补还原成功：" + kv.Value.Name + " (pid " + kv.Key + ")");
+                    Logger.Log("补还原成功 " + kv.Value.Name + " pid " + kv.Key);
         }
 
         private void TryClearMarkLocked()
@@ -672,35 +675,34 @@ namespace PaviseApp
                         {
                             currentEntry.OrigGpu = gpuNow;
                             if (!PersistJournalLocked()) currentEntry.OrigGpu = -1;
-                            else Logger.Log("后台策略：" + expectedName + " (pid " + pid
-                                + ") 检测到新建 GPU 上下文，纳入 GPU 调度让位");
+                            else Logger.Log("后台策略 " + expectedName + " pid " + pid
+                                + " 检测到新建 GPU 上下文 纳入 GPU 调度让位");
                         }
                     }
                     int desiredGpu = DesiredGpu(currentEntry);
-                    if (ThrottleMatches(h, level, pri, aff, cpuSets, desiredGpu) && FreezeSettled(currentEntry))
+                    if (ThrottleMatches(h, level, pri, aff, cpuSets, desiredGpu))
                     {
                         if (!currentEntry.Applied && currentEntry.ReconcileFailures > 0)
-                            Logger.Log("后台策略核验已生效：" + expectedName + " (pid " + pid
-                                + ")，此前写入未完全生效 " + currentEntry.ReconcileFailures + " 次");
+                            Logger.Log("后台策略核验已生效 " + expectedName + " pid " + pid
+                                + " 此前写入未完全生效 " + currentEntry.ReconcileFailures + " 次");
                         currentEntry.Applied = true;
                         ScheduleAfterMatch(currentEntry, pid);
                         return true;
                     }
                     bool previouslyApplied = currentEntry.Applied;
                     int previousFailures = currentEntry.ReconcileFailures;
-                    currentEntry.Applied = ApplyThrottleWithFreeze(h, currentEntry, pid, level, pri, aff, cpuSets, desiredGpu);
+                    currentEntry.Applied = ApplyThrottle(h, level, pri, aff, cpuSets, desiredGpu);
                     ScheduleAfterApply(currentEntry, currentEntry.Applied, pid);
                     if (currentEntry.Applied)
                     {
                         if (!previouslyApplied && previousFailures > 0)
-                            Logger.Log("后台策略重试已生效：" + expectedName + " (pid " + pid
-                                + ")，此前写入未完全生效 " + previousFailures + " 次");
+                            Logger.Log("后台策略重试已生效 " + expectedName + " pid " + pid
+                                + " 此前写入未完全生效 " + previousFailures + " 次");
                     }
                     else if (TryNeutralizeUnwritableLocked(h, pid, currentEntry)) return true;
                     else if (previousFailures < 3)
-                        Logger.Log("后台策略重写未完全生效：" + expectedName + " (pid " + pid + ")，失败环节 ["
-                            + (string.IsNullOrEmpty(LastApplyError) ? "unknown" : LastApplyError)
-                            + "]，将按退避继续重试");
+                        Logger.Log("后台压制 " + expectedName + "(pid " + pid + ") "
+                            + ApplyFailureText.Of(LastApplyError) + " 按退避重试");
                     return true;
                 }
             }
@@ -741,6 +743,11 @@ namespace PaviseApp
             finally { Monitor.Exit(sync); }
         }
 
+        public int ThrottledCountCached()
+        {
+            return Volatile.Read(ref lastThrottledCount);
+        }
+
         private int CountThrottledLocked(SuppressReason reason)
         {
             int n = 0;
@@ -774,6 +781,17 @@ namespace PaviseApp
                 foreach (string key in new List<string>(lastGroupCounts.Keys))
                     if (!fresh.ContainsKey(key)) lastGroupCounts[key] = new int[2];
             }
+        }
+
+        public void AntiCheatGroupCountsCached(string groupKey, out int throttled, out int protectedCnt)
+        {
+            int t = 0, f = 0;
+            lock (lastGroupCounts)
+            {
+                int[] last;
+                if (lastGroupCounts.TryGetValue(groupKey ?? "", out last)) { t = last[0]; f = last[1]; }
+            }
+            throttled = t; protectedCnt = f;
         }
 
         public void AntiCheatGroupCounts(string groupKey, out int throttled, out int protectedCnt)
@@ -827,13 +845,18 @@ namespace PaviseApp
 
             if (level >= SuppressionLevel.Isolated)
             {
-                if (CpuTopology.HasSafeBackgroundPartition())
+                if (CpuTopology.HasEffectiveBackgroundPartition())
                 {
-                    uint[] backgroundCpuSets = CpuTopology.BackgroundCpuSetIds();
+                    uint[] backgroundCpuSets = CpuTopology.EffectiveBackgroundCpuSetIds();
                     bool cpuSetsMatch = backgroundCpuSets != null && backgroundCpuSets.Length > 0
                         && Native.CpuSetsMatch(h, backgroundCpuSets);
                     bool affinityFallback = !CpuTopology.MultiGroup && Native.QueryAffinity(h) == throttleMask;
                     if (!cpuSetsMatch && !affinityFallback) return false;
+                }
+                if (SqueezeBackground && !CpuTopology.MultiGroup)
+                {
+                    ulong squeeze = CpuTopology.BackgroundSqueezeMask();
+                    if (squeeze != 0 && Native.QueryAffinity(h) != squeeze) return false;
                 }
             }
             else
@@ -931,9 +954,9 @@ namespace PaviseApp
 
             if (level >= SuppressionLevel.Isolated)
             {
-                if (CpuTopology.HasSafeBackgroundPartition())
+                if (CpuTopology.HasEffectiveBackgroundPartition())
                 {
-                    uint[] backgroundCpuSets = CpuTopology.BackgroundCpuSetIds();
+                    uint[] backgroundCpuSets = CpuTopology.EffectiveBackgroundCpuSetIds();
                     if (!Native.CpuSetsMatch(h, backgroundCpuSets))
                     {
                         bool soft = Native.TrySetCpuSets(h, backgroundCpuSets);
@@ -949,6 +972,19 @@ namespace PaviseApp
                         }
                         else if (!soft)
                             failed.Add("cpu-sets-write");
+                    }
+                }
+
+                if (SqueezeBackground && !CpuTopology.MultiGroup)
+                {
+                    ulong squeeze = CpuTopology.BackgroundSqueezeMask();
+                    if (squeeze != 0)
+                    {
+                        if (Native.QueryAffinity(h) != squeeze
+                            && !Native.SetProcessAffinityMask(h, (UIntPtr)squeeze))
+                            failed.Add("affinity-write");
+                        if (Native.QueryAffinity(h) != squeeze)
+                            failed.Add("affinity-readback");
                     }
                 }
             }
@@ -1051,71 +1087,6 @@ namespace PaviseApp
             return ok;
         }
 
-        private enum FreezeIoResult { Done, Failed, Gone }
-
-        private static FreezeIoResult TrySuspendResume(int pid, string name, long creation, bool suspend)
-        {
-            IntPtr h = Native.OpenProcess(
-                Native.PROCESS_SUSPEND_RESUME | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
-            if (h == IntPtr.Zero)
-                return Native.LastOpenProcessFailureWasNoSuchProcess() ? FreezeIoResult.Gone : FreezeIoResult.Failed;
-            try
-            {
-                if (!Native.StillActive(h)) return FreezeIoResult.Gone;
-                string current = Native.ImageName(h);
-                if (current == null) return FreezeIoResult.Failed;
-                if (!SameName(current, name)) return FreezeIoResult.Gone;
-                if (creation > 0)
-                {
-                    long actual, cpu; ulong io;
-                    if (!Native.QueryProcessSample(h, out actual, out cpu, out io)) return FreezeIoResult.Failed;
-                    if (actual != creation) return FreezeIoResult.Gone;
-                }
-                return (suspend ? Native.NtSuspendProcess(h) : Native.NtResumeProcess(h)) == 0
-                    ? FreezeIoResult.Done : FreezeIoResult.Failed;
-            }
-            finally { Native.CloseHandle(h); }
-        }
-
-        private static bool SuspendForEntry(Entry e, int pid)
-        {
-            if (e.FreezeApplied) return true;
-            if (TrySuspendResume(pid, e.Name, e.Creation, true) != FreezeIoResult.Done) return false;
-            e.FreezeApplied = true;
-            return true;
-        }
-
-        private static bool ResumeForEntry(Entry e, int pid)
-        {
-            if (!e.FreezeIntent && !e.FreezeApplied) return true;
-            if (TrySuspendResume(pid, e.Name, e.Creation, false) == FreezeIoResult.Failed) return false;
-            e.FreezeApplied = false;
-            e.FreezeIntent = false;
-            return true;
-        }
-
-        private static bool FreezeSettled(Entry e)
-        {
-            return (e.Level >= SuppressionLevel.Frozen) == e.FreezeApplied;
-        }
-
-        private static bool SettleFreeze(Entry e, int pid)
-        {
-            if (e.Level >= SuppressionLevel.Frozen)
-                return !e.Journaled || !e.FreezeIntent || SuspendForEntry(e, pid);
-            return ResumeForEntry(e, pid);
-        }
-
-        private bool ApplyThrottleWithFreeze(IntPtr h, Entry e, int pid, SuppressionLevel level,
-            uint originalPriority, ulong originalAffinity, uint[] originalCpuSets, int desiredGpu)
-        {
-            bool applied = ApplyThrottle(h, level, originalPriority, originalAffinity, originalCpuSets, desiredGpu);
-            if (!applied) return false;
-            if (SettleFreeze(e, pid)) return true;
-            LastApplyError = e.Level >= SuppressionLevel.Frozen ? "suspend" : "resume";
-            return false;
-        }
-
         private RestoreResult RestoreOne(int pid, Entry e)
         {
             IntPtr h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_SET_LIMITED_INFORMATION
@@ -1157,7 +1128,6 @@ namespace PaviseApp
                     if (!Native.QueryProcessSample(h, out creation, out cpu, out io)) return RestoreResult.Protected;
                     if (creation != e.Creation) return RestoreResult.Gone;
                 }
-                if (!ResumeForEntry(e, pid)) return RestoreResult.Protected;
                 if (RestoreValues(h, e.OrigPri, e.OrigAff, e.OrigIo, e.OrigPg, allMask, e.OrigCpuSets,
                         e.OrigQoSControl, e.OrigQoSState, e.OrigGpu))
                     return RestoreResult.Restored;
@@ -1223,7 +1193,7 @@ namespace PaviseApp
 
         private bool TryNeutralizeUnwritableLocked(IntPtr h, int pid, Entry e)
         {
-            if (e == null || e.OrigPri == uint.MaxValue || e.FreezeApplied) return false;
+            if (e == null || e.OrigPri == uint.MaxValue) return false;
             if (!FullyBlockedDetail(LastApplyError)) return false;
 
             if (Native.PowerThrottlingSupported)
@@ -1240,14 +1210,13 @@ namespace PaviseApp
 
             e.OrigPri = uint.MaxValue;
             e.Applied = false;
-            e.FreezeIntent = false;
             e.NextRetryTicks = 0;
             PersistJournalLocked();
             bool newlyListed = SelfProtectedRoster.Mark(e.Name);
             if (newlyListed || ShouldLogProtected(e.Name + "-unwritable"))
-                Logger.Log("进程 " + e.Name + " (pid " + pid
-                    + ") 拒绝全部策略写入且状态未被改动（自保护驱动），按句柄受保护处理"
-                    + (newlyListed ? "，已记入免压制名单，后续对局直接跳过" : ""));
+                Logger.Log("进程 " + e.Name + " pid " + pid
+                    + " 拒绝全部策略写入且状态未被改动 自保护驱动 按句柄受保护处理"
+                    + (newlyListed ? " 已记入免压制名单 后续对局直接跳过" : ""));
             return true;
         }
 
@@ -1283,9 +1252,10 @@ namespace PaviseApp
             e.Level = EffectiveLevel(e);
             if (e.AntiCheatLevel >= SuppressionLevel.Frozen)
                 e.AntiCheatLevel = SuppressionLevel.Isolated;
-            if ((e.Reasons & SuppressReason.AntiCheat) != 0 && e.Level >= SuppressionLevel.Frozen)
+            if (e.BackgroundLevel >= SuppressionLevel.Frozen)
+                e.BackgroundLevel = SuppressionLevel.Isolated;
+            if (e.Level >= SuppressionLevel.Frozen)
                 e.Level = SuppressionLevel.Isolated;
-            if (e.Level >= SuppressionLevel.Frozen) e.FreezeIntent = true;
         }
 
         private static SuppressionLevel EffectiveLevel(Entry e)
@@ -1381,7 +1351,7 @@ namespace PaviseApp
                         || currentEntry.OrigAff != aff
                         || !ReferenceEquals(currentEntry.OrigCpuSets, cpuSets))
                         { error = "entry-state"; return false; }
-                    applied = ApplyThrottleWithFreeze(h, currentEntry, pid, level, pri, aff, cpuSets, DesiredGpu(currentEntry));
+                    applied = ApplyThrottle(h, level, pri, aff, cpuSets, DesiredGpu(currentEntry));
                     if (!applied && TryNeutralizeUnwritableLocked(h, pid, currentEntry))
                     {
                         error = SelfProtectedDetail;
