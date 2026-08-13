@@ -73,8 +73,8 @@ In every mode, anti-cheat, the host process of a running game, Windows core serv
 
 **Memory and power**
 
-- Purge low-priority standby pages before a session, trim background working sets once the session is stable, and empty the standby list when it crosses a threshold. All three are off by default, each with its cost written under the switch
-- The session switches to the Ultimate Performance power plan, creating one if the machine lacks it and using yours if it has one
+- All three memory-cleaning features are off by default and are only recommended for memory-constrained machines; see the next section
+- The session switches to the Ultimate Performance power plan, creating one if the machine lacks it and reusing the existing one otherwise
 - Power plan, network, Game DVR, notifications and indexing services are all restored after the game ends
 
 **What you can see**
@@ -86,13 +86,47 @@ In every mode, anti-cheat, the host process of a running game, Windows core serv
 
 A purely local tool: no service is installed, no data is uploaded, and the game process, its memory and its files are never modified. Writes are read back and verified wherever possible; a value that does not read back as expected is not counted as success.
 
+## Memory cleaning
+
+All three memory features are off by default. **Every one of them can introduce occasional stutter**, and they exist for memory-constrained low-end machines. On a machine with plenty of RAM they are all cost and no benefit, and should be left off.
+
+That judgement is backed by measurement. The table below measures each of the system-level commands tools of this kind reach for, on a 64 GB machine with 40344 MB available and 16154 MB of system cache before the run:
+
+| Command | Duration | Available memory | System cache |
+|---|---|---|---|
+| Empty all process working sets | 1894.9 ms | +5191 MB | +3364 MB |
+| Purge standby list (low priority) | 13.3 ms | +144 MB | −47 MB |
+| Purge standby list (entire) | 1380.6 ms | +382 MB | −18894 MB |
+| Flush modified page list | 8019.7 ms | +5845 MB | +251 MB |
+| Combine physical memory pages | 6152.1 ms | +2121 MB | +531 MB |
+
+Purging the entire standby list discards 18894 MB of system cache to gain 382 MB of available memory. The standby list already counts as available memory, so purging it converts cached available memory into empty available memory — the total barely moves, while the cached content is gone and the game's next load has to read from disk again. Flushing the modified page list takes 8 seconds and combining physical pages 6.2, neither of which belongs on the path into a match.
+
+What each of the three actually does, and what it costs:
+
+**Purge low-priority standby memory before a session**
+
+Purges only the pages the system itself marks as least likely to be needed again. It takes 13 ms and never touches the standby list as a whole, so file cache that still has value survives. Runs once per session. Loading gets slightly smoother on a memory-constrained machine and is imperceptible on one with headroom. This is the cheapest of the three.
+
+**Trim background working sets once the session is stable**
+
+Runs 30 seconds in, past the loading phase, returning physical memory held by already-suppressed background processes to the system. It uses none of the global commands in the table above; instead it calls `SetProcessWorkingSetSize` on each of those processes individually, leaving the game, the current foreground app, the whitelist and anti-cheat alone. The memory returns to the standby list where the game can claim it at any time, and no background process is closed or loses data.
+
+The cost is a noticeable pause the first time you switch back to one of those programs, because it has to page itself back in. It runs at low priority in batches, for at most 3 seconds, and stops the moment the session ends.
+
+**Empty the standby list when it crosses a threshold**
+
+The functional equivalent of ISLC (Intelligent Standby List Cleaner). During a session it reads the actual size of the standby list every 5 seconds and only purges when the list is at or above 1 GB *and* available memory is at or below 1 GB.
+
+It does not target low memory — the table above already shows that emptying the whole list barely adds any — but the periodic micro-stutter caused by memory-manager lock contention when the standby list grows too large. The cost is the entire file cache, after which every program has to go back to disk for its files. Machines with plenty of RAM essentially never hit the threshold.
+
+For background, see Mark Russinovich, "The Memory-Optimization Hoax" (Windows and .NET Magazine, January 2004).
+
 ## What it does not do
 
 Most of the circulated registry tweaks for input latency act at the scale of a fraction of a millisecond, while the main source of latency is the render queue. Pavise reports these but does not change them, including Bluetooth mice and 125 Hz polling rates — the health check page points them out and leaves the decision to you.
 
 MSI mode, low-latency mode, background frame caps, fullscreen-window optimisation, game file prewarming and masking off CPU 0/1 by position were all implemented and later removed, for reasons of no measurable effect, the risk of writing a device into an unbootable state, and misread semantics respectively — the driver's background frame cap actually applies to applications that have lost focus, so the game itself is what gets limited after you alt-tab. Anything removed has the values written by older versions restored automatically on upgrade.
-
-The same applies to memory cleaning. Purging the entire standby list adds only 382 MB of available memory at the cost of discarding 18.9 GB of file cache, which the game then has to re-read from disk. The default therefore purges only the pages the system marks as least likely to be needed again, taking 13 ms.
 
 ## Screenshots
 
