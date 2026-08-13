@@ -20,8 +20,6 @@ namespace PaviseApp
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool GetSystemTimes(out long idle, out long kernel, out long user);
 
-        public bool Saturated { get { return saturated; } }
-
         public bool Update(double utilization)
         {
             if (double.IsNaN(utilization)) { streak = 0; return saturated; }

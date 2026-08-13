@@ -22,8 +22,8 @@ namespace PaviseApp
             OwnedImage(pbIcon, IconArt.Render(Theme.S(76)));
 
             CardLabel(hero, App.DisplayName, 120, 17, 250, 35, 18f, true, Theme.Fg);
-            CardLabel(hero, App.VersionTag + "  //  " + Lang.T("v15.about.identity"), 122, 52, ContentW - 150, 20, 8f, true, Theme.Accent);
-            CardLabel(hero, Lang.T("about.desc").Replace("\r\n", "  ·  "), 122, 75, ContentW - 150, 48, 8.2f, false, Theme.Dim);
+            CardLabel(hero, App.VersionTag + " " + Lang.T("v15.about.identity"), 122, 52, ContentW - 150, 20, 8f, true, Theme.Accent);
+            CardLabel(hero, Lang.T("about.desc").Replace("\r\n", " "), 122, 75, ContentW - 150, 48, 8.2f, false, Theme.Dim);
             hero.Controls.Add(pbIcon);
 
             int cardsY = y + 150;
@@ -33,7 +33,7 @@ namespace PaviseApp
             CardLabel(card, "PROJECT // IDENTITY", 20, 15, infoW - 40, 20, 7.6f, true, Theme.Faint);
 
             string[] rowKeys = { "about.author", "about.wechat", "about.repo", "about.lic" };
-            string[] rowVals = { App.Author + " · " + App.AuthorEmail, App.WeChat,
+            string[] rowVals = { App.Author + " " + App.AuthorEmail, App.WeChat,
                 App.RepoUrl.Replace("https://", ""), Lang.T("about.lic.value") };
             for (int i = 0; i < 4; i++)
             {
@@ -48,11 +48,21 @@ namespace PaviseApp
             }
             CardLabel(card, Lang.T("about.contact.hint"), 20, 216, infoW - 40, 32, 7.6f, false, Theme.Dim);
 
+            int halfBtnW = (infoW - 40 - 16) / 2;
+            var btnContact = new PillButton(Lang.T("contact.open.title"));
+            btnContact.Bg = Theme.Card;
+            btnContact.SetBounds(Theme.S(20), Theme.S(252), Theme.S(halfBtnW), Theme.S(38));
+            btnContact.Click += delegate
+            {
+                using (var dlg = new ContactDialog()) dlg.ShowDialog(this);
+            };
+            card.Controls.Add(btnContact);
+
             bool unseenNotes = ReleaseNotes.HasUnseen;
-            var btnNotes = new PillButton(Lang.T("notes.open") + (unseenNotes ? "  ·  NEW" : ""),
+            var btnNotes = new PillButton(Lang.T("notes.open") + (unseenNotes ? " NEW" : ""),
                 unseenNotes ? BtnKind.Primary : BtnKind.Normal);
             btnNotes.Bg = Theme.Card;
-            btnNotes.SetBounds(Theme.S(20), Theme.S(252), Theme.S(infoW - 40), Theme.S(38));
+            btnNotes.SetBounds(Theme.S(36 + halfBtnW), Theme.S(252), Theme.S(halfBtnW), Theme.S(38));
             btnNotes.Click += delegate
             {
                 using (var dlg = new ReleaseNotesDialog()) dlg.ShowDialog(this);
@@ -78,7 +88,7 @@ namespace PaviseApp
             var lblUpd = CardLabel(update, App.VersionTag, 20, 150, updateW - 40, 58, 8f, false, Theme.Faint);
 
             string dlUrl = null;
-            btnDl.Click += (s, e) => { if (dlUrl != null && dlUrl.StartsWith("https://github.com/", StringComparison.OrdinalIgnoreCase)) try { using (Process.Start(dlUrl)) { } } catch { } };
+            btnDl.Click += (s, e) => { if (UpdateChecker.IsTrustedDownloadUrl(dlUrl)) try { using (Process.Start(dlUrl)) { } } catch { } };
 
             btnCheck.Click += (s, e) =>
             {
@@ -99,23 +109,26 @@ namespace PaviseApp
                             {
                                 lblUpd.ForeColor = Theme.Danger;
                                 lblUpd.Text = Lang.T("upd.fail");
-                                Logger.Log("检查更新失败：" + r.Error);
+                                Logger.Log("检查更新失败 " + r.Error);
                             }
                             else if (r.Newer)
                             {
                                 dlUrl = r.Url;
                                 btnDl.Visible = true;
+                                Fx.SlideIn(btnDl);
                                 lblUpd.Top = Theme.S(184);
                                 lblUpd.Height = Theme.S(36);
                                 lblUpd.ForeColor = Theme.Green;
-                                lblUpd.Text = Lang.F("upd.newver", r.Latest, App.VersionTag);
-                                Logger.Log("检查更新：发现新版本 " + r.Latest + "（当前 " + App.VersionTag + "）");
+                                lblUpd.Text = Lang.F("upd.newver", r.Latest, App.VersionTag)
+                                    + " " + Lang.F("upd.route", r.Source);
+                                Logger.Log("检查更新 发现新版本 " + r.Latest + " 当前 " + App.VersionTag + " ");
                             }
                             else
                             {
                                 lblUpd.ForeColor = Theme.Green;
-                                lblUpd.Text = Lang.F("upd.latest", App.VersionTag);
-                                Logger.Log("检查更新：已是最新版本（" + App.VersionTag + "）");
+                                lblUpd.Text = Lang.F("upd.latest", App.VersionTag)
+                                    + " " + Lang.F("upd.route", r.Source);
+                                Logger.Log("检查更新 已是最新版本 " + App.VersionTag + " ");
                             }
                         }));
                     }

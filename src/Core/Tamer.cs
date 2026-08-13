@@ -104,7 +104,7 @@ namespace PaviseApp
             lock (sync) levels[key] = level;
             Settings.SaveStr("TameLvl_" + key, LevelTag(level));
             Poke();
-            Logger.Log("反作弊分组 " + key + " 压制档位 → " + LevelTag(level));
+            Logger.Log("反作弊分组 " + key + " 压制档位 " + LevelTag(level));
         }
 
         internal static SuppressionLevel ParseLevel(string tag)
@@ -135,7 +135,7 @@ namespace PaviseApp
             lock (sync) enabled[key] = on;
             Settings.Save("Tame_" + key, on);
             Poke();
-            Logger.Log("反作弊分组 " + key + " → " + (on ? "开启压制" : "关闭并恢复"));
+            Logger.Log("反作弊分组 " + key + " " + (on ? "开启压制" : "关闭并恢复"));
         }
 
         public string GroupStatus(string key)
@@ -143,7 +143,7 @@ namespace PaviseApp
             if (paused) return Lang.T("gs.moff");
             bool on;
             lock (sync) { if (!(enabled.TryGetValue(key, out on) && on)) return Lang.T("gs.noff"); }
-            int t, f; core.AntiCheatGroupCounts(key, out t, out f);
+            int t, f; core.AntiCheatGroupCountsCached(key, out t, out f);
             if (t == 0 && f == 0) return Lang.T("gs.noproc");
             string s = Lang.F("gs.thr", t);
             if (f > 0) s += Lang.F("gs.prot", f);
@@ -155,7 +155,7 @@ namespace PaviseApp
             if (paused) return 0;
             bool on;
             lock (sync) { if (!(enabled.TryGetValue(key, out on) && on)) return 0; }
-            int t, f; core.AntiCheatGroupCounts(key, out t, out f);
+            int t, f; core.AntiCheatGroupCountsCached(key, out t, out f);
             return t > 0 ? 1 : 2;
         }
 
@@ -199,7 +199,7 @@ namespace PaviseApp
 
         private void Loop()
         {
-            Logger.Log("反作弊压制引擎启动，可压制掩码 0x" + core.ThrottleMask.ToString("X"));
+            Logger.Log("反作弊压制引擎启动 可用 " + CpuTopology.DescribeMask(core.ThrottleMask));
             long nextFullSweep = 0;
             long nextOverflowSweep = 0;
             while (!stopping)
@@ -259,7 +259,7 @@ namespace PaviseApp
                         core.RetryPending();
                     }
                 }
-                catch (Exception ex) { Logger.Log("反作弊压制异常: " + ex.Message); }
+                catch (Exception ex) { Logger.Log("反作弊压制异常 " + ex.Message); }
                 long remainingTicks = nextFullSweep - DateTime.UtcNow.Ticks;
                 long overflowRemaining = nextOverflowSweep
                     - DateTime.UtcNow.Ticks;
@@ -500,22 +500,22 @@ namespace PaviseApp
         private static void LogAcquireResult(AcquireRequest request)
         {
             if (request.Result == AcquireResult.NewlyThrottled)
-                Logger.Log("压制 " + request.Name + " (pid " + request.Pid + ")");
+                Logger.Log("压制 " + request.Name + " pid " + request.Pid);
             else if (request.Result == AcquireResult.NewlyProtected
                 && request.FailureDetail != SuppressionCore.SelfProtectedDetail)
-                Logger.Log("打开 " + request.Name + " (pid " + request.Pid
-                    + ") 失败（句柄被内核保护，压不动）");
+                Logger.Log("打开 " + request.Name + " pid " + request.Pid
+                    + " 失败 句柄被内核保护 压不动");
             else if (request.Result == AcquireResult.ApplyFailed)
-                Logger.Log("压制 " + request.Name + " (pid " + request.Pid
-                    + ") 未完全生效"
-                    + (string.IsNullOrEmpty(request.FailureDetail) ? "" : "，失败环节 [" + request.FailureDetail + "]")
-                    + "，已保留快照，将按退避计划重试");
+                Logger.Log("压制 " + request.Name + " pid " + request.Pid
+                    + " 未完全生效"
+                    + (string.IsNullOrEmpty(request.FailureDetail) ? "" : " 失败环节 " + request.FailureDetail + "]")
+                    + " 已保留快照 将按退避计划重试");
         }
 
         private bool ReleaseAll(string reason)
         {
             int n = core.ReleaseReason(SuppressReason.AntiCheat);
-            if (n > 0) Logger.Log("反作弊压制解除（" + reason + "）：恢复 " + n + " 个进程");
+            if (n > 0) Logger.Log("反作弊压制解除 " + reason + " 恢复 " + n + " 个进程");
             return !core.AnyWith(SuppressReason.AntiCheat);
         }
     }

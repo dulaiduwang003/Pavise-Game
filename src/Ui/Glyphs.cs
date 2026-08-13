@@ -129,6 +129,11 @@ namespace PaviseApp
                     g.DrawLine(pen, P(x, y, u, 12, 11.2f), P(x, y, u, 12, 16.8f));
                     g.FillEllipse(br, x + 10.6f * u, y + 6.2f * u, 2.8f * u, 2.8f * u);
                 }
+                else if (name == "search")
+                {
+                    g.DrawEllipse(pen, x + 4.5f * u, y + 4.5f * u, 11.5f * u, 11.5f * u);
+                    g.DrawLine(pen, P(x, y, u, 14.8f, 14.8f), P(x, y, u, 20.2f, 20.2f));
+                }
                 else if (name == "sun")
                 {
                     using (var thin = new Pen(c, Math.Max(1.1f, 1.55f * u)))

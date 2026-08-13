@@ -23,7 +23,7 @@ namespace PaviseApp
             logWrap.BackColor = Theme.Bg; logWrap.Fill = Theme.Inset; logWrap.Border = Theme.Stroke;
             logWrap.Radius = Theme.S(14); logWrap.Padding = new Padding(Theme.S(14));
             tbLog = new TextBox(); tbLog.Multiline = true; tbLog.ReadOnly = true; tbLog.ScrollBars = ScrollBars.Both; tbLog.WordWrap = false;
-            tbLog.BackColor = Theme.Inset; tbLog.ForeColor = Theme.Fg; tbLog.BorderStyle = BorderStyle.None; tbLog.Font = Theme.Mono(8.75f); tbLog.Dock = DockStyle.Fill;
+            tbLog.BackColor = Theme.Inset; tbLog.ForeColor = Theme.Fg; tbLog.BorderStyle = BorderStyle.None; tbLog.Font = Theme.UI(8.75f, false); tbLog.Dock = DockStyle.Fill;
             Native.Dark(tbLog); logWrap.Controls.Add(tbLog);
 
             var openLog = new PillButton(Lang.T("btn.openlog"));

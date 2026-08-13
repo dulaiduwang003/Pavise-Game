@@ -28,7 +28,7 @@ namespace PaviseApp
         private Rectangle bodyRect;
 
         private PaviseDialog(string dlgTitle, string dlgBody, DlgKind dlgKind,
-            string okText, string cancelText)
+            string okText, string cancelText, Control extra, int width)
         {
             title = dlgTitle ?? "";
             body = dlgBody ?? "";
@@ -44,12 +44,18 @@ namespace PaviseApp
                 | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
             KeyPreview = true;
 
-            int w = Theme.S(DlgW);
+            int w = Theme.S(width);
             int textW = w - Theme.S(PadX) * 2;
             int textH = MeasureBody(textW);
-            int h = Theme.S(BodyTop) + textH + Theme.S(BtnH) + Theme.S(BottomPad) + Theme.S(16);
+            int extraH = extra == null ? 0 : extra.Height + Theme.S(12);
+            int h = Theme.S(BodyTop) + textH + extraH + Theme.S(BtnH) + Theme.S(BottomPad) + Theme.S(16);
             ClientSize = new Size(w, h);
             bodyRect = new Rectangle(Theme.S(PadX), Theme.S(BodyTop), textW, textH);
+            if (extra != null)
+            {
+                extra.Location = new Point(Theme.S(PadX), Theme.S(BodyTop) + textH);
+                Controls.Add(extra);
+            }
 
             var ok = new PillButton(okText ?? Lang.T("dlg.ok"),
                 kind == DlgKind.Danger ? BtnKind.Danger : BtnKind.Primary);
@@ -98,6 +104,12 @@ namespace PaviseApp
             };
             timer.Start();
             Disposed += delegate { timer.Stop(); timer.Dispose(); };
+        }
+
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            Fx.EnterForm(this);
         }
 
         private int MeasureBody(int width)
@@ -200,7 +212,7 @@ namespace PaviseApp
         private static DialogResult Run(IWin32Window owner, string title, string body,
             DlgKind kind, string okText, string cancelText)
         {
-            using (var dlg = new PaviseDialog(title, body, kind, okText, cancelText))
+            using (var dlg = new PaviseDialog(title, body, kind, okText, cancelText, null, DlgW))
             {
                 var form = owner as Form;
                 if (form == null || !form.Visible) dlg.StartPosition = FormStartPosition.CenterScreen;
@@ -226,6 +238,17 @@ namespace PaviseApp
         public static void Success(IWin32Window owner, string title, string body)
         {
             Run(owner, title, body, DlgKind.Success, null, null);
+        }
+
+        public static void Show(IWin32Window owner, string title, string body,
+            Control content, int width)
+        {
+            using (var dlg = new PaviseDialog(title, body, DlgKind.Info, null, null, content, width))
+            {
+                var form = owner as Form;
+                if (form == null || !form.Visible) dlg.StartPosition = FormStartPosition.CenterScreen;
+                if (owner != null) dlg.ShowDialog(owner); else dlg.ShowDialog();
+            }
         }
 
         public static bool Confirm(IWin32Window owner, string title, string body, DlgKind kind)

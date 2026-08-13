@@ -98,15 +98,15 @@ namespace PaviseApp
             Candidate best;
             if (!TryIdentify(pid, out best))
             {
-                Logger.Log("渲染主权域：无法采样 " + (gameName ?? "?") + " (pid " + pid
-                    + ") 的线程（进程可能刚退出或是启动器壳），该进程不再尝试；若真身另有进程会继续探测");
+                Logger.Log("渲染主权域 无法采样 " + (gameName ?? "?") + " pid " + pid
+                    + " 的线程 进程可能刚退出或是启动器壳 该进程不再尝试 若真身另有进程会继续探测");
                 return;
             }
             if (best.Share < MinDominantShare)
             {
-                Logger.Log("渲染主权域：" + (gameName ?? "?") + " 的负载分散在多线程（主导仅 "
-                    + (best.Share * 100).ToString("F0") + "%，共 " + best.ThreadCount
-                    + " 线程），没有单一帧关键路径，本局不介入");
+                Logger.Log("渲染主权域 " + (gameName ?? "?") + " 负载分散 主线程仅占 "
+                    + (best.Share * 100).ToString("F0") + "% 共 " + best.ThreadCount
+                    + " 线程 本局不介入");
                 return;
             }
             IntPtr h = Native.OpenThread(
@@ -114,7 +114,7 @@ namespace PaviseApp
                 false, best.Tid);
             if (h == IntPtr.Zero)
             {
-                Logger.Log("渲染主权域：线程写句柄被拒（多半被反作弊保护），本局跳过");
+                Logger.Log("渲染主权域 线程写句柄被拒 多半被反作弊保护 本局跳过");
                 return;
             }
             try
@@ -122,31 +122,31 @@ namespace PaviseApp
                 int original = Native.GetThreadPriority(h);
                 if (original == Native.THREAD_PRIORITY_ERROR_RETURN)
                 {
-                    Logger.Log("渲染主权域：读不到线程原优先级，未做任何写入");
+                    Logger.Log("渲染主权域 读不到线程原优先级 未做任何写入");
                     return;
                 }
-                if (original >= Native.THREAD_PRIORITY_ABOVE_NORMAL)
+                if (original >= Native.THREAD_PRIORITY_HIGHEST)
                 {
-                    Logger.Log("渲染主权域：" + (gameName ?? "?") + " 的帧关键线程已自带高于常规的权重，无需介入");
+                    Logger.Log("渲染主权域 " + (gameName ?? "?") + " 的帧关键线程已自带最高常规权重 无需介入");
                     return;
                 }
                 if (!SaveJournal(pid, creation, best.Tid, original))
                 {
-                    Logger.Log("渲染主权域：记账无法持久化，已放弃写入");
+                    Logger.Log("渲染主权域 记账无法持久化 已放弃写入");
                     return;
                 }
-                if (!Native.SetThreadPriority(h, Native.THREAD_PRIORITY_ABOVE_NORMAL))
+                if (!Native.SetThreadPriority(h, Native.THREAD_PRIORITY_HIGHEST))
                 {
                     ClearJournal();
-                    Logger.Log("渲染主权域：写入线程优先级失败，已清账");
+                    Logger.Log("渲染主权域 写入线程优先级失败 已清账");
                     return;
                 }
                 int actual = Native.GetThreadPriority(h);
-                if (actual != Native.THREAD_PRIORITY_ABOVE_NORMAL)
+                if (actual != Native.THREAD_PRIORITY_HIGHEST)
                 {
                     Native.SetThreadPriority(h, original);
                     ClearJournal();
-                    Logger.Log("渲染主权域：回读不符（" + actual + "），已还原");
+                    Logger.Log("渲染主权域 回读不符 " + actual + " 已还原");
                     return;
                 }
                 lock (sync)
@@ -154,9 +154,9 @@ namespace PaviseApp
                     lanePid = pid; laneCreation = creation;
                     laneTid = best.Tid; laneOriginalPriority = original; laneApplied = true;
                 }
-                Logger.Log("渲染主权域已建立：" + (gameName ?? "?") + " 帧关键线程 " + best.Tid
-                    + "（占进程 CPU " + (best.Share * 100).ToString("F0") + "%，共 " + best.ThreadCount
-                    + " 线程）优先级 " + original + " → " + Native.THREAD_PRIORITY_ABOVE_NORMAL);
+                Logger.Log("渲染主权域已建立 " + (gameName ?? "?") + " 帧关键线程 " + best.Tid
+                    + " 占进程 CPU " + (best.Share * 100).ToString("F0") + "% 共 " + best.ThreadCount
+                    + " 线程 优先级 " + original + " " + Native.THREAD_PRIORITY_HIGHEST);
             }
             finally { Native.CloseHandle(h); }
         }
@@ -179,9 +179,9 @@ namespace PaviseApp
                     triedPid = 0; triedCreation = 0;
                 }
                 ClearJournal();
-                Logger.Log("渲染主权域已撤销：线程 " + tid + " 优先级还原为 " + original);
+                Logger.Log("渲染主权域已撤销 线程 " + tid + " 优先级还原为 " + original);
             }
-            else Logger.Log("渲染主权域：线程 " + tid + " 还原失败，记账保留待下次重试");
+            else Logger.Log("渲染主权域 线程 " + tid + " 还原失败 记账保留待下次重试");
             return ok;
         }
 
@@ -196,7 +196,7 @@ namespace PaviseApp
             if (RestoreThread(pid, creation, tid, original))
             {
                 ClearJournal();
-                Logger.Log("渲染主权域：崩溃前的线程 " + tid + " 优先级已还原为 " + original);
+                Logger.Log("渲染主权域 崩溃前的线程 " + tid + " 优先级已还原为 " + original);
             }
         }
 

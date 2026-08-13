@@ -21,7 +21,7 @@ namespace PaviseApp
             {
                 if (!Native.EnsureProfilePrivilege())
                 {
-                    Logger.Log("待机内存清理：SeProfileSingleProcessPrivilege 不可用，已跳过");
+                    Logger.Log("待机内存清理 SeProfileSingleProcessPrivilege 不可用 已跳过");
                     return false;
                 }
                 int command = MemoryPurgeLowPriorityStandbyList;
@@ -29,15 +29,15 @@ namespace PaviseApp
                     SystemMemoryListInformation, ref command, sizeof(int));
                 if (status != 0)
                 {
-                    Logger.Log("低优先级待机内存清理失败，NTSTATUS 0x" + status.ToString("X8"));
+                    Logger.Log("低优先级待机内存清理失败 NTSTATUS 0x" + status.ToString("X8"));
                     return false;
                 }
-                Logger.Log("低优先级待机内存页已清理（对局前一次性）");
+                Logger.Log("低优先级待机内存页已清理 对局前一次性");
                 return true;
             }
             catch (Exception ex)
             {
-                Logger.Log("待机内存清理异常: " + ex.Message);
+                Logger.Log("待机内存清理异常 " + ex.Message);
                 return false;
             }
         }

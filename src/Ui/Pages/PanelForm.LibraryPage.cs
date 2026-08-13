@@ -14,6 +14,7 @@ namespace PaviseApp
     internal partial class PanelForm
     {
         private ListBox lstGames;
+        private PillButton btnForce;
         private EmptyStatePanel gameListPanel;
         private readonly Dictionary<string, Bitmap> gameIconCache = new Dictionary<string, Bitmap>(StringComparer.OrdinalIgnoreCase);
         private int runningBusy;
@@ -51,9 +52,13 @@ namespace PaviseApp
                 GameLibraryItem item = lstGames.SelectedItem as GameLibraryItem;
                 if (item != null) { gameMode.RemoveProfile(item.Profile.Id); RefreshGames(); }
             };
+            btnForce = new PillButton(Lang.T("v15.library.force"));
+            btnForce.SetBounds(Theme.S(bx), Theme.S(y + 100), Theme.S(bw), Theme.S(bh));
+            btnForce.Click += delegate { ToggleForceTrigger(); };
+            lstGames.SelectedIndexChanged += delegate { UpdateForceButton(); };
             Label hint = new Label(); hint.Text = Lang.T("v15.library.drop"); hint.ForeColor = Theme.Dim; hint.BackColor = Theme.Bg;
-            hint.Font = Theme.UI(8.2f, false); hint.AutoEllipsis = true; hint.SetBounds(Theme.S(bx + 4), Theme.S(y + 108), Theme.S(bw - 8), Theme.S(64));
-            pageLibrary.Controls.AddRange(new Control[] { listWrap, add, remove, hint });
+            hint.Font = Theme.UI(8.2f, false); hint.AutoEllipsis = true; hint.SetBounds(Theme.S(bx + 4), Theme.S(y + 158), Theme.S(bw - 8), Theme.S(168));
+            pageLibrary.Controls.AddRange(new Control[] { listWrap, add, remove, btnForce, hint });
             RefreshGames();
         }
 
@@ -86,13 +91,63 @@ namespace PaviseApp
             TextRenderer.DrawText(e.Graphics, item.Profile.Name, Theme.UI(10.2f, true),
                     new Rectangle(tx, e.Bounds.Y + Theme.S(11), e.Bounds.Width - tx - right, Theme.S(22)),
                     Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+            bool forced = item.Profile.ForceTrigger;
             string path = item.Profile.ExecutablePath ?? item.Profile.Root ?? "";
             TextRenderer.DrawText(e.Graphics, path, Theme.UI(7.8f, false),
-                    new Rectangle(tx, e.Bounds.Y + Theme.S(37), e.Bounds.Width - tx - Theme.S(18), Theme.S(18)),
+                    new Rectangle(tx, e.Bounds.Y + Theme.S(37),
+                        e.Bounds.Width - tx - (forced ? right : Theme.S(18)), Theme.S(18)),
                     Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
             TextRenderer.DrawText(e.Graphics, Lang.T(item.Running ? "v15.library.running" : "v15.library.ready"), Theme.UI(7.6f, true),
                     new Rectangle(e.Bounds.Right - right, e.Bounds.Y + Theme.S(12), right - Theme.S(16), Theme.S(20)),
                     item.Running ? Theme.Green : Theme.Faint, TextFormatFlags.Right | TextFormatFlags.NoPadding);
+            if (forced)
+                TextRenderer.DrawText(e.Graphics, Lang.T("v15.library.forced.tag"), Theme.UI(7.2f, true),
+                        new Rectangle(e.Bounds.Right - right, e.Bounds.Y + Theme.S(36), right - Theme.S(16), Theme.S(18)),
+                        Theme.Accent, TextFormatFlags.Right | TextFormatFlags.NoPadding);
+        }
+
+        private void UpdateForceButton()
+        {
+            if (btnForce == null) return;
+            GameLibraryItem item = lstGames == null ? null : lstGames.SelectedItem as GameLibraryItem;
+            bool on = item != null && item.Profile != null && item.Profile.ForceTrigger;
+            btnForce.Enabled = item != null;
+            btnForce.Text = Lang.T(on ? "v15.library.force.on" : "v15.library.force");
+            btnForce.Kind = on ? BtnKind.Primary : BtnKind.Normal;
+            btnForce.Invalidate();
+        }
+
+        private void ToggleForceTrigger()
+        {
+            GameLibraryItem item = lstGames == null ? null : lstGames.SelectedItem as GameLibraryItem;
+            if (item == null || item.Profile == null) return;
+            bool turningOn = !item.Profile.ForceTrigger;
+            if (turningOn && !PaviseDialog.Confirm(this, Lang.T("v15.library.force"),
+                    Lang.F("v15.library.force.confirm", item.Profile.Name), DlgKind.Warn))
+                return;
+            string keepId = item.Profile.Id;
+            if (!gameMode.SetProfileForceTrigger(keepId, turningOn))
+            {
+                PaviseDialog.Warn(this, Lang.T("v15.library.force"), Lang.T("v15.library.force.noexe"));
+                return;
+            }
+            RefreshGames();
+            SelectProfile(keepId);
+        }
+
+        private void SelectProfile(string profileId)
+        {
+            if (lstGames == null || string.IsNullOrEmpty(profileId)) return;
+            for (int i = 0; i < lstGames.Items.Count; i++)
+            {
+                GameLibraryItem row = lstGames.Items[i] as GameLibraryItem;
+                if (row != null && row.Profile != null
+                    && string.Equals(row.Profile.Id, profileId, StringComparison.OrdinalIgnoreCase))
+                {
+                    lstGames.SelectedIndex = i;
+                    return;
+                }
+            }
         }
 
         private void ShowAddGameDialog()
@@ -129,8 +184,11 @@ namespace PaviseApp
                 lstGames.Items.Add(new GameLibraryItem(profile, RunningIn(states, profile.ExecutablePath)));
             lstGames.EndUpdate();
             bool empty = lstGames.Items.Count == 0;
+            bool wasShown = lstGames.Visible;
             lstGames.Visible = !empty;
+            if (!empty && !wasShown) Fx.SlideIn(lstGames);
             if (gameListPanel != null) { gameListPanel.ShowEmpty = empty; gameListPanel.Invalidate(); }
+            UpdateForceButton();
         }
 
         private void RefreshGameRunningStates(bool force = false)

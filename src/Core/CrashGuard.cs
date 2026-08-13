@@ -191,8 +191,8 @@ namespace PaviseApp
             Settings.SaveStr(KThrottle, "");
             Settings.SaveStr(KBoost, "");
             Settings.SaveStr(KBoostNames, "");
-            if (restored > 0) Logger.Log("检测到上次异常退出：按 PID/创建时间/映像名恢复 " + restored + " 个进程的已记录状态");
-            if (keep.Count > 0) Logger.Log("仍有 " + keep.Count + " 个提优进程暂时无法恢复，身份快照已保留待下次重试");
+            if (restored > 0) Logger.Log("检测到上次异常退出 按 PID 创建时间 映像名恢复 " + restored + " 个进程的已记录状态");
+            if (keep.Count > 0) Logger.Log("仍有 " + keep.Count + " 个提优进程暂时无法恢复 身份快照已保留待下次重试");
         }
 
         private static BoostIdentity Identify(IntPtr h, BoostEntry entry)

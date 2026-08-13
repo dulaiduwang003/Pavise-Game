@@ -71,6 +71,10 @@ namespace PaviseApp
             return t;
         }
 
+        // 描述最多排到这么多行 再长的才交给省略号 用户要求至少能看到三行
+        internal const int DescMaxLines = 3;
+        internal const int CollapseChevronW = 20;
+
         private int AutoCardHeight(string desc, int cardW, Control host, int minHeight)
         {
             return AutoCardHeight(desc, cardW, host, minHeight, 0);
@@ -81,7 +85,11 @@ namespace PaviseApp
             if (string.IsNullOrEmpty(desc)) return minHeight;
             int padL = Theme.S(18);
             int reserve = padL + (host != null ? host.Width + Theme.S(14) : 0);
-            int textW = Theme.S(cardW) - padL - reserve - valueReserve;
+            // 卡片是先建好定死高度 之后才被 SyncEnvStatus 补上状态行 被 EnableCardCollapse 加上折叠箭头
+            // 所以这里必须按那两步做完之后的样子算 否则描述区会比算的时候又窄一截又矮一行
+            // 挤到放不下两行时 SettingCard 会直接关掉换行 变成一行加省略号
+            int chevW = Theme.S(CollapseChevronW);
+            int textW = Theme.S(cardW) - padL - reserve - valueReserve - chevW;
             if (textW <= 0) return minHeight;
             Font font = Theme.UI(8.5f, false);
             int lineH = TextRenderer.MeasureText("Ag", font).Height;
@@ -90,9 +98,10 @@ namespace PaviseApp
                 desc, font, new Size(textW, int.MaxValue), TextFormatFlags.WordBreak).Height;
             int lines = (need + lineH - 1) / lineH;
             if (lines < 1) lines = 1;
+            if (lines > DescMaxLines) lines = DescMaxLines;
             int scale100 = Theme.S(100);
             if (scale100 <= 0) return minHeight;
-            int px = lines * lineH + Theme.S(44);
+            int px = lines * lineH + Theme.S(SettingCard.StatusLineH) + Theme.S(44);
             int logical = (px * 100 + scale100 - 1) / scale100;
             return logical > minHeight ? logical : minHeight;
         }
@@ -110,12 +119,6 @@ namespace PaviseApp
         {
             used = AutoCardHeight(desc, w, host, minH, valueReserve);
             return MakeCard(parent, x, y, w, used, title, desc, host);
-        }
-
-        internal static int ValueTextWidth(string text)
-        {
-            if (string.IsNullOrEmpty(text)) return 0;
-            return TextRenderer.MeasureText(text, Theme.UI(9f, false)).Width + Theme.S(16);
         }
 
         private SettingCard MakeCard(Control parent, int x, int y, int w, int h, string title, string desc, Control host)

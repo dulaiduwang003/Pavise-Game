@@ -55,8 +55,9 @@ namespace PaviseApp
         {
 
             new Platform("Steam",
-                "Valve 官方警告：压制 Steam 客户端会引发优先级反转掉帧，steamservice 还承载 VAC",
-                new[]{ "steam", "steamservice", "steamwebhelper", "gameoverlayui" },
+                "Valve 官方警告 压制 Steam 客户端会引发优先级反转掉帧 steamservice 还承载 VAC",
+                new[]{ "steam", "steamservice", "steamwebhelper",
+                    "gameoverlayui", "gameoverlayui64" },
                 new[]{ "steamerrorreporter", "steamerrorreporter64" },
                 new[]
                 {
@@ -68,7 +69,7 @@ namespace PaviseApp
                 null),
 
             new Platform("Epic Games",
-                "EpicWebHelper 是商店与好友界面的渲染进程，压下去会连带卡住游戏内覆盖层",
+                "EpicWebHelper 是商店与好友界面的渲染进程 压下去会连带卡住游戏内覆盖层",
                 new[]{ "epicgameslauncher", "epicwebhelper" },
                 null,
                 null,
@@ -76,7 +77,7 @@ namespace PaviseApp
                 new[]{ "Epic Games Launcher" }),
 
             new Platform("EA app",
-                "EABackgroundService 承载正版校验与云存档，被压会掉线",
+                "EABackgroundService 承载正版校验与云存档 被压会掉线",
                 new[]
                 {
                     "eadesktop", "eabackgroundservice", "ealauncher", "ealocalhostsvc",
@@ -110,7 +111,7 @@ namespace PaviseApp
                 new[]{ "Ubisoft Connect" }),
 
             new Platform("Battle.net",
-                "Agent 承载补丁与完整性校验，Battle.net Helper 是暴雪游戏的内嵌界面",
+                "Agent 承载补丁与完整性校验 Battle.net Helper 是暴雪游戏的内嵌界面",
                 new[]{ "battle.net", "battle.net helper", "blizzarderror", "blizzardbrowser" },
                 new[]{ "agent" },
                 null,
@@ -138,7 +139,7 @@ namespace PaviseApp
                 new[]{ "GOG GALAXY" }),
 
             new Platform("Rockstar Games",
-                "R 星启动器主进程就叫 Launcher，只在自己的安装目录里认",
+                "R 星启动器主进程就叫 Launcher 只在自己的安装目录里认",
                 new[]
                 {
                     "rockstarservice", "rockstarerrorhandler", "socialclubhelper",
@@ -154,7 +155,7 @@ namespace PaviseApp
                 new[]{ "Rockstar Games Launcher" }),
 
             new Platform("Riot Client",
-                "英雄联盟、无畏契约都靠它做登录与补丁，Vanguard 另由反作弊名录豁免",
+                "英雄联盟 无畏契约都靠它做登录与补丁 Vanguard 另由反作弊名录豁免",
                 new[]
                 {
                     "riotclientservices", "riotclientux", "riotclientuxrender",
@@ -195,7 +196,7 @@ namespace PaviseApp
                 null),
 
             new Platform("HoYoPlay",
-                "米哈游启动器兼做补丁与反作弊分发，旧版主进程也叫 launcher",
+                "米哈游启动器兼做补丁与反作弊分发 旧版主进程也叫 launcher",
                 new[]{ "hyp", "hoyoplay", "hyupdater" },
                 new[]{ "launcher" },
                 null,
@@ -244,7 +245,7 @@ namespace PaviseApp
                 new[]{ "Nexon Launcher", "Nexon Game Manager" }),
 
             new Platform("NCSOFT PURPLE",
-                "天堂、剑灵等 NCSOFT 游戏的统一启动器",
+                "天堂 剑灵等 NCSOFT 游戏的统一启动器",
                 null,
                 new[]{ "purple", "ncsoft" },
                 null,
@@ -269,7 +270,7 @@ namespace PaviseApp
                 new[]{ "DMM Game" }),
 
             new Platform("网易游戏",
-                "网易各平台的启动器命名不统一，只在网易的安装目录里认",
+                "网易各平台的启动器命名不统一 只在网易的安装目录里认",
                 new[]{ "gest_launcher", "neteasegamecenter" },
                 new[]{ "gamecenter", "launcher" },
                 null,
@@ -290,18 +291,59 @@ namespace PaviseApp
         private static bool rootsResolved;
         private static long lastResolveTicks;
 
+        internal static readonly string[] GameAreaSegments =
+        {
+            "steamapps", "games", "gamelibrary", "library", "downloads"
+        };
+
+        internal static bool InGameArea(string image, string root)
+        {
+            if (string.IsNullOrEmpty(image) || string.IsNullOrEmpty(root)) return false;
+            string prefix = root.TrimEnd('\\') + "\\";
+            if (!image.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return false;
+            string rest = image.Substring(prefix.Length);
+            foreach (string seg in GameAreaSegments)
+                if (rest.StartsWith(seg + "\\", StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+
         public static bool IsPlatformProcess(string name, string path)
         {
-            List<Platform> owners = OwnersOf(name);
-            if (owners == null) return false;
             string image = NormalizePath(path);
             if (image.Length == 0) return false;
 
-            Platform hit = MatchRoot(owners, image);
-            if (hit == null && RefreshRootsIfStale()) hit = MatchRoot(owners, image);
-            if (hit == null) return false;
-            LogOnce(hit);
+            List<Platform> owners = OwnersOf(name);
+            if (owners != null)
+            {
+                Platform byName = MatchRoot(owners, image);
+                if (byName == null && RefreshRootsIfStale()) byName = MatchRoot(owners, image);
+                if (byName != null) { LogOnce(byName); return true; }
+            }
+
+            Platform byPath = MatchAnyRootOutsideGames(image);
+            if (byPath == null && RefreshRootsIfStale()) byPath = MatchAnyRootOutsideGames(image);
+            if (byPath == null) return false;
+            LogOnce(byPath);
             return true;
+        }
+
+        private static Platform MatchAnyRootOutsideGames(string image)
+        {
+            EnsureRoots();
+            lock (sync)
+                foreach (Platform platform in Platforms)
+                {
+                    if (platform.Roots == null) continue;
+                    foreach (string root in platform.Roots)
+                    {
+                        if (string.IsNullOrEmpty(root)) continue;
+                        string prefix = root.TrimEnd('\\') + "\\";
+                        if (!image.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+                        if (InGameArea(image, root)) return null;
+                        return platform;
+                    }
+                }
+            return null;
         }
 
         internal static bool IsPlatformShellName(string name)
@@ -373,7 +415,7 @@ namespace PaviseApp
                 if (platform.Logged) return;
                 platform.Logged = true;
             }
-            Logger.Log(platform.Id + " 客户端内置豁免生效：不进入后台压制（" + platform.Note + "）");
+            Logger.Log(platform.Id + " 客户端已豁免 不压制");
         }
 
         private static bool UnderAnyRoot(string path, IList<string> roots)

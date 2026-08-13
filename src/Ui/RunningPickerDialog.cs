@@ -125,6 +125,12 @@ namespace PaviseApp
             Native.RoundCorners(Handle);
         }
 
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            Fx.EnterForm(this);
+        }
+
         private void DragMove(object s, MouseEventArgs e)
         {
             if (e.Button != MouseButtons.Left) return;
@@ -133,8 +139,6 @@ namespace PaviseApp
         }
 
 #if PAVISE_SELFTEST
-        internal void CreateControlForShot() { CreateControl(); GC.KeepAlive(Handle); }
-
         internal void PrimeForShot()
         {
             all.Clear();
@@ -325,7 +329,7 @@ namespace PaviseApp
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.PathEllipsis);
 
             string memory = FormatMemory(entry.Memory)
-                + (entry.Count > 1 ? " · " + Lang.F("white.pick.procs", entry.Count) : "");
+                + (entry.Count > 1 ? " " + Lang.F("white.pick.procs", entry.Count) : "");
             TextRenderer.DrawText(g, memory, Theme.UI(7.8f, false),
                 new Rectangle(r.Right - memW - Theme.S(14), r.Top, memW, r.Height), Theme.Dim,
                 TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
@@ -335,7 +339,7 @@ namespace PaviseApp
         {
             if (bytes >= 1073741824L) return (bytes / 1073741824.0).ToString("0.0") + " GB";
             if (bytes >= 1048576L) return (bytes / 1048576.0).ToString("0") + " MB";
-            if (bytes <= 0) return "—";
+            if (bytes <= 0) return " ";
             return (bytes / 1024.0).ToString("0") + " KB";
         }
     }

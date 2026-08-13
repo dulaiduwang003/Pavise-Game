@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 识别处理器拓扑并计算游戏和后台核心分区
 
 using System;
@@ -22,6 +22,12 @@ namespace PaviseApp
         public static ulong PerfMask, EffMask, BigL3Mask, SmallL3Mask;
 
         public static ulong AllMask, ThrottleMask, BoostMask, StrictBoostMask, InterruptMask;
+        public static ulong AltStrictBoostMask, AltThrottleMask, AltInterruptMask;
+        public static int GameDomainIndex = -1, AltDomainIndex = -1;
+        public static bool AltDomainActive;
+        public static string PartitionTag = "";
+        private static List<KeyValuePair<uint, ulong>> cacheDomains = new List<KeyValuePair<uint, ulong>>();
+        private static List<ulong> processorDieDomains = new List<ulong>();
 
         static CpuTopology()
         {
@@ -48,7 +54,7 @@ namespace PaviseApp
             int nc = Environment.ProcessorCount;
             AllMask = nc >= 64 ? ulong.MaxValue : (1UL << nc) - 1UL;
             if (Hybrid) { ThrottleMask = EffMask; BoostMask = AllMask; }
-            else if (AsymCache) { ThrottleMask = SmallL3Mask; BoostMask = BigL3Mask; }
+            else if (AsymCache) { ThrottleMask = SmallL3Mask; BoostMask = AllMask; }
 
             else { ThrottleMask = nc >= 2 && nc <= 64 ? 3UL << (nc - 2) : (nc >= 2 ? 0UL : 1UL); BoostMask = AllMask; }
             StrictBoostMask = CpuPartitionPolicy.StrictMask(AllMask, ThrottleMask,
@@ -161,6 +167,9 @@ namespace PaviseApp
         private static uint[] backgroundIds;
         private static uint[] allIds;
         private static uint[] partitionGameIds;
+        private static uint[] altBackgroundIds;
+        private static uint[] altPartitionGameIds;
+        private static bool domainPreferenceApplied;
         private static readonly List<ulong> physicalCoreMasks = new List<ulong>();
 
         public static uint[] BackgroundCpuSetIds()
@@ -174,12 +183,313 @@ namespace PaviseApp
                 && partitionGameIds != null && partitionGameIds.Length > 0;
         }
 
+        public static bool HasAltPartition()
+        {
+            return AltStrictBoostMask != 0 && AltThrottleMask != 0
+                && altBackgroundIds != null && altBackgroundIds.Length > 0
+                && altPartitionGameIds != null && altPartitionGameIds.Length > 0
+                && HasSafeBackgroundPartition();
+        }
+
+        public static uint[] InactiveBackgroundCpuSetIds()
+        {
+            return altBackgroundIds;
+        }
+
+        public static ulong InactiveThrottleMask
+        {
+            get { return AltThrottleMask; }
+        }
+
+        public static bool DomainPreferenceApplied
+        {
+            get { return domainPreferenceApplied; }
+        }
+
+        public static void ApplyDomainPreference(bool alt)
+        {
+            if (domainPreferenceApplied) return;
+            domainPreferenceApplied = true;
+            if (alt) SwapDomains();
+        }
+
+        public static bool SwapDomains()
+        {
+            if (!HasAltPartition()) return false;
+            ulong m;
+            m = ThrottleMask; ThrottleMask = AltThrottleMask; AltThrottleMask = m;
+            m = StrictBoostMask; StrictBoostMask = AltStrictBoostMask; AltStrictBoostMask = m;
+            m = InterruptMask; InterruptMask = AltInterruptMask; AltInterruptMask = m;
+            int d = GameDomainIndex; GameDomainIndex = AltDomainIndex; AltDomainIndex = d;
+            uint[] ids = backgroundIds; backgroundIds = altBackgroundIds; altBackgroundIds = ids;
+            ids = partitionGameIds; partitionGameIds = altPartitionGameIds; altPartitionGameIds = ids;
+            AltDomainActive = !AltDomainActive;
+            squeezeIds = null; squeezeIdsDone = false;
+            ValidateMasks();
+            return true;
+        }
+
         public static uint[] AdaptiveGameCpuSetIds(bool competitive)
         {
             if (!competitive) return MultiGroup ? allIds : BoostCpuSetIds();
             return partitionGameIds != null && partitionGameIds.Length > 0
                 ? partitionGameIds
                 : (MultiGroup ? allIds : BoostCpuSetIds());
+        }
+
+        public const int MinCustomCores = 2;
+
+        public static ulong PhysicalOnlyMask()
+        {
+            ulong m = 0;
+            foreach (ulong core in physicalCoreMasks) m |= core & (ulong)(-(long)core);
+            return m & AllMask;
+        }
+
+#if PAVISE_SELFTEST
+        internal sealed class TopologySnapshot
+        {
+            public ulong All, Perf, Eff, BigL3, SmallL3;
+            public bool Hybrid, Asym;
+            public ulong[] Cores, Dies;
+        }
+
+        internal static TopologySnapshot CaptureTopologyForTest()
+        {
+            return new TopologySnapshot
+            {
+                All = AllMask, Perf = PerfMask, Eff = EffMask,
+                BigL3 = BigL3Mask, SmallL3 = SmallL3Mask,
+                Hybrid = Hybrid, Asym = AsymCache,
+                Cores = physicalCoreMasks.ToArray(),
+                Dies = processorDieDomains.ToArray(),
+            };
+        }
+
+        internal static void RestoreTopologyForTest(TopologySnapshot s)
+        {
+            if (s == null) return;
+            InjectTopologyForTest(s.All, s.Cores, s.Dies,
+                s.Perf, s.Eff, s.BigL3, s.SmallL3, s.Hybrid, s.Asym);
+        }
+
+        internal static void InjectTopologyForTest(ulong all, ulong[] cores, ulong[] dies,
+            ulong perf, ulong eff, ulong bigL3, ulong smallL3, bool hybrid, bool asym)
+        {
+            AllMask = all;
+            physicalCoreMasks.Clear();
+            if (cores != null) physicalCoreMasks.AddRange(cores);
+            processorDieDomains = new List<ulong>(dies ?? new ulong[0]);
+            PerfMask = perf; EffMask = eff;
+            BigL3Mask = bigL3; SmallL3Mask = smallL3;
+            Hybrid = hybrid; AsymCache = asym;
+            customMask = 0; customIds = null;
+            customBackgroundIds = null; customBackgroundMask = 0;
+            squeezeIds = null; squeezeIdsDone = false;
+        }
+#endif
+
+        public static ulong[] DieMasks()
+        {
+            var list = new List<ulong>();
+            foreach (ulong d in processorDieDomains)
+            {
+                ulong m = d & AllMask;
+                if (m != 0) list.Add(m);
+            }
+            return list.Count >= 2 ? list.ToArray() : new ulong[0];
+        }
+
+        public static ulong CacheHeavyMask()
+        {
+            return AsymCache ? BigL3Mask & AllMask : 0;
+        }
+
+        internal static ulong SanitizeCustomMask(ulong wanted, ulong all)
+        {
+            ulong m = wanted & all;
+            return CountSetBits(m) >= MinCustomCores ? m : 0;
+        }
+
+        internal static int CountSetBits(ulong v)
+        {
+            int n = 0;
+            while (v != 0) { n += (int)(v & 1UL); v >>= 1; }
+            return n;
+        }
+
+        public static string DescribeMask(ulong mask)
+        {
+            if (mask == 0) return "无";
+            var parts = new List<string>();
+            int i = 0;
+            while (i < 64)
+            {
+                if ((mask & (1UL << i)) == 0) { i++; continue; }
+                int start = i;
+                while (i + 1 < 64 && (mask & (1UL << (i + 1))) != 0) i++;
+                parts.Add(i > start + 1 ? start + "-" + i
+                    : i == start + 1 ? start + "," + i : start.ToString());
+                i++;
+            }
+            return CountSetBits(mask) + " 个 核 " + string.Join(",", parts.ToArray());
+        }
+
+        public const int MinCustomBackgroundCores = 2;
+
+        private static ulong customMask;
+        private static ulong customBackgroundMask;
+        private static uint[] customIds;
+        private static uint[] customBackgroundIds;
+
+        public static ulong CustomMask { get { return customMask; } }
+        public static ulong CustomBackgroundMask { get { return customBackgroundMask; } }
+
+        internal static ulong BackgroundRemainderFor(ulong game, ulong all)
+        {
+            ulong rest = all & ~game;
+            return CountSetBits(rest) >= MinCustomBackgroundCores ? rest : 0;
+        }
+
+        public static bool SetCustomMask(ulong wanted)
+        {
+            ulong clean = SanitizeCustomMask(wanted, AllMask);
+            if (clean == customMask) return clean != 0;
+            customMask = clean;
+            customIds = null;
+            customBackgroundIds = null;
+            customBackgroundMask = 0;
+            squeezeIds = null; squeezeIdsDone = false;
+            try { customIds = CpuSetIdsFor(clean); }
+            catch { customIds = null; }
+            if (customIds == null || customIds.Length == 0)
+            {
+                customMask = 0;
+                return false;
+            }
+
+            ulong rest = BackgroundRemainderFor(clean, AllMask);
+            if (rest != 0)
+            {
+                try { customBackgroundIds = CpuSetIdsFor(rest); }
+                catch { customBackgroundIds = null; }
+                if (customBackgroundIds != null && customBackgroundIds.Length > 0)
+                    customBackgroundMask = rest;
+                else customBackgroundIds = null;
+            }
+            return true;
+        }
+
+        public static uint[] CustomCpuSetIds()
+        {
+            return customMask != 0 ? customIds : null;
+        }
+
+        public static uint[] EffectiveBackgroundCpuSetIds()
+        {
+            return customBackgroundIds ?? backgroundIds;
+        }
+
+        public static ulong BackgroundAllowedMask()
+        {
+            if (customMask != 0) return customBackgroundMask;
+            if (HasSafeBackgroundPartition()) return ThrottleMask;
+            return AllMask;
+        }
+
+        public static ulong BackgroundSqueezeMask()
+        {
+            return CpuPartitionPolicy.SqueezeMask(
+                physicalCoreMasks.ToArray(), BackgroundAllowedMask(), EffMask, Hybrid,
+                L3Masks(), customMask != 0 ? customMask : StrictBoostMask);
+        }
+
+        public const int SqueezeOk = 0;
+        public const int SqueezeTooFewCores = 1;
+        public const int SqueezeMultiGroup = 2;
+        public const int SqueezeAlreadyNarrow = 3;
+
+        public static int SqueezeStatusFor(ulong gameMask)
+        {
+            if (MultiGroup) return SqueezeMultiGroup;
+            if (physicalCoreMasks.Count < CpuPartitionPolicy.SqueezeMinPhysical)
+                return SqueezeTooFewCores;
+            return BackgroundSqueezeMaskFor(gameMask) != 0 ? SqueezeOk : SqueezeAlreadyNarrow;
+        }
+
+        public static int BackgroundWholeCoresFor(ulong gameMask)
+        {
+            ulong allowed = BackgroundAllowedMaskFor(gameMask);
+            int n = 0;
+            foreach (ulong core in physicalCoreMasks)
+                if (core != 0 && (core & allowed) == core) n++;
+            return n;
+        }
+
+        public static ulong BackgroundAllowedMaskFor(ulong gameMask)
+        {
+            if (gameMask != 0 && gameMask != AllMask)
+                return BackgroundRemainderFor(gameMask, AllMask);
+            if (HasSafeBackgroundPartition()) return ThrottleMask;
+            return AllMask;
+        }
+
+        public static ulong BackgroundSqueezeMaskFor(ulong gameMask)
+        {
+            return CpuPartitionPolicy.SqueezeMask(
+                physicalCoreMasks.ToArray(), BackgroundAllowedMaskFor(gameMask), EffMask, Hybrid,
+                L3Masks(), gameMask != 0 ? gameMask : StrictBoostMask);
+        }
+
+        public static ulong[] L3Masks()
+        {
+            var list = new List<ulong>();
+            foreach (KeyValuePair<uint, ulong> kv in cacheDomains)
+            {
+                ulong m = kv.Value & AllMask;
+                if (m != 0) list.Add(m);
+            }
+            return list.ToArray();
+        }
+
+        public static bool HasEffectiveBackgroundPartition()
+        {
+            if (customMask != 0)
+                return customBackgroundIds != null && customBackgroundIds.Length > 0;
+            return HasSafeBackgroundPartition();
+        }
+
+        private static uint[] squeezeIds;
+        private static bool squeezeIdsDone;
+
+        public static uint[] BackgroundYieldCpuSetIds()
+        {
+            if (HasEffectiveBackgroundPartition()) return EffectiveBackgroundCpuSetIds();
+            if (!squeezeIdsDone)
+            {
+                squeezeIdsDone = true;
+                if (!MultiGroup)
+                {
+                    ulong squeeze = BackgroundSqueezeMask();
+                    if (squeeze != 0)
+                    {
+                        try { squeezeIds = CpuSetIdsFor(squeeze); }
+                        catch { squeezeIds = null; }
+                    }
+                }
+            }
+            return squeezeIds;
+        }
+
+        public static bool HasBackgroundYieldTarget()
+        {
+            uint[] ids = BackgroundYieldCpuSetIds();
+            return ids != null && ids.Length > 0;
+        }
+
+        internal static ulong DefaultBoostMaskForPartition(string tag, ulong partition, ulong all)
+        {
+            return all;
         }
 
         public static ulong ExpandPhysicalCoreMask(ulong logicalMask)
@@ -260,6 +570,52 @@ namespace PaviseApp
                     foreach (CpuSetRec r in firstByCore.Values)
                         if (r.Efficiency != max) chosenBackgroundCores.Add(r.Group + ":" + r.Core);
                 }
+                else if (!AsymCache && !MultiGroup)
+                {
+                    var descs = new List<CpuPartitionPolicy.CoreDesc>();
+                    foreach (ulong coreMask in maskByCore.Values)
+                    {
+                        int dom = -1, die = -1; uint sz = 0;
+                        for (int d = 0; d < cacheDomains.Count; d++)
+                            if ((cacheDomains[d].Value & coreMask) != 0) { dom = d; sz = cacheDomains[d].Key; break; }
+                        for (int d = 0; d < processorDieDomains.Count; d++)
+                            if ((processorDieDomains[d] & coreMask) != 0) { die = d; break; }
+                        descs.Add(new CpuPartitionPolicy.CoreDesc { Mask = coreMask, L3 = dom, Die = die, Eff = 0, L3Size = sz });
+                    }
+                    CpuPartitionPolicy.CorePlan plan = CpuPartitionPolicy.Decide(descs.ToArray(), AllMask);
+                    if (plan.Partitioned)
+                    {
+                        uint[] planBg = CpuSetIdsFor(plan.Background);
+                        uint[] planGame = CpuSetIdsFor(plan.Game);
+                        if (planBg != null && planBg.Length > 0 && planGame != null && planGame.Length > 0)
+                        {
+                            backgroundIds = planBg;
+                            partitionGameIds = planGame;
+                            ThrottleMask = plan.Background;
+                            StrictBoostMask = plan.Game;
+                            InterruptMask = plan.Interrupt != 0 ? plan.Interrupt : plan.Background;
+                            BoostMask = DefaultBoostMaskForPartition(plan.Tag, plan.Game, AllMask);
+                            PartitionTag = plan.Tag;
+                            GameDomainIndex = plan.GameDomain;
+                            if (plan.AltGame != 0 && plan.AltBackground != 0)
+                            {
+                                uint[] planAltBg = CpuSetIdsFor(plan.AltBackground);
+                                uint[] planAltGame = CpuSetIdsFor(plan.AltGame);
+                                if (planAltBg != null && planAltBg.Length > 0
+                                    && planAltGame != null && planAltGame.Length > 0)
+                                {
+                                    altBackgroundIds = planAltBg;
+                                    altPartitionGameIds = planAltGame;
+                                    AltThrottleMask = plan.AltBackground;
+                                    AltStrictBoostMask = plan.AltGame;
+                                    AltInterruptMask = plan.AltInterrupt != 0
+                                        ? plan.AltInterrupt : plan.AltBackground;
+                                    AltDomainIndex = plan.AltDomain;
+                                }
+                            }
+                        }
+                    }
+                }
                 else if (!AsymCache)
                 {
                     var cores = new List<CpuSetRec>(firstByCore.Values);
@@ -295,6 +651,16 @@ namespace PaviseApp
                     uint[] cacheGame = CpuSetIdsFor(BigL3Mask);
                     if (cacheBg != null && cacheBg.Length > 0) backgroundIds = cacheBg;
                     if (cacheGame != null && cacheGame.Length > 0) partitionGameIds = cacheGame;
+                    uint[] freqGame = CpuSetIdsFor(SmallL3Mask);
+                    uint[] freqBg = CpuSetIdsFor(BigL3Mask);
+                    if (freqGame != null && freqGame.Length > 0 && freqBg != null && freqBg.Length > 0)
+                    {
+                        altPartitionGameIds = freqGame;
+                        altBackgroundIds = freqBg;
+                        AltStrictBoostMask = SmallL3Mask;
+                        AltThrottleMask = BigL3Mask;
+                        AltInterruptMask = BigL3Mask;
+                    }
                 }
                 else if (bg.Count > 0 && gamePartition.Count > 0)
                 {
@@ -335,6 +701,7 @@ namespace PaviseApp
 
                 var classes = new Dictionary<int, ulong>();
                 var l3 = new List<KeyValuePair<uint, ulong>>();
+                var dies = new List<ulong>();
                 bool multiGroup = false;
 
                 long pos = 0;
@@ -360,6 +727,20 @@ namespace PaviseApp
                             classes.TryGetValue(cls, out cur);
                             classes[cls] = cur | (ulong)Marshal.ReadInt64(ga, 0);
                         }
+                    }
+                    else if (rel == 5)
+                    {
+                        if (!RecordFits(size, 30, 2)) { pos += size; continue; }
+                        int gc = Marshal.ReadInt16(u, 22);
+                        if (!RecordArrayFits(size, 32, gc, 16)) { pos += size; continue; }
+                        ulong m = 0;
+                        for (int i = 0; i < gc; i++)
+                        {
+                            IntPtr ga = (IntPtr)((long)u + 24 + i * 16);
+                            if (Marshal.ReadInt16(ga, 8) != 0) { multiGroup = true; continue; }
+                            m |= (ulong)Marshal.ReadInt64(ga, 0);
+                        }
+                        if (m != 0) dies.Add(m);
                     }
                     else if (rel == 2)
                     {
@@ -394,6 +775,8 @@ namespace PaviseApp
                 }
 
                 if (multiGroup) return;
+                cacheDomains = l3;
+                processorDieDomains = dies;
 
                 if (classes.Count >= 2)
                 {

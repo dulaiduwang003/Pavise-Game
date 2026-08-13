@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 定位并直接删除英雄联盟附加层目录（客户端更新会重新下载这些组件）
+// 文件用途 定位并直接删除英雄联盟附加层目录 客户端更新会重新下载这些组件
 
 using System;
 using System.Collections.Generic;
@@ -136,7 +136,7 @@ namespace PaviseApp
                 inspection.CandidateCount++;
                 inspection.CandidateBytes = AddSaturated(inspection.CandidateBytes, candidate.Bytes);
                 if (!candidate.IsSafe)
-                    inspection.Error = JoinError(inspection.Error, candidate.RelativePath + "：" + candidate.Error);
+                    inspection.Error = JoinError(inspection.Error, candidate.RelativePath + " " + candidate.Error);
             }
 
             return inspection;
@@ -173,7 +173,7 @@ namespace PaviseApp
                     try { pid = process.Id; } catch { }
                     try { path = ProcessPath(process); } catch { }
                     if (!IsBlockingProcess(name, path, prefix)) continue;
-                    names.Add((string.IsNullOrEmpty(name) ? Lang.T("lolq.proc.unknown") : name) + " (PID " + pid + ")");
+                    names.Add((string.IsNullOrEmpty(name) ? Lang.T("lolq.proc.unknown") : name) + " PID " + pid);
                 }
             }
             finally
@@ -205,7 +205,7 @@ namespace PaviseApp
                     List<string> blocking;
                     if (HasBlockingProcesses(current.RootPath, out blocking))
                     {
-                        operationItem.Message = Lang.F("lolq.err.clientrunning", string.Join("、", blocking.ToArray()));
+                        operationItem.Message = Lang.F("lolq.err.clientrunning", string.Join(" ", blocking.ToArray()));
                         result.FailedCount++;
                         continue;
                     }
@@ -260,7 +260,7 @@ namespace PaviseApp
             if (!inspection.IsValidRoot) return Failure(inspection.Error);
             if (!string.IsNullOrEmpty(inspection.Error)) return Failure(inspection.Error);
             if (inspection.IsBlocked)
-                return Failure(Lang.F("lolq.err.closefirst", string.Join("、", inspection.BlockingProcesses.ToArray())));
+                return Failure(Lang.F("lolq.err.closefirst", string.Join(" ", inspection.BlockingProcesses.ToArray())));
             if (inspection.CandidateCount == 0) return Failure(Lang.T("lolq.err.nocandidate"));
             return null;
         }
@@ -571,7 +571,7 @@ namespace PaviseApp
         private static string JoinError(string current, string next)
         {
             if (string.IsNullOrEmpty(next)) return current;
-            return string.IsNullOrEmpty(current) ? next : current + "；" + next;
+            return string.IsNullOrEmpty(current) ? next : current + " " + next;
         }
     }
 }

@@ -9,7 +9,7 @@ namespace PaviseApp
 {
     internal partial class PanelForm
     {
-        private Toggle swGpu, swNvMax, swNvLowLat, swNvBg, swWindowedOpt;
+        private Toggle swGpu, swNvMax, swNvLowLat;
         private Toggle swNvRebar, swNvAnsel, swNvBatt;
         private TierPicker frlPicker, dlssPicker;
 
@@ -59,15 +59,19 @@ namespace PaviseApp
                 nvOk ? Lang.T("set.nvfrl.n") : nvNone, frlPicker, out cardH);
             sy += cardH + 8;
 
-            bool dlssOk = nvOk && NvDrsTweaks.DlssOverrideSupported();
+            bool dlssGpu = NvDrsTweaks.DlssGpuCapable();
+            bool dlssOk = nvOk && dlssGpu && NvDrsTweaks.DlssDriverSupported();
             dlssPicker = new TierPicker();
             dlssPicker.Size = new Size(Theme.S(270), Theme.S(28));
             dlssPicker.Labels = new[] { Lang.T("frl.off"), Lang.T("dlss.latest"), "J", "K" };
             dlssPicker.Index = DlssIndexOf(gameMode.NvDlssMode);
             dlssPicker.IndexChanged = delegate(int i) { gameMode.NvDlssMode = DlssModeOf(i); };
             dlssPicker.Enabled = dlssOk;
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvdlss"),
-                !nvOk ? nvNone : dlssOk ? Lang.T("set.nvdlss.n") : Lang.T("set.nvdlss.old"), dlssPicker, out cardH);
+            string dlssDesc = !nvOk ? nvNone
+                : dlssOk ? Lang.T("set.nvdlss.n")
+                : !dlssGpu ? Lang.T("set.nvdlss.nogpu")
+                : Lang.T("set.nvdlss.old");
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvdlss"), dlssDesc, dlssPicker, out cardH);
             sy += cardH + 8;
 
             string rebarDesc = Lang.T("set.nvrebar.n");
@@ -101,23 +105,7 @@ namespace PaviseApp
                 nvOk ? Lang.T("set.nvbatt.n") : nvNone, swNvBatt, out cardH);
             sy += cardH + 8;
 
-            sy += 10;
-            Section(scroll, Lang.T("sec.gfx.session"), 6, sy); sy += 24;
-
-            swNvBg = MakeSwitch(gameMode.NvBgFrl, null);
-            swNvBg.CheckedChanged += (s, e) => gameMode.NvBgFrl = swNvBg.Checked;
-            swNvBg.Enabled = nvOk;
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvbg"),
-                nvOk ? Lang.T("set.nvbg.n") : nvNone, swNvBg, out cardH);
-            sy += cardH + 8;
-
-            sy += 10;
-            Section(scroll, Lang.T("sec.graphics.present"), 6, sy); sy += 24;
-
-            swWindowedOpt = MakeSwitch(WindowedOptTweak.EnabledByPavise || WindowedOptTweak.CurrentlyOn(), OnWindowedOptToggle);
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.winopt"), Lang.T("set.winopt.n"), swWindowedOpt, out cardH);
-            sy += cardH + 8;
-
+            EnableCardCollapse(scroll);
         }
 
         internal static int DlssIndexOf(string mode)
@@ -142,26 +130,16 @@ namespace PaviseApp
                 : index == 4 ? "screen" : "off";
         }
 
-        private void OnWindowedOptToggle(object s, EventArgs e)
-        {
-            bool ok = swWindowedOpt.Checked ? WindowedOptTweak.Enable() : WindowedOptTweak.Restore();
-            if (!ok) PaviseDialog.Warn(this, App.DisplayName, Lang.T("winopt.failed"));
-            swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByPavise || WindowedOptTweak.CurrentlyOn());
-        }
-
         private void SyncGraphicsToggles()
         {
             if (swGpu != null) swGpu.SetSilently(gameMode.GpuHighPerf);
             if (swNvMax != null) swNvMax.SetSilently(gameMode.NvMaxPerf);
             if (swNvLowLat != null) swNvLowLat.SetSilently(gameMode.NvLowLatency);
-            if (swNvBg != null) swNvBg.SetSilently(gameMode.NvBgFrl);
             if (frlPicker != null) frlPicker.Index = FrlIndexOf(gameMode.NvFrlMode);
             if (dlssPicker != null) dlssPicker.Index = DlssIndexOf(gameMode.NvDlssMode);
             if (swNvRebar != null) swNvRebar.SetSilently(gameMode.NvRebar);
             if (swNvAnsel != null) swNvAnsel.SetSilently(gameMode.NvAnselOff);
             if (swNvBatt != null) swNvBatt.SetSilently(gameMode.NvBattFull);
-            if (swWindowedOpt != null)
-                swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByPavise || WindowedOptTweak.CurrentlyOn());
         }
     }
 }

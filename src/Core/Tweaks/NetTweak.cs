@@ -54,16 +54,16 @@ namespace PaviseApp
             {
                 if (!NeedsRepair())
                 {
-                    Logger.Log("网络限流校正：当前值正常，无需改动");
+                    Logger.Log("网络限流校正 当前值正常 无需改动");
                     return true;
                 }
                 if (!Throttle.Apply(SystemDefault))
                 {
-                    Logger.Log("网络限流校正：写入或回读失败，未改动");
+                    Logger.Log("网络限流校正 写入或回读失败 未改动");
                     return false;
                 }
                 Settings.Save("NetThrottleRepaired", true);
-                Logger.Log("网络限流校正：已改回系统默认 " + SystemDefault + "，重启后生效");
+                Logger.Log("网络限流校正 已改回系统默认 " + SystemDefault + " 重启后生效");
                 return true;
             }
         }
@@ -76,7 +76,7 @@ namespace PaviseApp
                 if (ok)
                 {
                     Settings.Save("NetThrottleRepaired", false);
-                    Logger.Log("网络限流校正：已还原为改动前的值");
+                    Logger.Log("网络限流校正 已还原为改动前的值");
                 }
                 return ok;
             }

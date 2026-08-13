@@ -57,7 +57,13 @@ namespace PaviseApp
 
         public static bool TryDetect(out bool enabled, out ulong windowBytes, out string gpuName)
         {
-            enabled = false; windowBytes = 0; gpuName = null;
+            bool nvidia;
+            return TryDetect(out enabled, out windowBytes, out gpuName, out nvidia);
+        }
+
+        public static bool TryDetect(out bool enabled, out ulong windowBytes, out string gpuName, out bool nvidia)
+        {
+            enabled = false; windowBytes = 0; gpuName = null; nvidia = false;
             IntPtr devInfo = IntPtr.Zero;
             try
             {
@@ -76,6 +82,7 @@ namespace PaviseApp
                     ulong window = LargestMemoryWindow(data.DevInst);
                     if (window <= windowBytes) continue;
                     windowBytes = window;
+                    nvidia = instance.IndexOf("VEN_10DE", StringComparison.OrdinalIgnoreCase) >= 0;
                     var desc = new StringBuilder(256);
                     uint dataType;
                     gpuName = SetupDiGetDeviceRegistryPropertyW(devInfo, ref data,

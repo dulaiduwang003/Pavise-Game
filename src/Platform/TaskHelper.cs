@@ -138,7 +138,7 @@ namespace PaviseApp
                 string target;
                 if (!TryReadTaskCommand(out target))
                 {
-                    Logger.Log("开机自启任务读取失败，本次不修改");
+                    Logger.Log("开机自启任务读取失败 本次不修改");
                     return;
                 }
                 string taskArguments;
@@ -154,16 +154,16 @@ namespace PaviseApp
                 }
                 if (IsVolatileAutostartPath(cur))
                 {
-                    Logger.Log("开机自启任务迁移已跳过：当前程序位于临时/易失目录（" + cur
-                        + "），文件可能被清理导致自启失效；请把程序移到固定目录后再启动");
+                    Logger.Log("开机自启任务迁移已跳过 当前程序位于临时或易失目录 " + cur
+                        + " 文件可能被清理导致自启失效 请把程序移到固定目录后再启动");
                     return;
                 }
                 string action = pathChanged
-                    ? "开机自启任务迁移：" + (target ?? "未知目标") + " → " + cur
-                    : "开机自启任务参数刷新：旧任务缺少 " + AutostartArgument + " 静默启动参数，重建任务补齐";
+                    ? "开机自启任务迁移 " + (target ?? "未知目标") + " " + cur
+                    : "开机自启任务参数刷新 旧任务缺少 " + AutostartArgument + " 静默启动参数 重建任务补齐";
                 Logger.Log(action);
                 if (CreateStartupTask() != 0)
-                    Logger.Log(pathChanged ? "开机自启任务迁移失败，稍后将重试" : "开机自启任务参数刷新失败，稍后将重试");
+                    Logger.Log(pathChanged ? "开机自启任务迁移失败 稍后将重试" : "开机自启任务参数刷新失败 稍后将重试");
             }
             catch { }
         }

@@ -20,10 +20,10 @@ namespace PaviseApp
         private AuditScanView auditScan;
         private PillButton btnAuditStart;
         private Label lblAuditStatus;
-        private PillButton btnAuditQuick, btnAuditPrecise, btnAuditNv, btnAuditAmd;
+        private PillButton btnAuditQuick, btnAuditPrecise, btnAuditNv, btnAuditPoll;
         private int auditBusy;
         private string auditNvProbeText;
-        private string auditAmdProbeText;
+        private string auditPollText;
         private bool auditRendered;
         private Stopwatch auditClock;
         private int auditTotalMs;
@@ -49,16 +49,12 @@ namespace PaviseApp
             btnAuditNv.Click += delegate { StartNvProbe(); };
             pageAudit.Controls.Add(btnAuditNv);
 
-            bool amdProbe = AdlxTweaks.Available;
-            if (amdProbe)
-            {
-                btnAuditAmd = new PillButton(Lang.T("audit.amdprobe"), BtnKind.Normal);
-                btnAuditAmd.SetBounds(Theme.S(ContentX + 514), Theme.S(y), Theme.S(160), Theme.S(34));
-                btnAuditAmd.Click += delegate { StartAmdProbe(); };
-                pageAudit.Controls.Add(btnAuditAmd);
-            }
+            btnAuditPoll = new PillButton(Lang.T("audit.pollprobe"), BtnKind.Normal);
+            btnAuditPoll.SetBounds(Theme.S(ContentX + 514), Theme.S(y), Theme.S(160), Theme.S(34));
+            btnAuditPoll.Click += delegate { StartPollProbe(); };
+            pageAudit.Controls.Add(btnAuditPoll);
 
-            int statusOffset = amdProbe ? 682 : 516;
+            int statusOffset = 684;
             lblAuditStatus = CardLabel(pageAudit, "", ContentX + statusOffset, y + 8,
                 ContentW - statusOffset, 20, 8.0f, false, Theme.Dim);
             y += 44;
@@ -87,7 +83,9 @@ namespace PaviseApp
         {
             auditScan.SetIdle(Lang.T("audit.idle.title"), Lang.T("audit.idle.hint"));
             auditScan.Visible = true;
+            Fx.Settle(auditScroll);
             auditScroll.Visible = false;
+            Fx.SlideIn(auditScan);
             SetToolbarVisible(false);
             int bw = Theme.S(184), bh = Theme.S(38);
             btnAuditStart.SetBounds((auditScan.Width - bw) / 2,
@@ -98,21 +96,29 @@ namespace PaviseApp
 
         private void SetToolbarVisible(bool visible)
         {
+            bool wasShown = btnAuditQuick.Visible;
             btnAuditQuick.Visible = visible;
             btnAuditPrecise.Visible = visible;
             btnAuditNv.Visible = visible;
-            if (btnAuditAmd != null) btnAuditAmd.Visible = visible;
+            btnAuditPoll.Visible = visible;
+            if (!visible || wasShown) return;
+            Fx.SlideIn(btnAuditQuick);
+            Fx.SlideIn(btnAuditPrecise);
+            Fx.SlideIn(btnAuditNv);
+            Fx.SlideIn(btnAuditPoll);
         }
 
         private void StartAudit(int windowMs)
         {
             if (Interlocked.Exchange(ref auditBusy, 1) == 1) return;
             auditNvProbeText = null;
-            auditAmdProbeText = null;
+            auditPollText = null;
             SetAuditButtons(false);
             btnAuditStart.Visible = false;
+            Fx.Settle(auditScroll);
             auditScroll.Visible = false;
             auditScan.Visible = true;
+            Fx.SlideIn(auditScan);
             auditScan.BeginScan(Lang.T("audit.phase.capability"));
             lblAuditStatus.Text = "";
             BeginAuditProgress(windowMs);
@@ -174,66 +180,11 @@ namespace PaviseApp
                             parts.Add(r.Key + "=" + r.Outcome);
                         }
                         summary = Lang.F("audit.nv.summary", ok, results.Count)
-                            + "（" + string.Join("，", parts.ToArray()) + "）";
+                            + " " + string.Join(" ", parts.ToArray()) + " ";
                     }
                 }
                 catch (Exception ex) { summary = Lang.T("audit.nv.failed") + " " + ex.Message; }
                 auditNvProbeText = summary;
-                AuditReport report = null;
-                try { report = SystemAudit.Collect(QuickAuditWindowMs); } catch { }
-                Interlocked.Exchange(ref auditBusy, 0);
-                try
-                {
-                    BeginInvoke((MethodInvoker)(() =>
-                    {
-                        EndAuditProgress();
-                        SetAuditButtons(true);
-                        lblAuditStatus.Text = "";
-                        if (report != null) RenderAudit(report);
-                        else if (!auditRendered) ShowAuditIdle();
-                    }));
-                }
-                catch { }
-            });
-        }
-
-        private void StartAmdProbe()
-        {
-            if (!AdlxTweaks.Available)
-            {
-                lblAuditStatus.Text = Lang.T("audit.amd.unavailable");
-                return;
-            }
-            if (Interlocked.Exchange(ref auditBusy, 1) == 1) return;
-            SetAuditButtons(false);
-            btnAuditStart.Visible = false;
-            auditScroll.Visible = false;
-            auditScan.Visible = true;
-            auditScan.BeginScan(Lang.T("audit.nv.probing"));
-            BeginAuditProgress(QuickAuditWindowMs);
-
-            ThreadPool.QueueUserWorkItem(_ =>
-            {
-                string summary;
-                try
-                {
-                    var rows = AdlxTweaks.ProbeWriteback();
-                    if (rows.Count == 0) summary = Lang.T("audit.amd.failed");
-                    else
-                    {
-                        int ok = 0;
-                        var parts = new List<string>();
-                        foreach (var r in rows)
-                        {
-                            if (r.Ok) ok++;
-                            parts.Add(r.Name + "=" + r.Outcome);
-                        }
-                        summary = Lang.F("audit.nv.summary", ok, rows.Count)
-                            + "（" + string.Join("，", parts.ToArray()) + "）";
-                    }
-                }
-                catch (Exception ex) { summary = Lang.T("audit.amd.failed") + " " + ex.Message; }
-                auditAmdProbeText = summary;
                 AuditReport report = null;
                 try { report = SystemAudit.Collect(QuickAuditWindowMs); } catch { }
                 Interlocked.Exchange(ref auditBusy, 0);
@@ -290,7 +241,83 @@ namespace PaviseApp
             btnAuditQuick.Enabled = enabled;
             btnAuditPrecise.Enabled = enabled;
             btnAuditNv.Enabled = enabled;
-            if (btnAuditAmd != null) btnAuditAmd.Enabled = enabled;
+            btnAuditPoll.Enabled = enabled;
+        }
+
+        internal const int PollProbeMs = 4000;
+
+        private void StartPollProbe()
+        {
+            if (Interlocked.Exchange(ref auditBusy, 1) == 1) return;
+
+            var probe = new PollingRateProbe();
+            if (!probe.Start())
+            {
+                probe.Dispose();
+                Interlocked.Exchange(ref auditBusy, 0);
+                lblAuditStatus.Text = Lang.T("audit.poll.nostart");
+                return;
+            }
+
+            SetAuditButtons(false);
+            btnAuditStart.Visible = false;
+            Fx.Settle(auditScroll);
+            auditScroll.Visible = false;
+            auditScan.Visible = true;
+            Fx.SlideIn(auditScan);
+            auditScan.BeginScan(Lang.T("audit.poll.probing"));
+            lblAuditStatus.Text = "";
+            BeginAuditProgress(PollProbeMs);
+
+            var timer = new System.Windows.Forms.Timer();
+            timer.Interval = PollProbeMs;
+            timer.Tick += delegate
+            {
+                timer.Stop();
+                timer.Dispose();
+                PollingResult result = null;
+                try { result = probe.Stop(); }
+                catch { }
+                finally { probe.Dispose(); }
+                auditPollText = PollResultText(result);
+                FinishPollProbe();
+            };
+            timer.Start();
+        }
+
+        private void FinishPollProbe()
+        {
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                AuditReport report = null;
+                try { report = SystemAudit.Collect(QuickAuditWindowMs); } catch { }
+                Interlocked.Exchange(ref auditBusy, 0);
+                try
+                {
+                    BeginInvoke((MethodInvoker)(() =>
+                    {
+                        EndAuditProgress();
+                        SetAuditButtons(true);
+                        lblAuditStatus.Text = "";
+                        if (report != null) RenderAudit(report);
+                        else if (!auditRendered) ShowAuditIdle();
+                    }));
+                }
+                catch { }
+            });
+        }
+
+        internal static string PollResultText(PollingResult result)
+        {
+            if (result == null) return Lang.F("audit.poll.fail", "读取异常");
+            if (!result.Ok) return Lang.F("audit.poll.fail", result.Failure);
+
+            string head = Lang.F("audit.poll.ok", result.Hz,
+                result.MedianIntervalMs.ToString("0.00"), result.Samples);
+            if (PollingRateProbe.IsWeak(result.Hz))
+                return head + " " + Lang.F("audit.poll.weak", (1000.0 / result.Hz).ToString("0.#"));
+            if (result.Hz >= PollingRateProbe.GoodHz) return head + " " + Lang.T("audit.poll.good");
+            return head;
         }
 
         private void RenderAudit(AuditReport report)
@@ -362,23 +389,47 @@ namespace PaviseApp
             sy += 26;
             foreach (AuditRow row in rows)
             {
-                var panel = MakeConsolePanel(auditScroll, 6, sy, ScrollContentW, 64, false);
+                string note = row.Note ?? "";
+                if (auditNvProbeText != null && row.Name == "NVIDIA 驱动接口")
+                    note = Lang.T("audit.nv.result") + auditNvProbeText;
+                if (auditPollText != null && row.Name == "键鼠链路")
+                    note = auditPollText + "\r\n" + note;
+
+                int noteHeight = MeasureNoteHeight(note);
+                int rowHeight = Math.Max(64, 40 + noteHeight);
+                var panel = MakeConsolePanel(auditScroll, 6, sy, ScrollContentW, rowHeight, false);
                 CardLabel(panel, row.Name, 16, 10, 236, 20, 8.6f, true, Theme.Fg);
                 CardLabel(panel, row.Value, 256, 10, ScrollContentW - 380, 20, 8.6f, true,
                     row.Warn ? Theme.Accent : Theme.Fg);
                 CardLabel(panel, Lang.T("audit.evidence") + row.Evidence,
                     ScrollContentW - 118, 10, 104, 20, 7.4f, false, Theme.Faint);
-                string note = row.Note ?? "";
-                if (auditNvProbeText != null && row.Name == "NVIDIA 驱动接口")
-                    note = Lang.T("audit.nv.result") + auditNvProbeText;
-                if (auditAmdProbeText != null && row.Name == "AMD 驱动接口")
-                    note = Lang.T("audit.nv.result") + auditAmdProbeText;
-                CardLabel(panel, note, 16, 34, ScrollContentW - 32, 24, 7.8f, false, Theme.Dim);
+                WrapLabel(panel, note, 16, 34, ScrollContentW - 32, noteHeight, 7.8f, Theme.Dim);
                 auditEntering.Add(panel);
-                sy += 72;
+                sy += rowHeight + 8;
             }
             sy += 8;
             return sy;
+        }
+
+        private int MeasureNoteHeight(string note)
+        {
+            if (string.IsNullOrEmpty(note)) return 24;
+            Font font = Theme.UI(7.8f, false);
+            int widthPx = Theme.S(ScrollContentW - 32);
+            Size measured = TextRenderer.MeasureText(note, font,
+                new Size(widthPx, int.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
+            int unscaled = (int)Math.Ceiling(measured.Height / Dpi.Scale);
+            return Math.Max(24, unscaled + 4);
+        }
+
+        private void WrapLabel(Control parent, string text, int x, int y, int w, int h, float size, Color color)
+        {
+            var label = new Label();
+            label.Text = text; label.ForeColor = color; label.BackColor = Color.Transparent;
+            label.Font = Theme.UI(size, false); label.AutoEllipsis = false; label.AutoSize = false;
+            label.UseCompatibleTextRendering = false;
+            label.SetBounds(Theme.S(x), Theme.S(y), Theme.S(w), Theme.S(h));
+            parent.Controls.Add(label);
         }
     }
 }

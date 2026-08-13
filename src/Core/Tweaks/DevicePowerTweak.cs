@@ -69,21 +69,21 @@ namespace PaviseApp
                     if (!a.CanPowerDown) continue;
                     int target = (a.PnPCapabilities.HasValue ? a.PnPCapabilities.Value : 0) | NoPowerDownBit;
                     if (Reg(a.Index).Apply(target)) done.Add(a.Index);
-                    else Logger.Log("网卡省电：写入失败 " + a.Description);
+                    else Logger.Log("网卡省电 写入失败 " + a.Description);
                 }
                 if (done.Count == 0)
                 {
-                    Logger.Log("网卡省电：所有网卡均已禁止系统断电，无需改动");
+                    Logger.Log("网卡省电 所有网卡均已禁止系统断电 无需改动");
                     return true;
                 }
                 if (!Settings.SaveStr(ListKey, string.Join(";", done.ToArray())))
                 {
                     foreach (string idx in done) Reg(idx).Restore();
-                    Logger.Log("网卡省电：清单无法持久化，已全部还原");
+                    Logger.Log("网卡省电 清单无法持久化 已全部还原");
                     return false;
                 }
                 Settings.Save("DevPowerByPavise", true);
-                Logger.Log("网卡省电：已禁止系统为省电关闭 " + done.Count + " 块网卡");
+                Logger.Log("网卡省电 已禁止系统为省电关闭 " + done.Count + " 块网卡");
                 return true;
             }
         }
@@ -99,9 +99,9 @@ namespace PaviseApp
                 {
                     Settings.SaveStr(ListKey, "");
                     Settings.Save("DevPowerByPavise", false);
-                    Logger.Log("网卡省电：已还原原值");
+                    Logger.Log("网卡省电 已还原原值");
                 }
-                else Logger.Log("网卡省电：部分网卡还原失败，快照保留待下次重试");
+                else Logger.Log("网卡省电 部分网卡还原失败 快照保留待下次重试");
                 return all;
             }
         }

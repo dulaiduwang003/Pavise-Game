@@ -40,7 +40,7 @@ namespace PaviseApp
                             try { curKind = k.GetValueKind(valName); } catch { }
                             if (curKind != kind)
                             {
-                                Logger.Log(valName + " 原值类型异常（" + curKind + "），跳过此项调整");
+                                Logger.Log(valName + " 原值类型异常 " + curKind + " 跳过此项调整");
                                 return false;
                             }
                         }
@@ -51,7 +51,7 @@ namespace PaviseApp
                         Settings.SaveStr(slot, snapshot);
                         if (Settings.LoadStr(slot, "") != snapshot)
                         {
-                            Logger.Log("无法持久化 " + valName + " 原值快照，已取消写入");
+                            Logger.Log("无法持久化 " + valName + " 原值快照 已取消写入");
                             return false;
                         }
                     }
@@ -108,14 +108,14 @@ namespace PaviseApp
                     if (s.Length < 1 || s[0] != 'b')
                     {
                         Settings.SaveStr(slot, "");
-                        Logger.Log("注册表快照损坏，放弃还原 " + valName + "（二进制快照格式不符）");
+                        Logger.Log("注册表快照损坏 放弃还原 " + valName + " 二进制快照格式不符");
                         return false;
                     }
                     try { val = Convert.FromBase64String(s.Substring(1)); }
                     catch
                     {
                         Settings.SaveStr(slot, "");
-                        Logger.Log("注册表快照损坏，放弃还原 " + valName + "（二进制快照解码失败）");
+                        Logger.Log("注册表快照损坏 放弃还原 " + valName + " 二进制快照解码失败");
                         return false;
                     }
                 }
@@ -128,7 +128,7 @@ namespace PaviseApp
                         if (!long.TryParse(v, out n))
                         {
                             Settings.SaveStr(slot, "");
-                            Logger.Log("注册表快照损坏，放弃还原 " + valName + "（记录值 \"" + v + "\"）");
+                            Logger.Log("注册表快照损坏 放弃还原 " + valName + " 记录值 \"" + v + "\" ");
                             return false;
                         }
                         val = unchecked((int)n);
@@ -166,7 +166,7 @@ namespace PaviseApp
                 }
                 if (!restored)
                 {
-                    Logger.Log("还原 " + valName + " 后回读不一致，快照保留待下次重试");
+                    Logger.Log("还原 " + valName + " 后回读不一致 快照保留待下次重试");
                     return false;
                 }
                 Settings.SaveStr(slot, "");
@@ -174,7 +174,7 @@ namespace PaviseApp
             }
             catch
             {
-                Logger.Log("还原 " + valName + " 失败（多半是权限不足），快照保留待下次重试");
+                Logger.Log("还原 " + valName + " 失败 多半是权限不足 快照保留待下次重试");
                 return false;
             }
         }

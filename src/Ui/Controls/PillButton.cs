@@ -68,7 +68,9 @@ namespace PaviseApp
                     using (var hi = new Pen(Col.Alpha(Color.White, (int)(18 + 24 * h))))
                         g.DrawLine(hi, Theme.S(2), Theme.S(1), Width - cut - Theme.S(1), Theme.S(1));
                 }
-                if (pressed) using (var dk = new SolidBrush(Col.Alpha(Color.Black, 45))) g.FillPath(dk, path);
+                if (press.Value > 0.01f)
+                    using (var dk = new SolidBrush(Col.Alpha(Color.Black, (int)(45 * press.Value))))
+                        g.FillPath(dk, path);
                 if (!Enabled)
                     using (var veil = new SolidBrush(Col.Alpha(EffBg, 158)))
                         g.FillPath(veil, path);

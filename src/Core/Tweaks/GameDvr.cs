@@ -19,7 +19,7 @@ namespace PaviseApp
             {
                 if (active) return true;
                 active = Dvr.Apply(0);
-                Logger.Log(active ? "Game DVR 后台录制已关闭" : "Game DVR 写入或回读失败，本轮未关闭");
+                Logger.Log(active ? "Game DVR 后台录制已关闭" : "Game DVR 写入或回读失败 本轮未关闭");
                 return active;
             }
         }

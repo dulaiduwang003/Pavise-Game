@@ -297,6 +297,8 @@ namespace PaviseApp
 
         private static GameDetection Elect(GameProfile profile, List<GameProcessSnapshot> members)
         {
+            if (profile.ForceTrigger) return ElectForced(profile, members);
+
             GameProcessSnapshot learned = null;
             GameProcessSnapshot foreground = null;
             foreach (GameProcessSnapshot member in members)
@@ -322,6 +324,38 @@ namespace PaviseApp
             if (SamePath(profile.ExecutablePath, foreground.Path))
                 return Elected(profile, foreground, false, Lang.T("detect.window"));
             return PendingGpuConfirm(profile, foreground);
+        }
+
+        private static GameDetection ElectForced(GameProfile profile, List<GameProcessSnapshot> members)
+        {
+            GameProcessSnapshot best = null;
+            foreach (GameProcessSnapshot member in members)
+            {
+                if (!SamePath(profile.ExecutablePath, member.Path)
+                    && !SamePath(profile.LearnedExecutablePath, member.Path)) continue;
+                if (best == null || PreferForced(member, best)) best = member;
+            }
+            if (best == null) return null;
+            return new GameDetection
+            {
+                Profile = profile.Clone(),
+                RendererPid = best.Pid,
+                RendererCreation = best.Creation,
+                RendererName = best.Name,
+                RendererPath = best.Path,
+                RendererForeground = best.Foreground,
+                RendererCandidateSelected = true,
+                RendererUserSelected = true,
+                RendererLearnable = false,
+                Evidence = Lang.T("detect.forced")
+            };
+        }
+
+        private static bool PreferForced(GameProcessSnapshot candidate, GameProcessSnapshot current)
+        {
+            if (candidate.Foreground != current.Foreground) return candidate.Foreground;
+            if (candidate.Creation != current.Creation) return candidate.Creation < current.Creation;
+            return candidate.Pid < current.Pid;
         }
 
         internal static bool ElectionVetoed(string name, string path)
