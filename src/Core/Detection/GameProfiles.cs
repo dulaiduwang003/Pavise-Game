@@ -23,6 +23,7 @@ namespace PaviseApp
         public string Root;
         public string ExecutablePath;
         public string LearnedExecutablePath;
+        public bool ForceTrigger;
         public readonly HashSet<string> Entries = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         public GameProfile Clone()
@@ -33,7 +34,8 @@ namespace PaviseApp
                 Name = Name,
                 Root = Root,
                 ExecutablePath = ExecutablePath,
-                LearnedExecutablePath = LearnedExecutablePath
+                LearnedExecutablePath = LearnedExecutablePath,
+                ForceTrigger = ForceTrigger
             };
             foreach (string s in Entries) p.Entries.Add(s);
             return p;
@@ -82,8 +84,8 @@ namespace PaviseApp
             {
                 loaded.Clear();
                 Save(loaded);
-                Logger.Log("检测到旧版本的游戏库，已备份并自动清空：识别机制已重构为证据选举制，"
-                    + "旧档案不再适用；打开游戏进到画面即可自动重建");
+                Logger.Log("检测到旧版本的游戏库 已备份并自动清空 识别机制已重构为证据选举制 "
+                    + "旧档案不再适用 打开游戏进到画面即可自动重建");
                 return loaded;
             }
 
@@ -127,13 +129,14 @@ namespace PaviseApp
         {
             if (loadFailed)
             {
-                Logger.Log("游戏档案此前读取失败，本次保存已跳过以免覆盖原文件（重启 Pavise 后重试）");
+                Logger.Log("游戏档案此前读取失败 本次保存已跳过以免覆盖原文件 重启 Pavise 后重试");
                 return;
             }
             try
             {
                 var lines = new List<string>();
                 var learned = new List<string>();
+                var forced = new List<string>();
                 lines.Add(HeaderV4);
                 foreach (GameProfile p in profiles)
                 {
@@ -142,8 +145,10 @@ namespace PaviseApp
                         + "|" + B64(p.ExecutablePath) + "|" + B64(Join(p.Entries)));
                     if (!string.IsNullOrEmpty(p.LearnedExecutablePath))
                         learned.Add("L|" + B64(p.Id) + "|" + B64(p.LearnedExecutablePath));
+                    if (p.ForceTrigger) forced.Add("F|" + B64(p.Id));
                 }
                 lines.AddRange(learned);
+                lines.AddRange(forced);
                 AtomicFile.WriteLines(path, lines.ToArray(), "游戏档案");
             }
             catch (Exception ex) { Logger.LogFailure("游戏档案保存失败", ex); }
@@ -171,12 +176,13 @@ namespace PaviseApp
                     if (lines[0].StartsWith(HeaderPrefix, StringComparison.Ordinal))
                     {
                         loadFailed = true;
-                        Logger.Log("游戏档案由更高版本的 Pavise 写入（" + lines[0]
-                            + "），本版本已切换为只读，不会改写该文件");
+                        Logger.Log("游戏档案由更高版本的 Pavise 写入 " + lines[0]
+                            + " 本版本已切换为只读 不会改写该文件");
                     }
                     return result;
                 }
                 var learnedById = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                var forcedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 for (int i = 1; i < lines.Length; i++)
                 {
                     string[] a = lines[i].Split('|');
@@ -185,6 +191,12 @@ namespace PaviseApp
                         string id = Un64(a[1]);
                         string learnedPath = NormalizePath(Un64(a[2]));
                         if (!string.IsNullOrEmpty(id) && learnedPath != null) learnedById[id] = learnedPath;
+                        continue;
+                    }
+                    if (a[0] == "F" && a.Length == 2)
+                    {
+                        string id = Un64(a[1]);
+                        if (!string.IsNullOrEmpty(id)) forcedIds.Add(id);
                         continue;
                     }
                     if (a[0] != "P") continue;
@@ -204,12 +216,13 @@ namespace PaviseApp
                     if (p.LearnedExecutablePath == null && p.Id != null
                         && learnedById.TryGetValue(p.Id, out learnedPath))
                         p.LearnedExecutablePath = learnedPath;
+                    if (p.Id != null && forcedIds.Contains(p.Id)) p.ForceTrigger = true;
                 }
             }
             catch (Exception ex)
             {
                 loadFailed = true;
-                Logger.LogFailure("游戏档案读取失败，已保护现有文件不被覆盖", ex);
+                Logger.LogFailure("游戏档案读取失败 已保护现有文件不被覆盖", ex);
             }
             return result;
         }
@@ -273,6 +286,12 @@ namespace PaviseApp
                         changed = true;
                     }
                 }
+                if (raw.ForceTrigger && string.IsNullOrEmpty(raw.ExecutablePath)
+                    && string.IsNullOrEmpty(raw.LearnedExecutablePath))
+                {
+                    raw.ForceTrigger = false;
+                    changed = true;
+                }
                 string key = !string.IsNullOrEmpty(raw.ExecutablePath) ? "E|" + raw.ExecutablePath
                     : (!string.IsNullOrEmpty(raw.Root) ? "R|" + raw.Root : "I|" + raw.Id);
                 GameProfile keep;
@@ -286,6 +305,7 @@ namespace PaviseApp
                 foreach (string entry in raw.Entries) keep.Entries.Add(entry);
                 if (string.IsNullOrEmpty(keep.ExecutablePath)) keep.ExecutablePath = raw.ExecutablePath;
                 if (string.IsNullOrEmpty(keep.LearnedExecutablePath)) keep.LearnedExecutablePath = raw.LearnedExecutablePath;
+                if (raw.ForceTrigger) keep.ForceTrigger = true;
             }
             return result;
         }

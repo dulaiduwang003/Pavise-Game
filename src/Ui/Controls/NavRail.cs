@@ -105,15 +105,6 @@ namespace PaviseApp
 
         public void SnapToSelection() { ind.Set(SlotY(SlotOfItem(sel))); Invalidate(); }
 
-#if PAVISE_SELFTEST
-        internal void SetSelectedForTest(int i)
-        {
-            if (i < 0 || i >= labels.Length) return;
-            sel = i;
-            SnapToSelection();
-        }
-#endif
-
         public void SetMode(PerformancePreset value, bool enabled)
         {
             if (mode == value && modeEnabled == enabled) return;
@@ -124,7 +115,7 @@ namespace PaviseApp
             Invalidate();
         }
 
-        protected override bool StepAll() { return ind.Step(); }
+        protected override bool StepAll() { bool a = base.StepAll(); bool b = ind.Step(); return a || b; }
 
         private int HitTest(int y)
         {
@@ -160,7 +151,7 @@ namespace PaviseApp
             TextRenderer.DrawText(g, App.DisplayName, Theme.UI(13f, true),
                 new Rectangle(Dpi.S(56), Dpi.S(14), Width - Dpi.S(60), Dpi.S(24)), Theme.Fg,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
-            TextRenderer.DrawText(g, "CORE CONTROL  ·  " + App.VersionTag, Theme.Mono(6.5f),
+            TextRenderer.DrawText(g, "CORE CONTROL " + App.VersionTag, Theme.Mono(6.5f),
                 new Rectangle(Dpi.S(57), Dpi.S(38), Width - Dpi.S(60), Dpi.S(14)), Theme.Faint,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
 
@@ -186,9 +177,10 @@ namespace PaviseApp
                 if (slot < 0 || slot >= order.Length) continue;
                 string text = groupTexts[gi] ?? "";
                 int gy = SlotY(slot) - GroupH;
-                int textW = TextRenderer.MeasureText(g, text, Theme.Mono(6.5f)).Width;
+                Font gf = Theme.MonoFor(text, 6.5f);
+                int textW = TextRenderer.MeasureText(g, text, gf).Width;
                 int lineY = gy + GroupH / 2;
-                TextRenderer.DrawText(g, text, Theme.Mono(6.5f),
+                TextRenderer.DrawText(g, text, gf,
                     new Rectangle(Pad + Dpi.S(13), gy, Width - Pad * 2 - Dpi.S(13), GroupH), Theme.Faint,
                     TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
                 using (var gp = new Pen(Theme.Stroke))

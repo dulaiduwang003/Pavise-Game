@@ -39,6 +39,13 @@ namespace PaviseApp
         private PillButton btnAdd, btnDeep, btnAll, btnBrowse, btnRunning;
         private volatile bool closed;
         private volatile bool scanning;
+        private volatile bool collectingRunning;
+        private volatile bool probingGpu;
+        private volatile bool refreshBusy;
+        private bool deepMode;
+        private int dots;
+        private System.Windows.Forms.Timer infoTimer;
+        private System.Windows.Forms.Timer runningTimer;
         private int hover = -1;
 
         public AddGameDialog(IEnumerable<string> alreadyInLibrary, bool allowGpuProbe)
@@ -129,32 +136,32 @@ namespace PaviseApp
             lblInfo.BackColor = Theme.Bg;
             lblInfo.Font = Theme.UI(8.25f, false);
             lblInfo.TextAlign = ContentAlignment.MiddleLeft;
-            lblInfo.SetBounds(Theme.S(16), Theme.S(490), Theme.S(146), Theme.S(28));
+            lblInfo.SetBounds(Theme.S(16), Theme.S(480), Theme.S(588), Theme.S(20));
             lblInfo.AutoEllipsis = true;
 
             btnRunning = new PillButton(Lang.T("scan.running.btn"));
-            btnRunning.SetBounds(Theme.S(166), Theme.S(486), Theme.S(94), Theme.S(34));
+            btnRunning.SetBounds(Theme.S(166), Theme.S(506), Theme.S(94), Theme.S(34));
             btnRunning.Click += delegate { PickRunning(); };
 
             btnBrowse = new PillButton(Lang.T("scan.browse"));
-            btnBrowse.SetBounds(Theme.S(266), Theme.S(486), Theme.S(90), Theme.S(34));
+            btnBrowse.SetBounds(Theme.S(266), Theme.S(506), Theme.S(90), Theme.S(34));
             btnBrowse.Click += delegate { BrowseFile(); };
 
             btnDeep = new PillButton(Lang.T("scan.deep"));
-            btnDeep.SetBounds(Theme.S(362), Theme.S(486), Theme.S(90), Theme.S(34));
+            btnDeep.SetBounds(Theme.S(362), Theme.S(506), Theme.S(90), Theme.S(34));
             btnDeep.Click += delegate { DeepScan(); };
 
             btnAdd = new PillButton(Lang.T("btn.add"), BtnKind.Primary);
-            btnAdd.SetBounds(Theme.S(458), Theme.S(486), Theme.S(74), Theme.S(34));
+            btnAdd.SetBounds(Theme.S(458), Theme.S(506), Theme.S(74), Theme.S(34));
             btnAdd.Click += delegate { Accept(); };
 
             var btnCancel = new PillButton(Lang.T("btn.cancel"));
-            btnCancel.SetBounds(Theme.S(538), Theme.S(486), Theme.S(66), Theme.S(34));
+            btnCancel.SetBounds(Theme.S(538), Theme.S(506), Theme.S(66), Theme.S(34));
             btnCancel.Click += delegate { DialogResult = DialogResult.Cancel; };
 
             Controls.AddRange(new Control[] { title, lblClose, tbFilter, btnAll, listWrap, lblInfo, btnRunning, btnBrowse, btnDeep, btnAdd, btnCancel });
-            Load += delegate { StartRunningCollect(); StartScan(null); };
-            FormClosed += delegate { closed = true; };
+            Load += delegate { StartTimers(); StartRunningCollect(true); StartScan(null); };
+            FormClosed += delegate { closed = true; StopTimers(); };
             MouseDown += DragMove;
             KeyPreview = true;
             KeyDown += delegate(object s, KeyEventArgs e)
@@ -183,6 +190,12 @@ namespace PaviseApp
             Native.RoundCorners(Handle);
         }
 
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            Fx.EnterForm(this);
+        }
+
         private void DragMove(object s, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left)
@@ -192,17 +205,61 @@ namespace PaviseApp
             }
         }
 
-        private void StartRunningCollect()
+        private void StartTimers()
         {
+            infoTimer = new System.Windows.Forms.Timer();
+            infoTimer.Interval = 420;
+            infoTimer.Tick += delegate
+            {
+                if (!Busy) return;
+                dots = (dots + 1) % 4;
+                UpdateInfoLabel();
+            };
+            infoTimer.Start();
+
+            runningTimer = new System.Windows.Forms.Timer();
+            runningTimer.Interval = 3000;
+            runningTimer.Tick += delegate { StartRunningCollect(false); };
+            runningTimer.Start();
+        }
+
+        private void StopTimers()
+        {
+            try { if (infoTimer != null) { infoTimer.Stop(); infoTimer.Dispose(); infoTimer = null; } }
+            catch { }
+            try { if (runningTimer != null) { runningTimer.Stop(); runningTimer.Dispose(); runningTimer = null; } }
+            catch { }
+        }
+
+        private bool Busy
+        {
+            get { return collectingRunning || probingGpu || scanning; }
+        }
+
+        private void StartRunningCollect(bool first)
+        {
+            if (refreshBusy || collectingRunning) return;
+            if (first) collectingRunning = true;
+            else refreshBusy = true;
+            bool probe = first && allowGpuProbe;
+            if (first) UpdateInfoLabel();
+
             var worker = new Thread(delegate()
             {
                 List<ScanHit> hits;
                 Dictionary<string, int> pidByPath;
                 try { hits = CollectRunningCandidates(out pidByPath); }
                 catch { hits = new List<ScanHit>(); pidByPath = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase); }
-                Post(delegate { Merge(hits, RowKind.Running); });
+                bool sampling = probe && pidByPath.Count > 0;
+                Post(delegate
+                {
+                    collectingRunning = false;
+                    refreshBusy = false;
+                    probingGpu = sampling;
+                    Merge(hits, RowKind.Running);
+                });
+                if (!sampling) return;
 
-                if (!allowGpuProbe || closed || pidByPath.Count == 0) return;
                 Dictionary<int, double> util = null;
                 try
                 {
@@ -210,17 +267,47 @@ namespace PaviseApp
                         GpuEvidence.BurstRounds, GpuEvidence.BurstIntervalMs, IsClosed);
                 }
                 catch { }
-                if (util == null || closed) return;
                 var utilByPath = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
-                foreach (KeyValuePair<string, int> kv in pidByPath)
+                if (util != null)
+                    foreach (KeyValuePair<string, int> kv in pidByPath)
+                    {
+                        double u;
+                        if (util.TryGetValue(kv.Value, out u) && u > 0) utilByPath[kv.Key] = u;
+                    }
+                Post(delegate
                 {
-                    double u;
-                    if (util.TryGetValue(kv.Value, out u) && u > 0) utilByPath[kv.Key] = u;
-                }
-                Post(delegate { ApplyGpuTags(utilByPath); });
+                    probingGpu = false;
+                    if (utilByPath.Count > 0) ApplyGpuTags(utilByPath);
+                    else UpdateInfoLabel();
+                });
             });
             worker.IsBackground = true;
             worker.Start();
+        }
+
+        private void UpdateInfoLabel()
+        {
+            string stage = null;
+            if (collectingRunning) stage = Lang.T("scan.stage.running");
+            else if (probingGpu) stage = Lang.T("scan.stage.gpu");
+            else if (scanning) stage = Lang.T(deepMode ? "scan.busy.deep" : "scan.busy");
+
+            if (stage != null)
+            {
+                string tail = new string('·', dots);
+                lblInfo.ForeColor = Theme.Accent;
+                lblInfo.Text = rows.Count == 0
+                    ? stage + tail
+                    : Lang.F("scan.stage.count", stage + tail, rows.Count);
+                return;
+            }
+
+            int fresh = 0;
+            foreach (Row r in rows) if (!r.Already) fresh++;
+            lblInfo.ForeColor = Theme.Dim;
+            lblInfo.Text = rows.Count == 0
+                ? Lang.T("scan.none")
+                : Lang.F("scan.count", rows.Count, fresh) + "   " + Lang.T("scan.live");
         }
 
         private void ApplyGpuTags(Dictionary<string, double> utilByPath)
@@ -241,6 +328,7 @@ namespace PaviseApp
             }
             SortRows();
             Refill();
+            UpdateInfoLabel();
         }
 
         private static List<ScanHit> CollectRunningCandidates(out Dictionary<string, int> pidByPath)
@@ -323,8 +411,9 @@ namespace PaviseApp
         {
             if (scanning) return;
             scanning = true;
+            deepMode = deepRoot != null;
             btnDeep.Enabled = false;
-            lblInfo.Text = Lang.T(deepRoot == null ? "scan.busy" : "scan.busy.deep");
+            UpdateInfoLabel();
 
             var worker = new Thread(delegate()
             {
@@ -408,6 +497,7 @@ namespace PaviseApp
             var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (Row r in rows) known.Add(r.Path);
 
+            int before = rows.Count;
             foreach (ScanHit h in hits)
             {
                 if (h == null) continue;
@@ -425,14 +515,12 @@ namespace PaviseApp
                 });
             }
 
-            SortRows();
-
-            int fresh = 0;
-            foreach (Row r in rows) if (!r.Already) fresh++;
-            lblInfo.Text = rows.Count == 0
-                ? Lang.T(scanning ? "scan.busy" : "scan.none")
-                : Lang.F("scan.count", rows.Count, fresh);
-            Refill();
+            if (rows.Count != before)
+            {
+                SortRows();
+                Refill();
+            }
+            UpdateInfoLabel();
         }
 
         private void SortRows()
@@ -463,6 +551,10 @@ namespace PaviseApp
         private void Refill()
         {
             string f = tbFilter.Text.Trim();
+            int keepIndex = lst.SelectedIndex;
+            Row keep = keepIndex >= 0 && keepIndex < shown.Count ? shown[keepIndex] : null;
+            int top = lst.TopIndex;
+
             lst.BeginUpdate();
             lst.Items.Clear();
             shown.Clear();
@@ -475,6 +567,16 @@ namespace PaviseApp
                 lst.Items.Add(r.Name);
             }
             lst.EndUpdate();
+
+            if (keep != null)
+            {
+                int at = shown.IndexOf(keep);
+                if (at >= 0)
+                {
+                    lst.SelectedIndex = at;
+                    if (top >= 0 && top < lst.Items.Count) lst.TopIndex = top;
+                }
+            }
             UpdateAddButton();
         }
 

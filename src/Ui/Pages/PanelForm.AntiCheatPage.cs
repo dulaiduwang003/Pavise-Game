@@ -21,7 +21,9 @@ namespace PaviseApp
             int y = PageHeader(pageAntiCheat, Lang.T("v14.anticheat"), Lang.T("v15.anticheat.sub"), 2);
             Section(pageAntiCheat, Lang.T("v14.anticheat.boundary"), 26, y + 8); y += 46;
             swAcMaster = MakeSwitch(!tamer.Paused, delegate { tamer.Paused = !swAcMaster.Checked; Settings.Save("TameOn", swAcMaster.Checked); });
-            MakeCard(pageAntiCheat, ContentX, y, ContentW, 56, Lang.T("tame.toggle"), Lang.T("v14.anticheat.master.sub"), swAcMaster); y += 66;
+            int acCardH;
+            MakeAutoCard(pageAntiCheat, ContentX, y, ContentW, 56, Lang.T("tame.toggle"),
+                Lang.T("v14.anticheat.master.sub"), swAcMaster, out acCardH); y += acCardH + 10;
             acList = new DBPanel();
             acList.SetBounds(Theme.S(20), Theme.S(y), Theme.S(PageW - 40), Theme.S(PageH - y - 8));
             acList.BackColor = Theme.Bg; acList.AutoScroll = true; Native.Dark(acList); pageAntiCheat.Controls.Add(acList);
@@ -48,7 +50,7 @@ namespace PaviseApp
             int pitch = 90, idx = 0;
             foreach (AcGroup g in AntiCheatCatalog.Groups)
             {
-                string note = Lang.T("ac." + g.Key + ".d") + "  ·  " + string.Join(" / ", g.Procs);
+                string note = Lang.T("ac." + g.Key + ".d") + " " + string.Join(" ", g.Procs);
                 AddAcCard(g.Key, Lang.T("ac." + g.Key + ".n"), note, idx * pitch);
                 idx++;
             }

@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 识别网游加速器进程 使其免于后台压制与冻结
+// 文件用途 识别网游加速器进程 使其免于后台压制
 
 using System;
 using System.Collections.Generic;

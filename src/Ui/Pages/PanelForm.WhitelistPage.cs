@@ -54,6 +54,12 @@ namespace PaviseApp
                 if (index >= 0) lstWhite.SelectedIndex = index;
             };
             whiteMenu = new ContextMenuStrip();
+            whiteMenu.Font = Theme.UI(9.5f, false);
+            whiteMenu.BackColor = Theme.Card;
+            whiteMenu.ForeColor = Theme.Fg;
+            whiteMenu.ShowImageMargin = false;
+            whiteMenu.DropShadowEnabled = false;
+            whiteMenu.Renderer = new TechMenuRenderer();
             whiteMenu.Opening += OnWhiteMenuOpening;
             lstWhite.ContextMenuStrip = whiteMenu;
             whitePanel.Controls.Add(lstWhite);
@@ -108,7 +114,7 @@ namespace PaviseApp
                 List<string> detected = GamePlatformCatalog.DetectedPlatforms();
                 if (detected.Count == 0) return;
                 lblWhiteHint.Text += "\r\n\r\n"
-                    + Lang.F("white.page.platforms", string.Join("、", detected.ToArray()));
+                    + Lang.F("white.page.platforms", string.Join(" ", detected.ToArray()));
             }
             catch { }
         }
@@ -230,15 +236,6 @@ namespace PaviseApp
 
 #if PAVISE_SELFTEST
         internal void SelectPageForTest(int pageId) { nav.Select(pageId); }
-
-        internal Control WhitelistPageForShot()
-        {
-            pageWhitelist.Left = 0;
-            pageWhitelist.Visible = true;
-            pageWhitelist.CreateControl();
-            RefreshWhitelist(false);
-            return pageWhitelist;
-        }
 #endif
 
         internal void RefreshWhitelist(bool deep)

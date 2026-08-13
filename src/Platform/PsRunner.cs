@@ -59,7 +59,7 @@ namespace PaviseApp
                     {
                         try { p.Kill(); } catch { }
                         try { p.WaitForExit(3000); } catch { }
-                        Logger.Log(label + "：PowerShell 执行超时（" + timeoutMs + "ms）");
+                        Logger.Log(label + " PowerShell 执行超时 " + timeoutMs + "ms ");
                         return false;
                     }
                     p.WaitForExit();
@@ -68,13 +68,13 @@ namespace PaviseApp
                     {
                         string detail;
                         lock (errBuf) detail = errBuf.ToString().Trim();
-                        Logger.Log(label + "：PowerShell 执行失败(exit=" + p.ExitCode + ")：" + detail);
+                        Logger.Log(label + " PowerShell 执行失败 exit " + p.ExitCode + " " + detail);
                         return false;
                     }
                     return true;
                 }
             }
-            catch (Exception ex) { Logger.Log(label + "：无法执行 PowerShell：" + ex.Message); return false; }
+            catch (Exception ex) { Logger.Log(label + " 无法执行 PowerShell " + ex.Message); return false; }
         }
     }
 }

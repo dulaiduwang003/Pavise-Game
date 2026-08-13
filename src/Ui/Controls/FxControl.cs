@@ -18,6 +18,7 @@ namespace PaviseApp
     internal abstract class FxControl : Control
     {
         protected Motion hover;
+        protected Motion press;
         protected bool pressed;
         public Color Bg = Color.Empty;
 
@@ -26,6 +27,7 @@ namespace PaviseApp
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
             Cursor = Cursors.Hand;
             hover.Speed = 0.28f;
+            press.Speed = 0.42f;
         }
 
         protected Color ParentBg { get { return Parent != null ? Parent.BackColor : Theme.Bg; } }
@@ -34,13 +36,13 @@ namespace PaviseApp
         protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); UiClock.Frame += OnFrame; }
         protected override void OnHandleDestroyed(EventArgs e) { UiClock.Frame -= OnFrame; base.OnHandleDestroyed(e); }
 
-        protected virtual bool StepAll() { return hover.Step(); }
+        protected virtual bool StepAll() { bool a = hover.Step(); bool b = press.Step(); return a || b; }
         protected virtual void OnFrame(object s, EventArgs e) { if (StepAll()) Invalidate(); }
 
         protected override void OnMouseEnter(EventArgs e) { base.OnMouseEnter(e); hover.To(1f); UiClock.Wake(); }
-        protected override void OnMouseLeave(EventArgs e) { base.OnMouseLeave(e); pressed = false; hover.To(0f); UiClock.Wake(); }
-        protected override void OnMouseDown(MouseEventArgs e) { base.OnMouseDown(e); if (e.Button == MouseButtons.Left) { pressed = true; Invalidate(); } }
-        protected override void OnMouseUp(MouseEventArgs e) { base.OnMouseUp(e); pressed = false; Invalidate(); }
+        protected override void OnMouseLeave(EventArgs e) { base.OnMouseLeave(e); pressed = false; press.To(0f); hover.To(0f); UiClock.Wake(); }
+        protected override void OnMouseDown(MouseEventArgs e) { base.OnMouseDown(e); if (e.Button == MouseButtons.Left) { pressed = true; press.Set(1f); UiClock.Wake(); Invalidate(); } }
+        protected override void OnMouseUp(MouseEventArgs e) { base.OnMouseUp(e); pressed = false; press.To(0f); UiClock.Wake(); Invalidate(); }
 
         protected void FillBg(Graphics g) { using (var b = new SolidBrush(EffBg)) g.FillRectangle(b, ClientRectangle); }
     }

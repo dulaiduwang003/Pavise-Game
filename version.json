@@ -1,0 +1,6 @@
+{
+  "version": "1.7.1",
+  "url": "https://github.com/dulaiduwang003/Pavise-Game/releases/latest",
+  "mirror": "https://pan.baidu.com/s/1v8RBh-9rQCQp51j8hwrSyQ?pwd=62dw",
+  "note": "发版后改 version 为新发布的版本号 mirror 填国内能直接下载的地址 留空则回退到上面的发布页 程序通过 raw ghproxy jsDelivr 多条线路读这个文件 不改这里国内用户就查不到新版本"
+}

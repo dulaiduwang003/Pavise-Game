@@ -9,7 +9,7 @@ namespace PaviseApp
 {
     internal static class SvcPause
     {
-        private static readonly string[] Names = { "SysMain", "WSearch" };
+        internal static readonly string[] Names = { "SysMain", "WSearch" };
         private const string Flag = "PrevSvcPaused";
         private static readonly object lk = new object();
         private static bool active;
@@ -56,14 +56,14 @@ namespace PaviseApp
                     if (Settings.LoadStr(Flag, "") != string.Join("|", owned.ToArray()))
                     {
                         foreach (string name in justStopped) SvcCtl.EnsureStarted(name);
-                        Logger.Log("服务暂停状态无法持久化，已重新启动本轮停止的服务");
+                        Logger.Log("服务暂停状态无法持久化 已重新启动本轮停止的服务");
                         active = false;
                         return false;
                     }
                     if (confirmedStopped.Count > 0)
-                        Logger.Log("已暂停索引/预取服务：" + string.Join(" + ", confirmedStopped.ToArray()));
+                        Logger.Log("已暂停索引和预取服务 " + string.Join(" ", confirmedStopped.ToArray()));
                     else if (justStopped.Count > 0)
-                        Logger.Log("已请求停止索引/预取服务，尚未确认停止：" + string.Join(" + ", justStopped.ToArray()));
+                        Logger.Log("已请求停止索引和预取服务 尚未确认停止 " + string.Join(" ", justStopped.ToArray()));
                 }
                 active = true;
                 return true;
@@ -85,8 +85,8 @@ namespace PaviseApp
                         if (!ok) remain.Add(n);
                     }
                     Settings.SaveStr(Flag, string.Join("|", remain.ToArray()));
-                    if (remain.Count == 0) Logger.Log("索引/预取服务已恢复");
-                    else Logger.Log("部分服务未能拉起（" + string.Join(",", remain.ToArray()) + "），标志保留待重试");
+                    if (remain.Count == 0) Logger.Log("索引和预取服务已恢复");
+                    else Logger.Log("部分服务未能拉起 " + string.Join(" ", remain.ToArray()) + " 标志保留待重试");
                 }
                 active = false;
                 return Settings.LoadStr(Flag, "").Length == 0;

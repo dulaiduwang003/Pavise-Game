@@ -42,7 +42,7 @@ namespace PaviseApp
                         bool ok = RegOf(guid, "TcpAckFrequency").Apply(1);
                         ok &= RegOf(guid, "TCPNoDelay").Apply(1);
                         if (ok) touched.Add(guid);
-                        else Logger.Log("TCP 低延迟：网卡 " + guid + " 写入失败，已跳过");
+                        else Logger.Log("TCP 低延迟 网卡 " + guid + " 写入失败 已跳过");
                     }
                     if (touched.Count == 0) return false;
                     if (!Settings.SaveStr(ListKey, string.Join(";", touched.ToArray())))
@@ -52,11 +52,11 @@ namespace PaviseApp
                             RegOf(guid, "TcpAckFrequency").Restore();
                             RegOf(guid, "TCPNoDelay").Restore();
                         }
-                        Logger.Log("TCP 低延迟：网卡清单无法持久化，已全部还原");
+                        Logger.Log("TCP 低延迟 网卡清单无法持久化 已全部还原");
                         return false;
                     }
                     Settings.Save("NagleOffByPavise", true);
-                    Logger.Log("TCP 低延迟已启用：" + touched.Count + " 块网卡禁用 Nagle 与延迟 ACK，新建连接生效");
+                    Logger.Log("TCP 低延迟已启用 " + touched.Count + " 块网卡禁用 Nagle 与延迟 ACK 新建连接生效");
                     return true;
                 }
                 catch { return false; }
@@ -79,9 +79,9 @@ namespace PaviseApp
                     {
                         Settings.SaveStr(ListKey, "");
                         Settings.Save("NagleOffByPavise", false);
-                        Logger.Log("TCP 低延迟已关闭，各网卡原值已还原");
+                        Logger.Log("TCP 低延迟已关闭 各网卡原值已还原");
                     }
-                    else Logger.Log("TCP 低延迟：部分网卡还原失败，快照保留待下次重试");
+                    else Logger.Log("TCP 低延迟 部分网卡还原失败 快照保留待下次重试");
                     return all;
                 }
                 catch { return false; }

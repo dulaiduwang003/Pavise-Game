@@ -75,7 +75,7 @@ namespace PaviseApp
             if (t > 0) parts.Add("温度墙 " + Percent(t, n));
             if (b > 0) parts.Add("电池限制 " + Percent(b, n));
             if (parts.Count == 0) return null;
-            return string.Join("、", parts.ToArray()) + "（这局共查 " + n + " 次）";
+            return string.Join(" ", parts.ToArray()) + " 这局共查 " + n + " 次";
         }
 
         public static string InstantText()
@@ -88,8 +88,8 @@ namespace PaviseApp
             if ((mask & (NvApi.PerfDecreasePower | NvApi.PerfDecreaseInsufficientPower)) != 0) parts.Add("功耗墙");
             if ((mask & NvApi.PerfDecreaseAcBatt) != 0) parts.Add("电池限制");
             if ((mask & NvApi.PerfDecreaseApi) != 0) parts.Add("软件限制");
-            if (parts.Count == 0) return "其他限制 (0x" + mask.ToString("X") + ")";
-            return string.Join("、", parts.ToArray());
+            if (parts.Count == 0) return "其他限制 0x" + mask.ToString("X");
+            return string.Join(" ", parts.ToArray());
         }
 
         internal static string Percent(int hits, int total)

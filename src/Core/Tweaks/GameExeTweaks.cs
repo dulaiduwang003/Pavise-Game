@@ -63,7 +63,7 @@ namespace PaviseApp
                             if (bar <= 0) { try { bak.DeleteValue(name, false); } catch { } continue; }
                             if (!string.Equals(name.Substring(0, bar), kind, StringComparison.OrdinalIgnoreCase)) continue;
                             string exePath = name.Substring(bar + 1);
-                            string target = string.Equals(kind, "gpu", StringComparison.OrdinalIgnoreCase) ? GpuKey : FsoKey;
+                            string target = string.Equals(kind, "fso", StringComparison.OrdinalIgnoreCase) ? FsoKey : GpuKey;
                             string orig = bak.GetValue(name) as string ?? ReversibleReg.Absent;
                             if (RestoreValue(target, exePath, orig))
                             {
@@ -71,7 +71,7 @@ namespace PaviseApp
                                 try { bak.DeleteValue(name, false); } catch { }
                             }
                         }
-                        if (n > 0) Logger.Log("已还原 " + n + " 项逐游戏" + (kind == "gpu" ? " GPU 偏好" : "全屏优化") + "设置");
+                        if (n > 0) Logger.Log("已还原 " + n + " 项" + (kind == "gpu" ? "逐游戏 GPU 偏好" : kind == "igpu" ? "后台集显偏好" : "逐游戏全屏优化") + "设置");
                     }
                 }
                 catch { }
@@ -197,27 +197,7 @@ namespace PaviseApp
                     if (string.Equals(ReadField(cur, "GpuPreference"), "2", StringComparison.Ordinal)) return;
                     if (!Backup("gpu", exePath, cur)) return;
                     k.SetValue(exePath, MergeField(cur, "GpuPreference", "2"), RegistryValueKind.String);
-                    Logger.Log("GPU 偏好 → 高性能：" + exePath + "（下次启动该游戏生效）");
-                }
-            }
-            catch { }
-        }
-
-        private static void SetFso(string exePath)
-        {
-            try
-            {
-                using (var k = Registry.CurrentUser.CreateSubKey(FsoKey))
-                {
-                    if (k == null) return;
-                    object curObj = k.GetValue(exePath);
-                    string cur = curObj as string;
-                    if (curObj != null && cur == null) return;
-                    if (cur != null && cur.IndexOf(FsoFlag, StringComparison.OrdinalIgnoreCase) >= 0) return;
-                    if (!Backup("fso", exePath, cur)) return;
-                    string val = string.IsNullOrEmpty(cur) ? "~ " + FsoFlag : cur.TrimEnd() + " " + FsoFlag;
-                    k.SetValue(exePath, val, RegistryValueKind.String);
-                    Logger.Log("关闭全屏优化：" + exePath + "（下次启动该游戏生效）");
+                    Logger.Log("GPU 偏好 高性能 " + exePath + " 下次启动该游戏生效");
                 }
             }
             catch { }

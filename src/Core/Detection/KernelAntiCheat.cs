@@ -57,7 +57,7 @@ namespace PaviseApp
                 foreach (Sig s in Known)
                     foreach (string svc in s.Services)
                         if (ServiceExists(svc)) { hits.Add(s.Name); break; }
-                cached = hits.Count == 0 ? null : string.Join(" / ", hits.ToArray());
+                cached = hits.Count == 0 ? null : string.Join(" ", hits.ToArray());
                 return cached;
             }
         }
@@ -82,9 +82,5 @@ namespace PaviseApp
             if (byExe != null) return byExe;
             return InstalledName();
         }
-
-#if PAVISE_SELFTEST
-        internal static void ResetProbeForTest() { lock (lk) { probed = false; cached = null; } }
-#endif
     }
 }

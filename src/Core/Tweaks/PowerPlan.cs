@@ -1,6 +1,8 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 创建并托管 Pavise 竞技电源计划 游戏时切入 退出还原
-// 关键项一律显式写入不吃基底默认 HWP 与传统两条调频路径同时写满 机器没有的项探测后跳过
+// 文件用途 对局时切换电源计划 退出还原
+// 默认目标是卓越性能 本机没有就建一份 有就直接用 之后一律不碰它的设置
+// 托管方案是可选项 只有用户在下拉里选中 PG 托管 才创建并按处理器逐项写入
+// 方案名带 PG 标签与本机签名 用来区分别的机器建的同名方案和用户自己的方案
 
 using System;
 using System.Collections.Generic;
@@ -9,15 +11,29 @@ using System.Text;
 
 namespace PaviseApp
 {
+    internal sealed class PowerPlanEntry
+    {
+        public readonly Guid Id;
+        public readonly string Name;
+        public PowerPlanEntry(Guid id, string name) { Id = id; Name = name; }
+    }
+
     internal static class PowerPlan
     {
-        public const string PlanTitle = "Pavise 竞技";
-        private const string PlanNote = "由 Pavise 创建并托管，游戏结束自动切回原方案";
+        private const string ChoiceKey = "PowerPlanChoice";
+        private const string DefaultPlanKey = "DefaultPlanGuid";
+        private const string ManagedPlanKey = "PgPlanGuid";
+        public const string LegacyPlanTitle = "Pavise 竞技";
+        public const string ManagedChoice = "managed";
+        public const string PlanTag = "PG";
+        private const string PlanNote = "由 Pavise 创建并托管 游戏结束自动切回原方案 删掉它 Pavise 会重建";
 
         private static readonly Guid Ultimate = new Guid("e9a42b02-d5df-448d-aa00-03f14749eb61");
         private static readonly Guid HighPerf = new Guid("8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c");
         private static readonly Guid Balanced = new Guid("381b4222-f694-41f0-9685-ff5bb260df2e");
         private static readonly Guid PowerSaver = new Guid("a1841308-3541-4fab-bc81-f71556f20b4a");
+
+        private static readonly string[] UltimateNames = { "卓越性能", "Ultimate Performance" };
 
         private const uint AccessScheme = 16;
 
@@ -41,11 +57,12 @@ namespace PaviseApp
         [DllImport("powrprof.dll")] private static extern uint PowerReadACValueIndex(IntPtr root, ref Guid scheme, ref Guid sub, ref Guid setting, out uint value);
         [DllImport("powrprof.dll")] private static extern uint PowerReadDCValueIndex(IntPtr root, ref Guid scheme, ref Guid sub, ref Guid setting, out uint value);
 
-        private static readonly Guid SubNone      = new Guid("fea3413e-7e05-4911-9a71-700331f1c294");
         private static readonly Guid SubVideo     = new Guid("7516b95f-f776-4464-8c53-06167f40cc99");
         private static readonly Guid VideoBrightness    = new Guid("aded5e82-b909-4619-9949-f5d71dac0bcb");
         private static readonly Guid VideoDimBrightness = new Guid("f1fbfde2-a960-4165-9f88-50667911ce96");
         private static readonly Guid VideoAdaptive      = new Guid("fbd9aa66-9553-4097-ba44-ed6e9d65eab8");
+
+        private static readonly Guid SubNone      = new Guid("fea3413e-7e05-4911-9a71-700331f1c294");
         private static readonly Guid SubProcessor = new Guid("54533251-82be-4824-96c1-47b60b740d00");
         private static readonly Guid SubPcie      = new Guid("501a4d13-42af-4429-9fd1-a8218c268e20");
         private static readonly Guid SubUsb       = new Guid("2a737441-1930-4402-8d77-b2bebba308a3");
@@ -112,7 +129,7 @@ namespace PaviseApp
             new Knob(SubProcessor, Throttling,        0,   0,   2,  2, "允许节流状态"),
             new Knob(SubProcessor, SysCoolPol,        1,   1,   1,  1, "系统散热方式"),
             new Knob(SubPcie,      PcieAspm,          0,   0,   1,  2, "PCIe 链接电源管理"),
-            new Knob(SubUsb,       UsbSelSuspend,     0,   0,   0,  1, "USB 选择性暂停"),
+            new Knob(SubUsb,       UsbSelSuspend,     0,   0,   0,  0, "USB 选择性暂停"),
             new Knob(SubDisk,      DiskIdle,          0,   0, 1200, 600, "关闭硬盘时间"),
             new Knob(SubNone,      Personality,       1,   1,   1,  1, "电源计划类型"),
         };
@@ -145,62 +162,104 @@ namespace PaviseApp
             new Knob(SubProcessor, ShortSchedPolicy,   2,   2,   5,  5, "异类短线程调度策略"),
         };
 
-        private static bool TuneTarget(Guid g, bool aggressive, bool idleDisable)
+#if PAVISE_SELFTEST
+        internal static List<string> DescribeKnobs()
+        {
+            var lines = new List<string>();
+            foreach (Knob k in CoreKnobs) lines.Add(DescribeKnob(k));
+            foreach (Knob k in OptionalKnobs) lines.Add(DescribeKnob(k));
+            foreach (Knob k in HybridKnobs) lines.Add(DescribeKnob(k));
+            return lines;
+        }
+
+        private static string DescribeKnob(Knob k)
+        {
+            return k.Label + " arenaAc=" + k.ArenaAc + " arenaDc=" + k.ArenaDc
+                + " calmAc=" + k.CalmAc + " calmDc=" + k.CalmDc;
+        }
+#endif
+
+        private static PowerPlanProfile cachedProfile;
+
+        private static PowerPlanProfile CurrentProfile()
+        {
+            if (cachedProfile != null) return cachedProfile;
+            bool amd = false;
+            try
+            {
+                using (var k = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
+                    @"HARDWARE\DESCRIPTION\System\CentralProcessor\0"))
+                    if (k != null)
+                        amd = ((k.GetValue("ProcessorNameString") as string) ?? "")
+                            .IndexOf("AMD", StringComparison.OrdinalIgnoreCase) >= 0;
+            }
+            catch { }
+            cachedProfile = PowerPlanProfile.Resolve(amd, CpuTopology.Hybrid,
+                CpuTopology.AsymCache, CpuTopology.PartitionTag);
+            return cachedProfile;
+        }
+
+        private static bool TuneTarget(Guid g, bool aggressive)
         {
             try
             {
+                PowerPlanProfile profile = CurrentProfile();
                 int written = 0;
                 int failed = 0;
                 var skipped = new List<string>();
 
                 foreach (Knob k in CoreKnobs)
                 {
-                    if (WriteKnob(g, k, aggressive)) written++;
-                    else { failed++; Logger.Log("电源项「" + k.Label + "」写入失败"); }
+                    if (WriteKnob(g, k, aggressive, profile)) written++;
+                    else { failed++; Logger.Log("电源项 " + k.Label + " 写入失败"); }
                 }
                 foreach (Knob k in OptionalKnobs)
                 {
                     if (!SettingPresent(g, k.Sub, k.Setting)) { skipped.Add(k.Label); continue; }
-                    if (WriteKnob(g, k, aggressive)) written++; else failed++;
+                    if (WriteKnob(g, k, aggressive, profile)) written++; else failed++;
                 }
-                if (CpuTopology.Hybrid)
+                if (CpuTopology.Hybrid && profile.WriteHetero)
                 {
                     foreach (Knob k in HybridKnobs)
                     {
                         if (!SettingPresent(g, k.Sub, k.Setting)) { skipped.Add(k.Label); continue; }
-                        if (WriteKnob(g, k, aggressive)) written++; else failed++;
+                        Knob eff = k;
+                        if (k.Setting == SchedPolicy || k.Setting == ShortSchedPolicy)
+                            eff = new Knob(k.Sub, k.Setting, profile.HeteroSched, profile.HeteroSched,
+                                k.CalmAc, k.CalmDc, k.Label);
+                        if (WriteKnob(g, eff, aggressive, profile)) written++; else failed++;
                     }
                 }
 
-                bool killIdle = aggressive && idleDisable;
                 if (SettingPresent(g, SubProcessor, IdleDisableSet))
                 {
-                    if (WritePair(g, SubProcessor, IdleDisableSet, killIdle ? 1u : 0u, killIdle ? 1u : 0u)) written++;
+                    if (WritePair(g, SubProcessor, IdleDisableSet, 0u, 0u)) written++;
                     else failed++;
                 }
                 else skipped.Add("处理器闲置禁用");
 
                 if (failed > 0)
                 {
-                    Logger.Log("电源策略有 " + failed + " 项未能写入，未把本轮标记为成功");
+                    Logger.Log("托管电源方案有 " + failed + " 项未能写入 未把本轮标记为成功");
                     return false;
                 }
 
-                Logger.Log("电源策略：" + (aggressive ? "竞技档" : "常规档")
-                    + "（" + PlanTitle + "）写入 " + written + " 项"
-                    + (CpuTopology.Hybrid ? "，含大小核专项" : "")
-                    + (killIdle ? "，已禁用处理器空闲状态" : "")
-                    + (skipped.Count > 0 ? "；本机不支持 " + skipped.Count + " 项：" + string.Join("、", skipped.ToArray()) : ""));
+                Logger.Log("托管电源方案 " + (aggressive ? "竞技档" : "常规档")
+                    + " " + ManagedPlanTitle + " 按 " + profile.Tag + " 写入 " + written + " 项"
+                    + (profile.PreserveCoreParking ? " 核心停放保留给AMD驱动" : "")
+                    + (skipped.Count > 0 ? " 本机不支持 " + skipped.Count + " 项 " + string.Join(" ", skipped.ToArray()) : ""));
                 return true;
             }
             catch { return false; }
         }
 
-        private static bool WriteKnob(Guid scheme, Knob k, bool aggressive)
+        private static bool WriteKnob(Guid scheme, Knob k, bool aggressive, PowerPlanProfile profile)
         {
+            bool coreParking = k.Setting == CpMinCores || k.Setting == CpMaxCores;
+            bool useArena = coreParking ? profile.UseArenaCoreParking(aggressive) : aggressive;
             return WritePair(scheme, k.Sub, k.Setting,
-                aggressive ? k.ArenaAc : k.CalmAc,
-                aggressive ? k.ArenaDc : k.CalmDc);
+                useArena ? k.ArenaAc : k.CalmAc,
+                useArena ? k.ArenaDc : k.CalmDc);
         }
 
         private static bool SettingPresent(Guid scheme, Guid sub, Guid setting)
@@ -217,13 +276,43 @@ namespace PaviseApp
                 && PowerWriteDCValueIndex(IntPtr.Zero, ref scheme, ref sb, ref set, dc) == 0;
         }
 
+        private static string machineSig;
+
+        public static string MachineSignature()
+        {
+            if (machineSig != null) return machineSig;
+            string seed = "";
+            try
+            {
+                using (var k = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
+                    @"SOFTWARE\Microsoft\Cryptography"))
+                    if (k != null) seed = (k.GetValue("MachineGuid") as string) ?? "";
+            }
+            catch { }
+            if (seed.Length == 0)
+                try { seed = Environment.MachineName; } catch { seed = "PAVISE"; }
+
+            unchecked
+            {
+                uint h = 2166136261;
+                foreach (char c in seed) { h ^= c; h *= 16777619; }
+                machineSig = (h & 0xFFFF).ToString("X4");
+            }
+            return machineSig;
+        }
+
+        public static string ManagedPlanTitle
+        {
+            get { return PlanTag + " 竞技 " + MachineSignature(); }
+        }
+
         private static readonly object lk = new object();
         private static Guid saved;
         private static bool active;
         private static Guid target;
         private static bool resolved;
-        private static int tuneState = -1;
         private static bool targetOwned;
+        private static int tuneState = -1;
 
         private static Guid? Current()
         {
@@ -256,8 +345,8 @@ namespace PaviseApp
 
         private static string PlanLabel(Guid g)
         {
-            if (g == HighPerf) return "高性能";
             if (g == Ultimate) return "卓越性能";
+            if (g == HighPerf) return "高性能";
             string name = ReadName(g);
             return name.Length > 0 ? name : g.ToString();
         }
@@ -316,99 +405,249 @@ namespace PaviseApp
             return list;
         }
 
-        private static Guid FindOwnScheme()
+        public static List<PowerPlanEntry> ListUserPlans()
         {
+            Guid mine = ManagedPlanGuid();
+            var list = new List<PowerPlanEntry>();
             foreach (Guid g in EnumerateSchemes())
-                if (ReadName(g) == PlanTitle) return g;
+            {
+                if (mine != Guid.Empty && g == mine) continue;
+                string name = ReadName(g);
+                list.Add(new PowerPlanEntry(g, name.Length > 0 ? name : g.ToString()));
+            }
+            return list;
+        }
+
+        public static string SelectedPlanId
+        {
+            get { return Settings.LoadStr(ChoiceKey, ""); }
+        }
+
+        public static bool ManagedSelected
+        {
+            get { return SelectedPlanId == ManagedChoice; }
+        }
+
+        public static string EffectivePlanId
+        {
+            get
+            {
+                string choice = SelectedPlanId;
+                if (choice.Length > 0) return choice;
+                Guid fallback = EnsureDefaultPlan();
+                return fallback == Guid.Empty ? "" : fallback.ToString();
+            }
+        }
+
+        public static void SelectPlan(string id)
+        {
+            string value = id ?? "";
+            if (value == SelectedPlanId) return;
+            Settings.SaveStr(ChoiceKey, value);
+            lock (lk)
+            {
+                resolved = false;
+                target = Guid.Empty;
+                targetOwned = false;
+                tuneState = -1;
+            }
+            if (value == ManagedChoice)
+                Logger.Log("对局电源计划 改用托管方案 " + ManagedPlanTitle + " 各项由 Pavise 按你的处理器写入");
+            else
+                Logger.Log("对局电源计划 改用 "
+                    + (value.Length == 0 ? "默认的卓越性能" : PlanLabelOf(value))
+                    + " Pavise 只负责切过去 一个设置都不改");
+        }
+
+        private static Guid ManagedPlanGuid()
+        {
+            Guid g;
+            string id = Settings.LoadStr(ManagedPlanKey, "");
+            if (id.Length == 0 || !TryGuid(id, out g)) return Guid.Empty;
+            foreach (Guid s in EnumerateSchemes()) if (s == g) return g;
             return Guid.Empty;
         }
 
-        private static void PurgeStaleClones(Guid keep)
+        private static Guid EnsureManagedPlan()
         {
-            Guid? cur = Current();
-            foreach (Guid g in EnumerateSchemes())
+            Guid kept = ManagedPlanGuid();
+            if (kept != Guid.Empty)
             {
-                if (g == keep) continue;
-                if (cur.HasValue && g == cur.Value) continue;
-                if (ReadName(g) != PlanTitle) continue;
-                Guid tmp = g;
-                if (PowerDeleteScheme(IntPtr.Zero, ref tmp) == 0)
-                    Logger.Log("清理了重复的「" + PlanTitle + "」电源计划 " + g);
+                if (ReadName(kept) != ManagedPlanTitle) WriteName(kept, ManagedPlanTitle, PlanNote);
+                return kept;
             }
+
+            string title = ManagedPlanTitle;
+            foreach (Guid g in EnumerateSchemes())
+                if (ReadName(g) == title)
+                {
+                    Settings.SaveStr(ManagedPlanKey, g.ToString());
+                    Logger.Log("认回本机已有的托管电源方案 " + title);
+                    return g;
+                }
+
+            Guid created;
+            if (!Duplicate(Ultimate, out created) && !Duplicate(HighPerf, out created))
+            {
+                Logger.Log("无法创建托管电源方案 本轮改用默认目标");
+                return Guid.Empty;
+            }
+            Settings.SaveStr(ManagedPlanKey, created.ToString());
+            WriteName(created, title, PlanNote);
+            Guid? cur = Current();
+            if (cur.HasValue) SyncDisplayFeel(cur.Value, created);
+            Logger.Log("已创建托管电源方案 " + title);
+            return created;
         }
 
-        private static void MigrateLegacyPlan() { MigrateLegacyPlan("UltimatePlanGuid"); }
-
-        private static void MigrateLegacyPlan(string key)
+        public static bool RemoveManagedPlan()
         {
-            string old = Settings.LoadStr(key, "");
-            if (old.Length == 0) return;
+            string id = Settings.LoadStr(ManagedPlanKey, "");
+            if (id.Length == 0) return true;
             Guid g;
-            if (TryGuid(old, out g) && SchemeUsable(g))
+            if (!TryGuid(id, out g)) { Settings.SaveStr(ManagedPlanKey, ""); return true; }
+            Guid? cur = Current();
+            if (cur.HasValue && cur.Value == g && !Set(Balanced)) return false;
+            Guid tmp = g;
+            if (SchemeUsable(g) && PowerDeleteScheme(IntPtr.Zero, ref tmp) != 0) return false;
+            Settings.SaveStr(ManagedPlanKey, "");
+            lock (lk) { resolved = false; target = Guid.Empty; targetOwned = false; tuneState = -1; }
+            Logger.Log("已删除托管电源方案 " + ManagedPlanTitle);
+            return true;
+        }
+
+        private static string PlanLabelOf(string id)
+        {
+            Guid g;
+            return TryGuid(id, out g) ? PlanLabel(g) : id;
+        }
+
+        public static Guid EnsureDefaultPlan()
+        {
+            List<Guid> schemes = EnumerateSchemes();
+            foreach (Guid g in schemes) if (g == Ultimate) return Ultimate;
+
+            Guid kept;
+            string keptId = Settings.LoadStr(DefaultPlanKey, "");
+            if (keptId.Length > 0)
             {
-                Guid? cur = Current();
-                bool isActive = cur.HasValue && cur.Value == g;
-                bool isSnapshot = Settings.LoadStr("PrevPowerPlan", "") == old;
-                if (!isActive && !isSnapshot)
-                {
-                    Guid tmp = g;
-                    if (PowerDeleteScheme(IntPtr.Zero, ref tmp) == 0)
-                        Logger.Log("已删除旧版创建的电源计划副本 " + g);
-                }
-                else
-                {
-                    Logger.Log("旧版电源计划副本 " + g + " 正在使用中，暂不删除");
-                    return;
-                }
+                if (TryGuid(keptId, out kept))
+                    foreach (Guid g in schemes) if (g == kept) return kept;
+                Settings.SaveStr(DefaultPlanKey, "");
             }
-            Settings.SaveStr(key, "");
+
+            foreach (Guid g in schemes)
+            {
+                string name = ReadName(g);
+                foreach (string known in UltimateNames)
+                    if (string.Equals(name, known, StringComparison.OrdinalIgnoreCase))
+                        return g;
+            }
+
+            Guid created;
+            if (Duplicate(Ultimate, out created))
+            {
+                Settings.SaveStr(DefaultPlanKey, created.ToString());
+                Guid? cur = Current();
+                if (cur.HasValue) SyncDisplayFeel(cur.Value, created);
+                Logger.Log("本机没有卓越性能电源计划 已创建一份 " + PlanLabel(created)
+                    + " 各项保持系统模板原样 Pavise 不改写");
+                return created;
+            }
+
+            foreach (Guid g in schemes) if (g == HighPerf) return HighPerf;
+            Logger.Log("本机既无卓越性能也无法创建 电源计划切换本轮无目标");
+            return Guid.Empty;
+        }
+
+        public static string CreatedPlanId
+        {
+            get { return Settings.LoadStr(DefaultPlanKey, ""); }
+        }
+
+        public static bool RemoveCreatedPlan()
+        {
+            string id = Settings.LoadStr(DefaultPlanKey, "");
+            if (id.Length == 0) return true;
+            Guid g;
+            if (!TryGuid(id, out g)) { Settings.SaveStr(DefaultPlanKey, ""); return true; }
+            Guid? cur = Current();
+            if (cur.HasValue && cur.Value == g && !Set(Balanced)) return false;
+            Guid tmp = g;
+            if (SchemeUsable(g) && PowerDeleteScheme(IntPtr.Zero, ref tmp) != 0) return false;
+            Settings.SaveStr(DefaultPlanKey, "");
+            lock (lk) { resolved = false; target = Guid.Empty; }
+            Logger.Log("已删除 Pavise 创建的卓越性能电源计划");
+            return true;
+        }
+
+        public static bool HasLegacyManagedResidue()
+        {
+            if (Settings.LoadStr("ArenaPlanGuid", "").Length > 0) return true;
+            if (Settings.LoadStr("UltimatePlanGuid", "").Length > 0) return true;
+            foreach (Guid g in EnumerateSchemes())
+                if (ReadName(g) == LegacyPlanTitle) return true;
+            return false;
+        }
+
+        public static bool PurgeLegacyManaged()
+        {
+            var doomed = new List<Guid>();
+            foreach (Guid g in EnumerateSchemes())
+                if (ReadName(g) == LegacyPlanTitle) doomed.Add(g);
+
+            Guid? cur = Current();
+            if (cur.HasValue && doomed.Contains(cur.Value))
+            {
+                Guid escape = EnsureDefaultPlan();
+                if (escape == Guid.Empty) escape = Balanced;
+                if (!Set(escape)) return false;
+                Logger.Log("旧的托管电源计划正在使用中 已先切到 " + PlanLabel(escape));
+            }
+
+            bool ok = true;
+            foreach (Guid g in doomed)
+            {
+                Guid tmp = g;
+                if (PowerDeleteScheme(IntPtr.Zero, ref tmp) == 0)
+                    Logger.Log("已删除旧的托管电源计划 " + g);
+                else ok = false;
+            }
+            if (!ok) return false;
+            Settings.SaveStr("ArenaPlanGuid", "");
+            Settings.SaveStr("UltimatePlanGuid", "");
+            return true;
+        }
+
+        private static bool TryUserChosenTarget()
+        {
+            string choice = Settings.LoadStr(ChoiceKey, "");
+            if (choice.Length == 0) return false;
+            if (choice == ManagedChoice)
+            {
+                Guid managed = EnsureManagedPlan();
+                if (managed == Guid.Empty) return false;
+                target = managed;
+                targetOwned = true;
+                return true;
+            }
+            Guid picked;
+            if (!TryGuid(choice, out picked) || !SchemeUsable(picked))
+            {
+                Logger.Log("你选的电源计划已不存在 改回默认的卓越性能");
+                Settings.SaveStr(ChoiceKey, "");
+                return false;
+            }
+            target = picked;
+            targetOwned = false;
+            Logger.Log("对局电源计划 使用你选的 " + PlanLabel(picked) + " 只切换 不改动它的设置");
+            return true;
         }
 
         private static Guid ResolveTarget()
         {
             if (resolved) return target;
-            MigrateLegacyPlan();
-
-            Guid prev;
-            string s = Settings.LoadStr("ArenaPlanGuid", "");
-            if (s.Length > 0 && TryGuid(s, out prev) && SchemeUsable(prev))
-            {
-                target = prev;
-                targetOwned = true;
-                if (ReadName(target) != PlanTitle) WriteName(target, PlanTitle, PlanNote);
-                PurgeStaleClones(target);
-                resolved = true;
-                return target;
-            }
-
-            Guid found = FindOwnScheme();
-            if (found != Guid.Empty)
-            {
-                target = found;
-                targetOwned = true;
-                Settings.SaveStr("ArenaPlanGuid", found.ToString());
-                Logger.Log("认回已存在的「" + PlanTitle + "」电源计划 " + found);
-                PurgeStaleClones(target);
-                resolved = true;
-                return target;
-            }
-
-            Guid created;
-            if (Duplicate(Ultimate, out created) || Duplicate(HighPerf, out created))
-            {
-                target = created;
-                targetOwned = true;
-                WriteName(created, PlanTitle, PlanNote);
-                Settings.SaveStr("ArenaPlanGuid", created.ToString());
-                Logger.Log("已创建「" + PlanTitle + "」电源计划 " + created);
-                PurgeStaleClones(target);
-            }
-            else
-            {
-                target = HighPerf;
-                targetOwned = false;
-                Logger.Log("无法创建独立电源计划，回退系统高性能");
-            }
+            if (!TryUserChosenTarget()) { target = EnsureDefaultPlan(); targetOwned = false; }
             resolved = true;
             return target;
         }
@@ -446,19 +685,15 @@ namespace PaviseApp
             catch { g = Guid.Empty; return false; }
         }
 
-        private static int TuneKey(bool aggressive, bool idleDisable)
-        {
-            return (aggressive ? 1 : 0) | (idleDisable ? 2 : 0);
-        }
-
-        private static bool ActivateInner(bool aggressive, bool idleDisable)
+        private static bool ActivateInner(bool aggressive)
         {
             if (active) return true;
             Guid tgt = ResolveTarget();
-            if (tuneState != TuneKey(aggressive, idleDisable))
+            if (tgt == Guid.Empty) return false;
+            if (targetOwned && tuneState != (aggressive ? 1 : 0))
             {
-                if (targetOwned && !TuneTarget(tgt, aggressive, idleDisable)) return false;
-                tuneState = TuneKey(aggressive, idleDisable);
+                if (!TuneTarget(tgt, aggressive)) return false;
+                tuneState = aggressive ? 1 : 0;
             }
             Guid? cur = Current();
             if (cur == null) return false;
@@ -469,37 +704,38 @@ namespace PaviseApp
             if (Settings.LoadStr("PrevPowerPlan", "") != saved.ToString())
             {
                 saved = Guid.Empty;
-                Logger.Log("电源计划原值快照无法持久化，已取消切换");
+                Logger.Log("电源计划原值快照无法持久化 已取消切换");
                 return false;
             }
             if (Set(tgt))
             {
                 active = true;
-                Logger.Log("电源计划 → " + PlanLabel(tgt) + "（原 " + PlanLabel(saved) + "）");
+                Logger.Log("电源计划 " + PlanLabel(tgt) + " 原 " + PlanLabel(saved) + " ");
                 return true;
             }
             Settings.SaveStr("PrevPowerPlan", "");
             saved = Guid.Empty;
-            Logger.Log("电源计划切换失败，本轮未启用");
+            Logger.Log("电源计划切换失败 本轮未启用");
             return false;
         }
 
-        public static bool Enforce(bool aggressive, bool idleDisable)
+        public static bool Enforce(bool aggressive)
         {
             lock (lk)
             {
-                if (!active) return ActivateInner(aggressive, idleDisable);
+                if (!active) return ActivateInner(aggressive);
                 Guid tgt = ResolveTarget();
-                if (tuneState != TuneKey(aggressive, idleDisable))
+                if (tgt == Guid.Empty) return false;
+                if (targetOwned && tuneState != (aggressive ? 1 : 0))
                 {
-                    if (targetOwned && !TuneTarget(tgt, aggressive, idleDisable)) return false;
-                    tuneState = TuneKey(aggressive, idleDisable);
+                    if (!TuneTarget(tgt, aggressive)) return false;
+                    tuneState = aggressive ? 1 : 0;
                     Set(tgt);
                 }
                 Guid? cur = Current();
                 if (cur != null && cur.Value != tgt)
                 {
-                    if (Set(tgt)) Logger.Log("电源计划被改动，已强制拉回 " + PlanLabel(tgt));
+                    if (Set(tgt)) Logger.Log("电源计划被改动 已强制拉回 " + PlanLabel(tgt));
                     else return false;
                 }
                 return true;
@@ -528,12 +764,12 @@ namespace PaviseApp
                     else if (!SchemeUsable(restoreTarget))
                     {
                         Settings.SaveStr("PrevPowerPlan", "");
-                        Logger.Log("原电源计划已不存在，无法还原");
+                        Logger.Log("原电源计划已不存在 无法还原");
                         ok = false;
                     }
                     else
                     {
-                        Logger.Log("电源计划还原失败，快照保留待下次启动重试");
+                        Logger.Log("电源计划还原失败 快照保留待下次启动重试");
                         ok = false;
                     }
                 }
@@ -555,20 +791,30 @@ namespace PaviseApp
             if (Set(g))
             {
                 Settings.SaveStr("PrevPowerPlan", "");
-                Logger.Log("检测到上次未还原的电源计划，已恢复");
+                Logger.Log("检测到上次未还原的电源计划 已恢复");
             }
             else if (!SchemeUsable(g))
             {
                 Settings.SaveStr("PrevPowerPlan", "");
-                Logger.Log("上次的电源计划已不存在，无法还原");
+                Logger.Log("上次的电源计划已不存在 无法还原");
             }
-            else Logger.Log("恢复上次电源计划失败，快照保留待下次重试");
+            else Logger.Log("恢复上次电源计划失败 快照保留待下次重试");
         }
 
 #if PAVISE_SELFTEST
+        internal static Guid SelfTestCurrent()
+        {
+            Guid? cur = Current();
+            return cur.HasValue ? cur.Value : Guid.Empty;
+        }
+
+        internal static bool SelfTestSetActive(Guid g) { return Set(g); }
+
         internal static bool SelfTestDuplicate(out Guid created) { return Duplicate(HighPerf, out created); }
 
         internal static Guid BalancedGuid { get { return Balanced; } }
+
+        internal static Guid UltimateGuid { get { return Ultimate; } }
 
         internal static bool SelfTestReadBrightnessAc(Guid scheme, out uint value)
         {
@@ -582,22 +828,14 @@ namespace PaviseApp
             return PowerWriteACValueIndex(IntPtr.Zero, ref s, ref sub, ref st, value) == 0;
         }
 
-        internal static void SelfTestPurge(Guid keep) { PurgeStaleClones(keep); }
-
-        internal static void SelfTestMigrate(string key) { MigrateLegacyPlan(key); }
-
         internal static int SelfTestSchemeCount() { return EnumerateSchemes().Count; }
 
         internal static Guid SelfTestResolve() { return ResolveTarget(); }
-
-        internal static bool SelfTestTargetOwned() { return targetOwned; }
 
         internal static void SelfTestResetResolve()
         {
             resolved = false;
             target = Guid.Empty;
-            targetOwned = false;
-            tuneState = -1;
         }
 
         internal static bool SelfTestDelete(Guid scheme)
@@ -606,62 +844,16 @@ namespace PaviseApp
             return PowerDeleteScheme(IntPtr.Zero, ref t) == 0;
         }
 
-        internal static bool SelfTestTune(Guid scheme, bool aggressive, bool idleDisable)
-        {
-            return TuneTarget(scheme, aggressive, idleDisable);
-        }
-
-        internal static bool SelfTestReadKnob(Guid scheme, string label, out uint ac)
-        {
-            ac = uint.MaxValue;
-            foreach (Knob k in AllKnobs())
-            {
-                if (k.Label != label) continue;
-                Guid sb = k.Sub, set = k.Setting, sc = scheme;
-                return PowerReadACValueIndex(IntPtr.Zero, ref sc, ref sb, ref set, out ac) == 0;
-            }
-            return false;
-        }
-
-        internal static bool SelfTestSupports(Guid scheme, string label)
-        {
-            foreach (Knob k in AllKnobs())
-                if (k.Label == label) return SettingPresent(scheme, k.Sub, k.Setting);
-            return false;
-        }
-
         internal static string SelfTestName(Guid scheme) { return ReadName(scheme); }
 
         internal static bool SelfTestWriteName(Guid scheme, string title) { return WriteName(scheme, title, "selftest"); }
 
-        internal static string[] SelfTestKnobPairs()
+        internal static bool SelfTestReadProcMinAc(Guid scheme, out uint value)
         {
-            var list = new List<string>();
-            foreach (Knob k in AllKnobs()) list.Add(k.Sub.ToString() + "|" + k.Setting.ToString());
-            return list.ToArray();
-        }
-
-        internal static string[] SelfTestKnobLabels()
-        {
-            var list = new List<string>();
-            foreach (Knob k in AllKnobs()) list.Add(k.Label);
-            return list.ToArray();
-        }
-
-        internal static bool SelfTestArenaDiffersFromCalm(string label)
-        {
-            foreach (Knob k in AllKnobs())
-                if (k.Label == label) return k.ArenaAc != k.CalmAc || k.ArenaDc != k.CalmDc;
-            return false;
-        }
-
-        private static List<Knob> AllKnobs()
-        {
-            var all = new List<Knob>();
-            all.AddRange(CoreKnobs);
-            all.AddRange(OptionalKnobs);
-            all.AddRange(HybridKnobs);
-            return all;
+            Guid s = scheme;
+            Guid sub = new Guid("54533251-82be-4824-96c1-47b60b740d00");
+            Guid st = new Guid("893dee8e-2bef-41e0-89c6-b55d0929964c");
+            return PowerReadACValueIndex(IntPtr.Zero, ref s, ref sub, ref st, out value) == 0;
         }
 #endif
     }

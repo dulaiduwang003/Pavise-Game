@@ -20,8 +20,8 @@ namespace PaviseApp
                 if (active) return true;
                 active = Switch.Apply(1);
                 Logger.Log(active
-                    ? "无输入降级已关闭：长时间不动键鼠也不会把游戏降级"
-                    : "无输入降级开关写入或回读失败，本轮未启用");
+                    ? "无输入降级已关闭"
+                    : "无输入降级开关写入或回读失败 本轮未启用");
                 return active;
             }
         }

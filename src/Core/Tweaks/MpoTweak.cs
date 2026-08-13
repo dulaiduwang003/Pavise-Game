@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 禁用 恢复多平面叠加（MPO）排查闪烁与卡顿
+// 文件用途 只读查询多平面叠加 MPO 状态 并还原 v1.7.0.5 移除的禁用开关留下的残留
 
 using System;
 using Microsoft.Win32;
@@ -31,28 +31,6 @@ namespace PaviseApp
             catch { return false; }
         }
 
-        public static bool Disable()
-        {
-            try
-            {
-                if (!Overlay.Apply(DisableValue))
-                {
-                    Logger.Log("MPO 禁用写入或回读失败，未标记为已禁用");
-                    return false;
-                }
-                Settings.Save("MpoOffByPavise", true);
-                if (!Settings.Load("MpoOffByPavise", false))
-                {
-                    Overlay.Restore();
-                    Logger.Log("MPO 状态标志无法持久化，已还原注册表修改");
-                    return false;
-                }
-                Logger.Log("多平面叠加（MPO）已禁用，重启或重新登录后生效");
-                return true;
-            }
-            catch { return false; }
-        }
-
         public static bool Restore()
         {
             try
@@ -63,7 +41,7 @@ namespace PaviseApp
                 {
                     Settings.Save("MpoOffByPavise", false);
                     if (Settings.Load("MpoOffByPavise", true)) return false;
-                    Logger.Log("多平面叠加（MPO）设置已恢复，重启或重新登录后生效");
+                    Logger.Log("多平面叠加 MPO 设置已恢复 重启或重新登录后生效");
                 }
                 return ok;
             }

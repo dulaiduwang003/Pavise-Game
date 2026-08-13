@@ -15,7 +15,6 @@ namespace PaviseApp
         public const uint EventControlCodeEnableProvider = 1;
         public const uint EventTraceControlStop = 1;
         public const ulong InvalidProcessTraceHandle = 0xFFFFFFFFFFFFFFFF;
-        public const int ErrorWmiInstanceNotFound = 4201;
 
         [StructLayout(LayoutKind.Sequential)]
         public struct EventTraceProperties

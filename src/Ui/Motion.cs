@@ -27,17 +27,31 @@ namespace PaviseApp
             if (Speed <= 0f) Speed = 0.25f;
             float d = Target - Value;
             if (d < 0.0015f && d > -0.0015f) { if (Value != Target) { Value = Target; return true; } return false; }
-            Value += d * Speed;
+            Value += d * StepFraction(Speed, UiClock.DeltaScale);
             return true;
+        }
+
+        internal static float StepFraction(float speed, float deltaScale)
+        {
+            if (speed >= 1f) return 1f;
+            if (deltaScale <= 0f) return 0f;
+            if (deltaScale == 1f) return speed;
+            double kept = Math.Pow(1.0 - speed, deltaScale);
+            float f = (float)(1.0 - kept);
+            return f > 1f ? 1f : f;
         }
     }
 
     internal static class UiClock
     {
-        internal const int ForegroundFrameMs = 16;
+        internal const int ForegroundFrameMs = 10;
         internal const int BackgroundFrameMs = 200;
         internal const int ForegroundSlowMs = 200;
         internal const int BackgroundSlowMs = 1000;
+
+        internal const float BaselineFrameMs = 16.667f;
+        internal const float MinDeltaScale = 0.25f;
+        internal const float MaxDeltaScale = 4f;
 
         private static System.Windows.Forms.Timer timer;
         private static System.Windows.Forms.Timer slowTimer;
@@ -45,6 +59,28 @@ namespace PaviseApp
         private static int slowFramesLeft;
         private static bool suspended;
         private static bool background;
+        private static readonly Stopwatch frameWatch = new Stopwatch();
+        private static float deltaScale = 1f;
+        private static bool precisionHeld;
+
+        public static float DeltaScale { get { return deltaScale; } }
+
+        internal static float ScaleFor(double elapsedMs)
+        {
+            float s = (float)(elapsedMs / BaselineFrameMs);
+            if (s < MinDeltaScale) return MinDeltaScale;
+            if (s > MaxDeltaScale) return MaxDeltaScale;
+            return s;
+        }
+
+        private static void AdvanceDelta()
+        {
+            if (!frameWatch.IsRunning) { frameWatch.Reset(); frameWatch.Start(); deltaScale = 1f; return; }
+            double ms = frameWatch.Elapsed.TotalMilliseconds;
+            frameWatch.Reset();
+            frameWatch.Start();
+            deltaScale = ScaleFor(ms);
+        }
         public static event EventHandler Frame;
         public static event EventHandler SlowFrame;
 
@@ -80,9 +116,10 @@ namespace PaviseApp
             timer.Interval = DesiredFrameMs(background);
             timer.Tick += (s, e) =>
             {
-                if (suspended) { framesLeft = 0; timer.Stop(); return; }
+                if (suspended) { framesLeft = 0; StopFrames(); return; }
+                AdvanceDelta();
                 if (Frame != null) Frame(null, EventArgs.Empty);
-                if (--framesLeft <= 0) timer.Stop();
+                if (--framesLeft <= 0) StopFrames();
             };
             slowTimer = new System.Windows.Forms.Timer();
             slowTimer.Interval = DesiredSlowMs(background);
@@ -94,12 +131,31 @@ namespace PaviseApp
             };
         }
 
+        private static void StopFrames()
+        {
+            timer.Stop();
+            frameWatch.Reset();
+            HoldPrecision(false);
+        }
+
+        private static void HoldPrecision(bool hold)
+        {
+            if (hold == precisionHeld) return;
+            try
+            {
+                if (hold) Native.timeBeginPeriod(1);
+                else Native.timeEndPeriod(1);
+                precisionHeld = hold;
+            }
+            catch { }
+        }
+
         public static void Wake(int frames = 48)
         {
             Ensure();
             if (suspended) return;
             if (frames > framesLeft) framesLeft = frames;
-            if (!timer.Enabled) timer.Start();
+            if (!timer.Enabled) { HoldPrecision(true); timer.Start(); }
         }
 
         public static void WakeSlow(int frames = 12)
@@ -122,10 +178,23 @@ namespace PaviseApp
                 {
                     framesLeft = 0;
                     slowFramesLeft = 0;
-                    timer.Stop();
+                    StopFrames();
                     slowTimer.Stop();
                 }
             }
+        }
+
+        public static bool Borrow()
+        {
+            bool was = suspended;
+            if (was) Suspended = false;
+            Wake();
+            return was;
+        }
+
+        public static void Return(bool was)
+        {
+            if (was) Suspended = true;
         }
 
         public static bool Running
@@ -135,7 +204,7 @@ namespace PaviseApp
             {
                 Ensure();
                 if (value) Wake();
-                else { framesLeft = 0; timer.Stop(); }
+                else { framesLeft = 0; StopFrames(); }
             }
         }
     }

@@ -74,14 +74,11 @@ namespace PaviseApp
         private static readonly object cacheSync = new object();
         private static readonly Dictionary<int, PathCacheEntry> pathCache =
             new Dictionary<int, PathCacheEntry>();
-        private static long captureCount;
         private static long pathQueryCount;
 
         [DllImport("ntdll.dll")]
         private static extern int NtQuerySystemInformation(
             int cls, IntPtr buffer, int len, out int ret);
-
-        internal static long CaptureCount { get { return System.Threading.Interlocked.Read(ref captureCount); } }
 
         internal static long PathQueryCount { get { return System.Threading.Interlocked.Read(ref pathQueryCount); } }
 
@@ -104,7 +101,6 @@ namespace PaviseApp
         {
             ProcEntry[] entries = Enumerate();
             if (entries == null) return null;
-            System.Threading.Interlocked.Increment(ref captureCount);
             if (pathSession >= 0) ResolvePaths(entries, pathSession);
             else PruneCache(entries);
             return new ProcessSnapshot(entries);

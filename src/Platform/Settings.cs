@@ -81,7 +81,7 @@ namespace PaviseApp
             }
             catch (Exception ex)
             {
-                Logger.LogFailure("设置写入失败 [" + name + "]", ex);
+                Logger.LogFailure("设置写入失败 " + name + "]", ex);
                 return false;
             }
         }
@@ -131,7 +131,7 @@ namespace PaviseApp
             }
             catch (Exception ex)
             {
-                Logger.LogFailure("设置写入失败 [" + name + "]", ex);
+                Logger.LogFailure("设置写入失败 " + name + "]", ex);
                 return false;
             }
         }

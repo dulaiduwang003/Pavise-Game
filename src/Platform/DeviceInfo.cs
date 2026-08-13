@@ -32,12 +32,12 @@ namespace PaviseApp
             string mem = MemoryText();
             var specs = new[]
             {
-                string.IsNullOrEmpty(cpu) ? "—" : cpu,
-                string.IsNullOrEmpty(gpu) ? "—" : gpu,
-                string.IsNullOrEmpty(mem) ? "—" : mem,
+                string.IsNullOrEmpty(cpu) ? " " : cpu,
+                string.IsNullOrEmpty(gpu) ? " " : gpu,
+                string.IsNullOrEmpty(mem) ? " " : mem,
                 HagsText()
             };
-            if (specs[1] != "—") cached = specs;
+            if (specs[1] != " ") cached = specs;
             return specs;
         }
 

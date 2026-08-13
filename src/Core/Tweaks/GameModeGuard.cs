@@ -36,17 +36,17 @@ namespace PaviseApp
             {
                 if (!Auto.Apply(1))
                 {
-                    Logger.Log("游戏模式守护写入或回读失败，未标记为已开启");
+                    Logger.Log("游戏模式守护写入或回读失败 未标记为已开启");
                     return false;
                 }
                 Settings.Save("GameModeGuardByPavise", true);
                 if (!Settings.Load("GameModeGuardByPavise", false))
                 {
                     Auto.Restore();
-                    Logger.Log("游戏模式守护状态标志无法持久化，已还原注册表修改");
+                    Logger.Log("游戏模式守护状态标志无法持久化 已还原注册表修改");
                     return false;
                 }
-                Logger.Log("游戏模式守护已开启（AutoGameModeEnabled → 1）");
+                Logger.Log("游戏模式守护已开启 AutoGameModeEnabled 1");
                 return true;
             }
             catch { return false; }

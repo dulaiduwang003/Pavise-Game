@@ -42,7 +42,6 @@ namespace PaviseApp
             if (root == null) root = NormalizeGameRoot(GameScan.InferGameRoot(resolved));
             lock (sync)
             {
-                if (autoAddIgnore.Remove(resolved)) SaveAutoIgnoreLocked();
                 foreach (GameProfile p in profiles)
                 {
                     if (string.Equals(p.ExecutablePath, resolved, StringComparison.OrdinalIgnoreCase)) return false;
@@ -73,6 +72,14 @@ namespace PaviseApp
             RebuildLegacyGameIndex();
             profileStore.Save(profiles);
             SaveGames();
+        }
+
+        public event Action LibraryChanged;
+
+        private void RaiseLibraryChanged()
+        {
+            Action handler = LibraryChanged;
+            if (handler != null) { try { handler(); } catch { } }
         }
 
         private void KickLibraryChanged()
@@ -137,8 +144,42 @@ namespace PaviseApp
                 }
             }
             if (learnedGame != null)
-                Logger.Log("已确认《" + learnedGame + "》的实际渲染进程是 " + rendererName
-                    + "，档案已更新，之后可直接按它识别（" + rendererPath + "）");
+                Logger.Log("已确认 " + learnedGame + " 的实际渲染进程是 " + rendererName
+                    + " 档案已更新 之后可直接按它识别 " + rendererPath + " ");
+        }
+
+        public bool SetProfileForceTrigger(string profileId, bool on)
+        {
+            bool changed = false, dropSession = false;
+            string name = null;
+            lock (sync)
+            {
+                foreach (GameProfile p in profiles)
+                {
+                    if (!string.Equals(p.Id, profileId, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (on && string.IsNullOrEmpty(p.ExecutablePath)
+                        && string.IsNullOrEmpty(p.LearnedExecutablePath)) return false;
+                    if (p.ForceTrigger != on)
+                    {
+                        p.ForceTrigger = on;
+                        name = p.Name;
+                        changed = true;
+                        PersistLibraryLocked();
+                    }
+                    break;
+                }
+                if (changed && !on)
+                    dropSession = activeDetection != null && activeDetection.Profile != null
+                        && string.Equals(activeDetection.Profile.Id, profileId,
+                            StringComparison.OrdinalIgnoreCase);
+            }
+            if (!changed) return true;
+            if (dropSession) panicReq = true;
+            Logger.Log((on ? "已开启强制接管 " : "已关闭强制接管 ") + name
+                + (on ? " 之后该程序的进程一起来就直接进对局 不再等前台窗口和渲染证据"
+                     : " 恢复成按前台窗口和渲染证据自动判定"));
+            KickLibraryChanged();
+            return true;
         }
 
         public void RemoveProfile(string profileId)
@@ -146,16 +187,6 @@ namespace PaviseApp
             bool dropSession;
             lock (sync)
             {
-                bool ignoreChanged = false;
-                foreach (GameProfile p in profiles)
-                {
-                    if (!string.Equals(p.Id, profileId, StringComparison.OrdinalIgnoreCase)) continue;
-                    if (!string.IsNullOrEmpty(p.ExecutablePath) && autoAddIgnore.Add(p.ExecutablePath))
-                        ignoreChanged = true;
-                    if (!string.IsNullOrEmpty(p.LearnedExecutablePath) && autoAddIgnore.Add(p.LearnedExecutablePath))
-                        ignoreChanged = true;
-                }
-                if (ignoreChanged) SaveAutoIgnoreLocked();
                 profiles.RemoveAll(p => string.Equals(p.Id, profileId, StringComparison.OrdinalIgnoreCase));
                 RebuildLegacyGameIndex();
                 profileStore.Save(profiles);
@@ -208,19 +239,9 @@ namespace PaviseApp
             return result;
         }
 
-        public bool AddWhitelist(string name)
-        {
-            return AddWhitelistRule(WhitelistRuleKind.LegacyName, name);
-        }
-
         public bool AddWhitelistPath(string executablePath)
         {
             return AddWhitelistRule(WhitelistRuleKind.ExactPath, executablePath);
-        }
-
-        public bool AddWhitelistFamily(string anchorExecutablePath)
-        {
-            return AddWhitelistRule(WhitelistRuleKind.ApplicationFamily, anchorExecutablePath);
         }
 
         public bool AddWhitelistAuto(string executablePath)
@@ -291,8 +312,8 @@ namespace PaviseApp
             }
             int matched;
             int freed = ReleaseCurrentWhitelistMatches(out matched);
-            Logger.Log("白名单新增 " + rule.Kind + " · " + rule.Value + "：当前匹配 " + matched
-                + " 个，立即恢复 " + freed + " 个后台压制");
+            Logger.Log("白名单新增 " + rule.Kind + " " + rule.Value + " 当前匹配 " + matched
+                + " 个 立即恢复 " + freed + " 个后台压制");
             RequestPolicyApply();
             return true;
         }
@@ -365,8 +386,8 @@ namespace PaviseApp
             }
             int matched;
             int freed = ReleaseCurrentWhitelistMatches(out matched);
-            Logger.Log("白名单已恢复为预设（" + PresetWhitelist.Length + " 项，当前匹配 " + matched
-                + " 个，立即恢复 " + freed + " 个后台压制）");
+            Logger.Log("白名单已恢复为预设 " + PresetWhitelist.Length + " 项 当前匹配 " + matched
+                + " 个 立即恢复 " + freed + " 个后台压制");
             RequestPolicyApply();
             return true;
         }
@@ -376,9 +397,9 @@ namespace PaviseApp
             try
             {
                 var lines = new List<string>();
-                lines.Add("# Pavise 后台策略豁免规则。旧版一行一个进程名的文件仍可直接读取。");
-                lines.Add("# V3：N=进程名兼容规则，P=精确 EXE，F=锚点 EXE 及其当前/后续子孙。");
-                lines.Add("# Windows 核心另有安全边界，这里也保留必要项并允许用户追加明确例外。");
+                lines.Add("# Pavise 后台策略豁免规则 旧版一行一个进程名的文件仍可直接读取");
+                lines.Add("# V3 N=进程名兼容规则 P=精确 EXE F=锚点 EXE 及其当前和后续子孙");
+                lines.Add("# Windows 核心另有安全边界 这里也保留必要项并允许用户追加明确例外");
                 lines.Add(WhitelistRule.Header);
                 if (rules != null)
                     foreach (WhitelistRule rule in rules) lines.Add(rule.Serialize());

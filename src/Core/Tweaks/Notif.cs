@@ -20,7 +20,7 @@ namespace PaviseApp
             {
                 if (active) return true;
                 active = Toast.Apply(0);
-                Logger.Log(active ? "游戏免打扰：已禁用通知弹窗" : "游戏免打扰写入或回读失败，本轮未启用");
+                Logger.Log(active ? "游戏免打扰 已禁用通知弹窗" : "游戏免打扰写入或回读失败 本轮未启用");
                 return active;
             }
         }

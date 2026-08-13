@@ -36,15 +36,15 @@ namespace PaviseApp
                     {
                         SvcCtl.EnsureStarted(SvcName);
                         stopped = false;
-                        Logger.Log("DoSvc 停止状态无法持久化，已重新启动服务");
+                        Logger.Log("DoSvc 停止状态无法持久化 已重新启动服务");
                     }
                 }
                 else if (before == 4) Settings.SaveStr(StopFlag, "");
                 active = registryOk || stopped;
                 Logger.Log(active
-                    ? "后台下载已暂停（" + (registryOk ? "传递优化带宽 → 1 KB/s" : "带宽策略写入失败")
-                        + (confirmedStop ? "，DoSvc 已停止" : "") + "）"
-                    : "后台下载策略写入失败且 DoSvc 未停止，本轮未启用");
+                    ? "后台下载已暂停 " + (registryOk ? "传递优化带宽 1 KB/s" : "带宽策略写入失败")
+                        + (confirmedStop ? " DoSvc 已停止" : "") + " "
+                    : "后台下载策略写入失败且 DoSvc 未停止 本轮未启用");
                 return active;
             }
         }
@@ -58,7 +58,7 @@ namespace PaviseApp
                 if (Settings.LoadStr(StopFlag, "").Length > 0)
                 {
                     if (SvcCtl.EnsureStarted(SvcName)) { Settings.SaveStr(StopFlag, ""); did = true; }
-                    else Logger.Log("DoSvc 未能拉起，标志保留待下次重试");
+                    else Logger.Log("DoSvc 未能拉起 标志保留待下次重试");
                 }
                 if (did) Logger.Log("后台下载已还原");
                 active = false;

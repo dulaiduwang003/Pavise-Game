@@ -91,11 +91,6 @@ namespace PaviseApp
             base.Dispose(disposing);
         }
 
-        internal bool AnimationTimerEnabled
-        {
-            get { return timer.Enabled; }
-        }
-
         internal static bool ShouldAnimate(bool requested, bool handleCreated, bool controlVisible,
             bool formVisible, FormWindowState windowState)
         {
@@ -103,7 +98,7 @@ namespace PaviseApp
                 && windowState != FormWindowState.Minimized;
         }
 
-        internal const int ActiveFrameMs = 33;
+        internal const int ActiveFrameMs = 30;
         internal const int BackgroundFrameMs = 500;
         internal const int GameBackgroundFrameMs = 2000;
 

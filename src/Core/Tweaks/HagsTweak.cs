@@ -123,17 +123,17 @@ namespace PaviseApp
             {
                 if (!Sch.Apply(2))
                 {
-                    Logger.Log("GPU 硬件调度（HAGS）写入或回读失败，未标记为已开启");
+                    Logger.Log("GPU 硬件调度 HAGS 写入或回读失败 未标记为已开启");
                     return false;
                 }
                 Settings.Save("HagsOnByPavise", true);
                 if (!Settings.Load("HagsOnByPavise", false))
                 {
                     Sch.Restore();
-                    Logger.Log("HAGS 状态标志无法持久化，已还原注册表修改");
+                    Logger.Log("HAGS 状态标志无法持久化 已还原注册表修改");
                     return false;
                 }
-                Logger.Log("GPU 硬件调度（HAGS）已开启，重启后生效");
+                Logger.Log("GPU 硬件调度 HAGS 已开启 重启后生效");
                 return true;
             }
             catch { return false; }
@@ -150,7 +150,7 @@ namespace PaviseApp
                 {
                     Settings.Save("HagsOnByPavise", false);
                     if (Settings.Load("HagsOnByPavise", true)) return false;
-                    Logger.Log("GPU 硬件调度（HAGS）已关闭，重启后生效");
+                    Logger.Log("GPU 硬件调度 HAGS 已关闭 重启后生效");
                 }
                 return ok;
             }

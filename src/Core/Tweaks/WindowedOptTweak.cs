@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 开启 关闭并恢复窗口化游戏优化（DirectX 呈现路径升级）
+// 文件用途 开启关闭并恢复窗口化游戏优化 DirectX 呈现路径升级
 
 using System;
 using Microsoft.Win32;
@@ -53,7 +53,7 @@ namespace PaviseApp
                         if (!CurrentlyOn()) return false;
                         Settings.Save("WindowedOptOnByPavise", true);
                         if (!Settings.Load("WindowedOptOnByPavise", false)) { Restore(); return false; }
-                        Logger.Log("窗口化游戏优化已开启，重启游戏后生效");
+                        Logger.Log("窗口化游戏优化已开启 重启游戏后生效");
                         return true;
                     }
                 }
@@ -83,7 +83,7 @@ namespace PaviseApp
                     }
                     Settings.SaveStr(BackupSlot, "");
                     Settings.Save("WindowedOptOnByPavise", false);
-                    Logger.Log("窗口化游戏优化已还原，重启游戏后生效");
+                    Logger.Log("窗口化游戏优化已还原 重启游戏后生效");
                     return true;
                 }
                 catch { return false; }

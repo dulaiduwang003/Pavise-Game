@@ -1,5 +1,5 @@
-// @author bdth 2074055628@qq.com
-// 文件用途 枚举本机显示适配器 按 PCI 厂商与总线位置区分核显与独显 排除虚拟适配器
+﻿// @author bdth 2074055628@qq.com
+// 文件用途 枚举本机显示适配器 优先按驱动报告区分核显与独显 排除虚拟适配器
 
 using System;
 using System.Collections.Generic;
@@ -25,20 +25,6 @@ namespace PaviseApp
         public bool Integrated;
         public long VideoMemoryBytes;
         public int BusNumber = -1;
-
-        public string VendorText
-        {
-            get
-            {
-                switch (Vendor)
-                {
-                    case GpuVendor.Nvidia: return "NVIDIA";
-                    case GpuVendor.Amd: return "AMD";
-                    case GpuVendor.Intel: return "Intel";
-                    default: return "未知厂商";
-                }
-            }
-        }
 
         public string KindText
         {
@@ -72,6 +58,19 @@ namespace PaviseApp
             {
                 foreach (GpuAdapter a in Adapters()) if (!a.Integrated) return true;
                 return false;
+            }
+        }
+
+        public static bool Hybrid
+        {
+            get
+            {
+                bool hasIgpu = false, hasDgpu = false;
+                foreach (GpuAdapter a in Adapters())
+                {
+                    if (a.Integrated) hasIgpu = true; else hasDgpu = true;
+                }
+                return hasIgpu && hasDgpu;
             }
         }
 
@@ -111,7 +110,7 @@ namespace PaviseApp
             GpuAdapter[] all = Adapters();
             if (all.Length == 0) return null;
             var parts = new List<string>();
-            foreach (GpuAdapter a in all) parts.Add(a.Name + "（" + a.KindText + "）");
+            foreach (GpuAdapter a in all) parts.Add(a.Name + " " + a.KindText + " ");
             return string.Join(" + ", parts.ToArray());
         }
 
@@ -131,8 +130,33 @@ namespace PaviseApp
                 && hardwareId.StartsWith(@"PCI\", StringComparison.OrdinalIgnoreCase);
         }
 
-        internal static bool IntegratedFrom(GpuVendor vendor, int busNumber, long videoMemoryBytes)
+        internal static HashSet<string> PresentVenDevKeys()
         {
+            var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                foreach (string id in PresentDevices.ByClass(DisplayClass))
+                {
+                    string key = VenDevKey(id);
+                    if (key != null) keys.Add(key);
+                }
+            }
+            catch (Exception ex) { Logger.Log("在场显卡枚举失败 " + ex.Message); }
+            return keys;
+        }
+
+        internal static bool KeepAdapter(string hardwareId, ICollection<string> presentKeys)
+        {
+            if (presentKeys == null || presentKeys.Count == 0) return true;
+            string key = VenDevKey(hardwareId);
+            if (key == null) return true;
+            return presentKeys.Contains(key);
+        }
+
+        internal static bool IntegratedFrom(GpuVendor vendor, int busNumber, long videoMemoryBytes,
+            bool? driverReported)
+        {
+            if (driverReported.HasValue) return driverReported.Value;
             if (vendor == GpuVendor.Nvidia) return false;
             if (busNumber >= 0) return busNumber == 0;
             return videoMemoryBytes > 0 && videoMemoryBytes < 2147483648L;
@@ -152,8 +176,11 @@ namespace PaviseApp
             var byKey = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             try { CollectBusNumbers(byKey); }
             catch { }
+            Dictionary<string, bool> reportedIntegrated = DxCoreGpuProbe.CollectIntegrated();
+            HashSet<string> present = PresentVenDevKeys();
 
             var list = new List<GpuAdapter>();
+            int stale = 0;
             try
             {
                 using (RegistryKey root = Registry.LocalMachine.OpenSubKey(ClassPath))
@@ -169,11 +196,16 @@ namespace PaviseApp
                             if (!IsPciAdapter(hardwareId)) continue;
                             string name = Compact(key.GetValue("DriverDesc") as string);
                             if (name.Length == 0) continue;
+                            if (!KeepAdapter(hardwareId, present)) { stale++; continue; }
                             GpuVendor vendor = VendorOf(hardwareId);
                             long memory = VideoMemoryBytes(key);
                             int bus;
                             string venDev = VenDevKey(hardwareId);
                             if (venDev == null || !byKey.TryGetValue(venDev, out bus)) bus = -1;
+                            bool reported;
+                            bool? driverReported = venDev != null
+                                && reportedIntegrated.TryGetValue(venDev, out reported)
+                                ? (bool?)reported : null;
                             list.Add(new GpuAdapter
                             {
                                 Name = name,
@@ -181,13 +213,15 @@ namespace PaviseApp
                                 Vendor = vendor,
                                 BusNumber = bus,
                                 VideoMemoryBytes = memory,
-                                Integrated = IntegratedFrom(vendor, bus, memory)
+                                Integrated = IntegratedFrom(vendor, bus, memory, driverReported)
                             });
                         }
                     }
                 }
             }
             catch { }
+            if (stale > 0)
+                Logger.Log("显卡枚举 跳过 " + stale + " 块已经不在机器上的卡 驱动类键留着历史记录 拔掉不会自己删");
             return list.ToArray();
         }
 

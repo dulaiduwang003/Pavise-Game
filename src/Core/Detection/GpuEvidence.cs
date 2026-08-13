@@ -11,7 +11,6 @@ namespace PaviseApp
     internal static class GpuEvidence
     {
         internal const double MinElectUtilization = 10.0;
-        internal const double MinAutoAddUtilization = 20.0;
 
         internal const int BurstRounds = 2;
         internal const int BurstIntervalMs = 700;

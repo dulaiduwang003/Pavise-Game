@@ -160,35 +160,35 @@ namespace PaviseApp
         public static string Format(Report r)
         {
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine("=== Render Lane 线程探针（只读，不写入任何调度参数）===");
-            sb.AppendLine("目标：" + (r.Name ?? "?") + " (pid " + r.Pid + ")");
-            if (!string.IsNullOrEmpty(r.Error)) sb.AppendLine("错误：" + r.Error);
-            sb.AppendLine("线程总数：" + r.ThreadCount + "，成功采样：" + r.SampledThreads
-                + "，采样轮次：" + r.Rounds + "，实际时长：" + r.WallSeconds.ToString("F1") + "s");
-            sb.AppendLine("进程整体占用：" + r.TotalCores.ToString("F2") + " 核");
-            sb.AppendLine("主导线程连续稳定轮次：" + r.LeaderStableRounds + " / " + Math.Max(0, r.Rounds - 2));
+            sb.AppendLine("Render Lane 线程探针 只读 不写入任何调度参数");
+            sb.AppendLine("目标 " + (r.Name ?? "?") + " pid " + r.Pid);
+            if (!string.IsNullOrEmpty(r.Error)) sb.AppendLine("错误 " + r.Error);
+            sb.AppendLine("线程总数 " + r.ThreadCount + " 成功采样 " + r.SampledThreads
+                + " 采样轮次 " + r.Rounds + " 实际时长 " + r.WallSeconds.ToString("F1") + "s");
+            sb.AppendLine("进程整体占用 " + r.TotalCores.ToString("F2") + " 核");
+            sb.AppendLine("主导线程连续稳定轮次 " + r.LeaderStableRounds + " 共 " + Math.Max(0, r.Rounds - 2));
             sb.AppendLine();
-            sb.AppendLine("按 CPU 占用排序的线程（Top）：");
-            sb.AppendLine("  TID      占进程CPU%   读句柄   写句柄(THREAD_SET_LIMITED_INFORMATION)");
+            sb.AppendLine("按 CPU 占用排序的线程 Top");
+            sb.AppendLine("TID 占进程CPU% 读句柄 写句柄 THREAD_SET_LIMITED_INFORMATION");
             foreach (Lane lane in r.Top)
             {
                 if (!lane.CanQuery)
                 {
-                    sb.AppendLine("  " + lane.Tid.ToString().PadRight(9) + "（读句柄被拒，错误 " + lane.QueryError + "）");
+                    sb.AppendLine("  " + lane.Tid.ToString().PadRight(9) + " 读句柄被拒 错误 " + lane.QueryError + " ");
                     continue;
                 }
                 sb.AppendLine("  " + lane.Tid.ToString().PadRight(9)
                     + lane.SharePercent.ToString("F1").PadLeft(8) + "%"
-                    + "      可".PadRight(9)
-                    + (lane.CanSet ? "可" : "拒（错误 " + lane.SetError + "）"));
+                    + " 可".PadRight(9)
+                    + (lane.CanSet ? "可" : "拒 错误 " + lane.SetError + " "));
             }
             sb.AppendLine();
             bool anySet = false, anyDenied = false;
             foreach (Lane lane in r.Top) { if (lane.CanSet) anySet = true; if (lane.CanQuery && !lane.CanSet) anyDenied = true; }
-            sb.AppendLine("结论：" + (anySet && !anyDenied
-                ? "线程调度句柄可获取，Render Lane 在本游戏上技术可行"
-                : anySet ? "部分线程可写、部分被拒，需要逐线程降级处理"
-                : "线程写句柄被拒，本游戏无法做线程级提优"));
+            sb.AppendLine("结论 " + (anySet && !anyDenied
+                ? "线程调度句柄可获取 Render Lane 在本游戏上技术可行"
+                : anySet ? "部分线程可写 部分被拒 需要逐线程降级处理"
+                : "线程写句柄被拒 本游戏无法做线程级提优"));
             return sb.ToString();
         }
     }

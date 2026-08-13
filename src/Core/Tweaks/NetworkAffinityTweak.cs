@@ -44,7 +44,7 @@ namespace PaviseApp
                     }
                 }
             }
-            catch (Exception ex) { Logger.Log("枚举网卡设备失败：" + ex.Message); }
+            catch (Exception ex) { Logger.Log("枚举网卡设备失败 " + ex.Message); }
             return ids;
         }
 
@@ -126,7 +126,7 @@ namespace PaviseApp
                     if (string.IsNullOrEmpty(g.ExecutablePath)) continue;
                     string name = SanitizePolicyName(g.Name, g.ExecutablePath);
                     if (ApplyQosPolicy(name, g.ExecutablePath)) newNames.Add(name);
-                    else Logger.Log("网络优先级：" + g.Name + " 的 QoS 策略创建失败");
+                    else Logger.Log("网络优先级 " + g.Name + " 的 QoS 策略创建失败");
                 }
             }
 
@@ -138,7 +138,7 @@ namespace PaviseApp
             if (!SavePolicyNames(keptNames))
             {
                 foreach (string name in newNames) RemoveQosPolicy(name);
-                Logger.Log("网络优先级：策略名无法持久化，已撤回本轮创建的 QoS 策略");
+                Logger.Log("网络优先级 策略名无法持久化 已撤回本轮创建的 QoS 策略");
                 return irqOk;
             }
 
@@ -163,5 +163,7 @@ namespace PaviseApp
             if (allOk) Settings.Save(EnabledKey, false);
             return allOk;
         }
+
+        public static bool HealStaleMask() { return irqEngine.HealStaleMask(); }
     }
 }

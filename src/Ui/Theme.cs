@@ -144,6 +144,20 @@ namespace PaviseApp
         }
 
         private static readonly Dictionary<int, Font> monoCache = new Dictionary<int, Font>();
+
+        internal static bool HasCjk(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return false;
+            foreach (char c in s)
+                if ((c >= 0x2E80 && c <= 0x9FFF) || (c >= 0xF900 && c <= 0xFAFF)) return true;
+            return false;
+        }
+
+        public static Font MonoFor(string text, float size)
+        {
+            return HasCjk(text) ? UI(size + 0.2f, false) : Mono(size);
+        }
+
         public static Font Mono(float size)
         {
             int key = (int)Math.Round(size * 100);

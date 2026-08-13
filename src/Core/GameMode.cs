@@ -1,4 +1,4 @@
-﻿// @author bdth 2074055628@qq.com
+// @author bdth 2074055628@qq.com
 // 文件用途 维护游戏模式状态 配置和工作线程
 
 using System;
@@ -86,8 +86,9 @@ namespace PaviseApp
         private volatile bool boostOn;
         private volatile bool pauseDlOn;
         private volatile bool svcPauseOn;
+        private volatile bool svcYieldOn;
+        private volatile bool wlanGuardOn;
         private volatile bool notifQuiet;
-        private volatile bool trimWs;
         private volatile bool gpuHighPerf;
         private volatile bool nvMaxPerf;
         private volatile bool nvLowLatency;
@@ -96,49 +97,53 @@ namespace PaviseApp
         private volatile bool nvRebarOn;
         private volatile string nvDlssMode = "off";
         private volatile bool nvBattFull;
-        private volatile bool nvBgFrlOn;
-        private bool nvbgActive;
         private volatile bool presenceQosOn;
         private volatile bool awakeOn;
         private bool pqosActive;
         private bool awakeActive;
         private bool overlayActive;
         private volatile bool killGameDvr;
-        private volatile bool hzGuard;
         private volatile bool planSwitch;
-        private volatile bool visualFxOn;
         private volatile bool standbySweepOn;
+        private volatile bool bgTrimOn;
+        private bool bgTrimDone;
+        private long bgTrimAtTicks;
+        private volatile bool standbyGuardOn;
+        private long nextStandbyGuardTicks;
+        private volatile bool squeezeBgOn;
+        private long slowEnvAtTicks;
+
+        internal const int SlowEnvDelaySeconds = 20;
         private volatile bool pauseUpdateOn;
-        private volatile bool strictCoreOn;
+        private volatile bool corePartitionOn;
+        private volatile bool coreDomainAltOn;
         private volatile bool aggressiveOn;
-        private volatile bool freezeOn;
         private volatile bool ifeoOn;
         private volatile bool renderLaneOn;
-        private volatile bool memResidencyOn;
-        private volatile bool prewarmOn;
         private volatile bool uploadYieldOn;
         private long uploadYieldAtTicks;
         private bool uploadYieldDone;
+        private long uplinkSampleTicks;
+        private long uplinkSampleBytes;
         private volatile bool gpuDemoteOn;
-        private volatile bool idleDisableOn;
         private volatile bool panicReq;
         private int panicSeq;
         private int panicServed;
         private volatile bool panicResult;
         private readonly ManualResetEvent panicDone = new ManualResetEvent(true);
         private bool svcActive;
+        private bool svcYieldActive;
+        private bool wlanActive;
         private bool dvrActive;
         private bool timerRaised;
         private bool timerSkipLogged;
         private bool notifActive;
         private bool doActive;
-        private bool hzActive;
-        private readonly ulong throttleMask;
+        private ulong throttleMask;
         private readonly ulong allMask;
         private readonly ulong gameMask;
-        private readonly ulong strictMask;
+        private ulong strictMask;
         private readonly BackgroundPressureController pressure = new BackgroundPressureController();
-        private readonly FreezeDwellTracker freezeDwell = new FreezeDwellTracker();
         private readonly CpuSaturation cpuSaturation = new CpuSaturation();
         private uint boostPriorityTarget = Native.HIGH_PRIORITY_CLASS;
         private PerformancePreset preset;
@@ -161,8 +166,6 @@ namespace PaviseApp
             dataDir = dir;
             gamesPath = Path.Combine(dir, "Pavise.games.txt");
             whitePath = Path.Combine(dir, "Pavise.whitelist.txt");
-            autoIgnorePath = Path.Combine(dir, "Pavise.autoignore.txt");
-            LoadAutoIgnore();
             profileStore = new GameProfileStore(dir);
             using (Process self = Process.GetCurrentProcess())
             {
@@ -178,29 +181,42 @@ namespace PaviseApp
             gameMask = CpuTopology.BoostMask;
             strictMask = CpuTopology.StrictBoostMask;
             if (CpuTopology.Hybrid)
-                Logger.Log("CPU 拓扑：混合架构，性能核 0x" + CpuTopology.PerfMask.ToString("X")
-                    + "，能效核 0x" + CpuTopology.EffMask.ToString("X")
-                    + "；后台压 0x" + throttleMask.ToString("X")
-                    + "，严格分区绑 0x" + strictMask.ToString("X"));
+                Logger.Log("处理器 混合架构 大核 " + CpuTopology.DescribeMask(CpuTopology.PerfMask)
+                    + " 小核 " + CpuTopology.DescribeMask(CpuTopology.EffMask)
+                    + " 后台去 " + CpuTopology.DescribeMask(throttleMask)
+                    + " 选只用大核时给 " + CpuTopology.DescribeMask(strictMask));
             else if (CpuTopology.AsymCache)
-                Logger.Log("CPU 拓扑：非对称 L3（X3D），游戏绑大缓存 CCD 0x" + gameMask.ToString("X") + "，后台压另一 CCD 0x" + throttleMask.ToString("X"));
+                Logger.Log("处理器 带 3D 缓存 默认全核 选单 CCD 时给大缓存那块 "
+                    + CpuTopology.DescribeMask(strictMask)
+                    + " 后台去 " + CpuTopology.DescribeMask(throttleMask));
+            else if (CpuTopology.PartitionTag == "symmetric-ccd")
+                Logger.Log("处理器 多 CCD 默认全核 选单 CCD 时给 "
+                    + CpuTopology.DescribeMask(strictMask)
+                    + " 后台去 " + CpuTopology.DescribeMask(throttleMask));
             else
-                Logger.Log("CPU 拓扑：同构，游戏不绑核");
+                Logger.Log("处理器 单一架构 游戏不限核");
+            if (CpuTopology.AltDomainActive)
+                Logger.Log("游戏核心范围 已换到另一块 游戏 " + CpuTopology.DescribeMask(strictMask)
+                    + " 后台 " + CpuTopology.DescribeMask(throttleMask));
             if (CpuTopology.CpuSetPartitionRejected)
-                Logger.Log("CPU 拓扑：CPU Set 分区与性能核判定矛盾，已弃用该分区");
+                Logger.Log("处理器 分区与大小核判定矛盾 已弃用该分区");
             if (CpuTopology.StrictMaskUnsafe)
-                Logger.Log("CPU 拓扑：绑核目标未通过校验，已退回不限核");
+                Logger.Log("CPU 拓扑 绑核目标未通过校验 已退回不限核");
             bgSuppressOn = Settings.Load("GmSuppress", true);
             boostOn = Settings.Load("GmBoost", true);
             pauseDlOn = Settings.Load("GmPauseDl", true);
             svcPauseOn = Settings.Load("GmSvcPause", false);
+            svcYieldOn = Settings.Load("GmSvcYield", false);
+            wlanGuardOn = Settings.Load("GmWlanGuard", false);
             notifQuiet = Settings.Load("NotifQuiet", false);
             VersionMigrations.EnsureSettingsMigrated();
-            idleDisableOn = Settings.Load("GmIdleDisable", false);
-            visualFxOn = Settings.Load("GmVisualFx", false);
+            LoadCustomCoreMask();
             standbySweepOn = Settings.Load("GmStandbySweep", false);
+            bgTrimOn = Settings.Load("GmBgTrim", false);
+            standbyGuardOn = Settings.Load("GmStandbyGuard", false);
+            squeezeBgOn = Settings.Load("GmSqueezeBg", true);
+            SuppressionCore.SqueezeBackground = squeezeBgOn;
             pauseUpdateOn = Settings.Load("GmPauseUpdate", false);
-            trimWs = Settings.Load("TrimWS", false);
             gpuHighPerf = Settings.Load("GpuHighPerf", true);
             nvMaxPerf = Settings.Load("NvMaxPerf", false);
             nvLowLatency = Settings.Load("NvLowLatency", false);
@@ -209,19 +225,15 @@ namespace PaviseApp
             nvRebarOn = Settings.Load("NvRebar", false);
             nvDlssMode = Settings.LoadStr("NvDlss", "off");
             nvBattFull = Settings.Load("NvBattFull", false);
-            nvBgFrlOn = Settings.Load("NvBgFrl", false);
             presenceQosOn = Settings.Load("GmPresenceQos", true);
             awakeOn = Settings.Load("GmAwake", true);
             killGameDvr = Settings.Load("GameDvrOff", true);
-            hzGuard = Settings.Load("HzGuardOn", false);
             planSwitch = Settings.Load("PowerPlanOn", true);
-            strictCoreOn = Settings.Load("GmStrictCores", false);
+            corePartitionOn = Settings.Load("GmStrictCores", false);
+            coreDomainAltOn = Settings.Load("GmCoreDomainAlt", false);
             aggressiveOn = Settings.Load("GmAggressive", false);
-            freezeOn = Settings.Load("GmFreeze", false);
             ifeoOn = Settings.Load("GmIfeoBoost", false);
             renderLaneOn = Settings.Load("GmRenderLane", true);
-            memResidencyOn = Settings.Load("GmMemResidency", false);
-            prewarmOn = Settings.Load("GmPrewarm", false);
             uploadYieldOn = Settings.Load("GmUploadYield", false);
             gpuDemoteOn = Settings.Load("GmGpuDemote", false);
             SuppressionCore.GpuDemoteEnabled = gpuDemoteOn;
@@ -332,20 +344,20 @@ namespace PaviseApp
                     if (purged > 0)
                     {
                         rewriteFormat = true;
-                        Logger.Log("白名单清理：移除旧版本预置的 " + purged + " 条第三方豁免（预设收敛为系统核心，需要的例外请自行重新添加）");
+                        Logger.Log("白名单清理 移除旧版本预置的 " + purged + " 条第三方豁免 预设收敛为系统核心 需要的例外请自行重新添加");
                     }
                     Settings.Save("WhitelistPurge1Done", true);
                 }
                 foreach (WhitelistRule rule in loadedRules) AddWhiteRuleNoSave(rule);
                 if (rewriteFormat && !SaveWhite(loadedRules))
-                    Logger.Log("白名单旧格式迁移失败；本次规则已安全载入，下次将重试");
+                    Logger.Log("白名单旧格式迁移失败 本次规则已安全载入 下次将重试");
                 MigrateWhitelistHeader();
             }
             catch (Exception ex)
             {
 
                 foreach (string entry in PresetWhitelist) AddWhiteNoSave(entry);
-                Logger.Log("白名单加载失败，本次运行改用预置白名单（用户自定义项本次不生效）：" + ex.Message);
+                Logger.Log("白名单加载失败 本次运行改用预置白名单 用户自定义项本次不生效 " + ex.Message);
             }
 
             try
@@ -384,11 +396,11 @@ namespace PaviseApp
         private bool WritePreset()
         {
             var lines = new List<string>();
-            lines.Add("# Pavise 智能守护白名单——这些进程始终不进入后台控制");
-            lines.Add("# V3 规则支持进程名、精确路径和应用家族，并带完整性尾标防止截断。");
-            lines.Add("# Windows 核心、其它会话和 Pavise 自身受安全保护；其余例外只来自本白名单。");
-            lines.Add("# Steam / Epic / EA / 育碧 / 战网 / GOG / R星 / Riot / WeGame / Xbox / HoYoPlay 等");
-            lines.Add("# 游戏平台的客户端家族由程序内置豁免（按各平台安装目录校验），无需在此列出。");
+            lines.Add("# Pavise 智能守护白名单 这些进程始终不进入后台控制");
+            lines.Add("# V3 规则支持进程名 精确路径和应用家族 并带完整性尾标防止截断");
+            lines.Add("# Windows 核心 其它会话和 Pavise 自身受安全保护 其余例外只来自本白名单");
+            lines.Add("# Steam Epic EA 育碧 战网 GOG R星 Riot WeGame Xbox HoYoPlay 等");
+            lines.Add("# 游戏平台的客户端家族由程序内置豁免 按各平台安装目录校验 无需在此列出");
             lines.Add(WhitelistRule.Header);
             var rules = new List<WhitelistRule>();
             foreach (string entry in PresetWhitelist)
@@ -431,11 +443,6 @@ namespace PaviseApp
 
         public bool IsActive { get { lock (sync) return active; } }
 
-
-#if PAVISE_SELFTEST
-        internal void SimulateActiveForTest(bool value) { lock (sync) active = value; }
-#endif
-
         public string ActiveGame { get { lock (sync) return active ? activeGame : null; } }
 
         public PerformancePreset Preset
@@ -460,12 +467,12 @@ namespace PaviseApp
                 {
                     if (lines[i].Contains("Windows、前台、音频/直播、驱动、游戏家族和反作弊"))
                     {
-                        lines[i] = "# Windows 核心、其它会话和 Pavise 自身受安全保护；其余例外只来自本白名单。";
+                        lines[i] = "# Windows 核心 其它会话和 Pavise 自身受安全保护 其余例外只来自本白名单";
                         changed = true;
                     }
                     else if (lines[i].Contains("压制会扫全部会话、不因会话 0 而豁免"))
                     {
-                        lines[i] = "# 仅处理当前用户会话；系统关键项仍建议保留，用户可追加自己的明确例外。";
+                        lines[i] = "# 仅处理当前用户会话 系统关键项仍建议保留 用户可追加自己的明确例外";
                         changed = true;
                     }
                 }
@@ -482,10 +489,23 @@ namespace PaviseApp
         private bool ExtremeNow { get { lock (sync) return preset == PerformancePreset.Extreme; } }
         private bool EffSuppress { get { return bgSuppressOn || ExtremeNow; } }
         private bool EffBoost { get { return boostOn || ExtremeNow; } }
-        private bool EffFreeze { get { return freezeOn || ExtremeNow; } }
         private bool EffIfeo { get { return ifeoOn || ExtremeNow; } }
-        private bool EffStrictCores { get { return strictCoreOn || ExtremeNow; } }
-        private bool EffGpuDemote { get { return gpuDemoteOn || ExtremeNow; } }
+        private bool EffLane { get { return renderLaneOn || ExtremeNow; } }
+
+        internal static bool ShouldUseCorePartition(bool manuallySelected, bool partitionAvailable)
+        {
+            return manuallySelected && partitionAvailable;
+        }
+
+        internal const int WideGameThreads = 64;
+        internal const int PartitionKeepPercent = 70;
+
+        internal static bool PartitionLikelyHurts(int threads, int givenCores, int totalCores)
+        {
+            if (threads < WideGameThreads) return false;
+            if (givenCores <= 0 || totalCores <= 0 || givenCores >= totalCores) return false;
+            return givenCores * 100 / totalCores <= PartitionKeepPercent;
+        }
 
         public List<GameProfile> GetProfiles()
         {
@@ -509,10 +529,43 @@ namespace PaviseApp
             set { boostOn = value; Settings.Save("GmBoost", value); RequestPolicyApply(); }
         }
 
-        public bool StrictCoreIsolation
+        public bool CorePartitionEnabled
         {
-            get { return strictCoreOn; }
-            set { strictCoreOn = value; Settings.Save("GmStrictCores", value); RequestPolicyApply(); }
+            get { return corePartitionOn; }
+            set { corePartitionOn = value; Settings.Save("GmStrictCores", value); RequestPolicyApply(); }
+        }
+
+        public bool CoreDomainAlt
+        {
+            get { return coreDomainAltOn; }
+            set
+            {
+                if (coreDomainAltOn == value) return;
+                coreDomainAltOn = value;
+                Settings.Save("GmCoreDomainAlt", value);
+                RequestPolicyApply();
+            }
+        }
+
+        public bool CoreDomainSwitchPending
+        {
+            get { return CpuTopology.HasAltPartition() && coreDomainAltOn != CpuTopology.AltDomainActive; }
+        }
+
+        private void TryDomainSwap()
+        {
+            if (!CpuTopology.DomainPreferenceApplied || !CpuTopology.HasAltPartition()) return;
+            if (coreDomainAltOn == CpuTopology.AltDomainActive) return;
+            bool sessionActive;
+            lock (sync) sessionActive = active;
+            if (sessionActive) return;
+            ReleaseBackground("核心域切换");
+            if (!CpuTopology.SwapDomains()) return;
+            throttleMask = CpuTopology.ThrottleMask;
+            strictMask = CpuTopology.StrictBoostMask;
+            core.RefreshTopologyMasks();
+            Logger.Log("游戏核心范围 已切换 游戏 " + CpuTopology.DescribeMask(strictMask)
+                + " 后台 " + CpuTopology.DescribeMask(throttleMask) + " 即刻生效");
         }
 
         public bool AggressiveSuppression
@@ -521,16 +574,48 @@ namespace PaviseApp
             set { aggressiveOn = value; Settings.Save("GmAggressive", value); RequestPolicyApply(); }
         }
 
+        private const string CoreMaskKey = "GmCoreMask";
+
+        private static void LoadCustomCoreMask()
+        {
+            string raw = Settings.LoadStr(CoreMaskKey, "");
+            if (raw.Length == 0) return;
+            ulong parsed;
+            if (!ulong.TryParse(raw, System.Globalization.NumberStyles.HexNumber,
+                    System.Globalization.CultureInfo.InvariantCulture, out parsed))
+            {
+                Settings.SaveStr(CoreMaskKey, "");
+                return;
+            }
+            if (!CpuTopology.SetCustomMask(parsed))
+            {
+                Settings.SaveStr(CoreMaskKey, "");
+                Logger.Log("自定义核心 存的核心集合在本机不可用 已回到默认分区");
+                return;
+            }
+            Logger.Log("自定义核心 已启用 " + CpuTopology.DescribeMask(CpuTopology.CustomMask)
+                + " 后台去 " + CpuTopology.DescribeMask(CpuTopology.CustomBackgroundMask));
+        }
+
+        public ulong CustomCoreMask
+        {
+            get { return CpuTopology.CustomMask; }
+            set
+            {
+                bool ok = CpuTopology.SetCustomMask(value);
+                Settings.SaveStr(CoreMaskKey, ok ? CpuTopology.CustomMask.ToString("X") : "");
+                Logger.Log(ok
+                    ? "自定义核心 已设为 " + CpuTopology.DescribeMask(CpuTopology.CustomMask)
+                        + " 后台去 " + CpuTopology.DescribeMask(CpuTopology.CustomBackgroundMask)
+                    : "自定义核心 已关闭 回到默认分区策略");
+                RequestPolicyApply();
+            }
+        }
+
         public bool GpuDemote
         {
             get { return gpuDemoteOn; }
             set { gpuDemoteOn = value; SuppressionCore.GpuDemoteEnabled = value; Settings.Save("GmGpuDemote", value); RequestPolicyApply(); }
-        }
-
-        public bool FreezeBackground
-        {
-            get { return freezeOn; }
-            set { freezeOn = value; Settings.Save("GmFreeze", value); RequestPolicyApply(); }
         }
 
         public bool IfeoBoostFallback
@@ -565,42 +650,42 @@ namespace PaviseApp
             }
         }
 
-        public bool GamePrewarmOn
-        {
-            get { return prewarmOn; }
-            set
-            {
-                prewarmOn = value; Settings.Save("GmPrewarm", value);
-                if (!value) GamePrewarm.Cancel();
-            }
-        }
-
-        public bool MemoryResidencyOn
-        {
-            get { return memResidencyOn; }
-            set
-            {
-                memResidencyOn = value; Settings.Save("GmMemResidency", value);
-                if (!value) MemoryResidency.ReleaseAll();
-            }
-        }
-
-        public bool IdleStateDisable
-        {
-            get { return idleDisableOn; }
-            set { idleDisableOn = value; Settings.Save("GmIdleDisable", value); RequestPolicyApply(); }
-        }
-
-        public bool VisualFxDowngrade
-        {
-            get { return visualFxOn; }
-            set { visualFxOn = value; Settings.Save("GmVisualFx", value); if (value) ClearEnvFuse("fx"); RequestPolicyApply(); }
-        }
-
         public bool PurgeStandby
         {
             get { return standbySweepOn; }
             set { standbySweepOn = value; Settings.Save("GmStandbySweep", value); }
+        }
+
+        public bool TrimBackgroundOn
+        {
+            get { return bgTrimOn; }
+            set
+            {
+                bgTrimOn = value; Settings.Save("GmBgTrim", value);
+                if (!value) BackgroundTrim.Cancel();
+            }
+        }
+
+        public bool StandbyGuardOn
+        {
+            get { return standbyGuardOn; }
+            set { standbyGuardOn = value; Settings.Save("GmStandbyGuard", value); }
+        }
+
+        public bool SqueezeBackgroundOn
+        {
+            get { return squeezeBgOn; }
+            set
+            {
+                squeezeBgOn = value; Settings.Save("GmSqueezeBg", value);
+                SuppressionCore.SqueezeBackground = value;
+                RequestPolicyApply();
+            }
+        }
+
+        public bool SqueezeBackgroundAvailable
+        {
+            get { return CpuTopology.BackgroundSqueezeMask() != 0 && !CpuTopology.MultiGroup; }
         }
 
         public bool PauseWindowsUpdate
@@ -621,16 +706,22 @@ namespace PaviseApp
             set { svcPauseOn = value; Settings.Save("GmSvcPause", value); if (value) ClearEnvFuse("svc"); RequestPolicyApply(); }
         }
 
+        public bool ServiceYield
+        {
+            get { return svcYieldOn; }
+            set { svcYieldOn = value; Settings.Save("GmSvcYield", value); if (value) ClearEnvFuse("svcyield"); RequestPolicyApply(); }
+        }
+
+        public bool WlanScanGuard
+        {
+            get { return wlanGuardOn; }
+            set { wlanGuardOn = value; Settings.Save("GmWlanGuard", value); if (value) ClearEnvFuse("wlanscan"); RequestPolicyApply(); }
+        }
+
         public bool NotifQuiet
         {
             get { return notifQuiet; }
             set { notifQuiet = value; Settings.Save("NotifQuiet", value); if (value) ClearEnvFuse("notif"); RequestPolicyApply(); }
-        }
-
-        public bool TrimWorkingSet
-        {
-            get { return trimWs; }
-            set { trimWs = value; Settings.Save("TrimWS", value); RequestPolicyApply(); }
         }
 
         public bool GpuHighPerf
@@ -728,17 +819,6 @@ namespace PaviseApp
             }
         }
 
-        public bool NvBgFrl
-        {
-            get { return nvBgFrlOn; }
-            set
-            {
-                nvBgFrlOn = value; Settings.Save("NvBgFrl", value);
-                if (value) ClearEnvFuse("nvbg");
-                RequestPolicyApply();
-            }
-        }
-
         public bool PresenceQosOff
         {
             get { return presenceQosOn; }
@@ -781,12 +861,6 @@ namespace PaviseApp
             set { killGameDvr = value; Settings.Save("GameDvrOff", value); if (value) ClearEnvFuse("dvr"); RequestPolicyApply(); }
         }
 
-        public bool HzGuard
-        {
-            get { return hzGuard; }
-            set { hzGuard = value; Settings.Save("HzGuardOn", value); if (value) ClearEnvFuse("hz"); RequestPolicyApply(); }
-        }
-
         public bool PowerPlanSwitch
         {
             get { return planSwitch; }
@@ -819,7 +893,7 @@ namespace PaviseApp
                         if (remain < 0) remain = 0;
                         return Lang.F("st.grace", activeGame, remain);
                     }
-                    int n = core.CountThrottled(SuppressReason.Background);
+                    int n = core.ThrottledCountCached();
                     int b = boostStateVerified.Count;
                     string s = Lang.F("st.active", activeGame, n);
                     s += Lang.F("st.boost", b, Lang.T(planSwitch ? "st.hp" : "st.pr"));
@@ -862,7 +936,7 @@ namespace PaviseApp
                         return Lang.F("v14.boost.verified", name);
                     if (boostHandleStripped.Contains(activeDetection.RendererPid)
                         || boostStateWarned.Contains(activeDetection.RendererPid))
-                        return Lang.F("v14.boost.protected", name);
+                        return Lang.F(EffIfeo ? "v14.boost.protected.ifeo" : "v14.boost.protected", name);
                     return Lang.F("v14.boost.applying", name);
                 }
             }
@@ -901,6 +975,7 @@ namespace PaviseApp
                         kick.WaitOne(4000);
                         continue;
                     }
+                    TryDomainSwap();
                     if (!enabled)
                     {
                         bool residue;
@@ -932,40 +1007,42 @@ namespace PaviseApp
                                         gameGoneSinceTicks = 0;
                                         if (active)
                                         {
-                                            Logger.Log("游戏在宽限期内重新出现（启动器换壳/快速重启），游戏模式保持不中断，后台重新静默接管");
+                                            Logger.Log("游戏在宽限期内重新出现 启动器换壳或快速重启 游戏模式保持不中断 后台重新静默接管");
                                             lock (sync) firstSweep = true;
                                         }
                                     }
                                     if (!active)
                                     {
                                         lock (sync) { active = true; activeGame = running; firstSweep = true; }
-                                        Logger.Log("游戏模式激活：检测到 " + running);
+                                        Logger.Log("游戏模式激活 检测到 " + running);
                                         ReportBegin(running);
                                         uploadYieldDone = false;
-                                        uploadYieldAtTicks = DateTime.UtcNow.AddSeconds(10).Ticks;
-                                        if (prewarmOn)
-                                        {
-                                            string warmRoot;
-                                            lock (sync) warmRoot = activeDetection != null
-                                                && activeDetection.Profile != null
-                                                ? activeDetection.Profile.Root : null;
-                                            GamePrewarm.Begin(warmRoot, MemoryResidency.AvailPhysBytes());
-                                        }
+                                        uploadYieldAtTicks = DateTime.UtcNow
+                                            .AddSeconds(UplinkGate.WarmupSeconds).Ticks;
+                                        uplinkSampleTicks = 0;
+                                        uplinkSampleBytes = 0;
+                                        bgTrimDone = false;
+                                        bgTrimAtTicks = DateTime.UtcNow
+                                            .AddSeconds(BackgroundTrim.DelaySeconds).Ticks;
+                                        nextStandbyGuardTicks = 0;
+                                        slowEnvAtTicks = DateTime.UtcNow
+                                            .AddSeconds(SlowEnvDelaySeconds).Ticks;
                                     }
                                     else if (!string.Equals(activeGame, running, StringComparison.OrdinalIgnoreCase))
                                     {
                                         lock (sync) activeGame = running;
-                                        Logger.Log("游戏模式：检测目标变更 → " + running);
+                                        Logger.Log("游戏模式 检测目标变更 " + running);
                                         ReportFinish();
                                         ReportBegin(running);
                                     }
                                     ApplyEnv();
                                     GpuThrottleProbe.SampleIfDue();
                                     if (EffSuppress) Sweep(all, gamePids);
+                                    if (EffSuppress) BackgroundTrimTick(gamePids);
+                                    StandbyGuardTick();
                                     if (!EffSuppress) ReleaseBackground();
                                     if (EffBoost) Boost(all);
                                     else UnboostGames();
-                                    MemResidencyTick();
                                     UploadYieldTick(all);
                                 }
                                 else if (active)
@@ -974,8 +1051,8 @@ namespace PaviseApp
                                     if (gameGoneSinceTicks == 0)
                                     {
                                         gameGoneSinceTicks = nowTicks;
-                                        Logger.Log("游戏进程消失：后台压制立即还原，电源/环境保留 "
-                                            + ExitGraceSeconds + " 秒宽限（防换壳/快速重启抖动）");
+                                        Logger.Log("游戏进程消失 后台压制立即还原 电源和环境保留 "
+                                            + ExitGraceSeconds + " 秒宽限 防换壳和快速重启抖动");
                                         gracePreReleased += ReleaseBackground("游戏退出宽限");
                                     }
                                     else if (nowTicks - gameGoneSinceTicks
@@ -992,12 +1069,11 @@ namespace PaviseApp
                                     lock (sync) boostResidue = gameBoost.Count > 0;
                                     if (boostResidue || EnvActive() || core.AnyWith(SuppressReason.Background))
                                         RetryDeactivate("残留恢复重试");
-                                    TryAutoAddForegroundGame();
                                 }
                         }
                     }
                 }
-                catch (Exception ex) { Logger.Log("游戏模式异常: " + ex.Message); }
+                catch (Exception ex) { Logger.Log("游戏模式异常 " + ex.Message); }
                 kick.WaitOne(enabled
                     ? ProcessScanWaitMs() : PollingSweepIntervalMs);
             }
@@ -1072,10 +1148,9 @@ namespace PaviseApp
             armedGameName = name;
             if (string.Equals(name, lastArmedLogged, StringComparison.OrdinalIgnoreCase)) return;
             if (name != null)
-                Logger.Log("待命：《" + name + "》的家族进程在运行；客户端/大厅阶段零介入，"
-                    + "出现对局画面（前台全屏或 GPU 3D 主导）后自动升格接管");
+                Logger.Log("待命 " + name + " 已启动 进对局后接管");
             else if (lastArmedLogged != null && !engaged)
-                Logger.Log("待命解除：《" + lastArmedLogged + "》的家族进程已全部退出");
+                Logger.Log("待命解除 " + lastArmedLogged + " 已退出");
             lastArmedLogged = name;
         }
 
@@ -1096,7 +1171,7 @@ namespace PaviseApp
                 if (!gpuEvidenceWarned)
                 {
                     gpuEvidenceWarned = true;
-                    Logger.Log("GPU 证据不可用（PDH GPU Engine 计数器读取失败），窗口化候选将等待全屏几何证据或用户直选命中");
+                    Logger.Log("GPU 证据不可用 PDH GPU Engine 计数器读取失败 窗口化候选将等待全屏几何证据或用户直选命中");
                 }
                 return null;
             }
@@ -1113,37 +1188,45 @@ namespace PaviseApp
             pending.RequiresGpuConfirm = false;
             pending.RendererCandidateSelected = true;
             pending.Evidence = Lang.F("detect.gpu", (int)candidate);
-            Logger.Log("渲染进程选举：GPU 证据确认《" + pending.Profile.Name + "》的真身是 "
-                + pending.RendererName + "（3D 引擎 " + (int)candidate + "%，pid " + pending.RendererPid + "）");
+            Logger.Log("渲染进程选举 GPU 证据确认 " + pending.Profile.Name + " 的真身是 "
+                + pending.RendererName + " 3D 引擎 " + (int)candidate + "% pid " + pending.RendererPid + " ");
             return pending;
         }
 
         private void UploadYieldTick(ProcessSnapshot all)
         {
             if (!uploadYieldOn || uploadYieldDone || all == null) return;
-            if (DateTime.UtcNow.Ticks < uploadYieldAtTicks) return;
-            uploadYieldDone = true;
+            long now = DateTime.UtcNow.Ticks;
+            if (now < uploadYieldAtTicks) return;
+
+            long bytes = UplinkGate.TotalBytesSent();
+            if (uplinkSampleTicks == 0)
+            {
+                uplinkSampleTicks = now;
+                uplinkSampleBytes = bytes;
+                return;
+            }
+            double seconds = (now - uplinkSampleTicks) / (double)TimeSpan.TicksPerSecond;
+            double mbps;
+            bool engage = UplinkGate.ShouldEngage(bytes - uplinkSampleBytes, seconds, out mbps);
+            if (seconds >= UplinkGate.SampleGapSeconds)
+            {
+                uplinkSampleTicks = now;
+                uplinkSampleBytes = bytes;
+            }
+            if (!engage) return;
+
             var names = new List<string>();
             foreach (int pid in core.PidsWith(SuppressReason.Background))
             {
                 ProcEntry entry = all.Find(pid);
                 if (entry != null && !string.IsNullOrEmpty(entry.Name)) names.Add(entry.Name);
             }
-            if (names.Count > 0) UploadYield.Apply(names);
-        }
-
-        private void MemResidencyTick()
-        {
-            if (!memResidencyOn) { MemoryResidency.ReleaseAll(); return; }
-            int pid = 0;
-            long creation = 0;
-            lock (sync)
-                if (active && activeDetection != null)
-                {
-                    pid = activeDetection.RendererPid;
-                    creation = activeDetection.RendererCreation;
-                }
-            MemoryResidency.Tick(pid, creation);
+            if (names.Count == 0) return;
+            uploadYieldDone = true;
+            Logger.Log("上传让位 后台上行 " + mbps.ToString("F1") + " Mbps 超过闸门 "
+                + UplinkGate.BusyMbps.ToString("F1") + " Mbps 开始限速");
+            UploadYield.Apply(names);
         }
 
         private GameDetection ApplyStickiness(GameDetection hit)

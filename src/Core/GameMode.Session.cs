@@ -152,7 +152,7 @@ namespace PaviseApp
                 paviseCpuPercent.ToString("0.00", CultureInfo.InvariantCulture));
             string throttle = GpuThrottleProbe.Summarize();
             if (throttle != null) msg += Lang.F("rep.gputhrottle", throttle);
-            Logger.Log("本局结束：" + msg);
+            Logger.Log("本局结束 " + msg);
 
             if (dur.TotalSeconds >= 60)
             {

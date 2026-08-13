@@ -37,7 +37,7 @@ namespace PaviseApp
 
         public void SetSilently(bool v) { isOn = v; pos.Set(v ? 1f : 0f); Invalidate(); }
 
-        protected override bool StepAll() { bool a = hover.Step(); bool b = pos.Step(); return a || b; }
+        protected override bool StepAll() { bool a = base.StepAll(); bool b = pos.Step(); return a || b; }
         protected override void OnClick(EventArgs e) { base.OnClick(e); Checked = !isOn; }
 
         protected override void OnPaint(PaintEventArgs e)

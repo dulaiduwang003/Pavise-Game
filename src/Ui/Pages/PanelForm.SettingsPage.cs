@@ -12,54 +12,12 @@ namespace PaviseApp
     internal partial class PanelForm
     {
         private Toggle swAuto, swAutoHide;
-        private SettingCard cardShader, cardMemSweep;
-        private PillButton btnMemSweep;
-        private int memSweepBusy;
+        private SettingCard cardShader, cardAddon;
         private static volatile bool shaderCleaning;
         private int slowBusy;
         private int restoreBusy;
-
-        private void RefreshMemoryState()
-        {
-            if (cardMemSweep == null) return;
-            MemoryState st = MemorySweep.Snapshot();
-            cardMemSweep.SetValue(string.Format(Lang.T("mem.state"),
-                st.AvailableMb.ToString("F0"), st.CacheMb.ToString("F0"),
-                (st.TotalMb / 1024.0).ToString("F0")), Theme.Dim);
-        }
-
-        private void RunMemorySweep()
-        {
-            if (gameMode.IsActive)
-            {
-                PaviseDialog.Warn(this, App.DisplayName, Lang.T("mem.ingame"));
-                return;
-            }
-            if (Interlocked.Exchange(ref memSweepBusy, 1) == 1) return;
-            btnMemSweep.Enabled = false;
-            if (cardMemSweep != null) cardMemSweep.SetValue(Lang.T("mem.busy"), Theme.Accent);
-            ThreadPool.QueueUserWorkItem(delegate
-            {
-                MemorySweepResult r = null;
-                try { r = MemorySweep.Run(false, true, false, false); }
-                catch { }
-                try
-                {
-                    BeginInvoke((Action)delegate
-                    {
-                        Interlocked.Exchange(ref memSweepBusy, 0);
-                        btnMemSweep.Enabled = true;
-                        RefreshMemoryState();
-                        if (r == null) return;
-                        PaviseDialog.Info(this, App.DisplayName, string.Format(Lang.T("mem.done"),
-                                (r.ElapsedMs / 1000.0).ToString("F1"),
-                                (r.AvailableDeltaMb >= 0 ? "+" : "") + r.AvailableDeltaMb.ToString("F0"),
-                                (r.CacheDeltaMb >= 0 ? "+" : "") + r.CacheDeltaMb.ToString("F0")));
-                    });
-                }
-                catch { Interlocked.Exchange(ref memSweepBusy, 0); }
-            });
-        }
+        private int addonBusy;
+        private int wipeBusy;
 
         private void BuildSettingsPage()
         {
@@ -93,47 +51,25 @@ namespace PaviseApp
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 78, Lang.T("v15.restore.title"), Lang.T("v15.restore.desc"), btnRestore, out cardH);
             sy += cardH + 8;
 
-            btnMemSweep = new PillButton(Lang.T("mem.btn"), BtnKind.Normal);
-            btnMemSweep.Bg = Theme.Card;
-            btnMemSweep.Size = new Size(Theme.S(120), Theme.S(32));
-            btnMemSweep.Click += delegate { RunMemorySweep(); };
-            cardMemSweep = MakeAutoCard(scroll, 6, sy, ScrollContentW, 90, Lang.T("mem.title"),
-                Lang.T("mem.sub"), btnMemSweep, out cardH);
-            RefreshMemoryState();
+            var btnWipe = new PillButton(Lang.T("btn.wipe"), BtnKind.Danger);
+            btnWipe.Bg = Theme.Card;
+            btnWipe.Size = new Size(Theme.S(136), Theme.S(32));
+            btnWipe.Click += delegate { OnWipeAll(btnWipe); };
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 78, Lang.T("set.wipe.title"), Lang.T("set.wipe.desc"), btnWipe, out cardH);
             sy += cardH + 8;
 
-            var btnDefender = new PillButton(Lang.T("btn.open"), BtnKind.Normal);
-            btnDefender.Bg = Theme.Card;
-            btnDefender.Size = new Size(Theme.S(120), Theme.S(32));
-            btnDefender.Click += delegate
-            {
-                Cursor = Cursors.WaitCursor;
-                DefenderExclusionDialog dlg;
-                try { dlg = new DefenderExclusionDialog(gameMode); }
-                finally { Cursor = Cursors.Default; }
-                using (dlg) dlg.ShowDialog(this);
-            };
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("def.open"), Lang.T("def.open.sub"), btnDefender, out cardH);
-            sy += cardH + 8;
-
-            var btnAddon = new PillButton(Lang.T("btn.open"), BtnKind.Normal);
-            btnAddon.Bg = Theme.Card;
-            btnAddon.Size = new Size(Theme.S(120), Theme.S(32));
-            btnAddon.Click += delegate
-            {
-                var roots = new List<string>();
-                foreach (GameProfile profile in gameMode.GetProfiles())
-                    if (!string.IsNullOrEmpty(profile.Root)) roots.Add(profile.Root);
-                using (var dlg = new LolAddonDialog(roots)) ShowDim(dlg);
-            };
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("addon.open"), Lang.T("addon.open.sub"), btnAddon, out cardH);
+            var btnAddonGo = new PillButton(Lang.T("btn.clean"));
+            btnAddonGo.Size = new Size(Theme.S(88), Theme.S(30));
+            btnAddonGo.Click += delegate { OnAddonClean(btnAddonGo); };
+            cardAddon = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("addon.open"), Lang.T("addon.open.sub"), btnAddonGo, out cardH);
+            cardAddon.Value = " ";
             sy += cardH + 8;
 
             var btnShaderGo = new PillButton(Lang.T("btn.clean"));
             btnShaderGo.Size = new Size(Theme.S(88), Theme.S(30));
             btnShaderGo.Click += (s, e) => OnShaderClean(btnShaderGo);
             cardShader = MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("btn.shader"), Lang.T("set.shader.n"), btnShaderGo, out cardH);
-            cardShader.Value = "…";
+            cardShader.Value = " ";
             sy += cardH + 18;
 
             var lblAbout = new Label();
@@ -142,6 +78,8 @@ namespace PaviseApp
             lblAbout.Font = Theme.UI(8.25f, false);
             lblAbout.SetBounds(Theme.S(10), Theme.S(sy), Theme.S(ScrollContentW - 10), Theme.S(18));
             scroll.Controls.Add(lblAbout);
+
+            EnableCardCollapse(scroll);
         }
 
         private void OnAutoToggle(object s, EventArgs e)
@@ -169,8 +107,8 @@ namespace PaviseApp
             {
                 CacheSweep.Result cr = ShaderCache.Clean();
                 long left = ShaderCache.MeasureBytes();
-                Logger.Log("着色器缓存清理：释放 " + CacheSweep.FmtBytes(cr.FreedBytes)
-                    + (cr.FailedFiles > 0 ? "，" + cr.FailedFiles + " 个文件被占用已跳过" : ""));
+                Logger.Log("着色器缓存清理 释放 " + CacheSweep.FmtBytes(cr.FreedBytes)
+                    + (cr.FailedFiles > 0 ? " " + cr.FailedFiles + " 个文件被占用已跳过" : ""));
                 shaderCleaning = false;
                 try
                 {
@@ -190,6 +128,111 @@ namespace PaviseApp
             });
         }
 
+        private string ResolveAddonRoot()
+        {
+            foreach (GameProfile profile in gameMode.GetProfiles())
+            {
+                if (string.IsNullOrEmpty(profile.Root)) continue;
+                string root;
+                string error;
+                if (LolAddonCleaner.TryResolveRoot(profile.Root, out root, out error)) return root;
+            }
+            return null;
+        }
+
+        private static string AddonStateText(LolAddonCleaner.Inspection inspection)
+        {
+            if (inspection == null || !inspection.IsValidRoot) return Lang.T("addon.hint.fail");
+            if (inspection.CandidateCount == 0) return Lang.T("addon.hint.clean");
+            return Lang.F("addon.hint.ready",
+                inspection.CandidateCount, CacheSweep.FmtBytes(inspection.CandidateBytes));
+        }
+
+        private void OnAddonClean(PillButton btn)
+        {
+            if (Interlocked.Exchange(ref addonBusy, 1) == 1) return;
+            btn.Enabled = false;
+            if (cardAddon != null) cardAddon.Value = Lang.T("addon.hint.deleting");
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                string text;
+                string root = null;
+                try { root = ResolveAddonRoot(); } catch { }
+                if (root == null) text = Lang.T("addon.noroot");
+                else
+                {
+                    LolAddonCleaner.OperationResult r = null;
+                    try { r = LolAddonCleaner.Delete(root); } catch { }
+                    if (r == null) text = Lang.T("addon.hint.fail");
+                    else if (r.Success)
+                    {
+                        text = Lang.F("addon.hint.done", r.DeletedCount, CacheSweep.FmtBytes(r.Bytes));
+                        Logger.Log("附加层清理 删除 " + r.DeletedCount + " 项 腾出 " + CacheSweep.FmtBytes(r.Bytes));
+                    }
+                    else text = r.Message;
+                }
+                Interlocked.Exchange(ref addonBusy, 0);
+                try
+                {
+                    BeginInvoke((MethodInvoker)delegate
+                    {
+                        if (IsDisposed) return;
+                        if (!btn.IsDisposed) btn.Enabled = true;
+                        if (cardAddon != null && !cardAddon.IsDisposed) cardAddon.Value = text;
+                    });
+                }
+                catch { }
+            });
+        }
+
+        private void OnWipeAll(PillButton btn)
+        {
+            if (gameMode.IsActive)
+            {
+                PaviseDialog.Warn(this, App.DisplayName, Lang.T("wipe.ingame"));
+                return;
+            }
+            if (!PaviseDialog.Confirm(this, App.DisplayName, Lang.T("wipe.confirm"), DlgKind.Danger)) return;
+            if (Interlocked.Exchange(ref wipeBusy, 1) != 0) return;
+            btn.Enabled = false;
+            Cursor = Cursors.WaitCursor;
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                bool ok = false;
+                int files = 0;
+                string unrestored = null;
+                try
+                {
+                    gameMode.PanicRestore();
+                    tamer.PanicRestore();
+                    ok = LegacyPurge.WipeAll(Paths.Data, true, "手动清除全部配置", out files, out unrestored);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogFailure("手动清除全部配置", ex);
+                    unrestored = ex.Message;
+                }
+                Interlocked.Exchange(ref wipeBusy, 0);
+                try
+                {
+                    BeginInvoke((MethodInvoker)delegate
+                    {
+                        if (IsDisposed) return;
+                        Cursor = Cursors.Default;
+                        if (!btn.IsDisposed) btn.Enabled = true;
+                        if (ok)
+                        {
+                            PaviseDialog.Success(this, App.DisplayName, Lang.F("wipe.done", files));
+                            Action exit = ExitApp;
+                            if (exit != null) exit();
+                        }
+                        else PaviseDialog.Warn(this, App.DisplayName, Lang.F("wipe.failed", unrestored ?? ""));
+                    });
+                }
+                catch { }
+            });
+        }
+
         private void RefreshSlowStateAsync()
         {
             if (!UiActive) return;
@@ -198,8 +241,20 @@ namespace PaviseApp
             {
                 bool task = false;
                 long shaderBytes = -1;
+                string addonText = null;
                 try { task = TaskHelper.TaskExists(); } catch { }
                 try { if (!shaderCleaning) shaderBytes = ShaderCache.MeasureBytes(); } catch { }
+                try
+                {
+                    if (addonBusy == 0)
+                    {
+                        string addonRoot = ResolveAddonRoot();
+                        addonText = addonRoot == null
+                            ? Lang.T("addon.noroot")
+                            : AddonStateText(LolAddonCleaner.Inspect(addonRoot));
+                    }
+                }
+                catch { }
                 Interlocked.Exchange(ref slowBusy, 0);
                 if (!UiActive) return;
                 try
@@ -210,6 +265,8 @@ namespace PaviseApp
                         if (swAuto != null) swAuto.SetSilently(task);
                         if (cardShader != null && !shaderCleaning && shaderBytes >= 0)
                             cardShader.Value = CacheSweep.FmtBytes(shaderBytes);
+                        if (cardAddon != null && !cardAddon.IsDisposed && addonText != null && addonBusy == 0)
+                            cardAddon.Value = addonText;
                     }));
                 }
                 catch { }
@@ -239,8 +296,8 @@ namespace PaviseApp
                         failed++;
 
                     completed = failed == 0;
-                    Logger.Log("一键全部恢复：已执行 " + attempted
-                        + " 项，失败 " + failed + " 项；"
+                    Logger.Log("一键全部恢复 已执行 " + attempted
+                        + " 项 失败 " + failed + " 项 "
                         + (completed ? "恢复流程已完成" : "未确认项保留并继续重试"));
                 }
                 catch (Exception ex)
@@ -264,12 +321,12 @@ namespace PaviseApp
             try
             {
                 bool restored = restore != null && restore();
-                if (!restored) Logger.Log("一键全部恢复：" + name + " 未确认完成");
+                if (!restored) Logger.Log("一键全部恢复 " + name + " 未确认完成");
                 return restored;
             }
             catch (Exception ex)
             {
-                Logger.LogFailure("一键全部恢复：" + name, ex);
+                Logger.LogFailure("一键全部恢复 " + name, ex);
                 return false;
             }
         }

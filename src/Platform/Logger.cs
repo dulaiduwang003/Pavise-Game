@@ -55,7 +55,7 @@ namespace PaviseApp
 
         public static void LogFailure(string context, Exception error)
         {
-            string detail = context + "：" + error.GetType().Name + " - " + error.Message;
+            string detail = context + " " + error.GetType().Name + " - " + error.Message;
             Debug.WriteLine(detail);
             Log(detail);
         }
