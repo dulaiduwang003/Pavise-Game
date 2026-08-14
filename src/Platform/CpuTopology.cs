@@ -224,7 +224,7 @@ namespace PaviseApp
             uint[] ids = backgroundIds; backgroundIds = altBackgroundIds; altBackgroundIds = ids;
             ids = partitionGameIds; partitionGameIds = altPartitionGameIds; altPartitionGameIds = ids;
             AltDomainActive = !AltDomainActive;
-            squeezeIds = null; squeezeIdsDone = false;
+            squeezeCache = null;
             ValidateMasks();
             return true;
         }
@@ -283,9 +283,8 @@ namespace PaviseApp
             PerfMask = perf; EffMask = eff;
             BigL3Mask = bigL3; SmallL3Mask = smallL3;
             Hybrid = hybrid; AsymCache = asym;
-            customMask = 0; customIds = null;
-            customBackgroundIds = null; customBackgroundMask = 0;
-            squeezeIds = null; squeezeIdsDone = false;
+            customSet = null;
+            squeezeCache = null;
         }
 #endif
 
@@ -337,13 +336,25 @@ namespace PaviseApp
 
         public const int MinCustomBackgroundCores = 2;
 
-        private static ulong customMask;
-        private static ulong customBackgroundMask;
-        private static uint[] customIds;
-        private static uint[] customBackgroundIds;
+        private sealed class CustomCoreSet
+        {
+            public ulong Mask;
+            public uint[] Ids;
+            public ulong BackgroundMask;
+            public uint[] BackgroundIds;
+        }
 
-        public static ulong CustomMask { get { return customMask; } }
-        public static ulong CustomBackgroundMask { get { return customBackgroundMask; } }
+        private static volatile CustomCoreSet customSet;
+
+        public static ulong CustomMask
+        {
+            get { CustomCoreSet c = customSet; return c != null ? c.Mask : 0; }
+        }
+
+        public static ulong CustomBackgroundMask
+        {
+            get { CustomCoreSet c = customSet; return c != null ? c.BackgroundMask : 0; }
+        }
 
         internal static ulong BackgroundRemainderFor(ulong game, ulong all)
         {
@@ -354,54 +365,67 @@ namespace PaviseApp
         public static bool SetCustomMask(ulong wanted)
         {
             ulong clean = SanitizeCustomMask(wanted, AllMask);
-            if (clean == customMask) return clean != 0;
-            customMask = clean;
-            customIds = null;
-            customBackgroundIds = null;
-            customBackgroundMask = 0;
-            squeezeIds = null; squeezeIdsDone = false;
-            try { customIds = CpuSetIdsFor(clean); }
-            catch { customIds = null; }
-            if (customIds == null || customIds.Length == 0)
+            CustomCoreSet prev = customSet;
+            if (clean == (prev != null ? prev.Mask : 0)) return clean != 0;
+            if (clean == 0)
             {
-                customMask = 0;
+                customSet = null;
+                squeezeCache = null;
                 return false;
             }
-
+            uint[] ids;
+            try { ids = CpuSetIdsFor(clean); }
+            catch { ids = null; }
+            if (ids == null || ids.Length == 0)
+            {
+                customSet = null;
+                squeezeCache = null;
+                return false;
+            }
+            var next = new CustomCoreSet { Mask = clean, Ids = ids };
             ulong rest = BackgroundRemainderFor(clean, AllMask);
             if (rest != 0)
             {
-                try { customBackgroundIds = CpuSetIdsFor(rest); }
-                catch { customBackgroundIds = null; }
-                if (customBackgroundIds != null && customBackgroundIds.Length > 0)
-                    customBackgroundMask = rest;
-                else customBackgroundIds = null;
+                uint[] bg;
+                try { bg = CpuSetIdsFor(rest); }
+                catch { bg = null; }
+                if (bg != null && bg.Length > 0)
+                {
+                    next.BackgroundIds = bg;
+                    next.BackgroundMask = rest;
+                }
             }
+            customSet = next;
+            squeezeCache = null;
             return true;
         }
 
         public static uint[] CustomCpuSetIds()
         {
-            return customMask != 0 ? customIds : null;
+            CustomCoreSet c = customSet;
+            return c != null ? c.Ids : null;
         }
 
         public static uint[] EffectiveBackgroundCpuSetIds()
         {
-            return customBackgroundIds ?? backgroundIds;
+            CustomCoreSet c = customSet;
+            return c != null && c.BackgroundIds != null ? c.BackgroundIds : backgroundIds;
         }
 
         public static ulong BackgroundAllowedMask()
         {
-            if (customMask != 0) return customBackgroundMask;
+            CustomCoreSet c = customSet;
+            if (c != null) return c.BackgroundMask;
             if (HasSafeBackgroundPartition()) return ThrottleMask;
             return AllMask;
         }
 
         public static ulong BackgroundSqueezeMask()
         {
+            CustomCoreSet c = customSet;
             return CpuPartitionPolicy.SqueezeMask(
                 physicalCoreMasks.ToArray(), BackgroundAllowedMask(), EffMask, Hybrid,
-                L3Masks(), customMask != 0 ? customMask : StrictBoostMask);
+                L3Masks(), c != null ? c.Mask : StrictBoostMask);
         }
 
         public const int SqueezeOk = 0;
@@ -454,31 +478,37 @@ namespace PaviseApp
 
         public static bool HasEffectiveBackgroundPartition()
         {
-            if (customMask != 0)
-                return customBackgroundIds != null && customBackgroundIds.Length > 0;
+            CustomCoreSet c = customSet;
+            if (c != null) return c.BackgroundIds != null && c.BackgroundIds.Length > 0;
             return HasSafeBackgroundPartition();
         }
 
-        private static uint[] squeezeIds;
-        private static bool squeezeIdsDone;
+        private sealed class SqueezeCache
+        {
+            public uint[] Ids;
+        }
+
+        private static volatile SqueezeCache squeezeCache;
 
         public static uint[] BackgroundYieldCpuSetIds()
         {
             if (HasEffectiveBackgroundPartition()) return EffectiveBackgroundCpuSetIds();
-            if (!squeezeIdsDone)
+            SqueezeCache cache = squeezeCache;
+            if (cache == null)
             {
-                squeezeIdsDone = true;
+                cache = new SqueezeCache();
                 if (!MultiGroup)
                 {
                     ulong squeeze = BackgroundSqueezeMask();
                     if (squeeze != 0)
                     {
-                        try { squeezeIds = CpuSetIdsFor(squeeze); }
-                        catch { squeezeIds = null; }
+                        try { cache.Ids = CpuSetIdsFor(squeeze); }
+                        catch { cache.Ids = null; }
                     }
                 }
+                squeezeCache = cache;
             }
-            return squeezeIds;
+            return cache.Ids;
         }
 
         public static bool HasBackgroundYieldTarget()

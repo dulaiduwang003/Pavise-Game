@@ -256,5 +256,32 @@ namespace PaviseApp
             return Run(owner, title, body, kind, Lang.T("dlg.confirm"), Lang.T("dlg.cancel"))
                 == DialogResult.OK;
         }
+
+        public static bool Confirm(IWin32Window owner, string title, string body,
+            DlgKind kind, Control content, int width)
+        {
+            using (var dlg = new PaviseDialog(title, body, kind,
+                Lang.T("dlg.confirm"), Lang.T("dlg.cancel"), content, width))
+            {
+                var form = owner as Form;
+                if (form == null || !form.Visible) dlg.StartPosition = FormStartPosition.CenterScreen;
+                return (owner != null ? dlg.ShowDialog(owner) : dlg.ShowDialog()) == DialogResult.OK;
+            }
+        }
+
+        public static string Prompt(IWin32Window owner, string title, string body, string initial)
+        {
+            TextBox box = Theme.MakeTextBox(0, 0, Theme.S(DlgW) - Theme.S(PadX) * 2);
+            box.Text = initial ?? "";
+            using (var dlg = new PaviseDialog(title, body, DlgKind.Info,
+                Lang.T("dlg.confirm"), Lang.T("dlg.cancel"), box, DlgW))
+            {
+                var form = owner as Form;
+                if (form == null || !form.Visible) dlg.StartPosition = FormStartPosition.CenterScreen;
+                dlg.Shown += delegate { box.Focus(); box.SelectAll(); };
+                DialogResult result = owner != null ? dlg.ShowDialog(owner) : dlg.ShowDialog();
+                return result == DialogResult.OK ? box.Text.Trim() : null;
+            }
+        }
     }
 }

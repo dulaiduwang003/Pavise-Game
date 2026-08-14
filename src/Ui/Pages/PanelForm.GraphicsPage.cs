@@ -9,28 +9,31 @@ namespace PaviseApp
 {
     internal partial class PanelForm
     {
-        private Toggle swGpu, swNvMax, swNvLowLat;
+        private Toggle swNvMax;
         private Toggle swNvRebar, swNvAnsel, swNvBatt;
-        private TierPicker frlPicker, dlssPicker;
+        private Toggle swNvSmooth, swNvShader;
+        private Toggle swAmdAlag, swAmdAfmf;
+        private TierPicker dlssPicker, nvllPicker;
+        private FpsSlider frlSlider, amdFrlSlider;
+        private TechTabs gfxTabs;
+        private DBPanel[] gfxTabPanels;
 
         private void BuildGraphicsPage()
         {
             int y = PageHeader(pageGraphics, Lang.T("nav.graphics"), Lang.T("v16.graphics.sub"), 2);
 
-            var scroll = new DBPanel();
-            scroll.SetBounds(Theme.S(20), Theme.S(y), Theme.S(PageW - 40), Theme.S(PageH - y - 8));
-            scroll.BackColor = Theme.Bg;
-            scroll.AutoScroll = true;
-            Native.Dark(scroll);
-            pageGraphics.Controls.Add(scroll);
+            gfxTabs = new TechTabs();
+            gfxTabs.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(38));
+            gfxTabs.SetTabs(
+                new[] { "NVIDIA", "AMD" },
+                new[] { Lang.T("sec.pergame"), Lang.T("sec.amd") });
+            pageGraphics.Controls.Add(gfxTabs);
+            y += 48;
 
+            gfxTabPanels = MakeTabPanels(pageGraphics, gfxTabs, 2, y);
+
+            Control scroll = gfxTabPanels[0];
             int sy = 2, cardH;
-            Section(scroll, Lang.T("sec.pergame"), 6, sy); sy += 24;
-
-            swGpu = MakeSwitch(gameMode.GpuHighPerf, null);
-            swGpu.CheckedChanged += (s, e) => gameMode.GpuHighPerf = swGpu.Checked;
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.gpu"), Lang.T("set.gpu.n"), swGpu, out cardH);
-            sy += cardH + 8;
 
             bool nvOk = NvApi.Available;
             string nvNone = Lang.T("set.nv.none");
@@ -42,21 +45,42 @@ namespace PaviseApp
                 nvOk ? Lang.T("set.nvmax.n") : nvNone, swNvMax, out cardH);
             sy += cardH + 8;
 
-            swNvLowLat = MakeSwitch(gameMode.NvLowLatency, null);
-            swNvLowLat.CheckedChanged += (s, e) => gameMode.NvLowLatency = swNvLowLat.Checked;
-            swNvLowLat.Enabled = nvOk;
+            nvllPicker = new TierPicker();
+            nvllPicker.Size = new Size(Theme.S(270), Theme.S(28));
+            nvllPicker.Labels = new[] { Lang.T("frl.off"), Lang.T("nvll.on"), Lang.T("nvll.ultra") };
+            nvllPicker.Index = NvllIndexOf(gameMode.NvLowLatMode);
+            nvllPicker.IndexChanged = delegate(int i) { gameMode.NvLowLatMode = NvllModeOf(i); };
+            nvllPicker.Enabled = nvOk;
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvll"),
-                nvOk ? Lang.T("set.nvll.n") : nvNone, swNvLowLat, out cardH);
+                nvOk ? Lang.T("set.nvll.n") : nvNone, nvllPicker, out cardH);
             sy += cardH + 8;
 
-            frlPicker = new TierPicker();
-            frlPicker.Size = new Size(Theme.S(270), Theme.S(28));
-            frlPicker.Labels = new[] { Lang.T("frl.off"), "60", "120", "240", Lang.T("frl.screen") };
-            frlPicker.Index = FrlIndexOf(gameMode.NvFrlMode);
-            frlPicker.IndexChanged = delegate(int i) { gameMode.NvFrlMode = FrlModeOf(i); };
-            frlPicker.Enabled = nvOk;
+            bool smoothGpu = NvDrsTweaks.SmoothMotionGpuCapable();
+            bool smoothOk = nvOk && NvDrsTweaks.SmoothMotionSupported();
+            swNvSmooth = MakeSwitch(gameMode.NvSmoothMotion, null);
+            swNvSmooth.CheckedChanged += (s, e) => gameMode.NvSmoothMotion = swNvSmooth.Checked;
+            swNvSmooth.Enabled = smoothOk;
+            string smoothDesc = !nvOk ? nvNone
+                : smoothOk ? Lang.T("set.nvsmooth.n")
+                : !smoothGpu ? Lang.T("set.nvsmooth.nogpu")
+                : Lang.F("set.nvsmooth.old", NvDrsTweaks.FormatDriver(NvDrsTweaks.SmoothMotionMinDriver()));
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvsmooth"), smoothDesc, swNvSmooth, out cardH);
+            sy += cardH + 8;
+
+            swNvShader = MakeSwitch(gameMode.NvShaderCacheMax, null);
+            swNvShader.CheckedChanged += (s, e) => gameMode.NvShaderCacheMax = swNvShader.Checked;
+            swNvShader.Enabled = nvOk;
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvshader"),
+                nvOk ? Lang.T("set.nvshader.n") : nvNone, swNvShader, out cardH);
+            sy += cardH + 8;
+
+            frlSlider = new FpsSlider();
+            frlSlider.Size = new Size(Theme.S(300), Theme.S(28));
+            frlSlider.Mode = gameMode.NvFrlMode;
+            frlSlider.ModeChanged = delegate(string m) { gameMode.NvFrlMode = m; };
+            frlSlider.Enabled = nvOk;
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvfrl"),
-                nvOk ? Lang.T("set.nvfrl.n") : nvNone, frlPicker, out cardH);
+                nvOk ? Lang.T("set.nvfrl.n") : nvNone, frlSlider, out cardH);
             sy += cardH + 8;
 
             bool dlssGpu = NvDrsTweaks.DlssGpuCapable();
@@ -105,7 +129,50 @@ namespace PaviseApp
                 nvOk ? Lang.T("set.nvbatt.n") : nvNone, swNvBatt, out cardH);
             sy += cardH + 8;
 
-            EnableCardCollapse(scroll);
+            scroll = gfxTabPanels[1]; sy = 2;
+
+            bool amdOk = AdlxTweaks.Available;
+            string amdNone = Lang.T("set.amd.none");
+            string amdNoSup = Lang.T("set.amd.nosup");
+
+            bool alagOk = amdOk && AdlxTweaks.AntiLagSupported();
+            swAmdAlag = MakeSwitch(gameMode.AmdAntiLag, null);
+            swAmdAlag.CheckedChanged += (s, e) => gameMode.AmdAntiLag = swAmdAlag.Checked;
+            swAmdAlag.Enabled = alagOk;
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.amdalag"),
+                !amdOk ? amdNone : alagOk ? Lang.T("set.amdalag.n") : amdNoSup, swAmdAlag, out cardH);
+            sy += cardH + 8;
+
+            bool frtcOk = amdOk && AdlxTweaks.FrtcSupported();
+            amdFrlSlider = new FpsSlider();
+            amdFrlSlider.Size = new Size(Theme.S(300), Theme.S(28));
+            amdFrlSlider.Mode = gameMode.AmdFrlMode;
+            amdFrlSlider.ModeChanged = delegate(string m) { gameMode.AmdFrlMode = m; };
+            amdFrlSlider.Enabled = frtcOk;
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.amdfrl"),
+                !amdOk ? amdNone : frtcOk ? Lang.T("set.amdfrl.n") : amdNoSup, amdFrlSlider, out cardH);
+            sy += cardH + 8;
+
+            bool afmfOk = amdOk && AdlxTweaks.AfmfSupported();
+            swAmdAfmf = MakeSwitch(gameMode.AmdAfmf, null);
+            swAmdAfmf.CheckedChanged += (s, e) => gameMode.AmdAfmf = swAmdAfmf.Checked;
+            swAmdAfmf.Enabled = afmfOk;
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.amdafmf"),
+                !amdOk ? amdNone : afmfOk ? Lang.T("set.amdafmf.n") : amdNoSup, swAmdAfmf, out cardH);
+            sy += cardH + 8;
+
+            EnableCardCollapse(gfxTabPanels[0]);
+            EnableCardCollapse(gfxTabPanels[1]);
+        }
+
+        internal static int NvllIndexOf(string mode)
+        {
+            return mode == "on" ? 1 : mode == "ultra" ? 2 : 0;
+        }
+
+        internal static string NvllModeOf(int index)
+        {
+            return index == 1 ? "on" : index == 2 ? "ultra" : "off";
         }
 
         internal static int DlssIndexOf(string mode)
@@ -118,24 +185,16 @@ namespace PaviseApp
             return index == 1 ? "latest" : index == 2 ? "j" : index == 3 ? "k" : "off";
         }
 
-        internal static int FrlIndexOf(string mode)
-        {
-            return mode == "60" ? 1 : mode == "120" ? 2 : mode == "240" ? 3
-                : mode == "screen" ? 4 : 0;
-        }
-
-        internal static string FrlModeOf(int index)
-        {
-            return index == 1 ? "60" : index == 2 ? "120" : index == 3 ? "240"
-                : index == 4 ? "screen" : "off";
-        }
-
         private void SyncGraphicsToggles()
         {
-            if (swGpu != null) swGpu.SetSilently(gameMode.GpuHighPerf);
             if (swNvMax != null) swNvMax.SetSilently(gameMode.NvMaxPerf);
-            if (swNvLowLat != null) swNvLowLat.SetSilently(gameMode.NvLowLatency);
-            if (frlPicker != null) frlPicker.Index = FrlIndexOf(gameMode.NvFrlMode);
+            if (nvllPicker != null) nvllPicker.Index = NvllIndexOf(gameMode.NvLowLatMode);
+            if (swNvSmooth != null) swNvSmooth.SetSilently(gameMode.NvSmoothMotion);
+            if (swNvShader != null) swNvShader.SetSilently(gameMode.NvShaderCacheMax);
+            if (swAmdAlag != null) swAmdAlag.SetSilently(gameMode.AmdAntiLag);
+            if (swAmdAfmf != null) swAmdAfmf.SetSilently(gameMode.AmdAfmf);
+            if (amdFrlSlider != null) amdFrlSlider.Mode = gameMode.AmdFrlMode;
+            if (frlSlider != null) frlSlider.Mode = gameMode.NvFrlMode;
             if (dlssPicker != null) dlssPicker.Index = DlssIndexOf(gameMode.NvDlssMode);
             if (swNvRebar != null) swNvRebar.SetSilently(gameMode.NvRebar);
             if (swNvAnsel != null) swNvAnsel.SetSilently(gameMode.NvAnselOff);

@@ -187,10 +187,12 @@ namespace PaviseApp
         }
 
         private static string reserve;
+        private static int reserveScale;
         private static string Reserve()
         {
-            if (reserve == null)
+            if (reserve == null || reserveScale != Theme.S(30))
             {
+                reserveScale = Theme.S(30);
                 var f = Theme.UI(9.5f, false);
                 {
                     int w = TextRenderer.MeasureText(" ", f, Size.Empty, TextFormatFlags.NoPadding).Width;
@@ -237,7 +239,6 @@ namespace PaviseApp
             strip.Items.Add(ac);
 
             var set = SubMenu(Lang.T("nav.set"));
-            set.DropDownItems.Add(Check(Lang.T("tm.gpu"), gameMode.GpuHighPerf, (s, e) => { gameMode.GpuHighPerf = !gameMode.GpuHighPerf; Changed(); }));
 
             bool dvrForced = gameMode.ActivePreset != PerformancePreset.Custom;
             ToolStripMenuItem dvr = Check(Lang.T("tm.dvr")
@@ -247,7 +248,6 @@ namespace PaviseApp
             dvr.Enabled = !dvrForced;
             set.DropDownItems.Add(dvr);
             set.DropDownItems.Add(new ToolStripSeparator());
-            set.DropDownItems.Add(Check(Lang.T("tm.notif"), gameMode.NotifQuiet, (s, e) => { gameMode.NotifQuiet = !gameMode.NotifQuiet; Changed(); }));
             set.DropDownItems.Add(Check(Lang.T("tm.plan"), gameMode.PowerPlanSwitch, (s, e) => { gameMode.PowerPlanSwitch = !gameMode.PowerPlanSwitch; Changed(); }));
             set.DropDownItems.Add(new ToolStripSeparator());
             set.DropDownItems.Add(Check(Lang.T("tm.autostart"), TaskHelper.TaskExistsCached(), (s, e) => { ToggleAutostart(); Changed(); }));
@@ -277,26 +277,38 @@ namespace PaviseApp
             gameMode.PowerPlanSwitch = true;
             gameMode.PauseDownloads = true;
             gameMode.PauseSvcIndex = false;
-            gameMode.GpuHighPerf = true;
             gameMode.KillGameDvr = true;
-            gameMode.NotifQuiet = false;
             gameMode.CorePartitionEnabled = false;
             gameMode.CoreDomainAlt = false;
             gameMode.AggressiveSuppression = false;
             gameMode.Enabled = true; Settings.Save("GameModeOn", true);
             gameMode.Preset = PerformancePreset.Standard;
-            bool whitelistReset = gameMode.ResetWhitelist();
 
             foreach (AcGroup g in AntiCheatCatalog.Groups) tamer.SetGroupEnabled(g.Key, g.Default);
             tamer.Paused = false; Settings.Save("TameOn", true);
 
             Changed();
-            if (!whitelistReset)
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
-                PaviseDialog.Warn(null, App.DisplayName, gameMode.WhitelistLastError);
+                bool whitelistReset;
+                string whitelistError = null;
+                try
+                {
+                    whitelistReset = gameMode.ResetWhitelist();
+                    if (!whitelistReset) whitelistError = gameMode.WhitelistLastError;
+                }
+                catch (Exception ex) { whitelistReset = false; whitelistError = ex.Message; }
+                if (whitelistReset) { Logger.Log("已恢复默认配置"); return; }
                 Logger.Log("默认配置已部分恢复 但白名单写入失败");
-            }
-            else Logger.Log("已恢复默认配置");
+                try
+                {
+                    Strip.BeginInvoke((MethodInvoker)delegate
+                    {
+                        PaviseDialog.Warn(null, App.DisplayName, whitelistError);
+                    });
+                }
+                catch { }
+            });
         }
     }
 }

@@ -99,8 +99,10 @@ namespace PaviseApp
             reset.Click += delegate
             {
                 if (!PaviseDialog.Confirm(this, App.DisplayName, Lang.T("white.reset.confirm"), DlgKind.Warn)) return;
-                if (!gameMode.ResetWhitelist()) ShowWhitelistError();
-                RefreshWhitelist(true);
+                RunWhitelistOp(delegate
+                {
+                    return gameMode.ResetWhitelist() ? null : gameMode.WhitelistLastError;
+                });
             };
 
             pageWhitelist.Controls.AddRange(new Control[] { whitePanel, pick, browse, remove, lblWhiteHint, reset });
@@ -132,20 +134,47 @@ namespace PaviseApp
             AddWhitelistFiles(files);
         }
 
+        private int whiteOpBusy;
+
+        private void RunWhitelistOp(Func<string> op)
+        {
+            if (Interlocked.CompareExchange(ref whiteOpBusy, 1, 0) != 0) return;
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                string error;
+                try { error = op(); }
+                catch (Exception ex) { error = ex.Message; }
+                Interlocked.Exchange(ref whiteOpBusy, 0);
+                try
+                {
+                    BeginInvoke((MethodInvoker)delegate
+                    {
+                        if (IsDisposed) return;
+                        if (!string.IsNullOrEmpty(error))
+                            PaviseDialog.Warn(this, App.DisplayName, error);
+                        RefreshWhitelist(true);
+                    });
+                }
+                catch { }
+            });
+        }
+
         private void AddWhitelistFiles(IEnumerable<string> files)
         {
-            int added = 0;
-            string firstError = null;
-            foreach (string raw in files)
+            var list = new List<string>(files);
+            RunWhitelistOp(delegate
             {
-                string path = ResolveWhitelistTarget(raw);
-                if (string.IsNullOrEmpty(path)) continue;
-                if (gameMode.AddWhitelistAuto(path)) added++;
-                else if (firstError == null) firstError = gameMode.WhitelistLastError;
-            }
-            if (added == 0 && firstError != null)
-                PaviseDialog.Warn(this, App.DisplayName, firstError);
-            if (added > 0) RefreshWhitelist(true);
+                int added = 0;
+                string firstError = null;
+                foreach (string raw in list)
+                {
+                    string path = ResolveWhitelistTarget(raw);
+                    if (string.IsNullOrEmpty(path)) continue;
+                    if (gameMode.AddWhitelistAuto(path)) added++;
+                    else if (firstError == null) firstError = gameMode.WhitelistLastError;
+                }
+                return added == 0 ? firstError : null;
+            });
         }
 
         internal static string ResolveWhitelistTarget(string raw)
@@ -197,15 +226,11 @@ namespace PaviseApp
                 PaviseDialog.Info(this, App.DisplayName, Lang.T("white.required.locked"));
                 return;
             }
-            if (!gameMode.RemoveWhitelistRule(item.View.Rule.Key)) ShowWhitelistError();
-            RefreshWhitelist(true);
-        }
-
-        private void ShowWhitelistError()
-        {
-            string error = gameMode.WhitelistLastError;
-            if (string.IsNullOrEmpty(error)) return;
-            PaviseDialog.Warn(this, App.DisplayName, error);
+            string key = item.View.Rule.Key;
+            RunWhitelistOp(delegate
+            {
+                return gameMode.RemoveWhitelistRule(key) ? null : gameMode.WhitelistLastError;
+            });
         }
 
         private void OnWhiteMenuOpening(object sender, System.ComponentModel.CancelEventArgs e)
@@ -219,15 +244,19 @@ namespace PaviseApp
             if (kind == WhitelistRuleKind.ApplicationFamily)
                 whiteMenu.Items.Add(Lang.T("white.menu.narrow"), null, delegate
                 {
-                    if (!gameMode.NarrowWhitelistRule(key)) ShowWhitelistError();
-                    RefreshWhitelist(true);
+                    RunWhitelistOp(delegate
+                    {
+                        return gameMode.NarrowWhitelistRule(key) ? null : gameMode.WhitelistLastError;
+                    });
                 });
             else if (kind == WhitelistRuleKind.ExactPath
                 && !WhitelistRule.IsUnsafeFamilyAnchor(item.View.Rule.Value))
                 whiteMenu.Items.Add(Lang.T("white.menu.widen"), null, delegate
                 {
-                    if (!gameMode.WidenWhitelistRule(key)) ShowWhitelistError();
-                    RefreshWhitelist(true);
+                    RunWhitelistOp(delegate
+                    {
+                        return gameMode.WidenWhitelistRule(key) ? null : gameMode.WhitelistLastError;
+                    });
                 });
 
             whiteMenu.Items.Add(Lang.T("btn.remove"), null, delegate { RemoveSelectedWhitelist(); });

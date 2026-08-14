@@ -76,6 +76,7 @@ namespace PaviseApp
                     if (!registryOk)
                     {
                         Vbs.Restore(); Hvci.Restore();
+                        if (!DisabledByPavise) Settings.SaveStr("PrevHvLaunch", "");
                         Logger.Log("关闭 VBS 和内存完整性写入或回读失败 已回滚");
                         return false;
                     }
@@ -115,10 +116,14 @@ namespace PaviseApp
                     if (!Vbs.HasBackup && !Hvci.HasBackup && savedHvLaunch.Length == 0 && !DisabledByPavise)
                         return true;
                     bool ok = Vbs.Restore() & Hvci.Restore();
+                    bool bcdOurs = DisabledByPavise;
                     string hv = NormHvLaunch(savedHvLaunch.Length == 0 ? "auto" : savedHvLaunch);
-                    int code;
-                    RunBcd("/set hypervisorlaunchtype " + hv, out code);
-                    if (code != 0) ok = false;
+                    int code = 0;
+                    if (bcdOurs)
+                    {
+                        RunBcd("/set hypervisorlaunchtype " + hv, out code);
+                        if (code != 0) ok = false;
+                    }
                     if (ok)
                     {
                         Settings.Save("VbsDisabledByPavise", false);
@@ -128,7 +133,9 @@ namespace PaviseApp
                             return false;
                         }
                         Settings.SaveStr("PrevHvLaunch", "");
-                        Logger.Log("已还原 VBS 和内存完整性 + hypervisorlaunchtype " + hv + " 重启后生效");
+                        Logger.Log(bcdOurs
+                            ? "已还原 VBS 和内存完整性 + hypervisorlaunchtype " + hv + " 重启后生效"
+                            : "已还原 VBS 和内存完整性 hypervisor 未经 Pavise 修改 未触碰");
                     }
                     else Logger.Log("还原 VBS 和 hypervisor 未完全成功 bcdedit rc " + code + " 快照保留 可再试一次");
                     return ok;

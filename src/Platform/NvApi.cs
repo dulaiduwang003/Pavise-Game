@@ -32,6 +32,13 @@ namespace PaviseApp
         public const uint PStatePreferMax = 0x1;
         public const uint SettingPreRenderLimit = 0x007BA09E;
         public const uint SettingLowLatencyCpl = 0x0005F543;
+        public const uint SettingUltraLowLatEnable = 0x10835000;
+        public const uint SettingSmoothMotion = 0xB0D384C0;
+        public const uint SettingShaderCacheSize = 0x00AC8497;
+        public const uint UltraCplUltra = 2;
+        public const uint ShaderCacheUnlimited = 0xFFFFFFFF;
+        public const uint MinDriverForSmoothMotion50 = 57186;
+        public const uint MinDriverForSmoothMotion40 = 59026;
         public const uint SettingFrlFpsBackground = 0x10835006;
         public const uint SettingAnselAllow = 0x1035DB89;
         public const uint SettingRebarFeature = 0x000F00BA;

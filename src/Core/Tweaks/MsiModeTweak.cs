@@ -1,8 +1,8 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 清理旧版本写入的消息信号中断开关
-// v1.7 移除 MSI 模式 本类只保留还原能力
+// 文件用途 修复被显式关闭的显卡消息信号中断 MSISupported=0 时一键写回 还原时回到原值
 
 using System;
+using System.Collections.Generic;
 using Microsoft.Win32;
 
 namespace PaviseApp
@@ -15,6 +15,104 @@ namespace PaviseApp
         private const string FlagKey = "MsiOnByPavise";
 
         private static readonly object lk = new object();
+
+        public static bool EnabledByPavise { get { return Settings.Load(FlagKey, false); } }
+
+        internal struct Candidate
+        {
+            public string InstanceId;
+            public string Description;
+            public bool HasKey;
+            public int? Value;
+        }
+
+        public static List<Candidate> Scan()
+        {
+            var found = new List<Candidate>();
+            HashSet<string> present = null;
+            try
+            {
+                present = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (string presentId in PresentDevices.ByClass(
+                    new Guid("4d36e968-e325-11ce-bfc1-08002be10318")))
+                    if (!string.IsNullOrEmpty(presentId)) present.Add(presentId);
+            }
+            catch { present = null; }
+            try
+            {
+                using (var pci = Registry.LocalMachine.OpenSubKey(EnumRoot + @"\PCI"))
+                {
+                    if (pci == null) return found;
+                    foreach (string devClass in pci.GetSubKeyNames())
+                        using (var dev = pci.OpenSubKey(devClass))
+                        {
+                            if (dev == null) continue;
+                            foreach (string inst in dev.GetSubKeyNames())
+                                using (var node = dev.OpenSubKey(inst))
+                                {
+                                    if (node == null) continue;
+                                    string cls = node.GetValue("Class") as string;
+                                    if (!string.Equals(cls, "Display", StringComparison.OrdinalIgnoreCase)) continue;
+                                    string id = @"PCI\" + devClass + @"\" + inst;
+                                    if (present != null && present.Count > 0 && !present.Contains(id)) continue;
+                                    var c = new Candidate
+                                    {
+                                        InstanceId = id,
+                                        Description = (node.GetValue("DeviceDesc") as string) ?? id
+                                    };
+                                    int cut = c.Description.LastIndexOf(';');
+                                    if (cut >= 0) c.Description = c.Description.Substring(cut + 1);
+                                    using (var msi = node.OpenSubKey(MsiLeaf))
+                                    {
+                                        c.HasKey = msi != null;
+                                        object v = msi == null ? null : msi.GetValue("MSISupported");
+                                        c.Value = v is int ? (int?)(int)v : null;
+                                    }
+                                    found.Add(c);
+                                }
+                        }
+                }
+            }
+            catch { }
+            return found;
+        }
+
+        public static List<Candidate> Disabled()
+        {
+            var need = new List<Candidate>();
+            foreach (Candidate c in Scan())
+                if (c.HasKey && c.Value.HasValue && c.Value.Value == 0) need.Add(c);
+            return need;
+        }
+
+        public static bool Enable()
+        {
+            lock (lk)
+            {
+                List<Candidate> targets = Disabled();
+                if (targets.Count == 0)
+                {
+                    Logger.Log("MSI 修复 本机显卡的消息信号中断均未被关闭 无需改动");
+                    return true;
+                }
+                var done = new List<string>();
+                foreach (Candidate c in targets)
+                {
+                    if (Reg(c.InstanceId).Apply(1)) done.Add(c.InstanceId);
+                    else Logger.Log("MSI 修复 写入失败 " + c.Description);
+                }
+                if (done.Count == 0) return false;
+                if (!Settings.SaveStr(ListKey, string.Join(";", done.ToArray())))
+                {
+                    foreach (string id in done) Reg(id).Restore();
+                    Logger.Log("MSI 修复 清单无法持久化 已全部还原");
+                    return false;
+                }
+                Settings.Save(FlagKey, true);
+                Logger.Log("MSI 修复 已为 " + done.Count + " 个显卡设备写回 MSISupported=1 重启后生效");
+                return true;
+            }
+        }
 
         public static bool HasResidue()
         {

@@ -18,11 +18,32 @@ namespace PaviseApp
             bool tmpComplete = false;
             try
             {
-                File.WriteAllLines(tmp, lines ?? new string[0], new UTF8Encoding(false));
+                using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+                using (var sw = new StreamWriter(fs, new UTF8Encoding(false)))
+                {
+                    foreach (string line in lines ?? new string[0]) sw.WriteLine(line);
+                    sw.Flush();
+                    fs.Flush(true);
+                }
                 tmpComplete = true;
-                if (File.Exists(path)) File.Replace(tmp, path, null);
-                else File.Move(tmp, path);
-                return true;
+                if (!File.Exists(path))
+                {
+                    File.Move(tmp, path);
+                    return true;
+                }
+                for (int attempt = 0; ; attempt++)
+                {
+                    try
+                    {
+                        File.Replace(tmp, path, null);
+                        return true;
+                    }
+                    catch (IOException)
+                    {
+                        if (attempt >= 2) throw;
+                        System.Threading.Thread.Sleep(80);
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -31,6 +52,7 @@ namespace PaviseApp
                 {
                     if (tmpComplete && File.Exists(tmp))
                     {
+                        try { File.Copy(path, path + ".stale.bak", true); } catch { }
                         File.Copy(tmp, path, true);
                         try { File.Delete(tmp); } catch { }
                         return true;

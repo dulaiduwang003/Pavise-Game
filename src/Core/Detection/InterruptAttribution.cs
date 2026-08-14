@@ -1,5 +1,7 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 用内核 ETW 会话抓 DPC 与 ISR 例程地址 映射到驱动模块 找出中断来源
+// 用自己的独立系统日志会话 Win10 2004 起支持 不碰全局 NT Kernel Logger 不影响 WPR xperf 这类工具
+// 老系统不支持独立系统会话时如实跳过 不做劫持
 
 using System;
 using System.Collections.Generic;
@@ -32,16 +34,19 @@ namespace PaviseApp
     {
         private const int WnodeFlagTracedGuid = 0x00020000;
         private const uint RealTimeMode = 0x00000100;
+        private const uint SystemLoggerMode = 0x02000000;
+        private const uint IndependentSessionMode = 0x08000000;
         private const uint ProcessModeRealTime = 0x00000100;
         private const uint ProcessModeEventRecord = 0x10000000;
         private const uint ControlStop = 1;
         private const uint FlagDpc = 0x00000020;
         private const uint FlagInterrupt = 0x00000040;
         private const int ErrorAlreadyExists = 183;
+        private const int ErrorInvalidParameter = 87;
 
-        private static readonly Guid SystemTraceControlGuid = new Guid("9e814aad-3204-11d2-9a82-006008a86939");
+        private static readonly Guid SessionGuid = new Guid("7d1f8c2a-64b3-4c5e-9a1d-2e8f0b6c4d3a");
         private static readonly Guid PerfInfoGuid = new Guid("ce1dbfb4-137e-4da6-87b0-3f59aa102cbc");
-        private const string KernelLoggerName = "NT Kernel Logger";
+        private const string SessionName = "PaviseInterruptProbe";
 
         private readonly object gate = new object();
         private readonly Dictionary<ulong, long> dpcHits = new Dictionary<ulong, long>();
@@ -67,13 +72,18 @@ namespace PaviseApp
                 try
                 {
                     ulong session;
-                    uint rc = StartTrace(out session, KernelLoggerName, props);
+                    uint rc = StartTrace(out session, SessionName, props);
                     if (rc == ErrorAlreadyExists)
                     {
                         StopStale();
                         Marshal.FreeHGlobal(props);
                         props = AllocProps();
-                        rc = StartTrace(out session, KernelLoggerName, props);
+                        rc = StartTrace(out session, SessionName, props);
+                    }
+                    if (rc == ErrorInvalidParameter)
+                    {
+                        Logger.Log("中断来源 本机系统不支持独立内核会话 跳过归因");
+                        return false;
                     }
                     if (rc != 0) { Logger.Log("中断来源 会话创建失败 " + rc); return false; }
                 }
@@ -81,7 +91,7 @@ namespace PaviseApp
 
                 keepAlive = OnEvent;
                 var logfile = new EventTraceLogfile();
-                logfile.LoggerName = Marshal.StringToHGlobalUni(KernelLoggerName);
+                logfile.LoggerName = Marshal.StringToHGlobalUni(SessionName);
                 logfile.ProcessTraceMode = ProcessModeRealTime | ProcessModeEventRecord;
                 logfile.EventRecordCallbackPtr = Marshal.GetFunctionPointerForDelegate(keepAlive);
                 traceHandle = OpenTrace(ref logfile);
@@ -118,8 +128,14 @@ namespace PaviseApp
                 if (!started) { result.Error = "未启动"; return result; }
                 StopStale();
                 try { if (traceHandle != 0) CloseTrace(traceHandle); } catch { }
-                if (worker != null) { try { worker.Join(2000); } catch { } }
+                bool workerDone = true;
+                if (worker != null) { try { workerDone = worker.Join(2000); } catch { workerDone = false; } }
                 started = false;
+                if (!workerDone)
+                {
+                    result.Error = "采集线程未按时退出 放弃本次归因";
+                    return result;
+                }
                 keepAlive = null;
 
                 result.DpcTotal = dpcTotal;
@@ -210,19 +226,19 @@ namespace PaviseApp
 
         private static IntPtr AllocProps()
         {
-            int nameBytes = (KernelLoggerName.Length + 1) * 2;
+            int nameBytes = (SessionName.Length + 1) * 2;
             int size = Marshal.SizeOf(typeof(EventTraceProperties)) + nameBytes + 16;
             IntPtr props = Marshal.AllocHGlobal(size);
             for (int i = 0; i < size; i++) Marshal.WriteByte(props, i, 0);
             var p = new EventTraceProperties();
             p.Wnode.BufferSize = (uint)size;
             p.Wnode.Flags = WnodeFlagTracedGuid;
-            p.Wnode.Guid = SystemTraceControlGuid;
+            p.Wnode.Guid = SessionGuid;
             p.Wnode.ClientContext = 1;
             p.BufferSize = 128;
             p.MinimumBuffers = 8;
             p.MaximumBuffers = 32;
-            p.LogFileMode = RealTimeMode;
+            p.LogFileMode = RealTimeMode | SystemLoggerMode | IndependentSessionMode;
             p.FlushTimer = 1;
             p.EnableFlags = FlagDpc | FlagInterrupt;
             p.LoggerNameOffset = (uint)Marshal.SizeOf(typeof(EventTraceProperties));
@@ -230,9 +246,14 @@ namespace PaviseApp
             return props;
         }
 
+        public static void CleanupStaleSession()
+        {
+            try { StopStale(); } catch { }
+        }
+
         private static void StopStale()
         {
-            int nameBytes = (KernelLoggerName.Length + 1) * 2;
+            int nameBytes = (SessionName.Length + 1) * 2;
             int size = Marshal.SizeOf(typeof(EventTraceProperties)) + nameBytes + 16;
             IntPtr props = Marshal.AllocHGlobal(size);
             try
@@ -240,10 +261,10 @@ namespace PaviseApp
                 for (int i = 0; i < size; i++) Marshal.WriteByte(props, i, 0);
                 var p = new EventTraceProperties();
                 p.Wnode.BufferSize = (uint)size;
-                p.Wnode.Guid = SystemTraceControlGuid;
+                p.Wnode.Guid = SessionGuid;
                 p.LoggerNameOffset = (uint)Marshal.SizeOf(typeof(EventTraceProperties));
                 Marshal.StructureToPtr(p, props, false);
-                ControlTrace(0, KernelLoggerName, props, ControlStop);
+                ControlTrace(0, SessionName, props, ControlStop);
             }
             catch { }
             finally { Marshal.FreeHGlobal(props); }

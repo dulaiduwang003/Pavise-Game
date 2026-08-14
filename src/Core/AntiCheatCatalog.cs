@@ -63,6 +63,24 @@ namespace PaviseApp
             return names;
         }
 
+        private static readonly string[] NameTokens =
+        {
+            "anticheat", "anti-cheat", "sguard", "tensafe", "easyanticheat",
+            "beservice", "battleye", "gameguard", "gamemon", "vgtray", "ace-helper", "ace-base"
+        };
+
+        internal static bool ContainsToken(string lowered)
+        {
+            if (string.IsNullOrEmpty(lowered)) return false;
+            foreach (string token in NameTokens) if (lowered.Contains(token)) return true;
+            return false;
+        }
+
+        internal static bool IsAntiCheatLikeName(string name)
+        {
+            if (IsKnownProcess(name)) return true;
+            return ContainsToken((name ?? "").ToLowerInvariant());
+        }
     }
 
 }

@@ -141,10 +141,11 @@ namespace PaviseApp
         public void SetStatus(string text, Color ink)
         {
             string v = text ?? "";
-            bool changed = v != status;
+            bool textChanged = v != status;
+            bool changed = textChanged || ink != statusInk;
             status = v; statusInk = ink;
-            if (changed && v.Length > 0 && !string.IsNullOrEmpty(title)) Flash();
-            if (changed || ink != statusInk) Invalidate();
+            if (textChanged && v.Length > 0 && !string.IsNullOrEmpty(title)) Flash();
+            if (changed) Invalidate();
         }
 
         private bool ShowDesc { get { return !collapsible || expanded || growing; } }
@@ -163,6 +164,7 @@ namespace PaviseApp
             host = c;
             Controls.Add(c);
             c.MouseLeave += OnHostMouseLeave;
+            c.VisibleChanged += delegate { Invalidate(); };
             LayoutHost();
             if (c is Toggle) Cursor = Cursors.Hand;
         }
@@ -229,19 +231,10 @@ namespace PaviseApp
                 using (var edge = new Pen(Col.Alpha(Theme.Accent, (int)(190 * cardHover.Value)), Math.Max(1f, Theme.S(2))))
                     g.DrawLine(edge, 0, Theme.S(14), 0, Height - Theme.S(14));
             int padL = Theme.S(18);
-            int reserve = padL + (host != null ? host.Width + Theme.S(14) : 0);
-
-            int valW = 0;
-            if (val.Length > 0)
-            {
-                var vr = new Rectangle(Width / 3, 0, Width - Width / 3 - reserve, Height);
-                TextRenderer.DrawText(g, val, Theme.UI(9f, false), vr, ValueColor,
-                    TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
-                valW = TextRenderer.MeasureText(g, val, Theme.UI(9f, false)).Width + Theme.S(16);
-            }
+            int reserve = padL + (host != null && host.Visible ? host.Width + Theme.S(14) : 0);
 
             int chevW = collapsible ? Theme.S(20) : 0;
-            int textW = Width - padL - reserve - valW - chevW;
+            int textW = Width - padL - reserve - chevW;
             Font titleFont = Theme.UI(9.75f, true);
             int badgeW = lockText.Length == 0
                 ? 0
@@ -249,9 +242,21 @@ namespace PaviseApp
                     + Theme.S(12) + Theme.S(9);
             if (collapsible) DrawChevron(g, padL + textW + Theme.S(4));
             bool showDesc = desc.Length > 0 && ShowDesc;
+
+            // Value 放不挤压说明区的位置 说明区宽度必须和 AutoCardHeight 测高时一致 否则多折一行就被截断
+            int valW = 0;
+            Font valFont = Theme.UI(9f, false);
+            if (val.Length > 0) valW = TextRenderer.MeasureText(g, val, valFont).Width + Theme.S(16);
+
             if (!showDesc && !HasStatus)
             {
-                var tr = new Rectangle(padL, 0, textW - badgeW, Height);
+                if (valW > 0)
+                {
+                    var vr = new Rectangle(Width / 3, 0, Width - Width / 3 - reserve - chevW, Height);
+                    TextRenderer.DrawText(g, val, valFont, vr, ValueColor,
+                        TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+                }
+                var tr = new Rectangle(padL, 0, textW - badgeW - valW, Height);
                 TextRenderer.DrawText(g, title, titleFont, tr, Theme.Fg,
                     TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
                 DrawLockBadge(g, padL, tr, Height / 2);
@@ -259,7 +264,14 @@ namespace PaviseApp
             }
 
             int titleY = HasStatus && !showDesc ? Theme.S(9) : Theme.S(11);
-            var head = new Rectangle(padL, titleY, textW - badgeW, Theme.S(22));
+            if (valW > 0)
+            {
+                var vr = new Rectangle(padL, titleY, textW, Theme.S(22));
+                TextRenderer.DrawText(g, val, valFont, vr, ValueColor,
+                    TextFormatFlags.Right | TextFormatFlags.VerticalCenter
+                        | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
+            }
+            var head = new Rectangle(padL, titleY, textW - badgeW - valW, Theme.S(22));
             TextRenderer.DrawText(g, title, titleFont, head, Theme.Fg,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
             DrawLockBadge(g, padL, head, titleY + Theme.S(11));

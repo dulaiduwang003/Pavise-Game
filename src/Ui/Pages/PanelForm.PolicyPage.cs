@@ -16,11 +16,11 @@ namespace PaviseApp
         private TierPicker pickPolicyCores;
         private Toggle swPolicyBackground, swPolicyAggressive;
         private Toggle swPolicyPauseDl, swPolicyPauseSvc, swPolicySvcYield, swPolicyDvr;
-        private Toggle swPolicyGpuDemote, swPolicyBoost, swPolicyIfeo, swPolicyLane, swPolicyNotif;
+        private Toggle swPolicyGpuDemote, swPolicyBoost, swPolicyIfeo, swPolicyLane;
         private Toggle swPolicyPauseWu, swPolicyWlan, swPolicyAwake;
         private SettingCard cardPolicyCores, cardPolicyAggressive;
         private SettingCard cardPolicyPauseDl, cardPolicyPauseSvc, cardPolicySvcYield, cardPolicyDvr;
-        private SettingCard cardPolicyBackground, cardPolicyGpuDemote, cardPolicyBoost, cardPolicyIfeo, cardPolicyLane, cardPolicyNotif;
+        private SettingCard cardPolicyBackground, cardPolicyGpuDemote, cardPolicyBoost, cardPolicyIfeo, cardPolicyLane;
         private SettingCard cardPolicyPauseWu, cardPolicyWlan, cardPolicyAwake;
         private readonly List<Action> policySync = new List<Action>();
 
@@ -46,25 +46,7 @@ namespace PaviseApp
             pagePolicy.Controls.Add(policyTabs);
             y += 48;
 
-            policyTabPanels = new DBPanel[4];
-            for (int i = 0; i < policyTabPanels.Length; i++)
-            {
-                var panel = new DBPanel();
-                panel.SetBounds(Theme.S(20), Theme.S(y), Theme.S(PageW - 40), Theme.S(PageH - y - 8));
-                panel.BackColor = Theme.Bg; panel.AutoScroll = true; Native.Dark(panel);
-                panel.Visible = i == 0;
-                pagePolicy.Controls.Add(panel);
-                policyTabPanels[i] = panel;
-            }
-            policyTabs.IndexChanged = delegate(int index)
-            {
-                for (int i = 0; i < policyTabPanels.Length; i++)
-                {
-                    if (i != index) { Fx.Settle(policyTabPanels[i]); policyTabPanels[i].Visible = false; }
-                }
-                policyTabPanels[index].Visible = true;
-                Fx.SlideIn(policyTabPanels[index]);
-            };
+            policyTabPanels = MakeTabPanels(pagePolicy, policyTabs, 4, y);
 
             Control scroll = policyTabPanels[0];
             int sy = 2;
@@ -84,9 +66,6 @@ namespace PaviseApp
                 delegate { return gameMode.RenderLaneOn; }, delegate(bool v) { gameMode.RenderLaneOn = v; });
             cardPolicyLane = (SettingCard)swPolicyLane.Parent;
             AddPowerPlanPicker(scroll, ref sy);
-            swPolicyNotif = AddPolicyToggle(scroll, ref sy, Lang.T("set.notif"), Lang.T("v15.notif.sub"),
-                delegate { return gameMode.NotifQuiet; }, delegate(bool v) { gameMode.NotifQuiet = v; });
-            cardPolicyNotif = (SettingCard)swPolicyNotif.Parent;
 
             BuildCorePage(policyTabPanels[1]);
 
@@ -109,18 +88,12 @@ namespace PaviseApp
                 delegate { return gameMode.UploadYieldOn; }, delegate(bool v) { gameMode.UploadYieldOn = v; });
             AddPolicyToggle(scroll, ref sy, Lang.T("gm.standby"), Lang.T("gm.standby.sub"),
                 delegate { return gameMode.PurgeStandby; }, delegate(bool v) { gameMode.PurgeStandby = v; });
-            AddPolicyToggle(scroll, ref sy, Lang.T("gm.trimbg"), Lang.T("gm.trimbg.sub"),
-                delegate { return gameMode.TrimBackgroundOn; }, delegate(bool v) { gameMode.TrimBackgroundOn = v; });
-            AddPolicyToggle(scroll, ref sy, Lang.T("gm.stbguard"), Lang.T("gm.stbguard.sub"),
-                delegate { return gameMode.StandbyGuardOn; }, delegate(bool v) { gameMode.StandbyGuardOn = v; });
             swPolicyPauseWu = AddPolicyToggle(scroll, ref sy, Lang.T("gm.pausewu"), Lang.T("gm.pausewu.sub"),
                 delegate { return gameMode.PauseWindowsUpdate; }, delegate(bool v) { gameMode.PauseWindowsUpdate = v; });
             cardPolicyPauseWu = (SettingCard)swPolicyPauseWu.Parent;
             swPolicyWlan = AddPolicyToggle(scroll, ref sy, Lang.T("gm.wlanguard"), Lang.T("gm.wlanguard.sub"),
                 delegate { return gameMode.WlanScanGuard; }, delegate(bool v) { gameMode.WlanScanGuard = v; });
             cardPolicyWlan = (SettingCard)swPolicyWlan.Parent;
-            AddPolicyToggle(scroll, ref sy, Lang.T("set.pqos"), Lang.T("set.pqos.n"),
-                delegate { return gameMode.PresenceQosOff; }, delegate(bool v) { gameMode.PresenceQosOff = v; });
             swPolicyAwake = AddPolicyToggle(scroll, ref sy, Lang.T("set.awake"), Lang.T("set.awake.n"),
                 delegate { return gameMode.KeepAwake; }, delegate(bool v) { gameMode.KeepAwake = v; });
             cardPolicyAwake = (SettingCard)swPolicyAwake.Parent;
@@ -139,6 +112,10 @@ namespace PaviseApp
 
         private void EnableCardCollapse(Control panel, params SettingCard[] keepOpen)
         {
+            var dead = new List<Control>();
+            foreach (Control key in stackBase.Keys) if (key.IsDisposed) dead.Add(key);
+            foreach (Control key in dead) stackBase.Remove(key);
+
             var map = new Dictionary<Control, int>();
             foreach (Control c in panel.Controls) map[c] = c.Top;
             stackBase[panel] = map;
@@ -197,6 +174,8 @@ namespace PaviseApp
         {
             RevealTabFor(policyTabs, policyTabPanels, card);
             RevealTabFor(envTabs, envTabPanels, card);
+            RevealTabFor(gfxTabs, gfxTabPanels, card);
+            RevealTabFor(colTabs, colTabPanels, card);
         }
 
         private static void RevealTabFor(TechTabs tabs, DBPanel[] panels, Control card)
@@ -293,15 +272,15 @@ namespace PaviseApp
             var badges = new List<MenuBadge> { null };
             ids.Clear();
             ids.Add(null);
+            ids.Add(PowerPlan.ManagedChoice);
+            labels.Add(PowerPlan.ManagedPlanTitle);
+            badges.Add(new MenuBadge(Lang.T("plan.pick.managed"), true));
             foreach (PowerPlanEntry entry in PowerPlan.ListUserPlans())
             {
                 ids.Add(entry.Id.ToString());
                 labels.Add(entry.Name);
                 badges.Add(new MenuBadge(Lang.T("plan.pick.local"), false));
             }
-            ids.Add(PowerPlan.ManagedChoice);
-            labels.Add(PowerPlan.ManagedPlanTitle);
-            badges.Add(new MenuBadge(Lang.T("plan.pick.managed"), true));
             combo.SetItems(labels.ToArray(), badges.ToArray());
             combo.Index = PowerPlanIndexOf(ids);
         }
@@ -383,7 +362,6 @@ namespace PaviseApp
             ApplyPresetPolicy(swPolicyBoost, cardPolicyBoost, Lang.T("gm.boost"), extreme, true);
             ApplyPresetPolicy(swPolicyIfeo, cardPolicyIfeo, Lang.T("gm.ifeo"), extreme, true);
             ApplyPresetPolicy(swPolicyLane, cardPolicyLane, Lang.T("gm.lane"), extreme, true);
-            ApplyPresetPolicy(swPolicyNotif, cardPolicyNotif, Lang.T("set.notif"), extreme, true);
             if (cardPolicyCores != null) cardPolicyCores.Title = Lang.T("cpu.place.title");
             ApplyPresetPolicy(swPolicyAggressive, cardPolicyAggressive, Lang.T("gm.aggressive"), !custom, competitive || extreme);
             ApplyPresetPolicy(swPolicyPauseDl, cardPolicyPauseDl, Lang.T("gm.pausedl"), !custom, competitive || extreme);

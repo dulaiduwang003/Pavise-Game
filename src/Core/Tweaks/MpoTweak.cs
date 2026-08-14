@@ -35,15 +35,15 @@ namespace PaviseApp
         {
             try
             {
-                bool ok = Overlay.HasBackup ? Overlay.Restore() : RemoveValue();
-                if (ok && CurrentlyDisabled()) ok = RemoveValue();
-                if (ok)
-                {
-                    Settings.Save("MpoOffByPavise", false);
-                    if (Settings.Load("MpoOffByPavise", true)) return false;
-                    Logger.Log("多平面叠加 MPO 设置已恢复 重启或重新登录后生效");
-                }
-                return ok;
+                bool touched = false;
+                bool ok = true;
+                if (Overlay.HasBackup) { ok = Overlay.Restore(); touched = true; }
+                else if (DisabledByPavise && CurrentlyDisabled()) { ok = RemoveValue(); touched = true; }
+                if (!ok) return false;
+                Settings.Save("MpoOffByPavise", false);
+                if (Settings.Load("MpoOffByPavise", true)) return false;
+                if (touched) Logger.Log("多平面叠加 MPO 设置已恢复 重启或重新登录后生效");
+                return true;
             }
             catch { return false; }
         }

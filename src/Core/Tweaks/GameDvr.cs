@@ -10,6 +10,8 @@ namespace PaviseApp
     {
         private static readonly ReversibleReg Dvr = new ReversibleReg(
             Registry.CurrentUser, @"System\GameConfigStore", "GameDVR_Enabled", RegistryValueKind.DWord, "PrevGameDvr");
+        private static readonly ReversibleReg Cap = new ReversibleReg(
+            Registry.CurrentUser, @"SOFTWARE\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled", RegistryValueKind.DWord, "PrevGameDvrCap");
         private static readonly object lk = new object();
         private static bool active;
 
@@ -18,8 +20,12 @@ namespace PaviseApp
             lock (lk)
             {
                 if (active) return true;
-                active = Dvr.Apply(0);
-                Logger.Log(active ? "Game DVR 后台录制已关闭" : "Game DVR 写入或回读失败 本轮未关闭");
+                bool dvrOk = Dvr.Apply(0);
+                bool capOk = Cap.Apply(0);
+                active = dvrOk && capOk;
+                Logger.Log(active ? "Game DVR 后台录制与捕获已关闭"
+                    : dvrOk ? "Game DVR 已关闭 后台捕获项写入失败 下轮重试"
+                    : "Game DVR 写入或回读失败 本轮未关闭");
                 return active;
             }
         }
@@ -28,12 +34,15 @@ namespace PaviseApp
         {
             lock (lk)
             {
-                if (Dvr.HasBackup && Dvr.Restore()) Logger.Log("Game DVR 设置已还原");
+                bool had = Dvr.HasBackup || Cap.HasBackup;
+                bool dvrOk = !Dvr.HasBackup || Dvr.Restore();
+                bool capOk = !Cap.HasBackup || Cap.Restore();
+                if (had && dvrOk && capOk) Logger.Log("Game DVR 设置已还原");
                 active = false;
-                return !Dvr.HasBackup;
+                return !Dvr.HasBackup && !Cap.HasBackup;
             }
         }
 
-        public static void HealFromCrash() { if (Dvr.HasBackup) Restore(); }
+        public static void HealFromCrash() { if (Dvr.HasBackup || Cap.HasBackup) Restore(); }
     }
 }

@@ -1,6 +1,7 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 自绘列表基类 拦截背景擦除并逐行离屏合成 消除滚动与悬浮闪烁
 // 离屏面必须是屏幕兼容位图 换成 GDI+ 托管位图会让 ClearType 子像素渲染失真 亮色主题下字发虚
+// 行绘制抛异常也必须把离屏面上屏 背景擦除已被拦截 跳过上屏这一行会永远留着切页前的旧像素
 
 using System;
 using System.Drawing;
@@ -27,6 +28,7 @@ namespace PaviseApp
         private IntPtr oldBmp = IntPtr.Zero;
         private int bufW, bufH;
         private Graphics surface;
+        private bool drawFaultLogged;
 
         protected override void WndProc(ref Message m)
         {
@@ -50,12 +52,25 @@ namespace PaviseApp
 
             surface.SetClip(bounds);
             using (var back = new SolidBrush(BackColor)) surface.FillRectangle(back, bounds);
-            base.OnDrawItem(new DrawItemEventArgs(surface, e.Font, bounds, e.Index, e.State, e.ForeColor, e.BackColor));
-            surface.ResetClip();
-
-            IntPtr dst = e.Graphics.GetHdc();
-            try { BitBlt(dst, bounds.Left, bounds.Top, bounds.Width, bounds.Height, memDc, bounds.Left, bounds.Top, SrcCopy); }
-            finally { e.Graphics.ReleaseHdc(dst); }
+            try
+            {
+                base.OnDrawItem(new DrawItemEventArgs(surface, e.Font, bounds, e.Index, e.State, e.ForeColor, e.BackColor));
+            }
+            catch (Exception ex)
+            {
+                if (!drawFaultLogged)
+                {
+                    drawFaultLogged = true;
+                    Logger.Log("列表行绘制异常 已用底色顶替 行 " + e.Index + " " + ex.GetType().Name + " " + ex.Message);
+                }
+            }
+            finally
+            {
+                surface.ResetClip();
+                IntPtr dst = e.Graphics.GetHdc();
+                try { BitBlt(dst, bounds.Left, bounds.Top, bounds.Width, bounds.Height, memDc, bounds.Left, bounds.Top, SrcCopy); }
+                finally { e.Graphics.ReleaseHdc(dst); }
+            }
         }
 
         private bool EnsureBuffer(Graphics target, Rectangle bounds)

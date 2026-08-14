@@ -47,16 +47,15 @@ namespace PaviseApp
             acGroups.Clear();
             acCards.Clear();
             acToggles.Clear();
-            int pitch = 90, idx = 0;
+            int sy = 0;
             foreach (AcGroup g in AntiCheatCatalog.Groups)
             {
                 string note = Lang.T("ac." + g.Key + ".d") + " " + string.Join(" ", g.Procs);
-                AddAcCard(g.Key, Lang.T("ac." + g.Key + ".n"), note, idx * pitch);
-                idx++;
+                sy += AddAcCard(g.Key, Lang.T("ac." + g.Key + ".n"), note, sy) + 8;
             }
         }
 
-        private void AddAcCard(string key, string title, string note, int y)
+        private int AddAcCard(string key, string title, string note, int y)
         {
             var sw = MakeSwitch(tamer.IsGroupEnabled(key), null);
             sw.CheckedChanged += (s, e) => tamer.SetGroupEnabled(key, sw.Checked);
@@ -74,16 +73,12 @@ namespace PaviseApp
             wrap.Controls.Add(lvl);
             wrap.Controls.Add(sw);
 
-            var card = new SettingCard();
-            card.SetBounds(Theme.S(6), Theme.S(y), Theme.S(ScrollContentW), Theme.S(82));
-            card.Title = title;
-            card.Desc = note;
-            card.Host(wrap);
-
-            acList.Controls.Add(card);
+            int used;
+            SettingCard card = MakeAutoCard(acList, 6, y, ScrollContentW, 82, title, note, wrap, out used);
             acGroups.Add(new AcGroup(key, title, "", false, new string[0]));
             acCards.Add(card);
             acToggles.Add(sw);
+            return used;
         }
 
     }

@@ -63,8 +63,8 @@ namespace PaviseApp
     {
         private const string LastRunKey = "LastRunVersion";
 
-        private const string DataResetBelow = "";
-        private const bool DataResetIncludesSettings = false;
+        private const string DataResetBelow = "1.8.0.1";
+        private const bool DataResetIncludesSettings = true;
 
         private static readonly object lk = new object();
         private static bool settingsMigrated;
@@ -87,16 +87,16 @@ namespace PaviseApp
             }
         }
 
-        public static void ResetDataOnUpgrade(string dataDir)
+        public static bool ResetDataOnUpgrade(string dataDir)
         {
-            if (DataResetBelow.Length == 0) return;
+            if (DataResetBelow.Length == 0) return true;
             string last = PreviousRunVersion;
-            if (last.Length == 0) return;
-            if (Program.CompareVersions(last, DataResetBelow) >= 0) return;
+            if (last.Length == 0) return true;
+            if (Program.CompareVersions(last, DataResetBelow) >= 0) return true;
 
             int files;
             string unrestored;
-            LegacyPurge.WipeAll(dataDir, DataResetIncludesSettings,
+            return LegacyPurge.WipeAll(dataDir, DataResetIncludesSettings,
                 "升级数据重置 上个版本 " + last + " 低于数据基线 " + DataResetBelow,
                 out files, out unrestored);
         }
@@ -111,10 +111,6 @@ namespace PaviseApp
                 "写入值削弱前台时间片",
                 FgBoost.HasResidue, FgBoost.Restore),
 
-            new RetiredFeature("MSI 模式", "1.6.8",
-                "无法验证设备是否支持消息信号中断",
-                MsiModeTweak.HasResidue, MsiModeTweak.Restore),
-
             new RetiredFeature("网卡中断亲和", "1.6.8",
                 "无实测数据",
                 NetworkAffinityTweak.HasResidue, NetworkAffinityTweak.Disable),
@@ -127,11 +123,6 @@ namespace PaviseApp
                 "禁用会丢失 Auto HDR 与可变刷新率",
                 delegate { return GameExeTweaks.HasKindResidue("fso"); },
                 delegate { GameExeTweaks.RestoreKind("fso"); return true; }),
-
-            new RetiredFeature("AMD 驱动调优", "1.7",
-                "A 卡用户实机反馈存在副作用",
-                AdlxTweaks.HasResidue,
-                delegate { AdlxTweaks.HealFromCrash(); return !AdlxTweaks.HasResidue(); }),
 
             new RetiredFeature("硬盘中断避让", "1.7.0.1",
                 "只测过 DPC 次数下降 无帧数据",
@@ -156,19 +147,33 @@ namespace PaviseApp
                 "写的是 NVIDIA 基础 Profile 的全局项 限的是失去焦点的程序 玩家切出游戏时游戏自己就被限到 20 帧 双屏和挂机玩法受影响最大",
                 NvGlobalTweaks.HasResidue, NvGlobalTweaks.Restore),
 
-            new RetiredFeature("窗口化游戏优化", "1.7.1",
-                "写的是全局的 DirectX 呈现路径开关 和系统里可变刷新率与 Auto HDR 共用同一个值 收益因游戏而异且无法逐个游戏控制 交回系统设置里由用户自己决定",
-                delegate { return WindowedOptTweak.EnabledByPavise; },
-                WindowedOptTweak.Restore),
-
             new RetiredFeature("Pavise 托管电源计划", "1.7.1",
                 "自建一份计划再逐项写入 等于替用户改系统设置 且和显卡驱动 厂商工具的电源策略互相打架 改成只切换不改写",
                 PowerPlan.HasLegacyManagedResidue, PowerPlan.PurgeLegacyManaged),
+
+            new RetiredFeature("对局稳定后回收后台工作集", "1.7.2",
+                "SetProcessWorkingSetSize 不释放内存 只把页赶去待机列表 脏页还要先写盘 这笔 IO 正好落在对局中 而被压制的后台本来就是内存管理器有压力时首批自然裁剪的对象 进程没挂起 裁完立刻缺页读回 几秒后白做",
+                delegate { return HasSetting("GmBgTrim"); },
+                delegate { Settings.Remove("GmBgTrim"); return true; }),
+
+            new RetiredFeature("待机列表超阈值时清空", "1.7.2",
+                "触发条件成立时清空只换回 382MB 可用内存 代价是 1380 毫秒全系统阻塞加整个文件缓存丢弃 且 5 秒一次检查没有冷却 低配机上会形成清空到读盘到再堆积的反复触发 比它想解决的微卡更糟",
+                delegate { return HasSetting("GmStandbyGuard"); },
+                delegate { Settings.Remove("GmStandbyGuard"); return true; }),
+
+            new RetiredFeature("游戏时免打扰", "1.8.0.2",
+                "只改 ToastEnabled 一个开关 微信 QQ 的弹窗是自绘窗口拦不住 全屏独占时系统横幅本就不抢焦点 实测没有收益",
+                Notif.HasResidue, Notif.Restore),
 
             new RetiredFeature("刷新率守护", "1.7.0.4",
                 "刷新率是持久设置 大多数机器上每局空转 中途被系统打回也无法察觉 改由体检页只读提示",
                 DisplayGuard.HasResidue, DisplayGuard.Restore),
         };
+
+        private static bool HasSetting(string name)
+        {
+            return Settings.LoadStr(name, "").Length > 0;
+        }
 
         private static readonly DefaultReset[] Resets = new DefaultReset[0];
 
@@ -254,7 +259,7 @@ namespace PaviseApp
             "TrimWS", "HzGuardOn", "EnvFuse_hz", "GmIgpuOffload", "GmMemResidency",
             "GmVisualFx", "EnvFuse_fx", "GmPrewarm", "NotesAutoPopup",
             "NvBgFrl", "EnvFuse_nvbg", "GmBgCoreMask", "ArenaPlanGuid", "UltimatePlanGuid",
-            "WindowedOptOnByPavise", "ContactAutoPopup"
+            "ContactAutoPopup", "NotifQuiet", "EnvFuse_notif"
         };
 
         private static void PurgeRetiredSettingKeys()
@@ -294,6 +299,10 @@ namespace PaviseApp
             if (cleaned == 0 && failed == 0 && upgraded)
                 Logger.Log("版本变化 " + last + " " + App.Version + " 无废弃功能残留需要清理");
             PurgeRetiredSettingKeys();
+        }
+
+        public static void StampRunVersion()
+        {
             Settings.SaveStr(LastRunKey, App.Version);
         }
 

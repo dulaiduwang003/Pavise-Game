@@ -126,7 +126,7 @@ namespace PaviseApp
         {
             if (string.IsNullOrEmpty(profileId) || string.IsNullOrEmpty(rendererPath)) return;
             if (GameSessionDetector.IsLauncherLikeName(rendererName)
-                || GameSessionDetector.IsAntiCheatLikeName(rendererName)
+                || AntiCheatCatalog.IsAntiCheatLikeName(rendererName)
                 || GameSessionDetector.IsNonGameRole(rendererName, rendererPath)) return;
             string learnedGame = null;
             lock (sync)
@@ -179,6 +179,111 @@ namespace PaviseApp
                 + (on ? " 之后该程序的进程一起来就直接进对局 不再等前台窗口和渲染证据"
                      : " 恢复成按前台窗口和渲染证据自动判定"));
             KickLibraryChanged();
+            return true;
+        }
+
+        private GameProfile FindProfileLocked(string profileId)
+        {
+            foreach (GameProfile p in profiles)
+                if (string.Equals(p.Id, profileId, StringComparison.OrdinalIgnoreCase)) return p;
+            return null;
+        }
+
+        public bool SetProfileOverride(string profileId, string key, string value)
+        {
+            bool ok = false;
+            lock (sync)
+            {
+                GameProfile p = FindProfileLocked(profileId);
+                if (p != null)
+                {
+                    ok = PolicyResolver.SetOverride(p, key, value);
+                    if (ok) profileStore.Save(profiles);
+                }
+            }
+            return ok;
+        }
+
+        public bool ClearProfileOverride(string profileId, string key)
+        {
+            bool ok = false;
+            lock (sync)
+            {
+                GameProfile p = FindProfileLocked(profileId);
+                if (p != null && p.Overrides.Remove(key))
+                {
+                    profileStore.Save(profiles);
+                    ok = true;
+                }
+            }
+            return ok;
+        }
+
+        public int ClearProfileOverrides(string profileId)
+        {
+            int n = 0;
+            string name = null;
+            lock (sync)
+            {
+                GameProfile p = FindProfileLocked(profileId);
+                if (p != null)
+                {
+                    n = PolicyResolver.ClearAllOverrides(p);
+                    if (n > 0) { profileStore.Save(profiles); name = p.Name; }
+                }
+            }
+            if (name != null) Logger.Log("独立配置 已清除 " + name + " 的全部 " + n + " 项覆盖 回到跟随全局");
+            return n;
+        }
+
+        public int CopyProfileOverrides(string sourceId, string targetId)
+        {
+            int n = 0;
+            string sourceName = null, targetName = null;
+            lock (sync)
+            {
+                GameProfile source = FindProfileLocked(sourceId);
+                GameProfile target = FindProfileLocked(targetId);
+                if (source != null && target != null && !ReferenceEquals(source, target))
+                {
+                    n = PolicyResolver.CopyOverrides(source, target);
+                    profileStore.Save(profiles);
+                    sourceName = source.Name;
+                    targetName = target.Name;
+                }
+            }
+            if (sourceName != null)
+                Logger.Log("独立配置 已把 " + sourceName + " 的 " + n + " 项覆盖套用到 " + targetName);
+            return n;
+        }
+
+        public List<PolicyDiff> DiffProfile(string profileId)
+        {
+            GameProfile copy = null;
+            lock (sync)
+            {
+                GameProfile p = FindProfileLocked(profileId);
+                if (p != null) copy = p.Clone();
+            }
+            return PolicyResolver.Diff(copy);
+        }
+
+        public bool RenameProfile(string profileId, string name)
+        {
+            string trimmed = (name ?? "").Trim();
+            if (trimmed.Length == 0) return false;
+            string oldName = null;
+            lock (sync)
+            {
+                GameProfile p = FindProfileLocked(profileId);
+                if (p == null) return false;
+                if (string.Equals(p.Name, trimmed, StringComparison.Ordinal)) return true;
+                oldName = p.Name;
+                p.Name = trimmed;
+                profileStore.Save(profiles);
+            }
+            Logger.Log("游戏库 已把 " + oldName + " 重命名为 " + trimmed + " 只改显示名 识别不受影响");
+            RaiseLibraryChanged();
             return true;
         }
 
@@ -359,7 +464,7 @@ namespace PaviseApp
         {
             var next = new List<WhitelistRule>();
             var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (string entry in PresetWhitelist)
+            foreach (string entry in SystemProcessCatalog.PresetWhitelist)
             {
                 WhitelistRule rule;
                 if (WhitelistRule.TryCreate(WhitelistRuleKind.LegacyName, entry, out rule)
@@ -386,7 +491,7 @@ namespace PaviseApp
             }
             int matched;
             int freed = ReleaseCurrentWhitelistMatches(out matched);
-            Logger.Log("白名单已恢复为预设 " + PresetWhitelist.Length + " 项 当前匹配 " + matched
+            Logger.Log("白名单已恢复为预设 " + SystemProcessCatalog.PresetWhitelist.Length + " 项 当前匹配 " + matched
                 + " 个 立即恢复 " + freed + " 个后台压制");
             RequestPolicyApply();
             return true;
@@ -435,6 +540,17 @@ namespace PaviseApp
                     }
                 }
             return WhitelistFooterPrefix + count + "|" + hash.ToString("X16");
+        }
+
+        public List<string> GameRootsSnapshot()
+        {
+            lock (sync)
+            {
+                var roots = new List<string>();
+                foreach (KeyValuePair<string, string> kv in gameRoots)
+                    if (!string.IsNullOrEmpty(kv.Value) && !roots.Contains(kv.Value)) roots.Add(kv.Value);
+                return roots;
+            }
         }
 
         private void SaveGames()

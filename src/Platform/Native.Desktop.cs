@@ -43,6 +43,18 @@ namespace PaviseApp
         private static extern bool ChangeWindowMessageFilterEx(IntPtr hwnd, uint message, uint action, IntPtr changeInfo);
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool ChangeWindowMessageFilter(uint message, uint action);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern uint RegisterWindowMessage(string name);
+
+        public static void AllowTaskbarCreatedMessage()
+        {
+            try
+            {
+                uint msg = RegisterWindowMessage("TaskbarCreated");
+                if (msg != 0) ChangeWindowMessageFilter(msg, MSGFLT_ALLOW);
+            }
+            catch { }
+        }
 
         public static void EnableElevatedFileDrop(IntPtr hwnd)
         {

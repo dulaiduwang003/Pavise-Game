@@ -11,10 +11,10 @@ namespace PaviseApp
     internal partial class PanelForm
     {
         private Toggle swHags, swVbs, swIrqAffinity, swUsbAffinity, swGmGuard;
-        private Toggle swNetThrottle, swDevPower, swQuantum, swClock;
-        private Toggle swAccessKeys, swHidPower, swInputQueue, swPointerPrec;
-        private SettingCard cardVbs, cardNetThrottle, cardQuantum, cardClock;
-        private SettingCard cardAccessKeys, cardHidPower, cardInputQueue, cardPointerPrec;
+        private Toggle swDevPower, swWindowedOpt;
+        private Toggle swAccessKeys, swHidPower, swPointerPrec;
+        private SettingCard cardVbs, cardWindowedOpt;
+        private SettingCard cardAccessKeys, cardHidPower, cardPointerPrec;
         private TechTabs envTabs;
         private DBPanel[] envTabPanels;
         private int envBusy;
@@ -39,25 +39,7 @@ namespace PaviseApp
             pageEnvironment.Controls.Add(envTabs);
             y += 48;
 
-            envTabPanels = new DBPanel[3];
-            for (int i = 0; i < envTabPanels.Length; i++)
-            {
-                var panel = new DBPanel();
-                panel.SetBounds(Theme.S(20), Theme.S(y), Theme.S(PageW - 40), Theme.S(PageH - y - 8));
-                panel.BackColor = Theme.Bg; panel.AutoScroll = true; Native.Dark(panel);
-                panel.Visible = i == 0;
-                pageEnvironment.Controls.Add(panel);
-                envTabPanels[i] = panel;
-            }
-            envTabs.IndexChanged = delegate(int index)
-            {
-                for (int i = 0; i < envTabPanels.Length; i++)
-                {
-                    if (i != index) { Fx.Settle(envTabPanels[i]); envTabPanels[i].Visible = false; }
-                }
-                envTabPanels[index].Visible = true;
-                Fx.SlideIn(envTabPanels[index]);
-            };
+            envTabPanels = MakeTabPanels(pageEnvironment, envTabs, 3, y);
 
             Control scroll = envTabPanels[0];
             int sy = 2, cardH;
@@ -74,16 +56,11 @@ namespace PaviseApp
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.gmguard"), Lang.T("set.gmguard.n"), swGmGuard, out cardH);
             sy += cardH + 8;
 
-            swQuantum = MakeSwitch(QuantumTweak.RepairedByPavise, OnQuantumToggle);
-            swQuantum.Enabled = QuantumTweak.NeedsRepair() || QuantumTweak.RepairedByPavise;
-            cardQuantum = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76,
-                Lang.T("set.quantum"), Lang.T("set.quantum.n"), swQuantum, out cardH);
-            sy += cardH + 8;
-
-            swClock = MakeSwitch(PlatformClockTweak.RepairedByPavise, OnClockToggle);
-            swClock.Enabled = PlatformClockTweak.NeedsRepair() || PlatformClockTweak.RepairedByPavise;
-            cardClock = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76,
-                Lang.T("set.clock"), Lang.T("set.clock.n"), swClock, out cardH);
+            bool win11 = Native.OsBuild() >= 22000;
+            swWindowedOpt = MakeSwitch(WindowedOptTweak.EnabledByPavise || WindowedOptTweak.CurrentlyOn(), OnWindowedOptToggle);
+            swWindowedOpt.Enabled = win11 || WindowedOptTweak.EnabledByPavise;
+            cardWindowedOpt = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.windowedopt"),
+                win11 ? Lang.T("set.windowedopt.n") : Lang.T("windowedopt.oldos"), swWindowedOpt, out cardH);
             sy += cardH + 8;
 
             scroll = envTabPanels[1]; sy = 2;
@@ -102,12 +79,6 @@ namespace PaviseApp
 
             swDevPower = MakeSwitch(DevicePowerTweak.EnabledByPavise, OnDevPowerToggle);
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.devpower"), Lang.T("set.devpower.n"), swDevPower, out cardH);
-            sy += cardH + 8;
-
-            swNetThrottle = MakeSwitch(NetTweak.RepairedByPavise, OnNetThrottleToggle);
-            swNetThrottle.Enabled = NetTweak.NeedsRepair() || NetTweak.RepairedByPavise;
-            cardNetThrottle = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76,
-                Lang.T("set.netthrottle"), Lang.T("set.netthrottle.n"), swNetThrottle, out cardH);
             sy += cardH + 8;
 
             scroll = envTabPanels[2]; sy = 2;
@@ -129,12 +100,6 @@ namespace PaviseApp
                 Lang.T("set.pointerprec.n"), swPointerPrec, out cardH);
             sy += cardH + 8;
 
-            swInputQueue = MakeSwitch(InputMythTweak.RepairedByPavise, OnInputQueueToggle);
-            swInputQueue.Enabled = InputMythTweak.NeedsRepair() || InputMythTweak.RepairedByPavise;
-            cardInputQueue = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.inputqueue"),
-                Lang.T("set.inputqueue.n"), swInputQueue, out cardH);
-            sy += cardH + 8;
-
             SyncEnvStatus();
             for (int i = 0; i < envTabPanels.Length; i++) EnableCardCollapse(envTabPanels[i]);
         }
@@ -147,24 +112,15 @@ namespace PaviseApp
 
         private void SyncEnvStatus()
         {
-            if (cardNetThrottle != null)
-                cardNetThrottle.SetStatus(NetTweak.Describe(),
-                    StatusInk(NetTweak.NeedsRepair(), NetTweak.RepairedByPavise));
-            if (cardQuantum != null)
-                cardQuantum.SetStatus(QuantumTweak.Describe(),
-                    StatusInk(QuantumTweak.NeedsRepair(), QuantumTweak.RepairedByPavise));
-            if (cardClock != null)
-                cardClock.SetStatus(PlatformClockTweak.Describe(),
-                    StatusInk(PlatformClockTweak.NeedsRepair(), PlatformClockTweak.RepairedByPavise));
             if (cardAccessKeys != null)
                 cardAccessKeys.SetStatus(AccessibilityKeysTweak.Describe(),
                     StatusInk(AccessibilityKeysTweak.NeedsFix(), AccessibilityKeysTweak.EnabledByPavise));
             if (cardHidPower != null)
                 cardHidPower.SetStatus(HidPowerTweak.Describe(),
                     StatusInk(!HidPowerTweak.EnabledByPavise, HidPowerTweak.EnabledByPavise));
-            if (cardInputQueue != null)
-                cardInputQueue.SetStatus(InputMythTweak.Describe(),
-                    StatusInk(InputMythTweak.NeedsRepair(), InputMythTweak.RepairedByPavise));
+            if (cardWindowedOpt != null && Native.OsBuild() >= 22000)
+                cardWindowedOpt.SetStatus(WindowedOptTweak.Describe(),
+                    StatusInk(!WindowedOptTweak.CurrentlyOn(), WindowedOptTweak.EnabledByPavise));
             if (cardPointerPrec != null)
                 cardPointerPrec.SetStatus(PointerPrecisionTweak.Describe(),
                     StatusInk(PointerPrecisionTweak.NeedsFix(), PointerPrecisionTweak.EnabledByPavise));
@@ -188,50 +144,20 @@ namespace PaviseApp
                 SyncEnvStatus();
         }
 
+        private void OnWindowedOptToggle(object s, EventArgs e)
+        {
+            if (swWindowedOpt.Checked) WindowedOptTweak.Enable(); else WindowedOptTweak.Restore();
+            swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByPavise || WindowedOptTweak.CurrentlyOn());
+            if (cardWindowedOpt != null)
+                SyncEnvStatus();
+        }
+
         private void OnHidPowerToggle(object s, EventArgs e)
         {
             if (!RequireElevationFor(swHidPower, HidPowerTweak.EnabledByPavise)) return;
             if (swHidPower.Checked) HidPowerTweak.Enable(); else HidPowerTweak.Restore();
             swHidPower.SetSilently(HidPowerTweak.EnabledByPavise);
             if (cardHidPower != null)
-                SyncEnvStatus();
-        }
-
-        private void OnInputQueueToggle(object s, EventArgs e)
-        {
-            if (!RequireElevationFor(swInputQueue, InputMythTweak.RepairedByPavise)) return;
-            bool ok = swInputQueue.Checked ? InputMythTweak.Repair() : InputMythTweak.Restore();
-            swInputQueue.SetSilently(InputMythTweak.RepairedByPavise);
-            swInputQueue.Enabled = InputMythTweak.NeedsRepair() || InputMythTweak.RepairedByPavise;
-            if (cardInputQueue != null)
-                SyncEnvStatus();
-            if (ok) PaviseDialog.Info(this, App.DisplayName, Lang.T("irqaffinity.reboot"));
-        }
-
-        private void OnClockToggle(object s, EventArgs e)
-        {
-            if (!RequireElevationFor(swClock, PlatformClockTweak.RepairedByPavise)) return;
-            if (swClock.Checked) PlatformClockTweak.Repair(); else PlatformClockTweak.Restore();
-            swClock.SetSilently(PlatformClockTweak.RepairedByPavise);
-            if (cardClock != null)
-                SyncEnvStatus();
-        }
-
-        private void OnQuantumToggle(object s, EventArgs e)
-        {
-            if (!RequireElevationFor(swQuantum, QuantumTweak.RepairedByPavise)) return;
-            if (swQuantum.Checked) QuantumTweak.Repair(); else QuantumTweak.Restore();
-            swQuantum.SetSilently(QuantumTweak.RepairedByPavise);
-            if (cardQuantum != null)
-                SyncEnvStatus();
-        }
-
-        private void OnNetThrottleToggle(object s, EventArgs e)
-        {
-            if (!RequireElevationFor(swNetThrottle, NetTweak.RepairedByPavise)) return;
-            if (swNetThrottle.Checked) NetTweak.Repair(); else NetTweak.Restore();
-            swNetThrottle.SetSilently(NetTweak.RepairedByPavise);
-            if (cardNetThrottle != null)
                 SyncEnvStatus();
         }
 
@@ -361,13 +287,11 @@ namespace PaviseApp
             if (swIrqAffinity != null) swIrqAffinity.SetSilently(InterruptAffinityTweak.EnabledByPavise);
             if (swUsbAffinity != null) swUsbAffinity.SetSilently(UsbInterruptAffinityTweak.EnabledByPavise);
             if (swGmGuard != null) swGmGuard.SetSilently(GameModeGuard.EnabledByPavise);
-            if (swNetThrottle != null) swNetThrottle.SetSilently(NetTweak.RepairedByPavise);
-            if (swQuantum != null) swQuantum.SetSilently(QuantumTweak.RepairedByPavise);
-            if (swClock != null) swClock.SetSilently(PlatformClockTweak.RepairedByPavise);
             if (swDevPower != null) swDevPower.SetSilently(DevicePowerTweak.EnabledByPavise);
             if (swAccessKeys != null) swAccessKeys.SetSilently(AccessibilityKeysTweak.EnabledByPavise);
             if (swHidPower != null) swHidPower.SetSilently(HidPowerTweak.EnabledByPavise);
-            if (swInputQueue != null) swInputQueue.SetSilently(InputMythTweak.RepairedByPavise);
+            if (swWindowedOpt != null)
+                swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByPavise || WindowedOptTweak.CurrentlyOn());
             if (swPointerPrec != null) swPointerPrec.SetSilently(PointerPrecisionTweak.EnabledByPavise);
         }
     }

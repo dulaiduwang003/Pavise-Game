@@ -12,27 +12,6 @@ namespace PaviseApp
     internal partial class GameMode
     {
 
-        private static readonly string[] PresetWhitelist =
-        {
-
-            "system", "secure system", "registry", "memory compression",
-            "smss", "csrss", "wininit", "winlogon", "services", "lsass", "svchost",
-            "dwm", "fontdrvhost", "audiodg", "wudfhost", "wmiprvse",
-
-            "explorer", "ctfmon", "textinputhost", "sihost", "taskhostw",
-            "conhost", "dllhost", "runtimebroker", "applicationframehost",
-            "shellexperiencehost", "startmenuexperiencehost", "searchhost",
-            "lockapp", "logonui", "securityhealthsystray",
-
-            "vmmem", "vmmemwsl", "wslservice"
-        };
-
-        private static readonly HashSet<string> PurgedPresetNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "obs64", "obs32", "streamlabs obs", "xsplit.core", "livehime", "直播伴侣",
-            "zoom", "teams", "ms-teams", "wemeetapp", "dingtalk"
-        };
-
         private struct Snap
         {
             public uint Pri;
@@ -88,16 +67,18 @@ namespace PaviseApp
         private volatile bool svcPauseOn;
         private volatile bool svcYieldOn;
         private volatile bool wlanGuardOn;
-        private volatile bool notifQuiet;
-        private volatile bool gpuHighPerf;
         private volatile bool nvMaxPerf;
-        private volatile bool nvLowLatency;
+        private volatile string nvLowLatMode = "off";
+        private volatile bool nvSmoothMotion;
+        private volatile bool nvShaderCacheMax;
+        private volatile bool amdAntiLag;
+        private volatile bool amdAfmf;
+        private volatile string amdFrlMode = "off";
         private volatile string nvFrlMode = "off";
         private volatile bool nvAnselOff;
         private volatile bool nvRebarOn;
         private volatile string nvDlssMode = "off";
         private volatile bool nvBattFull;
-        private volatile bool presenceQosOn;
         private volatile bool awakeOn;
         private bool pqosActive;
         private bool awakeActive;
@@ -105,11 +86,6 @@ namespace PaviseApp
         private volatile bool killGameDvr;
         private volatile bool planSwitch;
         private volatile bool standbySweepOn;
-        private volatile bool bgTrimOn;
-        private bool bgTrimDone;
-        private long bgTrimAtTicks;
-        private volatile bool standbyGuardOn;
-        private long nextStandbyGuardTicks;
         private volatile bool squeezeBgOn;
         private long slowEnvAtTicks;
 
@@ -128,6 +104,7 @@ namespace PaviseApp
         private volatile bool gpuDemoteOn;
         private volatile bool panicReq;
         private int panicSeq;
+        private readonly object panicCallGate = new object();
         private int panicServed;
         private volatile bool panicResult;
         private readonly ManualResetEvent panicDone = new ManualResetEvent(true);
@@ -137,7 +114,6 @@ namespace PaviseApp
         private bool dvrActive;
         private bool timerRaised;
         private bool timerSkipLogged;
-        private bool notifActive;
         private bool doActive;
         private ulong throttleMask;
         private readonly ulong allMask;
@@ -148,6 +124,7 @@ namespace PaviseApp
         private uint boostPriorityTarget = Native.HIGH_PRIORITY_CLASS;
         private PerformancePreset preset;
         private GameDetection activeDetection;
+        private volatile PolicySnapshot sessionPolicy;
         private Thread worker;
 
         private struct GameId { public string Name; public long Creation; }
@@ -208,24 +185,24 @@ namespace PaviseApp
             svcPauseOn = Settings.Load("GmSvcPause", false);
             svcYieldOn = Settings.Load("GmSvcYield", false);
             wlanGuardOn = Settings.Load("GmWlanGuard", false);
-            notifQuiet = Settings.Load("NotifQuiet", false);
             VersionMigrations.EnsureSettingsMigrated();
             LoadCustomCoreMask();
             standbySweepOn = Settings.Load("GmStandbySweep", false);
-            bgTrimOn = Settings.Load("GmBgTrim", false);
-            standbyGuardOn = Settings.Load("GmStandbyGuard", false);
             squeezeBgOn = Settings.Load("GmSqueezeBg", true);
             SuppressionCore.SqueezeBackground = squeezeBgOn;
             pauseUpdateOn = Settings.Load("GmPauseUpdate", false);
-            gpuHighPerf = Settings.Load("GpuHighPerf", true);
             nvMaxPerf = Settings.Load("NvMaxPerf", false);
-            nvLowLatency = Settings.Load("NvLowLatency", false);
+            nvLowLatMode = Settings.LoadStr("NvLowLat", "off");
+            nvSmoothMotion = Settings.Load("NvSmoothMotion", false);
+            nvShaderCacheMax = Settings.Load("NvShaderCache", false);
+            amdAntiLag = Settings.Load("AmdAntiLag", false);
+            amdAfmf = Settings.Load("AmdAfmf", false);
+            amdFrlMode = Settings.LoadStr("AmdFrl", "off");
             nvFrlMode = Settings.LoadStr("NvFrl", "off");
             nvAnselOff = Settings.Load("NvAnselOff", false);
             nvRebarOn = Settings.Load("NvRebar", false);
             nvDlssMode = Settings.LoadStr("NvDlss", "off");
             nvBattFull = Settings.Load("NvBattFull", false);
-            presenceQosOn = Settings.Load("GmPresenceQos", true);
             awakeOn = Settings.Load("GmAwake", true);
             killGameDvr = Settings.Load("GameDvrOff", true);
             planSwitch = Settings.Load("PowerPlanOn", true);
@@ -326,7 +303,7 @@ namespace PaviseApp
                     throw new InvalidDataException("白名单为空且没有 V2 版本头");
                 else rewriteFormat = true;
 
-                foreach (string entry in PresetWhitelist)
+                foreach (string entry in SystemProcessCatalog.PresetWhitelist)
                 {
                     WhitelistRule presetRule;
                     if (WhitelistRule.TryCreate(
@@ -340,7 +317,7 @@ namespace PaviseApp
                 if (!Settings.Load("WhitelistPurge1Done", false))
                 {
                     int purged = loadedRules.RemoveAll(r => r.Kind == WhitelistRuleKind.LegacyName
-                        && PurgedPresetNames.Contains(r.Value));
+                        && SystemProcessCatalog.PurgedPresetNames.Contains(r.Value));
                     if (purged > 0)
                     {
                         rewriteFormat = true;
@@ -356,7 +333,7 @@ namespace PaviseApp
             catch (Exception ex)
             {
 
-                foreach (string entry in PresetWhitelist) AddWhiteNoSave(entry);
+                foreach (string entry in SystemProcessCatalog.PresetWhitelist) AddWhiteNoSave(entry);
                 Logger.Log("白名单加载失败 本次运行改用预置白名单 用户自定义项本次不生效 " + ex.Message);
             }
 
@@ -382,13 +359,7 @@ namespace PaviseApp
             try
             {
                 profiles.AddRange(profileStore.LoadOrMigrate(gamesPath));
-                if (profileStore.ClearedLegacyLibrary)
-                {
-                    games.Clear();
-                    gameRoots.Clear();
-                    SaveGames();
-                }
-                else if (profiles.Count > 0) RebuildLegacyGameIndex();
+                if (profiles.Count > 0) RebuildLegacyGameIndex();
             }
             catch { }
         }
@@ -403,7 +374,7 @@ namespace PaviseApp
             lines.Add("# 游戏平台的客户端家族由程序内置豁免 按各平台安装目录校验 无需在此列出");
             lines.Add(WhitelistRule.Header);
             var rules = new List<WhitelistRule>();
-            foreach (string entry in PresetWhitelist)
+            foreach (string entry in SystemProcessCatalog.PresetWhitelist)
             {
                 WhitelistRule rule;
                 if (WhitelistRule.TryCreate(WhitelistRuleKind.LegacyName, entry, out rule))
@@ -483,14 +454,152 @@ namespace PaviseApp
 
         public PerformancePreset ActivePreset
         {
-            get { lock (sync) return preset; }
+            get
+            {
+                PolicySnapshot s = sessionPolicy;
+                if (s != null) return s.Preset;
+                lock (sync) return preset;
+            }
         }
 
-        private bool ExtremeNow { get { lock (sync) return preset == PerformancePreset.Extreme; } }
-        private bool EffSuppress { get { return bgSuppressOn || ExtremeNow; } }
-        private bool EffBoost { get { return boostOn || ExtremeNow; } }
-        private bool EffIfeo { get { return ifeoOn || ExtremeNow; } }
-        private bool EffLane { get { return renderLaneOn || ExtremeNow; } }
+        public string SessionPolicySourceName
+        {
+            get
+            {
+                PolicySnapshot s = sessionPolicy;
+                return s != null && !s.IsGlobal && IsActive ? s.ProfileName : null;
+            }
+        }
+
+        public string SessionPolicyProfileId
+        {
+            get
+            {
+                PolicySnapshot s = sessionPolicy;
+                return s != null && IsActive ? s.ProfileId : null;
+            }
+        }
+
+        private bool ExtremeNow { get { return ActivePreset == PerformancePreset.Extreme; } }
+
+        private bool EffSuppress
+        {
+            get
+            {
+                PolicySnapshot s = sessionPolicy;
+                return s != null ? s.EffSuppress : (bgSuppressOn || ExtremeNow);
+            }
+        }
+
+        private bool EffBoost
+        {
+            get
+            {
+                PolicySnapshot s = sessionPolicy;
+                return s != null ? s.EffBoost : (boostOn || ExtremeNow);
+            }
+        }
+
+        private bool EffIfeo
+        {
+            get
+            {
+                PolicySnapshot s = sessionPolicy;
+                return s != null ? s.EffIfeo : (ifeoOn || ExtremeNow);
+            }
+        }
+
+        private bool EffLane
+        {
+            get
+            {
+                PolicySnapshot s = sessionPolicy;
+                return s != null ? s.EffLane : (renderLaneOn || ExtremeNow);
+            }
+        }
+
+        private bool EffUploadYield
+        {
+            get
+            {
+                PolicySnapshot s = sessionPolicy;
+                return s != null ? s.UploadYield : uploadYieldOn;
+            }
+        }
+
+        private void BeginSessionPolicy()
+        {
+            GameProfile source;
+            lock (sync) source = activeDetection != null ? activeDetection.Profile : null;
+            PolicySnapshot snap = source != null ? PolicyResolver.For(source) : PolicyResolver.Global();
+            sessionPolicy = snap;
+            if (!snap.IsGlobal)
+                Logger.Log("本局使用 " + snap.ProfileName + " 的独立配置 覆盖 "
+                    + snap.OverrideCount + " 项 对局中的修改下局生效");
+            ApplySessionCoreMask(snap);
+            ApplySessionCoreDomain(snap);
+        }
+
+        private void ApplySessionCoreMask(PolicySnapshot snap)
+        {
+            if (!snap.HasOverride(PolicyCatalog.KeyCoreMask))
+            {
+                RestoreGlobalCoreMask();
+                return;
+            }
+            ulong wanted = snap.CoreMask;
+            if (wanted == CpuTopology.CustomMask) return;
+            if (wanted == 0)
+            {
+                CpuTopology.SetCustomMask(0);
+                Logger.Log("独立配置 " + snap.ProfileName + " 本局不用自定义核心 走默认分区");
+                return;
+            }
+            if (CpuTopology.SetCustomMask(wanted))
+                Logger.Log("独立配置 " + snap.ProfileName + " 本局核心 "
+                    + CpuTopology.DescribeMask(CpuTopology.CustomMask));
+            else Logger.Log("独立配置 " + snap.ProfileName + " 存的核心集合在本机不可用 保持全局设置");
+        }
+
+        private void RestoreGlobalCoreMask()
+        {
+            string raw = Settings.LoadStr(CoreMaskKey, "");
+            ulong parsed;
+            if (raw.Length > 0 && ulong.TryParse(raw, System.Globalization.NumberStyles.HexNumber,
+                    System.Globalization.CultureInfo.InvariantCulture, out parsed)
+                && CpuTopology.SetCustomMask(parsed))
+                return;
+            CpuTopology.SetCustomMask(0);
+        }
+
+        private void ApplySessionCoreDomain(PolicySnapshot snap)
+        {
+            if (!CpuTopology.DomainPreferenceApplied || !CpuTopology.HasAltPartition()) return;
+            if (snap.CoreDomainAlt == CpuTopology.AltDomainActive) return;
+            if (!CpuTopology.SwapDomains()) return;
+            throttleMask = CpuTopology.ThrottleMask;
+            strictMask = CpuTopology.StrictBoostMask;
+            core.RefreshTopologyMasks();
+            if (snap.HasOverride(PolicyCatalog.KeyCoreDomainAlt))
+                Logger.Log("独立配置 " + snap.ProfileName + " 本局核心范围换到另一块 游戏 "
+                    + CpuTopology.DescribeMask(strictMask) + " 后台 " + CpuTopology.DescribeMask(throttleMask));
+            else
+                Logger.Log("核心范围回到全局设置 游戏 "
+                    + CpuTopology.DescribeMask(strictMask) + " 后台 " + CpuTopology.DescribeMask(throttleMask));
+        }
+
+#if PAVISE_SELFTEST
+        internal void ProbeSessionPolicyApply(GameProfile profile)
+        {
+            sessionPolicy = profile != null ? PolicyResolver.For(profile) : PolicyResolver.Global();
+        }
+
+        internal void ProbeSessionPolicyClear() { sessionPolicy = null; }
+
+        internal bool ProbeEffSuppress { get { return EffSuppress; } }
+
+        internal bool ProbeEffIfeo { get { return EffIfeo; } }
+#endif
 
         internal static bool ShouldUseCorePartition(bool manuallySelected, bool partitionAvailable)
         {
@@ -517,360 +626,9 @@ namespace PaviseApp
             }
         }
 
-        public bool SuppressBackground
-        {
-            get { return bgSuppressOn; }
-            set { bgSuppressOn = value; Settings.Save("GmSuppress", value); RequestPolicyApply(); }
-        }
-
-        public bool BoostGame
-        {
-            get { return boostOn; }
-            set { boostOn = value; Settings.Save("GmBoost", value); RequestPolicyApply(); }
-        }
-
-        public bool CorePartitionEnabled
-        {
-            get { return corePartitionOn; }
-            set { corePartitionOn = value; Settings.Save("GmStrictCores", value); RequestPolicyApply(); }
-        }
-
-        public bool CoreDomainAlt
-        {
-            get { return coreDomainAltOn; }
-            set
-            {
-                if (coreDomainAltOn == value) return;
-                coreDomainAltOn = value;
-                Settings.Save("GmCoreDomainAlt", value);
-                RequestPolicyApply();
-            }
-        }
-
-        public bool CoreDomainSwitchPending
-        {
-            get { return CpuTopology.HasAltPartition() && coreDomainAltOn != CpuTopology.AltDomainActive; }
-        }
-
-        private void TryDomainSwap()
-        {
-            if (!CpuTopology.DomainPreferenceApplied || !CpuTopology.HasAltPartition()) return;
-            if (coreDomainAltOn == CpuTopology.AltDomainActive) return;
-            bool sessionActive;
-            lock (sync) sessionActive = active;
-            if (sessionActive) return;
-            ReleaseBackground("核心域切换");
-            if (!CpuTopology.SwapDomains()) return;
-            throttleMask = CpuTopology.ThrottleMask;
-            strictMask = CpuTopology.StrictBoostMask;
-            core.RefreshTopologyMasks();
-            Logger.Log("游戏核心范围 已切换 游戏 " + CpuTopology.DescribeMask(strictMask)
-                + " 后台 " + CpuTopology.DescribeMask(throttleMask) + " 即刻生效");
-        }
-
-        public bool AggressiveSuppression
-        {
-            get { return aggressiveOn; }
-            set { aggressiveOn = value; Settings.Save("GmAggressive", value); RequestPolicyApply(); }
-        }
+        public bool ProfileStoreReadOnly { get { return profileStore.LoadFailed; } }
 
         private const string CoreMaskKey = "GmCoreMask";
-
-        private static void LoadCustomCoreMask()
-        {
-            string raw = Settings.LoadStr(CoreMaskKey, "");
-            if (raw.Length == 0) return;
-            ulong parsed;
-            if (!ulong.TryParse(raw, System.Globalization.NumberStyles.HexNumber,
-                    System.Globalization.CultureInfo.InvariantCulture, out parsed))
-            {
-                Settings.SaveStr(CoreMaskKey, "");
-                return;
-            }
-            if (!CpuTopology.SetCustomMask(parsed))
-            {
-                Settings.SaveStr(CoreMaskKey, "");
-                Logger.Log("自定义核心 存的核心集合在本机不可用 已回到默认分区");
-                return;
-            }
-            Logger.Log("自定义核心 已启用 " + CpuTopology.DescribeMask(CpuTopology.CustomMask)
-                + " 后台去 " + CpuTopology.DescribeMask(CpuTopology.CustomBackgroundMask));
-        }
-
-        public ulong CustomCoreMask
-        {
-            get { return CpuTopology.CustomMask; }
-            set
-            {
-                bool ok = CpuTopology.SetCustomMask(value);
-                Settings.SaveStr(CoreMaskKey, ok ? CpuTopology.CustomMask.ToString("X") : "");
-                Logger.Log(ok
-                    ? "自定义核心 已设为 " + CpuTopology.DescribeMask(CpuTopology.CustomMask)
-                        + " 后台去 " + CpuTopology.DescribeMask(CpuTopology.CustomBackgroundMask)
-                    : "自定义核心 已关闭 回到默认分区策略");
-                RequestPolicyApply();
-            }
-        }
-
-        public bool GpuDemote
-        {
-            get { return gpuDemoteOn; }
-            set { gpuDemoteOn = value; SuppressionCore.GpuDemoteEnabled = value; Settings.Save("GmGpuDemote", value); RequestPolicyApply(); }
-        }
-
-        public bool IfeoBoostFallback
-        {
-            get { return ifeoOn; }
-            set
-            {
-                ifeoOn = value; Settings.Save("GmIfeoBoost", value);
-                if (!value) IfeoBoost.RestoreAll();
-                RequestPolicyApply();
-            }
-        }
-
-        public bool RenderLaneOn
-        {
-            get { return renderLaneOn; }
-            set
-            {
-                renderLaneOn = value; Settings.Save("GmRenderLane", value);
-                if (!value) RenderLane.Release();
-                RequestPolicyApply();
-            }
-        }
-
-        public bool UploadYieldOn
-        {
-            get { return uploadYieldOn; }
-            set
-            {
-                uploadYieldOn = value; Settings.Save("GmUploadYield", value);
-                if (!value) UploadYield.Clear();
-            }
-        }
-
-        public bool PurgeStandby
-        {
-            get { return standbySweepOn; }
-            set { standbySweepOn = value; Settings.Save("GmStandbySweep", value); }
-        }
-
-        public bool TrimBackgroundOn
-        {
-            get { return bgTrimOn; }
-            set
-            {
-                bgTrimOn = value; Settings.Save("GmBgTrim", value);
-                if (!value) BackgroundTrim.Cancel();
-            }
-        }
-
-        public bool StandbyGuardOn
-        {
-            get { return standbyGuardOn; }
-            set { standbyGuardOn = value; Settings.Save("GmStandbyGuard", value); }
-        }
-
-        public bool SqueezeBackgroundOn
-        {
-            get { return squeezeBgOn; }
-            set
-            {
-                squeezeBgOn = value; Settings.Save("GmSqueezeBg", value);
-                SuppressionCore.SqueezeBackground = value;
-                RequestPolicyApply();
-            }
-        }
-
-        public bool SqueezeBackgroundAvailable
-        {
-            get { return CpuTopology.BackgroundSqueezeMask() != 0 && !CpuTopology.MultiGroup; }
-        }
-
-        public bool PauseWindowsUpdate
-        {
-            get { return pauseUpdateOn; }
-            set { pauseUpdateOn = value; Settings.Save("GmPauseUpdate", value); if (value) ClearEnvFuse("wu"); RequestPolicyApply(); }
-        }
-
-        public bool PauseDownloads
-        {
-            get { return pauseDlOn; }
-            set { pauseDlOn = value; Settings.Save("GmPauseDl", value); if (value) ClearEnvFuse("do"); RequestPolicyApply(); }
-        }
-
-        public bool PauseSvcIndex
-        {
-            get { return svcPauseOn; }
-            set { svcPauseOn = value; Settings.Save("GmSvcPause", value); if (value) ClearEnvFuse("svc"); RequestPolicyApply(); }
-        }
-
-        public bool ServiceYield
-        {
-            get { return svcYieldOn; }
-            set { svcYieldOn = value; Settings.Save("GmSvcYield", value); if (value) ClearEnvFuse("svcyield"); RequestPolicyApply(); }
-        }
-
-        public bool WlanScanGuard
-        {
-            get { return wlanGuardOn; }
-            set { wlanGuardOn = value; Settings.Save("GmWlanGuard", value); if (value) ClearEnvFuse("wlanscan"); RequestPolicyApply(); }
-        }
-
-        public bool NotifQuiet
-        {
-            get { return notifQuiet; }
-            set { notifQuiet = value; Settings.Save("NotifQuiet", value); if (value) ClearEnvFuse("notif"); RequestPolicyApply(); }
-        }
-
-        public bool GpuHighPerf
-        {
-            get { return gpuHighPerf; }
-            set
-            {
-                gpuHighPerf = value; Settings.Save("GpuHighPerf", value);
-                if (!value) GameExeTweaks.RestoreKind("gpu");
-                lock (sync) tweakApplied.Clear();
-                RequestPolicyApply();
-            }
-        }
-
-        public bool NvMaxPerf
-        {
-            get { return nvMaxPerf; }
-            set
-            {
-                nvMaxPerf = value; Settings.Save("NvMaxPerf", value);
-                if (!value) NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyPState);
-                else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyPState, 0);
-                lock (sync) tweakApplied.Clear();
-                RequestPolicyApply();
-            }
-        }
-
-        public bool NvLowLatency
-        {
-            get { return nvLowLatency; }
-            set
-            {
-                nvLowLatency = value; Settings.Save("NvLowLatency", value);
-                if (!value)
-                {
-                    NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyPreRender);
-                    NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyLowLatCpl);
-                }
-                else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyPreRender, 0);
-                lock (sync) tweakApplied.Clear();
-                RequestPolicyApply();
-            }
-        }
-
-        public bool NvAnselOff
-        {
-            get { return nvAnselOff; }
-            set
-            {
-                nvAnselOff = value; Settings.Save("NvAnselOff", value);
-                if (!value) NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyAnsel);
-                else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyAnsel, 0);
-                lock (sync) tweakApplied.Clear();
-                RequestPolicyApply();
-            }
-        }
-
-        public bool NvRebar
-        {
-            get { return nvRebarOn; }
-            set
-            {
-                nvRebarOn = value; Settings.Save("NvRebar", value);
-                if (!value) NvDrsTweaks.RestoreKinds(NvDrsTweaks.RebarKeys);
-                else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyRebarFeat, 0);
-                lock (sync) tweakApplied.Clear();
-                RequestPolicyApply();
-            }
-        }
-
-        public string NvDlssMode
-        {
-            get { return nvDlssMode; }
-            set
-            {
-                string mode = value == "latest" || value == "j" || value == "k" ? value : "off";
-                nvDlssMode = mode; Settings.SaveStr("NvDlss", mode);
-                if (mode == "off") NvDrsTweaks.RestoreKinds(NvDrsTweaks.DlssKeys);
-                else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyDlssOvr, 0);
-                lock (sync) tweakApplied.Clear();
-                RequestPolicyApply();
-            }
-        }
-
-        public bool NvBattFull
-        {
-            get { return nvBattFull; }
-            set
-            {
-                nvBattFull = value; Settings.Save("NvBattFull", value);
-                if (!value) NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyBattFps);
-                else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyBattFps, 0);
-                lock (sync) tweakApplied.Clear();
-                RequestPolicyApply();
-            }
-        }
-
-        public bool PresenceQosOff
-        {
-            get { return presenceQosOn; }
-            set
-            {
-                presenceQosOn = value; Settings.Save("GmPresenceQos", value);
-                if (value) ClearEnvFuse("pqos");
-                RequestPolicyApply();
-            }
-        }
-
-        public bool KeepAwake
-        {
-            get { return awakeOn; }
-            set
-            {
-                awakeOn = value; Settings.Save("GmAwake", value);
-                if (value) ClearEnvFuse("awake");
-                RequestPolicyApply();
-            }
-        }
-
-        public string NvFrlMode
-        {
-            get { return nvFrlMode; }
-            set
-            {
-                string mode = value == "60" || value == "120" || value == "240" || value == "screen" ? value : "off";
-                nvFrlMode = mode; Settings.SaveStr("NvFrl", mode);
-                if (mode == "off") NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyFrl);
-                else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyFrl, 0);
-                lock (sync) tweakApplied.Clear();
-                RequestPolicyApply();
-            }
-        }
-
-        public bool KillGameDvr
-        {
-            get { return killGameDvr; }
-            set { killGameDvr = value; Settings.Save("GameDvrOff", value); if (value) ClearEnvFuse("dvr"); RequestPolicyApply(); }
-        }
-
-        public bool PowerPlanSwitch
-        {
-            get { return planSwitch; }
-            set
-            {
-                planSwitch = value; Settings.Save("PowerPlanOn", value);
-                if (value) { SaveCounter(PowerFailStreakKey, 0); ClearEnvFuse("overlay"); }
-                RequestPolicyApply();
-            }
-        }
 
         public string StatusText
         {
@@ -1015,16 +773,13 @@ namespace PaviseApp
                                     {
                                         lock (sync) { active = true; activeGame = running; firstSweep = true; }
                                         Logger.Log("游戏模式激活 检测到 " + running);
+                                        BeginSessionPolicy();
                                         ReportBegin(running);
                                         uploadYieldDone = false;
                                         uploadYieldAtTicks = DateTime.UtcNow
                                             .AddSeconds(UplinkGate.WarmupSeconds).Ticks;
                                         uplinkSampleTicks = 0;
                                         uplinkSampleBytes = 0;
-                                        bgTrimDone = false;
-                                        bgTrimAtTicks = DateTime.UtcNow
-                                            .AddSeconds(BackgroundTrim.DelaySeconds).Ticks;
-                                        nextStandbyGuardTicks = 0;
                                         slowEnvAtTicks = DateTime.UtcNow
                                             .AddSeconds(SlowEnvDelaySeconds).Ticks;
                                     }
@@ -1032,14 +787,14 @@ namespace PaviseApp
                                     {
                                         lock (sync) activeGame = running;
                                         Logger.Log("游戏模式 检测目标变更 " + running);
+                                        BeginSessionPolicy();
                                         ReportFinish();
                                         ReportBegin(running);
                                     }
                                     ApplyEnv();
                                     GpuThrottleProbe.SampleIfDue();
+                                    VramSpillProbe.SampleIfDue(gamePids);
                                     if (EffSuppress) Sweep(all, gamePids);
-                                    if (EffSuppress) BackgroundTrimTick(gamePids);
-                                    StandbyGuardTick();
                                     if (!EffSuppress) ReleaseBackground();
                                     if (EffBoost) Boost(all);
                                     else UnboostGames();
@@ -1195,7 +950,7 @@ namespace PaviseApp
 
         private void UploadYieldTick(ProcessSnapshot all)
         {
-            if (!uploadYieldOn || uploadYieldDone || all == null) return;
+            if (!EffUploadYield || uploadYieldDone || all == null) return;
             long now = DateTime.UtcNow.Ticks;
             if (now < uploadYieldAtTicks) return;
 
@@ -1227,248 +982,6 @@ namespace PaviseApp
             Logger.Log("上传让位 后台上行 " + mbps.ToString("F1") + " Mbps 超过闸门 "
                 + UplinkGate.BusyMbps.ToString("F1") + " Mbps 开始限速");
             UploadYield.Apply(names);
-        }
-
-        private GameDetection ApplyStickiness(GameDetection hit)
-        {
-            if (hit != null)
-            {
-                stickyMiss = 0;
-                if (stickyDetection != null && stickyDetection.Profile != null && hit.Profile != null
-                    && string.Equals(stickyDetection.Profile.Id, hit.Profile.Id, StringComparison.OrdinalIgnoreCase)
-                    && stickyDetection.RendererPid > 0 && AliveWithIdentity(stickyDetection.RendererPid))
-                {
-                    bool freshMayReplace = false;
-                    if (hit.RendererPid > 0 && hit.RendererPid != stickyDetection.RendererPid)
-                    {
-                        GameId anchorId; string nm; long cr;
-                        if (stickyIds.TryGetValue(stickyDetection.RendererPid, out anchorId)
-                            && TryIdentity(hit.RendererPid, out nm, out cr)
-                            && FreshRendererMayReplaceSticky(
-                                hit, nm, cr,
-                                anchorId.Creation))
-                            freshMayReplace = true;
-                    }
-                    if (hit.RendererPid
-                            != stickyDetection.RendererPid
-                        && !freshMayReplace)
-                    {
-                        List<int> retainedFamily =
-                            LiveStickyFamily();
-                        if (!ReanchorToStickyInstance(
-                                hit, stickyDetection,
-                                retainedFamily))
-                        {
-
-                            ClearSticky();
-                        }
-                    }
-                }
-                RememberSticky(hit);
-                foreach (int pid in LiveStickyFamily()) hit.FamilyPids.Add(pid);
-                return hit;
-            }
-            if (stickyDetection != null && stickyDetection.RendererPid > 0
-                && AliveWithIdentity(stickyDetection.RendererPid))
-            {
-                stickyMiss = 0;
-                var r = new GameDetection
-                {
-                    Profile = stickyDetection.Profile,
-                    RendererPid = stickyDetection.RendererPid,
-                    RendererCreation =
-                        stickyDetection.RendererCreation,
-                    RendererName = stickyDetection.RendererName,
-                    RendererPath = stickyDetection.RendererPath,
-                    RendererForeground =
-                        stickyDetection.RendererForeground,
-                    RendererCandidateSelected = true,
-                    RendererUserSelected = stickyDetection.RendererUserSelected,
-                    RendererLearnable = stickyDetection.RendererLearnable,
-                    Evidence = stickyDetection.Evidence
-                };
-                r.FamilyPids.Add(stickyDetection.RendererPid);
-                foreach (int pid in LiveStickyFamily()) r.FamilyPids.Add(pid);
-                foreach (string n in stickyDetection.FamilyNames) r.FamilyNames.Add(n);
-                stickyDetection = r;
-                return r;
-            }
-            if (stickyDetection != null && stickyMiss < StickyGraceMisses && !AnyStickyReused())
-            {
-                stickyMiss++;
-
-                RequestFullGameDetection();
-                try { kick.Set(); } catch { }
-                return CloneWithAnchoredFamily(stickyDetection);
-            }
-            ClearSticky();
-            return null;
-        }
-
-        internal static bool FreshRendererMayReplaceSticky(
-            GameDetection fresh, string verifiedName,
-            long verifiedCreation, long stickyCreation)
-        {
-            if (fresh == null || fresh.RendererPid <= 0
-                || string.IsNullOrEmpty(fresh.RendererName)
-                || string.IsNullOrEmpty(verifiedName)
-                || verifiedCreation <= 0 || stickyCreation <= 0
-                || !string.Equals(
-                    verifiedName, fresh.RendererName,
-                    StringComparison.OrdinalIgnoreCase))
-                return false;
-            if (fresh.RendererForeground
-                && !GameSessionDetector.IsLauncherLikeName(
-                    fresh.RendererName))
-                return true;
-            return verifiedCreation > stickyCreation;
-        }
-
-        internal static bool ReanchorToStickyInstance(
-            GameDetection fresh, GameDetection sticky,
-            IList<int> verifiedStickyPids)
-        {
-            if (fresh == null || sticky == null
-                || sticky.RendererPid <= 0
-                || verifiedStickyPids == null)
-                return false;
-            bool rendererVerified = false;
-            foreach (int pid in verifiedStickyPids)
-                if (pid == sticky.RendererPid)
-                {
-                    rendererVerified = true;
-                    break;
-                }
-            if (!rendererVerified) return false;
-
-            fresh.RendererPid = sticky.RendererPid;
-            fresh.RendererCreation = sticky.RendererCreation;
-            fresh.RendererName = sticky.RendererName;
-            fresh.RendererPath = sticky.RendererPath;
-            fresh.RendererForeground =
-                sticky.RendererForeground;
-            fresh.RendererCandidateSelected = true;
-            fresh.RendererUserSelected =
-                sticky.RendererUserSelected;
-            fresh.Evidence = sticky.Evidence;
-            fresh.FamilyPids.Clear();
-            foreach (int pid in verifiedStickyPids)
-                if (pid > 0) fresh.FamilyPids.Add(pid);
-            fresh.FamilyNames.Clear();
-            foreach (string name in sticky.FamilyNames)
-                fresh.FamilyNames.Add(name);
-            return true;
-        }
-
-        private GameDetection CloneWithAnchoredFamily(GameDetection src)
-        {
-            var g = new GameDetection
-            {
-                Profile = src.Profile,
-                RendererPid = src.RendererPid,
-                RendererCreation = src.RendererCreation,
-                RendererName = src.RendererName,
-                RendererPath = src.RendererPath,
-                RendererForeground =
-                    src.RendererForeground,
-                RendererCandidateSelected = src.RendererCandidateSelected,
-                RendererUserSelected = src.RendererUserSelected,
-                RendererLearnable = src.RendererLearnable,
-                Evidence = src.Evidence
-            };
-            foreach (int pid in src.FamilyPids) if (stickyIds.ContainsKey(pid)) g.FamilyPids.Add(pid);
-            foreach (string n in src.FamilyNames) g.FamilyNames.Add(n);
-            return g;
-        }
-
-        private void RememberSticky(GameDetection hit)
-        {
-            if (hit == null) { ClearSticky(); return; }
-            if (!hit.RendererUserSelected && GameSessionDetector.IsLauncherLikeName(hit.RendererName)) { ClearSticky(); return; }
-            var fresh = new Dictionary<int, GameId>();
-            foreach (int pid in hit.FamilyPids)
-            {
-                string nm; long cr;
-                if (TryIdentity(pid, out nm, out cr)) fresh[pid] = new GameId { Name = nm, Creation = cr };
-            }
-            if (hit.RendererPid > 0 && !fresh.ContainsKey(hit.RendererPid))
-            {
-                string nm; long cr;
-                if (TryIdentity(hit.RendererPid, out nm, out cr)) fresh[hit.RendererPid] = new GameId { Name = nm, Creation = cr };
-            }
-            GameId rendererIdentity;
-            if (fresh.TryGetValue(
-                    hit.RendererPid, out rendererIdentity))
-                hit.RendererCreation = rendererIdentity.Creation;
-            if (hit.RendererPid > 0 && !fresh.ContainsKey(hit.RendererPid))
-            {
-                int anchorPid = stickyDetection != null ? stickyDetection.RendererPid : 0;
-                List<int> gone = null;
-                foreach (var kv in stickyIds)
-                {
-                    if (fresh.ContainsKey(kv.Key) || kv.Key == hit.RendererPid || kv.Key == anchorPid) continue;
-                    if (AliveWithIdentity(kv.Key)) continue;
-                    if (gone == null) gone = new List<int>();
-                    gone.Add(kv.Key);
-                }
-                if (gone != null) foreach (int dead in gone) stickyIds.Remove(dead);
-                foreach (var kv in fresh) stickyIds[kv.Key] = kv.Value;
-                return;
-            }
-            stickyIds.Clear();
-            foreach (var kv in fresh) stickyIds[kv.Key] = kv.Value;
-            stickyDetection = hit;
-        }
-
-        private List<int> LiveStickyFamily()
-        {
-            var l = new List<int>();
-            foreach (var kv in stickyIds) if (AliveWithIdentity(kv.Key)) l.Add(kv.Key);
-            return l;
-        }
-
-        private void ClearSticky()
-        {
-            stickyDetection = null;
-            stickyIds.Clear();
-            stickyMiss = 0;
-        }
-
-        private bool AliveWithIdentity(int pid)
-        {
-            GameId id;
-            if (!stickyIds.TryGetValue(pid, out id)) return false;
-            string nm; long cr;
-            return TryIdentity(pid, out nm, out cr) && cr == id.Creation
-                && string.Equals(nm, id.Name, StringComparison.OrdinalIgnoreCase);
-        }
-
-        private bool AnyStickyReused()
-        {
-            foreach (var kv in stickyIds)
-            {
-                string nm; long cr;
-                if (TryIdentity(kv.Key, out nm, out cr)
-                    && (cr != kv.Value.Creation
-                        || !string.Equals(nm, kv.Value.Name, StringComparison.OrdinalIgnoreCase)))
-                    return true;
-            }
-            return false;
-        }
-
-        private static bool TryIdentity(int pid, out string name, out long creation)
-        {
-            name = null; creation = 0;
-            if (pid <= 0) return false;
-            IntPtr h = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
-            if (h == IntPtr.Zero) return false;
-            try
-            {
-                name = Native.ImageName(h);
-                long cpu; ulong io;
-                return Native.QueryProcessSample(h, out creation, out cpu, out io) && !string.IsNullOrEmpty(name);
-            }
-            finally { Native.CloseHandle(h); }
         }
 
     }

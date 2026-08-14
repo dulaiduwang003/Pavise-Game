@@ -11,7 +11,9 @@ namespace PaviseApp
     {
         public bool MaxPerf;
         public int FrlFps;
-        public bool LowLatency;
+        public string LowLatMode;
+        public bool SmoothMotion;
+        public bool ShaderCacheMax;
         public bool AnselOff;
         public bool Rebar;
         public string DlssMode;
@@ -21,7 +23,9 @@ namespace PaviseApp
         {
             get
             {
-                return !MaxPerf && FrlFps <= 0 && !LowLatency && !AnselOff && !Rebar && !BattFull
+                return !MaxPerf && FrlFps <= 0 && !AnselOff && !Rebar && !BattFull
+                    && !SmoothMotion && !ShaderCacheMax
+                    && (LowLatMode == null || LowLatMode == "off")
                     && (DlssMode == null || DlssMode == "off");
             }
         }
@@ -35,6 +39,9 @@ namespace PaviseApp
         public const string KeyFrl = "frl";
         public const string KeyPreRender = "prerender";
         public const string KeyLowLatCpl = "lowlatcpl";
+        public const string KeyUllEnable = "ullenable";
+        public const string KeySmooth = "smooth";
+        public const string KeyShaderCache = "shadercache";
         public const string KeyAnsel = "ansel";
         public const string KeyRebarFeat = "rebarfeat";
         public const string KeyRebarOpt = "rebaropt";
@@ -45,9 +52,11 @@ namespace PaviseApp
 
         public static readonly string[] RebarKeys = { KeyRebarFeat, KeyRebarOpt, KeyRebarSize };
         public static readonly string[] DlssKeys = { KeyDlssOvr, KeyDlssPreset };
+        public static readonly string[] UltraKeys = { KeyPreRender, KeyUllEnable, KeyLowLatCpl };
 
         private static readonly object sync = new object();
         private static bool dlssGateLogged;
+        private static bool smoothGateLogged;
 
         internal static uint SettingIdOf(string key)
         {
@@ -56,6 +65,9 @@ namespace PaviseApp
                 case KeyPState: return NvApi.SettingPreferredPState;
                 case KeyPreRender: return NvApi.SettingPreRenderLimit;
                 case KeyLowLatCpl: return NvApi.SettingLowLatencyCpl;
+                case KeyUllEnable: return NvApi.SettingUltraLowLatEnable;
+                case KeySmooth: return NvApi.SettingSmoothMotion;
+                case KeyShaderCache: return NvApi.SettingShaderCacheSize;
                 case KeyAnsel: return NvApi.SettingAnselAllow;
                 case KeyRebarFeat: return NvApi.SettingRebarFeature;
                 case KeyRebarOpt: return NvApi.SettingRebarOptions;
@@ -95,13 +107,73 @@ namespace PaviseApp
             return DlssDriverSupported() && DlssGpuCapable();
         }
 
+        internal static bool IsSmoothMotionCapableName(string gpuName)
+        {
+            if (string.IsNullOrEmpty(gpuName)) return false;
+            return System.Text.RegularExpressions.Regex.IsMatch(
+                gpuName, @"\bRTX\s*[45]\d{3}\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        }
+
+        public static bool SmoothMotionGpuCapable()
+        {
+            return SmoothMotionMinDriver() > 0;
+        }
+
+        internal static uint SmoothMotionMinDriver()
+        {
+            bool has50 = false, has40 = false;
+            try
+            {
+                foreach (GpuAdapter a in GpuInventory.Adapters())
+                {
+                    if (a.Vendor != GpuVendor.Nvidia || string.IsNullOrEmpty(a.Name)) continue;
+                    if (System.Text.RegularExpressions.Regex.IsMatch(a.Name, @"\bRTX\s*5\d{3}\b",
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase)) has50 = true;
+                    else if (System.Text.RegularExpressions.Regex.IsMatch(a.Name, @"\bRTX\s*4\d{3}\b",
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase)) has40 = true;
+                }
+            }
+            catch { }
+            return has50 ? NvApi.MinDriverForSmoothMotion50 : has40 ? NvApi.MinDriverForSmoothMotion40 : 0u;
+        }
+
+        public static bool SmoothMotionSupported()
+        {
+            uint min = SmoothMotionMinDriver();
+            return min > 0 && NvApi.Available && NvApi.DriverVersion() >= min;
+        }
+
         internal static List<KeyValuePair<string, uint>> BuildDesired(NvGamePlan plan)
         {
             var desired = new List<KeyValuePair<string, uint>>();
             if (plan == null) return desired;
             if (plan.MaxPerf) desired.Add(new KeyValuePair<string, uint>(KeyPState, NvApi.PStatePreferMax));
             if (plan.FrlFps > 0) desired.Add(new KeyValuePair<string, uint>(KeyFrl, (uint)plan.FrlFps));
-            if (plan.LowLatency) desired.Add(new KeyValuePair<string, uint>(KeyPreRender, 1u));
+            string lowLat = plan.LowLatMode;
+            if (lowLat == "on" || lowLat == "ultra")
+            {
+                desired.Add(new KeyValuePair<string, uint>(KeyPreRender, 1u));
+                if (lowLat == "ultra")
+                {
+                    desired.Add(new KeyValuePair<string, uint>(KeyUllEnable, 1u));
+                    desired.Add(new KeyValuePair<string, uint>(KeyLowLatCpl, NvApi.UltraCplUltra));
+                }
+            }
+            if (plan.SmoothMotion)
+            {
+                if (SmoothMotionSupported())
+                    desired.Add(new KeyValuePair<string, uint>(KeySmooth, 1u));
+                else if (!smoothGateLogged)
+                {
+                    smoothGateLogged = true;
+                    Logger.Log(!SmoothMotionGpuCapable()
+                        ? "Smooth Motion 插帧 需要 RTX 40 或 50 系显卡 该项跳过"
+                        : "Smooth Motion 插帧 需要 " + FormatDriver(SmoothMotionMinDriver())
+                            + " 及以上驱动 本机 " + FormatDriver(NvApi.DriverVersion()) + " 该项跳过");
+                }
+            }
+            if (plan.ShaderCacheMax)
+                desired.Add(new KeyValuePair<string, uint>(KeyShaderCache, NvApi.ShaderCacheUnlimited));
             if (plan.AnselOff) desired.Add(new KeyValuePair<string, uint>(KeyAnsel, 0u));
             if (plan.Rebar)
             {
@@ -196,7 +268,11 @@ namespace PaviseApp
                     {
                         string done = (plan.MaxPerf && !failed.Contains(KeyPState) ? " 电源最高性能" : "")
                             + (plan.FrlFps > 0 && !failed.Contains(KeyFrl) ? " 帧上限" + plan.FrlFps : "")
-                            + (plan.LowLatency && !failed.Contains(KeyPreRender) ? " 低延迟 预渲染1 " : "")
+                            + (plan.LowLatMode == "ultra" && !ContainsAny(failed, UltraKeys) ? " 超低延迟Ultra "
+                                : plan.LowLatMode == "on" && !failed.Contains(KeyPreRender) ? " 低延迟 预渲染1 " : "")
+                            + (plan.SmoothMotion && SmoothMotionSupported() && !failed.Contains(KeySmooth)
+                                ? " SmoothMotion插帧" : "")
+                            + (plan.ShaderCacheMax && !failed.Contains(KeyShaderCache) ? " 着色器缓存无上限" : "")
                             + (plan.AnselOff && !failed.Contains(KeyAnsel) ? " Ansel关" : "")
                             + (plan.Rebar && !ContainsAny(failed, RebarKeys) ? " ReBAR强开" : "")
                             + (DesiredHasDlss(desired) && !ContainsAny(failed, DlssKeys)
@@ -282,53 +358,59 @@ namespace PaviseApp
             foreach (string key in keys) RestoreKind(key);
         }
 
-        public const string ProbeProfileExe = "PaviseNvProbe.exe";
-
-        public sealed class ProbeResult
+        public static bool HasSnapshotFor(string key)
         {
-            public string Key;
-            public bool Ok;
-            public string Outcome;
-        }
-
-        public static List<ProbeResult> ProbeWriteback()
-        {
-            var results = new List<ProbeResult>();
-            if (!NvApi.Available) return results;
-            var keys = new[] { KeyPState, KeyFrl, KeyPreRender, KeyAnsel, KeyRebarFeat, KeyDlssOvr, KeyBattFps };
-            var values = new uint[] { NvApi.PStatePreferMax, 120u, 1u, 0u, 1u, 1u, NvApi.BatteryFpsUncapped };
             lock (sync)
             {
-                IntPtr session;
-                if (!NvApi.TryOpenSession(out session)) return results;
-                try
-                {
-                    IntPtr profile;
-                    if (!NvApi.FindOrCreateAppProfile(session, ProbeProfileExe, out profile)) return results;
-                    for (int i = 0; i < keys.Length; i++)
-                    {
-                        uint settingId = SettingIdOf(keys[i]);
-                        uint before;
-                        int foundBefore = NvApi.TryGetDword(session, profile, settingId, out before);
-                        int status;
-                        bool wrote = NvApi.SetDword(session, profile, settingId, values[i], out status);
-                        bool saved = wrote && NvApi.SaveSession(session);
-                        uint after;
-                        int foundAfter = NvApi.TryGetDword(session, profile, settingId, out after);
-                        var r = new ProbeResult { Key = keys[i] };
-                        if (!wrote) { r.Outcome = "写入被拒绝 NVAPI " + status; }
-                        else if (!saved) { r.Outcome = "写入接受但保存失败"; }
-                        else if (foundAfter == 1 && after == values[i]) { r.Ok = true; r.Outcome = "生效"; }
-                        else { r.Outcome = "写入报成功但回读不符"; }
-                        results.Add(r);
-                        if (foundBefore == 1) NvApi.SetDword(session, profile, settingId, before);
-                        else if (foundBefore == 0) NvApi.DeleteSetting(session, profile, settingId);
-                        NvApi.SaveSession(session);
-                    }
-                }
-                finally { NvApi.CloseSession(session); }
+                string[] games = Settings.LoadStr(ListKey, "")
+                    .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (string exeName in games)
+                    if (ParseSnapshot(Settings.LoadStr(SnapPrefix + exeName, "")).ContainsKey(key))
+                        return true;
+                return false;
             }
-            return results;
+        }
+
+        public static int HealOrphans()
+        {
+            int healed = 0;
+            int stuck = 0;
+            foreach (string key in OrphanHealKinds())
+            {
+                if (!HasSnapshotFor(key)) continue;
+                RestoreKind(key);
+                if (HasSnapshotFor(key)) stuck++; else healed++;
+            }
+            if (healed > 0)
+                Logger.Log("NVIDIA 驱动调优 启动时补还原 " + healed + " 类残留快照");
+            if (stuck > 0)
+                Logger.Log("NVIDIA 驱动调优 " + stuck + " 类残留快照暂时无法还原 下次启动继续尝试");
+            return healed;
+        }
+
+        private static List<string> OrphanHealKinds()
+        {
+            var kinds = new List<string>();
+            if (!Settings.Load("NvMaxPerf", false)) kinds.Add(KeyPState);
+            if (Settings.LoadStr("NvFrl", "off") == "off") kinds.Add(KeyFrl);
+            string lowLat = Settings.LoadStr("NvLowLat", "off");
+            if (lowLat == "off")
+            {
+                kinds.Add(KeyPreRender); kinds.Add(KeyUllEnable); kinds.Add(KeyLowLatCpl);
+            }
+            if (!Settings.Load("NvSmoothMotion", false)) kinds.Add(KeySmooth);
+            if (!Settings.Load("NvShaderCache", false)) kinds.Add(KeyShaderCache);
+            if (!Settings.Load("NvAnselOff", false)) kinds.Add(KeyAnsel);
+            if (!Settings.Load("NvRebar", false))
+            {
+                kinds.Add(KeyRebarFeat); kinds.Add(KeyRebarOpt); kinds.Add(KeyRebarSize);
+            }
+            if (Settings.LoadStr("NvDlss", "off") == "off")
+            {
+                kinds.Add(KeyDlssOvr); kinds.Add(KeyDlssPreset);
+            }
+            if (!Settings.Load("NvBattFull", false)) kinds.Add(KeyBattFps);
+            return kinds;
         }
 
         private static uint ParseUInt(string value)

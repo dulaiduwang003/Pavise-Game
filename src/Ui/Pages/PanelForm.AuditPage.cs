@@ -20,10 +20,8 @@ namespace PaviseApp
         private AuditScanView auditScan;
         private PillButton btnAuditStart;
         private Label lblAuditStatus;
-        private PillButton btnAuditQuick, btnAuditPrecise, btnAuditNv, btnAuditPoll;
+        private PillButton btnAuditQuick, btnAuditPrecise;
         private int auditBusy;
-        private string auditNvProbeText;
-        private string auditPollText;
         private bool auditRendered;
         private Stopwatch auditClock;
         private int auditTotalMs;
@@ -44,17 +42,7 @@ namespace PaviseApp
             btnAuditPrecise.Click += delegate { StartAudit(PreciseAuditWindowMs); };
             pageAudit.Controls.Add(btnAuditPrecise);
 
-            btnAuditNv = new PillButton(Lang.T("audit.nvprobe"), BtnKind.Normal);
-            btnAuditNv.SetBounds(Theme.S(ContentX + 336), Theme.S(y), Theme.S(170), Theme.S(34));
-            btnAuditNv.Click += delegate { StartNvProbe(); };
-            pageAudit.Controls.Add(btnAuditNv);
-
-            btnAuditPoll = new PillButton(Lang.T("audit.pollprobe"), BtnKind.Normal);
-            btnAuditPoll.SetBounds(Theme.S(ContentX + 514), Theme.S(y), Theme.S(160), Theme.S(34));
-            btnAuditPoll.Click += delegate { StartPollProbe(); };
-            pageAudit.Controls.Add(btnAuditPoll);
-
-            int statusOffset = 684;
+            int statusOffset = 336;
             lblAuditStatus = CardLabel(pageAudit, "", ContentX + statusOffset, y + 8,
                 ContentW - statusOffset, 20, 8.0f, false, Theme.Dim);
             y += 44;
@@ -99,20 +87,14 @@ namespace PaviseApp
             bool wasShown = btnAuditQuick.Visible;
             btnAuditQuick.Visible = visible;
             btnAuditPrecise.Visible = visible;
-            btnAuditNv.Visible = visible;
-            btnAuditPoll.Visible = visible;
             if (!visible || wasShown) return;
             Fx.SlideIn(btnAuditQuick);
             Fx.SlideIn(btnAuditPrecise);
-            Fx.SlideIn(btnAuditNv);
-            Fx.SlideIn(btnAuditPoll);
         }
 
         private void StartAudit(int windowMs)
         {
             if (Interlocked.Exchange(ref auditBusy, 1) == 1) return;
-            auditNvProbeText = null;
-            auditPollText = null;
             SetAuditButtons(false);
             btnAuditStart.Visible = false;
             Fx.Settle(auditScroll);
@@ -126,7 +108,7 @@ namespace PaviseApp
             ThreadPool.QueueUserWorkItem(_ =>
             {
                 AuditReport report = null;
-                try { report = SystemAudit.Collect(windowMs); } catch { }
+                try { report = SystemAudit.Collect(windowMs, gameMode.GameRootsSnapshot()); } catch { }
                 Interlocked.Exchange(ref auditBusy, 0);
                 try
                 {
@@ -142,61 +124,6 @@ namespace PaviseApp
                         }
                         lblAuditStatus.Text = "";
                         RenderAudit(report);
-                    }));
-                }
-                catch { }
-            });
-        }
-
-        private void StartNvProbe()
-        {
-            if (!NvApi.Available)
-            {
-                lblAuditStatus.Text = Lang.T("audit.nv.unavailable");
-                return;
-            }
-            if (Interlocked.Exchange(ref auditBusy, 1) == 1) return;
-            SetAuditButtons(false);
-            btnAuditStart.Visible = false;
-            auditScroll.Visible = false;
-            auditScan.Visible = true;
-            auditScan.BeginScan(Lang.T("audit.nv.probing"));
-            BeginAuditProgress(QuickAuditWindowMs);
-
-            ThreadPool.QueueUserWorkItem(_ =>
-            {
-                string summary;
-                try
-                {
-                    var results = NvDrsTweaks.ProbeWriteback();
-                    if (results.Count == 0) summary = Lang.T("audit.nv.failed");
-                    else
-                    {
-                        int ok = 0;
-                        var parts = new List<string>();
-                        foreach (var r in results)
-                        {
-                            if (r.Ok) ok++;
-                            parts.Add(r.Key + "=" + r.Outcome);
-                        }
-                        summary = Lang.F("audit.nv.summary", ok, results.Count)
-                            + " " + string.Join(" ", parts.ToArray()) + " ";
-                    }
-                }
-                catch (Exception ex) { summary = Lang.T("audit.nv.failed") + " " + ex.Message; }
-                auditNvProbeText = summary;
-                AuditReport report = null;
-                try { report = SystemAudit.Collect(QuickAuditWindowMs); } catch { }
-                Interlocked.Exchange(ref auditBusy, 0);
-                try
-                {
-                    BeginInvoke((MethodInvoker)(() =>
-                    {
-                        EndAuditProgress();
-                        SetAuditButtons(true);
-                        lblAuditStatus.Text = "";
-                        if (report != null) RenderAudit(report);
-                        else if (!auditRendered) ShowAuditIdle();
                     }));
                 }
                 catch { }
@@ -240,84 +167,6 @@ namespace PaviseApp
         {
             btnAuditQuick.Enabled = enabled;
             btnAuditPrecise.Enabled = enabled;
-            btnAuditNv.Enabled = enabled;
-            btnAuditPoll.Enabled = enabled;
-        }
-
-        internal const int PollProbeMs = 4000;
-
-        private void StartPollProbe()
-        {
-            if (Interlocked.Exchange(ref auditBusy, 1) == 1) return;
-
-            var probe = new PollingRateProbe();
-            if (!probe.Start())
-            {
-                probe.Dispose();
-                Interlocked.Exchange(ref auditBusy, 0);
-                lblAuditStatus.Text = Lang.T("audit.poll.nostart");
-                return;
-            }
-
-            SetAuditButtons(false);
-            btnAuditStart.Visible = false;
-            Fx.Settle(auditScroll);
-            auditScroll.Visible = false;
-            auditScan.Visible = true;
-            Fx.SlideIn(auditScan);
-            auditScan.BeginScan(Lang.T("audit.poll.probing"));
-            lblAuditStatus.Text = "";
-            BeginAuditProgress(PollProbeMs);
-
-            var timer = new System.Windows.Forms.Timer();
-            timer.Interval = PollProbeMs;
-            timer.Tick += delegate
-            {
-                timer.Stop();
-                timer.Dispose();
-                PollingResult result = null;
-                try { result = probe.Stop(); }
-                catch { }
-                finally { probe.Dispose(); }
-                auditPollText = PollResultText(result);
-                FinishPollProbe();
-            };
-            timer.Start();
-        }
-
-        private void FinishPollProbe()
-        {
-            ThreadPool.QueueUserWorkItem(_ =>
-            {
-                AuditReport report = null;
-                try { report = SystemAudit.Collect(QuickAuditWindowMs); } catch { }
-                Interlocked.Exchange(ref auditBusy, 0);
-                try
-                {
-                    BeginInvoke((MethodInvoker)(() =>
-                    {
-                        EndAuditProgress();
-                        SetAuditButtons(true);
-                        lblAuditStatus.Text = "";
-                        if (report != null) RenderAudit(report);
-                        else if (!auditRendered) ShowAuditIdle();
-                    }));
-                }
-                catch { }
-            });
-        }
-
-        internal static string PollResultText(PollingResult result)
-        {
-            if (result == null) return Lang.F("audit.poll.fail", "读取异常");
-            if (!result.Ok) return Lang.F("audit.poll.fail", result.Failure);
-
-            string head = Lang.F("audit.poll.ok", result.Hz,
-                result.MedianIntervalMs.ToString("0.00"), result.Samples);
-            if (PollingRateProbe.IsWeak(result.Hz))
-                return head + " " + Lang.F("audit.poll.weak", (1000.0 / result.Hz).ToString("0.#"));
-            if (result.Hz >= PollingRateProbe.GoodHz) return head + " " + Lang.T("audit.poll.good");
-            return head;
         }
 
         private void RenderAudit(AuditReport report)
@@ -383,19 +232,93 @@ namespace PaviseApp
             auditEntering.Clear();
         }
 
+        private sealed class AuditFix
+        {
+            public Func<bool> CanFix;
+            public Func<bool> CanRevert;
+            public Action Fix;
+            public Action Revert;
+        }
+
+        private static Dictionary<string, AuditFix> BuildAuditFixes()
+        {
+            return new Dictionary<string, AuditFix>(StringComparer.Ordinal)
+            {
+                { "msi", new AuditFix
+                {
+                    CanFix = delegate { return MsiModeTweak.Disabled().Count > 0; },
+                    CanRevert = delegate { return MsiModeTweak.EnabledByPavise; },
+                    Fix = delegate { MsiModeTweak.Enable(); },
+                    Revert = delegate { MsiModeTweak.Restore(); }
+                } },
+                { "clock", new AuditFix
+                {
+                    CanFix = delegate { return PlatformClockTweak.NeedsRepair(); },
+                    CanRevert = delegate { return PlatformClockTweak.RepairedByPavise; },
+                    Fix = delegate { PlatformClockTweak.Repair(); },
+                    Revert = delegate { PlatformClockTweak.Restore(); }
+                } },
+                { "quantum", new AuditFix
+                {
+                    CanFix = delegate { return QuantumTweak.NeedsRepair(); },
+                    CanRevert = delegate { return QuantumTweak.RepairedByPavise; },
+                    Fix = delegate { QuantumTweak.Repair(); },
+                    Revert = delegate { QuantumTweak.Restore(); }
+                } },
+                { "net", new AuditFix
+                {
+                    CanFix = delegate { return NetTweak.NeedsRepair(); },
+                    CanRevert = delegate { return NetTweak.RepairedByPavise; },
+                    Fix = delegate { NetTweak.Repair(); },
+                    Revert = delegate { NetTweak.Restore(); }
+                } },
+                { "inputq", new AuditFix
+                {
+                    CanFix = delegate { return InputMythTweak.NeedsRepair(); },
+                    CanRevert = delegate { return InputMythTweak.RepairedByPavise; },
+                    Fix = delegate { InputMythTweak.Repair(); },
+                    Revert = delegate { InputMythTweak.Restore(); }
+                } },
+            };
+        }
+
+        private void OnAuditFixClick(AuditFix fix)
+        {
+            if (!elevated)
+            {
+                PaviseDialog.Warn(this, App.DisplayName, Lang.T("vbs.needadmin"));
+                return;
+            }
+            bool revert = !fix.CanFix() && fix.CanRevert();
+            try
+            {
+                if (revert) fix.Revert(); else fix.Fix();
+            }
+            catch { }
+            Logger.Log(revert ? "体检修复项已还原 重新体检核对" : "体检修复项已执行 重新体检核对");
+            StartAudit(QuickAuditWindowMs);
+        }
+
         private int RenderAuditGroup(string title, List<AuditRow> rows, int sy)
         {
             Section(auditScroll, title, 6, sy);
             sy += 26;
+            Dictionary<string, AuditFix> fixes = BuildAuditFixes();
             foreach (AuditRow row in rows)
             {
                 string note = row.Note ?? "";
-                if (auditNvProbeText != null && row.Name == "NVIDIA 驱动接口")
-                    note = Lang.T("audit.nv.result") + auditNvProbeText;
-                if (auditPollText != null && row.Name == "键鼠链路")
-                    note = auditPollText + "\r\n" + note;
 
-                int noteHeight = MeasureNoteHeight(note);
+                AuditFix fix = null;
+                bool showFix = false, showRevert = false;
+                if (row.FixKey != null && fixes.TryGetValue(row.FixKey, out fix))
+                {
+                    try { showFix = fix.CanFix(); showRevert = !showFix && fix.CanRevert(); }
+                    catch { }
+                }
+                bool hasButton = showFix || showRevert;
+
+                int noteW = ScrollContentW - 32 - (hasButton ? 132 : 0);
+                int noteHeight = MeasureNoteHeight(note, noteW);
                 int rowHeight = Math.Max(64, 40 + noteHeight);
                 var panel = MakeConsolePanel(auditScroll, 6, sy, ScrollContentW, rowHeight, false);
                 CardLabel(panel, row.Name, 16, 10, 236, 20, 8.6f, true, Theme.Fg);
@@ -403,7 +326,18 @@ namespace PaviseApp
                     row.Warn ? Theme.Accent : Theme.Fg);
                 CardLabel(panel, Lang.T("audit.evidence") + row.Evidence,
                     ScrollContentW - 118, 10, 104, 20, 7.4f, false, Theme.Faint);
-                WrapLabel(panel, note, 16, 34, ScrollContentW - 32, noteHeight, 7.8f, Theme.Dim);
+                WrapLabel(panel, note, 16, 34, noteW, noteHeight, 7.8f, Theme.Dim);
+                if (hasButton)
+                {
+                    AuditFix boundFix = fix;
+                    var btn = new PillButton(
+                        Lang.T(showFix ? "audit.fix" : "audit.fix.revert"),
+                        showFix ? BtnKind.Primary : BtnKind.Normal);
+                    btn.SetBounds(Theme.S(ScrollContentW - 134), Theme.S(rowHeight - 42),
+                        Theme.S(118), Theme.S(30));
+                    btn.Click += delegate { OnAuditFixClick(boundFix); };
+                    panel.Controls.Add(btn);
+                }
                 auditEntering.Add(panel);
                 sy += rowHeight + 8;
             }
@@ -411,11 +345,11 @@ namespace PaviseApp
             return sy;
         }
 
-        private int MeasureNoteHeight(string note)
+        private int MeasureNoteHeight(string note, int noteW)
         {
             if (string.IsNullOrEmpty(note)) return 24;
             Font font = Theme.UI(7.8f, false);
-            int widthPx = Theme.S(ScrollContentW - 32);
+            int widthPx = Theme.S(noteW);
             Size measured = TextRenderer.MeasureText(note, font,
                 new Size(widthPx, int.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
             int unscaled = (int)Math.Ceiling(measured.Height / Dpi.Scale);

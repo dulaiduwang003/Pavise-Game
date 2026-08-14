@@ -95,6 +95,11 @@ namespace PaviseApp
             if (Settings.LoadStr(Flag, "").Length > 0 || RegistryResidueCount() > 0) Clear();
         }
 
+        public static bool HasResidue()
+        {
+            return Settings.LoadStr(Flag, "").Length > 0 || RegistryResidueCount() > 0;
+        }
+
         private static bool RunShell(string script)
         {
             try

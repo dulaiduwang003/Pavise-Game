@@ -55,13 +55,19 @@ namespace PaviseApp
                 if (!gpusResolved) { gpus = NvApi.EnumGpuHandles(); gpusResolved = true; }
                 handles = gpus;
             }
-            if (handles == null) return false;
+            if (handles == null)
+            {
+                lock (lk) { gpusResolved = false; }
+                return false;
+            }
             bool any = false;
             foreach (IntPtr h in handles)
             {
                 uint mask;
                 if (NvApi.TryGetPerfDecrease(h, out mask)) { combined |= mask; any = true; }
             }
+            if (!any)
+                lock (lk) { gpusResolved = false; gpus = null; }
             return any;
         }
 

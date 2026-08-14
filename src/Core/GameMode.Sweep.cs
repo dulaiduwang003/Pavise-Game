@@ -91,11 +91,11 @@ namespace PaviseApp
             bool gameHostAncestor = false, string activeGameRoot = null, bool aggressive = false)
         {
 
-            if (GameSessionDetector.IsAntiCheatLikeName(name)) return false;
+            if (AntiCheatCatalog.IsAntiCheatLikeName(name)) return false;
 
             if (GamePlatformCatalog.IsPlatformProcess(name, path)) return false;
             if (NetAcceleratorCatalog.IsAcceleratorLikeName(name)) return false;
-            if (IsInputChainProcess(name, path)) return false;
+            if (PeripheralCatalog.IsInputChainProcess(name, path)) return false;
             if (gameHostAncestor) return false;
             if (UnderRoot(path, activeGameRoot)) return false;
             if (pid <= 4 || pid == self || session < 0 || session != ownerSession) return false;
@@ -103,7 +103,7 @@ namespace PaviseApp
             if (pid == foreground) return false;
             if (userFacingFamily) return false;
             if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(path)) return false;
-            if (aggressive) return !IsCoreSystemProcess(name, path, windowsRoot);
+            if (aggressive) return !SystemProcessCatalog.IsCoreSystemProcess(name, path, windowsRoot);
             return string.IsNullOrEmpty(windowsRoot) || !path.StartsWith(windowsRoot, StringComparison.OrdinalIgnoreCase);
         }
 
@@ -125,89 +125,6 @@ namespace PaviseApp
             return null;
         }
 
-        private static readonly HashSet<string> CoreSystemProcesses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "smss", "csrss", "wininit", "winlogon", "services", "lsass",
-            "svchost", "dwm", "audiodg", "fontdrvhost"
-        };
-
-        private static bool IsCoreSystemProcess(string name, string path, string windowsRoot)
-        {
-            return CoreSystemProcesses.Contains(name)
-                && !string.IsNullOrEmpty(windowsRoot) && !string.IsNullOrEmpty(path)
-                && path.StartsWith(windowsRoot, StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static readonly string[] InputAudioKeywords =
-        {
-            "keyboard", "mouse", "hotkey", "keymap", "macro", "autohotkey",
-            "hid", "input", "ime", "pinyin", "qqpy", "sogou", "sgtool", "wetype", "iflyime", "wubi",
-            "audio", "sound", "voice", "headset", "nahimic", "realtek", "rtkaud", "creative",
-            "logi", "lghub", "lcore", "razer", "synapse", "icue", "corsair",
-            "steelseries", "armoury", "wooting", "keychron", "dareu", "rapoo",
-            "bloody", "a4tech", "vgn", "langtu", "gamepp"
-        };
-
-        private static readonly string[] InputAudioDescWords =
-        {
-            "keyboard", "mouse", "headset", "earphone", "audio", "sound", "voice",
-            "microphone", "input method", "ime", "hotkey", "macro", "peripheral",
-            "gamepad", "joystick", "controller", "hid",
-            "键盘", "鼠标", "耳机", "音频", "声卡", "麦克", "输入法", "按键", "外设", "手柄", "灯效", "搜狗", "讯飞输入"
-        };
-
-        internal static bool DescriptionLooksInputAudio(string description)
-        {
-            if (string.IsNullOrEmpty(description)) return false;
-            string lower = description.ToLowerInvariant();
-            foreach (string word in InputAudioDescWords)
-                if (lower.Contains(word)) return true;
-            return false;
-        }
-
-        internal static bool IsInputChainProcess(string name, string path)
-        {
-            return IsInputAudioLike(name) || FileLooksInputAudio(path);
-        }
-
-        private static readonly object descCacheSync = new object();
-        private static readonly Dictionary<string, bool> descCache =
-            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
-
-        private static bool FileLooksInputAudio(string path)
-        {
-            if (string.IsNullOrEmpty(path)) return false;
-            lock (descCacheSync)
-            {
-                bool cached;
-                if (descCache.TryGetValue(path, out cached)) return cached;
-            }
-            bool hit = false;
-            try
-            {
-                var info = System.Diagnostics.FileVersionInfo.GetVersionInfo(path);
-                hit = DescriptionLooksInputAudio(info.FileDescription)
-                    || DescriptionLooksInputAudio(info.ProductName)
-                    || DescriptionLooksInputAudio(info.CompanyName);
-            }
-            catch { }
-            lock (descCacheSync)
-            {
-                if (descCache.Count > 512) descCache.Clear();
-                descCache[path] = hit;
-            }
-            return hit;
-        }
-
-        internal static bool IsInputAudioLike(string name)
-        {
-            if (string.IsNullOrEmpty(name)) return false;
-            string lower = name.ToLowerInvariant();
-            foreach (string keyword in InputAudioKeywords)
-                if (lower.Contains(keyword)) return true;
-            return false;
-        }
-
         private void Sweep(ProcessSnapshot all, HashSet<int> gamePids)
         {
 
@@ -218,9 +135,10 @@ namespace PaviseApp
         private void SweepWithStableWhitelist(
             ProcessSnapshot all, HashSet<int> gamePids)
         {
-            PerformancePreset mode = ActivePreset;
+            PolicySnapshot sp = sessionPolicy;
+            PerformancePreset mode = sp != null ? sp.Preset : ActivePreset;
             int foregroundPid = GameSessionDetector.ForegroundPid();
-            bool aggressive = IsAggressive(mode, aggressiveOn);
+            bool aggressive = IsAggressive(mode, sp != null ? sp.Aggressive : aggressiveOn);
             WhitelistEvaluation whitelist = EvaluateWhitelist(all);
             HashSet<int> userFacingFamily = aggressive
                 ? CollectForegroundFamily(foregroundPid, whitelist)
@@ -517,22 +435,13 @@ namespace PaviseApp
                 {
                     if (result.Contains(pair.Key) || !result.Contains(pair.Value)) continue;
                     string parentName;
-                    if (!names.TryGetValue(pair.Value, out parentName) || IsShellProcess(parentName)) continue;
+                    if (!names.TryGetValue(pair.Value, out parentName) || SystemProcessCatalog.IsShellProcess(parentName)) continue;
                     result.Add(pair.Key);
                     changed = true;
                 }
             }
             while (changed);
             return result;
-        }
-
-        private static bool IsShellProcess(string name)
-        {
-            return string.Equals(name, "explorer", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(name, "applicationframehost", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(name, "shellexperiencehost", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(name, "startmenuexperiencehost", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(name, "searchhost", StringComparison.OrdinalIgnoreCase);
         }
 
         private void ReleaseBackgroundExemption(int pid, string name, string reason)

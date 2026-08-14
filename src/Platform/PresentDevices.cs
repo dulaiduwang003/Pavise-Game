@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 只枚举当前真正插着的设备实例
+// 文件用途 只枚举当前真正插着的设备实例 以及沿设备树向上读取父链
 // 注册表 Enum 树会把历史上插过的每一个设备都留着 本机实测键鼠类注册表 49 条而在场只有 8 条
 // 照着注册表做判断会报出一堆早就拔掉的设备 写改动也会写到不存在的设备上
 // 设备实例键下的 Control 子键虽然也标记在场 但它带特殊 ACL 非管理员读不到 不能当判据
@@ -16,6 +16,14 @@ namespace PaviseApp
         private const uint DIGCF_PRESENT = 0x02;
         private const uint DIGCF_ALLCLASSES = 0x04;
         private const int ERROR_INSUFFICIENT_BUFFER = 122;
+        private const int CR_BUFFER_SMALL = 26;
+        private const uint DEVPROP_TYPE_STRING = 0x12;
+
+        private static readonly DEVPROPKEY BusReportedDescKey = new DEVPROPKEY
+        {
+            fmtid = new Guid(0x540b947e, 0x8b40, 0x45bc, 0xa8, 0xa2, 0x6a, 0x0b, 0x89, 0x4c, 0xbd, 0xa2),
+            pid = 4
+        };
 
         public static List<string> ByClass(Guid classGuid)
         {
@@ -25,6 +33,51 @@ namespace PaviseApp
         public static List<string> ByEnumerator(string enumerator)
         {
             return Enumerate(Guid.Empty, enumerator, DIGCF_PRESENT | DIGCF_ALLCLASSES);
+        }
+
+        public static List<string> ParentChain(string instanceId)
+        {
+            var chain = new List<string>();
+            if (string.IsNullOrEmpty(instanceId)) return chain;
+            try
+            {
+                uint node;
+                if (CM_Locate_DevNodeW(out node, instanceId, 0) != 0) return chain;
+                for (int depth = 0; depth < 16; depth++)
+                {
+                    uint parent;
+                    if (CM_Get_Parent(out parent, node, 0) != 0) break;
+                    var buffer = new StringBuilder(260);
+                    if (CM_Get_Device_IDW(parent, buffer, 260, 0) != 0) break;
+                    string id = buffer.ToString();
+                    if (id.Length == 0 || id.StartsWith("HTREE", StringComparison.OrdinalIgnoreCase)) break;
+                    chain.Add(id);
+                    node = parent;
+                }
+            }
+            catch (Exception ex) { Logger.Log("设备父链读取失败 " + ex.Message); }
+            return chain;
+        }
+
+        public static string BusReportedDesc(string instanceId)
+        {
+            if (string.IsNullOrEmpty(instanceId)) return null;
+            try
+            {
+                uint node;
+                if (CM_Locate_DevNodeW(out node, instanceId, 0) != 0) return null;
+                DEVPROPKEY key = BusReportedDescKey;
+                uint type;
+                uint size = 0;
+                int cr = CM_Get_DevNode_PropertyW(node, ref key, out type, null, ref size, 0);
+                if (cr != CR_BUFFER_SMALL || size == 0 || size > 4096) return null;
+                var buffer = new byte[size];
+                cr = CM_Get_DevNode_PropertyW(node, ref key, out type, buffer, ref size, 0);
+                if (cr != 0 || type != DEVPROP_TYPE_STRING) return null;
+                string text = Encoding.Unicode.GetString(buffer, 0, (int)size).TrimEnd('\0').Trim();
+                return text.Length == 0 ? null : text;
+            }
+            catch { return null; }
         }
 
         private static List<string> Enumerate(Guid classGuid, string enumerator, uint flags)
@@ -72,6 +125,13 @@ namespace PaviseApp
         }
 
         [StructLayout(LayoutKind.Sequential)]
+        private struct DEVPROPKEY
+        {
+            public Guid fmtid;
+            public uint pid;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
         private struct SP_DEVINFO_DATA
         {
             public uint cbSize;
@@ -93,5 +153,15 @@ namespace PaviseApp
             IntPtr set, ref SP_DEVINFO_DATA data, StringBuilder buffer, uint size, out uint needed);
         [DllImport("setupapi.dll", SetLastError = true)]
         private static extern bool SetupDiDestroyDeviceInfoList(IntPtr set);
+
+        [DllImport("cfgmgr32.dll", CharSet = CharSet.Unicode)]
+        private static extern int CM_Locate_DevNodeW(out uint devInst, string deviceId, uint flags);
+        [DllImport("cfgmgr32.dll")]
+        private static extern int CM_Get_Parent(out uint parent, uint devInst, uint flags);
+        [DllImport("cfgmgr32.dll", CharSet = CharSet.Unicode)]
+        private static extern int CM_Get_Device_IDW(uint devInst, StringBuilder buffer, uint bufferLen, uint flags);
+        [DllImport("cfgmgr32.dll", CharSet = CharSet.Unicode)]
+        private static extern int CM_Get_DevNode_PropertyW(uint devInst, ref DEVPROPKEY key,
+            out uint type, byte[] buffer, ref uint size, uint flags);
     }
 }

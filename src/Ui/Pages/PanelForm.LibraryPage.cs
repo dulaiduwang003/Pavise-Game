@@ -15,6 +15,9 @@ namespace PaviseApp
     {
         private ListBox lstGames;
         private PillButton btnForce;
+        private PillButton btnGameConfig;
+        private PillButton btnRename;
+        private Label lblLibraryHint;
         private EmptyStatePanel gameListPanel;
         private readonly Dictionary<string, Bitmap> gameIconCache = new Dictionary<string, Bitmap>(StringComparer.OrdinalIgnoreCase);
         private int runningBusy;
@@ -55,10 +58,19 @@ namespace PaviseApp
             btnForce = new PillButton(Lang.T("v15.library.force"));
             btnForce.SetBounds(Theme.S(bx), Theme.S(y + 100), Theme.S(bw), Theme.S(bh));
             btnForce.Click += delegate { ToggleForceTrigger(); };
+            btnGameConfig = new PillButton(Lang.T("lib.config"));
+            btnGameConfig.SetBounds(Theme.S(bx), Theme.S(y + 150), Theme.S(bw), Theme.S(bh));
+            btnGameConfig.Click += delegate { OpenSelectedGameConfig(); };
+            btnRename = new PillButton(Lang.T("lib.rename"));
+            btnRename.SetBounds(Theme.S(bx), Theme.S(y + 200), Theme.S(bw), Theme.S(bh));
+            btnRename.Click += delegate { RenameSelectedGame(); };
             lstGames.SelectedIndexChanged += delegate { UpdateForceButton(); };
-            Label hint = new Label(); hint.Text = Lang.T("v15.library.drop"); hint.ForeColor = Theme.Dim; hint.BackColor = Theme.Bg;
-            hint.Font = Theme.UI(8.2f, false); hint.AutoEllipsis = true; hint.SetBounds(Theme.S(bx + 4), Theme.S(y + 158), Theme.S(bw - 8), Theme.S(168));
-            pageLibrary.Controls.AddRange(new Control[] { listWrap, add, remove, btnForce, hint });
+            lstGames.DoubleClick += delegate { OpenSelectedGameConfig(); };
+            lblLibraryHint = new Label(); lblLibraryHint.BackColor = Theme.Bg;
+            lblLibraryHint.Font = Theme.UI(8.2f, false); lblLibraryHint.AutoEllipsis = true;
+            lblLibraryHint.SetBounds(Theme.S(bx + 4), Theme.S(y + 258), Theme.S(bw - 8), Theme.S(140));
+            SyncLibraryHint();
+            pageLibrary.Controls.AddRange(new Control[] { listWrap, add, remove, btnForce, btnGameConfig, btnRename, lblLibraryHint });
             RefreshGames();
         }
 
@@ -86,24 +98,48 @@ namespace PaviseApp
             using (var back = new SolidBrush(Theme.Card)) e.Graphics.FillRectangle(back, e.Bounds);
             Theme.FillRound(e.Graphics, row, Theme.S(10), selected ? Theme.Sel : (e.Index == hover ? Theme.CardHover : Theme.Card));
             int iconSize = Theme.S(38), ix = e.Bounds.X + Theme.S(14), iy = e.Bounds.Y + (e.Bounds.Height - iconSize) / 2;
-            e.Graphics.DrawImage(GameIcon(item.Profile.ExecutablePath), new Rectangle(ix, iy, iconSize, iconSize));
+            try { e.Graphics.DrawImage(GameIcon(item.Profile.ExecutablePath), new Rectangle(ix, iy, iconSize, iconSize)); }
+            catch
+            {
+                string iconKey = item.Profile.ExecutablePath ?? "";
+                Bitmap dead;
+                if (gameIconCache.TryGetValue(iconKey, out dead))
+                {
+                    gameIconCache.Remove(iconKey);
+                    if (dead != null) try { dead.Dispose(); } catch { }
+                }
+            }
             int tx = ix + iconSize + Theme.S(14), right = Theme.S(92);
             TextRenderer.DrawText(e.Graphics, item.Profile.Name, Theme.UI(10.2f, true),
                     new Rectangle(tx, e.Bounds.Y + Theme.S(11), e.Bounds.Width - tx - right, Theme.S(22)),
                     Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
             bool forced = item.Profile.ForceTrigger;
+            int overrides = item.Profile.Overrides.Count;
+            bool tagged = forced || overrides > 0 || item.HasColumn;
             string path = item.Profile.ExecutablePath ?? item.Profile.Root ?? "";
             TextRenderer.DrawText(e.Graphics, path, Theme.UI(7.8f, false),
                     new Rectangle(tx, e.Bounds.Y + Theme.S(37),
-                        e.Bounds.Width - tx - (forced ? right : Theme.S(18)), Theme.S(18)),
+                        e.Bounds.Width - tx - (tagged ? right + Theme.S(84) : Theme.S(18)), Theme.S(18)),
                     Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
             TextRenderer.DrawText(e.Graphics, Lang.T(item.Running ? "v15.library.running" : "v15.library.ready"), Theme.UI(7.6f, true),
                     new Rectangle(e.Bounds.Right - right, e.Bounds.Y + Theme.S(12), right - Theme.S(16), Theme.S(20)),
                     item.Running ? Theme.Green : Theme.Faint, TextFormatFlags.Right | TextFormatFlags.NoPadding);
-            if (forced)
-                TextRenderer.DrawText(e.Graphics, Lang.T("v15.library.forced.tag"), Theme.UI(7.2f, true),
-                        new Rectangle(e.Bounds.Right - right, e.Bounds.Y + Theme.S(36), right - Theme.S(16), Theme.S(18)),
+            if (tagged)
+            {
+                string tag = overrides > 0 ? Lang.F("lib.config.tag", overrides) : "";
+                if (forced)
+                    tag = tag.Length > 0
+                        ? Lang.T("v15.library.forced.tag") + " " + tag
+                        : Lang.T("v15.library.forced.tag");
+                if (item.HasColumn)
+                    tag = tag.Length > 0
+                        ? Lang.T("lib.column.tag") + " " + tag
+                        : Lang.T("lib.column.tag");
+                TextRenderer.DrawText(e.Graphics, tag, Theme.UI(7.2f, true),
+                        new Rectangle(e.Bounds.Right - right - Theme.S(84), e.Bounds.Y + Theme.S(36),
+                            right + Theme.S(68), Theme.S(18)),
                         Theme.Accent, TextFormatFlags.Right | TextFormatFlags.NoPadding);
+            }
         }
 
         private void UpdateForceButton()
@@ -115,6 +151,28 @@ namespace PaviseApp
             btnForce.Text = Lang.T(on ? "v15.library.force.on" : "v15.library.force");
             btnForce.Kind = on ? BtnKind.Primary : BtnKind.Normal;
             btnForce.Invalidate();
+            if (btnGameConfig != null) btnGameConfig.Enabled = item != null;
+            if (btnRename != null) btnRename.Enabled = item != null;
+        }
+
+        private void OpenSelectedGameConfig()
+        {
+            GameLibraryItem item = lstGames == null ? null : lstGames.SelectedItem as GameLibraryItem;
+            if (item == null || item.Profile == null) return;
+            ShowGameConfigPage(item.Profile.Id);
+        }
+
+        private void RenameSelectedGame()
+        {
+            GameLibraryItem item = lstGames == null ? null : lstGames.SelectedItem as GameLibraryItem;
+            if (item == null || item.Profile == null) return;
+            string keepId = item.Profile.Id;
+            string name = PaviseDialog.Prompt(this, Lang.T("lib.rename"),
+                Lang.F("lib.rename.sub", item.Profile.Name), item.Profile.Name);
+            if (string.IsNullOrEmpty(name) || name == item.Profile.Name) return;
+            gameMode.RenameProfile(keepId, name);
+            RefreshGames();
+            SelectProfile(keepId);
         }
 
         private void ToggleForceTrigger()
@@ -174,6 +232,9 @@ namespace PaviseApp
         private void RefreshGames()
         {
             if (lstGames == null) return;
+            string keepId = null;
+            GameLibraryItem sel = lstGames.SelectedItem as GameLibraryItem;
+            if (sel != null && sel.Profile != null) keepId = sel.Profile.Id;
             List<GameProfile> profiles = gameMode.GetProfiles();
             var paths = new List<string>();
             foreach (GameProfile profile in profiles) paths.Add(profile.ExecutablePath);
@@ -183,12 +244,22 @@ namespace PaviseApp
             foreach (GameProfile profile in profiles)
                 lstGames.Items.Add(new GameLibraryItem(profile, RunningIn(states, profile.ExecutablePath)));
             lstGames.EndUpdate();
+            if (keepId != null) SelectProfile(keepId);
             bool empty = lstGames.Items.Count == 0;
             bool wasShown = lstGames.Visible;
             lstGames.Visible = !empty;
             if (!empty && !wasShown) Fx.SlideIn(lstGames);
             if (gameListPanel != null) { gameListPanel.ShowEmpty = empty; gameListPanel.Invalidate(); }
+            SyncLibraryHint();
             UpdateForceButton();
+        }
+
+        private void SyncLibraryHint()
+        {
+            if (lblLibraryHint == null) return;
+            bool readOnly = gameMode.ProfileStoreReadOnly;
+            lblLibraryHint.Text = readOnly ? Lang.T("lib.store.readonly") : Lang.T("v15.library.drop");
+            lblLibraryHint.ForeColor = readOnly ? Theme.Danger : Theme.Dim;
         }
 
         private void RefreshGameRunningStates(bool force = false)
@@ -316,9 +387,27 @@ namespace PaviseApp
         private sealed class GameLibraryItem
         {
             public readonly GameProfile Profile;
+            public readonly bool HasColumn;
             public bool Running;
-            public GameLibraryItem(GameProfile profile, bool running) { Profile = profile; Running = running; }
+            public GameLibraryItem(GameProfile profile, bool running)
+            {
+                Profile = profile; Running = running; HasColumn = ProfileHasColumn(profile);
+            }
             public override string ToString() { return Profile == null ? "" : Profile.Name; }
+        }
+
+        private static bool ProfileHasColumn(GameProfile profile)
+        {
+            if (profile == null) return false;
+            return PathMentionsLol(profile.ExecutablePath) || PathMentionsLol(profile.Root) || PathMentionsLol(profile.Name);
+        }
+
+        private static bool PathMentionsLol(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return false;
+            return text.IndexOf("League of Legends", StringComparison.OrdinalIgnoreCase) >= 0
+                || text.IndexOf("LeagueClient", StringComparison.OrdinalIgnoreCase) >= 0
+                || text.IndexOf("英雄联盟", StringComparison.Ordinal) >= 0;
         }
     }
 }

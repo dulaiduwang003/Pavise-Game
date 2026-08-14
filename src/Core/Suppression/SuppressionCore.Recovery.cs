@@ -12,6 +12,16 @@ namespace PaviseApp
     {
         private enum JournalIdentity { Confirmed, Unknown, Mismatch }
 
+        public static bool HasPendingJournalFile(string path)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(path) || !File.Exists(path)) return false;
+                return File.ReadAllLines(path).Length > 1;
+            }
+            catch { return true; }
+        }
+
         private bool SaveJournalLocked()
         {
             if (string.IsNullOrEmpty(journalPath))
@@ -185,7 +195,7 @@ namespace PaviseApp
                     catch (Exception ex)
                     {
                         keep.Add(lines[i]);
-                        Logger.LogFailure("压制崩溃恢复失败 pid " + pid + "]", ex);
+                        Logger.LogFailure("压制崩溃恢复失败 pid " + pid, ex);
                     }
                     finally { Native.CloseHandle(h); }
                 }

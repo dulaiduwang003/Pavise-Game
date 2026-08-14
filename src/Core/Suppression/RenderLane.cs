@@ -87,13 +87,17 @@ namespace PaviseApp
             lock (sync) return laneApplied && lanePid == pid && laneCreation == creation;
         }
 
+        private static int laneGen;
+
         public static void EnsureForGame(int pid, long creation, string gameName)
         {
+            int gen;
             lock (sync)
             {
                 if (laneApplied && lanePid == pid && laneCreation == creation) return;
                 if (triedPid == pid && triedCreation == creation) return;
                 triedPid = pid; triedCreation = creation;
+                gen = laneGen;
             }
             Candidate best;
             if (!TryIdentify(pid, out best))
@@ -149,10 +153,22 @@ namespace PaviseApp
                     Logger.Log("渲染主权域 回读不符 " + actual + " 已还原");
                     return;
                 }
+                bool canceled = false;
                 lock (sync)
                 {
-                    lanePid = pid; laneCreation = creation;
-                    laneTid = best.Tid; laneOriginalPriority = original; laneApplied = true;
+                    if (gen != laneGen) canceled = true;
+                    else
+                    {
+                        lanePid = pid; laneCreation = creation;
+                        laneTid = best.Tid; laneOriginalPriority = original; laneApplied = true;
+                    }
+                }
+                if (canceled)
+                {
+                    Native.SetThreadPriority(h, original);
+                    ClearJournal();
+                    Logger.Log("渲染主权域 建立期间开关已关闭或已撤销 本次写入已回退");
+                    return;
                 }
                 Logger.Log("渲染主权域已建立 " + (gameName ?? "?") + " 帧关键线程 " + best.Tid
                     + " 占进程 CPU " + (best.Share * 100).ToString("F0") + "% 共 " + best.ThreadCount
@@ -167,6 +183,7 @@ namespace PaviseApp
             long creation;
             lock (sync)
             {
+                laneGen++;
                 if (!laneApplied) { ClearJournal(); return true; }
                 pid = lanePid; creation = laneCreation; tid = laneTid; original = laneOriginalPriority;
             }
@@ -206,7 +223,7 @@ namespace PaviseApp
             {
                 using (Process target = Process.GetProcessById(pid))
                 {
-                    if (creation > 0 && target.StartTime.ToUniversalTime().Ticks != creation) return true;
+                    if (creation > 0 && target.StartTime.ToFileTimeUtc() != creation) return true;
                 }
             }
             catch { return true; }

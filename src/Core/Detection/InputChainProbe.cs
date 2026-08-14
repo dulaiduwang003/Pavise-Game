@@ -16,7 +16,8 @@ namespace PaviseApp
         Usb = 2,
         BluetoothClassic = 3,
         BluetoothLe = 4,
-        Virtual = 5
+        Virtual = 5,
+        Internal = 6
     }
 
     internal sealed class InputDevice
@@ -75,7 +76,7 @@ namespace PaviseApp
 
         public bool FilterKeysSwallowing
         {
-            get { return Read && AccessibilityFlags.IsOn(FilterKeys); }
+            get { return Read && AccessibilityFlags.IsOn(FilterKeys) && DelayBeforeAcceptanceMs > 0; }
         }
     }
 
@@ -135,12 +136,27 @@ namespace PaviseApp
                 if (id.IndexOf("PNP0303", StringComparison.Ordinal) >= 0
                     || id.IndexOf("PNP0F03", StringComparison.Ordinal) >= 0
                     || id.IndexOf("PNP0F13", StringComparison.Ordinal) >= 0) return InputTransport.Ps2;
-                return InputTransport.Unknown;
+                return InputTransport.Internal;
             }
             if (id.StartsWith("USB\\", StringComparison.Ordinal)) return InputTransport.Usb;
             if (id.StartsWith("HID\\VID_", StringComparison.Ordinal)) return InputTransport.Usb;
-            if (id.StartsWith("HID\\", StringComparison.Ordinal)) return InputTransport.Virtual;
+            if (id.StartsWith("HID\\", StringComparison.Ordinal)) return ClassifyBareHid(instanceId);
             return InputTransport.Unknown;
+        }
+
+        private static InputTransport ClassifyBareHid(string instanceId)
+        {
+            foreach (string parent in PresentDevices.ParentChain(instanceId))
+            {
+                string up = parent.ToUpperInvariant();
+                if (up.StartsWith("ACPI\\", StringComparison.Ordinal)) return InputTransport.Internal;
+                if (up.StartsWith("USB\\", StringComparison.Ordinal)) return InputTransport.Usb;
+                if (up.StartsWith("BTHENUM", StringComparison.Ordinal)) return InputTransport.BluetoothClassic;
+                if (up.StartsWith("BTHLE", StringComparison.Ordinal)) return InputTransport.BluetoothLe;
+                if (up.StartsWith("ROOT\\", StringComparison.Ordinal)
+                    || up.StartsWith("SWD\\", StringComparison.Ordinal)) return InputTransport.Virtual;
+            }
+            return InputTransport.Virtual;
         }
 
         internal static string UsbHardwareKeyOf(string hidInstanceId)
@@ -269,6 +285,22 @@ namespace PaviseApp
             return false;
         }
 
+        public static bool BluetoothIsOnlyOption(List<InputDevice> devices, bool mouse)
+        {
+            if (devices == null) return false;
+            bool bt = false, other = false;
+            foreach (InputDevice d in devices)
+            {
+                if (d.IsMouse != mouse) continue;
+                if (d.Transport == InputTransport.BluetoothClassic
+                    || d.Transport == InputTransport.BluetoothLe) bt = true;
+                else if (d.Transport == InputTransport.Usb
+                    || d.Transport == InputTransport.Ps2
+                    || d.Transport == InputTransport.Internal) other = true;
+            }
+            return bt && !other;
+        }
+
         public static string TransportText(InputTransport transport)
         {
             switch (transport)
@@ -278,6 +310,7 @@ namespace PaviseApp
                 case InputTransport.BluetoothClassic: return "蓝牙";
                 case InputTransport.BluetoothLe: return "低功耗蓝牙";
                 case InputTransport.Virtual: return "虚拟设备";
+                case InputTransport.Internal: return "内置";
                 default: return "未知";
             }
         }

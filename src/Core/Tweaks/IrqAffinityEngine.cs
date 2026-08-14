@@ -161,7 +161,18 @@ namespace PaviseApp
             if (!Settings.Load(settingsKey, false))
             {
                 foreach (Target t in applied) { t.Policy.Restore(); t.Mask.Restore(); }
-                if (applied.Count > 0) SaveTouched(new List<string>());
+                if (applied.Count > 0)
+                {
+                    var remaining = new List<string>();
+                    foreach (string id in touched)
+                    {
+                        bool wasApplied = false;
+                        foreach (Target t in applied)
+                            if (string.Equals(t.DeviceId, id, StringComparison.OrdinalIgnoreCase)) { wasApplied = true; break; }
+                        if (!wasApplied) remaining.Add(id);
+                    }
+                    SaveTouched(remaining);
+                }
                 Logger.Log(logPrefix + "状态标志无法持久化 已还原注册表修改");
                 return false;
             }

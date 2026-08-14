@@ -2,6 +2,8 @@
 // 文件用途 内核反作弊下的本体提优主路径 经 IFEO PerfOptions 由内核在进程创建时应用
 // 内核在 NtCreateUserProcess 阶段读这些值 早于反作弊驱动为该进程注册句柄保护 因此拦不住
 // 代价是只对"下次启动"生效 所以必须在游戏启动前就位 见 PreArmAll
+// 优先级用 Above Normal 而不是 High 因为这条路径写不进进程 智能保帧降不了档
+// 台架实测 CPU 吃满时整进程 High 恶化尾部帧 IFEO 场景无法动态退让 只能静态取安全值
 
 using System;
 using Microsoft.Win32;
@@ -13,7 +15,7 @@ namespace PaviseApp
         private const string Root = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options";
         private const string ListKey = "IfeoList";
         private const string ArmKey = "IfeoArm";
-        private const int HighPriority = 3;
+        private const int HighPriority = 6;
         private const int HighIoPriority = 3;
         private const int HighPagePriority = 5;
 

@@ -212,7 +212,7 @@ namespace PaviseApp
 
         private static bool IsPresetWhitelistName(string name)
         {
-            foreach (string preset in PresetWhitelist)
+            foreach (string preset in SystemProcessCatalog.PresetWhitelist)
                 if (string.Equals(preset, name, StringComparison.OrdinalIgnoreCase)) return true;
             return false;
         }

@@ -17,15 +17,10 @@ namespace PaviseApp
         private PerformancePreset mode = PerformancePreset.Standard;
         private bool guardEnabled = true;
         private bool gameActive;
+        private double frozenSeconds;
         private bool animationRequested;
         private Bitmap staticLayer;
         private Color cachedAccent = Color.Empty, cachedAccent2 = Color.Empty;
-        private static readonly int selfPid;
-
-        static PaviseCore()
-        {
-            using (Process self = Process.GetCurrentProcess()) selfPid = self.Id;
-        }
 
         public PaviseCore()
         {
@@ -34,11 +29,10 @@ namespace PaviseApp
             BackColor = Theme.Bg;
             Cursor = Cursors.Default;
             timer = new Timer();
-            timer.Interval = 33;
+            timer.Interval = FrameMs;
             timer.Tick += delegate
             {
                 if (!CanAnimate()) { timer.Stop(); return; }
-                SyncFrameInterval();
                 Invalidate();
             };
         }
@@ -46,9 +40,10 @@ namespace PaviseApp
         public void SetState(PerformancePreset value, bool enabled, bool active)
         {
             if (mode == value && guardEnabled == enabled && gameActive == active) return;
+            if (active && !gameActive) frozenSeconds = clock.Elapsed.TotalSeconds;
             mode = value; guardEnabled = enabled; gameActive = active;
 
-            SyncFrameInterval();
+            SyncAnimationTimer();
             DropCache();
             Invalidate();
         }
@@ -58,12 +53,6 @@ namespace PaviseApp
             animationRequested = value;
             SyncAnimationTimer();
             if (value) Invalidate();
-        }
-
-        internal void NotifyForegroundChanged()
-        {
-            SyncFrameInterval();
-            SyncAnimationTimer();
         }
 
         protected override void OnVisibleChanged(EventArgs e)
@@ -92,34 +81,20 @@ namespace PaviseApp
         }
 
         internal static bool ShouldAnimate(bool requested, bool handleCreated, bool controlVisible,
-            bool formVisible, FormWindowState windowState)
+            bool formVisible, FormWindowState windowState, bool gameActive)
         {
             return requested && handleCreated && controlVisible && formVisible
-                && windowState != FormWindowState.Minimized;
+                && windowState != FormWindowState.Minimized && !gameActive;
         }
 
-        internal const int ActiveFrameMs = 30;
-        internal const int BackgroundFrameMs = 500;
-        internal const int GameBackgroundFrameMs = 2000;
-
-        internal static int DesiredFrameInterval(bool gameActive, bool selfForeground)
-        {
-            if (selfForeground) return ActiveFrameMs;
-            return gameActive ? GameBackgroundFrameMs : BackgroundFrameMs;
-        }
-
-        private void SyncFrameInterval()
-        {
-            int next = DesiredFrameInterval(gameActive,
-                GameSessionDetector.ForegroundPid() == selfPid);
-            if (timer.Interval != next) timer.Interval = next;
-        }
+        internal const int FrameMs = 30;
 
         private bool CanAnimate()
         {
             Form f = FindForm();
             return ShouldAnimate(animationRequested, IsHandleCreated, Visible,
-                f != null && f.Visible, f == null ? FormWindowState.Minimized : f.WindowState);
+                f != null && f.Visible, f == null ? FormWindowState.Minimized : f.WindowState,
+                gameActive);
         }
 
         private void SyncAnimationTimer()
@@ -143,7 +118,7 @@ namespace PaviseApp
             g.DrawImageUnscaled(staticLayer, 0, 0);
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-            double seconds = clock.Elapsed.TotalSeconds;
+            double seconds = gameActive ? frozenSeconds : clock.Elapsed.TotalSeconds;
             float speed = gameActive ? 1.45f : guardEnabled ? 0.72f : 0.28f;
             float spin = (float)(seconds * 14.0 * speed);
 
