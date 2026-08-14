@@ -81,13 +81,17 @@ namespace PaviseApp
             }
             catch (Exception ex)
             {
-                Logger.LogFailure("设置写入失败 " + name + "]", ex);
+                Logger.LogFailure("设置写入失败 " + name, ex);
                 return false;
             }
         }
 
         public static void Remove(string name)
         {
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+            lock (transientSync)
+                if (transientValues != null) { transientValues.Remove(name); return; }
+#endif
             try
             {
                 using (var k = Registry.CurrentUser.OpenSubKey(Key, true))
@@ -131,7 +135,7 @@ namespace PaviseApp
             }
             catch (Exception ex)
             {
-                Logger.LogFailure("设置写入失败 " + name + "]", ex);
+                Logger.LogFailure("设置写入失败 " + name, ex);
                 return false;
             }
         }

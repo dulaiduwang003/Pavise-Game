@@ -137,6 +137,11 @@ namespace PaviseApp
             Settings.SaveStr(KBoostNames, "");
         }
 
+        public static bool HasPending()
+        {
+            return Settings.LoadStr(KBoostEntries, "").Length > 0;
+        }
+
         public static void HealFromCrash()
         {
             List<BoostEntry> entries;

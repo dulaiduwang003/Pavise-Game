@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 统计单局游戏的压制成效并写入运行日志
 
 using System;
@@ -24,6 +24,7 @@ namespace PaviseApp
         private void ReportBegin(string game)
         {
             GpuThrottleProbe.Reset();
+            VramSpillProbe.Reset();
             long paviseCpu = CurrentProcessCpuTicks();
             lock (sync)
             {
@@ -152,6 +153,8 @@ namespace PaviseApp
                 paviseCpuPercent.ToString("0.00", CultureInfo.InvariantCulture));
             string throttle = GpuThrottleProbe.Summarize();
             if (throttle != null) msg += Lang.F("rep.gputhrottle", throttle);
+            string spill = VramSpillProbe.Summarize();
+            if (spill != null) msg += Lang.F("rep.vramspill", spill);
             Logger.Log("本局结束 " + msg);
 
             if (dur.TotalSeconds >= 60)

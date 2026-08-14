@@ -155,5 +155,29 @@ namespace PaviseApp
         {
             return dlg.ShowDialog(this);
         }
+
+        private DBPanel[] MakeTabPanels(Control page, TechTabs tabs, int count, int y)
+        {
+            var panels = new DBPanel[count];
+            for (int i = 0; i < panels.Length; i++)
+            {
+                var panel = new DBPanel();
+                panel.SetBounds(Theme.S(20), Theme.S(y), Theme.S(PageW - 40), Theme.S(PageH - y - 8));
+                panel.BackColor = Theme.Bg; panel.AutoScroll = true; Native.Dark(panel);
+                panel.Visible = i == 0;
+                page.Controls.Add(panel);
+                panels[i] = panel;
+            }
+            tabs.IndexChanged = delegate(int index)
+            {
+                for (int i = 0; i < panels.Length; i++)
+                {
+                    if (i != index) { Fx.Settle(panels[i]); panels[i].Visible = false; }
+                }
+                panels[index].Visible = true;
+                Fx.SlideIn(panels[index]);
+            };
+            return panels;
+        }
     }
 }

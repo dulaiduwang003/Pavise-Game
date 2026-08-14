@@ -25,6 +25,8 @@ namespace PaviseApp
         public string LearnedExecutablePath;
         public bool ForceTrigger;
         public readonly HashSet<string> Entries = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        public readonly Dictionary<string, string> Overrides =
+            new Dictionary<string, string>(StringComparer.Ordinal);
 
         public GameProfile Clone()
         {
@@ -38,6 +40,7 @@ namespace PaviseApp
                 ForceTrigger = ForceTrigger
             };
             foreach (string s in Entries) p.Entries.Add(s);
+            foreach (KeyValuePair<string, string> kv in Overrides) p.Overrides[kv.Key] = kv.Value;
             return p;
         }
 
@@ -53,10 +56,7 @@ namespace PaviseApp
     {
         internal const string FileName = "Pavise.profiles.dat";
         private const string HeaderPrefix = "PAVISE_PROFILES_";
-        private const string HeaderV1 = "PAVISE_PROFILES_V1";
-        private const string HeaderV2 = "PAVISE_PROFILES_V2";
-        private const string HeaderV3 = "PAVISE_PROFILES_V3";
-        private const string HeaderV4 = "PAVISE_PROFILES_V4";
+        private const string HeaderV5 = "PAVISE_PROFILES_V5";
         private readonly string path;
 
         public GameProfileStore(string dir)
@@ -64,30 +64,10 @@ namespace PaviseApp
             path = Path.Combine(dir, FileName);
         }
 
-        public bool ClearedLegacyLibrary
-        {
-            get { return legacyCleared; }
-        }
-
         public List<GameProfile> LoadOrMigrate(string legacyPath)
         {
             bool repaired;
             List<GameProfile> loaded = Normalize(Load(), out repaired);
-
-            if (!legacyCleared && !loadFailed && !File.Exists(path)
-                && LegacyGamesFileHasEntries(legacyPath))
-            {
-                legacyCleared = true;
-                TryBackup(legacyPath, legacyPath + ".pre-election.bak");
-            }
-            if (legacyCleared)
-            {
-                loaded.Clear();
-                Save(loaded);
-                Logger.Log("检测到旧版本的游戏库 已备份并自动清空 识别机制已重构为证据选举制 "
-                    + "旧档案不再适用 打开游戏进到画面即可自动重建");
-                return loaded;
-            }
 
             if (loadFailed || loaded.Count > 0 || File.Exists(path))
             {
@@ -102,21 +82,6 @@ namespace PaviseApp
 
             Save(loaded);
             return loaded;
-        }
-
-        private static bool LegacyGamesFileHasEntries(string legacyPath)
-        {
-            try
-            {
-                if (string.IsNullOrEmpty(legacyPath) || !File.Exists(legacyPath)) return false;
-                foreach (string line in File.ReadAllLines(legacyPath))
-                {
-                    string name, root;
-                    if (GameMode.TryParseGameLine(line, out name, out root)) return true;
-                }
-            }
-            catch { }
-            return false;
         }
 
         private static void TryBackup(string source, string backup)
@@ -137,7 +102,8 @@ namespace PaviseApp
                 var lines = new List<string>();
                 var learned = new List<string>();
                 var forced = new List<string>();
-                lines.Add(HeaderV4);
+                var overrides = new List<string>();
+                lines.Add(HeaderV5);
                 foreach (GameProfile p in profiles)
                 {
                     if (p == null || string.IsNullOrEmpty(p.Id) || string.IsNullOrEmpty(p.Name)) continue;
@@ -146,16 +112,20 @@ namespace PaviseApp
                     if (!string.IsNullOrEmpty(p.LearnedExecutablePath))
                         learned.Add("L|" + B64(p.Id) + "|" + B64(p.LearnedExecutablePath));
                     if (p.ForceTrigger) forced.Add("F|" + B64(p.Id));
+                    foreach (KeyValuePair<string, string> kv in p.Overrides)
+                        overrides.Add("O|" + B64(p.Id) + "|" + B64(kv.Key) + "|" + B64(kv.Value));
                 }
                 lines.AddRange(learned);
                 lines.AddRange(forced);
+                lines.AddRange(overrides);
                 AtomicFile.WriteLines(path, lines.ToArray(), "游戏档案");
             }
             catch (Exception ex) { Logger.LogFailure("游戏档案保存失败", ex); }
         }
 
         private bool loadFailed;
-        private bool legacyCleared;
+
+        public bool LoadFailed { get { return loadFailed; } }
 
         private List<GameProfile> Load()
         {
@@ -165,24 +135,22 @@ namespace PaviseApp
                 if (!File.Exists(path)) return result;
                 string[] lines = File.ReadAllLines(path, Encoding.UTF8);
                 if (lines.Length == 0) return result;
-                if (lines[0] == HeaderV1 || lines[0] == HeaderV2 || lines[0] == HeaderV3)
+                if (lines[0] != HeaderV5)
                 {
-                    legacyCleared = true;
-                    TryBackup(path, path + ".pre-election.bak");
-                    return result;
-                }
-                if (lines[0] != HeaderV4)
-                {
+                    loadFailed = true;
                     if (lines[0].StartsWith(HeaderPrefix, StringComparison.Ordinal))
+                        Logger.Log("游戏档案版本 " + lines[0]
+                            + " 与本版本不符 已切换为只读 不会改写该文件");
+                    else
                     {
-                        loadFailed = true;
-                        Logger.Log("游戏档案由更高版本的 Pavise 写入 " + lines[0]
-                            + " 本版本已切换为只读 不会改写该文件");
+                        TryBackup(path, path + ".corrupt.bak");
+                        Logger.Log("游戏档案首行无法识别 已备份并切换为只读 不会改写该文件 重启 Pavise 重试");
                     }
                     return result;
                 }
                 var learnedById = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                 var forcedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var overridesById = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
                 for (int i = 1; i < lines.Length; i++)
                 {
                     string[] a = lines[i].Split('|');
@@ -199,13 +167,27 @@ namespace PaviseApp
                         if (!string.IsNullOrEmpty(id)) forcedIds.Add(id);
                         continue;
                     }
+                    if (a[0] == "O" && a.Length == 4)
+                    {
+                        string id = Un64(a[1]);
+                        string key = Un64(a[2]);
+                        if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(key)) continue;
+                        Dictionary<string, string> bag;
+                        if (!overridesById.TryGetValue(id, out bag))
+                        {
+                            bag = new Dictionary<string, string>(StringComparer.Ordinal);
+                            overridesById[id] = bag;
+                        }
+                        string overrideValue;
+                        if (TryUn64(a[3], out overrideValue)) bag[key] = overrideValue;
+                        continue;
+                    }
                     if (a[0] != "P") continue;
-                    if (a.Length != 6 && a.Length != 7) continue;
+                    if (a.Length != 6) continue;
                     var p = new GameProfile
                     {
                         Id = Un64(a[1]), Name = Un64(a[2]), Root = NormalizeRoot(Un64(a[3])),
-                        ExecutablePath = NormalizePath(Un64(a[4])),
-                        LearnedExecutablePath = a.Length == 7 ? NormalizePath(Un64(a[6])) : null
+                        ExecutablePath = NormalizePath(Un64(a[4]))
                     };
                     AddLines(p.Entries, Un64(a[5]));
                     if (!string.IsNullOrEmpty(p.Id) && !string.IsNullOrEmpty(p.Name)) result.Add(p);
@@ -217,6 +199,12 @@ namespace PaviseApp
                         && learnedById.TryGetValue(p.Id, out learnedPath))
                         p.LearnedExecutablePath = learnedPath;
                     if (p.Id != null && forcedIds.Contains(p.Id)) p.ForceTrigger = true;
+                    Dictionary<string, string> bag;
+                    if (p.Id != null && overridesById.TryGetValue(p.Id, out bag))
+                    {
+                        foreach (KeyValuePair<string, string> kv in bag) p.Overrides[kv.Key] = kv.Value;
+                        PolicyResolver.Sanitize(p);
+                    }
                 }
             }
             catch (Exception ex)
@@ -306,6 +294,8 @@ namespace PaviseApp
                 if (string.IsNullOrEmpty(keep.ExecutablePath)) keep.ExecutablePath = raw.ExecutablePath;
                 if (string.IsNullOrEmpty(keep.LearnedExecutablePath)) keep.LearnedExecutablePath = raw.LearnedExecutablePath;
                 if (raw.ForceTrigger) keep.ForceTrigger = true;
+                foreach (KeyValuePair<string, string> kv in raw.Overrides)
+                    if (!keep.Overrides.ContainsKey(kv.Key)) keep.Overrides[kv.Key] = kv.Value;
             }
             return result;
         }
@@ -375,6 +365,16 @@ namespace PaviseApp
         {
             try { return Encoding.UTF8.GetString(Convert.FromBase64String(s ?? "")); }
             catch { return ""; }
+        }
+
+        private static bool TryUn64(string s, out string value)
+        {
+            try
+            {
+                value = Encoding.UTF8.GetString(Convert.FromBase64String(s ?? ""));
+                return true;
+            }
+            catch { value = null; return false; }
         }
     }
 }

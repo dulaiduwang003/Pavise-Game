@@ -108,6 +108,8 @@ namespace PaviseApp
             else UiClock.Wake(36);
         }
 
+        public static bool ThemeAnimating { get { return themeT < 1f; } }
+
         public static bool StepTheme()
         {
             if (themeT >= 1f) return false;

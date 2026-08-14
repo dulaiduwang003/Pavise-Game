@@ -44,8 +44,6 @@ namespace PaviseApp
 
         private static readonly string[] NonGameRoleTokens =
         {
-            "anticheat", "anti-cheat", "ace-helper", "ace-base", "sguard", "tensafe",
-            "easyanticheat", "beservice", "battleye", "gameguard", "gamemon", "vgtray",
             "crashreport", "crash_report", "crashpad", "crashhandler", "crashsender",
             "telemetry", "uninstall"
         };
@@ -70,12 +68,6 @@ namespace PaviseApp
         }
 
         private static readonly string[] ClientShellTokens = { "leagueclient", "riotclient" };
-
-        private static readonly string[] AntiCheatTokens =
-        {
-            "anticheat", "anti-cheat", "sguard", "tensafe", "easyanticheat",
-            "beservice", "battleye", "gameguard", "gamemon", "vgtray", "ace-helper", "ace-base"
-        };
 
         public static GameDetection Detect(Process[] all, IList<GameProfile> profiles)
         {
@@ -132,7 +124,7 @@ namespace PaviseApp
                             process.Id, ownerSession,
                             out identity))
                         continue;
-                    if (IsAntiCheatLikeName(identity.Name))
+                    if (AntiCheatCatalog.IsAntiCheatLikeName(identity.Name))
                         continue;
                     snapshot.Add(identity);
                 }
@@ -158,7 +150,7 @@ namespace PaviseApp
                 GameProcessSnapshot identity;
                 if (!TryCaptureProcessIdentity(entry, ownerSession, out identity))
                     continue;
-                if (IsAntiCheatLikeName(identity.Name)) continue;
+                if (AntiCheatCatalog.IsAntiCheatLikeName(identity.Name)) continue;
                 snapshot.Add(identity);
             }
 
@@ -361,7 +353,7 @@ namespace PaviseApp
         internal static bool ElectionVetoed(string name, string path)
         {
             if (string.IsNullOrEmpty(name)) return true;
-            if (IsAntiCheatLikeName(name)) return true;
+            if (AntiCheatCatalog.IsAntiCheatLikeName(name)) return true;
             if (NeverGames.Contains(name)) return true;
             if (IsLauncherLikeName(name)) return true;
             return IsNonGameRole(name, path);
@@ -430,14 +422,6 @@ namespace PaviseApp
             return candidate.RendererPid < current.RendererPid;
         }
 
-        internal static bool IsAntiCheatLikeName(string name)
-        {
-            if (AntiCheatCatalog.IsKnownProcess(name)) return true;
-            string low = (name ?? "").ToLowerInvariant();
-            foreach (string t in AntiCheatTokens) if (low.Contains(t)) return true;
-            return false;
-        }
-
         internal static bool IsLauncherLikeName(string name)
         {
             string low = (name ?? "").ToLowerInvariant();
@@ -452,6 +436,7 @@ namespace PaviseApp
             string n = (name ?? "").Trim();
             if (AntiCheatCatalog.IsKnownProcess(n) || NeverGames.Contains(n)) return true;
             string low = ((path ?? "") + "\\" + n).ToLowerInvariant();
+            if (AntiCheatCatalog.ContainsToken(low)) return true;
             foreach (string token in NonGameRoleTokens)
                 if (low.Contains(token)) return true;
             return false;

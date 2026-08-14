@@ -508,7 +508,7 @@ namespace PaviseApp
             else if (request.Result == AcquireResult.ApplyFailed)
                 Logger.Log("压制 " + request.Name + " pid " + request.Pid
                     + " 未完全生效"
-                    + (string.IsNullOrEmpty(request.FailureDetail) ? "" : " 失败环节 " + request.FailureDetail + "]")
+                    + (string.IsNullOrEmpty(request.FailureDetail) ? "" : " 失败环节 " + request.FailureDetail)
                     + " 已保留快照 将按退避计划重试");
         }
 

@@ -19,13 +19,6 @@ namespace PaviseApp
     {
         public static string Data;
 
-        private static readonly string[] DataFiles =
-        {
-            "Pavise.games.txt", GameProfileStore.FileName, "Pavise.whitelist.txt", "Pavise.targets.txt",
-            "Pavise.log", "crash.log",
-            "Pavise.freeze.state", SuppressionCore.StateFileName
-        };
-
         public static void Init()
         {
             string exeDir = Path.GetDirectoryName(Application.ExecutablePath);
@@ -37,7 +30,6 @@ namespace PaviseApp
                 string appData = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Pavise");
                 Directory.CreateDirectory(appData);
-                Migrate(exeDir, appData);
                 Data = appData;
             }
             catch
@@ -59,25 +51,6 @@ namespace PaviseApp
             catch { return false; }
         }
 
-        private static void Migrate(string exeDir, string appData)
-        {
-            if (string.Equals(exeDir.TrimEnd('\\'), appData.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
-                return;
-            foreach (string name in DataFiles)
-            {
-                try
-                {
-                    string src = Path.Combine(exeDir, name);
-                    if (!File.Exists(src)) continue;
-                    string dst = Path.Combine(appData, name);
-                    if (!File.Exists(dst)) { File.Move(src, dst); continue; }
-                    if (File.GetLastWriteTimeUtc(src) > File.GetLastWriteTimeUtc(dst))
-                        File.Copy(src, dst, true);
-                    File.Delete(src);
-                }
-                catch { }
-            }
-        }
     }
 
 }

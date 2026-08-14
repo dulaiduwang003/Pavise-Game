@@ -16,6 +16,7 @@ namespace PaviseApp
         public string Note;
         public string Evidence;
         public bool Warn;
+        public string FixKey;
     }
 
     internal sealed class AuditReport
@@ -28,7 +29,7 @@ namespace PaviseApp
         public int MeasureWindowMs;
     }
 
-    internal static class SystemAudit
+    internal static partial class SystemAudit
     {
         public const string EvMeasuredLocal = "本机实测";
         public const string EvMeasuredBench = "台架实测";
@@ -112,7 +113,7 @@ namespace PaviseApp
 
         public static bool RefreshRateIsBest(int current, int best)
         {
-            return current <= 0 || best <= 0 || current >= best;
+            return current <= 0 || best <= 0 || current >= best - 1;
         }
 
         private static string WindowsText()
@@ -265,11 +266,39 @@ namespace PaviseApp
             public bool HidPowerSave;
             public bool QueueTampered;
             public int? ThreadDpc;
+            public int OsBuild;
+            public bool RyzenCpu;
+            public int MemModules;
+            public int MemConfiguredMhz;
+            public int MemRatedMhz;
+            public List<int> AllHz;
+            public List<string> RgbSuites;
+            public int ThrottleEvents7d;
+            public bool WindowedOptOn;
+            public int MsiOffCount;
+            public List<string> HddRoots;
         }
 
-        private static Facts Gather()
+        private static Facts Gather(List<string> gameRoots)
         {
             var f = new Facts();
+            try { f.OsBuild = Native.OsBuild(); } catch { }
+            try
+            {
+                using (var k = Registry.LocalMachine.OpenSubKey(@"HARDWARE\DESCRIPTION\System\CentralProcessor\0"))
+                {
+                    string cpu = k == null ? null : k.GetValue("ProcessorNameString") as string;
+                    f.RyzenCpu = cpu != null && cpu.IndexOf("AMD Ryzen", StringComparison.OrdinalIgnoreCase) >= 0;
+                }
+            }
+            catch { }
+            try { GatherMemoryModules(f); } catch { }
+            try { f.AllHz = DisplayGuard.AllRefreshRates(); } catch { }
+            try { f.RgbSuites = ScanRgbSuites(); } catch { }
+            try { f.ThrottleEvents7d = CountCpuThrottleEvents(); } catch { }
+            try { f.WindowedOptOn = WindowedOptTweak.CurrentlyOn(); } catch { }
+            try { f.MsiOffCount = MsiModeTweak.Disabled().Count; } catch { }
+            try { f.HddRoots = SeekPenaltyRoots(gameRoots); } catch { }
             try { f.Nv = NvApi.Available; } catch { }
             try
             {
@@ -357,6 +386,11 @@ namespace PaviseApp
 
         public static AuditReport Collect(int measureWindowMs)
         {
+            return Collect(measureWindowMs, null);
+        }
+
+        public static AuditReport Collect(int measureWindowMs, List<string> gameRoots)
+        {
             var report = new AuditReport();
             report.MeasureWindowMs = measureWindowMs;
 
@@ -388,9 +422,10 @@ namespace PaviseApp
             int hzCur, hzBest;
             DisplayGuard.QueryRefreshRates(out hzCur, out hzBest);
 
-            Facts facts = Gather();
+            Facts facts = Gather(gameRoots);
             BuildCapability(report, facts);
             BuildMachine(report, facts, cpuBusy, worstIrq, worstCore, hzCur, hzBest, culprits);
+            BuildHardwareHealth(report, facts);
             BuildInputChain(report, facts);
             BuildPersistent(report, facts);
             BuildVerdicts(report, facts, worstIrq, hzCur, hzBest, culprits);
@@ -418,7 +453,7 @@ namespace PaviseApp
                 Name = "NVIDIA 驱动接口",
                 Value = facts.Nv ? "可用" : "不可用",
                 Note = facts.Nv
-                    ? "电源 帧率上限 预渲染这些驱动项在本机可用 用写入实测能验证是不是真写进去了"
+                    ? "电源 帧率上限 预渲染这些驱动项在本机可用 写入失败会自动熔断对应开关"
                     : facts.NvHardware
                         ? "有 N 卡但驱动接口调不起来 多半是驱动太老或者装的精简版 显卡页 NVIDIA 区整体停用"
                         : "本机没有 NVIDIA 显卡 显卡页 NVIDIA 区整体停用",
@@ -487,6 +522,20 @@ namespace PaviseApp
         private static void BuildMachine(AuditReport report, Facts facts, double cpuBusy, double worstIrq, ulong worstCore,
             int hzCur, int hzBest, InterruptAttributionResult culprits)
         {
+            BuildMachineCpu(report, cpuBusy, worstIrq, worstCore, culprits);
+            BuildMachineDisplay(report, hzCur, hzBest);
+            BuildMachineGpu(report);
+            BuildMachinePower(report);
+            BuildMachineRebar(report);
+            BuildMachineMemory(report, facts);
+            BuildMachineNetwork(report, facts);
+            BuildMachineBattery(report);
+            BuildMachineTopConsumers(report);
+        }
+
+        private static void BuildMachineCpu(AuditReport report, double cpuBusy, double worstIrq, ulong worstCore,
+            InterruptAttributionResult culprits)
+        {
             int logical = Environment.ProcessorCount;
             int physical = 0;
             try { physical = CpuTopology.PhysicalCoreCount; } catch { }
@@ -548,7 +597,10 @@ namespace PaviseApp
                     Warn = true
                 });
             }
+        }
 
+        private static void BuildMachineDisplay(AuditReport report, int hzCur, int hzBest)
+        {
             bool hzRead = hzCur > 0 && hzBest > 0;
             bool hzOk = RefreshRateIsBest(hzCur, hzBest);
             report.Machine.Add(new AuditRow
@@ -567,7 +619,10 @@ namespace PaviseApp
                 Evidence = EvMeasuredLocal,
                 Warn = !hzOk || !hzRead
             });
+        }
 
+        private static void BuildMachineGpu(AuditReport report)
+        {
             string throttleNow = null;
             try { throttleNow = GpuThrottleProbe.InstantText(); } catch { }
             if (throttleNow != null)
@@ -584,7 +639,10 @@ namespace PaviseApp
                     Warn = throttled
                 });
             }
+        }
 
+        private static void BuildMachinePower(AuditReport report)
+        {
             bool saverOn;
             if (TryEnergySaver(out saverOn))
             {
@@ -612,7 +670,10 @@ namespace PaviseApp
                 Evidence = EvMeasuredLocal,
                 Warn = false
             });
+        }
 
+        private static void BuildMachineRebar(AuditReport report)
+        {
             bool rebarOn = false;
             ulong rebarWindow = 0;
             string rebarGpu = null;
@@ -633,7 +694,10 @@ namespace PaviseApp
                     Warn = false
                 });
             }
+        }
 
+        private static void BuildMachineMemory(AuditReport report, Facts facts)
+        {
             if (facts.MemOk)
             {
                 report.Machine.Add(new AuditRow
@@ -663,7 +727,10 @@ namespace PaviseApp
                     Warn = pageDisabled
                 });
             }
+        }
 
+        private static void BuildMachineNetwork(AuditReport report, Facts facts)
+        {
             if (facts.Link != null && facts.Link != "none")
             {
                 bool wifiOnly = facts.Link == "wifi";
@@ -679,11 +746,15 @@ namespace PaviseApp
                     Warn = wifiOnly
                 });
             }
+        }
 
+        private static void BuildMachineBattery(AuditReport report)
+        {
             try
             {
                 SystemPowerStatus power;
-                if (GetSystemPowerStatus(out power) && power.BatteryFlag != 128)
+                if (GetSystemPowerStatus(out power) && power.BatteryFlag != 128
+                    && power.BatteryFlag != 255 && power.AcLineStatus != 255)
                 {
                     bool onAc = power.AcLineStatus == 1;
                     report.Machine.Add(new AuditRow
@@ -698,7 +769,10 @@ namespace PaviseApp
                 }
             }
             catch { }
+        }
 
+        private static void BuildMachineTopConsumers(AuditReport report)
+        {
             int topWindow = Math.Max(600, Math.Min(3000, report.MeasureWindowMs / 10));
             var top = TopConsumers(topWindow, 3);
             if (top.Count > 0)
@@ -720,11 +794,16 @@ namespace PaviseApp
         internal static string InputSummary(List<InputDevice> devices, bool mouse)
         {
             if (devices == null) return null;
+            bool hasNonPs2 = false;
+            foreach (InputDevice d in devices)
+                if (d.IsMouse == mouse && d.Transport != InputTransport.Virtual
+                    && d.Transport != InputTransport.Ps2) hasNonPs2 = true;
             var seen = new List<string>();
             foreach (InputDevice d in devices)
             {
                 if (d.IsMouse != mouse) continue;
                 if (d.Transport == InputTransport.Virtual) continue;
+                if (d.Transport == InputTransport.Ps2 && hasNonPs2) continue;
                 string text = InputChainProbe.TransportText(d.Transport);
                 if (!seen.Contains(text)) seen.Add(text);
             }
@@ -733,8 +812,14 @@ namespace PaviseApp
 
         private static void BuildInputChain(AuditReport report, Facts facts)
         {
-            bool bt = false;
-            try { bt = InputChainProbe.AnyBluetooth(facts.Inputs); } catch { }
+            bool bt = false, btOnly = false;
+            try
+            {
+                bt = InputChainProbe.AnyBluetooth(facts.Inputs);
+                btOnly = InputChainProbe.BluetoothIsOnlyOption(facts.Inputs, true)
+                    || InputChainProbe.BluetoothIsOnlyOption(facts.Inputs, false);
+            }
+            catch { }
             string mice = InputSummary(facts.Inputs, true);
             string keys = InputSummary(facts.Inputs, false);
             if (mice != null || keys != null)
@@ -744,12 +829,14 @@ namespace PaviseApp
                     Name = "键鼠链路",
                     Value = (mice == null ? "" : "鼠标 " + mice) + (mice != null && keys != null ? "   " : "")
                         + (keys == null ? "" : "键盘 " + keys),
-                    Note = bt
+                    Note = btOnly
                         ? "蓝牙键鼠是整条延迟链上外设段唯一的两位数毫秒损失 台架实测同一只鼠标蓝牙约 10.4 毫秒 换 2.4G 接收器约 3.6 毫秒 "
                             + "而 2.4G 和有线基本无差 做法 插上随附的 2.4G 接收器 或者换有线 这个没有软件解法"
-                        : "USB 直连和 2.4G 接收器的外设延迟都在 1 到 5 毫秒 已经是这一段的下限 再往下抠要动硬件",
+                        : bt
+                            ? "同时枚举到蓝牙和更快的连接 蓝牙那只可能只是配过对没在用 如果实际在用的是蓝牙 换 2.4G 接收器或有线能省约 7 毫秒"
+                            : "USB 直连和 2.4G 接收器的外设延迟都在 1 到 5 毫秒 已经是这一段的下限 再往下抠要动硬件",
                     Evidence = bt ? EvMeasuredBench : EvMeasuredLocal,
-                    Warn = bt
+                    Warn = btOnly
                 });
             }
 
@@ -766,7 +853,7 @@ namespace PaviseApp
                             + facts.Access.DelayBeforeAcceptanceMs
                             + " 毫秒才被接受 这是本页所有键鼠项里唯一能救回两位数毫秒的一条 做法 系统环境页拨开 辅助功能拦截 开关"
                         : needFix
-                            ? "三个功能本身都没开 但热键还激活着 连按五次 Shift 或长按右 Shift 八秒会弹窗打断全屏游戏 "
+                            ? "当前没有造成输入延迟 但开关或热键还留着 连按五次 Shift 或长按右 Shift 八秒会弹窗打断全屏游戏 "
                                 + "做法 系统环境页拨开 辅助功能拦截 开关 一次清掉 不需要管理员也不用重启"
                             : "筛选键 粘滞键 切换键都没开 热键也没激活 不会拦你的击键",
                     Evidence = EvMechanism,
@@ -893,221 +980,45 @@ namespace PaviseApp
                     Name = "平台时钟",
                     Value = stale ? "陈旧覆盖 " + string.Join(" ", facts.ClockStale.ToArray()) : "系统默认",
                     Note = stale
-                        ? "启动配置里有老教程写的时钟覆盖 强制 HPET 在现代平台上是纯减益 做法 系统环境页找 平台时钟校正 卡片 拨开开关"
+                        ? "启动配置里有老教程写的时钟覆盖 强制 HPET 在现代平台上是纯减益 点右侧一键修复即可清掉 重启生效 可还原"
                         : "启动配置干净 系统用最快的 TSC 计时",
                     Evidence = EvMechanism,
-                    Warn = stale
-                });
-            }
-        }
-
-        private static void BuildVerdicts(AuditReport report, Facts facts, double worstIrq, int hzCur, int hzBest,
-            InterruptAttributionResult culprits)
-        {
-            if (hzCur > 0 && hzBest > 0 && !RefreshRateIsBest(hzCur, hzBest))
-            {
-                report.Verdicts.Add(new AuditRow
-                {
-                    Name = "主屏刷新率",
-                    Value = "强烈建议处理",
-                    Note = "当前 " + hzCur + "Hz 可用 " + hzBest + "Hz 这一项比本页任何调度优化的收益都直接 "
-                        + "帧数上限是翻倍级别的差距 而且没有任何代价 做法 系统设置 显示 高级显示 里把刷新率改到 "
-                        + hzBest + "Hz 这是持久设置 改一次就一直生效 Pavise 不代改",
-                    Evidence = EvMechanism,
-                    Warn = true
+                    Warn = stale,
+                    FixKey = "clock"
                 });
             }
 
-            if (facts.Access != null && facts.Access.FilterKeysSwallowing)
+            bool quantumTampered = false;
+            string quantumState = "";
+            try { quantumTampered = QuantumTweak.NeedsRepair(); quantumState = QuantumTweak.Describe(); }
+            catch { }
+            report.Persistent.Add(new AuditRow
             {
-                report.Verdicts.Add(new AuditRow
-                {
-                    Name = "筛选键",
-                    Value = "强烈建议处理",
-                    Note = "筛选键在输入路径上主动插入了 " + facts.Access.DelayBeforeAcceptanceMs
-                        + " 毫秒的接受延迟 键鼠这条链上外设段总共才 1 到 5 毫秒 这一项一个人就顶掉了好几倍 "
-                        + "多数人是玩游戏时长按 Shift 被弹窗误开的 做法 系统环境页拨开 辅助功能拦截 开关 不需要管理员也不用重启",
-                    Evidence = EvMechanism,
-                    Warn = true
-                });
-            }
-            else if (facts.Access != null && facts.Access.AnyNeedsFix)
-            {
-                report.Verdicts.Add(new AuditRow
-                {
-                    Name = "辅助功能热键",
-                    Value = "建议关闭",
-                    Note = "功能本身没开 但热键还留着 连按五次 Shift 或长按右 Shift 八秒会在全屏游戏里弹窗 "
-                        + "打断一次团战的代价比任何毫秒级优化都大 做法 系统环境页拨开 辅助功能拦截 开关",
-                    Evidence = EvMechanism,
-                    Warn = false
-                });
-            }
-
-            bool btInput = false;
-            try { btInput = InputChainProbe.AnyBluetooth(facts.Inputs); } catch { }
-            if (btInput)
-            {
-                report.Verdicts.Add(new AuditRow
-                {
-                    Name = "蓝牙键鼠",
-                    Value = "建议换连接方式",
-                    Note = "台架实测同一只鼠标蓝牙约 10.4 毫秒 2.4G 接收器约 3.6 毫秒 而 2.4G 与有线基本无差 "
-                        + "无线比有线慢是过时说法 但蓝牙确实慢 而且这七毫秒比本页所有软件优化加起来都多 "
-                        + "做法 插 2.4G 接收器或换有线 没有软件解法",
-                    Evidence = EvMeasuredBench,
-                    Warn = true
-                });
-            }
-
-            if (facts.HidPowerSave)
-            {
-                report.Verdicts.Add(new AuditRow
-                {
-                    Name = "键鼠设备省电",
-                    Value = "建议关闭",
-                    Note = "治的是空闲一段时间后第一下操作的顿挫 不是稳态延迟 台式机没有代价直接关 "
-                        + "笔记本要权衡续航 做法 系统环境页拨开 键鼠设备省电 开关",
-                    Evidence = EvMechanism,
-                    Warn = false
-                });
-            }
-
-            if (facts.QueueTampered)
-            {
-                report.Verdicts.Add(new AuditRow
-                {
-                    Name = "键鼠队列长度",
-                    Value = "建议改回默认",
-                    Note = "有工具把它改过 这个值决定能缓存多少条输入 不决定输入被处理的快慢 所以调它不降延迟 "
-                        + "调低了还会在高回报率鼠标上丢输入 做法 系统环境页拨开 键鼠队列校正 开关 重启生效",
-                    Evidence = EvMechanism,
-                    Warn = true
-                });
-            }
-
-            report.Verdicts.Add(new AuditRow
-            {
-                Name = "输入延迟的大头在哪",
-                Value = "看清楚再动手",
-                Note = "端到端延迟三段 外设 1 到 5 毫秒 渲染管线在 GPU 打满时 20 到 60 毫秒 显示器 3 到 20 毫秒 "
-                    + "所以键鼠注册表偏方是在错的量级上花力气 真正的大头是渲染队列堆积 "
-                    + "做法 游戏支持 NVIDIA Reflex 或 AMD Anti-Lag 就在游戏里开 没有就把帧率上限压到 GPU 占用 90 到 95 百分比 "
-                    + "别顶着刷新率上限跑 那会隐式触发垂直同步 反而多加半帧到一帧 显卡页的帧率上限和低延迟就是干这个的",
-                Evidence = EvMeasuredBench,
-                Warn = false
-            });
-
-            report.Verdicts.Add(new AuditRow
-            {
-                Name = "后台压制",
-                Value = facts.SuppressOn ? "已开启 不用处理" : "建议开启",
-                Note = "合成台架六轮配对实测 1% 最差帧改善中位 90.7% 而且免疫随时间累积的恶化",
-                Evidence = EvMeasuredBench,
-                Warn = false
-            });
-
-            report.Verdicts.Add(new AuditRow
-            {
-                Name = "Windows 游戏模式",
-                Value = facts.GameMode ? "已开启 不用处理" : "建议开启",
-                Note = "系统原生的游戏时段后台抑制 没有兼容风险",
+                Name = "前台时间片",
+                Value = quantumTampered ? "被改动" : "系统默认",
+                Note = (quantumTampered
+                    ? "Win32PrioritySeparation 被工具或教程改过 前台程序的时间片分配偏离系统默认 点右侧一键修复改回默认 2 可还原"
+                    : "前台时间片分配保持系统默认 不用处理") + " " + quantumState,
                 Evidence = EvMechanism,
-                Warn = false
+                Warn = quantumTampered,
+                FixKey = "quantum"
             });
 
-            report.Verdicts.Add(new AuditRow
+            bool netTampered = false;
+            string netState = "";
+            try { netTampered = NetTweak.NeedsRepair(); netState = NetTweak.Describe(); }
+            catch { }
+            report.Persistent.Add(new AuditRow
             {
-                Name = "NVIDIA 深度调优",
-                Value = facts.Nv ? "可以尝试" : "本机不适用",
-                Note = facts.Nv ? "先用写入实测确认本机驱动接受写入 再按游戏开启"
-                    : facts.IntegratedOnly
-                        ? "核显没有对应的调优接口 这一项跳过 收益从压制 绑核和电源那边拿"
-                        : "没有 NVIDIA 驱动接口",
-                Evidence = EvMeasuredLocal,
-                Warn = false
+                Name = "网络限流值",
+                Value = netTampered ? "被改动" : "系统默认",
+                Note = (netTampered
+                    ? "NetworkThrottlingIndex 被改成非默认值 网上教程说能优化 实测只会干扰多媒体调度 点右侧一键修复改回默认 10 可还原"
+                    : "网络限流值保持系统默认 不用处理") + " " + netState,
+                Evidence = EvMechanism,
+                Warn = netTampered,
+                FixKey = "net"
             });
-
-            if (report.MeasureOk)
-            {
-                int tier = InterruptTier(worstIrq);
-                string culprit = culprits != null && culprits.Ok && culprits.TopDpc != null
-                    ? culprits.TopDpc : null;
-                report.Verdicts.Add(new AuditRow
-                {
-                    Name = "中断负载",
-                    Value = tier == 2 ? "建议处理" : "不用处理",
-                    Note = tier == 2
-                        ? (culprit != null
-                            ? "有个核心 " + PercentText(worstIrq) + " 的时间在处理硬件中断 头号来源是 " + culprit
-                                + " 做法 它属于显卡就开 GPU 中断亲和 硬盘和网卡类的中断路由属于驱动层 本软件的避让开关够不到 只能等驱动更新"
-                            : "有个核心 " + PercentText(worstIrq) + " 的时间在处理硬件中断 做法 系统环境页开两个避让开关 重启后再体检对比 数值降了就是它们 降不下来是硬盘 网卡或主板设备在响 那层属于驱动和硬件 本软件不碰")
-                        : "当前量级 " + PercentText(worstIrq) + " 很小 感觉不出来 不用管",
-                    Evidence = EvMeasuredLocal,
-                    Warn = tier == 2
-                });
-            }
-
-            if (facts.Dvr)
-            {
-                report.Verdicts.Add(new AuditRow
-                {
-                    Name = "Game DVR 后台录制",
-                    Value = "建议关闭",
-                    Note = "后台录制一直开着就一直有开销 多数人根本不用 Xbox Game Bar 录制",
-                    Evidence = EvMechanism,
-                    Warn = false
-                });
-            }
-
-            if (facts.MemOk && facts.UsedRatio >= 0.85)
-            {
-                report.Verdicts.Add(new AuditRow
-                {
-                    Name = "内存余量",
-                    Value = "建议处理",
-                    Note = "只剩 " + facts.AvailGb.ToString("F1") + " GB 可用 内存不够时系统会拿硬盘顶内存 那是毫秒级的等待 "
-                        + "比任何调度问题都更容易造成明显卡顿 做法 退掉吃内存的后台程序 长期紧张就加内存条 这个没有软件解法",
-                    Evidence = EvMechanism,
-                    Warn = true
-                });
-            }
-
-            if (facts.Vbs.WmiOk && facts.Vbs.VbsRunning)
-            {
-                report.Verdicts.Add(new AuditRow
-                {
-                    Name = "VBS",
-                    Value = "可以尝试关闭",
-                    Note = "有代价 影响内存完整性 WSL2 Docker 和沙盒 用这些功能就别关 做法 系统环境页找 VBS 卡片 拨开开关 重启生效",
-                    Evidence = EvMechanism,
-                    Warn = false
-                });
-            }
-
-            if (facts.ClockStale != null && facts.ClockStale.Count > 0)
-            {
-                report.Verdicts.Add(new AuditRow
-                {
-                    Name = "平台时钟",
-                    Value = "建议校正",
-                    Note = "强制 HPET 是十年前的教程遗产 TSC 计时比它快几个数量级 做法 系统环境页找 平台时钟校正 卡片 拨开开关就清掉 重启生效 可还原",
-                    Evidence = EvMechanism,
-                    Warn = true
-                });
-            }
-
-            if (facts.PageOk && PageFileLooksDisabled(facts.PageFileGb))
-            {
-                report.Verdicts.Add(new AuditRow
-                {
-                    Name = "页面文件",
-                    Value = "建议恢复",
-                    Note = "关页面文件不提帧 只把内存吃紧时的变慢换成直接崩溃 部分游戏和反作弊还要求它存在",
-                    Evidence = EvMechanism,
-                    Warn = true
-                });
-            }
         }
     }
 }

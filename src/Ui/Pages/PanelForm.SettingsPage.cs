@@ -12,11 +12,10 @@ namespace PaviseApp
     internal partial class PanelForm
     {
         private Toggle swAuto, swAutoHide;
-        private SettingCard cardShader, cardAddon;
+        private SettingCard cardShader;
         private static volatile bool shaderCleaning;
         private int slowBusy;
         private int restoreBusy;
-        private int addonBusy;
         private int wipeBusy;
 
         private void BuildSettingsPage()
@@ -56,13 +55,6 @@ namespace PaviseApp
             btnWipe.Size = new Size(Theme.S(136), Theme.S(32));
             btnWipe.Click += delegate { OnWipeAll(btnWipe); };
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 78, Lang.T("set.wipe.title"), Lang.T("set.wipe.desc"), btnWipe, out cardH);
-            sy += cardH + 8;
-
-            var btnAddonGo = new PillButton(Lang.T("btn.clean"));
-            btnAddonGo.Size = new Size(Theme.S(88), Theme.S(30));
-            btnAddonGo.Click += delegate { OnAddonClean(btnAddonGo); };
-            cardAddon = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("addon.open"), Lang.T("addon.open.sub"), btnAddonGo, out cardH);
-            cardAddon.Value = " ";
             sy += cardH + 8;
 
             var btnShaderGo = new PillButton(Lang.T("btn.clean"));
@@ -128,63 +120,6 @@ namespace PaviseApp
             });
         }
 
-        private string ResolveAddonRoot()
-        {
-            foreach (GameProfile profile in gameMode.GetProfiles())
-            {
-                if (string.IsNullOrEmpty(profile.Root)) continue;
-                string root;
-                string error;
-                if (LolAddonCleaner.TryResolveRoot(profile.Root, out root, out error)) return root;
-            }
-            return null;
-        }
-
-        private static string AddonStateText(LolAddonCleaner.Inspection inspection)
-        {
-            if (inspection == null || !inspection.IsValidRoot) return Lang.T("addon.hint.fail");
-            if (inspection.CandidateCount == 0) return Lang.T("addon.hint.clean");
-            return Lang.F("addon.hint.ready",
-                inspection.CandidateCount, CacheSweep.FmtBytes(inspection.CandidateBytes));
-        }
-
-        private void OnAddonClean(PillButton btn)
-        {
-            if (Interlocked.Exchange(ref addonBusy, 1) == 1) return;
-            btn.Enabled = false;
-            if (cardAddon != null) cardAddon.Value = Lang.T("addon.hint.deleting");
-            ThreadPool.QueueUserWorkItem(delegate
-            {
-                string text;
-                string root = null;
-                try { root = ResolveAddonRoot(); } catch { }
-                if (root == null) text = Lang.T("addon.noroot");
-                else
-                {
-                    LolAddonCleaner.OperationResult r = null;
-                    try { r = LolAddonCleaner.Delete(root); } catch { }
-                    if (r == null) text = Lang.T("addon.hint.fail");
-                    else if (r.Success)
-                    {
-                        text = Lang.F("addon.hint.done", r.DeletedCount, CacheSweep.FmtBytes(r.Bytes));
-                        Logger.Log("附加层清理 删除 " + r.DeletedCount + " 项 腾出 " + CacheSweep.FmtBytes(r.Bytes));
-                    }
-                    else text = r.Message;
-                }
-                Interlocked.Exchange(ref addonBusy, 0);
-                try
-                {
-                    BeginInvoke((MethodInvoker)delegate
-                    {
-                        if (IsDisposed) return;
-                        if (!btn.IsDisposed) btn.Enabled = true;
-                        if (cardAddon != null && !cardAddon.IsDisposed) cardAddon.Value = text;
-                    });
-                }
-                catch { }
-            });
-        }
-
         private void OnWipeAll(PillButton btn)
         {
             if (gameMode.IsActive)
@@ -241,20 +176,8 @@ namespace PaviseApp
             {
                 bool task = false;
                 long shaderBytes = -1;
-                string addonText = null;
                 try { task = TaskHelper.TaskExists(); } catch { }
                 try { if (!shaderCleaning) shaderBytes = ShaderCache.MeasureBytes(); } catch { }
-                try
-                {
-                    if (addonBusy == 0)
-                    {
-                        string addonRoot = ResolveAddonRoot();
-                        addonText = addonRoot == null
-                            ? Lang.T("addon.noroot")
-                            : AddonStateText(LolAddonCleaner.Inspect(addonRoot));
-                    }
-                }
-                catch { }
                 Interlocked.Exchange(ref slowBusy, 0);
                 if (!UiActive) return;
                 try
@@ -265,8 +188,6 @@ namespace PaviseApp
                         if (swAuto != null) swAuto.SetSilently(task);
                         if (cardShader != null && !shaderCleaning && shaderBytes >= 0)
                             cardShader.Value = CacheSweep.FmtBytes(shaderBytes);
-                        if (cardAddon != null && !cardAddon.IsDisposed && addonText != null && addonBusy == 0)
-                            cardAddon.Value = addonText;
                     }));
                 }
                 catch { }

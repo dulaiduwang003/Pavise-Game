@@ -16,6 +16,20 @@ namespace PaviseApp
 
         public static bool EnabledByPavise { get { return Settings.Load("WindowedOptOnByPavise", false); } }
 
+        public static bool HasResidue()
+        {
+            return EnabledByPavise || Settings.LoadStr(BackupSlot, "").Length > 0;
+        }
+
+        public static string Describe()
+        {
+            bool on = CurrentlyOn();
+            if (on && EnabledByPavise) return "已由 Pavise 开启 重启游戏后生效 拨回开关即还原";
+            if (on) return "系统里已经开着 不用处理";
+            if (EnabledByPavise) return "开关开着但系统值被外部改回 关掉再打开可重新写入";
+            return "未开启 旧 DX10 DX11 游戏窗口化时走不到翻转模型";
+        }
+
         public static bool CurrentlyOn()
         {
             try

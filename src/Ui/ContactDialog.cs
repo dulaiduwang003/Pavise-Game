@@ -71,7 +71,7 @@ namespace PaviseApp
             AddRow(rightX, y, half, Lang.T("contact.douyin"), App.Douyin,
                 CopyAction(App.Douyin), Lang.T("contact.copy"));
             y += 58;
-            AddRow(BodyX, y, BodyW, Lang.F("contact.pan", App.PanCode), Lang.T("contact.pan.value"),
+            AddRow(BodyX, y, BodyW, Lang.T("contact.pan"), Lang.T("contact.pan.value"),
                 OpenAction(App.PanUrl), Lang.T("contact.open"));
             y += 70;
 
@@ -210,6 +210,29 @@ namespace PaviseApp
             Close();
         }
 
+        protected override void OnSizeChanged(EventArgs e)
+        {
+            base.OnSizeChanged(e);
+            ApplyWindowRegion();
+        }
+
+        private void ApplyWindowRegion()
+        {
+            int w = ClientSize.Width, h = ClientSize.Height;
+            if (w <= 0 || h <= 0) return;
+            int cut = Theme.S(26);
+            using (var path = new GraphicsPath())
+            {
+                path.AddLine(cut, 0, w, 0);
+                path.AddLine(w, 0, w, h - cut);
+                path.AddLine(w, h - cut, w - cut, h);
+                path.AddLine(w - cut, h, 0, h);
+                path.AddLine(0, h, 0, cut);
+                path.CloseFigure();
+                Region = new Region(path);
+            }
+        }
+
         private void PaintChrome(object sender, PaintEventArgs e)
         {
             Graphics g = e.Graphics;
@@ -228,7 +251,6 @@ namespace PaviseApp
                 path.CloseFigure();
                 using (var fill = new SolidBrush(Theme.Bg)) g.FillPath(fill, path);
                 using (var pen = new Pen(Theme.Stroke, Theme.S(1))) g.DrawPath(pen, path);
-                Region = new Region(path);
             }
 
             int railW = Theme.S(RailW);

@@ -20,7 +20,7 @@ namespace PaviseApp
     internal static class App
     {
         public const string DisplayName = "PAVISE";
-        public const string Version = "1.7.1";
+        public const string Version = "1.8.0.1";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string WeChat = "Ssssssstyle";
@@ -28,8 +28,7 @@ namespace PaviseApp
         public const string QqGroup2 = "1101249532";
         public const string QqGroup3 = "383761286";
         public const string Douyin = "44601770838";
-        public const string PanUrl = "https://pan.baidu.com/s/1v8RBh-9rQCQp51j8hwrSyQ?pwd=62dw";
-        public const string PanCode = "62dw";
+        public const string PanUrl = "https://pan.quark.cn/s/3c8c986b3ea4";
 
         public const string RepoName = "dulaiduwang003/Pavise-Game";
         public const string RepoUrl = "https://github.com/" + RepoName;
@@ -49,6 +48,8 @@ namespace PaviseApp
 #if PAVISE_SELFTEST
             if (SelfTests.TryHandleRuntimeMode(args)) return;
 #endif
+
+            if (LolWatchdog.TryHandle(args)) return;
 
             if (args.Length > 0 && args[0] == "--genicon")
             {
@@ -93,6 +94,15 @@ namespace PaviseApp
                         string demoExe = Path.Combine(demoDir, "NebulaStrike-Win64-Shipping.exe");
                         File.Copy(Application.ExecutablePath, demoExe, true);
                         scMode.AddGameExecutable("NEBULA STRIKE", demoExe);
+                        if (args.Length >= 5 && (args[4] == "gameconfig" || args[4] == "gameconfig-core"))
+                            foreach (GameProfile shotProfile in scMode.GetProfiles())
+                            {
+                                scMode.SetProfileOverride(shotProfile.Id, PolicyCatalog.KeyPreset, "1");
+                                scMode.SetProfileOverride(shotProfile.Id, PolicyCatalog.KeySuppress, "0");
+                                scMode.SetProfileOverride(shotProfile.Id, PolicyCatalog.KeyNvDlss, "latest");
+                                if (args[4] == "gameconfig-core")
+                                    scMode.SetProfileOverride(shotProfile.Id, PolicyCatalog.KeyCoreMask, "F");
+                            }
                     }
                     using (var f = new PanelForm(scTamer, scMode, IconArt.MakeIcon(Dpi.S(24)), true))
                     {
@@ -171,7 +181,7 @@ namespace PaviseApp
                 catch { created = false; }
             if (!created)
             {
-                try { EventWaitHandle.OpenExisting("Global\\Pavise_ShowPanel").Set(); } catch { }
+                SignalShowPanel();
                 return;
             }
 
@@ -183,7 +193,15 @@ namespace PaviseApp
 
             bool elevated = IsElevated();
 
+            bool taskUsable = false, taskStaleExe = false;
             if (!elevated && TaskHelper.TaskExists())
+            {
+                string taskExe;
+                taskUsable = TaskHelper.TryReadTaskCommand(out taskExe)
+                    && !TaskHelper.NeedsStartupTaskRefresh(Application.ExecutablePath, taskExe);
+                taskStaleExe = !taskUsable;
+            }
+            if (!elevated && taskUsable)
             {
                 mtx.ReleaseMutex();
                 mtx.Close();
@@ -194,28 +212,13 @@ namespace PaviseApp
                 catch { created = false; }
                 if (!created)
                 {
-                    try { EventWaitHandle.OpenExisting("Global\\Pavise_ShowPanel").Set(); } catch { }
+                    SignalShowPanel();
                     return;
                 }
             }
 
-            var showEvt = new EventWaitHandle(false, EventResetMode.AutoReset, "Global\\Pavise_ShowPanel");
-            EventWaitHandle exitEvt;
-            try
-            {
-                var exitSec = new EventWaitHandleSecurity();
-                exitSec.AddAccessRule(new EventWaitHandleAccessRule(
-                    WindowsIdentity.GetCurrent().User,
-                    EventWaitHandleRights.Modify | EventWaitHandleRights.Synchronize,
-                    AccessControlType.Allow));
-                bool exitCreated;
-                exitEvt = new EventWaitHandle(false, EventResetMode.AutoReset, "Global\\Pavise_Exit",
-                    out exitCreated, exitSec);
-            }
-            catch
-            {
-                exitEvt = new EventWaitHandle(false, EventResetMode.AutoReset, "Global\\Pavise_Exit");
-            }
+            var showEvt = CreateSignalEvent("Global\\Pavise_ShowPanel");
+            var exitEvt = CreateSignalEvent("Global\\Pavise_Exit");
 
             Paths.Init();
             Lang.Init();
@@ -223,26 +226,36 @@ namespace PaviseApp
             string dir = Paths.Data;
             Logger.LogPath = Path.Combine(dir, "Pavise.log");
             try { VersionMigrations.ClearLogsOnUpgrade(dir); } catch { }
+            if (taskStaleExe)
+                Logger.Log("开机自启任务指向别的程序副本 不经它转生 以当前程序继续启动");
             Settings.Remove("EvidenceMode");
             int healedSuppression = SuppressionCore.HealFromCrash(Path.Combine(dir, SuppressionCore.StateFileName));
             if (healedSuppression > 0) Logger.Log("检测到上次未还原的分级后台控制 已恢复 " + healedSuppression + " 个进程");
             PowerPlan.HealFromCrash();
+            try { if (PowerPlan.HasParkResidue()) PowerPlan.RestoreParkState(); } catch { }
             try { UpdatePause.HealFromCrash(); } catch { }
             try { UploadYield.HealFromCrash(); } catch { }
             GameDvr.HealFromCrash();
             try { VersionMigrations.PurgeRetired(); } catch { }
-            Notif.HealFromCrash();
             VisualFx.HealFromCrash();
             try { PresenceQos.HealFromCrash(); } catch { }
             try { PowerOverlay.HealFromCrash(); } catch { }
+            try { AdlxTweaks.HealFromCrash(); } catch { }
+            try { NvDrsTweaks.HealOrphans(); } catch { }
+            try { InterruptAttribution.CleanupStaleSession(); } catch { }
             RenderLane.HealFromCrash();
             CrashGuard.HealFromCrash();
             try { UsbInterruptAffinityTweak.HealStaleMask(); } catch { }
             try { InterruptAffinityTweak.HealStaleMask(); } catch { }
             try { NetworkAffinityTweak.HealStaleMask(); } catch { }
 
-            try { VersionMigrations.ResetDataOnUpgrade(dir); } catch { }
+            bool pendingPanel = Settings.Load(PendingPanelKey, false);
+            if (pendingPanel) Settings.Save(PendingPanelKey, false);
+
+            bool resetOk = true;
+            try { resetOk = VersionMigrations.ResetDataOnUpgrade(dir); } catch { resetOk = false; }
             try { LegacyPurge.RunOnce(dir); } catch { }
+            if (resetOk) try { VersionMigrations.StampRunVersion(); } catch { }
 
             if (Settings.Load("GmIfeoBoost", false))
                 try
@@ -272,6 +285,7 @@ namespace PaviseApp
 
             var gameMode = new GameMode(dir, core);
             gameMode.Enabled = Settings.Load("GameModeOn", true);
+            var lolService = new LolOptimizationService();
 
             var startGate = new object();
             bool exiting = false;
@@ -285,6 +299,7 @@ namespace PaviseApp
                     if (exiting) return;
                     tamer.Start();
                     gameMode.Start();
+                    lolService.Start();
                 }
             });
             bootThread.IsBackground = true;
@@ -295,7 +310,7 @@ namespace PaviseApp
             {
                 return gameMode.NeedsWhitelistParentIdentity(session)
                     || gameMode.NeedsGameProcessIdentity(name, session)
-                    ;
+                    || LolRuntimeProcesses.IsScanCandidateName(name);
             };
             procNotify.CaptureParentIdentity =
                 delegate(int parentPid, string name, int session)
@@ -308,6 +323,7 @@ namespace PaviseApp
             {
                 gameMode.NotifyProcessChanges(batch);
                 tamer.NotifyProcessChanges(batch);
+                lolService.NotifyProcessChanges(batch);
             };
             procNotify.Start();
             gameMode.ProcessEventsAvailable = procNotify.IsActive;
@@ -319,24 +335,27 @@ namespace PaviseApp
             PerformancePreset runtimeIconMode = gameMode.ActivePreset;
             bool runtimeIconEnabled = gameMode.Enabled;
             Icon appIcon = IconArt.MakeMultiIcon(runtimeIconMode, runtimeIconEnabled);
-            var panel = new PanelForm(tamer, gameMode, appIcon, elevated);
+            var panel = new PanelForm(tamer, gameMode, appIcon, elevated, lolService);
             GC.KeepAlive(panel.Handle);
 
-            bool pendingPanel = Settings.Load(PendingPanelKey, false);
-            if (pendingPanel) Settings.Save(PendingPanelKey, false);
             bool showingPanel = !autoStarted || pendingPanel;
             if (showingPanel) panel.ShowPanel();
 
-            var evtThread = new Thread(() =>
+            if (showEvt != null)
             {
-                while (true)
+                var evtThread = new Thread(() =>
                 {
-                    showEvt.WaitOne();
-                    try { panel.ShowPanel(); } catch { }
-                }
-            });
-            evtThread.IsBackground = true;
-            evtThread.Start();
+                    while (true)
+                    {
+                        showEvt.WaitOne();
+                        try { panel.ShowPanel(); } catch { }
+                    }
+                });
+                evtThread.IsBackground = true;
+                evtThread.Start();
+            }
+
+            if (elevated) Native.AllowTaskbarCreatedMessage();
 
             var icon = new NotifyIcon();
             icon.Icon = (Icon)appIcon.Clone();
@@ -352,6 +371,8 @@ namespace PaviseApp
                 icon.Dispose();
                 lock (startGate) exiting = true;
                 try { procNotify.Stop(); } catch { }
+                try { panel.WaitForLolIdle(4000); } catch { }
+                try { lolService.Dispose(); } catch { }
                 tamer.Stop();
                 gameMode.Stop();
                 panel.RealExit = true;
@@ -365,13 +386,16 @@ namespace PaviseApp
                 doExit,
                 () => panel.SyncAllToggles());
 
-            var exitThread = new Thread(() =>
+            if (exitEvt != null)
             {
-                exitEvt.WaitOne();
-                try { panel.BeginInvoke(doExit); } catch { }
-            });
-            exitThread.IsBackground = true;
-            exitThread.Start();
+                var exitThread = new Thread(() =>
+                {
+                    exitEvt.WaitOne();
+                    try { panel.BeginInvoke(doExit); } catch { }
+                });
+                exitThread.IsBackground = true;
+                exitThread.Start();
+            }
             icon.ContextMenuStrip = trayMenu.Strip;
             icon.Visible = true;
             SystemEvents.SessionEnded += (s, e) =>
@@ -379,7 +403,6 @@ namespace PaviseApp
                 try { gameMode.Enabled = false; } catch { }
                 try { PowerPlan.Restore(); } catch { }
                 try { GameDvr.Restore(); } catch { }
-                try { Notif.Restore(); } catch { }
                 try { VersionMigrations.RestoreAll(); } catch { }
                 try { VisualFx.Restore(); } catch { }
                 try { NvGlobalTweaks.Restore(); } catch { }
@@ -470,6 +493,45 @@ namespace PaviseApp
             GC.KeepAlive(mtx);
         }
 
+        private static void SignalShowPanel()
+        {
+            try
+            {
+                using (var show = EventWaitHandle.OpenExisting("Global\\Pavise_ShowPanel"))
+                {
+                    show.Set();
+                    return;
+                }
+            }
+            catch { }
+            if (IsElevated()) return;
+            try
+            {
+                if (!TaskHelper.TaskExists()) return;
+                Settings.Save(PendingPanelKey, true);
+                if (TaskHelper.Run("/Run /TN " + TaskHelper.TaskName) != 0)
+                    Settings.Save(PendingPanelKey, false);
+            }
+            catch { }
+        }
+
+        private static EventWaitHandle CreateSignalEvent(string name)
+        {
+            try
+            {
+                var sec = new EventWaitHandleSecurity();
+                sec.AddAccessRule(new EventWaitHandleAccessRule(
+                    WindowsIdentity.GetCurrent().User,
+                    EventWaitHandleRights.FullControl,
+                    AccessControlType.Allow));
+                bool createdNew;
+                return new EventWaitHandle(false, EventResetMode.AutoReset, name, out createdNew, sec);
+            }
+            catch { }
+            try { return new EventWaitHandle(false, EventResetMode.AutoReset, name); }
+            catch { return null; }
+        }
+
         internal static int CompareVersions(string left, string right)
         {
             Version a, b;
@@ -506,7 +568,7 @@ namespace PaviseApp
                 }
                 if (older == null) return false;
 
-                try { EventWaitHandle.OpenExisting("Global\\Pavise_Exit").Set(); }
+                try { using (var exit = EventWaitHandle.OpenExisting("Global\\Pavise_Exit")) exit.Set(); }
                 catch { return false; }
                 if (!older.WaitForExit(20000)) return false;
                 return true;

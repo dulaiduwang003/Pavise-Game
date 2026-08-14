@@ -9,7 +9,7 @@ namespace PaviseApp
     internal sealed class ReversibleReg
     {
         public const string Absent = "__pavise_absent__";
-        private const string LegacyAbsent = "none";
+        private const char AppliedSep = '\u001F';
 
         private readonly RegistryKey hive;
         private readonly string subKey;
@@ -31,7 +31,8 @@ namespace PaviseApp
                 using (var k = hive.CreateSubKey(subKey))
                 {
                     if (k == null) return false;
-                    if (Settings.LoadStr(slot, "").Length == 0)
+                    string original = OriginalPart(Settings.LoadStr(slot, ""));
+                    if (original.Length == 0)
                     {
                         object cur = k.GetValue(valName);
                         if (cur != null)
@@ -44,12 +45,9 @@ namespace PaviseApp
                                 return false;
                             }
                         }
-                        string snapshot;
-                        if (cur == null) snapshot = Absent;
-                        else if (kind == RegistryValueKind.Binary) snapshot = "b" + Convert.ToBase64String((byte[])cur);
-                        else snapshot = "=" + cur;
-                        Settings.SaveStr(slot, snapshot);
-                        if (Settings.LoadStr(slot, "") != snapshot)
+                        original = Encode(cur);
+                        Settings.SaveStr(slot, original);
+                        if (Settings.LoadStr(slot, "") != original)
                         {
                             Logger.Log("无法持久化 " + valName + " 原值快照 已取消写入");
                             return false;
@@ -58,12 +56,72 @@ namespace PaviseApp
                     k.SetValue(valName, newVal, kind);
                     object actual = k.GetValue(valName);
                     if (actual == null) return false;
+                    bool ok;
                     if (kind == RegistryValueKind.DWord)
-                        return Convert.ToInt64(actual) == Convert.ToInt64(newVal);
-                    if (kind == RegistryValueKind.Binary)
-                        return BytesEqual((byte[])actual, (byte[])newVal);
-                    return string.Equals(actual.ToString(), newVal == null ? "" : newVal.ToString(), StringComparison.Ordinal);
+                        ok = Convert.ToInt64(actual) == Convert.ToInt64(newVal);
+                    else if (kind == RegistryValueKind.Binary)
+                        ok = BytesEqual((byte[])actual, (byte[])newVal);
+                    else
+                        ok = string.Equals(actual.ToString(), newVal == null ? "" : newVal.ToString(), StringComparison.Ordinal);
+                    if (ok) Settings.SaveStr(slot, original + AppliedSep + Encode(newVal));
+                    return ok;
                 }
+            }
+            catch { return false; }
+        }
+
+        private string Encode(object value)
+        {
+            if (value == null) return Absent;
+            if (kind == RegistryValueKind.Binary) return "b" + Convert.ToBase64String((byte[])value);
+            return "=" + value;
+        }
+
+        private static string OriginalPart(string stored)
+        {
+            int sep = stored.LastIndexOf(AppliedSep);
+            return sep < 0 ? stored : stored.Substring(0, sep);
+        }
+
+        private static string AppliedPart(string stored)
+        {
+            int sep = stored.LastIndexOf(AppliedSep);
+            return sep < 0 ? "" : stored.Substring(sep + 1);
+        }
+
+        private bool TryDecode(string repr, out object value)
+        {
+            value = null;
+            try
+            {
+                if (repr.Length == 0 || repr == Absent) return false;
+                if (kind == RegistryValueKind.Binary)
+                {
+                    if (repr[0] != 'b') return false;
+                    value = Convert.FromBase64String(repr.Substring(1));
+                    return true;
+                }
+                string v = repr[0] == '=' ? repr.Substring(1) : repr;
+                if (kind == RegistryValueKind.DWord)
+                {
+                    long n;
+                    if (!long.TryParse(v, out n)) return false;
+                    value = unchecked((int)n);
+                    return true;
+                }
+                value = v;
+                return true;
+            }
+            catch { return false; }
+        }
+
+        private bool SameByKind(object a, object b)
+        {
+            try
+            {
+                if (kind == RegistryValueKind.DWord) return Convert.ToInt64(a) == Convert.ToInt64(b);
+                if (kind == RegistryValueKind.Binary) return BytesEqual(a as byte[], b as byte[]);
+                return string.Equals(a.ToString(), b == null ? "" : b.ToString(), StringComparison.Ordinal);
             }
             catch { return false; }
         }
@@ -96,10 +154,12 @@ namespace PaviseApp
 
         public bool Restore()
         {
-            string s = Settings.LoadStr(slot, "");
-            if (s.Length == 0) return true;
+            string stored = Settings.LoadStr(slot, "");
+            if (stored.Length == 0) return true;
+            string s = OriginalPart(stored);
+            string appliedRepr = AppliedPart(stored);
 
-            bool absent = s == Absent || s == LegacyAbsent;
+            bool absent = s == Absent;
             object val = null;
             if (!absent)
             {
@@ -143,6 +203,20 @@ namespace PaviseApp
                 using (var k = hive.OpenSubKey(subKey, true))
                 {
 
+                    if (k != null && appliedRepr.Length > 0)
+                    {
+                        object appliedVal;
+                        if (TryDecode(appliedRepr, out appliedVal))
+                        {
+                            object cur = k.GetValue(valName);
+                            if (cur == null || !SameByKind(cur, appliedVal))
+                            {
+                                Settings.SaveStr(slot, "");
+                                Logger.Log(valName + " 当前值已被其它程序改过 尊重现值 跳过还原并清除快照");
+                                return Settings.LoadStr(slot, "").Length == 0;
+                            }
+                        }
+                    }
                     if (k == null) restored = true;
                     else if (absent)
                     {

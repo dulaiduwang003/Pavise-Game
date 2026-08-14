@@ -115,16 +115,31 @@ namespace PaviseApp
                 var names = new List<string>();
                 foreach (KeyValuePair<string, string> kv in stale)
                 {
-                    names.Add(kv.Key);
+                    string record = kv.Key + "=" + kv.Value;
+                    bool preRecorded = false;
+                    if (!removed.Contains(record))
+                    {
+                        removed.Add(record);
+                        if (!Settings.SaveStr(RemovedKey, string.Join("|", removed.ToArray())))
+                        {
+                            removed.Remove(record);
+                            Logger.Log("平台时钟校正 " + kv.Key + " 快照无法持久化 保持原样");
+                            continue;
+                        }
+                        preRecorded = true;
+                    }
                     if (RunBcdedit("/deletevalue {current} " + kv.Key) == null)
                     {
                         Logger.Log("平台时钟校正 " + kv.Key + " 删除失败 保持原样");
+                        if (preRecorded)
+                        {
+                            removed.Remove(record);
+                            Settings.SaveStr(RemovedKey, string.Join("|", removed.ToArray()));
+                        }
                         continue;
                     }
-                    string record = kv.Key + "=" + kv.Value;
-                    if (!removed.Contains(record)) removed.Add(record);
+                    names.Add(kv.Key);
                 }
-                Settings.SaveStr(RemovedKey, string.Join("|", removed.ToArray()));
                 List<string> after = StaleOverrides();
                 if (after.Count > 0)
                 {

@@ -191,7 +191,7 @@ namespace PaviseApp
             }
         }
 
-        private static bool TryReadTaskCommand(out string command)
+        internal static bool TryReadTaskCommand(out string command)
         {
             command = null;
             string xml;

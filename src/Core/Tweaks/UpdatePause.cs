@@ -23,12 +23,18 @@ namespace PaviseApp
                     owned.Add(s);
 
                 var justStopped = new List<string>();
+                var intent = new List<string>(owned);
                 foreach (string n in Names)
                 {
                     try
                     {
                         int before = SvcState.Query(n);
                         if (before != 4) continue;
+                        if (!intent.Contains(n))
+                        {
+                            intent.Add(n);
+                            Settings.SaveStr(Flag, string.Join("|", intent.ToArray()));
+                        }
                         bool confirmedStop;
                         bool issued = SvcCtl.StopIfRunning(n, out confirmedStop);
                         if (issued || confirmedStop) justStopped.Add(n);
@@ -36,7 +42,7 @@ namespace PaviseApp
                     catch { }
                 }
                 foreach (string n in justStopped) if (!owned.Contains(n)) owned.Add(n);
-                if (owned.Count > 0)
+                if (owned.Count > 0 || intent.Count > 0)
                 {
                     string joined = string.Join("|", owned.ToArray());
                     Settings.SaveStr(Flag, joined);

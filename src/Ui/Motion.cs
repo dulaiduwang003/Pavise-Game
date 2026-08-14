@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 统一管理界面动画时钟
+// 文件用途 统一管理界面动画时钟 只有对局期间整体冻结为静态 其余一律全速
 
 using System;
 using System.Collections.Generic;
@@ -25,6 +25,12 @@ namespace PaviseApp
         public bool Step()
         {
             if (Speed <= 0f) Speed = 0.25f;
+            if (UiClock.Frozen)
+            {
+                if (Value == Target) return false;
+                Value = Target;
+                return true;
+            }
             float d = Target - Value;
             if (d < 0.0015f && d > -0.0015f) { if (Value != Target) { Value = Target; return true; } return false; }
             Value += d * StepFraction(Speed, UiClock.DeltaScale);
@@ -44,10 +50,8 @@ namespace PaviseApp
 
     internal static class UiClock
     {
-        internal const int ForegroundFrameMs = 10;
-        internal const int BackgroundFrameMs = 200;
-        internal const int ForegroundSlowMs = 200;
-        internal const int BackgroundSlowMs = 1000;
+        internal const int FrameMs = 10;
+        internal const int SlowMs = 200;
 
         internal const float BaselineFrameMs = 16.667f;
         internal const float MinDeltaScale = 0.25f;
@@ -58,7 +62,8 @@ namespace PaviseApp
         private static int framesLeft;
         private static int slowFramesLeft;
         private static bool suspended;
-        private static bool background;
+        private static bool frozen;
+        private static bool settling;
         private static readonly Stopwatch frameWatch = new Stopwatch();
         private static float deltaScale = 1f;
         private static bool precisionHeld;
@@ -84,36 +89,11 @@ namespace PaviseApp
         public static event EventHandler Frame;
         public static event EventHandler SlowFrame;
 
-        internal static int DesiredFrameMs(bool isBackground)
-        {
-            return isBackground ? BackgroundFrameMs : ForegroundFrameMs;
-        }
-
-        internal static int DesiredSlowMs(bool isBackground)
-        {
-            return isBackground ? BackgroundSlowMs : ForegroundSlowMs;
-        }
-
-        public static bool Background
-        {
-            get { return background; }
-            set
-            {
-                if (background == value) return;
-                background = value;
-                if (timer == null) return;
-                int frameMs = DesiredFrameMs(value);
-                if (timer.Interval != frameMs) timer.Interval = frameMs;
-                int slowMs = DesiredSlowMs(value);
-                if (slowTimer.Interval != slowMs) slowTimer.Interval = slowMs;
-            }
-        }
-
         private static void Ensure()
         {
             if (timer != null) return;
             timer = new System.Windows.Forms.Timer();
-            timer.Interval = DesiredFrameMs(background);
+            timer.Interval = FrameMs;
             timer.Tick += (s, e) =>
             {
                 if (suspended) { framesLeft = 0; StopFrames(); return; }
@@ -122,7 +102,7 @@ namespace PaviseApp
                 if (--framesLeft <= 0) StopFrames();
             };
             slowTimer = new System.Windows.Forms.Timer();
-            slowTimer.Interval = DesiredSlowMs(background);
+            slowTimer.Interval = SlowMs;
             slowTimer.Tick += (s, e) =>
             {
                 if (suspended) { slowFramesLeft = 0; slowTimer.Stop(); return; }
@@ -150,10 +130,40 @@ namespace PaviseApp
             catch { }
         }
 
+        public static bool Frozen
+        {
+            get { return frozen; }
+            set
+            {
+                if (frozen == value) return;
+                frozen = value;
+                if (!value) return;
+                Ensure();
+                framesLeft = 0;
+                slowFramesLeft = 0;
+                StopFrames();
+                slowTimer.Stop();
+                if (!suspended) Settle();
+            }
+        }
+
+        private static void Settle()
+        {
+            if (settling) return;
+            settling = true;
+            try
+            {
+                deltaScale = 1f;
+                if (Frame != null) Frame(null, EventArgs.Empty);
+            }
+            finally { settling = false; }
+        }
+
         public static void Wake(int frames = 48)
         {
             Ensure();
             if (suspended) return;
+            if (frozen) { Settle(); return; }
             if (frames > framesLeft) framesLeft = frames;
             if (!timer.Enabled) { HoldPrecision(true); timer.Start(); }
         }
@@ -161,7 +171,7 @@ namespace PaviseApp
         public static void WakeSlow(int frames = 12)
         {
             Ensure();
-            if (suspended) return;
+            if (suspended || frozen) return;
             if (frames > slowFramesLeft) slowFramesLeft = frames;
             if (!slowTimer.Enabled) slowTimer.Start();
         }

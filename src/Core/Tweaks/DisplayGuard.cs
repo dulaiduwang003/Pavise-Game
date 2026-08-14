@@ -2,6 +2,7 @@
 // 文件用途 只读查询主显示器刷新率 并还原旧版刷新率守护留下的残留
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
@@ -28,6 +29,30 @@ namespace PaviseApp
                 return cur.dmDisplayFrequency;
             }
             catch { return 0; }
+        }
+
+        internal static int MaxRefreshRate()
+        {
+            int max = 0;
+            foreach (int hz in AllRefreshRates()) if (hz > max) max = hz;
+            return max > 0 ? max : CurrentRefreshRate();
+        }
+
+        internal static List<int> AllRefreshRates()
+        {
+            var rates = new List<int>();
+            try
+            {
+                foreach (Screen s in Screen.AllScreens)
+                {
+                    DEVMODE cur = NewDm();
+                    if (EnumDisplaySettingsW(s.DeviceName, ENUM_CURRENT_SETTINGS, ref cur)
+                        && cur.dmDisplayFrequency > 1)
+                        rates.Add(cur.dmDisplayFrequency);
+                }
+            }
+            catch { }
+            return rates;
         }
 
         internal static void QueryRefreshRates(out int current, out int best)

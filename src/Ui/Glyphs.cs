@@ -2,16 +2,8 @@
 // 文件用途 绘制界面使用的矢量图形符号
 
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
-using System.IO;
-using System.Net;
-using System.Runtime.InteropServices;
-using System.Threading;
-using System.Windows.Forms;
-using Microsoft.Win32;
 
 namespace PaviseApp
 {
@@ -34,6 +26,31 @@ namespace PaviseApp
                     };
                     g.FillPolygon(br, bolt);
                 }
+                else if (name == "tiles")
+                {
+                    float side = 7.4f * u, gap = 2.2f * u;
+                    for (int i = 0; i < 4; i++)
+                    {
+                        float tx = x + 3.5f * u + (i % 2) * (side + gap);
+                        float ty = y + 3.5f * u + (i / 2) * (side + gap);
+                        using (var path = Theme.Rounded(
+                            Rectangle.Round(new RectangleF(tx, ty, side, side)), (int)(2f * u)))
+                            g.DrawPath(pen, path);
+                    }
+                }
+                else if (name == "gamepad")
+                {
+                    var body = new RectangleF(x + 2.8f * u, y + 7.2f * u, 18.4f * u, 9.6f * u);
+                    using (var path = Theme.Rounded(Rectangle.Round(body), (int)(4.4f * u))) g.DrawPath(pen, path);
+                    using (var thin = new Pen(c, Math.Max(1.2f, 1.6f * u)))
+                    {
+                        thin.StartCap = LineCap.Round; thin.EndCap = LineCap.Round;
+                        g.DrawLine(thin, P(x, y, u, 6.4f, 12), P(x, y, u, 10.2f, 12));
+                        g.DrawLine(thin, P(x, y, u, 8.3f, 10.1f), P(x, y, u, 8.3f, 13.9f));
+                    }
+                    g.FillEllipse(br, x + 14.4f * u, y + 9.6f * u, 2.5f * u, 2.5f * u);
+                    g.FillEllipse(br, x + 16.9f * u, y + 12.0f * u, 2.5f * u, 2.5f * u);
+                }
                 else if (name == "lol")
                 {
                     using (var ring = new Pen(c, Math.Max(1.2f, 1.45f * u)))
@@ -46,14 +63,16 @@ namespace PaviseApp
                 }
                 else if (name == "shield")
                 {
-                    using (var path = new GraphicsPath())
+                    DrawShield(g, pen, x, y, u);
+                }
+                else if (name == "acshield")
+                {
+                    DrawShield(g, pen, x, y, u);
+                    using (var bar = new Pen(c, Math.Max(1.2f, 1.6f * u)))
                     {
-                        path.AddLines(new[] {
-                            P(x,y,u,12,2.5f), P(x,y,u,20,5.5f), P(x,y,u,20,12),
-                            P(x,y,u,12,21.5f), P(x,y,u,4,12), P(x,y,u,4,5.5f)
-                        });
-                        path.CloseFigure();
-                        g.DrawPath(pen, path);
+                        bar.StartCap = LineCap.Round; bar.EndCap = LineCap.Round;
+                        g.DrawLine(bar, P(x, y, u, 10.2f, 8.2f), P(x, y, u, 10.2f, 13.2f));
+                        g.DrawLine(bar, P(x, y, u, 13.8f, 8.2f), P(x, y, u, 13.8f, 13.2f));
                     }
                 }
                 else if (name == "white")
@@ -161,6 +180,19 @@ namespace PaviseApp
                 }
             }
             g.SmoothingMode = old;
+        }
+
+        private static void DrawShield(Graphics g, Pen pen, float x, float y, float u)
+        {
+            using (var path = new GraphicsPath())
+            {
+                path.AddLines(new[] {
+                    P(x,y,u,12,2.5f), P(x,y,u,20,5.5f), P(x,y,u,20,12),
+                    P(x,y,u,12,21.5f), P(x,y,u,4,12), P(x,y,u,4,5.5f)
+                });
+                path.CloseFigure();
+                g.DrawPath(pen, path);
+            }
         }
 
         private static GraphicsPath Crescent(float cx, float cy, float r, float d, float tilt)

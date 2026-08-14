@@ -155,6 +155,17 @@ namespace PaviseApp
         }
 #endif
 
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            foreach (Entry entry in all)
+                if (entry != null && entry.Icon != null)
+                {
+                    try { entry.Icon.Dispose(); } catch { }
+                    entry.Icon = null;
+                }
+            base.OnFormClosed(e);
+        }
+
         private void BeginScan()
         {
             ThreadPool.QueueUserWorkItem(delegate
@@ -208,7 +219,7 @@ namespace PaviseApp
                     if (process.MainWindowHandle == IntPtr.Zero) continue;
 
                     string name = process.ProcessName;
-                    if (GameSessionDetector.IsAntiCheatLikeName(name)) continue;
+                    if (AntiCheatCatalog.IsAntiCheatLikeName(name)) continue;
 
                     IntPtr handle = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
                     if (handle == IntPtr.Zero) continue;

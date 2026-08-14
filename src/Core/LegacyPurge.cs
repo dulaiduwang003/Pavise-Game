@@ -19,12 +19,12 @@ namespace PaviseApp
         internal static bool SkipRegistryDelete;
 #endif
 
-        private static List<string> RestoreOrHook()
+        private static List<string> RestoreOrHook(string dataDir)
         {
 #if PAVISE_SELFTEST
             if (RestoreHook != null) return RestoreHook();
 #endif
-            return RestoreEverything();
+            return RestoreEverything(dataDir);
         }
 
         private static bool DeleteRegistryTree()
@@ -62,24 +62,18 @@ namespace PaviseApp
             catch { failed.Add(name); }
         }
 
-        private static void StepVoid(string name, Action restore, List<string> failed)
-        {
-            try { restore(); }
-            catch { failed.Add(name); }
-        }
-
-        private static List<string> RestoreEverything()
+        private static List<string> RestoreEverything(string dataDir)
         {
             var failed = new List<string>();
 
             Step("电源计划", PowerPlan.Restore, failed);
             Step("Pavise 建的卓越性能计划", PowerPlan.RemoveCreatedPlan, failed);
             Step("Pavise 托管电源方案", PowerPlan.RemoveManagedPlan, failed);
+            StepIf("核心停泊", PowerPlan.HasParkResidue, PowerPlan.RestoreParkState, failed);
             Step("Windows 更新暂停", UpdatePause.Restore, failed);
             foreach (RetiredFeature f in VersionMigrations.Entries)
                 Step(f.Name, f.Restore, failed);
             Step("Game DVR", GameDvr.Restore, failed);
-            Step("通知免打扰", Notif.Restore, failed);
             Step("视觉效果", VisualFx.Restore, failed);
             Step("刷新率守护", DisplayGuard.Restore, failed);
             Step("息屏防护", DisplayAwake.Restore, failed);
@@ -96,11 +90,15 @@ namespace PaviseApp
             Step("VBS", VbsTweak.Restore, failed);
             Step("游戏模式守护", GameModeGuard.Restore, failed);
             Step("设备电源", DevicePowerTweak.Restore, failed);
+            StepIf("窗口化游戏优化", WindowedOptTweak.HasResidue, WindowedOptTweak.Restore, failed);
             Step("辅助功能拦截", AccessibilityKeysTweak.Restore, failed);
             Step("键鼠设备省电", HidPowerTweak.Restore, failed);
             Step("键鼠队列校正", InputMythTweak.Restore, failed);
             Step("指针精度增强", PointerPrecisionTweak.Restore, failed);
             Step("NVIDIA 全局项", NvGlobalTweaks.Restore, failed);
+            Step("AMD 驱动调优", AdlxTweaks.PurgeResidue, failed);
+            Step("上传让位", delegate { UploadYield.HealFromCrash(); return !UploadYield.HasResidue(); }, failed);
+            Step("MSI 修复", MsiModeTweak.Restore, failed);
             Step("后备提优 IFEO", IfeoBoost.RestoreAll, failed);
 
             StepIf("HAGS", delegate { return HagsTweak.EnabledByPavise; }, HagsTweak.Disable, failed);
@@ -110,17 +108,34 @@ namespace PaviseApp
             foreach (string kind in new[]
             {
                 NvDrsTweaks.KeyPState, NvDrsTweaks.KeyFrl, NvDrsTweaks.KeyPreRender,
-                NvDrsTweaks.KeyLowLatCpl, NvDrsTweaks.KeyAnsel, NvDrsTweaks.KeyRebarFeat,
+                NvDrsTweaks.KeyLowLatCpl, NvDrsTweaks.KeyUllEnable, NvDrsTweaks.KeySmooth,
+                NvDrsTweaks.KeyShaderCache, NvDrsTweaks.KeyAnsel, NvDrsTweaks.KeyRebarFeat,
                 NvDrsTweaks.KeyRebarOpt, NvDrsTweaks.KeyRebarSize, NvDrsTweaks.KeyDlssOvr,
                 NvDrsTweaks.KeyDlssPreset, NvDrsTweaks.KeyBattFps
             })
             {
                 string k = kind;
-                StepVoid("NVIDIA Profile:" + k, delegate { NvDrsTweaks.RestoreKind(k); }, failed);
+                Step("NVIDIA Profile:" + k, delegate
+                {
+                    NvDrsTweaks.RestoreKind(k);
+                    return !NvDrsTweaks.HasSnapshotFor(k);
+                }, failed);
             }
-            StepVoid("逐游戏 GPU 偏好", delegate { GameExeTweaks.RestoreKind("gpu"); }, failed);
-            StepVoid("后台集显偏好", delegate { GameExeTweaks.RestoreKind("igpu"); }, failed);
-            StepVoid("逐游戏全屏优化", delegate { GameExeTweaks.RestoreKind("fso"); }, failed);
+            foreach (string exeKind in new[] { "gpu", "igpu", "fso" })
+            {
+                string k = exeKind;
+                Step(k == "gpu" ? "逐游戏 GPU 偏好" : k == "igpu" ? "后台集显偏好" : "逐游戏全屏优化", delegate
+                {
+                    GameExeTweaks.RestoreKind(k);
+                    return !GameExeTweaks.HasKindResidue(k);
+                }, failed);
+            }
+            Step("未完成的进程状态记账", delegate
+            {
+                return !CrashGuard.HasPending()
+                    && !SuppressionCore.HasPendingJournalFile(
+                        Path.Combine(dataDir, SuppressionCore.StateFileName));
+            }, failed);
 
             return failed;
         }
@@ -131,7 +146,7 @@ namespace PaviseApp
 
             Logger.Log("首次运行 v1.6.6 清除旧版本数据 先还原全部系统改动");
 
-            List<string> failed = RestoreOrHook();
+            List<string> failed = RestoreOrHook(dataDir);
             if (failed.Count > 0)
             {
                 Logger.Log("清除已中止 " + failed.Count + " 项未能还原 "
@@ -160,6 +175,17 @@ namespace PaviseApp
                 }
                 catch { }
             }
+            foreach (string pattern in new[] { "Pavise.*.log", "crash.*.log" })
+            {
+                try
+                {
+                    foreach (string p in Directory.GetFiles(dataDir, pattern))
+                    {
+                        try { File.Delete(p); files++; } catch { }
+                    }
+                }
+                catch { }
+            }
             return files;
         }
 
@@ -170,7 +196,7 @@ namespace PaviseApp
             unrestored = null;
             Logger.Log(why + " 先还原 Pavise 改过的全部系统项");
 
-            List<string> failed = RestoreOrHook();
+            List<string> failed = RestoreOrHook(dataDir);
             if (failed.Count > 0)
             {
                 unrestored = string.Join(" ", failed.ToArray());

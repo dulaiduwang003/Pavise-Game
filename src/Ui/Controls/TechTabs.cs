@@ -12,6 +12,7 @@ namespace PaviseApp
     {
         private string[] labels = new string[0];
         private string[] hints = new string[0];
+        private bool[] hot = new bool[0];
         private int idx;
         private int hoverIdx = -1;
         private Motion slide;
@@ -51,11 +52,23 @@ namespace PaviseApp
         {
             labels = tabLabels ?? new string[0];
             hints = tabHints ?? new string[0];
+            hot = new bool[labels.Length];
             if (idx >= labels.Length) idx = 0;
             glow = new Motion[labels.Length];
             for (int i = 0; i < glow.Length; i++) glow[i].Speed = 0.26f;
             slide.Set(TabRect(idx).X);
             Invalidate();
+        }
+
+        public void SetHot(bool[] value)
+        {
+            bool changed = false;
+            for (int i = 0; i < hot.Length; i++)
+            {
+                bool next = value != null && i < value.Length && value[i];
+                if (hot[i] != next) { hot[i] = next; changed = true; }
+            }
+            if (changed) Invalidate();
         }
 
         public int Index
@@ -174,6 +187,12 @@ namespace PaviseApp
                     selected ? Theme.Fg : Theme.Dim,
                     TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine
                         | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
+                if (i < hot.Length && hot[i])
+                {
+                    var dot = new Rectangle(r.Left + Theme.S(6), r.Top + Theme.S(5),
+                        Theme.S(5), Theme.S(5));
+                    using (var hb = new SolidBrush(Theme.Accent)) g.FillEllipse(hb, dot);
+                }
             }
             if (idx < hints.Length && !string.IsNullOrEmpty(hints[idx]))
             {
