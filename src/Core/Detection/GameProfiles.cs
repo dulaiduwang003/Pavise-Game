@@ -12,8 +12,7 @@ namespace PaviseApp
     {
         Standard = 0,
         Competitive = 1,
-        Custom = 2,
-        Extreme = 3
+        Custom = 2
     }
 
     internal sealed class GameProfile
@@ -71,9 +70,9 @@ namespace PaviseApp
 
             if (loadFailed || loaded.Count > 0 || File.Exists(path))
             {
-                if (!loadFailed && repaired)
+                if (!loadFailed && (repaired || legacyCleared))
                 {
-                    if (loaded.Count == 0 && File.Exists(path))
+                    if (!legacyCleared && loaded.Count == 0 && File.Exists(path))
                         TryBackup(path, path + ".corrupt.bak");
                     Save(loaded);
                 }
@@ -82,6 +81,12 @@ namespace PaviseApp
 
             Save(loaded);
             return loaded;
+        }
+
+        private static bool IsLegacyHeader(string header)
+        {
+            return header == HeaderPrefix + "V1" || header == HeaderPrefix + "V2"
+                || header == HeaderPrefix + "V3" || header == HeaderPrefix + "V4";
         }
 
         private static void TryBackup(string source, string backup)
@@ -124,6 +129,7 @@ namespace PaviseApp
         }
 
         private bool loadFailed;
+        private bool legacyCleared;
 
         public bool LoadFailed { get { return loadFailed; } }
 
@@ -137,10 +143,18 @@ namespace PaviseApp
                 if (lines.Length == 0) return result;
                 if (lines[0] != HeaderV5)
                 {
+                    if (IsLegacyHeader(lines[0]))
+                    {
+                        TryBackup(path, path + ".legacy.bak");
+                        legacyCleared = true;
+                        Logger.Log("检测到旧版本的游戏档案 " + lines[0]
+                            + " 已备份并废弃 打开游戏进到画面即可自动重建");
+                        return result;
+                    }
                     loadFailed = true;
                     if (lines[0].StartsWith(HeaderPrefix, StringComparison.Ordinal))
-                        Logger.Log("游戏档案版本 " + lines[0]
-                            + " 与本版本不符 已切换为只读 不会改写该文件");
+                        Logger.Log("游戏档案由更高版本的 Pavise 写入 " + lines[0]
+                            + " 已切换为只读 不会改写该文件");
                     else
                     {
                         TryBackup(path, path + ".corrupt.bak");

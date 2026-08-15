@@ -21,22 +21,20 @@ namespace PaviseApp
             new HashSet<string>(StringComparer.Ordinal);
 
         internal static readonly string[] EnvKeys =
-            { "do", "svc", "svcyield", "wlanscan", "dvr", "wu",
-              "pqos", "awake", "overlay", "amdalag", "amdafmf", "amdfrtc", "corepark" };
+            { "do", "wlanscan", "wu",
+              "pqos", "awake", "rsr", "gpupower", "amdalag", "amdafmf", "amdfrtc", "corepark" };
 
         private static string EnvLabel(string key)
         {
             switch (key)
             {
                 case "do": return "后台下载暂停";
-                case "svc": return "服务暂停";
-                case "svcyield": return "服务让路";
                 case "wlanscan": return "无线扫描抑制";
-                case "dvr": return "Game DVR 关闭";
                 case "wu": return "Windows 更新暂停";
                 case "pqos": return "无输入降级关闭";
                 case "awake": return "息屏防护";
-                case "overlay": return "电源滑块最佳性能";
+                case "rsr": return "RSR 驱动级升格";
+                case "gpupower": return "显卡功耗墙";
                 case "corepark": return "核心停泊解除";
                 case "amdalag": return "AMD Anti-Lag";
                 case "amdafmf": return "AMD 流体运动帧";
@@ -120,13 +118,12 @@ namespace PaviseApp
             switch (key)
             {
                 case "do": pauseDlOn = false; Settings.Save("GmPauseDl", false); break;
-                case "svc": svcPauseOn = false; Settings.Save("GmSvcPause", false); break;
-                case "svcyield": svcYieldOn = false; Settings.Save("GmSvcYield", false); break;
                 case "wlanscan": wlanGuardOn = false; Settings.Save("GmWlanGuard", false); break;
-                case "dvr": killGameDvr = false; Settings.Save("GameDvrOff", false); break;
                 case "wu": pauseUpdateOn = false; Settings.Save("GmPauseUpdate", false); break;
                 case "pqos": break;
                 case "awake": awakeOn = false; Settings.Save("GmAwake", false); break;
+                case "rsr": rsrOn = false; Settings.Save("GmRsr", false); break;
+                case "gpupower": gpuPowerMaxOn = false; Settings.Save("GmGpuPowerMax", false); break;
                 case "amdalag": amdAntiLag = false; Settings.Save("AmdAntiLag", false); break;
                 case "amdafmf": amdAfmf = false; Settings.Save("AmdAfmf", false); break;
                 case "amdfrtc": amdFrlMode = "off"; Settings.SaveStr("AmdFrl", "off"); break;
@@ -142,10 +139,7 @@ namespace PaviseApp
             switch (key)
             {
                 case "do": return PolicyCatalog.KeyPauseDl;
-                case "svc": return PolicyCatalog.KeySvcPause;
-                case "svcyield": return PolicyCatalog.KeySvcYield;
                 case "wlanscan": return PolicyCatalog.KeyWlanGuard;
-                case "dvr": return PolicyCatalog.KeyGameDvrOff;
                 case "wu": return PolicyCatalog.KeyPauseUpdate;
                 case "awake": return PolicyCatalog.KeyAwake;
                 case "amdalag": return PolicyCatalog.KeyAmdAntiLag;
@@ -194,64 +188,62 @@ namespace PaviseApp
             PolicySnapshot sp = sessionPolicy;
             PerformancePreset mode = sp != null ? sp.Preset : ActivePreset;
             bool pPauseDl = sp != null ? sp.PauseDownloads : pauseDlOn;
-            bool pSvcPause = sp != null ? sp.SvcPause : svcPauseOn;
-            bool pSvcYield = sp != null ? sp.SvcYield : svcYieldOn;
             bool pWlan = sp != null ? sp.WlanGuard : wlanGuardOn;
-            bool pDvr = sp != null ? sp.GameDvrOff : killGameDvr;
             bool pWu = sp != null ? sp.PauseUpdate : pauseUpdateOn;
             bool pAwake = sp != null ? sp.Awake : awakeOn;
             bool pPlan = sp != null ? sp.PowerPlanOn : planSwitch;
             bool pAggr = sp != null ? sp.Aggressive : aggressiveOn;
-            bool pStandby = sp != null ? sp.StandbySweep : standbySweepOn;
             bool pAmdAlag = sp != null ? sp.AmdAntiLag : amdAntiLag;
             bool pAmdAfmf = sp != null ? sp.AmdAfmf : amdAfmf;
             string pAmdFrl = sp != null ? sp.AmdFrlMode : amdFrlMode;
             bool competitive = mode == PerformancePreset.Competitive;
             bool custom = mode == PerformancePreset.Custom;
-            bool extreme = mode == PerformancePreset.Extreme;
-            bool usePauseDl = custom ? pPauseDl : (competitive || extreme);
-            bool useSvc = custom ? pSvcPause : extreme;
-            bool useSvcYield = custom ? pSvcYield : extreme;
-            SvcYield.SetPausedServices(useSvc ? SvcPause.Names : null);
+            bool usePauseDl = custom ? pPauseDl : competitive;
             bool slowReady = slowEnvAtTicks == 0 || DateTime.UtcNow.Ticks >= slowEnvAtTicks;
-            useSvc = useSvc && slowReady;
             usePauseDl = usePauseDl && slowReady;
-            bool useDvr = custom ? pDvr : (competitive || extreme);
             bool usePlan = ResolvePowerPlanEnabled(mode, pPlan);
-            SuppressionCore.GpuDemoteEnabled = (sp != null ? sp.GpuDemote : gpuDemoteOn) || extreme;
+            SuppressionCore.GpuDemoteEnabled = sp != null ? sp.GpuDemote : gpuDemoteOn;
             SuppressionCore.SqueezeBackground = sp != null ? sp.SqueezeBackground : squeezeBgOn;
             doActive = EnvStep("do", usePauseDl, doActive, DoTweak.Activate, DoTweak.Restore);
-            svcActive = EnvStep("svc", useSvc, svcActive, SvcPause.Activate, SvcPause.Restore);
-            svcYieldActive = EnvStep("svcyield", useSvcYield, svcYieldActive, SvcYield.Activate, SvcYield.Restore);
-            wlanActive = EnvStep("wlanscan", pWlan || extreme, wlanActive, WlanGuard.Activate, WlanGuard.Restore);
-            dvrActive = EnvStep("dvr", useDvr, dvrActive, GameDvr.Activate, GameDvr.Restore);
-            wuActive = EnvStep("wu", (pWu || extreme) && slowReady, wuActive, UpdatePause.Activate, UpdatePause.Restore);
+            wlanActive = EnvStep("wlanscan", pWlan, wlanActive, WlanGuard.Activate, WlanGuard.Restore);
+            // Game DVR 关闭已移出对局环境步:该值由系统在游戏启动那一刻读取 对局中才写对本局无效
+            // 改由游戏模式生命周期在会话级应用(SyncGameDvr)游戏启动前就已关闭 退出 Pavise 才还原
+            wuActive = EnvStep("wu", pWu && slowReady, wuActive, UpdatePause.Activate, UpdatePause.Restore);
+            // 无输入降级关闭(PresenceQos):属对游戏有益的 PowerThrottling 家族项 成本极低(一次 HKLM 写)恢复启用
             pqosActive = EnvStep("pqos", true, pqosActive, PresenceQos.Activate, PresenceQos.Restore);
-            awakeActive = EnvStep("awake", pAwake || extreme, awakeActive, DisplayAwake.Activate, DisplayAwake.Restore);
-            bool aggressivePower = IsAggressive(mode, pAggr);
-            overlayActive = EnvStep("overlay", usePlan && aggressivePower, overlayActive, PowerOverlay.Activate, PowerOverlay.Restore);
-            amdAlagActive = EnvStep("amdalag", pAmdAlag && AdlxTweaks.AntiLagSupported(), amdAlagActive,
-                AdlxTweaks.ActivateAntiLag, RestoreAmdAntiLagEnv);
+            awakeActive = EnvStep("awake", pAwake, awakeActive, DisplayAwake.Activate, DisplayAwake.Restore);
+            rsrActive = EnvStep("rsr", rsrOn, rsrActive, AdlxTweaks.ActivateRsr, AdlxTweaks.RestoreRsr);
+            gpwActive = EnvStep("gpupower", gpuPowerMaxOn, gpwActive, GpuPowerMax.Activate, GpuPowerMax.Restore);
+            int frlTarget = pAmdFrl == "off" ? 0 : ResolveFrlFps(pAmdFrl);
+            // Chill 与 Anti-Lag 驱动互斥 限帧走 Chill 时 Anti-Lag 让位 用户显式设定的数值优先
+            bool limitViaChill = frlTarget > 0 && AdlxTweaks.ChillSupported();
+            if (pAmdAlag && limitViaChill && !amdFrlMutexLogged)
+            {
+                amdFrlMutexLogged = true;
+                Logger.Log("AMD 帧率上限与 Anti-Lag 驱动互斥，帧率上限优先，Anti-Lag 本轮不启用");
+            }
+            if (!limitViaChill) amdFrlMutexLogged = false;
+            amdAlagActive = EnvStep("amdalag", pAmdAlag && !limitViaChill && AdlxTweaks.AntiLagSupported(),
+                amdAlagActive, AdlxTweaks.ActivateAntiLag, RestoreAmdAntiLagEnv);
             amdAfmfActive = EnvStep("amdafmf", pAmdAfmf && AdlxTweaks.AfmfSupported(), amdAfmfActive,
                 AdlxTweaks.ActivateAfmf, AdlxTweaks.RestoreAfmf);
-            int frtcTarget = pAmdFrl == "off" ? 0 : ResolveFrlFps(pAmdFrl);
-            if (amdFrtcActive && frtcTarget > 0 && frtcTarget != amdFrtcFps
-                && AdlxTweaks.ActivateFrtc(frtcTarget))
-                amdFrtcFps = frtcTarget;
-            amdFrtcActive = EnvStep("amdfrtc", frtcTarget > 0 && AdlxTweaks.FrtcSupported(), amdFrtcActive,
+            if (amdFrtcActive && frlTarget > 0 && frlTarget != amdFrtcFps
+                && AdlxTweaks.ActivateFrameLimit(frlTarget))
+                amdFrtcFps = frlTarget;
+            amdFrtcActive = EnvStep("amdfrtc", frlTarget > 0 && AdlxTweaks.FrameLimitSupported(), amdFrtcActive,
                 delegate
                 {
-                    bool applied = AdlxTweaks.ActivateFrtc(frtcTarget);
-                    if (applied) amdFrtcFps = frtcTarget;
+                    bool applied = AdlxTweaks.ActivateFrameLimit(frlTarget);
+                    if (applied) amdFrtcFps = frlTarget;
                     return applied;
                 },
-                AdlxTweaks.RestoreFrtc);
+                AdlxTweaks.RestoreFrameLimit);
             if (!amdFrtcActive) amdFrtcFps = 0;
-            if (pStandby && !standbyPurged)
-            {
-                standbyPurged = true;
-                StandbySweep.PurgeOnce();
-            }
+            // 待机内存清理:仅在内存吃紧(可用<15%)且过了冷却期时清一次低优先级待机页 自带阈值+45秒冷却
+            // 高内存/无压力机器 MaybePurge 直接返回不动作;低内存吃紧时缓解帧时间抖动 见 StandbySweep
+            bool pStandby = sp != null ? sp.StandbySweep : standbySweepOn;
+            if (pStandby) StandbySweep.MaybePurge();
+            bool aggressivePower = IsAggressive(mode, pAggr);
             int powerKey = (aggressivePower ? 1 : 0) | (usePlan ? 2 : 0);
             long nowTicks = DateTime.UtcNow.Ticks;
             if (usePlan)
@@ -266,7 +258,9 @@ namespace PaviseApp
                     {
                         planFailStreak = 0;
                         if (LoadCounter(PowerFailStreakKey) != 0) SaveCounter(PowerFailStreakKey, 0);
-                        nextPowerAuditTicks = DateTime.UtcNow.AddSeconds(30).Ticks;
+                        // 设一次即可 不再每30秒定时强制拉回 那会与其它电源/厂商软件反复抢方案造成周期性顿挫
+                        // 仅在方案项(档位/开关)变化或写入失败重试时才重新应用 平时不再触碰电源方案
+                        nextPowerAuditTicks = long.MaxValue;
                     }
                     else
                     {
@@ -324,7 +318,7 @@ namespace PaviseApp
         private bool amdAfmfActive;
         private bool amdFrtcActive;
         private int amdFrtcFps;
-        private bool standbyPurged;
+        private bool amdFrlMutexLogged;
 
         private static bool RestoreAmdAntiLagEnv()
         {
@@ -421,7 +415,7 @@ namespace PaviseApp
 
         private bool EnvActive()
         {
-            return doActive || svcActive || svcYieldActive || wlanActive || dvrActive || wuActive || pqosActive || awakeActive || overlayActive || planActive || timerRaised
+            return doActive || wlanActive || wuActive || pqosActive || awakeActive || rsrActive || gpwActive || planActive || timerRaised
                 || amdAlagActive || amdAfmfActive || amdFrtcActive || coreParkActive;
         }
 
@@ -438,14 +432,10 @@ namespace PaviseApp
             if (boostCount > 0) parts.Add("游戏提优 " + boostCount + " 项");
             if (core.AnyWith(SuppressReason.Background)) parts.Add("后台压制");
             if (doActive) parts.Add("下载暂停");
-            if (svcActive) parts.Add("服务暂停");
-            if (svcYieldActive) parts.Add("服务让路");
             if (wlanActive) parts.Add("无线扫描抑制");
-            if (dvrActive) parts.Add("Game DVR");
             if (wuActive) parts.Add("更新暂停");
             if (pqosActive) parts.Add("降级豁免");
             if (awakeActive) parts.Add("防熄屏");
-            if (overlayActive) parts.Add("电源滑块");
             if (planActive) parts.Add("电源计划");
             if (coreParkActive) parts.Add("核心停泊解除");
             if (timerRaised) parts.Add("计时器精度");
@@ -476,19 +466,16 @@ namespace PaviseApp
         private bool RestoreEnv()
         {
             bool ok = true;
-            standbyPurged = false;
             if (DoTweak.Restore()) doActive = false; else ok = false;
-            if (SvcPause.Restore()) svcActive = false; else ok = false;
-            if (SvcYield.Restore()) svcYieldActive = false; else ok = false;
             if (WlanGuard.Restore()) wlanActive = false; else ok = false;
-            if (GameDvr.Restore()) dvrActive = false; else ok = false;
             if (UpdatePause.Restore()) wuActive = false; else ok = false;
             if (PresenceQos.Restore()) pqosActive = false; else ok = false;
             if (DisplayAwake.Restore()) awakeActive = false; else ok = false;
-            if (PowerOverlay.Restore()) overlayActive = false; else ok = false;
+            if (AdlxTweaks.RestoreRsr()) rsrActive = false; else ok = false;
+            if (GpuPowerMax.Restore()) gpwActive = false; else ok = false;
             if (RestoreAmdAntiLagEnv()) amdAlagActive = false; else ok = false;
             if (AdlxTweaks.RestoreAfmf()) amdAfmfActive = false; else ok = false;
-            if (AdlxTweaks.RestoreFrtc()) { amdFrtcActive = false; amdFrtcFps = 0; } else ok = false;
+            if (AdlxTweaks.RestoreFrameLimit()) { amdFrtcActive = false; amdFrtcFps = 0; } else ok = false;
             if (PowerPlan.Restore())
             {
                 planActive = false;

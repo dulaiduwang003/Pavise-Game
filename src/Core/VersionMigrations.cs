@@ -63,7 +63,8 @@ namespace PaviseApp
     {
         private const string LastRunKey = "LastRunVersion";
 
-        private const string DataResetBelow = "1.8.0.1";
+        // 1.8.0.2 极限档下架 布局大改 明确不做任何旧配置兼容 低于此版本的配置与数据一律清除重建
+        private const string DataResetBelow = "1.8.0.2";
         private const bool DataResetIncludesSettings = true;
 
         private static readonly object lk = new object();
@@ -91,13 +92,13 @@ namespace PaviseApp
         {
             if (DataResetBelow.Length == 0) return true;
             string last = PreviousRunVersion;
-            if (last.Length == 0) return true;
-            if (Program.CompareVersions(last, DataResetBelow) >= 0) return true;
+            // 没盖过版本戳的一律视为旧版本 与首装无法区分 首装时清理本来就是空操作 代价只是首启多两行日志
+            if (last.Length > 0 && Program.CompareVersions(last, DataResetBelow) >= 0) return true;
 
             int files;
             string unrestored;
             return LegacyPurge.WipeAll(dataDir, DataResetIncludesSettings,
-                "升级数据重置 上个版本 " + last + " 低于数据基线 " + DataResetBelow,
+                "升级数据重置 上个版本 " + (last.Length > 0 ? last : "未知") + " 低于数据基线 " + DataResetBelow,
                 out files, out unrestored);
         }
 
@@ -168,6 +169,22 @@ namespace PaviseApp
             new RetiredFeature("刷新率守护", "1.7.0.4",
                 "刷新率是持久设置 大多数机器上每局空转 中途被系统打回也无法察觉 改由体检页只读提示",
                 DisplayGuard.HasResidue, DisplayGuard.Restore),
+
+            new RetiredFeature("服务让路", "1.8.0.2",
+                "引流的诊断/更新/打印类服务本就几乎不吃 CPU 挪核收益≈0 而真正的游戏核隔离后台压制系统已覆盖",
+                SvcYield.HasResidue, SvcYield.Restore),
+
+            new RetiredFeature("电源滑块最佳性能", "1.8.0.2",
+                "散热受限的笔记本上把滑块拉满会更快撞温度墙 持续性能反而下降 台式机上又与高性能电源计划重复",
+                delegate { return HasSetting("PowerOverlaySnap"); }, PowerOverlay.Restore),
+
+            new RetiredFeature("暂停搜索索引与预读服务", "1.8.0.2",
+                "固态硬盘上测不出差异 机械盘受众极少 停止与恢复服务本身要数秒 收益覆盖不了成本",
+                SvcPause.HasResidue, SvcPause.Restore),
+
+            new RetiredFeature("上传让位", "1.8.0.2",
+                "对局中拉 PowerShell 刷 NetQos 组策略不稳定 顿挫风险大 概念虽正经但实现不可靠",
+                UploadYield.HasResidue, delegate { UploadYield.Clear(); return !UploadYield.HasResidue(); }),
         };
 
         private static bool HasSetting(string name)
@@ -259,7 +276,9 @@ namespace PaviseApp
             "TrimWS", "HzGuardOn", "EnvFuse_hz", "GmIgpuOffload", "GmMemResidency",
             "GmVisualFx", "EnvFuse_fx", "GmPrewarm", "NotesAutoPopup",
             "NvBgFrl", "EnvFuse_nvbg", "GmBgCoreMask", "ArenaPlanGuid", "UltimatePlanGuid",
-            "ContactAutoPopup", "NotifQuiet", "EnvFuse_notif"
+            "ContactAutoPopup", "NotifQuiet", "EnvFuse_notif",
+            "GmPresenceQos", "EnvFuse_pqos", "GpuHighPerf",
+            "GmSvcPause", "EnvFuse_svc", "EnvFuse_overlay"
         };
 
         private static void PurgeRetiredSettingKeys()

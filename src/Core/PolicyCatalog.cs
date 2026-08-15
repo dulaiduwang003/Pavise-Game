@@ -47,7 +47,6 @@ namespace PaviseApp
         public const string KeyGpuDemote = "GmGpuDemote";
         public const string KeyIfeoBoost = "GmIfeoBoost";
         public const string KeyRenderLane = "GmRenderLane";
-        public const string KeyUploadYield = "GmUploadYield";
         public const string KeyStrictCores = "GmStrictCores";
         public const string KeyCoreDomainAlt = "GmCoreDomainAlt";
         public const string KeyCoreMask = "GmCoreMask";
@@ -55,8 +54,6 @@ namespace PaviseApp
         public const string KeyPowerPlan = "PowerPlanOn";
         public const string KeyPauseDl = "GmPauseDl";
         public const string KeyPauseUpdate = "GmPauseUpdate";
-        public const string KeySvcPause = "GmSvcPause";
-        public const string KeySvcYield = "GmSvcYield";
         public const string KeyWlanGuard = "GmWlanGuard";
         public const string KeyAwake = "GmAwake";
         public const string KeyGameDvrOff = "GameDvrOff";
@@ -88,7 +85,7 @@ namespace PaviseApp
         private static readonly PolicyItem[] Items =
         {
             new PolicyItem(KeyPreset, PolicyValueKind.Enum, "0", "cfg.mode", GroupMode,
-                new[] { "0", "1", "2", "3" }),
+                new[] { "0", "1", "2" }),
             new PolicyItem(KeySuppress, PolicyValueKind.Bool, "1", "v14.bg.master", GroupBackground, null),
             new PolicyItem(KeyBoost, PolicyValueKind.Bool, "1", "gm.boost", GroupBackground, null),
             new PolicyItem(KeyAggressive, PolicyValueKind.Bool, "0", "gm.aggressive", GroupBackground, null),
@@ -96,16 +93,14 @@ namespace PaviseApp
             new PolicyItem(KeyGpuDemote, PolicyValueKind.Bool, "0", "gm.gpudemote", GroupBackground, null),
             new PolicyItem(KeyIfeoBoost, PolicyValueKind.Bool, "0", "gm.ifeo", GroupBackground, null),
             new PolicyItem(KeyRenderLane, PolicyValueKind.Bool, "1", "gm.lane", GroupBackground, null),
-            new PolicyItem(KeyUploadYield, PolicyValueKind.Bool, "0", "gm.upyield", GroupBackground, null),
             new PolicyItem(KeyStrictCores, PolicyValueKind.Bool, "0", "cfg.strictcores", GroupCores, null),
             new PolicyItem(KeyCoreDomainAlt, PolicyValueKind.Bool, "0", "cfg.domainalt", GroupCores, null),
             new PolicyItem(KeyCoreMask, PolicyValueKind.MaskHex, "", "cfg.coremask", GroupCores, null),
-            new PolicyItem(KeyStandbySweep, PolicyValueKind.Bool, "0", "gm.standby", GroupMemPower, null),
+            // 默认值必须与 GameMode 启动加载的默认一致 否则键未写入时全局与逐游戏快照解析出两个值
+            new PolicyItem(KeyStandbySweep, PolicyValueKind.Bool, "1", "gm.standby", GroupMemPower, null),
             new PolicyItem(KeyPowerPlan, PolicyValueKind.Bool, "1", "plan.pick.title", GroupMemPower, null),
             new PolicyItem(KeyPauseDl, PolicyValueKind.Bool, "1", "gm.pausedl", GroupEnvironment, null),
             new PolicyItem(KeyPauseUpdate, PolicyValueKind.Bool, "0", "gm.pausewu", GroupEnvironment, null),
-            new PolicyItem(KeySvcPause, PolicyValueKind.Bool, "0", "gm.pausesvc", GroupEnvironment, null),
-            new PolicyItem(KeySvcYield, PolicyValueKind.Bool, "0", "gm.svcyield", GroupEnvironment, null),
             new PolicyItem(KeyWlanGuard, PolicyValueKind.Bool, "0", "gm.wlanguard", GroupEnvironment, null),
             new PolicyItem(KeyAwake, PolicyValueKind.Bool, "1", "set.awake", GroupEnvironment, null),
             new PolicyItem(KeyGameDvrOff, PolicyValueKind.Bool, "1", "set.dvr", GroupEnvironment, null),

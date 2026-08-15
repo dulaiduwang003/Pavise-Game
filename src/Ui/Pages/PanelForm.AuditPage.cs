@@ -20,7 +20,7 @@ namespace PaviseApp
         private AuditScanView auditScan;
         private PillButton btnAuditStart;
         private Label lblAuditStatus;
-        private PillButton btnAuditQuick, btnAuditPrecise;
+        private PillButton btnAuditQuick, btnAuditPrecise, btnAuditFixAll;
         private int auditBusy;
         private bool auditRendered;
         private Stopwatch auditClock;
@@ -43,8 +43,17 @@ namespace PaviseApp
             pageAudit.Controls.Add(btnAuditPrecise);
 
             int statusOffset = 336;
+            int fixAllW = 150;
             lblAuditStatus = CardLabel(pageAudit, "", ContentX + statusOffset, y + 8,
-                ContentW - statusOffset, 20, 8.0f, false, Theme.Dim);
+                ContentW - statusOffset - fixAllW - 12, 20, 8.0f, false, Theme.Dim);
+
+            // 顶部常驻的「一键修复」总按钮:一次修掉体检检出的全部可修项 无待修项时置灰
+            btnAuditFixAll = new PillButton(Lang.T("audit.fixall.none"), BtnKind.Primary);
+            btnAuditFixAll.SetBounds(Theme.S(ContentX + ContentW - fixAllW), Theme.S(y),
+                Theme.S(fixAllW), Theme.S(34));
+            btnAuditFixAll.Enabled = false;
+            btnAuditFixAll.Click += delegate { OnAuditFixAllClick(); };
+            pageAudit.Controls.Add(btnAuditFixAll);
             y += 44;
 
             auditScroll = new DBPanel();
@@ -87,9 +96,12 @@ namespace PaviseApp
             bool wasShown = btnAuditQuick.Visible;
             btnAuditQuick.Visible = visible;
             btnAuditPrecise.Visible = visible;
+            btnAuditFixAll.Visible = visible;
+            if (visible) UpdateFixAllState();
             if (!visible || wasShown) return;
             Fx.SlideIn(btnAuditQuick);
             Fx.SlideIn(btnAuditPrecise);
+            Fx.SlideIn(btnAuditFixAll);
         }
 
         private void StartAudit(int windowMs)
@@ -167,6 +179,8 @@ namespace PaviseApp
         {
             btnAuditQuick.Enabled = enabled;
             btnAuditPrecise.Enabled = enabled;
+            // 体检进行中一律禁用一键修复;体检结束后由 UpdateFixAllState 按待修项数重新决定
+            if (!enabled) { btnAuditFixAll.Enabled = false; btnAuditFixAll.Invalidate(); }
         }
 
         private void RenderAudit(AuditReport report)
@@ -299,6 +313,37 @@ namespace PaviseApp
             StartAudit(QuickAuditWindowMs);
         }
 
+        // 按当前待修项数刷新一键修复按钮:有则可点并显示项数 无则置灰显示「无待修项」
+        private void UpdateFixAllState()
+        {
+            int n = 0;
+            foreach (AuditFix f in BuildAuditFixes().Values)
+            {
+                try { if (f.CanFix()) n++; } catch { }
+            }
+            btnAuditFixAll.Enabled = n > 0;
+            btnAuditFixAll.Text = n > 0 ? Lang.F("audit.fixall", n) : Lang.T("audit.fixall.none");
+            btnAuditFixAll.Invalidate();
+        }
+
+        private void OnAuditFixAllClick()
+        {
+            if (!elevated)
+            {
+                PaviseDialog.Warn(this, App.DisplayName, Lang.T("vbs.needadmin"));
+                return;
+            }
+            int done = 0;
+            foreach (AuditFix f in BuildAuditFixes().Values)
+            {
+                try { if (f.CanFix()) { f.Fix(); done++; } } catch { }
+            }
+            Logger.Log(done > 0
+                ? "体检一键修复 已执行 " + done + " 项 重新体检核对"
+                : "体检一键修复 无待修项");
+            StartAudit(QuickAuditWindowMs);
+        }
+
         private int RenderAuditGroup(string title, List<AuditRow> rows, int sy)
         {
             Section(auditScroll, title, 6, sy);
@@ -306,8 +351,6 @@ namespace PaviseApp
             Dictionary<string, AuditFix> fixes = BuildAuditFixes();
             foreach (AuditRow row in rows)
             {
-                string note = row.Note ?? "";
-
                 AuditFix fix = null;
                 bool showFix = false, showRevert = false;
                 if (row.FixKey != null && fixes.TryGetValue(row.FixKey, out fix))
@@ -316,54 +359,20 @@ namespace PaviseApp
                     catch { }
                 }
                 bool hasButton = showFix || showRevert;
+                AuditFix boundFix = fix;
+                Action onClick = hasButton ? delegate { OnAuditFixClick(boundFix); } : (Action)null;
 
-                int noteW = ScrollContentW - 32 - (hasButton ? 132 : 0);
-                int noteHeight = MeasureNoteHeight(note, noteW);
-                int rowHeight = Math.Max(64, 40 + noteHeight);
-                var panel = MakeConsolePanel(auditScroll, 6, sy, ScrollContentW, rowHeight, false);
-                CardLabel(panel, row.Name, 16, 10, 236, 20, 8.6f, true, Theme.Fg);
-                CardLabel(panel, row.Value, 256, 10, ScrollContentW - 380, 20, 8.6f, true,
-                    row.Warn ? Theme.Accent : Theme.Fg);
-                CardLabel(panel, Lang.T("audit.evidence") + row.Evidence,
-                    ScrollContentW - 118, 10, 104, 20, 7.4f, false, Theme.Faint);
-                WrapLabel(panel, note, 16, 34, noteW, noteHeight, 7.8f, Theme.Dim);
-                if (hasButton)
-                {
-                    AuditFix boundFix = fix;
-                    var btn = new PillButton(
-                        Lang.T(showFix ? "audit.fix" : "audit.fix.revert"),
-                        showFix ? BtnKind.Primary : BtnKind.Normal);
-                    btn.SetBounds(Theme.S(ScrollContentW - 134), Theme.S(rowHeight - 42),
-                        Theme.S(118), Theme.S(30));
-                    btn.Click += delegate { OnAuditFixClick(boundFix); };
-                    panel.Controls.Add(btn);
-                }
-                auditEntering.Add(panel);
-                sy += rowHeight + 8;
+                var card = new AuditRowCard(row.Name, row.Value, row.Note ?? "",
+                    Lang.T("audit.evidence") + row.Evidence, row.Warn,
+                    hasButton, Lang.T(showFix ? "audit.fix" : "audit.fix.revert"), showFix,
+                    onClick, ScrollContentW);
+                card.SetBounds(Theme.S(6), Theme.S(sy), Theme.S(ScrollContentW), Theme.S(card.LogicalHeight));
+                auditScroll.Controls.Add(card);
+                auditEntering.Add(card);
+                sy += card.LogicalHeight + 8;
             }
             sy += 8;
             return sy;
-        }
-
-        private int MeasureNoteHeight(string note, int noteW)
-        {
-            if (string.IsNullOrEmpty(note)) return 24;
-            Font font = Theme.UI(7.8f, false);
-            int widthPx = Theme.S(noteW);
-            Size measured = TextRenderer.MeasureText(note, font,
-                new Size(widthPx, int.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
-            int unscaled = (int)Math.Ceiling(measured.Height / Dpi.Scale);
-            return Math.Max(24, unscaled + 4);
-        }
-
-        private void WrapLabel(Control parent, string text, int x, int y, int w, int h, float size, Color color)
-        {
-            var label = new Label();
-            label.Text = text; label.ForeColor = color; label.BackColor = Color.Transparent;
-            label.Font = Theme.UI(size, false); label.AutoEllipsis = false; label.AutoSize = false;
-            label.UseCompatibleTextRendering = false;
-            label.SetBounds(Theme.S(x), Theme.S(y), Theme.S(w), Theme.S(h));
-            parent.Controls.Add(label);
         }
     }
 }

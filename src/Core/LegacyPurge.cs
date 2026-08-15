@@ -79,6 +79,7 @@ namespace PaviseApp
             Step("息屏防护", DisplayAwake.Restore, failed);
             Step("无输入降级", PresenceQos.Restore, failed);
             Step("电源滑块", PowerOverlay.Restore, failed);
+            Step("显卡功耗墙", GpuPowerMax.Restore, failed);
             Step("后台下载暂停", DoTweak.Restore, failed);
             Step("服务暂停", SvcPause.Restore, failed);
             Step("服务让路", SvcYield.Restore, failed);

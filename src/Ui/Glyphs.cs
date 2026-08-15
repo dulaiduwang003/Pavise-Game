@@ -153,6 +153,19 @@ namespace PaviseApp
                     g.DrawEllipse(pen, x + 4.5f * u, y + 4.5f * u, 11.5f * u, 11.5f * u);
                     g.DrawLine(pen, P(x, y, u, 14.8f, 14.8f), P(x, y, u, 20.2f, 20.2f));
                 }
+                else if (name == "power")
+                {
+                    // 电源插头 竖插脚加切角壳体带尾线 表达供电计划 不能画成关机符
+                    g.DrawLine(pen, P(x, y, u, 9.2f, 2.8f), P(x, y, u, 9.2f, 6.8f));
+                    g.DrawLine(pen, P(x, y, u, 14.8f, 2.8f), P(x, y, u, 14.8f, 6.8f));
+                    PointF[] plug = {
+                        P(x,y,u,6.4f,6.8f), P(x,y,u,17.6f,6.8f), P(x,y,u,17.6f,11.6f),
+                        P(x,y,u,15.2f,14.6f), P(x,y,u,8.8f,14.6f), P(x,y,u,6.4f,11.6f) };
+                    g.DrawPolygon(pen, plug);
+                    g.DrawLine(pen, P(x, y, u, 12, 14.6f), P(x, y, u, 12, 17.8f));
+                    g.DrawBezier(pen, P(x, y, u, 12, 17.8f), P(x, y, u, 12, 21.2f),
+                        P(x, y, u, 14.6f, 21.4f), P(x, y, u, 18.2f, 21.0f));
+                }
                 else if (name == "sun")
                 {
                     using (var thin = new Pen(c, Math.Max(1.1f, 1.55f * u)))

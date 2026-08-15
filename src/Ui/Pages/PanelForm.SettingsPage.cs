@@ -13,6 +13,17 @@ namespace PaviseApp
     {
         private Toggle swAuto, swAutoHide;
         private SettingCard cardShader;
+
+        // 模式主题色可选色板(暗色下鲜明 用作强调色/按钮填充)
+        private static readonly Color[] AccentPalette =
+        {
+            Color.FromArgb(239, 190, 66), Color.FromArgb(255, 140, 40), Color.FromArgb(255, 61, 82),
+            Color.FromArgb(240, 90, 170), Color.FromArgb(178, 118, 255), Color.FromArgb(48, 180, 255),
+            Color.FromArgb(40, 200, 200), Color.FromArgb(69, 224, 154), Color.FromArgb(150, 214, 80),
+            Color.FromArgb(120, 140, 255),
+        };
+        private readonly List<ColorSwatch>[] modeSwatches =
+            { new List<ColorSwatch>(), new List<ColorSwatch>(), new List<ColorSwatch>() };
         private static volatile bool shaderCleaning;
         private int slowBusy;
         private int restoreBusy;
@@ -41,6 +52,8 @@ namespace PaviseApp
             sy += cardH + 8;
 
             sy += 10;
+            BuildThemeColorSection(scroll, ref sy);
+
             Section(scroll, Lang.T("sec.maint"), 6, sy); sy += 24;
 
             var btnRestore = new PillButton(Lang.T("btn.panic"), BtnKind.Danger);
@@ -72,6 +85,99 @@ namespace PaviseApp
             scroll.Controls.Add(lblAbout);
 
             EnableCardCollapse(scroll);
+        }
+
+        private void BuildThemeColorSection(Control scroll, ref int sy)
+        {
+            Section(scroll, Lang.T("sec.theme"), 6, sy); sy += 24;
+
+            var hint = new Label();
+            hint.Text = Lang.T("theme.hint");
+            hint.ForeColor = Theme.Dim; hint.BackColor = Theme.Bg;
+            hint.Font = Theme.UI(8.0f, false); hint.AutoEllipsis = true;
+            hint.SetBounds(Theme.S(16), Theme.S(sy), Theme.S(ScrollContentW - 24), Theme.S(18));
+            scroll.Controls.Add(hint);
+            sy += 26;
+
+            PerformancePreset[] modes =
+                { PerformancePreset.Standard, PerformancePreset.Competitive, PerformancePreset.Custom };
+            foreach (PerformancePreset mode in modes)
+            {
+                PerformancePreset capMode = mode;
+                modeSwatches[(int)mode].Clear();
+
+                var lbl = new Label();
+                lbl.Text = ModeName(mode);
+                lbl.ForeColor = Theme.Fg; lbl.BackColor = Theme.Bg;
+                lbl.Font = Theme.UI(8.6f, false);
+                lbl.TextAlign = ContentAlignment.MiddleLeft;
+                lbl.SetBounds(Theme.S(16), Theme.S(sy), Theme.S(60), Theme.S(26));
+                scroll.Controls.Add(lbl);
+
+                int sx = 84;
+                bool overridden = Theme.HasModeColorOverride(mode);
+
+                var def = new ColorSwatch(Theme.ModeColorBuiltin(mode));
+                def.IsDefault = true; def.Selected = !overridden;
+                def.SetBounds(Theme.S(sx), Theme.S(sy), Theme.S(26), Theme.S(26));
+                def.Picked = delegate { OnModeColorPick(capMode, Color.Empty); };
+                scroll.Controls.Add(def); modeSwatches[(int)mode].Add(def);
+                sx += 32;
+
+                Color eff = Theme.ModeColor(mode);
+                foreach (Color paletteColor in AccentPalette)
+                {
+                    Color cc = paletteColor;
+                    var sw = new ColorSwatch(cc);
+                    sw.Selected = overridden && SameRgb(eff, cc);
+                    sw.SetBounds(Theme.S(sx), Theme.S(sy), Theme.S(26), Theme.S(26));
+                    sw.Picked = delegate { OnModeColorPick(capMode, cc); };
+                    scroll.Controls.Add(sw); modeSwatches[(int)mode].Add(sw);
+                    sx += 32;
+                }
+                sy += 34;
+            }
+            sy += 10;
+        }
+
+        private static string ModeName(PerformancePreset m)
+        {
+            return m == PerformancePreset.Competitive ? Lang.T("preset.competitive")
+                : m == PerformancePreset.Custom ? Lang.T("preset.custom") : Lang.T("preset.standard");
+        }
+
+        private static bool SameRgb(Color a, Color b) { return a.R == b.R && a.G == b.G && a.B == b.B; }
+
+        private void OnModeColorPick(PerformancePreset mode, Color color)
+        {
+            if (color.IsEmpty)
+            {
+                Theme.ClearModeColorOverride(mode);
+                Settings.SaveStr("ModeAccent" + (int)mode, "");
+            }
+            else
+            {
+                Theme.SetModeColorOverride(mode, color);
+                Settings.SaveStr("ModeAccent" + (int)mode, Col.ToHex(color));
+            }
+
+            bool overridden = Theme.HasModeColorOverride(mode);
+            Color eff = Theme.ModeColor(mode);
+            foreach (ColorSwatch sw in modeSwatches[(int)mode])
+            {
+                sw.Selected = sw.IsDefault ? !overridden : (overridden && SameRgb(sw.Swatch, eff));
+                sw.Invalidate();
+            }
+
+            // 改的是当前显示模式的色:凡是把模式色缓存成位图的地方都要重生成
+            // 标题栏/托盘图标、导航栏顶部 logo、首页核心静态层——它们只在模式变化时刷新 改颜色需手动补刷
+            if (modeVisualInitialized && mode == visualMode)
+            {
+                using (Icon icon = IconArt.MakeMultiIcon(visualMode, visualEnabled)) SetRuntimeIcon(icon);
+                if (nav != null) nav.RefreshLogo();
+                if (paviseCore != null) paviseCore.RefreshVisual();
+            }
+            if (UiActive) UiClock.Wake();
         }
 
         private void OnAutoToggle(object s, EventArgs e)

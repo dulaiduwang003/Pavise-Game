@@ -208,7 +208,10 @@ namespace PaviseApp
 
                 if (SettingPresent(g, SubProcessor, IdleDisableSet))
                 {
-                    if (WritePair(g, SubProcessor, IdleDisableSet, 0u, 0u)) written++;
+                    // 竞技档插电禁用处理器闲置:GPU 瓶颈时渲染线程每帧多次从深 C-state 唤醒
+                    // 且包级 C-state 拖低 uncore 频率抬高内存延迟 台架实测 +4.5% 平均帧 +6% 1%low 热浸无衰减
+                    // 电池恒 C0 功耗代价过大 DC 侧一律保持启用闲置
+                    if (WritePair(g, SubProcessor, IdleDisableSet, aggressive ? 1u : 0u, 0u)) written++;
                     else failed++;
                 }
                 else skipped.Add("处理器闲置禁用");

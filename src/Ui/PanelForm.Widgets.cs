@@ -2,6 +2,7 @@
 // 文件用途 面板各页通用的控件工厂 页眉 分节 开关与设置卡
 
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -156,6 +157,10 @@ namespace PaviseApp
             return dlg.ShowDialog(this);
         }
 
+        // 页 -> 其内容标签面板 供 ShowPage 进入时让活动面板滑入一次(与切标签同款动画)
+        private readonly Dictionary<Control, DBPanel[]> pageTabPanels
+            = new Dictionary<Control, DBPanel[]>();
+
         private DBPanel[] MakeTabPanels(Control page, TechTabs tabs, int count, int y)
         {
             var panels = new DBPanel[count];
@@ -168,6 +173,7 @@ namespace PaviseApp
                 page.Controls.Add(panel);
                 panels[i] = panel;
             }
+            pageTabPanels[page] = panels;
             tabs.IndexChanged = delegate(int index)
             {
                 for (int i = 0; i < panels.Length; i++)

@@ -15,11 +15,11 @@ namespace PaviseApp
         private DBPanel[] policyTabPanels;
         private TierPicker pickPolicyCores;
         private Toggle swPolicyBackground, swPolicyAggressive;
-        private Toggle swPolicyPauseDl, swPolicyPauseSvc, swPolicySvcYield, swPolicyDvr;
+        private Toggle swPolicyPauseDl, swPolicyDvr;
         private Toggle swPolicyGpuDemote, swPolicyBoost, swPolicyIfeo, swPolicyLane;
         private Toggle swPolicyPauseWu, swPolicyWlan, swPolicyAwake;
         private SettingCard cardPolicyCores, cardPolicyAggressive;
-        private SettingCard cardPolicyPauseDl, cardPolicyPauseSvc, cardPolicySvcYield, cardPolicyDvr;
+        private SettingCard cardPolicyPauseDl, cardPolicyDvr;
         private SettingCard cardPolicyBackground, cardPolicyGpuDemote, cardPolicyBoost, cardPolicyIfeo, cardPolicyLane;
         private SettingCard cardPolicyPauseWu, cardPolicyWlan, cardPolicyAwake;
         private readonly List<Action> policySync = new List<Action>();
@@ -65,7 +65,7 @@ namespace PaviseApp
             swPolicyLane = AddPolicyToggle(scroll, ref sy, Lang.T("gm.lane"), Lang.T("gm.lane.sub"),
                 delegate { return gameMode.RenderLaneOn; }, delegate(bool v) { gameMode.RenderLaneOn = v; });
             cardPolicyLane = (SettingCard)swPolicyLane.Parent;
-            AddPowerPlanPicker(scroll, ref sy);
+            // 对局电源计划选择器已移到主窗口标题栏(PowerFlyout)优化策略页不再重复放
 
             BuildCorePage(policyTabPanels[1]);
 
@@ -76,16 +76,9 @@ namespace PaviseApp
             swPolicyAggressive.CheckedChanged += delegate { RefreshPolicyPresentation(); };
             swPolicyPauseDl = AddPolicyToggle(scroll, ref sy, Lang.T("gm.pausedl"), Lang.T("gm.pausedl.sub"), delegate { return gameMode.PauseDownloads; }, delegate(bool v) { gameMode.PauseDownloads = v; });
             cardPolicyPauseDl = (SettingCard)swPolicyPauseDl.Parent;
-            swPolicyPauseSvc = AddPolicyToggle(scroll, ref sy, Lang.T("gm.pausesvc"), Lang.T("gm.pausesvc.sub"), delegate { return gameMode.PauseSvcIndex; }, delegate(bool v) { gameMode.PauseSvcIndex = v; });
-            cardPolicyPauseSvc = (SettingCard)swPolicyPauseSvc.Parent;
-            swPolicySvcYield = AddPolicyToggle(scroll, ref sy, Lang.T("gm.svcyield"), Lang.T("gm.svcyield.sub"),
-                delegate { return gameMode.ServiceYield; }, delegate(bool v) { gameMode.ServiceYield = v; });
-            cardPolicySvcYield = (SettingCard)swPolicySvcYield.Parent;
             swPolicyDvr = AddPolicyToggle(scroll, ref sy, Lang.T("set.dvr"), Lang.T("set.dvr.sub"), delegate { return gameMode.KillGameDvr; }, delegate(bool v) { gameMode.KillGameDvr = v; });
             cardPolicyDvr = (SettingCard)swPolicyDvr.Parent;
             scroll = policyTabPanels[3]; sy = 2;
-            AddPolicyToggle(scroll, ref sy, Lang.T("gm.upyield"), Lang.T("gm.upyield.sub"),
-                delegate { return gameMode.UploadYieldOn; }, delegate(bool v) { gameMode.UploadYieldOn = v; });
             AddPolicyToggle(scroll, ref sy, Lang.T("gm.standby"), Lang.T("gm.standby.sub"),
                 delegate { return gameMode.PurgeStandby; }, delegate(bool v) { gameMode.PurgeStandby = v; });
             swPolicyPauseWu = AddPolicyToggle(scroll, ref sy, Lang.T("gm.pausewu"), Lang.T("gm.pausewu.sub"),
@@ -244,54 +237,6 @@ namespace PaviseApp
             SyncCorePage();
         }
 
-        private void AddPowerPlanPicker(Control parent, ref int y)
-        {
-            var combo = new TechSelect();
-            combo.SetBounds(0, 0, Theme.S(210), Theme.S(32));
-            var ids = new List<string>();
-            FillPowerPlans(combo, ids);
-            combo.BeforeOpen = delegate { FillPowerPlans(combo, ids); };
-            combo.IndexChanged = delegate(int i)
-            {
-                if (i < 0 || i >= ids.Count) return;
-                if (ids[i] == null) { gameMode.PowerPlanSwitch = false; return; }
-                PowerPlan.SelectPlan(ids[i]);
-                gameMode.PowerPlanSwitch = true;
-            };
-
-            int cardH;
-            MakeAutoCard(parent, 6, y, ScrollContentW, 78,
-                Lang.T("plan.pick.title"), Lang.T("plan.pick.desc"), combo, out cardH);
-            y += cardH + 8;
-            policySync.Add(delegate { combo.Index = PowerPlanIndexOf(ids); });
-        }
-
-        private void FillPowerPlans(TechSelect combo, List<string> ids)
-        {
-            var labels = new List<string> { Lang.T("plan.pick.off") };
-            var badges = new List<MenuBadge> { null };
-            ids.Clear();
-            ids.Add(null);
-            ids.Add(PowerPlan.ManagedChoice);
-            labels.Add(PowerPlan.ManagedPlanTitle);
-            badges.Add(new MenuBadge(Lang.T("plan.pick.managed"), true));
-            foreach (PowerPlanEntry entry in PowerPlan.ListUserPlans())
-            {
-                ids.Add(entry.Id.ToString());
-                labels.Add(entry.Name);
-                badges.Add(new MenuBadge(Lang.T("plan.pick.local"), false));
-            }
-            combo.SetItems(labels.ToArray(), badges.ToArray());
-            combo.Index = PowerPlanIndexOf(ids);
-        }
-
-        private int PowerPlanIndexOf(List<string> ids)
-        {
-            if (!gameMode.PowerPlanSwitch) return 0;
-            int i = ids.IndexOf(PowerPlan.EffectivePlanId);
-            return i > 0 ? i : 0;
-        }
-
         private int CorePlacementIndex()
         {
             if (gameMode.CustomCoreMask != 0 || coreManualPicked) return coreManualIndex;
@@ -356,21 +301,18 @@ namespace PaviseApp
             PerformancePreset mode = gameMode.ActivePreset;
             bool competitive = mode == PerformancePreset.Competitive;
             bool custom = mode == PerformancePreset.Custom;
-            bool extreme = mode == PerformancePreset.Extreme;
-            ApplyPresetPolicy(swPolicyBackground, cardPolicyBackground, Lang.T("v14.bg.master"), extreme, true);
-            ApplyPresetPolicy(swPolicyGpuDemote, cardPolicyGpuDemote, Lang.T("gm.gpudemote"), extreme, true);
-            ApplyPresetPolicy(swPolicyBoost, cardPolicyBoost, Lang.T("gm.boost"), extreme, true);
-            ApplyPresetPolicy(swPolicyIfeo, cardPolicyIfeo, Lang.T("gm.ifeo"), extreme, true);
-            ApplyPresetPolicy(swPolicyLane, cardPolicyLane, Lang.T("gm.lane"), extreme, true);
+            ApplyPresetPolicy(swPolicyBackground, cardPolicyBackground, Lang.T("v14.bg.master"), false, true);
+            ApplyPresetPolicy(swPolicyGpuDemote, cardPolicyGpuDemote, Lang.T("gm.gpudemote"), false, true);
+            ApplyPresetPolicy(swPolicyBoost, cardPolicyBoost, Lang.T("gm.boost"), false, true);
+            ApplyPresetPolicy(swPolicyIfeo, cardPolicyIfeo, Lang.T("gm.ifeo"), false, true);
+            ApplyPresetPolicy(swPolicyLane, cardPolicyLane, Lang.T("gm.lane"), false, true);
             if (cardPolicyCores != null) cardPolicyCores.Title = Lang.T("cpu.place.title");
-            ApplyPresetPolicy(swPolicyAggressive, cardPolicyAggressive, Lang.T("gm.aggressive"), !custom, competitive || extreme);
-            ApplyPresetPolicy(swPolicyPauseDl, cardPolicyPauseDl, Lang.T("gm.pausedl"), !custom, competitive || extreme);
-            ApplyPresetPolicy(swPolicyPauseSvc, cardPolicyPauseSvc, Lang.T("gm.pausesvc"), !custom, extreme);
-            ApplyPresetPolicy(swPolicySvcYield, cardPolicySvcYield, Lang.T("gm.svcyield"), !custom, extreme);
-            ApplyPresetPolicy(swPolicyDvr, cardPolicyDvr, Lang.T("set.dvr"), !custom, competitive || extreme);
-            ApplyPresetPolicy(swPolicyPauseWu, cardPolicyPauseWu, Lang.T("gm.pausewu"), extreme, true);
-            ApplyPresetPolicy(swPolicyWlan, cardPolicyWlan, Lang.T("gm.wlanguard"), extreme, true);
-            ApplyPresetPolicy(swPolicyAwake, cardPolicyAwake, Lang.T("set.awake"), extreme, true);
+            ApplyPresetPolicy(swPolicyAggressive, cardPolicyAggressive, Lang.T("gm.aggressive"), !custom, competitive);
+            ApplyPresetPolicy(swPolicyPauseDl, cardPolicyPauseDl, Lang.T("gm.pausedl"), !custom, competitive);
+            ApplyPresetPolicy(swPolicyDvr, cardPolicyDvr, Lang.T("set.dvr"), !custom, competitive);
+            ApplyPresetPolicy(swPolicyPauseWu, cardPolicyPauseWu, Lang.T("gm.pausewu"), false, true);
+            ApplyPresetPolicy(swPolicyWlan, cardPolicyWlan, Lang.T("gm.wlanguard"), false, true);
+            ApplyPresetPolicy(swPolicyAwake, cardPolicyAwake, Lang.T("set.awake"), false, true);
         }
 
         private static void ApplyPresetPolicy(Toggle toggle, SettingCard card, string title, bool forced, bool effective)

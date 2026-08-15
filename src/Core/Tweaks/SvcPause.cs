@@ -1,5 +1,6 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 暂停并恢复索引和预取服务
+// v1.8.0.2 功能已下架 类保留仅为还原旧版本停掉的服务残留 见 VersionMigrations 退役登记
 
 using System;
 using System.Collections.Generic;

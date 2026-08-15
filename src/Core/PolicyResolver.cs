@@ -112,10 +112,8 @@ namespace PaviseApp
                     return Settings.Load(item.Key, item.Fallback == "1") ? "1" : "0";
                 case PolicyValueKind.Enum:
                 case PolicyValueKind.Choice:
-                    string raw = item.Key == PolicyCatalog.KeyNvLowLat
-                        ? Settings.LoadStr(item.Key, "off")
-                        : Settings.LoadStr(item.Key, item.Fallback);
-                    return PolicyCatalog.Canonical(item.Key, raw);
+                    // NvLowLat 的旧布尔键已由启动迁移搬进新键 这里不再需要任何特判
+                    return PolicyCatalog.Canonical(item.Key, Settings.LoadStr(item.Key, item.Fallback));
                 default:
                     return PolicyCatalog.Canonical(item.Key, Settings.LoadStr(item.Key, item.Fallback));
             }
@@ -176,7 +174,7 @@ namespace PaviseApp
             {
                 int parsed;
                 return int.TryParse(values[PolicyCatalog.KeyPreset], out parsed)
-                    && parsed >= 0 && parsed <= 3 ? (PerformancePreset)parsed : PerformancePreset.Standard;
+                    && parsed >= 0 && parsed <= 2 ? (PerformancePreset)parsed : PerformancePreset.Standard;
             }
         }
 
@@ -187,18 +185,14 @@ namespace PaviseApp
         public bool GpuDemote { get { return On(PolicyCatalog.KeyGpuDemote); } }
         public bool IfeoBoost { get { return On(PolicyCatalog.KeyIfeoBoost); } }
         public bool RenderLane { get { return On(PolicyCatalog.KeyRenderLane); } }
-        public bool UploadYield { get { return On(PolicyCatalog.KeyUploadYield); } }
         public bool StrictCores { get { return On(PolicyCatalog.KeyStrictCores); } }
         public bool CoreDomainAlt { get { return On(PolicyCatalog.KeyCoreDomainAlt); } }
         public bool StandbySweep { get { return On(PolicyCatalog.KeyStandbySweep); } }
         public bool PowerPlanOn { get { return On(PolicyCatalog.KeyPowerPlan); } }
         public bool PauseDownloads { get { return On(PolicyCatalog.KeyPauseDl); } }
         public bool PauseUpdate { get { return On(PolicyCatalog.KeyPauseUpdate); } }
-        public bool SvcPause { get { return On(PolicyCatalog.KeySvcPause); } }
-        public bool SvcYield { get { return On(PolicyCatalog.KeySvcYield); } }
         public bool WlanGuard { get { return On(PolicyCatalog.KeyWlanGuard); } }
         public bool Awake { get { return On(PolicyCatalog.KeyAwake); } }
-        public bool GameDvrOff { get { return On(PolicyCatalog.KeyGameDvrOff); } }
         public bool NvMaxPerf { get { return On(PolicyCatalog.KeyNvMaxPerf); } }
         public string NvLowLatMode { get { return values[PolicyCatalog.KeyNvLowLat]; } }
         public bool NvSmoothMotion { get { return On(PolicyCatalog.KeyNvSmoothMotion); } }
@@ -223,11 +217,10 @@ namespace PaviseApp
             }
         }
 
-        public bool Extreme { get { return Preset == PerformancePreset.Extreme; } }
-        public bool EffSuppress { get { return SuppressBackground || Extreme; } }
-        public bool EffBoost { get { return BoostGame || Extreme; } }
-        public bool EffIfeo { get { return IfeoBoost || Extreme; } }
-        public bool EffLane { get { return RenderLane || Extreme; } }
+        public bool EffSuppress { get { return SuppressBackground; } }
+        public bool EffBoost { get { return BoostGame; } }
+        public bool EffIfeo { get { return IfeoBoost; } }
+        public bool EffLane { get { return RenderLane; } }
         public bool EffAggressive { get { return GameMode.IsAggressive(Preset, Aggressive); } }
     }
 }

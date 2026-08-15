@@ -38,7 +38,8 @@ namespace PaviseApp
             var snap = new List<string> { scheme.ToString() };
             bool changed = false;
             changed |= EnsureCoreUnpark(scheme, CpMinCores, snap);
-            if (SettingPresent(scheme, SubProcessor, CpMinCores1))
+            // CpMinCores1 是 E 核停放 非混合架构机器上该设置也可能存在且值为 0 会被误判成需要解除
+            if (CpuTopology.Hybrid && SettingPresent(scheme, SubProcessor, CpMinCores1))
                 changed |= EnsureCoreUnpark(scheme, CpMinCores1, snap);
             else { snap.Add(ParkAbsent); snap.Add(ParkAbsent); }
 
@@ -93,7 +94,9 @@ namespace PaviseApp
                 Logger.Log("核心停泊还原写回失败 快照保留待下次重试");
                 return false;
             }
-            Set(scheme);
+            // 仅当快照方案仍是活动方案时才重设刷新 否则会把已切走的托管方案顶回活动
+            Guid? nowActive = Current();
+            if (nowActive.HasValue && nowActive.Value == scheme) Set(scheme);
             Settings.SaveStr(ParkSnapKey, "");
             if (Settings.LoadStr(ParkSnapKey, "").Length > 0) return false;
             Logger.Log("核心停泊已还原电源方案原值");

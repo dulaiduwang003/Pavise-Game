@@ -209,6 +209,17 @@ namespace PaviseApp
             return (version / 100) + "." + (version % 100).ToString("00");
         }
 
+        private static string SatKey(string exeName) { return "NvDrsSat_" + exeName; }
+
+        // 满足标记签名:驱动版本 + 排序后的期望键值 任一变化即失配 触发重新写入
+        private static string SatSignature(List<KeyValuePair<string, uint>> desired)
+        {
+            var parts = new List<string>();
+            foreach (var item in desired) parts.Add(item.Key + "=" + item.Value);
+            parts.Sort(StringComparer.Ordinal);
+            return "d" + NvApi.DriverVersion() + "|" + string.Join(",", parts.ToArray());
+        }
+
         public static List<string> ApplyForGame(string exePath, NvGamePlan plan)
         {
             if (string.IsNullOrEmpty(exePath) || plan == null || plan.Empty) return null;
@@ -217,6 +228,12 @@ namespace PaviseApp
             if (string.IsNullOrEmpty(exeName)) return null;
             var desired = BuildDesired(plan);
             if (desired.Count == 0) return null;
+            // 快路径:上次已把这套设置(含驱动版本)完整写入该 exe 的 profile 且驱动 profile 持久保留
+            //         则整局都不必再开会话(DRS_LoadSettings 几十~上百 ms)更不必 SaveSession 落盘 直接跳过
+            //         签名含驱动版本 驱动一变即失配重来;RestoreKind 还原时会清掉该标记 保证关开关后能重写
+            string satKey = SatKey(exeName);
+            string sig = SatSignature(desired);
+            if (Settings.LoadStr(satKey, "") == sig) return null;
             lock (sync)
             {
                 IntPtr session;
@@ -286,6 +303,8 @@ namespace PaviseApp
                         foreach (var item in desired) failed.Add(item.Key);
                         Logger.Log("NVIDIA 驱动调优 保存驱动会话失败 " + exeName);
                     }
+                    // 全部达标才记满足标记 下局直接走快路径跳过开会话;有失败则清标记 下局重试
+                    Settings.SaveStr(satKey, failed.Count == 0 ? sig : "");
                     return failed;
                 }
                 finally { NvApi.CloseSession(session); }
@@ -331,12 +350,18 @@ namespace PaviseApp
                         IntPtr profile;
                         if (NvApi.FindOrCreateAppProfile(session, exeName, out profile))
                         {
+                            // absent 快照的目标状态是"本 profile 无显式值" 驱动更新或早前还原可能已清掉
+                            // 或者当前值本就来自驱动预定义/基础 profile 继承(TryGetDword 返回 0)
+                            // 这种情况下 DeleteSetting 必报 SETTING_NOT_FOUND 若判失败快照永久卡死 连带升级清数据无限中止
+                            uint cur;
                             bool ok = orig == "absent"
-                                ? NvApi.DeleteSetting(session, profile, SettingIdOf(key))
+                                ? NvApi.TryGetDword(session, profile, SettingIdOf(key), out cur) == 0
+                                    || NvApi.DeleteSetting(session, profile, SettingIdOf(key))
                                 : NvApi.SetDword(session, profile, SettingIdOf(key), ParseUInt(orig));
                             if (ok && NvApi.SaveSession(session))
                             {
                                 snapshot.Remove(key);
+                                Settings.SaveStr(SatKey(exeName), "");
                                 if (snapshot.Count == 0)
                                 {
                                     Settings.SaveStr(SnapPrefix + exeName, "");

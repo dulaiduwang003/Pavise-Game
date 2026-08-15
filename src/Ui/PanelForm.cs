@@ -47,6 +47,8 @@ namespace PaviseApp
         private ModeButton modeButton;
         private ThemeSwitch themeSwitch;
         private SearchButton searchButton;
+        private PowerButton powerButton;
+        private PowerFlyout powerFlyout;
         private ModePickerPanel modeFlyout;
         private PerformancePreset visualMode;
         private bool visualEnabled;
@@ -176,6 +178,11 @@ namespace PaviseApp
             searchButton.SetBounds(Theme.S(PageW - 484), Theme.S(4), Theme.S(46), Theme.S(46));
             searchButton.Clicked = ToggleSearchFlyout;
 
+            powerButton = new PowerButton();
+            powerButton.SetBounds(Theme.S(PageW - 652), Theme.S(4), Theme.S(160), Theme.S(46));
+            powerButton.Clicked = TogglePowerFlyout;
+            powerButton.SetState(gameMode.PowerPlanSwitch, PowerPlanButtonLabel());
+
             int tw = Theme.S(WinW - RailW);
             var btnMin = new CaptionButton(false);
             btnMin.SetBounds(tw - Theme.S(92), 0, Theme.S(44), Theme.S(TopH));
@@ -186,7 +193,7 @@ namespace PaviseApp
             btnClose.Bg = Theme.Bg;
             btnClose.Click += (s, e) => Hide();
 
-            topBar.Controls.AddRange(new Control[] { lblSub, searchButton, themeSwitch, modeButton, btnMin, btnClose });
+            topBar.Controls.AddRange(new Control[] { lblSub, powerButton, searchButton, themeSwitch, modeButton, btnMin, btnClose });
 
             pages = new DBPanel[(int)PageId.Count];
             pages[(int)PageId.Overview] = pageOverview = MakePage();
@@ -226,11 +233,18 @@ namespace PaviseApp
             root.Controls.Add(nav);
 
             modeFlyout = new ModePickerPanel();
-            modeFlyout.SetBounds(Theme.S(WinW - 420), Theme.S(56), Theme.S(396), Theme.S(356));
+            modeFlyout.SetBounds(Theme.S(WinW - 420), Theme.S(56), Theme.S(396), Theme.S(286));
             modeFlyout.Visible = false;
             modeFlyout.ModeChosen = ChooseGlobalMode;
             root.Controls.Add(modeFlyout);
             modeFlyout.BringToFront();
+
+            powerFlyout = new PowerFlyout();
+            powerFlyout.SetBounds(Theme.S(WinW - 420), Theme.S(56), Theme.S(396), Theme.S(220));
+            powerFlyout.Visible = false;
+            powerFlyout.Chosen = ChoosePowerPlan;
+            root.Controls.Add(powerFlyout);
+            powerFlyout.BringToFront();
 
             searchFlyout = new SearchFlyout();
             searchFlyout.SetBounds(Theme.S(WinW - 420), Theme.S(56), Theme.S(396), Theme.S(432));
@@ -380,6 +394,7 @@ namespace PaviseApp
         {
             SetModeFlyout(false);
             SetSearchFlyout(false);
+            SetPowerFlyout(false);
             if (pageGameConfig != null && pageGameConfig.Visible)
             {
                 pageGameConfig.Visible = false;
@@ -393,8 +408,18 @@ namespace PaviseApp
             pageBaseLeft = Theme.S(RailW);
             page.Left = pageBaseLeft + Theme.S(16);
             pageSlide.Speed = 0.26f; pageSlide.Set(1f); pageSlide.To(0f);
+            SlideInActiveTab(page);
             if (UiActive) UiClock.Wake();
             NotifyPageActivation();
+        }
+
+        // 进入标签页时让当前活动内容面板滑入一次 单标签页(如游戏专栏)靠这个补上过渡动画
+        private void SlideInActiveTab(Control page)
+        {
+            DBPanel[] panels;
+            if (pageTabPanels == null || !pageTabPanels.TryGetValue(page, out panels)) return;
+            foreach (DBPanel panel in panels)
+                if (panel != null && panel.Visible) { Fx.SlideIn(panel); break; }
         }
 
         private void AttachFormFrame()
@@ -564,6 +589,50 @@ namespace PaviseApp
             SetModeFlyout(modeFlyout == null || !modeFlyout.Visible);
         }
 
+        private void TogglePowerFlyout()
+        {
+            SetPowerFlyout(powerFlyout == null || !powerFlyout.Visible);
+        }
+
+        private void SetPowerFlyout(bool visible)
+        {
+            if (powerFlyout == null) return;
+            if (visible)
+            {
+                SetSearchFlyout(false);
+                SetModeFlyout(false);
+                powerFlyout.Open(gameMode.PowerPlanSwitch, PowerPlan.EffectivePlanId);
+            }
+            if (!visible) Fx.Settle(powerFlyout);
+            powerFlyout.Visible = visible;
+            if (visible)
+            {
+                powerFlyout.BringToFront();
+                Fx.DropIn(powerFlyout);
+            }
+        }
+
+        private void ChoosePowerPlan(string id)
+        {
+            if (id == null) gameMode.PowerPlanSwitch = false;
+            else { PowerPlan.SelectPlan(id); gameMode.PowerPlanSwitch = true; }
+            SetPowerFlyout(false);
+            if (powerButton != null) powerButton.SetState(gameMode.PowerPlanSwitch, PowerPlanButtonLabel());
+            for (int i = 0; i < policySync.Count; i++) policySync[i]();
+            if (pageGameConfig != null && pageGameConfig.Visible) SyncCfgRows();
+        }
+
+        private string PowerPlanButtonLabel()
+        {
+            if (!gameMode.PowerPlanSwitch) return Lang.T("plan.pick.off");
+            if (PowerPlan.ManagedSelected) return PowerPlan.ManagedPlanTitle;
+            string id = PowerPlan.EffectivePlanId;
+            foreach (PowerPlanEntry entry in PowerPlan.ListUserPlans())
+                if (string.Equals(entry.Id.ToString(), id, StringComparison.OrdinalIgnoreCase))
+                    return entry.Name;
+            return PowerPlan.ManagedPlanTitle;
+        }
+
         private void SetModeFlyout(bool visible)
         {
             if (modeFlyout == null) return;
@@ -571,6 +640,7 @@ namespace PaviseApp
             {
                 modeFlyout.Sync(gameMode.Preset);
                 SetSearchFlyout(false);
+                SetPowerFlyout(false);
             }
             if (!visible) Fx.Settle(modeFlyout);
             modeFlyout.Visible = visible;
@@ -783,6 +853,7 @@ namespace PaviseApp
             if (swAutoHide != null) swAutoHide.SetSilently(Settings.Load(AutoHideKey, AutoHideDefault));
             if (swPolicyBackground != null) swPolicyBackground.SetSilently(gameMode.SuppressBackground);
             for (int i = 0; i < policySync.Count; i++) policySync[i]();
+            if (powerButton != null) powerButton.SetState(gameMode.PowerPlanSwitch, PowerPlanButtonLabel());
             SyncGraphicsToggles();
             SyncEnvironmentToggles();
             UpdateModePresentation(false);
@@ -805,7 +876,6 @@ namespace PaviseApp
             OnUiTick(null, EventArgs.Empty);
             if (showAntiCheat) { nav.Select((int)PageId.AntiCheat); nav.SnapToSelection(); if (curPage != null) curPage.Left = pageBaseLeft; }
             PerformancePreset? preview = previewMode == "competitive" ? PerformancePreset.Competitive
-                : previewMode == "extreme" ? PerformancePreset.Extreme
                 : previewMode == "custom" ? PerformancePreset.Custom
                 : previewMode == "standard" ? PerformancePreset.Standard : (PerformancePreset?)null;
             if (preview.HasValue)
@@ -815,7 +885,7 @@ namespace PaviseApp
                 if (lblHeroMode != null) { lblHeroMode.Text = ModeButton.ModeName(preview.Value); lblHeroMode.ForeColor = Theme.Accent; }
                 if (paviseCore != null) paviseCore.SetState(preview.Value, true, false);
             }
-            if (previewMode == "gameconfig" || previewMode == "gameconfig-core")
+            if (previewMode == "gameconfig" || previewMode == "gameconfig-core" || previewMode == "gameconfig-gpu")
             {
                 List<GameProfile> shotProfiles = gameMode.GetProfiles();
                 if (shotProfiles.Count > 0)
@@ -824,9 +894,11 @@ namespace PaviseApp
                     pageSlide.Set(0f);
                     if (curPage != null) curPage.Left = pageBaseLeft;
                     if (previewMode == "gameconfig-core" && cfgTabs != null) cfgTabs.Index = 1;
+                    if (previewMode == "gameconfig-gpu" && cfgTabs != null) cfgTabs.Index = 3;
                 }
             }
             if (showModePicker && modeButton != null) modeButton.PerformClick();
+            if (previewMode == "power" && powerFlyout != null) SetPowerFlyout(true);
             if (previewMode == "search" && searchFlyout != null) SetSearchFlyout(true);
             if (previewMode == "search-hit" && searchFlyout != null)
             {
@@ -855,6 +927,13 @@ namespace PaviseApp
                     {
                         searchFlyout.DrawToBitmap(overlay, new Rectangle(0, 0, overlay.Width, overlay.Height));
                         g.DrawImageUnscaled(overlay, searchFlyout.Left, searchFlyout.Top);
+                    }
+                if (powerFlyout != null && powerFlyout.Visible)
+                    using (var overlay = new Bitmap(powerFlyout.Width, powerFlyout.Height))
+                    using (Graphics g = Graphics.FromImage(bmp))
+                    {
+                        powerFlyout.DrawToBitmap(overlay, new Rectangle(0, 0, overlay.Width, overlay.Height));
+                        g.DrawImageUnscaled(overlay, powerFlyout.Left, powerFlyout.Top);
                     }
                 bmp.Save(path, System.Drawing.Imaging.ImageFormat.Png);
             }

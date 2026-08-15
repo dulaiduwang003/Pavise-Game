@@ -26,6 +26,10 @@ namespace PaviseApp
         private const uint IdEnumPhysicalGPUs = 0xE5AC921F;
         private const uint IdGpuGetPerfDecreaseInfo = 0x7F7F4600;
         private const uint IdSysGetDriverAndBranchVersion = 0x2926AAAD;
+        // 功耗策略为私有接口 魔数与结构布局取自 ccminer/Afterburner 一系的公开逆向 单位为百分比*1000
+        private const uint IdClientPowerPoliciesGetInfo = 0x34206D86;
+        private const uint IdClientPowerPoliciesGetStatus = 0x70916171;
+        private const uint IdClientPowerPoliciesSetStatus = 0xAD95F5ED;
 
         public const uint SettingPreferredPState = 0x1057EB71;
         public const uint SettingFrlFps = 0x10835002;
@@ -377,6 +381,126 @@ namespace PaviseApp
             EnsureExtResolved();
             if (gpuPerfDecrease == null || gpu == IntPtr.Zero) return false;
             try { return gpuPerfDecrease(gpu, out mask) == 0; }
+            catch { return false; }
+        }
+
+        [StructLayout(LayoutKind.Sequential, Pack = 4)]
+        private struct NvPowerInfoEntry
+        {
+            public uint PState;
+            public uint Pad1a, Pad1b;
+            public uint MinPower;
+            public uint Pad2a, Pad2b;
+            public uint DefPower;
+            public uint Pad3a, Pad3b;
+            public uint MaxPower;
+            public uint Pad4;
+        }
+
+        [StructLayout(LayoutKind.Sequential, Pack = 4)]
+        private struct NvPowerInfo
+        {
+            public uint Version;
+            public byte Valid;
+            public byte Count;
+            public ushort Pad;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
+            public NvPowerInfoEntry[] Entries;
+        }
+
+        [StructLayout(LayoutKind.Sequential, Pack = 4)]
+        private struct NvPowerStatusEntry
+        {
+            public uint Pad1, Pad2;
+            public uint Power;
+            public uint Pad4;
+        }
+
+        [StructLayout(LayoutKind.Sequential, Pack = 4)]
+        private struct NvPowerStatus
+        {
+            public uint Version;
+            public uint Flags;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
+            public NvPowerStatusEntry[] Entries;
+        }
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate int FnPowerInfo(IntPtr gpu, ref NvPowerInfo info);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate int FnPowerStatus(IntPtr gpu, ref NvPowerStatus status);
+
+        private static int powerState;
+        private static FnPowerInfo powerGetInfo;
+        private static FnPowerStatus powerGetStatus;
+        private static FnPowerStatus powerSetStatus;
+
+        private static void EnsurePowerResolved()
+        {
+            if (Volatile.Read(ref powerState) != 0 || !Available) return;
+            try
+            {
+                powerGetInfo = Resolve<FnPowerInfo>(IdClientPowerPoliciesGetInfo);
+                powerGetStatus = Resolve<FnPowerStatus>(IdClientPowerPoliciesGetStatus);
+                powerSetStatus = Resolve<FnPowerStatus>(IdClientPowerPoliciesSetStatus);
+            }
+            catch { }
+            Interlocked.CompareExchange(ref powerState, 1, 0);
+        }
+
+        private static IntPtr FirstPhysicalGpu()
+        {
+            EnsureExtResolved();
+            if (enumGpus == null) return IntPtr.Zero;
+            try
+            {
+                var handles = new IntPtr[64];
+                uint count;
+                if (enumGpus(handles, out count) != 0 || count == 0) return IntPtr.Zero;
+                return handles[0];
+            }
+            catch { return IntPtr.Zero; }
+        }
+
+        // 读取功耗墙 单位 千分比 100000=100% current/def/max 任一读不到即整体失败
+        public static bool TryGetPowerLimit(out uint current, out uint def, out uint max)
+        {
+            current = 0; def = 0; max = 0;
+            EnsurePowerResolved();
+            IntPtr gpu = FirstPhysicalGpu();
+            if (powerGetInfo == null || powerGetStatus == null || gpu == IntPtr.Zero) return false;
+            try
+            {
+                var info = new NvPowerInfo { Version = 184 | 0x10000, Entries = new NvPowerInfoEntry[4] };
+                if (powerGetInfo(gpu, ref info) != 0 || info.Count == 0) return false;
+                def = info.Entries[0].DefPower;
+                max = info.Entries[0].MaxPower;
+                var status = new NvPowerStatus { Version = 72 | 0x10000, Entries = new NvPowerStatusEntry[4] };
+                if (powerGetStatus(gpu, ref status) != 0) return false;
+                current = status.Entries[0].Power;
+                return max > 0;
+            }
+            catch { return false; }
+        }
+
+        public static bool TrySetPowerLimit(uint value)
+        {
+            EnsurePowerResolved();
+            IntPtr gpu = FirstPhysicalGpu();
+            if (powerSetStatus == null || gpu == IntPtr.Zero) return false;
+            try
+            {
+                var status = new NvPowerStatus
+                {
+                    Version = 72 | 0x10000,
+                    Flags = 1,
+                    Entries = new NvPowerStatusEntry[4]
+                };
+                status.Entries[0].Power = value;
+                if (powerSetStatus(gpu, ref status) != 0) return false;
+                uint cur, def, max;
+                return TryGetPowerLimit(out cur, out def, out max) && cur == value;
+            }
             catch { return false; }
         }
 
