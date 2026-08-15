@@ -68,7 +68,6 @@ namespace PaviseApp
         internal static bool IsAggressive(PerformancePreset mode, bool aggressiveOn)
         {
             return mode == PerformancePreset.Competitive
-                || mode == PerformancePreset.Extreme
                 || (mode == PerformancePreset.Custom && aggressiveOn);
         }
 
@@ -80,7 +79,7 @@ namespace PaviseApp
         internal static SuppressionLevel ResolveBackgroundLevel(PerformancePreset mode, bool customAggressive,
             SuppressionLevel adaptive, bool safePartition)
         {
-            if (mode == PerformancePreset.Competitive || mode == PerformancePreset.Extreme) return SuppressionLevel.Isolated;
+            if (mode == PerformancePreset.Competitive) return SuppressionLevel.Isolated;
             if (mode == PerformancePreset.Custom)
                 return customAggressive ? SuppressionLevel.Isolated : SuppressionLevel.Eco;
             return adaptive > SuppressionLevel.Eco ? adaptive : SuppressionLevel.Eco;
@@ -353,11 +352,9 @@ namespace PaviseApp
             {
                 if (EffSuppress)
                 {
-                    string preset = mode == PerformancePreset.Extreme ? "极限"
-                        : mode == PerformancePreset.Competitive ? "竞技"
+                    string preset = mode == PerformancePreset.Competitive ? "竞技"
                         : mode == PerformancePreset.Custom ? "自定义" : "常规";
                     bool strong = mode == PerformancePreset.Competitive
-                        || mode == PerformancePreset.Extreme
                         || (mode == PerformancePreset.Custom && aggressive);
                     string policy = preset + (strong ? " 强力压制" : " 省电压制")
                         + (strong && safePartition ? " 后台归到后台核" : "")

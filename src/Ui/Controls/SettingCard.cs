@@ -91,6 +91,20 @@ namespace PaviseApp
 
         public string Desc { get { return desc; } set { string v = value ?? ""; if (desc != v) { desc = v; Invalidate(); } } }
 
+        private string meta = "";
+        // meta 行右侧要避开的宽度 物理像素 给卡片右下角的控件让位
+        public int MetaReserve;
+        // host 与标题行对齐 而不是整卡垂直居中 卡片右下角另放控件时用
+        // Host 先于本属性摆好位置 所以赋值必须立刻重排 否则开关停在居中位
+        private bool hostTop;
+        public bool HostTop
+        {
+            get { return hostTop; }
+            set { if (hostTop == value) return; hostTop = value; LayoutHost(); }
+        }
+
+        public string Meta { get { return meta; } set { string v = value ?? ""; if (meta != v) { meta = v; Invalidate(); } } }
+
         private bool collapsible;
         private bool expanded = true;
         private Motion grow;
@@ -143,8 +157,10 @@ namespace PaviseApp
             string v = text ?? "";
             bool textChanged = v != status;
             bool changed = textChanged || ink != statusInk;
+            // 空到非空是首次填充不闪 否则整页建好一起闪一遍
+            bool flash = textChanged && v.Length > 0 && status.Length > 0 && !string.IsNullOrEmpty(title);
             status = v; statusInk = ink;
-            if (textChanged && v.Length > 0 && !string.IsNullOrEmpty(title)) Flash();
+            if (flash) Flash();
             if (changed) Invalidate();
         }
 
@@ -174,12 +190,19 @@ namespace PaviseApp
             ClearHoverIfOutside();
         }
 
+        // Host 之外手工摆进卡片的子控件也要参与悬停清理 否则光标从子控件直接离开卡片会留住高亮
+        public void TrackChildHover(Control c)
+        {
+            c.MouseLeave += OnHostMouseLeave;
+        }
+
         protected override void OnSizeChanged(EventArgs e) { base.OnSizeChanged(e); LayoutHost(); }
 
         private void LayoutHost()
         {
             if (host == null) return;
-            host.Location = new Point(Width - Theme.S(18) - host.Width, (Height - host.Height) / 2);
+            int hy = HostTop ? Theme.S(10) : (Height - host.Height) / 2;
+            host.Location = new Point(Width - Theme.S(18) - host.Width, hy);
         }
 
         protected override void OnMouseDown(MouseEventArgs e)
@@ -289,9 +312,19 @@ namespace PaviseApp
                         | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
                 y += Theme.S(StatusLineH);
             }
+            int metaPad = 0;
+            if (meta.Length > 0)
+            {
+                metaPad = Theme.S(20);
+                var mr = new Rectangle(padL, Height - Theme.S(26),
+                    Math.Max(0, Width - padL - Theme.S(18) - MetaReserve), Theme.S(16));
+                TextRenderer.DrawText(g, meta, Theme.Mono(7f), mr, Theme.Faint,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter
+                        | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+            }
             if (!showDesc) return;
 
-            var dr = new Rectangle(padL, y + Theme.S(2), textW, Height - y - Theme.S(9));
+            var dr = new Rectangle(padL, y + Theme.S(2), textW, Height - y - Theme.S(9) - metaPad);
             // 一律换行 以前是空间不足两行就退回单行 结果描述被一刀截断看不全
             TextFormatFlags df = TextFormatFlags.Left | TextFormatFlags.WordBreak | TextFormatFlags.EndEllipsis;
             int lineH = TextRenderer.MeasureText("Ag", Theme.UI(8.5f, false)).Height;

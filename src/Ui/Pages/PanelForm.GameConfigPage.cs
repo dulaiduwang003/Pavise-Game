@@ -32,6 +32,7 @@ namespace PaviseApp
             BuildGameConfigContent();
             SetModeFlyout(false);
             SetSearchFlyout(false);
+            SetPowerFlyout(false);
             foreach (var p in pages) p.Visible = false;
             pageGameConfig.Visible = true;
             curPage = pageGameConfig;
@@ -64,27 +65,12 @@ namespace PaviseApp
         {
             bool competitive = mode == PerformancePreset.Competitive;
             bool custom = mode == PerformancePreset.Custom;
-            bool extreme = mode == PerformancePreset.Extreme;
             switch (key)
             {
-                case PolicyCatalog.KeySuppress:
-                case PolicyCatalog.KeyBoost:
-                case PolicyCatalog.KeyGpuDemote:
-                case PolicyCatalog.KeyIfeoBoost:
-                case PolicyCatalog.KeyRenderLane:
-                case PolicyCatalog.KeyPauseUpdate:
-                case PolicyCatalog.KeyWlanGuard:
-                case PolicyCatalog.KeyAwake:
-                    effective = true;
-                    return extreme;
                 case PolicyCatalog.KeyAggressive:
                 case PolicyCatalog.KeyPauseDl:
                 case PolicyCatalog.KeyGameDvrOff:
-                    effective = competitive || extreme;
-                    return !custom;
-                case PolicyCatalog.KeySvcPause:
-                case PolicyCatalog.KeySvcYield:
-                    effective = extreme;
+                    effective = competitive;
                     return !custom;
                 default:
                     effective = false;
@@ -99,7 +85,7 @@ namespace PaviseApp
             int presetParsed;
             cfgEffMode = cfgProfile.Overrides.TryGetValue(PolicyCatalog.KeyPreset, out presetOverride)
                 && int.TryParse(presetOverride, out presetParsed)
-                && presetParsed >= 0 && presetParsed <= 3
+                && presetParsed >= 0 && presetParsed <= 2
                 ? (PerformancePreset)presetParsed : gameMode.Preset;
             foreach (Action sync in cfgRowSync) sync();
             if (cfgTabs != null && cfgTabKeys != null)
@@ -180,7 +166,7 @@ namespace PaviseApp
             title.Font = Theme.UI(13.5f, true);
             title.UseCompatibleTextRendering = false;
             title.AutoEllipsis = true;
-            title.SetBounds(Theme.S(ContentX), Theme.S(46), Theme.S(ContentW - 300), Theme.S(28));
+            title.SetBounds(Theme.S(ContentX), Theme.S(46), Theme.S(ContentW - 300), Theme.S(24));
             pageGameConfig.Controls.Add(title);
 
             lblCfgCount = new Label();
@@ -207,12 +193,12 @@ namespace PaviseApp
             lblCfgSub.Font = Theme.UI(8.4f, false);
             lblCfgSub.UseCompatibleTextRendering = false;
             lblCfgSub.AutoEllipsis = true;
-            lblCfgSub.SetBounds(Theme.S(ContentX + 1), Theme.S(76), Theme.S(ContentW - 2), Theme.S(17));
+            // 描述紧跟标题成一组 与下方的运行模式卡拉开 否则描述看着像卡片的一部分
+            lblCfgSub.SetBounds(Theme.S(ContentX + 1), Theme.S(71), Theme.S(ContentW - 2), Theme.S(17));
             pageGameConfig.Controls.Add(lblCfgSub);
 
-            int modeY = 96;
-            AddCfgPickerRow(pageGameConfig, ref modeY, PolicyCatalog.ItemOf(PolicyCatalog.KeyPreset),
-                ContentX, ContentW, false);
+            int modeY = 100;
+            AddCfgModeRow(pageGameConfig, ref modeY);
 
             cfgTabs = new TechTabs();
             cfgTabs.SetBounds(Theme.S(ContentX), Theme.S(modeY + 2), Theme.S(ContentW), Theme.S(38));
@@ -246,8 +232,7 @@ namespace PaviseApp
             int ty = 2;
             AddCfgSection(cfgTabPanels[0], Lang.T("cfg.sub.range"), ref ty,
                 new[] { PolicyCatalog.KeySuppress, PolicyCatalog.KeyAggressive,
-                    PolicyCatalog.KeySqueezeBg, PolicyCatalog.KeyGpuDemote,
-                    PolicyCatalog.KeyUploadYield });
+                    PolicyCatalog.KeySqueezeBg, PolicyCatalog.KeyGpuDemote });
             AddCfgSection(cfgTabPanels[0], Lang.T("cfg.sub.boost"), ref ty,
                 new[] { PolicyCatalog.KeyBoost, PolicyCatalog.KeyIfeoBoost,
                     PolicyCatalog.KeyRenderLane });
@@ -260,7 +245,6 @@ namespace PaviseApp
                 new[] { PolicyCatalog.KeyStandbySweep, PolicyCatalog.KeyPowerPlan });
             AddCfgSection(cfgTabPanels[2], Lang.T("cfg.sub.net"), ref ty,
                 new[] { PolicyCatalog.KeyPauseDl, PolicyCatalog.KeyPauseUpdate,
-                    PolicyCatalog.KeySvcPause, PolicyCatalog.KeySvcYield,
                     PolicyCatalog.KeyWlanGuard });
             AddCfgSection(cfgTabPanels[2], Lang.T("cfg.sub.presence"), ref ty,
                 new[] { PolicyCatalog.KeyGameDvrOff, PolicyCatalog.KeyAwake });
@@ -281,13 +265,12 @@ namespace PaviseApp
             {
                 new[] { PolicyCatalog.KeySuppress, PolicyCatalog.KeyAggressive,
                     PolicyCatalog.KeySqueezeBg, PolicyCatalog.KeyGpuDemote,
-                    PolicyCatalog.KeyUploadYield, PolicyCatalog.KeyBoost,
+                    PolicyCatalog.KeyBoost,
                     PolicyCatalog.KeyIfeoBoost, PolicyCatalog.KeyRenderLane },
                 new[] { PolicyCatalog.KeyStrictCores, PolicyCatalog.KeyCoreDomainAlt,
                     PolicyCatalog.KeyCoreMask },
                 new[] { PolicyCatalog.KeyStandbySweep, PolicyCatalog.KeyPowerPlan,
                     PolicyCatalog.KeyPauseDl, PolicyCatalog.KeyPauseUpdate,
-                    PolicyCatalog.KeySvcPause, PolicyCatalog.KeySvcYield,
                     PolicyCatalog.KeyWlanGuard,
                     PolicyCatalog.KeyGameDvrOff, PolicyCatalog.KeyAwake },
                 new[] { PolicyCatalog.KeyNvMaxPerf,
@@ -313,7 +296,7 @@ namespace PaviseApp
             {
                 case PolicyCatalog.KeyPreset:
                     return new[] { Lang.T("preset.standard"), Lang.T("preset.competitive"),
-                        Lang.T("preset.custom"), Lang.T("preset.extreme") };
+                        Lang.T("preset.custom") };
                 case PolicyCatalog.KeyNvLowLat:
                     return new[] { Lang.T("frl.off"), Lang.T("nvll.on"), Lang.T("nvll.ultra") };
                 case PolicyCatalog.KeyNvFrl:
@@ -347,13 +330,10 @@ namespace PaviseApp
                 case PolicyCatalog.KeyGpuDemote: return "gm.gpudemote.sub";
                 case PolicyCatalog.KeyIfeoBoost: return "gm.ifeo.sub";
                 case PolicyCatalog.KeyRenderLane: return "gm.lane.sub";
-                case PolicyCatalog.KeyUploadYield: return "gm.upyield.sub";
                 case PolicyCatalog.KeyStandbySweep: return "gm.standby.sub";
                 case PolicyCatalog.KeyPowerPlan: return "cfg.plan.sub";
                 case PolicyCatalog.KeyPauseDl: return "gm.pausedl.sub";
                 case PolicyCatalog.KeyPauseUpdate: return "gm.pausewu.sub";
-                case PolicyCatalog.KeySvcPause: return "gm.pausesvc.sub";
-                case PolicyCatalog.KeySvcYield: return "gm.svcyield.sub";
                 case PolicyCatalog.KeyWlanGuard: return "gm.wlanguard.sub";
                 case PolicyCatalog.KeyAwake: return "set.awake.n";
                 case PolicyCatalog.KeyGameDvrOff: return "set.dvr.sub";
@@ -408,7 +388,7 @@ namespace PaviseApp
                     return true;
                 case PolicyCatalog.KeyAmdFrl:
                     if (!amdOk) { reasonKey = "set.amd.none"; return false; }
-                    if (!AdlxTweaks.FrtcSupported()) { reasonKey = "set.amd.nosup"; return false; }
+                    if (!AdlxTweaks.FrameLimitSupported()) { reasonKey = "set.amd.nosup"; return false; }
                     return true;
                 default:
                     return true;
@@ -422,6 +402,34 @@ namespace PaviseApp
             for (int i = 0; i < values.Length; i++)
                 if (string.Equals(values[i], ov, StringComparison.OrdinalIgnoreCase)) return i + 1;
             return 0;
+        }
+
+        // 运行模式行不走通用分段 用带模式色的覆盖条 跟随全局段内直接标出全局当前档
+        private void AddCfgModeRow(Control parent, ref int y)
+        {
+            PolicyItem item = PolicyCatalog.ItemOf(PolicyCatalog.KeyPreset);
+            string[] values = CfgOptionValues(item);
+            var strip = new ModeStrip();
+            strip.Index = CfgRowIndexOf(item, values);
+            strip.Size = new Size(Theme.S(360), Theme.S(38));
+            int cardH;
+            SettingCard card = MakeAutoCard(parent, ContentX, y, ContentW, 64,
+                Lang.T(item.LangKey), Lang.T("cfg.mode.sub"), strip, out cardH);
+            y += cardH + 8;
+            cfgCardByKey[item.Key] = card;
+            card.TrackChildHover(strip);
+            cfgRowSync.Add(delegate
+            {
+                strip.Index = CfgRowIndexOf(item, values);
+                strip.SetGlobal(gameMode.Preset);
+            });
+            strip.IndexChanged = delegate(int index)
+            {
+                if (cfgProfile == null) return;
+                if (index <= 0) gameMode.ClearProfileOverride(cfgProfileId, PolicyCatalog.KeyPreset);
+                else gameMode.SetProfileOverride(cfgProfileId, PolicyCatalog.KeyPreset, values[index - 1]);
+                SyncCfgRows();
+            };
         }
 
         private void AddCfgPickerRow(Control parent, ref int y, PolicyItem item)

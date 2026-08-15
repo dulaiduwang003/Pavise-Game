@@ -20,7 +20,7 @@ namespace PaviseApp
     internal static class App
     {
         public const string DisplayName = "PAVISE";
-        public const string Version = "1.8.0.1";
+        public const string Version = "1.8.0.2";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string WeChat = "Ssssssstyle";
@@ -61,8 +61,7 @@ namespace PaviseApp
             if (args.Length >= 2 && args[0] == "--geniconpng")
             {
                 PerformancePreset mode = args.Length >= 3 && args[2] == "competitive" ? PerformancePreset.Competitive
-                    : (args.Length >= 3 && args[2] == "extreme" ? PerformancePreset.Extreme
-                    : (args.Length >= 3 && args[2] == "custom" ? PerformancePreset.Custom : PerformancePreset.Standard));
+                    : (args.Length >= 3 && args[2] == "custom" ? PerformancePreset.Custom : PerformancePreset.Standard);
                 try { using (Bitmap bitmap = IconArt.Render(256, mode, true)) bitmap.Save(args[1], System.Drawing.Imaging.ImageFormat.Png); }
                 catch { Environment.ExitCode = 1; }
                 return;
@@ -223,6 +222,16 @@ namespace PaviseApp
             Paths.Init();
             Lang.Init();
             try { Theme.SetLight(Settings.Load("UiLight", false)); } catch { }
+            try
+            {
+                for (int m = 0; m < 3; m++)
+                {
+                    Color mc;
+                    if (Col.TryHex(Settings.LoadStr("ModeAccent" + m, ""), out mc))
+                        Theme.SetModeColorOverride((PerformancePreset)m, mc);
+                }
+            }
+            catch { }
             string dir = Paths.Data;
             Logger.LogPath = Path.Combine(dir, "Pavise.log");
             try { VersionMigrations.ClearLogsOnUpgrade(dir); } catch { }
@@ -240,6 +249,7 @@ namespace PaviseApp
             VisualFx.HealFromCrash();
             try { PresenceQos.HealFromCrash(); } catch { }
             try { PowerOverlay.HealFromCrash(); } catch { }
+            try { GpuPowerMax.HealFromCrash(); } catch { }
             try { AdlxTweaks.HealFromCrash(); } catch { }
             try { NvDrsTweaks.HealOrphans(); } catch { }
             try { InterruptAttribution.CleanupStaleSession(); } catch { }
@@ -257,6 +267,7 @@ namespace PaviseApp
             try { LegacyPurge.RunOnce(dir); } catch { }
             if (resetOk) try { VersionMigrations.StampRunVersion(); } catch { }
 
+            // IFEO 后备提优在游戏启动前预置:内核在进程创建阶段读值 必须先于游戏就位
             if (Settings.Load("GmIfeoBoost", false))
                 try
                 {
@@ -408,6 +419,7 @@ namespace PaviseApp
                 try { NvGlobalTweaks.Restore(); } catch { }
                 try { PresenceQos.Restore(); } catch { }
                 try { PowerOverlay.Restore(); } catch { }
+                try { GpuPowerMax.Restore(); } catch { }
             };
             gameMode.SessionEnded += msg =>
             {

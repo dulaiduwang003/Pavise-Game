@@ -34,7 +34,12 @@ namespace PaviseApp
             "pro", "max", "mini", "lite", "plus", "ultra", "air", "nano",
             "black", "white", "pink", "blue", "red", "green", "gray", "grey",
             "silver", "gold", "purple", "yellow",
-            "the", "and", "for", "with", "ver", "rev", "ghz", "mhz", "khz", "dpi", "rgb", "led"
+            "the", "and", "for", "with", "ver", "rev", "ghz", "mhz", "khz", "dpi", "rgb", "led",
+            // 设备名里的通用词 不是厂商名 漏挡会让 host/key/pad 之类词元把 svchost conhost
+            // 等大量后台进程误判成外设进程而豁免压制 词元实际长什么样见日志 外设词条
+            "host", "inc", "ltd", "corp", "corporation", "company", "computer", "technology",
+            "electronics", "enhanced", "extensible", "compatible", "chipset", "express",
+            "key", "keys", "num", "number", "pad", "media", "audio2", "codec"
         };
 
         public static string[] Tokens()

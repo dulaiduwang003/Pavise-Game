@@ -92,11 +92,14 @@ namespace PaviseApp
             double ioThreshold = preset == PerformancePreset.Standard ? 4.0 : 2.0;
             bool hot = cpuCores >= cpuThreshold || ioMbSec >= ioThreshold;
             bool severe = cpuCores >= 0.35 || ioMbSec >= 32.0;
+            // 极重档 持续吃超过一个半核或狂写盘的进程一拍加满 下一拍即隔离
+            // 扫描节拍约 20 秒 没有这档时最快第三拍才隔离 常规档对重负载的止损来得太晚
+            bool crushing = cpuCores >= 1.5 || ioMbSec >= 64.0;
 
             if (hot)
             {
                 old.Cool = 0;
-                old.Heat = Math.Min(5, old.Heat + (severe ? 2 : 1));
+                old.Heat = Math.Min(5, old.Heat + (crushing ? 3 : severe ? 2 : 1));
             }
             else if (++old.Cool >= 2)
             {

@@ -48,6 +48,13 @@ namespace PaviseApp
             Invalidate();
         }
 
+        // 主题色变了但模式没变时用:强制丢弃按 accent 缓存的静态层并重绘
+        public void RefreshVisual()
+        {
+            DropCache();
+            Invalidate();
+        }
+
         public void SetAnimationEnabled(bool value)
         {
             animationRequested = value;

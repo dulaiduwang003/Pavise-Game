@@ -195,13 +195,25 @@ namespace PaviseApp
             Guid g;
             if (!TryGuid(id, out g)) { Settings.SaveStr(ManagedPlanKey, ""); return true; }
             Guid? cur = Current();
-            if (cur.HasValue && cur.Value == g && !Set(Balanced)) return false;
+            // 活动方案删不掉 必须先切走 精简过电源计划的机器可能没有平衡方案 逐级退避到任一现存方案
+            if (cur.HasValue && cur.Value == g && !SwitchAwayFrom(g)) return false;
             Guid tmp = g;
             if (SchemeUsable(g) && PowerDeleteScheme(IntPtr.Zero, ref tmp) != 0) return false;
             Settings.SaveStr(ManagedPlanKey, "");
             lock (lk) { resolved = false; target = Guid.Empty; targetOwned = false; tuneState = -1; }
             Logger.Log("已删除托管电源方案 " + ManagedPlanTitle);
             return true;
+        }
+
+        private static bool SwitchAwayFrom(Guid avoid)
+        {
+            Guid prev;
+            if (TryGuid(Settings.LoadStr("PrevPowerPlan", ""), out prev)
+                && prev != avoid && SchemeUsable(prev) && Set(prev)) return true;
+            if (SchemeUsable(Balanced) && Set(Balanced)) return true;
+            foreach (Guid s in EnumerateSchemes())
+                if (s != avoid && Set(s)) return true;
+            return false;
         }
 
         private static string PlanLabelOf(string id)
@@ -260,7 +272,8 @@ namespace PaviseApp
             Guid g;
             if (!TryGuid(id, out g)) { Settings.SaveStr(DefaultPlanKey, ""); return true; }
             Guid? cur = Current();
-            if (cur.HasValue && cur.Value == g && !Set(Balanced)) return false;
+            // 活动方案删不掉 必须先切走 精简过电源计划的机器可能没有平衡方案 逐级退避到任一现存方案
+            if (cur.HasValue && cur.Value == g && !SwitchAwayFrom(g)) return false;
             Guid tmp = g;
             if (SchemeUsable(g) && PowerDeleteScheme(IntPtr.Zero, ref tmp) != 0) return false;
             Settings.SaveStr(DefaultPlanKey, "");
@@ -447,15 +460,29 @@ namespace PaviseApp
                         ok = false;
                     }
                 }
+                else ok = HealManagedResidue();
                 active = false; saved = Guid.Empty; tuneState = -1;
                 return ok;
             }
         }
 
+        // 残留自愈:活动方案仍是托管方案但没有还原快照时 对局激活会因"已是目标"跳过快照
+        // 退出便无从还原 活动方案永久滞留托管档 桌面持续吃竞技档的高功耗设置 这里主动切走
+        private static bool HealManagedResidue()
+        {
+            Guid managed;
+            Guid? cur = Current();
+            if (!cur.HasValue || !TryGuid(Settings.LoadStr(ManagedPlanKey, ""), out managed)
+                || cur.Value != managed) return true;
+            if (!SwitchAwayFrom(managed)) return false;
+            Logger.Log("检测到托管电源方案残留为活动方案 已切回系统方案");
+            return true;
+        }
+
         public static void HealFromCrash()
         {
             string s = Settings.LoadStr("PrevPowerPlan", "");
-            if (s.Length == 0) return;
+            if (s.Length == 0) { HealManagedResidue(); return; }
             Guid g;
             if (!TryGuid(s, out g))
             {

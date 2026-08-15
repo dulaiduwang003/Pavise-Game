@@ -235,6 +235,7 @@ namespace PaviseApp
             if (e.KeyCode == Keys.Escape)
             {
                 if (searchFlyout != null && searchFlyout.Visible) SetSearchFlyout(false);
+                else if (powerFlyout != null && powerFlyout.Visible) SetPowerFlyout(false);
                 else if (modeFlyout != null && modeFlyout.Visible) SetModeFlyout(false);
                 else Hide();
             }

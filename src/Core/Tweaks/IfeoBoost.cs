@@ -1,9 +1,10 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 内核反作弊下的本体提优主路径 经 IFEO PerfOptions 由内核在进程创建时应用
+// 文件用途 受保护游戏的本体提优路径 经 IFEO PerfOptions 由内核在进程创建时应用
 // 内核在 NtCreateUserProcess 阶段读这些值 早于反作弊驱动为该进程注册句柄保护 因此拦不住
+// 关键:这条路径全程不开游戏句柄、不枚举线程、不碰运行中的进程 只写 HKLM 注册表
+//       所以不触发导致 CF 冻结的 ObRegisterCallbacks 句柄检测 是给"开不了句柄的受保护游戏"安全提优的唯一路子
 // 代价是只对"下次启动"生效 所以必须在游戏启动前就位 见 PreArmAll
-// 优先级用 Above Normal 而不是 High 因为这条路径写不进进程 智能保帧降不了档
-// 台架实测 CPU 吃满时整进程 High 恶化尾部帧 IFEO 场景无法动态退让 只能静态取安全值
+// 优先级用 Above Normal 而不是 High 因为这条路径写不进进程 智能保帧降不了档 台架实测 CPU 吃满时整进程 High 恶化尾部帧
 
 using System;
 using Microsoft.Win32;

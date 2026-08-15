@@ -109,6 +109,12 @@ namespace PaviseApp
         {
             if (mode == value && modeEnabled == enabled) return;
             mode = value; modeEnabled = enabled;
+            RefreshLogo();
+        }
+
+        // 主题色变了但模式没变时用:按当前模式色重渲染顶部 logo
+        public void RefreshLogo()
+        {
             Image old = logo;
             logo = IconArt.Render(Dpi.S(34), mode, modeEnabled);
             if (old != null) old.Dispose();

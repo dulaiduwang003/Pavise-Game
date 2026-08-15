@@ -139,19 +139,6 @@ namespace PaviseApp
             }
         }
 
-        public bool UploadYieldOn
-        {
-            get { return uploadYieldOn; }
-            set
-            {
-                uploadYieldOn = value; Settings.Save("GmUploadYield", value);
-                if (!value)
-                    System.Threading.ThreadPool.QueueUserWorkItem(delegate
-                    {
-                        try { UploadYield.Clear(); } catch { }
-                    });
-            }
-        }
 
         public bool PurgeStandby
         {
@@ -187,16 +174,16 @@ namespace PaviseApp
             set { pauseDlOn = value; Settings.Save("GmPauseDl", value); if (value) ClearEnvFuse("do"); RequestPolicyApply(); }
         }
 
-        public bool PauseSvcIndex
+        public bool RsrUpscale
         {
-            get { return svcPauseOn; }
-            set { svcPauseOn = value; Settings.Save("GmSvcPause", value); if (value) ClearEnvFuse("svc"); RequestPolicyApply(); }
+            get { return rsrOn; }
+            set { rsrOn = value; Settings.Save("GmRsr", value); if (value) ClearEnvFuse("rsr"); RequestPolicyApply(); }
         }
 
-        public bool ServiceYield
+        public bool GpuPowerLift
         {
-            get { return svcYieldOn; }
-            set { svcYieldOn = value; Settings.Save("GmSvcYield", value); if (value) ClearEnvFuse("svcyield"); RequestPolicyApply(); }
+            get { return gpuPowerMaxOn; }
+            set { gpuPowerMaxOn = value; Settings.Save("GmGpuPowerMax", value); if (value) ClearEnvFuse("gpupower"); RequestPolicyApply(); }
         }
 
         public bool WlanScanGuard
@@ -294,7 +281,7 @@ namespace PaviseApp
             {
                 string mode = PolicyCatalog.Canonical(PolicyCatalog.KeyAmdFrl, value);
                 amdFrlMode = mode; Settings.SaveStr("AmdFrl", mode);
-                if (mode == "off") AdlxTweaks.RestoreFrtc();
+                if (mode == "off") AdlxTweaks.RestoreFrameLimit();
                 else ClearEnvFuse("amdfrtc");
                 RequestPolicyApply();
             }
@@ -381,7 +368,7 @@ namespace PaviseApp
         public bool KillGameDvr
         {
             get { return killGameDvr; }
-            set { killGameDvr = value; Settings.Save("GameDvrOff", value); if (value) ClearEnvFuse("dvr"); RequestPolicyApply(); }
+            set { killGameDvr = value; Settings.Save("GameDvrOff", value); SyncGameDvr(); RequestPolicyApply(); }
         }
 
         public bool PowerPlanSwitch

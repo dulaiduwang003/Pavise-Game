@@ -20,6 +20,7 @@ namespace PaviseApp
         {
             if (searchFlyout == null) return;
             if (visible && modeFlyout != null) { Fx.Settle(modeFlyout); modeFlyout.Visible = false; }
+            if (visible && powerFlyout != null) { Fx.Settle(powerFlyout); powerFlyout.Visible = false; }
             if (!visible) Fx.Settle(searchFlyout);
             searchFlyout.Visible = visible;
             if (visible)

@@ -39,13 +39,28 @@ namespace PaviseApp
         private const int GpuSlotName = 7;
         private const int GpuSlotPnp = 9;
 
+        private const int SysSlotGetTuningServices = 8;
+
         private const int SvcSlotAntiLag = 3;
         private const int SvcSlotChill = 4;
         private const int SvcSlotImageSharpening = 6;
         private const int SvcSlotEnhancedSync = 7;
         private const int SvcSlotFrtc = 9;
+        // RSR 是系统级设置 getter 无 GPU 参数 槽位按官方头文件 GetTessellation(13) 与 GetResetShaderCache(15) 之间
+        private const int SvcSlotRsr = 14;
         private const int SvcSlotResetShaderCache = 15;
         private const int Svc1SlotAfmf = 17;
+
+        // IADLX3DRadeonSuperResolution 布局与 RIS 不同 SetEnabled 在 5 不在 7 已对官方头文件核过
+        private const int RsrSlotSetEnabled = 5;
+        private const int RsrSlotGetSharpness = 7;
+        private const int RsrSlotSetSharpness = 8;
+
+        private const int TuneSlotIsSupportedManualPower = 11;
+        private const int TuneSlotGetManualPower = 17;
+        private const int PowerSlotGetRange = 3;
+        private const int PowerSlotGetLimit = 4;
+        private const int PowerSlotSetLimit = 5;
         private const string Services1Iid = "IADLX3DSettingsServices1";
 
         private const int FeatSlotIsSupported = 3;
@@ -111,6 +126,8 @@ namespace PaviseApp
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate int FnQueryIface(IntPtr self,
             [MarshalAs(UnmanagedType.LPWStr)] string interfaceId, out IntPtr value);
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate int FnGpuOutByte(IntPtr self, IntPtr gpu, out byte value);
 
         private static readonly object lk = new object();
         private static int state;
@@ -366,8 +383,13 @@ namespace PaviseApp
             {
                 if (on)
                 {
-                    if (!Succeeded(VMethod<FnInInt>(feature, ChillSlotSetMinFps)(feature, minFps))) return false;
-                    if (!Succeeded(VMethod<FnInInt>(feature, ChillSlotSetMaxFps)(feature, maxFps))) return false;
+                    // 驱动校验 min<=max 且逐项写入 与现值交叉时单一顺序会被拒 两种顺序各试一次
+                    bool ok = Succeeded(VMethod<FnInInt>(feature, ChillSlotSetMinFps)(feature, minFps))
+                        && Succeeded(VMethod<FnInInt>(feature, ChillSlotSetMaxFps)(feature, maxFps));
+                    if (!ok)
+                        ok = Succeeded(VMethod<FnInInt>(feature, ChillSlotSetMaxFps)(feature, maxFps))
+                            && Succeeded(VMethod<FnInInt>(feature, ChillSlotSetMinFps)(feature, minFps));
+                    if (!ok) return false;
                 }
                 return Succeeded(VMethod<FnInByte>(feature, ChillSlotSetEnabled)(feature, on ? (byte)1 : (byte)0));
             }
@@ -446,6 +468,108 @@ namespace PaviseApp
             try { return Succeeded(VMethod<FnInByte>(feature, ToggleSlotSetEnabled)(feature, on ? (byte)1 : (byte)0)); }
             catch { return false; }
             finally { Release(feature); }
+        }
+
+        private static IntPtr GetRsr()
+        {
+            if (!Available) return IntPtr.Zero;
+            IntPtr services = Get3DServices();
+            if (services == IntPtr.Zero) return IntPtr.Zero;
+            try
+            {
+                IntPtr feature;
+                if (!Succeeded(VMethod<FnOutPtr>(services, SvcSlotRsr)(services, out feature)))
+                    return IntPtr.Zero;
+                return feature;
+            }
+            catch { return IntPtr.Zero; }
+            finally { Release(services); }
+        }
+
+        public static bool RsrGet(out bool supported, out bool enabled, out int sharpness)
+        {
+            supported = false; enabled = false; sharpness = 0;
+            IntPtr feature = GetRsr();
+            if (feature == IntPtr.Zero) return false;
+            try
+            {
+                if (!FeatureFlags(feature, out supported, out enabled)) return false;
+                if (!supported) return true;
+                int raw;
+                if (Succeeded(VMethod<FnOutInt>(feature, RsrSlotGetSharpness)(feature, out raw)))
+                    sharpness = raw;
+                return true;
+            }
+            catch { return false; }
+            finally { Release(feature); }
+        }
+
+        public static bool RsrSet(bool on, int sharpness)
+        {
+            IntPtr feature = GetRsr();
+            if (feature == IntPtr.Zero) return false;
+            try
+            {
+                if (on && sharpness >= 0
+                    && !Succeeded(VMethod<FnInInt>(feature, RsrSlotSetSharpness)(feature, sharpness)))
+                    return false;
+                return Succeeded(VMethod<FnInByte>(feature, RsrSlotSetEnabled)(feature, on ? (byte)1 : (byte)0));
+            }
+            catch { return false; }
+            finally { Release(feature); }
+        }
+
+        private static IntPtr GetManualPowerTuning(IntPtr gpu, out bool supported)
+        {
+            supported = false;
+            if (!Available) return IntPtr.Zero;
+            IntPtr services;
+            try
+            {
+                if (!Succeeded(VMethod<FnOutPtr>(system, SysSlotGetTuningServices)(system, out services))
+                    || services == IntPtr.Zero) return IntPtr.Zero;
+            }
+            catch { return IntPtr.Zero; }
+            try
+            {
+                byte raw;
+                if (!Succeeded(VMethod<FnGpuOutByte>(services, TuneSlotIsSupportedManualPower)(services, gpu, out raw))
+                    || raw == 0) return IntPtr.Zero;
+                supported = true;
+                IntPtr tuning;
+                if (!Succeeded(VMethod<FnGpuOutPtr>(services, TuneSlotGetManualPower)(services, gpu, out tuning)))
+                    return IntPtr.Zero;
+                return tuning;
+            }
+            catch { return IntPtr.Zero; }
+            finally { Release(services); }
+        }
+
+        public static bool PowerLimitGet(IntPtr gpu, out bool supported, out int current, out int max)
+        {
+            supported = false; current = 0; max = 0;
+            IntPtr tuning = GetManualPowerTuning(gpu, out supported);
+            if (tuning == IntPtr.Zero) return supported;
+            try
+            {
+                AdlxIntRange range;
+                if (!Succeeded(VMethod<FnOutRange>(tuning, PowerSlotGetRange)(tuning, out range))) return false;
+                if (!Succeeded(VMethod<FnOutInt>(tuning, PowerSlotGetLimit)(tuning, out current))) return false;
+                max = range.Max;
+                return true;
+            }
+            catch { return false; }
+            finally { Release(tuning); }
+        }
+
+        public static bool PowerLimitSet(IntPtr gpu, int value)
+        {
+            bool supported;
+            IntPtr tuning = GetManualPowerTuning(gpu, out supported);
+            if (tuning == IntPtr.Zero) return false;
+            try { return Succeeded(VMethod<FnInInt>(tuning, PowerSlotSetLimit)(tuning, value)); }
+            catch { return false; }
+            finally { Release(tuning); }
         }
 
         public static bool RisGet(IntPtr gpu, out bool supported, out bool enabled,

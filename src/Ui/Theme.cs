@@ -21,6 +21,19 @@ namespace PaviseApp
                 (int)(a.B + (b.B - a.B) * t));
         }
         public static Color Alpha(Color c, int a) { return Color.FromArgb(a < 0 ? 0 : a > 255 ? 255 : a, c.R, c.G, c.B); }
+
+        public static string ToHex(Color c) { return c.R.ToString("X2") + c.G.ToString("X2") + c.B.ToString("X2"); }
+
+        public static bool TryHex(string s, out Color c)
+        {
+            c = Color.Empty;
+            if (string.IsNullOrEmpty(s) || s.Length != 6) return false;
+            int rgb;
+            if (!int.TryParse(s, System.Globalization.NumberStyles.HexNumber,
+                    System.Globalization.CultureInfo.InvariantCulture, out rgb)) return false;
+            c = Color.FromArgb((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
+            return true;
+        }
     }
 
     internal static class Theme
@@ -50,6 +63,10 @@ namespace PaviseApp
         private static float themeT = 1f;
         private static PerformancePreset currentMode = PerformancePreset.Standard;
 
+        // 每模式的自定义主题色 Color.Empty 表示用内置默认 下标即 (int)PerformancePreset
+        private static readonly Color[] modeOverride =
+            { Color.Empty, Color.Empty, Color.Empty };
+
         public static Color Accent { get { return accent; } }
         public static Color Accent2 { get { return accent2; } }
         public static Color Sel { get { return Col.Lerp(Card, accent, 0.20f); } }
@@ -57,16 +74,30 @@ namespace PaviseApp
         {
             get
             {
-                if (currentMode != PerformancePreset.Standard) return Color.White;
-                return light ? Color.White : Color.FromArgb(23, 19, 10);
+                // 按目标 accent 亮度自动选深/浅文字 内置金色与任意自定义色都成立 动画期间取目标色避免中途翻转
+                double luma = 0.299 * toAccent.R + 0.587 * toAccent.G + 0.114 * toAccent.B;
+                return luma > 150 ? Color.FromArgb(23, 19, 10) : Color.White;
             }
         }
         public static PerformancePreset CurrentMode { get { return currentMode; } }
 
+        public static bool HasModeColorOverride(PerformancePreset mode)
+        {
+            int i = (int)mode;
+            return i >= 0 && i < modeOverride.Length && !modeOverride[i].IsEmpty;
+        }
+
         public static Color ModeColor(PerformancePreset mode)
         {
-            if (mode == PerformancePreset.Extreme)
-                return light ? Color.FromArgb(122, 40, 210) : Color.FromArgb(178, 102, 255);
+            int i = (int)mode;
+            if (i >= 0 && i < modeOverride.Length && !modeOverride[i].IsEmpty)
+                return modeOverride[i];
+            return ModeColorBuiltin(mode);
+        }
+
+        // 忽略自定义覆盖 只返回内置默认色 供设置页「默认」色板显示
+        public static Color ModeColorBuiltin(PerformancePreset mode)
+        {
             if (mode == PerformancePreset.Competitive)
                 return light ? Color.FromArgb(222, 36, 58) : Color.FromArgb(255, 61, 82);
             if (mode == PerformancePreset.Custom)
@@ -76,13 +107,41 @@ namespace PaviseApp
 
         public static Color ModeColor2(PerformancePreset mode)
         {
-            if (mode == PerformancePreset.Extreme)
-                return light ? Color.FromArgb(84, 22, 152) : Color.FromArgb(122, 56, 208);
+            int i = (int)mode;
+            if (i >= 0 && i < modeOverride.Length && !modeOverride[i].IsEmpty)
+                return Col.Lerp(modeOverride[i], Color.Black, 0.30f);   // 渐变暗端自动从主色推导
             if (mode == PerformancePreset.Competitive)
                 return light ? Color.FromArgb(152, 14, 36) : Color.FromArgb(178, 22, 48);
             if (mode == PerformancePreset.Custom)
                 return light ? Color.FromArgb(12, 78, 168) : Color.FromArgb(20, 99, 222);
             return light ? Color.FromArgb(142, 88, 8) : Color.FromArgb(184, 117, 24);
+        }
+
+        // 设置/清除某模式的自定义色 若正是当前显示模式则动画切到新色
+        public static void SetModeColorOverride(PerformancePreset mode, Color color)
+        {
+            int i = (int)mode;
+            if (i < 0 || i >= modeOverride.Length) return;
+            modeOverride[i] = color;
+            if (mode == currentMode) ReapplyAccent();
+        }
+
+        public static void ClearModeColorOverride(PerformancePreset mode)
+        {
+            int i = (int)mode;
+            if (i < 0 || i >= modeOverride.Length) return;
+            modeOverride[i] = Color.Empty;
+            if (mode == currentMode) ReapplyAccent();
+        }
+
+        private static void ReapplyAccent()
+        {
+            Color a = ModeColor(currentMode), b = ModeColor2(currentMode);
+            if (toAccent == a && toAccent2 == b) return;
+            fromAccent = accent; fromAccent2 = accent2;
+            toAccent = a; toAccent2 = b;
+            themeT = 0f;
+            UiClock.Wake(36);
         }
 
         public static void SetLight(bool value)

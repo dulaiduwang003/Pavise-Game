@@ -46,6 +46,9 @@ namespace PaviseApp
                     int pid = p.Pid;
                     live.Add(pid);
                     if (pass.RendererPid <= 0 || pid != pass.RendererPid) continue;
+                    // 反作弊相容 已知被保护的游戏从第一 tick 起就不碰本体句柄/线程/IFEO
+                    // 这些写入在反作弊下本就被剥离 从未生效 跳过零损失 且不再触发冻结 后台压制照常
+                    if (ProtectedGameRoster.Contains(pass.RendererName)) continue;
                     bool known, needTweak, needPlacement;
                     if (!ComputeAuditDue(pid, pass, out known, out needTweak, out needPlacement)) continue;
                     IntPtr h = OpenBoostHandle(pid, pass);
@@ -188,10 +191,18 @@ namespace PaviseApp
             IntPtr h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_SET_LIMITED_INFORMATION | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
             if (h == IntPtr.Zero)
             {
+                // 立刻取错误码 后面的托管调用不会清掉它 87=进程已退(瞬时 无害) 其余(拒绝访问等)=反作弊保护
+                bool noSuchProcess = Native.LastOpenProcessFailureWasNoSuchProcess();
                 bool firstDeny;
                 lock (sync) firstDeny = boostDenied.Add(pid);
                 if (firstDeny) Logger.Log("游戏提优 " + pass.RendererName + " pid " + pid + " 打不开句柄 本体提优跳过 后台压制不受影响");
-                if (EffIfeo && EffBoost) IfeoBoost.EnsureForGame(pass.RendererName);
+                // 确属被拒(非进程已退)才记入相容名单 下一 tick 起本 pid 被闸门短路 不再 2Hz 重试取句柄
+                if (!noSuchProcess)
+                {
+                    ProtectedGameRoster.Remember(pass.RendererName);
+                    // 受保护游戏本体句柄拿不到 改走 IFEO 后备(只写注册表 不碰进程 不触发反作弊句柄检测)下次启动生效
+                    if (EffIfeo && EffBoost) { IfeoBoost.Arm(pass.RendererName); IfeoBoost.EnsureForGame(pass.RendererName); }
+                }
             }
             return h;
         }
@@ -487,6 +498,8 @@ namespace PaviseApp
             if (needTweak)
             {
                 string imagePath = Native.ImagePath(h);
+                // 逐游戏 GPU 偏好=高性能:MSHybrid 大多自动切独显 但确有游戏卡在核显 这是把它掰回独显的安全网
+                // 对下次启动生效 SetGpuPref 内部已"已是高性能就跳过" 不重复写
                 GameExeTweaks.ApplyForGame(imagePath, true);
                 var nvPlan = new NvGamePlan
                 {
@@ -558,6 +571,9 @@ namespace PaviseApp
                 + (ac == null ? "反作弊" : ac) + "剥离 授予 0x" + granted.ToString("X")
                 + " 本体提优已停止 后台压制不受影响");
 
+            // 被剥离即确认受反作弊保护 记入相容名单 后续对局不再碰本体句柄
+            ProtectedGameRoster.Remember(rendererName);
+            // 改走 IFEO 后备:内核在进程创建阶段读注册表 不开句柄不碰进程 不触发反作弊句柄检测 下次启动给该游戏 Above-Normal
             if (EffIfeo && EffBoost)
             {
                 IfeoBoost.Arm(rendererName);
@@ -833,9 +849,6 @@ namespace PaviseApp
 
             bool clean = UnboostGames();
             slowEnvAtTicks = 0;
-            uplinkSampleTicks = 0;
-            uplinkSampleBytes = 0;
-            UploadYield.Clear();
             List<int> background = core.PidsWith(SuppressReason.Background);
             int ok = core.ReleaseReason(SuppressReason.Background);
             bool backgroundClean = true;

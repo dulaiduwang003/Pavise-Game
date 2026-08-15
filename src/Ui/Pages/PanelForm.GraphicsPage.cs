@@ -12,7 +12,7 @@ namespace PaviseApp
         private Toggle swNvMax;
         private Toggle swNvRebar, swNvAnsel, swNvBatt;
         private Toggle swNvSmooth, swNvShader;
-        private Toggle swAmdAlag, swAmdAfmf;
+        private Toggle swAmdAlag, swAmdAfmf, swAmdRsr, swGpuPower;
         private TierPicker dlssPicker, nvllPicker;
         private FpsSlider frlSlider, amdFrlSlider;
         private TechTabs gfxTabs;
@@ -129,6 +129,7 @@ namespace PaviseApp
                 nvOk ? Lang.T("set.nvbatt.n") : nvNone, swNvBatt, out cardH);
             sy += cardH + 8;
 
+            int nvTabBottom = sy;
             scroll = gfxTabPanels[1]; sy = 2;
 
             bool amdOk = AdlxTweaks.Available;
@@ -143,7 +144,7 @@ namespace PaviseApp
                 !amdOk ? amdNone : alagOk ? Lang.T("set.amdalag.n") : amdNoSup, swAmdAlag, out cardH);
             sy += cardH + 8;
 
-            bool frtcOk = amdOk && AdlxTweaks.FrtcSupported();
+            bool frtcOk = amdOk && AdlxTweaks.FrameLimitSupported();
             amdFrlSlider = new FpsSlider();
             amdFrlSlider.Size = new Size(Theme.S(300), Theme.S(28));
             amdFrlSlider.Mode = gameMode.AmdFrlMode;
@@ -160,6 +161,36 @@ namespace PaviseApp
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.amdafmf"),
                 !amdOk ? amdNone : afmfOk ? Lang.T("set.amdafmf.n") : amdNoSup, swAmdAfmf, out cardH);
             sy += cardH + 8;
+
+            // 画质换帧率的交易项 首次开启必须弹窗确认 取消则回拨开关
+            bool rsrOk = amdOk && AdlxTweaks.RsrSupported();
+            swAmdRsr = MakeSwitch(gameMode.RsrUpscale, null);
+            swAmdRsr.CheckedChanged += delegate
+            {
+                if (swAmdRsr.Checked && !gameMode.RsrUpscale)
+                {
+                    if (!PaviseDialog.Confirm(this, Lang.T("set.rsr"), Lang.T("rsr.warn"), DlgKind.Warn))
+                    {
+                        swAmdRsr.SetSilently(false);
+                        return;
+                    }
+                }
+                gameMode.RsrUpscale = swAmdRsr.Checked;
+            };
+            swAmdRsr.Enabled = rsrOk;
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.rsr"),
+                !amdOk ? amdNone : rsrOk ? Lang.T("set.rsr.n") : amdNoSup, swAmdRsr, out cardH);
+            sy += cardH + 8;
+
+            // 功耗墙卡放在检测到的显卡厂商所在标签 两边都没有就落在 NVIDIA 标签置灰
+            Control powerScroll = nvOk ? gfxTabPanels[0] : gfxTabPanels[1];
+            int powerY = nvOk ? nvTabBottom : sy;
+            bool powerOk = GpuPowerMax.Supported();
+            swGpuPower = MakeSwitch(gameMode.GpuPowerLift, null);
+            swGpuPower.CheckedChanged += delegate { gameMode.GpuPowerLift = swGpuPower.Checked; };
+            swGpuPower.Enabled = powerOk;
+            MakeAutoCard(powerScroll, 6, powerY, ScrollContentW, 76, Lang.T("set.gpupower"),
+                powerOk ? Lang.T("set.gpupower.n") : Lang.T("set.gpupower.nosup"), swGpuPower, out cardH);
 
             EnableCardCollapse(gfxTabPanels[0]);
             EnableCardCollapse(gfxTabPanels[1]);
@@ -199,6 +230,8 @@ namespace PaviseApp
             if (swNvRebar != null) swNvRebar.SetSilently(gameMode.NvRebar);
             if (swNvAnsel != null) swNvAnsel.SetSilently(gameMode.NvAnselOff);
             if (swNvBatt != null) swNvBatt.SetSilently(gameMode.NvBattFull);
+            if (swAmdRsr != null) swAmdRsr.SetSilently(gameMode.RsrUpscale);
+            if (swGpuPower != null) swGpuPower.SetSilently(gameMode.GpuPowerLift);
         }
     }
 }

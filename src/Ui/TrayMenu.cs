@@ -147,7 +147,7 @@ namespace PaviseApp
             PerformancePreset mode = gameMode.ActivePreset;
             return mode == PerformancePreset.Custom
                 ? gameMode.KillGameDvr
-                : mode == PerformancePreset.Competitive || mode == PerformancePreset.Extreme;
+                : mode == PerformancePreset.Competitive;
         }
 
         private static void StyleDropDown(ToolStripDropDown dd)
@@ -276,7 +276,6 @@ namespace PaviseApp
             gameMode.BoostGame = true;
             gameMode.PowerPlanSwitch = true;
             gameMode.PauseDownloads = true;
-            gameMode.PauseSvcIndex = false;
             gameMode.KillGameDvr = true;
             gameMode.CorePartitionEnabled = false;
             gameMode.CoreDomainAlt = false;
