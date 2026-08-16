@@ -22,7 +22,7 @@ namespace PaviseApp
         {
             lock (lk)
             {
-                if (Toast.HasBackup && Toast.Restore()) Logger.Log("通知弹窗已还原");
+                if (Toast.HasBackup && Toast.Restore()) Logger.Log(Lang.T("log.notif.1"));
                 return !Toast.HasBackup;
             }
         }

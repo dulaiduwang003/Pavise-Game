@@ -48,7 +48,7 @@ namespace PaviseApp
 
             var mode = MakeConsolePanel(pageOverview, rightX, y + 132, rightW, 100, false);
             CardLabel(mode, Lang.T("v15.effective.mode"), 18, 12, rightW - 36, 17, 7.6f, true, Theme.Faint);
-            lblHeroMode = CardLabel(mode, ModeButton.ModeName(gameMode.ActivePreset), 18, 31, rightW - 36, 31, 14.5f, true, Theme.Accent);
+            lblHeroMode = AccentLabel(mode, ModeButton.ModeName(gameMode.ActivePreset), 18, 31, rightW - 36, 31, 14.5f, true);
             lblHeroSource = CardLabel(mode, Lang.T("mode.source.global"), 18, 66, rightW - 36, 18, 7.7f, false, Theme.Dim);
 
             var boost = MakeConsolePanel(pageOverview, rightX, y + 244, rightW, 108, false);
@@ -78,7 +78,7 @@ namespace PaviseApp
         {
             string[] fast;
             try { fast = DeviceInfo.Specs(); }
-            catch { fast = new[] { " ", " ", " ", " " }; }
+            catch { fast = new[] { " ", " ", " " }; }
             deviceBar.SetValues(fast);
             if (fast[1] != " ") return;
             System.Threading.ThreadPool.QueueUserWorkItem(delegate

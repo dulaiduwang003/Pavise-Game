@@ -15,11 +15,10 @@ namespace PaviseApp
             {
                 report.Verdicts.Add(new AuditRow
                 {
-                    Name = "主屏刷新率",
-                    Value = "强烈建议处理",
-                    Note = "当前 " + hzCur + "Hz 可用 " + hzBest + "Hz 这一项比本页任何调度优化的收益都直接 "
-                        + "帧数上限是翻倍级别的差距 而且没有任何代价 做法 系统设置 显示 高级显示 里把刷新率改到 "
-                        + hzBest + "Hz 这是持久设置 改一次就一直生效 Pavise 不代改",
+                    Name = Lang.T("t.systemauditverdicts.1"),
+                    Value = Lang.T("t.systemauditverdicts.2"),
+                    Note = Lang.T("t.systemauditverdicts.3") + hzCur + Lang.T("t.systemauditverdicts.4") + hzBest + Lang.T("t.systemauditverdicts.5")
+                        + hzBest + Lang.T("t.systemauditverdicts.6"),
                     Evidence = EvMechanism,
                     Warn = true
                 });
@@ -29,11 +28,10 @@ namespace PaviseApp
             {
                 report.Verdicts.Add(new AuditRow
                 {
-                    Name = "筛选键",
-                    Value = "强烈建议处理",
-                    Note = "筛选键在输入路径上主动插入了 " + facts.Access.DelayBeforeAcceptanceMs
-                        + " 毫秒的接受延迟 键鼠这条链上外设段总共才 1 到 5 毫秒 这一项一个人就顶掉了好几倍 "
-                        + "多数人是玩游戏时长按 Shift 被弹窗误开的 做法 系统环境页拨开 辅助功能拦截 开关 不需要管理员也不用重启",
+                    Name = Lang.T("t.systemauditverdicts.7"),
+                    Value = Lang.T("t.systemauditverdicts.2"),
+                    Note = Lang.T("t.systemauditverdicts.8") + facts.Access.DelayBeforeAcceptanceMs
+                        + Lang.T("t.systemauditverdicts.9"),
                     Evidence = EvMechanism,
                     Warn = true
                 });
@@ -42,10 +40,9 @@ namespace PaviseApp
             {
                 report.Verdicts.Add(new AuditRow
                 {
-                    Name = "辅助功能热键",
-                    Value = "建议关闭",
-                    Note = "当前不吞击键 但开关或热键还留着 连按五次 Shift 或长按右 Shift 八秒会在全屏游戏里弹窗 "
-                        + "打断一次团战的代价比任何毫秒级优化都大 做法 系统环境页拨开 辅助功能拦截 开关",
+                    Name = Lang.T("t.systemauditverdicts.10"),
+                    Value = Lang.T("t.systemauditverdicts.11"),
+                    Note = Lang.T("t.systemauditverdicts.12"),
                     Evidence = EvMechanism,
                     Warn = false
                 });
@@ -62,11 +59,9 @@ namespace PaviseApp
             {
                 report.Verdicts.Add(new AuditRow
                 {
-                    Name = "蓝牙键鼠",
-                    Value = "建议换连接方式",
-                    Note = "台架实测同一只鼠标蓝牙约 10.4 毫秒 2.4G 接收器约 3.6 毫秒 而 2.4G 与有线基本无差 "
-                        + "无线比有线慢是过时说法 但蓝牙确实慢 而且这七毫秒比本页所有软件优化加起来都多 "
-                        + "做法 插 2.4G 接收器或换有线 没有软件解法",
+                    Name = Lang.T("t.systemauditverdicts.13"),
+                    Value = Lang.T("t.systemauditverdicts.14"),
+                    Note = Lang.T("t.systemauditverdicts.15"),
                     Evidence = EvMeasuredBench,
                     Warn = true
                 });
@@ -76,10 +71,9 @@ namespace PaviseApp
             {
                 report.Verdicts.Add(new AuditRow
                 {
-                    Name = "键鼠设备省电",
-                    Value = "建议关闭",
-                    Note = "治的是空闲一段时间后第一下操作的顿挫 不是稳态延迟 台式机没有代价直接关 "
-                        + "笔记本要权衡续航 做法 系统环境页拨开 键鼠设备省电 开关",
+                    Name = Lang.T("t.legacypurge.15"),
+                    Value = Lang.T("t.systemauditverdicts.11"),
+                    Note = Lang.T("t.systemauditverdicts.16"),
                     Evidence = EvMechanism,
                     Warn = false
                 });
@@ -89,10 +83,9 @@ namespace PaviseApp
             {
                 report.Verdicts.Add(new AuditRow
                 {
-                    Name = "键鼠队列长度",
-                    Value = "建议改回默认",
-                    Note = "有工具把它改过 这个值决定能缓存多少条输入 不决定输入被处理的快慢 所以调它不降延迟 "
-                        + "调低了还会在高回报率鼠标上丢输入 点右侧一键修复改回默认 100 重启生效 可还原",
+                    Name = Lang.T("t.systemauditverdicts.17"),
+                    Value = Lang.T("t.systemauditverdicts.18"),
+                    Note = Lang.T("t.systemauditverdicts.19"),
                     Evidence = EvMechanism,
                     Warn = true,
                     FixKey = "inputq"
@@ -101,42 +94,39 @@ namespace PaviseApp
 
             report.Verdicts.Add(new AuditRow
             {
-                Name = "输入延迟的大头在哪",
-                Value = "看清楚再动手",
-                Note = "端到端延迟三段 外设 1 到 5 毫秒 渲染管线在 GPU 打满时 20 到 60 毫秒 显示器 3 到 20 毫秒 "
-                    + "所以键鼠注册表偏方是在错的量级上花力气 真正的大头是渲染队列堆积 "
-                    + "做法 游戏支持 NVIDIA Reflex 或 AMD Anti-Lag 就在游戏里开 没有就把帧率上限压到 GPU 占用 90 到 95 百分比 "
-                    + "别顶着刷新率上限跑 那会隐式触发垂直同步 反而多加半帧到一帧 显卡页的帧率上限和低延迟就是干这个的",
+                Name = Lang.T("t.systemauditverdicts.20"),
+                Value = Lang.T("t.systemauditverdicts.21"),
+                Note = Lang.T("t.systemauditverdicts.22"),
                 Evidence = EvMeasuredBench,
                 Warn = false
             });
 
             report.Verdicts.Add(new AuditRow
             {
-                Name = "后台压制",
-                Value = facts.SuppressOn ? "已开启 不用处理" : "建议开启",
-                Note = "合成台架六轮配对实测 1% 最差帧改善中位 90.7% 而且免疫随时间累积的恶化",
+                Name = Lang.T("cfg.group.bg"),
+                Value = facts.SuppressOn ? Lang.T("t.systemauditverdicts.23") : Lang.T("t.systemauditverdicts.24"),
+                Note = Lang.T("t.systemauditverdicts.25"),
                 Evidence = EvMeasuredBench,
                 Warn = false
             });
 
             report.Verdicts.Add(new AuditRow
             {
-                Name = "Windows 游戏模式",
-                Value = facts.GameMode ? "已开启 不用处理" : "建议开启",
-                Note = "系统原生的游戏时段后台抑制 没有兼容风险",
+                Name = Lang.T("t.systemauditverdicts.26"),
+                Value = facts.GameMode ? Lang.T("t.systemauditverdicts.23") : Lang.T("t.systemauditverdicts.24"),
+                Note = Lang.T("t.systemauditverdicts.27"),
                 Evidence = EvMechanism,
                 Warn = false
             });
 
             report.Verdicts.Add(new AuditRow
             {
-                Name = "NVIDIA 深度调优",
-                Value = facts.Nv ? "可以尝试" : "本机不适用",
-                Note = facts.Nv ? "显卡页按游戏开启 写入连续失败会自动关闭对应开关"
+                Name = Lang.T("t.systemauditverdicts.28"),
+                Value = facts.Nv ? Lang.T("t.systemauditverdicts.29") : Lang.T("t.systemauditverdicts.30"),
+                Note = facts.Nv ? Lang.T("t.systemauditverdicts.31")
                     : facts.IntegratedOnly
-                        ? "核显没有对应的调优接口 这一项跳过 收益从压制 绑核和电源那边拿"
-                        : "没有 NVIDIA 驱动接口",
+                        ? Lang.T("t.systemauditverdicts.32")
+                        : Lang.T("t.systemauditverdicts.33"),
                 Evidence = EvMeasuredLocal,
                 Warn = false
             });
@@ -148,14 +138,14 @@ namespace PaviseApp
                     ? culprits.TopDpc : null;
                 report.Verdicts.Add(new AuditRow
                 {
-                    Name = "中断负载",
-                    Value = tier == 2 ? "建议处理" : "不用处理",
+                    Name = Lang.T("t.systemauditverdicts.34"),
+                    Value = tier == 2 ? Lang.T("t.systemauditverdicts.35") : Lang.T("t.systemauditverdicts.36"),
                     Note = tier == 2
                         ? (culprit != null
-                            ? "有个核心 " + PercentText(worstIrq) + " 的时间在处理硬件中断 头号来源是 " + culprit
-                                + " 做法 它属于显卡就开 GPU 中断亲和 硬盘和网卡类的中断路由属于驱动层 本软件的避让开关够不到 只能等驱动更新"
-                            : "有个核心 " + PercentText(worstIrq) + " 的时间在处理硬件中断 做法 系统环境页开两个避让开关 重启后再体检对比 数值降了就是它们 降不下来是硬盘 网卡或主板设备在响 那层属于驱动和硬件 本软件不碰")
-                        : "当前量级 " + PercentText(worstIrq) + " 很小 感觉不出来 不用管",
+                            ? Lang.T("t.systemauditverdicts.37") + PercentText(worstIrq) + Lang.T("t.systemauditverdicts.38") + culprit
+                                + Lang.T("t.systemauditverdicts.39")
+                            : Lang.T("t.systemauditverdicts.37") + PercentText(worstIrq) + Lang.T("t.systemauditverdicts.40"))
+                        : Lang.T("t.systemauditverdicts.41") + PercentText(worstIrq) + Lang.T("t.systemauditverdicts.42"),
                     Evidence = EvMeasuredLocal,
                     Warn = tier == 2
                 });
@@ -165,9 +155,9 @@ namespace PaviseApp
             {
                 report.Verdicts.Add(new AuditRow
                 {
-                    Name = "Game DVR 后台录制",
-                    Value = "建议关闭",
-                    Note = "后台录制一直开着就一直有开销 多数人根本不用 Xbox Game Bar 录制",
+                    Name = Lang.T("t.systemauditverdicts.43"),
+                    Value = Lang.T("t.systemauditverdicts.11"),
+                    Note = Lang.T("t.systemauditverdicts.44"),
                     Evidence = EvMechanism,
                     Warn = false
                 });
@@ -177,10 +167,9 @@ namespace PaviseApp
             {
                 report.Verdicts.Add(new AuditRow
                 {
-                    Name = "内存余量",
-                    Value = "建议处理",
-                    Note = "只剩 " + facts.AvailGb.ToString("F1") + " GB 可用 内存不够时系统会拿硬盘顶内存 那是毫秒级的等待 "
-                        + "比任何调度问题都更容易造成明显卡顿 做法 退掉吃内存的后台程序 长期紧张就加内存条 这个没有软件解法",
+                    Name = Lang.T("t.systemauditverdicts.45"),
+                    Value = Lang.T("t.systemauditverdicts.35"),
+                    Note = Lang.T("t.systemauditverdicts.46") + facts.AvailGb.ToString("F1") + Lang.T("t.systemauditverdicts.47"),
                     Evidence = EvMechanism,
                     Warn = true
                 });
@@ -191,8 +180,8 @@ namespace PaviseApp
                 report.Verdicts.Add(new AuditRow
                 {
                     Name = "VBS",
-                    Value = "可以尝试关闭",
-                    Note = "有代价 影响内存完整性 WSL2 Docker 和沙盒 用这些功能就别关 做法 系统环境页找 VBS 卡片 拨开开关 重启生效",
+                    Value = Lang.T("t.systemauditverdicts.48"),
+                    Note = Lang.T("t.systemauditverdicts.49"),
                     Evidence = EvMechanism,
                     Warn = false
                 });
@@ -202,9 +191,9 @@ namespace PaviseApp
             {
                 report.Verdicts.Add(new AuditRow
                 {
-                    Name = "平台时钟",
-                    Value = "建议校正",
-                    Note = "强制 HPET 是十年前的教程遗产 TSC 计时比它快几个数量级 点右侧一键修复即可清掉 重启生效 可还原",
+                    Name = Lang.T("t.systemauditverdicts.50"),
+                    Value = Lang.T("t.systemauditverdicts.51"),
+                    Note = Lang.T("t.systemauditverdicts.52"),
                     Evidence = EvMechanism,
                     Warn = true,
                     FixKey = "clock"
@@ -215,24 +204,24 @@ namespace PaviseApp
             {
                 report.Verdicts.Add(new AuditRow
                 {
-                    Name = "页面文件",
-                    Value = "建议恢复",
-                    Note = "关页面文件不提帧 只把内存吃紧时的变慢换成直接崩溃 部分游戏和反作弊还要求它存在",
+                    Name = Lang.T("t.systemauditverdicts.53"),
+                    Value = Lang.T("t.systemauditverdicts.54"),
+                    Note = Lang.T("t.systemauditverdicts.55"),
                     Evidence = EvMechanism,
                     Warn = true
                 });
             }
 
+            // X3D 双缓存平台停泊是调度机制的一部分 对局中也不解除 不作为提示项
             bool coreUnparked;
-            if (PowerPlan.TryCurrentUnparked(out coreUnparked) && !coreUnparked)
+            if (!CpuTopology.AsymCache
+                && PowerPlan.TryCurrentUnparked(out coreUnparked) && !coreUnparked)
             {
                 report.Verdicts.Add(new AuditRow
                 {
-                    Name = "核心停泊",
-                    Value = "对局中自动解除",
-                    Note = "当前电源方案在低负载时会让部分 CPU 核心进入停泊 从停泊态唤醒有额外延迟 表现为偶发顿挫和 1% 最差帧变差 "
-                        + "Pavise 在对局激活时会把当前方案的核心停泊临时解除 保持全部核心唤醒 退出自动还原 无需你处理 "
-                        + "想常态解除可在策略页改用 Pavise 托管电源方案",
+                    Name = Lang.T("t.legacypurge.3"),
+                    Value = Lang.T("t.systemauditverdicts.56"),
+                    Note = Lang.T("t.systemauditverdicts.57"),
                     Evidence = EvMechanism,
                     Warn = false
                 });

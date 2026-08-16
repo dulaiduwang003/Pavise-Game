@@ -69,7 +69,6 @@ namespace PaviseApp
             {
                 case PolicyCatalog.KeyAggressive:
                 case PolicyCatalog.KeyPauseDl:
-                case PolicyCatalog.KeyGameDvrOff:
                     effective = competitive;
                     return !custom;
                 default:
@@ -193,7 +192,6 @@ namespace PaviseApp
             lblCfgSub.Font = Theme.UI(8.4f, false);
             lblCfgSub.UseCompatibleTextRendering = false;
             lblCfgSub.AutoEllipsis = true;
-            // 描述紧跟标题成一组 与下方的运行模式卡拉开 否则描述看着像卡片的一部分
             lblCfgSub.SetBounds(Theme.S(ContentX + 1), Theme.S(71), Theme.S(ContentW - 2), Theme.S(17));
             pageGameConfig.Controls.Add(lblCfgSub);
 
@@ -247,18 +245,17 @@ namespace PaviseApp
                 new[] { PolicyCatalog.KeyPauseDl, PolicyCatalog.KeyPauseUpdate,
                     PolicyCatalog.KeyWlanGuard });
             AddCfgSection(cfgTabPanels[2], Lang.T("cfg.sub.presence"), ref ty,
-                new[] { PolicyCatalog.KeyGameDvrOff, PolicyCatalog.KeyAwake });
+                new[] { PolicyCatalog.KeyAwake });
             EnableCardCollapse(cfgTabPanels[2]);
 
             ty = 2;
             AddCfgSection(cfgTabPanels[3], "NVIDIA", ref ty,
                 new[] { PolicyCatalog.KeyNvMaxPerf, PolicyCatalog.KeyNvLowLat,
                     PolicyCatalog.KeyNvSmoothMotion, PolicyCatalog.KeyNvShaderCache,
-                    PolicyCatalog.KeyNvFrl, PolicyCatalog.KeyNvDlss, PolicyCatalog.KeyNvRebar,
-                    PolicyCatalog.KeyNvAnselOff, PolicyCatalog.KeyNvBattFull });
+                    PolicyCatalog.KeyNvDlss, PolicyCatalog.KeyNvRebar,
+                    PolicyCatalog.KeyNvAnselOff });
             AddCfgSection(cfgTabPanels[3], "AMD", ref ty,
-                new[] { PolicyCatalog.KeyAmdAntiLag, PolicyCatalog.KeyAmdFrl,
-                    PolicyCatalog.KeyAmdAfmf });
+                new[] { PolicyCatalog.KeyAmdAntiLag, PolicyCatalog.KeyAmdAfmf });
             EnableCardCollapse(cfgTabPanels[3]);
 
             cfgTabKeys = new[]
@@ -271,15 +268,13 @@ namespace PaviseApp
                     PolicyCatalog.KeyCoreMask },
                 new[] { PolicyCatalog.KeyStandbySweep, PolicyCatalog.KeyPowerPlan,
                     PolicyCatalog.KeyPauseDl, PolicyCatalog.KeyPauseUpdate,
-                    PolicyCatalog.KeyWlanGuard,
-                    PolicyCatalog.KeyGameDvrOff, PolicyCatalog.KeyAwake },
+                    PolicyCatalog.KeyWlanGuard, PolicyCatalog.KeyAwake },
                 new[] { PolicyCatalog.KeyNvMaxPerf,
                     PolicyCatalog.KeyNvLowLat, PolicyCatalog.KeyNvSmoothMotion,
-                    PolicyCatalog.KeyNvShaderCache, PolicyCatalog.KeyNvFrl,
+                    PolicyCatalog.KeyNvShaderCache,
                     PolicyCatalog.KeyNvDlss, PolicyCatalog.KeyNvRebar,
-                    PolicyCatalog.KeyNvAnselOff, PolicyCatalog.KeyNvBattFull,
-                    PolicyCatalog.KeyAmdAntiLag, PolicyCatalog.KeyAmdFrl,
-                    PolicyCatalog.KeyAmdAfmf },
+                    PolicyCatalog.KeyNvAnselOff,
+                    PolicyCatalog.KeyAmdAntiLag, PolicyCatalog.KeyAmdAfmf },
             };
 
             SyncCfgRows();
@@ -299,9 +294,6 @@ namespace PaviseApp
                         Lang.T("preset.custom") };
                 case PolicyCatalog.KeyNvLowLat:
                     return new[] { Lang.T("frl.off"), Lang.T("nvll.on"), Lang.T("nvll.ultra") };
-                case PolicyCatalog.KeyNvFrl:
-                case PolicyCatalog.KeyAmdFrl:
-                    return new[] { Lang.T("frl.off"), "60", "120", "240", Lang.T("frl.screen") };
                 case PolicyCatalog.KeyNvDlss:
                     return new[] { Lang.T("frl.off"), Lang.T("dlss.latest"), "J", "K" };
                 default:
@@ -336,19 +328,15 @@ namespace PaviseApp
                 case PolicyCatalog.KeyPauseUpdate: return "gm.pausewu.sub";
                 case PolicyCatalog.KeyWlanGuard: return "gm.wlanguard.sub";
                 case PolicyCatalog.KeyAwake: return "set.awake.n";
-                case PolicyCatalog.KeyGameDvrOff: return "set.dvr.sub";
                 case PolicyCatalog.KeyNvMaxPerf: return "set.nvmax.n";
                 case PolicyCatalog.KeyNvLowLat: return "set.nvll.n";
                 case PolicyCatalog.KeyNvSmoothMotion: return "set.nvsmooth.n";
                 case PolicyCatalog.KeyNvShaderCache: return "set.nvshader.n";
                 case PolicyCatalog.KeyNvAnselOff: return "set.nvansel.n";
                 case PolicyCatalog.KeyNvRebar: return "set.nvrebar.n";
-                case PolicyCatalog.KeyNvBattFull: return "set.nvbatt.n";
-                case PolicyCatalog.KeyNvFrl: return "set.nvfrl.n";
                 case PolicyCatalog.KeyNvDlss: return "set.nvdlss.n";
                 case PolicyCatalog.KeyAmdAntiLag: return "set.amdalag.n";
                 case PolicyCatalog.KeyAmdAfmf: return "set.amdafmf.n";
-                case PolicyCatalog.KeyAmdFrl: return "set.amdfrl.n";
                 default: return null;
             }
         }
@@ -365,8 +353,6 @@ namespace PaviseApp
                 case PolicyCatalog.KeyNvShaderCache:
                 case PolicyCatalog.KeyNvAnselOff:
                 case PolicyCatalog.KeyNvRebar:
-                case PolicyCatalog.KeyNvBattFull:
-                case PolicyCatalog.KeyNvFrl:
                     if (!nvOk) reasonKey = "set.nv.none";
                     return nvOk;
                 case PolicyCatalog.KeyNvSmoothMotion:
@@ -386,10 +372,6 @@ namespace PaviseApp
                     if (!amdOk) { reasonKey = "set.amd.none"; return false; }
                     if (!AdlxTweaks.AfmfSupported()) { reasonKey = "set.amd.nosup"; return false; }
                     return true;
-                case PolicyCatalog.KeyAmdFrl:
-                    if (!amdOk) { reasonKey = "set.amd.none"; return false; }
-                    if (!AdlxTweaks.FrameLimitSupported()) { reasonKey = "set.amd.nosup"; return false; }
-                    return true;
                 default:
                     return true;
             }
@@ -404,7 +386,6 @@ namespace PaviseApp
             return 0;
         }
 
-        // 运行模式行不走通用分段 用带模式色的覆盖条 跟随全局段内直接标出全局当前档
         private void AddCfgModeRow(Control parent, ref int y)
         {
             PolicyItem item = PolicyCatalog.ItemOf(PolicyCatalog.KeyPreset);

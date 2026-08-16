@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 体检行 ROG 风格自绘卡片 标题+状态徽标+证据 说明最多三行超出省略 修复按钮垂直居中不遮挡
+// 文件用途 体检行 ROG 风格自绘卡片 标题+状态徽标+证据 说明最多三行超出省略 修复按钮垂直居中且避让证据行
 
 using System;
 using System.Drawing;
@@ -14,7 +14,7 @@ namespace PaviseApp
         private const int PadR = 16;
         private const int BtnW = 120;
         private const int BtnH = 32;
-        private const int RightCol = 132;      // 有按钮时右侧预留列宽
+        private const int RightCol = 132;
         private const int NoteMaxLines = 3;
         private const float NameSize = 9.5f;
         private const float NoteSize = 8.0f;
@@ -122,12 +122,10 @@ namespace PaviseApp
                 using (var pen = new Pen(Col.Lerp(Theme.Stroke, warn ? Col.Alpha(Theme.Accent, 150) : Theme.StrokeHi,
                     warn ? 0.55f + h * 0.35f : h))) g.DrawPath(pen, p);
             }
-            // 左侧棱线 警告项主题色 常规项暗色
             using (var edge = new Pen(warn ? Theme.Accent : Col.Lerp(Theme.Stroke, Theme.Accent, h * 0.6f),
                 Math.Max(1f, Theme.S(2))))
                 g.DrawLine(edge, 0, Theme.S(12), 0, Height - Theme.S(13));
 
-            // 证据在右上固定宽度 按钮在右中下 标题行避开这一整列 说明行只避开按钮列(与证据垂直错开)
             int evW = evidence.Length > 0 ? Theme.S(118) : 0;
             int rightColPx = hasButton ? Theme.S(RightCol) : 0;
             int headRight = Width - Theme.S(PadR) - Math.Max(evW, rightColPx);
@@ -139,10 +137,8 @@ namespace PaviseApp
             TextRenderer.DrawText(g, name, Theme.UI(NameSize, true), nameRect, Theme.Fg,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
 
-            // 状态徽标 紧跟标题右侧 警告红底 常规灰字
             DrawValueBadge(g, nameRect.Right + Theme.S(8), Theme.S(13), headRight);
 
-            // 证据标签 右上角 固定宽度右对齐
             if (evW > 0)
             {
                 var evRect = new Rectangle(Width - Theme.S(PadR) - evW, Theme.S(12), evW, Theme.S(18));
@@ -150,7 +146,6 @@ namespace PaviseApp
                     TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
             }
 
-            // 说明 最多三行 超出省略
             if (note.Length > 0)
             {
                 int noteW = noteRight - Theme.S(PadL);
@@ -197,7 +192,11 @@ namespace PaviseApp
         private void DrawButton(Graphics g)
         {
             int bw = Theme.S(BtnW), bh = Theme.S(BtnH);
-            btnRect = new Rectangle(Width - Theme.S(PadR) - bw, (Height - bh) / 2 + Theme.S(4), bw, bh);
+            // 矮卡片上垂直居中会顶进右上角的证据行 有证据时按钮顶不得高于证据行底+6
+            int btnTop = (Height - bh) / 2 + Theme.S(4);
+            int minTop = Theme.S(12 + 18 + 6);
+            if (evidence.Length > 0 && btnTop < minTop) btnTop = minTop;
+            btnRect = new Rectangle(Width - Theme.S(PadR) - bw, btnTop, bw, bh);
             float bh2 = btnHover.Value;
             int cut = Math.Max(Theme.S(6), bh / 4);
             using (GraphicsPath p = Theme.TechPath(btnRect, cut))

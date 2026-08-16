@@ -35,7 +35,7 @@ namespace PaviseApp
             {
                 if (!PaviseDialog.Confirm(this, App.DisplayName, Lang.T("rep.clear.ask"), DlgKind.Warn)) return;
                 Logger.Clear();
-                Logger.Log("运行日志已手动清除");
+                Logger.Log(Lang.T("log.panelformlogpage.1"));
                 RefreshLog();
             };
 

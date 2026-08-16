@@ -1,7 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 服务让路 已退役 仅保留还原能力
-// 退役原因 它引流的诊断/更新/打印类服务本就几乎不吃 CPU 挪核收益≈0;而真正的游戏核隔离由后台压制系统(SuppressionCore + CpuSets)已覆盖
-// 仅保留 Restore/HasResidue/HealFromCrash 清理旧版本把服务宿主进程引到后台核的残留
 
 using System;
 using System.Collections.Generic;
@@ -61,8 +59,8 @@ namespace PaviseApp
                 }
 
                 SaveApplied(remain);
-                if (restored > 0) Logger.Log("服务让路 已还原 " + restored + " 个服务进程");
-                if (remain.Count > 0) Logger.Log("服务让路 仍有 " + remain.Count + " 个未能还原 保留记录待重试");
+                if (restored > 0) Logger.Log(Lang.T("log.svcyield.1") + restored + Lang.T("log.svcyield.2"));
+                if (remain.Count > 0) Logger.Log(Lang.T("log.svcyield.3") + remain.Count + Lang.T("log.svcyield.4"));
                 return remain.Count == 0;
             }
         }

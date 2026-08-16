@@ -72,7 +72,6 @@ namespace PaviseApp
             return t;
         }
 
-        // 描述最多排到这么多行 再长的才交给省略号 用户要求至少能看到三行
         internal const int DescMaxLines = 3;
         internal const int CollapseChevronW = 20;
 
@@ -86,9 +85,6 @@ namespace PaviseApp
             if (string.IsNullOrEmpty(desc)) return minHeight;
             int padL = Theme.S(18);
             int reserve = padL + (host != null ? host.Width + Theme.S(14) : 0);
-            // 卡片是先建好定死高度 之后才被 SyncEnvStatus 补上状态行 被 EnableCardCollapse 加上折叠箭头
-            // 所以这里必须按那两步做完之后的样子算 否则描述区会比算的时候又窄一截又矮一行
-            // 挤到放不下两行时 SettingCard 会直接关掉换行 变成一行加省略号
             int chevW = Theme.S(CollapseChevronW);
             int textW = Theme.S(cardW) - padL - reserve - valueReserve - chevW;
             if (textW <= 0) return minHeight;
@@ -152,12 +148,51 @@ namespace PaviseApp
             parent.Controls.Add(label); return label;
         }
 
+        private readonly List<Label> accentLabels = new List<Label>();
+
+        // 用当前主题色创建的 Label 自动登记 由 RefreshAccentLabels 统一刷新
+        // WinForms Label 的 ForeColor 定死在赋值那刻 不会随主题色动画走 靠这个注册制兜底
+        // 避免每加一个主题色文字就得去 OnFormFrame 手动点名 漏一个就定死一个
+        private Label AccentLabel(Control parent, string text, int x, int y, int w, int h, float size, bool bold)
+        {
+            Label l = CardLabel(parent, text, x, y, w, h, size, bold, Theme.Accent);
+            accentLabels.Add(l);
+            return l;
+        }
+
+        private void RefreshAccentLabels()
+        {
+            for (int i = accentLabels.Count - 1; i >= 0; i--)
+            {
+                Label l = accentLabels[i];
+                if (l == null || l.IsDisposed) { accentLabels.RemoveAt(i); continue; }
+                l.ForeColor = Theme.Accent;
+            }
+        }
+
+        private readonly List<Action> themeRefreshers = new List<Action>();
+
+        // 颜色随业务状态变化的元素(不是恒定 accent 的 那类用 AccentLabel)在此注册
+        // 主题色切换结束时统一重跑其状态刷新 让条件色也跟随主题
+        // 用注册制取代 OnFormFrame 里逐页硬编码特判 以后加条件色元素挂上来即可 不会再漏
+        private void RegisterThemeRefresh(Action refresh)
+        {
+            if (refresh != null) themeRefreshers.Add(refresh);
+        }
+
+        private void RunThemeRefreshers()
+        {
+            foreach (Action r in themeRefreshers)
+            {
+                try { r(); } catch { }
+            }
+        }
+
         private DialogResult ShowDim(Form dlg)
         {
             return dlg.ShowDialog(this);
         }
 
-        // 页 -> 其内容标签面板 供 ShowPage 进入时让活动面板滑入一次(与切标签同款动画)
         private readonly Dictionary<Control, DBPanel[]> pageTabPanels
             = new Dictionary<Control, DBPanel[]>();
 

@@ -24,10 +24,10 @@ namespace PaviseApp
         public static string Describe()
         {
             bool on = CurrentlyOn();
-            if (on && EnabledByPavise) return "已由 Pavise 开启 重启游戏后生效 拨回开关即还原";
-            if (on) return "系统里已经开着 不用处理";
-            if (EnabledByPavise) return "开关开着但系统值被外部改回 关掉再打开可重新写入";
-            return "未开启 旧 DX10 DX11 游戏窗口化时走不到翻转模型";
+            if (on && EnabledByPavise) return Lang.T("t.windowedopttweak.1");
+            if (on) return Lang.T("t.windowedopttweak.2");
+            if (EnabledByPavise) return Lang.T("t.windowedopttweak.3");
+            return Lang.T("t.windowedopttweak.4");
         }
 
         public static bool CurrentlyOn()
@@ -67,7 +67,7 @@ namespace PaviseApp
                         if (!CurrentlyOn()) return false;
                         Settings.Save("WindowedOptOnByPavise", true);
                         if (!Settings.Load("WindowedOptOnByPavise", false)) { Restore(); return false; }
-                        Logger.Log("窗口化游戏优化已开启 重启游戏后生效");
+                        Logger.Log(Lang.T("log.windowedopttweak.5"));
                         return true;
                     }
                 }
@@ -97,7 +97,7 @@ namespace PaviseApp
                     }
                     Settings.SaveStr(BackupSlot, "");
                     Settings.Save("WindowedOptOnByPavise", false);
-                    Logger.Log("窗口化游戏优化已还原 重启游戏后生效");
+                    Logger.Log(Lang.T("log.windowedopttweak.6"));
                     return true;
                 }
                 catch { return false; }

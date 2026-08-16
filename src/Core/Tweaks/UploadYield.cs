@@ -1,7 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 上传让位 已退役 仅保留还原能力
-// 退役原因 对局中拉 PowerShell 刷 NetQosPolicy 组策略不稳定 顿挫风险大 概念正经但实现不可靠
-// 仅保留 Clear/HealFromCrash/HasResidue 清理旧版本写过的 PaviseYield_* QoS 策略
 
 using System;
 using System.Diagnostics;
@@ -35,10 +33,10 @@ namespace PaviseApp
                 {
                     SweepRegistryResidue();
                     Settings.SaveStr(Flag, "");
-                    Logger.Log("上传让位 已解除全部上行限速");
+                    Logger.Log(Lang.T("log.uploadyield.1"));
                     return;
                 }
-                Logger.Log("上传让位 仍有 " + left + " 条限速未能解除 标志保留 下次启动重试");
+                Logger.Log(Lang.T("log.uploadyield.2") + left + Lang.T("log.uploadyield.3"));
             }
         }
 
@@ -69,7 +67,7 @@ namespace PaviseApp
             }
             catch (Exception ex)
             {
-                Logger.Log("上传让位 清理 NetQosPolicy 失败 " + ex.Message);
+                Logger.Log(Lang.T("log.uploadyield.4") + ex.Message);
                 return false;
             }
         }

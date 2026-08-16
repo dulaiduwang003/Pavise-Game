@@ -15,11 +15,13 @@ namespace PaviseApp
         private static readonly ReversibleReg Sch = new ReversibleReg(
             Registry.LocalMachine, GfxKey, Val, RegistryValueKind.DWord, "PrevHwSch");
 
+        // LUID 必须拆成两个 32 位字段 用 long 会引入 8 字节对齐使数组步长从 20 变 24 全部错位
         [StructLayout(LayoutKind.Sequential)]
         private struct AdapterInfo
         {
             public uint HAdapter;
-            public long Luid;
+            public uint LuidLow;
+            public int LuidHigh;
             public uint NumOfSources;
             public int PresentMoveRegionsPreferred;
         }
@@ -121,20 +123,50 @@ namespace PaviseApp
         {
             try
             {
+                bool supported, enabledNow;
+                if (!TryQueryState(out supported, out enabledNow) || !supported)
+                {
+                    Logger.Log(Lang.T("log.hagstweak.5"));
+                    return false;
+                }
                 if (!Sch.Apply(2))
                 {
-                    Logger.Log("GPU 硬件调度 HAGS 写入或回读失败 未标记为已开启");
+                    Logger.Log(Lang.T("log.hagstweak.1"));
                     return false;
                 }
                 Settings.Save("HagsOnByPavise", true);
                 if (!Settings.Load("HagsOnByPavise", false))
                 {
                     Sch.Restore();
-                    Logger.Log("HAGS 状态标志无法持久化 已还原注册表修改");
+                    Logger.Log(Lang.T("log.hagstweak.2"));
                     return false;
                 }
-                Logger.Log("GPU 硬件调度 HAGS 已开启 重启后生效");
+                Logger.Log(Lang.T("log.hagstweak.3"));
                 return true;
+            }
+            catch { return false; }
+        }
+
+        // 用户用 Pavise 关掉原本开启的 HAGS 时 EnabledByPavise=false 但备份仍在
+        // 清除/还原必须按备份判断残留 否则跳过还原并删掉备份 = 原始状态永久丢失
+        public static bool HasResidue()
+        {
+            return EnabledByPavise || Sch.HasBackup;
+        }
+
+        public static bool Restore()
+        {
+            try
+            {
+                if (!Sch.HasBackup)
+                {
+                    Settings.Save("HagsOnByPavise", false);
+                    return !Settings.Load("HagsOnByPavise", true);
+                }
+                if (!Sch.Restore()) return false;
+                Settings.Save("HagsOnByPavise", false);
+                Logger.Log(Lang.T("log.hagstweak.6"));
+                return !Settings.Load("HagsOnByPavise", true);
             }
             catch { return false; }
         }
@@ -150,7 +182,7 @@ namespace PaviseApp
                 {
                     Settings.Save("HagsOnByPavise", false);
                     if (Settings.Load("HagsOnByPavise", true)) return false;
-                    Logger.Log("GPU 硬件调度 HAGS 已关闭 重启后生效");
+                    Logger.Log(Lang.T("log.hagstweak.4"));
                 }
                 return ok;
             }

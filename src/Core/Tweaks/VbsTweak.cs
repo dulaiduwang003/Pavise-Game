@@ -28,6 +28,38 @@ namespace PaviseApp
 
         public static bool DisabledByPavise { get { return Settings.Load("VbsDisabledByPavise", false); } }
 
+        // 组策略/MDM 强制或 UEFI 锁定的机器上关不掉 写了也会被策略刷新或固件覆盖 状态永远停在等待重启
+        public static bool BlockedReason(out string reasonKey)
+        {
+            reasonKey = null;
+            if (ReadDword(@"SOFTWARE\Policies\Microsoft\Windows\DeviceGuard",
+                    "EnableVirtualizationBasedSecurity") == 1)
+            {
+                reasonKey = "vbs.blocked.policy";
+                return true;
+            }
+            if (ReadDword(DgKey, "Locked") == 1 || ReadDword(HvciKey, "Locked") == 1)
+            {
+                reasonKey = "vbs.blocked.lock";
+                return true;
+            }
+            return false;
+        }
+
+        private static int ReadDword(string path, string name)
+        {
+            try
+            {
+                using (var k = Registry.LocalMachine.OpenSubKey(path))
+                {
+                    if (k == null) return -1;
+                    object v = k.GetValue(name);
+                    return v is int ? (int)v : -1;
+                }
+            }
+            catch { return -1; }
+        }
+
         public static State Query()
         {
             var st = new State();
@@ -60,13 +92,19 @@ namespace PaviseApp
             {
                 try
                 {
+                    string blockKey;
+                    if (BlockedReason(out blockKey))
+                    {
+                        Logger.Log(Lang.T(blockKey));
+                        return false;
+                    }
                     if (Settings.LoadStr("PrevHvLaunch", "").Length == 0)
                     {
                         bool readOk;
                         string previous = ReadHvLaunch(out readOk);
                         if (!readOk)
                         {
-                            Logger.Log("无法读取 hypervisorlaunchtype 原状态 已取消修改");
+                            Logger.Log(Lang.T("log.vbstweak.1"));
                             return false;
                         }
                         Settings.SaveStr("PrevHvLaunch", previous);
@@ -77,7 +115,7 @@ namespace PaviseApp
                     {
                         Vbs.Restore(); Hvci.Restore();
                         if (!DisabledByPavise) Settings.SaveStr("PrevHvLaunch", "");
-                        Logger.Log("关闭 VBS 和内存完整性写入或回读失败 已回滚");
+                        Logger.Log(Lang.T("log.vbstweak.2"));
                         return false;
                     }
                     int code;
@@ -85,7 +123,7 @@ namespace PaviseApp
                     if (code != 0)
                     {
                         if (Vbs.Restore() & Hvci.Restore()) Settings.SaveStr("PrevHvLaunch", "");
-                        Logger.Log("停用 hypervisor 失败 bcdedit rc " + code + " 已回滚注册表改动");
+                        Logger.Log(Lang.T("log.vbstweak.3") + code + Lang.T("log.vbstweak.4"));
                         return false;
                     }
                     Settings.Save("VbsDisabledByPavise", true);
@@ -96,13 +134,13 @@ namespace PaviseApp
                             + NormHvLaunch(Settings.LoadStr("PrevHvLaunch", "auto")), out rollbackCode);
                         Vbs.Restore(); Hvci.Restore();
                         if (rollbackCode == 0) Settings.SaveStr("PrevHvLaunch", "");
-                        Logger.Log("无法持久化 VBS 修改状态 已回滚本轮设置");
+                        Logger.Log(Lang.T("log.vbstweak.5"));
                         return false;
                     }
-                    Logger.Log("VBS 和内存完整性已关 hypervisor 已停用 重启后生效 WSL2 Docker Hyper-V 将失效");
+                    Logger.Log(Lang.T("log.vbstweak.6"));
                     return true;
                 }
-                catch (Exception ex) { Logger.Log("关闭 VBS 和 hypervisor 失败 " + ex.Message); return false; }
+                catch (Exception ex) { Logger.Log(Lang.T("log.vbstweak.7") + ex.Message); return false; }
             }
         }
 
@@ -129,18 +167,18 @@ namespace PaviseApp
                         Settings.Save("VbsDisabledByPavise", false);
                         if (Settings.Load("VbsDisabledByPavise", true))
                         {
-                            Logger.Log("系统设置已还原 但状态标志写入失败 下次启动将再次校正");
+                            Logger.Log(Lang.T("log.vbstweak.8"));
                             return false;
                         }
                         Settings.SaveStr("PrevHvLaunch", "");
                         Logger.Log(bcdOurs
-                            ? "已还原 VBS 和内存完整性 + hypervisorlaunchtype " + hv + " 重启后生效"
-                            : "已还原 VBS 和内存完整性 hypervisor 未经 Pavise 修改 未触碰");
+                            ? Lang.T("log.vbstweak.9") + hv + Lang.T("log.nettweak.4")
+                            : Lang.T("log.vbstweak.10"));
                     }
-                    else Logger.Log("还原 VBS 和 hypervisor 未完全成功 bcdedit rc " + code + " 快照保留 可再试一次");
+                    else Logger.Log(Lang.T("log.vbstweak.11") + code + Lang.T("log.vbstweak.12"));
                     return ok;
                 }
-                catch (Exception ex) { Logger.Log("还原 VBS 和 hypervisor 失败 " + ex.Message); return false; }
+                catch (Exception ex) { Logger.Log(Lang.T("log.vbstweak.13") + ex.Message); return false; }
             }
         }
 
@@ -194,7 +232,7 @@ namespace PaviseApp
                     if (!p.WaitForExit(15000))
                     {
                         try { p.Kill(); } catch { }
-                        Logger.Log("bcdedit 超过 15 秒未返回 已终止 " + args + " ");
+                        Logger.Log(Lang.T("log.vbstweak.14") + args + " ");
                         return "";
                     }
                     p.WaitForExit();

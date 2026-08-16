@@ -10,11 +10,10 @@ namespace PaviseApp
     internal partial class PanelForm
     {
         private Toggle swNvMax;
-        private Toggle swNvRebar, swNvAnsel, swNvBatt;
+        private Toggle swNvRebar, swNvAnsel;
         private Toggle swNvSmooth, swNvShader;
         private Toggle swAmdAlag, swAmdAfmf, swAmdRsr, swGpuPower;
         private TierPicker dlssPicker, nvllPicker;
-        private FpsSlider frlSlider, amdFrlSlider;
         private TechTabs gfxTabs;
         private DBPanel[] gfxTabPanels;
 
@@ -74,15 +73,6 @@ namespace PaviseApp
                 nvOk ? Lang.T("set.nvshader.n") : nvNone, swNvShader, out cardH);
             sy += cardH + 8;
 
-            frlSlider = new FpsSlider();
-            frlSlider.Size = new Size(Theme.S(300), Theme.S(28));
-            frlSlider.Mode = gameMode.NvFrlMode;
-            frlSlider.ModeChanged = delegate(string m) { gameMode.NvFrlMode = m; };
-            frlSlider.Enabled = nvOk;
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvfrl"),
-                nvOk ? Lang.T("set.nvfrl.n") : nvNone, frlSlider, out cardH);
-            sy += cardH + 8;
-
             bool dlssGpu = NvDrsTweaks.DlssGpuCapable();
             bool dlssOk = nvOk && dlssGpu && NvDrsTweaks.DlssDriverSupported();
             dlssPicker = new TierPicker();
@@ -98,19 +88,25 @@ namespace PaviseApp
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvdlss"), dlssDesc, dlssPicker, out cardH);
             sy += cardH + 8;
 
+            // BIOS 未开 ReBAR 时 DRS 三键写了也无效 探测到关闭即置灰 探测不到时不拦(避免误杀)
             string rebarDesc = Lang.T("set.nvrebar.n");
+            bool rebarUsable = true;
             if (nvOk)
             {
-                bool rebarOn;
+                bool rebarOn, rebarNvidia;
                 ulong rebarWindow;
                 string rebarGpu;
-                if (RebarProbe.TryDetect(out rebarOn, out rebarWindow, out rebarGpu))
+                if (RebarProbe.TryDetect(out rebarOn, out rebarWindow, out rebarGpu, out rebarNvidia)
+                    && rebarNvidia)
+                {
                     rebarDesc += Lang.F(rebarOn ? "set.nvrebar.det.on" : "set.nvrebar.det.off",
                         RebarProbe.WindowText(rebarWindow));
+                    rebarUsable = rebarOn;
+                }
             }
             swNvRebar = MakeSwitch(gameMode.NvRebar, null);
             swNvRebar.CheckedChanged += (s, e) => gameMode.NvRebar = swNvRebar.Checked;
-            swNvRebar.Enabled = nvOk;
+            swNvRebar.Enabled = nvOk && (rebarUsable || gameMode.NvRebar);
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvrebar"),
                 nvOk ? rebarDesc : nvNone, swNvRebar, out cardH);
             sy += cardH + 8;
@@ -120,13 +116,6 @@ namespace PaviseApp
             swNvAnsel.Enabled = nvOk;
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvansel"),
                 nvOk ? Lang.T("set.nvansel.n") : nvNone, swNvAnsel, out cardH);
-            sy += cardH + 8;
-
-            swNvBatt = MakeSwitch(gameMode.NvBattFull, null);
-            swNvBatt.CheckedChanged += (s, e) => gameMode.NvBattFull = swNvBatt.Checked;
-            swNvBatt.Enabled = nvOk;
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvbatt"),
-                nvOk ? Lang.T("set.nvbatt.n") : nvNone, swNvBatt, out cardH);
             sy += cardH + 8;
 
             int nvTabBottom = sy;
@@ -144,16 +133,6 @@ namespace PaviseApp
                 !amdOk ? amdNone : alagOk ? Lang.T("set.amdalag.n") : amdNoSup, swAmdAlag, out cardH);
             sy += cardH + 8;
 
-            bool frtcOk = amdOk && AdlxTweaks.FrameLimitSupported();
-            amdFrlSlider = new FpsSlider();
-            amdFrlSlider.Size = new Size(Theme.S(300), Theme.S(28));
-            amdFrlSlider.Mode = gameMode.AmdFrlMode;
-            amdFrlSlider.ModeChanged = delegate(string m) { gameMode.AmdFrlMode = m; };
-            amdFrlSlider.Enabled = frtcOk;
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.amdfrl"),
-                !amdOk ? amdNone : frtcOk ? Lang.T("set.amdfrl.n") : amdNoSup, amdFrlSlider, out cardH);
-            sy += cardH + 8;
-
             bool afmfOk = amdOk && AdlxTweaks.AfmfSupported();
             swAmdAfmf = MakeSwitch(gameMode.AmdAfmf, null);
             swAmdAfmf.CheckedChanged += (s, e) => gameMode.AmdAfmf = swAmdAfmf.Checked;
@@ -162,7 +141,6 @@ namespace PaviseApp
                 !amdOk ? amdNone : afmfOk ? Lang.T("set.amdafmf.n") : amdNoSup, swAmdAfmf, out cardH);
             sy += cardH + 8;
 
-            // 画质换帧率的交易项 首次开启必须弹窗确认 取消则回拨开关
             bool rsrOk = amdOk && AdlxTweaks.RsrSupported();
             swAmdRsr = MakeSwitch(gameMode.RsrUpscale, null);
             swAmdRsr.CheckedChanged += delegate
@@ -182,7 +160,6 @@ namespace PaviseApp
                 !amdOk ? amdNone : rsrOk ? Lang.T("set.rsr.n") : amdNoSup, swAmdRsr, out cardH);
             sy += cardH + 8;
 
-            // 功耗墙卡放在检测到的显卡厂商所在标签 两边都没有就落在 NVIDIA 标签置灰
             Control powerScroll = nvOk ? gfxTabPanels[0] : gfxTabPanels[1];
             int powerY = nvOk ? nvTabBottom : sy;
             bool powerOk = GpuPowerMax.Supported();
@@ -224,12 +201,9 @@ namespace PaviseApp
             if (swNvShader != null) swNvShader.SetSilently(gameMode.NvShaderCacheMax);
             if (swAmdAlag != null) swAmdAlag.SetSilently(gameMode.AmdAntiLag);
             if (swAmdAfmf != null) swAmdAfmf.SetSilently(gameMode.AmdAfmf);
-            if (amdFrlSlider != null) amdFrlSlider.Mode = gameMode.AmdFrlMode;
-            if (frlSlider != null) frlSlider.Mode = gameMode.NvFrlMode;
             if (dlssPicker != null) dlssPicker.Index = DlssIndexOf(gameMode.NvDlssMode);
             if (swNvRebar != null) swNvRebar.SetSilently(gameMode.NvRebar);
             if (swNvAnsel != null) swNvAnsel.SetSilently(gameMode.NvAnselOff);
-            if (swNvBatt != null) swNvBatt.SetSilently(gameMode.NvBattFull);
             if (swAmdRsr != null) swAmdRsr.SetSilently(gameMode.RsrUpscale);
             if (swGpuPower != null) swGpuPower.SetSilently(gameMode.GpuPowerLift);
         }

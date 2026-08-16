@@ -1,8 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 只枚举当前真正插着的设备实例 以及沿设备树向上读取父链
-// 注册表 Enum 树会把历史上插过的每一个设备都留着 本机实测键鼠类注册表 49 条而在场只有 8 条
-// 照着注册表做判断会报出一堆早就拔掉的设备 写改动也会写到不存在的设备上
-// 设备实例键下的 Control 子键虽然也标记在场 但它带特殊 ACL 非管理员读不到 不能当判据
 
 using System;
 using System.Collections.Generic;
@@ -55,7 +52,7 @@ namespace PaviseApp
                     node = parent;
                 }
             }
-            catch (Exception ex) { Logger.Log("设备父链读取失败 " + ex.Message); }
+            catch (Exception ex) { Logger.Log(Lang.T("log.presentdevices.1") + ex.Message); }
             return chain;
         }
 
@@ -104,7 +101,7 @@ namespace PaviseApp
                     data.cbSize = (uint)Marshal.SizeOf(typeof(SP_DEVINFO_DATA));
                 }
             }
-            catch (Exception ex) { Logger.Log("在场设备枚举失败 " + ex.Message); }
+            catch (Exception ex) { Logger.Log(Lang.T("log.presentdevices.2") + ex.Message); }
             finally
             {
                 if (set != IntPtr.Zero && set != new IntPtr(-1))

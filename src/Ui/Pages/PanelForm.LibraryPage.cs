@@ -115,7 +115,7 @@ namespace PaviseApp
                     Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
             bool forced = item.Profile.ForceTrigger;
             int overrides = item.Profile.Overrides.Count;
-            bool tagged = forced || overrides > 0 || item.HasColumn;
+            bool tagged = forced || overrides > 0;
             string path = item.Profile.ExecutablePath ?? item.Profile.Root ?? "";
             TextRenderer.DrawText(e.Graphics, path, Theme.UI(7.8f, false),
                     new Rectangle(tx, e.Bounds.Y + Theme.S(37),
@@ -131,10 +131,6 @@ namespace PaviseApp
                     tag = tag.Length > 0
                         ? Lang.T("v15.library.forced.tag") + " " + tag
                         : Lang.T("v15.library.forced.tag");
-                if (item.HasColumn)
-                    tag = tag.Length > 0
-                        ? Lang.T("lib.column.tag") + " " + tag
-                        : Lang.T("lib.column.tag");
                 TextRenderer.DrawText(e.Graphics, tag, Theme.UI(7.2f, true),
                         new Rectangle(e.Bounds.Right - right - Theme.S(84), e.Bounds.Y + Theme.S(36),
                             right + Theme.S(68), Theme.S(18)),
@@ -314,8 +310,8 @@ namespace PaviseApp
             if (files == null) return;
             string error = null;
             foreach (string file in files)
-                if (!gameMode.AddGameFile(file, out error) && error != "该游戏已经在列表中") break;
-            if (!string.IsNullOrEmpty(error) && error != "该游戏已经在列表中")
+                if (!gameMode.AddGameFile(file, out error) && error != Lang.T("t.gamemodelibrary.1")) break;
+            if (!string.IsNullOrEmpty(error) && error != Lang.T("t.gamemodelibrary.1"))
                 PaviseDialog.Warn(this, App.DisplayName, error);
             RefreshGames();
         }
@@ -387,27 +383,12 @@ namespace PaviseApp
         private sealed class GameLibraryItem
         {
             public readonly GameProfile Profile;
-            public readonly bool HasColumn;
             public bool Running;
             public GameLibraryItem(GameProfile profile, bool running)
             {
-                Profile = profile; Running = running; HasColumn = ProfileHasColumn(profile);
+                Profile = profile; Running = running;
             }
             public override string ToString() { return Profile == null ? "" : Profile.Name; }
-        }
-
-        private static bool ProfileHasColumn(GameProfile profile)
-        {
-            if (profile == null) return false;
-            return PathMentionsLol(profile.ExecutablePath) || PathMentionsLol(profile.Root) || PathMentionsLol(profile.Name);
-        }
-
-        private static bool PathMentionsLol(string text)
-        {
-            if (string.IsNullOrEmpty(text)) return false;
-            return text.IndexOf("League of Legends", StringComparison.OrdinalIgnoreCase) >= 0
-                || text.IndexOf("LeagueClient", StringComparison.OrdinalIgnoreCase) >= 0
-                || text.IndexOf("英雄联盟", StringComparison.Ordinal) >= 0;
         }
     }
 }

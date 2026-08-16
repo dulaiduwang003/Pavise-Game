@@ -297,8 +297,8 @@ namespace PaviseApp
                     if (!whitelistReset) whitelistError = gameMode.WhitelistLastError;
                 }
                 catch (Exception ex) { whitelistReset = false; whitelistError = ex.Message; }
-                if (whitelistReset) { Logger.Log("已恢复默认配置"); return; }
-                Logger.Log("默认配置已部分恢复 但白名单写入失败");
+                if (whitelistReset) { Logger.Log(Lang.T("log.traymenu.1")); return; }
+                Logger.Log(Lang.T("log.traymenu.2"));
                 try
                 {
                     Strip.BeginInvoke((MethodInvoker)delegate

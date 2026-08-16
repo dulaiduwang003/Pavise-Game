@@ -40,6 +40,19 @@ namespace PaviseApp
             catch { return null; }
         }
 
+        // bcdedit 的布尔显示随系统语言本地化 覆盖主流语言的是/否令牌
+        // 已知否定=显式关闭≈默认 不算残留 未知语言按残留处理但原样记录 还原写不回会显式报错而不是写反
+        private static readonly HashSet<string> YesTokens = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "yes", "true", "1", "是", "はい", "예", "да", "oui", "ja", "sí", "sì", "si", "sim",
+            "evet", "tak", "ano", "igen", "kyllä", "ναι", "כן"
+        };
+        private static readonly HashSet<string> NoTokens = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "no", "false", "0", "否", "いいえ", "아니요", "아니오", "нет", "non", "nein",
+            "não", "nao", "hayır", "hayir", "nie", "ne", "nem", "ei", "nej", "nei", "όχι", "לא"
+        };
+
         internal static List<KeyValuePair<string, string>> ParseOverridePairs(string enumText)
         {
             var hits = new List<KeyValuePair<string, string>>();
@@ -51,11 +64,11 @@ namespace PaviseApp
                 {
                     if (!line.StartsWith(name, StringComparison.OrdinalIgnoreCase)) continue;
                     string rest = line.Substring(name.Length).Trim().ToLowerInvariant();
-                    if (rest == "yes" || rest == "true" || rest == "1" || rest == "是")
+                    if (rest.Length == 0 || NoTokens.Contains(rest)) continue;
                     {
                         bool known = false;
                         foreach (KeyValuePair<string, string> kv in hits) if (kv.Key == name) { known = true; break; }
-                        if (!known) hits.Add(new KeyValuePair<string, string>(name, rest == "是" ? "yes" : rest));
+                        if (!known) hits.Add(new KeyValuePair<string, string>(name, YesTokens.Contains(rest) ? "yes" : rest));
                     }
                 }
                 if (line.StartsWith("tscsyncpolicy", StringComparison.OrdinalIgnoreCase))
@@ -106,7 +119,7 @@ namespace PaviseApp
                 List<KeyValuePair<string, string>> stale = StalePairs();
                 if (stale.Count == 0)
                 {
-                    Logger.Log("平台时钟校正 启动配置没有陈旧覆盖 无需改动");
+                    Logger.Log(Lang.T("log.platformclocktweak.1"));
                     return true;
                 }
                 var removed = new List<string>();
@@ -123,14 +136,14 @@ namespace PaviseApp
                         if (!Settings.SaveStr(RemovedKey, string.Join("|", removed.ToArray())))
                         {
                             removed.Remove(record);
-                            Logger.Log("平台时钟校正 " + kv.Key + " 快照无法持久化 保持原样");
+                            Logger.Log(Lang.T("log.platformclocktweak.2") + kv.Key + Lang.T("log.platformclocktweak.3"));
                             continue;
                         }
                         preRecorded = true;
                     }
                     if (RunBcdedit("/deletevalue {current} " + kv.Key) == null)
                     {
-                        Logger.Log("平台时钟校正 " + kv.Key + " 删除失败 保持原样");
+                        Logger.Log(Lang.T("log.platformclocktweak.2") + kv.Key + Lang.T("log.platformclocktweak.4"));
                         if (preRecorded)
                         {
                             removed.Remove(record);
@@ -143,10 +156,10 @@ namespace PaviseApp
                 List<string> after = StaleOverrides();
                 if (after.Count > 0)
                 {
-                    Logger.Log("平台时钟校正 仍有覆盖未能清除 " + string.Join(" ", after.ToArray()));
+                    Logger.Log(Lang.T("log.platformclocktweak.5") + string.Join(" ", after.ToArray()));
                     return false;
                 }
-                Logger.Log("平台时钟校正 已清除 " + string.Join(" ", names.ToArray()) + " 重启后回到系统默认计时");
+                Logger.Log(Lang.T("log.platformclocktweak.6") + string.Join(" ", names.ToArray()) + Lang.T("log.platformclocktweak.7"));
                 return true;
             }
         }
@@ -167,10 +180,10 @@ namespace PaviseApp
                 Settings.SaveStr(RemovedKey, string.Join("|", remain.ToArray()));
                 if (remain.Count == 0)
                 {
-                    Logger.Log("平台时钟校正 已把清除过的覆盖写回去 重启后生效");
+                    Logger.Log(Lang.T("log.platformclocktweak.8"));
                     return true;
                 }
-                Logger.Log("平台时钟校正 部分覆盖没能写回 " + string.Join(" ", remain.ToArray()));
+                Logger.Log(Lang.T("log.platformclocktweak.9") + string.Join(" ", remain.ToArray()));
                 return false;
             }
         }

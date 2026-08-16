@@ -99,7 +99,7 @@ namespace PaviseApp
         {
             if (loadFailed)
             {
-                Logger.Log("游戏档案此前读取失败 本次保存已跳过以免覆盖原文件 重启 Pavise 后重试");
+                Logger.Log(Lang.T("log.gameprofiles.1"));
                 return;
             }
             try
@@ -123,9 +123,9 @@ namespace PaviseApp
                 lines.AddRange(learned);
                 lines.AddRange(forced);
                 lines.AddRange(overrides);
-                AtomicFile.WriteLines(path, lines.ToArray(), "游戏档案");
+                AtomicFile.WriteLines(path, lines.ToArray(), Lang.T("t.gameprofiles.2"));
             }
-            catch (Exception ex) { Logger.LogFailure("游戏档案保存失败", ex); }
+            catch (Exception ex) { Logger.LogFailure(Lang.T("log.gameprofiles.3"), ex); }
         }
 
         private bool loadFailed;
@@ -147,18 +147,18 @@ namespace PaviseApp
                     {
                         TryBackup(path, path + ".legacy.bak");
                         legacyCleared = true;
-                        Logger.Log("检测到旧版本的游戏档案 " + lines[0]
-                            + " 已备份并废弃 打开游戏进到画面即可自动重建");
+                        Logger.Log(Lang.T("log.gameprofiles.4") + lines[0]
+                            + Lang.T("log.gameprofiles.5"));
                         return result;
                     }
                     loadFailed = true;
                     if (lines[0].StartsWith(HeaderPrefix, StringComparison.Ordinal))
-                        Logger.Log("游戏档案由更高版本的 Pavise 写入 " + lines[0]
-                            + " 已切换为只读 不会改写该文件");
+                        Logger.Log(Lang.T("log.gameprofiles.6") + lines[0]
+                            + Lang.T("log.gameprofiles.7"));
                     else
                     {
                         TryBackup(path, path + ".corrupt.bak");
-                        Logger.Log("游戏档案首行无法识别 已备份并切换为只读 不会改写该文件 重启 Pavise 重试");
+                        Logger.Log(Lang.T("log.gameprofiles.8"));
                     }
                     return result;
                 }
@@ -224,7 +224,7 @@ namespace PaviseApp
             catch (Exception ex)
             {
                 loadFailed = true;
-                Logger.LogFailure("游戏档案读取失败 已保护现有文件不被覆盖", ex);
+                Logger.LogFailure(Lang.T("log.gameprofiles.9"), ex);
             }
             return result;
         }

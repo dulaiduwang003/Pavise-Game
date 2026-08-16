@@ -28,7 +28,7 @@ namespace PaviseApp
 
         public string KindText
         {
-            get { return Integrated ? "核显" : "独显"; }
+            get { return Integrated ? Lang.T("t.gpuinventory.1") : Lang.T("t.gpuinventory.2"); }
         }
     }
 
@@ -141,7 +141,7 @@ namespace PaviseApp
                     if (key != null) keys.Add(key);
                 }
             }
-            catch (Exception ex) { Logger.Log("在场显卡枚举失败 " + ex.Message); }
+            catch (Exception ex) { Logger.Log(Lang.T("log.gpuinventory.3") + ex.Message); }
             return keys;
         }
 
@@ -170,6 +170,8 @@ namespace PaviseApp
             if (ven < 0 || dev < 0 || dev + 8 > hardwareId.Length) return null;
             return (hardwareId.Substring(ven, 8) + "&" + hardwareId.Substring(dev, 8)).ToUpperInvariant();
         }
+
+        private static bool degradeLogged;
 
         private static GpuAdapter[] Build()
         {
@@ -206,6 +208,12 @@ namespace PaviseApp
                             bool? driverReported = venDev != null
                                 && reportedIntegrated.TryGetValue(venDev, out reported)
                                 ? (bool?)reported : null;
+                            // DXCore 没答复时退回总线号/显存启发式 该猜测在 APU 与小显存老独显上会错 必须留痕
+                            if (driverReported == null && !degradeLogged)
+                            {
+                                degradeLogged = true;
+                                Logger.Log(Lang.T("log.gpuinventory.6") + name);
+                            }
                             list.Add(new GpuAdapter
                             {
                                 Name = name,
@@ -221,7 +229,7 @@ namespace PaviseApp
             }
             catch { }
             if (stale > 0)
-                Logger.Log("显卡枚举 跳过 " + stale + " 块已经不在机器上的卡 驱动类键留着历史记录 拔掉不会自己删");
+                Logger.Log(Lang.T("log.gpuinventory.4") + stale + Lang.T("log.gpuinventory.5"));
             return list.ToArray();
         }
 

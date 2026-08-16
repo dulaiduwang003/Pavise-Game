@@ -25,6 +25,8 @@ namespace PaviseApp
         public static void SampleIfDue(ICollection<int> gamePids)
         {
             if (gamePids == null || gamePids.Count == 0) return;
+            // 纯核显机全部显存都在共享段 高共享占用是常态不是溢出 该指标只对有独显的机器成立
+            if (GpuInventory.IntegratedOnly) return;
             long now = DateTime.UtcNow.Ticks;
             lock (lk)
             {

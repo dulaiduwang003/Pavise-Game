@@ -92,10 +92,7 @@ namespace PaviseApp
         public string Desc { get { return desc; } set { string v = value ?? ""; if (desc != v) { desc = v; Invalidate(); } } }
 
         private string meta = "";
-        // meta 行右侧要避开的宽度 物理像素 给卡片右下角的控件让位
         public int MetaReserve;
-        // host 与标题行对齐 而不是整卡垂直居中 卡片右下角另放控件时用
-        // Host 先于本属性摆好位置 所以赋值必须立刻重排 否则开关停在居中位
         private bool hostTop;
         public bool HostTop
         {
@@ -148,7 +145,6 @@ namespace PaviseApp
         public bool HasStatus { get { return status.Length > 0; } }
         public const int StatusLineH = 17;
 
-        // 上一次绘制时 描述想排几行 实际给了几行 差值就是被省略号吃掉的部分
         internal int DescLinesWanted { get; private set; }
         internal int DescLinesShown { get; private set; }
 
@@ -157,7 +153,6 @@ namespace PaviseApp
             string v = text ?? "";
             bool textChanged = v != status;
             bool changed = textChanged || ink != statusInk;
-            // 空到非空是首次填充不闪 否则整页建好一起闪一遍
             bool flash = textChanged && v.Length > 0 && status.Length > 0 && !string.IsNullOrEmpty(title);
             status = v; statusInk = ink;
             if (flash) Flash();
@@ -190,7 +185,6 @@ namespace PaviseApp
             ClearHoverIfOutside();
         }
 
-        // Host 之外手工摆进卡片的子控件也要参与悬停清理 否则光标从子控件直接离开卡片会留住高亮
         public void TrackChildHover(Control c)
         {
             c.MouseLeave += OnHostMouseLeave;
@@ -218,7 +212,6 @@ namespace PaviseApp
             if (e.Button == MouseButtons.Left) pressed = false;
             if (!was || e.Button != MouseButtons.Left) return;
             if (!ClientRectangle.Contains(e.Location)) return;
-            // 点整行默认展开折叠 想改开关就点开关本体 Toggle 自己吃掉这次点击
             if (collapsible) { Expanded = !expanded; return; }
             var t = host as Toggle;
             if (t != null && t.Enabled) t.Checked = !t.Checked;
@@ -266,7 +259,6 @@ namespace PaviseApp
             if (collapsible) DrawChevron(g, padL + textW + Theme.S(4));
             bool showDesc = desc.Length > 0 && ShowDesc;
 
-            // Value 放不挤压说明区的位置 说明区宽度必须和 AutoCardHeight 测高时一致 否则多折一行就被截断
             int valW = 0;
             Font valFont = Theme.UI(9f, false);
             if (val.Length > 0) valW = TextRenderer.MeasureText(g, val, valFont).Width + Theme.S(16);
@@ -325,7 +317,6 @@ namespace PaviseApp
             if (!showDesc) return;
 
             var dr = new Rectangle(padL, y + Theme.S(2), textW, Height - y - Theme.S(9) - metaPad);
-            // 一律换行 以前是空间不足两行就退回单行 结果描述被一刀截断看不全
             TextFormatFlags df = TextFormatFlags.Left | TextFormatFlags.WordBreak | TextFormatFlags.EndEllipsis;
             int lineH = TextRenderer.MeasureText("Ag", Theme.UI(8.5f, false)).Height;
             if (lineH > 0 && dr.Height >= lineH) dr.Height = dr.Height / lineH * lineH;
@@ -333,7 +324,7 @@ namespace PaviseApp
                 new Size(dr.Width, int.MaxValue), TextFormatFlags.WordBreak).Height;
             DescLinesWanted = lineH > 0 ? (wantH + lineH - 1) / lineH : 0;
             DescLinesShown = lineH > 0 ? dr.Height / lineH : 0;
-            TextRenderer.DrawText(g, desc, Theme.UI(8.5f, false), dr, Theme.Dim, df);
+            TextRenderer.DrawText(g, desc, Theme.UI(8.5f, false), dr, Theme.DimTint, df);
         }
 
         private void DrawChevron(Graphics g, int x)

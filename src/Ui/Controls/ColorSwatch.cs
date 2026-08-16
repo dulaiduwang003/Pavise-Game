@@ -12,7 +12,7 @@ namespace PaviseApp
     {
         public Color Swatch;
         public bool Selected;
-        public bool IsDefault;      // 「默认」块:选中它=清除该模式的自定义色 回到内置
+        public bool IsDefault;
         public Action Picked;
 
         public ColorSwatch(Color c)
@@ -46,7 +46,6 @@ namespace PaviseApp
 
             if (IsDefault)
             {
-                // 中心空心小圈 提示这是「默认/自动」而非固定色
                 int d = Theme.S(7);
                 var dot = new Rectangle(box.X + (box.Width - d) / 2, box.Y + (box.Height - d) / 2, d, d);
                 double luma = 0.299 * Swatch.R + 0.587 * Swatch.G + 0.114 * Swatch.B;

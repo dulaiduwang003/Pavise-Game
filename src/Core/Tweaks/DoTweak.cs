@@ -21,7 +21,10 @@ namespace PaviseApp
             lock (lk)
             {
                 if (active) return true;
-                bool registryOk = BgBw.Apply(1);
+                // 域机上该策略键归组策略管 刷新周期会覆盖本地写入并与还原互相打架 只走服务停启通道
+                bool registryOk = false;
+                if (!Native.IsDomainJoined()) registryOk = BgBw.Apply(1);
+                else Logger.Log(Lang.T("log.dotweak.9"));
                 int before = SvcState.Query(SvcName);
                 if (before == 4) Settings.SaveStr(StopFlag, "1");
                 bool confirmedStop;
@@ -36,15 +39,15 @@ namespace PaviseApp
                     {
                         SvcCtl.EnsureStarted(SvcName);
                         stopped = false;
-                        Logger.Log("DoSvc 停止状态无法持久化 已重新启动服务");
+                        Logger.Log(Lang.T("log.dotweak.1"));
                     }
                 }
                 else if (before == 4) Settings.SaveStr(StopFlag, "");
                 active = registryOk || stopped;
                 Logger.Log(active
-                    ? "后台下载已暂停 " + (registryOk ? "传递优化带宽 1 KB/s" : "带宽策略写入失败")
-                        + (confirmedStop ? " DoSvc 已停止" : "") + " "
-                    : "后台下载策略写入失败且 DoSvc 未停止 本轮未启用");
+                    ? Lang.T("log.dotweak.2") + (registryOk ? Lang.T("log.dotweak.3") : Lang.T("log.dotweak.4"))
+                        + (confirmedStop ? Lang.T("log.dotweak.5") : "") + " "
+                    : Lang.T("log.dotweak.6"));
                 return active;
             }
         }
@@ -58,9 +61,9 @@ namespace PaviseApp
                 if (Settings.LoadStr(StopFlag, "").Length > 0)
                 {
                     if (SvcCtl.EnsureStarted(SvcName)) { Settings.SaveStr(StopFlag, ""); did = true; }
-                    else Logger.Log("DoSvc 未能拉起 标志保留待下次重试");
+                    else Logger.Log(Lang.T("log.dotweak.7"));
                 }
-                if (did) Logger.Log("后台下载已还原");
+                if (did) Logger.Log(Lang.T("log.dotweak.8"));
                 active = false;
                 return !BgBw.HasBackup && Settings.LoadStr(StopFlag, "").Length == 0;
             }

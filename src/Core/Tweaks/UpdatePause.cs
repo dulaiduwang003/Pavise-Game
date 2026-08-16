@@ -49,11 +49,11 @@ namespace PaviseApp
                     if (Settings.LoadStr(Flag, "") != joined)
                     {
                         foreach (string n in justStopped) SvcCtl.EnsureStarted(n);
-                        Logger.Log("更新暂停状态无法持久化 已重新启动本轮停止的服务");
+                        Logger.Log(Lang.T("log.updatepause.1"));
                         return false;
                     }
                     if (justStopped.Count > 0)
-                        Logger.Log("已暂停 Windows 更新服务 " + string.Join(" + ", justStopped.ToArray()));
+                        Logger.Log(Lang.T("log.updatepause.2") + string.Join(" + ", justStopped.ToArray()));
                 }
                 active = true;
                 return true;
@@ -75,8 +75,8 @@ namespace PaviseApp
                         if (!ok) remain.Add(n);
                     }
                     Settings.SaveStr(Flag, string.Join("|", remain.ToArray()));
-                    if (remain.Count == 0) Logger.Log("Windows 更新服务已恢复");
-                    else Logger.Log("部分更新服务未能拉起 " + string.Join(",", remain.ToArray()) + " 标志保留待重试");
+                    if (remain.Count == 0) Logger.Log(Lang.T("log.updatepause.3"));
+                    else Logger.Log(Lang.T("log.updatepause.4") + string.Join(",", remain.ToArray()) + Lang.T("log.svcpause.6"));
                 }
                 active = false;
                 return Settings.LoadStr(Flag, "").Length == 0;

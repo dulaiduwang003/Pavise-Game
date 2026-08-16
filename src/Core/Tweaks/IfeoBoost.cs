@@ -1,10 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 受保护游戏的本体提优路径 经 IFEO PerfOptions 由内核在进程创建时应用
-// 内核在 NtCreateUserProcess 阶段读这些值 早于反作弊驱动为该进程注册句柄保护 因此拦不住
-// 关键:这条路径全程不开游戏句柄、不枚举线程、不碰运行中的进程 只写 HKLM 注册表
-//       所以不触发导致 CF 冻结的 ObRegisterCallbacks 句柄检测 是给"开不了句柄的受保护游戏"安全提优的唯一路子
-// 代价是只对"下次启动"生效 所以必须在游戏启动前就位 见 PreArmAll
-// 优先级用 Above Normal 而不是 High 因为这条路径写不进进程 智能保帧降不了档 台架实测 CPU 吃满时整进程 High 恶化尾部帧
 
 using System;
 using Microsoft.Win32;
@@ -127,7 +122,7 @@ namespace PaviseApp
                     }
                     if (!RegOf(exe).Apply(HighPriority))
                     {
-                        Logger.Log("后备提优 IFEO 写入失败 " + exe + " 本轮跳过");
+                        Logger.Log(Lang.T("log.ifeoboost.1") + exe + Lang.T("log.ifeoboost.2"));
                         return false;
                     }
                     bool ioOk = IoRegOf(exe).Apply(HighIoPriority);
@@ -138,11 +133,11 @@ namespace PaviseApp
                         RegOf(exe).Restore();
                         if (ioOk) IoRegOf(exe).Restore();
                         if (pgOk) PageRegOf(exe).Restore();
-                        Logger.Log("后备提优 记账无法持久化 已还原 IFEO " + exe + " ");
+                        Logger.Log(Lang.T("log.ifeoboost.3") + exe + " ");
                         return false;
                     }
-                    string extra = "高优先级" + (ioOk ? " + 高IO" : "") + (pgOk ? " + 高页面优先级" : "");
-                    Logger.Log((preArm ? "后备提优已预置 " : "后备提优已登记") + exe + " " + extra + " ");
+                    string extra = Lang.T("log.gamemodeboost.28") + (ioOk ? Lang.T("t.ifeoboost.4") : "") + (pgOk ? Lang.T("t.ifeoboost.5") : "");
+                    Logger.Log((preArm ? Lang.T("log.ifeoboost.6") : Lang.T("log.ifeoboost.7")) + exe + " " + extra + " ");
                     return true;
                 }
                 catch { return false; }
@@ -163,9 +158,9 @@ namespace PaviseApp
                     CleanupEmpty(exe, Settings.LoadStr("IfeoMk_" + exe, "11"));
                     Settings.SaveStr("IfeoMk_" + exe, "");
                     RemoveFromList(exe);
-                    Logger.Log("后备提优已撤销 " + exe);
+                    Logger.Log(Lang.T("log.ifeoboost.8") + exe);
                 }
-                if (!all) Logger.Log("后备提优 部分 IFEO 还原失败 快照保留待下次重试");
+                if (!all) Logger.Log(Lang.T("log.ifeoboost.9"));
                 return all;
             }
         }

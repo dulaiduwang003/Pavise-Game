@@ -514,6 +514,56 @@ namespace PaviseApp
             return osBuild;
         }
 
+        [StructLayout(LayoutKind.Sequential)]
+        private struct SystemPowerStatusNative
+        {
+            public byte AcLineStatus, BatteryFlag, BatteryLifePercent, SystemStatusFlag;
+            public int BatteryLifeTime, BatteryFullLifeTime;
+        }
+        [DllImport("kernel32.dll")] private static extern bool GetSystemPowerStatus(out SystemPowerStatusNative status);
+
+        [DllImport("netapi32.dll")] private static extern int NetGetJoinInformation(string server, out IntPtr name, out int status);
+        [DllImport("netapi32.dll")] private static extern int NetApiBufferFree(IntPtr buffer);
+
+        private static int domainJoined = -1;
+        // 域机上组策略会周期性刷新策略键 本地写入会被反复覆盖并互相打架
+        public static bool IsDomainJoined()
+        {
+            if (domainJoined < 0)
+            {
+                try
+                {
+                    IntPtr name; int status;
+                    if (NetGetJoinInformation(null, out name, out status) != 0) domainJoined = 0;
+                    else
+                    {
+                        if (name != IntPtr.Zero) NetApiBufferFree(name);
+                        domainJoined = status == 3 ? 1 : 0;
+                    }
+                }
+                catch { domainJoined = 0; }
+            }
+            return domainJoined == 1;
+        }
+
+        private static int hasBattery = -1;
+        // BatteryFlag 128=无电池 255=未知 未知一律按无电池处理 避免台式机被误判为笔记本
+        public static bool HasSystemBattery()
+        {
+            if (hasBattery < 0)
+            {
+                try
+                {
+                    SystemPowerStatusNative s;
+                    hasBattery = GetSystemPowerStatus(out s)
+                        && s.BatteryFlag != 128 && s.BatteryFlag != 255
+                        && s.AcLineStatus != 255 ? 1 : 0;
+                }
+                catch { hasBattery = 0; }
+            }
+            return hasBattery == 1;
+        }
+
         public const int PROCESS_SET_QUOTA = 0x0100;
         public const int PROCESS_SET_INFORMATION = 0x0200;
         public const int PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;

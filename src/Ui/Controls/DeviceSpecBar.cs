@@ -10,9 +10,9 @@ namespace PaviseApp
 {
     internal sealed class DeviceSpecBar : FxControl
     {
-        private static readonly string[] Keys = { "v16.spec.cpu", "v16.spec.gpu", "v16.spec.mem", "v16.spec.hags" };
-        private static readonly string[] Icons = { "chip", "gpu", "settings", "shield" };
-        private string[] values = { " ", " ", " ", " " };
+        private static readonly string[] Keys = { "v16.spec.cpu", "v16.spec.gpu", "v16.spec.mem" };
+        private static readonly string[] Icons = { "chip", "gpu", "settings" };
+        private string[] values = { " ", " ", " " };
 
         public DeviceSpecBar()
         {
@@ -24,7 +24,7 @@ namespace PaviseApp
 
         public void SetValues(string[] next)
         {
-            if (next == null || next.Length < 4) return;
+            if (next == null || next.Length < 3) return;
             values = next;
             Invalidate();
         }
@@ -42,14 +42,14 @@ namespace PaviseApp
             var full = new Rectangle(0, 0, Width, Height);
             using (var bg = new SolidBrush(Theme.Card)) g.FillRectangle(bg, full);
 
-            int slice = Width / 4;
             int skew = Theme.S(14);
-            for (int i = 0; i < 4; i++)
+            int[] xs = SliceEdges();
+            for (int i = 0; i < 3; i++)
             {
-                int x = i * slice;
+                int x = xs[i];
                 if (i % 2 == 1)
                     using (var tint = new SolidBrush(Color.FromArgb(16, 255, 255, 255)))
-                        g.FillPolygon(tint, Cell(x, slice, skew, i));
+                        g.FillPolygon(tint, Cell(x, xs[i + 1] - x, skew, i));
                 if (i > 0)
                     using (var pen = new Pen(Color.FromArgb(70, accent), Math.Max(1f, Theme.S(1))))
                         g.DrawLine(pen, x + skew, 0, x - skew, Height);
@@ -61,9 +61,10 @@ namespace PaviseApp
 
             Font kf = Theme.UI(7.4f, true);
             Font vf = Theme.UI(9.6f, true);
-            for (int i = 0; i < 4; i++)
+            for (int i = 0; i < 3; i++)
             {
-                int x = i * slice;
+                int x = xs[i];
+                int slice = xs[i + 1] - x;
                 int pad = Theme.S(16);
                 var icon = new Rectangle(x + pad, Theme.S(13), Theme.S(15), Theme.S(15));
                 Glyphs_Draw(g, Icons[i], icon, Color.FromArgb(210, accent));
@@ -76,6 +77,12 @@ namespace PaviseApp
                         g.DrawString(values[i], vf, vb, box, fmt);
                 }
             }
+        }
+
+        // 内存值短 让出宽度给处理器与显卡的长型号名
+        private int[] SliceEdges()
+        {
+            return new[] { 0, Width * 38 / 100, Width * 80 / 100, Width };
         }
 
         private static void Glyphs_Draw(Graphics g, string name, Rectangle box, Color color)

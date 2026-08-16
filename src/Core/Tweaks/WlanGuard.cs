@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 对局中给无线网卡开媒体流模式 抑制周期性后台信道扫描的延迟突刺
-// 该设置随句柄存活 进程退出系统自动还原 天生崩溃安全
 
 using System;
 using System.Runtime.InteropServices;
@@ -61,6 +60,30 @@ namespace PaviseApp
             finally { WlanFreeMemory(list); }
         }
 
+        private static int hasWifiCached = -1;
+
+        // 本机是否存在无线网卡 UI 据此置灰 WlanSvc 未运行或枚举不到接口都算无
+        public static bool HasWirelessInterface()
+        {
+            if (hasWifiCached < 0)
+            {
+                int result = 0;
+                try
+                {
+                    IntPtr handle;
+                    uint negotiated;
+                    if (WlanOpenHandle(ClientVersion, IntPtr.Zero, out negotiated, out handle) == 0)
+                    {
+                        try { if (EnumInterfaces(handle).Length > 0) result = 1; }
+                        finally { WlanCloseHandle(handle, IntPtr.Zero); }
+                    }
+                }
+                catch { }
+                hasWifiCached = result;
+            }
+            return hasWifiCached == 1;
+        }
+
         public static bool Activate()
         {
             lock (lk)
@@ -73,7 +96,7 @@ namespace PaviseApp
                     if (!noWifiLogged)
                     {
                         noWifiLogged = true;
-                        Logger.Log("无线扫描抑制 打不开无线服务 本机可能没有无线网卡 此项不生效");
+                        Logger.Log(Lang.T("log.wlanguard.1"));
                     }
                     return true;
                 }
@@ -86,7 +109,7 @@ namespace PaviseApp
                     if (!noWifiLogged)
                     {
                         noWifiLogged = true;
-                        Logger.Log("无线扫描抑制 本机没有无线网卡 此项不生效");
+                        Logger.Log(Lang.T("log.wlanguard.2"));
                     }
                     return true;
                 }
@@ -98,12 +121,12 @@ namespace PaviseApp
                 if (ok == 0)
                 {
                     WlanCloseHandle(handle, IntPtr.Zero);
-                    Logger.Log("无线扫描抑制 媒体流模式写入被拒 本轮跳过");
+                    Logger.Log(Lang.T("log.wlanguard.3"));
                     return false;
                 }
                 session = handle;
                 guardedCount = ok;
-                Logger.Log("无线扫描抑制 已对 " + ok + " 个无线网卡开启媒体流模式 后台信道扫描暂停 退出对局恢复");
+                Logger.Log(Lang.T("log.wlanguard.4") + ok + Lang.T("log.wlanguard.5"));
                 return true;
             }
         }
@@ -123,7 +146,7 @@ namespace PaviseApp
                 catch { }
                 WlanCloseHandle(session, IntPtr.Zero);
                 session = IntPtr.Zero;
-                if (guardedCount > 0) Logger.Log("无线扫描抑制 已恢复 " + guardedCount + " 个无线网卡的正常扫描");
+                if (guardedCount > 0) Logger.Log(Lang.T("log.wlanguard.6") + guardedCount + Lang.T("log.wlanguard.7"));
                 guardedCount = 0;
                 return true;
             }

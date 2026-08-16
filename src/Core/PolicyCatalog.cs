@@ -12,8 +12,7 @@ namespace PaviseApp
         Bool = 0,
         Enum = 1,
         Choice = 2,
-        MaskHex = 3,
-        FpsCap = 4
+        MaskHex = 3
     }
 
     internal sealed class PolicyItem
@@ -56,19 +55,15 @@ namespace PaviseApp
         public const string KeyPauseUpdate = "GmPauseUpdate";
         public const string KeyWlanGuard = "GmWlanGuard";
         public const string KeyAwake = "GmAwake";
-        public const string KeyGameDvrOff = "GameDvrOff";
         public const string KeyNvMaxPerf = "NvMaxPerf";
         public const string KeyNvLowLat = "NvLowLat";
         public const string KeyNvSmoothMotion = "NvSmoothMotion";
         public const string KeyNvShaderCache = "NvShaderCache";
         public const string KeyNvAnselOff = "NvAnselOff";
         public const string KeyNvRebar = "NvRebar";
-        public const string KeyNvBattFull = "NvBattFull";
-        public const string KeyNvFrl = "NvFrl";
         public const string KeyNvDlss = "NvDlss";
         public const string KeyAmdAntiLag = "AmdAntiLag";
         public const string KeyAmdAfmf = "AmdAfmf";
-        public const string KeyAmdFrl = "AmdFrl";
 
         public const string GroupMode = "cfg.group.mode";
         public const string GroupBackground = "cfg.group.bg";
@@ -76,11 +71,6 @@ namespace PaviseApp
         public const string GroupMemPower = "cfg.group.mempower";
         public const string GroupEnvironment = "cfg.group.env";
         public const string GroupGraphics = "cfg.group.gpu";
-
-        public const int FrlMin = 30;
-        public const int FrlMax = 500;
-
-        private static readonly string[] FrlChoices = { "off", "60", "120", "240", "screen" };
 
         private static readonly PolicyItem[] Items =
         {
@@ -96,14 +86,13 @@ namespace PaviseApp
             new PolicyItem(KeyStrictCores, PolicyValueKind.Bool, "0", "cfg.strictcores", GroupCores, null),
             new PolicyItem(KeyCoreDomainAlt, PolicyValueKind.Bool, "0", "cfg.domainalt", GroupCores, null),
             new PolicyItem(KeyCoreMask, PolicyValueKind.MaskHex, "", "cfg.coremask", GroupCores, null),
-            // 默认值必须与 GameMode 启动加载的默认一致 否则键未写入时全局与逐游戏快照解析出两个值
             new PolicyItem(KeyStandbySweep, PolicyValueKind.Bool, "1", "gm.standby", GroupMemPower, null),
             new PolicyItem(KeyPowerPlan, PolicyValueKind.Bool, "1", "plan.pick.title", GroupMemPower, null),
             new PolicyItem(KeyPauseDl, PolicyValueKind.Bool, "1", "gm.pausedl", GroupEnvironment, null),
             new PolicyItem(KeyPauseUpdate, PolicyValueKind.Bool, "0", "gm.pausewu", GroupEnvironment, null),
             new PolicyItem(KeyWlanGuard, PolicyValueKind.Bool, "0", "gm.wlanguard", GroupEnvironment, null),
+            // Game DVR 不做逐游戏项:游戏在启动那刻读取该标志 而逐游戏覆盖要等检测到游戏才应用 永远迟到
             new PolicyItem(KeyAwake, PolicyValueKind.Bool, "1", "set.awake", GroupEnvironment, null),
-            new PolicyItem(KeyGameDvrOff, PolicyValueKind.Bool, "1", "set.dvr", GroupEnvironment, null),
             new PolicyItem(KeyNvMaxPerf, PolicyValueKind.Bool, "0", "set.nvmax", GroupGraphics, null),
             new PolicyItem(KeyNvLowLat, PolicyValueKind.Choice, "off", "set.nvll", GroupGraphics,
                 new[] { "off", "on", "ultra" }),
@@ -111,13 +100,10 @@ namespace PaviseApp
             new PolicyItem(KeyNvShaderCache, PolicyValueKind.Bool, "0", "set.nvshader", GroupGraphics, null),
             new PolicyItem(KeyNvAnselOff, PolicyValueKind.Bool, "0", "set.nvansel", GroupGraphics, null),
             new PolicyItem(KeyNvRebar, PolicyValueKind.Bool, "0", "set.nvrebar", GroupGraphics, null),
-            new PolicyItem(KeyNvBattFull, PolicyValueKind.Bool, "0", "set.nvbatt", GroupGraphics, null),
-            new PolicyItem(KeyNvFrl, PolicyValueKind.FpsCap, "off", "set.nvfrl", GroupGraphics, FrlChoices),
             new PolicyItem(KeyNvDlss, PolicyValueKind.Choice, "off", "set.nvdlss", GroupGraphics,
                 new[] { "off", "latest", "j", "k" }),
             new PolicyItem(KeyAmdAntiLag, PolicyValueKind.Bool, "0", "set.amdalag", GroupGraphics, null),
-            new PolicyItem(KeyAmdAfmf, PolicyValueKind.Bool, "0", "set.amdafmf", GroupGraphics, null),
-            new PolicyItem(KeyAmdFrl, PolicyValueKind.FpsCap, "off", "set.amdfrl", GroupGraphics, FrlChoices)
+            new PolicyItem(KeyAmdAfmf, PolicyValueKind.Bool, "0", "set.amdafmf", GroupGraphics, null)
         };
 
         private static readonly Dictionary<string, PolicyItem> ByKey = BuildIndex();
@@ -167,15 +153,6 @@ namespace PaviseApp
                     foreach (string choice in item.Choices)
                         if (string.Equals(choice, v, StringComparison.OrdinalIgnoreCase)) return choice;
                     return item.Fallback;
-                case PolicyValueKind.FpsCap:
-                    if (v.Equals("off", StringComparison.OrdinalIgnoreCase)) return "off";
-                    if (v.Equals("screen", StringComparison.OrdinalIgnoreCase)) return "screen";
-                    int fps;
-                    if (!int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out fps))
-                        return item.Fallback;
-                    if (fps < FrlMin) fps = FrlMin;
-                    if (fps > FrlMax) fps = FrlMax;
-                    return fps.ToString(CultureInfo.InvariantCulture);
                 default:
                     if (v.Length == 0) return "";
                     ulong mask;

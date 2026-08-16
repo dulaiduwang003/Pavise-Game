@@ -1,6 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 暂停并恢复索引和预取服务
-// v1.8.0.2 功能已下架 类保留仅为还原旧版本停掉的服务残留 见 VersionMigrations 退役登记
 
 using System;
 using System.Collections.Generic;
@@ -57,14 +56,14 @@ namespace PaviseApp
                     if (Settings.LoadStr(Flag, "") != string.Join("|", owned.ToArray()))
                     {
                         foreach (string name in justStopped) SvcCtl.EnsureStarted(name);
-                        Logger.Log("服务暂停状态无法持久化 已重新启动本轮停止的服务");
+                        Logger.Log(Lang.T("log.svcpause.1"));
                         active = false;
                         return false;
                     }
                     if (confirmedStopped.Count > 0)
-                        Logger.Log("已暂停索引和预取服务 " + string.Join(" ", confirmedStopped.ToArray()));
+                        Logger.Log(Lang.T("log.svcpause.2") + string.Join(" ", confirmedStopped.ToArray()));
                     else if (justStopped.Count > 0)
-                        Logger.Log("已请求停止索引和预取服务 尚未确认停止 " + string.Join(" ", justStopped.ToArray()));
+                        Logger.Log(Lang.T("log.svcpause.3") + string.Join(" ", justStopped.ToArray()));
                 }
                 active = true;
                 return true;
@@ -86,8 +85,8 @@ namespace PaviseApp
                         if (!ok) remain.Add(n);
                     }
                     Settings.SaveStr(Flag, string.Join("|", remain.ToArray()));
-                    if (remain.Count == 0) Logger.Log("索引和预取服务已恢复");
-                    else Logger.Log("部分服务未能拉起 " + string.Join(" ", remain.ToArray()) + " 标志保留待重试");
+                    if (remain.Count == 0) Logger.Log(Lang.T("log.svcpause.4"));
+                    else Logger.Log(Lang.T("log.svcpause.5") + string.Join(" ", remain.ToArray()) + Lang.T("log.svcpause.6"));
                 }
                 active = false;
                 return Settings.LoadStr(Flag, "").Length == 0;

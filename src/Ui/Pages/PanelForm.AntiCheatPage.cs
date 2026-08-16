@@ -58,7 +58,6 @@ namespace PaviseApp
             RefreshAcGroupStates();
         }
 
-        // 卡片统一高度 左列标题 状态行 说明 底部进程名 右列上开关下档位
         private const int AcCardH = 104;
         private const int AcTierW = 210;
 
@@ -73,7 +72,6 @@ namespace PaviseApp
             card.MetaReserve = Theme.S(AcTierW + 30);
 
             var lvl = new TierPicker();
-            // 先定值再定尺寸 滑块直接落在当前档位 建页时不播动画
             lvl.Value = tamer.GroupLevel(key);
             lvl.Size = new Size(Theme.S(AcTierW), Theme.S(30));
             lvl.Changed = delegate(SuppressionLevel v) { tamer.SetGroupLevel(key, v); };

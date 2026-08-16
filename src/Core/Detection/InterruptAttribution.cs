@@ -1,7 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 用内核 ETW 会话抓 DPC 与 ISR 例程地址 映射到驱动模块 找出中断来源
-// 用自己的独立系统日志会话 Win10 2004 起支持 不碰全局 NT Kernel Logger 不影响 WPR xperf 这类工具
-// 老系统不支持独立系统会话时如实跳过 不做劫持
 
 using System;
 using System.Collections.Generic;
@@ -82,10 +80,10 @@ namespace PaviseApp
                     }
                     if (rc == ErrorInvalidParameter)
                     {
-                        Logger.Log("中断来源 本机系统不支持独立内核会话 跳过归因");
+                        Logger.Log(Lang.T("log.interruptattribution.1"));
                         return false;
                     }
-                    if (rc != 0) { Logger.Log("中断来源 会话创建失败 " + rc); return false; }
+                    if (rc != 0) { Logger.Log(Lang.T("log.interruptattribution.2") + rc); return false; }
                 }
                 finally { Marshal.FreeHGlobal(props); }
 
@@ -97,7 +95,7 @@ namespace PaviseApp
                 traceHandle = OpenTrace(ref logfile);
                 if (traceHandle == 0xFFFFFFFFFFFFFFFF || traceHandle == 0)
                 {
-                    Logger.Log("中断来源 打开实时会话失败 " + Marshal.GetLastWin32Error());
+                    Logger.Log(Lang.T("log.interruptattribution.3") + Marshal.GetLastWin32Error());
                     StopStale();
                     return false;
                 }
@@ -125,7 +123,7 @@ namespace PaviseApp
             var result = new InterruptAttributionResult();
             lock (gate)
             {
-                if (!started) { result.Error = "未启动"; return result; }
+                if (!started) { result.Error = Lang.T("t.interruptattribution.4"); return result; }
                 StopStale();
                 try { if (traceHandle != 0) CloseTrace(traceHandle); } catch { }
                 bool workerDone = true;
@@ -133,7 +131,7 @@ namespace PaviseApp
                 started = false;
                 if (!workerDone)
                 {
-                    result.Error = "采集线程未按时退出 放弃本次归因";
+                    result.Error = Lang.T("t.interruptattribution.5");
                     return result;
                 }
                 keepAlive = null;
@@ -156,7 +154,7 @@ namespace PaviseApp
                     return tb.CompareTo(ta);
                 });
                 result.Ok = dpcTotal + isrTotal > 0;
-                if (!result.Ok) result.Error = "窗口内没有采到中断事件";
+                if (!result.Ok) result.Error = Lang.T("t.interruptattribution.6");
                 return result;
             }
         }

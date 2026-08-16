@@ -26,7 +26,6 @@ namespace PaviseApp
         private const uint IdEnumPhysicalGPUs = 0xE5AC921F;
         private const uint IdGpuGetPerfDecreaseInfo = 0x7F7F4600;
         private const uint IdSysGetDriverAndBranchVersion = 0x2926AAAD;
-        // 功耗策略为私有接口 魔数与结构布局取自 ccminer/Afterburner 一系的公开逆向 单位为百分比*1000
         private const uint IdClientPowerPoliciesGetInfo = 0x34206D86;
         private const uint IdClientPowerPoliciesGetStatus = 0x70916171;
         private const uint IdClientPowerPoliciesSetStatus = 0xAD95F5ED;
@@ -50,12 +49,10 @@ namespace PaviseApp
         public const uint SettingRebarSizeLimit = 0x000F00FF;
         public const uint SettingDlssSrOverride = 0x10E41E01;
         public const uint SettingDlssSrPreset = 0x10E41DF3;
-        public const uint SettingBatteryBoostAppFps = 0x10115C8C;
         public const uint RebarSizeDefault = 0x40000000;
         public const uint DlssPresetJ = 0x0000000A;
         public const uint DlssPresetK = 0x0000000B;
         public const uint DlssPresetLatest = 0x00FFFFFF;
-        public const uint BatteryFpsUncapped = 0x3FF;
         public const uint MinDriverForDlssOverride = 56614;
 
         [DllImport("nvapi64.dll", EntryPoint = "nvapi_QueryInterface", CallingConvention = CallingConvention.Cdecl)]
@@ -462,7 +459,6 @@ namespace PaviseApp
             catch { return IntPtr.Zero; }
         }
 
-        // 读取功耗墙 单位 千分比 100000=100% current/def/max 任一读不到即整体失败
         public static bool TryGetPowerLimit(out uint current, out uint def, out uint max)
         {
             current = 0; def = 0; max = 0;

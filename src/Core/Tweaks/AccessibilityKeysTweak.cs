@@ -1,8 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 关掉筛选键 粘滞键 切换键的生效位与热键位 可逆
-// 依据 筛选键按微软自己的定义就是让键盘忽略短促或重复的击键 开着等于在输入路径上主动插入延迟
-// 热键位是另一半问题 长按或连按 Shift 会在全屏游戏里弹窗打断 这两处是全部键鼠优化里唯一能救回两位数毫秒的软件项
-// 写的是 HKCU 不需要管理员 不需要重启 写完调 SystemParametersInfo 让当前会话立刻生效
 
 using System;
 using System.Runtime.InteropServices;
@@ -41,21 +38,21 @@ namespace PaviseApp
         public static string Describe()
         {
             AccessibilityState st = InputChainProbe.ReadAccessibility();
-            if (!st.Read) return "读不到辅助功能设置 这一项本次不做判断";
-            if (EnabledByPavise) return "生效位与热键位已清 拨回开关即还原系统原值";
-            if (!st.AnyNeedsFix) return "筛选键 粘滞键 切换键都没开 热键也没激活 不用处理";
+            if (!st.Read) return Lang.T("t.accessibilitykeystweak.1");
+            if (EnabledByPavise) return Lang.T("t.accessibilitykeystweak.2");
+            if (!st.AnyNeedsFix) return Lang.T("t.accessibilitykeystweak.3");
 
             var parts = new System.Collections.Generic.List<string>();
             if (AccessibilityFlags.IsOn(st.FilterKeys))
-                parts.Add("筛选键正开着 每次击键要等 " + st.DelayBeforeAcceptanceMs + " 毫秒才被接受");
+                parts.Add(Lang.T("t.accessibilitykeystweak.4") + st.DelayBeforeAcceptanceMs + Lang.T("t.accessibilitykeystweak.5"));
             else if (AccessibilityFlags.HotkeyOn(st.FilterKeys))
-                parts.Add("筛选键热键激活 长按右 Shift 八秒会弹窗打断游戏");
-            if (AccessibilityFlags.IsOn(st.StickyKeys)) parts.Add("粘滞键正开着");
+                parts.Add(Lang.T("t.accessibilitykeystweak.6"));
+            if (AccessibilityFlags.IsOn(st.StickyKeys)) parts.Add(Lang.T("t.accessibilitykeystweak.7"));
             else if (AccessibilityFlags.HotkeyOn(st.StickyKeys))
-                parts.Add("粘滞键热键激活 连按五次 Shift 会弹窗打断游戏");
-            if (AccessibilityFlags.IsOn(st.ToggleKeys)) parts.Add("切换键正开着");
+                parts.Add(Lang.T("t.accessibilitykeystweak.8"));
+            if (AccessibilityFlags.IsOn(st.ToggleKeys)) parts.Add(Lang.T("t.accessibilitykeystweak.9"));
             else if (AccessibilityFlags.HotkeyOn(st.ToggleKeys))
-                parts.Add("切换键热键激活 长按 NumLock 五秒会弹窗打断游戏");
+                parts.Add(Lang.T("t.accessibilitykeystweak.10"));
             return string.Join("  ", parts.ToArray());
         }
 
@@ -66,22 +63,22 @@ namespace PaviseApp
                 AccessibilityState st = InputChainProbe.ReadAccessibility();
                 if (!st.Read)
                 {
-                    Logger.Log("辅助功能拦截 读不到当前设置 本次不改动");
+                    Logger.Log(Lang.T("log.accessibilitykeystweak.11"));
                     return false;
                 }
 
                 bool ok = true;
-                ok &= WriteOne(FilterReg, st.FilterKeys, "筛选键");
-                ok &= WriteOne(StickyReg, st.StickyKeys, "粘滞键");
-                ok &= WriteOne(ToggleReg, st.ToggleKeys, "切换键");
+                ok &= WriteOne(FilterReg, st.FilterKeys, Lang.T("t.systemauditverdicts.7"));
+                ok &= WriteOne(StickyReg, st.StickyKeys, Lang.T("t.accessibilitykeystweak.12"));
+                ok &= WriteOne(ToggleReg, st.ToggleKeys, Lang.T("t.accessibilitykeystweak.13"));
                 PushToSession();
 
                 if (ok)
                 {
                     Settings.Save(FlagKey, true);
-                    Logger.Log("辅助功能拦截 筛选键 粘滞键 切换键的生效位与热键位已清");
+                    Logger.Log(Lang.T("log.accessibilitykeystweak.14"));
                 }
-                else Logger.Log("辅助功能拦截 部分项写入失败 已写入的仍可还原");
+                else Logger.Log(Lang.T("log.accessibilitykeystweak.15"));
                 return ok;
             }
         }
@@ -91,7 +88,7 @@ namespace PaviseApp
             int target = AccessibilityFlags.Sanitize(current);
             if (target == current && !reg.HasBackup) return true;
             bool ok = reg.Apply(target.ToString());
-            if (!ok) Logger.Log("辅助功能拦截 " + label + " 写入或回读失败");
+            if (!ok) Logger.Log(Lang.T("log.accessibilitykeystweak.16") + label + Lang.T("log.accessibilitykeystweak.17"));
             return ok;
         }
 
@@ -107,9 +104,9 @@ namespace PaviseApp
                 if (all)
                 {
                     Settings.Save(FlagKey, false);
-                    Logger.Log("辅助功能拦截 已还原系统原值");
+                    Logger.Log(Lang.T("log.accessibilitykeystweak.18"));
                 }
-                else Logger.Log("辅助功能拦截 部分项还原失败 快照保留待下次重试");
+                else Logger.Log(Lang.T("log.accessibilitykeystweak.19"));
                 return all;
             }
         }

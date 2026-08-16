@@ -25,7 +25,7 @@ namespace PaviseApp
             }
         }
 
-        public static void SampleIfDue()
+        public static void SampleIfDue(string gameExePath)
         {
             if (!NvApi.Available) return;
             long now = DateTime.UtcNow.Ticks;
@@ -34,6 +34,8 @@ namespace PaviseApp
                 if (now < nextSampleTicks) return;
                 nextSampleTicks = now + MinIntervalSeconds * TimeSpan.TicksPerSecond;
             }
+            // 混合显卡机上游戏被钉在核显时独显处于 RTD3 休眠 NvAPI 查询会反复唤醒它 且采样对该游戏无归因意义
+            if (GpuInventory.Hybrid && GameExeTweaks.PrefersIntegrated(gameExePath)) return;
             uint mask;
             if (!TryReadMask(out mask)) return;
             lock (lk)
@@ -77,24 +79,24 @@ namespace PaviseApp
             lock (lk) { n = samples; t = thermalHits; p = powerHits; b = batteryHits; }
             if (n < MinSamplesForVerdict) return null;
             var parts = new List<string>();
-            if (p > 0) parts.Add("功耗墙 " + Percent(p, n));
-            if (t > 0) parts.Add("温度墙 " + Percent(t, n));
-            if (b > 0) parts.Add("电池限制 " + Percent(b, n));
+            if (p > 0) parts.Add(Lang.T("t.gputhrottleprobe.1") + Percent(p, n));
+            if (t > 0) parts.Add(Lang.T("t.gputhrottleprobe.2") + Percent(t, n));
+            if (b > 0) parts.Add(Lang.T("t.gputhrottleprobe.3") + Percent(b, n));
             if (parts.Count == 0) return null;
-            return string.Join(" ", parts.ToArray()) + " 这局共查 " + n + " 次";
+            return string.Join(" ", parts.ToArray()) + Lang.T("t.gputhrottleprobe.4") + n + Lang.T("t.gputhrottleprobe.5");
         }
 
         public static string InstantText()
         {
             uint mask;
             if (!TryReadMask(out mask)) return null;
-            if (mask == 0) return "无限制";
+            if (mask == 0) return Lang.T("t.gputhrottleprobe.6");
             var parts = new List<string>();
-            if ((mask & NvApi.PerfDecreaseThermal) != 0) parts.Add("温度墙");
-            if ((mask & (NvApi.PerfDecreasePower | NvApi.PerfDecreaseInsufficientPower)) != 0) parts.Add("功耗墙");
-            if ((mask & NvApi.PerfDecreaseAcBatt) != 0) parts.Add("电池限制");
-            if ((mask & NvApi.PerfDecreaseApi) != 0) parts.Add("软件限制");
-            if (parts.Count == 0) return "其他限制 0x" + mask.ToString("X");
+            if ((mask & NvApi.PerfDecreaseThermal) != 0) parts.Add(Lang.T("t.gputhrottleprobe.7"));
+            if ((mask & (NvApi.PerfDecreasePower | NvApi.PerfDecreaseInsufficientPower)) != 0) parts.Add(Lang.T("t.gputhrottleprobe.8"));
+            if ((mask & NvApi.PerfDecreaseAcBatt) != 0) parts.Add(Lang.T("t.gputhrottleprobe.9"));
+            if ((mask & NvApi.PerfDecreaseApi) != 0) parts.Add(Lang.T("t.gputhrottleprobe.10"));
+            if (parts.Count == 0) return Lang.T("t.gputhrottleprobe.11") + mask.ToString("X");
             return string.Join(" ", parts.ToArray());
         }
 

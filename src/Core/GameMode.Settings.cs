@@ -49,13 +49,13 @@ namespace PaviseApp
             bool sessionActive;
             lock (sync) sessionActive = active;
             if (sessionActive) return;
-            ReleaseBackground("核心域切换");
+            ReleaseBackground(Lang.T("t.gamemodesettings.1"));
             if (!CpuTopology.SwapDomains()) return;
             throttleMask = CpuTopology.ThrottleMask;
             strictMask = CpuTopology.StrictBoostMask;
             core.RefreshTopologyMasks();
-            Logger.Log("游戏核心范围 已切换 游戏 " + CpuTopology.DescribeMask(strictMask)
-                + " 后台 " + CpuTopology.DescribeMask(throttleMask) + " 即刻生效");
+            Logger.Log(Lang.T("log.gamemodesettings.2") + CpuTopology.DescribeMask(strictMask)
+                + Lang.T("log.gamemodesettings.3") + CpuTopology.DescribeMask(throttleMask) + Lang.T("log.gamemodesettings.4"));
         }
 
         public bool AggressiveSuppression
@@ -78,11 +78,11 @@ namespace PaviseApp
             if (!CpuTopology.SetCustomMask(parsed))
             {
                 Settings.SaveStr(CoreMaskKey, "");
-                Logger.Log("自定义核心 存的核心集合在本机不可用 已回到默认分区");
+                Logger.Log(Lang.T("log.gamemodesettings.5"));
                 return;
             }
-            Logger.Log("自定义核心 已启用 " + CpuTopology.DescribeMask(CpuTopology.CustomMask)
-                + " 后台去 " + CpuTopology.DescribeMask(CpuTopology.CustomBackgroundMask));
+            Logger.Log(Lang.T("log.gamemodesettings.6") + CpuTopology.DescribeMask(CpuTopology.CustomMask)
+                + Lang.T("log.gamemodesettings.7") + CpuTopology.DescribeMask(CpuTopology.CustomBackgroundMask));
         }
 
         public ulong CustomCoreMask
@@ -97,16 +97,16 @@ namespace PaviseApp
                     ulong clean = CpuTopology.SanitizeCustomMask(value, CpuTopology.AllMask);
                     Settings.SaveStr(CoreMaskKey, clean != 0 ? clean.ToString("X") : "");
                     Logger.Log(clean != 0
-                        ? "自定义核心 对局进行中 已记录 " + CpuTopology.DescribeMask(clean) + " 对局结束生效"
-                        : "自定义核心 对局进行中 已记录关闭 对局结束生效");
+                        ? Lang.T("log.gamemodesettings.8") + CpuTopology.DescribeMask(clean) + Lang.T("log.gamemodesettings.9")
+                        : Lang.T("log.gamemodesettings.10"));
                     return;
                 }
                 bool ok = CpuTopology.SetCustomMask(value);
                 Settings.SaveStr(CoreMaskKey, ok ? CpuTopology.CustomMask.ToString("X") : "");
                 Logger.Log(ok
-                    ? "自定义核心 已设为 " + CpuTopology.DescribeMask(CpuTopology.CustomMask)
-                        + " 后台去 " + CpuTopology.DescribeMask(CpuTopology.CustomBackgroundMask)
-                    : "自定义核心 已关闭 回到默认分区策略");
+                    ? Lang.T("log.gamemodesettings.11") + CpuTopology.DescribeMask(CpuTopology.CustomMask)
+                        + Lang.T("log.gamemodesettings.7") + CpuTopology.DescribeMask(CpuTopology.CustomBackgroundMask)
+                    : Lang.T("log.gamemodesettings.12"));
                 RequestPolicyApply();
             }
         }
@@ -274,19 +274,6 @@ namespace PaviseApp
             }
         }
 
-        public string AmdFrlMode
-        {
-            get { return amdFrlMode; }
-            set
-            {
-                string mode = PolicyCatalog.Canonical(PolicyCatalog.KeyAmdFrl, value);
-                amdFrlMode = mode; Settings.SaveStr("AmdFrl", mode);
-                if (mode == "off") AdlxTweaks.RestoreFrameLimit();
-                else ClearEnvFuse("amdfrtc");
-                RequestPolicyApply();
-            }
-        }
-
         public bool NvAnselOff
         {
             get { return nvAnselOff; }
@@ -327,19 +314,6 @@ namespace PaviseApp
             }
         }
 
-        public bool NvBattFull
-        {
-            get { return nvBattFull; }
-            set
-            {
-                nvBattFull = value; Settings.Save("NvBattFull", value);
-                if (!value) NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyBattFps);
-                else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyBattFps, 0);
-                lock (sync) tweakApplied.Clear();
-                RequestPolicyApply();
-            }
-        }
-
         public bool KeepAwake
         {
             get { return awakeOn; }
@@ -347,20 +321,6 @@ namespace PaviseApp
             {
                 awakeOn = value; Settings.Save("GmAwake", value);
                 if (value) ClearEnvFuse("awake");
-                RequestPolicyApply();
-            }
-        }
-
-        public string NvFrlMode
-        {
-            get { return nvFrlMode; }
-            set
-            {
-                string mode = PolicyCatalog.Canonical(PolicyCatalog.KeyNvFrl, value);
-                nvFrlMode = mode; Settings.SaveStr("NvFrl", mode);
-                if (mode == "off") NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyFrl);
-                else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyFrl, 0);
-                lock (sync) tweakApplied.Clear();
                 RequestPolicyApply();
             }
         }

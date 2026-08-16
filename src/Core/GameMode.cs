@@ -59,8 +59,10 @@ namespace PaviseApp
         private readonly HashSet<int> boostEcoGaveUp = new HashSet<int>();
         private readonly Dictionary<int, int> placementFail = new Dictionary<int, int>();
         private readonly HashSet<int> placementGaveUp = new HashSet<int>();
+        private readonly Dictionary<int, int> boostStateFail = new Dictionary<int, int>();
         private const int BoostRetryMax = 3;
         private const int PlacementRetryMax = 3;
+        private const int StateRetryMax = 8;
         private volatile bool bgSuppressOn;
         private volatile bool boostOn;
         private volatile bool pauseDlOn;
@@ -71,12 +73,9 @@ namespace PaviseApp
         private volatile bool nvShaderCacheMax;
         private volatile bool amdAntiLag;
         private volatile bool amdAfmf;
-        private volatile string amdFrlMode = "off";
-        private volatile string nvFrlMode = "off";
         private volatile bool nvAnselOff;
         private volatile bool nvRebarOn;
         private volatile string nvDlssMode = "off";
-        private volatile bool nvBattFull;
         private volatile bool awakeOn;
         private volatile bool rsrOn;
         private volatile bool gpuPowerMaxOn;
@@ -151,27 +150,27 @@ namespace PaviseApp
             gameMask = CpuTopology.BoostMask;
             strictMask = CpuTopology.StrictBoostMask;
             if (CpuTopology.Hybrid)
-                Logger.Log("处理器 混合架构 大核 " + CpuTopology.DescribeMask(CpuTopology.PerfMask)
-                    + " 小核 " + CpuTopology.DescribeMask(CpuTopology.EffMask)
-                    + " 后台去 " + CpuTopology.DescribeMask(throttleMask)
-                    + " 选只用大核时给 " + CpuTopology.DescribeMask(strictMask));
+                Logger.Log(Lang.T("log.gamemode.1") + CpuTopology.DescribeMask(CpuTopology.PerfMask)
+                    + Lang.T("log.gamemode.2") + CpuTopology.DescribeMask(CpuTopology.EffMask)
+                    + Lang.T("log.gamemodesettings.7") + CpuTopology.DescribeMask(throttleMask)
+                    + Lang.T("log.gamemode.3") + CpuTopology.DescribeMask(strictMask));
             else if (CpuTopology.AsymCache)
-                Logger.Log("处理器 带 3D 缓存 默认全核 选单 CCD 时给大缓存那块 "
+                Logger.Log(Lang.T("log.gamemode.4")
                     + CpuTopology.DescribeMask(strictMask)
-                    + " 后台去 " + CpuTopology.DescribeMask(throttleMask));
+                    + Lang.T("log.gamemodesettings.7") + CpuTopology.DescribeMask(throttleMask));
             else if (CpuTopology.PartitionTag == "symmetric-ccd")
-                Logger.Log("处理器 多 CCD 默认全核 选单 CCD 时给 "
+                Logger.Log(Lang.T("log.gamemode.5")
                     + CpuTopology.DescribeMask(strictMask)
-                    + " 后台去 " + CpuTopology.DescribeMask(throttleMask));
+                    + Lang.T("log.gamemodesettings.7") + CpuTopology.DescribeMask(throttleMask));
             else
-                Logger.Log("处理器 单一架构 游戏不限核");
+                Logger.Log(Lang.T("log.gamemode.6"));
             if (CpuTopology.AltDomainActive)
-                Logger.Log("游戏核心范围 已换到另一块 游戏 " + CpuTopology.DescribeMask(strictMask)
-                    + " 后台 " + CpuTopology.DescribeMask(throttleMask));
+                Logger.Log(Lang.T("log.gamemode.7") + CpuTopology.DescribeMask(strictMask)
+                    + Lang.T("log.gamemodesettings.3") + CpuTopology.DescribeMask(throttleMask));
             if (CpuTopology.CpuSetPartitionRejected)
-                Logger.Log("处理器 分区与大小核判定矛盾 已弃用该分区");
+                Logger.Log(Lang.T("log.gamemode.8"));
             if (CpuTopology.StrictMaskUnsafe)
-                Logger.Log("CPU 拓扑 绑核目标未通过校验 已退回不限核");
+                Logger.Log(Lang.T("log.gamemode.9"));
             bgSuppressOn = Settings.Load("GmSuppress", true);
             boostOn = Settings.Load("GmBoost", true);
             pauseDlOn = Settings.Load("GmPauseDl", true);
@@ -188,12 +187,9 @@ namespace PaviseApp
             nvShaderCacheMax = Settings.Load("NvShaderCache", false);
             amdAntiLag = Settings.Load("AmdAntiLag", false);
             amdAfmf = Settings.Load("AmdAfmf", false);
-            amdFrlMode = Settings.LoadStr("AmdFrl", "off");
-            nvFrlMode = Settings.LoadStr("NvFrl", "off");
             nvAnselOff = Settings.Load("NvAnselOff", false);
             nvRebarOn = Settings.Load("NvRebar", false);
             nvDlssMode = Settings.LoadStr("NvDlss", "off");
-            nvBattFull = Settings.Load("NvBattFull", false);
             awakeOn = Settings.Load("GmAwake", true);
             rsrOn = Settings.Load("GmRsr", false);
             gpuPowerMaxOn = Settings.Load("GmGpuPowerMax", false);
@@ -215,7 +211,7 @@ namespace PaviseApp
             try
             {
                 if (!File.Exists(whitePath) && !WritePreset())
-                    throw new IOException("无法创建默认白名单");
+                    throw new IOException(Lang.T("t.gamemode.10"));
                 bool versioned = false;
                 bool legacyVersion = false;
                 bool sawRule = false;
@@ -233,7 +229,7 @@ namespace PaviseApp
                             t, WhitelistRule.LegacyHeader, StringComparison.Ordinal))
                     {
                         if (versioned || sawRule || sawFooter)
-                            throw new InvalidDataException("白名单版本头位置无效");
+                            throw new InvalidDataException(Lang.T("t.gamemode.11"));
                         versioned = true;
                         legacyVersion = string.Equals(
                             t, WhitelistRule.LegacyHeader, StringComparison.Ordinal);
@@ -242,19 +238,19 @@ namespace PaviseApp
                     if (t.StartsWith(WhitelistFooterPrefix, StringComparison.Ordinal))
                     {
                         if (!versioned || sawFooter)
-                            throw new InvalidDataException("白名单完整性尾标位置无效");
+                            throw new InvalidDataException(Lang.T("t.gamemode.12"));
                         sawFooter = true;
                         footer = t;
                         continue;
                     }
                     if (sawFooter)
-                        throw new InvalidDataException("白名单完整性尾标后仍有规则");
+                        throw new InvalidDataException(Lang.T("t.gamemode.13"));
 
                     WhitelistRule rule;
                     if (versioned)
                     {
                         if (!WhitelistRule.TryParseVersioned(t, out rule))
-                            throw new InvalidDataException("白名单 V2 规则格式无效");
+                            throw new InvalidDataException(Lang.T("t.gamemode.14"));
                     }
                     else
                     {
@@ -262,14 +258,14 @@ namespace PaviseApp
                         if (t.Length > 1 && t[1] == '|'
                             && (t[0] == 'N' || t[0] == 'n' || t[0] == 'P'
                                 || t[0] == 'p' || t[0] == 'F' || t[0] == 'f'))
-                            throw new InvalidDataException("白名单缺少 V2 版本头");
+                            throw new InvalidDataException(Lang.T("t.gamemode.15"));
                         if (!WhitelistRule.TryCreate(
                             WhitelistRuleKind.LegacyName, t, out rule))
-                            throw new InvalidDataException("旧版白名单规则无效");
+                            throw new InvalidDataException(Lang.T("t.gamemode.16"));
                     }
                     sawRule = true;
                     if (!loadedKeys.Add(rule.Key))
-                        throw new InvalidDataException("白名单含重复规则");
+                        throw new InvalidDataException(Lang.T("t.gamemode.17"));
                     loadedRules.Add(rule);
                 }
                 if (versioned && sawFooter)
@@ -277,22 +273,22 @@ namespace PaviseApp
                     if (!string.Equals(
                         footer, BuildWhitelistFooter(loadedRules),
                         StringComparison.Ordinal))
-                        throw new InvalidDataException("白名单完整性校验失败");
+                        throw new InvalidDataException(Lang.T("t.gamemode.18"));
                     rewriteFormat = legacyVersion;
                 }
                 else if (versioned && !legacyVersion)
                 {
-                    throw new InvalidDataException("白名单 V3 缺少完整性尾标");
+                    throw new InvalidDataException(Lang.T("t.gamemode.19"));
                 }
                 else if (versioned)
                 {
 
                     if (!sawRule)
-                        throw new InvalidDataException("白名单缺少完整性尾标");
+                        throw new InvalidDataException(Lang.T("t.gamemode.20"));
                     rewriteFormat = true;
                 }
                 else if (!sawRule)
-                    throw new InvalidDataException("白名单为空且没有 V2 版本头");
+                    throw new InvalidDataException(Lang.T("t.gamemode.21"));
                 else rewriteFormat = true;
 
                 foreach (string entry in SystemProcessCatalog.PresetWhitelist)
@@ -313,20 +309,20 @@ namespace PaviseApp
                     if (purged > 0)
                     {
                         rewriteFormat = true;
-                        Logger.Log("白名单清理 移除旧版本预置的 " + purged + " 条第三方豁免 预设收敛为系统核心 需要的例外请自行重新添加");
+                        Logger.Log(Lang.T("log.gamemode.22") + purged + Lang.T("log.gamemode.23"));
                     }
                     Settings.Save("WhitelistPurge1Done", true);
                 }
                 foreach (WhitelistRule rule in loadedRules) AddWhiteRuleNoSave(rule);
                 if (rewriteFormat && !SaveWhite(loadedRules))
-                    Logger.Log("白名单旧格式迁移失败 本次规则已安全载入 下次将重试");
+                    Logger.Log(Lang.T("log.gamemode.24"));
                 MigrateWhitelistHeader();
             }
             catch (Exception ex)
             {
 
                 foreach (string entry in SystemProcessCatalog.PresetWhitelist) AddWhiteNoSave(entry);
-                Logger.Log("白名单加载失败 本次运行改用预置白名单 用户自定义项本次不生效 " + ex.Message);
+                Logger.Log(Lang.T("log.gamemode.25") + ex.Message);
             }
 
             try
@@ -359,11 +355,11 @@ namespace PaviseApp
         private bool WritePreset()
         {
             var lines = new List<string>();
-            lines.Add("# Pavise 智能守护白名单 这些进程始终不进入后台控制");
-            lines.Add("# V3 规则支持进程名 精确路径和应用家族 并带完整性尾标防止截断");
-            lines.Add("# Windows 核心 其它会话和 Pavise 自身受安全保护 其余例外只来自本白名单");
-            lines.Add("# Steam Epic EA 育碧 战网 GOG R星 Riot WeGame Xbox HoYoPlay 等");
-            lines.Add("# 游戏平台的客户端家族由程序内置豁免 按各平台安装目录校验 无需在此列出");
+            lines.Add(Lang.T("t.gamemode.26"));
+            lines.Add(Lang.T("t.gamemode.27"));
+            lines.Add(Lang.T("t.gamemode.28"));
+            lines.Add(Lang.T("t.gamemode.29"));
+            lines.Add(Lang.T("t.gamemode.30"));
             lines.Add(WhitelistRule.Header);
             var rules = new List<WhitelistRule>();
             foreach (string entry in SystemProcessCatalog.PresetWhitelist)
@@ -376,7 +372,7 @@ namespace PaviseApp
                 }
             }
             lines.Add(BuildWhitelistFooter(rules));
-            return AtomicFile.WriteLines(whitePath, lines.ToArray(), "白名单预置");
+            return AtomicFile.WriteLines(whitePath, lines.ToArray(), Lang.T("t.gamemode.31"));
         }
 
         private void AddWhiteNoSave(string n)
@@ -405,8 +401,6 @@ namespace PaviseApp
             }
         }
 
-        // Game DVR 关闭改为会话级应用:游戏模式开启且开关处于关闭状态时 一次性写入 使游戏启动前就已关闭
-        // 该值是用户级全局注册表 系统在每个游戏启动那一刻读取 会话级比逐游戏更贴合其本质;关闭游戏模式或退出即还原
         private void SyncGameDvr()
         {
             try { if (enabled && killGameDvr) GameDvr.Activate(); else GameDvr.Restore(); }
@@ -439,16 +433,16 @@ namespace PaviseApp
                 {
                     if (lines[i].Contains("Windows、前台、音频/直播、驱动、游戏家族和反作弊"))
                     {
-                        lines[i] = "# Windows 核心 其它会话和 Pavise 自身受安全保护 其余例外只来自本白名单";
+                        lines[i] = Lang.T("t.gamemode.28");
                         changed = true;
                     }
                     else if (lines[i].Contains("压制会扫全部会话、不因会话 0 而豁免"))
                     {
-                        lines[i] = "# 仅处理当前用户会话 系统关键项仍建议保留 用户可追加自己的明确例外";
+                        lines[i] = Lang.T("t.gamemode.32");
                         changed = true;
                     }
                 }
-                if (changed) AtomicFile.WriteLines(whitePath, lines, "白名单表头迁移");
+                if (changed) AtomicFile.WriteLines(whitePath, lines, Lang.T("t.gamemode.33"));
             }
             catch { }
         }
@@ -524,8 +518,8 @@ namespace PaviseApp
             PolicySnapshot snap = source != null ? PolicyResolver.For(source) : PolicyResolver.Global();
             sessionPolicy = snap;
             if (!snap.IsGlobal)
-                Logger.Log("本局使用 " + snap.ProfileName + " 的独立配置 覆盖 "
-                    + snap.OverrideCount + " 项 对局中的修改下局生效");
+                Logger.Log(Lang.T("log.gamemode.34") + snap.ProfileName + Lang.T("log.gamemode.35")
+                    + snap.OverrideCount + Lang.T("log.gamemode.36"));
             ApplySessionCoreMask(snap);
             ApplySessionCoreDomain(snap);
         }
@@ -542,13 +536,13 @@ namespace PaviseApp
             if (wanted == 0)
             {
                 CpuTopology.SetCustomMask(0);
-                Logger.Log("独立配置 " + snap.ProfileName + " 本局不用自定义核心 走默认分区");
+                Logger.Log(Lang.T("log.gamemodeenv.12") + snap.ProfileName + Lang.T("log.gamemode.37"));
                 return;
             }
             if (CpuTopology.SetCustomMask(wanted))
-                Logger.Log("独立配置 " + snap.ProfileName + " 本局核心 "
+                Logger.Log(Lang.T("log.gamemodeenv.12") + snap.ProfileName + Lang.T("log.gamemode.38")
                     + CpuTopology.DescribeMask(CpuTopology.CustomMask));
-            else Logger.Log("独立配置 " + snap.ProfileName + " 存的核心集合在本机不可用 保持全局设置");
+            else Logger.Log(Lang.T("log.gamemodeenv.12") + snap.ProfileName + Lang.T("log.gamemode.39"));
         }
 
         private void RestoreGlobalCoreMask()
@@ -571,11 +565,11 @@ namespace PaviseApp
             strictMask = CpuTopology.StrictBoostMask;
             core.RefreshTopologyMasks();
             if (snap.HasOverride(PolicyCatalog.KeyCoreDomainAlt))
-                Logger.Log("独立配置 " + snap.ProfileName + " 本局核心范围换到另一块 游戏 "
-                    + CpuTopology.DescribeMask(strictMask) + " 后台 " + CpuTopology.DescribeMask(throttleMask));
+                Logger.Log(Lang.T("log.gamemodeenv.12") + snap.ProfileName + Lang.T("log.gamemode.40")
+                    + CpuTopology.DescribeMask(strictMask) + Lang.T("log.gamemodesettings.3") + CpuTopology.DescribeMask(throttleMask));
             else
-                Logger.Log("核心范围回到全局设置 游戏 "
-                    + CpuTopology.DescribeMask(strictMask) + " 后台 " + CpuTopology.DescribeMask(throttleMask));
+                Logger.Log(Lang.T("log.gamemode.41")
+                    + CpuTopology.DescribeMask(strictMask) + Lang.T("log.gamemodesettings.3") + CpuTopology.DescribeMask(throttleMask));
         }
 
 #if PAVISE_SELFTEST
@@ -719,7 +713,7 @@ namespace PaviseApp
 
                         int serving = Volatile.Read(ref panicSeq);
                         panicReq = false;
-                        panicResult = Deactivate("紧急恢复");
+                        panicResult = Deactivate(Lang.T("t.gamemode.42"));
                         Volatile.Write(ref panicServed, serving);
                         panicDone.Set();
                         kick.WaitOne(4000);
@@ -731,7 +725,7 @@ namespace PaviseApp
                         bool residue;
                         lock (sync) residue = active || gameBoost.Count > 0;
                         if (residue || EnvActive() || core.AnyWith(SuppressReason.Background))
-                            RetryDeactivate("手动关闭游戏模式");
+                            RetryDeactivate(Lang.T("t.gamemode.43"));
                     }
                     else
                     {
@@ -757,14 +751,14 @@ namespace PaviseApp
                                         gameGoneSinceTicks = 0;
                                         if (active)
                                         {
-                                            Logger.Log("游戏在宽限期内重新出现 启动器换壳或快速重启 游戏模式保持不中断 后台重新静默接管");
+                                            Logger.Log(Lang.T("log.gamemode.44"));
                                             lock (sync) firstSweep = true;
                                         }
                                     }
                                     if (!active)
                                     {
                                         lock (sync) { active = true; activeGame = running; firstSweep = true; }
-                                        Logger.Log("游戏模式激活 检测到 " + running);
+                                        Logger.Log(Lang.T("log.gamemode.45") + running);
                                         BeginSessionPolicy();
                                         ReportBegin(running);
                                         StandbySweep.ResetCooldown();
@@ -774,13 +768,16 @@ namespace PaviseApp
                                     else if (!string.Equals(activeGame, running, StringComparison.OrdinalIgnoreCase))
                                     {
                                         lock (sync) activeGame = running;
-                                        Logger.Log("游戏模式 检测目标变更 " + running);
+                                        Logger.Log(Lang.T("log.gamemode.46") + running);
                                         BeginSessionPolicy();
                                         ReportFinish();
                                         ReportBegin(running);
                                     }
                                     ApplyEnv();
-                                    GpuThrottleProbe.SampleIfDue();
+                                    string rendererPath;
+                                    lock (sync) rendererPath = activeDetection != null
+                                        ? activeDetection.RendererPath : null;
+                                    GpuThrottleProbe.SampleIfDue(rendererPath);
                                     VramSpillProbe.SampleIfDue(gamePids);
                                     if (EffSuppress) Sweep(all, gamePids);
                                     if (!EffSuppress) ReleaseBackground();
@@ -793,14 +790,14 @@ namespace PaviseApp
                                     if (gameGoneSinceTicks == 0)
                                     {
                                         gameGoneSinceTicks = nowTicks;
-                                        Logger.Log("游戏进程消失 后台压制立即还原 电源和环境保留 "
-                                            + ExitGraceSeconds + " 秒宽限 防换壳和快速重启抖动");
-                                        gracePreReleased += ReleaseBackground("游戏退出宽限");
+                                        Logger.Log(Lang.T("log.gamemode.47")
+                                            + ExitGraceSeconds + Lang.T("log.gamemode.48"));
+                                        gracePreReleased += ReleaseBackground(Lang.T("t.gamemode.49"));
                                     }
                                     else if (nowTicks - gameGoneSinceTicks
                                         >= ExitGraceSeconds * TimeSpan.TicksPerSecond)
                                     {
-                                        Deactivate("游戏已退出");
+                                        Deactivate(Lang.T("t.gamemode.50"));
                                     }
                                     if (gameGoneSinceTicks != 0)
                                         Interlocked.Exchange(ref transitionScanPending, 1);
@@ -810,12 +807,12 @@ namespace PaviseApp
                                     bool boostResidue;
                                     lock (sync) boostResidue = gameBoost.Count > 0;
                                     if (boostResidue || EnvActive() || core.AnyWith(SuppressReason.Background))
-                                        RetryDeactivate("残留恢复重试");
+                                        RetryDeactivate(Lang.T("t.gamemode.51"));
                                 }
                         }
                     }
                 }
-                catch (Exception ex) { Logger.Log("游戏模式异常 " + ex.Message); }
+                catch (Exception ex) { Logger.Log(Lang.T("log.gamemode.52") + ex.Message); }
                 kick.WaitOne(enabled
                     ? ProcessScanWaitMs() : PollingSweepIntervalMs);
             }
@@ -823,7 +820,7 @@ namespace PaviseApp
             lock (sync) exitResidue = active || gameBoost.Count > 0;
             bool exitClean = true;
             if (exitResidue || core.AnyWith(SuppressReason.Background) || EnvActive())
-                exitClean = Deactivate("Pavise 退出");
+                exitClean = Deactivate(Lang.T("t.gamemode.53"));
             if (panicReq)
             {
                 int servingAtExit = Volatile.Read(ref panicSeq);
@@ -832,7 +829,6 @@ namespace PaviseApp
                 Volatile.Write(ref panicServed, servingAtExit);
                 panicDone.Set();
             }
-            // 会话级 Game DVR 在退出时还原(游戏模式期间常驻关闭)
             try { GameDvr.Restore(); } catch { }
         }
 
@@ -892,9 +888,9 @@ namespace PaviseApp
             armedGameName = name;
             if (string.Equals(name, lastArmedLogged, StringComparison.OrdinalIgnoreCase)) return;
             if (name != null)
-                Logger.Log("待命 " + name + " 已启动 进对局后接管");
+                Logger.Log(Lang.T("log.gamemode.54") + name + Lang.T("log.gamemode.55"));
             else if (lastArmedLogged != null && !engaged)
-                Logger.Log("待命解除 " + lastArmedLogged + " 已退出");
+                Logger.Log(Lang.T("log.gamemode.56") + lastArmedLogged + Lang.T("log.gamemode.57"));
             lastArmedLogged = name;
         }
 
@@ -915,7 +911,7 @@ namespace PaviseApp
                 if (!gpuEvidenceWarned)
                 {
                     gpuEvidenceWarned = true;
-                    Logger.Log("GPU 证据不可用 PDH GPU Engine 计数器读取失败 窗口化候选将等待全屏几何证据或用户直选命中");
+                    Logger.Log(Lang.T("log.gamemode.58"));
                 }
                 return null;
             }
@@ -932,8 +928,8 @@ namespace PaviseApp
             pending.RequiresGpuConfirm = false;
             pending.RendererCandidateSelected = true;
             pending.Evidence = Lang.F("detect.gpu", (int)candidate);
-            Logger.Log("渲染进程选举 GPU 证据确认 " + pending.Profile.Name + " 的真身是 "
-                + pending.RendererName + " 3D 引擎 " + (int)candidate + "% pid " + pending.RendererPid + " ");
+            Logger.Log(Lang.T("log.gamemode.59") + pending.Profile.Name + Lang.T("log.gamemode.60")
+                + pending.RendererName + Lang.T("log.gamemode.61") + (int)candidate + "% pid " + pending.RendererPid + " ");
             return pending;
         }
 

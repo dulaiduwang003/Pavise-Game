@@ -1,6 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 清除本机数据 首次启动清旧版本 升级越过数据基线 以及设置页手动清除三条路径共用
-// 铁律 必须先还原全部系统改动并确认成功再删快照 任何一项失败就整体中止
 
 using System;
 using System.Collections.Generic;
@@ -25,6 +24,12 @@ namespace PaviseApp
             if (RestoreHook != null) return RestoreHook();
 #endif
             return RestoreEverything(dataDir);
+        }
+
+        // 一键恢复按钮的持久改动还原链 与清除配置共用同一份登记 不删除任何数据
+        public static List<string> RestorePersistent(string dataDir)
+        {
+            return RestoreOrHook(dataDir);
         }
 
         private static bool DeleteRegistryTree()
@@ -66,45 +71,46 @@ namespace PaviseApp
         {
             var failed = new List<string>();
 
-            Step("电源计划", PowerPlan.Restore, failed);
-            Step("Pavise 建的卓越性能计划", PowerPlan.RemoveCreatedPlan, failed);
-            Step("Pavise 托管电源方案", PowerPlan.RemoveManagedPlan, failed);
-            StepIf("核心停泊", PowerPlan.HasParkResidue, PowerPlan.RestoreParkState, failed);
-            Step("Windows 更新暂停", UpdatePause.Restore, failed);
+            Step(Lang.T("t.gamemodeenv.35"), PowerPlan.Restore, failed);
+            Step(Lang.T("t.legacypurge.1"), PowerPlan.RemoveCreatedPlan, failed);
+            Step(Lang.T("t.legacypurge.2"), PowerPlan.RemoveManagedPlan, failed);
+            StepIf(Lang.T("t.legacypurge.3"), PowerPlan.HasParkResidue, PowerPlan.RestoreParkState, failed);
+            Step(Lang.T("t.gamemodeenv.3"), UpdatePause.Restore, failed);
             foreach (RetiredFeature f in VersionMigrations.Entries)
                 Step(f.Name, f.Restore, failed);
             Step("Game DVR", GameDvr.Restore, failed);
-            Step("视觉效果", VisualFx.Restore, failed);
-            Step("刷新率守护", DisplayGuard.Restore, failed);
-            Step("息屏防护", DisplayAwake.Restore, failed);
-            Step("无输入降级", PresenceQos.Restore, failed);
-            Step("电源滑块", PowerOverlay.Restore, failed);
-            Step("显卡功耗墙", GpuPowerMax.Restore, failed);
-            Step("后台下载暂停", DoTweak.Restore, failed);
-            Step("服务暂停", SvcPause.Restore, failed);
-            Step("服务让路", SvcYield.Restore, failed);
-            Step("无线扫描抑制", WlanGuard.Restore, failed);
-            Step("平台时钟校正", PlatformClockTweak.Restore, failed);
-            Step("网络优化", NetTweak.Restore, failed);
-            Step("时间片校正", QuantumTweak.Restore, failed);
+            Step(Lang.T("t.legacypurge.4"), VisualFx.Restore, failed);
+            Step(Lang.T("t.legacypurge.5"), DisplayGuard.Restore, failed);
+            Step(Lang.T("t.gamemodeenv.5"), DisplayAwake.Restore, failed);
+            Step(Lang.T("t.legacypurge.6"), PresenceQos.Restore, failed);
+            Step(Lang.T("t.legacypurge.7"), PowerOverlay.Restore, failed);
+            Step(Lang.T("t.gamemodeenv.6"), GpuPowerMax.Restore, failed);
+            Step(Lang.T("t.gamemodeenv.1"), DoTweak.Restore, failed);
+            Step(Lang.T("t.legacypurge.8"), SvcPause.Restore, failed);
+            Step(Lang.T("t.legacypurge.9"), SvcYield.Restore, failed);
+            Step(Lang.T("t.gamemodeenv.2"), WlanGuard.Restore, failed);
+            Step(Lang.T("set.clock"), PlatformClockTweak.Restore, failed);
+            Step(Lang.T("t.legacypurge.10"), NetTweak.Restore, failed);
+            Step(Lang.T("t.legacypurge.11"), QuantumTweak.Restore, failed);
             Step("MPO", MpoTweak.Restore, failed);
             Step("VBS", VbsTweak.Restore, failed);
-            Step("游戏模式守护", GameModeGuard.Restore, failed);
-            Step("设备电源", DevicePowerTweak.Restore, failed);
-            StepIf("窗口化游戏优化", WindowedOptTweak.HasResidue, WindowedOptTweak.Restore, failed);
-            Step("辅助功能拦截", AccessibilityKeysTweak.Restore, failed);
-            Step("键鼠设备省电", HidPowerTweak.Restore, failed);
-            Step("键鼠队列校正", InputMythTweak.Restore, failed);
-            Step("指针精度增强", PointerPrecisionTweak.Restore, failed);
-            Step("NVIDIA 全局项", NvGlobalTweaks.Restore, failed);
-            Step("AMD 驱动调优", AdlxTweaks.PurgeResidue, failed);
-            Step("上传让位", delegate { UploadYield.HealFromCrash(); return !UploadYield.HasResidue(); }, failed);
-            Step("MSI 修复", MsiModeTweak.Restore, failed);
-            Step("后备提优 IFEO", IfeoBoost.RestoreAll, failed);
+            Step(Lang.T("t.legacypurge.12"), GameModeGuard.Restore, failed);
+            Step(Lang.T("t.legacypurge.13"), DevicePowerTweak.Restore, failed);
+            StepIf(Lang.T("set.windowedopt"), WindowedOptTweak.HasResidue, WindowedOptTweak.Restore, failed);
+            Step(Lang.T("t.legacypurge.14"), AccessibilityKeysTweak.Restore, failed);
+            Step(Lang.T("t.legacypurge.15"), HidPowerTweak.Restore, failed);
+            Step(Lang.T("t.legacypurge.16"), InputMythTweak.Restore, failed);
+            Step(Lang.T("t.legacypurge.18"), NvGlobalTweaks.Restore, failed);
+            Step(Lang.T("t.legacypurge.19"), AdlxTweaks.PurgeResidue, failed);
+            Step(Lang.T("t.legacypurge.20"), delegate { UploadYield.HealFromCrash(); return !UploadYield.HasResidue(); }, failed);
+            Step(Lang.T("t.legacypurge.21"), MsiModeTweak.Restore, failed);
+            Step(Lang.T("t.legacypurge.22"), IfeoBoost.RestoreAll, failed);
 
-            StepIf("HAGS", delegate { return HagsTweak.EnabledByPavise; }, HagsTweak.Disable, failed);
-            StepIf("GPU 中断亲和", delegate { return InterruptAffinityTweak.EnabledByPavise; }, InterruptAffinityTweak.Disable, failed);
-            StepIf("USB 中断避让", delegate { return UsbInterruptAffinityTweak.HasResidue; }, UsbInterruptAffinityTweak.Disable, failed);
+            StepIf("HAGS", HagsTweak.HasResidue, HagsTweak.Restore, failed);
+            StepIf("CFG", delegate { return CfgOffTweak.Enabled || CfgOffTweak.HasResidue(); },
+                CfgOffTweak.Disable, failed);
+            StepIf(Lang.T("t.legacypurge.23"), delegate { return InterruptAffinityTweak.EnabledByPavise; }, InterruptAffinityTweak.Disable, failed);
+            StepIf(Lang.T("t.legacypurge.24"), delegate { return UsbInterruptAffinityTweak.HasResidue; }, UsbInterruptAffinityTweak.Disable, failed);
 
             foreach (string kind in new[]
             {
@@ -112,7 +118,7 @@ namespace PaviseApp
                 NvDrsTweaks.KeyLowLatCpl, NvDrsTweaks.KeyUllEnable, NvDrsTweaks.KeySmooth,
                 NvDrsTweaks.KeyShaderCache, NvDrsTweaks.KeyAnsel, NvDrsTweaks.KeyRebarFeat,
                 NvDrsTweaks.KeyRebarOpt, NvDrsTweaks.KeyRebarSize, NvDrsTweaks.KeyDlssOvr,
-                NvDrsTweaks.KeyDlssPreset, NvDrsTweaks.KeyBattFps
+                NvDrsTweaks.KeyDlssPreset
             })
             {
                 string k = kind;
@@ -125,33 +131,63 @@ namespace PaviseApp
             foreach (string exeKind in new[] { "gpu", "igpu", "fso" })
             {
                 string k = exeKind;
-                Step(k == "gpu" ? "逐游戏 GPU 偏好" : k == "igpu" ? "后台集显偏好" : "逐游戏全屏优化", delegate
+                Step(k == "gpu" ? Lang.T("t.legacypurge.25") : k == "igpu" ? Lang.T("t.legacypurge.26") : Lang.T("t.legacypurge.27"), delegate
                 {
                     GameExeTweaks.RestoreKind(k);
                     return !GameExeTweaks.HasKindResidue(k);
                 }, failed);
             }
-            Step("未完成的进程状态记账", delegate
+            // 进程状态是进程生命周期内的东西 进程退出或重启后自然复原 与持久系统改动不同
+            // 尽力补一轮还原 清不掉的(反作弊拒开句柄/PID被系统进程占用/记账行损坏)记日志放行
+            // 不能让它永久卡死清除功能
+            Step(Lang.T("t.legacypurge.28"), delegate
             {
-                return !CrashGuard.HasPending()
-                    && !SuppressionCore.HasPendingJournalFile(
-                        Path.Combine(dataDir, SuppressionCore.StateFileName));
+                string journal = Path.Combine(dataDir, SuppressionCore.StateFileName);
+                try { CrashGuard.HealFromCrash(); } catch { }
+                try { SuppressionCore.HealFromCrash(journal); } catch { }
+                if (CrashGuard.HasPending() || SuppressionCore.HasPendingJournalFile(journal))
+                    Logger.Log(Lang.T("log.legacypurge.45"));
+                return true;
             }, failed);
 
             return failed;
         }
 
+        // 新装机器判定:清理章已盖 或存在任何非日志数据文件 即视为有旧安装足迹
+        // 日志文件不算 本次启动早已在写日志
+        public static bool HasInstallFootprint(string dataDir)
+        {
+            if (Settings.Load(DoneKey, false)) return true;
+            string[] marks =
+            {
+                "Pavise.games.txt", "Pavise.whitelist.txt", "Pavise.targets.txt",
+                "Pavise.autoignore.txt", GameProfileStore.FileName,
+                "Pavise.freeze.state", SuppressionCore.StateFileName
+            };
+            foreach (string name in marks)
+                try { if (File.Exists(Path.Combine(dataDir, name))) return true; } catch { }
+            return false;
+        }
+
         public static void RunOnce(string dataDir)
         {
             if (Settings.Load(DoneKey, false)) return;
+            // 新装机器无旧残留可清 直接盖章跳过整条清理链
+            // 否则清理链在个别机器上偶发失败时 DoneKey 悬空 用户配置后的下一次启动会把配置吞掉
+            if (!HasInstallFootprint(dataDir))
+            {
+                Settings.Save(DoneKey, true);
+                Logger.Log(Lang.T("log.legacypurge.44"));
+                return;
+            }
 
-            Logger.Log("首次运行 v1.6.6 清除旧版本数据 先还原全部系统改动");
+            Logger.Log(Lang.T("log.legacypurge.29"));
 
             List<string> failed = RestoreOrHook(dataDir);
             if (failed.Count > 0)
             {
-                Logger.Log("清除已中止 " + failed.Count + " 项未能还原 "
-                    + string.Join(" ", failed.ToArray()) + " 下次启动重试");
+                Logger.Log(Lang.T("log.legacypurge.30") + failed.Count + Lang.T("log.legacypurge.31")
+                    + string.Join(" ", failed.ToArray()) + Lang.T("log.legacypurge.32"));
                 return;
             }
 
@@ -160,8 +196,8 @@ namespace PaviseApp
 
             Settings.Save(DoneKey, true);
 
-            Logger.Log("旧版本数据已清除 系统改动已还原 删除 " + files + " 个文件"
-                + (regCleared ? " 配置已重置" : " 配置未能完全清空"));
+            Logger.Log(Lang.T("log.legacypurge.33") + files + Lang.T("log.legacypurge.34")
+                + (regCleared ? Lang.T("log.legacypurge.35") : Lang.T("log.legacypurge.36")));
         }
 
         private static int DeleteDataFiles(string dataDir)
@@ -195,14 +231,14 @@ namespace PaviseApp
         {
             files = 0;
             unrestored = null;
-            Logger.Log(why + " 先还原 Pavise 改过的全部系统项");
+            Logger.Log(why + Lang.T("log.legacypurge.37"));
 
             List<string> failed = RestoreOrHook(dataDir);
             if (failed.Count > 0)
             {
                 unrestored = string.Join(" ", failed.ToArray());
-                Logger.Log(why + " 已中止 " + failed.Count + " 项未能还原 " + unrestored
-                    + " 没有删除任何文件");
+                Logger.Log(why + Lang.T("log.legacypurge.38") + failed.Count + Lang.T("log.legacypurge.31") + unrestored
+                    + Lang.T("log.legacypurge.39"));
                 return false;
             }
 
@@ -210,9 +246,10 @@ namespace PaviseApp
             bool regCleared = includeSettings && DeleteRegistryTree();
             Settings.Save(DoneKey, true);
 
-            Logger.Log(why + " 完成 系统改动已还原 删除 " + files + " 个文件"
-                + (includeSettings ? regCleared ? " 开关已重置" : " 开关未能完全清空" : " 开关保留"));
-            return true;
+            Logger.Log(why + Lang.T("log.legacypurge.40") + files + Lang.T("log.legacypurge.34")
+                + (includeSettings ? regCleared ? Lang.T("log.legacypurge.41") : Lang.T("log.legacypurge.42") : Lang.T("log.legacypurge.43")));
+            // 注册表配置树删除失败不算完成 让调用方如实提示而不是报清除成功
+            return !includeSettings || regCleared;
         }
     }
 }

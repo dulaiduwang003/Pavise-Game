@@ -74,14 +74,14 @@ namespace PaviseApp
             {
                 using (var k = Registry.CurrentUser.CreateSubKey(Key))
                 {
-                    if (k == null) throw new InvalidOperationException("注册表配置键无法创建");
+                    if (k == null) throw new InvalidOperationException(Lang.T("t.settings.1"));
                     k.SetValue(name, val ? 1 : 0);
                 }
                 return true;
             }
             catch (Exception ex)
             {
-                Logger.LogFailure("设置写入失败 " + name, ex);
+                Logger.LogFailure(Lang.T("log.settings.2") + name, ex);
                 return false;
             }
         }
@@ -128,14 +128,14 @@ namespace PaviseApp
             {
                 using (var k = Registry.CurrentUser.CreateSubKey(Key))
                 {
-                    if (k == null) throw new InvalidOperationException("注册表配置键无法创建");
+                    if (k == null) throw new InvalidOperationException(Lang.T("t.settings.1"));
                     k.SetValue(name, val ?? "");
                 }
                 return true;
             }
             catch (Exception ex)
             {
-                Logger.LogFailure("设置写入失败 " + name, ex);
+                Logger.LogFailure(Lang.T("log.settings.2") + name, ex);
                 return false;
             }
         }

@@ -95,7 +95,7 @@ namespace PaviseApp
             if (!GameExecutableResolver.TryResolve(selectedPath, out executable, out error)) return false;
             if (!AddGameExecutable(null, executable))
             {
-                error = "该游戏已经在列表中";
+                error = Lang.T("t.gamemodelibrary.1");
                 return false;
             }
             error = null;
@@ -144,8 +144,8 @@ namespace PaviseApp
                 }
             }
             if (learnedGame != null)
-                Logger.Log("已确认 " + learnedGame + " 的实际渲染进程是 " + rendererName
-                    + " 档案已更新 之后可直接按它识别 " + rendererPath + " ");
+                Logger.Log(Lang.T("log.gamemodelibrary.2") + learnedGame + Lang.T("log.gamemodelibrary.3") + rendererName
+                    + Lang.T("log.gamemodelibrary.4") + rendererPath + " ");
         }
 
         public bool SetProfileForceTrigger(string profileId, bool on)
@@ -175,9 +175,9 @@ namespace PaviseApp
             }
             if (!changed) return true;
             if (dropSession) panicReq = true;
-            Logger.Log((on ? "已开启强制接管 " : "已关闭强制接管 ") + name
-                + (on ? " 之后该程序的进程一起来就直接进对局 不再等前台窗口和渲染证据"
-                     : " 恢复成按前台窗口和渲染证据自动判定"));
+            Logger.Log((on ? Lang.T("log.gamemodelibrary.5") : Lang.T("log.gamemodelibrary.6")) + name
+                + (on ? Lang.T("log.gamemodelibrary.7")
+                     : Lang.T("log.gamemodelibrary.8")));
             KickLibraryChanged();
             return true;
         }
@@ -232,7 +232,7 @@ namespace PaviseApp
                     if (n > 0) { profileStore.Save(profiles); name = p.Name; }
                 }
             }
-            if (name != null) Logger.Log("独立配置 已清除 " + name + " 的全部 " + n + " 项覆盖 回到跟随全局");
+            if (name != null) Logger.Log(Lang.T("log.gamemodelibrary.9") + name + Lang.T("log.gamemodelibrary.10") + n + Lang.T("log.gamemodelibrary.11"));
             return n;
         }
 
@@ -253,7 +253,7 @@ namespace PaviseApp
                 }
             }
             if (sourceName != null)
-                Logger.Log("独立配置 已把 " + sourceName + " 的 " + n + " 项覆盖套用到 " + targetName);
+                Logger.Log(Lang.T("log.gamemodelibrary.12") + sourceName + Lang.T("log.gamemodeenv.13") + n + Lang.T("log.gamemodelibrary.13") + targetName);
             return n;
         }
 
@@ -282,7 +282,7 @@ namespace PaviseApp
                 p.Name = trimmed;
                 profileStore.Save(profiles);
             }
-            Logger.Log("游戏库 已把 " + oldName + " 重命名为 " + trimmed + " 只改显示名 识别不受影响");
+            Logger.Log(Lang.T("log.gamemodelibrary.14") + oldName + Lang.T("log.gamemodelibrary.15") + trimmed + Lang.T("log.gamemodelibrary.16"));
             RaiseLibraryChanged();
             return true;
         }
@@ -417,8 +417,8 @@ namespace PaviseApp
             }
             int matched;
             int freed = ReleaseCurrentWhitelistMatches(out matched);
-            Logger.Log("白名单新增 " + rule.Kind + " " + rule.Value + " 当前匹配 " + matched
-                + " 个 立即恢复 " + freed + " 个后台压制");
+            Logger.Log(Lang.T("log.gamemodelibrary.17") + rule.Kind + " " + rule.Value + Lang.T("log.gamemodelibrary.18") + matched
+                + Lang.T("log.gamemodelibrary.19") + freed + Lang.T("log.gamemodelibrary.20"));
             RequestPolicyApply();
             return true;
         }
@@ -491,8 +491,8 @@ namespace PaviseApp
             }
             int matched;
             int freed = ReleaseCurrentWhitelistMatches(out matched);
-            Logger.Log("白名单已恢复为预设 " + SystemProcessCatalog.PresetWhitelist.Length + " 项 当前匹配 " + matched
-                + " 个 立即恢复 " + freed + " 个后台压制");
+            Logger.Log(Lang.T("log.gamemodelibrary.21") + SystemProcessCatalog.PresetWhitelist.Length + Lang.T("log.gamemodelibrary.22") + matched
+                + Lang.T("log.gamemodelibrary.19") + freed + Lang.T("log.gamemodelibrary.20"));
             RequestPolicyApply();
             return true;
         }
@@ -502,18 +502,18 @@ namespace PaviseApp
             try
             {
                 var lines = new List<string>();
-                lines.Add("# Pavise 后台策略豁免规则 旧版一行一个进程名的文件仍可直接读取");
-                lines.Add("# V3 N=进程名兼容规则 P=精确 EXE F=锚点 EXE 及其当前和后续子孙");
-                lines.Add("# Windows 核心另有安全边界 这里也保留必要项并允许用户追加明确例外");
+                lines.Add(Lang.T("t.gamemodelibrary.23"));
+                lines.Add(Lang.T("t.gamemodelibrary.24"));
+                lines.Add(Lang.T("t.gamemodelibrary.25"));
                 lines.Add(WhitelistRule.Header);
                 if (rules != null)
                     foreach (WhitelistRule rule in rules) lines.Add(rule.Serialize());
                 lines.Add(BuildWhitelistFooter(rules));
-                return AtomicFile.WriteLines(whitePath, lines.ToArray(), "白名单");
+                return AtomicFile.WriteLines(whitePath, lines.ToArray(), Lang.T("nav.white"));
             }
             catch (Exception error)
             {
-                Logger.LogFailure("保存游戏模式白名单失败", error);
+                Logger.LogFailure(Lang.T("log.gamemodelibrary.26"), error);
                 return false;
             }
         }
@@ -542,17 +542,6 @@ namespace PaviseApp
             return WhitelistFooterPrefix + count + "|" + hash.ToString("X16");
         }
 
-        public List<string> GameRootsSnapshot()
-        {
-            lock (sync)
-            {
-                var roots = new List<string>();
-                foreach (KeyValuePair<string, string> kv in gameRoots)
-                    if (!string.IsNullOrEmpty(kv.Value) && !roots.Contains(kv.Value)) roots.Add(kv.Value);
-                return roots;
-            }
-        }
-
         private void SaveGames()
         {
             try
@@ -564,9 +553,9 @@ namespace PaviseApp
                     gameRoots.TryGetValue(game, out root);
                     lines.Add(EncodeGameLine(game, root));
                 }
-                AtomicFile.WriteLines(gamesPath, lines.ToArray(), "游戏列表");
+                AtomicFile.WriteLines(gamesPath, lines.ToArray(), Lang.T("t.gamemodelibrary.27"));
             }
-            catch (Exception error) { Logger.LogFailure("保存游戏列表失败", error); }
+            catch (Exception error) { Logger.LogFailure(Lang.T("log.gamemodelibrary.28"), error); }
         }
 
         private void RebuildLegacyGameIndex()

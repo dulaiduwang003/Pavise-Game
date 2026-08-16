@@ -99,8 +99,7 @@ namespace PaviseApp
             if (UnderRoot(path, activeGameRoot)) return false;
             if (pid <= 4 || pid == self || session < 0 || session != ownerSession) return false;
 
-            if (pid == foreground) return false;
-            if (userFacingFamily) return false;
+            if (!aggressive && (pid == foreground || userFacingFamily)) return false;
             if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(path)) return false;
             if (aggressive) return !SystemProcessCatalog.IsCoreSystemProcess(name, path, windowsRoot);
             return string.IsNullOrEmpty(windowsRoot) || !path.StartsWith(windowsRoot, StringComparison.OrdinalIgnoreCase);
@@ -139,8 +138,10 @@ namespace PaviseApp
             int foregroundPid = GameSessionDetector.ForegroundPid();
             bool aggressive = IsAggressive(mode, sp != null ? sp.Aggressive : aggressiveOn);
             WhitelistEvaluation whitelist = EvaluateWhitelist(all);
+            // 竞技档不豁免前台(v1.6 曾放行前台族 现回归 1.4 语义):游戏模式只专注游戏
+            // 切出去的程序照压 只有白名单例外 常规档仍豁免可见窗口
             HashSet<int> userFacingFamily = aggressive
-                ? CollectForegroundFamily(foregroundPid, whitelist)
+                ? EmptyPidSet
                 : CollectUserFacingFamily(foregroundPid, whitelist);
             bool safePartition = CpuTopology.HasSafeBackgroundPartition();
 
@@ -323,14 +324,14 @@ namespace PaviseApp
                 {
                     done++;
                     ReportTrack(request.Pid, request.Name);
-                    if (!first) Logger.Log("后台压制 " + request.Name + "(pid " + request.Pid + ") "
+                    if (!first) Logger.Log(Lang.T("log.gamemodesweep.1") + request.Name + "(pid " + request.Pid + ") "
                         + SuppressionLevelText.Of(request.Desired));
                 }
                 else if (request.Result == AcquireResult.AlreadyThrottled)
                 {
                     if (!request.HadBackgroundReason) ReportTrack(request.Pid, request.Name);
                     if (!first && request.Previous != request.Desired)
-                        Logger.Log("后台压制 " + request.Name + "(pid " + request.Pid + ") "
+                        Logger.Log(Lang.T("log.gamemodesweep.1") + request.Name + "(pid " + request.Pid + ") "
                             + SuppressionLevelText.Of(request.Previous) + " → "
                             + SuppressionLevelText.Of(request.Desired));
                 }
@@ -338,8 +339,8 @@ namespace PaviseApp
                 else if (request.Result == AcquireResult.ApplyFailed)
                 {
                     retrying++;
-                    Logger.Log("后台压制 " + request.Name + "(pid " + request.Pid + ") "
-                        + ApplyFailureText.Of(request.FailureDetail) + " 下一轮重试");
+                    Logger.Log(Lang.T("log.gamemodesweep.1") + request.Name + "(pid " + request.Pid + ") "
+                        + ApplyFailureText.Of(request.FailureDetail) + Lang.T("log.gamemodeboost.24"));
                 }
             }
 
@@ -352,37 +353,22 @@ namespace PaviseApp
             {
                 if (EffSuppress)
                 {
-                    string preset = mode == PerformancePreset.Competitive ? "竞技"
-                        : mode == PerformancePreset.Custom ? "自定义" : "常规";
+                    string preset = mode == PerformancePreset.Competitive ? Lang.T("preset.competitive")
+                        : mode == PerformancePreset.Custom ? Lang.T("preset.custom") : Lang.T("preset.standard");
                     bool strong = mode == PerformancePreset.Competitive
                         || (mode == PerformancePreset.Custom && aggressive);
-                    string policy = preset + (strong ? " 强力压制" : " 省电压制")
-                        + (strong && safePartition ? " 后台归到后台核" : "")
-                        + (aggressive ? " 只放行前台程序" : "");
-                    Logger.Log("后台压制 " + policy
-                        + (SuppressionCore.GpuDemoteEnabled ? " 显卡让位" : "")
-                        + " 首轮 " + done + " 个"
-                        + (retrying > 0 ? " " + retrying + " 个待重试" : "")
-                        + (denied > 0 ? " " + denied + " 个受保护跳过" : "")
-                        + (rosterSkipped > 0 ? " " + rosterSkipped + " 个免压名单跳过" : ""));
+                    string policy = preset + (strong ? Lang.T("t.gamemodesweep.2") : Lang.T("t.gamemodesweep.3"))
+                        + (strong && safePartition ? Lang.T("t.gamemodesweep.4") : "")
+                        + (aggressive ? Lang.T("t.gamemodesweep.5") : "");
+                    Logger.Log(Lang.T("log.gamemodesweep.1") + policy
+                        + (SuppressionCore.GpuDemoteEnabled ? Lang.T("log.gamemodesweep.6") : "")
+                        + Lang.T("log.gamemodesweep.7") + done + Lang.T("log.gamemodesweep.8")
+                        + (retrying > 0 ? " " + retrying + Lang.T("log.gamemodesweep.9") : "")
+                        + (denied > 0 ? " " + denied + Lang.T("log.gamemodesweep.10") : "")
+                        + (rosterSkipped > 0 ? " " + rosterSkipped + Lang.T("t.gamemodesweep.11") : ""));
                 }
                 lock (sync) firstSweep = false;
             }
-        }
-
-        private HashSet<int> CollectForegroundFamily(
-            int foregroundPid, WhitelistEvaluation whitelist)
-        {
-            var roots = new HashSet<int>();
-            if (foregroundPid > 4 && foregroundPid != selfPid)
-            {
-                WhitelistProcessInfo info;
-                if (!whitelist.Processes.TryGetValue(foregroundPid, out info)
-                    || selfSession < 0 || info.Session == selfSession)
-                    roots.Add(foregroundPid);
-            }
-            return ExpandUserFacingFamily(
-                whitelist.Parents, whitelist.Names, roots);
         }
 
         private HashSet<int> CollectUserFacingFamily(
@@ -446,7 +432,7 @@ namespace PaviseApp
             if (core.Release(pid, SuppressReason.Background))
             {
                 ReportUntrack(pid);
-                if (!string.IsNullOrEmpty(reason)) Logger.Log(reason + " 已恢复 " + name + " pid " + pid);
+                if (!string.IsNullOrEmpty(reason)) Logger.Log(reason + Lang.T("log.gamemodesweep.12") + name + " pid " + pid);
             }
             pressure.Forget(pid);
         }

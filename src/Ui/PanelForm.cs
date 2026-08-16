@@ -30,8 +30,7 @@ namespace PaviseApp
         Settings = 8,
         About = 9,
         Whitelist = 10,
-        Column = 11,
-        Count = 12
+        Count = 11
     }
 
     internal partial class PanelForm : Form
@@ -78,13 +77,8 @@ namespace PaviseApp
         private const int ScrollContentW = PageW - 40 - 12 - 20;
 
         public PanelForm(Tamer t, GameMode gm, Icon icon, bool isElevated)
-            : this(t, gm, icon, isElevated, new LolOptimizationService())
         {
-        }
-
-        public PanelForm(Tamer t, GameMode gm, Icon icon, bool isElevated, LolOptimizationService leagueService)
-        {
-            tamer = t; gameMode = gm; elevated = isElevated; lolService = leagueService; appIcon = (Icon)icon.Clone();
+            tamer = t; gameMode = gm; elevated = isElevated; appIcon = (Icon)icon.Clone();
             visualMode = gameMode.ActivePreset; visualEnabled = gameMode.Enabled;
             Theme.SetMode(visualMode, false);
             BuildUi(appIcon);
@@ -133,10 +127,9 @@ namespace PaviseApp
             nav = new NavRail(
                 new[] { Lang.T("nav.overview"), Lang.T("nav.library"), Lang.T("nav.policy"),
                         Lang.T("v14.anticheat"), Lang.T("nav.graphics"), Lang.T("nav.env"), Lang.T("nav.audit"),
-                        Lang.T("nav.log"), Lang.T("nav.set"), Lang.T("nav.about"), Lang.T("nav.white"),
-                        Lang.T("nav.column") },
-                new[] { "game", "tiles", "settings", "acshield", "gpu", "chip", "chart", "log", "gear", "info", "white", "gamepad" },
-                new[] { (int)PageId.Overview, (int)PageId.Library, (int)PageId.Column, (int)PageId.Whitelist,
+                        Lang.T("nav.log"), Lang.T("nav.set"), Lang.T("nav.about"), Lang.T("nav.white") },
+                new[] { "game", "tiles", "settings", "acshield", "gpu", "chip", "chart", "log", "gear", "info", "white" },
+                new[] { (int)PageId.Overview, (int)PageId.Library, (int)PageId.Whitelist,
                         (int)PageId.Policy, (int)PageId.AntiCheat, (int)PageId.Log, (int)PageId.Graphics,
                         (int)PageId.Environment, (int)PageId.Audit, (int)PageId.Settings, (int)PageId.About },
                 new[] { 7 }, new[] { Lang.T("nav.hardware") }, 2);
@@ -207,7 +200,6 @@ namespace PaviseApp
             pages[(int)PageId.Log] = pageLog = MakePage();
             pages[(int)PageId.Settings] = pageSettings = MakePage();
             pages[(int)PageId.About] = pageAbout = MakePage();
-            pages[(int)PageId.Column] = pageColumn = MakePage();
             BuildOverviewPage();
             BuildLibraryPage();
             BuildWhitelistPage();
@@ -219,9 +211,11 @@ namespace PaviseApp
             BuildLogPage();
             BuildSettingsPage();
             BuildAboutPage();
-            BuildColumnPage();
             pageGameConfig = MakePage();
             RegisterPages();
+
+            // 条件色元素的主题跟随:主题切换结束时重跑各页状态刷新 让业务态颜色也跟上新主题色
+            RegisterThemeRefresh(delegate { if (pageGameConfig != null && pageGameConfig.Visible) SyncCfgRows(); });
 
             root = new DBPanel();
             root.SetBounds(0, 0, Theme.S(WinW), Theme.S(WinH));
@@ -275,13 +269,13 @@ namespace PaviseApp
         {
             int expected = (int)PageId.Count;
             if (rail.ItemCount != expected)
-                throw new InvalidOperationException("导航项数量 " + rail.ItemCount + " 与 PageId.Count " + expected + " 不一致");
+                throw new InvalidOperationException(Lang.T("t.panelform.1") + rail.ItemCount + Lang.T("t.panelform.2") + expected + Lang.T("t.panelform.3"));
             var seen = new bool[expected];
             for (int slot = 0; slot < expected; slot++)
             {
                 int item = rail.ItemAtSlot(slot);
-                if (item < 0 || item >= expected) throw new InvalidOperationException("导航视觉排序含越界项 " + item);
-                if (seen[item]) throw new InvalidOperationException("导航视觉排序重复了 " + (PageId)item);
+                if (item < 0 || item >= expected) throw new InvalidOperationException(Lang.T("t.panelform.4") + item);
+                if (seen[item]) throw new InvalidOperationException(Lang.T("t.panelform.5") + (PageId)item);
                 seen[item] = true;
             }
         }
@@ -331,13 +325,6 @@ namespace PaviseApp
             pageHooks[(int)PageId.Settings] = new PageHook(pageSettings,
                 delegate(bool active) { if (active) RefreshSlowStateAsync(); }, null);
             pageHooks[(int)PageId.About] = new PageHook(pageAbout, null, null);
-            pageHooks[(int)PageId.Column] = new PageHook(pageColumn,
-                delegate(bool active)
-                {
-                    if (!active) return;
-                    if (lolService != null) lolService.RequestDiscovery();
-                    RefreshLolColumn();
-                }, null);
         }
 
         private void NotifyPageActivation()
@@ -413,7 +400,6 @@ namespace PaviseApp
             NotifyPageActivation();
         }
 
-        // 进入标签页时让当前活动内容面板滑入一次 单标签页(如游戏专栏)靠这个补上过渡动画
         private void SlideInActiveTab(Control page)
         {
             DBPanel[] panels;
@@ -492,8 +478,8 @@ namespace PaviseApp
             {
                 Dpi.Scale = target;
                 Theme.DropFontCache();
-                Logger.Log("界面按窗口尺寸重排 客户区 " + w + "x" + h
-                    + " 缩放 " + target.ToString("F2"));
+                Logger.Log(Lang.T("log.panelform.6") + w + "x" + h
+                    + Lang.T("log.panelform.7") + target.ToString("F2"));
                 RebuildUi();
             }
             finally { fitting = false; }
@@ -585,7 +571,6 @@ namespace PaviseApp
 
         private void ToggleModeFlyout()
         {
-            if (lolDiscoveringUi) { SetModeFlyout(false); return; }
             SetModeFlyout(modeFlyout == null || !modeFlyout.Visible);
         }
 
@@ -653,7 +638,6 @@ namespace PaviseApp
 
         private void ChooseGlobalMode(PerformancePreset mode)
         {
-            if (lolDiscoveringUi) { SetModeFlyout(false); return; }
             gameMode.Preset = mode;
             SetModeFlyout(false);
             UpdateModePresentation(true);
@@ -693,7 +677,7 @@ namespace PaviseApp
         {
             Settings.Save("UiLight", light);
             Theme.SetLight(light);
-            Logger.Log("界面主题切换 " + (light ? "亮色" : "暗色"));
+            Logger.Log(Lang.T("log.panelform.8") + (light ? Lang.T("log.panelform.9") : Lang.T("log.panelform.10")));
             BeginInvoke((MethodInvoker)delegate { if (!IsDisposed) RebuildUi(); });
         }
 
@@ -750,7 +734,7 @@ namespace PaviseApp
             if (dpi <= 0 || !Dpi.WouldChange(dpi)) return;
             Dpi.Update(dpi);
             Theme.DropFontCache();
-            Logger.Log("界面缩放校正后重建 DPI " + dpi);
+            Logger.Log(Lang.T("log.panelform.11") + dpi);
             RebuildUi();
         }
 
@@ -842,7 +826,6 @@ namespace PaviseApp
             SyncToggleValues();
             RefreshSlowStateAsync();
             RefreshEnvironmentStateAsync();
-            RefreshLolColumn();
         }
 
         private void SyncToggleValues()
@@ -903,7 +886,7 @@ namespace PaviseApp
             if (previewMode == "search-hit" && searchFlyout != null)
             {
                 SetSearchFlyout(true);
-                searchFlyout.SetQuery("后台");
+                searchFlyout.SetQuery(Lang.T("core.tag.bg"));
             }
             if (previewMode == "audit" && pageIndex == (int)PageId.Audit)
             {

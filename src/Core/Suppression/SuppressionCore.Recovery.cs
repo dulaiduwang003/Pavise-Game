@@ -56,7 +56,7 @@ namespace PaviseApp
             }
             catch (Exception ex)
             {
-                Logger.LogFailure("压制恢复日志写入失败 已阻止新的进程状态修改", ex);
+                Logger.LogFailure(Lang.T("log.suppressioncorerecovery.1"), ex);
                 return false;
             }
         }
@@ -85,7 +85,7 @@ namespace PaviseApp
             }
             catch (Exception ex)
             {
-                Logger.LogFailure("压制恢复日志读取失败", ex);
+                Logger.LogFailure(Lang.T("log.suppressioncorerecovery.2"), ex);
             }
         }
 
@@ -156,7 +156,7 @@ namespace PaviseApp
                     if (entry == null)
                     {
                         keep.Add(lines[i]);
-                        Logger.Log("压制恢复日志存在无法解析的记录 已原样保留 第 " + (i + 1) + " 行");
+                        Logger.Log(Lang.T("log.suppressioncorerecovery.3") + (i + 1) + Lang.T("log.suppressioncorerecovery.4"));
                         continue;
                     }
                     IntPtr h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_SET_LIMITED_INFORMATION
@@ -195,16 +195,16 @@ namespace PaviseApp
                     catch (Exception ex)
                     {
                         keep.Add(lines[i]);
-                        Logger.LogFailure("压制崩溃恢复失败 pid " + pid, ex);
+                        Logger.LogFailure(Lang.T("log.suppressioncorerecovery.5") + pid, ex);
                     }
                     finally { Native.CloseHandle(h); }
                 }
                 if (keep.Count == 1) File.Delete(statePath);
-                else AtomicFile.WriteLines(statePath, keep.ToArray(), "压制恢复日志");
+                else AtomicFile.WriteLines(statePath, keep.ToArray(), Lang.T("t.suppressioncorerecovery.6"));
             }
             catch (Exception ex)
             {
-                Logger.LogFailure("压制恢复日志读取失败", ex);
+                Logger.LogFailure(Lang.T("log.suppressioncorerecovery.2"), ex);
             }
             return restored;
         }

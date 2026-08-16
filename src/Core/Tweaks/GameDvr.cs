@@ -23,9 +23,9 @@ namespace PaviseApp
                 bool dvrOk = Dvr.Apply(0);
                 bool capOk = Cap.Apply(0);
                 active = dvrOk && capOk;
-                Logger.Log(active ? "Game DVR 后台录制与捕获已关闭"
-                    : dvrOk ? "Game DVR 已关闭 后台捕获项写入失败 下轮重试"
-                    : "Game DVR 写入或回读失败 本轮未关闭");
+                Logger.Log(active ? Lang.T("log.gamedvr.1")
+                    : dvrOk ? Lang.T("log.gamedvr.2")
+                    : Lang.T("log.gamedvr.3"));
                 return active;
             }
         }
@@ -37,7 +37,7 @@ namespace PaviseApp
                 bool had = Dvr.HasBackup || Cap.HasBackup;
                 bool dvrOk = !Dvr.HasBackup || Dvr.Restore();
                 bool capOk = !Cap.HasBackup || Cap.Restore();
-                if (had && dvrOk && capOk) Logger.Log("Game DVR 设置已还原");
+                if (had && dvrOk && capOk) Logger.Log(Lang.T("log.gamedvr.4"));
                 active = false;
                 return !Dvr.HasBackup && !Cap.HasBackup;
             }

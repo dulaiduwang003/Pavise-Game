@@ -22,7 +22,7 @@ namespace PaviseApp
             OwnedImage(pbIcon, IconArt.Render(Theme.S(76)));
 
             CardLabel(hero, App.DisplayName, 120, 17, 250, 35, 18f, true, Theme.Fg);
-            CardLabel(hero, App.VersionTag + " " + Lang.T("v15.about.identity"), 122, 52, ContentW - 150, 20, 8f, true, Theme.Accent);
+            AccentLabel(hero, App.VersionTag + " " + Lang.T("v15.about.identity"), 122, 52, ContentW - 150, 20, 8f, true);
             CardLabel(hero, Lang.T("about.desc").Replace("\r\n", " "), 122, 75, ContentW - 150, 48, 8.2f, false, Theme.Dim);
             hero.Controls.Add(pbIcon);
 
@@ -39,7 +39,9 @@ namespace PaviseApp
             {
                 int ry = 44 + i * 42;
                 CardLabel(card, Lang.T(rowKeys[i]).ToUpperInvariant(), 20, ry, 108, 18, 7.4f, true, Theme.Faint);
-                var lblV = CardLabel(card, rowVals[i], 132, ry - 2, infoW - 152, 24, 9.2f, i == 2, i == 2 ? Theme.Accent : Theme.Fg);
+                var lblV = i == 2
+                    ? AccentLabel(card, rowVals[i], 132, ry - 2, infoW - 152, 24, 9.2f, true)
+                    : CardLabel(card, rowVals[i], 132, ry - 2, infoW - 152, 24, 9.2f, false, Theme.Fg);
                 if (i == 2)
                 {
                     lblV.Cursor = Cursors.Hand;
@@ -109,7 +111,7 @@ namespace PaviseApp
                             {
                                 lblUpd.ForeColor = Theme.Danger;
                                 lblUpd.Text = Lang.T("upd.fail");
-                                Logger.Log("检查更新失败 " + r.Error);
+                                Logger.Log(Lang.T("log.panelformaboutpage.1") + r.Error);
                             }
                             else if (r.Newer)
                             {
@@ -121,14 +123,14 @@ namespace PaviseApp
                                 lblUpd.ForeColor = Theme.Green;
                                 lblUpd.Text = Lang.F("upd.newver", r.Latest, App.VersionTag)
                                     + " " + Lang.F("upd.route", r.Source);
-                                Logger.Log("检查更新 发现新版本 " + r.Latest + " 当前 " + App.VersionTag + " ");
+                                Logger.Log(Lang.T("log.panelformaboutpage.2") + r.Latest + Lang.T("log.program.7") + App.VersionTag + " ");
                             }
                             else
                             {
                                 lblUpd.ForeColor = Theme.Green;
                                 lblUpd.Text = Lang.F("upd.latest", App.VersionTag)
                                     + " " + Lang.F("upd.route", r.Source);
-                                Logger.Log("检查更新 已是最新版本 " + App.VersionTag + " ");
+                                Logger.Log(Lang.T("log.panelformaboutpage.3") + App.VersionTag + " ");
                             }
                         }));
                     }

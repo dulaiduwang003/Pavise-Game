@@ -10,11 +10,11 @@ namespace PaviseApp
 {
     internal partial class PanelForm
     {
-        private Toggle swHags, swVbs, swIrqAffinity, swUsbAffinity, swGmGuard;
-        private Toggle swDevPower, swWindowedOpt;
-        private Toggle swAccessKeys, swHidPower, swPointerPrec;
+        private Toggle swHags, swVbs, swIrqAffinity, swGmGuard;
+        private Toggle swDevPower, swWindowedOpt, swCfgOff;
+        private Toggle swAccessKeys, swHidPower;
         private SettingCard cardVbs, cardWindowedOpt;
-        private SettingCard cardAccessKeys, cardHidPower, cardPointerPrec;
+        private SettingCard cardAccessKeys, cardHidPower;
         private TechTabs envTabs;
         private DBPanel[] envTabPanels;
         private int envBusy;
@@ -44,8 +44,12 @@ namespace PaviseApp
             Control scroll = envTabPanels[0];
             int sy = 2, cardH;
 
+            bool hagsSupported, hagsOnNow;
+            HagsTweak.TryQueryState(out hagsSupported, out hagsOnNow);
             swHags = MakeSwitch(HagsTweak.EnabledByPavise || HagsTweak.CurrentlyOn(), OnHagsToggle);
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.hags"), Lang.T("set.hags.n"), swHags, out cardH);
+            swHags.Enabled = hagsSupported || HagsTweak.EnabledByPavise;
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.hags"),
+                swHags.Enabled ? Lang.T("set.hags.n") : Lang.T("hags.unsupported"), swHags, out cardH);
             sy += cardH + 8;
 
             swVbs = MakeSwitch(VbsTweak.DisabledByPavise, OnVbsToggle);
@@ -63,6 +67,10 @@ namespace PaviseApp
                 win11 ? Lang.T("set.windowedopt.n") : Lang.T("windowedopt.oldos"), swWindowedOpt, out cardH);
             sy += cardH + 8;
 
+            swCfgOff = MakeSwitch(CfgOffTweak.Enabled, OnCfgOffToggle);
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.cfgoff"), Lang.T("set.cfgoff.n"), swCfgOff, out cardH);
+            sy += cardH + 8;
+
             scroll = envTabPanels[1]; sy = 2;
 
             bool discreteGpu = GpuInventory.HasDiscrete;
@@ -71,10 +79,6 @@ namespace PaviseApp
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.irqaffinity"),
                 discreteGpu ? Lang.T("set.irqaffinity.n") : Lang.T("irqaffinity.igpuonly"),
                 swIrqAffinity, out cardH);
-            sy += cardH + 8;
-
-            swUsbAffinity = MakeSwitch(UsbInterruptAffinityTweak.EnabledByPavise, OnUsbAffinityToggle);
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.usbaffinity"), Lang.T("set.usbaffinity.n"), swUsbAffinity, out cardH);
             sy += cardH + 8;
 
             swDevPower = MakeSwitch(DevicePowerTweak.EnabledByPavise, OnDevPowerToggle);
@@ -92,12 +96,6 @@ namespace PaviseApp
             swHidPower = MakeSwitch(HidPowerTweak.EnabledByPavise, OnHidPowerToggle);
             cardHidPower = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.hidpower"),
                 Lang.T("set.hidpower.n"), swHidPower, out cardH);
-            sy += cardH + 8;
-
-            swPointerPrec = MakeSwitch(PointerPrecisionTweak.EnabledByPavise, OnPointerPrecToggle);
-            swPointerPrec.Enabled = PointerPrecisionTweak.NeedsFix() || PointerPrecisionTweak.EnabledByPavise;
-            cardPointerPrec = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.pointerprec"),
-                Lang.T("set.pointerprec.n"), swPointerPrec, out cardH);
             sy += cardH + 8;
 
             SyncEnvStatus();
@@ -121,9 +119,6 @@ namespace PaviseApp
             if (cardWindowedOpt != null && Native.OsBuild() >= 22000)
                 cardWindowedOpt.SetStatus(WindowedOptTweak.Describe(),
                     StatusInk(!WindowedOptTweak.CurrentlyOn(), WindowedOptTweak.EnabledByPavise));
-            if (cardPointerPrec != null)
-                cardPointerPrec.SetStatus(PointerPrecisionTweak.Describe(),
-                    StatusInk(PointerPrecisionTweak.NeedsFix(), PointerPrecisionTweak.EnabledByPavise));
         }
 
         private void OnAccessKeysToggle(object s, EventArgs e)
@@ -132,15 +127,6 @@ namespace PaviseApp
             swAccessKeys.SetSilently(AccessibilityKeysTweak.EnabledByPavise);
             swAccessKeys.Enabled = AccessibilityKeysTweak.NeedsFix() || AccessibilityKeysTweak.EnabledByPavise;
             if (cardAccessKeys != null)
-                SyncEnvStatus();
-        }
-
-        private void OnPointerPrecToggle(object s, EventArgs e)
-        {
-            if (swPointerPrec.Checked) PointerPrecisionTweak.Enable(); else PointerPrecisionTweak.Restore();
-            swPointerPrec.SetSilently(PointerPrecisionTweak.EnabledByPavise);
-            swPointerPrec.Enabled = PointerPrecisionTweak.NeedsFix() || PointerPrecisionTweak.EnabledByPavise;
-            if (cardPointerPrec != null)
                 SyncEnvStatus();
         }
 
@@ -174,6 +160,22 @@ namespace PaviseApp
             swGmGuard.SetSilently(GameModeGuard.EnabledByPavise);
         }
 
+        private void OnCfgOffToggle(object s, EventArgs e)
+        {
+            if (!RequireElevationFor(swCfgOff, CfgOffTweak.Enabled)) return;
+            if (swCfgOff.Checked)
+            {
+                CfgOffTweak.Enable();
+                PaviseDialog.Info(this, App.DisplayName, Lang.T("cfgoff.on"));
+            }
+            else
+            {
+                bool ok = CfgOffTweak.Disable();
+                PaviseDialog.Info(this, App.DisplayName, Lang.T(ok ? "cfgoff.off" : "cfgoff.restorefail"));
+            }
+            swCfgOff.SetSilently(CfgOffTweak.Enabled);
+        }
+
         private bool RequireElevationFor(Toggle sw, bool restoredState)
         {
             if (elevated) return true;
@@ -198,25 +200,17 @@ namespace PaviseApp
             swIrqAffinity.SetSilently(InterruptAffinityTweak.EnabledByPavise);
         }
 
-        private void OnUsbAffinityToggle(object s, EventArgs e)
-        {
-            if (!RequireElevationFor(swUsbAffinity, UsbInterruptAffinityTweak.EnabledByPavise)) return;
-            if (swUsbAffinity.Checked
-                && !PaviseDialog.Confirm(this, App.DisplayName, Lang.T("usbaffinity.warn"), DlgKind.Warn))
-            {
-                swUsbAffinity.SetSilently(UsbInterruptAffinityTweak.EnabledByPavise);
-                return;
-            }
-            bool ok = swUsbAffinity.Checked ? UsbInterruptAffinityTweak.Enable() : UsbInterruptAffinityTweak.Disable();
-            if (ok) PaviseDialog.Info(this, App.DisplayName, Lang.T("irqaffinity.reboot"));
-            swUsbAffinity.SetSilently(UsbInterruptAffinityTweak.EnabledByPavise);
-        }
-
         private void OnVbsToggle(object s, EventArgs e)
         {
             if (swVbs.Checked)
             {
                 if (!RequireElevationFor(swVbs, false)) return;
+                string vbsBlockKey;
+                if (VbsTweak.BlockedReason(out vbsBlockKey))
+                {
+                    PaviseDialog.Warn(this, App.DisplayName, Lang.T(vbsBlockKey));
+                    swVbs.SetSilently(false); RefreshVbsState(); return;
+                }
                 bool agreed = PaviseDialog.Confirm(this, App.DisplayName, Lang.T("vbs.warn"), DlgKind.Warn);
                 if (!agreed || !VbsTweak.Disable())
                 {
@@ -285,14 +279,13 @@ namespace PaviseApp
             if (swHags != null) swHags.SetSilently(HagsTweak.EnabledByPavise || HagsTweak.CurrentlyOn());
             if (swVbs != null) swVbs.SetSilently(VbsTweak.DisabledByPavise);
             if (swIrqAffinity != null) swIrqAffinity.SetSilently(InterruptAffinityTweak.EnabledByPavise);
-            if (swUsbAffinity != null) swUsbAffinity.SetSilently(UsbInterruptAffinityTweak.EnabledByPavise);
             if (swGmGuard != null) swGmGuard.SetSilently(GameModeGuard.EnabledByPavise);
             if (swDevPower != null) swDevPower.SetSilently(DevicePowerTweak.EnabledByPavise);
             if (swAccessKeys != null) swAccessKeys.SetSilently(AccessibilityKeysTweak.EnabledByPavise);
             if (swHidPower != null) swHidPower.SetSilently(HidPowerTweak.EnabledByPavise);
             if (swWindowedOpt != null)
                 swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByPavise || WindowedOptTweak.CurrentlyOn());
-            if (swPointerPrec != null) swPointerPrec.SetSilently(PointerPrecisionTweak.EnabledByPavise);
+            if (swCfgOff != null) swCfgOff.SetSilently(CfgOffTweak.Enabled);
         }
     }
 }

@@ -104,7 +104,7 @@ namespace PaviseApp
             lock (sync) levels[key] = level;
             Settings.SaveStr("TameLvl_" + key, LevelTag(level));
             Poke();
-            Logger.Log("反作弊分组 " + key + " 压制档位 " + LevelTag(level));
+            Logger.Log(Lang.T("log.tamer.1") + key + Lang.T("log.tamer.2") + LevelTag(level));
         }
 
         internal static SuppressionLevel ParseLevel(string tag)
@@ -127,7 +127,7 @@ namespace PaviseApp
 
             Interlocked.Exchange(ref fullSweepRequested, 1);
             kick.Set();
-            lock (engineSync) return ReleaseAll("紧急恢复");
+            lock (engineSync) return ReleaseAll(Lang.T("t.gamemode.42"));
         }
 
         public void SetGroupEnabled(string key, bool on)
@@ -135,7 +135,7 @@ namespace PaviseApp
             lock (sync) enabled[key] = on;
             Settings.Save("Tame_" + key, on);
             Poke();
-            Logger.Log("反作弊分组 " + key + " " + (on ? "开启压制" : "关闭并恢复"));
+            Logger.Log(Lang.T("log.tamer.1") + key + " " + (on ? Lang.T("log.tamer.3") : Lang.T("log.tamer.4")));
         }
 
         public string GroupStatus(string key)
@@ -199,7 +199,7 @@ namespace PaviseApp
 
         private void Loop()
         {
-            Logger.Log("反作弊压制引擎启动 可用 " + CpuTopology.DescribeMask(core.ThrottleMask));
+            Logger.Log(Lang.T("log.tamer.5") + CpuTopology.DescribeMask(core.ThrottleMask));
             long nextFullSweep = 0;
             long nextOverflowSweep = 0;
             while (!stopping)
@@ -222,7 +222,7 @@ namespace PaviseApp
                                 Interlocked.Exchange(
                                     ref overflowSweepRequested, 0) != 0;
                         }
-                        if (paused || panicHold) ReleaseAll(paused ? "总开关关闭" : "紧急恢复冷却");
+                        if (paused || panicHold) ReleaseAll(paused ? Lang.T("gs.moff") : Lang.T("t.tamer.6"));
                         else if (fullRequested || now >= nextFullSweep
                             || overflowRequested && now >= nextOverflowSweep)
                         {
@@ -259,7 +259,7 @@ namespace PaviseApp
                         core.RetryPending();
                     }
                 }
-                catch (Exception ex) { Logger.Log("反作弊压制异常 " + ex.Message); }
+                catch (Exception ex) { Logger.Log(Lang.T("log.tamer.7") + ex.Message); }
                 long remainingTicks = nextFullSweep - DateTime.UtcNow.Ticks;
                 long overflowRemaining = nextOverflowSweep
                     - DateTime.UtcNow.Ticks;
@@ -274,7 +274,7 @@ namespace PaviseApp
                         Math.Max(1, remainingTicks / TimeSpan.TicksPerMillisecond));
                 kick.WaitOne(wait);
             }
-            ReleaseAll("Pavise 退出");
+            ReleaseAll(Lang.T("t.gamemode.53"));
         }
 
         internal static int FullSweepInterval(bool eventsAvailable)
@@ -500,22 +500,22 @@ namespace PaviseApp
         private static void LogAcquireResult(AcquireRequest request)
         {
             if (request.Result == AcquireResult.NewlyThrottled)
-                Logger.Log("压制 " + request.Name + " pid " + request.Pid);
+                Logger.Log(Lang.T("log.tamer.8") + request.Name + " pid " + request.Pid);
             else if (request.Result == AcquireResult.NewlyProtected
                 && request.FailureDetail != SuppressionCore.SelfProtectedDetail)
-                Logger.Log("打开 " + request.Name + " pid " + request.Pid
-                    + " 失败 句柄被内核保护 压不动");
+                Logger.Log(Lang.T("log.tamer.9") + request.Name + " pid " + request.Pid
+                    + Lang.T("log.tamer.10"));
             else if (request.Result == AcquireResult.ApplyFailed)
-                Logger.Log("压制 " + request.Name + " pid " + request.Pid
-                    + " 未完全生效"
-                    + (string.IsNullOrEmpty(request.FailureDetail) ? "" : " 失败环节 " + request.FailureDetail)
-                    + " 已保留快照 将按退避计划重试");
+                Logger.Log(Lang.T("log.tamer.8") + request.Name + " pid " + request.Pid
+                    + Lang.T("log.tamer.11")
+                    + (string.IsNullOrEmpty(request.FailureDetail) ? "" : Lang.T("log.tamer.12") + request.FailureDetail)
+                    + Lang.T("log.tamer.13"));
         }
 
         private bool ReleaseAll(string reason)
         {
             int n = core.ReleaseReason(SuppressReason.AntiCheat);
-            if (n > 0) Logger.Log("反作弊压制解除 " + reason + " 恢复 " + n + " 个进程");
+            if (n > 0) Logger.Log(Lang.T("log.tamer.14") + reason + Lang.T("log.gamemodeboost.53") + n + Lang.T("log.program.3"));
             return !core.AnyWith(SuppressReason.AntiCheat);
         }
     }

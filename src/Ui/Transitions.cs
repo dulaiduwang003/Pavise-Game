@@ -52,10 +52,6 @@ namespace PaviseApp
             if (target != null && live.TryGetValue(target, out old)) old.Finish();
         }
 
-        // 弹窗不再做入场位移 直接显示
-        // 位移只有十几个像素 无论怎么调曲线都只能落在十几个像素位置上 中间没有可插值的余地
-        // 而窗口每动一次都要连着子控件整块重画 一次弹窗就是几十次全窗口重绘
-        // 换来的是一段看得见的顿挫 不如不做
         public static void EnterForm(Form form)
         {
             EnterForm(form, FormRise);

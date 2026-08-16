@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 只读汇总本机处理器 显卡 内存与图形调度信息 供概览页展示
+// 文件用途 只读汇总本机处理器 显卡 内存信息 供概览页展示
 
 using System;
 using System.Collections.Generic;
@@ -34,8 +34,7 @@ namespace PaviseApp
             {
                 string.IsNullOrEmpty(cpu) ? " " : cpu,
                 string.IsNullOrEmpty(gpu) ? " " : gpu,
-                string.IsNullOrEmpty(mem) ? " " : mem,
-                HagsText()
+                string.IsNullOrEmpty(mem) ? " " : mem
             };
             if (specs[1] != " ") cached = specs;
             return specs;
@@ -107,23 +106,6 @@ namespace PaviseApp
                 return Math.Round(gb).ToString("0") + " GB";
             }
             catch { return null; }
-        }
-
-        private static string HagsText()
-        {
-            try
-            {
-                bool supported, enabled;
-                bool capsOk = HagsTweak.TryQueryState(out supported, out enabled);
-                if (capsOk && !supported) return Lang.T("v16.device.hags.none");
-                int? mode = HagsTweak.ConfiguredMode();
-                if (mode.HasValue)
-                    return mode.Value == 2 ? Lang.T("v16.device.hags.on") : Lang.T("v16.device.hags.off");
-                if (capsOk)
-                    return enabled ? Lang.T("v16.device.hags.on") : Lang.T("v16.device.hags.off");
-                return Lang.T("v16.device.hags.unknown");
-            }
-            catch { return Lang.T("v16.device.hags.unknown"); }
         }
 
         private static string Compact(string value)

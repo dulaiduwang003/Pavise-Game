@@ -10,20 +10,18 @@ namespace PaviseApp
     internal sealed class NvGamePlan
     {
         public bool MaxPerf;
-        public int FrlFps;
         public string LowLatMode;
         public bool SmoothMotion;
         public bool ShaderCacheMax;
         public bool AnselOff;
         public bool Rebar;
         public string DlssMode;
-        public bool BattFull;
 
         public bool Empty
         {
             get
             {
-                return !MaxPerf && FrlFps <= 0 && !AnselOff && !Rebar && !BattFull
+                return !MaxPerf && !AnselOff && !Rebar
                     && !SmoothMotion && !ShaderCacheMax
                     && (LowLatMode == null || LowLatMode == "off")
                     && (DlssMode == null || DlssMode == "off");
@@ -36,6 +34,7 @@ namespace PaviseApp
         private const string ListKey = "NvDrsList";
         private const string SnapPrefix = "NvDrs_";
         public const string KeyPState = "pstate";
+        // 限帧功能已下架 KeyFrl 只留作还原旧版本写下的 DRS 键 不再写入
         public const string KeyFrl = "frl";
         public const string KeyPreRender = "prerender";
         public const string KeyLowLatCpl = "lowlatcpl";
@@ -48,7 +47,6 @@ namespace PaviseApp
         public const string KeyRebarSize = "rebarsize";
         public const string KeyDlssOvr = "dlssovr";
         public const string KeyDlssPreset = "dlsspreset";
-        public const string KeyBattFps = "battfps";
 
         public static readonly string[] RebarKeys = { KeyRebarFeat, KeyRebarOpt, KeyRebarSize };
         public static readonly string[] DlssKeys = { KeyDlssOvr, KeyDlssPreset };
@@ -74,7 +72,6 @@ namespace PaviseApp
                 case KeyRebarSize: return NvApi.SettingRebarSizeLimit;
                 case KeyDlssOvr: return NvApi.SettingDlssSrOverride;
                 case KeyDlssPreset: return NvApi.SettingDlssSrPreset;
-                case KeyBattFps: return NvApi.SettingBatteryBoostAppFps;
                 default: return NvApi.SettingFrlFps;
             }
         }
@@ -148,7 +145,6 @@ namespace PaviseApp
             var desired = new List<KeyValuePair<string, uint>>();
             if (plan == null) return desired;
             if (plan.MaxPerf) desired.Add(new KeyValuePair<string, uint>(KeyPState, NvApi.PStatePreferMax));
-            if (plan.FrlFps > 0) desired.Add(new KeyValuePair<string, uint>(KeyFrl, (uint)plan.FrlFps));
             string lowLat = plan.LowLatMode;
             if (lowLat == "on" || lowLat == "ultra")
             {
@@ -167,9 +163,9 @@ namespace PaviseApp
                 {
                     smoothGateLogged = true;
                     Logger.Log(!SmoothMotionGpuCapable()
-                        ? "Smooth Motion 插帧 需要 RTX 40 或 50 系显卡 该项跳过"
-                        : "Smooth Motion 插帧 需要 " + FormatDriver(SmoothMotionMinDriver())
-                            + " 及以上驱动 本机 " + FormatDriver(NvApi.DriverVersion()) + " 该项跳过");
+                        ? Lang.T("log.nvdrstweaks.1")
+                        : Lang.T("log.nvdrstweaks.2") + FormatDriver(SmoothMotionMinDriver())
+                            + Lang.T("log.nvdrstweaks.3") + FormatDriver(NvApi.DriverVersion()) + Lang.T("log.nvdrstweaks.4"));
                 }
             }
             if (plan.ShaderCacheMax)
@@ -194,24 +190,39 @@ namespace PaviseApp
                 {
                     dlssGateLogged = true;
                     Logger.Log(!DlssGpuCapable()
-                        ? "DLSS 覆写 本机显卡不是 RTX 卡 没有 DLSS 超分能力 该项跳过"
-                        : "DLSS 覆写 需要 566.14 及以上驱动 本机 "
-                            + FormatDriver(NvApi.DriverVersion()) + " 该项跳过");
+                        ? Lang.T("log.nvdrstweaks.5")
+                        : Lang.T("log.nvdrstweaks.6")
+                            + FormatDriver(NvApi.DriverVersion()) + Lang.T("log.nvdrstweaks.4"));
                 }
             }
-            if (plan.BattFull) desired.Add(new KeyValuePair<string, uint>(KeyBattFps, NvApi.BatteryFpsUncapped));
             return desired;
         }
 
         internal static string FormatDriver(uint version)
         {
-            if (version == 0) return "未知版本";
+            if (version == 0) return Lang.T("t.nvdrstweaks.7");
             return (version / 100) + "." + (version % 100).ToString("00");
         }
 
         private static string SatKey(string exeName) { return "NvDrsSat_" + exeName; }
 
-        // 满足标记签名:驱动版本 + 排序后的期望键值 任一变化即失配 触发重新写入
+        // 快照值编码 "原值" 或 "原值~已写值" 已写值供还原时做所有权判定
+        // 无已写值的旧快照按未知处理走无条件还原(与历史行为一致)
+        private const char AppliedSep = '~';
+
+        internal static string SnapOrig(string stored)
+        {
+            int cut = stored.IndexOf(AppliedSep);
+            return cut < 0 ? stored : stored.Substring(0, cut);
+        }
+
+        internal static bool TrySnapApplied(string stored, out uint applied)
+        {
+            applied = 0;
+            int cut = stored.IndexOf(AppliedSep);
+            return cut >= 0 && uint.TryParse(stored.Substring(cut + 1), out applied);
+        }
+
         private static string SatSignature(List<KeyValuePair<string, uint>> desired)
         {
             var parts = new List<string>();
@@ -222,18 +233,18 @@ namespace PaviseApp
 
         public static List<string> ApplyForGame(string exePath, NvGamePlan plan)
         {
-            if (string.IsNullOrEmpty(exePath) || plan == null || plan.Empty) return null;
+            if (string.IsNullOrEmpty(exePath)) return null;
             if (!NvApi.Available) return null;
             string exeName = Path.GetFileName(exePath);
             if (string.IsNullOrEmpty(exeName)) return null;
-            var desired = BuildDesired(plan);
-            if (desired.Count == 0) return null;
-            // 快路径:上次已把这套设置(含驱动版本)完整写入该 exe 的 profile 且驱动 profile 持久保留
-            //         则整局都不必再开会话(DRS_LoadSettings 几十~上百 ms)更不必 SaveSession 落盘 直接跳过
-            //         签名含驱动版本 驱动一变即失配重来;RestoreKind 还原时会清掉该标记 保证关开关后能重写
+            // 空计划=还原该游戏全部已写键 否则 Ultra→On/开→关 后上次会话写的旧键继续生效
+            var desired = plan == null || plan.Empty
+                ? new List<KeyValuePair<string, uint>>() : BuildDesired(plan);
+            if (desired.Count == 0
+                && Settings.LoadStr(SnapPrefix + exeName, "").Length == 0) return null;
             string satKey = SatKey(exeName);
             string sig = SatSignature(desired);
-            if (Settings.LoadStr(satKey, "") == sig) return null;
+            if (desired.Count > 0 && Settings.LoadStr(satKey, "") == sig) return null;
             lock (sync)
             {
                 IntPtr session;
@@ -260,12 +271,41 @@ namespace PaviseApp
                         if (!Settings.SaveStr(SnapPrefix + exeName, SerializeSnapshot(snapshot))
                             || !AddToList(exeName))
                         {
-                            Logger.Log("NVIDIA 驱动调优 快照无法持久化 已跳过 " + exeName);
+                            Logger.Log(Lang.T("log.nvdrstweaks.8") + exeName);
                             return null;
                         }
                     }
+                    // 快照里上次写过而本次计划不再包含的键 还原为原值
+                    // 所有权守卫:当前值 ≠ 我们当初写的值 = 用户事后在 NVCP 改过 尊重其值只弃快照
+                    var keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var item in desired) keep.Add(item.Key);
+                    var stale = new List<string>();
+                    foreach (string key in snapshot.Keys)
+                        if (!keep.Contains(key)) stale.Add(key);
+
                     bool wrote = false;
                     var failed = new List<string>();
+                    var restoredKeys = new List<string>();
+                    int yielded = 0;
+                    foreach (string key in stale)
+                    {
+                        string orig = SnapOrig(snapshot[key]);
+                        uint applied, cur;
+                        if (TrySnapApplied(snapshot[key], out applied)
+                            && NvApi.TryGetDword(session, profile, SettingIdOf(key), out cur) == 1
+                            && cur != applied)
+                        {
+                            restoredKeys.Add(key); yielded++;
+                            continue;
+                        }
+                        bool ok = orig == "absent"
+                            ? NvApi.TryGetDword(session, profile, SettingIdOf(key), out cur) == 0
+                                || NvApi.DeleteSetting(session, profile, SettingIdOf(key))
+                            : NvApi.SetDword(session, profile, SettingIdOf(key), ParseUInt(orig));
+                        if (ok) { restoredKeys.Add(key); wrote = true; }
+                        else failed.Add(key);
+                    }
+
                     foreach (var item in desired)
                     {
                         uint current;
@@ -276,35 +316,62 @@ namespace PaviseApp
                         else
                         {
                             failed.Add(item.Key);
-                            Logger.Log("NVIDIA 驱动调优 写入 " + item.Key + " 失败 " + exeName
-                                + " NVAPI 状态 " + status);
+                            Logger.Log(Lang.T("log.nvdrstweaks.9") + item.Key + Lang.T("log.nvdrstweaks.10") + exeName
+                                + Lang.T("log.nvdrstweaks.11") + status);
                         }
                     }
                     bool saved = !wrote || NvApi.SaveSession(session);
                     if (wrote && saved)
                     {
-                        string done = (plan.MaxPerf && !failed.Contains(KeyPState) ? " 电源最高性能" : "")
-                            + (plan.FrlFps > 0 && !failed.Contains(KeyFrl) ? " 帧上限" + plan.FrlFps : "")
-                            + (plan.LowLatMode == "ultra" && !ContainsAny(failed, UltraKeys) ? " 超低延迟Ultra "
-                                : plan.LowLatMode == "on" && !failed.Contains(KeyPreRender) ? " 低延迟 预渲染1 " : "")
+                        string done = (plan.MaxPerf && !failed.Contains(KeyPState) ? Lang.T("t.nvdrstweaks.12") : "")
+                            + (plan.LowLatMode == "ultra" && !ContainsAny(failed, UltraKeys) ? Lang.T("t.nvdrstweaks.14")
+                                : plan.LowLatMode == "on" && !failed.Contains(KeyPreRender) ? Lang.T("t.nvdrstweaks.15") : "")
                             + (plan.SmoothMotion && SmoothMotionSupported() && !failed.Contains(KeySmooth)
-                                ? " SmoothMotion插帧" : "")
-                            + (plan.ShaderCacheMax && !failed.Contains(KeyShaderCache) ? " 着色器缓存无上限" : "")
-                            + (plan.AnselOff && !failed.Contains(KeyAnsel) ? " Ansel关" : "")
-                            + (plan.Rebar && !ContainsAny(failed, RebarKeys) ? " ReBAR强开" : "")
+                                ? Lang.T("t.nvdrstweaks.16") : "")
+                            + (plan.ShaderCacheMax && !failed.Contains(KeyShaderCache) ? Lang.T("t.nvdrstweaks.17") : "")
+                            + (plan.AnselOff && !failed.Contains(KeyAnsel) ? Lang.T("t.nvdrstweaks.18") : "")
+                            + (plan.Rebar && !ContainsAny(failed, RebarKeys) ? Lang.T("t.nvdrstweaks.19") : "")
                             + (DesiredHasDlss(desired) && !ContainsAny(failed, DlssKeys)
-                                ? " " + DlssText(plan.DlssMode) : "")
-                            + (plan.BattFull && !failed.Contains(KeyBattFps) ? " 电池满血" : "");
-                        if (done.Length > 0) Logger.Log("显卡驱动调优 " + exeName + done);
+                                ? " " + DlssText(plan.DlssMode) : "");
+                        if (done.Length > 0) Logger.Log(Lang.T("log.nvdrstweaks.21") + exeName + done);
                     }
                     if (!saved)
                     {
                         failed.Clear();
                         foreach (var item in desired) failed.Add(item.Key);
-                        Logger.Log("NVIDIA 驱动调优 保存驱动会话失败 " + exeName);
+                        Logger.Log(Lang.T("log.nvdrstweaks.22") + exeName);
                     }
-                    // 全部达标才记满足标记 下局直接走快路径跳过开会话;有失败则清标记 下局重试
-                    Settings.SaveStr(satKey, failed.Count == 0 ? sig : "");
+                    // 还原确认落盘后才从快照里遗忘原值 成功写入的键补记已写值供下次所有权判定
+                    if (saved)
+                    {
+                        bool snapDirty = false;
+                        if (restoredKeys.Count > 0)
+                        {
+                            foreach (string key in restoredKeys) snapshot.Remove(key);
+                            snapDirty = true;
+                            Logger.Log(Lang.T("log.nvdrstweaks.36") + exeName
+                                + Lang.T("log.nvdrstweaks.37") + (restoredKeys.Count - yielded) + Lang.T("log.nvdrstweaks.38")
+                                + (yielded > 0 ? Lang.T("log.nvdrstweaks.39") + yielded + Lang.T("log.nvdrstweaks.40") : ""));
+                        }
+                        foreach (var item in desired)
+                        {
+                            if (failed.Contains(item.Key)) continue;
+                            string stored;
+                            if (!snapshot.TryGetValue(item.Key, out stored)) continue;
+                            string next = SnapOrig(stored) + AppliedSep + item.Value;
+                            if (stored != next) { snapshot[item.Key] = next; snapDirty = true; }
+                        }
+                        if (snapDirty)
+                        {
+                            if (snapshot.Count == 0)
+                            {
+                                Settings.SaveStr(SnapPrefix + exeName, "");
+                                RemoveFromList(exeName);
+                            }
+                            else Settings.SaveStr(SnapPrefix + exeName, SerializeSnapshot(snapshot));
+                        }
+                    }
+                    Settings.SaveStr(satKey, failed.Count == 0 && desired.Count > 0 ? sig : "");
                     return failed;
                 }
                 finally { NvApi.CloseSession(session); }
@@ -319,10 +386,10 @@ namespace PaviseApp
 
         internal static string DlssText(string mode)
         {
-            if (mode == "latest") return "DLSS 覆写为最新";
-            if (mode == "j") return "DLSS 覆写为预设 J";
-            if (mode == "k") return "DLSS 覆写为预设 K";
-            return "DLSS 覆写";
+            if (mode == "latest") return Lang.T("t.nvdrstweaks.23");
+            if (mode == "j") return Lang.T("t.nvdrstweaks.24");
+            if (mode == "k") return Lang.T("t.nvdrstweaks.25");
+            return Lang.T("t.nvdrstweaks.26");
         }
 
         internal static bool ContainsAny(List<string> list, string[] keys)
@@ -341,8 +408,9 @@ namespace PaviseApp
                 foreach (string exeName in games)
                 {
                     var snapshot = ParseSnapshot(Settings.LoadStr(SnapPrefix + exeName, ""));
-                    string orig;
-                    if (!snapshot.TryGetValue(key, out orig)) continue;
+                    string stored;
+                    if (!snapshot.TryGetValue(key, out stored)) continue;
+                    string orig = SnapOrig(stored);
                     IntPtr session;
                     if (!NvApi.TryOpenSession(out session)) return;
                     try
@@ -350,9 +418,23 @@ namespace PaviseApp
                         IntPtr profile;
                         if (NvApi.FindOrCreateAppProfile(session, exeName, out profile))
                         {
-                            // absent 快照的目标状态是"本 profile 无显式值" 驱动更新或早前还原可能已清掉
-                            // 或者当前值本就来自驱动预定义/基础 profile 继承(TryGetDword 返回 0)
-                            // 这种情况下 DeleteSetting 必报 SETTING_NOT_FOUND 若判失败快照永久卡死 连带升级清数据无限中止
+                            // 所有权守卫:当前值 ≠ 我们当初写的值 = 用户事后在 NVCP 改过 尊重其值只弃快照
+                            uint applied, curNow;
+                            if (TrySnapApplied(stored, out applied)
+                                && NvApi.TryGetDword(session, profile, SettingIdOf(key), out curNow) == 1
+                                && curNow != applied)
+                            {
+                                snapshot.Remove(key);
+                                Settings.SaveStr(SatKey(exeName), "");
+                                if (snapshot.Count == 0)
+                                {
+                                    Settings.SaveStr(SnapPrefix + exeName, "");
+                                    RemoveFromList(exeName);
+                                }
+                                else Settings.SaveStr(SnapPrefix + exeName, SerializeSnapshot(snapshot));
+                                Logger.Log(Lang.T("log.nvdrstweaks.41") + exeName + Lang.T("log.gamemodeenv.13") + key);
+                                continue;
+                            }
                             uint cur;
                             bool ok = orig == "absent"
                                 ? NvApi.TryGetDword(session, profile, SettingIdOf(key), out cur) == 0
@@ -368,9 +450,9 @@ namespace PaviseApp
                                     RemoveFromList(exeName);
                                 }
                                 else Settings.SaveStr(SnapPrefix + exeName, SerializeSnapshot(snapshot));
-                                Logger.Log("NVIDIA 驱动调优 已恢复 " + exeName + " 的 " + key);
+                                Logger.Log(Lang.T("log.nvdrstweaks.27") + exeName + Lang.T("log.gamemodeenv.13") + key);
                             }
-                            else Logger.Log("NVIDIA 驱动调优 恢复 " + exeName + " 的 " + key + " 失败 快照保留");
+                            else Logger.Log(Lang.T("log.nvdrstweaks.28") + exeName + Lang.T("log.gamemodeenv.13") + key + Lang.T("log.nvdrstweaks.29"));
                         }
                     }
                     finally { NvApi.CloseSession(session); }
@@ -398,6 +480,15 @@ namespace PaviseApp
 
         public static int HealOrphans()
         {
+            // NVIDIA 卡已拔走时 DRS 配置随驱动库一起消失 本地快照无处可还原 弃掉防止每次启动报无法还原
+            // 只有硬件确实不在才弃 驱动暂时不可用(升级中)仍保留等下次
+            if (!NvApi.Available && NvidiaAbsent())
+            {
+                int dropped = DropAllSnapshots();
+                if (dropped > 0)
+                    Logger.Log(Lang.T("log.nvdrstweaks.34") + dropped + Lang.T("log.nvdrstweaks.35"));
+                return 0;
+            }
             int healed = 0;
             int stuck = 0;
             foreach (string key in OrphanHealKinds())
@@ -407,17 +498,43 @@ namespace PaviseApp
                 if (HasSnapshotFor(key)) stuck++; else healed++;
             }
             if (healed > 0)
-                Logger.Log("NVIDIA 驱动调优 启动时补还原 " + healed + " 类残留快照");
+                Logger.Log(Lang.T("log.nvdrstweaks.30") + healed + Lang.T("log.nvdrstweaks.31"));
             if (stuck > 0)
-                Logger.Log("NVIDIA 驱动调优 " + stuck + " 类残留快照暂时无法还原 下次启动继续尝试");
+                Logger.Log(Lang.T("log.nvdrstweaks.32") + stuck + Lang.T("log.nvdrstweaks.33"));
             return healed;
+        }
+
+        private static bool NvidiaAbsent()
+        {
+            GpuAdapter[] all = GpuInventory.Adapters();
+            if (all == null || all.Length == 0) return false;
+            foreach (GpuAdapter a in all) if (a.Vendor == GpuVendor.Nvidia) return false;
+            return true;
+        }
+
+        private static int DropAllSnapshots()
+        {
+            lock (sync)
+            {
+                string[] games = Settings.LoadStr(ListKey, "")
+                    .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+                int n = 0;
+                foreach (string exeName in games)
+                {
+                    if (Settings.LoadStr(SnapPrefix + exeName, "").Length > 0) n++;
+                    Settings.SaveStr(SnapPrefix + exeName, "");
+                    Settings.SaveStr(SatKey(exeName), "");
+                }
+                Settings.SaveStr(ListKey, "");
+                return n;
+            }
         }
 
         private static List<string> OrphanHealKinds()
         {
             var kinds = new List<string>();
             if (!Settings.Load("NvMaxPerf", false)) kinds.Add(KeyPState);
-            if (Settings.LoadStr("NvFrl", "off") == "off") kinds.Add(KeyFrl);
+            kinds.Add(KeyFrl);
             string lowLat = Settings.LoadStr("NvLowLat", "off");
             if (lowLat == "off")
             {
@@ -434,7 +551,6 @@ namespace PaviseApp
             {
                 kinds.Add(KeyDlssOvr); kinds.Add(KeyDlssPreset);
             }
-            if (!Settings.Load("NvBattFull", false)) kinds.Add(KeyBattFps);
             return kinds;
         }
 

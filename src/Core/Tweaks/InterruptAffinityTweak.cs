@@ -1,7 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 引导 GPU 中断亲和策略靠近游戏所在核心 开启 关闭并恢复
-// 保留理由 显卡中断跟每帧的呈现与垂直同步直接挂钩 就在帧路径上
-// 同机制的硬盘中断避让已在 1.7.0.1 移除 因为读盘中断不在出帧路径上 两者不可类比
 
 using System;
 using System.Collections.Generic;
@@ -13,7 +11,7 @@ namespace PaviseApp
     internal static class InterruptAffinityTweak
     {
         private static readonly IrqAffinityEngine engine =
-            new IrqAffinityEngine("IrqAffinityOnByPavise", "IrqAff_", "中断亲和优化");
+            new IrqAffinityEngine("IrqAffinityOnByPavise", "IrqAff_", Lang.T("t.interruptaffinitytweak.1"));
 
         public static bool EnabledByPavise { get { return engine.EnabledByPavise; } }
 
@@ -46,15 +44,25 @@ namespace PaviseApp
                     }
                 }
             }
-            catch (Exception ex) { Logger.Log("枚举显卡设备失败 " + ex.Message); }
+            catch (Exception ex) { Logger.Log(Lang.T("log.interruptaffinitytweak.2") + ex.Message); }
             return ids;
         }
 
-        public static bool Enable() { return engine.Enable(EnumerateGpuDeviceIds()); }
+        // 混合架构传 P 核顶端掩码 让"绑定游戏核心"名副其实 否则 BoostMask=全核时引擎只会退回就近处理
+        public static bool Enable()
+        {
+            return engine.Enable(EnumerateGpuDeviceIds(), CpuTopology.GpuInterruptPreferredMask());
+        }
 
         public static bool Disable() { return engine.Disable(EnumerateGpuDeviceIds()); }
 
         public static bool HealStaleMask() { return engine.HealStaleMask(); }
+
+        public static bool ResyncMask()
+        {
+            return engine.EnabledByPavise
+                && engine.ResyncMask(EnumerateGpuDeviceIds(), CpuTopology.GpuInterruptPreferredMask());
+        }
 
 #if PAVISE_SELFTEST
         internal static bool RestartDevice(string pnpDeviceId, out string error)

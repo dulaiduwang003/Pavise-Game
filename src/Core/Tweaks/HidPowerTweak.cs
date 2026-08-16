@@ -1,10 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 禁止系统为省电挂起键鼠所在的 USB 设备与集线器 可逆
-// 依据 微软自己的 USB 选择性暂停文档承认 USB 2.0 鼠标从空闲转活动时的退出延迟会表现为屏幕上的顿挫
-// 治的是偶发抖动不是稳态延迟 稳态那 1 到 5 毫秒动不了 这一项只把唤醒那一下的窟窿堵上
-// 沿设备树父链只碰键鼠所在 USB 链路上的接口节点 复合父设备与集线器 不碰 U 盘 摄像头 声卡
-// SelectiveSuspendEnabled 在不同设备上有 REG_BINARY 和 REG_DWORD 两种形态 写入前按原值类型自适应
-// 这些值由驱动在设备启动时读取 写入后要重启或重插设备才生效
 
 using System;
 using System.Collections.Generic;
@@ -56,12 +51,12 @@ namespace PaviseApp
                         if (!seen.Add(usbId)) continue;
                         bool root = hardware.StartsWith("ROOT_HUB", StringComparison.OrdinalIgnoreCase);
                         bool own = prefix != null && hardware.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
-                        string label = root ? "USB 根集线器" : own ? d.Name : "USB 集线器";
+                        string label = root ? Lang.T("t.hidpowertweak.1") : own ? d.Name : Lang.T("t.hidpowertweak.2");
                         Collect(usbId, label, !own, targets);
                     }
                 }
             }
-            catch (Exception ex) { Logger.Log("键鼠设备省电 枚举失败 " + ex.Message); }
+            catch (Exception ex) { Logger.Log(Lang.T("log.hidpowertweak.3") + ex.Message); }
             return targets;
         }
 
@@ -144,18 +139,18 @@ namespace PaviseApp
         public static string Describe()
         {
             List<Target> targets = Scan();
-            if (targets.Count == 0) return "本机没找到可控的键鼠 USB 设备 这一项跳过";
+            if (targets.Count == 0) return Lang.T("t.hidpowertweak.4");
             int on = 0;
             foreach (Target t in targets) if (t.EpmOn || t.SsOn) on++;
             if (EnabledByPavise)
             {
                 int changed = ParseList(Settings.LoadStr(ListKey, "")).Length;
-                if (on > 0) return "有 " + on + " 个键鼠 USB 设备仍允许挂起 拨回开关再打开一次可一并禁止";
-                if (changed == 0) return "本机键鼠 USB 设备本就都不允许省电挂起 开关没有改动任何值";
-                return "已禁止系统挂起 " + changed + " 个键鼠 USB 设备与集线器 重启或重插设备后生效 拨回开关即还原";
+                if (on > 0) return Lang.T("t.hidpowertweak.5") + on + Lang.T("t.hidpowertweak.6");
+                if (changed == 0) return Lang.T("t.hidpowertweak.7");
+                return Lang.T("t.hidpowertweak.8") + changed + Lang.T("t.hidpowertweak.9");
             }
-            if (on == 0) return "本机 " + targets.Count + " 个键鼠 USB 设备都已经不允许省电挂起 不用处理";
-            return targets.Count + " 个键鼠 USB 设备里有 " + on + " 个允许系统省电挂起 空闲后第一下操作会有唤醒顿挫";
+            if (on == 0) return Lang.T("t.hidpowertweak.10") + targets.Count + Lang.T("t.hidpowertweak.11");
+            return targets.Count + Lang.T("t.hidpowertweak.12") + on + Lang.T("t.hidpowertweak.13");
         }
 
         public static bool Enable()
@@ -172,14 +167,14 @@ namespace PaviseApp
                     bool wrote = (t.EpmOn && epmOk) || (t.SsOn && ssOk)
                         || Epm(t.InstanceId).HasBackup || Ss(t.InstanceId, RegistryValueKind.Binary).HasBackup;
                     if (wrote) done.Add(t.InstanceId);
-                    if (!epmOk || !ssOk) { anyFail = true; Logger.Log("键鼠设备省电 写入失败 " + t.Label); }
+                    if (!epmOk || !ssOk) { anyFail = true; Logger.Log(Lang.T("log.hidpowertweak.14") + t.Label); }
                 }
 
                 if (done.Count == 0)
                 {
                     Logger.Log(anyFail
-                        ? "键鼠设备省电 全部写入失败 多半是权限不足"
-                        : "键鼠设备省电 所有键鼠 USB 设备均已禁止挂起 无需改动");
+                        ? Lang.T("log.hidpowertweak.15")
+                        : Lang.T("log.hidpowertweak.16"));
                     if (!anyFail) Settings.Save(FlagKey, true);
                     return !anyFail;
                 }
@@ -195,11 +190,11 @@ namespace PaviseApp
                 if (!Settings.SaveStr(ListKey, string.Join(";", merged.ToArray())))
                 {
                     foreach (string id in done) { Epm(id).Restore(); RestoreSs(id); }
-                    Logger.Log("键鼠设备省电 清单无法持久化 已全部还原");
+                    Logger.Log(Lang.T("log.hidpowertweak.17"));
                     return false;
                 }
                 Settings.Save(FlagKey, true);
-                Logger.Log("键鼠设备省电 已禁止系统挂起 " + done.Count + " 个键鼠 USB 设备 重启或重插设备后生效");
+                Logger.Log(Lang.T("log.hidpowertweak.18") + done.Count + Lang.T("log.hidpowertweak.19"));
                 return !anyFail;
             }
         }
@@ -218,9 +213,9 @@ namespace PaviseApp
                 {
                     Settings.SaveStr(ListKey, "");
                     Settings.Save(FlagKey, false);
-                    Logger.Log("键鼠设备省电 已还原原值 重启或重插设备后生效");
+                    Logger.Log(Lang.T("log.hidpowertweak.20"));
                 }
-                else Logger.Log("键鼠设备省电 部分设备还原失败 快照保留待下次重试");
+                else Logger.Log(Lang.T("log.hidpowertweak.21"));
                 return all;
             }
         }
