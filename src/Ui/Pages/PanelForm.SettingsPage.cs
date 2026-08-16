@@ -14,7 +14,6 @@ namespace PaviseApp
         private Toggle swAuto, swAutoHide;
         private SettingCard cardShader;
 
-        // 模式主题色可选色板(暗色下鲜明 用作强调色/按钮填充)
         private static readonly Color[] AccentPalette =
         {
             Color.FromArgb(239, 190, 66), Color.FromArgb(255, 140, 40), Color.FromArgb(255, 61, 82),
@@ -51,9 +50,18 @@ namespace PaviseApp
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.autohide"), Lang.T("set.autohide.n"), swAutoHide, out cardH);
             sy += cardH + 8;
 
-            sy += 10;
-            BuildThemeColorSection(scroll, ref sy);
+            var btnLang = new PillButton(Lang.T(Lang.Cur == 1 ? "lang.zh" : "lang.en"));
+            btnLang.Bg = Theme.Card;
+            btnLang.Size = new Size(Theme.S(112), Theme.S(30));
+            btnLang.Click += delegate
+            {
+                Lang.Set(Lang.Cur == 1 ? 0 : 1);
+                BeginInvoke((MethodInvoker)RebuildUi);
+            };
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.lang"), Lang.T("set.lang.n"), btnLang, out cardH);
+            sy += cardH + 8;
 
+            sy += 10;
             Section(scroll, Lang.T("sec.maint"), 6, sy); sy += 24;
 
             var btnRestore = new PillButton(Lang.T("btn.panic"), BtnKind.Danger);
@@ -75,7 +83,11 @@ namespace PaviseApp
             btnShaderGo.Click += (s, e) => OnShaderClean(btnShaderGo);
             cardShader = MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("btn.shader"), Lang.T("set.shader.n"), btnShaderGo, out cardH);
             cardShader.Value = " ";
-            sy += cardH + 18;
+            sy += cardH + 8;
+
+            sy += 10;
+            BuildThemeColorSection(scroll, ref sy);
+            sy += 10;
 
             var lblAbout = new Label();
             lblAbout.Text = Lang.F("set.about", App.VersionTag, Paths.Data);
@@ -169,8 +181,6 @@ namespace PaviseApp
                 sw.Invalidate();
             }
 
-            // 改的是当前显示模式的色:凡是把模式色缓存成位图的地方都要重生成
-            // 标题栏/托盘图标、导航栏顶部 logo、首页核心静态层——它们只在模式变化时刷新 改颜色需手动补刷
             if (modeVisualInitialized && mode == visualMode)
             {
                 using (Icon icon = IconArt.MakeMultiIcon(visualMode, visualEnabled)) SetRuntimeIcon(icon);
@@ -197,6 +207,12 @@ namespace PaviseApp
                 if (cardShader != null) cardShader.Value = Lang.T("shader.busy");
                 return;
             }
+            // 游戏运行中驱动正在读写这些缓存 删了立刻触发对局内重编译卡顿
+            if (gameMode != null && gameMode.IsActive)
+            {
+                PaviseDialog.Warn(this, App.DisplayName, Lang.T("shader.ingame"));
+                return;
+            }
             if (!PaviseDialog.Confirm(this, App.DisplayName, Lang.T("shader.confirm"), DlgKind.Warn)) return;
             btn.Enabled = false;
             shaderCleaning = true;
@@ -205,8 +221,8 @@ namespace PaviseApp
             {
                 CacheSweep.Result cr = ShaderCache.Clean();
                 long left = ShaderCache.MeasureBytes();
-                Logger.Log("着色器缓存清理 释放 " + CacheSweep.FmtBytes(cr.FreedBytes)
-                    + (cr.FailedFiles > 0 ? " " + cr.FailedFiles + " 个文件被占用已跳过" : ""));
+                Logger.Log(Lang.T("log.panelformsettingspage.1") + CacheSweep.FmtBytes(cr.FreedBytes)
+                    + (cr.FailedFiles > 0 ? " " + cr.FailedFiles + Lang.T("log.panelformsettingspage.2") : ""));
                 shaderCleaning = false;
                 try
                 {
@@ -246,11 +262,11 @@ namespace PaviseApp
                 {
                     gameMode.PanicRestore();
                     tamer.PanicRestore();
-                    ok = LegacyPurge.WipeAll(Paths.Data, true, "手动清除全部配置", out files, out unrestored);
+                    ok = LegacyPurge.WipeAll(Paths.Data, true, Lang.T("t.panelformsettingspage.3"), out files, out unrestored);
                 }
                 catch (Exception ex)
                 {
-                    Logger.LogFailure("手动清除全部配置", ex);
+                    Logger.LogFailure(Lang.T("t.panelformsettingspage.3"), ex);
                     unrestored = ex.Message;
                 }
                 Interlocked.Exchange(ref wipeBusy, 0);
@@ -267,7 +283,9 @@ namespace PaviseApp
                             Action exit = ExitApp;
                             if (exit != null) exit();
                         }
-                        else PaviseDialog.Warn(this, App.DisplayName, Lang.F("wipe.failed", unrestored ?? ""));
+                        else if (unrestored != null)
+                            PaviseDialog.Warn(this, App.DisplayName, Lang.F("wipe.failed", unrestored));
+                        else PaviseDialog.Warn(this, App.DisplayName, Lang.T("wipe.regfail"));
                     });
                 }
                 catch { }
@@ -313,26 +331,39 @@ namespace PaviseApp
                 {
                     attempted++;
                     if (!TryRestoreRecordedItem(
-                            "游戏模式",
+                            Lang.T("t.panelformsettingspage.4"),
                             delegate { return gameMode.PanicRestore(); }))
                         failed++;
                     attempted++;
                     if (!TryRestoreRecordedItem(
-                            "反作弊压制",
+                            Lang.T("t.panelformsettingspage.5"),
                             delegate { return tamer.PanicRestore(); }))
+                        failed++;
+                    // 标题承诺"恢复全部系统改动" 持久项(HAGS/VBS/中断亲和/设备电源/逐EXE与NVIDIA配置等)也要走完
+                    attempted++;
+                    if (!TryRestoreRecordedItem(
+                            Lang.T("t.panelformsettingspage.13"),
+                            delegate
+                            {
+                                List<string> left = LegacyPurge.RestorePersistent(Paths.Data);
+                                if (left.Count > 0)
+                                    Logger.Log(Lang.T("log.panelformsettingspage.14") + left.Count
+                                        + Lang.T("log.legacypurge.31") + string.Join(" ", left.ToArray()));
+                                return left.Count == 0;
+                            }))
                         failed++;
 
                     completed = failed == 0;
-                    Logger.Log("一键全部恢复 已执行 " + attempted
-                        + " 项 失败 " + failed + " 项 "
-                        + (completed ? "恢复流程已完成" : "未确认项保留并继续重试"));
+                    Logger.Log(Lang.T("log.panelformsettingspage.6") + attempted
+                        + Lang.T("log.panelformsettingspage.7") + failed + Lang.T("log.powerplanschemes.44")
+                        + (completed ? Lang.T("log.panelformsettingspage.8") : Lang.T("log.panelformsettingspage.9")));
                 }
                 catch (Exception ex)
                 {
                     completed = false;
                     attempted++;
                     failed++;
-                    Logger.LogFailure("一键全部恢复流程", ex);
+                    Logger.LogFailure(Lang.T("log.panelformsettingspage.10"), ex);
                 }
                 finally
                 {
@@ -348,12 +379,12 @@ namespace PaviseApp
             try
             {
                 bool restored = restore != null && restore();
-                if (!restored) Logger.Log("一键全部恢复 " + name + " 未确认完成");
+                if (!restored) Logger.Log(Lang.T("log.panelformsettingspage.11") + name + Lang.T("log.panelformsettingspage.12"));
                 return restored;
             }
             catch (Exception ex)
             {
-                Logger.LogFailure("一键全部恢复 " + name, ex);
+                Logger.LogFailure(Lang.T("log.panelformsettingspage.11") + name, ex);
                 return false;
             }
         }

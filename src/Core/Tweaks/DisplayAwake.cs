@@ -26,7 +26,7 @@ namespace PaviseApp
                 uint previous = SetThreadExecutionState(EsContinuous | EsDisplayRequired | EsSystemRequired);
                 if (previous == 0) return false;
                 active = true;
-                Logger.Log("息屏防护 游戏期间不熄屏 不睡眠");
+                Logger.Log(Lang.T("log.displayawake.1"));
                 return true;
             }
         }
@@ -39,7 +39,7 @@ namespace PaviseApp
                 uint previous = SetThreadExecutionState(EsContinuous);
                 if (previous == 0) return false;
                 active = false;
-                Logger.Log("息屏防护已解除");
+                Logger.Log(Lang.T("log.displayawake.2"));
                 return true;
             }
         }

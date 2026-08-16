@@ -1,7 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 只读探测输入链路 键鼠传输方式 设备省电状态 辅助功能拦截 与已知无效改动的残留
-// 依据 端到端延迟里外设段只占 1 到 5 毫秒 真正能动的软件项只有辅助功能拦截和设备省电两处
-// 其余结论一律只报不改 交由用户在硬件或游戏内设置上处理
 
 using System;
 using System.Collections.Generic;
@@ -218,21 +216,6 @@ namespace PaviseApp
             catch { return false; }
         }
 
-        public static bool PointerPrecisionOn()
-        {
-            try
-            {
-                using (RegistryKey key = Registry.CurrentUser.OpenSubKey(MousePath))
-                {
-                    if (key == null) return false;
-                    int speed;
-                    if (!AccessibilityFlags.TryParse(key.GetValue("MouseSpeed") as string, out speed)) return false;
-                    return speed != 0;
-                }
-            }
-            catch { return false; }
-        }
-
         public static List<InputDevice> Devices()
         {
             var list = new List<InputDevice>();
@@ -306,12 +289,12 @@ namespace PaviseApp
             switch (transport)
             {
                 case InputTransport.Ps2: return "PS/2";
-                case InputTransport.Usb: return "USB 或 2.4G 接收器";
-                case InputTransport.BluetoothClassic: return "蓝牙";
-                case InputTransport.BluetoothLe: return "低功耗蓝牙";
-                case InputTransport.Virtual: return "虚拟设备";
-                case InputTransport.Internal: return "内置";
-                default: return "未知";
+                case InputTransport.Usb: return Lang.T("t.inputchainprobe.1");
+                case InputTransport.BluetoothClassic: return Lang.T("t.peripheralcatalog.9");
+                case InputTransport.BluetoothLe: return Lang.T("t.inputchainprobe.2");
+                case InputTransport.Virtual: return Lang.T("t.inputchainprobe.3");
+                case InputTransport.Internal: return Lang.T("t.inputchainprobe.4");
+                default: return Lang.T("t.versionmigrations.2");
             }
         }
     }

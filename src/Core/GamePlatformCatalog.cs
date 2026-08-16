@@ -15,7 +15,8 @@ namespace PaviseApp
         private sealed class Platform
         {
             public readonly string Id;
-            public readonly string Note;
+            private readonly string noteKey;
+            public string Note { get { return Lang.T(noteKey); } }
 
             public readonly string[] ShellNames;
 
@@ -33,7 +34,7 @@ namespace PaviseApp
                 string[] registryRoots, string[] folderRoots, string[] uninstallTags)
             {
                 Id = id;
-                Note = note;
+                noteKey = note;
                 ShellNames = shellNames ?? new string[0];
                 LocalNames = localNames ?? new string[0];
                 RegistryRoots = registryRoots ?? new string[0];
@@ -55,7 +56,7 @@ namespace PaviseApp
         {
 
             new Platform("Steam",
-                "Valve 官方警告 压制 Steam 客户端会引发优先级反转掉帧 steamservice 还承载 VAC",
+                "t.gameplatformcatalog.1",
                 new[]{ "steam", "steamservice", "steamwebhelper",
                     "gameoverlayui", "gameoverlayui64" },
                 new[]{ "steamerrorreporter", "steamerrorreporter64" },
@@ -69,7 +70,7 @@ namespace PaviseApp
                 null),
 
             new Platform("Epic Games",
-                "EpicWebHelper 是商店与好友界面的渲染进程 压下去会连带卡住游戏内覆盖层",
+                "t.gameplatformcatalog.2",
                 new[]{ "epicgameslauncher", "epicwebhelper" },
                 null,
                 null,
@@ -77,7 +78,7 @@ namespace PaviseApp
                 new[]{ "Epic Games Launcher" }),
 
             new Platform("EA app",
-                "EABackgroundService 承载正版校验与云存档 被压会掉线",
+                "t.gameplatformcatalog.3",
                 new[]
                 {
                     "eadesktop", "eabackgroundservice", "ealauncher", "ealocalhostsvc",
@@ -95,7 +96,7 @@ namespace PaviseApp
                 new[]{ "EA app", "EA Desktop" }),
 
             new Platform("Ubisoft Connect",
-                "UplayWebCore 掉帧会拖住育碧游戏的在线校验",
+                "t.gameplatformcatalog.4",
                 new[]{ "ubisoftconnect", "ubisoftgamelauncher", "uplay", "uplaywebcore" },
                 new[]{ "upc" },
                 new[]
@@ -111,7 +112,7 @@ namespace PaviseApp
                 new[]{ "Ubisoft Connect" }),
 
             new Platform("Battle.net",
-                "Agent 承载补丁与完整性校验 Battle.net Helper 是暴雪游戏的内嵌界面",
+                "t.gameplatformcatalog.5",
                 new[]{ "battle.net", "battle.net helper", "blizzarderror", "blizzardbrowser" },
                 new[]{ "agent" },
                 null,
@@ -123,7 +124,7 @@ namespace PaviseApp
                 new[]{ "Battle.net" }),
 
             new Platform("GOG Galaxy",
-                "GalaxyCommunication 断了会让 GOG 游戏的成就与云存档失败",
+                "t.gameplatformcatalog.6",
                 new[]
                 {
                     "galaxyclient", "galaxyclient helper", "galaxycommunication",
@@ -139,7 +140,7 @@ namespace PaviseApp
                 new[]{ "GOG GALAXY" }),
 
             new Platform("Rockstar Games",
-                "R 星启动器主进程就叫 Launcher 只在自己的安装目录里认",
+                "t.gameplatformcatalog.7",
                 new[]
                 {
                     "rockstarservice", "rockstarerrorhandler", "socialclubhelper",
@@ -155,7 +156,7 @@ namespace PaviseApp
                 new[]{ "Rockstar Games Launcher" }),
 
             new Platform("Riot Client",
-                "英雄联盟 无畏契约都靠它做登录与补丁 Vanguard 另由反作弊名录豁免",
+                "t.gameplatformcatalog.8",
                 new[]
                 {
                     "riotclientservices", "riotclientux", "riotclientuxrender",
@@ -172,7 +173,7 @@ namespace PaviseApp
                 new[]{ "Riot Client" }),
 
             new Platform("WeGame",
-                "腾讯平台的登录与反外挂通道走 wegame 本体",
+                "t.gameplatformcatalog.9",
                 new[]{ "wegame", "wegame_env", "wegameclient" },
                 null,
                 null,
@@ -181,10 +182,10 @@ namespace PaviseApp
                     Pf86 + "|WeGame", Pf + "|WeGame",
                     Pf86 + "|Tencent\\WeGame", Pf + "|Tencent\\WeGame"
                 },
-                new[]{ "WeGame", "腾讯游戏平台" }),
+                new[]{ "WeGame", "t.gameplatformcatalog.10" }),
 
-            new Platform("Xbox / 微软商店",
-                "Gaming Services 停摆会让 Game Pass 游戏直接启动失败",
+            new Platform("t.gameplatformcatalog.11",
+                "t.gameplatformcatalog.12",
                 new[]
                 {
                     "xboxpcapp", "xboxpcappft", "xboxappservices",
@@ -196,7 +197,7 @@ namespace PaviseApp
                 null),
 
             new Platform("HoYoPlay",
-                "米哈游启动器兼做补丁与反作弊分发 旧版主进程也叫 launcher",
+                "t.gameplatformcatalog.13",
                 new[]{ "hyp", "hoyoplay", "hyupdater" },
                 new[]{ "launcher" },
                 null,
@@ -206,10 +207,10 @@ namespace PaviseApp
                     Pf + "|miHoYo Launcher", Pf86 + "|miHoYo Launcher",
                     Pf + "|miHoYo", Pf86 + "|miHoYo"
                 },
-                new[]{ "HoYoPlay", "miHoYo Launcher", "米哈游启动器" }),
+                new[]{ "HoYoPlay", "miHoYo Launcher", "t.gameplatformcatalog.14" }),
 
             new Platform("Amazon Games",
-                "自带的 SDK 服务掉线会让亚马逊发行的游戏卡在登录",
+                "t.gameplatformcatalog.15",
                 new[]{ "amazon games ui", "amazon games services", "amazongamessdkservice" },
                 new[]{ "amazon games" },
                 null,
@@ -217,7 +218,7 @@ namespace PaviseApp
                 new[]{ "Amazon Games" }),
 
             new Platform("itch.io",
-                "itch 客户端负责游戏进程的启动与在线状态",
+                "t.gameplatformcatalog.16",
                 null,
                 new[]{ "itch", "itch-setup", "butler" },
                 null,
@@ -225,7 +226,7 @@ namespace PaviseApp
                 null),
 
             new Platform("Garena",
-                "东南亚区的登录与对战平台",
+                "t.gameplatformcatalog.17",
                 new[]{ "garena", "garenamsg" },
                 null,
                 null,
@@ -233,7 +234,7 @@ namespace PaviseApp
                 new[]{ "Garena" }),
 
             new Platform("Nexon",
-                "韩系网游的补丁与启动通道",
+                "t.gameplatformcatalog.18",
                 new[]{ "nexon_runtime", "nexonlauncher", "nexonplug" },
                 new[]{ "ngm" },
                 null,
@@ -245,7 +246,7 @@ namespace PaviseApp
                 new[]{ "Nexon Launcher", "Nexon Game Manager" }),
 
             new Platform("NCSOFT PURPLE",
-                "天堂 剑灵等 NCSOFT 游戏的统一启动器",
+                "t.gameplatformcatalog.19",
                 null,
                 new[]{ "purple", "ncsoft" },
                 null,
@@ -257,7 +258,7 @@ namespace PaviseApp
                 new[]{ "NCSOFT" }),
 
             new Platform("DMM GAME PLAYER",
-                "日区 DMM 游戏的启动与授权通道",
+                "t.gameplatformcatalog.20",
                 new[]{ "dmmgameplayer", "dmmgameplayerfastlauncher" },
                 null,
                 null,
@@ -269,8 +270,8 @@ namespace PaviseApp
                 },
                 new[]{ "DMM Game" }),
 
-            new Platform("网易游戏",
-                "网易各平台的启动器命名不统一 只在网易的安装目录里认",
+            new Platform("t.gameplatformcatalog.21",
+                "t.gameplatformcatalog.22",
                 new[]{ "gest_launcher", "neteasegamecenter" },
                 new[]{ "gamecenter", "launcher" },
                 null,
@@ -280,7 +281,7 @@ namespace PaviseApp
                     Pf + "|NetEase Games", Pf86 + "|NetEase Games",
                     Data + "|Netease"
                 },
-                new[]{ "网易游戏", "NetEase Games" }),
+                new[]{ "t.gameplatformcatalog.21", "NetEase Games" }),
         };
 
         private const int RootRefreshMs = 600000;
@@ -415,7 +416,7 @@ namespace PaviseApp
                 if (platform.Logged) return;
                 platform.Logged = true;
             }
-            Logger.Log(platform.Id + " 客户端已豁免 不压制");
+            Logger.Log(platform.Id + Lang.T("log.gameplatformcatalog.23"));
         }
 
         private static bool UnderAnyRoot(string path, IList<string> roots)

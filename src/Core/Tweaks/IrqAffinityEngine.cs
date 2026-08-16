@@ -93,9 +93,9 @@ namespace PaviseApp
                     {
                         object v = k == null ? null : k.GetValue("MSISupported");
                         if (v == null)
-                            Logger.Log("中断体检 " + id + " 未声明 MSI 支持 可能使用传统线中断");
+                            Logger.Log(Lang.T("log.irqaffinityengine.1") + id + Lang.T("log.irqaffinityengine.2"));
                         else if (Convert.ToInt64(v) == 0)
-                            Logger.Log("中断体检 " + id + " 的 MSI 被显式关闭 MSISupported=0");
+                            Logger.Log(Lang.T("log.irqaffinityengine.1") + id + Lang.T("log.irqaffinityengine.3"));
                     }
                 }
                 catch { }
@@ -112,13 +112,13 @@ namespace PaviseApp
             ReportMsiState(deviceIds);
             if (deviceIds == null || deviceIds.Count == 0)
             {
-                Logger.Log(logPrefix + " 未找到可用设备 未作修改");
+                Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.4"));
                 return false;
             }
             List<Target> targets = BuildTargets(deviceIds);
             bool useMask = !CpuTopology.MultiGroup && preferredMask != 0 && preferredMask != CpuTopology.AllMask;
             if (CpuTopology.MultiGroup)
-                Logger.Log(logPrefix + " 多处理器组系统 掩码无法指明处理器组归属 仅使用 AllCloseProcessors");
+                Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.5"));
 
             var touched = LoadTouched();
             object policyValue = useMask ? PolicySpecifiedProcessors : PolicyAllCloseProcessors;
@@ -141,7 +141,7 @@ namespace PaviseApp
                 else
                 {
                     t.Policy.Restore(); t.Mask.Restore();
-                    Logger.Log(logPrefix + " 设备 " + t.DeviceId + " 写入或回读失败 已跳过");
+                    Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.6") + t.DeviceId + Lang.T("log.irqaffinityengine.7"));
                 }
             }
             if (!anyOk) return false;
@@ -152,7 +152,7 @@ namespace PaviseApp
                 if (!SaveTouched(touched))
                 {
                     foreach (Target t in applied) { t.Policy.Restore(); t.Mask.Restore(); }
-                    Logger.Log(logPrefix + " 设备名单无法持久化 已撤销本轮注册表修改");
+                    Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.8"));
                     return false;
                 }
             }
@@ -173,14 +173,14 @@ namespace PaviseApp
                     }
                     SaveTouched(remaining);
                 }
-                Logger.Log(logPrefix + "状态标志无法持久化 已还原注册表修改");
+                Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.9"));
                 return false;
             }
             Settings.SaveStr(StampKey, useMask ? MakeStamp(Environment.ProcessorCount, preferredMask) : "");
             if (applied.Count > 0)
-                Logger.Log(logPrefix + " 已对 " + applied.Count + " 个设备写入"
-                    + (useMask ? "指定处理器策略 掩码 0x" + preferredMask.ToString("X") + " " : "邻近处理器策略")
-                    + " 需要重启该设备或重启电脑后生效");
+                Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.10") + applied.Count + Lang.T("log.irqaffinityengine.11")
+                    + (useMask ? Lang.T("log.irqaffinityengine.12") + preferredMask.ToString("X") + " " : Lang.T("log.irqaffinityengine.13"))
+                    + Lang.T("log.irqaffinityengine.14"));
             return true;
         }
 
@@ -231,7 +231,7 @@ namespace PaviseApp
                         object raw = k.GetValue("AssignmentSetOverride");
                         ulong mask = BytesToMask(raw as byte[]);
                         if (!MaskOutOfRange(mask, CpuTopology.AllMask)) continue;
-                        detail = id + " 掩码 0x" + mask.ToString("X");
+                        detail = id + Lang.T("t.irqaffinityengine.15") + mask.ToString("X");
                         return true;
                     }
                 }
@@ -240,27 +240,39 @@ namespace PaviseApp
             return false;
         }
 
+        // 掩码派生策略升级或用户切换核心域后 已写入设备的旧掩码不会自己更新
+        // 与当前期望不一致时重写归位(备份经 ReversibleReg 只记最初原值 重写不丢) 重启生效
+        public bool ResyncMask(List<string> deviceIds, ulong preferredMask)
+        {
+            if (!EnabledByPavise) return false;
+            if (CpuTopology.MultiGroup) return false;
+            bool useMask = preferredMask != 0 && preferredMask != CpuTopology.AllMask;
+            string expected = useMask ? MakeStamp(Environment.ProcessorCount, preferredMask) : "";
+            if (Settings.LoadStr(StampKey, "") == expected) return false;
+            Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.26"));
+            return Enable(deviceIds, preferredMask);
+        }
+
         public bool HealStaleMask()
         {
             if (!EnabledByPavise) return false;
             string stamp = Settings.LoadStr(StampKey, "");
             string reason = null;
             if (StampIsStale(stamp, Environment.ProcessorCount, CpuTopology.AllMask))
-                reason = "写入时记录的是 " + stamp;
+                reason = Lang.T("t.irqaffinityengine.16") + stamp;
             else
             {
                 string detail;
                 if (!AppliedMaskStale(out detail)) return false;
-                reason = "注册表里 " + detail;
+                reason = Lang.T("t.irqaffinityengine.17") + detail;
             }
 
             Logger.Log(logPrefix + " " + reason
-                + " 与本机现状对不上 当前 " + Environment.ProcessorCount + " 个逻辑处理器"
-                + " 中断可能被指向已不存在的核心 正在还原");
+                + Lang.T("log.irqaffinityengine.18") + Environment.ProcessorCount + Lang.T("log.irqaffinityengine.19"));
             bool ok = Disable(null);
             Logger.Log(ok
-                ? logPrefix + " 已还原为系统默认中断分配 重启后生效 需要的话可以重新打开开关"
-                : logPrefix + " 还原未完成 多半是权限不足 请用管理员身份打开一次再关掉这个开关");
+                ? logPrefix + Lang.T("log.irqaffinityengine.20")
+                : logPrefix + Lang.T("log.irqaffinityengine.21"));
             return ok;
         }
 
@@ -307,10 +319,10 @@ namespace PaviseApp
                 Settings.Save(settingsKey, false);
                 if (Settings.Load(settingsKey, true)) return false;
                 Settings.SaveStr(StampKey, "");
-                Logger.Log(logPrefix + " 已还原 " + restored + " 个设备 需要重启该设备或重启电脑后生效");
+                Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.22") + restored + Lang.T("log.irqaffinityengine.23"));
             }
             else
-                Logger.Log(logPrefix + " 仍有 " + stillDirty.Count + " 个设备未能还原 已保留记录待下次重试");
+                Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.24") + stillDirty.Count + Lang.T("log.irqaffinityengine.25"));
             return allOk;
         }
     }

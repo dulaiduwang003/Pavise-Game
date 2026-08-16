@@ -28,8 +28,9 @@ namespace PaviseApp
 
         public static List<Candidate> Scan()
         {
+            // 在场枚举失败时返回空 宁可漏报也不把已拔卡的幽灵实例当写入目标
             var found = new List<Candidate>();
-            HashSet<string> present = null;
+            HashSet<string> present;
             try
             {
                 present = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -37,7 +38,8 @@ namespace PaviseApp
                     new Guid("4d36e968-e325-11ce-bfc1-08002be10318")))
                     if (!string.IsNullOrEmpty(presentId)) present.Add(presentId);
             }
-            catch { present = null; }
+            catch { return found; }
+            if (present.Count == 0) return found;
             try
             {
                 using (var pci = Registry.LocalMachine.OpenSubKey(EnumRoot + @"\PCI"))
@@ -54,7 +56,7 @@ namespace PaviseApp
                                     string cls = node.GetValue("Class") as string;
                                     if (!string.Equals(cls, "Display", StringComparison.OrdinalIgnoreCase)) continue;
                                     string id = @"PCI\" + devClass + @"\" + inst;
-                                    if (present != null && present.Count > 0 && !present.Contains(id)) continue;
+                                    if (!present.Contains(id)) continue;
                                     var c = new Candidate
                                     {
                                         InstanceId = id,
@@ -92,24 +94,24 @@ namespace PaviseApp
                 List<Candidate> targets = Disabled();
                 if (targets.Count == 0)
                 {
-                    Logger.Log("MSI 修复 本机显卡的消息信号中断均未被关闭 无需改动");
+                    Logger.Log(Lang.T("log.msimodetweak.1"));
                     return true;
                 }
                 var done = new List<string>();
                 foreach (Candidate c in targets)
                 {
                     if (Reg(c.InstanceId).Apply(1)) done.Add(c.InstanceId);
-                    else Logger.Log("MSI 修复 写入失败 " + c.Description);
+                    else Logger.Log(Lang.T("log.msimodetweak.2") + c.Description);
                 }
                 if (done.Count == 0) return false;
                 if (!Settings.SaveStr(ListKey, string.Join(";", done.ToArray())))
                 {
                     foreach (string id in done) Reg(id).Restore();
-                    Logger.Log("MSI 修复 清单无法持久化 已全部还原");
+                    Logger.Log(Lang.T("log.msimodetweak.3"));
                     return false;
                 }
                 Settings.Save(FlagKey, true);
-                Logger.Log("MSI 修复 已为 " + done.Count + " 个显卡设备写回 MSISupported=1 重启后生效");
+                Logger.Log(Lang.T("log.msimodetweak.4") + done.Count + Lang.T("log.msimodetweak.5"));
                 return true;
             }
         }

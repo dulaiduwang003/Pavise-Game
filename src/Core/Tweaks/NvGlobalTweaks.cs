@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 后台硬限帧已于 1.7.1 移除 这里只保留还原能力
-// 它写的是 NVIDIA 基础 Profile 的全局项 老版本写过的机器要靠这里按快照还原
 
 using System;
 using System.Collections.Generic;
@@ -53,8 +52,8 @@ namespace PaviseApp
                     }
                     if (!NvApi.SaveSession(session)) allOk = false;
                     Settings.SaveStr(SnapKey, snapshot.Count == 0 ? "" : NvDrsTweaks.SerializeSnapshot(snapshot));
-                    if (allOk) Logger.Log("后台硬限帧 已移除 驱动里的全局帧率上限已按原值还原");
-                    else Logger.Log("后台硬限帧 还原失败 快照保留 下次启动继续尝试");
+                    if (allOk) Logger.Log(Lang.T("log.nvglobaltweaks.1"));
+                    else Logger.Log(Lang.T("log.nvglobaltweaks.2"));
                     return allOk;
                 }
                 finally { NvApi.CloseSession(session); }

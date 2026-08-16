@@ -64,9 +64,9 @@ namespace PaviseApp
                     {
                         Settings.SaveStr(ListKey, "");
                         Settings.Save("NagleOffByPavise", false);
-                        Logger.Log("TCP 低延迟已关闭 各网卡原值已还原");
+                        Logger.Log(Lang.T("log.nagletweak.1"));
                     }
-                    else Logger.Log("TCP 低延迟 部分网卡还原失败 快照保留待下次重试");
+                    else Logger.Log(Lang.T("log.nagletweak.2"));
                     return all;
                 }
                 catch { return false; }

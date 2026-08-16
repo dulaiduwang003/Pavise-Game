@@ -60,7 +60,7 @@ namespace PaviseApp
                 }
                 catch { }
                 try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
-                Logger.LogFailure(label + "写入失败", ex);
+                Logger.LogFailure(label + Lang.T("log.atomicfile.1"), ex);
                 return false;
             }
         }

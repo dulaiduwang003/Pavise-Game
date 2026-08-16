@@ -14,10 +14,6 @@ namespace PaviseApp
         private static readonly object lk = new object();
 
         private const int ENUM_CURRENT_SETTINGS = -1;
-        private const int DM_BITSPERPEL = 0x40000;
-        private const int DM_PELSWIDTH = 0x80000;
-        private const int DM_PELSHEIGHT = 0x100000;
-        private const int DM_DISPLAYFREQUENCY = 0x400000;
 
         internal static int CurrentRefreshRate()
         {
@@ -82,51 +78,18 @@ namespace PaviseApp
             return Settings.LoadStr(Slot, "").Length > 0;
         }
 
+        // 旧版守护用动态改模式(不写注册表)提升刷新率 重启即自然失效
+        // 残留槽存的是当年的低刷新率 事后写回只会把换过显示器或自行调过刷新率的用户拉回低刷
+        // 故迁移只弃槽 不再动显示器
         public static bool Restore()
         {
             lock (lk)
             {
                 string s = Settings.LoadStr(Slot, "");
                 if (s.Length == 0) return true;
-
-                int cut = s.IndexOf('|');
-                int hz = 0;
-                if (cut <= 0 || !int.TryParse(s.Substring(0, cut), out hz) || hz <= 0)
-                {
-                    Settings.SaveStr(Slot, "");
-                    return false;
-                }
-                string dev = s.Substring(cut + 1);
-                try
-                {
-                    DEVMODE cur = NewDm();
-                    if (!EnumDisplaySettingsW(dev, ENUM_CURRENT_SETTINGS, ref cur))
-                    {
-                        Logger.Log("刷新率守护 找不到显示器 " + dev + " 还原推迟到下次重试");
-                        return false;
-                    }
-                    if (cur.dmDisplayFrequency == hz)
-                    {
-                        Settings.SaveStr(Slot, "");
-                        Logger.Log("刷新率守护 当前已是 " + hz + "Hz 游戏或系统已自行切回 无需还原");
-                        return Settings.LoadStr(Slot, "").Length == 0;
-                    }
-
-                    cur.dmDisplayFrequency = hz;
-                    cur.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT | DM_BITSPERPEL | DM_DISPLAYFREQUENCY;
-                    if (ChangeDisplaySettingsExW(dev, ref cur, IntPtr.Zero, 0, IntPtr.Zero) == 0)
-                    {
-                        DEVMODE verify = NewDm();
-                        if (!EnumDisplaySettingsW(dev, ENUM_CURRENT_SETTINGS, ref verify)
-                            || verify.dmDisplayFrequency != hz) return false;
-                        Settings.SaveStr(Slot, "");
-                        Logger.Log("刷新率守护 已还原 " + hz + "Hz");
-                        return Settings.LoadStr(Slot, "").Length == 0;
-                    }
-                    Logger.Log("刷新率守护 切换失败 快照保留待下次重试");
-                    return false;
-                }
-                catch { return false; }
+                Settings.SaveStr(Slot, "");
+                Logger.Log(Lang.T("log.displayguard.7"));
+                return Settings.LoadStr(Slot, "").Length == 0;
             }
         }
 
@@ -156,7 +119,5 @@ namespace PaviseApp
 
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         private static extern bool EnumDisplaySettingsW(string device, int mode, ref DEVMODE dm);
-        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-        private static extern int ChangeDisplaySettingsExW(string device, ref DEVMODE dm, IntPtr hwnd, int flags, IntPtr param);
     }
 }

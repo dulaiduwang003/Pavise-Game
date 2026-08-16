@@ -20,7 +20,7 @@ namespace PaviseApp
     internal static class App
     {
         public const string DisplayName = "PAVISE";
-        public const string Version = "1.8.0.2";
+        public const string Version = "1.8.0.3";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string WeChat = "Ssssssstyle";
@@ -49,7 +49,6 @@ namespace PaviseApp
             if (SelfTests.TryHandleRuntimeMode(args)) return;
 #endif
 
-            if (LolWatchdog.TryHandle(args)) return;
 
             if (args.Length > 0 && args[0] == "--genicon")
             {
@@ -236,10 +235,10 @@ namespace PaviseApp
             Logger.LogPath = Path.Combine(dir, "Pavise.log");
             try { VersionMigrations.ClearLogsOnUpgrade(dir); } catch { }
             if (taskStaleExe)
-                Logger.Log("开机自启任务指向别的程序副本 不经它转生 以当前程序继续启动");
+                Logger.Log(Lang.T("log.program.1"));
             Settings.Remove("EvidenceMode");
             int healedSuppression = SuppressionCore.HealFromCrash(Path.Combine(dir, SuppressionCore.StateFileName));
-            if (healedSuppression > 0) Logger.Log("检测到上次未还原的分级后台控制 已恢复 " + healedSuppression + " 个进程");
+            if (healedSuppression > 0) Logger.Log(Lang.T("log.program.2") + healedSuppression + Lang.T("log.program.3"));
             PowerPlan.HealFromCrash();
             try { if (PowerPlan.HasParkResidue()) PowerPlan.RestoreParkState(); } catch { }
             try { UpdatePause.HealFromCrash(); } catch { }
@@ -255,25 +254,25 @@ namespace PaviseApp
             try { InterruptAttribution.CleanupStaleSession(); } catch { }
             RenderLane.HealFromCrash();
             CrashGuard.HealFromCrash();
-            try { UsbInterruptAffinityTweak.HealStaleMask(); } catch { }
             try { InterruptAffinityTweak.HealStaleMask(); } catch { }
             try { NetworkAffinityTweak.HealStaleMask(); } catch { }
+            // 掩码派生策略升级或核心域偏好变化后 把已启用的中断亲和重写到当前期望的核 重启生效
+            try { InterruptAffinityTweak.ResyncMask(); } catch { }
 
             bool pendingPanel = Settings.Load(PendingPanelKey, false);
             if (pendingPanel) Settings.Save(PendingPanelKey, false);
 
-            bool resetOk = true;
-            try { resetOk = VersionMigrations.ResetDataOnUpgrade(dir); } catch { resetOk = false; }
+            try { VersionMigrations.ResetDataOnUpgrade(dir); } catch { }
             try { LegacyPurge.RunOnce(dir); } catch { }
-            if (resetOk) try { VersionMigrations.StampRunVersion(); } catch { }
+            // 无条件补章:RunOnce 删注册表树时会连版本章一起删掉 这里兜底重写
+            try { VersionMigrations.StampRunVersion(); } catch { }
 
-            // IFEO 后备提优在游戏启动前预置:内核在进程创建阶段读值 必须先于游戏就位
             if (Settings.Load("GmIfeoBoost", false))
                 try
                 {
                     int preArmed = IfeoBoost.PreArmAll();
                     if (preArmed > 0)
-                        Logger.Log("后备提优 已预置 " + preArmed + " 个游戏");
+                        Logger.Log(Lang.T("log.program.4") + preArmed + Lang.T("log.program.5"));
                 }
                 catch { }
 
@@ -296,7 +295,6 @@ namespace PaviseApp
 
             var gameMode = new GameMode(dir, core);
             gameMode.Enabled = Settings.Load("GameModeOn", true);
-            var lolService = new LolOptimizationService();
 
             var startGate = new object();
             bool exiting = false;
@@ -310,7 +308,6 @@ namespace PaviseApp
                     if (exiting) return;
                     tamer.Start();
                     gameMode.Start();
-                    lolService.Start();
                 }
             });
             bootThread.IsBackground = true;
@@ -320,8 +317,7 @@ namespace PaviseApp
             procNotify.CaptureStartIdentity = delegate(string name, int session)
             {
                 return gameMode.NeedsWhitelistParentIdentity(session)
-                    || gameMode.NeedsGameProcessIdentity(name, session)
-                    || LolRuntimeProcesses.IsScanCandidateName(name);
+                    || gameMode.NeedsGameProcessIdentity(name, session);
             };
             procNotify.CaptureParentIdentity =
                 delegate(int parentPid, string name, int session)
@@ -334,7 +330,6 @@ namespace PaviseApp
             {
                 gameMode.NotifyProcessChanges(batch);
                 tamer.NotifyProcessChanges(batch);
-                lolService.NotifyProcessChanges(batch);
             };
             procNotify.Start();
             gameMode.ProcessEventsAvailable = procNotify.IsActive;
@@ -346,7 +341,7 @@ namespace PaviseApp
             PerformancePreset runtimeIconMode = gameMode.ActivePreset;
             bool runtimeIconEnabled = gameMode.Enabled;
             Icon appIcon = IconArt.MakeMultiIcon(runtimeIconMode, runtimeIconEnabled);
-            var panel = new PanelForm(tamer, gameMode, appIcon, elevated, lolService);
+            var panel = new PanelForm(tamer, gameMode, appIcon, elevated);
             GC.KeepAlive(panel.Handle);
 
             bool showingPanel = !autoStarted || pendingPanel;
@@ -382,8 +377,6 @@ namespace PaviseApp
                 icon.Dispose();
                 lock (startGate) exiting = true;
                 try { procNotify.Stop(); } catch { }
-                try { panel.WaitForLolIdle(4000); } catch { }
-                try { lolService.Dispose(); } catch { }
                 tamer.Stop();
                 gameMode.Stop();
                 panel.RealExit = true;
@@ -480,7 +473,7 @@ namespace PaviseApp
                 {
                     if (r.Ok && r.Newer)
                     {
-                        Logger.Log("启动检查更新 发现新版本 " + r.Latest + " 当前 " + App.VersionTag + " ");
+                        Logger.Log(Lang.T("log.program.6") + r.Latest + Lang.T("log.program.7") + App.VersionTag + " ");
                         try
                         {
                             panel.BeginInvoke((MethodInvoker)(() =>
@@ -490,8 +483,8 @@ namespace PaviseApp
                         }
                         catch { }
                     }
-                    else if (r.Ok) Logger.Log("启动检查更新 已是最新版本 " + App.VersionTag + " ");
-                    else Logger.Log("启动检查更新失败 " + r.Error);
+                    else if (r.Ok) Logger.Log(Lang.T("log.program.8") + App.VersionTag + " ");
+                    else Logger.Log(Lang.T("log.program.9") + r.Error);
                 });
             };
             updTimer.Start();

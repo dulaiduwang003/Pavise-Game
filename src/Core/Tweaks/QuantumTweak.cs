@@ -55,23 +55,23 @@ namespace PaviseApp
                 {
                     if (!FgBoost.Restore())
                     {
-                        Logger.Log("时间片校正 旧版本残留的调度权重未能先行还原 本次不改动");
+                        Logger.Log(Lang.T("log.quantumtweak.1"));
                         return false;
                     }
-                    Logger.Log("时间片校正 已先还原旧版本写入的调度权重 再做校正");
+                    Logger.Log(Lang.T("log.quantumtweak.2"));
                 }
                 if (!NeedsRepair())
                 {
-                    Logger.Log("时间片校正 当前值已是系统默认 无需改动");
+                    Logger.Log(Lang.T("log.quantumtweak.3"));
                     return true;
                 }
                 if (!Separation.Apply(SystemDefault))
                 {
-                    Logger.Log("时间片校正 写入或回读失败 未改动");
+                    Logger.Log(Lang.T("log.quantumtweak.4"));
                     return false;
                 }
                 Settings.Save("PrioritySepRepaired", true);
-                Logger.Log("时间片校正 已改回系统默认 " + SystemDefault + " 立即生效");
+                Logger.Log(Lang.T("log.quantumtweak.5") + SystemDefault + Lang.T("log.quantumtweak.6"));
                 return true;
             }
         }
@@ -84,7 +84,7 @@ namespace PaviseApp
                 if (ok)
                 {
                     Settings.Save("PrioritySepRepaired", false);
-                    Logger.Log("时间片校正 已还原为改动前的值");
+                    Logger.Log(Lang.T("log.quantumtweak.7"));
                 }
                 return ok;
             }

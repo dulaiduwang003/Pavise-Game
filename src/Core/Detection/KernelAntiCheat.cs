@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 识别本机已安装的内核态反作弊 只用于把日志说清楚和提前预置 IFEO
-// 判定游戏能否被提优一律以句柄 granted access 的实测为准 这里的目录不参与该判定
 
 using System;
 using System.Collections.Generic;

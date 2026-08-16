@@ -75,7 +75,7 @@ namespace PaviseApp
             RoundPanel topo = MakeConsolePanel(panel, 6, y, ScrollContentW, 62, true);
             CardLabel(topo, CpuDisplayName(), 16, 10, ScrollContentW - 210, 20, 9.2f, true, Theme.Fg);
             CardLabel(topo, TopologyLine(), 16, 32, ScrollContentW - 210, 18, 7.9f, false, Theme.Dim);
-            coreMaskLabel = CardLabel(topo, "", ScrollContentW - 200, 21, 184, 20, 8.6f, true, Theme.Accent);
+            coreMaskLabel = AccentLabel(topo, "", ScrollContentW - 200, 21, 184, 20, 8.6f, true);
             coreMaskLabel.TextAlign = ContentAlignment.MiddleRight;
             y += 70;
 

@@ -1,7 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 从在场键鼠设备提取厂商与型号词条 供后台压制豁免动态识别静态名单认不出的外设软件
-// 依据 设备固件自报的产品名 BusReportedDeviceDesc 不依赖厂商驱动装没装 小众牌子由本机实际插着的设备补上
-// 词条只用于豁免不用于压制 误匹配的代价是少压一个后台进程 所以取词从宽 停用词挡住通用词
 
 using System;
 using System.Collections.Generic;
@@ -35,8 +33,6 @@ namespace PaviseApp
             "black", "white", "pink", "blue", "red", "green", "gray", "grey",
             "silver", "gold", "purple", "yellow",
             "the", "and", "for", "with", "ver", "rev", "ghz", "mhz", "khz", "dpi", "rgb", "led",
-            // 设备名里的通用词 不是厂商名 漏挡会让 host/key/pad 之类词元把 svchost conhost
-            // 等大量后台进程误判成外设进程而豁免压制 词元实际长什么样见日志 外设词条
             "host", "inc", "ltd", "corp", "corporation", "company", "computer", "technology",
             "electronics", "enhanced", "extensible", "compatible", "chipset", "express",
             "key", "keys", "num", "number", "pad", "media", "audio2", "codec"
@@ -57,7 +53,7 @@ namespace PaviseApp
                 if (!SameSet(tokens, fresh))
                 {
                     tokens = fresh;
-                    Logger.Log("外设词条 提取到 " + fresh.Length + " 条 " + string.Join(" ", fresh));
+                    Logger.Log(Lang.T("log.peripheralvendorprobe.1") + fresh.Length + Lang.T("log.peripheralvendorprobe.2") + string.Join(" ", fresh));
                 }
                 return tokens;
             }
@@ -82,7 +78,7 @@ namespace PaviseApp
                     }
                 }
             }
-            catch (Exception ex) { Logger.Log("外设词条 提取失败 " + ex.Message); }
+            catch (Exception ex) { Logger.Log(Lang.T("log.peripheralvendorprobe.3") + ex.Message); }
             var list = new List<string>(set);
             list.Sort(StringComparer.Ordinal);
             if (list.Count > MaxTokens) list.RemoveRange(MaxTokens, list.Count - MaxTokens);

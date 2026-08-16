@@ -22,23 +22,21 @@ namespace PaviseApp
 
         internal static readonly string[] EnvKeys =
             { "do", "wlanscan", "wu",
-              "pqos", "awake", "rsr", "gpupower", "amdalag", "amdafmf", "amdfrtc", "corepark" };
+              "pqos", "awake", "rsr", "gpupower", "amdalag", "amdafmf" };
 
         private static string EnvLabel(string key)
         {
             switch (key)
             {
-                case "do": return "后台下载暂停";
-                case "wlanscan": return "无线扫描抑制";
-                case "wu": return "Windows 更新暂停";
-                case "pqos": return "无输入降级关闭";
-                case "awake": return "息屏防护";
-                case "rsr": return "RSR 驱动级升格";
-                case "gpupower": return "显卡功耗墙";
-                case "corepark": return "核心停泊解除";
+                case "do": return Lang.T("t.gamemodeenv.1");
+                case "wlanscan": return Lang.T("t.gamemodeenv.2");
+                case "wu": return Lang.T("t.gamemodeenv.3");
+                case "pqos": return Lang.T("t.gamemodeenv.4");
+                case "awake": return Lang.T("t.gamemodeenv.5");
+                case "rsr": return Lang.T("set.rsr");
+                case "gpupower": return Lang.T("t.gamemodeenv.6");
                 case "amdalag": return "AMD Anti-Lag";
-                case "amdafmf": return "AMD 流体运动帧";
-                case "amdfrtc": return "AMD 帧率上限";
+                case "amdafmf": return Lang.T("t.gamemodeenv.8");
                 default: return key;
             }
         }
@@ -81,8 +79,8 @@ namespace PaviseApp
                     {
                         Settings.Save("EnvFuse_" + key, true);
                         DisableEnvSwitch(key);
-                        Logger.Log("环境项 " + EnvLabel(key) + " 连续 " + failures
-                            + " 次写入失败 已自动关闭对应开关并停用 重新打开该开关即恢复尝试");
+                        Logger.Log(Lang.T("log.gamemodeenv.9") + EnvLabel(key) + Lang.T("log.gamemodeenv.10") + failures
+                            + Lang.T("log.gamemodeenv.11"));
                     }
                 }
             }
@@ -126,9 +124,7 @@ namespace PaviseApp
                 case "gpupower": gpuPowerMaxOn = false; Settings.Save("GmGpuPowerMax", false); break;
                 case "amdalag": amdAntiLag = false; Settings.Save("AmdAntiLag", false); break;
                 case "amdafmf": amdAfmf = false; Settings.Save("AmdAfmf", false); break;
-                case "amdfrtc": amdFrlMode = "off"; Settings.SaveStr("AmdFrl", "off"); break;
                 case "overlay": break;
-                case "corepark": break;
             }
             string policyKey = EnvPolicyKey(key);
             if (policyKey != null) ClearActiveSessionOverride(policyKey, EnvLabel(key));
@@ -144,7 +140,6 @@ namespace PaviseApp
                 case "awake": return PolicyCatalog.KeyAwake;
                 case "amdalag": return PolicyCatalog.KeyAmdAntiLag;
                 case "amdafmf": return PolicyCatalog.KeyAmdAfmf;
-                case "amdfrtc": return PolicyCatalog.KeyAmdFrl;
                 default: return null;
             }
         }
@@ -166,8 +161,8 @@ namespace PaviseApp
                         break;
                     }
             if (cleared)
-                Logger.Log("独立配置 " + snap.ProfileName + " 的 " + label
-                    + " 覆盖因写入失败一并清除 不再逐局重试");
+                Logger.Log(Lang.T("log.gamemodeenv.12") + snap.ProfileName + Lang.T("log.gamemodeenv.13") + label
+                    + Lang.T("log.gamemodeenv.14"));
         }
 
         private void ClearEnvFuse(string key)
@@ -180,7 +175,7 @@ namespace PaviseApp
                 envNextAttempt.Remove(key);
             }
             if (Settings.Load("EnvFuse_" + key, false)) Settings.Save("EnvFuse_" + key, false);
-            if (wasFused) Logger.Log("环境项 " + EnvLabel(key) + " 开关重新打开 恢复写入尝试");
+            if (wasFused) Logger.Log(Lang.T("log.gamemodeenv.9") + EnvLabel(key) + Lang.T("log.gamemodeenv.15"));
         }
 
         private void ApplyEnv()
@@ -195,7 +190,6 @@ namespace PaviseApp
             bool pAggr = sp != null ? sp.Aggressive : aggressiveOn;
             bool pAmdAlag = sp != null ? sp.AmdAntiLag : amdAntiLag;
             bool pAmdAfmf = sp != null ? sp.AmdAfmf : amdAfmf;
-            string pAmdFrl = sp != null ? sp.AmdFrlMode : amdFrlMode;
             bool competitive = mode == PerformancePreset.Competitive;
             bool custom = mode == PerformancePreset.Custom;
             bool usePauseDl = custom ? pPauseDl : competitive;
@@ -206,41 +200,16 @@ namespace PaviseApp
             SuppressionCore.SqueezeBackground = sp != null ? sp.SqueezeBackground : squeezeBgOn;
             doActive = EnvStep("do", usePauseDl, doActive, DoTweak.Activate, DoTweak.Restore);
             wlanActive = EnvStep("wlanscan", pWlan, wlanActive, WlanGuard.Activate, WlanGuard.Restore);
-            // Game DVR 关闭已移出对局环境步:该值由系统在游戏启动那一刻读取 对局中才写对本局无效
-            // 改由游戏模式生命周期在会话级应用(SyncGameDvr)游戏启动前就已关闭 退出 Pavise 才还原
             wuActive = EnvStep("wu", pWu && slowReady, wuActive, UpdatePause.Activate, UpdatePause.Restore);
-            // 无输入降级关闭(PresenceQos):属对游戏有益的 PowerThrottling 家族项 成本极低(一次 HKLM 写)恢复启用
             pqosActive = EnvStep("pqos", true, pqosActive, PresenceQos.Activate, PresenceQos.Restore);
             awakeActive = EnvStep("awake", pAwake, awakeActive, DisplayAwake.Activate, DisplayAwake.Restore);
             rsrActive = EnvStep("rsr", rsrOn, rsrActive, AdlxTweaks.ActivateRsr, AdlxTweaks.RestoreRsr);
             gpwActive = EnvStep("gpupower", gpuPowerMaxOn, gpwActive, GpuPowerMax.Activate, GpuPowerMax.Restore);
-            int frlTarget = pAmdFrl == "off" ? 0 : ResolveFrlFps(pAmdFrl);
-            // Chill 与 Anti-Lag 驱动互斥 限帧走 Chill 时 Anti-Lag 让位 用户显式设定的数值优先
-            bool limitViaChill = frlTarget > 0 && AdlxTweaks.ChillSupported();
-            if (pAmdAlag && limitViaChill && !amdFrlMutexLogged)
-            {
-                amdFrlMutexLogged = true;
-                Logger.Log("AMD 帧率上限与 Anti-Lag 驱动互斥，帧率上限优先，Anti-Lag 本轮不启用");
-            }
-            if (!limitViaChill) amdFrlMutexLogged = false;
-            amdAlagActive = EnvStep("amdalag", pAmdAlag && !limitViaChill && AdlxTweaks.AntiLagSupported(),
+            // 限帧已下架 Anti-Lag 不再被 Chill 互斥抑制 恢复无条件按开关生效
+            amdAlagActive = EnvStep("amdalag", pAmdAlag && AdlxTweaks.AntiLagSupported(),
                 amdAlagActive, AdlxTweaks.ActivateAntiLag, RestoreAmdAntiLagEnv);
             amdAfmfActive = EnvStep("amdafmf", pAmdAfmf && AdlxTweaks.AfmfSupported(), amdAfmfActive,
                 AdlxTweaks.ActivateAfmf, AdlxTweaks.RestoreAfmf);
-            if (amdFrtcActive && frlTarget > 0 && frlTarget != amdFrtcFps
-                && AdlxTweaks.ActivateFrameLimit(frlTarget))
-                amdFrtcFps = frlTarget;
-            amdFrtcActive = EnvStep("amdfrtc", frlTarget > 0 && AdlxTweaks.FrameLimitSupported(), amdFrtcActive,
-                delegate
-                {
-                    bool applied = AdlxTweaks.ActivateFrameLimit(frlTarget);
-                    if (applied) amdFrtcFps = frlTarget;
-                    return applied;
-                },
-                AdlxTweaks.RestoreFrameLimit);
-            if (!amdFrtcActive) amdFrtcFps = 0;
-            // 待机内存清理:仅在内存吃紧(可用<15%)且过了冷却期时清一次低优先级待机页 自带阈值+45秒冷却
-            // 高内存/无压力机器 MaybePurge 直接返回不动作;低内存吃紧时缓解帧时间抖动 见 StandbySweep
             bool pStandby = sp != null ? sp.StandbySweep : standbySweepOn;
             if (pStandby) StandbySweep.MaybePurge();
             bool aggressivePower = IsAggressive(mode, pAggr);
@@ -258,8 +227,6 @@ namespace PaviseApp
                     {
                         planFailStreak = 0;
                         if (LoadCounter(PowerFailStreakKey) != 0) SaveCounter(PowerFailStreakKey, 0);
-                        // 设一次即可 不再每30秒定时强制拉回 那会与其它电源/厂商软件反复抢方案造成周期性顿挫
-                        // 仅在方案项(档位/开关)变化或写入失败重试时才重新应用 平时不再触碰电源方案
                         nextPowerAuditTicks = long.MaxValue;
                     }
                     else
@@ -272,10 +239,9 @@ namespace PaviseApp
                             planSwitch = false;
                             Settings.Save("PowerPlanOn", false);
                             SaveCounter(PowerFailStreakKey, 0);
-                            ClearActiveSessionOverride(PolicyCatalog.KeyPowerPlan, "电源计划切换");
-                            Logger.Log("电源计划累计连续 " + persistedStreak
-                                + " 次切换失败 多半被其他电源或优化类软件接管 已自动关闭 电源计划切换 开关 不再重试 "
-                                + "排除冲突软件后可在策略页重新开启");
+                            ClearActiveSessionOverride(PolicyCatalog.KeyPowerPlan, Lang.T("t.gamemodeenv.17"));
+                            Logger.Log(Lang.T("log.gamemodeenv.18") + persistedStreak
+                                + Lang.T("log.gamemodeenv.19"));
                         }
                         else
                         {
@@ -294,8 +260,9 @@ namespace PaviseApp
                 nextPowerAuditTicks = 0;
             }
 
-            coreParkActive = EnvStep("corepark", usePlan, coreParkActive,
-                PowerPlan.UnparkForSession, PowerPlan.RestoreParkState);
+            // 对局核心解停泊已并入托管电源计划(见 PowerPlan.WriteKnob 的 CpMinCores)
+            // 独立的 UnparkForSession 覆盖是冗余且会与还原路径死循环刷屏 已移除
+            // 旧版残留快照由启动自愈(Program)与退出还原(RestoreEnv)按需清理
 
             if (!timerRaised)
             {
@@ -306,19 +273,15 @@ namespace PaviseApp
                 }
                 else if (!timerSkipLogged)
                 {
-                    Logger.Log("计时器精度 本系统按进程隔离 提升无效 已跳过");
+                    Logger.Log(Lang.T("log.gamemodeenv.20"));
                     timerSkipLogged = true;
                 }
             }
         }
 
         private bool wuActive;
-        private bool coreParkActive;
         private bool amdAlagActive;
         private bool amdAfmfActive;
-        private bool amdFrtcActive;
-        private int amdFrtcFps;
-        private bool amdFrlMutexLogged;
 
         private static bool RestoreAmdAntiLagEnv()
         {
@@ -349,7 +312,6 @@ namespace PaviseApp
         {
             if (failed == null || plan == null) return;
             NoteNvKey(NvDrsTweaks.KeyPState, plan.MaxPerf, failed.Contains(NvDrsTweaks.KeyPState));
-            NoteNvKey(NvDrsTweaks.KeyFrl, plan.FrlFps > 0, failed.Contains(NvDrsTweaks.KeyFrl));
             bool lowLatWanted = plan.LowLatMode == "on" || plan.LowLatMode == "ultra";
             NoteNvKey(NvDrsTweaks.KeyPreRender, lowLatWanted,
                 plan.LowLatMode == "ultra"
@@ -366,7 +328,6 @@ namespace PaviseApp
                 && NvDrsTweaks.DlssOverrideSupported();
             NoteNvKey(NvDrsTweaks.KeyDlssOvr, dlssWanted,
                 NvDrsTweaks.ContainsAny(failed, NvDrsTweaks.DlssKeys));
-            NoteNvKey(NvDrsTweaks.KeyBattFps, plan.BattFull, failed.Contains(NvDrsTweaks.KeyBattFps));
         }
 
         private void NoteNvKey(string key, bool wanted, bool didFail)
@@ -383,40 +344,22 @@ namespace PaviseApp
             SaveCounter(counterKey, 0);
             string label;
             string policyKey;
-            if (key == NvDrsTweaks.KeyPState) { nvMaxPerf = false; Settings.Save("NvMaxPerf", false); label = "NVIDIA 电源最高性能"; policyKey = PolicyCatalog.KeyNvMaxPerf; }
-            else if (key == NvDrsTweaks.KeyFrl) { nvFrlMode = "off"; Settings.SaveStr("NvFrl", "off"); label = "NVIDIA 帧率上限"; policyKey = PolicyCatalog.KeyNvFrl; }
-            else if (key == NvDrsTweaks.KeyAnsel) { nvAnselOff = false; Settings.Save("NvAnselOff", false); label = "NVIDIA Ansel 关闭"; policyKey = PolicyCatalog.KeyNvAnselOff; }
-            else if (key == NvDrsTweaks.KeyRebarFeat) { nvRebarOn = false; Settings.Save("NvRebar", false); label = "NVIDIA ReBAR 强开"; policyKey = PolicyCatalog.KeyNvRebar; }
-            else if (key == NvDrsTweaks.KeyDlssOvr) { nvDlssMode = "off"; Settings.SaveStr("NvDlss", "off"); label = "NVIDIA DLSS 覆写"; policyKey = PolicyCatalog.KeyNvDlss; }
-            else if (key == NvDrsTweaks.KeyBattFps) { nvBattFull = false; Settings.Save("NvBattFull", false); label = "NVIDIA 电池满血"; policyKey = PolicyCatalog.KeyNvBattFull; }
-            else if (key == NvDrsTweaks.KeySmooth) { nvSmoothMotion = false; Settings.Save("NvSmoothMotion", false); label = "NVIDIA Smooth Motion 插帧"; policyKey = PolicyCatalog.KeyNvSmoothMotion; }
-            else if (key == NvDrsTweaks.KeyShaderCache) { nvShaderCacheMax = false; Settings.Save("NvShaderCache", false); label = "NVIDIA 着色器缓存无上限"; policyKey = PolicyCatalog.KeyNvShaderCache; }
-            else { nvLowLatMode = "off"; Settings.SaveStr("NvLowLat", "off"); label = "NVIDIA 低延迟"; policyKey = PolicyCatalog.KeyNvLowLat; }
-            Logger.Log(" " + label + " 连续 " + EnvFuseAttempts
-                + " 次写入失败 已自动关闭该开关 重新打开即恢复尝试");
+            if (key == NvDrsTweaks.KeyPState) { nvMaxPerf = false; Settings.Save("NvMaxPerf", false); label = Lang.T("t.gamemodeenv.21"); policyKey = PolicyCatalog.KeyNvMaxPerf; }
+            else if (key == NvDrsTweaks.KeyAnsel) { nvAnselOff = false; Settings.Save("NvAnselOff", false); label = Lang.T("t.gamemodeenv.23"); policyKey = PolicyCatalog.KeyNvAnselOff; }
+            else if (key == NvDrsTweaks.KeyRebarFeat) { nvRebarOn = false; Settings.Save("NvRebar", false); label = Lang.T("t.gamemodeenv.24"); policyKey = PolicyCatalog.KeyNvRebar; }
+            else if (key == NvDrsTweaks.KeyDlssOvr) { nvDlssMode = "off"; Settings.SaveStr("NvDlss", "off"); label = Lang.T("t.gamemodeenv.25"); policyKey = PolicyCatalog.KeyNvDlss; }
+            else if (key == NvDrsTweaks.KeySmooth) { nvSmoothMotion = false; Settings.Save("NvSmoothMotion", false); label = Lang.T("t.gamemodeenv.27"); policyKey = PolicyCatalog.KeyNvSmoothMotion; }
+            else if (key == NvDrsTweaks.KeyShaderCache) { nvShaderCacheMax = false; Settings.Save("NvShaderCache", false); label = Lang.T("set.nvshader"); policyKey = PolicyCatalog.KeyNvShaderCache; }
+            else { nvLowLatMode = "off"; Settings.SaveStr("NvLowLat", "off"); label = Lang.T("set.nvll"); policyKey = PolicyCatalog.KeyNvLowLat; }
+            Logger.Log(" " + label + Lang.T("log.gamemodeenv.10") + EnvFuseAttempts
+                + Lang.T("log.gamemodeenv.28"));
             ClearActiveSessionOverride(policyKey, label);
-        }
-
-        internal static int ResolveFrlFps(string mode)
-        {
-            if (string.IsNullOrEmpty(mode) || mode == "off") return 0;
-            if (mode == "screen")
-            {
-                int hz = DisplayGuard.MaxRefreshRate();
-                return hz >= 48 ? hz - 3 : 0;
-            }
-            int fps;
-            if (!int.TryParse(mode, NumberStyles.Integer, CultureInfo.InvariantCulture, out fps) || fps <= 0)
-                return 0;
-            if (fps < PolicyCatalog.FrlMin) fps = PolicyCatalog.FrlMin;
-            if (fps > PolicyCatalog.FrlMax) fps = PolicyCatalog.FrlMax;
-            return fps;
         }
 
         private bool EnvActive()
         {
             return doActive || wlanActive || wuActive || pqosActive || awakeActive || rsrActive || gpwActive || planActive || timerRaised
-                || amdAlagActive || amdAfmfActive || amdFrtcActive || coreParkActive;
+                || amdAlagActive || amdAfmfActive;
         }
 
         private string lastResidueLogged;
@@ -428,18 +371,17 @@ namespace PaviseApp
             bool sessionActive;
             int boostCount;
             lock (sync) { sessionActive = active; boostCount = gameBoost.Count; }
-            if (sessionActive) parts.Add("会话未关");
-            if (boostCount > 0) parts.Add("游戏提优 " + boostCount + " 项");
-            if (core.AnyWith(SuppressReason.Background)) parts.Add("后台压制");
-            if (doActive) parts.Add("下载暂停");
-            if (wlanActive) parts.Add("无线扫描抑制");
-            if (wuActive) parts.Add("更新暂停");
-            if (pqosActive) parts.Add("降级豁免");
-            if (awakeActive) parts.Add("防熄屏");
-            if (planActive) parts.Add("电源计划");
-            if (coreParkActive) parts.Add("核心停泊解除");
-            if (timerRaised) parts.Add("计时器精度");
-            return parts.Count > 0 ? string.Join(" ", parts.ToArray()) : "状态位残留";
+            if (sessionActive) parts.Add(Lang.T("t.gamemodeenv.29"));
+            if (boostCount > 0) parts.Add(Lang.T("log.gamemodeboost.3") + boostCount + Lang.T("t.gamemodeenv.30"));
+            if (core.AnyWith(SuppressReason.Background)) parts.Add(Lang.T("cfg.group.bg"));
+            if (doActive) parts.Add(Lang.T("t.gamemodeenv.31"));
+            if (wlanActive) parts.Add(Lang.T("t.gamemodeenv.2"));
+            if (wuActive) parts.Add(Lang.T("t.gamemodeenv.32"));
+            if (pqosActive) parts.Add(Lang.T("t.gamemodeenv.33"));
+            if (awakeActive) parts.Add(Lang.T("t.gamemodeenv.34"));
+            if (planActive) parts.Add(Lang.T("t.gamemodeenv.35"));
+            if (timerRaised) parts.Add(Lang.T("t.gamemodeenv.36"));
+            return parts.Count > 0 ? string.Join(" ", parts.ToArray()) : Lang.T("t.gamemodeenv.37");
         }
 
         private bool RetryDeactivate(string reason)
@@ -449,14 +391,14 @@ namespace PaviseApp
             if (detail != lastResidueLogged
                 || now - residueLogTicks >= TimeSpan.TicksPerMinute * 10)
             {
-                Logger.Log("游戏模式残留待恢复 " + reason + " " + detail + " 静默重试中");
+                Logger.Log(Lang.T("log.gamemodeenv.38") + reason + " " + detail + Lang.T("log.gamemodeenv.39"));
                 lastResidueLogged = detail;
                 residueLogTicks = now;
             }
             bool clean = Deactivate(reason, true);
             if (clean)
             {
-                Logger.Log("游戏模式残留已全部恢复");
+                Logger.Log(Lang.T("log.gamemodeenv.40"));
                 lastResidueLogged = null;
                 residueLogTicks = 0;
             }
@@ -475,7 +417,6 @@ namespace PaviseApp
             if (GpuPowerMax.Restore()) gpwActive = false; else ok = false;
             if (RestoreAmdAntiLagEnv()) amdAlagActive = false; else ok = false;
             if (AdlxTweaks.RestoreAfmf()) amdAfmfActive = false; else ok = false;
-            if (AdlxTweaks.RestoreFrameLimit()) { amdFrtcActive = false; amdFrtcFps = 0; } else ok = false;
             if (PowerPlan.Restore())
             {
                 planActive = false;
@@ -483,7 +424,8 @@ namespace PaviseApp
                 nextPowerAuditTicks = 0;
             }
             else ok = false;
-            if (PowerPlan.RestoreParkState()) coreParkActive = false; else ok = false;
+            // 旧版核心停泊残留:尽力还原原值 还不回去也只是保持解停泊(性能安全) 不阻塞退出
+            PowerPlan.RestoreParkState();
             if (timerRaised)
             {
                 try
@@ -498,7 +440,7 @@ namespace PaviseApp
 
         private void ReleaseBackground()
         {
-            ReleaseBackground("后台压制已关闭");
+            ReleaseBackground(Lang.T("t.gamemodeenv.41"));
         }
 
         private int ReleaseBackground(string reasonPrefix)
@@ -508,7 +450,7 @@ namespace PaviseApp
             int n = 0;
             foreach (int pid in core.PidsWith(SuppressReason.Background))
                 if (core.Release(pid, SuppressReason.Background)) { ReportSeal(pid); n++; }
-            if (n > 0) Logger.Log(reasonPrefix + " 解除 " + n + " 个进程的压制 个别被句柄保护的会自动补还原");
+            if (n > 0) Logger.Log(reasonPrefix + Lang.T("log.gamemodeenv.42") + n + Lang.T("log.gamemodeenv.43"));
             return n;
         }
     }

@@ -20,8 +20,8 @@ namespace PaviseApp
                 if (active) return true;
                 active = Switch.Apply(1);
                 Logger.Log(active
-                    ? "无输入降级已关闭"
-                    : "无输入降级开关写入或回读失败 本轮未启用");
+                    ? Lang.T("log.presenceqos.1")
+                    : Lang.T("log.presenceqos.2"));
                 return active;
             }
         }
@@ -30,7 +30,7 @@ namespace PaviseApp
         {
             lock (lk)
             {
-                if (Switch.HasBackup && Switch.Restore()) Logger.Log("无输入降级开关已还原");
+                if (Switch.HasBackup && Switch.Restore()) Logger.Log(Lang.T("log.presenceqos.3"));
                 active = false;
                 return !Switch.HasBackup;
             }

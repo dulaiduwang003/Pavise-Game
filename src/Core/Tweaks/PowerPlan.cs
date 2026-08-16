@@ -1,8 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 对局时切换电源计划 退出还原
-// 默认目标是 PG 托管方案 首次对局自动创建 各项按本机处理器逐项写入 创建失败才退回卓越性能
-// 用户在下拉里选本机已有计划时只负责切换 一个设置都不改
-// 方案名带 PG 标签与本机签名 用来区分别的机器建的同名方案和用户自己的方案
 
 using System;
 using System.Collections.Generic;
@@ -62,7 +59,7 @@ namespace PaviseApp
 
         public static string ManagedPlanTitle
         {
-            get { return PlanTag + " 竞技 " + MachineSignature(); }
+            get { return PlanTag + Lang.T("t.powerplan.2") + MachineSignature(); }
         }
 
         private static readonly object lk = new object();
@@ -76,20 +73,20 @@ namespace PaviseApp
         public static string CurrentPlanLabel()
         {
             Guid? cur = Current();
-            if (!cur.HasValue) return "读取失败";
+            if (!cur.HasValue) return Lang.T("t.systemaudithardware.3");
             Guid g = cur.Value;
-            if (g == Ultimate) return "卓越性能";
-            if (g == HighPerf) return "高性能";
-            if (g == Balanced) return "平衡";
-            if (g == PowerSaver) return "节能";
+            if (g == Ultimate) return Lang.T("t.powerplan.1");
+            if (g == HighPerf) return Lang.T("t.powerplan.3");
+            if (g == Balanced) return Lang.T("t.powerplan.4");
+            if (g == PowerSaver) return Lang.T("t.powerplan.5");
             string name = ReadName(g);
-            return name.Length > 0 ? name : "自定义计划";
+            return name.Length > 0 ? name : Lang.T("t.powerplan.6");
         }
 
         private static string PlanLabel(Guid g)
         {
-            if (g == Ultimate) return "卓越性能";
-            if (g == HighPerf) return "高性能";
+            if (g == Ultimate) return Lang.T("t.powerplan.1");
+            if (g == HighPerf) return Lang.T("t.powerplan.3");
             string name = ReadName(g);
             return name.Length > 0 ? name : g.ToString();
         }
@@ -139,12 +136,12 @@ namespace PaviseApp
                 tuneState = -1;
             }
             if (value == ManagedChoice)
-                Logger.Log("对局电源计划 改用托管方案 " + ManagedPlanTitle + " 各项由 Pavise 按你的处理器写入");
+                Logger.Log(Lang.T("log.powerplan.7") + ManagedPlanTitle + Lang.T("log.powerplan.8"));
             else if (value.Length == 0)
-                Logger.Log("对局电源计划 改回默认的托管方案 " + ManagedPlanTitle);
+                Logger.Log(Lang.T("log.powerplan.9") + ManagedPlanTitle);
             else
-                Logger.Log("对局电源计划 改用 " + PlanLabelOf(value)
-                    + " Pavise 只负责切过去 一个设置都不改");
+                Logger.Log(Lang.T("log.powerplan.10") + PlanLabelOf(value)
+                    + Lang.T("log.powerplan.11"));
         }
 
         private static Guid ManagedPlanGuid()
@@ -170,21 +167,21 @@ namespace PaviseApp
                 if (ReadName(g) == title)
                 {
                     Settings.SaveStr(ManagedPlanKey, g.ToString());
-                    Logger.Log("认回本机已有的托管电源方案 " + title);
+                    Logger.Log(Lang.T("log.powerplan.12") + title);
                     return g;
                 }
 
             Guid created;
             if (!Duplicate(Ultimate, out created) && !Duplicate(HighPerf, out created))
             {
-                Logger.Log("无法创建托管电源方案 本轮改用默认目标");
+                Logger.Log(Lang.T("log.powerplan.13"));
                 return Guid.Empty;
             }
             Settings.SaveStr(ManagedPlanKey, created.ToString());
             WriteName(created, title, PlanNote);
             Guid? cur = Current();
             if (cur.HasValue) SyncDisplayFeel(cur.Value, created);
-            Logger.Log("已创建托管电源方案 " + title);
+            Logger.Log(Lang.T("log.powerplan.14") + title);
             return created;
         }
 
@@ -195,13 +192,12 @@ namespace PaviseApp
             Guid g;
             if (!TryGuid(id, out g)) { Settings.SaveStr(ManagedPlanKey, ""); return true; }
             Guid? cur = Current();
-            // 活动方案删不掉 必须先切走 精简过电源计划的机器可能没有平衡方案 逐级退避到任一现存方案
             if (cur.HasValue && cur.Value == g && !SwitchAwayFrom(g)) return false;
             Guid tmp = g;
             if (SchemeUsable(g) && PowerDeleteScheme(IntPtr.Zero, ref tmp) != 0) return false;
             Settings.SaveStr(ManagedPlanKey, "");
             lock (lk) { resolved = false; target = Guid.Empty; targetOwned = false; tuneState = -1; }
-            Logger.Log("已删除托管电源方案 " + ManagedPlanTitle);
+            Logger.Log(Lang.T("log.powerplan.15") + ManagedPlanTitle);
             return true;
         }
 
@@ -250,13 +246,13 @@ namespace PaviseApp
                 Settings.SaveStr(DefaultPlanKey, created.ToString());
                 Guid? cur = Current();
                 if (cur.HasValue) SyncDisplayFeel(cur.Value, created);
-                Logger.Log("本机没有卓越性能电源计划 已创建一份 " + PlanLabel(created)
-                    + " 各项保持系统模板原样 Pavise 不改写");
+                Logger.Log(Lang.T("log.powerplan.16") + PlanLabel(created)
+                    + Lang.T("log.powerplan.17"));
                 return created;
             }
 
             foreach (Guid g in schemes) if (g == HighPerf) return HighPerf;
-            Logger.Log("本机既无卓越性能也无法创建 电源计划切换本轮无目标");
+            Logger.Log(Lang.T("log.powerplan.18"));
             return Guid.Empty;
         }
 
@@ -272,13 +268,12 @@ namespace PaviseApp
             Guid g;
             if (!TryGuid(id, out g)) { Settings.SaveStr(DefaultPlanKey, ""); return true; }
             Guid? cur = Current();
-            // 活动方案删不掉 必须先切走 精简过电源计划的机器可能没有平衡方案 逐级退避到任一现存方案
             if (cur.HasValue && cur.Value == g && !SwitchAwayFrom(g)) return false;
             Guid tmp = g;
             if (SchemeUsable(g) && PowerDeleteScheme(IntPtr.Zero, ref tmp) != 0) return false;
             Settings.SaveStr(DefaultPlanKey, "");
             lock (lk) { resolved = false; target = Guid.Empty; }
-            Logger.Log("已删除 Pavise 创建的卓越性能电源计划");
+            Logger.Log(Lang.T("log.powerplan.19"));
             return true;
         }
 
@@ -303,7 +298,7 @@ namespace PaviseApp
                 Guid escape = EnsureDefaultPlan();
                 if (escape == Guid.Empty) escape = Balanced;
                 if (!Set(escape)) return false;
-                Logger.Log("旧的托管电源计划正在使用中 已先切到 " + PlanLabel(escape));
+                Logger.Log(Lang.T("log.powerplan.20") + PlanLabel(escape));
             }
 
             bool ok = true;
@@ -311,7 +306,7 @@ namespace PaviseApp
             {
                 Guid tmp = g;
                 if (PowerDeleteScheme(IntPtr.Zero, ref tmp) == 0)
-                    Logger.Log("已删除旧的托管电源计划 " + g);
+                    Logger.Log(Lang.T("log.powerplan.21") + g);
                 else ok = false;
             }
             if (!ok) return false;
@@ -335,13 +330,13 @@ namespace PaviseApp
             Guid picked;
             if (!TryGuid(choice, out picked) || !SchemeUsable(picked))
             {
-                Logger.Log("你选的电源计划已不存在 改回默认的托管方案 " + ManagedPlanTitle);
+                Logger.Log(Lang.T("log.powerplan.22") + ManagedPlanTitle);
                 Settings.SaveStr(ChoiceKey, "");
                 return false;
             }
             target = picked;
             targetOwned = false;
-            Logger.Log("对局电源计划 使用你选的 " + PlanLabel(picked) + " 只切换 不改动它的设置");
+            Logger.Log(Lang.T("log.powerplan.23") + PlanLabel(picked) + Lang.T("log.powerplan.24"));
             return true;
         }
 
@@ -391,18 +386,18 @@ namespace PaviseApp
             if (Settings.LoadStr("PrevPowerPlan", "") != saved.ToString())
             {
                 saved = Guid.Empty;
-                Logger.Log("电源计划原值快照无法持久化 已取消切换");
+                Logger.Log(Lang.T("log.powerplan.25"));
                 return false;
             }
             if (Set(tgt))
             {
                 active = true;
-                Logger.Log("电源计划 " + PlanLabel(tgt) + " 原 " + PlanLabel(saved) + " ");
+                Logger.Log(Lang.T("log.powerplan.26") + PlanLabel(tgt) + Lang.T("log.gpupowermax.7") + PlanLabel(saved) + " ");
                 return true;
             }
             Settings.SaveStr("PrevPowerPlan", "");
             saved = Guid.Empty;
-            Logger.Log("电源计划切换失败 本轮未启用");
+            Logger.Log(Lang.T("log.powerplan.27"));
             return false;
         }
 
@@ -422,11 +417,26 @@ namespace PaviseApp
                 Guid? cur = Current();
                 if (cur != null && cur.Value != tgt)
                 {
-                    if (Set(tgt)) Logger.Log("电源计划被改动 已强制拉回 " + PlanLabel(tgt));
+                    if (Set(tgt)) Logger.Log(Lang.T("log.powerplan.28") + PlanLabel(tgt));
                     else return false;
                 }
                 return true;
             }
+        }
+
+        // 所有权判定只查找不创建 覆盖跨进程自愈场景(resolved=false)
+        private static bool IsOurActivePlan(Guid g)
+        {
+            if (resolved && g == target) return true;
+            if (g != Guid.Empty && g == ManagedPlanGuid()) return true;
+            string choice = Settings.LoadStr(ChoiceKey, "");
+            Guid picked;
+            if (choice.Length > 0 && choice != ManagedChoice
+                && TryGuid(choice, out picked) && g == picked) return true;
+            Guid legacy;
+            if (TryGuid(Settings.LoadStr("ArenaPlanGuid", ""), out legacy) && g == legacy) return true;
+            if (TryGuid(Settings.LoadStr("UltimatePlanGuid", ""), out legacy) && g == legacy) return true;
+            return false;
         }
 
         public static bool Restore()
@@ -442,21 +452,39 @@ namespace PaviseApp
                 bool ok = true;
                 if (restoreTarget != Guid.Empty)
                 {
+                    // 当前活动方案既不是我们切过去的目标也不是待还原原方案 = 用户中途手动换过方案
+                    // 所有权已转移 不抢回 只清记账(照 ReversibleReg 的所有权哲学)
+                    Guid? nowActive = Current();
+                    if (nowActive.HasValue && nowActive.Value != restoreTarget
+                        && !IsOurActivePlan(nowActive.Value))
+                    {
+                        Settings.SaveStr("PrevPowerPlan", "");
+                        Logger.Log(Lang.T("log.powerplan.36") + PlanLabel(nowActive.Value));
+                        active = false; saved = Guid.Empty; tuneState = -1;
+                        return Settings.LoadStr("PrevPowerPlan", "").Length == 0;
+                    }
+                    if (nowActive.HasValue && nowActive.Value == restoreTarget)
+                    {
+                        Settings.SaveStr("PrevPowerPlan", "");
+                        Logger.Log(Lang.T("log.powerplan.29"));
+                        active = false; saved = Guid.Empty; tuneState = -1;
+                        return Settings.LoadStr("PrevPowerPlan", "").Length == 0;
+                    }
                     if (Set(restoreTarget))
                     {
                         Settings.SaveStr("PrevPowerPlan", "");
-                        Logger.Log("电源计划已还原");
+                        Logger.Log(Lang.T("log.powerplan.29"));
                         ok = Settings.LoadStr("PrevPowerPlan", "").Length == 0;
                     }
                     else if (!SchemeUsable(restoreTarget))
                     {
                         Settings.SaveStr("PrevPowerPlan", "");
-                        Logger.Log("原电源计划已不存在 无法还原");
+                        Logger.Log(Lang.T("log.powerplan.30"));
                         ok = false;
                     }
                     else
                     {
-                        Logger.Log("电源计划还原失败 快照保留待下次启动重试");
+                        Logger.Log(Lang.T("log.powerplan.31"));
                         ok = false;
                     }
                 }
@@ -466,8 +494,6 @@ namespace PaviseApp
             }
         }
 
-        // 残留自愈:活动方案仍是托管方案但没有还原快照时 对局激活会因"已是目标"跳过快照
-        // 退出便无从还原 活动方案永久滞留托管档 桌面持续吃竞技档的高功耗设置 这里主动切走
         private static bool HealManagedResidue()
         {
             Guid managed;
@@ -475,7 +501,7 @@ namespace PaviseApp
             if (!cur.HasValue || !TryGuid(Settings.LoadStr(ManagedPlanKey, ""), out managed)
                 || cur.Value != managed) return true;
             if (!SwitchAwayFrom(managed)) return false;
-            Logger.Log("检测到托管电源方案残留为活动方案 已切回系统方案");
+            Logger.Log(Lang.T("log.powerplan.32"));
             return true;
         }
 
@@ -492,14 +518,14 @@ namespace PaviseApp
             if (Set(g))
             {
                 Settings.SaveStr("PrevPowerPlan", "");
-                Logger.Log("检测到上次未还原的电源计划 已恢复");
+                Logger.Log(Lang.T("log.powerplan.33"));
             }
             else if (!SchemeUsable(g))
             {
                 Settings.SaveStr("PrevPowerPlan", "");
-                Logger.Log("上次的电源计划已不存在 无法还原");
+                Logger.Log(Lang.T("log.powerplan.34"));
             }
-            else Logger.Log("恢复上次电源计划失败 快照保留待下次重试");
+            else Logger.Log(Lang.T("log.powerplan.35"));
         }
 
 #if PAVISE_SELFTEST

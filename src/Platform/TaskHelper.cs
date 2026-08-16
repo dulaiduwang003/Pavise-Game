@@ -56,7 +56,9 @@ namespace PaviseApp
             {
                 string xml = BuildStartupTaskXml(Application.ExecutablePath);
                 if (xml == null) return -1;
-                path = Path.Combine(Path.GetTempPath(), "Pavise_" + Guid.NewGuid().ToString("N") + ".xml");
+                // %TEMP% 常被安全软件或磁盘清理拦截 落到应用数据目录更稳 失败仍有 CLI 回退
+                string dir = string.IsNullOrEmpty(Paths.Data) ? Path.GetTempPath() : Paths.Data;
+                path = Path.Combine(dir, "Pavise_" + Guid.NewGuid().ToString("N") + ".xml");
                 using (var fs = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read))
                 {
                     byte[] bom = System.Text.Encoding.Unicode.GetPreamble();
@@ -96,6 +98,7 @@ namespace PaviseApp
                 + "  <Settings>"
                 + "<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>"
                 + "<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>"
+                + "<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>"
                 + "<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>"
                 + "</Settings>\r\n"
                 + "  <Triggers><LogonTrigger><StartBoundary>" + start + "</StartBoundary></LogonTrigger></Triggers>\r\n"
@@ -135,37 +138,81 @@ namespace PaviseApp
             {
                 string cur = Application.ExecutablePath;
                 if (!TaskExists()) return;
-                string target;
-                if (!TryReadTaskCommand(out target))
+                string xml;
+                if (RunCore("/Query /TN " + TaskName + " /XML", true, out xml) != 0)
                 {
-                    Logger.Log("开机自启任务读取失败 本次不修改");
+                    Logger.Log(Lang.T("log.taskhelper.1"));
                     return;
                 }
-                string taskArguments;
-                bool argumentsKnown = TryReadTaskArguments(out taskArguments);
-                bool argumentsStale = argumentsKnown
-                    && (taskArguments ?? "").IndexOf(
+                string target = ParseTaskCommandXml(xml);
+                if (string.IsNullOrWhiteSpace(target))
+                {
+                    Logger.Log(Lang.T("log.taskhelper.1"));
+                    return;
+                }
+                string taskArguments = ParseTaskArgumentsXml(xml);
+                bool argumentsStale = taskArguments != null
+                    && taskArguments.IndexOf(
                         AutostartArgument, StringComparison.OrdinalIgnoreCase) < 0;
+                bool settingsStale = StartupTaskSettingsStale(xml);
                 bool pathChanged = NeedsStartupTaskRefresh(cur, target);
-                if (!pathChanged && !argumentsStale)
+                if (!pathChanged && !argumentsStale && !settingsStale)
                 {
                     Settings.SaveStr("AutostartExe", cur);
                     return;
                 }
                 if (IsVolatileAutostartPath(cur))
                 {
-                    Logger.Log("开机自启任务迁移已跳过 当前程序位于临时或易失目录 " + cur
-                        + " 文件可能被清理导致自启失效 请把程序移到固定目录后再启动");
+                    Logger.Log(Lang.T("log.taskhelper.2") + cur
+                        + Lang.T("log.taskhelper.3"));
                     return;
                 }
-                string action = pathChanged
-                    ? "开机自启任务迁移 " + (target ?? "未知目标") + " " + cur
-                    : "开机自启任务参数刷新 旧任务缺少 " + AutostartArgument + " 静默启动参数 重建任务补齐";
-                Logger.Log(action);
-                if (CreateStartupTask() != 0)
-                    Logger.Log(pathChanged ? "开机自启任务迁移失败 稍后将重试" : "开机自启任务参数刷新失败 稍后将重试");
+                if (pathChanged || argumentsStale)
+                {
+                    Logger.Log(pathChanged
+                        ? Lang.T("t.taskhelper.4") + (target ?? Lang.T("t.taskhelper.5")) + " " + cur
+                        : Lang.T("t.taskhelper.6") + AutostartArgument + Lang.T("t.taskhelper.7"));
+                    if (CreateStartupTask() != 0)
+                        Logger.Log(pathChanged ? Lang.T("log.taskhelper.8") : Lang.T("log.taskhelper.9"));
+                }
+                // 仅设置过期:只有 XML 注册能补齐电池/时限设置 CLI 回退补不了
+                // 失败保留现有任务直接返回 避免删建循环与假成功日志
+                else if (CreateStartupTaskFromXml() == 0)
+                {
+                    cachedExists = 1;
+                    Settings.SaveStr("AutostartExe", cur);
+                    Logger.Log(Lang.T("log.taskhelper.10"));
+                }
+                else Logger.Log(Lang.T("log.taskhelper.9"));
             }
             catch { }
+        }
+
+        // 电池条件与执行时限必须显式为安全值 缺项即视为过期任务
+        // 任务计划默认 DisallowStartIfOnBatteries=true StopIfGoingOnBatteries=true ExecutionTimeLimit=PT72H
+        internal static bool StartupTaskSettingsStale(string xml)
+        {
+            if (string.IsNullOrWhiteSpace(xml)) return false;
+            try
+            {
+                var document = new System.Xml.XmlDocument();
+                document.XmlResolver = null;
+                document.LoadXml(xml.TrimStart('﻿'));
+                System.Xml.XmlNode settings = document.SelectSingleNode(
+                    "/*[local-name()='Task']/*[local-name()='Settings']");
+                return !SettingEquals(settings, "ExecutionTimeLimit", "PT0S")
+                    || !SettingEquals(settings, "DisallowStartIfOnBatteries", "false")
+                    || !SettingEquals(settings, "StopIfGoingOnBatteries", "false");
+            }
+            catch { return false; }
+        }
+
+        private static bool SettingEquals(System.Xml.XmlNode settings, string name, string expected)
+        {
+            if (settings == null) return false;
+            System.Xml.XmlNode node = settings.SelectSingleNode("*[local-name()='" + name + "']");
+            return node != null && string.Equals(
+                (node.InnerText ?? "").Trim(), expected, StringComparison.OrdinalIgnoreCase);
         }
 
         internal static bool NeedsStartupTaskRefresh(
@@ -201,15 +248,6 @@ namespace PaviseApp
                 return false;
             command = ParseTaskCommandXml(xml);
             return !string.IsNullOrWhiteSpace(command);
-        }
-
-        private static bool TryReadTaskArguments(out string arguments)
-        {
-            arguments = null;
-            string xml;
-            if (RunCore("/Query /TN " + TaskName + " /XML", true, out xml) != 0) return false;
-            arguments = ParseTaskArgumentsXml(xml);
-            return arguments != null;
         }
 
         internal static string ParseTaskArgumentsXml(string xml)

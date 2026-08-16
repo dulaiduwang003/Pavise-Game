@@ -143,7 +143,9 @@ For background, see Mark Russinovich, "The Memory-Optimization Hoax" (Windows an
 
 Most of the circulated registry tweaks for input latency act at the scale of a fraction of a millisecond, while the main source of latency is the render queue. Pavise reports these but does not change them, including Bluetooth mice and 125 Hz polling rates — the health check page points them out and leaves the decision to you.
 
-MSI mode, low-latency mode, background frame caps, fullscreen-window optimisation, game file prewarming and masking off CPU 0/1 by position were all implemented and later removed, for reasons of no measurable effect, the risk of writing a device into an unbootable state, and misread semantics respectively — the driver's background frame cap actually applies to applications that have lost focus, so the game itself is what gets limited after you alt-tab. Anything removed has the values written by older versions restored automatically on upgrade.
+MSI mode, low-latency mode, background frame caps, fullscreen-window optimisation, game file prewarming and masking off CPU 0/1 by position were all implemented and later removed, for reasons of no measurable effect, the risk of writing a device into an unbootable state, and misread semantics respectively — the driver's background frame cap actually applies to applications that have lost focus, so the game itself is what gets limited after you alt-tab.
+
+The driver-level frame rate cap (both NVIDIA and AMD) was removed in 1.8.0.3 as well: capping is more direct in the game's own settings or the GPU control panel, and capping again at the driver layer easily fights the game's own limiter and VRR. On AMD it also had to go through Radeon Chill, which is mutually exclusive with Anti-Lag — trading one latency optimisation for another. Anything removed has the values written by older versions restored automatically on upgrade.
 
 ## Screenshots
 

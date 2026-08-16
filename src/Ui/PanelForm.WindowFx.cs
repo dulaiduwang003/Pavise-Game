@@ -30,10 +30,8 @@ namespace PaviseApp
         {
             if (Theme.StepTheme())
             {
-                if (lblHeroMode != null) lblHeroMode.ForeColor = Theme.Accent;
-                if (lblPolicyMode != null) lblPolicyMode.ForeColor = Theme.Accent;
-                if (!Theme.ThemeAnimating && pageGameConfig != null && pageGameConfig.Visible)
-                    SyncCfgRows();
+                RefreshAccentLabels();
+                if (!Theme.ThemeAnimating) RunThemeRefreshers();
                 Invalidate(true);
             }
             if (curPage != null && pageSlide.Step())

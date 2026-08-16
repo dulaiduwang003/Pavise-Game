@@ -1,8 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 校正第三方优化工具在键鼠驱动上留下的队列长度改动 回到系统默认 可逆
-// 依据 MouseDataQueueSize 与 KeyboardDataQueueSize 控制的是能缓存多少条输入数据 不是这些数据被处理的快慢
-// 所以调高不降延迟 调低反而在高回报率鼠标上丢输入 这是全网流传最广也最没有实测支撑的一条键鼠偏方
-// 本软件不提供把它调低的开关 只提供把别人调坏的值改回默认
 
 using System;
 using System.Collections.Generic;
@@ -51,7 +48,9 @@ namespace PaviseApp
 
         internal static bool IsTampered(int? value)
         {
-            return value.HasValue && value.Value != SystemDefault;
+            // 只有小于默认才算残留 队列截短会在高回报率下丢输入
+            // 大于默认多为 8kHz 外设厂商软件刻意调大防丢包 属正常配置不碰
+            return value.HasValue && value.Value < SystemDefault;
         }
 
         public static bool NeedsRepair()
@@ -61,16 +60,16 @@ namespace PaviseApp
 
         public static string Describe()
         {
-            if (RepairedByPavise) return "已改回系统默认 " + SystemDefault + " 拨回开关即还原成原先那台工具写的值";
+            if (RepairedByPavise) return Lang.T("t.inputmythtweak.1") + SystemDefault + Lang.T("t.inputmythtweak.2");
 
             var parts = new List<string>();
             int? mouse = MouseQueueSize();
             int? kbd = KeyboardQueueSize();
-            if (IsTampered(mouse)) parts.Add("鼠标队列被改成 " + mouse.Value);
-            if (IsTampered(kbd)) parts.Add("键盘队列被改成 " + kbd.Value);
-            if (parts.Count == 0) return "键鼠队列长度都是系统默认 " + SystemDefault + " 没被动过 不用处理";
+            if (IsTampered(mouse)) parts.Add(Lang.T("t.inputmythtweak.3") + mouse.Value);
+            if (IsTampered(kbd)) parts.Add(Lang.T("t.inputmythtweak.4") + kbd.Value);
+            if (parts.Count == 0) return Lang.T("t.inputmythtweak.5") + SystemDefault + Lang.T("t.inputmythtweak.6");
             return string.Join("  ", parts.ToArray())
-                + "  这个值不影响延迟 只决定能缓存多少条输入 调低了会在高回报率鼠标上丢输入";
+                + Lang.T("t.inputmythtweak.7");
         }
 
         public static bool Repair()
@@ -83,9 +82,9 @@ namespace PaviseApp
                 if (ok)
                 {
                     Settings.Save("InputMythRepaired", true);
-                    Logger.Log("键鼠队列长度 已改回系统默认 " + SystemDefault + " 重启生效");
+                    Logger.Log(Lang.T("log.inputmythtweak.8") + SystemDefault + Lang.T("log.inputmythtweak.9"));
                 }
-                else Logger.Log("键鼠队列长度 写入失败 多半是权限不足");
+                else Logger.Log(Lang.T("log.inputmythtweak.10"));
                 return ok;
             }
         }
@@ -99,9 +98,9 @@ namespace PaviseApp
                 if (all)
                 {
                     Settings.Save("InputMythRepaired", false);
-                    Logger.Log("键鼠队列长度 已还原原值");
+                    Logger.Log(Lang.T("log.inputmythtweak.11"));
                 }
-                else Logger.Log("键鼠队列长度 还原失败 快照保留待下次重试");
+                else Logger.Log(Lang.T("log.inputmythtweak.12"));
                 return all;
             }
         }

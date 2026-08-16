@@ -32,7 +32,7 @@ namespace PaviseApp
             banner.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(62));
             banner.BackColor = Theme.Bg; banner.Fill = Theme.Card; banner.Border = Theme.Stroke; banner.Radius = Theme.S(12);
             banner.AccentEdge = true;
-            lblPolicyMode = CardLabel(banner, "", 18, 10, 300, 22, 9.5f, true, Theme.Accent);
+            lblPolicyMode = AccentLabel(banner, "", 18, 10, 300, 22, 9.5f, true);
             CardLabel(banner, Lang.T("v15.policy.mode.hint"), 18, 33, ContentW - 36, 18, 7.8f, false, Theme.Dim);
             pagePolicy.Controls.Add(banner); y += 74;
 
@@ -65,7 +65,6 @@ namespace PaviseApp
             swPolicyLane = AddPolicyToggle(scroll, ref sy, Lang.T("gm.lane"), Lang.T("gm.lane.sub"),
                 delegate { return gameMode.RenderLaneOn; }, delegate(bool v) { gameMode.RenderLaneOn = v; });
             cardPolicyLane = (SettingCard)swPolicyLane.Parent;
-            // 对局电源计划选择器已移到主窗口标题栏(PowerFlyout)优化策略页不再重复放
 
             BuildCorePage(policyTabPanels[1]);
 
@@ -168,7 +167,6 @@ namespace PaviseApp
             RevealTabFor(policyTabs, policyTabPanels, card);
             RevealTabFor(envTabs, envTabPanels, card);
             RevealTabFor(gfxTabs, gfxTabPanels, card);
-            RevealTabFor(colTabs, colTabPanels, card);
         }
 
         private static void RevealTabFor(TechTabs tabs, DBPanel[] panels, Control card)
@@ -312,6 +310,12 @@ namespace PaviseApp
             ApplyPresetPolicy(swPolicyDvr, cardPolicyDvr, Lang.T("set.dvr"), !custom, competitive);
             ApplyPresetPolicy(swPolicyPauseWu, cardPolicyPauseWu, Lang.T("gm.pausewu"), false, true);
             ApplyPresetPolicy(swPolicyWlan, cardPolicyWlan, Lang.T("gm.wlanguard"), false, true);
+            // 无无线网卡的机器上此项无事可做 置灰注明 已开启的仍可关回
+            if (swPolicyWlan != null && !WlanGuard.HasWirelessInterface() && !gameMode.WlanScanGuard)
+            {
+                swPolicyWlan.Enabled = false;
+                if (cardPolicyWlan != null) cardPolicyWlan.Desc = Lang.T("gm.wlanguard.nowifi");
+            }
             ApplyPresetPolicy(swPolicyAwake, cardPolicyAwake, Lang.T("set.awake"), false, true);
         }
 

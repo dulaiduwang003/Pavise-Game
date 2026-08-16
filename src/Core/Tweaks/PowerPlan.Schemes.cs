@@ -85,56 +85,57 @@ namespace PaviseApp
             public readonly Guid Sub;
             public readonly Guid Setting;
             public readonly uint ArenaAc, ArenaDc, CalmAc, CalmDc;
-            public readonly string Label;
+            private readonly string labelKey;
+            public string Label { get { return Lang.T(labelKey); } }
             public Knob(Guid sub, Guid setting, uint arenaAc, uint arenaDc, uint calmAc, uint calmDc, string label)
             {
                 Sub = sub; Setting = setting;
                 ArenaAc = arenaAc; ArenaDc = arenaDc; CalmAc = calmAc; CalmDc = calmDc;
-                Label = label;
+                labelKey = label;
             }
         }
 
         private static readonly Knob[] CoreKnobs = new Knob[]
         {
-            new Knob(SubProcessor, ProcThrottleMin, 100, 100,  20, 10, "最小处理器状态"),
-            new Knob(SubProcessor, ProcThrottleMax, 100, 100, 100, 100, "最大处理器状态"),
-            new Knob(SubProcessor, CpMinCores,      100, 100,  50, 20, "核心停放最小核心数"),
-            new Knob(SubProcessor, CpMaxCores,      100, 100, 100, 100, "核心停放最大核心数"),
-            new Knob(SubProcessor, PerfBoostMode,     2,   2,   2,  3, "睿频模式"),
-            new Knob(SubProcessor, Throttling,        0,   0,   2,  2, "允许节流状态"),
-            new Knob(SubProcessor, SysCoolPol,        1,   1,   1,  1, "系统散热方式"),
-            new Knob(SubPcie,      PcieAspm,          0,   0,   1,  2, "PCIe 链接电源管理"),
-            new Knob(SubUsb,       UsbSelSuspend,     0,   0,   0,  0, "USB 选择性暂停"),
-            new Knob(SubDisk,      DiskIdle,          0,   0, 1200, 600, "关闭硬盘时间"),
-            new Knob(SubNone,      Personality,       1,   1,   1,  1, "电源计划类型"),
+            new Knob(SubProcessor, ProcThrottleMin, 100, 100,  20, 10, "t.powerplanschemes.1"),
+            new Knob(SubProcessor, ProcThrottleMax, 100, 100, 100, 100, "t.powerplanschemes.2"),
+            new Knob(SubProcessor, CpMinCores,      100, 100,  50, 20, "t.powerplanschemes.3"),
+            new Knob(SubProcessor, CpMaxCores,      100, 100, 100, 100, "t.powerplanschemes.4"),
+            new Knob(SubProcessor, PerfBoostMode,     2,   2,   2,  3, "t.powerplanschemes.5"),
+            new Knob(SubProcessor, Throttling,        0,   0,   2,  2, "t.powerplanschemes.6"),
+            new Knob(SubProcessor, SysCoolPol,        1,   1,   1,  1, "t.powerplanschemes.7"),
+            new Knob(SubPcie,      PcieAspm,          0,   0,   1,  2, "t.powerplanschemes.8"),
+            new Knob(SubUsb,       UsbSelSuspend,     0,   0,   0,  0, "t.powerplanschemes.9"),
+            new Knob(SubDisk,      DiskIdle,          0,   0, 1200, 600, "t.powerplanschemes.10"),
+            new Knob(SubNone,      Personality,       1,   1,   1,  1, "t.powerplanschemes.11"),
         };
 
         private static readonly Knob[] OptionalKnobs = new Knob[]
         {
-            new Knob(SubProcessor, PerfEpp,           0,   0,  50, 70, "能源性能首选项"),
-            new Knob(SubProcessor, PerfBoostPol,    100, 100,  60, 40, "睿频策略"),
-            new Knob(SubProcessor, PerfIncPol,        2,   2,   1,  1, "升频策略"),
-            new Knob(SubProcessor, PerfDecPol,        1,   1,   2,  2, "降频策略"),
-            new Knob(SubProcessor, PerfIncTime,       1,   1,   3,  3, "升频时间"),
-            new Knob(SubProcessor, PerfDecTime,      10,  10,   5,  5, "降频时间"),
-            new Knob(SubProcessor, PerfIncThreshold, 10,  10,  30, 40, "升频阈值"),
-            new Knob(SubProcessor, PerfDecThreshold,  8,   8,  20, 30, "降频阈值"),
-            new Knob(SubProcessor, LatencyHintPerf, 100, 100,  75, 50, "延迟敏感性能"),
-            new Knob(SubProcessor, LatencyHintUnpark,100,100,  50, 50, "延迟敏感解除停放"),
-            new Knob(SubProcessor, PerfDutyCycling,   0,   0,   1,  1, "处理器忙闲度"),
-            new Knob(SubProcessor, ProcFreqMax,       0,   0,   0,  0, "处理器最大频率"),
-            new Knob(SubWireless,  WirelessPowerSave, 0,   0,   1,  2, "无线适配器节能"),
+            new Knob(SubProcessor, PerfEpp,           0,   0,  50, 70, "t.powerplanschemes.12"),
+            new Knob(SubProcessor, PerfBoostPol,    100, 100,  60, 40, "t.powerplanschemes.13"),
+            new Knob(SubProcessor, PerfIncPol,        2,   2,   1,  1, "t.powerplanschemes.14"),
+            new Knob(SubProcessor, PerfDecPol,        1,   1,   2,  2, "t.powerplanschemes.15"),
+            new Knob(SubProcessor, PerfIncTime,       1,   1,   3,  3, "t.powerplanschemes.16"),
+            new Knob(SubProcessor, PerfDecTime,      10,  10,   5,  5, "t.powerplanschemes.17"),
+            new Knob(SubProcessor, PerfIncThreshold, 10,  10,  30, 40, "t.powerplanschemes.18"),
+            new Knob(SubProcessor, PerfDecThreshold,  8,   8,  20, 30, "t.powerplanschemes.19"),
+            new Knob(SubProcessor, LatencyHintPerf, 100, 100,  75, 50, "t.powerplanschemes.20"),
+            new Knob(SubProcessor, LatencyHintUnpark,100,100,  50, 50, "t.powerplanschemes.21"),
+            new Knob(SubProcessor, PerfDutyCycling,   0,   0,   1,  1, "t.powerplanschemes.22"),
+            new Knob(SubProcessor, ProcFreqMax,       0,   0,   0,  0, "t.powerplanschemes.23"),
+            new Knob(SubWireless,  WirelessPowerSave, 0,   0,   1,  2, "t.powerplanschemes.24"),
         };
 
         private static readonly Knob[] HybridKnobs = new Knob[]
         {
-            new Knob(SubProcessor, ProcThrottleMin1, 100, 100,  20, 10, "E核最小处理器状态"),
-            new Knob(SubProcessor, ProcThrottleMax1, 100, 100, 100, 100, "E核最大处理器状态"),
-            new Knob(SubProcessor, CpMinCores1,      100, 100,  50, 20, "E核停放最小核心数"),
-            new Knob(SubProcessor, CpMaxCores1,      100, 100, 100, 100, "E核停放最大核心数"),
-            new Knob(SubProcessor, PerfEpp1,           0,   0,  50, 70, "E核能源性能首选项"),
-            new Knob(SubProcessor, SchedPolicy,        2,   2,   5,  5, "异类线程调度策略"),
-            new Knob(SubProcessor, ShortSchedPolicy,   2,   2,   5,  5, "异类短线程调度策略"),
+            new Knob(SubProcessor, ProcThrottleMin1, 100, 100,  20, 10, "t.powerplanschemes.25"),
+            new Knob(SubProcessor, ProcThrottleMax1, 100, 100, 100, 100, "t.powerplanschemes.26"),
+            new Knob(SubProcessor, CpMinCores1,      100, 100,  50, 20, "t.powerplanschemes.27"),
+            new Knob(SubProcessor, CpMaxCores1,      100, 100, 100, 100, "t.powerplanschemes.28"),
+            new Knob(SubProcessor, PerfEpp1,           0,   0,  50, 70, "t.powerplanschemes.29"),
+            new Knob(SubProcessor, SchedPolicy,        2,   2,   5,  5, "t.powerplanschemes.30"),
+            new Knob(SubProcessor, ShortSchedPolicy,   2,   2,   5,  5, "t.powerplanschemes.31"),
         };
 
 #if PAVISE_SELFTEST
@@ -186,7 +187,7 @@ namespace PaviseApp
                 foreach (Knob k in CoreKnobs)
                 {
                     if (WriteKnob(g, k, aggressive, profile)) written++;
-                    else { failed++; Logger.Log("电源项 " + k.Label + " 写入失败"); }
+                    else { failed++; Logger.Log(Lang.T("log.powerplanschemes.32") + k.Label + Lang.T("log.powerplanschemes.33")); }
                 }
                 foreach (Knob k in OptionalKnobs)
                 {
@@ -206,26 +207,26 @@ namespace PaviseApp
                     }
                 }
 
+                // C-state 禁用是发热换不来帧的负优化 恒不禁 保持系统默认空闲省电
+                // 现代 CPU 从 C-state 唤醒是纳秒级 禁 idle 让全核常驻 C0 只涨功耗温度 换不来帧
+                // 恒写 0 同时还原旧版竞技档台式机写过的 1
                 if (SettingPresent(g, SubProcessor, IdleDisableSet))
                 {
-                    // 竞技档插电禁用处理器闲置:GPU 瓶颈时渲染线程每帧多次从深 C-state 唤醒
-                    // 且包级 C-state 拖低 uncore 频率抬高内存延迟 台架实测 +4.5% 平均帧 +6% 1%low 热浸无衰减
-                    // 电池恒 C0 功耗代价过大 DC 侧一律保持启用闲置
-                    if (WritePair(g, SubProcessor, IdleDisableSet, aggressive ? 1u : 0u, 0u)) written++;
+                    if (WritePair(g, SubProcessor, IdleDisableSet, 0u, 0u)) written++;
                     else failed++;
                 }
-                else skipped.Add("处理器闲置禁用");
+                else skipped.Add(Lang.T("t.powerplanschemes.34"));
 
                 if (failed > 0)
                 {
-                    Logger.Log("托管电源方案有 " + failed + " 项未能写入 未把本轮标记为成功");
+                    Logger.Log(Lang.T("log.powerplanschemes.35") + failed + Lang.T("log.powerplanschemes.36"));
                     return false;
                 }
 
-                Logger.Log("托管电源方案 " + (aggressive ? "竞技档" : "常规档")
-                    + " " + ManagedPlanTitle + " 按 " + profile.Tag + " 写入 " + written + " 项"
-                    + (profile.PreserveCoreParking ? " 核心停放保留给AMD驱动" : "")
-                    + (skipped.Count > 0 ? " 本机不支持 " + skipped.Count + " 项 " + string.Join(" ", skipped.ToArray()) : ""));
+                Logger.Log(Lang.T("log.powerplanschemes.37") + (aggressive ? Lang.T("log.powerplanschemes.38") : Lang.T("log.powerplanschemes.39"))
+                    + " " + ManagedPlanTitle + Lang.T("log.powerplanschemes.40") + profile.Tag + Lang.T("log.powerplanschemes.41") + written + Lang.T("t.gamemodeenv.30")
+                    + (profile.PreserveCoreParking ? Lang.T("log.powerplanschemes.42") : "")
+                    + (skipped.Count > 0 ? Lang.T("log.powerplanschemes.43") + skipped.Count + Lang.T("log.powerplanschemes.44") + string.Join(" ", skipped.ToArray()) : ""));
                 return true;
             }
             catch { return false; }

@@ -159,8 +159,11 @@ namespace PaviseApp
             finally { settling = false; }
         }
 
+        public static bool HasFrameListeners { get { return Frame != null; } }
+
         public static void Wake(int frames = 48)
         {
+            if (Frame == null) return;
             Ensure();
             if (suspended) return;
             if (frozen) { Settle(); return; }
@@ -170,6 +173,7 @@ namespace PaviseApp
 
         public static void WakeSlow(int frames = 12)
         {
+            if (SlowFrame == null) return;
             Ensure();
             if (suspended || frozen) return;
             if (frames > slowFramesLeft) slowFramesLeft = frames;

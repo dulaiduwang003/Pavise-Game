@@ -42,7 +42,7 @@ namespace PaviseApp
                 if (!ok) return false;
                 Settings.Save("MpoOffByPavise", false);
                 if (Settings.Load("MpoOffByPavise", true)) return false;
-                if (touched) Logger.Log("多平面叠加 MPO 设置已恢复 重启或重新登录后生效");
+                if (touched) Logger.Log(Lang.T("log.mpotweak.1"));
                 return true;
             }
             catch { return false; }

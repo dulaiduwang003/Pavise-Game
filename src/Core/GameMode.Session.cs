@@ -155,7 +155,7 @@ namespace PaviseApp
             if (throttle != null) msg += Lang.F("rep.gputhrottle", throttle);
             string spill = VramSpillProbe.Summarize();
             if (spill != null) msg += Lang.F("rep.vramspill", spill);
-            Logger.Log("本局结束 " + msg);
+            Logger.Log(Lang.T("log.gamemodesession.1") + msg);
 
             if (dur.TotalSeconds >= 60)
             {

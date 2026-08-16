@@ -348,7 +348,9 @@ namespace PaviseApp
                     bool affinityLooksPavise = !CpuTopology.MultiGroup && (oaff == throttleMask
                         || CpuTopology.InactiveThrottleMask != 0 && oaff == CpuTopology.InactiveThrottleMask
                         || squeezeMask != 0 && oaff == squeezeMask);
-                    bool residue = rawPri == Native.IDLE_PRIORITY_CLASS && oio == 0 && opg == 1
+                    // 形状匹配只在上次非干净退出时才可能真是自家残留 干净退出后同形状进程属其他调度工具 不能收编
+                    bool residue = CrashGuard.UncleanThrottleAtLaunch
+                        && rawPri == Native.IDLE_PRIORITY_CLASS && oio == 0 && opg == 1
                         && (cpuSetsLookPavise || affinityLooksPavise);
                     uint orig = residue ? Native.NORMAL_PRIORITY_CLASS : rawPri;
                     if (residue && affinityLooksPavise) oaff = 0;
@@ -535,14 +537,14 @@ namespace PaviseApp
                     if (map.TryGetValue(pid, out cur) && cur == e)
                     {
                         if (e.ProtectedRetries == 0 && ShouldLogProtected(e.Name))
-                            Logger.Log("还原 " + e.Name + " pid " + pid + " 暂被句柄保护挡住 快照保留待重试");
+                            Logger.Log(Lang.T("log.suppressioncore.1") + e.Name + " pid " + pid + Lang.T("log.suppressioncore.2"));
                         if (e.ProtectedRetries < ProtectedBackoffMax) e.ProtectedRetries++;
                         if (e.ProtectedRetries >= ProtectedBackoffMax)
                         {
                             e.NextRetryTicks = DateTime.MaxValue.Ticks;
                             if (ShouldLogProtected(e.Name + "-parked"))
-                                Logger.Log("还原 " + e.Name + " pid " + pid
-                                    + " 多次被句柄保护挡住 停止周期重试 快照与恢复日志已保留 下次启动自动恢复");
+                                Logger.Log(Lang.T("log.suppressioncore.1") + e.Name + " pid " + pid
+                                    + Lang.T("log.suppressioncore.3"));
                         }
                         else
                         {
@@ -559,7 +561,7 @@ namespace PaviseApp
                 }
             }
             else if (r == RestoreResult.Restored && e.ProtectedRetries > 0)
-                Logger.Log("补还原成功 " + e.Name + " pid " + pid + " 此前被句柄保护挡住 " + e.ProtectedRetries + " 次");
+                Logger.Log(Lang.T("log.suppressioncore.4") + e.Name + " pid " + pid + Lang.T("log.suppressioncore.5") + e.ProtectedRetries + Lang.T("t.gputhrottleprobe.5"));
             return r == RestoreResult.Restored;
         }
 
@@ -577,7 +579,7 @@ namespace PaviseApp
             if (pending == null) return;
             foreach (var kv in pending)
                 if (TryRestore(kv.Key, kv.Value) && kv.Value.ProtectedRetries == 0)
-                    Logger.Log("补还原成功 " + kv.Value.Name + " pid " + kv.Key);
+                    Logger.Log(Lang.T("log.suppressioncore.4") + kv.Value.Name + " pid " + kv.Key);
         }
 
         private void TryClearMarkLocked()
@@ -684,16 +686,16 @@ namespace PaviseApp
                         {
                             currentEntry.OrigGpu = gpuNow;
                             if (!PersistJournalLocked()) currentEntry.OrigGpu = -1;
-                            else Logger.Log("后台策略 " + expectedName + " pid " + pid
-                                + " 检测到新建 GPU 上下文 纳入 GPU 调度让位");
+                            else Logger.Log(Lang.T("log.suppressioncore.6") + expectedName + " pid " + pid
+                                + Lang.T("log.suppressioncore.7"));
                         }
                     }
                     int desiredGpu = DesiredGpu(currentEntry);
                     if (ThrottleMatches(h, level, pri, aff, cpuSets, desiredGpu))
                     {
                         if (!currentEntry.Applied && currentEntry.ReconcileFailures > 0)
-                            Logger.Log("后台策略核验已生效 " + expectedName + " pid " + pid
-                                + " 此前写入未完全生效 " + currentEntry.ReconcileFailures + " 次");
+                            Logger.Log(Lang.T("log.suppressioncore.8") + expectedName + " pid " + pid
+                                + Lang.T("log.suppressioncore.9") + currentEntry.ReconcileFailures + Lang.T("t.gputhrottleprobe.5"));
                         currentEntry.Applied = true;
                         ScheduleAfterMatch(currentEntry, pid);
                         return true;
@@ -705,13 +707,13 @@ namespace PaviseApp
                     if (currentEntry.Applied)
                     {
                         if (!previouslyApplied && previousFailures > 0)
-                            Logger.Log("后台策略重试已生效 " + expectedName + " pid " + pid
-                                + " 此前写入未完全生效 " + previousFailures + " 次");
+                            Logger.Log(Lang.T("log.suppressioncore.10") + expectedName + " pid " + pid
+                                + Lang.T("log.suppressioncore.9") + previousFailures + Lang.T("t.gputhrottleprobe.5"));
                     }
                     else if (TryNeutralizeUnwritableLocked(h, pid, currentEntry)) return true;
                     else if (previousFailures < 3)
-                        Logger.Log("后台压制 " + expectedName + "(pid " + pid + ") "
-                            + ApplyFailureText.Of(LastApplyError) + " 按退避重试");
+                        Logger.Log(Lang.T("log.gamemodesweep.1") + expectedName + "(pid " + pid + ") "
+                            + ApplyFailureText.Of(LastApplyError) + Lang.T("log.suppressioncore.11"));
                     return true;
                 }
             }

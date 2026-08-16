@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 下拉/浮层菜单的共享渲染件:菜单项徽标 MenuBadge 与统一深色菜单渲染器 TechMenuRenderer
-// 原 TechSelect 切角下拉控件已随电源选择器移入标题栏 PowerFlyout 而下架 这里只留仍被复用的两个渲染类型
 
 using System;
 using System.Drawing;

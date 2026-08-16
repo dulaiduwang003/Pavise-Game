@@ -46,12 +46,10 @@ namespace PaviseApp
         private const int SvcSlotImageSharpening = 6;
         private const int SvcSlotEnhancedSync = 7;
         private const int SvcSlotFrtc = 9;
-        // RSR 是系统级设置 getter 无 GPU 参数 槽位按官方头文件 GetTessellation(13) 与 GetResetShaderCache(15) 之间
         private const int SvcSlotRsr = 14;
         private const int SvcSlotResetShaderCache = 15;
         private const int Svc1SlotAfmf = 17;
 
-        // IADLX3DRadeonSuperResolution 布局与 RIS 不同 SetEnabled 在 5 不在 7 已对官方头文件核过
         private const int RsrSlotSetEnabled = 5;
         private const int RsrSlotGetSharpness = 7;
         private const int RsrSlotSetSharpness = 8;
@@ -167,7 +165,7 @@ namespace PaviseApp
                 int result = init(FullVersion, out sys);
                 if (!Succeeded(result) || sys == IntPtr.Zero)
                 {
-                    Logger.Log("ADLX 初始化失败 (ADLX_RESULT " + result + ")，AMD 调优不可用");
+                    Logger.Log(Lang.T("log.adlxapi.1") + result + Lang.T("log.adlxapi.2"));
                     return false;
                 }
                 system = sys;
@@ -383,7 +381,6 @@ namespace PaviseApp
             {
                 if (on)
                 {
-                    // 驱动校验 min<=max 且逐项写入 与现值交叉时单一顺序会被拒 两种顺序各试一次
                     bool ok = Succeeded(VMethod<FnInInt>(feature, ChillSlotSetMinFps)(feature, minFps))
                         && Succeeded(VMethod<FnInInt>(feature, ChillSlotSetMaxFps)(feature, maxFps));
                     if (!ok)

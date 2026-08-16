@@ -1,5 +1,6 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 管理按游戏程序保存的图形兼容设置
+// 文件用途 按游戏程序图形设置的历史残留还原与字段工具 gpu/igpu/fso 三类写入路径均已退役
+// gpu(强制独显)1.8.0.3 下架:按 exe 写注册表且下次启动才生效 属持久改动 不该混在对局链里装作会话功能
 
 using System;
 using System.Collections.Generic;
@@ -14,15 +15,6 @@ namespace PaviseApp
         private const string BakKey = @"Software\Pavise\ExeTweakBak";
         private const string FsoFlag = "DISABLEDXMAXIMIZEDWINDOWEDMODE";
         private static readonly object lk = new object();
-
-        public static void ApplyForGame(string exePath, bool gpuHighPerf)
-        {
-            if (string.IsNullOrEmpty(exePath)) return;
-            lock (lk)
-            {
-                if (gpuHighPerf) SetGpuPref(exePath);
-            }
-        }
 
         public static bool HasKindResidue(string kind)
         {
@@ -71,7 +63,7 @@ namespace PaviseApp
                                 try { bak.DeleteValue(name, false); } catch { }
                             }
                         }
-                        if (n > 0) Logger.Log("已还原 " + n + " 项" + (kind == "gpu" ? "逐游戏 GPU 偏好" : kind == "igpu" ? "后台集显偏好" : "逐游戏全屏优化") + "设置");
+                        if (n > 0) Logger.Log(Lang.T("log.gameexetweaks.1") + n + Lang.T("t.gamemodeenv.30") + (kind == "gpu" ? Lang.T("t.legacypurge.25") : kind == "igpu" ? Lang.T("t.legacypurge.26") : Lang.T("t.legacypurge.27")) + Lang.T("nav.set"));
                     }
                 }
                 catch { }
@@ -184,39 +176,22 @@ namespace PaviseApp
             return null;
         }
 
-        private static void SetGpuPref(string exePath)
+        // 游戏被显式钉在省电 GPU(核显)时为真 供探测器避免无谓唤醒休眠独显
+        public static bool PrefersIntegrated(string exePath)
         {
+            if (string.IsNullOrEmpty(exePath)) return false;
             try
             {
-                using (var k = Registry.CurrentUser.CreateSubKey(GpuKey))
-                {
-                    if (k == null) return;
-                    object curObj = k.GetValue(exePath);
-                    string cur = curObj as string;
-                    if (curObj != null && cur == null) return;
-                    if (string.Equals(ReadField(cur, "GpuPreference"), "2", StringComparison.Ordinal)) return;
-                    if (!Backup("gpu", exePath, cur)) return;
-                    k.SetValue(exePath, MergeField(cur, "GpuPreference", "2"), RegistryValueKind.String);
-                    Logger.Log("GPU 偏好 高性能 " + exePath + " 下次启动该游戏生效");
-                }
-            }
-            catch { }
-        }
-
-        private static bool Backup(string kind, string exePath, string original)
-        {
-            try
-            {
-                using (var k = Registry.CurrentUser.CreateSubKey(BakKey))
+                using (var k = Registry.CurrentUser.OpenSubKey(GpuKey))
                 {
                     if (k == null) return false;
-                    string name = kind + "|" + exePath;
-                    if (k.GetValue(name) != null) return true;
-                    k.SetValue(name, original ?? ReversibleReg.Absent, RegistryValueKind.String);
-                    return true;
+                    return string.Equals(
+                        ReadField(k.GetValue(exePath) as string, "GpuPreference"), "1",
+                        StringComparison.Ordinal);
                 }
             }
             catch { return false; }
         }
+
     }
 }

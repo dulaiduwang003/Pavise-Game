@@ -83,7 +83,6 @@ namespace PaviseApp
             return index == 0 ? Theme.Accent : Theme.ModeColor(Order[index - 1]);
         }
 
-        // 跟随全局段吃掉三个模式段之外的全部余宽 所以比模式段宽 视觉上也强调默认态
         private Rectangle SegmentRect(int index)
         {
             int gap = Theme.S(6);

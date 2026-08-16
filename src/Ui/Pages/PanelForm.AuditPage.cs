@@ -47,7 +47,6 @@ namespace PaviseApp
             lblAuditStatus = CardLabel(pageAudit, "", ContentX + statusOffset, y + 8,
                 ContentW - statusOffset - fixAllW - 12, 20, 8.0f, false, Theme.Dim);
 
-            // 顶部常驻的「一键修复」总按钮:一次修掉体检检出的全部可修项 无待修项时置灰
             btnAuditFixAll = new PillButton(Lang.T("audit.fixall.none"), BtnKind.Primary);
             btnAuditFixAll.SetBounds(Theme.S(ContentX + ContentW - fixAllW), Theme.S(y),
                 Theme.S(fixAllW), Theme.S(34));
@@ -120,7 +119,7 @@ namespace PaviseApp
             ThreadPool.QueueUserWorkItem(_ =>
             {
                 AuditReport report = null;
-                try { report = SystemAudit.Collect(windowMs, gameMode.GameRootsSnapshot()); } catch { }
+                try { report = SystemAudit.Collect(windowMs); } catch { }
                 Interlocked.Exchange(ref auditBusy, 0);
                 try
                 {
@@ -179,7 +178,6 @@ namespace PaviseApp
         {
             btnAuditQuick.Enabled = enabled;
             btnAuditPrecise.Enabled = enabled;
-            // 体检进行中一律禁用一键修复;体检结束后由 UpdateFixAllState 按待修项数重新决定
             if (!enabled) { btnAuditFixAll.Enabled = false; btnAuditFixAll.Invalidate(); }
         }
 
@@ -252,6 +250,8 @@ namespace PaviseApp
             public Func<bool> CanRevert;
             public Action Fix;
             public Action Revert;
+            // 非默认值可能是用户或厂商刻意的规避配置 写回前必须逐项确认
+            public string ConfirmKey;
         }
 
         private static Dictionary<string, AuditFix> BuildAuditFixes()
@@ -263,7 +263,8 @@ namespace PaviseApp
                     CanFix = delegate { return MsiModeTweak.Disabled().Count > 0; },
                     CanRevert = delegate { return MsiModeTweak.EnabledByPavise; },
                     Fix = delegate { MsiModeTweak.Enable(); },
-                    Revert = delegate { MsiModeTweak.Restore(); }
+                    Revert = delegate { MsiModeTweak.Restore(); },
+                    ConfirmKey = "audit.msi.confirm"
                 } },
                 { "clock", new AuditFix
                 {
@@ -304,16 +305,18 @@ namespace PaviseApp
                 return;
             }
             bool revert = !fix.CanFix() && fix.CanRevert();
+            if (!revert && fix.ConfirmKey != null
+                && !PaviseDialog.Confirm(this, App.DisplayName, Lang.T(fix.ConfirmKey), DlgKind.Warn))
+                return;
             try
             {
                 if (revert) fix.Revert(); else fix.Fix();
             }
             catch { }
-            Logger.Log(revert ? "体检修复项已还原 重新体检核对" : "体检修复项已执行 重新体检核对");
+            Logger.Log(revert ? Lang.T("log.panelformauditpage.1") : Lang.T("log.panelformauditpage.2"));
             StartAudit(QuickAuditWindowMs);
         }
 
-        // 按当前待修项数刷新一键修复按钮:有则可点并显示项数 无则置灰显示「无待修项」
         private void UpdateFixAllState()
         {
             int n = 0;
@@ -336,11 +339,19 @@ namespace PaviseApp
             int done = 0;
             foreach (AuditFix f in BuildAuditFixes().Values)
             {
-                try { if (f.CanFix()) { f.Fix(); done++; } } catch { }
+                try
+                {
+                    if (!f.CanFix()) continue;
+                    if (f.ConfirmKey != null
+                        && !PaviseDialog.Confirm(this, App.DisplayName, Lang.T(f.ConfirmKey), DlgKind.Warn))
+                        continue;
+                    f.Fix(); done++;
+                }
+                catch { }
             }
             Logger.Log(done > 0
-                ? "体检一键修复 已执行 " + done + " 项 重新体检核对"
-                : "体检一键修复 无待修项");
+                ? Lang.T("log.panelformauditpage.3") + done + Lang.T("log.panelformauditpage.4")
+                : Lang.T("log.panelformauditpage.5"));
             StartAudit(QuickAuditWindowMs);
         }
 

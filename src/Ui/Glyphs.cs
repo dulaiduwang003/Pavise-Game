@@ -155,7 +155,6 @@ namespace PaviseApp
                 }
                 else if (name == "power")
                 {
-                    // 电源插头 竖插脚加切角壳体带尾线 表达供电计划 不能画成关机符
                     g.DrawLine(pen, P(x, y, u, 9.2f, 2.8f), P(x, y, u, 9.2f, 6.8f));
                     g.DrawLine(pen, P(x, y, u, 14.8f, 2.8f), P(x, y, u, 14.8f, 6.8f));
                     PointF[] plug = {

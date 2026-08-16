@@ -82,7 +82,6 @@ namespace PaviseApp
                 case PageId.Log: return Lang.T("nav.log");
                 case PageId.Settings: return Lang.T("nav.set");
                 case PageId.About: return Lang.T("nav.about");
-                case PageId.Column: return Lang.T("nav.column");
                 default: return Lang.T("nav.white");
             }
         }

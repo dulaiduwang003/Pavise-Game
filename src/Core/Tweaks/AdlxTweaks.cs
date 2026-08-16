@@ -1,9 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 会话期间应用 AMD 全局 3D 设置 快照先行 回读核验 退出恢复 崩溃续还原 实验性
-// 快照按 GPU 的 PNP 身份存键 不随枚举顺序漂移 旧版按下标的 g0 g1 键在触达时就地迁移
-// 快照对应的 GPU 已不在本机时丢弃该条 不再永久卡住清除流程
-// Chill/Ris/Frtc 三个数值型开关共用 ApplyRange 引擎 差异点经委托传入 模板已归一
-// 限帧主路径 Chill(min=max) 全 API 生效 FRTC 仅覆盖 DX11 及更早仅作老卡回退 Chill 与 Anti-Lag 驱动互斥
 
 using System;
 using System.Collections.Generic;
@@ -20,6 +16,29 @@ namespace PaviseApp
         public static bool Available
         {
             get { return AdlxApi.Available; }
+        }
+
+        private static bool renderSkipLogged;
+
+        // AMD 核显+他家独显的混合机上游戏在独显渲染 写核显的对局功能零效果 跳过
+        // 枚举不出适配器时回退旧行为(信任 ADLX 在场) 避免探测故障误杀真 AMD 机
+        private static bool AmdRenderGateOpen()
+        {
+            GpuAdapter[] all = GpuInventory.Adapters();
+            if (all == null || all.Length == 0) return true;
+            bool amdAny = false, amdDiscrete = false, otherDiscrete = false;
+            foreach (GpuAdapter a in all)
+            {
+                if (a.Vendor == GpuVendor.Amd) { amdAny = true; if (!a.Integrated) amdDiscrete = true; }
+                else if (!a.Integrated) otherDiscrete = true;
+            }
+            bool open = amdDiscrete || (amdAny && !otherDiscrete);
+            if (!open && !renderSkipLogged)
+            {
+                renderSkipLogged = true;
+                Logger.Log(Lang.T("log.adlxtweaks.36"));
+            }
+            return open;
         }
 
         private static Dictionary<string, string> LoadSnap()
@@ -49,7 +68,7 @@ namespace PaviseApp
                 snapshot.Remove(legacyKey);
                 if (!SaveSnap(snapshot))
                 {
-                    Logger.Log("AMD " + label + "：快照无法持久化，本轮未启用");
+                    Logger.Log("AMD " + label + Lang.T("log.adlxtweaks.1"));
                     return false;
                 }
                 return true;
@@ -59,7 +78,7 @@ namespace PaviseApp
                 snapshot[key] = value;
                 if (!SaveSnap(snapshot))
                 {
-                    Logger.Log("AMD " + label + "：快照无法持久化，本轮未启用");
+                    Logger.Log("AMD " + label + Lang.T("log.adlxtweaks.1"));
                     return false;
                 }
             }
@@ -68,6 +87,7 @@ namespace PaviseApp
 
         public static bool ActivateAntiLag()
         {
+            if (!AmdRenderGateOpen()) return true;
             SnapshotChillConflict();
             return ApplyToggle("alag", "Anti-Lag",
                 delegate(IntPtr gpu, out bool supported, out bool enabled)
@@ -97,31 +117,7 @@ namespace PaviseApp
                 delegate(IntPtr gpu, string orig) { return AdlxApi.EnhancedSyncSet(gpu, orig == "1"); });
         }
 
-        public static bool ActivateChill(int targetFps)
-        {
-            if (targetFps <= 0) return false;
-            SnapshotAntiLagConflict();
-            return ApplyRange("chill", "Chill", targetFps,
-                "AMD 帧率上限：Chill 锁帧 " + targetFps + " fps（驱动级，全 API 生效，退出恢复）",
-                delegate(IntPtr gpu, out bool supported, out string snapValue, out AdlxIntRange range)
-                {
-                    bool enabled;
-                    int minFps, maxFps;
-                    bool ok = AdlxApi.ChillGet(gpu, out supported, out enabled, out minFps, out maxFps, out range);
-                    snapValue = (enabled ? "1" : "0") + "|" + minFps + "|" + maxFps;
-                    return ok;
-                },
-                delegate(IntPtr gpu, int fps) { return AdlxApi.ChillSet(gpu, true, fps, fps); },
-                delegate(IntPtr gpu, int fps)
-                {
-                    bool vSupported, vEnabled;
-                    int vMin, vMax;
-                    AdlxIntRange vRange;
-                    return AdlxApi.ChillGet(gpu, out vSupported, out vEnabled, out vMin, out vMax, out vRange)
-                        && vEnabled && vMax == fps;
-                });
-        }
-
+        // 限帧功能已下架 Chill 与 FRTC 只保留还原壳 清理旧版本写下的残留
         public static bool RestoreChill()
         {
             return RestoreFeature("chill", "Chill",
@@ -141,8 +137,8 @@ namespace PaviseApp
 
         public static bool ActivateRis()
         {
-            return ApplyRange("ris", "锐化", RisSharpness,
-                "AMD 锐化：RIS 已开启，强度 " + RisSharpness,
+            return ApplyRange("ris", Lang.T("t.adlxtweaks.4"), RisSharpness,
+                Lang.T("t.adlxtweaks.5") + RisSharpness,
                 delegate(IntPtr gpu, out bool supported, out string snapValue, out AdlxIntRange range)
                 {
                     bool enabled;
@@ -164,7 +160,7 @@ namespace PaviseApp
 
         public static bool RestoreRis()
         {
-            return RestoreFeature("ris", "锐化",
+            return RestoreFeature("ris", Lang.T("t.adlxtweaks.4"),
                 delegate(IntPtr gpu, string orig)
                 {
                     string[] parts = orig.Split('|');
@@ -201,48 +197,10 @@ namespace PaviseApp
                         dirty = true;
                     }
                     if (dirty && SaveSnap(snapshot))
-                        Logger.Log("AMD Anti-Lag：检测到 Chill 处于开启状态，已快照，退出时一并还原");
+                        Logger.Log(Lang.T("log.adlxtweaks.6"));
                 }
                 finally { AdlxApi.ReleaseAll(gpus); }
             }
-        }
-
-        // 开 Chill 时驱动会静默关掉 Anti-Lag 与开 Anti-Lag 顶掉 Chill 对称 先快照原状退出还原
-        private static void SnapshotAntiLagConflict()
-        {
-            if (!Available) return;
-            lock (lk)
-            {
-                IntPtr[] gpus = AdlxApi.GetGpus();
-                if (gpus == null || gpus.Length == 0) return;
-                try
-                {
-                    var snapshot = LoadSnap();
-                    bool idMiss = false;
-                    bool dirty = false;
-                    for (int i = 0; i < gpus.Length; i++)
-                    {
-                        bool supported, enabled;
-                        if (!AdlxApi.AntiLagGet(gpus[i], out supported, out enabled)
-                            || !supported || !enabled) continue;
-                        string key = GpuKey(gpus[i], i, ref idMiss) + ".alag";
-                        if (snapshot.ContainsKey(key) || snapshot.ContainsKey("g" + i + ".alag")) continue;
-                        snapshot[key] = "1";
-                        dirty = true;
-                    }
-                    if (dirty && SaveSnap(snapshot))
-                        Logger.Log("AMD 帧率上限：检测到 Anti-Lag 处于开启状态，已快照，退出时一并还原");
-                }
-                finally { AdlxApi.ReleaseAll(gpus); }
-            }
-        }
-
-        // 限帧统一入口 Chill(min=max) 全 API 生效优先 老卡不支持 Chill 时回退 FRTC(仅 DX11 及更早)
-        public static bool ActivateFrameLimit(int targetFps)
-        {
-            if (targetFps <= 0) return false;
-            if (ChillSupported() && ActivateChill(targetFps)) return true;
-            return FrtcSupported() && ActivateFrtc(targetFps);
         }
 
         public static bool RestoreFrameLimit()
@@ -250,39 +208,16 @@ namespace PaviseApp
             return RestoreChill() & RestoreFrtc();
         }
 
-        public static bool FrameLimitSupported()
+        // 供退役迁移判断是否还有旧版限帧残留需要还原
+        public static bool HasFrameLimitResidue()
         {
-            return ChillSupported() || FrtcSupported();
-        }
-
-        public static bool ActivateFrtc(int targetFps)
-        {
-            if (targetFps <= 0 || !Available) return false;
-            SnapshotChillConflict();
-            return ApplyRange("frtc", "帧率上限", targetFps,
-                "AMD 帧率上限：钉在 " + targetFps + " fps（驱动级，退出恢复）",
-                delegate(IntPtr gpu, out bool supported, out string snapValue, out AdlxIntRange range)
-                {
-                    bool enabled;
-                    int fps;
-                    bool ok = AdlxApi.FrtcGet(gpu, out supported, out enabled, out fps, out range);
-                    snapValue = (enabled ? "1" : "0") + "|" + fps;
-                    return ok;
-                },
-                delegate(IntPtr gpu, int target) { return AdlxApi.FrtcSet(gpu, true, target); },
-                delegate(IntPtr gpu, int target)
-                {
-                    bool vSupported, vEnabled;
-                    int vFps;
-                    AdlxIntRange vRange;
-                    return AdlxApi.FrtcGet(gpu, out vSupported, out vEnabled, out vFps, out vRange)
-                        && vEnabled && vFps == target;
-                });
+            var snapshot = LoadSnap();
+            return HasPrefix(snapshot, ".chill") || HasPrefix(snapshot, ".frtc");
         }
 
         public static bool RestoreFrtc()
         {
-            return RestoreFeature("frtc", "帧率上限",
+            return RestoreFeature("frtc", Lang.T("t.adlxtweaks.8"),
                 delegate(IntPtr gpu, string orig)
                 {
                     string[] parts = orig.Split('|');
@@ -304,7 +239,7 @@ namespace PaviseApp
                 bool supported, enabled;
                 if (!AdlxApi.AfmfGet(out supported, out enabled) || !supported)
                 {
-                    Logger.Log("AMD 流体运动帧：本机驱动或 GPU 不支持");
+                    Logger.Log(Lang.T("log.adlxtweaks.11"));
                     return false;
                 }
                 if (enabled) return true;
@@ -314,22 +249,22 @@ namespace PaviseApp
                     snapshot["sys.afmf"] = "0";
                     if (!SaveSnap(snapshot))
                     {
-                        Logger.Log("AMD 流体运动帧：快照无法持久化，本轮未启用");
+                        Logger.Log(Lang.T("log.adlxtweaks.12"));
                         return false;
                     }
                 }
                 if (!AdlxApi.AfmfSet(true))
                 {
-                    Logger.Log("AMD 流体运动帧：写入失败");
+                    Logger.Log(Lang.T("log.adlxtweaks.13"));
                     return false;
                 }
                 bool vSupported, vEnabled;
                 if (AdlxApi.AfmfGet(out vSupported, out vEnabled) && vEnabled)
                 {
-                    Logger.Log("AMD 流体运动帧：已开启（驱动级插帧，退出恢复）");
+                    Logger.Log(Lang.T("log.adlxtweaks.14"));
                     return true;
                 }
-                Logger.Log("AMD 流体运动帧：写入报成功但回读不符");
+                Logger.Log(Lang.T("log.adlxtweaks.15"));
                 return false;
             }
         }
@@ -344,21 +279,21 @@ namespace PaviseApp
                 if (!Available) return false;
                 if (!AdlxApi.AfmfSet(orig == "1"))
                 {
-                    Logger.Log("AMD 流体运动帧还原失败，快照保留，下次启动继续尝试");
+                    Logger.Log(Lang.T("log.adlxtweaks.16"));
                     return false;
                 }
                 snapshot.Remove("sys.afmf");
                 SaveSnap(snapshot);
-                Logger.Log("AMD 流体运动帧已还原");
+                Logger.Log(Lang.T("log.adlxtweaks.17"));
                 return true;
             }
         }
 
-        // RSR 驱动级升格 系统级开关 对局中开 退局按快照还原 锐度沿用 Adrenalin 默认 75
         public const int RsrDefaultSharpness = 75;
 
         public static bool ActivateRsr()
         {
+            if (!AmdRenderGateOpen()) return true;
             if (!Available) return false;
             lock (lk)
             {
@@ -366,7 +301,7 @@ namespace PaviseApp
                 int sharpness;
                 if (!AdlxApi.RsrGet(out supported, out enabled, out sharpness) || !supported)
                 {
-                    Logger.Log("RSR 驱动级升格：本机驱动或 GPU 不支持");
+                    Logger.Log(Lang.T("log.adlxtweaks.18"));
                     return false;
                 }
                 if (enabled) return true;
@@ -377,19 +312,19 @@ namespace PaviseApp
                     snapshot["sys.rsrsharp"] = sharpness.ToString();
                     if (!SaveSnap(snapshot))
                     {
-                        Logger.Log("RSR 驱动级升格：快照无法持久化，本轮未启用");
+                        Logger.Log(Lang.T("log.adlxtweaks.19"));
                         return false;
                     }
                 }
                 if (!AdlxApi.RsrSet(true, RsrDefaultSharpness))
                 {
-                    Logger.Log("RSR 驱动级升格：写入失败");
+                    Logger.Log(Lang.T("log.adlxtweaks.20"));
                     return false;
                 }
                 bool vSupported, vEnabled;
                 int vSharp;
                 if (AdlxApi.RsrGet(out vSupported, out vEnabled, out vSharp) && vEnabled)
-                    Logger.Log("RSR 驱动级升格：已开启（需游戏内选低一档分辨率才生效，退出还原）");
+                    Logger.Log(Lang.T("log.adlxtweaks.21"));
                 return true;
             }
         }
@@ -408,18 +343,17 @@ namespace PaviseApp
                     || !int.TryParse(sharpRaw, out origSharp)) origSharp = -1;
                 if (!AdlxApi.RsrSet(orig == "1", orig == "1" ? origSharp : -1))
                 {
-                    Logger.Log("RSR 驱动级升格还原失败，快照保留，下次启动继续尝试");
+                    Logger.Log(Lang.T("log.adlxtweaks.22"));
                     return false;
                 }
                 snapshot.Remove("sys.rsr");
                 snapshot.Remove("sys.rsrsharp");
                 SaveSnap(snapshot);
-                Logger.Log("RSR 驱动级升格已还原");
+                Logger.Log(Lang.T("log.adlxtweaks.23"));
                 return true;
             }
         }
 
-        // AMD 手动功耗墙 取第一块支持手动功耗调节的 GPU
         public static bool PowerLimitGetFirst(out int current, out int max)
         {
             current = 0; max = 0;
@@ -462,10 +396,11 @@ namespace PaviseApp
             finally { AdlxApi.ReleaseAll(gpus); }
         }
 
-        private static int alagSup, frtcSup, afmfSup, chillSup, rsrSup;
+        private static int alagSup, afmfSup, rsrSup;
 
         public static bool RsrSupported()
         {
+            if (!AmdRenderGateOpen()) return false;
             if (rsrSup == 0)
             {
                 bool s, e;
@@ -477,44 +412,15 @@ namespace PaviseApp
 
         public static bool AntiLagSupported()
         {
+            if (!AmdRenderGateOpen()) return false;
             if (alagSup == 0) alagSup = ProbeGpuToggle(delegate(IntPtr gpu, out bool s, out bool e)
                 { return AdlxApi.AntiLagGet(gpu, out s, out e); }) ? 1 : -1;
             return alagSup > 0;
         }
 
-        public static bool FrtcSupported()
-        {
-            if (frtcSup == 0) frtcSup = ProbeFrtc() ? 1 : -1;
-            return frtcSup > 0;
-        }
-
-        public static bool ChillSupported()
-        {
-            if (chillSup == 0) chillSup = ProbeChill() ? 1 : -1;
-            return chillSup > 0;
-        }
-
-        private static bool ProbeChill()
-        {
-            if (!Available) return false;
-            IntPtr[] gpus = AdlxApi.GetGpus();
-            if (gpus == null || gpus.Length == 0) return false;
-            try
-            {
-                foreach (IntPtr gpu in gpus)
-                {
-                    bool s, e;
-                    int minFps, maxFps;
-                    AdlxIntRange r;
-                    if (AdlxApi.ChillGet(gpu, out s, out e, out minFps, out maxFps, out r) && s) return true;
-                }
-                return false;
-            }
-            finally { AdlxApi.ReleaseAll(gpus); }
-        }
-
         public static bool AfmfSupported()
         {
+            if (!AmdRenderGateOpen()) return false;
             if (afmfSup == 0)
             {
                 bool s, e;
@@ -534,25 +440,6 @@ namespace PaviseApp
                 {
                     bool s, e;
                     if (get(gpu, out s, out e) && s) return true;
-                }
-                return false;
-            }
-            finally { AdlxApi.ReleaseAll(gpus); }
-        }
-
-        private static bool ProbeFrtc()
-        {
-            if (!Available) return false;
-            IntPtr[] gpus = AdlxApi.GetGpus();
-            if (gpus == null || gpus.Length == 0) return false;
-            try
-            {
-                foreach (IntPtr gpu in gpus)
-                {
-                    bool s, e;
-                    int fps;
-                    AdlxIntRange r;
-                    if (AdlxApi.FrtcGet(gpu, out s, out e, out fps, out r) && s) return true;
                 }
                 return false;
             }
@@ -599,8 +486,8 @@ namespace PaviseApp
                         Logger.Log(successLog);
                         return true;
                     }
-                    if (failed > 0) Logger.Log("AMD " + label + "：写入或回读核验失败 (" + failed + " 个 GPU)");
-                    else if (applied == 0) Logger.Log("AMD " + label + "：本机 GPU 均不支持该功能");
+                    if (failed > 0) Logger.Log("AMD " + label + Lang.T("log.adlxtweaks.24") + failed + Lang.T("log.adlxtweaks.25"));
+                    else if (applied == 0) Logger.Log("AMD " + label + Lang.T("log.adlxtweaks.26"));
                     return false;
                 }
                 finally { AdlxApi.ReleaseAll(gpus); }
@@ -635,11 +522,11 @@ namespace PaviseApp
                     }
                     if (applied > 0 && failed == 0)
                     {
-                        Logger.Log("AMD " + label + "：已开启（驱动级，退出恢复）");
+                        Logger.Log("AMD " + label + Lang.T("log.adlxtweaks.27"));
                         return true;
                     }
-                    if (failed > 0) Logger.Log("AMD " + label + "：写入或回读核验失败 (" + failed + " 个 GPU)");
-                    else if (applied == 0) Logger.Log("AMD " + label + "：本机 GPU 均不支持该功能");
+                    if (failed > 0) Logger.Log("AMD " + label + Lang.T("log.adlxtweaks.24") + failed + Lang.T("log.adlxtweaks.25"));
+                    else if (applied == 0) Logger.Log("AMD " + label + Lang.T("log.adlxtweaks.26"));
                     return false;
                 }
                 finally { AdlxApi.ReleaseAll(gpus); }
@@ -684,11 +571,11 @@ namespace PaviseApp
                                 && !reachable.Contains(kv.Key)) stale.Add(kv.Key);
                         foreach (string key in stale) snapshot.Remove(key);
                         if (stale.Count > 0)
-                            Logger.Log("AMD " + label + "：" + stale.Count + " 条快照对应的 GPU 已不在本机，丢弃");
+                            Logger.Log("AMD " + label + Lang.T("log.adlxtweaks.28") + stale.Count + Lang.T("log.adlxtweaks.29"));
                     }
                     SaveSnap(snapshot);
-                    if (allOk) Logger.Log("AMD " + label + " 已还原");
-                    else Logger.Log("AMD " + label + " 还原失败，快照保留，下次启动继续尝试");
+                    if (allOk) Logger.Log("AMD " + label + Lang.T("log.renderlane.13"));
+                    else Logger.Log("AMD " + label + Lang.T("log.adlxtweaks.30"));
                     return allOk;
                 }
                 finally { AdlxApi.ReleaseAll(gpus); }
@@ -719,7 +606,7 @@ namespace PaviseApp
             {
                 foreach (IntPtr gpu in gpus)
                     if (AdlxApi.ResetShaderCache(gpu)) done++;
-                Logger.Log("AMD 着色器缓存重置：" + done + "/" + gpus.Length + " 个 GPU 已执行");
+                Logger.Log(Lang.T("log.adlxtweaks.31") + done + "/" + gpus.Length + Lang.T("log.adlxtweaks.32"));
                 return done > 0;
             }
             finally { AdlxApi.ReleaseAll(gpus); }
@@ -732,7 +619,7 @@ namespace PaviseApp
             if (Settings.LoadStr(SnapKey, "").Length == 0) return;
             bool ok = RestoreAntiLag() & RestoreEnhancedSync() & RestoreChill() & RestoreRis()
                 & RestoreFrtc() & RestoreAfmf() & RestoreRsr();
-            if (ok) Logger.Log("检测到上次未还原的 AMD 驱动设置，已恢复");
+            if (ok) Logger.Log(Lang.T("log.adlxtweaks.33"));
         }
 
         public static bool PurgeResidue()
@@ -743,10 +630,10 @@ namespace PaviseApp
             {
                 if (AmdDisplayPresent())
                 {
-                    Logger.Log("AMD 运行时暂不可用但显卡仍在本机，快照保留，本次清除中止");
+                    Logger.Log(Lang.T("log.adlxtweaks.34"));
                     return false;
                 }
-                Logger.Log("AMD 运行时不可用，快照对应的驱动设置已无从访问，丢弃残留快照");
+                Logger.Log(Lang.T("log.adlxtweaks.35"));
                 Settings.SaveStr(SnapKey, "");
                 return !HasResidue();
             }

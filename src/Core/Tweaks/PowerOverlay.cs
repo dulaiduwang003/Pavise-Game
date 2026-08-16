@@ -34,7 +34,7 @@ namespace PaviseApp
                 }
                 catch { }
                 support = ok ? 1 : -1;
-                if (!ok) Logger.Log("电源滑块 本机读不到 overlay 状态 独占模式跳过该项");
+                if (!ok) Logger.Log(Lang.T("log.poweroverlay.1"));
                 return ok;
             }
         }
@@ -67,7 +67,7 @@ namespace PaviseApp
                 if (Settings.LoadStr(SnapKey, "").Length == 0
                     && !Settings.SaveStr(SnapKey, before.ToString()))
                 {
-                    Logger.Log("电源滑块 快照无法持久化 本轮未切换");
+                    Logger.Log(Lang.T("log.poweroverlay.2"));
                     return false;
                 }
                 uint status;
@@ -77,10 +77,10 @@ namespace PaviseApp
                 Guid after;
                 if (status != 0 || !TryReadActive(out after) || after != Max)
                 {
-                    Logger.Log("电源滑块 切最佳性能失败 状态 " + status + " ");
+                    Logger.Log(Lang.T("log.poweroverlay.3") + status + " ");
                     return false;
                 }
-                Logger.Log("电源滑块 已切到最佳性能 退出独占模式还原");
+                Logger.Log(Lang.T("log.poweroverlay.4"));
                 return true;
             }
         }
@@ -100,11 +100,11 @@ namespace PaviseApp
                 Guid after;
                 if (status != 0 || !TryReadActive(out after) || after != original)
                 {
-                    Logger.Log("电源滑块还原失败 快照保留 下次启动继续尝试");
+                    Logger.Log(Lang.T("log.poweroverlay.5"));
                     return false;
                 }
                 Settings.SaveStr(SnapKey, "");
-                Logger.Log("电源滑块已还原");
+                Logger.Log(Lang.T("log.poweroverlay.6"));
                 return true;
             }
         }
@@ -112,7 +112,7 @@ namespace PaviseApp
         public static void HealFromCrash()
         {
             if (Settings.LoadStr(SnapKey, "").Length == 0) return;
-            if (Restore()) Logger.Log("检测到上次未还原的电源滑块设置 已恢复");
+            if (Restore()) Logger.Log(Lang.T("log.poweroverlay.7"));
         }
     }
 }

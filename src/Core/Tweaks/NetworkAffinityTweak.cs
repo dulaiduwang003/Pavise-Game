@@ -13,7 +13,7 @@ namespace PaviseApp
     internal static class NetworkAffinityTweak
     {
         private static readonly IrqAffinityEngine irqEngine =
-            new IrqAffinityEngine("NicAffinityOnByPavise", "NicAff_", "网卡中断亲和");
+            new IrqAffinityEngine("NicAffinityOnByPavise", "NicAff_", Lang.T("t.versionmigrations.8"));
 
         private const string QosPolicyNamesKey = "NetQosPolicyNames";
         private const string EnabledKey = "NetPriorityOnByPavise";
@@ -44,7 +44,7 @@ namespace PaviseApp
                     }
                 }
             }
-            catch (Exception ex) { Logger.Log("枚举网卡设备失败 " + ex.Message); }
+            catch (Exception ex) { Logger.Log(Lang.T("log.networkaffinitytweak.1") + ex.Message); }
             return ids;
         }
 
@@ -97,7 +97,7 @@ namespace PaviseApp
                 " -DSCPAction " + GamingDscp + " -NetworkProfile All | Out-Null\r\n" +
                 "Write-Output DONE\r\n";
             string stdout;
-            bool ok = PsRunner.Run(script, "网络优先级", 15000, QosArgs(policyName, exePath), out stdout);
+            bool ok = PsRunner.Run(script, Lang.T("t.networkaffinitytweak.2"), 15000, QosArgs(policyName, exePath), out stdout);
             return ok && stdout.IndexOf("DONE", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
@@ -110,7 +110,7 @@ namespace PaviseApp
                 "}\r\n" +
                 "Write-Output DONE\r\n";
             string stdout;
-            bool ok = PsRunner.Run(script, "网络优先级", 15000, QosArgs(policyName, null), out stdout);
+            bool ok = PsRunner.Run(script, Lang.T("t.networkaffinitytweak.2"), 15000, QosArgs(policyName, null), out stdout);
             return ok && stdout.IndexOf("DONE", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
@@ -126,7 +126,7 @@ namespace PaviseApp
                     if (string.IsNullOrEmpty(g.ExecutablePath)) continue;
                     string name = SanitizePolicyName(g.Name, g.ExecutablePath);
                     if (ApplyQosPolicy(name, g.ExecutablePath)) newNames.Add(name);
-                    else Logger.Log("网络优先级 " + g.Name + " 的 QoS 策略创建失败");
+                    else Logger.Log(Lang.T("log.networkaffinitytweak.3") + g.Name + Lang.T("log.networkaffinitytweak.4"));
                 }
             }
 
@@ -138,7 +138,7 @@ namespace PaviseApp
             if (!SavePolicyNames(keptNames))
             {
                 foreach (string name in newNames) RemoveQosPolicy(name);
-                Logger.Log("网络优先级 策略名无法持久化 已撤回本轮创建的 QoS 策略");
+                Logger.Log(Lang.T("log.networkaffinitytweak.5"));
                 return irqOk;
             }
 

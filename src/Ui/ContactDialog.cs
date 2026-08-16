@@ -289,8 +289,8 @@ namespace PaviseApp
 
             using (var brush = new SolidBrush(Theme.Accent))
             {
-                g.DrawString("Pavise 完全免费", Theme.UI(8.4f, true), brush, lx - Theme.S(6), h - Theme.S(132));
-                g.DrawString("禁止倒卖", Theme.UI(8.4f, true), brush, lx - Theme.S(6), h - Theme.S(112));
+                g.DrawString(Lang.T("t.contactdialog.1"), Theme.UI(8.4f, true), brush, lx - Theme.S(6), h - Theme.S(132));
+                g.DrawString(Lang.T("t.contactdialog.2"), Theme.UI(8.4f, true), brush, lx - Theme.S(6), h - Theme.S(112));
             }
 
             using (var brush = new SolidBrush(Theme.Faint))

@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 还原 v1.7.0.6 移除的视觉效果降级在本机留下的残留 只保留还原能力
-// 全屏游戏时桌面本就不合成 关透明与动画对帧率无可测收益 却改动了用户的系统设置
 
 using System;
 using Microsoft.Win32;
@@ -56,7 +55,7 @@ namespace PaviseApp
                 }
                 if (Transparency.HasBackup)
                 {
-                    if (Transparency.Restore()) Logger.Log("视觉效果已还原");
+                    if (Transparency.Restore()) Logger.Log(Lang.T("log.visualfx.1"));
                     else ok = false;
                 }
                 return ok && !Transparency.HasBackup && SavedUiEffects < 0;

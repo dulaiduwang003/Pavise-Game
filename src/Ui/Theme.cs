@@ -63,18 +63,18 @@ namespace PaviseApp
         private static float themeT = 1f;
         private static PerformancePreset currentMode = PerformancePreset.Standard;
 
-        // 每模式的自定义主题色 Color.Empty 表示用内置默认 下标即 (int)PerformancePreset
         private static readonly Color[] modeOverride =
             { Color.Empty, Color.Empty, Color.Empty };
 
         public static Color Accent { get { return accent; } }
         public static Color Accent2 { get { return accent2; } }
         public static Color Sel { get { return Col.Lerp(Card, accent, 0.20f); } }
+        // 次要说明文字:中性灰向当前模式色轻偏 让说明随用户 DIY 的主题色一起走 又不牺牲可读
+        public static Color DimTint { get { return Col.Lerp(Dim, accent, 0.30f); } }
         public static Color OnAccent
         {
             get
             {
-                // 按目标 accent 亮度自动选深/浅文字 内置金色与任意自定义色都成立 动画期间取目标色避免中途翻转
                 double luma = 0.299 * toAccent.R + 0.587 * toAccent.G + 0.114 * toAccent.B;
                 return luma > 150 ? Color.FromArgb(23, 19, 10) : Color.White;
             }
@@ -95,7 +95,6 @@ namespace PaviseApp
             return ModeColorBuiltin(mode);
         }
 
-        // 忽略自定义覆盖 只返回内置默认色 供设置页「默认」色板显示
         public static Color ModeColorBuiltin(PerformancePreset mode)
         {
             if (mode == PerformancePreset.Competitive)
@@ -109,7 +108,7 @@ namespace PaviseApp
         {
             int i = (int)mode;
             if (i >= 0 && i < modeOverride.Length && !modeOverride[i].IsEmpty)
-                return Col.Lerp(modeOverride[i], Color.Black, 0.30f);   // 渐变暗端自动从主色推导
+                return Col.Lerp(modeOverride[i], Color.Black, 0.30f);
             if (mode == PerformancePreset.Competitive)
                 return light ? Color.FromArgb(152, 14, 36) : Color.FromArgb(178, 22, 48);
             if (mode == PerformancePreset.Custom)
@@ -117,7 +116,6 @@ namespace PaviseApp
             return light ? Color.FromArgb(142, 88, 8) : Color.FromArgb(184, 117, 24);
         }
 
-        // 设置/清除某模式的自定义色 若正是当前显示模式则动画切到新色
         public static void SetModeColorOverride(PerformancePreset mode, Color color)
         {
             int i = (int)mode;
@@ -140,6 +138,13 @@ namespace PaviseApp
             if (toAccent == a && toAccent2 == b) return;
             fromAccent = accent; fromAccent2 = accent2;
             toAccent = a; toAccent2 = b;
+            if (!UiClock.HasFrameListeners)
+            {
+                accent = a; accent2 = b;
+                fromAccent = a; fromAccent2 = b;
+                themeT = 1f;
+                return;
+            }
             themeT = 0f;
             UiClock.Wake(36);
         }

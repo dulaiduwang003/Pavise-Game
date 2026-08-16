@@ -23,7 +23,6 @@ namespace PaviseApp
             AccessibleName = Lang.T("power.name");
         }
 
-        // 主行常驻渲染当前选择 不点开也能看到对局会切到哪个计划
         public void SetState(bool on, string text)
         {
             string v = text ?? "";
@@ -169,7 +168,6 @@ namespace PaviseApp
             Controls.AddRange(new Control[] { title, sub });
         }
 
-        // 每次打开重建 计划列表可能随系统变化 选中态按当前设置画死 不做动画
         public void Open(bool switching, string effectiveId)
         {
             foreach (PowerChoiceRow row in rows) row.Dispose();

@@ -112,7 +112,6 @@ namespace PaviseApp
                     return Settings.Load(item.Key, item.Fallback == "1") ? "1" : "0";
                 case PolicyValueKind.Enum:
                 case PolicyValueKind.Choice:
-                    // NvLowLat 的旧布尔键已由启动迁移搬进新键 这里不再需要任何特判
                     return PolicyCatalog.Canonical(item.Key, Settings.LoadStr(item.Key, item.Fallback));
                 default:
                     return PolicyCatalog.Canonical(item.Key, Settings.LoadStr(item.Key, item.Fallback));
@@ -122,6 +121,8 @@ namespace PaviseApp
 
     internal sealed class PolicySnapshot
     {
+        // 只钉住每游戏覆盖项 未覆盖项每次访问活读全局
+        // 否则对局中修改全局模式或开关会被冻结值吞掉 必须退游戏才生效
         private readonly Dictionary<string, string> values =
             new Dictionary<string, string>(StringComparer.Ordinal);
         private readonly HashSet<string> overridden = new HashSet<string>(StringComparer.Ordinal);
@@ -130,22 +131,17 @@ namespace PaviseApp
 
         internal PolicySnapshot(GameProfile profile)
         {
+            if (profile == null) return;
             foreach (PolicyItem item in PolicyCatalog.All)
             {
                 string value;
-                if (profile != null && profile.Overrides.TryGetValue(item.Key, out value))
-                {
-                    string canonical = PolicyCatalog.Canonical(item.Key, value);
-                    values[item.Key] = canonical ?? item.Fallback;
-                    overridden.Add(item.Key);
-                }
-                else values[item.Key] = PolicyResolver.GlobalValue(item.Key) ?? item.Fallback;
+                if (!profile.Overrides.TryGetValue(item.Key, out value)) continue;
+                string canonical = PolicyCatalog.Canonical(item.Key, value);
+                values[item.Key] = canonical ?? item.Fallback;
+                overridden.Add(item.Key);
             }
-            if (profile != null)
-            {
-                ProfileId = profile.Id;
-                ProfileName = profile.Name;
-            }
+            ProfileId = profile.Id;
+            ProfileName = profile.Name;
         }
 
         public int OverrideCount { get { return overridden.Count; } }
@@ -159,13 +155,17 @@ namespace PaviseApp
 
         public string ValueOf(string key)
         {
+            if (key == null) return null;
             string value;
-            return values.TryGetValue(key, out value) ? value : null;
+            if (values.TryGetValue(key, out value)) return value;
+            PolicyItem item = PolicyCatalog.ItemOf(key);
+            if (item == null) return null;
+            return PolicyResolver.GlobalValue(item.Key) ?? item.Fallback;
         }
 
         private bool On(string key)
         {
-            return values[key] == "1";
+            return ValueOf(key) == "1";
         }
 
         public PerformancePreset Preset
@@ -173,7 +173,7 @@ namespace PaviseApp
             get
             {
                 int parsed;
-                return int.TryParse(values[PolicyCatalog.KeyPreset], out parsed)
+                return int.TryParse(ValueOf(PolicyCatalog.KeyPreset), out parsed)
                     && parsed >= 0 && parsed <= 2 ? (PerformancePreset)parsed : PerformancePreset.Standard;
             }
         }
@@ -194,23 +194,20 @@ namespace PaviseApp
         public bool WlanGuard { get { return On(PolicyCatalog.KeyWlanGuard); } }
         public bool Awake { get { return On(PolicyCatalog.KeyAwake); } }
         public bool NvMaxPerf { get { return On(PolicyCatalog.KeyNvMaxPerf); } }
-        public string NvLowLatMode { get { return values[PolicyCatalog.KeyNvLowLat]; } }
+        public string NvLowLatMode { get { return ValueOf(PolicyCatalog.KeyNvLowLat); } }
         public bool NvSmoothMotion { get { return On(PolicyCatalog.KeyNvSmoothMotion); } }
         public bool NvShaderCacheMax { get { return On(PolicyCatalog.KeyNvShaderCache); } }
         public bool NvAnselOff { get { return On(PolicyCatalog.KeyNvAnselOff); } }
         public bool NvRebar { get { return On(PolicyCatalog.KeyNvRebar); } }
-        public bool NvBattFull { get { return On(PolicyCatalog.KeyNvBattFull); } }
-        public string NvFrlMode { get { return values[PolicyCatalog.KeyNvFrl]; } }
-        public string NvDlssMode { get { return values[PolicyCatalog.KeyNvDlss]; } }
+        public string NvDlssMode { get { return ValueOf(PolicyCatalog.KeyNvDlss); } }
         public bool AmdAntiLag { get { return On(PolicyCatalog.KeyAmdAntiLag); } }
         public bool AmdAfmf { get { return On(PolicyCatalog.KeyAmdAfmf); } }
-        public string AmdFrlMode { get { return values[PolicyCatalog.KeyAmdFrl]; } }
 
         public ulong CoreMask
         {
             get
             {
-                string raw = values[PolicyCatalog.KeyCoreMask];
+                string raw = ValueOf(PolicyCatalog.KeyCoreMask) ?? "";
                 ulong mask;
                 return raw.Length > 0 && ulong.TryParse(raw, NumberStyles.HexNumber,
                     CultureInfo.InvariantCulture, out mask) ? mask : 0;

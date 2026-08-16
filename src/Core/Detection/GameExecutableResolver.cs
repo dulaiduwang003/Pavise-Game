@@ -23,18 +23,18 @@ namespace PaviseApp
             executablePath = null;
             error = null;
             suggestedName = null;
-            if (string.IsNullOrWhiteSpace(selectedPath)) { error = "未选择文件"; return false; }
+            if (string.IsNullOrWhiteSpace(selectedPath)) { error = Lang.T("t.gameexecutableresolver.1"); return false; }
 
             string source;
             try { source = Path.GetFullPath(Environment.ExpandEnvironmentVariables(selectedPath.Trim().Trim('"'))); }
-            catch { error = "文件路径无效"; return false; }
-            if (!File.Exists(source)) { error = "文件不存在"; return false; }
+            catch { error = Lang.T("t.gameexecutableresolver.2"); return false; }
+            if (!File.Exists(source)) { error = Lang.T("t.gameexecutableresolver.3"); return false; }
 
             string extension = Path.GetExtension(source);
             string target = source;
             if (extension.Equals(".lnk", StringComparison.OrdinalIgnoreCase))
             {
-                if (!TryResolveShortcut(source, out target)) { error = "快捷方式没有指向有效的 EXE"; return false; }
+                if (!TryResolveShortcut(source, out target)) { error = Lang.T("t.gameexecutableresolver.4"); return false; }
             }
             else if (extension.Equals(".url", StringComparison.OrdinalIgnoreCase))
             {
@@ -42,20 +42,20 @@ namespace PaviseApp
             }
             else if (!extension.Equals(".exe", StringComparison.OrdinalIgnoreCase))
             {
-                error = "只支持 EXE Windows 快捷方式 LNK 和 Steam 桌面快捷方式 URL";
+                error = Lang.T("t.gameexecutableresolver.5");
                 return false;
             }
 
             try { target = Path.GetFullPath(Environment.ExpandEnvironmentVariables(target.Trim().Trim('"'))); }
-            catch { error = "快捷方式目标路径无效"; return false; }
+            catch { error = Lang.T("t.gameexecutableresolver.6"); return false; }
             if (!Path.GetExtension(target).Equals(".exe", StringComparison.OrdinalIgnoreCase) || !File.Exists(target))
             {
-                error = "目标必须是本机存在的有效 EXE 文件";
+                error = Lang.T("t.gameexecutableresolver.7");
                 return false;
             }
             if (!IsPortableExecutable(target) && !IsUnreadable(target))
             {
-                error = "目标必须是本机存在的有效 EXE 文件";
+                error = Lang.T("t.gameexecutableresolver.7");
                 return false;
             }
             executablePath = target;

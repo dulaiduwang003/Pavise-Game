@@ -24,6 +24,7 @@ namespace PaviseApp
     {
         private const int RequestTimeoutMs = 8000;
         private const int TotalTimeoutMs = 13000;
+        private const int GraceAfterFirstHitMs = 2500;
         private const int MaxBodyBytes = 256 * 1024;
 
         private const string VersionFile = "version.json";
@@ -47,12 +48,14 @@ namespace PaviseApp
             JsDelivrApi
         }
 
+        // TrustDownload 只给 GitHub 官方域直连的来源 第三方代理/CDN 可篡改清单内容
+        // 它们给出的下载地址(哪怕指向白名单网盘)一律不信 只取版本号 下载走官方发布页
         private sealed class Source
         {
             public string Name;
             public string Url;
             public Feed Kind;
-            public string Prefix;
+            public bool TrustDownload;
         }
 
         public static void CheckAsync(Action<UpdateResult> done)
@@ -74,22 +77,22 @@ namespace PaviseApp
             string raw = "https://raw.githubusercontent.com/" + RawPath;
             return new[]
             {
-                new Source { Name = "GitHub 直连", Kind = Feed.Redirect,
-                    Url = App.ReleasesUrl + "/latest" },
+                new Source { Name = Lang.T("t.updatechecker.1"), Kind = Feed.Redirect,
+                    Url = App.ReleasesUrl + "/latest", TrustDownload = true },
                 new Source { Name = "GitHub API", Kind = Feed.GitHubJson,
-                    Url = "https://api.github.com/repos/" + App.RepoName + "/releases/latest" },
-                new Source { Name = "raw 直连", Kind = Feed.Manifest, Url = raw },
+                    Url = "https://api.github.com/repos/" + App.RepoName + "/releases/latest", TrustDownload = true },
+                new Source { Name = Lang.T("t.updatechecker.2"), Kind = Feed.Manifest, Url = raw, TrustDownload = true },
                 new Source { Name = "ghproxy", Kind = Feed.Manifest,
-                    Url = "https://ghproxy.net/" + raw, Prefix = "https://ghproxy.net/" },
+                    Url = "https://ghproxy.net/" + raw },
                 new Source { Name = "gh-proxy", Kind = Feed.Manifest,
-                    Url = "https://gh-proxy.com/" + raw, Prefix = "https://gh-proxy.com/" },
+                    Url = "https://gh-proxy.com/" + raw },
                 new Source { Name = "ghfast", Kind = Feed.Manifest,
-                    Url = "https://ghfast.top/" + raw, Prefix = "https://ghfast.top/" },
+                    Url = "https://ghfast.top/" + raw },
                 new Source { Name = "jsDelivr", Kind = Feed.Manifest,
                     Url = "https://fastly.jsdelivr.net/gh/" + App.RepoName + "@" + VersionBranch + "/" + VersionFile },
                 new Source { Name = "jsDelivr gcore", Kind = Feed.Manifest,
                     Url = "https://gcore.jsdelivr.net/gh/" + App.RepoName + "@" + VersionBranch + "/" + VersionFile },
-                new Source { Name = "jsDelivr 包信息", Kind = Feed.JsDelivrApi,
+                new Source { Name = Lang.T("t.updatechecker.3"), Kind = Feed.JsDelivrApi,
                     Url = "https://data.jsdelivr.com/v1/packages/gh/" + App.RepoName }
             };
         }
@@ -106,9 +109,10 @@ namespace PaviseApp
 
             Source[] sources = BuildSources();
             var gate = new object();
-            var finished = new ManualResetEvent(false);
-            UpdateResult winner = null;
+            var signal = new AutoResetEvent(false);
+            var hits = new List<UpdateResult>();
             int pending = sources.Length;
+            long firstHitTicks = 0;
 
             foreach (Source s in sources)
             {
@@ -120,26 +124,50 @@ namespace PaviseApp
                     catch { }
                     lock (gate)
                     {
-                        if (hit != null && winner == null) winner = hit;
+                        if (hit != null)
+                        {
+                            hits.Add(hit);
+                            if (firstHitTicks == 0) firstHitTicks = DateTime.UtcNow.Ticks;
+                        }
                         pending--;
-                        if (winner != null || pending == 0) finished.Set();
                     }
+                    signal.Set();
                 });
             }
 
-            finished.WaitOne(TotalTimeoutMs);
-            UpdateResult r;
-            lock (gate) r = winner;
+            // 首答后再等一个宽限窗收割其余线路 取最高版本 防止过期镜像抢跑把新版本报成无需更新
+            long deadline = DateTime.UtcNow.Ticks + TotalTimeoutMs * TimeSpan.TicksPerMillisecond;
+            while (true)
+            {
+                int left; long fh;
+                lock (gate) { left = pending; fh = firstHitTicks; }
+                long now = DateTime.UtcNow.Ticks;
+                if (left == 0 || now >= deadline) break;
+                long until = deadline;
+                if (fh != 0)
+                {
+                    long grace = fh + GraceAfterFirstHitMs * TimeSpan.TicksPerMillisecond;
+                    if (now >= grace) break;
+                    if (grace < until) until = grace;
+                }
+                int waitMs = (int)((until - now) / TimeSpan.TicksPerMillisecond) + 1;
+                signal.WaitOne(waitMs < 50 ? 50 : waitMs);
+            }
+
+            UpdateResult r = null;
+            lock (gate)
+                foreach (UpdateResult hit in hits)
+                    if (r == null || IsNewer(hit.Latest, r.Latest)) r = hit;
 
             if (r == null)
             {
                 r = new UpdateResult();
-                r.Error = "全部线路都没通 网络受限或仓库暂无发布";
-                Logger.Log("检查更新 " + sources.Length + " 条线路全部失败");
+                r.Error = Lang.T("t.updatechecker.4");
+                Logger.Log(Lang.T("log.updatechecker.5") + sources.Length + Lang.T("log.updatechecker.6"));
                 return r;
             }
             r.Newer = IsNewer(r.Latest, App.Version);
-            Logger.Log("检查更新 线路 " + r.Source + " 远端 " + r.Latest);
+            Logger.Log(Lang.T("log.updatechecker.7") + r.Source + Lang.T("log.updatechecker.8") + r.Latest);
             return r;
         }
 
@@ -179,22 +207,10 @@ namespace PaviseApp
             r.Ok = true;
             r.Latest = tag;
             r.Source = src.Name;
-            r.Url = ResolveDownload(src, download);
+            if (!src.TrustDownload) download = null;
+            r.Url = string.IsNullOrEmpty(download) ? App.ReleasesUrl + "/latest" : download;
             if (!IsTrustedDownloadUrl(r.Url)) r.Url = App.ReleasesUrl;
             return r;
-        }
-
-        private static string ResolveDownload(Source src, string download)
-        {
-            if (string.IsNullOrEmpty(download)) download = App.ReleasesUrl + "/latest";
-            if (string.IsNullOrEmpty(src.Prefix)) return download;
-            bool isFile = download.IndexOf("/releases/download/", StringComparison.OrdinalIgnoreCase) >= 0
-                || download.IndexOf("/archive/", StringComparison.OrdinalIgnoreCase) >= 0;
-            if (!isFile) return download;
-            if (download.StartsWith("https://github.com/", StringComparison.OrdinalIgnoreCase)
-                || download.StartsWith("https://objects.githubusercontent.com/", StringComparison.OrdinalIgnoreCase))
-                return src.Prefix + download;
-            return download;
         }
 
         private static string TagFromReleaseUrl(string url)

@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 核心划分的状态牌 图例与实时计数
-// 图例样式和矩阵里的核完全一致 用户不必猜实心代表谁 计数就在手边不用去底部找
 
 using System;
 using System.Drawing;

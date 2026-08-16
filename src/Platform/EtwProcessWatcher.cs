@@ -60,7 +60,7 @@ namespace PaviseApp
             int rc = Native.StartTrace(out session, sessionName, propsBuffer);
             if (rc != 0)
             {
-                LastError = "StartTrace 失败 rc " + rc;
+                LastError = Lang.T("t.etwprocesswatcher.1") + rc;
                 Cleanup();
                 return false;
             }
@@ -72,7 +72,7 @@ namespace PaviseApp
                 Native.EventControlCodeEnableProvider, 4, Keywords, 0, 0, ref enableParams);
             if (rc != 0)
             {
-                LastError = "EnableTraceEx2 失败 rc " + rc;
+                LastError = Lang.T("t.etwprocesswatcher.2") + rc;
                 Cleanup();
                 return false;
             }
@@ -89,7 +89,7 @@ namespace PaviseApp
             Marshal.FreeHGlobal(logfile.LoggerName);
             if (trace == Native.InvalidProcessTraceHandle)
             {
-                LastError = "OpenTrace 失败 win32 " + Marshal.GetLastWin32Error();
+                LastError = Lang.T("t.etwprocesswatcher.3") + Marshal.GetLastWin32Error();
                 Cleanup();
                 return false;
             }

@@ -45,8 +45,8 @@ namespace PaviseApp
 
         public static string InterruptTierText(int tier)
         {
-            if (tier == 0) return "干净";
-            return tier == 1 ? "正常" : "异常";
+            if (tier == 0) return Lang.T("t.systemaudit.1");
+            return tier == 1 ? Lang.T("t.systemaudithardware.30") : Lang.T("t.systemaudit.2");
         }
 
         public static string PercentText(double rate)
@@ -253,7 +253,7 @@ namespace PaviseApp
             public bool MpoOff;
             public bool Dvr;
             public bool SuppressOn;
-            public string Plan = "读取失败";
+            public string Plan = Lang.T("t.systemaudithardware.3");
             public bool MemOk;
             public double UsedRatio, TotalGb, AvailGb;
             public List<string> ClockStale;
@@ -262,7 +262,6 @@ namespace PaviseApp
             public string Link;
             public List<InputDevice> Inputs;
             public AccessibilityState Access;
-            public bool PointerPrecision;
             public bool HidPowerSave;
             public bool QueueTampered;
             public int? ThreadDpc;
@@ -276,10 +275,9 @@ namespace PaviseApp
             public int ThrottleEvents7d;
             public bool WindowedOptOn;
             public int MsiOffCount;
-            public List<string> HddRoots;
         }
 
-        private static Facts Gather(List<string> gameRoots)
+        private static Facts Gather()
         {
             var f = new Facts();
             try { f.OsBuild = Native.OsBuild(); } catch { }
@@ -298,7 +296,6 @@ namespace PaviseApp
             try { f.ThrottleEvents7d = CountCpuThrottleEvents(); } catch { }
             try { f.WindowedOptOn = WindowedOptTweak.CurrentlyOn(); } catch { }
             try { f.MsiOffCount = MsiModeTweak.Disabled().Count; } catch { }
-            try { f.HddRoots = SeekPenaltyRoots(gameRoots); } catch { }
             try { f.Nv = NvApi.Available; } catch { }
             try
             {
@@ -327,7 +324,6 @@ namespace PaviseApp
             try { f.Link = LinkKind(); } catch { }
             try { f.Inputs = InputChainProbe.Devices(); } catch { }
             try { f.Access = InputChainProbe.ReadAccessibility(); } catch { }
-            try { f.PointerPrecision = InputChainProbe.PointerPrecisionOn(); } catch { }
             try { f.HidPowerSave = HidPowerTweak.PowerSaveActive(); } catch { }
             try { f.QueueTampered = InputMythTweak.NeedsRepair(); } catch { }
             try { f.ThreadDpc = InputMythTweak.ThreadDpcOverride(); } catch { }
@@ -386,11 +382,6 @@ namespace PaviseApp
 
         public static AuditReport Collect(int measureWindowMs)
         {
-            return Collect(measureWindowMs, null);
-        }
-
-        public static AuditReport Collect(int measureWindowMs, List<string> gameRoots)
-        {
             var report = new AuditReport();
             report.MeasureWindowMs = measureWindowMs;
 
@@ -422,7 +413,7 @@ namespace PaviseApp
             int hzCur, hzBest;
             DisplayGuard.QueryRefreshRates(out hzCur, out hzBest);
 
-            Facts facts = Gather(gameRoots);
+            Facts facts = Gather();
             BuildCapability(report, facts);
             BuildMachine(report, facts, cpuBusy, worstIrq, worstCore, hzCur, hzBest, culprits);
             BuildHardwareHealth(report, facts);
@@ -438,11 +429,11 @@ namespace PaviseApp
             {
                 report.Capability.Add(new AuditRow
                 {
-                    Name = "显卡",
+                    Name = Lang.T("cfg.group.gpu"),
                     Value = GpuInventory.Describe(),
                     Note = facts.IntegratedOnly
-                        ? "本机只有核显 显卡页的驱动深度调优不适用 但后台压制 绑核 电源计划照常有效 帧数收益主要从那边来"
-                        : "带独显 显卡页的驱动项能不能用 看下面两行接口检测",
+                        ? Lang.T("t.systemaudit.3")
+                        : Lang.T("t.systemaudit.4"),
                     Evidence = EvMeasuredLocal,
                     Warn = false
                 });
@@ -450,56 +441,56 @@ namespace PaviseApp
 
             report.Capability.Add(new AuditRow
             {
-                Name = "NVIDIA 驱动接口",
-                Value = facts.Nv ? "可用" : "不可用",
+                Name = Lang.T("t.systemaudit.5"),
+                Value = facts.Nv ? Lang.T("t.systemaudit.6") : Lang.T("t.systemaudit.7"),
                 Note = facts.Nv
-                    ? "电源 帧率上限 预渲染这些驱动项在本机可用 写入失败会自动熔断对应开关"
+                    ? Lang.T("t.systemaudit.8")
                     : facts.NvHardware
-                        ? "有 N 卡但驱动接口调不起来 多半是驱动太老或者装的精简版 显卡页 NVIDIA 区整体停用"
-                        : "本机没有 NVIDIA 显卡 显卡页 NVIDIA 区整体停用",
+                        ? Lang.T("t.systemaudit.9")
+                        : Lang.T("t.systemaudit.10"),
                 Evidence = EvMeasuredLocal,
                 Warn = false
             });
 
             report.Capability.Add(new AuditRow
             {
-                Name = "AMD 显卡",
-                Value = facts.AmdHardware ? "已识别" : "未检测到",
+                Name = Lang.T("t.systemaudit.11"),
+                Value = facts.AmdHardware ? Lang.T("t.systemaudit.12") : Lang.T("t.systemaudit.13"),
                 Note = facts.AmdHardware
-                    ? "驱动专项调优只覆盖 NVIDIA A 卡的收益来自压制 绑核 电源这些通用优化 逐游戏高性能 GPU 偏好对 A 卡同样生效"
-                    : "本机没有 AMD 显卡",
+                    ? Lang.T("t.systemaudit.14")
+                    : Lang.T("t.systemaudit.15"),
                 Evidence = EvMeasuredLocal,
                 Warn = false
             });
 
             report.Capability.Add(new AuditRow
             {
-                Name = "CPU Sets 分区",
-                Value = facts.Partition ? "可用" : "不可用",
-                Note = facts.Partition ? "可以把后台赶去单独的核心 好核心留给游戏"
-                    : "核心不够分 压制只降优先级 实测这一步已经占了绝大部分收益",
+                Name = Lang.T("t.systemaudit.16"),
+                Value = facts.Partition ? Lang.T("t.systemaudit.6") : Lang.T("t.systemaudit.7"),
+                Note = facts.Partition ? Lang.T("t.systemaudit.17")
+                    : Lang.T("t.systemaudit.18"),
                 Evidence = EvMeasuredLocal,
                 Warn = false
             });
 
             report.Capability.Add(new AuditRow
             {
-                Name = "效率模式 EcoQoS",
-                Value = !facts.Eco ? "不支持" : (facts.EcoFull ? "支持" : "接口可用"),
+                Name = Lang.T("t.systemaudit.19"),
+                Value = !facts.Eco ? Lang.T("t.systemaudit.20") : (facts.EcoFull ? Lang.T("t.systemaudit.21") : Lang.T("t.systemaudit.22")),
                 Note = !facts.Eco
-                    ? "本机查不到这个状态 温和档会自动跳过这一手段"
+                    ? Lang.T("t.systemaudit.23")
                     : (facts.EcoFull
-                        ? "温和档能让系统把后台降频 挪去省电核心"
-                        : "Windows 10 上也能压 只是没有 Windows 11 压得彻底 效果还是有"),
+                        ? Lang.T("t.systemaudit.24")
+                        : Lang.T("t.systemaudit.25")),
                 Evidence = EvMeasuredLocal,
                 Warn = !facts.Eco
             });
 
             report.Capability.Add(new AuditRow
             {
-                Name = "操作系统",
+                Name = Lang.T("t.systemaudit.26"),
                 Value = WindowsText(),
-                Note = "系统版本决定哪些手段可用 同一个开关在不同版本上干的事不一样",
+                Note = Lang.T("t.systemaudit.27"),
                 Evidence = EvMeasuredLocal,
                 Warn = false
             });
@@ -539,17 +530,17 @@ namespace PaviseApp
             int logical = Environment.ProcessorCount;
             int physical = 0;
             try { physical = CpuTopology.PhysicalCoreCount; } catch { }
-            string arch = CpuTopology.Hybrid ? "混合架构 P 核加 E 核 默认全核 可手动切性能核"
-                : CpuTopology.AsymCache ? "非对称缓存 X3D 默认全核 可手动切大缓存 CCD"
-                : CpuTopology.PartitionTag == "symmetric-ccd" ? "对称多 CCD 默认全核 可手动切一个完整 CCD"
-                : CpuTopology.PartitionTag == "pool-iso-core0" ? "同构 默认全核 可手动切游戏核心分区"
-                : "同构";
+            string arch = CpuTopology.Hybrid ? Lang.T("t.systemaudit.28")
+                : CpuTopology.AsymCache ? Lang.T("t.systemaudit.29")
+                : CpuTopology.PartitionTag == "symmetric-ccd" ? Lang.T("t.systemaudit.30")
+                : CpuTopology.PartitionTag == "pool-iso-core0" ? Lang.T("t.systemaudit.31")
+                : Lang.T("t.systemaudit.32");
             report.Machine.Add(new AuditRow
             {
-                Name = "CPU 拓扑",
-                Value = physical + " 物理核 " + logical + " 线程",
+                Name = Lang.T("t.systemaudit.33"),
+                Value = physical + Lang.T("t.systemaudit.34") + logical + Lang.T("t.systemaudit.35"),
                 Note = arch + (CpuTopology.HasSafeBackgroundPartition()
-                    ? " 手动游戏分区 0x" + CpuTopology.StrictBoostMask.ToString("X") : " 本机不划分后台核心"),
+                    ? Lang.T("t.systemaudit.36") + CpuTopology.StrictBoostMask.ToString("X") : Lang.T("t.systemaudit.37")),
                 Evidence = EvMeasuredLocal,
                 Warn = false
             });
@@ -558,10 +549,10 @@ namespace PaviseApp
             {
                 report.Machine.Add(new AuditRow
                 {
-                    Name = "整机 CPU 占用",
+                    Name = Lang.T("t.systemaudit.38"),
                     Value = PercentText(cpuBusy),
-                    Note = "体检窗口 " + (report.MeasureWindowMs >= 1000
-                        ? (report.MeasureWindowMs / 1000) + " 秒" : report.MeasureWindowMs + " 毫秒") + " 内的平均占用",
+                    Note = Lang.T("t.systemaudit.39") + (report.MeasureWindowMs >= 1000
+                        ? (report.MeasureWindowMs / 1000) + Lang.T("t.systemaudit.40") : report.MeasureWindowMs + Lang.T("t.systemaudit.41")) + Lang.T("t.systemaudit.42"),
                     Evidence = EvMeasuredLocal,
                     Warn = false
                 });
@@ -570,18 +561,18 @@ namespace PaviseApp
                 string topDrivers = TopDriversText(culprits, 3);
                 report.Machine.Add(new AuditRow
                 {
-                    Name = "中断分布",
-                    Value = (worstCore != 0 ? "线程 " + CoreLabel(worstCore) + " " : "")
-                        + "被硬件中断占去 " + PercentText(worstIrq) + " " + InterruptTierText(tier),
+                    Name = Lang.T("t.systemaudit.43"),
+                    Value = (worstCore != 0 ? Lang.T("t.systemaudit.44") + CoreLabel(worstCore) + " " : "")
+                        + Lang.T("t.systemaudit.45") + PercentText(worstIrq) + " " + InterruptTierText(tier),
                     Note = topDrivers != null
-                        ? "本次窗口内中断主要来自 " + topDrivers + (tier == 2
-                            ? " 做法 这几个里 nvlddmkm 是显卡 dxgkrnl 是显示子系统 对应去系统环境页开 GPU USB 两个避让开关 重启后再测 stornvme storport 是硬盘 网卡类走 ndis tcpip 这两类的中断路由在驱动层 本软件不碰"
-                            : " 当前量级不影响帧 列出来只作参考")
+                        ? Lang.T("t.systemaudit.46") + topDrivers + (tier == 2
+                            ? Lang.T("t.systemaudit.47")
+                            : Lang.T("t.systemaudit.48"))
                         : tier == 2
-                            ? "到了能影响帧的量级 做法 去系统环境页把 GPU 中断亲和优化 USB 控制器中断避让 两个开关全开 重启后回这里再测对比"
+                            ? Lang.T("t.systemaudit.49")
                             : report.MeasureWindowMs < 10000
-                                ? "短窗口只能看出量级 分辨率约 0.5% 要精确值请用 30 秒测量"
-                                : "长窗口测量 分辨率约 0.05%",
+                                ? Lang.T("t.systemaudit.50")
+                                : Lang.T("t.systemaudit.51"),
                     Evidence = EvMeasuredLocal,
                     Warn = tier == 2
                 });
@@ -590,9 +581,9 @@ namespace PaviseApp
             {
                 report.Machine.Add(new AuditRow
                 {
-                    Name = "中断分布",
-                    Value = "测量失败",
-                    Note = "处理器性能接口不可用",
+                    Name = Lang.T("t.systemaudit.43"),
+                    Value = Lang.T("t.systemaudit.52"),
+                    Note = Lang.T("t.systemaudit.53"),
                     Evidence = EvMeasuredLocal,
                     Warn = true
                 });
@@ -605,17 +596,17 @@ namespace PaviseApp
             bool hzOk = RefreshRateIsBest(hzCur, hzBest);
             report.Machine.Add(new AuditRow
             {
-                Name = "主屏刷新率",
+                Name = Lang.T("t.systemauditverdicts.1"),
                 Value = hzRead
-                    ? hzCur + " Hz" + (hzOk ? " 已是最高" : " 可用 " + hzBest + " Hz")
-                    : "读取失败",
+                    ? hzCur + " Hz" + (hzOk ? Lang.T("t.systemaudit.54") : Lang.T("t.systemaudit.55") + hzBest + " Hz")
+                    : Lang.T("t.systemaudithardware.3"),
                 Note = !hzRead
-                    ? "读不到显示模式 远程桌面和部分虚拟显示器上会这样 这一项本次不做判断"
+                    ? Lang.T("t.systemaudit.56")
                     : (hzOk
-                        ? "当前分辨率下没有更高的刷新率可选"
-                        : "系统跑在 " + hzCur + "Hz 这块屏在同分辨率下支持 " + hzBest
-                            + "Hz 这是实打实的帧数损失 做法 系统设置 显示 高级显示 里把刷新率改到 "
-                            + hzBest + "Hz 这是持久设置 改一次就一直生效"),
+                        ? Lang.T("t.systemaudit.57")
+                        : Lang.T("t.systemaudit.58") + hzCur + Lang.T("t.systemaudit.59") + hzBest
+                            + Lang.T("t.systemaudit.60")
+                            + hzBest + Lang.T("t.systemaudit.61")),
                 Evidence = EvMeasuredLocal,
                 Warn = !hzOk || !hzRead
             });
@@ -627,14 +618,14 @@ namespace PaviseApp
             try { throttleNow = GpuThrottleProbe.InstantText(); } catch { }
             if (throttleNow != null)
             {
-                bool throttled = throttleNow != "无限制";
+                bool throttled = throttleNow != Lang.T("t.gputhrottleprobe.6");
                 report.Machine.Add(new AuditRow
                 {
-                    Name = "NVIDIA 降频状态",
+                    Name = Lang.T("t.systemaudit.62"),
                     Value = throttleNow,
                     Note = throttled
-                        ? "显卡正被这些原因压着 游戏中要是长期这样 瓶颈在散热或供电 不在调度"
-                        : "当前没有降频 游戏中要是被压制 每局结束会写进运行日志",
+                        ? Lang.T("t.systemaudit.63")
+                        : Lang.T("t.systemaudit.64"),
                     Evidence = EvMeasuredLocal,
                     Warn = throttled
                 });
@@ -648,11 +639,11 @@ namespace PaviseApp
             {
                 report.Machine.Add(new AuditRow
                 {
-                    Name = "节能模式",
-                    Value = saverOn ? "开着" : "关着",
+                    Name = Lang.T("t.systemaudit.65"),
+                    Value = saverOn ? Lang.T("t.systemaudit.66") : Lang.T("t.systemaudit.67"),
                     Note = saverOn
-                        ? "系统正在省电 会限亮度拦后台 电源模式也被锁住改不了 Pavise 的电源优化会失效 打游戏前去设置里关掉"
-                        : "没有拦着电源优化",
+                        ? Lang.T("t.systemaudit.68")
+                        : Lang.T("t.systemaudit.69"),
                     Evidence = EvMeasuredLocal,
                     Warn = saverOn
                 });
@@ -662,11 +653,11 @@ namespace PaviseApp
             try { presenceOff = PresenceQos.CurrentlyDisabled(); } catch { }
             report.Machine.Add(new AuditRow
             {
-                Name = "无输入降级",
-                Value = presenceOff ? "已关闭" : "生效中",
+                Name = Lang.T("t.legacypurge.6"),
+                Value = presenceOff ? Lang.T("col.ux.closed") : Lang.T("t.systemaudit.70"),
                 Note = presenceOff
-                    ? "长时间不碰键鼠也不会把前台程序降级"
-                    : "系统默认会在长时间没有键鼠输入后给前台程序降级 手柄游戏 过场动画 挂机正好中招 策略页可以关掉它",
+                    ? Lang.T("t.systemaudit.71")
+                    : Lang.T("t.systemaudit.72"),
                 Evidence = EvMeasuredLocal,
                 Warn = false
             });
@@ -684,12 +675,12 @@ namespace PaviseApp
             {
                 report.Machine.Add(new AuditRow
                 {
-                    Name = "ReBAR 显存直通",
-                    Value = (rebarOn ? "已开启" : "未开启") + " 窗口 " + RebarProbe.WindowText(rebarWindow),
+                    Name = Lang.T("t.systemaudit.73"),
+                    Value = (rebarOn ? Lang.T("v16.device.hags.on") : Lang.T("gs.noff")) + Lang.T("t.systemaudit.74") + RebarProbe.WindowText(rebarWindow),
                     Note = (string.IsNullOrEmpty(rebarGpu) ? "" : rebarGpu + " ")
                         + (rebarNvidia
-                            ? (rebarOn ? "显卡页的 ReBAR 强开可用" : "没开启时 ReBAR 强开无效 要在 BIOS 里打开")
-                            : (rebarOn ? "A 卡叫 SAM 驱动侧已自动受益 不需要 Pavise 干预" : "A 卡叫 SAM 要在 BIOS 里打开 Above 4G 和 ReBAR")),
+                            ? (rebarOn ? Lang.T("t.systemaudit.75") : Lang.T("t.systemaudit.76"))
+                            : (rebarOn ? Lang.T("t.systemaudit.77") : Lang.T("t.systemaudit.78"))),
                     Evidence = EvMeasuredLocal,
                     Warn = false
                 });
@@ -702,12 +693,12 @@ namespace PaviseApp
             {
                 report.Machine.Add(new AuditRow
                 {
-                    Name = "内存",
-                    Value = facts.TotalGb.ToString("F1") + " GB 已用 " + PercentText(facts.UsedRatio)
-                        + " 可用 " + facts.AvailGb.ToString("F1") + " GB",
+                    Name = Lang.T("t.systemaudit.79"),
+                    Value = facts.TotalGb.ToString("F1") + Lang.T("t.systemaudit.80") + PercentText(facts.UsedRatio)
+                        + Lang.T("t.systemaudit.55") + facts.AvailGb.ToString("F1") + " GB",
                     Note = facts.UsedRatio >= 0.85
-                        ? "可用内存偏少 大型游戏可能被挤去拿硬盘顶内存而卡顿 建议关掉部分后台或者开启待机内存清理"
-                        : "内存余量充足",
+                        ? Lang.T("t.systemaudit.81")
+                        : Lang.T("t.systemaudit.82"),
                     Evidence = EvMeasuredLocal,
                     Warn = facts.UsedRatio >= 0.85
                 });
@@ -718,11 +709,11 @@ namespace PaviseApp
                 bool pageDisabled = PageFileLooksDisabled(facts.PageFileGb);
                 report.Machine.Add(new AuditRow
                 {
-                    Name = "页面文件",
-                    Value = pageDisabled ? "已被关闭" : facts.PageFileGb.ToString("F1") + " GB",
+                    Name = Lang.T("t.systemauditverdicts.53"),
+                    Value = pageDisabled ? Lang.T("t.systemaudit.83") : facts.PageFileGb.ToString("F1") + " GB",
                     Note = pageDisabled
-                        ? "老优化教程爱关页面文件 内存吃紧时游戏会直接崩溃或闪退 而不是变慢 建议在系统高级设置里交回系统管理"
-                        : "由系统管理或大小正常 不用处理",
+                        ? Lang.T("t.systemaudit.84")
+                        : Lang.T("t.systemaudit.85"),
                     Evidence = EvMeasuredLocal,
                     Warn = pageDisabled
                 });
@@ -736,12 +727,12 @@ namespace PaviseApp
                 bool wifiOnly = facts.Link == "wifi";
                 report.Machine.Add(new AuditRow
                 {
-                    Name = "网络链路",
-                    Value = facts.Link == "wired" ? "有线" : wifiOnly ? "无线 Wi-Fi" : "有线加无线同时在线",
+                    Name = Lang.T("t.systemaudit.86"),
+                    Value = facts.Link == "wired" ? Lang.T("t.systemaudit.87") : wifiOnly ? Lang.T("t.systemaudit.88") : Lang.T("t.systemaudit.89"),
                     Note = wifiOnly
-                        ? "无线的延迟和突刺天生比有线高 策略页的无线扫描抑制能砍掉后台扫信道那类周期突刺 有条件还是上网线"
-                        : facts.Link == "wired" ? "有线链路 延迟稳定性最好"
-                        : "两条链路都通 游戏流量走哪条取决于系统路由 想确保走有线可以临时关掉 Wi-Fi",
+                        ? Lang.T("t.systemaudit.90")
+                        : facts.Link == "wired" ? Lang.T("t.systemaudit.91")
+                        : Lang.T("t.systemaudit.92"),
                     Evidence = EvMeasuredLocal,
                     Warn = wifiOnly
                 });
@@ -759,10 +750,10 @@ namespace PaviseApp
                     bool onAc = power.AcLineStatus == 1;
                     report.Machine.Add(new AuditRow
                     {
-                        Name = "供电方式",
-                        Value = onAc ? "外接电源" : "电池供电",
-                        Note = onAc ? "笔记本已接电源 性能不受电池策略限制"
-                            : "电池供电时厂商固件通常会限制 CPU 和 GPU 功耗 这时候任何调度优化都补不回损失的性能 插上电源再对比",
+                        Name = Lang.T("t.systemaudit.93"),
+                        Value = onAc ? Lang.T("t.systemaudit.94") : Lang.T("t.systemaudit.95"),
+                        Note = onAc ? Lang.T("t.systemaudit.96")
+                            : Lang.T("t.systemaudit.97"),
                         Evidence = EvMechanism,
                         Warn = !onAc
                     });
@@ -781,10 +772,10 @@ namespace PaviseApp
                 foreach (LoadEntry e in top) parts.Add(e.Name + " " + PercentText(e.Ratio));
                 report.Machine.Add(new AuditRow
                 {
-                    Name = "后台占用前三",
+                    Name = Lang.T("t.systemaudit.98"),
                     Value = string.Join("   ", parts.ToArray()),
-                    Note = "最近 " + (topWindow / 1000.0).ToString("0.#")
-                        + " 秒内最吃 CPU 的程序 压制最能从它们身上抢回资源 有想保护的就加白名单",
+                    Note = Lang.T("t.systemaudit.99") + (topWindow / 1000.0).ToString("0.#")
+                        + Lang.T("t.systemaudit.100"),
                     Evidence = EvMeasuredLocal,
                     Warn = false
                 });
@@ -807,7 +798,7 @@ namespace PaviseApp
                 string text = InputChainProbe.TransportText(d.Transport);
                 if (!seen.Contains(text)) seen.Add(text);
             }
-            return seen.Count == 0 ? null : string.Join(" 加 ", seen.ToArray());
+            return seen.Count == 0 ? null : string.Join(Lang.T("t.systemaudit.101"), seen.ToArray());
         }
 
         private static void BuildInputChain(AuditReport report, Facts facts)
@@ -826,15 +817,14 @@ namespace PaviseApp
             {
                 report.Machine.Add(new AuditRow
                 {
-                    Name = "键鼠链路",
-                    Value = (mice == null ? "" : "鼠标 " + mice) + (mice != null && keys != null ? "   " : "")
-                        + (keys == null ? "" : "键盘 " + keys),
+                    Name = Lang.T("env.tab.input"),
+                    Value = (mice == null ? "" : Lang.T("t.systemaudit.102") + mice) + (mice != null && keys != null ? "   " : "")
+                        + (keys == null ? "" : Lang.T("t.systemaudit.103") + keys),
                     Note = btOnly
-                        ? "蓝牙键鼠是整条延迟链上外设段唯一的两位数毫秒损失 台架实测同一只鼠标蓝牙约 10.4 毫秒 换 2.4G 接收器约 3.6 毫秒 "
-                            + "而 2.4G 和有线基本无差 做法 插上随附的 2.4G 接收器 或者换有线 这个没有软件解法"
+                        ? Lang.T("t.systemaudit.104")
                         : bt
-                            ? "同时枚举到蓝牙和更快的连接 蓝牙那只可能只是配过对没在用 如果实际在用的是蓝牙 换 2.4G 接收器或有线能省约 7 毫秒"
-                            : "USB 直连和 2.4G 接收器的外设延迟都在 1 到 5 毫秒 已经是这一段的下限 再往下抠要动硬件",
+                            ? Lang.T("t.systemaudit.105")
+                            : Lang.T("t.systemaudit.106"),
                     Evidence = bt ? EvMeasuredBench : EvMeasuredLocal,
                     Warn = btOnly
                 });
@@ -846,16 +836,15 @@ namespace PaviseApp
                 bool needFix = facts.Access.AnyNeedsFix;
                 report.Machine.Add(new AuditRow
                 {
-                    Name = "辅助功能拦截",
-                    Value = swallow ? "筛选键正开着" : needFix ? "热键激活" : "干净",
+                    Name = Lang.T("t.legacypurge.14"),
+                    Value = swallow ? Lang.T("t.systemaudit.107") : needFix ? Lang.T("t.systemaudit.108") : Lang.T("t.systemaudit.1"),
                     Note = swallow
-                        ? "筛选键按微软自己的定义就是让键盘忽略短促或重复的击键 现在每次击键要等 "
+                        ? Lang.T("t.systemaudit.109")
                             + facts.Access.DelayBeforeAcceptanceMs
-                            + " 毫秒才被接受 这是本页所有键鼠项里唯一能救回两位数毫秒的一条 做法 系统环境页拨开 辅助功能拦截 开关"
+                            + Lang.T("t.systemaudit.110")
                         : needFix
-                            ? "当前没有造成输入延迟 但开关或热键还留着 连按五次 Shift 或长按右 Shift 八秒会弹窗打断全屏游戏 "
-                                + "做法 系统环境页拨开 辅助功能拦截 开关 一次清掉 不需要管理员也不用重启"
-                            : "筛选键 粘滞键 切换键都没开 热键也没激活 不会拦你的击键",
+                            ? Lang.T("t.systemaudit.111")
+                            : Lang.T("t.systemaudit.112"),
                     Evidence = EvMechanism,
                     Warn = needFix
                 });
@@ -863,46 +852,30 @@ namespace PaviseApp
 
             report.Machine.Add(new AuditRow
             {
-                Name = "键鼠设备省电",
-                Value = facts.HidPowerSave ? "允许挂起" : "已禁止挂起",
+                Name = Lang.T("t.legacypurge.15"),
+                Value = facts.HidPowerSave ? Lang.T("t.systemaudit.113") : Lang.T("t.systemaudit.114"),
                 Note = facts.HidPowerSave
-                    ? "系统被允许在空闲后挂起键鼠所在的 USB 设备 微软自己的选择性暂停文档承认 退出挂起的延迟会表现为屏幕上的顿挫 "
-                        + "治的是空闲后第一下操作的抖动 不是稳态延迟 做法 系统环境页拨开 键鼠设备省电 开关"
-                    : "键鼠 USB 设备都不允许省电挂起 没有唤醒顿挫",
+                    ? Lang.T("t.systemaudit.115")
+                    : Lang.T("t.systemaudit.116"),
                 Evidence = EvMechanism,
                 Warn = facts.HidPowerSave
-            });
-
-            report.Machine.Add(new AuditRow
-            {
-                Name = "指针精度增强",
-                Value = facts.PointerPrecision ? "开着" : "关着",
-                Note = facts.PointerPrecision
-                    ? "这一项不是延迟问题 是一致性问题 同样的物理位移会因为移动快慢产生不同的屏幕位移 肌肉记忆建不起来 "
-                        + "竞技射击一般关掉 在系统环境页有开关 也可以自己去 系统设置 蓝牙和其他设备 鼠标 其他鼠标设置 指针选项 取消 提高指针精确度 "
-                        + "注意游戏里走 Raw Input 的话本来就绕过它 只影响桌面和没走 Raw Input 的游戏"
-                    : "已关闭 鼠标位移不再被系统加速曲线改写",
-                Evidence = EvMechanism,
-                Warn = false
             });
 
             bool dpc = facts.ThreadDpc.HasValue;
             if (facts.QueueTampered || dpc)
             {
                 var parts = new List<string>();
-                if (facts.QueueTampered) parts.Add("键鼠队列长度被改过");
-                if (dpc) parts.Add("ThreadDpcEnable 被写成 " + facts.ThreadDpc.Value);
+                if (facts.QueueTampered) parts.Add(Lang.T("t.systemaudit.119"));
+                if (dpc) parts.Add(Lang.T("t.systemaudit.120") + facts.ThreadDpc.Value);
                 report.Machine.Add(new AuditRow
                 {
-                    Name = "第三方键鼠改动",
+                    Name = Lang.T("t.systemaudit.121"),
                     Value = string.Join("  ", parts.ToArray()),
                     Note = (facts.QueueTampered
-                            ? "队列长度控制的是能缓存多少条输入 不是这些数据被处理的快慢 所以调它不降延迟 调低了反而在高回报率鼠标上丢输入 "
-                                + "做法 系统环境页拨开 键鼠队列校正 开关改回默认 " + InputMythTweak.SystemDefault + " 重启生效  "
+                            ? Lang.T("t.systemaudit.122") + InputMythTweak.SystemDefault + Lang.T("t.systemaudit.123")
                             : "")
                         + (dpc
-                            ? "ThreadDpcEnable 找不到任何可信的对照测量支撑 属于优化脚本的祖传条目 本软件不代改也不建议留着 "
-                                + "要清就手动删 HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\kernel 下的 ThreadDpcEnable"
+                            ? Lang.T("t.systemaudit.124")
                             : ""),
                     Evidence = EvMechanism,
                     Warn = true
@@ -914,60 +887,59 @@ namespace PaviseApp
         {
             report.Persistent.Add(new AuditRow
             {
-                Name = "HAGS 硬件加速 GPU 调度",
-                Value = facts.Hags ? "开启" : "关闭",
-                Note = "改动需要重启生效 收益因机而异 没有普适结论",
+                Name = Lang.T("t.systemaudit.125"),
+                Value = facts.Hags ? Lang.T("log.versionmigrations.41") : Lang.T("notes.close"),
+                Note = Lang.T("t.systemaudit.126"),
                 Evidence = EvUnverified,
                 Warn = false
             });
 
             report.Persistent.Add(new AuditRow
             {
-                Name = "VBS 基于虚拟化的安全",
-                Value = !facts.Vbs.WmiOk ? "读取失败" : (facts.Vbs.VbsRunning ? "运行中" : "未运行"),
-                Note = facts.Vbs.VbsRunning ? "关闭可能带来性能提升 代价是内存完整性 WSL2 Docker 和 Windows 沙盒都会受影响"
-                    : "已经是关闭状态 不用处理",
+                Name = Lang.T("t.systemaudit.127"),
+                Value = !facts.Vbs.WmiOk ? Lang.T("t.systemaudithardware.3") : (facts.Vbs.VbsRunning ? Lang.T("scan.running.tag") : Lang.T("col.proc.none")),
+                Note = facts.Vbs.VbsRunning ? Lang.T("t.systemaudit.128")
+                    : Lang.T("t.systemaudit.129"),
                 Evidence = EvMechanism,
                 Warn = false
             });
 
             report.Persistent.Add(new AuditRow
             {
-                Name = "Windows 游戏模式",
-                Value = facts.GameMode ? "开启" : "关闭",
-                Note = facts.GameMode ? "系统会在游戏时抑制部分后台活动 保持就行"
-                    : "现在是关着的 常见于旧优化教程 建议在系统环境页开启守护",
+                Name = Lang.T("t.systemauditverdicts.26"),
+                Value = facts.GameMode ? Lang.T("log.versionmigrations.41") : Lang.T("notes.close"),
+                Note = facts.GameMode ? Lang.T("t.systemaudit.130")
+                    : Lang.T("t.systemaudit.131"),
                 Evidence = EvMechanism,
                 Warn = !facts.GameMode
             });
 
             report.Persistent.Add(new AuditRow
             {
-                Name = "MPO 多平面叠加",
-                Value = facts.MpoOff ? "已被禁用" : "系统默认",
+                Name = Lang.T("t.systemaudit.132"),
+                Value = facts.MpoOff ? Lang.T("t.systemaudit.133") : Lang.T("t.systemaudit.134"),
                 Note = facts.MpoOff
-                    ? "被某个工具或手动教程关掉了 画面会全部改走合成 录屏直播远程这类抓屏程序也可能受影响 "
-                        + "想改回默认删掉注册表 HKLM\\SOFTWARE\\Microsoft\\Windows\\Dwm 下的 OverlayTestMode 重启即可"
-                    : "保持系统默认 这一项 Pavise 不再提供开关",
+                    ? Lang.T("t.systemaudit.135")
+                    : Lang.T("t.systemaudit.136"),
                 Evidence = EvMechanism,
                 Warn = facts.MpoOff
             });
 
             report.Persistent.Add(new AuditRow
             {
-                Name = "Game DVR 后台录制",
-                Value = facts.Dvr ? "开启" : "关闭",
-                Note = facts.Dvr ? "Xbox Game Bar 一直在后台悄悄录着画面 占帧数 建议在优化策略页关掉"
-                    : "已关闭 不用处理",
+                Name = Lang.T("t.systemauditverdicts.43"),
+                Value = facts.Dvr ? Lang.T("log.versionmigrations.41") : Lang.T("notes.close"),
+                Note = facts.Dvr ? Lang.T("t.systemaudit.137")
+                    : Lang.T("t.systemaudit.138"),
                 Evidence = EvMechanism,
                 Warn = facts.Dvr
             });
 
             report.Persistent.Add(new AuditRow
             {
-                Name = "当前电源计划",
+                Name = Lang.T("t.systemaudit.139"),
                 Value = facts.Plan,
-                Note = "开了电源计划开关后 对局中会自动切到高性能或卓越性能 结束后还原 不用手动改",
+                Note = Lang.T("t.systemaudit.140"),
                 Evidence = EvMechanism,
                 Warn = false
             });
@@ -977,11 +949,11 @@ namespace PaviseApp
                 bool stale = facts.ClockStale.Count > 0;
                 report.Persistent.Add(new AuditRow
                 {
-                    Name = "平台时钟",
-                    Value = stale ? "陈旧覆盖 " + string.Join(" ", facts.ClockStale.ToArray()) : "系统默认",
+                    Name = Lang.T("t.systemauditverdicts.50"),
+                    Value = stale ? Lang.T("t.systemaudit.141") + string.Join(" ", facts.ClockStale.ToArray()) : Lang.T("t.systemaudit.134"),
                     Note = stale
-                        ? "启动配置里有老教程写的时钟覆盖 强制 HPET 在现代平台上是纯减益 点右侧一键修复即可清掉 重启生效 可还原"
-                        : "启动配置干净 系统用最快的 TSC 计时",
+                        ? Lang.T("t.systemaudit.142")
+                        : Lang.T("t.systemaudit.143"),
                     Evidence = EvMechanism,
                     Warn = stale,
                     FixKey = "clock"
@@ -994,11 +966,11 @@ namespace PaviseApp
             catch { }
             report.Persistent.Add(new AuditRow
             {
-                Name = "前台时间片",
-                Value = quantumTampered ? "被改动" : "系统默认",
+                Name = Lang.T("t.systemaudit.144"),
+                Value = quantumTampered ? Lang.T("t.systemaudit.145") : Lang.T("t.systemaudit.134"),
                 Note = (quantumTampered
-                    ? "Win32PrioritySeparation 被工具或教程改过 前台程序的时间片分配偏离系统默认 点右侧一键修复改回默认 2 可还原"
-                    : "前台时间片分配保持系统默认 不用处理") + " " + quantumState,
+                    ? Lang.T("t.systemaudit.146")
+                    : Lang.T("t.systemaudit.147")) + " " + quantumState,
                 Evidence = EvMechanism,
                 Warn = quantumTampered,
                 FixKey = "quantum"
@@ -1010,11 +982,11 @@ namespace PaviseApp
             catch { }
             report.Persistent.Add(new AuditRow
             {
-                Name = "网络限流值",
-                Value = netTampered ? "被改动" : "系统默认",
+                Name = Lang.T("t.systemaudit.148"),
+                Value = netTampered ? Lang.T("t.systemaudit.145") : Lang.T("t.systemaudit.134"),
                 Note = (netTampered
-                    ? "NetworkThrottlingIndex 被改成非默认值 网上教程说能优化 实测只会干扰多媒体调度 点右侧一键修复改回默认 10 可还原"
-                    : "网络限流值保持系统默认 不用处理") + " " + netState,
+                    ? Lang.T("t.systemaudit.149")
+                    : Lang.T("t.systemaudit.150")) + " " + netState,
                 Evidence = EvMechanism,
                 Warn = netTampered,
                 FixKey = "net"

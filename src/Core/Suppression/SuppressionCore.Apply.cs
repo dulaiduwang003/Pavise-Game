@@ -402,9 +402,9 @@ namespace PaviseApp
             PersistJournalLocked();
             bool newlyListed = SelfProtectedRoster.Mark(e.Name);
             if (newlyListed || ShouldLogProtected(e.Name + "-unwritable"))
-                Logger.Log("进程 " + e.Name + " pid " + pid
-                    + " 拒绝全部策略写入且状态未被改动 自保护驱动 按句柄受保护处理"
-                    + (newlyListed ? " 已记入免压制名单 后续对局直接跳过" : ""));
+                Logger.Log(Lang.T("log.suppressioncoreapply.1") + e.Name + " pid " + pid
+                    + Lang.T("log.suppressioncoreapply.2")
+                    + (newlyListed ? Lang.T("log.suppressioncoreapply.3") : ""));
             return true;
         }
     }

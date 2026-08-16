@@ -19,13 +19,13 @@ namespace PaviseApp
     {
         public static string Of(string detail)
         {
-            if (string.IsNullOrEmpty(detail)) return "原因未知";
+            if (string.IsNullOrEmpty(detail)) return Lang.T("t.backgroundpressurecontroller.1");
             bool write = detail.IndexOf("-write", StringComparison.Ordinal) >= 0;
             bool readback = detail.IndexOf("-readback", StringComparison.Ordinal) >= 0;
-            if (write && readback) return "写入被拒 多半是安全软件在保护自己";
-            if (readback) return "写入后回读不符 被别的程序改回去了";
-            if (write) return "写入被拒";
-            return "原因未知";
+            if (write && readback) return Lang.T("t.backgroundpressurecontroller.2");
+            if (readback) return Lang.T("t.backgroundpressurecontroller.3");
+            if (write) return Lang.T("t.backgroundpressurecontroller.4");
+            return Lang.T("t.backgroundpressurecontroller.1");
         }
     }
 
@@ -35,11 +35,11 @@ namespace PaviseApp
         {
             switch (level)
             {
-                case SuppressionLevel.Eco: return "省电";
-                case SuppressionLevel.Restrained: return "限流";
-                case SuppressionLevel.Isolated: return "隔离";
-                case SuppressionLevel.Frozen: return "冻结";
-                default: return "放行";
+                case SuppressionLevel.Eco: return Lang.T("t.backgroundpressurecontroller.5");
+                case SuppressionLevel.Restrained: return Lang.T("t.backgroundpressurecontroller.6");
+                case SuppressionLevel.Isolated: return Lang.T("t.backgroundpressurecontroller.7");
+                case SuppressionLevel.Frozen: return Lang.T("t.backgroundpressurecontroller.8");
+                default: return Lang.T("t.backgroundpressurecontroller.9");
             }
         }
     }
@@ -92,8 +92,6 @@ namespace PaviseApp
             double ioThreshold = preset == PerformancePreset.Standard ? 4.0 : 2.0;
             bool hot = cpuCores >= cpuThreshold || ioMbSec >= ioThreshold;
             bool severe = cpuCores >= 0.35 || ioMbSec >= 32.0;
-            // 极重档 持续吃超过一个半核或狂写盘的进程一拍加满 下一拍即隔离
-            // 扫描节拍约 20 秒 没有这档时最快第三拍才隔离 常规档对重负载的止损来得太晚
             bool crushing = cpuCores >= 1.5 || ioMbSec >= 64.0;
 
             if (hot)
