@@ -20,7 +20,7 @@ namespace PaviseApp
     internal static class App
     {
         public const string DisplayName = "PAVISE";
-        public const string Version = "1.8.0.3";
+        public const string Version = "1.8.1.0";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string WeChat = "Ssssssstyle";
@@ -49,6 +49,12 @@ namespace PaviseApp
             if (SelfTests.TryHandleRuntimeMode(args)) return;
 #endif
 
+
+            if (args.Length >= 4 && args[0] == "--cage-guard")
+            {
+                try { CpuCage.RunGuard(args[1], args[2], args[3]); } catch { }
+                return;
+            }
 
             if (args.Length > 0 && args[0] == "--genicon")
             {
@@ -238,6 +244,7 @@ namespace PaviseApp
                 Logger.Log(Lang.T("log.program.1"));
             Settings.Remove("EvidenceMode");
             int healedSuppression = SuppressionCore.HealFromCrash(Path.Combine(dir, SuppressionCore.StateFileName));
+            try { CpuCage.HealFromCrash(dir); } catch { }
             if (healedSuppression > 0) Logger.Log(Lang.T("log.program.2") + healedSuppression + Lang.T("log.program.3"));
             PowerPlan.HealFromCrash();
             try { if (PowerPlan.HasParkResidue()) PowerPlan.RestoreParkState(); } catch { }

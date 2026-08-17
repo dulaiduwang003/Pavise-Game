@@ -128,7 +128,7 @@ namespace PaviseApp
             if (GameSessionDetector.IsLauncherLikeName(rendererName)
                 || AntiCheatCatalog.IsAntiCheatLikeName(rendererName)
                 || GameSessionDetector.IsNonGameRole(rendererName, rendererPath)) return;
-            string learnedGame = null;
+            string learnedGame = null, promotedGame = null;
             lock (sync)
             {
                 foreach (GameProfile p in profiles)
@@ -136,16 +136,73 @@ namespace PaviseApp
                     if (!string.Equals(p.Id, profileId, StringComparison.OrdinalIgnoreCase)) continue;
                     if (string.Equals(p.ExecutablePath, rendererPath, StringComparison.OrdinalIgnoreCase)) return;
                     if (string.Equals(p.LearnedExecutablePath, rendererPath, StringComparison.OrdinalIgnoreCase)) return;
-                    p.LearnedExecutablePath = GameProfileStore.NormalizePath(rendererPath);
-                    if (!string.IsNullOrEmpty(rendererName)) p.Entries.Add(StripExe(rendererName));
-                    profileStore.Save(profiles);
-                    learnedGame = p.Name;
+                    string resolved = GameProfileStore.NormalizePath(rendererPath);
+                    if (AnchorNeverElectable(p) && !RendererPathClaimedLocked(p, resolved))
+                    {
+                        PromoteRendererLocked(p, resolved);
+                        promotedGame = p.Name;
+                    }
+                    else
+                    {
+                        p.LearnedExecutablePath = resolved;
+                        if (!string.IsNullOrEmpty(rendererName)) p.Entries.Add(StripExe(rendererName));
+                        profileStore.Save(profiles);
+                        learnedGame = p.Name;
+                    }
                     break;
                 }
             }
-            if (learnedGame != null)
+            if (promotedGame != null)
+            {
+                Logger.Log(Lang.T("log.gamemodelibrary.29") + promotedGame + Lang.T("log.gamemodelibrary.30")
+                    + rendererName + Lang.T("log.gamemodelibrary.31") + rendererPath + " ");
+                RaiseLibraryChanged();
+            }
+            else if (learnedGame != null)
                 Logger.Log(Lang.T("log.gamemodelibrary.2") + learnedGame + Lang.T("log.gamemodelibrary.3") + rendererName
                     + Lang.T("log.gamemodelibrary.4") + rendererPath + " ");
+        }
+
+        private static bool AnchorNeverElectable(GameProfile p)
+        {
+            if (string.IsNullOrEmpty(p.ExecutablePath)) return true;
+            string name = Path.GetFileNameWithoutExtension(p.ExecutablePath);
+            return GameSessionDetector.ElectionVetoed(name, p.ExecutablePath);
+        }
+
+        private bool RendererPathClaimedLocked(GameProfile self, string resolved)
+        {
+            foreach (GameProfile other in profiles)
+            {
+                if (ReferenceEquals(other, self)) continue;
+                if (string.Equals(other.ExecutablePath, resolved, StringComparison.OrdinalIgnoreCase)) return true;
+                if (string.Equals(other.LearnedExecutablePath, resolved, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            return false;
+        }
+
+#if PAVISE_SELFTEST
+        internal void ProbeLearnRenderer(string profileId, string rendererPath, string rendererName)
+        {
+            TryLearnRenderer(profileId, rendererPath, rendererName);
+        }
+#endif
+
+        private void PromoteRendererLocked(GameProfile p, string resolved)
+        {
+            string oldExe = p.ExecutablePath;
+            if (!string.IsNullOrEmpty(oldExe))
+            {
+                p.Entries.Remove(StripExe(Path.GetFileName(oldExe)));
+                if (string.Equals(p.Name, Path.GetFileNameWithoutExtension(oldExe), StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(p.Name, DisplayName(oldExe, null), StringComparison.OrdinalIgnoreCase))
+                    p.Name = DisplayName(resolved, null);
+            }
+            p.ExecutablePath = resolved;
+            p.Root = NormalizeGameRoot(GameScan.InferGameRoot(resolved));
+            p.LearnedExecutablePath = null;
+            p.Entries.Add(StripExe(Path.GetFileName(resolved)));
+            PersistLibraryLocked();
         }
 
         public bool SetProfileForceTrigger(string profileId, bool on)

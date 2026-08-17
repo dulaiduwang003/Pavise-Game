@@ -197,7 +197,8 @@ namespace PaviseApp
             usePauseDl = usePauseDl && slowReady;
             bool usePlan = ResolvePowerPlanEnabled(mode, pPlan);
             SuppressionCore.GpuDemoteEnabled = sp != null ? sp.GpuDemote : gpuDemoteOn;
-            SuppressionCore.SqueezeBackground = sp != null ? sp.SqueezeBackground : squeezeBgOn;
+            SuppressionCore.SqueezeBackground = CpuTopology.SqueezeSupported
+                && (sp != null ? sp.SqueezeBackground : squeezeBgOn);
             doActive = EnvStep("do", usePauseDl, doActive, DoTweak.Activate, DoTweak.Restore);
             wlanActive = EnvStep("wlanscan", pWlan, wlanActive, WlanGuard.Activate, WlanGuard.Restore);
             wuActive = EnvStep("wu", pWu && slowReady, wuActive, UpdatePause.Activate, UpdatePause.Restore);

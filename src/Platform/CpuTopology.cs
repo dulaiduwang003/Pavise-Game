@@ -450,6 +450,15 @@ namespace PaviseApp
         public const int SqueezeMultiGroup = 2;
         public const int SqueezeAlreadyNarrow = 3;
 
+        public static bool SqueezeSupported
+        {
+            get
+            {
+                return physicalCoreMasks.Count >= CpuPartitionPolicy.SqueezeMinPhysical
+                    && !MultiGroup;
+            }
+        }
+
         public static int SqueezeStatusFor(ulong gameMask)
         {
             if (MultiGroup) return SqueezeMultiGroup;

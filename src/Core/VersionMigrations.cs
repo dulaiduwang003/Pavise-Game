@@ -45,9 +45,10 @@ namespace PaviseApp
         public readonly string SettingKey;
         public readonly bool Value;
         public readonly string DoneKey;
+        private readonly Func<bool> applies;
 
         public DefaultReset(string name, string resetIn, string reason,
-            string settingKey, bool value, string doneKey)
+            string settingKey, bool value, string doneKey, Func<bool> appliesFunc)
         {
             Name = name;
             ResetIn = resetIn;
@@ -55,6 +56,13 @@ namespace PaviseApp
             SettingKey = settingKey;
             Value = value;
             DoneKey = doneKey;
+            applies = appliesFunc;
+        }
+
+        public bool Applies()
+        {
+            try { return applies == null || applies(); }
+            catch { return false; }
         }
     }
 
@@ -62,8 +70,8 @@ namespace PaviseApp
     {
         private const string LastRunKey = "LastRunVersion";
 
-        // 1.8.0.3 起收紧数据基线:检测到任何 1.8.0.3 之前版本的数据一律全清 含设置与游戏库
-        private const string DataResetBelow = "1.8.0.3";
+        // 1.8.1.0 起收紧数据基线:检测到任何 1.8.1.0 之前版本的数据一律全清 含设置与游戏库
+        private const string DataResetBelow = "1.8.1.0";
         private const bool DataResetIncludesSettings = true;
 
         private static readonly object lk = new object();
@@ -139,12 +147,12 @@ namespace PaviseApp
                 delegate { return StorageAffinityTweak.HasResidue; },
                 StorageAffinityTweak.Disable),
 
-            new RetiredFeature(Lang.T("t.versionmigrations.42"), "1.8.0.3",
+            new RetiredFeature(Lang.T("t.versionmigrations.42"), "1.8.1.0",
                 Lang.T("t.versionmigrations.43"),
                 delegate { return UsbInterruptAffinityTweak.HasResidue; },
                 UsbInterruptAffinityTweak.Disable),
 
-            new RetiredFeature(Lang.T("t.legacypurge.25"), "1.8.0.3",
+            new RetiredFeature(Lang.T("t.legacypurge.25"), "1.8.1.0",
                 Lang.T("t.versionmigrations.44"),
                 delegate { return GameExeTweaks.HasKindResidue("gpu"); },
                 delegate { GameExeTweaks.RestoreKind("gpu"); return !GameExeTweaks.HasKindResidue("gpu"); }),
@@ -185,7 +193,7 @@ namespace PaviseApp
                 Lang.T("t.versionmigrations.31"),
                 Notif.HasResidue, Notif.Restore),
 
-            new RetiredFeature(Lang.T("t.versionmigrations.39"), "1.8.0.3",
+            new RetiredFeature(Lang.T("t.versionmigrations.39"), "1.8.1.0",
                 Lang.T("t.versionmigrations.41"),
                 delegate { return NvDrsTweaks.HasSnapshotFor(NvDrsTweaks.KeyFrl); },
                 delegate
@@ -194,7 +202,7 @@ namespace PaviseApp
                     return !NvDrsTweaks.HasSnapshotFor(NvDrsTweaks.KeyFrl);
                 }),
 
-            new RetiredFeature(Lang.T("t.versionmigrations.40"), "1.8.0.3",
+            new RetiredFeature(Lang.T("t.versionmigrations.40"), "1.8.1.0",
                 Lang.T("t.versionmigrations.41"),
                 AdlxTweaks.HasFrameLimitResidue,
                 delegate
@@ -229,7 +237,13 @@ namespace PaviseApp
             return Settings.LoadStr(name, "").Length > 0;
         }
 
-        private static readonly DefaultReset[] Resets = new DefaultReset[0];
+        private static readonly DefaultReset[] Resets =
+        {
+            new DefaultReset(Lang.T("gm.squeezebg"), "1.8.1.0",
+                Lang.T("gm.squeezebg.smallcpu"), "GmSqueezeBg", false,
+                "Reset_GmSqueezeBgSmallCpu_1810",
+                delegate { return !CpuTopology.SqueezeSupported; }),
+        };
 
         public static IEnumerable<RetiredFeature> Entries { get { return Retired; } }
 
@@ -242,6 +256,7 @@ namespace PaviseApp
                 foreach (DefaultReset r in Resets)
                 {
                     if (Settings.Load(r.DoneKey, false)) continue;
+                    if (!r.Applies()) continue;
                     Settings.Save(r.SettingKey, r.Value);
                     Settings.Save(r.DoneKey, true);
                     Logger.Log("v" + r.ResetIn + Lang.T("log.versionmigrations.39") + r.Name + Lang.T("log.versionmigrations.40")

@@ -178,7 +178,8 @@ namespace PaviseApp
             VersionMigrations.EnsureSettingsMigrated();
             LoadCustomCoreMask();
             standbySweepOn = Settings.Load("GmStandbySweep", true);
-            squeezeBgOn = Settings.Load("GmSqueezeBg", true);
+            squeezeBgOn = CpuTopology.SqueezeSupported
+                && Settings.Load("GmSqueezeBg", CpuTopology.SqueezeSupported);
             SuppressionCore.SqueezeBackground = squeezeBgOn;
             pauseUpdateOn = Settings.Load("GmPauseUpdate", false);
             nvMaxPerf = Settings.Load("NvMaxPerf", false);
@@ -761,6 +762,7 @@ namespace PaviseApp
                                         Logger.Log(Lang.T("log.gamemode.45") + running);
                                         BeginSessionPolicy();
                                         ReportBegin(running);
+                                        SelfYield.Engage();
                                         StandbySweep.ResetCooldown();
                                         slowEnvAtTicks = DateTime.UtcNow
                                             .AddSeconds(SlowEnvDelaySeconds).Ticks;

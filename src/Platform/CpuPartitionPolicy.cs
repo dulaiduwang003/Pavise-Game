@@ -23,7 +23,8 @@ namespace PaviseApp
             return Math.Min(4, Math.Max(2, physicalCoreCount / 8));
         }
 
-        public const int SqueezeMinPhysical = 5;
+        // 6 核及以下实测会因后台热点集中反伤前台，硬门槛不允许配置绕过。
+        public const int SqueezeMinPhysical = 7;
 
         public static ulong SqueezeMask(ulong[] physicalCores, ulong allowedMask, ulong effMask, bool hybrid)
         {

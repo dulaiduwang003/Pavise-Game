@@ -38,9 +38,10 @@ namespace PaviseApp
 
         public static readonly ReleaseNote[] All = new[]
         {
-            new ReleaseNote("1.8.0.3", "2026-08-16", new[]
+            new ReleaseNote("1.8.1.0", "2026-08-17", new[]
             {
                 new[]{ "重要 升级到本版会清除此前所有旧版本数据 游戏库 白名单 配置与设置一并重置 请重新添加游戏 全新安装不受影响", "Important: upgrading to this version wipes all data from any earlier version — game library, whitelist, configuration and settings are all reset, so you'll need to re-add your games. Fresh installs are unaffected." },
+                new[]{ "调整 经 D3D 消融实测 重压后台绑核收缩会在 6 核及以下处理器上反伤前台性能 本版在这些机器上强制关闭并置灰该项 独占档仍保留优先级 IO 效率模式与突发封口等其余后台压制", "Adjusted: D3D ablation testing found that squeezing heavily suppressed background work onto fewer cores hurts foreground performance on processors with 6 or fewer physical cores. This option is now forced off and greyed out on those machines; Exclusive mode keeps its other background suppression, including priority, I/O, efficiency mode, and burst sealing." },
                 new[]{ "新增 系统环境页可按游戏本体关闭控制流保护 CFG 只改该缓解位保留其它设置 下次启动游戏生效 关闭即逐个还原", "Added: the System Environment page can disable Control Flow Guard per game executable; it touches only that mitigation bit and preserves other settings, takes effect on the next game launch, and restores each one when turned off." },
                 new[]{ "移除驱动级帧率上限 NVIDIA 与 AMD 一并下架 升级后自动还原驱动原值", "Removed the driver-level frame rate cap for both NVIDIA and AMD; original driver values are restored automatically on upgrade." },
                 new[]{ "修复 独立的对局核心解停泊覆盖会在还原路径死循环 反复写回失败刷日志 该覆盖与托管电源计划的停泊设置重复 已移除 真正的停泊优化保留在托管方案内 旧版残留快照升级后自动清理", "Fixed: the standalone in-match core-unparking override could loop on its restore path, spamming repeated write-back failures. It duplicated the managed power plan's parking settings, so it was removed; the real parking optimization stays inside the managed plan, and legacy residue snapshots are cleaned up automatically on upgrade." },

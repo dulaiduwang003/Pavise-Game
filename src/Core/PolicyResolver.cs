@@ -181,7 +181,10 @@ namespace PaviseApp
         public bool SuppressBackground { get { return On(PolicyCatalog.KeySuppress); } }
         public bool BoostGame { get { return On(PolicyCatalog.KeyBoost); } }
         public bool Aggressive { get { return On(PolicyCatalog.KeyAggressive); } }
-        public bool SqueezeBackground { get { return On(PolicyCatalog.KeySqueezeBg); } }
+        public bool SqueezeBackground
+        {
+            get { return CpuTopology.SqueezeSupported && On(PolicyCatalog.KeySqueezeBg); }
+        }
         public bool GpuDemote { get { return On(PolicyCatalog.KeyGpuDemote); } }
         public bool IfeoBoost { get { return On(PolicyCatalog.KeyIfeoBoost); } }
         public bool RenderLane { get { return On(PolicyCatalog.KeyRenderLane); } }

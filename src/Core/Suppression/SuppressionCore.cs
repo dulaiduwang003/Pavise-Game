@@ -41,6 +41,7 @@ namespace PaviseApp
 
             public int OrigQoSControl = -1;
             public int OrigQoSState = -1;
+            public int OrigBoost = -1;
             public long Creation;
             public SuppressionLevel Level;
             public SuppressionLevel AntiCheatLevel;
@@ -294,7 +295,7 @@ namespace PaviseApp
                         if (mustWrite)
                         {
                             if (QueueApplyLocked(pid, name)) return AcquireResult.AlreadyThrottled;
-                            e.Applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e));
+                            e.Applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost);
                             ScheduleAfterApply(e, e.Applied, pid);
                             if (!e.Applied && TryNeutralizeUnwritableLocked(h, pid, e))
                                 return AcquireResult.AlreadyProtected;
@@ -320,7 +321,7 @@ namespace PaviseApp
                             return AcquireResult.AlreadyThrottled;
                         }
                         if (QueueApplyLocked(pid, name)) return AcquireResult.AlreadyThrottled;
-                        e.Applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e));
+                        e.Applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost);
                         ScheduleAfterApply(e, e.Applied, pid);
                         if (!e.Applied && TryNeutralizeUnwritableLocked(h, pid, e))
                             return AcquireResult.AlreadyProtected;
@@ -359,7 +360,9 @@ namespace PaviseApp
                     if (residue && opg == 1) opg = -1;
                     int oqc, oqs;
                     if (!Native.TryQueryPowerThrottling(h, out oqc, out oqs)) { oqc = -1; oqs = -1; }
-                    else if (residue && oqc == 1 && oqs == 1) { oqc = -1; oqs = -1; }
+                    else if (residue && (oqc == 1 || oqc == 5) && oqs == oqc) { oqc = -1; oqs = -1; }
+                    int oboost = Native.QueryBoostDisabled(h);
+                    if (residue && oboost == 1) oboost = 0;
                     int ogpu;
                     if (Native.D3DKMTGetProcessSchedulingPriorityClass(h, out ogpu) != 0) ogpu = -1;
                     else if (residue && ogpu == Native.GpuPriorityIdle) ogpu = Native.GpuPriorityNormal;
@@ -370,7 +373,7 @@ namespace PaviseApp
                     {
                         e.OrigPri = orig; e.OrigAff = oaff; e.OrigIo = oio; e.OrigPg = opg; e.OrigCpuSets = ocpuSets;
                         e.OrigGpu = ogpu;
-                        e.OrigQoSControl = oqc; e.OrigQoSState = oqs;
+                        e.OrigQoSControl = oqc; e.OrigQoSState = oqs; e.OrigBoost = oboost;
                         e.Reasons |= reason; SetReasonLevel(e, reason, level); e.Creation = creation; e.Applied = false;
                         e.Journaled = false;
                         if (group != null && e.Group == null) e.Group = group;
@@ -380,14 +383,15 @@ namespace PaviseApp
                     {
                         var created = new Entry { Name = name, Group = group, OrigPri = orig, OrigAff = oaff,
                             OrigIo = oio, OrigPg = opg, OrigCpuSets = ocpuSets, OrigGpu = ogpu,
-                            OrigQoSControl = oqc, OrigQoSState = oqs, Reasons = reason, Creation = creation };
+                            OrigQoSControl = oqc, OrigQoSState = oqs, OrigBoost = oboost,
+                            Reasons = reason, Creation = creation };
                         SetReasonLevel(created, reason, level);
                         map[pid] = created;
                         active = created;
                     }
                     if (!PersistJournalLocked()) return AcquireResult.ApplyFailed;
                     bool queued = QueueApplyLocked(pid, name);
-                    bool applied = queued || ApplyThrottle(h, level, orig, oaff, ocpuSets, DesiredGpu(active));
+                    bool applied = queued || ApplyThrottle(h, level, orig, oaff, ocpuSets, DesiredGpu(active), oboost);
                     Entry appliedEntry;
                     if (map.TryGetValue(pid, out appliedEntry) && !queued)
                     {
@@ -479,7 +483,7 @@ namespace PaviseApp
                 IntPtr h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_SET_LIMITED_INFORMATION
                     | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
                 bool applied = false;
-                if (h != IntPtr.Zero) { try { if (SameProcess(h, e)) applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e)); } finally { Native.CloseHandle(h); } }
+                if (h != IntPtr.Zero) { try { if (SameProcess(h, e)) applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost); } finally { Native.CloseHandle(h); } }
                 lock (sync)
                 {
                     Entry cur;
@@ -517,7 +521,7 @@ namespace PaviseApp
                 IntPtr h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_SET_LIMITED_INFORMATION
                     | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
                 bool applied = false;
-                if (h != IntPtr.Zero) { try { if (SameProcess(h, e)) applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e)); } finally { Native.CloseHandle(h); } }
+                if (h != IntPtr.Zero) { try { if (SameProcess(h, e)) applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost); } finally { Native.CloseHandle(h); } }
                 lock (sync)
                 {
                     Entry cur;
@@ -702,7 +706,8 @@ namespace PaviseApp
                     }
                     bool previouslyApplied = currentEntry.Applied;
                     int previousFailures = currentEntry.ReconcileFailures;
-                    currentEntry.Applied = ApplyThrottle(h, level, pri, aff, cpuSets, desiredGpu);
+                    currentEntry.Applied = ApplyThrottle(h, level, pri, aff, cpuSets, desiredGpu,
+                        currentEntry.OrigBoost);
                     ScheduleAfterApply(currentEntry, currentEntry.Applied, pid);
                     if (currentEntry.Applied)
                     {
@@ -963,7 +968,8 @@ namespace PaviseApp
                         || currentEntry.OrigAff != aff
                         || !ReferenceEquals(currentEntry.OrigCpuSets, cpuSets))
                         { error = "entry-state"; return false; }
-                    applied = ApplyThrottle(h, level, pri, aff, cpuSets, DesiredGpu(currentEntry));
+                    applied = ApplyThrottle(h, level, pri, aff, cpuSets, DesiredGpu(currentEntry),
+                        currentEntry.OrigBoost);
                     if (!applied && TryNeutralizeUnwritableLocked(h, pid, currentEntry))
                     {
                         error = SelfProtectedDetail;

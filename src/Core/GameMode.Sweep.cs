@@ -47,6 +47,8 @@ namespace PaviseApp
         {
             public int Pid;
             public string Name;
+            public long Creation;
+            public long Cpu;
             public SuppressionLevel Desired;
             public SuppressionLevel Previous;
             public bool HadBackgroundReason;
@@ -92,7 +94,9 @@ namespace PaviseApp
 
             if (AntiCheatCatalog.IsAntiCheatLikeName(name)) return false;
 
-            if (GamePlatformCatalog.IsPlatformProcess(name, path)) return false;
+            // 独占档下平台家族里的纯网页 UI 渲染子进程不再放行 只专注游戏 白名单是唯一例外
+            if (GamePlatformCatalog.IsPlatformProcess(name, path)
+                && !(aggressive && GamePlatformCatalog.IsPlatformWebRenderer(name))) return false;
             if (NetAcceleratorCatalog.IsAcceleratorLikeName(name)) return false;
             if (PeripheralCatalog.IsInputChainProcess(name, path)) return false;
             if (gameHostAncestor) return false;
@@ -227,7 +231,8 @@ namespace PaviseApp
                         }
                     }
 
-                    bool knownLauncherDuringSession = gameSessionActive && IsKnownLauncherShell(nm);
+                    bool knownLauncherDuringSession = gameSessionActive && IsKnownLauncherShell(nm)
+                        && !(aggressive && GamePlatformCatalog.IsPlatformWebRenderer(nm));
                     if (!PerformanceScopeAllows(ipath))
                     {
                         ReleaseBackgroundExemption(pid, nm, null);
@@ -284,6 +289,8 @@ namespace PaviseApp
                     {
                         Pid = pid,
                         Name = nm,
+                        Creation = creation,
+                        Cpu = cpu,
                         Desired = desired,
                         Previous = core.LevelOf(pid, SuppressReason.Background),
                         HadBackgroundReason = core.HasReason(pid, SuppressReason.Background)
@@ -348,6 +355,19 @@ namespace PaviseApp
                 if (!live.Contains(pid)) { if (core.Release(pid, SuppressReason.Background)) ReportUntrack(pid); }
 
             pressure.Prune(live);
+
+            var cageCandidates = new List<CpuCage.Candidate>();
+            foreach (BackgroundRequest request in pending)
+                if ((request.Result == AcquireResult.NewlyThrottled || request.Result == AcquireResult.AlreadyThrottled)
+                    && request.Desired >= SuppressionLevel.Isolated && request.Creation > 0)
+                    cageCandidates.Add(new CpuCage.Candidate
+                    {
+                        Pid = request.Pid,
+                        Name = request.Name,
+                        Creation = request.Creation,
+                        Cpu = request.Cpu
+                    });
+            CpuCage.Observe(aggressive && EffSuppress, cageCandidates);
 
             if (first)
             {
