@@ -148,18 +148,19 @@ namespace PaviseApp
 
         public bool SqueezeBackgroundOn
         {
-            get { return squeezeBgOn; }
+            get { return CpuTopology.SqueezeSupported && squeezeBgOn; }
             set
             {
-                squeezeBgOn = value; Settings.Save("GmSqueezeBg", value);
-                SuppressionCore.SqueezeBackground = value;
+                bool effective = CpuTopology.SqueezeSupported && value;
+                squeezeBgOn = effective; Settings.Save("GmSqueezeBg", effective);
+                SuppressionCore.SqueezeBackground = effective;
                 RequestPolicyApply();
             }
         }
 
         public bool SqueezeBackgroundAvailable
         {
-            get { return CpuTopology.BackgroundSqueezeMask() != 0 && !CpuTopology.MultiGroup; }
+            get { return CpuTopology.SqueezeSupported; }
         }
 
         public bool PauseWindowsUpdate

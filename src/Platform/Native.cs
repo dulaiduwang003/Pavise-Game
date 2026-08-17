@@ -81,6 +81,10 @@ namespace PaviseApp
         public static extern bool SetPriorityClass(IntPtr h, uint cls);
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern uint GetPriorityClass(IntPtr h);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool GetProcessPriorityBoost(IntPtr h, out bool disabled);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool SetProcessPriorityBoost(IntPtr h, bool disable);
         [DllImport("kernel32.dll")]
         public static extern IntPtr GetCurrentProcess();
         [DllImport("advapi32.dll", SetLastError = true)]
@@ -435,9 +439,40 @@ namespace PaviseApp
             finally { CloseHandle(h); }
         }
 
+        private const uint QosSealMask = 5;
+        // 定时器压制位仅较新系统识别 旧系统写入报参数非法 首次失败后全局落回纯限速
+        private static volatile bool timerSealUnavailable;
+
+        public static uint EcoQoSWantMask(bool sealTimer)
+        {
+            return sealTimer && !timerSealUnavailable ? QosSealMask : 1u;
+        }
+
         public static bool ApplyEcoQoS(IntPtr process)
         {
+            return ApplyEcoQoS(process, false);
+        }
+
+        public static bool ApplyEcoQoS(IntPtr process, bool sealTimer)
+        {
+            if (sealTimer && !timerSealUnavailable)
+            {
+                if (SetPowerThrottling(process, QosSealMask, QosSealMask)) return true;
+                if (Marshal.GetLastWin32Error() != 87) return false;
+                timerSealUnavailable = true;
+            }
             return SetPowerThrottling(process, 1, 1);
+        }
+
+        public static int QueryBoostDisabled(IntPtr h)
+        {
+            bool disabled;
+            return GetProcessPriorityBoost(h, out disabled) ? (disabled ? 1 : 0) : -1;
+        }
+
+        public static bool TrySetBoostDisabled(IntPtr h, bool disable)
+        {
+            return SetProcessPriorityBoost(h, disable);
         }
 
         public static bool ApplyHighQoS(IntPtr process, bool ignoreTimerResolution)

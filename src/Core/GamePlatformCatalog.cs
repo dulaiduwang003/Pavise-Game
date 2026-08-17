@@ -347,6 +347,18 @@ namespace PaviseApp
             return null;
         }
 
+        // 纯网页/商店 UI 渲染子进程 与游戏 IPC 无关 独占档不再整家豁免
+        // WeGame 与其余国内平台家族刻意不列入 其与反作弊/游戏的通信结构未知
+        private static readonly HashSet<string> WebRendererNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "steamwebhelper", "epicwebhelper", "uplaywebcore", "blizzardbrowser", "riotclientuxrender"
+        };
+
+        internal static bool IsPlatformWebRenderer(string name)
+        {
+            return !string.IsNullOrEmpty(name) && WebRendererNames.Contains(name.Trim());
+        }
+
         internal static bool IsPlatformShellName(string name)
         {
             return !string.IsNullOrEmpty(name) && ShellNames.Contains(name.Trim());

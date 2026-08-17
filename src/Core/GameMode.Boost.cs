@@ -832,6 +832,8 @@ namespace PaviseApp
 
         private bool Deactivate(string reason, bool quiet)
         {
+            SelfYield.Release();
+            CpuCage.Release();
             lock (sync)
             {
                 active = false;
@@ -840,7 +842,7 @@ namespace PaviseApp
             }
             sessionPolicy = null;
             RestoreGlobalCoreMask();
-            SuppressionCore.SqueezeBackground = squeezeBgOn;
+            SuppressionCore.SqueezeBackground = CpuTopology.SqueezeSupported && squeezeBgOn;
             SuppressionCore.GpuDemoteEnabled = gpuDemoteOn;
             gameGoneSinceTicks = 0;
             cpuSaturation.Reset();

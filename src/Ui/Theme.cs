@@ -56,8 +56,8 @@ namespace PaviseApp
         public static Color Green     { get { return light ? Color.FromArgb(16, 150, 92)   : Color.FromArgb(69, 224, 154); } }
         public static Color Danger    { get { return light ? Color.FromArgb(208, 30, 50)   : Color.FromArgb(255, 72, 88); } }
         public static Color TrackOff  { get { return light ? Color.FromArgb(200, 206, 215) : Color.FromArgb(43, 48, 57); } }
-        private static Color accent = Color.FromArgb(239, 190, 66);
-        private static Color accent2 = Color.FromArgb(184, 117, 24);
+        private static Color accent = Color.FromArgb(52, 208, 148);
+        private static Color accent2 = Color.FromArgb(20, 136, 94);
         private static Color fromAccent = accent, fromAccent2 = accent2;
         private static Color toAccent = accent, toAccent2 = accent2;
         private static float themeT = 1f;
@@ -101,7 +101,7 @@ namespace PaviseApp
                 return light ? Color.FromArgb(222, 36, 58) : Color.FromArgb(255, 61, 82);
             if (mode == PerformancePreset.Custom)
                 return light ? Color.FromArgb(16, 128, 216) : Color.FromArgb(48, 180, 255);
-            return light ? Color.FromArgb(188, 132, 12) : Color.FromArgb(239, 190, 66);
+            return light ? Color.FromArgb(10, 136, 92) : Color.FromArgb(52, 208, 148);
         }
 
         public static Color ModeColor2(PerformancePreset mode)
@@ -113,7 +113,7 @@ namespace PaviseApp
                 return light ? Color.FromArgb(152, 14, 36) : Color.FromArgb(178, 22, 48);
             if (mode == PerformancePreset.Custom)
                 return light ? Color.FromArgb(12, 78, 168) : Color.FromArgb(20, 99, 222);
-            return light ? Color.FromArgb(142, 88, 8) : Color.FromArgb(184, 117, 24);
+            return light ? Color.FromArgb(6, 94, 62) : Color.FromArgb(20, 136, 94);
         }
 
         public static void SetModeColorOverride(PerformancePreset mode, Color color)

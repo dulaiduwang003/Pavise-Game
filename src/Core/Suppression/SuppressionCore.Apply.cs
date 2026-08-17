@@ -122,7 +122,7 @@ namespace PaviseApp
         }
 
         private bool ApplyThrottle(IntPtr h, SuppressionLevel level, uint originalPriority, ulong originalAffinity,
-            uint[] originalCpuSets, int desiredGpu)
+            uint[] originalCpuSets, int desiredGpu, int origBoost)
         {
             Interlocked.Increment(ref applyOperations);
             var failed = new List<string>();
@@ -201,12 +201,23 @@ namespace PaviseApp
                 failed.Add("page-write");
             if (Native.PowerThrottlingSupported)
             {
+                bool sealTimer = level >= SuppressionLevel.Isolated;
+                uint want = Native.EcoQoSWantMask(sealTimer);
                 int qosControl;
                 int qosState;
-                if ((!Native.TryQueryPowerThrottling(h, out qosControl, out qosState)
-                        || (qosControl & 1) == 0 || (qosState & 1) == 0)
-                    && !Native.ApplyEcoQoS(h))
+                bool queried = Native.TryQueryPowerThrottling(h, out qosControl, out qosState);
+                bool overSealed = queried && !sealTimer && ((uint)qosControl & 4u) != 0;
+                if ((!queried || ((uint)qosControl & want) != want || ((uint)qosState & want) != want || overSealed)
+                    && !Native.ApplyEcoQoS(h, sealTimer))
                     failed.Add("eco-write");
+            }
+            if (origBoost == 0)
+            {
+                bool wantDisable = level >= SuppressionLevel.Isolated;
+                int boostNow = Native.QueryBoostDisabled(h);
+                if (boostNow >= 0 && boostNow != (wantDisable ? 1 : 0)
+                    && !Native.TrySetBoostDisabled(h, wantDisable))
+                    failed.Add(wantDisable ? "boost-write" : "boost-unwrite");
             }
             if (Native.GetPriorityClass(h) != desiredPriority) failed.Add("priority-readback");
             if (Native.QueryIoPriority(h) != io) failed.Add("io-readback");
@@ -250,6 +261,12 @@ namespace PaviseApp
         public static bool RestoreValues(IntPtr h, uint pri, ulong aff, int io, int pg, ulong allMask,
             uint[] cpuSets, int qosControl, int qosState, int gpu)
         {
+            return RestoreValues(h, pri, aff, io, pg, allMask, cpuSets, qosControl, qosState, gpu, -1);
+        }
+
+        public static bool RestoreValues(IntPtr h, uint pri, ulong aff, int io, int pg, ulong allMask,
+            uint[] cpuSets, int qosControl, int qosState, int gpu, int boost)
+        {
             bool ok = Native.RestoreCpuSetsVerified(h, cpuSets);
             uint desiredPriority = pri == 0 || pri == uint.MaxValue ? Native.NORMAL_PRIORITY_CLASS : pri;
             ok &= Native.SetPriorityClass(h, desiredPriority);
@@ -259,6 +276,7 @@ namespace PaviseApp
             int rpg = pg >= 0 ? pg : 5; ok &= Native.TrySetPagePriority(h, rpg);
             if (Native.PowerThrottlingSupported)
                 ok &= Native.RestorePowerThrottling(h, qosControl, qosState);
+            if (boost >= 0) ok &= Native.TrySetBoostDisabled(h, boost == 1);
             ok &= Native.GetPriorityClass(h) == desiredPriority;
             ok &= Native.QueryIoPriority(h) == rio;
             ok &= Native.QueryPagePriority(h) == rpg;
@@ -317,7 +335,7 @@ namespace PaviseApp
                     if (creation != e.Creation) return RestoreResult.Gone;
                 }
                 if (RestoreValues(h, e.OrigPri, e.OrigAff, e.OrigIo, e.OrigPg, allMask, e.OrigCpuSets,
-                        e.OrigQoSControl, e.OrigQoSState, e.OrigGpu))
+                        e.OrigQoSControl, e.OrigQoSState, e.OrigGpu, e.OrigBoost))
                     return RestoreResult.Restored;
                 return Native.StillActive(h) ? RestoreResult.Protected : RestoreResult.Gone;
             }
@@ -357,6 +375,18 @@ namespace PaviseApp
         }
 
         internal static bool SnapshotMatchesCurrent(IntPtr h, uint pri, ulong aff, int io, int pg,
+            uint[] cpuSets, int qosControl, int qosState, int gpu, int boost)
+        {
+            if (!SnapshotMatchesCurrent(h, pri, aff, io, pg, cpuSets, qosControl, qosState, gpu)) return false;
+            if (boost >= 0)
+            {
+                int now = Native.QueryBoostDisabled(h);
+                if (now >= 0 && now != boost) return false;
+            }
+            return true;
+        }
+
+        internal static bool SnapshotMatchesCurrent(IntPtr h, uint pri, ulong aff, int io, int pg,
             uint[] cpuSets, int qosControl, int qosState, int gpu)
         {
             if (pri == 0 || pri == uint.MaxValue || io < 0 || pg < 0) return false;
@@ -386,6 +416,7 @@ namespace PaviseApp
 
             if (Native.PowerThrottlingSupported)
                 Native.RestorePowerThrottling(h, e.OrigQoSControl, e.OrigQoSState);
+            if (e.OrigBoost == 0) Native.TrySetBoostDisabled(h, false);
             if (e.OrigGpu >= 0)
             {
                 int gpuCur;

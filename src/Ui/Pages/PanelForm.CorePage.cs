@@ -307,6 +307,7 @@ namespace PaviseApp
             else desc = Lang.T("gm.squeezebg.sub");
 
             swCoreSqueeze.Enabled = !permanent;
+            if (permanent) swCoreSqueeze.SetSilently(false);
             cardCoreSqueeze.Desc = desc;
         }
 

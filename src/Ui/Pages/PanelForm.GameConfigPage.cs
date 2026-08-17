@@ -348,6 +348,9 @@ namespace PaviseApp
             reasonKey = null;
             switch (item.Key)
             {
+                case PolicyCatalog.KeySqueezeBg:
+                    if (!CpuTopology.SqueezeSupported) reasonKey = "gm.squeezebg.smallcpu";
+                    return CpuTopology.SqueezeSupported;
                 case PolicyCatalog.KeyNvMaxPerf:
                 case PolicyCatalog.KeyNvLowLat:
                 case PolicyCatalog.KeyNvShaderCache:
@@ -435,11 +438,12 @@ namespace PaviseApp
 
             var picker = new TierPicker();
             picker.Labels = labels;
-            picker.Index = CfgRowIndexOf(item, values);
+            picker.Index = supported ? CfgRowIndexOf(item, values) : 1;
             int segW = labels.Length >= 6 ? 68 : 78;
             picker.SetBounds(0, 0, Theme.S(labels.Length * segW + 12), Theme.S(30));
+            bool showDisabled = item.Key == PolicyCatalog.KeySqueezeBg && !supported;
             picker.Enabled = supported;
-            picker.Visible = supported;
+            picker.Visible = supported || showDisabled;
 
             int cardH;
             SettingCard card = MakeAutoCard(parent, x, y, w, 54,
@@ -452,15 +456,15 @@ namespace PaviseApp
             {
                 bool has = cfgProfile.Overrides.ContainsKey(key);
                 string globalLabel = CfgValueLabel(item, PolicyResolver.GlobalValue(key));
-                picker.Index = CfgRowIndexOf(item, values);
+                picker.Index = supported ? CfgRowIndexOf(item, values) : 1;
                 bool forcedEffective;
                 bool forced = CfgPresetForces(key, cfgEffMode, out forcedEffective);
                 bool usable = supported && !forced;
                 picker.Enabled = usable;
-                picker.Visible = usable;
-                card.SetLock(forced
-                    ? Lang.T(forcedEffective ? "v14.preset.forced.on" : "v14.preset.forced.off")
-                    : "", forcedEffective);
+                picker.Visible = usable || showDisabled;
+                card.SetLock(!supported ? Lang.T("v14.preset.forced.off")
+                    : forced ? Lang.T(forcedEffective ? "v14.preset.forced.on" : "v14.preset.forced.off")
+                    : "", supported && forcedEffective);
                 card.SetValue(has ? Lang.F("cfg.state.over", globalLabel)
                     : Lang.F("cfg.state.follow", globalLabel), has ? Theme.Accent : Theme.Faint);
             };

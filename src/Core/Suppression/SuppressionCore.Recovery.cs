@@ -39,7 +39,7 @@ namespace PaviseApp
                     if (e.OrigPri == uint.MaxValue) continue;
                     lines.Add(kv.Key + "|" + e.Creation + "|" + B64(e.Name) + "|" + e.OrigPri + "|"
                         + e.OrigAff + "|" + e.OrigIo + "|" + e.OrigPg + "|" + CpuSetsText(e.OrigCpuSets)
-                        + "|" + e.OrigQoSControl + "|" + e.OrigQoSState + "|" + e.OrigGpu);
+                        + "|" + e.OrigQoSControl + "|" + e.OrigQoSState + "|" + e.OrigGpu + "|" + e.OrigBoost);
                 }
                 if (lines.Count == 1)
                 {
@@ -108,6 +108,9 @@ namespace PaviseApp
             }
             int gpu = -1;
             if (a.Length >= 11 && !int.TryParse(a[10], out gpu)) gpu = -1;
+            int boost = -1;
+            if (a.Length >= 12 && !int.TryParse(a[11], out boost)) boost = -1;
+            if (boost < -1 || boost > 1) boost = -1;
             string name = Un64(a[2]);
             if (name == null) return null;
             return new Entry
@@ -121,7 +124,8 @@ namespace PaviseApp
                 OrigCpuSets = cpuSets,
                 OrigQoSControl = qosControl,
                 OrigQoSState = qosState,
-                OrigGpu = gpu
+                OrigGpu = gpu,
+                OrigBoost = boost
             };
         }
 
@@ -184,12 +188,13 @@ namespace PaviseApp
                         if (identity == JournalIdentity.Mismatch) continue;
                         if (identity == JournalIdentity.Unknown) { keep.Add(lines[i]); continue; }
                         if (SnapshotMatchesCurrent(h, entry.OrigPri, entry.OrigAff, entry.OrigIo, entry.OrigPg,
-                            entry.OrigCpuSets, entry.OrigQoSControl, entry.OrigQoSState, entry.OrigGpu))
+                            entry.OrigCpuSets, entry.OrigQoSControl, entry.OrigQoSState, entry.OrigGpu, entry.OrigBoost))
                         {
                             restored++;
                         }
                         else if (RestoreValues(h, entry.OrigPri, entry.OrigAff, entry.OrigIo, entry.OrigPg, CpuTopology.AllMask,
-                            entry.OrigCpuSets, entry.OrigQoSControl, entry.OrigQoSState, entry.OrigGpu)) restored++;
+                            entry.OrigCpuSets, entry.OrigQoSControl, entry.OrigQoSState, entry.OrigGpu,
+                            entry.OrigBoost)) restored++;
                         else keep.Add(lines[i]);
                     }
                     catch (Exception ex)
@@ -215,7 +220,7 @@ namespace PaviseApp
             int pid;
             Entry e = ParseJournalLine(raw, out pid);
             if (e == null) return "null";
-            return pid + "|" + e.OrigQoSControl + "|" + e.OrigQoSState + "|" + e.OrigGpu;
+            return pid + "|" + e.OrigQoSControl + "|" + e.OrigQoSState + "|" + e.OrigGpu + "|" + e.OrigBoost;
         }
 #endif
 
