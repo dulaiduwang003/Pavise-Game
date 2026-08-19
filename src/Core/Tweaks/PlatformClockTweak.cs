@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 校正老优化教程写进启动配置的平台时钟覆盖 回到系统默认
-
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -40,8 +39,6 @@ namespace PaviseApp
             catch { return null; }
         }
 
-        // bcdedit 的布尔显示随系统语言本地化 覆盖主流语言的是/否令牌
-        // 已知否定=显式关闭≈默认 不算残留 未知语言按残留处理但原样记录 还原写不回会显式报错而不是写反
         private static readonly HashSet<string> YesTokens = new HashSet<string>(StringComparer.Ordinal)
         {
             "yes", "true", "1", "是", "はい", "예", "да", "oui", "ja", "sí", "sì", "si", "sim",

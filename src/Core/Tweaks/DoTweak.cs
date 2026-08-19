@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 限制传递优化并管理相关服务状态
-
 using System;
 using Microsoft.Win32;
 
@@ -21,7 +20,6 @@ namespace PaviseApp
             lock (lk)
             {
                 if (active) return true;
-                // 域机上该策略键归组策略管 刷新周期会覆盖本地写入并与还原互相打架 只走服务停启通道
                 bool registryOk = false;
                 if (!Native.IsDomainJoined()) registryOk = BgBw.Apply(1);
                 else Logger.Log(Lang.T("log.dotweak.9"));

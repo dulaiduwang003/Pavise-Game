@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 解析逐游戏覆盖与全局默认 生成对局冻结快照
-
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -121,8 +120,6 @@ namespace PaviseApp
 
     internal sealed class PolicySnapshot
     {
-        // 只钉住每游戏覆盖项 未覆盖项每次访问活读全局
-        // 否则对局中修改全局模式或开关会被冻结值吞掉 必须退游戏才生效
         private readonly Dictionary<string, string> values =
             new Dictionary<string, string>(StringComparer.Ordinal);
         private readonly HashSet<string> overridden = new HashSet<string>(StringComparer.Ordinal);
@@ -188,6 +185,8 @@ namespace PaviseApp
         public bool GpuDemote { get { return On(PolicyCatalog.KeyGpuDemote); } }
         public bool IfeoBoost { get { return On(PolicyCatalog.KeyIfeoBoost); } }
         public bool RenderLane { get { return On(PolicyCatalog.KeyRenderLane); } }
+        public bool FrameDiag { get { return On(PolicyCatalog.KeyFrameDiag); } }
+        public bool FrameAct { get { return On(PolicyCatalog.KeyFrameAct); } }
         public bool StrictCores { get { return On(PolicyCatalog.KeyStrictCores); } }
         public bool CoreDomainAlt { get { return On(PolicyCatalog.KeyCoreDomainAlt); } }
         public bool StandbySweep { get { return On(PolicyCatalog.KeyStandbySweep); } }
@@ -221,6 +220,8 @@ namespace PaviseApp
         public bool EffBoost { get { return BoostGame; } }
         public bool EffIfeo { get { return IfeoBoost; } }
         public bool EffLane { get { return RenderLane; } }
+        public bool EffFrameDiag { get { return FrameDiag; } }
+        public bool EffFrameAct { get { return FrameDiag && FrameAct; } }
         public bool EffAggressive { get { return GameMode.IsAggressive(Preset, Aggressive); } }
     }
 }

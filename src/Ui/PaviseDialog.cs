@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 统一的自绘弹窗 机能面板风格 UI 层不直接调用 MessageBox
-
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -14,8 +13,10 @@ namespace PaviseApp
     {
         private const int DlgW = 468;
         private const int PadX = 26;
-        private const int TitleTop = 30;
-        private const int BodyTop = 62;
+        private const int TagTop = 17;
+        private const int TagHeight = 16;
+        private const int TitleTop = 43;
+        private const int BodyTop = 75;
         private const int BtnH = 34;
         private const int BtnGap = 10;
         private const int BottomPad = 22;
@@ -178,10 +179,10 @@ namespace PaviseApp
             int skew = Theme.S(9);
             var tagPts = new[]
             {
-                new Point(Theme.S(PadX) + skew, Theme.S(14)),
-                new Point(Theme.S(PadX) + Theme.S(74) + skew, Theme.S(14)),
-                new Point(Theme.S(PadX) + Theme.S(74) - skew, Theme.S(14) + Theme.S(15)),
-                new Point(Theme.S(PadX) - skew, Theme.S(14) + Theme.S(15))
+                new Point(Theme.S(PadX) + skew, Theme.S(TagTop)),
+                new Point(Theme.S(PadX) + Theme.S(74) + skew, Theme.S(TagTop)),
+                new Point(Theme.S(PadX) + Theme.S(74) - skew, Theme.S(TagTop + TagHeight)),
+                new Point(Theme.S(PadX) - skew, Theme.S(TagTop + TagHeight))
             };
             using (var tagFill = new SolidBrush(Color.FromArgb(38, accent)))
                 g.FillPolygon(tagFill, tagPts);
@@ -191,7 +192,7 @@ namespace PaviseApp
             using (var tb = new SolidBrush(accent))
             using (var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
                 g.DrawString(KindTag, tagFont, tb,
-                    new RectangleF(Theme.S(PadX), Theme.S(14), Theme.S(74), Theme.S(15)), fmt);
+                    new RectangleF(Theme.S(PadX), Theme.S(TagTop), Theme.S(74), Theme.S(TagHeight)), fmt);
 
             Font titleFont = Theme.UI(12.5f, true);
             using (var tb = new SolidBrush(Theme.Fg))

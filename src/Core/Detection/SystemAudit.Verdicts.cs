@@ -1,6 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 系统体检结论分部 汇总事实生成带依据的处理建议
-
 using System;
 using System.Collections.Generic;
 
@@ -212,18 +211,20 @@ namespace PaviseApp
                 });
             }
 
-            // X3D 双缓存平台停泊是调度机制的一部分 对局中也不解除 不作为提示项
             bool coreUnparked;
             if (!CpuTopology.AsymCache
                 && PowerPlan.TryCurrentUnparked(out coreUnparked) && !coreUnparked)
             {
+                bool partitionActive = GameMode.ShouldUseCorePartition(facts.PartitionOn, facts.Partition);
                 report.Verdicts.Add(new AuditRow
                 {
                     Name = Lang.T("t.legacypurge.3"),
-                    Value = Lang.T("t.systemauditverdicts.56"),
-                    Note = Lang.T("t.systemauditverdicts.57"),
+                    Value = Lang.T(partitionActive
+                        ? "t.systemauditverdicts.58" : "t.systemauditverdicts.56"),
+                    Note = Lang.T("t.systemauditverdicts.57")
+                        + (partitionActive ? Lang.T("t.systemauditverdicts.59") : ""),
                     Evidence = EvMechanism,
-                    Warn = false
+                    Warn = partitionActive
                 });
             }
         }

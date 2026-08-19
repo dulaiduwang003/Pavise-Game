@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 创建和移除登录启动计划任务
-
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -56,7 +55,6 @@ namespace PaviseApp
             {
                 string xml = BuildStartupTaskXml(Application.ExecutablePath);
                 if (xml == null) return -1;
-                // %TEMP% 常被安全软件或磁盘清理拦截 落到应用数据目录更稳 失败仍有 CLI 回退
                 string dir = string.IsNullOrEmpty(Paths.Data) ? Path.GetTempPath() : Paths.Data;
                 path = Path.Combine(dir, "Pavise_" + Guid.NewGuid().ToString("N") + ".xml");
                 using (var fs = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read))
@@ -175,8 +173,6 @@ namespace PaviseApp
                     if (CreateStartupTask() != 0)
                         Logger.Log(pathChanged ? Lang.T("log.taskhelper.8") : Lang.T("log.taskhelper.9"));
                 }
-                // 仅设置过期:只有 XML 注册能补齐电池/时限设置 CLI 回退补不了
-                // 失败保留现有任务直接返回 避免删建循环与假成功日志
                 else if (CreateStartupTaskFromXml() == 0)
                 {
                     cachedExists = 1;
@@ -188,8 +184,6 @@ namespace PaviseApp
             catch { }
         }
 
-        // 电池条件与执行时限必须显式为安全值 缺项即视为过期任务
-        // 任务计划默认 DisallowStartIfOnBatteries=true StopIfGoingOnBatteries=true ExecutionTimeLimit=PT72H
         internal static bool StartupTaskSettingsStale(string xml)
         {
             if (string.IsNullOrWhiteSpace(xml)) return false;

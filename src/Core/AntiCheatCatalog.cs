@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 维护反作弊进程目录和分组配置
-
 using System;
 using System.Collections.Generic;
 
@@ -82,6 +81,11 @@ namespace PaviseApp
         {
             if (IsKnownProcess(name)) return true;
             return ContainsToken((name ?? "").ToLowerInvariant());
+        }
+
+        internal static string[] NameTokensForDisplay()
+        {
+            return (string[])NameTokens.Clone();
         }
     }
 

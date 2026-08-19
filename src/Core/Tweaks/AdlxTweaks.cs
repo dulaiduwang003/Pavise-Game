@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 会话期间应用 AMD 全局 3D 设置 快照先行 回读核验 退出恢复 崩溃续还原 实验性
-
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -20,8 +19,6 @@ namespace PaviseApp
 
         private static bool renderSkipLogged;
 
-        // AMD 核显+他家独显的混合机上游戏在独显渲染 写核显的对局功能零效果 跳过
-        // 枚举不出适配器时回退旧行为(信任 ADLX 在场) 避免探测故障误杀真 AMD 机
         private static bool AmdRenderGateOpen()
         {
             GpuAdapter[] all = GpuInventory.Adapters();
@@ -117,7 +114,6 @@ namespace PaviseApp
                 delegate(IntPtr gpu, string orig) { return AdlxApi.EnhancedSyncSet(gpu, orig == "1"); });
         }
 
-        // 限帧功能已下架 Chill 与 FRTC 只保留还原壳 清理旧版本写下的残留
         public static bool RestoreChill()
         {
             return RestoreFeature("chill", "Chill",
@@ -208,7 +204,6 @@ namespace PaviseApp
             return RestoreChill() & RestoreFrtc();
         }
 
-        // 供退役迁移判断是否还有旧版限帧残留需要还原
         public static bool HasFrameLimitResidue()
         {
             var snapshot = LoadSnap();

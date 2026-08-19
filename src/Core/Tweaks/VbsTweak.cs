@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 关闭并恢复 VBS 内存完整性和虚拟机监控程序
-
 using System;
 using System.Diagnostics;
 using System.Management;
@@ -28,7 +27,6 @@ namespace PaviseApp
 
         public static bool DisabledByPavise { get { return Settings.Load("VbsDisabledByPavise", false); } }
 
-        // 组策略/MDM 强制或 UEFI 锁定的机器上关不掉 写了也会被策略刷新或固件覆盖 状态永远停在等待重启
         public static bool BlockedReason(out string reasonKey)
         {
             reasonKey = null;

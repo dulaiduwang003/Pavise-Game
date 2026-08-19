@@ -1,7 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 按游戏程序图形设置的历史残留还原与字段工具 gpu/igpu/fso 三类写入路径均已退役
-// gpu(强制独显)1.8.1.0 下架:按 exe 写注册表且下次启动才生效 属持久改动 不该混在对局链里装作会话功能
-
 using System;
 using System.Collections.Generic;
 using Microsoft.Win32;
@@ -176,7 +174,6 @@ namespace PaviseApp
             return null;
         }
 
-        // 游戏被显式钉在省电 GPU(核显)时为真 供探测器避免无谓唤醒休眠独显
         public static bool PrefersIntegrated(string exePath)
         {
             if (string.IsNullOrEmpty(exePath)) return false;

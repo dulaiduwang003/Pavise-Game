@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 构建优化策略页 并按当前预设锁定或放开自定义项
-
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -16,11 +15,11 @@ namespace PaviseApp
         private TierPicker pickPolicyCores;
         private Toggle swPolicyBackground, swPolicyAggressive;
         private Toggle swPolicyPauseDl, swPolicyDvr;
-        private Toggle swPolicyGpuDemote, swPolicyBoost, swPolicyIfeo, swPolicyLane;
+        private Toggle swPolicyGpuDemote, swPolicyBoost, swPolicyIfeo, swPolicyLane, swPolicyMmcss;
         private Toggle swPolicyPauseWu, swPolicyWlan, swPolicyAwake;
         private SettingCard cardPolicyCores, cardPolicyAggressive;
         private SettingCard cardPolicyPauseDl, cardPolicyDvr;
-        private SettingCard cardPolicyBackground, cardPolicyGpuDemote, cardPolicyBoost, cardPolicyIfeo, cardPolicyLane;
+        private SettingCard cardPolicyBackground, cardPolicyGpuDemote, cardPolicyBoost, cardPolicyIfeo, cardPolicyLane, cardPolicyMmcss;
         private SettingCard cardPolicyPauseWu, cardPolicyWlan, cardPolicyAwake;
         private readonly List<Action> policySync = new List<Action>();
 
@@ -65,6 +64,9 @@ namespace PaviseApp
             swPolicyLane = AddPolicyToggle(scroll, ref sy, Lang.T("gm.lane"), Lang.T("gm.lane.sub"),
                 delegate { return gameMode.RenderLaneOn; }, delegate(bool v) { gameMode.RenderLaneOn = v; });
             cardPolicyLane = (SettingCard)swPolicyLane.Parent;
+            swPolicyLane.CheckedChanged += delegate { RefreshPolicyPresentation(); };
+            AddPolicyLink(scroll, ref sy, Lang.T("gm.framediag"), Lang.T("gm.framediag.moved"),
+                delegate { nav.Select((int)PageId.Stutter); });
 
             BuildCorePage(policyTabPanels[1]);
 
@@ -77,6 +79,9 @@ namespace PaviseApp
             cardPolicyPauseDl = (SettingCard)swPolicyPauseDl.Parent;
             swPolicyDvr = AddPolicyToggle(scroll, ref sy, Lang.T("set.dvr"), Lang.T("set.dvr.sub"), delegate { return gameMode.KillGameDvr; }, delegate(bool v) { gameMode.KillGameDvr = v; });
             cardPolicyDvr = (SettingCard)swPolicyDvr.Parent;
+            swPolicyMmcss = AddPolicyToggle(scroll, ref sy, Lang.T("gm.mmcss"), Lang.T("gm.mmcss.sub"),
+                delegate { return gameMode.MmcssOn; }, delegate(bool v) { gameMode.MmcssOn = v; });
+            cardPolicyMmcss = (SettingCard)swPolicyMmcss.Parent;
             scroll = policyTabPanels[3]; sy = 2;
             AddPolicyToggle(scroll, ref sy, Lang.T("gm.standby"), Lang.T("gm.standby.sub"),
                 delegate { return gameMode.PurgeStandby; }, delegate(bool v) { gameMode.PurgeStandby = v; });
@@ -275,6 +280,16 @@ namespace PaviseApp
                 ? Lang.T("cpu.place.generic.desc") : Lang.T("cpu.place.unavailable.desc");
         }
 
+        private void AddPolicyLink(Control parent, ref int y, string title, string desc, Action go)
+        {
+            var btn = new PillButton(Lang.T("gm.goto"), BtnKind.Normal);
+            btn.SetBounds(0, 0, Theme.S(120), Theme.S(30));
+            btn.Click += delegate { go(); };
+            int cardH;
+            MakeAutoCard(parent, 6, y, ScrollContentW, 64, title, desc, btn, out cardH);
+            y += cardH + 8;
+        }
+
         private Toggle AddPolicyToggle(Control parent, ref int y, string title, string desc, Func<bool> read, Action<bool> write)
         {
             return AddPolicyToggle(parent, ref y, title, desc, read, write, 0);
@@ -308,9 +323,14 @@ namespace PaviseApp
             ApplyPresetPolicy(swPolicyAggressive, cardPolicyAggressive, Lang.T("gm.aggressive"), !custom, competitive);
             ApplyPresetPolicy(swPolicyPauseDl, cardPolicyPauseDl, Lang.T("gm.pausedl"), !custom, competitive);
             ApplyPresetPolicy(swPolicyDvr, cardPolicyDvr, Lang.T("set.dvr"), !custom, competitive);
+            ApplyPresetPolicy(swPolicyMmcss, cardPolicyMmcss, Lang.T("gm.mmcss"), false, true);
+            if (swPolicyMmcss != null && !elevated)
+            {
+                swPolicyMmcss.Enabled = false;
+                if (cardPolicyMmcss != null) cardPolicyMmcss.Desc = Lang.T("vbs.needadmin");
+            }
             ApplyPresetPolicy(swPolicyPauseWu, cardPolicyPauseWu, Lang.T("gm.pausewu"), false, true);
             ApplyPresetPolicy(swPolicyWlan, cardPolicyWlan, Lang.T("gm.wlanguard"), false, true);
-            // 无无线网卡的机器上此项无事可做 置灰注明 已开启的仍可关回
             if (swPolicyWlan != null && !WlanGuard.HasWirelessInterface() && !gameMode.WlanScanGuard)
             {
                 swPolicyWlan.Enabled = false;

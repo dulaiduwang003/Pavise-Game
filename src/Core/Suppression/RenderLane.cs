@@ -1,18 +1,24 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 识别游戏的帧关键线程并单独抬高其调度权重 识别失败限次限频重试 成功后全程不再轮询
-
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 
 namespace PaviseApp
 {
+    internal enum LaneState
+    {
+        Idle = 0,
+        Trying = 1,
+        Engaged = 2,
+        Unavailable = 3
+    }
+
     internal static class RenderLane
     {
         internal const double MinDominantShare = 0.35;
         private const int SampleGapMs = 800;
         private const int MaxThreads = 512;
-        // 加载期解压/编译并行度高 常无主导线程 进入正局后重试更容易认准 限次限频防止无界枚举
         private const int MaxIdentifyTries = 5;
         private const int RetryGapSeconds = 60;
 
@@ -92,7 +98,16 @@ namespace PaviseApp
             lock (sync) return laneApplied && lanePid == pid && laneCreation == creation;
         }
 
-        // 结论不会随重试改变的终态直接耗尽额度 免掉后续每次 800ms 采样与句柄打开
+        public static LaneState StateFor(int pid, long creation)
+        {
+            lock (sync)
+            {
+                if (laneApplied && lanePid == pid && laneCreation == creation) return LaneState.Engaged;
+                if (triedPid != pid || triedCreation != creation) return LaneState.Idle;
+                return tryCount >= MaxIdentifyTries ? LaneState.Unavailable : LaneState.Trying;
+            }
+        }
+
         private static void ExhaustTries(int pid, long creation)
         {
             lock (sync)
@@ -137,7 +152,6 @@ namespace PaviseApp
                 false, best.Tid);
             if (h == IntPtr.Zero)
             {
-                // 反作弊拒写句柄不会随重试改变 耗尽额度 避免每 60 秒对受保护进程重开写句柄
                 ExhaustTries(pid, creation);
                 if (logThis) Logger.Log(Lang.T("log.renderlane.7"));
                 return;
@@ -152,7 +166,6 @@ namespace PaviseApp
                 }
                 if (original >= Native.THREAD_PRIORITY_HIGHEST)
                 {
-                    // 线程已是最高权重属终态 重试不会改变结论
                     ExhaustTries(pid, creation);
                     if (logThis) Logger.Log(Lang.T("log.renderlane.3") + (gameName ?? "?") + Lang.T("log.renderlane.9"));
                     return;

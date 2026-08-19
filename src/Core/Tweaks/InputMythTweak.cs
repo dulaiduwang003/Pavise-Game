@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 校正第三方优化工具在键鼠驱动上留下的队列长度改动 回到系统默认 可逆
-
 using System;
 using System.Collections.Generic;
 using Microsoft.Win32;
@@ -48,8 +47,6 @@ namespace PaviseApp
 
         internal static bool IsTampered(int? value)
         {
-            // 只有小于默认才算残留 队列截短会在高回报率下丢输入
-            // 大于默认多为 8kHz 外设厂商软件刻意调大防丢包 属正常配置不碰
             return value.HasValue && value.Value < SystemDefault;
         }
 

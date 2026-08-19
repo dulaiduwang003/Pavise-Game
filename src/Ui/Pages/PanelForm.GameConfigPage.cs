@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 构建单个游戏的独立配置二级页 标签内分节平铺 逐核分配与覆盖编辑
-
 using System;
 using System.Collections.Generic;
 using System.Drawing;

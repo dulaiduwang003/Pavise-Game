@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 保存游戏配置并迁移旧版数据
-
 using System;
 using System.Collections.Generic;
 using System.IO;

@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 绘制界面使用的矢量图形符号
-
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -92,6 +91,11 @@ namespace PaviseApp
                     g.DrawLine(pen, P(x,y,u,4,19), P(x,y,u,4,5));
                     g.DrawLine(pen, P(x,y,u,4,19), P(x,y,u,20,19));
                     g.DrawLines(pen, new[] { P(x,y,u,6,15), P(x,y,u,10,11), P(x,y,u,13,13), P(x,y,u,19,6) });
+                }
+                else if (name == "pulse")
+                {
+                    g.DrawLines(pen, new[] { P(x,y,u,3,14), P(x,y,u,7,14), P(x,y,u,9,6),
+                        P(x,y,u,12,19), P(x,y,u,15,14), P(x,y,u,21,14) });
                 }
                 else if (name == "settings")
                 {

@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 负责游戏提优 环境调整和退出恢复
-
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -28,6 +27,7 @@ namespace PaviseApp
             public string RendererPath;
             public string RendererProfileId;
             public bool RendererLearnable;
+            public bool WriteDenied;
             public uint PriorityTarget;
         }
 
@@ -36,7 +36,6 @@ namespace PaviseApp
             var live = new HashSet<int>();
             BoostPass pass = PrepareBoostPass();
             DropStaleBoosts(pass);
-            ResolvePriorityTarget(pass);
             foreach (ProcEntry p in all.Entries)
             {
                 try
@@ -44,9 +43,7 @@ namespace PaviseApp
                     int pid = p.Pid;
                     live.Add(pid);
                     if (pass.RendererPid <= 0 || pid != pass.RendererPid) continue;
-                    // 已确认这是本会话渲染进程 无论是否被反作弊保护 都在此按开关关闭其控制流保护
                     if (CfgOffTweak.Enabled) CfgOffTweak.EnsureForGame(pass.RendererName);
-                    if (ProtectedGameRoster.Contains(pass.RendererName)) continue;
                     bool known, needTweak, needPlacement;
                     if (!ComputeAuditDue(pid, pass, out known, out needTweak, out needPlacement)) continue;
                     IntPtr h = OpenBoostHandle(pid, pass);
@@ -111,6 +108,8 @@ namespace PaviseApp
                     pass.RendererLearnable =
                         activeDetection.RendererLearnable;
                 }
+            pass.WriteDenied = pass.RendererPid > 0 && ProtectedGameRoster.Contains(pass.RendererName);
+            pass.PriorityTarget = Native.HIGH_PRIORITY_CLASS;
             return pass;
         }
 
@@ -134,50 +133,24 @@ namespace PaviseApp
             if (staleBoost) UnboostGames(pass.RendererPid, pass.RendererCreation, pass.RendererName);
         }
 
-        private void ResolvePriorityTarget(BoostPass pass)
-        {
-            bool saturated = cpuSaturation.Update(cpuSaturation.Sample());
-            bool laneActive = pass.RendererPid > 0
-                && RenderLane.IsActiveFor(pass.RendererPid, pass.RendererCreation);
-            uint priorityTarget = BoostPriorityTarget(saturated, laneActive);
-            if (priorityTarget != boostPriorityTarget)
-            {
-                boostPriorityTarget = priorityTarget;
-                if (pass.RendererPid > 0)
-                {
-                    lock (sync)
-                    {
-                        boostStateVerified.Remove(pass.RendererPid);
-                        gameBoostNextAudit.Remove(pass.RendererPid);
-                        boostStateFail.Remove(pass.RendererPid);
-                    }
-                    Logger.Log(priorityTarget == Native.NORMAL_PRIORITY_CLASS
-                        ? Lang.T("log.gamemodeboost.1")
-                        : Lang.T("log.gamemodeboost.2"));
-                }
-            }
-            pass.PriorityTarget = priorityTarget;
-        }
-
         private bool ComputeAuditDue(int pid, BoostPass pass,
             out bool known, out bool needTweak, out bool needPlacement)
         {
-            bool retryEco, auditDue, stripped;
+            bool retryEco, auditDue, writeBlocked;
             lock (sync)
             {
-                stripped = boostHandleStripped.Contains(pid);
+                writeBlocked = pass.WriteDenied || boostHandleStripped.Contains(pid);
                 known = gameBoost.ContainsKey(pid);
-                retryEco = boostFail.ContainsKey(pid) && !boostEcoGaveUp.Contains(pid);
+                retryEco = !writeBlocked && boostFail.ContainsKey(pid) && !boostEcoGaveUp.Contains(pid);
                 needTweak = !tweakApplied.Contains(pid);
                 ulong placed; bool placedStrict;
-                needPlacement = !placementGaveUp.Contains(pid)
+                needPlacement = !writeBlocked && !placementGaveUp.Contains(pid)
                     && (!gamePlacement.TryGetValue(pid, out placed) || placed != pass.DesiredMask
                         || !gamePlacementStrict.TryGetValue(pid, out placedStrict) || placedStrict != pass.UseStrict);
                 long nextAudit;
                 auditDue = !known || retryEco || needTweak || needPlacement
                     || !gameBoostNextAudit.TryGetValue(pid, out nextAudit)
                     || DateTime.UtcNow.Ticks >= nextAudit;
-                if (stripped) auditDue = needTweak;
             }
             return auditDue;
         }
@@ -313,6 +286,18 @@ namespace PaviseApp
             out bool stateOk, out bool firstVerified)
         {
             firstVerified = false;
+            if (pass.WriteDenied)
+            {
+                stateOk = false;
+                lock (sync)
+                {
+                    boostStateVerified.Remove(pid);
+                    placementGaveUp.Add(pid);
+                    boostEcoGaveUp.Add(pid);
+                    gameBoostNextAudit[pid] = DateTime.UtcNow.AddSeconds(20 + Math.Abs(pid % 11)).Ticks;
+                }
+                return true;
+            }
             uint actualPriority;
             int actualIo, writeError;
             stateOk = ApplyAndVerifyBoostState(h, pass.PriorityTarget, out actualPriority, out actualIo, out writeError);
@@ -488,7 +473,7 @@ namespace PaviseApp
         private void EngageLaneAndReport(IntPtr h, ProcessSnapshot all, int pid, long currentCreation,
             BoostPass pass, bool stateOk, bool firstVerified, bool gpuOk, bool ecoCleared, string placementText)
         {
-            if (EffLane && stateOk && !RenderLane.IsActiveFor(pid, currentCreation))
+            if (EffLane && !pass.WriteDenied && !RenderLane.IsActiveFor(pid, currentCreation))
                 RenderLane.EnsureForGame(pid, currentCreation, pass.RendererName);
 
             if (stateOk && firstVerified)
@@ -518,11 +503,80 @@ namespace PaviseApp
                     Rebar = pass.NvRebar,
                     DlssMode = pass.NvDlss
                 };
-                // 空计划也要调用 让上次会话写过而本次全关的键得到还原
                 List<string> nvFailed = NvDrsTweaks.ApplyForGame(imagePath, nvPlan);
                 if (!nvPlan.Empty) HandleNvTweakOutcome(nvFailed, nvPlan);
                 lock (sync) tweakApplied.Add(pid);
             }
+        }
+
+        private enum BoostTarget { Alive = 0, Gone = 1, Unopenable = 2 }
+
+        private static BoostTarget ProbeBoostTarget(int pid, long creation)
+        {
+            IntPtr h = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+            if (h == IntPtr.Zero)
+                return System.Runtime.InteropServices.Marshal.GetLastWin32Error() == 87
+                    ? BoostTarget.Gone : BoostTarget.Unopenable;
+            try
+            {
+                long cur, cpu;
+                ulong io;
+                if (!Native.QueryProcessSample(h, out cur, out cpu, out io)) return BoostTarget.Unopenable;
+                if (creation > 0 && cur != creation) return BoostTarget.Gone;
+                return Native.StillActive(h) ? BoostTarget.Alive : BoostTarget.Gone;
+            }
+            finally { Native.CloseHandle(h); }
+        }
+
+        private const int VanishGiveUpTries = 20;
+        private readonly Dictionary<int, int> boostVanishTries = new Dictionary<int, int>();
+
+        internal int DropVanishedBoosts()
+        {
+            var pending = new List<KeyValuePair<int, Snap>>();
+            lock (sync)
+                foreach (KeyValuePair<int, Snap> kv in gameBoost) pending.Add(kv);
+            if (pending.Count == 0) return 0;
+
+            int dropped = 0, abandoned = 0;
+            foreach (KeyValuePair<int, Snap> kv in pending)
+            {
+                BoostTarget state = ProbeBoostTarget(kv.Key, kv.Value.Creation);
+                if (state == BoostTarget.Alive)
+                {
+                    lock (sync) boostVanishTries.Remove(kv.Key);
+                    continue;
+                }
+                if (state == BoostTarget.Unopenable)
+                {
+                    int tries;
+                    lock (sync)
+                    {
+                        boostVanishTries.TryGetValue(kv.Key, out tries);
+                        tries++;
+                        boostVanishTries[kv.Key] = tries;
+                    }
+                    if (tries < VanishGiveUpTries) continue;
+                    abandoned++;
+                }
+                CrashGuard.ReleaseBoostProcess(kv.Key, kv.Value.Creation);
+                lock (sync)
+                {
+                    boostVanishTries.Remove(kv.Key);
+                    gameBoost.Remove(kv.Key); gameGpu.Remove(kv.Key);
+                    gamePlacement.Remove(kv.Key); gamePlacementStrict.Remove(kv.Key);
+                    boostFail.Remove(kv.Key); boostStateWarned.Remove(kv.Key);
+                    boostStateVerified.Remove(kv.Key); boostHandleStripped.Remove(kv.Key);
+                    boostEcoGaveUp.Remove(kv.Key); placementGaveUp.Remove(kv.Key);
+                    placementFail.Remove(kv.Key); boostStateFail.Remove(kv.Key);
+                    gameBoostNextAudit.Remove(kv.Key); boostDenied.Remove(kv.Key);
+                    tweakApplied.Remove(kv.Key);
+                }
+                dropped++;
+            }
+            if (dropped > 0)
+                Logger.Log((abandoned > 0 ? Lang.T("log.gamemodeboost.58") : Lang.T("log.gamemodeboost.57")) + dropped);
+            return dropped;
         }
 
         private void PruneDeadBoosts(HashSet<int> live)
@@ -580,12 +634,6 @@ namespace PaviseApp
                 IfeoBoost.Arm(rendererName);
                 IfeoBoost.EnsureForGame(rendererName);
             }
-        }
-
-        internal static uint BoostPriorityTarget(bool saturated, bool laneActive)
-        {
-            return saturated && !laneActive
-                ? Native.NORMAL_PRIORITY_CLASS : Native.HIGH_PRIORITY_CLASS;
         }
 
         internal static bool ApplyAndVerifyBoostState(IntPtr process, out uint actualPriority, out int actualIo, out int error)
@@ -845,9 +893,7 @@ namespace PaviseApp
             SuppressionCore.SqueezeBackground = CpuTopology.SqueezeSupported && squeezeBgOn;
             SuppressionCore.GpuDemoteEnabled = gpuDemoteOn;
             gameGoneSinceTicks = 0;
-            cpuSaturation.Reset();
             partitionHintLogged = false;
-            boostPriorityTarget = Native.HIGH_PRIORITY_CLASS;
 
             bool clean = UnboostGames();
             slowEnvAtTicks = 0;

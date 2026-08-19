@@ -1,6 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 统一管理进程压制 快照 回读和恢复
-
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -349,7 +348,6 @@ namespace PaviseApp
                     bool affinityLooksPavise = !CpuTopology.MultiGroup && (oaff == throttleMask
                         || CpuTopology.InactiveThrottleMask != 0 && oaff == CpuTopology.InactiveThrottleMask
                         || squeezeMask != 0 && oaff == squeezeMask);
-                    // 形状匹配只在上次非干净退出时才可能真是自家残留 干净退出后同形状进程属其他调度工具 不能收编
                     bool residue = CrashGuard.UncleanThrottleAtLaunch
                         && rawPri == Native.IDLE_PRIORITY_CLASS && oio == 0 && opg == 1
                         && (cpuSetsLookPavise || affinityLooksPavise);

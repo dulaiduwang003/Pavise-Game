@@ -1,6 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 统计单局游戏的压制成效并写入运行日志
-
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -25,6 +24,8 @@ namespace PaviseApp
         {
             GpuThrottleProbe.Reset();
             VramSpillProbe.Reset();
+            FrameDiagnostics.Reset();
+            FrameOffenderPolicy.Reset(false);
             long paviseCpu = CurrentProcessCpuTicks();
             lock (sync)
             {
@@ -155,6 +156,10 @@ namespace PaviseApp
             if (throttle != null) msg += Lang.F("rep.gputhrottle", throttle);
             string spill = VramSpillProbe.Summarize();
             if (spill != null) msg += Lang.F("rep.vramspill", spill);
+            string frameDiag = FrameDiagnostics.Summarize();
+            FrameDiagnostics.Stop();
+            FrameOffenderPolicy.Reset(false);
+            if (frameDiag != null) msg += Lang.F("rep.framediag", frameDiag);
             Logger.Log(Lang.T("log.gamemodesession.1") + msg);
 
             if (dur.TotalSeconds >= 60)

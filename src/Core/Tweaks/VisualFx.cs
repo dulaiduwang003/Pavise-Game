@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 还原 v1.7.0.6 移除的视觉效果降级在本机留下的残留 只保留还原能力
-
 using System;
 using Microsoft.Win32;
 

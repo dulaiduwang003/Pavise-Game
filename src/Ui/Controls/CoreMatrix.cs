@@ -1,6 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 处理器核心矩阵 按物理核成卡 超线程兄弟同卡并列 性能核与能效核分带显示
-
 using System;
 using System.Collections.Generic;
 using System.Drawing;

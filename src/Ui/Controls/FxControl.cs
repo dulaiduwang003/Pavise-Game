@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 提供支持动画刷新的控件基类
-
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;

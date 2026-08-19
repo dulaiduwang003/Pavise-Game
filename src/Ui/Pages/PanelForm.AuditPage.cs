@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 构建系统体检页 手动触发检测 展示能力 实测数据 持久设置与结论
-
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -250,7 +249,6 @@ namespace PaviseApp
             public Func<bool> CanRevert;
             public Action Fix;
             public Action Revert;
-            // 非默认值可能是用户或厂商刻意的规避配置 写回前必须逐项确认
             public string ConfirmKey;
         }
 

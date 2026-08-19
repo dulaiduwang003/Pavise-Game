@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 维护游戏模式状态 配置和工作线程
-
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -84,6 +83,7 @@ namespace PaviseApp
         private bool rsrActive;
         private bool gpwActive;
         private volatile bool killGameDvr;
+        private volatile bool mmcssOn;
         private volatile bool planSwitch;
         private volatile bool standbySweepOn;
         private volatile bool squeezeBgOn;
@@ -96,6 +96,8 @@ namespace PaviseApp
         private volatile bool aggressiveOn;
         private volatile bool ifeoOn;
         private volatile bool renderLaneOn;
+        private volatile bool frameDiagOn;
+        private volatile bool frameActOn;
         private volatile bool gpuDemoteOn;
         private volatile bool panicReq;
         private int panicSeq;
@@ -112,8 +114,6 @@ namespace PaviseApp
         private readonly ulong gameMask;
         private ulong strictMask;
         private readonly BackgroundPressureController pressure = new BackgroundPressureController();
-        private readonly CpuSaturation cpuSaturation = new CpuSaturation();
-        private uint boostPriorityTarget = Native.HIGH_PRIORITY_CLASS;
         private PerformancePreset preset;
         private GameDetection activeDetection;
         private volatile PolicySnapshot sessionPolicy;
@@ -195,12 +195,15 @@ namespace PaviseApp
             rsrOn = Settings.Load("GmRsr", false);
             gpuPowerMaxOn = Settings.Load("GmGpuPowerMax", false);
             killGameDvr = Settings.Load("GameDvrOff", true);
+            mmcssOn = Settings.Load("GmMmcss", true);
             planSwitch = Settings.Load("PowerPlanOn", true);
             corePartitionOn = Settings.Load("GmStrictCores", false);
             coreDomainAltOn = Settings.Load("GmCoreDomainAlt", false);
             aggressiveOn = Settings.Load("GmAggressive", false);
             ifeoOn = Settings.Load("GmIfeoBoost", false);
             renderLaneOn = Settings.Load("GmRenderLane", true);
+            frameDiagOn = Settings.Load(PolicyCatalog.KeyFrameDiag, false);
+            frameActOn = Settings.Load(PolicyCatalog.KeyFrameAct, false);
             gpuDemoteOn = Settings.Load("GmGpuDemote", false);
             SuppressionCore.GpuDemoteEnabled = gpuDemoteOn;
             foreach (string envKey in EnvKeys)
@@ -395,7 +398,7 @@ namespace PaviseApp
             {
                 bool changed = enabled != value;
                 enabled = value;
-                if (changed) SyncGameDvr();
+                if (changed) { SyncGameDvr(); SyncMmcss(); }
                 if (changed && value) RequestFullGameDetection();
                 if (changed && value) RequestPolicyApply();
                 else kick.Set();
@@ -405,6 +408,12 @@ namespace PaviseApp
         private void SyncGameDvr()
         {
             try { if (enabled && killGameDvr) GameDvr.Activate(); else GameDvr.Restore(); }
+            catch { }
+        }
+
+        private void SyncMmcss()
+        {
+            try { if (enabled && mmcssOn) Mmcss.Activate(); else Mmcss.Restore(); }
             catch { }
         }
 
@@ -509,6 +518,24 @@ namespace PaviseApp
             {
                 PolicySnapshot s = sessionPolicy;
                 return s != null ? s.EffLane : renderLaneOn;
+            }
+        }
+
+        private bool EffFrameDiag
+        {
+            get
+            {
+                PolicySnapshot s = sessionPolicy;
+                return s != null ? s.EffFrameDiag : frameDiagOn;
+            }
+        }
+
+        private bool EffFrameAct
+        {
+            get
+            {
+                PolicySnapshot s = sessionPolicy;
+                return s != null ? s.EffFrameAct : (frameDiagOn && frameActOn);
             }
         }
 
@@ -777,10 +804,17 @@ namespace PaviseApp
                                     }
                                     ApplyEnv();
                                     string rendererPath;
-                                    lock (sync) rendererPath = activeDetection != null
-                                        ? activeDetection.RendererPath : null;
+                                    int rendererPid;
+                                    lock (sync)
+                                    {
+                                        rendererPath = activeDetection != null
+                                            ? activeDetection.RendererPath : null;
+                                        rendererPid = activeDetection != null
+                                            ? activeDetection.RendererPid : 0;
+                                    }
                                     GpuThrottleProbe.SampleIfDue(rendererPath);
                                     VramSpillProbe.SampleIfDue(gamePids);
+                                    FrameDiagnostics.EnsureAndSample(EffFrameDiag, EffFrameAct, rendererPid);
                                     if (EffSuppress) Sweep(all, gamePids);
                                     if (!EffSuppress) ReleaseBackground();
                                     if (EffBoost) Boost(all);
@@ -806,6 +840,7 @@ namespace PaviseApp
                                 }
                                 else
                                 {
+                                    DropVanishedBoosts();
                                     bool boostResidue;
                                     lock (sync) boostResidue = gameBoost.Count > 0;
                                     if (boostResidue || EnvActive() || core.AnyWith(SuppressReason.Background))
@@ -832,6 +867,7 @@ namespace PaviseApp
                 panicDone.Set();
             }
             try { GameDvr.Restore(); } catch { }
+            try { Mmcss.Restore(); } catch { }
         }
 
         private string FindRunningGame(ProcessSnapshot all, out HashSet<int> gamePids)

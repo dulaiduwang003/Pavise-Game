@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 对局期间优化器自己让出游戏核心并降低调度权重 状态只写自身 进程消亡即自动清零无残留
-
 using System;
 
 namespace PaviseApp
@@ -13,7 +12,6 @@ namespace PaviseApp
         private static int origIo = -1;
         private static uint[] origCpuSets;
 
-        // 伪句柄对自身拥有全部权限 不需要 OpenProcess
         private static IntPtr Self { get { return (IntPtr)(-1); } }
 
         public static bool Engaged { get { lock (sync) return engaged; } }

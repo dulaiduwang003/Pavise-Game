@@ -1,7 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 检测当前电源方案核心停泊状态(体检用) 并清理旧版遗留的解停泊快照
-// 对局解停泊已并入托管电源计划(见 WriteKnob 的 CpMinCores) 不再有独立会话覆盖
-
 using System;
 
 namespace PaviseApp
@@ -39,9 +37,6 @@ namespace PaviseApp
             haveDc = PowerReadDCValueIndex(IntPtr.Zero, ref sc, ref sub, ref set, out dc) == 0;
         }
 
-        // 旧版会话解停泊已移除 这里只把旧版遗留的快照还原回原值
-        // 写回失败多为权限不足或方案变动 反复写无益:有界重试 到上限放弃并清快照
-        // 放弃 = 核心保持解停泊 属性能安全态 用户可去 Windows 电源选项手动调整
         public static bool RestoreParkState()
         {
             string s = Settings.LoadStr(ParkSnapKey, "");
@@ -82,7 +77,6 @@ namespace PaviseApp
             Settings.Remove(ParkTriesKey);
         }
 
-        // 所有权守卫:我们写下去的值恒为 100 当前已不是 100 = 用户或其他工具接管过 该值不写回
         private static bool WriteBack(Guid scheme, Guid setting, string acStr, string dcStr)
         {
             try

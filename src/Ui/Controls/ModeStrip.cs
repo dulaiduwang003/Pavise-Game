@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 游戏配置页运行模式覆盖条 跟随全局与四档模式彩色分段 选中块滑动变色
-
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;

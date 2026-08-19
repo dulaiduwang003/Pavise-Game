@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 体检行 ROG 风格自绘卡片 标题+状态徽标+证据 说明最多三行超出省略 修复按钮垂直居中且避让证据行
-
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -192,7 +191,6 @@ namespace PaviseApp
         private void DrawButton(Graphics g)
         {
             int bw = Theme.S(BtnW), bh = Theme.S(BtnH);
-            // 矮卡片上垂直居中会顶进右上角的证据行 有证据时按钮顶不得高于证据行底+6
             int btnTop = (Height - bh) / 2 + Theme.S(4);
             int minTop = Theme.S(12 + 18 + 6);
             if (evidence.Length > 0 && btnTop < minTop) btnTop = minTop;

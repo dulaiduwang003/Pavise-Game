@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 对局中在内存压力到阈值时清理低优先级待机内存页 带冷却防抖
-
 using System;
 using System.Runtime.InteropServices;
 
@@ -42,6 +41,8 @@ namespace PaviseApp
             nextAllowedTicks = now + CooldownTicks;
             return PurgeOnce();
         }
+
+        internal static bool FreeRatio(out double ratio) { return TryFreeRatio(out ratio); }
 
         private static bool TryFreeRatio(out double ratio)
         {

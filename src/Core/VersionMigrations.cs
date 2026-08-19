@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 集中登记版本迁移 已移除功能的残留清理与设置默认值的一次性重置
-
 using System;
 using System.Collections.Generic;
 
@@ -70,7 +69,6 @@ namespace PaviseApp
     {
         private const string LastRunKey = "LastRunVersion";
 
-        // 1.8.1.0 起收紧数据基线:检测到任何 1.8.1.0 之前版本的数据一律全清 含设置与游戏库
         private const string DataResetBelow = "1.8.1.0";
         private const bool DataResetIncludesSettings = true;
 
@@ -100,8 +98,6 @@ namespace PaviseApp
             if (DataResetBelow.Length == 0) return true;
             string last = PreviousRunVersion;
             if (last.Length > 0 && Program.CompareVersions(last, DataResetBelow) >= 0) return true;
-            // 无版本记录且无旧安装足迹 = 新装机器 没东西可重置 当场盖章
-            // 否则首启重置一旦失败未盖章 用户当天的配置会在下一次启动被重置吞掉
             if (last.Length == 0 && !LegacyPurge.HasInstallFootprint(dataDir))
             {
                 StampRunVersion();
@@ -114,17 +110,12 @@ namespace PaviseApp
             bool ok = LegacyPurge.WipeAll(dataDir, DataResetIncludesSettings,
                 Lang.T("t.versionmigrations.1") + (last.Length > 0 ? last : Lang.T("t.versionmigrations.2")) + Lang.T("t.versionmigrations.3") + DataResetBelow,
                 out files, out unrestored);
-            // 升级重置属一次性尽力而为 无论成败当场盖章 绝不让下一次启动对着用户之后的新配置再来一刀
             StampRunVersion();
             return ok;
         }
 
         private static readonly RetiredFeature[] Retired =
         {
-            new RetiredFeature(Lang.T("t.versionmigrations.4"), "1.6.6",
-                Lang.T("t.versionmigrations.5"),
-                Mmcss.HasResidue, Mmcss.Restore),
-
             new RetiredFeature(Lang.T("t.versionmigrations.6"), "1.6.6",
                 Lang.T("t.versionmigrations.7"),
                 FgBoost.HasResidue, FgBoost.Restore),
@@ -146,6 +137,10 @@ namespace PaviseApp
                 Lang.T("t.versionmigrations.15"),
                 delegate { return StorageAffinityTweak.HasResidue; },
                 StorageAffinityTweak.Disable),
+
+            new RetiredFeature(Lang.T("gm.idledis"), "1.8.1.1",
+                Lang.T("t.versionmigrations.45"),
+                IdleStateTweak.HasResidue, IdleStateTweak.Restore),
 
             new RetiredFeature(Lang.T("t.versionmigrations.42"), "1.8.1.0",
                 Lang.T("t.versionmigrations.43"),

@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 检查项目版本并返回更新地址 直连与国内镜像多条线路并发赛跑
-
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -48,8 +47,6 @@ namespace PaviseApp
             JsDelivrApi
         }
 
-        // TrustDownload 只给 GitHub 官方域直连的来源 第三方代理/CDN 可篡改清单内容
-        // 它们给出的下载地址(哪怕指向白名单网盘)一律不信 只取版本号 下载走官方发布页
         private sealed class Source
         {
             public string Name;
@@ -135,7 +132,6 @@ namespace PaviseApp
                 });
             }
 
-            // 首答后再等一个宽限窗收割其余线路 取最高版本 防止过期镜像抢跑把新版本报成无需更新
             long deadline = DateTime.UtcNow.Ticks + TotalTimeoutMs * TimeSpan.TicksPerMillisecond;
             while (true)
             {

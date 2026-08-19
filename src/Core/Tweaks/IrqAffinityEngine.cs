@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 中断亲和策略的通用引擎 供显卡和网卡等设备复用
-
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -240,8 +239,6 @@ namespace PaviseApp
             return false;
         }
 
-        // 掩码派生策略升级或用户切换核心域后 已写入设备的旧掩码不会自己更新
-        // 与当前期望不一致时重写归位(备份经 ReversibleReg 只记最初原值 重写不丢) 重启生效
         public bool ResyncMask(List<string> deviceIds, ulong preferredMask)
         {
             if (!EnabledByPavise) return false;

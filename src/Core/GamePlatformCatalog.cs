@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 各大游戏平台客户端家族的内置豁免 进程名加安装目录双重校验
-
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -182,9 +181,9 @@ namespace PaviseApp
                     Pf86 + "|WeGame", Pf + "|WeGame",
                     Pf86 + "|Tencent\\WeGame", Pf + "|Tencent\\WeGame"
                 },
-                new[]{ "WeGame", "t.gameplatformcatalog.10" }),
+                new[]{ "WeGame", "腾讯游戏平台" }),
 
-            new Platform("t.gameplatformcatalog.11",
+            new Platform("Xbox",
                 "t.gameplatformcatalog.12",
                 new[]
                 {
@@ -207,7 +206,7 @@ namespace PaviseApp
                     Pf + "|miHoYo Launcher", Pf86 + "|miHoYo Launcher",
                     Pf + "|miHoYo", Pf86 + "|miHoYo"
                 },
-                new[]{ "HoYoPlay", "miHoYo Launcher", "t.gameplatformcatalog.14" }),
+                new[]{ "HoYoPlay", "miHoYo Launcher", "米哈游启动器" }),
 
             new Platform("Amazon Games",
                 "t.gameplatformcatalog.15",
@@ -270,7 +269,7 @@ namespace PaviseApp
                 },
                 new[]{ "DMM Game" }),
 
-            new Platform("t.gameplatformcatalog.21",
+            new Platform("NetEase",
                 "t.gameplatformcatalog.22",
                 new[]{ "gest_launcher", "neteasegamecenter" },
                 new[]{ "gamecenter", "launcher" },
@@ -281,7 +280,7 @@ namespace PaviseApp
                     Pf + "|NetEase Games", Pf86 + "|NetEase Games",
                     Data + "|Netease"
                 },
-                new[]{ "t.gameplatformcatalog.21", "NetEase Games" }),
+                new[]{ "网易游戏", "NetEase Games" }),
         };
 
         private const int RootRefreshMs = 600000;
@@ -347,8 +346,6 @@ namespace PaviseApp
             return null;
         }
 
-        // 纯网页/商店 UI 渲染子进程 与游戏 IPC 无关 独占档不再整家豁免
-        // WeGame 与其余国内平台家族刻意不列入 其与反作弊/游戏的通信结构未知
         private static readonly HashSet<string> WebRendererNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "steamwebhelper", "epicwebhelper", "uplaywebcore", "blizzardbrowser", "riotclientuxrender"
@@ -402,6 +399,13 @@ namespace PaviseApp
             lock (sync)
                 foreach (Platform platform in Platforms)
                     if (platform.Roots != null && platform.Roots.Count > 0) result.Add(platform.Id);
+            return result;
+        }
+
+        internal static List<string> SupportedPlatformsForDisplay()
+        {
+            var result = new List<string>();
+            foreach (Platform platform in Platforms) result.Add(platform.Id);
             return result;
         }
 

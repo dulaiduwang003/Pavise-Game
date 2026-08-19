@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 关于页手动打开的联系方式弹窗 反馈渠道与版本更新检查 不再随启动自动弹出
-
 using System;
 using System.Diagnostics;
 using System.Drawing;

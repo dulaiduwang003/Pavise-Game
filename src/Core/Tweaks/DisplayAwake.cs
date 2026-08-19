@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 游戏期间阻止息屏与睡眠 纯会话级 进程退出自动失效
-
 using System;
 using System.Runtime.InteropServices;
 

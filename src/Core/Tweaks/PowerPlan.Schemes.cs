@@ -1,6 +1,5 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 电源方案的 powrprof 机械层 枚举 名称读写 创建删除 与托管方案的逐项写入
-
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -112,7 +111,7 @@ namespace PaviseApp
 
         private static readonly Knob[] OptionalKnobs = new Knob[]
         {
-            new Knob(SubProcessor, PerfEpp,           0,   0,  50, 70, "t.powerplanschemes.12"),
+            new Knob(SubProcessor, PerfEpp,           0,   0,  32, 70, "t.powerplanschemes.12"),
             new Knob(SubProcessor, PerfBoostPol,    100, 100,  60, 40, "t.powerplanschemes.13"),
             new Knob(SubProcessor, PerfIncPol,        2,   2,   1,  1, "t.powerplanschemes.14"),
             new Knob(SubProcessor, PerfDecPol,        1,   1,   2,  2, "t.powerplanschemes.15"),
@@ -122,7 +121,7 @@ namespace PaviseApp
             new Knob(SubProcessor, PerfDecThreshold,  8,   8,  20, 30, "t.powerplanschemes.19"),
             new Knob(SubProcessor, LatencyHintPerf, 100, 100,  75, 50, "t.powerplanschemes.20"),
             new Knob(SubProcessor, LatencyHintUnpark,100,100,  50, 50, "t.powerplanschemes.21"),
-            new Knob(SubProcessor, PerfDutyCycling,   0,   0,   1,  1, "t.powerplanschemes.22"),
+            new Knob(SubProcessor, PerfDutyCycling,   0,   0,   0,  1, "t.powerplanschemes.22"),
             new Knob(SubProcessor, ProcFreqMax,       0,   0,   0,  0, "t.powerplanschemes.23"),
             new Knob(SubWireless,  WirelessPowerSave, 0,   0,   1,  2, "t.powerplanschemes.24"),
         };
@@ -133,7 +132,7 @@ namespace PaviseApp
             new Knob(SubProcessor, ProcThrottleMax1, 100, 100, 100, 100, "t.powerplanschemes.26"),
             new Knob(SubProcessor, CpMinCores1,      100, 100,  50, 20, "t.powerplanschemes.27"),
             new Knob(SubProcessor, CpMaxCores1,      100, 100, 100, 100, "t.powerplanschemes.28"),
-            new Knob(SubProcessor, PerfEpp1,           0,   0,  50, 70, "t.powerplanschemes.29"),
+            new Knob(SubProcessor, PerfEpp1,           0,   0,  32, 70, "t.powerplanschemes.29"),
             new Knob(SubProcessor, SchedPolicy,        2,   2,   5,  5, "t.powerplanschemes.30"),
             new Knob(SubProcessor, ShortSchedPolicy,   2,   2,   5,  5, "t.powerplanschemes.31"),
         };
@@ -207,9 +206,6 @@ namespace PaviseApp
                     }
                 }
 
-                // C-state 禁用是发热换不来帧的负优化 恒不禁 保持系统默认空闲省电
-                // 现代 CPU 从 C-state 唤醒是纳秒级 禁 idle 让全核常驻 C0 只涨功耗温度 换不来帧
-                // 恒写 0 同时还原旧版竞技档台式机写过的 1
                 if (SettingPresent(g, SubProcessor, IdleDisableSet))
                 {
                     if (WritePair(g, SubProcessor, IdleDisableSet, 0u, 0u)) written++;
@@ -237,8 +233,43 @@ namespace PaviseApp
             bool coreParking = k.Setting == CpMinCores || k.Setting == CpMaxCores;
             bool useArena = coreParking ? profile.UseArenaCoreParking(aggressive) : aggressive;
             return WritePair(scheme, k.Sub, k.Setting,
-                useArena ? k.ArenaAc : k.CalmAc,
+                useArena ? k.ArenaAc : CalmAcFor(k, k.CalmAc, profile),
                 useArena ? k.ArenaDc : k.CalmDc);
+        }
+
+        private static readonly Guid[] CalmArenaAcOnDesktop =
+        {
+            ProcThrottleMin, ProcThrottleMin1, CpMinCores, CpMinCores1,
+            PerfEpp, PerfEpp1, PerfBoostPol, PerfIncPol, PerfIncTime,
+            PerfIncThreshold, LatencyHintPerf, LatencyHintUnpark,
+        };
+
+        private static uint CalmAcFor(Knob k, uint ac, PowerPlanProfile profile)
+        {
+            if (Native.HasSystemBattery()) return ac;
+            if (profile.PreserveCoreParking
+                && (k.Setting == CpMinCores || k.Setting == CpMinCores1)) return ac;
+            for (int i = 0; i < CalmArenaAcOnDesktop.Length; i++)
+                if (k.Setting == CalmArenaAcOnDesktop[i]) return k.ArenaAc;
+            return ac;
+        }
+
+        public static bool ManagedIdleDisableOn()
+        {
+            Guid g = ManagedPlanGuid();
+            if (g == Guid.Empty) return false;
+            Guid sub = SubProcessor, set = IdleDisableSet;
+            uint value;
+            if (PowerReadACValueIndex(IntPtr.Zero, ref g, ref sub, ref set, out value) != 0) return false;
+            return value != 0;
+        }
+
+        public static bool ClearIdleDisable()
+        {
+            Guid g = ManagedPlanGuid();
+            if (g == Guid.Empty) return true;
+            if (!SettingPresent(g, SubProcessor, IdleDisableSet)) return true;
+            return WritePair(g, SubProcessor, IdleDisableSet, 0u, 0u);
         }
 
         private static bool SettingPresent(Guid scheme, Guid sub, Guid setting)

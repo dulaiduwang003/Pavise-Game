@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 展示内置的版本说明
-
 using System;
 using System.Drawing;
 using System.Windows.Forms;

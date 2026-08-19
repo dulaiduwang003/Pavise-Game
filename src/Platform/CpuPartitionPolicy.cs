@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 只负责 CPU 分区决策 不读取硬件也不调用 Windows API
-
 using System;
 using System.Collections.Generic;
 
@@ -23,7 +22,6 @@ namespace PaviseApp
             return Math.Min(4, Math.Max(2, physicalCoreCount / 8));
         }
 
-        // 6 核及以下实测会因后台热点集中反伤前台，硬门槛不允许配置绕过。
         public const int SqueezeMinPhysical = 7;
 
         public static ulong SqueezeMask(ulong[] physicalCores, ulong allowedMask, ulong effMask, bool hybrid)

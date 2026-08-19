@@ -1,6 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 确保 Windows 游戏模式未被关闭 大量旧优化教程教人关它而实测它只有收益
-
 using System;
 using Microsoft.Win32;
 

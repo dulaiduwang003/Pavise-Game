@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 核心划分的状态牌 图例与实时计数
-
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;

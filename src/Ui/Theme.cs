@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 集中管理颜色 字体 尺寸和主题资源
-
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -69,7 +68,6 @@ namespace PaviseApp
         public static Color Accent { get { return accent; } }
         public static Color Accent2 { get { return accent2; } }
         public static Color Sel { get { return Col.Lerp(Card, accent, 0.20f); } }
-        // 次要说明文字:中性灰向当前模式色轻偏 让说明随用户 DIY 的主题色一起走 又不牺牲可读
         public static Color DimTint { get { return Col.Lerp(Dim, accent, 0.30f); } }
         public static Color OnAccent
         {

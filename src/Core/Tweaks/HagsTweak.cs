@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 开启 关闭并恢复硬件加速 GPU 调度 状态优先读注册表配置 缺省时按驱动能力判定
-
 using System;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
@@ -15,7 +14,6 @@ namespace PaviseApp
         private static readonly ReversibleReg Sch = new ReversibleReg(
             Registry.LocalMachine, GfxKey, Val, RegistryValueKind.DWord, "PrevHwSch");
 
-        // LUID 必须拆成两个 32 位字段 用 long 会引入 8 字节对齐使数组步长从 20 变 24 全部错位
         [StructLayout(LayoutKind.Sequential)]
         private struct AdapterInfo
         {
@@ -147,8 +145,6 @@ namespace PaviseApp
             catch { return false; }
         }
 
-        // 用户用 Pavise 关掉原本开启的 HAGS 时 EnabledByPavise=false 但备份仍在
-        // 清除/还原必须按备份判断残留 否则跳过还原并删掉备份 = 原始状态永久丢失
         public static bool HasResidue()
         {
             return EnabledByPavise || Sch.HasBackup;

@@ -1,8 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 独占档资源牢笼 把持续重负载的后台装进 Job 硬性限速 释放靠关额度而非等进程退出
-// 内核对象名随最后一个句柄消亡 崩溃后无法按名重开 因此由守护子进程持句柄
-// 守护只在牢笼激活期间存在 等到主进程退出即清额度自灭 绝不设置 kill-on-close
-
+// 文件用途 专注档资源牢笼 把持续重负载的后台装进 Job 硬性限速 释放靠关额度而非等进程退出
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -13,9 +10,7 @@ namespace PaviseApp
 {
     internal static class CpuCage
     {
-        // 所有被关的重负载合计最多吃全机 10% 周期 上限故意宽松 崩溃残留时伤害有界
         private const uint CapPercentOfSystem = 10;
-        // 持续半个物理核以上跑满 10 秒才算重负载 短突发不关
         private const double HotCoreShare = 0.5;
         private const int HotSustainSeconds = 10;
         private const int MaxCaged = 16;
@@ -75,8 +70,6 @@ namespace PaviseApp
                         seen.Add(c.Pid);
                         ObserveOneLocked(c, now);
                     }
-                // 被关的进程从合格名单里消失 若还活着说明它被白名单或豁免救出 整笼放开重新计
-                // 单个成员无法退出 Job 只能整体关额度
                 var gone = new List<int>();
                 bool freedLive = false;
                 foreach (KeyValuePair<int, Track> kv in tracks)
@@ -205,7 +198,6 @@ namespace PaviseApp
             catch { return null; }
         }
 
-        // 守护模式入口 持继承来的 Job 句柄等待主进程退出 一旦退出立即清额度并自灭
         public static void RunGuard(string watchPidText, string handleText, string journal)
         {
             int watchPid;
@@ -269,8 +261,6 @@ namespace PaviseApp
             return (info.ControlFlags & RateEnable) != 0;
         }
 
-        // 正常崩溃由守护进程清额度并删状态文件 走到这里说明守护也被杀了
-        // 名字已随句柄消亡无法重开 只能明示残留 额度随目标进程退出自动消失
         public static void HealFromCrash(string dir)
         {
             Configure(dir);

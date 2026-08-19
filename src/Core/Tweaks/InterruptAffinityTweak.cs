@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 引导 GPU 中断亲和策略靠近游戏所在核心 开启 关闭并恢复
-
 using System;
 using System.Collections.Generic;
 using System.Management;
@@ -48,7 +47,6 @@ namespace PaviseApp
             return ids;
         }
 
-        // 混合架构传 P 核顶端掩码 让"绑定游戏核心"名副其实 否则 BoostMask=全核时引擎只会退回就近处理
         public static bool Enable()
         {
             return engine.Enable(EnumerateGpuDeviceIds(), CpuTopology.GpuInterruptPreferredMask());

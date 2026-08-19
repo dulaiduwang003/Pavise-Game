@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 ROG 风格切角标签条 页面内分组切换 选中态带 accent 刻线和 mono 序号
-
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;

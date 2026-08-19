@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 独占模式切换电源滑块到最佳性能 原值取自注册表 退出还原
-
+// 文件用途 专注模式切换电源滑块到最佳性能 原值取自注册表 退出还原
 using System;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;

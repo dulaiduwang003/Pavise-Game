@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 直接消费内核进程提供程序的 ETW 实时会话 绕开 WMI 转发以降低发现延迟
-
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;

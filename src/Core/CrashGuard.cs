@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 保存并恢复游戏提优留下的可查询进程状态
-
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -142,7 +141,6 @@ namespace PaviseApp
             return Settings.LoadStr(KBoostEntries, "").Length > 0;
         }
 
-        // 启动自愈前记录 上次是否带着未释放的压制非干净退出 供压制残留形状启发式做资格门
         public static bool UncleanThrottleAtLaunch { get; private set; }
 
         public static void HealFromCrash()

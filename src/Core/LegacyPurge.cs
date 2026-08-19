@@ -1,6 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 清除本机数据 首次启动清旧版本 升级越过数据基线 以及设置页手动清除三条路径共用
-
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -26,7 +25,6 @@ namespace PaviseApp
             return RestoreEverything(dataDir);
         }
 
-        // 一键恢复按钮的持久改动还原链 与清除配置共用同一份登记 不删除任何数据
         public static List<string> RestorePersistent(string dataDir)
         {
             return RestoreOrHook(dataDir);
@@ -79,6 +77,7 @@ namespace PaviseApp
             foreach (RetiredFeature f in VersionMigrations.Entries)
                 Step(f.Name, f.Restore, failed);
             Step("Game DVR", GameDvr.Restore, failed);
+            Step("MMCSS", Mmcss.Restore, failed);
             Step(Lang.T("t.legacypurge.4"), VisualFx.Restore, failed);
             Step(Lang.T("t.legacypurge.5"), DisplayGuard.Restore, failed);
             Step(Lang.T("t.gamemodeenv.5"), DisplayAwake.Restore, failed);
@@ -94,6 +93,7 @@ namespace PaviseApp
             Step(Lang.T("t.legacypurge.11"), QuantumTweak.Restore, failed);
             Step("MPO", MpoTweak.Restore, failed);
             Step("VBS", VbsTweak.Restore, failed);
+            Step("Spectre/Meltdown", SpecMitigationTweak.Restore, failed);
             Step(Lang.T("t.legacypurge.12"), GameModeGuard.Restore, failed);
             Step(Lang.T("t.legacypurge.13"), DevicePowerTweak.Restore, failed);
             StepIf(Lang.T("set.windowedopt"), WindowedOptTweak.HasResidue, WindowedOptTweak.Restore, failed);
@@ -137,9 +137,6 @@ namespace PaviseApp
                     return !GameExeTweaks.HasKindResidue(k);
                 }, failed);
             }
-            // 进程状态是进程生命周期内的东西 进程退出或重启后自然复原 与持久系统改动不同
-            // 尽力补一轮还原 清不掉的(反作弊拒开句柄/PID被系统进程占用/记账行损坏)记日志放行
-            // 不能让它永久卡死清除功能
             Step(Lang.T("t.legacypurge.28"), delegate
             {
                 string journal = Path.Combine(dataDir, SuppressionCore.StateFileName);
@@ -153,8 +150,6 @@ namespace PaviseApp
             return failed;
         }
 
-        // 新装机器判定:清理章已盖 或存在任何非日志数据文件 即视为有旧安装足迹
-        // 日志文件不算 本次启动早已在写日志
         public static bool HasInstallFootprint(string dataDir)
         {
             if (Settings.Load(DoneKey, false)) return true;
@@ -172,8 +167,6 @@ namespace PaviseApp
         public static void RunOnce(string dataDir)
         {
             if (Settings.Load(DoneKey, false)) return;
-            // 新装机器无旧残留可清 直接盖章跳过整条清理链
-            // 否则清理链在个别机器上偶发失败时 DoneKey 悬空 用户配置后的下一次启动会把配置吞掉
             if (!HasInstallFootprint(dataDir))
             {
                 Settings.Save(DoneKey, true);
@@ -248,7 +241,6 @@ namespace PaviseApp
 
             Logger.Log(why + Lang.T("log.legacypurge.40") + files + Lang.T("log.legacypurge.34")
                 + (includeSettings ? regCleared ? Lang.T("log.legacypurge.41") : Lang.T("log.legacypurge.42") : Lang.T("log.legacypurge.43")));
-            // 注册表配置树删除失败不算完成 让调用方如实提示而不是报清除成功
             return !includeSettings || regCleared;
         }
     }

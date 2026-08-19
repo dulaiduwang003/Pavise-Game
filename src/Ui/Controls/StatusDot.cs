@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 绘制状态指示点控件
-
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;

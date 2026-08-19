@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 自绘列表基类 拦截背景擦除并逐行离屏合成 消除滚动与悬浮闪烁
-
 using System;
 using System.Drawing;
 using System.Runtime.InteropServices;

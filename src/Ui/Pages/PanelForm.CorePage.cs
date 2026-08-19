@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 构建核心分配标签页 自动按档位 手动逐核 两种方式任何时刻只显示一套
-
 using System;
 using System.Collections.Generic;
 using System.Drawing;
