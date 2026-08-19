@@ -1,6 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 解析游戏程序和快捷方式的真实路径
-
 using System;
 using System.IO;
 using System.Runtime.InteropServices;

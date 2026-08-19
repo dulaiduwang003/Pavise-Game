@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 构建白名单页 支持拖放添加 运行中选取与逐条作用域调整
-
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -46,6 +45,19 @@ namespace PaviseApp
             lstWhite.KeyDown += delegate(object s, KeyEventArgs e)
             {
                 if (e.KeyCode == Keys.Delete) RemoveSelectedWhitelist();
+                else if (e.KeyCode == Keys.Enter && ShowSelectedAutomaticExemption())
+                {
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                }
+            };
+            lstWhite.MouseClick += delegate(object s, MouseEventArgs e)
+            {
+                if (e.Button != MouseButtons.Left) return;
+                int index = lstWhite.IndexFromPoint(e.Location);
+                if (index < 0) return;
+                lstWhite.SelectedIndex = index;
+                ShowSelectedAutomaticExemption();
             };
             lstWhite.MouseDown += delegate(object s, MouseEventArgs e)
             {
@@ -115,6 +127,7 @@ namespace PaviseApp
             {
                 List<string> detected = GamePlatformCatalog.DetectedPlatforms();
                 if (detected.Count == 0) return;
+                for (int i = 0; i < detected.Count; i++) detected[i] = PlatformDisplayName(detected[i]);
                 lblWhiteHint.Text += "\r\n\r\n"
                     + Lang.F("white.page.platforms", string.Join(" ", detected.ToArray()));
             }
@@ -233,6 +246,31 @@ namespace PaviseApp
             });
         }
 
+        private bool ShowSelectedAutomaticExemption()
+        {
+            var item = lstWhite.SelectedItem as WhitelistItem;
+            if (item == null || !item.Automatic || string.IsNullOrEmpty(item.Details)) return false;
+
+            const int dlgW = 720;
+            var details = new TextBox();
+            details.Multiline = true;
+            details.ReadOnly = true;
+            details.WordWrap = true;
+            details.ScrollBars = ScrollBars.Vertical;
+            details.BackColor = Theme.Card;
+            details.ForeColor = Theme.Fg;
+            details.BorderStyle = BorderStyle.FixedSingle;
+            details.Font = Theme.UI(9.2f, false);
+            details.Text = item.Details;
+            details.Size = new Size(Theme.S(dlgW - 52), Theme.S(390));
+            details.SelectionStart = 0;
+            details.SelectionLength = 0;
+            Native.Dark(details);
+
+            PaviseDialog.Show(this, item.Title, Lang.T("white.auto.details.body"), details, dlgW);
+            return true;
+        }
+
         private void OnWhiteMenuOpening(object sender, System.ComponentModel.CancelEventArgs e)
         {
             whiteMenu.Items.Clear();
@@ -302,8 +340,23 @@ namespace PaviseApp
             foreach (WhitelistRuleView view in views)
                 (view.Required ? required : user).Add(view);
             foreach (WhitelistRuleView view in user) lstWhite.Items.Add(Decorate(new WhitelistItem(view)));
+
+            List<WhitelistItem> automatic = AutomaticExemptionItems();
+            if (automatic.Count > 0)
+            {
+                lstWhite.Items.Add(new WhitelistItem(null)
+                {
+                    IsGroup = true,
+                    Title = Lang.F("white.group.auto", automatic.Count)
+                });
+                foreach (WhitelistItem item in automatic) lstWhite.Items.Add(item);
+            }
             if (required.Count > 0)
-                lstWhite.Items.Add(new WhitelistItem(null) { Title = Lang.F("white.group.builtin", required.Count) });
+                lstWhite.Items.Add(new WhitelistItem(null)
+                {
+                    IsGroup = true,
+                    Title = Lang.F("white.group.builtin", required.Count)
+                });
             foreach (WhitelistRuleView view in required) lstWhite.Items.Add(Decorate(new WhitelistItem(view)));
             lstWhite.EndUpdate();
 
@@ -324,15 +377,18 @@ namespace PaviseApp
             if (e.Index < 0 || e.Index >= lstWhite.Items.Count) return;
             var item = lstWhite.Items[e.Index] as WhitelistItem;
             if (item == null) return;
-            if (item.View == null) { DrawWhitelistGroupHeader(e, item.Title); return; }
+            if (item.IsGroup) { DrawWhitelistGroupHeader(e, item.Title); return; }
+            if (item.View == null && !item.Automatic) return;
 
             Graphics g = e.Graphics;
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             Rectangle r = e.Bounds;
             bool selected = (e.State & DrawItemState.Selected) != 0;
             bool hover = !selected && e.Index == Theme.HoverIndex(lstWhite);
-            bool family = item.View.Rule.Kind == WhitelistRuleKind.ApplicationFamily;
-            bool live = item.View.CurrentMatches > 0;
+            bool automatic = item.Automatic;
+            bool required = !automatic && item.View.Required;
+            bool family = !automatic && item.View.Rule.Kind == WhitelistRuleKind.ApplicationFamily;
+            bool live = automatic || item.View.CurrentMatches > 0;
 
             using (var b = new SolidBrush(selected ? Theme.Sel : (hover ? Theme.CardHover : Theme.Card)))
                 g.FillRectangle(b, r);
@@ -342,20 +398,25 @@ namespace PaviseApp
 
             int iconSize = Theme.S(32);
             var iconRect = new Rectangle(r.Left + Theme.S(14), r.Top + (r.Height - iconSize) / 2, iconSize, iconSize);
-            Bitmap icon = WhitelistIcon(item.View.Rule);
-            if (icon != null)
+            if (automatic) DrawWhitelistAutomaticIcon(g, iconRect, item.Glyph);
+            else
             {
-                if (item.View.Required || !live)
+                Bitmap icon = WhitelistIcon(item.View.Rule);
+                if (icon != null)
                 {
-                    using (var attr = new System.Drawing.Imaging.ImageAttributes())
+                    if (required || !live)
                     {
-                        var matrix = new System.Drawing.Imaging.ColorMatrix();
-                        matrix.Matrix33 = 0.45f;
-                        attr.SetColorMatrix(matrix);
-                        g.DrawImage(icon, iconRect, 0, 0, icon.Width, icon.Height, GraphicsUnit.Pixel, attr);
+                        using (var attr = new System.Drawing.Imaging.ImageAttributes())
+                        {
+                            var matrix = new System.Drawing.Imaging.ColorMatrix();
+                            matrix.Matrix33 = 0.45f;
+                            attr.SetColorMatrix(matrix);
+                            g.DrawImage(icon, iconRect, 0, 0, icon.Width, icon.Height, GraphicsUnit.Pixel, attr);
+                        }
                     }
+                    else g.DrawImage(icon, iconRect);
                 }
-                else g.DrawImage(icon, iconRect);
+                else DrawWhitelistDefaultIcon(g, iconRect, required, live);
             }
 
             int textLeft = iconRect.Right + Theme.S(14);
@@ -365,16 +426,17 @@ namespace PaviseApp
 
             TextRenderer.DrawText(g, item.Title, Theme.UI(9.6f, true),
                 new Rectangle(textLeft, r.Top + Theme.S(9), textW, Theme.S(22)),
-                item.View.Required ? Theme.Dim : Theme.Fg,
+                required ? Theme.Dim : Theme.Fg,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
             TextRenderer.DrawText(g, item.Subtitle, Theme.UI(7.9f, false),
                 new Rectangle(textLeft, r.Top + Theme.S(31), textW, Theme.S(20)),
                 Theme.Faint,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.PathEllipsis);
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter
+                    | (automatic ? TextFormatFlags.EndEllipsis : TextFormatFlags.PathEllipsis));
 
             var badge = new Rectangle(r.Right - stateW - badgeW - Theme.S(18),
                 r.Top + (r.Height - Theme.S(22)) / 2, badgeW, Theme.S(22));
-            Color badgeColor = item.View.Required ? Theme.Faint : (family ? Theme.Accent : Theme.Dim);
+            Color badgeColor = required ? Theme.Faint : (automatic || family ? Theme.Accent : Theme.Dim);
             using (var path = Theme.Rounded(badge, Theme.S(6)))
             {
                 using (var b = new SolidBrush(Col.Alpha(badgeColor, 34))) g.FillPath(b, path);
@@ -395,6 +457,54 @@ namespace PaviseApp
 
             using (var p = new Pen(Col.Alpha(Theme.Stroke, 120)))
                 g.DrawLine(p, r.Left + Theme.S(14), r.Bottom - 1, r.Right - Theme.S(10), r.Bottom - 1);
+        }
+
+        private static void DrawWhitelistAutomaticIcon(Graphics g, Rectangle box, string glyph)
+        {
+            Rectangle frame = box;
+            frame.Width--; frame.Height--;
+            using (var path = Theme.TechPath(frame, Theme.S(5)))
+            {
+                using (var fill = new SolidBrush(Col.Alpha(Theme.Accent, 18))) g.FillPath(fill, path);
+                using (var border = new Pen(Col.Alpha(Theme.Accent, 108))) g.DrawPath(border, path);
+            }
+            int size = Theme.S(19);
+            Glyphs.Draw(g, string.IsNullOrEmpty(glyph) ? "shield" : glyph,
+                new Rectangle(box.Left + (box.Width - size) / 2, box.Top + (box.Height - size) / 2,
+                    size, size), Col.Alpha(Theme.Accent, 210));
+        }
+
+        private static void DrawWhitelistDefaultIcon(Graphics g, Rectangle box, bool required, bool live)
+        {
+            Color tone = required ? Theme.Faint : live ? Theme.Accent : Theme.Dim;
+            Rectangle frame = box;
+            frame.Width--; frame.Height--;
+            using (var path = Theme.TechPath(frame, Theme.S(5)))
+            {
+                using (var fill = new SolidBrush(Col.Alpha(tone, required ? 12 : 20)))
+                    g.FillPath(fill, path);
+                using (var border = new Pen(Col.Alpha(tone, required ? 76 : 118)))
+                    g.DrawPath(border, path);
+            }
+
+            int glyphSize = Theme.S(19);
+            Rectangle shield = new Rectangle(
+                box.Left + (box.Width - glyphSize) / 2,
+                box.Top + (box.Height - glyphSize) / 2,
+                glyphSize, glyphSize);
+            Glyphs.Draw(g, "shield", shield, Col.Alpha(tone, required ? 145 : 205));
+
+            int node = Math.Max(2, Theme.S(2));
+            int cy = box.Top + box.Height / 2;
+            int cx = box.Left + box.Width / 2;
+            using (var link = new Pen(Col.Alpha(tone, required ? 112 : 172), Math.Max(1f, Theme.S(1))))
+                g.DrawLine(link, cx - Theme.S(4), cy, cx + Theme.S(4), cy);
+            using (var dot = new SolidBrush(Col.Alpha(tone, required ? 160 : 225)))
+            {
+                g.FillEllipse(dot, cx - Theme.S(5) - node / 2, cy - node / 2, node, node);
+                g.FillEllipse(dot, cx - node / 2, cy - node / 2, node, node);
+                g.FillEllipse(dot, cx + Theme.S(5) - node / 2, cy - node / 2, node, node);
+            }
         }
 
         private static void DrawWhitelistGroupHeader(DrawItemEventArgs e, string text)
@@ -454,6 +564,10 @@ namespace PaviseApp
             public string Subtitle;
             public string Badge;
             public string StateText;
+            public string Glyph;
+            public string Details;
+            public bool IsGroup;
+            public bool Automatic;
 
             public WhitelistItem(WhitelistRuleView view) { View = view; }
 
@@ -461,6 +575,86 @@ namespace PaviseApp
             {
                 return View == null ? (Title ?? "") : View.Rule.Value;
             }
+        }
+
+        private static string PlatformDisplayName(string id)
+        {
+            return !string.IsNullOrEmpty(id) && id.StartsWith("t.", StringComparison.Ordinal)
+                ? Lang.T(id) : id;
+        }
+
+        private static List<WhitelistItem> AutomaticExemptionItems()
+        {
+            var rows = new List<WhitelistItem>();
+            List<string> supported = GamePlatformCatalog.SupportedPlatformsForDisplay();
+            List<string> detected = GamePlatformCatalog.DetectedPlatforms();
+            for (int i = 0; i < supported.Count; i++) supported[i] = PlatformDisplayName(supported[i]);
+            for (int i = 0; i < detected.Count; i++) detected[i] = PlatformDisplayName(detected[i]);
+            string platformDetail = detected.Count > 0
+                ? Lang.F("white.auto.platform.detected", string.Join(" · ", detected.ToArray()))
+                : Lang.T("white.auto.platform.sub");
+            string detectedText = detected.Count > 0
+                ? string.Join(" · ", detected.ToArray()) : Lang.T("white.auto.details.none");
+            string platformList = string.Join(" · ", supported.ToArray());
+            rows.Add(AutomaticExemption("white.auto.platform", platformDetail, "gamepad",
+                DetailSection("white.auto.details.platforms", platformList)
+                + "\r\n\r\n" + DetailSection("white.auto.details.detected", detectedText)
+                + "\r\n\r\n" + Lang.T("white.auto.details.platform.note")));
+
+            string[] acceleratorNames = NetAcceleratorCatalog.ProcessNamesForDisplay();
+            string[] acceleratorTokens = NetAcceleratorCatalog.TokensForDisplay();
+            rows.Add(AutomaticExemption("white.auto.accel",
+                Lang.F("white.auto.accel.list", string.Join(" · ", acceleratorNames)), "chart",
+                DetailSection("white.auto.details.processes", string.Join(" · ", acceleratorNames))
+                + "\r\n\r\n" + DetailSection("white.auto.details.tokens",
+                    string.Join(" · ", acceleratorTokens))));
+
+            var antiCheatGroups = new List<string>();
+            var antiCheatNames = new List<string>();
+            foreach (AcGroup group in AntiCheatCatalog.Groups)
+            {
+                antiCheatNames.Add(group.Name);
+                antiCheatGroups.Add(group.Name + "\r\n" + string.Join(" · ", group.Procs));
+            }
+            rows.Add(AutomaticExemption("white.auto.anticheat",
+                Lang.F("white.auto.anticheat.list", string.Join(" · ", antiCheatNames.ToArray())),
+                "acshield", Lang.T("white.auto.details.groups") + "\r\n\r\n"
+                + string.Join("\r\n\r\n", antiCheatGroups.ToArray())
+                + "\r\n\r\n" + DetailSection("white.auto.details.tokens",
+                    string.Join(" · ", AntiCheatCatalog.NameTokensForDisplay()))));
+
+            string[] nameKeywords = PeripheralCatalog.NameKeywordsForDisplay();
+            string[] descriptionWords = PeripheralCatalog.DescriptionWordsForDisplay();
+            string[] vendorTokens = PeripheralCatalog.PresentVendorTokensForDisplay();
+            string vendorText = vendorTokens.Length > 0
+                ? string.Join(" · ", vendorTokens) : Lang.T("white.auto.details.none");
+            rows.Add(AutomaticExemption("white.auto.peripheral",
+                Lang.F("white.auto.peripheral.list", string.Join(" · ", nameKeywords)), "settings",
+                DetailSection("white.auto.details.namekeywords", string.Join(" · ", nameKeywords))
+                + "\r\n\r\n" + DetailSection("white.auto.details.descriptionwords",
+                    string.Join(" · ", descriptionWords))
+                + "\r\n\r\n" + DetailSection("white.auto.details.vendors", vendorText)));
+            return rows;
+        }
+
+        private static string DetailSection(string titleKey, string content)
+        {
+            return Lang.T(titleKey) + "\r\n" + content;
+        }
+
+        private static WhitelistItem AutomaticExemption(
+            string titleKey, string subtitle, string glyph, string details)
+        {
+            return new WhitelistItem(null)
+            {
+                Automatic = true,
+                Title = Lang.T(titleKey),
+                Subtitle = subtitle,
+                Badge = Lang.T("white.auto.badge"),
+                StateText = Lang.T("white.auto.state"),
+                Glyph = glyph,
+                Details = details
+            };
         }
 
         private WhitelistItem Decorate(WhitelistItem item)

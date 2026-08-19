@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 对局中把显卡功耗墙拉到厂商允许的上限 退局按快照还原
-
 using System;
 using System.Globalization;
 
@@ -11,7 +10,6 @@ namespace PaviseApp
         private const string SnapKey = "GpuPowerSnap";
         private static readonly object lk = new object();
 
-        // 快照带 GPU 身份(VEN&DEV) 换卡后旧功耗值不盲写新卡 身份取该厂商适配器 优先独显
         private static string VendorGpuId(GpuVendor vendor)
         {
             GpuAdapter best = null;
@@ -105,7 +103,6 @@ namespace PaviseApp
                 string[] parts = snap.Split(':');
                 if (parts.Length != 4)
                 {
-                    // 旧格式缺 GPU 身份或已写值 无法做换卡与所有权判定 弃快照(功耗墙重启后本就回驱动默认)
                     Settings.SaveStr(SnapKey, "");
                     Logger.Log(Lang.T("log.gpupowermax.13"));
                     return true;
@@ -129,7 +126,6 @@ namespace PaviseApp
                 bool ok = false;
                 if (snapVendor == GpuVendor.Nvidia)
                 {
-                    // 所有权守卫:当前功耗墙已不是我们写的值 = 用户中途用其他工具调过 不覆盖
                     uint prev, applied, curNow, defNow, maxNow;
                     if (uint.TryParse(appliedStr, NumberStyles.Integer, CultureInfo.InvariantCulture, out applied)
                         && NvApi.TryGetPowerLimit(out curNow, out defNow, out maxNow) && curNow != applied)

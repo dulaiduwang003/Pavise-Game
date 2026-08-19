@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 构建关于页 项目信息与更新检查
-
 using System;
 using System.Diagnostics;
 using System.Drawing;

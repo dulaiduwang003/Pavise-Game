@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 修复被显式关闭的显卡消息信号中断 MSISupported=0 时一键写回 还原时回到原值
-
 using System;
 using System.Collections.Generic;
 using Microsoft.Win32;
@@ -28,7 +27,6 @@ namespace PaviseApp
 
         public static List<Candidate> Scan()
         {
-            // 在场枚举失败时返回空 宁可漏报也不把已拔卡的幽灵实例当写入目标
             var found = new List<Candidate>();
             HashSet<string> present;
             try

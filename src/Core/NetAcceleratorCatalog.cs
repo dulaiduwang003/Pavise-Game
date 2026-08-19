@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 识别网游加速器进程 使其免于后台压制
-
 using System;
 using System.Collections.Generic;
 
@@ -38,6 +37,19 @@ namespace PaviseApp
             string low = name.ToLowerInvariant();
             foreach (string t in Tokens) if (low.Contains(t)) return true;
             return false;
+        }
+
+        internal static string[] ProcessNamesForDisplay()
+        {
+            var names = new string[ProcessNames.Count];
+            ProcessNames.CopyTo(names);
+            Array.Sort(names, StringComparer.OrdinalIgnoreCase);
+            return names;
+        }
+
+        internal static string[] TokensForDisplay()
+        {
+            return (string[])Tokens.Clone();
         }
     }
 }

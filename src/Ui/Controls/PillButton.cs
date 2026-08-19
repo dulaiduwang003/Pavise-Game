@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 提供圆角胶囊按钮控件
-
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;

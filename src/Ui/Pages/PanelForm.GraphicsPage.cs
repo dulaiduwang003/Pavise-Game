@@ -1,6 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 构建显卡页 逐游戏的驱动项与全局呈现路径开关
-
 using System;
 using System.Drawing;
 using System.Windows.Forms;
@@ -88,7 +87,6 @@ namespace PaviseApp
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvdlss"), dlssDesc, dlssPicker, out cardH);
             sy += cardH + 8;
 
-            // BIOS 未开 ReBAR 时 DRS 三键写了也无效 探测到关闭即置灰 探测不到时不拦(避免误杀)
             string rebarDesc = Lang.T("set.nvrebar.n");
             bool rebarUsable = true;
             if (nvOk)

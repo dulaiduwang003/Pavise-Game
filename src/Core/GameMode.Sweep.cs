@@ -1,6 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 扫描并压制游戏之外的后台进程
-
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -79,7 +78,7 @@ namespace PaviseApp
         }
 
         internal static SuppressionLevel ResolveBackgroundLevel(PerformancePreset mode, bool customAggressive,
-            SuppressionLevel adaptive, bool safePartition)
+            SuppressionLevel adaptive)
         {
             if (mode == PerformancePreset.Competitive) return SuppressionLevel.Isolated;
             if (mode == PerformancePreset.Custom)
@@ -94,7 +93,6 @@ namespace PaviseApp
 
             if (AntiCheatCatalog.IsAntiCheatLikeName(name)) return false;
 
-            // 独占档下平台家族里的纯网页 UI 渲染子进程不再放行 只专注游戏 白名单是唯一例外
             if (GamePlatformCatalog.IsPlatformProcess(name, path)
                 && !(aggressive && GamePlatformCatalog.IsPlatformWebRenderer(name))) return false;
             if (NetAcceleratorCatalog.IsAcceleratorLikeName(name)) return false;
@@ -142,8 +140,6 @@ namespace PaviseApp
             int foregroundPid = GameSessionDetector.ForegroundPid();
             bool aggressive = IsAggressive(mode, sp != null ? sp.Aggressive : aggressiveOn);
             WhitelistEvaluation whitelist = EvaluateWhitelist(all);
-            // 竞技档不豁免前台(v1.6 曾放行前台族 现回归 1.4 语义):游戏模式只专注游戏
-            // 切出去的程序照压 只有白名单例外 常规档仍豁免可见窗口
             HashSet<int> userFacingFamily = aggressive
                 ? EmptyPidSet
                 : CollectUserFacingFamily(foregroundPid, whitelist);
@@ -260,7 +256,8 @@ namespace PaviseApp
                     if (mode == PerformancePreset.Standard && creation > 0)
                         adaptive = pressure.Observe(pid, nm, creation, cpu, io, DateTime.UtcNow.Ticks, mode);
                     else pressure.Forget(pid);
-                    SuppressionLevel desired = ResolveBackgroundLevel(mode, aggressive, adaptive, safePartition);
+                    SuppressionLevel desired = ResolveBackgroundLevel(mode, aggressive, adaptive);
+                    desired = FrameOffenderPolicy.Escalate(pid, desired);
                     if (!EffSuppress) desired = SuppressionLevel.None;
 
                     string tracked = core.NameOf(pid);

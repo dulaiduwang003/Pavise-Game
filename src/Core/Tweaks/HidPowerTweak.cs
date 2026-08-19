@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 禁止系统为省电挂起键鼠所在的 USB 设备与集线器 可逆
-
 using System;
 using System.Collections.Generic;
 using Microsoft.Win32;

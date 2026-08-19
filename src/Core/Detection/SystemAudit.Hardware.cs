@@ -1,6 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 系统体检硬件健康分部 内存模块 灯效常驻 降频事件 机械盘寻道检测
-
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;

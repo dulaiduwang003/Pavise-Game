@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 通过 DXCore 读取驱动报告的显卡集成属性 避免用 PCI 总线号猜测核显
-
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;

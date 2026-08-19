@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 定位 测量并清理显卡着色器缓存
-
 using System;
 using System.Collections.Generic;
 using System.IO;

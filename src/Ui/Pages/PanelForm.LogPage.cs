@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 构建日志页 展示运行日志并提供打开与清空
-
 using System;
 using System.Diagnostics;
 using System.Drawing;

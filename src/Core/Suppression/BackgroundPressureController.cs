@@ -1,6 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 根据后台资源压力调整压制等级
-
 using System;
 using System.Collections.Generic;
 
@@ -25,7 +24,7 @@ namespace PaviseApp
             if (write && readback) return Lang.T("t.backgroundpressurecontroller.2");
             if (readback) return Lang.T("t.backgroundpressurecontroller.3");
             if (write) return Lang.T("t.backgroundpressurecontroller.4");
-            return Lang.T("t.backgroundpressurecontroller.1");
+            return Lang.T("t.backgroundpressurecontroller.1") + "(" + detail + ")";
         }
     }
 
@@ -50,6 +49,8 @@ namespace PaviseApp
         internal const long MinSampleTicks = TimeSpan.TicksPerSecond;
         internal const long MaxSampleTicks = TimeSpan.TicksPerSecond * 30;
 
+        internal const long MinDwellTicks = TimeSpan.TicksPerSecond * 15;
+
         private sealed class Sample
         {
             public string Name;
@@ -60,6 +61,9 @@ namespace PaviseApp
             public int Heat;
             public int Cool;
             public SuppressionLevel Level;
+            public long LevelAt;
+            public PerformancePreset Preset;
+            public bool PresetSeen;
         }
 
         private readonly Dictionary<int, Sample> samples = new Dictionary<int, Sample>();
@@ -105,7 +109,23 @@ namespace PaviseApp
                 old.Heat = Math.Max(0, old.Heat - 1);
             }
 
-            old.Level = Resolve(old.Heat, old.Level);
+            bool presetChanged = old.PresetSeen && old.Preset != preset;
+            old.Preset = preset;
+            old.PresetSeen = true;
+
+            if (presetChanged)
+            {
+                old.Level = Resolve(old.Heat, SuppressionLevel.None);
+                old.LevelAt = now;
+                return old.Level;
+            }
+
+            SuppressionLevel desired = Resolve(old.Heat, old.Level);
+            if (desired > old.Level && (old.LevelAt == 0 || now - old.LevelAt >= MinDwellTicks))
+            {
+                old.Level = desired;
+                old.LevelAt = now;
+            }
             return old.Level;
         }
 

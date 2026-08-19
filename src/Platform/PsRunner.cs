@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 以隐藏窗口方式执行 PowerShell 脚本并回收输出
-
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;

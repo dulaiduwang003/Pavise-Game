@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 解析 Steam 桌面快捷方式 url 定位游戏安装目录与主程序
-
 using System;
 using System.Collections.Generic;
 using System.IO;

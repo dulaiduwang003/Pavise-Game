@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 关闭并恢复游戏后台录制设置
-
 using System;
 using Microsoft.Win32;
 

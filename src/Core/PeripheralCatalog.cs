@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 键鼠输入链与音频外设进程识别名单 命中即豁免后台压制 进程名子串 文件描述 在场设备厂商词条三层匹配
-
 using System;
 using System.Collections.Generic;
 
@@ -69,6 +68,21 @@ namespace PaviseApp
             foreach (string word in DescriptionWords)
                 if (lower.Contains(word)) return true;
             return false;
+        }
+
+        internal static string[] NameKeywordsForDisplay()
+        {
+            return (string[])NameKeywords.Clone();
+        }
+
+        internal static string[] DescriptionWordsForDisplay()
+        {
+            return (string[])DescriptionWords.Clone();
+        }
+
+        internal static string[] PresentVendorTokensForDisplay()
+        {
+            return PeripheralVendorProbe.Tokens();
         }
 
         private static readonly object infoCacheSync = new object();

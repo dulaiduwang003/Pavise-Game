@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 只读探测输入链路 键鼠传输方式 设备省电状态 辅助功能拦截 与已知无效改动的残留
-
 using System;
 using System.Collections.Generic;
 using Microsoft.Win32;

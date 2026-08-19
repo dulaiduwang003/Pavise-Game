@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 合并进程事件并限制游戏模式全量扫描频率
-
 using System;
 using System.Threading;
 

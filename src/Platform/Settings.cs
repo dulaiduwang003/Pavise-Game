@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 读写当前用户的持久配置
-
 using System;
 using System.Collections.Generic;
 using Microsoft.Win32;

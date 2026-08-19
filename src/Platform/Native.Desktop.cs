@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 封装窗口 主题 DPI 和桌面计时器原生接口
-
 using System;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;

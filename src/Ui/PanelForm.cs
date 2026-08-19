@@ -1,6 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 维护主窗口状态和主要交互事件
-
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -30,7 +29,8 @@ namespace PaviseApp
         Settings = 8,
         About = 9,
         Whitelist = 10,
-        Count = 11
+        Stutter = 11,
+        Count = 12
     }
 
     internal partial class PanelForm : Form
@@ -127,11 +127,14 @@ namespace PaviseApp
             nav = new NavRail(
                 new[] { Lang.T("nav.overview"), Lang.T("nav.library"), Lang.T("nav.policy"),
                         Lang.T("v14.anticheat"), Lang.T("nav.graphics"), Lang.T("nav.env"), Lang.T("nav.audit"),
-                        Lang.T("nav.log"), Lang.T("nav.set"), Lang.T("nav.about"), Lang.T("nav.white") },
-                new[] { "game", "tiles", "settings", "acshield", "gpu", "chip", "chart", "log", "gear", "info", "white" },
+                        Lang.T("nav.log"), Lang.T("nav.set"), Lang.T("nav.about"), Lang.T("nav.white"),
+                        Lang.T("nav.stutter") },
+                new[] { "game", "tiles", "settings", "acshield", "gpu", "chip", "chart", "log", "gear", "info", "white",
+                        "pulse" },
                 new[] { (int)PageId.Overview, (int)PageId.Library, (int)PageId.Whitelist,
                         (int)PageId.Policy, (int)PageId.AntiCheat, (int)PageId.Log, (int)PageId.Graphics,
-                        (int)PageId.Environment, (int)PageId.Audit, (int)PageId.Settings, (int)PageId.About },
+                        (int)PageId.Environment, (int)PageId.Audit, (int)PageId.Stutter,
+                        (int)PageId.Settings, (int)PageId.About },
                 new[] { 7 }, new[] { Lang.T("nav.hardware") }, 2);
             AssertNavMatchesPageIds(nav);
             nav.SetBounds(0, 0, Theme.S(RailW), Theme.S(WinH));
@@ -197,6 +200,7 @@ namespace PaviseApp
             pages[(int)PageId.Graphics] = pageGraphics = MakePage();
             pages[(int)PageId.Environment] = pageEnvironment = MakePage();
             pages[(int)PageId.Audit] = pageAudit = MakePage();
+            pages[(int)PageId.Stutter] = pageStutter = MakePage();
             pages[(int)PageId.Log] = pageLog = MakePage();
             pages[(int)PageId.Settings] = pageSettings = MakePage();
             pages[(int)PageId.About] = pageAbout = MakePage();
@@ -207,6 +211,8 @@ namespace PaviseApp
             BuildAntiCheatPage();
             BuildGraphicsPage();
             BuildEnvironmentPage();
+            BuildStutterPage();
+            BuildGuardVeils();
             BuildAuditPage();
             BuildLogPage();
             BuildSettingsPage();
@@ -214,7 +220,6 @@ namespace PaviseApp
             pageGameConfig = MakePage();
             RegisterPages();
 
-            // 条件色元素的主题跟随:主题切换结束时重跑各页状态刷新 让业务态颜色也跟上新主题色
             RegisterThemeRefresh(delegate { if (pageGameConfig != null && pageGameConfig.Visible) SyncCfgRows(); });
 
             root = new DBPanel();
@@ -320,6 +325,9 @@ namespace PaviseApp
                 delegate(bool active) { if (active) RefreshEnvironmentStateAsync(); }, null);
             pageHooks[(int)PageId.Audit] = new PageHook(pageAudit,
                 null, null);
+            pageHooks[(int)PageId.Stutter] = new PageHook(pageStutter,
+                delegate(bool active) { if (active) RefreshStutterPage(); },
+                RefreshStutterPage);
             pageHooks[(int)PageId.Log] = new PageHook(pageLog,
                 delegate(bool active) { if (active) RefreshLog(); }, RefreshLog);
             pageHooks[(int)PageId.Settings] = new PageHook(pageSettings,
@@ -392,6 +400,7 @@ namespace PaviseApp
             var page = pages[index];
             foreach (var p in pages) p.Visible = (p == page);
             curPage = page;
+            SyncGuardVeils();
             pageBaseLeft = Theme.S(RailW);
             page.Left = pageBaseLeft + Theme.S(16);
             pageSlide.Speed = 0.26f; pageSlide.Set(1f); pageSlide.To(0f);
@@ -644,8 +653,65 @@ namespace PaviseApp
             SyncAllToggles();
         }
 
+        private readonly System.Collections.Generic.List<GuardVeil> guardVeils
+            = new System.Collections.Generic.List<GuardVeil>();
+
+        private void BuildGuardVeils()
+        {
+            AddGuardVeil(pagePolicy);
+            AddGuardVeil(pageStutter);
+            SyncGuardVeils();
+        }
+
+        private void AddGuardVeil(DBPanel page)
+        {
+            if (page == null) return;
+            var veil = new GuardVeil(Lang.T("guard.veil.title"),
+                Lang.T("guard.veil.hint"), Lang.T("guard.veil.go"));
+            veil.Bounds = new Rectangle(0, 0, page.Width, page.Height);
+            veil.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
+            veil.Go = delegate
+            {
+                gameMode.Enabled = true;
+                Settings.Save("GameModeOn", true);
+                if (swGame != null) swGame.SetSilently(true);
+                UpdateModePresentation(true);
+            };
+            veil.Tag = page;
+            page.Controls.Add(veil);
+            guardVeils.Add(veil);
+        }
+
+        private void SyncGuardVeils()
+        {
+            bool off = gameMode != null && !gameMode.Enabled;
+            for (int i = 0; i < guardVeils.Count; i++)
+            {
+                GuardVeil v = guardVeils[i];
+                if (v == null || v.IsDisposed) continue;
+                var page = v.Tag as Control;
+                if (off)
+                {
+                    v.Wanted = true;
+                    if (page != null && page.Width > 0)
+                    {
+                        if (!v.HasFrost && page.Visible)
+                        {
+                            v.Visible = false;
+                            v.Frost(page);
+                        }
+                        v.Bounds = new Rectangle(0, 0, page.Width, page.Height);
+                    }
+                    v.Visible = true;
+                    v.BringToFront();
+                }
+                else if (v.Wanted) { v.Wanted = false; v.Visible = false; v.Drop(); }
+            }
+        }
+
         private void UpdateModePresentation(bool animate)
         {
+            SyncGuardVeils();
             PerformancePreset effective = gameMode.ActivePreset;
             bool enabled = gameMode.Enabled;
             bool visualChanged = !modeVisualInitialized || effective != visualMode || enabled != visualEnabled;

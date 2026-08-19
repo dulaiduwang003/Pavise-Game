@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 按游戏写入 NVIDIA 驱动 Profile 设置 快照先行 可按项恢复
-
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -34,7 +33,6 @@ namespace PaviseApp
         private const string ListKey = "NvDrsList";
         private const string SnapPrefix = "NvDrs_";
         public const string KeyPState = "pstate";
-        // 限帧功能已下架 KeyFrl 只留作还原旧版本写下的 DRS 键 不再写入
         public const string KeyFrl = "frl";
         public const string KeyPreRender = "prerender";
         public const string KeyLowLatCpl = "lowlatcpl";
@@ -206,8 +204,6 @@ namespace PaviseApp
 
         private static string SatKey(string exeName) { return "NvDrsSat_" + exeName; }
 
-        // 快照值编码 "原值" 或 "原值~已写值" 已写值供还原时做所有权判定
-        // 无已写值的旧快照按未知处理走无条件还原(与历史行为一致)
         private const char AppliedSep = '~';
 
         internal static string SnapOrig(string stored)
@@ -237,7 +233,6 @@ namespace PaviseApp
             if (!NvApi.Available) return null;
             string exeName = Path.GetFileName(exePath);
             if (string.IsNullOrEmpty(exeName)) return null;
-            // 空计划=还原该游戏全部已写键 否则 Ultra→On/开→关 后上次会话写的旧键继续生效
             var desired = plan == null || plan.Empty
                 ? new List<KeyValuePair<string, uint>>() : BuildDesired(plan);
             if (desired.Count == 0
@@ -275,8 +270,6 @@ namespace PaviseApp
                             return null;
                         }
                     }
-                    // 快照里上次写过而本次计划不再包含的键 还原为原值
-                    // 所有权守卫:当前值 ≠ 我们当初写的值 = 用户事后在 NVCP 改过 尊重其值只弃快照
                     var keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                     foreach (var item in desired) keep.Add(item.Key);
                     var stale = new List<string>();
@@ -341,7 +334,6 @@ namespace PaviseApp
                         foreach (var item in desired) failed.Add(item.Key);
                         Logger.Log(Lang.T("log.nvdrstweaks.22") + exeName);
                     }
-                    // 还原确认落盘后才从快照里遗忘原值 成功写入的键补记已写值供下次所有权判定
                     if (saved)
                     {
                         bool snapDirty = false;
@@ -418,7 +410,6 @@ namespace PaviseApp
                         IntPtr profile;
                         if (NvApi.FindOrCreateAppProfile(session, exeName, out profile))
                         {
-                            // 所有权守卫:当前值 ≠ 我们当初写的值 = 用户事后在 NVCP 改过 尊重其值只弃快照
                             uint applied, curNow;
                             if (TrySnapApplied(stored, out applied)
                                 && NvApi.TryGetDword(session, profile, SettingIdOf(key), out curNow) == 1
@@ -480,8 +471,6 @@ namespace PaviseApp
 
         public static int HealOrphans()
         {
-            // NVIDIA 卡已拔走时 DRS 配置随驱动库一起消失 本地快照无处可还原 弃掉防止每次启动报无法还原
-            // 只有硬件确实不在才弃 驱动暂时不可用(升级中)仍保留等下次
             if (!NvApi.Available && NvidiaAbsent())
             {
                 int dropped = DropAllSnapshots();

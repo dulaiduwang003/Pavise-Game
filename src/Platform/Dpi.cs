@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 处理高分屏缩放和窗口坐标换算
-
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;

@@ -1,6 +1,5 @@
-// @author bdth 2074055628@qq.com
-// 文件用途 用内核 ETW 会话抓 DPC 与 ISR 例程地址 映射到驱动模块 找出中断来源
-
+﻿// @author bdth 2074055628@qq.com
+// 文件用途 用内核 ETW 会话抓 DPC 与 ISR 的例程地址与单次时长 映射到驱动模块
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -8,6 +7,15 @@ using System.Threading;
 
 namespace PaviseApp
 {
+    internal struct InterruptSample
+    {
+        public long StartQpc;
+        public long EndQpc;
+        public ulong Routine;
+        public ushort Cpu;
+        public bool Isr;
+    }
+
     internal sealed class DriverInterrupt
     {
         public string Driver;
@@ -15,6 +23,19 @@ namespace PaviseApp
         public long Isr;
         public double DpcShare;
         public double IsrShare;
+        public double DpcTotalUs;
+        public double DpcMaxUs;
+        public double DpcP50Us;
+        public double DpcP95Us;
+        public double DpcP99Us;
+        public long DpcOver100Us;
+        public long DpcOver500Us;
+        public long DpcOver1Ms;
+        public double IsrTotalUs;
+        public double IsrMaxUs;
+        public ulong CpuMask;
+        public bool CpuMaskTruncated;
+        public long BadDuration;
     }
 
     internal sealed class InterruptAttributionResult
@@ -23,9 +44,20 @@ namespace PaviseApp
         public string Error;
         public long DpcTotal;
         public long IsrTotal;
+        public long QpcFrequency;
+        public InterruptSample[] LongSamples = new InterruptSample[0];
+        public long LongSamplesDropped;
         public readonly List<DriverInterrupt> Drivers = new List<DriverInterrupt>();
 
         public string TopDpc { get { return Drivers.Count > 0 ? Drivers[0].Driver : null; } }
+
+        public DriverInterrupt WorstByDuration()
+        {
+            DriverInterrupt best = null;
+            foreach (DriverInterrupt d in Drivers)
+                if (best == null || d.DpcMaxUs > best.DpcMaxUs) best = d;
+            return best;
+        }
     }
 
     internal sealed class InterruptAttribution
@@ -35,6 +67,7 @@ namespace PaviseApp
         private const uint SystemLoggerMode = 0x02000000;
         private const uint IndependentSessionMode = 0x08000000;
         private const uint ProcessModeRealTime = 0x00000100;
+        private const uint ProcessModeRawTimestamp = 0x00001000;
         private const uint ProcessModeEventRecord = 0x10000000;
         private const uint ControlStop = 1;
         private const uint FlagDpc = 0x00000020;
@@ -46,10 +79,43 @@ namespace PaviseApp
         private static readonly Guid PerfInfoGuid = new Guid("ce1dbfb4-137e-4da6-87b0-3f59aa102cbc");
         private const string SessionName = "PaviseInterruptProbe";
 
+        private static readonly double[] BucketUpperUs =
+            { 1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 5000, double.MaxValue };
+        private const int BucketCount = 13;
+        private const int BucketOver100 = 7;
+        private const int BucketOver500 = 9;
+        private const int BucketOver1Ms = 10;
+
+        private const int SampleRingSize = 8192;
+        private const double LongSampleUs = 50.0;
+
+        private sealed class RoutineStat
+        {
+            public long Count;
+            public long TotalTicks;
+            public long MaxTicks;
+            public long BadDuration;
+            public ulong CpuMask;
+            public bool CpuMaskTruncated;
+            public readonly long[] Buckets = new long[BucketCount];
+        }
+
+        private const ushort HeaderFlag32Bit = 0x0020;
+        private const ushort HeaderFlag64Bit = 0x0040;
+
         private readonly object gate = new object();
-        private readonly Dictionary<ulong, long> dpcHits = new Dictionary<ulong, long>();
-        private readonly Dictionary<ulong, long> isrHits = new Dictionary<ulong, long>();
+        private readonly Dictionary<ulong, RoutineStat> dpcHits = new Dictionary<ulong, RoutineStat>();
+        private readonly Dictionary<ulong, RoutineStat> isrHits = new Dictionary<ulong, RoutineStat>();
         private readonly List<Module> modules = new List<Module>();
+        private readonly InterruptSample[] samples = new InterruptSample[SampleRingSize];
+        private readonly long[] sampleSeq = new long[SampleRingSize];
+        private long sampleWritten;
+        private long maxTicksSeen;
+        private ulong maxRoutineSeen;
+        private long qpcFrequency;
+        private double usPerTick;
+        private long longSampleTicks;
+        private long sanityMaxTicks;
         private long dpcTotal, isrTotal;
         private ulong traceHandle;
         private Thread worker;
@@ -90,7 +156,7 @@ namespace PaviseApp
                 keepAlive = OnEvent;
                 var logfile = new EventTraceLogfile();
                 logfile.LoggerName = Marshal.StringToHGlobalUni(SessionName);
-                logfile.ProcessTraceMode = ProcessModeRealTime | ProcessModeEventRecord;
+                logfile.ProcessTraceMode = ProcessModeRealTime | ProcessModeEventRecord | ProcessModeRawTimestamp;
                 logfile.EventRecordCallbackPtr = Marshal.GetFunctionPointerForDelegate(keepAlive);
                 traceHandle = OpenTrace(ref logfile);
                 if (traceHandle == 0xFFFFFFFFFFFFFFFF || traceHandle == 0)
@@ -99,6 +165,13 @@ namespace PaviseApp
                     StopStale();
                     return false;
                 }
+
+                long freq = logfile.LogfileHeader.PerfFreq;
+                if (freq <= 0) freq = System.Diagnostics.Stopwatch.Frequency;
+                qpcFrequency = freq;
+                usPerTick = 1000000.0 / freq;
+                longSampleTicks = (long)(LongSampleUs * freq / 1000000.0);
+                sanityMaxTicks = freq;
 
                 worker = new Thread(RunProcessTrace);
                 worker.IsBackground = true;
@@ -138,16 +211,35 @@ namespace PaviseApp
 
                 result.DpcTotal = dpcTotal;
                 result.IsrTotal = isrTotal;
+                result.QpcFrequency = qpcFrequency;
                 var byMod = new Dictionary<string, DriverInterrupt>();
-                Fold(byMod, dpcHits, true);
-                Fold(byMod, isrHits, false);
+                var dpcBuckets = new Dictionary<string, long[]>();
+                Fold(byMod, dpcBuckets, dpcHits, true);
+                Fold(byMod, dpcBuckets, isrHits, false);
                 foreach (KeyValuePair<string, DriverInterrupt> kv in byMod)
                 {
                     DriverInterrupt d = kv.Value;
                     d.DpcShare = dpcTotal > 0 ? (double)d.Dpc / dpcTotal : 0;
                     d.IsrShare = isrTotal > 0 ? (double)d.Isr / isrTotal : 0;
+                    long[] b;
+                    if (dpcBuckets.TryGetValue(kv.Key, out b))
+                    {
+                        d.DpcP50Us = Clamp(PercentileFromBuckets(b, 0.50), d.DpcMaxUs);
+                        d.DpcP95Us = Clamp(PercentileFromBuckets(b, 0.95), d.DpcMaxUs);
+                        d.DpcP99Us = Clamp(PercentileFromBuckets(b, 0.99), d.DpcMaxUs);
+                        d.DpcOver100Us = SumFrom(b, BucketOver100);
+                        d.DpcOver500Us = SumFrom(b, BucketOver500);
+                        d.DpcOver1Ms = SumFrom(b, BucketOver1Ms);
+                    }
                     result.Drivers.Add(d);
                 }
+                int kept = (int)Math.Min(sampleWritten, SampleRingSize);
+                long first = sampleWritten > SampleRingSize ? sampleWritten - SampleRingSize : 0;
+                var taken = new InterruptSample[kept];
+                for (int i = 0; i < kept; i++)
+                    taken[i] = samples[(int)((first + i) % SampleRingSize)];
+                result.LongSamples = taken;
+                result.LongSamplesDropped = first;
                 result.Drivers.Sort(delegate(DriverInterrupt a, DriverInterrupt b)
                 {
                     long ta = a.Dpc + a.Isr, tb = b.Dpc + b.Isr;
@@ -159,17 +251,78 @@ namespace PaviseApp
             }
         }
 
-        private void Fold(Dictionary<string, DriverInterrupt> byMod, Dictionary<ulong, long> hits, bool dpc)
+        private void Fold(Dictionary<string, DriverInterrupt> byMod,
+            Dictionary<string, long[]> dpcBuckets, Dictionary<ulong, RoutineStat> hits, bool dpc)
         {
-            foreach (KeyValuePair<ulong, long> kv in hits)
+            foreach (KeyValuePair<ulong, RoutineStat> kv in hits)
             {
                 string mod = Resolve(kv.Key);
                 if (mod == null) continue;
                 DriverInterrupt d;
                 if (!byMod.TryGetValue(mod, out d)) { d = new DriverInterrupt { Driver = mod }; byMod[mod] = d; }
-                if (dpc) d.Dpc += kv.Value; else d.Isr += kv.Value;
+                RoutineStat st = kv.Value;
+                d.CpuMask |= st.CpuMask;
+                d.CpuMaskTruncated |= st.CpuMaskTruncated;
+                d.BadDuration += st.BadDuration;
+                double totalUs = st.TotalTicks * usPerTick;
+                double maxUs = st.MaxTicks * usPerTick;
+                if (dpc)
+                {
+                    d.Dpc += st.Count;
+                    d.DpcTotalUs += totalUs;
+                    if (maxUs > d.DpcMaxUs) d.DpcMaxUs = maxUs;
+                    long[] b;
+                    if (!dpcBuckets.TryGetValue(mod, out b)) { b = new long[BucketCount]; dpcBuckets[mod] = b; }
+                    for (int i = 0; i < BucketCount; i++) b[i] += st.Buckets[i];
+                }
+                else
+                {
+                    d.Isr += st.Count;
+                    d.IsrTotalUs += totalUs;
+                    if (maxUs > d.IsrMaxUs) d.IsrMaxUs = maxUs;
+                }
             }
         }
+
+        internal static double PercentileFromBuckets(long[] b, double q)
+        {
+            if (b == null) return 0;
+            long total = 0;
+            for (int i = 0; i < BucketCount; i++) total += b[i];
+            if (total == 0) return 0;
+            double target = q * total;
+            long acc = 0;
+            for (int i = 0; i < BucketCount; i++)
+            {
+                if (b[i] == 0) continue;
+                if (acc + b[i] >= target)
+                {
+                    double lo = i == 0 ? 0 : BucketUpperUs[i - 1];
+                    if (i == BucketCount - 1) return lo;
+                    double f = (target - acc) / b[i];
+                    if (f < 0) f = 0; else if (f > 1) f = 1;
+                    return lo + (BucketUpperUs[i] - lo) * f;
+                }
+                acc += b[i];
+            }
+            return BucketUpperUs[BucketCount - 2];
+        }
+
+        internal static double Clamp(double us, double maxUs)
+        {
+            if (maxUs <= 0) return us;
+            return us > maxUs ? maxUs : us;
+        }
+
+        internal static long SumFrom(long[] b, int startIndex)
+        {
+            long n = 0;
+            if (b == null) return 0;
+            for (int i = startIndex; i < BucketCount; i++) n += b[i];
+            return n;
+        }
+
+        internal static double[] BucketEdgesForTest() { return (double[])BucketUpperUs.Clone(); }
 
         private void OnEvent(ref EventRecord record)
         {
@@ -178,10 +331,99 @@ namespace PaviseApp
             bool isr = op == 67;
             bool dpc = op == 66 || op == 68 || op == 69;
             if (!isr && !dpc) return;
-            if (record.UserData == IntPtr.Zero || record.UserDataLength < 16) return;
-            ulong routine = (ulong)Marshal.ReadInt64(new IntPtr(record.UserData.ToInt64() + 8));
-            if (isr) { isrTotal++; long v; isrHits.TryGetValue(routine, out v); isrHits[routine] = v + 1; }
-            else { dpcTotal++; long v; dpcHits.TryGetValue(routine, out v); dpcHits[routine] = v + 1; }
+            if (record.UserData == IntPtr.Zero) return;
+
+            ushort flags = record.EventHeader.Flags;
+            int ptr = (flags & HeaderFlag64Bit) != 0 ? 8
+                : (flags & HeaderFlag32Bit) != 0 ? 4 : IntPtr.Size;
+            if (record.UserDataLength < 8 + ptr) return;
+
+            long payload = record.UserData.ToInt64();
+            long startQpc = Marshal.ReadInt64(new IntPtr(payload));
+            ulong routine = ptr == 8
+                ? (ulong)Marshal.ReadInt64(new IntPtr(payload + 8))
+                : (uint)Marshal.ReadInt32(new IntPtr(payload + 8));
+            long endQpc = record.EventHeader.TimeStamp;
+            long ticks = endQpc - startQpc;
+            bool timed = ticks >= 0 && ticks <= sanityMaxTicks;
+
+            Dictionary<ulong, RoutineStat> map = isr ? isrHits : dpcHits;
+            RoutineStat st;
+            if (!map.TryGetValue(routine, out st)) { st = new RoutineStat(); map[routine] = st; }
+            st.Count++;
+            ushort cpu = record.BufferContext.ProcessorIndex;
+            if (cpu < 64) st.CpuMask |= 1UL << cpu; else st.CpuMaskTruncated = true;
+            if (!timed) st.BadDuration++;
+            else
+            {
+                st.TotalTicks += ticks;
+                if (ticks > st.MaxTicks) st.MaxTicks = ticks;
+                if (!isr && ticks > maxTicksSeen)
+                {
+                    maxRoutineSeen = routine;
+                    Volatile.Write(ref maxTicksSeen, ticks);
+                }
+                st.Buckets[BucketOf(ticks)]++;
+                if (ticks >= longSampleTicks) PushSample(startQpc, endQpc, routine, cpu, isr);
+            }
+            if (isr) isrTotal++; else dpcTotal++;
+        }
+
+        private int BucketOf(long ticks)
+        {
+            double us = ticks * usPerTick;
+            for (int i = 0; i < BucketCount - 1; i++) if (us < BucketUpperUs[i]) return i;
+            return BucketCount - 1;
+        }
+
+        private void PushSample(long start, long end, ulong routine, ushort cpu, bool isr)
+        {
+            long seq = sampleWritten;
+            int i = (int)(seq % SampleRingSize);
+            Volatile.Write(ref sampleSeq[i], -1);
+            samples[i].StartQpc = start;
+            samples[i].EndQpc = end;
+            samples[i].Routine = routine;
+            samples[i].Cpu = cpu;
+            samples[i].Isr = isr;
+            Volatile.Write(ref sampleSeq[i], seq);
+            Volatile.Write(ref sampleWritten, seq + 1);
+        }
+
+        public long QpcFrequency { get { return qpcFrequency; } }
+
+        public InterruptSample[] SnapshotLongSamples()
+        {
+            long total = Volatile.Read(ref sampleWritten);
+            int n = (int)Math.Min(total, SampleRingSize);
+            if (n <= 0) return new InterruptSample[0];
+            long first = total > SampleRingSize ? total - SampleRingSize : 0;
+            var outp = new InterruptSample[n];
+            int kept = 0;
+            for (int k = 0; k < n; k++)
+            {
+                long want = first + k;
+                int i = (int)(want % SampleRingSize);
+                long s1 = Volatile.Read(ref sampleSeq[i]);
+                if (s1 != want) continue;
+                InterruptSample copy = samples[i];
+                long s2 = Volatile.Read(ref sampleSeq[i]);
+                if (s2 != want) continue;
+                outp[kept++] = copy;
+            }
+            if (kept == n) return outp;
+            var trimmed = new InterruptSample[kept];
+            Array.Copy(outp, trimmed, kept);
+            return trimmed;
+        }
+
+        public DriverInterrupt PeekWorstByDuration()
+        {
+            long ticks = Volatile.Read(ref maxTicksSeen);
+            if (ticks <= 0) return null;
+            string mod = Resolve(maxRoutineSeen);
+            if (mod == null) return null;
+            return new DriverInterrupt { Driver = mod, DpcMaxUs = ticks * usPerTick };
         }
 
         private string Resolve(ulong addr)
@@ -248,6 +490,8 @@ namespace PaviseApp
         {
             try { StopStale(); } catch { }
         }
+
+        public static void HealFromCrash() { StopStale(); }
 
         private static void StopStale()
         {
@@ -325,7 +569,7 @@ namespace PaviseApp
         [StructLayout(LayoutKind.Sequential)]
         private struct EtwBufferContext
         {
-            public byte ProcessorNumber, Alignment;
+            public ushort ProcessorIndex;
             public ushort LoggerId;
         }
 

@@ -2,6 +2,17 @@
 .claude/
 tests/
 tools/
+!tools/
+tools/*
+!tools/ThermalExchangeDemo/
+!tools/ThermalExchangeDemo/**
+!tools/InterruptFabricDemo/
+!tools/InterruptFabricDemo/**
+!tools/HeterogeneousGpuBench/
+!tools/HeterogeneousGpuBench/**
+!tools/VrsBench/
+!tools/VrsBench/**
+tools/VrsBench/results/
 scripts/
 *.bak
 *.exe

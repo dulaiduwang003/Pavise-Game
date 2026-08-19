@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 概览页设备规格条 斜切分段的机能面板风格
-
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -79,7 +78,6 @@ namespace PaviseApp
             }
         }
 
-        // 内存值短 让出宽度给处理器与显卡的长型号名
         private int[] SliceEdges()
         {
             return new[] { 0, Width * 38 / 100, Width * 80 / 100, Width };

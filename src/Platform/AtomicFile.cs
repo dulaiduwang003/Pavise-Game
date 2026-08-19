@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 以先写临时文件再替换的方式保证配置和日志不会被写坏
-
 using System;
 using System.IO;
 using System.Text;

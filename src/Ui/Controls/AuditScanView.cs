@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 系统体检的待机提示与检测过程动画
-
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;

@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 绘制首页核心状态和动态效果
-
 using System;
 using System.Diagnostics;
 using System.Drawing;

@@ -1,7 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 为游戏本体按 exe 关闭控制流保护 CFG 经 IFEO MitigationOptions 由内核在进程创建时应用
-// 只清 CFG 那一位 读改写保留同一 QWORD 里用户已有的其它缓解设置 全程可还原并带所有权守卫
-
 using System;
 using System.Collections.Generic;
 using Microsoft.Win32;
@@ -15,8 +13,6 @@ namespace PaviseApp
         private const string ListKey = "CfgList";
         private const string EnableKey = "CfgOff";
 
-        // IFEO MitigationOptions 是小端 QWORD 位域 CFG 占 nibble 10 即 byte5 低半字节
-        // 掩码 0x3<<40 强制关 ALWAYS_OFF 0x2<<40 与 Windows Exploit Protection 写入的同一格式
         private const int CfgByteIndex = 5;
         private const byte CfgMask = 0x03;
         private const byte CfgAlwaysOff = 0x02;
@@ -43,7 +39,6 @@ namespace PaviseApp
             Settings.Save(EnableKey, true);
         }
 
-        // 关开关即把已写入的所有游戏本体逐个还原 无论开关记录如何都尽力清残留
         public static bool Disable()
         {
             Settings.Save(EnableKey, false);
@@ -67,7 +62,6 @@ namespace PaviseApp
                 ValName, RegistryValueKind.Binary, "CfgOpt_" + exe);
         }
 
-        // 读当前值 只把 CFG 那一位改成强制关 其余位原样保留
         private static byte[] MergeCfgOff(byte[] current)
         {
             byte[] m;
@@ -91,7 +85,6 @@ namespace PaviseApp
             catch { return null; }
         }
 
-        // 开关开启后 检测到游戏本体即写入 已写过的直接跳过
         public static void EnsureForGame(string rendererName)
         {
             if (!Enabled) return;
@@ -157,7 +150,6 @@ namespace PaviseApp
             }
         }
 
-        // exe 键是我们为写缓解位新建的 且现已空 则连键一起清掉 不留 IFEO 痕迹
         private static void CleanupEmpty(string exe, string marker)
         {
             if (marker.Length > 0 && marker[0] == '1') return;

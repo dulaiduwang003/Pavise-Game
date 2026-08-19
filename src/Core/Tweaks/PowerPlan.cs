@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 对局时切换电源计划 退出还原
-
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -424,7 +423,6 @@ namespace PaviseApp
             }
         }
 
-        // 所有权判定只查找不创建 覆盖跨进程自愈场景(resolved=false)
         private static bool IsOurActivePlan(Guid g)
         {
             if (resolved && g == target) return true;
@@ -452,8 +450,6 @@ namespace PaviseApp
                 bool ok = true;
                 if (restoreTarget != Guid.Empty)
                 {
-                    // 当前活动方案既不是我们切过去的目标也不是待还原原方案 = 用户中途手动换过方案
-                    // 所有权已转移 不抢回 只清记账(照 ReversibleReg 的所有权哲学)
                     Guid? nowActive = Current();
                     if (nowActive.HasValue && nowActive.Value != restoreTarget
                         && !IsOurActivePlan(nowActive.Value))

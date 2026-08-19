@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 按 CPU 类别决定竞技电源计划的差异项 纯决策不碰硬件
-
 using System;
 
 namespace PaviseApp

@@ -1,6 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 阻止系统为省电关闭网卡 免除唤醒延迟造成的对局卡顿
-
 using System;
 using System.Collections.Generic;
 using Microsoft.Win32;

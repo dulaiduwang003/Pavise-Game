@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 记录运行日志并通知界面刷新
-
 using System;
 using System.Diagnostics;
 using System.IO;

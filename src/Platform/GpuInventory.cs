@@ -1,6 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 枚举本机显示适配器 优先按驱动报告区分核显与独显 排除虚拟适配器
-
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -208,7 +207,6 @@ namespace PaviseApp
                             bool? driverReported = venDev != null
                                 && reportedIntegrated.TryGetValue(venDev, out reported)
                                 ? (bool?)reported : null;
-                            // DXCore 没答复时退回总线号/显存启发式 该猜测在 APU 与小显存老独显上会错 必须留痕
                             if (driverReported == null && !degradeLogged)
                             {
                                 degradeLogged = true;

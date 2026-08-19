@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 提供分段选择控件 默认三段压制档位 可用 Labels 泛化为任意段数
-
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;

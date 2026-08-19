@@ -1,6 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 启动程序并处理单实例 自愈和命令行入口
-
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -20,7 +19,7 @@ namespace PaviseApp
     internal static class App
     {
         public const string DisplayName = "PAVISE";
-        public const string Version = "1.8.1.0";
+        public const string Version = "1.8.1.1";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string WeChat = "Ssssssstyle";
@@ -48,7 +47,6 @@ namespace PaviseApp
 #if PAVISE_SELFTEST
             if (SelfTests.TryHandleRuntimeMode(args)) return;
 #endif
-
 
             if (args.Length >= 4 && args[0] == "--cage-guard")
             {
@@ -248,9 +246,12 @@ namespace PaviseApp
             if (healedSuppression > 0) Logger.Log(Lang.T("log.program.2") + healedSuppression + Lang.T("log.program.3"));
             PowerPlan.HealFromCrash();
             try { if (PowerPlan.HasParkResidue()) PowerPlan.RestoreParkState(); } catch { }
+            try { FrameDiagnostics.HealFromCrash(); } catch { }
+            try { FrameRemedy.HealFromCrash(); } catch { }
             try { UpdatePause.HealFromCrash(); } catch { }
             try { UploadYield.HealFromCrash(); } catch { }
             GameDvr.HealFromCrash();
+            try { Mmcss.HealFromCrash(); } catch { }
             try { VersionMigrations.PurgeRetired(); } catch { }
             VisualFx.HealFromCrash();
             try { PresenceQos.HealFromCrash(); } catch { }
@@ -263,7 +264,6 @@ namespace PaviseApp
             CrashGuard.HealFromCrash();
             try { InterruptAffinityTweak.HealStaleMask(); } catch { }
             try { NetworkAffinityTweak.HealStaleMask(); } catch { }
-            // 掩码派生策略升级或核心域偏好变化后 把已启用的中断亲和重写到当前期望的核 重启生效
             try { InterruptAffinityTweak.ResyncMask(); } catch { }
 
             bool pendingPanel = Settings.Load(PendingPanelKey, false);
@@ -271,7 +271,6 @@ namespace PaviseApp
 
             try { VersionMigrations.ResetDataOnUpgrade(dir); } catch { }
             try { LegacyPurge.RunOnce(dir); } catch { }
-            // 无条件补章:RunOnce 删注册表树时会连版本章一起删掉 这里兜底重写
             try { VersionMigrations.StampRunVersion(); } catch { }
 
             if (Settings.Load("GmIfeoBoost", false))
@@ -414,6 +413,7 @@ namespace PaviseApp
                 try { gameMode.Enabled = false; } catch { }
                 try { PowerPlan.Restore(); } catch { }
                 try { GameDvr.Restore(); } catch { }
+                try { Mmcss.Restore(); } catch { }
                 try { VersionMigrations.RestoreAll(); } catch { }
                 try { VisualFx.Restore(); } catch { }
                 try { NvGlobalTweaks.Restore(); } catch { }

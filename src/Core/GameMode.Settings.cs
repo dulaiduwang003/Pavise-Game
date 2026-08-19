@@ -1,6 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 游戏模式的设置开关属性
-
 using System;
 
 namespace PaviseApp
@@ -17,6 +16,30 @@ namespace PaviseApp
         {
             get { return boostOn; }
             set { boostOn = value; Settings.Save("GmBoost", value); RequestPolicyApply(); }
+        }
+
+        public bool FrameDiagOn
+        {
+            get { return frameDiagOn; }
+            set
+            {
+                frameDiagOn = value;
+                Settings.Save(PolicyCatalog.KeyFrameDiag, value);
+                if (!value) FrameDiagnostics.Stop();
+                RequestPolicyApply();
+            }
+        }
+
+        public bool FrameActOn
+        {
+            get { return frameActOn; }
+            set
+            {
+                frameActOn = value;
+                Settings.Save(PolicyCatalog.KeyFrameAct, value);
+                if (!value) FrameOffenderPolicy.Reset(false);
+                RequestPolicyApply();
+            }
         }
 
         public bool CorePartitionEnabled
@@ -138,7 +161,6 @@ namespace PaviseApp
                 RequestPolicyApply();
             }
         }
-
 
         public bool PurgeStandby
         {
@@ -330,6 +352,12 @@ namespace PaviseApp
         {
             get { return killGameDvr; }
             set { killGameDvr = value; Settings.Save("GameDvrOff", value); SyncGameDvr(); RequestPolicyApply(); }
+        }
+
+        public bool MmcssOn
+        {
+            get { return mmcssOn; }
+            set { mmcssOn = value; Settings.Save("GmMmcss", value); SyncMmcss(); }
         }
 
         public bool PowerPlanSwitch

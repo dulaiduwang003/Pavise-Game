@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 按会话累计 NVIDIA GPU 降频原因采样 归因功耗墙温度墙电池限制
-
 using System;
 using System.Collections.Generic;
 
@@ -34,7 +33,6 @@ namespace PaviseApp
                 if (now < nextSampleTicks) return;
                 nextSampleTicks = now + MinIntervalSeconds * TimeSpan.TicksPerSecond;
             }
-            // 混合显卡机上游戏被钉在核显时独显处于 RTD3 休眠 NvAPI 查询会反复唤醒它 且采样对该游戏无归因意义
             if (GpuInventory.Hybrid && GameExeTweaks.PrefersIntegrated(gameExePath)) return;
             uint mask;
             if (!TryReadMask(out mask)) return;

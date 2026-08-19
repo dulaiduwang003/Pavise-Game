@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 对局中给无线网卡开媒体流模式 抑制周期性后台信道扫描的延迟突刺
-
 using System;
 using System.Runtime.InteropServices;
 
@@ -62,7 +61,6 @@ namespace PaviseApp
 
         private static int hasWifiCached = -1;
 
-        // 本机是否存在无线网卡 UI 据此置灰 WlanSvc 未运行或枚举不到接口都算无
         public static bool HasWirelessInterface()
         {
             if (hasWifiCached < 0)

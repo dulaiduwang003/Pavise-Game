@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 封装项目使用的 Windows 原生接口
-
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -440,7 +439,6 @@ namespace PaviseApp
         }
 
         private const uint QosSealMask = 5;
-        // 定时器压制位仅较新系统识别 旧系统写入报参数非法 首次失败后全局落回纯限速
         private static volatile bool timerSealUnavailable;
 
         public static uint EcoQoSWantMask(bool sealTimer)
@@ -561,7 +559,6 @@ namespace PaviseApp
         [DllImport("netapi32.dll")] private static extern int NetApiBufferFree(IntPtr buffer);
 
         private static int domainJoined = -1;
-        // 域机上组策略会周期性刷新策略键 本地写入会被反复覆盖并互相打架
         public static bool IsDomainJoined()
         {
             if (domainJoined < 0)
@@ -582,7 +579,6 @@ namespace PaviseApp
         }
 
         private static int hasBattery = -1;
-        // BatteryFlag 128=无电池 255=未知 未知一律按无电池处理 避免台式机被误判为笔记本
         public static bool HasSystemBattery()
         {
             if (hasBattery < 0)
@@ -597,6 +593,56 @@ namespace PaviseApp
                 catch { hasBattery = 0; }
             }
             return hasBattery == 1;
+        }
+
+        public static bool IsElevated()
+        {
+            try
+            {
+                using (var id = System.Security.Principal.WindowsIdentity.GetCurrent())
+                    return new System.Security.Principal.WindowsPrincipal(id)
+                        .IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+            }
+            catch { return false; }
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct ProcessorPowerInformation
+        {
+            public uint Number;
+            public uint MaxMhz;
+            public uint CurrentMhz;
+            public uint MhzLimit;
+            public uint MaxIdleState;
+            public uint CurrentIdleState;
+        }
+
+        [DllImport("powrprof.dll")]
+        private static extern uint CallNtPowerInformation(int level, IntPtr input, uint inputSize,
+            IntPtr output, uint outputSize);
+
+        public static bool TryPeakCoreMhz(out uint peakCurrent, out uint peakMax)
+        {
+            peakCurrent = 0;
+            peakMax = 0;
+            int count = Environment.ProcessorCount;
+            if (count <= 0) return false;
+            int size = Marshal.SizeOf(typeof(ProcessorPowerInformation));
+            IntPtr buf = Marshal.AllocHGlobal(size * count);
+            try
+            {
+                if (CallNtPowerInformation(11, IntPtr.Zero, 0, buf, (uint)(size * count)) != 0) return false;
+                for (int i = 0; i < count; i++)
+                {
+                    var info = (ProcessorPowerInformation)Marshal.PtrToStructure(
+                        (IntPtr)(buf.ToInt64() + i * size), typeof(ProcessorPowerInformation));
+                    if (info.CurrentMhz > peakCurrent) peakCurrent = info.CurrentMhz;
+                    if (info.MaxMhz > peakMax) peakMax = info.MaxMhz;
+                }
+                return peakMax > 0;
+            }
+            catch { return false; }
+            finally { Marshal.FreeHGlobal(buf); }
         }
 
         public const int PROCESS_SET_QUOTA = 0x0100;

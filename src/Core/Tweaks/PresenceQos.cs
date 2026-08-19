@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 关闭无输入时的前台降级 官方 QoS 文档给出的开关 可逆
-
 using Microsoft.Win32;
 
 namespace PaviseApp

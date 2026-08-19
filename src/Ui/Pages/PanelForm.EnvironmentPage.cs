@@ -1,6 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 构建系统环境页 集中放置需要重启且会留在机器上的内核与驱动改动
-
 using System;
 using System.Drawing;
 using System.Threading;
@@ -12,9 +11,10 @@ namespace PaviseApp
     {
         private Toggle swHags, swVbs, swIrqAffinity, swGmGuard;
         private Toggle swDevPower, swWindowedOpt, swCfgOff;
-        private Toggle swAccessKeys, swHidPower;
-        private SettingCard cardVbs, cardWindowedOpt;
-        private SettingCard cardAccessKeys, cardHidPower;
+        private Toggle swAccessKeys, swHidPower, swSpecMit;
+        private SettingCard cardVbs, cardWindowedOpt, cardSpecMit;
+        private SettingCard cardAccessKeys, cardHidPower, cardQuantum;
+        private TierPicker quantumPicker;
         private TechTabs envTabs;
         private DBPanel[] envTabPanels;
         private int envBusy;
@@ -71,6 +71,13 @@ namespace PaviseApp
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.cfgoff"), Lang.T("set.cfgoff.n"), swCfgOff, out cardH);
             sy += cardH + 8;
 
+            SpecMitigationTweak.State specSt = SpecMitigationTweak.Query();
+            swSpecMit = MakeSwitch(SpecMitigationTweak.DisabledByPavise, OnSpecMitToggle);
+            swSpecMit.Enabled = specSt.RecoverableCost || SpecMitigationTweak.DisabledByPavise;
+            cardSpecMit = MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.specmit"), " ", swSpecMit, out cardH);
+            ApplySpecMitState(specSt);
+            sy += cardH + 8;
+
             scroll = envTabPanels[1]; sy = 2;
 
             bool discreteGpu = GpuInventory.HasDiscrete;
@@ -98,6 +105,18 @@ namespace PaviseApp
                 Lang.T("set.hidpower.n"), swHidPower, out cardH);
             sy += cardH + 8;
 
+            quantumPicker = new TierPicker();
+            quantumPicker.Size = new Size(Theme.S(270), Theme.S(28));
+            quantumPicker.Labels = new[]
+            {
+                Lang.T("quantum.mode.default"), Lang.T("quantum.mode.fg"), Lang.T("quantum.mode.report")
+            };
+            quantumPicker.Index = (int)QuantumTweak.Mode;
+            quantumPicker.IndexChanged = delegate(int i) { OnQuantumModePicked(i); };
+            cardQuantum = MakeAutoCard(scroll, 6, sy, ScrollContentW, 88, Lang.T("set.quantum"),
+                Lang.T("set.quantum.n"), quantumPicker, out cardH);
+            sy += cardH + 8;
+
             SyncEnvStatus();
             for (int i = 0; i < envTabPanels.Length; i++) EnableCardCollapse(envTabPanels[i]);
         }
@@ -119,6 +138,22 @@ namespace PaviseApp
             if (cardWindowedOpt != null && Native.OsBuild() >= 22000)
                 cardWindowedOpt.SetStatus(WindowedOptTweak.Describe(),
                     StatusInk(!WindowedOptTweak.CurrentlyOn(), WindowedOptTweak.EnabledByPavise));
+            if (cardQuantum != null)
+                cardQuantum.SetStatus(QuantumTweak.Describe(),
+                    StatusInk(QuantumTweak.NeedsRepair(), QuantumTweak.RepairedByPavise));
+        }
+
+        private void OnQuantumModePicked(int index)
+        {
+            if (!elevated && index != (int)QuantumMode.ReportOnly)
+            {
+                PaviseDialog.Warn(this, App.DisplayName, Lang.T("vbs.needadmin"));
+                quantumPicker.Index = (int)QuantumTweak.Mode;
+                return;
+            }
+            QuantumTweak.SetMode((QuantumMode)index);
+            quantumPicker.Index = (int)QuantumTweak.Mode;
+            SyncEnvStatus();
         }
 
         private void OnAccessKeysToggle(object s, EventArgs e)
@@ -251,6 +286,61 @@ namespace PaviseApp
             cardVbs.Desc = Lang.T(key);
         }
 
+        private void OnSpecMitToggle(object s, EventArgs e)
+        {
+            if (swSpecMit.Checked)
+            {
+                if (!RequireElevationFor(swSpecMit, false)) return;
+                string specBlockKey;
+                if (SpecMitigationTweak.BlockedReason(out specBlockKey))
+                {
+                    PaviseDialog.Warn(this, App.DisplayName, Lang.T(specBlockKey));
+                    swSpecMit.SetSilently(false); RefreshSpecMitState(); return;
+                }
+                bool agreed = PaviseDialog.Confirm(this, App.DisplayName, Lang.T("spec.warn"), DlgKind.Warn);
+                if (!agreed || !SpecMitigationTweak.Disable())
+                {
+                    swSpecMit.SetSilently(false); RefreshSpecMitState(); return;
+                }
+                RefreshSpecMitState();
+                PaviseDialog.Info(this, App.DisplayName, Lang.T("spec.done"));
+            }
+            else
+            {
+                if (!RequireElevationFor(swSpecMit, true)) return;
+                if (!SpecMitigationTweak.Restore())
+                {
+                    swSpecMit.SetSilently(SpecMitigationTweak.DisabledByPavise);
+                    RefreshSpecMitState();
+                    PaviseDialog.Warn(this, App.DisplayName, Lang.T("spec.restorefail"));
+                    return;
+                }
+                RefreshSpecMitState();
+                PaviseDialog.Info(this, App.DisplayName, Lang.T("spec.restored"));
+            }
+        }
+
+        private void RefreshSpecMitState()
+        {
+            if (cardSpecMit == null) return;
+            ApplySpecMitState(SpecMitigationTweak.Query());
+        }
+
+        private void ApplySpecMitState(SpecMitigationTweak.State st)
+        {
+            if (cardSpecMit == null) return;
+            string text;
+            if (SpecMitigationTweak.DisabledByPavise && (!st.QueryOk || st.RecoverableCost))
+                text = Lang.T("spec.state.pending");
+            else if (!st.QueryOk) text = Lang.T("spec.state.unknown");
+            else if (st.RecoverableCost)
+                text = Lang.T("spec.state.on") + SpecMitigationTweak.ActiveCostSummary(st);
+            else text = Lang.T("spec.state.off");
+            cardSpecMit.Desc = text;
+            if (swSpecMit != null)
+                swSpecMit.Enabled = st.RecoverableCost || SpecMitigationTweak.DisabledByPavise;
+        }
+
         private void RefreshEnvironmentStateAsync()
         {
             if (!UiActive) return;
@@ -259,6 +349,8 @@ namespace PaviseApp
             {
                 var st = new VbsTweak.State();
                 try { st = VbsTweak.Query(); } catch { }
+                var specSt = new SpecMitigationTweak.State();
+                try { specSt = SpecMitigationTweak.Query(); } catch { }
                 Interlocked.Exchange(ref envBusy, 0);
                 if (!UiActive) return;
                 try
@@ -268,6 +360,8 @@ namespace PaviseApp
                         if (IsDisposed || !UiActive) return;
                         if (swVbs != null) swVbs.SetSilently(VbsTweak.DisabledByPavise);
                         ApplyVbsState(st);
+                        if (swSpecMit != null) swSpecMit.SetSilently(SpecMitigationTweak.DisabledByPavise);
+                        ApplySpecMitState(specSt);
                     }));
                 }
                 catch { }
@@ -286,6 +380,8 @@ namespace PaviseApp
             if (swWindowedOpt != null)
                 swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByPavise || WindowedOptTweak.CurrentlyOn());
             if (swCfgOff != null) swCfgOff.SetSilently(CfgOffTweak.Enabled);
+            if (swSpecMit != null) swSpecMit.SetSilently(SpecMitigationTweak.DisabledByPavise);
+            if (quantumPicker != null) quantumPicker.Index = (int)QuantumTweak.Mode;
         }
     }
 }

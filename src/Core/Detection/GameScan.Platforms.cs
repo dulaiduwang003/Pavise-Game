@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 游戏扫描平台清单分部 Steam Epic GOG 育碧 Riot WeGame 战网 Xbox 商店
-
 using System;
 using System.Collections.Generic;
 using System.IO;

@@ -1,6 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 系统体检 聚合本机能力 实测数据与持久设置 输出带依据等级的结论清单
-
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -245,10 +244,12 @@ namespace PaviseApp
             public bool AmdHardware;
             public bool IntegratedOnly;
             public bool Partition;
+            public bool PartitionOn;
             public bool Eco;
             public bool EcoFull;
             public bool Hags;
             public VbsTweak.State Vbs = new VbsTweak.State();
+            public SpecMitigationTweak.State SpecMit = new SpecMitigationTweak.State();
             public bool GameMode;
             public bool MpoOff;
             public bool Dvr;
@@ -309,10 +310,12 @@ namespace PaviseApp
             }
             catch { }
             try { f.Partition = CpuTopology.HasSafeBackgroundPartition(); } catch { }
+            try { f.PartitionOn = Settings.Load("GmStrictCores", false); } catch { }
             try { f.Eco = Native.PowerThrottlingSupported; } catch { }
             f.EcoFull = f.Eco && WindowsBuild() >= EcoQosFullBuild;
             try { f.Hags = HagsTweak.CurrentlyOn(); } catch { }
             try { f.Vbs = VbsTweak.Query(); } catch { }
+            try { f.SpecMit = SpecMitigationTweak.Query(); } catch { }
             try { f.GameMode = GameModeGuard.CurrentlyOn(); } catch { }
             try { f.MpoOff = MpoTweak.CurrentlyDisabled(); } catch { }
             f.Dvr = GameDvrOn();

@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 构建反作弊专项页 逐分组的压制档位与开关
-
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -12,6 +11,7 @@ namespace PaviseApp
     {
         private DBPanel acList;
         private Toggle swAcMaster;
+        private SettingCard cardAcRoster;
         private readonly List<AcGroup> acGroups = new List<AcGroup>();
         private readonly List<SettingCard> acCards = new List<SettingCard>();
         private readonly List<Toggle> acToggles = new List<Toggle>();
@@ -29,10 +29,38 @@ namespace PaviseApp
             int acCardH;
             MakeAutoCard(pageAntiCheat, ContentX, y, ContentW, 56, Lang.T("tame.toggle"),
                 Lang.T("v14.anticheat.master.sub"), swAcMaster, out acCardH); y += acCardH + 10;
+
+            var btnRoster = new PillButton(Lang.T("btn.roster.clear"));
+            btnRoster.Size = new Size(Theme.S(96), Theme.S(30));
+            btnRoster.Click += delegate { OnClearRoster(); };
+            cardAcRoster = MakeAutoCard(pageAntiCheat, ContentX, y, ContentW, 56, Lang.T("ac.roster"),
+                Lang.T("ac.roster.sub"), btnRoster, out acCardH); y += acCardH + 10;
+            SyncAcRoster();
             acList = new DBPanel();
             acList.SetBounds(Theme.S(20), Theme.S(y), Theme.S(PageW - 40), Theme.S(PageH - y - 8));
             acList.BackColor = Theme.Bg; acList.AutoScroll = true; Native.Dark(acList); pageAntiCheat.Controls.Add(acList);
             RefreshAcList();
+        }
+
+        private void SyncAcRoster()
+        {
+            if (cardAcRoster == null) return;
+            string[] names = ProtectedGameRoster.Names();
+            cardAcRoster.SetStatus(names.Length == 0
+                ? Lang.T("ac.roster.empty")
+                : string.Join(" · ", names), names.Length == 0 ? Theme.Faint : Theme.Accent);
+        }
+
+        private void OnClearRoster()
+        {
+            if (ProtectedGameRoster.Names().Length == 0)
+            {
+                PaviseDialog.Info(this, Lang.T("ac.roster"), Lang.T("ac.roster.empty"));
+                return;
+            }
+            if (!PaviseDialog.Confirm(this, Lang.T("ac.roster"), Lang.T("ac.roster.confirm"), DlgKind.Warn)) return;
+            ProtectedGameRoster.Clear();
+            SyncAcRoster();
         }
 
         private void RefreshAcGroupStates()

@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 AMD ADLX 手写 vtable 互操作 无 SDK 依赖 驱动缺失时整体降级 按 1.5.0.124 头文件布局
-
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;

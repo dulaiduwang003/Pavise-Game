@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 按会话采样游戏进程溢出到系统内存的共享显存 峰值超阈值时在结束报告归因
-
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -25,7 +24,6 @@ namespace PaviseApp
         public static void SampleIfDue(ICollection<int> gamePids)
         {
             if (gamePids == null || gamePids.Count == 0) return;
-            // 纯核显机全部显存都在共享段 高共享占用是常态不是溢出 该指标只对有独显的机器成立
             if (GpuInventory.IntegratedOnly) return;
             long now = DateTime.UtcNow.Ticks;
             lock (lk)

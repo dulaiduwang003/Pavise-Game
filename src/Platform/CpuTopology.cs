@@ -1,6 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 识别处理器拓扑并计算游戏和后台核心分区
-
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -62,8 +61,6 @@ namespace PaviseApp
             InterruptMask = DeriveInterruptMask(Hybrid, PerfMask, ThrottleMask);
         }
 
-        // P 核充足(≥8 逻辑位)投最高两个 P 核逻辑位 低 DPC 延迟优先
-        // P 核稀缺的轻薄本(2P/3P)上那等于把 USB/存储/网卡中断钉进游戏仅有的算力 改投最高两个 E 核 隔离优先
         internal static ulong DeriveInterruptMask(bool hybrid, ulong perfMask, ulong throttle)
         {
             if (!hybrid || perfMask == 0) return throttle;
@@ -87,7 +84,6 @@ namespace PaviseApp
             return top;
         }
 
-        // GPU 中断与其他设备相反 该靠近渲染线程所在核心 混合架构上即 P 核顶端
         public static ulong GpuInterruptPreferredMask()
         {
             if (Hybrid && PerfMask != 0) return TopBits(PerfMask, 2);
@@ -623,7 +619,6 @@ namespace PaviseApp
                 var chosenBackgroundCores = new HashSet<string>(StringComparer.Ordinal);
                 if (max > min)
                 {
-                    // 少 P 核轻薄本(2P/3P)把游戏关进性能核分区只剩 4~6 逻辑线程 现代游戏必掉帧 不提供该分区
                     int perfLogical = 0;
                     foreach (CpuSetRec r in rows) if (r.Efficiency == max) perfLogical++;
                     if (perfLogical >= 8)

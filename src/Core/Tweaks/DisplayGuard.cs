@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 只读查询主显示器刷新率 并还原旧版刷新率守护留下的残留
-
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -78,9 +77,6 @@ namespace PaviseApp
             return Settings.LoadStr(Slot, "").Length > 0;
         }
 
-        // 旧版守护用动态改模式(不写注册表)提升刷新率 重启即自然失效
-        // 残留槽存的是当年的低刷新率 事后写回只会把换过显示器或自行调过刷新率的用户拉回低刷
-        // 故迁移只弃槽 不再动显示器
         public static bool Restore()
         {
             lock (lk)

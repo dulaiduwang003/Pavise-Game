@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 会话环境编排 熔断重试与恢复
-
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -206,7 +205,6 @@ namespace PaviseApp
             awakeActive = EnvStep("awake", pAwake, awakeActive, DisplayAwake.Activate, DisplayAwake.Restore);
             rsrActive = EnvStep("rsr", rsrOn, rsrActive, AdlxTweaks.ActivateRsr, AdlxTweaks.RestoreRsr);
             gpwActive = EnvStep("gpupower", gpuPowerMaxOn, gpwActive, GpuPowerMax.Activate, GpuPowerMax.Restore);
-            // 限帧已下架 Anti-Lag 不再被 Chill 互斥抑制 恢复无条件按开关生效
             amdAlagActive = EnvStep("amdalag", pAmdAlag && AdlxTweaks.AntiLagSupported(),
                 amdAlagActive, AdlxTweaks.ActivateAntiLag, RestoreAmdAntiLagEnv);
             amdAfmfActive = EnvStep("amdafmf", pAmdAfmf && AdlxTweaks.AfmfSupported(), amdAfmfActive,
@@ -260,10 +258,6 @@ namespace PaviseApp
                 lastPowerPolicyKey = -1;
                 nextPowerAuditTicks = 0;
             }
-
-            // 对局核心解停泊已并入托管电源计划(见 PowerPlan.WriteKnob 的 CpMinCores)
-            // 独立的 UnparkForSession 覆盖是冗余且会与还原路径死循环刷屏 已移除
-            // 旧版残留快照由启动自愈(Program)与退出还原(RestoreEnv)按需清理
 
             if (!timerRaised)
             {
@@ -359,12 +353,16 @@ namespace PaviseApp
 
         private bool EnvActive()
         {
+            bool remedy = false;
+            try { remedy = FrameRemedy.HasResidue; } catch { }
             return doActive || wlanActive || wuActive || pqosActive || awakeActive || rsrActive || gpwActive || planActive || timerRaised
-                || amdAlagActive || amdAfmfActive;
+                || amdAlagActive || amdAfmfActive || remedy;
         }
 
         private string lastResidueLogged;
         private long residueLogTicks;
+        private int residueRetries;
+        private long residueNextTryTicks;
 
         private string ResidueDetail()
         {
@@ -381,29 +379,46 @@ namespace PaviseApp
             if (pqosActive) parts.Add(Lang.T("t.gamemodeenv.33"));
             if (awakeActive) parts.Add(Lang.T("t.gamemodeenv.34"));
             if (planActive) parts.Add(Lang.T("t.gamemodeenv.35"));
+            try { if (FrameRemedy.HasResidue) parts.Add(Lang.T("remedy.residue")); } catch { }
             if (timerRaised) parts.Add(Lang.T("t.gamemodeenv.36"));
             return parts.Count > 0 ? string.Join(" ", parts.ToArray()) : Lang.T("t.gamemodeenv.37");
         }
 
+        private static long ResidueBackoffTicks(int tries)
+        {
+            long ms = 4000L << Math.Min(Math.Max(tries - 1, 0), 7);
+            const long Cap = 5L * 60 * 1000;
+            if (ms > Cap) ms = Cap;
+            return ms * TimeSpan.TicksPerMillisecond;
+        }
+
         private bool RetryDeactivate(string reason)
         {
-            string detail = ResidueDetail();
             long now = DateTime.UtcNow.Ticks;
+            if (residueNextTryTicks != 0 && now < residueNextTryTicks) return false;
+
+            residueRetries++;
+            string detail = ResidueDetail();
             if (detail != lastResidueLogged
                 || now - residueLogTicks >= TimeSpan.TicksPerMinute * 10)
             {
-                Logger.Log(Lang.T("log.gamemodeenv.38") + reason + " " + detail + Lang.T("log.gamemodeenv.39"));
+                Logger.Log(Lang.T("log.gamemodeenv.38") + reason + " " + detail
+                    + Lang.T("log.gamemodeenv.39") + Lang.T("log.gamemodeenv.41") + residueRetries);
                 lastResidueLogged = detail;
                 residueLogTicks = now;
             }
             bool clean = Deactivate(reason, true);
             if (clean)
             {
-                Logger.Log(Lang.T("log.gamemodeenv.40"));
+                Logger.Log(Lang.T("log.gamemodeenv.40") + Lang.T("log.gamemodeenv.41") + residueRetries);
                 lastResidueLogged = null;
                 residueLogTicks = 0;
+                residueRetries = 0;
+                residueNextTryTicks = 0;
+                return true;
             }
-            return clean;
+            residueNextTryTicks = now + ResidueBackoffTicks(residueRetries);
+            return false;
         }
 
         private bool RestoreEnv()
@@ -425,8 +440,8 @@ namespace PaviseApp
                 nextPowerAuditTicks = 0;
             }
             else ok = false;
-            // 旧版核心停泊残留:尽力还原原值 还不回去也只是保持解停泊(性能安全) 不阻塞退出
             PowerPlan.RestoreParkState();
+            if (FrameRemedy.HasResidue && !FrameRemedy.Revert()) ok = false;
             if (timerRaised)
             {
                 try

@@ -1,6 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 构建设置页 只放应用自身的偏好与维护工具
-
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -50,15 +49,16 @@ namespace PaviseApp
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.autohide"), Lang.T("set.autohide.n"), swAutoHide, out cardH);
             sy += cardH + 8;
 
-            var btnLang = new PillButton(Lang.T(Lang.Cur == 1 ? "lang.zh" : "lang.en"));
-            btnLang.Bg = Theme.Card;
-            btnLang.Size = new Size(Theme.S(112), Theme.S(30));
-            btnLang.Click += delegate
+            var pickLang = new TierPicker();
+            pickLang.Labels = new[] { Lang.T("lang.zh"), Lang.T("lang.en") };
+            pickLang.Index = Lang.Cur;
+            pickLang.Size = new Size(Theme.S(208), Theme.S(30));
+            pickLang.IndexChanged = delegate(int index)
             {
-                Lang.Set(Lang.Cur == 1 ? 0 : 1);
+                Lang.Set(index);
                 BeginInvoke((MethodInvoker)RebuildUi);
             };
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.lang"), Lang.T("set.lang.n"), btnLang, out cardH);
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.lang"), Lang.T("set.lang.n"), pickLang, out cardH);
             sy += cardH + 8;
 
             sy += 10;
@@ -207,7 +207,6 @@ namespace PaviseApp
                 if (cardShader != null) cardShader.Value = Lang.T("shader.busy");
                 return;
             }
-            // 游戏运行中驱动正在读写这些缓存 删了立刻触发对局内重编译卡顿
             if (gameMode != null && gameMode.IsActive)
             {
                 PaviseDialog.Warn(this, App.DisplayName, Lang.T("shader.ingame"));
@@ -339,7 +338,6 @@ namespace PaviseApp
                             Lang.T("t.panelformsettingspage.5"),
                             delegate { return tamer.PanicRestore(); }))
                         failed++;
-                    // 标题承诺"恢复全部系统改动" 持久项(HAGS/VBS/中断亲和/设备电源/逐EXE与NVIDIA配置等)也要走完
                     attempted++;
                     if (!TryRestoreRecordedItem(
                             Lang.T("t.panelformsettingspage.13"),

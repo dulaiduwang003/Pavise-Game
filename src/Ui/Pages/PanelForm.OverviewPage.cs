@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 构建概览页 核心动画 守护状态与仪表盘图块
-
 using System;
 using System.Drawing;
 using System.Windows.Forms;
