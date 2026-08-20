@@ -18,30 +18,6 @@ namespace PaviseApp
             set { boostOn = value; Settings.Save("GmBoost", value); RequestPolicyApply(); }
         }
 
-        public bool FrameDiagOn
-        {
-            get { return frameDiagOn; }
-            set
-            {
-                frameDiagOn = value;
-                Settings.Save(PolicyCatalog.KeyFrameDiag, value);
-                if (!value) FrameDiagnostics.Stop();
-                RequestPolicyApply();
-            }
-        }
-
-        public bool FrameActOn
-        {
-            get { return frameActOn; }
-            set
-            {
-                frameActOn = value;
-                Settings.Save(PolicyCatalog.KeyFrameAct, value);
-                if (!value) FrameOffenderPolicy.Reset(false);
-                RequestPolicyApply();
-            }
-        }
-
         public bool CorePartitionEnabled
         {
             get { return corePartitionOn; }

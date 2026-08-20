@@ -4,8 +4,7 @@ namespace PaviseApp
 {
     internal static class StorageAffinityTweak
     {
-        private static readonly IrqAffinityEngine irqEngine =
-            new IrqAffinityEngine("StorAffinityOnByPavise", "StorAff_", Lang.T("t.storageaffinitytweak.1"));
+        private static readonly IrqAffinityEngine irqEngine = RetiredAffinityLedgers.Storage;
 
         public static bool HasResidue { get { return irqEngine.HasResidue; } }
 

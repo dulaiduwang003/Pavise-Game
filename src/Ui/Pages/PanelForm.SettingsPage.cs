@@ -10,7 +10,7 @@ namespace PaviseApp
 {
     internal partial class PanelForm
     {
-        private Toggle swAuto, swAutoHide;
+        private Toggle swAuto, swAutoHide, swFpsOverlay;
         private SettingCard cardShader;
 
         private static readonly Color[] AccentPalette =
@@ -47,6 +47,22 @@ namespace PaviseApp
 
             swAutoHide = MakeSwitch(Settings.Load(AutoHideKey, AutoHideDefault), OnAutoHideToggle);
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.autohide"), Lang.T("set.autohide.n"), swAutoHide, out cardH);
+            sy += cardH + 8;
+
+            swFpsOverlay = MakeSwitch(FpsOverlay.EnabledSetting, OnFpsOverlayToggle);
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.fpsoverlay"), Lang.T("set.fpsoverlay.n"), swFpsOverlay, out cardH);
+            sy += cardH + 8;
+
+            var pickCorner = new TierPicker();
+            pickCorner.Labels = new[] { Lang.T("pos.top"), Lang.T("pos.tl"), Lang.T("pos.tr"), Lang.T("pos.bottom") };
+            pickCorner.Index = FpsOverlay.PosSetting;
+            pickCorner.Size = new Size(Theme.S(236), Theme.S(30));
+            pickCorner.IndexChanged = delegate(int index)
+            {
+                FpsOverlay.PosSetting = index;
+                FpsOverlay.Shutdown();
+            };
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.fpsoverlay.pos"), Lang.T("set.fpsoverlay.pos.n"), pickCorner, out cardH);
             sy += cardH + 8;
 
             var pickLang = new TierPicker();

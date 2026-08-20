@@ -19,7 +19,7 @@ namespace PaviseApp
     internal static class App
     {
         public const string DisplayName = "PAVISE";
-        public const string Version = "1.8.1.1";
+        public const string Version = "1.8.1.3";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string WeChat = "Ssssssstyle";
@@ -240,14 +240,13 @@ namespace PaviseApp
             try { VersionMigrations.ClearLogsOnUpgrade(dir); } catch { }
             if (taskStaleExe)
                 Logger.Log(Lang.T("log.program.1"));
+            try { WarnIfOsTooOld(); } catch { }
             Settings.Remove("EvidenceMode");
             int healedSuppression = SuppressionCore.HealFromCrash(Path.Combine(dir, SuppressionCore.StateFileName));
             try { CpuCage.HealFromCrash(dir); } catch { }
             if (healedSuppression > 0) Logger.Log(Lang.T("log.program.2") + healedSuppression + Lang.T("log.program.3"));
             PowerPlan.HealFromCrash();
             try { if (PowerPlan.HasParkResidue()) PowerPlan.RestoreParkState(); } catch { }
-            try { FrameDiagnostics.HealFromCrash(); } catch { }
-            try { FrameRemedy.HealFromCrash(); } catch { }
             try { UpdatePause.HealFromCrash(); } catch { }
             try { UploadYield.HealFromCrash(); } catch { }
             GameDvr.HealFromCrash();
@@ -262,9 +261,10 @@ namespace PaviseApp
             try { InterruptAttribution.CleanupStaleSession(); } catch { }
             RenderLane.HealFromCrash();
             CrashGuard.HealFromCrash();
-            try { InterruptAffinityTweak.HealStaleMask(); } catch { }
+            try { IrqRelocate.HealFromCrash(); } catch { }
+            try { IrqRelocate.HealStaleMask(); } catch { }
             try { NetworkAffinityTweak.HealStaleMask(); } catch { }
-            try { InterruptAffinityTweak.ResyncMask(); } catch { }
+            try { AutoRepair.Run(); } catch { }
 
             bool pendingPanel = Settings.Load(PendingPanelKey, false);
             if (pendingPanel) Settings.Save(PendingPanelKey, false);
@@ -379,6 +379,7 @@ namespace PaviseApp
             {
 
                 try { trayTip.Stop(); trayTip.Dispose(); } catch { }
+                try { FpsOverlay.Shutdown(); } catch { }
                 icon.Visible = false;
                 icon.Dispose();
                 lock (startGate) exiting = true;
@@ -407,7 +408,15 @@ namespace PaviseApp
                 exitThread.Start();
             }
             icon.ContextMenuStrip = trayMenu.Strip;
-            icon.Visible = true;
+            bool trayShown;
+            try { icon.Visible = true; trayShown = Native.NotificationAreaPresent(); }
+            catch { trayShown = false; }
+            // 没有通知区域时托盘图标是唯一入口 连退出都点不到 直接把面板亮出来
+            if (!trayShown)
+            {
+                Logger.Log(Lang.T("log.program.10"));
+                try { panel.ShowPanel(); } catch { }
+            }
             SystemEvents.SessionEnded += (s, e) =>
             {
                 try { gameMode.Enabled = false; } catch { }
@@ -443,6 +452,7 @@ namespace PaviseApp
             {
                 int wanted = gameMode.IsActive ? TrayTipInGameMs : TrayTipIdleMs;
                 if (trayTip.Interval != wanted) trayTip.Interval = wanted;
+                FpsOverlay.Sync();
                 PerformancePreset nextIconMode = gameMode.ActivePreset;
                 bool nextIconEnabled = gameMode.Enabled;
                 if (nextIconMode != runtimeIconMode || nextIconEnabled != runtimeIconEnabled)
@@ -587,6 +597,32 @@ namespace PaviseApp
             }
             catch { return false; }
             finally { if (older != null) older.Dispose(); }
+        }
+
+        // 建议最低 Windows 10 2004 低于此版显卡优先级提升 硬件加速GPU调度 逐进程计时器分辨率都拿不到
+        internal const int OsBuildBaseline = 19041;
+        // 最佳 Windows 11 24H2 混合刷新率与 Ryzen 调度在这一版才补齐
+        internal const int OsBuildBest = 26100;
+        private const string OsWarnedKey = "OsWarnedBuild";
+
+        // 读不出版本号时不判旧 宁可不提示也不误报
+        internal static bool OsBelowBaseline()
+        {
+            int build = Native.OsBuild();
+            return build > 0 && build < OsBuildBaseline;
+        }
+
+        private static void WarnIfOsTooOld()
+        {
+            int build = Native.OsBuild();
+            if (!OsBelowBaseline()) return;
+            // 同一个版本只提示一次 换了系统版本重新判定
+            string stamp = build.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (Settings.LoadStr(OsWarnedKey, "") == stamp) return;
+            Settings.SaveStr(OsWarnedKey, stamp);
+            Logger.Log(Lang.T("log.program.11") + build);
+            PaviseDialog.Warn(null, App.DisplayName,
+                Lang.F("os.old.body", build, OsBuildBaseline, OsBuildBest));
         }
 
         private static bool IsElevated()

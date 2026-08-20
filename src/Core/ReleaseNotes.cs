@@ -1,4 +1,4 @@
-﻿// @author bdth 2074055628@qq.com
+// @author bdth 2074055628@qq.com
 // 文件用途 维护内置的三语版本说明并记录已读版本
 using System;
 using System.Collections.Generic;
@@ -37,43 +37,70 @@ namespace PaviseApp
 
         public static readonly ReleaseNote[] All = new[]
         {
+            new ReleaseNote("1.8.1.3", "2026-08-20", new[]
+            {
+                new[]{ "新增 游戏内帧率小窗 帧率 帧时间 CPU GPU 显存 温度 不注入游戏 可选四个位置", "Added an in-game overlay: frame rate, frame time, CPU, GPU, VRAM and temperature, four positions, nothing injected into the game." },
+                new[]{ "新增 体检页检出容错堆 可一键解除 可还原", "Added a fault-tolerant heap check to the Checkup page, removable in one click and reversible." },
+                new[]{ "新增 开机自动把网络限流 键鼠队列 前台时间片改回系统默认 每项只动一次 可还原", "Added automatic startup correction of the network throttling index, input queue lengths and foreground time slice; each runs once and is reversible." },
+                new[]{ "调整 后台压制只压真抢资源的进程 闲置进程智能不碰 专注只降省电档", "Adjusted: background suppression now targets only processes actually taking resources; Smart leaves idle ones alone, Focus only drops them to eco." },
+                new[]{ "修复 对局让位过早把优化器自己饿死 首轮清扫极慢 重负载下升不了档", "Fixed: yielding too early starved the optimizer itself, making the first sweep crawl and heavy load impossible to escalate." },
+                new[]{ "修复 电源方案下发不再卡主循环", "Fixed: power plan enforcement no longer blocks the main loop." },
+                new[]{ "调整 重压后台绑核收缩的门槛从 7 个物理核降回 5 个 被 1.8.1.0 关掉的开关升级时恢复", "Adjusted: the core-squeeze threshold drops from 7 physical cores back to 5; the switch turned off by 1.8.1.0 is restored on upgrade." },
+                new[]{ "修复 一键清除时中断亲和的还原顺序反了 会把两份备份一起打光", "Fixed: the interrupt affinity restore order during a one-click cleanup was backwards and could spend both backups at once." },
+                new[]{ "修复 中断页钉设备前没查退役台账 可能把残留值当成原值", "Fixed: pinning a device did not check the retired ledgers, so a leftover value could be recorded as the original." },
+                new[]{ "调整 中断页排版 按钮并到顶部 设备列表撑满剩余高度", "Adjusted the Interrupts page layout: buttons on one top row, the device list fills the remaining height." },
+                new[]{ "调整 显卡驱动接口不可用时日志写明原因 快照留到下次启动继续还原", "Adjusted: when the graphics driver interface is unavailable the log says so, and snapshots are kept for the next startup to retry." },
+            }),
+
+            new ReleaseNote("1.8.1.2", "2026-08-20", new[]
+            {
+                new[]{ "新增 对局禁用处理器空闲改为可选开关 默认关闭 只在专注档插电时生效 升级时重置为关闭", "Added: disabling processor idle during a match is back as an opt-in switch, off by default, Focus on AC only, reset to off on upgrade." },
+                new[]{ "移除 前台时间片的三档选择 两个写入值在内核里行为相同 判据交给体检页", "Removed the three-way foreground time slice picker; the two written values behaved identically, judgment moves to the Checkup page." },
+                new[]{ "调整 前台时间片判据只看微软有文档的低两位 修复也只改这两位 其余位保留", "Adjusted: the foreground time-slice check and fix now touch only the two documented bits; all other bits are preserved." },
+                new[]{ "调整 体检里这一项的说明只讲机制不讲收益", "Adjusted: this checkup item's wording describes the mechanism only, never a benefit." },
+            }),
+
             new ReleaseNote("1.8.1.1", "2026-08-19", new[]
             {
-                new[]{ "新增 卡顿溯源独立成页 一局里的每一帧都记下起止 判出这些卡顿是长中断 后台抢 CPU 还是硬缺页造成的 帧质量 判决 证据与逐窗明细全在这一页 不用再去日志页翻", "Added a dedicated Stutter Trace page. Every frame boundary in a match is recorded and the stuttering is attributed to long interrupts, background CPU contention, or hard page faults. Frame quality, the verdict, the evidence, and per-window detail all live on that page instead of the log." },
-                new[]{ "新增 帧关键路径回溯 从发出画面的那根线程沿着唤醒关系倒着走 只有落在这条链上的排队时间才算数 原来那个口径是线程在整窗被抢的总量 里面绝大部分和任何一帧都无关 界面上两个口径并排显示 差得越多说明旧口径越虚", "Added critical-path tracing: starting from the thread that presents the frame, the chain is walked backwards through wake dependencies, and only queueing time that lands on that chain counts. The previous measure was a thread's total preemption across the whole window, most of which had nothing to do with any single frame. Both figures are shown side by side, and a wide gap means the old one was inflated." },
-                new[]{ "新增 归因判出长中断后可以一键把该设备的中断挪离游戏所在的核心 设备照常工作 不禁用任何硬件 原值有备份可随时撤销 定位不到具体设备时明确说明原因而不是猜一个目标去改", "Added a one-click fix once long interrupts are attributed: that device's interrupts are moved off the cores the game runs on. The device keeps working and nothing is disabled; original values are backed up and can be reverted at any time. When no specific device can be located, the reason is stated rather than guessing a target." },
-                new[]{ "调整 帧卡顿溯源与帧卡顿自动处置两个开关从优化策略页移到卡顿溯源页 开关和它产出的数据放在一起才看得懂 优化策略页保留一张指路卡", "Adjusted: the stutter attribution and automatic-action switches moved from the Optimization page to the Stutter Trace page, so a switch sits next to the data it produces. A link card remains on the Optimization page." },
-                new[]{ "新增 守护未开启时优化策略与卡顿溯源两页整页毛玻璃提示 这两页上的开关只在守护开着时生效 关着时改了也存得下 但不会发生任何事 盖住整页比逐个禁用更说得清", "Added a frosted-glass overlay on the Optimization and Stutter Trace pages while the guardian is off. Switches on those pages only take effect with the guardian on; changes are still saved but nothing happens, and covering the page says that more clearly than greying out each item." },
-                new[]{ "调整 帧卡顿处置写下的中断亲和改为跟随守护主开关还原 它的依据是这一局的判决 依据没了就不该留着 系统环境页那排开关不受影响 那是对这台机器的长期设置", "Adjusted: interrupt affinity written by the stutter fix is now restored together with the guardian master switch, because it was decided from one match's verdict and should not outlive it. Switches on the System Environment page are unaffected; those are long-term settings for the machine." },
-                new[]{ "移除 对局禁用处理器空闲状态 该项彻底下架 托管电源计划恒不禁 idle 微软的平衡 高性能与卓越性能三套方案实测该项全为 0 连专为消除电源管理延迟做的卓越性能都不碰它 全核常驻 C0 只增功耗与发热 换不来帧 现代 CPU 从 C-state 唤醒是纳秒级 升级后自动清除旧版残留", "Removed disabling processor idle states during a match. The option is retired for good and the managed power plan never disables idle: Microsoft's Balanced, High Performance, and Ultimate Performance plans all leave it at 0, including the plan built specifically to remove power-management latency. Pinning every core at C0 only raises power and heat without gaining frames, and modern CPUs wake from a C-state in nanoseconds. Residue from earlier versions is cleared automatically on upgrade." },
+                new[]{ "新增 中断页 列出所有可改中断亲和的设备 可扫描测量并钉到指定核 全程可撤销", "Added an Interrupts page: every pinnable device listed, scan on demand, pin to chosen cores, fully reversible." },
+                new[]{ "重要 中断亲和写入后需重启才生效 已写入与已生效分开显示", "Important: interrupt affinity takes effect after a reboot; written and effective are shown separately." },
+                new[]{ "新增 中断页给出判读微秒数的尺子 每台设备标出分档与超时次数", "Added a yardstick for the microsecond numbers, with a grade and over-threshold count per device." },
+                new[]{ "新增 每台设备可单独选中断落到哪几个核 预选按处理器架构给出推荐值", "Added a per-device core picker with an architecture-based pre-selection." },
+                new[]{ "调整 中断页交互重做 扫一次 挑一台 钉住三步 表格七列减到四列", "Adjusted: the Interrupts page reworked into scan, pick, pin, with the table cut from seven columns to four." },
+                new[]{ "新增 可能带着键鼠的设备会被标出来 钉住主控会把整条总线的输入中断一起挪走", "Added a marker for devices that may carry your keyboard and mouse; pinning the controller moves the whole bus." },
+                new[]{ "修复 中断亲和的可撤销性 改成先记名单再动手 中途崩溃也能还原", "Fixed interrupt affinity reversibility: the ledger is written before the registry, so a crash can always be undone." },
+                new[]{ "移除 体检页的中断分布与中断负载两项 判据交给中断页", "Removed the interrupt distribution and load rows from the Checkup page; the Interrupts page judges instead." },
+                new[]{ "移除 环境页的显卡中断亲和开关 并入中断页 旧值升级时自动还原", "Removed the Environment page GPU interrupt affinity switch; it lives on the Interrupts page now, old values restored on upgrade." },
+                new[]{ "移除 帧卡顿溯源整维下架 设置与残留升级后自动清除", "Removed frame stutter attribution in full; settings and residue are cleared on upgrade." },
+                new[]{ "移除 对局禁用处理器空闲状态 该项彻底下架 旧残留升级后自动清除", "Removed disabling processor idle during a match for good; residue is cleared on upgrade." },
                 new[]{ "调整 源码主体注释全部移除 每个文件只保留作者与文件用途两行", "Adjusted: all in-body source comments were removed; each file keeps only its author and purpose header." },
             }),
 
             new ReleaseNote("1.8.1.0", "2026-08-17", new[]
             {
                 new[]{ "重要 升级到本版会清除此前所有旧版本数据 游戏库 白名单 配置与设置一并重置 请重新添加游戏 全新安装不受影响", "Important: upgrading to this version wipes all data from any earlier version — game library, whitelist, configuration and settings are all reset, so you'll need to re-add your games. Fresh installs are unaffected." },
-                new[]{ "调整 智能档后台压制完全重做 按每个进程自己的热度自动逐级升档 持续重负载的最高能升到与专注档相同的隔离级别 你正在用的程序和它的家族始终不动 专注档则是所有够格的后台一次性直接到位", "Adjusted: background suppression in the Smart preset was rebuilt. It now escalates tier by tier from each process's own heat, and a sustained heavy load can reach the same isolation level as Focus, while whatever you are using and its family are never touched. Focus instead puts every eligible background process at that level at once." },
-                new[]{ "新增 帧线程接管后本体让位开关 CPU 吃满时只有渲染线程确实单独提优成功 才让游戏本体退回普通优先级 只留那个线程在高位 渲染线程没能识别出来的游戏全程保持高优先级", "Added a switch for the game to yield once the frame thread is in charge: when the CPU is saturated, the game process steps back to normal priority only if the render thread was actually boosted on its own, leaving just that thread high. Games whose render thread could not be identified keep high priority throughout." },
-                new[]{ "调整 被内核反作弊拒绝写入的游戏不再整局跳过提优 只跳过必然失败的优先级与 IO 显卡调度优先级和帧线程照常尝试 相容名单换版本自动失效重新试一遍 反作弊页可以查看和清空", "Adjusted: games whose process the kernel anti-cheat refuses writes to no longer skip boosting for the whole match. Only the priority and I/O writes that are certain to fail are skipped, while GPU scheduling priority and the frame thread are still attempted. The compatibility list expires on a new version so everything is retried, and the Anti-Cheat page can view and clear it." },
-                new[]{ "新增 MMCSS 多媒体调度 因部分机型有提升重新上线 游戏模式开启期间常驻 关闭开关或退出即还原 需要管理员权限", "Added MMCSS multimedia scheduling, back online because some machines gain from it. It stays applied while game mode is on and is restored when the switch is turned off or on exit. Requires administrator rights." },
-                new[]{ "新增 前台时间片可选前台加权 因部分机型有提升重新上线 系统默认 前台加权 只报告三档自选 体检页按选定的档判定 不再把加权值当成异常", "Added a foreground-weighted option for the foreground time slice, back online because some machines gain from it. Choose between system default, foreground weighted, and report only; the Checkup page judges against the selected mode and no longer flags the weighted value as an anomaly." },
-                new[]{ "新增 对局禁用处理器空闲 因部分机型有提升重新上线 默认关闭 只在专注档且插电时生效 电池上一律不动 请谨慎开启 相当一部分机器上禁掉空闲会连带压制睿频 反而更差 开启时记录本机睿频基线 首局稳定后再测一次 明显低于基线就自动关掉并记住不再尝试 自动判定只是兜底 务必自己开关各打一局对比", "Added disabling processor idle during a match, back online because some machines gain from it. Off by default, effective only in Focus mode on AC power and never on battery. Enable with care: on a fair number of machines disabling idle also suppresses turbo and ends up worse. Enabling records this machine's turbo baseline, measures again once the first match stabilizes, and turns itself off if the result falls clearly below it. That check is only a backstop — compare one match on against one match off yourself." },
+                new[]{ "调整 智能档后台压制重做 按每个进程自己的热度逐级升档 前台家族不动", "Adjusted: Smart suppression rebuilt to escalate per-process by heat; the foreground family is never touched." },
+                new[]{ "新增 帧线程接管后本体让位开关", "Added a switch for the game process to yield once the frame thread is boosted." },
+                new[]{ "调整 被反作弊拒绝写入的游戏只跳过必然失败的项 其余照常尝试", "Adjusted: anti-cheat-protected games now skip only the writes certain to fail." },
+                new[]{ "新增 MMCSS 多媒体调度重新上线 关闭或退出即还原 需管理员权限", "Added MMCSS multimedia scheduling back; restored on switch-off or exit, requires admin." },
+                new[]{ "新增 前台时间片可选前台加权 三档自选", "Added a foreground-weighted option for the foreground time slice with three choices." },
+                new[]{ "新增 对局禁用处理器空闲重新上线 默认关闭 专注档插电时生效 低于睿频基线自动关掉", "Added disabling processor idle back, off by default, Focus on AC only, auto-off if turbo falls below baseline." },
                 new[]{ "调整 智能档在台式机上把处理器能效偏好写回最偏性能 并关掉插电时的时钟占空比调制 瞬时升频比此前积极", "Adjusted: on desktops the Smart preset writes the processor energy-performance preference back to the most performance-biased value and turns off clock duty cycling on AC power, so it ramps up more eagerly than before." },
-                new[]{ "新增 专注档资源牢笼 持续重负载的后台装进作业对象硬限速 上限为系统 CPU 的一成 代价是被限的程序切回去会明显变慢 守护进程在 Pavise 意外退出后自动解除额度", "Added the Focus preset's resource cage: sustained heavy-load background processes go into a job object with a hard cap of ten percent of system CPU. The cost is that a capped program feels clearly slower when you switch back to it. A guard process lifts the cap automatically if Pavise exits unexpectedly." },
-                new[]{ "调整 经 D3D 消融实测 重压后台绑核收缩会在 6 核及以下处理器上反伤前台性能 本版在这些机器上强制关闭并置灰该项 专注档仍保留优先级 IO 效率模式与突发封口等其余后台压制", "Adjusted: D3D ablation testing found that squeezing heavily suppressed background work onto fewer cores hurts foreground performance on processors with 6 or fewer physical cores. This option is now forced off and greyed out on those machines; Focus mode keeps its other background suppression, including priority, I/O, efficiency mode, and burst sealing." },
+                new[]{ "新增 专注档资源牢笼 持续重负载的后台硬限到系统 CPU 的一成 意外退出自动解除", "Added the Focus resource cage: sustained heavy background hard-capped at ten percent CPU, lifted automatically on unexpected exit." },
+                new[]{ "调整 重压后台绑核收缩在 6 核及以下机器上强制关闭并置灰", "Adjusted: core squeezing is forced off and greyed out on machines with 6 or fewer physical cores." },
                 new[]{ "调整 设置页语言选择改为中文与 English 同时显示 点击目标语言直接切换 不再用单按钮来回轮换", "Adjusted: the Settings language selector now shows 中文 and English at the same time. Select the target language directly instead of cycling with a single button." },
                 new[]{ "优化 通用弹窗顶部 TAG 增加上下留白 并统一顺延标题 正文与内容区 不再与标题贴得过紧", "Improved: the shared dialog TAG now has balanced spacing above and below, with the title, body, and content area shifted consistently so the header no longer feels cramped." },
                 new[]{ "优化 白名单中只有进程名而没有 EXE 路径的内置保护项改用统一的盾牌进程图标 不再留下空白图标位", "Improved: built-in whitelist protections that have only a process name and no EXE path now use a unified shield-and-process icon instead of leaving the icon slot blank." },
-                new[]{ "新增 白名单页直接展示游戏平台与启动器 网游加速器 反作弊 输入音频与外设链四类自动豁免规则 并标出本机检测到的平台 点击规则可查看来自实际识别目录的全部进程名与关键词 不再让保护逻辑藏在后台", "Added: the Whitelist page now exposes four automatic exemption categories — game platforms and launchers, network accelerators, anti-cheat, and input/audio/peripheral chains — and identifies platforms detected on this PC. Select a rule to view every process name and keyword directly from the live recognition catalogs, so protection logic is no longer hidden." },
+                new[]{ "新增 白名单页直接展示四类自动豁免规则 并标出本机检测到的平台", "Added: the Whitelist page exposes the four automatic exemption categories and detected platforms." },
                 new[]{ "新增 系统环境页可按游戏本体关闭控制流保护 CFG 只改该缓解位保留其它设置 下次启动游戏生效 关闭即逐个还原", "Added: the System Environment page can disable Control Flow Guard per game executable; it touches only that mitigation bit and preserves other settings, takes effect on the next game launch, and restores each one when turned off." },
                 new[]{ "移除驱动级帧率上限 NVIDIA 与 AMD 一并下架 升级后自动还原驱动原值", "Removed the driver-level frame rate cap for both NVIDIA and AMD; original driver values are restored automatically on upgrade." },
-                new[]{ "修复 独立的对局核心解停泊覆盖会在还原路径死循环 反复写回失败刷日志 该覆盖与托管电源计划的停泊设置重复 已移除 真正的停泊优化保留在托管方案内 旧版残留快照升级后自动清理", "Fixed: the standalone in-match core-unparking override could loop on its restore path, spamming repeated write-back failures. It duplicated the managed power plan's parking settings, so it was removed; the real parking optimization stays inside the managed plan, and legacy residue snapshots are cleaned up automatically on upgrade." },
-                new[]{ "移除 USB 与硬盘控制器中断亲和 在 P 核少的混合架构上会把中断投到低频 E 核 造成高回报率鼠标空闲后首次点击延迟 升级自动把设备中断策略还原到系统默认 靠近渲染核的 GPU 中断亲和保留", "Removed USB and storage controller interrupt affinity: on hybrid CPUs with few P-cores it landed interrupts on low-clock E-cores, causing first-click delay on high-polling mice after idle. Device interrupt policy is restored to the system default on upgrade. GPU interrupt affinity, which targets cores near the render thread, is kept." },
-                new[]{ "移除 竞技档在台式机上禁用处理器空闲状态 C-state 的行为 全核常驻 C0 只增功耗与发热 换不来帧 现代 CPU 从 C-state 唤醒是纳秒级 托管电源计划改为恒不禁 idle 保持系统默认空闲省电 升级后自动还原", "Removed the competitive preset's disabling of processor idle states (C-states) on desktops: pinning all cores at C0 only raises power and heat without gaining frames — modern CPUs wake from C-states in nanoseconds. The managed power plan now never disables idle, keeping the system default idle power saving; restored automatically on upgrade." },
-                new[]{ "修复 对局进行中切换模式或修改全局设置不生效 必须退出游戏才能生效的问题 会话策略快照此前把全局值一并冻结 现改为只钉住每游戏覆盖项 全局改动下一轮扫描即时生效 每游戏固定的模式仍按覆盖优先", "Fixed: switching the mode or changing global settings during a match had no effect until the game was closed. The session policy snapshot used to freeze global values too; it now pins only per-game overrides, so global changes apply on the next sweep, while a per-game pinned mode still takes precedence." },
-                new[]{ "移除 逐游戏强制独显偏好 按 exe 写注册表且下次启动才生效 属持久改动却混在对局链里 现代 Windows 本就默认给游戏挑独显 升级自动还原已写过的偏好 需要指定时可在系统设置的显示卡页自行设置", "Removed the per-game forced discrete-GPU preference: it wrote per-exe registry entries effective only on the next launch — a persistent change hiding inside the match pipeline — and modern Windows already defaults games to the discrete GPU. Previously written preferences are restored on upgrade; set it manually in Windows Settings > Display > Graphics if needed." },
-                new[]{ "改名 常规模式更名为智能 竞技模式更名为专注 智能=按需自适应加压 专注=整台机器让给游戏 行为与档位对应关系不变", "Renamed: Standard mode is now Smart, Competitive mode is now Focus. Smart escalates adaptively on demand; Focus hands the whole machine to the game. Behavior and tier mapping are unchanged." },
-                new[]{ "调整 专注档不再放行前台窗口族 切出游戏时切到的程序照压 只有白名单例外 游戏模式只专注游戏 此前 1.6 起会临时放行切出后的前台程序", "Adjusted: the Focus preset no longer exempts the foreground window family — whatever you alt-tab to stays suppressed, with only the whitelist exempt. Game mode focuses on the game alone. Since 1.6 the foreground app used to be let through temporarily." },
+                new[]{ "修复 对局核心解停泊覆盖在还原路径死循环 该覆盖与托管方案重复 已移除", "Fixed the in-match core-unparking override looping on restore; it duplicated the managed plan and was removed." },
+                new[]{ "移除 USB 与硬盘控制器中断亲和 升级自动还原到系统默认", "Removed USB and storage controller interrupt affinity; restored to system default on upgrade." },
+                new[]{ "移除 竞技档在台式机上禁用处理器空闲状态 托管方案恒不禁 idle 升级后自动还原", "Removed the competitive preset's disabling of C-states on desktops; the managed plan never disables idle, restored on upgrade." },
+                new[]{ "修复 对局中切换模式或改全局设置要退出游戏才生效", "Fixed mode or global setting changes during a match not applying until the game closed." },
+                new[]{ "移除 逐游戏强制独显偏好 已写过的升级时还原", "Removed the per-game forced discrete-GPU preference; written values restored on upgrade." },
+                new[]{ "改名 常规模式更名为智能 竞技模式更名为专注 行为不变", "Renamed Standard to Smart and Competitive to Focus; behavior unchanged." },
+                new[]{ "调整 专注档不再放行前台窗口族 只有白名单例外", "Adjusted: Focus no longer exempts the foreground window family; only the whitelist is exempt." },
                 new[]{ "AMD Anti-Lag 不再被帧率上限互斥抑制 开关即生效", "AMD Anti-Lag is no longer suppressed by the frame cap conflict; the switch now always takes effect." },
                 new[]{ "修复新装用户重启后配置被清空", "Fixed configuration being wiped after a restart on fresh installs." },
                 new[]{ "修复进程状态记账残留把清除配置永久卡死", "Fixed leftover process state bookkeeping permanently blocking the configuration wipe." },
@@ -134,7 +161,7 @@ namespace PaviseApp
                 new[]{ "修复联系方式弹窗打开期间空转一个核心", "Fixed one core spinning idle while the contact dialog was open" },
                 new[]{ "修复 GPU 降频探测在驱动重启后永久失效 体检中断会话在程序被杀后残留", "Fixed the GPU throttling probe permanently breaking after a driver restart, and checkup interrupt sessions lingering after the app was killed" },
                 new[]{ "修复若干位图泄漏 亮暗切换会退出独立配置页 托盘菜单不随缩放调整", "Fixed several bitmap leaks, light/dark switching exiting the per-game profile page, and the tray menu not adjusting with scaling" },
-                new[]{ "移除旧版本兼容 V4 及更早档案不再读取 旧版游戏列表不再迁移 程序目录数据不再自动搬家 旧档案一律只读保护不覆写", "Removed legacy compatibility: V4 and earlier profiles are no longer read, old game lists are no longer migrated, program-directory data no longer auto-relocates, and old profiles are read-only protected and never overwritten." },
+                new[]{ "移除 旧版本兼容 V4 及更早档案不再读取 旧档案只读保护不覆写", "Removed legacy compatibility: V4 and earlier archives are no longer read and stay read-only." },
                 new[]{ "移除两个开关 禁止前台无输入降级与逐游戏强制独显改为始终开启", "Removed two switches: prevent-foreground-no-input-demotion and per-game forced discrete GPU are now always on." },
                 new[]{ "移除环境页五个修复型开关 对应能力并入体检页一键修复", "Removed five fix-type switches from the environment page; their capabilities merged into the checkup page's one-click fix." },
                 new[]{ "移除体检页 NVIDIA 写入实测和鼠标回报率实测", "Removed the checkup page's NVIDIA write test and mouse polling rate test" },
@@ -188,13 +215,13 @@ namespace PaviseApp
             }),
             new ReleaseNote("1.7.0.5", "2026-08-11", new[]
             {
-                new[]{ "移除后台赶去集显 它会把驱动录屏 视频播放这类后台程序也永久改走集显 而且对已在运行的程序无法生效 升级后自动还原写过的显卡偏好", "Removed pushing background apps to the iGPU: it also permanently rerouted driver recording and video playback background programs to the iGPU, and couldn't affect already-running programs. GPU preferences it wrote are auto-restored after upgrade." },
-                new[]{ "移除禁用 MPO 排查开关 只有极少数驱动与显示器组合用得上 关掉它画面全部改走合成 抓屏类程序也可能受影响 升级后自动还原 Pavise 写过的值 你自己改的不动", "Removed the disable-MPO troubleshooting switch: only a tiny number of driver and monitor combinations ever need it, turning it off routes all rendering through composition, and screen-capture programs may be affected. Values Pavise wrote are auto-restored after upgrade; your own edits are untouched." },
+                new[]{ "移除 后台赶去集显 升级后自动还原写过的显卡偏好", "Removed pushing background apps to the iGPU; written GPU preferences restored on upgrade." },
+                new[]{ "移除 禁用 MPO 排查开关 升级后自动还原 Pavise 写过的值", "Removed the MPO-disable switch; values Pavise wrote are restored on upgrade." },
             }),
             new ReleaseNote("1.7.0.4", "2026-08-11", new[]
             {
-                new[]{ "游戏核心范围可以选绑哪块了 双 CCD 机型两块任选 X3D 多出高频 CCD 给少数吃频率的游戏 切换即时生效 对局中会等对局结束", "Game core range can now choose which block to bind: either of the two CCDs on dual-CCD machines, and X3D additionally offers the high-frequency CCD for the few frequency-hungry games. Switching takes effect immediately; mid-match it waits for the match to end." },
-                new[]{ "电源计划改成一个下拉选完 不切换 用 Pavise 托管方案 或者用你自己调好的计划 选了自己的以后 Pavise 只负责切过去 一个设置都不改 笔记本嫌托管方案太热的选平衡就行", "Power plan is now a single dropdown: don't switch, use the Pavise managed plan, or use a plan you've tuned yourself. Once you pick your own, Pavise only switches to it and changes not a single setting. Laptops that find the managed plan too hot can just pick Balanced." },
+                new[]{ "游戏核心范围可以选绑哪块 双 CCD 机型两块任选 切换即时生效", "The game core range can now pick its CCD on dual-CCD machines, effective immediately." },
+                new[]{ "电源计划改成一个下拉选完 用托管方案或你自己的计划", "The power plan is now one dropdown: the managed plan or your own." },
                 new[]{ "优化策略页按 核心控制 预设细节 会话附加 分成三个标签 不再一列滚到底 设置搜索直达时自动切到对应标签", "Optimization strategy page is split into three tabs — Core Control, Preset Details, Session Extras — no more scrolling one long column. Settings search jumps auto-switch to the matching tab." },
                 new[]{ "设置页新增清除全部配置 升级后遇到卡顿掉帧可以试试 把配置环境全部删除", "Settings page adds Clear All Configuration. If you hit stutter or frame drops after upgrading, try it: it deletes the entire configuration environment." },
                 new[]{ "移除后台限速", "Removed background CPU throttling" },
@@ -211,13 +238,13 @@ namespace PaviseApp
             }),
             new ReleaseNote("1.7.0.2", "2026-08-08", new[]
             {
-                new[]{ "修复对局中和挂机后按键鼠标可能变卡 键盘 鼠标 耳机 音频 输入法 手柄类程序 还遇到变卡的 把后台的按键宏类工具加白名单", "Fixed keyboard and mouse possibly turning sluggish mid-match and after idling — keyboard, mouse, headset, audio, IME, and controller programs. If you still hit sluggishness, add background key-macro tools to the whitelist." },
+                new[]{ "修复 对局中和挂机后按键鼠标可能变卡", "Fixed keys and mouse turning sluggish during or after a match." },
                 new[]{ "游戏退出后如果有设置没还原成功 不再每 20 秒刷一条日志 改成写明卡在哪一项 静默重试", "If some settings fail to restore after a game exits, no more log line every 20 seconds; it now states exactly which item is stuck and retries silently." },
-                new[]{ "新增极限模式 在竞技之上把 GPU 让位和后台策略一次拉到位 模式页里被强制的开关会显示为锁定 游戏核心范围和电源计划仍由你手动选择 键鼠耳机输入法照常不碰", "Added Extreme mode: on top of Competitive, it pushes GPU yielding and background policies all the way in one go. Switches it forces show as locked on the mode page. Game core range and power plan remain your manual choice; keyboard, mouse, headset, and IME stay untouched as always." },
-                new[]{ "新增后台限速 被强力压制的后台整体限到 5% CPU 运行时间 台架实测 1% 最差帧更稳 吞吐也更高 极限模式强制开启 自定义档可选 Pavise 意外退出由看门狗自动解除", "Added background CPU throttling: heavily suppressed background processes are collectively limited to 5% CPU run time. Bench-verified steadier 1% lows and higher throughput. Forced on in Extreme mode, optional in the Custom tier; if Pavise exits unexpectedly, the watchdog lifts it automatically." },
-                new[]{ "竞技电源计划按 CPU 类别分方案 Intel 大小核线程优先性能核 AMD 密集核铺开全部核心 X3D 不插手调度交给大缓存偏好 日志写明用的哪套", "Competitive power plan now varies by CPU class: Intel hybrid chips prefer P-cores for threads, AMD dense-core chips spread across all cores, and X3D stays out of scheduling, deferring to the large-cache preference. The log states which set is in use." },
-                new[]{ "新增后台赶去集显 双显卡本把被压制后台里用显卡的程序改走集显 给独显腾显存和引擎时间 显卡页开启 默认关 对正在运行的程序下次启动生效", "Added pushing background apps to the iGPU: on dual-GPU laptops, GPU-using programs among the suppressed background are rerouted to the iGPU, freeing VRAM and engine time for the discrete GPU. Enable on the GPU page, off by default; for already-running programs it takes effect on their next launch." },
-                new[]{ "核心分区改成独立手动选择 策略页可随时在全核和单 CCD 间切换 极限模式不再强制；7945HX 7950X 5900X 会选择完整处理器 Die，Zen2 不再把单个 CCX 误当 CCD，X3D 全核时继续把调度交给 AMD 驱动", "Core partitioning is now an independent manual choice; the strategy page can switch between all cores and single CCD at any time, and Extreme mode no longer forces it. 7945HX, 7950X, and 5900X now select the full processor die; Zen2 no longer mistakes a single CCX for a CCD; X3D on all cores still leaves scheduling to the AMD driver." },
+                new[]{ "新增 极限模式 在竞技之上把 GPU 让位和后台策略一次拉到位", "Added Extreme mode: GPU yield and background policy all-in above Competitive." },
+                new[]{ "新增 后台限速 被强力压制的后台整体限到 5% CPU 极限模式强制开启", "Added a background cap at 5% CPU for strongly suppressed processes, forced on in Extreme." },
+                new[]{ "竞技电源计划按 CPU 类别分方案 日志写明用的哪套", "The competitive power plan now varies by CPU class; the log names the set in use." },
+                new[]{ "新增 后台赶去集显 双显卡本把被压制后台的显卡程序改走集显 默认关", "Added pushing suppressed background GPU apps to the iGPU on dual-GPU laptops, off by default." },
+                new[]{ "核心分区改成独立手动选择 全核和单 CCD 随时切换", "Core partitioning is now a standalone manual choice between all cores and one CCD." },
                 new[]{ "新增游戏文件预热 默认关闭 对局开始后把游戏文件悄悄读进缓存 加载和切图更顺 内存不足自动放弃", "Added game file preheating, off by default: after a match starts, game files are quietly read into cache for smoother loading and map transitions. Backs off automatically when memory is low." },
                 new[]{ "新增对局内存驻留 默认关闭 内存紧张时把游戏内存钉住不被换出 内存充裕时不动作 退出解除", "Added in-match memory pinning, off by default: when memory is tight, game memory is pinned so it can't be paged out. Does nothing when memory is plentiful; released on exit." },
                 new[]{ "新增后台上传让位 默认关闭 对局时限制被压制后台的上行带宽 网盘同步和 P2P 做种不再拖高延迟", "Added background upload yielding, off by default: limits the upstream bandwidth of suppressed background during a match, so cloud drive sync and P2P seeding no longer drive latency up." },
@@ -228,15 +255,15 @@ namespace PaviseApp
             }),
             new ReleaseNote("1.7.0", "2026-08-08", new[]
             {
-                new[]{ "智能保帧上线 默认开启 单独抬高决定帧数的那个线程 游戏吃满 CPU 时 1% 最差帧改善 77% 到 96% 识别不出时提优自动降档 负载退去 1 秒内恢复", "Smart frame guard is live, on by default: it individually raises the one thread that decides your frame rate. When the game saturates the CPU, 1% lows improve 77% to 96%. When the thread can't be identified, boost steps down a tier automatically; recovery within 1 second once the load subsides." },
+                new[]{ "智能保帧上线 默认开启 单独抬高决定帧数的那个线程", "Smart frame guard is live by default, boosting the frame-deciding thread alone." },
                 new[]{ "后台 GPU 让位重新上线 后台吃满显卡时中位帧时间减半 尾部帧改善约四成", "Background GPU yielding is back online: when background saturates the GPU, median frame time halves and 1% lows improve about 40%." },
                 new[]{ "移除 AMD 驱动调优 部分 A 卡有副作用 升级后自动还原相关驱动设置", "Removed AMD driver tuning: some AMD cards had side effects. Related driver settings are auto-restored after upgrade." },
                 new[]{ "新增 QQ 交流二群 1101249532", "Added second QQ chat group: 1101249532" },
             }),
             new ReleaseNote("1.6.8.1", "2026-08-07", new[]
             {
-                new[]{ "保帧线程重新上线 补充测试发现 6 核 12 线程这类机型提升明显 游戏吃满 CPU 时 1% 最差帧改善 77% 到 96% 开关在策略页 沿用你之前的设置", "Frame-guard thread is back online. Follow-up testing found clear gains on machines like 6-core 12-thread: when the game saturates the CPU, 1% lows improve 77% to 96%. The switch is on the strategy page and keeps your previous setting." },
-                new[]{ "竞技模式禁用 CPU 空闲状态重新上线 新增平台识别 Intel K 系配 Z 板 AMD 桌面 Ryzen 配 B 板或 X 板可用 其余平台禁 C-State 会连带关掉睿频 开关自动置灰 之前升级把它重置成了关 要用的重新打开", "Competitive mode's disable-CPU-idle-states is back online, now with platform detection: available on Intel K-series with Z boards and AMD desktop Ryzen with B or X boards; on other platforms disabling C-States would also kill turbo, so the switch grays out automatically. A previous upgrade reset it to off — turn it back on if you use it." },
+                new[]{ "保帧线程重新上线 开关在策略页 沿用你之前的设置", "The frame-guard thread is back; the switch is on the Policy page with your previous setting kept." },
+                new[]{ "竞技模式禁用 CPU 空闲状态重新上线 不适用的平台自动置灰", "Disabling CPU idle states in Competitive is back, greyed out on unsuitable platforms." },
                 new[]{ "暂停索引和预取服务重新上线 机械盘建议开 SSD 不用", "Pausing indexing and prefetch services is back online: recommended for HDDs, unnecessary on SSDs" },
                 new[]{ "这三项启动时不再被自动清理", "These three items are no longer auto-cleaned at startup" },
             }),

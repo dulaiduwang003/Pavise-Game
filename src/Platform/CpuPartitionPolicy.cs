@@ -22,7 +22,12 @@ namespace PaviseApp
             return Math.Min(4, Math.Max(2, physicalCoreCount / 8));
         }
 
-        public const int SqueezeMinPhysical = 7;
+        // 门槛回到 5。2026-08-20 在 i7-9750H(6C12T) 上用 StressLab 复测三轮，
+        // 10 线程内存带宽压力下只切收缩开关：40s 臂 43.7->77.1 fps，180s 臂 39.1->68.6 fps，
+        // 1% low 同步 +44%/+48%，p50/p99/最长帧全线下降，无一项恶化。
+        // 拐点扫描 1/2/3 物理核 = 69.1/54.9/46.1 fps，单调无膝盖，后台越集中前台越好。
+        // 全程 CPU 性能% 采样 149 点恒为 153 不掉，此前判定的"热点集中反伤前台"未能复现。
+        public const int SqueezeMinPhysical = 5;
 
         public static ulong SqueezeMask(ulong[] physicalCores, ulong allowedMask, ulong effMask, bool hybrid)
         {

@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using Microsoft.Win32;
 
 namespace PaviseApp
 {
@@ -80,7 +81,6 @@ namespace PaviseApp
                 {
                     Name = Lang.T("t.systemaudithardware.19"),
                     Value = string.Join(" ", facts.RgbSuites.ToArray()),
-                    Note = Lang.T("t.systemaudithardware.20"),
                     Evidence = EvMechanism,
                     Warn = false
                 });
@@ -123,6 +123,40 @@ namespace PaviseApp
                 Warn = facts.MsiOffCount > 0,
                 FixKey = "msi"
             });
+
+            // 只在非对称缓存机型上出现 纯只读 补上策略页文案让用户"确认驱动有没有管"却没给的确认手段
+            if (CpuTopology.AsymCache) report.Capability.Add(X3dOptimizerRow());
+        }
+
+        private const string X3dServiceKey = @"SYSTEM\CurrentControlSet\Services\amd3dvcache";
+
+        internal static bool X3dOptimizerPresent()
+        {
+            try
+            {
+                using (RegistryKey k = Registry.LocalMachine.OpenSubKey(X3dServiceKey))
+                    return k != null;
+            }
+            catch { return false; }
+        }
+
+        private static AuditRow X3dOptimizerRow()
+        {
+            bool driver = X3dOptimizerPresent();
+            bool gameMode = false;
+            try { gameMode = GameModeGuard.CurrentlyOn(); } catch { }
+            return new AuditRow
+            {
+                Name = Lang.T("t.systemaudithardware.33"),
+                Value = driver
+                    ? Lang.T(gameMode ? "t.systemaudithardware.34" : "t.systemaudithardware.35")
+                    : Lang.T("t.systemaudithardware.36"),
+                Note = driver
+                    ? Lang.T(gameMode ? "t.systemaudithardware.37" : "t.systemaudithardware.38")
+                    : Lang.T("t.systemaudithardware.39"),
+                Evidence = EvMechanism,
+                Warn = driver && !gameMode
+            };
         }
 
         private static void GatherMemoryModules(Facts f)

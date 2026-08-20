@@ -133,18 +133,25 @@ namespace PaviseApp
                 delegate { return GameExeTweaks.HasKindResidue("fso"); },
                 delegate { GameExeTweaks.RestoreKind("fso"); return true; }),
 
+            // 三条退役亲和清理都等在役 IrqRelocate 先还原干净再动
+            // 抢在它前面清 会让它快照里那份"原值"失去参照 还原时把旧残留写回设备
             new RetiredFeature(Lang.T("t.versionmigrations.14"), "1.7.0.1",
                 Lang.T("t.versionmigrations.15"),
-                delegate { return StorageAffinityTweak.HasResidue; },
+                delegate { return StorageAffinityTweak.HasResidue && !IrqRelocate.HasResidue; },
                 StorageAffinityTweak.Disable),
 
-            new RetiredFeature(Lang.T("gm.idledis"), "1.8.1.1",
-                Lang.T("t.versionmigrations.45"),
-                IdleStateTweak.HasResidue, IdleStateTweak.Restore),
+            new RetiredFeature(Lang.T("t.systemaudit.144"), "1.8.1.2",
+                Lang.T("t.versionmigrations.47"),
+                QuantumTweak.HasRetiredModeResidue, QuantumTweak.PurgeRetiredMode),
+
+            new RetiredFeature(Lang.T("t.legacypurge.23"), "1.8.1.1",
+                Lang.T("t.versionmigrations.46"),
+                delegate { return RetiredIrqAffinity.HasResidue && !IrqRelocate.HasResidue; },
+                RetiredIrqAffinity.Disable),
 
             new RetiredFeature(Lang.T("t.versionmigrations.42"), "1.8.1.0",
                 Lang.T("t.versionmigrations.43"),
-                delegate { return UsbInterruptAffinityTweak.HasResidue; },
+                delegate { return UsbInterruptAffinityTweak.HasResidue && !IrqRelocate.HasResidue; },
                 UsbInterruptAffinityTweak.Disable),
 
             new RetiredFeature(Lang.T("t.legacypurge.25"), "1.8.1.0",
@@ -238,6 +245,18 @@ namespace PaviseApp
                 Lang.T("gm.squeezebg.smallcpu"), "GmSqueezeBg", false,
                 "Reset_GmSqueezeBgSmallCpu_1810",
                 delegate { return !CpuTopology.SqueezeSupported; }),
+
+            // 1810 那条依据的"小核心数上收缩反伤前台"已被 2026-08-20 的三轮复测推翻
+            // 门槛回到 5 之后 把当初被它关掉的开关恢复回默认开启 只针对当初被关过的机器
+            new DefaultReset(Lang.T("gm.squeezebg"), "1.8.1.3",
+                Lang.T("gm.squeezebg.restored"), "GmSqueezeBg", true,
+                "Restore_GmSqueezeBg_1813",
+                delegate { return Settings.Load("Reset_GmSqueezeBgSmallCpu_1810", false)
+                    && CpuTopology.SqueezeSupported; }),
+
+            new DefaultReset(Lang.T("gm.idledis"), "1.8.1.2",
+                Lang.T("t.versionmigrations.45"), "GmIdleDisable", false,
+                "Reset_GmIdleDisable_1812", null),
         };
 
         public static IEnumerable<RetiredFeature> Entries { get { return Retired; } }

@@ -29,7 +29,7 @@ namespace PaviseApp
         Settings = 8,
         About = 9,
         Whitelist = 10,
-        Stutter = 11,
+        Interrupt = 11,
         Count = 12
     }
 
@@ -128,13 +128,13 @@ namespace PaviseApp
                 new[] { Lang.T("nav.overview"), Lang.T("nav.library"), Lang.T("nav.policy"),
                         Lang.T("v14.anticheat"), Lang.T("nav.graphics"), Lang.T("nav.env"), Lang.T("nav.audit"),
                         Lang.T("nav.log"), Lang.T("nav.set"), Lang.T("nav.about"), Lang.T("nav.white"),
-                        Lang.T("nav.stutter") },
+                        Lang.T("nav.irq") },
                 new[] { "game", "tiles", "settings", "acshield", "gpu", "chip", "chart", "log", "gear", "info", "white",
-                        "pulse" },
+                        "chip" },
                 new[] { (int)PageId.Overview, (int)PageId.Library, (int)PageId.Whitelist,
                         (int)PageId.Policy, (int)PageId.AntiCheat, (int)PageId.Log, (int)PageId.Graphics,
-                        (int)PageId.Environment, (int)PageId.Audit, (int)PageId.Stutter,
-                        (int)PageId.Settings, (int)PageId.About },
+                        (int)PageId.Environment, (int)PageId.Audit,
+                        (int)PageId.Interrupt, (int)PageId.Settings, (int)PageId.About },
                 new[] { 7 }, new[] { Lang.T("nav.hardware") }, 2);
             AssertNavMatchesPageIds(nav);
             nav.SetBounds(0, 0, Theme.S(RailW), Theme.S(WinH));
@@ -200,7 +200,7 @@ namespace PaviseApp
             pages[(int)PageId.Graphics] = pageGraphics = MakePage();
             pages[(int)PageId.Environment] = pageEnvironment = MakePage();
             pages[(int)PageId.Audit] = pageAudit = MakePage();
-            pages[(int)PageId.Stutter] = pageStutter = MakePage();
+            pages[(int)PageId.Interrupt] = pageIrq = MakePage();
             pages[(int)PageId.Log] = pageLog = MakePage();
             pages[(int)PageId.Settings] = pageSettings = MakePage();
             pages[(int)PageId.About] = pageAbout = MakePage();
@@ -211,7 +211,7 @@ namespace PaviseApp
             BuildAntiCheatPage();
             BuildGraphicsPage();
             BuildEnvironmentPage();
-            BuildStutterPage();
+            BuildIrqPage();
             BuildGuardVeils();
             BuildAuditPage();
             BuildLogPage();
@@ -325,9 +325,9 @@ namespace PaviseApp
                 delegate(bool active) { if (active) RefreshEnvironmentStateAsync(); }, null);
             pageHooks[(int)PageId.Audit] = new PageHook(pageAudit,
                 null, null);
-            pageHooks[(int)PageId.Stutter] = new PageHook(pageStutter,
-                delegate(bool active) { if (active) RefreshStutterPage(); },
-                RefreshStutterPage);
+            // 进页只重枚举 不自动开扫描 扫描要占满内核会话 8 秒 不能因为点了一下导航就跑
+            pageHooks[(int)PageId.Interrupt] = new PageHook(pageIrq,
+                delegate(bool active) { if (active) RefreshIrqPage(); }, null);
             pageHooks[(int)PageId.Log] = new PageHook(pageLog,
                 delegate(bool active) { if (active) RefreshLog(); }, RefreshLog);
             pageHooks[(int)PageId.Settings] = new PageHook(pageSettings,
@@ -659,7 +659,6 @@ namespace PaviseApp
         private void BuildGuardVeils()
         {
             AddGuardVeil(pagePolicy);
-            AddGuardVeil(pageStutter);
             SyncGuardVeils();
         }
 

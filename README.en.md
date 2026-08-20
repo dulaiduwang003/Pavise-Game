@@ -38,11 +38,11 @@ All changes are reverted from the recorded state when the game exits. If Pavise 
 
 | Mode | Scope of suppression |
 |---|---|
-| Smart | Light suppression of windowless background work, escalating tier by tier for whatever keeps taking resources. Whatever you are using, and its family, is never touched |
-| Focus | Everything outside the game is suppressed, windows included — even the app you alt-tab to, with only the whitelist exempt. Sustained heavy-load background processes additionally go into a job object with a hard CPU cap |
+| Smart | Only background work actually taking resources gets clamped, escalating tier by tier with heat; idle processes are left alone. Whatever you are using, and its family, is never touched |
+| Focus | Everything outside the game drops to eco level, windows included — even the app you alt-tab to, with only the whitelist exempt. Whatever actually takes resources is isolated at the top level, and sustained heavy loads additionally go into a job object with a hard CPU cap |
 | Custom | Background suppression, cores, memory and power, system environment and graphics, each picked individually |
 
-Smart escalates per process from that process's own heat and can reach the same isolation level as Focus, but the foreground family stays exempt throughout; Focus puts every eligible background process at that level at once.
+Both modes only get serious with processes that actually take resources: Smart leaves cold processes untouched, Focus merely lays an eco blanket over them. The old blanket isolation was bench-measured as a net loss — the scattered timer wakeups of a hundred idle processes got packed onto two cores to queue against each other, multiplying the worst frame by 2.6; clamping the few busy ones delivers the same gain in a millisecond.
 
 In every mode, anti-cheat, the host of the running game, Windows core services, network accelerators and other logged-in accounts are never suppressed. This boundary is unaffected by any switch. The four automatic exemption categories — game platforms and launchers, network accelerators, anti-cheat, and the input/audio/peripheral chain — can be viewed directly on the Whitelist page.
 ## Per-game profiles
@@ -101,7 +101,7 @@ Library entries can be renamed; only the display name changes, recognition is un
 
 Changes that need a reboot, or that stay on the machine, are collected on this page. Every one is reversible:
 
-- Hardware-accelerated GPU scheduling (HAGS); greyed out on machines that do not support it
+- Hardware-accelerated GPU scheduling (HAGS). Its effect on average frame rate is within the margin of error; what matters is that it is a prerequisite for driver-side frame generation and similar features, which are unavailable while it is off. Greyed out on machines that do not support it
 - VBS virtualization-based security off, with a risk confirmation before enabling
 - Software mitigations for CPU speculative-execution vulnerabilities unloaded, reclaiming the fixed cost of every kernel transition. Only unlocked on machines where a reclaimable cost is actually measured
 - Control Flow Guard off per game executable, touching only that mitigation bit; effective on the game's next launch

@@ -208,7 +208,8 @@ namespace PaviseApp
 
                 if (SettingPresent(g, SubProcessor, IdleDisableSet))
                 {
-                    if (WritePair(g, SubProcessor, IdleDisableSet, 0u, 0u)) written++;
+                    if (WritePair(g, SubProcessor, IdleDisableSet,
+                        IdleStateTweak.DesiredAc(aggressive), 0u)) written++;
                     else failed++;
                 }
                 else skipped.Add(Lang.T("t.powerplanschemes.34"));

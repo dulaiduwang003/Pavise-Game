@@ -292,6 +292,15 @@ namespace PaviseApp
                     Fix = delegate { InputMythTweak.Repair(); },
                     Revert = delegate { InputMythTweak.Restore(); }
                 } },
+                // 容错堆是崩溃缓解 解除它是拿崩溃换性能 一键全修也必须先问过用户
+                { "fth", new AuditFix
+                {
+                    CanFix = delegate { return FthTweak.NeedsRepair(); },
+                    CanRevert = delegate { return FthTweak.RepairedByPavise; },
+                    Fix = delegate { FthTweak.Repair(); },
+                    Revert = delegate { FthTweak.Restore(); },
+                    ConfirmKey = "audit.fth.confirm"
+                } },
             };
         }
 

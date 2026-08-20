@@ -4,8 +4,7 @@ namespace PaviseApp
 {
     internal static class UsbInterruptAffinityTweak
     {
-        private static readonly IrqAffinityEngine irqEngine =
-            new IrqAffinityEngine("UsbAffinityOnByPavise", "UsbAff_", Lang.T("t.usbinterruptaffinitytweak.1"));
+        private static readonly IrqAffinityEngine irqEngine = RetiredAffinityLedgers.Usb;
 
         public static bool HasResidue { get { return irqEngine.HasResidue; } }
 

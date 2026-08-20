@@ -44,6 +44,23 @@ namespace PaviseApp
         private static extern bool ChangeWindowMessageFilter(uint message, uint action);
         [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         private static extern uint RegisterWindowMessage(string name);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern IntPtr FindWindow(string cls, string name);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string cls, string name);
+
+        // 通知区域由资源管理器提供 任务栏窗口不在就没有地方放托盘图标
+        // NotifyIcon.Visible = true 在这种机器上不抛异常也不生效 只能自己查
+        public static bool NotificationAreaPresent()
+        {
+            try
+            {
+                IntPtr tray = FindWindow("Shell_TrayWnd", null);
+                if (tray == IntPtr.Zero) return false;
+                return FindWindowEx(tray, IntPtr.Zero, "TrayNotifyWnd", null) != IntPtr.Zero;
+            }
+            catch { return false; }
+        }
 
         public static void AllowTaskbarCreatedMessage()
         {

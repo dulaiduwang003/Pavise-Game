@@ -14,8 +14,6 @@ namespace PaviseApp
         private sealed class Platform
         {
             public readonly string Id;
-            private readonly string noteKey;
-            public string Note { get { return Lang.T(noteKey); } }
 
             public readonly string[] ShellNames;
 
@@ -29,11 +27,10 @@ namespace PaviseApp
             public List<string> Roots;
             public bool Logged;
 
-            public Platform(string id, string note, string[] shellNames, string[] localNames,
+            public Platform(string id, string[] shellNames, string[] localNames,
                 string[] registryRoots, string[] folderRoots, string[] uninstallTags)
             {
                 Id = id;
-                noteKey = note;
                 ShellNames = shellNames ?? new string[0];
                 LocalNames = localNames ?? new string[0];
                 RegistryRoots = registryRoots ?? new string[0];
@@ -55,7 +52,6 @@ namespace PaviseApp
         {
 
             new Platform("Steam",
-                "t.gameplatformcatalog.1",
                 new[]{ "steam", "steamservice", "steamwebhelper",
                     "gameoverlayui", "gameoverlayui64" },
                 new[]{ "steamerrorreporter", "steamerrorreporter64" },
@@ -69,7 +65,6 @@ namespace PaviseApp
                 null),
 
             new Platform("Epic Games",
-                "t.gameplatformcatalog.2",
                 new[]{ "epicgameslauncher", "epicwebhelper" },
                 null,
                 null,
@@ -77,7 +72,6 @@ namespace PaviseApp
                 new[]{ "Epic Games Launcher" }),
 
             new Platform("EA app",
-                "t.gameplatformcatalog.3",
                 new[]
                 {
                     "eadesktop", "eabackgroundservice", "ealauncher", "ealocalhostsvc",
@@ -95,7 +89,6 @@ namespace PaviseApp
                 new[]{ "EA app", "EA Desktop" }),
 
             new Platform("Ubisoft Connect",
-                "t.gameplatformcatalog.4",
                 new[]{ "ubisoftconnect", "ubisoftgamelauncher", "uplay", "uplaywebcore" },
                 new[]{ "upc" },
                 new[]
@@ -111,7 +104,6 @@ namespace PaviseApp
                 new[]{ "Ubisoft Connect" }),
 
             new Platform("Battle.net",
-                "t.gameplatformcatalog.5",
                 new[]{ "battle.net", "battle.net helper", "blizzarderror", "blizzardbrowser" },
                 new[]{ "agent" },
                 null,
@@ -123,7 +115,6 @@ namespace PaviseApp
                 new[]{ "Battle.net" }),
 
             new Platform("GOG Galaxy",
-                "t.gameplatformcatalog.6",
                 new[]
                 {
                     "galaxyclient", "galaxyclient helper", "galaxycommunication",
@@ -139,7 +130,6 @@ namespace PaviseApp
                 new[]{ "GOG GALAXY" }),
 
             new Platform("Rockstar Games",
-                "t.gameplatformcatalog.7",
                 new[]
                 {
                     "rockstarservice", "rockstarerrorhandler", "socialclubhelper",
@@ -155,7 +145,6 @@ namespace PaviseApp
                 new[]{ "Rockstar Games Launcher" }),
 
             new Platform("Riot Client",
-                "t.gameplatformcatalog.8",
                 new[]
                 {
                     "riotclientservices", "riotclientux", "riotclientuxrender",
@@ -172,7 +161,6 @@ namespace PaviseApp
                 new[]{ "Riot Client" }),
 
             new Platform("WeGame",
-                "t.gameplatformcatalog.9",
                 new[]{ "wegame", "wegame_env", "wegameclient" },
                 null,
                 null,
@@ -184,7 +172,6 @@ namespace PaviseApp
                 new[]{ "WeGame", "腾讯游戏平台" }),
 
             new Platform("Xbox",
-                "t.gameplatformcatalog.12",
                 new[]
                 {
                     "xboxpcapp", "xboxpcappft", "xboxappservices",
@@ -196,7 +183,6 @@ namespace PaviseApp
                 null),
 
             new Platform("HoYoPlay",
-                "t.gameplatformcatalog.13",
                 new[]{ "hyp", "hoyoplay", "hyupdater" },
                 new[]{ "launcher" },
                 null,
@@ -209,7 +195,6 @@ namespace PaviseApp
                 new[]{ "HoYoPlay", "miHoYo Launcher", "米哈游启动器" }),
 
             new Platform("Amazon Games",
-                "t.gameplatformcatalog.15",
                 new[]{ "amazon games ui", "amazon games services", "amazongamessdkservice" },
                 new[]{ "amazon games" },
                 null,
@@ -217,7 +202,6 @@ namespace PaviseApp
                 new[]{ "Amazon Games" }),
 
             new Platform("itch.io",
-                "t.gameplatformcatalog.16",
                 null,
                 new[]{ "itch", "itch-setup", "butler" },
                 null,
@@ -225,7 +209,6 @@ namespace PaviseApp
                 null),
 
             new Platform("Garena",
-                "t.gameplatformcatalog.17",
                 new[]{ "garena", "garenamsg" },
                 null,
                 null,
@@ -233,7 +216,6 @@ namespace PaviseApp
                 new[]{ "Garena" }),
 
             new Platform("Nexon",
-                "t.gameplatformcatalog.18",
                 new[]{ "nexon_runtime", "nexonlauncher", "nexonplug" },
                 new[]{ "ngm" },
                 null,
@@ -245,7 +227,6 @@ namespace PaviseApp
                 new[]{ "Nexon Launcher", "Nexon Game Manager" }),
 
             new Platform("NCSOFT PURPLE",
-                "t.gameplatformcatalog.19",
                 null,
                 new[]{ "purple", "ncsoft" },
                 null,
@@ -257,7 +238,6 @@ namespace PaviseApp
                 new[]{ "NCSOFT" }),
 
             new Platform("DMM GAME PLAYER",
-                "t.gameplatformcatalog.20",
                 new[]{ "dmmgameplayer", "dmmgameplayerfastlauncher" },
                 null,
                 null,
@@ -270,7 +250,6 @@ namespace PaviseApp
                 new[]{ "DMM Game" }),
 
             new Platform("NetEase",
-                "t.gameplatformcatalog.22",
                 new[]{ "gest_launcher", "neteasegamecenter" },
                 new[]{ "gamecenter", "launcher" },
                 null,

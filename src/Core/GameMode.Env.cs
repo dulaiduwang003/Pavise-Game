@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Threading;
 
 namespace PaviseApp
 {
@@ -212,43 +213,31 @@ namespace PaviseApp
             bool pStandby = sp != null ? sp.StandbySweep : standbySweepOn;
             if (pStandby) StandbySweep.MaybePurge();
             bool aggressivePower = IsAggressive(mode, pAggr);
-            int powerKey = (aggressivePower ? 1 : 0) | (usePlan ? 2 : 0);
+            int powerKey = (aggressivePower ? 1 : 0) | (usePlan ? 2 : 0)
+                | (IdleStateTweak.Enabled ? 4 : 0);
             long nowTicks = DateTime.UtcNow.Ticks;
             if (usePlan)
             {
                 if (!planActive || powerKey != lastPowerPolicyKey
-                    || nowTicks >= nextPowerAuditTicks)
+                    || nowTicks >= Interlocked.Read(ref nextPowerAuditTicks))
                 {
-                    bool planOk = PowerPlan.Enforce(aggressivePower);
-                    planActive = true;
-                    lastPowerPolicyKey = powerKey;
-                    if (planOk)
+                    if (Interlocked.CompareExchange(ref powerApplyInFlight, 1, 0) == 0)
                     {
-                        planFailStreak = 0;
-                        if (LoadCounter(PowerFailStreakKey) != 0) SaveCounter(PowerFailStreakKey, 0);
-                        nextPowerAuditTicks = long.MaxValue;
-                    }
-                    else
-                    {
-                        planFailStreak++;
-                        int persistedStreak = LoadCounter(PowerFailStreakKey) + 1;
-                        SaveCounter(PowerFailStreakKey, persistedStreak);
-                        if (persistedStreak >= PowerPlanAutoOffThreshold)
+                        int keyShot = powerKey;
+                        bool aggrShot = aggressivePower;
+                        // 先占住状态 免得下一轮又排一次
+                        planActive = true;
+                        lastPowerPolicyKey = keyShot;
+                        Interlocked.Exchange(ref nextPowerAuditTicks, long.MaxValue);
+                        ThreadPool.QueueUserWorkItem(delegate
                         {
-                            planSwitch = false;
-                            Settings.Save("PowerPlanOn", false);
-                            SaveCounter(PowerFailStreakKey, 0);
-                            ClearActiveSessionOverride(PolicyCatalog.KeyPowerPlan, Lang.T("t.gamemodeenv.17"));
-                            Logger.Log(Lang.T("log.gamemodeenv.18") + persistedStreak
-                                + Lang.T("log.gamemodeenv.19"));
-                        }
-                        else
-                        {
-                            int delay = 30;
-                            for (int i = 1; i < planFailStreak && delay < 300; i++) delay *= 2;
-                            if (delay > 300) delay = 300;
-                            nextPowerAuditTicks = DateTime.UtcNow.AddSeconds(delay).Ticks;
-                        }
+                            bool planOk = false;
+                            try { planOk = PowerPlan.Enforce(aggrShot); }
+                            catch { planOk = false; }
+                            try { OnPowerPlanApplied(planOk); }
+                            catch { }
+                            Interlocked.Exchange(ref powerApplyInFlight, 0);
+                        });
                     }
                 }
             }
@@ -256,7 +245,7 @@ namespace PaviseApp
             {
                 planActive = false;
                 lastPowerPolicyKey = -1;
-                nextPowerAuditTicks = 0;
+                Interlocked.Exchange(ref nextPowerAuditTicks, 0);
             }
 
             if (!timerRaised)
@@ -284,14 +273,49 @@ namespace PaviseApp
             ok &= AdlxTweaks.RestoreChill();
             return ok;
         }
-        private bool planActive;
-        private int lastPowerPolicyKey = -1;
+        private volatile bool planActive;
+        private volatile int lastPowerPolicyKey = -1;
         private long nextPowerAuditTicks;
+        // 电源方案要逐项写 powrprof 实测单次能到 36 秒 期间主循环整个停摆
+        // 后台压制排在它后面 于是首轮压制被推迟到近三分钟 热度采样也拿不到第二次机会
+        // 所以改成派到线程池 这里只保证同时只有一个在跑
+        private int powerApplyInFlight;
 
         private const string PowerFailStreakKey = "PowerPlanFailStreak";
         private const int PowerPlanAutoOffThreshold = EnvFuseAttempts;
         private int planFailStreak;
 
+        // 电源方案写完之后回到这里结算 成功清零失败计数 失败按退避重排下一次
+        private void OnPowerPlanApplied(bool planOk)
+        {
+            if (planOk)
+            {
+                planFailStreak = 0;
+                if (LoadCounter(PowerFailStreakKey) != 0) SaveCounter(PowerFailStreakKey, 0);
+                Interlocked.Exchange(ref nextPowerAuditTicks, long.MaxValue);
+                return;
+            }
+            planFailStreak++;
+            int persistedStreak = LoadCounter(PowerFailStreakKey) + 1;
+            SaveCounter(PowerFailStreakKey, persistedStreak);
+            if (persistedStreak >= PowerPlanAutoOffThreshold)
+            {
+                planSwitch = false;
+                Settings.Save("PowerPlanOn", false);
+                SaveCounter(PowerFailStreakKey, 0);
+                ClearActiveSessionOverride(PolicyCatalog.KeyPowerPlan, Lang.T("t.gamemodeenv.17"));
+                Logger.Log(Lang.T("log.gamemodeenv.18") + persistedStreak
+                    + Lang.T("log.gamemodeenv.19"));
+                return;
+            }
+            int delay = 30;
+            for (int i = 1; i < planFailStreak && delay < 300; i++) delay *= 2;
+            if (delay > 300) delay = 300;
+            Interlocked.Exchange(ref nextPowerAuditTicks,
+                DateTime.UtcNow.AddSeconds(delay).Ticks);
+            // 失败了得让下一轮重新排队 否则 planActive 一直占着
+            planActive = false;
+        }
         private static int LoadCounter(string key)
         {
             int value;
@@ -353,10 +377,8 @@ namespace PaviseApp
 
         private bool EnvActive()
         {
-            bool remedy = false;
-            try { remedy = FrameRemedy.HasResidue; } catch { }
             return doActive || wlanActive || wuActive || pqosActive || awakeActive || rsrActive || gpwActive || planActive || timerRaised
-                || amdAlagActive || amdAfmfActive || remedy;
+                || amdAlagActive || amdAfmfActive;
         }
 
         private string lastResidueLogged;
@@ -379,7 +401,6 @@ namespace PaviseApp
             if (pqosActive) parts.Add(Lang.T("t.gamemodeenv.33"));
             if (awakeActive) parts.Add(Lang.T("t.gamemodeenv.34"));
             if (planActive) parts.Add(Lang.T("t.gamemodeenv.35"));
-            try { if (FrameRemedy.HasResidue) parts.Add(Lang.T("remedy.residue")); } catch { }
             if (timerRaised) parts.Add(Lang.T("t.gamemodeenv.36"));
             return parts.Count > 0 ? string.Join(" ", parts.ToArray()) : Lang.T("t.gamemodeenv.37");
         }
@@ -437,11 +458,10 @@ namespace PaviseApp
             {
                 planActive = false;
                 lastPowerPolicyKey = -1;
-                nextPowerAuditTicks = 0;
+                Interlocked.Exchange(ref nextPowerAuditTicks, 0);
             }
             else ok = false;
             PowerPlan.RestoreParkState();
-            if (FrameRemedy.HasResidue && !FrameRemedy.Revert()) ok = false;
             if (timerRaised)
             {
                 try

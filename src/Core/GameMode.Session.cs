@@ -24,8 +24,7 @@ namespace PaviseApp
         {
             GpuThrottleProbe.Reset();
             VramSpillProbe.Reset();
-            FrameDiagnostics.Reset();
-            FrameOffenderPolicy.Reset(false);
+            FrameRateMonitor.Reset();
             long paviseCpu = CurrentProcessCpuTicks();
             lock (sync)
             {
@@ -156,10 +155,9 @@ namespace PaviseApp
             if (throttle != null) msg += Lang.F("rep.gputhrottle", throttle);
             string spill = VramSpillProbe.Summarize();
             if (spill != null) msg += Lang.F("rep.vramspill", spill);
-            string frameDiag = FrameDiagnostics.Summarize();
-            FrameDiagnostics.Stop();
-            FrameOffenderPolicy.Reset(false);
-            if (frameDiag != null) msg += Lang.F("rep.framediag", frameDiag);
+            string fps = FrameRateMonitor.Summarize();
+            if (fps != null) msg += fps;
+            FrameRateMonitor.Stop();
             Logger.Log(Lang.T("log.gamemodesession.1") + msg);
 
             if (dur.TotalSeconds >= 60)

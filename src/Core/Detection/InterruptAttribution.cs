@@ -7,32 +7,15 @@ using System.Threading;
 
 namespace PaviseApp
 {
-    internal struct InterruptSample
-    {
-        public long StartQpc;
-        public long EndQpc;
-        public ulong Routine;
-        public ushort Cpu;
-        public bool Isr;
-    }
-
     internal sealed class DriverInterrupt
     {
         public string Driver;
         public long Dpc;
         public long Isr;
-        public double DpcShare;
-        public double IsrShare;
         public double DpcTotalUs;
         public double DpcMaxUs;
-        public double DpcP50Us;
-        public double DpcP95Us;
-        public double DpcP99Us;
-        public long DpcOver100Us;
         public long DpcOver500Us;
         public long DpcOver1Ms;
-        public double IsrTotalUs;
-        public double IsrMaxUs;
         public ulong CpuMask;
         public bool CpuMaskTruncated;
         public long BadDuration;
@@ -42,22 +25,7 @@ namespace PaviseApp
     {
         public bool Ok;
         public string Error;
-        public long DpcTotal;
-        public long IsrTotal;
-        public long QpcFrequency;
-        public InterruptSample[] LongSamples = new InterruptSample[0];
-        public long LongSamplesDropped;
         public readonly List<DriverInterrupt> Drivers = new List<DriverInterrupt>();
-
-        public string TopDpc { get { return Drivers.Count > 0 ? Drivers[0].Driver : null; } }
-
-        public DriverInterrupt WorstByDuration()
-        {
-            DriverInterrupt best = null;
-            foreach (DriverInterrupt d in Drivers)
-                if (best == null || d.DpcMaxUs > best.DpcMaxUs) best = d;
-            return best;
-        }
     }
 
     internal sealed class InterruptAttribution
@@ -82,12 +50,9 @@ namespace PaviseApp
         private static readonly double[] BucketUpperUs =
             { 1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 5000, double.MaxValue };
         private const int BucketCount = 13;
-        private const int BucketOver100 = 7;
         private const int BucketOver500 = 9;
         private const int BucketOver1Ms = 10;
 
-        private const int SampleRingSize = 8192;
-        private const double LongSampleUs = 50.0;
 
         private sealed class RoutineStat
         {
@@ -107,14 +72,8 @@ namespace PaviseApp
         private readonly Dictionary<ulong, RoutineStat> dpcHits = new Dictionary<ulong, RoutineStat>();
         private readonly Dictionary<ulong, RoutineStat> isrHits = new Dictionary<ulong, RoutineStat>();
         private readonly List<Module> modules = new List<Module>();
-        private readonly InterruptSample[] samples = new InterruptSample[SampleRingSize];
-        private readonly long[] sampleSeq = new long[SampleRingSize];
-        private long sampleWritten;
-        private long maxTicksSeen;
-        private ulong maxRoutineSeen;
         private long qpcFrequency;
         private double usPerTick;
-        private long longSampleTicks;
         private long sanityMaxTicks;
         private long dpcTotal, isrTotal;
         private ulong traceHandle;
@@ -170,7 +129,6 @@ namespace PaviseApp
                 if (freq <= 0) freq = System.Diagnostics.Stopwatch.Frequency;
                 qpcFrequency = freq;
                 usPerTick = 1000000.0 / freq;
-                longSampleTicks = (long)(LongSampleUs * freq / 1000000.0);
                 sanityMaxTicks = freq;
 
                 worker = new Thread(RunProcessTrace);
@@ -209,9 +167,6 @@ namespace PaviseApp
                 }
                 keepAlive = null;
 
-                result.DpcTotal = dpcTotal;
-                result.IsrTotal = isrTotal;
-                result.QpcFrequency = qpcFrequency;
                 var byMod = new Dictionary<string, DriverInterrupt>();
                 var dpcBuckets = new Dictionary<string, long[]>();
                 Fold(byMod, dpcBuckets, dpcHits, true);
@@ -219,27 +174,14 @@ namespace PaviseApp
                 foreach (KeyValuePair<string, DriverInterrupt> kv in byMod)
                 {
                     DriverInterrupt d = kv.Value;
-                    d.DpcShare = dpcTotal > 0 ? (double)d.Dpc / dpcTotal : 0;
-                    d.IsrShare = isrTotal > 0 ? (double)d.Isr / isrTotal : 0;
                     long[] b;
                     if (dpcBuckets.TryGetValue(kv.Key, out b))
                     {
-                        d.DpcP50Us = Clamp(PercentileFromBuckets(b, 0.50), d.DpcMaxUs);
-                        d.DpcP95Us = Clamp(PercentileFromBuckets(b, 0.95), d.DpcMaxUs);
-                        d.DpcP99Us = Clamp(PercentileFromBuckets(b, 0.99), d.DpcMaxUs);
-                        d.DpcOver100Us = SumFrom(b, BucketOver100);
                         d.DpcOver500Us = SumFrom(b, BucketOver500);
                         d.DpcOver1Ms = SumFrom(b, BucketOver1Ms);
                     }
                     result.Drivers.Add(d);
                 }
-                int kept = (int)Math.Min(sampleWritten, SampleRingSize);
-                long first = sampleWritten > SampleRingSize ? sampleWritten - SampleRingSize : 0;
-                var taken = new InterruptSample[kept];
-                for (int i = 0; i < kept; i++)
-                    taken[i] = samples[(int)((first + i) % SampleRingSize)];
-                result.LongSamples = taken;
-                result.LongSamplesDropped = first;
                 result.Drivers.Sort(delegate(DriverInterrupt a, DriverInterrupt b)
                 {
                     long ta = a.Dpc + a.Isr, tb = b.Dpc + b.Isr;
@@ -278,40 +220,8 @@ namespace PaviseApp
                 else
                 {
                     d.Isr += st.Count;
-                    d.IsrTotalUs += totalUs;
-                    if (maxUs > d.IsrMaxUs) d.IsrMaxUs = maxUs;
                 }
             }
-        }
-
-        internal static double PercentileFromBuckets(long[] b, double q)
-        {
-            if (b == null) return 0;
-            long total = 0;
-            for (int i = 0; i < BucketCount; i++) total += b[i];
-            if (total == 0) return 0;
-            double target = q * total;
-            long acc = 0;
-            for (int i = 0; i < BucketCount; i++)
-            {
-                if (b[i] == 0) continue;
-                if (acc + b[i] >= target)
-                {
-                    double lo = i == 0 ? 0 : BucketUpperUs[i - 1];
-                    if (i == BucketCount - 1) return lo;
-                    double f = (target - acc) / b[i];
-                    if (f < 0) f = 0; else if (f > 1) f = 1;
-                    return lo + (BucketUpperUs[i] - lo) * f;
-                }
-                acc += b[i];
-            }
-            return BucketUpperUs[BucketCount - 2];
-        }
-
-        internal static double Clamp(double us, double maxUs)
-        {
-            if (maxUs <= 0) return us;
-            return us > maxUs ? maxUs : us;
         }
 
         internal static long SumFrom(long[] b, int startIndex)
@@ -321,8 +231,6 @@ namespace PaviseApp
             for (int i = startIndex; i < BucketCount; i++) n += b[i];
             return n;
         }
-
-        internal static double[] BucketEdgesForTest() { return (double[])BucketUpperUs.Clone(); }
 
         private void OnEvent(ref EventRecord record)
         {
@@ -358,13 +266,7 @@ namespace PaviseApp
             {
                 st.TotalTicks += ticks;
                 if (ticks > st.MaxTicks) st.MaxTicks = ticks;
-                if (!isr && ticks > maxTicksSeen)
-                {
-                    maxRoutineSeen = routine;
-                    Volatile.Write(ref maxTicksSeen, ticks);
-                }
                 st.Buckets[BucketOf(ticks)]++;
-                if (ticks >= longSampleTicks) PushSample(startQpc, endQpc, routine, cpu, isr);
             }
             if (isr) isrTotal++; else dpcTotal++;
         }
@@ -374,56 +276,6 @@ namespace PaviseApp
             double us = ticks * usPerTick;
             for (int i = 0; i < BucketCount - 1; i++) if (us < BucketUpperUs[i]) return i;
             return BucketCount - 1;
-        }
-
-        private void PushSample(long start, long end, ulong routine, ushort cpu, bool isr)
-        {
-            long seq = sampleWritten;
-            int i = (int)(seq % SampleRingSize);
-            Volatile.Write(ref sampleSeq[i], -1);
-            samples[i].StartQpc = start;
-            samples[i].EndQpc = end;
-            samples[i].Routine = routine;
-            samples[i].Cpu = cpu;
-            samples[i].Isr = isr;
-            Volatile.Write(ref sampleSeq[i], seq);
-            Volatile.Write(ref sampleWritten, seq + 1);
-        }
-
-        public long QpcFrequency { get { return qpcFrequency; } }
-
-        public InterruptSample[] SnapshotLongSamples()
-        {
-            long total = Volatile.Read(ref sampleWritten);
-            int n = (int)Math.Min(total, SampleRingSize);
-            if (n <= 0) return new InterruptSample[0];
-            long first = total > SampleRingSize ? total - SampleRingSize : 0;
-            var outp = new InterruptSample[n];
-            int kept = 0;
-            for (int k = 0; k < n; k++)
-            {
-                long want = first + k;
-                int i = (int)(want % SampleRingSize);
-                long s1 = Volatile.Read(ref sampleSeq[i]);
-                if (s1 != want) continue;
-                InterruptSample copy = samples[i];
-                long s2 = Volatile.Read(ref sampleSeq[i]);
-                if (s2 != want) continue;
-                outp[kept++] = copy;
-            }
-            if (kept == n) return outp;
-            var trimmed = new InterruptSample[kept];
-            Array.Copy(outp, trimmed, kept);
-            return trimmed;
-        }
-
-        public DriverInterrupt PeekWorstByDuration()
-        {
-            long ticks = Volatile.Read(ref maxTicksSeen);
-            if (ticks <= 0) return null;
-            string mod = Resolve(maxRoutineSeen);
-            if (mod == null) return null;
-            return new DriverInterrupt { Driver = mod, DpcMaxUs = ticks * usPerTick };
         }
 
         private string Resolve(ulong addr)

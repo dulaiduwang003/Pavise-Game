@@ -37,7 +37,7 @@ namespace PaviseApp
                 {
                     if (k == null) return false;
                     string cur = k.GetValue(ValueName) as string;
-                    return string.Equals(GameExeTweaks.ReadField(cur, Field), "1", StringComparison.Ordinal);
+                    return string.Equals(PrefFieldText.ReadField(cur, Field), "1", StringComparison.Ordinal);
                 }
             }
             catch { return false; }
@@ -61,7 +61,7 @@ namespace PaviseApp
                             Settings.SaveStr(BackupSlot, snapshot);
                             if (Settings.LoadStr(BackupSlot, "") != snapshot) return false;
                         }
-                        string next = GameExeTweaks.MergeField(cur, Field, "1");
+                        string next = PrefFieldText.MergeField(cur, Field, "1");
                         k.SetValue(ValueName, next, RegistryValueKind.String);
                         if (!CurrentlyOn()) return false;
                         Settings.Save("WindowedOptOnByPavise", true);
@@ -86,8 +86,8 @@ namespace PaviseApp
                         if (k == null) return false;
                         string cur = k.GetValue(ValueName) as string;
                         string next = orig.Length == 0 || orig == ReversibleReg.Absent
-                            ? GameExeTweaks.RemoveField(cur, Field)
-                            : GameExeTweaks.RestoreField(cur, orig, Field);
+                            ? PrefFieldText.RemoveField(cur, Field)
+                            : PrefFieldText.RestoreField(cur, orig, Field);
                         if (next.Length == 0)
                         {
                             if (k.GetValue(ValueName) != null) k.DeleteValue(ValueName, false);
