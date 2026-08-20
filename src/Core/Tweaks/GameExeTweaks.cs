@@ -91,29 +91,10 @@ namespace PaviseApp
             catch { return false; }
         }
 
+        // 实现已搬到 PrefFieldText 这里只留转发 供既有调用点与自测继续用
         internal static string MergeField(string current, string field, string value)
         {
-            var parts = new List<string>();
-            bool replaced = false;
-            if (!string.IsNullOrEmpty(current))
-            {
-                foreach (string raw in current.Split(';'))
-                {
-                    string seg = raw.Trim();
-                    if (seg.Length == 0) continue;
-                    int eq = seg.IndexOf('=');
-                    string key = eq > 0 ? seg.Substring(0, eq).Trim() : seg;
-                    if (eq > 0 && string.Equals(key, field, StringComparison.OrdinalIgnoreCase))
-                    {
-                        if (replaced) continue;
-                        parts.Add(field + "=" + value);
-                        replaced = true;
-                    }
-                    else parts.Add(seg);
-                }
-            }
-            if (!replaced) parts.Add(field + "=" + value);
-            return string.Join(";", parts.ToArray()) + ";";
+            return PrefFieldText.MergeField(current, field, value);
         }
 
         internal static string RestoreLayer(string current, string original)
@@ -137,41 +118,17 @@ namespace PaviseApp
 
         internal static string RemoveField(string current, string field)
         {
-            var parts = new List<string>();
-            if (!string.IsNullOrEmpty(current))
-            {
-                foreach (string raw in current.Split(';'))
-                {
-                    string seg = raw.Trim();
-                    if (seg.Length == 0) continue;
-                    int eq = seg.IndexOf('=');
-                    string key = eq > 0 ? seg.Substring(0, eq).Trim() : seg;
-                    if (eq > 0 && string.Equals(key, field, StringComparison.OrdinalIgnoreCase)) continue;
-                    parts.Add(seg);
-                }
-            }
-            if (parts.Count == 0) return "";
-            return string.Join(";", parts.ToArray()) + ";";
+            return PrefFieldText.RemoveField(current, field);
         }
 
         internal static string RestoreField(string current, string original, string field)
         {
-            string want = ReadField(original, field);
-            return want == null ? RemoveField(current, field) : MergeField(current, field, want);
+            return PrefFieldText.RestoreField(current, original, field);
         }
 
         internal static string ReadField(string current, string field)
         {
-            if (string.IsNullOrEmpty(current)) return null;
-            foreach (string raw in current.Split(';'))
-            {
-                string seg = raw.Trim();
-                int eq = seg.IndexOf('=');
-                if (eq <= 0) continue;
-                if (string.Equals(seg.Substring(0, eq).Trim(), field, StringComparison.OrdinalIgnoreCase))
-                    return seg.Substring(eq + 1).Trim();
-            }
-            return null;
+            return PrefFieldText.ReadField(current, field);
         }
 
         public static bool PrefersIntegrated(string exePath)

@@ -45,8 +45,6 @@ namespace PaviseApp
         public const string KeyGpuDemote = "GmGpuDemote";
         public const string KeyIfeoBoost = "GmIfeoBoost";
         public const string KeyRenderLane = "GmRenderLane";
-        public const string KeyFrameDiag = "GmFrameDiag";
-        public const string KeyFrameAct = "GmFrameAct";
         public const string KeyStrictCores = "GmStrictCores";
         public const string KeyCoreDomainAlt = "GmCoreDomainAlt";
         public const string KeyCoreMask = "GmCoreMask";
@@ -84,8 +82,6 @@ namespace PaviseApp
             new PolicyItem(KeyGpuDemote, PolicyValueKind.Bool, "0", "gm.gpudemote", GroupBackground, null),
             new PolicyItem(KeyIfeoBoost, PolicyValueKind.Bool, "0", "gm.ifeo", GroupBackground, null),
             new PolicyItem(KeyRenderLane, PolicyValueKind.Bool, "1", "gm.lane", GroupBackground, null),
-            new PolicyItem(KeyFrameDiag, PolicyValueKind.Bool, "0", "gm.framediag", GroupBackground, null),
-            new PolicyItem(KeyFrameAct, PolicyValueKind.Bool, "0", "gm.frameact", GroupBackground, null),
             new PolicyItem(KeyStrictCores, PolicyValueKind.Bool, "0", "cfg.strictcores", GroupCores, null),
             new PolicyItem(KeyCoreDomainAlt, PolicyValueKind.Bool, "0", "cfg.domainalt", GroupCores, null),
             new PolicyItem(KeyCoreMask, PolicyValueKind.MaskHex, "", "cfg.coremask", GroupCores, null),

@@ -7,8 +7,7 @@ namespace PaviseApp
 {
     internal static partial class SystemAudit
     {
-        private static void BuildVerdicts(AuditReport report, Facts facts, double worstIrq, int hzCur, int hzBest,
-            InterruptAttributionResult culprits)
+        private static void BuildVerdicts(AuditReport report, Facts facts, int hzCur, int hzBest)
         {
             if (hzCur > 0 && hzBest > 0 && !RefreshRateIsBest(hzCur, hzBest))
             {
@@ -129,26 +128,6 @@ namespace PaviseApp
                 Evidence = EvMeasuredLocal,
                 Warn = false
             });
-
-            if (report.MeasureOk)
-            {
-                int tier = InterruptTier(worstIrq);
-                string culprit = culprits != null && culprits.Ok && culprits.TopDpc != null
-                    ? culprits.TopDpc : null;
-                report.Verdicts.Add(new AuditRow
-                {
-                    Name = Lang.T("t.systemauditverdicts.34"),
-                    Value = tier == 2 ? Lang.T("t.systemauditverdicts.35") : Lang.T("t.systemauditverdicts.36"),
-                    Note = tier == 2
-                        ? (culprit != null
-                            ? Lang.T("t.systemauditverdicts.37") + PercentText(worstIrq) + Lang.T("t.systemauditverdicts.38") + culprit
-                                + Lang.T("t.systemauditverdicts.39")
-                            : Lang.T("t.systemauditverdicts.37") + PercentText(worstIrq) + Lang.T("t.systemauditverdicts.40"))
-                        : Lang.T("t.systemauditverdicts.41") + PercentText(worstIrq) + Lang.T("t.systemauditverdicts.42"),
-                    Evidence = EvMeasuredLocal,
-                    Warn = tier == 2
-                });
-            }
 
             if (facts.Dvr)
             {

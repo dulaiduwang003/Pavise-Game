@@ -109,7 +109,10 @@ namespace PaviseApp
             StepIf("HAGS", HagsTweak.HasResidue, HagsTweak.Restore, failed);
             StepIf("CFG", delegate { return CfgOffTweak.Enabled || CfgOffTweak.HasResidue(); },
                 CfgOffTweak.Disable, failed);
-            StepIf(Lang.T("t.legacypurge.23"), delegate { return InterruptAffinityTweak.EnabledByPavise; }, InterruptAffinityTweak.Disable, failed);
+            // 顺序即 LIFO 在役的 IrqRelocate 后写先还 退役台账后还
+            // 反过来的话 退役壳刚写回的真原值 会被 IrqRelocate 那份含残留的快照重新覆盖
+            StepIf(Lang.T("t.legacypurge.29"), delegate { return IrqRelocate.HasResidue; }, IrqRelocate.Revert, failed);
+            StepIf(Lang.T("t.legacypurge.23"), delegate { return RetiredIrqAffinity.HasResidue; }, RetiredIrqAffinity.Disable, failed);
             StepIf(Lang.T("t.legacypurge.24"), delegate { return UsbInterruptAffinityTweak.HasResidue; }, UsbInterruptAffinityTweak.Disable, failed);
 
             foreach (string kind in new[]

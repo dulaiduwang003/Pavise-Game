@@ -478,6 +478,17 @@ namespace PaviseApp
                     Logger.Log(Lang.T("log.nvdrstweaks.34") + dropped + Lang.T("log.nvdrstweaks.35"));
                 return 0;
             }
+            if (!NvApi.Available)
+            {
+                // 显卡还在只是接口拿不到（驱动更新中 / 损坏 / 被禁用）
+                // 快照必须原样留着等下次 这里点明原因 免得日志只剩一句"暂时无法还原"
+                int pending = 0;
+                foreach (string key in OrphanHealKinds())
+                    if (HasSnapshotFor(key)) pending++;
+                if (pending > 0)
+                    Logger.Log(Lang.T("log.nvdrstweaks.42") + pending + Lang.T("log.nvdrstweaks.43"));
+                return 0;
+            }
             int healed = 0;
             int stuck = 0;
             foreach (string key in OrphanHealKinds())

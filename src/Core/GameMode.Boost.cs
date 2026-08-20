@@ -446,7 +446,9 @@ namespace PaviseApp
             bool ecoCleared = ecoGaveUp || HighQoSVerified(h);
             if (!ecoCleared)
             {
-                Native.ApplyHighQoS(h, Native.OsBuild() >= 22000);
+                bool timerExemptDropped;
+                Native.ApplyHighQoS(h, Native.TimerExemptWanted, out timerExemptDropped);
+                if (timerExemptDropped) Logger.Log(Lang.T("log.gamemodeboost.59"));
                 ecoCleared = HighQoSVerified(h);
                 if (ecoCleared) { lock (sync) { boostFail.Remove(pid); boostEcoGaveUp.Remove(pid); } }
                 else
@@ -676,7 +678,7 @@ namespace PaviseApp
             if (!Native.PowerThrottlingSupported) return true;
             int control, state;
             if (!Native.TryQueryPowerThrottling(process, out control, out state)) return false;
-            return (control & 1) != 0 && (state & 1) == 0;
+            return Native.HighQoSMasksOk(control, state);
         }
 
         private static bool ApplyAndVerifyGpuBoost(IntPtr process)

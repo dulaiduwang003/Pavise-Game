@@ -84,12 +84,6 @@ namespace PaviseApp
             return top;
         }
 
-        public static ulong GpuInterruptPreferredMask()
-        {
-            if (Hybrid && PerfMask != 0) return TopBits(PerfMask, 2);
-            return BoostMask;
-        }
-
         internal static ulong SafeStrictMask(ulong strict, ulong throttle, ulong all, ulong eff, bool hybrid)
         {
             if (strict == 0 || (strict & all) == 0) return all;

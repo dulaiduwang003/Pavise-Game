@@ -107,7 +107,7 @@ namespace PaviseApp
             card.Controls.Add(lvl);
             card.TrackChildHover(lvl);
 
-            acGroups.Add(new AcGroup(key, title, "", false, new string[0]));
+            acGroups.Add(new AcGroup(key, title, false, new string[0]));
             acCards.Add(card);
             acToggles.Add(sw);
             return AcCardH;

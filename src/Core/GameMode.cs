@@ -96,8 +96,6 @@ namespace PaviseApp
         private volatile bool aggressiveOn;
         private volatile bool ifeoOn;
         private volatile bool renderLaneOn;
-        private volatile bool frameDiagOn;
-        private volatile bool frameActOn;
         private volatile bool gpuDemoteOn;
         private volatile bool panicReq;
         private int panicSeq;
@@ -202,8 +200,6 @@ namespace PaviseApp
             aggressiveOn = Settings.Load("GmAggressive", false);
             ifeoOn = Settings.Load("GmIfeoBoost", false);
             renderLaneOn = Settings.Load("GmRenderLane", true);
-            frameDiagOn = Settings.Load(PolicyCatalog.KeyFrameDiag, false);
-            frameActOn = Settings.Load(PolicyCatalog.KeyFrameAct, false);
             gpuDemoteOn = Settings.Load("GmGpuDemote", false);
             SuppressionCore.GpuDemoteEnabled = gpuDemoteOn;
             foreach (string envKey in EnvKeys)
@@ -521,24 +517,6 @@ namespace PaviseApp
             }
         }
 
-        private bool EffFrameDiag
-        {
-            get
-            {
-                PolicySnapshot s = sessionPolicy;
-                return s != null ? s.EffFrameDiag : frameDiagOn;
-            }
-        }
-
-        private bool EffFrameAct
-        {
-            get
-            {
-                PolicySnapshot s = sessionPolicy;
-                return s != null ? s.EffFrameAct : (frameDiagOn && frameActOn);
-            }
-        }
-
         private void BeginSessionPolicy()
         {
             GameProfile source;
@@ -789,7 +767,6 @@ namespace PaviseApp
                                         Logger.Log(Lang.T("log.gamemode.45") + running);
                                         BeginSessionPolicy();
                                         ReportBegin(running);
-                                        SelfYield.Engage();
                                         StandbySweep.ResetCooldown();
                                         slowEnvAtTicks = DateTime.UtcNow
                                             .AddSeconds(SlowEnvDelaySeconds).Ticks;
@@ -814,9 +791,15 @@ namespace PaviseApp
                                     }
                                     GpuThrottleProbe.SampleIfDue(rendererPath);
                                     VramSpillProbe.SampleIfDue(gamePids);
-                                    FrameDiagnostics.EnsureAndSample(EffFrameDiag, EffFrameAct, rendererPid);
+                                    FrameRateMonitor.SampleIfDue(rendererPid);
                                     if (EffSuppress) Sweep(all, gamePids);
                                     if (!EffSuppress) ReleaseBackground();
+                                    // 让位挪到首轮清扫之后 此前一激活就 SelfYield
+                                    // 把自己塞进后台收缩核再降档 首轮近百个进程的句柄开写读
+                                    // 全是在两个核上以让位身份爬完的 实测能爬 39 秒
+                                    // 同样的写入不受饿时毫秒级完事 先全速干完首轮再让位
+                                    // Engage 幂等 之后每轮调用都是空转
+                                    SelfYield.Engage();
                                     if (EffBoost) Boost(all);
                                     else UnboostGames();
                                 }

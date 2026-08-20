@@ -1,14 +1,13 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 为游戏本体按 exe 关闭控制流保护 CFG 经 IFEO MitigationOptions 由内核在进程创建时应用
+// 名单 键存在性标记 空键清理与 exe 名规范化都走 IfeoStore 与 IfeoBoost 共用一套账
 using System;
-using System.Collections.Generic;
 using Microsoft.Win32;
 
 namespace PaviseApp
 {
     internal static class CfgOffTweak
     {
-        private const string Root = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options";
         private const string ValName = "MitigationOptions";
         private const string ListKey = "CfgList";
         private const string EnableKey = "CfgOff";
@@ -18,16 +17,19 @@ namespace PaviseApp
         private const byte CfgAlwaysOff = 0x02;
 
 #if PAVISE_SELFTEST
-        internal static RegistryKey Hive = Registry.LocalMachine;
-        internal static string RootOverride;
-#else
-        private static readonly RegistryKey Hive = Registry.LocalMachine;
-        private static readonly string RootOverride = null;
+        internal static RegistryKey Hive
+        {
+            get { return IfeoStore.Hive; }
+            set { IfeoStore.Hive = value; }
+        }
+        internal static string RootOverride
+        {
+            get { return IfeoStore.RootOverride; }
+            set { IfeoStore.RootOverride = value; }
+        }
 #endif
 
         private static readonly object lk = new object();
-
-        private static string RootPath { get { return RootOverride ?? Root; } }
 
         public static bool Enabled
         {
@@ -47,18 +49,12 @@ namespace PaviseApp
 
         internal static string NormalizeExe(string rendererName)
         {
-            if (string.IsNullOrEmpty(rendererName)) return null;
-            string s = rendererName;
-            int slash = s.LastIndexOfAny(new[] { '\\', '/' });
-            if (slash >= 0) s = s.Substring(slash + 1);
-            s = s.Trim();
-            if (s.Length == 0 || s.IndexOf(';') >= 0) return null;
-            return s.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? s : s + ".exe";
+            return IfeoStore.NormalizeExe(rendererName);
         }
 
         private static ReversibleReg RegOf(string exe)
         {
-            return new ReversibleReg(Hive, RootPath + "\\" + exe,
+            return new ReversibleReg(IfeoStore.Hive, IfeoStore.RootPath + "\\" + exe,
                 ValName, RegistryValueKind.Binary, "CfgOpt_" + exe);
         }
 
@@ -79,7 +75,7 @@ namespace PaviseApp
         {
             try
             {
-                using (var k = Hive.OpenSubKey(RootPath + "\\" + exe))
+                using (var k = IfeoStore.Hive.OpenSubKey(IfeoStore.RootPath + "\\" + exe))
                     return k == null ? null : k.GetValue(ValName) as byte[];
             }
             catch { return null; }
@@ -101,13 +97,8 @@ namespace PaviseApp
         {
             try
             {
-                bool keyExisted;
-                using (var root = Hive.OpenSubKey(RootPath))
-                {
-                    if (root == null && RootOverride == null) return false;
-                    using (var k = root == null ? null : root.OpenSubKey(exe))
-                        keyExisted = k != null;
-                }
+                if (!IfeoStore.RootReachable()) return false;
+                bool keyExisted = IfeoStore.KeyExists(exe);
 
                 byte[] merged = MergeCfgOff(CurrentOptions(exe));
                 if (!RegOf(exe).Apply(merged))
@@ -115,7 +106,8 @@ namespace PaviseApp
                     Logger.Log(Lang.T("log.cfgofftweak.1") + exe + Lang.T("log.cfgofftweak.2"));
                     return false;
                 }
-                if (!Settings.SaveStr("CfgMk_" + exe, keyExisted ? "1" : "0") || !AddToList(exe))
+                if (!Settings.SaveStr("CfgMk_" + exe, keyExisted ? "1" : "0")
+                    || !IfeoStore.AddToList(ListKey, exe))
                 {
                     RegOf(exe).Restore();
                     Logger.Log(Lang.T("log.cfgofftweak.3") + exe);
@@ -140,9 +132,11 @@ namespace PaviseApp
                 foreach (string exe in ParseList(Settings.LoadStr(ListKey, "")))
                 {
                     if (!RegOf(exe).Restore()) { all = false; continue; }
-                    CleanupEmpty(exe, Settings.LoadStr("CfgMk_" + exe, "1"));
+                    string marker = Settings.LoadStr("CfgMk_" + exe, "1");
+                    bool ourExe = marker.Length == 0 || marker[0] != '1';
+                    IfeoStore.CleanupEmpty(exe, null, false, ourExe);
                     Settings.SaveStr("CfgMk_" + exe, "");
-                    RemoveFromList(exe);
+                    IfeoStore.RemoveFromList(ListKey, exe);
                     Logger.Log(Lang.T("log.cfgofftweak.6") + exe);
                 }
                 if (!all) Logger.Log(Lang.T("log.cfgofftweak.8"));
@@ -150,47 +144,14 @@ namespace PaviseApp
             }
         }
 
-        private static void CleanupEmpty(string exe, string marker)
-        {
-            if (marker.Length > 0 && marker[0] == '1') return;
-            try
-            {
-                using (var root = Hive.OpenSubKey(RootPath, true))
-                {
-                    if (root == null) return;
-                    using (var k = root.OpenSubKey(exe))
-                        if (k == null || k.ValueCount != 0 || k.SubKeyCount != 0) return;
-                    root.DeleteSubKey(exe, false);
-                }
-            }
-            catch { }
-        }
-
         private static bool Listed(string exe)
         {
-            foreach (string s in ParseList(Settings.LoadStr(ListKey, "")))
-                if (string.Equals(s, exe, StringComparison.OrdinalIgnoreCase)) return true;
-            return false;
-        }
-
-        private static bool AddToList(string exe)
-        {
-            string cur = Settings.LoadStr(ListKey, "");
-            string next = cur.Length == 0 ? exe : cur + ";" + exe;
-            return Settings.SaveStr(ListKey, next) && Settings.LoadStr(ListKey, "") == next;
-        }
-
-        private static void RemoveFromList(string exe)
-        {
-            var keep = new List<string>();
-            foreach (string s in ParseList(Settings.LoadStr(ListKey, "")))
-                if (!string.Equals(s, exe, StringComparison.OrdinalIgnoreCase)) keep.Add(s);
-            Settings.SaveStr(ListKey, string.Join(";", keep.ToArray()));
+            return IfeoStore.Listed(ListKey, exe);
         }
 
         internal static string[] ParseList(string raw)
         {
-            return (raw ?? "").Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+            return IfeoStore.ParseList(raw);
         }
     }
 }

@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 暂停并恢复索引和预取服务
+// 文件用途 暂停并恢复索引和预取服务 账目逻辑走 ServicePauser 这里只留本组的名单与说法
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -10,91 +10,42 @@ namespace PaviseApp
     {
         internal static readonly string[] Names = { "SysMain", "WSearch" };
         private const string Flag = "PrevSvcPaused";
-        private static readonly object lk = new object();
-        private static bool active;
+
+        private static readonly ServicePauser pauser = new ServicePauser(Names, Flag, false);
 
         public static bool Activate()
         {
-            lock (lk)
+            List<string> justStopped, confirmed;
+            bool ledgerLost;
+            bool ok = pauser.Activate(out justStopped, out confirmed, out ledgerLost);
+            if (ledgerLost)
             {
-                if (active) return true;
-
-                var owned = new List<string>();
-                foreach (string s in Settings.LoadStr(Flag, "").Split(new[] { '|' }, StringSplitOptions.RemoveEmptyEntries))
-                    owned.Add(s);
-
-                var justStopped = new List<string>();
-                var confirmedStopped = new List<string>();
-                var intent = new List<string>(owned);
-                foreach (string n in Names)
-                {
-                    try
-                    {
-                        int before = SvcState.Query(n);
-                        if (before == 4 && !intent.Contains(n))
-                        {
-                            intent.Add(n);
-                            Settings.SaveStr(Flag, string.Join("|", intent.ToArray()));
-                        }
-                        bool confirmedStop;
-                        bool issued = SvcCtl.StopIfRunning(n, out confirmedStop);
-                        if (!confirmedStop && before == 4 && SvcState.StopTaken(SvcState.Query(n)))
-                            confirmedStop = true;
-                        if (issued || confirmedStop) justStopped.Add(n);
-                        if (confirmedStop) confirmedStopped.Add(n);
-                    }
-                    catch { }
-                }
-
-                foreach (string n in justStopped)
-                    if (!owned.Contains(n)) owned.Add(n);
-
-                if (owned.Count > 0 || intent.Count > 0)
-                {
-                    Settings.SaveStr(Flag, string.Join("|", owned.ToArray()));
-                    if (Settings.LoadStr(Flag, "") != string.Join("|", owned.ToArray()))
-                    {
-                        foreach (string name in justStopped) SvcCtl.EnsureStarted(name);
-                        Logger.Log(Lang.T("log.svcpause.1"));
-                        active = false;
-                        return false;
-                    }
-                    if (confirmedStopped.Count > 0)
-                        Logger.Log(Lang.T("log.svcpause.2") + string.Join(" ", confirmedStopped.ToArray()));
-                    else if (justStopped.Count > 0)
-                        Logger.Log(Lang.T("log.svcpause.3") + string.Join(" ", justStopped.ToArray()));
-                }
-                active = true;
-                return true;
+                Logger.Log(Lang.T("log.svcpause.1"));
+                return false;
             }
+            if (confirmed.Count > 0)
+                Logger.Log(Lang.T("log.svcpause.2") + string.Join(" ", confirmed.ToArray()));
+            else if (justStopped.Count > 0)
+                Logger.Log(Lang.T("log.svcpause.3") + string.Join(" ", justStopped.ToArray()));
+            return ok;
         }
 
         public static bool Restore()
         {
-            lock (lk)
+            bool had = pauser.HadLedger;
+            List<string> remain;
+            bool ok = pauser.Restore(out remain);
+            if (had)
             {
-                string flag = Settings.LoadStr(Flag, "");
-                if (flag.Length > 0)
-                {
-                    var remain = new List<string>();
-                    foreach (string n in flag.Split(new[] { '|' }, StringSplitOptions.RemoveEmptyEntries))
-                    {
-                        bool ok = false;
-                        try { ok = SvcCtl.EnsureStarted(n); } catch { }
-                        if (!ok) remain.Add(n);
-                    }
-                    Settings.SaveStr(Flag, string.Join("|", remain.ToArray()));
-                    if (remain.Count == 0) Logger.Log(Lang.T("log.svcpause.4"));
-                    else Logger.Log(Lang.T("log.svcpause.5") + string.Join(" ", remain.ToArray()) + Lang.T("log.svcpause.6"));
-                }
-                active = false;
-                return Settings.LoadStr(Flag, "").Length == 0;
+                if (remain.Count == 0) Logger.Log(Lang.T("log.svcpause.4"));
+                else Logger.Log(Lang.T("log.svcpause.5") + string.Join(" ", remain.ToArray()) + Lang.T("log.svcpause.6"));
             }
+            return ok;
         }
 
-        public static bool HasResidue() { return Settings.LoadStr(Flag, "").Length > 0; }
+        public static bool HasResidue() { return pauser.HasResidue; }
 
-        public static void HealFromCrash() { if (Settings.LoadStr(Flag, "").Length > 0) Restore(); }
+        public static void HealFromCrash() { if (pauser.HasResidue) Restore(); }
     }
 
     internal static class SvcState

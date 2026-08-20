@@ -9,12 +9,11 @@ namespace PaviseApp
 {
     internal partial class PanelForm
     {
-        private Toggle swHags, swVbs, swIrqAffinity, swGmGuard;
+        private Toggle swHags, swVbs, swGmGuard;
         private Toggle swDevPower, swWindowedOpt, swCfgOff;
         private Toggle swAccessKeys, swHidPower, swSpecMit;
         private SettingCard cardVbs, cardWindowedOpt, cardSpecMit;
-        private SettingCard cardAccessKeys, cardHidPower, cardQuantum;
-        private TierPicker quantumPicker;
+        private SettingCard cardAccessKeys, cardHidPower;
         private TechTabs envTabs;
         private DBPanel[] envTabPanels;
         private int envBusy;
@@ -80,14 +79,6 @@ namespace PaviseApp
 
             scroll = envTabPanels[1]; sy = 2;
 
-            bool discreteGpu = GpuInventory.HasDiscrete;
-            swIrqAffinity = MakeSwitch(InterruptAffinityTweak.EnabledByPavise, OnIrqAffinityToggle);
-            swIrqAffinity.Enabled = discreteGpu || InterruptAffinityTweak.EnabledByPavise;
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.irqaffinity"),
-                discreteGpu ? Lang.T("set.irqaffinity.n") : Lang.T("irqaffinity.igpuonly"),
-                swIrqAffinity, out cardH);
-            sy += cardH + 8;
-
             swDevPower = MakeSwitch(DevicePowerTweak.EnabledByPavise, OnDevPowerToggle);
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.devpower"), Lang.T("set.devpower.n"), swDevPower, out cardH);
             sy += cardH + 8;
@@ -103,18 +94,6 @@ namespace PaviseApp
             swHidPower = MakeSwitch(HidPowerTweak.EnabledByPavise, OnHidPowerToggle);
             cardHidPower = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.hidpower"),
                 Lang.T("set.hidpower.n"), swHidPower, out cardH);
-            sy += cardH + 8;
-
-            quantumPicker = new TierPicker();
-            quantumPicker.Size = new Size(Theme.S(270), Theme.S(28));
-            quantumPicker.Labels = new[]
-            {
-                Lang.T("quantum.mode.default"), Lang.T("quantum.mode.fg"), Lang.T("quantum.mode.report")
-            };
-            quantumPicker.Index = (int)QuantumTweak.Mode;
-            quantumPicker.IndexChanged = delegate(int i) { OnQuantumModePicked(i); };
-            cardQuantum = MakeAutoCard(scroll, 6, sy, ScrollContentW, 88, Lang.T("set.quantum"),
-                Lang.T("set.quantum.n"), quantumPicker, out cardH);
             sy += cardH + 8;
 
             SyncEnvStatus();
@@ -138,22 +117,6 @@ namespace PaviseApp
             if (cardWindowedOpt != null && Native.OsBuild() >= 22000)
                 cardWindowedOpt.SetStatus(WindowedOptTweak.Describe(),
                     StatusInk(!WindowedOptTweak.CurrentlyOn(), WindowedOptTweak.EnabledByPavise));
-            if (cardQuantum != null)
-                cardQuantum.SetStatus(QuantumTweak.Describe(),
-                    StatusInk(QuantumTweak.NeedsRepair(), QuantumTweak.RepairedByPavise));
-        }
-
-        private void OnQuantumModePicked(int index)
-        {
-            if (!elevated && index != (int)QuantumMode.ReportOnly)
-            {
-                PaviseDialog.Warn(this, App.DisplayName, Lang.T("vbs.needadmin"));
-                quantumPicker.Index = (int)QuantumTweak.Mode;
-                return;
-            }
-            QuantumTweak.SetMode((QuantumMode)index);
-            quantumPicker.Index = (int)QuantumTweak.Mode;
-            SyncEnvStatus();
         }
 
         private void OnAccessKeysToggle(object s, EventArgs e)
@@ -225,14 +188,6 @@ namespace PaviseApp
             bool ok = swHags.Checked ? HagsTweak.Enable() : HagsTweak.Disable();
             if (ok) PaviseDialog.Info(this, App.DisplayName, Lang.T("hags.reboot"));
             swHags.SetSilently(HagsTweak.EnabledByPavise || HagsTweak.CurrentlyOn());
-        }
-
-        private void OnIrqAffinityToggle(object s, EventArgs e)
-        {
-            if (!RequireElevationFor(swIrqAffinity, InterruptAffinityTweak.EnabledByPavise)) return;
-            bool ok = swIrqAffinity.Checked ? InterruptAffinityTweak.Enable() : InterruptAffinityTweak.Disable();
-            if (ok) PaviseDialog.Info(this, App.DisplayName, Lang.T("irqaffinity.reboot"));
-            swIrqAffinity.SetSilently(InterruptAffinityTweak.EnabledByPavise);
         }
 
         private void OnVbsToggle(object s, EventArgs e)
@@ -372,7 +327,6 @@ namespace PaviseApp
         {
             if (swHags != null) swHags.SetSilently(HagsTweak.EnabledByPavise || HagsTweak.CurrentlyOn());
             if (swVbs != null) swVbs.SetSilently(VbsTweak.DisabledByPavise);
-            if (swIrqAffinity != null) swIrqAffinity.SetSilently(InterruptAffinityTweak.EnabledByPavise);
             if (swGmGuard != null) swGmGuard.SetSilently(GameModeGuard.EnabledByPavise);
             if (swDevPower != null) swDevPower.SetSilently(DevicePowerTweak.EnabledByPavise);
             if (swAccessKeys != null) swAccessKeys.SetSilently(AccessibilityKeysTweak.EnabledByPavise);
@@ -381,7 +335,6 @@ namespace PaviseApp
                 swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByPavise || WindowedOptTweak.CurrentlyOn());
             if (swCfgOff != null) swCfgOff.SetSilently(CfgOffTweak.Enabled);
             if (swSpecMit != null) swSpecMit.SetSilently(SpecMitigationTweak.DisabledByPavise);
-            if (quantumPicker != null) quantumPicker.Index = (int)QuantumTweak.Mode;
         }
     }
 }

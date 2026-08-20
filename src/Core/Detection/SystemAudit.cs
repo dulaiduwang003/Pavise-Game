@@ -35,29 +35,9 @@ namespace PaviseApp
         public const string EvMechanism = "机制明确";
         public const string EvUnverified = "未验证";
 
-        public static int InterruptTier(double worstRate)
-        {
-            if (worstRate < 0.01) return 0;
-            if (worstRate < 0.05) return 1;
-            return 2;
-        }
-
-        public static string InterruptTierText(int tier)
-        {
-            if (tier == 0) return Lang.T("t.systemaudit.1");
-            return tier == 1 ? Lang.T("t.systemaudithardware.30") : Lang.T("t.systemaudit.2");
-        }
-
         public static string PercentText(double rate)
         {
             return (rate * 100.0).ToString("F2") + "%";
-        }
-
-        private static string CoreLabel(ulong mask)
-        {
-            var parts = new List<string>();
-            for (int i = 0; i < 64; i++) if (((mask >> i) & 1UL) != 0) parts.Add(i.ToString());
-            return string.Join(" ", parts.ToArray());
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -388,41 +368,26 @@ namespace PaviseApp
             var report = new AuditReport();
             report.MeasureWindowMs = measureWindowMs;
 
-            var attrib = new InterruptAttribution();
-            bool attribOn = false;
-            try { attribOn = attrib.Start(); } catch { }
-
+            // 这里不再开中断归因会话 也不再算每核中断占比
+            //   量的是中断总占比 属于吞吐 而掉帧看的是单次能卡多久 属于延迟 两码事
+            //   而且体检是用户打开页面时测的 那会儿机器多半闲着 量出来的占比接近没意义
+            //   中断页按需扫描 会提示开着游戏扫 量的是每台设备的单次最长 那才是能用的判据
+            //   顺带 体检不再需要开内核 ETW 会话
             double cpuBusy = 0;
             double[] rates = null;
             try { rates = DpcSampler.MeasureLoad(measureWindowMs, out cpuBusy); } catch { }
             report.MeasureOk = rates != null;
-
-            InterruptAttributionResult culprits = null;
-            if (attribOn)
-            {
-                try { culprits = attrib.Stop(); } catch { }
-            }
-
-            double worstIrq = 0; ulong worstCore = 0;
-            if (rates != null)
-            {
-                foreach (ulong core in CpuTopology.PhysicalCoreMasks())
-                {
-                    double r = CpuPartitionPolicy.CoreInterruptRate(rates, core);
-                    if (r > worstIrq) { worstIrq = r; worstCore = core; }
-                }
-            }
 
             int hzCur, hzBest;
             DisplayGuard.QueryRefreshRates(out hzCur, out hzBest);
 
             Facts facts = Gather();
             BuildCapability(report, facts);
-            BuildMachine(report, facts, cpuBusy, worstIrq, worstCore, hzCur, hzBest, culprits);
+            BuildMachine(report, facts, cpuBusy, hzCur, hzBest);
             BuildHardwareHealth(report, facts);
             BuildInputChain(report, facts);
             BuildPersistent(report, facts);
-            BuildVerdicts(report, facts, worstIrq, hzCur, hzBest, culprits);
+            BuildVerdicts(report, facts, hzCur, hzBest);
             return report;
         }
 
@@ -499,24 +464,9 @@ namespace PaviseApp
             });
         }
 
-        internal static string TopDriversText(InterruptAttributionResult culprits, int max)
+        private static void BuildMachine(AuditReport report, Facts facts, double cpuBusy, int hzCur, int hzBest)
         {
-            if (culprits == null || !culprits.Ok || culprits.Drivers.Count == 0) return null;
-            var parts = new List<string>();
-            for (int i = 0; i < culprits.Drivers.Count && i < max; i++)
-            {
-                DriverInterrupt d = culprits.Drivers[i];
-                double share = culprits.DpcTotal + culprits.IsrTotal > 0
-                    ? (double)(d.Dpc + d.Isr) / (culprits.DpcTotal + culprits.IsrTotal) : 0;
-                parts.Add(d.Driver + " " + PercentText(share));
-            }
-            return string.Join("   ", parts.ToArray());
-        }
-
-        private static void BuildMachine(AuditReport report, Facts facts, double cpuBusy, double worstIrq, ulong worstCore,
-            int hzCur, int hzBest, InterruptAttributionResult culprits)
-        {
-            BuildMachineCpu(report, cpuBusy, worstIrq, worstCore, culprits);
+            BuildMachineCpu(report, cpuBusy);
             BuildMachineDisplay(report, hzCur, hzBest);
             BuildMachineGpu(report);
             BuildMachinePower(report);
@@ -527,8 +477,7 @@ namespace PaviseApp
             BuildMachineTopConsumers(report);
         }
 
-        private static void BuildMachineCpu(AuditReport report, double cpuBusy, double worstIrq, ulong worstCore,
-            InterruptAttributionResult culprits)
+        private static void BuildMachineCpu(AuditReport report, double cpuBusy)
         {
             int logical = Environment.ProcessorCount;
             int physical = 0;
@@ -558,37 +507,6 @@ namespace PaviseApp
                         ? (report.MeasureWindowMs / 1000) + Lang.T("t.systemaudit.40") : report.MeasureWindowMs + Lang.T("t.systemaudit.41")) + Lang.T("t.systemaudit.42"),
                     Evidence = EvMeasuredLocal,
                     Warn = false
-                });
-
-                int tier = InterruptTier(worstIrq);
-                string topDrivers = TopDriversText(culprits, 3);
-                report.Machine.Add(new AuditRow
-                {
-                    Name = Lang.T("t.systemaudit.43"),
-                    Value = (worstCore != 0 ? Lang.T("t.systemaudit.44") + CoreLabel(worstCore) + " " : "")
-                        + Lang.T("t.systemaudit.45") + PercentText(worstIrq) + " " + InterruptTierText(tier),
-                    Note = topDrivers != null
-                        ? Lang.T("t.systemaudit.46") + topDrivers + (tier == 2
-                            ? Lang.T("t.systemaudit.47")
-                            : Lang.T("t.systemaudit.48"))
-                        : tier == 2
-                            ? Lang.T("t.systemaudit.49")
-                            : report.MeasureWindowMs < 10000
-                                ? Lang.T("t.systemaudit.50")
-                                : Lang.T("t.systemaudit.51"),
-                    Evidence = EvMeasuredLocal,
-                    Warn = tier == 2
-                });
-            }
-            else
-            {
-                report.Machine.Add(new AuditRow
-                {
-                    Name = Lang.T("t.systemaudit.43"),
-                    Value = Lang.T("t.systemaudit.52"),
-                    Note = Lang.T("t.systemaudit.53"),
-                    Evidence = EvMeasuredLocal,
-                    Warn = true
                 });
             }
         }
@@ -893,7 +811,7 @@ namespace PaviseApp
                 Name = Lang.T("t.systemaudit.125"),
                 Value = facts.Hags ? Lang.T("log.versionmigrations.41") : Lang.T("notes.close"),
                 Note = Lang.T("t.systemaudit.126"),
-                Evidence = EvUnverified,
+                Evidence = EvMechanism,
                 Warn = false
             });
 
@@ -993,6 +911,20 @@ namespace PaviseApp
                 Evidence = EvMechanism,
                 Warn = netTampered,
                 FixKey = "net"
+            });
+
+            bool fthShimmed = false;
+            string fthState = "";
+            try { fthShimmed = FthTweak.NeedsRepair(); fthState = FthTweak.Describe(); }
+            catch { }
+            report.Persistent.Add(new AuditRow
+            {
+                Name = Lang.T("t.systemaudit.151"),
+                Value = fthShimmed ? Lang.T("t.systemaudit.152") : Lang.T("t.systemaudit.134"),
+                Note = fthState + " " + Lang.T(fthShimmed ? "t.systemaudit.153" : "t.systemaudit.154"),
+                Evidence = EvMechanism,
+                Warn = fthShimmed,
+                FixKey = "fth"
             });
         }
     }

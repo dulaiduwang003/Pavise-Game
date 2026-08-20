@@ -31,8 +31,15 @@ namespace PaviseApp
                 uint[] yieldIds = CpuTopology.BackgroundYieldCpuSetIds();
                 if (yieldIds != null && yieldIds.Length > 0)
                     moved = Native.TrySetCpuSets(h, yieldIds);
-                bool lowered = pri == Native.BELOW_NORMAL_PRIORITY_CLASS
-                    || Native.SetPriorityClass(h, Native.BELOW_NORMAL_PRIORITY_CLASS);
+                // 挪核成功就不再降优先级 看门人不能比它要抓的人低
+                // 2026-08-20 台架 十线程内存带宽压力 NORMAL 优先级占满全核时
+                // 挪核加降档的 Pavise 在两个核上被饿到 Sweep 超过热度采样的 30 秒时限
+                // 热度只刷基线不累计 重负载反而永远升不了档 六臂全贴 103 fps 一分未收
+                // 挪核本身已保证不占游戏核 后台核上以 NORMAL 平分时间片 毫秒级的 Sweep 够跑
+                bool lowered = false;
+                if (!moved)
+                    lowered = pri == Native.BELOW_NORMAL_PRIORITY_CLASS
+                        || Native.SetPriorityClass(h, Native.BELOW_NORMAL_PRIORITY_CLASS);
                 bool ioLowered = origIo >= 0 && origIo != 1 && Native.TrySetIoPriority(h, 1);
                 engaged = lowered || moved || ioLowered;
                 if (engaged) Logger.Log(Lang.T("log.selfyield.1"));

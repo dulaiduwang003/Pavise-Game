@@ -30,6 +30,8 @@ namespace PaviseApp
             get { return EnabledByPavise || LoadTouched().Count > 0; }
         }
 
+        public List<string> TouchedDevices() { return LoadTouched(); }
+
         private sealed class Target
         {
             public string DeviceId;
@@ -120,11 +122,28 @@ namespace PaviseApp
                 Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.5"));
 
             var touched = LoadTouched();
+
+            // 先记名单再动手 顺序反了会出人命
+            //   原来是先写注册表 循环跑完才存名单 中间被杀掉的话
+            //   注册表已经改了 名单里却没有这台设备 Disable 找不到它 用户永远还不回来
+            //   反过来先记名单 崩在中间时名单是个超集 还原会多试几台没动过的
+            //   而没有备份的设备 Restore 直接返回成功 是安全的空操作 宁可多记不可少记
+            var ledger = new List<string>(touched);
+            foreach (Target t in targets) if (!ledger.Contains(t.DeviceId)) ledger.Add(t.DeviceId);
+            if (!SaveTouched(ledger))
+            {
+                Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.8"));
+                return false;
+            }
+
             object policyValue = useMask ? PolicySpecifiedProcessors : PolicyAllCloseProcessors;
             byte[] maskBytes = useMask ? MaskToBytes(preferredMask) : null;
 
             bool anyOk = false;
             var applied = new List<Target>();
+            // 写失败之后回滚也失败的设备 注册表已经被改了却不在 applied 里
+            //   不单独记下来的话 收敛名单那一步会把它抹掉 从此没人记得它
+            var dirty = new List<string>();
             foreach (Target t in targets)
             {
                 if (touched.Contains(t.DeviceId)
@@ -139,39 +158,42 @@ namespace PaviseApp
                 if (ok) { anyOk = true; applied.Add(t); }
                 else
                 {
-                    t.Policy.Restore(); t.Mask.Restore();
+                    // 回滚的返回值不能丢 回滚不掉说明注册表还是脏的 必须留在名单上
+                    if (!(t.Policy.Restore() & t.Mask.Restore())) dirty.Add(t.DeviceId);
                     Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.6") + t.DeviceId + Lang.T("log.irqaffinityengine.7"));
                 }
             }
-            if (!anyOk) return false;
-
-            if (applied.Count > 0)
+            // 一台都没写成 名单收回原样 但回滚不掉的那几台得留着
+            if (!anyOk)
             {
-                foreach (Target t in applied) if (!touched.Contains(t.DeviceId)) touched.Add(t.DeviceId);
-                if (!SaveTouched(touched))
-                {
-                    foreach (Target t in applied) { t.Policy.Restore(); t.Mask.Restore(); }
-                    Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.8"));
-                    return false;
-                }
+                foreach (string id in dirty) if (!touched.Contains(id)) touched.Add(id);
+                SaveTouched(touched);
+                return false;
             }
+
+            foreach (Target t in applied) if (!touched.Contains(t.DeviceId)) touched.Add(t.DeviceId);
+            foreach (string id in dirty) if (!touched.Contains(id)) touched.Add(id);
+            // 收敛成真实名单 存不下就保持刚才那份超集 宁可多记不可少记
+            SaveTouched(touched);
 
             Settings.Save(settingsKey, true);
             if (!Settings.Load(settingsKey, false))
             {
-                foreach (Target t in applied) { t.Policy.Restore(); t.Mask.Restore(); }
-                if (applied.Count > 0)
+                // 还原的返回值不能丢 还原失败的那台必须留在名单里
+                //   原来是不看返回值就把所有 applied 从名单里踢掉
+                //   于是还原失败的设备既改了注册表 又没人记得它 永久失联
+                var failed = new List<string>();
+                foreach (Target t in applied)
+                    if (!(t.Policy.Restore() & t.Mask.Restore())) failed.Add(t.DeviceId);
+                var remaining = new List<string>();
+                foreach (string id in touched)
                 {
-                    var remaining = new List<string>();
-                    foreach (string id in touched)
-                    {
-                        bool wasApplied = false;
-                        foreach (Target t in applied)
-                            if (string.Equals(t.DeviceId, id, StringComparison.OrdinalIgnoreCase)) { wasApplied = true; break; }
-                        if (!wasApplied) remaining.Add(id);
-                    }
-                    SaveTouched(remaining);
+                    bool wasApplied = false;
+                    foreach (Target t in applied)
+                        if (string.Equals(t.DeviceId, id, StringComparison.OrdinalIgnoreCase)) { wasApplied = true; break; }
+                    if (!wasApplied || failed.Contains(id)) remaining.Add(id);
                 }
+                SaveTouched(remaining);
                 Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.9"));
                 return false;
             }
@@ -239,17 +261,6 @@ namespace PaviseApp
             return false;
         }
 
-        public bool ResyncMask(List<string> deviceIds, ulong preferredMask)
-        {
-            if (!EnabledByPavise) return false;
-            if (CpuTopology.MultiGroup) return false;
-            bool useMask = preferredMask != 0 && preferredMask != CpuTopology.AllMask;
-            string expected = useMask ? MakeStamp(Environment.ProcessorCount, preferredMask) : "";
-            if (Settings.LoadStr(StampKey, "") == expected) return false;
-            Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.26"));
-            return Enable(deviceIds, preferredMask);
-        }
-
         public bool HealStaleMask()
         {
             if (!EnabledByPavise) return false;
@@ -310,7 +321,8 @@ namespace PaviseApp
                 if (!ok) { allOk = false; stillDirty.Add(t.DeviceId); }
             }
 
-            SaveTouched(stillDirty);
+            // 存不下名单也是失败 不然还没还原干净的设备会从名单上消失
+            if (!SaveTouched(stillDirty)) allOk = false;
             if (allOk)
             {
                 Settings.Save(settingsKey, false);

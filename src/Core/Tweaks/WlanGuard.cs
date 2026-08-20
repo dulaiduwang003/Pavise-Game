@@ -129,6 +129,11 @@ namespace PaviseApp
             }
         }
 
+        // 这里不检查 WlanSetInterface 的返回值 是有依据的不是漏写
+        // 2026-08-20 实测(Intel Wireless-AC 9560)：媒体流模式随客户端句柄关闭自动失效
+        //   同句柄写 TRUE 读回 1 -> WlanCloseHandle -> 新句柄读回 0
+        // 也就是说 WlanCloseHandle 本身已完成还原 下面那次显式写 FALSE 只是尽早生效
+        // 因此即便它失败 网卡也不会留在媒体流模式 返回 true 是正确的
         public static bool Restore()
         {
             lock (lk)

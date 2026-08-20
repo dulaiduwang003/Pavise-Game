@@ -185,8 +185,6 @@ namespace PaviseApp
         public bool GpuDemote { get { return On(PolicyCatalog.KeyGpuDemote); } }
         public bool IfeoBoost { get { return On(PolicyCatalog.KeyIfeoBoost); } }
         public bool RenderLane { get { return On(PolicyCatalog.KeyRenderLane); } }
-        public bool FrameDiag { get { return On(PolicyCatalog.KeyFrameDiag); } }
-        public bool FrameAct { get { return On(PolicyCatalog.KeyFrameAct); } }
         public bool StrictCores { get { return On(PolicyCatalog.KeyStrictCores); } }
         public bool CoreDomainAlt { get { return On(PolicyCatalog.KeyCoreDomainAlt); } }
         public bool StandbySweep { get { return On(PolicyCatalog.KeyStandbySweep); } }
@@ -220,8 +218,6 @@ namespace PaviseApp
         public bool EffBoost { get { return BoostGame; } }
         public bool EffIfeo { get { return IfeoBoost; } }
         public bool EffLane { get { return RenderLane; } }
-        public bool EffFrameDiag { get { return FrameDiag; } }
-        public bool EffFrameAct { get { return FrameDiag && FrameAct; } }
         public bool EffAggressive { get { return GameMode.IsAggressive(Preset, Aggressive); } }
     }
 }
