@@ -12,6 +12,17 @@ namespace PaviseApp
     {
         private static void BuildHardwareHealth(AuditReport report, Facts facts)
         {
+            bool channelWarn;
+            string channelText = MemChannelText(facts.MemModuleGb, out channelWarn);
+            if (channelText != null)
+                report.Machine.Add(new AuditRow
+                {
+                    Name = Lang.T("t.memchannel.1"),
+                    Value = channelText,
+                    Note = channelWarn ? Lang.T("t.memchannel.6") : Lang.T("t.memchannel.7"),
+                    Evidence = EvMechanism,
+                    Warn = channelWarn
+                });
             if (facts.MemModules > 0)
             {
                 bool xmpSuspect = facts.MemConfiguredMhz > 0 && facts.MemRatedMhz > 0
@@ -124,7 +135,6 @@ namespace PaviseApp
                 FixKey = "msi"
             });
 
-            // 只在非对称缓存机型上出现 纯只读 补上策略页文案让用户"确认驱动有没有管"却没给的确认手段
             if (CpuTopology.AsymCache) report.Capability.Add(X3dOptimizerRow());
         }
 
@@ -162,9 +172,10 @@ namespace PaviseApp
         private static void GatherMemoryModules(Facts f)
         {
             using (var searcher = new System.Management.ManagementObjectSearcher(
-                "SELECT Speed, ConfiguredClockSpeed FROM Win32_PhysicalMemory"))
+                "SELECT Speed, ConfiguredClockSpeed, Capacity FROM Win32_PhysicalMemory"))
             {
                 searcher.Options.Timeout = TimeSpan.FromSeconds(10);
+                f.MemModuleGb = new List<double>();
                 using (var results = searcher.Get())
                     foreach (System.Management.ManagementBaseObject mo in results)
                         using (mo)
@@ -174,8 +185,42 @@ namespace PaviseApp
                             int cfg = ToMhz(mo["ConfiguredClockSpeed"]);
                             if (rated > f.MemRatedMhz) f.MemRatedMhz = rated;
                             if (cfg > f.MemConfiguredMhz) f.MemConfiguredMhz = cfg;
+                            try
+                            {
+                                object cap = mo["Capacity"];
+                                if (cap != null)
+                                    f.MemModuleGb.Add(Convert.ToUInt64(cap) / 1073741824.0);
+                            }
+                            catch { }
                         }
             }
+        }
+
+        internal static string MemChannelText(List<double> moduleGb, out bool warn)
+        {
+            warn = false;
+            if (moduleGb == null || moduleGb.Count == 0) return null;
+            var sizes = new List<string>();
+            bool uniform = true;
+            foreach (double gb in moduleGb)
+            {
+                sizes.Add(gb.ToString("F0"));
+                if (Math.Abs(gb - moduleGb[0]) > 0.5) uniform = false;
+            }
+            if (moduleGb.Count == 1)
+            {
+                warn = true;
+                return moduleGb[0].ToString("F0") + "GB " + Lang.T("t.memchannel.2");
+            }
+            string layout = string.Join("+", sizes.ToArray()) + "GB ";
+            if (uniform) return layout + Lang.T("t.memchannel.3");
+            if (moduleGb.Count == 2)
+            {
+                double dual = Math.Min(moduleGb[0], moduleGb[1]) * 2;
+                double single = Math.Abs(moduleGb[0] - moduleGb[1]);
+                return layout + Lang.F("t.memchannel.4", dual.ToString("F0"), single.ToString("F0"));
+            }
+            return layout + Lang.T("t.memchannel.5");
         }
 
         private static int ToMhz(object value)

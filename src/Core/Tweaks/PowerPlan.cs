@@ -19,7 +19,6 @@ namespace PaviseApp
         private const string ChoiceKey = "PowerPlanChoice";
         private const string DefaultPlanKey = "DefaultPlanGuid";
         private const string ManagedPlanKey = "PgPlanGuid";
-        public const string LegacyPlanTitle = "Pavise 竞技";
         public const string ManagedChoice = "managed";
         public const string PlanTag = "PG";
         private const string PlanNote = "由 Pavise 创建并托管 游戏结束自动切回原方案 删掉它 Pavise 会重建";
@@ -276,44 +275,6 @@ namespace PaviseApp
             return true;
         }
 
-        public static bool HasLegacyManagedResidue()
-        {
-            if (Settings.LoadStr("ArenaPlanGuid", "").Length > 0) return true;
-            if (Settings.LoadStr("UltimatePlanGuid", "").Length > 0) return true;
-            foreach (Guid g in EnumerateSchemes())
-                if (ReadName(g) == LegacyPlanTitle) return true;
-            return false;
-        }
-
-        public static bool PurgeLegacyManaged()
-        {
-            var doomed = new List<Guid>();
-            foreach (Guid g in EnumerateSchemes())
-                if (ReadName(g) == LegacyPlanTitle) doomed.Add(g);
-
-            Guid? cur = Current();
-            if (cur.HasValue && doomed.Contains(cur.Value))
-            {
-                Guid escape = EnsureDefaultPlan();
-                if (escape == Guid.Empty) escape = Balanced;
-                if (!Set(escape)) return false;
-                Logger.Log(Lang.T("log.powerplan.20") + PlanLabel(escape));
-            }
-
-            bool ok = true;
-            foreach (Guid g in doomed)
-            {
-                Guid tmp = g;
-                if (PowerDeleteScheme(IntPtr.Zero, ref tmp) == 0)
-                    Logger.Log(Lang.T("log.powerplan.21") + g);
-                else ok = false;
-            }
-            if (!ok) return false;
-            Settings.SaveStr("ArenaPlanGuid", "");
-            Settings.SaveStr("UltimatePlanGuid", "");
-            return true;
-        }
-
         private static bool TryUserChosenTarget()
         {
             string choice = Settings.LoadStr(ChoiceKey, "");
@@ -501,10 +462,15 @@ namespace PaviseApp
             return true;
         }
 
+        public static bool HasResidue
+        {
+            get { return Settings.LoadStr("PrevPowerPlan", "").Length > 0; }
+        }
+
         public static void HealFromCrash()
         {
             string s = Settings.LoadStr("PrevPowerPlan", "");
-            if (s.Length == 0) { HealManagedResidue(); return; }
+            if (s.Length == 0) return;
             Guid g;
             if (!TryGuid(s, out g))
             {

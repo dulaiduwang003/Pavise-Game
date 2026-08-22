@@ -74,7 +74,8 @@ namespace PaviseApp
             if (!samples.TryGetValue(pid, out old) || old.Creation != creation || !string.Equals(old.Name, name, StringComparison.OrdinalIgnoreCase))
             {
                 samples[pid] = new Sample { Name = name, Creation = creation, Cpu = cpu, Io = io, At = now };
-                return SuppressionLevel.None;
+                return preset == PerformancePreset.Competitive
+                    ? SuppressionLevel.Isolated : SuppressionLevel.None;
             }
 
             long dt = now - old.At;

@@ -120,7 +120,7 @@ namespace PaviseApp
                     RunBcd("/set hypervisorlaunchtype off", out code);
                     if (code != 0)
                     {
-                        if (Vbs.Restore() & Hvci.Restore()) Settings.SaveStr("PrevHvLaunch", "");
+                        Vbs.Restore(); Hvci.Restore();
                         Logger.Log(Lang.T("log.vbstweak.3") + code + Lang.T("log.vbstweak.4"));
                         return false;
                     }
@@ -128,8 +128,10 @@ namespace PaviseApp
                     if (!Settings.Load("VbsDisabledByPavise", false))
                     {
                         int rollbackCode;
-                        RunBcd("/set hypervisorlaunchtype "
-                            + NormHvLaunch(Settings.LoadStr("PrevHvLaunch", "auto")), out rollbackCode);
+                        string back = NormHvLaunch(Settings.LoadStr("PrevHvLaunch", "auto"));
+                        RunBcd(back == ReversibleReg.Absent
+                            ? "/deletevalue hypervisorlaunchtype"
+                            : "/set hypervisorlaunchtype " + back, out rollbackCode);
                         Vbs.Restore(); Hvci.Restore();
                         if (rollbackCode == 0) Settings.SaveStr("PrevHvLaunch", "");
                         Logger.Log(Lang.T("log.vbstweak.5"));
@@ -152,12 +154,14 @@ namespace PaviseApp
                     if (!Vbs.HasBackup && !Hvci.HasBackup && savedHvLaunch.Length == 0 && !DisabledByPavise)
                         return true;
                     bool ok = Vbs.Restore() & Hvci.Restore();
-                    bool bcdOurs = DisabledByPavise;
+                    bool bcdOurs = DisabledByPavise || savedHvLaunch.Length > 0;
                     string hv = NormHvLaunch(savedHvLaunch.Length == 0 ? "auto" : savedHvLaunch);
                     int code = 0;
                     if (bcdOurs)
                     {
-                        RunBcd("/set hypervisorlaunchtype " + hv, out code);
+                        RunBcd(hv == ReversibleReg.Absent
+                            ? "/deletevalue hypervisorlaunchtype"
+                            : "/set hypervisorlaunchtype " + hv, out code);
                         if (code != 0) ok = false;
                     }
                     if (ok)
@@ -195,12 +199,13 @@ namespace PaviseApp
                     if (parts.Length >= 2) return NormHvLaunch(parts[parts.Length - 1]);
                 }
             }
-            return "auto";
+            return ReversibleReg.Absent;
         }
 
         private static string NormHvLaunch(string s)
         {
             if (string.IsNullOrEmpty(s)) return "auto";
+            if (s == ReversibleReg.Absent) return ReversibleReg.Absent;
             switch (s.Trim().ToLowerInvariant())
             {
                 case "off": return "off";
@@ -210,7 +215,7 @@ namespace PaviseApp
             }
         }
 
-        private static string RunBcd(string args, out int code)
+        internal static string RunBcd(string args, out int code)
         {
             code = -1;
             try

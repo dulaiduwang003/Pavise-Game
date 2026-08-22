@@ -165,18 +165,6 @@ namespace PaviseApp
                 });
             }
 
-            if (facts.ClockStale != null && facts.ClockStale.Count > 0)
-            {
-                report.Verdicts.Add(new AuditRow
-                {
-                    Name = Lang.T("t.systemauditverdicts.50"),
-                    Value = Lang.T("t.systemauditverdicts.51"),
-                    Note = Lang.T("t.systemauditverdicts.52"),
-                    Evidence = EvMechanism,
-                    Warn = true,
-                    FixKey = "clock"
-                });
-            }
 
             if (facts.PageOk && PageFileLooksDisabled(facts.PageFileGb))
             {

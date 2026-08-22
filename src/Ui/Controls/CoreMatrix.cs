@@ -72,10 +72,6 @@ namespace PaviseApp
 
         public string PrimaryTag;
 
-        // 独占 指一个物理核的两个超线程只选中了一个 另一个空着
-        //   挑游戏核时这是真的有意义 那个线程不用和另一个游戏线程抢同一个物理核的执行单元
-        //   挑中断落点时没有这个意义 中断任何时刻只落在一个逻辑处理器上
-        //   词还自带 这样更好 的暗示 会把人往没根据的选择上推 所以那边要能关掉
         public bool MarkExclusive = true;
 
         public CoreMatrix()

@@ -16,7 +16,6 @@ namespace PaviseApp
         private static readonly ReversibleReg[] All = { Resp, Pri, Sched, Sfio };
 
         internal const int Responsiveness = 10;
-        internal const int GamesPriority = 6;
         internal const string HighCategory = "High";
 
         private static readonly object lk = new object();
@@ -28,8 +27,7 @@ namespace PaviseApp
             {
                 if (active && HasResidue()) return true;
                 if (!Native.IsElevated()) return false;
-                bool ok = Resp.Apply(Responsiveness) & Pri.Apply(GamesPriority)
-                    & Sched.Apply(HighCategory) & Sfio.Apply(HighCategory);
+                bool ok = Resp.Apply(Responsiveness) & Sched.Apply(HighCategory);
                 if (!ok)
                 {
                     foreach (ReversibleReg r in All) r.Restore();

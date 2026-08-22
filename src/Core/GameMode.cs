@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 维护游戏模式状态 配置和工作线程
 using System;
 using System.Collections.Generic;
@@ -70,22 +70,17 @@ namespace PaviseApp
         private volatile string nvLowLatMode = "off";
         private volatile bool nvSmoothMotion;
         private volatile bool nvShaderCacheMax;
-        private volatile bool amdAntiLag;
-        private volatile bool amdAfmf;
         private volatile bool nvAnselOff;
         private volatile bool nvRebarOn;
         private volatile string nvDlssMode = "off";
         private volatile bool awakeOn;
-        private volatile bool rsrOn;
         private volatile bool gpuPowerMaxOn;
         private bool pqosActive;
         private bool awakeActive;
-        private bool rsrActive;
         private bool gpwActive;
         private volatile bool killGameDvr;
         private volatile bool mmcssOn;
         private volatile bool planSwitch;
-        private volatile bool standbySweepOn;
         private volatile bool squeezeBgOn;
         private long slowEnvAtTicks;
 
@@ -112,6 +107,7 @@ namespace PaviseApp
         private readonly ulong gameMask;
         private ulong strictMask;
         private readonly BackgroundPressureController pressure = new BackgroundPressureController();
+        private readonly IrqSessionProbe irqProbe = new IrqSessionProbe();
         private PerformancePreset preset;
         private GameDetection activeDetection;
         private volatile PolicySnapshot sessionPolicy;
@@ -131,6 +127,7 @@ namespace PaviseApp
         public GameMode(string dir, SuppressionCore core)
         {
             dataDir = dir;
+            IrqSessionLedger.Bind(dir);
             gamesPath = Path.Combine(dir, "Pavise.games.txt");
             whitePath = Path.Combine(dir, "Pavise.whitelist.txt");
             profileStore = new GameProfileStore(dir);
@@ -173,9 +170,7 @@ namespace PaviseApp
             boostOn = Settings.Load("GmBoost", true);
             pauseDlOn = Settings.Load("GmPauseDl", true);
             wlanGuardOn = Settings.Load("GmWlanGuard", false);
-            VersionMigrations.EnsureSettingsMigrated();
             LoadCustomCoreMask();
-            standbySweepOn = Settings.Load("GmStandbySweep", true);
             squeezeBgOn = CpuTopology.SqueezeSupported
                 && Settings.Load("GmSqueezeBg", CpuTopology.SqueezeSupported);
             SuppressionCore.SqueezeBackground = squeezeBgOn;
@@ -184,13 +179,11 @@ namespace PaviseApp
             nvLowLatMode = Settings.LoadStr("NvLowLat", "off");
             nvSmoothMotion = Settings.Load("NvSmoothMotion", false);
             nvShaderCacheMax = Settings.Load("NvShaderCache", false);
-            amdAntiLag = Settings.Load("AmdAntiLag", false);
-            amdAfmf = Settings.Load("AmdAfmf", false);
             nvAnselOff = Settings.Load("NvAnselOff", false);
             nvRebarOn = Settings.Load("NvRebar", false);
             nvDlssMode = Settings.LoadStr("NvDlss", "off");
+            gpuPrefStageOn = Settings.Load("GpuPrefStageOn", true);
             awakeOn = Settings.Load("GmAwake", true);
-            rsrOn = Settings.Load("GmRsr", false);
             gpuPowerMaxOn = Settings.Load("GmGpuPowerMax", false);
             killGameDvr = Settings.Load("GameDvrOff", true);
             mmcssOn = Settings.Load("GmMmcss", true);
@@ -302,21 +295,9 @@ namespace PaviseApp
                         rewriteFormat = true;
                     }
                 }
-                if (!Settings.Load("WhitelistPurge1Done", false))
-                {
-                    int purged = loadedRules.RemoveAll(r => r.Kind == WhitelistRuleKind.LegacyName
-                        && SystemProcessCatalog.PurgedPresetNames.Contains(r.Value));
-                    if (purged > 0)
-                    {
-                        rewriteFormat = true;
-                        Logger.Log(Lang.T("log.gamemode.22") + purged + Lang.T("log.gamemode.23"));
-                    }
-                    Settings.Save("WhitelistPurge1Done", true);
-                }
                 foreach (WhitelistRule rule in loadedRules) AddWhiteRuleNoSave(rule);
                 if (rewriteFormat && !SaveWhite(loadedRules))
                     Logger.Log(Lang.T("log.gamemode.24"));
-                MigrateWhitelistHeader();
             }
             catch (Exception ex)
             {
@@ -346,7 +327,7 @@ namespace PaviseApp
 
             try
             {
-                profiles.AddRange(profileStore.LoadOrMigrate(gamesPath));
+                profiles.AddRange(profileStore.LoadProfiles());
                 if (profiles.Count > 0) RebuildLegacyGameIndex();
             }
             catch { }
@@ -427,30 +408,6 @@ namespace PaviseApp
                 Settings.SaveStr("PerformancePreset", ((int)value).ToString());
                 RequestPolicyApply();
             }
-        }
-
-        private void MigrateWhitelistHeader()
-        {
-            try
-            {
-                string[] lines = File.ReadAllLines(whitePath);
-                bool changed = false;
-                for (int i = 0; i < lines.Length; i++)
-                {
-                    if (lines[i].Contains("Windows、前台、音频/直播、驱动、游戏家族和反作弊"))
-                    {
-                        lines[i] = Lang.T("t.gamemode.28");
-                        changed = true;
-                    }
-                    else if (lines[i].Contains("压制会扫全部会话、不因会话 0 而豁免"))
-                    {
-                        lines[i] = Lang.T("t.gamemode.32");
-                        changed = true;
-                    }
-                }
-                if (changed) AtomicFile.WriteLines(whitePath, lines, Lang.T("t.gamemode.33"));
-            }
-            catch { }
         }
 
         public PerformancePreset ActivePreset
@@ -704,6 +661,7 @@ namespace PaviseApp
             stopping = true;
             kick.Set();
             if (worker != null) worker.Join(8000);
+            try { irqProbe.Dispose(); } catch { }
         }
 
         public void Poke() { RequestPolicyApply(); }
@@ -765,9 +723,12 @@ namespace PaviseApp
                                     {
                                         lock (sync) { active = true; activeGame = running; firstSweep = true; }
                                         Logger.Log(Lang.T("log.gamemode.45") + running);
+                                        Interlocked.Exchange(ref boostFirstStampTicks, DateTime.UtcNow.Ticks);
+                                        Interlocked.Exchange(ref sessionStartTicks, DateTime.UtcNow.Ticks);
+                                        overlayScanned = false;
+                                        try { cpuLimit.Start(); } catch { }
                                         BeginSessionPolicy();
                                         ReportBegin(running);
-                                        StandbySweep.ResetCooldown();
                                         slowEnvAtTicks = DateTime.UtcNow
                                             .AddSeconds(SlowEnvDelaySeconds).Ticks;
                                     }
@@ -775,6 +736,9 @@ namespace PaviseApp
                                     {
                                         lock (sync) activeGame = running;
                                         Logger.Log(Lang.T("log.gamemode.46") + running);
+                                        Interlocked.Exchange(ref boostFirstStampTicks, DateTime.UtcNow.Ticks);
+                                        Interlocked.Exchange(ref sessionStartTicks, DateTime.UtcNow.Ticks);
+                                        overlayScanned = false;
                                         BeginSessionPolicy();
                                         ReportFinish();
                                         ReportBegin(running);
@@ -791,17 +755,12 @@ namespace PaviseApp
                                     }
                                     GpuThrottleProbe.SampleIfDue(rendererPath);
                                     VramSpillProbe.SampleIfDue(gamePids);
-                                    FrameRateMonitor.SampleIfDue(rendererPid);
                                     if (EffSuppress) Sweep(all, gamePids);
                                     if (!EffSuppress) ReleaseBackground();
-                                    // 让位挪到首轮清扫之后 此前一激活就 SelfYield
-                                    // 把自己塞进后台收缩核再降档 首轮近百个进程的句柄开写读
-                                    // 全是在两个核上以让位身份爬完的 实测能爬 39 秒
-                                    // 同样的写入不受饿时毫秒级完事 先全速干完首轮再让位
-                                    // Engage 幂等 之后每轮调用都是空转
                                     SelfYield.Engage();
                                     if (EffBoost) Boost(all);
                                     else UnboostGames();
+                                    MaybeScanOverlays();
                                 }
                                 else if (active)
                                 {
@@ -866,13 +825,15 @@ namespace PaviseApp
             if (ShouldRunFullGameDetection())
             {
                 string armedName;
+                string armedVia;
                 GameDetection raw = GameSessionDetector.Detect(
-                    all, copy, selfSession, out armedName);
+                    all, copy, selfSession, out armedName, out armedVia);
                 if (raw != null && raw.RequiresGpuConfirm)
                     raw = ConfirmRendererByGpu(raw);
                 hit = ApplyStickiness(raw);
                 armedAwaitingElection = armedName != null && hit == null;
-                UpdateArmedStatus(hit == null ? armedName : null, hit != null);
+                UpdateArmedStatus(hit == null ? armedName : null, armedVia, hit != null);
+                if (hit == null && armedName != null) PreStageDriverTuning(copy, armedName);
             }
             else
                 hit = ApplyStickiness(null);
@@ -904,14 +865,132 @@ namespace PaviseApp
             get { lock (sync) return active ? null : armedGameName; }
         }
 
-        private void UpdateArmedStatus(string name, bool engaged)
+        private volatile bool gpuPrefStageOn;
+        private readonly CpuLimitProbe cpuLimit = new CpuLimitProbe();
+        private long sessionStartTicks;
+        private volatile bool overlayScanned;
+
+        public List<string> LibraryExecutablePaths()
+        {
+            var paths = new List<string>();
+            lock (sync)
+                foreach (GameProfile p in profiles)
+                {
+                    string path = string.IsNullOrEmpty(p.LearnedExecutablePath)
+                        ? p.ExecutablePath : p.LearnedExecutablePath;
+                    if (!string.IsNullOrEmpty(path)) paths.Add(path);
+                }
+            return paths;
+        }
+
+        private void MaybeScanOverlays()
+        {
+            if (overlayScanned) return;
+            long start = Interlocked.Read(ref sessionStartTicks);
+            if (start == 0 || DateTime.UtcNow.Ticks - start < 30L * TimeSpan.TicksPerSecond) return;
+            int pid;
+            string path;
+            lock (sync)
+            {
+                if (!active || activeDetection == null) return;
+                pid = activeDetection.RendererPid;
+                path = activeDetection.RendererPath;
+            }
+            if (pid <= 0) return;
+            overlayScanned = true;
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                try
+                {
+                    string dir = null;
+                    try { dir = string.IsNullOrEmpty(path) ? null : System.IO.Path.GetDirectoryName(path); }
+                    catch { }
+                    bool denied;
+                    List<string> hits = OverlayScan.Scan(pid, dir, out denied);
+                    if (denied) Logger.Log(Lang.T("log.overlay.1"));
+                    else if (hits.Count > 0)
+                        Logger.Log(Lang.T("log.overlay.2")
+                            + string.Join(Lang.T("log.overlay.3"), hits.ToArray()));
+                }
+                catch { }
+            });
+        }
+
+        private volatile string preStagedNvPath;
+
+        private void PreStageDriverTuning(List<GameProfile> copy, string armedName)
+        {
+            GameProfile armed = null;
+            foreach (GameProfile p in copy)
+                if (string.Equals(p.Name, armedName, StringComparison.OrdinalIgnoreCase))
+                { armed = p; break; }
+            if (armed == null) return;
+            string path = string.IsNullOrEmpty(armed.LearnedExecutablePath)
+                ? armed.ExecutablePath : armed.LearnedExecutablePath;
+            if (string.IsNullOrEmpty(path)) return;
+            if (string.Equals(preStagedNvPath, path, StringComparison.OrdinalIgnoreCase)) return;
+            PolicySnapshot sp;
+            try { sp = PolicyResolver.For(armed); } catch { return; }
+            var plan = new NvGamePlan
+            {
+                MaxPerf = sp.NvMaxPerf,
+                LowLatMode = sp.NvLowLatMode,
+                SmoothMotion = sp.NvSmoothMotion,
+                ShaderCacheMax = sp.NvShaderCacheMax,
+                AnselOff = sp.NvAnselOff,
+                Rebar = sp.NvRebar,
+                DlssMode = sp.NvDlssMode
+            };
+            bool stageGpuPref = gpuPrefStageOn && GpuPrefStage.Supported;
+            if (plan.Empty && !stageGpuPref) return;
+            string previous = preStagedNvPath;
+            preStagedNvPath = path;
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                try
+                {
+                    if (IsActive) return;
+                    if (!string.IsNullOrEmpty(previous)
+                        && !string.Equals(previous, path, StringComparison.OrdinalIgnoreCase))
+                        NvDrsTweaks.RestoreAllGames();
+                    if (stageGpuPref) GpuPrefStage.Stage(path);
+                    if (plan.Empty) return;
+                    bool retry;
+                    NvDrsTweaks.ApplyForGame(path, plan, out retry);
+                    if (retry) preStagedNvPath = null;
+                }
+                catch { }
+            });
+        }
+
+        private void ReleasePreStagedTuning()
+        {
+            if (preStagedNvPath == null) return;
+            preStagedNvPath = null;
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                try
+                {
+                    if (IsActive) return;
+                    NvDrsTweaks.RestoreAllGames();
+                    GpuPrefStage.Restore();
+                }
+                catch { }
+            });
+        }
+
+        private void UpdateArmedStatus(string name, string via, bool engaged)
         {
             armedGameName = name;
             if (string.Equals(name, lastArmedLogged, StringComparison.OrdinalIgnoreCase)) return;
             if (name != null)
-                Logger.Log(Lang.T("log.gamemode.54") + name + Lang.T("log.gamemode.55"));
+                Logger.Log(Lang.T("log.gamemode.54") + name + Lang.T("log.gamemode.55")
+                    + (string.IsNullOrEmpty(via) ? "" : Lang.T("log.gamemode.62") + via));
             else if (lastArmedLogged != null && !engaged)
+            {
                 Logger.Log(Lang.T("log.gamemode.56") + lastArmedLogged + Lang.T("log.gamemode.57"));
+                ReleasePreStagedTuning();
+            }
             lastArmedLogged = name;
         }
 

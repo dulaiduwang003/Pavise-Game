@@ -19,6 +19,7 @@ namespace PaviseApp
         public ulong CpuMask;
         public bool CpuMaskTruncated;
         public long BadDuration;
+        public long[] DpcBuckets;
     }
 
     internal sealed class InterruptAttributionResult
@@ -26,6 +27,10 @@ namespace PaviseApp
         public bool Ok;
         public string Error;
         public readonly List<DriverInterrupt> Drivers = new List<DriverInterrupt>();
+
+        public uint EventsLost;
+        public uint BuffersLost;
+        public bool Lossy { get { return EventsLost > 0 || BuffersLost > 0; } }
     }
 
     internal sealed class InterruptAttribution
@@ -47,9 +52,44 @@ namespace PaviseApp
         private static readonly Guid PerfInfoGuid = new Guid("ce1dbfb4-137e-4da6-87b0-3f59aa102cbc");
         private const string SessionName = "PaviseInterruptProbe";
 
-        private static readonly double[] BucketUpperUs =
+        private const string AliveEventName = @"Global\Pavise_InterruptProbeAlive";
+        private EventWaitHandle aliveOwned;
+
+        public bool Busy { get; private set; }
+
+        private bool TakeOwnership()
+        {
+            try
+            {
+                EventWaitHandle existing;
+                if (EventWaitHandle.TryOpenExisting(AliveEventName, out existing))
+                {
+                    using (existing) { }
+                    return false;
+                }
+            }
+            catch { }
+            try
+            {
+                bool createdNew;
+                var h = new EventWaitHandle(false, EventResetMode.ManualReset, AliveEventName, out createdNew);
+                if (!createdNew) { h.Close(); return false; }
+                aliveOwned = h;
+                return true;
+            }
+            catch { return true; }
+        }
+
+        private void ReleaseOwnership()
+        {
+            EventWaitHandle h = aliveOwned;
+            aliveOwned = null;
+            if (h != null) try { h.Close(); } catch { }
+        }
+
+        internal static readonly double[] BucketUpperUs =
             { 1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 5000, double.MaxValue };
-        private const int BucketCount = 13;
+        internal const int BucketCount = 13;
         private const int BucketOver500 = 9;
         private const int BucketOver1Ms = 10;
 
@@ -88,6 +128,13 @@ namespace PaviseApp
             lock (gate)
             {
                 if (started) return true;
+                Busy = false;
+                if (!TakeOwnership())
+                {
+                    Busy = true;
+                    Logger.Log(Lang.T("log.interruptattribution.9"));
+                    return false;
+                }
                 if (!Native.TryEnableDebugPrivilege()) { }
                 LoadModules();
 
@@ -106,9 +153,10 @@ namespace PaviseApp
                     if (rc == ErrorInvalidParameter)
                     {
                         Logger.Log(Lang.T("log.interruptattribution.1"));
+                        ReleaseOwnership();
                         return false;
                     }
-                    if (rc != 0) { Logger.Log(Lang.T("log.interruptattribution.2") + rc); return false; }
+                    if (rc != 0) { Logger.Log(Lang.T("log.interruptattribution.2") + rc); ReleaseOwnership(); return false; }
                 }
                 finally { Marshal.FreeHGlobal(props); }
 
@@ -122,6 +170,7 @@ namespace PaviseApp
                 {
                     Logger.Log(Lang.T("log.interruptattribution.3") + Marshal.GetLastWin32Error());
                     StopStale();
+                    ReleaseOwnership();
                     return false;
                 }
 
@@ -155,7 +204,10 @@ namespace PaviseApp
             lock (gate)
             {
                 if (!started) { result.Error = Lang.T("t.interruptattribution.4"); return result; }
-                StopStale();
+                uint lost, lostBuffers;
+                StopStale(out lost, out lostBuffers);
+                result.EventsLost = lost;
+                result.BuffersLost = lostBuffers;
                 try { if (traceHandle != 0) CloseTrace(traceHandle); } catch { }
                 bool workerDone = true;
                 if (worker != null) { try { workerDone = worker.Join(2000); } catch { workerDone = false; } }
@@ -165,6 +217,7 @@ namespace PaviseApp
                     result.Error = Lang.T("t.interruptattribution.5");
                     return result;
                 }
+                ReleaseOwnership();
                 keepAlive = null;
 
                 var byMod = new Dictionary<string, DriverInterrupt>();
@@ -179,6 +232,7 @@ namespace PaviseApp
                     {
                         d.DpcOver500Us = SumFrom(b, BucketOver500);
                         d.DpcOver1Ms = SumFrom(b, BucketOver1Ms);
+                        d.DpcBuckets = (long[])b.Clone();
                     }
                     result.Drivers.Add(d);
                 }
@@ -189,6 +243,12 @@ namespace PaviseApp
                 });
                 result.Ok = dpcTotal + isrTotal > 0;
                 if (!result.Ok) result.Error = Lang.T("t.interruptattribution.6");
+                else if (result.Lossy)
+                {
+                    result.Ok = false;
+                    result.Error = Lang.F("t.interruptattribution.7", result.EventsLost, result.BuffersLost);
+                    Logger.Log(Lang.F("log.interruptattribution.lossy", result.EventsLost, result.BuffersLost));
+                }
                 return result;
             }
         }
@@ -347,6 +407,13 @@ namespace PaviseApp
 
         private static void StopStale()
         {
+            uint lost, buffers;
+            StopStale(out lost, out buffers);
+        }
+
+        private static void StopStale(out uint eventsLost, out uint buffersLost)
+        {
+            eventsLost = 0; buffersLost = 0;
             int nameBytes = (SessionName.Length + 1) * 2;
             int size = Marshal.SizeOf(typeof(EventTraceProperties)) + nameBytes + 16;
             IntPtr props = Marshal.AllocHGlobal(size);
@@ -358,7 +425,10 @@ namespace PaviseApp
                 p.Wnode.Guid = SessionGuid;
                 p.LoggerNameOffset = (uint)Marshal.SizeOf(typeof(EventTraceProperties));
                 Marshal.StructureToPtr(p, props, false);
-                ControlTrace(0, SessionName, props, ControlStop);
+                if (ControlTrace(0, SessionName, props, ControlStop) != 0) return;
+                var done = (EventTraceProperties)Marshal.PtrToStructure(props, typeof(EventTraceProperties));
+                eventsLost = done.EventsLost;
+                buffersLost = done.RealTimeBuffersLost + done.LogBuffersLost;
             }
             catch { }
             finally { Marshal.FreeHGlobal(props); }

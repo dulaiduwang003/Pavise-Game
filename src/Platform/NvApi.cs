@@ -53,6 +53,7 @@ namespace PaviseApp
         public const uint DlssPresetK = 0x0000000B;
         public const uint DlssPresetLatest = 0x00FFFFFF;
         public const uint MinDriverForDlssOverride = 56614;
+        public const int StatusSettingNotFound = -160;
 
         [DllImport("nvapi64.dll", EntryPoint = "nvapi_QueryInterface", CallingConvention = CallingConvention.Cdecl)]
         private static extern IntPtr QueryInterface(uint id);

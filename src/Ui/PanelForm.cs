@@ -325,7 +325,6 @@ namespace PaviseApp
                 delegate(bool active) { if (active) RefreshEnvironmentStateAsync(); }, null);
             pageHooks[(int)PageId.Audit] = new PageHook(pageAudit,
                 null, null);
-            // 进页只重枚举 不自动开扫描 扫描要占满内核会话 8 秒 不能因为点了一下导航就跑
             pageHooks[(int)PageId.Interrupt] = new PageHook(pageIrq,
                 delegate(bool active) { if (active) RefreshIrqPage(); }, null);
             pageHooks[(int)PageId.Log] = new PageHook(pageLog,

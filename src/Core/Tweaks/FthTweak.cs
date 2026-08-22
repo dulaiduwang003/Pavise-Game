@@ -7,9 +7,6 @@ using Microsoft.Win32;
 
 namespace PaviseApp
 {
-    // 容错堆 FTH 在进程以堆损坏 0xC0000374 或 ntdll 访问违例 0xC0000005 反复崩溃后
-    // 由系统自动给该 exe 挂一层堆兼容垫片 用户全程无感知
-    // 触发条件写在 FTH 键的 CrashVelocity 与 CrashWindowInMinutes 上 本机默认 60 分钟内 3 次
     internal static class FthTweak
     {
         private const string FthKey = @"SOFTWARE\Microsoft\FTH";
@@ -29,12 +26,11 @@ namespace PaviseApp
 
         internal sealed class Shim
         {
-            public string Exe;        // 镜像名 FTH 与 AppCompat 都按镜像名匹配 不带路径
-            public string ValueName;  // Custom\<exe> 下那个 {GUID}.sdb 值名
-            public string SdbPath;    // 仅用于展示 该文件永不删除 留作还原源
+            public string Exe;
+            public string ValueName;
+            public string SdbPath;
         }
 
-        // ---------- 只读检测 ----------
 
         public static bool FeatureEnabled()
         {
@@ -50,7 +46,6 @@ namespace PaviseApp
             catch { return false; }
         }
 
-        // 系统判定该 exe 崩得够频繁所需的次数与窗口 用于把结论说清楚而不是甩个结果
         public static bool TryReadTrigger(out int velocity, out int windowMinutes)
         {
             velocity = 0; windowMinutes = 0;
@@ -91,7 +86,6 @@ namespace PaviseApp
             return false;
         }
 
-        // FTH 自己记账的那批 exe 格式未公开 值名和子键名都当候选镜像名收着
         private static HashSet<string> StateNames()
         {
             var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -110,13 +104,11 @@ namespace PaviseApp
 
         internal enum SdbVerdict
         {
-            NotFth = 0,   // 描述读得到 且明说不是 FTH 装的 装机程序自带的兼容修复走这条
-            Fth = 1,      // 描述正面确认
-            Unknown = 2   // 描述读不到 只能靠 FTH 自己记的账兜底
+            NotFth = 0,
+            Fth = 1,
+            Unknown = 2
         }
 
-        // 同一个 exe 底下可能还挂着别人装的兼容修复 描述明说不是 FTH 就绝不认领
-        // 只有描述读不出来时 才允许拿 FTH\State 的记账兜底 免得旧记录把别人的垫片带走
         internal static SdbVerdict ClassifySdb(string valueName, out string sdbPath)
         {
             sdbPath = null;
@@ -140,8 +132,6 @@ namespace PaviseApp
             catch { return SdbVerdict.Unknown; }
         }
 
-        // 体检页每渲染一行都会问一次判据 这里要遍历 Custom 下全部子键再逐个查 InstalledSDB
-        // 短时缓存一下 避免一次渲染重复扫十几遍注册表 改动路径会主动作废
         private static List<Shim> cached;
         private static long cachedTicks;
         private const int CacheMs = 2000;
@@ -183,7 +173,6 @@ namespace PaviseApp
                                 if (!valueName.EndsWith(".sdb", StringComparison.OrdinalIgnoreCase)) continue;
                                 string sdbPath;
                                 SdbVerdict verdict = ClassifySdb(valueName, out sdbPath);
-                                // 明说不是 FTH 的直接放过 认不出来的才看 FTH 有没有记过这个 exe
                                 if (verdict == SdbVerdict.NotFth) continue;
                                 if (verdict == SdbVerdict.Unknown && !state.Contains(exe)) continue;
                                 found.Add(new Shim { Exe = exe, ValueName = valueName, SdbPath = sdbPath });
@@ -222,7 +211,6 @@ namespace PaviseApp
             return Lang.F("fth.hit", string.Join(" ", names.ToArray()));
         }
 
-        // ---------- 可还原的解除 ----------
 
         public static bool Repair()
         {
@@ -235,7 +223,6 @@ namespace PaviseApp
                 foreach (Shim s in shims)
                     if (!HasName(exes, s.Exe)) exes.Add(s.Exe);
 
-                // 先排除 再摘指针 顺序反了的话摘完到下次崩溃之前还会被重新挂上
                 if (!AddExclusions(exes))
                 {
                     Logger.Log(Lang.T("log.fthtweak.1"));
@@ -266,7 +253,6 @@ namespace PaviseApp
             }
         }
 
-        // ---------- ExclusionList 是 REG_MULTI_SZ 自带备份与回读 ----------
 
         private static bool AddExclusions(List<string> exes)
         {
@@ -275,7 +261,6 @@ namespace PaviseApp
                 using (RegistryKey k = Registry.LocalMachine.OpenSubKey(FthKey, true))
                 {
                     if (k == null) return false;
-                    // 值在但类型不是 MULTI_SZ 说明被别的工具改过 覆盖会丢原值 一律不碰
                     object raw = k.GetValue(ExclusionValue);
                     if (raw != null)
                     {
@@ -299,6 +284,8 @@ namespace PaviseApp
                     if (current != null) merged.AddRange(current);
                     foreach (string exe in exes)
                         if (!HasName(merged, exe)) merged.Add(exe);
+
+                    if (current != null && ListsEqual(current, merged.ToArray())) return true;
 
                     k.SetValue(ExclusionValue, merged.ToArray(), RegistryValueKind.MultiString);
                     string[] readBack = k.GetValue(ExclusionValue) as string[];
@@ -340,7 +327,6 @@ namespace PaviseApp
             catch { return false; }
         }
 
-        // ---------- Custom\<exe> 下的 sdb 指针 只删注册表值 文件原地不动 ----------
 
         private static bool DropPointer(Shim shim)
         {
@@ -352,7 +338,6 @@ namespace PaviseApp
                     if (k == null) return false;
                     object value = k.GetValue(shim.ValueName);
                     if (value == null) return true;
-                    // 读不出类型就还原不回原样 宁可不动 这一条和 ReversibleReg 的守卫同理
                     RegistryValueKind kind;
                     try { kind = k.GetValueKind(shim.ValueName); }
                     catch { return false; }
@@ -361,7 +346,6 @@ namespace PaviseApp
                     string record = shim.Exe + FieldSep + shim.ValueName + FieldSep
                         + ((int)kind).ToString() + FieldSep + EncodeValue(value);
                     string stored = Settings.LoadStr(CustomBakKey, "");
-                    // 逐条比对 不能用子串查找 game.exe 会命中 mygame.exe 那条 备份被跳过就还原不回来
                     if (!HasBackupRecord(stored, shim.Exe, shim.ValueName))
                     {
                         string merged = stored.Length == 0 ? record : stored + RecordSep + record;
@@ -407,9 +391,7 @@ namespace PaviseApp
             return all;
         }
 
-        // ---------- 编解码 值可能是 QWORD DWORD 二进制或字符串 一律走 base64 不猜类型 ----------
 
-        // 三种载荷一律 base64 编码 值里带 0x1E 0x1F 也不会把记录切错
         internal static string EncodeValue(object value)
         {
             if (value is byte[]) return "b" + Convert.ToBase64String((byte[])value);
@@ -418,7 +400,6 @@ namespace PaviseApp
                 Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture)));
         }
 
-        // 解码按备份里存的原类型走 不靠载荷长相猜 猜错会把 REG_SZ 的 "123" 还原成数字
         internal static object DecodeValue(string repr, RegistryValueKind kind)
         {
             try
@@ -429,7 +410,6 @@ namespace PaviseApp
                 if (repr[0] == 'm') return kind == RegistryValueKind.MultiString
                     ? DecodeList(repr.Substring(1)) : null;
                 if (repr[0] != 's') return null;
-                // 载荷是文本 而备份里存的却是二进制或多字符串 说明对不上 不能猜着还原
                 if (kind != RegistryValueKind.String && kind != RegistryValueKind.ExpandString
                     && kind != RegistryValueKind.DWord && kind != RegistryValueKind.QWord) return null;
                 string body = Encoding.UTF8.GetString(Convert.FromBase64String(repr.Substring(1)));
@@ -480,7 +460,6 @@ namespace PaviseApp
             return true;
         }
 
-        // 备份串按记录切开逐条比对镜像名与值名 避免子串误命中
         internal static bool HasBackupRecord(string stored, string exe, string valueName)
         {
             if (string.IsNullOrEmpty(stored)) return false;

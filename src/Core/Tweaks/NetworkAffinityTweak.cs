@@ -163,6 +163,5 @@ namespace PaviseApp
             return allOk;
         }
 
-        public static bool HealStaleMask() { return irqEngine.HealStaleMask(); }
     }
 }

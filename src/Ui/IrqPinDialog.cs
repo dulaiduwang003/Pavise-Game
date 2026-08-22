@@ -1,14 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 选一台设备之后 在这里挑它的中断要落到哪几个核上
-//
-// 为什么把选核做成弹窗
-//   之前目标核是页面上一整块 而且是全局一个 显卡和 USB 主控共用一组核 本来就没道理
-//   挪到弹窗里之后 目标核变成每台设备自己的事 页面上那一整块可以整个删掉
-//   用户的动线也顺了 挑一台 选核 确定 三下走完 不用在页面上来回找
-//
-// 默认值只是默认值
-//   推荐掩码在不同架构上给的不是同一种东西 大小核给性能核 其余架构给后台核
-//   哪种对没有实测证据 所以它只能预选 不能替用户决定 用户改了就按用户的来
 using System;
 using System.Drawing;
 using System.Windows.Forms;
@@ -22,11 +13,15 @@ namespace PaviseApp
         private readonly CoreMatrix matrix;
         private readonly Label lblPick;
         private readonly PillButton btnOk;
+        private readonly Toggle swPriority;
         private bool clockWasSuspended;
 
         public ulong Chosen { get; private set; }
+        public bool RaisePriority { get { return swPriority != null && swPriority.Checked; } }
 
-        public IrqPinDialog(IrqDevice d)
+        public IrqPinDialog(IrqDevice d) : this(d, null) { }
+
+        public IrqPinDialog(IrqDevice d, IrqCheckupDevice ck)
         {
             Text = Lang.T("irqpin.title");
             FormBorderStyle = FormBorderStyle.None;
@@ -54,7 +49,6 @@ namespace PaviseApp
             Controls.Add(close);
             y += 34;
 
-            // 这台设备是谁 现在什么样 用户得看着这些数字做决定
             Controls.Add(Line(d == null ? "" : d.Name, y, 22, Theme.UI(10f, true), Theme.Fg, 24));
             y += 26;
             string stat = d == null ? "" : d.Dpc > 0
@@ -65,10 +59,6 @@ namespace PaviseApp
             Controls.Add(Line(stat, y, 22, Theme.UI(8.8f, false), Theme.Dim, 22));
             y += 26;
 
-            // 分档就是拿来帮着做决定的 那就得在做决定的地方说
-            //   之前它只在列表和明细里显示 弹窗里一声不吭
-            //   结果是一台 80us 分档正常的设备 用户照样钉 而这多半看不出区别
-            //   不拦着 拦着等于替他决定 但必须在按确定之前把话说明白
             string worth = null;
             if (d != null && d.Dpc > 0)
             {
@@ -78,29 +68,51 @@ namespace PaviseApp
             }
             if (worth != null)
             {
-                Controls.Add(Line(worth, y, 22, Theme.UI(8.3f, false), Theme.Faint, 32));
-                y += 36;
+                Controls.Add(Line(worth, y, 22, Theme.UI(8.3f, false), Theme.Faint, 22));
+                y += 28;
             }
 
-            // 键鼠挂在 USB 主控下面时 得在按确定之前说 按完就来不及了
+            if (ck != null && ck.SuggestMask != 0)
+            {
+                Controls.Add(Line(Lang.F("irqpin.suggest", IrqRelocate.MaskText(ck.SuggestMask)),
+                    y, 22, Theme.UI(10f, true), Theme.Accent, 26));
+                y += 28;
+                if (ck.SuggestSinglePhysical)
+                {
+                    Controls.Add(Line(Lang.T("irqpin.suggest.smt"), y, 22,
+                        Theme.UI(8.3f, false), Theme.Danger, 22));
+                    y += 26;
+                }
+                if (ck.SuggestSharesBackground)
+                {
+                    Controls.Add(Line(Lang.T("irqpin.suggest.bg"), y, 22,
+                        Theme.UI(8.3f, false), Theme.Danger, 22));
+                    y += 26;
+                }
+            }
+            else if (ck != null && ck.NoSuggestReason.Length > 0)
+            {
+                Controls.Add(Line(ck.NoSuggestReason, y, 22,
+                    Theme.UI(8.3f, false), Theme.Danger, 22));
+                y += 26;
+            }
+
             if (d != null && d.InputRisk)
             {
-                Controls.Add(Line(Lang.T("irq.d.input"), y, 22, Theme.UI(8.3f, false), Theme.Danger, 46));
-                y += 50;
+                Controls.Add(Line(Lang.T("irq.d.input"), y, 22, Theme.UI(8.3f, false), Theme.Danger, 22));
+                y += 26;
             }
 
-            Controls.Add(Line(Lang.T("irqpin.howto"), y, 22, Theme.UI(8.3f, false), Theme.Faint, 46));
-            y += 50;
+            Controls.Add(Line(Lang.T("irqpin.howto"), y, 22, Theme.UI(8.3f, false), Theme.Faint, 22));
+            y += 30;
 
             matrix = new CoreMatrix();
             matrix.PrimaryTag = Lang.T("irq.tag.target");
-            // 独占 是挑游戏核那边的概念 中断只落在一个逻辑处理器上 这里没这回事
             matrix.MarkExclusive = false;
             int mtxW = Theme.S(DlgW - 44);
             int mtxH = matrix.LayoutFor(mtxW);
             matrix.SetBounds(Theme.S(22), Theme.S(y), mtxW, mtxH);
-            // 已经钉过就显示它现在写着的那组核 没钉过就预选推荐值
-            ulong start = d != null && d.IsPinned ? d.Mask : IrqRelocate.AutoMask();
+            ulong start = d != null && d.IsPinned ? d.Mask : 0UL;
             matrix.Selected = start;
             Chosen = start;
             matrix.SelectionChanged = OnPicked;
@@ -111,11 +123,17 @@ namespace PaviseApp
             Controls.Add(lblPick);
             y += 30;
 
-            var btnAuto = new PillButton(Lang.T("irqpin.auto"), BtnKind.Normal);
-            btnAuto.Bg = Theme.Bg;
-            btnAuto.SetBounds(Theme.S(22), Theme.S(y), Theme.S(150), Theme.S(34));
-            btnAuto.Click += delegate { matrix.Selected = IrqRelocate.AutoMask(); OnPicked(matrix.Selected); };
-            Controls.Add(btnAuto);
+            swPriority = new Toggle();
+            swPriority.Checked = d != null
+                && (d.DevicePriorityHigh || IrqPriorityTweak.AppliedTo(d.InstanceId));
+            swPriority.Enabled = d != null && !d.DevicePriorityHigh;
+            swPriority.Location = new Point(Theme.S(22), Theme.S(y));
+            Controls.Add(swPriority);
+            Controls.Add(Line(d != null && d.DevicePriorityHigh
+                    ? Lang.T("irqpin.prio.already") : Lang.T("irqpin.prio"),
+                y + 4, 76, Theme.UI(8.5f, false), Theme.Dim, 30));
+            y += 38;
+
 
             var btnCancel = new PillButton(Lang.T("irqpin.cancel"), BtnKind.Normal);
             btnCancel.Bg = Theme.Bg;
@@ -144,8 +162,6 @@ namespace PaviseApp
             return l;
         }
 
-        // 一个核都不选和全选都是非法的 引擎见到全核掩码会跳过不写掩码
-        // 与其让用户按下确定之后什么都没发生 不如当场把确定按钮关掉并说清为什么
         private void OnPicked(ulong mask)
         {
             ulong keep = IrqRelocate.Sanitize(mask);

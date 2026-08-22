@@ -19,7 +19,7 @@ namespace PaviseApp
 
         public bool UseArenaCoreParking(bool aggressive)
         {
-            return aggressive && !PreserveCoreParking;
+            return !PreserveCoreParking;
         }
 
         public static PowerPlanProfile Resolve(bool amdCpu, bool hybrid, bool asymCache,

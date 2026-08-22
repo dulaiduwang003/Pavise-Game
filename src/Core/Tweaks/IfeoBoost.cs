@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 受保护游戏的本体提优路径 经 IFEO PerfOptions 由内核在进程创建时应用
-// 名单 键存在性标记 空键清理与 exe 名规范化都走 IfeoStore 与 CfgOffTweak 共用一套账
 using System;
 using Microsoft.Win32;
 
@@ -119,6 +118,11 @@ namespace PaviseApp
                     if (!IfeoStore.RootReachable()) return false;
                     bool keyExisted = IfeoStore.KeyExists(exe);
                     bool perfExisted = IfeoStore.SubKeyExists(exe, Sub);
+
+                    if (RegOf(exe).Matches(HighPriority) && !RegOf(exe).HasBackup
+                        && IoRegOf(exe).Matches(HighIoPriority) && !IoRegOf(exe).HasBackup
+                        && PageRegOf(exe).Matches(HighPagePriority) && !PageRegOf(exe).HasBackup)
+                        return true;
 
                     if (!RegOf(exe).Apply(HighPriority))
                     {

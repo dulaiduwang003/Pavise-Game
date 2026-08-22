@@ -9,7 +9,6 @@ namespace PaviseApp
         private static readonly string[] Names = { "wuauserv", "UsoSvc" };
         private const string Flag = "PrevUpdatePaused";
 
-        // 更新服务停着就别碰 只处理正在跑的
         private static readonly ServicePauser pauser = new ServicePauser(Names, Flag, true);
 
         public static bool Activate()

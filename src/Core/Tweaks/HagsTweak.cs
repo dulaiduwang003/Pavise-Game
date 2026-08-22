@@ -127,6 +127,7 @@ namespace PaviseApp
                     Logger.Log(Lang.T("log.hagstweak.5"));
                     return false;
                 }
+                if (enabledNow) return true;
                 if (!Sch.Apply(2))
                 {
                     Logger.Log(Lang.T("log.hagstweak.1"));

@@ -43,6 +43,7 @@ namespace PaviseApp
                                 Logger.Log(valName + Lang.T("log.reversiblereg.1") + curKind + Lang.T("log.reversiblereg.2"));
                                 return false;
                             }
+                            if (SameByKind(cur, newVal)) return true;
                         }
                         original = Encode(cur);
                         Settings.SaveStr(slot, original);
@@ -55,13 +56,7 @@ namespace PaviseApp
                     k.SetValue(valName, newVal, kind);
                     object actual = k.GetValue(valName);
                     if (actual == null) return false;
-                    bool ok;
-                    if (kind == RegistryValueKind.DWord)
-                        ok = Convert.ToInt64(actual) == Convert.ToInt64(newVal);
-                    else if (kind == RegistryValueKind.Binary)
-                        ok = BytesEqual((byte[])actual, (byte[])newVal);
-                    else
-                        ok = string.Equals(actual.ToString(), newVal == null ? "" : newVal.ToString(), StringComparison.Ordinal);
+                    bool ok = SameByKind(actual, newVal);
                     if (ok) Settings.SaveStr(slot, original + AppliedSep + Encode(newVal));
                     return ok;
                 }

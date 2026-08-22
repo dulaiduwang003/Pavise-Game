@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 关于页手动打开的联系方式弹窗 反馈渠道与版本更新检查 不再随启动自动弹出
+// 文件用途 启动和关于页的联系方式弹窗
 using System;
 using System.Diagnostics;
 using System.Drawing;
@@ -19,7 +19,7 @@ namespace PaviseApp
         private Bitmap logo;
         private bool clockWasSuspended;
 
-        public ContactDialog()
+        public ContactDialog(bool startup = false)
         {
             Text = Lang.T("contact.title");
             FormBorderStyle = FormBorderStyle.None;
@@ -67,10 +67,12 @@ namespace PaviseApp
             y += 58;
             AddRow(BodyX, y, half, Lang.T("contact.qq3"), App.QqGroup3,
                 CopyAction(App.QqGroup3), Lang.T("contact.copy"));
-            AddRow(rightX, y, half, Lang.T("contact.douyin"), App.Douyin,
-                CopyAction(App.Douyin), Lang.T("contact.copy"));
+            AddRow(rightX, y, half, Lang.T("contact.qq4"), App.QqGroup4,
+                CopyAction(App.QqGroup4), Lang.T("contact.copy"));
             y += 58;
-            AddRow(BodyX, y, BodyW, Lang.T("contact.pan"), Lang.T("contact.pan.value"),
+            AddRow(BodyX, y, half, Lang.T("contact.douyin"), App.Douyin,
+                CopyAction(App.Douyin), Lang.T("contact.copy"));
+            AddRow(rightX, y, half, Lang.T("contact.pan"), Lang.T("contact.pan.value"),
                 OpenAction(App.PanUrl), Lang.T("contact.open"));
             y += 70;
 
@@ -84,7 +86,7 @@ namespace PaviseApp
             freeNote.SetBounds(Theme.S(BodyX + 2), Theme.S(DlgH - 110), Theme.S(BodyW - 4), Theme.S(44));
             Controls.Add(freeNote);
 
-            var ok = new PillButton(Lang.T("contact.close"), BtnKind.Primary);
+            var ok = new PillButton(Lang.T(startup ? "contact.enter" : "contact.close"), BtnKind.Primary);
             ok.SetBounds(Theme.S(DlgW - 176), Theme.S(DlgH - 58), Theme.S(146), Theme.S(38));
             ok.Click += delegate { Finish(); };
             Controls.Add(ok);

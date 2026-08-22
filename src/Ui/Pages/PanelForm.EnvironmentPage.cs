@@ -11,7 +11,7 @@ namespace PaviseApp
     {
         private Toggle swHags, swVbs, swGmGuard;
         private Toggle swDevPower, swWindowedOpt, swCfgOff;
-        private Toggle swAccessKeys, swHidPower, swSpecMit;
+        private Toggle swAccessKeys, swHidPower, swSpecMit, swTimerTick, swGlobalTimer;
         private SettingCard cardVbs, cardWindowedOpt, cardSpecMit;
         private SettingCard cardAccessKeys, cardHidPower;
         private TechTabs envTabs;
@@ -61,7 +61,8 @@ namespace PaviseApp
 
             bool win11 = Native.OsBuild() >= 22000;
             swWindowedOpt = MakeSwitch(WindowedOptTweak.EnabledByPavise || WindowedOptTweak.CurrentlyOn(), OnWindowedOptToggle);
-            swWindowedOpt.Enabled = win11 || WindowedOptTweak.EnabledByPavise;
+            swWindowedOpt.Enabled = (win11 || WindowedOptTweak.EnabledByPavise)
+                && (WindowedOptTweak.EnabledByPavise || !WindowedOptTweak.CurrentlyOn());
             cardWindowedOpt = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.windowedopt"),
                 win11 ? Lang.T("set.windowedopt.n") : Lang.T("windowedopt.oldos"), swWindowedOpt, out cardH);
             sy += cardH + 8;
@@ -77,6 +78,16 @@ namespace PaviseApp
             ApplySpecMitState(specSt);
             sy += cardH + 8;
 
+            swTimerTick = MakeSwitch(TimerTickTweak.EnabledByPavise || TimerTickTweak.CurrentlyOn(), OnTimerTickToggle);
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.timertick"),
+                Lang.T("set.timertick.n"), swTimerTick, out cardH);
+            sy += cardH + 8;
+
+            swGlobalTimer = MakeSwitch(GlobalTimerResTweak.EnabledByPavise, OnGlobalTimerToggle);
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.gtimer"),
+                Lang.T("set.gtimer.n"), swGlobalTimer, out cardH);
+            sy += cardH + 8;
+
             scroll = envTabPanels[1]; sy = 2;
 
             swDevPower = MakeSwitch(DevicePowerTweak.EnabledByPavise, OnDevPowerToggle);
@@ -85,7 +96,7 @@ namespace PaviseApp
 
             scroll = envTabPanels[2]; sy = 2;
 
-            swAccessKeys = MakeSwitch(AccessibilityKeysTweak.EnabledByPavise, OnAccessKeysToggle);
+            swAccessKeys = MakeSwitch(AccessibilityKeysTweak.HasResidue(), OnAccessKeysToggle);
             swAccessKeys.Enabled = AccessibilityKeysTweak.NeedsFix() || AccessibilityKeysTweak.EnabledByPavise;
             cardAccessKeys = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.accesskeys"),
                 Lang.T("set.accesskeys.n"), swAccessKeys, out cardH);
@@ -122,8 +133,8 @@ namespace PaviseApp
         private void OnAccessKeysToggle(object s, EventArgs e)
         {
             if (swAccessKeys.Checked) AccessibilityKeysTweak.Enable(); else AccessibilityKeysTweak.Restore();
-            swAccessKeys.SetSilently(AccessibilityKeysTweak.EnabledByPavise);
-            swAccessKeys.Enabled = AccessibilityKeysTweak.NeedsFix() || AccessibilityKeysTweak.EnabledByPavise;
+            swAccessKeys.SetSilently(AccessibilityKeysTweak.HasResidue());
+            swAccessKeys.Enabled = AccessibilityKeysTweak.NeedsFix() || AccessibilityKeysTweak.HasResidue();
             if (cardAccessKeys != null)
                 SyncEnvStatus();
         }
@@ -132,6 +143,7 @@ namespace PaviseApp
         {
             if (swWindowedOpt.Checked) WindowedOptTweak.Enable(); else WindowedOptTweak.Restore();
             swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByPavise || WindowedOptTweak.CurrentlyOn());
+            swWindowedOpt.Enabled = WindowedOptTweak.EnabledByPavise || !WindowedOptTweak.CurrentlyOn();
             if (cardWindowedOpt != null)
                 SyncEnvStatus();
         }
@@ -180,6 +192,26 @@ namespace PaviseApp
             PaviseDialog.Warn(this, App.DisplayName, Lang.T("vbs.needadmin"));
             sw.SetSilently(restoredState);
             return false;
+        }
+
+        private void OnGlobalTimerToggle(object s, EventArgs e)
+        {
+            if (!RequireElevationFor(swGlobalTimer, GlobalTimerResTweak.EnabledByPavise)) return;
+            bool wantOn = swGlobalTimer.Checked;
+            bool ok = wantOn ? GlobalTimerResTweak.Enable() : GlobalTimerResTweak.Restore();
+            if (ok) PaviseDialog.Info(this, App.DisplayName, Lang.T(wantOn ? "gtimer.on" : "gtimer.off"));
+            else PaviseDialog.Warn(this, App.DisplayName, Lang.T("gtimer.fail"));
+            swGlobalTimer.SetSilently(GlobalTimerResTweak.EnabledByPavise);
+        }
+
+        private void OnTimerTickToggle(object s, EventArgs e)
+        {
+            if (!RequireElevationFor(swTimerTick, TimerTickTweak.EnabledByPavise || TimerTickTweak.LastKnownOn)) return;
+            bool wantOn = swTimerTick.Checked;
+            bool ok = wantOn ? TimerTickTweak.Enable() : TimerTickTweak.Restore();
+            if (ok) PaviseDialog.Info(this, App.DisplayName, Lang.T(wantOn ? "timertick.on" : "timertick.off"));
+            else PaviseDialog.Warn(this, App.DisplayName, Lang.T("timertick.fail"));
+            swTimerTick.SetSilently(TimerTickTweak.EnabledByPavise || TimerTickTweak.LastKnownOn);
         }
 
         private void OnHagsToggle(object s, EventArgs e)
@@ -306,6 +338,7 @@ namespace PaviseApp
                 try { st = VbsTweak.Query(); } catch { }
                 var specSt = new SpecMitigationTweak.State();
                 try { specSt = SpecMitigationTweak.Query(); } catch { }
+                try { TimerTickTweak.CurrentlyOn(); } catch { }
                 Interlocked.Exchange(ref envBusy, 0);
                 if (!UiActive) return;
                 try
@@ -317,6 +350,8 @@ namespace PaviseApp
                         ApplyVbsState(st);
                         if (swSpecMit != null) swSpecMit.SetSilently(SpecMitigationTweak.DisabledByPavise);
                         ApplySpecMitState(specSt);
+                        if (swTimerTick != null)
+                            swTimerTick.SetSilently(TimerTickTweak.EnabledByPavise || TimerTickTweak.LastKnownOn);
                     }));
                 }
                 catch { }
@@ -335,6 +370,9 @@ namespace PaviseApp
                 swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByPavise || WindowedOptTweak.CurrentlyOn());
             if (swCfgOff != null) swCfgOff.SetSilently(CfgOffTweak.Enabled);
             if (swSpecMit != null) swSpecMit.SetSilently(SpecMitigationTweak.DisabledByPavise);
+            if (swTimerTick != null)
+                swTimerTick.SetSilently(TimerTickTweak.EnabledByPavise || TimerTickTweak.LastKnownOn);
+            if (swGlobalTimer != null) swGlobalTimer.SetSilently(GlobalTimerResTweak.EnabledByPavise);
         }
     }
 }

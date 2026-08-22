@@ -221,7 +221,6 @@ namespace PaviseApp
             public bool Nv;
             public GpuAdapter[] Gpus = new GpuAdapter[0];
             public bool NvHardware;
-            public bool AmdHardware;
             public bool IntegratedOnly;
             public bool Partition;
             public bool PartitionOn;
@@ -237,7 +236,6 @@ namespace PaviseApp
             public string Plan = Lang.T("t.systemaudithardware.3");
             public bool MemOk;
             public double UsedRatio, TotalGb, AvailGb;
-            public List<string> ClockStale;
             public bool PageOk;
             public double PageFileGb;
             public string Link;
@@ -256,7 +254,11 @@ namespace PaviseApp
             public int ThrottleEvents7d;
             public bool WindowedOptOn;
             public int MsiOffCount;
+            public List<double> MemModuleGb;
+            public List<BypassIoVerdict> BypassIo;
         }
+
+        public static Func<List<string>> LibraryPaths;
 
         private static Facts Gather()
         {
@@ -272,6 +274,7 @@ namespace PaviseApp
             }
             catch { }
             try { GatherMemoryModules(f); } catch { }
+            try { f.BypassIo = GatherBypassIo(); } catch { }
             try { f.AllHz = DisplayGuard.AllRefreshRates(); } catch { }
             try { f.RgbSuites = ScanRgbSuites(); } catch { }
             try { f.ThrottleEvents7d = CountCpuThrottleEvents(); } catch { }
@@ -284,7 +287,6 @@ namespace PaviseApp
                 foreach (GpuAdapter g in f.Gpus)
                 {
                     if (g.Vendor == GpuVendor.Nvidia) f.NvHardware = true;
-                    if (g.Vendor == GpuVendor.Amd) f.AmdHardware = true;
                 }
                 f.IntegratedOnly = GpuInventory.IntegratedOnly;
             }
@@ -302,7 +304,6 @@ namespace PaviseApp
             try { f.SuppressOn = Settings.Load("GmSuppress", true); } catch { f.SuppressOn = true; }
             try { f.Plan = PowerPlan.CurrentPlanLabel(); } catch { }
             f.MemOk = TryMemory(out f.UsedRatio, out f.TotalGb, out f.AvailGb);
-            try { f.ClockStale = PlatformClockTweak.StaleOverrides(); } catch { }
             f.PageOk = TryPageFile(out f.PageFileGb);
             try { f.Link = LinkKind(); } catch { }
             try { f.Inputs = InputChainProbe.Devices(); } catch { }
@@ -368,11 +369,6 @@ namespace PaviseApp
             var report = new AuditReport();
             report.MeasureWindowMs = measureWindowMs;
 
-            // 这里不再开中断归因会话 也不再算每核中断占比
-            //   量的是中断总占比 属于吞吐 而掉帧看的是单次能卡多久 属于延迟 两码事
-            //   而且体检是用户打开页面时测的 那会儿机器多半闲着 量出来的占比接近没意义
-            //   中断页按需扫描 会提示开着游戏扫 量的是每台设备的单次最长 那才是能用的判据
-            //   顺带 体检不再需要开内核 ETW 会话
             double cpuBusy = 0;
             double[] rates = null;
             try { rates = DpcSampler.MeasureLoad(measureWindowMs, out cpuBusy); } catch { }
@@ -384,11 +380,68 @@ namespace PaviseApp
             Facts facts = Gather();
             BuildCapability(report, facts);
             BuildMachine(report, facts, cpuBusy, hzCur, hzBest);
+            BuildBypassIo(report, facts);
             BuildHardwareHealth(report, facts);
             BuildInputChain(report, facts);
             BuildPersistent(report, facts);
             BuildVerdicts(report, facts, hzCur, hzBest);
             return report;
+        }
+
+        private static List<BypassIoVerdict> GatherBypassIo()
+        {
+            var verdicts = new List<BypassIoVerdict>();
+            if (Native.OsBuild() > 0 && Native.OsBuild() < 22000) return verdicts;
+            var paths = new List<string>();
+            try
+            {
+                Func<List<string>> provider = LibraryPaths;
+                List<string> lib = provider != null ? provider() : null;
+                if (lib != null) paths.AddRange(lib);
+            }
+            catch { }
+            try
+            {
+                using (var me = System.Diagnostics.Process.GetCurrentProcess())
+                    paths.Add(me.MainModule.FileName);
+            }
+            catch { }
+            var volumes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string path in paths)
+            {
+                if (string.IsNullOrEmpty(path)) continue;
+                string root;
+                try { root = System.IO.Path.GetPathRoot(path); } catch { continue; }
+                if (string.IsNullOrEmpty(root) || !volumes.Add(root)) continue;
+                try { if (!System.IO.File.Exists(path)) continue; } catch { continue; }
+                BypassIoVerdict v = BypassIoProbe.Query(path);
+                if (v.Supported) verdicts.Add(v);
+                if (verdicts.Count >= 4) break;
+            }
+            return verdicts;
+        }
+
+        private static void BuildBypassIo(AuditReport report, Facts facts)
+        {
+            if (facts.BypassIo == null) return;
+            foreach (BypassIoVerdict v in facts.BypassIo)
+            {
+                string root = "";
+                try { root = System.IO.Path.GetPathRoot(v.Path) ?? ""; } catch { }
+                report.Machine.Add(new AuditRow
+                {
+                    Name = Lang.T("t.bypassio.1") + " " + root.TrimEnd('\\'),
+                    Value = v.Enabled
+                        ? Lang.T("t.bypassio.2")
+                        : Lang.F("t.bypassio.3", v.Blocker.Length > 0 ? v.Blocker : "?"),
+                    Note = v.Enabled
+                        ? Lang.T("t.bypassio.4")
+                        : Lang.T("t.bypassio.5")
+                            + (v.Reason.Length > 0 ? " " + v.Reason : ""),
+                    Evidence = EvMechanism,
+                    Warn = !v.Enabled
+                });
+            }
         }
 
         private static void BuildCapability(AuditReport report, Facts facts)
@@ -416,17 +469,6 @@ namespace PaviseApp
                     : facts.NvHardware
                         ? Lang.T("t.systemaudit.9")
                         : Lang.T("t.systemaudit.10"),
-                Evidence = EvMeasuredLocal,
-                Warn = false
-            });
-
-            report.Capability.Add(new AuditRow
-            {
-                Name = Lang.T("t.systemaudit.11"),
-                Value = facts.AmdHardware ? Lang.T("t.systemaudit.12") : Lang.T("t.systemaudit.13"),
-                Note = facts.AmdHardware
-                    ? Lang.T("t.systemaudit.14")
-                    : Lang.T("t.systemaudit.15"),
                 Evidence = EvMeasuredLocal,
                 Warn = false
             });
@@ -865,21 +907,6 @@ namespace PaviseApp
                 Warn = false
             });
 
-            if (facts.ClockStale != null)
-            {
-                bool stale = facts.ClockStale.Count > 0;
-                report.Persistent.Add(new AuditRow
-                {
-                    Name = Lang.T("t.systemauditverdicts.50"),
-                    Value = stale ? Lang.T("t.systemaudit.141") + string.Join(" ", facts.ClockStale.ToArray()) : Lang.T("t.systemaudit.134"),
-                    Note = stale
-                        ? Lang.T("t.systemaudit.142")
-                        : Lang.T("t.systemaudit.143"),
-                    Evidence = EvMechanism,
-                    Warn = stale,
-                    FixKey = "clock"
-                });
-            }
 
             bool quantumTampered = false;
             string quantumState = "";

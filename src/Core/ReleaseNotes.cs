@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 维护内置的三语版本说明并记录已读版本
 using System;
 using System.Collections.Generic;
@@ -37,31 +37,76 @@ namespace PaviseApp
 
         public static readonly ReleaseNote[] All = new[]
         {
-            new ReleaseNote("1.8.1.3", "2026-08-20", new[]
+            new ReleaseNote("1.9.8.1", "2026-08-22", new[]
             {
-                new[]{ "新增 游戏内帧率小窗 帧率 帧时间 CPU GPU 显存 温度 不注入游戏 可选四个位置", "Added an in-game overlay: frame rate, frame time, CPU, GPU, VRAM and temperature, four positions, nothing injected into the game." },
+                new[]{ "新增 游戏进程发现快速通道 游戏启动后更快被识别与接管", "Added a fast path for game process discovery; games are recognized and taken over sooner after launch." },
+                new[]{ "新增 待命阶段提前写入 NVIDIA 逐游戏调优 本次启动即可生效 不再等下一局", "Added pre-staging of NVIDIA per-game tuning while on standby, so it takes effect on this launch instead of the next." },
+                new[]{ "新增 双显卡机器待命阶段预选高性能显卡 避免游戏偶发跑核显 退场还原", "Added standby pre-selection of the high-performance GPU on dual-GPU machines, preventing games from occasionally launching on the integrated GPU; restored when the session ends." },
+                new[]{ "新增 系统环境新增全局计时器分辨率实验开关 重启后生效", "Added an experimental global timer resolution switch under System Environment; takes effect after a reboot." },
+                new[]{ "新增 体检检测 DirectStorage 直通是否被阻断 并点名阻断的驱动", "Added a checkup item that detects whether DirectStorage bypass reads are blocked and names the blocking driver." },
+                new[]{ "新增 对局中观测 CPU 性能限制 撞功率墙或温度墙会写明程度与时长", "Added in-match CPU performance limit observation; hitting a power or thermal wall is reported with its depth and duration." },
+                new[]{ "新增 开局后扫描注入游戏进程的覆盖层并在日志点名", "Added a post-launch scan that names overlay injections found in the game process in the log." },
+                new[]{ "新增 体检说明内存通道布局 单通道与非对称混合会被指出", "Added a checkup note on memory channel layout; single-channel and asymmetric mixes are called out." },
+                new[]{ "新增 中断选核弹窗可选把该设备的中断优先级提到 High 撤销时一并还原", "Added an option in the interrupt core picker to raise the device's interrupt priority to High, restored together with the revert." },
+                new[]{ "调整 托盘右键菜单精简为守护开关 开机启动与退出 其余功能双击图标进面板", "Adjusted the tray menu down to the guard switch, autostart and exit; everything else lives in the panel, opened by double-clicking the icon." },
+                new[]{ "新增 系统环境内核调度新增计时器恒定节拍开关 重启后生效", "Added a constant timer tick switch under System Environment kernel scheduling; takes effect after a reboot." },
+                new[]{ "移除 体检页平台时钟校正项 时钟相关改动统一归系统环境的计时器开关管理", "Removed the platform timer correction item from the checkup page; clock-related changes are now managed by the timer switch under System Environment." },
+                new[]{ "移除 AMD 显卡相关优化与体检项 显卡设置交还 AMD 软件本身", "Removed AMD GPU optimizations and audit items; GPU settings are handed back to AMD's own software." },
+                new[]{ "移除 全部旧版本数据迁移与残留清理逻辑 程序不再自动改动任何历史配置", "Removed all legacy data migration and residue cleanup logic; the app no longer touches historical configuration on its own." },
+                new[]{ "新增 中断体检 软件自己造负载当场观测 不必先打几局游戏 按 Esc 可随时中断", "Added the interrupt checkup: the app generates its own load and observes on the spot, with no need to play matches first. Press Esc to stop early." },
+                new[]{ "修复 中断体检进度未走完就提前结束", "Fixed the interrupt checkup ending before the progress bar completed." },
+                new[]{ "移除 专注档资源牢笼 后台压制不再使用 Job 硬性限速", "Removed the Focus resource cage; background suppression no longer uses hard Job rate caps." },
+                new[]{ "修复 驱动调优遇驱动临时忙碌时本局不再重试", "Fixed driver tuning never retrying within the session after hitting a temporarily busy driver." },
+                new[]{ "修复 对局在电源方案切换完成前结束时 机器可能停留在调优方案上", "Fixed the machine possibly staying on the tuned power plan when a match ended before the plan switch finished." },
+                new[]{ "调整 MMCSS 多媒体调度不再写入两项系统并不读取的参数", "Adjusted MMCSS multimedia scheduling to stop writing two parameters the system does not read." },
+                new[]{ "新增 体检给出建议目标核心 不适合改动的设备会说明原因", "Added suggested target cores from the checkup, with a stated reason for every device it advises against changing." },
+                new[]{ "新增 显卡驱动容器与硬件功耗散热控制工具自动豁免后台压制", "Added automatic suppression exemption for graphics driver containers and hardware power/thermal control utilities." },
+                new[]{ "调整 恢复智能保帧 CPU 持续吃满十秒且帧线程未接管时游戏本体让回普通优先级 旧版一秒即降的过敏已修掉", "Adjusted: the frame guard is back - when the CPU stays saturated for ten seconds with no render-thread takeover, the game process yields to normal priority; the old one-second hair trigger is gone." },
+                new[]{ "调整 专注档新出现的后台进程首轮即隔离 确认空闲后自动放宽 不再等热度爬升", "Adjusted: under Focus, newly seen background processes are isolated on first sight and relaxed once confirmed idle, instead of waiting for heat to build." },
+                new[]{ "修复 笔记本对局中核心停泊未解除 智能档插电只放开一半核心", "Fixed core parking staying active in-match on laptops; the Smart tier only unparked half the cores on AC power." },
+                new[]{ "修复 反作弊相容名单的游戏仍被写入显卡调度优先级 名单语义恢复为完全零接触", "Fixed roster-protected anti-cheat games still receiving GPU scheduling priority writes; the roster once again means zero contact." },
+                new[]{ "调整 帧线程识别开局数秒内完成 并定期复核 钉错的线程会被自动解除并重新识别", "Adjusted frame thread identification to complete within seconds of a match starting, with periodic re-checks that automatically unpin and re-identify a wrongly pinned thread." },
+                new[]{ "修复 游戏退出后仍显示待命 WeGame 等平台常驻进程不再触发就绪", "Fixed the standby label lingering after a game exits; resident platform processes such as WeGame no longer count as a ready signal." },
+                new[]{ "修复 游戏平台装在自定义目录时豁免失效 卸载记录缺少安装位置也能认出", "Fixed platform exemptions failing for custom install locations; platforms are now recognized even when their uninstall entry lacks an install path." },
+                new[]{ "修复 网卡在中断页整行空白 现在按设备类归并框架驱动的数据", "Fixed network adapters showing an empty row on the Interrupts page; framework driver data now folds into the matching device class." },
+                new[]{ "修复 中断观测丢事件时仍采信数据 现在整轮作废", "Fixed interrupt observation trusting data from a round that dropped events; such a round is now discarded." },
+                new[]{ "修复 智能预设首轮不压制任何进程 一局下来收益接近于零", "Fixed the Smart preset suppressing nothing on its first sweep, leaving a match with almost no gain." },
+                new[]{ "修复 电源计划调优值超出本机取值范围时整项放弃 现在夹到范围内再写", "Fixed a power plan value being abandoned when it fell outside this machine's allowed range; it is now clamped into range and written." },
+                new[]{ "修复 电源计划写入失败只说失败不说原因 现在给出实际错误码", "Fixed power plan write failures reporting no reason; the actual error code is now shown." },
+                new[]{ "修复 电源计划一项写入失败就整轮判失败 两轮后开关会被自动关掉", "Fixed a single failed power plan write failing the whole round, which switched the toggle off after two rounds." },
+                new[]{ "修复 已经是目标值的项目仍被写入并认领 退出时又写回一次", "Fixed items already at the target value still being written and claimed, then written back again on exit." },
+                new[]{ "修复 窗口化游戏优化 硬件加速 游戏模式在系统已开启时被重复写入", "Fixed windowed game optimization, hardware acceleration, and Game Mode being written again when the system already had them on." },
+                new[]{ "修复 VBS 项原本不存在时被写成 auto 而不是删除", "Fixed the VBS entry being written as auto instead of deleted when it did not exist originally." },
+                new[]{ "修复 NVIDIA 未知驱动键被误当成帧率上限处理", "Fixed unknown NVIDIA driver keys being treated as the frame rate cap." },
+                new[]{ "修复 反作弊进程打不开时崩溃台账被提前清掉", "Fixed the crash ledger being cleared early when an anti-cheat process could not be opened." },
+                new[]{ "修复 环境项启用失败时先关开关后还原 可能留下残留", "Fixed an environment item failing to enable turning its switch off before restoring, which could leave residue." },
+                new[]{ "修复 开机自启刷新失败时提示不实 现在给出实际错误码", "Fixed the misleading message when refreshing the startup task failed; the actual error code is now shown." },
+                new[]{ "调整 挪核弹窗不再预选核心 移除使用推荐值按钮", "Adjusted the pin dialog: no cores are preselected and the recommended-value button is gone." },
+                new[]{ "调整 中断页改为显示 p99 区间 不再显示单次最长", "Adjusted the Interrupts page to show a p99 band instead of the single longest run." },
+                new[]{ "调整 多队列网卡与存储控制器在挪核前给出风险提示", "Adjusted multi-queue network adapters and storage controllers to warn before pinning." },
+                new[]{ "调整 扫描动画重做 系统体检与中断体检共用一套", "Redesigned the scan animation, now shared by the system checkup and the interrupt checkup." },
+                new[]{ "调整 一键恢复改为只保留重置 不再还原历史版本写过的项", "Adjusted one-click restore down to reset only; items written by older versions are no longer restored." },
+                new[]{ "移除 三代已退役的中断亲和空壳代码", "Removed the shell code of three retired generations of interrupt affinity switches." },
+                new[]{ "移除 游戏内帧率小窗 取帧要常驻内核会话 部分机器直接失败 另一些每局中止 拿不到数据还照付开销", "Removed the in-game frame rate overlay: capturing frames needed a resident kernel session that failed outright on some machines and aborted every match on others, costing overhead with no data to show." },
                 new[]{ "新增 体检页检出容错堆 可一键解除 可还原", "Added a fault-tolerant heap check to the Checkup page, removable in one click and reversible." },
-                new[]{ "新增 开机自动把网络限流 键鼠队列 前台时间片改回系统默认 每项只动一次 可还原", "Added automatic startup correction of the network throttling index, input queue lengths and foreground time slice; each runs once and is reversible." },
+                new[]{ "移除 内存吃紧时清理待机内存 实测触发条件无法自解除 每 45 秒重复且单次只释放 0.1MB", "Removed purging standby memory when memory runs low: the trigger condition could never clear itself, so it repeated every 45 seconds while releasing 0.1MB per run." },
                 new[]{ "调整 后台压制只压真抢资源的进程 闲置进程智能不碰 专注只降省电档", "Adjusted: background suppression now targets only processes actually taking resources; Smart leaves idle ones alone, Focus only drops them to eco." },
                 new[]{ "修复 对局让位过早把优化器自己饿死 首轮清扫极慢 重负载下升不了档", "Fixed: yielding too early starved the optimizer itself, making the first sweep crawl and heavy load impossible to escalate." },
                 new[]{ "修复 电源方案下发不再卡主循环", "Fixed: power plan enforcement no longer blocks the main loop." },
-                new[]{ "调整 重压后台绑核收缩的门槛从 7 个物理核降回 5 个 被 1.8.1.0 关掉的开关升级时恢复", "Adjusted: the core-squeeze threshold drops from 7 physical cores back to 5; the switch turned off by 1.8.1.0 is restored on upgrade." },
+                new[]{ "修复 中断页重启后仍显示待重启 新增待验证状态 区分没重启和没观测到中断", "Fixed: the Interrupts page still showed pending-reboot after a reboot. A new unverified state separates not-yet-rebooted from not-yet-observed." },
+                new[]{ "调整 重压后台绑核收缩的门槛从 7 个物理核降回 5 个 此前被关闭的请到设置页自行打开", "Adjusted: the core-squeeze threshold drops from 7 physical cores back to 5; if an earlier build turned it off, re-enable it on the Settings page." },
                 new[]{ "修复 一键清除时中断亲和的还原顺序反了 会把两份备份一起打光", "Fixed: the interrupt affinity restore order during a one-click cleanup was backwards and could spend both backups at once." },
                 new[]{ "修复 中断页钉设备前没查退役台账 可能把残留值当成原值", "Fixed: pinning a device did not check the retired ledgers, so a leftover value could be recorded as the original." },
                 new[]{ "调整 中断页排版 按钮并到顶部 设备列表撑满剩余高度", "Adjusted the Interrupts page layout: buttons on one top row, the device list fills the remaining height." },
                 new[]{ "调整 显卡驱动接口不可用时日志写明原因 快照留到下次启动继续还原", "Adjusted: when the graphics driver interface is unavailable the log says so, and snapshots are kept for the next startup to retry." },
-            }),
-
-            new ReleaseNote("1.8.1.2", "2026-08-20", new[]
-            {
+                new[]{ "修复 启动时会把调好的设置整套还原 有一项还原失败就每次开机重来一遍", "Fixed: startup could restore every applied setting at once, and one failed step made it repeat on every launch." },
+                new[]{ "调整 启动与版本更新不再改动机器上任何已经生效的值 还原只由设置页那颗清除按钮触发", "Adjusted: startup and version upgrades no longer change any value already in effect on the machine; restoring happens only via the cleanup button on the Settings page." },
+                new[]{ "调整 NVIDIA 逐游戏驱动写入改为对局结束即还原 驱动里不留常驻值 手动改过的键不覆盖", "Adjusted: per-game NVIDIA driver writes now restore when the match ends, leaving no resident values in the driver; manually changed keys are never overwritten." },
+                new[]{ "修复 新驱动已移除超低延迟键时不再每局报错 自动降级为低延迟 换驱动后自动重试", "Fixed: when the driver no longer has the Ultra Low Latency keys, no more errors every match; it downgrades to low latency and retries after a driver change." },
                 new[]{ "新增 对局禁用处理器空闲改为可选开关 默认关闭 只在专注档插电时生效 升级时重置为关闭", "Added: disabling processor idle during a match is back as an opt-in switch, off by default, Focus on AC only, reset to off on upgrade." },
                 new[]{ "移除 前台时间片的三档选择 两个写入值在内核里行为相同 判据交给体检页", "Removed the three-way foreground time slice picker; the two written values behaved identically, judgment moves to the Checkup page." },
                 new[]{ "调整 前台时间片判据只看微软有文档的低两位 修复也只改这两位 其余位保留", "Adjusted: the foreground time-slice check and fix now touch only the two documented bits; all other bits are preserved." },
                 new[]{ "调整 体检里这一项的说明只讲机制不讲收益", "Adjusted: this checkup item's wording describes the mechanism only, never a benefit." },
-            }),
-
-            new ReleaseNote("1.8.1.1", "2026-08-19", new[]
-            {
                 new[]{ "新增 中断页 列出所有可改中断亲和的设备 可扫描测量并钉到指定核 全程可撤销", "Added an Interrupts page: every pinnable device listed, scan on demand, pin to chosen cores, fully reversible." },
                 new[]{ "重要 中断亲和写入后需重启才生效 已写入与已生效分开显示", "Important: interrupt affinity takes effect after a reboot; written and effective are shown separately." },
                 new[]{ "新增 中断页给出判读微秒数的尺子 每台设备标出分档与超时次数", "Added a yardstick for the microsecond numbers, with a grade and over-threshold count per device." },
@@ -74,10 +119,6 @@ namespace PaviseApp
                 new[]{ "移除 帧卡顿溯源整维下架 设置与残留升级后自动清除", "Removed frame stutter attribution in full; settings and residue are cleared on upgrade." },
                 new[]{ "移除 对局禁用处理器空闲状态 该项彻底下架 旧残留升级后自动清除", "Removed disabling processor idle during a match for good; residue is cleared on upgrade." },
                 new[]{ "调整 源码主体注释全部移除 每个文件只保留作者与文件用途两行", "Adjusted: all in-body source comments were removed; each file keeps only its author and purpose header." },
-            }),
-
-            new ReleaseNote("1.8.1.0", "2026-08-17", new[]
-            {
                 new[]{ "重要 升级到本版会清除此前所有旧版本数据 游戏库 白名单 配置与设置一并重置 请重新添加游戏 全新安装不受影响", "Important: upgrading to this version wipes all data from any earlier version — game library, whitelist, configuration and settings are all reset, so you'll need to re-add your games. Fresh installs are unaffected." },
                 new[]{ "调整 智能档后台压制重做 按每个进程自己的热度逐级升档 前台家族不动", "Adjusted: Smart suppression rebuilt to escalate per-process by heat; the foreground family is never touched." },
                 new[]{ "新增 帧线程接管后本体让位开关", "Added a switch for the game process to yield once the frame thread is boosted." },

@@ -35,11 +35,18 @@ namespace PaviseApp
             {
                 using (var k = Registry.CurrentUser.OpenSubKey(GpuKey))
                 {
-                    if (k == null) return false;
-                    string cur = k.GetValue(ValueName) as string;
-                    return string.Equals(PrefFieldText.ReadField(cur, Field), "1", StringComparison.Ordinal);
+                    string cur = k == null ? null : k.GetValue(ValueName) as string;
+                    string field = PrefFieldText.ReadField(cur, Field);
+                    if (field == null) return DefaultOnOs();
+                    return string.Equals(field, "1", StringComparison.Ordinal);
                 }
             }
+            catch { return false; }
+        }
+
+        private static bool DefaultOnOs()
+        {
+            try { return Native.OsBuild() >= 22621; }
             catch { return false; }
         }
 
@@ -49,6 +56,11 @@ namespace PaviseApp
             {
                 try
                 {
+                    if (CurrentlyOn())
+                    {
+                        Logger.Log(Lang.T("log.windowedopttweak.7"));
+                        return true;
+                    }
                     using (var k = Registry.CurrentUser.CreateSubKey(GpuKey))
                     {
                         if (k == null) return false;
@@ -81,6 +93,7 @@ namespace PaviseApp
                 try
                 {
                     string orig = Settings.LoadStr(BackupSlot, "");
+                    if (orig.Length == 0 && !EnabledByPavise) return true;
                     using (var k = Registry.CurrentUser.CreateSubKey(GpuKey))
                     {
                         if (k == null) return false;

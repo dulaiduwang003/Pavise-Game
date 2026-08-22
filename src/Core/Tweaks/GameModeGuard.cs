@@ -33,6 +33,16 @@ namespace PaviseApp
         {
             try
             {
+                if (CurrentlyOn())
+                {
+                    Settings.Save("GameModeGuardByPavise", true);
+                    if (!Settings.Load("GameModeGuardByPavise", false))
+                    {
+                        Logger.Log(Lang.T("log.gamemodeguard.1"));
+                        return false;
+                    }
+                    return true;
+                }
                 if (!Auto.Apply(1))
                 {
                     Logger.Log(Lang.T("log.gamemodeguard.1"));

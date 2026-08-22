@@ -109,8 +109,41 @@ namespace PaviseApp
                         activeDetection.RendererLearnable;
                 }
             pass.WriteDenied = pass.RendererPid > 0 && ProtectedGameRoster.Contains(pass.RendererName);
-            pass.PriorityTarget = Native.HIGH_PRIORITY_CLASS;
+            ResolvePriorityTarget(pass);
             return pass;
+        }
+
+        private readonly CpuSaturation cpuSaturation = new CpuSaturation();
+        private uint boostPriorityTarget = Native.HIGH_PRIORITY_CLASS;
+        private long boostFirstStampTicks;
+
+        internal static uint BoostPriorityTarget(bool saturated, bool laneActive)
+        {
+            return saturated && !laneActive
+                ? Native.NORMAL_PRIORITY_CLASS : Native.HIGH_PRIORITY_CLASS;
+        }
+
+        private void ResolvePriorityTarget(BoostPass pass)
+        {
+            bool saturated = cpuSaturation.Update(cpuSaturation.Sample(), DateTime.UtcNow.Ticks);
+            bool laneActive = pass.RendererPid > 0
+                && RenderLane.IsActiveFor(pass.RendererPid, pass.RendererCreation);
+            uint priorityTarget = BoostPriorityTarget(saturated, laneActive);
+            if (priorityTarget != boostPriorityTarget)
+            {
+                boostPriorityTarget = priorityTarget;
+                if (pass.RendererPid > 0)
+                {
+                    lock (sync)
+                    {
+                        boostStateVerified.Remove(pass.RendererPid);
+                        gameBoostNextAudit.Remove(pass.RendererPid);
+                    }
+                    Logger.Log(priorityTarget == Native.NORMAL_PRIORITY_CLASS
+                        ? Lang.T("log.boostsat.1") : Lang.T("log.boostsat.2"));
+                }
+            }
+            pass.PriorityTarget = priorityTarget;
         }
 
         private void DropStaleBoosts(BoostPass pass)
@@ -270,14 +303,14 @@ namespace PaviseApp
                 newlyTracked = true;
                 if (pass.RendererLearnable)
                     TryLearnRenderer(pass.RendererProfileId, pass.RendererPath, pass.RendererName);
-                gpuOk = gpuKnown && ApplyAndVerifyGpuBoost(h);
-                lock (sync) { if (gpuKnown) gameGpu[pid] = gpuOld; }
+                gpuOk = gpuKnown && !pass.WriteDenied && ApplyAndVerifyGpuBoost(h);
+                lock (sync) { if (gpuKnown && !pass.WriteDenied) gameGpu[pid] = gpuOld; }
             }
             else
             {
                 int ignoredGpu;
                 lock (sync) gpuOk = gameGpu.TryGetValue(pid, out ignoredGpu);
-                if (gpuOk) gpuOk = ApplyAndVerifyGpuBoost(h);
+                if (gpuOk && !pass.WriteDenied) gpuOk = ApplyAndVerifyGpuBoost(h);
             }
             return true;
         }
@@ -480,20 +513,28 @@ namespace PaviseApp
 
             if (stateOk && firstVerified)
             {
+                long stamp = Interlocked.Exchange(ref boostFirstStampTicks, 0);
+                if (stamp != 0)
+                    Logger.Log(Lang.T("log.gamemodeboost.60")
+                        + ((DateTime.UtcNow.Ticks - stamp) / TimeSpan.TicksPerMillisecond)
+                        + Lang.T("log.gamemodeboost.61"));
                 WarnIfPartitionHurtsWideGame(pass.RendererName, all, pid, pass.DesiredMask);
                 Logger.Log(Lang.T("log.gamemodeboost.27") + pass.RendererName + "(pid " + pid + ") "
                     + (pass.PriorityTarget == Native.HIGH_PRIORITY_CLASS ? Lang.T("log.gamemodeboost.28") : Lang.T("log.gamemodeboost.29"))
                     + placementText + Lang.T("log.gamemodeboost.30")
                     + (gpuOk ? Lang.T("log.gamemodeboost.31") : "")
                     + (!Native.PowerThrottlingSupported ? ""
-                        : ecoCleared ? Lang.T("t.gamemodeboost.32") : Lang.T("t.gamemodeboost.33") + QoSDump(h)));
+                        : ecoCleared ? Lang.T("t.gamemodeboost.32") : EcoStateText(h)));
             }
         }
+
+        private long nvTweakRetryAtTicks;
 
         private void ApplyGameTweaks(IntPtr h, int pid, BoostPass pass, bool needTweak)
         {
             if (needTweak)
             {
+                if (DateTime.UtcNow.Ticks < Interlocked.Read(ref nvTweakRetryAtTicks)) return;
                 string imagePath = Native.ImagePath(h);
                 var nvPlan = new NvGamePlan
                 {
@@ -505,9 +546,12 @@ namespace PaviseApp
                     Rebar = pass.NvRebar,
                     DlssMode = pass.NvDlss
                 };
-                List<string> nvFailed = NvDrsTweaks.ApplyForGame(imagePath, nvPlan);
+                bool nvRetry;
+                List<string> nvFailed = NvDrsTweaks.ApplyForGame(imagePath, nvPlan, out nvRetry);
                 if (!nvPlan.Empty) HandleNvTweakOutcome(nvFailed, nvPlan);
-                lock (sync) tweakApplied.Add(pid);
+                if (!nvRetry) lock (sync) tweakApplied.Add(pid);
+                else Interlocked.Exchange(ref nvTweakRetryAtTicks,
+                    DateTime.UtcNow.AddSeconds(30).Ticks);
             }
         }
 
@@ -549,7 +593,8 @@ namespace PaviseApp
                     lock (sync) boostVanishTries.Remove(kv.Key);
                     continue;
                 }
-                if (state == BoostTarget.Unopenable)
+                bool unopenable = state == BoostTarget.Unopenable;
+                if (unopenable)
                 {
                     int tries;
                     lock (sync)
@@ -561,7 +606,7 @@ namespace PaviseApp
                     if (tries < VanishGiveUpTries) continue;
                     abandoned++;
                 }
-                CrashGuard.ReleaseBoostProcess(kv.Key, kv.Value.Creation);
+                if (!unopenable) CrashGuard.ReleaseBoostProcess(kv.Key, kv.Value.Creation);
                 lock (sync)
                 {
                     boostVanishTries.Remove(kv.Key);
@@ -666,11 +711,21 @@ namespace PaviseApp
             return actualPriority == priorityTarget && actualIo == 3;
         }
 
+        private static string EcoStateText(IntPtr process)
+        {
+            int control, state;
+            if (!Native.TryQueryPowerThrottling(process, out control, out state))
+                return Lang.T("t.gamemodeboost.33") + QoSDump(process);
+            return (Native.EcoClearedMasksOk(control, state)
+                ? Lang.T("t.gamemodeboost.38") : Lang.T("t.gamemodeboost.33"))
+                + QoSDump(process);
+        }
+
         internal static string QoSDump(IntPtr process)
         {
             int control, state;
             if (!Native.TryQueryPowerThrottling(process, out control, out state)) return Lang.T("t.gamemodeboost.37");
-            return "(control=0x" + control.ToString("X") + " state=0x" + state.ToString("X");
+            return "(control=0x" + control.ToString("X") + " state=0x" + state.ToString("X") + ")";
         }
 
         internal static bool HighQoSVerified(IntPtr process)
@@ -882,8 +937,8 @@ namespace PaviseApp
 
         private bool Deactivate(string reason, bool quiet)
         {
+            try { irqProbe.CompleteIfRunning(); } catch { }
             SelfYield.Release();
-            CpuCage.Release();
             lock (sync)
             {
                 active = false;
@@ -895,6 +950,14 @@ namespace PaviseApp
             SuppressionCore.SqueezeBackground = CpuTopology.SqueezeSupported && squeezeBgOn;
             SuppressionCore.GpuDemoteEnabled = gpuDemoteOn;
             gameGoneSinceTicks = 0;
+            cpuSaturation.Reset();
+            boostPriorityTarget = Native.HIGH_PRIORITY_CLASS;
+            Interlocked.Exchange(ref boostFirstStampTicks, 0);
+            Interlocked.Exchange(ref nvTweakRetryAtTicks, 0);
+            preStagedNvPath = null;
+            try { cpuLimit.Stop(); } catch { }
+            Interlocked.Exchange(ref sessionStartTicks, 0);
+            overlayScanned = false;
             partitionHintLogged = false;
 
             bool clean = UnboostGames();

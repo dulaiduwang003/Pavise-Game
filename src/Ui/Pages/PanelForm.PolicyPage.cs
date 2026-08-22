@@ -86,8 +86,6 @@ namespace PaviseApp
                 delegate { return IdleStateTweak.Enabled; }, delegate(bool v) { OnIdleDisableToggle(v); });
             cardPolicyIdleDis = (SettingCard)swPolicyIdleDis.Parent;
             scroll = policyTabPanels[3]; sy = 2;
-            AddPolicyToggle(scroll, ref sy, Lang.T("gm.standby"), Lang.T("gm.standby.sub"),
-                delegate { return gameMode.PurgeStandby; }, delegate(bool v) { gameMode.PurgeStandby = v; });
             swPolicyPauseWu = AddPolicyToggle(scroll, ref sy, Lang.T("gm.pausewu"), Lang.T("gm.pausewu.sub"),
                 delegate { return gameMode.PauseWindowsUpdate; }, delegate(bool v) { gameMode.PauseWindowsUpdate = v; });
             cardPolicyPauseWu = (SettingCard)swPolicyPauseWu.Parent;
@@ -325,7 +323,7 @@ namespace PaviseApp
             if (cardPolicyCores != null) cardPolicyCores.Title = Lang.T("cpu.place.title");
             ApplyPresetPolicy(swPolicyAggressive, cardPolicyAggressive, Lang.T("gm.aggressive"), !custom, competitive);
             ApplyPresetPolicy(swPolicyPauseDl, cardPolicyPauseDl, Lang.T("gm.pausedl"), !custom, competitive);
-            ApplyPresetPolicy(swPolicyDvr, cardPolicyDvr, Lang.T("set.dvr"), !custom, competitive);
+            ApplyPresetPolicy(swPolicyDvr, cardPolicyDvr, Lang.T("set.dvr"), false, true);
             ApplyPresetPolicy(swPolicyMmcss, cardPolicyMmcss, Lang.T("gm.mmcss"), false, true);
             if (swPolicyMmcss != null && !elevated)
             {
