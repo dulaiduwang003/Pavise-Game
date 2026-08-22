@@ -1,4 +1,4 @@
-<div align="center">
+﻿<div align="center">
 
 <img src="docs/icon.png" width="96" height="96" alt="Pavise">
 
@@ -160,7 +160,7 @@ The Competitive preset's automatic disabling of processor idle was pulled in the
 
 Extreme mode and the League of Legends spotlight were retired in 1.8.0.2; Focus is the top tier.
 
-Removed items automatically restore the values written by older versions on upgrade.
+Removed items still know what they wrote and how to undo it, but startup and version upgrades never act on their own — a value already in effect on your machine changes only when you press the cleanup button on the Settings page.
 
 ## Interface
 

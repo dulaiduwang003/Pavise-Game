@@ -48,6 +48,12 @@ namespace PaviseApp
             get { return Interlocked.Read(ref processScanCount); }
         }
 
+        public void KickGameDetectionNow()
+        {
+            RequestFullGameDetection();
+            try { kick.Set(); } catch { }
+        }
+
         public bool NeedsGameProcessIdentity(string name, int session)
         {
             if (session != selfSession || string.IsNullOrEmpty(name))

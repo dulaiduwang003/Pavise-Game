@@ -62,16 +62,16 @@ namespace PaviseApp
             path = Path.Combine(dir, FileName);
         }
 
-        public List<GameProfile> LoadOrMigrate(string legacyPath)
+        public List<GameProfile> LoadProfiles()
         {
             bool repaired;
             List<GameProfile> loaded = Normalize(Load(), out repaired);
 
             if (loadFailed || loaded.Count > 0 || File.Exists(path))
             {
-                if (!loadFailed && (repaired || legacyCleared))
+                if (!loadFailed && repaired)
                 {
-                    if (!legacyCleared && loaded.Count == 0 && File.Exists(path))
+                    if (loaded.Count == 0 && File.Exists(path))
                         TryBackup(path, path + ".corrupt.bak");
                     Save(loaded);
                 }
@@ -80,12 +80,6 @@ namespace PaviseApp
 
             Save(loaded);
             return loaded;
-        }
-
-        private static bool IsLegacyHeader(string header)
-        {
-            return header == HeaderPrefix + "V1" || header == HeaderPrefix + "V2"
-                || header == HeaderPrefix + "V3" || header == HeaderPrefix + "V4";
         }
 
         private static void TryBackup(string source, string backup)
@@ -128,7 +122,6 @@ namespace PaviseApp
         }
 
         private bool loadFailed;
-        private bool legacyCleared;
 
         public bool LoadFailed { get { return loadFailed; } }
 
@@ -142,14 +135,6 @@ namespace PaviseApp
                 if (lines.Length == 0) return result;
                 if (lines[0] != HeaderV5)
                 {
-                    if (IsLegacyHeader(lines[0]))
-                    {
-                        TryBackup(path, path + ".legacy.bak");
-                        legacyCleared = true;
-                        Logger.Log(Lang.T("log.gameprofiles.4") + lines[0]
-                            + Lang.T("log.gameprofiles.5"));
-                        return result;
-                    }
                     loadFailed = true;
                     if (lines[0].StartsWith(HeaderPrefix, StringComparison.Ordinal))
                         Logger.Log(Lang.T("log.gameprofiles.6") + lines[0]

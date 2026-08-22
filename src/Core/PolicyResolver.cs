@@ -187,7 +187,6 @@ namespace PaviseApp
         public bool RenderLane { get { return On(PolicyCatalog.KeyRenderLane); } }
         public bool StrictCores { get { return On(PolicyCatalog.KeyStrictCores); } }
         public bool CoreDomainAlt { get { return On(PolicyCatalog.KeyCoreDomainAlt); } }
-        public bool StandbySweep { get { return On(PolicyCatalog.KeyStandbySweep); } }
         public bool PowerPlanOn { get { return On(PolicyCatalog.KeyPowerPlan); } }
         public bool PauseDownloads { get { return On(PolicyCatalog.KeyPauseDl); } }
         public bool PauseUpdate { get { return On(PolicyCatalog.KeyPauseUpdate); } }
@@ -200,8 +199,6 @@ namespace PaviseApp
         public bool NvAnselOff { get { return On(PolicyCatalog.KeyNvAnselOff); } }
         public bool NvRebar { get { return On(PolicyCatalog.KeyNvRebar); } }
         public string NvDlssMode { get { return ValueOf(PolicyCatalog.KeyNvDlss); } }
-        public bool AmdAntiLag { get { return On(PolicyCatalog.KeyAmdAntiLag); } }
-        public bool AmdAfmf { get { return On(PolicyCatalog.KeyAmdAfmf); } }
 
         public ulong CoreMask
         {

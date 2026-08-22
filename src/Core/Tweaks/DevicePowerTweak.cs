@@ -63,17 +63,18 @@ namespace PaviseApp
             lock (lk)
             {
                 var done = new List<string>();
+                int failed = 0;
                 foreach (Adapter a in Scan())
                 {
                     if (!a.CanPowerDown) continue;
                     int target = (a.PnPCapabilities.HasValue ? a.PnPCapabilities.Value : 0) | NoPowerDownBit;
-                    if (Reg(a.Index).Apply(target)) done.Add(a.Index);
-                    else Logger.Log(Lang.T("log.devicepowertweak.1") + a.Description);
+                    if (Reg(a.Index).Apply(target) || Reg(a.Index).HasBackup) done.Add(a.Index);
+                    else { failed++; Logger.Log(Lang.T("log.devicepowertweak.1") + a.Description); }
                 }
                 if (done.Count == 0)
                 {
                     Logger.Log(Lang.T("log.devicepowertweak.2"));
-                    return true;
+                    return failed == 0;
                 }
                 if (!Settings.SaveStr(ListKey, string.Join(";", done.ToArray())))
                 {

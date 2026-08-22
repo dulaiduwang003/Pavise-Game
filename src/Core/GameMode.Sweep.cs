@@ -77,13 +77,6 @@ namespace PaviseApp
             return manuallyEnabled;
         }
 
-        // 收缩亲和只配给真在吃资源的进程 2026-08-20 台架
-        // 本机 292 个进程里 260 个十五秒内 CPU 不足 1ms 只压忙的六个 +3.8% 且 1ms 完事
-        // 全压 128 个反而 -3.1% 最长帧翻 2.6 倍 归因臂锁定凶手是给空闲进程收亲和
-        // 上百个进程的零散定时唤醒被挤进两个核互相排队 谁的线程撞上谁卡
-        // 专注模式改成 冷进程盖 Eco 毯子(实测无害) 热度判定在吃资源的才顶到 Isolated 移核
-        // 智能模式去掉 Eco 保底 冷进程不碰 预压保险实测价值为零
-        // 诈尸进程醒后两秒半就被热度机制压住 帧损在噪声带内
         internal static SuppressionLevel ResolveBackgroundLevel(PerformancePreset mode, bool customAggressive,
             SuppressionLevel adaptive)
         {
@@ -91,7 +84,7 @@ namespace PaviseApp
                 return adaptive > SuppressionLevel.None ? SuppressionLevel.Isolated : SuppressionLevel.Eco;
             if (mode == PerformancePreset.Custom)
                 return customAggressive ? SuppressionLevel.Isolated : SuppressionLevel.Eco;
-            return adaptive;
+            return adaptive > SuppressionLevel.None ? adaptive : SuppressionLevel.Eco;
         }
 
         internal static bool BasicBackgroundEligible(int pid, int self, string name, string path,
@@ -105,6 +98,7 @@ namespace PaviseApp
                 && !(aggressive && GamePlatformCatalog.IsPlatformWebRenderer(name))) return false;
             if (NetAcceleratorCatalog.IsAcceleratorLikeName(name)) return false;
             if (PeripheralCatalog.IsInputChainProcess(name, path)) return false;
+            if (HardwareControlCatalog.IsHardwareControlProcess(name)) return false;
             if (gameHostAncestor) return false;
             if (UnderRoot(path, activeGameRoot)) return false;
             if (pid <= 4 || pid == self || session < 0 || session != ownerSession) return false;
@@ -260,7 +254,6 @@ namespace PaviseApp
                         continue;
                     }
 
-                    // 专注模式也走热度采样 它决定谁配被移核 控制器本就带专注档阈值
                     SuppressionLevel adaptive = SuppressionLevel.None;
                     if (mode != PerformancePreset.Custom && creation > 0)
                         adaptive = pressure.Observe(pid, nm, creation, cpu, io, DateTime.UtcNow.Ticks, mode);
@@ -304,9 +297,6 @@ namespace PaviseApp
                 catch { }
             }
 
-            // 升档的排最前 保护先落在真吃资源的进程头上 盖毯子的垫后
-            // 此前按累计 CPU 排序是个错 那字段是开机以来的累计值 排不出现在谁忙
-            // Desired 来自热度控制器的增量判据 才是当下的真实冷热
             if (pending.Count > 1)
                 pending.Sort(delegate (BackgroundRequest x, BackgroundRequest y)
                 {
@@ -369,19 +359,6 @@ namespace PaviseApp
                 if (!live.Contains(pid)) { if (core.Release(pid, SuppressReason.Background)) ReportUntrack(pid); }
 
             pressure.Prune(live);
-
-            var cageCandidates = new List<CpuCage.Candidate>();
-            foreach (BackgroundRequest request in pending)
-                if ((request.Result == AcquireResult.NewlyThrottled || request.Result == AcquireResult.AlreadyThrottled)
-                    && request.Desired >= SuppressionLevel.Isolated && request.Creation > 0)
-                    cageCandidates.Add(new CpuCage.Candidate
-                    {
-                        Pid = request.Pid,
-                        Name = request.Name,
-                        Creation = request.Creation,
-                        Cpu = request.Cpu
-                    });
-            CpuCage.Observe(aggressive && EffSuppress, cageCandidates);
 
             if (first)
             {

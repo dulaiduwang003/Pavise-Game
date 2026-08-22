@@ -10,7 +10,7 @@ namespace PaviseApp
 {
     internal partial class PanelForm
     {
-        private Toggle swAuto, swAutoHide, swFpsOverlay;
+        private Toggle swAuto, swAutoHide, swIrqProbe;
         private SettingCard cardShader;
 
         private static readonly Color[] AccentPalette =
@@ -24,7 +24,6 @@ namespace PaviseApp
             { new List<ColorSwatch>(), new List<ColorSwatch>(), new List<ColorSwatch>() };
         private static volatile bool shaderCleaning;
         private int slowBusy;
-        private int restoreBusy;
         private int wipeBusy;
 
         private void BuildSettingsPage()
@@ -49,20 +48,8 @@ namespace PaviseApp
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.autohide"), Lang.T("set.autohide.n"), swAutoHide, out cardH);
             sy += cardH + 8;
 
-            swFpsOverlay = MakeSwitch(FpsOverlay.EnabledSetting, OnFpsOverlayToggle);
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.fpsoverlay"), Lang.T("set.fpsoverlay.n"), swFpsOverlay, out cardH);
-            sy += cardH + 8;
-
-            var pickCorner = new TierPicker();
-            pickCorner.Labels = new[] { Lang.T("pos.top"), Lang.T("pos.tl"), Lang.T("pos.tr"), Lang.T("pos.bottom") };
-            pickCorner.Index = FpsOverlay.PosSetting;
-            pickCorner.Size = new Size(Theme.S(236), Theme.S(30));
-            pickCorner.IndexChanged = delegate(int index)
-            {
-                FpsOverlay.PosSetting = index;
-                FpsOverlay.Shutdown();
-            };
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.fpsoverlay.pos"), Lang.T("set.fpsoverlay.pos.n"), pickCorner, out cardH);
+            swIrqProbe = MakeSwitch(IrqSessionProbe.EnabledSetting, OnIrqProbeToggle);
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 96, Lang.T("set.irqprobe"), Lang.T("set.irqprobe.n"), swIrqProbe, out cardH);
             sy += cardH + 8;
 
             var pickLang = new TierPicker();
@@ -79,13 +66,6 @@ namespace PaviseApp
 
             sy += 10;
             Section(scroll, Lang.T("sec.maint"), 6, sy); sy += 24;
-
-            var btnRestore = new PillButton(Lang.T("btn.panic"), BtnKind.Danger);
-            btnRestore.Bg = Theme.Card;
-            btnRestore.Size = new Size(Theme.S(136), Theme.S(32));
-            btnRestore.Click += delegate { RestoreAllNow(); };
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 78, Lang.T("v15.restore.title"), Lang.T("v15.restore.desc"), btnRestore, out cardH);
-            sy += cardH + 8;
 
             var btnWipe = new PillButton(Lang.T("btn.wipe"), BtnKind.Danger);
             btnWipe.Bg = Theme.Card;
@@ -331,76 +311,6 @@ namespace PaviseApp
                 }
                 catch { }
             });
-        }
-
-        private void RestoreAllNow()
-        {
-            if (Interlocked.Exchange(ref restoreBusy, 1) != 0) return;
-            Cursor = Cursors.WaitCursor;
-            ThreadPool.QueueUserWorkItem(_ =>
-            {
-                bool completed = false;
-                int attempted = 0;
-                int failed = 0;
-                try
-                {
-                    attempted++;
-                    if (!TryRestoreRecordedItem(
-                            Lang.T("t.panelformsettingspage.4"),
-                            delegate { return gameMode.PanicRestore(); }))
-                        failed++;
-                    attempted++;
-                    if (!TryRestoreRecordedItem(
-                            Lang.T("t.panelformsettingspage.5"),
-                            delegate { return tamer.PanicRestore(); }))
-                        failed++;
-                    attempted++;
-                    if (!TryRestoreRecordedItem(
-                            Lang.T("t.panelformsettingspage.13"),
-                            delegate
-                            {
-                                List<string> left = LegacyPurge.RestorePersistent(Paths.Data);
-                                if (left.Count > 0)
-                                    Logger.Log(Lang.T("log.panelformsettingspage.14") + left.Count
-                                        + Lang.T("log.legacypurge.31") + string.Join(" ", left.ToArray()));
-                                return left.Count == 0;
-                            }))
-                        failed++;
-
-                    completed = failed == 0;
-                    Logger.Log(Lang.T("log.panelformsettingspage.6") + attempted
-                        + Lang.T("log.panelformsettingspage.7") + failed + Lang.T("log.powerplanschemes.44")
-                        + (completed ? Lang.T("log.panelformsettingspage.8") : Lang.T("log.panelformsettingspage.9")));
-                }
-                catch (Exception ex)
-                {
-                    completed = false;
-                    attempted++;
-                    failed++;
-                    Logger.LogFailure(Lang.T("log.panelformsettingspage.10"), ex);
-                }
-                finally
-                {
-                    Interlocked.Exchange(ref restoreBusy, 0);
-                    ShowRestoreAllResult(completed, failed, attempted);
-                }
-            });
-        }
-
-        private static bool TryRestoreRecordedItem(
-            string name, Func<bool> restore)
-        {
-            try
-            {
-                bool restored = restore != null && restore();
-                if (!restored) Logger.Log(Lang.T("log.panelformsettingspage.11") + name + Lang.T("log.panelformsettingspage.12"));
-                return restored;
-            }
-            catch (Exception ex)
-            {
-                Logger.LogFailure(Lang.T("log.panelformsettingspage.11") + name, ex);
-                return false;
-            }
         }
 
         private void ShowRestoreAllResult(

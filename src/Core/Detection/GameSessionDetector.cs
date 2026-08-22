@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 证据选举制的游戏会话判定 用户的选择只圈定家族 渲染进程由硬证据现场选举
 using System;
 using System.Collections.Generic;
@@ -138,7 +138,16 @@ namespace PaviseApp
             ProcessSnapshot processes, IList<GameProfile> profiles,
             int ownerSession, out string armedProfile)
         {
+            string armedVia;
+            return Detect(processes, profiles, ownerSession, out armedProfile, out armedVia);
+        }
+
+        public static GameDetection Detect(
+            ProcessSnapshot processes, IList<GameProfile> profiles,
+            int ownerSession, out string armedProfile, out string armedVia)
+        {
             armedProfile = null;
+            armedVia = null;
             if (processes == null || profiles == null
                 || profiles.Count == 0 || ownerSession < 0)
                 return null;
@@ -154,7 +163,7 @@ namespace PaviseApp
             }
 
             CaptureWindowEvidence(snapshot);
-            return DetectSnapshot(snapshot, profiles, out armedProfile);
+            return DetectSnapshot(snapshot, profiles, out armedProfile, out armedVia);
         }
 
         internal static bool TryCaptureProcessIdentity(
@@ -199,7 +208,16 @@ namespace PaviseApp
             IList<GameProcessSnapshot> snapshot,
             IList<GameProfile> profiles, out string armedProfile)
         {
+            string armedVia;
+            return DetectSnapshot(snapshot, profiles, out armedProfile, out armedVia);
+        }
+
+        internal static GameDetection DetectSnapshot(
+            IList<GameProcessSnapshot> snapshot,
+            IList<GameProfile> profiles, out string armedProfile, out string armedVia)
+        {
             armedProfile = null;
+            armedVia = null;
             if (snapshot == null || profiles == null || profiles.Count == 0)
                 return null;
 
@@ -244,7 +262,16 @@ namespace PaviseApp
                         members.Add(identity);
                     }
 
-                if (armedProfile == null) armedProfile = profile.Name;
+                if (armedProfile == null)
+                {
+                    string via = ArmedVia(profile, members,
+                        GamePlatformCatalog.IsPlatformProcess);
+                    if (via != null)
+                    {
+                        armedProfile = profile.Name;
+                        armedVia = via;
+                    }
+                }
                 GameDetection hit = Elect(profile, members);
                 if (hit == null) continue;
                 foreach (GameProcessSnapshot member in members)
@@ -255,6 +282,32 @@ namespace PaviseApp
                 if (BetterHit(hit, best)) best = hit;
             }
             return best;
+        }
+
+        internal static string ArmedVia(GameProfile profile,
+            IList<GameProcessSnapshot> members, Func<string, string, bool> isPlatform)
+        {
+            if (profile == null || members == null) return null;
+            var viaNames = new List<string>();
+            foreach (GameProcessSnapshot member in members)
+            {
+                if (member == null) continue;
+                if (!profile.ForceTrigger)
+                {
+                    if (IsNonGameRole(member.Name, member.Path)) continue;
+                    if (ArmedOnlyVeto(member.Path)) continue;
+                    if (isPlatform != null && isPlatform(member.Name, member.Path)) continue;
+                }
+                if (!viaNames.Contains(member.Name)) viaNames.Add(member.Name);
+                if (viaNames.Count >= 3) break;
+            }
+            return viaNames.Count == 0 ? null : string.Join(" ", viaNames.ToArray());
+        }
+
+        internal static bool ArmedOnlyVeto(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return false;
+            return path.IndexOf(@"\WeGameLauncher\", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static bool IsDirectMember(GameProfile profile, GameProcessSnapshot identity)

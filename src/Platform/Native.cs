@@ -41,6 +41,10 @@ namespace PaviseApp
         public static extern int GetThreadPriority(IntPtr thread);
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern bool GetThreadTimes(IntPtr thread, out long creation, out long exit, out long kernel, out long user);
+        [DllImport("kernel32.dll")]
+        public static extern int GetCurrentThreadId();
+        [DllImport("kernel32.dll")]
+        public static extern ulong GetTickCount64();
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool ProcessIdToSessionId(
             uint processId, out uint sessionId);
@@ -473,8 +477,6 @@ namespace PaviseApp
             return SetProcessPriorityBoost(h, disable);
         }
 
-        // 时钟精度豁免位 Win11 起窗口被遮挡时系统会忽略进程的计时器分辨率请求
-        // 控制位接管而状态位置零 即官方文档的 Always honor Timer Resolution Requests
         private const uint TimerExemptBit = 4;
         private static volatile bool timerExemptUnavailable;
 
@@ -489,11 +491,15 @@ namespace PaviseApp
                 && ((uint)stateMask & TimerExemptBit) == 0;
         }
 
-        // 提优判据 执行速度节流交还应用且关闭 想要豁免位时还要求豁免位真的落上
         public static bool HighQoSMasksOk(int controlMask, int stateMask)
         {
-            if ((controlMask & 1) == 0 || (stateMask & 1) != 0) return false;
+            if (!EcoClearedMasksOk(controlMask, stateMask)) return false;
             return !TimerExemptWanted || TimerExemptOk(controlMask, stateMask);
+        }
+
+        public static bool EcoClearedMasksOk(int controlMask, int stateMask)
+        {
+            return (controlMask & 1) != 0 && (stateMask & 1) == 0;
         }
 
         public static bool ApplyHighQoS(IntPtr process, bool ignoreTimerResolution)
@@ -502,7 +508,6 @@ namespace PaviseApp
             return ApplyHighQoS(process, ignoreTimerResolution, out dropped);
         }
 
-        // 豁免位写完立刻回读 落不上就永久降级 免得判据把它当成效率模式没清干净
         public static bool ApplyHighQoS(IntPtr process, bool ignoreTimerResolution, out bool timerExemptDropped)
         {
             timerExemptDropped = false;
@@ -511,7 +516,6 @@ namespace PaviseApp
                 if (SetPowerThrottling(process, QosSealMask, 0))
                 {
                     int control, state;
-                    // 读不回来不作为降级依据 这一轮按写入成功处理 判据那边自会重试
                     if (!TryQueryPowerThrottling(process, out control, out state)) return true;
                     if (TimerExemptOk(control, state)) return true;
                 }

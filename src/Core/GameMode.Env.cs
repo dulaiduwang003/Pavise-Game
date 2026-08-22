@@ -22,7 +22,7 @@ namespace PaviseApp
 
         internal static readonly string[] EnvKeys =
             { "do", "wlanscan", "wu",
-              "pqos", "awake", "rsr", "gpupower", "amdalag", "amdafmf" };
+              "pqos", "awake", "gpupower" };
 
         private static string EnvLabel(string key)
         {
@@ -33,10 +33,7 @@ namespace PaviseApp
                 case "wu": return Lang.T("t.gamemodeenv.3");
                 case "pqos": return Lang.T("t.gamemodeenv.4");
                 case "awake": return Lang.T("t.gamemodeenv.5");
-                case "rsr": return Lang.T("set.rsr");
                 case "gpupower": return Lang.T("t.gamemodeenv.6");
-                case "amdalag": return "AMD Anti-Lag";
-                case "amdafmf": return Lang.T("t.gamemodeenv.8");
                 default: return key;
             }
         }
@@ -78,6 +75,7 @@ namespace PaviseApp
                     if (want && failures >= EnvFuseAttempts && envFused.Add(key))
                     {
                         Settings.Save("EnvFuse_" + key, true);
+                        try { restore(); } catch { }
                         DisableEnvSwitch(key);
                         Logger.Log(Lang.T("log.gamemodeenv.9") + EnvLabel(key) + Lang.T("log.gamemodeenv.10") + failures
                             + Lang.T("log.gamemodeenv.11"));
@@ -120,10 +118,7 @@ namespace PaviseApp
                 case "wu": pauseUpdateOn = false; Settings.Save("GmPauseUpdate", false); break;
                 case "pqos": break;
                 case "awake": awakeOn = false; Settings.Save("GmAwake", false); break;
-                case "rsr": rsrOn = false; Settings.Save("GmRsr", false); break;
                 case "gpupower": gpuPowerMaxOn = false; Settings.Save("GmGpuPowerMax", false); break;
-                case "amdalag": amdAntiLag = false; Settings.Save("AmdAntiLag", false); break;
-                case "amdafmf": amdAfmf = false; Settings.Save("AmdAfmf", false); break;
                 case "overlay": break;
             }
             string policyKey = EnvPolicyKey(key);
@@ -138,8 +133,6 @@ namespace PaviseApp
                 case "wlanscan": return PolicyCatalog.KeyWlanGuard;
                 case "wu": return PolicyCatalog.KeyPauseUpdate;
                 case "awake": return PolicyCatalog.KeyAwake;
-                case "amdalag": return PolicyCatalog.KeyAmdAntiLag;
-                case "amdafmf": return PolicyCatalog.KeyAmdAfmf;
                 default: return null;
             }
         }
@@ -188,8 +181,6 @@ namespace PaviseApp
             bool pAwake = sp != null ? sp.Awake : awakeOn;
             bool pPlan = sp != null ? sp.PowerPlanOn : planSwitch;
             bool pAggr = sp != null ? sp.Aggressive : aggressiveOn;
-            bool pAmdAlag = sp != null ? sp.AmdAntiLag : amdAntiLag;
-            bool pAmdAfmf = sp != null ? sp.AmdAfmf : amdAfmf;
             bool competitive = mode == PerformancePreset.Competitive;
             bool custom = mode == PerformancePreset.Custom;
             bool usePauseDl = custom ? pPauseDl : competitive;
@@ -204,14 +195,7 @@ namespace PaviseApp
             wuActive = EnvStep("wu", pWu && slowReady, wuActive, UpdatePause.Activate, UpdatePause.Restore);
             pqosActive = EnvStep("pqos", true, pqosActive, PresenceQos.Activate, PresenceQos.Restore);
             awakeActive = EnvStep("awake", pAwake, awakeActive, DisplayAwake.Activate, DisplayAwake.Restore);
-            rsrActive = EnvStep("rsr", rsrOn, rsrActive, AdlxTweaks.ActivateRsr, AdlxTweaks.RestoreRsr);
             gpwActive = EnvStep("gpupower", gpuPowerMaxOn, gpwActive, GpuPowerMax.Activate, GpuPowerMax.Restore);
-            amdAlagActive = EnvStep("amdalag", pAmdAlag && AdlxTweaks.AntiLagSupported(),
-                amdAlagActive, AdlxTweaks.ActivateAntiLag, RestoreAmdAntiLagEnv);
-            amdAfmfActive = EnvStep("amdafmf", pAmdAfmf && AdlxTweaks.AfmfSupported(), amdAfmfActive,
-                AdlxTweaks.ActivateAfmf, AdlxTweaks.RestoreAfmf);
-            bool pStandby = sp != null ? sp.StandbySweep : standbySweepOn;
-            if (pStandby) StandbySweep.MaybePurge();
             bool aggressivePower = IsAggressive(mode, pAggr);
             int powerKey = (aggressivePower ? 1 : 0) | (usePlan ? 2 : 0)
                 | (IdleStateTweak.Enabled ? 4 : 0);
@@ -225,7 +209,7 @@ namespace PaviseApp
                     {
                         int keyShot = powerKey;
                         bool aggrShot = aggressivePower;
-                        // 先占住状态 免得下一轮又排一次
+                        int genShot = Volatile.Read(ref powerSessionGen);
                         planActive = true;
                         lastPowerPolicyKey = keyShot;
                         Interlocked.Exchange(ref nextPowerAuditTicks, long.MaxValue);
@@ -234,6 +218,14 @@ namespace PaviseApp
                             bool planOk = false;
                             try { planOk = PowerPlan.Enforce(aggrShot); }
                             catch { planOk = false; }
+                            if (Volatile.Read(ref powerSessionGen) != genShot)
+                            {
+                                try { PowerPlan.Restore(); } catch { }
+                                planActive = false;
+                                lastPowerPolicyKey = -1;
+                                Interlocked.Exchange(ref powerApplyInFlight, 0);
+                                return;
+                            }
                             try { OnPowerPlanApplied(planOk); }
                             catch { }
                             Interlocked.Exchange(ref powerApplyInFlight, 0);
@@ -241,18 +233,25 @@ namespace PaviseApp
                     }
                 }
             }
-            else if (planActive && PowerPlan.Restore())
+            else if (planActive)
             {
-                planActive = false;
-                lastPowerPolicyKey = -1;
-                Interlocked.Exchange(ref nextPowerAuditTicks, 0);
+                Interlocked.Increment(ref powerSessionGen);
+                if (PowerPlan.Restore())
+                {
+                    planActive = false;
+                    lastPowerPolicyKey = -1;
+                    Interlocked.Exchange(ref nextPowerAuditTicks, 0);
+                }
             }
 
             if (!timerRaised)
             {
-                if (Native.OsBuild() > 0 && Native.OsBuild() < 19041)
+                bool globalRes = GlobalTimerResTweak.EnabledByPavise;
+                if ((Native.OsBuild() > 0 && Native.OsBuild() < 19041) || globalRes)
                 {
                     try { Native.timeBeginPeriod(1); } catch { }
+                    if (globalRes && Native.TimerExemptWanted)
+                        try { Native.ApplyHighQoS(new IntPtr(-1), true); } catch { }
                     timerRaised = true;
                 }
                 else if (!timerSkipLogged)
@@ -264,28 +263,16 @@ namespace PaviseApp
         }
 
         private bool wuActive;
-        private bool amdAlagActive;
-        private bool amdAfmfActive;
-
-        private static bool RestoreAmdAntiLagEnv()
-        {
-            bool ok = AdlxTweaks.RestoreAntiLag();
-            ok &= AdlxTweaks.RestoreChill();
-            return ok;
-        }
         private volatile bool planActive;
         private volatile int lastPowerPolicyKey = -1;
         private long nextPowerAuditTicks;
-        // 电源方案要逐项写 powrprof 实测单次能到 36 秒 期间主循环整个停摆
-        // 后台压制排在它后面 于是首轮压制被推迟到近三分钟 热度采样也拿不到第二次机会
-        // 所以改成派到线程池 这里只保证同时只有一个在跑
         private int powerApplyInFlight;
+        private int powerSessionGen;
 
         private const string PowerFailStreakKey = "PowerPlanFailStreak";
         private const int PowerPlanAutoOffThreshold = EnvFuseAttempts;
         private int planFailStreak;
 
-        // 电源方案写完之后回到这里结算 成功清零失败计数 失败按退避重排下一次
         private void OnPowerPlanApplied(bool planOk)
         {
             if (planOk)
@@ -313,7 +300,6 @@ namespace PaviseApp
             if (delay > 300) delay = 300;
             Interlocked.Exchange(ref nextPowerAuditTicks,
                 DateTime.UtcNow.AddSeconds(delay).Ticks);
-            // 失败了得让下一轮重新排队 否则 planActive 一直占着
             planActive = false;
         }
         private static int LoadCounter(string key)
@@ -377,8 +363,8 @@ namespace PaviseApp
 
         private bool EnvActive()
         {
-            return doActive || wlanActive || wuActive || pqosActive || awakeActive || rsrActive || gpwActive || planActive || timerRaised
-                || amdAlagActive || amdAfmfActive;
+            return doActive || wlanActive || wuActive || pqosActive || awakeActive || gpwActive || planActive || timerRaised
+                || NvDrsTweaks.HasGameResidue || PowerPlan.HasResidue;
         }
 
         private string lastResidueLogged;
@@ -401,6 +387,7 @@ namespace PaviseApp
             if (pqosActive) parts.Add(Lang.T("t.gamemodeenv.33"));
             if (awakeActive) parts.Add(Lang.T("t.gamemodeenv.34"));
             if (planActive) parts.Add(Lang.T("t.gamemodeenv.35"));
+            if (NvDrsTweaks.HasGameResidue) parts.Add("NVIDIA Profile");
             if (timerRaised) parts.Add(Lang.T("t.gamemodeenv.36"));
             return parts.Count > 0 ? string.Join(" ", parts.ToArray()) : Lang.T("t.gamemodeenv.37");
         }
@@ -450,10 +437,10 @@ namespace PaviseApp
             if (UpdatePause.Restore()) wuActive = false; else ok = false;
             if (PresenceQos.Restore()) pqosActive = false; else ok = false;
             if (DisplayAwake.Restore()) awakeActive = false; else ok = false;
-            if (AdlxTweaks.RestoreRsr()) rsrActive = false; else ok = false;
             if (GpuPowerMax.Restore()) gpwActive = false; else ok = false;
-            if (RestoreAmdAntiLagEnv()) amdAlagActive = false; else ok = false;
-            if (AdlxTweaks.RestoreAfmf()) amdAfmfActive = false; else ok = false;
+            if (!NvDrsTweaks.RestoreAllGames()) ok = false;
+            if (!GpuPrefStage.Restore()) ok = false;
+            Interlocked.Increment(ref powerSessionGen);
             if (PowerPlan.Restore())
             {
                 planActive = false;
@@ -470,6 +457,7 @@ namespace PaviseApp
                     else ok = false;
                 }
                 catch { ok = false; }
+                try { Native.RestorePowerThrottling(new IntPtr(-1), -1, -1); } catch { }
             }
             return ok;
         }

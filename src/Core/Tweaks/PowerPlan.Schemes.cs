@@ -11,6 +11,8 @@ namespace PaviseApp
     {
         private const uint AccessScheme = 16;
 
+        [DllImport("powrprof.dll")] private static extern uint PowerReadValueMin(IntPtr root, ref Guid sub, ref Guid setting, out uint min);
+        [DllImport("powrprof.dll")] private static extern uint PowerReadValueMax(IntPtr root, ref Guid sub, ref Guid setting, out uint max);
         [DllImport("powrprof.dll")] private static extern uint PowerGetActiveScheme(IntPtr root, out IntPtr guid);
         [DllImport("powrprof.dll")] private static extern uint PowerSetActiveScheme(IntPtr root, ref Guid guid);
         [DllImport("powrprof.dll")] private static extern uint PowerDuplicateScheme(IntPtr root, ref Guid src, ref IntPtr dest);
@@ -185,8 +187,9 @@ namespace PaviseApp
 
                 foreach (Knob k in CoreKnobs)
                 {
+                    if (!SettingPresent(g, k.Sub, k.Setting)) { skipped.Add(k.Label); continue; }
                     if (WriteKnob(g, k, aggressive, profile)) written++;
-                    else { failed++; Logger.Log(Lang.T("log.powerplanschemes.32") + k.Label + Lang.T("log.powerplanschemes.33")); }
+                    else { failed++; LogKnobFailure(g, k, aggressive, profile); }
                 }
                 foreach (Knob k in OptionalKnobs)
                 {
@@ -216,8 +219,13 @@ namespace PaviseApp
 
                 if (failed > 0)
                 {
-                    Logger.Log(Lang.T("log.powerplanschemes.35") + failed + Lang.T("log.powerplanschemes.36"));
-                    return false;
+                    if (written > 0)
+                        Logger.Log(Lang.T("log.powerplanschemes.35") + failed + Lang.T("log.powerplanschemes.45"));
+                    else
+                    {
+                        Logger.Log(Lang.T("log.powerplanschemes.35") + failed + Lang.T("log.powerplanschemes.36"));
+                        return false;
+                    }
                 }
 
                 Logger.Log(Lang.T("log.powerplanschemes.37") + (aggressive ? Lang.T("log.powerplanschemes.38") : Lang.T("log.powerplanschemes.39"))
@@ -227,6 +235,22 @@ namespace PaviseApp
                 return true;
             }
             catch { return false; }
+        }
+
+        private static void LogKnobFailure(Guid scheme, Knob k, bool aggressive, PowerPlanProfile profile)
+        {
+            uint code = 0;
+            try
+            {
+                bool coreParking = k.Setting == CpMinCores || k.Setting == CpMaxCores;
+                bool useArena = coreParking ? profile.UseArenaCoreParking(aggressive) : aggressive;
+                WritePair(scheme, k.Sub, k.Setting,
+                    useArena ? k.ArenaAc : CalmAcFor(k, k.CalmAc, profile),
+                    useArena ? k.ArenaDc : k.CalmDc, out code);
+            }
+            catch { }
+            Logger.Log(Lang.T("log.powerplanschemes.32") + Lang.T(k.Label)
+                + Lang.T("log.powerplanschemes.33") + " rc=" + code);
         }
 
         private static bool WriteKnob(Guid scheme, Knob k, bool aggressive, PowerPlanProfile profile)
@@ -280,12 +304,55 @@ namespace PaviseApp
             return PowerReadACValueIndex(IntPtr.Zero, ref scheme, ref sb, ref set, out value) == 0;
         }
 
-        private static bool WritePair(Guid scheme, Guid sub, Guid setting, uint ac, uint dc)
+        private static uint Clamp(Guid sub, Guid setting, uint v)
         {
             Guid sb = sub, set = setting;
-            return PowerWriteACValueIndex(IntPtr.Zero, ref scheme, ref sb, ref set, ac) == 0
-                && PowerWriteDCValueIndex(IntPtr.Zero, ref scheme, ref sb, ref set, dc) == 0;
+            uint lo, hi;
+            if (PowerReadValueMin(IntPtr.Zero, ref sb, ref set, out lo) != 0) return v;
+            sb = sub; set = setting;
+            if (PowerReadValueMax(IntPtr.Zero, ref sb, ref set, out hi) != 0) return v;
+            if (lo > hi) return v;
+            if (v < lo) return lo;
+            if (v > hi) return hi;
+            return v;
         }
+
+        private static bool WritePair(Guid scheme, Guid sub, Guid setting, uint ac, uint dc)
+        {
+            uint code;
+            return WritePair(scheme, sub, setting, ac, dc, out code);
+        }
+
+        private static bool WritePair(Guid scheme, Guid sub, Guid setting, uint ac, uint dc, out uint code)
+        {
+            Guid sb = sub, set = setting;
+            code = PowerWriteACValueIndex(IntPtr.Zero, ref scheme, ref sb, ref set, ac);
+            if (code == ErrorInvalidParameter)
+            {
+                uint fixedAc = Clamp(sub, setting, ac);
+                if (fixedAc != ac)
+                {
+                    sb = sub; set = setting;
+                    code = PowerWriteACValueIndex(IntPtr.Zero, ref scheme, ref sb, ref set, fixedAc);
+                }
+            }
+            if (code != 0) return false;
+
+            sb = sub; set = setting;
+            code = PowerWriteDCValueIndex(IntPtr.Zero, ref scheme, ref sb, ref set, dc);
+            if (code == ErrorInvalidParameter)
+            {
+                uint fixedDc = Clamp(sub, setting, dc);
+                if (fixedDc != dc)
+                {
+                    sb = sub; set = setting;
+                    code = PowerWriteDCValueIndex(IntPtr.Zero, ref scheme, ref sb, ref set, fixedDc);
+                }
+            }
+            return code == 0;
+        }
+
+        private const uint ErrorInvalidParameter = 87;
 
         private static Guid? Current()
         {

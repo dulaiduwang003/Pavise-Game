@@ -41,6 +41,12 @@ namespace PaviseApp
         public event Action<ProcessChangeBatch> BatchChanged;
         public Func<string, int, bool> CaptureStartIdentity;
         public Func<int, string, int, bool> CaptureParentIdentity;
+        public Func<string, int, bool> FastTrack;
+        public event Action FastStart;
+
+        private EtwProcessWatcher etw;
+        private long lastFastStartTicks;
+        private const int FastStartMinGapMs = 250;
 
         private ManagementEventWatcher startW, stopW;
         private Timer coalesce;
@@ -81,6 +87,7 @@ namespace PaviseApp
                             ProcessChangeKind.Stopped, generation);
                         Interlocked.Exchange(ref accepting, 1);
                         active = true;
+                        StartFastPath();
                     }
                     catch (Exception ex)
                     {
@@ -95,6 +102,64 @@ namespace PaviseApp
                     }
                 }
             }
+        }
+
+        private void StartFastPath()
+        {
+            if (FastTrack == null) return;
+            try
+            {
+                if (!Native.IsElevated()) return;
+                etw = new EtwProcessWatcher("Pavise.ProcWatch");
+                etw.ProcessStarted += OnFastProcessStart;
+                if (etw.Start())
+                    Logger.Log(Lang.T("log.procnotify.2"));
+                else
+                {
+                    Logger.Log(Lang.T("log.procnotify.3") + etw.LastError);
+                    try { etw.Dispose(); } catch { }
+                    etw = null;
+                }
+            }
+            catch { etw = null; }
+        }
+
+        private void OnFastProcessStart(int pid, long stamp)
+        {
+            try
+            {
+                if (FastTrack == null || FastStart == null || pid <= 4) return;
+                IntPtr h = Native.OpenProcess(
+                    Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+                if (h == IntPtr.Zero) return;
+                string name;
+                int session;
+                try
+                {
+                    name = ResolveCurrentProcessName(Native.ImagePath(h));
+                    if (!Native.TryGetLiveProcessSessionId(h, pid, out session)) return;
+                }
+                finally { Native.CloseHandle(h); }
+                FastTrackMaybe(name, session);
+            }
+            catch { }
+        }
+
+        private void FastTrackMaybe(string name, int session)
+        {
+            try
+            {
+                Func<string, int, bool> track = FastTrack;
+                Action fire = FastStart;
+                if (track == null || fire == null) return;
+                if (string.IsNullOrEmpty(name) || !track(name, session)) return;
+                long now = DateTime.UtcNow.Ticks;
+                long last = Interlocked.Read(ref lastFastStartTicks);
+                if (last != 0 && now - last < FastStartMinGapMs * TimeSpan.TicksPerMillisecond) return;
+                if (Interlocked.CompareExchange(ref lastFastStartTicks, now, last) != last) return;
+                fire();
+            }
+            catch { }
         }
 
         private ManagementEventWatcher Watch(
@@ -244,6 +309,8 @@ namespace PaviseApp
             }
             catch { }
             if (change == null) return;
+            if (change.Kind == ProcessChangeKind.Started)
+                FastTrackMaybe(change.Name, change.Session);
 
             Timer timer = null;
             bool armTimer = false;
@@ -324,6 +391,7 @@ namespace PaviseApp
                     Interlocked.Exchange(ref accepting, 0);
                     Interlocked.Increment(ref lifecycleGeneration);
                     active = false;
+                    if (etw != null) { try { etw.Dispose(); } catch { } etw = null; }
                     Kill(ref startW);
                     Kill(ref stopW);
                     DisposeTimer();

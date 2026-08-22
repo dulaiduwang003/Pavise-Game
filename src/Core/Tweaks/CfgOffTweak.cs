@@ -1,6 +1,5 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 为游戏本体按 exe 关闭控制流保护 CFG 经 IFEO MitigationOptions 由内核在进程创建时应用
-// 名单 键存在性标记 空键清理与 exe 名规范化都走 IfeoStore 与 IfeoBoost 共用一套账
 using System;
 using Microsoft.Win32;
 

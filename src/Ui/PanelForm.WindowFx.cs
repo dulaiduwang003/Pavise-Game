@@ -220,6 +220,13 @@ namespace PaviseApp
             return false;
         }
 
+        private void OnIrqProbeToggle(object s, EventArgs e)
+        {
+            IrqSessionProbe.EnabledSetting = swIrqProbe.Checked;
+            swIrqProbe.SetSilently(IrqSessionProbe.EnabledSetting);
+            if (swIrqProbePage != null) swIrqProbePage.SetSilently(IrqSessionProbe.EnabledSetting);
+        }
+
         private void OnAutoHideToggle(object s, EventArgs e)
         {
             Settings.Save(AutoHideKey, swAutoHide.Checked);
@@ -227,12 +234,6 @@ namespace PaviseApp
             swAutoHide.SetSilently(Settings.Load(AutoHideKey, AutoHideDefault));
         }
 
-        private void OnFpsOverlayToggle(object s, EventArgs e)
-        {
-            FpsOverlay.EnabledSetting = swFpsOverlay.Checked;
-            if (!swFpsOverlay.Checked) FpsOverlay.Shutdown();
-            swFpsOverlay.SetSilently(FpsOverlay.EnabledSetting);
-        }
 
         private void OnEscHide(object s, KeyEventArgs e)
         {

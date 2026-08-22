@@ -1,19 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 枚举这台机器上所有能改中断亲和的设备 以及它们当前的亲和策略
-//
-// 为什么不走驱动名映射
-//   驱动名到设备那条路只对即插即用设备驱动成立
-//   ndis.sys tcpip.sys dxgkrnl.sys ntoskrnl.exe 这些框架层没有自己的设备
-//   实测一台机器上超过一半的 DPC 时长落在它们头上 按驱动映射就永远够不着
-//   反过来枚举设备就全通了 DPC 统计从 能不能动手的判据 降级成 该动哪个的参考
-//
-// 判据是设备自己有没有 Interrupt Management 子键
-//   有这个键就说明它参与中断资源分配 才谈得上改亲和
-//   没有的挂在总线下面 或者根本不产生中断 列出来只会让人误点
-//
-// 注意 这里读到的策略是注册表里写着的 不是运行时真正生效的
-//   Affinity Policy 是设备启动分配中断资源时读的 改完要重启设备或重启系统
-//   所以界面上必须写清 已写入 与 已生效 是两回事
 
 using System;
 using System.Collections.Generic;
@@ -30,38 +16,57 @@ namespace PaviseApp
         public string Service = "";
         public string Bus = "";
         public string ClassGuid = "";
-        // 注册表里写着的策略 0 或缺失表示系统默认
         public int Policy;
         public ulong Mask;
-        // 这台设备的驱动在本次扫描里的中断表现 没有对应数据时为空
+        public bool DevicePriorityHigh;
         public double MaxUs;
         public double TotalUs;
         public long Dpc;
-        // 单次最长只说明最坏那一次 超时次数才说明它是偶发还是一直在拖
-        // 之前 Attach 把这两个字段丢了 用户只看得到一个孤零零的最大值 没法判断
         public long Over500Us;
         public long Over1Ms;
         public ulong SeenOnCpus;
-        // 被别的开关占着 中断页就不能再动它 两套备份压同一个值 还原会变成随机数
+        public bool FrameworkStats;
+        public string StatsDriver = "";
+
+        public bool FromCheckup;
         public bool ManagedElsewhere;
-        // 键鼠的中断多半不是自己产生的 是挂在 USB 主控下面由主控统一上报
-        //   所以真正会被钉的是主控 一钉就是这条总线上所有输入设备一起走
-        //   移到跑得慢的核上 DPC 会变长 输入延迟跟着变 得先告诉用户再让他决定
         public bool InputRisk;
 
-        // 注册表里已经指定了落点 掩码就写在这台设备自己那儿
-        //   目标核是每台设备各自的 所以判定不需要外面传一个全局目标进来
+        public int MessageCount;
+        public bool MultiMessageRisk;
+
+        public bool CompletionFollowsIssuer;
+
         public bool IsPinned { get { return Policy == 4 && Mask != 0; } }
 
-        // 中断真的落在它自己那组核里了 这才叫生效
-        //   写入和生效必须分开判 设备是启动分配中断资源时读策略的 不重启就还是老落点
-        //   没观测到中断的设备返回 false 不能拿没有证据当成功
         public bool Effective
         {
             get { return IsPinned && SeenOnCpus != 0 && (SeenOnCpus & ~Mask) == 0; }
         }
-        // 同一个驱动挂着多个设备时 中断数据是这个驱动的合计 不是这一台的
+
+        public bool RebootedSincePin;
+
+        public bool AwaitingReboot { get { return IsPinned && !Effective && !RebootedSincePin; } }
+
+        public bool PlacementMismatch
+        {
+            get
+            {
+                if (!IsPinned || RebootedSincePin == false) return false;
+                if (SeenOnCpus == 0) return false;
+                if (Verdict != null && Verdict.MaskTruncated) return false;
+                return (SeenOnCpus & ~Mask) != 0;
+            }
+        }
+
+        public bool Unverified
+        {
+            get { return IsPinned && !Effective && RebootedSincePin && !PlacementMismatch; }
+        }
         public bool SharedStats;
+
+        public IrqDriverVerdict Verdict;
+        public bool Worth { get { return Verdict != null && Verdict.Worth; } }
     }
 
     internal static class IrqDeviceInventory
@@ -71,7 +76,6 @@ namespace PaviseApp
         private const string IntrSuffix = @"\Device Parameters\Interrupt Management";
 
         private static readonly string[] Buses = { "PCI", "USB", "HDAUDIO", "ACPI" };
-        // 一个总线下面几千个实例时不值得全扫 真正带中断的设备远没那么多
         private const int MaxPerBus = 512;
 
         public static List<IrqDevice> Enumerate()
@@ -114,10 +118,6 @@ namespace PaviseApp
             {
                 if (im == null) return null;
             }
-            // 只留现在真的在机器上并且已启动的设备
-            // 拔掉的卡在注册表里会一直留着 列出来会让人对着一块不存在的显卡按按钮
-            // Control 是易失键 只有设备启动后才存在 里面的 AllocConfig 是已分配的硬件资源
-            // 一开始拿 ActiveService 判是错的 那个值根本不在这个键里 实测查出来是零个设备
             using (RegistryKey ctl = Registry.LocalMachine.OpenSubKey(EnumRoot + instanceId + @"\Control"))
             {
                 if (ctl == null) return null;
@@ -143,6 +143,9 @@ namespace PaviseApp
             catch { }
             if (d.Name.Length == 0) d.Name = DriverDeviceResolver.ShortId(instanceId);
             d.InputRisk = LooksLikeInput(d);
+            d.MessageCount = ReadMessageCount(instanceId);
+            d.MultiMessageRisk = LooksMultiQueue(d);
+            d.CompletionFollowsIssuer = LooksStorage(d);
 
             try
             {
@@ -154,6 +157,9 @@ namespace PaviseApp
                         if (p != null) try { d.Policy = Convert.ToInt32(p); } catch { }
                         var raw = a.GetValue("AssignmentSetOverride") as byte[];
                         if (raw != null) d.Mask = IrqAffinityEngine.BytesToMask(raw);
+                        object pri = a.GetValue("DevicePriority");
+                        if (pri != null)
+                            try { d.DevicePriorityHigh = Convert.ToInt32(pri) >= 3; } catch { }
                     }
                 }
             }
@@ -171,10 +177,6 @@ namespace PaviseApp
             catch { return ""; }
         }
 
-        // 输入相关设备类 键鼠 HID 以及它们挂着的 USB 主控
-        //   HIDClass 4d36e96b 键盘 4d36e96f 鼠标 745a17a0 HID
-        //   主控按服务名认 各家 xHCI 驱动名字不同 但都带 xhc ehci ohci uhci
-        //   i8042prt 是 PS/2 键鼠 老机器上还在用
         private static readonly string[] InputClassGuids =
         {
             "{745a17a0-74d3-11d0-b6fe-00a0c90f57da}",
@@ -185,6 +187,46 @@ namespace PaviseApp
         private static readonly string[] InputServiceHints =
         { "xhc", "ehci", "ohci", "uhci", "usbhub", "hidusb", "kbdhid", "mouhid", "i8042prt" };
 
+        private const string MsiSuffix = IntrSuffix + @"\MessageSignaledInterruptProperties";
+
+        private static int ReadMessageCount(string instanceId)
+        {
+            try
+            {
+                using (RegistryKey k = Registry.LocalMachine.OpenSubKey(EnumRoot + instanceId + MsiSuffix))
+                {
+                    if (k == null) return 0;
+                    object limit = k.GetValue("MessageNumberLimit");
+                    if (limit == null) return 0;
+                    return Convert.ToInt32(limit);
+                }
+            }
+            catch { return 0; }
+        }
+
+        internal static bool LooksMultiQueue(IrqDevice d)
+        {
+            if (d == null) return false;
+            if (d.MessageCount > 1) return true;
+            return string.Equals(d.ClassGuid, NetClassGuid, StringComparison.OrdinalIgnoreCase)
+                && d.MessageCount == 0;
+        }
+
+        private static readonly string[] StorageServiceHints =
+        { "storport", "stornvme", "storahci", "storufs", "iastor", "nvme", "sata", "raid" };
+
+        internal static bool LooksStorage(IrqDevice d)
+        {
+            if (d == null) return false;
+            if (string.Equals(d.ClassGuid, ScsiClassGuid, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(d.ClassGuid, HdcClassGuid, StringComparison.OrdinalIgnoreCase)) return true;
+            string svc = (d.Service ?? "").ToLowerInvariant();
+            if (svc.Length == 0) return false;
+            foreach (string h in StorageServiceHints)
+                if (svc.IndexOf(h, StringComparison.Ordinal) >= 0) return true;
+            return false;
+        }
+
         internal static bool LooksLikeInput(IrqDevice d)
         {
             if (d == null) return false;
@@ -194,44 +236,131 @@ namespace PaviseApp
             if (svc.Length > 0)
                 foreach (string h in InputServiceHints)
                     if (svc.IndexOf(h, StringComparison.Ordinal) >= 0) return true;
-            // USB 总线上的设备一律算 那条总线上插着什么我们看不全
             return string.Equals(d.Bus, "USB", StringComparison.OrdinalIgnoreCase);
         }
 
-        // 把一次扫描里的驱动数据贴到设备上 贴不上的设备就是没产生可观测中断
-        // 排序放在贴完数据之后 因为要按中断表现排
-        //   本机实测 17 台在场设备里只有 5 台产生了可观测中断 其余是桥和空设备
-        //   全列出来是为了够得着 排序保证该动的那台在最上面
-        public static void MarkOwnership(List<IrqDevice> devices)
+        private sealed class FrameworkOwner
         {
-            if (devices == null) return;
-            List<string> owned;
-            try { owned = IrqRelocate.OwnedElsewhere(); }
-            catch { return; }
+            public readonly string Driver;
+            public readonly string[] ClassGuids;
+            public FrameworkOwner(string driver, string[] guids) { Driver = driver; ClassGuids = guids; }
+        }
+
+        private const string NetClassGuid = "{4d36e972-e325-11ce-bfc1-08002be10318}";
+        private const string ScsiClassGuid = "{4d36e97b-e325-11ce-bfc1-08002be10318}";
+        private const string HdcClassGuid = "{4d36e96a-e325-11ce-bfc1-08002be10318}";
+
+        private static readonly FrameworkOwner[] FrameworkOwners =
+        {
+            new FrameworkOwner("ndis", new[] { NetClassGuid }),
+            new FrameworkOwner("storport", new[] { ScsiClassGuid, HdcClassGuid }),
+        };
+
+        private static FrameworkOwner OwnerForDriver(string driverImageName)
+        {
+            string svc = driverImageName ?? "";
+            int dot = svc.LastIndexOf('.');
+            if (dot > 0) svc = svc.Substring(0, dot);
+            foreach (FrameworkOwner o in FrameworkOwners)
+                if (string.Equals(o.Driver, svc, StringComparison.OrdinalIgnoreCase)) return o;
+            return null;
+        }
+
+        private static bool OwnsDevice(FrameworkOwner o, IrqDevice d)
+        {
+            if (o == null || d == null) return false;
+            foreach (string g in o.ClassGuids)
+                if (string.Equals(d.ClassGuid, g, StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+
+        private static int ClassMemberCount(List<IrqDevice> devices, FrameworkOwner o)
+        {
+            int n = 0;
+            foreach (IrqDevice d in devices) if (OwnsDevice(o, d)) n++;
+            return n;
+        }
+
+        internal static void AttachCheckup(List<IrqDevice> devices, IrqCheckupResult ck)
+        {
+            if (devices == null || ck == null || !ck.Ok) return;
             foreach (IrqDevice d in devices)
-                foreach (string g in owned)
-                    if (string.Equals(g, d.InstanceId, StringComparison.OrdinalIgnoreCase))
-                    { d.ManagedElsewhere = true; break; }
+            {
+                if (d.Dpc > 0) continue;
+                foreach (IrqCheckupDevice c in ck.Devices)
+                {
+                    if (!string.Equals(c.InstanceId, d.InstanceId, StringComparison.OrdinalIgnoreCase)) continue;
+                    d.MaxUs = c.P99Us;
+                    d.Dpc = c.Dpc;
+                    d.SeenOnCpus = c.CpuMask;
+                    d.FromCheckup = true;
+                    if (c.StatsDriver != null && !string.Equals(c.StatsDriver, d.Service,
+                            StringComparison.OrdinalIgnoreCase))
+                    { d.FrameworkStats = true; d.StatsDriver = c.StatsDriver; }
+                    break;
+                }
+            }
         }
 
-        public static void Sort(List<IrqDevice> devices)
+        public static void AttachVerdicts(List<IrqDevice> devices, List<IrqDriverVerdict> verdicts)
         {
             if (devices == null) return;
-            devices.Sort(delegate (IrqDevice a, IrqDevice b)
+            var perService = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (IrqDevice d in devices)
             {
-                if (a.MaxUs != b.MaxUs) return b.MaxUs.CompareTo(a.MaxUs);
-                if (a.Dpc != b.Dpc) return b.Dpc.CompareTo(a.Dpc);
-                int c = string.Compare(a.Bus, b.Bus, StringComparison.OrdinalIgnoreCase);
-                if (c != 0) return c;
-                return string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
-            });
+                if (d.Service.Length == 0) continue;
+                int n; perService.TryGetValue(d.Service, out n);
+                perService[d.Service] = n + 1;
+            }
+            if (verdicts == null) return;
+            foreach (IrqDevice d in devices)
+            {
+                if (d.Service.Length == 0) continue;
+                foreach (IrqDriverVerdict v in verdicts)
+                {
+                    string svc = v.Driver ?? "";
+                    int dot = svc.LastIndexOf('.');
+                    if (dot > 0) svc = svc.Substring(0, dot);
+                    if (!string.Equals(svc, d.Service, StringComparison.OrdinalIgnoreCase)) continue;
+                    d.Verdict = v;
+                    d.MaxUs = v.WorstMaxUs;
+                    d.Over500Us = v.TotalOver500;
+                    d.Dpc = (long)v.DpcPerMinute;
+                    d.SeenOnCpus = v.CpuMask;
+                    int n; perService.TryGetValue(d.Service, out n);
+                    d.SharedStats = n > 1;
+                    break;
+                }
+            }
+            AttachFrameworkVerdicts(devices, verdicts);
         }
 
-        public static void Attach(List<IrqDevice> devices, IrqScanResult scan)
+        private static void AttachFrameworkVerdicts(List<IrqDevice> devices, List<IrqDriverVerdict> verdicts)
         {
-            if (devices == null || scan == null || !scan.Ok) return;
-            // 一个驱动挂几台设备时 那份中断统计是驱动的合计 要标出来 不能让人以为是单台的
-            var perService = new Dictionary<string, int>();
+            foreach (IrqDriverVerdict v in verdicts)
+            {
+                FrameworkOwner o = OwnerForDriver(v.Driver);
+                if (o == null) continue;
+                int members = ClassMemberCount(devices, o);
+                if (members == 0) continue;
+                foreach (IrqDevice d in devices)
+                {
+                    if (d.Dpc > 0 || d.Verdict != null || !OwnsDevice(o, d)) continue;
+                    d.Verdict = v;
+                    d.MaxUs = v.WorstMaxUs;
+                    d.Over500Us = v.TotalOver500;
+                    d.Dpc = (long)v.DpcPerMinute;
+                    d.SeenOnCpus = v.CpuMask;
+                    d.FrameworkStats = true; d.StatsDriver = v.Driver;
+                    d.SharedStats = members > 1;
+                }
+            }
+        }
+
+        internal static void AttachScan(List<IrqDevice> devices, IrqScanResult scan)
+        {
+            if (devices == null || scan == null) return;
+            var perService = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             foreach (IrqDevice d in devices)
             {
                 if (d.Service.Length == 0) continue;
@@ -254,14 +383,60 @@ namespace PaviseApp
                     break;
                 }
             }
+            AttachFrameworkScan(devices, scan);
         }
 
-        // 单次 DPC 多长才算长 这几条线不是我拍的
-        //   100us  微软给驱动作者的 DPC 时长建议上限 正常驱动应该在这条线以内
-        //   500us  一次就吃掉 144fps 一帧预算的 7% 音视频类工具普遍拿它当丢帧门槛
-        //   1000us 一次就可能把一帧顶过 60fps 的预算
-        // 分档只回答 这台设备的中断长不长 不回答 挪了能不能提升帧率
-        // 后者这个项目没有实测证据 界面上必须照实说 不能拿分档暗示收益
+        private static void AttachFrameworkScan(List<IrqDevice> devices, IrqScanResult scan)
+        {
+            foreach (IrqCandidate c in scan.Candidates)
+            {
+                FrameworkOwner o = OwnerForDriver(c.Driver);
+                if (o == null) continue;
+                int members = ClassMemberCount(devices, o);
+                if (members == 0) continue;
+                foreach (IrqDevice d in devices)
+                {
+                    if (d.Dpc > 0 || !OwnsDevice(o, d)) continue;
+                    d.MaxUs = c.MaxUs; d.TotalUs = c.TotalUs; d.Dpc = c.Dpc; d.SeenOnCpus = c.CpuMask;
+                    d.Over500Us = c.Over500Us; d.Over1Ms = c.Over1Ms;
+                    d.FrameworkStats = true; d.StatsDriver = c.Driver;
+                    d.SharedStats = members > 1;
+                }
+            }
+        }
+
+        public static void MarkOwnership(List<IrqDevice> devices)
+        {
+            if (devices == null) return;
+            foreach (IrqDevice d in devices)
+            {
+                if (!d.IsPinned) { d.RebootedSincePin = true; continue; }
+                try { d.RebootedSincePin = IrqRelocate.RebootedSinceWrite(d.InstanceId); }
+                catch { d.RebootedSincePin = true; }
+            }
+
+            List<string> owned;
+            try { owned = IrqRelocate.OwnedElsewhere(); }
+            catch { return; }
+            foreach (IrqDevice d in devices)
+                foreach (string g in owned)
+                    if (string.Equals(g, d.InstanceId, StringComparison.OrdinalIgnoreCase))
+                    { d.ManagedElsewhere = true; break; }
+        }
+
+        public static void Sort(List<IrqDevice> devices)
+        {
+            if (devices == null) return;
+            devices.Sort(delegate (IrqDevice a, IrqDevice b)
+            {
+                if (a.MaxUs != b.MaxUs) return b.MaxUs.CompareTo(a.MaxUs);
+                if (a.Dpc != b.Dpc) return b.Dpc.CompareTo(a.Dpc);
+                int c = string.Compare(a.Bus, b.Bus, StringComparison.OrdinalIgnoreCase);
+                if (c != 0) return c;
+                return string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
+            });
+        }
+
         internal const double GradeLongUs = 100.0;
         internal const double GradeHeavyUs = 500.0;
         internal const double GradeSevereUs = 1000.0;
@@ -287,8 +462,6 @@ namespace PaviseApp
             }
         }
 
-        // 把微秒换成用户看得懂的东西 一帧预算的百分之几
-        // 60 和 144 是固定参照点 不去猜用户的刷新率 猜错了比不给更糟
         internal static string BudgetText(double maxUs)
         {
             if (maxUs <= 0) return "";

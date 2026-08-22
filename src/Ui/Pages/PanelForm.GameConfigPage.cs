@@ -239,7 +239,7 @@ namespace PaviseApp
 
             ty = 2;
             AddCfgSection(cfgTabPanels[2], Lang.T("cfg.group.mempower"), ref ty,
-                new[] { PolicyCatalog.KeyStandbySweep, PolicyCatalog.KeyPowerPlan });
+                new[] { PolicyCatalog.KeyPowerPlan });
             AddCfgSection(cfgTabPanels[2], Lang.T("cfg.sub.net"), ref ty,
                 new[] { PolicyCatalog.KeyPauseDl, PolicyCatalog.KeyPauseUpdate,
                     PolicyCatalog.KeyWlanGuard });
@@ -253,8 +253,6 @@ namespace PaviseApp
                     PolicyCatalog.KeyNvSmoothMotion, PolicyCatalog.KeyNvShaderCache,
                     PolicyCatalog.KeyNvDlss, PolicyCatalog.KeyNvRebar,
                     PolicyCatalog.KeyNvAnselOff });
-            AddCfgSection(cfgTabPanels[3], "AMD", ref ty,
-                new[] { PolicyCatalog.KeyAmdAntiLag, PolicyCatalog.KeyAmdAfmf });
             EnableCardCollapse(cfgTabPanels[3]);
 
             cfgTabKeys = new[]
@@ -265,15 +263,14 @@ namespace PaviseApp
                     PolicyCatalog.KeyIfeoBoost, PolicyCatalog.KeyRenderLane },
                 new[] { PolicyCatalog.KeyStrictCores, PolicyCatalog.KeyCoreDomainAlt,
                     PolicyCatalog.KeyCoreMask },
-                new[] { PolicyCatalog.KeyStandbySweep, PolicyCatalog.KeyPowerPlan,
+                new[] { PolicyCatalog.KeyPowerPlan,
                     PolicyCatalog.KeyPauseDl, PolicyCatalog.KeyPauseUpdate,
                     PolicyCatalog.KeyWlanGuard, PolicyCatalog.KeyAwake },
                 new[] { PolicyCatalog.KeyNvMaxPerf,
                     PolicyCatalog.KeyNvLowLat, PolicyCatalog.KeyNvSmoothMotion,
                     PolicyCatalog.KeyNvShaderCache,
                     PolicyCatalog.KeyNvDlss, PolicyCatalog.KeyNvRebar,
-                    PolicyCatalog.KeyNvAnselOff,
-                    PolicyCatalog.KeyAmdAntiLag, PolicyCatalog.KeyAmdAfmf },
+                    PolicyCatalog.KeyNvAnselOff },
             };
 
             SyncCfgRows();
@@ -321,7 +318,6 @@ namespace PaviseApp
                 case PolicyCatalog.KeyGpuDemote: return "gm.gpudemote.sub";
                 case PolicyCatalog.KeyIfeoBoost: return "gm.ifeo.sub";
                 case PolicyCatalog.KeyRenderLane: return "gm.lane.sub";
-                case PolicyCatalog.KeyStandbySweep: return "gm.standby.sub";
                 case PolicyCatalog.KeyPowerPlan: return "cfg.plan.sub";
                 case PolicyCatalog.KeyPauseDl: return "gm.pausedl.sub";
                 case PolicyCatalog.KeyPauseUpdate: return "gm.pausewu.sub";
@@ -334,8 +330,6 @@ namespace PaviseApp
                 case PolicyCatalog.KeyNvAnselOff: return "set.nvansel.n";
                 case PolicyCatalog.KeyNvRebar: return "set.nvrebar.n";
                 case PolicyCatalog.KeyNvDlss: return "set.nvdlss.n";
-                case PolicyCatalog.KeyAmdAntiLag: return "set.amdalag.n";
-                case PolicyCatalog.KeyAmdAfmf: return "set.amdafmf.n";
                 default: return null;
             }
         }
@@ -343,7 +337,6 @@ namespace PaviseApp
         private static bool CfgItemSupported(PolicyItem item, out string reasonKey)
         {
             bool nvOk = NvApi.Available;
-            bool amdOk = AdlxTweaks.Available;
             reasonKey = null;
             switch (item.Key)
             {
@@ -365,14 +358,6 @@ namespace PaviseApp
                     if (!nvOk) { reasonKey = "set.nv.none"; return false; }
                     if (!NvDrsTweaks.DlssGpuCapable() || !NvDrsTweaks.DlssDriverSupported())
                     { reasonKey = "set.amd.nosup"; return false; }
-                    return true;
-                case PolicyCatalog.KeyAmdAntiLag:
-                    if (!amdOk) { reasonKey = "set.amd.none"; return false; }
-                    if (!AdlxTweaks.AntiLagSupported()) { reasonKey = "set.amd.nosup"; return false; }
-                    return true;
-                case PolicyCatalog.KeyAmdAfmf:
-                    if (!amdOk) { reasonKey = "set.amd.none"; return false; }
-                    if (!AdlxTweaks.AfmfSupported()) { reasonKey = "set.amd.nosup"; return false; }
                     return true;
                 default:
                     return true;

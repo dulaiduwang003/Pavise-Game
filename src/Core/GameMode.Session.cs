@@ -24,7 +24,7 @@ namespace PaviseApp
         {
             GpuThrottleProbe.Reset();
             VramSpillProbe.Reset();
-            FrameRateMonitor.Reset();
+            irqProbe.Begin(game);
             long paviseCpu = CurrentProcessCpuTicks();
             lock (sync)
             {
@@ -155,9 +155,8 @@ namespace PaviseApp
             if (throttle != null) msg += Lang.F("rep.gputhrottle", throttle);
             string spill = VramSpillProbe.Summarize();
             if (spill != null) msg += Lang.F("rep.vramspill", spill);
-            string fps = FrameRateMonitor.Summarize();
-            if (fps != null) msg += fps;
-            FrameRateMonitor.Stop();
+            string irq = irqProbe.TakeSummary();
+            if (irq != null) msg += irq;
             Logger.Log(Lang.T("log.gamemodesession.1") + msg);
 
             if (dur.TotalSeconds >= 60)

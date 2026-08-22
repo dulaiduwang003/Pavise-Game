@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 按游戏写入 NVIDIA 驱动 Profile 设置 快照先行 可按项恢复
 using System;
 using System.Collections.Generic;
@@ -59,6 +59,7 @@ namespace PaviseApp
             switch (key)
             {
                 case KeyPState: return NvApi.SettingPreferredPState;
+                case KeyFrl: return NvApi.SettingFrlFps;
                 case KeyPreRender: return NvApi.SettingPreRenderLimit;
                 case KeyLowLatCpl: return NvApi.SettingLowLatencyCpl;
                 case KeyUllEnable: return NvApi.SettingUltraLowLatEnable;
@@ -70,8 +71,29 @@ namespace PaviseApp
                 case KeyRebarSize: return NvApi.SettingRebarSizeLimit;
                 case KeyDlssOvr: return NvApi.SettingDlssSrOverride;
                 case KeyDlssPreset: return NvApi.SettingDlssSrPreset;
-                default: return NvApi.SettingFrlFps;
+                default: return 0;
             }
+        }
+
+        private static int TryGetDwordOf(IntPtr session, IntPtr profile, string key, out uint value)
+        {
+            uint id = SettingIdOf(key);
+            if (id == 0) { value = 0; return -1; }
+            return NvApi.TryGetDword(session, profile, id, out value);
+        }
+
+        private static bool SetDwordOf(IntPtr session, IntPtr profile, string key, uint value, out int status)
+        {
+            uint id = SettingIdOf(key);
+            if (id == 0) { status = 0; return false; }
+            return NvApi.SetDword(session, profile, id, value, out status);
+        }
+
+        private static bool DeleteSettingOf(IntPtr session, IntPtr profile, string key)
+        {
+            uint id = SettingIdOf(key);
+            if (id == 0) return false;
+            return NvApi.DeleteSetting(session, profile, id);
         }
 
         internal static bool IsDlssCapableName(string gpuName)
@@ -147,7 +169,7 @@ namespace PaviseApp
             if (lowLat == "on" || lowLat == "ultra")
             {
                 desired.Add(new KeyValuePair<string, uint>(KeyPreRender, 1u));
-                if (lowLat == "ultra")
+                if (lowLat == "ultra" && !UltraDriverGone())
                 {
                     desired.Add(new KeyValuePair<string, uint>(KeyUllEnable, 1u));
                     desired.Add(new KeyValuePair<string, uint>(KeyLowLatCpl, NvApi.UltraCplUltra));
@@ -204,6 +226,21 @@ namespace PaviseApp
 
         private static string SatKey(string exeName) { return "NvDrsSat_" + exeName; }
 
+        internal const string UllUnsupKey = "NvUllUnsupDrv";
+
+        internal static bool UltraDriverGone()
+        {
+            return Settings.LoadStr(UllUnsupKey, "") == "d" + NvApi.DriverVersion();
+        }
+
+        private static void MarkUltraGone()
+        {
+            string tag = "d" + NvApi.DriverVersion();
+            if (Settings.LoadStr(UllUnsupKey, "") == tag) return;
+            Settings.SaveStr(UllUnsupKey, tag);
+            Logger.Log(Lang.T("log.nvdrstweaks.48"));
+        }
+
         private const char AppliedSep = '~';
 
         internal static string SnapOrig(string stored)
@@ -229,6 +266,13 @@ namespace PaviseApp
 
         public static List<string> ApplyForGame(string exePath, NvGamePlan plan)
         {
+            bool ignore;
+            return ApplyForGame(exePath, plan, out ignore);
+        }
+
+        public static List<string> ApplyForGame(string exePath, NvGamePlan plan, out bool retryLater)
+        {
+            retryLater = false;
             if (string.IsNullOrEmpty(exePath)) return null;
             if (!NvApi.Available) return null;
             string exeName = Path.GetFileName(exePath);
@@ -243,30 +287,37 @@ namespace PaviseApp
             lock (sync)
             {
                 IntPtr session;
-                if (!NvApi.TryOpenSession(out session)) return null;
+                if (!NvApi.TryOpenSession(out session)) { retryLater = true; return null; }
                 try
                 {
                     IntPtr profile;
-                    if (!NvApi.FindOrCreateAppProfile(session, exeName, out profile)) return null;
+                    if (!NvApi.FindOrCreateAppProfile(session, exeName, out profile)) { retryLater = true; return null; }
                     var snapshot = ParseSnapshot(Settings.LoadStr(SnapPrefix + exeName, ""));
                     bool snapshotDirty = false;
+                    var unsnapshotted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                     foreach (var item in desired)
                     {
                         if (!snapshot.ContainsKey(item.Key))
                         {
                             uint orig;
-                            int found = NvApi.TryGetDword(session, profile, SettingIdOf(item.Key), out orig);
-                            if (found < 0) continue;
+                            int found = TryGetDwordOf(session, profile, item.Key, out orig);
+                            if (found < 0) { unsnapshotted.Add(item.Key); continue; }
                             snapshot[item.Key] = found == 1 ? orig.ToString() : "absent";
                             snapshotDirty = true;
                         }
                     }
+                    if (unsnapshotted.Count > 0)
+                        desired.RemoveAll(delegate(KeyValuePair<string, uint> kv)
+                        {
+                            return unsnapshotted.Contains(kv.Key);
+                        });
                     if (snapshotDirty)
                     {
                         if (!Settings.SaveStr(SnapPrefix + exeName, SerializeSnapshot(snapshot))
                             || !AddToList(exeName))
                         {
                             Logger.Log(Lang.T("log.nvdrstweaks.8") + exeName);
+                            retryLater = true;
                             return null;
                         }
                     }
@@ -285,16 +336,16 @@ namespace PaviseApp
                         string orig = SnapOrig(snapshot[key]);
                         uint applied, cur;
                         if (TrySnapApplied(snapshot[key], out applied)
-                            && NvApi.TryGetDword(session, profile, SettingIdOf(key), out cur) == 1
+                            && TryGetDwordOf(session, profile, key, out cur) == 1
                             && cur != applied)
                         {
                             restoredKeys.Add(key); yielded++;
                             continue;
                         }
                         bool ok = orig == "absent"
-                            ? NvApi.TryGetDword(session, profile, SettingIdOf(key), out cur) == 0
-                                || NvApi.DeleteSetting(session, profile, SettingIdOf(key))
-                            : NvApi.SetDword(session, profile, SettingIdOf(key), ParseUInt(orig));
+                            ? TryGetDwordOf(session, profile, key, out cur) == 0
+                                || DeleteSettingOf(session, profile, key)
+                            : RestoreDword(session, profile, key, orig);
                         if (ok) { restoredKeys.Add(key); wrote = true; }
                         else failed.Add(key);
                     }
@@ -302,23 +353,28 @@ namespace PaviseApp
                     foreach (var item in desired)
                     {
                         uint current;
-                        if (NvApi.TryGetDword(session, profile, SettingIdOf(item.Key), out current) == 1
+                        if (TryGetDwordOf(session, profile, item.Key, out current) == 1
                             && current == item.Value) continue;
                         int status;
-                        if (NvApi.SetDword(session, profile, SettingIdOf(item.Key), item.Value, out status)) wrote = true;
+                        if (SetDwordOf(session, profile, item.Key, item.Value, out status)) wrote = true;
                         else
                         {
                             failed.Add(item.Key);
-                            Logger.Log(Lang.T("log.nvdrstweaks.9") + item.Key + Lang.T("log.nvdrstweaks.10") + exeName
-                                + Lang.T("log.nvdrstweaks.11") + status);
+                            if (status == NvApi.StatusSettingNotFound
+                                && (item.Key == KeyUllEnable || item.Key == KeyLowLatCpl))
+                                MarkUltraGone();
+                            else
+                                Logger.Log(Lang.T("log.nvdrstweaks.9") + item.Key + Lang.T("log.nvdrstweaks.10") + exeName
+                                    + Lang.T("log.nvdrstweaks.11") + status);
                         }
                     }
                     bool saved = !wrote || NvApi.SaveSession(session);
                     if (wrote && saved)
                     {
+                        string lowLatDone = plan.LowLatMode == "ultra" && UltraDriverGone() ? "on" : plan.LowLatMode;
                         string done = (plan.MaxPerf && !failed.Contains(KeyPState) ? Lang.T("t.nvdrstweaks.12") : "")
-                            + (plan.LowLatMode == "ultra" && !ContainsAny(failed, UltraKeys) ? Lang.T("t.nvdrstweaks.14")
-                                : plan.LowLatMode == "on" && !failed.Contains(KeyPreRender) ? Lang.T("t.nvdrstweaks.15") : "")
+                            + (lowLatDone == "ultra" && !ContainsAny(failed, UltraKeys) ? Lang.T("t.nvdrstweaks.14")
+                                : lowLatDone == "on" && !failed.Contains(KeyPreRender) ? Lang.T("t.nvdrstweaks.15") : "")
                             + (plan.SmoothMotion && SmoothMotionSupported() && !failed.Contains(KeySmooth)
                                 ? Lang.T("t.nvdrstweaks.16") : "")
                             + (plan.ShaderCacheMax && !failed.Contains(KeyShaderCache) ? Lang.T("t.nvdrstweaks.17") : "")
@@ -412,7 +468,7 @@ namespace PaviseApp
                         {
                             uint applied, curNow;
                             if (TrySnapApplied(stored, out applied)
-                                && NvApi.TryGetDword(session, profile, SettingIdOf(key), out curNow) == 1
+                                && TryGetDwordOf(session, profile, key, out curNow) == 1
                                 && curNow != applied)
                             {
                                 snapshot.Remove(key);
@@ -428,9 +484,9 @@ namespace PaviseApp
                             }
                             uint cur;
                             bool ok = orig == "absent"
-                                ? NvApi.TryGetDword(session, profile, SettingIdOf(key), out cur) == 0
-                                    || NvApi.DeleteSetting(session, profile, SettingIdOf(key))
-                                : NvApi.SetDword(session, profile, SettingIdOf(key), ParseUInt(orig));
+                                ? TryGetDwordOf(session, profile, key, out cur) == 0
+                                    || DeleteSettingOf(session, profile, key)
+                                : RestoreDword(session, profile, key, orig);
                             if (ok && NvApi.SaveSession(session))
                             {
                                 snapshot.Remove(key);
@@ -469,39 +525,88 @@ namespace PaviseApp
             }
         }
 
-        public static int HealOrphans()
+        public static bool HasGameResidue
         {
-            if (!NvApi.Available && NvidiaAbsent())
+            get { return Settings.LoadStr(ListKey, "").Length > 0; }
+        }
+
+        public static bool RestoreAllGames()
+        {
+            lock (sync)
             {
-                int dropped = DropAllSnapshots();
-                if (dropped > 0)
-                    Logger.Log(Lang.T("log.nvdrstweaks.34") + dropped + Lang.T("log.nvdrstweaks.35"));
-                return 0;
+                string[] games = Settings.LoadStr(ListKey, "")
+                    .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+                if (games.Length == 0) return true;
+                if (!NvApi.Available)
+                {
+                    if (!NvidiaAbsent()) return false;
+                    int dropped = DropAllSnapshots();
+                    if (dropped > 0)
+                        Logger.Log(Lang.T("log.nvdrstweaks.34") + dropped + Lang.T("log.nvdrstweaks.35"));
+                    return true;
+                }
+                bool allOk = true;
+                foreach (string exeName in games)
+                {
+                    var snapshot = ParseSnapshot(Settings.LoadStr(SnapPrefix + exeName, ""));
+                    if (snapshot.Count == 0)
+                    {
+                        Settings.SaveStr(SnapPrefix + exeName, "");
+                        Settings.SaveStr(SatKey(exeName), "");
+                        RemoveFromList(exeName);
+                        continue;
+                    }
+                    IntPtr session;
+                    if (!NvApi.TryOpenSession(out session)) return false;
+                    try
+                    {
+                        IntPtr profile;
+                        if (!NvApi.FindOrCreateAppProfile(session, exeName, out profile))
+                        { allOk = false; continue; }
+                        var done = new List<string>();
+                        int yielded = 0;
+                        bool wrote = false;
+                        bool anyFail = false;
+                        foreach (string key in new List<string>(snapshot.Keys))
+                        {
+                            string stored = snapshot[key];
+                            string orig = SnapOrig(stored);
+                            uint applied, cur;
+                            if (TrySnapApplied(stored, out applied)
+                                && TryGetDwordOf(session, profile, key, out cur) == 1
+                                && cur != applied)
+                            { done.Add(key); yielded++; continue; }
+                            bool ok = orig == "absent"
+                                ? TryGetDwordOf(session, profile, key, out cur) == 0
+                                    || DeleteSettingOf(session, profile, key)
+                                : RestoreDword(session, profile, key, orig);
+                            if (ok) { done.Add(key); wrote = true; }
+                            else anyFail = true;
+                        }
+                        if (wrote && !NvApi.SaveSession(session)) { allOk = false; continue; }
+                        foreach (string key in done) snapshot.Remove(key);
+                        if (snapshot.Count == 0)
+                        {
+                            Settings.SaveStr(SnapPrefix + exeName, "");
+                            RemoveFromList(exeName);
+                        }
+                        else Settings.SaveStr(SnapPrefix + exeName, SerializeSnapshot(snapshot));
+                        Settings.SaveStr(SatKey(exeName), "");
+                        if (done.Count > 0)
+                            Logger.Log(Lang.T("log.nvdrstweaks.36") + exeName + Lang.T("log.nvdrstweaks.37")
+                                + (done.Count - yielded) + Lang.T("log.nvdrstweaks.44")
+                                + (yielded > 0 ? Lang.T("log.nvdrstweaks.39") + yielded + Lang.T("log.nvdrstweaks.40") : ""));
+                        if (anyFail)
+                        {
+                            allOk = false;
+                            Logger.Log(Lang.T("log.nvdrstweaks.45") + exeName + Lang.T("log.nvdrstweaks.46")
+                                + snapshot.Count + Lang.T("log.nvdrstweaks.47"));
+                        }
+                    }
+                    finally { NvApi.CloseSession(session); }
+                }
+                return allOk;
             }
-            if (!NvApi.Available)
-            {
-                // 显卡还在只是接口拿不到（驱动更新中 / 损坏 / 被禁用）
-                // 快照必须原样留着等下次 这里点明原因 免得日志只剩一句"暂时无法还原"
-                int pending = 0;
-                foreach (string key in OrphanHealKinds())
-                    if (HasSnapshotFor(key)) pending++;
-                if (pending > 0)
-                    Logger.Log(Lang.T("log.nvdrstweaks.42") + pending + Lang.T("log.nvdrstweaks.43"));
-                return 0;
-            }
-            int healed = 0;
-            int stuck = 0;
-            foreach (string key in OrphanHealKinds())
-            {
-                if (!HasSnapshotFor(key)) continue;
-                RestoreKind(key);
-                if (HasSnapshotFor(key)) stuck++; else healed++;
-            }
-            if (healed > 0)
-                Logger.Log(Lang.T("log.nvdrstweaks.30") + healed + Lang.T("log.nvdrstweaks.31"));
-            if (stuck > 0)
-                Logger.Log(Lang.T("log.nvdrstweaks.32") + stuck + Lang.T("log.nvdrstweaks.33"));
-            return healed;
         }
 
         private static bool NvidiaAbsent()
@@ -530,28 +635,11 @@ namespace PaviseApp
             }
         }
 
-        private static List<string> OrphanHealKinds()
+        private static bool RestoreDword(IntPtr session, IntPtr profile, string key, string orig)
         {
-            var kinds = new List<string>();
-            if (!Settings.Load("NvMaxPerf", false)) kinds.Add(KeyPState);
-            kinds.Add(KeyFrl);
-            string lowLat = Settings.LoadStr("NvLowLat", "off");
-            if (lowLat == "off")
-            {
-                kinds.Add(KeyPreRender); kinds.Add(KeyUllEnable); kinds.Add(KeyLowLatCpl);
-            }
-            if (!Settings.Load("NvSmoothMotion", false)) kinds.Add(KeySmooth);
-            if (!Settings.Load("NvShaderCache", false)) kinds.Add(KeyShaderCache);
-            if (!Settings.Load("NvAnselOff", false)) kinds.Add(KeyAnsel);
-            if (!Settings.Load("NvRebar", false))
-            {
-                kinds.Add(KeyRebarFeat); kinds.Add(KeyRebarOpt); kinds.Add(KeyRebarSize);
-            }
-            if (Settings.LoadStr("NvDlss", "off") == "off")
-            {
-                kinds.Add(KeyDlssOvr); kinds.Add(KeyDlssPreset);
-            }
-            return kinds;
+            int status;
+            return SetDwordOf(session, profile, key, ParseUInt(orig), out status)
+                || status == NvApi.StatusSettingNotFound;
         }
 
         private static uint ParseUInt(string value)

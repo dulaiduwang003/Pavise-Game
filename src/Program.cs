@@ -19,13 +19,14 @@ namespace PaviseApp
     internal static class App
     {
         public const string DisplayName = "PAVISE";
-        public const string Version = "1.8.1.3";
+        public const string Version = "1.9.8.1";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string WeChat = "Ssssssstyle";
         public const string QqGroup = "1051472054";
         public const string QqGroup2 = "1101249532";
         public const string QqGroup3 = "383761286";
+        public const string QqGroup4 = "166255062";
         public const string Douyin = "44601770838";
         public const string PanUrl = "https://pan.quark.cn/s/3c8c986b3ea4";
 
@@ -47,12 +48,6 @@ namespace PaviseApp
 #if PAVISE_SELFTEST
             if (SelfTests.TryHandleRuntimeMode(args)) return;
 #endif
-
-            if (args.Length >= 4 && args[0] == "--cage-guard")
-            {
-                try { CpuCage.RunGuard(args[1], args[2], args[3]); } catch { }
-                return;
-            }
 
             if (args.Length > 0 && args[0] == "--genicon")
             {
@@ -124,7 +119,7 @@ namespace PaviseApp
             {
                 Dpi.Init(); Paths.Init(); Lang.Init();
                 Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
-                using (var dlg = new ContactDialog())
+                using (var dlg = new ContactDialog(true))
                 {
                     dlg.StartPosition = FormStartPosition.Manual;
                     dlg.ShowInTaskbar = false;
@@ -237,41 +232,29 @@ namespace PaviseApp
             catch { }
             string dir = Paths.Data;
             Logger.LogPath = Path.Combine(dir, "Pavise.log");
-            try { VersionMigrations.ClearLogsOnUpgrade(dir); } catch { }
             if (taskStaleExe)
                 Logger.Log(Lang.T("log.program.1"));
             try { WarnIfOsTooOld(); } catch { }
             Settings.Remove("EvidenceMode");
             int healedSuppression = SuppressionCore.HealFromCrash(Path.Combine(dir, SuppressionCore.StateFileName));
-            try { CpuCage.HealFromCrash(dir); } catch { }
             if (healedSuppression > 0) Logger.Log(Lang.T("log.program.2") + healedSuppression + Lang.T("log.program.3"));
             PowerPlan.HealFromCrash();
             try { if (PowerPlan.HasParkResidue()) PowerPlan.RestoreParkState(); } catch { }
             try { UpdatePause.HealFromCrash(); } catch { }
-            try { UploadYield.HealFromCrash(); } catch { }
             GameDvr.HealFromCrash();
             try { Mmcss.HealFromCrash(); } catch { }
-            try { VersionMigrations.PurgeRetired(); } catch { }
-            VisualFx.HealFromCrash();
             try { PresenceQos.HealFromCrash(); } catch { }
             try { PowerOverlay.HealFromCrash(); } catch { }
             try { GpuPowerMax.HealFromCrash(); } catch { }
-            try { AdlxTweaks.HealFromCrash(); } catch { }
-            try { NvDrsTweaks.HealOrphans(); } catch { }
             try { InterruptAttribution.CleanupStaleSession(); } catch { }
             RenderLane.HealFromCrash();
+            GpuPrefStage.HealFromCrash();
             CrashGuard.HealFromCrash();
             try { IrqRelocate.HealFromCrash(); } catch { }
-            try { IrqRelocate.HealStaleMask(); } catch { }
-            try { NetworkAffinityTweak.HealStaleMask(); } catch { }
-            try { AutoRepair.Run(); } catch { }
 
             bool pendingPanel = Settings.Load(PendingPanelKey, false);
             if (pendingPanel) Settings.Save(PendingPanelKey, false);
 
-            try { VersionMigrations.ResetDataOnUpgrade(dir); } catch { }
-            try { LegacyPurge.RunOnce(dir); } catch { }
-            try { VersionMigrations.StampRunVersion(); } catch { }
 
             if (Settings.Load("GmIfeoBoost", false))
                 try
@@ -295,6 +278,14 @@ namespace PaviseApp
                 catch { }
             };
 
+            bool showingPanel = !autoStarted || pendingPanel;
+            if (showingPanel)
+                using (var welcome = new ContactDialog(true))
+                {
+                    welcome.StartPosition = FormStartPosition.CenterScreen;
+                    welcome.ShowDialog();
+                }
+
             var core = new SuppressionCore(Path.Combine(dir, SuppressionCore.StateFileName));
             var tamer = new Tamer(core);
             tamer.Paused = !Settings.Load("TameOn", true);
@@ -307,7 +298,6 @@ namespace PaviseApp
             var bootThread = new Thread(() =>
             {
                 try { SvcPause.HealFromCrash(); } catch { }
-                try { SvcYield.HealFromCrash(); } catch { }
                 try { DoTweak.HealFromCrash(); } catch { }
                 lock (startGate)
                 {
@@ -337,6 +327,12 @@ namespace PaviseApp
                 gameMode.NotifyProcessChanges(batch);
                 tamer.NotifyProcessChanges(batch);
             };
+            SystemAudit.LibraryPaths = gameMode.LibraryExecutablePaths;
+            procNotify.FastTrack = delegate(string name, int session)
+            {
+                return gameMode.NeedsGameProcessIdentity(name, session);
+            };
+            procNotify.FastStart += gameMode.KickGameDetectionNow;
             procNotify.Start();
             gameMode.ProcessEventsAvailable = procNotify.IsActive;
             tamer.ProcessEventsAvailable = procNotify.IsActive;
@@ -350,7 +346,6 @@ namespace PaviseApp
             var panel = new PanelForm(tamer, gameMode, appIcon, elevated);
             GC.KeepAlive(panel.Handle);
 
-            bool showingPanel = !autoStarted || pendingPanel;
             if (showingPanel) panel.ShowPanel();
 
             if (showEvt != null)
@@ -379,7 +374,6 @@ namespace PaviseApp
             {
 
                 try { trayTip.Stop(); trayTip.Dispose(); } catch { }
-                try { FpsOverlay.Shutdown(); } catch { }
                 icon.Visible = false;
                 icon.Dispose();
                 lock (startGate) exiting = true;
@@ -392,10 +386,7 @@ namespace PaviseApp
 
             panel.ExitApp = doExit;
 
-            var trayMenu = new TrayMenu(tamer, gameMode,
-                () => panel.ShowPanel(),
-                doExit,
-                () => panel.SyncAllToggles());
+            var trayMenu = new TrayMenu(gameMode, doExit, () => panel.SyncAllToggles());
 
             if (exitEvt != null)
             {
@@ -411,7 +402,6 @@ namespace PaviseApp
             bool trayShown;
             try { icon.Visible = true; trayShown = Native.NotificationAreaPresent(); }
             catch { trayShown = false; }
-            // 没有通知区域时托盘图标是唯一入口 连退出都点不到 直接把面板亮出来
             if (!trayShown)
             {
                 Logger.Log(Lang.T("log.program.10"));
@@ -423,9 +413,6 @@ namespace PaviseApp
                 try { PowerPlan.Restore(); } catch { }
                 try { GameDvr.Restore(); } catch { }
                 try { Mmcss.Restore(); } catch { }
-                try { VersionMigrations.RestoreAll(); } catch { }
-                try { VisualFx.Restore(); } catch { }
-                try { NvGlobalTweaks.Restore(); } catch { }
                 try { PresenceQos.Restore(); } catch { }
                 try { PowerOverlay.Restore(); } catch { }
                 try { GpuPowerMax.Restore(); } catch { }
@@ -452,7 +439,6 @@ namespace PaviseApp
             {
                 int wanted = gameMode.IsActive ? TrayTipInGameMs : TrayTipIdleMs;
                 if (trayTip.Interval != wanted) trayTip.Interval = wanted;
-                FpsOverlay.Sync();
                 PerformancePreset nextIconMode = gameMode.ActivePreset;
                 bool nextIconEnabled = gameMode.Enabled;
                 if (nextIconMode != runtimeIconMode || nextIconEnabled != runtimeIconEnabled)
@@ -599,13 +585,10 @@ namespace PaviseApp
             finally { if (older != null) older.Dispose(); }
         }
 
-        // 建议最低 Windows 10 2004 低于此版显卡优先级提升 硬件加速GPU调度 逐进程计时器分辨率都拿不到
         internal const int OsBuildBaseline = 19041;
-        // 最佳 Windows 11 24H2 混合刷新率与 Ryzen 调度在这一版才补齐
         internal const int OsBuildBest = 26100;
         private const string OsWarnedKey = "OsWarnedBuild";
 
-        // 读不出版本号时不判旧 宁可不提示也不误报
         internal static bool OsBelowBaseline()
         {
             int build = Native.OsBuild();
@@ -616,7 +599,6 @@ namespace PaviseApp
         {
             int build = Native.OsBuild();
             if (!OsBelowBaseline()) return;
-            // 同一个版本只提示一次 换了系统版本重新判定
             string stamp = build.ToString(System.Globalization.CultureInfo.InvariantCulture);
             if (Settings.LoadStr(OsWarnedKey, "") == stamp) return;
             Settings.SaveStr(OsWarnedKey, stamp);

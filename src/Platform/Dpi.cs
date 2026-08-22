@@ -97,8 +97,6 @@ namespace PaviseApp
 
         public static int S(int v) { return (int)Math.Round(v * Scale); }
 
-        // 像素换回未缩放单位 给那些自己算像素高度的控件用
-        // 排版按未缩放单位累加时 不换算就会在高 DPI 上把后面的控件推出去
         public static int U(int px) { return Scale <= 0 ? px : (int)Math.Round(px / Scale); }
 
         public static float CrispPoint(float points)

@@ -138,11 +138,6 @@ namespace PaviseApp
             }
         }
 
-        public bool PurgeStandby
-        {
-            get { return standbySweepOn; }
-            set { standbySweepOn = value; Settings.Save("GmStandbySweep", value); }
-        }
 
         public bool SqueezeBackgroundOn
         {
@@ -171,12 +166,6 @@ namespace PaviseApp
         {
             get { return pauseDlOn; }
             set { pauseDlOn = value; Settings.Save("GmPauseDl", value); if (value) ClearEnvFuse("do"); RequestPolicyApply(); }
-        }
-
-        public bool RsrUpscale
-        {
-            get { return rsrOn; }
-            set { rsrOn = value; Settings.Save("GmRsr", value); if (value) ClearEnvFuse("rsr"); RequestPolicyApply(); }
         }
 
         public bool GpuPowerLift
@@ -249,30 +238,6 @@ namespace PaviseApp
             }
         }
 
-        public bool AmdAntiLag
-        {
-            get { return amdAntiLag; }
-            set
-            {
-                amdAntiLag = value; Settings.Save("AmdAntiLag", value);
-                if (!value) { AdlxTweaks.RestoreAntiLag(); AdlxTweaks.RestoreChill(); }
-                else ClearEnvFuse("amdalag");
-                RequestPolicyApply();
-            }
-        }
-
-        public bool AmdAfmf
-        {
-            get { return amdAfmf; }
-            set
-            {
-                amdAfmf = value; Settings.Save("AmdAfmf", value);
-                if (!value) AdlxTweaks.RestoreAfmf();
-                else ClearEnvFuse("amdafmf");
-                RequestPolicyApply();
-            }
-        }
-
         public bool NvAnselOff
         {
             get { return nvAnselOff; }
@@ -310,6 +275,16 @@ namespace PaviseApp
                 else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyDlssOvr, 0);
                 lock (sync) tweakApplied.Clear();
                 RequestPolicyApply();
+            }
+        }
+
+        public bool GpuPrefStageOn
+        {
+            get { return gpuPrefStageOn; }
+            set
+            {
+                gpuPrefStageOn = value; Settings.Save("GpuPrefStageOn", value);
+                if (!value) GpuPrefStage.Restore();
             }
         }
 

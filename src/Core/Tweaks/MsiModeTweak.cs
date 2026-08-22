@@ -98,7 +98,7 @@ namespace PaviseApp
                 var done = new List<string>();
                 foreach (Candidate c in targets)
                 {
-                    if (Reg(c.InstanceId).Apply(1)) done.Add(c.InstanceId);
+                    if (Reg(c.InstanceId).Apply(1) || Reg(c.InstanceId).HasBackup) done.Add(c.InstanceId);
                     else Logger.Log(Lang.T("log.msimodetweak.2") + c.Description);
                 }
                 if (done.Count == 0) return false;

@@ -246,6 +246,24 @@ namespace PaviseApp
 
         public const int MinCustomCores = 2;
 
+        public static int PhysicalCoresIn(ulong logicalMask)
+        {
+            int n = 0;
+            foreach (ulong core in physicalCoreMasks) if ((core & logicalMask) != 0) n++;
+            return n;
+        }
+
+        public static ulong OnePerPhysicalIn(ulong logicalMask)
+        {
+            ulong m = 0;
+            foreach (ulong core in physicalCoreMasks)
+            {
+                ulong hit = core & logicalMask;
+                if (hit != 0) m |= hit & (ulong)(-(long)hit);
+            }
+            return m & AllMask;
+        }
+
         public static ulong PhysicalOnlyMask()
         {
             ulong m = 0;
@@ -481,6 +499,18 @@ namespace PaviseApp
                 L3Masks(), gameMask != 0 ? gameMask : StrictBoostMask);
         }
 
+        public static int L3CacheMb()
+        {
+            try
+            {
+                uint max = 0;
+                foreach (KeyValuePair<uint, ulong> kv in cacheDomains)
+                    if (kv.Key > max) max = kv.Key;
+                return (int)(max / (1024 * 1024));
+            }
+            catch { return 0; }
+        }
+
         public static ulong[] L3Masks()
         {
             var list = new List<ulong>();
@@ -552,6 +582,31 @@ namespace PaviseApp
         }
 
         public static ulong[] PhysicalCoreMasks() { return physicalCoreMasks.ToArray(); }
+
+        public static string TopologyStamp()
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append(Environment.ProcessorCount).Append(':');
+            sb.Append(physicalCoreMasks.Count).Append(':');
+            sb.Append(Hybrid ? '1' : '0').Append(AsymCache ? '1' : '0').Append(':');
+            sb.Append(MultiGroup ? '1' : '0').Append(':');
+            sb.Append(PartitionTag ?? "").Append(':');
+            var sorted = new List<ulong>(physicalCoreMasks);
+            sorted.Sort();
+            foreach (ulong m in sorted) sb.Append(m.ToString("X")).Append(',');
+            unchecked
+            {
+                ulong h = 1469598103934665603UL;
+                string s = sb.ToString();
+                for (int i = 0; i < s.Length; i++)
+                {
+                    h ^= s[i];
+                    h *= 1099511628211UL;
+                }
+                return h.ToString("X16");
+            }
+        }
+
 
         private static void BuildCpuSetPolicies()
         {

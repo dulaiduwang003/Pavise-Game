@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 中断亲和策略的通用引擎 供显卡和网卡等设备复用
 using System;
 using System.Collections.Generic;
@@ -123,11 +123,6 @@ namespace PaviseApp
 
             var touched = LoadTouched();
 
-            // 先记名单再动手 顺序反了会出人命
-            //   原来是先写注册表 循环跑完才存名单 中间被杀掉的话
-            //   注册表已经改了 名单里却没有这台设备 Disable 找不到它 用户永远还不回来
-            //   反过来先记名单 崩在中间时名单是个超集 还原会多试几台没动过的
-            //   而没有备份的设备 Restore 直接返回成功 是安全的空操作 宁可多记不可少记
             var ledger = new List<string>(touched);
             foreach (Target t in targets) if (!ledger.Contains(t.DeviceId)) ledger.Add(t.DeviceId);
             if (!SaveTouched(ledger))
@@ -141,14 +136,14 @@ namespace PaviseApp
 
             bool anyOk = false;
             var applied = new List<Target>();
-            // 写失败之后回滚也失败的设备 注册表已经被改了却不在 applied 里
-            //   不单独记下来的话 收敛名单那一步会把它抹掉 从此没人记得它
             var dirty = new List<string>();
             foreach (Target t in targets)
             {
-                if (touched.Contains(t.DeviceId)
-                    && t.Policy.Matches(policyValue)
-                    && (!useMask || t.Mask.Matches(maskBytes)))
+                bool atTarget = t.Policy.Matches(policyValue)
+                    && (!useMask || t.Mask.Matches(maskBytes));
+                if (atTarget
+                    && (touched.Contains(t.DeviceId)
+                        || (!t.Policy.HasBackup && (!useMask || !t.Mask.HasBackup))))
                 { anyOk = true; continue; }
                 bool ok;
                 if (useMask)
@@ -158,12 +153,10 @@ namespace PaviseApp
                 if (ok) { anyOk = true; applied.Add(t); }
                 else
                 {
-                    // 回滚的返回值不能丢 回滚不掉说明注册表还是脏的 必须留在名单上
                     if (!(t.Policy.Restore() & t.Mask.Restore())) dirty.Add(t.DeviceId);
                     Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.6") + t.DeviceId + Lang.T("log.irqaffinityengine.7"));
                 }
             }
-            // 一台都没写成 名单收回原样 但回滚不掉的那几台得留着
             if (!anyOk)
             {
                 foreach (string id in dirty) if (!touched.Contains(id)) touched.Add(id);
@@ -173,15 +166,11 @@ namespace PaviseApp
 
             foreach (Target t in applied) if (!touched.Contains(t.DeviceId)) touched.Add(t.DeviceId);
             foreach (string id in dirty) if (!touched.Contains(id)) touched.Add(id);
-            // 收敛成真实名单 存不下就保持刚才那份超集 宁可多记不可少记
             SaveTouched(touched);
 
             Settings.Save(settingsKey, true);
             if (!Settings.Load(settingsKey, false))
             {
-                // 还原的返回值不能丢 还原失败的那台必须留在名单里
-                //   原来是不看返回值就把所有 applied 从名单里踢掉
-                //   于是还原失败的设备既改了注册表 又没人记得它 永久失联
                 var failed = new List<string>();
                 foreach (Target t in applied)
                     if (!(t.Policy.Restore() & t.Mask.Restore())) failed.Add(t.DeviceId);
@@ -197,7 +186,8 @@ namespace PaviseApp
                 Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.9"));
                 return false;
             }
-            Settings.SaveStr(StampKey, useMask ? MakeStamp(Environment.ProcessorCount, preferredMask) : "");
+            string stamp = BootStamp();
+            foreach (Target t2 in applied) Settings.SaveStr(BootKeyFor(t2.DeviceId), stamp);
             if (applied.Count > 0)
                 Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.10") + applied.Count + Lang.T("log.irqaffinityengine.11")
                     + (useMask ? Lang.T("log.irqaffinityengine.12") + preferredMask.ToString("X") + " " : Lang.T("log.irqaffinityengine.13"))
@@ -207,81 +197,46 @@ namespace PaviseApp
 
         private string TouchedKey { get { return slotPrefix + "Touched"; } }
 
-        private string StampKey { get { return slotPrefix + "MaskStamp"; } }
-
-        internal static string MakeStamp(int processorCount, ulong mask)
+        private string BootKeyFor(string deviceId)
         {
-            return processorCount.ToString(CultureInfo.InvariantCulture) + ":" + mask.ToString("X");
+            return slotPrefix + StableSlot(deviceId ?? "") + "_BootStamp";
         }
 
-        internal static bool StampIsStale(string stamp, int processorCount, ulong allMask)
+        public bool RebootedSinceWrite(string deviceId)
         {
-            if (string.IsNullOrEmpty(stamp)) return false;
-            int cut = stamp.IndexOf(':');
-            if (cut <= 0 || cut + 1 >= stamp.Length) return false;
-            int recorded;
-            if (!int.TryParse(stamp.Substring(0, cut), NumberStyles.Integer,
-                CultureInfo.InvariantCulture, out recorded)) return false;
-            ulong mask;
-            if (!ulong.TryParse(stamp.Substring(cut + 1), NumberStyles.HexNumber,
-                CultureInfo.InvariantCulture, out mask)) return false;
-            if (mask == 0) return true;
-            if (recorded != processorCount) return true;
-            return allMask != 0 && (mask & ~allMask) != 0;
+            return SameBoot(Settings.LoadStr(BootKeyFor(deviceId), ""), BootStamp()) == false;
         }
 
-        internal static bool MaskOutOfRange(ulong mask, ulong allMask)
+        internal void RememberBootStampForTest(string deviceId)
         {
-            if (allMask == 0) return false;
-            if (mask == 0) return false;
-            return (mask & ~allMask) != 0;
+            Settings.SaveStr(BootKeyFor(deviceId), BootStamp());
         }
 
-        private bool AppliedMaskStale(out string detail)
+        public void ForgetBootStamp(string deviceId)
         {
-            detail = null;
-            foreach (string id in LoadTouched())
+            Settings.Remove(BootKeyFor(deviceId));
+        }
+
+        internal static bool SameBoot(string saved, string now)
+        {
+            if (saved == null || saved.Length == 0) return false;
+            long a, b;
+            if (!long.TryParse(saved, NumberStyles.Integer, CultureInfo.InvariantCulture, out a)) return false;
+            if (!long.TryParse(now, NumberStyles.Integer, CultureInfo.InvariantCulture, out b)) return false;
+            return Math.Abs(a - b) <= BootStampToleranceSeconds;
+        }
+
+        internal const int BootStampToleranceSeconds = 5;
+
+        internal static string BootStamp()
+        {
+            try
             {
-                try
-                {
-                    string path = @"SYSTEM\CurrentControlSet\Enum\" + id
-                        + @"\Device Parameters\Interrupt Management\Affinity Policy";
-                    using (RegistryKey k = Registry.LocalMachine.OpenSubKey(path))
-                    {
-                        if (k == null) continue;
-                        object raw = k.GetValue("AssignmentSetOverride");
-                        ulong mask = BytesToMask(raw as byte[]);
-                        if (!MaskOutOfRange(mask, CpuTopology.AllMask)) continue;
-                        detail = id + Lang.T("t.irqaffinityengine.15") + mask.ToString("X");
-                        return true;
-                    }
-                }
-                catch { }
+                long upSeconds = (long)(Native.GetTickCount64() / 1000UL);
+                return (DateTime.UtcNow.Ticks / TimeSpan.TicksPerSecond - upSeconds)
+                    .ToString(CultureInfo.InvariantCulture);
             }
-            return false;
-        }
-
-        public bool HealStaleMask()
-        {
-            if (!EnabledByPavise) return false;
-            string stamp = Settings.LoadStr(StampKey, "");
-            string reason = null;
-            if (StampIsStale(stamp, Environment.ProcessorCount, CpuTopology.AllMask))
-                reason = Lang.T("t.irqaffinityengine.16") + stamp;
-            else
-            {
-                string detail;
-                if (!AppliedMaskStale(out detail)) return false;
-                reason = Lang.T("t.irqaffinityengine.17") + detail;
-            }
-
-            Logger.Log(logPrefix + " " + reason
-                + Lang.T("log.irqaffinityengine.18") + Environment.ProcessorCount + Lang.T("log.irqaffinityengine.19"));
-            bool ok = Disable(null);
-            Logger.Log(ok
-                ? logPrefix + Lang.T("log.irqaffinityengine.20")
-                : logPrefix + Lang.T("log.irqaffinityengine.21"));
-            return ok;
+            catch { return ""; }
         }
 
         private List<string> LoadTouched()
@@ -318,16 +273,15 @@ namespace PaviseApp
                 bool hadBackup = t.Policy.HasBackup || t.Mask.HasBackup;
                 bool ok = t.Policy.Restore() & t.Mask.Restore();
                 if (hadBackup && ok) restored++;
+                if (ok) ForgetBootStamp(t.DeviceId);
                 if (!ok) { allOk = false; stillDirty.Add(t.DeviceId); }
             }
 
-            // 存不下名单也是失败 不然还没还原干净的设备会从名单上消失
             if (!SaveTouched(stillDirty)) allOk = false;
             if (allOk)
             {
                 Settings.Save(settingsKey, false);
                 if (Settings.Load(settingsKey, true)) return false;
-                Settings.SaveStr(StampKey, "");
                 Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.22") + restored + Lang.T("log.irqaffinityengine.23"));
             }
             else

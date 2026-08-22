@@ -411,7 +411,15 @@ namespace PaviseApp
                 if (platform.Logged) return;
                 platform.Logged = true;
             }
-            Logger.Log(platform.Id + Lang.T("log.gameplatformcatalog.23"));
+            bool hasWebRenderer = false;
+            if (platform.ShellNames != null)
+                foreach (string n in platform.ShellNames)
+                    if (IsPlatformWebRenderer(n)) { hasWebRenderer = true; break; }
+            if (!hasWebRenderer && platform.LocalNames != null)
+                foreach (string n in platform.LocalNames)
+                    if (IsPlatformWebRenderer(n)) { hasWebRenderer = true; break; }
+            Logger.Log(platform.Id + Lang.T("log.gameplatformcatalog.23")
+                + (hasWebRenderer ? Lang.T("log.gameplatformcatalog.24") : ""));
         }
 
         private static bool UnderAnyRoot(string path, IList<string> roots)
@@ -614,6 +622,10 @@ namespace PaviseApp
                                 string display = entry.GetValue("DisplayName") as string;
                                 if (string.IsNullOrEmpty(display)) continue;
                                 string location = entry.GetValue("InstallLocation") as string;
+                                if (string.IsNullOrEmpty(location))
+                                    location = DirFromCommand(entry.GetValue("UninstallString") as string);
+                                if (string.IsNullOrEmpty(location))
+                                    location = DirFromCommand(entry.GetValue("DisplayIcon") as string);
                                 if (string.IsNullOrEmpty(location)) continue;
                                 foreach (string tag in tags)
                                 {
@@ -633,6 +645,31 @@ namespace PaviseApp
                 }
             }
             catch { }
+        }
+
+        internal static string DirFromCommand(string command)
+        {
+            if (string.IsNullOrEmpty(command)) return null;
+            string s = command.Trim();
+            string exe = null;
+            if (s.Length > 1 && s[0] == '"')
+            {
+                int end = s.IndexOf('"', 1);
+                if (end > 1) exe = s.Substring(1, end - 1);
+            }
+            else
+            {
+                int i = s.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
+                if (i > 0) exe = s.Substring(0, i + 4);
+            }
+            exe = exe == null ? null : exe.Trim();
+            if (string.IsNullOrEmpty(exe)) return null;
+            try
+            {
+                string dir = Path.GetDirectoryName(exe);
+                return string.IsNullOrEmpty(dir) ? null : dir;
+            }
+            catch { return null; }
         }
 
         private static Dictionary<string, List<Platform>> BuildNameIndex()

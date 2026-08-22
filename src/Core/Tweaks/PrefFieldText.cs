@@ -1,10 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 DirectX UserGpuPreferences 那种 "键=值;键=值;" 串的读写工具 纯文本无状态
-//
-// 为什么单独成文件
-//   这几个方法原本长在 GameExeTweaks 里 而那个文件已经是退役壳(三类写入路径全下架)
-//   在役的 WindowedOptTweak 却还在调它们 退役壳里压着在役代码 壳就永远退不了场
-//   搬出来之后 GameExeTweaks 只保留转发 将来确认线上无残留即可整个文件删除
 using System;
 using System.Collections.Generic;
 

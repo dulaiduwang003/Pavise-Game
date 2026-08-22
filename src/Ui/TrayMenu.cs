@@ -115,20 +115,16 @@ namespace PaviseApp
 
     internal sealed class TrayMenu
     {
-        private readonly Tamer tamer;
         private readonly GameMode gameMode;
-        private readonly Action openPanel;
         private readonly Action exitApp;
         private readonly Action afterChange;
         private readonly ContextMenuStrip strip;
 
         public ContextMenuStrip Strip { get { return strip; } }
 
-        public TrayMenu(Tamer tamer, GameMode gameMode, Action openPanel, Action exitApp, Action afterChange)
+        public TrayMenu(GameMode gameMode, Action exitApp, Action afterChange)
         {
-            this.tamer = tamer;
             this.gameMode = gameMode;
-            this.openPanel = openPanel;
             this.exitApp = exitApp;
             this.afterChange = afterChange;
 
@@ -140,14 +136,6 @@ namespace PaviseApp
         }
 
         private void Changed() { var a = afterChange; if (a != null) { try { a(); } catch { } } }
-
-        private bool EffectiveDvr()
-        {
-            PerformancePreset mode = gameMode.ActivePreset;
-            return mode == PerformancePreset.Custom
-                ? gameMode.KillGameDvr
-                : mode == PerformancePreset.Competitive;
-        }
 
         private static void StyleDropDown(ToolStripDropDown dd)
         {
@@ -168,13 +156,6 @@ namespace PaviseApp
             mi.ForeColor = Theme.Fg;
             mi.Padding = new Padding(0, Theme.S(7), 0, Theme.S(7));
             if (onClick != null) mi.Click += onClick;
-            return mi;
-        }
-
-        private ToolStripMenuItem SubMenu(string text)
-        {
-            var mi = Item(text, null);
-            StyleDropDown(mi.DropDown);
             return mi;
         }
 
@@ -206,55 +187,14 @@ namespace PaviseApp
         {
             while (strip.Items.Count > 0) { var it = strip.Items[0]; strip.Items.RemoveAt(0); it.Dispose(); }
 
-            strip.Items.Add(Item(Lang.T("tray.open"), (s, e) => openPanel()));
-            strip.Items.Add(new ToolStripSeparator());
-
             strip.Items.Add(Check(Lang.T("v14.master"), gameMode.Enabled, (s, e) =>
             {
                 gameMode.Enabled = !gameMode.Enabled;
                 Settings.Save("GameModeOn", gameMode.Enabled);
                 Changed();
             }));
-            var currentMode = Item(Lang.F("mode.tray.current", ModeButton.ModeName(gameMode.ActivePreset)), (s, e) => openPanel());
-            currentMode.ForeColor = Theme.ModeColor(gameMode.ActivePreset);
-            strip.Items.Add(currentMode);
-            strip.Items.Add(Check(Lang.T("nav.tame"), !tamer.Paused, (s, e) =>
-            {
-                tamer.Paused = !tamer.Paused;
-                Settings.Save("TameOn", !tamer.Paused);
-                Changed();
-            }));
-
-            var ac = SubMenu(Lang.T("tray.aclist"));
-            foreach (AcGroup g in AntiCheatCatalog.Groups)
-            {
-                string key = g.Key;
-                ac.DropDownItems.Add(Check(Lang.T("ac." + key + ".n"), tamer.IsGroupEnabled(key), (s, e) =>
-                {
-                    tamer.SetGroupEnabled(key, !tamer.IsGroupEnabled(key));
-                    Changed();
-                }));
-            }
-            strip.Items.Add(ac);
-
-            var set = SubMenu(Lang.T("nav.set"));
-
-            bool dvrForced = gameMode.ActivePreset != PerformancePreset.Custom;
-            ToolStripMenuItem dvr = Check(Lang.T("tm.dvr")
-                    + (dvrForced ? " " + Lang.T(EffectiveDvr() ? "v14.preset.forced.on" : "v14.preset.forced.off") : ""),
-                EffectiveDvr(),
-                (s, e) => { gameMode.KillGameDvr = !gameMode.KillGameDvr; Changed(); });
-            dvr.Enabled = !dvrForced;
-            set.DropDownItems.Add(dvr);
-            set.DropDownItems.Add(new ToolStripSeparator());
-            set.DropDownItems.Add(Check(Lang.T("tm.plan"), gameMode.PowerPlanSwitch, (s, e) => { gameMode.PowerPlanSwitch = !gameMode.PowerPlanSwitch; Changed(); }));
-            set.DropDownItems.Add(new ToolStripSeparator());
-            set.DropDownItems.Add(Check(Lang.T("tm.autostart"), TaskHelper.TaskExistsCached(), (s, e) => { ToggleAutostart(); Changed(); }));
-
-            strip.Items.Add(set);
-
-            strip.Items.Add(new ToolStripSeparator());
-            strip.Items.Add(Item(Lang.T("tray.reset"), (s, e) => ResetDefaults()));
+            strip.Items.Add(Check(Lang.T("tm.autostart"), TaskHelper.TaskExistsCached(),
+                (s, e) => { ToggleAutostart(); Changed(); }));
             strip.Items.Add(new ToolStripSeparator());
             strip.Items.Add(Item(Lang.T("tray.exit"), (s, e) => exitApp()));
         }
@@ -265,48 +205,6 @@ namespace PaviseApp
                 TaskHelper.CreateStartupTask();
             else
                 TaskHelper.DeleteStartupTask();
-        }
-
-        private void ResetDefaults()
-        {
-            if (!PaviseDialog.Confirm(null, App.DisplayName, Lang.T("tray.resetask"), DlgKind.Warn)) return;
-
-            gameMode.SuppressBackground = true;
-            gameMode.BoostGame = true;
-            gameMode.PowerPlanSwitch = true;
-            gameMode.PauseDownloads = true;
-            gameMode.KillGameDvr = true;
-            gameMode.CorePartitionEnabled = false;
-            gameMode.CoreDomainAlt = false;
-            gameMode.AggressiveSuppression = false;
-            gameMode.Enabled = true; Settings.Save("GameModeOn", true);
-            gameMode.Preset = PerformancePreset.Standard;
-
-            foreach (AcGroup g in AntiCheatCatalog.Groups) tamer.SetGroupEnabled(g.Key, g.Default);
-            tamer.Paused = false; Settings.Save("TameOn", true);
-
-            Changed();
-            System.Threading.ThreadPool.QueueUserWorkItem(delegate
-            {
-                bool whitelistReset;
-                string whitelistError = null;
-                try
-                {
-                    whitelistReset = gameMode.ResetWhitelist();
-                    if (!whitelistReset) whitelistError = gameMode.WhitelistLastError;
-                }
-                catch (Exception ex) { whitelistReset = false; whitelistError = ex.Message; }
-                if (whitelistReset) { Logger.Log(Lang.T("log.traymenu.1")); return; }
-                Logger.Log(Lang.T("log.traymenu.2"));
-                try
-                {
-                    Strip.BeginInvoke((MethodInvoker)delegate
-                    {
-                        PaviseDialog.Warn(null, App.DisplayName, whitelistError);
-                    });
-                }
-                catch { }
-            });
         }
     }
 }

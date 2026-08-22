@@ -609,6 +609,15 @@ namespace PaviseApp
                 + "\r\n\r\n" + DetailSection("white.auto.details.tokens",
                     string.Join(" · ", acceleratorTokens))));
 
+            string[] hardwareNames = HardwareControlCatalog.ProcessNamesForDisplay();
+            string[] hardwareTokens = HardwareControlCatalog.TokensForDisplay();
+            rows.Add(AutomaticExemption("white.auto.hardware",
+                Lang.F("white.auto.hardware.list", string.Join(" · ", hardwareNames)), "chip",
+                DetailSection("white.auto.details.processes", string.Join(" · ", hardwareNames))
+                + "\r\n\r\n" + DetailSection("white.auto.details.tokens",
+                    string.Join(" · ", hardwareTokens))
+                + "\r\n\r\n" + Lang.T("white.auto.details.hardware.note")));
+
             var antiCheatGroups = new List<string>();
             var antiCheatNames = new List<string>();
             foreach (AcGroup group in AntiCheatCatalog.Groups)

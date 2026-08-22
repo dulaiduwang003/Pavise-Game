@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 按游戏程序图形设置的历史残留还原与字段工具 gpu/igpu/fso 三类写入路径均已退役
+// 文件用途 按游戏程序图形偏好的字段读取 写入路径均已退役 不再有还原逻辑
 using System;
 using System.Collections.Generic;
 using Microsoft.Win32;
@@ -9,122 +9,6 @@ namespace PaviseApp
     internal static class GameExeTweaks
     {
         private const string GpuKey = @"SOFTWARE\Microsoft\DirectX\UserGpuPreferences";
-        private const string FsoKey = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers";
-        private const string BakKey = @"Software\Pavise\ExeTweakBak";
-        private const string FsoFlag = "DISABLEDXMAXIMIZEDWINDOWEDMODE";
-        private static readonly object lk = new object();
-
-        public static bool HasKindResidue(string kind)
-        {
-            lock (lk)
-            {
-                try
-                {
-                    using (var bak = Registry.CurrentUser.OpenSubKey(BakKey))
-                    {
-                        if (bak == null) return false;
-                        foreach (string name in bak.GetValueNames())
-                        {
-                            int bar = name.IndexOf('|');
-                            if (bar <= 0) continue;
-                            if (string.Equals(name.Substring(0, bar), kind, StringComparison.OrdinalIgnoreCase))
-                                return true;
-                        }
-                    }
-                }
-                catch { }
-                return false;
-            }
-        }
-
-        public static void RestoreKind(string kind)
-        {
-            lock (lk)
-            {
-                try
-                {
-                    using (var bak = Registry.CurrentUser.OpenSubKey(BakKey, true))
-                    {
-                        if (bak == null) return;
-                        int n = 0;
-                        foreach (string name in bak.GetValueNames())
-                        {
-                            int bar = name.IndexOf('|');
-                            if (bar <= 0) { try { bak.DeleteValue(name, false); } catch { } continue; }
-                            if (!string.Equals(name.Substring(0, bar), kind, StringComparison.OrdinalIgnoreCase)) continue;
-                            string exePath = name.Substring(bar + 1);
-                            string target = string.Equals(kind, "fso", StringComparison.OrdinalIgnoreCase) ? FsoKey : GpuKey;
-                            string orig = bak.GetValue(name) as string ?? ReversibleReg.Absent;
-                            if (RestoreValue(target, exePath, orig))
-                            {
-                                n++;
-                                try { bak.DeleteValue(name, false); } catch { }
-                            }
-                        }
-                        if (n > 0) Logger.Log(Lang.T("log.gameexetweaks.1") + n + Lang.T("t.gamemodeenv.30") + (kind == "gpu" ? Lang.T("t.legacypurge.25") : kind == "igpu" ? Lang.T("t.legacypurge.26") : Lang.T("t.legacypurge.27")) + Lang.T("nav.set"));
-                    }
-                }
-                catch { }
-            }
-        }
-
-        private static bool RestoreValue(string key, string exePath, string orig)
-        {
-            bool isGpu = string.Equals(key, GpuKey, StringComparison.OrdinalIgnoreCase);
-            try
-            {
-                using (var k = Registry.CurrentUser.OpenSubKey(key, true))
-                {
-                    if (k == null) return true;
-                    string cur = k.GetValue(exePath) as string;
-                    string next = isGpu
-                        ? RestoreField(cur, orig == ReversibleReg.Absent ? "" : orig, "GpuPreference")
-                        : RestoreLayer(cur, orig == ReversibleReg.Absent ? "" : orig);
-                    if (next.Length == 0)
-                    {
-                        if (k.GetValue(exePath) != null) k.DeleteValue(exePath, false);
-                    }
-                    else k.SetValue(exePath, next, RegistryValueKind.String);
-                    return true;
-                }
-            }
-            catch { return false; }
-        }
-
-        // 实现已搬到 PrefFieldText 这里只留转发 供既有调用点与自测继续用
-        internal static string MergeField(string current, string field, string value)
-        {
-            return PrefFieldText.MergeField(current, field, value);
-        }
-
-        internal static string RestoreLayer(string current, string original)
-        {
-            bool hadFlag = original != null
-                && original.IndexOf(FsoFlag, StringComparison.OrdinalIgnoreCase) >= 0;
-            if (hadFlag) return string.IsNullOrEmpty(current) ? original : current;
-
-            var parts = new List<string>();
-            foreach (string raw in (current ?? "").Split(' '))
-            {
-                string seg = raw.Trim();
-                if (seg.Length == 0) continue;
-                if (string.Equals(seg, FsoFlag, StringComparison.OrdinalIgnoreCase)) continue;
-                parts.Add(seg);
-            }
-
-            if (parts.Count == 0 || (parts.Count == 1 && parts[0] == "~")) return "";
-            return string.Join(" ", parts.ToArray());
-        }
-
-        internal static string RemoveField(string current, string field)
-        {
-            return PrefFieldText.RemoveField(current, field);
-        }
-
-        internal static string RestoreField(string current, string original, string field)
-        {
-            return PrefFieldText.RestoreField(current, original, field);
-        }
 
         internal static string ReadField(string current, string field)
         {

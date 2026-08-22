@@ -48,7 +48,6 @@ namespace PaviseApp
         public const string KeyStrictCores = "GmStrictCores";
         public const string KeyCoreDomainAlt = "GmCoreDomainAlt";
         public const string KeyCoreMask = "GmCoreMask";
-        public const string KeyStandbySweep = "GmStandbySweep";
         public const string KeyPowerPlan = "PowerPlanOn";
         public const string KeyPauseDl = "GmPauseDl";
         public const string KeyPauseUpdate = "GmPauseUpdate";
@@ -61,8 +60,6 @@ namespace PaviseApp
         public const string KeyNvAnselOff = "NvAnselOff";
         public const string KeyNvRebar = "NvRebar";
         public const string KeyNvDlss = "NvDlss";
-        public const string KeyAmdAntiLag = "AmdAntiLag";
-        public const string KeyAmdAfmf = "AmdAfmf";
 
         public const string GroupMode = "cfg.group.mode";
         public const string GroupBackground = "cfg.group.bg";
@@ -85,7 +82,6 @@ namespace PaviseApp
             new PolicyItem(KeyStrictCores, PolicyValueKind.Bool, "0", "cfg.strictcores", GroupCores, null),
             new PolicyItem(KeyCoreDomainAlt, PolicyValueKind.Bool, "0", "cfg.domainalt", GroupCores, null),
             new PolicyItem(KeyCoreMask, PolicyValueKind.MaskHex, "", "cfg.coremask", GroupCores, null),
-            new PolicyItem(KeyStandbySweep, PolicyValueKind.Bool, "1", "gm.standby", GroupMemPower, null),
             new PolicyItem(KeyPowerPlan, PolicyValueKind.Bool, "1", "plan.pick.title", GroupMemPower, null),
             new PolicyItem(KeyPauseDl, PolicyValueKind.Bool, "1", "gm.pausedl", GroupEnvironment, null),
             new PolicyItem(KeyPauseUpdate, PolicyValueKind.Bool, "0", "gm.pausewu", GroupEnvironment, null),
@@ -100,8 +96,6 @@ namespace PaviseApp
             new PolicyItem(KeyNvRebar, PolicyValueKind.Bool, "0", "set.nvrebar", GroupGraphics, null),
             new PolicyItem(KeyNvDlss, PolicyValueKind.Choice, "off", "set.nvdlss", GroupGraphics,
                 new[] { "off", "latest", "j", "k" }),
-            new PolicyItem(KeyAmdAntiLag, PolicyValueKind.Bool, "0", "set.amdalag", GroupGraphics, null),
-            new PolicyItem(KeyAmdAfmf, PolicyValueKind.Bool, "0", "set.amdafmf", GroupGraphics, null)
         };
 
         private static readonly Dictionary<string, PolicyItem> ByKey = BuildIndex();

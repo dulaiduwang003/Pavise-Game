@@ -49,8 +49,6 @@ namespace PaviseApp
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         private static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string cls, string name);
 
-        // 通知区域由资源管理器提供 任务栏窗口不在就没有地方放托盘图标
-        // NotifyIcon.Visible = true 在这种机器上不抛异常也不生效 只能自己查
         public static bool NotificationAreaPresent()
         {
             try

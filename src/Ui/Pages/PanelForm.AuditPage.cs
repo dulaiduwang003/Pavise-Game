@@ -16,7 +16,7 @@ namespace PaviseApp
 
         private DBPanel pageAudit;
         private DBPanel auditScroll;
-        private AuditScanView auditScan;
+        private ScanView auditScan;
         private PillButton btnAuditStart;
         private Label lblAuditStatus;
         private PillButton btnAuditQuick, btnAuditPrecise, btnAuditFixAll;
@@ -62,7 +62,7 @@ namespace PaviseApp
             Native.Dark(auditScroll);
             pageAudit.Controls.Add(auditScroll);
 
-            auditScan = new AuditScanView();
+            auditScan = new ScanView();
             auditScan.SetBounds(Theme.S(ContentX), Theme.S(y + 6), Theme.S(ContentW), Theme.S(PageH - y - 20));
             pageAudit.Controls.Add(auditScan);
 
@@ -264,13 +264,6 @@ namespace PaviseApp
                     Revert = delegate { MsiModeTweak.Restore(); },
                     ConfirmKey = "audit.msi.confirm"
                 } },
-                { "clock", new AuditFix
-                {
-                    CanFix = delegate { return PlatformClockTweak.NeedsRepair(); },
-                    CanRevert = delegate { return PlatformClockTweak.RepairedByPavise; },
-                    Fix = delegate { PlatformClockTweak.Repair(); },
-                    Revert = delegate { PlatformClockTweak.Restore(); }
-                } },
                 { "quantum", new AuditFix
                 {
                     CanFix = delegate { return QuantumTweak.NeedsRepair(); },
@@ -288,11 +281,10 @@ namespace PaviseApp
                 { "inputq", new AuditFix
                 {
                     CanFix = delegate { return InputMythTweak.NeedsRepair(); },
-                    CanRevert = delegate { return InputMythTweak.RepairedByPavise; },
+                    CanRevert = delegate { return InputMythTweak.HasResidue(); },
                     Fix = delegate { InputMythTweak.Repair(); },
                     Revert = delegate { InputMythTweak.Restore(); }
                 } },
-                // 容错堆是崩溃缓解 解除它是拿崩溃换性能 一键全修也必须先问过用户
                 { "fth", new AuditFix
                 {
                     CanFix = delegate { return FthTweak.NeedsRepair(); },

@@ -170,8 +170,9 @@ namespace PaviseApp
                     Logger.Log(pathChanged
                         ? Lang.T("t.taskhelper.4") + (target ?? Lang.T("t.taskhelper.5")) + " " + cur
                         : Lang.T("t.taskhelper.6") + AutostartArgument + Lang.T("t.taskhelper.7"));
-                    if (CreateStartupTask() != 0)
-                        Logger.Log(pathChanged ? Lang.T("log.taskhelper.8") : Lang.T("log.taskhelper.9"));
+                    int rc = CreateStartupTask();
+                    if (rc != 0)
+                        Logger.Log((pathChanged ? Lang.T("log.taskhelper.8") : Lang.T("log.taskhelper.9")) + rc);
                 }
                 else if (CreateStartupTaskFromXml() == 0)
                 {
@@ -179,7 +180,7 @@ namespace PaviseApp
                     Settings.SaveStr("AutostartExe", cur);
                     Logger.Log(Lang.T("log.taskhelper.10"));
                 }
-                else Logger.Log(Lang.T("log.taskhelper.9"));
+                else Logger.Log(Lang.T("log.taskhelper.9") + CreateStartupTaskFromXml());
             }
             catch { }
         }
