@@ -13,27 +13,27 @@ namespace PaviseApp
         private StatusDot statusDot;
         private Label lblStatus;
         private Label lblOverviewBoost, lblEvidenceLive;
-        private DeviceSpecBar deviceBar;
         private Label lblHeroMode, lblHeroSource;
 
         private void BuildOverviewPage()
         {
-            int y = PageHeader(pageOverview, Lang.T("nav.overview"), Lang.T("v15.overview.sub"), 2);
-            const int coreW = 360, coreH = 352, gap = 16;
+            lblOverviewBoost = null;
+            int y = PageHeader(pageOverview, Lang.T("nav.overview"), Lang.T("v20.overview.sub"), 1);
+            const int coreW = 370, coreH = 376, gap = 24;
             int rightX = ContentX + coreW + gap;
-            int rightW = ContentW - coreW - gap;
+            int rightW = Math.Max(360, ContentW - coreW - gap);
 
             paviseCore = new PaviseCore();
             paviseCore.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(coreW), Theme.S(coreH));
             paviseCore.SetState(gameMode.ActivePreset, gameMode.Enabled, gameMode.IsActive);
             pageOverview.Controls.Add(paviseCore);
 
-            var guard = MakeConsolePanel(pageOverview, rightX, y, rightW, 120, true);
-            CardLabel(guard, Lang.T("v15.guard.state"), 18, 12, rightW - 92, 18, 7.8f, true, Theme.Faint);
-            statusDot = new StatusDot(); statusDot.SetBounds(Theme.S(15), Theme.S(41), Theme.S(22), Theme.S(22));
+            var guard = MakeConsolePanel(pageOverview, rightX, y, rightW, coreH, true);
+            CardLabel(guard, Lang.T("v15.guard.state"), 24, 20, rightW - 120, 24, 10f, true, Theme.Faint);
+            statusDot = new StatusDot(); statusDot.SetBounds(Theme.S(22), Theme.S(76), Theme.S(22), Theme.S(22));
             statusDot.Bg = Theme.Card; statusDot.Color = Theme.Dim;
 
-            lblStatus = CardLabel(guard, " ", 47, 30, rightW - 114, 44, 9.2f, true, Theme.Fg);
+            lblStatus = CardLabel(guard, " ", 54, 68, rightW - 142, 42, 12.5f, true, Theme.Fg);
             lblStatus.TextAlign = ContentAlignment.MiddleLeft;
             swGame = MakeSwitch(gameMode.Enabled, delegate
             {
@@ -41,67 +41,63 @@ namespace PaviseApp
                 Settings.Save("GameModeOn", swGame.Checked);
                 UpdateModePresentation(true);
             });
-            swGame.Bg = Theme.Card; swGame.Location = new Point(Theme.S(rightW - 66), Theme.S(14));
-            CardLabel(guard, Lang.T("v15.master.short"), 18, 72, rightW - 36, 34, 7.7f, false, Theme.Dim);
+            swGame.Size = new Size(Theme.S(54), Theme.S(28));
+            swGame.Bg = Theme.Card; swGame.Location = new Point(Theme.S(rightW - 76), Theme.S(20));
+            CardLabel(guard, Lang.T("v20.guard.detail"), 24, 116, rightW - 48, 28, 9f, false, Theme.Dim);
             guard.Controls.AddRange(new Control[] { statusDot, swGame });
 
-            var mode = MakeConsolePanel(pageOverview, rightX, y + 132, rightW, 100, false);
-            CardLabel(mode, Lang.T("v15.effective.mode"), 18, 12, rightW - 36, 17, 7.6f, true, Theme.Faint);
-            lblHeroMode = AccentLabel(mode, ModeButton.ModeName(gameMode.ActivePreset), 18, 31, rightW - 36, 31, 14.5f, true);
-            lblHeroSource = CardLabel(mode, Lang.T("mode.source.global"), 18, 66, rightW - 36, 18, 7.7f, false, Theme.Dim);
+            AddOverviewDivider(guard, 168, rightW);
+            CardLabel(guard, Lang.T("v20.current.mode"), 24, 194, rightW - 48, 22, 9f, false, Theme.Faint);
+            lblHeroMode = AccentLabel(guard, ModeButton.ModeName(gameMode.ActivePreset), 24, 220, rightW - 48, 42, 18f, true);
+            lblHeroSource = CardLabel(guard, Lang.T("mode.source.global"), 24, 258, rightW - 48, 20, 8.4f, false, Theme.Dim);
 
-            var boost = MakeConsolePanel(pageOverview, rightX, y + 244, rightW, 108, false);
-            CardLabel(boost, Lang.T("v14.boost.status"), 18, 13, rightW - 36, 18, 7.7f, true, Theme.Faint);
-            lblOverviewBoost = CardLabel(boost, " ", 18, 33, rightW - 36, 72, 10.2f, false, Theme.Fg);
+            AddOverviewDivider(guard, 286, rightW);
+            CardLabel(guard, Lang.T("v20.last.session"), 24, 312, rightW - 48, 22, 9f, false, Theme.Faint);
+            CardLabel(guard, Lang.T("v20.no.data"), 24, 342, rightW - 48, 24, 9.2f, false, Theme.Dim);
 
-            int tileY = y + coreH + 10;
-            int tileW = (ContentW - 28) / 3;
-            MakeDashboardTile(pageOverview, ContentX, tileY, tileW, Lang.T("v15.tile.game"), Lang.T("v15.tile.game.sub"), "game", 1);
-            MakeDashboardTile(pageOverview, ContentX + tileW + 14, tileY, tileW, Lang.T("v15.tile.background"), Lang.T("v15.tile.background.sub"), "settings", 2);
-            MakeDashboardTile(pageOverview, ContentX + (tileW + 14) * 2, tileY, tileW, Lang.T("v15.tile.environment"), Lang.T("v15.tile.environment.sub"), "shield", 3);
+            int tileY = y + coreH + 26;
+            int tileW = (ContentW - 54) / 3;
+            int tile2X = ContentX + tileW + 27;
+            int tile3X = ContentX + (tileW + 27) * 2;
+            int tile3W = ContentX + ContentW - tile3X;
+            MakeDashboardTile(pageOverview, ContentX, tileY, tileW, Lang.T("v15.tile.game"), Lang.T("v20.tile.game.sub"), "game", 1);
+            MakeDashboardTile(pageOverview, tile2X, tileY, tileW, Lang.T("v15.tile.background"), Lang.T("v20.tile.background.sub"), "settings", 2);
+            MakeDashboardTile(pageOverview, tile3X, tileY, tile3W, Lang.T("v15.tile.environment"), Lang.T("v20.tile.environment.sub"), "shield", 3);
 
-            int topologyY = tileY + 80;
-            var topology = MakeConsolePanel(pageOverview, ContentX, topologyY, ContentW, 68, false);
-            CardLabel(topology, Lang.T("v14.cpu.topology"), 18, 10, ContentW - 36, 17, 7.7f, true, Theme.Faint);
-            lblEvidenceLive = CardLabel(topology, CpuTopologySummary(), 18, 30, ContentW - 36, 27, 9.5f, false, Theme.Fg);
-            lblEvidenceLive.Text = CpuTopologySummary();
-
-            deviceBar = new DeviceSpecBar();
-            deviceBar.SetBounds(Theme.S(ContentX), Theme.S(topologyY + 74), Theme.S(ContentW), Theme.S(66));
-            pageOverview.Controls.Add(deviceBar);
-            LoadDeviceInfoAsync();
+            int statusY = PageH - 70;
+            var status = new DBPanel();
+            status.SetBounds(0, Theme.S(statusY), Theme.S(PageW), Theme.S(70));
+            status.BackColor = Theme.Nav;
+            pageOverview.Controls.Add(status);
+            var topEdge = new AccentLine();
+            topEdge.SetBounds(0, 0, Theme.S(PageW), Math.Max(1, Theme.S(1)));
+            status.Controls.Add(topEdge);
+            var readyDot = new StatusDot();
+            readyDot.SetBounds(Theme.S(30), Theme.S(25), Theme.S(20), Theme.S(20));
+            readyDot.Bg = Theme.Nav; readyDot.Color = Theme.Accent;
+            status.Controls.Add(readyDot);
+            lblEvidenceLive = CardLabel(status, Lang.T("v20.ready"), 58, 22, 260, 26, 9f, true, Theme.Faint);
+            lblEvidenceLive.TextAlign = ContentAlignment.MiddleLeft;
+            var advanced = new AdvancedEntryButton(Lang.T("v20.advanced.entry"));
+            advanced.Bg = Theme.Nav;
+            advanced.SetBounds(Theme.S(PageW - 226), Theme.S(12), Theme.S(196), Theme.S(46));
+            status.Controls.Add(advanced);
+            advanced.Click += delegate { ToggleAdvancedPanel(); };
             UpdateModePresentation(false);
         }
 
-        private void LoadDeviceInfoAsync()
+        private void AddOverviewDivider(Control parent, int y, int width)
         {
-            string[] fast;
-            try { fast = DeviceInfo.Specs(); }
-            catch { fast = new[] { " ", " ", " " }; }
-            deviceBar.SetValues(fast);
-            if (fast[1] != " ") return;
-            System.Threading.ThreadPool.QueueUserWorkItem(delegate
-            {
-                string[] full;
-                try { full = DeviceInfo.SpecsWithSlowFallback(); }
-                catch { return; }
-                try
-                {
-                    if (!IsHandleCreated) return;
-                    BeginInvoke((MethodInvoker)delegate
-                    {
-                        if (IsDisposed || deviceBar == null) return;
-                        deviceBar.SetValues(full);
-                    });
-                }
-                catch { }
-            });
+            var divider = new Panel();
+            divider.BackColor = Theme.Stroke;
+            divider.SetBounds(Theme.S(20), Theme.S(y), Theme.S(width - 40), Math.Max(1, Theme.S(1)));
+            parent.Controls.Add(divider);
         }
 
         private void MakeDashboardTile(Control parent, int x, int y, int w, string title, string detail, string glyph, int channel)
         {
             var tile = new DashboardTile();
-            tile.SetBounds(Theme.S(x), Theme.S(y), Theme.S(w), Theme.S(70));
+            tile.SetBounds(Theme.S(x), Theme.S(y), Theme.S(w), Theme.S(112));
             tile.Bg = Theme.Bg;
             tile.Title = title;
             tile.Detail = detail;

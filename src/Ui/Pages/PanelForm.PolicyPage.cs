@@ -9,7 +9,7 @@ namespace PaviseApp
 {
     internal partial class PanelForm
     {
-        private Label lblPolicyMode;
+        private ModuleBanner policyBanner;
         private TechTabs policyTabs;
         private DBPanel[] policyTabPanels;
         private TierPicker pickPolicyCores;
@@ -17,11 +17,13 @@ namespace PaviseApp
         private Toggle swPolicyPauseDl, swPolicyDvr;
         private Toggle swPolicyGpuDemote, swPolicyBoost, swPolicyIfeo, swPolicyLane, swPolicyMmcss;
         private Toggle swPolicyIdleDis;
+        private Toggle swPolicyPowerYield;
         private Toggle swPolicyPauseWu, swPolicyWlan, swPolicyAwake;
         private SettingCard cardPolicyCores, cardPolicyAggressive;
         private SettingCard cardPolicyPauseDl, cardPolicyDvr;
         private SettingCard cardPolicyBackground, cardPolicyGpuDemote, cardPolicyBoost, cardPolicyIfeo, cardPolicyLane, cardPolicyMmcss;
         private SettingCard cardPolicyIdleDis;
+        private SettingCard cardPolicyPowerYield;
         private SettingCard cardPolicyPauseWu, cardPolicyWlan, cardPolicyAwake;
         private readonly List<Action> policySync = new List<Action>();
 
@@ -29,13 +31,13 @@ namespace PaviseApp
         {
             policySync.Clear();
             int y = PageHeader(pagePolicy, Lang.T("nav.policy"), Lang.T("v15.policy.sub"), 2);
-            var banner = new RoundPanel();
-            banner.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(62));
-            banner.BackColor = Theme.Bg; banner.Fill = Theme.Card; banner.Border = Theme.Stroke; banner.Radius = Theme.S(12);
-            banner.AccentEdge = true;
-            lblPolicyMode = AccentLabel(banner, "", 18, 10, 300, 22, 9.5f, true);
-            CardLabel(banner, Lang.T("v15.policy.mode.hint"), 18, 33, ContentW - 36, 18, 7.8f, false, Theme.Dim);
-            pagePolicy.Controls.Add(banner); y += 74;
+            policyBanner = new ModuleBanner();
+            policyBanner.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(72));
+            policyBanner.Code = "POLICY CORE // 01";
+            policyBanner.TitleText = Lang.T("nav.policy");
+            policyBanner.Detail = Lang.T("v15.policy.mode.hint");
+            policyBanner.Glyph = "settings";
+            pagePolicy.Controls.Add(policyBanner); y += 84;
 
             policyTabs = new TechTabs();
             policyTabs.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(38));
@@ -85,6 +87,11 @@ namespace PaviseApp
             swPolicyIdleDis = AddPolicyToggle(scroll, ref sy, Lang.T("gm.idledis"), Lang.T("gm.idledis.sub"),
                 delegate { return IdleStateTweak.Enabled; }, delegate(bool v) { OnIdleDisableToggle(v); });
             cardPolicyIdleDis = (SettingCard)swPolicyIdleDis.Parent;
+            swPolicyPowerYield = AddPolicyToggle(scroll, ref sy,
+                Lang.T("gm.poweryield"), Lang.T("gm.poweryield.sub"),
+                delegate { return Settings.Load(PowerBudgetYieldRunner.EnabledKey, false); },
+                delegate(bool v) { OnPowerYieldToggle(v); });
+            cardPolicyPowerYield = (SettingCard)swPolicyPowerYield.Parent;
             scroll = policyTabPanels[3]; sy = 2;
             swPolicyPauseWu = AddPolicyToggle(scroll, ref sy, Lang.T("gm.pausewu"), Lang.T("gm.pausewu.sub"),
                 delegate { return gameMode.PauseWindowsUpdate; }, delegate(bool v) { gameMode.PauseWindowsUpdate = v; });
@@ -311,7 +318,11 @@ namespace PaviseApp
 
         private void RefreshPolicyPresentation()
         {
-            if (lblPolicyMode != null) lblPolicyMode.Text = Lang.F("mode.policy.active", ModeButton.ModeName(gameMode.ActivePreset));
+            if (policyBanner != null)
+            {
+                policyBanner.State = Lang.F("mode.policy.active", ModeButton.ModeName(gameMode.ActivePreset));
+                policyBanner.StateColor = Theme.Accent;
+            }
             PerformancePreset mode = gameMode.ActivePreset;
             bool competitive = mode == PerformancePreset.Competitive;
             bool custom = mode == PerformancePreset.Custom;
@@ -331,6 +342,23 @@ namespace PaviseApp
                 if (cardPolicyMmcss != null) cardPolicyMmcss.Desc = Lang.T("vbs.needadmin");
             }
             ApplyPresetPolicy(swPolicyIdleDis, cardPolicyIdleDis, Lang.T("gm.idledis"), false, true);
+            ApplyPresetPolicy(swPolicyPowerYield, cardPolicyPowerYield,
+                Lang.T("gm.poweryield"), false, true);
+            if (swPolicyPowerYield != null && cardPolicyPowerYield != null)
+            {
+                // 六条门槛缺哪条就说哪条 别让用户开了之后干等着不生效
+                bool laptop = Native.HasSystemBattery();
+                bool canWatt = EnergyMeter.Available;
+                bool fused = PowerBudgetYield.Fused;
+                // 读不到瓦数时把设备实际上报的内容一并显示 分得出"没接口"还是"名字不认识"
+                //   通道命名各家不同 认不出来的名字要让用户看得见 才好反馈回来补进 ClassifyRail
+                string why = !laptop ? Lang.T("gm.poweryield.desktop")
+                    : !canWatt ? Lang.T("gm.poweryield.nowatt") + " " + EnergyMeter.Describe()
+                    : fused ? Lang.T("gm.poweryield.fused")
+                    : !elevated ? Lang.T("vbs.needadmin") : null;
+                swPolicyPowerYield.Enabled = why == null;
+                if (why != null) cardPolicyPowerYield.Desc = why;
+            }
             if (swPolicyIdleDis != null && !elevated)
             {
                 swPolicyIdleDis.Enabled = false;
@@ -344,6 +372,18 @@ namespace PaviseApp
                 if (cardPolicyWlan != null) cardPolicyWlan.Desc = Lang.T("gm.wlanguard.nowifi");
             }
             ApplyPresetPolicy(swPolicyAwake, cardPolicyAwake, Lang.T("set.awake"), false, true);
+        }
+
+        private void OnPowerYieldToggle(bool on)
+        {
+            if (on && !PaviseDialog.Confirm(this, Lang.T("gm.poweryield"),
+                    Lang.T("poweryield.warn"), DlgKind.Warn))
+            {
+                if (swPolicyPowerYield != null) swPolicyPowerYield.SetSilently(false);
+                return;
+            }
+            Settings.Save(PowerBudgetYieldRunner.EnabledKey, on);
+            if (on) PowerBudgetYield.ClearFuse();
         }
 
         private void OnIdleDisableToggle(bool on)

@@ -12,11 +12,12 @@ namespace PaviseApp
     {
         private DBPanel pageIrq;
         private Label lblIrqState, lblIrqDetail;
+        private ModuleBanner irqBanner;
         private PillButton btnIrqApply, btnIrqRevert, btnIrqCheckup;
         private IrqCheckupResult irqCheckup;
         private ScanView irqScan;
         private Toggle swIrqProbePage;
-        private Label lblIrqProbe;
+        private SettingCard cardIrqProbe;
         private TechListBox lstIrqDevices;
         private List<IrqDevice> irqDevices = new List<IrqDevice>();
         private List<IrqSessionRecord> irqSessions = new List<IrqSessionRecord>();
@@ -29,7 +30,18 @@ namespace PaviseApp
         {
             int top = PageHeader(pageIrq, Lang.T("nav.irq"), Lang.T("irq.sub"), 2);
 
-            var scroll = new DBPanel();
+            irqBanner = new ModuleBanner();
+            irqBanner.SetBounds(Theme.S(ContentX), Theme.S(top), Theme.S(ContentW), Theme.S(72));
+            irqBanner.Code = "INTERRUPT ROUTING // 06";
+            irqBanner.TitleText = Lang.T("nav.irq");
+            irqBanner.Detail = Lang.T("irq.sub").Replace("\r\n", " ");
+            irqBanner.State = "DEVICE MAP STANDBY";
+            irqBanner.StateColor = Theme.Faint;
+            irqBanner.Glyph = "chip";
+            pageIrq.Controls.Add(irqBanner);
+            top += 84;
+
+            var scroll = new WorkspacePanel();
             scroll.SetBounds(Theme.S(ContentX), Theme.S(top),
                 Theme.S(ContentW + 12), Theme.S(PageH - top - 8));
             const int InnerW = ContentW - 12;
@@ -40,50 +52,49 @@ namespace PaviseApp
             pageIrq.Controls.Add(scroll);
             int y = 2;
 
-            Section(scroll, Lang.T("irq.sec.1"), 0, y);
-            y += 22;
-            swIrqProbePage = new Toggle();
-            swIrqProbePage.Location = new Point(Theme.S(0), Theme.S(y));
-            swIrqProbePage.CheckedChanged += OnIrqProbePageToggle;
-            scroll.Controls.Add(swIrqProbePage);
-            lblIrqProbe = CardLabel(scroll, "", 56, y + 5, InnerW - 60, 22, 9f, false, Theme.Fg);
-            y += 38;
+            swIrqProbePage = MakeSwitch(IrqSessionProbe.EnabledSetting, OnIrqProbePageToggle);
+            cardIrqProbe = MakeCard(scroll, 0, y, InnerW, 66,
+                Lang.T("irq.sec.1"), "", swIrqProbePage);
+            y += 76;
+
+            var actionDeck = MakeConsolePanel(scroll, 0, y, InnerW, 64, true);
             btnIrqApply = new PillButton(Lang.T("irq.btn.apply"), BtnKind.Primary);
-            btnIrqApply.SetBounds(Theme.S(0), Theme.S(y), Theme.S(260), Theme.S(32));
+            btnIrqApply.SetBounds(Theme.S(14), Theme.S(15), Theme.S(250), Theme.S(34));
             btnIrqApply.Click += OnIrqApply;
-            scroll.Controls.Add(btnIrqApply);
+            actionDeck.Controls.Add(btnIrqApply);
             btnIrqRevert = new PillButton(Lang.T("irq.btn.revert"), BtnKind.Normal);
-            btnIrqRevert.SetBounds(Theme.S(268), Theme.S(y), Theme.S(150), Theme.S(32));
+            btnIrqRevert.SetBounds(Theme.S(272), Theme.S(15), Theme.S(160), Theme.S(34));
             btnIrqRevert.Click += OnIrqRevert;
-            scroll.Controls.Add(btnIrqRevert);
+            actionDeck.Controls.Add(btnIrqRevert);
             btnIrqCheckup = new PillButton(Lang.T("irq.btn.checkup"), BtnKind.Normal);
-            btnIrqCheckup.SetBounds(Theme.S(426), Theme.S(y), Theme.S(180), Theme.S(32));
+            btnIrqCheckup.SetBounds(Theme.S(440), Theme.S(15), Theme.S(180), Theme.S(34));
             btnIrqCheckup.Click += OnIrqCheckup;
-            scroll.Controls.Add(btnIrqCheckup);
-            lblIrqState = CardLabel(scroll, "", 2, y + 38, InnerW - 4, 30, 8.5f, false, Theme.Dim);
+            actionDeck.Controls.Add(btnIrqCheckup);
+            lblIrqState = CardLabel(actionDeck, "", 640, 15, InnerW - 658, 34, 8.2f, true, Theme.Dim);
+            lblIrqState.TextAlign = ContentAlignment.MiddleRight;
             y += 74;
 
-            Section(scroll, Lang.T("irq.sec.2"), 0, y);
-            y += 22;
             lstIrqDevices = new TechListBox();
             int availH = PageH - top - 8;
-            int listH = Math.Max(160, availH - y - (26 + 22 + 76 + 10));
-            lstIrqDevices.SetBounds(Theme.S(0), Theme.S(y), Theme.S(InnerW), Theme.S(listH));
+            int listH = Math.Max(145, availH - y - 150);
+            var deviceDeck = MakeConsolePanel(scroll, 0, y, InnerW, listH + 40, false);
+            CardLabel(deviceDeck, Lang.T("irq.sec.2").ToUpperInvariant(), 16, 8, InnerW - 32, 20, 7f, true, Theme.Faint);
+            lstIrqDevices.SetBounds(Theme.S(8), Theme.S(32), Theme.S(InnerW - 16), Theme.S(listH));
             Theme.StyleList(lstIrqDevices, false);
             lstIrqDevices.DrawItem += DrawIrqRow;
             lstIrqDevices.ItemHeight = Theme.S(26);
             lstIrqDevices.Font = Theme.UI(8.5f, false);
             lstIrqDevices.SelectedIndexChanged += delegate { RefreshIrqDetail(); };
             lstIrqDevices.DoubleClick += OnIrqApply;
-            scroll.Controls.Add(lstIrqDevices);
-            y += listH + 4;
+            deviceDeck.Controls.Add(lstIrqDevices);
+            y += listH + 46;
             CardLabel(scroll, Lang.T("irq.legend"), 4, y, InnerW - 8, 18, 8f, false, Theme.Faint);
             y += 26;
 
-            Section(scroll, Lang.T("irq.sec.3"), 0, y);
-            y += 22;
-            lblIrqDetail = CardLabel(scroll, "", 4, y, InnerW - 8, 76, 9f, false, Theme.Fg);
-            y += 86;
+            var detailDeck = MakeConsolePanel(scroll, 0, y, InnerW, 86, false);
+            CardLabel(detailDeck, Lang.T("irq.sec.3").ToUpperInvariant(), 16, 8, InnerW - 32, 20, 7f, true, Theme.Faint);
+            lblIrqDetail = CardLabel(detailDeck, "", 16, 31, InnerW - 32, 44, 9f, false, Theme.Fg);
+            y += 96;
 
             irqScan = new ScanView();
             irqScan.Name = "irqScanOverlay";
@@ -139,13 +150,14 @@ namespace PaviseApp
                 swIrqProbePage.SetSilently(IrqSessionProbe.EnabledSetting);
                 swIrqProbePage.Enabled = admin;
             }
-            if (lblIrqProbe != null)
+            if (cardIrqProbe != null)
             {
-                lblIrqProbe.Text = !admin ? Lang.T("irq.probe.needadmin")
+                string probeText = !admin ? Lang.T("irq.probe.needadmin")
                     : IrqSessionProbe.EnabledSetting ? Lang.T("irq.probe.on")
                     : Lang.T("irq.probe.off");
-                lblIrqProbe.ForeColor = !admin ? Theme.Danger
-                    : IrqSessionProbe.EnabledSetting ? Theme.Fg : Theme.Accent;
+                Color probeColor = !admin ? Theme.Danger
+                    : IrqSessionProbe.EnabledSetting ? Theme.Green : Theme.Accent;
+                cardIrqProbe.SetStatus(probeText, probeColor);
             }
 
             SetIrqState(admin, pending, unverified, mismatch, withIntr);
@@ -181,6 +193,11 @@ namespace PaviseApp
             else t = Lang.F("irq.state.done", withIntr, irqUsedSessions);
             lblIrqState.Text = t;
             lblIrqState.ForeColor = c;
+            if (irqBanner != null)
+            {
+                irqBanner.State = t;
+                irqBanner.StateColor = c;
+            }
         }
 
         private void Flash(string text, Color c) { irqFlash = text; irqFlashColor = c; }

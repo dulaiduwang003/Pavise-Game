@@ -627,6 +627,19 @@ namespace PaviseApp
         }
 
         private static int hasBattery = -1;
+        // 当前是不是交流供电 读不到就当插着电 别在判断不了的时候擅自按电池处理
+        //   AcLineStatus 0 电池 1 交流 255 未知
+        public static bool OnAcPower()
+        {
+            try
+            {
+                SystemPowerStatusNative s;
+                if (!GetSystemPowerStatus(out s)) return true;
+                return s.AcLineStatus != 0;
+            }
+            catch { return true; }
+        }
+
         public static bool HasSystemBattery()
         {
             if (hasBattery < 0)

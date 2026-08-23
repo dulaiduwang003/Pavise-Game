@@ -47,17 +47,12 @@ namespace PaviseApp
                 using (var pen = new Pen(Col.Lerp(Theme.Stroke, Theme.Accent,
                     (active ? 0.46f : 0.30f) + h * 0.45f))) g.DrawPath(pen, p);
             }
-            using (var edge = new Pen(Theme.Accent, Math.Max(1f, Theme.S(2))))
-                g.DrawLine(edge, 0, Theme.S(13), 0, Height - Theme.S(14));
-            Rectangle glyph = new Rectangle(Theme.S(12), Theme.S(13), Theme.S(15), Theme.S(15));
-            Glyphs.Draw(g, "power", glyph, active ? Theme.Accent
-                : Col.Lerp(Theme.Dim, Theme.Accent, 0.35f + h * 0.65f));
             TextRenderer.DrawText(g, label, Theme.UI(9.25f, true),
-                new Rectangle(Theme.S(34), Theme.S(5), Width - Theme.S(62), Theme.S(22)),
+                new Rectangle(Theme.S(14), Theme.S(5), Width - Theme.S(42), Theme.S(22)),
                 active ? Theme.Fg : Theme.Dim,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
             TextRenderer.DrawText(g, Lang.T("plan.pick.title"),
-                Theme.UI(7.25f, false), new Rectangle(Theme.S(35), Theme.S(24), Width - Theme.S(64), Theme.S(15)),
+                Theme.UI(7.25f, false), new Rectangle(Theme.S(14), Theme.S(24), Width - Theme.S(42), Theme.S(15)),
                 Theme.Dim, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
             PointF[] chevron = {
                 new PointF(Width - Theme.S(20), Theme.S(18)),

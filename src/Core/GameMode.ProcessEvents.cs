@@ -23,6 +23,17 @@ namespace PaviseApp
         private const int PollingSweepIntervalMs = 4000;
         private const int EventBackedSweepIntervalMs = 20000;
         internal const int ActiveGameSweepIntervalMs = 500;
+        // ETW 事件在场时的对局底噪轮询
+        //   2.0 删掉热度采样之后 底噪轮询只用来兜底发现新进程 不再需要对齐采样窗
+        //   进程集真变动时由 processSetDirty 驱动扫描 不靠这个底噪兜底
+        //   台架模拟 600 秒对局 平均 10 秒冒一个新进程 单次快照按本机实测 2.19ms 计
+        //     500ms 固定轮询    1200 次  一个核 0.438%  发现延迟均 241ms 最坏 490ms
+        //     1000ms + dirty     621 次  一个核 0.227%  发现延迟均  86ms 最坏 460ms
+        //     1000ms 不接 dirty  600 次  一个核 0.219%  发现延迟均 517ms 最坏 990ms
+        //   放宽轮询和接上 dirty 必须一起做 只放宽不接的那一档延迟烂一倍
+        internal const int EventBackedActiveGameSweepIntervalMs = 1000;
+        // 进程集变动驱动扫描的最小间隔 取 500 是为了扫描率永远不高于放宽之前
+        internal const int DirtyScanFloorMs = 500;
         private const int FullGameDetectionIntervalMs = 20000;
         internal const int GameTransitionScanIntervalMs = 5000;
         internal const int FailedProcessScanRetryMs = 1000;
@@ -144,7 +155,8 @@ namespace PaviseApp
             if (!relevant) return;
             Interlocked.Exchange(ref processSetDirty, 1);
 
-            if (immediate || transitionRelevant) kick.Set();
+            // 进程集变动本身就是扫描信号 一律唤醒主循环 真扫不扫由 DirtyScanDue 的地板决定
+            kick.Set();
         }
 
         public bool NeedsLauncherChildParentIdentity(
@@ -221,8 +233,19 @@ namespace PaviseApp
 
         internal static int ProcessScanIntervalMs(bool eventsAvailable, bool gameActive)
         {
-            if (gameActive) return ActiveGameSweepIntervalMs;
+            if (gameActive)
+                return eventsAvailable
+                    ? EventBackedActiveGameSweepIntervalMs : ActiveGameSweepIntervalMs;
             return ProcessScanIntervalMs(eventsAvailable);
+        }
+
+        // 进程集变动是否已经够格触发一次扫描
+        //   没有事件源时 processSetDirty 只由扫描失败重排置位 那条路自己会置 urgentProcessScan
+        //   所以这里只认事件在场的情况 没有事件源时行为一个字节都不变
+        internal static bool DirtyScanDue(bool eventsAvailable, bool dirty, long elapsedMs)
+        {
+            if (!eventsAvailable || !dirty) return false;
+            return elapsedMs < 0 || elapsedMs >= DirtyScanFloorMs;
         }
 
         private bool ShouldRunProcessScan()
@@ -249,6 +272,12 @@ namespace PaviseApp
                 && (last <= 0 || elapsed < 0
                     || elapsed >= GameTransitionScanIntervalMs
                         * TimeSpan.TicksPerMillisecond))
+            {
+                Interlocked.Exchange(ref transitionScanPending, 0);
+                Interlocked.Exchange(ref lastProcessScanTicks, now);
+                return true;
+            }
+            if (DirtyScanDue(ProcessEventsAvailable, dirty, ElapsedMsOrMax(last, elapsed)))
             {
                 Interlocked.Exchange(ref transitionScanPending, 0);
                 Interlocked.Exchange(ref lastProcessScanTicks, now);
@@ -290,8 +319,17 @@ namespace PaviseApp
                 remaining = Math.Min(
                     remaining,
                     GameTransitionScanIntervalMs - elapsedMs);
+            if (ProcessEventsAvailable
+                && Interlocked.CompareExchange(ref processSetDirty, 0, 0) != 0)
+                remaining = Math.Min(remaining, DirtyScanFloorMs - elapsedMs);
             if (remaining <= 0) return 1;
             return (int)Math.Min(interval, remaining);
+        }
+
+        private static long ElapsedMsOrMax(long last, long elapsedTicks)
+        {
+            if (last <= 0 || elapsedTicks < 0) return long.MaxValue;
+            return elapsedTicks / TimeSpan.TicksPerMillisecond;
         }
 
         private static int TicksToWaitMilliseconds(long ticks)

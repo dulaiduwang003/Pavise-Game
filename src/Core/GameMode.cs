@@ -70,7 +70,6 @@ namespace PaviseApp
         private volatile string nvLowLatMode = "off";
         private volatile bool nvSmoothMotion;
         private volatile bool nvShaderCacheMax;
-        private volatile bool nvAnselOff;
         private volatile bool nvRebarOn;
         private volatile string nvDlssMode = "off";
         private volatile bool awakeOn;
@@ -81,7 +80,6 @@ namespace PaviseApp
         private volatile bool killGameDvr;
         private volatile bool mmcssOn;
         private volatile bool planSwitch;
-        private volatile bool squeezeBgOn;
         private long slowEnvAtTicks;
 
         internal const int SlowEnvDelaySeconds = 20;
@@ -106,7 +104,6 @@ namespace PaviseApp
         private readonly ulong allMask;
         private readonly ulong gameMask;
         private ulong strictMask;
-        private readonly BackgroundPressureController pressure = new BackgroundPressureController();
         private readonly IrqSessionProbe irqProbe = new IrqSessionProbe();
         private PerformancePreset preset;
         private GameDetection activeDetection;
@@ -171,15 +168,11 @@ namespace PaviseApp
             pauseDlOn = Settings.Load("GmPauseDl", true);
             wlanGuardOn = Settings.Load("GmWlanGuard", false);
             LoadCustomCoreMask();
-            squeezeBgOn = CpuTopology.SqueezeSupported
-                && Settings.Load("GmSqueezeBg", CpuTopology.SqueezeSupported);
-            SuppressionCore.SqueezeBackground = squeezeBgOn;
             pauseUpdateOn = Settings.Load("GmPauseUpdate", false);
             nvMaxPerf = Settings.Load("NvMaxPerf", false);
             nvLowLatMode = Settings.LoadStr("NvLowLat", "off");
             nvSmoothMotion = Settings.Load("NvSmoothMotion", false);
             nvShaderCacheMax = Settings.Load("NvShaderCache", false);
-            nvAnselOff = Settings.Load("NvAnselOff", false);
             nvRebarOn = Settings.Load("NvRebar", false);
             nvDlssMode = Settings.LoadStr("NvDlss", "off");
             gpuPrefStageOn = Settings.Load("GpuPrefStageOn", true);
@@ -447,6 +440,43 @@ namespace PaviseApp
             }
         }
 
+        private bool overlayRaised;
+        private int overlayAttempts;
+
+        // 这个挂点每轮扫描都会跑 对局中 500ms 一次
+        //   拨失败了不设上限的话 整局每 500ms 重试一次 每次写注册表加打一条失败日志
+        //   跟 EnvFuse 一个道理 试够就不试了 下一局重新给机会
+        private const int MaxOverlayAttempts = 3;
+
+        // 电源滑块拨到最佳性能 只有笔记本插电打专注档才动 退场必还原
+        private void MaybeActivatePowerOverlay(bool competitive)
+        {
+            if (overlayRaised || overlayAttempts >= MaxOverlayAttempts) return;
+            if (!PowerOverlay.ShouldActivate(Native.HasSystemBattery(),
+                    Native.OnAcPower(), competitive)) return;
+            if (!PowerOverlay.Supported()) { overlayAttempts = MaxOverlayAttempts; return; }
+            overlayAttempts++;
+            overlayRaised = PowerOverlay.Activate();
+        }
+
+        internal void RestorePowerOverlay()
+        {
+            overlayAttempts = 0;
+            if (!overlayRaised) return;
+            overlayRaised = false;
+            PowerOverlay.Restore();
+        }
+
+        // 对局激活那一刻定格的档位 功耗让路只在专注档参与
+        private PerformancePreset EffPreset
+        {
+            get
+            {
+                PolicySnapshot s = sessionPolicy;
+                return s != null ? s.Preset : Preset;
+            }
+        }
+
         private bool EffBoost
         {
             get
@@ -601,7 +631,8 @@ namespace PaviseApp
                     int n = core.ThrottledCountCached();
                     int b = boostStateVerified.Count;
                     string s = Lang.F("st.active", activeGame, n);
-                    s += Lang.F("st.boost", b, Lang.T(planSwitch ? "st.hp" : "st.pr"));
+                    // 两段以前是直接拼的 出来是"已压制 28 个进程已提优 1" 中间没有断句
+                    s += Lang.T("st.sep") + Lang.F("st.boost", b, Lang.T(planSwitch ? "st.hp" : "st.pr"));
                     return s;
                 }
             }
@@ -758,6 +789,8 @@ namespace PaviseApp
                                     if (EffSuppress) Sweep(all, gamePids);
                                     if (!EffSuppress) ReleaseBackground();
                                     SelfYield.Engage();
+                                    MaybeActivatePowerOverlay(EffPreset == PerformancePreset.Competitive);
+                                    PowerBudgetYieldRunner.Start(EffPreset == PerformancePreset.Competitive);
                                     if (EffBoost) Boost(all);
                                     else UnboostGames();
                                     MaybeScanOverlays();
@@ -937,7 +970,6 @@ namespace PaviseApp
                 LowLatMode = sp.NvLowLatMode,
                 SmoothMotion = sp.NvSmoothMotion,
                 ShaderCacheMax = sp.NvShaderCacheMax,
-                AnselOff = sp.NvAnselOff,
                 Rebar = sp.NvRebar,
                 DlssMode = sp.NvDlssMode
             };

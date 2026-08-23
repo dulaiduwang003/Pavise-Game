@@ -245,8 +245,8 @@ namespace PaviseApp
                 bool coreParking = k.Setting == CpMinCores || k.Setting == CpMaxCores;
                 bool useArena = coreParking ? profile.UseArenaCoreParking(aggressive) : aggressive;
                 WritePair(scheme, k.Sub, k.Setting,
-                    useArena ? k.ArenaAc : CalmAcFor(k, k.CalmAc, profile),
-                    useArena ? k.ArenaDc : k.CalmDc, out code);
+                    useArena ? ArenaAcFor(k, k.ArenaAc) : CalmAcFor(k, k.CalmAc, profile),
+                    useArena ? ArenaDcFor(k, k.ArenaDc) : k.CalmDc, out code);
             }
             catch { }
             Logger.Log(Lang.T("log.powerplanschemes.32") + Lang.T(k.Label)
@@ -258,8 +258,65 @@ namespace PaviseApp
             bool coreParking = k.Setting == CpMinCores || k.Setting == CpMaxCores;
             bool useArena = coreParking ? profile.UseArenaCoreParking(aggressive) : aggressive;
             return WritePair(scheme, k.Sub, k.Setting,
-                useArena ? k.ArenaAc : CalmAcFor(k, k.CalmAc, profile),
-                useArena ? k.ArenaDc : k.CalmDc);
+                useArena ? ArenaAcFor(k, k.ArenaAc) : CalmAcFor(k, k.CalmAc, profile),
+                useArena ? ArenaDcFor(k, k.ArenaDc) : k.CalmDc);
+        }
+
+        // 笔记本的专注档 电池那一侧放开纯省电项 跟 CalmArenaAcOnDesktop 对称 方向相反
+        //   长期以来专注档 31 个旋钮插电和电池写的是同一套值 台式机分流只服务台式机
+        //   拔了电还照着插电的口径写 最低性能状态 100 不停泊核心 一切省电全关 没人受益
+        //
+        // 只放开纯省电项 不碰会影响帧和输入的
+        //   不动 ProcThrottleMax PerfEpp PerfBoostPol 这些负载中决定频率的
+        //     实测 EPP 全量程扫描频率纹丝不动 而 PL1 才是笔记本上的真天花板
+        //     另外这块归 Dynamic Boost 和 Intel DTT 管 抢方向盘只会更糟
+        //   不动 PcieAspm 它会独立掐显卡带宽 是少数几个确实影响游戏的电源项
+        //   不动 UsbSelSuspend 那条治的是键鼠空闲后第一下发飘
+        // 放开的取值直接借智能档电池那一列 免得再引一套魔数
+        private static readonly Guid[] ArenaDcRelaxOnLaptop =
+        {
+            ProcThrottleMin, ProcThrottleMin1, CpMinCores, CpMinCores1,
+            PerfDutyCycling, DiskIdle, WirelessPowerSave,
+        };
+
+        // 笔记本插电时也不该强制一个核都不停泊
+        //   本机台架 12 逻辑核 3 线程稳态负载 同一台机器两轮独立测量
+        //   不停泊最小核心%   100     50      20      5
+        //   第一轮实际频率%   153.8   157.8   164.0   157.8
+        //   第二轮实际频率%   153.8   162.1   156.3   163.6
+        //   两次 100 都恰好 153.8 六个放开的臂全在 156.3~164.0 零重叠
+        //   也就是说强制不停泊反而让干活的核跑得更慢 封装那份预算被摊到更多活跃核上
+        //   跟专注档的意图正好相反 台式机不受这个约束 那边保持 100 不动
+        // 功耗那条没结论 两轮基线自己就漂了 6W 噪声大于效应 别拿它当依据
+        private static readonly Guid[] ArenaAcRelaxOnLaptop =
+        {
+            CpMinCores, CpMinCores1,
+        };
+
+        internal static bool ArenaAcRelaxed(Guid setting)
+        {
+            for (int i = 0; i < ArenaAcRelaxOnLaptop.Length; i++)
+                if (setting == ArenaAcRelaxOnLaptop[i]) return true;
+            return false;
+        }
+
+        private static uint ArenaAcFor(Knob k, uint ac)
+        {
+            if (!Native.HasSystemBattery()) return ac;   // 台式机保持原样
+            return ArenaAcRelaxed(k.Setting) ? k.CalmAc : ac;
+        }
+
+        internal static bool ArenaDcRelaxed(Guid setting)
+        {
+            for (int i = 0; i < ArenaDcRelaxOnLaptop.Length; i++)
+                if (setting == ArenaDcRelaxOnLaptop[i]) return true;
+            return false;
+        }
+
+        private static uint ArenaDcFor(Knob k, uint dc)
+        {
+            if (!Native.HasSystemBattery()) return dc;   // 台式机根本用不到电池那一列
+            return ArenaDcRelaxed(k.Setting) ? k.CalmDc : dc;
         }
 
         private static readonly Guid[] CalmArenaAcOnDesktop =
@@ -295,6 +352,94 @@ namespace PaviseApp
             if (g == Guid.Empty) return true;
             if (!SettingPresent(g, SubProcessor, IdleDisableSet)) return true;
             return WritePair(g, SubProcessor, IdleDisableSet, 0u, 0u);
+        }
+
+        // 对局中把能效偏好临时抬高 让出共享功耗预算 只动托管方案的 AC 值 退场必还原
+        //   EPP 才是 HWP 平台上真正控制功耗与响应折中的旋钮
+        //   ProcThrottleMin 只决定"能不能降" 地板放开了 EPP 仍为 0 的话照样不会降
+        //   混合架构上 E 核那份 PerfEpp1 必须一起动 否则只改到一个能效等级
+        // 让路的写入来自采样线程 还原可能同时来自采样线程和对局退出那条路
+        //   Stop 里是先 Join 再查 EppYielded 正常不会撞上 但 Join 超时就会
+        //   撞上的后果是重复写或读到写了一半的快照 加把锁比推理便宜
+        private static readonly object eppLk = new object();
+        private static bool eppYielded;
+        private static uint eppSavedAc, eppSavedAc1;
+        private static bool eppSaved, eppSaved1;
+
+        internal static bool EppYielded { get { lock (eppLk) return eppYielded; } }
+
+        internal static bool TryYieldEpp(uint epp)
+        {
+            lock (eppLk)
+            {
+            if (eppYielded) return true;
+            Guid g = ManagedPlanGuid();
+            if (g == Guid.Empty) return false;
+            eppSaved = ReadAc(g, SubProcessor, PerfEpp, out eppSavedAc);
+            if (!eppSaved) return false;
+            if (!WriteAc(g, SubProcessor, PerfEpp, epp)) return false;
+            eppSaved1 = ReadAc(g, SubProcessor, PerfEpp1, out eppSavedAc1);
+            if (eppSaved1 && !WriteAc(g, SubProcessor, PerfEpp1, epp))
+            {
+                WriteAc(g, SubProcessor, PerfEpp, eppSavedAc);
+                return false;
+            }
+            eppYielded = true;
+            ReapplyActive(g);
+            return true;
+            }
+        }
+
+        internal static bool RestoreEpp()
+        {
+            lock (eppLk)
+            {
+            if (!eppYielded) return true;
+            Guid g = ManagedPlanGuid();
+            bool ok = true;
+            if (g != Guid.Empty)
+            {
+                if (eppSaved) ok &= WriteAc(g, SubProcessor, PerfEpp, eppSavedAc);
+                if (eppSaved1) ok &= WriteAc(g, SubProcessor, PerfEpp1, eppSavedAc1);
+                ReapplyActive(g);
+            }
+            eppYielded = false; eppSaved = false; eppSaved1 = false;
+            return ok;
+            }
+        }
+
+        // 方案正在生效时改值要重新 SetActive 一次 否则内核不会重新读
+        private static void ReapplyActive(Guid scheme)
+        {
+            try { Guid? cur = Current(); if (cur.HasValue && cur.Value == scheme) Set(scheme); }
+            catch { }
+        }
+
+        internal static bool ReadAc(Guid scheme, Guid sub, Guid setting, out uint value)
+        {
+            Guid sb = sub, st = setting;
+            return PowerReadACValueIndex(IntPtr.Zero, ref scheme, ref sb, ref st, out value) == 0;
+        }
+
+        internal static bool WriteAc(Guid scheme, Guid sub, Guid setting, uint value)
+        {
+            Guid sb = sub, st = setting;
+            return PowerWriteACValueIndex(IntPtr.Zero, ref scheme, ref sb, ref st, value) == 0;
+        }
+
+        internal static bool ManagedPlanIsActive
+        {
+            get
+            {
+                try
+                {
+                    Guid g = ManagedPlanGuid();
+                    if (g == Guid.Empty) return false;
+                    Guid? cur = Current();
+                    return cur.HasValue && cur.Value == g;
+                }
+                catch { return false; }
+            }
         }
 
         private static bool SettingPresent(Guid scheme, Guid sub, Guid setting)
@@ -461,6 +606,25 @@ namespace PaviseApp
         internal static bool SelfTestSetActive(Guid g) { return Set(g); }
 
         internal static bool SelfTestDuplicate(out Guid created) { return Duplicate(HighPerf, out created); }
+
+        internal static bool SelfTestEppRange(Guid scheme, out uint lo, out uint hi)
+        {
+            Guid sb = SubProcessor, st = PerfEpp;
+            lo = 0; hi = 0;
+            return PowerReadValueMin(IntPtr.Zero, ref sb, ref st, out lo) == 0
+                && PowerReadValueMax(IntPtr.Zero, ref sb, ref st, out hi) == 0;
+        }
+
+        internal static Guid SelfTestProcSub { get { return SubProcessor; } }
+        internal static Guid SelfTestMinState { get { return ProcThrottleMin; } }
+        internal static Guid SelfTestParkMin { get { return CpMinCores; } }
+        internal static Guid SelfTestMaxState { get { return ProcThrottleMax; } }
+        internal static Guid SelfTestBoostPol { get { return PerfBoostPol; } }
+        internal static Guid SelfTestPcieAspm { get { return PcieAspm; } }
+        internal static Guid SelfTestUsbSuspend { get { return UsbSelSuspend; } }
+        internal static Guid SelfTestDutyCycling { get { return PerfDutyCycling; } }
+        internal static Guid SelfTestWirelessSave { get { return WirelessPowerSave; } }
+        internal static Guid SelfTestEppSetting { get { return PerfEpp; } }
 
         internal static bool SelfTestReadBrightnessAc(Guid scheme, out uint value)
         {

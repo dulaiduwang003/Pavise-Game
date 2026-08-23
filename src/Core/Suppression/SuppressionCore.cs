@@ -131,7 +131,6 @@ namespace PaviseApp
 
         public ulong ThrottleMask { get { return throttleMask; } }
 
-        public static volatile bool SqueezeBackground;
 
         public void RefreshTopologyMasks() { throttleMask = CpuTopology.ThrottleMask; }
         internal long ApplyOperations { get { return Interlocked.Read(ref applyOperations); } }

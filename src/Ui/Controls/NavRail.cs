@@ -29,13 +29,13 @@ namespace PaviseApp
 
         internal int ItemAtSlot(int slot) { return slot >= 0 && slot < order.Length ? order[slot] : -1; }
 
-        private int TopPad { get { return Dpi.S(94); } }
-        private int ItemH { get { return Dpi.S(36); } }
-        private int Gap { get { return Dpi.S(5); } }
-        private int Pad { get { return Dpi.S(12); } }
+        private int TopPad { get { return Dpi.S(137); } }
+        private int ItemH { get { return Dpi.S(47); } }
+        private int Gap { get { return Dpi.S(13); } }
+        private int Pad { get { return Dpi.S(14); } }
         private int Pitch { get { return ItemH + Gap; } }
-        private int GroupH { get { return Dpi.S(30); } }
-        private int BottomPad { get { return Dpi.S(18); } }
+        private int GroupH { get { return Dpi.S(42); } }
+        private int BottomPad { get { return Dpi.S(24); } }
 
         public NavRail(string[] names, string[] icons)
             : this(names, icons, null, null, null, 0)
@@ -46,7 +46,7 @@ namespace PaviseApp
             int[] groupBeforeSlots, string[] groupTitles, int bottomAnchored)
         {
             labels = names; glyphs = icons;
-            if (displayOrder != null && displayOrder.Length == names.Length) order = displayOrder;
+            if (displayOrder != null && displayOrder.Length > 0 && displayOrder.Length <= names.Length) order = displayOrder;
             else
             {
                 order = new int[names.Length];
@@ -59,8 +59,10 @@ namespace PaviseApp
             else { groupSlots = new int[0]; groupTexts = new string[0]; }
             anchorCount = bottomAnchored < 0 ? 0 : (bottomAnchored > order.Length ? order.Length : bottomAnchored);
             Cursor = Cursors.Default;
-            ind.Speed = 0.30f; ind.Set(SlotY(SlotOfItem(0)));
-            logo = IconArt.Render(Dpi.S(34), mode, modeEnabled);
+            ind.Speed = 0.30f;
+            int firstSlot = SlotOfItem(0);
+            ind.Set(SlotY(firstSlot >= 0 ? firstSlot : 0));
+            logo = IconArt.Render(Dpi.S(46), mode, modeEnabled);
         }
 
         internal static int GroupsAbove(int slot, int[] groupBeforeSlots)
@@ -76,11 +78,12 @@ namespace PaviseApp
         private int SlotOfItem(int item)
         {
             for (int s = 0; s < order.Length; s++) if (order[s] == item) return s;
-            return item;
+            return -1;
         }
 
         private int SlotY(int slot)
         {
+            if (slot < 0) return (int)ind.Value;
             int flowCount = order.Length - anchorCount;
             if (slot >= flowCount && Height > 0)
                 return Height - BottomPad - ItemH - (order.Length - 1 - slot) * Pitch;
@@ -97,7 +100,8 @@ namespace PaviseApp
         {
             if (i < 0 || i >= labels.Length) return;
             sel = i;
-            ind.To(SlotY(SlotOfItem(i)));
+            int slot = SlotOfItem(i);
+            if (slot >= 0) ind.To(SlotY(slot));
             UiClock.Wake(); Invalidate();
             if (SelectionChanged != null) SelectionChanged(i);
         }
@@ -114,7 +118,7 @@ namespace PaviseApp
         public void RefreshLogo()
         {
             Image old = logo;
-            logo = IconArt.Render(Dpi.S(34), mode, modeEnabled);
+            logo = IconArt.Render(Dpi.S(46), mode, modeEnabled);
             if (old != null) old.Dispose();
             Invalidate();
         }
@@ -145,35 +149,41 @@ namespace PaviseApp
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics;
-            using (var bg = new SolidBrush(Theme.Nav)) g.FillRectangle(bg, ClientRectangle);
+            if (Theme.LightMode)
+            {
+                using (var bg = new LinearGradientBrush(ClientRectangle, Theme.Nav,
+                    Col.Lerp(Theme.Nav, Theme.Bg, 0.58f), LinearGradientMode.Horizontal))
+                    g.FillRectangle(bg, ClientRectangle);
+            }
+            else using (var bg = new SolidBrush(Theme.Nav)) g.FillRectangle(bg, ClientRectangle);
             g.SmoothingMode = SmoothingMode.AntiAlias;
+            DrawTechTexture(g);
             using (var accentTop = new Pen(Theme.Accent, Math.Max(1f, Dpi.S(1)))) g.DrawLine(accentTop, 0, 0, Width, 0);
-            using (var hatch = new Pen(Color.FromArgb(9, 210, 220, 235)))
-                for (int x = -Height; x < Width; x += Dpi.S(22)) g.DrawLine(hatch, x, 0, x + Dpi.S(62), Dpi.S(62));
-
-            if (logo != null) g.DrawImage(logo, Dpi.S(16), Dpi.S(15), Dpi.S(36), Dpi.S(36));
-            TextRenderer.DrawText(g, App.DisplayName, Theme.UI(13f, true),
-                new Rectangle(Dpi.S(56), Dpi.S(14), Width - Dpi.S(60), Dpi.S(24)), Theme.Fg,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
-            TextRenderer.DrawText(g, "CORE CONTROL " + App.VersionTag, Theme.Mono(6.5f),
-                new Rectangle(Dpi.S(57), Dpi.S(38), Width - Dpi.S(60), Dpi.S(14)), Theme.Faint,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+            if (logo != null) g.DrawImage(logo, Dpi.S(20), Dpi.S(26), Dpi.S(46), Dpi.S(46));
+            TextRenderer.DrawText(g, App.DisplayName, Theme.UI(16.5f, true),
+                new Rectangle(Dpi.S(78), Dpi.S(24), Width - Dpi.S(84), Dpi.S(30)), Theme.Fg,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            TextRenderer.DrawText(g, "CORE CONTROL 2.0", Theme.Mono(7.5f),
+                new Rectangle(Dpi.S(79), Dpi.S(57), Width - Dpi.S(84), Dpi.S(18)), Theme.Faint,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 
             using (var hp = new Pen(Theme.Stroke))
             {
-                g.DrawLine(hp, Dpi.S(16), Dpi.S(64), Width - Dpi.S(16), Dpi.S(64));
                 g.DrawLine(hp, Width - 1, 0, Width - 1, Height);
             }
 
-            var pill = new Rectangle(Pad, (int)ind.Value, Width - Pad * 2, ItemH);
-            using (var path = Theme.TechPath(pill, Dpi.S(8)))
+            if (SlotOfItem(sel) >= 0)
             {
-                using (var b = new SolidBrush(Col.Alpha(Theme.Accent, 22))) g.FillPath(b, path);
-                using (var p = new Pen(Col.Alpha(Theme.Accent, 76))) g.DrawPath(p, path);
+                var pill = new Rectangle(Pad, (int)ind.Value, Width - Pad * 2, ItemH);
+                using (var path = Theme.TechPath(pill, Dpi.S(8)))
+                {
+                    using (var b = new SolidBrush(Col.Alpha(Theme.Accent, Theme.LightMode ? 38 : 22))) g.FillPath(b, path);
+                    using (var p = new Pen(Col.Alpha(Theme.Accent, Theme.LightMode ? 124 : 76))) g.DrawPath(p, path);
+                }
+                var bar = new Rectangle(Pad, (int)ind.Value + Dpi.S(12), Dpi.S(4), ItemH - Dpi.S(24));
+                using (var bp = Theme.Rounded(bar, Dpi.S(1)))
+                using (var bb = new SolidBrush(Theme.Accent)) g.FillPath(bb, bp);
             }
-            var bar = new Rectangle(Pad, (int)ind.Value + Dpi.S(11), Dpi.S(3), ItemH - Dpi.S(22));
-            using (var bp = Theme.Rounded(bar, Dpi.S(1)))
-            using (var bb = new SolidBrush(Theme.Accent)) g.FillPath(bb, bp);
 
             for (int gi = 0; gi < groupSlots.Length; gi++)
             {
@@ -184,11 +194,17 @@ namespace PaviseApp
                 Font gf = Theme.MonoFor(text, 6.5f);
                 int textW = TextRenderer.MeasureText(g, text, gf).Width;
                 int lineY = gy + GroupH / 2;
-                TextRenderer.DrawText(g, text, gf,
-                    new Rectangle(Pad + Dpi.S(13), gy, Width - Pad * 2 - Dpi.S(13), GroupH), Theme.Faint,
-                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
                 using (var gp = new Pen(Theme.Stroke))
-                    g.DrawLine(gp, Pad + Dpi.S(17) + textW + Dpi.S(8), lineY, Width - Pad - Dpi.S(2), lineY);
+                {
+                    if (text.Length > 0)
+                    {
+                        TextRenderer.DrawText(g, text, gf,
+                            new Rectangle(Pad + Dpi.S(13), gy, Width - Pad * 2 - Dpi.S(13), GroupH), Theme.Faint,
+                            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                        g.DrawLine(gp, Pad + Dpi.S(17) + textW + Dpi.S(8), lineY, Width - Pad - Dpi.S(2), lineY);
+                    }
+                    else g.DrawLine(gp, Pad + Dpi.S(6), lineY, Width - Pad - Dpi.S(6), lineY);
+                }
             }
 
             for (int s = 0; s < order.Length; s++)
@@ -199,17 +215,23 @@ namespace PaviseApp
                 if (!on && i == hoverIdx)
                 {
                     var hr = new Rectangle(Pad, y, Width - Pad * 2, ItemH);
-                    using (var b = new SolidBrush(Col.Alpha(Theme.Fg, 9)))
+                    using (var b = new SolidBrush(Col.Alpha(Theme.Fg, Theme.LightMode ? 16 : 9)))
                     using (var path = Theme.TechPath(hr, Dpi.S(8))) g.FillPath(b, path);
                 }
                 Color c = on ? (Theme.LightMode ? Theme.Accent : Color.White)
                     : (i == hoverIdx ? Theme.Fg : Theme.Dim);
-                var iconBox = new Rectangle(Pad + Dpi.S(13), y + (ItemH - Dpi.S(18)) / 2, Dpi.S(18), Dpi.S(18));
+                var iconBox = new Rectangle(Pad + Dpi.S(20), y + (ItemH - Dpi.S(20)) / 2, Dpi.S(20), Dpi.S(20));
                 Glyphs.Draw(g, glyphs[i], iconBox, on ? Theme.Accent : c);
-                var tr = new Rectangle(iconBox.Right + Dpi.S(12), y, Width - iconBox.Right - Dpi.S(14), ItemH);
-                TextRenderer.DrawText(g, labels[i], Theme.UI(10f, on), tr, c, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+                var tr = new Rectangle(iconBox.Right + Dpi.S(16), y, Width - iconBox.Right - Dpi.S(18), ItemH);
+                TextRenderer.DrawText(g, labels[i], Theme.UI(11f, on), tr, c, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
             }
         }
+
+        private void DrawTechTexture(Graphics g)
+        {
+            RogSurface.Draw(g, ClientRectangle, true);
+        }
+
     }
 
 }

@@ -155,6 +155,8 @@ namespace PaviseApp
             if (worst == null) return null;
             return Lang.F("log.irqsession.3", rec.Drivers.Count,
                 worst.Driver, worst.DpcMaxUs.ToString("F0"),
+                worst.ApproxPercentileUs(0.99).ToString("F0"),
+                worst.Over500Us,
                 IrqRelocate.MaskText(worst.CpuMask));
         }
     }

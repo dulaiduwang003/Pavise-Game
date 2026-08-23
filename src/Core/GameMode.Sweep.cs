@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 扫描并压制游戏之外的后台进程
 using System;
 using System.Collections.Generic;
@@ -77,14 +77,16 @@ namespace PaviseApp
             return manuallyEnabled;
         }
 
-        internal static SuppressionLevel ResolveBackgroundLevel(PerformancePreset mode, bool customAggressive,
-            SuppressionLevel adaptive)
+        // 2.0 起后台只有两态 通过保护边界的一律直接隔离 不再看热度也不再从省电逐级往上爬
+        //   不等它先吃十几秒资源才动手 对局一开始枚举一遍全压下去
+        //   冷进程也压 因为不再改亲和性 冷进程没有就绪线程时本来就不耗 CPU
+        //   偶尔醒来也能在任何一个没有更高优先级工作的核上跑 不会被挤着排队
+        //   唯一还在把关的是 BasicBackgroundEligible 那道保护边界
+        //   反作弊 游戏家族 系统核心 输入音频外设链 加速器 白名单 其它登录账户一律不碰
+        //   档位差异不再体现在压制强度 只体现在哪些进程有资格被碰
+        internal static SuppressionLevel BackgroundLevel()
         {
-            if (mode == PerformancePreset.Competitive)
-                return adaptive > SuppressionLevel.None ? SuppressionLevel.Isolated : SuppressionLevel.Eco;
-            if (mode == PerformancePreset.Custom)
-                return customAggressive ? SuppressionLevel.Isolated : SuppressionLevel.Eco;
-            return adaptive > SuppressionLevel.None ? adaptive : SuppressionLevel.Eco;
+            return SuppressionLevel.Isolated;
         }
 
         internal static bool BasicBackgroundEligible(int pid, int self, string name, string path,
@@ -145,8 +147,6 @@ namespace PaviseApp
             HashSet<int> userFacingFamily = aggressive
                 ? EmptyPidSet
                 : CollectUserFacingFamily(foregroundPid, whitelist);
-            bool safePartition = CpuTopology.HasSafeBackgroundPartition();
-
             int rendererPid = 0;
             string activeGameRoot = null;
             var libraryRoots = new List<string>();
@@ -229,6 +229,14 @@ namespace PaviseApp
                         }
                     }
 
+                    // 同名的自己在上面按 selfName 已经排掉了 这里挡的是换了文件名的另一个构建
+                    //   运行模式子进程绕过单实例锁 会被当普通后台进程压制 测量数据因此失真
+                    if (SelfBuildGuard.IsOwnBuild(nm, ipath))
+                    {
+                        if (core.Release(pid, SuppressReason.Background)) ReportUntrack(pid);
+                        continue;
+                    }
+
                     bool knownLauncherDuringSession = gameSessionActive && IsKnownLauncherShell(nm)
                         && !(aggressive && GamePlatformCatalog.IsPlatformWebRenderer(nm));
                     if (!PerformanceScopeAllows(ipath))
@@ -254,12 +262,8 @@ namespace PaviseApp
                         continue;
                     }
 
-                    SuppressionLevel adaptive = SuppressionLevel.None;
-                    if (mode != PerformancePreset.Custom && creation > 0)
-                        adaptive = pressure.Observe(pid, nm, creation, cpu, io, DateTime.UtcNow.Ticks, mode);
-                    else pressure.Forget(pid);
-                    SuppressionLevel desired = ResolveBackgroundLevel(mode, aggressive, adaptive);
-                    if (!EffSuppress) desired = SuppressionLevel.None;
+                    SuppressionLevel desired = EffSuppress
+                        ? BackgroundLevel() : SuppressionLevel.None;
 
                     string tracked = core.NameOf(pid);
                     if (tracked != null)
@@ -358,7 +362,6 @@ namespace PaviseApp
             foreach (int pid in core.PidsWith(SuppressReason.Background))
                 if (!live.Contains(pid)) { if (core.Release(pid, SuppressReason.Background)) ReportUntrack(pid); }
 
-            pressure.Prune(live);
 
             if (first)
             {
@@ -368,8 +371,8 @@ namespace PaviseApp
                         : mode == PerformancePreset.Custom ? Lang.T("preset.custom") : Lang.T("preset.standard");
                     bool strong = mode == PerformancePreset.Competitive
                         || (mode == PerformancePreset.Custom && aggressive);
+                    // "后台归到后台核"那一段随移核一起删了 后台不再有专属核心
                     string policy = preset + (strong ? Lang.T("t.gamemodesweep.2") : Lang.T("t.gamemodesweep.3"))
-                        + (strong && safePartition ? Lang.T("t.gamemodesweep.4") : "")
                         + (aggressive ? Lang.T("t.gamemodesweep.5") : "");
                     Logger.Log(Lang.T("log.gamemodesweep.1") + policy
                         + (SuppressionCore.GpuDemoteEnabled ? Lang.T("log.gamemodesweep.6") : "")
@@ -445,7 +448,6 @@ namespace PaviseApp
                 ReportUntrack(pid);
                 if (!string.IsNullOrEmpty(reason)) Logger.Log(reason + Lang.T("log.gamemodesweep.12") + name + " pid " + pid);
             }
-            pressure.Forget(pid);
         }
 
         private static readonly Environment.SpecialFolder[] UnsafeRoots =

@@ -14,6 +14,7 @@ namespace PaviseApp
         private GameProfile cfgProfile;
         private Label lblCfgCount;
         private Label lblCfgSub;
+        private ModuleBanner cfgBanner;
         private TechTabs cfgTabs;
         private DBPanel[] cfgTabPanels;
         private string[][] cfgTabKeys;
@@ -108,6 +109,15 @@ namespace PaviseApp
                 lblCfgSub.Text = frozen ? Lang.T("cfg.frozen") : Lang.T("cfg.sub");
                 lblCfgSub.ForeColor = frozen ? Theme.Accent : Theme.Dim;
             }
+            if (cfgBanner != null)
+            {
+                int count = cfgProfile.Overrides.Count;
+                bool frozen = cfgProfileId != null
+                    && string.Equals(gameMode.SessionPolicyProfileId, cfgProfileId, StringComparison.OrdinalIgnoreCase);
+                cfgBanner.State = count > 0 ? Lang.F("cfg.count", count) : "FOLLOWING GLOBAL";
+                cfgBanner.StateColor = count > 0 ? Theme.Accent : Theme.Green;
+                cfgBanner.Detail = frozen ? Lang.T("cfg.frozen") : Lang.T("cfg.sub");
+            }
         }
 
         private void AddCfgSection(Control panel, string title, ref int y, string[] keys)
@@ -158,43 +168,26 @@ namespace PaviseApp
             back.Click += delegate { CloseGameConfigPage(); };
             pageGameConfig.Controls.Add(back);
 
-            var title = new Label();
-            title.Text = Lang.F("cfg.title", cfgProfile.Name);
-            title.ForeColor = Theme.Fg; title.BackColor = Theme.Bg;
-            title.Font = Theme.UI(13.5f, true);
-            title.UseCompatibleTextRendering = false;
-            title.AutoEllipsis = true;
-            title.SetBounds(Theme.S(ContentX), Theme.S(46), Theme.S(ContentW - 300), Theme.S(24));
-            pageGameConfig.Controls.Add(title);
-
-            lblCfgCount = new Label();
-            lblCfgCount.BackColor = Theme.Bg;
-            lblCfgCount.Font = Theme.UI(8.4f, true);
-            lblCfgCount.UseCompatibleTextRendering = false;
-            lblCfgCount.TextAlign = ContentAlignment.MiddleRight;
-            lblCfgCount.SetBounds(Theme.S(ContentX + ContentW - 300), Theme.S(51), Theme.S(300), Theme.S(20));
-            lblCfgCount.Click += delegate { JumpToNextCfgOverride(); };
-            pageGameConfig.Controls.Add(lblCfgCount);
-
-            var copy = new PillButton(Lang.T("cfg.copy"));
-            copy.SetBounds(Theme.S(ContentX + ContentW - 268), Theme.S(8), Theme.S(160), Theme.S(32));
-            copy.Click += delegate { ShowCopyOverridesDialog(); };
-            pageGameConfig.Controls.Add(copy);
-
             var clear = new PillButton(Lang.T("cfg.clear"), BtnKind.Danger);
             clear.SetBounds(Theme.S(ContentX + ContentW - 100), Theme.S(8), Theme.S(100), Theme.S(32));
             clear.Click += delegate { ClearAllCfgOverrides(); };
             pageGameConfig.Controls.Add(clear);
 
-            lblCfgSub = new Label();
-            lblCfgSub.BackColor = Theme.Bg;
-            lblCfgSub.Font = Theme.UI(8.4f, false);
-            lblCfgSub.UseCompatibleTextRendering = false;
-            lblCfgSub.AutoEllipsis = true;
-            lblCfgSub.SetBounds(Theme.S(ContentX + 1), Theme.S(71), Theme.S(ContentW - 2), Theme.S(17));
-            pageGameConfig.Controls.Add(lblCfgSub);
+            lblCfgCount = null;
+            lblCfgSub = null;
+            cfgBanner = new ModuleBanner();
+            cfgBanner.SetBounds(Theme.S(ContentX), Theme.S(50), Theme.S(ContentW), Theme.S(72));
+            cfgBanner.Code = "GAME PROFILE // 07";
+            cfgBanner.TitleText = Lang.F("cfg.title", cfgProfile.Name);
+            cfgBanner.Detail = Lang.T("cfg.sub");
+            cfgBanner.State = "PROFILE READY";
+            cfgBanner.StateColor = Theme.Green;
+            cfgBanner.Glyph = "tiles";
+            cfgBanner.Cursor = Cursors.Hand;
+            cfgBanner.Click += delegate { JumpToNextCfgOverride(); };
+            pageGameConfig.Controls.Add(cfgBanner);
 
-            int modeY = 100;
+            int modeY = 134;
             AddCfgModeRow(pageGameConfig, ref modeY);
 
             cfgTabs = new TechTabs();
@@ -210,7 +203,7 @@ namespace PaviseApp
             cfgTabPanels = new DBPanel[4];
             for (int i = 0; i < cfgTabPanels.Length; i++)
             {
-                var panel = new DBPanel();
+                var panel = new WorkspacePanel();
                 panel.SetBounds(Theme.S(20), Theme.S(panelTop), Theme.S(PageW - 40),
                     Theme.S(PageH - panelTop - 8));
                 panel.BackColor = Theme.Bg; panel.AutoScroll = true; Native.Dark(panel);
@@ -229,7 +222,7 @@ namespace PaviseApp
             int ty = 2;
             AddCfgSection(cfgTabPanels[0], Lang.T("cfg.sub.range"), ref ty,
                 new[] { PolicyCatalog.KeySuppress, PolicyCatalog.KeyAggressive,
-                    PolicyCatalog.KeySqueezeBg, PolicyCatalog.KeyGpuDemote });
+                    PolicyCatalog.KeyGpuDemote });
             AddCfgSection(cfgTabPanels[0], Lang.T("cfg.sub.boost"), ref ty,
                 new[] { PolicyCatalog.KeyBoost, PolicyCatalog.KeyIfeoBoost,
                     PolicyCatalog.KeyRenderLane });
@@ -251,14 +244,13 @@ namespace PaviseApp
             AddCfgSection(cfgTabPanels[3], "NVIDIA", ref ty,
                 new[] { PolicyCatalog.KeyNvMaxPerf, PolicyCatalog.KeyNvLowLat,
                     PolicyCatalog.KeyNvSmoothMotion, PolicyCatalog.KeyNvShaderCache,
-                    PolicyCatalog.KeyNvDlss, PolicyCatalog.KeyNvRebar,
-                    PolicyCatalog.KeyNvAnselOff });
+                    PolicyCatalog.KeyNvDlss, PolicyCatalog.KeyNvRebar });
             EnableCardCollapse(cfgTabPanels[3]);
 
             cfgTabKeys = new[]
             {
                 new[] { PolicyCatalog.KeySuppress, PolicyCatalog.KeyAggressive,
-                    PolicyCatalog.KeySqueezeBg, PolicyCatalog.KeyGpuDemote,
+                    PolicyCatalog.KeyGpuDemote,
                     PolicyCatalog.KeyBoost,
                     PolicyCatalog.KeyIfeoBoost, PolicyCatalog.KeyRenderLane },
                 new[] { PolicyCatalog.KeyStrictCores, PolicyCatalog.KeyCoreDomainAlt,
@@ -269,8 +261,7 @@ namespace PaviseApp
                 new[] { PolicyCatalog.KeyNvMaxPerf,
                     PolicyCatalog.KeyNvLowLat, PolicyCatalog.KeyNvSmoothMotion,
                     PolicyCatalog.KeyNvShaderCache,
-                    PolicyCatalog.KeyNvDlss, PolicyCatalog.KeyNvRebar,
-                    PolicyCatalog.KeyNvAnselOff },
+                    PolicyCatalog.KeyNvDlss, PolicyCatalog.KeyNvRebar },
             };
 
             SyncCfgRows();
@@ -314,7 +305,6 @@ namespace PaviseApp
                 case PolicyCatalog.KeySuppress: return "v14.bg.master.sub";
                 case PolicyCatalog.KeyBoost: return "v15.boost.sub";
                 case PolicyCatalog.KeyAggressive: return "gm.aggressive.sub";
-                case PolicyCatalog.KeySqueezeBg: return "gm.squeezebg.sub";
                 case PolicyCatalog.KeyGpuDemote: return "gm.gpudemote.sub";
                 case PolicyCatalog.KeyIfeoBoost: return "gm.ifeo.sub";
                 case PolicyCatalog.KeyRenderLane: return "gm.lane.sub";
@@ -327,7 +317,6 @@ namespace PaviseApp
                 case PolicyCatalog.KeyNvLowLat: return "set.nvll.n";
                 case PolicyCatalog.KeyNvSmoothMotion: return "set.nvsmooth.n";
                 case PolicyCatalog.KeyNvShaderCache: return "set.nvshader.n";
-                case PolicyCatalog.KeyNvAnselOff: return "set.nvansel.n";
                 case PolicyCatalog.KeyNvRebar: return "set.nvrebar.n";
                 case PolicyCatalog.KeyNvDlss: return "set.nvdlss.n";
                 default: return null;
@@ -340,13 +329,9 @@ namespace PaviseApp
             reasonKey = null;
             switch (item.Key)
             {
-                case PolicyCatalog.KeySqueezeBg:
-                    if (!CpuTopology.SqueezeSupported) reasonKey = "gm.squeezebg.smallcpu";
-                    return CpuTopology.SqueezeSupported;
                 case PolicyCatalog.KeyNvMaxPerf:
                 case PolicyCatalog.KeyNvLowLat:
                 case PolicyCatalog.KeyNvShaderCache:
-                case PolicyCatalog.KeyNvAnselOff:
                 case PolicyCatalog.KeyNvRebar:
                     if (!nvOk) reasonKey = "set.nv.none";
                     return nvOk;
@@ -425,7 +410,7 @@ namespace PaviseApp
             picker.Index = supported ? CfgRowIndexOf(item, values) : 1;
             int segW = labels.Length >= 6 ? 68 : 78;
             picker.SetBounds(0, 0, Theme.S(labels.Length * segW + 12), Theme.S(30));
-            bool showDisabled = item.Key == PolicyCatalog.KeySqueezeBg && !supported;
+            bool showDisabled = false;
             picker.Enabled = supported;
             picker.Visible = supported || showDisabled;
 
@@ -473,56 +458,6 @@ namespace PaviseApp
             gameMode.ClearProfileOverrides(cfgProfileId);
             cfgCoreManualPicked = false;
             SyncCfgRows();
-        }
-
-        private sealed class CfgCopyTarget
-        {
-            public readonly string Id;
-            private readonly string name;
-            public CfgCopyTarget(string id, string profileName) { Id = id; name = profileName; }
-            public override string ToString() { return name; }
-        }
-
-        private void ShowCopyOverridesDialog()
-        {
-            if (cfgProfile == null) return;
-            var targets = new List<CfgCopyTarget>();
-            foreach (GameProfile p in gameMode.GetProfiles())
-                if (!string.Equals(p.Id, cfgProfileId, StringComparison.OrdinalIgnoreCase))
-                    targets.Add(new CfgCopyTarget(p.Id, p.Name));
-            if (targets.Count == 0)
-            {
-                PaviseDialog.Info(this, Lang.T("cfg.copy"), Lang.T("cfg.copy.none"));
-                return;
-            }
-
-            var list = new CheckedListBox();
-            list.BackColor = Theme.Card;
-            list.ForeColor = Theme.Fg;
-            list.BorderStyle = BorderStyle.FixedSingle;
-            list.Font = Theme.UI(9.2f, false);
-            list.CheckOnClick = true;
-            list.IntegralHeight = false;
-            list.Size = new Size(Theme.S(416), Theme.S(Math.Min(220, 30 + targets.Count * 26)));
-            foreach (CfgCopyTarget t in targets) list.Items.Add(t);
-
-            if (!PaviseDialog.Confirm(this, Lang.T("cfg.copy"),
-                    Lang.F("cfg.copy.sub", cfgProfile.Name), DlgKind.Info, list, 468))
-                return;
-            int applied = 0;
-            foreach (object checkedItem in list.CheckedItems)
-            {
-                var target = checkedItem as CfgCopyTarget;
-                if (target == null) continue;
-                gameMode.CopyProfileOverrides(cfgProfileId, target.Id);
-                applied++;
-            }
-            if (applied > 0)
-            {
-                Logger.Log(Lang.F("cfg.copy.done", applied));
-                cfgCoreManualPicked = false;
-                SyncCfgRows();
-            }
         }
     }
 }

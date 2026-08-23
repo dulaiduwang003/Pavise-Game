@@ -37,7 +37,23 @@ namespace PaviseApp
 
         public static readonly ReleaseNote[] All = new[]
         {
-            new ReleaseNote("1.9.8.1", "2026-08-22", new[]
+            new ReleaseNote("2.0", "2026-08-24", new[]
+            {
+                new[]{ "移除 后台绑核收缩与后台移核 后台不再被限定核心", "Removed background core shrinking and background core relocation; background work is no longer confined to specific cores." },
+                new[]{ "移除 后台压制的省电与克制两档 以及等待热度确认的观测", "Removed the eco and restrained background tiers along with the wait for measured pressure." },
+                new[]{ "调整 对局一开始就直接隔离全部后台 不再等它们先抢资源", "Adjusted background suppression to isolate everything from the moment a match starts, instead of waiting for contention." },
+                new[]{ "调整 对局中的后台扫描改由进程变动驱动 新出现的进程被压制得更快", "Adjusted in-match background scanning to be driven by process-set changes, so newly appearing processes are suppressed sooner." },
+                new[]{ "调整 笔记本用电池时专注档不再照搬插电的电源参数 只放开纯省电项", "Adjusted the Focus tier on laptop battery to stop copying the plugged-in power settings, relaxing only the pure power-saving items." },
+                new[]{ "调整 笔记本专注档不再强制所有核心不停泊", "Adjusted the Focus tier on laptops to stop forcing every core unparked." },
+                new[]{ "新增 笔记本插电打专注档时把电源滑块拨到最佳性能 退出对局还原", "Added switching the power slider to Best Performance for Focus-tier matches on laptop AC power, restored when the match ends." },
+                new[]{ "新增 体检可读出处理器封装与核心功耗 不需要安装驱动", "Added processor package and core power readings to the checkup, with no driver install required." },
+                new[]{ "新增 笔记本对局中把共享功耗预算从 CPU 让给显卡 默认关闭 实验项", "Added an experimental, off-by-default option that yields shared power budget from the CPU to the GPU during laptop matches." },
+                new[]{ "移除 独立配置页的套用到其它游戏按钮", "Removed the apply-to-other-games button from the per-game profile page." },
+                new[]{ "移除 界面动画期间提升全局系统计时器精度", "Removed the global system timer precision boost during UI animation." },
+                new[]{ "修复 无超线程的混合架构上显卡中断被投到低频能效核", "Fixed GPU interrupts being placed on low-clock efficiency cores on hybrid CPUs without hyper-threading." },
+                new[]{ "修复 换了文件名的另一个 Pavise 构建会被当作后台进程压制", "Fixed another Pavise build with a different file name being suppressed as a background process." },
+            }),
+            new ReleaseNote("1.9.8.9", "2026-08-22", new[]
             {
                 new[]{ "新增 游戏进程发现快速通道 游戏启动后更快被识别与接管", "Added a fast path for game process discovery; games are recognized and taken over sooner after launch." },
                 new[]{ "新增 待命阶段提前写入 NVIDIA 逐游戏调优 本次启动即可生效 不再等下一局", "Added pre-staging of NVIDIA per-game tuning while on standby, so it takes effect on this launch instead of the next." },
@@ -52,6 +68,7 @@ namespace PaviseApp
                 new[]{ "新增 系统环境内核调度新增计时器恒定节拍开关 重启后生效", "Added a constant timer tick switch under System Environment kernel scheduling; takes effect after a reboot." },
                 new[]{ "移除 体检页平台时钟校正项 时钟相关改动统一归系统环境的计时器开关管理", "Removed the platform timer correction item from the checkup page; clock-related changes are now managed by the timer switch under System Environment." },
                 new[]{ "移除 AMD 显卡相关优化与体检项 显卡设置交还 AMD 软件本身", "Removed AMD GPU optimizations and audit items; GPU settings are handed back to AMD's own software." },
+                new[]{ "移除 禁止 Ansel 注入游戏 残留由设置页清除按钮还原", "Removed blocking Ansel injection into games; residue is restored via the cleanup button on the Settings page." },
                 new[]{ "移除 全部旧版本数据迁移与残留清理逻辑 程序不再自动改动任何历史配置", "Removed all legacy data migration and residue cleanup logic; the app no longer touches historical configuration on its own." },
                 new[]{ "新增 中断体检 软件自己造负载当场观测 不必先打几局游戏 按 Esc 可随时中断", "Added the interrupt checkup: the app generates its own load and observes on the spot, with no need to play matches first. Press Esc to stop early." },
                 new[]{ "修复 中断体检进度未走完就提前结束", "Fixed the interrupt checkup ending before the progress bar completed." },
@@ -62,7 +79,6 @@ namespace PaviseApp
                 new[]{ "新增 体检给出建议目标核心 不适合改动的设备会说明原因", "Added suggested target cores from the checkup, with a stated reason for every device it advises against changing." },
                 new[]{ "新增 显卡驱动容器与硬件功耗散热控制工具自动豁免后台压制", "Added automatic suppression exemption for graphics driver containers and hardware power/thermal control utilities." },
                 new[]{ "调整 恢复智能保帧 CPU 持续吃满十秒且帧线程未接管时游戏本体让回普通优先级 旧版一秒即降的过敏已修掉", "Adjusted: the frame guard is back - when the CPU stays saturated for ten seconds with no render-thread takeover, the game process yields to normal priority; the old one-second hair trigger is gone." },
-                new[]{ "调整 专注档新出现的后台进程首轮即隔离 确认空闲后自动放宽 不再等热度爬升", "Adjusted: under Focus, newly seen background processes are isolated on first sight and relaxed once confirmed idle, instead of waiting for heat to build." },
                 new[]{ "修复 笔记本对局中核心停泊未解除 智能档插电只放开一半核心", "Fixed core parking staying active in-match on laptops; the Smart tier only unparked half the cores on AC power." },
                 new[]{ "修复 反作弊相容名单的游戏仍被写入显卡调度优先级 名单语义恢复为完全零接触", "Fixed roster-protected anti-cheat games still receiving GPU scheduling priority writes; the roster once again means zero contact." },
                 new[]{ "调整 帧线程识别开局数秒内完成 并定期复核 钉错的线程会被自动解除并重新识别", "Adjusted frame thread identification to complete within seconds of a match starting, with periodic re-checks that automatically unpin and re-identify a wrongly pinned thread." },

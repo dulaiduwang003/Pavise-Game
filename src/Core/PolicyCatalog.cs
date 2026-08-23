@@ -41,7 +41,6 @@ namespace PaviseApp
         public const string KeySuppress = "GmSuppress";
         public const string KeyBoost = "GmBoost";
         public const string KeyAggressive = "GmAggressive";
-        public const string KeySqueezeBg = "GmSqueezeBg";
         public const string KeyGpuDemote = "GmGpuDemote";
         public const string KeyIfeoBoost = "GmIfeoBoost";
         public const string KeyRenderLane = "GmRenderLane";
@@ -57,7 +56,6 @@ namespace PaviseApp
         public const string KeyNvLowLat = "NvLowLat";
         public const string KeyNvSmoothMotion = "NvSmoothMotion";
         public const string KeyNvShaderCache = "NvShaderCache";
-        public const string KeyNvAnselOff = "NvAnselOff";
         public const string KeyNvRebar = "NvRebar";
         public const string KeyNvDlss = "NvDlss";
 
@@ -75,7 +73,6 @@ namespace PaviseApp
             new PolicyItem(KeySuppress, PolicyValueKind.Bool, "1", "v14.bg.master", GroupBackground, null),
             new PolicyItem(KeyBoost, PolicyValueKind.Bool, "1", "gm.boost", GroupBackground, null),
             new PolicyItem(KeyAggressive, PolicyValueKind.Bool, "0", "gm.aggressive", GroupBackground, null),
-            new PolicyItem(KeySqueezeBg, PolicyValueKind.Bool, "1", "gm.squeezebg", GroupBackground, null),
             new PolicyItem(KeyGpuDemote, PolicyValueKind.Bool, "0", "gm.gpudemote", GroupBackground, null),
             new PolicyItem(KeyIfeoBoost, PolicyValueKind.Bool, "0", "gm.ifeo", GroupBackground, null),
             new PolicyItem(KeyRenderLane, PolicyValueKind.Bool, "1", "gm.lane", GroupBackground, null),
@@ -92,7 +89,6 @@ namespace PaviseApp
                 new[] { "off", "on", "ultra" }),
             new PolicyItem(KeyNvSmoothMotion, PolicyValueKind.Bool, "0", "set.nvsmooth", GroupGraphics, null),
             new PolicyItem(KeyNvShaderCache, PolicyValueKind.Bool, "0", "set.nvshader", GroupGraphics, null),
-            new PolicyItem(KeyNvAnselOff, PolicyValueKind.Bool, "0", "set.nvansel", GroupGraphics, null),
             new PolicyItem(KeyNvRebar, PolicyValueKind.Bool, "0", "set.nvrebar", GroupGraphics, null),
             new PolicyItem(KeyNvDlss, PolicyValueKind.Choice, "off", "set.nvdlss", GroupGraphics,
                 new[] { "off", "latest", "j", "k" }),

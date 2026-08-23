@@ -69,6 +69,8 @@ namespace PaviseApp
                 seconds = ClampSeconds(seconds);
                 r.Seconds = seconds;
                 if (!Native.IsElevated()) { r.Error = Lang.T("irqmove.needadmin"); return r; }
+                if (InterruptAttribution.ProbeOwnedElsewhere())
+                { r.Error = Lang.T("irqcheck.probebusy"); return r; }
 
                 cancel = false;
                 var load = new LoadGen();
@@ -78,7 +80,7 @@ namespace PaviseApp
                 {
                     load.Start();
                     Thread.Sleep(3000);
-                    if (!ia.Start()) { r.Error = Lang.T("irqmove.nosession"); return r; }
+                    if (!ia.Start()) { r.Error = InterruptAttribution.StartFailureText(ia); return r; }
                     for (int i = 0; i < seconds && !cancel; i++)
                     {
                         Thread.Sleep(1000);

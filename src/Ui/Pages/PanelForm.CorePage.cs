@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 构建核心分配标签页 自动按档位 手动逐核 两种方式任何时刻只显示一套
 using System;
 using System.Collections.Generic;
@@ -22,8 +22,6 @@ namespace PaviseApp
         private CoreRolePicker rolePicker;
         private DBPanel gamePresetRow;
         private Label coreHowTo;
-        private Toggle swCoreSqueeze;
-        private SettingCard cardCoreSqueeze;
 
 #if PAVISE_SELFTEST
         internal static string CpuNameOverride;
@@ -95,11 +93,6 @@ namespace PaviseApp
             y += 22;
 
             int sy = y;
-            swCoreSqueeze = AddPolicyToggle(panel, ref sy, Lang.T("gm.squeezebg"),
-                Lang.T("gm.squeezebg.sub"),
-                delegate { return gameMode.SqueezeBackgroundOn; },
-                delegate(bool v) { gameMode.SqueezeBackgroundOn = v; SyncCorePage(); });
-            cardCoreSqueeze = swCoreSqueeze.Parent as SettingCard;
             y = sy;
 
             coreGroupTop = y;
@@ -287,29 +280,6 @@ namespace PaviseApp
             PaviseDialog.Show(this, Lang.T("core.guide.title"), TopologyLine(), scroll, dlgW);
         }
 
-        private void SyncSqueezeCard()
-        {
-            if (swCoreSqueeze == null || cardCoreSqueeze == null) return;
-            int status = CpuTopology.SqueezeStatusFor(PendingGameMask());
-            bool permanent = status == CpuTopology.SqueezeTooFewCores
-                || status == CpuTopology.SqueezeMultiGroup;
-
-            string desc;
-            if (status == CpuTopology.SqueezeTooFewCores)
-                desc = Lang.F("gm.squeezebg.none", CpuTopology.PhysicalCoreMasks().Length,
-                    CpuPartitionPolicy.SqueezeMinPhysical);
-            else if (status == CpuTopology.SqueezeMultiGroup)
-                desc = Lang.T("gm.squeezebg.multigroup");
-            else if (status == CpuTopology.SqueezeAlreadyNarrow)
-                desc = Lang.F("gm.squeezebg.narrow",
-                    CpuTopology.BackgroundWholeCoresFor(PendingGameMask()));
-            else desc = Lang.T("gm.squeezebg.sub");
-
-            swCoreSqueeze.Enabled = !permanent;
-            if (permanent) swCoreSqueeze.SetSilently(false);
-            cardCoreSqueeze.Desc = desc;
-        }
-
         private ulong PendingGameMask()
         {
             ulong clean = CpuTopology.SanitizeCustomMask(corePending, CpuTopology.AllMask);
@@ -348,8 +318,6 @@ namespace PaviseApp
                 coreMaskLabel.ForeColor = live == 0 ? Theme.Dim : Theme.Accent;
             }
 
-            SyncSqueezeCard();
-
             if (rolePicker != null)
             {
                 rolePicker.GameCountText = Lang.F("core.role.count", logical, physical);
@@ -363,48 +331,36 @@ namespace PaviseApp
                     coreSplitBar.SetState(0, 0, Lang.T("core.state.few"), "", true, dirty, false);
                 else
                 {
-                    ulong rest = corePending == CpuTopology.AllMask
-                        ? 0
-                        : CpuTopology.BackgroundRemainderFor(corePending, CpuTopology.AllMask);
-                    int bgCores = CpuTopology.CountSetBits(rest);
-                    string tail;
-                    if (corePending == CpuTopology.AllMask) tail = Lang.T("core.bg.allcores");
-                    else if (rest == 0)
-                        tail = Lang.F("core.bg.toofull", CpuTopology.MinCustomBackgroundCores);
-                    else tail = Lang.F("core.bg.ok", bgCores, CoreListText(rest));
+                    // 2.0 起这条尾巴只说"游戏没占哪几个核" 不再声称后台被关进去
+                    //   以前它叫"后台 N 核" 那是移核时代的说法 后台早已不限定核心
+                    //   也不再走 BackgroundRemainderFor 那道最少两核的门槛
+                    //   门槛是给独占分区用的 现在没有独占 剩一个核就如实显示一个
+                    ulong rest = CpuTopology.AllMask & ~corePending;
+                    int spare = CpuTopology.CountSetBits(rest);
+                    string tail = rest == 0
+                        ? Lang.T("core.bg.allcores")
+                        : Lang.F("core.bg.ok", spare, CoreListText(rest));
                     coreSplitBar.SetState(logical,
                         CpuTopology.CountSetBits(CpuTopology.AllMask),
                         Lang.F(dirty ? "core.state.dirty" : "core.state.applied", logical, physical),
-                        tail, rest == 0 && corePending != CpuTopology.AllMask, dirty, true);
+                        tail, false, dirty, true);
                 }
             }
             if (coreApplyBtn != null) coreApplyBtn.Enabled = valid && dirty;
             if (coreLandingLine != null)
             {
+                // 手动划核时更需要这句 用户看见"其余 2 核"最容易误以为后台被关进去了
                 bool wasShown = coreLandingLine.Visible;
-                coreLandingLine.Visible = !manual;
-                if (!manual)
-                {
-                    coreLandingLine.Text = BackgroundLandingText(0);
-                    if (!wasShown) Fx.SlideIn(coreLandingLine);
-                }
+                coreLandingLine.Visible = true;
+                coreLandingLine.Text = BackgroundLandingText(0);
+                if (!wasShown) Fx.SlideIn(coreLandingLine);
             }
         }
 
+        // 2.0 起后台不再被限定核心 与游戏共用全部核心 靠优先级让路
         private string BackgroundLandingText(ulong pendingGameMask)
         {
-            ulong allowed = CpuTopology.BackgroundAllowedMaskFor(pendingGameMask);
-            if (allowed == 0) return Lang.T("core.land.none");
-            if (!gameMode.SqueezeBackgroundOn || CpuTopology.MultiGroup)
-                return Lang.F("core.land.plain", CoreListText(allowed));
-            ulong squeeze = CpuTopology.BackgroundSqueezeMaskFor(pendingGameMask);
-            if (squeeze != 0)
-                return Lang.F("core.land.squeezed", CoreListText(squeeze),
-                    CpuTopology.CountSetBits(allowed), CpuTopology.CountSetBits(squeeze));
-            int whole = 0;
-            foreach (ulong core in CpuTopology.PhysicalCoreMasks())
-                if ((core & allowed) == core) whole++;
-            return Lang.F(whole == 0 ? "core.land.nowhole" : "core.land.narrow", CoreListText(allowed));
+            return Lang.T("core.land.allcores");
         }
     }
 }

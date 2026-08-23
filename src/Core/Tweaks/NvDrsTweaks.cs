@@ -12,7 +12,6 @@ namespace PaviseApp
         public string LowLatMode;
         public bool SmoothMotion;
         public bool ShaderCacheMax;
-        public bool AnselOff;
         public bool Rebar;
         public string DlssMode;
 
@@ -20,7 +19,7 @@ namespace PaviseApp
         {
             get
             {
-                return !MaxPerf && !AnselOff && !Rebar
+                return !MaxPerf && !Rebar
                     && !SmoothMotion && !ShaderCacheMax
                     && (LowLatMode == null || LowLatMode == "off")
                     && (DlssMode == null || DlssMode == "off");
@@ -190,7 +189,6 @@ namespace PaviseApp
             }
             if (plan.ShaderCacheMax)
                 desired.Add(new KeyValuePair<string, uint>(KeyShaderCache, NvApi.ShaderCacheUnlimited));
-            if (plan.AnselOff) desired.Add(new KeyValuePair<string, uint>(KeyAnsel, 0u));
             if (plan.Rebar)
             {
                 desired.Add(new KeyValuePair<string, uint>(KeyRebarFeat, 1u));
@@ -378,7 +376,6 @@ namespace PaviseApp
                             + (plan.SmoothMotion && SmoothMotionSupported() && !failed.Contains(KeySmooth)
                                 ? Lang.T("t.nvdrstweaks.16") : "")
                             + (plan.ShaderCacheMax && !failed.Contains(KeyShaderCache) ? Lang.T("t.nvdrstweaks.17") : "")
-                            + (plan.AnselOff && !failed.Contains(KeyAnsel) ? Lang.T("t.nvdrstweaks.18") : "")
                             + (plan.Rebar && !ContainsAny(failed, RebarKeys) ? Lang.T("t.nvdrstweaks.19") : "")
                             + (DesiredHasDlss(desired) && !ContainsAny(failed, DlssKeys)
                                 ? " " + DlssText(plan.DlssMode) : "");

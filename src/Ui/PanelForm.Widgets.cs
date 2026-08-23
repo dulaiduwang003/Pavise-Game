@@ -11,39 +11,54 @@ namespace PaviseApp
     {
         private int PageHeader(DBPanel page, string title, string sub, int subLines)
         {
-            var rail = new AccentLine();
-            rail.SetBounds(Theme.S(26), Theme.S(5), Theme.S(28), Math.Max(1, Theme.S(2)));
-            page.Controls.Add(rail);
+            var tag = new Label();
+            tag.Text = PageModuleCode(page);
+            tag.ForeColor = Theme.Faint; tag.BackColor = Color.Transparent;
+            tag.Font = Theme.Mono(6.2f); tag.TextAlign = ContentAlignment.MiddleRight;
+            tag.SetBounds(Theme.S(ContentX + ContentW - 230), Theme.S(25), Theme.S(214), Theme.S(18));
+            page.Controls.Add(tag);
+            var tagRail = new AccentLine();
+            tagRail.SetBounds(Theme.S(ContentX + ContentW - 112), Theme.S(50), Theme.S(96), Math.Max(1, Theme.S(1)));
+            page.Controls.Add(tagRail);
 
-            var sys = new Label();
-            sys.Text = "PAVISE  //  CONTROL";
-            sys.ForeColor = Theme.Faint; sys.BackColor = Theme.Bg;
-            sys.Font = Theme.Mono(6.75f);
-            sys.UseCompatibleTextRendering = false;
-            sys.SetBounds(Theme.S(62), 0, Theme.S(190), Theme.S(14));
-            page.Controls.Add(sys);
-
+            var titleRail = new AccentLine();
+            titleRail.SetBounds(Theme.S(ContentX - 2), Theme.S(31), Theme.S(3), Theme.S(24));
+            page.Controls.Add(titleRail);
             var t = new Label();
             t.Text = title;
-            t.ForeColor = Theme.Fg; t.BackColor = Theme.Bg;
-            t.Font = Theme.UI(14.5f, true);
+            t.ForeColor = Theme.Fg; t.BackColor = Color.Transparent;
+            t.Font = Theme.UI(18f, true);
             t.UseCompatibleTextRendering = false;
-            t.SetBounds(Theme.S(26), Theme.S(17), Theme.S(ContentW - 80), Theme.S(32));
+            t.SetBounds(Theme.S(ContentX + 12), Theme.S(27), Theme.S(ContentW - 270), Theme.S(38));
             page.Controls.Add(t);
-            int y = 50;
+            int y = 72;
             if (!string.IsNullOrEmpty(sub))
             {
                 var s2 = new Label();
                 s2.Text = sub;
-                s2.ForeColor = Theme.Dim; s2.BackColor = Theme.Bg;
-                s2.Font = Theme.UI(8.5f, false);
+                s2.ForeColor = Theme.Dim; s2.BackColor = Color.Transparent;
+                s2.Font = Theme.UI(9.5f, false);
                 s2.UseCompatibleTextRendering = false;
                 s2.AutoEllipsis = true;
-                s2.SetBounds(Theme.S(27), Theme.S(y), Theme.S(ContentW - 2), Theme.S(16 * subLines + 2));
+                s2.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(18 * subLines + 2));
                 page.Controls.Add(s2);
-                y += 16 * subLines + 8;
+                y += 18 * subLines + 5;
             }
             return y + 8;
+        }
+
+        private string PageModuleCode(DBPanel page)
+        {
+            if (page == pagePolicy) return "POLICY // MODULE 01";
+            if (page == pageAntiCheat) return "DEFENSE // MODULE 02";
+            if (page == pageWhitelist) return "EXCLUSION // MODULE 03";
+            if (page == pageGraphics) return "GRAPHICS // MODULE 04";
+            if (page == pageEnvironment) return "SYSTEM // MODULE 05";
+            if (page == pageIrq) return "INTERRUPT // MODULE 06";
+            if (page == pageGameConfig) return "PROFILE // MODULE 07";
+            if (page == pageAudit) return "REPORT // MODULE 08";
+            if (page == pageLog) return "EVENT BUS // MODULE 09";
+            return "PAVISE // CONTROL SURFACE";
         }
 
         private Label Section(Control parent, string text, int x, int y)
@@ -82,7 +97,7 @@ namespace PaviseApp
         private int AutoCardHeight(string desc, int cardW, Control host, int minHeight, int valueReserve)
         {
             if (string.IsNullOrEmpty(desc)) return minHeight;
-            int padL = Theme.S(18);
+            int padL = Theme.S(42);
             int reserve = padL + (host != null ? host.Width + Theme.S(14) : 0);
             int chevW = Theme.S(CollapseChevronW);
             int textW = Theme.S(cardW) - padL - reserve - valueReserve - chevW;
@@ -120,6 +135,9 @@ namespace PaviseApp
         private SettingCard MakeCard(Control parent, int x, int y, int w, int h, string title, string desc, Control host)
         {
             var c = new SettingCard();
+            int channel = 1;
+            foreach (Control child in parent.Controls) if (child is SettingCard) channel++;
+            c.Channel = channel;
             c.SetBounds(Theme.S(x), Theme.S(y), Theme.S(w), Theme.S(h));
             c.Title = title;
             c.Desc = desc ?? "";
@@ -145,6 +163,33 @@ namespace PaviseApp
             label.UseCompatibleTextRendering = false;
             label.SetBounds(Theme.S(x), Theme.S(y), Theme.S(w), Theme.S(h));
             parent.Controls.Add(label); return label;
+        }
+
+        // 文字放不下就逐档缩字号 缩到下限还放不下才交给省略号
+        //   状态行里带着游戏名 长度不定 光把字号调小治不了根 得按实际内容自适应
+        //   Theme.UI 有字体缓存 反复取同一档不会新建字体
+        internal const float StatusFontMax = 12.5f;
+        internal const float StatusFontMin = 8.5f;
+
+        internal static float FitFontSize(string text, int widthPx, bool bold,
+            float maxSize, float minSize)
+        {
+            if (string.IsNullOrEmpty(text) || widthPx <= 0) return maxSize;
+            for (float size = maxSize; size > minSize; size -= 0.5f)
+            {
+                Size m = TextRenderer.MeasureText(text, Theme.UI(size, bold),
+                    new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding);
+                if (m.Width <= widthPx) return size;
+            }
+            return minSize;
+        }
+
+        private static void FitLabelFont(Label label, bool bold, float maxSize, float minSize)
+        {
+            if (label == null || label.IsDisposed || label.Width <= 0) return;
+            float size = FitFontSize(label.Text, label.Width, bold, maxSize, minSize);
+            Font want = Theme.UI(size, bold);
+            if (!ReferenceEquals(label.Font, want)) label.Font = want;
         }
 
         private readonly List<Label> accentLabels = new List<Label>();
@@ -194,7 +239,7 @@ namespace PaviseApp
             var panels = new DBPanel[count];
             for (int i = 0; i < panels.Length; i++)
             {
-                var panel = new DBPanel();
+                var panel = new WorkspacePanel();
                 panel.SetBounds(Theme.S(20), Theme.S(y), Theme.S(PageW - 40), Theme.S(PageH - y - 8));
                 panel.BackColor = Theme.Bg; panel.AutoScroll = true; Native.Dark(panel);
                 panel.Visible = i == 0;

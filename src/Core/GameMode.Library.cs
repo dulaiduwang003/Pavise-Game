@@ -292,27 +292,6 @@ namespace PaviseApp
             return n;
         }
 
-        public int CopyProfileOverrides(string sourceId, string targetId)
-        {
-            int n = 0;
-            string sourceName = null, targetName = null;
-            lock (sync)
-            {
-                GameProfile source = FindProfileLocked(sourceId);
-                GameProfile target = FindProfileLocked(targetId);
-                if (source != null && target != null && !ReferenceEquals(source, target))
-                {
-                    n = PolicyResolver.CopyOverrides(source, target);
-                    profileStore.Save(profiles);
-                    sourceName = source.Name;
-                    targetName = target.Name;
-                }
-            }
-            if (sourceName != null)
-                Logger.Log(Lang.T("log.gamemodelibrary.12") + sourceName + Lang.T("log.gamemodeenv.13") + n + Lang.T("log.gamemodelibrary.13") + targetName);
-            return n;
-        }
-
         public List<PolicyDiff> DiffProfile(string profileId)
         {
             GameProfile copy = null;

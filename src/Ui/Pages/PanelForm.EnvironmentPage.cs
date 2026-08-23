@@ -22,13 +22,16 @@ namespace PaviseApp
         {
             int y = PageHeader(pageEnvironment, Lang.T("nav.env"), Lang.T("v16.env.sub"), 2);
 
-            var warn = new RoundPanel();
-            warn.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(46));
-            warn.BackColor = Theme.Bg; warn.Fill = Theme.Card; warn.Border = Theme.Stroke;
-            warn.Radius = Theme.S(12); warn.AccentEdge = true;
-            CardLabel(warn, Lang.T("sec.env.kernel"), 18, 14, ContentW - 36, 20, 8.2f, true, Theme.Danger);
-            pageEnvironment.Controls.Add(warn);
-            y += 58;
+            var envBanner = new ModuleBanner();
+            envBanner.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(72));
+            envBanner.Code = "SYSTEM WRITE LAYER // 05";
+            envBanner.TitleText = Lang.T("nav.env");
+            envBanner.Detail = Lang.T("sec.env.kernel");
+            envBanner.State = "RESTART BOUNDARY";
+            envBanner.StateColor = Theme.Danger;
+            envBanner.Glyph = "chip";
+            pageEnvironment.Controls.Add(envBanner);
+            y += 84;
 
             envTabs = new TechTabs();
             envTabs.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(38));

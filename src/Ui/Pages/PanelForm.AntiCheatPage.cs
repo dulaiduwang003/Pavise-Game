@@ -12,6 +12,7 @@ namespace PaviseApp
         private DBPanel acList;
         private Toggle swAcMaster;
         private SettingCard cardAcRoster;
+        private ModuleBanner acBanner;
         private readonly List<AcGroup> acGroups = new List<AcGroup>();
         private readonly List<SettingCard> acCards = new List<SettingCard>();
         private readonly List<Toggle> acToggles = new List<Toggle>();
@@ -19,7 +20,14 @@ namespace PaviseApp
         private void BuildAntiCheatPage()
         {
             int y = PageHeader(pageAntiCheat, Lang.T("v14.anticheat"), Lang.T("v15.anticheat.sub"), 2);
-            Section(pageAntiCheat, Lang.T("v14.anticheat.boundary"), 26, y + 8); y += 46;
+            acBanner = new ModuleBanner();
+            acBanner.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(72));
+            acBanner.Code = "DEFENSE BOUNDARY // 02";
+            acBanner.TitleText = Lang.T("v14.anticheat.boundary");
+            acBanner.Detail = Lang.T("v14.anticheat.master.sub");
+            acBanner.Glyph = "acshield";
+            pageAntiCheat.Controls.Add(acBanner);
+            y += 84;
             swAcMaster = MakeSwitch(!tamer.Paused, delegate
             {
                 tamer.Paused = !swAcMaster.Checked;
@@ -65,6 +73,11 @@ namespace PaviseApp
 
         private void RefreshAcGroupStates()
         {
+            if (acBanner != null)
+            {
+                acBanner.State = tamer.Paused ? "BOUNDARY PAUSED" : "BOUNDARY ONLINE";
+                acBanner.StateColor = tamer.Paused ? Theme.Danger : Theme.Green;
+            }
             for (int i = 0; i < acGroups.Count && i < acCards.Count; i++)
             {
                 string key = acGroups[i].Key;

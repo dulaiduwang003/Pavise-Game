@@ -40,6 +40,7 @@ namespace PaviseApp
         private readonly bool elevated;
 
         private DBPanel pageOverview, pagePolicy, pageAntiCheat, pageLibrary, pageLog, pageSettings, pageAbout;
+        private PictureBox aboutIcon;
         private DBPanel pageGraphics, pageEnvironment, pageWhitelist;
         private DBPanel[] pages;
         private NavRail nav;
@@ -49,6 +50,7 @@ namespace PaviseApp
         private PowerButton powerButton;
         private PowerFlyout powerFlyout;
         private ModePickerPanel modeFlyout;
+        private AdvancedNavPanel advancedPanel;
         private PerformancePreset visualMode;
         private bool visualEnabled;
         private bool modeVisualInitialized;
@@ -71,9 +73,9 @@ namespace PaviseApp
         private bool moveSizeLoop;
         private bool fitDeferredByDrag;
 
-        private const int WinW = 1196, WinH = 768, RailW = 208, TopH = 54;
+        private const int WinW = 1220, WinH = 760, RailW = 224, TopH = 64;
         private const int PageW = WinW - RailW, PageH = WinH - TopH;
-        private const int ContentX = 26, ContentW = PageW - ContentX * 2;
+        private const int ContentX = 30, ContentW = PageW - ContentX * 2;
         private const int ScrollContentW = PageW - 40 - 12 - 20;
 
         public PanelForm(Tamer t, GameMode gm, Icon icon, bool isElevated)
@@ -126,67 +128,61 @@ namespace PaviseApp
 
             nav = new NavRail(
                 new[] { Lang.T("nav.overview"), Lang.T("nav.library"), Lang.T("nav.policy"),
-                        Lang.T("v14.anticheat"), Lang.T("nav.graphics"), Lang.T("nav.env"), Lang.T("nav.audit"),
+                        Lang.T("v14.anticheat"), Lang.T("nav.graphics"), Lang.T("nav.env"), Lang.T("v20.nav.report"),
                         Lang.T("nav.log"), Lang.T("nav.set"), Lang.T("nav.about"), Lang.T("nav.white"),
                         Lang.T("nav.irq") },
-                new[] { "game", "tiles", "settings", "acshield", "gpu", "chip", "chart", "log", "gear", "info", "white",
+                new[] { "game", "tiles", "settings", "acshield", "gpu", "chip", "log", "log", "gear", "info", "white",
                         "chip" },
-                new[] { (int)PageId.Overview, (int)PageId.Library, (int)PageId.Whitelist,
-                        (int)PageId.Policy, (int)PageId.AntiCheat, (int)PageId.Log, (int)PageId.Graphics,
-                        (int)PageId.Environment, (int)PageId.Audit,
-                        (int)PageId.Interrupt, (int)PageId.Settings, (int)PageId.About },
-                new[] { 7 }, new[] { Lang.T("nav.hardware") }, 2);
+                new[] { (int)PageId.Overview, (int)PageId.Library, (int)PageId.Audit, (int)PageId.Log,
+                        (int)PageId.Settings, (int)PageId.About },
+                new[] { 4 }, new[] { "" }, 0);
             AssertNavMatchesPageIds(nav);
             nav.SetBounds(0, 0, Theme.S(RailW), Theme.S(WinH));
             nav.SelectionChanged = ShowPage;
             nav.SetMode(visualMode, visualEnabled);
 
-            var topBar = new DBPanel();
+            var topBar = new WorkspacePanel();
             topBar.SetBounds(Theme.S(RailW), 0, Theme.S(WinW - RailW), Theme.S(TopH));
             topBar.BackColor = Theme.Bg;
             topBar.MouseDown += DragMove;
             topBar.Paint += delegate(object sender, PaintEventArgs e)
             {
                 using (var p = new Pen(Theme.Stroke)) e.Graphics.DrawLine(p, 0, topBar.Height - 1, topBar.Width, topBar.Height - 1);
-                using (var p = new Pen(Theme.Accent)) e.Graphics.DrawLine(p, 0, topBar.Height - 1, Theme.S(72), topBar.Height - 1);
             };
 
             lblSub = new Label();
-            lblSub.Text = elevated ? Lang.T("title.admin") + " " + Lang.T("title.idle") : Lang.T("title.noelev");
+            lblSub.Text = elevated ? Lang.T("title.admin") + " " + Lang.T("v20.admin.ready") : Lang.T("title.noelev");
             lblSub.ForeColor = elevated ? Theme.Faint : Theme.Danger;
-            lblSub.BackColor = Theme.Bg;
-            lblSub.Font = Theme.UI(8.25f, false);
+            lblSub.BackColor = Color.Transparent;
+            lblSub.Font = Theme.UI(9f, false);
             lblSub.UseCompatibleTextRendering = false;
             lblSub.TextAlign = ContentAlignment.MiddleLeft;
-            lblSub.SetBounds(Theme.S(28), 0, Theme.S(300), Theme.S(TopH));
+            lblSub.SetBounds(Theme.S(32), 0, Theme.S(250), Theme.S(TopH));
             lblSub.MouseDown += DragMove;
 
             modeButton = new ModeButton();
-            modeButton.SetBounds(Theme.S(PageW - 340), Theme.S(4), Theme.S(232), Theme.S(46));
+            modeButton.SetBounds(Theme.S(PageW - 334), Theme.S(12), Theme.S(210), Theme.S(46));
             modeButton.Clicked = ToggleModeFlyout;
             modeButton.SetMode(gameMode.ActivePreset);
 
             themeSwitch = new ThemeSwitch(Theme.LightMode);
-            themeSwitch.SetBounds(Theme.S(PageW - 430), Theme.S(4), Theme.S(78), Theme.S(46));
+            themeSwitch.SetBounds(Theme.S(PageW - 442), Theme.S(12), Theme.S(94), Theme.S(46));
             themeSwitch.Toggled = OnThemeToggled;
 
             searchButton = new SearchButton();
-            searchButton.SetBounds(Theme.S(PageW - 484), Theme.S(4), Theme.S(46), Theme.S(46));
+            searchButton.SetBounds(Theme.S(PageW - 502), Theme.S(12), Theme.S(46), Theme.S(46));
             searchButton.Clicked = ToggleSearchFlyout;
-
             powerButton = new PowerButton();
-            powerButton.SetBounds(Theme.S(PageW - 652), Theme.S(4), Theme.S(160), Theme.S(46));
+            powerButton.SetBounds(Theme.S(PageW - 700), Theme.S(12), Theme.S(184), Theme.S(46));
             powerButton.Clicked = TogglePowerFlyout;
             powerButton.SetState(gameMode.PowerPlanSwitch, PowerPlanButtonLabel());
 
             int tw = Theme.S(WinW - RailW);
             var btnMin = new CaptionButton(false);
             btnMin.SetBounds(tw - Theme.S(92), 0, Theme.S(44), Theme.S(TopH));
-            btnMin.Bg = Theme.Bg;
             btnMin.Click += (s, e) => WindowState = FormWindowState.Minimized;
             var btnClose = new CaptionButton(true);
             btnClose.SetBounds(tw - Theme.S(48), 0, Theme.S(44), Theme.S(TopH));
-            btnClose.Bg = Theme.Bg;
             btnClose.Click += (s, e) => Hide();
 
             topBar.Controls.AddRange(new Control[] { lblSub, powerButton, searchButton, themeSwitch, modeButton, btnMin, btnClose });
@@ -232,27 +228,40 @@ namespace PaviseApp
             root.Controls.Add(nav);
 
             modeFlyout = new ModePickerPanel();
-            modeFlyout.SetBounds(Theme.S(WinW - 420), Theme.S(56), Theme.S(396), Theme.S(286));
+            modeFlyout.SetBounds(Theme.S(WinW - 420), Theme.S(TopH + 8), Theme.S(396), Theme.S(286));
             modeFlyout.Visible = false;
             modeFlyout.ModeChosen = ChooseGlobalMode;
             root.Controls.Add(modeFlyout);
             modeFlyout.BringToFront();
 
             powerFlyout = new PowerFlyout();
-            powerFlyout.SetBounds(Theme.S(WinW - 420), Theme.S(56), Theme.S(396), Theme.S(220));
+            powerFlyout.SetBounds(Theme.S(WinW - 420), Theme.S(TopH + 8), Theme.S(396), Theme.S(220));
             powerFlyout.Visible = false;
             powerFlyout.Chosen = ChoosePowerPlan;
             root.Controls.Add(powerFlyout);
             powerFlyout.BringToFront();
 
             searchFlyout = new SearchFlyout();
-            searchFlyout.SetBounds(Theme.S(WinW - 420), Theme.S(56), Theme.S(396), Theme.S(432));
+            searchFlyout.SetBounds(Theme.S(WinW - 420), Theme.S(TopH + 8), Theme.S(396), Theme.S(432));
             searchFlyout.Visible = false;
             searchFlyout.Query = QuerySettingCards;
             searchFlyout.Chosen = OnSearchHitChosen;
             searchFlyout.Dismiss = delegate { SetSearchFlyout(false); };
             root.Controls.Add(searchFlyout);
             searchFlyout.BringToFront();
+
+            advancedPanel = new AdvancedNavPanel(
+                new[] { Lang.T("nav.policy"), Lang.T("v14.anticheat"), Lang.T("nav.white"),
+                        Lang.T("nav.graphics"), Lang.T("nav.env"), Lang.T("nav.irq") },
+                new[] { "settings", "acshield", "white", "gpu", "chip", "chip" },
+                new[] { (int)PageId.Policy, (int)PageId.AntiCheat, (int)PageId.Whitelist,
+                        (int)PageId.Graphics, (int)PageId.Environment, (int)PageId.Interrupt });
+            advancedPanel.SetBounds(Theme.S(RailW + (PageW - 720) / 2), Theme.S(TopH + 148), Theme.S(720), Theme.S(298));
+            advancedPanel.Visible = false;
+            advancedPanel.Chosen = ChooseAdvancedTarget;
+            advancedPanel.Dismiss = delegate { SetAdvancedPanel(false); };
+            root.Controls.Add(advancedPanel);
+            advancedPanel.BringToFront();
 
             Controls.Add(root);
             CenterRoot();
@@ -276,18 +285,22 @@ namespace PaviseApp
             if (rail.ItemCount != expected)
                 throw new InvalidOperationException(Lang.T("t.panelform.1") + rail.ItemCount + Lang.T("t.panelform.2") + expected + Lang.T("t.panelform.3"));
             var seen = new bool[expected];
+            int visible = 0;
             for (int slot = 0; slot < expected; slot++)
             {
                 int item = rail.ItemAtSlot(slot);
+                if (item < 0) break;
                 if (item < 0 || item >= expected) throw new InvalidOperationException(Lang.T("t.panelform.4") + item);
                 if (seen[item]) throw new InvalidOperationException(Lang.T("t.panelform.5") + (PageId)item);
                 seen[item] = true;
+                visible++;
             }
+            if (visible == 0) throw new InvalidOperationException(Lang.T("t.panelform.1") + "0");
         }
 
         private DBPanel MakePage()
         {
-            var p = new DBPanel();
+            var p = new WorkspacePanel();
             p.SetBounds(Theme.S(RailW), Theme.S(TopH), Theme.S(WinW - RailW), Theme.S(WinH - TopH));
             p.BackColor = Theme.Bg;
             p.Visible = false;
@@ -331,7 +344,8 @@ namespace PaviseApp
                 delegate(bool active) { if (active) RefreshLog(); }, RefreshLog);
             pageHooks[(int)PageId.Settings] = new PageHook(pageSettings,
                 delegate(bool active) { if (active) RefreshSlowStateAsync(); }, null);
-            pageHooks[(int)PageId.About] = new PageHook(pageAbout, null, null);
+            pageHooks[(int)PageId.About] = new PageHook(pageAbout,
+                delegate(bool active) { if (active) RefreshAboutIcon(); }, null);
         }
 
         private void NotifyPageActivation()
@@ -389,6 +403,7 @@ namespace PaviseApp
             SetModeFlyout(false);
             SetSearchFlyout(false);
             SetPowerFlyout(false);
+            SetAdvancedPanel(false);
             if (pageGameConfig != null && pageGameConfig.Visible)
             {
                 pageGameConfig.Visible = false;
@@ -557,7 +572,11 @@ namespace PaviseApp
         private void RefreshLightweightUiState()
         {
             if (gameMode == null) return;
-            if (lblStatus != null) lblStatus.Text = gameMode.StatusText;
+            if (lblStatus != null)
+            {
+                lblStatus.Text = gameMode.StatusText;
+                FitLabelFont(lblStatus, true, StatusFontMax, StatusFontMin);
+            }
             bool act = gameMode.Enabled && gameMode.IsActive;
             UiClock.Frozen = act;
             if (statusDot != null)
@@ -570,7 +589,7 @@ namespace PaviseApp
             {
                 string game = gameMode.ActiveGame;
                 string state = Lang.T("title.admin") + " "
-                    + (game != null ? Lang.F("title.guard", game) : Lang.T("title.idle"));
+                    + (game != null ? Lang.F("title.guard", game) : Lang.T("v20.admin.ready"));
                 if (lblSub.Text != state) lblSub.Text = state;
                 lblSub.ForeColor = game != null ? Theme.Green : Theme.Faint;
             }
@@ -580,6 +599,35 @@ namespace PaviseApp
         private void ToggleModeFlyout()
         {
             SetModeFlyout(modeFlyout == null || !modeFlyout.Visible);
+        }
+
+        private void ToggleAdvancedPanel()
+        {
+            SetAdvancedPanel(advancedPanel == null || !advancedPanel.Visible);
+        }
+
+        private void SetAdvancedPanel(bool visible)
+        {
+            if (advancedPanel == null) return;
+            if (visible)
+            {
+                SetSearchFlyout(false);
+                SetPowerFlyout(false);
+                SetModeFlyout(false);
+            }
+            if (!visible) Fx.Settle(advancedPanel);
+            advancedPanel.Visible = visible;
+            if (visible)
+            {
+                advancedPanel.BringToFront();
+                Fx.DropIn(advancedPanel);
+            }
+        }
+
+        private void ChooseAdvancedTarget(int target)
+        {
+            SetAdvancedPanel(false);
+            if (target >= 0 && target < (int)PageId.Count) nav.Select(target);
         }
 
         private void TogglePowerFlyout()
@@ -721,7 +769,8 @@ namespace PaviseApp
                 lblHeroSource.Text = policySource != null
                     ? Lang.F("mode.source.game", policySource) : Lang.T("mode.source.global");
             }
-            if (lblPolicyMode != null) lblPolicyMode.Text = Lang.F("mode.policy.active", ModeButton.ModeName(effective));
+            if (policyBanner != null)
+                policyBanner.State = Lang.F("mode.policy.active", ModeButton.ModeName(effective));
             if (paviseCore != null) paviseCore.SetState(effective, enabled, gameMode.IsActive);
             if (effective != visualMode)
             {
@@ -947,6 +996,7 @@ namespace PaviseApp
             if (showModePicker && modeButton != null) modeButton.PerformClick();
             if (previewMode == "power" && powerFlyout != null) SetPowerFlyout(true);
             if (previewMode == "search" && searchFlyout != null) SetSearchFlyout(true);
+            if (previewMode == "advanced" && advancedPanel != null) SetAdvancedPanel(true);
             if (previewMode == "search-hit" && searchFlyout != null)
             {
                 SetSearchFlyout(true);
@@ -981,6 +1031,13 @@ namespace PaviseApp
                     {
                         powerFlyout.DrawToBitmap(overlay, new Rectangle(0, 0, overlay.Width, overlay.Height));
                         g.DrawImageUnscaled(overlay, powerFlyout.Left, powerFlyout.Top);
+                    }
+                if (advancedPanel != null && advancedPanel.Visible)
+                    using (var overlay = new Bitmap(advancedPanel.Width, advancedPanel.Height))
+                    using (Graphics g = Graphics.FromImage(bmp))
+                    {
+                        advancedPanel.DrawToBitmap(overlay, new Rectangle(0, 0, overlay.Width, overlay.Height));
+                        g.DrawImageUnscaled(overlay, advancedPanel.Left, advancedPanel.Top);
                     }
                 bmp.Save(path, System.Drawing.Imaging.ImageFormat.Png);
             }

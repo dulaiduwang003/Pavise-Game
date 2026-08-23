@@ -30,30 +30,16 @@ namespace PaviseApp
                     || (qosControl & 1) == 0 || (qosState & 1) == 0) return false;
             }
 
-            if (level >= SuppressionLevel.Isolated)
+            // 2.0 起后台一律不改亲和性 收缩和移核整套下架 这里只负责把残留约束还原回去
+            //   下架理由是真实游戏里的手感 移核本身会造成卡顿 而收益在真实负载中并不明显
+            //   台架上那组 33 到 95 帧的数据用的是合成的内存带宽杀手负载 见 AUDIT-20260820.md
+            //   两边结论不一致是真的 保留那份报告 别以为它是错的或者被忘了
+            //   现在所有核心共用 谁先跑由优先级决定 不做物理隔离
+            if (!Native.CpuSetsMatch(h, originalCpuSets ?? new uint[0])) return false;
+            if (!CpuTopology.MultiGroup)
             {
-                if (CpuTopology.HasEffectiveBackgroundPartition())
-                {
-                    uint[] backgroundCpuSets = CpuTopology.EffectiveBackgroundCpuSetIds();
-                    bool cpuSetsMatch = backgroundCpuSets != null && backgroundCpuSets.Length > 0
-                        && Native.CpuSetsMatch(h, backgroundCpuSets);
-                    bool affinityFallback = !CpuTopology.MultiGroup && Native.QueryAffinity(h) == throttleMask;
-                    if (!cpuSetsMatch && !affinityFallback) return false;
-                }
-                if (SqueezeBackground && !CpuTopology.MultiGroup)
-                {
-                    ulong squeeze = CpuTopology.BackgroundSqueezeMask();
-                    if (squeeze != 0 && Native.QueryAffinity(h) != squeeze) return false;
-                }
-            }
-            else
-            {
-                if (!Native.CpuSetsMatch(h, originalCpuSets ?? new uint[0])) return false;
-                if (!CpuTopology.MultiGroup)
-                {
-                    ulong desiredAffinity = originalAffinity != 0 ? originalAffinity : allMask;
-                    if (Native.QueryAffinity(h) != desiredAffinity) return false;
-                }
+                ulong desiredAffinity = originalAffinity != 0 ? originalAffinity : allMask;
+                if (Native.QueryAffinity(h) != desiredAffinity) return false;
             }
             return true;
         }
@@ -139,56 +125,22 @@ namespace PaviseApp
                 }
             }
 
-            if (level >= SuppressionLevel.Isolated)
+            // 2.0 起后台一律不改亲和性 收缩和移核整套下架 这里只负责把残留约束还原回去
+            //   下架理由是真实游戏里的手感 移核本身会造成卡顿 而收益在真实负载中并不明显
+            //   台架上那组 33 到 95 帧的数据用的是合成的内存带宽杀手负载 见 AUDIT-20260820.md
+            //   两边结论不一致是真的 保留那份报告 别以为它是错的或者被忘了
+            //   现在所有核心共用 谁先跑由优先级决定 不做物理隔离
+            if (!Native.CpuSetsMatch(h, originalCpuSets)
+                && !Native.RestoreCpuSetsVerified(h, originalCpuSets))
+                failed.Add("cpu-sets-restore");
+            if (!CpuTopology.MultiGroup)
             {
-                if (CpuTopology.HasEffectiveBackgroundPartition())
-                {
-                    uint[] backgroundCpuSets = CpuTopology.EffectiveBackgroundCpuSetIds();
-                    if (!Native.CpuSetsMatch(h, backgroundCpuSets))
-                    {
-                        bool soft = Native.TrySetCpuSets(h, backgroundCpuSets);
-                        if (soft && !Native.CpuSetsMatch(h, backgroundCpuSets))
-                            failed.Add("cpu-sets-readback");
-                        if (!soft && !CpuTopology.MultiGroup)
-                        {
-                            if (Native.QueryAffinity(h) != throttleMask
-                                && !Native.SetProcessAffinityMask(h, (UIntPtr)throttleMask))
-                                failed.Add("affinity-write");
-                            if (Native.QueryAffinity(h) != throttleMask)
-                                failed.Add("affinity-readback");
-                        }
-                        else if (!soft)
-                            failed.Add("cpu-sets-write");
-                    }
-                }
-
-                if (SqueezeBackground && !CpuTopology.MultiGroup)
-                {
-                    ulong squeeze = CpuTopology.BackgroundSqueezeMask();
-                    if (squeeze != 0)
-                    {
-                        if (Native.QueryAffinity(h) != squeeze
-                            && !Native.SetProcessAffinityMask(h, (UIntPtr)squeeze))
-                            failed.Add("affinity-write");
-                        if (Native.QueryAffinity(h) != squeeze)
-                            failed.Add("affinity-readback");
-                    }
-                }
-            }
-            else
-            {
-                if (!Native.CpuSetsMatch(h, originalCpuSets)
-                    && !Native.RestoreCpuSetsVerified(h, originalCpuSets))
-                    failed.Add("cpu-sets-restore");
-                if (!CpuTopology.MultiGroup)
-                {
-                    ulong desiredAffinity = originalAffinity != 0 ? originalAffinity : allMask;
-                    if (Native.QueryAffinity(h) != desiredAffinity
-                        && !Native.SetProcessAffinityMask(h, (UIntPtr)desiredAffinity))
-                        failed.Add("affinity-restore");
-                    if (Native.QueryAffinity(h) != desiredAffinity)
-                        failed.Add("affinity-restore-readback");
-                }
+                ulong desiredAffinity = originalAffinity != 0 ? originalAffinity : allMask;
+                if (Native.QueryAffinity(h) != desiredAffinity
+                    && !Native.SetProcessAffinityMask(h, (UIntPtr)desiredAffinity))
+                    failed.Add("affinity-restore");
+                if (Native.QueryAffinity(h) != desiredAffinity)
+                    failed.Add("affinity-restore-readback");
             }
             int io = level >= SuppressionLevel.Isolated ? 0 : 1;
             if (Native.QueryIoPriority(h) != io

@@ -50,15 +50,6 @@ namespace PaviseApp
             return n;
         }
 
-        public static int CopyOverrides(GameProfile source, GameProfile target)
-        {
-            if (source == null || target == null) return 0;
-            target.Overrides.Clear();
-            foreach (KeyValuePair<string, string> kv in source.Overrides)
-                target.Overrides[kv.Key] = kv.Value;
-            return target.Overrides.Count;
-        }
-
         public static void Sanitize(GameProfile profile)
         {
             if (profile == null || profile.Overrides.Count == 0) return;
@@ -178,10 +169,6 @@ namespace PaviseApp
         public bool SuppressBackground { get { return On(PolicyCatalog.KeySuppress); } }
         public bool BoostGame { get { return On(PolicyCatalog.KeyBoost); } }
         public bool Aggressive { get { return On(PolicyCatalog.KeyAggressive); } }
-        public bool SqueezeBackground
-        {
-            get { return CpuTopology.SqueezeSupported && On(PolicyCatalog.KeySqueezeBg); }
-        }
         public bool GpuDemote { get { return On(PolicyCatalog.KeyGpuDemote); } }
         public bool IfeoBoost { get { return On(PolicyCatalog.KeyIfeoBoost); } }
         public bool RenderLane { get { return On(PolicyCatalog.KeyRenderLane); } }
@@ -196,7 +183,6 @@ namespace PaviseApp
         public string NvLowLatMode { get { return ValueOf(PolicyCatalog.KeyNvLowLat); } }
         public bool NvSmoothMotion { get { return On(PolicyCatalog.KeyNvSmoothMotion); } }
         public bool NvShaderCacheMax { get { return On(PolicyCatalog.KeyNvShaderCache); } }
-        public bool NvAnselOff { get { return On(PolicyCatalog.KeyNvAnselOff); } }
         public bool NvRebar { get { return On(PolicyCatalog.KeyNvRebar); } }
         public string NvDlssMode { get { return ValueOf(PolicyCatalog.KeyNvDlss); } }
 
