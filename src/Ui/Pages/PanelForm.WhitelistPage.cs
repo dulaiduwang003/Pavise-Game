@@ -15,6 +15,7 @@ namespace PaviseApp
         private ListBox lstWhite;
         private EmptyStatePanel whitePanel;
         private Label lblWhiteHint;
+        private ModuleBanner whiteBanner;
         private ContextMenuStrip whiteMenu;
         private readonly Dictionary<string, Bitmap> whiteIconCache =
             new Dictionary<string, Bitmap>(StringComparer.OrdinalIgnoreCase);
@@ -25,6 +26,16 @@ namespace PaviseApp
         private void BuildWhitelistPage()
         {
             int y = PageHeader(pageWhitelist, Lang.T("nav.white"), Lang.T("white.page.sub"), 2);
+            whiteBanner = new ModuleBanner();
+            whiteBanner.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(72));
+            whiteBanner.Code = "EXCLUSION LAYER // 03";
+            whiteBanner.TitleText = Lang.T("nav.white");
+            whiteBanner.Detail = Lang.T("white.page.drop");
+            whiteBanner.State = "RULE MAP READY";
+            whiteBanner.StateColor = Theme.Green;
+            whiteBanner.Glyph = "white";
+            pageWhitelist.Controls.Add(whiteBanner);
+            y += 84;
             int listH = PageH - y - 16;
             int listW = ContentW - 238;
 
@@ -330,6 +341,11 @@ namespace PaviseApp
 
         private void FillWhitelist(List<WhitelistRuleView> views)
         {
+            if (whiteBanner != null)
+            {
+                whiteBanner.State = views.Count.ToString() + " RULES ACTIVE";
+                whiteBanner.StateColor = views.Count > 0 ? Theme.Green : Theme.Faint;
+            }
             var selected = lstWhite.SelectedItem as WhitelistItem;
             string selectedKey = selected != null && selected.View != null ? selected.View.Rule.Key : null;
 

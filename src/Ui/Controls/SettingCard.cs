@@ -15,6 +15,7 @@ namespace PaviseApp
         private bool pressed;
         private Motion cardHover;
         public Color ValueColor = Theme.Dim;
+        public int Channel;
 
         public SettingCard()
         {
@@ -242,10 +243,11 @@ namespace PaviseApp
         {
             base.OnPaint(e);
             var g = e.Graphics;
+            DrawTacticalSurface(g);
             if (cardHover.Value > 0.01f)
                 using (var edge = new Pen(Col.Alpha(Theme.Accent, (int)(190 * cardHover.Value)), Math.Max(1f, Theme.S(2))))
                     g.DrawLine(edge, 0, Theme.S(14), 0, Height - Theme.S(14));
-            int padL = Theme.S(18);
+            int padL = Theme.S(42);
             int reserve = padL + (host != null && host.Visible ? host.Width + Theme.S(14) : 0);
 
             int chevW = collapsible ? Theme.S(20) : 0;
@@ -324,6 +326,37 @@ namespace PaviseApp
             DescLinesWanted = lineH > 0 ? (wantH + lineH - 1) / lineH : 0;
             DescLinesShown = lineH > 0 ? dr.Height / lineH : 0;
             TextRenderer.DrawText(g, desc, Theme.UI(8.5f, false), dr, Theme.DimTint, df);
+        }
+
+        private void DrawTacticalSurface(Graphics g)
+        {
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            int railX = Theme.S(30);
+            using (var rail = new Pen(Col.Alpha(Theme.StrokeHi, 82)))
+                g.DrawLine(rail, railX, Theme.S(11), railX, Height - Theme.S(11));
+            using (var live = new Pen(Col.Alpha(Theme.Accent, 118 + (int)(cardHover.Value * 90))))
+                g.DrawLine(live, railX, Theme.S(17), railX, Math.Min(Height - Theme.S(12), Theme.S(37)));
+
+            string code = Channel > 0 ? Channel.ToString("00") : "--";
+            TextRenderer.DrawText(g, code, Theme.Mono(5.8f),
+                new Rectangle(Theme.S(7), Theme.S(9), Theme.S(18), Theme.S(15)),
+                Col.Lerp(Theme.Faint, Theme.Accent, cardHover.Value * 0.75f),
+                TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+
+            int bladeX = Width - Theme.S(170);
+            Point[] blade = {
+                new Point(bladeX, 1), new Point(Width - Theme.S(10), 1),
+                new Point(Width - 1, Theme.S(11)), new Point(Width - 1, Height - 1),
+                new Point(bladeX + Theme.S(48), Height - 1)
+            };
+            using (var wash = new LinearGradientBrush(
+                new Rectangle(Math.Max(0, bladeX), 0, Math.Max(1, Width - bladeX), Math.Max(1, Height)),
+                Col.Alpha(Theme.Accent, 0), Col.Alpha(Theme.Accent,
+                    (int)((Theme.LightMode ? 8 : 5) + cardHover.Value * 9)), LinearGradientMode.Horizontal))
+                g.FillPolygon(wash, blade);
+
+            using (var top = new Pen(Col.Alpha(Theme.Accent, 74 + (int)(cardHover.Value * 82))))
+                g.DrawLine(top, Theme.S(1), Theme.S(1), Theme.S(58) + (int)(cardHover.Value * Theme.S(24)), Theme.S(1));
         }
 
         private void DrawChevron(Graphics g, int x)

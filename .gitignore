@@ -38,4 +38,5 @@ crash.log
 release-v*/
 setup.log
 swap.log
-Pavise.exe.sha256
+Pavise*.exe.sha256
+.release-protected/

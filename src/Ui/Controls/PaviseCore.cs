@@ -159,7 +159,9 @@ namespace PaviseApp
                 Rectangle frame = new Rectangle(0, 0, Width - 1, Height - 1);
                 using (GraphicsPath fp = Theme.TechPath(frame, Theme.S(15)))
                 {
-                    using (var fill = new LinearGradientBrush(frame, Theme.Inset, Theme.Card, LinearGradientMode.ForwardDiagonal))
+                    Color frameA = Theme.LightMode ? Col.Lerp(Theme.Inset, accent, 0.055f) : Theme.Inset;
+                    Color frameB = Theme.LightMode ? Col.Lerp(Theme.Card, accent, 0.018f) : Theme.Card;
+                    using (var fill = new LinearGradientBrush(frame, frameA, frameB, LinearGradientMode.ForwardDiagonal))
                         g.FillPath(fill, fp);
                     using (var border = new Pen(Theme.Stroke)) g.DrawPath(border, fp);
                     g.SetClip(fp);
@@ -169,7 +171,8 @@ namespace PaviseApp
 
                 float cx = Width * 0.50f, cy = Height * 0.49f;
                 float radius = Math.Min(Width, Height) * 0.355f;
-                DrawAmbientGlow(g, cx, cy, radius, accent, guardEnabled ? 1f : 0.52f);
+                DrawAmbientGlow(g, cx, cy, radius, accent,
+                    (guardEnabled ? 1f : 0.52f) * (Theme.LightMode ? 1.32f : 1f));
                 DrawTicks(g, cx, cy, radius, 0f, accent);
                 DrawSegmentRing(g, Ring(cx, cy, radius), 0f, accent, 3.1f, 16, 12f, 10f);
                 DrawSegmentRing(g, Ring(cx, cy, radius * 0.82f), 7f, Col.Lerp(accent, accent2, 0.32f), 2f, 12, 17f, 13f);
@@ -407,7 +410,14 @@ namespace PaviseApp
             TextRenderer.DrawText(g, "PAVISE CORE", Theme.Mono(7f), top, Theme.Dim,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             Rectangle modeBox = new Rectangle((int)(cx - Theme.S(76)), (int)(cy + Theme.S(42)), Theme.S(152), Theme.S(22));
-            TextRenderer.DrawText(g, ModeButton.ModeName(mode), Theme.UI(10f, true), modeBox, Theme.Fg,
+            if (Theme.LightMode)
+            {
+                using (var brush = new SolidBrush(Theme.Fg))
+                using (var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center,
+                    Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap })
+                    g.DrawString(ModeButton.ModeName(mode), Theme.UI(10f, true), brush, modeBox, format);
+            }
+            else TextRenderer.DrawText(g, ModeButton.ModeName(mode), Theme.UI(10f, true), modeBox, Theme.Fg,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
             Rectangle stateBox = new Rectangle((int)(cx - Theme.S(70)), (int)(cy + Theme.S(63)), Theme.S(140), Theme.S(16));
             TextRenderer.DrawText(g, state, Theme.Mono(6.75f), stateBox, stateColor,
@@ -416,7 +426,7 @@ namespace PaviseApp
 
         private void DrawFrameDetails(Graphics g, Color accent)
         {
-            TextRenderer.DrawText(g, "SYS // 01", Theme.Mono(6.5f),
+            TextRenderer.DrawText(g, "SYS // 2.0", Theme.Mono(6.5f),
                 new Rectangle(Theme.S(16), Theme.S(12), Theme.S(90), Theme.S(14)), Theme.Faint,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             TextRenderer.DrawText(g, gameActive ? "LIVE LINK" : "READY", Theme.Mono(6.5f),

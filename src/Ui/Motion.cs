@@ -49,7 +49,14 @@ namespace PaviseApp
 
     internal static class UiClock
     {
-        internal const int FrameMs = 10;
+        // WinForms Timer 走 WM_TIMER 粒度就是系统时钟跳 15.6ms 请求再小也拿不到更快
+        //   本机实测每档 200 次投递 请求 10ms 和 15ms 的均值都是 15.6ms 都是 64 FPS
+        //   timeBeginPeriod(1) 对 WM_TIMER 无效 实测提不提精度均值一样
+        //   老写法请求 10ms 并在动画期间常驻提精度 一帧都没多拿到 却把全局系统时钟拉到 1ms
+        //   15 卡在一跳之内 每跳必发 投递也最规律 中位数 15.58ms 而 10ms 档中位数 12.51ms 抖动明显
+        //   不要改成 16 一跳 15.6ms 不够 16 会等到下一跳 实测掉到 40 FPS 中位数 27.67ms
+        //   动画快慢由 Motion.StepFraction 按 DeltaScale 归一 换帧率不改观感
+        internal const int FrameMs = 15;
         internal const int SlowMs = 200;
 
         internal const float BaselineFrameMs = 16.667f;
@@ -65,7 +72,6 @@ namespace PaviseApp
         private static bool settling;
         private static readonly Stopwatch frameWatch = new Stopwatch();
         private static float deltaScale = 1f;
-        private static bool precisionHeld;
 
         public static float DeltaScale { get { return deltaScale; } }
 
@@ -114,19 +120,6 @@ namespace PaviseApp
         {
             timer.Stop();
             frameWatch.Reset();
-            HoldPrecision(false);
-        }
-
-        private static void HoldPrecision(bool hold)
-        {
-            if (hold == precisionHeld) return;
-            try
-            {
-                if (hold) Native.timeBeginPeriod(1);
-                else Native.timeEndPeriod(1);
-                precisionHeld = hold;
-            }
-            catch { }
         }
 
         public static bool Frozen
@@ -167,7 +160,7 @@ namespace PaviseApp
             if (suspended) return;
             if (frozen) { Settle(); return; }
             if (frames > framesLeft) framesLeft = frames;
-            if (!timer.Enabled) { HoldPrecision(true); timer.Start(); }
+            if (!timer.Enabled) timer.Start();
         }
 
         public static void WakeSlow(int frames = 12)

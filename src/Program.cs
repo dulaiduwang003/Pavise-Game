@@ -19,7 +19,7 @@ namespace PaviseApp
     internal static class App
     {
         public const string DisplayName = "PAVISE";
-        public const string Version = "1.9.8.1";
+        public const string Version = "2.0";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string WeChat = "Ssssssstyle";
@@ -73,6 +73,7 @@ namespace PaviseApp
                 Paths.Init();
                 Lang.Init();
                 if (args.Length >= 4) Lang.Cur = args[3] == "en" ? 1 : (args[3] == "ja" ? 2 : 0);
+                if (args.Length >= 5 && args[4] == "light") Theme.SetLight(true);
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
                 string sdir = Path.Combine(Path.GetTempPath(), "PaviseShot_" + Process.GetCurrentProcess().Id);
@@ -84,6 +85,18 @@ namespace PaviseApp
                 try
                 {
                     var scMode = new GameMode(sdir, scCore);
+                    if (idx == (int)PageId.Log)
+                    {
+                        // Screenshot-only telemetry gives the structured log view every visual state
+                        // without touching the user's real log file.
+                        Logger.Log("CORE 守护服务已开启，等待游戏进程");
+                        Logger.Log("GAME 已识别 NebulaStrike-Win64-Shipping.exe");
+                        Logger.Log("POWER 电源计划已生效：PG 专注 5EFC");
+                        Logger.Log("SUPPRESS 后台资源边界已完成部署");
+                        Logger.Log("IRQ 警告：检测到设备中断峰值，正在持续观测");
+                        Logger.Log("GPU 策略写入失败：驱动接口拒绝访问");
+                        Logger.Log("SESSION 游戏退出，系统状态已还原");
+                    }
                     if (idx == (int)PageId.Library)
                     {
                         string demoDir = Path.Combine(sdir, "NebulaStrike", "Binaries", "Win64");

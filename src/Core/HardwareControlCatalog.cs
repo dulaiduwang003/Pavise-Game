@@ -39,7 +39,7 @@ namespace PaviseApp
 
             "throttlestop", "ryzenmaster", "ryzenadj",
             "ghelper", "nitrosense", "predatorsense", "dragoncenter",
-            "fancontrol", "speedfan", "hwinfo",
+            "fancontrol", "speedfan", "hwinfo", "hwmonitor",
             "afterburner", "rivatuner", "rtss"
         };
 

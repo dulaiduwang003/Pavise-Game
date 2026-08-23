@@ -85,7 +85,7 @@ namespace PaviseApp
             InterruptAttributionResult raw = null;
             try
             {
-                if (!ia.Start()) { r.Error = Lang.T("irqmove.nosession"); return r; }
+                if (!ia.Start()) { r.Error = InterruptAttribution.StartFailureText(ia); return r; }
                 Thread.Sleep(seconds * 1000);
                 raw = ia.Stop();
             }

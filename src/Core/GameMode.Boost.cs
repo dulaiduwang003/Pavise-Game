@@ -16,7 +16,6 @@ namespace PaviseApp
             public string NvLowLat;
             public bool NvSmooth;
             public bool NvShader;
-            public bool NvAnsel;
             public bool NvRebar;
             public string NvDlss;
             public bool UseStrict;
@@ -78,7 +77,6 @@ namespace PaviseApp
             pass.NvLowLat = sp != null ? sp.NvLowLatMode : nvLowLatMode;
             pass.NvSmooth = sp != null ? sp.NvSmoothMotion : nvSmoothMotion;
             pass.NvShader = sp != null ? sp.NvShaderCacheMax : nvShaderCacheMax;
-            pass.NvAnsel = sp != null ? sp.NvAnselOff : nvAnselOff;
             pass.NvRebar = sp != null ? sp.NvRebar : nvRebarOn;
             pass.NvDlss = sp != null ? sp.NvDlssMode : nvDlssMode;
             ulong customMask = CpuTopology.CustomMask;
@@ -542,7 +540,6 @@ namespace PaviseApp
                     LowLatMode = pass.NvLowLat,
                     SmoothMotion = pass.NvSmooth,
                     ShaderCacheMax = pass.NvShader,
-                    AnselOff = pass.NvAnsel,
                     Rebar = pass.NvRebar,
                     DlssMode = pass.NvDlss
                 };
@@ -938,6 +935,8 @@ namespace PaviseApp
         private bool Deactivate(string reason, bool quiet)
         {
             try { irqProbe.CompleteIfRunning(); } catch { }
+            PowerBudgetYieldRunner.Stop();
+            RestorePowerOverlay();
             SelfYield.Release();
             lock (sync)
             {
@@ -947,7 +946,6 @@ namespace PaviseApp
             }
             sessionPolicy = null;
             RestoreGlobalCoreMask();
-            SuppressionCore.SqueezeBackground = CpuTopology.SqueezeSupported && squeezeBgOn;
             SuppressionCore.GpuDemoteEnabled = gpuDemoteOn;
             gameGoneSinceTicks = 0;
             cpuSaturation.Reset();
@@ -968,7 +966,6 @@ namespace PaviseApp
             foreach (int pid in background) if (core.IsThrottled(pid)) { backgroundClean = false; break; }
             bool envClean = RestoreEnv();
             ClearEnvRetryState();
-            pressure.Clear();
             if (clean) CrashGuard.ClearBoost();
             int restoredTotal = ok + gracePreReleased;
             gracePreReleased = 0;

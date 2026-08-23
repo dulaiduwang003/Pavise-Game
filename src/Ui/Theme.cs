@@ -42,16 +42,16 @@ namespace PaviseApp
         private static bool light;
         public static bool LightMode { get { return light; } }
 
-        public static Color Bg        { get { return light ? Color.FromArgb(243, 245, 248) : Color.FromArgb(9, 10, 12); } }
-        public static Color Nav       { get { return light ? Color.FromArgb(232, 235, 240) : Color.FromArgb(6, 7, 9); } }
-        public static Color Card      { get { return light ? Color.FromArgb(255, 255, 255) : Color.FromArgb(17, 19, 23); } }
-        public static Color CardHover { get { return light ? Color.FromArgb(244, 247, 251) : Color.FromArgb(23, 27, 33); } }
-        public static Color Inset     { get { return light ? Color.FromArgb(233, 236, 241) : Color.FromArgb(7, 8, 10); } }
-        public static Color Stroke    { get { return light ? Color.FromArgb(211, 217, 226) : Color.FromArgb(39, 44, 52); } }
-        public static Color StrokeHi  { get { return light ? Color.FromArgb(165, 174, 188) : Color.FromArgb(72, 81, 94); } }
-        public static Color Fg        { get { return light ? Color.FromArgb(26, 30, 38)    : Color.FromArgb(244, 246, 249); } }
-        public static Color Dim       { get { return light ? Color.FromArgb(96, 105, 118)  : Color.FromArgb(163, 170, 181); } }
-        public static Color Faint     { get { return light ? Color.FromArgb(146, 154, 166) : Color.FromArgb(91, 100, 113); } }
+        public static Color Bg        { get { return light ? Color.FromArgb(238, 242, 247) : Color.FromArgb(9, 10, 12); } }
+        public static Color Nav       { get { return light ? Color.FromArgb(225, 231, 239) : Color.FromArgb(6, 7, 9); } }
+        public static Color Card      { get { return light ? Color.FromArgb(251, 252, 254) : Color.FromArgb(17, 19, 23); } }
+        public static Color CardHover { get { return light ? Color.FromArgb(245, 248, 252) : Color.FromArgb(23, 27, 33); } }
+        public static Color Inset     { get { return light ? Color.FromArgb(228, 234, 242) : Color.FromArgb(7, 8, 10); } }
+        public static Color Stroke    { get { return light ? Color.FromArgb(194, 203, 216) : Color.FromArgb(39, 44, 52); } }
+        public static Color StrokeHi  { get { return light ? Color.FromArgb(137, 150, 169) : Color.FromArgb(72, 81, 94); } }
+        public static Color Fg        { get { return light ? Color.FromArgb(17, 24, 36)    : Color.FromArgb(244, 246, 249); } }
+        public static Color Dim       { get { return light ? Color.FromArgb(76, 89, 108)   : Color.FromArgb(163, 170, 181); } }
+        public static Color Faint     { get { return light ? Color.FromArgb(124, 139, 159) : Color.FromArgb(91, 100, 113); } }
         public static Color Green     { get { return light ? Color.FromArgb(16, 150, 92)   : Color.FromArgb(69, 224, 154); } }
         public static Color Danger    { get { return light ? Color.FromArgb(208, 30, 50)   : Color.FromArgb(255, 72, 88); } }
         public static Color TrackOff  { get { return light ? Color.FromArgb(200, 206, 215) : Color.FromArgb(43, 48, 57); } }

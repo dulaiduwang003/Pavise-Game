@@ -1,5 +1,5 @@
 @rem @author bdth 2074055628@qq.com
-@rem file: build Pavise, icon, and manifest
+@rem file: dev compiler and protected production build dispatcher
 @rem ASCII ONLY. cmd decodes this file with the codepage the console had at
 @rem startup (936 here) and chcp does NOT change that. One UTF-8 CJK char
 @rem shifts the parser and comment text gets executed as a command.
@@ -13,6 +13,21 @@ chcp 65001 >nul
 :cpready
 setlocal
 cd /d "%~dp0"
+
+if /i not "%~1"=="-b" goto usage
+if /i "%~2"=="dev" goto dev
+if /i "%~2"=="prod" goto prod
+goto usage
+
+:prod
+set "PROD_OUT=Pavise.exe"
+if not "%~3"=="" set "PROD_OUT=%~3"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0build-protected.ps1" -Output "%PROD_OUT%" -Force
+set "BUILD_EXIT=%ERRORLEVEL%"
+call :restorecp
+exit /b %BUILD_EXIT%
+
+:dev
 set CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe
 if not exist "%CSC%" set CSC=%WINDIR%\Microsoft.NET\Framework\v4.0.30319\csc.exe
 if not exist "%CSC%" (
@@ -22,9 +37,9 @@ if not exist "%CSC%" (
 
 set REFS=-reference:System.dll -reference:System.Drawing.dll -reference:System.Windows.Forms.dll -reference:System.Core.dll -reference:System.Management.dll -reference:System.Xml.dll
 set OUT=Pavise.exe
-if not "%~1"=="" set OUT=%~1
+if not "%~3"=="" set OUT=%~3
 set TESTARGS=
-if /i "%~2"=="--selftest" set TESTARGS=-define:PAVISE_SELFTEST -recurse:tests\*.cs
+if /i "%~4"=="--selftest" set TESTARGS=-define:PAVISE_SELFTEST -recurse:tests\*.cs
 
 echo [1/3] compiling temp exe...
 "%CSC%" -nologo -target:winexe -optimize+ -codepage:65001 -out:Pavise.tmp.exe %REFS% %TESTARGS% -recurse:src\*.cs
@@ -65,6 +80,12 @@ echo Build failed
 del Pavise.tmp.exe "%MANIFEST%" >nul 2>&1
 call :restorecp
 exit /b 1
+
+:usage
+echo Usage: build.cmd -b dev [output.exe] [--selftest]
+echo        build.cmd -b prod [output.exe]
+call :restorecp
+exit /b 2
 
 :restorecp
 if defined PAVISE_CP_OWNED goto :eof

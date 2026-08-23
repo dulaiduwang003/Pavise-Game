@@ -9,7 +9,7 @@ namespace PaviseApp
     internal partial class PanelForm
     {
         private Toggle swNvMax;
-        private Toggle swNvRebar, swNvAnsel;
+        private Toggle swNvRebar;
         private Toggle swNvSmooth, swNvShader;
         private Toggle swGpuPower;
         private TierPicker dlssPicker, nvllPicker;
@@ -19,6 +19,18 @@ namespace PaviseApp
         private void BuildGraphicsPage()
         {
             int y = PageHeader(pageGraphics, Lang.T("nav.graphics"), Lang.T("v16.graphics.sub"), 2);
+
+            bool nvOk = NvApi.Available;
+            var gfxBanner = new ModuleBanner();
+            gfxBanner.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(72));
+            gfxBanner.Code = "GRAPHICS DRIVER // 04";
+            gfxBanner.TitleText = Lang.T("nav.graphics");
+            gfxBanner.Detail = nvOk ? Lang.T("v16.graphics.sub") : Lang.T("set.nv.none");
+            gfxBanner.State = nvOk ? "DRIVER API READY" : "DRIVER API OFFLINE";
+            gfxBanner.StateColor = nvOk ? Theme.Green : Theme.Danger;
+            gfxBanner.Glyph = "gpu";
+            pageGraphics.Controls.Add(gfxBanner);
+            y += 84;
 
             gfxTabs = new TechTabs();
             gfxTabs.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(38));
@@ -33,7 +45,6 @@ namespace PaviseApp
             Control scroll = gfxTabPanels[0];
             int sy = 2, cardH;
 
-            bool nvOk = NvApi.Available;
             string nvNone = Lang.T("set.nv.none");
 
             bool hybridGpu = GpuPrefStage.Supported;
@@ -117,13 +128,6 @@ namespace PaviseApp
                 nvOk ? rebarDesc : nvNone, swNvRebar, out cardH);
             sy += cardH + 8;
 
-            swNvAnsel = MakeSwitch(gameMode.NvAnselOff, null);
-            swNvAnsel.CheckedChanged += (s, e) => gameMode.NvAnselOff = swNvAnsel.Checked;
-            swNvAnsel.Enabled = nvOk;
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvansel"),
-                nvOk ? Lang.T("set.nvansel.n") : nvNone, swNvAnsel, out cardH);
-            sy += cardH + 8;
-
             int nvTabBottom = sy;
 
             bool powerOk = GpuPowerMax.Supported();
@@ -164,7 +168,6 @@ namespace PaviseApp
             if (swNvShader != null) swNvShader.SetSilently(gameMode.NvShaderCacheMax);
             if (dlssPicker != null) dlssPicker.Index = DlssIndexOf(gameMode.NvDlssMode);
             if (swNvRebar != null) swNvRebar.SetSilently(gameMode.NvRebar);
-            if (swNvAnsel != null) swNvAnsel.SetSilently(gameMode.NvAnselOff);
             if (swGpuPower != null) swGpuPower.SetSilently(gameMode.GpuPowerLift);
         }
     }

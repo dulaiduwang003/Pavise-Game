@@ -51,7 +51,7 @@ Select a game in the library and open its profile. Each game can override all 27
 
 - Effective values freeze the moment a match activates. Anything changed mid-match applies to the next one, so the policy never shifts within a match
 - The current core selection can be pinned to one game without affecting the others
-- A set of overrides can be copied to other games, or cleared back to global in one click
+- A set of overrides can be cleared back to global in one click
 - The Overview page and the tray show the mode actually in effect, and which game's profile it came from
 - When consecutive driver write failures auto-disable a switch, that game's matching override is cleared as well
 
@@ -64,7 +64,6 @@ Library entries can be renamed; only the display name changes, recognition is un
 - The game process gets high priority, raised disk I/O and GPU scheduling priority, and its own cores; background work is demoted or moved to other cores according to the mode
 - CPU partitioning handles hybrid architectures, X3D and multiple processor groups. No core splitting on 6 cores or fewer
 - Core allocation can be drawn per logical core, with presets for all cores, no hyper-threading, P-cores only, and invert; changes need Apply to take effect. Most people never need it — the scheduler already puts game threads on P-cores
-- Heavy-suppression core shrinking: already-suppressed background work is pulled from the whole machine onto a few physical cores. It targets their concurrent memory access eating bandwidth, which neither priority nor efficiency mode can reach. The landing spot is computed live from the game cores you assigned, and on multi-CCD chips it steers clear of the entire L3 block holding them. Bench-verified 33 fps to 95 fps. On 6 cores or fewer it measurably hurts the foreground, so it is forced off there
 - Smart frame guard: identifies the thread that decides the frame rate and boosts it alone. Bench-verified 77%–96% better 1% lows when the CPU is saturated
 - The game yields once the frame thread is in charge: when the CPU is saturated and that thread really was boosted, the game process steps back to normal priority and only the thread stays high. Games whose frame thread cannot be identified are unaffected and keep high priority throughout. Can be turned off
 - Focus resource cage: sustained heavy-load background processes go into a job object with a hard cap of ten percent of system CPU. A capped program feels clearly slower when you switch back to it. A guard process lifts the cap if Pavise exits unexpectedly
@@ -75,7 +74,7 @@ Library entries can be renamed; only the display name changes, recognition is un
 **Graphics**
 
 - Background GPU yielding: when a background process uses the GPU, its GPU scheduling priority is lowered as well
-- NVIDIA per-game tuning: maximum performance power mode, low latency mode (on or ultra), Smooth Motion frame generation, unrestricted shader cache, DLSS override (latest, or a pinned J/K generation), per-game ReBAR, and Ansel injection off. Original values are snapshotted and restored when turned off
+- NVIDIA per-game tuning: maximum performance power mode, low latency mode (on or ultra), Smooth Motion frame generation, unrestricted shader cache, DLSS override (latest, or a pinned J/K generation), and per-game ReBAR. Original values are snapshotted and restored when turned off
 - AMD per-game tuning: Anti-Lag, AFMF fluid frames, and RSR upscaling. RSR explains that it changes the machine-wide render resolution before enabling
 - GPU power limit: raised to the vendor's maximum during a match, restored from the snapshot on exit
 
@@ -178,8 +177,9 @@ Removed items still know what they wrote and how to undo it, but startup and ver
 Uses the .NET Framework compiler shipped with Windows. No Visual Studio, no packages to restore.
 
 ```cmd
-build.cmd      rem produces Pavise.exe
-dev.cmd        rem kill the old instance, build, launch
+build.cmd -b dev       rem produces an unobfuscated development Pavise.exe
+build.cmd -b prod      rem produces an obfuscated production Pavise.exe
+dev.cmd                rem kill the old instance, development build, launch
 ```
 
 Source builds are unsigned, so SmartScreen will warn.

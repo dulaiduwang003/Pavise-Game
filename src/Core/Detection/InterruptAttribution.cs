@@ -57,6 +57,33 @@ namespace PaviseApp
 
         public bool Busy { get; private set; }
 
+        // Start() 有四条各不相同的失败路径 调用方只拿到一个 false 会把它们说成同一个原因
+        //   历史上全部报成「需要管理员权限」 而权限在进这个函数之前就已经查过了 只会误导
+        //   Busy 单独一路 其余三路把真实原因连错误码放这里 由调用方原样呈现
+        public string FailDetail { get; private set; }
+
+        // Start() 失败后给用户看的那句话 探针被占和真失败要分开说
+        public static string StartFailureText(InterruptAttribution ia)
+        {
+            if (ia == null) return Lang.T("irqmove.nosession");
+            if (ia.Busy) return Lang.T("irqcheck.probebusy");
+            return string.IsNullOrEmpty(ia.FailDetail)
+                ? Lang.T("irqmove.nosession") : ia.FailDetail;
+        }
+
+        // 体检起负载之前先看一眼 免得对局中白造 3 秒内存压力再发现探针被占
+        public static bool ProbeOwnedElsewhere()
+        {
+            try
+            {
+                EventWaitHandle existing;
+                if (EventWaitHandle.TryOpenExisting(AliveEventName, out existing))
+                { using (existing) { } return true; }
+            }
+            catch { }
+            return false;
+        }
+
         private bool TakeOwnership()
         {
             try
@@ -129,6 +156,7 @@ namespace PaviseApp
             {
                 if (started) return true;
                 Busy = false;
+                FailDetail = null;
                 if (!TakeOwnership())
                 {
                     Busy = true;
@@ -153,10 +181,17 @@ namespace PaviseApp
                     if (rc == ErrorInvalidParameter)
                     {
                         Logger.Log(Lang.T("log.interruptattribution.1"));
+                        FailDetail = Lang.T("irq.fail.nokernel");
                         ReleaseOwnership();
                         return false;
                     }
-                    if (rc != 0) { Logger.Log(Lang.T("log.interruptattribution.2") + rc); ReleaseOwnership(); return false; }
+                    if (rc != 0)
+                    {
+                        Logger.Log(Lang.T("log.interruptattribution.2") + rc);
+                        FailDetail = Lang.T("irq.fail.start") + rc;
+                        ReleaseOwnership();
+                        return false;
+                    }
                 }
                 finally { Marshal.FreeHGlobal(props); }
 
@@ -168,7 +203,9 @@ namespace PaviseApp
                 traceHandle = OpenTrace(ref logfile);
                 if (traceHandle == 0xFFFFFFFFFFFFFFFF || traceHandle == 0)
                 {
-                    Logger.Log(Lang.T("log.interruptattribution.3") + Marshal.GetLastWin32Error());
+                    int openErr = Marshal.GetLastWin32Error();
+                    Logger.Log(Lang.T("log.interruptattribution.3") + openErr);
+                    FailDetail = Lang.T("irq.fail.open") + openErr;
                     StopStale();
                     ReleaseOwnership();
                     return false;

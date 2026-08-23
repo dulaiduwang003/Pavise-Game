@@ -34,7 +34,7 @@ ping -n 2 127.0.0.1 >nul
 
 if /i "%MODE%"=="test" goto test
 
-call "%~dp0build.cmd" %OUT%
+call "%~dp0build.cmd" -b dev %OUT%
 if errorlevel 1 (
     echo Build failed, not launching
     call :restorecp
@@ -46,7 +46,7 @@ call :restorecp
 exit /b 0
 
 :test
-call "%~dp0build.cmd" Pavise.selftest.work.exe --selftest
+call "%~dp0build.cmd" -b dev Pavise.selftest.work.exe --selftest
 if errorlevel 1 (
     echo Build failed, self-test skipped
     call :restorecp

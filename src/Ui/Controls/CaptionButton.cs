@@ -10,12 +10,17 @@ namespace PaviseApp
     internal class CaptionButton : FxControl
     {
         private readonly bool close;
-        public CaptionButton(bool isClose) { close = isClose; TabStop = false; }
+        public CaptionButton(bool isClose)
+        {
+            close = isClose;
+            TabStop = false;
+            SetStyle(ControlStyles.SupportsTransparentBackColor, true);
+            BackColor = Color.Transparent;
+        }
 
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics;
-            FillBg(g);
             g.SmoothingMode = SmoothingMode.AntiAlias;
             float h = hover.Value;
             int cx = Width / 2, cy = Height / 2;

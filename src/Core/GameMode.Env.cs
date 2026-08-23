@@ -188,8 +188,6 @@ namespace PaviseApp
             usePauseDl = usePauseDl && slowReady;
             bool usePlan = ResolvePowerPlanEnabled(mode, pPlan);
             SuppressionCore.GpuDemoteEnabled = sp != null ? sp.GpuDemote : gpuDemoteOn;
-            SuppressionCore.SqueezeBackground = CpuTopology.SqueezeSupported
-                && (sp != null ? sp.SqueezeBackground : squeezeBgOn);
             doActive = EnvStep("do", usePauseDl, doActive, DoTweak.Activate, DoTweak.Restore);
             wlanActive = EnvStep("wlanscan", pWlan, wlanActive, WlanGuard.Activate, WlanGuard.Restore);
             wuActive = EnvStep("wu", pWu && slowReady, wuActive, UpdatePause.Activate, UpdatePause.Restore);
@@ -326,7 +324,6 @@ namespace PaviseApp
                 failed.Contains(NvDrsTweaks.KeySmooth));
             NoteNvKey(NvDrsTweaks.KeyShaderCache, plan.ShaderCacheMax,
                 failed.Contains(NvDrsTweaks.KeyShaderCache));
-            NoteNvKey(NvDrsTweaks.KeyAnsel, plan.AnselOff, failed.Contains(NvDrsTweaks.KeyAnsel));
             NoteNvKey(NvDrsTweaks.KeyRebarFeat, plan.Rebar,
                 NvDrsTweaks.ContainsAny(failed, NvDrsTweaks.RebarKeys));
             bool dlssWanted = (plan.DlssMode == "latest" || plan.DlssMode == "j" || plan.DlssMode == "k")
@@ -350,7 +347,6 @@ namespace PaviseApp
             string label;
             string policyKey;
             if (key == NvDrsTweaks.KeyPState) { nvMaxPerf = false; Settings.Save("NvMaxPerf", false); label = Lang.T("t.gamemodeenv.21"); policyKey = PolicyCatalog.KeyNvMaxPerf; }
-            else if (key == NvDrsTweaks.KeyAnsel) { nvAnselOff = false; Settings.Save("NvAnselOff", false); label = Lang.T("t.gamemodeenv.23"); policyKey = PolicyCatalog.KeyNvAnselOff; }
             else if (key == NvDrsTweaks.KeyRebarFeat) { nvRebarOn = false; Settings.Save("NvRebar", false); label = Lang.T("t.gamemodeenv.24"); policyKey = PolicyCatalog.KeyNvRebar; }
             else if (key == NvDrsTweaks.KeyDlssOvr) { nvDlssMode = "off"; Settings.SaveStr("NvDlss", "off"); label = Lang.T("t.gamemodeenv.25"); policyKey = PolicyCatalog.KeyNvDlss; }
             else if (key == NvDrsTweaks.KeySmooth) { nvSmoothMotion = false; Settings.Save("NvSmoothMotion", false); label = Lang.T("t.gamemodeenv.27"); policyKey = PolicyCatalog.KeyNvSmoothMotion; }
@@ -364,7 +360,21 @@ namespace PaviseApp
         private bool EnvActive()
         {
             return doActive || wlanActive || wuActive || pqosActive || awakeActive || gpwActive || planActive || timerRaised
-                || NvDrsTweaks.HasGameResidue || PowerPlan.HasResidue;
+                || NvGameResidueNeedsRestore || PowerPlan.HasResidue;
+        }
+
+        // 待命预写入故意把驱动键留在驱动里等游戏启动 那不是残留
+        //   两者共用同一份 ListKey 分不出来 于是残留清理会把预写入当垃圾还原
+        //   而 Deactivate 顺手把 preStagedNvPath 清成 null 预写入的去重守卫失效
+        //   下一轮扫描又写一遍 实测每 4 到 8 秒一轮 预写入从来没生效超过一轮
+        //   游戏模式关掉时不豁免 那时候预写入也该跟着一起收干净
+        private bool NvGameResidueNeedsRestore
+        {
+            get
+            {
+                if (!NvDrsTweaks.HasGameResidue) return false;
+                return !(enabled && preStagedNvPath != null);
+            }
         }
 
         private string lastResidueLogged;
@@ -387,7 +397,7 @@ namespace PaviseApp
             if (pqosActive) parts.Add(Lang.T("t.gamemodeenv.33"));
             if (awakeActive) parts.Add(Lang.T("t.gamemodeenv.34"));
             if (planActive) parts.Add(Lang.T("t.gamemodeenv.35"));
-            if (NvDrsTweaks.HasGameResidue) parts.Add("NVIDIA Profile");
+            if (NvGameResidueNeedsRestore) parts.Add("NVIDIA Profile");
             if (timerRaised) parts.Add(Lang.T("t.gamemodeenv.36"));
             return parts.Count > 0 ? string.Join(" ", parts.ToArray()) : Lang.T("t.gamemodeenv.37");
         }
@@ -469,7 +479,6 @@ namespace PaviseApp
 
         private int ReleaseBackground(string reasonPrefix)
         {
-            pressure.Clear();
             if (!core.AnyWith(SuppressReason.Background)) return 0;
             int n = 0;
             foreach (int pid in core.PidsWith(SuppressReason.Background))

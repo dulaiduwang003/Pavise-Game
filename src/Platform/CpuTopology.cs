@@ -19,6 +19,11 @@ namespace PaviseApp
         public static bool AsymCache;
         public static bool MultiGroup;
         public static ulong PerfMask, EffMask, BigL3Mask, SmallL3Mask;
+        // 三档混合架构里最低的那一档 Core Ultra 的 LP-E 核就是它 SoC tile 上 时钟最低
+        //   仍然留在 EffMask 里 后台压制往那儿赶是对的
+        //   但中断落点必须排除它 1.8.1.0 下架 USB 与硬盘中断亲和就是栽在把中断投到低频能效核
+        //   只有三档以上才有值 两档时最低档就是 EffMask 本身 整体排除会把落点池清空
+        public static ulong LowPowerEffMask;
 
         public static ulong AllMask, ThrottleMask, BoostMask, StrictBoostMask, InterruptMask;
         public static ulong AltStrictBoostMask, AltThrottleMask, AltInterruptMask;
@@ -58,14 +63,25 @@ namespace PaviseApp
             else { ThrottleMask = nc >= 2 && nc <= 64 ? 3UL << (nc - 2) : (nc >= 2 ? 0UL : 1UL); BoostMask = AllMask; }
             StrictBoostMask = CpuPartitionPolicy.StrictMask(AllMask, ThrottleMask,
                 Hybrid ? PerfMask : 0, AsymCache ? BigL3Mask : 0);
-            InterruptMask = DeriveInterruptMask(Hybrid, PerfMask, ThrottleMask);
+            InterruptMask = DeriveInterruptMask(Hybrid, PerfMask, ThrottleMask,
+                LowPowerEffMask, ParsedPhysicalIn(PerfMask));
         }
 
-        internal static ulong DeriveInterruptMask(bool hybrid, ulong perfMask, ulong throttle)
+        // P 核够多就把中断放 P 核 靠近渲染线程 不够就让开 别抢游戏仅有的那几个 P 核
+        //   阈值必须数物理核 老写法数的是逻辑核 那是 P 核必然带超线程的年代写的
+        //   Arrow Lake 取消超线程后 6 个物理 P 核只剩 6 个逻辑位 同样的机器判定会翻面
+        //   实测过的对照 Raptor 6P 带 HT 是 12 个逻辑位走 P 核 Arrow-H 6P 无 HT 是 6 个直接退到能效核
+        internal const int MinPerfPhysicalForInterrupts = 4;
+
+        internal static ulong DeriveInterruptMask(bool hybrid, ulong perfMask, ulong throttle,
+            ulong lowPower, int perfPhysicalCores)
         {
             if (!hybrid || perfMask == 0) return throttle;
-            ulong pool = CountSetBits(perfMask) >= 8 ? perfMask
-                : throttle != 0 ? throttle : perfMask;
+            // 退让时也不许落到最低一档能效核 那是全机器时钟最低的核
+            ulong fallback = throttle & ~lowPower;
+            if (fallback == 0) fallback = throttle;
+            ulong pool = perfPhysicalCores >= MinPerfPhysicalForInterrupts ? perfMask
+                : fallback != 0 ? fallback : perfMask;
             ulong top = TopBits(pool, 2);
             return top != 0 ? top : throttle;
         }
@@ -179,6 +195,24 @@ namespace PaviseApp
         private static bool domainPreferenceApplied;
         private static readonly List<ulong> physicalCoreMasks = new List<ulong>();
 
+        // Parse 阶段就记下的物理核掩码 每条 RelationProcessorCore 记录就是一个物理核
+        //   physicalCoreMasks 要等 BuildCpuSetPolicies 才填 而 DeriveMasks 跑在它前面
+        //   中断落点的阈值要数物理 P 核 只能用这份 否则数到的永远是 0
+        private static List<ulong> parsedCoreMasks = new List<ulong>();
+
+        internal static int PhysicalCountIn(List<ulong> cores, ulong logicalMask)
+        {
+            int n = 0;
+            if (cores == null) return 0;
+            foreach (ulong core in cores) if ((core & logicalMask) != 0) n++;
+            return n;
+        }
+
+        internal static int ParsedPhysicalIn(ulong logicalMask)
+        {
+            return PhysicalCountIn(parsedCoreMasks, logicalMask);
+        }
+
         public static uint[] BackgroundCpuSetIds()
         {
             return backgroundIds;
@@ -274,7 +308,7 @@ namespace PaviseApp
 #if PAVISE_SELFTEST
         internal sealed class TopologySnapshot
         {
-            public ulong All, Perf, Eff, BigL3, SmallL3;
+            public ulong All, Perf, Eff, LowPower, BigL3, SmallL3;
             public bool Hybrid, Asym;
             public ulong[] Cores, Dies;
         }
@@ -283,7 +317,7 @@ namespace PaviseApp
         {
             return new TopologySnapshot
             {
-                All = AllMask, Perf = PerfMask, Eff = EffMask,
+                All = AllMask, Perf = PerfMask, Eff = EffMask, LowPower = LowPowerEffMask,
                 BigL3 = BigL3Mask, SmallL3 = SmallL3Mask,
                 Hybrid = Hybrid, Asym = AsymCache,
                 Cores = physicalCoreMasks.ToArray(),
@@ -296,6 +330,7 @@ namespace PaviseApp
             if (s == null) return;
             InjectTopologyForTest(s.All, s.Cores, s.Dies,
                 s.Perf, s.Eff, s.BigL3, s.SmallL3, s.Hybrid, s.Asym);
+            LowPowerEffMask = s.LowPower;
         }
 
         internal static void InjectTopologyForTest(ulong all, ulong[] cores, ulong[] dies,
@@ -305,7 +340,7 @@ namespace PaviseApp
             physicalCoreMasks.Clear();
             if (cores != null) physicalCoreMasks.AddRange(cores);
             processorDieDomains = new List<ulong>(dies ?? new ulong[0]);
-            PerfMask = perf; EffMask = eff;
+            PerfMask = perf; EffMask = eff; LowPowerEffMask = 0;
             BigL3Mask = bigL3; SmallL3Mask = smallL3;
             Hybrid = hybrid; AsymCache = asym;
             customSet = null;
@@ -453,51 +488,6 @@ namespace PaviseApp
                 L3Masks(), c != null ? c.Mask : StrictBoostMask);
         }
 
-        public const int SqueezeOk = 0;
-        public const int SqueezeTooFewCores = 1;
-        public const int SqueezeMultiGroup = 2;
-        public const int SqueezeAlreadyNarrow = 3;
-
-        public static bool SqueezeSupported
-        {
-            get
-            {
-                return physicalCoreMasks.Count >= CpuPartitionPolicy.SqueezeMinPhysical
-                    && !MultiGroup;
-            }
-        }
-
-        public static int SqueezeStatusFor(ulong gameMask)
-        {
-            if (MultiGroup) return SqueezeMultiGroup;
-            if (physicalCoreMasks.Count < CpuPartitionPolicy.SqueezeMinPhysical)
-                return SqueezeTooFewCores;
-            return BackgroundSqueezeMaskFor(gameMask) != 0 ? SqueezeOk : SqueezeAlreadyNarrow;
-        }
-
-        public static int BackgroundWholeCoresFor(ulong gameMask)
-        {
-            ulong allowed = BackgroundAllowedMaskFor(gameMask);
-            int n = 0;
-            foreach (ulong core in physicalCoreMasks)
-                if (core != 0 && (core & allowed) == core) n++;
-            return n;
-        }
-
-        public static ulong BackgroundAllowedMaskFor(ulong gameMask)
-        {
-            if (gameMask != 0 && gameMask != AllMask)
-                return BackgroundRemainderFor(gameMask, AllMask);
-            if (HasSafeBackgroundPartition()) return ThrottleMask;
-            return AllMask;
-        }
-
-        public static ulong BackgroundSqueezeMaskFor(ulong gameMask)
-        {
-            return CpuPartitionPolicy.SqueezeMask(
-                physicalCoreMasks.ToArray(), BackgroundAllowedMaskFor(gameMask), EffMask, Hybrid,
-                L3Masks(), gameMask != 0 ? gameMask : StrictBoostMask);
-        }
 
         public static int L3CacheMb()
         {
@@ -804,6 +794,7 @@ namespace PaviseApp
                     || len <= 0 || len > capacity) return;
 
                 var classes = new Dictionary<int, ulong>();
+                var coreMasks = new List<ulong>();
                 var l3 = new List<KeyValuePair<uint, ulong>>();
                 var dies = new List<ulong>();
                 bool multiGroup = false;
@@ -823,14 +814,18 @@ namespace PaviseApp
                         int cls = Marshal.ReadByte(u, 1);
                         int gc = Marshal.ReadInt16(u, 22);
                         if (!RecordArrayFits(size, 32, gc, 16)) { pos += size; continue; }
+                        ulong coreMask = 0;
                         for (int i = 0; i < gc; i++)
                         {
                             IntPtr ga = (IntPtr)((long)u + 24 + i * 16);
                             if (Marshal.ReadInt16(ga, 8) != 0) { multiGroup = true; continue; }
+                            ulong bits = (ulong)Marshal.ReadInt64(ga, 0);
                             ulong cur;
                             classes.TryGetValue(cls, out cur);
-                            classes[cls] = cur | (ulong)Marshal.ReadInt64(ga, 0);
+                            classes[cls] = cur | bits;
+                            coreMask |= bits;
                         }
+                        if (coreMask != 0) coreMasks.Add(coreMask);
                     }
                     else if (rel == 5)
                     {
@@ -879,16 +874,30 @@ namespace PaviseApp
                 }
 
                 if (multiGroup) return;
+                parsedCoreMasks = coreMasks;
                 cacheDomains = l3;
                 processorDieDomains = dies;
 
                 if (classes.Count >= 2)
                 {
-                    int max = int.MinValue;
-                    foreach (var kv in classes) if (kv.Key > max) max = kv.Key;
-                    ulong perf = 0, eff = 0;
-                    foreach (var kv in classes) { if (kv.Key == max) perf |= kv.Value; else eff |= kv.Value; }
-                    if (perf != 0 && eff != 0) { PerfMask = perf; EffMask = eff; Hybrid = true; }
+                    int max = int.MinValue, min = int.MaxValue;
+                    foreach (var kv in classes)
+                    {
+                        if (kv.Key > max) max = kv.Key;
+                        if (kv.Key < min) min = kv.Key;
+                    }
+                    ulong perf = 0, eff = 0, lowest = 0;
+                    foreach (var kv in classes)
+                    {
+                        if (kv.Key == max) perf |= kv.Value;
+                        else { eff |= kv.Value; if (kv.Key == min) lowest |= kv.Value; }
+                    }
+                    if (perf != 0 && eff != 0)
+                    {
+                        PerfMask = perf; EffMask = eff; Hybrid = true;
+                        // 两档时 lowest 就等于 eff 排除它等于清空落点池 只有三档以上才认
+                        if (classes.Count >= 3) LowPowerEffMask = lowest;
+                    }
                 }
 
                 if (!Hybrid && l3.Count >= 2)

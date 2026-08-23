@@ -139,23 +139,6 @@ namespace PaviseApp
         }
 
 
-        public bool SqueezeBackgroundOn
-        {
-            get { return CpuTopology.SqueezeSupported && squeezeBgOn; }
-            set
-            {
-                bool effective = CpuTopology.SqueezeSupported && value;
-                squeezeBgOn = effective; Settings.Save("GmSqueezeBg", effective);
-                SuppressionCore.SqueezeBackground = effective;
-                RequestPolicyApply();
-            }
-        }
-
-        public bool SqueezeBackgroundAvailable
-        {
-            get { return CpuTopology.SqueezeSupported; }
-        }
-
         public bool PauseWindowsUpdate
         {
             get { return pauseUpdateOn; }
@@ -233,19 +216,6 @@ namespace PaviseApp
                 nvShaderCacheMax = value; Settings.Save("NvShaderCache", value);
                 if (!value) NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyShaderCache);
                 else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyShaderCache, 0);
-                lock (sync) tweakApplied.Clear();
-                RequestPolicyApply();
-            }
-        }
-
-        public bool NvAnselOff
-        {
-            get { return nvAnselOff; }
-            set
-            {
-                nvAnselOff = value; Settings.Save("NvAnselOff", value);
-                if (!value) NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyAnsel);
-                else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyAnsel, 0);
                 lock (sync) tweakApplied.Clear();
                 RequestPolicyApply();
             }
