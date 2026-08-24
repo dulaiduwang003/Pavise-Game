@@ -262,6 +262,14 @@ namespace PaviseApp
                         continue;
                     }
 
+                    // 模块已注入游戏进程的工具 宿主与游戏共生在同一条渲染路径上
+                    //   压它就是压游戏自己 游戏等一个被压到零 CPU 的宿主回话即偶发整秒卡顿
+                    if (LibraryRootOf(ipath, overlayExemptRoots) != null)
+                    {
+                        ReleaseBackgroundExemption(pid, nm, null);
+                        continue;
+                    }
+
                     SuppressionLevel desired = EffSuppress
                         ? BackgroundLevel() : SuppressionLevel.None;
 

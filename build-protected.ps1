@@ -79,7 +79,52 @@ function Ensure-Confuser([string]$CacheRoot) {
         # any stronger protocol the OS already negotiates.
         [Net.ServicePointManager]::SecurityProtocol = `
             [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-        Invoke-WebRequest -UseBasicParsing -Uri $toolUrl -OutFile $zip
+        # github.com downloads are unreachable on some networks even with TLS 1.2.
+        # The pinned SHA-256 below makes untrusted mirrors safe, so walk the same
+        # proxy routes the in-app update checker uses until one hash-verifies.
+        $routes = @(
+            $toolUrl,
+            ("https://ghproxy.net/" + $toolUrl),
+            ("https://gh-proxy.com/" + $toolUrl),
+            ("https://ghfast.top/" + $toolUrl)
+        )
+        # Each route is tried twice: once through the system proxy, once with the
+        # proxy bypassed. A configured-but-broken local proxy (e.g. a stale
+        # 127.0.0.1:7890 entry) otherwise kills every HTTPS download while the
+        # mirror hosts would be reachable directly.
+        $downloaded = $false
+        $lastError = $null
+        $savedProxy = [Net.WebRequest]::DefaultWebProxy
+        try {
+            foreach ($route in $routes) {
+                foreach ($direct in @($false, $true)) {
+                    $label = if ($direct) { "$route (direct, no proxy)" } else { $route }
+                    try {
+                        if ($direct) { [Net.WebRequest]::DefaultWebProxy = New-Object Net.WebProxy }
+                        else { [Net.WebRequest]::DefaultWebProxy = $savedProxy }
+                        Invoke-WebRequest -UseBasicParsing -Uri $route -OutFile $zip -TimeoutSec 60
+                        if ((Get-Sha256 $zip) -eq $toolSha256) { $downloaded = $true; break }
+                        $lastError = "hash mismatch from $label"
+                        Write-Host "Route served a different file, trying next: $label"
+                        Remove-Item -LiteralPath $zip -Force
+                    }
+                    catch {
+                        $lastError = $_.Exception.Message
+                        Write-Host "Route failed: $label ($lastError)"
+                        if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
+                    }
+                }
+                if ($downloaded) { break }
+            }
+        }
+        finally { [Net.WebRequest]::DefaultWebProxy = $savedProxy }
+        if (!$downloaded) {
+            throw ("All download routes for the protection tool failed. Last error: $lastError`n" +
+                "Offline fix: obtain ConfuserEx-CLI.zip v$toolVersion from any machine or mirror and place it at`n" +
+                "  $zip`n" +
+                "(SHA-256 must be $toolSha256 - the build verifies it, so the source does not need to be trusted.`n" +
+                " Copying the whole cache folder from a machine that has built before also works: $CacheRoot)")
+        }
     }
     $actual = Get-Sha256 $zip
     if ($actual -ne $toolSha256) {

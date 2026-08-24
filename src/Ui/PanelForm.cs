@@ -44,6 +44,7 @@ namespace PaviseApp
         private DBPanel pageGraphics, pageEnvironment, pageWhitelist;
         private DBPanel[] pages;
         private NavRail nav;
+        private AdvancedBackBar advBackBar;
         private ModeButton modeButton;
         private ThemeSwitch themeSwitch;
         private SearchButton searchButton;
@@ -226,6 +227,13 @@ namespace PaviseApp
             foreach (var p in pages) root.Controls.Add(p);
             root.Controls.Add(pageGameConfig);
             root.Controls.Add(nav);
+
+            // 高级页面隐藏整条左侧导航 左上角只留一个返回 页面居中占满余下宽度
+            advBackBar = new AdvancedBackBar();
+            advBackBar.SetBounds(0, 0, Theme.S(RailW), Theme.S(TopH));
+            advBackBar.Visible = false;
+            advBackBar.BackRequested = delegate { nav.Select((int)PageId.Overview); };
+            root.Controls.Add(advBackBar);
 
             modeFlyout = new ModePickerPanel();
             modeFlyout.SetBounds(Theme.S(WinW - 420), Theme.S(TopH + 8), Theme.S(396), Theme.S(286));
@@ -414,8 +422,12 @@ namespace PaviseApp
             var page = pages[index];
             foreach (var p in pages) p.Visible = (p == page);
             curPage = page;
+            bool advanced = IsAdvancedPage(index);
+            nav.Visible = !advanced;
+            if (advBackBar != null) advBackBar.Visible = advanced;
             SyncGuardVeils();
-            pageBaseLeft = Theme.S(RailW);
+            // 高级页整条导航都不在 页面居中吃掉腾出来的宽度
+            pageBaseLeft = advanced ? Theme.S(RailW / 2) : Theme.S(RailW);
             page.Left = pageBaseLeft + Theme.S(16);
             pageSlide.Speed = 0.26f; pageSlide.Set(1f); pageSlide.To(0f);
             SlideInActiveTab(page);
@@ -621,6 +633,22 @@ namespace PaviseApp
             {
                 advancedPanel.BringToFront();
                 Fx.DropIn(advancedPanel);
+            }
+        }
+
+        private static bool IsAdvancedPage(int index)
+        {
+            switch ((PageId)index)
+            {
+                case PageId.Policy:
+                case PageId.AntiCheat:
+                case PageId.Whitelist:
+                case PageId.Graphics:
+                case PageId.Environment:
+                case PageId.Interrupt:
+                    return true;
+                default:
+                    return false;
             }
         }
 

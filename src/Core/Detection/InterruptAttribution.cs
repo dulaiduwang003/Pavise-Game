@@ -246,15 +246,23 @@ namespace PaviseApp
                 result.EventsLost = lost;
                 result.BuffersLost = lostBuffers;
                 try { if (traceHandle != 0) CloseTrace(traceHandle); } catch { }
+                // 排空等待放宽到 10 秒 2 秒是按空闲机器估的
+                //   CloseTrace 之后 ProcessTrace 还要把缓冲里积压的事件逐个回调完才返回
+                //   体检窗口本身就是满负载 事件量大 排空慢 2 秒会把正常收尾误判成卡死
                 bool workerDone = true;
-                if (worker != null) { try { workerDone = worker.Join(2000); } catch { workerDone = false; } }
+                if (worker != null) { try { workerDone = worker.Join(10000); } catch { workerDone = false; } }
                 started = false;
+                // 无论排空成功与否都要交还探针所有权
+                //   早先这里直接 return 把 aliveOwned 一路留着
+                //   之后每次体检都在 ProbeOwnedElsewhere 那道门上被判「探针被占」
+                //   一次超时就让后面每一次都失败 只能重启进程才恢复
+                ReleaseOwnership();
                 if (!workerDone)
                 {
+                    // worker 还在写 dpcHits 这轮数据不能读 但下一轮可以正常重来
                     result.Error = Lang.T("t.interruptattribution.5");
                     return result;
                 }
-                ReleaseOwnership();
                 keepAlive = null;
 
                 var byMod = new Dictionary<string, DriverInterrupt>();
