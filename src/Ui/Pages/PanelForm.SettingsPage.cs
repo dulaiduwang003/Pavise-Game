@@ -191,8 +191,11 @@ namespace PaviseApp
             int rc = swAuto.Checked ? TaskHelper.CreateStartupTask() : TaskHelper.DeleteStartupTask();
             if (rc != 0)
             {
-                PaviseDialog.Warn(this, App.DisplayName, Lang.T("msg.taskfail"));
+                // 先把原因取出来 TaskExists 会再跑一次 schtasks 把它冲掉
+                string reason = TaskHelper.LastSchtasksError;
                 swAuto.SetSilently(TaskHelper.TaskExists());
+                PaviseDialog.Warn(this, App.DisplayName, Lang.T("msg.taskfail")
+                    + (string.IsNullOrEmpty(reason) ? "" : "\r\n\r\n" + reason));
             }
         }
 

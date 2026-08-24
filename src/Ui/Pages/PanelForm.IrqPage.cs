@@ -370,7 +370,9 @@ namespace PaviseApp
                 {
                     sb.Append(Lang.F("irq.d.written", IrqRelocate.MaskText(d.Mask)));
                     sb.Append(Environment.NewLine);
-                    sb.Append(Lang.T("irq.tip.unverified"));
+                    // 对局观测关着的话打多少局都不会记录 待验证会一直挂着 这里要把坑说破
+                    sb.Append(Lang.T(IrqSessionProbe.EnabledSetting
+                        ? "irq.tip.unverified" : "irq.tip.unverified.probeoff"));
                     c = Theme.Faint;
                 }
                 else

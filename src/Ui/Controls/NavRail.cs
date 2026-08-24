@@ -163,7 +163,7 @@ namespace PaviseApp
             TextRenderer.DrawText(g, App.DisplayName, Theme.UI(16.5f, true),
                 new Rectangle(Dpi.S(78), Dpi.S(24), Width - Dpi.S(84), Dpi.S(30)), Theme.Fg,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-            TextRenderer.DrawText(g, "CORE CONTROL 2.0", Theme.Mono(7.5f),
+            TextRenderer.DrawText(g, "CORE CONTROL " + App.Version, Theme.Mono(7.5f),
                 new Rectangle(Dpi.S(79), Dpi.S(57), Width - Dpi.S(84), Dpi.S(18)), Theme.Faint,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
 

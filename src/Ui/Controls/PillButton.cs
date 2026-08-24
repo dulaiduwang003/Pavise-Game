@@ -79,8 +79,10 @@ namespace PaviseApp
                 : Kind == BtnKind.Primary ? Theme.OnAccent
                 : Kind == BtnKind.Danger ? Col.Lerp(Theme.Danger, Color.White, Theme.LightMode ? 0f : h * 0.45f)
                 : (Theme.LightMode ? Theme.Fg : Col.Lerp(Theme.Fg, Color.White, h * 0.2f));
+            // VerticalCenter 必须搭 SingleLine 才生效 缺了它 DT_VCENTER 被忽略 文字会顶到上边
             TextRenderer.DrawText(g, Text, Kind == BtnKind.Primary ? Theme.UI(9f, true) : Font, ClientRectangle, txt,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
+                | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
         }
     }
 

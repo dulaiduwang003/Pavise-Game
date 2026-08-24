@@ -19,7 +19,7 @@ namespace PaviseApp
     internal static class App
     {
         public const string DisplayName = "PAVISE";
-        public const string Version = "2.0";
+        public const string Version = "2.0.1";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string WeChat = "Ssssssstyle";
@@ -352,6 +352,9 @@ namespace PaviseApp
 
             if (elevated)
                 ThreadPool.QueueUserWorkItem(_ => TaskHelper.RefreshStartupTask());
+
+            // 必须在 GameMode 构造之后 台账那时才 Bind 到数据目录 提前调用会读到空账误提示
+            ThreadPool.QueueUserWorkItem(_ => IrqRelocate.NotifyPendingVerification());
 
             PerformancePreset runtimeIconMode = gameMode.ActivePreset;
             bool runtimeIconEnabled = gameMode.Enabled;

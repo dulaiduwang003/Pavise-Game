@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 一键中断体检 自己造负载 当场扫一次 只做初筛 不下结论
 using System;
 using System.Collections.Generic;
@@ -88,6 +88,12 @@ namespace PaviseApp
                         if (progress != null) try { progress(i + 1); } catch { }
                     }
                     r.Cancelled = cancel;
+                    // 先撤负载再收采集 顺序不能反
+                    //   ProcessTrace 要把最多 4MB 缓冲里的事件全回调完才会返回
+                    //   而 LoadGen 造的就是内存带宽压力 排空走的也是内存
+                    //   负载不停就收采集 worker 在满带宽下抢不到进度 Join 窗口经常不够
+                    //   一超时整次归因作废 用户看到的就是「采集线程未按时退出」
+                    try { load.Stop(); } catch { }
                     raw = ia.Stop();
                 }
                 catch (Exception ex) { r.Error = ex.GetType().Name; }

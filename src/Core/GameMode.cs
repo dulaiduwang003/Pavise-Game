@@ -757,6 +757,7 @@ namespace PaviseApp
                                         Interlocked.Exchange(ref boostFirstStampTicks, DateTime.UtcNow.Ticks);
                                         Interlocked.Exchange(ref sessionStartTicks, DateTime.UtcNow.Ticks);
                                         overlayScanned = false;
+                                        overlayExemptRoots = EmptyOverlayRoots;
                                         try { cpuLimit.Start(); } catch { }
                                         BeginSessionPolicy();
                                         ReportBegin(running);
@@ -770,6 +771,7 @@ namespace PaviseApp
                                         Interlocked.Exchange(ref boostFirstStampTicks, DateTime.UtcNow.Ticks);
                                         Interlocked.Exchange(ref sessionStartTicks, DateTime.UtcNow.Ticks);
                                         overlayScanned = false;
+                                        overlayExemptRoots = EmptyOverlayRoots;
                                         BeginSessionPolicy();
                                         ReportFinish();
                                         ReportBegin(running);
@@ -903,6 +905,11 @@ namespace PaviseApp
         private long sessionStartTicks;
         private volatile bool overlayScanned;
 
+        // 注入了游戏进程的覆盖层宿主安装根 对局内豁免后台压制
+        //   压它们等于压游戏自己的渲染路径 游戏等一个零 CPU 的宿主回话就是偶发整秒卡顿
+        private static readonly string[] EmptyOverlayRoots = new string[0];
+        private volatile string[] overlayExemptRoots = EmptyOverlayRoots;
+
         public List<string> LibraryExecutablePaths()
         {
             var paths = new List<string>();
@@ -939,11 +946,26 @@ namespace PaviseApp
                     try { dir = string.IsNullOrEmpty(path) ? null : System.IO.Path.GetDirectoryName(path); }
                     catch { }
                     bool denied;
-                    List<string> hits = OverlayScan.Scan(pid, dir, out denied);
+                    List<string> injectorPaths;
+                    List<string> hits = OverlayScan.Scan(pid, dir, out denied, out injectorPaths);
                     if (denied) Logger.Log(Lang.T("log.overlay.1"));
                     else if (hits.Count > 0)
+                    {
                         Logger.Log(Lang.T("log.overlay.2")
                             + string.Join(Lang.T("log.overlay.3"), hits.ToArray()));
+                        var roots = new List<string>();
+                        foreach (string module in injectorPaths)
+                        {
+                            string root = OverlayScan.ProductRootOf(module);
+                            if (root != null && !roots.Contains(root)) roots.Add(root);
+                        }
+                        if (roots.Count > 0)
+                        {
+                            overlayExemptRoots = roots.ToArray();
+                            Logger.Log(Lang.T("log.overlay.4")
+                                + string.Join(Lang.T("log.overlay.3"), roots.ToArray()));
+                        }
+                    }
                 }
                 catch { }
             });

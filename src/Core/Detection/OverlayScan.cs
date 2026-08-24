@@ -27,7 +27,15 @@ namespace PaviseApp
 
         public static List<string> Scan(int pid, string gameDir, out bool denied)
         {
+            List<string> ignored;
+            return Scan(pid, gameDir, out denied, out ignored);
+        }
+
+        public static List<string> Scan(int pid, string gameDir, out bool denied,
+            out List<string> injectorModulePaths)
+        {
             denied = false;
+            injectorModulePaths = new List<string>();
             var hits = new List<string>();
             IntPtr h = Native.OpenProcess(
                 ProcessQueryInformation | ProcessVmRead, false, pid);
@@ -64,7 +72,10 @@ namespace PaviseApp
                     if (name.Length == 0) continue;
                     foreach (string[] entry in Known)
                         if (name.Contains(entry[0]) && seen.Add(entry[1]))
+                        {
                             hits.Add(entry[1] + " (" + name + ")");
+                            injectorModulePaths.Add(path);
+                        }
                     if (!string.IsNullOrEmpty(gameDir)
                         && Array.IndexOf(ProxyNames, name) >= 0
                         && path.StartsWith(gameDir, StringComparison.OrdinalIgnoreCase)
@@ -75,6 +86,56 @@ namespace PaviseApp
             }
             catch { return hits; }
             finally { Native.CloseHandle(h); }
+        }
+
+        // 从注入模块的路径推它宿主软件的安装根 例如
+        //   C:\Users\X\AppData\Local\Discord\app-1.0\modules\hook.dll -> C:\Users\X\AppData\Local\Discord
+        //   向上走到已知安装容器为止 取容器下第一层目录 推不出宁可返回空也不给一个过宽的根
+        public static string ProductRootOf(string modulePath)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(modulePath)) return null;
+                string windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+                if (!string.IsNullOrEmpty(windows)
+                    && modulePath.StartsWith(windows.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase))
+                    return null;
+                string dir = System.IO.Path.GetDirectoryName(modulePath);
+                for (int i = 0; i < 32 && !string.IsNullOrEmpty(dir); i++)
+                {
+                    string parent = System.IO.Path.GetDirectoryName(dir);
+                    // 到盘根还没遇到容器 说明模块直接摊在浅层目录 整盘不能当根
+                    if (string.IsNullOrEmpty(parent)) return null;
+                    if (IsInstallContainer(parent)) return TooBroadRoot(dir) ? null : dir;
+                    dir = parent;
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        private static bool IsInstallContainer(string dir)
+        {
+            // 盘根不算容器 D:\Tools\Overwolf 这种布局取 D:\Tools 当根会豁免半个盘
+            //   自定义盘一路走到底都没遇到已知容器就放弃 保守不豁免 反转时长有提升机制兜底
+            if (dir.Length <= 3) return false;
+            string low = dir.TrimEnd('\\').ToLowerInvariant();
+            if (low.EndsWith("\\program files") || low.EndsWith("\\program files (x86)")
+                || low.EndsWith("\\programdata")
+                || low.EndsWith("\\appdata\\local") || low.EndsWith("\\appdata\\roaming")
+                || low.EndsWith("\\appdata\\locallow")) return true;
+            // C:\Users\<name> 用户主目录也算容器 软件直接装在主目录下的情况
+            string parent = System.IO.Path.GetDirectoryName(low);
+            return parent != null && parent.TrimEnd('\\').EndsWith("\\users");
+        }
+
+        private static bool TooBroadRoot(string dir)
+        {
+            string low = dir.TrimEnd('\\').ToLowerInvariant();
+            return low.Length <= 3
+                || low.EndsWith("\\users") || low.EndsWith("\\appdata")
+                || low.EndsWith("\\windows") || low.EndsWith("\\desktop")
+                || low.EndsWith("\\downloads") || low.EndsWith("\\documents");
         }
 
         private const int ProcessQueryInformation = 0x0400;

@@ -48,7 +48,8 @@ namespace PaviseApp
 
             AddOverviewDivider(guard, 168, rightW);
             CardLabel(guard, Lang.T("v20.current.mode"), 24, 194, rightW - 48, 22, 9f, false, Theme.Faint);
-            lblHeroMode = AccentLabel(guard, ModeButton.ModeName(gameMode.ActivePreset), 24, 220, rightW - 48, 42, 18f, true);
+            // 高 42 会压到下面"全局默认"的 y=258 字顶被裁 18f 行高约 32 收到 36 正好
+            lblHeroMode = AccentLabel(guard, ModeButton.ModeName(gameMode.ActivePreset), 24, 220, rightW - 48, 36, 18f, true);
             lblHeroSource = CardLabel(guard, Lang.T("mode.source.global"), 24, 258, rightW - 48, 20, 8.4f, false, Theme.Dim);
 
             AddOverviewDivider(guard, 286, rightW);
@@ -76,7 +77,7 @@ namespace PaviseApp
             readyDot.SetBounds(Theme.S(30), Theme.S(25), Theme.S(20), Theme.S(20));
             readyDot.Bg = Theme.Nav; readyDot.Color = Theme.Accent;
             status.Controls.Add(readyDot);
-            lblEvidenceLive = CardLabel(status, Lang.T("v20.ready"), 58, 22, 260, 26, 9f, true, Theme.Faint);
+            lblEvidenceLive = CardLabel(status, Lang.F("v20.ready", App.Version), 58, 22, 260, 26, 9f, true, Theme.Faint);
             lblEvidenceLive.TextAlign = ContentAlignment.MiddleLeft;
             var advanced = new AdvancedEntryButton(Lang.T("v20.advanced.entry"));
             advanced.Bg = Theme.Nav;

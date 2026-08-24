@@ -37,6 +37,15 @@ namespace PaviseApp
 
         public static readonly ReleaseNote[] All = new[]
         {
+            new ReleaseNote("2.0.1", "2026-08-24", new[]
+            {
+                new[]{ "修复 中断体检收尾时先撤自造负载 采集线程不再因抢不到内存带宽而超时作废", "Fixed the interrupt checkup so the self-generated load stops before collection is closed; the capture thread no longer times out while starved of memory bandwidth." },
+                new[]{ "修复 体检采集超时后未交还探针所有权 导致此后每次体检都被判探针被占 只能重启恢复", "Fixed probe ownership not being released after a capture timeout, which made every later checkup fail as probe-in-use until Pavise was restarted." },
+                new[]{ "修复 后台隔离不再关闭 Windows 动态优先级提升 游戏等待被隔离进程回应时偶发约一秒的卡顿已消除", "Fixed background isolation no longer disabling Windows dynamic priority boosts; the occasional one-second stall while the game waited on an isolated process is gone." },
+                new[]{ "新增 模块已注入游戏进程的覆盖层宿主自动豁免后台压制 开局点名后即时生效", "Added automatic suppression exemption for overlay hosts whose modules are injected into the game process, effective as soon as the post-launch scan names them." },
+                new[]{ "修复 开机自启任务的保护设置补齐从未成功 每次启动都误报需重新开关 现在补齐可以落地并附带失败原因", "Fixed the startup task protection settings never being successfully rebuilt, causing a false re-enable prompt at every launch; the rebuild now lands and failures carry the actual reason." },
+                new[]{ "调整 中断挪核重启回来后主动提示还差打一局验证 对局观测未开时会点破打局也不会记录", "Adjusted IRQ relocation to announce after the reboot that one match is still needed for verification, and to call out that playing records nothing while in-match observation is off." },
+            }),
             new ReleaseNote("2.0", "2026-08-24", new[]
             {
                 new[]{ "移除 后台绑核收缩与后台移核 后台不再被限定核心", "Removed background core shrinking and background core relocation; background work is no longer confined to specific cores." },

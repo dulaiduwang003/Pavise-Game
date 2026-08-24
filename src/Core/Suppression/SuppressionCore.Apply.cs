@@ -162,13 +162,15 @@ namespace PaviseApp
                     && !Native.ApplyEcoQoS(h, sealTimer))
                     failed.Add("eco-write");
             }
+            // 2.0.1 起隔离不再关闭动态优先级提升 只把早前版本关掉的还原回来
+            //   那是 Windows 对优先级反转的快速救济 游戏等被隔离进程放锁时靠它瞬间抬人跑完
+            //   关掉之后只剩每秒一轮的反饥饿兜底 用户看到的就是偶发约一秒的整帧冻结
+            //   提升幅度一到八级 从 IDLE 抬完仍低于游戏的 HIGH 抢不走游戏正在用的核
             if (origBoost == 0)
             {
-                bool wantDisable = level >= SuppressionLevel.Isolated;
                 int boostNow = Native.QueryBoostDisabled(h);
-                if (boostNow >= 0 && boostNow != (wantDisable ? 1 : 0)
-                    && !Native.TrySetBoostDisabled(h, wantDisable))
-                    failed.Add(wantDisable ? "boost-write" : "boost-unwrite");
+                if (boostNow == 1 && !Native.TrySetBoostDisabled(h, false))
+                    failed.Add("boost-unwrite");
             }
             if (Native.GetPriorityClass(h) != desiredPriority) failed.Add("priority-readback");
             if (Native.QueryIoPriority(h) != io) failed.Add("io-readback");

@@ -26,6 +26,18 @@ Extreme scored only 71 in the heavy-load scenario, below Competitive's 93 — th
 
 Verify the effect yourself by toggling it on and off in the same game and the same scene.
 
+## Candidate: VidMm video memory residency shield
+
+> A research candidate, not yet a shipping feature. What follows describes a direction slated for standalone bench validation first. It does not mean anything is active today, and it promises no gain.
+
+The residency shield targets long frames that appear when the video memory budget is tight. Pavise plans to read `Budget`, `CurrentUsage`, `CurrentReservation` and `AvailableForReservation` for the game on its actual render GPU through Windows' public `D3DKMTQueryVideoMemoryInfo`; once the game is confirmed to sit persistently near its budget and start spilling into shared memory, `D3DKMTChangeVideoMemoryReservation` would declare a conservative minimum physical video memory requirement for it.
+
+This does not add video memory, nor does it hard-lock video memory to the game. A reservation is a hint to the Windows video memory manager about a process's minimum working set. The goal is to reduce the long frames caused by game textures and other resources being evicted from local video memory under pressure and paged back in from system memory. The metrics that matter are 1% / 0.1% lows and P99 / P99.9 frame times; when video memory is plentiful, it does nothing.
+
+The approach uses user-mode WDDM interfaces the system already exposes: no driver installed, no injection into the game, no modification of game memory, and no kernel driver signature to buy. It skips outright when the target process handle is refused by anti-cheat, when the render GPU cannot be identified unambiguously, when the game already holds a non-zero video memory reservation of its own, and on integrated-GPU unified memory or multi-GPU setups where the semantics are unclear.
+
+Standalone bench work and A/B testing on real NVIDIA and AMD machines come before any integration. It qualifies as an optional feature only if, in video-memory-pressure scenarios, the majority of paired runs show at least a 5% improvement in 1% lows, at least an 8% improvement in P99 frame time, and no more than a 1% regression in average frame rate — and only if restoring the original values passes after alt-tabbing out, after the game exits, after a Pavise crash, and after a display driver reset. If real games do not clear the bar it is rejected; being able to call the interface is not a reason to ship it.
+
 ## Usage
 
 Add a game's EXE or shortcut to the target library, or use the scan function to import games already installed through Steam, Epic, GOG, Ubisoft, Riot, WeGame, Battle.net or Xbox.
@@ -38,16 +50,18 @@ All changes are reverted from the recorded state when the game exits. If Pavise 
 
 | Mode | Scope of suppression |
 |---|---|
-| Smart | Only background work actually taking resources gets clamped, escalating tier by tier with heat; idle processes are left alone. Whatever you are using, and its family, is never touched |
-| Focus | Everything outside the game drops to eco level, windows included — even the app you alt-tab to, with only the whitelist exempt. Whatever actually takes resources is isolated at the top level, and sustained heavy loads additionally go into a job object with a hard CPU cap |
+| Smart | Every background process that clears the protection boundary is isolated outright the moment the match starts — no heat check, no tier-by-tier escalation. Whatever you are using, and its family, is never touched |
+| Focus | The isolation net widens to everything outside the game, windows included — even the app you alt-tab to, with only the whitelist exempt |
 | Custom | Background suppression, cores, memory and power, system environment and graphics, each picked individually |
 
-Both modes only get serious with processes that actually take resources: Smart leaves cold processes untouched, Focus merely lays an eco blanket over them. The old blanket isolation was bench-measured as a net loss — the scattered timer wakeups of a hundred idle processes got packed onto two cores to queue against each other, multiplying the worst frame by 2.6; clamping the few busy ones delivers the same gain in a millisecond.
+The two modes differ in which processes are eligible to be touched, not in how hard they are clamped: anything past the boundary is isolated outright, cold processes included, rather than waiting for it to burn a dozen seconds of CPU first. Isolation writes the lowest priority class, the lowest disk I/O and page priority, EcoQoS with a capped timer resolution, and disabled turbo boost; with GPU yielding on, GPU scheduling priority drops to idle as well.
+
+This is the opposite of what 1.9 did, because the premise changed. Blanket isolation really was a net loss back then — the scattered timer wakeups of a hundred idle processes got packed onto two cores by affinity narrowing and queued against each other, multiplying the worst frame by 2.6. Since 2.0 the background is never given a new affinity mask; narrowing and core relocation were pulled entirely. A cold process with no ready threads costs no CPU to begin with, and when it does wake it can run on any core with no higher-priority work pending — no queue, and the cost of blanket isolation goes with it.
 
 In every mode, anti-cheat, the host of the running game, Windows core services, network accelerators and other logged-in accounts are never suppressed. This boundary is unaffected by any switch. The four automatic exemption categories — game platforms and launchers, network accelerators, anti-cheat, and the input/audio/peripheral chain — can be viewed directly on the Whitelist page.
 ## Per-game profiles
 
-Select a game in the library and open its profile. Each game can override all 27 items across mode, background suppression, cores, memory and power, system environment and graphics. Items without an override follow the global setting; changes save immediately and apply to that game's next match.
+Select a game in the library and open its profile. Each game can override all 21 items across mode, background suppression, cores, memory and power, system environment and graphics. Items without an override follow the global setting; changes save immediately and apply to that game's next match.
 
 - Effective values freeze the moment a match activates. Anything changed mid-match applies to the next one, so the policy never shifts within a match
 - The current core selection can be pinned to one game without affecting the others
@@ -61,12 +75,11 @@ Library entries can be renamed; only the display name changes, recognition is un
 
 **Processes and cores**
 
-- The game process gets high priority, raised disk I/O and GPU scheduling priority, and its own cores; background work is demoted or moved to other cores according to the mode
+- The game process gets high priority, raised disk I/O and GPU scheduling priority, and its own cores; background work is demoted according to the mode. The background is never given a new affinity mask — no narrowing, no relocation
 - CPU partitioning handles hybrid architectures, X3D and multiple processor groups. No core splitting on 6 cores or fewer
 - Core allocation can be drawn per logical core, with presets for all cores, no hyper-threading, P-cores only, and invert; changes need Apply to take effect. Most people never need it — the scheduler already puts game threads on P-cores
 - Smart frame guard: identifies the thread that decides the frame rate and boosts it alone. Bench-verified 77%–96% better 1% lows when the CPU is saturated
-- The game yields once the frame thread is in charge: when the CPU is saturated and that thread really was boosted, the game process steps back to normal priority and only the thread stays high. Games whose frame thread cannot be identified are unaffected and keep high priority throughout. Can be turned off
-- Focus resource cage: sustained heavy-load background processes go into a job object with a hard cap of ten percent of system CPU. A capped program feels clearly slower when you switch back to it. A guard process lifts the cap if Pavise exits unexpectedly
+- Smart yield: when the CPU stays saturated for ten seconds and the frame thread did not manage to take over on its own, the game process steps back to normal priority — whole-process high priority measurably worsens tail frames in that state. It returns to high priority as soon as the frame thread takes over or the CPU frees up
 - Pavise yields during a match, giving up the game cores and lowering its own scheduling weight
 - Fallback boost: for games whose handle the kernel anti-cheat blocks, the system grants priority at process creation instead; effective on the next launch
 - Anti-cheat compatibility list: games that refuse writes are recorded, so the priority and I/O writes certain to fail are not retried, while GPU scheduling priority and the frame thread are still attempted. The list expires on a new version, and the Anti-Cheat page can view and clear it
@@ -75,7 +88,6 @@ Library entries can be renamed; only the display name changes, recognition is un
 
 - Background GPU yielding: when a background process uses the GPU, its GPU scheduling priority is lowered as well
 - NVIDIA per-game tuning: maximum performance power mode, low latency mode (on or ultra), Smooth Motion frame generation, unrestricted shader cache, DLSS override (latest, or a pinned J/K generation), and per-game ReBAR. Original values are snapshotted and restored when turned off
-- AMD per-game tuning: Anti-Lag, AFMF fluid frames, and RSR upscaling. RSR explains that it changes the machine-wide render resolution before enabling
 - GPU power limit: raised to the vendor's maximum during a match, restored from the snapshot on exit
 
 **Keyboard, mouse and interrupts**
@@ -88,10 +100,10 @@ Library entries can be renamed; only the display name changes, recognition is un
 
 **Memory and power**
 
-- Only the cheapest memory cleanup item is kept. On by default, but it acts only when memory is tight, so machines with headroom never notice it. Details in the next section
 - Matches switch to the Pavise managed power plan by default, created on the first match with parameters written for this processor and a name carrying the PG tag and a machine signature. You can also select any plan on the machine, in which case Pavise only switches to it and changes none of its parameters. It is set once, with no periodic polling, so it never fights other power software over the active plan
 - The managed plan has two sets. Focus writes 100% minimum processor state, no core parking, the most performance-biased energy preference and a fully raised boost policy; Smart keeps downclocking headroom, and on desktops it writes the same performance-biased energy preference and turns off clock duty cycling on AC, with a middle value for laptops
 - Disable processor idle during a match: off by default, effective only in Focus mode on AC power. It removes the wake-up latency of deep idle states, but **on a fair number of machines it is a net loss** — disabling idle also suppresses turbo, so clocks end up lower instead of higher, exactly what was measured on a test laptop. It warns before enabling, records this machine's turbo baseline at that moment, measures again once the first match stabilizes, and turns itself off if the result falls clearly below the baseline. That check is only a backstop; compare one match on against one match off yourself
+- Power budget yield: on a laptop the CPU and GPU draw from one shared power and thermal budget, so when the GPU is pinned against its limit and the CPU has headroom, the energy preference moves to a still-performance-leaning middle value to let the budget flow to the GPU. Off by default, and eligible only on a laptop, on AC, in Focus mode, with Pavise's managed power plan active and RAPL wattage readable; the decision is made once per match. Twenty seconds of observation to decide, fifteen more to verify after engaging, then an immediate revert — and a permanent note never to try this machine again — if it frees less than 3W or GPU utilization drops by more than 3%. On the author's own i7-9750H, EPP across its full range moved neither package power nor actual frequency, so machines like it will always fail verification: that is the intended behavior
 - MMCSS multimedia scheduling: the share reserved for non-multimedia work drops from 20% to 10%, and the Games task's scheduling category and file I/O are raised to high. It stays applied while game mode is on and is restored when turned off or on exit
 - Game DVR background recording stays off while game mode is on and is restored only when Pavise exits, because the system reads it the moment a game launches and it must be in place first
 - Power plan, network and notifications are all restored after the game ends
@@ -117,9 +129,9 @@ A purely local tool: no service installed, no data uploaded, no injection into g
 
 ## Memory cleanup
 
-One item is kept. On by default, but it acts only when memory is tight. The other two were removed; the reasons are at the end of this section.
+**This entire category has been removed.** The measurements and the per-item verdicts are kept below to explain why.
 
-That decision is backed by measurements. The table below measures the system-level commands tools like this use, on a 64 GB machine with 40344 MB available and 16154 MB of system cache before each run:
+The table below measures the system-level commands tools like this use, on a 64 GB machine with 40344 MB available and 16154 MB of system cache before each run:
 
 | Command | Duration | Available memory | System cache |
 |---|---|---|---|
@@ -131,9 +143,13 @@ That decision is backed by measurements. The table below measures the system-lev
 
 Purging the entire standby list throws away 18894 MB of system cache for 382 MB of available memory. The standby list already counts as available memory, so purging it converts cached available memory into empty available memory — the total barely moves, while the cached content is gone and the game load that follows has to read from disk again. Flushing the modified page list takes 8 seconds and combining pages 6.2 seconds; neither belongs on the match-start path.
 
-**Kept: purge low-priority standby memory when memory is tight**
+**Removed: purge low-priority standby memory when memory is tight**
 
-Only the cache pages the system judges least likely to be needed again, about 13 ms per run, leaving the rest of the standby list alone so file cache that still has value is not thrown out with it. Available memory is monitored during a match and the purge runs only when available physical memory drops below 15%, with a 45-second cooldown. Those two gates exist to avoid the trap the old ISLC-style full purge fell into (below): act once, at minimal cost, only when memory is genuinely tight. On by default; machines with headroom never reach the trigger.
+This one was treated as the version that had learned from the others' mistakes. Measurements on 2026-08-20 proved it fell into the same trap, just less visibly.
+
+The trigger is a ratio of available memory, and available memory already counts standby pages — purging merely moves pages from the standby list to the free list, so the ratio does not change and the condition can never clear. The 45-second cooldown only set a tempo for the endless repetition. Real user logs show 14 triggers in 10 minutes, spaced exactly 45 seconds apart, never stopping.
+
+More to the point, it barely did anything: `MemoryPurgeLowPriorityStandbyList` only clears priority tier 0, which totals 1.4 MB on a 24 GB machine — 0.0 to 0.1 MB actually freed per run, at a call cost of 0.2 ms. What it saves is a few hundred nanoseconds of page-reclaim work in the memory manager, which is noise against a frame's budget.
 
 **Removed: reclaim background working sets once the match stabilizes**
 
@@ -141,7 +157,7 @@ Calling `SetProcessWorkingSetSize` per process does not free memory. It only pus
 
 **Removed: ISLC-style purge of the entire standby list**
 
-Triggering a full standby purge on `standby list ≥ 1 GB and available ≤ 1 GB` costs more than it returns: 1380 ms of system-wide stall plus the entire file cache discarded, for 382 MB of available memory. Worse, there was no cooldown and a check every 5 seconds — the trigger condition itself means memory is nearly exhausted, so after the purge the cache refills from disk and crosses the line again within seconds, producing a purge-read-refill loop on low-end machines that is worse than the periodic stutter it was meant to fix. The kept item learned from both: only the low-priority portion (13 ms instead of 1380 ms), with a cooldown.
+Triggering a full standby purge on `standby list ≥ 1 GB and available ≤ 1 GB` costs more than it returns: 1380 ms of system-wide stall plus the entire file cache discarded, for 382 MB of available memory. Worse, there was no cooldown and a check every 5 seconds — the trigger condition itself means memory is nearly exhausted, so after the purge the cache refills from disk and crosses the line again within seconds, producing a purge-read-refill loop on low-end machines that is worse than the periodic stutter it was meant to fix. The low-priority-only variant was supposed to dodge both problems; measurement showed it retriggered just the same and freed too little to measure — both versions were pulled together.
 
 See Mark Russinovich, *The Memory-Optimization Hoax* (Windows and .NET Magazine, January 2004).
 

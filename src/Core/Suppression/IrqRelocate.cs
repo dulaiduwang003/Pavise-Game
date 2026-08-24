@@ -165,6 +165,29 @@ namespace PaviseApp
             try { if (engine.HasResidue && !engine.EnabledByPavise) Revert(); } catch { }
         }
 
+        // 挪核重启回来的用户十有八九不知道还要打一局才能看到实测效果 启动时主动说一声
+        //   只在「已重启 且 重启后一局都没打过」时提示 打过局说明观测已经在路上 不用催
+        public static void NotifyPendingVerification()
+        {
+            try
+            {
+                if (!engine.EnabledByPavise) return;
+                List<string> touched = engine.TouchedDevices();
+                if (touched.Count == 0) return;
+                bool rebooted = false;
+                foreach (string id in touched)
+                    if (engine.RebootedSinceWrite(id)) { rebooted = true; break; }
+                if (!rebooted) return;
+                string boot = IrqAffinityEngine.BootStamp();
+                foreach (IrqSessionRecord rec in IrqSessionLedger.Load())
+                    if (rec != null && IrqAffinityEngine.SameBoot(rec.BootStamp, boot))
+                        return;
+                Logger.Log(Lang.T(IrqSessionProbe.EnabledSetting
+                    ? "log.irqrelocate.1" : "log.irqrelocate.2"));
+            }
+            catch { }
+        }
+
         private static List<string> OwnedByOtherTweaks()
         {
             var owned = new List<string>();
