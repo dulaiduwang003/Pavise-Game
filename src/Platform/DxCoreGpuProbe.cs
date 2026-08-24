@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace PaviseApp
 {
@@ -27,6 +28,28 @@ namespace PaviseApp
             new Guid("248e2800-a793-4724-abaa-23a6de1be090");
 
         internal static Dictionary<string, bool> CollectIntegrated()
+        {
+            // DXCore 枚举在虚拟显卡/异常驱动下可能永久挂起（COM 调用无超时）。
+            // 放到后台线程，3 秒拿不到结果就放弃驱动报告，调用方用 PCI 总线号走备用判定。
+            Dictionary<string, bool> result = null;
+            var done = new ManualResetEvent(false);
+            var worker = new Thread(() =>
+            {
+                try { result = CollectIntegratedCore(); }
+                catch { }
+                finally { done.Set(); }
+            });
+            worker.IsBackground = true;
+            worker.Start();
+            if (!done.WaitOne(3000))
+            {
+                Logger.Log("DXCore 显卡探测超时 放弃驱动报告 使用备用判定");
+                return new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            }
+            return result ?? new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static Dictionary<string, bool> CollectIntegratedCore()
         {
             var result = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
             IDXCoreAdapterFactory factory = null;
