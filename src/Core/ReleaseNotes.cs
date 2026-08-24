@@ -37,8 +37,14 @@ namespace PaviseApp
 
         public static readonly ReleaseNote[] All = new[]
         {
-            new ReleaseNote("2.0.1", "2026-08-24", new[]
+            new ReleaseNote("2.1.0.0", "2026-08-24", new[]
             {
+                new[]{ "新增 AMD 显卡优化回归 Anti-Lag 流体运动帧与 RSR 驱动级升格 退出对局还原", "Added AMD GPU optimizations back: Anti-Lag, Fluid Motion Frames and RSR driver-level upscaling, restored when the match ends." },
+                new[]{ "新增 AMD 两项驱动优化支持逐游戏独立配置 与 NVIDIA 一致", "Added per-game profile support for the two AMD driver options, matching NVIDIA." },
+                new[]{ "新增 显卡功耗墙重新支持 AMD 显卡", "Added AMD GPU support back to the GPU power limit lift." },
+                new[]{ "修复 部分锐龙机型读不到处理器功耗 导致功耗让路无法启用", "Fixed processor power readings failing on some Ryzen machines, which kept the power-yield feature from enabling." },
+                new[]{ "调整 设置页清除全部配置时把整个数据目录一并删除 不再只删已知文件", "Adjusted the Settings-page full wipe to delete the entire data directory instead of only known files." },
+                new[]{ "修复 概览页状态行两段文字连在一起 且过长时被截断", "Fixed the overview status line running two segments together and getting truncated when long." },
                 new[]{ "修复 中断体检收尾时先撤自造负载 采集线程不再因抢不到内存带宽而超时作废", "Fixed the interrupt checkup so the self-generated load stops before collection is closed; the capture thread no longer times out while starved of memory bandwidth." },
                 new[]{ "修复 体检采集超时后未交还探针所有权 导致此后每次体检都被判探针被占 只能重启恢复", "Fixed probe ownership not being released after a capture timeout, which made every later checkup fail as probe-in-use until Pavise was restarted." },
                 new[]{ "修复 后台隔离不再关闭 Windows 动态优先级提升 游戏等待被隔离进程回应时偶发约一秒的卡顿已消除", "Fixed background isolation no longer disabling Windows dynamic priority boosts; the occasional one-second stall while the game waited on an isolated process is gone." },

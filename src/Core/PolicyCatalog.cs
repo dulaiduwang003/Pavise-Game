@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 逐游戏独立配置的键目录与取值规范化
 using System;
 using System.Collections.Generic;
@@ -58,6 +58,8 @@ namespace PaviseApp
         public const string KeyNvShaderCache = "NvShaderCache";
         public const string KeyNvRebar = "NvRebar";
         public const string KeyNvDlss = "NvDlss";
+        public const string KeyAmdAntiLag = "AmdAntiLag";
+        public const string KeyAmdAfmf = "AmdAfmf";
 
         public const string GroupMode = "cfg.group.mode";
         public const string GroupBackground = "cfg.group.bg";
@@ -92,6 +94,8 @@ namespace PaviseApp
             new PolicyItem(KeyNvRebar, PolicyValueKind.Bool, "0", "set.nvrebar", GroupGraphics, null),
             new PolicyItem(KeyNvDlss, PolicyValueKind.Choice, "off", "set.nvdlss", GroupGraphics,
                 new[] { "off", "latest", "j", "k" }),
+            new PolicyItem(KeyAmdAntiLag, PolicyValueKind.Bool, "0", "set.amdalag", GroupGraphics, null),
+            new PolicyItem(KeyAmdAfmf, PolicyValueKind.Bool, "0", "set.amdafmf", GroupGraphics, null),
         };
 
         private static readonly Dictionary<string, PolicyItem> ByKey = BuildIndex();

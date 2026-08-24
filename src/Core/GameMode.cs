@@ -74,6 +74,9 @@ namespace PaviseApp
         private volatile string nvDlssMode = "off";
         private volatile bool awakeOn;
         private volatile bool gpuPowerMaxOn;
+        private volatile bool amdAntiLag;
+        private volatile bool amdAfmf;
+        private volatile bool rsrOn;
         private bool pqosActive;
         private bool awakeActive;
         private bool gpwActive;
@@ -178,6 +181,9 @@ namespace PaviseApp
             gpuPrefStageOn = Settings.Load("GpuPrefStageOn", true);
             awakeOn = Settings.Load("GmAwake", true);
             gpuPowerMaxOn = Settings.Load("GmGpuPowerMax", false);
+            amdAntiLag = Settings.Load("AmdAntiLag", false);
+            amdAfmf = Settings.Load("AmdAfmf", false);
+            rsrOn = Settings.Load("GmRsr", false);
             killGameDvr = Settings.Load("GameDvrOff", true);
             mmcssOn = Settings.Load("GmMmcss", true);
             planSwitch = Settings.Load("PowerPlanOn", true);
