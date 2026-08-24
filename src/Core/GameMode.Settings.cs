@@ -157,6 +157,36 @@ namespace PaviseApp
             set { gpuPowerMaxOn = value; Settings.Save("GmGpuPowerMax", value); if (value) ClearEnvFuse("gpupower"); RequestPolicyApply(); }
         }
 
+        public bool RsrUpscale
+        {
+            get { return rsrOn; }
+            set { rsrOn = value; Settings.Save("GmRsr", value); if (value) ClearEnvFuse("rsr"); RequestPolicyApply(); }
+        }
+
+        public bool AmdAntiLag
+        {
+            get { return amdAntiLag; }
+            set
+            {
+                amdAntiLag = value; Settings.Save("AmdAntiLag", value);
+                if (!value) { AdlxTweaks.RestoreAntiLag(); AdlxTweaks.RestoreChill(); }
+                else ClearEnvFuse("amdalag");
+                RequestPolicyApply();
+            }
+        }
+
+        public bool AmdAfmf
+        {
+            get { return amdAfmf; }
+            set
+            {
+                amdAfmf = value; Settings.Save("AmdAfmf", value);
+                if (!value) AdlxTweaks.RestoreAfmf();
+                else ClearEnvFuse("amdafmf");
+                RequestPolicyApply();
+            }
+        }
+
         public bool WlanScanGuard
         {
             get { return wlanGuardOn; }

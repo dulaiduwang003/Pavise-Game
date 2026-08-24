@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 解析逐游戏覆盖与全局默认 生成对局冻结快照
 using System;
 using System.Collections.Generic;
@@ -185,6 +185,8 @@ namespace PaviseApp
         public bool NvShaderCacheMax { get { return On(PolicyCatalog.KeyNvShaderCache); } }
         public bool NvRebar { get { return On(PolicyCatalog.KeyNvRebar); } }
         public string NvDlssMode { get { return ValueOf(PolicyCatalog.KeyNvDlss); } }
+        public bool AmdAntiLag { get { return On(PolicyCatalog.KeyAmdAntiLag); } }
+        public bool AmdAfmf { get { return On(PolicyCatalog.KeyAmdAfmf); } }
 
         public ulong CoreMask
         {

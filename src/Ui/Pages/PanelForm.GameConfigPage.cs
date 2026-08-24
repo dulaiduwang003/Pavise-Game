@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 构建单个游戏的独立配置二级页 标签内分节平铺 逐核分配与覆盖编辑
 using System;
 using System.Collections.Generic;
@@ -245,6 +245,8 @@ namespace PaviseApp
                 new[] { PolicyCatalog.KeyNvMaxPerf, PolicyCatalog.KeyNvLowLat,
                     PolicyCatalog.KeyNvSmoothMotion, PolicyCatalog.KeyNvShaderCache,
                     PolicyCatalog.KeyNvDlss, PolicyCatalog.KeyNvRebar });
+            AddCfgSection(cfgTabPanels[3], "AMD", ref ty,
+                new[] { PolicyCatalog.KeyAmdAntiLag, PolicyCatalog.KeyAmdAfmf });
             EnableCardCollapse(cfgTabPanels[3]);
 
             cfgTabKeys = new[]
@@ -261,7 +263,8 @@ namespace PaviseApp
                 new[] { PolicyCatalog.KeyNvMaxPerf,
                     PolicyCatalog.KeyNvLowLat, PolicyCatalog.KeyNvSmoothMotion,
                     PolicyCatalog.KeyNvShaderCache,
-                    PolicyCatalog.KeyNvDlss, PolicyCatalog.KeyNvRebar },
+                    PolicyCatalog.KeyNvDlss, PolicyCatalog.KeyNvRebar,
+                    PolicyCatalog.KeyAmdAntiLag, PolicyCatalog.KeyAmdAfmf },
             };
 
             SyncCfgRows();
@@ -319,6 +322,8 @@ namespace PaviseApp
                 case PolicyCatalog.KeyNvShaderCache: return "set.nvshader.n";
                 case PolicyCatalog.KeyNvRebar: return "set.nvrebar.n";
                 case PolicyCatalog.KeyNvDlss: return "set.nvdlss.n";
+                case PolicyCatalog.KeyAmdAntiLag: return "set.amdalag.n";
+                case PolicyCatalog.KeyAmdAfmf: return "set.amdafmf.n";
                 default: return null;
             }
         }
@@ -326,6 +331,7 @@ namespace PaviseApp
         private static bool CfgItemSupported(PolicyItem item, out string reasonKey)
         {
             bool nvOk = NvApi.Available;
+            bool amdOk = AdlxTweaks.Available;
             reasonKey = null;
             switch (item.Key)
             {
@@ -343,6 +349,14 @@ namespace PaviseApp
                     if (!nvOk) { reasonKey = "set.nv.none"; return false; }
                     if (!NvDrsTweaks.DlssGpuCapable() || !NvDrsTweaks.DlssDriverSupported())
                     { reasonKey = "set.amd.nosup"; return false; }
+                    return true;
+                case PolicyCatalog.KeyAmdAntiLag:
+                    if (!amdOk) { reasonKey = "set.amd.none"; return false; }
+                    if (!AdlxTweaks.AntiLagSupported()) { reasonKey = "set.amd.nosup"; return false; }
+                    return true;
+                case PolicyCatalog.KeyAmdAfmf:
+                    if (!amdOk) { reasonKey = "set.amd.none"; return false; }
+                    if (!AdlxTweaks.AfmfSupported()) { reasonKey = "set.amd.nosup"; return false; }
                     return true;
                 default:
                     return true;

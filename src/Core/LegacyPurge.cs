@@ -99,6 +99,7 @@ namespace PaviseApp
             Step(Lang.T("t.legacypurge.14"), AccessibilityKeysTweak.Restore, failed);
             Step(Lang.T("t.legacypurge.15"), HidPowerTweak.Restore, failed);
             Step(Lang.T("t.legacypurge.16"), InputMythTweak.Restore, failed);
+            Step(Lang.T("t.legacypurge.19"), AdlxTweaks.PurgeResidue, failed);
             Step(Lang.T("t.legacypurge.21"), MsiModeTweak.Restore, failed);
             Step(Lang.T("t.legacypurge.22"), IfeoBoost.RestoreAll, failed);
 
@@ -165,6 +166,51 @@ namespace PaviseApp
             return files;
         }
 
+        // 只认 %AppData%\Pavise 这一个目录 别的一概不整树删
+        //   便携版 Paths.Data 就是 exe 所在目录 递归删会连 Pavise.exe 一起删掉
+        //   所以不问"是不是 Paths.Data" 只问"是不是恰好等于那个路径"
+        //   目录本身是重解析点也不碰 junction 会把删除带到别处去
+        internal static bool IsRoamingDataDir(string dir)
+        {
+            if (string.IsNullOrEmpty(dir)) return false;
+            try
+            {
+                string roaming = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                if (string.IsNullOrEmpty(roaming)) return false;
+                if (!Same(Path.Combine(roaming, "Pavise"), dir)) return false;
+                if (!Directory.Exists(dir)) return false;
+                return (File.GetAttributes(dir) & FileAttributes.ReparsePoint) == 0;
+            }
+            catch { return false; }
+        }
+
+        private static bool Same(string a, string b)
+        {
+            string x = Path.GetFullPath(a).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            string y = Path.GetFullPath(b).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            return string.Equals(x, y, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // 逐个删 有一个被占住不连累其他 最后由深到浅摘目录
+        internal static int DeleteDataTree(string dir)
+        {
+            int files = 0;
+            try
+            {
+                foreach (string p in Directory.GetFiles(dir, "*", SearchOption.AllDirectories))
+                {
+                    try { File.SetAttributes(p, FileAttributes.Normal); } catch { }
+                    try { File.Delete(p); files++; } catch { }
+                }
+                var subs = new List<string>(Directory.GetDirectories(dir, "*", SearchOption.AllDirectories));
+                subs.Sort(delegate(string a, string b) { return b.Length.CompareTo(a.Length); });
+                foreach (string d in subs) { try { Directory.Delete(d, false); } catch { } }
+                try { Directory.Delete(dir, false); } catch { }
+            }
+            catch { }
+            return files;
+        }
+
         public static bool WipeAll(string dataDir, bool includeSettings, string why,
             out int files, out string unrestored)
         {
@@ -183,9 +229,15 @@ namespace PaviseApp
 
             files = DeleteDataFiles(dataDir);
             bool regCleared = includeSettings && DeleteRegistryTree();
+            bool wipeDir = includeSettings && IsRoamingDataDir(dataDir);
 
+            // 这条得赶在摘目录之前落盘 目录没了 AppendAllText 直接抛 DirectoryNotFound
+            //   摘完就不再补日志了 补一行等于把整个目录重新建出来 违背清除的本意
             Logger.Log(why + Lang.T("log.legacypurge.40") + files + Lang.T("log.legacypurge.34")
-                + (includeSettings ? regCleared ? Lang.T("log.legacypurge.41") : Lang.T("log.legacypurge.42") : Lang.T("log.legacypurge.43")));
+                + (includeSettings ? regCleared ? Lang.T("log.legacypurge.41") : Lang.T("log.legacypurge.42") : Lang.T("log.legacypurge.43"))
+                + (wipeDir ? Lang.T("log.legacypurge.46") : ""));
+
+            if (wipeDir) files += DeleteDataTree(dataDir);
             return !includeSettings || regCleared;
         }
     }

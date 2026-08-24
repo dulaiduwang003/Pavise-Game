@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 对局中把显卡功耗墙拉到厂商允许的上限 退局按快照还原
 using System;
 using System.Globalization;
@@ -32,6 +32,9 @@ namespace PaviseApp
             uint nvCur, nvDef, nvMax;
             if (NvApi.Available && NvApi.TryGetPowerLimit(out nvCur, out nvDef, out nvMax))
                 return nvMax > nvCur;
+            int amdCur, amdMax;
+            if (AdlxTweaks.PowerLimitGetFirst(out amdCur, out amdMax))
+                return amdMax > amdCur;
             return false;
         }
 
@@ -61,6 +64,28 @@ namespace PaviseApp
                     }
                     Logger.Log(Lang.T("log.gpupowermax.3") + (nvMax / 1000) + Lang.T("log.gpupowermax.4")
                         + (nvCur / 1000) + Lang.T("log.gpupowermax.5"));
+                    return true;
+                }
+
+                int amdCur, amdMax;
+                if (AdlxTweaks.PowerLimitGetFirst(out amdCur, out amdMax))
+                {
+                    if (amdCur >= amdMax) return true;
+                    Settings.SaveStr(SnapKey, "amd:" + VendorGpuId(GpuVendor.Amd)
+                        + ":" + amdCur.ToString(CultureInfo.InvariantCulture)
+                        + ":" + amdMax.ToString(CultureInfo.InvariantCulture));
+                    if (Settings.LoadStr(SnapKey, "").Length == 0)
+                    {
+                        Logger.Log(Lang.T("log.gpupowermax.1"));
+                        return false;
+                    }
+                    if (!AdlxTweaks.PowerLimitSetFirst(amdMax))
+                    {
+                        Settings.SaveStr(SnapKey, "");
+                        Logger.Log(Lang.T("log.gpupowermax.6"));
+                        return false;
+                    }
+                    Logger.Log(Lang.T("log.gpupowermax.3") + amdMax + Lang.T("log.gpupowermax.7") + amdCur + Lang.T("log.gpupowermax.8"));
                     return true;
                 }
 
@@ -111,6 +136,19 @@ namespace PaviseApp
                     }
                     ok = uint.TryParse(val, NumberStyles.Integer,
                         CultureInfo.InvariantCulture, out prev) && NvApi.TrySetPowerLimit(prev);
+                }
+                else if (snapVendor == GpuVendor.Amd)
+                {
+                    int prev, applied, curNow, maxNow;
+                    if (int.TryParse(appliedStr, NumberStyles.Integer, CultureInfo.InvariantCulture, out applied)
+                        && AdlxTweaks.PowerLimitGetFirst(out curNow, out maxNow) && curNow != applied)
+                    {
+                        Settings.SaveStr(SnapKey, "");
+                        Logger.Log(Lang.T("log.gpupowermax.15"));
+                        return true;
+                    }
+                    ok = int.TryParse(val, NumberStyles.Integer,
+                        CultureInfo.InvariantCulture, out prev) && AdlxTweaks.PowerLimitSetFirst(prev);
                 }
                 else ok = true;
                 if (!ok)
