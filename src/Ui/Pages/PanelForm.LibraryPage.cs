@@ -16,6 +16,7 @@ namespace PaviseApp
         private PillButton btnForce;
         private PillButton btnGameConfig;
         private PillButton btnRename;
+        private Toggle swAutoAdd;
         private Label lblLibraryHint;
         private EmptyStatePanel gameListPanel;
         private readonly Dictionary<string, Bitmap> gameIconCache = new Dictionary<string, Bitmap>(StringComparer.OrdinalIgnoreCase);
@@ -65,11 +66,26 @@ namespace PaviseApp
             btnRename.Click += delegate { RenameSelectedGame(); };
             lstGames.SelectedIndexChanged += delegate { UpdateForceButton(); };
             lstGames.DoubleClick += delegate { OpenSelectedGameConfig(); };
+            var lblAutoAdd = new Label();
+            lblAutoAdd.Text = Lang.T("v15.library.autoadd");
+            lblAutoAdd.BackColor = Theme.Bg; lblAutoAdd.ForeColor = Theme.Fg;
+            lblAutoAdd.Font = Theme.UI(9f, true);
+            lblAutoAdd.SetBounds(Theme.S(bx + 4), Theme.S(y + 256), Theme.S(bw - 62), Theme.S(22));
+            swAutoAdd = MakeSwitch(gameMode.AutoAddFullscreen,
+                delegate { gameMode.AutoAddFullscreen = swAutoAdd.Checked; });
+            swAutoAdd.Bg = Theme.Bg;
+            swAutoAdd.Location = new Point(Theme.S(bx + bw - 50), Theme.S(y + 254));
+            var lblAutoAddDesc = new Label();
+            lblAutoAddDesc.Text = Lang.T("v15.library.autoadd.desc");
+            lblAutoAddDesc.BackColor = Theme.Bg; lblAutoAddDesc.ForeColor = Theme.Dim;
+            lblAutoAddDesc.Font = Theme.UI(8.2f, false);
+            lblAutoAddDesc.SetBounds(Theme.S(bx + 4), Theme.S(y + 284), Theme.S(bw - 8), Theme.S(66));
             lblLibraryHint = new Label(); lblLibraryHint.BackColor = Theme.Bg;
             lblLibraryHint.Font = Theme.UI(8.2f, false); lblLibraryHint.AutoEllipsis = true;
-            lblLibraryHint.SetBounds(Theme.S(bx + 4), Theme.S(y + 258), Theme.S(bw - 8), Theme.S(140));
+            lblLibraryHint.SetBounds(Theme.S(bx + 4), Theme.S(y + 356), Theme.S(bw - 8), Theme.S(120));
             SyncLibraryHint();
-            pageLibrary.Controls.AddRange(new Control[] { listWrap, add, remove, btnForce, btnGameConfig, btnRename, lblLibraryHint });
+            pageLibrary.Controls.AddRange(new Control[] { listWrap, add, remove, btnForce, btnGameConfig, btnRename,
+                lblAutoAdd, swAutoAdd, lblAutoAddDesc, lblLibraryHint });
             RefreshGames();
         }
 

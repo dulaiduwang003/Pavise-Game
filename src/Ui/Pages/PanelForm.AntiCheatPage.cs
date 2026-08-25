@@ -11,7 +11,8 @@ namespace PaviseApp
     {
         private DBPanel acList;
         private Toggle swAcMaster;
-        private SettingCard cardAcRoster;
+        private RoundPanel acRosterBar;
+        private Label lblAcRoster;
         private ModuleBanner acBanner;
         private readonly List<AcGroup> acGroups = new List<AcGroup>();
         private readonly List<SettingCard> acCards = new List<SettingCard>();
@@ -28,21 +29,56 @@ namespace PaviseApp
             acBanner.Glyph = "acshield";
             pageAntiCheat.Controls.Add(acBanner);
             y += 84;
+
+            // 总开关是整页的闸 相容名单是运行期记录 两者都不是"一个反作弊分组"
+            //   做成和分组同款的卡片会串层级 编号还会和下面的列表各自从 01 重来
+            //   收成一条 44 高的工具条 明显矮于 104 高的分组卡片 一眼分得开
+            acRosterBar = new RoundPanel();
+            acRosterBar.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(44));
+            acRosterBar.BackColor = Theme.Bg;
+            acRosterBar.Fill = Theme.Inset;
+            acRosterBar.Border = Theme.Stroke;
+            acRosterBar.Radius = Theme.S(10);
+            pageAntiCheat.Controls.Add(acRosterBar);
+
             swAcMaster = MakeSwitch(!tamer.Paused, delegate
             {
                 tamer.Paused = !swAcMaster.Checked;
                 Settings.Save("TameOn", swAcMaster.Checked);
                 RefreshAcGroupStates();
             });
-            int acCardH;
-            MakeAutoCard(pageAntiCheat, ContentX, y, ContentW, 56, Lang.T("tame.toggle"),
-                Lang.T("v14.anticheat.master.sub"), swAcMaster, out acCardH); y += acCardH + 10;
+            swAcMaster.Bg = Theme.Inset;
+            swAcMaster.Location = new Point(Theme.S(12),
+                (acRosterBar.Height - swAcMaster.Height) / 2);
+            acRosterBar.Controls.Add(swAcMaster);
+
+            var lblMaster = new Label();
+            lblMaster.AutoSize = false;
+            lblMaster.BackColor = Color.Transparent;
+            lblMaster.Font = Theme.UI(8.6f, true);
+            lblMaster.ForeColor = Theme.Fg;
+            lblMaster.TextAlign = ContentAlignment.MiddleLeft;
+            lblMaster.SetBounds(Theme.S(68), 0, Theme.S(150), acRosterBar.Height);
+            lblMaster.Text = Lang.T("tame.toggle");
+            acRosterBar.Controls.Add(lblMaster);
 
             var btnRoster = new PillButton(Lang.T("btn.roster.clear"));
-            btnRoster.Size = new Size(Theme.S(96), Theme.S(30));
+            btnRoster.Size = new Size(Theme.S(84), Theme.S(26));
+            btnRoster.Location = new Point(
+                acRosterBar.Width - Theme.S(12) - btnRoster.Width,
+                (acRosterBar.Height - btnRoster.Height) / 2);
             btnRoster.Click += delegate { OnClearRoster(); };
-            cardAcRoster = MakeAutoCard(pageAntiCheat, ContentX, y, ContentW, 56, Lang.T("ac.roster"),
-                Lang.T("ac.roster.sub"), btnRoster, out acCardH); y += acCardH + 10;
+            acRosterBar.Controls.Add(btnRoster);
+
+            lblAcRoster = new Label();
+            lblAcRoster.AutoSize = false;
+            lblAcRoster.BackColor = Color.Transparent;
+            lblAcRoster.Font = Theme.UI(8.2f, false);
+            lblAcRoster.TextAlign = ContentAlignment.MiddleRight;
+            lblAcRoster.SetBounds(Theme.S(224), 0,
+                acRosterBar.Width - Theme.S(224) - Theme.S(104), acRosterBar.Height);
+            acRosterBar.Controls.Add(lblAcRoster);
+            y += 54;
             SyncAcRoster();
             acList = new DBPanel();
             acList.SetBounds(Theme.S(20), Theme.S(y), Theme.S(PageW - 40), Theme.S(PageH - y - 8));
@@ -52,11 +88,12 @@ namespace PaviseApp
 
         private void SyncAcRoster()
         {
-            if (cardAcRoster == null) return;
+            if (lblAcRoster == null) return;
             string[] names = ProtectedGameRoster.Names();
-            cardAcRoster.SetStatus(names.Length == 0
-                ? Lang.T("ac.roster.empty")
-                : string.Join(" · ", names), names.Length == 0 ? Theme.Faint : Theme.Accent);
+            bool empty = names.Length == 0;
+            lblAcRoster.Text = Lang.T("ac.roster") + "  ·  "
+                + (empty ? Lang.T("ac.roster.empty") : string.Join(" · ", names));
+            lblAcRoster.ForeColor = empty ? Theme.Faint : Theme.Accent;
         }
 
         private void OnClearRoster()

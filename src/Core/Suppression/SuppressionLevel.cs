@@ -6,13 +6,13 @@ namespace PaviseApp
 {
     // 2.0 起后台侧只用 None 和 Isolated 两态 中间两档留着是因为反作弊那套还在用
     //   Tamer 的逐组压制等级会持久化成 eco / res 标签 删掉枚举值会读不回旧配置
+    //   Frozen 随对局冻结功能一并下架 压制只到 Isolated 为止 不再挂起任何进程
     internal enum SuppressionLevel
     {
         None = 0,
         Eco = 1,
         Restrained = 2,
-        Isolated = 3,
-        Frozen = 4
+        Isolated = 3
     }
 
     internal static class ApplyFailureText
@@ -38,7 +38,6 @@ namespace PaviseApp
                 case SuppressionLevel.Eco: return Lang.T("t.backgroundpressurecontroller.5");
                 case SuppressionLevel.Restrained: return Lang.T("t.backgroundpressurecontroller.6");
                 case SuppressionLevel.Isolated: return Lang.T("t.backgroundpressurecontroller.7");
-                case SuppressionLevel.Frozen: return Lang.T("t.backgroundpressurecontroller.8");
                 default: return Lang.T("t.backgroundpressurecontroller.9");
             }
         }

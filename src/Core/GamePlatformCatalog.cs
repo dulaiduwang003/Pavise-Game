@@ -148,7 +148,12 @@ namespace PaviseApp
                 new[]
                 {
                     "riotclientservices", "riotclientux", "riotclientuxrender",
-                    "riotclientcrashhandler"
+                    "riotclientcrashhandler",
+                    // 拳头统一客户端之外 各游戏还有自己的客户端外壳 同属平台常驻进程
+                    //   原先散在 GameSessionDetector.ClientShellTokens 里做子串匹配 与本目录重复
+                    //   统一收到这里 检测与豁免共用一份数据 新增游戏客户端只改这一处
+                    "leagueclient", "leagueclientux", "leagueclientuxrender",
+                    "leaguecrashhandler"
                 },
                 null,
                 null,
@@ -325,50 +330,12 @@ namespace PaviseApp
             return null;
         }
 
-        private static readonly HashSet<string> WebRendererNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "steamwebhelper", "epicwebhelper", "uplaywebcore", "blizzardbrowser", "riotclientuxrender"
-        };
-
-        internal static bool IsPlatformWebRenderer(string name)
-        {
-            return !string.IsNullOrEmpty(name) && WebRendererNames.Contains(name.Trim());
-        }
-
-        internal static bool IsPlatformShellName(string name)
-        {
-            return !string.IsNullOrEmpty(name) && ShellNames.Contains(name.Trim());
-        }
+        // 网页渲染子进程曾经要单独认 因为平台本体豁免而只有专注档压这些子进程
+        //   2.1 起平台本体在所有档位一律照压 这个区分没有对应行为了 名单与判据一并删除
 
         internal static IEnumerable<string> PlatformShellNames()
         {
             return ShellNames;
-        }
-
-        internal static bool OwnsName(string platformId, string name)
-        {
-            List<Platform> owners = OwnersOf(name);
-            if (owners == null) return false;
-            foreach (Platform platform in owners)
-                if (string.Equals(platform.Id, platformId, StringComparison.OrdinalIgnoreCase)) return true;
-            return false;
-        }
-
-        internal static bool MatchesWithRoots(string platformId, string name, string path, IList<string> roots)
-        {
-            return OwnsName(platformId, name) && UnderAnyRoot(NormalizePath(path), roots);
-        }
-
-        internal static List<string> ResolvedRoots(string platformId)
-        {
-            EnsureRoots();
-            var result = new List<string>();
-            lock (sync)
-                foreach (Platform platform in Platforms)
-                    if (string.Equals(platform.Id, platformId, StringComparison.OrdinalIgnoreCase)
-                        && platform.Roots != null)
-                        result.AddRange(platform.Roots);
-            return result;
         }
 
         internal static List<string> DetectedPlatforms()
@@ -378,13 +345,6 @@ namespace PaviseApp
             lock (sync)
                 foreach (Platform platform in Platforms)
                     if (platform.Roots != null && platform.Roots.Count > 0) result.Add(platform.Id);
-            return result;
-        }
-
-        internal static List<string> SupportedPlatformsForDisplay()
-        {
-            var result = new List<string>();
-            foreach (Platform platform in Platforms) result.Add(platform.Id);
             return result;
         }
 
@@ -411,15 +371,10 @@ namespace PaviseApp
                 if (platform.Logged) return;
                 platform.Logged = true;
             }
-            bool hasWebRenderer = false;
-            if (platform.ShellNames != null)
-                foreach (string n in platform.ShellNames)
-                    if (IsPlatformWebRenderer(n)) { hasWebRenderer = true; break; }
-            if (!hasWebRenderer && platform.LocalNames != null)
-                foreach (string n in platform.LocalNames)
-                    if (IsPlatformWebRenderer(n)) { hasWebRenderer = true; break; }
-            Logger.Log(platform.Id + Lang.T("log.gameplatformcatalog.23")
-                + (hasWebRenderer ? Lang.T("log.gameplatformcatalog.24") : ""));
+            // 曾经在这里补一句"专注档仍会压它的网页渲染子进程"
+            //   那句话的前提是平台本体默认豁免 只有专注档才额外动它的网页子进程
+            //   2.1 起平台本体在所有档位都按普通后台压制 前提没了 留着会让人以为智能档不压
+            Logger.Log(platform.Id + Lang.T("log.gameplatformcatalog.23"));
         }
 
         private static bool UnderAnyRoot(string path, IList<string> roots)

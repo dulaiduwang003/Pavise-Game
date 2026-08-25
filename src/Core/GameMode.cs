@@ -130,6 +130,8 @@ namespace PaviseApp
             IrqSessionLedger.Bind(dir);
             gamesPath = Path.Combine(dir, "Pavise.games.txt");
             whitePath = Path.Combine(dir, "Pavise.whitelist.txt");
+            autoIgnorePath = Path.Combine(dir, "Pavise.autoignore.txt");
+            LoadAutoIgnore();
             profileStore = new GameProfileStore(dir);
             using (Process self = Process.GetCurrentProcess())
             {
@@ -184,6 +186,7 @@ namespace PaviseApp
             amdAntiLag = Settings.Load("AmdAntiLag", false);
             amdAfmf = Settings.Load("AmdAfmf", false);
             rsrOn = Settings.Load("GmRsr", false);
+            autoAddOn = Settings.Load("GmAutoAdd", false);
             killGameDvr = Settings.Load("GameDvrOff", true);
             mmcssOn = Settings.Load("GmMmcss", true);
             planSwitch = Settings.Load("PowerPlanOn", true);
@@ -793,8 +796,12 @@ namespace PaviseApp
                                             ? activeDetection.RendererPid : 0;
                                     }
                                     GpuThrottleProbe.SampleIfDue(rendererPath);
+                                    // 显存溢出仍按整个家族测量 那是观测不是策略 多进程游戏的显存要合起来看
                                     VramSpillProbe.SampleIfDue(gamePids);
-                                    if (EffSuppress) Sweep(all, gamePids);
+                                    // 压制只认渲染进程本体 家族其余成员一律当普通后台
+                                    //   家族集合每 20 秒才随完整检测刷新一次 拿它当豁免依据会让同一个子进程
+                                    //   先被隔离再被放行 取决于它生在两次检测之间还是之前 行为随时序抖动
+                                    if (EffSuppress) Sweep(all, rendererPid);
                                     if (!EffSuppress) ReleaseBackground();
                                     SelfYield.Engage();
                                     MaybeActivatePowerOverlay(EffPreset == PerformancePreset.Competitive);
@@ -828,6 +835,7 @@ namespace PaviseApp
                                     lock (sync) boostResidue = gameBoost.Count > 0;
                                     if (boostResidue || EnvActive() || core.AnyWith(SuppressReason.Background))
                                         RetryDeactivate(Lang.T("t.gamemode.51"));
+                                    TryAutoAddForegroundGame();
                                 }
                         }
                     }

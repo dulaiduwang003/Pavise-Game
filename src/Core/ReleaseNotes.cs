@@ -37,6 +37,18 @@ namespace PaviseApp
 
         public static readonly ReleaseNote[] All = new[]
         {
+            new ReleaseNote("2.1.1.0", "2026-08-25", new[]
+            {
+                new[]{ "新增 自动入库 开关在游戏库页 默认关闭 开启后前台全屏且 GPU 3D 占用主导的陌生程序自动加入游戏库 不必手动添加", "Added automatic library addition, switched on from the Game Library page and off by default. Unknown programs running fullscreen in the foreground while dominating GPU 3D usage join the library on their own, with no manual adding." },
+                new[]{ "说明 自动入库只在没有对局时判断 启动器 更新器 反作弊和游戏平台不会被认成游戏 从库里移除过的程序永久不再自动加入 重新手动添加即解除", "Note: auto add only evaluates when no match is running, and launchers, updaters, anti-cheat and game platforms are never mistaken for a game. Anything you remove from the library is never auto-added again unless you add it back by hand." },
+                new[]{ "修复 体检中断归因在自造负载期间大量丢事件 内核跟踪缓冲池由 4MB 扩到 32MB 并把排空线程提到最高优先级 DPC 与 ISR 的头号来源点名更可靠", "Fixed heavy event loss in interrupt attribution while the checkup runs its own load: the kernel trace buffer pool grew from 4MB to 32MB and the drain thread now runs at highest priority, making the named top DPC/ISR source far more reliable." },
+                new[]{ "移除 对局冻结 程序不再具备挂起进程的能力 压制只到隔离为止", "Removed match freeze. Pavise no longer has any ability to suspend processes; suppression stops at isolation." },
+                new[]{ "变更 后台压制只放行游戏本体与白名单 平台客户端 启动器外壳 游戏目录下的常驻进程 以及游戏派生的子进程一律照压", "Changed background suppression to exempt only the game itself and your whitelist. Platform clients, launcher shells, resident processes in the game folder and the game's descendant processes are all suppressed." },
+                new[]{ "说明 降优先级不等于结束进程 把客户端当作授权校验的平台不受影响 反作弊 网游加速器 输入音频与外设链 硬件控制工具 系统核心服务始终不碰", "Note: lowering priority is not killing a process, so platforms that use their client for entitlement checks are unaffected. Anti-cheat, network accelerators, the input/audio/peripheral chain, hardware control tools and core system services are never touched." },
+                new[]{ "变更 白名单页移除已不生效的游戏平台自动豁免 并改为提示这些平台会被压制 需要保留请手动添加", "Changed the whitelist page to drop the game-platform auto-exemption that no longer applies, and to state instead that these platforms are suppressed; add them manually to keep them running full speed." },
+                new[]{ "调整 反作弊页总开关与相容名单收成一条工具条 不再与下方分组同款卡片 编号也不再重复", "Adjusted the anti-cheat page so the master switch and compatibility roster share one compact bar instead of cards identical to the groups below, which also removes the duplicated numbering." },
+                new[]{ "移除 反作弊目录中的内核驱动名 该目录只收用户态进程 驱动写在其中永远扫不到", "Removed kernel driver names from the anti-cheat catalog; it only lists user-mode processes, and drivers listed there could never be matched." },
+            }),
             new ReleaseNote("2.1.0.0", "2026-08-24", new[]
             {
                 new[]{ "新增 AMD 显卡优化回归 Anti-Lag 流体运动帧与 RSR 驱动级升格 退出对局还原", "Added AMD GPU optimizations back: Anti-Lag, Fluid Motion Frames and RSR driver-level upscaling, restored when the match ends." },

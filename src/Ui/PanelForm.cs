@@ -134,9 +134,10 @@ namespace PaviseApp
                         Lang.T("nav.irq") },
                 new[] { "game", "tiles", "settings", "acshield", "gpu", "chip", "log", "log", "gear", "info", "white",
                         "chip" },
-                new[] { (int)PageId.Overview, (int)PageId.Library, (int)PageId.Audit, (int)PageId.Log,
+                new[] { (int)PageId.Overview, (int)PageId.Library, (int)PageId.Whitelist,
+                        (int)PageId.Audit, (int)PageId.Log,
                         (int)PageId.Settings, (int)PageId.About },
-                new[] { 4 }, new[] { "" }, 0);
+                new[] { 5 }, new[] { "" }, 0);
             AssertNavMatchesPageIds(nav);
             nav.SetBounds(0, 0, Theme.S(RailW), Theme.S(WinH));
             nav.SelectionChanged = ShowPage;
@@ -259,10 +260,10 @@ namespace PaviseApp
             searchFlyout.BringToFront();
 
             advancedPanel = new AdvancedNavPanel(
-                new[] { Lang.T("nav.policy"), Lang.T("v14.anticheat"), Lang.T("nav.white"),
+                new[] { Lang.T("nav.policy"), Lang.T("v14.anticheat"),
                         Lang.T("nav.graphics"), Lang.T("nav.env"), Lang.T("nav.irq") },
-                new[] { "settings", "acshield", "white", "gpu", "chip", "chip" },
-                new[] { (int)PageId.Policy, (int)PageId.AntiCheat, (int)PageId.Whitelist,
+                new[] { "settings", "acshield", "gpu", "chip", "chip" },
+                new[] { (int)PageId.Policy, (int)PageId.AntiCheat,
                         (int)PageId.Graphics, (int)PageId.Environment, (int)PageId.Interrupt });
             advancedPanel.SetBounds(Theme.S(RailW + (PageW - 720) / 2), Theme.S(TopH + 148), Theme.S(720), Theme.S(298));
             advancedPanel.Visible = false;
@@ -642,7 +643,6 @@ namespace PaviseApp
             {
                 case PageId.Policy:
                 case PageId.AntiCheat:
-                case PageId.Whitelist:
                 case PageId.Graphics:
                 case PageId.Environment:
                 case PageId.Interrupt:

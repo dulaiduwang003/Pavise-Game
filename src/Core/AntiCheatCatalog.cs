@@ -24,7 +24,10 @@ namespace PaviseApp
         {
             new AcGroup("ace", "ac.ace.n",
                 true,
-                new[] { "SGuard64", "SGuardSvc64", "ACE-Tray", "ACE-BASE", "ACE-BASE64", "ACE-PC", "ACE-Helper", "SGuard", "SGuardSvc", "AntiCheatExpert", "AntiCheatExpert.Service" }),
+                // 本目录只收用户态进程 内核驱动写在这里永远扫不到 只会让界面显得能压驱动
+                //   ACE 的驱动是 ACE-*.sys 装在 System32\drivers 下 本机实测有 ACE-BASE.sys ACE-ADVT.sys
+                //   ACE-BASE / ACE-BASE64 属于驱动族 已移除 ACE-Tray 与 ACE-Helper 是真进程 日志里出现过
+                new[] { "SGuard64", "SGuardSvc64", "ACE-Tray", "ACE-PC", "ACE-Helper", "SGuard", "SGuardSvc", "AntiCheatExpert", "AntiCheatExpert.Service" }),
             new AcGroup("tp", "ac.tp.n",
                 false,
                 new[] { "TenSafe", "TenSafe_1", "TenSafe_2", "TASLogin" }),

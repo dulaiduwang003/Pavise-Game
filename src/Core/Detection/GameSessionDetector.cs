@@ -66,7 +66,6 @@ namespace PaviseApp
             return names;
         }
 
-        private static readonly string[] ClientShellTokens = { "leagueclient", "riotclient" };
 
         public static GameDetection Detect(Process[] all, IList<GameProfile> profiles)
         {
@@ -474,13 +473,14 @@ namespace PaviseApp
             return candidate.RendererPid < current.RendererPid;
         }
 
+        // 启动器外壳一律以 GamePlatformCatalog 为准 这里不再自带名单
+        //   曾经有一组写死的子串 leagueclient / riotclient 与目录重复且语义不一致
+        //   目录是精确名匹配 子串会顺带命中未收录的变体 两套判据并存时行为取决于谁先命中
         internal static bool IsLauncherLikeName(string name)
         {
             string low = (name ?? "").ToLowerInvariant();
             if (low.Length == 0) return false;
-            if (StorefrontShellNames.Contains(low)) return true;
-            foreach (string token in ClientShellTokens) if (low.Contains(token)) return true;
-            return false;
+            return StorefrontShellNames.Contains(low);
         }
 
         internal static bool IsNonGameRole(string name, string path)

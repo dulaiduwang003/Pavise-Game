@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 构建关于页 项目信息与更新检查
 using System;
 using System.Diagnostics;
@@ -123,8 +123,11 @@ namespace PaviseApp
             btnDl.SetBounds(Theme.S(252), Theme.S(cardH - 58), Theme.S(updateW - 272), Theme.S(42));
             btnDl.Visible = false;
 
+            // 这行是检查结果的回显位 必须锚在按钮上方 不能写死 y
+            //   写死 309 时按钮顶在 cardH-58=329 而这行占到 343 把按钮顶部盖掉 14px
+            //   被盖后按钮只露下半截 居中的字看起来就贴着顶
             var lblUpd = CardLabel(update, App.VersionTag + "  //  " + Lang.T("v20.about.standby"),
-                20, 309, updateW - 40, 34, 7.7f, false, Theme.Faint);
+                20, cardH - 80, updateW - 40, 18, 7.7f, false, Theme.Faint);
 
             string dlUrl = null;
             btnDl.Click += (s, e) => { if (UpdateChecker.IsTrustedDownloadUrl(dlUrl)) try { using (Process.Start(dlUrl)) { } } catch { } };

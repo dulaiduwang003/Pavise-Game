@@ -82,7 +82,8 @@ namespace PaviseApp
         //   冷进程也压 因为不再改亲和性 冷进程没有就绪线程时本来就不耗 CPU
         //   偶尔醒来也能在任何一个没有更高优先级工作的核上跑 不会被挤着排队
         //   唯一还在把关的是 BasicBackgroundEligible 那道保护边界
-        //   反作弊 游戏家族 系统核心 输入音频外设链 加速器 白名单 其它登录账户一律不碰
+        //   反作弊 系统核心 输入音频外设链 加速器 硬件控制 白名单 其它登录账户一律不碰
+        //   2.1 起游戏家族不再整族豁免 只有渲染进程本体放行 平台客户端与启动器外壳照压
         //   档位差异不再体现在压制强度 只体现在哪些进程有资格被碰
         internal static SuppressionLevel BackgroundLevel()
         {
@@ -91,18 +92,18 @@ namespace PaviseApp
 
         internal static bool BasicBackgroundEligible(int pid, int self, string name, string path,
             int session, int ownerSession, int foreground, bool userFacingFamily, string windowsRoot,
-            bool gameHostAncestor = false, string activeGameRoot = null, bool aggressive = false)
+            bool aggressive = false)
         {
-
+            // 只有渲染进程本体豁免 其余一律压 它在调用方按 rendererPid 就已放行 到不了这里
+            //   平台与启动器外壳 宿主祖先链 游戏根目录下的常驻进程 游戏派生的子进程全部照压
+            //   这些客户端在对局中仍持续占用 CPU 放过它们等于把最大的一份后台开销留在场上
+            //   降优先级不等于杀进程 Steam 和战网那类把客户端当 DRM 的 进程仍在运行 不受影响
+            //   下面四条是安全边界 不受上述规则影响
+            //   反作弊被压会心跳超时掉线 加速器被压会断流 输入音频外设链被压会卡鼠标和丢声音
             if (AntiCheatCatalog.IsAntiCheatLikeName(name)) return false;
-
-            if (GamePlatformCatalog.IsPlatformProcess(name, path)
-                && !(aggressive && GamePlatformCatalog.IsPlatformWebRenderer(name))) return false;
             if (NetAcceleratorCatalog.IsAcceleratorLikeName(name)) return false;
             if (PeripheralCatalog.IsInputChainProcess(name, path)) return false;
             if (HardwareControlCatalog.IsHardwareControlProcess(name)) return false;
-            if (gameHostAncestor) return false;
-            if (UnderRoot(path, activeGameRoot)) return false;
             if (pid <= 4 || pid == self || session < 0 || session != ownerSession) return false;
 
             if (!aggressive && (pid == foreground || userFacingFamily)) return false;
@@ -129,15 +130,15 @@ namespace PaviseApp
             return null;
         }
 
-        private void Sweep(ProcessSnapshot all, HashSet<int> gamePids)
+        private void Sweep(ProcessSnapshot all, int rendererPid)
         {
 
             lock (whiteEvalSync)
-                SweepWithStableWhitelist(all, gamePids);
+                SweepWithStableWhitelist(all, rendererPid);
         }
 
         private void SweepWithStableWhitelist(
-            ProcessSnapshot all, HashSet<int> gamePids)
+            ProcessSnapshot all, int rendererPid)
         {
             PolicySnapshot sp = sessionPolicy;
             PerformancePreset mode = sp != null ? sp.Preset : ActivePreset;
@@ -147,27 +148,6 @@ namespace PaviseApp
             HashSet<int> userFacingFamily = aggressive
                 ? EmptyPidSet
                 : CollectUserFacingFamily(foregroundPid, whitelist);
-            int rendererPid = 0;
-            string activeGameRoot = null;
-            var libraryRoots = new List<string>();
-            lock (sync)
-            {
-                if (activeDetection != null)
-                {
-                    rendererPid = activeDetection.RendererPid;
-                    if (activeDetection.Profile != null) activeGameRoot = activeDetection.Profile.Root;
-                }
-                foreach (GameProfile p in profiles)
-                    if (!string.IsNullOrEmpty(p.Root)) libraryRoots.Add(p.Root);
-            }
-            bool gameSessionActive = rendererPid > 0;
-            HashSet<int> gameHostAncestors = gameSessionActive
-                ? WalkAncestorChain(whitelist.Parents, rendererPid, selfPid, 24)
-                : EmptyPidSet;
-            HashSet<int> gameDescendants = gameSessionActive
-                ? WalkDescendants(whitelist.Parents, gamePids, selfPid, 24)
-                : EmptyPidSet;
-
             bool first;
             lock (sync) first = firstSweep;
             int done = 0, denied = 0, retrying = 0, rosterSkipped = 0;
@@ -205,7 +185,10 @@ namespace PaviseApp
                     if (boosted) continue;
 
                     bool white = whitelist.Protected.Contains(pid);
-                    if (white || gamePids.Contains(pid) || gameDescendants.Contains(pid))
+                    // 只有渲染进程本体和用户白名单放行 游戏家族的其余成员一律照压
+                    //   上面的 boosted 只在提优真的落地时为真 提优关掉或被反作弊挡住句柄时它是假的
+                    //   所以这条按 pid 的判断不能省 否则那些机器上游戏本体会被当后台压掉
+                    if (white || (rendererPid > 0 && pid == rendererPid))
                     {
                         if (core.Release(pid, SuppressReason.Background)) ReportUntrack(pid);
                         continue;
@@ -237,19 +220,14 @@ namespace PaviseApp
                         continue;
                     }
 
-                    bool knownLauncherDuringSession = gameSessionActive && IsKnownLauncherShell(nm)
-                        && !(aggressive && GamePlatformCatalog.IsPlatformWebRenderer(nm));
                     if (!PerformanceScopeAllows(ipath))
                     {
                         ReleaseBackgroundExemption(pid, nm, null);
                         continue;
                     }
-                    string containRoot = LibraryRootOf(ipath, libraryRoots);
-                    if (containRoot == null) containRoot = activeGameRoot;
                     if (!BasicBackgroundEligible(pid, selfPid, nm, ipath,
                         sameSession ? selfSession : -1, selfSession, foregroundPid,
-                        userFacingFamily.Contains(pid), windowsPrefix,
-                        gameHostAncestors.Contains(pid) || knownLauncherDuringSession, containRoot, aggressive))
+                        userFacingFamily.Contains(pid), windowsPrefix, aggressive))
                     {
                         ReleaseBackgroundExemption(pid, nm, null);
                         continue;
@@ -369,7 +347,6 @@ namespace PaviseApp
 
             foreach (int pid in core.PidsWith(SuppressReason.Background))
                 if (!live.Contains(pid)) { if (core.Release(pid, SuppressReason.Background)) ReportUntrack(pid); }
-
 
             if (first)
             {
@@ -495,50 +472,6 @@ namespace PaviseApp
             foreach (string d in gameDirs)
                 if (UnderRoot(path, d)) return true;
             return false;
-        }
-
-        internal static bool IsKnownLauncherShell(string name)
-        {
-            return !string.IsNullOrEmpty(name) && LauncherPlatforms.Contains(name);
-        }
-
-        internal static HashSet<int> WalkDescendants(
-            Dictionary<int, int> parents, ICollection<int> rootPids, int selfPid, int maxDepth)
-        {
-            var result = new HashSet<int>();
-            if (parents == null || rootPids == null || rootPids.Count == 0) return result;
-            var roots = new HashSet<int>(rootPids);
-            foreach (KeyValuePair<int, int> kv in parents)
-            {
-                int pid = kv.Key;
-                if (pid <= 4 || pid == selfPid || roots.Contains(pid) || result.Contains(pid)) continue;
-                int current = pid;
-                for (int depth = 0; depth < maxDepth; depth++)
-                {
-                    int parent;
-                    if (!parents.TryGetValue(current, out parent) || parent <= 4 || parent == current) break;
-                    if (roots.Contains(parent)) { result.Add(pid); break; }
-                    if (parent == selfPid) break;
-                    current = parent;
-                }
-            }
-            return result;
-        }
-
-        internal static HashSet<int> WalkAncestorChain(Dictionary<int, int> parents, int startPid, int selfPid, int maxHops)
-        {
-            var result = new HashSet<int>();
-            if (parents == null || startPid <= 4) return result;
-            int current = startPid;
-            for (int hop = 0; hop < maxHops; hop++)
-            {
-                int parent;
-                if (!parents.TryGetValue(current, out parent)) break;
-                if (parent <= 4 || parent == selfPid || parent == startPid || result.Contains(parent)) break;
-                result.Add(parent);
-                current = parent;
-            }
-            return result;
         }
     }
 }
