@@ -734,6 +734,11 @@ namespace PaviseApp
             lock (sync) { Entry e; return map.TryGetValue(pid, out e) ? e.Name : null; }
         }
 
+        public long CreationOf(int pid)
+        {
+            lock (sync) { Entry e; return map.TryGetValue(pid, out e) ? e.Creation : 0; }
+        }
+
         public List<int> PidsWith(SuppressReason reason)
         {
             var list = new List<int>();
@@ -864,12 +869,6 @@ namespace PaviseApp
             if ((reason & SuppressReason.AntiCheat) != 0) e.AntiCheatLevel = level;
             if ((reason & SuppressReason.Background) != 0) e.BackgroundLevel = level;
             e.Level = EffectiveLevel(e);
-            if (e.AntiCheatLevel >= SuppressionLevel.Frozen)
-                e.AntiCheatLevel = SuppressionLevel.Isolated;
-            if (e.BackgroundLevel >= SuppressionLevel.Frozen)
-                e.BackgroundLevel = SuppressionLevel.Isolated;
-            if (e.Level >= SuppressionLevel.Frozen)
-                e.Level = SuppressionLevel.Isolated;
         }
 
         private static SuppressionLevel EffectiveLevel(Entry e)

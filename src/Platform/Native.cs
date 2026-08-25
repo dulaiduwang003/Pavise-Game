@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 封装项目使用的 Windows 原生接口
 using System;
 using System.Runtime.InteropServices;
@@ -169,17 +169,6 @@ namespace PaviseApp
             return Volatile.Read(ref boostPrivilegeState) > 0;
         }
 
-        private static int profilePrivilegeState;
-
-        public static bool EnsureProfilePrivilege()
-        {
-            int known = Volatile.Read(ref profilePrivilegeState);
-            if (known != 0) return known > 0;
-            bool enabled = EnablePrivilege("SeProfileSingleProcessPrivilege");
-            Interlocked.CompareExchange(ref profilePrivilegeState, enabled ? 1 : -1, 0);
-            return Volatile.Read(ref profilePrivilegeState) > 0;
-        }
-
         private static int debugPrivilegeState;
 
         public static bool TryEnableDebugPrivilege()
@@ -210,10 +199,7 @@ namespace PaviseApp
         }
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool GetProcessAffinityMask(IntPtr h, out UIntPtr procMask, out UIntPtr sysMask);
-        [DllImport("ntdll.dll")]
-        public static extern int NtResumeProcess(IntPtr h);
-        [DllImport("ntdll.dll")]
-        public static extern int NtSuspendProcess(IntPtr h);
+
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool GetProcessTimes(IntPtr h, out long creation, out long exit, out long kernel, out long user);
 
@@ -291,48 +277,6 @@ namespace PaviseApp
                 return path.Length == 0 ? null : path;
             }
             catch { return null; }
-        }
-
-        [DllImport("iphlpapi.dll", SetLastError = true)]
-        private static extern uint GetExtendedTcpTable(IntPtr table, ref int size,
-            bool order, int addressFamily, int tableClass, int reserved);
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct TcpRowOwnerPid
-        {
-            public uint State, LocalAddr, LocalPort, RemoteAddr, RemotePort, OwningPid;
-        }
-
-        public static bool TryGetTcpListenerOwner(int port, out int pid)
-        {
-            const int AfInet = 2;
-            const int TcpTableOwnerPidListener = 3;
-            pid = 0;
-            if (port <= 0 || port > 65535) return false;
-            int size = 0;
-            GetExtendedTcpTable(IntPtr.Zero, ref size, false, AfInet, TcpTableOwnerPidListener, 0);
-            if (size <= 0) return false;
-            IntPtr buffer = Marshal.AllocHGlobal(size);
-            try
-            {
-                if (GetExtendedTcpTable(buffer, ref size, false, AfInet, TcpTableOwnerPidListener, 0) != 0)
-                    return false;
-                int count = Marshal.ReadInt32(buffer);
-                int rowSize = Marshal.SizeOf(typeof(TcpRowOwnerPid));
-                long cursor = buffer.ToInt64() + 4;
-                for (int i = 0; i < count; i++, cursor += rowSize)
-                {
-                    var row = (TcpRowOwnerPid)Marshal.PtrToStructure(
-                        new IntPtr(cursor), typeof(TcpRowOwnerPid));
-                    int local = (int)(((row.LocalPort & 0xFF) << 8) | ((row.LocalPort >> 8) & 0xFF));
-                    if (local != port) continue;
-                    pid = (int)row.OwningPid;
-                    return pid > 0;
-                }
-            }
-            catch { return false; }
-            finally { Marshal.FreeHGlobal(buffer); }
-            return false;
         }
 
         public static bool StillActive(IntPtr h)
@@ -665,45 +609,6 @@ namespace PaviseApp
                         .IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
             }
             catch { return false; }
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct ProcessorPowerInformation
-        {
-            public uint Number;
-            public uint MaxMhz;
-            public uint CurrentMhz;
-            public uint MhzLimit;
-            public uint MaxIdleState;
-            public uint CurrentIdleState;
-        }
-
-        [DllImport("powrprof.dll")]
-        private static extern uint CallNtPowerInformation(int level, IntPtr input, uint inputSize,
-            IntPtr output, uint outputSize);
-
-        public static bool TryPeakCoreMhz(out uint peakCurrent, out uint peakMax)
-        {
-            peakCurrent = 0;
-            peakMax = 0;
-            int count = Environment.ProcessorCount;
-            if (count <= 0) return false;
-            int size = Marshal.SizeOf(typeof(ProcessorPowerInformation));
-            IntPtr buf = Marshal.AllocHGlobal(size * count);
-            try
-            {
-                if (CallNtPowerInformation(11, IntPtr.Zero, 0, buf, (uint)(size * count)) != 0) return false;
-                for (int i = 0; i < count; i++)
-                {
-                    var info = (ProcessorPowerInformation)Marshal.PtrToStructure(
-                        (IntPtr)(buf.ToInt64() + i * size), typeof(ProcessorPowerInformation));
-                    if (info.CurrentMhz > peakCurrent) peakCurrent = info.CurrentMhz;
-                    if (info.MaxMhz > peakMax) peakMax = info.MaxMhz;
-                }
-                return peakMax > 0;
-            }
-            catch { return false; }
-            finally { Marshal.FreeHGlobal(buf); }
         }
 
         public const int PROCESS_SET_QUOTA = 0x0100;

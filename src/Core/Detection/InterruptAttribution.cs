@@ -219,6 +219,9 @@ namespace PaviseApp
 
                 worker = new Thread(RunProcessTrace);
                 worker.IsBackground = true;
+                // 体检负载会抢满带宽 消费回调若再被调度压后 缓冲回收更慢 丢事件更多
+                //   拉到最高优先级只保证排空线程总能第一时间被调度 带宽给不了但调度不再添乱
+                try { worker.Priority = ThreadPriority.Highest; } catch { }
                 worker.Start();
                 started = true;
                 return true;
@@ -432,9 +435,12 @@ namespace PaviseApp
             p.Wnode.Flags = WnodeFlagTracedGuid;
             p.Wnode.Guid = SessionGuid;
             p.Wnode.ClientContext = 1;
+            // 池子从 4MB(32×128KB)扩到 32MB 体检全程跑内存带宽负载 消费回调被抢带宽 排空变慢
+            //   突发时旧池几秒就撑爆 内核没有空闲缓冲只能丢事件 表现为 EventsLost 高而 BuffersLost 为 0
+            //   32MB 约可缓冲 25 万个 DPC/ISR 事件 足够扛过消费端的带宽饥饿期 会话仅在观测时占用 结束即释放
             p.BufferSize = 128;
-            p.MinimumBuffers = 8;
-            p.MaximumBuffers = 32;
+            p.MinimumBuffers = 64;
+            p.MaximumBuffers = 256;
             p.LogFileMode = RealTimeMode | SystemLoggerMode | IndependentSessionMode;
             p.FlushTimer = 1;
             p.EnableFlags = FlagDpc | FlagInterrupt;

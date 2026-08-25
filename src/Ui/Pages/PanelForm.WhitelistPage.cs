@@ -601,21 +601,10 @@ namespace PaviseApp
 
         private static List<WhitelistItem> AutomaticExemptionItems()
         {
+            // 2.1 起游戏平台与启动器不再自动豁免 这里也不再列出它们
+            //   只有渲染进程本体和用户白名单能免于压制 平台客户端按普通后台处理
+            //   页面上留着一条已经不生效的豁免 比没有这条更糟 用户会据此判断该不该手动加白名单
             var rows = new List<WhitelistItem>();
-            List<string> supported = GamePlatformCatalog.SupportedPlatformsForDisplay();
-            List<string> detected = GamePlatformCatalog.DetectedPlatforms();
-            for (int i = 0; i < supported.Count; i++) supported[i] = PlatformDisplayName(supported[i]);
-            for (int i = 0; i < detected.Count; i++) detected[i] = PlatformDisplayName(detected[i]);
-            string platformDetail = detected.Count > 0
-                ? Lang.F("white.auto.platform.detected", string.Join(" · ", detected.ToArray()))
-                : Lang.T("white.auto.platform.sub");
-            string detectedText = detected.Count > 0
-                ? string.Join(" · ", detected.ToArray()) : Lang.T("white.auto.details.none");
-            string platformList = string.Join(" · ", supported.ToArray());
-            rows.Add(AutomaticExemption("white.auto.platform", platformDetail, "gamepad",
-                DetailSection("white.auto.details.platforms", platformList)
-                + "\r\n\r\n" + DetailSection("white.auto.details.detected", detectedText)
-                + "\r\n\r\n" + Lang.T("white.auto.details.platform.note")));
 
             string[] acceleratorNames = NetAcceleratorCatalog.ProcessNamesForDisplay();
             string[] acceleratorTokens = NetAcceleratorCatalog.TokensForDisplay();

@@ -41,6 +41,7 @@ namespace PaviseApp
             if (root == null) root = NormalizeGameRoot(GameScan.InferGameRoot(resolved));
             lock (sync)
             {
+                if (autoAddIgnore.Remove(resolved)) SaveAutoIgnoreLocked();
                 foreach (GameProfile p in profiles)
                 {
                     if (string.Equals(p.ExecutablePath, resolved, StringComparison.OrdinalIgnoreCase)) return false;
@@ -327,6 +328,16 @@ namespace PaviseApp
             bool dropSession;
             lock (sync)
             {
+                bool ignoreDirty = false;
+                foreach (GameProfile p in profiles)
+                {
+                    if (!string.Equals(p.Id, profileId, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (!string.IsNullOrEmpty(p.ExecutablePath) && autoAddIgnore.Add(p.ExecutablePath))
+                        ignoreDirty = true;
+                    if (!string.IsNullOrEmpty(p.LearnedExecutablePath) && autoAddIgnore.Add(p.LearnedExecutablePath))
+                        ignoreDirty = true;
+                }
+                if (ignoreDirty) SaveAutoIgnoreLocked();
                 profiles.RemoveAll(p => string.Equals(p.Id, profileId, StringComparison.OrdinalIgnoreCase));
                 RebuildLegacyGameIndex();
                 profileStore.Save(profiles);
