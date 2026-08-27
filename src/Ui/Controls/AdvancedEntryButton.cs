@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 绘制概览页底部的 ROG 风格高级设置入口
+// 文件用途 绘制概览页底部的 ROG 风格深度调优入口
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;

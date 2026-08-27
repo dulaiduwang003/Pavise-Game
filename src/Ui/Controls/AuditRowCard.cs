@@ -117,7 +117,7 @@ namespace PaviseApp
             var shell = new Rectangle(0, 0, Width - 1, Height - 1);
             using (GraphicsPath p = Theme.TechPath(shell, Theme.S(9)))
             {
-                using (var b = new SolidBrush(Col.Lerp(Theme.Card, Theme.CardHover, h * 0.5f))) g.FillPath(b, p);
+                using (var b = new SolidBrush(Backdrop.CardFill(Col.Lerp(Theme.Card, Theme.CardHover, h * 0.5f)))) g.FillPath(b, p);
                 using (var pen = new Pen(Col.Lerp(Theme.Stroke, warn ? Col.Alpha(Theme.Accent, 150) : Theme.StrokeHi,
                     warn ? 0.55f + h * 0.35f : h))) g.DrawPath(pen, p);
             }

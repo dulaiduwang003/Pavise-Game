@@ -72,6 +72,8 @@ namespace PaviseApp
         private const int ReverifyGapSeconds = 30;
 
         private static readonly object sync = new object();
+        private static Action mutationBegin;
+        private static Action mutationEnd;
         private static int lanePid;
         private static long laneCreation;
         private static int laneTid;
@@ -84,6 +86,29 @@ namespace PaviseApp
         private static int trackBatch;
         private static int gaveUpPid;
         private static long gaveUpCreation;
+
+        public static void ConfigureMutationBoundary(Action begin, Action end)
+        {
+            lock (sync)
+            {
+                mutationBegin = begin;
+                mutationEnd = end;
+            }
+        }
+
+        private static void BeginMutation()
+        {
+            Action callback;
+            lock (sync) callback = mutationBegin;
+            if (callback != null) try { callback(); } catch { }
+        }
+
+        private static void EndMutation()
+        {
+            Action callback;
+            lock (sync) callback = mutationEnd;
+            if (callback != null) try { callback(); } catch { }
+        }
 
         internal struct Candidate
         {
@@ -305,46 +330,51 @@ namespace PaviseApp
                     if (logThis) Logger.Log(Lang.T("log.renderlane.3") + (gameName ?? "?") + Lang.T("log.renderlane.9"));
                     return PinOutcome.Fatal;
                 }
-                if (!SaveJournal(pid, creation, best.Tid, original))
+                BeginMutation();
+                try
                 {
-                    if (logThis) Logger.Log(Lang.T("log.renderlane.10"));
-                    return PinOutcome.Retryable;
-                }
-                if (!Native.SetThreadPriority(h, Native.THREAD_PRIORITY_HIGHEST))
-                {
-                    ClearJournal();
-                    if (logThis) Logger.Log(Lang.T("log.renderlane.11"));
-                    return PinOutcome.Retryable;
-                }
-                int actual = Native.GetThreadPriority(h);
-                if (actual != Native.THREAD_PRIORITY_HIGHEST)
-                {
-                    Native.SetThreadPriority(h, original);
-                    ClearJournal();
-                    if (logThis) Logger.Log(Lang.T("log.renderlane.12") + actual + Lang.T("log.renderlane.13"));
-                    return PinOutcome.Retryable;
-                }
-                bool canceled = false;
-                lock (sync)
-                {
-                    if (gen != laneGen) canceled = true;
-                    else
+                    if (!SaveJournal(pid, creation, best.Tid, original))
                     {
-                        lanePid = pid; laneCreation = creation;
-                        laneTid = best.Tid; laneOriginalPriority = original; laneApplied = true;
+                        if (logThis) Logger.Log(Lang.T("log.renderlane.10"));
+                        return PinOutcome.Retryable;
                     }
+                    if (!Native.SetThreadPriority(h, Native.THREAD_PRIORITY_HIGHEST))
+                    {
+                        ClearJournal();
+                        if (logThis) Logger.Log(Lang.T("log.renderlane.11"));
+                        return PinOutcome.Retryable;
+                    }
+                    int actual = Native.GetThreadPriority(h);
+                    if (actual != Native.THREAD_PRIORITY_HIGHEST)
+                    {
+                        Native.SetThreadPriority(h, original);
+                        ClearJournal();
+                        if (logThis) Logger.Log(Lang.T("log.renderlane.12") + actual + Lang.T("log.renderlane.13"));
+                        return PinOutcome.Retryable;
+                    }
+                    bool canceled = false;
+                    lock (sync)
+                    {
+                        if (gen != laneGen) canceled = true;
+                        else
+                        {
+                            lanePid = pid; laneCreation = creation;
+                            laneTid = best.Tid; laneOriginalPriority = original; laneApplied = true;
+                        }
+                    }
+                    if (canceled)
+                    {
+                        Native.SetThreadPriority(h, original);
+                        ClearJournal();
+                        if (logThis) Logger.Log(Lang.T("log.renderlane.14"));
+                        return PinOutcome.Canceled;
+                    }
+                    Logger.Log(Lang.T("log.renderlane.15") + (gameName ?? "?") + Lang.T("log.renderlane.16") + best.Tid
+                        + Lang.T("log.renderlane.17") + (best.Share * 100).ToString("F0") + Lang.T("log.renderlane.5") + best.ThreadCount
+                        + Lang.T("log.renderlane.18") + original + " " + Native.THREAD_PRIORITY_HIGHEST);
+                    return PinOutcome.Pinned;
                 }
-                if (canceled)
-                {
-                    Native.SetThreadPriority(h, original);
-                    ClearJournal();
-                    if (logThis) Logger.Log(Lang.T("log.renderlane.14"));
-                    return PinOutcome.Canceled;
-                }
-                Logger.Log(Lang.T("log.renderlane.15") + (gameName ?? "?") + Lang.T("log.renderlane.16") + best.Tid
-                    + Lang.T("log.renderlane.17") + (best.Share * 100).ToString("F0") + Lang.T("log.renderlane.5") + best.ThreadCount
-                    + Lang.T("log.renderlane.18") + original + " " + Native.THREAD_PRIORITY_HIGHEST);
-                return PinOutcome.Pinned;
+                finally { EndMutation(); }
             }
             finally { Native.CloseHandle(h); }
         }
@@ -365,27 +395,32 @@ namespace PaviseApp
             if (judge.Observe(best.Tid, best.Share, pinnedShare) != LaneDecision.Unpin) return true;
 
             if (!GenAlive(gen)) return false;
-            if (!RestoreThread(pid, creation, tid, original))
+            BeginMutation();
+            try
             {
-                Logger.Log(Lang.T("log.renderlane.21") + tid + Lang.T("log.renderlane.22"));
-                GiveUp(pid, creation);
-                return false;
+                if (!RestoreThread(pid, creation, tid, original))
+                {
+                    Logger.Log(Lang.T("log.renderlane.21") + tid + Lang.T("log.renderlane.22"));
+                    GiveUp(pid, creation);
+                    return false;
+                }
+                lock (sync)
+                {
+                    if (gen == laneGen && laneApplied && lanePid == pid && laneCreation == creation)
+                    { laneApplied = false; lanePid = 0; laneCreation = 0; laneTid = 0; }
+                }
+                ClearJournal();
+                Logger.Log(Lang.T("log.renderlane.25") + tid + Lang.T("log.renderlane.26") + best.Tid
+                    + Lang.T("log.renderlane.17") + (best.Share * 100).ToString("F0") + "%");
+                if (judge.GaveUp)
+                {
+                    Logger.Log(Lang.T("log.renderlane.27") + (gameName ?? "?") + Lang.T("log.renderlane.28"));
+                    GiveUp(pid, creation);
+                    return false;
+                }
+                return true;
             }
-            lock (sync)
-            {
-                if (gen == laneGen && laneApplied && lanePid == pid && laneCreation == creation)
-                { laneApplied = false; lanePid = 0; laneCreation = 0; laneTid = 0; }
-            }
-            ClearJournal();
-            Logger.Log(Lang.T("log.renderlane.25") + tid + Lang.T("log.renderlane.26") + best.Tid
-                + Lang.T("log.renderlane.17") + (best.Share * 100).ToString("F0") + "%");
-            if (judge.GaveUp)
-            {
-                Logger.Log(Lang.T("log.renderlane.27") + (gameName ?? "?") + Lang.T("log.renderlane.28"));
-                GiveUp(pid, creation);
-                return false;
-            }
-            return true;
+            finally { EndMutation(); }
         }
 
         private static bool ProcessAlive(int pid, long creation)
@@ -414,18 +449,23 @@ namespace PaviseApp
                 if (!laneApplied) { ClearJournal(); return true; }
                 pid = lanePid; creation = laneCreation; tid = laneTid; original = laneOriginalPriority;
             }
-            bool ok = RestoreThread(pid, creation, tid, original);
-            if (ok)
+            BeginMutation();
+            try
             {
-                lock (sync)
+                bool ok = RestoreThread(pid, creation, tid, original);
+                if (ok)
                 {
-                    laneApplied = false; lanePid = 0; laneCreation = 0; laneTid = 0;
+                    lock (sync)
+                    {
+                        laneApplied = false; lanePid = 0; laneCreation = 0; laneTid = 0;
+                    }
+                    ClearJournal();
+                    Logger.Log(Lang.T("log.renderlane.19") + tid + Lang.T("log.renderlane.20") + original);
                 }
-                ClearJournal();
-                Logger.Log(Lang.T("log.renderlane.19") + tid + Lang.T("log.renderlane.20") + original);
+                else Logger.Log(Lang.T("log.renderlane.21") + tid + Lang.T("log.renderlane.22"));
+                return ok;
             }
-            else Logger.Log(Lang.T("log.renderlane.21") + tid + Lang.T("log.renderlane.22"));
-            return ok;
+            finally { EndMutation(); }
         }
 
         public static bool HasResidue() { return Settings.LoadStr("RenderLane", "").Length > 0; }
@@ -436,11 +476,16 @@ namespace PaviseApp
             int pid, tid, original;
             long creation;
             if (!ParseJournal(raw, out pid, out creation, out tid, out original)) { ClearJournal(); return; }
-            if (RestoreThread(pid, creation, tid, original))
+            BeginMutation();
+            try
             {
-                ClearJournal();
-                Logger.Log(Lang.T("log.renderlane.23") + tid + Lang.T("log.renderlane.24") + original);
+                if (RestoreThread(pid, creation, tid, original))
+                {
+                    ClearJournal();
+                    Logger.Log(Lang.T("log.renderlane.23") + tid + Lang.T("log.renderlane.24") + original);
+                }
             }
+            finally { EndMutation(); }
         }
 
         private static bool RestoreThread(int pid, long creation, int tid, int original)

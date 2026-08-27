@@ -42,6 +42,12 @@ namespace PaviseApp
         private const int BandHead = 26;
         private const int BandGap = 16;
 
+        // 选核弹窗(Annotate)把格子放大 好塞下大号负载百分比 其余页面维持原尺寸
+        private const int AnnCellW = 46;
+        private const int AnnCellH = 42;
+        private int CellWpx { get { return Theme.S(annotate ? AnnCellW : CellW); } }
+        private int CellHpx { get { return Theme.S(annotate ? AnnCellH : CellH); } }
+
         private readonly List<Band> bands = new List<Band>();
         private ulong selected;
         private ulong allMask;
@@ -50,8 +56,141 @@ namespace PaviseApp
         private int laidOutFor;
         private readonly Motion[] cellOn = new Motion[64];
         private readonly Motion[] cellHot = new Motion[64];
+        private readonly Motion[] cellHeat = new Motion[64];
+
+        // 选核弹窗专用的实时负载 + 核类型叠加 其余页面不开 保持原样
+        private ulong seenMask;
+        private bool annotate;
+        private Dictionary<int, double> loads;
+        private int legendY = -1;
+
+        // 图例每行高度 会按可用宽度折行 行数由 LegendHeight 实算 撑够弹窗
+        private const int LegendRowH = 22;
 
         public Action<ulong> SelectionChanged;
+
+        // 打开负载热力/类型标注 会多占一行图例 必须在 LayoutFor 之前设
+        public bool Annotate
+        {
+            get { return annotate; }
+            set { annotate = value; }
+        }
+
+        public ulong SeenMask
+        {
+            get { return seenMask; }
+            set { if (seenMask == value) return; seenMask = value & allMask; Invalidate(); }
+        }
+
+        // 采到的 per-core 负载 采集失败传空字典即可 热力自动退回不画 只留类型标注
+        public void SetLoads(Dictionary<int, double> map)
+        {
+            loads = map;
+            if (!IsHandleCreated) { for (int i = 0; i < 64; i++) cellHeat[i].Set(HeatOf(i)); }
+            else { for (int i = 0; i < 64; i++) cellHeat[i].To(HeatOf(i)); UiClock.Wake(); }
+            Invalidate();
+        }
+
+        private bool HasLoads { get { return loads != null && loads.Count > 0; } }
+
+        private float HeatOf(int cpu)
+        {
+            double v;
+            if (loads == null || !loads.TryGetValue(cpu, out v)) return 0f;
+            float t = (float)(v / 100.0);
+            return t < 0f ? 0f : t > 1f ? 1f : t;
+        }
+
+        // ROG 电竞负载色阶 分档明确:低=冷青(压暗) 中=黄 高=橙 极高=ROG 红(Theme.Danger 恒红)
+        //   阈值刻意压低 60% 就进「橙」段 72% 就烧成纯红 让中高负载核一眼可见地暖/红
+        //   低段越接近 0 越暗 让空闲核冷下去 与繁忙红核拉开对比
+        // 当前中断落核 的专用标记色:紫罗兰 刻意避开负载红与空闲青
+        //   让「中断此刻落这」与「这核负载高」两种信号一眼分得开 不再两团红糊在一起
+        private static readonly Color SeenViolet = Color.FromArgb(176, 138, 255);
+        private static readonly Color RogCool = Color.FromArgb(64, 200, 240);
+        private static readonly Color RogAmber = Color.FromArgb(255, 178, 44);
+        private static readonly Color RogCyan = Color.FromArgb(96, 216, 248);
+        private static readonly Color RogYellow = Color.FromArgb(255, 216, 72);
+        private static readonly Color RogOrange = Color.FromArgb(255, 122, 36);
+
+        // 发光起始阈值 与强度曲线:60% 起冒头 越往 100% 越炸
+        private const float WarmT = 0.60f;
+        private static float GlowK(float t)
+        {
+            float k = (t - 0.48f) / 0.42f;   // 0.60→0.29 0.80→0.76 0.88→0.95 1.0→1
+            return k < 0f ? 0f : k > 1f ? 1f : k;
+        }
+
+        private static Color LoadRog(float t)
+        {
+            if (t < 0f) t = 0f; else if (t > 1f) t = 1f;
+            Color red = Theme.Danger;
+            if (t < 0.38f) return Col.Lerp(Color.FromArgb(118, 150, 170), RogCyan, t / 0.38f);
+            if (t < 0.55f) return Col.Lerp(RogCyan, RogYellow, (t - 0.38f) / 0.17f);
+            if (t < 0.72f) return Col.Lerp(RogYellow, RogOrange, (t - 0.55f) / 0.17f);
+            return Col.Lerp(RogOrange, red, (t - 0.72f) / 0.13f);   // 85%+ 已是纯红
+        }
+
+        // 径向霓虹辉光 让高负载核从深黑底上「跳」出来 用 PathGradientBrush 才有真正的软发光
+        //   pad 越大 光晕外溢越远 越「炸」;draw 在填充之上时用小 pad 只染内部 不糊字
+        private static void GlowEllipse(Graphics g, Rectangle r, Color c, float k, int centerAlpha, int pad)
+        {
+            if (k < 0f) k = 0f; else if (k > 1f) k = 1f;
+            if (k <= 0.001f) return;
+            int p = Theme.S(pad);
+            var glow = Rectangle.Inflate(r, p, p);
+            if (glow.Width <= 0 || glow.Height <= 0) return;
+            using (var path = new GraphicsPath())
+            {
+                path.AddEllipse(glow);
+                using (var pg = new PathGradientBrush(path))
+                {
+                    pg.CenterPoint = new PointF(r.Left + r.Width / 2f, r.Top + r.Height / 2f);
+                    pg.CenterColor = Col.Alpha(c, (int)(centerAlpha * k));
+                    pg.SurroundColors = new[] { Col.Alpha(c, 0) };
+                    g.FillPath(pg, path);
+                }
+            }
+        }
+
+        // 多层递减描边模拟外发光 用于繁忙核 / 繁忙卡片的红霓虹边
+        private static void NeonEdge(Graphics g, GraphicsPath path, Color c, float k)
+        {
+            if (k <= 0.001f) return; if (k > 1f) k = 1f;
+            float[] w = { Theme.S(2) * 3.6f, Theme.S(2) * 2.4f, Theme.S(2) * 1.3f };
+            int[] a = { (int)(38 * k) + 6, (int)(66 * k) + 12, (int)(120 * k) + 28 };
+            for (int i = 0; i < w.Length; i++)
+                using (var p = new Pen(Col.Alpha(c, a[i]), w[i]))
+                { p.LineJoin = LineJoin.Round; g.DrawPath(p, path); }
+        }
+
+        // 霓虹字光晕 多环半透明重影垫底 上层再落清晰字 制造真正「发亮」的负载数字
+        //   8 向 * 3 环 逐环外扩、逐环变淡 只对繁忙核开(k>0)
+        private static readonly PointF[] Glow8 =
+        {
+            new PointF(1f, 0f), new PointF(-1f, 0f), new PointF(0f, 1f), new PointF(0f, -1f),
+            new PointF(0.7f, 0.7f), new PointF(-0.7f, 0.7f),
+            new PointF(0.7f, -0.7f), new PointF(-0.7f, -0.7f),
+        };
+        private static void GlowText(Graphics g, string s, Font f, Rectangle box, Color c, float k)
+        {
+            if (k <= 0.001f) return; if (k > 1f) k = 1f;
+            float[] rad = { Theme.S(4), Theme.S(3), Theme.S(2) };
+            int[] al = { (int)(46 * k) + 6, (int)(80 * k) + 14, (int)(120 * k) + 26 };
+            using (var sf = new StringFormat())
+            {
+                sf.Alignment = StringAlignment.Center;
+                sf.LineAlignment = StringAlignment.Center;
+                for (int ring = 0; ring < rad.Length; ring++)
+                    using (var br = new SolidBrush(Col.Alpha(c, al[ring])))
+                        foreach (PointF o in Glow8)
+                        {
+                            var rf = new RectangleF(box.X + o.X * rad[ring], box.Y + o.Y * rad[ring],
+                                box.Width, box.Height);
+                            g.DrawString(s, f, br, rf, sf);
+                        }
+            }
+        }
 
 #if PAVISE_SELFTEST
         internal string[] SelfTestBandTitles()
@@ -85,6 +224,7 @@ namespace PaviseApp
             {
                 cellOn[i].Speed = 0.34f;
                 cellHot[i].Speed = 0.30f;
+                cellHeat[i].Speed = 0.22f;
             }
             SnapCells();
         }
@@ -108,6 +248,7 @@ namespace PaviseApp
             {
                 if (cellOn[i].Step()) moved = true;
                 if (cellHot[i].Step()) moved = true;
+                if (cellHeat[i].Step()) moved = true;
             }
             if (moved) Invalidate();
         }
@@ -148,6 +289,19 @@ namespace PaviseApp
         }
 
         public int LayoutFor(int width)
+        {
+            int h = LayoutBands(width);
+            legendY = -1;
+            if (annotate && h > Theme.S(40))
+            {
+                legendY = h + Theme.S(RowGap);
+                // 图例按实际折行行数算高度 再撑进弹窗 避免多行图例被裁 / 底部内容被挤出对话框
+                h = legendY + LegendHeight(width);
+            }
+            return h;
+        }
+
+        private int LayoutBands(int width)
         {
             bands.Clear();
             laidOutFor = width;
@@ -225,12 +379,12 @@ namespace PaviseApp
             y += Theme.S(BandHead);
 
             int x = 0;
-            int cardH = Theme.S(GroupHead) + Theme.S(CellH) + Theme.S(GroupPad) * 2;
+            int cardH = Theme.S(GroupHead) + CellHpx + Theme.S(GroupPad) * 2;
             int rowH = cardH;
             foreach (ulong mask in groups)
             {
                 int members = CpuTopology.CountSetBits(mask);
-                int groupW = members * Theme.S(CellW) + Theme.S(GroupPad) * 2;
+                int groupW = members * CellWpx + Theme.S(GroupPad) * 2;
                 if (x > 0 && x + groupW > width)
                 {
                     x = 0;
@@ -251,10 +405,10 @@ namespace PaviseApp
                     {
                         Cpu = cpu,
                         Rect = new Rectangle(cx, y + Theme.S(GroupHead) + Theme.S(GroupPad),
-                            Theme.S(CellW), Theme.S(CellH)),
+                            CellWpx, CellHpx),
                         Sibling = !first,
                     });
-                    cx += Theme.S(CellW);
+                    cx += CellWpx;
                     first = false;
                 }
                 band.Groups.Add(grp);
@@ -319,7 +473,8 @@ namespace PaviseApp
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
-            using (var bg = new SolidBrush(BackColor)) g.FillRectangle(bg, ClientRectangle);
+            if (Backdrop.Active) Backdrop.PaintOnCard(g, this, ClientRectangle);
+            else using (var bg = new SolidBrush(BackColor)) g.FillRectangle(bg, ClientRectangle);
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
             foreach (Band b in bands)
@@ -337,6 +492,8 @@ namespace PaviseApp
 
                 foreach (Group grp in b.Groups) DrawGroup(g, grp);
             }
+
+            if (annotate) DrawLegend(g);
         }
 
         private void DrawGroup(Graphics g, Group grp)
@@ -351,6 +508,13 @@ namespace PaviseApp
             foreach (Cell c in grp.Cells)
                 if (cellOn[c.Cpu].Value > lit) lit = cellOn[c.Cpu].Value;
 
+            // 整张物理核卡的峰值负载 决定卡片是否「烧红」发光
+            float peak = 0f;
+            if (annotate && HasLoads)
+                foreach (Cell c in grp.Cells)
+                    if (cellHeat[c.Cpu].Value > peak) peak = cellHeat[c.Cpu].Value;
+            bool cardHot = annotate && HasLoads && peak >= WarmT;
+
             Rectangle r = grp.Rect;
             r.Width -= 1; r.Height -= 1;
             using (GraphicsPath path = Theme.TechPath(r, Theme.S(5)))
@@ -360,7 +524,26 @@ namespace PaviseApp
                 Color edge = exclusive ? Col.Alpha(Theme.Accent, 200)
                     : anyOn ? Theme.StrokeHi
                     : Theme.Stroke;
-                using (var p = new Pen(edge, exclusive ? Math.Max(1f, Theme.S(2) * 0.75f) : 1f))
+                float edgeW = exclusive ? Math.Max(1f, Theme.S(2) * 0.75f) : 1f;
+                if (annotate)
+                {
+                    // 当前落核卡片=紫罗兰霓虹边(与高负载红发光明确区分) 繁忙卡片=按峰值负载烧红外发光
+                    if ((grp.Mask & seenMask) != 0)
+                    {
+                        edge = Col.Alpha(SeenViolet, 235);
+                        edgeW = Math.Max(1f, Theme.S(2) * 1.0f);
+                        NeonEdge(g, path, SeenViolet, 0.85f);
+                    }
+                    else if (cardHot)
+                    {
+                        Color rc = LoadRog(peak);
+                        float ck = GlowK(peak);
+                        edge = Col.Lerp(Col.Alpha(rc, 224), Color.White, 0.10f * ck);
+                        edgeW = Math.Max(1f, Theme.S(2) * 0.85f);
+                        NeonEdge(g, path, rc, ck);
+                    }
+                }
+                using (var p = new Pen(edge, edgeW))
                     g.DrawPath(p, path);
             }
 
@@ -373,22 +556,48 @@ namespace PaviseApp
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter
                     | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
             bool roomy = grp.Cells.Count > 1;
-            string tag = exclusive ? Lang.T("core.tag.exclusive")
-                : anyOn ? (roomy ? PrimaryTag : null)
-                : cache ? Lang.T("core.tag.cache")
-                : roomy ? "SMT" : null;
-            if (tag != null)
-                TextRenderer.DrawText(g, tag, Theme.MonoFor(tag, 6.4f), head,
-                    exclusive ? Theme.Accent
-                        : anyOn ? Col.Alpha(Theme.Accent, 220)
-                        : cache ? Col.Alpha(Theme.Accent2, 170)
-                        : Col.Alpha(Theme.Faint, 150),
+            if (annotate)
+            {
+                // 选核弹窗 头标改成核类型 指引「挪去哪里」;当前落核卡片改标紫罗兰「当前」 让落点自解释
+                bool grpSeen = (grp.Mask & seenMask) != 0;
+                CoreKind kind = KindOf(grp);
+                string ktag = grpSeen ? Lang.T("core.tag.now")
+                    : kind == CoreKind.Game ? Lang.T("core.tag.game")
+                    : kind == CoreKind.Eff ? Lang.T("core.irqtype.e")
+                    : kind == CoreKind.PerfIdle ? Lang.T("core.irqtype.pidle")
+                    : Lang.T("core.irqtype.p");
+                Color kcol = grpSeen ? Col.Alpha(SeenViolet, 245)
+                    : kind == CoreKind.Game ? Col.Alpha(Theme.Danger, 225)
+                    : kind == CoreKind.Eff ? Col.Alpha(Theme.Faint, 190)
+                    : kind == CoreKind.PerfIdle ? RogCool
+                    : Col.Alpha(Theme.Dim, 190);
+                TextRenderer.DrawText(g, ktag, Theme.MonoFor(ktag, 6.4f), head, kcol,
                     TextFormatFlags.Right | TextFormatFlags.VerticalCenter
                         | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+            }
+            else
+            {
+                string tag = exclusive ? Lang.T("core.tag.exclusive")
+                    : anyOn ? (roomy ? PrimaryTag : null)
+                    : cache ? Lang.T("core.tag.cache")
+                    : roomy ? "SMT" : null;
+                if (tag != null)
+                    TextRenderer.DrawText(g, tag, Theme.MonoFor(tag, 6.4f), head,
+                        exclusive ? Theme.Accent
+                            : anyOn ? Col.Alpha(Theme.Accent, 220)
+                            : cache ? Col.Alpha(Theme.Accent2, 170)
+                            : Col.Alpha(Theme.Faint, 150),
+                        TextFormatFlags.Right | TextFormatFlags.VerticalCenter
+                            | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+            }
 
-            foreach (Cell c in grp.Cells) DrawCell(g, c);
+            foreach (Cell c in grp.Cells)
+            {
+                if (annotate) DrawCellAnno(g, c); else DrawCell(g, c);
+            }
         }
 
+        // 非标注页(核心页 / 自定义核) 保持原样 一行不变
         private void DrawCell(Graphics g, Cell c)
         {
             float on = cellOn[c.Cpu].Value;
@@ -403,14 +612,269 @@ namespace PaviseApp
             using (GraphicsPath path = Theme.TechPath(r, Theme.S(4)))
             {
                 using (var b = new SolidBrush(fill)) g.FillPath(b, path);
-                using (var p = new Pen(Col.Lerp(Theme.Stroke, Col.Alpha(Theme.Accent, 235), on), 1f))
-                    g.DrawPath(p, path);
+                Color border = Col.Lerp(Theme.Stroke, Col.Alpha(Theme.Accent, 235), on);
+                using (var p = new Pen(border, 1f)) g.DrawPath(p, path);
             }
 
             TextRenderer.DrawText(g, c.Cpu.ToString(), Theme.Mono(7.6f), r,
                 Col.Lerp(Col.Lerp(Theme.Dim, Theme.Fg, hot), Theme.OnAccent, on),
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
                     | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+        }
+
+        // 选核弹窗 ROG 电竞风:大号发光负载数字为主视觉 + 发光负载条 + 空闲冷/繁忙红高对比
+        private void DrawCellAnno(Graphics g, Cell c)
+        {
+            float on = cellOn[c.Cpu].Value;
+            float hot = cellHot[c.Cpu].Value;
+            Rectangle r = c.Rect;
+            r.Inflate(-Theme.S(2), -Theme.S(2));
+
+            bool hasLoad = HasLoads;
+            float t = cellHeat[c.Cpu].Value;                 // 平滑后的负载 0..1
+            Color load = LoadRog(t);
+            bool warm = hasLoad && t >= WarmT;               // 60% 起就有发光张力
+            float gk = GlowK(t);
+
+            // 繁忙核先在卡底铺一圈大红辉光 外溢到卡片背景上 空闲核不铺 一眼分空/忙
+            if (warm) GlowEllipse(g, r, load, gk, 150, 13);
+
+            // 底色:深黑 繁忙时大量透红 让整格「红起来」 选中让位强调色 保证选择态一眼可见
+            Color baseFill = Col.Lerp(Theme.Inset, Theme.Bg, 0.35f);
+            if (hasLoad) baseFill = Col.Lerp(baseFill, load, 0.10f + 0.45f * t);
+            Color fill = Col.Lerp(baseFill, Theme.Accent, on);
+            if (hot > 0.01f)
+                fill = Col.Lerp(fill, Col.Lerp(Theme.Accent, Color.White, on), hot * 0.22f);
+
+            using (GraphicsPath path = Theme.TechPath(r, Theme.S(4)))
+            {
+                using (var b = new SolidBrush(fill)) g.FillPath(b, path);
+                Color border;
+                if (on >= 0.5f) border = Col.Alpha(Theme.Accent, 235);
+                else if (warm) border = Col.Lerp(Col.Alpha(load, 220), Color.White, 0.12f * gk);
+                else if (hasLoad) border = Col.Lerp(Col.Alpha(Theme.Stroke, 210), load, 0.30f + 0.55f * t);
+                else border = Theme.Stroke;
+                float bw = warm ? Math.Max(1f, Theme.S(2) * 0.8f) : 1f;
+                // 未选中的繁忙核 多层红外发光描边
+                if (warm && on < 0.5f) NeonEdge(g, path, load, gk);
+                using (var p = new Pen(border, bw)) g.DrawPath(p, path);
+            }
+
+            // 填充之上再盖一层软红(半透 不糊数字) 让格子内部也发亮
+            if (warm) GlowEllipse(g, r, load, gk * 0.85f, 120, 3);
+
+            // 发光负载条:填充比例=负载 低冷高红 高负载更亮更饱和 + 上方辉光
+            if (hasLoad) DrawLoadBar(g, r, t, load, warm, gk);
+
+            if ((seenMask & (1UL << c.Cpu)) != 0) DrawSeenMark(g, r);
+
+            if (hasLoad)
+            {
+                // 角标小核号 便于识别与点选 主视觉让给百分比
+                var idBox = new Rectangle(r.Left + Theme.S(3), r.Top + Theme.S(1),
+                    r.Width - Theme.S(6), Theme.S(11));
+                TextRenderer.DrawText(g, c.Cpu.ToString(), Theme.Mono(6.3f), idBox,
+                    on >= 0.5f ? Col.Alpha(Theme.OnAccent, 205) : Col.Alpha(Theme.Faint, 205),
+                    TextFormatFlags.Left | TextFormatFlags.Top
+                        | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+
+                int pct = (int)Math.Round(t * 100.0);
+                if (pct < 0) pct = 0; else if (pct > 100) pct = 100;
+                string s = pct.ToString() + "%";
+                var numBox = new Rectangle(r.Left, r.Top + Theme.S(6),
+                    r.Width, r.Height - Theme.S(12));
+                Font nf = Theme.Mono(pct >= 100 ? 8.6f : 9.8f);
+                // 数字分档着色:低冷青 → 黄 → 橙 → 红(load 本身即分档)
+                //   越忙越提白 让红字在自身红辉光之上仍清晰(crisp 字压在 bloom 顶层)
+                // 选中态:数字落在强调色底上 用高对比深墨字(OnAccent 随强调色亮度自适应 绿底=近黑)
+                //   免得像之前那样用近白字被底色盖住看不清
+                Color numCol = on >= 0.5f ? Theme.OnAccent
+                    : warm ? Col.Lerp(load, Color.White, 0.12f + 0.34f * gk) : load;
+                // 繁忙核数字发光:先落多环同色重影 再落最上层清晰字;选中核不叠红辉光 保证墨字干净
+                if (warm && on < 0.5f) GlowText(g, s, nf, numBox, load, gk);
+                TextRenderer.DrawText(g, s, nf, numBox, numCol,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
+                        | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+            }
+            else
+            {
+                // 采集失败 优雅退回:只画核号 不留空白热力
+                TextRenderer.DrawText(g, c.Cpu.ToString(), Theme.Mono(8.6f), r,
+                    Col.Lerp(Col.Lerp(Theme.Dim, Theme.Fg, hot), Theme.OnAccent, on),
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
+                        | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+            }
+        }
+
+        // 底部发光负载条 圆角轨道 + 负载填充 + 高负载更亮更饱和 + 同色外发光
+        private void DrawLoadBar(Graphics g, Rectangle r, float t, Color load, bool warm, float gk)
+        {
+            int barH = Math.Max(Theme.S(5), 4);
+            var track = new Rectangle(r.Left + Theme.S(4), r.Bottom - barH - Theme.S(3),
+                r.Width - Theme.S(8), barH);
+            if (track.Width < 3) return;
+            int rad = Math.Max(1, barH / 2);
+            int fw = (int)(track.Width * t);
+            if (fw < barH && t > 0f) fw = barH;
+            var fillRect = new Rectangle(track.X, track.Y, Math.Max(fw, 0), track.Height);
+            // 繁忙条先在条身四周垫一圈辉光 让条子「亮起来」
+            if (warm && fw > 0)
+            {
+                var halo = new Rectangle(fillRect.X - Theme.S(2), fillRect.Y - Theme.S(3),
+                    fillRect.Width + Theme.S(4), barH + Theme.S(6));
+                GlowEllipse(g, halo, load, gk, 130, 3);
+            }
+            using (var tp = Theme.Rounded(track, rad))
+            using (var tb = new SolidBrush(Col.Alpha(Theme.Stroke, 170)))
+                g.FillPath(tb, tp);
+            if (fw <= 0) return;
+            Color barCol = warm ? Col.Lerp(load, Color.White, 0.14f) : load;
+            using (var fp = Theme.Rounded(fillRect, rad))
+            {
+                using (var fb = new SolidBrush(barCol)) g.FillPath(fb, fp);
+                // 亮顶边 让条子有霓虹感
+                using (var hp = new Pen(Col.Lerp(load, Color.White, 0.45f), 1f))
+                    g.DrawLine(hp, fillRect.X + rad, fillRect.Y + 0.5f,
+                        fillRect.Right - rad, fillRect.Y + 0.5f);
+            }
+        }
+
+        // 当前落核 右下角一枚发光紫罗兰三角，与高负载红明确区分。
+        private void DrawSeenMark(Graphics g, Rectangle r)
+        {
+            int s = Theme.S(9);
+            var pts = new[]
+            {
+                new Point(r.Right, r.Bottom),
+                new Point(r.Right - s, r.Bottom),
+                new Point(r.Right, r.Bottom - s),
+            };
+            var box = new Rectangle(r.Right - s, r.Bottom - s, s, s);
+            GlowEllipse(g, box, SeenViolet, 1f, 110, 6);
+            using (var b = new SolidBrush(Col.Alpha(SeenViolet, 248))) g.FillPolygon(b, pts);
+        }
+
+        // 挑给选核弹窗看的核类型 游戏核=别挪来 能效核=E 空闲性能核=挪核好去处
+        private enum CoreKind { Game, Eff, PerfIdle, Perf }
+
+        private CoreKind KindOf(Group grp)
+        {
+            ulong game = CpuTopology.StrictBoostMask;
+            if (game != 0 && (grp.Mask & game) != 0) return CoreKind.Game;
+            // E 能效核只在真混合架构上存在 且必须落在能效核簇 EffMask
+            //   全大核机器(i7-9750H 等)ThrottleMask 只是后台预留 不是能效核 绝不标 E
+            //   非混合时 EffMask 恒为 0 这里自然不会命中 全部按 P / P·空闲 处理
+            if (CpuTopology.Hybrid && (grp.Mask & CpuTopology.EffMask) != 0) return CoreKind.Eff;
+            if (HasLoads)
+            {
+                float peak = 0f;
+                foreach (Cell c in grp.Cells) if (cellHeat[c.Cpu].Value > peak) peak = cellHeat[c.Cpu].Value;
+                return peak < 0.35f ? CoreKind.PerfIdle : CoreKind.Perf;
+            }
+            return CoreKind.Perf;
+        }
+
+        // 图例一项:负载渐变条 或 一枚圆点 + 文案 讲清面板里每个视觉元素的含义
+        private sealed class LegendItem
+        {
+            public bool Bar;      // true=负载冷→热渐变条 false=分类圆点
+            public Color Color;
+            public string Text;
+        }
+
+        // 图例清单:数字=负载 / 当前落核(紫) / 空闲性能核(青) / 游戏核别挪(红) / 能效核
+        private List<LegendItem> BuildLegendItems()
+        {
+            var items = new List<LegendItem>();
+            if (HasLoads)
+                items.Add(new LegendItem { Bar = true, Text = Lang.T("core.legend.load") });
+            items.Add(new LegendItem { Color = SeenViolet, Text = Lang.T("core.legend.seen") });
+            items.Add(new LegendItem { Color = RogCool, Text = Lang.T("core.legend.pidle") });
+            items.Add(new LegendItem { Color = Col.Alpha(Theme.Danger, 225), Text = Lang.T("core.legend.game") });
+            // E 能效核图例只在真混合架构显示 全大核机器不出现
+            if (CpuTopology.Hybrid && CpuTopology.EffMask != 0)
+                items.Add(new LegendItem { Color = Theme.Faint, Text = Lang.T("core.legend.e") });
+            return items;
+        }
+
+        private int LegendItemWidth(LegendItem it)
+        {
+            int lead = (it.Bar ? Theme.S(58) : Theme.S(8)) + Theme.S(4);
+            int tw = TextRenderer.MeasureText(it.Text, Theme.MonoFor(it.Text, 7f)).Width;
+            return lead + tw + Theme.S(14);
+        }
+
+        // 按可用宽度把图例折行 xs/rows 可空(只算行数时) 返回总行数
+        private int LayoutLegend(int avail, List<LegendItem> items, int[] xs, int[] rows)
+        {
+            int rowCount = 1, x = 0;
+            for (int i = 0; i < items.Count; i++)
+            {
+                int w = LegendItemWidth(items[i]);
+                if (x > 0 && x + w > avail) { rowCount++; x = 0; }
+                if (xs != null) xs[i] = x;
+                if (rows != null) rows[i] = rowCount - 1;
+                x += w;
+            }
+            return rowCount;
+        }
+
+        // 图例实际高度(折行后) LayoutFor 用它把弹窗撑够
+        private int LegendHeight(int width)
+        {
+            var items = BuildLegendItems();
+            if (items.Count == 0) return 0;
+            int rows = LayoutLegend(width - Theme.S(2), items, null, null);
+            return rows * Theme.S(LegendRowH);
+        }
+
+        private void DrawLegend(Graphics g)
+        {
+            if (legendY < 0) return;
+            var items = BuildLegendItems();
+            if (items.Count == 0) return;
+            var xs = new int[items.Count];
+            var rows = new int[items.Count];
+            LayoutLegend(Width - Theme.S(2), items, xs, rows);
+            int rowH = Theme.S(LegendRowH);
+            for (int i = 0; i < items.Count; i++)
+            {
+                var box = new Rectangle(Theme.S(1) + xs[i], legendY + rows[i] * rowH,
+                    LegendItemWidth(items[i]), rowH);
+                DrawLegendItem(g, box, items[i]);
+            }
+        }
+
+        private void DrawLegendItem(Graphics g, Rectangle row, LegendItem it)
+        {
+            int x = row.Left;
+            int mid = row.Top + row.Height / 2;
+            if (it.Bar)
+            {
+                // 负载渐变条 ROG 冷青→黄橙→红 说明格内大数字的冷→热配色
+                int barW = Theme.S(58), barH = Theme.S(8);
+                var bar = new Rectangle(x, mid - barH / 2, barW, barH);
+                using (var lg = new LinearGradientBrush(bar, RogCool, Theme.Danger, 0f))
+                {
+                    var blend = new ColorBlend(3);
+                    blend.Colors = new[] { RogCool, RogAmber, Theme.Danger };
+                    blend.Positions = new[] { 0f, 0.5f, 1f };
+                    lg.InterpolationColors = blend;
+                    g.FillRectangle(lg, bar);
+                }
+                x += barW + Theme.S(4);
+            }
+            else
+            {
+                int d = Theme.S(8);
+                using (var b = new SolidBrush(it.Color))
+                    g.FillEllipse(b, new Rectangle(x, mid - d / 2, d, d));
+                x += d + Theme.S(4);
+            }
+            TextRenderer.DrawText(g, it.Text, Theme.MonoFor(it.Text, 7f),
+                new Rectangle(x, row.Top, row.Right - x, row.Height),
+                it.Bar ? Theme.Faint : Theme.Dim,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
         }
     }
 }

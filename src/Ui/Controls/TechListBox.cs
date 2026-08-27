@@ -48,7 +48,8 @@ namespace PaviseApp
             }
 
             surface.SetClip(bounds);
-            using (var back = new SolidBrush(BackColor)) surface.FillRectangle(back, bounds);
+            if (Backdrop.Active) Backdrop.Paint(surface, this, bounds);
+            using (var back = new SolidBrush(Backdrop.CardFill(BackColor))) surface.FillRectangle(back, bounds);
             try
             {
                 base.OnDrawItem(new DrawItemEventArgs(surface, e.Font, bounds, e.Index, e.State, e.ForeColor, e.BackColor));
@@ -145,9 +146,13 @@ namespace PaviseApp
 
             try
             {
+                var tail = new Rectangle(0, used, width, height - used);
                 using (Graphics g = Graphics.FromHdc(hdc))
-                using (var brush = new SolidBrush(BackColor))
-                    g.FillRectangle(brush, 0, used, width, height - used);
+                {
+                    if (Backdrop.Active) Backdrop.Paint(g, this, tail);
+                    using (var brush = new SolidBrush(Backdrop.CardFill(BackColor)))
+                        g.FillRectangle(brush, tail);
+                }
             }
             catch { }
         }

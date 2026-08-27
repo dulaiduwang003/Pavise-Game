@@ -10,9 +10,9 @@ namespace PaviseApp
     internal partial class PanelForm
     {
         private Toggle swHags, swVbs, swGmGuard;
-        private Toggle swDevPower, swWindowedOpt, swCfgOff;
+        private Toggle swDevPower, swWindowedOpt, swCfgOff, swNagle, swNicLat;
         private Toggle swAccessKeys, swHidPower, swSpecMit, swTimerTick, swGlobalTimer;
-        private SettingCard cardVbs, cardWindowedOpt, cardSpecMit;
+        private SettingCard cardVbs, cardWindowedOpt, cardSpecMit, cardNicLat;
         private SettingCard cardAccessKeys, cardHidPower;
         private TechTabs envTabs;
         private DBPanel[] envTabPanels;
@@ -97,6 +97,24 @@ namespace PaviseApp
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.devpower"), Lang.T("set.devpower.n"), swDevPower, out cardH);
             sy += cardH + 8;
 
+            bool nagleOwned = NagleTweak.EnabledByPavise || NagleTweak.HasResidue();
+            swNagle = MakeSwitch(nagleOwned, OnNagleToggle);
+            // 一个 TCP 接口都枚举不到就无处可写 已启用过的机器仍要留着关的路
+            // 便宜的判断放前面 已经启用过就不必再枚举一遍接口
+            swNagle.Enabled = nagleOwned || NagleTweak.HasWritableInterfaces();
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nagle"), Lang.T("set.nagle.n"), swNagle, out cardH);
+            sy += cardH + 8;
+
+            swNicLat = MakeSwitch(NicLatencyTweak.EnabledByPavise, OnNicLatToggle);
+            // 驱动没声明这两个 keyword 的机器点了也只能弹一句没找到 直接灰掉
+            //   写过的机器仍要留着关的路 所以已启用或有残留时照常可点
+            bool nicLatUsable = NicLatencyTweak.EnabledByPavise || NicLatencyTweak.HasResidue()
+                || NicLatencyTweak.QualifiedNicCount() > 0;
+            swNicLat.Enabled = nicLatUsable;
+            cardNicLat = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.niclat"),
+                Lang.T(nicLatUsable ? "set.niclat.n" : "set.niclat.none"), swNicLat, out cardH);
+            sy += cardH + 8;
+
             scroll = envTabPanels[2]; sy = 2;
 
             swAccessKeys = MakeSwitch(AccessibilityKeysTweak.HasResidue(), OnAccessKeysToggle);
@@ -135,7 +153,11 @@ namespace PaviseApp
 
         private void OnAccessKeysToggle(object s, EventArgs e)
         {
-            if (swAccessKeys.Checked) AccessibilityKeysTweak.Enable(); else AccessibilityKeysTweak.Restore();
+            IrqMutationBoundary.Run(delegate
+            {
+                if (swAccessKeys.Checked) AccessibilityKeysTweak.Enable();
+                else AccessibilityKeysTweak.Restore();
+            });
             swAccessKeys.SetSilently(AccessibilityKeysTweak.HasResidue());
             swAccessKeys.Enabled = AccessibilityKeysTweak.NeedsFix() || AccessibilityKeysTweak.HasResidue();
             if (cardAccessKeys != null)
@@ -144,7 +166,11 @@ namespace PaviseApp
 
         private void OnWindowedOptToggle(object s, EventArgs e)
         {
-            if (swWindowedOpt.Checked) WindowedOptTweak.Enable(); else WindowedOptTweak.Restore();
+            IrqMutationBoundary.Run(delegate
+            {
+                if (swWindowedOpt.Checked) WindowedOptTweak.Enable();
+                else WindowedOptTweak.Restore();
+            });
             swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByPavise || WindowedOptTweak.CurrentlyOn());
             swWindowedOpt.Enabled = WindowedOptTweak.EnabledByPavise || !WindowedOptTweak.CurrentlyOn();
             if (cardWindowedOpt != null)
@@ -154,7 +180,11 @@ namespace PaviseApp
         private void OnHidPowerToggle(object s, EventArgs e)
         {
             if (!RequireElevationFor(swHidPower, HidPowerTweak.EnabledByPavise)) return;
-            if (swHidPower.Checked) HidPowerTweak.Enable(); else HidPowerTweak.Restore();
+            IrqMutationBoundary.Run(delegate
+            {
+                if (swHidPower.Checked) HidPowerTweak.Enable();
+                else HidPowerTweak.Restore();
+            });
             swHidPower.SetSilently(HidPowerTweak.EnabledByPavise);
             if (cardHidPower != null)
                 SyncEnvStatus();
@@ -163,13 +193,58 @@ namespace PaviseApp
         private void OnDevPowerToggle(object s, EventArgs e)
         {
             if (!RequireElevationFor(swDevPower, DevicePowerTweak.EnabledByPavise)) return;
-            if (swDevPower.Checked) DevicePowerTweak.Enable(); else DevicePowerTweak.Restore();
+            IrqMutationBoundary.Run(delegate
+            {
+                if (swDevPower.Checked) DevicePowerTweak.Enable();
+                else DevicePowerTweak.Restore();
+            });
             swDevPower.SetSilently(DevicePowerTweak.EnabledByPavise);
+        }
+
+        private void OnNagleToggle(object s, EventArgs e)
+        {
+            bool restoredState = NagleTweak.EnabledByPavise || NagleTweak.HasResidue();
+            if (!RequireElevationFor(swNagle, restoredState)) return;
+            bool wantOn = swNagle.Checked;
+            bool ok = IrqMutationBoundary.Run<bool>(delegate
+            {
+                return wantOn ? NagleTweak.Enable() : NagleTweak.Disable();
+            });
+            if (ok) PaviseDialog.Info(this, App.DisplayName, Lang.T(wantOn ? "nagle.on" : "nagle.off"));
+            else PaviseDialog.Warn(this, App.DisplayName, Lang.T("nagle.fail"));
+            swNagle.SetSilently(NagleTweak.EnabledByPavise || NagleTweak.HasResidue());
+        }
+
+        private void OnNicLatToggle(object s, EventArgs e)
+        {
+            if (!RequireElevationFor(swNicLat, NicLatencyTweak.EnabledByPavise)) return;
+            bool wantOn = swNicLat.Checked;
+            if (wantOn)
+            {
+                int qualified = 0;
+                bool ok = IrqMutationBoundary.Run<bool>(delegate
+                {
+                    return NicLatencyTweak.Enable(out qualified);
+                });
+                if (ok) PaviseDialog.Info(this, App.DisplayName, Lang.T("niclat.reboot"));
+                else if (qualified == 0) PaviseDialog.Info(this, App.DisplayName, Lang.T("niclat.none"));
+                else PaviseDialog.Warn(this, App.DisplayName, Lang.T("niclat.fail"));
+            }
+            else
+            {
+                if (!IrqMutationBoundary.Run<bool>(NicLatencyTweak.Disable))
+                    PaviseDialog.Warn(this, App.DisplayName, Lang.T("niclat.fail"));
+            }
+            swNicLat.SetSilently(NicLatencyTweak.EnabledByPavise);
         }
 
         private void OnGameModeGuardToggle(object s, EventArgs e)
         {
-            if (swGmGuard.Checked) GameModeGuard.Enable(); else GameModeGuard.Restore();
+            IrqMutationBoundary.Run(delegate
+            {
+                if (swGmGuard.Checked) GameModeGuard.Enable();
+                else GameModeGuard.Restore();
+            });
             swGmGuard.SetSilently(GameModeGuard.EnabledByPavise);
         }
 
@@ -178,12 +253,12 @@ namespace PaviseApp
             if (!RequireElevationFor(swCfgOff, CfgOffTweak.Enabled)) return;
             if (swCfgOff.Checked)
             {
-                CfgOffTweak.Enable();
+                IrqMutationBoundary.Run(delegate { CfgOffTweak.Enable(); });
                 PaviseDialog.Info(this, App.DisplayName, Lang.T("cfgoff.on"));
             }
             else
             {
-                bool ok = CfgOffTweak.Disable();
+                bool ok = IrqMutationBoundary.Run<bool>(CfgOffTweak.Disable);
                 PaviseDialog.Info(this, App.DisplayName, Lang.T(ok ? "cfgoff.off" : "cfgoff.restorefail"));
             }
             swCfgOff.SetSilently(CfgOffTweak.Enabled);
@@ -201,7 +276,10 @@ namespace PaviseApp
         {
             if (!RequireElevationFor(swGlobalTimer, GlobalTimerResTweak.EnabledByPavise)) return;
             bool wantOn = swGlobalTimer.Checked;
-            bool ok = wantOn ? GlobalTimerResTweak.Enable() : GlobalTimerResTweak.Restore();
+            bool ok = IrqMutationBoundary.Run<bool>(delegate
+            {
+                return wantOn ? GlobalTimerResTweak.Enable() : GlobalTimerResTweak.Restore();
+            });
             if (ok) PaviseDialog.Info(this, App.DisplayName, Lang.T(wantOn ? "gtimer.on" : "gtimer.off"));
             else PaviseDialog.Warn(this, App.DisplayName, Lang.T("gtimer.fail"));
             swGlobalTimer.SetSilently(GlobalTimerResTweak.EnabledByPavise);
@@ -211,7 +289,10 @@ namespace PaviseApp
         {
             if (!RequireElevationFor(swTimerTick, TimerTickTweak.EnabledByPavise || TimerTickTweak.LastKnownOn)) return;
             bool wantOn = swTimerTick.Checked;
-            bool ok = wantOn ? TimerTickTweak.Enable() : TimerTickTweak.Restore();
+            bool ok = IrqMutationBoundary.Run<bool>(delegate
+            {
+                return wantOn ? TimerTickTweak.Enable() : TimerTickTweak.Restore();
+            });
             if (ok) PaviseDialog.Info(this, App.DisplayName, Lang.T(wantOn ? "timertick.on" : "timertick.off"));
             else PaviseDialog.Warn(this, App.DisplayName, Lang.T("timertick.fail"));
             swTimerTick.SetSilently(TimerTickTweak.EnabledByPavise || TimerTickTweak.LastKnownOn);
@@ -220,7 +301,10 @@ namespace PaviseApp
         private void OnHagsToggle(object s, EventArgs e)
         {
             if (!RequireElevationFor(swHags, HagsTweak.EnabledByPavise || HagsTweak.CurrentlyOn())) return;
-            bool ok = swHags.Checked ? HagsTweak.Enable() : HagsTweak.Disable();
+            bool ok = IrqMutationBoundary.Run<bool>(delegate
+            {
+                return swHags.Checked ? HagsTweak.Enable() : HagsTweak.Disable();
+            });
             if (ok) PaviseDialog.Info(this, App.DisplayName, Lang.T("hags.reboot"));
             swHags.SetSilently(HagsTweak.EnabledByPavise || HagsTweak.CurrentlyOn());
         }
@@ -237,7 +321,7 @@ namespace PaviseApp
                     swVbs.SetSilently(false); RefreshVbsState(); return;
                 }
                 bool agreed = PaviseDialog.Confirm(this, App.DisplayName, Lang.T("vbs.warn"), DlgKind.Warn);
-                if (!agreed || !VbsTweak.Disable())
+                if (!agreed || !IrqMutationBoundary.Run<bool>(VbsTweak.Disable))
                 {
                     swVbs.SetSilently(false); RefreshVbsState(); return;
                 }
@@ -247,7 +331,7 @@ namespace PaviseApp
             else
             {
                 if (!RequireElevationFor(swVbs, true)) return;
-                if (!VbsTweak.Restore())
+                if (!IrqMutationBoundary.Run<bool>(VbsTweak.Restore))
                 {
                     swVbs.SetSilently(VbsTweak.DisabledByPavise);
                     RefreshVbsState();
@@ -288,7 +372,7 @@ namespace PaviseApp
                     swSpecMit.SetSilently(false); RefreshSpecMitState(); return;
                 }
                 bool agreed = PaviseDialog.Confirm(this, App.DisplayName, Lang.T("spec.warn"), DlgKind.Warn);
-                if (!agreed || !SpecMitigationTweak.Disable())
+                if (!agreed || !IrqMutationBoundary.Run<bool>(SpecMitigationTweak.Disable))
                 {
                     swSpecMit.SetSilently(false); RefreshSpecMitState(); return;
                 }
@@ -298,7 +382,7 @@ namespace PaviseApp
             else
             {
                 if (!RequireElevationFor(swSpecMit, true)) return;
-                if (!SpecMitigationTweak.Restore())
+                if (!IrqMutationBoundary.Run<bool>(SpecMitigationTweak.Restore))
                 {
                     swSpecMit.SetSilently(SpecMitigationTweak.DisabledByPavise);
                     RefreshSpecMitState();
@@ -367,6 +451,9 @@ namespace PaviseApp
             if (swVbs != null) swVbs.SetSilently(VbsTweak.DisabledByPavise);
             if (swGmGuard != null) swGmGuard.SetSilently(GameModeGuard.EnabledByPavise);
             if (swDevPower != null) swDevPower.SetSilently(DevicePowerTweak.EnabledByPavise);
+            if (swNagle != null)
+                swNagle.SetSilently(NagleTweak.EnabledByPavise || NagleTweak.HasResidue());
+            if (swNicLat != null) swNicLat.SetSilently(NicLatencyTweak.EnabledByPavise);
             if (swAccessKeys != null) swAccessKeys.SetSilently(AccessibilityKeysTweak.EnabledByPavise);
             if (swHidPower != null) swHidPower.SetSilently(HidPowerTweak.EnabledByPavise);
             if (swWindowedOpt != null)

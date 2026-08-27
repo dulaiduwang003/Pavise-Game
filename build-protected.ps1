@@ -245,7 +245,19 @@ function Assert-Obfuscation([string]$RawPath, [string]$ProtectedPath) {
         throw "Obfuscation verification failed: only $removed of $($markers.Count) metadata markers were removed"
     }
     if ($protectedBytes.Length -lt 65536) { throw "Protected output is unexpectedly small" }
-    [Reflection.AssemblyName]::GetAssemblyName($ProtectedPath) | Out-Null
+    $rawAssembly = [Reflection.AssemblyName]::GetAssemblyName($RawPath)
+    $protectedAssembly = [Reflection.AssemblyName]::GetAssemblyName($ProtectedPath)
+    if ($rawAssembly.Version.ToString() -ne $protectedAssembly.Version.ToString()) {
+        throw "Protection changed AssemblyVersion from $($rawAssembly.Version) to $($protectedAssembly.Version)"
+    }
+    $rawInfo = [Diagnostics.FileVersionInfo]::GetVersionInfo($RawPath)
+    $protectedInfo = [Diagnostics.FileVersionInfo]::GetVersionInfo($ProtectedPath)
+    if ($rawInfo.FileVersion -ne $protectedInfo.FileVersion) {
+        throw "Protection changed FileVersion from $($rawInfo.FileVersion) to $($protectedInfo.FileVersion)"
+    }
+    if ($rawInfo.ProductVersion -ne $protectedInfo.ProductVersion) {
+        throw "Protection changed ProductVersion from $($rawInfo.ProductVersion) to $($protectedInfo.ProductVersion)"
+    }
     Write-Host "Metadata markers removed: $removed/$($markers.Count)"
     Write-Host "Raw bytes: $($rawBytes.Length); protected bytes: $($protectedBytes.Length)"
 }

@@ -44,8 +44,8 @@ namespace PaviseApp
             CardLabel(card, "PROJECT // IDENTITY", 20, 15, infoW - 40, 20, 7.6f, true, Theme.Faint);
             CardLabel(card, "NODE 01", infoW - 88, 15, 68, 18, 6.5f, false, Theme.Faint).TextAlign = ContentAlignment.MiddleRight;
 
-            string[] rowKeys = { "about.author", "about.wechat", "about.repo", "about.lic" };
-            string[] rowVals = { App.Author + " " + App.AuthorEmail, App.WeChat,
+            string[] rowKeys = { "about.author", "about.douyin", "about.repo", "about.lic" };
+            string[] rowVals = { App.Author + " " + App.AuthorEmail, App.Douyin,
                 App.RepoUrl.Replace("https://", ""), Lang.T("about.lic.value") };
             for (int i = 0; i < 4; i++)
             {
@@ -84,12 +84,13 @@ namespace PaviseApp
             card.Controls.Add(btnNotes);
 
             var update = MakeConsolePanel(pageAbout, ContentX + infoW + gap, cardsY, updateW, cardH, true);
-            CardLabel(update, "RELEASE // " + Lang.T("v20.about.channel").ToUpperInvariant(), 20, 15, updateW - 126, 20, 7.6f, true, Theme.Faint);
+            CardLabel(update, "RELEASE // " + Lang.T("v20.about.versionstatus").ToUpperInvariant(), 20, 15, updateW - 126, 20, 7.6f, true, Theme.Faint);
             var channelDot = new StatusDot();
             channelDot.SetBounds(Theme.S(updateW - 126), Theme.S(12), Theme.S(22), Theme.S(22));
             channelDot.Bg = Theme.Card; channelDot.Color = Theme.Green;
             update.Controls.Add(channelDot);
-            CardLabel(update, Lang.T("v20.about.stable"), updateW - 102, 12, 82, 24, 6.7f, true, Theme.Green)
+            CardLabel(update, Lang.T("v20.about.online"),
+                updateW - 102, 12, 82, 24, 6.7f, true, Theme.Green)
                 .TextAlign = ContentAlignment.MiddleRight;
 
             AccentLabel(update, App.VersionTag, 20, 45, 254, 43, 23f, true);
@@ -109,7 +110,7 @@ namespace PaviseApp
             var privacy = MakeConsolePanel(update, 20, 232, updateW - 40, 70, false);
             var privacyDot = new StatusDot();
             privacyDot.SetBounds(Theme.S(14), Theme.S(22), Theme.S(22), Theme.S(22));
-            privacyDot.Bg = Theme.Card; privacyDot.Color = Theme.Accent;
+            privacyDot.Bg = Theme.Card; privacyDot.FollowAccent = true;
             privacy.Controls.Add(privacyDot);
             CardLabel(privacy, Lang.T("v20.about.privacy"), 44, 12, updateW - 116, 19, 7f, true, Theme.Faint);
             CardLabel(privacy, Lang.T("v20.about.privacy.value"), 44, 31, updateW - 116, 25, 9.4f, true, Theme.Fg);

@@ -78,6 +78,7 @@ namespace PaviseApp
         private const int PageW = WinW - RailW, PageH = WinH - TopH;
         private const int ContentX = 30, ContentW = PageW - ContentX * 2;
         private const int ScrollContentW = PageW - 40 - 12 - 20;
+        private const string DeepTuningWarningSuppressedKey = "DeepTuningWarningSuppressed";
 
         public PanelForm(Tamer t, GameMode gm, Icon icon, bool isElevated)
         {
@@ -132,7 +133,7 @@ namespace PaviseApp
                         Lang.T("v14.anticheat"), Lang.T("nav.graphics"), Lang.T("nav.env"), Lang.T("v20.nav.report"),
                         Lang.T("nav.log"), Lang.T("nav.set"), Lang.T("nav.about"), Lang.T("nav.white"),
                         Lang.T("nav.irq") },
-                new[] { "game", "tiles", "settings", "acshield", "gpu", "chip", "log", "log", "gear", "info", "white",
+                new[] { "game", "tiles", "settings", "acshield", "gpu", "chip", "chart", "log", "gear", "info", "white",
                         "chip" },
                 new[] { (int)PageId.Overview, (int)PageId.Library, (int)PageId.Whitelist,
                         (int)PageId.Audit, (int)PageId.Log,
@@ -237,7 +238,7 @@ namespace PaviseApp
             root.Controls.Add(advBackBar);
 
             modeFlyout = new ModePickerPanel();
-            modeFlyout.SetBounds(Theme.S(WinW - 420), Theme.S(TopH + 8), Theme.S(396), Theme.S(286));
+            modeFlyout.SetBounds(Theme.S(WinW - 420), Theme.S(TopH + 8), Theme.S(396), Theme.S(356));
             modeFlyout.Visible = false;
             modeFlyout.ModeChosen = ChooseGlobalMode;
             root.Controls.Add(modeFlyout);
@@ -280,12 +281,32 @@ namespace PaviseApp
             KeyDown += OnEscHide;
 
             nav.Select((int)PageId.Overview);
+            if (Backdrop.Active) ApplyBackdropLabels(this);
 
             uiTimer = new System.Windows.Forms.Timer();
             uiTimer.Interval = 1200;
             uiTimer.Tick += OnUiTick;
             uiActivityKnown = false;
             SyncUiActivity();
+        }
+
+        // 换图换档后整窗重画 卡片和各控件取的是同一张图的不同块 少刷一个就露馅
+        private void RefreshBackdrop()
+        {
+            ApplyBackdropLabels(this);
+            Invalidate(true);
+            Update();
+        }
+
+        // 标签自己顶着一块纯色底 有封面时就成了补丁 改成透明交给父控件把图画进来
+        private static void ApplyBackdropLabels(Control host)
+        {
+            foreach (Control c in host.Controls)
+            {
+                var lb = c as Label;
+                if (lb != null && lb.BackColor != Color.Transparent) lb.BackColor = Color.Transparent;
+                if (c.HasChildren) ApplyBackdropLabels(c);
+            }
         }
 
         private static void AssertNavMatchesPageIds(NavRail rail)
@@ -336,7 +357,7 @@ namespace PaviseApp
             pageHooks[(int)PageId.Overview] = new PageHook(pageOverview,
                 delegate(bool active) { if (paviseCore != null) paviseCore.SetAnimationEnabled(active); }, null);
             pageHooks[(int)PageId.Library] = new PageHook(pageLibrary,
-                delegate(bool active) { if (active) { RefreshGames(); RefreshGameRunningStates(true); } },
+                delegate(bool active) { if (active) RefreshGames(); },
                 delegate { RefreshGameRunningStates(); });
             pageHooks[(int)PageId.Whitelist] = new PageHook(pageWhitelist,
                 delegate(bool active) { if (active) RefreshWhitelist(true); }, null);
@@ -616,7 +637,26 @@ namespace PaviseApp
 
         private void ToggleAdvancedPanel()
         {
-            SetAdvancedPanel(advancedPanel == null || !advancedPanel.Visible);
+            bool opening = advancedPanel == null || !advancedPanel.Visible;
+            if (opening && !ConfirmDeepTuningEntry()) return;
+            SetAdvancedPanel(opening);
+        }
+
+        // 所有用户可达入口共用同一道门。只有“勾选不再提示 + 确认进入”才持久化；
+        // 取消、关闭弹窗或单纯勾选后反悔都不能悄悄跳过下次警告。
+        private bool ConfirmDeepTuningEntry()
+        {
+            if (Settings.Load(DeepTuningWarningSuppressedKey, false)) return true;
+            var never = new Toggle();
+            never.Text = Lang.T("v20.advanced.warn.never");
+            never.Bg = Theme.Bg;
+            never.SetSilently(false);
+            never.Size = new Size(Theme.S(416), Theme.S(30));
+            if (!PaviseDialog.Confirm(this,
+                Lang.T("v20.advanced.warn.title"),
+                Lang.T("v20.advanced.warn.body"), DlgKind.Warn, never, 468)) return false;
+            if (never.Checked) Settings.Save(DeepTuningWarningSuppressedKey, true);
+            return true;
         }
 
         private void SetAdvancedPanel(bool visible)
@@ -807,6 +847,7 @@ namespace PaviseApp
             }
             visualEnabled = enabled;
             modeVisualInitialized = true;
+            RefreshModeAccentLabels();
             if (nav != null) nav.SetMode(effective, enabled);
             if (visualChanged)
                 using (Icon icon = IconArt.MakeMultiIcon(effective, enabled)) SetRuntimeIcon(icon);
@@ -1000,6 +1041,7 @@ namespace PaviseApp
             OnUiTick(null, EventArgs.Empty);
             if (showAntiCheat) { nav.Select((int)PageId.AntiCheat); nav.SnapToSelection(); if (curPage != null) curPage.Left = pageBaseLeft; }
             PerformancePreset? preview = previewMode == "competitive" ? PerformancePreset.Competitive
+                : previewMode == "handheld" ? PerformancePreset.Handheld
                 : previewMode == "custom" ? PerformancePreset.Custom
                 : previewMode == "standard" ? PerformancePreset.Standard : (PerformancePreset?)null;
             if (preview.HasValue)
@@ -1009,7 +1051,8 @@ namespace PaviseApp
                 if (lblHeroMode != null) { lblHeroMode.Text = ModeButton.ModeName(preview.Value); lblHeroMode.ForeColor = Theme.Accent; }
                 if (paviseCore != null) paviseCore.SetState(preview.Value, true, false);
             }
-            if (previewMode == "gameconfig" || previewMode == "gameconfig-core" || previewMode == "gameconfig-gpu")
+            if (previewMode == "gameconfig" || previewMode == "gameconfig-core"
+                || previewMode == "gameconfig-env" || previewMode == "gameconfig-gpu")
             {
                 List<GameProfile> shotProfiles = gameMode.GetProfiles();
                 if (shotProfiles.Count > 0)
@@ -1018,6 +1061,7 @@ namespace PaviseApp
                     pageSlide.Set(0f);
                     if (curPage != null) curPage.Left = pageBaseLeft;
                     if (previewMode == "gameconfig-core" && cfgTabs != null) cfgTabs.Index = 1;
+                    if (previewMode == "gameconfig-env" && cfgTabs != null) cfgTabs.Index = 2;
                     if (previewMode == "gameconfig-gpu" && cfgTabs != null) cfgTabs.Index = 3;
                 }
             }
@@ -1034,6 +1078,18 @@ namespace PaviseApp
             {
                 try { RenderAudit(SystemAudit.Collect(400)); } catch { }
                 if (lblAuditStatus != null) lblAuditStatus.Text = "";
+            }
+            if (previewMode == "settings-appearance" && pageIndex == (int)PageId.Settings)
+            {
+                foreach (Control child in pageSettings.Controls)
+                {
+                    ScrollableControl settingsScroll = child as ScrollableControl;
+                    if (settingsScroll != null && settingsScroll.AutoScroll)
+                    {
+                        settingsScroll.AutoScrollPosition = new Point(0, Theme.S(470));
+                        break;
+                    }
+                }
             }
             Application.DoEvents();
             using (var bmp = new Bitmap(ClientSize.Width, ClientSize.Height))

@@ -16,13 +16,12 @@ namespace PaviseApp
         private Toggle swPolicyBackground, swPolicyAggressive;
         private Toggle swPolicyPauseDl, swPolicyDvr;
         private Toggle swPolicyGpuDemote, swPolicyBoost, swPolicyIfeo, swPolicyLane, swPolicyMmcss;
-        private Toggle swPolicyIdleDis;
+        private Toggle swPolicyVramShield;
         private Toggle swPolicyPowerYield;
         private Toggle swPolicyPauseWu, swPolicyWlan, swPolicyAwake;
         private SettingCard cardPolicyCores, cardPolicyAggressive;
         private SettingCard cardPolicyPauseDl, cardPolicyDvr;
         private SettingCard cardPolicyBackground, cardPolicyGpuDemote, cardPolicyBoost, cardPolicyIfeo, cardPolicyLane, cardPolicyMmcss;
-        private SettingCard cardPolicyIdleDis;
         private SettingCard cardPolicyPowerYield;
         private SettingCard cardPolicyPauseWu, cardPolicyWlan, cardPolicyAwake;
         private readonly List<Action> policySync = new List<Action>();
@@ -68,6 +67,8 @@ namespace PaviseApp
             swPolicyLane = AddPolicyToggle(scroll, ref sy, Lang.T("gm.lane"), Lang.T("gm.lane.sub"),
                 delegate { return gameMode.RenderLaneOn; }, delegate(bool v) { gameMode.RenderLaneOn = v; });
             cardPolicyLane = (SettingCard)swPolicyLane.Parent;
+            swPolicyVramShield = AddPolicyToggle(scroll, ref sy, Lang.T("gm.vramshield"), Lang.T("gm.vramshield.sub"),
+                delegate { return gameMode.VramShieldOn; }, delegate(bool v) { OnVramShieldToggle(v); });
             swPolicyLane.CheckedChanged += delegate { RefreshPolicyPresentation(); };
 
             BuildCorePage(policyTabPanels[1]);
@@ -84,9 +85,6 @@ namespace PaviseApp
             swPolicyMmcss = AddPolicyToggle(scroll, ref sy, Lang.T("gm.mmcss"), Lang.T("gm.mmcss.sub"),
                 delegate { return gameMode.MmcssOn; }, delegate(bool v) { gameMode.MmcssOn = v; });
             cardPolicyMmcss = (SettingCard)swPolicyMmcss.Parent;
-            swPolicyIdleDis = AddPolicyToggle(scroll, ref sy, Lang.T("gm.idledis"), Lang.T("gm.idledis.sub"),
-                delegate { return IdleStateTweak.Enabled; }, delegate(bool v) { OnIdleDisableToggle(v); });
-            cardPolicyIdleDis = (SettingCard)swPolicyIdleDis.Parent;
             swPolicyPowerYield = AddPolicyToggle(scroll, ref sy,
                 Lang.T("gm.poweryield"), Lang.T("gm.poweryield.sub"),
                 delegate { return Settings.Load(PowerBudgetYieldRunner.EnabledKey, false); },
@@ -326,14 +324,16 @@ namespace PaviseApp
             PerformancePreset mode = gameMode.ActivePreset;
             bool competitive = mode == PerformancePreset.Competitive;
             bool custom = mode == PerformancePreset.Custom;
+            // 掌机档跟专注一样锁死这两项 差别在功耗侧 不在这里
+            bool presetForcesOn = competitive || mode == PerformancePreset.Handheld;
             ApplyPresetPolicy(swPolicyBackground, cardPolicyBackground, Lang.T("v14.bg.master"), false, true);
             ApplyPresetPolicy(swPolicyGpuDemote, cardPolicyGpuDemote, Lang.T("gm.gpudemote"), false, true);
             ApplyPresetPolicy(swPolicyBoost, cardPolicyBoost, Lang.T("gm.boost"), false, true);
             ApplyPresetPolicy(swPolicyIfeo, cardPolicyIfeo, Lang.T("gm.ifeo"), false, true);
             ApplyPresetPolicy(swPolicyLane, cardPolicyLane, Lang.T("gm.lane"), false, true);
             if (cardPolicyCores != null) cardPolicyCores.Title = Lang.T("cpu.place.title");
-            ApplyPresetPolicy(swPolicyAggressive, cardPolicyAggressive, Lang.T("gm.aggressive"), !custom, competitive);
-            ApplyPresetPolicy(swPolicyPauseDl, cardPolicyPauseDl, Lang.T("gm.pausedl"), !custom, competitive);
+            ApplyPresetPolicy(swPolicyAggressive, cardPolicyAggressive, Lang.T("gm.aggressive"), !custom, presetForcesOn);
+            ApplyPresetPolicy(swPolicyPauseDl, cardPolicyPauseDl, Lang.T("gm.pausedl"), !custom, presetForcesOn);
             ApplyPresetPolicy(swPolicyDvr, cardPolicyDvr, Lang.T("set.dvr"), false, true);
             ApplyPresetPolicy(swPolicyMmcss, cardPolicyMmcss, Lang.T("gm.mmcss"), false, true);
             if (swPolicyMmcss != null && !elevated)
@@ -341,7 +341,6 @@ namespace PaviseApp
                 swPolicyMmcss.Enabled = false;
                 if (cardPolicyMmcss != null) cardPolicyMmcss.Desc = Lang.T("vbs.needadmin");
             }
-            ApplyPresetPolicy(swPolicyIdleDis, cardPolicyIdleDis, Lang.T("gm.idledis"), false, true);
             ApplyPresetPolicy(swPolicyPowerYield, cardPolicyPowerYield,
                 Lang.T("gm.poweryield"), false, true);
             if (swPolicyPowerYield != null && cardPolicyPowerYield != null)
@@ -358,11 +357,6 @@ namespace PaviseApp
                     : !elevated ? Lang.T("vbs.needadmin") : null;
                 swPolicyPowerYield.Enabled = why == null;
                 if (why != null) cardPolicyPowerYield.Desc = why;
-            }
-            if (swPolicyIdleDis != null && !elevated)
-            {
-                swPolicyIdleDis.Enabled = false;
-                if (cardPolicyIdleDis != null) cardPolicyIdleDis.Desc = Lang.T("vbs.needadmin");
             }
             ApplyPresetPolicy(swPolicyPauseWu, cardPolicyPauseWu, Lang.T("gm.pausewu"), false, true);
             ApplyPresetPolicy(swPolicyWlan, cardPolicyWlan, Lang.T("gm.wlanguard"), false, true);
@@ -386,14 +380,15 @@ namespace PaviseApp
             if (on) PowerBudgetYield.ClearFuse();
         }
 
-        private void OnIdleDisableToggle(bool on)
+        // 实验功能 开启前先把话说在前面 体感不对就关掉
+        private void OnVramShieldToggle(bool on)
         {
-            if (on && !PaviseDialog.Confirm(this, Lang.T("gm.idledis"), Lang.T("idledis.warn"), DlgKind.Warn))
+            if (on && !PaviseDialog.Confirm(this, Lang.T("gm.vramshield"), Lang.T("vramshield.warn"), DlgKind.Warn))
             {
-                if (swPolicyIdleDis != null) swPolicyIdleDis.SetSilently(false);
+                if (swPolicyVramShield != null) swPolicyVramShield.SetSilently(false);
                 return;
             }
-            IdleStateTweak.SetEnabled(on);
+            gameMode.VramShieldOn = on;
         }
 
         private static void ApplyPresetPolicy(Toggle toggle, SettingCard card, string title, bool forced, bool effective)

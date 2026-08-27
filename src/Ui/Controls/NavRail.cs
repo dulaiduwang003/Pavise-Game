@@ -149,7 +149,13 @@ namespace PaviseApp
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics;
-            if (Theme.LightMode)
+            if (Backdrop.Active)
+            {
+                Backdrop.Paint(g, this, ClientRectangle);
+                using (var bg = new SolidBrush(Backdrop.NavFill(Theme.Nav)))
+                    g.FillRectangle(bg, ClientRectangle);
+            }
+            else if (Theme.LightMode)
             {
                 using (var bg = new LinearGradientBrush(ClientRectangle, Theme.Nav,
                     Col.Lerp(Theme.Nav, Theme.Bg, 0.58f), LinearGradientMode.Horizontal))

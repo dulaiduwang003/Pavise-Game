@@ -28,6 +28,13 @@ namespace PaviseApp
             BackColor = Theme.Bg;
         }
 
+        // 卡片要透就得自己先把身下那块封面补上 WinForms 的子控件没有真透明
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            if (Backdrop.Active) { Backdrop.Paint(e.Graphics, this, e.ClipRectangle); return; }
+            base.OnPaintBackground(e);
+        }
+
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
@@ -38,12 +45,12 @@ namespace PaviseApp
             {
                 if (Theme.LightMode)
                 {
-                    Color top = Col.Lerp(Fill, Theme.Accent, 0.035f);
-                    Color bottom = Col.Lerp(Fill, Theme.Bg, 0.13f);
+                    Color top = Backdrop.CardFill(Col.Lerp(Fill, Theme.Accent, 0.035f));
+                    Color bottom = Backdrop.CardFill(Col.Lerp(Fill, Theme.Bg, 0.13f));
                     using (var b = new LinearGradientBrush(r, top, bottom, LinearGradientMode.Vertical))
                         g.FillPath(b, path);
                 }
-                else using (var b = new SolidBrush(Fill)) g.FillPath(b, path);
+                else using (var b = new SolidBrush(Backdrop.CardFill(Fill))) g.FillPath(b, path);
                 if (Theme.LightMode && AccentEdge)
                 {
                     g.SetClip(path);
@@ -80,6 +87,12 @@ namespace PaviseApp
     internal class DBPanel : Panel
     {
         public DBPanel() { DoubleBuffered = true; }
+
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            if (Backdrop.Active) { Backdrop.Paint(e.Graphics, this, e.ClipRectangle); return; }
+            base.OnPaintBackground(e);
+        }
     }
 
     internal sealed class EmptyStatePanel : RoundPanel
@@ -143,13 +156,15 @@ namespace PaviseApp
             FillBg(g);
 
             Rectangle frame = new Rectangle(0, 0, Width - 1, Height - 1);
-            Color surface = Col.Lerp(Theme.Card, Theme.CardHover, hover.Value * 0.72f);
-            if (Theme.LightMode) surface = Col.Lerp(surface, Theme.Accent, 0.025f + hover.Value * 0.025f);
+            Color surfaceBase = Col.Lerp(Theme.Card, Theme.CardHover, hover.Value * 0.72f);
+            if (Theme.LightMode) surfaceBase = Col.Lerp(surfaceBase, Theme.Accent, 0.025f + hover.Value * 0.025f);
+            Color tailBase = Theme.LightMode
+                ? Col.Lerp(surfaceBase, Theme.Inset, 0.34f)
+                : Col.Lerp(surfaceBase, Theme.Inset, 0.22f);
+            Color surface = Backdrop.CardFill(surfaceBase);
+            Color tail = Backdrop.CardFill(tailBase);
             using (GraphicsPath path = Theme.TechPath(frame, Theme.S(8)))
             {
-                Color tail = Theme.LightMode
-                    ? Col.Lerp(surface, Theme.Inset, 0.34f)
-                    : Col.Lerp(surface, Theme.Inset, 0.22f);
                 using (var fill = new LinearGradientBrush(frame, surface, tail, LinearGradientMode.Horizontal))
                     g.FillPath(fill, path);
                 using (var border = new Pen(Col.Lerp(Theme.Stroke, Theme.StrokeHi, hover.Value * 0.72f)))
@@ -163,7 +178,8 @@ namespace PaviseApp
                 g.FillEllipse(glow, railX - Theme.S(5), railY - Theme.S(5), railSize + Theme.S(10), railSize + Theme.S(10));
             using (var socket = Theme.TechPath(new Rectangle(railX, railY, railSize, railSize), Theme.S(6)))
             {
-                using (var fill = new SolidBrush(Col.Lerp(Theme.Inset, Theme.Sel, 0.22f + hover.Value * 0.22f)))
+                using (var fill = new SolidBrush(Backdrop.CardFill(
+                    Col.Lerp(Theme.Inset, Theme.Sel, 0.22f + hover.Value * 0.22f))))
                     g.FillPath(fill, socket);
                 using (var border = new Pen(Col.Alpha(Theme.Accent, (int)(72 + hover.Value * 92))))
                     g.DrawPath(border, socket);

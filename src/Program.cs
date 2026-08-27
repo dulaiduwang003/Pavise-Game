@@ -19,10 +19,9 @@ namespace PaviseApp
     internal static class App
     {
         public const string DisplayName = "PAVISE";
-        public const string Version = "2.1.1.0";
+        public const string Version = "2.1.2.0";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
-        public const string WeChat = "Ssssssstyle";
         public const string QqGroup = "1051472054";
         public const string QqGroup2 = "1101249532";
         public const string QqGroup3 = "383761286";
@@ -30,9 +29,27 @@ namespace PaviseApp
         public const string Douyin = "44601770838";
         public const string PanUrl = "https://pan.quark.cn/s/3c8c986b3ea4";
 
+        // 版本清单挂在自家对象存储 换源就改这两行
+        //   两条指的是同一个文件 上海直连给国内 传输加速给境外 并发赛跑先到先用
+        //   不按地区判断走哪条 判断会误伤代理和跨境线路 让网络自己比出快的那条更准
+        public const string VersionFeedUrl =
+            "https://paivse.oss-cn-shanghai.aliyuncs.com/version/version.json";
+
+        public const string VersionFeedUrlAccelerate =
+            "https://paivse.oss-accelerate.aliyuncs.com/version/version.json";
+
         public const string RepoName = "dulaiduwang003/Pavise-Game";
         public const string RepoUrl = "https://github.com/" + RepoName;
         public const string ReleasesUrl = RepoUrl + "/releases";
+
+        // 概览页底栏三个外链 都在飞书 改地址只改这里
+        //   教程是知识库页 问卷和 Bug 反馈是表单 两种地址形态不同 别互相照抄
+        public const string GuideUrl =
+            "https://ycnqux4mseky.feishu.cn/wiki/Do1jwytjmit0DJke8CvcyJEenxd?from=from_copylink";
+        public const string SurveyUrl =
+            "https://ycnqux4mseky.feishu.cn/share/base/form/shrcn8Je5doKoMrs8fqxC7kUo1G";
+        public const string BugUrl =
+            "https://ycnqux4mseky.feishu.cn/share/base/form/shrcnYFsTFhIfY93NpHZlUNEjMg";
         public static string VersionTag { get { return "v" + Version; } }
     }
 
@@ -59,7 +76,8 @@ namespace PaviseApp
             if (args.Length >= 2 && args[0] == "--geniconpng")
             {
                 PerformancePreset mode = args.Length >= 3 && args[2] == "competitive" ? PerformancePreset.Competitive
-                    : (args.Length >= 3 && args[2] == "custom" ? PerformancePreset.Custom : PerformancePreset.Standard);
+                    : (args.Length >= 3 && args[2] == "handheld" ? PerformancePreset.Handheld
+                    : (args.Length >= 3 && args[2] == "custom" ? PerformancePreset.Custom : PerformancePreset.Standard));
                 try { using (Bitmap bitmap = IconArt.Render(256, mode, true)) bitmap.Save(args[1], System.Drawing.Imaging.ImageFormat.Png); }
                 catch { Environment.ExitCode = 1; }
                 return;
@@ -73,7 +91,10 @@ namespace PaviseApp
                 Paths.Init();
                 Lang.Init();
                 if (args.Length >= 4) Lang.Cur = args[3] == "en" ? 1 : (args[3] == "ja" ? 2 : 0);
-                if (args.Length >= 5 && args[4] == "light") Theme.SetLight(true);
+                if (args.Length >= 5 && (args[4] == "light" || args[4] == "backdrop-light")) Theme.SetLight(true);
+                // 截图默认保持干净背景 只有封面专项检查才读取用户当前封面
+                if (args.Length >= 5 && (args[4] == "backdrop-light" || args[4] == "backdrop-dark"))
+                    try { Backdrop.Init(); } catch { }
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
                 string sdir = Path.Combine(Path.GetTempPath(), "PaviseShot_" + Process.GetCurrentProcess().Id);
@@ -233,10 +254,13 @@ namespace PaviseApp
             Paths.Init();
             Lang.Init();
             try { Theme.SetLight(Settings.Load("UiLight", false)); } catch { }
+            try { Backdrop.Init(); } catch { }
             try
             {
-                for (int m = 0; m < 3; m++)
+                // 上界跟着档位取值走 不是档位个数 掌机是 4 写死 3 会让它的配色重启后丢失
+                for (int m = 0; m <= 4; m++)
                 {
+                    if (!PresetValue.IsValid(m)) continue;
                     Color mc;
                     if (Col.TryHex(Settings.LoadStr("ModeAccent" + m, ""), out mc))
                         Theme.SetModeColorOverride((PerformancePreset)m, mc);
@@ -249,9 +273,11 @@ namespace PaviseApp
                 Logger.Log(Lang.T("log.program.1"));
             try { WarnIfOsTooOld(); } catch { }
             Settings.Remove("EvidenceMode");
+            try { VramShield.HealFromCrash(); } catch { }
             int healedSuppression = SuppressionCore.HealFromCrash(Path.Combine(dir, SuppressionCore.StateFileName));
             if (healedSuppression > 0) Logger.Log(Lang.T("log.program.2") + healedSuppression + Lang.T("log.program.3"));
             PowerPlan.HealFromCrash();
+            try { PowerPlan.ClearLegacyIdleDisableOnce(); } catch { }
             try { if (PowerPlan.HasParkResidue()) PowerPlan.RestoreParkState(); } catch { }
             try { UpdatePause.HealFromCrash(); } catch { }
             GameDvr.HealFromCrash();
@@ -306,6 +332,14 @@ namespace PaviseApp
 
             var gameMode = new GameMode(dir, core);
             gameMode.Enabled = Settings.Load("GameModeOn", true);
+
+            if (gameMode.ProfileStoreSaveFailed)
+            {
+                bool cleared = ForceDeleteRoamingData(dir);
+                PaviseDialog.Error(null, Lang.T("store.savefatal.title"),
+                    Lang.F(cleared ? "store.savefatal.body" : "store.savefatal.deletefail", dir));
+                return;
+            }
 
             var startGate = new object();
             bool exiting = false;
@@ -387,21 +421,68 @@ namespace PaviseApp
             icon.Text = elevated ? Lang.T("tray.idle") : Lang.T("tray.noelev");
 
             System.Windows.Forms.Timer trayTip = null;
-            Action doExit = () =>
+            Action stopRuntime = () =>
             {
-
+                lock (startGate)
+                {
+                    if (exiting) return;
+                    exiting = true;
+                }
                 try { trayTip.Stop(); trayTip.Dispose(); } catch { }
                 icon.Visible = false;
                 icon.Dispose();
-                lock (startGate) exiting = true;
                 try { procNotify.Stop(); } catch { }
                 tamer.Stop();
                 gameMode.Stop();
                 panel.RealExit = true;
+            };
+            Action fatalStoreReset = null;
+            Action doExit = () =>
+            {
+                stopRuntime();
+                // 保存失败与普通退出同时发生时，不能让退出先关掉
+                // 消息泵而吞掉已排队的强制清空。
+                if (gameMode.ProfileStoreSaveFailed && fatalStoreReset != null)
+                {
+                    fatalStoreReset();
+                    return;
+                }
                 Application.Exit();
             };
 
             panel.ExitApp = doExit;
+
+            int fatalStoreResetStarted = 0;
+            fatalStoreReset = () =>
+            {
+                if (Interlocked.Exchange(ref fatalStoreResetStarted, 1) != 0) return;
+                stopRuntime();
+                try { panel.Hide(); panel.Dispose(); } catch { }
+                bool cleared = ForceDeleteRoamingData(dir);
+                PaviseDialog.Error(null, Lang.T("store.savefatal.title"),
+                    Lang.F(cleared ? "store.savefatal.body" : "store.savefatal.deletefail", dir));
+                Application.Exit();
+            };
+            Action requestFatalStoreReset = () =>
+            {
+                try { panel.BeginInvoke((MethodInvoker)(() => fatalStoreReset())); }
+                catch
+                {
+                    // 窗口若已在销毁，至少强制结束消息泵；
+                    // ApplicationExit 的最后闸门会执行目录清空。
+                    try { Application.Exit(); } catch { }
+                }
+            };
+            Application.ApplicationExit += (s, e) =>
+            {
+                if (!gameMode.ProfileStoreSaveFailed) return;
+                ForceDeleteRoamingData(dir);
+            };
+
+            // 先装最后删除闸门，再订阅/复查失败；否则 BeginInvoke
+            // 恰在这个窗口失败时，Application.Exit 会无人执行清空。
+            gameMode.ProfileStoreSaveFailure += requestFatalStoreReset;
+            if (gameMode.ProfileStoreSaveFailed) requestFatalStoreReset();
 
             var trayMenu = new TrayMenu(gameMode, doExit, () => panel.SyncAllToggles());
 
@@ -449,6 +530,14 @@ namespace PaviseApp
             {
                 try { panel.NotifyLibraryChanged(); } catch { }
             };
+            gameMode.SessionBriefed += brief =>
+            {
+                try { panel.NotifyLastSession(brief); } catch { }
+            };
+            gameMode.IrqSuggested += count =>
+            {
+                try { panel.NotifyIrqSuggestions(count); } catch { }
+            };
 
             trayTip = new System.Windows.Forms.Timer();
             trayTip.Interval = TrayTipIdleMs;
@@ -493,12 +582,14 @@ namespace PaviseApp
                 {
                     if (r.Ok && r.Newer)
                     {
-                        Logger.Log(Lang.T("log.program.6") + r.Latest + Lang.T("log.program.7") + App.VersionTag + " ");
+                        Logger.Log(Lang.T("log.program.6") + r.Latest
+                            + Lang.T("log.program.7") + App.VersionTag + " ");
                         try
                         {
                             panel.BeginInvoke((MethodInvoker)(() =>
                             {
-                                try { icon.ShowBalloonTip(8000, App.DisplayName, Lang.F("bal.update", r.Latest), ToolTipIcon.Info); } catch { }
+                                try { icon.ShowBalloonTip(8000, App.DisplayName,
+                                    Lang.F("bal.update", r.Latest), ToolTipIcon.Info); } catch { }
                             }));
                         }
                         catch { }
@@ -630,6 +721,27 @@ namespace PaviseApp
             {
                 using (var id = System.Security.Principal.WindowsIdentity.GetCurrent())
                     return new System.Security.Principal.WindowsPrincipal(id).IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+            }
+            catch { return false; }
+        }
+
+        internal static bool ForceDeleteRoamingData(string dir)
+        {
+            if (string.IsNullOrEmpty(dir)) return false;
+            try
+            {
+                string expected = Path.Combine(Environment.GetFolderPath(
+                    Environment.SpecialFolder.ApplicationData), "Pavise");
+                string actualFull = Path.GetFullPath(dir).TrimEnd(
+                    Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                string expectedFull = Path.GetFullPath(expected).TrimEnd(
+                    Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                if (!string.Equals(actualFull, expectedFull, StringComparison.OrdinalIgnoreCase))
+                    return false;
+                if (!Directory.Exists(actualFull)) return true;
+                if (!LegacyPurge.IsRoamingDataDir(actualFull)) return false;
+                LegacyPurge.DeleteDataTree(actualFull);
+                return !Directory.Exists(actualFull);
             }
             catch { return false; }
         }

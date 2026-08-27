@@ -63,7 +63,8 @@ namespace PaviseApp
 
         private static bool CfgPresetForces(string key, PerformancePreset mode, out bool effective)
         {
-            bool competitive = mode == PerformancePreset.Competitive;
+            bool competitive = mode == PerformancePreset.Competitive
+                || mode == PerformancePreset.Handheld;
             bool custom = mode == PerformancePreset.Custom;
             switch (key)
             {
@@ -84,7 +85,7 @@ namespace PaviseApp
             int presetParsed;
             cfgEffMode = cfgProfile.Overrides.TryGetValue(PolicyCatalog.KeyPreset, out presetOverride)
                 && int.TryParse(presetOverride, out presetParsed)
-                && presetParsed >= 0 && presetParsed <= 2
+                && PresetValue.IsValid(presetParsed)
                 ? (PerformancePreset)presetParsed : gameMode.Preset;
             foreach (Action sync in cfgRowSync) sync();
             if (cfgTabs != null && cfgTabKeys != null)
@@ -127,6 +128,48 @@ namespace PaviseApp
             foreach (string key in keys)
                 AddCfgPickerRow(panel, ref y, PolicyCatalog.ItemOf(key));
             y += 6;
+        }
+
+        // 逐游戏禁用全屏优化 不是对局临时下发 而是立即持久写该 exe 的兼容层
+        //   所以不进 PolicyCatalog 不走 Overrides 直接读写 HKCU 兼容层字符串 拨开即写 拨关即删
+        private string CfgExePath()
+        {
+            if (cfgProfile == null) return null;
+            return cfgProfile.PreferredExecutablePath;
+        }
+
+        private void AddCfgFsoRow(Control parent, ref int y)
+        {
+            Section(parent, Lang.T("cfg.fso.group"), 6, y);
+            y += 24;
+            string exe = CfgExePath();
+            bool hasExe = !string.IsNullOrEmpty(exe);
+            Toggle sw = MakeSwitch(hasExe && FsoTweak.IsDisabledForExe(exe), null);
+            sw.Enabled = hasExe;
+            int cardH;
+            MakeAutoCard(parent, 6, y, ScrollContentW, 56, Lang.T("cfg.fso"),
+                hasExe ? Lang.T("cfg.fso.sub") : Lang.T("cfg.fso.noexe"), sw, out cardH);
+            y += cardH + 8;
+            sw.CheckedChanged += delegate
+            {
+                string p = CfgExePath();
+                if (string.IsNullOrEmpty(p)) { sw.SetSilently(false); return; }
+                bool want = sw.Checked;
+                bool ok = IrqMutationBoundary.Run<bool>(delegate
+                {
+                    return FsoTweak.SetForExe(p, want);
+                });
+                sw.SetSilently(FsoTweak.IsDisabledForExe(p));
+                // 兼容层写不进去只有日志里有 界面上开关自己弹回来 看着像开关坏了
+                if (!ok) PaviseDialog.Warn(this, App.DisplayName, Lang.T("cfg.fso.fail"));
+            };
+            cfgRowSync.Add(delegate
+            {
+                string p = CfgExePath();
+                bool ok = !string.IsNullOrEmpty(p);
+                sw.Enabled = ok;
+                sw.SetSilently(ok && FsoTweak.IsDisabledForExe(p));
+            });
         }
 
         private void JumpToNextCfgOverride()
@@ -232,7 +275,7 @@ namespace PaviseApp
 
             ty = 2;
             AddCfgSection(cfgTabPanels[2], Lang.T("cfg.group.mempower"), ref ty,
-                new[] { PolicyCatalog.KeyPowerPlan });
+                new[] { PolicyCatalog.KeyPowerPlan, PolicyCatalog.KeyPowerYield });
             AddCfgSection(cfgTabPanels[2], Lang.T("cfg.sub.net"), ref ty,
                 new[] { PolicyCatalog.KeyPauseDl, PolicyCatalog.KeyPauseUpdate,
                     PolicyCatalog.KeyWlanGuard });
@@ -241,12 +284,15 @@ namespace PaviseApp
             EnableCardCollapse(cfgTabPanels[2]);
 
             ty = 2;
+            AddCfgSection(cfgTabPanels[3], Lang.T("cfg.sub.vram"), ref ty,
+                new[] { PolicyCatalog.KeyVramShield });
             AddCfgSection(cfgTabPanels[3], "NVIDIA", ref ty,
                 new[] { PolicyCatalog.KeyNvMaxPerf, PolicyCatalog.KeyNvLowLat,
                     PolicyCatalog.KeyNvSmoothMotion, PolicyCatalog.KeyNvShaderCache,
                     PolicyCatalog.KeyNvDlss, PolicyCatalog.KeyNvRebar });
             AddCfgSection(cfgTabPanels[3], "AMD", ref ty,
                 new[] { PolicyCatalog.KeyAmdAntiLag, PolicyCatalog.KeyAmdAfmf });
+            AddCfgFsoRow(cfgTabPanels[3], ref ty);
             EnableCardCollapse(cfgTabPanels[3]);
 
             cfgTabKeys = new[]
@@ -257,10 +303,10 @@ namespace PaviseApp
                     PolicyCatalog.KeyIfeoBoost, PolicyCatalog.KeyRenderLane },
                 new[] { PolicyCatalog.KeyStrictCores, PolicyCatalog.KeyCoreDomainAlt,
                     PolicyCatalog.KeyCoreMask },
-                new[] { PolicyCatalog.KeyPowerPlan,
+                new[] { PolicyCatalog.KeyPowerPlan, PolicyCatalog.KeyPowerYield,
                     PolicyCatalog.KeyPauseDl, PolicyCatalog.KeyPauseUpdate,
                     PolicyCatalog.KeyWlanGuard, PolicyCatalog.KeyAwake },
-                new[] { PolicyCatalog.KeyNvMaxPerf,
+                new[] { PolicyCatalog.KeyVramShield, PolicyCatalog.KeyNvMaxPerf,
                     PolicyCatalog.KeyNvLowLat, PolicyCatalog.KeyNvSmoothMotion,
                     PolicyCatalog.KeyNvShaderCache,
                     PolicyCatalog.KeyNvDlss, PolicyCatalog.KeyNvRebar,
@@ -281,7 +327,7 @@ namespace PaviseApp
             {
                 case PolicyCatalog.KeyPreset:
                     return new[] { Lang.T("preset.standard"), Lang.T("preset.competitive"),
-                        Lang.T("preset.custom") };
+                        Lang.T("preset.handheld"), Lang.T("preset.custom") };
                 case PolicyCatalog.KeyNvLowLat:
                     return new[] { Lang.T("frl.off"), Lang.T("nvll.on"), Lang.T("nvll.ultra") };
                 case PolicyCatalog.KeyNvDlss:
@@ -312,6 +358,8 @@ namespace PaviseApp
                 case PolicyCatalog.KeyIfeoBoost: return "gm.ifeo.sub";
                 case PolicyCatalog.KeyRenderLane: return "gm.lane.sub";
                 case PolicyCatalog.KeyPowerPlan: return "cfg.plan.sub";
+                case PolicyCatalog.KeyPowerYield: return "gm.poweryield.sub";
+                case PolicyCatalog.KeyVramShield: return "gm.vramshield.sub";
                 case PolicyCatalog.KeyPauseDl: return "gm.pausedl.sub";
                 case PolicyCatalog.KeyPauseUpdate: return "gm.pausewu.sub";
                 case PolicyCatalog.KeyWlanGuard: return "gm.wlanguard.sub";
@@ -328,13 +376,20 @@ namespace PaviseApp
             }
         }
 
-        private static bool CfgItemSupported(PolicyItem item, out string reasonKey)
+        private bool CfgItemSupported(PolicyItem item, out string reasonKey)
         {
             bool nvOk = NvApi.Available;
             bool amdOk = AdlxTweaks.Available;
             reasonKey = null;
             switch (item.Key)
             {
+                // 门槛跟优化策略页那份一模一样 缺哪条就说哪条 别让人在这里开了之后干等着不生效
+                case PolicyCatalog.KeyPowerYield:
+                    if (!Native.HasSystemBattery()) { reasonKey = "gm.poweryield.desktop"; return false; }
+                    if (!EnergyMeter.Available) { reasonKey = "gm.poweryield.nowatt"; return false; }
+                    if (PowerBudgetYield.Fused) { reasonKey = "gm.poweryield.fused"; return false; }
+                    if (!elevated) { reasonKey = "vbs.needadmin"; return false; }
+                    return true;
                 case PolicyCatalog.KeyNvMaxPerf:
                 case PolicyCatalog.KeyNvLowLat:
                 case PolicyCatalog.KeyNvShaderCache:
@@ -455,10 +510,37 @@ namespace PaviseApp
             picker.IndexChanged = delegate(int index)
             {
                 if (cfgProfile == null) return;
+                bool turningOn = index > 0 && values[index - 1] == "1";
+                // 在这里拨到开 等同于把全局开关打开一次 那两段实验提示必须照弹
+                //   否则从这个页面能绕开优化策略页特意加的门槛 用户全程没见过警告
+                if (turningOn && !ConfirmCfgEnable(key))
+                {
+                    picker.Index = CfgRowIndexOf(item, values);
+                    return;
+                }
                 if (index <= 0) gameMode.ClearProfileOverride(cfgProfileId, key);
                 else gameMode.SetProfileOverride(cfgProfileId, key, values[index - 1]);
+                // 显存驻留在这里拨到开 也等同于全局开关重开一次 熔断要跟着清掉
+                //   否则上次验不过留下的熔断会让这局直接跳过 用户在这个页面无从解除
+                if (turningOn && key == PolicyCatalog.KeyVramShield) VramShield.ClearFuse();
                 SyncCfgRows();
             };
+        }
+
+        // 全局开关带确认的项 逐游戏覆盖到开也要走同一段提示 文案共用一份
+        private bool ConfirmCfgEnable(string key)
+        {
+            string titleKey, warnKey;
+            switch (key)
+            {
+                case PolicyCatalog.KeyVramShield:
+                    titleKey = "gm.vramshield"; warnKey = "vramshield.warn"; break;
+                case PolicyCatalog.KeyPowerYield:
+                    titleKey = "gm.poweryield"; warnKey = "poweryield.warn"; break;
+                default:
+                    return true;
+            }
+            return PaviseDialog.Confirm(this, Lang.T(titleKey), Lang.T(warnKey), DlgKind.Warn);
         }
 
         private void ClearAllCfgOverrides()

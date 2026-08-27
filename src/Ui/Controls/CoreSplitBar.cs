@@ -66,7 +66,8 @@ namespace PaviseApp
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
-            using (var back = new SolidBrush(BackColor)) g.FillRectangle(back, ClientRectangle);
+            if (Backdrop.Active) Backdrop.PaintOnCard(g, this, ClientRectangle);
+            else using (var back = new SolidBrush(BackColor)) g.FillRectangle(back, ClientRectangle);
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
             var head = new Rectangle(0, 0, Width, Theme.S(HeadH));

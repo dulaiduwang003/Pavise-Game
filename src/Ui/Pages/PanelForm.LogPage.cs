@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 构建结构化日志事件流并提供筛选 打开 刷新与清空
 using System;
 using System.Diagnostics;
@@ -22,7 +22,7 @@ namespace PaviseApp
             var telemetry = MakeConsolePanel(pageLog, ContentX, y, ContentW, 70, true);
             var liveDot = new StatusDot();
             liveDot.SetBounds(Theme.S(18), Theme.S(22), Theme.S(24), Theme.S(24));
-            liveDot.Bg = Theme.Card; liveDot.Color = Theme.Accent; liveDot.Pulse = true;
+            liveDot.Bg = Theme.Card; liveDot.FollowAccent = true; liveDot.Pulse = true;
             telemetry.Controls.Add(liveDot);
             CardLabel(telemetry, "PAVISE // EVENT BUS", 50, 11, 260, 20, 7.2f, true, Theme.Faint);
             CardLabel(telemetry, Lang.T("v20.log.live"), 50, 30, 260, 25, 10.5f, true, Theme.Fg);

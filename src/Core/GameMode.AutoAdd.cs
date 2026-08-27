@@ -143,8 +143,9 @@ namespace PaviseApp
             catch { }
         }
 
-        private void SaveAutoIgnoreLocked()
+        private bool SaveAutoIgnoreLocked()
         {
+            if (ProfileStoreSaveFailed) return false;
             try
             {
                 var lines = new List<string>();
@@ -152,9 +153,17 @@ namespace PaviseApp
                 var sorted = new List<string>(autoAddIgnore);
                 sorted.Sort(StringComparer.OrdinalIgnoreCase);
                 lines.AddRange(sorted);
-                AtomicFile.WriteLines(autoIgnorePath, lines.ToArray(), Lang.T("t.autoadd.2"));
+                bool ok = AtomicFile.WriteLines(
+                    autoIgnorePath, lines.ToArray(), Lang.T("t.autoadd.2"));
+                if (!ok) SignalProfileStoreSaveFailure();
+                return ok;
             }
-            catch (Exception ex) { Logger.LogFailure(Lang.T("log.autoadd.7"), ex); }
+            catch (Exception ex)
+            {
+                Logger.LogFailure(Lang.T("log.autoadd.7"), ex);
+                SignalProfileStoreSaveFailure();
+                return false;
+            }
         }
     }
 }

@@ -9,7 +9,7 @@ using System.Reflection;
 namespace PaviseApp
 {
     // 单实例锁挡不住运行模式子进程 TryHandleRuntimeMode 在拿锁之前就 return 了
-    //   所以 --selftest --irq-checkup --cpu-burn 这些会以另一个文件名和主实例并存
+    //   所以 --selftest --cpu-burn 这些会以另一个文件名和主实例并存
     //   扫描里只按进程名等于 selfName 排除自己 换个文件名就排不掉 实测被压到隔离档
     //   后果不只是烦 这些子进程本来就是拿来测量的 被压了测出来的数就是错的
     //

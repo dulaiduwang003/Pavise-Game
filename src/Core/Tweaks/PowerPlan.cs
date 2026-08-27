@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 对局时切换电源计划 退出还原
 using System;
 using System.Collections.Generic;
@@ -65,8 +65,16 @@ namespace PaviseApp
         private static bool active;
         private static Guid target;
         private static bool resolved;
+        private const string IdleDisableClearedKey = "IdleDisableCleared";
         private static bool targetOwned;
         private static int tuneState = -1;
+
+        // 写进方案的那套值有三种 温和 激进 激进但掌机让功耗
+        //   掌机那种在 aggressive 上也是真 所以不能再用 0/1 两态记 否则切档时会被当成没变
+        private static int TuneCode(bool aggressive, bool handheld)
+        {
+            return !aggressive ? 0 : handheld ? 2 : 1;
+        }
 
         public static string CurrentPlanLabel()
         {
@@ -327,15 +335,15 @@ namespace PaviseApp
             catch { g = Guid.Empty; return false; }
         }
 
-        private static bool ActivateInner(bool aggressive)
+        private static bool ActivateInner(bool aggressive, bool handheld)
         {
             if (active) return true;
             Guid tgt = ResolveTarget();
             if (tgt == Guid.Empty) return false;
-            if (targetOwned && tuneState != (aggressive ? 1 : 0))
+            if (targetOwned && tuneState != TuneCode(aggressive, handheld))
             {
-                if (!TuneTarget(tgt, aggressive)) return false;
-                tuneState = aggressive ? 1 : 0;
+                if (!TuneTarget(tgt, aggressive, handheld)) return false;
+                tuneState = TuneCode(aggressive, handheld);
             }
             Guid? cur = Current();
             if (cur == null) return false;
@@ -361,17 +369,17 @@ namespace PaviseApp
             return false;
         }
 
-        public static bool Enforce(bool aggressive)
+        public static bool Enforce(bool aggressive, bool handheld)
         {
             lock (lk)
             {
-                if (!active) return ActivateInner(aggressive);
+                if (!active) return ActivateInner(aggressive, handheld);
                 Guid tgt = ResolveTarget();
                 if (tgt == Guid.Empty) return false;
-                if (targetOwned && tuneState != (aggressive ? 1 : 0))
+                if (targetOwned && tuneState != TuneCode(aggressive, handheld))
                 {
-                    if (!TuneTarget(tgt, aggressive)) return false;
-                    tuneState = aggressive ? 1 : 0;
+                    if (!TuneTarget(tgt, aggressive, handheld)) return false;
+                    tuneState = TuneCode(aggressive, handheld);
                     Set(tgt);
                 }
                 Guid? cur = Current();

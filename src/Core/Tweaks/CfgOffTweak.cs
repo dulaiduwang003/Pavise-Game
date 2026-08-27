@@ -92,6 +92,14 @@ namespace PaviseApp
             }
         }
 
+        internal static bool NeedsApply(string rendererName)
+        {
+            if (!Enabled) return false;
+            string exe = NormalizeExe(rendererName);
+            if (string.IsNullOrEmpty(exe)) return false;
+            lock (lk) return !Listed(exe);
+        }
+
         private static bool ApplyFor(string exe)
         {
             try

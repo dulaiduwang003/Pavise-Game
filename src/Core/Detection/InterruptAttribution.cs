@@ -30,6 +30,7 @@ namespace PaviseApp
 
         public uint EventsLost;
         public uint BuffersLost;
+        public bool Incomplete;
         public bool Lossy { get { return EventsLost > 0 || BuffersLost > 0; } }
     }
 
@@ -66,22 +67,9 @@ namespace PaviseApp
         public static string StartFailureText(InterruptAttribution ia)
         {
             if (ia == null) return Lang.T("irqmove.nosession");
-            if (ia.Busy) return Lang.T("irqcheck.probebusy");
+            if (ia.Busy) return Lang.T("irq.probe.busy");
             return string.IsNullOrEmpty(ia.FailDetail)
                 ? Lang.T("irqmove.nosession") : ia.FailDetail;
-        }
-
-        // 体检起负载之前先看一眼 免得对局中白造 3 秒内存压力再发现探针被占
-        public static bool ProbeOwnedElsewhere()
-        {
-            try
-            {
-                EventWaitHandle existing;
-                if (EventWaitHandle.TryOpenExisting(AliveEventName, out existing))
-                { using (existing) { } return true; }
-            }
-            catch { }
-            return false;
         }
 
         private bool TakeOwnership()
@@ -147,8 +135,82 @@ namespace PaviseApp
         private Thread worker;
         private EventRecordCallback keepAlive;
         private volatile bool started;
+        private volatile bool stopRequested;
+        private volatile bool consumerExitedEarly;
+        private volatile bool processTraceSucceeded;
 
         private sealed class Module { public ulong Base; public ulong End; public string Name; }
+
+        // 逐 DPC 事件时间线 release 可用 由运行时开关控制 默认关 关时零开销
+        //   present 长帧↔DPC 因果对齐要的原料 与聚合路径完全并行 聚合逻辑一行不改
+        //   写入发生在消费线程 OnEvent 里 只 append 一个极轻的 struct(不做模块解析)
+        //   读取只在 Stop 且 worker.Join 之后 单生产单消费无需锁
+        //   曾是 #if PAVISE_SELFTEST 的证伪实验台出口 现提升为 release 常规能力
+        internal struct DpcTimelineEntry
+        {
+            public long StartQpc; // DPC 开始时刻，用于与长帧区间做真正的重叠判定
+            public long EndQpc;   // DPC 结束时刻 与 QueryPerformanceCounter 同一根 QPC 尺子
+            public string Module; // Stop 之后统一解析 热路径不碰
+            public ushort Cpu;
+            public double DpcUs;  // 本次 DPC 时长 微秒
+        }
+
+        // 热路径只落这个更轻的原始标记 模块地址留到 Stop 后再解析 避免每个 DPC 都线性扫模块表
+        private struct DpcMark
+        {
+            public long StartQpc;
+            public long EndQpc;
+            public ulong Routine;
+            public ushort Cpu;
+            public double DpcUs;
+        }
+
+        // 上限封顶止损 照 PresentProbe.FrameCap 的做法 到顶置 Truncated 停记 防长局把内存吃穿
+        //   DpcMark 约 32 字节 200 万条约 64MB 会话期占用 结束即释放
+        private const int DpcTimelineCap = 2000000;
+        private volatile bool captureTimeline;      // 运行时开关 默认关
+        private bool timelineTruncated;
+        private List<DpcMark> dpcMarks;
+        private List<DpcTimelineEntry> dpcTimeline;
+
+        // 采集前调用(Start 之前) 打开逐事件 DPC 时间线记录
+        internal void EnableDpcTimeline()
+        {
+            captureTimeline = true;
+            timelineTruncated = false;
+            dpcMarks = new List<DpcMark>(1 << 18);
+        }
+        // Stop() 之后取回本局逐事件 DPC 时间线(已解析模块名) 未采到返回 null
+        internal List<DpcTimelineEntry> DpcTimeline { get { return dpcTimeline; } }
+        // 时间线是否因到达上限被截断
+        internal bool DpcTimelineTruncated { get { return timelineTruncated; } }
+        // 会话所用 QPC 频率 与 present 会话同一根尺子
+        internal long QpcFrequencyValue { get { return qpcFrequency; } }
+
+        // Stop 且 worker.Join 之后调用 把原始标记按模块地址解析成时间线
+        //   单次解析用小缓存 独立例程地址很少 均摊 O(条数)
+        private void BuildDpcTimeline()
+        {
+            dpcTimeline = null;
+            List<DpcMark> marks = dpcMarks;
+            dpcMarks = null;
+            if (!captureTimeline || marks == null) return;
+            var cache = new Dictionary<ulong, string>();
+            var tl = new List<DpcTimelineEntry>(marks.Count);
+            for (int i = 0; i < marks.Count; i++)
+            {
+                DpcMark m = marks[i];
+                string mod;
+                if (!cache.TryGetValue(m.Routine, out mod))
+                {
+                    mod = Resolve(m.Routine) ?? "?";
+                    cache[m.Routine] = mod;
+                }
+                tl.Add(new DpcTimelineEntry
+                    { StartQpc = m.StartQpc, EndQpc = m.EndQpc, Module = mod, Cpu = m.Cpu, DpcUs = m.DpcUs });
+            }
+            dpcTimeline = tl;
+        }
 
         public bool Start()
         {
@@ -219,9 +281,12 @@ namespace PaviseApp
 
                 worker = new Thread(RunProcessTrace);
                 worker.IsBackground = true;
-                // 体检负载会抢满带宽 消费回调若再被调度压后 缓冲回收更慢 丢事件更多
-                //   拉到最高优先级只保证排空线程总能第一时间被调度 带宽给不了但调度不再添乱
+                // 对局中的设备中断可能短时爆发 消费回调若被调度压后 缓冲回收会变慢并丢事件
+                //   排空线程只负责读取 ETW 缓冲 大部分时间阻塞等待 提高优先级可减少采样自身造成的丢失
                 try { worker.Priority = ThreadPriority.Highest; } catch { }
+                stopRequested = false;
+                consumerExitedEarly = false;
+                processTraceSucceeded = false;
                 worker.Start();
                 started = true;
                 return true;
@@ -233,9 +298,24 @@ namespace PaviseApp
             try
             {
                 ulong[] handles = { traceHandle };
-                ProcessTrace(handles, 1, IntPtr.Zero, IntPtr.Zero);
+                uint rc = ProcessTrace(handles, 1, IntPtr.Zero, IntPtr.Zero);
+                processTraceSucceeded = rc == 0;
+                if (rc != 0) consumerExitedEarly = true;
             }
-            catch { }
+            catch { consumerExitedEarly = true; }
+            finally { if (!stopRequested) consumerExitedEarly = true; }
+        }
+
+        internal static bool CaptureComplete(bool stopSucceeded, bool workerDone,
+            bool processSucceeded, bool exitedEarly)
+        {
+            return stopSucceeded && workerDone && processSucceeded && !exitedEarly;
+        }
+
+        internal static long SafeTimelineStart(long startQpc, long endQpc, long maxTicks)
+        {
+            long ticks = endQpc - startQpc;
+            return ticks >= 0 && ticks <= maxTicks ? startQpc : endQpc;
         }
 
         public InterruptAttributionResult Stop()
@@ -244,21 +324,26 @@ namespace PaviseApp
             lock (gate)
             {
                 if (!started) { result.Error = Lang.T("t.interruptattribution.4"); return result; }
-                uint lost, lostBuffers;
-                StopStale(out lost, out lostBuffers);
+                stopRequested = true;
+                uint lost, lostBuffers, stopError;
+                bool stopSucceeded = StopStale(out lost, out lostBuffers, out stopError);
                 result.EventsLost = lost;
                 result.BuffersLost = lostBuffers;
-                try { if (traceHandle != 0) CloseTrace(traceHandle); } catch { }
-                // 排空等待放宽到 10 秒 2 秒是按空闲机器估的
-                //   CloseTrace 之后 ProcessTrace 还要把缓冲里积压的事件逐个回调完才返回
-                //   体检窗口本身就是满负载 事件量大 排空慢 2 秒会把正常收尾误判成卡死
+                // 控制器成功停会话后，实时 ProcessTrace 会排空并自行返回；其后再 CloseTrace。
+                // 停止失败只能先关消费句柄解除阻塞，这种样本必须标不完整。
+                if (!stopSucceeded)
+                    try { if (traceHandle != 0) CloseTrace(traceHandle); } catch { }
+                //   高事件量对局收尾时仍可能需要排空积压 2 秒会把正常收尾误判成卡死
                 bool workerDone = true;
                 if (worker != null) { try { workerDone = worker.Join(10000); } catch { workerDone = false; } }
+                if (stopSucceeded)
+                    try { if (traceHandle != 0) CloseTrace(traceHandle); } catch { }
+                result.Incomplete = !CaptureComplete(
+                    stopSucceeded, workerDone, processTraceSucceeded, consumerExitedEarly);
                 started = false;
                 // 无论排空成功与否都要交还探针所有权
                 //   早先这里直接 return 把 aliveOwned 一路留着
-                //   之后每次体检都在 ProbeOwnedElsewhere 那道门上被判「探针被占」
-                //   一次超时就让后面每一次都失败 只能重启进程才恢复
+                //   否则一次异常就会让后续每局都被判「观测被占」 只能重启进程才恢复
                 ReleaseOwnership();
                 if (!workerDone)
                 {
@@ -267,6 +352,9 @@ namespace PaviseApp
                     return result;
                 }
                 keepAlive = null;
+
+                // worker 已 Join 原始标记稳定 单线程内解析出逐事件 DPC 时间线
+                BuildDpcTimeline();
 
                 var byMod = new Dictionary<string, DriverInterrupt>();
                 var dpcBuckets = new Dictionary<string, long[]>();
@@ -289,7 +377,7 @@ namespace PaviseApp
                     long ta = a.Dpc + a.Isr, tb = b.Dpc + b.Isr;
                     return tb.CompareTo(ta);
                 });
-                result.Ok = dpcTotal + isrTotal > 0;
+                result.Ok = dpcTotal + isrTotal > 0 && !result.Incomplete;
                 if (!result.Ok) result.Error = Lang.T("t.interruptattribution.6");
                 else if (result.Lossy)
                 {
@@ -297,6 +385,8 @@ namespace PaviseApp
                     result.Error = Lang.F("t.interruptattribution.7", result.EventsLost, result.BuffersLost);
                     Logger.Log(Lang.F("log.interruptattribution.lossy", result.EventsLost, result.BuffersLost));
                 }
+                if (result.Incomplete)
+                    result.Error = "ETW 消费或停止未完整 win32=" + stopError;
                 return result;
             }
         }
@@ -377,6 +467,23 @@ namespace PaviseApp
                 st.Buckets[BucketOf(ticks)]++;
             }
             if (isr) isrTotal++; else dpcTotal++;
+
+            // 逐事件 DPC 时间线 额外多存一条 极轻 append(不解析模块 模块地址留到 Stop 后再解析)
+            //   聚合逻辑上面一行未动 这里只是并行追加 开关关时(默认)整段被首个 bool 短路 零开销
+            if (dpc && captureTimeline && !timelineTruncated && dpcMarks != null)
+            {
+                if (dpcMarks.Count >= DpcTimelineCap) timelineTruncated = true;
+                else dpcMarks.Add(new DpcMark
+                {
+                    // ETW 已判为坏时长时不能再把不可信 start 当成一个可能横跨数秒的
+                    // 区间参与长帧对齐；退化成结束时刻的点事件，保留归因但不制造假重叠。
+                    StartQpc = SafeTimelineStart(startQpc, endQpc, sanityMaxTicks),
+                    EndQpc = endQpc,
+                    Routine = routine,
+                    Cpu = cpu,
+                    DpcUs = timed ? ticks * usPerTick : 0.0
+                });
+            }
         }
 
         private int BucketOf(long ticks)
@@ -435,9 +542,9 @@ namespace PaviseApp
             p.Wnode.Flags = WnodeFlagTracedGuid;
             p.Wnode.Guid = SessionGuid;
             p.Wnode.ClientContext = 1;
-            // 池子从 4MB(32×128KB)扩到 32MB 体检全程跑内存带宽负载 消费回调被抢带宽 排空变慢
-            //   突发时旧池几秒就撑爆 内核没有空闲缓冲只能丢事件 表现为 EventsLost 高而 BuffersLost 为 0
-            //   32MB 约可缓冲 25 万个 DPC/ISR 事件 足够扛过消费端的带宽饥饿期 会话仅在观测时占用 结束即释放
+            // 池子从 4MB(32×128KB)扩到 32MB 以容纳对局中 DPC/ISR 的短时爆发
+            //   旧池耗尽时内核没有空闲缓冲只能丢事件 表现为 EventsLost 高而 BuffersLost 为 0
+            //   32MB 约可缓冲 25 万个事件 会话仅在真实对局观测时占用 结束即释放
             p.BufferSize = 128;
             p.MinimumBuffers = 64;
             p.MaximumBuffers = 256;
@@ -458,13 +565,13 @@ namespace PaviseApp
 
         private static void StopStale()
         {
-            uint lost, buffers;
-            StopStale(out lost, out buffers);
+            uint lost, buffers, error;
+            StopStale(out lost, out buffers, out error);
         }
 
-        private static void StopStale(out uint eventsLost, out uint buffersLost)
+        private static bool StopStale(out uint eventsLost, out uint buffersLost, out uint error)
         {
-            eventsLost = 0; buffersLost = 0;
+            eventsLost = 0; buffersLost = 0; error = 0;
             int nameBytes = (SessionName.Length + 1) * 2;
             int size = Marshal.SizeOf(typeof(EventTraceProperties)) + nameBytes + 16;
             IntPtr props = Marshal.AllocHGlobal(size);
@@ -476,12 +583,14 @@ namespace PaviseApp
                 p.Wnode.Guid = SessionGuid;
                 p.LoggerNameOffset = (uint)Marshal.SizeOf(typeof(EventTraceProperties));
                 Marshal.StructureToPtr(p, props, false);
-                if (ControlTrace(0, SessionName, props, ControlStop) != 0) return;
+                uint rc = ControlTrace(0, SessionName, props, ControlStop);
+                if (rc != 0) { error = rc; return false; }
                 var done = (EventTraceProperties)Marshal.PtrToStructure(props, typeof(EventTraceProperties));
                 eventsLost = done.EventsLost;
                 buffersLost = done.RealTimeBuffersLost + done.LogBuffersLost;
+                return true;
             }
-            catch { }
+            catch { error = uint.MaxValue; return false; }
             finally { Marshal.FreeHGlobal(props); }
         }
 

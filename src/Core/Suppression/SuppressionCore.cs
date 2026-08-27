@@ -83,6 +83,8 @@ namespace PaviseApp
         private readonly Dictionary<int, bool> batchApplyResults = new Dictionary<int, bool>();
         private readonly Dictionary<int, string> batchApplyErrors = new Dictionary<int, string>();
         private long applyOperations;
+        private Action mutationBegin;
+        private Action mutationEnd;
         [ThreadStatic] private static string lastApplyError;
         public string LastApplyError
         {
@@ -130,6 +132,36 @@ namespace PaviseApp
         }
 
         public ulong ThrottleMask { get { return throttleMask; } }
+
+        public void ConfigureMutationBoundary(Action begin, Action end)
+        {
+            lock (sync)
+            {
+                mutationBegin = begin;
+                mutationEnd = end;
+            }
+        }
+
+        private void BeginMutation()
+        {
+            Action callback;
+            lock (sync) callback = mutationBegin;
+            if (callback != null) try { callback(); } catch { }
+        }
+
+        private void EndMutation()
+        {
+            Action callback;
+            lock (sync) callback = mutationEnd;
+            if (callback != null) try { callback(); } catch { }
+        }
+
+        private bool RunMutation(Func<bool> action)
+        {
+            BeginMutation();
+            try { return action != null && action(); }
+            finally { EndMutation(); }
+        }
 
 
         public void RefreshTopologyMasks() { throttleMask = CpuTopology.ThrottleMask; }

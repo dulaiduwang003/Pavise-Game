@@ -109,6 +109,9 @@ namespace PaviseApp
         private bool ApplyThrottle(IntPtr h, SuppressionLevel level, uint originalPriority, ulong originalAffinity,
             uint[] originalCpuSets, int desiredGpu, int origBoost)
         {
+            BeginMutation();
+            try
+            {
             Interlocked.Increment(ref applyOperations);
             var failed = new List<string>();
             uint desiredPriority = DesiredPriority(level, originalPriority);
@@ -178,6 +181,8 @@ namespace PaviseApp
             if (Native.PowerThrottlingSupported && !EcoStateVisible(h)) failed.Add("eco-readback");
             LastApplyError = string.Join(",", failed.ToArray());
             return failed.Count == 0;
+            }
+            finally { EndMutation(); }
         }
 
         private static bool EcoStateVisible(IntPtr h)
@@ -287,8 +292,12 @@ namespace PaviseApp
                     if (!Native.QueryProcessSample(h, out creation, out cpu, out io)) return RestoreResult.Protected;
                     if (creation != e.Creation) return RestoreResult.Gone;
                 }
-                if (RestoreValues(h, e.OrigPri, e.OrigAff, e.OrigIo, e.OrigPg, allMask, e.OrigCpuSets,
-                        e.OrigQoSControl, e.OrigQoSState, e.OrigGpu, e.OrigBoost))
+                if (RunMutation(delegate
+                    {
+                        return RestoreValues(h, e.OrigPri, e.OrigAff, e.OrigIo, e.OrigPg,
+                            allMask, e.OrigCpuSets, e.OrigQoSControl, e.OrigQoSState,
+                            e.OrigGpu, e.OrigBoost);
+                    }))
                     return RestoreResult.Restored;
                 return Native.StillActive(h) ? RestoreResult.Protected : RestoreResult.Gone;
             }
@@ -366,30 +375,34 @@ namespace PaviseApp
         {
             if (e == null || e.OrigPri == uint.MaxValue) return false;
             if (!FullyBlockedDetail(LastApplyError)) return false;
-
-            if (Native.PowerThrottlingSupported)
-                Native.RestorePowerThrottling(h, e.OrigQoSControl, e.OrigQoSState);
-            if (e.OrigBoost == 0) Native.TrySetBoostDisabled(h, false);
-            if (e.OrigGpu >= 0)
+            BeginMutation();
+            try
             {
-                int gpuCur;
-                if (Native.D3DKMTGetProcessSchedulingPriorityClass(h, out gpuCur) == 0 && gpuCur != e.OrigGpu)
-                    Native.D3DKMTSetProcessSchedulingPriorityClass(h, e.OrigGpu);
-            }
-            if (!SnapshotMatchesCurrent(h, e.OrigPri, e.OrigAff, e.OrigIo, e.OrigPg,
-                    e.OrigCpuSets, e.OrigQoSControl, e.OrigQoSState, e.OrigGpu))
-                return false;
+                if (Native.PowerThrottlingSupported)
+                    Native.RestorePowerThrottling(h, e.OrigQoSControl, e.OrigQoSState);
+                if (e.OrigBoost == 0) Native.TrySetBoostDisabled(h, false);
+                if (e.OrigGpu >= 0)
+                {
+                    int gpuCur;
+                    if (Native.D3DKMTGetProcessSchedulingPriorityClass(h, out gpuCur) == 0 && gpuCur != e.OrigGpu)
+                        Native.D3DKMTSetProcessSchedulingPriorityClass(h, e.OrigGpu);
+                }
+                if (!SnapshotMatchesCurrent(h, e.OrigPri, e.OrigAff, e.OrigIo, e.OrigPg,
+                        e.OrigCpuSets, e.OrigQoSControl, e.OrigQoSState, e.OrigGpu))
+                    return false;
 
-            e.OrigPri = uint.MaxValue;
-            e.Applied = false;
-            e.NextRetryTicks = 0;
-            PersistJournalLocked();
-            bool newlyListed = SelfProtectedRoster.Mark(e.Name);
-            if (newlyListed || ShouldLogProtected(e.Name + "-unwritable"))
-                Logger.Log(Lang.T("log.suppressioncoreapply.1") + e.Name + " pid " + pid
-                    + Lang.T("log.suppressioncoreapply.2")
-                    + (newlyListed ? Lang.T("log.suppressioncoreapply.3") : ""));
-            return true;
+                e.OrigPri = uint.MaxValue;
+                e.Applied = false;
+                e.NextRetryTicks = 0;
+                PersistJournalLocked();
+                bool newlyListed = SelfProtectedRoster.Mark(e.Name);
+                if (newlyListed || ShouldLogProtected(e.Name + "-unwritable"))
+                    Logger.Log(Lang.T("log.suppressioncoreapply.1") + e.Name + " pid " + pid
+                        + Lang.T("log.suppressioncoreapply.2")
+                        + (newlyListed ? Lang.T("log.suppressioncoreapply.3") : ""));
+                return true;
+            }
+            finally { EndMutation(); }
         }
     }
 }

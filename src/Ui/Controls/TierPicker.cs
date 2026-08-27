@@ -132,7 +132,7 @@ namespace PaviseApp
         protected override void OnMouseUp(MouseEventArgs e)
         {
             base.OnMouseUp(e);
-            if (e.Button != MouseButtons.Left) return;
+            if (!Enabled || e.Button != MouseButtons.Left) return;
             int hit = HitIndex(e.Location);
             if (hit < 0 || hit == idx) return;
             idx = hit;
@@ -145,7 +145,8 @@ namespace PaviseApp
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
-            using (var bg = new SolidBrush(BackColor)) g.FillRectangle(bg, ClientRectangle);
+            if (Backdrop.Active) Backdrop.PaintOnCard(g, this, ClientRectangle);
+            else using (var bg = new SolidBrush(BackColor)) g.FillRectangle(bg, ClientRectangle);
             g.SmoothingMode = SmoothingMode.AntiAlias;
             int count = Count;
             if (!slideReady && Width > 0) { slide.Set(SegmentRect(idx).X); slideReady = true; }
@@ -178,9 +179,12 @@ namespace PaviseApp
                 string label = Labels != null && i < Labels.Length ? Labels[i]
                     : LabelFor(Order[Math.Min(i, Order.Length - 1)]);
                 TextRenderer.DrawText(g, label, Theme.UI(8.25f, selected), r,
-                    selected ? Theme.Fg : Theme.Dim,
+                    !Enabled ? Theme.Faint : selected ? Theme.Fg : Theme.Dim,
                     TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
             }
+            if (!Enabled)
+                using (var veil = new SolidBrush(Col.Alpha(Theme.Card, Theme.LightMode ? 104 : 138)))
+                    g.FillRectangle(veil, ClientRectangle);
         }
 
         private static string LabelFor(SuppressionLevel level)

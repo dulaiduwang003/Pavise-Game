@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 计算名称 精确路径和应用家族白名单的当前进程边界
 using System;
 using System.Collections.Generic;
@@ -21,6 +21,9 @@ namespace PaviseApp
             public ulong Io;
         }
 
+        // 不变量 这个结构在 EvaluateWhitelist 里一次构造完成 返回之后所有字典只读
+        //   压制侧在 whiteEvalSync 下读 规则视图那条路却是在 sync 下读 ByRule
+        //   两把锁不互斥 全靠"构造后不再改"这条撑着 谁要是在返回后往里写就会变成真竞争
         private sealed class WhitelistEvaluation
         {
             public readonly HashSet<int> Protected = new HashSet<int>();
@@ -30,6 +33,10 @@ namespace PaviseApp
                 new Dictionary<int, WhitelistProcessInfo>();
             public readonly Dictionary<int, int> Parents = new Dictionary<int, int>();
             public readonly Dictionary<int, string> Names = new Dictionary<int, string>();
+            // 白名单家族判定本来就要按创建时间认亲 这份表顺手挂出来给压制侧共用
+            //   两边都是每轮全量进程遍历 各建一份等于把同一件事做两遍
+            //   跟上面几个一样 构造完就不许再写 详见类头那条不变量
+            public readonly Dictionary<int, long> Creations = new Dictionary<int, long>();
         }
 
         private readonly List<WhitelistRule> whiteRules = new List<WhitelistRule>();
@@ -89,7 +96,7 @@ namespace PaviseApp
                         retained[pair.Key] = new Dictionary<int, long>(pair.Value);
                 }
 
-                var currentCreation = new Dictionary<int, long>();
+                Dictionary<int, long> currentCreation = result.Creations;
                 foreach (var pair in result.Processes)
                     if (pair.Value.Creation > 0) currentCreation[pair.Key] = pair.Value.Creation;
 

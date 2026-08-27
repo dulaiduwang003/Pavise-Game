@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 构建概览页 核心动画 守护状态与仪表盘图块
 using System;
 using System.Drawing;
@@ -14,6 +14,7 @@ namespace PaviseApp
         private Label lblStatus;
         private Label lblOverviewBoost, lblEvidenceLive;
         private Label lblHeroMode, lblHeroSource;
+        private Label lblLastSession;
 
         private void BuildOverviewPage()
         {
@@ -54,7 +55,13 @@ namespace PaviseApp
 
             AddOverviewDivider(guard, 286, rightW);
             CardLabel(guard, Lang.T("v20.last.session"), 24, 312, rightW - 48, 22, 9f, false, Theme.Faint);
-            CardLabel(guard, Lang.T("v20.no.data"), 24, 342, rightW - 48, 24, 9.2f, false, Theme.Dim);
+            // 摘要落在注册表 重启后仍然显示上一局 而不是又退回"暂无数据"
+            string brief = GameMode.LastSessionBrief;
+            lblLastSession = CardLabel(guard,
+                brief.Length > 0 ? brief : Lang.T("v20.no.data"),
+                24, 342, rightW - 48, 24, 9.2f, false,
+                brief.Length > 0 ? Theme.Fg : Theme.Dim);
+            lblLastSession.AutoEllipsis = true;
 
             int tileY = y + coreH + 26;
             int tileW = (ContentW - 54) / 3;
@@ -75,16 +82,67 @@ namespace PaviseApp
             status.Controls.Add(topEdge);
             var readyDot = new StatusDot();
             readyDot.SetBounds(Theme.S(30), Theme.S(25), Theme.S(20), Theme.S(20));
-            readyDot.Bg = Theme.Nav; readyDot.Color = Theme.Accent;
+            readyDot.Bg = Theme.Nav; readyDot.FollowAccent = true;
             status.Controls.Add(readyDot);
-            lblEvidenceLive = CardLabel(status, Lang.F("v20.ready", App.Version), 58, 22, 260, 26, 9f, true, Theme.Faint);
+            lblEvidenceLive = CardLabel(status, Lang.F("v20.ready", App.Version), 58, 22, 205, 26, 9f, true, Theme.Faint);
             lblEvidenceLive.TextAlign = ContentAlignment.MiddleLeft;
+
+            // 底栏左边是版本号 右边是深度调优入口 中间这段放三个外链
+            //   不等宽是有意的 教程那条标题最长 平分的话它会被省略号截掉
+            //   按钮内部左侧图标占 43 右端外链角标占 32 剩下才是文字可用宽度
+            int linkY = 12, linkH = 46, linkGap = 10;
+            int guideW = 176, otherW = 142;
+            int gx = 276;
+            AddOverviewLink(status, gx, linkY, guideW, linkH,
+                Lang.T("v211.link.guide"), "GUIDE // 01", "info", App.GuideUrl);
+            gx += guideW + linkGap;
+            AddOverviewLink(status, gx, linkY, otherW, linkH,
+                Lang.T("v211.link.survey"), "SURVEY // 02", "chart", App.SurveyUrl);
+            gx += otherW + linkGap;
+            AddOverviewLink(status, gx, linkY, otherW, linkH,
+                Lang.T("v211.link.bug"), "REPORT // 03", "search", App.BugUrl);
+
             var advanced = new AdvancedEntryButton(Lang.T("v20.advanced.entry"));
             advanced.Bg = Theme.Nav;
             advanced.SetBounds(Theme.S(PageW - 226), Theme.S(12), Theme.S(196), Theme.S(46));
             status.Controls.Add(advanced);
             advanced.Click += delegate { ToggleAdvancedPanel(); };
             UpdateModePresentation(false);
+        }
+
+        // 由 GameMode 的会话摘要事件驱动 一局一次 对局中不做任何事
+        public void NotifyLastSession(string brief)
+        {
+            try
+            {
+                if (!IsHandleCreated || IsDisposed || string.IsNullOrEmpty(brief)) return;
+                BeginInvoke((MethodInvoker)delegate
+                {
+                    if (IsDisposed || lblLastSession == null) return;
+                    lblLastSession.Text = brief;
+                    lblLastSession.ForeColor = Theme.Fg;
+                });
+            }
+            catch { }
+        }
+
+        private void AddOverviewLink(Control parent, int x, int y, int w, int h,
+            string text, string code, string glyph, string url)
+        {
+            var btn = new RogLinkButton(text, code, glyph);
+            btn.Bg = Theme.Nav;
+            btn.SetBounds(Theme.S(x), Theme.S(y), Theme.S(w), Theme.S(h));
+            btn.Click += delegate { OpenExternal(url); };
+            parent.Controls.Add(btn);
+        }
+
+        // 只放行写死在 App 里的 https 常量 不接受任何运行期拼出来的地址
+        private void OpenExternal(string url)
+        {
+            if (string.IsNullOrEmpty(url)) return;
+            if (!url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return;
+            try { using (System.Diagnostics.Process.Start(url)) { } }
+            catch { PaviseDialog.Warn(this, App.DisplayName, Lang.T("v211.link.failed")); }
         }
 
         private void AddOverviewDivider(Control parent, int y, int width)

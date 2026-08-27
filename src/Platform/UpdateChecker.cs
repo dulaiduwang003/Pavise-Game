@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 检查项目版本并返回更新地址 直连与国内镜像多条线路并发赛跑
+// 文件用途 检查项目版本并返回更新地址 清单在自家对象存储 下载走网盘
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -26,33 +26,19 @@ namespace PaviseApp
         private const int GraceAfterFirstHitMs = 2500;
         private const int MaxBodyBytes = 256 * 1024;
 
-        private const string VersionFile = "version.json";
-        private const string VersionBranch = "main";
-
+        // 清单域名和下载域名共用这一份白名单 清单里读到的地址不在里面就退回官方网盘
         private static readonly string[] TrustedHosts =
         {
-            "github.com", "githubusercontent.com", "githubassets.com",
-            "ghproxy.net", "gh-proxy.com", "ghfast.top",
-            "jsdelivr.net", "jsdelivr.com", "gitee.com",
+            "aliyuncs.com",
             "lanzou.com", "lanzoux.com", "lanzoui.com", "lanzouy.com", "lanzn.com",
             "123pan.com", "123pan.cn", "123684.com",
             "pan.baidu.com", "alipan.com", "aliyundrive.com", "quark.cn"
         };
 
-        private enum Feed
-        {
-            Redirect,
-            GitHubJson,
-            Manifest,
-            JsDelivrApi
-        }
-
         private sealed class Source
         {
             public string Name;
             public string Url;
-            public Feed Kind;
-            public bool TrustDownload;
         }
 
         public static void CheckAsync(Action<UpdateResult> done)
@@ -64,33 +50,16 @@ namespace PaviseApp
             });
         }
 
-        private static string RawPath
-        {
-            get { return App.RepoName + "/" + VersionBranch + "/" + VersionFile; }
-        }
-
+        // 同一个清单的两条路 直连和传输加速 谁先回来用谁 要再加备用往数组里添就是
+        //   查询串每次都不一样 沿途缓存留住的旧版本号绕不过去 上传时压的 no-cache 是另一头
         private static Source[] BuildSources()
         {
-            string raw = "https://raw.githubusercontent.com/" + RawPath;
+            string bust = "?t=" + DateTime.UtcNow.Ticks.ToString(
+                System.Globalization.CultureInfo.InvariantCulture);
             return new[]
             {
-                new Source { Name = Lang.T("t.updatechecker.1"), Kind = Feed.Redirect,
-                    Url = App.ReleasesUrl + "/latest", TrustDownload = true },
-                new Source { Name = "GitHub API", Kind = Feed.GitHubJson,
-                    Url = "https://api.github.com/repos/" + App.RepoName + "/releases/latest", TrustDownload = true },
-                new Source { Name = Lang.T("t.updatechecker.2"), Kind = Feed.Manifest, Url = raw, TrustDownload = true },
-                new Source { Name = "ghproxy", Kind = Feed.Manifest,
-                    Url = "https://ghproxy.net/" + raw },
-                new Source { Name = "gh-proxy", Kind = Feed.Manifest,
-                    Url = "https://gh-proxy.com/" + raw },
-                new Source { Name = "ghfast", Kind = Feed.Manifest,
-                    Url = "https://ghfast.top/" + raw },
-                new Source { Name = "jsDelivr", Kind = Feed.Manifest,
-                    Url = "https://fastly.jsdelivr.net/gh/" + App.RepoName + "@" + VersionBranch + "/" + VersionFile },
-                new Source { Name = "jsDelivr gcore", Kind = Feed.Manifest,
-                    Url = "https://gcore.jsdelivr.net/gh/" + App.RepoName + "@" + VersionBranch + "/" + VersionFile },
-                new Source { Name = Lang.T("t.updatechecker.3"), Kind = Feed.JsDelivrApi,
-                    Url = "https://data.jsdelivr.com/v1/packages/gh/" + App.RepoName }
+                new Source { Name = Lang.T("t.updatechecker.1"), Url = App.VersionFeedUrl + bust },
+                new Source { Name = Lang.T("t.updatechecker.2"), Url = App.VersionFeedUrlAccelerate + bust }
             };
         }
 
@@ -169,52 +138,42 @@ namespace PaviseApp
 
         private static UpdateResult Probe(Source src)
         {
-            string tag = null, download = null;
+            string body = FetchText(src.Url);
+            if (body == null) return null;
 
-            if (src.Kind == Feed.Redirect)
-            {
-                tag = TagFromReleaseUrl(FetchLocation(src.Url));
-            }
-            else
-            {
-                string body = FetchText(src.Url, src.Kind == Feed.GitHubJson);
-                if (body == null) return null;
-                if (src.Kind == Feed.GitHubJson)
-                {
-                    tag = JsonValue(body, "tag_name");
-                    download = JsonValue(body, "browser_download_url");
-                }
-                else if (src.Kind == Feed.Manifest)
-                {
-                    tag = JsonValue(body, "version");
-                    download = JsonValue(body, "mirror");
-                    if (string.IsNullOrEmpty(download)) download = JsonValue(body, "url");
-                }
-                else
-                {
-                    tag = JsonValue(body, "version");
-                }
-            }
+            return ParseManifest(body, src.Name);
+        }
 
+        internal static UpdateResult ParseManifest(string body, string source)
+        {
+            if (string.IsNullOrEmpty(body)) return null;
+            if (Encoding.UTF8.GetByteCount(body) > MaxBodyBytes) return null;
+            string tag = JsonValue(body, "version");
             if (string.IsNullOrEmpty(tag)) return null;
-            if (ParseVer(tag).Length == 0) return null;
+            if (!IsCanonicalManifestVersion(tag)) return null;
+
+            // 下载地址写在清单里 网盘换地方只改清单 不必为此发一个新版本
+            string mirror = JsonValue(body, "mirror");
+            string url = JsonValue(body, "url");
+            string download = IsTrustedDownloadUrl(mirror) ? mirror
+                : (IsTrustedDownloadUrl(url) ? url : null);
+            if (download == null) return null;
 
             var r = new UpdateResult();
             r.Ok = true;
             r.Latest = tag;
-            r.Source = src.Name;
-            if (!src.TrustDownload) download = null;
-            r.Url = string.IsNullOrEmpty(download) ? App.ReleasesUrl + "/latest" : download;
-            if (!IsTrustedDownloadUrl(r.Url)) r.Url = App.ReleasesUrl;
+            r.Source = source;
+            r.Url = download;
             return r;
         }
 
-        private static string TagFromReleaseUrl(string url)
+        private static bool IsCanonicalManifestVersion(string tag)
         {
-            if (url == null) return null;
-            int p = url.IndexOf("/releases/tag/", StringComparison.OrdinalIgnoreCase);
-            if (p < 0) return null;
-            return Uri.UnescapeDataString(url.Substring(p + "/releases/tag/".Length).TrimEnd('/'));
+            if (string.IsNullOrEmpty(tag) || tag.Trim() != tag) return false;
+            Version parsed;
+            if (!Version.TryParse(tag, out parsed) || parsed.Revision < 0) return false;
+            try { return parsed.ToString(4) == tag; }
+            catch { return false; }
         }
 
         private static HttpWebRequest NewRequest(string url)
@@ -227,44 +186,28 @@ namespace PaviseApp
             return req;
         }
 
-        private static string FetchLocation(string url)
-        {
-            try
-            {
-                HttpWebRequest req = NewRequest(url);
-                req.AllowAutoRedirect = false;
-                using (var rsp = (HttpWebResponse)req.GetResponse())
-                {
-                    int code = (int)rsp.StatusCode;
-                    if (code < 300 || code >= 400) return null;
-                    string loc = rsp.Headers["Location"];
-                    if (loc != null && loc.StartsWith("/")) loc = "https://github.com" + loc;
-                    return loc;
-                }
-            }
-            catch { return null; }
-        }
-
-        private static string FetchText(string url, bool githubApi)
+        private static string FetchText(string url)
         {
             try
             {
                 HttpWebRequest req = NewRequest(url);
                 req.AllowAutoRedirect = true;
-                if (githubApi) req.Accept = "application/vnd.github+json";
                 using (var rsp = (HttpWebResponse)req.GetResponse())
                 using (Stream raw = rsp.GetResponseStream())
                 {
                     if (raw == null) return null;
+                    if (rsp.ContentLength > MaxBodyBytes) return null;
                     var buf = new byte[8192];
                     var mem = new MemoryStream();
                     int n;
                     while ((n = raw.Read(buf, 0, buf.Length)) > 0)
                     {
+                        if (mem.Length + n > MaxBodyBytes) { mem.Dispose(); return null; }
                         mem.Write(buf, 0, n);
-                        if (mem.Length > MaxBodyBytes) break;
                     }
-                    return Encoding.UTF8.GetString(mem.ToArray());
+                    byte[] body = mem.ToArray();
+                    mem.Dispose();
+                    return Encoding.UTF8.GetString(body);
                 }
             }
             catch { return null; }
@@ -311,6 +254,7 @@ namespace PaviseApp
                             sb.Append(json[p]);
                             p++;
                         }
+                        if (p >= json.Length || json[p] != '"') return null;
                         string v = sb.ToString();
                         if (v.Length > 0) return v;
                     }

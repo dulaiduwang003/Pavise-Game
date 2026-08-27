@@ -7,6 +7,8 @@ namespace PaviseApp
     internal static class SelfYield
     {
         private static readonly object sync = new object();
+        private static Action mutationBegin;
+        private static Action mutationEnd;
         private static bool engaged;
         private static uint origPriority;
         private static int origIo = -1;
@@ -15,6 +17,15 @@ namespace PaviseApp
         private static IntPtr Self { get { return (IntPtr)(-1); } }
 
         public static bool Engaged { get { lock (sync) return engaged; } }
+
+        public static void ConfigureMutationBoundary(Action begin, Action end)
+        {
+            lock (sync)
+            {
+                mutationBegin = begin;
+                mutationEnd = end;
+            }
+        }
 
         public static void Engage()
         {
@@ -27,16 +38,23 @@ namespace PaviseApp
                 origPriority = pri;
                 origIo = Native.QueryIoPriority(h);
                 origCpuSets = Native.QueryCpuSets(h);
-                bool moved = false;
-                uint[] yieldIds = CpuTopology.BackgroundYieldCpuSetIds();
-                if (yieldIds != null && yieldIds.Length > 0)
-                    moved = Native.TrySetCpuSets(h, yieldIds);
-                bool lowered = false;
-                if (!moved)
-                    lowered = pri == Native.BELOW_NORMAL_PRIORITY_CLASS
-                        || Native.SetPriorityClass(h, Native.BELOW_NORMAL_PRIORITY_CLASS);
-                bool ioLowered = origIo >= 0 && origIo != 1 && Native.TrySetIoPriority(h, 1);
-                engaged = lowered || moved || ioLowered;
+                Action begin = mutationBegin;
+                Action end = mutationEnd;
+                if (begin != null) try { begin(); } catch { }
+                try
+                {
+                    bool moved = false;
+                    uint[] yieldIds = CpuTopology.BackgroundYieldCpuSetIds();
+                    if (yieldIds != null && yieldIds.Length > 0)
+                        moved = Native.TrySetCpuSets(h, yieldIds);
+                    bool lowered = false;
+                    if (!moved)
+                        lowered = pri == Native.BELOW_NORMAL_PRIORITY_CLASS
+                            || Native.SetPriorityClass(h, Native.BELOW_NORMAL_PRIORITY_CLASS);
+                    bool ioLowered = origIo >= 0 && origIo != 1 && Native.TrySetIoPriority(h, 1);
+                    engaged = lowered || moved || ioLowered;
+                }
+                finally { if (end != null) try { end(); } catch { } }
                 if (engaged) Logger.Log(Lang.T("log.selfyield.1"));
             }
         }

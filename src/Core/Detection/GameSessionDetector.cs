@@ -20,6 +20,9 @@ namespace PaviseApp
         public bool RendererUserSelected;
         public bool RendererLearnable;
         public bool RequiresGpuConfirm;
+        // 同一个 renderer 同时被多个档案引用时，用配置锚的精确度稳定决胜，
+        // 避免最终选中哪个 profile（以及它的独立策略）取决于列表顺序。
+        public int RendererMatchRank;
         public readonly HashSet<string> FamilyNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         public readonly HashSet<int> FamilyPids = new HashSet<int>();
         public string Evidence;
@@ -390,6 +393,7 @@ namespace PaviseApp
                 RendererCandidateSelected = true,
                 RendererUserSelected = true,
                 RendererLearnable = false,
+                RendererMatchRank = MatchRank(profile, best.Path),
                 Evidence = Lang.T("detect.forced")
             };
         }
@@ -427,6 +431,7 @@ namespace PaviseApp
                     SamePath(profile.ExecutablePath, selected.Path)
                         || SamePath(profile.LearnedExecutablePath, selected.Path),
                 RendererLearnable = learnable,
+                RendererMatchRank = MatchRank(profile, selected.Path),
                 Evidence = evidence
             };
         }
@@ -446,8 +451,17 @@ namespace PaviseApp
                 RendererUserSelected = false,
                 RendererLearnable = true,
                 RequiresGpuConfirm = true,
+                RendererMatchRank = MatchRank(profile, candidate.Path),
                 Evidence = Lang.T("detect.gpu.pending")
             };
+        }
+
+        private static int MatchRank(GameProfile profile, string path)
+        {
+            if (profile == null || string.IsNullOrEmpty(path)) return 0;
+            if (SamePath(profile.ExecutablePath, path)) return 3;
+            if (SamePath(profile.LearnedExecutablePath, path)) return 2;
+            return profile.ContainsPath(path) ? 1 : 0;
         }
 
         private static bool PreferSnapshot(
@@ -468,9 +482,45 @@ namespace PaviseApp
             if (candidateElected != currentElected) return candidateElected;
             if (candidate.RendererForeground != current.RendererForeground)
                 return candidate.RendererForeground;
+            // 只有两项实际指向同一进程时才用锚点精度破同分；不同 renderer 仍保持
+            // 既有的前台/创建时间选举，不让本次修复改变正常多进程会话行为。
+            if (candidate.RendererPid == current.RendererPid
+                && candidate.RendererCreation == current.RendererCreation)
+            {
+                if (candidate.RendererMatchRank != current.RendererMatchRank)
+                    return candidate.RendererMatchRank > current.RendererMatchRank;
+                // 两个档案都把同一 G 学成 Learned 时，G 真正位于谁的
+                // Root 是更强的所有权语义。若仍同分，用持久 profile 身份
+                // 稳定决胜，绝不让独立策略随列表顺序漂移。
+                bool candidateOwnsPath = candidate.Profile != null
+                    && candidate.Profile.ContainsPath(candidate.RendererPath);
+                bool currentOwnsPath = current.Profile != null
+                    && current.Profile.ContainsPath(current.RendererPath);
+                if (candidateOwnsPath != currentOwnsPath) return candidateOwnsPath;
+                int profileOrder = CompareStableProfile(candidate.Profile, current.Profile);
+                if (profileOrder != 0) return profileOrder < 0;
+            }
             if (candidate.RendererCreation != current.RendererCreation)
                 return candidate.RendererCreation > current.RendererCreation;
             return candidate.RendererPid < current.RendererPid;
+        }
+
+        private static int CompareStableProfile(GameProfile a, GameProfile b)
+        {
+            if (ReferenceEquals(a, b)) return 0;
+            if (a == null) return 1;
+            if (b == null) return -1;
+            string[] ak = { a.Id, a.Root, a.ExecutablePath, a.LearnedExecutablePath, a.Name };
+            string[] bk = { b.Id, b.Root, b.ExecutablePath, b.LearnedExecutablePath, b.Name };
+            for (int i = 0; i < ak.Length; i++)
+            {
+                int c = string.Compare(ak[i] ?? "", bk[i] ?? "",
+                    StringComparison.OrdinalIgnoreCase);
+                if (c != 0) return c;
+                c = string.CompareOrdinal(ak[i] ?? "", bk[i] ?? "");
+                if (c != 0) return c;
+            }
+            return 0;
         }
 
         // 启动器外壳一律以 GamePlatformCatalog 为准 这里不再自带名单

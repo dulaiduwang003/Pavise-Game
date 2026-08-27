@@ -77,6 +77,7 @@ namespace PaviseApp
                 case PageId.AntiCheat: return Lang.T("v14.anticheat");
                 case PageId.Graphics: return Lang.T("nav.graphics");
                 case PageId.Environment: return Lang.T("nav.env");
+                case PageId.Interrupt: return Lang.T("nav.irq");
                 case PageId.Audit: return Lang.T("nav.audit");
                 case PageId.Log: return Lang.T("nav.log");
                 case PageId.Settings: return Lang.T("nav.set");
@@ -88,6 +89,9 @@ namespace PaviseApp
         private void OnSearchHitChosen(SearchHit hit)
         {
             if (hit == null || hit.Card == null || hit.Card.IsDisposed) return;
+            // 搜索能直接命中深度调优页，不能绕过概览入口的风险警告。
+            if (hit.PageId >= 0 && IsAdvancedPage(hit.PageId)
+                && !ConfirmDeepTuningEntry()) return;
             SetSearchFlyout(false);
             if (hit.PageId < 0)
             {
