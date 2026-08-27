@@ -42,6 +42,8 @@ namespace PaviseApp
         public string GameName = "";
         public string BootStamp = "";
         public string TopologyStamp = "";
+        public ulong GameMask;
+        public ulong SystemMask;
         public long EventsLost;
         public long Unmapped;
         public readonly List<IrqDriverRecord> Drivers = new List<IrqDriverRecord>();
@@ -50,9 +52,15 @@ namespace PaviseApp
         {
             get
             {
-                if (DurationSeconds < MinUsableSeconds) return false;
+                if (DurationSeconds < MinUsableSeconds || SystemMask == 0) return false;
                 if (EventsLost != 0) return false;
                 if (Drivers.Count == 0) return false;
+                // IRQ affinity 修改要重启才生效。跨 boot 复用旧局会让用户
+                // 重启后继续收到“还要挪”的假建议，所以必须在当前
+                // boot 重新积累足够对局。BootStamp 估算允许既有 5s 误差。
+                if (!IrqAffinityEngine.SameBoot(
+                        BootStamp, IrqAffinityEngine.BootStamp()))
+                    return false;
                 if (TopologyStamp.Length != 0
                     && !string.Equals(TopologyStamp, CpuTopology.TopologyStamp(), StringComparison.Ordinal))
                     return false;
@@ -66,16 +74,26 @@ namespace PaviseApp
     internal static class IrqSessionLedger
     {
         internal const string FileName = "Pavise.irq-sessions.dat";
-        private const string Header = "PAVISE_IRQ_SESSIONS_V2";
+        private const string Header = "PAVISE_IRQ_SESSIONS_V3";
+        private const string ObsoleteHeader = "PAVISE_IRQ_SESSIONS_V2";
         internal const int KeepSessions = 12;
         internal const int VerdictWindow = 5;
         internal const int MinSessionsForVerdict = 3;
 
         private static readonly object lk = new object();
+        private static readonly Encoding StrictUtf8 = new UTF8Encoding(false, true);
         private static string dir;
         private static bool readOnlyFormat;
 
-        public static void Bind(string dataDir) { lock (lk) dir = dataDir; }
+        public static void Bind(string dataDir)
+        {
+            lock (lk)
+            {
+                if (!string.Equals(dir, dataDir, StringComparison.OrdinalIgnoreCase))
+                    readOnlyFormat = false;
+                dir = dataDir;
+            }
+        }
 
         private static string Path_()
         {
@@ -90,8 +108,8 @@ namespace PaviseApp
 
         private static string UnB64(string s)
         {
-            try { return Encoding.UTF8.GetString(Convert.FromBase64String(s ?? "")); }
-            catch { return ""; }
+            try { return StrictUtf8.GetString(Convert.FromBase64String(s ?? "")); }
+            catch { throw new FormatException("invalid base64 field"); }
         }
 
         private static string BucketsText(long[] b)
@@ -106,53 +124,88 @@ namespace PaviseApp
             return sb.ToString();
         }
 
-        private static long[] ParseBuckets(string s)
+        private static long[] ParseBuckets(string s, out bool valid)
         {
+            valid = true;
             if (string.IsNullOrEmpty(s)) return null;
             string[] parts = s.Split(',');
             var b = new long[parts.Length];
             for (int i = 0; i < parts.Length; i++)
                 if (!long.TryParse(parts[i], NumberStyles.Integer, CultureInfo.InvariantCulture, out b[i]))
+                {
+                    valid = false;
                     return null;
+                }
             return b;
         }
 
         public static List<IrqSessionRecord> Load()
         {
+            lock (lk)
+            {
+                bool safeToRewrite;
+                List<IrqSessionRecord> loaded = LoadLocked(out safeToRewrite);
+                // 只要文件有一处解析不完整，就不能把前半截当成可靠历史参与裁决。
+                // Append 同样会拒绝覆盖，原文件完整保留给诊断或人工恢复。
+                return safeToRewrite ? loaded : new List<IrqSessionRecord>();
+            }
+        }
+
+        private static List<IrqSessionRecord> LoadLocked(out bool safeToRewrite)
+        {
+            safeToRewrite = true;
             var list = new List<IrqSessionRecord>();
             string path = Path_();
             if (path == null || !File.Exists(path)) return list;
             string[] lines;
-            try { lines = File.ReadAllLines(path, Encoding.UTF8); }
-            catch { return list; }
-            if (lines.Length == 0) return list;
-            if (!string.Equals(lines[0].Trim(), Header, StringComparison.Ordinal))
+            try { lines = File.ReadAllLines(path, StrictUtf8); }
+            catch { safeToRewrite = false; return list; }
+            if (lines.Length == 0) { safeToRewrite = false; return list; }
+            string header = lines[0].Trim();
+            if (string.Equals(header, ObsoleteHeader, StringComparison.Ordinal))
             {
-                lock (lk) readOnlyFormat = true;
+                // V2 lacks the per-match game mask required for a safe verdict. Invalidate it;
+                // guessing or migrating that mask could turn old observations into false advice.
+                bool removed = false;
+                try { File.Delete(path); removed = !File.Exists(path); } catch { }
+                readOnlyFormat = !removed;
+                safeToRewrite = removed;
                 return list;
             }
-            lock (lk) readOnlyFormat = false;
+            if (!string.Equals(header, Header, StringComparison.Ordinal))
+            {
+                readOnlyFormat = true;
+                safeToRewrite = false;
+                return list;
+            }
+            readOnlyFormat = false;
 
             IrqSessionRecord cur = null;
             for (int i = 1; i < lines.Length; i++)
             {
                 string[] p = lines[i].Split('|');
-                if (p.Length < 2) continue;
+                if (p.Length < 2) { safeToRewrite = false; continue; }
+                // 新会话行即使损坏，也必须先切断上一会话。否则紧随其后的 D 行会被
+                // 错接到上一局，制造一个文件里从未存在过的“有效”样本。
+                if (p[0] == "S") cur = null;
                 try
                 {
-                    if (p[0] == "S" && p.Length >= 8)
+                    if (p[0] == "S" && p.Length == 10)
                     {
-                        cur = new IrqSessionRecord();
-                        cur.StartUtcTicks = long.Parse(p[1], CultureInfo.InvariantCulture);
-                        cur.DurationSeconds = int.Parse(p[2], CultureInfo.InvariantCulture);
-                        cur.GameName = UnB64(p[3]);
-                        cur.BootStamp = p[4];
-                        cur.TopologyStamp = p[5];
-                        cur.EventsLost = long.Parse(p[6], CultureInfo.InvariantCulture);
-                        cur.Unmapped = long.Parse(p[7], CultureInfo.InvariantCulture);
-                        list.Add(cur);
+                        var next = new IrqSessionRecord();
+                        next.StartUtcTicks = long.Parse(p[1], CultureInfo.InvariantCulture);
+                        next.DurationSeconds = int.Parse(p[2], CultureInfo.InvariantCulture);
+                        next.GameName = UnB64(p[3]);
+                        next.BootStamp = p[4];
+                        next.TopologyStamp = p[5];
+                        next.EventsLost = long.Parse(p[6], CultureInfo.InvariantCulture);
+                        next.Unmapped = long.Parse(p[7], CultureInfo.InvariantCulture);
+                        next.GameMask = ulong.Parse(p[8], NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+                        next.SystemMask = ulong.Parse(p[9], NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+                        cur = next;
+                        list.Add(next);
                     }
-                    else if (p[0] == "D" && p.Length >= 11 && cur != null)
+                    else if (p[0] == "D" && p.Length == 11 && cur != null)
                     {
                         var d = new IrqDriverRecord();
                         d.Driver = UnB64(p[1]);
@@ -163,12 +216,17 @@ namespace PaviseApp
                         d.Over500Us = long.Parse(p[6], CultureInfo.InvariantCulture);
                         d.Over1Ms = long.Parse(p[7], CultureInfo.InvariantCulture);
                         d.CpuMask = ulong.Parse(p[8], NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+                        if (p[9] != "0" && p[9] != "1")
+                            throw new FormatException("invalid MaskTruncated flag");
                         d.MaskTruncated = p[9] == "1";
-                        d.Buckets = ParseBuckets(p[10]);
+                        bool bucketsValid;
+                        d.Buckets = ParseBuckets(p[10], out bucketsValid);
+                        if (!bucketsValid) throw new FormatException("invalid DPC buckets");
                         cur.Drivers.Add(d);
                     }
+                    else safeToRewrite = false;
                 }
-                catch { }
+                catch { safeToRewrite = false; }
             }
             return list;
         }
@@ -176,59 +234,84 @@ namespace PaviseApp
         public static bool Append(IrqSessionRecord rec)
         {
             if (rec == null) return false;
-            string path = Path_();
-            if (path == null) return false;
-            lock (lk) { if (readOnlyFormat) return false; }
-
-            List<IrqSessionRecord> all = Load();
-            lock (lk) { if (readOnlyFormat) return false; }
-            all.Add(rec);
-            while (all.Count > KeepSessions) all.RemoveAt(0);
-
-            var sb = new List<string>();
-            sb.Add(Header);
-            foreach (IrqSessionRecord s in all)
+            lock (lk)
             {
-                sb.Add(string.Join("|", new[]
+                string path = Path_();
+                if (path == null) return false;
+
+                bool safeToRewrite;
+                List<IrqSessionRecord> all = LoadLocked(out safeToRewrite);
+                if (!safeToRewrite || readOnlyFormat) return false;
+                all.Add(rec);
+                while (all.Count > KeepSessions) all.RemoveAt(0);
+
+                var sb = new List<string>();
+                sb.Add(Header);
+                foreach (IrqSessionRecord s in all)
                 {
-                    "S",
-                    s.StartUtcTicks.ToString(CultureInfo.InvariantCulture),
-                    s.DurationSeconds.ToString(CultureInfo.InvariantCulture),
-                    B64(s.GameName),
-                    s.BootStamp ?? "",
-                    s.TopologyStamp ?? "",
-                    s.EventsLost.ToString(CultureInfo.InvariantCulture),
-                    s.Unmapped.ToString(CultureInfo.InvariantCulture)
-                }));
-                foreach (IrqDriverRecord d in s.Drivers)
                     sb.Add(string.Join("|", new[]
                     {
-                        "D",
-                        B64(d.Driver),
-                        B64(d.DriverVersion),
-                        d.Dpc.ToString(CultureInfo.InvariantCulture),
-                        d.DpcTotalNs.ToString(CultureInfo.InvariantCulture),
-                        d.DpcMaxNs.ToString(CultureInfo.InvariantCulture),
-                        d.Over500Us.ToString(CultureInfo.InvariantCulture),
-                        d.Over1Ms.ToString(CultureInfo.InvariantCulture),
-                        d.CpuMask.ToString("X", CultureInfo.InvariantCulture),
-                        d.MaskTruncated ? "1" : "0",
-                        BucketsText(d.Buckets)
+                        "S",
+                        s.StartUtcTicks.ToString(CultureInfo.InvariantCulture),
+                        s.DurationSeconds.ToString(CultureInfo.InvariantCulture),
+                        B64(s.GameName),
+                        s.BootStamp ?? "",
+                        s.TopologyStamp ?? "",
+                        s.EventsLost.ToString(CultureInfo.InvariantCulture),
+                        s.Unmapped.ToString(CultureInfo.InvariantCulture),
+                        s.GameMask.ToString("X", CultureInfo.InvariantCulture),
+                        s.SystemMask.ToString("X", CultureInfo.InvariantCulture)
                     }));
+                    foreach (IrqDriverRecord d in s.Drivers)
+                        sb.Add(string.Join("|", new[]
+                        {
+                            "D",
+                            B64(d.Driver),
+                            B64(d.DriverVersion),
+                            d.Dpc.ToString(CultureInfo.InvariantCulture),
+                            d.DpcTotalNs.ToString(CultureInfo.InvariantCulture),
+                            d.DpcMaxNs.ToString(CultureInfo.InvariantCulture),
+                            d.Over500Us.ToString(CultureInfo.InvariantCulture),
+                            d.Over1Ms.ToString(CultureInfo.InvariantCulture),
+                            d.CpuMask.ToString("X", CultureInfo.InvariantCulture),
+                            d.MaskTruncated ? "1" : "0",
+                            BucketsText(d.Buckets)
+                        }));
+                }
+                return WriteAtomically(path, sb.ToArray());
             }
+        }
+
+        private static bool WriteAtomically(string path, string[] lines)
+        {
+            string temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
             try
             {
-                File.WriteAllLines(path, sb.ToArray(), Encoding.UTF8);
+                File.WriteAllLines(temp, lines, Encoding.UTF8);
+                if (File.Exists(path)) File.Replace(temp, path, null);
+                else File.Move(temp, path);
                 return true;
             }
             catch { return false; }
+            finally
+            {
+                try { if (File.Exists(temp)) File.Delete(temp); } catch { }
+            }
         }
 
         public static void Clear()
         {
-            string path = Path_();
-            if (path == null) return;
-            try { if (File.Exists(path)) File.Delete(path); } catch { }
+            lock (lk)
+            {
+                string path = Path_();
+                if (path == null) return;
+                try
+                {
+                    if (File.Exists(path)) File.Delete(path);
+                    if (!File.Exists(path)) readOnlyFormat = false;
+                }
+                catch { }
+            }
         }
     }
 }

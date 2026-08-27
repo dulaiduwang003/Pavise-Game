@@ -122,7 +122,8 @@ namespace PaviseApp
             set
             {
                 ifeoOn = value; Settings.Save("GmIfeoBoost", value);
-                if (!value) IfeoBoost.RestoreAll();
+                if (!value)
+                    IrqMutationBoundary.Run(delegate { IfeoBoost.RestoreAll(); });
                 RequestPolicyApply();
             }
         }
@@ -157,6 +158,37 @@ namespace PaviseApp
             set { gpuPowerMaxOn = value; Settings.Save("GmGpuPowerMax", value); if (value) ClearEnvFuse("gpupower"); RequestPolicyApply(); }
         }
 
+        // 实验功能 默认关闭 关掉时立刻撤销可能还挂着的预留
+        //   重新打开视为用户要再试一次 顺手清掉上次验不过留下的熔断
+        public bool VramShieldOn
+        {
+            get { return vramShieldOn; }
+            set
+            {
+                vramShieldOn = value;
+                Settings.Save(VramShield.EnabledKey, value);
+                if (value) VramShield.ClearFuse();
+                else VramShield.Release();
+                RequestPolicyApply();
+            }
+        }
+
+        // 关着时对局里只有渲染进程本体和白名单不被压 平台客户端与启动器外壳照压
+        //   开着时整族放行 换回 2.1 之前的行为 客户端卡顿的机器可以用它换回稳
+        public bool GameFamilyExempt
+        {
+            get { return familyExemptOn; }
+            set
+            {
+                if (familyExemptOn == value) return;
+                familyExemptOn = value;
+                FamilyExemptHint = value;
+                Settings.Save("GmFamilyExempt", value);
+                Logger.Log(Lang.T(value ? "log.familyexempt.1" : "log.familyexempt.2"));
+                RequestPolicyApply();
+            }
+        }
+
         public bool RsrUpscale
         {
             get { return rsrOn; }
@@ -169,7 +201,12 @@ namespace PaviseApp
             set
             {
                 amdAntiLag = value; Settings.Save("AmdAntiLag", value);
-                if (!value) { AdlxTweaks.RestoreAntiLag(); AdlxTweaks.RestoreChill(); }
+                if (!value)
+                    IrqMutationBoundary.Run(delegate
+                    {
+                        AdlxTweaks.RestoreAntiLag();
+                        AdlxTweaks.RestoreChill();
+                    });
                 else ClearEnvFuse("amdalag");
                 RequestPolicyApply();
             }
@@ -181,7 +218,8 @@ namespace PaviseApp
             set
             {
                 amdAfmf = value; Settings.Save("AmdAfmf", value);
-                if (!value) AdlxTweaks.RestoreAfmf();
+                if (!value)
+                    IrqMutationBoundary.Run(delegate { AdlxTweaks.RestoreAfmf(); });
                 else ClearEnvFuse("amdafmf");
                 RequestPolicyApply();
             }
@@ -199,7 +237,11 @@ namespace PaviseApp
             set
             {
                 nvMaxPerf = value; Settings.Save("NvMaxPerf", value);
-                if (!value) NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyPState);
+                if (!value)
+                    IrqMutationBoundary.Run(delegate
+                    {
+                        NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyPState);
+                    });
                 else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyPState, 0);
                 lock (sync) tweakApplied.Clear();
                 RequestPolicyApply();
@@ -213,11 +255,22 @@ namespace PaviseApp
             {
                 string mode = value == "on" || value == "ultra" ? value : "off";
                 nvLowLatMode = mode; Settings.SaveStr("NvLowLat", mode);
-                if (mode == "off") NvDrsTweaks.RestoreKinds(NvDrsTweaks.UltraKeys);
+                if (mode == "off")
+                    IrqMutationBoundary.Run(delegate
+                    {
+                        NvDrsTweaks.RestoreKinds(NvDrsTweaks.UltraKeys);
+                    });
                 else
                 {
                     if (mode == "on")
-                        NvDrsTweaks.RestoreKinds(new[] { NvDrsTweaks.KeyUllEnable, NvDrsTweaks.KeyLowLatCpl });
+                        IrqMutationBoundary.Run(delegate
+                        {
+                            NvDrsTweaks.RestoreKinds(new[]
+                            {
+                                NvDrsTweaks.KeyUllEnable,
+                                NvDrsTweaks.KeyLowLatCpl
+                            });
+                        });
                     SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyPreRender, 0);
                 }
                 lock (sync) tweakApplied.Clear();
@@ -231,7 +284,11 @@ namespace PaviseApp
             set
             {
                 nvSmoothMotion = value; Settings.Save("NvSmoothMotion", value);
-                if (!value) NvDrsTweaks.RestoreKind(NvDrsTweaks.KeySmooth);
+                if (!value)
+                    IrqMutationBoundary.Run(delegate
+                    {
+                        NvDrsTweaks.RestoreKind(NvDrsTweaks.KeySmooth);
+                    });
                 else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeySmooth, 0);
                 lock (sync) tweakApplied.Clear();
                 RequestPolicyApply();
@@ -244,7 +301,11 @@ namespace PaviseApp
             set
             {
                 nvShaderCacheMax = value; Settings.Save("NvShaderCache", value);
-                if (!value) NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyShaderCache);
+                if (!value)
+                    IrqMutationBoundary.Run(delegate
+                    {
+                        NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyShaderCache);
+                    });
                 else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyShaderCache, 0);
                 lock (sync) tweakApplied.Clear();
                 RequestPolicyApply();
@@ -257,7 +318,11 @@ namespace PaviseApp
             set
             {
                 nvRebarOn = value; Settings.Save("NvRebar", value);
-                if (!value) NvDrsTweaks.RestoreKinds(NvDrsTweaks.RebarKeys);
+                if (!value)
+                    IrqMutationBoundary.Run(delegate
+                    {
+                        NvDrsTweaks.RestoreKinds(NvDrsTweaks.RebarKeys);
+                    });
                 else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyRebarFeat, 0);
                 lock (sync) tweakApplied.Clear();
                 RequestPolicyApply();
@@ -271,7 +336,11 @@ namespace PaviseApp
             {
                 string mode = value == "latest" || value == "j" || value == "k" ? value : "off";
                 nvDlssMode = mode; Settings.SaveStr("NvDlss", mode);
-                if (mode == "off") NvDrsTweaks.RestoreKinds(NvDrsTweaks.DlssKeys);
+                if (mode == "off")
+                    IrqMutationBoundary.Run(delegate
+                    {
+                        NvDrsTweaks.RestoreKinds(NvDrsTweaks.DlssKeys);
+                    });
                 else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyDlssOvr, 0);
                 lock (sync) tweakApplied.Clear();
                 RequestPolicyApply();
@@ -284,7 +353,8 @@ namespace PaviseApp
             set
             {
                 gpuPrefStageOn = value; Settings.Save("GpuPrefStageOn", value);
-                if (!value) GpuPrefStage.Restore();
+                if (!value)
+                    IrqMutationBoundary.Run(delegate { GpuPrefStage.Restore(); });
             }
         }
 
@@ -302,13 +372,24 @@ namespace PaviseApp
         public bool KillGameDvr
         {
             get { return killGameDvr; }
-            set { killGameDvr = value; Settings.Save("GameDvrOff", value); SyncGameDvr(); RequestPolicyApply(); }
+            set
+            {
+                killGameDvr = value;
+                Settings.Save("GameDvrOff", value);
+                IrqMutationBoundary.Run(SyncGameDvr);
+                RequestPolicyApply();
+            }
         }
 
         public bool MmcssOn
         {
             get { return mmcssOn; }
-            set { mmcssOn = value; Settings.Save("GmMmcss", value); SyncMmcss(); }
+            set
+            {
+                mmcssOn = value;
+                Settings.Save("GmMmcss", value);
+                IrqMutationBoundary.Run(SyncMmcss);
+            }
         }
 
         public bool PowerPlanSwitch

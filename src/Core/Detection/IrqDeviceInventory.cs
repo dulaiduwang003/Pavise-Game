@@ -28,7 +28,6 @@ namespace PaviseApp
         public bool FrameworkStats;
         public string StatsDriver = "";
 
-        public bool FromCheckup;
         public bool ManagedElsewhere;
         public bool InputRisk;
 
@@ -67,6 +66,17 @@ namespace PaviseApp
 
         public IrqDriverVerdict Verdict;
         public bool Worth { get { return Verdict != null && Verdict.Worth; } }
+        // 只有能唯一定位、由本页管理且钉核机制确实适用的设备，才允许把驱动判定
+        // 呈现成可操作建议。多消息设备可能损失并行度，StorPort 完成 DPC 又通常跟随发起核。
+        public bool ActionableWorth
+        {
+            get
+            {
+                return Worth && !ManagedElsewhere && !SharedStats
+                    && Verdict != null && Verdict.VersionVerified && !Verdict.MaskTruncated
+                    && !MultiMessageRisk && !CompletionFollowsIssuer;
+            }
+        }
     }
 
     internal static class IrqDeviceInventory
@@ -281,28 +291,13 @@ namespace PaviseApp
             return n;
         }
 
-        internal static void AttachCheckup(List<IrqDevice> devices, IrqCheckupResult ck)
+        public static void AttachVerdicts(List<IrqDevice> devices, List<IrqDriverVerdict> verdicts)
         {
-            if (devices == null || ck == null || !ck.Ok) return;
-            foreach (IrqDevice d in devices)
-            {
-                if (d.Dpc > 0) continue;
-                foreach (IrqCheckupDevice c in ck.Devices)
-                {
-                    if (!string.Equals(c.InstanceId, d.InstanceId, StringComparison.OrdinalIgnoreCase)) continue;
-                    d.MaxUs = c.P99Us;
-                    d.Dpc = c.Dpc;
-                    d.SeenOnCpus = c.CpuMask;
-                    d.FromCheckup = true;
-                    if (c.StatsDriver != null && !string.Equals(c.StatsDriver, d.Service,
-                            StringComparison.OrdinalIgnoreCase))
-                    { d.FrameworkStats = true; d.StatsDriver = c.StatsDriver; }
-                    break;
-                }
-            }
+            AttachVerdicts(devices, verdicts, IrqSessionProbe.DriverVersionOf);
         }
 
-        public static void AttachVerdicts(List<IrqDevice> devices, List<IrqDriverVerdict> verdicts)
+        internal static void AttachVerdicts(List<IrqDevice> devices,
+            List<IrqDriverVerdict> verdicts, Func<string, string> currentVersionOf)
         {
             if (devices == null) return;
             var perService = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -313,6 +308,7 @@ namespace PaviseApp
                 perService[d.Service] = n + 1;
             }
             if (verdicts == null) return;
+            VerifyCurrentVersions(verdicts, currentVersionOf);
             foreach (IrqDevice d in devices)
             {
                 if (d.Service.Length == 0) continue;
@@ -325,7 +321,7 @@ namespace PaviseApp
                     d.Verdict = v;
                     d.MaxUs = v.WorstMaxUs;
                     d.Over500Us = v.TotalOver500;
-                    d.Dpc = (long)v.DpcPerMinute;
+                    d.Dpc = DisplayDpcPerMinute(v.DpcPerMinute);
                     d.SeenOnCpus = v.CpuMask;
                     int n; perService.TryGetValue(d.Service, out n);
                     d.SharedStats = n > 1;
@@ -333,6 +329,32 @@ namespace PaviseApp
                 }
             }
             AttachFrameworkVerdicts(devices, verdicts);
+        }
+
+        private static bool VersionIsCurrent(IrqDriverVerdict verdict,
+            Func<string, string> currentVersionOf)
+        {
+            if (verdict == null || currentVersionOf == null
+                || string.IsNullOrEmpty(verdict.Driver)
+                || string.IsNullOrEmpty(verdict.DriverVersion)) return false;
+            string current;
+            try { current = currentVersionOf(verdict.Driver) ?? ""; }
+            catch { return false; }
+            return current.Length != 0 && string.Equals(current,
+                verdict.DriverVersion, StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static void VerifyCurrentVersions(List<IrqDriverVerdict> verdicts)
+        {
+            VerifyCurrentVersions(verdicts, IrqSessionProbe.DriverVersionOf);
+        }
+
+        internal static void VerifyCurrentVersions(List<IrqDriverVerdict> verdicts,
+            Func<string, string> currentVersionOf)
+        {
+            if (verdicts == null) return;
+            foreach (IrqDriverVerdict v in verdicts)
+                if (v != null) v.VersionVerified = VersionIsCurrent(v, currentVersionOf);
         }
 
         private static void AttachFrameworkVerdicts(List<IrqDevice> devices, List<IrqDriverVerdict> verdicts)
@@ -349,12 +371,22 @@ namespace PaviseApp
                     d.Verdict = v;
                     d.MaxUs = v.WorstMaxUs;
                     d.Over500Us = v.TotalOver500;
-                    d.Dpc = (long)v.DpcPerMinute;
+                    d.Dpc = DisplayDpcPerMinute(v.DpcPerMinute);
                     d.SeenOnCpus = v.CpuMask;
                     d.FrameworkStats = true; d.StatsDriver = v.Driver;
                     d.SharedStats = members > 1;
                 }
             }
+        }
+
+        private static long DisplayDpcPerMinute(double value)
+        {
+            // d.Dpc also tells the UI whether real-match data exists. A positive rate
+            // below 1/min must not truncate to zero and contradict an actionable verdict.
+            if (double.IsNaN(value) || value <= 0) return 0;
+            if (double.IsInfinity(value) || value >= long.MaxValue) return long.MaxValue;
+            long whole = (long)value;
+            return whole > 0 ? whole : 1;
         }
 
         internal static void AttachScan(List<IrqDevice> devices, IrqScanResult scan)
@@ -429,6 +461,10 @@ namespace PaviseApp
             if (devices == null) return;
             devices.Sort(delegate (IrqDevice a, IrqDevice b)
             {
+                // 真实对局已经达到建议门槛的设备必须排在前面；只按单次最长耗时排序
+                // 会把偶发尖峰但不值得改的设备放到用户眼前。
+                if (a.ActionableWorth != b.ActionableWorth)
+                    return b.ActionableWorth.CompareTo(a.ActionableWorth);
                 if (a.MaxUs != b.MaxUs) return b.MaxUs.CompareTo(a.MaxUs);
                 if (a.Dpc != b.Dpc) return b.Dpc.CompareTo(a.Dpc);
                 int c = string.Compare(a.Bus, b.Bus, StringComparison.OrdinalIgnoreCase);

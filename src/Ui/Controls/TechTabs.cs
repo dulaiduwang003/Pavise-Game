@@ -133,7 +133,8 @@ namespace PaviseApp
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
-            using (var bg = new SolidBrush(BackColor)) g.FillRectangle(bg, ClientRectangle);
+            if (Backdrop.Active) Backdrop.PaintOnCard(g, this, ClientRectangle);
+            else using (var bg = new SolidBrush(BackColor)) g.FillRectangle(bg, ClientRectangle);
             g.SmoothingMode = SmoothingMode.AntiAlias;
             int cut = Theme.S(9);
             for (int i = 0; i < labels.Length; i++)
@@ -143,7 +144,8 @@ namespace PaviseApp
                 float h = GlowAt(i);
                 using (GraphicsPath p = Theme.TechPath(r, cut))
                 {
-                    using (var b = new SolidBrush(Col.Lerp(Theme.Card, Theme.CardHover, h))) g.FillPath(b, p);
+                    using (var b = new SolidBrush(Backdrop.CardFill(
+                        Col.Lerp(Theme.Card, Theme.CardHover, h)))) g.FillPath(b, p);
                     using (var pen = new Pen(Col.Lerp(Theme.Stroke, Theme.StrokeHi, h))) g.DrawPath(pen, p);
                 }
                 using (var corner = new Pen(Col.Alpha(Theme.Accent, (int)(70 + 60 * h)),
@@ -158,7 +160,8 @@ namespace PaviseApp
                 sr.Width -= 1; sr.Height -= 1;
                 using (GraphicsPath p = Theme.TechPath(sr, cut))
                 {
-                    using (var b = new SolidBrush(Col.Lerp(Theme.Card, Theme.Accent, 0.16f))) g.FillPath(b, p);
+                    using (var b = new SolidBrush(Backdrop.CardFill(
+                        Col.Lerp(Theme.Card, Theme.Accent, 0.16f)))) g.FillPath(b, p);
                     using (var pen = new Pen(Col.Alpha(Theme.Accent, 220))) g.DrawPath(pen, p);
                 }
                 using (var mark = new Pen(Theme.Accent, Math.Max(1f, Theme.S(2))))

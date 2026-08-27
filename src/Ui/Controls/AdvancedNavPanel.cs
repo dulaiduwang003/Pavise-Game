@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 在简洁主导航之外承载完整的专业功能入口
+// 文件用途 在简洁主导航之外承载完整的深度调优入口
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;

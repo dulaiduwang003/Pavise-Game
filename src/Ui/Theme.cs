@@ -62,8 +62,9 @@ namespace PaviseApp
         private static float themeT = 1f;
         private static PerformancePreset currentMode = PerformancePreset.Standard;
 
+        // 下标就是档位取值 掌机是 4 所以留五格 中间那格 3 是下架的极限档 空着不用
         private static readonly Color[] modeOverride =
-            { Color.Empty, Color.Empty, Color.Empty };
+            { Color.Empty, Color.Empty, Color.Empty, Color.Empty, Color.Empty };
 
         public static Color Accent { get { return accent; } }
         public static Color Accent2 { get { return accent2; } }
@@ -99,6 +100,8 @@ namespace PaviseApp
                 return light ? Color.FromArgb(222, 36, 58) : Color.FromArgb(255, 61, 82);
             if (mode == PerformancePreset.Custom)
                 return light ? Color.FromArgb(16, 128, 216) : Color.FromArgb(48, 180, 255);
+            if (mode == PerformancePreset.Handheld)
+                return light ? Color.FromArgb(176, 92, 12) : Color.FromArgb(255, 148, 46);
             return light ? Color.FromArgb(10, 136, 92) : Color.FromArgb(52, 208, 148);
         }
 
@@ -111,6 +114,8 @@ namespace PaviseApp
                 return light ? Color.FromArgb(152, 14, 36) : Color.FromArgb(178, 22, 48);
             if (mode == PerformancePreset.Custom)
                 return light ? Color.FromArgb(12, 78, 168) : Color.FromArgb(20, 99, 222);
+            if (mode == PerformancePreset.Handheld)
+                return light ? Color.FromArgb(122, 56, 4) : Color.FromArgb(178, 92, 16);
             return light ? Color.FromArgb(6, 94, 62) : Color.FromArgb(20, 136, 94);
         }
 

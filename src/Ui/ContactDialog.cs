@@ -57,8 +57,8 @@ namespace PaviseApp
             int rightX = BodyX + half + 10;
             int y = 102;
 
-            AddRow(BodyX, y, BodyW, Lang.T("contact.wechat"), App.WeChat,
-                CopyAction(App.WeChat), Lang.T("contact.copy"));
+            AddRow(BodyX, y, BodyW, Lang.T("contact.douyin"), App.Douyin,
+                CopyAction(App.Douyin), Lang.T("contact.copy"));
             y += 58;
             AddRow(BodyX, y, half, Lang.T("contact.qq"), App.QqGroup,
                 CopyAction(App.QqGroup), Lang.T("contact.copy"));
@@ -70,9 +70,7 @@ namespace PaviseApp
             AddRow(rightX, y, half, Lang.T("contact.qq4"), App.QqGroup4,
                 CopyAction(App.QqGroup4), Lang.T("contact.copy"));
             y += 58;
-            AddRow(BodyX, y, half, Lang.T("contact.douyin"), App.Douyin,
-                CopyAction(App.Douyin), Lang.T("contact.copy"));
-            AddRow(rightX, y, half, Lang.T("contact.pan"), Lang.T("contact.pan.value"),
+            AddRow(BodyX, y, BodyW, Lang.T("contact.pan"), Lang.T("contact.pan.value"),
                 OpenAction(App.PanUrl), Lang.T("contact.open"));
             y += 70;
 

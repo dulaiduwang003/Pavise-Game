@@ -104,6 +104,9 @@ namespace PaviseApp
             Step(Lang.T("t.legacypurge.22"), IfeoBoost.RestoreAll, failed);
 
             StepIf("HAGS", HagsTweak.HasResidue, HagsTweak.Restore, failed);
+            StepIf("TCP Nagle", NagleTweak.HasResidue, NagleTweak.Restore, failed);
+            StepIf("FSO", FsoTweak.HasResidue, FsoTweak.RestoreAll, failed);
+            StepIf("NIC latency", NicLatencyTweak.HasResidue, NicLatencyTweak.Restore, failed);
             StepIf("FTH", delegate { return FthTweak.RepairedByPavise; }, FthTweak.Restore, failed);
             StepIf("CFG", delegate { return CfgOffTweak.Enabled || CfgOffTweak.HasResidue(); },
                 CfgOffTweak.Disable, failed);
@@ -191,21 +194,58 @@ namespace PaviseApp
             return string.Equals(x, y, StringComparison.OrdinalIgnoreCase);
         }
 
-        // 逐个删 有一个被占住不连累其他 最后由深到浅摘目录
+        // 逐层删除，不用 AllDirectories：数据目录里即使被塞进 junction/symlink，
+        // 也只摘链接本身，绝不能跟进去删掉目录外的文件。
         internal static int DeleteDataTree(string dir)
+        {
+            return DeleteDataTreeLevel(dir, true);
+        }
+
+        private static int DeleteDataTreeLevel(string dir, bool deleteSelf)
         {
             int files = 0;
             try
             {
-                foreach (string p in Directory.GetFiles(dir, "*", SearchOption.AllDirectories))
+                FileAttributes rootAttributes = File.GetAttributes(dir);
+                if ((rootAttributes & FileAttributes.ReparsePoint) != 0)
                 {
+                    try { Directory.Delete(dir, false); } catch { }
+                    return 0;
+                }
+
+                string[] entries;
+                try { entries = Directory.GetFileSystemEntries(dir); }
+                catch { entries = new string[0]; }
+
+                foreach (string p in entries)
+                {
+                    FileAttributes attributes;
+                    try { attributes = File.GetAttributes(p); }
+                    catch { continue; }
+
+                    bool isDirectory = (attributes & FileAttributes.Directory) != 0;
+                    bool isReparsePoint = (attributes & FileAttributes.ReparsePoint) != 0;
+                    if (isDirectory && !isReparsePoint)
+                    {
+                        files += DeleteDataTreeLevel(p, true);
+                        continue;
+                    }
+
+                    if (isDirectory)
+                    {
+                        try { Directory.Delete(p, false); } catch { }
+                        continue;
+                    }
+
                     try { File.SetAttributes(p, FileAttributes.Normal); } catch { }
                     try { File.Delete(p); files++; } catch { }
                 }
-                var subs = new List<string>(Directory.GetDirectories(dir, "*", SearchOption.AllDirectories));
-                subs.Sort(delegate(string a, string b) { return b.Length.CompareTo(a.Length); });
-                foreach (string d in subs) { try { Directory.Delete(d, false); } catch { } }
-                try { Directory.Delete(dir, false); } catch { }
+
+                if (deleteSelf)
+                {
+                    try { File.SetAttributes(dir, rootAttributes & ~FileAttributes.ReadOnly); } catch { }
+                    try { Directory.Delete(dir, false); } catch { }
+                }
             }
             catch { }
             return files;

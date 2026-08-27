@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 扫描过程的待机与运行动画 系统体检与中断体检共用
+// 文件用途 系统体检扫描过程的待机与运行动画
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -144,7 +144,8 @@ namespace PaviseApp
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
-            using (var back = new SolidBrush(Theme.Bg)) g.FillRectangle(back, ClientRectangle);
+            if (Backdrop.Active) Backdrop.PaintOnCard(g, this, ClientRectangle);
+            else using (var back = new SolidBrush(Theme.Bg)) g.FillRectangle(back, ClientRectangle);
             if (Width <= 8 || Height <= 8) return;
 
             g.SmoothingMode = SmoothingMode.AntiAlias;
@@ -154,7 +155,8 @@ namespace PaviseApp
             var frame = new Rectangle(0, 0, Width - 1, Height - 1);
             using (GraphicsPath path = Theme.TechPath(frame, Theme.S(14)))
             {
-                using (var bg = new LinearGradientBrush(frame, Theme.Inset, Theme.Card,
+                using (var bg = new LinearGradientBrush(frame,
+                        Backdrop.CardFill(Theme.Inset), Backdrop.CardFill(Theme.Card),
                         LinearGradientMode.ForwardDiagonal))
                     g.FillPath(bg, path);
                 g.SetClip(path);

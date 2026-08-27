@@ -125,6 +125,8 @@ namespace PaviseApp
             new Knob(SubProcessor, LatencyHintUnpark,100,100,  50, 50, "t.powerplanschemes.21"),
             new Knob(SubProcessor, PerfDutyCycling,   0,   0,   0,  1, "t.powerplanschemes.22"),
             new Knob(SubProcessor, ProcFreqMax,       0,   0,   0,  0, "t.powerplanschemes.23"),
+            // 四列全 0 每次写方案都把处理器空闲写回允许 下架的开关不再有任何机会把它写成 1
+            new Knob(SubProcessor, IdleDisableSet,    0,   0,   0,  0, "t.powerplanschemes.34"),
             new Knob(SubWireless,  WirelessPowerSave, 0,   0,   1,  2, "t.powerplanschemes.24"),
         };
 
@@ -176,7 +178,7 @@ namespace PaviseApp
             return cachedProfile;
         }
 
-        private static bool TuneTarget(Guid g, bool aggressive)
+        private static bool TuneTarget(Guid g, bool aggressive, bool handheld)
         {
             try
             {
@@ -188,13 +190,13 @@ namespace PaviseApp
                 foreach (Knob k in CoreKnobs)
                 {
                     if (!SettingPresent(g, k.Sub, k.Setting)) { skipped.Add(k.Label); continue; }
-                    if (WriteKnob(g, k, aggressive, profile)) written++;
-                    else { failed++; LogKnobFailure(g, k, aggressive, profile); }
+                    if (WriteKnob(g, k, aggressive, handheld, profile)) written++;
+                    else { failed++; LogKnobFailure(g, k, aggressive, handheld, profile); }
                 }
                 foreach (Knob k in OptionalKnobs)
                 {
                     if (!SettingPresent(g, k.Sub, k.Setting)) { skipped.Add(k.Label); continue; }
-                    if (WriteKnob(g, k, aggressive, profile)) written++; else failed++;
+                    if (WriteKnob(g, k, aggressive, handheld, profile)) written++; else failed++;
                 }
                 if (CpuTopology.Hybrid && profile.WriteHetero)
                 {
@@ -205,17 +207,9 @@ namespace PaviseApp
                         if (k.Setting == SchedPolicy || k.Setting == ShortSchedPolicy)
                             eff = new Knob(k.Sub, k.Setting, profile.HeteroSched, profile.HeteroSched,
                                 k.CalmAc, k.CalmDc, k.Label);
-                        if (WriteKnob(g, eff, aggressive, profile)) written++; else failed++;
+                        if (WriteKnob(g, eff, aggressive, handheld, profile)) written++; else failed++;
                     }
                 }
-
-                if (SettingPresent(g, SubProcessor, IdleDisableSet))
-                {
-                    if (WritePair(g, SubProcessor, IdleDisableSet,
-                        IdleStateTweak.DesiredAc(aggressive), 0u)) written++;
-                    else failed++;
-                }
-                else skipped.Add(Lang.T("t.powerplanschemes.34"));
 
                 if (failed > 0)
                 {
@@ -228,7 +222,9 @@ namespace PaviseApp
                     }
                 }
 
-                Logger.Log(Lang.T("log.powerplanschemes.37") + (aggressive ? Lang.T("log.powerplanschemes.38") : Lang.T("log.powerplanschemes.39"))
+                Logger.Log(Lang.T("log.powerplanschemes.37")
+                    + (!aggressive ? Lang.T("log.powerplanschemes.39")
+                        : handheld ? Lang.T("log.powerplanschemes.46") : Lang.T("log.powerplanschemes.38"))
                     + " " + ManagedPlanTitle + Lang.T("log.powerplanschemes.40") + profile.Tag + Lang.T("log.powerplanschemes.41") + written + Lang.T("t.gamemodeenv.30")
                     + (profile.PreserveCoreParking ? Lang.T("log.powerplanschemes.42") : "")
                     + (skipped.Count > 0 ? Lang.T("log.powerplanschemes.43") + skipped.Count + Lang.T("log.powerplanschemes.44") + string.Join(" ", skipped.ToArray()) : ""));
@@ -237,7 +233,7 @@ namespace PaviseApp
             catch { return false; }
         }
 
-        private static void LogKnobFailure(Guid scheme, Knob k, bool aggressive, PowerPlanProfile profile)
+        private static void LogKnobFailure(Guid scheme, Knob k, bool aggressive, bool handheld, PowerPlanProfile profile)
         {
             uint code = 0;
             try
@@ -245,7 +241,7 @@ namespace PaviseApp
                 bool coreParking = k.Setting == CpMinCores || k.Setting == CpMaxCores;
                 bool useArena = coreParking ? profile.UseArenaCoreParking(aggressive) : aggressive;
                 WritePair(scheme, k.Sub, k.Setting,
-                    useArena ? ArenaAcFor(k, k.ArenaAc) : CalmAcFor(k, k.CalmAc, profile),
+                    useArena ? ArenaAcFor(k, k.ArenaAc, handheld) : CalmAcFor(k, k.CalmAc, profile),
                     useArena ? ArenaDcFor(k, k.ArenaDc) : k.CalmDc, out code);
             }
             catch { }
@@ -253,12 +249,12 @@ namespace PaviseApp
                 + Lang.T("log.powerplanschemes.33") + " rc=" + code);
         }
 
-        private static bool WriteKnob(Guid scheme, Knob k, bool aggressive, PowerPlanProfile profile)
+        private static bool WriteKnob(Guid scheme, Knob k, bool aggressive, bool handheld, PowerPlanProfile profile)
         {
             bool coreParking = k.Setting == CpMinCores || k.Setting == CpMaxCores;
             bool useArena = coreParking ? profile.UseArenaCoreParking(aggressive) : aggressive;
             return WritePair(scheme, k.Sub, k.Setting,
-                useArena ? ArenaAcFor(k, k.ArenaAc) : CalmAcFor(k, k.CalmAc, profile),
+                useArena ? ArenaAcFor(k, k.ArenaAc, handheld) : CalmAcFor(k, k.CalmAc, profile),
                 useArena ? ArenaDcFor(k, k.ArenaDc) : k.CalmDc);
         }
 
@@ -300,9 +296,14 @@ namespace PaviseApp
             return false;
         }
 
-        private static uint ArenaAcFor(Knob k, uint ac)
+        // 掌机档插电时按电池那一列的口径放开 借的就是 ArenaDcRelaxOnLaptop 那张表
+        //   笔记本插电只放开核心停泊 是因为那份预算还够 CPU 和独显各拿各的
+        //   掌机整机十几瓦 CPU 和集显抢的是同一份 最低性能状态锁 100 等于先把预算划给 CPU
+        //   放开的仍然只是纯省电项 EPP PerfBoostPol ProcThrottleMax 照写激进值 不碰帧和输入
+        private static uint ArenaAcFor(Knob k, uint ac, bool handheld)
         {
             if (!Native.HasSystemBattery()) return ac;   // 台式机保持原样
+            if (handheld && ArenaDcRelaxed(k.Setting)) return k.CalmAc;
             return ArenaAcRelaxed(k.Setting) ? k.CalmAc : ac;
         }
 
@@ -317,6 +318,31 @@ namespace PaviseApp
         {
             if (!Native.HasSystemBattery()) return dc;   // 台式机根本用不到电池那一列
             return ArenaDcRelaxed(k.Setting) ? k.CalmDc : dc;
+        }
+
+        // 下架前写进去的 1 清一次 不看接管状态 清成功记个标记不再重复跑
+        //   没有托管方案或方案里没这一项都算清完 拿不到写权限就留着标记下次再试
+        internal static bool ClearLegacyIdleDisableOnce()
+        {
+            if (Settings.Load(IdleDisableClearedKey, false)) return true;
+            try
+            {
+                Guid g = ManagedPlanGuid();
+                if (g == Guid.Empty || !SettingPresent(g, SubProcessor, IdleDisableSet))
+                {
+                    Settings.Save(IdleDisableClearedKey, true);
+                    return true;
+                }
+                if (!WritePair(g, SubProcessor, IdleDisableSet, 0u, 0u)) return false;
+                // 托管方案正是当前活动方案时 得重新激活一次内核才会重读这个值
+                //   激活没成就别记标记 下次启动再清一遍 记死了就再也没有第二次机会
+                Guid? cur = Current();
+                if (cur.HasValue && cur.Value == g && !Set(g)) return false;
+                Settings.Save(IdleDisableClearedKey, true);
+                Logger.Log(Lang.T("log.powerplanschemes.47"));
+                return true;
+            }
+            catch { return false; }
         }
 
         private static readonly Guid[] CalmArenaAcOnDesktop =
@@ -334,24 +360,6 @@ namespace PaviseApp
             for (int i = 0; i < CalmArenaAcOnDesktop.Length; i++)
                 if (k.Setting == CalmArenaAcOnDesktop[i]) return k.ArenaAc;
             return ac;
-        }
-
-        public static bool ManagedIdleDisableOn()
-        {
-            Guid g = ManagedPlanGuid();
-            if (g == Guid.Empty) return false;
-            Guid sub = SubProcessor, set = IdleDisableSet;
-            uint value;
-            if (PowerReadACValueIndex(IntPtr.Zero, ref g, ref sub, ref set, out value) != 0) return false;
-            return value != 0;
-        }
-
-        public static bool ClearIdleDisable()
-        {
-            Guid g = ManagedPlanGuid();
-            if (g == Guid.Empty) return true;
-            if (!SettingPresent(g, SubProcessor, IdleDisableSet)) return true;
-            return WritePair(g, SubProcessor, IdleDisableSet, 0u, 0u);
         }
 
         // 对局中把能效偏好临时抬高 让出共享功耗预算 只动托管方案的 AC 值 退场必还原

@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 各大游戏平台客户端家族的内置豁免 进程名加安装目录双重校验
 using System;
 using System.Collections.Generic;
@@ -330,12 +330,53 @@ namespace PaviseApp
             return null;
         }
 
-        // 网页渲染子进程曾经要单独认 因为平台本体豁免而只有专注档压这些子进程
-        //   2.1 起平台本体在所有档位一律照压 这个区分没有对应行为了 名单与判据一并删除
+        private static readonly HashSet<string> WebRendererNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "steamwebhelper", "epicwebhelper", "uplaywebcore", "blizzardbrowser", "riotclientuxrender"
+        };
+
+        // 网页渲染子进程要单独认 家族豁免开着时平台本体整体放行 只有专注档还压这些子进程
+        //   它们是平台里最能吃 CPU 的一部分 商店页和好友列表都跑在这上面 停了不影响游戏运行
+        //   家族豁免关着时平台本体本来就照压 这个区分对结果没有影响
+        internal static bool IsPlatformWebRenderer(string name)
+        {
+            return !string.IsNullOrEmpty(name) && WebRendererNames.Contains(name.Trim());
+        }
+
+        internal static bool IsPlatformShellName(string name)
+        {
+            return !string.IsNullOrEmpty(name) && ShellNames.Contains(name.Trim());
+        }
 
         internal static IEnumerable<string> PlatformShellNames()
         {
             return ShellNames;
+        }
+
+        internal static bool OwnsName(string platformId, string name)
+        {
+            List<Platform> owners = OwnersOf(name);
+            if (owners == null) return false;
+            foreach (Platform platform in owners)
+                if (string.Equals(platform.Id, platformId, StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+
+        internal static bool MatchesWithRoots(string platformId, string name, string path, IList<string> roots)
+        {
+            return OwnsName(platformId, name) && UnderAnyRoot(NormalizePath(path), roots);
+        }
+
+        internal static List<string> ResolvedRoots(string platformId)
+        {
+            EnsureRoots();
+            var result = new List<string>();
+            lock (sync)
+                foreach (Platform platform in Platforms)
+                    if (string.Equals(platform.Id, platformId, StringComparison.OrdinalIgnoreCase)
+                        && platform.Roots != null)
+                        result.AddRange(platform.Roots);
+            return result;
         }
 
         internal static List<string> DetectedPlatforms()
@@ -371,10 +412,11 @@ namespace PaviseApp
                 if (platform.Logged) return;
                 platform.Logged = true;
             }
-            // 曾经在这里补一句"专注档仍会压它的网页渲染子进程"
-            //   那句话的前提是平台本体默认豁免 只有专注档才额外动它的网页子进程
-            //   2.1 起平台本体在所有档位都按普通后台压制 前提没了 留着会让人以为智能档不压
-            Logger.Log(platform.Id + Lang.T("log.gameplatformcatalog.23"));
+            // 这句话跟着家族豁免开关走 说错了比不说更糟 用户会照它判断要不要手动加白名单
+            //   豁免关着 平台本体在所有档位都按普通后台压制
+            //   豁免开着 平台本体整族放行 只有专注档还压它的网页渲染子进程
+            Logger.Log(platform.Id + Lang.T(GameMode.FamilyExemptHint
+                ? "log.gameplatformcatalog.25" : "log.gameplatformcatalog.23"));
         }
 
         private static bool UnderAnyRoot(string path, IList<string> roots)

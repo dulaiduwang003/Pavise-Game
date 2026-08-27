@@ -309,7 +309,10 @@ namespace PaviseApp
                 return;
             try
             {
-                if (revert) fix.Revert(); else fix.Fix();
+                IrqMutationBoundary.Run(delegate
+                {
+                    if (revert) fix.Revert(); else fix.Fix();
+                });
             }
             catch { }
             Logger.Log(revert ? Lang.T("log.panelformauditpage.1") : Lang.T("log.panelformauditpage.2"));
@@ -344,7 +347,8 @@ namespace PaviseApp
                     if (f.ConfirmKey != null
                         && !PaviseDialog.Confirm(this, App.DisplayName, Lang.T(f.ConfirmKey), DlgKind.Warn))
                         continue;
-                    f.Fix(); done++;
+                    IrqMutationBoundary.Run(f.Fix);
+                    done++;
                 }
                 catch { }
             }

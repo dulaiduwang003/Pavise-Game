@@ -120,6 +120,7 @@ namespace PaviseApp
             EnsureStaticLayer(accent, accent2);
 
             Graphics g = e.Graphics;
+            if (Backdrop.Active) Backdrop.Paint(g, this, ClientRectangle);
             g.DrawImageUnscaled(staticLayer, 0, 0);
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
@@ -143,24 +144,27 @@ namespace PaviseApp
             DrawCoreEnergy(g, cx, cy, radius * 0.43f, spin, breath, accent, energy);
         }
 
+        private bool cachedBackdrop;
+
         private void EnsureStaticLayer(Color accent, Color accent2)
         {
             if (staticLayer != null && staticLayer.Width == Width && staticLayer.Height == Height &&
-                cachedAccent == accent && cachedAccent2 == accent2) return;
+                cachedAccent == accent && cachedAccent2 == accent2 && cachedBackdrop == Backdrop.Active) return;
             DropCache();
             if (Width <= 0 || Height <= 0) return;
             staticLayer = new Bitmap(Width, Height, PixelFormat.Format32bppPArgb);
-            cachedAccent = accent; cachedAccent2 = accent2;
+            cachedAccent = accent; cachedAccent2 = accent2; cachedBackdrop = Backdrop.Active;
             using (Graphics g = Graphics.FromImage(staticLayer))
             {
-                g.Clear(Theme.Bg);
+                // 有封面时这层留空 底在 OnPaint 里先画好了 这里再涂就把它盖了
+                g.Clear(Backdrop.Active ? Color.Transparent : Theme.Bg);
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.PixelOffsetMode = PixelOffsetMode.HighQuality;
                 Rectangle frame = new Rectangle(0, 0, Width - 1, Height - 1);
                 using (GraphicsPath fp = Theme.TechPath(frame, Theme.S(15)))
                 {
-                    Color frameA = Theme.LightMode ? Col.Lerp(Theme.Inset, accent, 0.055f) : Theme.Inset;
-                    Color frameB = Theme.LightMode ? Col.Lerp(Theme.Card, accent, 0.018f) : Theme.Card;
+                    Color frameA = Backdrop.CardFill(Theme.LightMode ? Col.Lerp(Theme.Inset, accent, 0.055f) : Theme.Inset);
+                    Color frameB = Backdrop.CardFill(Theme.LightMode ? Col.Lerp(Theme.Card, accent, 0.018f) : Theme.Card);
                     using (var fill = new LinearGradientBrush(frame, frameA, frameB, LinearGradientMode.ForwardDiagonal))
                         g.FillPath(fill, fp);
                     using (var border = new Pen(Theme.Stroke)) g.DrawPath(border, fp);

@@ -18,9 +18,14 @@ namespace PaviseApp
         public double DpcPerMinute;
         public ulong CpuMask;
         public bool MaskTruncated;
+        public long OverlapOver500;
+        public double OverlapWorstMaxUs;
+        public ulong OverlapCpuMask;
+        public double ScoredSeconds;
         public double Collisions;
         public bool StructuralConflict;
         public bool Worth;
+        public bool VersionVerified;
     }
 
     internal static class IrqVerdict
@@ -40,33 +45,36 @@ namespace PaviseApp
             return mask != 0 && (mask & (mask - 1)) == 0;
         }
 
-        internal static void Score(IrqDriverVerdict v, ulong gameMask, double budgetUs, double seconds)
+        internal static void Score(IrqDriverVerdict v, double budgetUs)
         {
             v.Worth = false;
             v.StructuralConflict = false;
             v.Collisions = 0;
-            if (v.CpuMask == 0 || seconds <= 0) return;
-            bool maskTrusted = !v.MaskTruncated;
-            if (maskTrusted && gameMask != 0 && (v.CpuMask & gameMask) == 0) return;
-            if (v.WorstMaxUs < MinMaxUs) return;
+            if (v.OverlapCpuMask == 0 || v.ScoredSeconds <= 0) return;
+            // 挪核建议必须知道游戏核与完整落核掩码，并且同一驱动要在多局都实际越线。
+            // 全局凑够三局不等于这个驱动也稳定复现；一局偶发尖峰不能升级成建议。
+            if (v.MaskTruncated) return;
+            if (v.SessionsSeen < IrqSessionLedger.MinSessionsForVerdict
+                || v.SessionsOverThreshold < IrqSessionLedger.MinSessionsForVerdict) return;
+            if (v.OverlapWorstMaxUs < MinMaxUs) return;
 
-            if (maskTrusted && gameMask != 0
-                && IsSingleCore(v.CpuMask) && (v.CpuMask & gameMask) != 0)
+            if (IsSingleCore(v.OverlapCpuMask))
             {
                 v.StructuralConflict = true;
-                double per500PerMin = v.TotalOver500 / (seconds / 60.0);
-                v.Collisions = (v.TotalOver500 / seconds) * (v.WorstMaxUs / budgetUs);
+                double per500PerMin = v.OverlapOver500 / (v.ScoredSeconds / 60.0);
+                v.Collisions = (v.OverlapOver500 / v.ScoredSeconds)
+                    * (v.OverlapWorstMaxUs / budgetUs);
                 v.Worth = per500PerMin >= MinStructuralOver500PerMin;
                 return;
             }
 
-            double perSec = v.TotalOver500 / seconds;
-            v.Collisions = perSec * (v.WorstMaxUs / budgetUs);
+            double perSec = v.OverlapOver500 / v.ScoredSeconds;
+            v.Collisions = perSec * (v.OverlapWorstMaxUs / budgetUs);
             v.Worth = v.Collisions >= WorthCollisionsPerSec;
         }
 
         public static List<IrqDriverVerdict> Evaluate(List<IrqSessionRecord> all,
-            ulong gameMask, int hz, out int usedSessions)
+            int hz, out int usedSessions)
         {
             usedSessions = 0;
             var result = new List<IrqDriverVerdict>();
@@ -85,13 +93,28 @@ namespace PaviseApp
             var byDriver = new Dictionary<string, IrqDriverVerdict>(StringComparer.OrdinalIgnoreCase);
             var maxima = new Dictionary<string, List<double>>(StringComparer.OrdinalIgnoreCase);
             var dpcTotals = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+            var newestVersion = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
+            // window is newest-first. Once a driver version has appeared, older versions
+            // of that same module must not inherit or contribute a recommendation after an update.
             foreach (IrqSessionRecord s in window)
+            {
+                var sessionDrivers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (IrqDriverRecord d in s.Drivers)
                 {
                     if (d == null || d.Dpc <= 0) continue;
+                    string driver = d.Driver ?? "";
+                    string version = d.DriverVersion ?? "";
+                    string currentVersion;
+                    if (!newestVersion.TryGetValue(driver, out currentVersion))
+                        newestVersion[driver] = version;
+                    else if (!string.Equals(currentVersion, version, StringComparison.OrdinalIgnoreCase))
+                        continue;
                     IrqDriverVerdict v;
                     string key = d.Identity;
+                    // A valid probe writes one record per driver. Ignore duplicate records in
+                    // a damaged ledger so one match cannot impersonate multiple sessions.
+                    if (!sessionDrivers.Add(key)) continue;
                     if (!byDriver.TryGetValue(key, out v))
                     {
                         v = new IrqDriverVerdict();
@@ -102,7 +125,22 @@ namespace PaviseApp
                         dpcTotals[key] = 0;
                     }
                     v.SessionsSeen++;
-                    if (d.Over500Us > 0) v.SessionsOverThreshold++;
+                    // The ledger has one aggregate latency distribution plus a CPU mask;
+                    // it cannot prove which CPU produced a slow DPC. Score a session only
+                    // when every observed CPU for this driver was inside the game's mask.
+                    bool provenOnGameCores = s.GameMask != 0
+                        && s.SystemMask != 0 && s.GameMask != s.SystemMask
+                        && (s.GameMask & ~s.SystemMask) == 0 && d.CpuMask != 0
+                        && (d.CpuMask & ~s.GameMask) == 0;
+                    if (provenOnGameCores)
+                    {
+                        if (d.Over500Us > 0) v.SessionsOverThreshold++;
+                        v.OverlapOver500 += d.Over500Us;
+                        if (d.DpcMaxUs > v.OverlapWorstMaxUs)
+                            v.OverlapWorstMaxUs = d.DpcMaxUs;
+                        v.OverlapCpuMask |= d.CpuMask;
+                        v.ScoredSeconds += s.DurationSeconds;
+                    }
                     if (d.DpcMaxUs > v.WorstMaxUs) v.WorstMaxUs = d.DpcMaxUs;
                     v.TotalOver500 += d.Over500Us;
                     v.CpuMask |= d.CpuMask;
@@ -112,6 +150,7 @@ namespace PaviseApp
                     double p99 = d.ApproxPercentileUs(0.99);
                     if (p99 > v.P99Us) v.P99Us = p99;
                 }
+            }
 
             double budget = FrameBudgetUs(hz);
             double minutes = seconds / 60.0;
@@ -122,7 +161,7 @@ namespace PaviseApp
                 m.Sort();
                 v.MedianMaxUs = m.Count == 0 ? 0 : m[m.Count / 2];
                 v.DpcPerMinute = minutes > 0 ? dpcTotals[kv.Key] / minutes : 0;
-                Score(v, gameMask, budget, seconds);
+                Score(v, budget);
                 result.Add(v);
             }
 

@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 主窗口入场退场动效与对局中的自动隐藏
 using System;
 using System.Diagnostics;
@@ -218,13 +218,6 @@ namespace PaviseApp
             }
             catch { }
             return false;
-        }
-
-        private void OnIrqProbeToggle(object s, EventArgs e)
-        {
-            IrqSessionProbe.EnabledSetting = swIrqProbe.Checked;
-            swIrqProbe.SetSilently(IrqSessionProbe.EnabledSetting);
-            if (swIrqProbePage != null) swIrqProbePage.SetSilently(IrqSessionProbe.EnabledSetting);
         }
 
         private void OnAutoHideToggle(object s, EventArgs e)

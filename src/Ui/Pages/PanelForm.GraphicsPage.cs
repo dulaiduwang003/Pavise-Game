@@ -21,14 +21,19 @@ namespace PaviseApp
         {
             int y = PageHeader(pageGraphics, Lang.T("nav.graphics"), Lang.T("v16.graphics.sub"), 2);
 
+            // 横幅是整页的状态 这一页有 NVIDIA 和 AMD 两个标签 只看 NvApi 是错的
+            //   2.1.0 AMD 调优回归之后 A 卡机器上 NVIDIA 侧当然读不到
+            //   但 AMD 标签页是好的 整页却报红说本项停用 会让 A 卡用户以为整页都用不了
+            //   两家任意一家可用 这一页就算就绪 各项自己的可用性由各自卡片的说明负责
             bool nvOk = NvApi.Available;
+            bool gfxOk = nvOk || AdlxTweaks.Available;
             var gfxBanner = new ModuleBanner();
             gfxBanner.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(72));
             gfxBanner.Code = "GRAPHICS DRIVER // 04";
             gfxBanner.TitleText = Lang.T("nav.graphics");
-            gfxBanner.Detail = nvOk ? Lang.T("v16.graphics.sub") : Lang.T("set.nv.none");
-            gfxBanner.State = nvOk ? "DRIVER API READY" : "DRIVER API OFFLINE";
-            gfxBanner.StateColor = nvOk ? Theme.Green : Theme.Danger;
+            gfxBanner.Detail = gfxOk ? Lang.T("v16.graphics.sub") : Lang.T("set.gfx.none");
+            gfxBanner.State = gfxOk ? "DRIVER API READY" : "DRIVER API OFFLINE";
+            gfxBanner.StateColor = gfxOk ? Theme.Green : Theme.Danger;
             gfxBanner.Glyph = "gpu";
             pageGraphics.Controls.Add(gfxBanner);
             y += 84;

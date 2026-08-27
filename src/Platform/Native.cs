@@ -35,6 +35,14 @@ namespace PaviseApp
         public static extern IntPtr OpenProcess(int access, bool inherit, int pid);
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern IntPtr OpenThread(int access, bool inherit, int tid);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern IntPtr GetModuleHandle(string moduleName);
+        [DllImport("kernel32.dll", CharSet = CharSet.Ansi, ExactSpelling = true,
+            SetLastError = true)]
+        private static extern IntPtr GetProcAddress(
+            IntPtr module, string procedureName);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern uint GetProcessIdOfThread(IntPtr thread);
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern bool SetThreadPriority(IntPtr thread, int priority);
         [DllImport("kernel32.dll", SetLastError = true)]
@@ -322,10 +330,204 @@ namespace PaviseApp
         [DllImport("gdi32.dll")] public static extern int D3DKMTGetProcessSchedulingPriorityClass(IntPtr h, out int cls);
         [DllImport("gdi32.dll")] public static extern int D3DKMTSetProcessSchedulingPriorityClass(IntPtr h, int cls);
 
+        // WDDM 显存查询与预留 全部走 gdi32 的用户态 D3DKMT 接口 不装驱动 不注入 不读游戏内存
+        //   MemorySegmentGroup 0 是本地显存 1 是非本地(系统内存那份) 护盾只关心 0
+        //   注意 Query 的 hProcess 是 HANDLE 而 Change 的 hProcess 在头文件里是 UINT64
+        //     x64 上宽度一样 但类型照抄头文件 免得将来有人按 HANDLE 去改 Change 那个
+        public const uint D3DKMT_MEMORY_SEGMENT_GROUP_LOCAL = 0;
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct D3dkmtLuid
+        {
+            public uint LowPart;
+            public int HighPart;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct D3dkmtOpenAdapterFromLuid
+        {
+            public D3dkmtLuid AdapterLuid;
+            public uint hAdapter;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct D3dkmtCloseAdapter
+        {
+            public uint hAdapter;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct D3dkmtQueryVideoMemoryInfo
+        {
+            public IntPtr hProcess;
+            public uint hAdapter;
+            public uint MemorySegmentGroup;
+            public ulong Budget;
+            public ulong CurrentUsage;
+            public ulong CurrentReservation;
+            public ulong AvailableForReservation;
+            public uint PhysicalAdapterIndex;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct D3dkmtChangeVideoMemoryReservation
+        {
+            public ulong hProcess;
+            public uint hAdapter;
+            public uint MemorySegmentGroup;
+            public ulong Reservation;
+            public uint PhysicalAdapterIndex;
+        }
+
+        [DllImport("gdi32.dll")]
+        public static extern int D3DKMTOpenAdapterFromLuid(ref D3dkmtOpenAdapterFromLuid p);
+        [DllImport("gdi32.dll")]
+        public static extern int D3DKMTCloseAdapter(ref D3dkmtCloseAdapter p);
+        [DllImport("gdi32.dll")]
+        public static extern int D3DKMTQueryVideoMemoryInfo(ref D3dkmtQueryVideoMemoryInfo p);
+        [DllImport("gdi32.dll")]
+        public static extern int D3DKMTChangeVideoMemoryReservation(ref D3dkmtChangeVideoMemoryReservation p);
+
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool SetProcessDefaultCpuSets(IntPtr h, uint[] ids, uint count);
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool GetProcessDefaultCpuSets(IntPtr h, uint[] ids, uint count, out uint required);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct GroupAffinity
+        {
+            public UIntPtr Mask;
+            public ushort Group;
+            public ushort Reserved0;
+            public ushort Reserved1;
+            public ushort Reserved2;
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool GetThreadGroupAffinity(
+            IntPtr thread, out GroupAffinity affinity);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool GetThreadSelectedCpuSets(
+            IntPtr thread, uint[] ids, uint count, out uint required);
+
+        internal enum CpuSetMaskQueryResult
+        {
+            Failed = -1,
+            ApiUnavailable = 0,
+            Success = 1
+        }
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi, SetLastError = true)]
+        private delegate bool CpuSetMaskGetter(
+            IntPtr handle, IntPtr masks, ushort count, out ushort required);
+
+        private static readonly object cpuSetMaskApiSync = new object();
+        private static volatile bool cpuSetMaskApisResolved;
+        // -1 表示连 kernel32 都无法解析，0 才表示老系统确实没有该导出。
+        private static int processCpuSetMaskApiState = -1;
+        private static int threadCpuSetMaskApiState = -1;
+        private static CpuSetMaskGetter getProcessDefaultCpuSetMasks;
+        private static CpuSetMaskGetter getThreadSelectedCpuSetMasks;
+
+        private static void ResolveCpuSetMaskApis()
+        {
+            if (cpuSetMaskApisResolved) return;
+            lock (cpuSetMaskApiSync)
+            {
+                if (cpuSetMaskApisResolved) return;
+                try
+                {
+                    IntPtr module = GetModuleHandle("kernel32.dll");
+                    if (module != IntPtr.Zero)
+                    {
+                        IntPtr process = GetProcAddress(
+                            module, "GetProcessDefaultCpuSetMasks");
+                        IntPtr thread = GetProcAddress(
+                            module, "GetThreadSelectedCpuSetMasks");
+                        processCpuSetMaskApiState = process == IntPtr.Zero ? 0 : 1;
+                        threadCpuSetMaskApiState = thread == IntPtr.Zero ? 0 : 1;
+                        if (process != IntPtr.Zero)
+                            getProcessDefaultCpuSetMasks =
+                                (CpuSetMaskGetter)Marshal.GetDelegateForFunctionPointer(
+                                    process, typeof(CpuSetMaskGetter));
+                        if (thread != IntPtr.Zero)
+                            getThreadSelectedCpuSetMasks =
+                                (CpuSetMaskGetter)Marshal.GetDelegateForFunctionPointer(
+                                    thread, typeof(CpuSetMaskGetter));
+                    }
+                }
+                catch
+                {
+                    processCpuSetMaskApiState = -1;
+                    threadCpuSetMaskApiState = -1;
+                    getProcessDefaultCpuSetMasks = null;
+                    getThreadSelectedCpuSetMasks = null;
+                }
+                cpuSetMaskApisResolved = true;
+            }
+        }
+
+        private static CpuSetMaskQueryResult QueryCpuSetMasks(
+            IntPtr handle, int apiState, CpuSetMaskGetter getter,
+            out bool assigned, out ulong mask)
+        {
+            assigned = false;
+            mask = 0;
+            if (apiState == 0) return CpuSetMaskQueryResult.ApiUnavailable;
+            if (apiState != 1 || getter == null || handle == IntPtr.Zero)
+                return CpuSetMaskQueryResult.Failed;
+            try
+            {
+                ushort required;
+                bool first = getter(handle, IntPtr.Zero, 0, out required);
+                if (required == 0)
+                    return first ? CpuSetMaskQueryResult.Success
+                        : CpuSetMaskQueryResult.Failed;
+                int recordSize = Marshal.SizeOf(typeof(GroupAffinity));
+                IntPtr buffer = Marshal.AllocHGlobal(recordSize * required);
+                try
+                {
+                    ushort actual;
+                    if (!getter(handle, buffer, required, out actual)
+                        || actual != required)
+                        return CpuSetMaskQueryResult.Failed;
+                    for (int i = 0; i < required; i++)
+                    {
+                        IntPtr record = (IntPtr)((long)buffer
+                            + (long)i * recordSize);
+                        var affinity = (GroupAffinity)Marshal.PtrToStructure(
+                            record, typeof(GroupAffinity));
+                        if (affinity.Group != 0) return CpuSetMaskQueryResult.Failed;
+                        ulong bitMask = affinity.Mask.ToUInt64();
+                        if (bitMask == 0) return CpuSetMaskQueryResult.Failed;
+                        mask |= bitMask;
+                    }
+                    assigned = true;
+                    return mask != 0 ? CpuSetMaskQueryResult.Success
+                        : CpuSetMaskQueryResult.Failed;
+                }
+                finally { Marshal.FreeHGlobal(buffer); }
+            }
+            catch { return CpuSetMaskQueryResult.Failed; }
+        }
+
+        public static CpuSetMaskQueryResult QueryProcessDefaultCpuSetMasks(
+            IntPtr process, out bool assigned, out ulong mask)
+        {
+            ResolveCpuSetMaskApis();
+            return QueryCpuSetMasks(
+                process, processCpuSetMaskApiState,
+                getProcessDefaultCpuSetMasks, out assigned, out mask);
+        }
+
+        public static CpuSetMaskQueryResult QueryThreadSelectedCpuSetMasks(
+            IntPtr thread, out bool assigned, out ulong mask)
+        {
+            ResolveCpuSetMaskApis();
+            return QueryCpuSetMasks(
+                thread, threadCpuSetMaskApiState,
+                getThreadSelectedCpuSetMasks, out assigned, out mask);
+        }
 
         public static bool TrySetCpuSets(IntPtr h, uint[] ids)
         {
@@ -348,7 +550,77 @@ namespace PaviseApp
                 bool first = GetProcessDefaultCpuSets(h, null, 0, out required);
                 if (required == 0) return first ? new uint[0] : null;
                 var ids = new uint[required];
-                return GetProcessDefaultCpuSets(h, ids, (uint)ids.Length, out required) ? ids : null;
+                uint actual;
+                return GetProcessDefaultCpuSets(
+                        h, ids, (uint)ids.Length, out actual)
+                    && actual == required ? ids : null;
+            }
+            catch { return null; }
+        }
+
+        public static int QueryThreadOwnerPid(IntPtr thread)
+        {
+            if (thread == IntPtr.Zero) return -1;
+            try
+            {
+                uint pid = GetProcessIdOfThread(thread);
+                return pid != 0 && pid <= int.MaxValue ? (int)pid : -1;
+            }
+            catch { return -1; }
+        }
+
+        public static bool TryQueryThreadActive(
+            IntPtr thread, out bool active)
+        {
+            active = false;
+            if (thread == IntPtr.Zero) return false;
+            try
+            {
+                // GetExitCodeThread 的 259 也可能是线程真实退出码；带
+                // SYNCHRONIZE 的句柄用零超时 wait 才能无歧义区分存活。
+                uint wait = WaitForSingleObject(thread, 0);
+                if (wait == WaitTimeout) { active = true; return true; }
+                if (wait == 0) return true;
+                return false;
+            }
+            catch { return false; }
+        }
+
+        public static bool TryQueryThreadGroupAffinity(
+            IntPtr thread, out ushort group, out ulong mask)
+        {
+            group = 0;
+            mask = 0;
+            if (thread == IntPtr.Zero) return false;
+            try
+            {
+                GroupAffinity affinity;
+                if (!GetThreadGroupAffinity(thread, out affinity)) return false;
+                group = affinity.Group;
+                mask = affinity.Mask.ToUInt64();
+                return mask != 0;
+            }
+            catch { return false; }
+        }
+
+        // null 表示查询失败，空数组表示线程没有显式 CPU Set 分配。
+        // 两次调用之间数量发生变化也视为未知，归因链路必须 fail-closed。
+        public static uint[] QueryThreadSelectedCpuSets(IntPtr thread)
+        {
+            if (thread == IntPtr.Zero) return null;
+            try
+            {
+                uint required;
+                bool first = GetThreadSelectedCpuSets(
+                    thread, null, 0, out required);
+                if (required == 0) return first ? new uint[0] : null;
+                var ids = new uint[required];
+                uint actual;
+                if (!GetThreadSelectedCpuSets(
+                        thread, ids, (uint)ids.Length, out actual)
+                    || actual != required)
+                    return null;
+                return ids;
             }
             catch { return null; }
         }
@@ -613,6 +885,10 @@ namespace PaviseApp
 
         public const int PROCESS_SET_QUOTA = 0x0100;
         public const int PROCESS_SET_INFORMATION = 0x0200;
+        // D3DKMT 的显存查询与预留不吃 QUERY_LIMITED 本机实测一律 STATUS_ACCESS_DENIED
+        //   QueryVideoMemoryInfo 要 QUERY_INFORMATION  ChangeVideoMemoryReservation 要 SET_INFORMATION
+        //   两者都比 QUERY_LIMITED 更容易被反作弊拒绝 所以护盾的跳过率天然高于提优
+        public const int PROCESS_QUERY_INFORMATION = 0x0400;
         public const int PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 
         public const int PROCESS_SET_LIMITED_INFORMATION = 0x2000;

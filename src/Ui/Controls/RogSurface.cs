@@ -161,6 +161,8 @@ namespace PaviseApp
 
         protected override void OnPaintBackground(PaintEventArgs e)
         {
+            // 有封面就让位 封面已经够花了 装甲底纹再叠上去只会更脏
+            if (Backdrop.Active) { Backdrop.Paint(e.Graphics, this, e.ClipRectangle); return; }
             using (var fill = new SolidBrush(Theme.Bg)) e.Graphics.FillRectangle(fill, ClientRectangle);
             RogSurface.Draw(e.Graphics, ClientRectangle, false);
         }

@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 将原始日志渲染成结构化战术事件流
 using System;
 using System.Collections.Generic;
@@ -123,12 +123,16 @@ namespace PaviseApp
             return entry;
         }
 
+        // 这里的词表就是分级依据 写日志文案时得顺带想一下会被判成什么色
+        //   "跳过"和 skip 不在警告里 本机没这块硬件所以不做某项 是常规结论不是出事
+        //   真要报警告得写清是什么没成 比如 未生效 不完整 不可用 被占用
         private static LogEventSeverity Classify(string text)
         {
             string lower = (text ?? "").ToLowerInvariant();
             if (HasAny(lower, "失败", "异常", "错误", "未能", "无法", "fail", "error", "exception", "denied"))
                 return LogEventSeverity.Error;
-            if (HasAny(lower, "警告", "跳过", "待重试", "不完整", "不可用", "未生效", "风险", "warn", "skip", "retry", "unavailable"))
+            if (HasAny(lower, "警告", "待重试", "不完整", "不可用", "未生效", "风险", "被占用",
+                    "warn", "retry", "unavailable", "in use"))
                 return LogEventSeverity.Warning;
             if (HasAny(lower, "已生效", "已完成", "已还原", "成功", "完成", "已开启", "已恢复", "active", "restored", "success", "done", "started"))
                 return LogEventSeverity.Success;
@@ -178,6 +182,12 @@ namespace PaviseApp
             AutoScrollMinSize = new Size(0, Math.Max(ClientSize.Height, shown.Count * RowH + Theme.S(10)));
         }
 
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            if (Backdrop.Active) { Backdrop.Paint(e.Graphics, this, e.ClipRectangle); return; }
+            base.OnPaintBackground(e);
+        }
+
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
@@ -208,7 +218,7 @@ namespace PaviseApp
                 : Col.Lerp(Theme.Card, Theme.Inset, (index & 1) == 0 ? 0.06f : 0.16f);
             using (GraphicsPath path = Theme.TechPath(frame, Theme.S(8)))
             {
-                using (var fill = new SolidBrush(surface)) g.FillPath(fill, path);
+                using (var fill = new SolidBrush(Backdrop.CardFill(surface))) g.FillPath(fill, path);
                 using (var border = new Pen(index == selected ? Col.Alpha(signal, 170) : Theme.Stroke)) g.DrawPath(border, path);
             }
             using (var live = new Pen(signal, Math.Max(1.5f, Theme.S(2))))

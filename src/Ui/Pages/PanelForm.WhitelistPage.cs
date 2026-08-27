@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 构建白名单页 支持拖放添加 运行中选取与逐条作用域调整
 using System;
 using System.Collections.Generic;
@@ -132,6 +132,14 @@ namespace PaviseApp
             RefreshWhitelist(false);
         }
 
+        // 提示内容跟着家族豁免开关走 开关在游戏库页 拨完要回来重刷这一条
+        internal void SyncWhitelistPlatformHint()
+        {
+            if (lblWhiteHint == null || lblWhiteHint.IsDisposed) return;
+            lblWhiteHint.Text = Lang.T("white.page.drop");
+            AppendDetectedPlatformHint();
+        }
+
         private void AppendDetectedPlatformHint()
         {
             try
@@ -140,7 +148,9 @@ namespace PaviseApp
                 if (detected.Count == 0) return;
                 for (int i = 0; i < detected.Count; i++) detected[i] = PlatformDisplayName(detected[i]);
                 lblWhiteHint.Text += "\r\n\r\n"
-                    + Lang.F("white.page.platforms", string.Join(" ", detected.ToArray()));
+                    + Lang.F(gameMode.GameFamilyExempt
+                        ? "white.page.platforms.exempt" : "white.page.platforms",
+                        string.Join(" ", detected.ToArray()));
             }
             catch { }
         }
@@ -527,7 +537,7 @@ namespace PaviseApp
         {
             Graphics g = e.Graphics;
             Rectangle r = e.Bounds;
-            using (var b = new SolidBrush(Theme.Card)) g.FillRectangle(b, r);
+            using (var b = new SolidBrush(Backdrop.CardFill(Theme.Card))) g.FillRectangle(b, r);
             Size size = TextRenderer.MeasureText(g, text, Theme.UI(7.8f, false));
             int textLeft = r.Left + Theme.S(14);
             int mid = r.Top + r.Height / 2;

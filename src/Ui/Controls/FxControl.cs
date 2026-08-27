@@ -43,7 +43,11 @@ namespace PaviseApp
         protected override void OnMouseDown(MouseEventArgs e) { base.OnMouseDown(e); if (e.Button == MouseButtons.Left) { pressed = true; press.Set(1f); UiClock.Wake(); Invalidate(); } }
         protected override void OnMouseUp(MouseEventArgs e) { base.OnMouseUp(e); pressed = false; press.To(0f); UiClock.Wake(); Invalidate(); }
 
-        protected void FillBg(Graphics g) { using (var b = new SolidBrush(EffBg)) g.FillRectangle(b, ClientRectangle); }
+        protected void FillBg(Graphics g)
+        {
+            if (Backdrop.Active) { Backdrop.PaintOnCard(g, this, ClientRectangle); return; }
+            using (var b = new SolidBrush(EffBg)) g.FillRectangle(b, ClientRectangle);
+        }
     }
 
 }

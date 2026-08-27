@@ -27,7 +27,8 @@ namespace PaviseApp
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
-            using (var bg = new SolidBrush(Theme.Bg)) g.FillRectangle(bg, ClientRectangle);
+            if (Backdrop.Active) Backdrop.PaintOnCard(g, this, ClientRectangle);
+            else using (var bg = new SolidBrush(Theme.Bg)) g.FillRectangle(bg, ClientRectangle);
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
             // 底线与顶栏的分隔线连成一条

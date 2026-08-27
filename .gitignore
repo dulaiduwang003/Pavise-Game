@@ -4,6 +4,7 @@ tests/
 tools/
 !tools/
 tools/*
+!tools/Sync-VersionManifest.ps1
 !tools/ThermalExchangeDemo/
 !tools/ThermalExchangeDemo/**
 !tools/InterruptFabricDemo/

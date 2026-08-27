@@ -48,6 +48,7 @@ namespace PaviseApp
         public const string KeyCoreDomainAlt = "GmCoreDomainAlt";
         public const string KeyCoreMask = "GmCoreMask";
         public const string KeyPowerPlan = "PowerPlanOn";
+        public const string KeyPowerYield = "GmPowerYield";
         public const string KeyPauseDl = "GmPauseDl";
         public const string KeyPauseUpdate = "GmPauseUpdate";
         public const string KeyWlanGuard = "GmWlanGuard";
@@ -60,6 +61,7 @@ namespace PaviseApp
         public const string KeyNvDlss = "NvDlss";
         public const string KeyAmdAntiLag = "AmdAntiLag";
         public const string KeyAmdAfmf = "AmdAfmf";
+        public const string KeyVramShield = "GmVramShield";
 
         public const string GroupMode = "cfg.group.mode";
         public const string GroupBackground = "cfg.group.bg";
@@ -70,8 +72,9 @@ namespace PaviseApp
 
         private static readonly PolicyItem[] Items =
         {
+            // 顺序就是界面顺序 CfgOptionLabels 和 ModeStrip.Order 都按下标对齐 别改成数值序
             new PolicyItem(KeyPreset, PolicyValueKind.Enum, "0", "cfg.mode", GroupMode,
-                new[] { "0", "1", "2" }),
+                new[] { "0", "1", "4", "2" }),
             new PolicyItem(KeySuppress, PolicyValueKind.Bool, "1", "v14.bg.master", GroupBackground, null),
             new PolicyItem(KeyBoost, PolicyValueKind.Bool, "1", "gm.boost", GroupBackground, null),
             new PolicyItem(KeyAggressive, PolicyValueKind.Bool, "0", "gm.aggressive", GroupBackground, null),
@@ -82,6 +85,7 @@ namespace PaviseApp
             new PolicyItem(KeyCoreDomainAlt, PolicyValueKind.Bool, "0", "cfg.domainalt", GroupCores, null),
             new PolicyItem(KeyCoreMask, PolicyValueKind.MaskHex, "", "cfg.coremask", GroupCores, null),
             new PolicyItem(KeyPowerPlan, PolicyValueKind.Bool, "1", "plan.pick.title", GroupMemPower, null),
+            new PolicyItem(KeyPowerYield, PolicyValueKind.Bool, "0", "gm.poweryield", GroupMemPower, null),
             new PolicyItem(KeyPauseDl, PolicyValueKind.Bool, "1", "gm.pausedl", GroupEnvironment, null),
             new PolicyItem(KeyPauseUpdate, PolicyValueKind.Bool, "0", "gm.pausewu", GroupEnvironment, null),
             new PolicyItem(KeyWlanGuard, PolicyValueKind.Bool, "0", "gm.wlanguard", GroupEnvironment, null),
@@ -96,6 +100,7 @@ namespace PaviseApp
                 new[] { "off", "latest", "j", "k" }),
             new PolicyItem(KeyAmdAntiLag, PolicyValueKind.Bool, "0", "set.amdalag", GroupGraphics, null),
             new PolicyItem(KeyAmdAfmf, PolicyValueKind.Bool, "0", "set.amdafmf", GroupGraphics, null),
+            new PolicyItem(KeyVramShield, PolicyValueKind.Bool, "0", "gm.vramshield", GroupGraphics, null),
         };
 
         private static readonly Dictionary<string, PolicyItem> ByKey = BuildIndex();

@@ -10,8 +10,13 @@ namespace PaviseApp
 {
     internal partial class PanelForm
     {
-        private Toggle swAuto, swAutoHide, swIrqProbe;
+        private Toggle swAuto, swAutoHide;
         private SettingCard cardShader;
+        private PillButton btnBackdrop, btnBackdropReset;
+        private TierPicker pickBackdropDim;
+        private BackdropPreview backdropPreview;
+        private Label lblBackdropState;
+        private readonly Label[] modeAccentLabels = new Label[5];
 
         private static readonly Color[] AccentPalette =
         {
@@ -21,7 +26,8 @@ namespace PaviseApp
             Color.FromArgb(120, 140, 255),
         };
         private readonly List<ColorSwatch>[] modeSwatches =
-            { new List<ColorSwatch>(), new List<ColorSwatch>(), new List<ColorSwatch>() };
+            { new List<ColorSwatch>(), new List<ColorSwatch>(), new List<ColorSwatch>(),
+              new List<ColorSwatch>(), new List<ColorSwatch>() };
         private static volatile bool shaderCleaning;
         private int slowBusy;
         private int wipeBusy;
@@ -46,10 +52,6 @@ namespace PaviseApp
 
             swAutoHide = MakeSwitch(Settings.Load(AutoHideKey, AutoHideDefault), OnAutoHideToggle);
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.autohide"), Lang.T("set.autohide.n"), swAutoHide, out cardH);
-            sy += cardH + 8;
-
-            swIrqProbe = MakeSwitch(IrqSessionProbe.EnabledSetting, OnIrqProbeToggle);
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 96, Lang.T("set.irqprobe"), Lang.T("set.irqprobe.n"), swIrqProbe, out cardH);
             sy += cardH + 8;
 
             var pickLang = new TierPicker();
@@ -82,7 +84,7 @@ namespace PaviseApp
             sy += cardH + 8;
 
             sy += 10;
-            BuildThemeColorSection(scroll, ref sy);
+            BuildAppearanceSection(scroll, ref sy);
             sy += 10;
 
             var lblAbout = new Label();
@@ -95,41 +97,135 @@ namespace PaviseApp
             EnableCardCollapse(scroll);
         }
 
-        private void BuildThemeColorSection(Control scroll, ref int sy)
+        private void BuildAppearanceSection(Control scroll, ref int sy)
         {
-            Section(scroll, Lang.T("sec.theme"), 6, sy); sy += 24;
+            Section(scroll, Lang.T("sec.appearance"), 6, sy); sy += 24;
 
-            var hint = new Label();
-            hint.Text = Lang.T("theme.hint");
-            hint.ForeColor = Theme.Dim; hint.BackColor = Theme.Bg;
-            hint.Font = Theme.UI(8.0f, false); hint.AutoEllipsis = true;
-            hint.SetBounds(Theme.S(16), Theme.S(sy), Theme.S(ScrollContentW - 24), Theme.S(18));
-            scroll.Controls.Add(hint);
-            sy += 26;
+            var panel = MakeConsolePanel(scroll, 6, sy, ScrollContentW, 322, true);
+            int w = ScrollContentW;
 
+            backdropPreview = new BackdropPreview();
+            backdropPreview.EmptyText = Lang.T("backdrop.preview.empty");
+            backdropPreview.SetBounds(Theme.S(18), Theme.S(18), Theme.S(194), Theme.S(104));
+            panel.Controls.Add(backdropPreview);
+
+            CardLabel(panel, Lang.T("backdrop.title"), 232, 18, w - 500, 22, 9.75f, true, Theme.Fg);
+            lblBackdropState = CardLabel(panel, "", 232, 43, w - 500, 20, 8.2f, false, Theme.Dim);
+
+            btnBackdrop = new PillButton(Lang.T(Backdrop.Active ? "btn.backdrop.change" : "btn.backdrop.set"));
+            btnBackdrop.Size = new Size(Theme.S(116), Theme.S(30));
+            btnBackdrop.Click += delegate { OnBackdropPick(); };
+            btnBackdrop.SetBounds(Theme.S(w - 134), Theme.S(18), Theme.S(116), Theme.S(30));
+            panel.Controls.Add(btnBackdrop);
+
+            btnBackdropReset = new PillButton(Lang.T("btn.backdrop.reset"));
+            btnBackdropReset.Size = new Size(Theme.S(104), Theme.S(30));
+            btnBackdropReset.Click += delegate { OnBackdropReset(); };
+            btnBackdropReset.SetBounds(Theme.S(w - 246), Theme.S(18), Theme.S(104), Theme.S(30));
+            panel.Controls.Add(btnBackdropReset);
+
+            CardLabel(panel, Lang.T("backdrop.dim"), 232, 78, 120, 30, 8.6f, true, Theme.Fg);
+
+            pickBackdropDim = new TierPicker();
+            pickBackdropDim.Labels = new[] { Lang.T("backdrop.dim.off"), Lang.T("backdrop.dim.1"),
+                Lang.T("backdrop.dim.2"), Lang.T("backdrop.dim.3") };
+            pickBackdropDim.Index = Backdrop.Active ? Backdrop.Dim + 1 : 0;
+            pickBackdropDim.Size = new Size(Theme.S(276), Theme.S(30));
+            pickBackdropDim.IndexChanged = OnBackdropDim;
+            pickBackdropDim.SetBounds(Theme.S(360), Theme.S(78), Theme.S(276), Theme.S(30));
+            panel.Controls.Add(pickBackdropDim);
+
+            var separator = new Panel();
+            separator.BackColor = Theme.Stroke;
+            separator.SetBounds(Theme.S(18), Theme.S(137), Theme.S(w - 36), Math.Max(1, Theme.S(1)));
+            panel.Controls.Add(separator);
+
+            CardLabel(panel, Lang.T("sec.theme"), 18, 151, 150, 22, 9.2f, true, Theme.Fg);
+            CardLabel(panel, Lang.T("theme.hint"), 174, 153, w - 192, 18, 8.0f, false, Theme.Dim);
+
+            BuildThemeColorRows(panel, 184);
+            SyncBackdropAppearance();
+            sy += 322 + 8;
+        }
+
+        private void OnBackdropPick()
+        {
+            if (!Backdrop.Choose(this)) return;
+            SyncBackdropAppearance();
+            RefreshBackdrop();
+        }
+
+        private void OnBackdropReset()
+        {
+            if (!Backdrop.Active) return;
+            Backdrop.Clear();
+            SyncBackdropAppearance();
+            RefreshBackdrop();
+        }
+
+        // 第一档就是不要封面 连图一起删掉 关掉的东西不留残留是这套的老规矩
+        private void OnBackdropDim(int index)
+        {
+            if (index <= 0)
+            {
+                Backdrop.Clear();
+            }
+            else Backdrop.Dim = index - 1;
+            SyncBackdropAppearance();
+            RefreshBackdrop();
+        }
+
+        private void SyncBackdropAppearance()
+        {
+            bool active = Backdrop.Active;
+            if (btnBackdrop != null) btnBackdrop.Text = Lang.T(active ? "btn.backdrop.change" : "btn.backdrop.set");
+            if (btnBackdropReset != null) btnBackdropReset.Enabled = active;
+            if (pickBackdropDim != null)
+            {
+                pickBackdropDim.Enabled = active;
+                pickBackdropDim.Index = active ? Backdrop.Dim + 1 : 0;
+            }
+            if (lblBackdropState != null)
+            {
+                string strength = active && pickBackdropDim != null && pickBackdropDim.Labels != null
+                    ? pickBackdropDim.Labels[Backdrop.Dim + 1] : "";
+                lblBackdropState.Text = active ? Lang.F("backdrop.status.on", strength) : Lang.T("backdrop.status.off");
+                lblBackdropState.ForeColor = active ? Theme.Accent : Theme.Dim;
+            }
+            if (backdropPreview != null) backdropPreview.Invalidate();
+        }
+
+        private void BuildThemeColorRows(Control parent, int startY)
+        {
             PerformancePreset[] modes =
-                { PerformancePreset.Standard, PerformancePreset.Competitive, PerformancePreset.Custom };
+                { PerformancePreset.Standard, PerformancePreset.Competitive,
+                  PerformancePreset.Handheld, PerformancePreset.Custom };
+            int row = 0;
             foreach (PerformancePreset mode in modes)
             {
                 PerformancePreset capMode = mode;
                 modeSwatches[(int)mode].Clear();
+                int y = startY + row * 34;
+                bool current = mode == gameMode.ActivePreset;
 
                 var lbl = new Label();
                 lbl.Text = ModeName(mode);
-                lbl.ForeColor = Theme.Fg; lbl.BackColor = Theme.Bg;
-                lbl.Font = Theme.UI(8.6f, false);
+                lbl.ForeColor = current ? Theme.ModeColor(mode) : Theme.Fg;
+                lbl.BackColor = Color.Transparent;
+                lbl.Font = Theme.UI(8.6f, current);
                 lbl.TextAlign = ContentAlignment.MiddleLeft;
-                lbl.SetBounds(Theme.S(16), Theme.S(sy), Theme.S(60), Theme.S(26));
-                scroll.Controls.Add(lbl);
+                lbl.SetBounds(Theme.S(18), Theme.S(y), Theme.S(82), Theme.S(26));
+                parent.Controls.Add(lbl);
+                modeAccentLabels[(int)mode] = lbl;
 
-                int sx = 84;
+                int sx = 108;
                 bool overridden = Theme.HasModeColorOverride(mode);
 
                 var def = new ColorSwatch(Theme.ModeColorBuiltin(mode));
                 def.IsDefault = true; def.Selected = !overridden;
-                def.SetBounds(Theme.S(sx), Theme.S(sy), Theme.S(26), Theme.S(26));
+                def.SetBounds(Theme.S(sx), Theme.S(y), Theme.S(26), Theme.S(26));
                 def.Picked = delegate { OnModeColorPick(capMode, Color.Empty); };
-                scroll.Controls.Add(def); modeSwatches[(int)mode].Add(def);
+                parent.Controls.Add(def); modeSwatches[(int)mode].Add(def);
                 sx += 32;
 
                 Color eff = Theme.ModeColor(mode);
@@ -138,19 +234,32 @@ namespace PaviseApp
                     Color cc = paletteColor;
                     var sw = new ColorSwatch(cc);
                     sw.Selected = overridden && SameRgb(eff, cc);
-                    sw.SetBounds(Theme.S(sx), Theme.S(sy), Theme.S(26), Theme.S(26));
+                    sw.SetBounds(Theme.S(sx), Theme.S(y), Theme.S(26), Theme.S(26));
                     sw.Picked = delegate { OnModeColorPick(capMode, cc); };
-                    scroll.Controls.Add(sw); modeSwatches[(int)mode].Add(sw);
+                    parent.Controls.Add(sw); modeSwatches[(int)mode].Add(sw);
                     sx += 32;
                 }
-                sy += 34;
+                row++;
             }
-            sy += 10;
+        }
+
+        private void RefreshModeAccentLabels()
+        {
+            for (int i = 0; i < modeAccentLabels.Length; i++)
+            {
+                Label lbl = modeAccentLabels[i];
+                if (lbl == null || lbl.IsDisposed) continue;
+                PerformancePreset mode = (PerformancePreset)i;
+                bool current = mode == visualMode;
+                lbl.ForeColor = current ? Theme.ModeColor(mode) : Theme.Fg;
+                lbl.Font = Theme.UI(8.6f, current);
+            }
         }
 
         private static string ModeName(PerformancePreset m)
         {
             return m == PerformancePreset.Competitive ? Lang.T("preset.competitive")
+                : m == PerformancePreset.Handheld ? Lang.T("preset.handheld")
                 : m == PerformancePreset.Custom ? Lang.T("preset.custom") : Lang.T("preset.standard");
         }
 
@@ -176,6 +285,7 @@ namespace PaviseApp
                 sw.Selected = sw.IsDefault ? !overridden : (overridden && SameRgb(sw.Swatch, eff));
                 sw.Invalidate();
             }
+            RefreshModeAccentLabels();
 
             if (modeVisualInitialized && mode == visualMode)
             {

@@ -11,6 +11,7 @@ namespace PaviseApp
         {
             if (hit != null)
             {
+                stickyGraceOnly = false;
                 stickyMiss = 0;
                 if (stickyDetection != null && stickyDetection.Profile != null && hit.Profile != null
                     && string.Equals(stickyDetection.Profile.Id, hit.Profile.Id, StringComparison.OrdinalIgnoreCase)
@@ -49,6 +50,7 @@ namespace PaviseApp
             if (stickyDetection != null && stickyDetection.RendererPid > 0
                 && AliveWithIdentity(stickyDetection.RendererPid))
             {
+                stickyGraceOnly = false;
                 stickyMiss = 0;
                 var r = new GameDetection
                 {
@@ -74,6 +76,7 @@ namespace PaviseApp
             if (stickyDetection != null && stickyMiss < StickyGraceMisses && !AnyStickyReused())
             {
                 stickyMiss++;
+                stickyGraceOnly = true;
 
                 RequestFullGameDetection();
                 try { kick.Set(); } catch { }
@@ -210,6 +213,7 @@ namespace PaviseApp
             stickyDetection = null;
             stickyIds.Clear();
             stickyMiss = 0;
+            stickyGraceOnly = false;
         }
 
         private bool AliveWithIdentity(int pid)

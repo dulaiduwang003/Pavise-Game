@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 游戏配置页运行模式覆盖条 跟随全局与四档模式彩色分段 选中块滑动变色
 using System;
 using System.Drawing;
@@ -12,7 +12,7 @@ namespace PaviseApp
         private static readonly PerformancePreset[] Order =
         {
             PerformancePreset.Standard, PerformancePreset.Competitive,
-            PerformancePreset.Custom
+            PerformancePreset.Handheld, PerformancePreset.Custom
         };
 
         private int idx;
@@ -20,7 +20,7 @@ namespace PaviseApp
         private Motion slideX;
         private Motion slideW;
         private Motion colorT;
-        private readonly Motion[] glow = new Motion[4];
+        private readonly Motion[] glow = new Motion[Order.Length + 1];
         private bool slideReady;
         private Color fromColor;
         private PerformancePreset global = PerformancePreset.Standard;
@@ -64,10 +64,20 @@ namespace PaviseApp
             if (moved) Invalidate();
         }
 
+        // 上界跟着档位数走 0 是跟随全局 1..Order.Length 是各档
+        //   写死 4 的时候自定义档回填会被挡掉 页面刷新后选中块停在上一个位置
         public int Index
         {
             get { return idx; }
-            set { if (value >= 0 && value < 4 && value != idx) { idx = value; MoveSlide(); Invalidate(); } }
+            set { if (value >= 0 && value <= Order.Length && value != idx) { idx = value; MoveSlide(); Invalidate(); } }
+        }
+
+        // 掌机档只在带电池的机器上跟专注档有区别 台式机上两者写进方案的值一模一样
+        //   给点等于让人选一个什么都不改的档 所以这一段不可点也不高亮
+        private static bool SegmentUnavailable(int index)
+        {
+            if (index <= 0 || index > Order.Length) return false;
+            return Order[index - 1] == PerformancePreset.Handheld && !Native.HasSystemBattery();
         }
 
         public void SetGlobal(PerformancePreset value)
@@ -82,20 +92,23 @@ namespace PaviseApp
             return index == 0 ? Theme.Accent : Theme.ModeColor(Order[index - 1]);
         }
 
+        // 档位段宽按档位数摊 别再写死 加一档就把"跟随全局"那段挤没了
+        //   给跟随段留够两行字的地儿 剩下的等分 每段再兜一个下限
         private Rectangle SegmentRect(int index)
         {
             int gap = Theme.S(6);
-            int modeW = Theme.S(78);
-            int followW = Width - (modeW + gap) * 3;
+            int n = Order.Length;
+            int modeW = Math.Max(Theme.S(50), (Width - Theme.S(92)) / n - gap);
+            int followW = Width - (modeW + gap) * n;
             if (index == 0) return new Rectangle(0, 0, followW, Height);
             int x = followW + gap + (index - 1) * (modeW + gap);
-            int w = index == 3 ? Width - x : modeW;
+            int w = index == n ? Width - x : modeW;
             return new Rectangle(x, 0, w, Height);
         }
 
         private int HitIndex(Point p)
         {
-            for (int i = 0; i < 4; i++) if (SegmentRect(i).Contains(p)) return i;
+            for (int i = 0; i <= Order.Length; i++) if (SegmentRect(i).Contains(p)) return i;
             return -1;
         }
 
@@ -121,6 +134,7 @@ namespace PaviseApp
         {
             base.OnMouseMove(e);
             int hit = HitIndex(e.Location);
+            if (SegmentUnavailable(hit)) hit = -1;
             if (hit == hoverIdx) return;
             hoverIdx = hit;
             for (int i = 0; i < glow.Length; i++) glow[i].To(i == hoverIdx ? 1f : 0f);
@@ -143,7 +157,7 @@ namespace PaviseApp
             base.OnMouseUp(e);
             if (e.Button != MouseButtons.Left) return;
             int hit = HitIndex(e.Location);
-            if (hit < 0 || hit == idx) return;
+            if (hit < 0 || hit == idx || SegmentUnavailable(hit)) return;
             fromColor = Col.Lerp(fromColor, SelColor(idx), colorT.Value);
             idx = hit;
             colorT.Set(0f); colorT.To(1f);
@@ -155,7 +169,8 @@ namespace PaviseApp
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
-            using (var bg = new SolidBrush(BackColor)) g.FillRectangle(bg, ClientRectangle);
+            if (Backdrop.Active) Backdrop.PaintOnCard(g, this, ClientRectangle);
+            else using (var bg = new SolidBrush(BackColor)) g.FillRectangle(bg, ClientRectangle);
             g.SmoothingMode = SmoothingMode.AntiAlias;
             if (!slideReady && Width > 0)
             {
@@ -164,7 +179,7 @@ namespace PaviseApp
                 slideReady = true;
             }
 
-            for (int i = 0; i < 4; i++)
+            for (int i = 0; i <= Order.Length; i++)
             {
                 Rectangle r = SegmentRect(i);
                 r.Width -= 1; r.Height -= 1;
@@ -184,7 +199,7 @@ namespace PaviseApp
                 using (var pen = new Pen(Col.Alpha(sel, 225))) g.DrawPath(pen, p);
             }
 
-            for (int i = 0; i < 4; i++)
+            for (int i = 0; i <= Order.Length; i++)
             {
                 Rectangle r = SegmentRect(i);
                 r.Width -= 1; r.Height -= 1;

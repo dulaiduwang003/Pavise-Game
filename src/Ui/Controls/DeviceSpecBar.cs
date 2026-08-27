@@ -39,7 +39,8 @@ namespace PaviseApp
             g.SmoothingMode = SmoothingMode.AntiAlias;
             Color accent = Theme.Accent;
             var full = new Rectangle(0, 0, Width, Height);
-            using (var bg = new SolidBrush(Theme.Card)) g.FillRectangle(bg, full);
+            if (Backdrop.Active) Backdrop.Paint(g, this, full);
+            using (var bg = new SolidBrush(Backdrop.CardFill(Theme.Card))) g.FillRectangle(bg, full);
 
             int skew = Theme.S(14);
             int[] xs = SliceEdges();

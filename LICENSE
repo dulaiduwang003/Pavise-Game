@@ -33,7 +33,13 @@ between the two, the Chinese version prevails.
 4. 阅读、学习和引用本软件的源代码。
 
 
-三、禁止销售
+三、禁止逆向
+
+禁止对本软件进行反编译、反汇编，或任何形式的逆向工程，法律强制规定不得排除的
+情形除外。
+
+
+四、禁止销售
 
 禁止以任何形式，从本软件或其衍生版本的分发中取得费用。包括但不限于：
 
@@ -52,7 +58,7 @@ between the two, the Chinese version prevails.
 请联系 2074055628@qq.com。
 
 
-四、分发时的义务
+五、分发时的义务
 
 分发本软件或衍生版本时，必须：
 
@@ -61,7 +67,7 @@ between the two, the Chinese version prevails.
 3. 分发衍生版本时，明确标注修改者的身份和所做的修改。
 
 
-五、名称和标识
+六、名称和标识
 
 "Pavise" 名称、图标和界面标识不在本协议授予的权利范围内。
 
@@ -69,7 +75,7 @@ between the two, the Chinese version prevails.
 也不得以其它会使人误认为出自作者之手的方式发布。
 
 
-六、协议终止
+七、协议终止
 
 违反本协议任何条款的，所获得的全部授权立即自动终止，且不因事后补正而当然恢复。
 授权终止后继续使用或分发本软件的，构成侵权。
@@ -77,7 +83,7 @@ between the two, the Chinese version prevails.
 作者在收到书面说明后，可以自行决定是否恢复授权。
 
 
-七、免责声明
+八、免责声明
 
 本软件按"现状"提供，作者不作任何明示或暗示的担保，包括但不限于对适销性、特定
 用途适用性和不侵权的担保。
@@ -89,7 +95,7 @@ between the two, the Chinese version prevails.
 不限于游戏账号异常、数据丢失、系统不稳定和硬件损坏，作者均不承担责任。
 
 
-八、其它
+九、其它
 
 本协议受中华人民共和国法律管辖。
 
@@ -123,7 +129,14 @@ Subject to full compliance with this licence, anyone may, free of charge:
 4. Read, study and reference the Software's source code.
 
 
-3. NO SALE
+3. NO REVERSE ENGINEERING
+
+Decompiling, disassembling or otherwise reverse engineering the Software is
+prohibited, except to the extent this prohibition cannot be excluded by
+mandatory law.
+
+
+4. NO SALE
 
 Charging any fee in connection with the distribution of the Software or a
 Derivative Version is prohibited in any form. This includes, without limitation:
@@ -148,7 +161,7 @@ Commercial use of the Software in any of the ways described above requires prior
 written authorisation from the Author. Contact 2074055628@qq.com.
 
 
-4. OBLIGATIONS WHEN DISTRIBUTING
+5. OBLIGATIONS WHEN DISTRIBUTING
 
 When distributing the Software or a Derivative Version, you must:
 
@@ -160,7 +173,7 @@ When distributing the Software or a Derivative Version, you must:
    was changed.
 
 
-5. NAME AND MARKS
+6. NAME AND MARKS
 
 The "Pavise" name, icon and interface marks are not covered by the rights granted
 under this licence.
@@ -170,7 +183,7 @@ those of the Software. It may not be released as Pavise, nor in any other manner
 likely to suggest that it originates from the Author.
 
 
-6. TERMINATION
+7. TERMINATION
 
 Any breach of this licence terminates all rights granted under it immediately and
 automatically. Rights are not automatically restored by subsequently curing the
@@ -180,7 +193,7 @@ The Author may, at their sole discretion, reinstate the rights upon receiving a
 written explanation.
 
 
-7. DISCLAIMER
+8. DISCLAIMER
 
 The Software is provided "AS IS", without warranty of any kind, express or
 implied, including but not limited to the warranties of merchantability, fitness
@@ -196,7 +209,7 @@ Software, including but not limited to game account irregularities, data loss,
 system instability and hardware damage.
 
 
-8. MISCELLANEOUS
+9. MISCELLANEOUS
 
 This licence is governed by the laws of the People's Republic of China.
 

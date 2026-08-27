@@ -58,7 +58,7 @@ The two modes differ in which processes are eligible to be touched, not in how h
 
 This is the opposite of what 1.9 did, because the premise changed. Blanket isolation really was a net loss back then — the scattered timer wakeups of a hundred idle processes got packed onto two cores by affinity narrowing and queued against each other, multiplying the worst frame by 2.6. Since 2.0 the background is never given a new affinity mask; narrowing and core relocation were pulled entirely. A cold process with no ready threads costs no CPU to begin with, and when it does wake it can run on any core with no higher-priority work pending — no queue, and the cost of blanket isolation goes with it.
 
-In every mode, anti-cheat, the host of the running game, Windows core services, network accelerators and other logged-in accounts are never suppressed. This boundary is unaffected by any switch. The four automatic exemption categories — game platforms and launchers, network accelerators, anti-cheat, and the input/audio/peripheral chain — can be viewed directly on the Whitelist page.
+In every mode, anti-cheat, the host of the running game, Windows core services, network accelerators and other logged-in accounts are never suppressed. This boundary is unaffected by any switch. Game family exemption is on by default, leaving game platforms and launchers, game-folder processes and game child processes untouched; turn it off to exempt only the game itself and the whitelist. The exemption categories can be viewed directly on the Whitelist page.
 ## Per-game profiles
 
 Select a game in the library and open its profile. Each game can override all 21 items across mode, background suppression, cores, memory and power, system environment and graphics. Items without an override follow the global setting; changes save immediately and apply to that game's next match.
@@ -188,21 +188,9 @@ Removed items still know what they wrote and how to undo it, but startup and ver
 <img src="docs/guide-audit.png" width="49%" alt="Checkup">
 </div>
 
-## Building
-
-Uses the .NET Framework compiler shipped with Windows. No Visual Studio, no packages to restore.
-
-```cmd
-build.cmd -b dev       rem produces an unobfuscated development Pavise.exe
-build.cmd -b prod      rem produces an obfuscated production Pavise.exe
-dev.cmd                rem kill the old instance, development build, launch
-```
-
-Source builds are unsigned, so SmartScreen will warn.
-
 ## Running and data locations
 
-Double-click `Pavise.exe` and it goes to the tray. Adjusting other processes requires administrator rights. Start-up is implemented as a scheduled task. The version is checked against GitHub once at launch; no local data is uploaded.
+Double-click `Pavise.exe` and it goes to the tray. The build is unsigned, so SmartScreen may warn — choose to run anyway. Adjusting other processes requires administrator rights. Start-up is implemented as a scheduled task. The version is checked against the official update source once at launch; no local data is uploaded.
 
 Data is stored in `%AppData%\Pavise` by default — target configuration, whitelist and run logs — while interface and feature switches live in the registry at `HKCU\Software\Pavise`. Place an empty `Pavise.portable` file next to the executable to store everything in the program directory instead.
 
@@ -218,9 +206,9 @@ The Settings page offers a one-click restore.
 
 ## Author and licence
 
-bdth ｜ 2074055628@qq.com ｜ WeChat Ssssssstyle (bugs, suggestions, usage questions)
+bdth ｜ 2074055628@qq.com ｜ Douyin 44601770838 (bugs, suggestions, usage questions)
 
-This project uses the [Pavise Licence](LICENSE): the source is open, free to use, modify and distribute at no charge, and **selling it is forbidden**.
+This project uses the [Pavise Licence](LICENSE): free to use, free to redistribute unchanged, reverse engineering forbidden, and **selling it is forbidden**.
 
 Taking money in any form for distributing Pavise or a modified version is not allowed — including selling copies, activation codes or download access, bundling it into a paid product or subscription, paywalls, paid unlocks and donation gates.
 
@@ -228,4 +216,4 @@ Keep the licence and author information intact when distributing, tell recipient
 
 This is a personal project provided as is, with no guarantee of effect or compatibility. Anti-cheat suppression, VBS and cache clearing can all have side effects; use it only on your own machine and understand the risks first.
 
-The latest release and source updates are always free in the WeChat and QQ groups. QQ groups 1051472054, 1101249532 and 383761286; WeChat Ssssssstyle, mention Pavise. **If you paid for this, you were scammed** — ask for a refund and get it free from the groups.
+The latest release is always free in the QQ groups: 1051472054, 1101249532 and 383761286. **If you paid for this, you were scammed** — ask for a refund and get it free from the groups.

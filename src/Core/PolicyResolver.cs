@@ -162,7 +162,7 @@ namespace PaviseApp
             {
                 int parsed;
                 return int.TryParse(ValueOf(PolicyCatalog.KeyPreset), out parsed)
-                    && parsed >= 0 && parsed <= 2 ? (PerformancePreset)parsed : PerformancePreset.Standard;
+                    ? PresetValue.From(parsed) : PerformancePreset.Standard;
             }
         }
 
@@ -175,6 +175,7 @@ namespace PaviseApp
         public bool StrictCores { get { return On(PolicyCatalog.KeyStrictCores); } }
         public bool CoreDomainAlt { get { return On(PolicyCatalog.KeyCoreDomainAlt); } }
         public bool PowerPlanOn { get { return On(PolicyCatalog.KeyPowerPlan); } }
+        public bool PowerYield { get { return On(PolicyCatalog.KeyPowerYield); } }
         public bool PauseDownloads { get { return On(PolicyCatalog.KeyPauseDl); } }
         public bool PauseUpdate { get { return On(PolicyCatalog.KeyPauseUpdate); } }
         public bool WlanGuard { get { return On(PolicyCatalog.KeyWlanGuard); } }
@@ -187,6 +188,7 @@ namespace PaviseApp
         public string NvDlssMode { get { return ValueOf(PolicyCatalog.KeyNvDlss); } }
         public bool AmdAntiLag { get { return On(PolicyCatalog.KeyAmdAntiLag); } }
         public bool AmdAfmf { get { return On(PolicyCatalog.KeyAmdAfmf); } }
+        public bool VramShield { get { return On(PolicyCatalog.KeyVramShield); } }
 
         public ulong CoreMask
         {

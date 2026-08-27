@@ -53,9 +53,7 @@ namespace PaviseApp
                 if (envNextAttempt.TryGetValue(key, out next) && now < next) return active;
             }
 
-            bool ok;
-            try { ok = want ? activate() : restore(); }
-            catch { ok = false; }
+            bool ok = RunIrqIsolatedMutation(want ? activate : restore);
 
             lock (sync)
             {
@@ -78,7 +76,7 @@ namespace PaviseApp
                     if (want && failures >= EnvFuseAttempts && envFused.Add(key))
                     {
                         Settings.Save("EnvFuse_" + key, true);
-                        try { restore(); } catch { }
+                        RunIrqIsolatedMutation(restore);
                         DisableEnvSwitch(key);
                         Logger.Log(Lang.T("log.gamemodeenv.9") + EnvLabel(key) + Lang.T("log.gamemodeenv.10") + failures
                             + Lang.T("log.gamemodeenv.11"));
@@ -86,6 +84,25 @@ namespace PaviseApp
                 }
             }
             return want ? ok : (ok ? false : active);
+        }
+
+        // IRQ 对局 epoch 只接纳游戏自然运行产生的中断。所有 Pavise 主动
+        // 改系统、驱动或进程策略的动作，都必须先停掉旧 epoch；动作完成前
+        // externalMutations 保持为正，Confirm 也不能抢先重开。
+        private bool RunIrqIsolatedMutation(Func<bool> action)
+        {
+            irqProbe.BeginExternalMutation();
+            try { return action != null && action(); }
+            catch { return false; }
+            finally { irqProbe.EndExternalMutation(); }
+        }
+
+        private void RunIrqIsolatedMutation(Action action)
+        {
+            irqProbe.BeginExternalMutation();
+            try { if (action != null) action(); }
+            catch { }
+            finally { irqProbe.EndExternalMutation(); }
         }
 
 #if PAVISE_SELFTEST
@@ -156,8 +173,7 @@ namespace PaviseApp
                     {
                         if (p.Overrides.Remove(policyKey))
                         {
-                            profileStore.Save(profiles);
-                            cleared = true;
+                            if (SaveProfilesLocked()) cleared = true;
                         }
                         break;
                     }
@@ -193,7 +209,8 @@ namespace PaviseApp
             bool pAmdAfmf = sp != null ? sp.AmdAfmf : amdAfmf;
             bool competitive = mode == PerformancePreset.Competitive;
             bool custom = mode == PerformancePreset.Custom;
-            bool usePauseDl = custom ? pPauseDl : competitive;
+            bool handheld = IsHandheld(mode);
+            bool usePauseDl = custom ? pPauseDl : (competitive || handheld);
             bool slowReady = slowEnvAtTicks == 0 || DateTime.UtcNow.Ticks >= slowEnvAtTicks;
             usePauseDl = usePauseDl && slowReady;
             bool usePlan = ResolvePowerPlanEnabled(mode, pPlan);
@@ -210,8 +227,9 @@ namespace PaviseApp
             amdAfmfActive = EnvStep("amdafmf", pAmdAfmf && AdlxTweaks.AfmfSupported(), amdAfmfActive,
                 AdlxTweaks.ActivateAfmf, AdlxTweaks.RestoreAfmf);
             bool aggressivePower = IsAggressive(mode, pAggr);
+            // 掌机档也要进这个键 否则从专注切到掌机时 aggressive 两边都是真 会被当成没变过而不重写
             int powerKey = (aggressivePower ? 1 : 0) | (usePlan ? 2 : 0)
-                | (IdleStateTweak.Enabled ? 4 : 0);
+                | (handheld ? 8 : 0);
             long nowTicks = DateTime.UtcNow.Ticks;
             if (usePlan)
             {
@@ -222,6 +240,7 @@ namespace PaviseApp
                     {
                         int keyShot = powerKey;
                         bool aggrShot = aggressivePower;
+                        bool handheldShot = handheld;
                         int genShot = Volatile.Read(ref powerSessionGen);
                         planActive = true;
                         lastPowerPolicyKey = keyShot;
@@ -229,11 +248,14 @@ namespace PaviseApp
                         ThreadPool.QueueUserWorkItem(delegate
                         {
                             bool planOk = false;
-                            try { planOk = PowerPlan.Enforce(aggrShot); }
+                            irqProbe.BeginExternalMutation();
+                            try { planOk = PowerPlan.Enforce(aggrShot, handheldShot); }
                             catch { planOk = false; }
+                            finally { irqProbe.EndExternalMutation(); }
                             if (Volatile.Read(ref powerSessionGen) != genShot)
                             {
-                                try { PowerPlan.Restore(); } catch { }
+                                RunIrqIsolatedMutation(
+                                    delegate { return PowerPlan.Restore(); });
                                 planActive = false;
                                 lastPowerPolicyKey = -1;
                                 Interlocked.Exchange(ref powerApplyInFlight, 0);
@@ -249,7 +271,8 @@ namespace PaviseApp
             else if (planActive)
             {
                 Interlocked.Increment(ref powerSessionGen);
-                if (PowerPlan.Restore())
+                if (RunIrqIsolatedMutation(
+                        delegate { return PowerPlan.Restore(); }))
                 {
                     planActive = false;
                     lastPowerPolicyKey = -1;
@@ -262,9 +285,12 @@ namespace PaviseApp
                 bool globalRes = GlobalTimerResTweak.EnabledByPavise;
                 if ((Native.OsBuild() > 0 && Native.OsBuild() < 19041) || globalRes)
                 {
-                    try { Native.timeBeginPeriod(1); } catch { }
-                    if (globalRes && Native.TimerExemptWanted)
-                        try { Native.ApplyHighQoS(new IntPtr(-1), true); } catch { }
+                    RunIrqIsolatedMutation(delegate
+                    {
+                        try { Native.timeBeginPeriod(1); } catch { }
+                        if (globalRes && Native.TimerExemptWanted)
+                            try { Native.ApplyHighQoS(new IntPtr(-1), true); } catch { }
+                    });
                     timerRaised = true;
                 }
                 else if (!timerSkipLogged)

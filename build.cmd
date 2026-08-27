@@ -35,6 +35,11 @@ if not exist "%CSC%" (
     exit /b 1
 )
 
+rem App.Version in Program.cs is the single version source. Keep the external
+rem update manifest synchronized before every development or production build.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\Sync-VersionManifest.ps1"
+if errorlevel 1 goto err
+
 set REFS=-reference:System.dll -reference:System.Drawing.dll -reference:System.Windows.Forms.dll -reference:System.Core.dll -reference:System.Management.dll -reference:System.Xml.dll
 set OUT=Pavise.exe
 if not "%~3"=="" set OUT=%~3

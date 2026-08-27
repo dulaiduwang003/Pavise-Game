@@ -167,23 +167,57 @@ namespace PaviseApp
         internal const int GpuWindowMs = 500;
 
         private static readonly object gate = new object();
+        private static Action mutationBegin;
+        private static Action mutationEnd;
         private static Thread worker;
         private static volatile bool running;
         private static PowerBudgetYield state;
 
         public static bool EnabledSetting { get { return Settings.Load(EnabledKey, false); } }
 
+        public static void ConfigureMutationBoundary(Action begin, Action end)
+        {
+            lock (gate)
+            {
+                mutationBegin = begin;
+                mutationEnd = end;
+            }
+        }
+
+        private static void BeginMutation()
+        {
+            Action callback;
+            lock (gate) callback = mutationBegin;
+            if (callback != null) try { callback(); } catch { }
+        }
+
+        private static void EndMutation()
+        {
+            Action callback;
+            lock (gate) callback = mutationEnd;
+            if (callback != null) try { callback(); } catch { }
+        }
+
+        private static bool RunMutation(Func<bool> action)
+        {
+            BeginMutation();
+            try { return action != null && action(); }
+            catch { return false; }
+            finally { EndMutation(); }
+        }
+
         public static YieldStage Stage
         {
             get { lock (gate) return state == null ? YieldStage.Idle : state.Stage; }
         }
 
-        public static void Start(bool competitive)
+        // 开关取值由调用方给 对局中走冻结快照 逐游戏配置能覆盖全局
+        public static void Start(bool enabled, bool competitive)
         {
             lock (gate)
             {
                 if (running) return;
-                if (!EnabledSetting) return;
+                if (!enabled) return;
                 bool eligible = PowerBudgetYield.Eligible(
                     Native.HasSystemBattery(), Native.OnAcPower(), competitive,
                     PowerPlan.ManagedPlanIsActive, EnergyMeter.Available, PowerBudgetYield.Fused);
@@ -214,7 +248,7 @@ namespace PaviseApp
             if (t != null) try { t.Join(3000); } catch { }
             if (PowerPlan.EppYielded)
             {
-                bool ok = PowerPlan.RestoreEpp();
+                bool ok = RunMutation(PowerPlan.RestoreEpp);
                 Logger.Log(Lang.T(ok ? "log.poweryield.5" : "log.poweryield.6"));
             }
         }
@@ -242,7 +276,10 @@ namespace PaviseApp
                 }
                 if (action == YieldAction.Engage)
                 {
-                    bool ok = PowerPlan.TryYieldEpp(PowerBudgetYield.YieldEpp);
+                    bool ok = RunMutation(delegate
+                    {
+                        return PowerPlan.TryYieldEpp(PowerBudgetYield.YieldEpp);
+                    });
                     Logger.Log(Lang.F(ok ? "log.poweryield.2" : "log.poweryield.3",
                         PowerBudgetYield.YieldEpp.ToString(),
                         gpu.ToString("F0"), cpuPct.ToString("F0"), watts.ToString("F1")));
@@ -250,7 +287,7 @@ namespace PaviseApp
                 }
                 else if (action == YieldAction.Revert)
                 {
-                    PowerPlan.RestoreEpp();
+                    RunMutation(PowerPlan.RestoreEpp);
                     Logger.Log(Lang.T("log.poweryield.4"));
                     break;
                 }

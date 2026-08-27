@@ -1,9 +1,8 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 中断页 扫一次 挑一台 钉住 就这三步
+// 文件用途 中断页 记录真实对局 挑一台设备 再指定核心
 using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Threading;
 using System.Windows.Forms;
 
 namespace PaviseApp
@@ -11,17 +10,14 @@ namespace PaviseApp
     internal partial class PanelForm : Form
     {
         private DBPanel pageIrq;
-        private Label lblIrqState, lblIrqDetail;
+        private Label lblIrqState;
         private ModuleBanner irqBanner;
-        private PillButton btnIrqApply, btnIrqRevert, btnIrqCheckup;
-        private IrqCheckupResult irqCheckup;
-        private ScanView irqScan;
+        private PillButton btnIrqApply, btnIrqRevert;
         private Toggle swIrqProbePage;
         private SettingCard cardIrqProbe;
         private TechListBox lstIrqDevices;
         private List<IrqDevice> irqDevices = new List<IrqDevice>();
         private List<IrqSessionRecord> irqSessions = new List<IrqSessionRecord>();
-        private List<IrqDriverVerdict> irqVerdicts = new List<IrqDriverVerdict>();
         private int irqUsedSessions;
         private string irqFlash = "";
         private Color irqFlashColor;
@@ -53,9 +49,11 @@ namespace PaviseApp
             int y = 2;
 
             swIrqProbePage = MakeSwitch(IrqSessionProbe.EnabledSetting, OnIrqProbePageToggle);
-            cardIrqProbe = MakeCard(scroll, 0, y, InnerW, 66,
-                Lang.T("irq.sec.1"), "", swIrqProbePage);
-            y += 76;
+            int irqProbeCardH;
+            cardIrqProbe = MakeAutoCard(scroll, 0, y, InnerW, 66,
+                Lang.T("irq.sec.1"), Lang.T("irq.probe.sub"), swIrqProbePage,
+                out irqProbeCardH);
+            y += irqProbeCardH + 10;
 
             var actionDeck = MakeConsolePanel(scroll, 0, y, InnerW, 64, true);
             btnIrqApply = new PillButton(Lang.T("irq.btn.apply"), BtnKind.Primary);
@@ -63,20 +61,17 @@ namespace PaviseApp
             btnIrqApply.Click += OnIrqApply;
             actionDeck.Controls.Add(btnIrqApply);
             btnIrqRevert = new PillButton(Lang.T("irq.btn.revert"), BtnKind.Normal);
-            btnIrqRevert.SetBounds(Theme.S(272), Theme.S(15), Theme.S(160), Theme.S(34));
+            btnIrqRevert.SetBounds(Theme.S(272), Theme.S(15), Theme.S(250), Theme.S(34));
             btnIrqRevert.Click += OnIrqRevert;
             actionDeck.Controls.Add(btnIrqRevert);
-            btnIrqCheckup = new PillButton(Lang.T("irq.btn.checkup"), BtnKind.Normal);
-            btnIrqCheckup.SetBounds(Theme.S(440), Theme.S(15), Theme.S(180), Theme.S(34));
-            btnIrqCheckup.Click += OnIrqCheckup;
-            actionDeck.Controls.Add(btnIrqCheckup);
-            lblIrqState = CardLabel(actionDeck, "", 640, 15, InnerW - 658, 34, 8.2f, true, Theme.Dim);
+            lblIrqState = CardLabel(actionDeck, "", 540, 15, InnerW - 558, 34, 8.2f, true, Theme.Dim);
             lblIrqState.TextAlign = ContentAlignment.MiddleRight;
             y += 74;
 
             lstIrqDevices = new TechListBox();
             int availH = PageH - top - 8;
-            int listH = Math.Max(145, availH - y - 150);
+            // 详细描述已搬进选核弹窗 这里列表撑满原来留给描述区的高度 只给列表下方图例留位
+            int listH = Math.Max(145, availH - y - 74);
             var deviceDeck = MakeConsolePanel(scroll, 0, y, InnerW, listH + 40, false);
             CardLabel(deviceDeck, Lang.T("irq.sec.2").ToUpperInvariant(), 16, 8, InnerW - 32, 20, 7f, true, Theme.Faint);
             lstIrqDevices.SetBounds(Theme.S(8), Theme.S(32), Theme.S(InnerW - 16), Theme.S(listH));
@@ -84,28 +79,12 @@ namespace PaviseApp
             lstIrqDevices.DrawItem += DrawIrqRow;
             lstIrqDevices.ItemHeight = Theme.S(26);
             lstIrqDevices.Font = Theme.UI(8.5f, false);
-            lstIrqDevices.SelectedIndexChanged += delegate { RefreshIrqDetail(); };
+            lstIrqDevices.SelectedIndexChanged += delegate { UpdateIrqApplyEnabled(); };
             lstIrqDevices.DoubleClick += OnIrqApply;
             deviceDeck.Controls.Add(lstIrqDevices);
             y += listH + 46;
             CardLabel(scroll, Lang.T("irq.legend"), 4, y, InnerW - 8, 18, 8f, false, Theme.Faint);
             y += 26;
-
-            var detailDeck = MakeConsolePanel(scroll, 0, y, InnerW, 86, false);
-            CardLabel(detailDeck, Lang.T("irq.sec.3").ToUpperInvariant(), 16, 8, InnerW - 32, 20, 7f, true, Theme.Faint);
-            lblIrqDetail = CardLabel(detailDeck, "", 16, 31, InnerW - 32, 44, 9f, false, Theme.Fg);
-            y += 96;
-
-            irqScan = new ScanView();
-            irqScan.Name = "irqScanOverlay";
-            irqScan.SetBounds(Theme.S(ContentX), Theme.S(top),
-                Theme.S(ContentW), Theme.S(PageH - top - 8));
-            irqScan.Visible = false;
-            irqScan.TabStop = true;
-            irqScan.KeyDown += delegate (object s2, KeyEventArgs ke)
-            { if (ke.KeyCode == Keys.Escape) IrqCheckup.Cancel(); };
-            pageIrq.Controls.Add(irqScan);
-            irqScan.BringToFront();
 
             RefreshIrqPage();
         }
@@ -114,20 +93,32 @@ namespace PaviseApp
         {
             if (lstIrqDevices == null) return;
 
+            // 重排前按设备 ID 记住选中项。按旧索引恢复会在 Worth 置顶或实测变化后
+            // 悄悄选中另一台设备，随后“选择核心”可能打开错误目标。
+            string keepId = null;
+            int oldIndex = lstIrqDevices.SelectedIndex;
+            if (oldIndex >= 0 && oldIndex < lstIrqDevices.Items.Count)
+            {
+                IrqDevice oldDevice = lstIrqDevices.Items[oldIndex] as IrqDevice;
+                if (oldDevice != null) keepId = oldDevice.InstanceId;
+            }
+
             try
             {
                 irqSessions = IrqSessionLedger.Load();
-                irqVerdicts = IrqVerdict.Evaluate(irqSessions,
-                    CpuTopology.StrictBoostMask, IrqPageRefreshHz(), out irqUsedSessions);
+                List<IrqDriverVerdict> verdicts = IrqVerdict.Evaluate(irqSessions,
+                    IrqPageRefreshHz(), out irqUsedSessions);
+                // 一两局可以立即展示原始实测，但不能提前挂“建议”标签；建议沿用三局门槛。
+                if (irqUsedSessions < IrqSessionLedger.MinSessionsForVerdict)
+                    foreach (IrqDriverVerdict v in verdicts)
+                        if (v != null) v.Worth = false;
                 irqDevices = IrqDeviceInventory.Enumerate();
-                IrqDeviceInventory.AttachVerdicts(irqDevices, irqVerdicts);
-                IrqDeviceInventory.AttachCheckup(irqDevices, irqCheckup);
+                IrqDeviceInventory.AttachVerdicts(irqDevices, verdicts);
                 IrqDeviceInventory.MarkOwnership(irqDevices);
                 IrqDeviceInventory.Sort(irqDevices);
             }
             catch { irqDevices = new List<IrqDevice>(); }
 
-            int keep = lstIrqDevices.SelectedIndex;
             lstIrqDevices.BeginUpdate();
             lstIrqDevices.Items.Clear();
             int withIntr = 0, pending = 0, unverified = 0, mismatch = 0;
@@ -140,7 +131,11 @@ namespace PaviseApp
                 lstIrqDevices.Items.Add(d);
             }
             lstIrqDevices.EndUpdate();
-            if (keep >= 0 && keep < lstIrqDevices.Items.Count) lstIrqDevices.SelectedIndex = keep;
+            if (!string.IsNullOrEmpty(keepId))
+                for (int i = 0; i < irqDevices.Count; i++)
+                    if (string.Equals(irqDevices[i].InstanceId, keepId,
+                        StringComparison.OrdinalIgnoreCase))
+                    { lstIrqDevices.SelectedIndex = i; break; }
 
             bool admin = false;
             try { admin = Native.IsElevated(); } catch { }
@@ -161,7 +156,7 @@ namespace PaviseApp
             }
 
             SetIrqState(admin, pending, unverified, mismatch, withIntr);
-            RefreshIrqDetail();
+            UpdateIrqApplyEnabled();
         }
 
         private static int IrqPageRefreshHz()
@@ -185,6 +180,8 @@ namespace PaviseApp
             else if (!IrqSessionProbe.EnabledSetting) { t = Lang.T("irq.state.probeoff"); c = Theme.Accent; }
             else if (mismatch > 0) { t = Lang.F("irq.state.mismatch", mismatch); c = Theme.Danger; }
             else if (pending > 0) { t = Lang.F("irq.state.pending", pending); c = Theme.Accent; }
+            else if (irqUsedSessions >= IrqSessionLedger.MinSessionsForVerdict && IrqWorthCount() > 0)
+            { t = Lang.F("irq.state.suggest", IrqWorthCount()); c = Theme.Accent; }
             else if (unverified > 0) { t = Lang.F("irq.state.unverified", unverified); c = Theme.Dim; }
             else if (irqSessions.Count == 0) t = Lang.T("irq.state.nosessions");
             else if (irqUsedSessions < IrqSessionLedger.MinSessionsForVerdict)
@@ -202,12 +199,31 @@ namespace PaviseApp
 
         private void Flash(string text, Color c) { irqFlash = text; irqFlashColor = c; }
 
-        private IrqCheckupDevice CheckupFor(IrqDevice d)
+        // 只统计已经映射到可点击设备的 Worth；驱动判定若无法映射，不能告诉用户有一条
+        // 根本找不到入口的建议。
+        private int IrqWorthCount()
         {
-            if (irqCheckup == null || d == null || d.InstanceId.Length == 0) return null;
-            foreach (IrqCheckupDevice c in irqCheckup.Devices)
-                if (string.Equals(c.InstanceId, d.InstanceId, StringComparison.OrdinalIgnoreCase)) return c;
-            return null;
+            int n = 0;
+            if (irqDevices != null)
+                foreach (IrqDevice d in irqDevices)
+                    if (d != null && d.ActionableWorth) n++;
+            return n;
+        }
+
+        // 由 GameMode 的对局结束建议事件驱动 跨线程进来 刷新中断页让状态条/横幅亮起建议
+        //   不自动改注册表 只把用户引到中断页走已有手动流程 页面未建好时安全跳过
+        public void NotifyIrqSuggestions(int count)
+        {
+            try
+            {
+                if (!IsHandleCreated || IsDisposed || count <= 0) return;
+                BeginInvoke((MethodInvoker)delegate
+                {
+                    if (IsDisposed) return;
+                    RefreshIrqPage();
+                });
+            }
+            catch { }
         }
 
         private void DrawIrqRow(object sender, DrawItemEventArgs e)
@@ -240,11 +256,8 @@ namespace PaviseApp
 
             IrqGrade grade = IrqDeviceInventory.Grade(d);
             Color gc = GradeColor(grade);
-            IrqCheckupDevice row = CheckupFor(d);
             string us = d.Dpc > 0
-                ? (row != null
-                    ? "p99 " + row.P99LoUs.ToString("F0") + "-" + row.P99Us.ToString("F0") + "us"
-                    : d.MaxUs.ToString("F0") + "us " + IrqDeviceInventory.GradeText(grade))
+                ? d.MaxUs.ToString("F0") + "us " + IrqDeviceInventory.GradeText(grade)
                 : "-";
             Cell(g, us, x, ty, Dpi.S(116), d.Dpc > 0 ? gc : Theme.Faint, false);
             x += Dpi.S(116);
@@ -253,11 +266,12 @@ namespace PaviseApp
                 x, ty, Dpi.S(120), Theme.Dim, true);
             x += Dpi.S(120);
 
-            string name = d.Name
-                + (d.FromCheckup ? "  " + Lang.T("irq.tag.checkup") : "")
-                + (row != null && row.SuggestMask != 0 ? "  " + Lang.T("irq.tag.suggest") : "")
+            // 建议标签放在设备名前面，长 PnP 名称被省略号截断时仍然可见。
+            string name = (d.ActionableWorth ? Lang.T("irq.tag.matchsuggest") + "  " : "")
+                + d.Name
                 + (d.InputRisk ? "  " + Lang.T("irq.tag.input") : "");
-            Cell(g, name, x, ty, e.Bounds.Right - x - Dpi.S(8), Theme.Fg, false);
+            Cell(g, name, x, ty, e.Bounds.Right - x - Dpi.S(8),
+                d.ActionableWorth ? Theme.Accent : Theme.Fg, false);
         }
 
         private static Color GradeColor(IrqGrade g)
@@ -288,113 +302,24 @@ namespace PaviseApp
             return irqDevices[i];
         }
 
-        private void RefreshIrqDetail()
+        // 选中变化只算挪核按钮的可用性 设备详细描述已搬进选核弹窗(IrqPinDialog)不再在页面显示
+        private void UpdateIrqApplyEnabled()
         {
-            if (lblIrqDetail == null) return;
+            if (btnIrqApply == null) return;
             IrqDevice d = SelectedIrqDevice();
-            if (d == null)
-            {
-                lblIrqDetail.Text = Lang.T("irq.pick");
-                lblIrqDetail.ForeColor = Theme.Faint;
-                btnIrqApply.Enabled = false;
-                return;
-            }
-
-            var sb = new System.Text.StringBuilder();
-            sb.Append(d.Name);
-            if (d.Dpc > 0)
-            {
-                sb.Append(Environment.NewLine);
-                sb.Append(Lang.F("irq.d.stat", d.MaxUs.ToString("F0"), d.Dpc,
-                    IrqRelocate.MaskText(d.SeenOnCpus)));
-                sb.Append("  ").Append(IrqDeviceInventory.BudgetText(d.MaxUs));
-                if (d.Over1Ms > 0) sb.Append("  ").Append(Lang.F("irq.d.over1ms", d.Over1Ms));
-                else if (d.Over500Us > 0) sb.Append("  ").Append(Lang.F("irq.d.over500", d.Over500Us));
-                if (d.SharedStats) sb.Append("  ").Append(Lang.T("irq.d.shared"));
-                if (d.FrameworkStats)
-                {
-                    sb.Append(Environment.NewLine);
-                    sb.Append(Lang.F("irq.d.framework", d.StatsDriver));
-                }
-            }
-            else { sb.Append(Environment.NewLine); sb.Append(Lang.T("irq.d.nointr")); }
-
-            Color c = Theme.Fg;
-            if (d.InputRisk) { sb.Append(Environment.NewLine); sb.Append(Lang.T("irq.d.input")); }
-            if (d.MultiMessageRisk)
-            {
-                sb.Append(Environment.NewLine);
-                sb.Append(d.MessageCount > 1 ? Lang.F("irq.d.multimsg", d.MessageCount)
-                                             : Lang.T("irq.d.multimsg.unknown"));
-            }
-            if (d.CompletionFollowsIssuer)
-            { sb.Append(Environment.NewLine); sb.Append(Lang.T("irq.d.storagedpc")); }
-
-            IrqCheckupDevice ck = CheckupFor(d);
-            if (ck != null)
-            {
-                sb.Append(Environment.NewLine);
-                sb.Append(Lang.F("irq.d.checkup",
-                    ck.P99LoUs.ToString("F0") + "-" + ck.P99Us.ToString("F0"),
-                    IrqRelocate.MaskText(ck.CpuMask),
-                    ck.OnGameCores ? Lang.T("irq.d.checkup.hit") : Lang.T("irq.d.checkup.miss")));
-                sb.Append(Environment.NewLine);
-                if (ck.SuggestMask == 0) sb.Append(ck.NoSuggestReason);
-                else
-                {
-                    sb.Append(Lang.F("irq.d.suggest", IrqRelocate.MaskText(ck.SuggestMask)));
-                    if (ck.SuggestSinglePhysical)
-                    { sb.Append(Environment.NewLine); sb.Append(Lang.T("irq.d.suggest.smt")); }
-                    if (ck.SuggestSharesBackground)
-                    { sb.Append(Environment.NewLine); sb.Append(Lang.T("irq.d.suggest.bg")); }
-                }
-            }
-            if (d.ManagedElsewhere)
-            { sb.Append(Environment.NewLine); sb.Append(Lang.T("irq.d.owned")); c = Theme.Faint; }
-            else if (d.IsPinned)
-            {
-                sb.Append(Environment.NewLine);
-                if (d.Effective)
-                {
-                    sb.Append(Lang.F("irq.d.effective", IrqRelocate.MaskText(d.Mask)));
-                    c = Theme.Accent;
-                }
-                else if (d.PlacementMismatch)
-                {
-                    sb.Append(Lang.F("irq.d.written", IrqRelocate.MaskText(d.Mask)));
-                    sb.Append(Environment.NewLine);
-                    sb.Append(Lang.T("irq.tip.mismatch"));
-                    c = Theme.Danger;
-                }
-                else if (d.Unverified)
-                {
-                    sb.Append(Lang.F("irq.d.written", IrqRelocate.MaskText(d.Mask)));
-                    sb.Append(Environment.NewLine);
-                    // 对局观测关着的话打多少局都不会记录 待验证会一直挂着 这里要把坑说破
-                    sb.Append(Lang.T(IrqSessionProbe.EnabledSetting
-                        ? "irq.tip.unverified" : "irq.tip.unverified.probeoff"));
-                    c = Theme.Faint;
-                }
-                else
-                {
-                    sb.Append(Lang.F("irq.d.written", IrqRelocate.MaskText(d.Mask)));
-                    c = Theme.Danger;
-                }
-            }
-            lblIrqDetail.Text = sb.ToString();
-            lblIrqDetail.ForeColor = c;
-
             bool admin = false;
             try { admin = Native.IsElevated(); } catch { }
-            btnIrqApply.Enabled = admin && !d.ManagedElsewhere;
+            btnIrqApply.Enabled = d != null && admin && !d.ManagedElsewhere;
         }
 
 
         private void OnIrqProbePageToggle(object sender, EventArgs e)
         {
             if (swIrqProbePage == null) return;
-            IrqSessionProbe.EnabledSetting = swIrqProbePage.Checked;
-            if (swIrqProbe != null) swIrqProbe.SetSilently(IrqSessionProbe.EnabledSetting);
+            IrqMutationBoundary.Run(delegate
+            {
+                IrqSessionProbe.EnabledSetting = swIrqProbePage.Checked;
+            });
             RefreshIrqPage();
         }
 
@@ -404,20 +329,23 @@ namespace PaviseApp
             if (d == null || d.ManagedElsewhere) return;
             bool admin = false;
             try { admin = Native.IsElevated(); } catch { }
-            if (!admin) return;
+            // 双击列表绕过了按钮的置灰 未提权时这里不能一声不吭地退掉
+            if (!admin) { Flash(Lang.T("irqmove.needadmin"), Theme.Danger); RefreshIrqPage(); return; }
 
             ulong pick = 0;
-            IrqCheckupDevice sug = CheckupFor(d);
             bool raisePriority = false;
-            using (var dlg = new IrqPinDialog(d, sug))
+            using (var dlg = new IrqPinDialog(d))
                 if (dlg.ShowDialog(this) == DialogResult.OK)
                 { pick = dlg.Chosen; raisePriority = dlg.RaisePriority; }
             if (pick == 0) return;
 
             bool ok = false;
-            try { ok = IrqRelocate.ApplyDevice(d.InstanceId, pick); } catch { }
-            if (ok && raisePriority && !d.DevicePriorityHigh)
-                try { IrqPriorityTweak.Apply(d.InstanceId); } catch { }
+            IrqMutationBoundary.Run(delegate
+            {
+                try { ok = IrqRelocate.ApplyDevice(d.InstanceId, pick); } catch { }
+                if (ok && raisePriority && !d.DevicePriorityHigh)
+                    try { IrqPriorityTweak.Apply(d.InstanceId); } catch { }
+            });
             Flash(ok ? Lang.F("irq.done.written", IrqRelocate.MaskText(pick)) : Lang.T("irq.done.fail"),
                 ok ? Theme.Accent : Theme.Danger);
             RefreshIrqPage();
@@ -426,76 +354,14 @@ namespace PaviseApp
         private void OnIrqRevert(object sender, EventArgs e)
         {
             bool ok = false;
-            try { ok = IrqRelocate.Revert(); } catch { }
-            try { if (!IrqPriorityTweak.RestoreAll()) ok = false; } catch { }
+            IrqMutationBoundary.Run(delegate
+            {
+                try { ok = IrqRelocate.Revert(); } catch { }
+                try { if (!IrqPriorityTweak.RestoreAll()) ok = false; } catch { }
+            });
             Flash(ok ? Lang.T("irq.done.revert") : Lang.T("irq.done.fail"),
                 ok ? Theme.Accent : Theme.Danger);
             RefreshIrqPage();
-        }
-
-        private void OnIrqCheckup(object sender, EventArgs e)
-        {
-            if (IrqCheckup.Busy) return;
-            bool admin = false;
-            try { admin = Native.IsElevated(); } catch { }
-            if (!admin) { Flash(Lang.T("irqmove.needadmin"), Theme.Danger); return; }
-
-            btnIrqCheckup.Enabled = false;
-            btnIrqApply.Enabled = false;
-            int total = IrqCheckup.DefaultSeconds;
-            irqScan.Visible = true;
-            irqScan.BringToFront();
-            try { irqScan.Focus(); } catch { }
-            irqScan.BeginScan(Lang.F("irq.checkup.running", 0, total));
-            irqScan.Hint = Lang.T("irq.checkup.esc");
-            ThreadPool.QueueUserWorkItem(delegate
-            {
-                IrqCheckupResult res;
-                try
-                {
-                    res = IrqCheckup.Run(total, delegate (int done)
-                    {
-                        try
-                        {
-                            BeginInvoke((MethodInvoker)delegate
-                            {
-                                if (IsDisposed || lblIrqState == null) return;
-                                string t = Lang.F("irq.checkup.running", done, total);
-                                lblIrqState.Text = t;
-                                lblIrqState.ForeColor = Theme.Dim;
-                                if (irqScan != null)
-                                    irqScan.ReportProgress((float)done / Math.Max(1, total), t);
-                            });
-                        }
-                        catch { }
-                    });
-                }
-                catch (Exception ex)
-                {
-                    res = new IrqCheckupResult();
-                    res.Error = ex.GetType().Name;
-                }
-                try
-                {
-                    BeginInvoke((MethodInvoker)delegate
-                    {
-                        if (IsDisposed) return;
-                        irqCheckup = res.Ok ? res : null;
-                        if (irqScan != null) { irqScan.Stop(); irqScan.Visible = false; }
-                        btnIrqCheckup.Enabled = true;
-                        if (!res.Ok)
-                            Flash(Lang.F("irq.checkup.fail", res.Error), Theme.Danger);
-                        else if (res.Devices.Count == 0)
-                            Flash(Lang.T("irq.checkup.none"), Theme.Dim);
-                        else
-                            Flash(Lang.F(res.Cancelled ? "irq.checkup.done.partial" : "irq.checkup.done",
-                                res.Devices.Count, res.OnGameCoreCount, res.OverGateCount,
-                                res.SuggestCount, res.Elapsed), Theme.Accent);
-                        RefreshIrqPage();
-                    });
-                }
-                catch { }
-            });
         }
 
     }

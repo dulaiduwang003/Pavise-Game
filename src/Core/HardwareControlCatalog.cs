@@ -28,6 +28,14 @@ namespace PaviseApp
             "MSICenter", "MSICenterService", "DragonCenter",
             "FanControl", "SpeedFan", "HWiNFO64", "HWiNFO32",
 
+            // 掌机的整机管理软件 掌机档把后台压得跟专注一样狠 这些要是被压掉
+            //   风扇曲线和 TDP 就没人管了 比压掉一个后台下载严重得多
+            //   名字按各家常见进程名收的 没有逐台实机核对 发现漏的往这里补
+            "ArmouryCrate", "ArmouryCrate.UserSessionHelper", "ArmourySwAgent",
+            "AsusAppService", "AsusOSD", "LegionGoQuickSettings",
+            "AYASpace", "AYASpaceII", "OneXConsole", "OneXPlayerManager",
+            "GPDWinControls", "MSI Center M", "ClawCenter",
+
             "RTSS", "RTSSHooksLoader64", "MSIAfterburner"
         };
 
@@ -40,7 +48,11 @@ namespace PaviseApp
             "throttlestop", "ryzenmaster", "ryzenadj",
             "ghelper", "nitrosense", "predatorsense", "dragoncenter",
             "fancontrol", "speedfan", "hwinfo", "hwmonitor",
-            "afterburner", "rivatuner", "rtss"
+            "afterburner", "rivatuner", "rtss",
+
+            // 掌机侧走子串更稳 各家版本号和后缀花样太多 精确名单赶不上
+            "armoury", "ayaspace", "onexconsole", "onexplayer",
+            "gpdwin", "legionspace", "legionzone", "clawcenter"
         };
 
         internal static bool IsHardwareControlProcess(string name)

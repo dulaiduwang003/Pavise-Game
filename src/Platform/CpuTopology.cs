@@ -32,6 +32,8 @@ namespace PaviseApp
         public static string PartitionTag = "";
         private static List<KeyValuePair<uint, ulong>> cacheDomains = new List<KeyValuePair<uint, ulong>>();
         private static List<ulong> processorDieDomains = new List<ulong>();
+        private static readonly Dictionary<uint, ulong> cpuSetMaskById =
+            new Dictionary<uint, ulong>();
 
         static CpuTopology()
         {
@@ -597,6 +599,24 @@ namespace PaviseApp
             }
         }
 
+        internal static bool TryCpuSetIdsToMask(uint[] ids, out ulong mask)
+        {
+            mask = 0;
+            if (ids == null) return false;
+            for (int i = 0; i < ids.Length; i++)
+            {
+                ulong bit;
+                if (!cpuSetMaskById.TryGetValue(ids[i], out bit)
+                    || bit == 0)
+                {
+                    mask = 0;
+                    return false;
+                }
+                mask |= bit;
+            }
+            return true;
+        }
+
 
         private static void BuildCpuSetPolicies()
         {
@@ -633,6 +653,22 @@ namespace PaviseApp
                     pos += size;
                 }
                 if (rows.Count == 0) return;
+                cpuSetMaskById.Clear();
+                bool cpuSetMapValid = true;
+                foreach (CpuSetRec r in rows)
+                {
+                    if (r.Group != 0 || r.Logical >= 64) continue;
+                    ulong bit = 1UL << r.Logical;
+                    ulong old;
+                    if (cpuSetMaskById.TryGetValue(r.Id, out old)
+                        && old != bit)
+                    {
+                        cpuSetMapValid = false;
+                        break;
+                    }
+                    cpuSetMaskById[r.Id] = bit;
+                }
+                if (!cpuSetMapValid) cpuSetMaskById.Clear();
                 var all = new List<uint>();
                 byte min = byte.MaxValue, max = byte.MinValue;
                 foreach (CpuSetRec r in rows) { all.Add(r.Id); if (r.Efficiency < min) min = r.Efficiency; if (r.Efficiency > max) max = r.Efficiency; }
