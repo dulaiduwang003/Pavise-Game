@@ -23,6 +23,15 @@ namespace PaviseApp
         ApplyFailed
     }
 
+    internal enum BackgroundReleaseState
+    {
+        Ready,
+        Pending,
+        Gone,
+        IdentityMismatch,
+        OtherReasonActive
+    }
+
     internal sealed partial class SuppressionCore
     {
         public const string StateFileName = "Pavise.suppression.state";
@@ -56,10 +65,29 @@ namespace PaviseApp
             public int FastReconcileRemaining;
 
             public bool Journaled;
+            public bool RestoreInFlight;
 
         }
 
-        private enum RestoreResult { Restored, Gone, Protected }
+        internal enum RestoreResult { Restored, Gone, Protected }
+
+#if PAVISE_SELFTEST
+        private readonly Func<int, long, string, RestoreResult> restoreForTest;
+        internal Func<int, long, string, bool> RendererDiscardIdentityForTest;
+
+        // The renderer-release regression uses only an in-memory journal and
+        // fake restore outcomes. Do not initialize topology, recovery or OS state.
+        internal SuppressionCore(
+            Func<int, long, string, RestoreResult> restoreForTest, bool inMemoryOnly)
+        {
+            if (!inMemoryOnly || restoreForTest == null)
+                throw new ArgumentException("A fake restore is required for the in-memory core.");
+            this.restoreForTest = restoreForTest;
+            throttleMask = 0;
+            allMask = 0;
+            journalPath = null;
+        }
+#endif
 
         private const int ProtectedBackoffBaseSeconds = 8;
         private const int ProtectedBackoffCapSeconds = 300;
@@ -453,6 +481,113 @@ namespace PaviseApp
             return had;
         }
 
+        // The caller must first exclude this identity from new Background
+        // Acquire/Reconcile work, and revalidate its native identity after Ready.
+        // Clearing a reason is not proof that restoring its original values has
+        // completed: a surviving entry with Reasons=None is still recovery debt.
+        internal BackgroundReleaseState ReleaseBackgroundForRenderer(
+            int pid, long expectedCreation, string expectedName)
+        {
+            if (pid <= 0 || expectedCreation <= 0 || string.IsNullOrWhiteSpace(expectedName))
+                return BackgroundReleaseState.IdentityMismatch;
+
+            lock (sync)
+            {
+                Entry current;
+                if (!map.TryGetValue(pid, out current)) return BackgroundReleaseState.Ready;
+                if (current.Creation != expectedCreation || !SameName(current.Name, expectedName))
+                    return BackgroundReleaseState.IdentityMismatch;
+                if ((current.Reasons & SuppressReason.Background) == 0)
+                    return RendererReleaseStateOf(current);
+            }
+
+            bool had;
+            RestoreResult? restoreResult;
+            ReleaseOne(pid, SuppressReason.Background, expectedCreation, true,
+                expectedName, out had, out restoreResult);
+
+            lock (sync)
+            {
+                Entry current;
+                if (!map.TryGetValue(pid, out current))
+                    return restoreResult == RestoreResult.Gone
+                        ? BackgroundReleaseState.Gone : BackgroundReleaseState.Ready;
+                if (current.Creation != expectedCreation || !SameName(current.Name, expectedName))
+                    return BackgroundReleaseState.IdentityMismatch;
+                return RendererReleaseStateOf(current);
+            }
+        }
+
+        private static BackgroundReleaseState RendererReleaseStateOf(Entry entry)
+        {
+            if ((entry.Reasons & ~SuppressReason.Background) != SuppressReason.None)
+                return BackgroundReleaseState.OtherReasonActive;
+            // Do not call TryRestore here. Only the first release starts recovery;
+            // subsequent polls observe RetryPending and its protected backoff.
+            return BackgroundReleaseState.Pending;
+        }
+
+        // A valid renderer can reuse a PID still held by a dead process in map.
+        // Forget only that obsolete bookkeeping; never Acquire/Restore against
+        // the new process just to remove the old identity. The caller still
+        // needs ReleaseBackgroundForRenderer and a final native identity check.
+        internal bool DiscardReusedRendererTracking(int pid, long expectedCreation, string expectedName)
+        {
+            if (pid <= 0 || expectedCreation <= 0 || string.IsNullOrWhiteSpace(expectedName)) return false;
+            Entry observed;
+            long observedCreation;
+            lock (sync)
+            {
+                map.TryGetValue(pid, out observed);
+                observedCreation = observed == null ? 0 : observed.Creation;
+            }
+            if (!RendererDiscardIdentityMatches(pid, expectedCreation, expectedName)) return false;
+            lock (sync)
+            {
+                Entry current;
+                if (!map.TryGetValue(pid, out current)) return true;
+                // Acquire may replace an entry, or fill an existing creation=0
+                // placeholder in-place while the read-only query is in flight.
+                if (!ReferenceEquals(current, observed) || current.Creation != observedCreation) return false;
+                bool reused = current.Creation > 0 && current.Creation != expectedCreation;
+                bool untouched = current.Creation == 0 && current.OrigPri == uint.MaxValue
+                    && !current.Applied && !current.Journaled;
+                if (!reused && !untouched) return false;
+
+                map.Remove(pid);
+                batchApply.Remove(pid);
+                batchApplyResults.Remove(pid);
+                batchApplyErrors.Remove(pid);
+                TryClearMarkLocked();
+                RefreshThrottledCacheLocked();
+                RefreshGroupCountsLocked();
+                return true;
+            }
+        }
+
+        private bool RendererDiscardIdentityMatches(int pid, long expectedCreation, string expectedName)
+        {
+#if PAVISE_SELFTEST
+            if (RendererDiscardIdentityForTest != null)
+                return RendererDiscardIdentityForTest(pid, expectedCreation, expectedName);
+            // An in-memory fixture without an identity seam must stay in-memory.
+            if (restoreForTest != null) return false;
+#endif
+            IntPtr handle = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+            if (handle == IntPtr.Zero) return false;
+            try
+            {
+                string name = Native.ImageName(handle);
+                long creation, cpu;
+                ulong io;
+                return SameName(name, expectedName)
+                    && Native.QueryProcessSample(handle, out creation, out cpu, out io)
+                    && creation == expectedCreation && Native.StillActive(handle);
+            }
+            catch { return false; }
+            finally { Native.CloseHandle(handle); }
+        }
+
         public int ReleaseReason(SuppressReason reason)
         {
             int restored = 0; bool had;
@@ -475,6 +610,16 @@ namespace PaviseApp
             int pid, SuppressReason reason,
             long expectedCreation, bool requireCreation, out bool had)
         {
+            RestoreResult? ignored;
+            return ReleaseOne(pid, reason, expectedCreation, requireCreation, null, out had, out ignored);
+        }
+
+        private int ReleaseOne(
+            int pid, SuppressReason reason,
+            long expectedCreation, bool requireCreation, string expectedName,
+            out bool had, out RestoreResult? restoreResult)
+        {
+            restoreResult = null;
             Entry e;
             bool adjust = false;
             bool remaining = false;
@@ -484,6 +629,8 @@ namespace PaviseApp
                 if (had && requireCreation)
                     had = e.Creation > 0
                         && e.Creation == expectedCreation;
+                if (had && expectedName != null)
+                    had = SameName(e.Name, expectedName);
                 if (!had) return 0;
                 SuppressionLevel previousLevel = e.Level;
                 e.Reasons &= ~reason;
@@ -525,12 +672,50 @@ namespace PaviseApp
                 return 0;
             }
             if (remaining) return 0;
-            return TryRestore(pid, e) ? 1 : 0;
+            RestoreResult result;
+            bool restored = TryRestore(pid, e, out result);
+            restoreResult = result;
+            return restored ? 1 : 0;
         }
 
-        private bool TryRestore(int pid, Entry e)
+        private bool TryRestore(int pid, Entry e, bool respectBackoff)
         {
-            RestoreResult r = RestoreOne(pid, e);
+            RestoreResult ignored;
+            return TryRestore(pid, e, respectBackoff, out ignored);
+        }
+
+        private bool TryRestore(int pid, Entry e, out RestoreResult result)
+        {
+            return TryRestore(pid, e, false, out result);
+        }
+
+        private bool TryRestore(int pid, Entry e, bool respectBackoff, out RestoreResult result)
+        {
+            result = RestoreResult.Protected;
+            lock (sync)
+            {
+                Entry current;
+                // RetryPending works from a snapshot. It must not start an old
+                // restore after this entry was removed/replaced or reacquired,
+                // nor overlap the first ReleaseOne restore for the same entry.
+                if (!map.TryGetValue(pid, out current) || !ReferenceEquals(current, e)
+                    || e.Reasons != SuppressReason.None || e.RestoreInFlight
+                    || (respectBackoff && DateTime.UtcNow.Ticks < e.NextRetryTicks)) return false;
+                e.RestoreInFlight = true;
+            }
+            try { return TryRestoreOwned(pid, e, out result); }
+            finally { lock (sync) e.RestoreInFlight = false; }
+        }
+
+        private bool TryRestoreOwned(int pid, Entry e, out RestoreResult result)
+        {
+            RestoreResult r;
+#if PAVISE_SELFTEST
+            if (restoreForTest != null) r = restoreForTest(pid, e.Creation, e.Name);
+            else
+#endif
+                r = RestoreOne(pid, e);
+            result = r;
             bool reThrottle = false;
             lock (sync)
             {
@@ -611,7 +796,7 @@ namespace PaviseApp
                     }
             if (pending == null) return;
             foreach (var kv in pending)
-                if (TryRestore(kv.Key, kv.Value) && kv.Value.ProtectedRetries == 0)
+                if (TryRestore(kv.Key, kv.Value, true) && kv.Value.ProtectedRetries == 0)
                     Logger.Log(Lang.T("log.suppressioncore.4") + kv.Value.Name + " pid " + kv.Key);
         }
 

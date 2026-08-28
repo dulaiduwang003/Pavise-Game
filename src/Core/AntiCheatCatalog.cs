@@ -23,7 +23,7 @@ namespace PaviseApp
         public static readonly AcGroup[] Groups = new AcGroup[]
         {
             new AcGroup("ace", "ac.ace.n",
-                true,
+                false,
                 // 本目录只收用户态进程 内核驱动写在这里永远扫不到 只会让界面显得能压驱动
                 //   ACE 的驱动是 ACE-*.sys 装在 System32\drivers 下 本机实测有 ACE-BASE.sys ACE-ADVT.sys
                 //   ACE-BASE / ACE-BASE64 属于驱动族 已移除 ACE-Tray 与 ACE-Helper 是真进程 日志里出现过

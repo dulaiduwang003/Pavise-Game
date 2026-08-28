@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "registered_before_secondary_local_measurement": true,
+  "hypothesis": "Reading the shared input repeatedly may incur cross-adapter cache/coherency penalties. One auxiliary-GPU copy into an ordinary DEFAULT buffer might reduce the subsequent postprocessing cost enough to offset that copy.",
+  "motivation": {
+    "observed_shared_input_screening": "At 1080p scene100/post4, copy-path single rate 646.9225 versus dual rate 97.7157 tasks/s; direct-path single 646.1573 versus dual 101.0604. The copy-path auxiliary stage took approximately 8-9 ms versus approximately 0.155 ms on the discrete GPU, under the recorded background load.",
+    "reference": "https://learn.microsoft.com/en-us/windows/win32/direct3d12/shared-heaps",
+    "qualification": "UHD630 is UMA: an ordinary DEFAULT allocation is not new dedicated VRAM. Copying may be slower, and the current data do not prove cache behavior is the root cause."
+  },
+  "implementation_constraint": "Add orthogonal --secondary-input shared|local, default shared. Do not change shader, pixel tolerance, workload, single-GPU baseline, timestamp frequency handling, success gates, fences or three-slot ownership. Both primary transfer modes remain available.",
+  "cost_accounting": "For local input, place the existing auxiliary start timestamp before shared-to-local CopyBufferRegion. Include copy, barriers and unchanged Post in post_gpu_ms and overall completion/wall rates. Read back the actual local input for correctness validation.",
+  "preflight": "On the new attested binary, pure CPU self-tests and pixel validation of direct/local and copy/local must pass before timing.",
+  "environment": "background_loaded_screening; do not terminate remote access, Codex, Pavise or user applications. All safety guards retained. No idle-machine or product-ready claim.",
+  "matrix": {
+    "width": 1920,
+    "height": 1080,
+    "transfer_path": "direct",
+    "post_loops": 4,
+    "warmup_frames": 120,
+    "measure_frames": 600,
+    "repeats": 3,
+    "phase_order": "ABBA / BAAB / ABBA within every invocation",
+    "precondition_seconds": 15,
+    "cases": [
+      { "id": "localstudy_direct_s100_shared", "scene_loops": 100, "secondary_input": "shared" },
+      { "id": "localstudy_direct_s100_local", "scene_loops": 100, "secondary_input": "local" },
+      { "id": "localstudy_direct_s600_shared", "scene_loops": 600, "secondary_input": "shared" },
+      { "id": "localstudy_direct_s600_local", "scene_loops": 600, "secondary_input": "local" }
+    ],
+    "choice_reason": "Keep the already-defined low/high scene workloads, without searching intermediate loop counts. Use direct primary output to avoid adding a redundant primary local-to-shared copy in this follow-up. Rerun shared controls on the same new binary rather than comparing only against an older build."
+  },
+  "decision": "Judge every candidate against its single-GPU baseline, not only against the older dual-GPU implementation. Retain the original +2% average/wall, +1% low, >=2/3 paired wins, <=5% P99 regression and <=5% drift/timing gaps. A candidate needs independently confirmed quiet and real end-to-end benefit before shipping. If no candidate passes, stop this workload/parameter exploration and report the evidence; do not add a misleading acceleration switch."
+}

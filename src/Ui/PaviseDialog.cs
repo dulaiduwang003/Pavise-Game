@@ -49,9 +49,29 @@ namespace PaviseApp
             int textW = w - Theme.S(PadX) * 2;
             int textH = MeasureBody(textW);
             int extraH = extra == null ? 0 : extra.Height + Theme.S(12);
+            int fixedH = Theme.S(BodyTop) + extraH + Theme.S(BtnH) + Theme.S(BottomPad) + Theme.S(16);
+            int availableH = Screen.FromPoint(Cursor.Position).WorkingArea.Height - Theme.S(40);
+            int bodyLimit = Math.Max(Theme.S(28), availableH - fixedH);
+            bool scrollBody = extra == null && textH > bodyLimit;
+            if (scrollBody) textH = bodyLimit;
             int h = Theme.S(BodyTop) + textH + extraH + Theme.S(BtnH) + Theme.S(BottomPad) + Theme.S(16);
             ClientSize = new Size(w, h);
             bodyRect = new Rectangle(Theme.S(PadX), Theme.S(BodyTop), textW, textH);
+            if (scrollBody)
+            {
+                // Reset can report several locked paths. Keep its confirmation
+                // button on-screen and make the complete diagnostic copyable.
+                var details = Theme.MakeTextBox(bodyRect.X, bodyRect.Y, bodyRect.Width);
+                details.Name = "ScrollableDialogDetails";
+                details.Multiline = true;
+                details.ReadOnly = true;
+                details.WordWrap = true;
+                details.ScrollBars = ScrollBars.Vertical;
+                details.Height = bodyRect.Height;
+                details.Text = body;
+                Controls.Add(details);
+                bodyRect = Rectangle.Empty;
+            }
             if (extra != null)
             {
                 extra.Location = new Point(Theme.S(PadX), Theme.S(BodyTop) + textH);
@@ -200,7 +220,7 @@ namespace PaviseApp
 
             Font bodyFont = Theme.UI(9.5f, false);
             using (var bb = new SolidBrush(Theme.Dim))
-                g.DrawString(body, bodyFont, bb, bodyRect);
+                if (!bodyRect.IsEmpty) g.DrawString(body, bodyFont, bb, bodyRect);
 
             int lineY = ClientSize.Height - Theme.S(BottomPad) - Theme.S(BtnH) - Theme.S(14);
             using (var sep = new Pen(Theme.Stroke))

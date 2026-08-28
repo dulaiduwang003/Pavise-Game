@@ -32,9 +32,10 @@ namespace PaviseApp
         // EnableTraceEx2 参数
         private const uint EnableProvider = 1;      // EVENT_CONTROL_CODE_ENABLE_PROVIDER
         private const byte LevelInformation = 4;    // TRACE_LEVEL_INFORMATION
-        // DxgKrnl Present keyword=0x8000000 event 184 含此位 只订阅 present 一族
-        //   内核层就滤掉海量 GPU 调度事件 对局期常驻采集不损性能 回调再按 event id==184 收敛
+        // Present 关键词还包含 VSync/HSync、队列和同步信号等事件，不能单独作为低开销过滤器。
+        // 必须同时用 EVENT_FILTER_TYPE_EVENT_ID 在 ETW 写入前限定 184，回调再作防御性复核。
         private const ulong MatchAnyKeyword = 0x8000000;
+        private const uint EnableTimeoutMs = 1000;
 
         // present 事件号 从 DxgKrnl manifest 钉死
         private const ushort EventPresent = 184;
@@ -59,6 +60,11 @@ namespace PaviseApp
         private volatile bool consumerExitedEarly;
         private volatile bool processTraceSucceeded;
         private bool drainCompleted = true;
+        private readonly object stopGate = new object();
+        private bool stopRequestIssued;
+        private bool stopRequestSucceeded;
+        private uint stopRequestError;
+        private bool stopFinishing;
 
         public bool Truncated { get; private set; }
         public uint LastError { get; private set; }
@@ -99,15 +105,28 @@ namespace PaviseApp
             }
             finally { Marshal.FreeHGlobal(props); }
 
-            // DxgKrnl 是 manifest 用户态 provider，用 EnableTraceEx2 按 GUID 和 0x8000000
-            // Present keyword 订阅，回调里再按 event id==184 收敛。
+            // DxgKrnl 是内核驱动注册的 manifest provider，不套只适用于用户态 provider 的 PID scope。
+            // 过滤参数、descriptor 和变长载荷在整个 EnableTraceEx2 调用期间由同一个 HGlobal 持有。
+            // 配置失败就放弃本轮 Present，不回退成订阅整族事件的高流量会话。
             Guid provider = DxgKrnl;
-            uint erc = EnableTraceEx2(sessionHandle, ref provider, EnableProvider, LevelInformation,
-                MatchAnyKeyword, 0, 0, IntPtr.Zero);
+            uint erc;
+            try
+            {
+                using (var filter = new EventIdFilterBuffer())
+                    erc = EnableTraceEx2(sessionHandle, ref provider, EnableProvider, LevelInformation,
+                        MatchAnyKeyword, 0, EnableTimeoutMs, filter.ParametersPointer);
+            }
+            catch (Exception ex)
+            {
+                LastError = uint.MaxValue;
+                Logger.Log("PRESENT 事件 ID 过滤配置异常，本轮跳过，不启用宽范围采集 " + ex.GetType().Name);
+                StopStale();
+                return false;
+            }
             if (erc != 0)
             {
                 LastError = erc;
-                Logger.Log("PRESENT EnableTraceEx2 失败 win32=" + erc);
+                Logger.Log("PRESENT 事件 ID 过滤启用失败，本轮跳过，不启用宽范围采集 win32=" + erc);
                 StopStale();
                 return false;
             }
@@ -138,9 +157,15 @@ namespace PaviseApp
             stopRequested = false;
             consumerExitedEarly = false;
             processTraceSucceeded = false;
+            lock (stopGate)
+            {
+                stopRequestIssued = false;
+                stopRequestSucceeded = false;
+                stopRequestError = 0;
+            }
             worker.Start();
             started = true;
-            Logger.Log("PRESENT 会话已启动 " + SessionName + " 采 event 184");
+            Logger.Log("PRESENT 会话已启动 " + SessionName + " ETW 前置过滤 event 184");
             return true;
         }
 
@@ -160,35 +185,75 @@ namespace PaviseApp
             catch { if (!stopRequested) consumerExitedEarly = true; }
             finally
             {
-                // 正常路径只有 Stop 发出 ControlTrace 后消费线程才该返回；提前返回即使
+                // 正常路径只有 RequestStop 发出 ControlTrace 后消费线程才该返回；提前返回即使
                 // Join 成功、丢事件计数为 0，也只覆盖了半局，不能生成负证据。
                 if (!stopRequested) consumerExitedEarly = true;
             }
         }
 
+        // 只收口事件来源，不等待消费线程排空。调用方可先关闭 PRESENT 窗口，
+        // 立即封存 DPC 的新鲜 proof，再在退出收尾时调用 Stop 取完整时间线。
+        public void RequestStop()
+        {
+            lock (stopGate)
+            {
+                if (!started || stopRequestIssued) return;
+                stopRequestIssued = true;
+                stopRequested = true;
+                uint lost = 0, buffers = 0, error = 0;
+                try { stopRequestSucceeded = StopStale(out lost, out buffers, out error); }
+                catch { stopRequestSucceeded = false; error = uint.MaxValue; }
+                stopRequestError = error;
+                if (!stopRequestSucceeded && error != 0) LastError = error;
+                EventsLost = lost;
+                BuffersLost = buffers;
+            }
+        }
+
         public void Stop()
         {
-            if (!started) return;
-            // 先停会话并等 ProcessTrace 排空积压事件，它返回后再 CloseTrace。
-            stopRequested = true;
-            uint lost, buffers, stopError;
-            bool stopSucceeded = StopStale(out lost, out buffers, out stopError);
-            if (!stopSucceeded && stopError != 0) LastError = stopError;
-            EventsLost = lost;
-            BuffersLost = buffers;
-            bool workerDone = true;
-            // 实时消费者在控制器成功停会话后会自行排空并返回。
-            // ControlTrace 失败时只能 CloseTrace 解除消费者，这种路径绝不能算完整采集。
-            if (!stopSucceeded)
-                try { if (traceHandle != 0) CloseTrace(traceHandle); } catch { }
-            if (worker != null) { try { workerDone = worker.Join(10000); } catch { workerDone = false; } }
-            if (stopSucceeded)
-                try { if (traceHandle != 0) CloseTrace(traceHandle); } catch { }
-            drainCompleted = stopSucceeded && workerDone && processTraceSucceeded;
-            started = false;
-            // 排空超时后工作线程仍可能回调，必须保留委托引用；线程结束会连同实例一起释放。
-            if (workerDone) keepAlive = null;
-            Logger.Log("PRESENT 会话已停止 帧=" + frames.Count
+            RequestStop();
+            Thread drainWorker;
+            ulong handleToClose;
+            bool stopSucceeded;
+            uint stopError;
+            lock (stopGate)
+            {
+                // 多个收尾调用共用一次排空；等待会释放锁，RequestStop 不会被 Join 阻塞。
+                while (stopFinishing) Monitor.Wait(stopGate);
+                if (!started) return;
+                stopFinishing = true;
+                drainWorker = worker;
+                handleToClose = traceHandle;
+                stopSucceeded = stopRequestSucceeded;
+                stopError = stopRequestError;
+            }
+            bool workerDone = drainWorker == null;
+            try
+            {
+                // 正常停会话后消费者自行排空；停失败则先 CloseTrace 解除消费者，
+                // 这种路径即使 Join 成功也不能算完整采集。
+                if (!stopSucceeded)
+                    try { if (handleToClose != 0) CloseTrace(handleToClose); } catch { }
+                if (drainWorker != null)
+                    try { workerDone = drainWorker.Join(10000); } catch { workerDone = false; }
+            }
+            finally
+            {
+                if (stopSucceeded)
+                    try { if (handleToClose != 0) CloseTrace(handleToClose); } catch { }
+                lock (stopGate)
+                {
+                    traceHandle = 0;
+                    drainCompleted = stopSucceeded && workerDone && processTraceSucceeded;
+                    started = false;
+                    // 排空超时后仍可能回调，保留委托直到消费线程结束。
+                    if (workerDone) keepAlive = null;
+                    stopFinishing = false;
+                    Monitor.PulseAll(stopGate);
+                }
+            }
+            Logger.Log("PRESENT 会话已停止 Present事件=" + frames.Count
                 + (Truncated ? "(已截断)" : "") + " 丢事件=" + EventsLost + " 丢缓冲=" + BuffersLost);
             if (!workerDone) Logger.Log("PRESENT 会话排空超时 本局时间线作废");
             if (!stopSucceeded) Logger.Log("PRESENT 会话停止失败 本局时间线作废 win32=" + stopError);
@@ -263,6 +328,93 @@ namespace PaviseApp
             }
             catch { error = uint.MaxValue; return false; }
             finally { Marshal.FreeHGlobal(props); }
+        }
+
+        // EVENT_FILTER_EVENT_ID 的 BOOLEAN 是 1 字节，不是默认 P/Invoke BOOL 的 4 字节。
+        // 当前只订阅一个事件：sizeof(header) 4 + USHORT Events[1] 2 = 6 字节。
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct EventIdFilterData
+        {
+            internal byte FilterIn;
+            internal byte Reserved;
+            internal ushort Count;
+            internal ushort EventId;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct EventFilterDescriptor
+        {
+            internal ulong Ptr;  // ULONGLONG，在 32 位控制器里也必须是 8 字节。
+            internal uint Size;
+            internal uint Type;
+        }
+
+        // 仅分配/序列化内存，不调用任何 ETW API；纯自测可核验整个指针链和释放路径。
+        internal sealed class EventIdFilterBuffer : IDisposable
+        {
+            internal const uint EventIdFilterType = 0x80000200;
+            private IntPtr memory;
+
+            internal EventIdFilterBuffer()
+            {
+                int parametersSize = Marshal.SizeOf(typeof(Native.EnableTraceParameters));
+                // descriptor 含 ULONGLONG，显式按 8 字节对齐，兼容 x86/x64 控制器。
+                int descriptorOffset = (parametersSize + 7) & ~7;
+                int payloadOffset = descriptorOffset + Marshal.SizeOf(typeof(EventFilterDescriptor));
+                int payloadSize = Marshal.SizeOf(typeof(EventIdFilterData));
+                int size = payloadOffset + payloadSize;
+                memory = Marshal.AllocHGlobal(size);
+                try
+                {
+                    for (int i = 0; i < size; i++) Marshal.WriteByte(memory, i, 0);
+                    IntPtr descriptorPointer = IntPtr.Add(memory, descriptorOffset);
+                    IntPtr payloadPointer = IntPtr.Add(memory, payloadOffset);
+                    var data = new EventIdFilterData { FilterIn = 1, Reserved = 0, Count = 1, EventId = EventPresent };
+                    Marshal.StructureToPtr(data, payloadPointer, false);
+                    var descriptor = new EventFilterDescriptor
+                    {
+                        Ptr = IntPtr.Size == 8 ? unchecked((ulong)payloadPointer.ToInt64())
+                            : unchecked((uint)payloadPointer.ToInt32()),
+                        Size = (uint)payloadSize,
+                        Type = EventIdFilterType
+                    };
+                    Marshal.StructureToPtr(descriptor, descriptorPointer, false);
+                    var parameters = new Native.EnableTraceParameters
+                    {
+                        Version = 2,
+                        SourceId = SessionGuid,
+                        EnableFilterDesc = descriptorPointer,
+                        FilterDescCount = 1
+                    };
+                    Marshal.StructureToPtr(parameters, memory, false);
+                }
+                catch
+                {
+                    Dispose();
+                    throw;
+                }
+            }
+
+            internal IntPtr ParametersPointer
+            {
+                get
+                {
+                    if (memory == IntPtr.Zero) throw new ObjectDisposedException("EventIdFilterBuffer");
+                    return memory;
+                }
+            }
+
+            public void Dispose()
+            {
+                IntPtr owned = Interlocked.Exchange(ref memory, IntPtr.Zero);
+                if (owned != IntPtr.Zero) Marshal.FreeHGlobal(owned);
+                GC.SuppressFinalize(this);
+            }
+
+            ~EventIdFilterBuffer()
+            {
+                Dispose();
+            }
         }
 
         // 以下 interop 结构与签名照抄 InterruptAttribution 已验证的布局 只是复制一份不共享

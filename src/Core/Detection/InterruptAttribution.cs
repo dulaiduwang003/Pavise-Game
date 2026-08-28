@@ -226,7 +226,14 @@ namespace PaviseApp
                     return false;
                 }
                 if (!Native.TryEnableDebugPrivilege()) { }
-                LoadModules();
+                string moduleError;
+                if (!LoadModules(out moduleError))
+                {
+                    FailDetail = moduleError;
+                    Logger.Log("IRQ " + moduleError);
+                    ReleaseOwnership();
+                    return false;
+                }
 
                 IntPtr props = AllocProps();
                 try
@@ -318,6 +325,11 @@ namespace PaviseApp
             return ticks >= 0 && ticks <= maxTicks ? startQpc : endQpc;
         }
 
+        internal static bool HasMappedEvents(long rawDpc, long rawIsr, int mappedDrivers)
+        {
+            return rawDpc >= 0 && rawIsr >= 0 && (rawDpc > 0 || rawIsr > 0) && mappedDrivers > 0;
+        }
+
         public InterruptAttributionResult Stop()
         {
             var result = new InterruptAttributionResult();
@@ -377,16 +389,27 @@ namespace PaviseApp
                     long ta = a.Dpc + a.Isr, tb = b.Dpc + b.Isr;
                     return tb.CompareTo(ta);
                 });
-                result.Ok = dpcTotal + isrTotal > 0 && !result.Incomplete;
-                if (!result.Ok) result.Error = Lang.T("t.interruptattribution.6");
-                else if (result.Lossy)
+                bool unmapped = (dpcTotal > 0 || isrTotal > 0) && result.Drivers.Count == 0;
+                string mappingError = unmapped
+                    ? "已采集中断事件，但无法映射到驱动模块，本局中断归因不可用"
+                        + " DPC=" + dpcTotal + " ISR=" + isrTotal + " 模块=" + modules.Count
+                    : null;
+                if (unmapped) Logger.Log("IRQ " + mappingError);
+                result.Ok = HasMappedEvents(dpcTotal, isrTotal, result.Drivers.Count)
+                    && !result.Incomplete && !result.Lossy;
+                if (result.Lossy)
                 {
-                    result.Ok = false;
-                    result.Error = Lang.F("t.interruptattribution.7", result.EventsLost, result.BuffersLost);
                     Logger.Log(Lang.F("log.interruptattribution.lossy", result.EventsLost, result.BuffersLost));
                 }
+                // 归因失败不能掩盖更高优先级的采集不完整/丢失；三种情况都不能提供有效样本。
                 if (result.Incomplete)
                     result.Error = "ETW 消费或停止未完整 win32=" + stopError;
+                else if (result.Lossy)
+                    result.Error = Lang.F("t.interruptattribution.7", result.EventsLost, result.BuffersLost);
+                else if (unmapped)
+                    result.Error = mappingError;
+                else if (!result.Ok)
+                    result.Error = Lang.T("t.interruptattribution.6");
                 return result;
             }
         }
@@ -500,20 +523,33 @@ namespace PaviseApp
             return null;
         }
 
-        private void LoadModules()
+        private bool LoadModules(out string error)
         {
             modules.Clear();
-            int len = 0;
-            NtQuerySystemInformation(11, IntPtr.Zero, 0, out len);
-            len = Math.Max(len, 1 << 20) + 65536;
-            IntPtr buf = Marshal.AllocHGlobal(len);
+            error = null;
+            IntPtr buf = IntPtr.Zero;
             try
             {
+                int len = 0;
+                NtQuerySystemInformation(11, IntPtr.Zero, 0, out len);
+                len = checked(Math.Max(len, 1 << 20) + 65536);
+                buf = Marshal.AllocHGlobal(len);
                 int ret;
-                if (NtQuerySystemInformation(11, buf, len, out ret) != 0) return;
+                int status = NtQuerySystemInformation(11, buf, len, out ret);
+                if (status != 0)
+                {
+                    error = "驱动模块枚举失败，无法启动中断归因 NTSTATUS=0x"
+                        + unchecked((uint)status).ToString("X8");
+                    return false;
+                }
                 int count = Marshal.ReadInt32(buf);
                 long p = buf.ToInt64() + IntPtr.Size;
                 int stride = 16 + 8 + 4 + 4 + 2 + 2 + 2 + 2 + 256;
+                if (count < 0 || count > (len - IntPtr.Size) / stride)
+                {
+                    error = "驱动模块枚举返回的长度无效，无法启动中断归因";
+                    return false;
+                }
                 for (int i = 0; i < count; i++)
                 {
                     long rec = p + (long)i * stride;
@@ -526,9 +562,20 @@ namespace PaviseApp
                     string name = slash >= 0 ? full.Substring(slash + 1) : full;
                     modules.Add(new Module { Base = imgBase, End = imgBase + imgSize, Name = name });
                 }
+                if (modules.Count == 0)
+                {
+                    error = "驱动模块枚举未返回可用地址，无法启动中断归因";
+                    return false;
+                }
+                return true;
             }
-            catch { }
-            finally { Marshal.FreeHGlobal(buf); }
+            catch (Exception ex)
+            {
+                modules.Clear();
+                error = "驱动模块枚举异常，无法启动中断归因 " + ex.GetType().Name;
+                return false;
+            }
+            finally { if (buf != IntPtr.Zero) Marshal.FreeHGlobal(buf); }
         }
 
         private static IntPtr AllocProps()

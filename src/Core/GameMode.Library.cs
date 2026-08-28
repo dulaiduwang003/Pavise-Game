@@ -39,8 +39,10 @@ namespace PaviseApp
                 if (normalized != null && UnderRoot(resolved, normalized)) root = normalized;
             }
             if (root == null) root = NormalizeGameRoot(GameScan.InferGameRoot(resolved));
+            root = ResolveLibraryInstallRoot(resolved, root);
             lock (sync)
             {
+                if (stopping) return false;
                 if (autoAddIgnore.Remove(resolved) && !SaveAutoIgnoreLocked()) return false;
                 foreach (GameProfile p in profiles)
                 {
@@ -82,6 +84,9 @@ namespace PaviseApp
 
         private void KickLibraryChanged()
         {
+            ClearFamilyDiscovery();
+            InvalidateRendererHandoff();
+            InvalidateFamilyPolicy();
             RequestFullGameDetection();
             RequestPolicyApply();
             RaiseLibraryChanged();
@@ -121,52 +126,100 @@ namespace PaviseApp
             return added;
         }
 
-        private void TryLearnRenderer(string profileId, string rendererPath, string rendererName)
+        // 只由交接确认后的提交点调用；现场 PID/创建时间与 epoch 由调用方复核。
+        // 学习与 Boost 成功与否无关，候选、SafetyOnly 和强制入口都不能改写游戏库。
+        internal bool TryLearnConfirmedRenderer(GameDetection hit)
         {
-            if (string.IsNullOrEmpty(profileId) || string.IsNullOrEmpty(rendererPath)) return;
-            if (GameSessionDetector.IsLauncherLikeName(rendererName)
-                || AntiCheatCatalog.IsAntiCheatLikeName(rendererName)
-                || GameSessionDetector.IsNonGameRole(rendererName, rendererPath)) return;
-            string learnedGame = null, promotedGame = null;
-            lock (sync)
-            {
-                foreach (GameProfile p in profiles)
-                {
-                    if (!string.Equals(p.Id, profileId, StringComparison.OrdinalIgnoreCase)) continue;
-                    if (string.Equals(p.ExecutablePath, rendererPath, StringComparison.OrdinalIgnoreCase)) return;
-                    if (string.Equals(p.LearnedExecutablePath, rendererPath, StringComparison.OrdinalIgnoreCase)) return;
-                    string resolved = GameProfileStore.NormalizePath(rendererPath);
-                    if (AnchorNeverElectable(p) && !RendererPathClaimedLocked(p, resolved))
-                    {
-                        if (!PromoteRendererLocked(p, resolved)) return;
-                        promotedGame = p.Name;
-                    }
-                    else
-                    {
-                        p.LearnedExecutablePath = resolved;
-                        if (!string.IsNullOrEmpty(rendererName)) p.Entries.Add(StripExe(rendererName));
-                        if (!SaveProfilesLocked()) return;
-                        learnedGame = p.Name;
-                    }
-                    break;
-                }
-            }
-            if (promotedGame != null)
-            {
-                Logger.Log(Lang.T("log.gamemodelibrary.29") + promotedGame + Lang.T("log.gamemodelibrary.30")
-                    + rendererName + Lang.T("log.gamemodelibrary.31") + rendererPath + " ");
-                RaiseLibraryChanged();
-            }
-            else if (learnedGame != null)
-                Logger.Log(Lang.T("log.gamemodelibrary.2") + learnedGame + Lang.T("log.gamemodelibrary.3") + rendererName
-                    + Lang.T("log.gamemodelibrary.4") + rendererPath + " ");
+            return TryLearnConfirmedRenderer(hit, null);
         }
 
-        private static bool AnchorNeverElectable(GameProfile p)
+        private bool TryLearnConfirmedRenderer(GameDetection hit, Func<bool> stillCurrent)
         {
-            if (string.IsNullOrEmpty(p.ExecutablePath)) return true;
-            string name = Path.GetFileNameWithoutExtension(p.ExecutablePath);
-            return GameSessionDetector.ElectionVetoed(name, p.ExecutablePath);
+            if (hit == null || hit.Profile == null || !hit.RendererCandidateSelected
+                || !hit.RendererLearnable || hit.RendererSafetyOnly || hit.RequiresGpuConfirm
+                || hit.Profile.ForceTrigger || hit.RendererPid <= 0 || hit.RendererCreation <= 0)
+                return false;
+            return TryLearnRendererCore(hit.Profile.Id, hit.RendererPath,
+                hit.RendererName, hit.Profile, stillCurrent);
+        }
+
+        private bool TryLearnRendererCore(string profileId, string rendererPath,
+            string rendererName, GameProfile observedProfile, Func<bool> stillCurrent)
+        {
+            if (string.IsNullOrWhiteSpace(profileId) || string.IsNullOrWhiteSpace(rendererPath)
+                || string.IsNullOrWhiteSpace(rendererName))
+                return false;
+            string suppliedPath = rendererPath.Trim().Trim('"');
+            string resolved = GameProfileStore.NormalizePath(suppliedPath);
+            if (resolved == null || !Path.IsPathRooted(suppliedPath)) return false;
+            string volume = Path.GetPathRoot(suppliedPath);
+            // 盘符相对与根相对路径依赖当前工作目录，不是完整的进程身份。
+            if (string.IsNullOrEmpty(volume) || volume.Length < 3
+                || (!volume.EndsWith("\\", StringComparison.Ordinal)
+                    && !volume.EndsWith("/", StringComparison.Ordinal))) return false;
+            string name = Path.GetFileNameWithoutExtension(resolved);
+            if (string.IsNullOrEmpty(name)
+                || !string.Equals(name, StripExe(rendererName), StringComparison.OrdinalIgnoreCase)
+                || !GameSessionDetector.IsLibraryCandidate(name, resolved, windowsPrefix)) return false;
+
+            string root = ResolveLibraryInstallRoot(resolved, GameScan.InferGameRoot(resolved));
+            if (root != null && !UnderRoot(resolved, root)) root = null;
+            string learnedGame;
+            lock (sync)
+            {
+                if (stopping || ProfileStoreSaveFailed || (stillCurrent != null && !stillCurrent())) return false;
+                GameProfile current = FindProfileLocked(profileId);
+                if (current == null || current.ForceTrigger
+                    || RendererPathClaimedLocked(current, resolved)) return false;
+
+                // 入口替换不应把已声明的游戏目录缩成 Menu/某个子渲染器目录，
+                // 否则随后启动的兄弟 EXE 会丢失关联。仅保留合法且确实包含目标的
+                // 原范围；目标在原范围之外时，仍用上面保守推断的新 Root。
+                string declaredRoot = GameInstallScope.RestrictFallback(
+                    current.ExecutablePath, NormalizeGameRoot(current.Root));
+                if (declaredRoot != null && UnderRoot(resolved, declaredRoot)) root = declaredRoot;
+
+                bool alreadyTarget = string.Equals(current.ExecutablePath, resolved,
+                    StringComparison.OrdinalIgnoreCase);
+                // UI 可在确认等待中删除、重建或修改档案；旧观察不得覆盖新入口。
+                // 同一路径的重复确认允许幂等返回，不需要再次落盘。
+                if (!alreadyTarget && observedProfile != null
+                    && (!string.Equals(current.ExecutablePath, observedProfile.ExecutablePath, StringComparison.OrdinalIgnoreCase)
+                        || !string.Equals(current.LearnedExecutablePath, observedProfile.LearnedExecutablePath, StringComparison.OrdinalIgnoreCase)
+                        || !string.Equals(current.Root, observedProfile.Root, StringComparison.OrdinalIgnoreCase)))
+                    return false;
+                if (alreadyTarget && current.LearnedExecutablePath == null
+                    && string.Equals(current.Root, root, StringComparison.OrdinalIgnoreCase)
+                    && current.Entries.Count == 1 && current.Entries.Contains(name)) return true;
+
+                // 直接替换目标，不留旧入口或 Learned 别名；ID、用户名称与配置原样保留。
+                // 先保存独立候选，成功后才发布到内存，失败时原档案从未被改动。
+                GameProfile replacement = current.Clone();
+                replacement.ExecutablePath = resolved;
+                replacement.LearnedExecutablePath = null;
+                replacement.Root = root;
+                replacement.Entries.Clear();
+                replacement.Entries.Add(name);
+                int index = profiles.IndexOf(current);
+                var next = new List<GameProfile>(profiles);
+                next[index] = replacement;
+                // 路径推断与磁盘准备之后，再在与生命周期失效共用的锁内终验。
+                if (stillCurrent != null && !stillCurrent()) return false;
+                // 与 SaveProfilesLocked 使用相同的首错熔断，不重试、不绕过严格提交。
+                if (!profileStore.Save(next))
+                {
+                    SignalProfileStoreSaveFailure();
+                    return false;
+                }
+                profiles[index] = replacement;
+                if (!alreadyTarget) ForgetRendererObservation(profileId);
+                learnedGame = replacement.Name;
+            }
+            Logger.Log(Lang.T("log.gamemodelibrary.2") + learnedGame + Lang.T("log.gamemodelibrary.3") + name
+                + Lang.T("log.gamemodelibrary.4") + resolved + " ");
+            RequestFullGameDetection();
+            RaiseLibraryChanged();
+            return true;
         }
 
         private bool RendererPathClaimedLocked(GameProfile self, string resolved)
@@ -183,26 +236,9 @@ namespace PaviseApp
 #if PAVISE_SELFTEST
         internal void ProbeLearnRenderer(string profileId, string rendererPath, string rendererName)
         {
-            TryLearnRenderer(profileId, rendererPath, rendererName);
+            TryLearnRendererCore(profileId, rendererPath, rendererName, null, null);
         }
 #endif
-
-        private bool PromoteRendererLocked(GameProfile p, string resolved)
-        {
-            string oldExe = p.ExecutablePath;
-            if (!string.IsNullOrEmpty(oldExe))
-            {
-                p.Entries.Remove(StripExe(Path.GetFileName(oldExe)));
-                if (string.Equals(p.Name, Path.GetFileNameWithoutExtension(oldExe), StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(p.Name, DisplayName(oldExe, null), StringComparison.OrdinalIgnoreCase))
-                    p.Name = DisplayName(resolved, null);
-            }
-            p.ExecutablePath = resolved;
-            p.Root = NormalizeGameRoot(GameScan.InferGameRoot(resolved));
-            p.LearnedExecutablePath = null;
-            p.Entries.Add(StripExe(Path.GetFileName(resolved)));
-            return PersistLibraryLocked();
-        }
 
         public bool SetProfileForceTrigger(string profileId, bool on)
         {
@@ -210,6 +246,7 @@ namespace PaviseApp
             string name = null;
             lock (sync)
             {
+                if (stopping) return false;
                 foreach (GameProfile p in profiles)
                 {
                     if (!string.Equals(p.Id, profileId, StringComparison.OrdinalIgnoreCase)) continue;
@@ -247,9 +284,15 @@ namespace PaviseApp
 
         public bool SetProfileOverride(string profileId, string key, string value)
         {
+            if (key == PolicyCatalog.KeySuppressFamily)
+            {
+                string canonical = PolicyCatalog.Canonical(key, value);
+                return canonical != null && SetProfileFamilySuppression(profileId, canonical == "1");
+            }
             bool ok = false;
             lock (sync)
             {
+                if (stopping) return false;
                 GameProfile p = FindProfileLocked(profileId);
                 if (p != null)
                 {
@@ -262,9 +305,11 @@ namespace PaviseApp
 
         public bool ClearProfileOverride(string profileId, string key)
         {
+            if (key == PolicyCatalog.KeySuppressFamily) return SetProfileFamilySuppression(profileId, false);
             bool ok = false;
             lock (sync)
             {
+                if (stopping) return false;
                 GameProfile p = FindProfileLocked(profileId);
                 if (p != null && p.Overrides.Remove(key))
                 {
@@ -278,19 +323,31 @@ namespace PaviseApp
         {
             int n = 0;
             string name = null;
-            lock (sync)
+            lock (familyPolicyGate)
             {
-                GameProfile p = FindProfileLocked(profileId);
-                if (p != null)
+                lock (sync)
                 {
-                    n = PolicyResolver.ClearAllOverrides(p);
-                    if (n > 0)
+                    if (stopping) return 0;
+                    GameProfile p = FindProfileLocked(profileId);
+                    if (p != null && p.Overrides.Count > 0 && !ProfileStoreSaveFailed)
                     {
-                        if (!SaveProfilesLocked()) n = 0;
-                        else name = p.Name;
+                        GameProfile replacement = p.Clone();
+                        n = PolicyResolver.ClearAllOverrides(replacement);
+                        var next = new List<GameProfile>(profiles);
+                        int index = profiles.IndexOf(p);
+                        next[index] = replacement;
+                        if (!profileStore.Save(next))
+                        {
+                            SignalProfileStoreSaveFailure();
+                            return 0;
+                        }
+                        profiles[index] = replacement;
+                        name = p.Name;
+                        InvalidateFamilyPolicy();
                     }
                 }
             }
+            if (n > 0) { RequestPolicyApply(); RaiseLibraryChanged(); }
             if (name != null) Logger.Log(Lang.T("log.gamemodelibrary.9") + name + Lang.T("log.gamemodelibrary.10") + n + Lang.T("log.gamemodelibrary.11"));
             return n;
         }
@@ -313,6 +370,7 @@ namespace PaviseApp
             string oldName = null;
             lock (sync)
             {
+                if (stopping) return false;
                 GameProfile p = FindProfileLocked(profileId);
                 if (p == null) return false;
                 if (string.Equals(p.Name, trimmed, StringComparison.Ordinal)) return true;
@@ -330,6 +388,7 @@ namespace PaviseApp
             bool dropSession;
             lock (sync)
             {
+                if (stopping) return;
                 bool ignoreDirty = false;
                 foreach (GameProfile p in profiles)
                 {
@@ -342,10 +401,13 @@ namespace PaviseApp
                 if (ignoreDirty && !SaveAutoIgnoreLocked()) return;
                 profiles.RemoveAll(p => string.Equals(p.Id, profileId, StringComparison.OrdinalIgnoreCase));
                 if (!PersistLibraryLocked()) return;
+                ClearFamilyDiscovery();
+                ForgetRendererObservation(profileId);
                 dropSession = activeDetection != null && activeDetection.Profile != null
                     && string.Equals(activeDetection.Profile.Id, profileId, StringComparison.OrdinalIgnoreCase);
+                if (dropSession) panicReq = true;
+                InvalidateRendererHandoff();
             }
-            if (dropSession) panicReq = true;
             RequestFullGameDetection();
             RequestPolicyApply();
             RaiseLibraryChanged();
@@ -442,10 +504,12 @@ namespace PaviseApp
                 lock (sync) whitelistLastError = Lang.T("white.duplicate");
                 return false;
             }
+            int matched, freed;
             lock (whiteEvalSync)
             {
                 lock (sync)
                 {
+                    if (stopping) return false;
                     if (whiteRuleKeys.Contains(rule.Key))
                     {
                         whitelistLastError = Lang.T("white.duplicate");
@@ -460,9 +524,10 @@ namespace PaviseApp
                     AddWhiteRuleNoSave(rule);
                     whitelistLastError = "";
                 }
+                // Include the restore work in Stop's whitelist drain, not only
+                // the file commit. No native release may trail a successful stop.
+                freed = ReleaseCurrentWhitelistMatches(out matched);
             }
-            int matched;
-            int freed = ReleaseCurrentWhitelistMatches(out matched);
             Logger.Log(Lang.T("log.gamemodelibrary.17") + rule.Kind + " " + rule.Value + Lang.T("log.gamemodelibrary.18") + matched
                 + Lang.T("log.gamemodelibrary.19") + freed + Lang.T("log.gamemodelibrary.20"));
             RequestPolicyApply();
@@ -476,6 +541,7 @@ namespace PaviseApp
             {
                 lock (sync)
                 {
+                    if (stopping) return false;
                     WhitelistRule target = whiteRules.Find(delegate(WhitelistRule rule)
                     {
                         return string.Equals(rule.Key, key, StringComparison.OrdinalIgnoreCase);
@@ -516,10 +582,12 @@ namespace PaviseApp
                 if (WhitelistRule.TryCreate(WhitelistRuleKind.LegacyName, entry, out rule)
                     && keys.Add(rule.Key)) next.Add(rule);
             }
+            int matched, freed;
             lock (whiteEvalSync)
             {
                 lock (sync)
                 {
+                    if (stopping) return false;
                     if (!SaveWhite(next))
                     {
                         whitelistLastError = Lang.T("white.save.failed");
@@ -534,9 +602,8 @@ namespace PaviseApp
                         AddWhiteRuleNoSave(rule);
                     whitelistLastError = "";
                 }
+                freed = ReleaseCurrentWhitelistMatches(out matched);
             }
-            int matched;
-            int freed = ReleaseCurrentWhitelistMatches(out matched);
             Logger.Log(Lang.T("log.gamemodelibrary.21") + SystemProcessCatalog.PresetWhitelist.Length + Lang.T("log.gamemodelibrary.22") + matched
                 + Lang.T("log.gamemodelibrary.19") + freed + Lang.T("log.gamemodelibrary.20"));
             RequestPolicyApply();
@@ -545,22 +612,26 @@ namespace PaviseApp
 
         private bool SaveWhite(IList<WhitelistRule> rules)
         {
-            try
+            lock (sync)
             {
-                var lines = new List<string>();
-                lines.Add(Lang.T("t.gamemodelibrary.23"));
-                lines.Add(Lang.T("t.gamemodelibrary.24"));
-                lines.Add(Lang.T("t.gamemodelibrary.25"));
-                lines.Add(WhitelistRule.Header);
-                if (rules != null)
-                    foreach (WhitelistRule rule in rules) lines.Add(rule.Serialize());
-                lines.Add(BuildWhitelistFooter(rules));
-                return AtomicFile.WriteLines(whitePath, lines.ToArray(), Lang.T("nav.white"));
-            }
-            catch (Exception error)
-            {
-                Logger.LogFailure(Lang.T("log.gamemodelibrary.26"), error);
-                return false;
+                if (stopping) return false;
+                try
+                {
+                    var lines = new List<string>();
+                    lines.Add(Lang.T("t.gamemodelibrary.23"));
+                    lines.Add(Lang.T("t.gamemodelibrary.24"));
+                    lines.Add(Lang.T("t.gamemodelibrary.25"));
+                    lines.Add(WhitelistRule.Header);
+                    if (rules != null)
+                        foreach (WhitelistRule rule in rules) lines.Add(rule.Serialize());
+                    lines.Add(BuildWhitelistFooter(rules));
+                    return AtomicFile.WriteLines(whitePath, lines.ToArray(), Lang.T("nav.white"));
+                }
+                catch (Exception error)
+                {
+                    Logger.LogFailure(Lang.T("log.gamemodelibrary.26"), error);
+                    return false;
+                }
             }
         }
 

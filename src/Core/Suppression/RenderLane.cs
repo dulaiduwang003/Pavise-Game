@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Threading;
 
 namespace PaviseApp
@@ -72,6 +73,8 @@ namespace PaviseApp
         private const int ReverifyGapSeconds = 30;
 
         private static readonly object sync = new object();
+        private static readonly object operationGate = new object();
+        private static bool shutdownClosed;
         private static Action mutationBegin;
         private static Action mutationEnd;
         private static int lanePid;
@@ -200,6 +203,7 @@ namespace PaviseApp
             Thread worker;
             lock (sync)
             {
+                if (shutdownClosed) return;
                 if (pid <= 0) return;
                 if (laneApplied && lanePid == pid && laneCreation == creation) return;
                 if (gaveUpPid == pid && gaveUpCreation == creation) return;
@@ -215,7 +219,7 @@ namespace PaviseApp
             worker.Start();
         }
 
-        private static bool GenAlive(int gen) { lock (sync) return gen == laneGen; }
+        private static bool GenAlive(int gen) { lock (sync) return !shutdownClosed && gen == laneGen; }
 
         private static bool WaitAlive(int ms, int gen)
         {
@@ -309,6 +313,26 @@ namespace PaviseApp
         private static PinOutcome TryPin(int pid, long creation, Candidate best, string gameName,
             int gen, bool logThis)
         {
+            return RunGenerationMutation(gen, delegate
+            {
+                return TryPinLocked(pid, creation, best, gameName, gen, logThis);
+            });
+        }
+
+        private static PinOutcome RunGenerationMutation(int gen, Func<PinOutcome> action)
+        {
+            lock (operationGate)
+            {
+                // Checking only after SetThreadPriority is too late: shutdown may
+                // already have restored and deleted the only original snapshot.
+                if (!GenAlive(gen)) return PinOutcome.Canceled;
+                return action();
+            }
+        }
+
+        private static PinOutcome TryPinLocked(int pid, long creation, Candidate best, string gameName,
+            int gen, bool logThis)
+        {
             IntPtr h = Native.OpenThread(
                 Native.THREAD_SET_LIMITED_INFORMATION | Native.THREAD_QUERY_LIMITED_INFORMATION,
                 false, best.Tid);
@@ -347,8 +371,7 @@ namespace PaviseApp
                     int actual = Native.GetThreadPriority(h);
                     if (actual != Native.THREAD_PRIORITY_HIGHEST)
                     {
-                        Native.SetThreadPriority(h, original);
-                        ClearJournal();
+                        if (RestorePriorityVerified(h, original)) ClearJournal();
                         if (logThis) Logger.Log(Lang.T("log.renderlane.12") + actual + Lang.T("log.renderlane.13"));
                         return PinOutcome.Retryable;
                     }
@@ -364,8 +387,9 @@ namespace PaviseApp
                     }
                     if (canceled)
                     {
-                        Native.SetThreadPriority(h, original);
-                        ClearJournal();
+                        // Keep the persisted original if an attempted cancellation
+                        // cannot actually put the old priority back.
+                        if (RestorePriorityVerified(h, original)) ClearJournal();
                         if (logThis) Logger.Log(Lang.T("log.renderlane.14"));
                         return PinOutcome.Canceled;
                     }
@@ -394,6 +418,8 @@ namespace PaviseApp
                 return ProcessAlive(pid, creation);
             if (judge.Observe(best.Tid, best.Share, pinnedShare) != LaneDecision.Unpin) return true;
 
+            lock (operationGate)
+            {
             if (!GenAlive(gen)) return false;
             BeginMutation();
             try
@@ -421,6 +447,7 @@ namespace PaviseApp
                 return true;
             }
             finally { EndMutation(); }
+            }
         }
 
         private static bool ProcessAlive(int pid, long creation)
@@ -440,15 +467,36 @@ namespace PaviseApp
 
         public static bool Release()
         {
+            lock (operationGate) return ReleaseLocked();
+        }
+
+        // Terminal shutdown closes future admission before attempting the bounded
+        // drain. A timeout is a failure, never proof that old native writes stopped.
+        internal static bool CloseForShutdown(int timeoutMs)
+        {
+            if (timeoutMs < 0) return false;
+            lock (sync) { shutdownClosed = true; laneGen++; }
+            if (Monitor.IsEntered(operationGate) || !Monitor.TryEnter(operationGate, timeoutMs)) return false;
+            try { return ReleaseLocked(); }
+            catch { return false; }
+            finally { Monitor.Exit(operationGate); }
+        }
+
+        private static bool ReleaseLocked()
+        {
             int pid, tid, original;
             long creation;
+            bool applied;
             lock (sync)
             {
                 laneGen++;
                 gaveUpPid = 0; gaveUpCreation = 0;
-                if (!laneApplied) { ClearJournal(); return true; }
+                applied = laneApplied;
                 pid = lanePid; creation = laneCreation; tid = laneTid; original = laneOriginalPriority;
             }
+            // A canceled/incomplete pin can have a journal without laneApplied.
+            // Restore it instead of discarding the sole recovery record.
+            if (!applied) return HealFromCrashLocked();
             BeginMutation();
             try
             {
@@ -459,7 +507,7 @@ namespace PaviseApp
                     {
                         laneApplied = false; lanePid = 0; laneCreation = 0; laneTid = 0;
                     }
-                    ClearJournal();
+                    ok = ClearJournal();
                     Logger.Log(Lang.T("log.renderlane.19") + tid + Lang.T("log.renderlane.20") + original);
                 }
                 else Logger.Log(Lang.T("log.renderlane.21") + tid + Lang.T("log.renderlane.22"));
@@ -472,24 +520,36 @@ namespace PaviseApp
 
         public static void HealFromCrash()
         {
+            lock (operationGate) HealFromCrashLocked();
+        }
+
+        private static bool HealFromCrashLocked()
+        {
             string raw = Settings.LoadStr("RenderLane", "");
+            if (raw.Length == 0) return true;
             int pid, tid, original;
             long creation;
-            if (!ParseJournal(raw, out pid, out creation, out tid, out original)) { ClearJournal(); return; }
+            if (!ParseJournal(raw, out pid, out creation, out tid, out original)) return false;
             BeginMutation();
             try
             {
                 if (RestoreThread(pid, creation, tid, original))
                 {
-                    ClearJournal();
+                    bool cleared = ClearJournal();
                     Logger.Log(Lang.T("log.renderlane.23") + tid + Lang.T("log.renderlane.24") + original);
+                    return cleared;
                 }
+                return false;
             }
             finally { EndMutation(); }
         }
 
         private static bool RestoreThread(int pid, long creation, int tid, int original)
         {
+#if PAVISE_SELFTEST
+            if (RestoreThreadForTest != null) return RestoreThreadForTest(pid, creation, tid, original);
+#endif
+            if (pid <= 0 || creation <= 0 || tid <= 0) return false;
             try
             {
                 using (Process target = Process.GetProcessById(pid))
@@ -497,15 +557,17 @@ namespace PaviseApp
                     if (creation > 0 && target.StartTime.ToFileTimeUtc() != creation) return true;
                 }
             }
-            catch { return true; }
+            catch (ArgumentException) { return true; } // GetProcessById confirms disappearance.
+            catch { return false; } // An inaccessible identity is not a restored process.
             IntPtr h = Native.OpenThread(
                 Native.THREAD_SET_LIMITED_INFORMATION | Native.THREAD_QUERY_LIMITED_INFORMATION, false, tid);
-            if (h == IntPtr.Zero) return true;
+            if (h == IntPtr.Zero) return Marshal.GetLastWin32Error() == 87; // Thread no longer exists.
             try
             {
-                if (!Native.SetThreadPriority(h, original)) return false;
-                int actual = Native.GetThreadPriority(h);
-                return actual == original || actual == Native.THREAD_PRIORITY_ERROR_RETURN;
+                int owner = Native.QueryThreadOwnerPid(h);
+                if (owner < 0) return false;
+                if (owner != pid) return true;
+                return RestorePriorityVerified(h, original);
             }
             finally { Native.CloseHandle(h); }
         }
@@ -516,7 +578,45 @@ namespace PaviseApp
             return Settings.SaveStr("RenderLane", line) && Settings.LoadStr("RenderLane", "") == line;
         }
 
-        private static void ClearJournal() { Settings.SaveStr("RenderLane", ""); }
+        private static bool RestorePriorityVerified(IntPtr thread, int original)
+        {
+            return Native.SetThreadPriority(thread, original) && Native.GetThreadPriority(thread) == original;
+        }
+
+        private static bool ClearJournal()
+        {
+            return Settings.SaveStr("RenderLane", "") && Settings.LoadStr("RenderLane", "").Length == 0;
+        }
+
+#if PAVISE_SELFTEST
+        internal static Func<int, long, int, int, bool> RestoreThreadForTest;
+
+        internal static int ShutdownGenerationForTest { get { lock (sync) return laneGen; } }
+
+        internal static bool RunShutdownMutationForTest(int gen, Func<bool> action)
+        {
+            return RunGenerationMutation(gen, delegate
+            {
+                return action != null && action() ? PinOutcome.Pinned : PinOutcome.Canceled;
+            }) == PinOutcome.Pinned;
+        }
+
+        internal static void ResetShutdownForTest()
+        {
+            lock (operationGate)
+            lock (sync)
+            {
+                shutdownClosed = false;
+                laneGen++;
+                laneApplied = false;
+                lanePid = laneTid = laneOriginalPriority = 0;
+                laneCreation = 0;
+                trackPid = trackGen = trackBatch = gaveUpPid = 0;
+                trackCreation = gaveUpCreation = 0;
+                RestoreThreadForTest = null;
+            }
+        }
+#endif
 
         internal static bool ParseJournal(string raw, out int pid, out long creation, out int tid, out int original)
         {

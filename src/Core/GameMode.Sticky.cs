@@ -22,7 +22,7 @@ namespace PaviseApp
                     {
                         GameId anchorId; string nm; long cr;
                         if (stickyIds.TryGetValue(stickyDetection.RendererPid, out anchorId)
-                            && TryIdentity(hit.RendererPid, out nm, out cr)
+                            && TryStickyIdentity(hit.RendererPid, out nm, out cr)
                             && FreshRendererMayReplaceSticky(
                                 hit, nm, cr,
                                 anchorId.Creation))
@@ -43,7 +43,7 @@ namespace PaviseApp
                         }
                     }
                 }
-                RememberSticky(hit);
+                if (!RememberSticky(hit)) return ApplyStickiness(null);
                 foreach (int pid in LiveStickyFamily()) hit.FamilyPids.Add(pid);
                 return hit;
             }
@@ -94,13 +94,12 @@ namespace PaviseApp
                 || string.IsNullOrEmpty(fresh.RendererName)
                 || string.IsNullOrEmpty(verifiedName)
                 || verifiedCreation <= 0 || stickyCreation <= 0
+                || (fresh.RendererCreation > 0 && fresh.RendererCreation != verifiedCreation)
                 || !string.Equals(
                     verifiedName, fresh.RendererName,
                     StringComparison.OrdinalIgnoreCase))
                 return false;
-            if (fresh.RendererForeground
-                && !GameSessionDetector.IsLauncherLikeName(
-                    fresh.RendererName))
+            if (fresh.RendererForeground)
                 return true;
             return verifiedCreation > stickyCreation;
         }
@@ -131,6 +130,10 @@ namespace PaviseApp
             fresh.RendererCandidateSelected = true;
             fresh.RendererUserSelected =
                 sticky.RendererUserSelected;
+            fresh.RendererLearnable = sticky.RendererLearnable;
+            fresh.RequiresGpuConfirm = false;
+            fresh.RendererSafetyOnly = false;
+            fresh.RendererGpuProofExpiresMs = 0;
             fresh.Evidence = sticky.Evidence;
             fresh.FamilyPids.Clear();
             foreach (int pid in verifiedStickyPids)
@@ -162,43 +165,40 @@ namespace PaviseApp
             return g;
         }
 
-        private void RememberSticky(GameDetection hit)
+        private bool RememberSticky(GameDetection hit)
         {
-            if (hit == null) { ClearSticky(); return; }
-            if (!hit.RendererUserSelected && GameSessionDetector.IsLauncherLikeName(hit.RendererName)) { ClearSticky(); return; }
+            if (hit == null) { ClearSticky(); return false; }
             var fresh = new Dictionary<int, GameId>();
             foreach (int pid in hit.FamilyPids)
             {
                 string nm; long cr;
-                if (TryIdentity(pid, out nm, out cr)) fresh[pid] = new GameId { Name = nm, Creation = cr };
+                if (TryStickyIdentity(pid, out nm, out cr)
+                    && (pid != hit.RendererPid || StickyIdentityMatches(hit, nm, cr)))
+                    fresh[pid] = new GameId { Name = nm, Creation = cr };
             }
             if (hit.RendererPid > 0 && !fresh.ContainsKey(hit.RendererPid))
             {
                 string nm; long cr;
-                if (TryIdentity(hit.RendererPid, out nm, out cr)) fresh[hit.RendererPid] = new GameId { Name = nm, Creation = cr };
+                if (TryStickyIdentity(hit.RendererPid, out nm, out cr) && StickyIdentityMatches(hit, nm, cr))
+                    fresh[hit.RendererPid] = new GameId { Name = nm, Creation = cr };
             }
             GameId rendererIdentity;
-            if (fresh.TryGetValue(
+            if (hit.RendererCreation <= 0 && fresh.TryGetValue(
                     hit.RendererPid, out rendererIdentity))
                 hit.RendererCreation = rendererIdentity.Creation;
-            if (hit.RendererPid > 0 && !fresh.ContainsKey(hit.RendererPid))
-            {
-                int anchorPid = stickyDetection != null ? stickyDetection.RendererPid : 0;
-                List<int> gone = null;
-                foreach (var kv in stickyIds)
-                {
-                    if (fresh.ContainsKey(kv.Key) || kv.Key == hit.RendererPid || kv.Key == anchorPid) continue;
-                    if (AliveWithIdentity(kv.Key)) continue;
-                    if (gone == null) gone = new List<int>();
-                    gone.Add(kv.Key);
-                }
-                if (gone != null) foreach (int dead in gone) stickyIds.Remove(dead);
-                foreach (var kv in fresh) stickyIds[kv.Key] = kv.Value;
-                return;
-            }
+            // 已确认的创建时间不能被第二次查询覆写成复用 PID 的新进程。
+            // 失败时也不把这份未提交的家族并入旧锚，交由原有失联宽限处理。
+            if (hit.RendererPid <= 0 || !fresh.ContainsKey(hit.RendererPid)) return false;
             stickyIds.Clear();
             foreach (var kv in fresh) stickyIds[kv.Key] = kv.Value;
             stickyDetection = hit;
+            return true;
+        }
+
+        private static bool StickyIdentityMatches(GameDetection hit, string name, long creation)
+        {
+            return creation > 0 && (hit.RendererCreation <= 0 || hit.RendererCreation == creation)
+                && string.Equals(hit.RendererName, name, StringComparison.OrdinalIgnoreCase);
         }
 
         private List<int> LiveStickyFamily()
@@ -221,7 +221,7 @@ namespace PaviseApp
             GameId id;
             if (!stickyIds.TryGetValue(pid, out id)) return false;
             string nm; long cr;
-            return TryIdentity(pid, out nm, out cr) && cr == id.Creation
+            return TryStickyIdentity(pid, out nm, out cr) && cr == id.Creation
                 && string.Equals(nm, id.Name, StringComparison.OrdinalIgnoreCase);
         }
 
@@ -230,12 +230,26 @@ namespace PaviseApp
             foreach (var kv in stickyIds)
             {
                 string nm; long cr;
-                if (TryIdentity(kv.Key, out nm, out cr)
+                if (TryStickyIdentity(kv.Key, out nm, out cr)
                     && (cr != kv.Value.Creation
                         || !string.Equals(nm, kv.Value.Name, StringComparison.OrdinalIgnoreCase)))
                     return true;
             }
             return false;
+        }
+
+        private bool TryStickyIdentity(int pid, out string name, out long creation)
+        {
+#if PAVISE_SELFTEST
+            if (RendererTestStickyIdentity != null)
+            {
+                GameProcessSnapshot identity = RendererTestStickyIdentity(pid);
+                name = identity == null ? null : identity.Name;
+                creation = identity == null ? 0 : identity.Creation;
+                return identity != null;
+            }
+#endif
+            return TryIdentity(pid, out name, out creation);
         }
 
         private static bool TryIdentity(int pid, out string name, out long creation)

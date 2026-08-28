@@ -19,9 +19,23 @@ namespace PaviseApp
         private int hoverIdx = -1;
         private Motion ind;
         private Image logo;
+        private bool showBranding = true;
         private PerformancePreset mode = PerformancePreset.Standard;
         private bool modeEnabled = true;
         public Action<int> SelectionChanged;
+        public Action<int> ItemInvoked;
+        public string SectionTitle;
+
+        public bool ShowBranding
+        {
+            get { return showBranding; }
+            set
+            {
+                if (showBranding == value) return;
+                showBranding = value;
+                RefreshLogo();
+            }
+        }
 
         public int Selected { get { return sel; } }
 
@@ -99,11 +113,24 @@ namespace PaviseApp
         public void Select(int i)
         {
             if (i < 0 || i >= labels.Length) return;
+            SelectSilently(i);
+            if (SelectionChanged != null) SelectionChanged(i);
+        }
+
+        internal void SelectSilently(int i)
+        {
+            if (i < 0 || i >= labels.Length) return;
             sel = i;
             int slot = SlotOfItem(i);
             if (slot >= 0) ind.To(SlotY(slot));
             UiClock.Wake(); Invalidate();
-            if (SelectionChanged != null) SelectionChanged(i);
+        }
+
+        internal void InvokeItem(int i)
+        {
+            if (SlotOfItem(i) < 0) return;
+            if (ItemInvoked != null) ItemInvoked(i);
+            else Select(i);
         }
 
         public void SnapToSelection() { ind.Set(SlotY(SlotOfItem(sel))); Invalidate(); }
@@ -118,7 +145,7 @@ namespace PaviseApp
         public void RefreshLogo()
         {
             Image old = logo;
-            logo = IconArt.Render(Dpi.S(46), mode, modeEnabled);
+            logo = showBranding ? IconArt.Render(Dpi.S(46), mode, modeEnabled) : null;
             if (old != null) old.Dispose();
             Invalidate();
         }
@@ -144,7 +171,34 @@ namespace PaviseApp
         }
 
         protected override void OnMouseLeave(EventArgs e) { base.OnMouseLeave(e); if (hoverIdx != -1) { hoverIdx = -1; Invalidate(); } }
-        protected override void OnMouseClick(MouseEventArgs e) { base.OnMouseClick(e); int i = HitTest(e.Y); if (i >= 0) Select(i); }
+        protected override void OnMouseClick(MouseEventArgs e)
+        {
+            base.OnMouseClick(e);
+            if (e.Button != MouseButtons.Left) return;
+            int i = HitTest(e.Y);
+            if (i >= 0) { Focus(); InvokeItem(i); }
+        }
+
+        protected override bool IsInputKey(Keys keyData)
+        {
+            Keys key = keyData & Keys.KeyCode;
+            return key == Keys.Up || key == Keys.Down || key == Keys.Home || key == Keys.End || base.IsInputKey(keyData);
+        }
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            base.OnKeyDown(e);
+            int slot = SlotOfItem(hoverIdx >= 0 ? hoverIdx : sel);
+            if (slot < 0) slot = 0;
+            if (e.KeyCode == Keys.Up) slot = Math.Max(0, slot - 1);
+            else if (e.KeyCode == Keys.Down) slot = Math.Min(order.Length - 1, slot + 1);
+            else if (e.KeyCode == Keys.Home) slot = 0;
+            else if (e.KeyCode == Keys.End) slot = order.Length - 1;
+            else if (e.KeyCode == Keys.Enter || e.KeyCode == Keys.Space) InvokeItem(order[slot]);
+            else return;
+            hoverIdx = order[slot]; Invalidate();
+            e.Handled = true; e.SuppressKeyPress = true;
+        }
 
         protected override void OnPaint(PaintEventArgs e)
         {
@@ -165,13 +219,20 @@ namespace PaviseApp
             g.SmoothingMode = SmoothingMode.AntiAlias;
             DrawTechTexture(g);
             using (var accentTop = new Pen(Theme.Accent, Math.Max(1f, Dpi.S(1)))) g.DrawLine(accentTop, 0, 0, Width, 0);
-            if (logo != null) g.DrawImage(logo, Dpi.S(20), Dpi.S(26), Dpi.S(46), Dpi.S(46));
-            TextRenderer.DrawText(g, App.DisplayName, Theme.UI(16.5f, true),
-                new Rectangle(Dpi.S(78), Dpi.S(24), Width - Dpi.S(84), Dpi.S(30)), Theme.Fg,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-            TextRenderer.DrawText(g, "CORE CONTROL " + App.Version, Theme.Mono(7.5f),
-                new Rectangle(Dpi.S(79), Dpi.S(57), Width - Dpi.S(84), Dpi.S(18)), Theme.Faint,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            if (showBranding)
+            {
+                if (logo != null) g.DrawImage(logo, Dpi.S(20), Dpi.S(26), Dpi.S(46), Dpi.S(46));
+                TextRenderer.DrawText(g, App.DisplayName, Theme.UI(16.5f, true),
+                    new Rectangle(Dpi.S(78), Dpi.S(24), Width - Dpi.S(84), Dpi.S(30)), Theme.Fg,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                TextRenderer.DrawText(g, "CORE CONTROL " + App.Version, Theme.Mono(7.5f),
+                    new Rectangle(Dpi.S(79), Dpi.S(57), Width - Dpi.S(84), Dpi.S(18)), Theme.Faint,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            }
+            if (!string.IsNullOrEmpty(SectionTitle))
+                TextRenderer.DrawText(g, SectionTitle, Theme.UI(10f, true),
+                    new Rectangle(Pad + Dpi.S(12), Dpi.S(103), Width - Pad * 2 - Dpi.S(24), Dpi.S(24)), Theme.Dim,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
 
             using (var hp = new Pen(Theme.Stroke))
             {
@@ -228,8 +289,13 @@ namespace PaviseApp
                     : (i == hoverIdx ? Theme.Fg : Theme.Dim);
                 var iconBox = new Rectangle(Pad + Dpi.S(20), y + (ItemH - Dpi.S(20)) / 2, Dpi.S(20), Dpi.S(20));
                 Glyphs.Draw(g, glyphs[i], iconBox, on ? Theme.Accent : c);
-                var tr = new Rectangle(iconBox.Right + Dpi.S(16), y, Width - iconBox.Right - Dpi.S(18), ItemH);
-                TextRenderer.DrawText(g, labels[i], Theme.UI(11f, on), tr, c, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+                int textX = iconBox.Right + Dpi.S(16);
+                var tr = new Rectangle(textX, y, Width - Pad - Dpi.S(10) - textX, ItemH);
+                Font itemFont = Theme.UI(11f, on);
+                for (float size = 11f; size > 8.5f && TextRenderer.MeasureText(g, labels[i], itemFont).Width > tr.Width; size -= 0.5f)
+                    itemFont = Theme.UI(size - 0.5f, on);
+                TextRenderer.DrawText(g, labels[i], itemFont, tr, c,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
             }
         }
 

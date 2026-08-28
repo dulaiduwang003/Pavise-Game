@@ -41,7 +41,7 @@ namespace PaviseApp
                 irqProbe.InvalidateGameMask();
             // 已开采 epoch 必须在恢复旧 renderer 之前先绑定同一份 proof；
             // renderer 换代或配置换 mask 时，不能让 DropStale 的恢复动作混入旧局。
-            if (irqProbe.IsCapturing
+            if (irqProbe.IsPlacementCapturing
                 && !irqProbe.ProofMatches(
                     pass.DesiredMask,
                     pass.RendererPid, pass.RendererCreation))
@@ -52,7 +52,7 @@ namespace PaviseApp
             bool staleRestoreThisPass = DropStaleBoosts(pass);
             if (!irqProbe.RequiresPlacementAudit)
                 RestoreOrphanedIrqProofHardPin(pass);
-            if (irqProbe.IsCapturing)
+            if (irqProbe.IsPlacementCapturing)
             {
                 // 采集中先只审计身份、硬亲和与调优状态；若确实需要写，
                 // AuditActiveIrqCapture 会先 RestartCurrentEpoch 并同步停掉旧 ETW，
@@ -67,7 +67,7 @@ namespace PaviseApp
                     live.Add(pid);
                     if (pass.RendererPid <= 0 || pid != pass.RendererPid) continue;
                     rendererSeen = true;
-                    if (irqProbe.IsCapturing
+                    if (irqProbe.IsPlacementCapturing
                         && CfgOffTweak.NeedsApply(pass.RendererName))
                         irqProbe.InvalidateGameMask();
                     if (CfgOffTweak.Enabled) CfgOffTweak.EnsureForGame(pass.RendererName);
@@ -80,7 +80,7 @@ namespace PaviseApp
                     {
                         // 尚未开采时没有数据可被污染，保留 armed 等下一轮；只有已开采
                         // 后失去读回能力，才必须永久废弃本局 epoch。
-                        if (irqProbe.IsCapturing) irqProbe.InvalidateGameMask();
+                        if (irqProbe.IsPlacementCapturing) irqProbe.InvalidateGameMask();
                         continue;
                     }
                     try
@@ -88,7 +88,7 @@ namespace PaviseApp
                         long currentCreation;
                         if (!VerifyRendererIdentity(h, pid, pass, out currentCreation))
                         {
-                            if (irqProbe.IsCapturing) irqProbe.InvalidateGameMask();
+                            if (irqProbe.IsPlacementCapturing) irqProbe.InvalidateGameMask();
                             continue;
                         }
 
@@ -112,7 +112,7 @@ namespace PaviseApp
                                         pass, known, needTweak);
                                     if (wouldMutate)
                                     {
-                                        if (irqProbe.IsCapturing)
+                                        if (irqProbe.IsPlacementCapturing)
                                             irqProbe.RestartCurrentEpoch();
                                         lock (sync)
                                             gameBoostNextAudit.Remove(pid);
@@ -131,7 +131,7 @@ namespace PaviseApp
                             {
                                 // 已开采的 epoch 只要观察到一次漂移便永久废弃；尚未开采时
                                 // 清掉缓存，让本轮正常落核流程重新施加并读回验证。
-                                if (irqProbe.IsCapturing) irqProbe.InvalidateGameMask();
+                                if (irqProbe.IsPlacementCapturing) irqProbe.InvalidateGameMask();
                                 // 软 CPU Sets 可以是有效的普通落核，但不足以支撑
                                 // IRQ 归因。只有普通读回也失败时才清缓存重写，
                                 // 否则保持 armed 等待，避免每 500ms 重复写 CPU Sets。
@@ -151,7 +151,7 @@ namespace PaviseApp
                             }
                         }
                         HandlePidReuse(pid, currentCreation, ref known, ref needPlacement);
-                        if (irqProbe.IsCapturing
+                        if (irqProbe.IsPlacementCapturing
                             && AuditWouldMutateRenderer(
                                 h, pid, currentCreation,
                                 pass, known, needTweak))
@@ -161,20 +161,21 @@ namespace PaviseApp
                         bool stateOk, firstVerified;
                         if (!ApplyBoostStateStage(h, pid, pass, needTweak, out stateOk, out firstVerified))
                         {
-                            if (irqProbe.IsCapturing) irqProbe.InvalidateGameMask();
+                            if (irqProbe.IsPlacementCapturing) irqProbe.InvalidateGameMask();
                             continue;
                         }
                         string placementText;
                         bool placementVerified;
                         if (!ApplyPlacementStage(h, pid, pass, needPlacement, newlyTracked,
                             out placementText, out placementVerified)) continue;
-                        if (!placementVerified && irqProbe.IsCapturing)
+                        if (!placementVerified && irqProbe.IsPlacementCapturing)
                             irqProbe.InvalidateGameMask();
                         else if (!placementVerified)
                         {
                             bool gaveUp;
                             lock (sync) gaveUp = placementGaveUp.Contains(pid);
-                            if (gaveUp) irqProbe.InvalidateGameMask();
+                            if (gaveUp && irqProbe.RequiresPlacementAudit)
+                                irqProbe.InvalidateGameMask();
                         }
                         bool ecoCleared = ClearEfficiencyMode(h, pid, pass);
                         EngageLaneAndReport(h, all, pid, currentCreation, pass, stateOk, firstVerified, gpuOk, ecoCleared, placementText);
@@ -184,14 +185,14 @@ namespace PaviseApp
                         lock (sync) tuningPending = !tweakApplied.Contains(pid);
                         if (tuningPending)
                         {
-                            if (irqProbe.IsCapturing) irqProbe.InvalidateGameMask();
+                            if (irqProbe.IsPlacementCapturing) irqProbe.InvalidateGameMask();
                             continue;
                         }
                         if (AuditWouldMutateRenderer(
                                 h, pid, currentCreation,
                                 pass, true, false))
                         {
-                            if (irqProbe.IsCapturing) irqProbe.InvalidateGameMask();
+                            if (irqProbe.IsPlacementCapturing) irqProbe.InvalidateGameMask();
                             continue;
                         }
 
@@ -207,7 +208,7 @@ namespace PaviseApp
                                 h, pass, pid, finalCreation);
                         else
                         {
-                            if (irqProbe.IsCapturing)
+                            if (irqProbe.IsPlacementCapturing)
                                 irqProbe.InvalidateGameMask();
                             RestoreIrqProofHardPin(h, pid);
                         }
@@ -217,14 +218,14 @@ namespace PaviseApp
                 catch
                 {
                     // 无法完成本轮身份/落核复核时，宁可丢弃整局中断样本。
-                    if (irqProbe.IsCapturing) irqProbe.InvalidateGameMask();
+                    if (irqProbe.IsPlacementCapturing) irqProbe.InvalidateGameMask();
                 }
             }
-            if (!rendererSeen && irqProbe.IsCapturing)
+            if (!rendererSeen && irqProbe.IsPlacementCapturing)
                 // 快照中渲染进程消失是正常退出/短暂漏检边界，
                 // 先封存但不落盘。后续确认退出才提交，恢复则丢前缀重开。
-                irqProbe.Seal();
-            if (!irqProbe.IsCapturing) PruneDeadBoosts(live);
+                SealIrqObservation();
+            if (!irqProbe.IsPlacementCapturing) PruneDeadBoosts(live);
         }
 
         private BoostPass PrepareBoostPass()
@@ -325,7 +326,7 @@ namespace PaviseApp
                         break;
                     }
             if (!staleBoost) return false;
-            if (irqProbe.IsCapturing) irqProbe.InvalidateGameMask();
+            if (irqProbe.IsPlacementCapturing) irqProbe.InvalidateGameMask();
             UnboostGames(pass.RendererPid, pass.RendererCreation, pass.RendererName);
             return true;
         }
@@ -381,10 +382,17 @@ namespace PaviseApp
             if (EffLane)
             {
                 LaneState lane = RenderLane.StateFor(pid, creation);
-                if (lane != LaneState.Engaged
-                    && lane != LaneState.Unavailable) return true;
+                if (IrqLaneNeedsInitialization(lane)) return true;
             }
             return false;
+        }
+
+        internal static bool IrqLaneNeedsInitialization(LaneState state)
+        {
+            // Trying 包含只读识别和每批之间一分钟的等待，不代表正在写。
+            // 真正的线程 setter 已由 Begin/EndExternalMutation 与起采共用门锁。
+            return state != LaneState.Trying && state != LaneState.Engaged
+                && state != LaneState.Unavailable;
         }
 
         private IntPtr OpenBoostHandle(int pid, BoostPass pass)
@@ -394,11 +402,11 @@ namespace PaviseApp
             {
                 bool noSuchProcess = Native.LastOpenProcessFailureWasNoSuchProcess();
                 // 后续保护名单/IFEO 处理可能写注册表；已有 IRQ capture 必须先停。
-                if (irqProbe.IsCapturing)
+                if (irqProbe.IsPlacementCapturing)
                 {
                     // 已确认进程不存在是正常收口，不能把整局废弃；
                     // 拒绝访问/身份不明才必须作废。
-                    if (noSuchProcess) irqProbe.Seal();
+                    if (noSuchProcess) SealIrqObservation();
                     else irqProbe.InvalidateGameMask();
                 }
                 bool firstDeny;
@@ -509,8 +517,7 @@ namespace PaviseApp
                     QoSControl = oqc, QoSState = oqs };
                 lock (sync) gameBoost[pid] = snap;
                 newlyTracked = true;
-                if (pass.RendererLearnable)
-                    TryLearnRenderer(pass.RendererProfileId, pass.RendererPath, pass.RendererName);
+                // 渲染身份确认/游戏库替换在调度前独立提交，不依赖提优句柄是否可写。
                 gpuOk = gpuKnown && !pass.WriteDenied && ApplyAndVerifyGpuBoost(h);
                 lock (sync) { if (gpuKnown && !pass.WriteDenied) gameGpu[pid] = gpuOld; }
             }
@@ -616,7 +623,7 @@ namespace PaviseApp
             ProcEntry renderer = all.Find(pass.RendererPid);
             if (renderer == null)
             {
-                irqProbe.Seal();
+                SealIrqObservation();
                 return true;
             }
 
@@ -627,7 +634,7 @@ namespace PaviseApp
             if (h == IntPtr.Zero)
             {
                 if (Native.LastOpenProcessFailureWasNoSuchProcess())
-                    irqProbe.Seal();
+                    SealIrqObservation();
                 else
                     irqProbe.InvalidateGameMask();
                 return true;
@@ -1767,7 +1774,11 @@ namespace PaviseApp
                 int mine = Interlocked.Increment(ref panicSeq);
                 panicDone.Reset();
                 panicResult = false;
-                panicReq = true;
+                lock (sync)
+                {
+                    panicReq = true;
+                    InvalidateRendererHandoff();
+                }
                 kick.Set();
 
                 long deadline = DateTime.UtcNow.Ticks + 12000L * TimeSpan.TicksPerMillisecond;
@@ -1789,6 +1800,7 @@ namespace PaviseApp
 
         private bool Deactivate(string reason, bool quiet)
         {
+            InvalidateRendererHandoff();
             // 先封账再做任何恢复，避免把 Pavise 自己撤电源/核心/网络设置产生的 DPC
             // 记到刚结束的游戏里。ReportFinish 内部按 Present→DPC 收口。
             Exception reportFailure = null;

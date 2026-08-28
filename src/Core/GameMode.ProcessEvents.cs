@@ -85,12 +85,13 @@ namespace PaviseApp
         {
             if (batch == null || stopping) return;
             ObserveWhitelistProcessChanges(batch);
+            ObserveGameFamilyChanges(batch);
             bool relevant = batch.Overflowed;
             bool detectionRelevant = false;
             bool transitionRelevant = false;
             lock (sync)
             {
-                relevant |= active;
+                relevant |= active || armedAwaitingElection;
                 foreach (ProcessChange change in batch.Changes)
                 {
                     if (change == null) continue;
@@ -174,9 +175,7 @@ namespace PaviseApp
         {
             return detection != null && eventParentPid > 0
                 && detection.RendererPid == eventParentPid
-                && detection.RendererCreation > 0
-                && GameSessionDetector.IsLauncherLikeName(
-                    detection.RendererName);
+                && detection.RendererCreation > 0;
         }
 
         internal static bool IsActiveFamilyChildStart(
@@ -192,10 +191,7 @@ namespace PaviseApp
                 && detection.RendererCreation > 0
                 && change.ParentCreation
                     == detection.RendererCreation
-                && change.Creation
-                    > detection.RendererCreation
-                && GameSessionDetector.IsLauncherLikeName(
-                    detection.RendererName);
+                && change.Creation > detection.RendererCreation;
         }
 
         internal static bool IsSameTransitionEpoch(
@@ -211,12 +207,8 @@ namespace PaviseApp
         internal static bool ShouldRearmLauncherTransition(
             GameDetection previous, GameDetection next)
         {
-            return next != null
-                && GameSessionDetector.IsLauncherLikeName(
-                    next.RendererName)
-                && (previous == null
-                    || !GameSessionDetector.IsLauncherLikeName(
-                        previous.RendererName));
+            return next != null && (previous == null
+                || !RendererHandoffTracker.SameIdentity(previous, next));
         }
 
         internal static bool ProcessEventNeedsImmediateScan(

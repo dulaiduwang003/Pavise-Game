@@ -3,7 +3,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text.RegularExpressions;
 using Microsoft.Win32;
 
 namespace PaviseApp
@@ -38,13 +37,6 @@ namespace PaviseApp
                 || name.Equals("documents", StringComparison.OrdinalIgnoreCase);
         }
 
-        private static readonly string[] JunkExe =
-        {
-            "unins", "setup", "install", "crash", "report", "redist", "dxsetup",
-            "dotnet", "easyanticheat", "battleye", "prereq", "helper", "handler",
-            "cef", "cleanup", "diagnostic", "activation", "touchup"
-        };
-
         private static readonly HashSet<string> GenericDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "bin", "bin64", "binaries", "win64", "win32", "x64", "x86",
@@ -71,24 +63,6 @@ namespace PaviseApp
                 tokens++;
             }
             return tokens >= 2;
-        }
-
-        private static readonly string[] JunkManifest =
-        {
-            "redistributable", "steamworks common", "proton", "steam linux runtime", "steamvr"
-        };
-
-        public static List<ScanHit> Run(string root, Func<bool> canceled, Action<int, int> progress)
-        {
-            var hits = new List<ScanHit>();
-            var roots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            CollectManifests(root, hits, roots, canceled);
-            if (progress != null) progress(0, hits.Count);
-
-            int[] dirs = { 0 };
-            try { Visit(root, root, 8, hits, roots, dirs, canceled, progress); }
-            catch { }
-            return hits;
         }
 
         public static List<ScanHit> RunManifests(Func<bool> canceled)
@@ -140,42 +114,13 @@ namespace PaviseApp
             if (dir == null) return;
             dir = dir.Replace('/', '\\').TrimEnd('\\');
             if (!UnderRoot(dir, root) || !Directory.Exists(dir)) return;
-            if (!roots.Add(dir)) return;
+            if (roots.Contains(dir)) return;
             string exe = exePath != null && File.Exists(exePath) ? exePath : PickMainExe(dir);
             if (exe == null) return;
+            roots.Add(dir);
             if (string.IsNullOrEmpty(name)) name = Path.GetFileName(dir);
             hits.Add(new ScanHit { Name = name, Proc = Path.GetFileNameWithoutExtension(exe), Root = dir, Exe = exe });
         }
-
-        private static bool JunkManifestName(string name)
-        {
-            if (name == null) return false;
-            foreach (string j in JunkManifest)
-                if (name.IndexOf(j, StringComparison.OrdinalIgnoreCase) >= 0) return true;
-            return false;
-        }
-
-        private static readonly string[] InstalledJunk =
-        {
-            "wegame", "wechat", "微信", "腾讯会议", "tencent meeting", "腾讯文档",
-            "电脑管家", "pc manager", "输入法", "sogou", "搜狗", "企业微信", "wework",
-            "腾讯视频", "腾讯课堂", "浏览器", "browser", "腾讯qq", "qqmusic", "qq音乐",
-            "运行库", "redistributable", "runtime", "driver", "驱动", "sdk", "toolkit",
-            "update", "更新", "补丁", "安全", "杀毒", "antivirus", "defender",
-            "office", "wps", "acrobat", "reader", "python", "java", "dotnet",
-            "visual studio", "vc++", "directx", "nvidia", "amd software", "realtek",
-            "网易云音乐", "cloudmusic", "迅雷", "thunder", "百度", "钉钉", "dingtalk"
-        };
-
-        private static readonly string[] GamePublishers =
-        {
-            "tencent", "腾讯", "riot games", "blizzard", "暴雪", "netease", "网易",
-            "mihoyo", "米哈游", "hoyoverse", "ubisoft", "育碧", "electronic arts",
-            "square enix", "capcom", "sega", "bandai", "2k games", "rockstar",
-            "bethesda", "cd projekt", "paradox", "perfect world", "完美世界",
-            "kingsoft", "西山居", "巨人网络", "盛趣", "shanda", "hypergryph", "鹰角",
-            "kuro game", "库洛", "叠纸", "papergames", "游戏", "game studio"
-        };
 
         private static void FromInstalled(string root, List<ScanHit> hits, HashSet<string> roots, Func<bool> canceled)
         {
@@ -203,9 +148,6 @@ namespace PaviseApp
                             if (g.GetValue("ParentKeyName") != null) continue;
 
                             string name = g.GetValue("DisplayName") as string;
-                            string pub = g.GetValue("Publisher") as string ?? "";
-                            if (HitsAny(name, InstalledJunk)) continue;
-                            if (NetAcceleratorCatalog.IsAcceleratorLikeName(name)) continue;
 
                             string dir = CleanDir(g.GetValue("InstallLocation") as string);
                             bool derived = false;
@@ -219,13 +161,9 @@ namespace PaviseApp
                             if (dir == null || dir.Length < 4 || !seen.Add(dir)) continue;
                             if (roots.Contains(dir) || !Directory.Exists(dir)) continue;
                             if (IsSystemOrTooBroad(dir)) continue;
-                            if (HitsAny(dir, InstalledJunk)) continue;
                             if (derived && SameNameAlreadyHit(hits, name)) continue;
-
-                            bool trusted = !derived
-                                && (HitsAny(pub, GamePublishers)
-                                    || dir.IndexOf("WeGameApps", StringComparison.OrdinalIgnoreCase) >= 0);
-                            if (!trusted && !LooksLikeGameDir(dir, 3)) continue;
+                            // 发布商、产品名和目录里的客户端字样都不是游戏身份依据。
+                            if (!LooksLikeGameDir(dir, 3)) continue;
 
                             AddManifestHit(root, hits, roots, name, dir, null);
                         }
@@ -318,53 +256,6 @@ namespace PaviseApp
             return false;
         }
 
-        private static void Visit(string dir, string scanRoot, int depth,
-            List<ScanHit> hits, HashSet<string> roots, int[] dirs, Func<bool> canceled, Action<int, int> progress)
-        {
-            if (depth <= 0 || (canceled != null && canceled())) return;
-            dirs[0]++;
-            if (progress != null && (dirs[0] & 63) == 0) progress(dirs[0], hits.Count);
-
-            string[] files, subs;
-            try { files = Directory.GetFiles(dir); subs = Directory.GetDirectories(dir); }
-            catch { return; }
-
-            if (HasGameSignals(files, subs)
-                && !IsSystemWideDirName(Path.GetFileName(dir.TrimEnd('\\'))))
-            {
-                string gameRoot = FindGameRoot(dir, scanRoot);
-                if (roots.Add(gameRoot))
-                {
-                    string exe = PickMainExe(gameRoot);
-                    if (exe != null)
-                    {
-                        hits.Add(new ScanHit
-                        {
-                            Name = Path.GetFileName(gameRoot.TrimEnd('\\')),
-                            Proc = Path.GetFileNameWithoutExtension(exe),
-                            Root = gameRoot,
-                            Exe = exe
-                        });
-                        if (progress != null) progress(dirs[0], hits.Count);
-                    }
-                }
-                return;
-            }
-
-            foreach (string d in subs)
-            {
-                if (canceled != null && canceled()) return;
-                string n = Path.GetFileName(d);
-                if (n.Length == 0 || n[0] == '.' || SkipDirs.Contains(n)) continue;
-                try
-                {
-                    if ((File.GetAttributes(d) & FileAttributes.ReparsePoint) != 0) continue;
-                }
-                catch { continue; }
-                Visit(d, scanRoot, depth - 1, hits, roots, dirs, canceled, progress);
-            }
-        }
-
         private static bool HasGameSignals(string[] files, string[] subs)
         {
             bool electron = false, hasNw = false, hasWww = false;
@@ -411,21 +302,6 @@ namespace PaviseApp
             return false;
         }
 
-        private static string FindGameRoot(string dir, string scanRoot)
-        {
-            string cur = dir;
-            for (int i = 0; i < 4; i++)
-            {
-                string name = Path.GetFileName(cur.TrimEnd('\\'));
-                if (name.Length == 0 || !IsGenericDirName(name)) break;
-                string parent = null;
-                try { parent = Path.GetDirectoryName(cur.TrimEnd('\\')); } catch { }
-                if (parent == null || parent.Length <= scanRoot.TrimEnd('\\').Length) break;
-                cur = parent;
-            }
-            return cur;
-        }
-
         internal static string InferGameRoot(string executablePath)
         {
             if (string.IsNullOrWhiteSpace(executablePath)) return null;
@@ -450,183 +326,21 @@ namespace PaviseApp
                 if (string.IsNullOrEmpty(parent)) break;
                 cur = parent;
             }
-            string candidate;
-            try { candidate = Path.GetDirectoryName(cur.TrimEnd('\\')); }
-            catch { candidate = null; }
-            if (LooksLikeMultiFolderGameRoot(candidate, cur)) cur = candidate;
             return cur;
         }
 
-        private static bool LooksLikeMultiFolderGameRoot(string candidate, string selectedDir)
+        private static bool IsJunkName(string name)
         {
-            if (string.IsNullOrEmpty(candidate) || string.IsNullOrEmpty(selectedDir)) return false;
-            string selectedName;
-            try { selectedName = Path.GetFileName(selectedDir.TrimEnd('\\')); }
-            catch { return false; }
-            string low = (selectedName ?? "").ToLowerInvariant();
-            bool clientLike = IsClientComponentDirName(low);
-            bool gameLike = string.Equals(low, "game", StringComparison.Ordinal)
-                || string.Equals(low, "binaries", StringComparison.Ordinal);
-            if (!clientLike && !gameLike) return false;
-
-            try
-            {
-                foreach (string dir in Directory.GetDirectories(candidate))
-                {
-                    if (string.Equals(dir.TrimEnd('\\'), selectedDir.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)) continue;
-                    string n = (Path.GetFileName(dir.TrimEnd('\\')) ?? "").ToLowerInvariant();
-                    if (clientLike && (string.Equals(n, "game", StringComparison.Ordinal)
-                        || string.Equals(n, "binaries", StringComparison.Ordinal)
-                        || string.Equals(n, "engine", StringComparison.Ordinal)
-                        || string.Equals(n, "content", StringComparison.Ordinal))) return true;
-                    if (gameLike && IsClientComponentDirName(n)) return true;
-                }
-            }
-            catch { }
-            return false;
+            return GameSessionDetector.ElectionVetoed(
+                Path.GetFileNameWithoutExtension(name ?? ""), null);
         }
 
-        private static bool IsClientComponentDirName(string lower)
-        {
-            if (string.IsNullOrEmpty(lower)) return false;
-            return lower.Contains("client") || lower.Contains("launcher")
-                || lower.Contains("tcls")
-                || lower.Contains("客户端") || lower.Contains("启动器");
-        }
-
-        private static bool IsJunkName(string lower)
-        {
-            foreach (string j in JunkExe)
-                if (lower.Contains(j)) return true;
-            return Regex.IsMatch(lower, "\\d+\\.\\d+");
-        }
-
-        private static long SafeLen(FileInfo f)
-        {
-            try { return f.Length; }
-            catch { return -1; }
-        }
-
-        private static readonly string[] LauncherDirTokens =
-        {
-            "launcher", "client", "tcls", "updater", "installer", "support", "tools", "redist"
-        };
-
-        private static readonly string[] LauncherNameTokens =
-        {
-            "launcher", "updater", "update", "patch", "config", "settings",
-            "server", "dedicated", "benchmark", "editor", "service", "bootstrap",
-            "backend", "daemon"
-        };
-
+        // 扫描只推荐有唯一静态证据的入口；无法区分多个图形程序时交给用户选择。
+        // 不按游戏名、客户端角色、EXE 大小或目录里的 launcher/client 字样决胜。
         internal static string PickMainExe(string dir)
         {
-            var exes = new List<FileInfo>();
-            CollectExes(dir, 4, exes);
-            if (exes.Count == 0) return null;
-
-            string rootTrim = dir.TrimEnd('\\');
-            string want = Norm(Path.GetFileName(rootTrim));
-
-            foreach (FileInfo f in exes)
-            {
-                string low = f.Name.ToLowerInvariant();
-                if (low.EndsWith("-win64-shipping.exe") || low.EndsWith("-win32-shipping.exe")) return f.FullName;
-            }
-
-            FileInfo unity = null; long unityLen = -1;
-            foreach (FileInfo f in exes)
-            {
-                try
-                {
-                    if (IsJunkName(f.Name.ToLowerInvariant())) continue;
-                    if (!Directory.Exists(Path.Combine(f.DirectoryName,
-                        Path.GetFileNameWithoutExtension(f.Name) + "_Data"))) continue;
-                    long len = SafeLen(f);
-                    if (unity == null || len > unityLen) { unity = f; unityLen = len; }
-                }
-                catch { }
-            }
-            if (unity != null) return unity.FullName;
-
-            FileInfo best = null, unreadable = null;
-            int bestScore = int.MinValue;
-            long bestLen = -1;
-            foreach (FileInfo f in exes)
-            {
-                string low = f.Name.ToLowerInvariant();
-                if (IsJunkName(low)) continue;
-                long len = SafeLen(f);
-                if (len < 0) { if (unreadable == null) unreadable = f; continue; }
-                if (len < 128 * 1024) continue;
-
-                int score = 0;
-                string rel = RelDir(rootTrim, f.DirectoryName);
-                if (rel.Length == 0) score += 15;
-                else
-                {
-                    string[] segs = rel.Split('\\');
-                    score -= 3 * segs.Length;
-                    foreach (string seg in segs)
-                    {
-                        if (seg == "game" || seg == "games") { score += 40; continue; }
-                        if (seg == "binaries") { score += 25; continue; }
-                        if (seg == "bin" || seg == "bin64" || seg == "win64" || seg == "x64"
-                            || seg == "retail" || seg == "shipping") { score += 10; continue; }
-                        foreach (string t in LauncherDirTokens)
-                            if (seg.Contains(t)) { score -= 45; break; }
-                    }
-                }
-                string bare = Norm(Path.GetFileNameWithoutExtension(f.Name));
-                if (want.Length > 2 && bare == want) score += 60;
-                foreach (string t in LauncherNameTokens)
-                    if (low.Contains(t)) { score -= 50; break; }
-                if (len >= 100L * 1024 * 1024) score += 15;
-                else if (len >= 20L * 1024 * 1024) score += 8;
-                else if (len >= 1024 * 1024) score += 3;
-
-                if (score > bestScore || (score == bestScore && len > bestLen))
-                {
-                    best = f; bestScore = score; bestLen = len;
-                }
-            }
-            if (best != null) return best.FullName;
-            return unreadable != null ? unreadable.FullName : null;
+            return ExecutableCandidateProbe.PickMainExecutable(dir);
         }
 
-        private static string RelDir(string root, string dir)
-        {
-            if (string.IsNullOrEmpty(dir) || dir.Length <= root.Length) return "";
-            string prefix = root + "\\";
-            if (!dir.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return "";
-            return dir.Substring(prefix.Length).ToLowerInvariant();
-        }
-
-        private static string Norm(string s)
-        {
-            var sb = new System.Text.StringBuilder(s.Length);
-            foreach (char c in s)
-                if (char.IsLetterOrDigit(c)) sb.Append(char.ToLowerInvariant(c));
-            return sb.ToString();
-        }
-
-        private static void CollectExes(string dir, int depth, List<FileInfo> outList)
-        {
-            try
-            {
-                foreach (string f in Directory.GetFiles(dir, "*.exe"))
-                {
-                    try { outList.Add(new FileInfo(f)); } catch { }
-                }
-                if (depth <= 1) return;
-                foreach (string d in Directory.GetDirectories(dir))
-                {
-                    string n = Path.GetFileName(d).ToLowerInvariant();
-                    if (n.Contains("redist") || n == "directx" || n == "dotnet" || n == "support") continue;
-                    CollectExes(d, depth - 1, outList);
-                }
-            }
-            catch { }
-        }
     }
 }

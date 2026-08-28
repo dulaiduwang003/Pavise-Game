@@ -94,6 +94,9 @@ namespace PaviseApp
 
         internal static string GlobalValue(string key)
         {
+            // This option has no global setting. Old GmFamilyExempt does not migrate
+            // into an unsafe opt-in for every game in an existing library.
+            if (key == PolicyCatalog.KeySuppressFamily) return "0";
             PolicyItem item = PolicyCatalog.ItemOf(key);
             if (item == null) return null;
             switch (item.Kind)

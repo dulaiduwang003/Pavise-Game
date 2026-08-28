@@ -291,6 +291,7 @@ namespace PaviseApp
             {
                 using (Icon icon = IconArt.MakeMultiIcon(visualMode, visualEnabled)) SetRuntimeIcon(icon);
                 if (nav != null) nav.RefreshLogo();
+                if (tuningNav != null) tuningNav.RefreshLogo();
                 if (paviseCore != null) paviseCore.RefreshVisual();
             }
             if (UiActive) UiClock.Wake();
@@ -358,46 +359,14 @@ namespace PaviseApp
                 return;
             }
             if (!PaviseDialog.Confirm(this, App.DisplayName, Lang.T("wipe.confirm"), DlgKind.Danger)) return;
+            Action reset = ResetApp;
+            if (reset == null) return;
             if (Interlocked.Exchange(ref wipeBusy, 1) != 0) return;
             btn.Enabled = false;
             Cursor = Cursors.WaitCursor;
-            ThreadPool.QueueUserWorkItem(delegate
-            {
-                bool ok = false;
-                int files = 0;
-                string unrestored = null;
-                try
-                {
-                    gameMode.PanicRestore();
-                    tamer.PanicRestore();
-                    ok = LegacyPurge.WipeAll(Paths.Data, true, Lang.T("t.panelformsettingspage.3"), out files, out unrestored);
-                }
-                catch (Exception ex)
-                {
-                    Logger.LogFailure(Lang.T("t.panelformsettingspage.3"), ex);
-                    unrestored = ex.Message;
-                }
-                Interlocked.Exchange(ref wipeBusy, 0);
-                try
-                {
-                    BeginInvoke((MethodInvoker)delegate
-                    {
-                        if (IsDisposed) return;
-                        Cursor = Cursors.Default;
-                        if (!btn.IsDisposed) btn.Enabled = true;
-                        if (ok)
-                        {
-                            PaviseDialog.Success(this, App.DisplayName, Lang.F("wipe.done", files));
-                            Action exit = ExitApp;
-                            if (exit != null) exit();
-                        }
-                        else if (unrestored != null)
-                            PaviseDialog.Warn(this, App.DisplayName, Lang.F("wipe.failed", unrestored));
-                        else PaviseDialog.Warn(this, App.DisplayName, Lang.T("wipe.regfail"));
-                    });
-                }
-                catch { }
-            });
+            // Program owns the permanent stop/restore/delete/exit sequence. A panic
+            // hold expires and could otherwise restart optimization during the wipe.
+            reset();
         }
 
         private void RefreshSlowStateAsync()

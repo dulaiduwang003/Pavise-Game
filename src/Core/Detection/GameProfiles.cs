@@ -46,6 +46,17 @@ namespace PaviseApp
         public readonly Dictionary<string, string> Overrides =
             new Dictionary<string, string>(StringComparer.Ordinal);
 
+        // A per-game opt-in, deliberately independent of the old global switch.
+        // Absent in an existing V5 library means protected, never inherited from HKCU.
+        public bool SuppressFamilyBackground
+        {
+            get
+            {
+                string value;
+                return Overrides.TryGetValue(PolicyCatalog.KeySuppressFamily, out value) && value == "1";
+            }
+        }
+
         public string PreferredExecutablePath
         {
             get

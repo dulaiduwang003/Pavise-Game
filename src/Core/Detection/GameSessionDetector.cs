@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 证据选举制的游戏会话判定 用户的选择只圈定家族 渲染进程由硬证据现场选举
+// 文件用途 通用游戏会话选举 路径与有效父链圈定家族 窗口选举不等于已经观测到渲染活动
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -19,7 +19,13 @@ namespace PaviseApp
         public bool RendererCandidateSelected;
         public bool RendererUserSelected;
         public bool RendererLearnable;
+        // 独立前台候选可以只享有临时安全保护，不得作为已选中的 renderer。
+        // 强制接管档案里的陌生进程使用此标记；不采证接管，也不学习。
+        public bool RendererSafetyOnly;
         public bool RequiresGpuConfirm;
+        // 只随异步确认票据携带；0 表示原有全屏/精确入口等硬证据。
+        // 不能把已过期的 GPU 结果当成永久有效的提交授权。
+        public long RendererGpuProofExpiresMs;
         // 同一个 renderer 同时被多个档案引用时，用配置锚的精确度稳定决胜，
         // 避免最终选中哪个 profile（以及它的独立策略）取决于列表顺序。
         public int RendererMatchRank;
@@ -43,32 +49,17 @@ namespace PaviseApp
     internal static class GameSessionDetector
     {
         internal const int FullscreenCoveragePercent = 97;
+        private static readonly string WindowsRootPrefix = CaptureWindowsRootPrefix();
 
-        private static readonly string[] NonGameRoleTokens =
+        private static string CaptureWindowsRootPrefix()
         {
-            "crashreport", "crash_report", "crashpad", "crashhandler", "crashsender",
-            "telemetry", "uninstall"
-        };
-
-        private static readonly HashSet<string> NeverGames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "powerpnt", "winword", "excel", "outlook", "acrord32", "notepad", "mspaint",
-            "chrome", "msedge", "firefox", "brave", "opera", "vivaldi",
-            "explorer", "wegame", "wegame_env", "steam", "steamwebhelper", "epicgameslauncher",
-            "battle.net", "agent", "galaxyclient", "ubisoftconnect",
-            "vlc", "mpv", "wmplayer", "video.ui",
-            "potplayermini64", "potplayermini", "mpc-hc64", "mpc-hc"
-        };
-
-        private static readonly HashSet<string> StorefrontShellNames = BuildStorefrontShellNames();
-
-        private static HashSet<string> BuildStorefrontShellNames()
-        {
-            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (string name in GamePlatformCatalog.PlatformShellNames()) names.Add(name);
-            return names;
+            try
+            {
+                string directory = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+                return string.IsNullOrEmpty(directory) ? null : directory.TrimEnd('\\') + "\\";
+            }
+            catch { return null; }
         }
-
 
         public static GameDetection Detect(Process[] all, IList<GameProfile> profiles)
         {
@@ -146,7 +137,8 @@ namespace PaviseApp
 
         public static GameDetection Detect(
             ProcessSnapshot processes, IList<GameProfile> profiles,
-            int ownerSession, out string armedProfile, out string armedVia)
+            int ownerSession, out string armedProfile, out string armedVia,
+            GameFamilyEvidence familyEvidence = null)
         {
             armedProfile = null;
             armedVia = null;
@@ -165,7 +157,7 @@ namespace PaviseApp
             }
 
             CaptureWindowEvidence(snapshot);
-            return DetectSnapshot(snapshot, profiles, out armedProfile, out armedVia);
+            return DetectSnapshot(snapshot, profiles, out armedProfile, out armedVia, familyEvidence);
         }
 
         internal static bool TryCaptureProcessIdentity(
@@ -186,6 +178,274 @@ namespace PaviseApp
                 Path = entry.Path
             };
             return true;
+        }
+
+        // 热路径只看当前前台窗口，不枚举所有顶层窗口。ProcEntry 的身份来自
+        // 本轮系统快照；只有发现新的关联候选后才额外核验它仍是同一生命期。
+        internal static GameDetection CaptureForegroundCandidate(
+            ProcessSnapshot processes, int ownerSession,
+            GameProfile profile, GameDetection incumbent)
+        {
+            if (profile == null) return null;
+            return CaptureForegroundCandidate(processes, ownerSession,
+                new[] { profile }, incumbent);
+        }
+
+        internal static GameDetection CaptureForegroundCandidate(
+            ProcessSnapshot processes, int ownerSession,
+            IList<GameProfile> profiles, GameDetection incumbent,
+            GameFamilyEvidence familyEvidence = null)
+        {
+            if (processes == null || ownerSession < 0
+                || profiles == null || profiles.Count == 0)
+                return null;
+            int foregroundPid = ForegroundPid();
+            if (foregroundPid <= 0) return null;
+            ProcEntry foregroundEntry = processes.Find(foregroundPid);
+            GameProcessSnapshot foregroundIdentity;
+            if (!TryCaptureProcessIdentity(
+                    foregroundEntry, ownerSession, out foregroundIdentity)
+                || SameRendererIdentity(incumbent, foregroundIdentity))
+                return null;
+
+            if (!CandidateIdentityUsable(foregroundIdentity)
+                || AntiCheatCatalog.IsAntiCheatLikeName(foregroundIdentity.Name))
+                return null;
+            if (ElectionVetoed(foregroundIdentity.Name, foregroundIdentity.Path)) return null;
+
+            int windowPid;
+            bool fullscreen;
+            if (!TryCaptureCandidateWindow(out windowPid, out fullscreen)
+                || windowPid != foregroundPid)
+                return null;
+
+            // 系统快照本应一 PID 一项；拒绝歧义快照，不能由 ByPid 的最后一项
+            // 替重复 PID 选择身份，尤其不能把另一个登录会话的身份拼到父链里。
+            if (processes.ByPid.Count != processes.Count) return null;
+            var snapshot = new List<GameProcessSnapshot>();
+            foreach (ProcEntry entry in processes.Entries)
+            {
+                GameProcessSnapshot identity;
+                if (!TryCaptureProcessIdentity(entry, ownerSession, out identity))
+                    continue;
+                identity.Foreground = identity.Pid == foregroundPid;
+                identity.Visible = identity.Foreground;
+                identity.FullscreenLike = identity.Foreground && fullscreen;
+                snapshot.Add(identity);
+            }
+            GameDetection candidate = FindForegroundCandidateSnapshot(
+                snapshot, profiles, incumbent, familyEvidence);
+            if (candidate == null) return null;
+
+            GameProcessSnapshot live;
+            if (!TryCaptureProcessIdentity(candidate.RendererPid, ownerSession, out live)
+                || live.Creation != candidate.RendererCreation
+                || !SamePath(live.Path, candidate.RendererPath)
+                || !string.Equals(live.Name, candidate.RendererName,
+                    StringComparison.OrdinalIgnoreCase)
+                || ForegroundPid() != candidate.RendererPid)
+                return null;
+            return candidate;
+        }
+
+        // 与全局选举并行的挑战者通道：旧 renderer/旧 learned 不会吞掉当前
+        // 前台的新候选。这里不改变 DetectSnapshot、BetterHit 或 sticky 的仲裁。
+        internal static GameDetection FindForegroundCandidateSnapshot(
+            IList<GameProcessSnapshot> snapshot,
+            GameProfile profile, GameDetection incumbent,
+            GameFamilyEvidence familyEvidence = null)
+        {
+            if (profile == null) return null;
+            Dictionary<int, GameProcessSnapshot> byPid;
+            GameProcessSnapshot foreground;
+            if (!TryIndexForegroundCandidate(snapshot, out byPid, out foreground)
+                || SameRendererIdentity(incumbent, foreground)) return null;
+            return FindForegroundCandidateInProfile(byPid, foreground, profile, familyEvidence);
+        }
+
+        // 只为同一个前台身份挑明确归属，不让另一个档案的 ready/learned
+        // 目标抢先吞掉 pending。此通道不改变原有全局 Detect 的会话仲裁。
+        internal static GameDetection FindForegroundCandidateSnapshot(
+            IList<GameProcessSnapshot> snapshot,
+            IList<GameProfile> profiles, GameDetection incumbent,
+            GameFamilyEvidence familyEvidence = null)
+        {
+            if (profiles == null || profiles.Count == 0) return null;
+            Dictionary<int, GameProcessSnapshot> byPid;
+            GameProcessSnapshot foreground;
+            if (!TryIndexForegroundCandidate(snapshot, out byPid, out foreground)
+                || SameRendererIdentity(incumbent, foreground)) return null;
+
+            GameDetection best = null;
+            bool ambiguous = false;
+            foreach (GameProfile profile in profiles)
+            {
+                if (profile == null) continue;
+                GameDetection candidate = FindForegroundCandidateInProfile(byPid, foreground, profile, familyEvidence);
+                if (candidate == null) continue;
+                int precision = CompareCandidateOwnership(candidate, best);
+                if (precision > 0)
+                {
+                    best = candidate;
+                    ambiguous = false;
+                }
+                else if (precision == 0 && !SameCandidateOwner(candidate.Profile, best.Profile))
+                    ambiguous = true;
+            }
+            return ambiguous ? null : best;
+        }
+
+        private static bool TryIndexForegroundCandidate(
+            IList<GameProcessSnapshot> snapshot,
+            out Dictionary<int, GameProcessSnapshot> byPid,
+            out GameProcessSnapshot foreground)
+        {
+            byPid = new Dictionary<int, GameProcessSnapshot>();
+            foreground = null;
+            if (snapshot == null) return false;
+            var seenPids = new HashSet<int>();
+            var duplicatePids = new HashSet<int>();
+            foreach (GameProcessSnapshot identity in snapshot)
+                if (identity != null && identity.Pid > 0
+                    && !seenPids.Add(identity.Pid))
+                    duplicatePids.Add(identity.Pid);
+
+            foreach (GameProcessSnapshot identity in snapshot)
+            {
+                if (!CandidateIdentityUsable(identity)
+                    || duplicatePids.Contains(identity.Pid)
+                    || AntiCheatCatalog.IsAntiCheatLikeName(identity.Name))
+                    continue;
+                byPid.Add(identity.Pid, identity);
+                if (!identity.Foreground) continue;
+                // 一份快照只有一个当前前台；相互矛盾的证据不能凭创建时间猜。
+                if (foreground != null) return false;
+                foreground = identity;
+            }
+            return foreground != null;
+        }
+
+        private static GameDetection FindForegroundCandidateInProfile(
+            Dictionary<int, GameProcessSnapshot> byPid,
+            GameProcessSnapshot foreground, GameProfile profile, GameFamilyEvidence familyEvidence)
+        {
+            bool configured = SamePath(profile.ExecutablePath, foreground.Path)
+                || SamePath(profile.LearnedExecutablePath, foreground.Path);
+            // Force 只表示尊重用户指定的入口，不覆盖系统/反作弊安全边界。
+            // 对未知程序不按客户端、游戏或辅助程序的名字猜角色。
+            if (ElectionVetoed(foreground.Name, foreground.Path))
+                return null;
+
+            var directPids = new HashSet<int>();
+            foreach (GameProcessSnapshot identity in byPid.Values)
+                if (IsDirectMember(profile, identity, familyEvidence)) directPids.Add(identity.Pid);
+            if (!directPids.Contains(foreground.Pid)
+                && !HasMemberAncestor(foreground, byPid, directPids))
+                return null;
+
+            GameDetection candidate;
+            if (profile.ForceTrigger && configured)
+                candidate = ElectForced(profile, new List<GameProcessSnapshot> { foreground });
+            else if (profile.ForceTrigger)
+            {
+                candidate = PendingGpuConfirm(profile, foreground);
+                candidate.RendererSafetyOnly = true;
+                candidate.RequiresGpuConfirm = false;
+                candidate.RendererLearnable = false;
+                candidate.Evidence = null;
+            }
+            else if (foreground.FullscreenLike)
+                candidate = Elected(profile, foreground, !configured, Lang.T("detect.fullscreen"));
+            else if (SamePath(profile.LearnedExecutablePath, foreground.Path))
+                candidate = Elected(profile, foreground, false, Lang.T("detect.learned"));
+            else if (SamePath(profile.ExecutablePath, foreground.Path))
+                candidate = Elected(profile, foreground, false, Lang.T("detect.window"));
+            else
+                candidate = PendingGpuConfirm(profile, foreground);
+
+            foreach (GameProcessSnapshot identity in byPid.Values)
+                if (directPids.Contains(identity.Pid)
+                    || HasMemberAncestor(identity, byPid, directPids))
+                {
+                    candidate.FamilyPids.Add(identity.Pid);
+                    candidate.FamilyNames.Add(identity.Name);
+                }
+            return candidate;
+        }
+
+        private static int CompareCandidateOwnership(GameDetection candidate, GameDetection current)
+        {
+            if (current == null) return 1;
+            int rank = candidate.RendererMatchRank.CompareTo(current.RendererMatchRank);
+            if (rank != 0) return rank;
+            // 两个 Root 都确实包含同一规范路径时，更长的 Root 只能是更窄的
+            // 已声明子目录；不向上扩大目录，也不据启动器名称猜测归属。
+            if (candidate.RendererMatchRank == 1)
+            {
+                int candidateLength = candidate.Profile.Root.TrimEnd('\\').Length;
+                int currentLength = current.Profile.Root.TrimEnd('\\').Length;
+                return candidateLength.CompareTo(currentLength);
+            }
+            return 0;
+        }
+
+        private static bool SameCandidateOwner(GameProfile a, GameProfile b)
+        {
+            if (ReferenceEquals(a, b)) return true;
+            return a != null && b != null && !string.IsNullOrEmpty(a.Id)
+                && string.Equals(a.Id, b.Id, StringComparison.OrdinalIgnoreCase)
+                && a.ForceTrigger == b.ForceTrigger
+                && string.Equals(a.Root ?? "", b.Root ?? "", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(a.ExecutablePath ?? "", b.ExecutablePath ?? "", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(a.LearnedExecutablePath ?? "", b.LearnedExecutablePath ?? "", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool CandidateIdentityUsable(GameProcessSnapshot identity)
+        {
+            if (identity == null || identity.Pid <= 0 || identity.Creation <= 0
+                || string.IsNullOrEmpty(identity.Name) || string.IsNullOrEmpty(identity.Path))
+                return false;
+            try
+            {
+                // 原生镜像路径是绝对规范路径；拒绝相对路径、.. 或名称拼接证据。
+                if (!Path.IsPathRooted(identity.Path)
+                    || !SamePath(Path.GetFullPath(identity.Path), identity.Path))
+                    return false;
+            }
+            catch { return false; }
+            return string.Equals(identity.Name, ImageNameFromVerifiedPath(identity.Path),
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool SameRendererIdentity(
+            GameDetection incumbent, GameProcessSnapshot identity)
+        {
+            return incumbent != null && identity != null
+                && incumbent.RendererPid == identity.Pid
+                && incumbent.RendererCreation > 0
+                && incumbent.RendererCreation == identity.Creation
+                && SamePath(incumbent.RendererPath, identity.Path);
+        }
+
+        private static bool TryCaptureCandidateWindow(out int pid, out bool fullscreen)
+        {
+            pid = 0;
+            fullscreen = false;
+            try
+            {
+                IntPtr window = GetForegroundWindow();
+                if (window == IntPtr.Zero || !IsWindowVisible(window) || IsIconic(window))
+                    return false;
+                uint owner;
+                GetWindowThreadProcessId(window, out owner);
+                if (owner == 0 || owner > int.MaxValue) return false;
+                pid = (int)owner;
+                NativeRect rect;
+                fullscreen = GetWindowRect(window, out rect)
+                    && IsFullscreenLikeWindow(window, rect);
+                return true;
+            }
+            catch { return false; }
         }
 
         internal static GameDetection DetectSnapshot(
@@ -216,7 +476,8 @@ namespace PaviseApp
 
         internal static GameDetection DetectSnapshot(
             IList<GameProcessSnapshot> snapshot,
-            IList<GameProfile> profiles, out string armedProfile, out string armedVia)
+            IList<GameProfile> profiles, out string armedProfile, out string armedVia,
+            GameFamilyEvidence familyEvidence = null)
         {
             armedProfile = null;
             armedVia = null;
@@ -233,11 +494,9 @@ namespace PaviseApp
             var byPid = new Dictionary<int, GameProcessSnapshot>();
             foreach (GameProcessSnapshot identity in snapshot)
             {
-                if (identity == null || identity.Pid <= 0
-                    || identity.Creation <= 0
+                if (!CandidateIdentityUsable(identity)
                     || duplicatePids.Contains(identity.Pid)
-                    || string.IsNullOrEmpty(identity.Name)
-                    || string.IsNullOrEmpty(identity.Path))
+                    || ElectionVetoed(identity.Name, identity.Path))
                     continue;
                 byPid[identity.Pid] = identity;
             }
@@ -250,7 +509,7 @@ namespace PaviseApp
                 var memberPids = new HashSet<int>();
                 var members = new List<GameProcessSnapshot>();
                 foreach (GameProcessSnapshot identity in byPid.Values)
-                    if (IsDirectMember(profile, identity))
+                    if (IsDirectMember(profile, identity, familyEvidence))
                     {
                         memberPids.Add(identity.Pid);
                         members.Add(identity);
@@ -266,8 +525,7 @@ namespace PaviseApp
 
                 if (armedProfile == null)
                 {
-                    string via = ArmedVia(profile, members,
-                        GamePlatformCatalog.IsPlatformProcess);
+                    string via = ArmedVia(profile, members);
                     if (via != null)
                     {
                         armedProfile = profile.Name;
@@ -287,36 +545,28 @@ namespace PaviseApp
         }
 
         internal static string ArmedVia(GameProfile profile,
-            IList<GameProcessSnapshot> members, Func<string, string, bool> isPlatform)
+            IList<GameProcessSnapshot> members)
         {
             if (profile == null || members == null) return null;
             var viaNames = new List<string>();
             foreach (GameProcessSnapshot member in members)
             {
-                if (member == null) continue;
-                if (!profile.ForceTrigger)
-                {
-                    if (IsNonGameRole(member.Name, member.Path)) continue;
-                    if (ArmedOnlyVeto(member.Path)) continue;
-                    if (isPlatform != null && isPlatform(member.Name, member.Path)) continue;
-                }
+                if (!CandidateIdentityUsable(member)
+                    || ElectionVetoed(member.Name, member.Path)) continue;
                 if (!viaNames.Contains(member.Name)) viaNames.Add(member.Name);
                 if (viaNames.Count >= 3) break;
             }
             return viaNames.Count == 0 ? null : string.Join(" ", viaNames.ToArray());
         }
 
-        internal static bool ArmedOnlyVeto(string path)
-        {
-            if (string.IsNullOrEmpty(path)) return false;
-            return path.IndexOf(@"\WeGameLauncher\", StringComparison.OrdinalIgnoreCase) >= 0;
-        }
-
-        private static bool IsDirectMember(GameProfile profile, GameProcessSnapshot identity)
+        private static bool IsDirectMember(GameProfile profile, GameProcessSnapshot identity,
+            GameFamilyEvidence familyEvidence = null)
         {
             if (SamePath(profile.ExecutablePath, identity.Path)) return true;
             if (SamePath(profile.LearnedExecutablePath, identity.Path)) return true;
-            return profile.ContainsPath(identity.Path);
+            return profile.ContainsPath(identity.Path)
+                || (familyEvidence != null && familyEvidence.Contains(profile,
+                    identity.Pid, identity.Creation, identity.Path));
         }
 
         private static bool HasMemberAncestor(
@@ -408,9 +658,6 @@ namespace PaviseApp
         internal static bool ElectionVetoed(string name, string path)
         {
             if (string.IsNullOrEmpty(name)) return true;
-            if (AntiCheatCatalog.IsAntiCheatLikeName(name)) return true;
-            if (NeverGames.Contains(name)) return true;
-            if (IsLauncherLikeName(name)) return true;
             return IsNonGameRole(name, path);
         }
 
@@ -523,25 +770,19 @@ namespace PaviseApp
             return 0;
         }
 
-        // 启动器外壳一律以 GamePlatformCatalog 为准 这里不再自带名单
-        //   曾经有一组写死的子串 leagueclient / riotclient 与目录重复且语义不一致
-        //   目录是精确名匹配 子串会顺带命中未收录的变体 两套判据并存时行为取决于谁先命中
-        internal static bool IsLauncherLikeName(string name)
-        {
-            string low = (name ?? "").ToLowerInvariant();
-            if (low.Length == 0) return false;
-            return StorefrontShellNames.Contains(low);
-        }
-
+        // 这里只承担禁止把安全组件作为调优目标的边界，不承担程序角色推断。
+        // GUI、浏览器技术、文件名或安装平台都不能证明它不是游戏渲染程序。
         internal static bool IsNonGameRole(string name, string path)
         {
             string n = (name ?? "").Trim();
-            if (AntiCheatCatalog.IsKnownProcess(n) || NeverGames.Contains(n)) return true;
+            if (AntiCheatCatalog.IsAntiCheatLikeName(n)) return true;
+            // 系统壳/核心组件是调优安全边界，不是游戏名单；同名外部程序不受此限制。
+            if (!string.IsNullOrEmpty(WindowsRootPrefix) && !string.IsNullOrEmpty(path)
+                && path.StartsWith(WindowsRootPrefix, StringComparison.OrdinalIgnoreCase)
+                && (SystemProcessCatalog.IsShellProcess(n)
+                    || SystemProcessCatalog.IsCoreSystemProcess(n, path, WindowsRootPrefix))) return true;
             string low = ((path ?? "") + "\\" + n).ToLowerInvariant();
-            if (AntiCheatCatalog.ContainsToken(low)) return true;
-            foreach (string token in NonGameRoleTokens)
-                if (low.Contains(token)) return true;
-            return false;
+            return AntiCheatCatalog.ContainsToken(low);
         }
 
         internal static bool IsLibraryCandidate(string name, string path, string windowsRoot)

@@ -43,7 +43,6 @@ namespace PaviseApp
                         Match md = Regex.Match(txt, "\"installdir\"\\s+\"([^\"]+)\"");
                         if (!md.Success) continue;
                         string name = mn.Success ? mn.Groups[1].Value : null;
-                        if (JunkManifestName(name)) continue;
                         AddManifestHit(root, hits, roots, name, Path.Combine(sa, "common\\" + md.Groups[1].Value), null);
                     }
                     catch { }
@@ -270,7 +269,6 @@ namespace PaviseApp
             {
                 try
                 {
-                    if (Path.GetFileName(d).StartsWith("riot_client", StringComparison.OrdinalIgnoreCase)) continue;
                     foreach (string yaml in Directory.GetFiles(d, "*.yaml"))
                     {
                         Match m = Regex.Match(File.ReadAllText(yaml),
@@ -303,7 +301,7 @@ namespace PaviseApp
                         try
                         {
                             string name = Path.GetFileName(g.TrimEnd('\\'));
-                            if (name.Length == 0 || name[0] == '.' || HitsAny(name, InstalledJunk)) continue;
+                            if (name.Length == 0 || name[0] == '.') continue;
                             AddManifestHit(root, hits, roots, name, g, null);
                         }
                         catch { }
@@ -324,7 +322,6 @@ namespace PaviseApp
                 try
                 {
                     string dir = m.Value.Replace('/', '\\').TrimEnd('\\');
-                    if (dir.IndexOf("battle.net", StringComparison.OrdinalIgnoreCase) >= 0) continue;
                     if (!Directory.Exists(dir)) continue;
                     if (!File.Exists(Path.Combine(dir, ".build.info"))) continue;
                     AddManifestHit(root, hits, roots, Path.GetFileName(dir), dir, null);

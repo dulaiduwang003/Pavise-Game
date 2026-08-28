@@ -167,11 +167,15 @@ namespace PaviseApp
         internal const int GpuWindowMs = 500;
 
         private static readonly object gate = new object();
+        private static readonly object operationGate = new object();
         private static Action mutationBegin;
         private static Action mutationEnd;
         private static Thread worker;
         private static volatile bool running;
         private static PowerBudgetYield state;
+        private static int generation;
+        private static bool stopInProgress;
+        private static bool shutdownClosed;
 
         public static bool EnabledSetting { get { return Settings.Load(EnabledKey, false); } }
 
@@ -216,7 +220,8 @@ namespace PaviseApp
         {
             lock (gate)
             {
-                if (running) return;
+                if (shutdownClosed || stopInProgress || running
+                    || worker != null && worker.IsAlive) return;
                 if (!enabled) return;
                 bool eligible = PowerBudgetYield.Eligible(
                     Native.HasSystemBattery(), Native.OnAcPower(), competitive,
@@ -225,7 +230,8 @@ namespace PaviseApp
                 state = new PowerBudgetYield();
                 state.Begin(DateTime.UtcNow.Ticks, true);
                 running = true;
-                worker = new Thread(Loop);
+                int mine = ++generation;
+                worker = new Thread(delegate () { Loop(mine); });
                 worker.IsBackground = true;
                 worker.Name = "Pavise.PowerYield";
                 worker.Priority = ThreadPriority.BelowNormal;
@@ -234,33 +240,90 @@ namespace PaviseApp
             }
         }
 
-        public static void Stop()
+        public static bool Stop()
+        {
+            return StopCore(3000, false);
+        }
+
+        internal static bool CloseForShutdown(int timeoutMs)
+        {
+            return StopCore(timeoutMs, true);
+        }
+
+        private static bool StopCore(int timeoutMs, bool terminal)
         {
             // 不管这一局有没有起过采样线程 都要查一次 EPP 有没有还原
             //   上一局还原失败留下的残值 不能因为这一局没参与就漏掉
+            if (timeoutMs < 0) return false;
+            var elapsed = System.Diagnostics.Stopwatch.StartNew();
             Thread t;
             lock (gate)
             {
+                if (terminal) shutdownClosed = true;
+                stopInProgress = true;
                 running = false;
-                t = worker; worker = null;
+                generation++;
+                t = worker;
                 if (state != null) { state.End(); state = null; }
             }
-            if (t != null) try { t.Join(3000); } catch { }
-            if (PowerPlan.EppYielded)
+            // A failed join must retain the thread reference. Clearing it would
+            // make a subsequent final stop falsely report that no worker exists.
+            if (t != null)
             {
-                bool ok = RunMutation(PowerPlan.RestoreEpp);
-                Logger.Log(Lang.T(ok ? "log.poweryield.5" : "log.poweryield.6"));
+                try
+                {
+                    if (t == Thread.CurrentThread || !t.Join(RemainingStopMs(elapsed, timeoutMs))) return false;
+                }
+                catch { return false; }
+            }
+            if (Monitor.IsEntered(operationGate)
+                || !Monitor.TryEnter(operationGate, RemainingStopMs(elapsed, timeoutMs))) return false;
+            try
+            {
+                bool ok = true;
+                if (PowerPlan.EppYielded)
+                {
+                    ok = RunMutation(PowerPlan.RestoreEpp);
+                    Logger.Log(Lang.T(ok ? "log.poweryield.5" : "log.poweryield.6"));
+                }
+                lock (gate)
+                {
+                    if (object.ReferenceEquals(worker, t)) worker = null;
+                    stopInProgress = false;
+                }
+                return ok;
+            }
+            catch { return false; }
+            finally { Monitor.Exit(operationGate); }
+        }
+
+        private static int RemainingStopMs(System.Diagnostics.Stopwatch elapsed, int timeoutMs)
+        {
+            return (int)Math.Max(0L, timeoutMs - elapsed.ElapsedMilliseconds);
+        }
+
+        private static bool GenerationRunning(int mine)
+        {
+            lock (gate) return running && !shutdownClosed && mine == generation;
+        }
+
+        private static bool RunCurrentMutation(int mine, Func<bool> mutation)
+        {
+            lock (operationGate)
+            {
+                if (!GenerationRunning(mine)) return false;
+                return RunMutation(mutation);
             }
         }
 
-        private static void Loop()
+        private static void Loop(int mine)
         {
             var cpu = new CpuSaturation();
             EnergyMeter.Sample prev = EnergyMeter.Take();
-            while (running)
+            while (GenerationRunning(mine))
             {
                 Thread.Sleep(SampleIntervalMs);
-                if (!running) break;
+                if (!GenerationRunning(mine)) break;
                 double gpu = SampleGpuUtil();
                 double cpuPct = cpu.Sample() * 100.0;
                 EnergyMeter.Sample now = EnergyMeter.Take();
@@ -271,12 +334,12 @@ namespace PaviseApp
                 YieldAction action;
                 lock (gate)
                 {
-                    if (state == null) break;
+                    if (!running || mine != generation || shutdownClosed || state == null) break;
                     action = state.Advance(DateTime.UtcNow.Ticks, gpu, cpuPct, watts);
                 }
                 if (action == YieldAction.Engage)
                 {
-                    bool ok = RunMutation(delegate
+                    bool ok = RunCurrentMutation(mine, delegate
                     {
                         return PowerPlan.TryYieldEpp(PowerBudgetYield.YieldEpp);
                     });
@@ -287,7 +350,7 @@ namespace PaviseApp
                 }
                 else if (action == YieldAction.Revert)
                 {
-                    RunMutation(PowerPlan.RestoreEpp);
+                    RunCurrentMutation(mine, PowerPlan.RestoreEpp);
                     Logger.Log(Lang.T("log.poweryield.4"));
                     break;
                 }
@@ -298,6 +361,42 @@ namespace PaviseApp
                 }
             }
         }
+
+#if PAVISE_SELFTEST
+        internal static int StartShutdownWorkerForTest(Action<int> body)
+        {
+            lock (gate)
+            {
+                if (shutdownClosed || stopInProgress || running
+                    || worker != null && worker.IsAlive) return -1;
+                running = true;
+                int mine = ++generation;
+                worker = new Thread(delegate () { body(mine); });
+                worker.IsBackground = true;
+                worker.Start();
+                return mine;
+            }
+        }
+
+        internal static bool RunShutdownMutationForTest(int mine, Func<bool> action)
+        {
+            return RunCurrentMutation(mine, action);
+        }
+
+        internal static void ResetShutdownForTest()
+        {
+            lock (operationGate)
+            lock (gate)
+            {
+                if (worker != null && worker.IsAlive)
+                    throw new InvalidOperationException("Cannot reset a live isolated power-yield worker");
+                worker = null;
+                state = null;
+                running = stopInProgress = shutdownClosed = false;
+                generation++;
+            }
+        }
+#endif
 
         private static double SampleGpuUtil()
         {

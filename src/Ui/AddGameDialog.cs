@@ -35,13 +35,12 @@ namespace PaviseApp
         private ListBox lst;
         private TextBox tbFilter;
         private Label lblInfo;
-        private PillButton btnAdd, btnDeep, btnAll, btnBrowse, btnRunning;
+        private PillButton btnAdd, btnAll, btnBrowse, btnRunning;
         private volatile bool closed;
         private volatile bool scanning;
         private volatile bool collectingRunning;
         private volatile bool probingGpu;
         private volatile bool refreshBusy;
-        private bool deepMode;
         private int dots;
         private System.Windows.Forms.Timer infoTimer;
         private System.Windows.Forms.Timer runningTimer;
@@ -68,6 +67,13 @@ namespace PaviseApp
             title.SetBounds(Theme.S(16), Theme.S(12), Theme.S(300), Theme.S(24));
             title.MouseDown += DragMove;
 
+            var lblScanHint = new Label();
+            lblScanHint.Text = Lang.T("scan.hint");
+            lblScanHint.ForeColor = Theme.Dim;
+            lblScanHint.BackColor = Theme.Bg;
+            lblScanHint.Font = Theme.UI(8.25f, false);
+            lblScanHint.SetBounds(Theme.S(16), Theme.S(42), Theme.S(588), Theme.S(36));
+
             var lblClose = new Label();
             lblClose.Text = "✕";
             lblClose.ForeColor = Theme.Dim;
@@ -76,15 +82,15 @@ namespace PaviseApp
             lblClose.Cursor = Cursors.Hand;
             lblClose.Click += delegate { DialogResult = DialogResult.Cancel; };
 
-            tbFilter = Theme.MakeTextBox(Theme.S(16), Theme.S(44), Theme.S(488));
+            tbFilter = Theme.MakeTextBox(Theme.S(16), Theme.S(88), Theme.S(488));
             tbFilter.TextChanged += delegate { Refill(); };
 
             btnAll = new PillButton(Lang.T("scan.all"));
-            btnAll.SetBounds(Theme.S(512), Theme.S(44), Theme.S(92), Theme.S(30));
+            btnAll.SetBounds(Theme.S(512), Theme.S(88), Theme.S(92), Theme.S(30));
             btnAll.Click += delegate { ToggleAll(); };
 
             var listWrap = new RoundPanel();
-            listWrap.SetBounds(Theme.S(16), Theme.S(84), Theme.S(588), Theme.S(392));
+            listWrap.SetBounds(Theme.S(16), Theme.S(128), Theme.S(588), Theme.S(348));
             listWrap.BackColor = Theme.Bg; listWrap.Fill = Theme.Card; listWrap.Border = Theme.Stroke; listWrap.Radius = Theme.S(12);
             listWrap.Padding = new Padding(Theme.S(6));
             lst = new TechListBox();
@@ -139,27 +145,23 @@ namespace PaviseApp
             lblInfo.AutoEllipsis = true;
 
             btnRunning = new PillButton(Lang.T("scan.running.btn"));
-            btnRunning.SetBounds(Theme.S(166), Theme.S(506), Theme.S(94), Theme.S(34));
+            btnRunning.SetBounds(Theme.S(16), Theme.S(506), Theme.S(122), Theme.S(34));
             btnRunning.Click += delegate { PickRunning(); };
 
             btnBrowse = new PillButton(Lang.T("scan.browse"));
-            btnBrowse.SetBounds(Theme.S(266), Theme.S(506), Theme.S(90), Theme.S(34));
+            btnBrowse.SetBounds(Theme.S(148), Theme.S(506), Theme.S(122), Theme.S(34));
             btnBrowse.Click += delegate { BrowseFile(); };
 
-            btnDeep = new PillButton(Lang.T("scan.deep"));
-            btnDeep.SetBounds(Theme.S(362), Theme.S(506), Theme.S(90), Theme.S(34));
-            btnDeep.Click += delegate { DeepScan(); };
-
             btnAdd = new PillButton(Lang.T("btn.add"), BtnKind.Primary);
-            btnAdd.SetBounds(Theme.S(458), Theme.S(506), Theme.S(74), Theme.S(34));
+            btnAdd.SetBounds(Theme.S(392), Theme.S(506), Theme.S(110), Theme.S(34));
             btnAdd.Click += delegate { Accept(); };
 
             var btnCancel = new PillButton(Lang.T("btn.cancel"));
-            btnCancel.SetBounds(Theme.S(538), Theme.S(506), Theme.S(66), Theme.S(34));
+            btnCancel.SetBounds(Theme.S(514), Theme.S(506), Theme.S(90), Theme.S(34));
             btnCancel.Click += delegate { DialogResult = DialogResult.Cancel; };
 
-            Controls.AddRange(new Control[] { title, lblClose, tbFilter, btnAll, listWrap, lblInfo, btnRunning, btnBrowse, btnDeep, btnAdd, btnCancel });
-            Load += delegate { StartTimers(); StartRunningCollect(true); StartScan(null); };
+            Controls.AddRange(new Control[] { title, lblScanHint, lblClose, tbFilter, btnAll, listWrap, lblInfo, btnRunning, btnBrowse, btnAdd, btnCancel });
+            Load += delegate { StartTimers(); StartRunningCollect(true); StartScan(); };
             FormClosed += delegate { closed = true; StopTimers(); };
             MouseDown += DragMove;
             KeyPreview = true;
@@ -289,7 +291,7 @@ namespace PaviseApp
             string stage = null;
             if (collectingRunning) stage = Lang.T("scan.stage.running");
             else if (probingGpu) stage = Lang.T("scan.stage.gpu");
-            else if (scanning) stage = Lang.T(deepMode ? "scan.busy.deep" : "scan.busy");
+            else if (scanning) stage = Lang.T("scan.busy");
 
             if (stage != null)
             {
@@ -371,7 +373,6 @@ namespace PaviseApp
                         if (string.IsNullOrEmpty(path) || !seen.Add(path)) continue;
                         string name = GameSessionDetector.ImageNameFromVerifiedPath(path);
                         if (!GameSessionDetector.IsLibraryCandidate(name, path, windowsRoot)) continue;
-                        if (GamePlatformCatalog.IsPlatformProcess(name, path)) continue;
                         pidByPath[path] = p.Id;
                         hits.Add(new ScanHit
                         {
@@ -406,12 +407,10 @@ namespace PaviseApp
             return closed;
         }
 
-        private void StartScan(string deepRoot)
+        private void StartScan()
         {
             if (scanning) return;
             scanning = true;
-            deepMode = deepRoot != null;
-            btnDeep.Enabled = false;
             UpdateInfoLabel();
 
             var worker = new Thread(delegate()
@@ -419,27 +418,13 @@ namespace PaviseApp
                 List<ScanHit> hits;
                 try
                 {
-                    hits = deepRoot == null
-                        ? GameScan.RunManifests(IsClosed)
-                        : GameScan.Run(deepRoot, IsClosed, null);
+                    hits = GameScan.RunManifests(IsClosed);
                 }
                 catch { hits = new List<ScanHit>(); }
-                Post(delegate { scanning = false; btnDeep.Enabled = true; Merge(hits, RowKind.Installed); });
+                Post(delegate { scanning = false; Merge(hits, RowKind.Installed); });
             });
             worker.IsBackground = true;
             worker.Start();
-        }
-
-        private void DeepScan()
-        {
-            using (var dlg = new FolderBrowserDialog())
-            {
-                dlg.Description = Lang.T("scan.deep.pick");
-                dlg.ShowNewFolderButton = false;
-                if (dlg.ShowDialog(this) != DialogResult.OK) return;
-                if (string.IsNullOrEmpty(dlg.SelectedPath)) return;
-                StartScan(dlg.SelectedPath);
-            }
         }
 
         private void PickRunning()

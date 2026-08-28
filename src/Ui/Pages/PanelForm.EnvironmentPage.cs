@@ -10,9 +10,9 @@ namespace PaviseApp
     internal partial class PanelForm
     {
         private Toggle swHags, swVbs, swGmGuard;
-        private Toggle swDevPower, swWindowedOpt, swCfgOff, swNagle, swNicLat;
+        private Toggle swDevPower, swWindowedOpt, swCfgOff;
         private Toggle swAccessKeys, swHidPower, swSpecMit, swTimerTick, swGlobalTimer;
-        private SettingCard cardVbs, cardWindowedOpt, cardSpecMit, cardNicLat;
+        private SettingCard cardVbs, cardWindowedOpt, cardSpecMit;
         private SettingCard cardAccessKeys, cardHidPower;
         private TechTabs envTabs;
         private DBPanel[] envTabPanels;
@@ -95,24 +95,6 @@ namespace PaviseApp
 
             swDevPower = MakeSwitch(DevicePowerTweak.EnabledByPavise, OnDevPowerToggle);
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.devpower"), Lang.T("set.devpower.n"), swDevPower, out cardH);
-            sy += cardH + 8;
-
-            bool nagleOwned = NagleTweak.EnabledByPavise || NagleTweak.HasResidue();
-            swNagle = MakeSwitch(nagleOwned, OnNagleToggle);
-            // 一个 TCP 接口都枚举不到就无处可写 已启用过的机器仍要留着关的路
-            // 便宜的判断放前面 已经启用过就不必再枚举一遍接口
-            swNagle.Enabled = nagleOwned || NagleTweak.HasWritableInterfaces();
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nagle"), Lang.T("set.nagle.n"), swNagle, out cardH);
-            sy += cardH + 8;
-
-            swNicLat = MakeSwitch(NicLatencyTweak.EnabledByPavise, OnNicLatToggle);
-            // 驱动没声明这两个 keyword 的机器点了也只能弹一句没找到 直接灰掉
-            //   写过的机器仍要留着关的路 所以已启用或有残留时照常可点
-            bool nicLatUsable = NicLatencyTweak.EnabledByPavise || NicLatencyTweak.HasResidue()
-                || NicLatencyTweak.QualifiedNicCount() > 0;
-            swNicLat.Enabled = nicLatUsable;
-            cardNicLat = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.niclat"),
-                Lang.T(nicLatUsable ? "set.niclat.n" : "set.niclat.none"), swNicLat, out cardH);
             sy += cardH + 8;
 
             scroll = envTabPanels[2]; sy = 2;
@@ -199,43 +181,6 @@ namespace PaviseApp
                 else DevicePowerTweak.Restore();
             });
             swDevPower.SetSilently(DevicePowerTweak.EnabledByPavise);
-        }
-
-        private void OnNagleToggle(object s, EventArgs e)
-        {
-            bool restoredState = NagleTweak.EnabledByPavise || NagleTweak.HasResidue();
-            if (!RequireElevationFor(swNagle, restoredState)) return;
-            bool wantOn = swNagle.Checked;
-            bool ok = IrqMutationBoundary.Run<bool>(delegate
-            {
-                return wantOn ? NagleTweak.Enable() : NagleTweak.Disable();
-            });
-            if (ok) PaviseDialog.Info(this, App.DisplayName, Lang.T(wantOn ? "nagle.on" : "nagle.off"));
-            else PaviseDialog.Warn(this, App.DisplayName, Lang.T("nagle.fail"));
-            swNagle.SetSilently(NagleTweak.EnabledByPavise || NagleTweak.HasResidue());
-        }
-
-        private void OnNicLatToggle(object s, EventArgs e)
-        {
-            if (!RequireElevationFor(swNicLat, NicLatencyTweak.EnabledByPavise)) return;
-            bool wantOn = swNicLat.Checked;
-            if (wantOn)
-            {
-                int qualified = 0;
-                bool ok = IrqMutationBoundary.Run<bool>(delegate
-                {
-                    return NicLatencyTweak.Enable(out qualified);
-                });
-                if (ok) PaviseDialog.Info(this, App.DisplayName, Lang.T("niclat.reboot"));
-                else if (qualified == 0) PaviseDialog.Info(this, App.DisplayName, Lang.T("niclat.none"));
-                else PaviseDialog.Warn(this, App.DisplayName, Lang.T("niclat.fail"));
-            }
-            else
-            {
-                if (!IrqMutationBoundary.Run<bool>(NicLatencyTweak.Disable))
-                    PaviseDialog.Warn(this, App.DisplayName, Lang.T("niclat.fail"));
-            }
-            swNicLat.SetSilently(NicLatencyTweak.EnabledByPavise);
         }
 
         private void OnGameModeGuardToggle(object s, EventArgs e)
@@ -451,9 +396,6 @@ namespace PaviseApp
             if (swVbs != null) swVbs.SetSilently(VbsTweak.DisabledByPavise);
             if (swGmGuard != null) swGmGuard.SetSilently(GameModeGuard.EnabledByPavise);
             if (swDevPower != null) swDevPower.SetSilently(DevicePowerTweak.EnabledByPavise);
-            if (swNagle != null)
-                swNagle.SetSilently(NagleTweak.EnabledByPavise || NagleTweak.HasResidue());
-            if (swNicLat != null) swNicLat.SetSilently(NicLatencyTweak.EnabledByPavise);
             if (swAccessKeys != null) swAccessKeys.SetSilently(AccessibilityKeysTweak.EnabledByPavise);
             if (swHidPower != null) swHidPower.SetSilently(HidPowerTweak.EnabledByPavise);
             if (swWindowedOpt != null)

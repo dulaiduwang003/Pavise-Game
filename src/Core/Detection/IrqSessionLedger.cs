@@ -35,6 +35,12 @@ namespace PaviseApp
         }
     }
 
+    internal enum IrqSessionExclusion
+    {
+        None, TooShort, MissingSystemMask, LostEvents, NoDrivers, DifferentBoot, DifferentTopology,
+        NoDuration
+    }
+
     internal sealed class IrqSessionRecord
     {
         public long StartUtcTicks;
@@ -47,25 +53,42 @@ namespace PaviseApp
         public long EventsLost;
         public long Unmapped;
         public readonly List<IrqDriverRecord> Drivers = new List<IrqDriverRecord>();
+        public long CoreLoadWindowTicks;
+        public readonly List<IrqCoreLoadRecord> CoreLoads = new List<IrqCoreLoadRecord>();
 
         public bool UsableForVerdict
         {
-            get
-            {
-                if (DurationSeconds < MinUsableSeconds || SystemMask == 0) return false;
-                if (EventsLost != 0) return false;
-                if (Drivers.Count == 0) return false;
-                // IRQ affinity 修改要重启才生效。跨 boot 复用旧局会让用户
-                // 重启后继续收到“还要挪”的假建议，所以必须在当前
-                // boot 重新积累足够对局。BootStamp 估算允许既有 5s 误差。
-                if (!IrqAffinityEngine.SameBoot(
-                        BootStamp, IrqAffinityEngine.BootStamp()))
-                    return false;
-                if (TopologyStamp.Length != 0
-                    && !string.Equals(TopologyStamp, CpuTopology.TopologyStamp(), StringComparison.Ordinal))
-                    return false;
-                return true;
-            }
+            get { return VerdictExclusion(null, null) == IrqSessionExclusion.None; }
+        }
+
+        // 判据与页内解释共享同一条路径；测试可传入固定上下文，不查询真实机器。
+        internal IrqSessionExclusion VerdictExclusion(string currentBoot, string currentTopology)
+        {
+            if (DurationSeconds < MinUsableSeconds) return IrqSessionExclusion.TooShort;
+            return CommonExclusion(currentBoot, currentTopology);
+        }
+
+        // 60 秒是建议样本门槛，不是展示门槛。小于 1 秒的记录仍保留在台账，
+        // 但 V3 只有整数秒，不能为它伪造一个 1 秒分母来算频率。
+        internal IrqSessionExclusion DisplayExclusion(string currentBoot, string currentTopology)
+        {
+            if (DurationSeconds <= 0) return IrqSessionExclusion.NoDuration;
+            return CommonExclusion(currentBoot, currentTopology);
+        }
+
+        private IrqSessionExclusion CommonExclusion(string currentBoot, string currentTopology)
+        {
+            if (SystemMask == 0) return IrqSessionExclusion.MissingSystemMask;
+            if (EventsLost != 0) return IrqSessionExclusion.LostEvents;
+            if (Drivers.Count == 0) return IrqSessionExclusion.NoDrivers;
+            // IRQ affinity 修改要重启才生效；不拿重启前的观测继续建议挪核。
+            if (!IrqAffinityEngine.SameBoot(BootStamp, currentBoot ?? IrqAffinityEngine.BootStamp()))
+                return IrqSessionExclusion.DifferentBoot;
+            if (!string.IsNullOrEmpty(TopologyStamp)
+                && !string.Equals(TopologyStamp, currentTopology ?? CpuTopology.TopologyStamp(),
+                    StringComparison.Ordinal))
+                return IrqSessionExclusion.DifferentTopology;
+            return IrqSessionExclusion.None;
         }
 
         internal const int MinUsableSeconds = 60;
@@ -74,7 +97,8 @@ namespace PaviseApp
     internal static class IrqSessionLedger
     {
         internal const string FileName = "Pavise.irq-sessions.dat";
-        private const string Header = "PAVISE_IRQ_SESSIONS_V3";
+        private const string Header = "PAVISE_IRQ_SESSIONS_V4";
+        private const string LegacyHeader = "PAVISE_IRQ_SESSIONS_V3";
         private const string ObsoleteHeader = "PAVISE_IRQ_SESSIONS_V2";
         internal const int KeepSessions = 12;
         internal const int VerdictWindow = 5;
@@ -141,26 +165,46 @@ namespace PaviseApp
 
         public static List<IrqSessionRecord> Load()
         {
+            string issue;
+            return Load(out issue);
+        }
+
+        public static List<IrqSessionRecord> Load(out string issue)
+        {
             lock (lk)
             {
                 bool safeToRewrite;
-                List<IrqSessionRecord> loaded = LoadLocked(out safeToRewrite);
+                List<IrqSessionRecord> loaded = LoadLocked(out safeToRewrite, out issue);
                 // 只要文件有一处解析不完整，就不能把前半截当成可靠历史参与裁决。
                 // Append 同样会拒绝覆盖，原文件完整保留给诊断或人工恢复。
                 return safeToRewrite ? loaded : new List<IrqSessionRecord>();
             }
         }
 
-        private static List<IrqSessionRecord> LoadLocked(out bool safeToRewrite)
+        private static List<IrqSessionRecord> LoadLocked(out bool safeToRewrite, out string issue)
         {
             safeToRewrite = true;
+            issue = "";
             var list = new List<IrqSessionRecord>();
-            string path = Path_();
-            if (path == null || !File.Exists(path)) return list;
+            string path;
+            try { path = Path_(); }
+            catch { safeToRewrite = false; issue = Lang.T("irq.ledger.readfailed"); return list; }
+            if (path == null)
+            {
+                safeToRewrite = false;
+                issue = Lang.T("irq.ledger.unbound");
+                return list;
+            }
             string[] lines;
             try { lines = File.ReadAllLines(path, StrictUtf8); }
-            catch { safeToRewrite = false; return list; }
-            if (lines.Length == 0) { safeToRewrite = false; return list; }
+            // File.Exists 会把权限错误也当成不存在；只有明确缺文件才算正常空历史。
+            catch (FileNotFoundException) { readOnlyFormat = false; return list; }
+            catch (DirectoryNotFoundException) { readOnlyFormat = false; return list; }
+            catch (DecoderFallbackException)
+            { safeToRewrite = false; issue = Lang.T("irq.ledger.corrupt"); return list; }
+            catch { safeToRewrite = false; issue = Lang.T("irq.ledger.readfailed"); return list; }
+            if (lines.Length == 0)
+            { safeToRewrite = false; issue = Lang.T("irq.ledger.corrupt"); return list; }
             string header = lines[0].Trim();
             if (string.Equals(header, ObsoleteHeader, StringComparison.Ordinal))
             {
@@ -170,12 +214,15 @@ namespace PaviseApp
                 try { File.Delete(path); removed = !File.Exists(path); } catch { }
                 readOnlyFormat = !removed;
                 safeToRewrite = removed;
+                issue = Lang.T("irq.ledger.obsolete");
                 return list;
             }
-            if (!string.Equals(header, Header, StringComparison.Ordinal))
+            bool legacy = string.Equals(header, LegacyHeader, StringComparison.Ordinal);
+            if (!legacy && !string.Equals(header, Header, StringComparison.Ordinal))
             {
                 readOnlyFormat = true;
                 safeToRewrite = false;
+                issue = Lang.T("irq.ledger.format");
                 return list;
             }
             readOnlyFormat = false;
@@ -224,23 +271,44 @@ namespace PaviseApp
                         if (!bucketsValid) throw new FormatException("invalid DPC buckets");
                         cur.Drivers.Add(d);
                     }
+                    else if (!legacy && p[0] == "L" && p.Length == 2 && cur != null
+                        && cur.CoreLoadWindowTicks == 0)
+                    {
+                        cur.CoreLoadWindowTicks = long.Parse(p[1], CultureInfo.InvariantCulture);
+                        if (cur.CoreLoadWindowTicks <= 0) throw new FormatException("invalid load window");
+                    }
+                    else if (!legacy && p[0] == "C" && p.Length == 5 && cur != null
+                        && cur.CoreLoadWindowTicks > 0 && cur.CoreLoads.Count < 64)
+                    {
+                        var load = new IrqCoreLoadRecord {
+                            Cpu = int.Parse(p[1], CultureInfo.InvariantCulture),
+                            AveragePercent = double.Parse(p[2], CultureInfo.InvariantCulture),
+                            ObservedTicks = long.Parse(p[3], CultureInfo.InvariantCulture),
+                            Samples = int.Parse(p[4], CultureInfo.InvariantCulture) };
+                        cur.CoreLoads.Add(load);
+                        if (!ValidCoreLoads(cur)) throw new FormatException("invalid core load");
+                    }
                     else safeToRewrite = false;
                 }
                 catch { safeToRewrite = false; }
             }
+            foreach (IrqSessionRecord record in list)
+                if (!ValidCoreLoads(record)) safeToRewrite = false;
+            if (!safeToRewrite) issue = Lang.T("irq.ledger.corrupt");
             return list;
         }
 
         public static bool Append(IrqSessionRecord rec)
         {
-            if (rec == null) return false;
+            if (rec == null || !ValidCoreLoads(rec)) return false;
             lock (lk)
             {
                 string path = Path_();
                 if (path == null) return false;
 
                 bool safeToRewrite;
-                List<IrqSessionRecord> all = LoadLocked(out safeToRewrite);
+                string issue;
+                List<IrqSessionRecord> all = LoadLocked(out safeToRewrite, out issue);
                 if (!safeToRewrite || readOnlyFormat) return false;
                 all.Add(rec);
                 while (all.Count > KeepSessions) all.RemoveAt(0);
@@ -262,6 +330,16 @@ namespace PaviseApp
                         s.GameMask.ToString("X", CultureInfo.InvariantCulture),
                         s.SystemMask.ToString("X", CultureInfo.InvariantCulture)
                     }));
+                    if (s.CoreLoadWindowTicks > 0)
+                    {
+                        sb.Add("L|" + s.CoreLoadWindowTicks.ToString(CultureInfo.InvariantCulture));
+                        foreach (IrqCoreLoadRecord load in s.CoreLoads)
+                            sb.Add(string.Join("|", new[] { "C",
+                                load.Cpu.ToString(CultureInfo.InvariantCulture),
+                                load.AveragePercent.ToString("R", CultureInfo.InvariantCulture),
+                                load.ObservedTicks.ToString(CultureInfo.InvariantCulture),
+                                load.Samples.ToString(CultureInfo.InvariantCulture) }));
+                    }
                     foreach (IrqDriverRecord d in s.Drivers)
                         sb.Add(string.Join("|", new[]
                         {
@@ -297,6 +375,24 @@ namespace PaviseApp
             {
                 try { if (File.Exists(temp)) File.Delete(temp); } catch { }
             }
+        }
+
+        internal static bool ValidCoreLoads(IrqSessionRecord record)
+        {
+            if (record == null || record.CoreLoadWindowTicks < 0 || record.CoreLoads.Count > 64) return false;
+            if (record.CoreLoadWindowTicks > 0 && Math.Min(int.MaxValue,
+                record.CoreLoadWindowTicks / TimeSpan.TicksPerSecond) != record.DurationSeconds) return false;
+            ulong seen = 0;
+            foreach (IrqCoreLoadRecord load in record.CoreLoads)
+            {
+                if (load == null || load.Cpu < 0 || load.Cpu >= 64
+                    || (record.SystemMask & (1UL << load.Cpu)) == 0 || (seen & (1UL << load.Cpu)) != 0
+                    || double.IsNaN(load.AveragePercent) || double.IsInfinity(load.AveragePercent)
+                    || load.AveragePercent < 0 || load.AveragePercent > 100 || load.Samples <= 0
+                    || load.ObservedTicks <= 0 || load.ObservedTicks > record.CoreLoadWindowTicks) return false;
+                seen |= 1UL << load.Cpu;
+            }
+            return true;
         }
 
         public static void Clear()

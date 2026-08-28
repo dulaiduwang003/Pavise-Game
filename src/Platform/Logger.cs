@@ -15,6 +15,26 @@ namespace PaviseApp
         public static string LogPath;
         private static long knownLength = -1;
         private static string knownPath;
+        private static bool writesSuspendedForReset;
+
+        // The same lock drains append/rotation/clear work before reset removes files.
+        // Tail remains readable; only a new process normally permits writes again.
+        internal static void SuspendWritesForReset()
+        {
+            lock (lk) writesSuspendedForReset = true;
+        }
+
+#if PAVISE_SELFTEST
+        internal static void ResetWriteBarrierForTest()
+        {
+            lock (lk)
+            {
+                writesSuspendedForReset = false;
+                knownLength = -1;
+                knownPath = null;
+            }
+        }
+#endif
 
         public static void Log(string msg)
         {
@@ -22,6 +42,7 @@ namespace PaviseApp
             {
                 lock (lk)
                 {
+                    if (writesSuspendedForReset) return;
                     string line = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
                         + "  " + msg + Environment.NewLine;
                     if (knownLength < 0 || !string.Equals(knownPath, LogPath, StringComparison.OrdinalIgnoreCase))
@@ -49,7 +70,7 @@ namespace PaviseApp
                     knownLength += Encoding.UTF8.GetByteCount(line);
                 }
             }
-            catch { knownLength = -1; }
+            catch { lock (lk) knownLength = -1; }
         }
 
         public static void LogFailure(string context, Exception error)
@@ -59,9 +80,31 @@ namespace PaviseApp
             Log(detail);
         }
 
+        internal static void AppendCrash(string path, string details)
+        {
+            try
+            {
+                lock (lk)
+                {
+                    if (writesSuspendedForReset) return;
+                    File.AppendAllText(path, details);
+                }
+            }
+            catch { }
+        }
+
         public static void Clear()
         {
-            try { lock (lk) { File.WriteAllText(LogPath, ""); knownLength = 0; knownPath = LogPath; } }
+            try
+            {
+                lock (lk)
+                {
+                    if (writesSuspendedForReset) return;
+                    File.WriteAllText(LogPath, "");
+                    knownLength = 0;
+                    knownPath = LogPath;
+                }
+            }
             catch { lock (lk) knownLength = -1; }
         }
 

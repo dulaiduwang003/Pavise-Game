@@ -14,14 +14,25 @@ namespace PaviseApp
 #if PAVISE_SELFTEST
         internal static Func<List<string>> RestoreHook;
         internal static bool SkipRegistryDelete;
+        internal static Func<bool> DeleteRegistryHook;
 #endif
 
         private static List<string> RestoreOrHook(string dataDir)
         {
+            try
+            {
+                List<string> result;
 #if PAVISE_SELFTEST
-            if (RestoreHook != null) return RestoreHook();
+                if (RestoreHook != null) result = RestoreHook();
+                else
 #endif
-            return RestoreEverything(dataDir);
+                    result = RestoreEverything(dataDir);
+                return result ?? new List<string> { "系统还原未返回确认结果" };
+            }
+            catch (Exception ex)
+            {
+                return new List<string> { "系统还原异常: " + ex.GetType().Name };
+            }
         }
 
         public static List<string> RestorePersistent(string dataDir)
@@ -31,15 +42,26 @@ namespace PaviseApp
 
         private static bool DeleteRegistryTree()
         {
-#if PAVISE_SELFTEST
-            if (SkipRegistryDelete) return true;
-#endif
             try
             {
+#if PAVISE_SELFTEST
+                if (DeleteRegistryHook != null) return DeleteRegistryHook();
+                if (SkipRegistryDelete) return true;
+#endif
                 using (RegistryKey parent = Registry.CurrentUser.OpenSubKey(@"Software", true))
-                    if (parent != null && parent.OpenSubKey("Pavise") != null)
-                        parent.DeleteSubKeyTree("Pavise", false);
-                return Registry.CurrentUser.OpenSubKey(RegKey) == null;
+                {
+                    if (parent != null)
+                    {
+                        bool exists;
+                        // A live probe handle can keep a deleted registry key pending.
+                        // Close it before deletion, then reopen separately to verify.
+                        using (RegistryKey probe = parent.OpenSubKey("Pavise"))
+                            exists = probe != null;
+                        if (exists) parent.DeleteSubKeyTree("Pavise", false);
+                    }
+                }
+                using (RegistryKey remaining = Registry.CurrentUser.OpenSubKey(RegKey))
+                    return remaining == null;
             }
             catch { return false; }
         }
@@ -48,9 +70,19 @@ namespace PaviseApp
         {
             IrqSessionLedger.FileName,
             "Pavise.games.txt", "Pavise.whitelist.txt", "Pavise.targets.txt",
-            "Pavise.autoignore.txt", GameProfileStore.FileName,
+            "Pavise.autoignore.txt", GameProfileStore.FileName, RendererObservationStore.FileName,
             "Pavise.log", "Pavise.log.old", "crash.log", "Pavise.preview.log",
-            "Pavise.freeze.state", SuppressionCore.StateFileName
+            "Pavise.freeze.state", SuppressionCore.StateFileName, "backdrop.img"
+        };
+
+        private static readonly string[] AtomicDataFiles =
+        {
+            "Pavise.whitelist.txt", "Pavise.autoignore.txt", SuppressionCore.StateFileName
+        };
+
+        private static readonly string[] UniqueTempDataFiles =
+        {
+            GameProfileStore.FileName, IrqSessionLedger.FileName, RendererObservationStore.FileName
         };
 
         private static void Step(string name, Func<bool> restore, List<string> failed)
@@ -102,11 +134,18 @@ namespace PaviseApp
             Step(Lang.T("t.legacypurge.19"), AdlxTweaks.PurgeResidue, failed);
             Step(Lang.T("t.legacypurge.21"), MsiModeTweak.Restore, failed);
             Step(Lang.T("t.legacypurge.22"), IfeoBoost.RestoreAll, failed);
+            Step("RenderLane", delegate
+            {
+                RenderLane.HealFromCrash();
+                return !RenderLane.HasResidue();
+            }, failed);
+            Step("VramShield 显存预留未确认还原：请先退出仍在运行的游戏，再重启重试", delegate
+            {
+                return VramShield.HealFromCrash() && !VramShield.HasResidue();
+            }, failed);
 
             StepIf("HAGS", HagsTweak.HasResidue, HagsTweak.Restore, failed);
-            StepIf("TCP Nagle", NagleTweak.HasResidue, NagleTweak.Restore, failed);
             StepIf("FSO", FsoTweak.HasResidue, FsoTweak.RestoreAll, failed);
-            StepIf("NIC latency", NicLatencyTweak.HasResidue, NicLatencyTweak.Restore, failed);
             StepIf("FTH", delegate { return FthTweak.RepairedByPavise; }, FthTweak.Restore, failed);
             StepIf("CFG", delegate { return CfgOffTweak.Enabled || CfgOffTweak.HasResidue(); },
                 CfgOffTweak.Disable, failed);
@@ -133,40 +172,64 @@ namespace PaviseApp
             Step(Lang.T("t.legacypurge.28"), delegate
             {
                 string journal = Path.Combine(dataDir, SuppressionCore.StateFileName);
-                try { CrashGuard.HealFromCrash(); } catch { }
-                try { SuppressionCore.HealFromCrash(journal); } catch { }
-                if (CrashGuard.HasPending() || SuppressionCore.HasPendingJournalFile(journal))
-                    Logger.Log(Lang.T("log.legacypurge.45"));
-                return true;
+                return RestoreProcessResidue(CrashGuard.HealFromCrash,
+                    delegate { SuppressionCore.HealFromCrash(journal); }, CrashGuard.HasPending,
+                    delegate { return SuppressionCore.HasPendingJournalFile(journal); });
             }, failed);
 
             return failed;
         }
 
-        private static int DeleteDataFiles(string dataDir)
+        private static bool RestoreProcessResidue(Action healBoost, Action healSuppression,
+            Func<bool> boostPending, Func<bool> suppressionPending)
         {
-            int files = 0;
-            foreach (string name in DataFiles)
+            healBoost();
+            healSuppression();
+            bool boost = boostPending();
+            bool suppression = suppressionPending();
+            if (!boost && !suppression) return true;
+            Logger.Log(Lang.T("log.legacypurge.45"));
+            return false;
+        }
+
+#if PAVISE_SELFTEST
+        internal static bool ProbeProcessResidueRestore(Action healBoost, Action healSuppression,
+            Func<bool> boostPending, Func<bool> suppressionPending)
+        {
+            return RestoreProcessResidue(healBoost, healSuppression, boostPending, suppressionPending);
+        }
+#endif
+
+        private static bool IsOwnedDataName(string name)
+        {
+            foreach (string owned in DataFiles)
+                if (string.Equals(name, owned, StringComparison.OrdinalIgnoreCase)) return true;
+            foreach (string owned in AtomicDataFiles)
             {
-                try
-                {
-                    string p = Path.Combine(dataDir, name);
-                    if (File.Exists(p)) { File.Delete(p); files++; }
-                }
-                catch { }
+                if (string.Equals(name, owned + ".tmp", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(name, owned + ".stale.bak", StringComparison.OrdinalIgnoreCase)) return true;
             }
-            foreach (string pattern in new[] { "Pavise.*.log", "crash.*.log" })
+            foreach (string owned in UniqueTempDataFiles)
             {
-                try
-                {
-                    foreach (string p in Directory.GetFiles(dataDir, pattern))
-                    {
-                        try { File.Delete(p); files++; } catch { }
-                    }
-                }
-                catch { }
+                string prefix = owned + ".";
+                if (name.Length != prefix.Length + 32 + 4
+                    || !name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                    || !name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase)) continue;
+                Guid ignored;
+                if (Guid.TryParseExact(name.Substring(prefix.Length, 32), "N", out ignored)) return true;
             }
-            return files;
+            // TaskHelper owns exactly this temporary startup-task XML format.
+            // Do not broaden portable cleanup to user-created XML files.
+            if (name.Length == 7 + 32 + 4
+                && name.StartsWith("Pavise_", StringComparison.OrdinalIgnoreCase)
+                && name.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+            {
+                Guid ignored;
+                if (Guid.TryParseExact(name.Substring(7, 32), "N", out ignored)) return true;
+            }
+            return (name.StartsWith("Pavise.", StringComparison.OrdinalIgnoreCase)
+                    || name.StartsWith("crash.", StringComparison.OrdinalIgnoreCase))
+                && name.EndsWith(".log", StringComparison.OrdinalIgnoreCase);
         }
 
         // 只认 %AppData%\Pavise 这一个目录 别的一概不整树删
@@ -194,61 +257,268 @@ namespace PaviseApp
             return string.Equals(x, y, StringComparison.OrdinalIgnoreCase);
         }
 
-        // 逐层删除，不用 AllDirectories：数据目录里即使被塞进 junction/symlink，
-        // 也只摘链接本身，绝不能跟进去删掉目录外的文件。
-        internal static int DeleteDataTree(string dir)
+        private static bool TryAttributes(string path, out FileAttributes attributes,
+            out bool exists, out string error)
         {
-            return DeleteDataTreeLevel(dir, true);
-        }
-
-        private static int DeleteDataTreeLevel(string dir, bool deleteSelf)
-        {
-            int files = 0;
+            attributes = 0;
+            exists = false;
+            error = null;
             try
             {
-                FileAttributes rootAttributes = File.GetAttributes(dir);
-                if ((rootAttributes & FileAttributes.ReparsePoint) != 0)
+                attributes = File.GetAttributes(path);
+                exists = true;
+                return true;
+            }
+            catch (FileNotFoundException) { return true; }
+            catch (DirectoryNotFoundException) { return true; }
+            catch (Exception ex)
+            {
+                error = path + " (" + ex.GetType().Name + ")";
+                return false;
+            }
+        }
+
+        private static bool TryDataRoot(string dir, out string root, out bool exists, out string error)
+        {
+            root = null;
+            exists = false;
+            error = null;
+            try
+            {
+                bool absoluteDrive = !string.IsNullOrEmpty(dir) && dir.Length >= 3 && dir[1] == ':'
+                    && (dir[2] == Path.DirectorySeparatorChar || dir[2] == Path.AltDirectorySeparatorChar);
+                bool absoluteUnc = !string.IsNullOrEmpty(dir) && dir.StartsWith(@"\\", StringComparison.Ordinal);
+                if (string.IsNullOrWhiteSpace(dir) || (!absoluteDrive && !absoluteUnc))
                 {
-                    try { Directory.Delete(dir, false); } catch { }
-                    return 0;
+                    error = "数据目录不是明确的绝对路径";
+                    return false;
                 }
+                root = Path.GetFullPath(dir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                if (Same(root, Path.GetPathRoot(root)))
+                {
+                    error = "拒绝清理磁盘根目录";
+                    return false;
+                }
+                FileAttributes attributes;
+                if (!TryAttributes(root, out attributes, out exists, out error)) return false;
+                if (!exists) return true;
+                if ((attributes & FileAttributes.Directory) == 0)
+                {
+                    error = "数据路径不是目录: " + root;
+                    return false;
+                }
+                if ((attributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    error = "拒绝清理重解析点数据目录: " + root;
+                    return false;
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = "数据路径校验失败: " + ex.GetType().Name;
+                return false;
+            }
+        }
 
-                string[] entries;
-                try { entries = Directory.GetFileSystemEntries(dir); }
-                catch { entries = new string[0]; }
+        private static void AddFailure(List<string> failures, string detail)
+        {
+            if (failures.Count < 8) failures.Add(detail);
+            else if (failures.Count == 8) failures.Add("另有未能清理的项目");
+        }
 
-                foreach (string p in entries)
+        // Verify every parent beneath the accepted root before touching a child.
+        // Enumeration is one level at a time; directory links are never followed.
+        private static bool CheckChildParents(string root, string path, out string error)
+        {
+            error = null;
+            try
+            {
+                string full = Path.GetFullPath(path);
+                if (!Same(full, root)
+                    && !full.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                {
+                    error = "拒绝越界路径: " + path;
+                    return false;
+                }
+                string current = Same(full, root) ? root : Path.GetDirectoryName(full);
+                while (!string.IsNullOrEmpty(current))
                 {
                     FileAttributes attributes;
-                    try { attributes = File.GetAttributes(p); }
-                    catch { continue; }
-
-                    bool isDirectory = (attributes & FileAttributes.Directory) != 0;
-                    bool isReparsePoint = (attributes & FileAttributes.ReparsePoint) != 0;
-                    if (isDirectory && !isReparsePoint)
+                    bool exists;
+                    if (!TryAttributes(current, out attributes, out exists, out error)) return false;
+                    if (exists && ((attributes & FileAttributes.Directory) == 0
+                        || (attributes & FileAttributes.ReparsePoint) != 0))
                     {
-                        files += DeleteDataTreeLevel(p, true);
-                        continue;
+                        error = "数据目录结构已改变: " + current;
+                        return false;
                     }
-
-                    if (isDirectory)
-                    {
-                        try { Directory.Delete(p, false); } catch { }
-                        continue;
-                    }
-
-                    try { File.SetAttributes(p, FileAttributes.Normal); } catch { }
-                    try { File.Delete(p); files++; } catch { }
+                    if (Same(current, root)) return true;
+                    current = Path.GetDirectoryName(current);
                 }
+                error = "无法核对数据目录边界: " + path;
+                return false;
+            }
+            catch (Exception ex)
+            {
+                error = "数据目录边界校验失败: " + ex.GetType().Name;
+                return false;
+            }
+        }
 
-                if (deleteSelf)
+        private static void DeleteDataFile(string root, string path, ref int files, List<string> failures)
+        {
+            string error;
+            if (!CheckChildParents(root, path, out error)) { AddFailure(failures, error); return; }
+            FileAttributes attributes;
+            bool exists;
+            if (!TryAttributes(path, out attributes, out exists, out error)) { AddFailure(failures, error); return; }
+            if (!exists) return;
+            if ((attributes & FileAttributes.Directory) != 0)
+            {
+                AddFailure(failures, "预期文件却发现目录，已保留: " + path);
+                return;
+            }
+            try
+            {
+                // Setting attributes through a file symlink could modify its target.
+                if ((attributes & (FileAttributes.ReadOnly | FileAttributes.ReparsePoint)) == FileAttributes.ReadOnly)
+                    File.SetAttributes(path, attributes & ~FileAttributes.ReadOnly);
+                File.Delete(path);
+            }
+            catch (Exception ex) { AddFailure(failures, path + " (" + ex.GetType().Name + ")"); return; }
+            if (!TryAttributes(path, out attributes, out exists, out error)) AddFailure(failures, error);
+            else if (exists) AddFailure(failures, "文件仍存在: " + path);
+            else files++;
+        }
+
+        private static bool DeleteDataFiles(string root, out int files, out string error)
+        {
+            files = 0;
+            error = null;
+            var failures = new List<string>();
+            string normalized;
+            bool exists;
+            if (!TryDataRoot(root, out normalized, out exists, out error)) return false;
+            if (!exists) return true;
+            try
+            {
+                foreach (string entry in Directory.GetFileSystemEntries(normalized))
+                    if (IsOwnedDataName(Path.GetFileName(entry))) DeleteDataFile(normalized, entry, ref files, failures);
+            }
+            catch (Exception ex) { AddFailure(failures, normalized + " (" + ex.GetType().Name + ")"); }
+
+            // Do not infer success from Delete calls. Detect locks, denied access,
+            // directories using owned filenames, and concurrent recreation.
+            string remainingRoot;
+            string probeError;
+            if (!TryDataRoot(normalized, out remainingRoot, out exists, out probeError)) AddFailure(failures, probeError);
+            else if (exists)
+            {
+                try
                 {
-                    try { File.SetAttributes(dir, rootAttributes & ~FileAttributes.ReadOnly); } catch { }
-                    try { Directory.Delete(dir, false); } catch { }
+                    foreach (string entry in Directory.GetFileSystemEntries(remainingRoot))
+                        if (IsOwnedDataName(Path.GetFileName(entry))) AddFailure(failures, "残留: " + entry);
+                }
+                catch (Exception ex) { AddFailure(failures, remainingRoot + " (" + ex.GetType().Name + ")"); }
+            }
+            error = failures.Count == 0 ? null : string.Join("; ", failures.ToArray());
+            return failures.Count == 0;
+        }
+
+        // The caller still decides whether an entire directory is owned. This
+        // helper rejects roots/links, and reports residuals rather than pretending
+        // that a partial best-effort deletion was a reset.
+        internal static bool TryDeleteDataTree(string dir, out int files, out string error)
+        {
+            files = 0;
+            string root;
+            bool exists;
+            if (!TryDataRoot(dir, out root, out exists, out error)) return false;
+            foreach (string protectedRoot in new[]
+            {
+                Path.GetTempPath(), AppDomain.CurrentDomain.BaseDirectory,
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                Environment.GetFolderPath(Environment.SpecialFolder.Windows)
+            })
+            {
+                if (!string.IsNullOrEmpty(protectedRoot) && Same(root, protectedRoot))
+                {
+                    error = "拒绝整树删除公共目录: " + root;
+                    return false;
                 }
             }
-            catch { }
+            if (!exists) return true;
+            var failures = new List<string>();
+            DeleteDataTreeLevel(root, root, ref files, failures);
+            FileAttributes remainingAttributes;
+            string probeError;
+            if (!TryAttributes(root, out remainingAttributes, out exists, out probeError)) AddFailure(failures, probeError);
+            else if (exists) AddFailure(failures, "数据目录仍存在: " + root);
+            error = failures.Count == 0 ? null : string.Join("; ", failures.ToArray());
+            return failures.Count == 0;
+        }
+
+        internal static int DeleteDataTree(string dir)
+        {
+            int files;
+            string error;
+            TryDeleteDataTree(dir, out files, out error);
             return files;
+        }
+
+        private static void DeleteDataTreeLevel(string root, string dir, ref int files, List<string> failures)
+        {
+            string error;
+            if (!CheckChildParents(root, dir, out error)) { AddFailure(failures, error); return; }
+            FileAttributes attributes;
+            bool exists;
+            if (!TryAttributes(dir, out attributes, out exists, out error)) { AddFailure(failures, error); return; }
+            if (!exists) return;
+            if ((attributes & FileAttributes.Directory) == 0)
+            {
+                AddFailure(failures, "数据目录结构已改变: " + dir);
+                return;
+            }
+            // The root was rejected above if it is a link. Child links are only
+            // removed themselves, using non-recursive deletion.
+            if ((attributes & FileAttributes.ReparsePoint) == 0)
+            {
+                try
+                {
+                    foreach (string entry in Directory.GetFileSystemEntries(dir))
+                    {
+                        FileAttributes childAttributes;
+                        if (!TryAttributes(entry, out childAttributes, out exists, out error))
+                        { AddFailure(failures, error); continue; }
+                        if (!exists) continue;
+                        if ((childAttributes & FileAttributes.Directory) != 0)
+                            DeleteDataTreeLevel(root, entry, ref files, failures);
+                        else DeleteDataFile(root, entry, ref files, failures);
+                    }
+                }
+                catch (Exception ex) { AddFailure(failures, dir + " (" + ex.GetType().Name + ")"); }
+            }
+            if (!CheckChildParents(root, dir, out error)) { AddFailure(failures, error); return; }
+            if (!TryAttributes(dir, out attributes, out exists, out error)) { AddFailure(failures, error); return; }
+            if (!exists) return;
+            if ((attributes & FileAttributes.Directory) == 0)
+            {
+                AddFailure(failures, "数据目录结构已改变: " + dir);
+                return;
+            }
+            try
+            {
+                // Never change attributes on a directory link's external target.
+                if ((attributes & (FileAttributes.ReadOnly | FileAttributes.ReparsePoint)) == FileAttributes.ReadOnly)
+                    File.SetAttributes(dir, attributes & ~FileAttributes.ReadOnly);
+                Directory.Delete(dir, false);
+            }
+            catch (Exception ex) { AddFailure(failures, dir + " (" + ex.GetType().Name + ")"); }
         }
 
         public static bool WipeAll(string dataDir, bool includeSettings, string why,
@@ -256,29 +526,49 @@ namespace PaviseApp
         {
             files = 0;
             unrestored = null;
+            string root;
+            bool exists;
+            string error;
+            if (!TryDataRoot(dataDir, out root, out exists, out error))
+            {
+                unrestored = "数据目录校验失败: " + error;
+                return false;
+            }
             Logger.Log(why + Lang.T("log.legacypurge.37"));
 
-            List<string> failed = RestoreOrHook(dataDir);
+            List<string> failed = RestoreOrHook(root);
             if (failed.Count > 0)
             {
-                unrestored = string.Join(" ", failed.ToArray());
+                unrestored = "系统还原未完成: " + string.Join(" ", failed.ToArray());
                 Logger.Log(why + Lang.T("log.legacypurge.38") + failed.Count + Lang.T("log.legacypurge.31") + unrestored
                     + Lang.T("log.legacypurge.39"));
                 return false;
             }
 
-            files = DeleteDataFiles(dataDir);
-            bool regCleared = includeSettings && DeleteRegistryTree();
-            bool wipeDir = includeSettings && IsRoamingDataDir(dataDir);
-
-            // 这条得赶在摘目录之前落盘 目录没了 AppendAllText 直接抛 DirectoryNotFound
-            //   摘完就不再补日志了 补一行等于把整个目录重新建出来 违背清除的本意
-            Logger.Log(why + Lang.T("log.legacypurge.40") + files + Lang.T("log.legacypurge.34")
-                + (includeSettings ? regCleared ? Lang.T("log.legacypurge.41") : Lang.T("log.legacypurge.42") : Lang.T("log.legacypurge.43"))
-                + (wipeDir ? Lang.T("log.legacypurge.46") : ""));
-
-            if (wipeDir) files += DeleteDataTree(dataDir);
-            return !includeSettings || regCleared;
+            bool wipeDir = includeSettings && IsRoamingDataDir(root);
+            // Last log before deletion. In a portable directory even a single
+            // post-delete line would recreate Pavise.log and invalidate the reset.
+            Logger.Log(why + " 系统还原已确认，开始清理本机数据");
+            if (includeSettings)
+            {
+                // Successful recovery is the last writer of persistent originals.
+                // Late UI callbacks must not recreate either store after deletion.
+                Settings.SuspendWritesForReset();
+                Logger.SuspendWritesForReset();
+            }
+            bool cleared = wipeDir ? TryDeleteDataTree(root, out files, out error)
+                : DeleteDataFiles(root, out files, out error);
+            if (!cleared)
+            {
+                unrestored = "数据清理未完成，注册表设置已保留: " + error;
+                return false;
+            }
+            if (includeSettings && !DeleteRegistryTree())
+            {
+                unrestored = @"注册表清理未完成: HKCU\Software\Pavise";
+                return false;
+            }
+            return true;
         }
     }
 }

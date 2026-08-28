@@ -51,7 +51,6 @@ namespace PaviseApp
         private PowerButton powerButton;
         private PowerFlyout powerFlyout;
         private ModePickerPanel modeFlyout;
-        private AdvancedNavPanel advancedPanel;
         private PerformancePreset visualMode;
         private bool visualEnabled;
         private bool modeVisualInitialized;
@@ -67,6 +66,7 @@ namespace PaviseApp
         private Icon appIcon;
         public bool RealExit;
         public Action ExitApp;
+        public Action ResetApp;
 
         private DBPanel root;
         private System.Windows.Forms.Timer fitTimer;
@@ -83,6 +83,7 @@ namespace PaviseApp
         public PanelForm(Tamer t, GameMode gm, Icon icon, bool isElevated)
         {
             tamer = t; gameMode = gm; elevated = isElevated; appIcon = (Icon)icon.Clone();
+            lastAdvancedPage = LoadLastAdvancedPage();
             visualMode = gameMode.ActivePreset; visualEnabled = gameMode.Enabled;
             Theme.SetMode(visualMode, false);
             BuildUi(appIcon);
@@ -128,21 +129,9 @@ namespace PaviseApp
             Font = Theme.UI(9.5f, false);
             AttachFormFrame();
 
-            nav = new NavRail(
-                new[] { Lang.T("nav.overview"), Lang.T("nav.library"), Lang.T("nav.policy"),
-                        Lang.T("v14.anticheat"), Lang.T("nav.graphics"), Lang.T("nav.env"), Lang.T("v20.nav.report"),
-                        Lang.T("nav.log"), Lang.T("nav.set"), Lang.T("nav.about"), Lang.T("nav.white"),
-                        Lang.T("nav.irq") },
-                new[] { "game", "tiles", "settings", "acshield", "gpu", "chip", "chart", "log", "gear", "info", "white",
-                        "chip" },
-                new[] { (int)PageId.Overview, (int)PageId.Library, (int)PageId.Whitelist,
-                        (int)PageId.Audit, (int)PageId.Log,
-                        (int)PageId.Settings, (int)PageId.About },
-                new[] { 5 }, new[] { "" }, 0);
-            AssertNavMatchesPageIds(nav);
-            nav.SetBounds(0, 0, Theme.S(RailW), Theme.S(WinH));
-            nav.SelectionChanged = ShowPage;
-            nav.SetMode(visualMode, visualEnabled);
+            BuildNavigation();
+            pageTabPanels.Clear();
+            tabScrollPositions.Clear();
 
             var topBar = new WorkspacePanel();
             topBar.SetBounds(Theme.S(RailW), 0, Theme.S(WinW - RailW), Theme.S(TopH));
@@ -230,12 +219,7 @@ namespace PaviseApp
             root.Controls.Add(pageGameConfig);
             root.Controls.Add(nav);
 
-            // 高级页面隐藏整条左侧导航 左上角只留一个返回 页面居中占满余下宽度
-            advBackBar = new AdvancedBackBar();
-            advBackBar.SetBounds(0, 0, Theme.S(RailW), Theme.S(TopH));
-            advBackBar.Visible = false;
-            advBackBar.BackRequested = delegate { nav.Select((int)PageId.Overview); };
-            root.Controls.Add(advBackBar);
+            root.Controls.Add(tuningNav);
 
             modeFlyout = new ModePickerPanel();
             modeFlyout.SetBounds(Theme.S(WinW - 420), Theme.S(TopH + 8), Theme.S(396), Theme.S(356));
@@ -259,19 +243,6 @@ namespace PaviseApp
             searchFlyout.Dismiss = delegate { SetSearchFlyout(false); };
             root.Controls.Add(searchFlyout);
             searchFlyout.BringToFront();
-
-            advancedPanel = new AdvancedNavPanel(
-                new[] { Lang.T("nav.policy"), Lang.T("v14.anticheat"),
-                        Lang.T("nav.graphics"), Lang.T("nav.env"), Lang.T("nav.irq") },
-                new[] { "settings", "acshield", "gpu", "chip", "chip" },
-                new[] { (int)PageId.Policy, (int)PageId.AntiCheat,
-                        (int)PageId.Graphics, (int)PageId.Environment, (int)PageId.Interrupt });
-            advancedPanel.SetBounds(Theme.S(RailW + (PageW - 720) / 2), Theme.S(TopH + 148), Theme.S(720), Theme.S(298));
-            advancedPanel.Visible = false;
-            advancedPanel.Chosen = ChooseAdvancedTarget;
-            advancedPanel.Dismiss = delegate { SetAdvancedPanel(false); };
-            root.Controls.Add(advancedPanel);
-            advancedPanel.BringToFront();
 
             Controls.Add(root);
             CenterRoot();
@@ -430,10 +401,11 @@ namespace PaviseApp
 
         private void ShowPage(int index)
         {
+            if (index < 0 || index >= pages.Length || pages[index] == null) return;
+            SavePagePosition(curPage);
             SetModeFlyout(false);
             SetSearchFlyout(false);
             SetPowerFlyout(false);
-            SetAdvancedPanel(false);
             if (pageGameConfig != null && pageGameConfig.Visible)
             {
                 pageGameConfig.Visible = false;
@@ -446,13 +418,24 @@ namespace PaviseApp
             curPage = page;
             bool advanced = IsAdvancedPage(index);
             nav.Visible = !advanced;
-            if (advBackBar != null) advBackBar.Visible = advanced;
+            tuningNav.Visible = advanced;
+            if (advanced)
+            {
+                tuningNav.SelectSilently(index);
+                if (lastAdvancedPage != index)
+                {
+                    lastAdvancedPage = index;
+                    Settings.SaveStr(LastAdvancedPageKey, index.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                }
+            }
+            else mainReturnPage = index;
             SyncGuardVeils();
-            // 高级页整条导航都不在 页面居中吃掉腾出来的宽度
-            pageBaseLeft = advanced ? Theme.S(RailW / 2) : Theme.S(RailW);
+            // 两级导航占用同一条侧栏，切分类无需退回概览。
+            pageBaseLeft = Theme.S(RailW);
             page.Left = pageBaseLeft + Theme.S(16);
             pageSlide.Speed = 0.26f; pageSlide.Set(1f); pageSlide.To(0f);
             SlideInActiveTab(page);
+            RestorePagePosition(index);
             if (UiActive) UiClock.Wake();
             NotifyPageActivation();
         }
@@ -575,6 +558,9 @@ namespace PaviseApp
         private void SyncUiActivity()
         {
             bool next = ShouldRunUi(IsHandleCreated && !IsDisposed && Visible, WindowState);
+#if PAVISE_SELFTEST
+            if (SuppressUiWorkersForTest) next = false;
+#endif
             if (uiActivityKnown && uiActive == next) return;
 
             uiActivityKnown = true;
@@ -635,18 +621,14 @@ namespace PaviseApp
             SetModeFlyout(modeFlyout == null || !modeFlyout.Visible);
         }
 
-        private void ToggleAdvancedPanel()
-        {
-            bool opening = advancedPanel == null || !advancedPanel.Visible;
-            if (opening && !ConfirmDeepTuningEntry()) return;
-            SetAdvancedPanel(opening);
-        }
-
         // 所有用户可达入口共用同一道门。只有“勾选不再提示 + 确认进入”才持久化；
         // 取消、关闭弹窗或单纯勾选后反悔都不能悄悄跳过下次警告。
         private bool ConfirmDeepTuningEntry()
         {
             if (Settings.Load(DeepTuningWarningSuppressedKey, false)) return true;
+#if PAVISE_SELFTEST
+            if (DeepTuningConfirmationForTest != null) return DeepTuningConfirmationForTest();
+#endif
             var never = new Toggle();
             never.Text = Lang.T("v20.advanced.warn.never");
             never.Bg = Theme.Bg;
@@ -657,24 +639,6 @@ namespace PaviseApp
                 Lang.T("v20.advanced.warn.body"), DlgKind.Warn, never, 468)) return false;
             if (never.Checked) Settings.Save(DeepTuningWarningSuppressedKey, true);
             return true;
-        }
-
-        private void SetAdvancedPanel(bool visible)
-        {
-            if (advancedPanel == null) return;
-            if (visible)
-            {
-                SetSearchFlyout(false);
-                SetPowerFlyout(false);
-                SetModeFlyout(false);
-            }
-            if (!visible) Fx.Settle(advancedPanel);
-            advancedPanel.Visible = visible;
-            if (visible)
-            {
-                advancedPanel.BringToFront();
-                Fx.DropIn(advancedPanel);
-            }
         }
 
         private static bool IsAdvancedPage(int index)
@@ -690,12 +654,6 @@ namespace PaviseApp
                 default:
                     return false;
             }
-        }
-
-        private void ChooseAdvancedTarget(int target)
-        {
-            SetAdvancedPanel(false);
-            if (target >= 0 && target < (int)PageId.Count) nav.Select(target);
         }
 
         private void TogglePowerFlyout()
@@ -849,6 +807,7 @@ namespace PaviseApp
             modeVisualInitialized = true;
             RefreshModeAccentLabels();
             if (nav != null) nav.SetMode(effective, enabled);
+            if (tuningNav != null) tuningNav.SetMode(effective, enabled);
             if (visualChanged)
                 using (Icon icon = IconArt.MakeMultiIcon(effective, enabled)) SetRuntimeIcon(icon);
             RefreshPolicyPresentation();
@@ -884,6 +843,8 @@ namespace PaviseApp
             DetachFormFrame();
             var old = new List<Control>();
             int keep = nav != null ? nav.Selected : 0;
+            int keepReturn = mainReturnPage;
+            if (pages != null) foreach (DBPanel page in pages) SavePagePosition(page);
             string keepCfg = pageGameConfig != null && !pageGameConfig.IsDisposed
                 && pageGameConfig.Visible ? cfgProfileId : null;
             foreach (Control c in Controls) old.Add(c);
@@ -891,6 +852,7 @@ namespace PaviseApp
             foreach (var c in old) c.Dispose();
             acGroups.Clear(); acCards.Clear(); acToggles.Clear();
             BuildUi(appIcon);
+            mainReturnPage = keepReturn;
             nav.Select(keep);
             if (keepCfg != null) ShowGameConfigPage(keepCfg);
             if (UiActive) RefreshSlowStateAsync();
@@ -1035,6 +997,7 @@ namespace PaviseApp
             {
                 nav.Select(pageIndex);
                 nav.SnapToSelection();
+                tuningNav.SnapToSelection();
                 pageSlide.Set(0f);
                 if (curPage != null) curPage.Left = pageBaseLeft;
             }
@@ -1048,6 +1011,7 @@ namespace PaviseApp
             {
                 Theme.SetMode(preview.Value, false);
                 modeButton.SetMode(preview.Value); nav.SetMode(preview.Value, true);
+                tuningNav.SetMode(preview.Value, true);
                 if (lblHeroMode != null) { lblHeroMode.Text = ModeButton.ModeName(preview.Value); lblHeroMode.ForeColor = Theme.Accent; }
                 if (paviseCore != null) paviseCore.SetState(preview.Value, true, false);
             }
@@ -1068,7 +1032,13 @@ namespace PaviseApp
             if (showModePicker && modeButton != null) modeButton.PerformClick();
             if (previewMode == "power" && powerFlyout != null) SetPowerFlyout(true);
             if (previewMode == "search" && searchFlyout != null) SetSearchFlyout(true);
-            if (previewMode == "advanced" && advancedPanel != null) SetAdvancedPanel(true);
+            if (previewMode == "advanced")
+            {
+                nav.Select(lastAdvancedPage);
+                tuningNav.SnapToSelection();
+                pageSlide.Set(0f);
+                if (curPage != null) curPage.Left = pageBaseLeft;
+            }
             if (previewMode == "search-hit" && searchFlyout != null)
             {
                 SetSearchFlyout(true);
@@ -1115,13 +1085,6 @@ namespace PaviseApp
                     {
                         powerFlyout.DrawToBitmap(overlay, new Rectangle(0, 0, overlay.Width, overlay.Height));
                         g.DrawImageUnscaled(overlay, powerFlyout.Left, powerFlyout.Top);
-                    }
-                if (advancedPanel != null && advancedPanel.Visible)
-                    using (var overlay = new Bitmap(advancedPanel.Width, advancedPanel.Height))
-                    using (Graphics g = Graphics.FromImage(bmp))
-                    {
-                        advancedPanel.DrawToBitmap(overlay, new Rectangle(0, 0, overlay.Width, overlay.Height));
-                        g.DrawImageUnscaled(overlay, advancedPanel.Left, advancedPanel.Top);
                     }
                 bmp.Save(path, System.Drawing.Imaging.ImageFormat.Png);
             }

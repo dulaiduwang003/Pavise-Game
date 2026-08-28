@@ -162,64 +162,10 @@ namespace PaviseApp
             return m.Success ? m.Groups[1].Value.Replace(@"\\", @"\") : null;
         }
 
-        private static readonly string[] RejectNameTokens =
-        {
-            "launcher", "updater", "update", "setup", "install", "unins", "crash", "report",
-            "helper", "service", "redist", "vc_redist", "vcredist", "dxsetup", "prereq",
-            "easyanticheat", "battleye", "eac", "cleanup", "benchmark", "dotnet", "activation"
-        };
-
         internal static string PickMainExecutable(string root, string installDirName)
         {
-            var candidates = new List<string>();
-            CollectExecutables(root, 0, candidates);
-            string best = null;
-            long bestScore = long.MinValue;
-            string normalizedInstall = NormalizeName(installDirName);
-            foreach (string path in candidates)
-            {
-                string name = Path.GetFileNameWithoutExtension(path).ToLowerInvariant();
-                bool rejected = false;
-                foreach (string token in RejectNameTokens)
-                    if (name.Contains(token)) { rejected = true; break; }
-                if (rejected) continue;
-                long size;
-                try { size = new FileInfo(path).Length; } catch { continue; }
-                string low = path.ToLowerInvariant();
-                long score = 0;
-                if (low.Contains(@"\bin\")) score += 30;
-                if (low.Contains("win64") || low.Contains("x64") || low.Contains("shipping")) score += 25;
-                if (size >= 50L * 1024 * 1024) score += 20;
-                else if (size >= 5L * 1024 * 1024) score += 10;
-                string normalizedName = NormalizeName(name);
-                if (normalizedInstall.Length >= 3
-                    && (normalizedInstall.Contains(normalizedName) || normalizedName.Contains(normalizedInstall)))
-                    score += 25;
-                score = score * 1000000000L + Math.Min(size, 999999999L);
-                if (score > bestScore) { bestScore = score; best = path; }
-            }
-            return best;
-        }
-
-        private static void CollectExecutables(string dir, int depth, List<string> result)
-        {
-            if (depth > 4 || result.Count > 400) return;
-            try
-            {
-                foreach (string file in Directory.GetFiles(dir, "*.exe")) result.Add(file);
-                foreach (string sub in Directory.GetDirectories(dir))
-                    CollectExecutables(sub, depth + 1, result);
-            }
-            catch { }
-        }
-
-        private static string NormalizeName(string name)
-        {
-            if (string.IsNullOrEmpty(name)) return "";
-            var sb = new System.Text.StringBuilder(name.Length);
-            foreach (char c in name)
-                if (char.IsLetterOrDigit(c)) sb.Append(char.ToLowerInvariant(c));
-            return sb.ToString();
+            // 安装目录名只用于显示，不作为渲染角色证据；与扫描使用同一保守推荐器。
+            return ExecutableCandidateProbe.PickMainExecutable(root);
         }
     }
 }

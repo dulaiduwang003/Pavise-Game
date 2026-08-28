@@ -7,11 +7,18 @@ namespace PaviseApp
     internal sealed class IrqSessionProbe : IDisposable
     {
         internal const string EnabledKey = "IrqSessionProbe";
+        internal const int PlacementInitializationScans = 3;
         private const long MaxProofAgeTicks = 1500L * TimeSpan.TicksPerMillisecond;
 
         private readonly object gate = new object();
         private readonly object takeGate = new object();
-        private InterruptAttribution live;
+        private readonly IIrqSessionPlatform platform;
+        private IIrqSessionCapture live;
+        private IrqCoreLoadCapture coreLoads;
+        private bool systemObservation;
+        private string statusKey = "";
+        private string statusDetail = "";
+        private int statusSeconds;
         private long startTicks;
         private long lastProofTicks;
         private string gameName = "";
@@ -23,6 +30,7 @@ namespace PaviseApp
         private long rendererCreation;
         private long generation;
         private int externalMutations;
+        private int placementWaitScans;
         private bool armed;
         private bool disposed;
         private bool gameMaskInvalid;
@@ -37,6 +45,79 @@ namespace PaviseApp
         private System.Collections.Generic.List<InterruptAttribution.DpcTimelineEntry> pendingTimeline;
         private bool pendingTimelineTruncated;
 
+        public IrqSessionProbe() : this(new WindowsIrqSessionPlatform()) { }
+
+        internal IrqSessionProbe(IIrqSessionPlatform platform)
+        {
+            if (platform == null) throw new ArgumentNullException("platform");
+            this.platform = platform;
+            try
+            {
+                string[] fields = (platform.LoadLastResult() ?? "").Split('|');
+                int seconds;
+                if (fields.Length == 3 && IsTerminalStatus(fields[0])
+                    && int.TryParse(fields[1], out seconds) && seconds >= 0)
+                {
+                    statusKey = fields[0];
+                    statusSeconds = seconds;
+                    statusDetail = System.Text.Encoding.UTF8.GetString(
+                        Convert.FromBase64String(fields[2]));
+                }
+            }
+            catch { }
+        }
+
+        public string StatusText
+        {
+            get { lock (gate) return StatusTextLocked(); }
+        }
+
+        public bool StatusWarning
+        {
+            get
+            {
+                lock (gate)
+                    return statusKey.Length > 0 && statusKey != "waiting"
+                        && statusKey != "system" && statusKey != "placed"
+                        && statusKey != "saved.system" && statusKey != "saved.placed"
+                        && statusKey != "disabled";
+            }
+        }
+
+        private string StatusTextLocked()
+        {
+            if (statusKey.Length == 0) return "";
+            return statusKey == "saved.system" || statusKey == "saved.placed"
+                ? Lang.F("irq.capture." + statusKey, statusSeconds)
+                : Lang.F("irq.capture." + statusKey, statusDetail);
+        }
+
+        private static bool IsTerminalStatus(string key)
+        {
+            return key == "saved.system" || key == "saved.placed"
+                || key == "needadmin" || key == "startfailed"
+                || key == "invalidated" || key == "nodata" || key == "lost"
+                || key == "incomplete" || key == "savefailed" || key == "unavailable";
+        }
+
+        private void SetStatusLocked(string key, string detail, int seconds)
+        {
+            detail = detail ?? "";
+            if (statusKey == key && statusDetail == detail && statusSeconds == seconds) return;
+            statusKey = key;
+            statusDetail = detail;
+            statusSeconds = seconds;
+            try { platform.Log("IRQ " + StatusTextLocked()); } catch { }
+            if (!IsTerminalStatus(key)) return;
+            try
+            {
+                platform.SaveLastResult(key + "|" + seconds.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture) + "|"
+                    + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(detail)));
+            }
+            catch { }
+        }
+
         public static bool EnabledSetting
         {
             get { return Settings.Load(EnabledKey, false); }
@@ -45,29 +126,81 @@ namespace PaviseApp
 
         private bool warnedNoAdmin;
 
-        // 开局只布防，不启动 ETW。必须等真实渲染进程的落核状态读回验证后，
-        // 才从那个时刻开始采集，避免把验证前的系统 DPC 倒算到游戏核心上。
+        // 开局只布防。系统观测只需确认 renderer 身份，不写游戏亲和性；
+        // 核域归因仍必须有完整的落核证明，两种证据不能混成一条记录。
         public void Arm(string game, ulong availableSystemMask)
         {
-            InterruptAttribution stale;
-            bool enabled = EnabledSetting && availableSystemMask != 0;
+            Arm(game, availableSystemMask, false);
+        }
+
+        public void Arm(string game, ulong availableSystemMask, bool observeSystem)
+        {
+            IIrqSessionCapture stale;
+            bool enabled = platform.Enabled && availableSystemMask != 0;
             lock (gate)
             {
                 if (disposed) return;
                 stale = InvalidateLocked();
                 gameName = game ?? "";
                 systemMask = availableSystemMask;
+                systemObservation = observeSystem;
+                placementWaitScans = 0;
                 gameMaskInvalid = false;
                 armed = enabled;
                 completed = true;
+                SetStatusLocked(enabled ? "waiting" : "disabled", "", 0);
             }
             StopAndDiscard(stale);
+        }
+
+        // 严格核域是建议的证据要求，不是记录一局的前提。给初始化有限几轮
+        // 扫描机会；仍未起采或证明已失效时，本局单向退为系统观测。
+        // ETW/权限失败不是落核失败，不能借此每轮重新申请会话。
+        public bool TryFallbackToSystemObservation(string game, ulong availableSystemMask)
+        {
+            lock (gate)
+            {
+                if (disposed || systemObservation || !platform.Enabled
+                    || availableSystemMask == 0 || sealedPending || stopInProgress
+                    || externalMutations > 0 || live != null || pendingRecord != null) return false;
+                if (statusKey != "waiting" && statusKey != "invalidated") return false;
+                if (statusKey == "waiting"
+                    && ++placementWaitScans < PlacementInitializationScans) return false;
+                InvalidateLocked(); // 上述条件保证无 live；不能把旧核域时间线带进新窗口。
+                gameName = game ?? "";
+                systemMask = availableSystemMask;
+                systemObservation = true;
+                gameMaskInvalid = false;
+                armed = true;
+                completed = true;
+                SetStatusLocked("waiting", "", 0);
+                try { platform.Log(Lang.T("irq.capture.fallback")); } catch { }
+                return true;
+            }
         }
 
         // armed 后以及采集中都要持续核验；采集中一旦失配，整局样本永久作废。
         public bool RequiresPlacementAudit
         {
-            get { lock (gate) return !disposed && armed && !gameMaskInvalid; }
+            get { lock (gate) return !disposed && armed && !gameMaskInvalid && !systemObservation; }
+        }
+
+        public bool IsSystemObservation
+        {
+            get { lock (gate) return !disposed && systemObservation; }
+        }
+
+        public bool CanObserveSystemNow
+        {
+            get { lock (gate) return !disposed && systemObservation && armed && !gameMaskInvalid; }
+        }
+
+        public long CaptureEpoch { get { lock (gate) return generation; } }
+
+        public bool IsPlacementCapturing
+        {
+            get { lock (gate) return !disposed && armed && !gameMaskInvalid
+                && !systemObservation && live != null && !completed; }
         }
 
         public bool IsCapturing
@@ -118,25 +251,47 @@ namespace PaviseApp
             ulong verifiedMask, int verifiedRendererPid,
             long verifiedRendererCreation)
         {
-            bool enabled = EnabledSetting;
+            return ConfirmCapture(verifiedMask, verifiedRendererPid, verifiedRendererCreation, false);
+        }
+
+        public bool ConfirmSystemObservation(int verifiedRendererPid, long verifiedRendererCreation)
+        {
+            // 0 表示只观测系统中断，没有证明游戏的实际核域。
+            return ConfirmCapture(0, verifiedRendererPid, verifiedRendererCreation, true);
+        }
+
+        internal static bool CanObserveSystem(ulong availableSystemMask, int pid, long creation)
+        {
+            return availableSystemMask != 0 && pid > 0 && creation > 0;
+        }
+
+        private bool ConfirmCapture(
+            ulong verifiedMask, int verifiedRendererPid,
+            long verifiedRendererCreation, bool observeSystem)
+        {
+            bool enabled = platform.Enabled;
             bool accepted = false;
             bool logStarted = false;
             bool logStartFailed = false;
             bool logNoAdmin = false;
-            InterruptAttribution discard = null;
-            InterruptAttribution failedStart = null;
+            IIrqSessionCapture discard = null;
+            IIrqSessionCapture failedStart = null;
             lock (gate)
             {
-                if (disposed || !armed || gameMaskInvalid) return false;
+                if (disposed || !armed || gameMaskInvalid || systemObservation != observeSystem) return false;
                 // RenderLane 等异步调优若正在写 renderer，起采必须
                 // 等它离开写区；该计数和开采在同一 gate 下，没有
                 // “回调刚查完、ETW 就开了、setter 才落下”的窗口。
-                if (externalMutations > 0) return false;
-                if (!enabled || !CanConfirmMask(
-                        verifiedMask, systemMask,
-                        verifiedRendererPid, verifiedRendererCreation))
+                if (!observeSystem && externalMutations > 0) return false;
+                bool identityValid = observeSystem
+                    ? verifiedMask == 0 && CanObserveSystem(systemMask,
+                        verifiedRendererPid, verifiedRendererCreation)
+                    : CanConfirmMask(verifiedMask, systemMask,
+                        verifiedRendererPid, verifiedRendererCreation);
+                if (!enabled || !identityValid)
                 {
                     discard = InvalidateLocked();
+                    SetStatusLocked(enabled ? "unavailable" : "disabled", "", 0);
                 }
                 else if (live != null)
                 {
@@ -145,13 +300,15 @@ namespace PaviseApp
                         && rendererPid == verifiedRendererPid
                         && rendererCreation == verifiedRendererCreation)
                     {
-                        long now = DateTime.UtcNow.Ticks;
+                        long now = platform.UtcTicks;
                         bool continuous = lastProofTicks > 0
                             && now >= lastProofTicks
                             && now - lastProofTicks <= MaxProofAgeTicks;
                         if (continuous)
                         {
                             lastProofTicks = now;
+                            if (coreLoads != null) coreLoads.Poll(now);
+                            placementWaitScans = 0;
                             accepted = true;
                         }
                         else
@@ -164,22 +321,28 @@ namespace PaviseApp
                             discard = InvalidateLocked();
                             gameName = resumeGame;
                             systemMask = resumeSystem;
+                            systemObservation = observeSystem;
                             gameMaskInvalid = false;
                             armed = enabled && resumeSystem != 0;
                             completed = true;
+                            SetStatusLocked("waiting", "", 0);
                         }
                     }
-                    else discard = InvalidateLocked();
+                    else
+                    {
+                        discard = InvalidateLocked();
+                        SetStatusLocked("invalidated", "", 0);
+                    }
                 }
-                else if (!Native.IsElevated())
+                else if (!platform.IsElevated)
                 {
                     if (!warnedNoAdmin) { warnedNoAdmin = true; logNoAdmin = true; }
                     discard = InvalidateLocked();
+                    SetStatusLocked("needadmin", "", 0);
                 }
                 else
                 {
-                    var ia = new InterruptAttribution();
-                    ia.EnableDpcTimeline();
+                    IIrqSessionCapture ia = platform.CreateCapture(!observeSystem);
                     bool started = false;
                     try { started = ia.Start(); } catch { }
                     if (!started)
@@ -187,6 +350,8 @@ namespace PaviseApp
                         failedStart = ia;
                         logStartFailed = !ia.Busy;
                         discard = InvalidateLocked();
+                        SetStatusLocked("startfailed", ia.Busy
+                            ? Lang.T("irq.probe.busy") : ia.FailDetail, 0);
                     }
                     else
                     {
@@ -194,28 +359,37 @@ namespace PaviseApp
                         gameMask = verifiedMask;
                         rendererPid = verifiedRendererPid;
                         rendererCreation = verifiedRendererCreation;
-                        startTicks = DateTime.UtcNow.Ticks;
+                        startTicks = platform.UtcTicks;
                         lastProofTicks = startTicks;
-                        bootStamp = IrqAffinityEngine.BootStamp();
-                        topologyStamp = CpuTopology.TopologyStamp();
+                        bootStamp = platform.BootStamp;
+                        topologyStamp = platform.TopologyStamp;
+                        try { coreLoads = new IrqCoreLoadCapture(platform.OpenCoreLoadSource(), startTicks, systemMask); }
+                        catch { coreLoads = null; }
                         completed = false;
+                        placementWaitScans = 0;
                         accepted = true;
                         logStarted = true;
+                        SetStatusLocked(observeSystem ? "system" : "placed", "", 0);
                     }
                 }
             }
             StopAndDiscard(discard);
             StopAndDiscard(failedStart);
-            if (logNoAdmin) Logger.Log(Lang.T("log.irqsession.4"));
-            if (logStartFailed) Logger.Log(Lang.T("log.irqsession.1"));
-            if (logStarted) Logger.Log(Lang.T("log.irqsession.2"));
+            if (logNoAdmin) platform.Log(Lang.T("log.irqsession.4"));
+            if (logStartFailed) platform.Log(Lang.T("log.irqsession.1"));
+            if (logStarted) platform.Log(Lang.T("log.irqsession.2"));
             return accepted;
         }
 
         public void InvalidateGameMask()
         {
-            InterruptAttribution discard;
-            lock (gate) discard = InvalidateLocked();
+            IIrqSessionCapture discard;
+            lock (gate)
+            {
+                bool hadCapture = armed || live != null || pendingRecord != null;
+                discard = InvalidateLocked();
+                if (hadCapture) SetStatusLocked(platform.Enabled ? "invalidated" : "disabled", "", 0);
+            }
             StopAndDiscard(discard);
         }
 
@@ -224,7 +398,7 @@ namespace PaviseApp
         // 写完后下一个 Confirm 从新证明点起采。
         public void RestartCurrentEpoch()
         {
-            InterruptAttribution discard = null;
+            IIrqSessionCapture discard = null;
             lock (gate)
             {
                 if (disposed || !armed || gameMaskInvalid
@@ -235,8 +409,9 @@ namespace PaviseApp
                 gameName = resumeGame;
                 systemMask = resumeSystem;
                 gameMaskInvalid = false;
-                armed = EnabledSetting && resumeSystem != 0;
+                armed = platform.Enabled && resumeSystem != 0;
                 completed = true;
+                SetStatusLocked("waiting", "", 0);
             }
             StopAndDiscard(discard);
         }
@@ -246,13 +421,16 @@ namespace PaviseApp
         // 下轮才能从新 proof 开始，不把 Pavise 自己的写入算入对局。
         public void BeginExternalMutation()
         {
-            InterruptAttribution discard = null;
+            IIrqSessionCapture discard = null;
             lock (gate)
             {
                 if (disposed) return;
                 externalMutations++;
-                if (stopInProgress
-                    || (armed && !gameMaskInvalid && live != null && !completed))
+                // 系统观测记录真实整机 DPC，本来就包括正常后台活动；
+                // 不宣称游戏核归因，因此新进程压制等写入不应把整局反复打碎。
+                // 严格核域证据仍必须排除这些写入造成的观测污染。
+                if (!systemObservation && (stopInProgress
+                    || (armed && !gameMaskInvalid && live != null && !completed)))
                 {
                     string resumeGame = gameName;
                     ulong resumeSystem = systemMask;
@@ -260,8 +438,9 @@ namespace PaviseApp
                     gameName = resumeGame;
                     systemMask = resumeSystem;
                     gameMaskInvalid = false;
-                    armed = EnabledSetting && resumeSystem != 0;
+                    armed = platform.Enabled && resumeSystem != 0;
                     completed = true;
+                    SetStatusLocked("waiting", "", 0);
                 }
             }
             StopAndDiscard(discard);
@@ -273,10 +452,12 @@ namespace PaviseApp
                 if (externalMutations > 0) externalMutations--;
         }
 
-        private InterruptAttribution InvalidateLocked()
+        private IIrqSessionCapture InvalidateLocked()
         {
+            if (coreLoads != null) coreLoads.Dispose();
+            coreLoads = null;
             generation++;
-            InterruptAttribution discard = live;
+            IIrqSessionCapture discard = live;
             live = null;
             startTicks = 0;
             lastProofTicks = 0;
@@ -297,7 +478,7 @@ namespace PaviseApp
             return discard;
         }
 
-        private static void StopAndDiscard(InterruptAttribution ia)
+        private static void StopAndDiscard(IIrqSessionCapture ia)
         {
             if (ia == null) return;
             try { ia.Stop(); } catch { }
@@ -344,9 +525,10 @@ namespace PaviseApp
 
         private string Run(bool commit)
         {
-            bool enabled = EnabledSetting;
-            InterruptAttribution ia = null;
-            InterruptAttribution stale = null;
+            var loadRecord = new IrqSessionRecord();
+            bool enabled = platform.Enabled;
+            IIrqSessionCapture ia = null;
+            IIrqSessionCapture stale = null;
             long began = 0;
             long ended = 0;
             long epoch = 0;
@@ -360,12 +542,22 @@ namespace PaviseApp
             lock (gate)
             {
                 if (live == null || completed)
+                {
+                    if (commit && armed && pendingRecord == null)
+                    {
+                        armed = false;
+                        SetStatusLocked(enabled ? "unavailable" : "disabled", "", 0);
+                    }
                     return commit ? CommitPendingLocked() : pendingSummary;
-                long now = DateTime.UtcNow.Ticks;
+                }
+                long now = platform.UtcTicks;
                 bool proofFresh = lastProofTicks > 0 && now >= lastProofTicks
                     && now - lastProofTicks <= MaxProofAgeTicks;
                 if (disposed || !enabled || !proofFresh)
+                {
                     stale = InvalidateLocked();
+                    SetStatusLocked(enabled ? "invalidated" : "disabled", "", 0);
+                }
                 else
                 {
                     completed = true;
@@ -376,6 +568,9 @@ namespace PaviseApp
                     stopInProgress = true;
                     began = startTicks;
                     ended = now;
+                    // Freeze CPU deltas before ETW Stop, restoration, or the exit grace.
+                    if (coreLoads != null) coreLoads.Finish(now, loadRecord);
+                    coreLoads = null;
                     epoch = generation;
                     game = gameName;
                     boot = bootStamp;
@@ -392,7 +587,11 @@ namespace PaviseApp
             try { raw = ia.Stop(); }
             catch
             {
-                lock (gate) stopInProgress = false;
+                lock (gate)
+                {
+                    stopInProgress = false;
+                    if (generation == epoch) SetStatusLocked("incomplete", "", 0);
+                }
                 return null;
             }
             lock (gate) stopInProgress = false;
@@ -413,8 +612,20 @@ namespace PaviseApp
                 pendingTimeline = timeline;
                 pendingTimelineTruncated = timelineTruncated;
             }
-            if (raw == null || raw.Drivers == null || raw.Drivers.Count == 0) return null;
-            if (raw.Lossy || raw.Incomplete) return null;
+            if (raw == null || raw.Lossy || raw.Incomplete || raw.Drivers.Count == 0)
+            {
+                lock (gate)
+                {
+                    if (!CaptureStillValidLocked(epoch, mask, available, pid, creation)) return null;
+                    if (raw != null && raw.Lossy)
+                        SetStatusLocked("lost", "events=" + raw.EventsLost
+                            + ", buffers=" + raw.BuffersLost, 0);
+                    else if (raw != null && raw.Incomplete)
+                        SetStatusLocked("incomplete", "", 0);
+                    else SetStatusLocked("nodata", raw == null ? "" : raw.Error, 0);
+                }
+                return null;
+            }
 
             var rec = new IrqSessionRecord();
             rec.StartUtcTicks = began;
@@ -424,12 +635,14 @@ namespace PaviseApp
             rec.TopologyStamp = topology;
             rec.GameMask = mask;
             rec.SystemMask = available;
+            rec.CoreLoadWindowTicks = loadRecord.CoreLoadWindowTicks;
+            rec.CoreLoads.AddRange(loadRecord.CoreLoads);
             foreach (DriverInterrupt d in raw.Drivers)
             {
                 if (d == null || d.Dpc <= 0) continue;
                 var r = new IrqDriverRecord();
                 r.Driver = d.Driver ?? "?";
-                r.DriverVersion = DriverVersionOf(r.Driver);
+                r.DriverVersion = platform.DriverVersion(r.Driver);
                 r.Buckets = d.DpcBuckets;
                 r.Dpc = d.Dpc;
                 r.DpcTotalNs = (long)(d.DpcTotalUs * 1000.0);
@@ -440,7 +653,13 @@ namespace PaviseApp
                 r.MaskTruncated = d.CpuMaskTruncated;
                 rec.Drivers.Add(r);
             }
-            if (rec.Drivers.Count == 0) return null;
+            if (rec.Drivers.Count == 0)
+            {
+                lock (gate)
+                    if (CaptureStillValidLocked(epoch, mask, available, pid, creation))
+                        SetStatusLocked("nodata", raw.Error, 0);
+                return null;
+            }
             string summary = IrqVerdict.SummarizeSession(rec);
             lock (gate)
             {
@@ -461,15 +680,22 @@ namespace PaviseApp
                 sealedPending = false;
                 return pendingSummary;
             }
-            if (!EnabledSetting || !IrqSessionLedger.Append(pendingRecord))
+            bool enabled = platform.Enabled;
+            bool saved = false;
+            if (enabled)
+                try { saved = platform.Append(pendingRecord); } catch { }
+            if (!saved)
             {
                 sealedPending = false;
                 pendingRecord = null;
                 pendingTimeline = null;
                 pendingTimelineTruncated = false;
                 pendingSummary = null;
+                SetStatusLocked(enabled ? "savefailed" : "disabled", "", 0);
                 return null;
             }
+            SetStatusLocked(pendingRecord.GameMask == 0 ? "saved.system" : "saved.placed",
+                "", pendingRecord.DurationSeconds);
             sealedPending = false;
             pendingRecord = null;
             return pendingSummary;
@@ -488,7 +714,9 @@ namespace PaviseApp
         {
             return generation == epoch
                 && !gameMaskInvalid
-                && CanConfirmMask(mask, available, pid, creation)
+                && (systemObservation
+                    ? mask == 0 && CanObserveSystem(available, pid, creation)
+                    : CanConfirmMask(mask, available, pid, creation))
                 && gameMask == mask
                 && systemMask == available
                 && rendererPid == pid
@@ -522,7 +750,7 @@ namespace PaviseApp
             // 不把缺少最终落核复核的残片写进历史。
             lock (takeGate)
             {
-                InterruptAttribution discard = null;
+                IIrqSessionCapture discard = null;
                 try
                 {
                     lock (gate)

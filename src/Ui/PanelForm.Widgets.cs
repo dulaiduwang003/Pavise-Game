@@ -251,9 +251,16 @@ namespace PaviseApp
             {
                 for (int i = 0; i < panels.Length; i++)
                 {
-                    if (i != index) { Fx.Settle(panels[i]); panels[i].Visible = false; }
+                    if (i != index)
+                    {
+                        if (panels[i].Visible)
+                            tabScrollPositions[panels[i]] = new Point(-panels[i].AutoScrollPosition.X, -panels[i].AutoScrollPosition.Y);
+                        Fx.Settle(panels[i]); panels[i].Visible = false;
+                    }
                 }
                 panels[index].Visible = true;
+                Point position;
+                if (tabScrollPositions.TryGetValue(panels[index], out position)) panels[index].AutoScrollPosition = position;
                 Fx.SlideIn(panels[index]);
             };
             return panels;

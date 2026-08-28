@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 高级页面左上角的 ROG 风格返回模块 与概览页高级入口同一套设计语言
+// 文件用途 深度调优侧栏顶部的 ROG 风格返回模块
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -21,17 +21,25 @@ namespace PaviseApp
         protected override void OnMouseClick(MouseEventArgs e)
         {
             base.OnMouseClick(e);
+            if (e.Button == MouseButtons.Left && BackRequested != null) BackRequested();
+        }
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            base.OnKeyDown(e);
+            if (e.KeyCode != Keys.Enter && e.KeyCode != Keys.Space) return;
             if (BackRequested != null) BackRequested();
+            e.Handled = true; e.SuppressKeyPress = true;
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
             if (Backdrop.Active) Backdrop.PaintOnCard(g, this, ClientRectangle);
-            else using (var bg = new SolidBrush(Theme.Bg)) g.FillRectangle(bg, ClientRectangle);
+            else using (var bg = new SolidBrush(Theme.Nav)) g.FillRectangle(bg, ClientRectangle);
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-            // 底线与顶栏的分隔线连成一条
+            // 与右侧顶栏底线对齐，替代深度调优侧栏的品牌区。
             using (var p = new Pen(Theme.Stroke)) g.DrawLine(p, 0, Height - 1, Width, Height - 1);
 
             float hot = hover.Value;
