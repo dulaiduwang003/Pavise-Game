@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 各大游戏平台客户端家族的内置豁免 进程名加安装目录双重校验
+// 文件用途 发现游戏平台安装目录 仅供安装扫描与展示 不参与渲染身份或进程豁免判定
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -15,24 +15,17 @@ namespace PaviseApp
         {
             public readonly string Id;
 
-            public readonly string[] ShellNames;
-
-            public readonly string[] LocalNames;
-
             public readonly string[] RegistryRoots;
 
             public readonly string[] FolderRoots;
 
             public readonly string[] UninstallTags;
             public List<string> Roots;
-            public bool Logged;
 
-            public Platform(string id, string[] shellNames, string[] localNames,
-                string[] registryRoots, string[] folderRoots, string[] uninstallTags)
+            public Platform(string id, string[] registryRoots,
+                string[] folderRoots, string[] uninstallTags)
             {
                 Id = id;
-                ShellNames = shellNames ?? new string[0];
-                LocalNames = localNames ?? new string[0];
                 RegistryRoots = registryRoots ?? new string[0];
                 FolderRoots = folderRoots ?? new string[0];
                 UninstallTags = uninstallTags ?? new string[0];
@@ -52,9 +45,6 @@ namespace PaviseApp
         {
 
             new Platform("Steam",
-                new[]{ "steam", "steamservice", "steamwebhelper",
-                    "gameoverlayui", "gameoverlayui64" },
-                new[]{ "steamerrorreporter", "steamerrorreporter64" },
                 new[]
                 {
                     "U|Software\\Valve\\Steam|SteamPath",
@@ -65,19 +55,11 @@ namespace PaviseApp
                 null),
 
             new Platform("Epic Games",
-                new[]{ "epicgameslauncher", "epicwebhelper" },
-                null,
                 null,
                 new[]{ Pf86 + "|Epic Games\\Launcher", Pf + "|Epic Games\\Launcher" },
                 new[]{ "Epic Games Launcher" }),
 
             new Platform("EA app",
-                new[]
-                {
-                    "eadesktop", "eabackgroundservice", "ealauncher", "ealocalhostsvc",
-                    "easteamproxy", "originwebhelperservice", "originclientservice"
-                },
-                new[]{ "origin" },
                 null,
                 new[]
                 {
@@ -89,8 +71,6 @@ namespace PaviseApp
                 new[]{ "EA app", "EA Desktop" }),
 
             new Platform("Ubisoft Connect",
-                new[]{ "ubisoftconnect", "ubisoftgamelauncher", "uplay", "uplaywebcore" },
-                new[]{ "upc" },
                 new[]
                 {
                     "M|SOFTWARE\\WOW6432Node\\Ubisoft\\Launcher|InstallDir",
@@ -104,8 +84,6 @@ namespace PaviseApp
                 new[]{ "Ubisoft Connect" }),
 
             new Platform("Battle.net",
-                new[]{ "battle.net", "battle.net helper", "blizzarderror", "blizzardbrowser" },
-                new[]{ "agent" },
                 null,
                 new[]
                 {
@@ -117,12 +95,6 @@ namespace PaviseApp
             new Platform("GOG Galaxy",
                 new[]
                 {
-                    "galaxyclient", "galaxyclient helper", "galaxycommunication",
-                    "galaxyclientservice", "galaxyservice"
-                },
-                null,
-                new[]
-                {
                     "M|SOFTWARE\\WOW6432Node\\GOG.com\\GalaxyClient\\paths|client",
                     "M|SOFTWARE\\GOG.com\\GalaxyClient\\paths|client"
                 },
@@ -130,12 +102,6 @@ namespace PaviseApp
                 new[]{ "GOG GALAXY" }),
 
             new Platform("Rockstar Games",
-                new[]
-                {
-                    "rockstarservice", "rockstarerrorhandler", "socialclubhelper",
-                    "rockstar-games-launcher", "launcherpatcher"
-                },
-                new[]{ "launcher" },
                 new[]{ "M|SOFTWARE\\WOW6432Node\\Rockstar Games\\Launcher|InstallFolder" },
                 new[]
                 {
@@ -145,17 +111,6 @@ namespace PaviseApp
                 new[]{ "Rockstar Games Launcher" }),
 
             new Platform("Riot Client",
-                new[]
-                {
-                    "riotclientservices", "riotclientux", "riotclientuxrender",
-                    "riotclientcrashhandler",
-                    // 拳头统一客户端之外 各游戏还有自己的客户端外壳 同属平台常驻进程
-                    //   原先散在 GameSessionDetector.ClientShellTokens 里做子串匹配 与本目录重复
-                    //   统一收到这里 检测与豁免共用一份数据 新增游戏客户端只改这一处
-                    "leagueclient", "leagueclientux", "leagueclientuxrender",
-                    "leaguecrashhandler"
-                },
-                null,
                 null,
                 new[]
                 {
@@ -166,8 +121,6 @@ namespace PaviseApp
                 new[]{ "Riot Client" }),
 
             new Platform("WeGame",
-                new[]{ "wegame", "wegame_env", "wegameclient" },
-                null,
                 null,
                 new[]
                 {
@@ -177,19 +130,11 @@ namespace PaviseApp
                 new[]{ "WeGame", "腾讯游戏平台" }),
 
             new Platform("Xbox",
-                new[]
-                {
-                    "xboxpcapp", "xboxpcappft", "xboxappservices",
-                    "gamingservices", "gamingservicesnet", "gamebarftserver"
-                },
-                new[]{ "xbox", "gamebar" },
                 null,
                 new[]{ Pf + "|WindowsApps" },
                 null),
 
             new Platform("HoYoPlay",
-                new[]{ "hyp", "hoyoplay", "hyupdater" },
-                new[]{ "launcher" },
                 null,
                 new[]
                 {
@@ -200,29 +145,21 @@ namespace PaviseApp
                 new[]{ "HoYoPlay", "miHoYo Launcher", "米哈游启动器" }),
 
             new Platform("Amazon Games",
-                new[]{ "amazon games ui", "amazon games services", "amazongamessdkservice" },
-                new[]{ "amazon games" },
                 null,
                 new[]{ Local + "|Amazon Games", Pf + "|Amazon Games" },
                 new[]{ "Amazon Games" }),
 
             new Platform("itch.io",
                 null,
-                new[]{ "itch", "itch-setup", "butler" },
-                null,
                 new[]{ Local + "|itch", Roaming + "|itch" },
                 null),
 
             new Platform("Garena",
-                new[]{ "garena", "garenamsg" },
-                null,
                 null,
                 new[]{ Pf86 + "|Garena", Pf + "|Garena", Local + "|Garena" },
                 new[]{ "Garena" }),
 
             new Platform("Nexon",
-                new[]{ "nexon_runtime", "nexonlauncher", "nexonplug" },
-                new[]{ "ngm" },
                 null,
                 new[]
                 {
@@ -233,8 +170,6 @@ namespace PaviseApp
 
             new Platform("NCSOFT PURPLE",
                 null,
-                new[]{ "purple", "ncsoft" },
-                null,
                 new[]
                 {
                     Pf + "|NCSOFT\\Purple", Pf86 + "|NCSOFT\\Purple",
@@ -243,8 +178,6 @@ namespace PaviseApp
                 new[]{ "NCSOFT" }),
 
             new Platform("DMM GAME PLAYER",
-                new[]{ "dmmgameplayer", "dmmgameplayerfastlauncher" },
-                null,
                 null,
                 new[]
                 {
@@ -255,8 +188,6 @@ namespace PaviseApp
                 new[]{ "DMM Game" }),
 
             new Platform("NetEase",
-                new[]{ "gest_launcher", "neteasegamecenter" },
-                new[]{ "gamecenter", "launcher" },
                 null,
                 new[]
                 {
@@ -270,102 +201,8 @@ namespace PaviseApp
         private const int RootRefreshMs = 600000;
 
         private static readonly object sync = new object();
-        private static readonly Dictionary<string, List<Platform>> ByName = BuildNameIndex();
-        private static readonly HashSet<string> ShellNames = BuildShellNames();
         private static bool rootsResolved;
         private static long lastResolveTicks;
-
-        internal static readonly string[] GameAreaSegments =
-        {
-            "steamapps", "games", "gamelibrary", "library", "downloads"
-        };
-
-        internal static bool InGameArea(string image, string root)
-        {
-            if (string.IsNullOrEmpty(image) || string.IsNullOrEmpty(root)) return false;
-            string prefix = root.TrimEnd('\\') + "\\";
-            if (!image.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return false;
-            string rest = image.Substring(prefix.Length);
-            foreach (string seg in GameAreaSegments)
-                if (rest.StartsWith(seg + "\\", StringComparison.OrdinalIgnoreCase)) return true;
-            return false;
-        }
-
-        public static bool IsPlatformProcess(string name, string path)
-        {
-            string image = NormalizePath(path);
-            if (image.Length == 0) return false;
-
-            List<Platform> owners = OwnersOf(name);
-            if (owners != null)
-            {
-                Platform byName = MatchRoot(owners, image);
-                if (byName == null && RefreshRootsIfStale()) byName = MatchRoot(owners, image);
-                if (byName != null) { LogOnce(byName); return true; }
-            }
-
-            Platform byPath = MatchAnyRootOutsideGames(image);
-            if (byPath == null && RefreshRootsIfStale()) byPath = MatchAnyRootOutsideGames(image);
-            if (byPath == null) return false;
-            LogOnce(byPath);
-            return true;
-        }
-
-        private static Platform MatchAnyRootOutsideGames(string image)
-        {
-            EnsureRoots();
-            lock (sync)
-                foreach (Platform platform in Platforms)
-                {
-                    if (platform.Roots == null) continue;
-                    foreach (string root in platform.Roots)
-                    {
-                        if (string.IsNullOrEmpty(root)) continue;
-                        string prefix = root.TrimEnd('\\') + "\\";
-                        if (!image.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
-                        if (InGameArea(image, root)) return null;
-                        return platform;
-                    }
-                }
-            return null;
-        }
-
-        private static readonly HashSet<string> WebRendererNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "steamwebhelper", "epicwebhelper", "uplaywebcore", "blizzardbrowser", "riotclientuxrender"
-        };
-
-        // 网页渲染子进程要单独认 家族豁免开着时平台本体整体放行 只有专注档还压这些子进程
-        //   它们是平台里最能吃 CPU 的一部分 商店页和好友列表都跑在这上面 停了不影响游戏运行
-        //   家族豁免关着时平台本体本来就照压 这个区分对结果没有影响
-        internal static bool IsPlatformWebRenderer(string name)
-        {
-            return !string.IsNullOrEmpty(name) && WebRendererNames.Contains(name.Trim());
-        }
-
-        internal static bool IsPlatformShellName(string name)
-        {
-            return !string.IsNullOrEmpty(name) && ShellNames.Contains(name.Trim());
-        }
-
-        internal static IEnumerable<string> PlatformShellNames()
-        {
-            return ShellNames;
-        }
-
-        internal static bool OwnsName(string platformId, string name)
-        {
-            List<Platform> owners = OwnersOf(name);
-            if (owners == null) return false;
-            foreach (Platform platform in owners)
-                if (string.Equals(platform.Id, platformId, StringComparison.OrdinalIgnoreCase)) return true;
-            return false;
-        }
-
-        internal static bool MatchesWithRoots(string platformId, string name, string path, IList<string> roots)
-        {
-            return OwnsName(platformId, name) && UnderAnyRoot(NormalizePath(path), roots);
-        }
 
         internal static List<string> ResolvedRoots(string platformId)
         {
@@ -389,73 +226,14 @@ namespace PaviseApp
             return result;
         }
 
-        private static Platform MatchRoot(List<Platform> owners, string image)
-        {
-            EnsureRoots();
-            lock (sync)
-                foreach (Platform platform in owners)
-                    if (UnderAnyRoot(image, platform.Roots)) return platform;
-            return null;
-        }
-
-        private static List<Platform> OwnersOf(string name)
-        {
-            if (string.IsNullOrEmpty(name)) return null;
-            List<Platform> owners;
-            return ByName.TryGetValue(name.Trim(), out owners) ? owners : null;
-        }
-
-        private static void LogOnce(Platform platform)
-        {
-            lock (sync)
-            {
-                if (platform.Logged) return;
-                platform.Logged = true;
-            }
-            // 这句话跟着家族豁免开关走 说错了比不说更糟 用户会照它判断要不要手动加白名单
-            //   豁免关着 平台本体在所有档位都按普通后台压制
-            //   豁免开着 平台本体整族放行 只有专注档还压它的网页渲染子进程
-            Logger.Log(platform.Id + Lang.T(GameMode.FamilyExemptHint
-                ? "log.gameplatformcatalog.25" : "log.gameplatformcatalog.23"));
-        }
-
-        private static bool UnderAnyRoot(string path, IList<string> roots)
-        {
-            if (string.IsNullOrEmpty(path) || roots == null) return false;
-            foreach (string root in roots)
-            {
-                if (string.IsNullOrEmpty(root)) continue;
-                string prefix = root.TrimEnd('\\') + "\\";
-                if (path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return true;
-            }
-            return false;
-        }
-
-        private static string NormalizePath(string path)
-        {
-            if (string.IsNullOrEmpty(path)) return "";
-            return path.Trim().Trim('"').Replace('/', '\\');
-        }
-
         private static void EnsureRoots()
         {
             lock (sync)
             {
-                if (rootsResolved) return;
-                ResolveRootsLocked();
-            }
-        }
-
-        private static bool RefreshRootsIfStale()
-        {
-            lock (sync)
-            {
                 long now = DateTime.UtcNow.Ticks;
-                if (lastResolveTicks > 0 && now >= lastResolveTicks
-                    && now - lastResolveTicks < RootRefreshMs * TimeSpan.TicksPerMillisecond)
-                    return false;
+                if (rootsResolved && lastResolveTicks > 0 && now >= lastResolveTicks
+                    && now - lastResolveTicks < RootRefreshMs * TimeSpan.TicksPerMillisecond) return;
                 ResolveRootsLocked();
-                return true;
             }
         }
 
@@ -669,36 +447,5 @@ namespace PaviseApp
             catch { return null; }
         }
 
-        private static Dictionary<string, List<Platform>> BuildNameIndex()
-        {
-            var index = new Dictionary<string, List<Platform>>(StringComparer.OrdinalIgnoreCase);
-            foreach (Platform platform in Platforms)
-            {
-                foreach (string name in platform.ShellNames) Index(index, name, platform);
-                foreach (string name in platform.LocalNames) Index(index, name, platform);
-            }
-            return index;
-        }
-
-        private static void Index(Dictionary<string, List<Platform>> index, string name, Platform platform)
-        {
-            if (string.IsNullOrEmpty(name)) return;
-            List<Platform> owners;
-            if (!index.TryGetValue(name, out owners))
-            {
-                owners = new List<Platform>();
-                index[name] = owners;
-            }
-            if (!owners.Contains(platform)) owners.Add(platform);
-        }
-
-        private static HashSet<string> BuildShellNames()
-        {
-            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (Platform platform in Platforms)
-                foreach (string name in platform.ShellNames)
-                    if (!string.IsNullOrEmpty(name)) names.Add(name);
-            return names;
-        }
     }
 }

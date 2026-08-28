@@ -91,7 +91,7 @@ namespace PaviseApp
             if (hit == null || hit.Card == null || hit.Card.IsDisposed) return;
             // 搜索能直接命中深度调优页，不能绕过概览入口的风险警告。
             if (hit.PageId >= 0 && IsAdvancedPage(hit.PageId)
-                && !ConfirmDeepTuningEntry()) return;
+                && !CanEnterDeepTuning()) return;
             SetSearchFlyout(false);
             if (hit.PageId < 0)
             {

@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "purpose": "Take over and test the owned, non-injecting DX12 dual-GPU compute prototype on the current laptop. This is not a measurement of third-party game FPS.",
+  "registered_before_first_gpu_measurement": true,
+  "hardware_expected": {
+    "primary": "NVIDIA GeForce RTX 2070 with Max-Q Design",
+    "secondary": "Intel UHD Graphics 630",
+    "cpu": "Intel Core i7-9750H",
+    "display": "1920x1080 internal display attached to Intel; the compute experiment does not present to it"
+  },
+  "background_policy": "Do not close GameViewer, Codex, Pavise or other user processes. Log observed GPU activity; inactivity of mouse and keyboard does not imply an uncontaminated machine.",
+  "pre_measurement_amendment": {
+    "reason": "First CPU/input idle attempt did not start the GPU benchmark: 55 available CPU samples ranged 22.42-41.26%, mean 29.528%. Remote access remained connected; minimizing its main UI did not remove background load.",
+    "exploratory_environment": "Explicit background_loaded_screening allows three preflight CPU samples <=50%; no idle-machine claim. Correctness-only preflight omits the irrelevant CPU idle requirement.",
+    "unchanged": "All pixel, timing, drift, gain, AC, input, timeout and NVIDIA temperature gates remain unchanged. The fixed four-case matrix remains unchanged.",
+    "confirmation": "A positive loaded screening result still requires an independently repeated quiet-environment experiment; do not silently stop remote access or lower the shipping standard."
+  },
+  "preflight": [
+    "Attested source/executable SHA256 and successful build manifest",
+    "Pure statistic self-tests, adapter enumeration and capability probe",
+    "Correctness validation for both direct and copy paths before timing",
+    "AC connected, no recent input, three CPU samples <=20%, NVIDIA temperature below 83 C",
+    "Every measured invocation also validates its exact size/loop configuration with fixed seeds"
+  ],
+  "exploratory_matrix": {
+    "width": 1920,
+    "height": 1080,
+    "warmup_frames_per_phase": 120,
+    "measured_frames_per_phase": 600,
+    "repeats": 3,
+    "phase_order": "ABBA / BAAB / ABBA",
+    "precondition_seconds": 15,
+    "cases": [
+      { "id": "copy_s100_p4", "transfer_path": "copy", "scene_loops": 100, "post_loops": 4 },
+      { "id": "direct_s100_p4", "transfer_path": "direct", "scene_loops": 100, "post_loops": 4 },
+      { "id": "copy_s600_p4", "transfer_path": "copy", "scene_loops": 600, "post_loops": 4 },
+      { "id": "copy_s100_p8", "transfer_path": "copy", "scene_loops": 100, "post_loops": 8 }
+    ]
+  },
+  "independent_confirmation": {
+    "only_if": "A correctness-valid exploratory case passes all CANDIDATE gates without environmental guard violations",
+    "parameters": "Keep the passing case's resolution, workload and transfer path unchanged",
+    "warmup_frames_per_phase": 240,
+    "measured_frames_per_phase": 2000,
+    "repeats": 5,
+    "precondition_seconds": 30,
+    "must_not": "Search many workloads or discard unfavorable runs and report only the largest gain"
+  },
+  "quality_gates": {
+    "pixel_validation_required": true,
+    "all_phases_required": true,
+    "maximum_gpu_wall_rate_gap_percent": 5.0,
+    "maximum_single_baseline_max_min_drift_percent": 5.0,
+    "minimum_avg_and_wall_median_gain_percent": 2.0,
+    "minimum_one_percent_low_median_gain_percent": 1.0,
+    "minimum_non_overlapping_ab_pair_win_fraction": 0.6666666666666666,
+    "maximum_median_p99_regression_percent": 5.0
+  },
+  "safety": {
+    "stop_on_user_input": true,
+    "stop_on_ac_loss": true,
+    "stop_on_missing_nvidia_temperature": true,
+    "stop_nvidia_temperature_c": 83,
+    "maximum_seconds_per_invocation": 900,
+    "temperature_limitations": "CPU and Intel GPU temperatures are not observed. NVIDIA limit alone is not a whole-laptop thermal guarantee.",
+    "owned_processes_only": true
+  },
+  "delivery_gate": "A compute-only candidate is not product-ready. Shipping requires a concrete Pavise-owned external workload, equal output endpoint and quality, capture/copy/present costs and latency, repeated net benefit and safe fallback. No game DLL injection and no claim to relocate an unmodified game's internal passes.",
+  "invalid_run_policy": "Preserve every result, state the cause, and correct measurement defects before a separately labeled rerun. Do not treat INVALID as proof of either benefit or loss. Safety or correctness failures stop further GPU tests until investigated."
+}

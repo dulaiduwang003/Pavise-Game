@@ -19,6 +19,7 @@ namespace PaviseApp
         private long repPaviseCpuStart;
         private string repProfileId;
         private int repRendererPid;
+        private bool repIrqRequested;
 
         public event Action<string> SessionEnded;
 
@@ -38,14 +39,176 @@ namespace PaviseApp
         //   有 Worth 驱动就把数量抛给 UI 高亮提示 绝不自动改注册表 用户仍走手动流程
         public event Action<int> IrqSuggested;
 
+        // 原始记录完成与“有挪核建议”是两回事。零建议和失败也要让页面刷新。
+        public event Action IrqObservationUpdated;
+        public string IrqObservationStatusText { get { return irqProbe.StatusText; } }
+        public bool IrqObservationStatusWarning { get { return irqProbe.StatusWarning; } }
+        private string irqNotifiedStatus = "";
+        private bool irqNotifiedWarning;
+        private bool presentProbeAttempted;
+        private long presentProbeEpoch = -1;
+        private int irqSettingChanged;
+
+        public void RequestIrqObservationSettingChanged()
+        {
+            System.Threading.Interlocked.Exchange(ref irqSettingChanged, 1);
+            try { kick.Set(); } catch { }
+        }
+
+        private void ApplyIrqObservationSettingChange(string game)
+        {
+            if (System.Threading.Interlocked.Exchange(ref irqSettingChanged, 0) == 0) return;
+            ArmIrqObservation(game);
+            if (IrqSessionProbe.EnabledSetting)
+                lock (sync) repIrqRequested = true;
+            if (irqProbe.RequiresPlacementAudit)
+            {
+                // 局中显式开启时，让普通落核缓存重新经过严格 proof 初始化。
+                // 单纯一次采样失败不会走这里，不会每轮强制重试或改写亲和性。
+                lock (sync)
+                {
+                    int pid = activeDetection == null ? 0 : activeDetection.RendererPid;
+                    gamePlacement.Remove(pid);
+                    gamePlacementStrict.Remove(pid);
+                    gameBoostNextAudit.Remove(pid);
+                }
+            }
+        }
+
+        private void NotifyIrqObservationChanged(bool force)
+        {
+            string text = irqProbe.StatusText;
+            bool warning = irqProbe.StatusWarning;
+            if (!force && text == irqNotifiedStatus && warning == irqNotifiedWarning) return;
+            irqNotifiedStatus = text;
+            irqNotifiedWarning = warning;
+            var changed = IrqObservationUpdated;
+            if (changed != null) { try { changed(); } catch { } }
+        }
+
+        internal static bool NeedsSystemIrqObservation(
+            bool boostEnabled, bool writeDenied, bool multiGroup,
+            ulong desiredMask, ulong availableMask)
+        {
+            return !boostEnabled || writeDenied || multiGroup
+                || !IrqSessionProbe.CanConfirmMaskShape(desiredMask, availableMask);
+        }
+
+        private bool NeedsSystemIrqObservation()
+        {
+            bool strict;
+            ulong desired = EffectiveGameMask(sessionPolicy, out strict);
+            string rendererName;
+            lock (sync) rendererName = activeDetection == null ? null : activeDetection.RendererName;
+            return NeedsSystemIrqObservation(EffBoost,
+                ProtectedGameRoster.Contains(rendererName), CpuTopology.MultiGroup, desired, allMask);
+        }
+
+        private void ArmIrqObservation(string game)
+        {
+            DiscardPresentProbe();
+            irqProbe.Arm(game, allMask, NeedsSystemIrqObservation());
+            NotifyIrqObservationChanged(false);
+        }
+
+        private void ObserveSystemIrq(int rendererPid, long rendererCreation)
+        {
+            if (!IrqSessionProbe.EnabledSetting)
+            {
+                if (irqProbe.IsCapturing) irqProbe.InvalidateGameMask();
+                return;
+            }
+            bool fallback = false;
+            if (!irqProbe.IsSystemObservation)
+            {
+                if (NeedsSystemIrqObservation())
+                {
+                    ArmIrqObservation(repGame ?? activeGame);
+                    fallback = true;
+                }
+                else fallback = irqProbe.TryFallbackToSystemObservation(
+                    repGame ?? activeGame, allMask);
+            }
+            if (fallback)
+            {
+                DiscardPresentProbe();
+                // 退出专为严格 IRQ 证明设置的临时硬绑核。普通游戏调优保持原样，
+                // 还原失败的句柄仍由已有恢复路径跟进，不阻止只读系统观测。
+                RestoreAllIrqProofHardPins();
+            }
+            if (!irqProbe.CanObserveSystemNow) return;
+            // 系统观测不申请 SET 权限，更不为出现测量值而改动游戏亲和性。
+            // pid+creation 读回失败时不拿过期身份继续采样。
+            IntPtr handle = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION,
+                false, rendererPid);
+            if (handle == IntPtr.Zero)
+            {
+                if (irqProbe.IsCapturing)
+                {
+                    if (Native.LastOpenProcessFailureWasNoSuchProcess()) SealIrqObservation();
+                    else irqProbe.InvalidateGameMask();
+                }
+                return;
+            }
+            try
+            {
+                long creation, cpu;
+                ulong disk;
+                if (rendererPid > 0 && rendererCreation > 0
+                    && Native.QueryProcessSample(handle, out creation, out cpu, out disk)
+                    && creation == rendererCreation)
+                    irqProbe.ConfirmSystemObservation(rendererPid, rendererCreation);
+                else if (irqProbe.IsCapturing) irqProbe.InvalidateGameMask();
+            }
+            finally { Native.CloseHandle(handle); }
+        }
+
+        private void DiscardPresentProbe()
+        {
+            PresentProbe old = presentProbe;
+            presentProbe = null;
+            presentProbeAttempted = false;
+            presentProbeEpoch = -1;
+            if (old != null) { try { old.Stop(); } catch { } }
+        }
+
+        private void UpdateIrqPresentProbe()
+        {
+            // 系统观测不出挪核建议，无需额外抓 PRESENT。严格观测也必须先
+            // 有 DPC 窗口；换 epoch 时丢弃旧 present，不能跨窗口对齐。
+            if (irqProbe.HasSealedPending) return;
+            if (!irqProbe.IsPlacementCapturing || !IrqSessionProbe.EnabledSetting)
+            {
+                DiscardPresentProbe();
+                return;
+            }
+            long epoch = irqProbe.CaptureEpoch;
+            if (presentProbeEpoch != epoch)
+            {
+                DiscardPresentProbe();
+                presentProbeEpoch = epoch;
+            }
+            if (presentProbeAttempted) return;
+            presentProbeAttempted = true;
+            StartPresentProbe();
+        }
+
+        private void SealIrqObservation()
+        {
+            // 收口顺序与起采相反：先停 present，再停 DPC；保留 present
+            // 实例供宽限结束后的 CollectLongFrames 取数据，不继续录桌面。
+            PresentProbe p = presentProbe;
+            if (p != null) { try { p.RequestStop(); } catch { } }
+            irqProbe.Seal();
+        }
+
         private void ReportBegin(string game)
         {
             GpuThrottleProbe.Reset();
             VramSpillProbe.Reset();
             VramShield.Begin();
-            irqProbe.Arm(game, allMask);
-            // present 采集只为增强设备中断判断服务 只在对局中断观测开着时才采 不当独立观测常驻
-            if (IrqSessionProbe.EnabledSetting) StartPresentProbe();
+            ArmIrqObservation(game);
+            // PRESENT 在严格核域 DPC epoch 真正起采后才开启，系统观测不需要它。
             long paviseCpu = CurrentProcessCpuTicks();
             lock (sync)
             {
@@ -59,6 +222,7 @@ namespace PaviseApp
                 repProfileId = activeDetection != null && activeDetection.Profile != null
                     ? activeDetection.Profile.Id : null;
                 repRendererPid = activeDetection != null ? activeDetection.RendererPid : 0;
+                repIrqRequested = IrqSessionProbe.EnabledSetting;
             }
         }
 
@@ -122,11 +286,13 @@ namespace PaviseApp
             //   换局检测会先把 activeDetection 切到新游戏，再结算旧局。
             //   拿不到渲染 PID 时，present 证据判为不可用，退回纯 IrqVerdict。
             int rendererPid;
+            bool irqRequested;
             lock (sync)
             {
                 game = repGame;
                 t0 = repStart;
                 rendererPid = repRendererPid;
+                irqRequested = repIrqRequested;
                 cpu = new Dictionary<int, long>(repCpu);
                 names = new Dictionary<int, string>(repProc);
                 creations = new Dictionary<int, long>(repCreation);
@@ -140,8 +306,13 @@ namespace PaviseApp
                 repPaviseCpuStart = 0;
                 repProfileId = null;
                 repRendererPid = 0;
+                repIrqRequested = false;
             }
             if (game == null) return;
+
+            // 主动停守护也走与游戏自然退出相同的封存边界，不能先等待
+            // PRESENT 排空，再把等待时间当成 renderer 证明失效。
+            SealIrqObservation();
 
             TimeSpan dur = TimeSpan.FromSeconds((double)(Stopwatch.GetTimestamp() - t0) / Stopwatch.Frequency);
             // 采集窗口要严格包含：开始是 DPC→present，结束必须 present→DPC。
@@ -192,7 +363,8 @@ namespace PaviseApp
             string spill = VramSpillProbe.Summarize();
             if (spill != null) msg += Lang.F("rep.vramspill", spill);
             string irq = irqProbe.TakeSummary();
-            if (irq != null) msg += irq;
+            msg += FormatIrqSessionResult(irq, irqRequested, irqProbe.StatusText);
+            NotifyIrqObservationChanged(true);
             Logger.Log(Lang.T("log.gamemodesession.1") + msg);
 
             // present↔DPC 对齐只为增强设备中断判断 不往对局报告塞任何 present 内容
@@ -295,6 +467,15 @@ namespace PaviseApp
                 if (s != null) { try { s(reported); } catch { } }
             }
             catch { }
+        }
+
+        internal static string FormatIrqSessionResult(string summary, bool requested, string status)
+        {
+            if (!string.IsNullOrEmpty(summary)) return summary;
+            // 每局的失败/取消原因也挂在带游戏名和时长的结束记录下，
+            // 不能只留一条会被下一局覆盖的最新状态，更不能捏造实测数值。
+            return requested && !string.IsNullOrEmpty(status)
+                ? Lang.F("rep.irq.result", status) : "";
         }
 
         internal static int ResolveIrqReportedCount(bool presentUsable, bool swapchainIdentityReliable,

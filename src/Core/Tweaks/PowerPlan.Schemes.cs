@@ -371,6 +371,8 @@ namespace PaviseApp
         //   撞上的后果是重复写或读到写了一半的快照 加把锁比推理便宜
         private static readonly object eppLk = new object();
         private static bool eppYielded;
+        private static bool eppApplied;
+        private static Guid eppSavedScheme;
         private static uint eppSavedAc, eppSavedAc1;
         private static bool eppSaved, eppSaved1;
 
@@ -380,21 +382,43 @@ namespace PaviseApp
         {
             lock (eppLk)
             {
-            if (eppYielded) return true;
-            Guid g = ManagedPlanGuid();
-            if (g == Guid.Empty) return false;
-            eppSaved = ReadAc(g, SubProcessor, PerfEpp, out eppSavedAc);
-            if (!eppSaved) return false;
-            if (!WriteAc(g, SubProcessor, PerfEpp, epp)) return false;
-            eppSaved1 = ReadAc(g, SubProcessor, PerfEpp1, out eppSavedAc1);
-            if (eppSaved1 && !WriteAc(g, SubProcessor, PerfEpp1, epp))
-            {
-                WriteAc(g, SubProcessor, PerfEpp, eppSavedAc);
-                return false;
-            }
-            eppYielded = true;
-            ReapplyActive(g);
-            return true;
+                // Pending recovery is not a successful yield, and its original
+                // values must not be replaced by a second attempt's snapshot.
+                if (eppYielded) return eppApplied;
+                try
+                {
+                    Guid g = EppManagedScheme();
+                    if (g == Guid.Empty) return false;
+                    uint savedAc, savedAc1;
+                    if (!EppReadAc(g, false, out savedAc)) return false;
+                    // Some systems have no second efficiency class. Never write
+                    // a setting for which we could not capture an original value.
+                    bool hasSecondary = EppReadAc(g, true, out savedAc1);
+                    eppSavedScheme = g;
+                    eppSavedAc = savedAc;
+                    eppSavedAc1 = savedAc1;
+                    eppSaved = true;
+                    eppSaved1 = false;
+                    eppApplied = false;
+                    eppYielded = true;
+                    bool ok = EppWriteVerified(g, false, epp);
+                    if (ok && hasSecondary)
+                    {
+                        // Record the attempted write before entering native code,
+                        // which may fail after changing part of the setting.
+                        eppSaved1 = true;
+                        ok = EppWriteVerified(g, true, epp);
+                    }
+                    if (ok) ok = EppReapplyVerified(g);
+                    if (!ok) { RestoreEpp(); return false; }
+                    eppApplied = true;
+                    return true;
+                }
+                catch
+                {
+                    if (eppYielded) RestoreEpp();
+                    return false;
+                }
             }
         }
 
@@ -402,26 +426,110 @@ namespace PaviseApp
         {
             lock (eppLk)
             {
-            if (!eppYielded) return true;
-            Guid g = ManagedPlanGuid();
-            bool ok = true;
-            if (g != Guid.Empty)
-            {
-                if (eppSaved) ok &= WriteAc(g, SubProcessor, PerfEpp, eppSavedAc);
-                if (eppSaved1) ok &= WriteAc(g, SubProcessor, PerfEpp1, eppSavedAc1);
-                ReapplyActive(g);
-            }
-            eppYielded = false; eppSaved = false; eppSaved1 = false;
-            return ok;
+                if (!eppYielded) return true;
+                eppApplied = false;
+                // The managed-plan reference may have changed since the write.
+                // Only the captured plan owns these original values.
+                Guid g = eppSavedScheme;
+                if (g == Guid.Empty || !eppSaved) return false;
+                try
+                {
+                    bool ok = EppWriteVerified(g, false, eppSavedAc);
+                    if (eppSaved1) ok = EppWriteVerified(g, true, eppSavedAc1) && ok;
+                    if (!ok || !EppReapplyVerified(g)) return false;
+                    ClearEppSnapshot();
+                    return true;
+                }
+                catch { return false; }
             }
         }
 
         // 方案正在生效时改值要重新 SetActive 一次 否则内核不会重新读
-        private static void ReapplyActive(Guid scheme)
+        private static bool EppReapplyVerified(Guid scheme)
         {
-            try { Guid? cur = Current(); if (cur.HasValue && cur.Value == scheme) Set(scheme); }
-            catch { }
+            Guid? cur = EppCurrentScheme();
+            if (!cur.HasValue || cur.Value == Guid.Empty) return false;
+            if (cur.Value != scheme) return true;
+            if (!EppSetActive(scheme)) return false;
+            Guid? after = EppCurrentScheme();
+            return after.HasValue && after.Value == scheme;
         }
+
+        private static bool EppWriteVerified(Guid scheme, bool secondary, uint value)
+        {
+            uint actual;
+            return EppWriteAc(scheme, secondary, value)
+                && EppReadAc(scheme, secondary, out actual) && actual == value;
+        }
+
+        private static void ClearEppSnapshot()
+        {
+            eppYielded = eppApplied = eppSaved = eppSaved1 = false;
+            eppSavedScheme = Guid.Empty;
+            eppSavedAc = eppSavedAc1 = 0;
+        }
+
+        private static Guid EppManagedScheme()
+        {
+#if PAVISE_SELFTEST
+            if (EppManagedSchemeForTest != null) return EppManagedSchemeForTest();
+#endif
+            return ManagedPlanGuid();
+        }
+
+        private static bool EppReadAc(Guid scheme, bool secondary, out uint value)
+        {
+#if PAVISE_SELFTEST
+            if (EppReadAcForTest != null) return EppReadAcForTest(scheme, secondary, out value);
+#endif
+            return ReadAc(scheme, SubProcessor, secondary ? PerfEpp1 : PerfEpp, out value);
+        }
+
+        private static bool EppWriteAc(Guid scheme, bool secondary, uint value)
+        {
+#if PAVISE_SELFTEST
+            if (EppWriteAcForTest != null) return EppWriteAcForTest(scheme, secondary, value);
+#endif
+            return WriteAc(scheme, SubProcessor, secondary ? PerfEpp1 : PerfEpp, value);
+        }
+
+        private static Guid? EppCurrentScheme()
+        {
+#if PAVISE_SELFTEST
+            if (EppCurrentSchemeForTest != null) return EppCurrentSchemeForTest();
+#endif
+            return Current();
+        }
+
+        private static bool EppSetActive(Guid scheme)
+        {
+#if PAVISE_SELFTEST
+            if (EppSetActiveForTest != null) return EppSetActiveForTest(scheme);
+#endif
+            return Set(scheme);
+        }
+
+#if PAVISE_SELFTEST
+        internal delegate bool EppReadAcProbe(Guid scheme, bool secondary, out uint value);
+        internal static Func<Guid> EppManagedSchemeForTest;
+        internal static EppReadAcProbe EppReadAcForTest;
+        internal static Func<Guid, bool, uint, bool> EppWriteAcForTest;
+        internal static Func<Guid?> EppCurrentSchemeForTest;
+        internal static Func<Guid, bool> EppSetActiveForTest;
+
+        internal static void ResetEppForTest()
+        {
+            lock (eppLk)
+            {
+                ClearEppSnapshot();
+                EppManagedSchemeForTest = null;
+                EppReadAcForTest = null;
+                EppWriteAcForTest = null;
+                EppCurrentSchemeForTest = null;
+                EppSetActiveForTest = null;
+            }
+        }
+#endif
 
         internal static bool ReadAc(Guid scheme, Guid sub, Guid setting, out uint value)
         {

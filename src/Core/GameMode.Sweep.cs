@@ -55,15 +55,6 @@ namespace PaviseApp
             public string FailureDetail;
         }
 
-        private static readonly HashSet<string> LauncherPlatforms = BuildLauncherPlatforms();
-
-        private static HashSet<string> BuildLauncherPlatforms()
-        {
-            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (string name in GamePlatformCatalog.PlatformShellNames()) names.Add(name);
-            return names;
-        }
-
         private static readonly HashSet<int> EmptyPidSet = new HashSet<int>();
 
         // 掌机档的后台压制跟专注一样狠 掌机核心少 后台抢一点都更疼 而且压后台本身还省电
@@ -92,8 +83,8 @@ namespace PaviseApp
         //   偶尔醒来也能在任何一个没有更高优先级工作的核上跑 不会被挤着排队
         //   唯一还在把关的是 BasicBackgroundEligible 那道保护边界
         //   反作弊 系统核心 输入音频外设链 加速器 硬件控制 白名单 其它登录账户一律不碰
-        //   游戏家族豁免默认开启 平台客户端 启动器 游戏目录进程与游戏子进程整族放行
-        //   用户手动关掉后只放行渲染进程本体和白名单 其余按普通后台压制
+        //   每个游戏默认保留家族保护 按路径、同会话的有效父子身份确认成员
+        //   用户逐项开启“压制家族后台”后取消该项的家族豁免 其余安全边界不变
         //   档位差异不再体现在压制强度 只体现在哪些进程有资格被碰
         internal static SuppressionLevel BackgroundLevel()
         {
@@ -105,19 +96,15 @@ namespace PaviseApp
             bool gameHostAncestor = false, string activeGameRoot = null, bool aggressive = false,
             bool familyExempt = true)
         {
-            // 家族豁免关着时 只有渲染进程本体豁免 其余一律压 本体在调用方按 rendererPid 就已放行
-            //   平台与启动器外壳 宿主祖先链 游戏根目录下的常驻进程 游戏派生的子进程全部照压
-            //   这些客户端在对局中仍持续占用 CPU 放过它们等于把最大的一份后台开销留在场上
-            //   降优先级不等于杀进程 Steam 和战网那类把客户端当 DRM 的 进程仍在运行 不受影响
-            //   家族豁免开着时 上面四类整族放行 调用方把宿主祖先与游戏根目录按参数传进来
-            //   下面四条是安全边界 两种模式下都不受影响
+            // 家族是否保护由调用方按档案和本轮身份确定，不按游戏/客户端名字推断。
+            //   开启家族压制仍可能影响依赖进程的响应，所以 UI 默认关闭并提示风险。
+            //   渲染本体、待确认候选、白名单和其它档案的保护在调用方先行放行。
+            //   下面四条是独立安全边界，不随逐游戏设置取消。
             //   反作弊被压会心跳超时掉线 加速器被压会断流 输入音频外设链被压会卡鼠标和丢声音
             if (AntiCheatCatalog.IsAntiCheatLikeName(name)) return false;
             if (NetAcceleratorCatalog.IsAcceleratorLikeName(name)) return false;
             if (PeripheralCatalog.IsInputChainProcess(name, path)) return false;
             if (HardwareControlCatalog.IsHardwareControlProcess(name)) return false;
-            if (familyExempt && GamePlatformCatalog.IsPlatformProcess(name, path)
-                && !(aggressive && GamePlatformCatalog.IsPlatformWebRenderer(name))) return false;
             if (gameHostAncestor) return false;
             if (UnderRoot(path, activeGameRoot)) return false;
             if (pid <= 4 || pid == self || session < 0 || session != ownerSession) return false;
@@ -166,22 +153,34 @@ namespace PaviseApp
             int foregroundPid = GameSessionDetector.ForegroundPid();
             bool aggressive = IsAggressive(mode, sp != null ? sp.Aggressive : aggressiveOn);
             WhitelistEvaluation whitelist = EvaluateWhitelist(all);
-            bool familyExempt = familyExemptOn;
+            int policyEpoch = FamilyPolicyEpoch;
+            bool familyExempt = true;
             int rendererPid = 0;
             string activeGameRoot = null;
             var libraryRoots = new List<string>();
+            List<GameProfile> protectedProfiles;
             lock (sync)
             {
                 if (activeDetection != null)
                 {
                     rendererPid = activeDetection.RendererPid;
+                    familyExempt = FamilyExemptFor(activeDetection.Profile == null
+                        ? null : FindProfileLocked(activeDetection.Profile.Id));
                     if (familyExempt && activeDetection.Profile != null)
                         activeGameRoot = activeDetection.Profile.Root;
                 }
-                if (familyExempt)
-                    foreach (GameProfile profile in profiles)
-                        if (!string.IsNullOrEmpty(profile.Root)) libraryRoots.Add(profile.Root);
+                // Another game's default protection cannot be disabled by this
+                // game's opt-in. Ambiguous overlapping roots favor protection.
+                protectedProfiles = new List<GameProfile>();
+                foreach (GameProfile profile in profiles)
+                    if (FamilyExemptFor(profile))
+                    {
+                        protectedProfiles.Add(profile.Clone());
+                        if (SafeFamilyDir(profile.Root)) libraryRoots.Add(profile.Root);
+                    }
             }
+            HashSet<int> protectedLibraryFamily = CollectProtectedLibraryFamily(
+                protectedProfiles, all, selfPid, selfSession, FamilyEvidence);
             bool haveSession = rendererPid > 0;
             // 名字说的是"家族豁免在这一局生效" 不是"有没有对局" 两者只在开关关着时不同
             bool familyExemptionActive = familyExempt && haveSession;
@@ -256,15 +255,27 @@ namespace PaviseApp
                         continue;
                     }
 
+                    // 候选保护先于一切后台写入，与家族豁免/模式/提优开关无关。
+                    // 只匹配本轮身份的 PID+创建时间+完整路径，不能把复用 PID 放行。
+                    long candidateCreation = processInfo != null ? processInfo.Creation : p.Creation;
+                    string candidatePath = processInfo != null ? processInfo.Path : p.Path;
+                    if (IsRendererHandoffProtected(pid, candidateCreation, candidatePath))
+                    {
+                        BackgroundReleaseState release = core.ReleaseBackgroundForRenderer(pid, candidateCreation, nm);
+                        if (release == BackgroundReleaseState.Ready || release == BackgroundReleaseState.Gone)
+                            ReportUntrack(pid);
+                        continue;
+                    }
+
                     bool boosted;
                     lock (sync) boosted = gameBoost.ContainsKey(pid);
                     if (boosted) continue;
 
                     bool white = whitelist.Protected.Contains(pid);
-                    // 家族豁免关着时只放行渲染进程本体和用户白名单 开着时整族放行
+                    // 用户开关只取消当前档案的家族保护，不取消其他档案的保护。
                     //   上面的 boosted 只在提优真的落地时为真 提优关掉或被反作弊挡住句柄时它是假的
                     //   所以这条按 pid 的判断不能省 否则那些机器上游戏本体会被当后台压掉
-                    if (white || (rendererPid > 0 && pid == rendererPid)
+                    if (white || protectedLibraryFamily.Contains(pid) || (rendererPid > 0 && pid == rendererPid)
                         || (familyExempt && ((gamePids != null && gamePids.Contains(pid))
                             || gameDescendants.Contains(pid))))
                     {
@@ -298,24 +309,17 @@ namespace PaviseApp
                         continue;
                     }
 
-                    bool knownLauncherDuringSession = familyExemptionActive && IsKnownLauncherShell(nm)
-                        && !(aggressive && GamePlatformCatalog.IsPlatformWebRenderer(nm));
                     if (!PerformanceScopeAllows(ipath))
                     {
                         ReleaseBackgroundExemption(pid, nm, null);
                         continue;
                     }
-                    string containRoot = null;
-                    if (familyExempt)
-                    {
-                        containRoot = LibraryRootOf(ipath, libraryRoots);
-                        if (containRoot == null) containRoot = activeGameRoot;
-                    }
+                    string containRoot = LibraryRootOf(ipath, libraryRoots);
+                    if (containRoot == null && familyExempt) containRoot = activeGameRoot;
                     if (!BasicBackgroundEligible(pid, selfPid, nm, ipath,
                         sameSession ? selfSession : -1, selfSession, foregroundPid,
                         userFacingFamily.Contains(pid), windowsPrefix,
-                        (familyExemptionActive && gameHostAncestors.Contains(pid))
-                            || knownLauncherDuringSession,
+                        familyExemptionActive && gameHostAncestors.Contains(pid),
                         containRoot, aggressive, familyExempt))
                     {
                         ReleaseBackgroundExemption(pid, nm, null);
@@ -348,7 +352,10 @@ namespace PaviseApp
                             if (desired != SuppressionLevel.None && core.HasReason(pid, SuppressReason.Background)
                                 && core.LevelOf(pid, SuppressReason.Background) == desired)
                             {
-                                if (core.Reconcile(pid, nm, SuppressReason.Background)) continue;
+                                bool reconciled = false;
+                                if (!RunBackgroundPolicy(policyEpoch, delegate
+                                    { reconciled = core.Reconcile(pid, nm, SuppressReason.Background); })) return;
+                                if (reconciled) continue;
                             }
                         }
                         else ReportUntrack(pid);
@@ -383,16 +390,19 @@ namespace PaviseApp
                 });
 
             SuppressionCore.BatchResult batchResult = null;
-            core.BeginBatch();
-            try
+            if (!RunBackgroundPolicy(policyEpoch, delegate
             {
-                foreach (BackgroundRequest request in pending)
+                core.BeginBatch();
+                try
                 {
-                    try { request.Result = core.Acquire(request.Pid, request.Name, SuppressReason.Background, null, request.Desired); }
-                    catch { request.Result = AcquireResult.AlreadyProtected; }
+                    foreach (BackgroundRequest request in pending)
+                    {
+                        try { request.Result = core.Acquire(request.Pid, request.Name, SuppressReason.Background, null, request.Desired); }
+                        catch { request.Result = AcquireResult.AlreadyProtected; }
+                    }
                 }
-            }
-            finally { batchResult = core.EndBatch(); }
+                finally { batchResult = core.EndBatch(); }
+            })) return;
 
             foreach (BackgroundRequest request in pending)
                 if ((request.Result == AcquireResult.NewlyThrottled || request.Result == AcquireResult.AlreadyThrottled)
@@ -474,9 +484,7 @@ namespace PaviseApp
                     if (excludeRootPid > 0 && pid == excludeRootPid) continue;
                     WhitelistProcessInfo info = pair.Value;
                     if (selfSession < 0 || info.Session != selfSession) continue;
-                    string name = info.Name;
-                    bool isLauncher = name != null && LauncherPlatforms.Contains(name);
-                    if (pid == foregroundPid || (!isLauncher && visible.Contains(pid)))
+                    if (pid == foregroundPid || visible.Contains(pid))
                         roots.Add(pid);
                 }
                 catch { }
@@ -564,11 +572,6 @@ namespace PaviseApp
             foreach (string d in gameDirs)
                 if (UnderRoot(path, d)) return true;
             return false;
-        }
-
-        internal static bool IsKnownLauncherShell(string name)
-        {
-            return !string.IsNullOrEmpty(name) && LauncherPlatforms.Contains(name);
         }
 
         internal static HashSet<int> WalkDescendants(

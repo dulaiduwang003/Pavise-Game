@@ -87,12 +87,13 @@ namespace PaviseApp
             lblEvidenceLive = CardLabel(status, Lang.F("v20.ready", App.Version), 58, 22, 205, 26, 9f, true, Theme.Faint);
             lblEvidenceLive.TextAlign = ContentAlignment.MiddleLeft;
 
-            // 底栏左边是版本号 右边是深度调优入口 中间这段放三个外链
+            // 深度调优只保留侧栏入口，底栏右侧留给三个外链。
             //   不等宽是有意的 教程那条标题最长 平分的话它会被省略号截掉
             //   按钮内部左侧图标占 43 右端外链角标占 32 剩下才是文字可用宽度
             int linkY = 12, linkH = 46, linkGap = 10;
-            int guideW = 176, otherW = 142;
             int gx = 276;
+            int available = PageW - gx - 30 - linkGap * 2;
+            int otherW = (available - 40) / 3, guideW = available - otherW * 2;
             AddOverviewLink(status, gx, linkY, guideW, linkH,
                 Lang.T("v211.link.guide"), "GUIDE // 01", "info", App.GuideUrl);
             gx += guideW + linkGap;
@@ -102,11 +103,6 @@ namespace PaviseApp
             AddOverviewLink(status, gx, linkY, otherW, linkH,
                 Lang.T("v211.link.bug"), "REPORT // 03", "search", App.BugUrl);
 
-            var advanced = new AdvancedEntryButton(Lang.T("v20.advanced.entry"));
-            advanced.Bg = Theme.Nav;
-            advanced.SetBounds(Theme.S(PageW - 226), Theme.S(12), Theme.S(196), Theme.S(46));
-            status.Controls.Add(advanced);
-            advanced.Click += delegate { ToggleAdvancedPanel(); };
             UpdateModePresentation(false);
         }
 

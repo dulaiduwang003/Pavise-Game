@@ -1,0 +1,402 @@
+// @author bdth 2074055628@qq.com
+// 文件用途 由安装记录补足单个 EXE 的可信安装范围；不选择渲染器、不扫描磁盘或猜游戏名称
+using System;
+using System.Collections.Generic;
+using System.IO;
+using Microsoft.Win32;
+
+namespace PaviseApp
+{
+    internal sealed class GameInstallRecord
+    {
+        internal string InstallLocation;
+        internal string InstallSource;
+        internal string UninstallString;
+    }
+
+    internal static class GameInstallScope
+    {
+        private const int MaxRecords = 8192;
+        private const long CacheTicks = 2 * TimeSpan.TicksPerMinute;
+        private static readonly object sync = new object();
+        private static Snapshot cached;
+        private static long cachedAt;
+
+        private sealed class Snapshot
+        {
+            internal readonly HashSet<string> Roots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            internal readonly HashSet<string> Platforms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            internal readonly bool Complete;
+
+            internal Snapshot(IList<GameInstallRecord> records, IList<string> platformRoots, bool complete = true)
+            {
+                int count = records == null ? 0 : records.Count;
+                Complete = complete && count <= MaxRecords;
+                // 批量加载档案复用这一份规范化根集合，不逐档案重读记录和系统目录。
+                for (int i = 0; i < Math.Min(count, MaxRecords); i++)
+                {
+                    string root = RootFromRecord(records[i]);
+                    if (root != null && !UnsafeRoot(root)) Roots.Add(root);
+                }
+                if (platformRoots != null)
+                    foreach (string raw in platformRoots)
+                    {
+                        string root = Normalize(raw);
+                        if (root != null) Platforms.Add(root);
+                    }
+            }
+        }
+
+        // 仅供添加/编辑和加载档案调用。快照短期复用，不进入游戏检测热循环。
+        internal static string Resolve(string executablePath, string fallbackRoot)
+        {
+            string executable = Normalize(executablePath);
+            if (executable == null || !executable.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) return fallbackRoot;
+            try
+            {
+                Snapshot snapshot = CurrentSnapshot();
+                return SelectSnapshotRoot(executable, fallbackRoot, snapshot, Directory.Exists, IsSafeExistingPath);
+            }
+            catch { return fallbackRoot; }
+        }
+
+        // 仅收紧原有推断范围。没有新安装证据时不扩大目录，也不能让平台/整库
+        // 根通过 Resolve 的原 fallback 契约重新进入档案。I/O 失败不猜测新范围。
+        internal static string RestrictFallback(string executablePath, string fallbackRoot)
+        {
+            string executable = Normalize(executablePath);
+            string root = Normalize(fallbackRoot);
+            if (executable == null || !executable.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                || root == null || !Under(executable, root)
+                || UnsafeRoot(root)) return null;
+            try
+            {
+                Snapshot snapshot = CurrentSnapshot();
+                if (ContainsPlatform(root, snapshot.Platforms)
+                    || ContainsOtherInstall(root, executable, snapshot.Roots)) return null;
+            }
+            catch { }
+            return root;
+        }
+
+        // 纯记录选择入口：测试可注入文件系统判断，不访问注册表或启动任何程序。
+        internal static string SelectRoot(string executablePath, string fallbackRoot,
+            IList<GameInstallRecord> records, IList<string> platformRoots,
+            Func<string, bool> directoryExists, Func<string, bool> safePath)
+        {
+            string executable = Normalize(executablePath);
+            if (executable == null || !executable.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                || records == null || records.Count > MaxRecords
+                || directoryExists == null || safePath == null) return fallbackRoot;
+            try
+            {
+                return SelectSnapshotRoot(executable, fallbackRoot, new Snapshot(records, platformRoots), directoryExists, safePath);
+            }
+            catch { return fallbackRoot; }
+        }
+
+        private static string SelectSnapshotRoot(string executable, string fallbackRoot,
+            Snapshot snapshot, Func<string, bool> directoryExists, Func<string, bool> safePath)
+        {
+            try
+            {
+                if (!snapshot.Complete || !safePath(executable)) return fallbackRoot;
+                string best = null;
+                foreach (string root in snapshot.Roots)
+                {
+                    if (!Under(executable, root) || (best != null && root.Length <= best.Length)) continue;
+                    if (ContainsPlatform(root, snapshot.Platforms)
+                        || ContainsOtherInstall(root, executable, snapshot.Roots)) continue;
+                    if (!directoryExists(root) || !safePath(root)) continue;
+                    best = root;
+                }
+                return best ?? fallbackRoot;
+            }
+            catch { return fallbackRoot; }
+        }
+
+        private static string RootFromRecord(GameInstallRecord record)
+        {
+            if (record == null) return null;
+            // 显式安装位置存在但不合法时也不降级到另一个不一致的字段。
+            if (!string.IsNullOrWhiteSpace(record.InstallLocation))
+                return Normalize(record.InstallLocation);
+            string source = Normalize(record.InstallSource);
+            if (source == null) return null;
+            string uninstall = UninstallDirectory(record.UninstallString);
+            // InstallSource 经常只是安装包目录，必须由独立的卸载路径佐证。
+            // 只要求安装目录仍存在；升级后旧卸载 EXE 的名字可以已经失效。
+            return string.Equals(source, uninstall, StringComparison.OrdinalIgnoreCase) ? source : null;
+        }
+
+        private static string UninstallDirectory(string command)
+        {
+            if (string.IsNullOrWhiteSpace(command) || command.Length > 32767) return null;
+            string value = command.Trim();
+            string executable = null;
+            if (value[0] == '"')
+            {
+                int end = value.IndexOf('"', 1);
+                if (end > 1) executable = value.Substring(1, end - 1);
+            }
+            else
+            {
+                int start = 0;
+                while (start < value.Length)
+                {
+                    int end = value.IndexOf(".exe", start, StringComparison.OrdinalIgnoreCase);
+                    if (end < 0) break;
+                    end += 4;
+                    if (end == value.Length || char.IsWhiteSpace(value[end]))
+                    {
+                        executable = value.Substring(0, end);
+                        break;
+                    }
+                    start = end;
+                }
+            }
+            executable = Normalize(executable);
+            if (executable == null || !executable.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) return null;
+            try { return Normalize(Path.GetDirectoryName(executable)); }
+            catch { return null; }
+        }
+
+        private static string Normalize(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw) || raw.Length > 32767) return null;
+            try
+            {
+                string value = Environment.ExpandEnvironmentVariables(raw.Trim().Trim('"')).Replace('/', '\\');
+                // 不将相对路径、设备路径或网络共享解释成一个本机安装范围。
+                if (value.Length < 3 || !char.IsLetter(value[0]) || value[1] != ':' || value[2] != '\\') return null;
+                for (int i = 0; i < value.Length; i++)
+                    if (char.IsControl(value[i]) || value[i] == '"' || value[i] == '*' || value[i] == '?'
+                        || value[i] == '|' || value[i] == '<' || value[i] == '>'
+                        || (value[i] == ':' && i != 1)) return null;
+                return Path.GetFullPath(value).TrimEnd('\\');
+            }
+            catch { return null; }
+        }
+
+        private static bool Under(string path, string root)
+        {
+            return path != null && root != null
+                && path.StartsWith(root + "\\", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static readonly Environment.SpecialFolder[] BroadFolders =
+        {
+            Environment.SpecialFolder.ProgramFiles, Environment.SpecialFolder.ProgramFilesX86,
+            Environment.SpecialFolder.CommonProgramFiles, Environment.SpecialFolder.CommonProgramFilesX86,
+            Environment.SpecialFolder.CommonApplicationData, Environment.SpecialFolder.ApplicationData,
+            Environment.SpecialFolder.LocalApplicationData, Environment.SpecialFolder.UserProfile,
+            Environment.SpecialFolder.DesktopDirectory, Environment.SpecialFolder.CommonDesktopDirectory,
+            Environment.SpecialFolder.MyDocuments, Environment.SpecialFolder.CommonDocuments,
+            Environment.SpecialFolder.MyMusic, Environment.SpecialFolder.MyPictures, Environment.SpecialFolder.MyVideos,
+            Environment.SpecialFolder.CommonMusic, Environment.SpecialFolder.CommonPictures, Environment.SpecialFolder.CommonVideos,
+            Environment.SpecialFolder.System, Environment.SpecialFolder.SystemX86
+        };
+
+        private static readonly HashSet<string> KnownBroadRoots = BuildBroadRoots();
+        private static readonly string KnownWindowsRoot = KnownFolder(Environment.SpecialFolder.Windows);
+
+        private static string KnownFolder(Environment.SpecialFolder folder)
+        {
+            try { return Normalize(Environment.GetFolderPath(folder)); }
+            catch { return null; }
+        }
+
+        private static HashSet<string> BuildBroadRoots()
+        {
+            var roots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (Environment.SpecialFolder folder in BroadFolders)
+            {
+                string root = KnownFolder(folder);
+                if (root != null) roots.Add(root);
+            }
+            try
+            {
+                string common = Normalize(Environment.GetEnvironmentVariable("PUBLIC"));
+                if (common != null) roots.Add(common);
+            }
+            catch { }
+            try
+            {
+                string temporary = Normalize(Path.GetTempPath());
+                if (temporary != null) roots.Add(temporary);
+            }
+            catch { }
+            return roots;
+        }
+
+        private static bool UnsafeRoot(string root)
+        {
+            if (root.Length <= 3) return true;
+            if (string.Equals(root, KnownWindowsRoot, StringComparison.OrdinalIgnoreCase)
+                || Under(root, KnownWindowsRoot) || KnownBroadRoots.Contains(root)) return true;
+
+            string name = Path.GetFileName(root);
+            // 仅负向排除操作系统/平台的公共容器；绝不凭某个目录名推断游戏身份。
+            return string.Equals(name, "Users", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "Games", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "Game", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "Downloads", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "SteamLibrary", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "steamapps", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "common", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "WeGameApps", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "XboxGames", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "WindowsApps", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool ContainsPlatform(string root, HashSet<string> platforms)
+        {
+            foreach (string platform in platforms)
+                if (string.Equals(root, platform, StringComparison.OrdinalIgnoreCase) || Under(platform, root))
+                    return true;
+            return false;
+        }
+
+        private static bool ContainsOtherInstall(string root, string executable, HashSet<string> roots)
+        {
+            // 一个范围另含不属于所选 EXE 分支的独立安装项时，不把该公共范围当家族。
+            foreach (string other in roots)
+                if (Under(other, root) && !Under(executable, other)) return true;
+            return false;
+        }
+
+        private static bool IsSafeExistingPath(string path)
+        {
+            return IsSafePath(path, File.GetAttributes);
+        }
+
+        internal static bool IsSafePath(string path, Func<string, FileAttributes> attributes)
+        {
+            if (attributes == null) return false;
+            try
+            {
+                string current = path;
+                for (int i = 0; i < 128 && !string.IsNullOrEmpty(current); i++)
+                {
+                    if ((attributes(current) & FileAttributes.ReparsePoint) != 0) return false;
+                    string parent = Path.GetDirectoryName(current);
+                    if (string.IsNullOrEmpty(parent)) return true;
+                    current = parent;
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        private static Snapshot CurrentSnapshot()
+        {
+            lock (sync)
+            {
+#if PAVISE_SELFTEST
+                if (testSnapshot != null) return testSnapshot;
+#endif
+                long now = DateTime.UtcNow.Ticks;
+                if (cached != null && now >= cachedAt && now - cachedAt < CacheTicks) return cached;
+                var records = new List<GameInstallRecord>();
+                RegistryView[] views = Environment.Is64BitOperatingSystem
+                    ? new[] { RegistryView.Registry64, RegistryView.Registry32 }
+                    : new[] { RegistryView.Registry32 };
+                foreach (RegistryView view in views)
+                {
+                    ReadUninstallHive(RegistryHive.LocalMachine, view, records);
+                    ReadUninstallHive(RegistryHive.CurrentUser, view, records);
+                    if (records.Count > MaxRecords) break;
+                }
+                var platforms = new List<string>();
+                bool complete = records.Count <= MaxRecords;
+                try
+                {
+                    foreach (string platform in GamePlatformCatalog.DetectedPlatforms())
+                        platforms.AddRange(GamePlatformCatalog.ResolvedRoots(platform));
+                }
+                catch { complete = false; }
+                cached = new Snapshot(records, platforms, complete);
+                cachedAt = now;
+                return cached;
+            }
+        }
+
+        private static void ReadUninstallHive(RegistryHive hive, RegistryView view, List<GameInstallRecord> records)
+        {
+            if (records.Count > MaxRecords) return;
+            try
+            {
+                using (RegistryKey baseKey = RegistryKey.OpenBaseKey(hive, view))
+                using (RegistryKey key = baseKey.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"))
+                {
+                    if (key == null) return;
+                    foreach (string sub in key.GetSubKeyNames())
+                    {
+                        if (records.Count >= MaxRecords)
+                        {
+                            // 多放一个空哨兵表示快照不完整，SelectRoot 会整体拒绝扩大。
+                            // 不能把缺失其他产品记录的截断快照当作可靠的公共目录边界。
+                            records.Add(null);
+                            return;
+                        }
+                        try
+                        {
+                            using (RegistryKey entry = key.OpenSubKey(sub))
+                            {
+                                if (entry == null || entry.GetValue("ParentKeyName") != null) continue;
+                                object component = entry.GetValue("SystemComponent");
+                                if (component is int && (int)component != 0) continue;
+                                records.Add(new GameInstallRecord
+                                {
+                                    InstallLocation = entry.GetValue("InstallLocation") as string,
+                                    InstallSource = entry.GetValue("InstallSource") as string,
+                                    UninstallString = entry.GetValue("UninstallString") as string
+                                });
+                            }
+                        }
+                        catch { }
+                    }
+                }
+            }
+            catch { }
+        }
+
+#if PAVISE_SELFTEST
+        private static Snapshot testSnapshot;
+
+        // 测试必须显式给出快照；空快照也不会回退读取宿主注册表或平台配置。
+        internal static IDisposable UseSnapshotForTest(IList<GameInstallRecord> records, IList<string> platformRoots)
+        {
+            lock (sync)
+            {
+                var next = new Snapshot(records, platformRoots);
+                var scope = new TestSnapshotScope(testSnapshot, next);
+                testSnapshot = next;
+                return scope;
+            }
+        }
+
+        private sealed class TestSnapshotScope : IDisposable
+        {
+            private readonly Snapshot previous;
+            private readonly Snapshot installed;
+            private bool disposed;
+
+            internal TestSnapshotScope(Snapshot previous, Snapshot installed)
+            { this.previous = previous; this.installed = installed; }
+
+            public void Dispose()
+            {
+                lock (sync)
+                {
+                    if (disposed) return;
+                    if (!ReferenceEquals(testSnapshot, installed))
+                        throw new InvalidOperationException("Install-scope test snapshots must be disposed in order.");
+                    testSnapshot = previous;
+                    disposed = true;
+                }
+            }
+        }
+#endif
+    }
+}

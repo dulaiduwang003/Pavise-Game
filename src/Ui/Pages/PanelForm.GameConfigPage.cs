@@ -98,8 +98,8 @@ namespace PaviseApp
             }
             if (lblCfgCount != null)
             {
-                int n = cfgProfile.Overrides.Count;
-                lblCfgCount.Text = n > 0 ? Lang.F("cfg.count", n) : Lang.T("cfg.count.none");
+                int n = GameLibraryRow.OrdinaryOverrideCount(cfgProfile);
+                lblCfgCount.Text = CfgOverrideSummary(cfgProfile);
                 lblCfgCount.ForeColor = n > 0 ? Theme.Accent : Theme.Faint;
                 lblCfgCount.Cursor = n > 0 ? Cursors.Hand : Cursors.Default;
             }
@@ -112,11 +112,12 @@ namespace PaviseApp
             }
             if (cfgBanner != null)
             {
-                int count = cfgProfile.Overrides.Count;
+                int count = GameLibraryRow.OrdinaryOverrideCount(cfgProfile);
                 bool frozen = cfgProfileId != null
                     && string.Equals(gameMode.SessionPolicyProfileId, cfgProfileId, StringComparison.OrdinalIgnoreCase);
-                cfgBanner.State = count > 0 ? Lang.F("cfg.count", count) : "FOLLOWING GLOBAL";
+                cfgBanner.State = CfgOverrideSummary(cfgProfile);
                 cfgBanner.StateColor = count > 0 ? Theme.Accent : Theme.Green;
+                cfgBanner.Cursor = count > 0 ? Cursors.Hand : Cursors.Default;
                 cfgBanner.Detail = frozen ? Lang.T("cfg.frozen") : Lang.T("cfg.sub");
             }
         }
@@ -174,7 +175,7 @@ namespace PaviseApp
 
         private void JumpToNextCfgOverride()
         {
-            if (cfgProfile == null || cfgTabKeys == null || cfgProfile.Overrides.Count == 0) return;
+            if (cfgProfile == null || cfgTabKeys == null || GameLibraryRow.OrdinaryOverrideCount(cfgProfile) == 0) return;
             var cards = new List<SettingCard>();
             SettingCard presetCard;
             if (cfgProfile.Overrides.ContainsKey(PolicyCatalog.KeyPreset)
@@ -545,15 +546,35 @@ namespace PaviseApp
 
         private void ClearAllCfgOverrides()
         {
-            if (cfgProfile == null) return;
-            int n = cfgProfile.Overrides.Count;
-            if (n == 0) return;
+            if (!RefreshCfgProfile()) return;
+            string confirmation = CfgClearConfirmation(cfgProfile);
+            if (confirmation == null) return;
             if (!PaviseDialog.Confirm(this, Lang.T("cfg.clear"),
-                    Lang.F("cfg.clear.confirm", cfgProfile.Name, n), DlgKind.Warn))
+                    confirmation, DlgKind.Warn))
                 return;
             gameMode.ClearProfileOverrides(cfgProfileId);
             cfgCoreManualPicked = false;
             SyncCfgRows();
+        }
+
+        internal static string CfgOverrideSummary(GameProfile profile)
+        {
+            int count = GameLibraryRow.OrdinaryOverrideCount(profile);
+            if (count > 0) return Lang.F("cfg.count", count);
+            return Lang.T(profile != null && profile.Overrides.ContainsKey(PolicyCatalog.KeySuppressFamily)
+                ? "cfg.count.none.family" : "cfg.count.none");
+        }
+
+        internal static string CfgClearConfirmation(GameProfile profile)
+        {
+            if (profile == null) return null;
+            int count = GameLibraryRow.OrdinaryOverrideCount(profile);
+            bool family = profile.Overrides.ContainsKey(PolicyCatalog.KeySuppressFamily);
+            if (!family && count == 0) return null;
+            if (!family) return Lang.F("cfg.clear.confirm", profile.Name, count);
+            // 家族开关并不在本页出现，但“全部清除”仍会关闭它，不能当作跟随全局。
+            return count > 0 ? Lang.F("cfg.clear.family.confirm", profile.Name, count)
+                : Lang.F("cfg.clear.family.only", profile.Name);
         }
     }
 }

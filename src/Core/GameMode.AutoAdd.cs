@@ -37,7 +37,9 @@ namespace PaviseApp
 
         private void TryAutoAddForegroundGame()
         {
-            if (!autoAddOn || stopping || !enabled) return;
+            if (!autoAddOn || stopping || !enabled || ProfileStoreSaveFailed) return;
+            RendererHandoffTracker handoff = rendererHandoff;
+            if (handoff != null && (handoff.HasCandidate || handoff.HasProbe)) return;
             bool sessionActive;
             lock (sync) sessionActive = active;
             if (sessionActive) return;
@@ -55,7 +57,6 @@ namespace PaviseApp
                 return;
             if (!GameSessionDetector.IsLibraryCandidate(identity.Name, identity.Path, windowsPrefix))
                 return;
-            if (GamePlatformCatalog.IsPlatformProcess(identity.Name, identity.Path)) return;
             string path = identity.Path;
             lock (sync)
             {
@@ -69,9 +70,14 @@ namespace PaviseApp
                         return;
             }
 
-            Dictionary<int, double> util = GpuEvidence.Sample3D(
-                GpuEvidence.BurstRounds, GpuEvidence.BurstIntervalMs,
-                delegate { return stopping || panicReq; });
+            if (System.Threading.Interlocked.CompareExchange(ref rendererGpuSamplingBusy, 1, 0) != 0) return;
+            Dictionary<int, double> util;
+            try
+            {
+                util = GpuEvidence.Sample3D(GpuEvidence.BurstRounds, GpuEvidence.BurstIntervalMs,
+                    delegate { return stopping || panicReq; });
+            }
+            finally { System.Threading.Interlocked.Exchange(ref rendererGpuSamplingBusy, 0); }
             if (util == null) { RememberAutoAddReject(path, now); return; }
             double candidate;
             if (!util.TryGetValue(pid, out candidate)) candidate = 0;
@@ -145,7 +151,7 @@ namespace PaviseApp
 
         private bool SaveAutoIgnoreLocked()
         {
-            if (ProfileStoreSaveFailed) return false;
+            if (stopping || ProfileStoreSaveFailed) return false;
             try
             {
                 var lines = new List<string>();

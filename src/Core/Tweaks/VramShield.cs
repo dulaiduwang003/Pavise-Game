@@ -58,6 +58,7 @@ namespace PaviseApp
         private static uint shieldPhys;
         private static ulong shieldBytes;
         private static ulong lastBudget;
+        private static bool recoveryBlocked;
 
         public static bool Fused { get { return Settings.Load(FuseKey, false); } }
 
@@ -109,14 +110,21 @@ namespace PaviseApp
         //   只重置 stage 是不够的 上一局的 shieldPid 和适配器句柄会留下来
         //   留下来的后果有两个 旧预留一直挂在上一个游戏进程上撤不掉
         //   以及下一局看到 shieldAdapter 非零直接复用 双显卡机器上会去查错的那块卡
-        public static void Begin()
+        public static bool Begin()
         {
-            lock (opLk) DoRelease(Lang.T("t.vramshield.4"));
-            lock (lk) nextSampleTicks = 0;
+            lock (opLk)
+            {
+                if (!DoRelease(Lang.T("t.vramshield.4"))) return false;
+                lock (lk) nextSampleTicks = 0;
+                return true;
+            }
         }
 
         public static void SampleIfDue(bool want, int rendererPid, long rendererCreation)
         {
+            // Do not overwrite the only original when a previous restoration was
+            // denied or could not be verified. Explicit release/begin can retry.
+            lock (lk) if (recoveryBlocked) return;
             if (!want || rendererPid <= 0) { ReleaseIfAny(Lang.T("t.vramshield.3")); return; }
             bool mismatch;
             lock (lk)
@@ -138,8 +146,9 @@ namespace PaviseApp
             {
                 try
                 {
+                    lock (lk) if (recoveryBlocked) return;
                     // 渲染进程换了 先把旧的撤掉再重新观察
-                    if (mismatch) DoRelease(Lang.T("t.vramshield.1"));
+                    if (mismatch && !DoRelease(Lang.T("t.vramshield.1"))) return;
                     Step(rendererPid, rendererCreation);
                 }
                 catch { }
@@ -148,6 +157,10 @@ namespace PaviseApp
 
         private static void Step(int pid, long creation)
         {
+            lock (lk) if (recoveryBlocked) return;
+#if PAVISE_SELFTEST
+            if (SampleStepForTest != null) { SampleStepForTest(pid, creation); return; }
+#endif
             if (Fused) { lock (lk) stage = ShieldStage.Fused; return; }
             if (GpuInventory.IntegratedOnly)
             {
@@ -256,18 +269,25 @@ namespace PaviseApp
                 BeginMutation();
                 try
                 {
-                    Settings.SaveStr(SnapKey, pid.ToString(CultureInfo.InvariantCulture)
-                        + ":" + creation.ToString(CultureInfo.InvariantCulture));
+                    // Reservation writes require a confirmed, non-overwriting
+                    // recovery record, just like the process suppression journal.
+                    string snapshot = pid.ToString(CultureInfo.InvariantCulture)
+                        + ":" + creation.ToString(CultureInfo.InvariantCulture);
+                    if (Settings.LoadStr(SnapKey, "").Length != 0)
+                    {
+                        lock (lk) recoveryBlocked = true;
+                        return;
+                    }
+                    if (!Settings.SaveStr(SnapKey, snapshot) || Settings.LoadStr(SnapKey, "") != snapshot) return;
                     VidMmProbe.SetReservation(h, adapter, phys, target);
 
                     // 返回码不作数 回读 CurrentReservation 才作数
                     after = VidMmProbe.Query(h, adapter, phys);
                     if (!after.Ok || after.CurrentReservation == 0)
                     {
-                        VidMmProbe.SetReservation(h, adapter, phys, 0);
                         Settings.Save(FuseKey, true);
-                        // 走 DoRelease 统一清场 手工清字段迟早会漏一项
-                        //   此刻 stage 是 Observing 所以它不会重复撤销也不会记撤销日志
+                        // 此刻仍是 Observing，但写入可能已经生效。
+                        // DoRelease 依据快照撤销；未确认还原时保留记录。
                         DoRelease(Lang.T("t.vramshield.2"));
                         lock (lk) stage = ShieldStage.Fused;
                         Logger.Log(Lang.T("log.vramshield.8"));
@@ -308,21 +328,24 @@ namespace PaviseApp
             if (first && !string.IsNullOrEmpty(why)) Logger.Log(why);
         }
 
-        public static void Release() { ReleaseIfAny(Lang.T("t.vramshield.3")); }
+        public static bool Release()
+        {
+            lock (opLk) return DoRelease(Lang.T("t.vramshield.3"));
+        }
 
         // 无事可做时一个字节都不碰 这个函数在对局中每秒被调一次
         //   功能默认关闭 若不先快速判空 就是每秒白读一次注册表
-        private static void ReleaseIfAny(string reason)
+        private static bool ReleaseIfAny(string reason)
         {
             lock (lk)
                 if (shieldAdapter == 0 && shieldPid == 0
-                    && (stage == ShieldStage.Idle || stage == ShieldStage.Fused))
-                    return;
-            lock (opLk) DoRelease(reason);
+                    && !recoveryBlocked && (stage == ShieldStage.Idle || stage == ShieldStage.Fused))
+                    return true;
+            lock (opLk) return DoRelease(reason);
         }
 
         // 必须在 opLk 内调用 IO 一律放在 lk 之外
-        private static void DoRelease(string reason)
+        private static bool DoRelease(string reason)
         {
             int pid;
             long creation;
@@ -333,70 +356,152 @@ namespace PaviseApp
                 pid = shieldPid; creation = shieldCreation;
                 adapter = shieldAdapter; phys = shieldPhys;
                 had = stage == ShieldStage.Engaged;
+            }
+            string snapshot = Settings.LoadStr(SnapKey, "");
+            if (snapshot.Length != 0)
+            {
+                int recordedPid;
+                long recordedCreation;
+                if (!ParseSnapshot(snapshot, out recordedPid, out recordedCreation))
+                {
+                    lock (lk) recoveryBlocked = true;
+                    return false;
+                }
+                if (had && (pid != recordedPid || creation != recordedCreation))
+                {
+                    lock (lk) recoveryBlocked = true;
+                    return false;
+                }
+                if (pid != recordedPid || creation != recordedCreation) { adapter = 0; phys = 0; }
+                pid = recordedPid; creation = recordedCreation;
+            }
+            if (snapshot.Length != 0 || had)
+            {
+                bool restored;
+                BeginMutation();
+                try { restored = RestoreReservation(pid, creation, adapter, phys); }
+                catch { restored = false; }
+                finally { EndMutation(); }
+                if (!restored)
+                {
+                    lock (lk) recoveryBlocked = true;
+                    // Normally the record already exists. Retain an in-memory
+                    // original too if an external writer removed it unexpectedly.
+                    if (snapshot.Length == 0 && pid > 0 && creation > 0)
+                        Settings.SaveStr(SnapKey, pid.ToString(CultureInfo.InvariantCulture)
+                            + ":" + creation.ToString(CultureInfo.InvariantCulture));
+                    return false;
+                }
+            }
+            // A changed or unwritable snapshot is not permission to clear a new
+            // recovery target. Leave it visible to the final reset verification.
+            if (Settings.LoadStr(SnapKey, "") != snapshot
+                || snapshot.Length != 0 && (!Settings.SaveStr(SnapKey, "") || Settings.LoadStr(SnapKey, "").Length != 0))
+            {
+                lock (lk) recoveryBlocked = true;
+                return false;
+            }
+            uint closeAdapter;
+            lock (lk)
+            {
+                closeAdapter = shieldAdapter;
                 shieldPid = 0; shieldCreation = 0; shieldBytes = 0;
                 shieldAdapter = 0; shieldPhys = 0;
                 pressureRun = 0; lastBudget = 0;
+                recoveryBlocked = false;
                 if (stage != ShieldStage.Fused) stage = ShieldStage.Idle;
             }
-            if (adapter != 0 && had && pid > 0)
-            {
-                IntPtr h = Native.OpenProcess(ShieldAccess, false, pid);
-                if (h != IntPtr.Zero)
-                {
-                    try
-                    {
-                        long cr, cpu; ulong io;
-                        // 进程可能已经退出并且 pid 被复用 身份对不上就不要碰
-                        if (Native.QueryProcessSample(h, out cr, out cpu, out io) && cr == creation)
-                        {
-                            BeginMutation();
-                            try { VidMmProbe.SetReservation(h, adapter, phys, 0); }
-                            finally { EndMutation(); }
-                        }
-                    }
-                    catch { }
-                    finally { Native.CloseHandle(h); }
-                }
-            }
-            if (adapter != 0) VidMmProbe.CloseAdapter(adapter);
+            if (closeAdapter != 0) VidMmProbe.CloseAdapter(closeAdapter);
             if (had) Logger.Log(Lang.T("log.vramshield.10") + reason);
-            if (Settings.LoadStr(SnapKey, "").Length > 0) Settings.SaveStr(SnapKey, "");
+            return true;
         }
 
         // Pavise 异常退出时预留还挂在游戏进程上 下次启动补撤
         //   预留随进程退出自然消失 所以只有游戏仍在跑且身份吻合才需要动手
-        public static void HealFromCrash()
+        public static bool HealFromCrash()
         {
-            string snap = Settings.LoadStr(SnapKey, "");
-            if (snap.Length == 0) return;
-            Settings.SaveStr(SnapKey, "");
+            lock (opLk) return DoRelease(Lang.T("t.vramshield.3"));
+        }
+
+        public static bool HasResidue()
+        {
+            lock (lk) if (recoveryBlocked || stage == ShieldStage.Engaged) return true;
+            return Settings.LoadStr(SnapKey, "").Length != 0;
+        }
+
+        private static bool ParseSnapshot(string snap, out int pid, out long creation)
+        {
+            pid = 0;
+            creation = 0;
             string[] parts = snap.Split(':');
-            int pid;
-            long creation;
-            if (parts.Length != 2
-                || !int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out pid)
-                || !long.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out creation)
-                || pid <= 0)
-                return;
+            return parts.Length == 2
+                && int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out pid)
+                && long.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out creation)
+                && pid > 0 && creation > 0;
+        }
+
+        private static bool RestoreReservation(int pid, long creation, uint adapter, uint phys)
+        {
+#if PAVISE_SELFTEST
+            if (RestoreReservationForTest != null) return RestoreReservationForTest(pid, creation, adapter, phys);
+#endif
+            if (pid <= 0 || creation <= 0) return false;
             IntPtr h = Native.OpenProcess(ShieldAccess, false, pid);
-            if (h == IntPtr.Zero) return;
+            if (h == IntPtr.Zero)
+            {
+                if (Native.LastOpenProcessFailureWasNoSuchProcess()) return true;
+                IntPtr query = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+                if (query == IntPtr.Zero) return Native.LastOpenProcessFailureWasNoSuchProcess();
+                try
+                {
+                    long currentCreation, cpu; ulong io;
+                    return Native.QueryProcessSample(query, out currentCreation, out cpu, out io)
+                        && currentCreation != creation;
+                }
+                finally { Native.CloseHandle(query); }
+            }
             try
             {
                 long cr, cpu; ulong io;
-                if (!Native.QueryProcessSample(h, out cr, out cpu, out io) || cr != creation) return;
-                RenderAdapter ra = GpuEvidence.ResolveRenderAdapter(pid, AdapterResolveMs);
-                if (ra == null || ra.Ambiguous) return;
-                uint adapter;
-                if (!VidMmProbe.TryOpenAdapter(ra.LuidHigh, ra.LuidLow, out adapter)) return;
-                try
-                {
-                    VidMmProbe.SetReservation(h, adapter, ra.PhysIndex, 0);
-                    Logger.Log(Lang.T("log.vramshield.11"));
-                }
-                finally { VidMmProbe.CloseAdapter(adapter); }
+                if (!Native.QueryProcessSample(h, out cr, out cpu, out io)) return false;
+                if (cr != creation) return true;
+                // The legacy snapshot stores no adapter identity. After a crash,
+                // today's busiest GPU does not prove which adapter was reserved.
+                // Preserve the record until that process exits instead of guessing.
+                if (adapter == 0) return false;
+                VramStatus before = VidMmProbe.Query(h, adapter, phys);
+                if (before == null || !before.Ok) return false;
+                if (before.CurrentReservation == 0) return true;
+                if (!VidMmProbe.SetReservation(h, adapter, phys, 0)) return false;
+                VramStatus after = VidMmProbe.Query(h, adapter, phys);
+                return after != null && after.Ok && after.CurrentReservation == 0;
             }
-            catch { }
+            catch { return false; }
             finally { Native.CloseHandle(h); }
         }
+
+#if PAVISE_SELFTEST
+        internal static Func<int, long, uint, uint, bool> RestoreReservationForTest;
+        internal static Action<int, long> SampleStepForTest;
+        internal static bool RecoveryBlockedForTest { get { lock (lk) return recoveryBlocked; } }
+
+        internal static void ResetRecoveryForTest()
+        {
+            lock (opLk)
+            lock (lk)
+            {
+                if (shieldAdapter != 0) throw new InvalidOperationException("Cannot discard a live native VRAM adapter in an isolated test");
+                stage = ShieldStage.Idle;
+                nextSampleTicks = 0;
+                pressureRun = shieldPid = 0;
+                shieldCreation = 0;
+                shieldPhys = 0;
+                shieldBytes = lastBudget = 0;
+                recoveryBlocked = false;
+                RestoreReservationForTest = null;
+                SampleStepForTest = null;
+            }
+        }
+#endif
     }
 }

@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Threading;
 using System.Windows.Forms;
 
 namespace PaviseApp
@@ -19,6 +20,10 @@ namespace PaviseApp
         private List<IrqDevice> irqDevices = new List<IrqDevice>();
         private List<IrqSessionRecord> irqSessions = new List<IrqSessionRecord>();
         private int irqUsedSessions;
+        private int irqDisplaySessions;
+        private string irqReadIssue = "";
+        private string irqDevicesIssue = "";
+        private int irqRefreshQueued;
         private string irqFlash = "";
         private Color irqFlashColor;
 
@@ -55,7 +60,7 @@ namespace PaviseApp
                 out irqProbeCardH);
             y += irqProbeCardH + 10;
 
-            var actionDeck = MakeConsolePanel(scroll, 0, y, InnerW, 64, true);
+            var actionDeck = MakeConsolePanel(scroll, 0, y, InnerW, 96, true);
             btnIrqApply = new PillButton(Lang.T("irq.btn.apply"), BtnKind.Primary);
             btnIrqApply.SetBounds(Theme.S(14), Theme.S(15), Theme.S(250), Theme.S(34));
             btnIrqApply.Click += OnIrqApply;
@@ -64,9 +69,11 @@ namespace PaviseApp
             btnIrqRevert.SetBounds(Theme.S(272), Theme.S(15), Theme.S(250), Theme.S(34));
             btnIrqRevert.Click += OnIrqRevert;
             actionDeck.Controls.Add(btnIrqRevert);
-            lblIrqState = CardLabel(actionDeck, "", 540, 15, InnerW - 558, 34, 8.2f, true, Theme.Dim);
-            lblIrqState.TextAlign = ContentAlignment.MiddleRight;
-            y += 74;
+            // 失败原因放独立的全宽行，不能缩在两个按钮右边而只剩“暂无数据”。
+            lblIrqState = CardLabel(actionDeck, "", 14, 54, InnerW - 28, 30, 8.2f, true, Theme.Dim);
+            lblIrqState.TextAlign = ContentAlignment.MiddleLeft;
+            lblIrqState.AutoEllipsis = true;
+            y += 106;
 
             lstIrqDevices = new TechListBox();
             int availH = PageH - top - 8;
@@ -103,21 +110,45 @@ namespace PaviseApp
                 if (oldDevice != null) keepId = oldDevice.InstanceId;
             }
 
+            irqReadIssue = "";
+            irqDevicesIssue = "";
+            irqUsedSessions = 0;
+            irqDisplaySessions = 0;
+            irqSessions = new List<IrqSessionRecord>();
+            var verdicts = new List<IrqDriverVerdict>();
+            try { irqSessions = IrqSessionLedger.Load(out irqReadIssue); }
+            catch { irqReadIssue = Lang.T("irq.ledger.readfailed"); }
+            if (irqReadIssue.Length == 0)
+            {
+                try
+                {
+                    verdicts = IrqVerdict.EvaluateForDisplay(irqSessions, IrqPageRefreshHz(),
+                        out irqUsedSessions, out irqDisplaySessions);
+                    // 完整短局立即展示原始实测；建议仍只计原有 >=60 秒的合格局。
+                    if (irqUsedSessions < IrqSessionLedger.MinSessionsForVerdict)
+                        foreach (IrqDriverVerdict v in verdicts)
+                            if (v != null) v.Worth = false;
+                }
+                catch
+                {
+                    irqUsedSessions = 0;
+                    irqDisplaySessions = 0;
+                    verdicts = new List<IrqDriverVerdict>();
+                    irqReadIssue = Lang.T("irq.state.evaluatefailed");
+                }
+            }
             try
             {
-                irqSessions = IrqSessionLedger.Load();
-                List<IrqDriverVerdict> verdicts = IrqVerdict.Evaluate(irqSessions,
-                    IrqPageRefreshHz(), out irqUsedSessions);
-                // 一两局可以立即展示原始实测，但不能提前挂“建议”标签；建议沿用三局门槛。
-                if (irqUsedSessions < IrqSessionLedger.MinSessionsForVerdict)
-                    foreach (IrqDriverVerdict v in verdicts)
-                        if (v != null) v.Worth = false;
                 irqDevices = IrqDeviceInventory.Enumerate();
                 IrqDeviceInventory.AttachVerdicts(irqDevices, verdicts);
                 IrqDeviceInventory.MarkOwnership(irqDevices);
                 IrqDeviceInventory.Sort(irqDevices);
             }
-            catch { irqDevices = new List<IrqDevice>(); }
+            catch
+            {
+                irqDevices = new List<IrqDevice>();
+                irqDevicesIssue = Lang.T("irq.state.devicesfailed");
+            }
 
             lstIrqDevices.BeginUpdate();
             lstIrqDevices.Items.Clear();
@@ -145,17 +176,21 @@ namespace PaviseApp
                 swIrqProbePage.SetSilently(IrqSessionProbe.EnabledSetting);
                 swIrqProbePage.Enabled = admin;
             }
+            string captureText = gameMode.IrqObservationStatusText ?? "";
+            bool captureWarning = gameMode.IrqObservationStatusWarning;
             if (cardIrqProbe != null)
             {
                 string probeText = !admin ? Lang.T("irq.probe.needadmin")
-                    : IrqSessionProbe.EnabledSetting ? Lang.T("irq.probe.on")
+                    : IrqSessionProbe.EnabledSetting ? Lang.F("irq.probe.actual",
+                        captureText.Length == 0 ? Lang.T("irq.capture.waiting") : captureText)
                     : Lang.T("irq.probe.off");
                 Color probeColor = !admin ? Theme.Danger
-                    : IrqSessionProbe.EnabledSetting ? Theme.Green : Theme.Accent;
+                    : IrqSessionProbe.EnabledSetting ? (captureWarning ? Theme.Danger : Theme.Green)
+                    : Theme.Accent;
                 cardIrqProbe.SetStatus(probeText, probeColor);
             }
 
-            SetIrqState(admin, pending, unverified, mismatch, withIntr);
+            SetIrqState(admin, pending, unverified, mismatch, withIntr, captureText, captureWarning);
             UpdateIrqApplyEnabled();
         }
 
@@ -165,29 +200,44 @@ namespace PaviseApp
             catch { return 0; }
         }
 
-        private void SetIrqState(bool admin, int pending, int unverified, int mismatch, int withIntr)
+        private void SetIrqState(bool admin, int pending, int unverified, int mismatch, int withIntr,
+            string captureText, bool captureWarning)
         {
             if (irqFlash.Length > 0)
             {
-                lblIrqState.Text = irqFlash;
+                lblIrqState.Text = IrqPageStatus.CountedText(irqFlash,
+                    irqSessions.Count, irqUsedSessions, irqReadIssue);
                 lblIrqState.ForeColor = irqFlashColor;
                 irqFlash = "";
                 return;
             }
+            string exclusion = "";
+            if (irqSessions.Count > 0 && irqDisplaySessions == 0 && irqReadIssue.Length == 0)
+            {
+                IrqSessionRecord latest = irqSessions[irqSessions.Count - 1];
+                try
+                {
+                    exclusion = IrqPageStatus.ExclusionText(latest == null
+                        ? IrqSessionExclusion.NoDrivers : latest.DisplayExclusion(null, null));
+                }
+                catch { exclusion = Lang.T("irq.record.unavailable"); }
+            }
+            bool dataWarning;
+            string dataText = IrqPageStatus.ResolveData(irqSessions.Count, irqDisplaySessions,
+                irqUsedSessions, withIntr,
+                captureText, captureWarning, irqReadIssue, irqDevicesIssue, exclusion, out dataWarning);
             string t;
             Color c = Theme.Dim;
             if (!admin) { t = Lang.T("irq.state.needadmin"); c = Theme.Danger; }
             else if (!IrqSessionProbe.EnabledSetting) { t = Lang.T("irq.state.probeoff"); c = Theme.Accent; }
+            else if (dataWarning) { t = dataText; c = Theme.Danger; }
             else if (mismatch > 0) { t = Lang.F("irq.state.mismatch", mismatch); c = Theme.Danger; }
             else if (pending > 0) { t = Lang.F("irq.state.pending", pending); c = Theme.Accent; }
             else if (irqUsedSessions >= IrqSessionLedger.MinSessionsForVerdict && IrqWorthCount() > 0)
             { t = Lang.F("irq.state.suggest", IrqWorthCount()); c = Theme.Accent; }
             else if (unverified > 0) { t = Lang.F("irq.state.unverified", unverified); c = Theme.Dim; }
-            else if (irqSessions.Count == 0) t = Lang.T("irq.state.nosessions");
-            else if (irqUsedSessions < IrqSessionLedger.MinSessionsForVerdict)
-                t = Lang.F("irq.state.fewsessions", irqUsedSessions, IrqSessionLedger.MinSessionsForVerdict);
-            else if (withIntr == 0) t = Lang.T("irq.state.nointr");
-            else t = Lang.F("irq.state.done", withIntr, irqUsedSessions);
+            else t = dataText;
+            t = IrqPageStatus.CountedText(t, irqSessions.Count, irqUsedSessions, irqReadIssue);
             lblIrqState.Text = t;
             lblIrqState.ForeColor = c;
             if (irqBanner != null)
@@ -214,16 +264,25 @@ namespace PaviseApp
         //   不自动改注册表 只把用户引到中断页走已有手动流程 页面未建好时安全跳过
         public void NotifyIrqSuggestions(int count)
         {
+            if (count > 0) NotifyIrqObservationUpdated();
+        }
+
+        // 每局完成/失败都刷新，不再要求有挪核建议。与建议通知合并，隐藏时不枚举设备；
+        // 页面重新激活仍走 RefreshIrqPage，故首局零建议也不会永久显示旧的空状态。
+        public void NotifyIrqObservationUpdated()
+        {
             try
             {
-                if (!IsHandleCreated || IsDisposed || count <= 0) return;
+                if (!IsHandleCreated || IsDisposed) return;
+                if (Interlocked.CompareExchange(ref irqRefreshQueued, 1, 0) != 0) return;
                 BeginInvoke((MethodInvoker)delegate
                 {
-                    if (IsDisposed) return;
+                    Interlocked.Exchange(ref irqRefreshQueued, 0);
+                    if (IsDisposed || !UiActive || curPage != pageIrq) return;
                     RefreshIrqPage();
                 });
             }
-            catch { }
+            catch { Interlocked.Exchange(ref irqRefreshQueued, 0); }
         }
 
         private void DrawIrqRow(object sender, DrawItemEventArgs e)
@@ -319,6 +378,7 @@ namespace PaviseApp
             IrqMutationBoundary.Run(delegate
             {
                 IrqSessionProbe.EnabledSetting = swIrqProbePage.Checked;
+                gameMode.RequestIrqObservationSettingChanged();
             });
             RefreshIrqPage();
         }
@@ -334,7 +394,9 @@ namespace PaviseApp
 
             ulong pick = 0;
             bool raisePriority = false;
-            using (var dlg = new IrqPinDialog(d))
+            IrqPinSession session = IrqPinSession.FromLatest(irqSessions, d,
+                IrqAffinityEngine.BootStamp(), CpuTopology.TopologyStamp(), IrqSessionProbe.DriverVersionOf);
+            using (var dlg = new IrqPinDialog(d, session))
                 if (dlg.ShowDialog(this) == DialogResult.OK)
                 { pick = dlg.Chosen; raisePriority = dlg.RaisePriority; }
             if (pick == 0) return;
@@ -364,5 +426,57 @@ namespace PaviseApp
             RefreshIrqPage();
         }
 
+    }
+
+    // 只做状态选择，无窗口、设备枚举或 ETW；可用假观测覆盖空白页的所有分支。
+    internal static class IrqPageStatus
+    {
+        internal static string ResolveData(int recorded, int displayable, int usable, int devicesWithInterrupts,
+            string captureText, bool captureWarning, string readIssue, string devicesIssue,
+            string exclusion, out bool warning)
+        {
+            warning = true;
+            if (!string.IsNullOrEmpty(readIssue)) return readIssue;
+            if (!string.IsNullOrEmpty(devicesIssue)) return devicesIssue;
+            if (captureWarning && !string.IsNullOrEmpty(captureText)) return captureText;
+            if (recorded > 0 && displayable == 0)
+                return Lang.F("irq.state.unusable", recorded,
+                    string.IsNullOrEmpty(exclusion) ? Lang.T("irq.record.unavailable") : exclusion);
+            warning = false;
+            if (recorded == 0)
+                return string.IsNullOrEmpty(captureText) ? Lang.T("irq.capture.waiting") : captureText;
+            if (devicesWithInterrupts == 0) return Lang.T("irq.state.nomapped");
+            if (usable < IrqSessionLedger.MinSessionsForVerdict)
+            {
+                if (displayable > usable)
+                    return Lang.F("irq.state.rawshort", IrqSessionRecord.MinUsableSeconds,
+                        IrqSessionLedger.MinSessionsForVerdict);
+                return Lang.F("irq.state.fewsessions", usable, IrqSessionLedger.MinSessionsForVerdict);
+            }
+            return Lang.F("irq.state.done", devicesWithInterrupts, usable);
+        }
+
+        internal static string CountedText(string detail, int recorded, int usable, string readIssue)
+        {
+            // 读失败时数量未知，不把空的失败返回值显示成“已记录 0 局”。
+            if (!string.IsNullOrEmpty(readIssue)) return detail;
+            string counts = Lang.F("irq.state.counts", recorded, usable);
+            return string.IsNullOrEmpty(detail) ? counts : counts + " · " + detail;
+        }
+
+        internal static string ExclusionText(IrqSessionExclusion issue)
+        {
+            switch (issue)
+            {
+                case IrqSessionExclusion.TooShort: return Lang.T("irq.record.short");
+                case IrqSessionExclusion.MissingSystemMask: return Lang.T("irq.record.mask");
+                case IrqSessionExclusion.LostEvents: return Lang.T("irq.record.lost");
+                case IrqSessionExclusion.NoDrivers: return Lang.T("irq.record.nodrivers");
+                case IrqSessionExclusion.DifferentBoot: return Lang.T("irq.record.boot");
+                case IrqSessionExclusion.DifferentTopology: return Lang.T("irq.record.topology");
+                case IrqSessionExclusion.NoDuration: return Lang.T("irq.record.noduration");
+                default: return Lang.T("irq.record.unavailable");
+            }
+        }
     }
 }

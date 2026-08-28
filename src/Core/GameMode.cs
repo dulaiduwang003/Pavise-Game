@@ -85,10 +85,6 @@ namespace PaviseApp
         private volatile bool amdAntiLag;
         private volatile bool amdAfmf;
         private volatile bool rsrOn;
-        private volatile bool familyExemptOn;
-        // 家族豁免的静态镜像 平台目录那种静态调用点没有 GameMode 实例
-        //   只用来选文案 判压制一律走实例字段 不要拿它当策略依据
-        internal static volatile bool FamilyExemptHint;
         private volatile bool vramShieldOn;
         private bool pqosActive;
         private bool awakeActive;
@@ -221,8 +217,6 @@ namespace PaviseApp
             amdAfmf = Settings.Load("AmdAfmf", false);
             rsrOn = Settings.Load("GmRsr", false);
             autoAddOn = Settings.Load("GmAutoAdd", false);
-            familyExemptOn = Settings.Load("GmFamilyExempt", true);
-            FamilyExemptHint = familyExemptOn;
             vramShieldOn = Settings.Load(VramShield.EnabledKey, false);
             killGameDvr = Settings.Load("GameDvrOff", true);
             mmcssOn = Settings.Load("GmMmcss", true);
@@ -348,8 +342,11 @@ namespace PaviseApp
             try
             {
                 profiles.AddRange(profileStore.LoadProfiles());
+                if (!ProfileStoreSaveFailed && RefreshLibraryInstallRoots(profiles))
+                    profileStore.Save(profiles);
             }
             catch { }
+            InitializeRendererObservations();
         }
 
         private bool WritePreset()
@@ -359,7 +356,7 @@ namespace PaviseApp
             lines.Add(Lang.T("t.gamemode.27"));
             lines.Add(Lang.T("t.gamemode.28"));
             lines.Add(Lang.T("t.gamemode.29"));
-            lines.Add(Lang.T(familyExemptOn ? "t.gamemode.30.exempt" : "t.gamemode.30"));
+            lines.Add(Lang.T("lib.family.whitelist.note"));
             lines.Add(WhitelistRule.Header);
             var rules = new List<WhitelistRule>();
             foreach (string entry in SystemProcessCatalog.PresetWhitelist)
@@ -392,8 +389,17 @@ namespace PaviseApp
             get { return enabled; }
             set
             {
-                bool changed = enabled != value;
-                enabled = value;
+                bool changed;
+                lock (sync)
+                {
+                    changed = enabled != value;
+                    enabled = value;
+                    if (changed)
+                    {
+                        ClearFamilyDiscovery();
+                        InvalidateRendererHandoff();
+                    }
+                }
                 if (changed)
                     IrqMutationBoundary.Run(delegate
                     {
@@ -671,7 +677,7 @@ namespace PaviseApp
         {
             // 首次落盘失败就熔断：强制清空的 UI 回调是异步的，
             // 回调执行前不得再尝试写入任何游戏库数据。
-            if (ProfileStoreSaveFailed) return false;
+            if (stopping || ProfileStoreSaveFailed) return false;
             if (profileStore.Save(profiles)) return true;
             SignalProfileStoreSaveFailure();
             return false;
@@ -680,6 +686,7 @@ namespace PaviseApp
         private void SignalProfileStoreSaveFailure()
         {
             if (Interlocked.Exchange(ref profileSaveFailureSignaled, 1) != 0) return;
+            InvalidateRendererHandoff();
             Action handler = ProfileStoreSaveFailure;
             if (handler != null) { try { handler(); } catch { } }
         }
@@ -766,23 +773,73 @@ namespace PaviseApp
             worker.Start();
         }
 
-        public void Stop()
+        public bool Stop()
         {
+            var elapsed = Stopwatch.StartNew();
             stopping = true;
             kick.Set();
-            if (worker != null) worker.Join(8000);
+            // Existing commits finish under sync before shutdown can proceed.
+            // A callback stopping its own commit must leave recovery data intact.
+            if (Monitor.IsEntered(sync) || !Monitor.TryEnter(sync, 8000)) return false;
+            try
+            {
+                ClearFamilyDiscovery();
+                InvalidateRendererHandoff();
+            }
+            finally { Monitor.Exit(sync); }
+            Thread current = worker;
+            if (current != null && (current == Thread.CurrentThread
+                || !current.Join(RemainingShutdownMs(elapsed, 8000))))
+                return false;
+            // Pool work can outlive Loop. Stop admission first, then wait for
+            // native/file mutations that already entered their respective gates.
+            if (!DrainAsyncShutdown(RemainingShutdownMs(elapsed, 8000))) return false;
+            bool runnersClosed = true;
+            try { if (!RenderLane.CloseForShutdown(8000)) runnersClosed = false; }
+            catch { runnersClosed = false; }
+            try { if (!PowerBudgetYieldRunner.CloseForShutdown(8000)) runnersClosed = false; }
+            catch { runnersClosed = false; }
+            // Attempt both shutdowns even if one fails. Their recovery records
+            // and mutation boundaries remain intact unless both confirmed exit.
+            if (!runnersClosed) return false;
+            // Do not detach mutation guards or claim reset is safe while Loop is alive.
+            bool clean = true;
             RenderLane.ConfigureMutationBoundary(null, null);
             PowerBudgetYieldRunner.ConfigureMutationBoundary(null, null);
             VramShield.ConfigureMutationBoundary(null, null);
             SelfYield.ConfigureMutationBoundary(null, null);
             core.ConfigureMutationBoundary(null, null);
             IrqMutationBoundary.Configure(null, null);
-            try { irqProbe.Dispose(); } catch { }
-            // probe 已先停；即使 worker 超时，临时 proof hard pin 也不能
-            // 把仍在运行的游戏留在强制亲和状态。
-            try { RestoreAllIrqProofHardPins(); } catch { }
+            try { irqProbe.Dispose(); } catch { clean = false; }
+            try { if (!RestoreAllIrqProofHardPins()) clean = false; } catch { clean = false; }
             // worker.Join 之后没有并发 Loop 收尾把可能仍开着的 present 会话关干净不泄漏
-            try { PresentProbe p = presentProbe; presentProbe = null; if (p != null) p.Stop(); } catch { }
+            try { PresentProbe p = presentProbe; presentProbe = null; if (p != null) p.Stop(); } catch { clean = false; }
+            return clean;
+        }
+
+        private bool DrainAsyncShutdown(int timeoutMs)
+        {
+            if (!stopping || timeoutMs < 0) return false;
+            var elapsed = Stopwatch.StartNew();
+            if (!DrainShutdownGate(driverStageGate, RemainingShutdownMs(elapsed, timeoutMs))) return false;
+            if (!DrainShutdownGate(powerApplyGate, RemainingShutdownMs(elapsed, timeoutMs))) return false;
+            if (!DrainShutdownGate(whiteEvalSync, RemainingShutdownMs(elapsed, timeoutMs))) return false;
+            RendererObservationStore store = rendererObservations;
+            return store == null || store.Close(RemainingShutdownMs(elapsed, timeoutMs));
+        }
+
+        private static int RemainingShutdownMs(Stopwatch elapsed, int timeoutMs)
+        {
+            return (int)Math.Max(0L, (long)timeoutMs - elapsed.ElapsedMilliseconds);
+        }
+
+        private static bool DrainShutdownGate(object gate, int timeoutMs)
+        {
+            // A stop requested from inside a mutation cannot wait for itself or
+            // claim that its still-running callback has finished.
+            if (Monitor.IsEntered(gate) || !Monitor.TryEnter(gate, timeoutMs)) return false;
+            try { return true; }
+            finally { Monitor.Exit(gate); }
         }
 
         public void Poke() { RequestPolicyApply(); }
@@ -805,8 +862,9 @@ namespace PaviseApp
                         continue;
                     }
                     TryDomainSwap();
-                    if (!enabled)
+                    if (!enabled || ProfileStoreSaveFailed)
                     {
+                        InvalidateRendererHandoff();
                         bool residue;
                         lock (sync) residue = active || gameBoost.Count > 0;
                         if (residue || EnvActive() || core.AnyWith(SuppressReason.Background))
@@ -829,6 +887,9 @@ namespace PaviseApp
                                 PruneWhitelistFamilyMembersIfDue(all);
                                 HashSet<int> gamePids;
                                 string running = FindRunningGame(all, out gamePids);
+                                // 确认学习可触发既有游戏库保存熔断。UI 收尾尚未执行前，
+                                // 本轮也不能继续套电源、压后台或提优旧/新目标。
+                                if (!enabled || stopping || panicReq || ProfileStoreSaveFailed) continue;
                                 if (running != null)
                                 {
                                     string runningProfileId;
@@ -855,9 +916,7 @@ namespace PaviseApp
                                                 // Seal 的前缀尚未落盘。同一 profile 在宽限内
                                                 // 恢复时丢弃它，并从新 renderer 证明重开干净
                                                 // epoch；否则一次短暂漏检会把同一局拆成两条。
-                                                irqProbe.Arm(graceGame ?? running, allMask);
-                                                if (IrqSessionProbe.EnabledSetting)
-                                                    StartPresentProbe();
+                                                ArmIrqObservation(graceGame ?? running);
                                             }
                                         }
                                     }
@@ -930,12 +989,16 @@ namespace PaviseApp
                                     PowerBudgetYieldRunner.Start(EffPowerYield,
                                         EffPreset == PerformancePreset.Competitive
                                             || EffPreset == PerformancePreset.Handheld);
+                                    ApplyIrqObservationSettingChange(running);
                                     if (EffBoost) Boost(all);
                                     else
                                     {
-                                        irqProbe.InvalidateGameMask();
+                                        if (irqProbe.IsPlacementCapturing) irqProbe.InvalidateGameMask();
                                         UnboostGames();
                                     }
+                                    ObserveSystemIrq(rendererPid, rendererCreation);
+                                    UpdateIrqPresentProbe();
+                                    NotifyIrqObservationChanged(false);
                                     MaybeScanOverlays();
                                 }
                                 else if (active)
@@ -946,7 +1009,7 @@ namespace PaviseApp
                                         gameGoneSinceTicks = nowTicks;
                                         // 退出宽限只用于避免游戏检测抖动，不属于可验证的对局采样窗。
                                         // 首次失联立即封存最近一次落核证明对应的 epoch。
-                                        try { irqProbe.Seal(); }
+                                        try { SealIrqObservation(); }
                                         catch { irqProbe.InvalidateGameMask(); }
                                         Logger.Log(Lang.T("log.gamemode.47")
                                             + ExitGraceSeconds + Lang.T("log.gamemode.48"));
@@ -1000,24 +1063,44 @@ namespace PaviseApp
             {
                 copy = new List<GameProfile>();
                 foreach (GameProfile p in profiles) copy.Add(p.Clone());
+                CaptureGameFamily(all, copy);
             }
             gamePids = new HashSet<int>();
-            GameDetection hit;
-            if (ShouldRunFullGameDetection())
+            ObserveRendererForegroundChange();
+            string armedName = null;
+            string armedVia = null;
+            GameDetection raw = null;
+            bool fullDetection = ShouldRunFullGameDetection();
+            if (fullDetection)
             {
-                string armedName;
-                string armedVia;
-                GameDetection raw = GameSessionDetector.Detect(
-                    all, copy, selfSession, out armedName, out armedVia);
-                if (raw != null && raw.RequiresGpuConfirm)
-                    raw = ConfirmRendererByGpu(raw);
-                hit = ApplyStickiness(raw);
+                raw = GameSessionDetector.Detect(
+                    all, copy, selfSession, out armedName, out armedVia, FamilyEvidence);
+            }
+            int epoch;
+            GameDetection proposal = ResolveRendererHandoff(all, copy, raw, out epoch);
+            if (proposal != null && !FinalizeRendererSelection(proposal, epoch)) proposal = null;
+            if (epoch != Volatile.Read(ref rendererHandoffEpoch)
+                || stopping || !enabled || panicReq || ProfileStoreSaveFailed) return null;
+            GameDetection hit = ApplyStickiness(proposal);
+            if (hit != null && !stickyGraceOnly && !VerifyRendererCandidate(hit))
+            {
+                ClearSticky();
+                RequestFullGameDetection();
+                return null;
+            }
+            if (proposal != null && RendererHandoffTracker.SameIdentity(proposal, hit))
+                CompleteRendererSelection(hit);
+            if (fullDetection)
+            {
                 armedAwaitingElection = armedName != null && hit == null;
                 UpdateArmedStatus(hit == null ? armedName : null, armedVia, hit != null);
                 if (hit == null && armedName != null) PreStageDriverTuning(copy, armedName);
             }
-            else
-                hit = ApplyStickiness(null);
+            else if (hit != null && armedAwaitingElection)
+            {
+                armedAwaitingElection = false;
+                UpdateArmedStatus(null, null, true);
+            }
             if (hit == null) return null;
             // 渲染锚已证实不存在时，sticky 的一轮快速重扫只是
             // detector 内部缓冲，不能再当成一轮 running 去执行 Boost。
@@ -1040,15 +1123,14 @@ namespace PaviseApp
                     // renderer 可能在上轮快照后、OpenProcess 前退出，
                     // 因而已 Seal 但尚未进入 gameGone 宽限。同 profile
                     // 新 renderer 出现时仍要丢弃旧前缀并重武装。
-                    irqProbe.Arm(sealedGame ?? hit.Profile.Name, allMask);
-                    if (IrqSessionProbe.EnabledSetting)
-                        StartPresentProbe();
+                    ArmIrqObservation(sealedGame ?? hit.Profile.Name);
                 }
             }
             if (irqProbe.IsCapturing)
             {
                 bool proofStrict;
                 ulong proofMask = EffectiveGameMask(sessionPolicy, out proofStrict);
+                if (irqProbe.IsSystemObservation) proofMask = 0;
                 if (!irqProbe.ProofMatches(
                         proofMask, hit.RendererPid,
                         hit.RendererCreation))
@@ -1066,12 +1148,13 @@ namespace PaviseApp
                     // 同一局从启动器换成真实 renderer：旧片段彻底丢弃，但允许新
                     // renderer 从零开始一个 epoch；不会把一局拆成两条台账记录。
                     if (sameSessionProfile)
-                        irqProbe.Arm(sameSessionGame ?? hit.Profile.Name, allMask);
+                        ArmIrqObservation(sameSessionGame ?? hit.Profile.Name);
                 }
             }
             lock (sync)
             {
-
+                if (!RendererEpochCurrent(epoch) || hit.Profile == null
+                    || !RendererHandoffTracker.SameProfile(hit.Profile, FindProfileLocked(hit.Profile.Id))) return null;
                 if (ShouldRearmLauncherTransition(
                         activeDetection, hit))
                 {
@@ -1085,12 +1168,9 @@ namespace PaviseApp
                     hit.Profile != null ? hit.Profile.Id : null, hit.RendererPid);
                 activeDetection = hit;
             }
+            MaybeObserveRendererActivity(hit);
             return hit.Profile.Name;
         }
-
-        private const int GpuProbeCooldownMs = 8000;
-        private long gpuProbeGateTicks;
-        private bool gpuEvidenceWarned;
 
         private volatile string armedGameName;
         private string lastArmedLogged;
@@ -1171,9 +1251,29 @@ namespace PaviseApp
         }
 
         private volatile string preStagedNvPath;
+        private readonly object driverStageGate = new object();
+
+        private bool RunPreStagedMutation(Action mutation)
+        {
+            lock (driverStageGate)
+            {
+                if (stopping || IsActive || mutation == null) return false;
+                bool applied = false;
+                IrqMutationBoundary.Run(delegate
+                {
+                    // Beginning the IRQ boundary can take time. Recheck before
+                    // the first native write; Stop drains this same gate.
+                    if (stopping || IsActive) return;
+                    mutation();
+                    applied = true;
+                });
+                return applied;
+            }
+        }
 
         private void PreStageDriverTuning(List<GameProfile> copy, string armedName)
         {
+            if (stopping) return;
             GameProfile armed = null;
             foreach (GameProfile p in copy)
                 if (string.Equals(p.Name, armedName, StringComparison.OrdinalIgnoreCase))
@@ -1201,12 +1301,8 @@ namespace PaviseApp
             {
                 try
                 {
-                    if (IsActive) return;
-                    IrqMutationBoundary.Run(delegate
+                    RunPreStagedMutation(delegate
                     {
-                        // 外层检查与开局可能竞态；boundary 先阻止 Confirm，
-                        // 内层再查一次，已经开局就完全不碰预热设置。
-                        if (IsActive) return;
                         if (!string.IsNullOrEmpty(previous)
                             && !string.Equals(previous, path, StringComparison.OrdinalIgnoreCase))
                             NvDrsTweaks.RestoreAllGames();
@@ -1223,16 +1319,14 @@ namespace PaviseApp
 
         private void ReleasePreStagedTuning()
         {
-            if (preStagedNvPath == null) return;
+            if (stopping || preStagedNvPath == null) return;
             preStagedNvPath = null;
             ThreadPool.QueueUserWorkItem(delegate
             {
                 try
                 {
-                    if (IsActive) return;
-                    IrqMutationBoundary.Run(delegate
+                    RunPreStagedMutation(delegate
                     {
-                        if (IsActive) return;
                         NvDrsTweaks.RestoreAllGames();
                         GpuPrefStage.Restore();
                     });
@@ -1254,45 +1348,6 @@ namespace PaviseApp
                 ReleasePreStagedTuning();
             }
             lastArmedLogged = name;
-        }
-
-        private GameDetection ConfirmRendererByGpu(GameDetection pending)
-        {
-            if (pending == null || pending.RendererPid <= 0) return null;
-            bool sessionActive;
-            lock (sync) sessionActive = active;
-            if (sessionActive || stopping || !enabled) return null;
-            long now = DateTime.UtcNow.Ticks;
-            if (now < gpuProbeGateTicks) return null;
-            gpuProbeGateTicks = now + GpuProbeCooldownMs * TimeSpan.TicksPerMillisecond;
-            Dictionary<int, double> util = GpuEvidence.Sample3D(
-                GpuEvidence.BurstRounds, GpuEvidence.BurstIntervalMs,
-                delegate { return stopping || panicReq; });
-            if (util == null)
-            {
-                if (!gpuEvidenceWarned)
-                {
-                    gpuEvidenceWarned = true;
-                    Logger.Log(Lang.T("log.gamemode.58"));
-                }
-                return null;
-            }
-            double candidate;
-            if (!util.TryGetValue(pending.RendererPid, out candidate)) candidate = 0;
-            if (candidate < GpuEvidence.MinElectUtilization) return null;
-            foreach (int pid in pending.FamilyPids)
-            {
-                double other;
-                if (pid != pending.RendererPid
-                    && util.TryGetValue(pid, out other) && other > candidate)
-                    return null;
-            }
-            pending.RequiresGpuConfirm = false;
-            pending.RendererCandidateSelected = true;
-            pending.Evidence = Lang.F("detect.gpu", (int)candidate);
-            Logger.Log(Lang.T("log.gamemode.59") + pending.Profile.Name + Lang.T("log.gamemode.60")
-                + pending.RendererName + Lang.T("log.gamemode.61") + (int)candidate + "% pid " + pending.RendererPid + " ");
-            return pending;
         }
 
     }

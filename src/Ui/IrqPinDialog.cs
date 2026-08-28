@@ -23,6 +23,8 @@ namespace PaviseApp
             new Dictionary<Control, int>();
         private readonly Dictionary<Label, int> labelLogicalLeft =
             new Dictionary<Label, int>();
+        private readonly List<Label> beforeMatrixLabels = new List<Label>();
+        private readonly Dictionary<Label, Rectangle> beforeMatrixBounds = new Dictionary<Label, Rectangle>();
         private int bodyContentHeight, bodyTailPadding, matrixLogicalTop;
         private bool fittedToWorkArea;
         private bool clockWasSuspended;
@@ -30,8 +32,14 @@ namespace PaviseApp
         public ulong Chosen { get; private set; }
         public bool RaisePriority { get { return swPriority != null && swPriority.Checked; } }
 
-        public IrqPinDialog(IrqDevice d)
+        public IrqPinDialog(IrqDevice d) : this(d, null) { }
+
+        internal IrqPinDialog(IrqDevice d, IrqPinSession session)
         {
+            session = session ?? new IrqPinSession();
+            IrqDriverRecord driver = session.Driver;
+            var measured = new IrqDevice { Dpc = driver == null ? 0 : driver.Dpc,
+                MaxUs = driver == null ? 0 : driver.DpcMaxUs };
             Text = Lang.T("irqpin.title");
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.CenterParent;
@@ -71,21 +79,21 @@ namespace PaviseApp
 
             scrollBody.Controls.Add(Line(d == null ? "" : d.Name, y, 22, Theme.UI(10f, true), Theme.Fg, 24));
             y += 26;
-            string stat = d == null ? "" : d.Dpc > 0
-                ? Lang.F("irqpin.stat", d.MaxUs.ToString("F0"),
-                    IrqDeviceInventory.GradeText(IrqDeviceInventory.Grade(d)),
-                    IrqRelocate.MaskText(d.SeenOnCpus))
-                : Lang.T("irq.d.nointr");
+            string stat = driver != null
+                ? Lang.F("irqpin.stat", driver.DpcMaxUs.ToString("F0"),
+                    IrqDeviceInventory.GradeText(IrqDeviceInventory.Grade(measured)),
+                    IrqRelocate.MaskText(session.SeenMask))
+                : Lang.T("irqpin.session.nodevice");
             scrollBody.Controls.Add(Line(stat, y, 22, Theme.UI(8.8f, false), Theme.Dim, 22));
             y += 26;
 
             // 预算占比 + 超时次数 + 驱动汇总/框架汇总 原来挂在中断页 lblIrqDetail 上 现在搬进这里
-            if (d != null && d.Dpc > 0)
+            if (d != null && driver != null)
             {
                 var extra = new System.Text.StringBuilder();
-                extra.Append(IrqDeviceInventory.BudgetText(d.MaxUs));
-                if (d.Over1Ms > 0) extra.Append("  ").Append(Lang.F("irq.d.over1ms", d.Over1Ms));
-                else if (d.Over500Us > 0) extra.Append("  ").Append(Lang.F("irq.d.over500", d.Over500Us));
+                extra.Append(IrqDeviceInventory.BudgetText(driver.DpcMaxUs));
+                if (driver.Over1Ms > 0) extra.Append("  ").Append(Lang.F("irq.d.over1ms", driver.Over1Ms));
+                else if (driver.Over500Us > 0) extra.Append("  ").Append(Lang.F("irq.d.over500", driver.Over500Us));
                 if (d.SharedStats) extra.Append("  ").Append(Lang.T("irq.d.shared"));
                 scrollBody.Controls.Add(Line(extra.ToString(), y, 22, Theme.UI(8.3f, false), Theme.Dim, 22));
                 y += 24;
@@ -99,7 +107,7 @@ namespace PaviseApp
 
             string worth = null;
             Color worthColor = Theme.Faint;
-            if (d != null && d.Dpc > 0)
+            if (d != null && driver != null)
             {
                 if (d.ActionableWorth)
                 {
@@ -108,7 +116,7 @@ namespace PaviseApp
                 }
                 else
                 {
-                    IrqGrade gr = IrqDeviceInventory.Grade(d);
+                    IrqGrade gr = IrqDeviceInventory.Grade(measured);
                     if (gr == IrqGrade.Fine) worth = Lang.T("irqpin.notworth");
                     else if (gr == IrqGrade.Long) worth = Lang.T("irqpin.maybe");
                 }
@@ -181,15 +189,38 @@ namespace PaviseApp
                 }
             }
 
-            scrollBody.Controls.Add(Line(Lang.T("irqpin.howto"), y, 22, Theme.UI(8.3f, false), Theme.Faint, 22));
-            y += 30;
+            string when = "—";
+            try { when = new DateTime(session.StartUtcTicks, DateTimeKind.Utc).ToLocalTime().ToString("MM-dd HH:mm"); }
+            catch { }
+            Label sourceLabel = Line(session.Available
+                ? Lang.F("irqpin.session.source", session.GameName, when, session.DurationSeconds)
+                : Lang.T("irqpin.session.none"), y, 22, Theme.UI(8.8f, true), Theme.Dim, 24);
+            sourceLabel.Name = "irqLoadSource";
+            sourceLabel.AutoEllipsis = true;
+            scrollBody.Controls.Add(sourceLabel);
+            y += 26;
+            string coverage = !session.Available && session.Exclusion != IrqSessionExclusion.None
+                ? IrqPageStatus.ExclusionText(session.Exclusion)
+                : session.Loads.Count == 0 ? Lang.T("irqpin.session.noload")
+                : Lang.F("irqpin.session.coverage", session.MinimumCoverage.ToString("F0"),
+                    session.MaximumCoverage.ToString("F0"));
+            Label coverageLabel = Line(coverage, y, 22, Theme.UI(8.3f, false), Theme.Faint, 36);
+            coverageLabel.Name = "irqLoadCoverage";
+            scrollBody.Controls.Add(coverageLabel);
+            y += 38;
+            scrollBody.Controls.Add(Line(Lang.T("irqpin.howto") + (session.GameMask == 0
+                ? "\n" + Lang.T("irqpin.session.unknownmask") : ""),
+                y, 22, Theme.UI(8.3f, false), Theme.Faint, 36));
+            y += 40;
 
             matrix = new CoreMatrix();
             matrix.PrimaryTag = Lang.T("irq.tag.target");
             matrix.MarkExclusive = false;
-            // 叠加实时负载热力 + 核类型 指引「挪去哪个空闲性能核」 必须在 LayoutFor 之前开
+            // 固定的同局观测；不采桌面负载，也不拿当前模式推测历史游戏核。
             matrix.Annotate = true;
-            matrix.SeenMask = d != null ? d.SeenOnCpus : 0UL;
+            matrix.SeenMask = session.SeenMask;
+            matrix.ObservedGameMask = session.GameMask;
+            matrix.SetLoads(session.Loads);
             int mtxW = Theme.S(DlgW - 44);
             int mtxH = matrix.LayoutFor(mtxW);
             matrix.SetBounds(Theme.S(22), Theme.S(y), mtxW, mtxH);
@@ -233,13 +264,23 @@ namespace PaviseApp
             foreach (Control control in scrollBody.Controls)
             {
                 var label = control as Label;
-                if (label != null) labelLogicalLeft[label] = label.Left;
+                if (label != null)
+                {
+                    labelLogicalLeft[label] = label.Left;
+                    if (label.Top < matrixLogicalTop)
+                    { beforeMatrixLabels.Add(label); beforeMatrixBounds[label] = label.Bounds; }
+                }
                 if (control != matrix && control.Top >= initialMatrixBottom)
                     afterMatrixOffsets[control] = control.Top - initialMatrixBottom;
                 if (control.Bottom > deepestBottom) deepestBottom = control.Bottom;
             }
             bodyTailPadding = Math.Max(0, bodyContentHeight - deepestBottom);
+            beforeMatrixLabels.Sort(delegate(Label a, Label b) {
+                return beforeMatrixBounds[a].Top.CompareTo(beforeMatrixBounds[b].Top); });
             scrollBody.AutoScrollMinSize = new Size(0, bodyContentHeight);
+            naturalClientHeight = headerHeight + bodyContentHeight + footerHeight;
+            ClientSize = new Size(Theme.S(DlgW), naturalClientHeight);
+            LayoutViewportAndFooter(0);
             naturalClientHeight = headerHeight + bodyContentHeight + footerHeight;
             ClientSize = new Size(Theme.S(DlgW), naturalClientHeight);
             LayoutViewportAndFooter(0);
@@ -322,10 +363,28 @@ namespace PaviseApp
 
         private void LayoutBodyWidth(int viewportWidth)
         {
+            // Text can wrap under DPI scaling or on a narrower monitor. Reflow from
+            // original coordinates, never accumulate offsets from a previous layout.
+            foreach (KeyValuePair<Label, int> item in labelLogicalLeft)
+            {
+                int left = Math.Min(item.Value, Math.Max(0, viewportWidth - 1));
+                item.Key.Left = left;
+                item.Key.Width = Math.Max(1, viewportWidth - left - Math.Min(item.Value, Theme.S(76)));
+            }
+            int extraHeight = 0;
+            foreach (Label label in beforeMatrixLabels)
+            {
+                Rectangle original = beforeMatrixBounds[label];
+                int needed = label.AutoEllipsis ? original.Height : TextRenderer.MeasureText(label.Text,
+                    label.Font, new Size(label.Width, int.MaxValue), TextFormatFlags.WordBreak).Height;
+                label.Top = original.Top + extraHeight;
+                label.Height = Math.Max(original.Height, needed);
+                extraHeight += label.Height - original.Height;
+            }
             int inset = Math.Min(Theme.S(22), Math.Max(0, (viewportWidth - 1) / 2));
             int matrixWidth = Math.Max(1, viewportWidth - inset * 2);
             int matrixHeight = matrix.LayoutFor(matrixWidth);
-            matrix.SetBounds(inset, matrixLogicalTop, matrixWidth, matrixHeight);
+            matrix.SetBounds(inset, matrixLogicalTop + extraHeight, matrixWidth, matrixHeight);
 
             foreach (KeyValuePair<Control, int> item in afterMatrixOffsets)
                 item.Key.Top = matrix.Bottom + item.Value;
@@ -427,7 +486,6 @@ namespace PaviseApp
             if (StartPosition != FormStartPosition.Manual) ClampToWorkArea();
             clockWasSuspended = UiClock.Borrow();
             Fx.EnterForm(this);
-            StartLoadProbe();
         }
 
         private void ClampToWorkArea()
@@ -437,31 +495,6 @@ namespace PaviseApp
                 FitToWorkingArea(Screen.FromControl(this).WorkingArea);
             }
             catch { }
-        }
-
-        // 后台采一次 per-core 负载 别卡 UI 采完回主线程喂给矩阵 采集失败优雅退回
-        private void StartLoadProbe()
-        {
-            var th = new System.Threading.Thread(delegate ()
-            {
-                System.Collections.Generic.Dictionary<int, double> map;
-                try { map = CoreLoadProbe.Sample(CoreLoadProbe.DefaultIntervalMs); }
-                catch { return; }
-                if (map == null) return;
-                try
-                {
-                    if (!IsHandleCreated || IsDisposed) return;
-                    BeginInvoke((MethodInvoker)delegate
-                    {
-                        if (IsDisposed || matrix == null) return;
-                        matrix.SetLoads(map);
-                    });
-                }
-                catch { }
-            });
-            th.IsBackground = true;
-            th.Name = "CoreLoadProbe";
-            try { th.Start(); } catch { }
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)

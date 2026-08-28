@@ -132,7 +132,7 @@ namespace PaviseApp
             RefreshWhitelist(false);
         }
 
-        // 提示内容跟着家族豁免开关走 开关在游戏库页 拨完要回来重刷这一条
+        // 安装平台只作信息展示；逐游戏家族设置不再有全局状态。
         internal void SyncWhitelistPlatformHint()
         {
             if (lblWhiteHint == null || lblWhiteHint.IsDisposed) return;
@@ -148,9 +148,7 @@ namespace PaviseApp
                 if (detected.Count == 0) return;
                 for (int i = 0; i < detected.Count; i++) detected[i] = PlatformDisplayName(detected[i]);
                 lblWhiteHint.Text += "\r\n\r\n"
-                    + Lang.F(gameMode.GameFamilyExempt
-                        ? "white.page.platforms.exempt" : "white.page.platforms",
-                        string.Join(" ", detected.ToArray()));
+                    + Lang.F("lib.family.platforms", string.Join(" ", detected.ToArray()));
             }
             catch { }
         }

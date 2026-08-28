@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 采每个逻辑核的实时利用率 供选核矩阵画负载热力 照 GpuEvidence 那套 PDH P/Invoke
+// 文件用途 对局期间读取每个逻辑核的利用率差分，供同局平均负载记录使用。
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -7,6 +7,12 @@ using System.Threading;
 
 namespace PaviseApp
 {
+    internal interface ICoreLoadSource : IDisposable
+    {
+        // Average since the previous read/baseline. Null means no valid interval.
+        Dictionary<int, double> Read();
+    }
+
     // \Processor Information(*)\% Processor Time 是标准计数器 实例名是「组,核」格式
     //   单组机器 逻辑核号 = 实例里的核号 多组按组基址累加(前面各组的活动逻辑核数之和)
     //   "_Total" / "组,_Total" 是汇总行 一律跳过
@@ -15,9 +21,56 @@ namespace PaviseApp
     {
         internal const int DefaultIntervalMs = 250;
 
+        // One persistent query per observed match. Read never sleeps or creates
+        // a worker; successive counter deltas cover the entire observed interval.
+        internal static ICoreLoadSource OpenSource()
+        {
+            var source = new CounterSource();
+            if (source.Open()) return source;
+            source.Dispose();
+            return null;
+        }
+
+        private sealed class CounterSource : ICoreLoadSource
+        {
+            private IntPtr query, counter;
+            private bool baseline;
+            internal bool Open()
+            {
+                try
+                {
+                    if (PdhOpenQueryW(null, IntPtr.Zero, out query) != 0 || query == IntPtr.Zero) return false;
+                    if (PdhAddEnglishCounterW(query, @"\Processor Information(*)\% Processor Time",
+                        IntPtr.Zero, out counter) != 0) return false;
+                    baseline = PdhCollectQueryData(query) == 0;
+                    return baseline;
+                }
+                catch { return false; }
+            }
+            public Dictionary<int, double> Read()
+            {
+                if (query == IntPtr.Zero) return null;
+                try
+                {
+                    if (PdhCollectQueryData(query) != 0) { baseline = false; return null; }
+                    bool valid = baseline;
+                    baseline = true;
+                    return valid ? ReadByCore(counter) : null;
+                }
+                catch { baseline = false; return null; }
+            }
+            public void Dispose()
+            {
+                IntPtr old = query;
+                query = IntPtr.Zero;
+                baseline = false;
+                if (old != IntPtr.Zero) try { PdhCloseQuery(old); } catch { }
+            }
+        }
+
         // 拿一次 per-core 利用率 键是全局逻辑核号 值是 0-100
         //   同步阻塞约 intervalMs 毫秒 拿不到就返回空字典 绝不抛
-        //   对话框打开时建议丢到后台线程跑 别卡 UI
+        //   保留给独立诊断测试；选核弹窗只读取已封存的同局记录。
 #if PAVISE_SELFTEST
         // 选核弹窗截图自测专用:注入一份确定的 per-core 负载 让弹窗铺满全负载区间(含 44% / 88%)
         //   供人工核对 ROG 发光观感 空则走真实 PDH 采集
@@ -79,6 +132,7 @@ namespace PaviseApp
                     int logical = ParseLogical(name, groupBase);
                     if (logical < 0) continue;
                     double v = item.Value.DoubleValue;
+                    if (double.IsNaN(v) || double.IsInfinity(v)) continue;
                     if (v < 0) v = 0; else if (v > 100) v = 100;
                     // 同一实例只出现一次 但保险起见取最大 别被后来的 0 覆盖
                     double prev;

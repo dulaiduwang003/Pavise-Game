@@ -19,7 +19,7 @@ namespace PaviseApp
     internal static class App
     {
         public const string DisplayName = "PAVISE";
-        public const string Version = "2.1.2.0";
+        public const string Version = "2.1.3.0";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string QqGroup = "1051472054";
@@ -196,7 +196,7 @@ namespace PaviseApp
                 try
                 {
                     string cdir = Paths.Data ?? Path.GetDirectoryName(Application.ExecutablePath);
-                    File.AppendAllText(
+                    Logger.AppendCrash(
                         Path.Combine(cdir, "crash.log"),
                         DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  " + e.ExceptionObject + Environment.NewLine);
                 }
@@ -312,7 +312,7 @@ namespace PaviseApp
             {
                 try
                 {
-                    File.AppendAllText(Path.Combine(dir, "crash.log"),
+                    Logger.AppendCrash(Path.Combine(dir, "crash.log"),
                         DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  [UI] " + e.Exception + Environment.NewLine);
                 }
                 catch { }
@@ -328,16 +328,23 @@ namespace PaviseApp
 
             var core = new SuppressionCore(Path.Combine(dir, SuppressionCore.StateFileName));
             var tamer = new Tamer(core);
-            tamer.Paused = !Settings.Load("TameOn", true);
 
             var gameMode = new GameMode(dir, core);
             gameMode.Enabled = Settings.Load("GameModeOn", true);
 
             if (gameMode.ProfileStoreSaveFailed)
             {
-                bool cleared = ForceDeleteRoamingData(dir);
+                int files;
+                string failure;
+                bool cleared = TryResetUserData(dir, delegate
+                {
+                    bool tamerStopped = tamer.Stop();
+                    bool gameStopped = gameMode.Stop();
+                    return tamerStopped && gameStopped;
+                }, out files, out failure);
                 PaviseDialog.Error(null, Lang.T("store.savefatal.title"),
-                    Lang.F(cleared ? "store.savefatal.body" : "store.savefatal.deletefail", dir));
+                    cleared ? Lang.F("store.savefatal.body", dir)
+                        : Lang.F("store.savefatal.deletefail", dir, failure));
                 return;
             }
 
@@ -353,6 +360,10 @@ namespace PaviseApp
                     tamer.Start();
                     gameMode.Start();
                 }
+                // This can write a task XML in Paths.Data. Keep it in the joined
+                // startup lifecycle so reset cannot race an untracked callback.
+                if (elevated && !Volatile.Read(ref exiting))
+                    try { TaskHelper.RefreshStartupTask(); } catch { }
             });
             bootThread.IsBackground = true;
             bootThread.Start();
@@ -361,12 +372,14 @@ namespace PaviseApp
             procNotify.CaptureStartIdentity = delegate(string name, int session)
             {
                 return gameMode.NeedsWhitelistParentIdentity(session)
+                    || gameMode.NeedsGameFamilyIdentity(session)
                     || gameMode.NeedsGameProcessIdentity(name, session);
             };
             procNotify.CaptureParentIdentity =
                 delegate(int parentPid, string name, int session)
                 {
                     return gameMode.NeedsWhitelistParentIdentity(session)
+                        || gameMode.NeedsGameFamilyIdentity(session)
                         || gameMode.NeedsLauncherChildParentIdentity(
                             parentPid, name, session);
                 };
@@ -384,9 +397,6 @@ namespace PaviseApp
             procNotify.Start();
             gameMode.ProcessEventsAvailable = procNotify.IsActive;
             tamer.ProcessEventsAvailable = procNotify.IsActive;
-
-            if (elevated)
-                ThreadPool.QueueUserWorkItem(_ => TaskHelper.RefreshStartupTask());
 
             // 必须在 GameMode 构造之后 台账那时才 Bind 到数据目录 提前调用会读到空账误提示
             ThreadPool.QueueUserWorkItem(_ => IrqRelocate.NotifyPendingVerification());
@@ -421,66 +431,95 @@ namespace PaviseApp
             icon.Text = elevated ? Lang.T("tray.idle") : Lang.T("tray.noelev");
 
             System.Windows.Forms.Timer trayTip = null;
-            Action stopRuntime = () =>
+            System.Windows.Forms.Timer updTimer = null;
+            int runtimeStopStarted = 0;
+            int runtimeStopped = 0;
+            Func<bool> stopRuntime = () =>
             {
+                // A second or reentrant exit must not mistake an in-progress stop
+                // for a completed one and delete live recovery state underneath it.
+                if (Interlocked.CompareExchange(ref runtimeStopStarted, 1, 0) != 0)
+                    return Volatile.Read(ref runtimeStopped) != 0;
                 lock (startGate)
                 {
-                    if (exiting) return;
                     exiting = true;
                 }
-                try { trayTip.Stop(); trayTip.Dispose(); } catch { }
-                icon.Visible = false;
-                icon.Dispose();
-                try { procNotify.Stop(); } catch { }
-                tamer.Stop();
-                gameMode.Stop();
                 panel.RealExit = true;
+                try { panel.Enabled = false; panel.Hide(); } catch { }
+                try { trayTip.Stop(); trayTip.Dispose(); } catch { }
+                try { updTimer.Stop(); updTimer.Dispose(); } catch { }
+                try { icon.Visible = false; icon.Dispose(); } catch { }
+                bool stopped = true;
+                try { procNotify.Stop(); } catch { stopped = false; }
+                // Attempt both stops even if the first one fails. A timeout is a
+                // real failure, not permission to erase pending recovery records.
+                try { if (!tamer.Stop()) stopped = false; } catch { stopped = false; }
+                try { if (!gameMode.Stop()) stopped = false; } catch { stopped = false; }
+                try
+                {
+                    if (bootThread == Thread.CurrentThread || !bootThread.Join(8000))
+                        stopped = false;
+                }
+                catch { stopped = false; }
+                try { panel.Dispose(); } catch { stopped = false; }
+                Volatile.Write(ref runtimeStopped, stopped ? 1 : 0);
+                return stopped;
             };
-            Action fatalStoreReset = null;
+            Action<bool, bool> resetDataAndExit = null;
             Action doExit = () =>
             {
-                stopRuntime();
                 // 保存失败与普通退出同时发生时，不能让退出先关掉
-                // 消息泵而吞掉已排队的强制清空。
-                if (gameMode.ProfileStoreSaveFailed && fatalStoreReset != null)
+                // 消息泵而吞掉已排队的安全重置。
+                if (gameMode.ProfileStoreSaveFailed && resetDataAndExit != null)
                 {
-                    fatalStoreReset();
+                    resetDataAndExit(true, true);
                     return;
                 }
+                stopRuntime();
                 Application.Exit();
             };
 
             panel.ExitApp = doExit;
 
-            int fatalStoreResetStarted = 0;
-            fatalStoreReset = () =>
+            int resetStarted = 0;
+            resetDataAndExit = (fatal, closeApplication) =>
             {
-                if (Interlocked.Exchange(ref fatalStoreResetStarted, 1) != 0) return;
-                stopRuntime();
-                try { panel.Hide(); panel.Dispose(); } catch { }
-                bool cleared = ForceDeleteRoamingData(dir);
-                PaviseDialog.Error(null, Lang.T("store.savefatal.title"),
-                    Lang.F(cleared ? "store.savefatal.body" : "store.savefatal.deletefail", dir));
-                Application.Exit();
+                if (Interlocked.CompareExchange(ref resetStarted, 1, 0) != 0) return;
+                int files;
+                string failure;
+                bool cleared = TryResetUserData(dir, stopRuntime, out files, out failure);
+                try
+                {
+                    if (fatal)
+                        PaviseDialog.Error(null, Lang.T("store.savefatal.title"),
+                            cleared ? Lang.F("store.savefatal.body", dir)
+                                : Lang.F("store.savefatal.deletefail", dir, failure));
+                    else if (cleared)
+                        PaviseDialog.Success(null, App.DisplayName, Lang.F("wipe.done", files));
+                    else
+                        PaviseDialog.Warn(null, App.DisplayName, Lang.F("wipe.failed", failure));
+                }
+                finally { if (closeApplication) Application.Exit(); }
             };
+            panel.ResetApp = () => resetDataAndExit(false, true);
             Action requestFatalStoreReset = () =>
             {
-                try { panel.BeginInvoke((MethodInvoker)(() => fatalStoreReset())); }
+                try { panel.BeginInvoke((MethodInvoker)(() => resetDataAndExit(true, true))); }
                 catch
                 {
-                    // 窗口若已在销毁，至少强制结束消息泵；
-                    // ApplicationExit 的最后闸门会执行目录清空。
+                    // ApplicationExit uses the same verified stop/restore path.
+                    // If invoked on a still-running worker, reset safely aborts.
                     try { Application.Exit(); } catch { }
                 }
             };
             Application.ApplicationExit += (s, e) =>
             {
                 if (!gameMode.ProfileStoreSaveFailed) return;
-                ForceDeleteRoamingData(dir);
+                resetDataAndExit(true, false);
             };
 
-            // 先装最后删除闸门，再订阅/复查失败；否则 BeginInvoke
-            // 恰在这个窗口失败时，Application.Exit 会无人执行清空。
+            // Install the guarded fallback before subscribing/rechecking failure.
+            // No exit path is allowed to bypass restoration and force-delete data.
             gameMode.ProfileStoreSaveFailure += requestFatalStoreReset;
             if (gameMode.ProfileStoreSaveFailed) requestFatalStoreReset();
 
@@ -538,6 +577,10 @@ namespace PaviseApp
             {
                 try { panel.NotifyIrqSuggestions(count); } catch { }
             };
+            gameMode.IrqObservationUpdated += () =>
+            {
+                try { panel.NotifyIrqObservationUpdated(); } catch { }
+            };
 
             trayTip = new System.Windows.Forms.Timer();
             trayTip.Interval = TrayTipIdleMs;
@@ -572,14 +615,16 @@ namespace PaviseApp
             };
             trayTip.Start();
 
-            var updTimer = new System.Windows.Forms.Timer();
+            updTimer = new System.Windows.Forms.Timer();
             updTimer.Interval = 6000;
             updTimer.Tick += (s, e) =>
             {
                 updTimer.Stop();
                 updTimer.Dispose();
+                if (Volatile.Read(ref exiting)) return;
                 UpdateChecker.CheckAsync(r =>
                 {
+                    if (Volatile.Read(ref exiting)) return;
                     if (r.Ok && r.Newer)
                     {
                         Logger.Log(Lang.T("log.program.6") + r.Latest
@@ -725,25 +770,39 @@ namespace PaviseApp
             catch { return false; }
         }
 
-        internal static bool ForceDeleteRoamingData(string dir)
+        internal static bool TryResetUserData(string dir, Func<bool> stopRuntime,
+            out int files, out string failure)
         {
-            if (string.IsNullOrEmpty(dir)) return false;
+            files = 0;
+            failure = null;
+            if (string.IsNullOrWhiteSpace(dir))
+            {
+                failure = Lang.T("wipe.pathfail");
+                return false;
+            }
             try
             {
-                string expected = Path.Combine(Environment.GetFolderPath(
-                    Environment.SpecialFolder.ApplicationData), "Pavise");
-                string actualFull = Path.GetFullPath(dir).TrimEnd(
-                    Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-                string expectedFull = Path.GetFullPath(expected).TrimEnd(
-                    Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-                if (!string.Equals(actualFull, expectedFull, StringComparison.OrdinalIgnoreCase))
+                if (stopRuntime == null || !stopRuntime())
+                {
+                    failure = Lang.T("wipe.stopfail");
                     return false;
-                if (!Directory.Exists(actualFull)) return true;
-                if (!LegacyPurge.IsRoamingDataDir(actualFull)) return false;
-                LegacyPurge.DeleteDataTree(actualFull);
-                return !Directory.Exists(actualFull);
+                }
             }
-            catch { return false; }
+            catch (Exception ex)
+            {
+                failure = Lang.T("wipe.stopfail") + " (" + ex.GetType().Name + ")";
+                return false;
+            }
+            try
+            {
+                return LegacyPurge.WipeAll(dir, true, Lang.T("t.panelformsettingspage.3"),
+                    out files, out failure);
+            }
+            catch (Exception ex)
+            {
+                failure = Lang.T("wipe.cleanupfail") + " (" + ex.GetType().Name + ")";
+                return false;
+            }
         }
 
     }

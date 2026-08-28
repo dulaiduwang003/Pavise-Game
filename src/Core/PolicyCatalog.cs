@@ -39,6 +39,7 @@ namespace PaviseApp
     {
         public const string KeyPreset = "PerformancePreset";
         public const string KeySuppress = "GmSuppress";
+        public const string KeySuppressFamily = "GameFamilyBackground";
         public const string KeyBoost = "GmBoost";
         public const string KeyAggressive = "GmAggressive";
         public const string KeyGpuDemote = "GmGpuDemote";
@@ -76,6 +77,7 @@ namespace PaviseApp
             new PolicyItem(KeyPreset, PolicyValueKind.Enum, "0", "cfg.mode", GroupMode,
                 new[] { "0", "1", "4", "2" }),
             new PolicyItem(KeySuppress, PolicyValueKind.Bool, "1", "v14.bg.master", GroupBackground, null),
+            new PolicyItem(KeySuppressFamily, PolicyValueKind.Bool, "0", "lib.family.suppress", GroupBackground, null),
             new PolicyItem(KeyBoost, PolicyValueKind.Bool, "1", "gm.boost", GroupBackground, null),
             new PolicyItem(KeyAggressive, PolicyValueKind.Bool, "0", "gm.aggressive", GroupBackground, null),
             new PolicyItem(KeyGpuDemote, PolicyValueKind.Bool, "0", "gm.gpudemote", GroupBackground, null),

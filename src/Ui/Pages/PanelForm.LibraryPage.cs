@@ -12,13 +12,14 @@ namespace PaviseApp
 {
     internal partial class PanelForm
     {
-        private ListBox lstGames;
+        private GameLibraryList lstGames;
         private PillButton btnForce;
         private PillButton btnGameConfig;
         private PillButton btnRename;
         private Toggle swAutoAdd;
-        private Toggle swFamilyExempt;
         private Label lblLibraryHint;
+        private Label lblLibraryCount;
+        private bool familyChangeBusy;
         private EmptyStatePanel gameListPanel;
         private readonly Dictionary<string, Bitmap> gameIconCache = new Dictionary<string, Bitmap>(StringComparer.OrdinalIgnoreCase);
         private int runningBusy;
@@ -36,16 +37,28 @@ namespace PaviseApp
             listWrap.BackColor = Theme.Bg; listWrap.Fill = Theme.Card; listWrap.Border = Theme.Stroke; listWrap.Radius = Theme.S(14);
             listWrap.EmptyTitle = "PAVISE LIBRARY";
             listWrap.EmptyDetail = Lang.T("v15.library.empty");
-            listWrap.Padding = new Padding(Theme.S(8));
-            lstGames = new TechListBox(); lstGames.Dock = DockStyle.Fill; Theme.StyleList(lstGames, false);
-            lstGames.ItemHeight = Math.Min(255, Theme.S(68));
-            lstGames.DrawItem += DrawGameLibraryItem;
+            listWrap.Padding = new Padding(Theme.S(10), Theme.S(44), Theme.S(10), Theme.S(10));
+            lblLibraryCount = new Label();
+            lblLibraryCount.Font = Theme.Mono(7.3f); lblLibraryCount.ForeColor = Theme.Dim;
+            lblLibraryCount.BackColor = Color.Transparent;
+            lblLibraryCount.SetBounds(Theme.S(16), Theme.S(13), Theme.S(220), Theme.S(19));
+            var listHint = new Label();
+            listHint.Text = Lang.T("lib.family.list.hint"); listHint.Font = Theme.UI(7.8f, false);
+            listHint.ForeColor = Theme.Dim; listHint.BackColor = Color.Transparent;
+            listHint.TextAlign = ContentAlignment.MiddleRight;
+            listHint.SetBounds(Theme.S(listW - 282), Theme.S(10), Theme.S(264), Theme.S(23));
+            lstGames = new GameLibraryList(); lstGames.Dock = DockStyle.Fill; lstGames.IconProvider = GameIcon;
             lstGames.KeyDown += delegate(object s, KeyEventArgs e)
             {
                 GameLibraryItem item = lstGames.SelectedItem as GameLibraryItem;
-                if (e.KeyCode == Keys.Delete && item != null) { gameMode.RemoveProfile(item.Profile.Id); RefreshGames(); }
+                if (e.KeyCode == Keys.Delete && item != null)
+                {
+                    e.Handled = true; e.SuppressKeyPress = true;
+                    gameMode.RemoveProfile(item.Profile.Id); RefreshGames();
+                }
             };
-            listWrap.Controls.Add(lstGames);
+            lstGames.FamilyToggleRequested += delegate(object sender, GameLibraryEventArgs e) { ToggleGameFamilySuppression(e.Item); };
+            listWrap.Controls.AddRange(new Control[] { lstGames, lblLibraryCount, listHint });
             int bx = ContentX + listW + 16, bw = ContentW - listW - 16, bh = 40;
             var add = new PillButton(Lang.T("v15.library.add"), BtnKind.Primary);
             add.SetBounds(Theme.S(bx), Theme.S(y), Theme.S(bw), Theme.S(bh));
@@ -66,7 +79,7 @@ namespace PaviseApp
             btnRename.SetBounds(Theme.S(bx), Theme.S(y + 200), Theme.S(bw), Theme.S(bh));
             btnRename.Click += delegate { RenameSelectedGame(); };
             lstGames.SelectedIndexChanged += delegate { UpdateForceButton(); };
-            lstGames.DoubleClick += delegate { OpenSelectedGameConfig(); };
+            lstGames.ItemActivated += delegate { OpenSelectedGameConfig(); };
             var lblAutoAdd = new Label();
             lblAutoAdd.Text = Lang.T("v15.library.autoadd");
             lblAutoAdd.BackColor = Theme.Bg; lblAutoAdd.ForeColor = Theme.Fg;
@@ -80,32 +93,25 @@ namespace PaviseApp
             lblAutoAddDesc.Text = Lang.T("v15.library.autoadd.desc");
             lblAutoAddDesc.BackColor = Theme.Bg; lblAutoAddDesc.ForeColor = Theme.Dim;
             lblAutoAddDesc.Font = Theme.UI(8.2f, false);
-            lblAutoAddDesc.SetBounds(Theme.S(bx + 4), Theme.S(y + 284), Theme.S(bw - 8), Theme.S(84));
-            var lblFamily = new Label();
-            lblFamily.Text = Lang.T("v16.library.familyexempt");
-            lblFamily.BackColor = Theme.Bg; lblFamily.ForeColor = Theme.Fg;
-            lblFamily.Font = Theme.UI(9f, true);
-            lblFamily.SetBounds(Theme.S(bx + 4), Theme.S(y + 372), Theme.S(bw - 62), Theme.S(22));
-            swFamilyExempt = MakeSwitch(gameMode.GameFamilyExempt,
-                delegate
-                {
-                    gameMode.GameFamilyExempt = swFamilyExempt.Checked;
-                    // 白名单页那条平台提示的措辞跟着这个开关走 不刷它会一直说反话
-                    SyncWhitelistPlatformHint();
-                });
-            swFamilyExempt.Bg = Theme.Bg;
-            swFamilyExempt.Location = new Point(Theme.S(bx + bw - 50), Theme.S(y + 370));
-            var lblFamilyDesc = new Label();
-            lblFamilyDesc.Text = Lang.T("v16.library.familyexempt.desc");
-            lblFamilyDesc.BackColor = Theme.Bg; lblFamilyDesc.ForeColor = Theme.Dim;
-            lblFamilyDesc.Font = Theme.UI(8.2f, false);
-            lblFamilyDesc.SetBounds(Theme.S(bx + 4), Theme.S(y + 400), Theme.S(bw - 8), Theme.S(84));
+            lblAutoAddDesc.SetBounds(Theme.S(bx + 4), Theme.S(y + 284), Theme.S(bw - 8), Theme.S(70));
+            var familyGuide = new RoundPanel();
+            familyGuide.SetBounds(Theme.S(bx), Theme.S(y + 360), Theme.S(bw), Theme.S(122));
+            familyGuide.Fill = Theme.Card; familyGuide.Border = Theme.Stroke; familyGuide.AccentEdge = true;
+            var familyGuideTitle = new Label();
+            familyGuideTitle.Text = Lang.T("lib.family.guide.title"); familyGuideTitle.Font = Theme.UI(8.8f, true);
+            familyGuideTitle.BackColor = Color.Transparent; familyGuideTitle.ForeColor = Theme.Fg;
+            familyGuideTitle.SetBounds(Theme.S(14), Theme.S(13), Theme.S(bw - 28), Theme.S(22));
+            var familyGuideBody = new Label();
+            familyGuideBody.Text = Lang.T("lib.family.guide.body"); familyGuideBody.Font = Theme.UI(8.0f, false);
+            familyGuideBody.BackColor = Color.Transparent; familyGuideBody.ForeColor = Theme.Dim;
+            familyGuideBody.SetBounds(Theme.S(14), Theme.S(42), Theme.S(bw - 28), Theme.S(70));
+            familyGuide.Controls.AddRange(new Control[] { familyGuideTitle, familyGuideBody });
             lblLibraryHint = new Label(); lblLibraryHint.BackColor = Theme.Bg;
-            lblLibraryHint.Font = Theme.UI(8.2f, false); lblLibraryHint.AutoEllipsis = true;
-            lblLibraryHint.SetBounds(Theme.S(bx + 4), Theme.S(y + 488), Theme.S(bw - 8), Theme.S(80));
+            lblLibraryHint.Font = Theme.UI(7.9f, false); lblLibraryHint.AutoEllipsis = true;
+            lblLibraryHint.SetBounds(Theme.S(bx + 4), Theme.S(y + 496), Theme.S(bw - 8), Theme.S(60));
             SyncLibraryHint();
             pageLibrary.Controls.AddRange(new Control[] { listWrap, add, remove, btnForce, btnGameConfig, btnRename,
-                lblAutoAdd, swAutoAdd, lblAutoAddDesc, lblFamily, swFamilyExempt, lblFamilyDesc, lblLibraryHint });
+                lblAutoAdd, swAutoAdd, lblAutoAddDesc, familyGuide, lblLibraryHint });
             RefreshGames();
         }
 
@@ -122,55 +128,47 @@ namespace PaviseApp
             catch { }
         }
 
-        private void DrawGameLibraryItem(object sender, DrawItemEventArgs e)
+        private void ToggleGameFamilySuppression(GameLibraryItem item)
         {
-            if (e.Index < 0) return;
-            GameLibraryItem item = lstGames.Items[e.Index] as GameLibraryItem;
-            if (item == null || item.Profile == null) return;
-            bool selected = (e.State & DrawItemState.Selected) != 0;
-            int hover = Theme.HoverIndex(lstGames);
-            Rectangle row = Rectangle.Inflate(e.Bounds, -Theme.S(4), -Theme.S(3));
-            using (var back = new SolidBrush(Backdrop.CardFill(Theme.Card))) e.Graphics.FillRectangle(back, e.Bounds);
-            Theme.FillRound(e.Graphics, row, Theme.S(10), selected ? Theme.Sel : (e.Index == hover ? Theme.CardHover : Theme.Card));
-            int iconSize = Theme.S(38), ix = e.Bounds.X + Theme.S(14), iy = e.Bounds.Y + (e.Bounds.Height - iconSize) / 2;
-            try { e.Graphics.DrawImage(GameIcon(item.Profile.ExecutablePath), new Rectangle(ix, iy, iconSize, iconSize)); }
-            catch
+            if (familyChangeBusy || item == null || item.Profile == null) return;
+            familyChangeBusy = true;
+            string keepId = item.Profile.Id;
+            try
             {
-                string iconKey = item.Profile.ExecutablePath ?? "";
-                Bitmap dead;
-                if (gameIconCache.TryGetValue(iconKey, out dead))
+                GameProfile current = FindLibraryProfile(keepId);
+                if (current == null) return;
+                bool turningOn = !current.SuppressFamilyBackground;
+                string targetPath = current.ExecutablePath;
+                // 已观测渲染不代表关联后台可以安全压制；每次开启都必须确认风险。
+                if (turningOn)
                 {
-                    gameIconCache.Remove(iconKey);
-                    if (dead != null) try { dead.Dispose(); } catch { }
+                    using (var warning = new FamilySuppressionDialog(current.Name, targetPath))
+                        if (ShowDim(warning) != DialogResult.OK) return;
+                    // 模态窗口仍会分发库更新。不得把旧 EXE 的风险确认套给已纠正的新目标。
+                    GameProfile after = FindLibraryProfile(keepId);
+                    if (after == null) return;
+                    if (!string.Equals(after.ExecutablePath, targetPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        PaviseDialog.Warn(this, Lang.T("lib.family.suppress"), Lang.T("lib.family.changed"));
+                        return;
+                    }
                 }
+                if (!gameMode.SetProfileFamilySuppression(keepId, turningOn, targetPath) && !gameMode.ProfileStoreSaveFailed)
+                    PaviseDialog.Warn(this, Lang.T("lib.family.suppress"), Lang.T("lib.family.save.failed"));
             }
-            int tx = ix + iconSize + Theme.S(14), right = Theme.S(92);
-            TextRenderer.DrawText(e.Graphics, item.Profile.Name, Theme.UI(10.2f, true),
-                    new Rectangle(tx, e.Bounds.Y + Theme.S(11), e.Bounds.Width - tx - right, Theme.S(22)),
-                    Theme.Fg, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
-            bool forced = item.Profile.ForceTrigger;
-            int overrides = item.Profile.Overrides.Count;
-            bool tagged = forced || overrides > 0;
-            string path = item.Profile.ExecutablePath ?? item.Profile.Root ?? "";
-            TextRenderer.DrawText(e.Graphics, path, Theme.UI(7.8f, false),
-                    new Rectangle(tx, e.Bounds.Y + Theme.S(37),
-                        e.Bounds.Width - tx - (tagged ? right + Theme.S(84) : Theme.S(18)), Theme.S(18)),
-                    Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
-            TextRenderer.DrawText(e.Graphics, Lang.T(item.Running ? "v15.library.running" : "v15.library.ready"), Theme.UI(7.6f, true),
-                    new Rectangle(e.Bounds.Right - right, e.Bounds.Y + Theme.S(12), right - Theme.S(16), Theme.S(20)),
-                    item.Running ? Theme.Green : Theme.Faint, TextFormatFlags.Right | TextFormatFlags.NoPadding);
-            if (tagged)
+            finally
             {
-                string tag = overrides > 0 ? Lang.F("lib.config.tag", overrides) : "";
-                if (forced)
-                    tag = tag.Length > 0
-                        ? Lang.T("v15.library.forced.tag") + " " + tag
-                        : Lang.T("v15.library.forced.tag");
-                TextRenderer.DrawText(e.Graphics, tag, Theme.UI(7.2f, true),
-                        new Rectangle(e.Bounds.Right - right - Theme.S(84), e.Bounds.Y + Theme.S(36),
-                            right + Theme.S(68), Theme.S(18)),
-                        Theme.Accent, TextFormatFlags.Right | TextFormatFlags.NoPadding);
+                familyChangeBusy = false;
+                // AutoCheck=false：取消或保存失败都回显真实模型，不留下假开启状态。
+                RefreshGames(); SelectProfile(keepId);
             }
+        }
+
+        private GameProfile FindLibraryProfile(string id)
+        {
+            foreach (GameProfile profile in gameMode.GetProfiles())
+                if (string.Equals(profile.Id, id, StringComparison.OrdinalIgnoreCase)) return profile;
+            return null;
         }
 
         private void UpdateForceButton()
@@ -269,65 +267,23 @@ namespace PaviseApp
             GameLibraryItem sel = lstGames.SelectedItem as GameLibraryItem;
             if (sel != null && sel.Profile != null) keepId = sel.Profile.Id;
             List<GameProfile> profiles = gameMode.GetProfiles();
-
-            // 进入页面时模型通常没有变化 不要把原生 ListBox 清空再重建
-            //   只在条目数量或顺序确实变化时重排 其余情况原位换新模型并保留运行状态
-            bool structural = profiles.Count != lstGames.Items.Count;
-            if (!structural)
-                for (int i = 0; i < profiles.Count; i++)
-                {
-                    GameLibraryItem row = lstGames.Items[i] as GameLibraryItem;
-                    if (row == null || row.Profile == null
-                        || !string.Equals(row.Profile.Id, profiles[i].Id, StringComparison.OrdinalIgnoreCase))
-                    {
-                        structural = true;
-                        break;
-                    }
-                }
-
-            if (structural)
-            {
-                var runningByPath = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
-                foreach (object value in lstGames.Items)
-                {
-                    GameLibraryItem row = value as GameLibraryItem;
-                    if (row != null && row.Profile != null && !string.IsNullOrEmpty(row.Profile.ExecutablePath))
-                        runningByPath[row.Profile.ExecutablePath] = row.Running;
-                }
-
-                lstGames.BeginUpdate();
-                try
-                {
-                    lstGames.Items.Clear();
-                    foreach (GameProfile profile in profiles)
-                        lstGames.Items.Add(new GameLibraryItem(profile,
-                            RunningIn(runningByPath, profile.ExecutablePath)));
-                }
-                finally { lstGames.EndUpdate(); }
-            }
-            else
-            {
-                bool redraw = false;
-                for (int i = 0; i < profiles.Count; i++)
-                {
-                    GameLibraryItem row = (GameLibraryItem)lstGames.Items[i];
-                    GameProfile old = row.Profile;
-                    GameProfile fresh = profiles[i];
-                    if (old == null || old.Name != fresh.Name
-                        || old.ExecutablePath != fresh.ExecutablePath || old.Root != fresh.Root
-                        || old.ForceTrigger != fresh.ForceTrigger
-                        || old.Overrides.Count != fresh.Overrides.Count)
-                        redraw = true;
-                    row.Profile = fresh;
-                }
-                if (redraw) lstGames.Invalidate();
-            }
+            var runningByPath = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            foreach (GameLibraryItem row in lstGames.Items)
+                if (row != null && row.Profile != null && !string.IsNullOrEmpty(row.Profile.ExecutablePath))
+                    runningByPath[row.Profile.ExecutablePath] = row.Running;
+            var fresh = new List<GameLibraryItem>();
+            foreach (GameProfile profile in profiles)
+                // 标签只读取已经观测到的缓存；不在 UI 线程查 EXE 或采样 GPU。
+                fresh.Add(new GameLibraryItem(profile, RunningIn(runningByPath, profile.ExecutablePath),
+                    gameMode.HasRendererObservation(profile)));
+            lstGames.SetItems(fresh);
             if (keepId != null) SelectProfile(keepId);
             bool empty = lstGames.Items.Count == 0;
             bool wasShown = lstGames.Visible;
             lstGames.Visible = !empty;
             if (!empty && !wasShown) Fx.SlideIn(lstGames);
             if (gameListPanel != null) { gameListPanel.ShowEmpty = empty; gameListPanel.Invalidate(); }
+            if (lblLibraryCount != null) lblLibraryCount.Text = "GAME PROFILES  /  " + profiles.Count.ToString("00");
             SyncLibraryHint();
             UpdateForceButton();
             if (UiActive && curPage == pageLibrary) RefreshGameRunningStates(true);
@@ -390,7 +346,7 @@ namespace PaviseApp
                 if (string.IsNullOrEmpty(path) || !states.TryGetValue(path, out running)) continue;
                 if (running != item.Running) { item.Running = running; changed = true; }
             }
-            if (changed) lstGames.Invalidate();
+            if (changed) lstGames.RefreshRows();
         }
 
         private void AddDroppedGames(string[] files)
@@ -468,15 +424,5 @@ namespace PaviseApp
             return bitmap;
         }
 
-        private sealed class GameLibraryItem
-        {
-            public GameProfile Profile;
-            public bool Running;
-            public GameLibraryItem(GameProfile profile, bool running)
-            {
-                Profile = profile; Running = running;
-            }
-            public override string ToString() { return Profile == null ? "" : Profile.Name; }
-        }
     }
 }

@@ -9,15 +9,31 @@ namespace PaviseApp
     internal static class Settings
     {
         private const string Key = @"Software\Pavise";
+        private static readonly object writeSync = new object();
+        private static bool writesSuspendedForReset;
+
+        // Call after restoration succeeds and before deleting persistent data.
+        // Returning from this barrier drains earlier writes and rejects later callbacks.
+        internal static void SuspendWritesForReset()
+        {
+            lock (writeSync) writesSuspendedForReset = true;
+        }
+
 #if PAVISE_SELFTEST || PAVISE_PERFLAB
         private static readonly object transientSync = new object();
         private static Dictionary<string, object> transientValues;
 
         internal static void UseTransientStoreForCurrentProcess()
         {
-            lock (transientSync)
-                transientValues = new Dictionary<string, object>(
-                    StringComparer.OrdinalIgnoreCase);
+            lock (writeSync)
+            {
+                lock (transientSync)
+                {
+                    transientValues = new Dictionary<string, object>(
+                        StringComparer.OrdinalIgnoreCase);
+                    writesSuspendedForReset = false;
+                }
+            }
         }
 
         private static bool TryLoadTransient(string name, out object value)
@@ -66,37 +82,45 @@ namespace PaviseApp
 
         public static bool Save(string name, bool val)
         {
+            lock (writeSync)
+            {
+                if (writesSuspendedForReset) return false;
 #if PAVISE_SELFTEST || PAVISE_PERFLAB
-            if (TrySaveTransient(name, val ? 1 : 0)) return true;
+                if (TrySaveTransient(name, val ? 1 : 0)) return true;
 #endif
-            try
-            {
-                using (var k = Registry.CurrentUser.CreateSubKey(Key))
+                try
                 {
-                    if (k == null) throw new InvalidOperationException(Lang.T("t.settings.1"));
-                    k.SetValue(name, val ? 1 : 0);
+                    using (var k = Registry.CurrentUser.CreateSubKey(Key))
+                    {
+                        if (k == null) throw new InvalidOperationException(Lang.T("t.settings.1"));
+                        k.SetValue(name, val ? 1 : 0);
+                    }
+                    return true;
                 }
-                return true;
-            }
-            catch (Exception ex)
-            {
-                Logger.LogFailure(Lang.T("log.settings.2") + name, ex);
-                return false;
+                catch (Exception ex)
+                {
+                    Logger.LogFailure(Lang.T("log.settings.2") + name, ex);
+                    return false;
+                }
             }
         }
 
         public static void Remove(string name)
         {
-#if PAVISE_SELFTEST || PAVISE_PERFLAB
-            lock (transientSync)
-                if (transientValues != null) { transientValues.Remove(name); return; }
-#endif
-            try
+            lock (writeSync)
             {
-                using (var k = Registry.CurrentUser.OpenSubKey(Key, true))
-                    if (k != null && k.GetValue(name) != null) k.DeleteValue(name, false);
+                if (writesSuspendedForReset) return;
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+                lock (transientSync)
+                    if (transientValues != null) { transientValues.Remove(name); return; }
+#endif
+                try
+                {
+                    using (var k = Registry.CurrentUser.OpenSubKey(Key, true))
+                        if (k != null && k.GetValue(name) != null) k.DeleteValue(name, false);
+                }
+                catch { }
             }
-            catch { }
         }
 
         public static string LoadStr(string name, string def)
@@ -120,22 +144,26 @@ namespace PaviseApp
 
         public static bool SaveStr(string name, string val)
         {
+            lock (writeSync)
+            {
+                if (writesSuspendedForReset) return false;
 #if PAVISE_SELFTEST || PAVISE_PERFLAB
-            if (TrySaveTransient(name, val ?? "")) return true;
+                if (TrySaveTransient(name, val ?? "")) return true;
 #endif
-            try
-            {
-                using (var k = Registry.CurrentUser.CreateSubKey(Key))
+                try
                 {
-                    if (k == null) throw new InvalidOperationException(Lang.T("t.settings.1"));
-                    k.SetValue(name, val ?? "");
+                    using (var k = Registry.CurrentUser.CreateSubKey(Key))
+                    {
+                        if (k == null) throw new InvalidOperationException(Lang.T("t.settings.1"));
+                        k.SetValue(name, val ?? "");
+                    }
+                    return true;
                 }
-                return true;
-            }
-            catch (Exception ex)
-            {
-                Logger.LogFailure(Lang.T("log.settings.2") + name, ex);
-                return false;
+                catch (Exception ex)
+                {
+                    Logger.LogFailure(Lang.T("log.settings.2") + name, ex);
+                    return false;
+                }
             }
         }
     }

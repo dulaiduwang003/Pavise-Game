@@ -37,8 +37,14 @@ namespace PaviseApp
 
         public static readonly ReleaseNote[] All = new[]
         {
-            new ReleaseNote(App.Version, "2026-08-27", new[]
+            new ReleaseNote("2.1.3.0", "2026-08-28", new[]
             {
+                new[]{ "调整 反作弊管控总开关和所有分组默认关闭 包括 ACE 已保存的手动选择保持不变", "Changed anti-cheat control to be off by default for the master switch and every group, including ACE. Existing saved choices are preserved.", "変更 アンチチート制御のメインスイッチと ACE を含むすべてのグループを初期状態でオフにしました。保存済みの設定は維持されます。" },
+                new[]{ "改进 深度调优改为主窗口内的常驻分类导航 可直接切换五个功能区 记住上次分类和浏览位置 返回不再强制跳概览", "Improved Deep Tuning with persistent in-window category navigation, direct switching between five sections, remembered section/view positions, and return to the previous main page instead of always Overview." },
+                new[]{ "修复 不限核或未开启游戏提优时设备中断观测没有记录 现在独立记录系统中断 不把未知游戏核域冒充挪核证据", "Fixed missing interrupt records with unrestricted cores or game boosting off. System interrupts are now captured independently, without treating an unknown game core domain as relocation evidence." },
+                new[]{ "修复 首局无建议不刷新中断页 采样失败 丢事件和账本读取失败现在说明原因", "Fixed the interrupt page not refreshing after a first match without suggestions. Capture failures, lost events and ledger read errors now show their cause." },
+                new[]{ "调整 中断实测展示不再受一分钟建议门槛限制 核域验证不能完成时有限等待后转系统观测 每局采集失败原因写入该局结束记录", "Changed interrupt measurements to remain visible below the one-minute advice threshold. Unconfirmed core placement falls back to system observation after bounded initialization; capture failures are included in that match's end record." },
+                new[]{ "修复 PRESENT 订阅在进入缓冲前仅保留目标事件 且只随已验证核域的中断采样启停", "Fixed PRESENT subscription to filter the target event before buffering and run only with a verified-core interrupt capture." },
                 new[]{ "移除 对局禁用处理器空闲 开关与功能一并下架 托管方案写回允许空闲", "Removed the disable-processor-idle option entirely; the managed power plan is written back to allow idle." },
                 new[]{ "新增 轻载模式 适合掌机 轻薄本等带电池设备 后台管控与专注一致 无电池设备不可选", "Added Light mode for battery-powered handhelds and thin-and-light laptops, with the same background control as Focus. Unavailable when no battery is detected." },
                 new[]{ "新增 掌机厂商的整机管理软件加入免压名单", "Added handheld vendor system management apps to the never-suppressed list." },
@@ -48,7 +54,8 @@ namespace PaviseApp
                 new[]{ "说明 自动入库只在没有对局时判断 启动器 更新器 反作弊和游戏平台不会被认成游戏 从库里移除过的程序永久不再自动加入 重新手动添加即解除", "Note: auto add only evaluates when no match is running, and launchers, updaters, anti-cheat and game platforms are never mistaken for a game. Anything you remove from the library is never auto-added again unless you add it back by hand." },
                 new[]{ "移除 设备中断页的一键体检与自造内存带宽负载 避免整机严重卡顿 中断结论只采用真实对局观测", "Removed the Device Interrupts one-click checkup and its synthetic memory-bandwidth load to avoid severe system stalls; interrupt conclusions now use only real in-match observations." },
                 new[]{ "调整 高级设置更名为深度调优 打开时会提示该页面面向熟悉系统调优的用户 可勾选不再提示", "Changed Advanced Settings to Deep Tuning. Opening it now warns that the page is intended for users familiar with system tuning, with a Don't show again option." },
-                new[]{ "重要 游戏库保存失败时程序会立即停止运行 强制删除整个 Pavise 旧数据目录 并弹窗说明清理结果 防止损坏数据继续被使用", "Important: if the game library cannot be saved, Pavise stops immediately, forcibly removes the entire old Pavise data directory, and reports the cleanup result in a dialog so corrupted data cannot keep being used." },
+                new[]{ "修复 游戏库保存失败与手动清除统一安全重置 先确认后台任务停止并还原系统改动 还原未完成时保留恢复记录 不再直接强删数据", "Fixed library save failures and manual cleanup to share a safe reset: confirm background tasks have stopped and restore system changes first. Pending recovery records are preserved instead of force-deleting data." },
+                new[]{ "修复 文件占用或注册表清理失败不再误报成功 清理后阻止迟到任务重建配置与日志 便携版保留程序和无关文件", "Fixed locked files and registry cleanup failures being reported as successful resets. Late callbacks cannot recreate cleared configuration or logs; portable executables and unrelated files are preserved." },
                 new[]{ "修复 A 卡机器打开显卡页 整页横幅报红说未检测到 NVIDIA 驱动本项停用 而 AMD 那一栏其实可用 现在两家任意一家可用即为就绪", "Fixed the Graphics page banner turning red with \"no NVIDIA driver detected\" on AMD machines even though the AMD tab was fully usable. The page now reports ready whenever either vendor's driver interface is present." },
                 new[]{ "新增 概览页底部三个入口 教程与故障排查 问卷调查 Bug 反馈 点击用浏览器打开", "Added three entries at the bottom of the Overview page — guide and fixes, survey, and bug report — each opening in your browser." },
                 new[]{ "修复 概览页最近一局始终显示暂无数据 那两行从来没有接上数据源 现在每局结束写入游戏名 时长与压制进程数 重启后仍然保留 短于一分钟的对局不计入", "Fixed \"Last session\" on the Overview page always reading \"No data yet\" — those two lines were never wired to a data source. It now records the game, duration and suppressed process count at the end of each match and survives a restart; matches under a minute are not counted." },

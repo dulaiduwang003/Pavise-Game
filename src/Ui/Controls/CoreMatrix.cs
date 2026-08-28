@@ -58,8 +58,9 @@ namespace PaviseApp
         private readonly Motion[] cellHot = new Motion[64];
         private readonly Motion[] cellHeat = new Motion[64];
 
-        // 选核弹窗专用的实时负载 + 核类型叠加 其余页面不开 保持原样
+        // 选核弹窗专用的同局平均负载 + 核类型叠加，其余页面保持原样。
         private ulong seenMask;
+        public ulong ObservedGameMask { get; set; }
         private bool annotate;
         private Dictionary<int, double> loads;
         private int legendY = -1;
@@ -85,7 +86,12 @@ namespace PaviseApp
         // 采到的 per-core 负载 采集失败传空字典即可 热力自动退回不画 只留类型标注
         public void SetLoads(Dictionary<int, double> map)
         {
-            loads = map;
+            loads = new Dictionary<int, double>();
+            if (map != null)
+                foreach (var item in map)
+                    if (item.Key >= 0 && item.Key < 64 && !double.IsNaN(item.Value)
+                        && !double.IsInfinity(item.Value) && item.Value >= 0 && item.Value <= 100)
+                        loads[item.Key] = item.Value;
             if (!IsHandleCreated) { for (int i = 0; i < 64; i++) cellHeat[i].Set(HeatOf(i)); }
             else { for (int i = 0; i < 64; i++) cellHeat[i].To(HeatOf(i)); UiClock.Wake(); }
             Invalidate();
@@ -104,8 +110,7 @@ namespace PaviseApp
         // ROG 电竞负载色阶 分档明确:低=冷青(压暗) 中=黄 高=橙 极高=ROG 红(Theme.Danger 恒红)
         //   阈值刻意压低 60% 就进「橙」段 72% 就烧成纯红 让中高负载核一眼可见地暖/红
         //   低段越接近 0 越暗 让空闲核冷下去 与繁忙红核拉开对比
-        // 当前中断落核 的专用标记色:紫罗兰 刻意避开负载红与空闲青
-        //   让「中断此刻落这」与「这核负载高」两种信号一眼分得开 不再两团红糊在一起
+        // 本局中断落核的专用标记色：紫罗兰，区别于负载红和低载青。
         private static readonly Color SeenViolet = Color.FromArgb(176, 138, 255);
         private static readonly Color RogCool = Color.FromArgb(64, 200, 240);
         private static readonly Color RogAmber = Color.FromArgb(255, 178, 44);
@@ -162,34 +167,6 @@ namespace PaviseApp
             for (int i = 0; i < w.Length; i++)
                 using (var p = new Pen(Col.Alpha(c, a[i]), w[i]))
                 { p.LineJoin = LineJoin.Round; g.DrawPath(p, path); }
-        }
-
-        // 霓虹字光晕 多环半透明重影垫底 上层再落清晰字 制造真正「发亮」的负载数字
-        //   8 向 * 3 环 逐环外扩、逐环变淡 只对繁忙核开(k>0)
-        private static readonly PointF[] Glow8 =
-        {
-            new PointF(1f, 0f), new PointF(-1f, 0f), new PointF(0f, 1f), new PointF(0f, -1f),
-            new PointF(0.7f, 0.7f), new PointF(-0.7f, 0.7f),
-            new PointF(0.7f, -0.7f), new PointF(-0.7f, -0.7f),
-        };
-        private static void GlowText(Graphics g, string s, Font f, Rectangle box, Color c, float k)
-        {
-            if (k <= 0.001f) return; if (k > 1f) k = 1f;
-            float[] rad = { Theme.S(4), Theme.S(3), Theme.S(2) };
-            int[] al = { (int)(46 * k) + 6, (int)(80 * k) + 14, (int)(120 * k) + 26 };
-            using (var sf = new StringFormat())
-            {
-                sf.Alignment = StringAlignment.Center;
-                sf.LineAlignment = StringAlignment.Center;
-                for (int ring = 0; ring < rad.Length; ring++)
-                    using (var br = new SolidBrush(Col.Alpha(c, al[ring])))
-                        foreach (PointF o in Glow8)
-                        {
-                            var rf = new RectangleF(box.X + o.X * rad[ring], box.Y + o.Y * rad[ring],
-                                box.Width, box.Height);
-                            g.DrawString(s, f, br, rf, sf);
-                        }
-            }
         }
 
 #if PAVISE_SELFTEST
@@ -622,7 +599,7 @@ namespace PaviseApp
                     | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
         }
 
-        // 选核弹窗 ROG 电竞风:大号发光负载数字为主视觉 + 发光负载条 + 空闲冷/繁忙红高对比
+        // 选核弹窗：边框/负载条保留辉光，数字只画一次，保证高负载时依然清晰。
         private void DrawCellAnno(Graphics g, Cell c)
         {
             float on = cellOn[c.Cpu].Value;
@@ -630,7 +607,8 @@ namespace PaviseApp
             Rectangle r = c.Rect;
             r.Inflate(-Theme.S(2), -Theme.S(2));
 
-            bool hasLoad = HasLoads;
+            double value = 0;
+            bool hasLoad = loads != null && loads.TryGetValue(c.Cpu, out value);
             float t = cellHeat[c.Cpu].Value;                 // 平滑后的负载 0..1
             Color load = LoadRog(t);
             bool warm = hasLoad && t >= WarmT;               // 60% 起就有发光张力
@@ -639,9 +617,9 @@ namespace PaviseApp
             // 繁忙核先在卡底铺一圈大红辉光 外溢到卡片背景上 空闲核不铺 一眼分空/忙
             if (warm) GlowEllipse(g, r, load, gk, 150, 13);
 
-            // 底色:深黑 繁忙时大量透红 让整格「红起来」 选中让位强调色 保证选择态一眼可见
+            // 淡色负载底保留明暗主题的文字对比度，选中时使用强调色。
             Color baseFill = Col.Lerp(Theme.Inset, Theme.Bg, 0.35f);
-            if (hasLoad) baseFill = Col.Lerp(baseFill, load, 0.10f + 0.45f * t);
+            if (hasLoad) baseFill = Col.Lerp(baseFill, load, 0.06f + 0.18f * t);
             Color fill = Col.Lerp(baseFill, Theme.Accent, on);
             if (hot > 0.01f)
                 fill = Col.Lerp(fill, Col.Lerp(Theme.Accent, Color.White, on), hot * 0.22f);
@@ -660,9 +638,6 @@ namespace PaviseApp
                 using (var p = new Pen(border, bw)) g.DrawPath(p, path);
             }
 
-            // 填充之上再盖一层软红(半透 不糊数字) 让格子内部也发亮
-            if (warm) GlowEllipse(g, r, load, gk * 0.85f, 120, 3);
-
             // 发光负载条:填充比例=负载 低冷高红 高负载更亮更饱和 + 上方辉光
             if (hasLoad) DrawLoadBar(g, r, t, load, warm, gk);
 
@@ -678,29 +653,27 @@ namespace PaviseApp
                     TextFormatFlags.Left | TextFormatFlags.Top
                         | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
 
-                int pct = (int)Math.Round(t * 100.0);
+                int pct = (int)Math.Round(value);
                 if (pct < 0) pct = 0; else if (pct > 100) pct = 100;
                 string s = pct.ToString() + "%";
                 var numBox = new Rectangle(r.Left, r.Top + Theme.S(6),
                     r.Width, r.Height - Theme.S(12));
                 Font nf = Theme.Mono(pct >= 100 ? 8.6f : 9.8f);
-                // 数字分档着色:低冷青 → 黄 → 橙 → 红(load 本身即分档)
-                //   越忙越提白 让红字在自身红辉光之上仍清晰(crisp 字压在 bloom 顶层)
-                // 选中态:数字落在强调色底上 用高对比深墨字(OnAccent 随强调色亮度自适应 绿底=近黑)
-                //   免得像之前那样用近白字被底色盖住看不清
-                Color numCol = on >= 0.5f ? Theme.OnAccent
-                    : warm ? Col.Lerp(load, Color.White, 0.12f + 0.34f * gk) : load;
-                // 繁忙核数字发光:先落多环同色重影 再落最上层清晰字;选中核不叠红辉光 保证墨字干净
-                if (warm && on < 0.5f) GlowText(g, s, nf, numBox, load, gk);
+                Color numCol = on >= 0.5f ? Theme.OnAccent : Theme.Fg;
                 TextRenderer.DrawText(g, s, nf, numBox, numCol,
                     TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
                         | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
             }
             else
             {
-                // 采集失败 优雅退回:只画核号 不留空白热力
-                TextRenderer.DrawText(g, c.Cpu.ToString(), Theme.Mono(8.6f), r,
-                    Col.Lerp(Col.Lerp(Theme.Dim, Theme.Fg, hot), Theme.OnAccent, on),
+                // 缺少该核心的观测不等于 0%：核号仍在角落，中间显示破折号。
+                var idBox = new Rectangle(r.Left + Theme.S(3), r.Top + Theme.S(1),
+                    r.Width - Theme.S(6), Theme.S(11));
+                TextRenderer.DrawText(g, c.Cpu.ToString(), Theme.Mono(6.3f), idBox,
+                    on >= 0.5f ? Theme.OnAccent : Theme.Faint,
+                    TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+                TextRenderer.DrawText(g, "—", Theme.Mono(9.8f), r,
+                    on >= 0.5f ? Theme.OnAccent : Theme.Dim,
                     TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
                         | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
             }
@@ -739,7 +712,7 @@ namespace PaviseApp
             }
         }
 
-        // 当前落核 右下角一枚发光紫罗兰三角，与高负载红明确区分。
+        // 本局观测落核：右下角紫罗兰三角，与高负载红明确区分。
         private void DrawSeenMark(Graphics g, Rectangle r)
         {
             int s = Theme.S(9);
@@ -754,12 +727,12 @@ namespace PaviseApp
             using (var b = new SolidBrush(Col.Alpha(SeenViolet, 248))) g.FillPolygon(b, pts);
         }
 
-        // 挑给选核弹窗看的核类型 游戏核=别挪来 能效核=E 空闲性能核=挪核好去处
+        // 同局游戏核范围与观测负载仅供选核参考，不宣称低平均负载能保证收益。
         private enum CoreKind { Game, Eff, PerfIdle, Perf }
 
         private CoreKind KindOf(Group grp)
         {
-            ulong game = CpuTopology.StrictBoostMask;
+            ulong game = ObservedGameMask;
             if (game != 0 && (grp.Mask & game) != 0) return CoreKind.Game;
             // E 能效核只在真混合架构上存在 且必须落在能效核簇 EffMask
             //   全大核机器(i7-9750H 等)ThrottleMask 只是后台预留 不是能效核 绝不标 E
@@ -768,7 +741,12 @@ namespace PaviseApp
             if (HasLoads)
             {
                 float peak = 0f;
-                foreach (Cell c in grp.Cells) if (cellHeat[c.Cpu].Value > peak) peak = cellHeat[c.Cpu].Value;
+                foreach (Cell c in grp.Cells)
+                {
+                    double value;
+                    if (!loads.TryGetValue(c.Cpu, out value)) return CoreKind.Perf;
+                    peak = Math.Max(peak, (float)(value / 100.0));
+                }
                 return peak < 0.35f ? CoreKind.PerfIdle : CoreKind.Perf;
             }
             return CoreKind.Perf;
@@ -782,12 +760,11 @@ namespace PaviseApp
             public string Text;
         }
 
-        // 图例清单:数字=负载 / 当前落核(紫) / 空闲性能核(青) / 游戏核别挪(红) / 能效核
+        // 图例：同局平均负载 / 观测落核(紫) / 低载性能核(青) / 游戏核(红) / 能效核。
         private List<LegendItem> BuildLegendItems()
         {
             var items = new List<LegendItem>();
-            if (HasLoads)
-                items.Add(new LegendItem { Bar = true, Text = Lang.T("core.legend.load") });
+            items.Add(new LegendItem { Bar = true, Text = Lang.T("core.legend.load") });
             items.Add(new LegendItem { Color = SeenViolet, Text = Lang.T("core.legend.seen") });
             items.Add(new LegendItem { Color = RogCool, Text = Lang.T("core.legend.pidle") });
             items.Add(new LegendItem { Color = Col.Alpha(Theme.Danger, 225), Text = Lang.T("core.legend.game") });

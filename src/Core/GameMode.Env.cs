@@ -231,7 +231,7 @@ namespace PaviseApp
             int powerKey = (aggressivePower ? 1 : 0) | (usePlan ? 2 : 0)
                 | (handheld ? 8 : 0);
             long nowTicks = DateTime.UtcNow.Ticks;
-            if (usePlan)
+            if (usePlan && !stopping)
             {
                 if (!planActive || powerKey != lastPowerPolicyKey
                     || nowTicks >= Interlocked.Read(ref nextPowerAuditTicks))
@@ -245,38 +245,38 @@ namespace PaviseApp
                         planActive = true;
                         lastPowerPolicyKey = keyShot;
                         Interlocked.Exchange(ref nextPowerAuditTicks, long.MaxValue);
-                        ThreadPool.QueueUserWorkItem(delegate
+                        bool queued = false;
+                        try
                         {
-                            bool planOk = false;
-                            irqProbe.BeginExternalMutation();
-                            try { planOk = PowerPlan.Enforce(aggrShot, handheldShot); }
-                            catch { planOk = false; }
-                            finally { irqProbe.EndExternalMutation(); }
-                            if (Volatile.Read(ref powerSessionGen) != genShot)
+                            queued = ThreadPool.QueueUserWorkItem(delegate
                             {
-                                RunIrqIsolatedMutation(
-                                    delegate { return PowerPlan.Restore(); });
-                                planActive = false;
-                                lastPowerPolicyKey = -1;
-                                Interlocked.Exchange(ref powerApplyInFlight, 0);
-                                return;
-                            }
-                            try { OnPowerPlanApplied(planOk); }
-                            catch { }
+                                RunPowerPlanApply(genShot,
+                                    delegate { return PowerPlan.Enforce(aggrShot, handheldShot); });
+                            });
+                        }
+                        catch { }
+                        if (!queued)
+                        {
+                            planActive = false;
+                            lastPowerPolicyKey = -1;
+                            Interlocked.Exchange(ref nextPowerAuditTicks, 0);
                             Interlocked.Exchange(ref powerApplyInFlight, 0);
-                        });
+                        }
                     }
                 }
             }
             else if (planActive)
             {
                 Interlocked.Increment(ref powerSessionGen);
-                if (RunIrqIsolatedMutation(
-                        delegate { return PowerPlan.Restore(); }))
+                lock (powerApplyGate)
                 {
-                    planActive = false;
-                    lastPowerPolicyKey = -1;
-                    Interlocked.Exchange(ref nextPowerAuditTicks, 0);
+                    if (RunIrqIsolatedMutation(
+                            delegate { return PowerPlan.Restore(); }))
+                    {
+                        planActive = false;
+                        lastPowerPolicyKey = -1;
+                        Interlocked.Exchange(ref nextPowerAuditTicks, 0);
+                    }
                 }
             }
 
@@ -319,6 +319,32 @@ namespace PaviseApp
         private long nextPowerAuditTicks;
         private int powerApplyInFlight;
         private int powerSessionGen;
+        private readonly object powerApplyGate = new object();
+
+        private bool RunPowerPlanApply(int genShot, Func<bool> apply)
+        {
+            try
+            {
+                lock (powerApplyGate)
+                {
+                    // A queued task must not reapply a plan after its session
+                    // was restored, even if it has not started executing yet.
+                    if (stopping || Volatile.Read(ref powerSessionGen) != genShot) return false;
+                    bool planOk = RunIrqIsolatedMutation(delegate
+                    {
+                        if (stopping || Volatile.Read(ref powerSessionGen) != genShot) return false;
+                        return apply != null && apply();
+                    });
+                    // RestoreEnv / the disabled-plan path invalidate first and
+                    // restore under this gate; the stale worker must not publish.
+                    if (stopping || Volatile.Read(ref powerSessionGen) != genShot) return false;
+                    OnPowerPlanApplied(planOk);
+                    return planOk;
+                }
+            }
+            catch { return false; }
+            finally { Interlocked.Exchange(ref powerApplyInFlight, 0); }
+        }
 
         private const string PowerFailStreakKey = "PowerPlanFailStreak";
         private const int PowerPlanAutoOffThreshold = EnvFuseAttempts;
@@ -504,17 +530,23 @@ namespace PaviseApp
             if (GpuPowerMax.Restore()) gpwActive = false; else ok = false;
             if (RestoreAmdAntiLagEnv()) amdAlagActive = false; else ok = false;
             if (AdlxTweaks.RestoreAfmf()) amdAfmfActive = false; else ok = false;
-            if (!NvDrsTweaks.RestoreAllGames()) ok = false;
-            if (!GpuPrefStage.Restore()) ok = false;
-            Interlocked.Increment(ref powerSessionGen);
-            if (PowerPlan.Restore())
+            lock (driverStageGate)
             {
-                planActive = false;
-                lastPowerPolicyKey = -1;
-                Interlocked.Exchange(ref nextPowerAuditTicks, 0);
+                if (!NvDrsTweaks.RestoreAllGames()) ok = false;
+                if (!GpuPrefStage.Restore()) ok = false;
             }
-            else ok = false;
-            PowerPlan.RestoreParkState();
+            Interlocked.Increment(ref powerSessionGen);
+            lock (powerApplyGate)
+            {
+                if (PowerPlan.Restore())
+                {
+                    planActive = false;
+                    lastPowerPolicyKey = -1;
+                    Interlocked.Exchange(ref nextPowerAuditTicks, 0);
+                }
+                else ok = false;
+                PowerPlan.RestoreParkState();
+            }
             if (timerRaised)
             {
                 try

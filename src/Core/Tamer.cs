@@ -45,6 +45,7 @@ namespace PaviseApp
         public Tamer(SuppressionCore core)
         {
             this.core = core;
+            paused = !Settings.Load("TameOn", false);
             using (Process self = Process.GetCurrentProcess())
             {
                 selfPid = self.Id;
@@ -165,11 +166,14 @@ namespace PaviseApp
             worker.Start();
         }
 
-        public void Stop()
+        public bool Stop()
         {
             stopping = true;
             kick.Set();
-            if (worker != null) worker.Join(6000);
+            // A timed-out worker may still mutate processes and its recovery journal.
+            // Reset must not delete that journal until the worker has really exited.
+            Thread current = worker;
+            return current == null || current != Thread.CurrentThread && current.Join(6000);
         }
 
         public void Poke()

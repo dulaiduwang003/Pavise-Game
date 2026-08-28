@@ -173,22 +173,6 @@ namespace PaviseApp
             }
         }
 
-        // 关着时对局里只有渲染进程本体和白名单不被压 平台客户端与启动器外壳照压
-        //   开着时整族放行 换回 2.1 之前的行为 客户端卡顿的机器可以用它换回稳
-        public bool GameFamilyExempt
-        {
-            get { return familyExemptOn; }
-            set
-            {
-                if (familyExemptOn == value) return;
-                familyExemptOn = value;
-                FamilyExemptHint = value;
-                Settings.Save("GmFamilyExempt", value);
-                Logger.Log(Lang.T(value ? "log.familyexempt.1" : "log.familyexempt.2"));
-                RequestPolicyApply();
-            }
-        }
-
         public bool RsrUpscale
         {
             get { return rsrOn; }
