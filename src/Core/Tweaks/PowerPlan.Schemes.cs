@@ -125,8 +125,6 @@ namespace PaviseApp
             new Knob(SubProcessor, LatencyHintUnpark,100,100,  50, 50, "t.powerplanschemes.21"),
             new Knob(SubProcessor, PerfDutyCycling,   0,   0,   0,  1, "t.powerplanschemes.22"),
             new Knob(SubProcessor, ProcFreqMax,       0,   0,   0,  0, "t.powerplanschemes.23"),
-            // 四列全 0 每次写方案都把处理器空闲写回允许 下架的开关不再有任何机会把它写成 1
-            new Knob(SubProcessor, IdleDisableSet,    0,   0,   0,  0, "t.powerplanschemes.34"),
             new Knob(SubWireless,  WirelessPowerSave, 0,   0,   1,  2, "t.powerplanschemes.24"),
         };
 
@@ -323,6 +321,15 @@ namespace PaviseApp
         // 下架前写进去的 1 清一次 不看接管状态 清成功记个标记不再重复跑
         //   没有托管方案或方案里没这一项都算清完 拿不到写权限就留着标记下次再试
         internal static bool ClearLegacyIdleDisableOnce()
+        {
+            lock (lk)
+            {
+                if (!RestoreCpuIdle() || CpuIdleHasResidue) return false;
+                return ClearLegacyIdleDisableOnceCore();
+            }
+        }
+
+        private static bool ClearLegacyIdleDisableOnceCore()
         {
             if (Settings.Load(IdleDisableClearedKey, false)) return true;
             try

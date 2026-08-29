@@ -38,7 +38,9 @@ namespace PaviseApp
                 ResetTreeLockedFileReportsResidual,
                 ResetTreeAlreadyGoneIsIdempotent,
                 ResetInvalidPathsDoNotStartRestoration,
-                ResetLogsCannotRecreateDeletedData
+                ResetLogsCannotRecreateDeletedData,
+                ResetRetiredIfeoEmptyCleanupClearsOptIns,
+                ResetRetiredIfeoFailureKeepsRecovery
             };
             try
             {
@@ -69,6 +71,64 @@ namespace PaviseApp
                 Settings.UseTransientStoreForCurrentProcess();
                 ResetDeleteScratch(root);
             }
+        }
+
+        private static void ResetRetiredIfeoEmptyCleanupClearsOptIns(string root)
+        {
+            var oldHive = IfeoStore.Hive;
+            // No actual registry access is possible, even if this test regresses.
+            IfeoStore.Hive = null;
+            try
+            {
+                Settings.Save("GmIfeoBoost", true);
+                Settings.SaveStr("IfeoArm", "retired-game.exe");
+                Settings.Save("CfgOff", true);
+                ResetCheck(IfeoBoost.RestoreAll() && CfgOffTweak.RestoreAll(),
+                    "retired options with no applied snapshots did not clear");
+                ResetCheck(!Settings.Load("GmIfeoBoost", true)
+                    && !Settings.Load("CfgOff", true)
+                    && Settings.LoadStr("IfeoArm", "missing") == "",
+                    "retired opt-ins or startup staging remained after cleanup");
+                ResetCheck(IfeoBoost.RestoreAll() && CfgOffTweak.RestoreAll(),
+                    "retired cleanup was not idempotent");
+            }
+            finally { IfeoStore.Hive = oldHive; }
+        }
+
+        private static void ResetRetiredIfeoFailureKeepsRecovery(string root)
+        {
+            const string exe = "retired-game.exe";
+            var oldHive = IfeoStore.Hive;
+            // Simulate an unavailable IFEO hive through its existing test seam.
+            // ReversibleReg must fail without deleting recovery data.
+            IfeoStore.Hive = null;
+            try
+            {
+                Settings.SaveStr("IfeoList", exe);
+                Settings.SaveStr("IfeoMk_" + exe, "11");
+                Settings.SaveStr("IfeoPri_" + exe, "=2\u001F=6");
+                Settings.SaveStr("IfeoIo_" + exe, "=2\u001F=3");
+                Settings.SaveStr("IfeoPg_" + exe, "=3\u001F=5");
+                Settings.SaveStr("CfgList", exe);
+                Settings.SaveStr("CfgMk_" + exe, "1");
+                string cfg = "b" + Convert.ToBase64String(new byte[8]);
+                Settings.SaveStr("CfgOpt_" + exe, cfg);
+                for (int attempt = 0; attempt < 2; attempt++)
+                {
+                    ResetCheck(!IfeoBoost.RestoreAll() && !CfgOffTweak.RestoreAll(),
+                        "failed retired restoration was reported successful");
+                    ResetCheck(Settings.LoadStr("IfeoList", "") == exe
+                        && Settings.LoadStr("CfgList", "") == exe
+                        && Settings.LoadStr("IfeoMk_" + exe, "") == "11"
+                        && Settings.LoadStr("CfgMk_" + exe, "") == "1"
+                        && Settings.LoadStr("IfeoPri_" + exe, "") == "=2\u001F=6"
+                        && Settings.LoadStr("IfeoIo_" + exe, "") == "=2\u001F=3"
+                        && Settings.LoadStr("IfeoPg_" + exe, "") == "=3\u001F=5"
+                        && Settings.LoadStr("CfgOpt_" + exe, "") == cfg,
+                        "failed retired restoration discarded a snapshot or ledger");
+                }
+            }
+            finally { IfeoStore.Hive = oldHive; }
         }
 
         private static void ResetCheck(bool condition, string message)

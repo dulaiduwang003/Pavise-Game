@@ -35,19 +35,19 @@ if not exist "%CSC%" (
     exit /b 1
 )
 
+set REFS=-reference:System.dll -reference:System.Drawing.dll -reference:System.Windows.Forms.dll -reference:System.Core.dll -reference:System.Management.dll -reference:System.Xml.dll
+set OUT=Pavise.exe
+if not "%~3"=="" set OUT=%~3
+if /i "%~4"=="--selftest" goto selftest
+
 rem App.Version in Program.cs is the single version source. Keep the external
 rem update manifest synchronized before every development or production build.
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\Sync-VersionManifest.ps1"
 if errorlevel 1 goto err
 
-set REFS=-reference:System.dll -reference:System.Drawing.dll -reference:System.Windows.Forms.dll -reference:System.Core.dll -reference:System.Management.dll -reference:System.Xml.dll
-set OUT=Pavise.exe
-if not "%~3"=="" set OUT=%~3
-set TESTARGS=
-if /i "%~4"=="--selftest" set TESTARGS=-define:PAVISE_SELFTEST -recurse:tests\*.cs
 
 echo [1/3] compiling temp exe...
-"%CSC%" -nologo -target:winexe -optimize+ -codepage:65001 -out:Pavise.tmp.exe %REFS% %TESTARGS% -recurse:src\*.cs
+"%CSC%" -nologo -target:winexe -optimize+ -codepage:65001 -out:Pavise.tmp.exe %REFS% -recurse:src\*.cs
 if errorlevel 1 goto err
 
 echo [2/3] generating Pavise.ico...
@@ -71,7 +71,7 @@ set MANIFEST=Pavise.manifest.tmp
 >> "%MANIFEST%" echo     ^</windowsSettings^>
 >> "%MANIFEST%" echo   ^</application^>
 >> "%MANIFEST%" echo ^</assembly^>
-"%CSC%" -nologo -target:winexe -optimize+ -codepage:65001 -win32icon:Pavise.ico -win32manifest:"%MANIFEST%" -out:"%OUT%" %REFS% %TESTARGS% -recurse:src\*.cs
+"%CSC%" -nologo -target:winexe -optimize+ -codepage:65001 -win32icon:Pavise.ico -win32manifest:"%MANIFEST%" -out:"%OUT%" %REFS% -recurse:src\*.cs
 if errorlevel 1 goto err
 
 del Pavise.tmp.exe "%MANIFEST%" >nul 2>&1
@@ -79,6 +79,16 @@ echo.
 echo Build OK -^> %OUT%
 call :restorecp
 goto :eof
+
+:selftest
+rem A dedicated console entry point cannot launch the normal tuning runtime.
+rem Do not rewrite the icon/version manifest or require administrator rights.
+if "%~3"=="" set OUT=Pavise.selftest.exe
+echo [selftest] compiling isolated regression runner...
+"%CSC%" -nologo -target:exe -platform:x64 -optimize+ -codepage:65001 -define:PAVISE_SELFTEST;PAVISE_SELFTEST_RUNNER -main:PaviseApp.SelfTestRunner -out:"%OUT%" %REFS% -recurse:src\*.cs -recurse:tests\*.cs
+set BUILD_EXIT=%ERRORLEVEL%
+call :restorecp
+exit /b %BUILD_EXIT%
 
 :err
 echo Build failed

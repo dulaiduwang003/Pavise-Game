@@ -13,6 +13,7 @@ cd /d "%~dp0"
 
 set OUT=Pavise.dev.exe
 set MODE=%~1
+if /i "%MODE%"=="test" goto test
 
 rem kill the running instance first: the global single-instance mutex makes a
 rem new one exit silently, and the locked exe blocks the build output.
@@ -32,8 +33,6 @@ powershell -NoProfile -Command "Start-Process taskkill -ArgumentList '/f','/im',
 ping -n 2 127.0.0.1 >nul
 :killdone
 
-if /i "%MODE%"=="test" goto test
-
 call "%~dp0build.cmd" -b dev %OUT%
 if errorlevel 1 (
     echo Build failed, not launching
@@ -46,20 +45,29 @@ call :restorecp
 exit /b 0
 
 :test
-call "%~dp0build.cmd" -b dev Pavise.selftest.work.exe --selftest
+rem Tests own a fresh output directory and must not stop a running application.
+set "TESTDIR=%TEMP%\PaviseSelftest-%RANDOM%-%RANDOM%"
+if exist "%TESTDIR%" goto test
+mkdir "%TESTDIR%"
+if errorlevel 1 (
+    call :restorecp
+    exit /b 1
+)
+call "%~dp0build.cmd" -b dev "%TESTDIR%\Pavise.selftest.exe" --selftest
 if errorlevel 1 (
     echo Build failed, self-test skipped
     call :restorecp
     exit /b 1
 )
-set REPORT=%TEMP%\Pavise.selftest.txt
+set "REPORT=%TESTDIR%\results.txt"
 echo Running self-test...
-start /wait "" "%~dp0Pavise.selftest.work.exe" --selftest "%REPORT%"
+"%TESTDIR%\Pavise.selftest.exe" --selftest "%REPORT%"
+set TEST_EXIT=%ERRORLEVEL%
 echo.
 findstr /b /c:"FAIL" /c:"TOTAL" "%REPORT%"
 echo Full report: %REPORT%
 call :restorecp
-exit /b 0
+exit /b %TEST_EXIT%
 
 :restorecp
 rem restore the host codepage: leaving the console on 65001 makes the

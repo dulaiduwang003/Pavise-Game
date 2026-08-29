@@ -2,9 +2,7 @@
 // 文件用途 列出当前运行的用户程序 供白名单批量选取
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Drawing;
-using System.IO;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -32,12 +30,25 @@ namespace PaviseApp
 
         public readonly List<string> Selected = new List<string>();
         private readonly string confirmLabel;
+        private readonly object scanGate = new object();
+        private bool closed;
+        private int scanGeneration;
+        private ScanResult pendingScan;
 
-        public RunningPickerDialog(HashSet<string> alreadyListed, string confirmText = null)
+        private sealed class ScanResult
+        {
+            public int Generation;
+            public List<Entry> Entries;
+        }
+
+        public RunningPickerDialog(HashSet<string> alreadyListed, string confirmText = null,
+            string titleText = null, string descriptionText = null)
         {
             confirmLabel = confirmText ?? Lang.T("white.pick.add");
-            known = alreadyListed ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            Text = Lang.T("white.pick.title");
+            known = alreadyListed == null
+                ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                : new HashSet<string>(alreadyListed, StringComparer.OrdinalIgnoreCase);
+            Text = titleText ?? Lang.T("white.pick.title");
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.CenterParent;
             ShowInTaskbar = false;
@@ -45,7 +56,7 @@ namespace PaviseApp
             BackColor = Theme.Bg; ForeColor = Theme.Fg; Font = Theme.UI(9.5f, false);
 
             var title = new Label();
-            title.Text = Lang.T("white.pick.title");
+            title.Text = Text;
             title.ForeColor = Theme.Fg; title.BackColor = Theme.Bg; title.Font = Theme.UI(14f, true);
             title.SetBounds(Theme.S(22), Theme.S(18), Theme.S(600), Theme.S(30));
             title.MouseDown += DragMove;
@@ -58,7 +69,7 @@ namespace PaviseApp
             close.Click += delegate { DialogResult = DialogResult.Cancel; Close(); };
 
             var note = new Label();
-            note.Text = Lang.T("white.pick.sub");
+            note.Text = descriptionText ?? Lang.T("white.pick.sub");
             note.ForeColor = Theme.Dim; note.BackColor = Theme.Bg; note.Font = Theme.UI(8.5f, false);
             note.SetBounds(Theme.S(22), Theme.S(50), Theme.S(656), Theme.S(22));
 
@@ -76,7 +87,7 @@ namespace PaviseApp
             list.ItemHeight = Math.Min(255, Theme.S(52));
             list.DrawItem += DrawEntry;
             list.MouseDown += OnListMouseDown;
-            wrap.Controls.Add(list);
+            wrap.Controls.Add(new TechListScrollHost((TechListBox)list) { Dock = DockStyle.Fill });
 
             status.SetBounds(Theme.S(22), Theme.S(470), Theme.S(400), Theme.S(24));
             status.ForeColor = Theme.Dim; status.BackColor = Theme.Bg; status.Font = Theme.UI(8.5f, false);
@@ -140,6 +151,7 @@ namespace PaviseApp
 #if PAVISE_SELFTEST
         internal void PrimeForShot()
         {
+            DisposeEntries(all);
             all.Clear();
             List<Entry> found = null;
             try { found = Scan(known); }
@@ -156,108 +168,158 @@ namespace PaviseApp
 
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
-            foreach (Entry entry in all)
+            CancelScan();
+            base.OnFormClosed(e);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                CancelScan();
+                DisposeEntries(all);
+                all.Clear();
+                shown.Clear();
+            }
+            base.Dispose(disposing);
+        }
+
+        private void CancelScan()
+        {
+            ScanResult pending;
+            lock (scanGate)
+            {
+                closed = true;
+                scanGeneration++;
+                pending = pendingScan;
+                pendingScan = null;
+            }
+            if (pending != null) DisposeEntries(pending.Entries);
+        }
+
+        private bool ScanCanceled(int generation)
+        {
+            lock (scanGate) return closed || generation != scanGeneration;
+        }
+
+        private static void DisposeEntries(IEnumerable<Entry> entries)
+        {
+            if (entries == null) return;
+            foreach (Entry entry in entries)
                 if (entry != null && entry.Icon != null)
                 {
                     try { entry.Icon.Dispose(); } catch { }
                     entry.Icon = null;
                 }
-            base.OnFormClosed(e);
         }
 
         private void BeginScan()
         {
+            int generation;
+            ScanResult pending;
+            lock (scanGate)
+            {
+                if (closed) return;
+                generation = ++scanGeneration;
+                pending = pendingScan;
+                pendingScan = null;
+            }
+            if (pending != null) DisposeEntries(pending.Entries);
             ThreadPool.QueueUserWorkItem(delegate
             {
                 List<Entry> found = null;
-                try { found = Scan(known); }
-                catch { }
                 try
                 {
-                    BeginInvoke((MethodInvoker)delegate
-                    {
-                        if (IsDisposed) return;
-                        all.Clear();
-                        if (found != null) all.AddRange(found);
-                        foreach (Entry entry in all) entry.Icon = LoadIcon(entry.Path);
-                        status.Text = all.Count == 0
-                            ? Lang.T("white.pick.none") : Lang.F("white.pick.count", all.Count);
-                        confirm.Enabled = all.Count > 0;
-                        ApplyFilter();
-                    });
+                    try { found = Scan(known, delegate { return ScanCanceled(generation); }); }
+                    catch { }
+                    if (found != null)
+                        foreach (Entry entry in found)
+                        {
+                            if (ScanCanceled(generation)) return;
+                            entry.Icon = LoadIcon(entry.Path);
+                        }
+                    if (ScanCanceled(generation)) return;
+
+                    var result = new ScanResult { Generation = generation, Entries = found };
+                    if (QueueScanResult(result)) found = null;
                 }
-                catch { }
+                finally { DisposeEntries(found); }
             });
+        }
+
+        private bool QueueScanResult(ScanResult result)
+        {
+            lock (scanGate)
+            {
+                if (closed || result.Generation != scanGeneration) return false;
+                pendingScan = result;
+                try
+                {
+                    BeginInvoke((MethodInvoker)delegate { ApplyScanResult(result); });
+                    return true;
+                }
+                catch
+                {
+                    if (ReferenceEquals(pendingScan, result)) pendingScan = null;
+                    return false;
+                }
+            }
+        }
+
+        private void ApplyScanResult(ScanResult result)
+        {
+            lock (scanGate)
+            {
+                // Closing/disposal owns any abandoned result even if this delegate
+                // never gets dispatched by the window's message loop.
+                if (!ReferenceEquals(pendingScan, result)) return;
+                pendingScan = null;
+                if (closed || result.Generation != scanGeneration)
+                {
+                    DisposeEntries(result.Entries);
+                    return;
+                }
+                if (result.Entries == null)
+                {
+                    status.Text = Lang.T("white.pick.failed");
+                    confirm.Enabled = false;
+                    return;
+                }
+                DisposeEntries(all);
+                all.Clear();
+                all.AddRange(result.Entries);
+                result.Entries = null;
+            }
+            status.Text = all.Count == 0
+                ? Lang.T("white.pick.none") : Lang.F("white.pick.count", all.Count);
+            confirm.Enabled = false;
+            ApplyFilter();
         }
 
         internal static List<Entry> Scan(HashSet<string> exclude)
         {
-            var map = new Dictionary<string, Entry>(StringComparer.OrdinalIgnoreCase);
-            int self = 0;
-            int session = -1;
-            try
-            {
-                using (Process me = Process.GetCurrentProcess()) { self = me.Id; session = me.SessionId; }
-            }
-            catch { }
-
-            Process[] processes;
-            try { processes = Process.GetProcesses(); }
-            catch { return new List<Entry>(); }
-
-            string windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
-            string windowsPrefix = string.IsNullOrEmpty(windows) ? @"C:\Windows\" : windows.TrimEnd('\\') + "\\";
-
-            foreach (Process process in processes)
-            {
-                try
-                {
-                    int pid = process.Id;
-                    if (pid <= 4 || pid == self) continue;
-                    if (process.SessionId != session) continue;
-                    if (process.MainWindowHandle == IntPtr.Zero) continue;
-
-                    string name = process.ProcessName;
-                    if (AntiCheatCatalog.IsAntiCheatLikeName(name)) continue;
-
-                    IntPtr handle = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
-                    if (handle == IntPtr.Zero) continue;
-                    string path;
-                    try { path = Native.ImagePath(handle); }
-                    finally { Native.CloseHandle(handle); }
-                    if (string.IsNullOrEmpty(path)) continue;
-                    if (path.StartsWith(windowsPrefix, StringComparison.OrdinalIgnoreCase)) continue;
-                    if (exclude != null && exclude.Contains(path)) continue;
-
-                    Entry entry;
-                    if (!map.TryGetValue(path, out entry))
-                    {
-                        entry = new Entry { Path = path, Title = TitleOf(path, name) };
-                        map[path] = entry;
-                    }
-                    entry.Count++;
-                    try { entry.Memory += process.WorkingSet64; }
-                    catch { }
-                }
-                catch { }
-                finally { try { process.Dispose(); } catch { } }
-            }
-
-            var result = new List<Entry>(map.Values);
-            result.Sort(delegate(Entry a, Entry b) { return b.Memory.CompareTo(a.Memory); });
-            return result;
+            return Scan(exclude, null);
         }
 
-        private static string TitleOf(string path, string fallback)
+        private static List<Entry> Scan(HashSet<string> exclude, Func<bool> canceled)
         {
-            try
+            List<RunningProgram> programs = RunningProgramDiscovery.Scan(canceled);
+            if (programs == null) return null;
+            var result = new List<Entry>();
+            foreach (RunningProgram program in programs)
             {
-                FileVersionInfo info = FileVersionInfo.GetVersionInfo(path);
-                string title = string.IsNullOrEmpty(info.FileDescription) ? info.ProductName : info.FileDescription;
-                if (!string.IsNullOrEmpty(title)) return title.Trim();
+                if (canceled != null && canceled()) return null;
+                if (exclude != null && exclude.Contains(program.Path)) continue;
+                result.Add(new Entry
+                {
+                    Path = program.Path,
+                    Title = program.Title,
+                    Memory = program.Memory,
+                    Count = program.ProcessIds.Count
+                });
             }
-            catch { }
-            return fallback;
+            result.Sort(delegate(Entry a, Entry b) { return b.Memory.CompareTo(a.Memory); });
+            return result;
         }
 
         private static Bitmap LoadIcon(string path)
@@ -285,6 +347,7 @@ namespace PaviseApp
 
         private void OnListMouseDown(object sender, MouseEventArgs e)
         {
+            if (e.Button != MouseButtons.Left) return;
             int index = list.IndexFromPoint(e.Location);
             if (index < 0 || index >= shown.Count) return;
             shown[index].Checked = !shown[index].Checked;
@@ -347,10 +410,7 @@ namespace PaviseApp
 
         internal static string FormatMemory(long bytes)
         {
-            if (bytes >= 1073741824L) return (bytes / 1073741824.0).ToString("0.0") + " GB";
-            if (bytes >= 1048576L) return (bytes / 1048576.0).ToString("0") + " MB";
-            if (bytes <= 0) return " ";
-            return (bytes / 1024.0).ToString("0") + " KB";
+            return RunningProgram.FormatMemory(bytes);
         }
     }
 }

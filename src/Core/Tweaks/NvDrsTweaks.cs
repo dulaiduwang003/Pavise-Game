@@ -29,7 +29,8 @@ namespace PaviseApp
 
     internal static class NvDrsTweaks
     {
-        private const string ListKey = "NvDrsList";
+        // 会话日记键由恢复完成判定共同引用 改名必须两边一起
+        internal const string ListKey = "NvDrsList";
         private const string SnapPrefix = "NvDrs_";
         public const string KeyPState = "pstate";
         public const string KeyFrl = "frl";

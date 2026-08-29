@@ -22,7 +22,7 @@ namespace PaviseApp
         {
             Graphics g = e.Graphics;
             // 切角落在卡片上 那几块得跟卡面同款 封面开着时卡片是半透明的 糊一块实色会显出四个角
-            if (Backdrop.Active) Backdrop.PaintOnCard(g, this, ClientRectangle);
+            if (Backdrop.AppliesTo(this)) Backdrop.PaintOnCard(g, this, ClientRectangle);
             else using (var bg = new SolidBrush(BackColor)) g.FillRectangle(bg, ClientRectangle);
             g.SmoothingMode = SmoothingMode.AntiAlias;
             Rectangle frame = new Rectangle(0, 0, Width - 1, Height - 1);

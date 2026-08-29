@@ -163,7 +163,7 @@ namespace PaviseApp
         protected override void OnScroll(ScrollEventArgs se) { base.OnScroll(se); PerformLayout(); }
         protected override void OnPaintBackground(PaintEventArgs e)
         {
-            if (Backdrop.Active) Backdrop.PaintOnCard(e.Graphics, this, e.ClipRectangle);
+            if (Backdrop.AppliesTo(this)) Backdrop.PaintOnCard(e.Graphics, this, e.ClipRectangle);
             else using (var b = new SolidBrush(Theme.Card)) e.Graphics.FillRectangle(b, e.ClipRectangle);
         }
         protected override void Dispose(bool disposing)

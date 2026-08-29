@@ -31,6 +31,7 @@ namespace PaviseApp
             float scaleBefore = Dpi.Scale; int langBefore = Lang.Cur; bool lightBefore = Theme.LightMode;
             try
             {
+                CheckProbeWarning(output);
                 Check(typeof(CoreMatrix).GetMethod("GlowText", Private | BindingFlags.Static) == null,
                     "Percentage text must not be repainted as offset glow copies");
                 Check(typeof(IrqPinDialog).GetMethod("StartLoadProbe", Private) == null,
@@ -103,6 +104,120 @@ namespace PaviseApp
                 Dpi.Scale = scaleBefore; Lang.Cur = langBefore; Theme.SetLight(lightBefore); Theme.DropFontCache();
             }
             return checks;
+        }
+
+        private static void CheckProbeWarning(string output)
+        {
+            bool suppressed = PanelForm.SuppressUiWorkersForTest;
+            PanelForm.SuppressUiWorkersForTest = true;
+            try
+            {
+                foreach (int language in new[] { 0, 1 })
+                {
+                    Settings.UseTransientStoreForCurrentProcess();
+                    Lang.Cur = language; Dpi.Scale = 1f; Theme.DropFontCache(); Theme.SetLight(false);
+                    string data = Path.Combine(output, "irq-warning-" + language);
+                    Directory.CreateDirectory(data);
+                    var core = new SuppressionCore();
+                    var tamer = new Tamer(core);
+                    var mode = new GameMode(data, core); // Never start workers or real capture.
+                    using (var icon = IconArt.MakeIcon(24))
+                    using (var form = new PanelForm(tamer, mode, icon, true))
+                    {
+                        form.ShowInTaskbar = false; form.StartPosition = FormStartPosition.Manual;
+                        form.Location = new Point(-20000, -20000); form.Show();
+                        var toggle = (Toggle)typeof(PanelForm).GetField("swIrqProbePage", Private).GetValue(form);
+                        Check(!toggle.Checked && !IrqSessionProbe.EnabledSetting, "Observation must default off");
+                        CheckProbeToggle(form, mode, toggle, true, "cancel", data);
+                        CheckProbeToggle(form, mode, toggle, true, "confirm", data);
+                        CheckProbeToggle(form, mode, toggle, false, "none", data);
+                        CheckProbeToggle(form, mode, toggle, true, "confirm", data);
+                        CheckProbeToggle(form, mode, toggle, false, "none", data);
+                        CheckProbeToggle(form, mode, toggle, true, "escape", data);
+                        CheckProbeToggle(form, mode, toggle, true, "close", data);
+                        Check(!form.UiActive && typeof(GameMode).GetField("worker", Private).GetValue(mode) == null
+                            && typeof(Tamer).GetField("worker", Private).GetValue(tamer) == null,
+                            "Warning checks must not start runtime workers");
+                        form.Hide();
+                    }
+                }
+            }
+            finally
+            {
+                IrqMutationBoundary.Configure(null, null);
+                PanelForm.SuppressUiWorkersForTest = suppressed;
+            }
+        }
+
+        private static void CheckProbeToggle(PanelForm form, GameMode mode, Toggle toggle,
+            bool on, string action, string output)
+        {
+            int prompts = 0, mutations = 0;
+            Exception callbackError = null;
+            FieldInfo changed = typeof(GameMode).GetField("irqSettingChanged", Private);
+            changed.SetValue(mode, 0);
+            IrqMutationBoundary.Configure(delegate { mutations++; }, null);
+            using (var timer = new Timer { Interval = 25 })
+            {
+                timer.Tick += delegate
+                {
+                    PaviseDialog warning = null;
+                    foreach (Form open in Application.OpenForms)
+                        if (open is PaviseDialog) { warning = (PaviseDialog)open; break; }
+                    if (warning == null) return;
+                    timer.Stop(); prompts++;
+                    try
+                    {
+                        warning.Location = new Point(-20000, -20000);
+                        Check(!IrqSessionProbe.EnabledSetting && mutations == 0 && (int)changed.GetValue(mode) == 0,
+                            "Capture changed before the user confirmed");
+                        string body = (string)typeof(PaviseDialog).GetField("body", Private).GetValue(warning);
+                        Check(body == Lang.T("irq.probe.warn")
+                            && body.Contains(Lang.Cur == 0 ? "帧率损耗" : "reduces frame rate")
+                            && body.Contains(Lang.Cur == 0 ? "正常打游戏请勿开启" : "Keep it off during normal gameplay"),
+                            "Missing performance or debug-only warning");
+                        Check((DlgKind)typeof(PaviseDialog).GetField("kind", Private).GetValue(warning) == DlgKind.Warn,
+                            "Observation must use warning styling");
+                        foreach (Control control in warning.Controls)
+                            Check(warning.ClientRectangle.Contains(control.Bounds), "Warning action is clipped");
+                        if (action == "cancel")
+                            using (var image = new Bitmap(warning.Width, warning.Height))
+                            {
+                                warning.DrawToBitmap(image, warning.ClientRectangle);
+                                image.Save(Path.Combine(output, "warning.png"), ImageFormat.Png);
+                            }
+                        if (action == "escape")
+                            typeof(Form).GetMethod("OnKeyDown", Private).Invoke(warning, new object[] { new KeyEventArgs(Keys.Escape) });
+                        else if (action == "close") warning.Close();
+                        else
+                        {
+                            // A page refresh while the modal is open must not erase accepted intent.
+                            if (action == "confirm") toggle.SetSilently(false);
+                            Control button = null;
+                            foreach (Control control in warning.Controls)
+                                if (control is PillButton && control.Text == Lang.T(action == "confirm" ? "dlg.confirm" : "dlg.cancel"))
+                                    button = control;
+                            Check(button != null, "Missing confirmation or cancellation action");
+                            typeof(Control).GetMethod("OnClick", Private).Invoke(button, new object[] { EventArgs.Empty });
+                        }
+                    }
+                    catch (Exception error)
+                    {
+                        callbackError = error;
+                        warning.DialogResult = DialogResult.Cancel; warning.Close();
+                    }
+                };
+                timer.Start();
+                toggle.Checked = on;
+                timer.Stop();
+            }
+            if (callbackError != null) throw callbackError;
+            bool expected = on && action == "confirm";
+            Check(prompts == (on ? 1 : 0), "Wrong warning count for " + action);
+            Check(toggle.Checked == expected && IrqSessionProbe.EnabledSetting == expected,
+                "Wrong observation state after " + action);
+            Check(mutations == (!on || expected ? 1 : 0) && (int)changed.GetValue(mode) == mutations,
+                "Canceled observation changed the capture lifecycle");
         }
     }
 }

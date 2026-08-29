@@ -12,6 +12,19 @@ namespace PaviseApp
         private static readonly object writeSync = new object();
         private static bool writesSuspendedForReset;
 
+        // 配置存储的写代数：任何 Save/Remove 入口都递增（无论成败）。只读缓存
+        //   （如 EnvActive 的残留判定）以此判断上次结果是否仍有效；宁可多失效
+        //   不可漏失效。
+        private static int mutationGeneration;
+        internal static int MutationGeneration
+        {
+            get { return System.Threading.Volatile.Read(ref mutationGeneration); }
+        }
+        private static void BumpMutationGeneration()
+        {
+            System.Threading.Interlocked.Increment(ref mutationGeneration);
+        }
+
         // Call after restoration succeeds and before deleting persistent data.
         // Returning from this barrier drains earlier writes and rejects later callbacks.
         internal static void SuspendWritesForReset()
@@ -29,6 +42,7 @@ namespace PaviseApp
             {
                 lock (transientSync)
                 {
+                    BumpMutationGeneration();
                     transientValues = new Dictionary<string, object>(
                         StringComparer.OrdinalIgnoreCase);
                     writesSuspendedForReset = false;
@@ -84,6 +98,7 @@ namespace PaviseApp
         {
             lock (writeSync)
             {
+                BumpMutationGeneration();
                 if (writesSuspendedForReset) return false;
 #if PAVISE_SELFTEST || PAVISE_PERFLAB
                 if (TrySaveTransient(name, val ? 1 : 0)) return true;
@@ -109,6 +124,7 @@ namespace PaviseApp
         {
             lock (writeSync)
             {
+                BumpMutationGeneration();
                 if (writesSuspendedForReset) return;
 #if PAVISE_SELFTEST || PAVISE_PERFLAB
                 lock (transientSync)
@@ -121,6 +137,36 @@ namespace PaviseApp
                 }
                 catch { }
             }
+        }
+
+#if PAVISE_SELFTEST
+        internal static Action<string> BeforeStrictStringReadForTest;
+#endif
+
+        // Recovery ledgers must distinguish an absent value from an unreadable
+        // or malformed one. Keep LoadStr's forgiving behavior for other callers.
+        internal static bool TryLoadStr(string name, out string value)
+        {
+            value = "";
+            try
+            {
+#if PAVISE_SELFTEST
+                if (BeforeStrictStringReadForTest != null) BeforeStrictStringReadForTest(name);
+#endif
+                object raw;
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+                if (!TryLoadTransient(name, out raw))
+#endif
+                {
+                    using (var k = Registry.CurrentUser.OpenSubKey(Key))
+                        raw = k == null ? null : k.GetValue(name);
+                }
+                if (raw == null) return true;
+                if (!(raw is string)) return false;
+                value = (string)raw;
+                return true;
+            }
+            catch { return false; }
         }
 
         public static string LoadStr(string name, string def)
@@ -146,6 +192,7 @@ namespace PaviseApp
         {
             lock (writeSync)
             {
+                BumpMutationGeneration();
                 if (writesSuspendedForReset) return false;
 #if PAVISE_SELFTEST || PAVISE_PERFLAB
                 if (TrySaveTransient(name, val ?? "")) return true;

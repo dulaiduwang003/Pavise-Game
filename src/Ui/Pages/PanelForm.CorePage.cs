@@ -250,6 +250,7 @@ namespace PaviseApp
             {
                 ulong clean = CpuTopology.SanitizeCustomMask(corePending, CpuTopology.AllMask);
                 if (clean == 0) return;
+                if (clean == CpuTopology.AllMask) gameMode.CorePartitionEnabled = false;
                 gameMode.CustomCoreMask = clean == CpuTopology.AllMask ? 0 : clean;
                 SyncCorePage();
             };
@@ -294,10 +295,7 @@ namespace PaviseApp
 
             if (coreManualGroup != null)
             {
-                bool wasShown = coreManualGroup.Visible;
-                if (!manual) Fx.Settle(coreManualGroup);
                 coreManualGroup.Visible = manual;
-                if (manual && !wasShown) Fx.SlideIn(coreManualGroup);
             }
             if (coreHowTo != null) coreHowTo.Text = Lang.T("core.howto.game");
 
@@ -308,7 +306,8 @@ namespace PaviseApp
 
             bool valid = CpuTopology.SanitizeCustomMask(corePending, CpuTopology.AllMask) != 0;
             ulong effective = live == 0 ? CpuTopology.AllMask : live;
-            bool dirty = corePending != effective;
+            bool dirty = corePending != effective
+                || (corePending == CpuTopology.AllMask && gameMode.CorePartitionEnabled);
 
             if (coreMaskLabel != null)
             {
@@ -350,10 +349,8 @@ namespace PaviseApp
             if (coreLandingLine != null)
             {
                 // 手动划核时更需要这句 用户看见"其余 2 核"最容易误以为后台被关进去了
-                bool wasShown = coreLandingLine.Visible;
                 coreLandingLine.Visible = true;
                 coreLandingLine.Text = BackgroundLandingText(0);
-                if (!wasShown) Fx.SlideIn(coreLandingLine);
             }
         }
 

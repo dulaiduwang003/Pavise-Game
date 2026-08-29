@@ -124,6 +124,22 @@ namespace PaviseApp
             return MakeCard(parent, x, y, w, used, title, desc, host);
         }
 
+        // Scope/consent text must remain readable when expanded, including in English.
+        private int FullTextCardHeight(string desc, int width, Control host, int minimum)
+        {
+            int textWidth = Theme.S(width - 84 - CollapseChevronW)
+                - (host == null ? 0 : host.Width + Theme.S(14));
+            if (textWidth <= 0) return minimum;
+            Font font = Theme.UI(8.5f, false);
+            int lineHeight = Math.Max(1, TextRenderer.MeasureText("Ag", font).Height);
+            int textHeight = TextRenderer.MeasureText(desc ?? "", font,
+                new Size(textWidth, int.MaxValue), TextFormatFlags.WordBreak).Height;
+            textHeight = (textHeight + lineHeight - 1) / lineHeight * lineHeight;
+            int pixels = textHeight + Theme.S(64);
+            int scale = Math.Max(1, Theme.S(100));
+            return Math.Max(minimum, (pixels * 100 + scale - 1) / scale);
+        }
+
         private SettingCard MakeAutoCard(
             Control parent, int x, int y, int w, int minH, string title, string desc, Control host,
             int valueReserve, out int used)
@@ -228,6 +244,7 @@ namespace PaviseApp
 
         private DialogResult ShowDim(Form dlg)
         {
+            StopPageReveal();
             return dlg.ShowDialog(this);
         }
 
@@ -249,19 +266,19 @@ namespace PaviseApp
             pageTabPanels[page] = panels;
             tabs.IndexChanged = delegate(int index)
             {
+                // Tab 直接切换，保留各自滚动位置，不生成过渡快照。
                 for (int i = 0; i < panels.Length; i++)
                 {
                     if (i != index)
                     {
                         if (panels[i].Visible)
                             tabScrollPositions[panels[i]] = new Point(-panels[i].AutoScrollPosition.X, -panels[i].AutoScrollPosition.Y);
-                        Fx.Settle(panels[i]); panels[i].Visible = false;
+                        panels[i].Visible = false;
                     }
                 }
                 panels[index].Visible = true;
                 Point position;
                 if (tabScrollPositions.TryGetValue(panels[index], out position)) panels[index].AutoScrollPosition = position;
-                Fx.SlideIn(panels[index]);
             };
             return panels;
         }

@@ -22,8 +22,13 @@ namespace PaviseApp
         private readonly Dictionary<string, SettingCard> cfgCardByKey
             = new Dictionary<string, SettingCard>(StringComparer.Ordinal);
         private int cfgJumpCursor;
+#if PAVISE_SELFTEST
+        internal Func<string, bool> VendorGraphicsSupportForTest;
+#endif
 
         private PerformancePreset cfgEffMode;
+        // 仅一轮 SyncCfgRows 内有效的厂商可用性快照 为 null 时实查
+        private bool? cfgSyncNvOk, cfgSyncAmdOk;
 
         private void ShowGameConfigPage(string profileId)
         {
@@ -33,14 +38,33 @@ namespace PaviseApp
             SetModeFlyout(false);
             SetSearchFlyout(false);
             SetPowerFlyout(false);
-            foreach (var p in pages) p.Visible = false;
-            pageGameConfig.Visible = true;
-            curPage = pageGameConfig;
             pageBaseLeft = Theme.S(RailW);
-            pageGameConfig.Left = pageBaseLeft + Theme.S(16);
-            pageSlide.Speed = 0.26f; pageSlide.Set(1f); pageSlide.To(0f);
-            if (UiActive) UiClock.Wake();
-            NotifyPageActivation();
+            pageGameConfig.Left = pageBaseLeft;
+            bool revealing = PreparePageReveal(pageGameConfig);
+            bool ready = false;
+            root.SuspendLayout();
+            try
+            {
+                foreach (var p in pages) p.Visible = false;
+                pageGameConfig.Visible = true;
+                curPage = pageGameConfig;
+                if (UiActive) UiClock.Wake();
+                NotifyPageActivation();
+                ready = true;
+            }
+            finally
+            {
+                try
+                {
+                    root.ResumeLayout(true);
+                    if (revealing)
+                    {
+                        if (ready) StartPageReveal();
+                        else StopPageReveal();
+                    }
+                }
+                catch { StopPageReveal(); throw; }
+            }
         }
 
         private void CloseGameConfigPage()
@@ -87,7 +111,11 @@ namespace PaviseApp
                 && int.TryParse(presetOverride, out presetParsed)
                 && PresetValue.IsValid(presetParsed)
                 ? (PerformancePreset)presetParsed : gameMode.Preset;
-            foreach (Action sync in cfgRowSync) sync();
+            // 一轮同步内各行共享厂商可用性探测 驱动状态不会在一轮里变
+            cfgSyncNvOk = NvApi.Available;
+            cfgSyncAmdOk = AdlxTweaks.Available;
+            try { foreach (Action sync in cfgRowSync) sync(); }
+            finally { cfgSyncNvOk = cfgSyncAmdOk = null; }
             if (cfgTabs != null && cfgTabKeys != null)
             {
                 var hotFlags = new bool[cfgTabKeys.Length];
@@ -258,9 +286,8 @@ namespace PaviseApp
             cfgTabs.IndexChanged = delegate(int index)
             {
                 for (int i = 0; i < cfgTabPanels.Length; i++)
-                    if (i != index) { Fx.Settle(cfgTabPanels[i]); cfgTabPanels[i].Visible = false; }
+                    if (i != index) cfgTabPanels[i].Visible = false;
                 cfgTabPanels[index].Visible = true;
-                Fx.SlideIn(cfgTabPanels[index]);
             };
 
             int ty = 2;
@@ -268,7 +295,7 @@ namespace PaviseApp
                 new[] { PolicyCatalog.KeySuppress, PolicyCatalog.KeyAggressive,
                     PolicyCatalog.KeyGpuDemote });
             AddCfgSection(cfgTabPanels[0], Lang.T("cfg.sub.boost"), ref ty,
-                new[] { PolicyCatalog.KeyBoost, PolicyCatalog.KeyIfeoBoost,
+                new[] { PolicyCatalog.KeyBoost,
                     PolicyCatalog.KeyRenderLane });
             EnableCardCollapse(cfgTabPanels[0]);
 
@@ -276,12 +303,17 @@ namespace PaviseApp
 
             ty = 2;
             AddCfgSection(cfgTabPanels[2], Lang.T("cfg.group.mempower"), ref ty,
-                new[] { PolicyCatalog.KeyPowerPlan, PolicyCatalog.KeyPowerYield });
+                new[] { PolicyCatalog.KeyPowerPlan, PolicyCatalog.KeyPowerYield,
+                    PolicyCatalog.KeyDisableCpuIdle, PolicyCatalog.KeyStandbyCleaner });
             AddCfgSection(cfgTabPanels[2], Lang.T("cfg.sub.net"), ref ty,
                 new[] { PolicyCatalog.KeyPauseDl, PolicyCatalog.KeyPauseUpdate,
                     PolicyCatalog.KeyWlanGuard });
+            AddCfgSection(cfgTabPanels[2], Lang.T("cfg.group.env"), ref ty,
+                new[] { PolicyCatalog.KeyPauseServices });
             AddCfgSection(cfgTabPanels[2], Lang.T("cfg.sub.presence"), ref ty,
                 new[] { PolicyCatalog.KeyAwake });
+            AddCfgSection(cfgTabPanels[2], Lang.T("cfg.sub.input"), ref ty,
+                new[] { PolicyCatalog.KeyEnglishInput });
             EnableCardCollapse(cfgTabPanels[2]);
 
             ty = 2;
@@ -293,6 +325,8 @@ namespace PaviseApp
                     PolicyCatalog.KeyNvDlss, PolicyCatalog.KeyNvRebar });
             AddCfgSection(cfgTabPanels[3], "AMD", ref ty,
                 new[] { PolicyCatalog.KeyAmdAntiLag, PolicyCatalog.KeyAmdAfmf });
+            AddCfgSection(cfgTabPanels[3], "Intel", ref ty,
+                new[] { PolicyCatalog.KeyIntelLowLatency });
             AddCfgFsoRow(cfgTabPanels[3], ref ty);
             EnableCardCollapse(cfgTabPanels[3]);
 
@@ -301,17 +335,19 @@ namespace PaviseApp
                 new[] { PolicyCatalog.KeySuppress, PolicyCatalog.KeyAggressive,
                     PolicyCatalog.KeyGpuDemote,
                     PolicyCatalog.KeyBoost,
-                    PolicyCatalog.KeyIfeoBoost, PolicyCatalog.KeyRenderLane },
+                    PolicyCatalog.KeyRenderLane },
                 new[] { PolicyCatalog.KeyStrictCores, PolicyCatalog.KeyCoreDomainAlt,
                     PolicyCatalog.KeyCoreMask },
                 new[] { PolicyCatalog.KeyPowerPlan, PolicyCatalog.KeyPowerYield,
+                    PolicyCatalog.KeyDisableCpuIdle, PolicyCatalog.KeyStandbyCleaner,
                     PolicyCatalog.KeyPauseDl, PolicyCatalog.KeyPauseUpdate,
-                    PolicyCatalog.KeyWlanGuard, PolicyCatalog.KeyAwake },
+                    PolicyCatalog.KeyWlanGuard, PolicyCatalog.KeyPauseServices, PolicyCatalog.KeyAwake,
+                    PolicyCatalog.KeyEnglishInput },
                 new[] { PolicyCatalog.KeyVramShield, PolicyCatalog.KeyNvMaxPerf,
                     PolicyCatalog.KeyNvLowLat, PolicyCatalog.KeyNvSmoothMotion,
                     PolicyCatalog.KeyNvShaderCache,
                     PolicyCatalog.KeyNvDlss, PolicyCatalog.KeyNvRebar,
-                    PolicyCatalog.KeyAmdAntiLag, PolicyCatalog.KeyAmdAfmf },
+                    PolicyCatalog.KeyAmdAntiLag, PolicyCatalog.KeyAmdAfmf, PolicyCatalog.KeyIntelLowLatency },
             };
 
             SyncCfgRows();
@@ -356,15 +392,18 @@ namespace PaviseApp
                 case PolicyCatalog.KeyBoost: return "v15.boost.sub";
                 case PolicyCatalog.KeyAggressive: return "gm.aggressive.sub";
                 case PolicyCatalog.KeyGpuDemote: return "gm.gpudemote.sub";
-                case PolicyCatalog.KeyIfeoBoost: return "gm.ifeo.sub";
                 case PolicyCatalog.KeyRenderLane: return "gm.lane.sub";
                 case PolicyCatalog.KeyPowerPlan: return "cfg.plan.sub";
                 case PolicyCatalog.KeyPowerYield: return "gm.poweryield.sub";
+                case PolicyCatalog.KeyDisableCpuIdle: return "gm.disablecpuidle.sub";
+                case PolicyCatalog.KeyStandbyCleaner: return "gm.standbycleaner.cfgsub";
                 case PolicyCatalog.KeyVramShield: return "gm.vramshield.sub";
                 case PolicyCatalog.KeyPauseDl: return "gm.pausedl.sub";
                 case PolicyCatalog.KeyPauseUpdate: return "gm.pausewu.sub";
+                case PolicyCatalog.KeyPauseServices: return "gm.pausesvc.sub";
                 case PolicyCatalog.KeyWlanGuard: return "gm.wlanguard.sub";
                 case PolicyCatalog.KeyAwake: return "set.awake.n";
+                case PolicyCatalog.KeyEnglishInput: return "gm.englishinput.sub";
                 case PolicyCatalog.KeyNvMaxPerf: return "set.nvmax.n";
                 case PolicyCatalog.KeyNvLowLat: return "set.nvll.n";
                 case PolicyCatalog.KeyNvSmoothMotion: return "set.nvsmooth.n";
@@ -373,24 +412,30 @@ namespace PaviseApp
                 case PolicyCatalog.KeyNvDlss: return "set.nvdlss.n";
                 case PolicyCatalog.KeyAmdAntiLag: return "set.amdalag.n";
                 case PolicyCatalog.KeyAmdAfmf: return "set.amdafmf.n";
+                case PolicyCatalog.KeyIntelLowLatency: return "set.intel.lowlatency.n";
                 default: return null;
             }
         }
 
         private bool CfgItemSupported(PolicyItem item, out string reasonKey)
         {
-            bool nvOk = NvApi.Available;
-            bool amdOk = AdlxTweaks.Available;
             reasonKey = null;
+#if PAVISE_SELFTEST
+            if (CfgVendorGraphicsItem(item.Key) && VendorGraphicsSupportForTest != null)
+            {
+                bool supported = VendorGraphicsSupportForTest(item.Key);
+                if (!supported) reasonKey = "set.amd.nosup";
+                return supported;
+            }
+#endif
+            bool nvOk = cfgSyncNvOk ?? NvApi.Available;
+            bool amdOk = cfgSyncAmdOk ?? AdlxTweaks.Available;
             switch (item.Key)
             {
                 // 门槛跟优化策略页那份一模一样 缺哪条就说哪条 别让人在这里开了之后干等着不生效
                 case PolicyCatalog.KeyPowerYield:
-                    if (!Native.HasSystemBattery()) { reasonKey = "gm.poweryield.desktop"; return false; }
-                    if (!EnergyMeter.Available) { reasonKey = "gm.poweryield.nowatt"; return false; }
-                    if (PowerBudgetYield.Fused) { reasonKey = "gm.poweryield.fused"; return false; }
-                    if (!elevated) { reasonKey = "vbs.needadmin"; return false; }
-                    return true;
+                    reasonKey = PowerYieldUnavailableReasonKey();
+                    return reasonKey == null;
                 case PolicyCatalog.KeyNvMaxPerf:
                 case PolicyCatalog.KeyNvLowLat:
                 case PolicyCatalog.KeyNvShaderCache:
@@ -414,6 +459,11 @@ namespace PaviseApp
                     if (!amdOk) { reasonKey = "set.amd.none"; return false; }
                     if (!AdlxTweaks.AfmfSupported()) { reasonKey = "set.amd.nosup"; return false; }
                     return true;
+                case PolicyCatalog.KeyIntelLowLatency:
+                    if (!IntelGraphicsTweaks.HasAvailable) { reasonKey = "set.intel.none"; return false; }
+                    if (!IntelGraphicsTweaks.LowLatencySupported)
+                    { reasonKey = "set.intel.lowlatency.unsupported"; return false; }
+                    return true;
                 default:
                     return true;
             }
@@ -426,6 +476,46 @@ namespace PaviseApp
             for (int i = 0; i < values.Length; i++)
                 if (string.Equals(values[i], ov, StringComparison.OrdinalIgnoreCase)) return i + 1;
             return 0;
+        }
+
+        private static bool CfgVendorGraphicsItem(string key)
+        {
+            switch (key)
+            {
+                case PolicyCatalog.KeyNvMaxPerf:
+                case PolicyCatalog.KeyNvLowLat:
+                case PolicyCatalog.KeyNvSmoothMotion:
+                case PolicyCatalog.KeyNvShaderCache:
+                case PolicyCatalog.KeyNvRebar:
+                case PolicyCatalog.KeyNvDlss:
+                case PolicyCatalog.KeyAmdAntiLag:
+                case PolicyCatalog.KeyAmdAfmf:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool CfgGraphicsOff(PolicyItem item, string value)
+        {
+            return item.Kind == PolicyValueKind.Bool ? value == "0" : value == "off";
+        }
+
+        private bool CfgCanTurnOff(PolicyItem item)
+        {
+            string current = PolicyResolver.Read(cfgProfile, item.Key);
+            if (CfgVendorGraphicsItem(item.Key)) return !CfgGraphicsOff(item, current);
+            return (item.Key == PolicyCatalog.KeyIntelLowLatency || item.Key == PolicyCatalog.KeyPowerYield)
+                && current == "1";
+        }
+
+        private bool CfgVendorGraphicsChoiceAllowed(string key, string value)
+        {
+            if (!CfgVendorGraphicsItem(key)) return true;
+            PolicyItem item = PolicyCatalog.ItemOf(key);
+            string reason;
+            return CfgGraphicsOff(item, value ?? PolicyResolver.GlobalValue(key))
+                || CfgItemSupported(item, out reason);
         }
 
         private void AddCfgModeRow(Control parent, ref int y)
@@ -471,21 +561,37 @@ namespace PaviseApp
 
             string reasonKey;
             bool supported = CfgItemSupported(item, out reasonKey);
+            // Lost capabilities must not trap an existing opt-in.
+            bool canTurnOff = CfgCanTurnOff(item);
+            bool vendorGraphics = CfgVendorGraphicsItem(item.Key);
             string descKey = CfgDescKey(item);
-            string desc = !supported ? Lang.T(reasonKey)
+            string adminNoticeKey = CfgEnableAdminNoticeKey(item.Key);
+            bool enableNeedsAdmin = adminNoticeKey != null && !elevated;
+            string desc = enableNeedsAdmin ? Lang.T(adminNoticeKey)
+                : !supported ? Lang.T(reasonKey)
                 : (withDesc && descKey != null ? Lang.T(descKey) : "");
+            if (item.Key == PolicyCatalog.KeyStandbyCleaner && !gameMode.StandbyCleaningOptionsValid)
+                desc = Lang.T("standbycleaner.config.invalid");
+            if (item.Key == PolicyCatalog.KeyPowerYield && supported && PowerBudgetYield.Fused)
+                desc = Lang.T("gm.poweryield.fused");
 
             var picker = new TierPicker();
             picker.Labels = labels;
-            picker.Index = supported ? CfgRowIndexOf(item, values) : 1;
+            picker.Index = supported || canTurnOff || vendorGraphics ? CfgRowIndexOf(item, values) : 1;
             int segW = labels.Length >= 6 ? 68 : 78;
             picker.SetBounds(0, 0, Theme.S(labels.Length * segW + 12), Theme.S(30));
-            bool showDisabled = false;
-            picker.Enabled = supported;
-            picker.Visible = supported || showDisabled;
+            bool showDisabled = adminNoticeKey != null || item.Key == PolicyCatalog.KeyIntelLowLatency
+                || item.Key == PolicyCatalog.KeyPowerYield || vendorGraphics;
+            picker.Enabled = (supported || canTurnOff) && (!enableNeedsAdmin
+                || PolicyResolver.Read(cfgProfile, item.Key) == "1");
+            picker.Visible = supported || canTurnOff || showDisabled;
 
             int cardH;
-            SettingCard card = MakeAutoCard(parent, x, y, w, 54,
+            int minimumH = item.Key == PolicyCatalog.KeyStandbyCleaner
+                ? StandbyCleanerCardHeight(w, picker, 54, true) : 54;
+            if (item.Key == PolicyCatalog.KeyEnglishInput || item.Key == PolicyCatalog.KeyIntelLowLatency)
+                minimumH = FullTextCardHeight(desc, w, picker, minimumH);
+            SettingCard card = MakeAutoCard(parent, x, y, w, minimumH,
                 Lang.T(item.LangKey), desc, picker, out cardH);
             y += cardH + 8;
             cfgCardByKey[item.Key] = card;
@@ -493,15 +599,33 @@ namespace PaviseApp
             string key = item.Key;
             Action sync = delegate
             {
+                if (key == PolicyCatalog.KeyPowerYield)
+                {
+                    supported = CfgItemSupported(item, out reasonKey);
+                    card.Desc = Lang.T(!supported ? reasonKey
+                        : PowerBudgetYield.Fused ? "gm.poweryield.fused" : "gm.poweryield.sub");
+                }
+                else if (vendorGraphics)
+                {
+                    supported = CfgItemSupported(item, out reasonKey);
+                    card.Desc = !supported ? Lang.T(reasonKey)
+                        : withDesc && descKey != null ? Lang.T(descKey) : "";
+                }
                 bool has = cfgProfile.Overrides.ContainsKey(key);
                 string globalLabel = CfgValueLabel(item, PolicyResolver.GlobalValue(key));
-                picker.Index = supported ? CfgRowIndexOf(item, values) : 1;
+                bool allowOff = CfgCanTurnOff(item);
+                picker.Index = supported || allowOff || vendorGraphics ? CfgRowIndexOf(item, values) : 1;
                 bool forcedEffective;
                 bool forced = CfgPresetForces(key, cfgEffMode, out forcedEffective);
-                bool usable = supported && !forced;
+                bool needsAdmin = adminNoticeKey != null && !elevated;
+                bool usable = (supported || allowOff) && !forced && (!needsAdmin
+                    || PolicyResolver.Read(cfgProfile, key) == "1");
                 picker.Enabled = usable;
                 picker.Visible = usable || showDisabled;
-                card.SetLock(!supported ? Lang.T("v14.preset.forced.off")
+                if (adminNoticeKey != null)
+                    card.Desc = Lang.T(key == PolicyCatalog.KeyStandbyCleaner && !gameMode.StandbyCleaningOptionsValid
+                        ? "standbycleaner.config.invalid" : needsAdmin ? adminNoticeKey : descKey);
+                card.SetLock(!supported && !vendorGraphics ? Lang.T("v14.preset.forced.off")
                     : forced ? Lang.T(forcedEffective ? "v14.preset.forced.on" : "v14.preset.forced.off")
                     : "", supported && forcedEffective);
                 card.SetValue(has ? Lang.F("cfg.state.over", globalLabel)
@@ -510,38 +634,67 @@ namespace PaviseApp
             cfgRowSync.Add(sync);
             picker.IndexChanged = delegate(int index)
             {
-                if (cfgProfile == null) return;
-                bool turningOn = index > 0 && values[index - 1] == "1";
-                // 在这里拨到开 等同于把全局开关打开一次 那两段实验提示必须照弹
-                //   否则从这个页面能绕开优化策略页特意加的门槛 用户全程没见过警告
-                if (turningOn && !ConfirmCfgEnable(key))
+                string chosen = index <= 0 ? null : values[index - 1];
+                if (!ApplyCfgPolicyChoice(key, chosen))
                 {
                     picker.Index = CfgRowIndexOf(item, values);
+                    // 被厂商显卡门槛挡下时要说明原因 卡片描述解释不了"为什么不能跟随全局"
+                    //   Visible 门槛：隔离回归在未显示的窗体上驱动该路径 不能弹窗
+                    string canonical = chosen == null ? null : PolicyCatalog.Canonical(key, chosen);
+                    if (Visible && (chosen == null || canonical != null)
+                        && !CfgVendorGraphicsChoiceAllowed(key, canonical))
+                        PaviseDialog.Info(this, Lang.T(item.LangKey), Lang.T("cfg.inherit.blocked"));
                     return;
                 }
-                if (index <= 0) gameMode.ClearProfileOverride(cfgProfileId, key);
-                else gameMode.SetProfileOverride(cfgProfileId, key, values[index - 1]);
-                // 显存驻留在这里拨到开 也等同于全局开关重开一次 熔断要跟着清掉
-                //   否则上次验不过留下的熔断会让这局直接跳过 用户在这个页面无从解除
-                if (turningOn && key == PolicyCatalog.KeyVramShield) VramShield.ClearFuse();
                 SyncCfgRows();
             };
+        }
+
+        private bool ApplyCfgPolicyChoice(string key, string value)
+        {
+            if (cfgProfile == null) return false;
+            string canonical = value == null ? null : PolicyCatalog.Canonical(key, value);
+            if (value != null && canonical == null) return false;
+            if (!CfgVendorGraphicsChoiceAllowed(key, canonical)) return false;
+            bool turningOn = canonical == "1";
+            bool inheritingPowerYield = value == null && key == PolicyCatalog.KeyPowerYield
+                && CfgPowerYieldInheritanceNeedsConfirmation(cfgProfile);
+            bool inheritingGuardedOn = value == null
+                && ((key == PolicyCatalog.KeyDisableCpuIdle && CfgCpuIdleInheritanceNeedsConfirmation(cfgProfile))
+                    || (key == PolicyCatalog.KeyStandbyCleaner && CfgStandbyCleanerInheritanceNeedsConfirmation(cfgProfile))
+                    || (key == PolicyCatalog.KeyIntelLowLatency && CfgIntelInheritanceNeedsConfirmation(cfgProfile))
+                    || inheritingPowerYield);
+            // 在这里拨到开 等同于把全局开关打开一次 实验提示必须照弹
+            //   否则从这个页面能绕开优化策略页特意加的门槛 用户全程没见过警告
+            if ((turningOn || inheritingGuardedOn) && !ConfirmCfgEnable(key)) return false;
+            bool saved = value == null ? gameMode.ClearProfileOverride(cfgProfileId, key)
+                : gameMode.SetProfileOverride(cfgProfileId, key, canonical);
+            // 显存驻留在这里拨到开 也等同于全局开关重开一次 熔断要跟着清掉
+            //   否则上次验不过留下的熔断会让这局直接跳过 用户在这个页面无从解除
+            if (saved && turningOn && key == PolicyCatalog.KeyVramShield) VramShield.ClearFuse();
+            if (saved && key == PolicyCatalog.KeyPowerYield && (turningOn || inheritingPowerYield))
+                PowerBudgetYield.ClearFuse();
+            return saved;
         }
 
         // 全局开关带确认的项 逐游戏覆盖到开也要走同一段提示 文案共用一份
         private bool ConfirmCfgEnable(string key)
         {
-            string titleKey, warnKey;
             switch (key)
             {
                 case PolicyCatalog.KeyVramShield:
-                    titleKey = "gm.vramshield"; warnKey = "vramshield.warn"; break;
+                    return ConfirmVramShieldEnable();
                 case PolicyCatalog.KeyPowerYield:
-                    titleKey = "gm.poweryield"; warnKey = "poweryield.warn"; break;
+                    return ConfirmPowerYieldEnable();
+                case PolicyCatalog.KeyDisableCpuIdle:
+                    return ConfirmDisableCpuIdleEnable();
+                case PolicyCatalog.KeyStandbyCleaner:
+                    return ConfirmStandbyCleanerEnable();
+                case PolicyCatalog.KeyIntelLowLatency:
+                    return ConfirmIntelLowLatency();
                 default:
                     return true;
             }
-            return PaviseDialog.Confirm(this, Lang.T(titleKey), Lang.T(warnKey), DlgKind.Warn);
         }
 
         private void ClearAllCfgOverrides()
@@ -552,9 +705,85 @@ namespace PaviseApp
             if (!PaviseDialog.Confirm(this, Lang.T("cfg.clear"),
                     confirmation, DlgKind.Warn))
                 return;
-            gameMode.ClearProfileOverrides(cfgProfileId);
+            if (!ApplyCfgClearAllOverrides())
+            {
+                // 确认弹窗之后不能沉默：门槛拦下时说明是哪一项挡住了整次清除。
+                //   确认被用户自己取消的情况这里查不到被挡的键 维持无提示返回
+                string blocked = Visible ? CfgBlockedVendorInheritKey() : null;
+                if (blocked != null)
+                    PaviseDialog.Info(this, Lang.T("cfg.clear"), Lang.F("cfg.clear.blocked",
+                        Lang.T(PolicyCatalog.ItemOf(blocked).LangKey)));
+                return;
+            }
             cfgCoreManualPicked = false;
             SyncCfgRows();
+        }
+
+        // 厂商显卡键在全局仍为开且当前设备不支持时不能改回跟随全局
+        //   否则等于替用户确认一个当前设备生效不了的全局开启
+        private string CfgBlockedVendorInheritKey()
+        {
+            if (cfgProfile == null) return null;
+            foreach (string key in cfgProfile.Overrides.Keys)
+                if (!CfgVendorGraphicsChoiceAllowed(key, null)) return key;
+            return null;
+        }
+
+        private bool ApplyCfgClearAllOverrides()
+        {
+            if (cfgProfile == null) return false;
+            if (CfgBlockedVendorInheritKey() != null) return false;
+            // Resolve every opt-in before removing any override. A canceled second
+            // warning must not partially clear the profile after the first one.
+            if (CfgCpuIdleInheritanceNeedsConfirmation(cfgProfile)
+                && !ConfirmCfgEnable(PolicyCatalog.KeyDisableCpuIdle)) return false;
+            if (CfgStandbyCleanerInheritanceNeedsConfirmation(cfgProfile)
+                && !ConfirmCfgEnable(PolicyCatalog.KeyStandbyCleaner)) return false;
+            if (CfgIntelInheritanceNeedsConfirmation(cfgProfile)
+                && !ConfirmCfgEnable(PolicyCatalog.KeyIntelLowLatency)) return false;
+            bool powerYieldWillEnable = CfgPowerYieldInheritanceNeedsConfirmation(cfgProfile);
+            if (powerYieldWillEnable && !ConfirmCfgEnable(PolicyCatalog.KeyPowerYield)) return false;
+            // Other warnings may have pumped the UI while driver availability changed.
+            if (CfgBlockedVendorInheritKey() != null) return false;
+            bool cleared = gameMode.ClearProfileOverrides(cfgProfileId) > 0;
+            if (cleared && powerYieldWillEnable) PowerBudgetYield.ClearFuse();
+            return cleared;
+        }
+
+        private static string CfgEnableAdminNoticeKey(string key)
+        {
+            if (key == PolicyCatalog.KeyDisableCpuIdle) return "gm.disablecpuidle.needadmin";
+            if (key == PolicyCatalog.KeyStandbyCleaner) return "gm.standbycleaner.needadmin";
+            return null;
+        }
+
+        internal static bool CfgCpuIdleInheritanceNeedsConfirmation(GameProfile profile)
+        {
+            // Removing an explicit off can enable this option just like choosing on.
+            return profile != null
+                && PolicyResolver.Read(profile, PolicyCatalog.KeyDisableCpuIdle) != "1"
+                && PolicyResolver.GlobalValue(PolicyCatalog.KeyDisableCpuIdle) == "1";
+        }
+
+        internal static bool CfgStandbyCleanerInheritanceNeedsConfirmation(GameProfile profile)
+        {
+            return profile != null
+                && PolicyResolver.Read(profile, PolicyCatalog.KeyStandbyCleaner) != "1"
+                && PolicyResolver.GlobalValue(PolicyCatalog.KeyStandbyCleaner) == "1";
+        }
+
+        internal static bool CfgIntelInheritanceNeedsConfirmation(GameProfile profile)
+        {
+            return profile != null
+                && PolicyResolver.Read(profile, PolicyCatalog.KeyIntelLowLatency) != "1"
+                && PolicyResolver.GlobalValue(PolicyCatalog.KeyIntelLowLatency) == "1";
+        }
+
+        internal static bool CfgPowerYieldInheritanceNeedsConfirmation(GameProfile profile)
+        {
+            return profile != null
+                && PolicyResolver.Read(profile, PolicyCatalog.KeyPowerYield) != "1"
+                && PolicyResolver.GlobalValue(PolicyCatalog.KeyPowerYield) == "1";
         }
 
         internal static string CfgOverrideSummary(GameProfile profile)

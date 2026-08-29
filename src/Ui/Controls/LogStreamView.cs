@@ -184,7 +184,7 @@ namespace PaviseApp
 
         protected override void OnPaintBackground(PaintEventArgs e)
         {
-            if (Backdrop.Active) { Backdrop.Paint(e.Graphics, this, e.ClipRectangle); return; }
+            if (Backdrop.AppliesTo(this)) { Backdrop.Paint(e.Graphics, this, e.ClipRectangle); return; }
             base.OnPaintBackground(e);
         }
 
@@ -218,7 +218,7 @@ namespace PaviseApp
                 : Col.Lerp(Theme.Card, Theme.Inset, (index & 1) == 0 ? 0.06f : 0.16f);
             using (GraphicsPath path = Theme.TechPath(frame, Theme.S(8)))
             {
-                using (var fill = new SolidBrush(Backdrop.CardFill(surface))) g.FillPath(fill, path);
+                using (var fill = new SolidBrush(Backdrop.CardFill(this, surface))) g.FillPath(fill, path);
                 using (var border = new Pen(index == selected ? Col.Alpha(signal, 170) : Theme.Stroke)) g.DrawPath(border, path);
             }
             using (var live = new Pen(signal, Math.Max(1.5f, Theme.S(2))))

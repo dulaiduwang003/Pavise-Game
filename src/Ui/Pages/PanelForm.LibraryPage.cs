@@ -279,9 +279,7 @@ namespace PaviseApp
             lstGames.SetItems(fresh);
             if (keepId != null) SelectProfile(keepId);
             bool empty = lstGames.Items.Count == 0;
-            bool wasShown = lstGames.Visible;
             lstGames.Visible = !empty;
-            if (!empty && !wasShown) Fx.SlideIn(lstGames);
             if (gameListPanel != null) { gameListPanel.ShowEmpty = empty; gameListPanel.Invalidate(); }
             if (lblLibraryCount != null) lblLibraryCount.Text = "GAME PROFILES  /  " + profiles.Count.ToString("00");
             SyncLibraryHint();

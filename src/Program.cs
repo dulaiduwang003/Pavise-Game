@@ -19,7 +19,7 @@ namespace PaviseApp
     internal static class App
     {
         public const string DisplayName = "PAVISE";
-        public const string Version = "2.1.3.0";
+        public const string Version = "2.1.3.1";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string QqGroup = "1051472054";
@@ -289,21 +289,18 @@ namespace PaviseApp
             try { InterruptAttribution.CleanupStaleSession(); } catch { }
             RenderLane.HealFromCrash();
             GpuPrefStage.HealFromCrash();
+            try { AppGpuPreferences.HealFromCrash(); } catch { }
+            try { IntelGraphicsTweaks.HealFromCrash(); } catch { }
+            // 已下架的 IFEO 提优/关 CFG 只剩历史残留。全局开关用户没有逐游戏
+            // 退役字段，不会触发库重置流程，这里按账本一次性收回旧写入。
+            try { if (IfeoBoost.HasResidue()) IfeoBoost.RestoreAll(); } catch { }
+            try { if (CfgOffTweak.HasResidue()) CfgOffTweak.RestoreAll(); } catch { }
             CrashGuard.HealFromCrash();
             try { IrqRelocate.HealFromCrash(); } catch { }
 
             bool pendingPanel = Settings.Load(PendingPanelKey, false);
             if (pendingPanel) Settings.Save(PendingPanelKey, false);
 
-
-            if (Settings.Load("GmIfeoBoost", false))
-                try
-                {
-                    int preArmed = IfeoBoost.PreArmAll();
-                    if (preArmed > 0)
-                        Logger.Log(Lang.T("log.program.4") + preArmed + Lang.T("log.program.5"));
-                }
-                catch { }
 
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
@@ -354,6 +351,7 @@ namespace PaviseApp
             {
                 try { SvcPause.HealFromCrash(); } catch { }
                 try { DoTweak.HealFromCrash(); } catch { }
+                try { OptionalServicePause.HealFromCrash(); } catch { }
                 lock (startGate)
                 {
                     if (exiting) return;
@@ -547,6 +545,7 @@ namespace PaviseApp
             SystemEvents.SessionEnded += (s, e) =>
             {
                 try { gameMode.Enabled = false; } catch { }
+                try { OptionalServicePause.Restore(); } catch { }
                 try { PowerPlan.Restore(); } catch { }
                 try { GameDvr.Restore(); } catch { }
                 try { Mmcss.Restore(); } catch { }

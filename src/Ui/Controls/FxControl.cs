@@ -45,7 +45,7 @@ namespace PaviseApp
 
         protected void FillBg(Graphics g)
         {
-            if (Backdrop.Active) { Backdrop.PaintOnCard(g, this, ClientRectangle); return; }
+            if (Backdrop.AppliesTo(this)) { Backdrop.PaintOnCard(g, this, ClientRectangle); return; }
             using (var b = new SolidBrush(EffBg)) g.FillRectangle(b, ClientRectangle);
         }
     }

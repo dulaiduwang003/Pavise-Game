@@ -33,7 +33,11 @@ namespace PaviseApp
             {
                 int index;
                 var tab = control as TechTabs;
-                if (tab != null && tabs.TryGetValue(path, out index)) tab.Index = index;
+                if (tab != null && tabs.TryGetValue(path, out index))
+                {
+                    tab.Index = index;
+                    tab.SnapToSelection();
+                }
             });
             root.PerformLayout();
             Visit(root, "", delegate(Control control, string path)

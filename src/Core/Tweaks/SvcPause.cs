@@ -11,7 +11,7 @@ namespace PaviseApp
         internal static readonly string[] Names = { "SysMain", "WSearch" };
         private const string Flag = "PrevSvcPaused";
 
-        private static readonly ServicePauser pauser = new ServicePauser(Names, Flag, false);
+        private static readonly ServicePauser pauser = new ServicePauser(Names, Flag);
 
         public static bool Activate()
         {
@@ -37,8 +37,8 @@ namespace PaviseApp
             bool ok = pauser.Restore(out remain);
             if (had)
             {
-                if (remain.Count == 0) Logger.Log(Lang.T("log.svcpause.4"));
-                else Logger.Log(Lang.T("log.svcpause.5") + string.Join(" ", remain.ToArray()) + Lang.T("log.svcpause.6"));
+                if (ok) Logger.Log(Lang.T("log.svcpause.4"));
+                else Logger.Log(Lang.T("log.svcpause.5") + (remain.Count == 0 ? Lang.T("t.versionmigrations.2") : string.Join(" ", remain.ToArray())) + Lang.T("log.svcpause.6"));
             }
             return ok;
         }

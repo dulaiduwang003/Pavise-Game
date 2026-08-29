@@ -46,6 +46,7 @@ namespace PaviseApp
         public static bool Applied { get { return engine.EnabledByPavise; } }
         public static bool HasResidue { get { return engine.HasResidue; } }
         public static bool RebootedSinceWrite(string deviceId) { return engine.RebootedSinceWrite(deviceId); }
+        public static IrqRebootState GetRebootState(string deviceId) { return engine.GetRebootState(deviceId); }
 
         public static ulong AutoMask()
         {

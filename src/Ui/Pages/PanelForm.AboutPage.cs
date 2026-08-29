@@ -159,7 +159,6 @@ namespace PaviseApp
                                 dlUrl = r.Url;
                                 btnCheck.SetBounds(Theme.S(20), Theme.S(cardH - 58), Theme.S(224), Theme.S(42));
                                 btnDl.Visible = true;
-                                Fx.SlideIn(btnDl);
                                 lblUpd.ForeColor = Theme.Green;
                                 lblUpd.Text = Lang.F("upd.newver", r.Latest, App.VersionTag)
                                     + " " + Lang.F("upd.route", r.Source);

@@ -175,6 +175,7 @@ namespace PaviseApp
 
         public ModePickerPanel()
         {
+            UseBackdrop = false;
             Fill = Theme.Card; Border = Theme.StrokeHi; BackColor = Theme.Bg; Radius = Theme.S(14); AccentEdge = true;
             var title = new Label
             {

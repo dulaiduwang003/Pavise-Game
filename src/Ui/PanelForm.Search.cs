@@ -17,16 +17,14 @@ namespace PaviseApp
 
         private void SetSearchFlyout(bool visible)
         {
+            if (visible) StopPageReveal();
             if (searchFlyout == null) return;
-            if (visible && modeFlyout != null) { Fx.Settle(modeFlyout); modeFlyout.Visible = false; }
-            if (visible && powerFlyout != null) { Fx.Settle(powerFlyout); powerFlyout.Visible = false; }
-            if (!visible) Fx.Settle(searchFlyout);
+            if (visible) { SetModeFlyout(false); SetPowerFlyout(false); }
             searchFlyout.Visible = visible;
             if (visible)
             {
                 searchFlyout.BringToFront();
                 searchFlyout.Open();
-                Fx.DropIn(searchFlyout);
             }
         }
 

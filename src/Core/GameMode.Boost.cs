@@ -23,9 +23,6 @@ namespace PaviseApp
             public int RendererPid;
             public long RendererCreation;
             public string RendererName;
-            public string RendererPath;
-            public string RendererProfileId;
-            public bool RendererLearnable;
             public bool WriteDenied;
             public uint PriorityTarget;
         }
@@ -67,10 +64,6 @@ namespace PaviseApp
                     live.Add(pid);
                     if (pass.RendererPid <= 0 || pid != pass.RendererPid) continue;
                     rendererSeen = true;
-                    if (irqProbe.IsPlacementCapturing
-                        && CfgOffTweak.NeedsApply(pass.RendererName))
-                        irqProbe.InvalidateGameMask();
-                    if (CfgOffTweak.Enabled) CfgOffTweak.EnsureForGame(pass.RendererName);
                     bool known, needTweak, needPlacement;
                     bool auditDue = ComputeAuditDue(pid, pass, out known, out needTweak, out needPlacement);
                     bool placementAudit = irqProbe.RequiresPlacementAudit;
@@ -242,9 +235,6 @@ namespace PaviseApp
             pass.RendererPid = -1;
             pass.RendererCreation = 0;
             pass.RendererName = null;
-            pass.RendererPath = null;
-            pass.RendererProfileId = null;
-            pass.RendererLearnable = false;
             lock (sync)
                 if (activeDetection != null && activeDetection.RendererCandidateSelected)
                 {
@@ -253,13 +243,6 @@ namespace PaviseApp
                         activeDetection.RendererCreation;
                     pass.RendererName =
                         activeDetection.RendererName;
-                    pass.RendererPath =
-                        activeDetection.RendererPath;
-                    pass.RendererProfileId =
-                        activeDetection.Profile != null
-                            ? activeDetection.Profile.Id : null;
-                    pass.RendererLearnable =
-                        activeDetection.RendererLearnable;
                 }
             pass.WriteDenied = pass.RendererPid > 0 && ProtectedGameRoster.Contains(pass.RendererName);
             ResolvePriorityTarget(pass);
@@ -401,7 +384,7 @@ namespace PaviseApp
             if (h == IntPtr.Zero)
             {
                 bool noSuchProcess = Native.LastOpenProcessFailureWasNoSuchProcess();
-                // 后续保护名单/IFEO 处理可能写注册表；已有 IRQ capture 必须先停。
+                // 后续保护名单处理可能写注册表；已有 IRQ capture 必须先停。
                 if (irqProbe.IsPlacementCapturing)
                 {
                     // 已确认进程不存在是正常收口，不能把整局废弃；
@@ -415,7 +398,6 @@ namespace PaviseApp
                 if (!noSuchProcess)
                 {
                     ProtectedGameRoster.Remember(pass.RendererName);
-                    if (EffIfeo && EffBoost) { IfeoBoost.Arm(pass.RendererName); IfeoBoost.EnsureForGame(pass.RendererName); }
                 }
             }
             return h;
@@ -668,8 +650,7 @@ namespace PaviseApp
                 bool known, needTweak, needPlacement;
                 ComputeAuditDue(pass.RendererPid, pass,
                     out known, out needTweak, out needPlacement);
-                bool wouldMutate = CfgOffTweak.NeedsApply(pass.RendererName)
-                    || AuditWouldMutateRenderer(
+                bool wouldMutate = AuditWouldMutateRenderer(
                         h, pass.RendererPid, creation,
                         pass, known, needTweak);
                 if (wouldMutate)
@@ -1527,11 +1508,6 @@ namespace PaviseApp
                 + Lang.T("log.gamemodeboost.36"));
 
             ProtectedGameRoster.Remember(rendererName);
-            if (EffIfeo && EffBoost)
-            {
-                IfeoBoost.Arm(rendererName);
-                IfeoBoost.EnsureForGame(rendererName);
-            }
         }
 
         internal static bool ApplyAndVerifyBoostState(IntPtr process, out uint actualPriority, out int actualIo, out int error)
@@ -1750,17 +1726,44 @@ namespace PaviseApp
 
         public bool PanicRestore()
         {
+            // Restoration may do slow registry/native work before posting its
+            // request to Loop. Keep new purges blocked for that entire interval.
+            Interlocked.Increment(ref standbyCleanerRestorePending);
+            InvalidateStandbyCleanerWork();
+            InvalidateEnglishInputWork();
+            BeginIntelGraphicsRestore();
+            try { return PanicRestoreCore(); }
+            finally
+            {
+                EndIntelGraphicsRestore();
+                Interlocked.Decrement(ref standbyCleanerRestorePending);
+            }
+        }
+
+        private bool PanicRestoreCore()
+        {
             int cleared = SelfProtectedRoster.Clear();
             if (cleared > 0)
                 Logger.Log(Lang.T("log.gamemodeboost.46") + cleared + Lang.T("log.gamemodeboost.47"));
-            int unarmed = IfeoBoost.ClearArmed();
-            if (unarmed > 0)
-                Logger.Log(Lang.T("log.gamemodeboost.48") + unarmed + Lang.T("log.gamemodeboost.49"));
-            bool ifeoOk = IrqMutationBoundary.Run<bool>(IfeoBoost.RestoreAll);
+            // 已下架的 IFEO/CFG 历史残留也归紧急恢复管；写注册表前须停 IRQ capture。
+            bool legacyOk = true;
+            if (IfeoBoost.HasResidue())
+                legacyOk &= IrqMutationBoundary.Run<bool>(IfeoBoost.RestoreAll);
+            if (CfgOffTweak.HasResidue())
+                legacyOk &= IrqMutationBoundary.Run<bool>(CfgOffTweak.RestoreAll);
             int fusesCleared;
-            lock (sync) { fusesCleared = envFused.Count; envFused.Clear(); }
+            lock (sync)
+            {
+                // Purged cache has no restoration. Resetting other environment
+                // fuses must not revive a failed cleaner or a corrupt opt-in.
+                bool keepStandbyFuse = envFused.Contains("standby");
+                fusesCleared = envFused.Count - (keepStandbyFuse ? 1 : 0);
+                envFused.Clear();
+                if (keepStandbyFuse) envFused.Add("standby");
+            }
             foreach (string envKey in EnvKeys)
-                if (Settings.Load("EnvFuse_" + envKey, false)) Settings.Save("EnvFuse_" + envKey, false);
+                if (envKey != "standby" && Settings.Load("EnvFuse_" + envKey, false))
+                    Settings.Save("EnvFuse_" + envKey, false);
             SaveCounter(PowerFailStreakKey, 0);
             SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyPState, 0);
             SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyPreRender, 0);
@@ -1777,6 +1780,9 @@ namespace PaviseApp
                 lock (sync)
                 {
                     panicReq = true;
+                    InvalidateStandbyCleanerWork();
+                    InvalidateEnglishInputWork();
+                    InvalidateIntelGraphicsWork();
                     InvalidateRendererHandoff();
                 }
                 kick.Set();
@@ -1787,7 +1793,7 @@ namespace PaviseApp
                     long left = (deadline - DateTime.UtcNow.Ticks) / TimeSpan.TicksPerMillisecond;
                     if (left <= 0) return false;
                     if (!panicDone.WaitOne((int)left)) return false;
-                    if (Volatile.Read(ref panicServed) == mine) return panicResult && ifeoOk;
+                    if (Volatile.Read(ref panicServed) == mine) return panicResult && legacyOk;
                     panicDone.Reset();
                 }
             }
@@ -1800,6 +1806,9 @@ namespace PaviseApp
 
         private bool Deactivate(string reason, bool quiet)
         {
+            InvalidateStandbyCleanerWork();
+            EndEnglishInputSession();
+            InvalidateIntelGraphicsWork();
             InvalidateRendererHandoff();
             // 先封账再做任何恢复，避免把 Pavise 自己撤电源/核心/网络设置产生的 DPC
             // 记到刚结束的游戏里。ReportFinish 内部按 Present→DPC 收口。
@@ -1834,7 +1843,6 @@ namespace PaviseApp
             preStagedNvPath = null;
             try { cpuLimit.Stop(); } catch { }
             Interlocked.Exchange(ref sessionStartTicks, 0);
-            overlayScanned = false;
             partitionHintLogged = false;
 
             bool clean = UnboostGames();
@@ -1858,9 +1866,12 @@ namespace PaviseApp
                 transitionProbeRendererCreation = 0;
             }
             ClearSticky();
+            bool standbyClean = standbyCleaner == null || standbyCleaner.Drain(8000);
+            bool inputClean = DrainEnglishInput(8000);
+            bool intelClean = DrainIntelGraphics(8000);
             // 维持旧语义：恢复动作已经完成后，再把原本会由 ReportFinish 抛出的异常交给上层。
             if (reportFailure != null) throw reportFailure;
-            return clean && envClean && backgroundClean;
+            return clean && envClean && backgroundClean && standbyClean && inputClean && intelClean;
         }
 
     }

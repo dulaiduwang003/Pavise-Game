@@ -20,6 +20,8 @@ namespace PaviseApp
         public Color Fill = Theme.Card;
         public Color Border = Color.Empty;
         public bool AccentEdge;
+        // 关闭时连同嵌套控件一起隔离封面，供同窗弹出组件使用。
+        public bool UseBackdrop = true;
 
         public RoundPanel()
         {
@@ -31,7 +33,7 @@ namespace PaviseApp
         // 卡片要透就得自己先把身下那块封面补上 WinForms 的子控件没有真透明
         protected override void OnPaintBackground(PaintEventArgs e)
         {
-            if (Backdrop.Active) { Backdrop.Paint(e.Graphics, this, e.ClipRectangle); return; }
+            if (Backdrop.AppliesTo(this)) { Backdrop.Paint(e.Graphics, this, e.ClipRectangle); return; }
             base.OnPaintBackground(e);
         }
 
@@ -45,12 +47,12 @@ namespace PaviseApp
             {
                 if (Theme.LightMode)
                 {
-                    Color top = Backdrop.CardFill(Col.Lerp(Fill, Theme.Accent, 0.035f));
-                    Color bottom = Backdrop.CardFill(Col.Lerp(Fill, Theme.Bg, 0.13f));
+                    Color top = Backdrop.CardFill(this, Col.Lerp(Fill, Theme.Accent, 0.035f));
+                    Color bottom = Backdrop.CardFill(this, Col.Lerp(Fill, Theme.Bg, 0.13f));
                     using (var b = new LinearGradientBrush(r, top, bottom, LinearGradientMode.Vertical))
                         g.FillPath(b, path);
                 }
-                else using (var b = new SolidBrush(Backdrop.CardFill(Fill))) g.FillPath(b, path);
+                else using (var b = new SolidBrush(Backdrop.CardFill(this, Fill))) g.FillPath(b, path);
                 if (Theme.LightMode && AccentEdge)
                 {
                     g.SetClip(path);
@@ -90,7 +92,7 @@ namespace PaviseApp
 
         protected override void OnPaintBackground(PaintEventArgs e)
         {
-            if (Backdrop.Active) { Backdrop.Paint(e.Graphics, this, e.ClipRectangle); return; }
+            if (Backdrop.AppliesTo(this)) { Backdrop.Paint(e.Graphics, this, e.ClipRectangle); return; }
             base.OnPaintBackground(e);
         }
     }
@@ -161,8 +163,8 @@ namespace PaviseApp
             Color tailBase = Theme.LightMode
                 ? Col.Lerp(surfaceBase, Theme.Inset, 0.34f)
                 : Col.Lerp(surfaceBase, Theme.Inset, 0.22f);
-            Color surface = Backdrop.CardFill(surfaceBase);
-            Color tail = Backdrop.CardFill(tailBase);
+            Color surface = Backdrop.CardFill(this, surfaceBase);
+            Color tail = Backdrop.CardFill(this, tailBase);
             using (GraphicsPath path = Theme.TechPath(frame, Theme.S(8)))
             {
                 using (var fill = new LinearGradientBrush(frame, surface, tail, LinearGradientMode.Horizontal))
@@ -178,7 +180,7 @@ namespace PaviseApp
                 g.FillEllipse(glow, railX - Theme.S(5), railY - Theme.S(5), railSize + Theme.S(10), railSize + Theme.S(10));
             using (var socket = Theme.TechPath(new Rectangle(railX, railY, railSize, railSize), Theme.S(6)))
             {
-                using (var fill = new SolidBrush(Backdrop.CardFill(
+                using (var fill = new SolidBrush(Backdrop.CardFill(this,
                     Col.Lerp(Theme.Inset, Theme.Sel, 0.22f + hover.Value * 0.22f))))
                     g.FillPath(fill, socket);
                 using (var border = new Pen(Col.Alpha(Theme.Accent, (int)(72 + hover.Value * 92))))
@@ -205,9 +207,8 @@ namespace PaviseApp
 
             int trackY = Height - Theme.S(8);
             int trackW = Math.Max(Theme.S(34), (Width - Theme.S(120)) / 3);
-            int offset = (int)(hover.Value * Theme.S(10));
-            using (var track = new Pen(Col.Alpha(Theme.Accent, 120)))
-                g.DrawLine(track, Theme.S(98), trackY, Theme.S(98) + trackW + offset, trackY);
+            using (var track = new Pen(Col.Alpha(Theme.Accent, (int)(120 + 80 * hover.Value))))
+                g.DrawLine(track, Theme.S(98), trackY, Theme.S(98) + trackW, trackY);
         }
     }
 

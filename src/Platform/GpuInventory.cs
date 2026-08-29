@@ -22,6 +22,9 @@ namespace PaviseApp
         public string HardwareId;
         public GpuVendor Vendor;
         public bool Integrated;
+        // False means the displayed kind used the legacy bus/VRAM heuristic.
+        // New GPU-routing writes must require an authoritative driver answer.
+        public bool IntegratedKnown;
         public long VideoMemoryBytes;
         public int BusNumber = -1;
 
@@ -219,6 +222,7 @@ namespace PaviseApp
                                 Vendor = vendor,
                                 BusNumber = bus,
                                 VideoMemoryBytes = memory,
+                                IntegratedKnown = driverReported.HasValue,
                                 Integrated = IntegratedFrom(vendor, bus, memory, driverReported)
                             });
                         }

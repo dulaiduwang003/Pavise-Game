@@ -116,18 +116,6 @@ namespace PaviseApp
             set { gpuDemoteOn = value; SuppressionCore.GpuDemoteEnabled = value; Settings.Save("GmGpuDemote", value); RequestPolicyApply(); }
         }
 
-        public bool IfeoBoostFallback
-        {
-            get { return ifeoOn; }
-            set
-            {
-                ifeoOn = value; Settings.Save("GmIfeoBoost", value);
-                if (!value)
-                    IrqMutationBoundary.Run(delegate { IfeoBoost.RestoreAll(); });
-                RequestPolicyApply();
-            }
-        }
-
         public bool RenderLaneOn
         {
             get { return renderLaneOn; }
@@ -152,6 +140,58 @@ namespace PaviseApp
             set { pauseDlOn = value; Settings.Save("GmPauseDl", value); if (value) ClearEnvFuse("do"); RequestPolicyApply(); }
         }
 
+        public bool PauseServices
+        {
+            get { return pauseServicesOn; }
+            set
+            {
+                pauseServicesOn = value;
+                Settings.Save(PolicyCatalog.KeyPauseServices, value);
+                PauseServicesPolicyChanged(value);
+            }
+        }
+
+        private void PauseServicesPolicyChanged(bool enabledValue)
+        {
+            System.Threading.Interlocked.Increment(ref optionalServiceGeneration);
+            if (enabledValue) ClearEnvFuse("services");
+            else lock (sync)
+            {
+                envNextAttempt.Remove("services");
+                envFailures.Remove("services");
+            }
+            // Only wake the existing worker. Never query/stop services on the UI thread.
+            RequestPolicyApply();
+        }
+
+        public bool DisableCpuIdle
+        {
+            get { return disableCpuIdleOn; }
+            set
+            {
+                // Invalidate before persistence, which may block or fail.
+                lock (sync)
+                {
+                    System.Threading.Interlocked.Increment(ref cpuIdleGeneration);
+                    disableCpuIdleOn = value;
+                }
+                Settings.Save(PolicyCatalog.KeyDisableCpuIdle, value);
+                CpuIdlePolicyChanged(value);
+            }
+        }
+
+        private void CpuIdlePolicyChanged(bool enabledValue)
+        {
+            if (enabledValue) ClearEnvFuse("cpuidle");
+            else lock (sync)
+            {
+                envNextAttempt.Remove("cpuidle");
+                envFailures.Remove("cpuidle");
+            }
+            // The UI records intent only; all power writes use the worker gate.
+            RequestPolicyApply();
+        }
+
         public bool GpuPowerLift
         {
             get { return gpuPowerMaxOn; }
@@ -165,10 +205,20 @@ namespace PaviseApp
             get { return vramShieldOn; }
             set
             {
-                vramShieldOn = value;
-                Settings.Save(VramShield.EnabledKey, value);
-                if (value) VramShield.ClearFuse();
-                else VramShield.Release();
+                if (value)
+                {
+                    if (!Settings.Save(VramShield.EnabledKey, true)) return;
+                    vramShieldOn = true;
+                    VramShield.ClearFuse();
+                }
+                else
+                {
+                    // A failed preference write must not prevent an immediate
+                    // best-effort release. It cannot promise a persisted opt-out.
+                    vramShieldOn = false;
+                    Settings.Save(VramShield.EnabledKey, false);
+                    VramShield.Release();
+                }
                 RequestPolicyApply();
             }
         }
@@ -381,7 +431,12 @@ namespace PaviseApp
             get { return planSwitch; }
             set
             {
-                planSwitch = value; Settings.Save("PowerPlanOn", value);
+                lock (sync)
+                {
+                    System.Threading.Interlocked.Increment(ref cpuIdleGeneration);
+                    planSwitch = value;
+                }
+                Settings.Save("PowerPlanOn", value);
                 if (value) { SaveCounter(PowerFailStreakKey, 0); ClearEnvFuse("overlay"); }
                 RequestPolicyApply();
             }

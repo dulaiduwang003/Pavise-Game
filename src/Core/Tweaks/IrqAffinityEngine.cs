@@ -7,6 +7,8 @@ using Microsoft.Win32;
 
 namespace PaviseApp
 {
+    internal enum IrqRebootState { Unknown, AwaitingReboot, Rebooted }
+
     internal sealed class IrqAffinityEngine
     {
         private const int PolicyAllCloseProcessors = 1;
@@ -135,21 +137,34 @@ namespace PaviseApp
             byte[] maskBytes = useMask ? MaskToBytes(preferredMask) : null;
 
             bool anyOk = false;
+            string stamp = BootStamp();
             var applied = new List<Target>();
             var dirty = new List<string>();
             foreach (Target t in targets)
             {
                 bool atTarget = t.Policy.Matches(policyValue)
                     && (!useMask || t.Mask.Matches(maskBytes));
-                if (atTarget
+                bool alreadyConfigured = atTarget
                     && (touched.Contains(t.DeviceId)
-                        || (!t.Policy.HasBackup && (!useMask || !t.Mask.HasBackup))))
-                { anyOk = true; continue; }
-                bool ok;
-                if (useMask)
-                    ok = t.Policy.Apply(policyValue) & t.Mask.Apply(maskBytes);
-                else
-                    ok = t.Policy.Apply(policyValue);
+                        || (!t.Policy.HasBackup && (!useMask || !t.Mask.HasBackup)));
+                string bootKey = BootKeyFor(t.DeviceId);
+                bool attempted;
+                bool ok = ApplyWithBootStamp(alreadyConfigured, stamp,
+                    delegate(string value) { return Settings.SaveStr(bootKey, value); },
+                    delegate { return Settings.LoadStr(bootKey, ""); },
+                    delegate
+                    {
+                        return useMask ? t.Policy.Apply(policyValue) & t.Mask.Apply(maskBytes)
+                            : t.Policy.Apply(policyValue);
+                    }, out attempted);
+                if (!attempted)
+                {
+                    // No registry change took place, so do not restore an older
+                    // backup merely because this write's marker could not be saved.
+                    if (ok) anyOk = true;
+                    else Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.bootstamp") + t.DeviceId);
+                    continue;
+                }
                 if (ok) { anyOk = true; applied.Add(t); }
                 else
                 {
@@ -186,8 +201,6 @@ namespace PaviseApp
                 Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.9"));
                 return false;
             }
-            string stamp = BootStamp();
-            foreach (Target t2 in applied) Settings.SaveStr(BootKeyFor(t2.DeviceId), stamp);
             if (applied.Count > 0)
                 Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.10") + applied.Count + Lang.T("log.irqaffinityengine.11")
                     + (useMask ? Lang.T("log.irqaffinityengine.12") + preferredMask.ToString("X") + " " : Lang.T("log.irqaffinityengine.13"))
@@ -204,7 +217,55 @@ namespace PaviseApp
 
         public bool RebootedSinceWrite(string deviceId)
         {
-            return SameBoot(Settings.LoadStr(BootKeyFor(deviceId), ""), BootStamp()) == false;
+            return GetRebootState(deviceId) == IrqRebootState.Rebooted;
+        }
+
+        public IrqRebootState GetRebootState(string deviceId)
+        {
+            return RebootStateFromStamps(Settings.LoadStr(BootKeyFor(deviceId), ""), BootStamp());
+        }
+
+        internal static bool RebootedSinceStamp(string saved, string now)
+        {
+            return RebootStateFromStamps(saved, now) == IrqRebootState.Rebooted;
+        }
+
+        internal static IrqRebootState RebootStateFromStamps(string saved, string now)
+        {
+            long before, current;
+            if (!TryParseBootStamp(saved, out before) || !TryParseBootStamp(now, out current))
+                return IrqRebootState.Unknown;
+            long elapsed = current - before;
+            if (elapsed >= -BootStampToleranceSeconds && elapsed <= BootStampToleranceSeconds)
+                return IrqRebootState.AwaitingReboot;
+            return elapsed > 0 ? IrqRebootState.Rebooted : IrqRebootState.Unknown;
+        }
+
+        private static bool TryParseBootStamp(string stamp, out long seconds)
+        {
+            return long.TryParse(stamp, NumberStyles.Integer, CultureInfo.InvariantCulture, out seconds)
+                && seconds > 0 && seconds <= DateTime.MaxValue.Ticks / TimeSpan.TicksPerSecond;
+        }
+
+        internal static bool ApplyWithBootStamp(bool alreadyConfigured, string stamp,
+            Func<string, bool> saveStamp, Func<string> loadStamp, Func<bool> apply, out bool attempted)
+        {
+            attempted = false;
+            // A no-op must neither alter a valid marker nor invent one for an external pin.
+            if (alreadyConfigured) return true;
+            long seconds;
+            if (!TryParseBootStamp(stamp, out seconds)
+                || saveStamp == null || loadStamp == null || apply == null) return false;
+            try
+            {
+                // Persist before changing affinity. A failed save can leave an
+                // older boot marker intact; it must never describe a new write.
+                if (!saveStamp(stamp) || !string.Equals(loadStamp(), stamp, StringComparison.Ordinal))
+                    return false;
+            }
+            catch { return false; }
+            attempted = true;
+            return apply();
         }
 
         internal void RememberBootStampForTest(string deviceId)

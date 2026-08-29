@@ -1,4 +1,4 @@
-﻿// @author bdth 2074055628@qq.com
+// @author bdth 2074055628@qq.com
 // 文件用途 枚举这台机器上所有能改中断亲和的设备 以及它们当前的亲和策略
 
 using System;
@@ -40,27 +40,42 @@ namespace PaviseApp
 
         public bool Effective
         {
-            get { return IsPinned && SeenOnCpus != 0 && (SeenOnCpus & ~Mask) == 0; }
+            get { return IsPinned && RebootedSincePin && HasPlacementEvidence
+                && (SeenOnCpus & ~Mask) == 0; }
         }
 
-        public bool RebootedSincePin;
+        public IrqRebootState RebootState;
+        public bool RebootedSincePin
+        {
+            get { return RebootState == IrqRebootState.Rebooted; }
+            set { RebootState = value ? IrqRebootState.Rebooted : IrqRebootState.AwaitingReboot; }
+        }
 
-        public bool AwaitingReboot { get { return IsPinned && !Effective && !RebootedSincePin; } }
+        // SeenOnCpus comes from completed records for the current boot. A new
+        // registry write must not reuse those pre-write records as its proof.
+        private bool HasPlacementEvidence
+        {
+            get { return SeenOnCpus != 0 && !SharedStats && Verdict != null
+                && Verdict.VersionVerified && !Verdict.MaskTruncated; }
+        }
+
+        public bool AwaitingReboot
+        {
+            get { return IsPinned && RebootState == IrqRebootState.AwaitingReboot; }
+        }
 
         public bool PlacementMismatch
         {
             get
             {
-                if (!IsPinned || RebootedSincePin == false) return false;
-                if (SeenOnCpus == 0) return false;
-                if (Verdict != null && Verdict.MaskTruncated) return false;
-                return (SeenOnCpus & ~Mask) != 0;
+                return IsPinned && RebootedSincePin && HasPlacementEvidence
+                    && (SeenOnCpus & ~Mask) != 0;
             }
         }
 
         public bool Unverified
         {
-            get { return IsPinned && !Effective && RebootedSincePin && !PlacementMismatch; }
+            get { return IsPinned && !Effective && !AwaitingReboot && !PlacementMismatch; }
         }
         public bool SharedStats;
 
@@ -293,7 +308,7 @@ namespace PaviseApp
 
         public static void AttachVerdicts(List<IrqDevice> devices, List<IrqDriverVerdict> verdicts)
         {
-            AttachVerdicts(devices, verdicts, IrqSessionProbe.DriverVersionOf);
+            AttachVerdicts(devices, verdicts, IrqSessionProbe.CreateDriverVersionReader());
         }
 
         internal static void AttachVerdicts(List<IrqDevice> devices,
@@ -346,7 +361,7 @@ namespace PaviseApp
 
         internal static void VerifyCurrentVersions(List<IrqDriverVerdict> verdicts)
         {
-            VerifyCurrentVersions(verdicts, IrqSessionProbe.DriverVersionOf);
+            VerifyCurrentVersions(verdicts, IrqSessionProbe.CreateDriverVersionReader());
         }
 
         internal static void VerifyCurrentVersions(List<IrqDriverVerdict> verdicts,
@@ -443,8 +458,8 @@ namespace PaviseApp
             foreach (IrqDevice d in devices)
             {
                 if (!d.IsPinned) { d.RebootedSincePin = true; continue; }
-                try { d.RebootedSincePin = IrqRelocate.RebootedSinceWrite(d.InstanceId); }
-                catch { d.RebootedSincePin = true; }
+                try { d.RebootState = IrqRelocate.GetRebootState(d.InstanceId); }
+                catch { d.RebootState = IrqRebootState.Unknown; }
             }
 
             List<string> owned;

@@ -450,7 +450,7 @@ namespace PaviseApp
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
-            if (Backdrop.Active) Backdrop.PaintOnCard(g, this, ClientRectangle);
+            if (Backdrop.AppliesTo(this)) Backdrop.PaintOnCard(g, this, ClientRectangle);
             else using (var bg = new SolidBrush(BackColor)) g.FillRectangle(bg, ClientRectangle);
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
