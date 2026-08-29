@@ -222,7 +222,11 @@ namespace PaviseApp
             if (clean == 0) return;
             gameMode.SetProfileOverride(cfgProfileId, PolicyCatalog.KeyCoreMask,
                 clean == CpuTopology.AllMask ? "" : clean.ToString("X"));
-            gameMode.ClearProfileOverride(cfgProfileId, PolicyCatalog.KeyStrictCores);
+            // An empty custom mask means no custom affinity, not an override of
+            // the global partition choice. Full selection must explicitly opt out.
+            if (clean == CpuTopology.AllMask)
+                gameMode.SetProfileOverride(cfgProfileId, PolicyCatalog.KeyStrictCores, "0");
+            else gameMode.ClearProfileOverride(cfgProfileId, PolicyCatalog.KeyStrictCores);
             gameMode.ClearProfileOverride(cfgProfileId, PolicyCatalog.KeyCoreDomainAlt);
             SyncCfgRows();
         }
@@ -276,10 +280,7 @@ namespace PaviseApp
             bool manual = idx == cfgCoreManualIndex;
             if (cfgCoreManualGroup != null)
             {
-                bool wasShown = cfgCoreManualGroup.Visible;
-                if (!manual) Fx.Settle(cfgCoreManualGroup);
                 cfgCoreManualGroup.Visible = manual;
-                if (manual && !wasShown) Fx.SlideIn(cfgCoreManualGroup);
             }
             if (!manual) return;
 
@@ -293,7 +294,9 @@ namespace PaviseApp
             ulong applied = CfgCoreOverrideMask(out hasMask, out maskEmpty);
             ulong appliedEffective = hasMask
                 ? (applied != 0 ? applied : CpuTopology.AllMask) : 0;
-            bool dirty = appliedEffective == 0 || cfgCorePending != appliedEffective;
+            bool dirty = appliedEffective == 0 || cfgCorePending != appliedEffective
+                || (cfgCorePending == CpuTopology.AllMask
+                    && PolicyResolver.Read(cfgProfile, PolicyCatalog.KeyStrictCores) == "1");
 
             if (cfgCoreState != null)
             {

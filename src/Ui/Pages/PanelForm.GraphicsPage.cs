@@ -1,6 +1,7 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 构建显卡页 逐游戏的驱动项与全局呈现路径开关
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -16,24 +17,22 @@ namespace PaviseApp
         private TierPicker dlssPicker, nvllPicker;
         private TechTabs gfxTabs;
         private DBPanel[] gfxTabPanels;
+        private readonly List<Action> graphicsSync = new List<Action>();
 
         private void BuildGraphicsPage()
         {
+            graphicsSync.Clear();
             int y = PageHeader(pageGraphics, Lang.T("nav.graphics"), Lang.T("v16.graphics.sub"), 2);
 
-            // 横幅是整页的状态 这一页有 NVIDIA 和 AMD 两个标签 只看 NvApi 是错的
-            //   2.1.0 AMD 调优回归之后 A 卡机器上 NVIDIA 侧当然读不到
-            //   但 AMD 标签页是好的 整页却报红说本项停用 会让 A 卡用户以为整页都用不了
-            //   两家任意一家可用 这一页就算就绪 各项自己的可用性由各自卡片的说明负责
             bool nvOk = NvApi.Available;
-            bool gfxOk = nvOk || AdlxTweaks.Available;
+            bool gfxOk = nvOk || AdlxTweaks.Available || IntelGraphicsTweaks.HasAvailable;
             var gfxBanner = new ModuleBanner();
             gfxBanner.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(72));
             gfxBanner.Code = "GRAPHICS DRIVER // 04";
             gfxBanner.TitleText = Lang.T("nav.graphics");
-            gfxBanner.Detail = gfxOk ? Lang.T("v16.graphics.sub") : Lang.T("set.gfx.none");
-            gfxBanner.State = gfxOk ? "DRIVER API READY" : "DRIVER API OFFLINE";
-            gfxBanner.StateColor = gfxOk ? Theme.Green : Theme.Danger;
+            gfxBanner.Detail = gfxOk ? Lang.T("v16.graphics.sub") : Lang.T("set.gfx.commononly");
+            gfxBanner.State = gfxOk ? "DRIVER API READY" : "WINDOWS SETTINGS";
+            gfxBanner.StateColor = gfxOk ? Theme.Green : Theme.Dim;
             gfxBanner.Glyph = "gpu";
             pageGraphics.Controls.Add(gfxBanner);
             y += 84;
@@ -41,29 +40,24 @@ namespace PaviseApp
             gfxTabs = new TechTabs();
             gfxTabs.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(38));
             gfxTabs.SetTabs(
-                new[] { "NVIDIA", "AMD" },
-                new[] { Lang.T("sec.pergame"), Lang.T("sec.amd") });
+                new[] { Lang.T("gfx.common"), "NVIDIA", "AMD", "Intel" },
+                new[] { Lang.T("gfx.common.sub"), Lang.T("sec.pergame"),
+                    Lang.T("sec.amd"), Lang.T("sec.intel") });
             pageGraphics.Controls.Add(gfxTabs);
             y += 48;
 
-            gfxTabPanels = MakeTabPanels(pageGraphics, gfxTabs, 2, y);
+            gfxTabPanels = MakeTabPanels(pageGraphics, gfxTabs, 4, y);
+            BuildCommonGraphicsPage(gfxTabPanels[0]);
+            BuildIntelGraphicsPage(gfxTabPanels[3]);
 
-            Control scroll = gfxTabPanels[0];
+            Control scroll = gfxTabPanels[1];
             int sy = 2, cardH;
 
             string nvNone = Lang.T("set.nv.none");
 
-            bool hybridGpu = GpuPrefStage.Supported;
-            var swGpuPref = MakeSwitch(hybridGpu && gameMode.GpuPrefStageOn, null);
-            swGpuPref.CheckedChanged += (s, e) => gameMode.GpuPrefStageOn = swGpuPref.Checked;
-            swGpuPref.Enabled = hybridGpu;
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.gpupref"),
-                hybridGpu ? Lang.T("set.gpupref.n") : Lang.T("set.gpupref.single"), swGpuPref, out cardH);
-            sy += cardH + 8;
-
             swNvMax = MakeSwitch(gameMode.NvMaxPerf, null);
-            swNvMax.CheckedChanged += (s, e) => gameMode.NvMaxPerf = swNvMax.Checked;
-            swNvMax.Enabled = nvOk;
+            BindGraphicsToggle(swNvMax, delegate { return gameMode.NvMaxPerf; },
+                delegate(bool v) { gameMode.NvMaxPerf = v; }, delegate { return NvApi.Available; });
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvmax"),
                 nvOk ? Lang.T("set.nvmax.n") : nvNone, swNvMax, out cardH);
             sy += cardH + 8;
@@ -72,8 +66,8 @@ namespace PaviseApp
             nvllPicker.Size = new Size(Theme.S(270), Theme.S(28));
             nvllPicker.Labels = new[] { Lang.T("frl.off"), Lang.T("nvll.on"), Lang.T("nvll.ultra") };
             nvllPicker.Index = NvllIndexOf(gameMode.NvLowLatMode);
-            nvllPicker.IndexChanged = delegate(int i) { gameMode.NvLowLatMode = NvllModeOf(i); };
-            nvllPicker.Enabled = nvOk;
+            BindGraphicsPicker(nvllPicker, delegate { return NvllIndexOf(gameMode.NvLowLatMode); },
+                delegate(int i) { gameMode.NvLowLatMode = NvllModeOf(i); }, delegate { return NvApi.Available; });
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvll"),
                 nvOk ? Lang.T("set.nvll.n") : nvNone, nvllPicker, out cardH);
             sy += cardH + 8;
@@ -81,8 +75,8 @@ namespace PaviseApp
             bool smoothGpu = NvDrsTweaks.SmoothMotionGpuCapable();
             bool smoothOk = nvOk && NvDrsTweaks.SmoothMotionSupported();
             swNvSmooth = MakeSwitch(gameMode.NvSmoothMotion, null);
-            swNvSmooth.CheckedChanged += (s, e) => gameMode.NvSmoothMotion = swNvSmooth.Checked;
-            swNvSmooth.Enabled = smoothOk;
+            BindGraphicsToggle(swNvSmooth, delegate { return gameMode.NvSmoothMotion; },
+                delegate(bool v) { gameMode.NvSmoothMotion = v; }, NvDrsTweaks.SmoothMotionSupported);
             string smoothDesc = !nvOk ? nvNone
                 : smoothOk ? Lang.T("set.nvsmooth.n")
                 : !smoothGpu ? Lang.T("set.nvsmooth.nogpu")
@@ -91,8 +85,8 @@ namespace PaviseApp
             sy += cardH + 8;
 
             swNvShader = MakeSwitch(gameMode.NvShaderCacheMax, null);
-            swNvShader.CheckedChanged += (s, e) => gameMode.NvShaderCacheMax = swNvShader.Checked;
-            swNvShader.Enabled = nvOk;
+            BindGraphicsToggle(swNvShader, delegate { return gameMode.NvShaderCacheMax; },
+                delegate(bool v) { gameMode.NvShaderCacheMax = v; }, delegate { return NvApi.Available; });
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvshader"),
                 nvOk ? Lang.T("set.nvshader.n") : nvNone, swNvShader, out cardH);
             sy += cardH + 8;
@@ -103,8 +97,8 @@ namespace PaviseApp
             dlssPicker.Size = new Size(Theme.S(270), Theme.S(28));
             dlssPicker.Labels = new[] { Lang.T("frl.off"), Lang.T("dlss.latest"), "J", "K" };
             dlssPicker.Index = DlssIndexOf(gameMode.NvDlssMode);
-            dlssPicker.IndexChanged = delegate(int i) { gameMode.NvDlssMode = DlssModeOf(i); };
-            dlssPicker.Enabled = dlssOk;
+            BindGraphicsPicker(dlssPicker, delegate { return DlssIndexOf(gameMode.NvDlssMode); },
+                delegate(int i) { gameMode.NvDlssMode = DlssModeOf(i); }, NvDrsTweaks.DlssOverrideSupported);
             string dlssDesc = !nvOk ? nvNone
                 : dlssOk ? Lang.T("set.nvdlss.n")
                 : !dlssGpu ? Lang.T("set.nvdlss.nogpu")
@@ -128,14 +122,14 @@ namespace PaviseApp
                 }
             }
             swNvRebar = MakeSwitch(gameMode.NvRebar, null);
-            swNvRebar.CheckedChanged += (s, e) => gameMode.NvRebar = swNvRebar.Checked;
-            swNvRebar.Enabled = nvOk && (rebarUsable || gameMode.NvRebar);
+            BindGraphicsToggle(swNvRebar, delegate { return gameMode.NvRebar; },
+                delegate(bool v) { gameMode.NvRebar = v; }, delegate { return NvApi.Available && rebarUsable; });
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvrebar"),
                 nvOk ? rebarDesc : nvNone, swNvRebar, out cardH);
             sy += cardH + 8;
 
             int nvTabBottom = sy;
-            scroll = gfxTabPanels[1]; sy = 2;
+            scroll = gfxTabPanels[2]; sy = 2;
 
             bool amdOk = AdlxTweaks.Available;
             string amdNone = Lang.T("set.amd.none");
@@ -143,51 +137,100 @@ namespace PaviseApp
 
             bool alagOk = amdOk && AdlxTweaks.AntiLagSupported();
             swAmdAlag = MakeSwitch(gameMode.AmdAntiLag, null);
-            swAmdAlag.CheckedChanged += (s2, e) => gameMode.AmdAntiLag = swAmdAlag.Checked;
-            swAmdAlag.Enabled = alagOk;
+            BindGraphicsToggle(swAmdAlag, delegate { return gameMode.AmdAntiLag; },
+                delegate(bool v) { gameMode.AmdAntiLag = v; },
+                delegate { return AdlxTweaks.Available && AdlxTweaks.AntiLagSupported(); });
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.amdalag"),
                 !amdOk ? amdNone : alagOk ? Lang.T("set.amdalag.n") : amdNoSup, swAmdAlag, out cardH);
             sy += cardH + 8;
 
             bool afmfOk = amdOk && AdlxTweaks.AfmfSupported();
             swAmdAfmf = MakeSwitch(gameMode.AmdAfmf, null);
-            swAmdAfmf.CheckedChanged += (s2, e) => gameMode.AmdAfmf = swAmdAfmf.Checked;
-            swAmdAfmf.Enabled = afmfOk;
+            BindGraphicsToggle(swAmdAfmf, delegate { return gameMode.AmdAfmf; },
+                delegate(bool v) { gameMode.AmdAfmf = v; },
+                delegate { return AdlxTweaks.Available && AdlxTweaks.AfmfSupported(); });
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.amdafmf"),
                 !amdOk ? amdNone : afmfOk ? Lang.T("set.amdafmf.n") : amdNoSup, swAmdAfmf, out cardH);
             sy += cardH + 8;
 
             bool rsrOk = amdOk && AdlxTweaks.RsrSupported();
             swAmdRsr = MakeSwitch(gameMode.RsrUpscale, null);
-            swAmdRsr.CheckedChanged += delegate
-            {
-                if (swAmdRsr.Checked && !gameMode.RsrUpscale)
+            BindGraphicsToggle(swAmdRsr, delegate { return gameMode.RsrUpscale; },
+                delegate(bool v) { gameMode.RsrUpscale = v; },
+                delegate { return AdlxTweaks.Available && AdlxTweaks.RsrSupported(); },
+                delegate
                 {
-                    if (!PaviseDialog.Confirm(this, Lang.T("set.rsr"), Lang.T("rsr.warn"), DlgKind.Warn))
-                    {
-                        swAmdRsr.SetSilently(false);
-                        return;
-                    }
-                }
-                gameMode.RsrUpscale = swAmdRsr.Checked;
-            };
-            swAmdRsr.Enabled = rsrOk;
+                    return PaviseDialog.Confirm(this, Lang.T("set.rsr"), Lang.T("rsr.warn"), DlgKind.Warn);
+                });
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.rsr"),
                 !amdOk ? amdNone : rsrOk ? Lang.T("set.rsr.n") : amdNoSup, swAmdRsr, out cardH);
             sy += cardH + 8;
 
             // 功耗墙两家都支持 挂在有驱动那家的页签底部
-            Control powerScroll = nvOk ? gfxTabPanels[0] : gfxTabPanels[1];
+            Control powerScroll = nvOk ? gfxTabPanels[1] : gfxTabPanels[2];
             int powerY = nvOk ? nvTabBottom : sy;
             bool powerOk = GpuPowerMax.Supported();
             swGpuPower = MakeSwitch(gameMode.GpuPowerLift, null);
-            swGpuPower.CheckedChanged += delegate { gameMode.GpuPowerLift = swGpuPower.Checked; };
-            swGpuPower.Enabled = powerOk;
+            BindGraphicsToggle(swGpuPower, delegate { return gameMode.GpuPowerLift; },
+                delegate(bool v) { gameMode.GpuPowerLift = v; },
+                delegate { powerOk = GpuPowerMax.Supported(); return powerOk; }, null,
+                delegate { return powerOk; });
             MakeAutoCard(powerScroll, 6, powerY, ScrollContentW, 76, Lang.T("set.gpupower"),
                 powerOk ? Lang.T("set.gpupower.n") : Lang.T("set.gpupower.nosup"), swGpuPower, out cardH);
 
-            EnableCardCollapse(gfxTabPanels[0]);
             EnableCardCollapse(gfxTabPanels[1]);
+            EnableCardCollapse(gfxTabPanels[2]);
+        }
+
+        private void BindGraphicsToggle(Toggle toggle, Func<bool> read, Action<bool> write,
+            Func<bool> supported, Func<bool> confirm = null)
+        {
+            BindGraphicsToggle(toggle, read, write, supported, confirm, supported);
+        }
+
+        private void BindGraphicsToggle(Toggle toggle, Func<bool> read, Action<bool> write,
+            Func<bool> supported, Func<bool> confirm, Func<bool> presentationSupported)
+        {
+            Action sync = delegate
+            {
+                bool on = read();
+                toggle.SetSilently(on);
+                toggle.Enabled = on || presentationSupported();
+            };
+            graphicsSync.Add(sync);
+            toggle.CheckedChanged += delegate
+            {
+                bool on = toggle.Checked;
+                // Capability loss leaves an opt-out available. Recheck after a
+                // modal warning as well; enabling the control is not authorization.
+                bool allowed = !on;
+                if (on && supported())
+                    allowed = confirm == null || read() || (confirm() && supported());
+                if (allowed) write(on);
+                sync();
+            };
+            sync();
+        }
+
+        private void BindGraphicsPicker(TierPicker picker, Func<int> read, Action<int> write,
+            Func<bool> supported)
+        {
+            Action sync = delegate
+            {
+                int index = read();
+                picker.Index = index;
+                picker.Enabled = index != 0 || supported();
+            };
+            graphicsSync.Add(sync);
+            picker.IndexChanged = delegate(int index)
+            {
+                // All vendor pickers use index zero for Off. Other segments stay
+                // rejected if a previously enabled picker lost driver support.
+                if (index == 0 || (index > 0 && index < picker.Labels.Length && supported()))
+                    write(index);
+                sync();
+            };
+            sync();
         }
 
         internal static int NvllIndexOf(string mode)
@@ -212,16 +255,9 @@ namespace PaviseApp
 
         private void SyncGraphicsToggles()
         {
-            if (swNvMax != null) swNvMax.SetSilently(gameMode.NvMaxPerf);
-            if (nvllPicker != null) nvllPicker.Index = NvllIndexOf(gameMode.NvLowLatMode);
-            if (swNvSmooth != null) swNvSmooth.SetSilently(gameMode.NvSmoothMotion);
-            if (swNvShader != null) swNvShader.SetSilently(gameMode.NvShaderCacheMax);
-            if (dlssPicker != null) dlssPicker.Index = DlssIndexOf(gameMode.NvDlssMode);
-            if (swNvRebar != null) swNvRebar.SetSilently(gameMode.NvRebar);
-            if (swAmdAlag != null) swAmdAlag.SetSilently(gameMode.AmdAntiLag);
-            if (swAmdAfmf != null) swAmdAfmf.SetSilently(gameMode.AmdAfmf);
-            if (swAmdRsr != null) swAmdRsr.SetSilently(gameMode.RsrUpscale);
-            if (swGpuPower != null) swGpuPower.SetSilently(gameMode.GpuPowerLift);
+            SyncCommonGraphicsToggles();
+            SyncIntelGraphicsToggles();
+            if (graphicsSync != null) foreach (Action sync in graphicsSync) sync();
         }
     }
 }

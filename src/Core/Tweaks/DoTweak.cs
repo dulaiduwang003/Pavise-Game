@@ -1,19 +1,28 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 限制传递优化并管理相关服务状态
 using System;
+using System.Collections.Generic;
 using Microsoft.Win32;
 
 namespace PaviseApp
 {
     internal static class DoTweak
     {
+        // 会话日记键由恢复完成判定共同引用 改名必须两边一起
+        internal const string BandwidthJournalKey = "PrevDoBgBw";
+        internal const string StopFlag = "PrevDoSvcStopped";
         private static readonly ReversibleReg BgBw = new ReversibleReg(
             Registry.LocalMachine, @"SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization",
-            "DOMaxBackgroundDownloadBandwidth", RegistryValueKind.DWord, "PrevDoBgBw");
+            "DOMaxBackgroundDownloadBandwidth", RegistryValueKind.DWord, BandwidthJournalKey);
         private const string SvcName = "DoSvc";
-        private const string StopFlag = "PrevDoSvcStopped";
+        private static readonly ServicePauser pauser = new ServicePauser(new[] { SvcName }, StopFlag);
         private static readonly object lk = new object();
         private static bool active;
+
+        public static bool HasResidue
+        {
+            get { lock (lk) { return HasBandwidthBackup() || pauser.HasResidue; } }
+        }
 
         public static bool Activate()
         {
@@ -21,30 +30,16 @@ namespace PaviseApp
             {
                 if (active) return true;
                 bool registryOk = false;
-                if (!Native.IsDomainJoined()) registryOk = BgBw.Apply(1);
+                if (!IsDomainJoined()) registryOk = ApplyBandwidth();
                 else Logger.Log(Lang.T("log.dotweak.9"));
-                int before = SvcState.Query(SvcName);
-                if (before == 4) Settings.SaveStr(StopFlag, "1");
-                bool confirmedStop;
-                bool stopped = SvcCtl.StopIfRunning(SvcName, out confirmedStop);
-                if (!confirmedStop && before == 4 && SvcState.StopTaken(SvcState.Query(SvcName)))
-                    confirmedStop = true;
-                if (!stopped) stopped = confirmedStop;
-                if (stopped)
-                {
-                    Settings.SaveStr(StopFlag, "1");
-                    if (Settings.LoadStr(StopFlag, "") != "1")
-                    {
-                        SvcCtl.EnsureStarted(SvcName);
-                        stopped = false;
-                        Logger.Log(Lang.T("log.dotweak.1"));
-                    }
-                }
-                else if (before == 4) Settings.SaveStr(StopFlag, "");
-                active = registryOk || stopped;
+                List<string> stopped, confirmed;
+                bool ledgerLost;
+                bool serviceOk = pauser.Activate(out stopped, out confirmed, out ledgerLost);
+                if (ledgerLost) Logger.Log(Lang.T("log.dotweak.1"));
+                active = registryOk || (serviceOk && stopped.Count > 0);
                 Logger.Log(active
                     ? Lang.T("log.dotweak.2") + (registryOk ? Lang.T("log.dotweak.3") : Lang.T("log.dotweak.4"))
-                        + (confirmedStop ? Lang.T("log.dotweak.5") : "") + " "
+                        + (serviceOk && confirmed.Count > 0 ? Lang.T("log.dotweak.5") : "") + " "
                     : Lang.T("log.dotweak.6"));
                 return active;
             }
@@ -54,23 +49,89 @@ namespace PaviseApp
         {
             lock (lk)
             {
-                bool did = false;
-                if (BgBw.HasBackup && BgBw.Restore()) did = true;
-                if (Settings.LoadStr(StopFlag, "").Length > 0)
-                {
-                    if (SvcCtl.EnsureStarted(SvcName)) { Settings.SaveStr(StopFlag, ""); did = true; }
-                    else Logger.Log(Lang.T("log.dotweak.7"));
-                }
-                if (did) Logger.Log(Lang.T("log.dotweak.8"));
+                bool hadBandwidth = HasBandwidthBackup();
+                bool bandwidthOk = !hadBandwidth || RestoreBandwidth();
+                bool hadService = pauser.HasResidue;
+                List<string> remain;
+                bool serviceOk = pauser.Restore(out remain);
+                if (!serviceOk) Logger.Log(Lang.T("log.dotweak.7"));
                 active = false;
-                return !BgBw.HasBackup && Settings.LoadStr(StopFlag, "").Length == 0;
+                bool complete = bandwidthOk && !HasBandwidthBackup() && serviceOk && !pauser.HasResidue;
+                if (complete && (hadBandwidth || hadService)) Logger.Log(Lang.T("log.dotweak.8"));
+                return complete;
             }
         }
 
         public static void HealFromCrash()
         {
-            if (BgBw.HasBackup || Settings.LoadStr(StopFlag, "").Length > 0) Restore();
+            if (HasResidue) Restore();
         }
 
+        private static bool IsDomainJoined()
+        {
+            try
+            {
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+                return DomainJoinedForTest == null || DomainJoinedForTest();
+#else
+                return Native.IsDomainJoined();
+#endif
+            }
+            catch { return true; }
+        }
+
+        private static bool HasBandwidthBackup()
+        {
+            try
+            {
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+                if (BandwidthHasBackupForTest != null) return BandwidthHasBackupForTest();
+#endif
+                return BgBw.HasBackup;
+            }
+            catch { return true; }
+        }
+
+        private static bool ApplyBandwidth()
+        {
+            try
+            {
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+                return BandwidthApplyForTest != null && BandwidthApplyForTest();
+#else
+                return BgBw.Apply(1);
+#endif
+            }
+            catch { return false; }
+        }
+
+        private static bool RestoreBandwidth()
+        {
+            try
+            {
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+                return BandwidthRestoreForTest != null && BandwidthRestoreForTest();
+#else
+                return BgBw.Restore();
+#endif
+            }
+            catch { return false; }
+        }
+
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+        internal static Func<bool> DomainJoinedForTest, BandwidthHasBackupForTest;
+        internal static Func<bool> BandwidthApplyForTest, BandwidthRestoreForTest;
+        internal static ServicePauser PauserForTest { get { return pauser; } }
+
+        internal static void ResetForTest()
+        {
+            lock (lk)
+            {
+                active = false; pauser.ResetForTest();
+                DomainJoinedForTest = null; BandwidthHasBackupForTest = null;
+                BandwidthApplyForTest = null; BandwidthRestoreForTest = null;
+            }
+        }
+#endif
     }
 }

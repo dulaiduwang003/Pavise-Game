@@ -8,7 +8,8 @@ namespace PaviseApp
 {
     internal static class AdlxTweaks
     {
-        private const string SnapKey = "AmdSnap";
+        // 会话日记键由恢复完成判定共同引用 改名必须两边一起
+        internal const string SnapKey = "AmdSnap";
         public const int RisSharpness = 80;
         private static readonly object lk = new object();
 

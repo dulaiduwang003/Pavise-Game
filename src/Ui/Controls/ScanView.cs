@@ -144,7 +144,7 @@ namespace PaviseApp
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
-            if (Backdrop.Active) Backdrop.PaintOnCard(g, this, ClientRectangle);
+            if (Backdrop.AppliesTo(this)) Backdrop.PaintOnCard(g, this, ClientRectangle);
             else using (var back = new SolidBrush(Theme.Bg)) g.FillRectangle(back, ClientRectangle);
             if (Width <= 8 || Height <= 8) return;
 
@@ -156,7 +156,7 @@ namespace PaviseApp
             using (GraphicsPath path = Theme.TechPath(frame, Theme.S(14)))
             {
                 using (var bg = new LinearGradientBrush(frame,
-                        Backdrop.CardFill(Theme.Inset), Backdrop.CardFill(Theme.Card),
+                        Backdrop.CardFill(this, Theme.Inset), Backdrop.CardFill(this, Theme.Card),
                         LinearGradientMode.ForwardDiagonal))
                     g.FillPath(bg, path);
                 g.SetClip(path);

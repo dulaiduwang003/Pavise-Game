@@ -21,8 +21,8 @@ namespace PaviseApp
             new HashSet<string>(StringComparer.Ordinal);
 
         internal static readonly string[] EnvKeys =
-            { "do", "wlanscan", "wu",
-              "pqos", "awake", "rsr", "gpupower", "amdalag", "amdafmf" };
+            { "do", "wlanscan", "wu", "services", "cpuidle", "standby",
+              "pqos", "awake", "rsr", "gpupower", "amdalag", "amdafmf", "intelll" };
 
         private static string EnvLabel(string key)
         {
@@ -31,12 +31,16 @@ namespace PaviseApp
                 case "do": return Lang.T("t.gamemodeenv.1");
                 case "wlanscan": return Lang.T("t.gamemodeenv.2");
                 case "wu": return Lang.T("t.gamemodeenv.3");
+                case "services": return Lang.T("gm.pausesvc");
+                case "cpuidle": return Lang.T("gm.disablecpuidle");
+                case "standby": return Lang.T("gm.standbycleaner");
                 case "pqos": return Lang.T("t.gamemodeenv.4");
                 case "awake": return Lang.T("t.gamemodeenv.5");
                 case "rsr": return Lang.T("set.rsr");
                 case "gpupower": return Lang.T("t.gamemodeenv.6");
                 case "amdalag": return "AMD Anti-Lag";
                 case "amdafmf": return Lang.T("t.gamemodeenv.8");
+                case "intelll": return Lang.T("set.intel.lowlatency");
                 default: return key;
             }
         }
@@ -136,12 +140,28 @@ namespace PaviseApp
                 case "do": pauseDlOn = false; Settings.Save("GmPauseDl", false); break;
                 case "wlanscan": wlanGuardOn = false; Settings.Save("GmWlanGuard", false); break;
                 case "wu": pauseUpdateOn = false; Settings.Save("GmPauseUpdate", false); break;
+                case "services": pauseServicesOn = false; Settings.Save(PolicyCatalog.KeyPauseServices, false); break;
+                case "cpuidle":
+                    disableCpuIdleOn = false;
+                    Interlocked.Increment(ref cpuIdleGeneration);
+                    Settings.Save(PolicyCatalog.KeyDisableCpuIdle, false);
+                    break;
+                case "standby":
+                    standbyCleanerOn = false;
+                    InvalidateStandbyCleanerWork();
+                    Settings.Save(PolicyCatalog.KeyStandbyCleaner, false);
+                    break;
                 case "pqos": break;
                 case "awake": awakeOn = false; Settings.Save("GmAwake", false); break;
                 case "rsr": rsrOn = false; Settings.Save("GmRsr", false); break;
                 case "gpupower": gpuPowerMaxOn = false; Settings.Save("GmGpuPowerMax", false); break;
                 case "amdalag": amdAntiLag = false; Settings.Save("AmdAntiLag", false); break;
                 case "amdafmf": amdAfmf = false; Settings.Save("AmdAfmf", false); break;
+                case "intelll":
+                    intelLowLatencyOn = false;
+                    InvalidateIntelGraphicsWork();
+                    Settings.Save(PolicyCatalog.KeyIntelLowLatency, false);
+                    break;
                 case "overlay": break;
             }
             string policyKey = EnvPolicyKey(key);
@@ -155,9 +175,13 @@ namespace PaviseApp
                 case "do": return PolicyCatalog.KeyPauseDl;
                 case "wlanscan": return PolicyCatalog.KeyWlanGuard;
                 case "wu": return PolicyCatalog.KeyPauseUpdate;
+                case "services": return PolicyCatalog.KeyPauseServices;
+                case "cpuidle": return PolicyCatalog.KeyDisableCpuIdle;
+                case "standby": return PolicyCatalog.KeyStandbyCleaner;
                 case "awake": return PolicyCatalog.KeyAwake;
                 case "amdalag": return PolicyCatalog.KeyAmdAntiLag;
                 case "amdafmf": return PolicyCatalog.KeyAmdAfmf;
+                case "intelll": return PolicyCatalog.KeyIntelLowLatency;
                 default: return null;
             }
         }
@@ -165,7 +189,11 @@ namespace PaviseApp
         private void ClearActiveSessionOverride(string policyKey, string label)
         {
             PolicySnapshot snap = sessionPolicy;
-            if (snap == null || snap.ProfileId == null || !snap.HasOverride(policyKey)) return;
+            if (snap == null || snap.ProfileId == null
+                || (policyKey != PolicyCatalog.KeyPauseServices && policyKey != PolicyCatalog.KeyDisableCpuIdle
+                    && policyKey != PolicyCatalog.KeyStandbyCleaner
+                    && policyKey != PolicyCatalog.KeyIntelLowLatency
+                    && !snap.HasOverride(policyKey))) return;
             bool cleared = false;
             lock (sync)
                 foreach (GameProfile p in profiles)
@@ -218,6 +246,7 @@ namespace PaviseApp
             doActive = EnvStep("do", usePauseDl, doActive, DoTweak.Activate, DoTweak.Restore);
             wlanActive = EnvStep("wlanscan", pWlan, wlanActive, WlanGuard.Activate, WlanGuard.Restore);
             wuActive = EnvStep("wu", pWu && slowReady, wuActive, UpdatePause.Activate, UpdatePause.Restore);
+            ApplyOptionalServices(slowReady);
             pqosActive = EnvStep("pqos", true, pqosActive, PresenceQos.Activate, PresenceQos.Restore);
             awakeActive = EnvStep("awake", pAwake, awakeActive, DisplayAwake.Activate, DisplayAwake.Restore);
             rsrActive = EnvStep("rsr", rsrOn, rsrActive, AdlxTweaks.ActivateRsr, AdlxTweaks.RestoreRsr);
@@ -280,6 +309,8 @@ namespace PaviseApp
                 }
             }
 
+            ApplyCpuIdlePolicy(usePlan && slowReady);
+
             if (!timerRaised)
             {
                 bool globalRes = GlobalTimerResTweak.EnabledByPavise;
@@ -302,9 +333,91 @@ namespace PaviseApp
         }
 
         private bool wuActive;
+        private bool optionalServicesActive;
+        private bool optionalServicesWanted;
+        private int optionalServiceGeneration;
         private bool amdAlagActive;
         private bool amdAfmfActive;
         private bool rsrActive;
+
+        // Unlike a frozen tuning snapshot, this reversible service switch must
+        // honor a user turning it off during a match. Explicit game overrides
+        // still take precedence over the global default.
+        private bool EffPauseServices
+        {
+            get
+            {
+                PolicySnapshot sp = sessionPolicy;
+                // IsGlobal means "no overrides when the snapshot was made";
+                // an identified game can still receive its first override now.
+                if (sp == null || string.IsNullOrEmpty(sp.ProfileId)) return pauseServicesOn;
+                lock (sync)
+                    foreach (GameProfile profile in profiles)
+                        if (string.Equals(profile.Id, sp.ProfileId, StringComparison.OrdinalIgnoreCase))
+                        {
+                            string value;
+                            return profile.Overrides.TryGetValue(PolicyCatalog.KeyPauseServices, out value)
+                                ? value == "1" : pauseServicesOn;
+                        }
+                return false;
+            }
+        }
+
+        private void ApplyOptionalServices(bool slowReady)
+        {
+            if (OptionalServicePause.Active) OptionalServicePause.ObserveStops();
+            Func<bool> mayContinue = CaptureOptionalServicesAdmission();
+            optionalServicesActive = StepOptionalServices(slowReady && mayContinue(), optionalServicesActive,
+                delegate { return OptionalServicePause.HasResidue; },
+                delegate { return OptionalServicePause.Active; },
+                delegate { return OptionalServicePause.Activate(mayContinue); }, OptionalServicePause.Restore);
+        }
+
+        private Func<bool> CaptureOptionalServicesAdmission()
+        {
+            int generation = Volatile.Read(ref optionalServiceGeneration);
+            return delegate
+            {
+                return generation == Volatile.Read(ref optionalServiceGeneration)
+                    && !stopping && !panicReq && enabled && !ProfileStoreSaveFailed && EffPauseServices;
+            };
+        }
+
+        private bool StepOptionalServices(bool want, bool applied,
+            Func<bool> hasResidue, Func<bool> isApplied, Func<bool> activate, Func<bool> restore)
+        {
+            lock (sync)
+            {
+                if (envFused.Contains("services")) want = false;
+                if (optionalServicesWanted != want)
+                {
+                    optionalServicesWanted = want;
+                    // A user cancellation must not wait on an activation's
+                    // backoff. Repeated restore failures still retain theirs.
+                    envNextAttempt.Remove("services");
+                    envFailures.Remove("services");
+                }
+            }
+            // A partially failed activation can leave a real restoration debt
+            // even though EnvStep returned false. Never let want==active hide it.
+            if (want) applied = isApplied();
+            else if (hasResidue()) applied = true;
+            bool result = EnvStep("services", want, applied, activate, restore);
+            // A canceled Activate can successfully roll back and return true.
+            // That is not an applied strategy and must not suppress a later retry.
+            return want ? result && isApplied() : result;
+        }
+
+#if PAVISE_SELFTEST
+        internal bool ProbeEffPauseServices { get { return EffPauseServices; } }
+        internal Func<bool> CaptureOptionalServicesAdmissionForTest() { return CaptureOptionalServicesAdmission(); }
+        internal bool StepOptionalServicesForTest(bool want, bool applied, OptionalServicePauseEngine engine)
+        {
+            return StepOptionalServices(want, applied, delegate { return engine.HasResidue; },
+                delegate { return engine.Active; },
+                delegate { return engine.Activate(); }, engine.Restore);
+        }
+#endif
 
         // Anti-Lag 开启时驱动会把 Chill 一并暂关 两份快照要一起还原
         private static bool RestoreAmdAntiLagEnv()
@@ -436,10 +549,33 @@ namespace PaviseApp
             ClearActiveSessionOverride(policyKey, label);
         }
 
+        private int envResidueGeneration = -1;
+        private bool envResidueOther, envResidueNvList, envResidueGpuPref;
+
+        // 残留账本全部经由 Settings 落盘，只有本进程会写。空闲时逐轮读注册表
+        //   纯属浪费：账本判定按 Settings 写代数缓存，任何配置写入立即失效，
+        //   结果与逐轮实读完全一致；内存活动标志与字段门控仍然实时求值。
         private bool EnvActive()
         {
-            return doActive || wlanActive || wuActive || pqosActive || awakeActive || gpwActive || planActive || timerRaised
-                || NvGameResidueNeedsRestore || PowerPlan.HasResidue;
+            if (doActive || wlanActive || wuActive || optionalServicesActive
+                || pqosActive || awakeActive || gpwActive || planActive || timerRaised
+                || rsrActive || amdAlagActive || amdAfmfActive
+                || IntelGraphicsTweaks.Active
+                || (standbyCleaner != null && standbyCleaner.HasInFlight)) return true;
+            int generation = Settings.MutationGeneration;
+            if (generation != envResidueGeneration)
+            {
+                envResidueOther = DoTweak.HasResidue || UpdatePause.HasResidue
+                    || OptionalServicePause.HasResidue || PresenceQos.HasResidue
+                    || GpuPowerMax.HasResidue() || AdlxTweaks.HasResidue()
+                    || PowerPlan.HasResidue || IntelGraphicsTweaks.HasResidue;
+                envResidueNvList = NvDrsTweaks.HasGameResidue;
+                envResidueGpuPref = GpuPrefStage.HasResidue;
+                envResidueGeneration = generation;
+            }
+            return envResidueOther
+                || NvGameResidueGate(envResidueNvList)
+                || GpuPrefResidueGate(envResidueGpuPref);
         }
 
         // 待命预写入故意把驱动键留在驱动里等游戏启动 那不是残留
@@ -447,13 +583,26 @@ namespace PaviseApp
         //   而 Deactivate 顺手把 preStagedNvPath 清成 null 预写入的去重守卫失效
         //   下一轮扫描又写一遍 实测每 4 到 8 秒一轮 预写入从来没生效超过一轮
         //   游戏模式关掉时不豁免 那时候预写入也该跟着一起收干净
+        private bool NvGameResidueGate(bool hasResidue)
+        {
+            return hasResidue && !(enabled && preStagedNvPath != null);
+        }
+
+        // NVIDIA and GPU preference staging share the pending path, but
+        // disabling only GPU staging must still release its own receipt.
+        private bool GpuPrefResidueGate(bool hasResidue)
+        {
+            return hasResidue && !(enabled && gpuPrefStageOn && preStagedNvPath != null);
+        }
+
         private bool NvGameResidueNeedsRestore
         {
-            get
-            {
-                if (!NvDrsTweaks.HasGameResidue) return false;
-                return !(enabled && preStagedNvPath != null);
-            }
+            get { return NvGameResidueGate(NvDrsTweaks.HasGameResidue); }
+        }
+
+        private bool GpuPrefStageResidueNeedsRestore
+        {
+            get { return GpuPrefResidueGate(GpuPrefStage.HasResidue); }
         }
 
         private string lastResidueLogged;
@@ -470,13 +619,20 @@ namespace PaviseApp
             if (sessionActive) parts.Add(Lang.T("t.gamemodeenv.29"));
             if (boostCount > 0) parts.Add(Lang.T("log.gamemodeboost.3") + boostCount + Lang.T("t.gamemodeenv.30"));
             if (core.AnyWith(SuppressReason.Background)) parts.Add(Lang.T("cfg.group.bg"));
-            if (doActive) parts.Add(Lang.T("t.gamemodeenv.31"));
+            if (doActive || DoTweak.HasResidue) parts.Add(Lang.T("t.gamemodeenv.31"));
             if (wlanActive) parts.Add(Lang.T("t.gamemodeenv.2"));
-            if (wuActive) parts.Add(Lang.T("t.gamemodeenv.32"));
-            if (pqosActive) parts.Add(Lang.T("t.gamemodeenv.33"));
+            if (wuActive || UpdatePause.HasResidue) parts.Add(Lang.T("t.gamemodeenv.32"));
+            if (optionalServicesActive || OptionalServicePause.HasResidue) parts.Add(Lang.T("gm.pausesvc"));
+            if (cpuIdleActive || PowerPlan.CpuIdleHasResidue) parts.Add(Lang.T("gm.disablecpuidle"));
+            if (standbyCleaner != null && standbyCleaner.HasInFlight) parts.Add(Lang.T("gm.standbycleaner"));
+            if (IntelGraphicsTweaks.Active || IntelGraphicsTweaks.HasResidue) parts.Add(Lang.T("set.intel.lowlatency"));
+            if (pqosActive || PresenceQos.HasResidue) parts.Add(Lang.T("t.gamemodeenv.33"));
             if (awakeActive) parts.Add(Lang.T("t.gamemodeenv.34"));
+            if (gpwActive || GpuPowerMax.HasResidue()) parts.Add(EnvLabel("gpupower"));
+            if (rsrActive || amdAlagActive || amdAfmfActive || AdlxTweaks.HasResidue()) parts.Add("AMD");
             if (planActive) parts.Add(Lang.T("t.gamemodeenv.35"));
             if (NvGameResidueNeedsRestore) parts.Add("NVIDIA Profile");
+            if (GpuPrefStageResidueNeedsRestore) parts.Add(Lang.T("set.gpupref"));
             if (timerRaised) parts.Add(Lang.T("t.gamemodeenv.36"));
             return parts.Count > 0 ? string.Join(" ", parts.ToArray()) : Lang.T("t.gamemodeenv.37");
         }
@@ -520,16 +676,24 @@ namespace PaviseApp
 
         private bool RestoreEnv()
         {
+            Interlocked.Increment(ref cpuIdleGeneration);
             bool ok = true;
+            if (!RestoreIntelGraphics()) ok = false;
             if (DoTweak.Restore()) doActive = false; else ok = false;
             if (WlanGuard.Restore()) wlanActive = false; else ok = false;
             if (UpdatePause.Restore()) wuActive = false; else ok = false;
+            if (OptionalServicePause.Restore()) optionalServicesActive = false; else ok = false;
             if (PresenceQos.Restore()) pqosActive = false; else ok = false;
             if (DisplayAwake.Restore()) awakeActive = false; else ok = false;
             if (AdlxTweaks.RestoreRsr()) rsrActive = false; else ok = false;
             if (GpuPowerMax.Restore()) gpwActive = false; else ok = false;
             if (RestoreAmdAntiLagEnv()) amdAlagActive = false; else ok = false;
             if (AdlxTweaks.RestoreAfmf()) amdAfmfActive = false; else ok = false;
+            // Retired controls can still leave a recorded session change after
+            // a failed startup restore. Retry those owned snapshots as well.
+            if (!AdlxTweaks.RestoreEnhancedSync()) ok = false;
+            if (!AdlxTweaks.RestoreRis()) ok = false;
+            if (!AdlxTweaks.RestoreFrtc()) ok = false;
             lock (driverStageGate)
             {
                 if (!NvDrsTweaks.RestoreAllGames()) ok = false;
@@ -541,6 +705,7 @@ namespace PaviseApp
                 if (PowerPlan.Restore())
                 {
                     planActive = false;
+                    cpuIdleActive = false;
                     lastPowerPolicyKey = -1;
                     Interlocked.Exchange(ref nextPowerAuditTicks, 0);
                 }
@@ -557,7 +722,26 @@ namespace PaviseApp
                 catch { ok = false; }
                 try { Native.RestorePowerThrottling(new IntPtr(-1), -1, -1); } catch { }
             }
-            return ok;
+            return EnvRestoreCompleted(ok);
+        }
+
+        private bool EnvRestoreCompleted(bool operationsSucceeded)
+        {
+            if (!operationsSucceeded || PowerPlan.HasResidue || OptionalServicePause.HasResidue
+                || IntelGraphicsTweaks.HasResidue) return false;
+            // A native restore may succeed while saving its cleared receipt
+            // fails. Require readable, empty session journals before resetting
+            // the retry backoff; persistent user preferences are not included.
+            string[] keys = { DoTweak.BandwidthJournalKey, DoTweak.StopFlag, UpdatePause.Flag,
+                PresenceQos.JournalKey, GpuPowerMax.SnapKey, AdlxTweaks.SnapKey, NvDrsTweaks.ListKey,
+                GpuPrefStage.JournalKey, PowerPlan.PlanJournalKey,
+                PowerPlan.CpuIdleLedgerKey, OptionalServicePause.LedgerKey, IntelGraphicsSettingsLedger.Key };
+            foreach (string key in keys)
+            {
+                string record;
+                if (!Settings.TryLoadStr(key, out record) || !string.IsNullOrEmpty(record)) return false;
+            }
+            return true;
         }
 
         private void ReleaseBackground()

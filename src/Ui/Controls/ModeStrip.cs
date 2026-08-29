@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 游戏配置页运行模式覆盖条 跟随全局与四档模式彩色分段 选中块滑动变色
+// 文件用途 游戏配置页运行模式覆盖条 跟随全局与四档模式彩色分段 选中态即时反馈
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -17,12 +17,7 @@ namespace PaviseApp
 
         private int idx;
         private int hoverIdx = -1;
-        private Motion slideX;
-        private Motion slideW;
-        private Motion colorT;
         private readonly Motion[] glow = new Motion[Order.Length + 1];
-        private bool slideReady;
-        private Color fromColor;
         private PerformancePreset global = PerformancePreset.Standard;
         public Action<int> IndexChanged;
 
@@ -32,10 +27,7 @@ namespace PaviseApp
                 | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
             BackColor = Theme.Card;
             Cursor = Cursors.Hand;
-            slideX.Speed = 0.30f; slideW.Speed = 0.30f; colorT.Speed = 0.24f;
             for (int i = 0; i < glow.Length; i++) glow[i].Speed = 0.26f;
-            fromColor = Theme.Accent;
-            colorT.Set(1f);
         }
 
         protected override void OnHandleCreated(EventArgs e)
@@ -52,14 +44,7 @@ namespace PaviseApp
 
         private void OnFrame(object s, EventArgs e)
         {
-            bool moved = slideX.Step();
-            if (moved && Math.Abs(slideX.Value - slideX.Target) < 0.75f) slideX.Set(slideX.Target);
-            if (slideW.Step())
-            {
-                moved = true;
-                if (Math.Abs(slideW.Value - slideW.Target) < 0.75f) slideW.Set(slideW.Target);
-            }
-            if (colorT.Step()) moved = true;
+            bool moved = false;
             for (int i = 0; i < glow.Length; i++) if (glow[i].Step()) moved = true;
             if (moved) Invalidate();
         }
@@ -69,7 +54,7 @@ namespace PaviseApp
         public int Index
         {
             get { return idx; }
-            set { if (value >= 0 && value <= Order.Length && value != idx) { idx = value; MoveSlide(); Invalidate(); } }
+            set { if (value >= 0 && value <= Order.Length && value != idx) { idx = value; Invalidate(); } }
         }
 
         // 掌机档只在带电池的机器上跟专注档有区别 台式机上两者写进方案的值一模一样
@@ -112,24 +97,6 @@ namespace PaviseApp
             return -1;
         }
 
-        private void MoveSlide()
-        {
-            if (Width <= 0) { slideReady = false; return; }
-            Rectangle r = SegmentRect(idx);
-            if (slideReady) { slideX.To(r.X); slideW.To(r.Width); }
-            else { slideX.Set(r.X); slideW.Set(r.Width); slideReady = true; }
-            UiClock.Wake();
-        }
-
-        protected override void OnSizeChanged(EventArgs e)
-        {
-            base.OnSizeChanged(e);
-            if (Width <= 0) return;
-            Rectangle r = SegmentRect(idx);
-            slideX.Set(r.X); slideW.Set(r.Width);
-            slideReady = true;
-        }
-
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
@@ -158,10 +125,7 @@ namespace PaviseApp
             if (e.Button != MouseButtons.Left) return;
             int hit = HitIndex(e.Location);
             if (hit < 0 || hit == idx || SegmentUnavailable(hit)) return;
-            fromColor = Col.Lerp(fromColor, SelColor(idx), colorT.Value);
             idx = hit;
-            colorT.Set(0f); colorT.To(1f);
-            MoveSlide();
             Invalidate();
             if (IndexChanged != null) IndexChanged(idx);
         }
@@ -169,15 +133,9 @@ namespace PaviseApp
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
-            if (Backdrop.Active) Backdrop.PaintOnCard(g, this, ClientRectangle);
+            if (Backdrop.AppliesTo(this)) Backdrop.PaintOnCard(g, this, ClientRectangle);
             else using (var bg = new SolidBrush(BackColor)) g.FillRectangle(bg, ClientRectangle);
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            if (!slideReady && Width > 0)
-            {
-                Rectangle sr0 = SegmentRect(idx);
-                slideX.Set(sr0.X); slideW.Set(sr0.Width);
-                slideReady = true;
-            }
 
             for (int i = 0; i <= Order.Length; i++)
             {
@@ -191,8 +149,9 @@ namespace PaviseApp
                 }
             }
 
-            Color sel = Col.Lerp(fromColor, SelColor(idx), colorT.Value);
-            var sr = new Rectangle((int)slideX.Value, 0, (int)slideW.Value - 1, Height - 1);
+            Color sel = SelColor(idx);
+            Rectangle sr = SegmentRect(idx);
+            sr.Width -= 1; sr.Height -= 1;
             using (GraphicsPath p = Theme.TechPath(sr, Theme.S(7)))
             {
                 using (var b = new SolidBrush(Col.Lerp(Theme.Card, sel, 0.16f))) g.FillPath(b, p);

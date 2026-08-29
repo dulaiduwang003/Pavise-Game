@@ -19,82 +19,164 @@ namespace PaviseApp
         //   分隔符用不可能出现在路径里的单元分隔符 免得跟路径里的分号空格打架
         private const string ListKey = "FsoExeList";
         private const char ListSep = '\u001F';
+        private static readonly object sync = new object();
+
+#if PAVISE_SELFTEST
+        internal static Func<string, string> ReadLayerForTest;
+        internal static Action<string, string> WriteLayerForTest;
+        internal static Func<string, bool> SaveTrackedForTest;
+#endif
 
         internal static string[] TrackedExes()
         {
-            return Settings.LoadStr(ListKey, "").Split(new[] { ListSep },
-                StringSplitOptions.RemoveEmptyEntries);
+            lock (sync)
+            {
+                string stored;
+                if (!Settings.TryLoadStr(ListKey, out stored))
+                    throw new InvalidOperationException("Cannot read the FSO recovery ledger");
+                return stored.Split(new[] { ListSep }, StringSplitOptions.RemoveEmptyEntries);
+            }
         }
 
-        public static bool HasResidue() { return TrackedExes().Length > 0; }
+        public static bool HasResidue()
+        {
+            try { return TrackedExes().Length > 0; }
+            catch { return true; } // Unreadable ownership is not an empty ledger.
+        }
 
         // 一键清除配置时按台账逐个撤销 撤销走的是和界面同一条 RemoveToken 路径 不碰别人的 token
         public static bool RestoreAll()
         {
-            bool all = true;
-            foreach (string exe in TrackedExes())
-                if (!SetForExe(exe, false)) all = false;
-            if (all) Settings.SaveStr(ListKey, "");
-            return all;
+            lock (sync)
+            {
+                try
+                {
+                    bool all = true;
+                    foreach (string exe in TrackedExes())
+                        if (!SetForExe(exe, false)) all = false;
+                    return all && TrackedExes().Length == 0;
+                }
+                catch { return false; }
+            }
         }
 
-        private static void Track(string exePath, bool disabled)
+        private static bool Track(string exePath, bool disabled)
         {
             var kept = new List<string>();
             foreach (string exe in TrackedExes())
                 if (!string.Equals(exe, exePath, StringComparison.OrdinalIgnoreCase)) kept.Add(exe);
             if (disabled) kept.Add(exePath);
-            Settings.SaveStr(ListKey, string.Join(ListSep.ToString(), kept.ToArray()));
+            string next = string.Join(ListSep.ToString(), kept.ToArray());
+            bool saved;
+#if PAVISE_SELFTEST
+            if (SaveTrackedForTest != null) saved = SaveTrackedForTest(next);
+            else
+#endif
+                saved = Settings.SaveStr(ListKey, next);
+            string confirmed;
+            return saved && Settings.TryLoadStr(ListKey, out confirmed) && confirmed == next;
+        }
+
+        private static bool IsTracked(string exePath)
+        {
+            foreach (string exe in TrackedExes())
+                if (string.Equals(exe, exePath, StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+
+        // Keep read failures distinct from an absent token. In particular, a
+        // denied read after removal must not acknowledge restoration or clear its ledger.
+        private static string ReadLayer(string exePath)
+        {
+#if PAVISE_SELFTEST
+            if (ReadLayerForTest != null) return ReadLayerForTest(exePath);
+            if (WriteLayerForTest != null) throw new InvalidOperationException("Missing in-memory FSO reader");
+#endif
+            using (var k = Registry.CurrentUser.OpenSubKey(LayersKey))
+            {
+                object value = k == null ? null : k.GetValue(exePath);
+                if (value != null && !(value is string))
+                    throw new InvalidOperationException("Unexpected FSO compatibility-layer value type");
+                return value as string;
+            }
+        }
+
+        private static void WriteLayer(string exePath, string value)
+        {
+#if PAVISE_SELFTEST
+            if (WriteLayerForTest != null) { WriteLayerForTest(exePath, value); return; }
+            if (ReadLayerForTest != null) throw new InvalidOperationException("Missing in-memory FSO writer");
+#endif
+            using (var k = Registry.CurrentUser.CreateSubKey(LayersKey))
+            {
+                if (k == null) throw new InvalidOperationException("Cannot open FSO compatibility layers");
+                if (value.Length == 0) k.DeleteValue(exePath, false);
+                else k.SetValue(exePath, value, RegistryValueKind.String);
+            }
+        }
+
+        private static void RollbackToken(string exePath)
+        {
+            try
+            {
+                // Merge against the latest layer string instead of replaying a
+                // stale value over compatibility settings written by someone else.
+                string current = ReadLayer(exePath);
+                if (HasToken(current)) WriteLayer(exePath, RemoveToken(current));
+                if (!HasToken(ReadLayer(exePath))) Track(exePath, false);
+            }
+            catch { } // A failed rollback deliberately retains the recovery ledger.
         }
 
         public static bool IsDisabledForExe(string exePath)
         {
             if (string.IsNullOrEmpty(exePath)) return false;
-            try
+            lock (sync)
             {
-                using (var k = Registry.CurrentUser.OpenSubKey(LayersKey))
+                try { return HasToken(ReadLayer(exePath)); }
+                catch (Exception ex)
                 {
-                    if (k == null) return false;
-                    return HasToken(k.GetValue(exePath) as string);
+                    Logger.Log(Lang.T("log.fso.3") + " " + ex.Message);
+                    return false;
                 }
-            }
-            catch (Exception ex)
-            {
-                Logger.Log(Lang.T("log.fso.3") + " " + ex.Message);
-                return false;
             }
         }
 
         public static bool SetForExe(string exePath, bool disableFso)
         {
             if (string.IsNullOrEmpty(exePath)) return false;
-            try
+            lock (sync)
             {
-                using (var k = Registry.CurrentUser.CreateSubKey(LayersKey))
+                bool rollback = false;
+                try
                 {
-                    if (k == null) return false;
-                    string cur = k.GetValue(exePath) as string;
-                    string next = disableFso ? AddToken(cur) : RemoveToken(cur);
-                    if (next.Length == 0)
+                    string current = ReadLayer(exePath);
+                    bool tracked = IsTracked(exePath);
+                    if (HasToken(current) == disableFso)
                     {
-                        if (k.GetValue(exePath) != null) k.DeleteValue(exePath, false);
+                        // An existing user preference is not a change owned by
+                        // Pavise. A previously restored tracked entry still needs cleanup.
+                        return disableFso || !tracked || Track(exePath, false);
                     }
-                    else k.SetValue(exePath, next, RegistryValueKind.String);
+                    // Confirm a durable recovery entry before touching Windows.
+                    // Never apply first and hope that saving ownership succeeds later.
+                    if (disableFso && !tracked && !Track(exePath, true)) return false;
+                    rollback = disableFso;
+                    WriteLayer(exePath, disableFso ? AddToken(current) : RemoveToken(current));
+                    if (HasToken(ReadLayer(exePath)) != disableFso)
+                        throw new InvalidOperationException("FSO compatibility-layer verification failed");
+                    if (disableFso && !IsTracked(exePath))
+                        throw new InvalidOperationException("FSO recovery ledger changed during apply");
+                    if (!disableFso && tracked && !Track(exePath, false)) return false;
+                    Logger.Log(Lang.T(disableFso ? "log.fso.1" : "log.fso.2") + " " + exePath);
+                    return true;
                 }
-                // 写后回读核验 token 在不在符合预期才算通过 否则回 false
-                if (IsDisabledForExe(exePath) != disableFso)
+                catch (Exception ex)
                 {
-                    Logger.Log(Lang.T("log.fso.3") + " " + exePath);
+                    if (rollback) RollbackToken(exePath);
+                    Logger.Log(Lang.T("log.fso.3") + " " + ex.Message);
                     return false;
                 }
-                Track(exePath, disableFso);
-                Logger.Log(Lang.T(disableFso ? "log.fso.1" : "log.fso.2") + " " + exePath);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                Logger.Log(Lang.T("log.fso.3") + " " + ex.Message);
-                return false;
             }
         }
 

@@ -16,11 +16,25 @@ namespace PaviseApp
         private static void Check(bool value, string message)
         { if (!value) throw new Exception(message); checks++; }
         private static T Field<T>(object host, string name)
-        { return (T)host.GetType().GetField(name, Hidden).GetValue(host); }
+        {
+            for (Type type = host.GetType(); type != null; type = type.BaseType)
+            {
+                FieldInfo field = type.GetField(name, Hidden | BindingFlags.DeclaredOnly);
+                if (field != null) return (T)field.GetValue(host);
+            }
+            throw new MissingFieldException(host.GetType().Name, name);
+        }
+
         private static object Call(object host, string name, params object[] args)
         {
-            try { return host.GetType().GetMethod(name, Hidden).Invoke(host, args); }
-            catch (TargetInvocationException error) { throw new Exception(name, error.InnerException); }
+            for (Type type = host.GetType(); type != null; type = type.BaseType)
+            {
+                MethodInfo method = type.GetMethod(name, Hidden | BindingFlags.DeclaredOnly);
+                if (method == null) continue;
+                try { return method.Invoke(host, args); }
+                catch (TargetInvocationException error) { throw new Exception(name, error.InnerException); }
+            }
+            throw new MissingMethodException(host.GetType().Name, name);
         }
 
         [STAThread]
@@ -47,6 +61,7 @@ namespace PaviseApp
                 foreach (bool light in new[] { false, true }) RunWindow(args[0], lang, light);
                 CheckScaledPosition();
                 CheckScaledRail(args[0]);
+                TransitionUiChecks.Run(args[0]);
                 Console.WriteLine("PASS navigation assertions=" + checks + " application_started=false workers_started=false settings=transient");
                 return 0;
             }
@@ -64,7 +79,7 @@ namespace PaviseApp
             var tamer = new Tamer(core);
             var mode = new GameMode(data, core); // Fresh temporary library; never Start/Stop or tune processes.
             using (var icon = IconArt.MakeIcon(24))
-            using (var form = new PanelForm(tamer, mode, icon, true))
+            using (var form = new OffscreenPanelForm(tamer, mode, icon))
             {
                 form.ShowInTaskbar = false; form.StartPosition = FormStartPosition.Manual;
                 form.Location = new Point(-20000, -20000); form.Show();
@@ -154,6 +169,7 @@ namespace PaviseApp
                 Check(!form.UiActive && Field<object>(tamer, "worker") == null, "Navigation started runtime workers");
                 Check(Field<System.Windows.Forms.Timer>(form, "uiTimer") == null
                     || !Field<System.Windows.Forms.Timer>(form, "uiTimer").Enabled, "UI polling unexpectedly resumed");
+                TransitionUiChecks.CheckWindow(form);
                 form.Hide();
             }
             Console.WriteLine("PASS full-window language=" + language + " light=" + light);
@@ -165,8 +181,6 @@ namespace PaviseApp
             Field<NavRail>(form, "tuningNav").SnapToSelection();
             Control page = Field<DBPanel>(form, "curPage");
             page.Left = Field<int>(form, "pageBaseLeft");
-            Fx.Settle(page);
-            foreach (Control child in page.Controls) Fx.Settle(child);
             form.Refresh();
         }
 
@@ -250,7 +264,7 @@ namespace PaviseApp
         private static void CheckScaledPosition()
         {
             PageViewPosition saved;
-            using (var root = new Form())
+            using (var root = new OffscreenTestForm())
             using (var scroll = new Panel { AutoScroll = true, Bounds = new Rectangle(0, 0, 180, 100),
                 AutoScrollMinSize = new Size(0, 900) })
             {
@@ -260,7 +274,7 @@ namespace PaviseApp
                 Check(scroll.AutoScrollPosition.Y == -200, "DPI scroll fixture not initialized");
                 saved = PageViewPosition.Capture(root, 1f); root.Hide();
             }
-            using (var root = new Form { ClientSize = new Size(420, 260) })
+            using (var root = new OffscreenTestForm { ClientSize = new Size(420, 260) })
             using (var scroll = new Panel { AutoScroll = true, Bounds = new Rectangle(0, 0, 360, 200),
                 AutoScrollMinSize = new Size(0, 1800) })
             {
@@ -273,6 +287,32 @@ namespace PaviseApp
                 Check(scroll.AutoScrollPosition.Y == 0, "Shorter content must clamp the saved position");
                 root.Hide();
             }
+        }
+    }
+
+    // The fixture must neither appear on the desktop nor steal focus while the user is working.
+    internal sealed class OffscreenPanelForm : PanelForm
+    {
+        public OffscreenPanelForm(Tamer tamer, GameMode mode, Icon icon) : base(tamer, mode, icon, true) { }
+        protected override bool ShowWithoutActivation { get { return true; } }
+        protected override CreateParams CreateParams
+        {
+            get { var value = base.CreateParams; value.ExStyle |= 0x08000000; return value; }
+        }
+    }
+
+    internal sealed class OffscreenTestForm : Form
+    {
+        public OffscreenTestForm()
+        {
+            ShowInTaskbar = false;
+            StartPosition = FormStartPosition.Manual;
+            Location = new Point(-20000, -20000);
+        }
+        protected override bool ShowWithoutActivation { get { return true; } }
+        protected override CreateParams CreateParams
+        {
+            get { var value = base.CreateParams; value.ExStyle |= 0x08000000; return value; }
         }
     }
 

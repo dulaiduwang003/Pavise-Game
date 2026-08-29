@@ -114,13 +114,20 @@ namespace PaviseApp
             Step(Lang.T("t.gamemodeenv.6"), GpuPowerMax.Restore, failed);
             Step(Lang.T("t.gamemodeenv.1"), DoTweak.Restore, failed);
             Step(Lang.T("t.legacypurge.8"), SvcPause.Restore, failed);
+            StepIf(Lang.T("gm.pausesvc"), delegate { return OptionalServicePause.HasResidue; },
+                OptionalServicePause.Restore, failed);
             Step(Lang.T("t.gamemodeenv.2"), WlanGuard.Restore, failed);
             StepIf(Lang.T("set.timertick"), delegate { return TimerTickTweak.OwnsState; },
                 TimerTickTweak.Restore, failed);
             StepIf(Lang.T("set.gtimer"), delegate { return GlobalTimerResTweak.OwnsState; },
                 GlobalTimerResTweak.Restore, failed);
             StepIf(Lang.T("set.gpupref"), delegate { return GpuPrefStage.HasResidue; },
-                GpuPrefStage.Restore, failed);
+                delegate { return GpuPrefStage.Restore() || GpuPrefStage.AbandonUnprovableForReset(); },
+                failed);
+            StepIf(Lang.T("set.apppref"), delegate { return AppGpuPreferences.HasResidue; },
+                AppGpuPreferences.RestoreAll, failed);
+            StepIf(Lang.T("set.intel.lowlatency"), delegate { return IntelGraphicsTweaks.HasResidue; },
+                IntelGraphicsTweaks.Restore, failed);
             Step(Lang.T("t.legacypurge.10"), NetTweak.Restore, failed);
             Step(Lang.T("t.legacypurge.11"), QuantumTweak.Restore, failed);
             Step("VBS", VbsTweak.Restore, failed);
@@ -147,8 +154,7 @@ namespace PaviseApp
             StepIf("HAGS", HagsTweak.HasResidue, HagsTweak.Restore, failed);
             StepIf("FSO", FsoTweak.HasResidue, FsoTweak.RestoreAll, failed);
             StepIf("FTH", delegate { return FthTweak.RepairedByPavise; }, FthTweak.Restore, failed);
-            StepIf("CFG", delegate { return CfgOffTweak.Enabled || CfgOffTweak.HasResidue(); },
-                CfgOffTweak.Disable, failed);
+            Step("CFG", CfgOffTweak.RestoreAll, failed);
             StepIf(Lang.T("t.legacypurge.29"), delegate { return IrqRelocate.HasResidue; }, IrqRelocate.Revert, failed);
             StepIf(Lang.T("irqpin.prio.name"), delegate { return IrqPriorityTweak.HasResidue; },
                 IrqPriorityTweak.RestoreAll, failed);

@@ -74,6 +74,7 @@ namespace PaviseApp
 
         public SearchFlyout()
         {
+            UseBackdrop = false;
             Fill = Theme.Card; Border = Theme.StrokeHi; BackColor = Theme.Bg; Radius = Theme.S(14); AccentEdge = true;
 
             input = new TextBox();

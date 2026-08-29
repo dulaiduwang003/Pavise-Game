@@ -24,8 +24,6 @@ namespace PaviseApp
         private bool auditRendered;
         private Stopwatch auditClock;
         private int auditTotalMs;
-        private readonly List<Control> auditEntering = new List<Control>();
-        private float auditEnterPhase;
 
         private void BuildAuditPage()
         {
@@ -78,9 +76,7 @@ namespace PaviseApp
         {
             auditScan.SetIdle(Lang.T("audit.idle.title"), Lang.T("audit.idle.hint"));
             auditScan.Visible = true;
-            Fx.Settle(auditScroll);
             auditScroll.Visible = false;
-            Fx.SlideIn(auditScan);
             SetToolbarVisible(false);
             int bw = Theme.S(184), bh = Theme.S(38);
             btnAuditStart.SetBounds((auditScan.Width - bw) / 2,
@@ -91,15 +87,10 @@ namespace PaviseApp
 
         private void SetToolbarVisible(bool visible)
         {
-            bool wasShown = btnAuditQuick.Visible;
             btnAuditQuick.Visible = visible;
             btnAuditPrecise.Visible = visible;
             btnAuditFixAll.Visible = visible;
             if (visible) UpdateFixAllState();
-            if (!visible || wasShown) return;
-            Fx.SlideIn(btnAuditQuick);
-            Fx.SlideIn(btnAuditPrecise);
-            Fx.SlideIn(btnAuditFixAll);
         }
 
         private void StartAudit(int windowMs)
@@ -107,10 +98,8 @@ namespace PaviseApp
             if (Interlocked.Exchange(ref auditBusy, 1) == 1) return;
             SetAuditButtons(false);
             btnAuditStart.Visible = false;
-            Fx.Settle(auditScroll);
             auditScroll.Visible = false;
             auditScan.Visible = true;
-            Fx.SlideIn(auditScan);
             auditScan.BeginScan(Lang.T("audit.phase.capability"));
             lblAuditStatus.Text = "";
             BeginAuditProgress(windowMs);
@@ -194,7 +183,6 @@ namespace PaviseApp
             auditScroll.Controls.CopyTo(stale, 0);
             auditScroll.Controls.Clear();
             foreach (Control c in stale) c.Dispose();
-            auditEntering.Clear();
 
             int sy = 2;
             sy = RenderAuditGroup(Lang.T("audit.sec.capability"), report.Capability, sy);
@@ -207,40 +195,6 @@ namespace PaviseApp
             auditScroll.PerformLayout();
             auditScroll.AutoScrollPosition = Point.Empty;
             auditRendered = true;
-            BeginAuditEnter();
-        }
-
-        private const int AuditEnterSlide = 22;
-
-        private void BeginAuditEnter()
-        {
-            if (auditEntering.Count == 0) return;
-            auditEnterPhase = 0f;
-            for (int i = 0; i < auditEntering.Count; i++)
-                auditEntering[i].Left = Theme.S(6) - Theme.S(AuditEnterSlide);
-            UiClock.Frame += OnAuditEnterFrame;
-            UiClock.Wake();
-        }
-
-        private void OnAuditEnterFrame(object sender, EventArgs e)
-        {
-            auditEnterPhase += 0.075f;
-            bool moving = false;
-            int baseX = Theme.S(6);
-            for (int i = 0; i < auditEntering.Count; i++)
-            {
-                Control c = auditEntering[i];
-                if (c.IsDisposed) continue;
-                float local = auditEnterPhase - i * 0.055f;
-                if (local <= 0f) { moving = true; continue; }
-                float t = local > 1f ? 1f : local;
-                float ease = 1f - (1f - t) * (1f - t) * (1f - t);
-                c.Left = baseX - (int)Math.Round(Theme.S(AuditEnterSlide) * (1f - ease));
-                if (t < 1f) moving = true;
-            }
-            if (moving) { UiClock.Wake(); return; }
-            UiClock.Frame -= OnAuditEnterFrame;
-            auditEntering.Clear();
         }
 
         private sealed class AuditFix
@@ -382,7 +336,6 @@ namespace PaviseApp
                     onClick, ScrollContentW);
                 card.SetBounds(Theme.S(6), Theme.S(sy), Theme.S(ScrollContentW), Theme.S(card.LogicalHeight));
                 auditScroll.Controls.Add(card);
-                auditEntering.Add(card);
                 sy += card.LogicalHeight + 8;
             }
             sy += 8;

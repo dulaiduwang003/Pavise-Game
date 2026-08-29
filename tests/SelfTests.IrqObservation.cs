@@ -206,7 +206,7 @@ namespace PaviseApp
                 Records.Add(record);
                 return true;
             }
-            public string DriverVersion(string name) { return "test-version"; }
+            public Func<string, string> DriverVersionReader() { return delegate { return "test-version"; }; }
             public void Log(string message) { Messages.Add(message); }
             public string LoadLastResult() { return LastResult; }
             public void SaveLastResult(string result) { LastResult = result; }

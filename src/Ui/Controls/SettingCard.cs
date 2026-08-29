@@ -36,38 +36,6 @@ namespace PaviseApp
                 Border = Col.Lerp(Theme.Stroke, Theme.StrokeHi, cardHover.Value);
                 Invalidate();
             }
-            StepGrow();
-        }
-
-        private void StepGrow()
-        {
-            if (!growing) return;
-            grow.Step();
-            int want = expanded ? ExpandedHeight : CollapsedHeight;
-            int now = (int)Math.Round(grow.Value);
-            if (Math.Abs(now - want) <= 1) { now = want; growing = false; }
-            if (Height != now) Height = now;
-            Action h = ExpandedChanged;
-            if (h != null) h();
-            if (!growing) Invalidate();
-        }
-
-        private void BeginGrow()
-        {
-            Action h = ExpandedChanged;
-            bool sized = collapsible && ExpandedHeight > 0 && CollapsedHeight > 0;
-            if (!sized || !IsHandleCreated)
-            {
-                if (sized) Height = expanded ? ExpandedHeight : CollapsedHeight;
-                if (h != null) h();
-                return;
-            }
-            grow.Speed = 0.30f;
-            grow.Set(Height);
-            grow.To(expanded ? ExpandedHeight : CollapsedHeight);
-            growing = true;
-            UiClock.Wake();
-            if (h != null) h();
         }
 
         public void Flash()
@@ -104,8 +72,6 @@ namespace PaviseApp
 
         private bool collapsible;
         private bool expanded = true;
-        private Motion grow;
-        private bool growing;
         public int CollapsedHeight, ExpandedHeight;
         public Action ExpandedChanged;
 
@@ -128,15 +94,16 @@ namespace PaviseApp
             {
                 if (expanded == value) return;
                 expanded = value;
+                if (collapsible && ExpandedHeight > 0 && CollapsedHeight > 0)
+                    Height = expanded ? ExpandedHeight : CollapsedHeight;
+                if (ExpandedChanged != null) ExpandedChanged();
                 Invalidate();
-                BeginGrow();
             }
         }
 
         internal void SnapExpanded(bool value)
         {
             expanded = value;
-            growing = false;
             Invalidate();
         }
 
@@ -159,7 +126,7 @@ namespace PaviseApp
             if (changed) Invalidate();
         }
 
-        private bool ShowDesc { get { return !collapsible || expanded || growing; } }
+        private bool ShowDesc { get { return !collapsible || expanded; } }
 
         public string Value { get { return val; } set { string v = value ?? ""; if (val != v) { val = v; Invalidate(); } } }
         public void SetValue(string v, Color c)
@@ -356,7 +323,7 @@ namespace PaviseApp
                 g.FillPolygon(wash, blade);
 
             using (var top = new Pen(Col.Alpha(Theme.Accent, 74 + (int)(cardHover.Value * 82))))
-                g.DrawLine(top, Theme.S(1), Theme.S(1), Theme.S(58) + (int)(cardHover.Value * Theme.S(24)), Theme.S(1));
+                g.DrawLine(top, Theme.S(1), Theme.S(1), Theme.S(58), Theme.S(1));
         }
 
         private void DrawChevron(Graphics g, int x)

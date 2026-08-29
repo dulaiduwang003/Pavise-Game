@@ -1,4 +1,4 @@
-﻿// @author bdth 2074055628@qq.com
+// @author bdth 2074055628@qq.com
 // 文件用途 用内核 ETW 会话抓 DPC 与 ISR 的例程地址与单次时长 映射到驱动模块
 using System;
 using System.Collections.Generic;
@@ -139,7 +139,7 @@ namespace PaviseApp
         private volatile bool consumerExitedEarly;
         private volatile bool processTraceSucceeded;
 
-        private sealed class Module { public ulong Base; public ulong End; public string Name; }
+        private sealed class Module { public ulong Base; public ulong End; public string Name; public string ImagePath; }
 
         // 逐 DPC 事件时间线 release 可用 由运行时开关控制 默认关 关时零开销
         //   present 长帧↔DPC 因果对齐要的原料 与聚合路径完全并行 聚合逻辑一行不改
@@ -526,6 +526,27 @@ namespace PaviseApp
         private bool LoadModules(out string error)
         {
             modules.Clear();
+            List<Module> loaded;
+            if (!TryReadLoadedModules(out loaded, out error)) return false;
+            modules.AddRange(loaded);
+            return true;
+        }
+
+        // A fresh read-only snapshot also supplies the actual driver image paths
+        // to version lookup; do not guess a DriverStore package from its name.
+        internal static List<string> LoadedModuleImagePaths()
+        {
+            List<Module> loaded;
+            string error;
+            if (!TryReadLoadedModules(out loaded, out error)) return null;
+            var paths = new List<string>(loaded.Count);
+            foreach (Module module in loaded) paths.Add(module.ImagePath);
+            return paths;
+        }
+
+        private static bool TryReadLoadedModules(out List<Module> loaded, out string error)
+        {
+            loaded = new List<Module>();
             error = null;
             IntPtr buf = IntPtr.Zero;
             try
@@ -560,9 +581,9 @@ namespace PaviseApp
                     if (string.IsNullOrEmpty(full)) continue;
                     int slash = full.LastIndexOf('\\');
                     string name = slash >= 0 ? full.Substring(slash + 1) : full;
-                    modules.Add(new Module { Base = imgBase, End = imgBase + imgSize, Name = name });
+                    loaded.Add(new Module { Base = imgBase, End = imgBase + imgSize, Name = name, ImagePath = full });
                 }
-                if (modules.Count == 0)
+                if (loaded.Count == 0)
                 {
                     error = "驱动模块枚举未返回可用地址，无法启动中断归因";
                     return false;
@@ -571,7 +592,7 @@ namespace PaviseApp
             }
             catch (Exception ex)
             {
-                modules.Clear();
+                loaded.Clear();
                 error = "驱动模块枚举异常，无法启动中断归因 " + ex.GetType().Name;
                 return false;
             }

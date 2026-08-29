@@ -43,17 +43,21 @@ namespace PaviseApp
         public const string KeyBoost = "GmBoost";
         public const string KeyAggressive = "GmAggressive";
         public const string KeyGpuDemote = "GmGpuDemote";
-        public const string KeyIfeoBoost = "GmIfeoBoost";
         public const string KeyRenderLane = "GmRenderLane";
         public const string KeyStrictCores = "GmStrictCores";
         public const string KeyCoreDomainAlt = "GmCoreDomainAlt";
         public const string KeyCoreMask = "GmCoreMask";
         public const string KeyPowerPlan = "PowerPlanOn";
         public const string KeyPowerYield = "GmPowerYield";
+        // Separate opt-in: never inherit a true value left by the retired option.
+        public const string KeyDisableCpuIdle = "GmDisableCpuIdleV2";
+        public const string KeyStandbyCleaner = "GmStandbyCleanerV2";
         public const string KeyPauseDl = "GmPauseDl";
         public const string KeyPauseUpdate = "GmPauseUpdate";
+        public const string KeyPauseServices = "GmPauseServices";
         public const string KeyWlanGuard = "GmWlanGuard";
         public const string KeyAwake = "GmAwake";
+        public const string KeyEnglishInput = "GmEnglishInputV1";
         public const string KeyNvMaxPerf = "NvMaxPerf";
         public const string KeyNvLowLat = "NvLowLat";
         public const string KeyNvSmoothMotion = "NvSmoothMotion";
@@ -62,6 +66,7 @@ namespace PaviseApp
         public const string KeyNvDlss = "NvDlss";
         public const string KeyAmdAntiLag = "AmdAntiLag";
         public const string KeyAmdAfmf = "AmdAfmf";
+        public const string KeyIntelLowLatency = "GmIntelLowLatencyV1";
         public const string KeyVramShield = "GmVramShield";
 
         public const string GroupMode = "cfg.group.mode";
@@ -81,17 +86,20 @@ namespace PaviseApp
             new PolicyItem(KeyBoost, PolicyValueKind.Bool, "1", "gm.boost", GroupBackground, null),
             new PolicyItem(KeyAggressive, PolicyValueKind.Bool, "0", "gm.aggressive", GroupBackground, null),
             new PolicyItem(KeyGpuDemote, PolicyValueKind.Bool, "0", "gm.gpudemote", GroupBackground, null),
-            new PolicyItem(KeyIfeoBoost, PolicyValueKind.Bool, "0", "gm.ifeo", GroupBackground, null),
             new PolicyItem(KeyRenderLane, PolicyValueKind.Bool, "1", "gm.lane", GroupBackground, null),
             new PolicyItem(KeyStrictCores, PolicyValueKind.Bool, "0", "cfg.strictcores", GroupCores, null),
             new PolicyItem(KeyCoreDomainAlt, PolicyValueKind.Bool, "0", "cfg.domainalt", GroupCores, null),
             new PolicyItem(KeyCoreMask, PolicyValueKind.MaskHex, "", "cfg.coremask", GroupCores, null),
             new PolicyItem(KeyPowerPlan, PolicyValueKind.Bool, "1", "plan.pick.title", GroupMemPower, null),
             new PolicyItem(KeyPowerYield, PolicyValueKind.Bool, "0", "gm.poweryield", GroupMemPower, null),
+            new PolicyItem(KeyDisableCpuIdle, PolicyValueKind.Bool, "0", "gm.disablecpuidle", GroupMemPower, null),
+            new PolicyItem(KeyStandbyCleaner, PolicyValueKind.Bool, "0", "gm.standbycleaner", GroupMemPower, null),
             new PolicyItem(KeyPauseDl, PolicyValueKind.Bool, "1", "gm.pausedl", GroupEnvironment, null),
             new PolicyItem(KeyPauseUpdate, PolicyValueKind.Bool, "0", "gm.pausewu", GroupEnvironment, null),
+            new PolicyItem(KeyPauseServices, PolicyValueKind.Bool, "0", "gm.pausesvc", GroupEnvironment, null),
             new PolicyItem(KeyWlanGuard, PolicyValueKind.Bool, "0", "gm.wlanguard", GroupEnvironment, null),
             new PolicyItem(KeyAwake, PolicyValueKind.Bool, "1", "set.awake", GroupEnvironment, null),
+            new PolicyItem(KeyEnglishInput, PolicyValueKind.Bool, "0", "gm.englishinput", GroupEnvironment, null),
             new PolicyItem(KeyNvMaxPerf, PolicyValueKind.Bool, "0", "set.nvmax", GroupGraphics, null),
             new PolicyItem(KeyNvLowLat, PolicyValueKind.Choice, "off", "set.nvll", GroupGraphics,
                 new[] { "off", "on", "ultra" }),
@@ -102,6 +110,7 @@ namespace PaviseApp
                 new[] { "off", "latest", "j", "k" }),
             new PolicyItem(KeyAmdAntiLag, PolicyValueKind.Bool, "0", "set.amdalag", GroupGraphics, null),
             new PolicyItem(KeyAmdAfmf, PolicyValueKind.Bool, "0", "set.amdafmf", GroupGraphics, null),
+            new PolicyItem(KeyIntelLowLatency, PolicyValueKind.Bool, "0", "set.intel.lowlatency", GroupGraphics, null),
             new PolicyItem(KeyVramShield, PolicyValueKind.Bool, "0", "gm.vramshield", GroupGraphics, null),
         };
 

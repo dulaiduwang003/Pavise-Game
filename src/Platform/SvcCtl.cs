@@ -27,7 +27,7 @@ namespace PaviseApp
                 {
                     SERVICE_STATUS st;
                     if (!QueryServiceStatus(svc, out st)) return false;
-                    if (st.State == 1 ) return false;
+                    if (st.State != 4) return false;
                     if (!ControlService(svc, 1 , ref st)) return false;
                     for (int i = 0; i < 25; i++)
                     {

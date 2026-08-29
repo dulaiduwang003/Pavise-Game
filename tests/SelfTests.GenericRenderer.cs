@@ -18,6 +18,7 @@ namespace PaviseApp
                 TestGenericRendererWindowIsNotGpu, TestGenericRendererForce,
                 TestGenericRendererSafety, TestGenericRendererArmed,
                 TestGenericExecutableNormalImports, TestGenericExecutableDelayedImports,
+                TestGenericExecutableLargeImportDirectories, TestGenericExecutableImportDirectoryLimits,
                 TestGenericExecutableNoGraphics, TestGenericExecutableInvalidHeaders,
                 TestGenericExecutableInvalidImports, TestGenericExecutableOverlappingSections,
                 TestGenericExecutableUnique, TestGenericExecutableAmbiguous,
@@ -249,6 +250,33 @@ namespace PaviseApp
             return bytes;
         }
 
+        // MinGW can include thunks and DLL names in ImportDirectory.Size.
+        // Keep descriptors at the beginning and map the entire declared region.
+        private static byte[] GenericPeWithImportRegion(bool x64, bool delayed,
+            int imports, int regionSize)
+        {
+            byte[] bytes = GenericPe(x64, null, false);
+            Array.Resize(ref bytes, 0x200 + regionSize);
+            int directories = 0x98 + (x64 ? 112 : 96);
+            int section = 0x98 + (x64 ? 240 : 224);
+            Put32(bytes, section + 8, (uint)regionSize);
+            Put32(bytes, section + 16, (uint)regionSize);
+            int entry = directories + (delayed ? 13 : 1) * 8;
+            Put32(bytes, entry, 0x1000);
+            Put32(bytes, entry + 4, (uint)regionSize);
+            int stride = delayed ? 32 : 20;
+            int nameOffset = (imports + 1) * stride;
+            for (int i = 0; i < imports; i++)
+            {
+                int descriptor = 0x200 + i * stride;
+                if (delayed) Put32(bytes, descriptor, 1);
+                Put32(bytes, descriptor + (delayed ? 4 : 12), (uint)(0x1000 + nameOffset));
+            }
+            byte[] name = Encoding.ASCII.GetBytes("d3d11.dll");
+            Buffer.BlockCopy(name, 0, bytes, 0x200 + nameOffset, name.Length);
+            return bytes;
+        }
+
         private static void Put16(byte[] bytes, int at, int value)
         { Buffer.BlockCopy(BitConverter.GetBytes((ushort)value), 0, bytes, at, 2); }
         private static void Put32(byte[] bytes, int at, uint value)
@@ -278,6 +306,62 @@ namespace PaviseApp
             byte[] legacy = GenericPe(false, "d3d9.dll", true);
             Put32(legacy, 0x200, 0); Put32(legacy, 0x204, 0x401080);
             Eq(true, GenericFacts(legacy).GraphicsImports);
+        }
+
+        private static void TestGenericExecutableLargeImportDirectories()
+        {
+            foreach (bool x64 in new[] { false, true })
+                foreach (bool delayed in new[] { false, true })
+                {
+                    // A mapped directory larger than the read budget must not be
+                    // read wholesale or mistaken for thousands of DLL descriptors.
+                    byte[] bytes = GenericPeWithImportRegion(x64, delayed, 11, 0x40000);
+                    ExecutableCandidateFacts facts = GenericFacts(bytes);
+                    Eq(true, facts.Executable);
+                    Eq(true, facts.GraphicsImports);
+                    facts.Path = @"C:\Scan\LargeImportRegion.exe";
+                    Eq(facts.Path, ExecutableCandidateProbe.PickUnique(new[] { facts }, true));
+                }
+        }
+
+        private static void TestGenericExecutableImportDirectoryLimits()
+        {
+            const int regionSize = 0x40000;
+            foreach (bool x64 in new[] { false, true })
+                foreach (bool delayed in new[] { false, true })
+                {
+                    // Preserve the existing total-descriptor budget, including
+                    // the zero terminator. A terminator beyond it is insufficient.
+                    Eq(true, GenericFacts(GenericPeWithImportRegion(x64, delayed,
+                        ExecutableCandidateProbe.MaxImports - 1, regionSize)).Executable);
+                    Eq(false, GenericFacts(GenericPeWithImportRegion(x64, delayed,
+                        ExecutableCandidateProbe.MaxImports, regionSize)).Executable);
+
+                    int stride = delayed ? 32 : 20;
+                    int directories = 0x98 + (x64 ? 112 : 96);
+                    int sizeAt = directories + (delayed ? 13 : 1) * 8 + 4;
+                    int section = 0x98 + (x64 ? 240 : 224);
+                    Action<byte[]>[] corruptions =
+                    {
+                        // Declared descriptor span stops before its terminator.
+                        delegate(byte[] b) { Put32(b, sizeAt, (uint)(11 * stride)); },
+                        // The directory extends beyond its mapped raw section.
+                        delegate(byte[] b) { Put32(b, section + 16, regionSize - 1); },
+                        // The size would wrap the 32-bit RVA address space.
+                        delegate(byte[] b) { Put32(b, sizeAt, uint.MaxValue); },
+                        // A large valid directory does not excuse an invalid name RVA.
+                        delegate(byte[] b) { Put32(b, 0x200 + (delayed ? 4 : 12), 0x1000 + regionSize); }
+                    };
+                    foreach (Action<byte[]> corrupt in corruptions)
+                    {
+                        byte[] bytes = GenericPeWithImportRegion(x64, delayed, 11, regionSize);
+                        corrupt(bytes);
+                        Eq(false, GenericFacts(bytes).Executable);
+                    }
+                    byte[] truncated = GenericPeWithImportRegion(x64, delayed, 11, regionSize);
+                    Array.Resize(ref truncated, truncated.Length - 1);
+                    Eq(false, GenericFacts(truncated).Executable);
+                }
         }
 
         private static void TestGenericExecutableNoGraphics()

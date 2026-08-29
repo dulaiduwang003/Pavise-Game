@@ -11,18 +11,15 @@ namespace PaviseApp
     {
         private Motion introMotion;
         private bool introActive, introPending;
-        private int introBaseTop;
         private System.Windows.Forms.Timer autoHideTimer;
         private bool autoHideArmed, lastGameActive;
         private System.Windows.Forms.Timer outroTimer;
         private readonly Stopwatch outroWatch = new Stopwatch();
         private bool outroActive;
-        private int outroBaseTop;
 
         private const string AutoHideKey = "AutoHideOnGame";
         private const bool AutoHideDefault = true;
         private const int AutoHideDelayMs = 10000;
-        private const int IntroRise = 18;
         private const int OutroMs = 220;
 
         private void OnFormFrame(object s, EventArgs e)
@@ -33,8 +30,6 @@ namespace PaviseApp
                 if (!Theme.ThemeAnimating) RunThemeRefreshers();
                 Invalidate(true);
             }
-            if (curPage != null && pageSlide.Step())
-                curPage.Left = pageBaseLeft + (int)(pageSlide.Value * Theme.S(16));
             StepIntro();
             if (!introActive && !introPending && !outroActive && AllowTransparency) DropLayeredStyle();
         }
@@ -44,7 +39,6 @@ namespace PaviseApp
             if (!introActive) return;
             if (introMotion.Step())
             {
-                Top = introBaseTop + (int)(introMotion.Value * Theme.S(IntroRise));
                 Opacity = 1.0 - introMotion.Value;
             }
             else FinishIntro();
@@ -53,7 +47,6 @@ namespace PaviseApp
         private void FinishIntro()
         {
             introActive = false;
-            Top = introBaseTop;
             if (Opacity < 1.0) Opacity = 1.0;
             DropLayeredStyle();
         }
@@ -72,21 +65,24 @@ namespace PaviseApp
 
         private void BeginIntro()
         {
-            if (introActive) { introActive = false; Top = introBaseTop; }
+            StopPageReveal();
+            introActive = false;
             introPending = true;
             Opacity = 0.0;
         }
 
         private void StartIntro()
         {
-            if (!introPending) { DropLayeredStyle(); return; }
+            if (!introPending)
+            {
+                if (!introActive) DropLayeredStyle();
+                return;
+            }
             introPending = false;
-            introBaseTop = Top;
             introMotion.Speed = 0.24f;
             introMotion.Set(1f);
             introMotion.To(0f);
             introActive = true;
-            Top = introBaseTop + Theme.S(IntroRise);
             PaintTree(this);
             UiClock.Wake(90);
             if (!UiClock.Running) FinishIntro();
@@ -151,11 +147,13 @@ namespace PaviseApp
 
         private void BeginOutro()
         {
+            StopPageReveal();
             if (outroActive) return;
             if (!IsHandleCreated || IsDisposed || !Visible
                 || WindowState != FormWindowState.Normal) { Hide(); return; }
+            if (introActive) FinishIntro();
+            introPending = false;
             outroActive = true;
-            outroBaseTop = Top;
             AllowTransparency = true;
             Opacity = 1.0;
             outroWatch.Reset();
@@ -176,7 +174,6 @@ namespace PaviseApp
             if (t >= 1.0) { FinishOutro(true); return; }
             double k = t * t;
             Opacity = 1.0 - k;
-            Top = outroBaseTop + (int)(k * Theme.S(IntroRise));
         }
 
         private void FinishOutro(bool hide)
@@ -186,7 +183,6 @@ namespace PaviseApp
             if (outroTimer != null) outroTimer.Stop();
             if (IsDisposed) return;
             if (hide) Hide();
-            Top = outroBaseTop;
             Opacity = 1.0;
             DropLayeredStyle();
         }
@@ -214,7 +210,7 @@ namespace PaviseApp
             {
                 if (IsHandleCreated && !IsWindowEnabled(Handle)) return true;
                 foreach (Form f in Application.OpenForms)
-                    if (!ReferenceEquals(f, this) && f.Visible) return true;
+                    if (!ReferenceEquals(f, this) && !(f is PageReveal) && f.Visible) return true;
             }
             catch { }
             return false;
@@ -236,7 +232,7 @@ namespace PaviseApp
                 else if (powerFlyout != null && powerFlyout.Visible) SetPowerFlyout(false);
                 else if (modeFlyout != null && modeFlyout.Visible) SetModeFlyout(false);
                 else if (IsInDeepTuning) ReturnFromDeepTuning();
-                else Hide();
+                else BeginOutro();
                 e.Handled = true;
                 e.SuppressKeyPress = true;
             }

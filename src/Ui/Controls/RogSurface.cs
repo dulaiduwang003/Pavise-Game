@@ -12,35 +12,49 @@ namespace PaviseApp
         public static void Draw(Graphics g, Rectangle bounds, bool navigation)
         {
             if (bounds.Width <= 0 || bounds.Height <= 0) return;
-            GraphicsState state = g.Save();
-            g.SetClip(bounds);
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            // Framework TextRenderer can apply a translated Graphics.Save context twice.
+            // Preserve only the properties changed here so the footer shares the geometry's offset.
+            SmoothingMode smoothing = g.SmoothingMode;
+            PixelOffsetMode pixels = g.PixelOffsetMode;
+            using (Region clip = g.Clip)
+            {
+                try
+                {
+                    g.SetClip(bounds, CombineMode.Intersect);
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    g.PixelOffsetMode = PixelOffsetMode.HighQuality;
 
-            int meshAlpha = navigation
-                ? (Theme.LightMode ? 13 : 8)
-                : (Theme.LightMode ? 8 : 5);
-            int faceAlpha = navigation
-                ? (Theme.LightMode ? 14 : 9)
-                : (Theme.LightMode ? 8 : 5);
-            int edgeAlpha = navigation
-                ? (Theme.LightMode ? 44 : 30)
-                : (Theme.LightMode ? 25 : 17);
+                    int meshAlpha = navigation
+                        ? (Theme.LightMode ? 13 : 8)
+                        : (Theme.LightMode ? 8 : 5);
+                    int faceAlpha = navigation
+                        ? (Theme.LightMode ? 14 : 9)
+                        : (Theme.LightMode ? 8 : 5);
+                    int edgeAlpha = navigation
+                        ? (Theme.LightMode ? 44 : 30)
+                        : (Theme.LightMode ? 25 : 17);
 
-            DrawEtchedMesh(g, bounds, meshAlpha, navigation);
+                    DrawEtchedMesh(g, bounds, meshAlpha, navigation);
 
-            int sweep = navigation ? bounds.Width / 2 : bounds.Width / 5;
-            int band = navigation ? Theme.S(15) : Theme.S(20);
-            DrawArmorBand(g, bounds, -sweep, bounds.Height * 14 / 100,
-                bounds.Right + sweep, bounds.Height * 38 / 100, band, faceAlpha, edgeAlpha);
-            DrawArmorBand(g, bounds, -sweep, bounds.Height * 43 / 100,
-                bounds.Right + sweep, bounds.Height * 67 / 100, band, faceAlpha, edgeAlpha);
-            DrawArmorBand(g, bounds, -sweep, bounds.Height * 72 / 100,
-                bounds.Right + sweep, bounds.Height * 96 / 100, band, faceAlpha, edgeAlpha);
+                    int sweep = navigation ? bounds.Width / 2 : bounds.Width / 5;
+                    int band = navigation ? Theme.S(15) : Theme.S(20);
+                    DrawArmorBand(g, bounds, -sweep, bounds.Height * 14 / 100,
+                        bounds.Right + sweep, bounds.Height * 38 / 100, band, faceAlpha, edgeAlpha);
+                    DrawArmorBand(g, bounds, -sweep, bounds.Height * 43 / 100,
+                        bounds.Right + sweep, bounds.Height * 67 / 100, band, faceAlpha, edgeAlpha);
+                    DrawArmorBand(g, bounds, -sweep, bounds.Height * 72 / 100,
+                        bounds.Right + sweep, bounds.Height * 96 / 100, band, faceAlpha, edgeAlpha);
 
-            DrawCircuitBus(g, bounds, navigation, edgeAlpha);
-            DrawCornerCuts(g, bounds, navigation, edgeAlpha);
-            g.Restore(state);
+                    DrawCircuitBus(g, bounds, navigation, edgeAlpha);
+                    DrawCornerCuts(g, bounds, navigation, edgeAlpha);
+                }
+                finally
+                {
+                    g.SetClip(clip, CombineMode.Replace);
+                    g.SmoothingMode = smoothing;
+                    g.PixelOffsetMode = pixels;
+                }
+            }
         }
 
         private static void DrawEtchedMesh(Graphics g, Rectangle r, int alpha, bool navigation)
@@ -145,7 +159,8 @@ namespace PaviseApp
                     new Rectangle(r.Right - Theme.S(navigation ? 142 : 220), r.Bottom - Theme.S(24),
                         Theme.S(navigation ? 116 : 192), Theme.S(13)),
                     Col.Alpha(Theme.Faint, Theme.LightMode ? 66 : 42),
-                    TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                    TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding
+                        | TextFormatFlags.PreserveGraphicsClipping | TextFormatFlags.PreserveGraphicsTranslateTransform);
             }
         }
     }
@@ -161,10 +176,15 @@ namespace PaviseApp
 
         protected override void OnPaintBackground(PaintEventArgs e)
         {
+            PaintSurface(e.Graphics, e.ClipRectangle);
+        }
+
+        internal void PaintSurface(Graphics graphics, Rectangle clip)
+        {
             // 有封面就让位 封面已经够花了 装甲底纹再叠上去只会更脏
-            if (Backdrop.Active) { Backdrop.Paint(e.Graphics, this, e.ClipRectangle); return; }
-            using (var fill = new SolidBrush(Theme.Bg)) e.Graphics.FillRectangle(fill, ClientRectangle);
-            RogSurface.Draw(e.Graphics, ClientRectangle, false);
+            if (Backdrop.AppliesTo(this)) { Backdrop.Paint(graphics, this, clip); return; }
+            using (var fill = new SolidBrush(Theme.Bg)) graphics.FillRectangle(fill, ClientRectangle);
+            RogSurface.Draw(graphics, ClientRectangle, false);
         }
     }
 }

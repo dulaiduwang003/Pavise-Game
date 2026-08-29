@@ -22,9 +22,23 @@ namespace PaviseApp
         private readonly Dictionary<string, string> whiteNameCache =
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private int whiteBusy;
+        private int whiteVersion, whitePending;
+
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+        internal Func<bool, List<WhitelistRuleView>> WhitelistQueryForTest;
+#endif
+
+        private List<WhitelistRuleView> QueryWhitelistState(bool deep)
+        {
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+            if (WhitelistQueryForTest != null) return WhitelistQueryForTest(deep);
+#endif
+            return deep ? gameMode.GetWhitelistRules() : gameMode.GetWhitelistRulesFast();
+        }
 
         private void BuildWhitelistPage()
         {
+            Interlocked.Increment(ref whiteVersion);
             int y = PageHeader(pageWhitelist, Lang.T("nav.white"), Lang.T("white.page.sub"), 2);
             whiteBanner = new ModuleBanner();
             whiteBanner.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(72));
@@ -326,25 +340,52 @@ namespace PaviseApp
 
         internal void RefreshWhitelist(bool deep)
         {
-            if (lstWhite == null) return;
-            List<WhitelistRuleView> views = gameMode.GetWhitelistRulesFast();
+            if (IsDisposed || lstWhite == null || lstWhite.IsDisposed
+                || whitePanel == null || whitePanel.IsDisposed) return;
+            int version = Interlocked.Increment(ref whiteVersion);
+            List<WhitelistRuleView> views = QueryWhitelistState(false);
             FillWhitelist(views);
-            if (!deep || Interlocked.Exchange(ref whiteBusy, 1) == 1) return;
-            ThreadPool.QueueUserWorkItem(delegate
+            if (!deep || !UiActive) return;
+            if (Interlocked.CompareExchange(ref whiteBusy, 1, 0) != 0)
             {
-                List<WhitelistRuleView> full = null;
-                try { full = gameMode.GetWhitelistRules(); }
-                catch { }
-                Interlocked.Exchange(ref whiteBusy, 0);
-                try
+                Interlocked.Exchange(ref whitePending, 1);
+                return;
+            }
+            Interlocked.Exchange(ref whitePending, 0);
+            ListBox list = lstWhite;
+            EmptyStatePanel panel = whitePanel;
+            try
+            {
+                QueueUiStateWork(delegate
                 {
-                    BeginInvoke((MethodInvoker)delegate
+                    List<WhitelistRuleView> full = null;
+                    try { full = QueryWhitelistState(true); }
+                    catch { }
+                    try
                     {
-                        if (!IsDisposed && full != null) FillWhitelist(full);
-                    });
-                }
-                catch { }
-            });
+                        PostUiStateResult(delegate
+                        {
+                            try
+                            {
+                                if (!IsDisposed && UiActive && full != null
+                                    && version == Volatile.Read(ref whiteVersion)
+                                    && ReferenceEquals(list, lstWhite) && ReferenceEquals(panel, whitePanel)
+                                    && !list.IsDisposed && !panel.IsDisposed) FillWhitelist(full);
+                            }
+                            finally { FinishWhitelistRefresh(); }
+                        });
+                    }
+                    catch { Interlocked.Exchange(ref whiteBusy, 0); }
+                });
+            }
+            catch { Interlocked.Exchange(ref whiteBusy, 0); }
+        }
+
+        private void FinishWhitelistRefresh()
+        {
+            Interlocked.Exchange(ref whiteBusy, 0);
+            if (Interlocked.Exchange(ref whitePending, 0) != 0 && !IsDisposed && UiActive)
+                RefreshWhitelist(true);
         }
 
         private void FillWhitelist(List<WhitelistRuleView> views)
@@ -401,7 +442,7 @@ namespace PaviseApp
             if (e.Index < 0 || e.Index >= lstWhite.Items.Count) return;
             var item = lstWhite.Items[e.Index] as WhitelistItem;
             if (item == null) return;
-            if (item.IsGroup) { DrawWhitelistGroupHeader(e, item.Title); return; }
+            if (item.IsGroup) { DrawWhitelistGroupHeader(lstWhite, e, item.Title); return; }
             if (item.View == null && !item.Automatic) return;
 
             Graphics g = e.Graphics;
@@ -531,11 +572,11 @@ namespace PaviseApp
             }
         }
 
-        private static void DrawWhitelistGroupHeader(DrawItemEventArgs e, string text)
+        private static void DrawWhitelistGroupHeader(Control owner, DrawItemEventArgs e, string text)
         {
             Graphics g = e.Graphics;
             Rectangle r = e.Bounds;
-            using (var b = new SolidBrush(Backdrop.CardFill(Theme.Card))) g.FillRectangle(b, r);
+            using (var b = new SolidBrush(Backdrop.CardFill(owner, Theme.Card))) g.FillRectangle(b, r);
             Size size = TextRenderer.MeasureText(g, text, Theme.UI(7.8f, false));
             int textLeft = r.Left + Theme.S(14);
             int mid = r.Top + r.Height / 2;

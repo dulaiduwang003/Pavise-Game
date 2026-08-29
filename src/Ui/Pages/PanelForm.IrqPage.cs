@@ -375,9 +375,16 @@ namespace PaviseApp
         private void OnIrqProbePageToggle(object sender, EventArgs e)
         {
             if (swIrqProbePage == null) return;
+            bool on = swIrqProbePage.Checked;
+            if (on && !PaviseDialog.Confirm(this, Lang.T("irq.probe.warn.title"),
+                    Lang.T("irq.probe.warn"), DlgKind.Warn))
+            {
+                swIrqProbePage.SetSilently(false);
+                return;
+            }
             IrqMutationBoundary.Run(delegate
             {
-                IrqSessionProbe.EnabledSetting = swIrqProbePage.Checked;
+                IrqSessionProbe.EnabledSetting = on;
                 gameMode.RequestIrqObservationSettingChanged();
             });
             RefreshIrqPage();

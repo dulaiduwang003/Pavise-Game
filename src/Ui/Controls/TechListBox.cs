@@ -10,6 +10,8 @@ namespace PaviseApp
     internal class TechListBox : ListBox
     {
         private const int WmEraseBkgnd = 0x0014;
+        private const int WmSetRedraw = 0x000B;
+        private const int WsVScroll = 0x00200000;
         private const int SrcCopy = 0x00CC0020;
 
         [DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleDC(IntPtr hdc);
@@ -26,6 +28,41 @@ namespace PaviseApp
         private int bufW, bufH;
         private Graphics surface;
         private bool drawFaultLogged;
+        private bool externalScrollBar;
+        private bool viewportQueued;
+        private bool redrawEnabled = true;
+        private int viewportGeneration;
+        private long wheelDelta;
+
+        // Opt-in: picker hosts provide the vertical rail; other native lists stay unchanged.
+        internal bool ExternalScrollBar
+        {
+            get { return externalScrollBar; }
+            set
+            {
+                if (externalScrollBar == value) return;
+                externalScrollBar = value;
+                if (IsHandleCreated) RecreateHandle();
+            }
+        }
+
+        internal event EventHandler ViewportChanged;
+
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                CreateParams parameters = base.CreateParams;
+                if (externalScrollBar) parameters.Style &= ~WsVScroll;
+                return parameters;
+            }
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            QueueViewportChanged();
+        }
 
         protected override void WndProc(ref Message m)
         {
@@ -35,7 +72,83 @@ namespace PaviseApp
                 m.Result = (IntPtr)1;
                 return;
             }
+            if (externalScrollBar && m.Msg == WmSetRedraw) redrawEnabled = m.WParam != IntPtr.Zero;
             base.WndProc(ref m);
+            if (!externalScrollBar || !redrawEnabled) return;
+            switch (m.Msg)
+            {
+                case WmSetRedraw:
+                case 0x0005: // WM_SIZE
+                case 0x0100: // WM_KEYDOWN
+                case 0x0102: // WM_CHAR: native incremental search can change the viewport
+                case 0x0115: // WM_VSCROLL
+                case 0x020A: // WM_MOUSEWHEEL
+                case 0x0200: // WM_MOUSEMOVE: native drag-selection can scroll too
+                case 0x0201: // WM_LBUTTONDOWN
+                case 0x0113: // WM_TIMER: native drag-selection autoscroll
+                case 0x0180: // LB_ADDSTRING
+                case 0x0181: // LB_INSERTSTRING
+                case 0x0182: // LB_DELETESTRING
+                case 0x0184: // LB_RESETCONTENT
+                case 0x0185: // LB_SETSEL
+                case 0x0186: // LB_SETCURSEL
+                case 0x0197: // LB_SETTOPINDEX
+                case 0x019F: // LB_SETCARETINDEX
+                case 0x01A0: // LB_SETITEMHEIGHT
+                case 0x01A7: // LB_SETCOUNT
+                    QueueViewportChanged();
+                    break;
+            }
+        }
+
+        private void QueueViewportChanged()
+        {
+            if (!externalScrollBar || viewportQueued || !IsHandleCreated || IsDisposed || Disposing) return;
+            viewportQueued = true;
+            int generation = viewportGeneration;
+            try
+            {
+                // Native LB_ADDSTRING runs before the managed Items collection is updated.
+                // Coalesce until the message completes, including BeginUpdate/EndUpdate batches.
+                BeginInvoke((MethodInvoker)delegate
+                {
+                    if (generation != viewportGeneration) return;
+                    viewportQueued = false;
+                    if (!externalScrollBar || IsDisposed || Disposing || !redrawEnabled) return;
+                    EventHandler changed = ViewportChanged;
+                    if (changed != null) changed(this, EventArgs.Empty);
+                });
+            }
+            catch { viewportQueued = false; }
+        }
+
+        protected override void OnSelectedIndexChanged(EventArgs e)
+        {
+            base.OnSelectedIndexChanged(e);
+            QueueViewportChanged();
+        }
+
+        protected override void OnMouseWheel(MouseEventArgs e)
+        {
+            base.OnMouseWheel(e);
+            if (!externalScrollBar || MultiColumn) return;
+            var handled = e as HandledMouseEventArgs;
+            if (handled != null && handled.Handled) return;
+            if (handled != null) handled.Handled = true;
+            // The native LISTBOX wheel handler requires WS_VSCROLL. Replace only
+            // that part when using the external rail, preserving system settings.
+            int lines = SystemInformation.MouseWheelScrollLines;
+            if (lines == 0) return;
+            int delta = SystemInformation.MouseWheelScrollDelta;
+            wheelDelta += e.Delta;
+            int steps = (int)(wheelDelta / delta);
+            wheelDelta %= delta;
+            if (steps == 0 || Items.Count == 0) return;
+            int page = Math.Max(1, ClientSize.Height / Math.Max(1, ItemHeight));
+            int distance = lines < 0 ? page : lines;
+            long target = TopIndex - (long)steps * distance;
+            TopIndex = (int)Math.Max(0, Math.Min(Math.Max(0, Items.Count - page), target));
+            QueueViewportChanged();
         }
 
         protected override void OnDrawItem(DrawItemEventArgs e)
@@ -48,8 +161,8 @@ namespace PaviseApp
             }
 
             surface.SetClip(bounds);
-            if (Backdrop.Active) Backdrop.Paint(surface, this, bounds);
-            using (var back = new SolidBrush(Backdrop.CardFill(BackColor))) surface.FillRectangle(back, bounds);
+            if (Backdrop.AppliesTo(this)) Backdrop.Paint(surface, this, bounds);
+            using (var back = new SolidBrush(Backdrop.CardFill(this, BackColor))) surface.FillRectangle(back, bounds);
             try
             {
                 base.OnDrawItem(new DrawItemEventArgs(surface, e.Font, bounds, e.Index, e.State, e.ForeColor, e.BackColor));
@@ -116,6 +229,10 @@ namespace PaviseApp
 
         protected override void OnHandleDestroyed(EventArgs e)
         {
+            viewportGeneration++;
+            viewportQueued = false;
+            redrawEnabled = true;
+            wheelDelta = 0;
             ReleaseBuffer();
             base.OnHandleDestroyed(e);
         }
@@ -149,8 +266,8 @@ namespace PaviseApp
                 var tail = new Rectangle(0, used, width, height - used);
                 using (Graphics g = Graphics.FromHdc(hdc))
                 {
-                    if (Backdrop.Active) Backdrop.Paint(g, this, tail);
-                    using (var brush = new SolidBrush(Backdrop.CardFill(BackColor)))
+                    if (Backdrop.AppliesTo(this)) Backdrop.Paint(g, this, tail);
+                    using (var brush = new SolidBrush(Backdrop.CardFill(this, BackColor)))
                         g.FillRectangle(brush, tail);
                 }
             }

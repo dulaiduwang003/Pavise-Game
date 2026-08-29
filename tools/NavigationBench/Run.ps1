@@ -5,6 +5,7 @@ $navOutput = Join-Path ([IO.Path]::GetTempPath()) ('PaviseNavigation-' + (Get-Da
 $null = New-Item -ItemType Directory -Path $navOutput
 $navSources = @(Get-ChildItem -LiteralPath (Join-Path $navRepo 'src') -Recurse -File -Filter '*.cs' | ForEach-Object { $_.FullName })
 $navSources += Join-Path $navRepo 'tests\NavigationUiChecks.cs'
+$navSources += Join-Path $navRepo 'tests\TransitionUiChecks.cs'
 $navBefore = @($navSources | ForEach-Object { [pscustomobject]@{ Path = $_; Hash = (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash } })
 $navCompiler = Join-Path ([Environment]::GetFolderPath('Windows')) 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 $navExe = Join-Path $navOutput 'NavigationUiChecks.exe'

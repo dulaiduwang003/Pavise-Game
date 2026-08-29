@@ -17,7 +17,7 @@ namespace PaviseApp
         private readonly int anchorCount;
         private int sel;
         private int hoverIdx = -1;
-        private Motion ind;
+        private Motion indicator;
         private Image logo;
         private bool showBranding = true;
         private PerformancePreset mode = PerformancePreset.Standard;
@@ -73,9 +73,8 @@ namespace PaviseApp
             else { groupSlots = new int[0]; groupTexts = new string[0]; }
             anchorCount = bottomAnchored < 0 ? 0 : (bottomAnchored > order.Length ? order.Length : bottomAnchored);
             Cursor = Cursors.Default;
-            ind.Speed = 0.30f;
-            int firstSlot = SlotOfItem(0);
-            ind.Set(SlotY(firstSlot >= 0 ? firstSlot : 0));
+            indicator.Speed = 0.40f;
+            indicator.Set(SlotY(SlotOfItem(sel)));
             logo = IconArt.Render(Dpi.S(46), mode, modeEnabled);
         }
 
@@ -97,17 +96,41 @@ namespace PaviseApp
 
         private int SlotY(int slot)
         {
-            if (slot < 0) return (int)ind.Value;
+            if (slot < 0) return TopPad;
             int flowCount = order.Length - anchorCount;
             if (slot >= flowCount && Height > 0)
                 return Height - BottomPad - ItemH - (order.Length - 1 - slot) * Pitch;
             return TopPad + slot * Pitch + GroupsAbove(slot) * GroupH;
         }
 
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            SnapToSelection();
+        }
+
         protected override void OnHandleDestroyed(EventArgs e)
         {
+            SnapToSelection();
             if (logo != null) { try { logo.Dispose(); } catch { } logo = null; }
             base.OnHandleDestroyed(e);
+        }
+
+        protected override void OnVisibleChanged(EventArgs e)
+        {
+            base.OnVisibleChanged(e);
+            SnapToSelection();
+        }
+
+        protected override void OnSizeChanged(EventArgs e)
+        {
+            base.OnSizeChanged(e);
+            SnapToSelection();
+        }
+
+        private bool CanAnimateIndicator
+        {
+            get { return IsHandleCreated && Visible && !UiClock.Frozen && !UiClock.Suspended; }
         }
 
         public void Select(int i)
@@ -120,10 +143,18 @@ namespace PaviseApp
         internal void SelectSilently(int i)
         {
             if (i < 0 || i >= labels.Length) return;
+            bool changed = sel != i;
             sel = i;
             int slot = SlotOfItem(i);
-            if (slot >= 0) ind.To(SlotY(slot));
-            UiClock.Wake(); Invalidate();
+            int targetY = SlotY(slot);
+            // 页面与文字立即激活，仅缓动选中框；重复同步同一项不打断正在运行的动画。
+            if (changed && slot >= 0 && CanAnimateIndicator)
+            {
+                indicator.To(targetY);
+                UiClock.Wake();
+            }
+            else if (!CanAnimateIndicator || indicator.Target != targetY) indicator.Set(targetY);
+            Invalidate();
         }
 
         internal void InvokeItem(int i)
@@ -133,7 +164,13 @@ namespace PaviseApp
             else Select(i);
         }
 
-        public void SnapToSelection() { ind.Set(SlotY(SlotOfItem(sel))); Invalidate(); }
+        public void SnapToSelection()
+        {
+            // 构造期的尺寸通知可能早于导航顺序初始化。
+            if (order == null) return;
+            indicator.Set(SlotY(SlotOfItem(sel)));
+            Invalidate();
+        }
 
         public void SetMode(PerformancePreset value, bool enabled)
         {
@@ -150,7 +187,21 @@ namespace PaviseApp
             Invalidate();
         }
 
-        protected override bool StepAll() { bool a = base.StepAll(); bool b = ind.Step(); return a || b; }
+        protected override bool StepAll()
+        {
+            bool moved = base.StepAll();
+            int targetY = SlotY(SlotOfItem(sel));
+            if (!CanAnimateIndicator || indicator.Target != targetY)
+            {
+                bool changed = indicator.Value != targetY || indicator.Target != targetY;
+                indicator.Set(targetY);
+                return moved || changed;
+            }
+            if (indicator.Value == indicator.Target) return moved;
+            moved |= indicator.Step();
+            if (Math.Abs(indicator.Value - indicator.Target) < 0.75f) indicator.Set(indicator.Target);
+            return moved;
+        }
 
         private int HitTest(int y)
         {
@@ -203,10 +254,10 @@ namespace PaviseApp
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics;
-            if (Backdrop.Active)
+            if (Backdrop.AppliesTo(this))
             {
                 Backdrop.Paint(g, this, ClientRectangle);
-                using (var bg = new SolidBrush(Backdrop.NavFill(Theme.Nav)))
+                using (var bg = new SolidBrush(Backdrop.NavFill(this, Theme.Nav)))
                     g.FillRectangle(bg, ClientRectangle);
             }
             else if (Theme.LightMode)
@@ -239,15 +290,19 @@ namespace PaviseApp
                 g.DrawLine(hp, Width - 1, 0, Width - 1, Height);
             }
 
-            if (SlotOfItem(sel) >= 0)
+            int selectedSlot = SlotOfItem(sel);
+            int targetY = SlotY(selectedSlot);
+            if (!CanAnimateIndicator || indicator.Target != targetY) indicator.Set(targetY);
+            if (selectedSlot >= 0)
             {
-                var pill = new Rectangle(Pad, (int)ind.Value, Width - Pad * 2, ItemH);
+                int selectedY = (int)Math.Round(indicator.Value);
+                var pill = new Rectangle(Pad, selectedY, Width - Pad * 2, ItemH);
                 using (var path = Theme.TechPath(pill, Dpi.S(8)))
                 {
                     using (var b = new SolidBrush(Col.Alpha(Theme.Accent, Theme.LightMode ? 38 : 22))) g.FillPath(b, path);
                     using (var p = new Pen(Col.Alpha(Theme.Accent, Theme.LightMode ? 124 : 76))) g.DrawPath(p, path);
                 }
-                var bar = new Rectangle(Pad, (int)ind.Value + Dpi.S(12), Dpi.S(4), ItemH - Dpi.S(24));
+                var bar = new Rectangle(Pad, selectedY + Dpi.S(12), Dpi.S(4), ItemH - Dpi.S(24));
                 using (var bp = Theme.Rounded(bar, Dpi.S(1)))
                 using (var bb = new SolidBrush(Theme.Accent)) g.FillPath(bb, bp);
             }

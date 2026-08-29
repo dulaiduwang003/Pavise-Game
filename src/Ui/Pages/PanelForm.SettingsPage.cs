@@ -30,10 +30,80 @@ namespace PaviseApp
               new List<ColorSwatch>(), new List<ColorSwatch>() };
         private static volatile bool shaderCleaning;
         private int slowBusy;
+        private int slowVersion, slowPending;
         private int wipeBusy;
+
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+        internal Func<bool> StartupTaskQueryForTest;
+        internal Func<bool, int> StartupTaskChangeForTest;
+        internal Func<long> ShaderMeasureForTest;
+        internal Action<Action> UiStateWorkQueueForTest;
+        internal Action<Action> UiStatePostForTest;
+        internal Action<string> StartupTaskWarningForTest;
+#endif
+
+        private bool QueryStartupTaskState()
+        {
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+            if (StartupTaskQueryForTest == null) throw new InvalidOperationException("Startup task query was not mocked");
+            return StartupTaskQueryForTest();
+#else
+            return TaskHelper.TaskExists();
+#endif
+        }
+
+        private int ChangeStartupTask(bool enabled)
+        {
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+            if (StartupTaskChangeForTest == null) throw new InvalidOperationException("Startup task change was not mocked");
+            return StartupTaskChangeForTest(enabled);
+#else
+            return enabled ? TaskHelper.CreateStartupTask() : TaskHelper.DeleteStartupTask();
+#endif
+        }
+
+        private long MeasureSettingsShaderCache()
+        {
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+            if (ShaderMeasureForTest == null) throw new InvalidOperationException("Shader cache query was not mocked");
+            return ShaderMeasureForTest();
+#else
+            return ShaderCache.MeasureBytes();
+#endif
+        }
+
+        private void QueueUiStateWork(Action work)
+        {
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+            if (UiStateWorkQueueForTest != null) { UiStateWorkQueueForTest(work); return; }
+#endif
+            if (!ThreadPool.QueueUserWorkItem(delegate { work(); }))
+                throw new InvalidOperationException("UI state work could not be queued");
+        }
+
+        private void PostUiStateResult(Action result)
+        {
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+            if (UiStatePostForTest != null) { UiStatePostForTest(result); return; }
+#endif
+            BeginInvoke((MethodInvoker)delegate { result(); });
+        }
+
+        private void WarnStartupTaskFailure(string reason)
+        {
+            string message = Lang.T("msg.taskfail")
+                + (string.IsNullOrEmpty(reason) ? "" : "\r\n\r\n" + reason);
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+            if (StartupTaskWarningForTest == null) throw new InvalidOperationException("Startup task warning was not mocked");
+            StartupTaskWarningForTest(message);
+#else
+            PaviseDialog.Warn(this, App.DisplayName, message);
+#endif
+        }
 
         private void BuildSettingsPage()
         {
+            Interlocked.Increment(ref slowVersion);
             int y = PageHeader(pageSettings, Lang.T("nav.set"), Lang.T("set.hint"), 2);
 
             var scroll = new DBPanel();
@@ -299,14 +369,17 @@ namespace PaviseApp
 
         private void OnAutoToggle(object s, EventArgs e)
         {
-            int rc = swAuto.Checked ? TaskHelper.CreateStartupTask() : TaskHelper.DeleteStartupTask();
+            if (IsDisposed || swAuto == null || swAuto.IsDisposed) return;
+            // A delayed read taken before this command must not undo either
+            // the successful choice or the failure path's fresh readback.
+            Interlocked.Increment(ref slowVersion);
+            int rc = ChangeStartupTask(swAuto.Checked);
             if (rc != 0)
             {
                 // 先把原因取出来 TaskExists 会再跑一次 schtasks 把它冲掉
                 string reason = TaskHelper.LastSchtasksError;
-                swAuto.SetSilently(TaskHelper.TaskExists());
-                PaviseDialog.Warn(this, App.DisplayName, Lang.T("msg.taskfail")
-                    + (string.IsNullOrEmpty(reason) ? "" : "\r\n\r\n" + reason));
+                swAuto.SetSilently(QueryStartupTaskState());
+                WarnStartupTaskFailure(reason);
             }
         }
 
@@ -371,28 +444,55 @@ namespace PaviseApp
 
         private void RefreshSlowStateAsync()
         {
-            if (!UiActive) return;
-            if (Interlocked.Exchange(ref slowBusy, 1) == 1) return;
-            ThreadPool.QueueUserWorkItem(_ =>
+            if (IsDisposed || !UiActive) return;
+            if (Interlocked.CompareExchange(ref slowBusy, 1, 0) != 0)
             {
-                bool task = false;
-                long shaderBytes = -1;
-                try { task = TaskHelper.TaskExists(); } catch { }
-                try { if (!shaderCleaning) shaderBytes = ShaderCache.MeasureBytes(); } catch { }
-                Interlocked.Exchange(ref slowBusy, 0);
-                if (!UiActive) return;
-                try
+                Interlocked.Exchange(ref slowPending, 1);
+                return;
+            }
+            Interlocked.Exchange(ref slowPending, 0);
+            int version = Volatile.Read(ref slowVersion);
+            Toggle auto = swAuto;
+            SettingCard shader = cardShader;
+            try
+            {
+                QueueUiStateWork(delegate
                 {
-                    BeginInvoke((MethodInvoker)(() =>
+                    bool task = false, taskKnown = false;
+                    long shaderBytes = -1;
+                    try { task = QueryStartupTaskState(); taskKnown = true; } catch { }
+                    try { if (!shaderCleaning) shaderBytes = MeasureSettingsShaderCache(); } catch { }
+                    try
                     {
-                        if (IsDisposed || !UiActive) return;
-                        if (swAuto != null) swAuto.SetSilently(task);
-                        if (cardShader != null && !shaderCleaning && shaderBytes >= 0)
-                            cardShader.Value = CacheSweep.FmtBytes(shaderBytes);
-                    }));
-                }
-                catch { }
-            });
+                        PostUiStateResult(delegate
+                        {
+                            try
+                            {
+                                if (IsDisposed || !UiActive
+                                    || !ReferenceEquals(auto, swAuto) || !ReferenceEquals(shader, cardShader)) return;
+                                // Startup commands invalidate only their task read;
+                                // the cache measurement is independent of that choice.
+                                if (version == Volatile.Read(ref slowVersion)
+                                    && auto != null && !auto.IsDisposed && taskKnown) auto.SetSilently(task);
+                                if (shader != null && !shader.IsDisposed && !shaderCleaning && shaderBytes >= 0)
+                                    shader.Value = CacheSweep.FmtBytes(shaderBytes);
+                            }
+                            finally { FinishSlowStateRefresh(); }
+                        });
+                    }
+                    catch { Interlocked.Exchange(ref slowBusy, 0); }
+                });
+            }
+            catch { Interlocked.Exchange(ref slowBusy, 0); }
+        }
+
+        private void FinishSlowStateRefresh()
+        {
+            // Keep the slot until its UI result is consumed so queued results
+            // cannot overtake one another. Coalesce blocked requests once.
+            Interlocked.Exchange(ref slowBusy, 0);
+            if (Interlocked.Exchange(ref slowPending, 0) != 0 && !IsDisposed && UiActive)
+                RefreshSlowStateAsync();
         }
 
         private void ShowRestoreAllResult(

@@ -6,11 +6,15 @@ namespace PaviseApp
 {
     internal static class PresenceQos
     {
+        // 会话日记键由恢复完成判定共同引用 改名必须两边一起
+        internal const string JournalKey = "PrevPresenceQos";
         private static readonly ReversibleReg Switch = new ReversibleReg(
             Registry.LocalMachine, @"SYSTEM\CurrentControlSet\Control\Power\PowerThrottling",
-            "DisableUserPresenceQos", RegistryValueKind.DWord, "PrevPresenceQos");
+            "DisableUserPresenceQos", RegistryValueKind.DWord, JournalKey);
         private static readonly object lk = new object();
         private static bool active;
+
+        public static bool HasResidue { get { return Switch.HasBackup; } }
 
         public static bool Activate()
         {

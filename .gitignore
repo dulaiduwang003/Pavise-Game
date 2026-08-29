@@ -3,6 +3,16 @@
 tests/
 !tests/
 tests/*
+!tests/SelfTests.Runner.cs
+!tests/SelfTests.OptionalServicePause.cs
+!tests/SelfTests.ServicePauser.cs
+!tests/SelfTests.StandbyListCleaner.cs
+!tests/SelfTests.EnglishInput.cs
+!tests/SelfTests.IntelGraphics.cs
+!tests/SelfTests.AppGpuPreferences.cs
+!tests/SelfTests.GraphicsInputUi.cs
+!tests/SelfTests.UiConfigAudit.cs
+!tests/SelfTests.UiAsyncState.cs
 !tests/SelfTests.RendererCandidate.cs
 !tests/SelfTests.RendererRelease.cs
 !tests/SelfTests.RendererHandoff.cs
@@ -27,6 +37,7 @@ tests/*
 !tests/SelfTests.IrqPinShot.cs
 !tests/IrqCoreLoadUiChecks.cs
 !tests/NavigationUiChecks.cs
+!tests/TransitionUiChecks.cs
 tools/
 !tools/
 tools/*

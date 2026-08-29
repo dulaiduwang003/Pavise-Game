@@ -66,10 +66,12 @@ namespace PaviseApp
                 return result;
             }
 
-            internal long FileOffset(uint rva, int length)
+            internal long FileOffset(uint rva, long length)
             {
                 if (length <= 0) return -1;
-                ulong end = (ulong)rva + (uint)length;
+                ulong count = (ulong)length;
+                ulong end = (ulong)rva + count;
+                if (end > (ulong)uint.MaxValue + 1) return -1;
                 long result = -1;
                 if (rva < HeaderSize && end <= HeaderSize && end <= (ulong)Length)
                     result = rva;
@@ -78,9 +80,9 @@ namespace PaviseApp
                     if (rva < section.Address) continue;
                     ulong delta = (ulong)rva - section.Address;
                     if (delta >= Math.Max(section.RawSize, section.VirtualSize)
-                        || delta + (uint)length > section.RawSize) continue;
+                        || delta + count > section.RawSize) continue;
                     ulong offset = section.RawPointer + delta;
-                    if (offset + (uint)length > (ulong)Length) continue;
+                    if (offset + count > (ulong)Length) continue;
                     // 同一 RVA 映射多个区域的文件不当作可靠静态证据。
                     if (result >= 0) return -1;
                     result = (long)offset;
@@ -195,8 +197,11 @@ namespace PaviseApp
         {
             if (address == 0 && size == 0) return true;
             int stride = delayed ? 32 : 20;
-            if (address == 0 || size < stride || size > MaxImports * stride) return false;
-            int limit = (int)(size / stride);
+            // Size can cover the whole .idata region, including thunks and names,
+            // not just DLL descriptors. Validate that region without reading it;
+            // bound the descriptors actually visited and require a terminator.
+            if (address == 0 || size < stride || reader.FileOffset(address, size) < 0) return false;
+            int limit = (int)Math.Min((uint)MaxImports, size / (uint)stride);
             for (int i = 0; i < limit; i++)
             {
                 ulong rva = (ulong)address + (uint)(i * stride);

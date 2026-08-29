@@ -66,7 +66,7 @@ namespace PaviseApp
                 || (mode == PerformancePreset.Custom && aggressiveOn);
         }
 
-        // 功耗侧一律避让的档 电源滑块不拨 插电也按电池口径放开纯省电项 处理器空闲不禁用
+        // 功耗侧默认避让：不拨电源滑块，插电也放开纯省电项；CPU 空闲由独立确认策略控制。
         internal static bool IsHandheld(PerformancePreset mode)
         {
             return mode == PerformancePreset.Handheld;
@@ -157,6 +157,7 @@ namespace PaviseApp
             bool familyExempt = true;
             int rendererPid = 0;
             string activeGameRoot = null;
+            GameProfile currentFamilyProfile = null;
             var libraryRoots = new List<string>();
             List<GameProfile> protectedProfiles;
             lock (sync)
@@ -164,8 +165,10 @@ namespace PaviseApp
                 if (activeDetection != null)
                 {
                     rendererPid = activeDetection.RendererPid;
-                    familyExempt = FamilyExemptFor(activeDetection.Profile == null
-                        ? null : FindProfileLocked(activeDetection.Profile.Id));
+                    GameProfile configured = activeDetection.Profile == null
+                        ? null : FindProfileLocked(activeDetection.Profile.Id);
+                    currentFamilyProfile = configured == null ? null : configured.Clone();
+                    familyExempt = FamilyExemptFor(currentFamilyProfile);
                     if (familyExempt && activeDetection.Profile != null)
                         activeGameRoot = activeDetection.Profile.Root;
                 }
@@ -215,14 +218,9 @@ namespace PaviseApp
                 ? EmptyPidSet
                 : CollectUserFacingFamily(foregroundPid, whitelist,
                     familyExempt ? 0 : rendererPid);
-            // Count 那条不能省 专注档拿到的是共享的 EmptyPidSet 往里 Remove 会动到别处
-            if (!familyExempt && haveSession && userFacingFamily.Count > 0)
-            {
-                userFacingFamily.Remove(rendererPid);
-                foreach (int pid in gameDescendants) userFacingFamily.Remove(pid);
-                foreach (int pid in gameHostAncestors) userFacingFamily.Remove(pid);
-                if (gamePids != null) foreach (int pid in gamePids) userFacingFamily.Remove(pid);
-            }
+            FilterUserFacingGameFamily(userFacingFamily, currentFamilyProfile, all,
+                rendererPid, selfPid, selfSession, gamePids, gameDescendants,
+                gameHostAncestors, FamilyEvidence);
             bool first;
             lock (sync) first = firstSweep;
             int done = 0, denied = 0, retrying = 0, rosterSkipped = 0;
@@ -275,9 +273,8 @@ namespace PaviseApp
                     // 用户开关只取消当前档案的家族保护，不取消其他档案的保护。
                     //   上面的 boosted 只在提优真的落地时为真 提优关掉或被反作弊挡住句柄时它是假的
                     //   所以这条按 pid 的判断不能省 否则那些机器上游戏本体会被当后台压掉
-                    if (white || protectedLibraryFamily.Contains(pid) || (rendererPid > 0 && pid == rendererPid)
-                        || (familyExempt && ((gamePids != null && gamePids.Contains(pid))
-                            || gameDescendants.Contains(pid))))
+                    if (IsGameOrWhitelistProtected(pid, rendererPid, white,
+                        protectedLibraryFamily.Contains(pid), familyExempt, gamePids, gameDescendants))
                     {
                         if (core.Release(pid, SuppressReason.Background)) ReportUntrack(pid);
                         continue;
@@ -314,6 +311,11 @@ namespace PaviseApp
                         ReleaseBackgroundExemption(pid, nm, null);
                         continue;
                     }
+                    // Integrated platform helpers follow this game's family choice;
+                    // independent capture hosts keep their protection. Reuse the
+                    // snapshot without reading game modules or exempting whole folders.
+                    if (TryProtectOverlayHost(pid, creation, nm, ipath, familyExempt)) continue;
+
                     string containRoot = LibraryRootOf(ipath, libraryRoots);
                     if (containRoot == null && familyExempt) containRoot = activeGameRoot;
                     if (!BasicBackgroundEligible(pid, selfPid, nm, ipath,
@@ -330,14 +332,6 @@ namespace PaviseApp
                     {
                         ReleaseBackgroundExemption(pid, nm, null);
                         rosterSkipped++;
-                        continue;
-                    }
-
-                    // 模块已注入游戏进程的工具 宿主与游戏共生在同一条渲染路径上
-                    //   压它就是压游戏自己 游戏等一个被压到零 CPU 的宿主回话即偶发整秒卡顿
-                    if (LibraryRootOf(ipath, overlayExemptRoots) != null)
-                    {
-                        ReleaseBackgroundExemption(pid, nm, null);
                         continue;
                     }
 
@@ -524,6 +518,95 @@ namespace PaviseApp
             }
             while (changed);
             return result;
+        }
+
+        // Keep window enumeration outside this pure policy step. The snapshot
+        // and profile are the same captured inputs used by this Sweep pass.
+        // Only the visible-window exemption is removed here. Renderer, explicit
+        // whitelist, other-profile and direct-foreground protection remain in
+        // their existing earlier/later decisions; this is not a suppression list.
+        internal static void FilterUserFacingGameFamily(HashSet<int> userFacingFamily,
+            GameProfile profile, ProcessSnapshot snapshot, int rendererPid, int selfPid, int ownerSession,
+            ICollection<int> gamePids, ICollection<int> gameDescendants, ICollection<int> gameHostAncestors,
+            GameFamilyEvidence familyEvidence = null)
+        {
+            // Competitive mode shares an empty set; never mutate it. A missing
+            // profile, a default opt-out or a missing renderer retains protection.
+            if (userFacingFamily == null || userFacingFamily.Count == 0
+                || rendererPid <= 0 || FamilyExemptFor(profile)) return;
+            userFacingFamily.Remove(rendererPid);
+            if (gameDescendants != null) userFacingFamily.ExceptWith(gameDescendants);
+            if (gameHostAncestors != null) userFacingFamily.ExceptWith(gameHostAncestors);
+            if (gamePids != null) userFacingFamily.ExceptWith(gamePids);
+
+            if (userFacingFamily.Count == 0 || snapshot == null || ownerSession < 0) return;
+            // A lobby can appear after the cached renderer family was captured.
+            // Reuse this pass's snapshot, but only subtract newly proved owners:
+            // PID reuse, missing identity and cross-session entries retain the
+            // visible-window exemption. Detect duplicates before filtering so
+            // even an invalid second entry cannot make an ambiguous PID a seed.
+            var current = new Dictionary<int, ProcEntry>();
+            var seen = new HashSet<int>();
+            foreach (ProcEntry process in snapshot.Entries)
+            {
+                if (process == null) continue;
+                if (!seen.Add(process.Pid)) { current.Remove(process.Pid); continue; }
+                if (process.Pid <= 4 || process.Pid == selfPid || process.Session != ownerSession
+                    || process.Creation <= 0 || string.IsNullOrEmpty(process.Name)
+                    || !GameFamilyHistory.CanonicalPath(process.Path)
+                    || !string.Equals(process.Name, Path.GetFileNameWithoutExtension(process.Path),
+                        StringComparison.OrdinalIgnoreCase)) continue;
+                current.Add(process.Pid, process);
+            }
+            bool safeRoot = SafeFamilyDir(profile.Root);
+            var seeds = new HashSet<int>();
+            var parents = new Dictionary<int, int>();
+            foreach (ProcEntry process in current.Values)
+            {
+                if (string.Equals(process.Path, profile.ExecutablePath, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(process.Path, profile.LearnedExecutablePath, StringComparison.OrdinalIgnoreCase)
+                    || (safeRoot && UnderRoot(process.Path, profile.Root))
+                    || (familyEvidence != null
+                        && familyEvidence.Contains(profile, process.Pid, process.Creation, process.Path)))
+                    seeds.Add(process.Pid);
+
+                ProcEntry parent;
+                if (process.ParentPid != process.Pid && current.TryGetValue(process.ParentPid, out parent)
+                    && parent.Creation <= process.Creation)
+                    parents.Add(process.Pid, parent.Pid);
+            }
+            if (seeds.Count == 0) return;
+            // Every edge above has two current, unique identities and a valid
+            // creation order; do not use cached PIDs or shared host ancestors as
+            // new roots. A Steam/WeGame sibling alone proves no game ownership.
+            userFacingFamily.ExceptWith(seeds);
+            userFacingFamily.ExceptWith(WalkDescendants(parents, seeds, selfPid, 24));
+        }
+
+        // The same early protection decision is shared with isolated policy tests.
+        // A per-game family opt-in never removes the renderer, explicit whitelist,
+        // or another protected library profile's independently confirmed members.
+        internal static bool IsGameOrWhitelistProtected(int pid, int rendererPid,
+            bool whitelisted, bool protectedLibraryMember, bool familyExempt,
+            HashSet<int> gamePids, HashSet<int> gameDescendants)
+        {
+            return whitelisted || protectedLibraryMember || (rendererPid > 0 && pid == rendererPid)
+                || (familyExempt && ((gamePids != null && gamePids.Contains(pid))
+                    || (gameDescendants != null && gameDescendants.Contains(pid))));
+        }
+
+        private bool TryProtectOverlayHost(int pid, long creation, string name, string imagePath, bool familyExempt)
+        {
+            // Explicit family suppression removes only the integrated platform
+            // exemption. Independent capture/communication tools remain protected.
+            if (pid <= 4 || !OverlayHostCatalog.ShouldProtectProcess(name, imagePath, familyExempt))
+                return false;
+
+            // A missing or recycled identity must never release another process's
+            // record. Keep unresolved recovery debt and retry on a later snapshot.
+            if (creation > 0 && core.ReleaseIfCreation(pid, SuppressReason.Background, creation))
+                ReportUntrack(pid);
+            return true;
         }
 
         private void ReleaseBackgroundExemption(int pid, string name, string reason)

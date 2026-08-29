@@ -11,7 +11,6 @@ namespace PaviseApp
     internal sealed class ThemeSwitch : FxControl
     {
         private bool lightOn;
-        private Motion slide;
         private Motion flash;
         public Action<bool> Toggled;
 
@@ -22,7 +21,6 @@ namespace PaviseApp
             TabStop = false;
             AccessibleName = Lang.T("set.light");
             AccessibleDescription = Lang.T("set.light.n");
-            slide.Speed = 0.30f; slide.Set(light ? 1f : 0f);
             flash.Speed = 0.12f; flash.Set(0f);
         }
 
@@ -30,23 +28,20 @@ namespace PaviseApp
         {
             if (lightOn == light) return;
             lightOn = light;
-            slide.To(light ? 1f : 0f);
-            UiClock.Wake();
+            Invalidate();
         }
 
         protected override bool StepAll()
         {
             bool a = base.StepAll();
-            bool b = slide.Step();
-            bool c = flash.Step();
-            return a || b || c;
+            bool b = flash.Step();
+            return a || b;
         }
 
         protected override void OnClick(EventArgs e)
         {
             base.OnClick(e);
             lightOn = !lightOn;
-            slide.To(lightOn ? 1f : 0f);
             flash.Set(1f); flash.To(0f);
             UiClock.Wake();
             Invalidate();
@@ -58,7 +53,7 @@ namespace PaviseApp
             Graphics g = e.Graphics;
             FillBg(g);
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            float t = slide.Value, h = hover.Value, fl = flash.Value;
+            float t = lightOn ? 1f : 0f, h = hover.Value, fl = flash.Value;
 
             Rectangle body = new Rectangle(0, Theme.S(2), Width - 1, Height - Theme.S(5));
             int cut = Theme.S(9);

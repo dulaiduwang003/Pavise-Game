@@ -40,6 +40,19 @@ namespace PaviseApp
 
         public static bool Active { get { return source != null; } }
 
+        // 封面只属于主窗口内容；独立弹窗和明确禁用封面的浮层子树使用主题底色。
+        public static bool AppliesTo(Control control)
+        {
+            if (!Active) return false;
+            for (Control current = control; current != null; current = current.Parent)
+            {
+                var panel = current as RoundPanel;
+                if (panel != null && !panel.UseBackdrop) return false;
+                if (current is Form) return current is PanelForm;
+            }
+            return false;
+        }
+
         public static string StorePath { get { return Path.Combine(Paths.Data, StoreName); } }
 
         public static int Dim
@@ -56,15 +69,15 @@ namespace PaviseApp
         }
 
         // 导航条上全是入口 一直得读得清 所以压得比卡片更狠
-        public static Color NavFill(Color baseFill)
+        public static Color NavFill(Control control, Color baseFill)
         {
-            if (!Active) return baseFill;
+            if (!AppliesTo(control)) return baseFill;
             return Col.Alpha(baseFill, Theme.LightMode ? NavAlphaLight : 198);
         }
 
-        public static Color CardFill(Color baseFill)
+        public static Color CardFill(Control control, Color baseFill)
         {
-            if (!Active) return baseFill;
+            if (!AppliesTo(control)) return baseFill;
             return Col.Alpha(baseFill, Theme.LightMode ? CardAlphaLight : CardAlphaDark);
         }
 
@@ -113,7 +126,7 @@ namespace PaviseApp
         // 控件自己的背景 g 的坐标系就是 c 的客户区
         public static void Paint(Graphics g, Control c, Rectangle client)
         {
-            if (!Active || c == null || client.Width <= 0 || client.Height <= 0) return;
+            if (!AppliesTo(c) || client.Width <= 0 || client.Height <= 0) return;
             Bitmap bmp = Fit(c);
             if (bmp == null) return;
 
@@ -294,11 +307,11 @@ namespace PaviseApp
         // 直接摆在页面上的不能叠 叠了等于把封面又盖回去
         public static void PaintOnCard(Graphics g, Control c, Rectangle rect)
         {
-            if (!Active) return;
+            if (!AppliesTo(c)) return;
             Paint(g, c, rect);
             var card = c.Parent as RoundPanel;
             if (card == null) return;
-            using (var b = new SolidBrush(CardFill(card.Fill))) g.FillRectangle(b, rect);
+            using (var b = new SolidBrush(CardFill(c, card.Fill))) g.FillRectangle(b, rect);
         }
     }
 }

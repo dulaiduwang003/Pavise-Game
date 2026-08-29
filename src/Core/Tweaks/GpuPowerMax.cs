@@ -7,7 +7,8 @@ namespace PaviseApp
 {
     internal static class GpuPowerMax
     {
-        private const string SnapKey = "GpuPowerSnap";
+        // 会话日记键由恢复完成判定共同引用 改名必须两边一起
+        internal const string SnapKey = "GpuPowerSnap";
         private static readonly object lk = new object();
 
         private static string VendorGpuId(GpuVendor vendor)

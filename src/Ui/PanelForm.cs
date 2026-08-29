@@ -62,7 +62,6 @@ namespace PaviseApp
         private bool formFrameAttached;
         private DBPanel curPage;
         private int pageBaseLeft;
-        private Motion pageSlide;
         private Icon appIcon;
         public bool RealExit;
         public Action ExitApp;
@@ -175,7 +174,7 @@ namespace PaviseApp
             btnMin.Click += (s, e) => WindowState = FormWindowState.Minimized;
             var btnClose = new CaptionButton(true);
             btnClose.SetBounds(tw - Theme.S(48), 0, Theme.S(44), Theme.S(TopH));
-            btnClose.Click += (s, e) => Hide();
+            btnClose.Click += (s, e) => BeginOutro();
 
             topBar.Controls.AddRange(new Control[] { lblSub, powerButton, searchButton, themeSwitch, modeButton, btnMin, btnClose });
 
@@ -264,6 +263,7 @@ namespace PaviseApp
         // 换图换档后整窗重画 卡片和各控件取的是同一张图的不同块 少刷一个就露馅
         private void RefreshBackdrop()
         {
+            StopPageReveal();
             ApplyBackdropLabels(this);
             Invalidate(true);
             Update();
@@ -272,6 +272,7 @@ namespace PaviseApp
         // 标签自己顶着一块纯色底 有封面时就成了补丁 改成透明交给父控件把图画进来
         private static void ApplyBackdropLabels(Control host)
         {
+            if (!Backdrop.AppliesTo(host)) return;
             foreach (Control c in host.Controls)
             {
                 var lb = c as Label;
@@ -363,12 +364,15 @@ namespace PaviseApp
         internal void ShowPageForShot(PageId id)
         {
             nav.Select((int)id);
+            StopPageReveal();
+            nav.SnapToSelection();
+            tuningNav.SnapToSelection();
             if (curPage != null) curPage.Left = Theme.S(RailW);
         }
 
         internal void ShowPolicyTabForShot(int index)
         {
-            if (policyTabs != null) policyTabs.Index = index;
+            if (policyTabs != null) { policyTabs.Index = index; policyTabs.SnapToSelection(); }
         }
 
         internal void SetCoreModeForShot(bool manual)
@@ -402,50 +406,67 @@ namespace PaviseApp
         private void ShowPage(int index)
         {
             if (index < 0 || index >= pages.Length || pages[index] == null) return;
-            SavePagePosition(curPage);
             SetModeFlyout(false);
             SetSearchFlyout(false);
             SetPowerFlyout(false);
-            if (pageGameConfig != null && pageGameConfig.Visible)
-            {
-                pageGameConfig.Visible = false;
-                cfgProfileId = null;
-                cfgProfile = null;
-                RefreshGames();
-            }
             var page = pages[index];
-            foreach (var p in pages) p.Visible = (p == page);
-            curPage = page;
-            bool advanced = IsAdvancedPage(index);
-            nav.Visible = !advanced;
-            tuningNav.Visible = advanced;
-            if (advanced)
-            {
-                tuningNav.SelectSilently(index);
-                if (lastAdvancedPage != index)
-                {
-                    lastAdvancedPage = index;
-                    Settings.SaveStr(LastAdvancedPageKey, index.ToString(System.Globalization.CultureInfo.InvariantCulture));
-                }
-            }
-            else mainReturnPage = index;
-            SyncGuardVeils();
-            // 两级导航占用同一条侧栏，切分类无需退回概览。
+            // 重复点击已激活项不重新刷新整页，也不重启尚未结束的过渡。
+            if (curPage == page && page.Visible) return;
+            SavePagePosition(curPage);
             pageBaseLeft = Theme.S(RailW);
-            page.Left = pageBaseLeft + Theme.S(16);
-            pageSlide.Speed = 0.26f; pageSlide.Set(1f); pageSlide.To(0f);
-            SlideInActiveTab(page);
-            RestorePagePosition(index);
-            if (UiActive) UiClock.Wake();
-            NotifyPageActivation();
-        }
-
-        private void SlideInActiveTab(Control page)
-        {
-            DBPanel[] panels;
-            if (pageTabPanels == null || !pageTabPanels.TryGetValue(page, out panels)) return;
-            foreach (DBPanel panel in panels)
-                if (panel != null && panel.Visible) { Fx.SlideIn(panel); break; }
+            page.Left = pageBaseLeft;
+            bool revealing = curPage != null && !curPage.IsDisposed && PreparePageReveal(page);
+            bool ready = false;
+            root.SuspendLayout();
+            page.SuspendLayout();
+            try
+            {
+                if (pageGameConfig != null && pageGameConfig.Visible)
+                {
+                    pageGameConfig.Visible = false;
+                    cfgProfileId = null;
+                    cfgProfile = null;
+                    RefreshGames();
+                }
+                foreach (var p in pages) p.Visible = (p == page);
+                curPage = page;
+                bool advanced = IsAdvancedPage(index);
+                nav.Visible = !advanced;
+                tuningNav.Visible = advanced;
+                if (advanced)
+                {
+                    tuningNav.SelectSilently(index);
+                    if (lastAdvancedPage != index)
+                    {
+                        lastAdvancedPage = index;
+                        Settings.SaveStr(LastAdvancedPageKey, index.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                    }
+                }
+                else mainReturnPage = index;
+                SyncGuardVeils();
+                RestorePagePosition(index);
+                if (UiActive) UiClock.Wake();
+                NotifyPageActivation();
+                ready = true;
+            }
+            finally
+            {
+                try
+                {
+                    try { page.ResumeLayout(true); }
+                    finally { root.ResumeLayout(true); }
+                    if (revealing)
+                    {
+                        if (ready)
+                        {
+                            (nav.Visible ? nav : tuningNav).Update();
+                            StartPageReveal();
+                        }
+                        else StopPageReveal();
+                    }
+                }
+                catch { StopPageReveal(); throw; }
+            }
         }
 
         private void AttachFormFrame()
@@ -663,6 +684,7 @@ namespace PaviseApp
 
         private void SetPowerFlyout(bool visible)
         {
+            if (visible) StopPageReveal();
             if (powerFlyout == null) return;
             if (visible)
             {
@@ -670,13 +692,8 @@ namespace PaviseApp
                 SetModeFlyout(false);
                 powerFlyout.Open(gameMode.PowerPlanSwitch, PowerPlan.EffectivePlanId);
             }
-            if (!visible) Fx.Settle(powerFlyout);
             powerFlyout.Visible = visible;
-            if (visible)
-            {
-                powerFlyout.BringToFront();
-                Fx.DropIn(powerFlyout);
-            }
+            if (visible) powerFlyout.BringToFront();
         }
 
         private void ChoosePowerPlan(string id)
@@ -702,6 +719,7 @@ namespace PaviseApp
 
         private void SetModeFlyout(bool visible)
         {
+            if (visible) StopPageReveal();
             if (modeFlyout == null) return;
             if (visible)
             {
@@ -709,13 +727,8 @@ namespace PaviseApp
                 SetSearchFlyout(false);
                 SetPowerFlyout(false);
             }
-            if (!visible) Fx.Settle(modeFlyout);
             modeFlyout.Visible = visible;
-            if (visible)
-            {
-                modeFlyout.BringToFront();
-                Fx.DropIn(modeFlyout);
-            }
+            if (visible) modeFlyout.BringToFront();
         }
 
         private void ChooseGlobalMode(PerformancePreset mode)
@@ -816,6 +829,7 @@ namespace PaviseApp
 
         private void OnThemeToggled(bool light)
         {
+            StopPageReveal();
             Settings.Save("UiLight", light);
             Theme.SetLight(light);
             Logger.Log(Lang.T("log.panelform.8") + (light ? Lang.T("log.panelform.9") : Lang.T("log.panelform.10")));
@@ -834,6 +848,7 @@ namespace PaviseApp
 
         private void RebuildUi()
         {
+            DisposePageReveal();
             CancelOutro();
             if (uiTimer != null) { uiTimer.Stop(); uiTimer.Dispose(); uiTimer = null; }
             uiActive = false;
@@ -860,6 +875,8 @@ namespace PaviseApp
 
         protected override void WndProc(ref Message m)
         {
+            // ShowDialog 会在原生层禁用 owner，不一定触发托管 EnabledChanged。
+            if (m.Msg == 0x000A && m.WParam == IntPtr.Zero) StopPageReveal();
             if (m.Msg == Native.WM_DROPFILES)
             {
                 AddDroppedGames(Native.ReadDroppedFiles(m.WParam));
@@ -892,6 +909,7 @@ namespace PaviseApp
 
         private void BeginMoveSizeLoop()
         {
+            StopPageReveal();
             if (moveSizeLoop) return;
             moveSizeLoop = true;
             if (introActive)
@@ -916,6 +934,7 @@ namespace PaviseApp
 
         protected override void OnHandleDestroyed(EventArgs e)
         {
+            DisposePageReveal();
             CancelAutoHide();
             outroActive = false;
             outroWatch.Reset();
@@ -998,7 +1017,6 @@ namespace PaviseApp
                 nav.Select(pageIndex);
                 nav.SnapToSelection();
                 tuningNav.SnapToSelection();
-                pageSlide.Set(0f);
                 if (curPage != null) curPage.Left = pageBaseLeft;
             }
             OnUiTick(null, EventArgs.Empty);
@@ -1022,11 +1040,11 @@ namespace PaviseApp
                 if (shotProfiles.Count > 0)
                 {
                     ShowGameConfigPage(shotProfiles[0].Id);
-                    pageSlide.Set(0f);
                     if (curPage != null) curPage.Left = pageBaseLeft;
                     if (previewMode == "gameconfig-core" && cfgTabs != null) cfgTabs.Index = 1;
                     if (previewMode == "gameconfig-env" && cfgTabs != null) cfgTabs.Index = 2;
                     if (previewMode == "gameconfig-gpu" && cfgTabs != null) cfgTabs.Index = 3;
+                    if (cfgTabs != null) cfgTabs.SnapToSelection();
                 }
             }
             if (showModePicker && modeButton != null) modeButton.PerformClick();
@@ -1036,7 +1054,6 @@ namespace PaviseApp
             {
                 nav.Select(lastAdvancedPage);
                 tuningNav.SnapToSelection();
-                pageSlide.Set(0f);
                 if (curPage != null) curPage.Left = pageBaseLeft;
             }
             if (previewMode == "search-hit" && searchFlyout != null)
@@ -1062,6 +1079,7 @@ namespace PaviseApp
                 }
             }
             Application.DoEvents();
+            StopPageReveal();
             using (var bmp = new Bitmap(ClientSize.Width, ClientSize.Height))
             {
                 DrawToBitmap(bmp, new Rectangle(0, 0, ClientSize.Width, ClientSize.Height));
@@ -1096,7 +1114,7 @@ namespace PaviseApp
             if (!RealExit && e.CloseReason != CloseReason.WindowsShutDown && e.CloseReason != CloseReason.ApplicationExitCall)
             {
                 e.Cancel = true;
-                Hide();
+                BeginOutro();
                 return;
             }
             base.OnFormClosing(e);

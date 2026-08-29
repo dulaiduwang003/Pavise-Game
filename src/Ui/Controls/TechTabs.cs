@@ -14,7 +14,7 @@ namespace PaviseApp
         private bool[] hot = new bool[0];
         private int idx;
         private int hoverIdx = -1;
-        private Motion slide;
+        private Motion selection;
         private Motion[] glow = new Motion[0];
         public Action<int> IndexChanged;
 
@@ -24,25 +24,59 @@ namespace PaviseApp
                 | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
             BackColor = Theme.Bg;
             Cursor = Cursors.Hand;
-            slide.Speed = 0.30f;
+            selection.Speed = 0.40f;
         }
 
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
+            SnapToSelection();
             UiClock.Frame += OnFrame;
         }
 
         protected override void OnHandleDestroyed(EventArgs e)
         {
             UiClock.Frame -= OnFrame;
+            selection.Set(idx);
             base.OnHandleDestroyed(e);
+        }
+
+        protected override void OnVisibleChanged(EventArgs e)
+        {
+            base.OnVisibleChanged(e);
+            SnapToSelection();
+        }
+
+        protected override void OnSizeChanged(EventArgs e)
+        {
+            base.OnSizeChanged(e);
+            SnapToSelection();
+        }
+
+        private bool CanAnimateSelection
+        {
+            get { return IsHandleCreated && Visible && !UiClock.Frozen && !UiClock.Suspended; }
+        }
+
+        internal void SnapToSelection()
+        {
+            selection.Set(idx);
+            Invalidate();
         }
 
         private void OnFrame(object s, EventArgs e)
         {
-            bool moved = slide.Step();
-            if (moved && Math.Abs(slide.Value - slide.Target) < 0.75f) slide.Set(slide.Target);
+            bool moved = false;
+            if (selection.Value != selection.Target)
+            {
+                if (!CanAnimateSelection) { selection.Set(idx); moved = true; }
+                else
+                {
+                    moved = selection.Step();
+                    if (Math.Abs(selection.Value - selection.Target) * (TabW + TabGap) < 0.75f)
+                        selection.Set(selection.Target);
+                }
+            }
             for (int i = 0; i < glow.Length; i++) if (glow[i].Step()) moved = true;
             if (moved) Invalidate();
         }
@@ -55,8 +89,7 @@ namespace PaviseApp
             if (idx >= labels.Length) idx = 0;
             glow = new Motion[labels.Length];
             for (int i = 0; i < glow.Length; i++) glow[i].Speed = 0.26f;
-            slide.Set(TabRect(idx).X);
-            Invalidate();
+            SnapToSelection();
         }
 
         public void SetHot(bool[] value)
@@ -77,8 +110,9 @@ namespace PaviseApp
             {
                 if (value < 0 || value >= labels.Length || value == idx) return;
                 idx = value;
-                slide.To(TabRect(idx).X);
-                UiClock.Wake();
+                // 只缓动绘制的选中框；状态、文字和页面回调立即切换。
+                if (CanAnimateSelection) { selection.To(idx); UiClock.Wake(); }
+                else selection.Set(idx);
                 Invalidate();
                 if (IndexChanged != null) IndexChanged(idx);
             }
@@ -132,8 +166,9 @@ namespace PaviseApp
 
         protected override void OnPaint(PaintEventArgs e)
         {
+            if (!CanAnimateSelection) selection.Set(idx);
             Graphics g = e.Graphics;
-            if (Backdrop.Active) Backdrop.PaintOnCard(g, this, ClientRectangle);
+            if (Backdrop.AppliesTo(this)) Backdrop.PaintOnCard(g, this, ClientRectangle);
             else using (var bg = new SolidBrush(BackColor)) g.FillRectangle(bg, ClientRectangle);
             g.SmoothingMode = SmoothingMode.AntiAlias;
             int cut = Theme.S(9);
@@ -144,7 +179,7 @@ namespace PaviseApp
                 float h = GlowAt(i);
                 using (GraphicsPath p = Theme.TechPath(r, cut))
                 {
-                    using (var b = new SolidBrush(Backdrop.CardFill(
+                    using (var b = new SolidBrush(Backdrop.CardFill(this,
                         Col.Lerp(Theme.Card, Theme.CardHover, h)))) g.FillPath(b, p);
                     using (var pen = new Pen(Col.Lerp(Theme.Stroke, Theme.StrokeHi, h))) g.DrawPath(pen, p);
                 }
@@ -156,11 +191,11 @@ namespace PaviseApp
             if (labels.Length > 0)
             {
                 Rectangle sr = TabRect(idx);
-                sr.X = (int)slide.Value;
+                sr.X = (int)Math.Round(selection.Value * (TabW + TabGap));
                 sr.Width -= 1; sr.Height -= 1;
                 using (GraphicsPath p = Theme.TechPath(sr, cut))
                 {
-                    using (var b = new SolidBrush(Backdrop.CardFill(
+                    using (var b = new SolidBrush(Backdrop.CardFill(this,
                         Col.Lerp(Theme.Card, Theme.Accent, 0.16f)))) g.FillPath(b, p);
                     using (var pen = new Pen(Col.Alpha(Theme.Accent, 220))) g.DrawPath(pen, p);
                 }

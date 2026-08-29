@@ -1,65 +1,69 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 统一的界面过渡 面板切入 弹层落下 弹窗淡入 全项目的切换都走这里
+// 文件用途 窗口淡入与页面背景揭示，不截取页面或逐个缓存子控件
 using System;
-using System.Collections.Generic;
+using System.Diagnostics;
+using System.Drawing;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace PaviseApp
 {
     internal static class Fx
     {
-        internal const int PanelShift = 14;
-        internal const float PanelSpeed = 0.28f;
-        internal const int FlyoutDrop = 10;
-        internal const float FlyoutSpeed = 0.24f;
-        internal const int FormRise = 16;
-        internal const float FormSpeed = 0.22f;
-
-        private static readonly Dictionary<Control, Slide> live = new Dictionary<Control, Slide>();
-
-        public static void SlideIn(Control target)
-        {
-            SlideIn(target, PanelShift, PanelSpeed);
-        }
-
-        public static void SlideIn(Control target, int shift, float speed)
-        {
-            Play(target, Theme.S(shift), 0, speed);
-        }
-
-        public static void DropIn(Control target)
-        {
-            DropIn(target, FlyoutDrop, FlyoutSpeed);
-        }
-
-        public static void DropIn(Control target, int shift, float speed)
-        {
-            Play(target, 0, Theme.S(shift), speed);
-        }
-
-        private static void Play(Control target, int dx, int dy, float speed)
-        {
-            if (target == null || target.IsDisposed || !target.Visible) return;
-            Settle(target);
-            live[target] = new Slide(target, dx, dy, speed);
-            UiClock.Wake();
-        }
-
-        public static void Settle(Control target)
-        {
-            Slide old;
-            if (target != null && live.TryGetValue(target, out old)) old.Finish();
-        }
-
         public static void EnterForm(Form form)
         {
-            EnterForm(form, FormRise);
+            if (form == null || form.IsDisposed || !form.Visible) return;
+            if (UiClock.Frozen) { DropLayered(form); return; }
+            new FormEntry(form);
         }
 
-        public static void EnterForm(Form form, int rise)
+        private sealed class FormEntry
         {
-            if (form == null || form.IsDisposed || !form.Visible) return;
-            DropLayered(form);
+            private const int DurationMs = 180;
+            private readonly Form form;
+            private readonly Timer timer;
+            private readonly Stopwatch watch = new Stopwatch();
+            private bool done;
+
+            public FormEntry(Form target)
+            {
+                form = target;
+                // A dialog can outlive a hidden main window. Its fade must never
+                // borrow or restore the main window's global animation-clock state.
+                timer = new Timer();
+                timer.Interval = UiClock.FrameMs;
+                timer.Tick += OnTick;
+                form.VisibleChanged += OnGone;
+                form.Disposed += OnGone;
+                form.Opacity = 0.0;
+                watch.Start();
+                timer.Start();
+            }
+
+            private void OnTick(object sender, EventArgs e)
+            {
+                if (form.IsDisposed || !form.Visible || UiClock.Frozen)
+                { Finish(); return; }
+                double progress = watch.Elapsed.TotalMilliseconds / DurationMs;
+                if (progress >= 1.0) { Finish(); return; }
+                double remaining = 1.0 - progress;
+                form.Opacity = 1.0 - remaining * remaining * remaining;
+            }
+
+            private void OnGone(object sender, EventArgs e) { Finish(); }
+
+            private void Finish()
+            {
+                if (done) return;
+                done = true;
+                timer.Stop();
+                timer.Tick -= OnTick;
+                timer.Dispose();
+                watch.Stop();
+                form.VisibleChanged -= OnGone;
+                form.Disposed -= OnGone;
+                if (!form.IsDisposed) DropLayered(form);
+            }
         }
 
         internal static void DropLayered(Form f)
@@ -73,61 +77,206 @@ namespace PaviseApp
             }
             catch { }
         }
+    }
 
-        private sealed class Slide
+    // 子 HWND 不支持可靠的整体透明度。这里只画页面原有背景，交给系统逐渐退去，
+    // 下方仍是可立即交互的真实页面；不复制内容、不改变页面/弹窗的分层样式。
+    internal sealed class PageReveal : Form
+    {
+        private const int DurationMs = 160;
+        private const int Layered = 0x00080000, Transparent = 0x20;
+        private const int ToolWindow = 0x80, NoActivate = 0x08000000;
+        private readonly Form host;
+        private readonly Stopwatch watch = new Stopwatch();
+        private WorkspacePanel surface;
+        private Point surfaceOffset;
+        private bool frameAttached;
+        private bool layeredReady;
+        private byte alpha = 255;
+
+        internal PageReveal(Form owner)
         {
-            private readonly Control target;
-            private readonly int baseLeft, baseTop;
-            private readonly int shiftX, shiftY;
-            private Motion m;
-            private bool done;
+            host = owner;
+            FormBorderStyle = FormBorderStyle.None;
+            ShowInTaskbar = false;
+            StartPosition = FormStartPosition.Manual;
+            AutoScaleMode = AutoScaleMode.None;
+            TabStop = false;
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer
+                | ControlStyles.UserPaint, true);
+            host.VisibleChanged += OnHostChanged;
+            host.LocationChanged += OnHostChanged;
+            host.SizeChanged += OnHostChanged;
+            host.Deactivate += OnHostChanged;
+            host.HandleDestroyed += OnHostChanged;
+        }
 
-            public Slide(Control c, int dx, int dy, float speed)
-            {
-                target = c; baseLeft = c.Left; baseTop = c.Top;
-                shiftX = dx; shiftY = dy;
-                m.Speed = speed <= 0f ? PanelSpeed : speed;
-                m.Set(1f); m.To(0f);
-                Place(1f);
-                target.Disposed += OnGone;
-                UiClock.Frame += OnFrame;
-            }
+        internal WorkspacePanel Surface { get { return surface; } }
+        internal byte Alpha { get { return alpha; } }
+        internal bool Fading { get { return watch.IsRunning; } }
 
-            private void Place(float v)
-            {
-                if (shiftX != 0) target.Left = baseLeft + (int)(v * shiftX);
-                if (shiftY != 0) target.Top = baseTop + (int)(v * shiftY);
-            }
+        protected override bool ShowWithoutActivation { get { return true; } }
 
-            private void OnGone(object s, EventArgs e)
+        protected override CreateParams CreateParams
+        {
+            get
             {
-                done = true;
-                Detach();
-            }
-
-            private void OnFrame(object s, EventArgs e)
-            {
-                if (target.IsDisposed) { done = true; Detach(); return; }
-                if (!m.Step()) { Finish(); return; }
-                Place(m.Value);
-            }
-
-            public void Finish()
-            {
-                if (done) return;
-                done = true;
-                if (!target.IsDisposed) Place(0f);
-                Detach();
-            }
-
-            private void Detach()
-            {
-                UiClock.Frame -= OnFrame;
-                try { target.Disposed -= OnGone; } catch { }
-                Slide cur;
-                if (live.TryGetValue(target, out cur) && cur == this) live.Remove(target);
+                var value = base.CreateParams;
+                value.ExStyle |= Layered | Transparent | ToolWindow | NoActivate;
+                return value;
             }
         }
 
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            // 初始 alpha=255 也必须显式初始化，否则分层窗口的首帧不会绘制。
+            layeredReady = SetAlpha(255);
+        }
+
+        private bool CanReveal
+        {
+            get
+            {
+                return !host.IsDisposed && host.IsHandleCreated && host.Visible
+                    && host.WindowState != FormWindowState.Minimized
+                    && IsWindowEnabled(host.Handle) && !UiClock.Frozen && !UiClock.Suspended;
+            }
+        }
+
+        internal bool Prepare(WorkspacePanel page)
+        {
+            Cancel();
+            if (page == null || page.IsDisposed || page.Parent == null || !CanReveal) return false;
+            Rectangle full = page.Parent.RectangleToScreen(page.Bounds);
+            Rectangle clipped = Rectangle.Intersect(full, host.RectangleToScreen(host.ClientRectangle));
+            if (clipped.Width <= 0 || clipped.Height <= 0) return false;
+            surface = page;
+            surfaceOffset = new Point(clipped.Left - full.Left, clipped.Top - full.Top);
+            surface.VisibleChanged += OnSurfaceVisibleChanged;
+            surface.LocationChanged += OnHostChanged;
+            surface.SizeChanged += OnHostChanged;
+            surface.ParentChanged += OnHostChanged;
+            surface.Disposed += OnHostChanged;
+            Bounds = clipped;
+            try
+            {
+                if (IsHandleCreated) layeredReady = SetAlpha(255);
+                Show(host);
+                if (!layeredReady) { Cancel(); return false; }
+                Invalidate();
+                Update();
+                return surface != null && Visible;
+            }
+            catch
+            {
+                // 动画不可用时仍显示真实页面，不能留下遮挡层或阻断导航。
+                Cancel();
+                return false;
+            }
+        }
+
+        internal void Reveal()
+        {
+            if (surface == null || !surface.Visible || !CanReveal) { Cancel(); return; }
+            WorkspacePanel target = surface;
+            // 先完成真实子窗口的首帧；计时不包含布局、列表刷新和首次绘制的耗时。
+            bool painted;
+            try { painted = RedrawWindow(target.Handle, IntPtr.Zero, IntPtr.Zero, 0x181); }
+            catch
+            {
+                if (surface == target) Cancel();
+                throw;
+            }
+            // 同步 Paint 可能打开弹窗、关闭页面或发起下一次导航，不能复活已取消的过渡。
+            if (surface != target) return;
+            if (!painted || target.IsDisposed || !target.Visible || !Visible || !CanReveal)
+            { Cancel(); return; }
+            watch.Restart();
+            if (!frameAttached) { UiClock.Frame += OnFrame; frameAttached = true; }
+            UiClock.Wake();
+        }
+
+        private void OnFrame(object sender, EventArgs e)
+        {
+            if (surface == null || surface.IsDisposed || !surface.Visible || !CanReveal)
+            { Cancel(); return; }
+            double progress = watch.Elapsed.TotalMilliseconds / DurationMs;
+            if (progress >= 1.0) { Cancel(); return; }
+            double remaining = 1.0 - progress;
+            byte next = (byte)Math.Max(1, (int)Math.Round(255 * remaining * remaining * remaining));
+            if (next != alpha && !SetAlpha(next)) Cancel();
+        }
+
+        internal void Cancel()
+        {
+            watch.Reset();
+            if (frameAttached) { UiClock.Frame -= OnFrame; frameAttached = false; }
+            if (surface != null)
+            {
+                surface.VisibleChanged -= OnSurfaceVisibleChanged;
+                surface.LocationChanged -= OnHostChanged;
+                surface.SizeChanged -= OnHostChanged;
+                surface.ParentChanged -= OnHostChanged;
+                surface.Disposed -= OnHostChanged;
+                surface = null;
+            }
+            if (!IsDisposed && Visible) Hide();
+        }
+
+        private void OnHostChanged(object sender, EventArgs e) { Cancel(); }
+
+        private void OnSurfaceVisibleChanged(object sender, EventArgs e)
+        {
+            if (surface != null && !surface.Visible) Cancel();
+        }
+
+        private bool SetAlpha(byte value)
+        {
+            if (!SetLayeredWindowAttributes(Handle, 0, value, 2)) return false;
+            alpha = value;
+            return true;
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            if (surface == null || surface.IsDisposed) return;
+            var state = e.Graphics.Save();
+            try
+            {
+                e.Graphics.TranslateTransform(-surfaceOffset.X, -surfaceOffset.Y);
+                var clip = new Rectangle(surfaceOffset, ClientSize);
+                surface.PaintSurface(e.Graphics, clip);
+            }
+            finally { e.Graphics.Restore(state); }
+        }
+
+        protected override void WndProc(ref Message message)
+        {
+            if (message.Msg == 0x84) { message.Result = new IntPtr(-1); return; } // HTTRANSPARENT
+            if (message.Msg == 0x21) { message.Result = new IntPtr(3); return; } // MA_NOACTIVATE
+            base.WndProc(ref message);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                Cancel();
+                host.VisibleChanged -= OnHostChanged;
+                host.LocationChanged -= OnHostChanged;
+                host.SizeChanged -= OnHostChanged;
+                host.Deactivate -= OnHostChanged;
+                host.HandleDestroyed -= OnHostChanged;
+            }
+            base.Dispose(disposing);
+        }
+
+        [DllImport("user32.dll")]
+        private static extern bool SetLayeredWindowAttributes(IntPtr window, uint colorKey, byte alpha, uint flags);
+        [DllImport("user32.dll")]
+        private static extern bool IsWindowEnabled(IntPtr window);
+        [DllImport("user32.dll")]
+        private static extern bool RedrawWindow(IntPtr window, IntPtr rectangle, IntPtr region, uint flags);
     }
 }

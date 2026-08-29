@@ -173,16 +173,19 @@ namespace PaviseApp
         public bool BoostGame { get { return On(PolicyCatalog.KeyBoost); } }
         public bool Aggressive { get { return On(PolicyCatalog.KeyAggressive); } }
         public bool GpuDemote { get { return On(PolicyCatalog.KeyGpuDemote); } }
-        public bool IfeoBoost { get { return On(PolicyCatalog.KeyIfeoBoost); } }
         public bool RenderLane { get { return On(PolicyCatalog.KeyRenderLane); } }
         public bool StrictCores { get { return On(PolicyCatalog.KeyStrictCores); } }
         public bool CoreDomainAlt { get { return On(PolicyCatalog.KeyCoreDomainAlt); } }
         public bool PowerPlanOn { get { return On(PolicyCatalog.KeyPowerPlan); } }
         public bool PowerYield { get { return On(PolicyCatalog.KeyPowerYield); } }
+        public bool DisableCpuIdle { get { return On(PolicyCatalog.KeyDisableCpuIdle); } }
+        public bool StandbyCleaner { get { return On(PolicyCatalog.KeyStandbyCleaner); } }
         public bool PauseDownloads { get { return On(PolicyCatalog.KeyPauseDl); } }
         public bool PauseUpdate { get { return On(PolicyCatalog.KeyPauseUpdate); } }
+        public bool PauseServices { get { return On(PolicyCatalog.KeyPauseServices); } }
         public bool WlanGuard { get { return On(PolicyCatalog.KeyWlanGuard); } }
         public bool Awake { get { return On(PolicyCatalog.KeyAwake); } }
+        public bool EnglishInput { get { return On(PolicyCatalog.KeyEnglishInput); } }
         public bool NvMaxPerf { get { return On(PolicyCatalog.KeyNvMaxPerf); } }
         public string NvLowLatMode { get { return ValueOf(PolicyCatalog.KeyNvLowLat); } }
         public bool NvSmoothMotion { get { return On(PolicyCatalog.KeyNvSmoothMotion); } }
@@ -191,6 +194,7 @@ namespace PaviseApp
         public string NvDlssMode { get { return ValueOf(PolicyCatalog.KeyNvDlss); } }
         public bool AmdAntiLag { get { return On(PolicyCatalog.KeyAmdAntiLag); } }
         public bool AmdAfmf { get { return On(PolicyCatalog.KeyAmdAfmf); } }
+        public bool IntelLowLatency { get { return On(PolicyCatalog.KeyIntelLowLatency); } }
         public bool VramShield { get { return On(PolicyCatalog.KeyVramShield); } }
 
         public ulong CoreMask
@@ -206,7 +210,6 @@ namespace PaviseApp
 
         public bool EffSuppress { get { return SuppressBackground; } }
         public bool EffBoost { get { return BoostGame; } }
-        public bool EffIfeo { get { return IfeoBoost; } }
         public bool EffLane { get { return RenderLane; } }
         public bool EffAggressive { get { return GameMode.IsAggressive(Preset, Aggressive); } }
     }

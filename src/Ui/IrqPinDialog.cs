@@ -172,12 +172,15 @@ namespace PaviseApp
                 }
                 else if (d.Unverified)
                 {
-                    scrollBody.Controls.Add(Line(Lang.F("irq.d.written", IrqRelocate.MaskText(d.Mask)),
+                    bool unknownBoot = d.RebootState == IrqRebootState.Unknown;
+                    scrollBody.Controls.Add(Line(unknownBoot ? IrqDeviceInventory.PolicyText(d)
+                        : Lang.F("irq.d.written", IrqRelocate.MaskText(d.Mask)),
                         y, 22, Theme.UI(8.8f, false), Theme.Faint, 40));
                     y += 42;
                     // 对局观测关着的话打多少局都不会记录 待验证会一直挂着 这里把坑说破
-                    scrollBody.Controls.Add(Line(Lang.T(IrqSessionProbe.EnabledSetting
-                            ? "irq.tip.unverified" : "irq.tip.unverified.probeoff"),
+                    scrollBody.Controls.Add(Line(Lang.T(unknownBoot
+                            ? "irq.tip.bootunknown" : IrqSessionProbe.EnabledSetting
+                                ? "irq.tip.unverified" : "irq.tip.unverified.probeoff"),
                         y, 22, Theme.UI(8.3f, false), Theme.Faint, 40));
                     y += 42;
                 }

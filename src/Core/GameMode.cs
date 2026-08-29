@@ -96,10 +96,11 @@ namespace PaviseApp
 
         internal const int SlowEnvDelaySeconds = 20;
         private volatile bool pauseUpdateOn;
+        private volatile bool pauseServicesOn;
+        private volatile bool disableCpuIdleOn;
         private volatile bool corePartitionOn;
         private volatile bool coreDomainAltOn;
         private volatile bool aggressiveOn;
-        private volatile bool ifeoOn;
         private volatile bool renderLaneOn;
         private volatile bool gpuDemoteOn;
         private volatile bool panicReq;
@@ -204,6 +205,11 @@ namespace PaviseApp
             wlanGuardOn = Settings.Load("GmWlanGuard", false);
             LoadCustomCoreMask();
             pauseUpdateOn = Settings.Load("GmPauseUpdate", false);
+            pauseServicesOn = Settings.Load(PolicyCatalog.KeyPauseServices, false);
+            disableCpuIdleOn = Settings.Load(PolicyCatalog.KeyDisableCpuIdle, false);
+            InitializeStandbyCleaner();
+            InitializeEnglishInput();
+            InitializeIntelGraphics();
             nvMaxPerf = Settings.Load("NvMaxPerf", false);
             nvLowLatMode = Settings.LoadStr("NvLowLat", "off");
             nvSmoothMotion = Settings.Load("NvSmoothMotion", false);
@@ -224,7 +230,6 @@ namespace PaviseApp
             corePartitionOn = Settings.Load("GmStrictCores", false);
             coreDomainAltOn = Settings.Load("GmCoreDomainAlt", false);
             aggressiveOn = Settings.Load("GmAggressive", false);
-            ifeoOn = Settings.Load("GmIfeoBoost", false);
             renderLaneOn = Settings.Load("GmRenderLane", true);
             gpuDemoteOn = Settings.Load("GmGpuDemote", false);
             SuppressionCore.GpuDemoteEnabled = gpuDemoteOn;
@@ -396,6 +401,11 @@ namespace PaviseApp
                     enabled = value;
                     if (changed)
                     {
+                        Interlocked.Increment(ref optionalServiceGeneration);
+                        Interlocked.Increment(ref cpuIdleGeneration);
+                        InvalidateStandbyCleanerWork();
+                        InvalidateEnglishInputWork();
+                        InvalidateIntelGraphicsWork();
                         ClearFamilyDiscovery();
                         InvalidateRendererHandoff();
                     }
@@ -524,15 +534,6 @@ namespace PaviseApp
             }
         }
 
-        private bool EffIfeo
-        {
-            get
-            {
-                PolicySnapshot s = sessionPolicy;
-                return s != null ? s.EffIfeo : ifeoOn;
-            }
-        }
-
         private bool EffLane
         {
             get
@@ -565,10 +566,15 @@ namespace PaviseApp
 
         private void BeginSessionPolicy()
         {
+            Interlocked.Increment(ref optionalServiceGeneration);
+            Interlocked.Increment(ref cpuIdleGeneration);
+            InvalidateStandbyCleanerWork();
+            InvalidateIntelGraphicsWork();
             GameProfile source;
             lock (sync) source = activeDetection != null ? activeDetection.Profile : null;
             PolicySnapshot snap = source != null ? PolicyResolver.For(source) : PolicyResolver.Global();
             sessionPolicy = snap;
+            BeginEnglishInputSession();
             if (!snap.IsGlobal)
                 Logger.Log(Lang.T("log.gamemode.34") + snap.ProfileName + Lang.T("log.gamemode.35")
                     + snap.OverrideCount + Lang.T("log.gamemode.36"));
@@ -634,7 +640,6 @@ namespace PaviseApp
 
         internal bool ProbeEffSuppress { get { return EffSuppress; } }
 
-        internal bool ProbeEffIfeo { get { return EffIfeo; } }
 #endif
 
         internal static bool ShouldUseCorePartition(bool manuallySelected, bool partitionAvailable)
@@ -686,6 +691,9 @@ namespace PaviseApp
         private void SignalProfileStoreSaveFailure()
         {
             if (Interlocked.Exchange(ref profileSaveFailureSignaled, 1) != 0) return;
+            InvalidateStandbyCleanerWork();
+            InvalidateEnglishInputWork();
+            InvalidateIntelGraphicsWork();
             InvalidateRendererHandoff();
             Action handler = ProfileStoreSaveFailure;
             if (handler != null) { try { handler(); } catch { } }
@@ -777,6 +785,9 @@ namespace PaviseApp
         {
             var elapsed = Stopwatch.StartNew();
             stopping = true;
+            InvalidateStandbyCleanerWork();
+            InvalidateEnglishInputWork();
+            InvalidateIntelGraphicsWork();
             kick.Set();
             // Existing commits finish under sync before shutdown can proceed.
             // A callback stopping its own commit must leave recovery data intact.
@@ -798,6 +809,8 @@ namespace PaviseApp
             try { if (!RenderLane.CloseForShutdown(8000)) runnersClosed = false; }
             catch { runnersClosed = false; }
             try { if (!PowerBudgetYieldRunner.CloseForShutdown(8000)) runnersClosed = false; }
+            catch { runnersClosed = false; }
+            try { if (standbyCleaner != null && !standbyCleaner.Close(8000)) runnersClosed = false; }
             catch { runnersClosed = false; }
             // Attempt both shutdowns even if one fails. Their recovery records
             // and mutation boundaries remain intact unless both confirmed exit.
@@ -824,6 +837,9 @@ namespace PaviseApp
             if (!DrainShutdownGate(driverStageGate, RemainingShutdownMs(elapsed, timeoutMs))) return false;
             if (!DrainShutdownGate(powerApplyGate, RemainingShutdownMs(elapsed, timeoutMs))) return false;
             if (!DrainShutdownGate(whiteEvalSync, RemainingShutdownMs(elapsed, timeoutMs))) return false;
+            if (!DrainEnglishInput(RemainingShutdownMs(elapsed, timeoutMs))) return false;
+            if (!DrainIntelGraphics(RemainingShutdownMs(elapsed, timeoutMs))) return false;
+            if (standbyCleaner != null && !standbyCleaner.Close(RemainingShutdownMs(elapsed, timeoutMs))) return false;
             RendererObservationStore store = rendererObservations;
             return store == null || store.Close(RemainingShutdownMs(elapsed, timeoutMs));
         }
@@ -926,8 +942,6 @@ namespace PaviseApp
                                         Logger.Log(Lang.T("log.gamemode.45") + running);
                                         Interlocked.Exchange(ref boostFirstStampTicks, DateTime.UtcNow.Ticks);
                                         Interlocked.Exchange(ref sessionStartTicks, DateTime.UtcNow.Ticks);
-                                        overlayScanned = false;
-                                        overlayExemptRoots = EmptyOverlayRoots;
                                         try { cpuLimit.Start(); } catch { }
                                         BeginSessionPolicy();
                                         ReportBegin(running);
@@ -940,8 +954,6 @@ namespace PaviseApp
                                         Logger.Log(Lang.T("log.gamemode.46") + running);
                                         Interlocked.Exchange(ref boostFirstStampTicks, DateTime.UtcNow.Ticks);
                                         Interlocked.Exchange(ref sessionStartTicks, DateTime.UtcNow.Ticks);
-                                        overlayScanned = false;
-                                        overlayExemptRoots = EmptyOverlayRoots;
                                         // activeDetection 此时已经指向新 profile，旧 renderer 无法再终验。
                                         // 直接作废旧 IRQ epoch；并且必须先结旧局，再启用新策略。
                                         // 直接 A→B 时必须作废 A 的 live epoch；但 A 已在首次
@@ -958,7 +970,10 @@ namespace PaviseApp
                                         // 同一 profile 局内改名只更新展示，不能伪造一次换局。
                                         lock (sync) activeGame = running;
                                     }
+                                    StepEnglishInputSession();
                                     ApplyEnv();
+                                    ApplyIntelGraphicsPolicy();
+                                    ApplyStandbyCleanerPolicy();
                                     string rendererPath;
                                     int rendererPid;
                                     long rendererCreation;
@@ -999,7 +1014,6 @@ namespace PaviseApp
                                     ObserveSystemIrq(rendererPid, rendererCreation);
                                     UpdateIrqPresentProbe();
                                     NotifyIrqObservationChanged(false);
-                                    MaybeScanOverlays();
                                 }
                                 else if (active)
                                 {
@@ -1007,6 +1021,9 @@ namespace PaviseApp
                                     if (gameGoneSinceTicks == 0)
                                     {
                                         gameGoneSinceTicks = nowTicks;
+                                        InvalidateStandbyCleanerWork();
+                                        InvalidateEnglishInputWork();
+                                        InvalidateIntelGraphicsWork();
                                         // 退出宽限只用于避免游戏检测抖动，不属于可验证的对局采样窗。
                                         // 首次失联立即封存最近一次落核证明对应的 epoch。
                                         try { SealIrqObservation(); }
@@ -1183,12 +1200,6 @@ namespace PaviseApp
         private volatile bool gpuPrefStageOn;
         private readonly CpuLimitProbe cpuLimit = new CpuLimitProbe();
         private long sessionStartTicks;
-        private volatile bool overlayScanned;
-
-        // 注入了游戏进程的覆盖层宿主安装根 对局内豁免后台压制
-        //   压它们等于压游戏自己的渲染路径 游戏等一个零 CPU 的宿主回话就是偶发整秒卡顿
-        private static readonly string[] EmptyOverlayRoots = new string[0];
-        private volatile string[] overlayExemptRoots = EmptyOverlayRoots;
 
         public List<string> LibraryExecutablePaths()
         {
@@ -1200,54 +1211,6 @@ namespace PaviseApp
                     if (!string.IsNullOrEmpty(path)) paths.Add(path);
                 }
             return paths;
-        }
-
-        private void MaybeScanOverlays()
-        {
-            if (overlayScanned) return;
-            long start = Interlocked.Read(ref sessionStartTicks);
-            if (start == 0 || DateTime.UtcNow.Ticks - start < 30L * TimeSpan.TicksPerSecond) return;
-            int pid;
-            string path;
-            lock (sync)
-            {
-                if (!active || activeDetection == null) return;
-                pid = activeDetection.RendererPid;
-                path = activeDetection.RendererPath;
-            }
-            if (pid <= 0) return;
-            overlayScanned = true;
-            ThreadPool.QueueUserWorkItem(delegate
-            {
-                try
-                {
-                    string dir = null;
-                    try { dir = string.IsNullOrEmpty(path) ? null : System.IO.Path.GetDirectoryName(path); }
-                    catch { }
-                    bool denied;
-                    List<string> injectorPaths;
-                    List<string> hits = OverlayScan.Scan(pid, dir, out denied, out injectorPaths);
-                    if (denied) Logger.Log(Lang.T("log.overlay.1"));
-                    else if (hits.Count > 0)
-                    {
-                        Logger.Log(Lang.T("log.overlay.2")
-                            + string.Join(Lang.T("log.overlay.3"), hits.ToArray()));
-                        var roots = new List<string>();
-                        foreach (string module in injectorPaths)
-                        {
-                            string root = OverlayScan.ProductRootOf(module);
-                            if (root != null && !roots.Contains(root)) roots.Add(root);
-                        }
-                        if (roots.Count > 0)
-                        {
-                            overlayExemptRoots = roots.ToArray();
-                            Logger.Log(Lang.T("log.overlay.4")
-                                + string.Join(Lang.T("log.overlay.3"), roots.ToArray()));
-                        }
-                    }
-                }
-                catch { }
-            });
         }
 
         private volatile string preStagedNvPath;

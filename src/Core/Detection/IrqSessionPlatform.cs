@@ -25,7 +25,7 @@ namespace PaviseApp
         IIrqSessionCapture CreateCapture(bool captureTimeline);
         ICoreLoadSource OpenCoreLoadSource();
         bool Append(IrqSessionRecord record);
-        string DriverVersion(string name);
+        Func<string, string> DriverVersionReader();
         void Log(string message);
         string LoadLastResult();
         void SaveLastResult(string result);
@@ -42,7 +42,7 @@ namespace PaviseApp
         public IIrqSessionCapture CreateCapture(bool captureTimeline) { return new Capture(captureTimeline); }
         public ICoreLoadSource OpenCoreLoadSource() { return CoreLoadProbe.OpenSource(); }
         public bool Append(IrqSessionRecord record) { return IrqSessionLedger.Append(record); }
-        public string DriverVersion(string name) { return IrqSessionProbe.DriverVersionOf(name); }
+        public Func<string, string> DriverVersionReader() { return IrqSessionProbe.CreateDriverVersionReader(); }
         public void Log(string message) { Logger.Log(message); }
         public string LoadLastResult() { return Settings.LoadStr(LastResultKey, ""); }
         public void SaveLastResult(string result) { Settings.SaveStr(LastResultKey, result); }

@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 逐 exe 的 IFEO 键共享管理层 名单 键存在性标记 与空键清理的唯一实现
+// 文件用途 已下架 IFEO 功能的历史名单与空键清理 不提供新策略写入
 using System;
 using System.Collections.Generic;
 using Microsoft.Win32;
@@ -20,34 +20,9 @@ namespace PaviseApp
 
         public static string RootPath { get { return RootOverride ?? Root; } }
 
-        public static string NormalizeExe(string name)
-        {
-            if (string.IsNullOrEmpty(name)) return null;
-            string s = name;
-            int slash = s.LastIndexOfAny(new[] { '\\', '/' });
-            if (slash >= 0) s = s.Substring(slash + 1);
-            s = s.Trim();
-            if (s.Length == 0 || s.IndexOf(';') >= 0) return null;
-            return s.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? s : s + ".exe";
-        }
-
         public static string[] ParseList(string raw)
         {
             return (raw ?? "").Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
-        }
-
-        public static bool Listed(string listKey, string exe)
-        {
-            foreach (string s in ParseList(Settings.LoadStr(listKey, "")))
-                if (string.Equals(s, exe, StringComparison.OrdinalIgnoreCase)) return true;
-            return false;
-        }
-
-        public static bool AddToList(string listKey, string exe)
-        {
-            string cur = Settings.LoadStr(listKey, "");
-            string next = cur.Length == 0 ? exe : cur + ";" + exe;
-            return Settings.SaveStr(listKey, next) && Settings.LoadStr(listKey, "") == next;
         }
 
         public static void RemoveFromList(string listKey, string exe)
@@ -56,46 +31,6 @@ namespace PaviseApp
             foreach (string s in ParseList(Settings.LoadStr(listKey, "")))
                 if (!string.Equals(s, exe, StringComparison.OrdinalIgnoreCase)) keep.Add(s);
             Settings.SaveStr(listKey, string.Join(";", keep.ToArray()));
-        }
-
-        public static bool KeyExists(string exe)
-        {
-            try
-            {
-                using (var root = Hive.OpenSubKey(RootPath))
-                {
-                    if (root == null) return false;
-                    using (var k = root.OpenSubKey(exe)) return k != null;
-                }
-            }
-            catch { return false; }
-        }
-
-        public static bool SubKeyExists(string exe, string sub)
-        {
-            try
-            {
-                using (var root = Hive.OpenSubKey(RootPath))
-                {
-                    if (root == null) return false;
-                    using (var k = root.OpenSubKey(exe))
-                    {
-                        if (k == null) return false;
-                        using (var p = k.OpenSubKey(sub)) return p != null;
-                    }
-                }
-            }
-            catch { return false; }
-        }
-
-        public static bool RootReachable()
-        {
-            try
-            {
-                using (var root = Hive.OpenSubKey(RootPath))
-                    return root != null || RootOverride != null;
-            }
-            catch { return false; }
         }
 
         public static void CleanupEmpty(string exe, string subKey, bool ourSub, bool ourExe)

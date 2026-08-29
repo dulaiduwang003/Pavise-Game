@@ -282,6 +282,52 @@ namespace PaviseApp
             return null;
         }
 
+        // 调用方须持有 sync。实时解析会话档案的布尔策略：无会话档案时用全局值，
+        //   档案已丢失按关处理，档案存在覆盖时以覆盖为准。三个实时解析的会话
+        //   策略（待机清理/英文输入/Intel 低延迟）共用这一份规则。
+        private bool LiveBoolPreferenceLocked(string policyKey, bool globalOn)
+        {
+            PolicySnapshot snapshot = sessionPolicy;
+            if (snapshot == null || string.IsNullOrEmpty(snapshot.ProfileId)) return globalOn;
+            GameProfile profile = FindProfileLocked(snapshot.ProfileId);
+            if (profile == null) return false;
+            string value;
+            return profile.Overrides.TryGetValue(policyKey, out value) ? value == "1" : globalOn;
+        }
+
+        // 会话策略键的失效钩子。set 与 clear 及批量清除共用这一份，新增实时
+        //   解析的策略键在这里登记一次即可；漏接的表现是静默应用过期偏好。
+        //   调用方须持有 sync。
+        private void InvalidateOverrideWorkLocked(string key)
+        {
+            if (key == PolicyCatalog.KeyDisableCpuIdle || key == PolicyCatalog.KeyPowerPlan)
+                System.Threading.Interlocked.Increment(ref cpuIdleGeneration);
+            if (key == PolicyCatalog.KeyStandbyCleaner) InvalidateStandbyCleanerWork();
+            if (key == PolicyCatalog.KeyEnglishInput) InvalidateEnglishInputWork();
+            if (key == PolicyCatalog.KeyIntelLowLatency) InvalidateIntelGraphicsWork();
+        }
+
+        // 覆盖写入成功后的变更通知。effectiveOn 是该键此刻生效的布尔值：
+        //   设置时来自新覆盖值 清除时回落到全局开关。
+        private void NotifyOverridePolicyChanged(string key, bool effectiveOn)
+        {
+            if (key == PolicyCatalog.KeyPauseServices) PauseServicesPolicyChanged(effectiveOn);
+            else if (key == PolicyCatalog.KeyDisableCpuIdle) CpuIdlePolicyChanged(effectiveOn);
+            else if (key == PolicyCatalog.KeyStandbyCleaner) StandbyCleanerPolicyChanged(effectiveOn);
+            else if (key == PolicyCatalog.KeyIntelLowLatency) IntelGraphicsPolicyChanged(effectiveOn);
+            else if (key == PolicyCatalog.KeyPowerPlan || key == PolicyCatalog.KeyEnglishInput)
+                RequestPolicyApply();
+        }
+
+        private bool GlobalPolicyOn(string key)
+        {
+            if (key == PolicyCatalog.KeyPauseServices) return pauseServicesOn;
+            if (key == PolicyCatalog.KeyDisableCpuIdle) return disableCpuIdleOn;
+            if (key == PolicyCatalog.KeyStandbyCleaner) return standbyCleanerOn;
+            if (key == PolicyCatalog.KeyIntelLowLatency) return intelLowLatencyOn;
+            return false;
+        }
+
         public bool SetProfileOverride(string profileId, string key, string value)
         {
             if (key == PolicyCatalog.KeySuppressFamily)
@@ -293,13 +339,17 @@ namespace PaviseApp
             lock (sync)
             {
                 if (stopping) return false;
+                if (key == PolicyCatalog.KeyStandbyCleaner
+                    && PolicyCatalog.Canonical(key, value) == "1" && !standbyCleanerOptionsValid) return false;
                 GameProfile p = FindProfileLocked(profileId);
                 if (p != null)
                 {
+                    InvalidateOverrideWorkLocked(key);
                     ok = PolicyResolver.SetOverride(p, key, value);
                     if (ok && !SaveProfilesLocked()) ok = false;
                 }
             }
+            if (ok) NotifyOverridePolicyChanged(key, PolicyCatalog.Canonical(key, value) == "1");
             return ok;
         }
 
@@ -311,11 +361,14 @@ namespace PaviseApp
             {
                 if (stopping) return false;
                 GameProfile p = FindProfileLocked(profileId);
-                if (p != null && p.Overrides.Remove(key))
+                if (p != null && p.Overrides.ContainsKey(key))
                 {
+                    InvalidateOverrideWorkLocked(key);
+                    p.Overrides.Remove(key);
                     ok = SaveProfilesLocked();
                 }
             }
+            if (ok) NotifyOverridePolicyChanged(key, GlobalPolicyOn(key));
             return ok;
         }
 
@@ -323,6 +376,10 @@ namespace PaviseApp
         {
             int n = 0;
             string name = null;
+            bool servicesChanged = false;
+            bool cpuIdleChanged = false;
+            bool standbyCleanerChanged = false;
+            bool intelChanged = false;
             lock (familyPolicyGate)
             {
                 lock (sync)
@@ -331,6 +388,12 @@ namespace PaviseApp
                     GameProfile p = FindProfileLocked(profileId);
                     if (p != null && p.Overrides.Count > 0 && !ProfileStoreSaveFailed)
                     {
+                        cpuIdleChanged = p.Overrides.ContainsKey(PolicyCatalog.KeyDisableCpuIdle)
+                            || p.Overrides.ContainsKey(PolicyCatalog.KeyPowerPlan);
+                        standbyCleanerChanged = p.Overrides.ContainsKey(PolicyCatalog.KeyStandbyCleaner);
+                        intelChanged = p.Overrides.ContainsKey(PolicyCatalog.KeyIntelLowLatency);
+                        foreach (string overrideKey in p.Overrides.Keys)
+                            InvalidateOverrideWorkLocked(overrideKey);
                         GameProfile replacement = p.Clone();
                         n = PolicyResolver.ClearAllOverrides(replacement);
                         var next = new List<GameProfile>(profiles);
@@ -342,12 +405,21 @@ namespace PaviseApp
                             return 0;
                         }
                         profiles[index] = replacement;
+                        servicesChanged = p.Overrides.ContainsKey(PolicyCatalog.KeyPauseServices);
                         name = p.Name;
                         InvalidateFamilyPolicy();
                     }
                 }
             }
-            if (n > 0) { RequestPolicyApply(); RaiseLibraryChanged(); }
+            if (n > 0)
+            {
+                if (servicesChanged) PauseServicesPolicyChanged(pauseServicesOn);
+                if (cpuIdleChanged) CpuIdlePolicyChanged(disableCpuIdleOn);
+                if (standbyCleanerChanged) StandbyCleanerPolicyChanged(standbyCleanerOn);
+                if (intelChanged) IntelGraphicsPolicyChanged(intelLowLatencyOn);
+                if (!servicesChanged && !cpuIdleChanged && !standbyCleanerChanged && !intelChanged) RequestPolicyApply();
+                RaiseLibraryChanged();
+            }
             if (name != null) Logger.Log(Lang.T("log.gamemodelibrary.9") + name + Lang.T("log.gamemodelibrary.10") + n + Lang.T("log.gamemodelibrary.11"));
             return n;
         }
@@ -399,6 +471,9 @@ namespace PaviseApp
                         ignoreDirty = true;
                 }
                 if (ignoreDirty && !SaveAutoIgnoreLocked()) return;
+                InvalidateStandbyCleanerWork();
+                InvalidateEnglishInputWork();
+                InvalidateIntelGraphicsWork();
                 profiles.RemoveAll(p => string.Equals(p.Id, profileId, StringComparison.OrdinalIgnoreCase));
                 if (!PersistLibraryLocked()) return;
                 ClearFamilyDiscovery();

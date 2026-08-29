@@ -16,6 +16,8 @@ namespace PaviseApp
 
     internal static partial class PowerPlan
     {
+        // 会话日记键由恢复完成判定共同引用 改名必须两边一起
+        internal const string PlanJournalKey = "PrevPowerPlan";
         private const string ChoiceKey = "PowerPlanChoice";
         private const string DefaultPlanKey = "DefaultPlanGuid";
         private const string ManagedPlanKey = "PgPlanGuid";
@@ -62,6 +64,7 @@ namespace PaviseApp
 
         private static readonly object lk = new object();
         private static Guid saved;
+        private static Guid? settledRestoreTarget;
         private static bool active;
         private static Guid target;
         private static bool resolved;
@@ -193,6 +196,15 @@ namespace PaviseApp
 
         public static bool RemoveManagedPlan()
         {
+            lock (lk)
+            {
+                if (!RestoreCpuIdle() || CpuIdleHasResidue) return false;
+                return RemoveManagedPlanCore();
+            }
+        }
+
+        private static bool RemoveManagedPlanCore()
+        {
             string id = Settings.LoadStr(ManagedPlanKey, "");
             if (id.Length == 0) return true;
             Guid g;
@@ -210,7 +222,7 @@ namespace PaviseApp
         private static bool SwitchAwayFrom(Guid avoid)
         {
             Guid prev;
-            if (TryGuid(Settings.LoadStr("PrevPowerPlan", ""), out prev)
+            if (TryGuid(Settings.LoadStr(PlanJournalKey, ""), out prev)
                 && prev != avoid && SchemeUsable(prev) && Set(prev)) return true;
             if (SchemeUsable(Balanced) && Set(Balanced)) return true;
             foreach (Guid s in EnumerateSchemes())
@@ -268,6 +280,15 @@ namespace PaviseApp
         }
 
         public static bool RemoveCreatedPlan()
+        {
+            lock (lk)
+            {
+                if (!RestoreCpuIdle() || CpuIdleHasResidue) return false;
+                return RemoveCreatedPlanCore();
+            }
+        }
+
+        private static bool RemoveCreatedPlanCore()
         {
             string id = Settings.LoadStr(DefaultPlanKey, "");
             if (id.Length == 0) return true;
@@ -338,33 +359,62 @@ namespace PaviseApp
         private static bool ActivateInner(bool aggressive, bool handheld)
         {
             if (active) return true;
-            Guid tgt = ResolveTarget();
+            string pending;
+            if (settledRestoreTarget.HasValue || saved != Guid.Empty || !Settings.TryLoadStr(PlanJournalKey, out pending)
+                || pending == null || pending.Length != 0)
+            {
+                // A failed Set may already have switched plans. Resolve its
+                // original before taking any new snapshot on a retry.
+                if (!RestorePlanCore(false)) return false;
+            }
+            Guid tgt;
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+            if (ActivateTargetPlanForTest == null) return false;
+            tgt = ActivateTargetPlanForTest();
+#else
+            tgt = ResolveTarget();
+#endif
             if (tgt == Guid.Empty) return false;
             if (targetOwned && tuneState != TuneCode(aggressive, handheld))
             {
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+                return false; // Activation tests must not tune native schemes.
+#else
                 if (!TuneTarget(tgt, aggressive, handheld)) return false;
                 tuneState = TuneCode(aggressive, handheld);
+#endif
             }
-            Guid? cur = Current();
-            if (cur == null) return false;
+            Guid? cur = RestoreCurrentPlan();
+            if (!cur.HasValue || cur.Value == Guid.Empty) return false;
             if (cur.Value == tgt) { active = true; return true; }
             saved = cur.Value;
-            if (targetOwned) SyncDisplayFeel(cur.Value, tgt);
-            Settings.SaveStr("PrevPowerPlan", saved.ToString());
-            if (Settings.LoadStr("PrevPowerPlan", "") != saved.ToString())
+            if (targetOwned)
+            {
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+                saved = Guid.Empty;
+                return false;
+#else
+                SyncDisplayFeel(cur.Value, tgt);
+#endif
+            }
+            Settings.SaveStr(PlanJournalKey, saved.ToString());
+            if (Settings.LoadStr(PlanJournalKey, "") != saved.ToString())
             {
                 saved = Guid.Empty;
                 Logger.Log(Lang.T("log.powerplan.25"));
                 return false;
             }
-            if (Set(tgt))
+            bool switched = RestoreSetPlan(tgt);
+            Guid? applied = switched ? RestoreCurrentPlan() : null;
+            if (switched && applied.HasValue && applied.Value == tgt)
             {
                 active = true;
-                Logger.Log(Lang.T("log.powerplan.26") + PlanLabel(tgt) + Lang.T("log.gpupowermax.7") + PlanLabel(saved) + " ");
+                Logger.Log(Lang.T("log.powerplan.26") + RestorePlanLabel(tgt) + Lang.T("log.gpupowermax.7") + RestorePlanLabel(saved) + " ");
                 return true;
             }
-            Settings.SaveStr("PrevPowerPlan", "");
-            saved = Guid.Empty;
+            // Set() verifies the current scheme after the native call. False
+            // can therefore mean "changed, verification unavailable".
+            // Keep both originals for the ownership-aware recovery path.
             Logger.Log(Lang.T("log.powerplan.27"));
             return false;
         }
@@ -392,71 +442,178 @@ namespace PaviseApp
             }
         }
 
-        private static bool IsOurActivePlan(Guid g)
+        private static bool? IsOurActivePlan(Guid g)
         {
             if (resolved && g == target) return true;
-            if (g != Guid.Empty && g == ManagedPlanGuid()) return true;
-            string choice = Settings.LoadStr(ChoiceKey, "");
-            Guid picked;
-            if (choice.Length > 0 && choice != ManagedChoice
-                && TryGuid(choice, out picked) && g == picked) return true;
-            Guid legacy;
-            if (TryGuid(Settings.LoadStr("ArenaPlanGuid", ""), out legacy) && g == legacy) return true;
-            if (TryGuid(Settings.LoadStr("UltimatePlanGuid", ""), out legacy) && g == legacy) return true;
-            return false;
+            bool unknown = false;
+            foreach (string key in new[] { ManagedPlanKey, ChoiceKey, "ArenaPlanGuid", "UltimatePlanGuid" })
+            {
+                string value;
+                if (!Settings.TryLoadStr(key, out value) || value == null) { unknown = true; continue; }
+                if (value.Length == 0 || (key == ChoiceKey && value == ManagedChoice)) continue;
+                Guid owned;
+                if (!TryGuid(value, out owned) || owned == Guid.Empty) { unknown = true; continue; }
+                // Current() already verified this GUID exists. Enumerating all
+                // plans again could fail and incorrectly discard a valid owner.
+                if (g == owned) return true;
+            }
+            return unknown ? (bool?)null : false;
         }
 
         public static bool Restore()
         {
             lock (lk)
             {
+                bool idleOk = RestoreCpuIdle();
+                bool planOk = RestorePlanCore();
+                return idleOk && planOk;
+            }
+        }
+
+        private static bool RestorePlanCore()
+        {
+            return RestorePlanCore(true);
+        }
+
+        private static bool RestorePlanCore(bool healOrphanManaged)
+        {
+            try { return RestorePlanCoreChecked(healOrphanManaged); }
+            catch { return false; }
+        }
+
+        private static bool RestorePlanCoreChecked(bool healOrphanManaged)
+        {
+            lock (lk)
+            {
+                if (settledRestoreTarget.HasValue && settledRestoreTarget.Value == saved)
+                    return ClearRestoredPlan(saved);
                 Guid restoreTarget = saved;
                 if (restoreTarget == Guid.Empty)
                 {
-                    Guid persisted;
-                    if (TryGuid(Settings.LoadStr("PrevPowerPlan", ""), out persisted)) restoreTarget = persisted;
+                    string persisted;
+                    if (!Settings.TryLoadStr(PlanJournalKey, out persisted) || persisted == null) return false;
+                    if (persisted.Length > 0 && (!TryGuid(persisted, out restoreTarget) || restoreTarget == Guid.Empty))
+                        return ClearRestoredPlan(restoreTarget);
                 }
-                bool ok = true;
-                if (restoreTarget != Guid.Empty)
+                if (restoreTarget == Guid.Empty)
                 {
-                    Guid? nowActive = Current();
-                    if (nowActive.HasValue && nowActive.Value != restoreTarget
-                        && !IsOurActivePlan(nowActive.Value))
-                    {
-                        Settings.SaveStr("PrevPowerPlan", "");
-                        Logger.Log(Lang.T("log.powerplan.36") + PlanLabel(nowActive.Value));
-                        active = false; saved = Guid.Empty; tuneState = -1;
-                        return Settings.LoadStr("PrevPowerPlan", "").Length == 0;
-                    }
-                    if (nowActive.HasValue && nowActive.Value == restoreTarget)
-                    {
-                        Settings.SaveStr("PrevPowerPlan", "");
-                        Logger.Log(Lang.T("log.powerplan.29"));
-                        active = false; saved = Guid.Empty; tuneState = -1;
-                        return Settings.LoadStr("PrevPowerPlan", "").Length == 0;
-                    }
-                    if (Set(restoreTarget))
-                    {
-                        Settings.SaveStr("PrevPowerPlan", "");
-                        Logger.Log(Lang.T("log.powerplan.29"));
-                        ok = Settings.LoadStr("PrevPowerPlan", "").Length == 0;
-                    }
-                    else if (!SchemeUsable(restoreTarget))
-                    {
-                        Settings.SaveStr("PrevPowerPlan", "");
-                        Logger.Log(Lang.T("log.powerplan.30"));
-                        ok = false;
-                    }
-                    else
-                    {
-                        Logger.Log(Lang.T("log.powerplan.31"));
-                        ok = false;
-                    }
+                    if (healOrphanManaged && !RestoreOrphanManagedPlan()) return false;
+                    active = false; tuneState = -1;
+                    return true;
                 }
-                else ok = HealManagedResidue();
-                active = false; saved = Guid.Empty; tuneState = -1;
-                return ok;
+
+                // Recovery needs current ownership just as normal shutdown does.
+                // An unavailable current plan is not permission to switch it.
+                Guid? nowActive = RestoreCurrentPlan();
+                if (!nowActive.HasValue || nowActive.Value == Guid.Empty) return false;
+                if (nowActive.Value == restoreTarget) return ClearRestoredPlan(restoreTarget);
+                bool? ours = RestorePlanIsOwned(nowActive.Value);
+                if (!ours.HasValue) return false;
+                if (!ours.Value)
+                {
+                    Logger.Log(Lang.T("log.powerplan.36") + RestorePlanLabel(nowActive.Value));
+                    return ClearRestoredPlan(restoreTarget);
+                }
+                Guid? checkedActive = RestoreCurrentPlan();
+                if (!checkedActive.HasValue || checkedActive.Value != nowActive.Value) return false;
+                if (!RestoreSetPlan(restoreTarget))
+                {
+                    bool? usable = RestorePlanIsUsable(restoreTarget);
+                    if (usable.HasValue && !usable.Value)
+                    {
+                        ClearRestoredPlan(restoreTarget);
+                        Logger.Log(Lang.T("log.powerplan.30"));
+                    }
+                    else Logger.Log(Lang.T("log.powerplan.31"));
+                    return false;
+                }
+                Guid? restored = RestoreCurrentPlan();
+                if (!restored.HasValue || restored.Value != restoreTarget) return false;
+                Logger.Log(Lang.T("log.powerplan.29"));
+                return ClearRestoredPlan(restoreTarget);
             }
+        }
+
+        private static bool ClearRestoredPlan(Guid restoreTarget)
+        {
+            // The native restoration (or deliberate abandonment) is complete.
+            // Keep a receipt-bound RAM tombstone until cleanup is verified;
+            // a retry must not undo a later user choice, even of our own plan.
+            active = false; tuneState = -1;
+            saved = restoreTarget;
+            settledRestoreTarget = restoreTarget;
+            string actual;
+            if (!Settings.SaveStr(PlanJournalKey, "") || !Settings.TryLoadStr(PlanJournalKey, out actual)
+                || actual != "") return false;
+            saved = Guid.Empty;
+            settledRestoreTarget = null;
+            return true;
+        }
+
+        private static Guid? RestoreCurrentPlan()
+        {
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+            return RestoreCurrentPlanForTest == null ? null : RestoreCurrentPlanForTest();
+#else
+            return Current();
+#endif
+        }
+
+        private static bool RestoreSetPlan(Guid scheme)
+        {
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+            return RestoreSetPlanForTest != null && RestoreSetPlanForTest(scheme);
+#else
+            return Set(scheme);
+#endif
+        }
+
+        private static bool? RestorePlanIsOwned(Guid scheme)
+        {
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+            return RestorePlanIsOwnedForTest == null ? null : RestorePlanIsOwnedForTest(scheme);
+#else
+            return IsOurActivePlan(scheme);
+#endif
+        }
+
+        private static bool? RestorePlanIsUsable(Guid scheme)
+        {
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+            return RestorePlanIsUsableForTest == null ? null : RestorePlanIsUsableForTest(scheme);
+#else
+            // A missing friendly-name value is not proof that the plan was
+            // deleted. Require a complete, successful enumeration to drop it.
+            for (uint index = 0; index < 128; index++)
+            {
+                uint size = 16;
+                byte[] buffer = new byte[16];
+                uint result = PowerEnumerate(IntPtr.Zero, IntPtr.Zero, IntPtr.Zero,
+                    AccessScheme, index, buffer, ref size);
+                if (result == 259) return false; // ERROR_NO_MORE_ITEMS
+                if (result != 0 || size != 16) return null;
+                if (new Guid(buffer) == scheme) return true;
+            }
+            return null;
+#endif
+        }
+
+        private static bool RestoreOrphanManagedPlan()
+        {
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+            return RestoreOrphanManagedPlanForTest != null && RestoreOrphanManagedPlanForTest();
+#else
+            return HealManagedResidue();
+#endif
+        }
+
+        private static string RestorePlanLabel(Guid scheme)
+        {
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+            return scheme.ToString("D");
+#else
+            return PlanLabel(scheme);
+#endif
         }
 
         private static bool HealManagedResidue()
@@ -472,31 +629,51 @@ namespace PaviseApp
 
         public static bool HasResidue
         {
-            get { return Settings.LoadStr("PrevPowerPlan", "").Length > 0; }
+            get { return settledRestoreTarget.HasValue || CpuIdleHasResidue || Settings.LoadStr(PlanJournalKey, "").Length > 0; }
         }
 
         public static void HealFromCrash()
         {
-            string s = Settings.LoadStr("PrevPowerPlan", "");
-            if (s.Length == 0) return;
-            Guid g;
-            if (!TryGuid(s, out g))
+            lock (lk)
             {
-                Settings.SaveStr("PrevPowerPlan", "");
-                return;
+                RestoreCpuIdle();
+                HealPlanFromCrashCore();
             }
-            if (Set(g))
-            {
-                Settings.SaveStr("PrevPowerPlan", "");
-                Logger.Log(Lang.T("log.powerplan.33"));
-            }
-            else if (!SchemeUsable(g))
-            {
-                Settings.SaveStr("PrevPowerPlan", "");
-                Logger.Log(Lang.T("log.powerplan.34"));
-            }
-            else Logger.Log(Lang.T("log.powerplan.35"));
         }
+
+        private static void HealPlanFromCrashCore()
+        {
+            RestorePlanCore(false);
+        }
+
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+        internal static Func<Guid?> RestoreCurrentPlanForTest;
+        internal static Func<Guid, bool> RestoreSetPlanForTest;
+        internal static Func<Guid, bool?> RestorePlanIsOwnedForTest;
+        internal static Func<Guid, bool?> RestorePlanIsUsableForTest;
+        internal static Func<bool> RestoreOrphanManagedPlanForTest;
+        internal static Func<Guid> ActivateTargetPlanForTest;
+
+        internal static bool RestorePlanForTest(bool fromCrash) { return RestorePlanCore(!fromCrash); }
+        internal static bool? ClassifyRestorePlanForTest(Guid scheme) { return IsOurActivePlan(scheme); }
+        internal static bool ActivatePlanForTest() { lock (lk) return ActivateInner(false, false); }
+
+        internal static void ResetPlanRestoreForTest()
+        {
+            lock (lk)
+            {
+                active = false; saved = Guid.Empty; target = Guid.Empty;
+                settledRestoreTarget = null;
+                resolved = false; targetOwned = false; tuneState = -1;
+                RestoreCurrentPlanForTest = null;
+                RestoreSetPlanForTest = null;
+                RestorePlanIsOwnedForTest = null;
+                RestorePlanIsUsableForTest = null;
+                RestoreOrphanManagedPlanForTest = null;
+                ActivateTargetPlanForTest = null;
+            }
+        }
+#endif
 
 #if PAVISE_SELFTEST
         internal static Guid BalancedGuid { get { return Balanced; } }

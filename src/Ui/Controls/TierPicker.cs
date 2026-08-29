@@ -15,9 +15,7 @@ namespace PaviseApp
         };
         private int idx = 2;
         private int hoverIdx = -1;
-        private Motion slide;
         private Motion[] glow = new Motion[12];
-        private bool slideReady;
         public Action<SuppressionLevel> Changed;
         public Action<int> IndexChanged;
         public string[] Labels;
@@ -28,7 +26,6 @@ namespace PaviseApp
                 | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
             BackColor = Theme.Card;
             Cursor = Cursors.Hand;
-            slide.Speed = 0.30f;
             for (int i = 0; i < glow.Length; i++) glow[i].Speed = 0.26f;
         }
 
@@ -46,26 +43,9 @@ namespace PaviseApp
 
         private void OnFrame(object s, EventArgs e)
         {
-            bool moved = slide.Step();
-            if (moved && Math.Abs(slide.Value - slide.Target) < 0.75f) slide.Set(slide.Target);
+            bool moved = false;
             for (int i = 0; i < glow.Length; i++) if (glow[i].Step()) moved = true;
             if (moved) Invalidate();
-        }
-
-        protected override void OnSizeChanged(EventArgs e)
-        {
-            base.OnSizeChanged(e);
-            if (Width <= 0) return;
-            slide.Set(SegmentRect(idx).X);
-            slideReady = true;
-        }
-
-        private void MoveSlide()
-        {
-            if (Width <= 0) { slideReady = false; return; }
-            if (slideReady) slide.To(SegmentRect(idx).X);
-            else { slide.Set(SegmentRect(idx).X); slideReady = true; }
-            UiClock.Wake();
         }
 
         private void SyncGlow()
@@ -90,14 +70,14 @@ namespace PaviseApp
             set
             {
                 int i = Array.IndexOf(Order, value);
-                if (i >= 0 && i != idx) { idx = i; MoveSlide(); Invalidate(); }
+                if (i >= 0 && i != idx) { idx = i; Invalidate(); }
             }
         }
 
         public int Index
         {
             get { return idx; }
-            set { if (value >= 0 && value < Count && value != idx) { idx = value; MoveSlide(); Invalidate(); } }
+            set { if (value >= 0 && value < Count && value != idx) { idx = value; Invalidate(); } }
         }
 
         private Rectangle SegmentRect(int index)
@@ -136,7 +116,6 @@ namespace PaviseApp
             int hit = HitIndex(e.Location);
             if (hit < 0 || hit == idx) return;
             idx = hit;
-            MoveSlide();
             Invalidate();
             if (Changed != null && idx < Order.Length) Changed(Order[idx]);
             if (IndexChanged != null) IndexChanged(idx);
@@ -145,11 +124,10 @@ namespace PaviseApp
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
-            if (Backdrop.Active) Backdrop.PaintOnCard(g, this, ClientRectangle);
+            if (Backdrop.AppliesTo(this)) Backdrop.PaintOnCard(g, this, ClientRectangle);
             else using (var bg = new SolidBrush(BackColor)) g.FillRectangle(bg, ClientRectangle);
             g.SmoothingMode = SmoothingMode.AntiAlias;
             int count = Count;
-            if (!slideReady && Width > 0) { slide.Set(SegmentRect(idx).X); slideReady = true; }
             for (int i = 0; i < count; i++)
             {
                 Rectangle r = SegmentRect(i);
@@ -162,13 +140,15 @@ namespace PaviseApp
                 }
             }
 
-            Rectangle sr = SegmentRect(idx);
-            sr.X = (int)slide.Value;
-            sr.Width -= 1; sr.Height -= 1;
-            using (GraphicsPath p = Theme.TechPath(sr, Theme.S(6)))
+            if (idx < count)
             {
-                using (var b = new SolidBrush(Col.Lerp(Theme.Card, Theme.Accent, 0.18f))) g.FillPath(b, p);
-                using (var pen = new Pen(Col.Alpha(Theme.Accent, 215))) g.DrawPath(pen, p);
+                Rectangle sr = SegmentRect(idx);
+                sr.Width -= 1; sr.Height -= 1;
+                using (GraphicsPath p = Theme.TechPath(sr, Theme.S(6)))
+                {
+                    using (var b = new SolidBrush(Col.Lerp(Theme.Card, Theme.Accent, 0.18f))) g.FillPath(b, p);
+                    using (var pen = new Pen(Col.Alpha(Theme.Accent, 215))) g.DrawPath(pen, p);
+                }
             }
 
             for (int i = 0; i < count; i++)

@@ -7,9 +7,12 @@ namespace PaviseApp
     internal static class UpdatePause
     {
         private static readonly string[] Names = { "wuauserv", "UsoSvc" };
-        private const string Flag = "PrevUpdatePaused";
+        // 会话日记键由恢复完成判定共同引用 改名必须两边一起
+        internal const string Flag = "PrevUpdatePaused";
 
-        private static readonly ServicePauser pauser = new ServicePauser(Names, Flag, true);
+        private static readonly ServicePauser pauser = new ServicePauser(Names, Flag);
+
+        public static bool HasResidue { get { return pauser.HasResidue; } }
 
         public static bool Activate()
         {
@@ -33,8 +36,8 @@ namespace PaviseApp
             bool ok = pauser.Restore(out remain);
             if (had)
             {
-                if (remain.Count == 0) Logger.Log(Lang.T("log.updatepause.3"));
-                else Logger.Log(Lang.T("log.updatepause.4") + string.Join(",", remain.ToArray()) + Lang.T("log.svcpause.6"));
+                if (ok) Logger.Log(Lang.T("log.updatepause.3"));
+                else Logger.Log(Lang.T("log.updatepause.4") + (remain.Count == 0 ? Lang.T("t.versionmigrations.2") : string.Join(",", remain.ToArray())) + Lang.T("log.svcpause.6"));
             }
             return ok;
         }

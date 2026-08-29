@@ -1034,10 +1034,17 @@ namespace PaviseApp
 
         internal static HashSet<int> VisibleWindowPids(bool includeMinimized)
         {
+            bool succeeded;
+            return VisibleWindowPids(includeMinimized, out succeeded);
+        }
+
+        internal static HashSet<int> VisibleWindowPids(bool includeMinimized, out bool succeeded)
+        {
             var result = new HashSet<int>();
+            succeeded = false;
             try
             {
-                EnumWindows(delegate(IntPtr window, IntPtr state)
+                succeeded = EnumWindows(delegate(IntPtr window, IntPtr state)
                 {
                     try
                     {

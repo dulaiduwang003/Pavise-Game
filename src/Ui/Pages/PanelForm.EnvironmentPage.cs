@@ -10,7 +10,7 @@ namespace PaviseApp
     internal partial class PanelForm
     {
         private Toggle swHags, swVbs, swGmGuard;
-        private Toggle swDevPower, swWindowedOpt, swCfgOff;
+        private Toggle swDevPower, swWindowedOpt;
         private Toggle swAccessKeys, swHidPower, swSpecMit, swTimerTick, swGlobalTimer;
         private SettingCard cardVbs, cardWindowedOpt, cardSpecMit;
         private SettingCard cardAccessKeys, cardHidPower;
@@ -70,10 +70,6 @@ namespace PaviseApp
                 win11 ? Lang.T("set.windowedopt.n") : Lang.T("windowedopt.oldos"), swWindowedOpt, out cardH);
             sy += cardH + 8;
 
-            swCfgOff = MakeSwitch(CfgOffTweak.Enabled, OnCfgOffToggle);
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.cfgoff"), Lang.T("set.cfgoff.n"), swCfgOff, out cardH);
-            sy += cardH + 8;
-
             SpecMitigationTweak.State specSt = SpecMitigationTweak.Query();
             swSpecMit = MakeSwitch(SpecMitigationTweak.DisabledByPavise, OnSpecMitToggle);
             swSpecMit.Enabled = specSt.RecoverableCost || SpecMitigationTweak.DisabledByPavise;
@@ -100,7 +96,7 @@ namespace PaviseApp
             scroll = envTabPanels[2]; sy = 2;
 
             swAccessKeys = MakeSwitch(AccessibilityKeysTweak.HasResidue(), OnAccessKeysToggle);
-            swAccessKeys.Enabled = AccessibilityKeysTweak.NeedsFix() || AccessibilityKeysTweak.EnabledByPavise;
+            swAccessKeys.Enabled = AccessibilityKeysTweak.NeedsFix() || AccessibilityKeysTweak.HasResidue();
             cardAccessKeys = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.accesskeys"),
                 Lang.T("set.accesskeys.n"), swAccessKeys, out cardH);
             sy += cardH + 8;
@@ -191,22 +187,6 @@ namespace PaviseApp
                 else GameModeGuard.Restore();
             });
             swGmGuard.SetSilently(GameModeGuard.EnabledByPavise);
-        }
-
-        private void OnCfgOffToggle(object s, EventArgs e)
-        {
-            if (!RequireElevationFor(swCfgOff, CfgOffTweak.Enabled)) return;
-            if (swCfgOff.Checked)
-            {
-                IrqMutationBoundary.Run(delegate { CfgOffTweak.Enable(); });
-                PaviseDialog.Info(this, App.DisplayName, Lang.T("cfgoff.on"));
-            }
-            else
-            {
-                bool ok = IrqMutationBoundary.Run<bool>(CfgOffTweak.Disable);
-                PaviseDialog.Info(this, App.DisplayName, Lang.T(ok ? "cfgoff.off" : "cfgoff.restorefail"));
-            }
-            swCfgOff.SetSilently(CfgOffTweak.Enabled);
         }
 
         private bool RequireElevationFor(Toggle sw, bool restoredState)
@@ -396,11 +376,10 @@ namespace PaviseApp
             if (swVbs != null) swVbs.SetSilently(VbsTweak.DisabledByPavise);
             if (swGmGuard != null) swGmGuard.SetSilently(GameModeGuard.EnabledByPavise);
             if (swDevPower != null) swDevPower.SetSilently(DevicePowerTweak.EnabledByPavise);
-            if (swAccessKeys != null) swAccessKeys.SetSilently(AccessibilityKeysTweak.EnabledByPavise);
+            if (swAccessKeys != null) swAccessKeys.SetSilently(AccessibilityKeysTweak.HasResidue());
             if (swHidPower != null) swHidPower.SetSilently(HidPowerTweak.EnabledByPavise);
             if (swWindowedOpt != null)
                 swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByPavise || WindowedOptTweak.CurrentlyOn());
-            if (swCfgOff != null) swCfgOff.SetSilently(CfgOffTweak.Enabled);
             if (swSpecMit != null) swSpecMit.SetSilently(SpecMitigationTweak.DisabledByPavise);
             if (swTimerTick != null)
                 swTimerTick.SetSilently(TimerTickTweak.EnabledByPavise || TimerTickTweak.LastKnownOn);
