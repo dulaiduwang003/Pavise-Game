@@ -1,4 +1,4 @@
-// Intel vendor page. The user opts into a temporary global driver change, not XeSS injection.
+// 文件用途 Intel 厂商页 用户开启的是临时的全局驱动改动 不是 XeSS 注入
 using System;
 using System.Windows.Forms;
 

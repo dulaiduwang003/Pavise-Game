@@ -53,8 +53,8 @@ namespace PaviseApp
                     if (parent != null)
                     {
                         bool exists;
-                        // A live probe handle can keep a deleted registry key pending.
-                        // Close it before deletion, then reopen separately to verify.
+                        // 探测用的句柄还开着 删掉的注册表键会一直挂在待删状态
+                        // 先关掉再删 然后另开一个句柄去核实
                         using (RegistryKey probe = parent.OpenSubKey("Pavise"))
                             exists = probe != null;
                         if (exists) parent.DeleteSubKeyTree("Pavise", false);
@@ -125,10 +125,13 @@ namespace PaviseApp
                 delegate { return GpuPrefStage.Restore() || GpuPrefStage.AbandonUnprovableForReset(); },
                 failed);
             StepIf(Lang.T("set.apppref"), delegate { return AppGpuPreferences.HasResidue; },
-                AppGpuPreferences.RestoreAll, failed);
+                delegate { return AppGpuPreferences.RestoreAll()
+                    || AppGpuPreferences.AbandonUnprovableForReset(); }, failed);
             StepIf(Lang.T("set.intel.lowlatency"), delegate { return IntelGraphicsTweaks.HasResidue; },
-                IntelGraphicsTweaks.Restore, failed);
+                delegate { return IntelGraphicsTweaks.Restore()
+                    || IntelGraphicsTweaks.AbandonUnprovableForReset(); }, failed);
             Step(Lang.T("t.legacypurge.10"), NetTweak.Restore, failed);
+            StepIf(Lang.T("set.nicim"), NicModerationTweak.HasResidue, NicModerationTweak.Restore, failed);
             Step(Lang.T("t.legacypurge.11"), QuantumTweak.Restore, failed);
             Step("VBS", VbsTweak.Restore, failed);
             Step("Spectre/Meltdown", SpecMitigationTweak.Restore, failed);
@@ -150,12 +153,35 @@ namespace PaviseApp
             {
                 return VramShield.HealFromCrash() && !VramShield.HasResidue();
             }, failed);
+            Step("MemShield 内存驻留未确认还原：请先退出仍在运行的游戏，再重启重试", delegate
+            {
+                return MemShield.HealFromCrash() && !MemShield.HasResidue();
+            }, failed);
+            Step("DisplaySolo 显示拓扑未还原", delegate
+            {
+                if (DisplaySolo.HealFromCrash()) return !DisplaySolo.HasResidue();
+                // 解析不出来或不是合法拓扑值的快照永远还原不了 重置流程里放弃这份记录
+                uint topology;
+                string snap = Settings.LoadStr(DisplaySolo.SnapKey, "");
+                if (snap.Length != 0 && (!uint.TryParse(snap, out topology)
+                        || (topology != DisplaySolo.TopologyClone
+                            && topology != DisplaySolo.TopologyExtend
+                            && topology != DisplaySolo.TopologyExternal)))
+                    return Settings.SaveStr(DisplaySolo.SnapKey, "");
+                return false;
+            }, failed);
 
             StepIf("HAGS", HagsTweak.HasResidue, HagsTweak.Restore, failed);
             StepIf("FSO", FsoTweak.HasResidue, FsoTweak.RestoreAll, failed);
             StepIf("FTH", delegate { return FthTweak.RepairedByPavise; }, FthTweak.Restore, failed);
             Step("CFG", CfgOffTweak.RestoreAll, failed);
             StepIf(Lang.T("t.legacypurge.29"), delegate { return IrqRelocate.HasResidue; }, IrqRelocate.Revert, failed);
+            StepIf(Lang.T("irqauto.title"), delegate { return IrqAutoPilot.HasResidue; }, delegate
+            {
+                if (!IrqAutoPilot.RevertAll()) return false;
+                IrqAutoPilot.ClearForReset();
+                return !IrqAutoPilot.HasResidue;
+            }, failed);
             StepIf(Lang.T("irqpin.prio.name"), delegate { return IrqPriorityTweak.HasResidue; },
                 IrqPriorityTweak.RestoreAll, failed);
 
@@ -224,8 +250,8 @@ namespace PaviseApp
                 Guid ignored;
                 if (Guid.TryParseExact(name.Substring(prefix.Length, 32), "N", out ignored)) return true;
             }
-            // TaskHelper owns exactly this temporary startup-task XML format.
-            // Do not broaden portable cleanup to user-created XML files.
+            // TaskHelper 管的就是这一种临时启动任务 XML 格式
+            // 便携模式的清理不要扩大到用户自己建的 XML
             if (name.Length == 7 + 32 + 4
                 && name.StartsWith("Pavise_", StringComparison.OrdinalIgnoreCase)
                 && name.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
@@ -333,8 +359,8 @@ namespace PaviseApp
             else if (failures.Count == 8) failures.Add("另有未能清理的项目");
         }
 
-        // Verify every parent beneath the accepted root before touching a child.
-        // Enumeration is one level at a time; directory links are never followed.
+        // 动子项之前 先把认可根目录下的每一级父目录都核实一遍
+        // 枚举一次只下一层 目录链接一律不跟进
         private static bool CheckChildParents(string root, string path, out string error)
         {
             error = null;
@@ -387,7 +413,7 @@ namespace PaviseApp
             }
             try
             {
-                // Setting attributes through a file symlink could modify its target.
+                // 隔着文件符号链接改属性 可能改到它指向的目标
                 if ((attributes & (FileAttributes.ReadOnly | FileAttributes.ReparsePoint)) == FileAttributes.ReadOnly)
                     File.SetAttributes(path, attributes & ~FileAttributes.ReadOnly);
                 File.Delete(path);
@@ -414,8 +440,8 @@ namespace PaviseApp
             }
             catch (Exception ex) { AddFailure(failures, normalized + " (" + ex.GetType().Name + ")"); }
 
-            // Do not infer success from Delete calls. Detect locks, denied access,
-            // directories using owned filenames, and concurrent recreation.
+            // 不要拿 Delete 的返回值当成功 要能识别出被锁 权限拒绝
+            // 占用了同名的目录 以及并发重建这几种情况
             string remainingRoot;
             string probeError;
             if (!TryDataRoot(normalized, out remainingRoot, out exists, out probeError)) AddFailure(failures, probeError);
@@ -432,9 +458,9 @@ namespace PaviseApp
             return failures.Count == 0;
         }
 
-        // The caller still decides whether an entire directory is owned. This
-        // helper rejects roots/links, and reports residuals rather than pretending
-        // that a partial best-effort deletion was a reset.
+        // 整个目录归不归我们 仍然由调用方决定 这个辅助函数只负责
+        // 拒掉根目录和链接 并如实报告残留 而不是把一次尽力而为的
+        // 部分删除谎报成重置完成
         internal static bool TryDeleteDataTree(string dir, out int files, out string error)
         {
             files = 0;
@@ -490,8 +516,8 @@ namespace PaviseApp
                 AddFailure(failures, "数据目录结构已改变: " + dir);
                 return;
             }
-            // The root was rejected above if it is a link. Child links are only
-            // removed themselves, using non-recursive deletion.
+            // 根目录如果是链接 上面已经拒掉了 子链接只删链接本身
+            // 用非递归删除
             if ((attributes & FileAttributes.ReparsePoint) == 0)
             {
                 try
@@ -519,7 +545,7 @@ namespace PaviseApp
             }
             try
             {
-                // Never change attributes on a directory link's external target.
+                // 绝不修改目录链接所指向的外部目标的属性
                 if ((attributes & (FileAttributes.ReadOnly | FileAttributes.ReparsePoint)) == FileAttributes.ReadOnly)
                     File.SetAttributes(dir, attributes & ~FileAttributes.ReadOnly);
                 Directory.Delete(dir, false);
@@ -552,13 +578,13 @@ namespace PaviseApp
             }
 
             bool wipeDir = includeSettings && IsRoamingDataDir(root);
-            // Last log before deletion. In a portable directory even a single
-            // post-delete line would recreate Pavise.log and invalidate the reset.
+            // 删除前的最后一条日志 便携目录下 删完哪怕再写一行
+            // 都会把 Pavise.log 重新造出来 让这次重置作废
             Logger.Log(why + " 系统还原已确认，开始清理本机数据");
             if (includeSettings)
             {
-                // Successful recovery is the last writer of persistent originals.
-                // Late UI callbacks must not recreate either store after deletion.
+                // 恢复成功是持久原始值的最后一个写入者
+                // 迟到的界面回调不能在删除之后把这两个存储又建回来
                 Settings.SuspendWritesForReset();
                 Logger.SuspendWritesForReset();
             }

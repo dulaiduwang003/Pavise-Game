@@ -23,7 +23,7 @@ namespace PaviseApp
         internal const int MaxSections = 96;
         internal const int MaxImports = 256;
         internal const int MaxReadBytes = 192 * 1024;
-        // Root is depth 0; files in directories at depth 4 are included.
+        // 根目录算第 0 层 第 4 层目录里的文件仍然收录
         internal const int MaxDirectoryDepth = 4;
 
         private sealed class DirectoryWork
@@ -83,7 +83,7 @@ namespace PaviseApp
                         || delta + count > section.RawSize) continue;
                     ulong offset = section.RawPointer + delta;
                     if (offset + count > (ulong)Length) continue;
-                    // 同一 RVA 映射多个区域的文件不当作可靠静态证据。
+                    // 同一 RVA 映射多个区域的文件不当作可靠静态证据
                     if (result >= 0) return -1;
                     result = (long)offset;
                 }
@@ -117,8 +117,8 @@ namespace PaviseApp
             }
         }
 
-        // 所有名称都来自平台图形 API 的 ABI，而不是任何游戏或客户端名单。
-        // 导入表只能帮助挑选安装入口，不能证明本次实际提交过游戏画面。
+        // 所有名称都来自平台图形 API 的 ABI 而不是任何游戏或客户端名单
+        // 导入表只能帮助挑选安装入口 不能证明本次实际提交过游戏画面
         private static bool GraphicsDependency(string module)
         {
             if (string.IsNullOrEmpty(module)) return false;
@@ -197,9 +197,9 @@ namespace PaviseApp
         {
             if (address == 0 && size == 0) return true;
             int stride = delayed ? 32 : 20;
-            // Size can cover the whole .idata region, including thunks and names,
-            // not just DLL descriptors. Validate that region without reading it;
-            // bound the descriptors actually visited and require a terminator.
+            // Size 可能覆盖整个 .idata 区 包括 thunk 和名字表
+            // 不只是 DLL 描述符 校验这块区域但不去读它
+            // 实际访问到的描述符要有上界 并且必须遇到终止符
             if (address == 0 || size < stride || reader.FileOffset(address, size) < 0) return false;
             int limit = (int)Math.Min((uint)MaxImports, size / (uint)stride);
             for (int i = 0; i < limit; i++)
@@ -222,7 +222,7 @@ namespace PaviseApp
                 if (name == null) return false;
                 if (GraphicsDependency(name)) graphics = true;
             }
-            // 导入目录截断或没有终止项，不沿用已经看到的一半结果。
+            // 导入目录截断或没有终止项 不沿用已经看到的一半结果
             return false;
         }
 
@@ -254,9 +254,9 @@ namespace PaviseApp
                 if (rank > bestRank) { best = candidate; bestRank = rank; ambiguous = false; }
                 else if (rank == bestRank) ambiguous = true;
             }
-            // 深度/数量预算截断不抹掉已经找到的唯一图形证据；这仍只是扫描建议，
-            // 不代表未扫描区域没有其它renderer，更不会产生“已观测渲染”标签。
-            // 单靠GUI子系统的弱候选则必须扫描完整且只有一个有效EXE。
+            // 深度/数量预算截断不抹掉已经找到的唯一图形证据 这仍只是扫描建议
+            // 不代表未扫描区域没有其它renderer 更不会产生“已观测渲染”标签
+            // 单靠GUI子系统的弱候选则必须扫描完整且只有一个有效EXE
             return best == null || ambiguous || (bestRank < 2 && (!complete || seen.Count > 1))
                 ? null : best.Path;
         }
@@ -287,7 +287,7 @@ namespace PaviseApp
                     if (after.Length != length || after.LastWriteTimeUtc != modified) return null;
                     facts.Path = path;
                     string dir = System.IO.Path.GetDirectoryName(path);
-                    // 命名配对属于引擎文件格式，不是按特定游戏名选举；仍只作扫描建议。
+                    // 命名配对属于引擎文件格式 不是按特定游戏名选举 仍只作扫描建议
                     facts.EngineDataPair = facts.Executable
                         && File.Exists(System.IO.Path.Combine(dir, "UnityPlayer.dll"))
                         && Directory.Exists(System.IO.Path.Combine(dir, name + "_Data"));
@@ -298,11 +298,11 @@ namespace PaviseApp
             catch { return null; }
         }
 
-        // Lazy BFS gives shallow executable locations equal opportunity before
-        // a deep asset tree consumes the budget. Delegates also allow a bounded
-        // virtual filesystem fixture without creating hundreds of directories.
-        // false means an I/O/reparse fault; true with complete=false is only a
-        // depth/count limit. Only the latter may retain a strong recommendation.
+        // 惰性广度优先让浅层的可执行文件先拿到机会 免得一棵深的
+        // 资源目录把预算吃光 用委托还能搭出一个有界的虚拟文件系统夹具
+        // 不用真去建几百个目录
+        // false 表示 IO 或重解析点出错 true 加 complete=false 只是
+        // 碰到了深度或数量上限 只有后一种才允许保留强推荐
         internal static bool CollectPaths(string root,
             Func<string, IEnumerable<string>> files,
             Func<string, IEnumerable<string>> directories,

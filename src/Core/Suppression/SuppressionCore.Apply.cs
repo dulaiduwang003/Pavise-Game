@@ -9,9 +9,9 @@ namespace PaviseApp
     internal sealed partial class SuppressionCore
     {
         private bool ThrottleMatches(IntPtr h, SuppressionLevel level, uint originalPriority, ulong originalAffinity,
-            uint[] originalCpuSets, int desiredGpu)
+            uint[] originalCpuSets, int desiredGpu, bool antiCheat)
         {
-            uint desiredPriority = DesiredPriority(level, originalPriority);
+            uint desiredPriority = DesiredPriority(level, originalPriority, antiCheat);
             if (Native.GetPriorityClass(h) != desiredPriority) return false;
             if (desiredGpu >= 0)
             {
@@ -19,8 +19,8 @@ namespace PaviseApp
                 if (Native.D3DKMTGetProcessSchedulingPriorityClass(h, out gpuCur) == 0
                     && gpuCur != desiredGpu) return false;
             }
-            int desiredIo = level >= SuppressionLevel.Isolated ? 0 : 1;
-            int desiredPage = level >= SuppressionLevel.Isolated ? 1 : 3;
+            int desiredIo = DesiredIoPriority(level);
+            int desiredPage = DesiredPagePriority(level, antiCheat);
             if (Native.QueryIoPriority(h) != desiredIo || Native.QueryPagePriority(h) != desiredPage) return false;
 
             if (Native.PowerThrottlingSupported)
@@ -44,14 +44,34 @@ namespace PaviseApp
             return true;
         }
 
-        internal static uint DesiredPriority(SuppressionLevel level, uint originalPriority)
+        // 反作弊压制的强力档去掉饿死成分：扫描型反作弊（ACE 等）扫描游戏内存时会挂起游戏线程
+        //   IDLE 优先级让它在 CPU 满载时几乎分不到时间片，挂起窗口从数百毫秒拖到数秒，游戏表现为卡死
+        //   定时器精度封顶再把它的节流睡眠放大十几倍，页优先级 1 让扫描一路缺页，都是同一个放大器
+        //   优先级提升救济（Apply 里保留 boost）只救锁等待，救不了被挂起的线程，所以只能不喂这么狠
+        //   保留极低磁盘 IO（扫盘才是主要伤害）与 EcoQoS 小核限频，压制效果的核心成分不变
+        internal static uint DesiredPriority(SuppressionLevel level, uint originalPriority, bool antiCheat)
         {
             uint desired = originalPriority == 0 || originalPriority == uint.MaxValue
                 ? Native.NORMAL_PRIORITY_CLASS : originalPriority;
             if (level >= SuppressionLevel.Restrained)
-                desired = level >= SuppressionLevel.Isolated
+                desired = level >= SuppressionLevel.Isolated && !antiCheat
                     ? Native.IDLE_PRIORITY_CLASS : Native.BELOW_NORMAL_PRIORITY_CLASS;
             return desired;
+        }
+
+        internal static int DesiredIoPriority(SuppressionLevel level)
+        {
+            return level >= SuppressionLevel.Isolated ? 0 : 1;
+        }
+
+        internal static int DesiredPagePriority(SuppressionLevel level, bool antiCheat)
+        {
+            return level >= SuppressionLevel.Isolated && !antiCheat ? 1 : 3;
+        }
+
+        internal static bool DesiredTimerSeal(SuppressionLevel level, bool antiCheat)
+        {
+            return level >= SuppressionLevel.Isolated && !antiCheat;
         }
 
         internal static int DesiredGpuClass(bool demoteEnabled, SuppressReason reasons,
@@ -107,14 +127,14 @@ namespace PaviseApp
         }
 
         private bool ApplyThrottle(IntPtr h, SuppressionLevel level, uint originalPriority, ulong originalAffinity,
-            uint[] originalCpuSets, int desiredGpu, int origBoost)
+            uint[] originalCpuSets, int desiredGpu, int origBoost, bool antiCheat)
         {
             BeginMutation();
             try
             {
             Interlocked.Increment(ref applyOperations);
             var failed = new List<string>();
-            uint desiredPriority = DesiredPriority(level, originalPriority);
+            uint desiredPriority = DesiredPriority(level, originalPriority, antiCheat);
             if (Native.GetPriorityClass(h) != desiredPriority)
                 if (!Native.SetPriorityClass(h, desiredPriority)) failed.Add("priority-write");
             if (desiredGpu >= 0)
@@ -145,17 +165,17 @@ namespace PaviseApp
                 if (Native.QueryAffinity(h) != desiredAffinity)
                     failed.Add("affinity-restore-readback");
             }
-            int io = level >= SuppressionLevel.Isolated ? 0 : 1;
+            int io = DesiredIoPriority(level);
             if (Native.QueryIoPriority(h) != io
                 && !Native.TrySetIoPriority(h, io))
                 failed.Add("io-write");
-            int pg = level >= SuppressionLevel.Isolated ? 1 : 3;
+            int pg = DesiredPagePriority(level, antiCheat);
             if (Native.QueryPagePriority(h) != pg
                 && !Native.TrySetPagePriority(h, pg))
                 failed.Add("page-write");
             if (Native.PowerThrottlingSupported)
             {
-                bool sealTimer = level >= SuppressionLevel.Isolated;
+                bool sealTimer = DesiredTimerSeal(level, antiCheat);
                 uint want = Native.EcoQoSWantMask(sealTimer);
                 int qosControl;
                 int qosState;

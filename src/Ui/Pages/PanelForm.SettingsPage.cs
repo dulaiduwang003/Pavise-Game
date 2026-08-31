@@ -370,8 +370,8 @@ namespace PaviseApp
         private void OnAutoToggle(object s, EventArgs e)
         {
             if (IsDisposed || swAuto == null || swAuto.IsDisposed) return;
-            // A delayed read taken before this command must not undo either
-            // the successful choice or the failure path's fresh readback.
+            // 在这条命令之前发起的延迟读 不能推翻成功的选择
+            // 也不能推翻失败路径上那次新鲜回读
             Interlocked.Increment(ref slowVersion);
             int rc = ChangeStartupTask(swAuto.Checked);
             if (rc != 0)
@@ -437,8 +437,8 @@ namespace PaviseApp
             if (Interlocked.Exchange(ref wipeBusy, 1) != 0) return;
             btn.Enabled = false;
             Cursor = Cursors.WaitCursor;
-            // Program owns the permanent stop/restore/delete/exit sequence. A panic
-            // hold expires and could otherwise restart optimization during the wipe.
+            // 永久的停止 还原 删除 退出这套顺序归 Program 管 恐慌保持
+            // 会过期 否则可能在擦除过程中把优化重新拉起来
             reset();
         }
 
@@ -470,8 +470,8 @@ namespace PaviseApp
                             {
                                 if (IsDisposed || !UiActive
                                     || !ReferenceEquals(auto, swAuto) || !ReferenceEquals(shader, cardShader)) return;
-                                // Startup commands invalidate only their task read;
-                                // the cache measurement is independent of that choice.
+                                // 启动项命令只让它自己那次任务读失效
+                                // 缓存测量和这个选择无关
                                 if (version == Volatile.Read(ref slowVersion)
                                     && auto != null && !auto.IsDisposed && taskKnown) auto.SetSilently(task);
                                 if (shader != null && !shader.IsDisposed && !shaderCleaning && shaderBytes >= 0)
@@ -488,8 +488,8 @@ namespace PaviseApp
 
         private void FinishSlowStateRefresh()
         {
-            // Keep the slot until its UI result is consumed so queued results
-            // cannot overtake one another. Coalesce blocked requests once.
+            // 槽位留到它的界面结果被消费掉为止 免得排队的结果
+            // 互相超车 被挡住的请求合并成一次
             Interlocked.Exchange(ref slowBusy, 0);
             if (Interlocked.Exchange(ref slowPending, 0) != 0 && !IsDisposed && UiActive)
                 RefreshSlowStateAsync();

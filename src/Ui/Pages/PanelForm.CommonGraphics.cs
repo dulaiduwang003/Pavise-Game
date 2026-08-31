@@ -6,6 +6,10 @@ namespace PaviseApp
     internal partial class PanelForm
     {
         private Toggle swGpuPref;
+        private Toggle swAutoGpu;
+#if PAVISE_SELFTEST
+        internal Func<bool> AutoGpuConfirmationForTest;
+#endif
 
         private void BuildCommonGraphicsPage(Control scroll)
         {
@@ -29,8 +33,40 @@ namespace PaviseApp
                 FullTextCardHeight(Lang.T("set.apppref.n"), ScrollContentW, manage, 108),
                 Lang.T("set.apppref"), Lang.T("set.apppref.n"), manage, out height);
             card.SetStatus(Lang.T("apppref.nextlaunch"), Theme.Accent);
-            // Keep the scope and next-launch notice visible when first opening this tab.
+            y += height + 8;
+
+            swAutoGpu = MakeSwitch(gameMode.AutoGpuPreference, null);
+            swAutoGpu.Enabled = hybrid || gameMode.AutoGpuPreference;
+            swAutoGpu.CheckedChanged += delegate
+            {
+                bool on = swAutoGpu.Checked;
+                if (on && !ConfirmAutoGpuEnable())
+                {
+                    swAutoGpu.SetSilently(gameMode.AutoGpuPreference);
+                    return;
+                }
+                gameMode.AutoGpuPreference = on;
+                swAutoGpu.SetSilently(gameMode.AutoGpuPreference);
+            };
+            SettingCard auto = MakeAutoCard(scroll, 6, y, ScrollContentW,
+                FullTextCardHeight(Lang.T("set.autogpu.n"), ScrollContentW, swAutoGpu, 96),
+                Lang.T("set.autogpu"), Lang.T("set.autogpu.n"), swAutoGpu, out height);
+            auto.SetStatus(Lang.T("apppref.nextlaunch"), Theme.Accent);
+            // 第一次打开这个标签页时 作用范围和下次启动生效的提示要看得见
             EnableCardCollapse(scroll, card);
+        }
+
+        private bool ConfirmAutoGpuEnable()
+        {
+#if PAVISE_SELFTEST
+            if (AutoGpuConfirmationForTest != null) return AutoGpuConfirmationForTest();
+            throw new InvalidOperationException("Auto GPU confirmation requires an injected test response.");
+#elif PAVISE_PERFLAB
+            throw new InvalidOperationException("Auto GPU confirmation is unavailable in the performance lab.");
+#else
+            return PaviseDialog.Confirm(this, Lang.T("set.autogpu"),
+                Lang.T("autogpu.warn"), DlgKind.Warn);
+#endif
         }
 
         private void SyncCommonGraphicsToggles()
@@ -38,6 +74,9 @@ namespace PaviseApp
             if (swGpuPref == null) return;
             swGpuPref.SetSilently(gameMode.GpuPrefStageOn);
             swGpuPref.Enabled = GpuPrefStage.Supported || gameMode.GpuPrefStageOn;
+            if (swAutoGpu == null) return;
+            swAutoGpu.SetSilently(gameMode.AutoGpuPreference);
+            swAutoGpu.Enabled = GpuPrefStage.Supported || gameMode.AutoGpuPreference;
         }
     }
 }

@@ -75,8 +75,8 @@ namespace PaviseApp
         private readonly Func<int, long, string, RestoreResult> restoreForTest;
         internal Func<int, long, string, bool> RendererDiscardIdentityForTest;
 
-        // The renderer-release regression uses only an in-memory journal and
-        // fake restore outcomes. Do not initialize topology, recovery or OS state.
+        // 渲染进程释放的回归测试只用内存台账和假的还原结果
+        // 不要初始化拓扑 恢复流程或者任何系统状态
         internal SuppressionCore(
             Func<int, long, string, RestoreResult> restoreForTest, bool inMemoryOnly)
         {
@@ -353,7 +353,7 @@ namespace PaviseApp
                         if (mustWrite)
                         {
                             if (QueueApplyLocked(pid, name)) return AcquireResult.AlreadyThrottled;
-                            e.Applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost);
+                            e.Applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost, AntiCheatThrottled(e));
                             ScheduleAfterApply(e, e.Applied, pid);
                             if (!e.Applied && TryNeutralizeUnwritableLocked(h, pid, e))
                                 return AcquireResult.AlreadyProtected;
@@ -370,8 +370,7 @@ namespace PaviseApp
                             RecordBatchApplyResultLocked(pid, true, null);
                             return AcquireResult.AlreadyThrottled;
                         }
-                        bool matches = ThrottleMatches(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e))
-;
+                        bool matches = ThrottleMatches(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), AntiCheatThrottled(e));
                         if (matches)
                         {
                             ScheduleAfterMatch(e, pid);
@@ -379,7 +378,7 @@ namespace PaviseApp
                             return AcquireResult.AlreadyThrottled;
                         }
                         if (QueueApplyLocked(pid, name)) return AcquireResult.AlreadyThrottled;
-                        e.Applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost);
+                        e.Applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost, AntiCheatThrottled(e));
                         ScheduleAfterApply(e, e.Applied, pid);
                         if (!e.Applied && TryNeutralizeUnwritableLocked(h, pid, e))
                             return AcquireResult.AlreadyProtected;
@@ -448,7 +447,8 @@ namespace PaviseApp
                     }
                     if (!PersistJournalLocked()) return AcquireResult.ApplyFailed;
                     bool queued = QueueApplyLocked(pid, name);
-                    bool applied = queued || ApplyThrottle(h, level, orig, oaff, ocpuSets, DesiredGpu(active), oboost);
+                    bool applied = queued || ApplyThrottle(h, level, orig, oaff, ocpuSets, DesiredGpu(active), oboost,
+                        (reason & SuppressReason.AntiCheat) != 0);
                     Entry appliedEntry;
                     if (map.TryGetValue(pid, out appliedEntry) && !queued)
                     {
@@ -481,10 +481,10 @@ namespace PaviseApp
             return had;
         }
 
-        // The caller must first exclude this identity from new Background
-        // Acquire/Reconcile work, and revalidate its native identity after Ready.
-        // Clearing a reason is not proof that restoring its original values has
-        // completed: a surviving entry with Reasons=None is still recovery debt.
+        // 调用方必须先把这个身份从新的后台 Acquire/Reconcile 里排除
+        // 并在 Ready 之后重新校验它的原生身份
+        // 清掉一个 reason 不等于原始值已经还原完
+        // Reasons=None 但条目还活着 那仍然是一笔恢复欠账
         internal BackgroundReleaseState ReleaseBackgroundForRenderer(
             int pid, long expectedCreation, string expectedName)
         {
@@ -522,15 +522,15 @@ namespace PaviseApp
         {
             if ((entry.Reasons & ~SuppressReason.Background) != SuppressReason.None)
                 return BackgroundReleaseState.OtherReasonActive;
-            // Do not call TryRestore here. Only the first release starts recovery;
-            // subsequent polls observe RetryPending and its protected backoff.
+            // 这里不要调 TryRestore 只有第一次释放才启动恢复
+            // 后续轮询只观察 RetryPending 和它受保护的退避
             return BackgroundReleaseState.Pending;
         }
 
-        // A valid renderer can reuse a PID still held by a dead process in map.
-        // Forget only that obsolete bookkeeping; never Acquire/Restore against
-        // the new process just to remove the old identity. The caller still
-        // needs ReleaseBackgroundForRenderer and a final native identity check.
+        // 合法的渲染进程可能复用一个 PID 而 map 里那个进程已经死了
+        // 只忘掉这条过期账 绝不能为了删旧身份就对新进程做
+        // Acquire 或 Restore 调用方还需要 ReleaseBackgroundForRenderer
+        // 以及最后一次原生身份检查
         internal bool DiscardReusedRendererTracking(int pid, long expectedCreation, string expectedName)
         {
             if (pid <= 0 || expectedCreation <= 0 || string.IsNullOrWhiteSpace(expectedName)) return false;
@@ -546,8 +546,8 @@ namespace PaviseApp
             {
                 Entry current;
                 if (!map.TryGetValue(pid, out current)) return true;
-                // Acquire may replace an entry, or fill an existing creation=0
-                // placeholder in-place while the read-only query is in flight.
+                // 只读查询还在飞的时候 Acquire 可能替换掉一个条目
+                // 或者就地填上一个 creation=0 的占位
                 if (!ReferenceEquals(current, observed) || current.Creation != observedCreation) return false;
                 bool reused = current.Creation > 0 && current.Creation != expectedCreation;
                 bool untouched = current.Creation == 0 && current.OrigPri == uint.MaxValue
@@ -570,7 +570,7 @@ namespace PaviseApp
 #if PAVISE_SELFTEST
             if (RendererDiscardIdentityForTest != null)
                 return RendererDiscardIdentityForTest(pid, expectedCreation, expectedName);
-            // An in-memory fixture without an identity seam must stay in-memory.
+            // 没有身份接缝的内存夹具 必须一直留在内存里
             if (restoreForTest != null) return false;
 #endif
             IntPtr handle = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
@@ -659,7 +659,7 @@ namespace PaviseApp
                 IntPtr h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_SET_LIMITED_INFORMATION
                     | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
                 bool applied = false;
-                if (h != IntPtr.Zero) { try { if (SameProcess(h, e)) applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost); } finally { Native.CloseHandle(h); } }
+                if (h != IntPtr.Zero) { try { if (SameProcess(h, e)) applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost, AntiCheatThrottled(e)); } finally { Native.CloseHandle(h); } }
                 lock (sync)
                 {
                     Entry cur;
@@ -695,9 +695,9 @@ namespace PaviseApp
             lock (sync)
             {
                 Entry current;
-                // RetryPending works from a snapshot. It must not start an old
-                // restore after this entry was removed/replaced or reacquired,
-                // nor overlap the first ReleaseOne restore for the same entry.
+                // RetryPending 基于快照工作 这个条目被移除 替换或者重新获取之后
+                // 它不能再去启动一次旧的还原
+                // 也不能和同一条目上第一次 ReleaseOne 的还原叠在一起
                 if (!map.TryGetValue(pid, out current) || !ReferenceEquals(current, e)
                     || e.Reasons != SuppressReason.None || e.RestoreInFlight
                     || (respectBackoff && DateTime.UtcNow.Ticks < e.NextRetryTicks)) return false;
@@ -735,7 +735,7 @@ namespace PaviseApp
                 IntPtr h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_SET_LIMITED_INFORMATION
                     | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
                 bool applied = false;
-                if (h != IntPtr.Zero) { try { if (SameProcess(h, e)) applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost); } finally { Native.CloseHandle(h); } }
+                if (h != IntPtr.Zero) { try { if (SameProcess(h, e)) applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost, AntiCheatThrottled(e)); } finally { Native.CloseHandle(h); } }
                 lock (sync)
                 {
                     Entry cur;
@@ -909,7 +909,7 @@ namespace PaviseApp
                         }
                     }
                     int desiredGpu = DesiredGpu(currentEntry);
-                    if (ThrottleMatches(h, level, pri, aff, cpuSets, desiredGpu))
+                    if (ThrottleMatches(h, level, pri, aff, cpuSets, desiredGpu, AntiCheatThrottled(currentEntry)))
                     {
                         if (!currentEntry.Applied && currentEntry.ReconcileFailures > 0)
                             Logger.Log(Lang.T("log.suppressioncore.8") + expectedName + " pid " + pid
@@ -921,7 +921,7 @@ namespace PaviseApp
                     bool previouslyApplied = currentEntry.Applied;
                     int previousFailures = currentEntry.ReconcileFailures;
                     currentEntry.Applied = ApplyThrottle(h, level, pri, aff, cpuSets, desiredGpu,
-                        currentEntry.OrigBoost);
+                        currentEntry.OrigBoost, AntiCheatThrottled(currentEntry));
                     ScheduleAfterApply(currentEntry, currentEntry.Applied, pid);
                     if (currentEntry.Applied)
                     {
@@ -1088,6 +1088,13 @@ namespace PaviseApp
             e.Level = EffectiveLevel(e);
         }
 
+        // 反作弊压制走扫描安全构成 见 Apply 侧四个 Desired* 函数的说明
+        //   同时挂两种原因时也按反作弊算 安全边界优先于压制力度
+        private static bool AntiCheatThrottled(Entry e)
+        {
+            return (e.Reasons & SuppressReason.AntiCheat) != 0;
+        }
+
         private static SuppressionLevel EffectiveLevel(Entry e)
         {
             return e.AntiCheatLevel > e.BackgroundLevel ? e.AntiCheatLevel : e.BackgroundLevel;
@@ -1182,7 +1189,7 @@ namespace PaviseApp
                         || !ReferenceEquals(currentEntry.OrigCpuSets, cpuSets))
                         { error = "entry-state"; return false; }
                     applied = ApplyThrottle(h, level, pri, aff, cpuSets, DesiredGpu(currentEntry),
-                        currentEntry.OrigBoost);
+                        currentEntry.OrigBoost, AntiCheatThrottled(currentEntry));
                     if (!applied && TryNeutralizeUnwritableLocked(h, pid, currentEntry))
                     {
                         error = SelfProtectedDetail;

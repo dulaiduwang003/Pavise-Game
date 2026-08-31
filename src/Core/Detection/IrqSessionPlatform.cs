@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 隔离中断观测的系统边界，让生命周期回归不需要启动 ETW 或改动游戏。
+// 文件用途 隔离中断观测的系统边界 让生命周期回归不需要启动 ETW 或改动游戏
 using System;
 using System.Collections.Generic;
 
@@ -52,6 +52,8 @@ namespace PaviseApp
             private readonly InterruptAttribution probe = new InterruptAttribution();
             public Capture(bool captureTimeline)
             {
+                // 对局观测只用 DPC 证据 台账不存 ISR 订阅它是白付一半的事件量
+                probe.EnableDpcOnly();
                 if (captureTimeline) probe.EnableDpcTimeline();
             }
             public bool Busy { get { return probe.Busy; } }

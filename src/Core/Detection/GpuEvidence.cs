@@ -25,6 +25,21 @@ namespace PaviseApp
 
         public static Dictionary<int, double> Sample3D(int rounds, int intervalMs, Func<bool> canceled)
         {
+            return SampleCore(rounds, intervalMs, canceled, false, 0, 0, false);
+        }
+
+        // 只统计指定适配器上的 3D 占用 用于找出对局中仍在游戏渲染卡上跑的后台进程
+        //   合并取各轮最小值 阈值判定要的是"每个窗口都至少这么忙"
+        //   选举场景取最大是对的 这里取最大反而放大瞬时尖峰 一次合成突发就够过线
+        public static Dictionary<int, double> SampleAdapter3D(int luidHigh, uint luidLow,
+            int rounds, int intervalMs, Func<bool> canceled)
+        {
+            return SampleCore(rounds, intervalMs, canceled, true, luidHigh, luidLow, true);
+        }
+
+        private static Dictionary<int, double> SampleCore(int rounds, int intervalMs, Func<bool> canceled,
+            bool filterAdapter, int luidHigh, uint luidLow, bool sustained)
+        {
             IntPtr query = IntPtr.Zero;
             try
             {
@@ -35,27 +50,46 @@ namespace PaviseApp
                     return null;
                 if (PdhCollectQueryData(query) != 0) return null;
                 Dictionary<int, double> best = null;
+                int contributed = 0;
                 for (int round = 0; round < rounds; round++)
                 {
                     if (canceled != null && canceled()) break;
                     Thread.Sleep(intervalMs);
                     if (PdhCollectQueryData(query) != 0) continue;
-                    Dictionary<int, double> current = ReadByPid(counter);
+                    Dictionary<int, double> current = ReadByPid(counter, filterAdapter, luidHigh, luidLow);
                     if (current == null) continue;
+                    contributed++;
                     if (best == null) { best = current; continue; }
+                    if (sustained)
+                    {
+                        // 各轮交集取最小 任何一轮缺席或掉线的进程直接剔除
+                        var kept = new Dictionary<int, double>();
+                        foreach (KeyValuePair<int, double> kv in best)
+                        {
+                            double now;
+                            if (current.TryGetValue(kv.Key, out now))
+                                kept[kv.Key] = now < kv.Value ? now : kv.Value;
+                        }
+                        best = kept;
+                        continue;
+                    }
                     foreach (KeyValuePair<int, double> kv in current)
                     {
                         double prev;
                         if (!best.TryGetValue(kv.Key, out prev) || kv.Value > prev) best[kv.Key] = kv.Value;
                     }
                 }
+                // 持续判定至少要两轮真实数据 只剩单轮就退化成了瞬时尖峰采样
+                //   与"取各轮最小"的承诺相反 宁可这局不判
+                if (sustained && contributed < 2) return null;
                 return best;
             }
             catch { return null; }
             finally { if (query != IntPtr.Zero) { try { PdhCloseQuery(query); } catch { } } }
         }
 
-        private static Dictionary<int, double> ReadByPid(IntPtr counter)
+        private static Dictionary<int, double> ReadByPid(IntPtr counter,
+            bool filterAdapter, int luidHigh, uint luidLow)
         {
             uint bufferSize = 0;
             uint itemCount = 0;
@@ -78,6 +112,12 @@ namespace PaviseApp
                     string name = Marshal.PtrToStringUni(item.Name);
                     int pid = ParsePid(name);
                     if (pid <= 0) continue;
+                    if (filterAdapter)
+                    {
+                        int hi; uint lo, phys;
+                        if (!ParseAdapter(name, out hi, out lo, out phys)
+                            || hi != luidHigh || lo != luidLow) continue;
+                    }
                     double value = item.Value.DoubleValue;
                     if (value < 0) continue;
                     double sum;

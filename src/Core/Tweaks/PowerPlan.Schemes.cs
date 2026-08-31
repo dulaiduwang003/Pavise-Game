@@ -275,9 +275,9 @@ namespace PaviseApp
 
         // 笔记本插电时也不该强制一个核都不停泊
         //   本机台架 12 逻辑核 3 线程稳态负载 同一台机器两轮独立测量
-        //   不停泊最小核心%   100     50      20      5
-        //   第一轮实际频率%   153.8   157.8   164.0   157.8
-        //   第二轮实际频率%   153.8   162.1   156.3   163.6
+        //   不停泊最小核心% 100 50 20 5
+        //   第一轮实际频率% 153.8 157.8 164.0 157.8
+        //   第二轮实际频率% 153.8 162.1 156.3 163.6
         //   两次 100 都恰好 153.8 六个放开的臂全在 156.3~164.0 零重叠
         //   也就是说强制不停泊反而让干活的核跑得更慢 封装那份预算被摊到更多活跃核上
         //   跟专注档的意图正好相反 台式机不受这个约束 那边保持 100 不动
@@ -389,8 +389,8 @@ namespace PaviseApp
         {
             lock (eppLk)
             {
-                // Pending recovery is not a successful yield, and its original
-                // values must not be replaced by a second attempt's snapshot.
+                // 待恢复不算让出成功 它的原始值也不能被
+                // 第二次尝试的快照顶掉
                 if (eppYielded) return eppApplied;
                 try
                 {
@@ -398,8 +398,8 @@ namespace PaviseApp
                     if (g == Guid.Empty) return false;
                     uint savedAc, savedAc1;
                     if (!EppReadAc(g, false, out savedAc)) return false;
-                    // Some systems have no second efficiency class. Never write
-                    // a setting for which we could not capture an original value.
+                    // 有些系统没有第二个能效等级 取不到原始值的设置项
+                    // 一律不写
                     bool hasSecondary = EppReadAc(g, true, out savedAc1);
                     eppSavedScheme = g;
                     eppSavedAc = savedAc;
@@ -411,8 +411,8 @@ namespace PaviseApp
                     bool ok = EppWriteVerified(g, false, epp);
                     if (ok && hasSecondary)
                     {
-                        // Record the attempted write before entering native code,
-                        // which may fail after changing part of the setting.
+                        // 进原生代码之前先把这次要写的记下来
+                        // 因为它可能在改了一半设置之后失败
                         eppSaved1 = true;
                         ok = EppWriteVerified(g, true, epp);
                     }
@@ -435,8 +435,8 @@ namespace PaviseApp
             {
                 if (!eppYielded) return true;
                 eppApplied = false;
-                // The managed-plan reference may have changed since the write.
-                // Only the captured plan owns these original values.
+                // 托管方案的引用从写入到现在可能已经变了
+                // 这些原始值只属于当时捕获的那套方案
                 Guid g = eppSavedScheme;
                 if (g == Guid.Empty || !eppSaved) return false;
                 try

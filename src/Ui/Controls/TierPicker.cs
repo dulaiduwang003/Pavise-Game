@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 提供分段选择控件 默认三段压制档位 可用 Labels 泛化为任意段数
+// 文件用途 提供分段选择控件 段数与文字由 Labels 决定
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -9,14 +9,9 @@ namespace PaviseApp
 {
     internal sealed class TierPicker : Control
     {
-        private static readonly SuppressionLevel[] Order =
-        {
-            SuppressionLevel.Eco, SuppressionLevel.Restrained, SuppressionLevel.Isolated
-        };
         private int idx = 2;
         private int hoverIdx = -1;
         private Motion[] glow = new Motion[12];
-        public Action<SuppressionLevel> Changed;
         public Action<int> IndexChanged;
         public string[] Labels;
 
@@ -64,16 +59,6 @@ namespace PaviseApp
             get { return Labels != null && Labels.Length >= 2 ? Labels.Length : 3; }
         }
 
-        public SuppressionLevel Value
-        {
-            get { return Order[Math.Min(idx, Order.Length - 1)]; }
-            set
-            {
-                int i = Array.IndexOf(Order, value);
-                if (i >= 0 && i != idx) { idx = i; Invalidate(); }
-            }
-        }
-
         public int Index
         {
             get { return idx; }
@@ -117,7 +102,6 @@ namespace PaviseApp
             if (hit < 0 || hit == idx) return;
             idx = hit;
             Invalidate();
-            if (Changed != null && idx < Order.Length) Changed(Order[idx]);
             if (IndexChanged != null) IndexChanged(idx);
         }
 
@@ -156,8 +140,7 @@ namespace PaviseApp
                 Rectangle r = SegmentRect(i);
                 r.Width -= 1; r.Height -= 1;
                 bool selected = i == idx;
-                string label = Labels != null && i < Labels.Length ? Labels[i]
-                    : LabelFor(Order[Math.Min(i, Order.Length - 1)]);
+                string label = Labels != null && i < Labels.Length ? Labels[i] : "";
                 TextRenderer.DrawText(g, label, Theme.UI(8.25f, selected), r,
                     !Enabled ? Theme.Faint : selected ? Theme.Fg : Theme.Dim,
                     TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
@@ -165,13 +148,6 @@ namespace PaviseApp
             if (!Enabled)
                 using (var veil = new SolidBrush(Col.Alpha(Theme.Card, Theme.LightMode ? 104 : 138)))
                     g.FillRectangle(veil, ClientRectangle);
-        }
-
-        private static string LabelFor(SuppressionLevel level)
-        {
-            if (level == SuppressionLevel.Eco) return Lang.T("tame.lvl.eco");
-            if (level == SuppressionLevel.Restrained) return Lang.T("tame.lvl.res");
-            return Lang.T("tame.lvl.iso");
         }
     }
 }

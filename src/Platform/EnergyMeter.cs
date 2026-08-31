@@ -11,7 +11,7 @@ namespace PaviseApp
 
     // 微软的 PPM 驱动会把 Intel RAPL 暴露成 EMI 通道 于是不装内核驱动也能读到瓦数
     //   本机实测通道名 dRAPL_Package0_PKG / _DRAM / _PP0 / _PP1
-    //   PKG 45.35W  PP0 38.64W  DRAM 3.23W  PP1 1.38W  三个子域相加不超过 PKG 自洽
+    //   PKG 45.35W PP0 38.64W DRAM 3.23W PP1 1.38W 三个子域相加不超过 PKG 自洽
     // 这条路要 OEM 或平台驱动确实发布了通道 不是每台机器都有 没有就老实报不支持
     //   RAPL 的 MSR 路要 msr.sys 越不过内核边界 PDH 的 Power Meter 面向整机且推导方式未规定
     //   都不能替代 所以探不到 EMI 就没有别的用户态办法 不要用别的数据硬凑瓦数
@@ -24,7 +24,7 @@ namespace PaviseApp
         private const uint GenericRead = 0x80000000;
         private const uint ShareReadWrite = 3, OpenExisting = 3;
 
-        // CTL_CODE(FILE_DEVICE_UNKNOWN=0x22, func, METHOD_BUFFERED=0, FILE_READ_ACCESS=1)
+        // CTL_CODE 参数依次是 FILE_DEVICE_UNKNOWN=0x22 功能号 METHOD_BUFFERED=0 FILE_READ_ACCESS=1
         private const uint IoctlVersion = 0x224000;
         private const uint IoctlMetadataSize = 0x224004;
         private const uint IoctlMetadata = 0x224008;
@@ -217,8 +217,8 @@ namespace PaviseApp
         // 必须枚举全部设备 不能只看 index 0
         //   Intel 只发布一个 EMI 设备 恰好第一个就是对的
         //   AMD 8940HX 实测发布 16 个 每个物理核一个 只有其中一个带封装通道
-        //     设备 #0   dRAPL_Package0_PKG | dRAPL_Package0_Core0_CORE   封装 17.94W
-        //     设备 #2   dRAPL_Package0_Core1_CORE                        只有单核 0.13W
+        //     设备 #0 dRAPL_Package0_PKG | dRAPL_Package0_Core0_CORE 封装 17.94W
+        //     设备 #2 dRAPL_Package0_Core1_CORE 只有单核 0.13W
         //     其余 14 个同理 各带一个 CoreN
         //   SetupAPI 的返回顺序不保证 只取第一个会拿到只含单核的设备 于是判成读不到
         //   功耗让路要的是封装瓦数 所以挑设备的判据就是有没有封装通道

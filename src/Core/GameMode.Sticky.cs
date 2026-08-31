@@ -186,8 +186,8 @@ namespace PaviseApp
             if (hit.RendererCreation <= 0 && fresh.TryGetValue(
                     hit.RendererPid, out rendererIdentity))
                 hit.RendererCreation = rendererIdentity.Creation;
-            // 已确认的创建时间不能被第二次查询覆写成复用 PID 的新进程。
-            // 失败时也不把这份未提交的家族并入旧锚，交由原有失联宽限处理。
+            // 已确认的创建时间不能被第二次查询覆写成复用 PID 的新进程
+            // 失败时也不把这份未提交的家族并入旧锚 交由原有失联宽限处理
             if (hit.RendererPid <= 0 || !fresh.ContainsKey(hit.RendererPid)) return false;
             stickyIds.Clear();
             foreach (var kv in fresh) stickyIds[kv.Key] = kv.Value;

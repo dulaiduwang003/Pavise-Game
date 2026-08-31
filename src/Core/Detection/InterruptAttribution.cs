@@ -59,7 +59,7 @@ namespace PaviseApp
         public bool Busy { get; private set; }
 
         // Start() 有四条各不相同的失败路径 调用方只拿到一个 false 会把它们说成同一个原因
-        //   历史上全部报成「需要管理员权限」 而权限在进这个函数之前就已经查过了 只会误导
+        //   历史上全部报成 需要管理员权限 而权限在进这个函数之前就已经查过了 只会误导
         //   Busy 单独一路 其余三路把真实原因连错误码放这里 由调用方原样呈现
         public string FailDetail { get; private set; }
 
@@ -212,6 +212,16 @@ namespace PaviseApp
             dpcTimeline = tl;
         }
 
+        // 只订阅 DPC 不订阅 ISR 事件量大约减半 内核侧和消费线程的负担同步减半
+        //   对局观测的台账和裁决只用 DPC 证据 ISR 计数只有体检类一次性扫描用得上
+        //   必须在 Start 之前调用
+        public void EnableDpcOnly()
+        {
+            lock (gate) if (!started) dpcOnly = true;
+        }
+
+        private bool dpcOnly;
+
         public bool Start()
         {
             lock (gate)
@@ -235,7 +245,8 @@ namespace PaviseApp
                     return false;
                 }
 
-                IntPtr props = AllocProps();
+                uint enableFlags = dpcOnly ? FlagDpc : FlagDpc | FlagInterrupt;
+                IntPtr props = AllocProps(enableFlags);
                 try
                 {
                     ulong session;
@@ -244,7 +255,7 @@ namespace PaviseApp
                     {
                         StopStale();
                         Marshal.FreeHGlobal(props);
-                        props = AllocProps();
+                        props = AllocProps(enableFlags);
                         rc = StartTrace(out session, SessionName, props);
                     }
                     if (rc == ErrorInvalidParameter)
@@ -341,8 +352,8 @@ namespace PaviseApp
                 bool stopSucceeded = StopStale(out lost, out lostBuffers, out stopError);
                 result.EventsLost = lost;
                 result.BuffersLost = lostBuffers;
-                // 控制器成功停会话后，实时 ProcessTrace 会排空并自行返回；其后再 CloseTrace。
-                // 停止失败只能先关消费句柄解除阻塞，这种样本必须标不完整。
+                // 控制器成功停会话后 实时 ProcessTrace 会排空并自行返回 其后再 CloseTrace
+                // 停止失败只能先关消费句柄解除阻塞 这种样本必须标不完整
                 if (!stopSucceeded)
                     try { if (traceHandle != 0) CloseTrace(traceHandle); } catch { }
                 //   高事件量对局收尾时仍可能需要排空积压 2 秒会把正常收尾误判成卡死
@@ -355,7 +366,7 @@ namespace PaviseApp
                 started = false;
                 // 无论排空成功与否都要交还探针所有权
                 //   早先这里直接 return 把 aliveOwned 一路留着
-                //   否则一次异常就会让后续每局都被判「观测被占」 只能重启进程才恢复
+                //   否则一次异常就会让后续每局都被判 观测被占 只能重启进程才恢复
                 ReleaseOwnership();
                 if (!workerDone)
                 {
@@ -401,7 +412,7 @@ namespace PaviseApp
                 {
                     Logger.Log(Lang.F("log.interruptattribution.lossy", result.EventsLost, result.BuffersLost));
                 }
-                // 归因失败不能掩盖更高优先级的采集不完整/丢失；三种情况都不能提供有效样本。
+                // 归因失败不能掩盖更高优先级的采集不完整/丢失 三种情况都不能提供有效样本
                 if (result.Incomplete)
                     result.Error = "ETW 消费或停止未完整 win32=" + stopError;
                 else if (result.Lossy)
@@ -499,7 +510,7 @@ namespace PaviseApp
                 else dpcMarks.Add(new DpcMark
                 {
                     // ETW 已判为坏时长时不能再把不可信 start 当成一个可能横跨数秒的
-                    // 区间参与长帧对齐；退化成结束时刻的点事件，保留归因但不制造假重叠。
+                    // 区间参与长帧对齐 退化成结束时刻的点事件 保留归因但不制造假重叠
                     StartQpc = SafeTimelineStart(startQpc, endQpc, sanityMaxTicks),
                     EndQpc = endQpc,
                     Routine = routine,
@@ -532,8 +543,8 @@ namespace PaviseApp
             return true;
         }
 
-        // A fresh read-only snapshot also supplies the actual driver image paths
-        // to version lookup; do not guess a DriverStore package from its name.
+        // 一份新鲜的只读快照同时提供驱动映像的真实路径给版本查询
+        // 不要凭名字去猜 DriverStore 里的包
         internal static List<string> LoadedModuleImagePaths()
         {
             List<Module> loaded;
@@ -599,7 +610,7 @@ namespace PaviseApp
             finally { if (buf != IntPtr.Zero) Marshal.FreeHGlobal(buf); }
         }
 
-        private static IntPtr AllocProps()
+        private static IntPtr AllocProps(uint enableFlags)
         {
             int nameBytes = (SessionName.Length + 1) * 2;
             int size = Marshal.SizeOf(typeof(EventTraceProperties)) + nameBytes + 16;
@@ -618,7 +629,7 @@ namespace PaviseApp
             p.MaximumBuffers = 256;
             p.LogFileMode = RealTimeMode | SystemLoggerMode | IndependentSessionMode;
             p.FlushTimer = 1;
-            p.EnableFlags = FlagDpc | FlagInterrupt;
+            p.EnableFlags = enableFlags;
             p.LoggerNameOffset = (uint)Marshal.SizeOf(typeof(EventTraceProperties));
             Marshal.StructureToPtr(p, props, false);
             return props;

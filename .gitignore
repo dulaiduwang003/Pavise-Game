@@ -35,6 +35,14 @@ tests/*
 !tests/SelfTests.IrqStatus.cs
 !tests/SelfTests.IrqDisplay.cs
 !tests/SelfTests.IrqPinShot.cs
+!tests/SelfTests.MemShield.cs
+!tests/SelfTests.CacheWarm.cs
+!tests/SelfTests.DisplaySolo.cs
+!tests/SelfTests.IrqAutoPilot.cs
+!tests/SelfTests.AdaptiveGuard.cs
+!tests/SelfTests.NicModeration.cs
+!tests/SelfTests.LogWrites.cs
+!tests/SelfTests.AntiCheatThrottle.cs
 !tests/IrqCoreLoadUiChecks.cs
 !tests/NavigationUiChecks.cs
 !tests/TransitionUiChecks.cs
@@ -48,6 +56,7 @@ tools/*
 !tools/FamilyWarningBench/
 !tools/FamilyWarningBench/**
 !tools/Sync-VersionManifest.ps1
+!tools/Publish-VersionManifest.ps1
 !tools/RendererHandoffBench/
 tools/RendererHandoffBench/*
 !tools/RendererHandoffBench/FixtureHost.cs

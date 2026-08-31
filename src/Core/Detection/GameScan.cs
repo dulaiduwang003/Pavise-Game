@@ -162,7 +162,7 @@ namespace PaviseApp
                             if (roots.Contains(dir) || !Directory.Exists(dir)) continue;
                             if (IsSystemOrTooBroad(dir)) continue;
                             if (derived && SameNameAlreadyHit(hits, name)) continue;
-                            // 发布商、产品名和目录里的客户端字样都不是游戏身份依据。
+                            // 发布商 产品名和目录里的客户端字样都不是游戏身份依据
                             if (!LooksLikeGameDir(dir, 3)) continue;
 
                             AddManifestHit(root, hits, roots, name, dir, null);
@@ -335,8 +335,8 @@ namespace PaviseApp
                 Path.GetFileNameWithoutExtension(name ?? ""), null);
         }
 
-        // 扫描只推荐有唯一静态证据的入口；无法区分多个图形程序时交给用户选择。
-        // 不按游戏名、客户端角色、EXE 大小或目录里的 launcher/client 字样决胜。
+        // 扫描只推荐有唯一静态证据的入口 无法区分多个图形程序时交给用户选择
+        // 不按游戏名 客户端角色 EXE 大小或目录里的 launcher/client 字样决胜
         internal static string PickMainExe(string dir)
         {
             return ExecutableCandidateProbe.PickMainExecutable(dir);

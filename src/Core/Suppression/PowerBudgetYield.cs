@@ -8,7 +8,10 @@ namespace PaviseApp
 {
     internal enum YieldStage { Idle = 0, Observing = 1, Engaged = 2, Held = 3, Skipped = 4, Reverted = 5 }
 
-    internal enum YieldAction { None = 0, Engage = 1, Keep = 2, Revert = 3 }
+    internal enum YieldAction { None = 0, Engage = 1, Keep = 2, Revert = 3, Release = 4 }
+
+    // 验证结论 只用于日志分流 Inconclusive 不熔断 下局可以再试
+    internal enum YieldVerdict { None = 0, Kept = 1, NoGain = 2, GpuHarm = 3, Inconclusive = 4 }
 
     // 笔记本上 CPU 和 GPU 吃同一份功耗与散热预算 GPU 瓶颈时 CPU 多烧的每一瓦都是 GPU 少拿的
     //   固件的 Dynamic Boost / DTT / SmartShift 已经在毫秒级做这件事 我们不跟它抢方向盘
@@ -22,13 +25,20 @@ namespace PaviseApp
     //   验证要回答"预算真的让出来了吗" 只看 GPU 撞墙命中率会被两头骗
     //   GPU 拿到更高上限后可能照样撞墙 而把 CPU 压成瓶颈会让 GPU 利用率掉 命中率也跟着掉
     //   看起来像成功 实际是失败 所以没有 RAPL 读数就不参与 不猜
+    //
+    // 频率代理 读不到瓦数的机器的降级验证
+    //   EPP 释放功耗的机制就是频率 EPP 抬高→部分负载下 CPU 愿意跑更低频→功耗跟着频率立方走
+    //   所以频率降没降是"预算让没让"的次一级证据 频率纹丝不动 = EPP 是死杠杆 熔断是对的
+    //   降级验证多一个坑 频率同时受负载影响 验证窗和观察窗的 CPU 占用差太多就没法比
+    //   这种情况退回但不熔断 那是场景变了 不是机器的错 下局再试
+    //   频率代理的熔断单独记账 换了台有 EMI 的机器或修好了 EMI 驱动 瓦数路径不受牵连
     internal sealed class PowerBudgetYield
     {
         // 本机台架结果 i7-9750H Coffee Lake-H 笔记本 6 线程 40% 占空比负载
         //   EPP 取值范围 0~100 逐档写入读回全部吻合 说明写是写进去了
-        //   EPP        0      32     48     84     100
-        //   封装功耗   47.57  47.02  49.01  48.54  47.40 W   无趋势 正负 1.5W 是噪声
-        //   实际频率   153.8  153.8  153.8  153.9  153.8 %   跨全量程纹丝不动
+        //   EPP 档位 0 32 48 84 100
+        //   封装功耗 47.57 47.02 49.01 48.54 47.40 W 无趋势 正负 1.5W 是噪声
+        //   实际频率 153.8 153.8 153.8 153.9 153.8 % 跨全量程纹丝不动
         //   也就是说这台机器上 OS 侧的 EPP 根本没作用到硬件 这个杠杆是死的
         // 所以本功能默认关闭 而且在这类机器上验证必然不通过 会自动退回并熔断 那是对的行为
         //   2019 年的 Coffee Lake-H 不代表全部 Alder Lake 之后的 HWP 平台要重新量过才知道
@@ -41,8 +51,20 @@ namespace PaviseApp
         internal const double MinWattsFreed = 3.0;
         internal const double MaxGpuUtilDrop = 3.0;
         internal const int MinSamples = 4;
+        // 频率代理判据 相对降幅 3% 起判 负载漂移超过 10 个百分点就不下结论
+        internal const double MinFreqDropShare = 0.03;
+        internal const double MaxCpuUtilShift = 10.0;
+
+        // 方向盘判据 验收通过后持续盯着 瓶颈移回 CPU 就把预算还回去
+        //   释放阈值与参与阈值拉开迟滞带 90 让 80 收 防止在边界上来回打摆
+        //   还回去之后 GPU 再吃满可以重新让 重新让要走完整的观察加验收 那就是天然冷却
+        internal const double ReleaseGpuUtil = 80.0;
+        internal const double ReleaseCpuUtil = 75.0;
+        internal const long HoldWindowTicks = TimeSpan.TicksPerSecond * 30;
+        internal const int MaxReengage = 3;
 
         private const string FuseKey = "PowerYieldFuse";
+        private const string FreqFuseKey = "PowerYieldFreqFuse";
 
         // 参与的硬门槛 少一条都不参与 判错的代价落在对局里 宁可不做
         internal static bool Eligible(bool laptop, bool onAc, bool competitive,
@@ -78,7 +100,16 @@ namespace PaviseApp
             get { return Settings.Load(FuseKey, false); }
         }
 
-        public static void ClearFuse() { if (Fused) Settings.Save(FuseKey, false); }
+        public static bool FreqFused
+        {
+            get { return Settings.Load(FreqFuseKey, false); }
+        }
+
+        public static void ClearFuse()
+        {
+            if (Fused) Settings.Save(FuseKey, false);
+            if (FreqFused) Settings.Save(FreqFuseKey, false);
+        }
 
         // 读不到瓦数的那几次不能计进分母 否则封装功耗均值被稀释成偏低
         //   基线偏低 后面 VerifyHold 看到的降幅就偏小 会把本来有收益的机器判成没收益并熔断
@@ -86,18 +117,29 @@ namespace PaviseApp
 
         private YieldStage stage = YieldStage.Idle;
         private long stageAt;
+        private bool proxyMode;
         private int samples;
         private int pkgSamples;
-        private double gpuSum, cpuSum, pkgSum;
-        private double baseGpu, basePkg;
+        private int freqSamples;
+        private double gpuSum, cpuSum, pkgSum, freqSum;
+        private double baseGpu, basePkg, baseCpu, baseFreq;
+        private YieldVerdict verdict;
+        private int engagements;
 
         public YieldStage Stage { get { return stage; } }
+        public YieldVerdict Verdict { get { return verdict; } }
         public double BaselineWatts { get { return basePkg; } }
         public double BaselineGpuUtil { get { return baseGpu; } }
 
         public void Begin(long now, bool eligible)
         {
+            Begin(now, eligible, false);
+        }
+
+        public void Begin(long now, bool eligible, bool proxy)
+        {
             Reset();
+            proxyMode = proxy;
             stage = eligible ? YieldStage.Observing : YieldStage.Skipped;
             stageAt = now;
         }
@@ -106,54 +148,143 @@ namespace PaviseApp
 
         private void Reset()
         {
-            stage = YieldStage.Idle; stageAt = 0; samples = 0; pkgSamples = 0;
-            gpuSum = cpuSum = pkgSum = 0; baseGpu = basePkg = 0;
+            stage = YieldStage.Idle; stageAt = 0; samples = 0; pkgSamples = 0; freqSamples = 0;
+            gpuSum = cpuSum = pkgSum = freqSum = 0; baseGpu = basePkg = baseCpu = baseFreq = 0;
+            proxyMode = false; verdict = YieldVerdict.None; engagements = 0;
         }
 
-        // 喂一次采样 返回这一刻该做什么 负数的瓦数表示这次没读到 只是不计入均值
+        private void EnterHold(long now)
+        {
+            stage = YieldStage.Held;
+            verdict = YieldVerdict.Kept;
+            stageAt = now;
+            samples = 0; gpuSum = cpuSum = 0;
+        }
+
+        // 喂一次采样 返回这一刻该做什么 负数的瓦数或频率表示这次没读到 只是不计入均值
         public YieldAction Advance(long now, double gpuUtil, double cpuUtil, double pkgWatts)
         {
+            return Advance(now, gpuUtil, cpuUtil, pkgWatts, -1);
+        }
+
+        public YieldAction Advance(long now, double gpuUtil, double cpuUtil,
+            double pkgWatts, double freqPct)
+        {
+            // 方向盘的维持段 让出去之后持续盯 30 秒滚动窗口
+            //   GPU 仍吃满且 CPU 有余量就按兵不动 瓶颈移回 CPU 就把预算还回去
+            if (stage == YieldStage.Held)
+            {
+                samples++;
+                gpuSum += gpuUtil; cpuSum += cpuUtil;
+                if (now - stageAt < HoldWindowTicks || samples < MinSamples) return YieldAction.None;
+                double gpuAvg = gpuSum / samples, cpuAvg = cpuSum / samples;
+                samples = 0; gpuSum = cpuSum = 0; stageAt = now;
+                if (gpuAvg >= ReleaseGpuUtil && cpuAvg <= ReleaseCpuUtil) return YieldAction.None;
+                // 还回去 名额没用完就回到观察期 GPU 再吃满可以重新让
+                //   重新让必须重走完整观察和验收 那就是天然的振荡冷却
+                if (engagements >= MaxReengage)
+                {
+                    stage = YieldStage.Skipped;
+                    return YieldAction.Release;
+                }
+                stage = YieldStage.Observing;
+                pkgSamples = freqSamples = 0; pkgSum = freqSum = 0;
+                return YieldAction.Release;
+            }
             if (stage != YieldStage.Observing && stage != YieldStage.Engaged) return YieldAction.None;
             samples++;
             gpuSum += gpuUtil; cpuSum += cpuUtil;
             if (pkgWatts > 0) { pkgSum += pkgWatts; pkgSamples++; }
+            if (freqPct > 0) { freqSum += freqPct; freqSamples++; }
+            int meterSamples = proxyMode ? freqSamples : pkgSamples;
 
             long span = now - stageAt;
             if (stage == YieldStage.Observing)
             {
                 if (span < ObserveTicks || samples < MinSamples) return YieldAction.None;
-                // 瓦数读得太少就别下结论 一直读不到也别干等 攒够三倍样本还不够就放弃这局
-                if (pkgSamples < MinSamples)
+                // 证据读得太少就别下结论 一直读不到也别干等 攒够三倍样本还不够就放弃这局
+                if (meterSamples < MinSamples)
                 {
                     if (samples < MinSamples * GiveUpSampleMultiple) return YieldAction.None;
                     stage = YieldStage.Skipped;
                     return YieldAction.None;
                 }
                 double gpu = gpuSum / samples, cpu = cpuSum / samples;
-                double pkg = pkgSum / pkgSamples;
-                if (!WorthYielding(gpu, cpu) || pkg <= 0)
+                double meter = proxyMode ? freqSum / freqSamples : pkgSum / pkgSamples;
+                if (!WorthYielding(gpu, cpu) || meter <= 0)
                 {
                     stage = YieldStage.Skipped;
                     return YieldAction.None;
                 }
-                baseGpu = gpu; basePkg = pkg;
+                baseGpu = gpu; baseCpu = cpu;
+                if (proxyMode) baseFreq = meter; else basePkg = meter;
                 stage = YieldStage.Engaged; stageAt = now;
-                samples = 0; pkgSamples = 0; gpuSum = cpuSum = pkgSum = 0;
+                engagements++;
+                samples = 0; pkgSamples = 0; freqSamples = 0;
+                gpuSum = cpuSum = pkgSum = freqSum = 0;
                 return YieldAction.Engage;
             }
 
             if (span < VerifyTicks || samples < MinSamples) return YieldAction.None;
-            // 验证期同理 读不到瓦数就不能判 但这里已经改过 EPP 攒不够样本必须退回而不是干等
-            if (pkgSamples < MinSamples)
+            // 验证期同理 读不到证据就不能判 但这里已经改过 EPP 攒不够样本必须退回而不是干等
+            if (meterSamples < MinSamples)
             {
                 if (samples < MinSamples * GiveUpSampleMultiple) return YieldAction.None;
                 stage = YieldStage.Reverted;
+                verdict = YieldVerdict.Inconclusive;
                 return YieldAction.Revert;
             }
-            double gpuNow = gpuSum / samples, pkgNow = pkgSum / pkgSamples;
+            double gpuNow = gpuSum / samples;
+            if (!proxyMode)
+            {
+                // 瓦数路径同样吃负载漂移守卫 验证窗撞上过场或加载屏时
+                //   功耗自然回落会被误判成"没让出来" 方向盘一局最多三个验证窗
+                //   误熔断的暴露面是老行为的三倍 不能再靠运气
+                double cpuShift = Math.Abs(cpuSum / samples - baseCpu);
+                if (cpuShift > MaxCpuUtilShift)
+                {
+                    stage = YieldStage.Reverted;
+                    verdict = YieldVerdict.Inconclusive;
+                    return YieldAction.Revert;
+                }
+            }
+            if (proxyMode)
+            {
+                double cpuNow = cpuSum / samples, freqNow = freqSum / freqSamples;
+                // 负载漂移大就没法比 退回但不熔断 那是场景变了不是机器的错
+                if (Math.Abs(cpuNow - baseCpu) > MaxCpuUtilShift)
+                {
+                    stage = YieldStage.Reverted;
+                    verdict = YieldVerdict.Inconclusive;
+                    return YieldAction.Revert;
+                }
+                if (baseGpu - gpuNow > MaxGpuUtilDrop)
+                {
+                    stage = YieldStage.Reverted;
+                    verdict = YieldVerdict.GpuHarm;
+                    Settings.Save(FreqFuseKey, true);
+                    return YieldAction.Revert;
+                }
+                if (baseFreq - freqNow < baseFreq * MinFreqDropShare)
+                {
+                    // 频率纹丝不动 = 这台机器上 EPP 是死杠杆 与作者台架的 i7-9750H 同款结局
+                    stage = YieldStage.Reverted;
+                    verdict = YieldVerdict.NoGain;
+                    Settings.Save(FreqFuseKey, true);
+                    return YieldAction.Revert;
+                }
+                EnterHold(now);
+                return YieldAction.Keep;
+            }
+            double pkgNow = pkgSum / pkgSamples;
             bool keep = VerifyHold(basePkg, pkgNow, baseGpu, gpuNow);
-            stage = keep ? YieldStage.Held : YieldStage.Reverted;
-            if (!keep) Settings.Save(FuseKey, true);
+            if (keep) EnterHold(now);
+            else
+            {
+                stage = YieldStage.Reverted;
+                verdict = YieldVerdict.NoGain;
+                Settings.Save(FuseKey, true);
+            }
             return keep ? YieldAction.Keep : YieldAction.Revert;
         }
     }
@@ -176,8 +307,33 @@ namespace PaviseApp
         private static int generation;
         private static bool stopInProgress;
         private static bool shutdownClosed;
+        private static volatile bool proxyRun;
 
         public static bool EnabledSetting { get { return Settings.Load(EnabledKey, false); } }
+
+        // 频率代理可用性 探一次记一辈子 计数器在不在不会中途变
+#if PAVISE_SELFTEST
+        // 隔离测试不真探 PDH 默认按不可用 既有用例的语义分毫不变
+        internal static bool FreqProxyForTest;
+
+        public static bool FreqProxyAvailable { get { return FreqProxyForTest; } }
+#else
+        private static int freqCounterState;
+
+        public static bool FreqProxyAvailable
+        {
+            get
+            {
+                if (freqCounterState == 0)
+                {
+                    var sampler = new FreqSampler();
+                    freqCounterState = sampler.Open() ? 1 : -1;
+                    sampler.Close();
+                }
+                return freqCounterState > 0;
+            }
+        }
+#endif
 
         public static void ConfigureMutationBoundary(Action begin, Action end)
         {
@@ -223,12 +379,17 @@ namespace PaviseApp
                 if (shutdownClosed || stopInProgress || running
                     || worker != null && worker.IsAlive) return;
                 if (!enabled) return;
+                // 有瓦数走瓦数 没瓦数但有频率计数器走降级验证 熔断各记各的账
+                bool watts = EnergyMeter.Available;
+                bool proxy = !watts && FreqProxyAvailable;
                 bool eligible = PowerBudgetYield.Eligible(
                     Native.HasSystemBattery(), Native.OnAcPower(), competitive,
-                    PowerPlan.ManagedPlanIsActive, EnergyMeter.Available, PowerBudgetYield.Fused);
+                    PowerPlan.ManagedPlanIsActive, watts || proxy,
+                    watts ? PowerBudgetYield.Fused : PowerBudgetYield.FreqFused);
                 if (!eligible) return;
+                proxyRun = proxy;
                 state = new PowerBudgetYield();
-                state.Begin(DateTime.UtcNow.Ticks, true);
+                state.Begin(DateTime.UtcNow.Ticks, true, proxy);
                 running = true;
                 int mine = ++generation;
                 worker = new Thread(delegate () { Loop(mine); });
@@ -266,8 +427,8 @@ namespace PaviseApp
                 t = worker;
                 if (state != null) { state.End(); state = null; }
             }
-            // A failed join must retain the thread reference. Clearing it would
-            // make a subsequent final stop falsely report that no worker exists.
+            // join 失败时线程引用要留着 清掉它会让后面最终那次停止
+            // 误报成根本没有工作线程
             if (t != null)
             {
                 try
@@ -319,47 +480,148 @@ namespace PaviseApp
         private static void Loop(int mine)
         {
             var cpu = new CpuSaturation();
-            EnergyMeter.Sample prev = EnergyMeter.Take();
-            while (GenerationRunning(mine))
+            bool proxy = proxyRun;
+            var freq = new FreqSampler();
+            if (proxy && !freq.Open())
             {
-                Thread.Sleep(SampleIntervalMs);
-                if (!GenerationRunning(mine)) break;
-                double gpu = SampleGpuUtil();
-                double cpuPct = cpu.Sample() * 100.0;
-                EnergyMeter.Sample now = EnergyMeter.Take();
-                double watts = EnergyMeter.Watts(prev, now, EnergyRail.Package);
-                if (now != null) prev = now;
-                if (gpu < 0) continue;
-
-                YieldAction action;
+                // 进程级探测成功不代表本局也打得开 静默夭折要留话也要收状态
+                freq.Close();
+                Logger.Log(Lang.T("log.poweryield.12"));
                 lock (gate)
-                {
-                    if (!running || mine != generation || shutdownClosed || state == null) break;
-                    action = state.Advance(DateTime.UtcNow.Ticks, gpu, cpuPct, watts);
-                }
-                if (action == YieldAction.Engage)
-                {
-                    bool ok = RunCurrentMutation(mine, delegate
+                    if (mine == generation)
                     {
-                        return PowerPlan.TryYieldEpp(PowerBudgetYield.YieldEpp);
-                    });
-                    Logger.Log(Lang.F(ok ? "log.poweryield.2" : "log.poweryield.3",
-                        PowerBudgetYield.YieldEpp.ToString(),
-                        gpu.ToString("F0"), cpuPct.ToString("F0"), watts.ToString("F1")));
-                    if (!ok) break;
-                }
-                else if (action == YieldAction.Revert)
+                        running = false;
+                        if (state != null) { state.End(); state = null; }
+                    }
+                return;
+            }
+            EnergyMeter.Sample prev = proxy ? null : EnergyMeter.Take();
+            try
+            {
+                while (GenerationRunning(mine))
                 {
-                    RunCurrentMutation(mine, PowerPlan.RestoreEpp);
-                    Logger.Log(Lang.T("log.poweryield.4"));
-                    break;
-                }
-                else if (action == YieldAction.Keep)
-                {
-                    Logger.Log(Lang.T("log.poweryield.7"));
-                    break;
+                    Thread.Sleep(SampleIntervalMs);
+                    if (!GenerationRunning(mine)) break;
+                    double gpu = SampleGpuUtil();
+                    double cpuPct = cpu.Sample() * 100.0;
+                    double watts = -1, freqPct = -1;
+                    if (proxy) freqPct = freq.Read();
+                    else
+                    {
+                        EnergyMeter.Sample now = EnergyMeter.Take();
+                        watts = EnergyMeter.Watts(prev, now, EnergyRail.Package);
+                        if (now != null) prev = now;
+                    }
+                    if (gpu < 0) continue;
+
+                    YieldAction action;
+                    YieldVerdict verdict;
+                    lock (gate)
+                    {
+                        if (!running || mine != generation || shutdownClosed || state == null) break;
+                        action = state.Advance(DateTime.UtcNow.Ticks, gpu, cpuPct, watts, freqPct);
+                        verdict = state.Verdict;
+                    }
+                    if (action == YieldAction.Engage)
+                    {
+                        bool ok = RunCurrentMutation(mine, delegate
+                        {
+                            return PowerPlan.TryYieldEpp(PowerBudgetYield.YieldEpp);
+                        });
+                        Logger.Log(proxy
+                            ? Lang.F(ok ? "log.poweryield.8" : "log.poweryield.3",
+                                PowerBudgetYield.YieldEpp.ToString(),
+                                gpu.ToString("F0"), cpuPct.ToString("F0"), freqPct.ToString("F0"))
+                            : Lang.F(ok ? "log.poweryield.2" : "log.poweryield.3",
+                                PowerBudgetYield.YieldEpp.ToString(),
+                                gpu.ToString("F0"), cpuPct.ToString("F0"), watts.ToString("F1")));
+                        if (!ok) break;
+                    }
+                    else if (action == YieldAction.Revert)
+                    {
+                        // 这里还原失败也不重试 EppYielded 仍为真 退局 StopCore 兜底还原
+                        RunCurrentMutation(mine, PowerPlan.RestoreEpp);
+                        Logger.Log(Lang.T(verdict == YieldVerdict.Inconclusive
+                            ? "log.poweryield.9" : "log.poweryield.4"));
+                        break;
+                    }
+                    else if (action == YieldAction.Keep)
+                    {
+                        // 验收通过不收工 方向盘上路 瓶颈移回 CPU 时把预算还回去
+                        Logger.Log(Lang.T(proxy ? "log.poweryield.10" : "log.poweryield.7"));
+                    }
+                    else if (action == YieldAction.Release)
+                    {
+                        // 还原失败不能当没事 状态已经认为还回去了 让退局的兜底还原来收尾
+                        if (!RunCurrentMutation(mine, PowerPlan.RestoreEpp)) break;
+                        Logger.Log(Lang.T("log.poweryield.11"));
+                    }
                 }
             }
+            finally { freq.Close(); }
+        }
+
+        // 平台频率百分比 与作者台架记录用的是同一个计数器 两次采集之间的均值
+        private sealed class FreqSampler
+        {
+            private IntPtr query;
+            private IntPtr counter;
+
+            public bool Open()
+            {
+                try
+                {
+                    if (PdhOpenQueryW(null, IntPtr.Zero, out query) != 0 || query == IntPtr.Zero)
+                        return false;
+                    if (PdhAddEnglishCounterW(query,
+                            @"\Processor Information(_Total)\% Processor Performance",
+                            IntPtr.Zero, out counter) != 0) return false;
+                    return PdhCollectQueryData(query) == 0;
+                }
+                catch { return false; }
+            }
+
+            public double Read()
+            {
+                try
+                {
+                    if (query == IntPtr.Zero || PdhCollectQueryData(query) != 0) return -1;
+                    var fmt = new PdhFmtCounterValue();
+                    uint type;
+                    if (PdhGetFormattedCounterValue(counter, PdhFmtDouble, out type, out fmt) != 0
+                        || fmt.CStatus != 0) return -1;
+                    return fmt.DoubleValue > 0 ? fmt.DoubleValue : -1;
+                }
+                catch { return -1; }
+            }
+
+            public void Close()
+            {
+                if (query == IntPtr.Zero) return;
+                try { PdhCloseQuery(query); } catch { }
+                query = IntPtr.Zero;
+            }
+
+            private const uint PdhFmtDouble = 0x00000200;
+
+            [System.Runtime.InteropServices.StructLayout(
+                System.Runtime.InteropServices.LayoutKind.Sequential)]
+            private struct PdhFmtCounterValue
+            {
+                public uint CStatus;
+                public double DoubleValue;
+            }
+
+            [System.Runtime.InteropServices.DllImport("pdh.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+            private static extern uint PdhOpenQueryW(string dataSource, IntPtr userData, out IntPtr query);
+            [System.Runtime.InteropServices.DllImport("pdh.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+            private static extern uint PdhAddEnglishCounterW(IntPtr query, string counterPath, IntPtr userData, out IntPtr counter);
+            [System.Runtime.InteropServices.DllImport("pdh.dll")]
+            private static extern uint PdhCollectQueryData(IntPtr query);
+            [System.Runtime.InteropServices.DllImport("pdh.dll")]
+            private static extern uint PdhGetFormattedCounterValue(IntPtr counter, uint format, out uint type, out PdhFmtCounterValue value);
+            [System.Runtime.InteropServices.DllImport("pdh.dll")]
+            private static extern uint PdhCloseQuery(IntPtr query);
         }
 
 #if PAVISE_SELFTEST

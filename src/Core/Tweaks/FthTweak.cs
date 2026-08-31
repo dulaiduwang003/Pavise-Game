@@ -7,6 +7,8 @@ using Microsoft.Win32;
 
 namespace PaviseApp
 {
+    // 容错堆是系统看某个程序崩多了自动挂上的兼容性 shim
+    //   它会拦下堆分配走一层额外逻辑 对游戏是净损耗
     internal static class FthTweak
     {
         private const string FthKey = @"SOFTWARE\Microsoft\FTH";

@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 深度调优侧栏顶部的 ROG 风格返回模块
+// 文件用途 高级区侧栏顶部的 ROG 风格返回模块
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -39,7 +39,7 @@ namespace PaviseApp
             else using (var bg = new SolidBrush(Theme.Nav)) g.FillRectangle(bg, ClientRectangle);
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-            // 与右侧顶栏底线对齐，替代深度调优侧栏的品牌区。
+            // 与右侧顶栏底线对齐 替代高级区侧栏的品牌区
             using (var p = new Pen(Theme.Stroke)) g.DrawLine(p, 0, Height - 1, Width, Height - 1);
 
             float hot = hover.Value;

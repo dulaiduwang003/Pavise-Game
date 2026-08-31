@@ -22,8 +22,8 @@ namespace PaviseApp
         public string HardwareId;
         public GpuVendor Vendor;
         public bool Integrated;
-        // False means the displayed kind used the legacy bus/VRAM heuristic.
-        // New GPU-routing writes must require an authoritative driver answer.
+        // false 表示显示出来的类型是用老的总线和显存启发式猜的
+        // 新的 GPU 路由写入必须拿到驱动的权威答复
         public bool IntegratedKnown;
         public long VideoMemoryBytes;
         public int BusNumber = -1;

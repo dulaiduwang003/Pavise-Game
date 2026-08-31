@@ -15,6 +15,8 @@ namespace PaviseApp
             return preferred != 0 ? preferred : all;
         }
 
+        // 后台留几个物理核 核越多留得越多 但始终是少数
+        //   6 核及以下不切分 切了以后后台挤在一两个核上排队反而更糟
         public static int BackgroundCoreCount(int physicalCoreCount)
         {
             if (physicalCoreCount <= 6) return 0;
@@ -29,6 +31,8 @@ namespace PaviseApp
             return SqueezeMask(physicalCores, allowedMask, effMask, hybrid, null, 0);
         }
 
+        // 把后台压到尽量少的物理核上 同一物理核的两个逻辑核一起给
+        //   拆开给会让后台线程和游戏线程共享同一个核的执行资源
         public static ulong SqueezeMask(ulong[] physicalCores, ulong allowedMask, ulong effMask,
             bool hybrid, ulong[] l3Domains, ulong gameMask)
         {
@@ -83,6 +87,8 @@ namespace PaviseApp
             return n;
         }
 
+        // 取掩码内各核中断率的最大值而不是平均 一个核被打爆就够毁掉帧时间
+        //   平均值会把这种情况稀释掉看不出来
         public static double CoreInterruptRate(double[] rates, ulong coreMask)
         {
             if (rates == null || coreMask == 0) return 0;
@@ -118,6 +124,8 @@ namespace PaviseApp
         public const int IsolateCore0MinPhysical = 8;
         public const int MinGameDomainCores = 6;
 
+        // 纯函数 只按传进来的核心描述算分区方案 不读硬件不调系统接口
+        //   这样隔离测试可以随便构造拓扑 不用真有那台机器
         public static CorePlan Decide(CoreDesc[] cores, ulong allMask)
         {
             var plan = new CorePlan

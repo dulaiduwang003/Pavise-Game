@@ -87,7 +87,7 @@ namespace PaviseApp
             lblEvidenceLive = CardLabel(status, Lang.F("v20.ready", App.Version), 58, 22, 205, 26, 9f, true, Theme.Faint);
             lblEvidenceLive.TextAlign = ContentAlignment.MiddleLeft;
 
-            // 深度调优只保留侧栏入口，底栏右侧留给三个外链。
+            // 高级区只保留侧栏入口 底栏右侧留给三个外链
             //   不等宽是有意的 教程那条标题最长 平分的话它会被省略号截掉
             //   按钮内部左侧图标占 43 右端外链角标占 32 剩下才是文字可用宽度
             int linkY = 12, linkH = 46, linkGap = 10;

@@ -13,7 +13,7 @@ namespace PaviseApp
     {
         private enum RowKind { Installed, Running }
 
-        // Workers resolve executable paths before posting these resource-free snapshots to the UI.
+        // 工作线程先把可执行文件路径解析好 再把这些不带资源的快照投给界面
         private sealed class Candidate
         {
             public string Name;
@@ -451,7 +451,7 @@ namespace PaviseApp
 
         private void Merge(List<Candidate> hits, RowKind kind)
         {
-            // A failed snapshot is not evidence that every running program exited.
+            // 快照失败不能当成所有正在运行的程序都退出了
             if (closed || hits == null) { if (!closed) UpdateInfoLabel(); return; }
             var byPath = new Dictionary<string, Row>(StringComparer.OrdinalIgnoreCase);
             foreach (Row row in rows) byPath[row.Path] = row;
@@ -501,7 +501,7 @@ namespace PaviseApp
                         row.RendererLike = false;
                         refill = true;
                     }
-                    // Keep explicit picks even after the program closes; installed entries stay too.
+                    // 程序关掉之后 显式挑选的条目仍然保留 已安装的条目也留着
                     if (!row.Installed && !row.Checked)
                     {
                         rows.RemoveAt(i);
@@ -641,7 +641,7 @@ namespace PaviseApp
             });
         }
 
-        // Takes ownership even when closing: no bitmap is owned only by a queued UI callback.
+        // 就算正在关闭也要接管所有权 不能让某张位图只被排队中的界面回调持有
         private void CacheIcon(string path, Bitmap bitmap)
         {
             lock (iconGate)

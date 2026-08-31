@@ -222,8 +222,8 @@ namespace PaviseApp
             if (clean == 0) return;
             gameMode.SetProfileOverride(cfgProfileId, PolicyCatalog.KeyCoreMask,
                 clean == CpuTopology.AllMask ? "" : clean.ToString("X"));
-            // An empty custom mask means no custom affinity, not an override of
-            // the global partition choice. Full selection must explicitly opt out.
+            // 自定义掩码为空表示没有自定义亲和性 不是覆盖全局的分区选择
+            // 要全选就得显式声明退出
             if (clean == CpuTopology.AllMask)
                 gameMode.SetProfileOverride(cfgProfileId, PolicyCatalog.KeyStrictCores, "0");
             else gameMode.ClearProfileOverride(cfgProfileId, PolicyCatalog.KeyStrictCores);

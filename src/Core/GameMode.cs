@@ -86,6 +86,9 @@ namespace PaviseApp
         private volatile bool amdAfmf;
         private volatile bool rsrOn;
         private volatile bool vramShieldOn;
+        private volatile bool memShieldOn;
+        private volatile bool cacheWarmOn;
+        private volatile bool displaySoloOn;
         private bool pqosActive;
         private bool awakeActive;
         private bool gpwActive;
@@ -208,6 +211,7 @@ namespace PaviseApp
             pauseServicesOn = Settings.Load(PolicyCatalog.KeyPauseServices, false);
             disableCpuIdleOn = Settings.Load(PolicyCatalog.KeyDisableCpuIdle, false);
             InitializeStandbyCleaner();
+            InitializeAutoGpu();
             InitializeEnglishInput();
             InitializeIntelGraphics();
             nvMaxPerf = Settings.Load("NvMaxPerf", false);
@@ -224,6 +228,9 @@ namespace PaviseApp
             rsrOn = Settings.Load("GmRsr", false);
             autoAddOn = Settings.Load("GmAutoAdd", false);
             vramShieldOn = Settings.Load(VramShield.EnabledKey, false);
+            memShieldOn = Settings.Load(MemShield.EnabledKey, false);
+            cacheWarmOn = Settings.Load(CacheWarm.EnabledKey, false);
+            displaySoloOn = Settings.Load(PolicyCatalog.KeyDisplaySolo, false);
             killGameDvr = Settings.Load("GameDvrOff", true);
             mmcssOn = Settings.Load("GmMmcss", true);
             planSwitch = Settings.Load("PowerPlanOn", true);
@@ -543,9 +550,9 @@ namespace PaviseApp
             }
         }
 
-        // 显存驻留与功耗让路都在对局中途反复读 所以一并走冻结快照
-        //   对局里关掉全局开关 撤销会立刻发生 但下一轮采样又按本局定格值重新声明
-        //   这跟其余逐游戏项一致 生效值只在对局激活那一刻定格
+        // 会话快照只冻结"有逐游戏覆盖"的键 无覆盖的键每次实时回读全局设置
+        //   所以对局里关掉全局开关会立刻生效 不会被定格值重新声明
+        //   带覆盖的游戏才是定格语义 覆盖值在建快照那一刻拍板 局中改覆盖走清除流程
         private bool EffVramShield
         {
             get
@@ -561,6 +568,24 @@ namespace PaviseApp
             {
                 PolicySnapshot s = sessionPolicy;
                 return s != null ? s.PowerYield : PowerBudgetYieldRunner.EnabledSetting;
+            }
+        }
+
+        private bool EffMemShield
+        {
+            get
+            {
+                PolicySnapshot s = sessionPolicy;
+                return s != null ? s.MemShield : memShieldOn;
+            }
+        }
+
+        private bool EffCacheWarm
+        {
+            get
+            {
+                PolicySnapshot s = sessionPolicy;
+                return s != null ? s.CacheWarm : cacheWarmOn;
             }
         }
 
@@ -680,8 +705,8 @@ namespace PaviseApp
 
         private bool SaveProfilesLocked()
         {
-            // 首次落盘失败就熔断：强制清空的 UI 回调是异步的，
-            // 回调执行前不得再尝试写入任何游戏库数据。
+            // 首次落盘失败就熔断 强制清空的 UI 回调是异步的
+            // 回调执行前不得再尝试写入任何游戏库数据
             if (stopping || ProfileStoreSaveFailed) return false;
             if (profileStore.Save(profiles)) return true;
             SignalProfileStoreSaveFailure();
@@ -789,8 +814,8 @@ namespace PaviseApp
             InvalidateEnglishInputWork();
             InvalidateIntelGraphicsWork();
             kick.Set();
-            // Existing commits finish under sync before shutdown can proceed.
-            // A callback stopping its own commit must leave recovery data intact.
+            // 已经在跑的提交要在 sync 下走完 之后关闭才能继续
+            // 回调停掉它自己那次提交时 必须让恢复数据完好无损
             if (Monitor.IsEntered(sync) || !Monitor.TryEnter(sync, 8000)) return false;
             try
             {
@@ -802,8 +827,8 @@ namespace PaviseApp
             if (current != null && (current == Thread.CurrentThread
                 || !current.Join(RemainingShutdownMs(elapsed, 8000))))
                 return false;
-            // Pool work can outlive Loop. Stop admission first, then wait for
-            // native/file mutations that already entered their respective gates.
+            // 线程池的活可能比 Loop 活得久 先停准入 再等那些
+            // 已经进了各自闸门的原生和文件改动做完
             if (!DrainAsyncShutdown(RemainingShutdownMs(elapsed, 8000))) return false;
             bool runnersClosed = true;
             try { if (!RenderLane.CloseForShutdown(8000)) runnersClosed = false; }
@@ -812,10 +837,10 @@ namespace PaviseApp
             catch { runnersClosed = false; }
             try { if (standbyCleaner != null && !standbyCleaner.Close(8000)) runnersClosed = false; }
             catch { runnersClosed = false; }
-            // Attempt both shutdowns even if one fails. Their recovery records
-            // and mutation boundaries remain intact unless both confirmed exit.
+            // 两个关闭都要试 就算其中一个失败 除非两边都确认退出
+            // 否则它们的恢复记录和改动边界都要原样保留
             if (!runnersClosed) return false;
-            // Do not detach mutation guards or claim reset is safe while Loop is alive.
+            // Loop 还活着的时候 不要卸掉改动守卫 也别声称重置是安全的
             bool clean = true;
             RenderLane.ConfigureMutationBoundary(null, null);
             PowerBudgetYieldRunner.ConfigureMutationBoundary(null, null);
@@ -851,8 +876,8 @@ namespace PaviseApp
 
         private static bool DrainShutdownGate(object gate, int timeoutMs)
         {
-            // A stop requested from inside a mutation cannot wait for itself or
-            // claim that its still-running callback has finished.
+            // 从一次改动内部发起的停止 既不能等自己
+            // 也不能声称它那个还在跑的回调已经结束
             if (Monitor.IsEntered(gate) || !Monitor.TryEnter(gate, timeoutMs)) return false;
             try { return true; }
             finally { Monitor.Exit(gate); }
@@ -903,8 +928,8 @@ namespace PaviseApp
                                 PruneWhitelistFamilyMembersIfDue(all);
                                 HashSet<int> gamePids;
                                 string running = FindRunningGame(all, out gamePids);
-                                // 确认学习可触发既有游戏库保存熔断。UI 收尾尚未执行前，
-                                // 本轮也不能继续套电源、压后台或提优旧/新目标。
+                                // 确认学习可触发既有游戏库保存熔断 UI 收尾尚未执行前
+                                // 本轮也不能继续套电源 压后台或提优旧/新目标
                                 if (!enabled || stopping || panicReq || ProfileStoreSaveFailed) continue;
                                 if (running != null)
                                 {
@@ -929,9 +954,9 @@ namespace PaviseApp
                                             }
                                             if (sameGraceProfile)
                                             {
-                                                // Seal 的前缀尚未落盘。同一 profile 在宽限内
-                                                // 恢复时丢弃它，并从新 renderer 证明重开干净
-                                                // epoch；否则一次短暂漏检会把同一局拆成两条。
+                                                // Seal 的前缀尚未落盘 同一 profile 在宽限内
+                                                // 恢复时丢弃它 并从新 renderer 证明重开干净
+                                                // epoch 否则一次短暂漏检会把同一局拆成两条
                                                 ArmIrqObservation(graceGame ?? running);
                                             }
                                         }
@@ -940,6 +965,9 @@ namespace PaviseApp
                                     {
                                         lock (sync) { active = true; activeGame = running; firstSweep = true; }
                                         Logger.Log(Lang.T("log.gamemode.45") + running);
+                                        autoGpuScanned = false;
+                                        cacheWarmDone = false;
+                                        ResetAdaptiveGuard();
                                         Interlocked.Exchange(ref boostFirstStampTicks, DateTime.UtcNow.Ticks);
                                         Interlocked.Exchange(ref sessionStartTicks, DateTime.UtcNow.Ticks);
                                         try { cpuLimit.Start(); } catch { }
@@ -952,13 +980,16 @@ namespace PaviseApp
                                     {
                                         lock (sync) activeGame = running;
                                         Logger.Log(Lang.T("log.gamemode.46") + running);
+                                        autoGpuScanned = false;
+                                        cacheWarmDone = false;
+                                        ResetAdaptiveGuard();
                                         Interlocked.Exchange(ref boostFirstStampTicks, DateTime.UtcNow.Ticks);
                                         Interlocked.Exchange(ref sessionStartTicks, DateTime.UtcNow.Ticks);
-                                        // activeDetection 此时已经指向新 profile，旧 renderer 无法再终验。
-                                        // 直接作废旧 IRQ epoch；并且必须先结旧局，再启用新策略。
-                                        // 直接 A→B 时必须作废 A 的 live epoch；但 A 已在首次
-                                        // 失联时 Seal 的前缀已有完整结束边界，应由紧接着的
-                                        // ReportFinish 提交，不能再被 Invalidate 清掉。
+                                        // activeDetection 此时已经指向新 profile 旧 renderer 无法再终验
+                                        // 直接作废旧 IRQ epoch 并且必须先结旧局 再启用新策略
+                                        // 直接 A→B 时必须作废 A 的 live epoch 但 A 已在首次
+                                        // 失联时 Seal 的前缀已有完整结束边界 应由紧接着的
+                                        // ReportFinish 提交 不能再被 Invalidate 清掉
                                         if (!irqProbe.HasSealedPending)
                                             irqProbe.InvalidateGameMask();
                                         ReportFinish();
@@ -967,7 +998,7 @@ namespace PaviseApp
                                     }
                                     else if (!string.Equals(activeGame, running, StringComparison.Ordinal))
                                     {
-                                        // 同一 profile 局内改名只更新展示，不能伪造一次换局。
+                                        // 同一 profile 局内改名只更新展示 不能伪造一次换局
                                         lock (sync) activeGame = running;
                                     }
                                     StepEnglishInputSession();
@@ -991,6 +1022,8 @@ namespace PaviseApp
                                     VramSpillProbe.SampleIfDue(gamePids);
                                     // 护盾只认渲染进程本体 预留是按进程声明的 给家族其它成员挂没有意义
                                     VramShield.SampleIfDue(EffVramShield, rendererPid, rendererCreation);
+                                    // 内存驻留同样只认渲染进程本体 语义与显存驻留一致
+                                    MemShield.SampleIfDue(EffMemShield, rendererPid, rendererCreation);
                                     // 压制默认只认渲染进程本体 家族其余成员当普通后台
                                     //   游戏库页的家族豁免开关打开后才整族放行 家族集合在 Sweep 里
                                     //   还会拿本轮快照的父子关系补算一遍 免得子进程随检测周期忽压忽放
@@ -1013,6 +1046,9 @@ namespace PaviseApp
                                     }
                                     ObserveSystemIrq(rendererPid, rendererCreation);
                                     UpdateIrqPresentProbe();
+                                    MaybeAutoEnrollBackgroundGpu(rendererPid);
+                                    MaybeWarmCache();
+                                    StepAdaptiveGuard();
                                     NotifyIrqObservationChanged(false);
                                 }
                                 else if (active)
@@ -1024,8 +1060,8 @@ namespace PaviseApp
                                         InvalidateStandbyCleanerWork();
                                         InvalidateEnglishInputWork();
                                         InvalidateIntelGraphicsWork();
-                                        // 退出宽限只用于避免游戏检测抖动，不属于可验证的对局采样窗。
-                                        // 首次失联立即封存最近一次落核证明对应的 epoch。
+                                        // 退出宽限只用于避免游戏检测抖动 不属于可验证的对局采样窗
+                                        // 首次失联立即封存最近一次落核证明对应的 epoch
                                         try { SealIrqObservation(); }
                                         catch { irqProbe.InvalidateGameMask(); }
                                         Logger.Log(Lang.T("log.gamemode.47")
@@ -1119,9 +1155,9 @@ namespace PaviseApp
                 UpdateArmedStatus(null, null, true);
             }
             if (hit == null) return null;
-            // 渲染锚已证实不存在时，sticky 的一轮快速重扫只是
-            // detector 内部缓冲，不能再当成一轮 running 去执行 Boost。
-            // 交给主循环的 8 秒宽限处理，它会先 Seal 而不是丢局。
+            // 渲染锚已证实不存在时 sticky 的一轮快速重扫只是
+            // detector 内部缓冲 不能再当成一轮 running 去执行 Boost
+            // 交给主循环的 8 秒宽限处理 它会先 Seal 而不是丢局
             if (stickyGraceOnly) return null;
             foreach (int pid in hit.FamilyPids) gamePids.Add(pid);
             if (irqProbe.HasSealedPending)
@@ -1137,9 +1173,9 @@ namespace PaviseApp
                 }
                 if (sameSealedProfile)
                 {
-                    // renderer 可能在上轮快照后、OpenProcess 前退出，
-                    // 因而已 Seal 但尚未进入 gameGone 宽限。同 profile
-                    // 新 renderer 出现时仍要丢弃旧前缀并重武装。
+                    // renderer 可能在上轮快照后 OpenProcess 前退出
+                    // 因而已 Seal 但尚未进入 gameGone 宽限 同 profile
+                    // 新 renderer 出现时仍要丢弃旧前缀并重武装
                     ArmIrqObservation(sealedGame ?? hit.Profile.Name);
                 }
             }
@@ -1162,8 +1198,8 @@ namespace PaviseApp
                         sameSessionGame = repGame;
                     }
                     irqProbe.InvalidateGameMask();
-                    // 同一局从启动器换成真实 renderer：旧片段彻底丢弃，但允许新
-                    // renderer 从零开始一个 epoch；不会把一局拆成两条台账记录。
+                    // 同一局从启动器换成真实 renderer 旧片段彻底丢弃 但允许新
+                    // renderer 从零开始一个 epoch 不会把一局拆成两条台账记录
                     if (sameSessionProfile)
                         ArmIrqObservation(sameSessionGame ?? hit.Profile.Name);
                 }
@@ -1178,8 +1214,8 @@ namespace PaviseApp
                     transitionProbeRendererPid = 0;
                     transitionProbeRendererCreation = 0;
                 }
-                // 同一 profile 局内可从启动器更新为真实渲染器；换到另一个
-                // profile 时不能在旧局 ReportFinish 前把它的 present 过滤 PID 覆盖掉。
+                // 同一 profile 局内可从启动器更新为真实渲染器 换到另一个
+                // profile 时不能在旧局 ReportFinish 前把它的 present 过滤 PID 覆盖掉
                 repRendererPid = UpdateSessionRendererPid(
                     repProfileId, repRendererPid,
                     hit.Profile != null ? hit.Profile.Id : null, hit.RendererPid);
@@ -1224,8 +1260,8 @@ namespace PaviseApp
                 bool applied = false;
                 IrqMutationBoundary.Run(delegate
                 {
-                    // Beginning the IRQ boundary can take time. Recheck before
-                    // the first native write; Stop drains this same gate.
+                    // 起中断边界可能要花时间 第一次原生写入之前再查一遍
+                    // Stop 排的也是这同一道闸
                     if (stopping || IsActive) return;
                     mutation();
                     applied = true;

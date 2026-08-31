@@ -51,8 +51,8 @@ namespace PaviseApp
             set { RebootState = value ? IrqRebootState.Rebooted : IrqRebootState.AwaitingReboot; }
         }
 
-        // SeenOnCpus comes from completed records for the current boot. A new
-        // registry write must not reuse those pre-write records as its proof.
+        // SeenOnCpus 来自本次开机已完成的记录 新的注册表写入
+        // 不能拿这些写入之前的记录当自己的证据
         private bool HasPlacementEvidence
         {
             get { return SeenOnCpus != 0 && !SharedStats && Verdict != null
@@ -81,8 +81,8 @@ namespace PaviseApp
 
         public IrqDriverVerdict Verdict;
         public bool Worth { get { return Verdict != null && Verdict.Worth; } }
-        // 只有能唯一定位、由本页管理且钉核机制确实适用的设备，才允许把驱动判定
-        // 呈现成可操作建议。多消息设备可能损失并行度，StorPort 完成 DPC 又通常跟随发起核。
+        // 只有能唯一定位 由本页管理且钉核机制确实适用的设备 才允许把驱动判定
+        // 呈现成可操作建议 多消息设备可能损失并行度 StorPort 完成 DPC 又通常跟随发起核
         public bool ActionableWorth
         {
             get
@@ -396,8 +396,8 @@ namespace PaviseApp
 
         private static long DisplayDpcPerMinute(double value)
         {
-            // d.Dpc also tells the UI whether real-match data exists. A positive rate
-            // below 1/min must not truncate to zero and contradict an actionable verdict.
+            // d.Dpc 同时告诉界面有没有真实对局数据 一个低于每分钟 1 次的
+            // 正速率不能被截断成 0 那会和一条可执行的结论自相矛盾
             if (double.IsNaN(value) || value <= 0) return 0;
             if (double.IsInfinity(value) || value >= long.MaxValue) return long.MaxValue;
             long whole = (long)value;
@@ -476,8 +476,8 @@ namespace PaviseApp
             if (devices == null) return;
             devices.Sort(delegate (IrqDevice a, IrqDevice b)
             {
-                // 真实对局已经达到建议门槛的设备必须排在前面；只按单次最长耗时排序
-                // 会把偶发尖峰但不值得改的设备放到用户眼前。
+                // 真实对局已经达到建议门槛的设备必须排在前面 只按单次最长耗时排序
+                // 会把偶发尖峰但不值得改的设备放到用户眼前
                 if (a.ActionableWorth != b.ActionableWorth)
                     return b.ActionableWorth.CompareTo(a.ActionableWorth);
                 if (a.MaxUs != b.MaxUs) return b.MaxUs.CompareTo(a.MaxUs);

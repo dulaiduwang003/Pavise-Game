@@ -42,7 +42,11 @@ namespace PaviseApp
                 AppGpuConcurrentOtherFieldChange,
                 AppGpuStrictJournalAndPersistentList,
                 AppGpuSerializedAndReentrantCalls,
-                AppGpuResetRequiresKnownRecovery
+                AppGpuResetRequiresKnownRecovery,
+                AppGpuResetAbandonsUnprovableRecords,
+                AppGpuAutoEnrollFilters,
+                AppGpuAutoEnrollRespectsExistingChoices,
+                AppGpuAutoHandledListIsOnceEver
             };
             appGpuChecks = 0;
             try
@@ -203,6 +207,74 @@ namespace PaviseApp
                 GpuPrefStage.SupportedForTest = oldSupported;
                 GpuPrefStage.ForgetReceiptForTest();
             }
+        }
+
+        private static void AppGpuAutoEnrollFilters(string root)
+        {
+            const string windows = @"C:\Windows\";
+            AppGpuCheck(GameMode.AutoGpuEligible("someapp", @"C:\Tools\someapp.exe", windows),
+                "an ordinary background app was filtered out");
+            AppGpuCheck(!GameMode.AutoGpuEligible("dwm", @"C:\Windows\System32\dwm.exe", windows),
+                "a windows-directory process was eligible for auto GPU preference");
+            AppGpuCheck(!GameMode.AutoGpuEligible("obs64", @"C:\Portable\obs64.exe", windows),
+                "a capture host was eligible for auto GPU preference");
+            AppGpuCheck(!GameMode.AutoGpuEligible("Discord", @"C:\Portable\Discord.exe", windows),
+                "a communication overlay host was eligible for auto GPU preference");
+            AppGpuCheck(!GameMode.AutoGpuEligible("MSIAfterburner", @"C:\Tools\MSIAfterburner.exe", windows),
+                "a hardware control tool was eligible for auto GPU preference");
+            AppGpuCheck(!GameMode.AutoGpuEligible(null, @"C:\Tools\x.exe", windows)
+                && !GameMode.AutoGpuEligible("x", null, windows),
+                "a candidate with missing identity was eligible");
+        }
+
+        private static void AppGpuAutoEnrollRespectsExistingChoices(string root)
+        {
+            using (var f = new AppGpuFixture())
+            {
+                // 全新程序：无既有偏好 自动认领成功并真正写入省电偏好
+                AppGpuCheck(GameMode.AutoGpuEnroll(f.Manager, AppGpuPath) == AppGpuPreferenceResult.Success
+                    && PrefFieldText.ReadField(f.Control.Value(AppGpuPath), "GpuPreference") == "1",
+                    "auto enroll did not claim a fresh app");
+                AppGpuCheck(GameMode.AutoGpuEnroll(f.Manager, AppGpuPath) == AppGpuPreferenceResult.AlreadyPresent,
+                    "auto enroll re-claimed an already managed app");
+            }
+            using (var f = new AppGpuFixture())
+            {
+                // 既有明确偏好是用户或外部工具的选择 自动路径永不覆盖 也不留账
+                const string other = @"C:\AppGpuFixture\two.exe";
+                f.Control.Set(other, "GpuPreference=2;");
+                AppGpuCheck(GameMode.AutoGpuEnroll(f.Manager, other) == AppGpuPreferenceResult.NeedsConfirmation
+                    && f.Control.Value(other) == "GpuPreference=2;" && f.Ledger.Value == "",
+                    "auto enroll overrode an existing explicit preference");
+                // 已是省电偏好：按不拥有记录 不发注册表写
+                const string low = @"C:\AppGpuFixture\three.exe";
+                f.Control.Set(low, "GpuPreference=1;");
+                int writes = f.Control.Writes;
+                AppGpuCheck(GameMode.AutoGpuEnroll(f.Manager, low) == AppGpuPreferenceResult.Success
+                    && f.Control.Writes == writes && f.Control.Value(low) == "GpuPreference=1;",
+                    "an already-low-power app caused a registry write");
+            }
+        }
+
+        private static void AppGpuAutoHandledListIsOnceEver(string root)
+        {
+            const string path = @"C:\AppGpuFixture\auto.exe";
+            AppGpuCheck(!GameMode.AutoGpuAlreadyHandled(path), "a fresh path was already handled");
+            AppGpuCheck(GameMode.RememberAutoGpuHandled(path) && GameMode.AutoGpuAlreadyHandled(path),
+                "a handled path was not persisted");
+            AppGpuCheck(GameMode.AutoGpuAlreadyHandled(@"c:\appgpufixture\AUTO.EXE"),
+                "the handled lookup was case sensitive");
+            AppGpuCheck(!GameMode.AutoGpuAlreadyHandled(@"C:\AppGpuFixture\other.exe"),
+                "an unrelated path inherited handled state");
+            // 封顶后最老的先出 新记录保留
+            for (int i = 0; i < 300; i++)
+                AppGpuCheck(GameMode.RememberAutoGpuHandled(@"C:\AppGpuFixture\bulk" + i + ".exe"),
+                    "a bulk handled save failed");
+            AppGpuCheck(!GameMode.AutoGpuAlreadyHandled(path)
+                && GameMode.AutoGpuAlreadyHandled(@"C:\AppGpuFixture\bulk299.exe"),
+                "the handled list cap did not evict oldest first");
+            AppGpuCheck(!GameMode.RememberAutoGpuHandled("bad\npath"),
+                "a path containing a newline was accepted into the handled list");
         }
 
         private static GpuAdapter AppGpuAdapter(string id, bool known, bool integrated, GpuVendor vendor)
@@ -731,6 +803,40 @@ namespace PaviseApp
                 AppGpuCheck(Program.TryResetUserData(reset.DirectoryPath, delegate { return true; }, out files, out failure)
                     && !f.Manager.HasResidue && f.Control.Value(AppGpuPath) == "GpuPreference=2;", "reset could not retry owned preference recovery");
                 reset.AssertOwnedFilesGone(); reset.AssertForeignFiles();
+            }
+        }
+
+        // 清除全部配置的放弃语义:崩溃窗口留下且被外部改写的 P 记录永远无法认领
+        //   重置语境下按仅移除记录结清 保留系统现状;可认领的 O 记录与瞬时失败不放弃
+        private static void AppGpuResetAbandonsUnprovableRecords(string root)
+        {
+            using (var f = new AppGpuFixture())
+            {
+                f.Control.Set(AppGpuPath, "GpuPreference=2;");
+                AppGpuPreferenceChange change = f.Prepare(AppGpuPath);
+                f.Control.ThrowBeforeWrite = true;
+                AppGpuCheck(f.Manager.Apply(change, true) == AppGpuPreferenceResult.RecoveryPending,
+                    "setup: the apply must crash into an uncertain P record");
+                f.Control.ThrowBeforeWrite = false;
+                // 外部把偏好改成节能 值既不是基线也无收据 从此无法认领
+                f.Control.Set(AppGpuPath, "GpuPreference=1;External=keep;");
+                AppGpuCheck(!f.Manager.RestoreAll(), "restore-all must refuse the unclaimable record");
+                AppGpuCheck(f.Manager.AbandonUnprovableForReset(), "reset must abandon the unclaimable record");
+                AppGpuCheck(!f.Manager.HasResidue
+                    && f.Control.Value(AppGpuPath) == "GpuPreference=1;External=keep;",
+                    "abandoning must clear the residue while keeping the external value");
+            }
+            using (var f = new AppGpuFixture())
+            {
+                f.Own("GpuPreference=2;");
+                f.Control.DenyWrite = true;
+                AppGpuCheck(!f.Manager.RestoreAll(), "setup: a transient write failure fails restore-all");
+                AppGpuCheck(!f.Manager.AbandonUnprovableForReset() && f.Manager.HasResidue,
+                    "an owned record must never be abandoned by reset");
+                f.Control.DenyWrite = false;
+                AppGpuCheck(f.Manager.RestoreAll() && !f.Manager.HasResidue
+                    && f.Control.Value(AppGpuPath) == "GpuPreference=2;",
+                    "the owned record must still restore after the failure clears");
             }
         }
     }

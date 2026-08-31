@@ -12,7 +12,6 @@ namespace PaviseApp
         private readonly object sync = new object();
         private readonly object engineSync = new object();
         private readonly Dictionary<string, bool> enabled = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
-        private readonly Dictionary<string, SuppressionLevel> levels = new Dictionary<string, SuppressionLevel>(StringComparer.OrdinalIgnoreCase);
         private readonly object eventSync = new object();
         private readonly List<ProcessChange> pendingChanges = new List<ProcessChange>();
         private readonly AutoResetEvent kick = new AutoResetEvent(true);
@@ -52,10 +51,7 @@ namespace PaviseApp
                 try { selfSession = self.SessionId; } catch { selfSession = -1; }
             }
             foreach (AcGroup g in AntiCheatCatalog.Groups)
-            {
                 enabled[g.Key] = Settings.Load("Tame_" + g.Key, g.Default);
-                levels[g.Key] = ParseLevel(Settings.LoadStr("TameLvl_" + g.Key, "eco"));
-            }
         }
 
         public bool Paused
@@ -85,40 +81,6 @@ namespace PaviseApp
         public bool IsGroupEnabled(string key)
         {
             lock (sync) { bool v; return enabled.TryGetValue(key, out v) && v; }
-        }
-
-        public SuppressionLevel GroupLevel(string key)
-        {
-            if (string.IsNullOrEmpty(key)) return SuppressionLevel.Isolated;
-            lock (sync)
-            {
-                SuppressionLevel v;
-                return levels.TryGetValue(key, out v) ? v : SuppressionLevel.Isolated;
-            }
-        }
-
-        public void SetGroupLevel(string key, SuppressionLevel level)
-        {
-            if (level < SuppressionLevel.Eco || level > SuppressionLevel.Isolated)
-                level = SuppressionLevel.Isolated;
-            lock (sync) levels[key] = level;
-            Settings.SaveStr("TameLvl_" + key, LevelTag(level));
-            Poke();
-            Logger.Log(Lang.T("log.tamer.1") + key + Lang.T("log.tamer.2") + LevelTag(level));
-        }
-
-        internal static SuppressionLevel ParseLevel(string tag)
-        {
-            if (tag == "eco") return SuppressionLevel.Eco;
-            if (tag == "res") return SuppressionLevel.Restrained;
-            return SuppressionLevel.Isolated;
-        }
-
-        internal static string LevelTag(SuppressionLevel level)
-        {
-            if (level == SuppressionLevel.Eco) return "eco";
-            if (level == SuppressionLevel.Restrained) return "res";
-            return "iso";
         }
 
         public bool PanicRestore()
@@ -170,8 +132,8 @@ namespace PaviseApp
         {
             stopping = true;
             kick.Set();
-            // A timed-out worker may still mutate processes and its recovery journal.
-            // Reset must not delete that journal until the worker has really exited.
+            // 超时的工作线程可能还在改进程和它自己的恢复台账
+            // 工作线程真正退出之前 重置不许删那份台账
             Thread current = worker;
             return current == null || current != Thread.CurrentThread && current.Join(6000);
         }
@@ -462,10 +424,13 @@ namespace PaviseApp
                     {
                         try
                         {
+                            // 档位选择已移除 反作弊统一走扫描安全构成
+                            //   Isolated 在 AntiCheat 原因下即 低于正常优先级+极低磁盘 IO+小核限频
+                            //   见 SuppressionCore.Apply 的四个 Desired* 函数
                             request.Result = core.Acquire(
                                 request.Pid, request.Name,
                                 SuppressReason.AntiCheat, request.Group,
-                                GroupLevel(request.Group));
+                                SuppressionLevel.Isolated);
                         }
                         catch { request.Result = AcquireResult.ApplyFailed; }
                     }

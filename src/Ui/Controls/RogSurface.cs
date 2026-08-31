@@ -12,8 +12,8 @@ namespace PaviseApp
         public static void Draw(Graphics g, Rectangle bounds, bool navigation)
         {
             if (bounds.Width <= 0 || bounds.Height <= 0) return;
-            // Framework TextRenderer can apply a translated Graphics.Save context twice.
-            // Preserve only the properties changed here so the footer shares the geometry's offset.
+            // 框架的 TextRenderer 可能把一个已平移的 Graphics.Save 上下文套两次
+            // 只保留这里改过的属性 让页脚和几何图形共用同一个偏移
             SmoothingMode smoothing = g.SmoothingMode;
             PixelOffsetMode pixels = g.PixelOffsetMode;
             using (Region clip = g.Clip)

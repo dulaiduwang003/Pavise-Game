@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 待机清理的显式授权与全局参数编辑；UI 不直接查询或清理内存。
+// 待机清理的显式授权与全局参数编辑 UI 不直接查询或清理内存
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -55,8 +55,8 @@ namespace PaviseApp
 
         private void RefreshStandbyCleanerPresentation()
         {
-            // No preset forces this experimental option on. Lack of elevation
-            // blocks a new opt-in but must not prevent turning an old one off.
+            // 没有任何预设会强制打开这个实验项 权限不足会挡住新的开启
+            // 但不能妨碍把已经开着的关掉
             if (swPolicyStandbyCleaner != null)
             {
                 swPolicyStandbyCleaner.SetSilently(gameMode.StandbyCleanerEnabled);
@@ -113,16 +113,16 @@ namespace PaviseApp
 
         private bool ApplyStandbyCleanerOptions(StandbyCleanerOptions value)
         {
-            // A canceled editor returns null. Neither editing nor saving options
-            // is an opt-in and this path must never invoke a memory operation.
+            // 编辑器被取消会返回 null 无论编辑还是保存参数都不算开启
+            // 这条路径绝不能触发任何内存操作
             if (value == null || !value.IsValid || !gameMode.TrySetStandbyCleanerOptions(value)) return false;
             RefreshStandbyCleanerPresentation();
             return true;
         }
     }
 
-    // RoundPanel ownership lets both child controls use the same card backdrop.
-    // Do not draw a second frame around this compact button/toggle group.
+    // 由 RoundPanel 统一持有 两个子控件才能共用同一张卡片底
+    // 不要再给这组紧凑的按钮和开关套第二层边框
     internal sealed class StandbyCleanerActionHost : RoundPanel
     {
         protected override void OnPaintBackground(PaintEventArgs e)
@@ -168,6 +168,7 @@ namespace PaviseApp
             int y = 0;
             if (repairing) AddBodyText(body, Lang.T("standbycleaner.options.repair"), contentW, ref y);
             AddBodyText(body, Lang.T("standbycleaner.options.hint"), contentW, ref y);
+            y = AddPresetRow(body, contentW, y);
             listBox = AddField(body, "standbycleaner.options.list", "standbycleaner.options.list.sub", contentW, 0, ref y);
             freeBox = AddField(body, "standbycleaner.options.free", "standbycleaner.options.free.sub", contentW, 1, ref y);
             pollingBox = AddField(body, "standbycleaner.options.poll", "standbycleaner.options.poll.sub", contentW, 2, ref y);
@@ -180,29 +181,49 @@ namespace PaviseApp
             int errorH = Math.Max(Measure(Lang.T("standbycleaner.options.invalid"), errorLabel.Font, inner),
                 Measure(Lang.T("standbycleaner.options.savefailed"), errorLabel.Font, inner)) + Theme.S(4);
             int bodyTop = title.Bottom + Theme.S(16);
-            int extraFooter = inner < Theme.S(384) ? Theme.S(48) : 0;
-            int fixedH = bodyTop + errorH + Theme.S(92) + extraFooter;
+            int fixedH = bodyTop + errorH + Theme.S(92);
             int bodyH = Math.Min(y, Math.Max(Theme.S(40), work.Height - Theme.S(40) - fixedH));
             body.SetBounds(pad, bodyTop, inner, bodyH);
             errorLabel.SetBounds(pad, body.Bottom + Theme.S(8), inner, errorH);
             int buttonY = errorLabel.Bottom + Theme.S(24), buttonH = Theme.S(36);
             dividerY = buttonY - Theme.S(13);
-            var defaults = new LibraryDialogButton(Lang.T("standbycleaner.options.defaults"), false);
-            defaults.SetBounds(pad, buttonY, Theme.S(136), buttonH);
-            defaults.TabIndex = 3;
-            defaults.Click += delegate { SetInputs(StandbyCleanerOptions.Default); errorLabel.Text = ""; };
-            buttonY += extraFooter;
             cancelButton = new LibraryDialogButton(Lang.T("dlg.cancel"), false);
             cancelButton.SetBounds(width - pad - Theme.S(232), buttonY, Theme.S(108), buttonH);
-            cancelButton.TabIndex = 4; cancelButton.DialogResult = DialogResult.Cancel;
+            cancelButton.TabIndex = 6; cancelButton.DialogResult = DialogResult.Cancel;
             var accept = new LibraryDialogButton(Lang.T("standbycleaner.options.save"), true);
             accept.SetBounds(width - pad - Theme.S(108), buttonY, Theme.S(108), buttonH);
-            accept.TabIndex = 5; accept.Click += delegate { SaveInputs(); };
+            accept.TabIndex = 7; accept.Click += delegate { SaveInputs(); };
             ClientSize = new Size(width, buttonY + buttonH + Theme.S(24));
-            Controls.AddRange(new Control[] { kicker, title, body, errorLabel, defaults, cancelButton, accept });
+            Controls.AddRange(new Control[] { kicker, title, body, errorLabel, cancelButton, accept });
             AcceptButton = accept; CancelButton = cancelButton;
             SetInputs(initial != null && initial.IsValid ? initial : StandbyCleanerOptions.Default);
             ActiveControl = listBox;
+        }
+
+        // 一键档位只填入输入框 不保存也不清理 保存参数 仍是唯一提交入口
+        private int AddPresetRow(Control parent, int width, int y)
+        {
+            var caption = MakeLabel(Lang.T("standbycleaner.options.preset"), Theme.UI(9f, true), Theme.Fg);
+            caption.SetBounds(0, y, width, Measure(caption.Text, caption.Font, width) + Theme.S(4));
+            parent.Controls.Add(caption);
+            y = caption.Bottom + Theme.S(6);
+            string[] keys = { "standbycleaner.options.preset.light",
+                "standbycleaner.options.preset.standard", "standbycleaner.options.preset.heavy" };
+            StandbyCleanerOptions[] values = { StandbyCleanerOptions.Conservative,
+                StandbyCleanerOptions.Default, StandbyCleanerOptions.Aggressive };
+            int gap = Theme.S(10), buttonW = (width - gap * 2) / 3, buttonH = Theme.S(30), x = 0;
+            for (int i = 0; i < keys.Length; i++)
+            {
+                StandbyCleanerOptions preset = values[i];
+                var pill = new PillButton(Lang.T(keys[i]), BtnKind.Normal);
+                pill.SetBounds(x, y, buttonW, buttonH);
+                pill.TabIndex = 3 + i;
+                pill.AccessibleName = Lang.T(keys[i]);
+                pill.Click += delegate { SetInputs(preset); errorLabel.Text = ""; };
+                parent.Controls.Add(pill);
+                x += buttonW + gap;
+            }
+            return y + buttonH + Theme.S(14);
         }
 
         internal static bool TryParseInput(string list, string free, string polling, out StandbyCleanerOptions options)

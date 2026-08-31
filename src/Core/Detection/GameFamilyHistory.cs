@@ -1,13 +1,13 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 保留已经验证的进程亲缘，不把退出的启动器伪装成活进程，也不扩大安装目录。
+// 文件用途 保留已经验证的进程亲缘 不把退出的启动器伪装成活进程 也不扩大安装目录
 using System;
 using System.Collections.Generic;
 using System.IO;
 
 namespace PaviseApp
 {
-    // Configuration identity, deliberately excluding cosmetic labels and policy
-    // switches. An old result cannot grant membership to a changed entry/root.
+    // 配置身份 故意不含显示用的标签和策略开关
+    // 旧结果不能给一个改过入口或根目录的条目授予成员资格
     internal struct GameFamilyProfileKey : IEquatable<GameFamilyProfileKey>
     {
         private readonly string id, root, executable, learned;
@@ -77,8 +77,8 @@ namespace PaviseApp
         }
     }
 
-    // Only current, verified snapshot identities are exported. All mutable
-    // history and all dead parents remain private to GameFamilyHistory.
+    // 只导出当前且已核实的快照身份 所有可变历史和死掉的父进程
+    // 都留在 GameFamilyHistory 内部
     internal sealed class GameFamilyEvidence
     {
         internal sealed class Member
@@ -212,8 +212,8 @@ namespace PaviseApp
                 }
                 PoisonPids(ambiguous);
 
-                // Prune against this snapshot before admitting new nodes. The
-                // short tail also covers starts still in ProcNotify's batch.
+                // 接纳新节点之前先按这份快照剪枝 那条短尾巴同时覆盖了
+                // 还压在 ProcNotify 批次里没送出来的启动
                 lastLive.Clear();
                 foreach (ProcEntry entry in byPid.Values)
                     if (!ambiguous.Contains(entry.Pid) && Usable(entry, ownerSession))
@@ -245,8 +245,8 @@ namespace PaviseApp
                     if (live.TryGetValue(child.ParentPid, out parent))
                     {
                         if (parent.Key.Creation < child.Key.Creation) Link(child, parent.Key);
-                        // A new process reusing a dead parent's PID must not
-                        // replace an already-proved old parent identity.
+                        // 新进程复用了一个死父进程的 PID 不能因此
+                        // 顶替掉一个已经证实过的旧父身份
                         continue;
                     }
                     ProcEntry rawParent;
@@ -276,8 +276,8 @@ namespace PaviseApp
                 var ambiguous = new HashSet<int>();
                 foreach (ProcessChange change in batch.Changes)
                 {
-                    // Stop notifications have no verified creation identity.
-                    // A fresh snapshot, not PID-only stop ordering, retires it.
+                    // 停止通知没有经过核实的创建身份
+                    // 让它退役靠的是一份新快照 不是只看 PID 的停止顺序
                     if (change == null || change.Kind != ProcessChangeKind.Started || change.Pid <= 4)
                         continue;
                     if (starts.ContainsKey(change.Pid)) ambiguous.Add(change.Pid);
@@ -299,8 +299,8 @@ namespace PaviseApp
                     if (node != null && !node.Poisoned) admitted.Add(change.Pid, node);
                 }
 
-                // Two passes allow an entire short launcher/broker/renderer
-                // chain in one coalesced batch without callback-order guesses.
+                // 走两遍是为了让整条短链 启动器 中转 渲染进程 能在一个
+                // 合并批次里认全 不用去猜回调顺序
                 foreach (var pair in admitted)
                 {
                     Node child = pair.Value;
@@ -326,8 +326,8 @@ namespace PaviseApp
                     }
                     else if (change.ParentCreation == 0 && batchParent != null)
                         Link(child, batchParent.Key);
-                    // ParentCreation==0 cannot resurrect a cached same-PID
-                    // parent from an earlier batch or an unrelated lifetime.
+                    // ParentCreation==0 不能把更早批次或者无关生命周期里
+                    // 同 PID 的缓存父进程复活
                 }
                 Prune(nowMs);
             }
@@ -472,8 +472,8 @@ namespace PaviseApp
         {
             return !string.IsNullOrEmpty(name) && CanonicalPath(path)
                 && string.Equals(name, Path.GetFileNameWithoutExtension(path), StringComparison.OrdinalIgnoreCase)
-                // The old detector removes these nodes before walking parents.
-                // Historical edges must not bypass that same safety boundary.
+                // 老的检测器在往上走父进程之前 会先把这些节点摘掉
+                // 历史边也不能绕过同一条安全边界
                 && !GameSessionDetector.ElectionVetoed(name, path);
         }
 

@@ -40,7 +40,7 @@ namespace PaviseApp
 
         public static bool Active { get { return source != null; } }
 
-        // 封面只属于主窗口内容；独立弹窗和明确禁用封面的浮层子树使用主题底色。
+        // 封面只属于主窗口内容 独立弹窗和明确禁用封面的浮层子树使用主题底色
         public static bool AppliesTo(Control control)
         {
             if (!Active) return false;

@@ -423,7 +423,7 @@ namespace PaviseApp
 
         private static readonly object cpuSetMaskApiSync = new object();
         private static volatile bool cpuSetMaskApisResolved;
-        // -1 表示连 kernel32 都无法解析，0 才表示老系统确实没有该导出。
+        // -1 表示连 kernel32 都无法解析 0 才表示老系统确实没有该导出
         private static int processCpuSetMaskApiState = -1;
         private static int threadCpuSetMaskApiState = -1;
         private static CpuSetMaskGetter getProcessDefaultCpuSetMasks;
@@ -576,8 +576,8 @@ namespace PaviseApp
             if (thread == IntPtr.Zero) return false;
             try
             {
-                // GetExitCodeThread 的 259 也可能是线程真实退出码；带
-                // SYNCHRONIZE 的句柄用零超时 wait 才能无歧义区分存活。
+                // GetExitCodeThread 的 259 也可能是线程真实退出码 带
+                // SYNCHRONIZE 的句柄用零超时 wait 才能无歧义区分存活
                 uint wait = WaitForSingleObject(thread, 0);
                 if (wait == WaitTimeout) { active = true; return true; }
                 if (wait == 0) return true;
@@ -603,8 +603,8 @@ namespace PaviseApp
             catch { return false; }
         }
 
-        // null 表示查询失败，空数组表示线程没有显式 CPU Set 分配。
-        // 两次调用之间数量发生变化也视为未知，归因链路必须 fail-closed。
+        // null 表示查询失败 空数组表示线程没有显式 CPU Set 分配
+        // 两次调用之间数量发生变化也视为未知 归因链路必须 fail-closed
         public static uint[] QueryThreadSelectedCpuSets(IntPtr thread)
         {
             if (thread == IntPtr.Zero) return null;
@@ -886,7 +886,7 @@ namespace PaviseApp
         public const int PROCESS_SET_QUOTA = 0x0100;
         public const int PROCESS_SET_INFORMATION = 0x0200;
         // D3DKMT 的显存查询与预留不吃 QUERY_LIMITED 本机实测一律 STATUS_ACCESS_DENIED
-        //   QueryVideoMemoryInfo 要 QUERY_INFORMATION  ChangeVideoMemoryReservation 要 SET_INFORMATION
+        //   QueryVideoMemoryInfo 要 QUERY_INFORMATION ChangeVideoMemoryReservation 要 SET_INFORMATION
         //   两者都比 QUERY_LIMITED 更容易被反作弊拒绝 所以护盾的跳过率天然高于提优
         public const int PROCESS_QUERY_INFORMATION = 0x0400;
         public const int PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;

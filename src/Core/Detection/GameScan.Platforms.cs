@@ -8,6 +8,9 @@ using Microsoft.Win32;
 
 namespace PaviseApp
 {
+    // 各平台只读它自己的清单文件或注册表 不做全盘遍历
+    //   roots 用来去重 同一个游戏被两个平台收录时只留一条
+    //   任何一个平台解析失败都只影响它自己 不能让整次扫描中断
     internal static partial class GameScan
     {
         private static void FromSteam(string root, List<ScanHit> hits, HashSet<string> roots)

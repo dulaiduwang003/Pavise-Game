@@ -22,9 +22,13 @@ namespace PaviseApp
         public ProcessChangeKind Kind;
     }
 
+    // 进程启停按批交付而不是逐个回调 一次游戏启动会带出启动器
+    //   中转和本体好几个进程 攒成一批才能在同一份快照里认全父子关系
     internal sealed class ProcessChangeBatch
     {
         public readonly ProcessChange[] Changes;
+        // 内核缓冲溢出过 这批漏了事件 父子关系不再可信
+        //   检测标脏走全量重扫 家族历史直接清空重来
         public readonly bool Overflowed;
 
         public ProcessChangeBatch(ProcessChange[] changes, bool overflowed)

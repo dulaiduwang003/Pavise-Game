@@ -1,5 +1,5 @@
-// One opportunity per game runtime, not per foreground event. This state machine
-// has no timer/worker and stops inspecting input after a terminal decision.
+// 文件用途 每次游戏运行期只给一次机会 不是每次前台事件都给 这个状态机
+// 没有定时器也没有工作线程 做出终态判断之后就不再看输入
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -50,8 +50,8 @@ namespace PaviseApp
         internal void Begin(string profileId, GameInputProcess process, bool enabledAtEntry, Func<bool> admission)
         {
             long deadline = clock() + ForegroundWaitMs;
-            // Begin and Step run outside GameMode.sync. Cancel/End only take the
-            // short state lock; no native call or callback is made under it.
+            // Begin 和 Step 在 GameMode.sync 之外跑 Cancel 和 End 只拿
+            // 那把短状态锁 锁里不做任何原生调用和回调
             lock (operationGate)
             {
                 Session[] previous;
@@ -70,7 +70,7 @@ namespace PaviseApp
                 foreach (Session old in previous)
                 {
                     // 找到可复用会话后 其余会话的探测只服务于剪枝 推迟到下次
-                    //   Begin 再清；仍要按精确身份换选 那是纯比较 不走内核
+                    //   Begin 再清 仍要按精确身份换选 那是纯比较 不走内核
                     if (reuse != null)
                     {
                         foreach (GameInputProcess identity in old.Processes)
@@ -88,8 +88,8 @@ namespace PaviseApp
                         catch { state = GameInputProcessState.Unknown; }
                         if (state != GameInputProcessState.Gone) liveOrUnknown = true;
                     }
-                    // Inaccessible old renderers are not proof of a fresh runtime.
-                    // Never alias launcher/family PIDs, which can outlive the game.
+                    // 旧渲染进程访问不到 不能证明这是一次全新的运行
+                    // 绝不要给启动器或家族进程的 PID 起别名 它们可能比游戏活得久
                     if (!liveOrUnknown) gone.Add(old);
                     else if (reuse == null && SameProfile(old.ProfileId, profileId)) reuse = old;
                 }
@@ -105,8 +105,8 @@ namespace PaviseApp
                         Remember(reuse, process); current = reuse;
                         return;
                     }
-                    // Once an identity cannot be retained, do not later forget
-                    // that skip and arm it after another history entry expires.
+                    // 一旦某个身份保不住了 后面不要因为另一条历史条目过期
+                    // 就把这次跳过忘掉并重新武装
                     if (history.Count >= MaximumHistory) historyExhausted = true;
                     Session fresh = new Session {
                         ProfileId = profileId, Deadline = deadline, Consumed = !permitted,
@@ -124,7 +124,7 @@ namespace PaviseApp
         {
             bool stateAllows;
             lock (stateGate) stateAllows = ReferenceEquals(current, session) && !session.Revoked;
-            // Never call back while holding stateGate (Invalidate may hold sync).
+            // 持有 stateGate 时绝不回调 Invalidate 可能持有 sync
             return stateAllows && clock() <= session.Deadline
                 && Evaluate(session.OriginalAdmission) && Evaluate(admission);
         }

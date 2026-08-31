@@ -14,6 +14,8 @@ namespace PaviseApp
         private RoundPanel logWrap;
         private TechTabs logFilterTabs;
         private Label lblLogTotal, lblLogWarnings, lblLogErrors, lblLogLatest;
+        private Label lblLogStreamHint;
+        private Toggle swLogWrites;
 
         private void BuildLogPage()
         {
@@ -44,12 +46,12 @@ namespace PaviseApp
             };
             pageLog.Controls.Add(logFilterTabs);
 
-            var streamHint = new Label();
-            streamHint.Text = Lang.T("v20.log.hint");
-            streamHint.ForeColor = Theme.Faint; streamHint.BackColor = Theme.Bg;
-            streamHint.Font = Theme.UI(7.8f, false); streamHint.TextAlign = ContentAlignment.MiddleRight;
-            streamHint.SetBounds(Theme.S(ContentX + 430), Theme.S(filterY), Theme.S(ContentW - 430), Theme.S(42));
-            pageLog.Controls.Add(streamHint);
+            lblLogStreamHint = new Label();
+            lblLogStreamHint.Text = Lang.T("v20.log.hint");
+            lblLogStreamHint.ForeColor = Theme.Faint; lblLogStreamHint.BackColor = Theme.Bg;
+            lblLogStreamHint.Font = Theme.UI(7.8f, false); lblLogStreamHint.TextAlign = ContentAlignment.MiddleRight;
+            lblLogStreamHint.SetBounds(Theme.S(ContentX + 430), Theme.S(filterY), Theme.S(ContentW - 430), Theme.S(42));
+            pageLog.Controls.Add(lblLogStreamHint);
 
             int streamY = filterY + 52;
             int bottomY = PageH - 48;
@@ -78,7 +80,31 @@ namespace PaviseApp
                 RefreshLog(true);
             };
 
-            pageLog.Controls.AddRange(new Control[] { logWrap, openLog, refreshLog, clearLog });
+            swLogWrites = MakeSwitch(Settings.Load(Logger.WritesEnabledKey, true), OnLogWritesToggle);
+            swLogWrites.Location = new Point(Theme.S(ContentX + ContentW) - swLogWrites.Width,
+                Theme.S(bottomY + 6));
+            var lblLogWrites = new Label();
+            lblLogWrites.Text = Lang.T("set.logwrites");
+            lblLogWrites.ForeColor = Theme.Dim; lblLogWrites.BackColor = Theme.Bg;
+            lblLogWrites.Font = Theme.UI(8.6f, false); lblLogWrites.TextAlign = ContentAlignment.MiddleRight;
+            lblLogWrites.SetBounds(Theme.S(ContentX + ContentW - 260) - swLogWrites.Width, Theme.S(bottomY),
+                Theme.S(250), Theme.S(36));
+
+            pageLog.Controls.AddRange(new Control[] { logWrap, openLog, refreshLog, clearLog, lblLogWrites, swLogWrites });
+            RefreshLog(true);
+        }
+
+        // 关闭前先把这条落盘 否则日志的最后一行会停在无关的动作上 看不出是被主动关的
+        //   开启则先放开写入再记 顺序反了这两条都会丢
+        private void OnLogWritesToggle(object s, EventArgs e)
+        {
+            if (IsDisposed || swLogWrites == null || swLogWrites.IsDisposed) return;
+            bool on = swLogWrites.Checked;
+            if (!on) Logger.Log(Lang.T("log.logwrites.off"));
+            Logger.WritesEnabled = on;
+            Settings.Save(Logger.WritesEnabledKey, on);
+            if (on) Logger.Log(Lang.T("log.logwrites.on"));
+            swLogWrites.SetSilently(Settings.Load(Logger.WritesEnabledKey, true));
             RefreshLog(true);
         }
 
@@ -113,6 +139,14 @@ namespace PaviseApp
             if (lblLogLatest != null) lblLogLatest.Text = logStream.LatestTime;
             if (logFilterTabs != null) logFilterTabs.SetHot(new[] { false,
                 logStream.WarningCount + logStream.ErrorCount > 0, logStream.ErrorCount > 0 });
+            // 记录关掉时刷新只会看到一份不动的旧日志 不说明白会被当成卡死
+            if (lblLogStreamHint != null)
+            {
+                bool writing = Logger.WritesEnabled;
+                lblLogStreamHint.Text = writing ? Lang.T("v20.log.hint") : Lang.T("v20.log.paused");
+                lblLogStreamHint.ForeColor = writing ? Theme.Faint
+                    : LogStreamView.SeverityColor(LogEventSeverity.Warning);
+            }
         }
     }
 }

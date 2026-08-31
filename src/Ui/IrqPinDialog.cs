@@ -133,7 +133,7 @@ namespace PaviseApp
                 y += 26;
             }
 
-            // MSI-X/RSS 多消息 与 StorPort 跟随发起核 两种「钉核可能无效」的提示
+            // MSI-X/RSS 多消息 与 StorPort 跟随发起核 两种 钉核可能无效 的提示
             if (d != null && d.MultiMessageRisk)
             {
                 scrollBody.Controls.Add(Line(d.MessageCount > 1 ? Lang.F("irq.d.multimsg", d.MessageCount)
@@ -219,7 +219,7 @@ namespace PaviseApp
             matrix = new CoreMatrix();
             matrix.PrimaryTag = Lang.T("irq.tag.target");
             matrix.MarkExclusive = false;
-            // 固定的同局观测；不采桌面负载，也不拿当前模式推测历史游戏核。
+            // 固定的同局观测 不采桌面负载 也不拿当前模式推测历史游戏核
             matrix.Annotate = true;
             matrix.SeenMask = session.SeenMask;
             matrix.ObservedGameMask = session.GameMask;
@@ -313,7 +313,7 @@ namespace PaviseApp
             int available = Math.Max(0, right - margin - gap);
             int okW = Math.Min(Theme.S(140), available * 14 / 27);
             int cancelW = Math.Min(Theme.S(130), Math.Max(0, available - okW));
-            // 宽度够时维持原设计宽；窄屏则同比收缩，任何情况下都不让取消键跑到负坐标。
+            // 宽度够时维持原设计宽 窄屏则同比收缩 任何情况下都不让取消键跑到负坐标
             if (available >= Theme.S(270))
             {
                 okW = Theme.S(140);
@@ -333,13 +333,13 @@ namespace PaviseApp
             scrollBody.SuspendLayout();
             try
             {
-                // WinForms 会在 Form 缩高时自动把活动 CoreMatrix 滚进视口。布局必须先回到
-                // 逻辑原点，否则 control.Top/Bottom 是减过滚动量的显示坐标，会把内容高度算短。
+                // WinForms 会在 Form 缩高时自动把活动 CoreMatrix 滚进视口 布局必须先回到
+                // 逻辑原点 否则 control.Top/Bottom 是减过滚动量的显示坐标 会把内容高度算短
                 scrollBody.AutoScrollPosition = Point.Empty;
                 bool needsVertical = bodyContentHeight > scrollBody.ClientSize.Height;
                 LayoutBodyWidth(BodyViewportWidth(needsVertical));
-                // 窄屏会让核心矩阵多折几行，可能刚好从“不滚动”变成“需滚动”。
-                // 第二次按最终状态永久预留滚动条宽，避免纵滚条出现后再挤出横滚条。
+                // 窄屏会让核心矩阵多折几行 可能刚好从“不滚动”变成“需滚动”
+                // 第二次按最终状态永久预留滚动条宽 避免纵滚条出现后再挤出横滚条
                 bool finalNeedsVertical = bodyContentHeight > scrollBody.ClientSize.Height;
                 if (finalNeedsVertical != needsVertical)
                     LayoutBodyWidth(BodyViewportWidth(finalNeedsVertical));
@@ -347,9 +347,9 @@ namespace PaviseApp
             }
             finally { scrollBody.ResumeLayout(true); }
 
-            // ResumeLayout(false) 会把旧宽屏的 DisplayRectangle.Width 留下来，
-            // 即使所有子控件已经收窄也会伪造横向滚动条。先让 AutoScroll
-            // 按新控件边界完整重算，再使用最终 ClientSize 恢复/夹取纵向位置。
+            // ResumeLayout(false) 会把旧宽屏的 DisplayRectangle.Width 留下来
+            // 即使所有子控件已经收窄也会伪造横向滚动条 先让 AutoScroll
+            // 按新控件边界完整重算 再使用最终 ClientSize 恢复/夹取纵向位置
             scrollBody.PerformLayout();
             int maxScrollY = Math.Max(0, bodyContentHeight - scrollBody.ClientSize.Height);
             scrollBody.AutoScrollPosition = new Point(0,
@@ -366,8 +366,8 @@ namespace PaviseApp
 
         private void LayoutBodyWidth(int viewportWidth)
         {
-            // Text can wrap under DPI scaling or on a narrower monitor. Reflow from
-            // original coordinates, never accumulate offsets from a previous layout.
+            // DPI 缩放或者窄屏下文字会折行 从原始坐标重新排
+            // 不要在上一次布局的偏移上继续累加
             foreach (KeyValuePair<Label, int> item in labelLogicalLeft)
             {
                 int left = Math.Min(item.Value, Math.Max(0, viewportWidth - 1));
@@ -406,7 +406,7 @@ namespace PaviseApp
                     label.Width = Math.Max(1,
                         viewportWidth - left - Math.Min(originalLeft, Theme.S(76)));
                 }
-                // 即使 WinForms 因活动控件临时滚动，仍按逻辑坐标计算内容底部。
+                // 即使 WinForms 因活动控件临时滚动 仍按逻辑坐标计算内容底部
                 int logicalBottom = control.Bottom - scrollBody.AutoScrollPosition.Y;
                 if (logicalBottom > deepestBottom) deepestBottom = logicalBottom;
             }
@@ -414,19 +414,19 @@ namespace PaviseApp
             scrollBody.AutoScrollMinSize = new Size(0, bodyContentHeight);
         }
 
-        // 固定标题和底部操作区，只压缩中间滚动视口。工作区与控件尺寸都已经是设备像素，
-        // 这里不能再套 Theme.S，否则高 DPI 下会二次缩放并重新越界。
+        // 固定标题和底部操作区 只压缩中间滚动视口 工作区与控件尺寸都已经是设备像素
+        // 这里不能再套 Theme.S 否则高 DPI 下会二次缩放并重新越界
         internal void FitToWorkingArea(Rectangle workArea)
         {
             if (workArea.Width <= 0 || workArea.Height <= 0) return;
 
-            // 第一次显示永远从设备说明顶部开始；用户已经滚动后跨屏/重排则保留并夹取位置。
+            // 第一次显示永远从设备说明顶部开始 用户已经滚动后跨屏/重排则保留并夹取位置
             bool firstFit = !fittedToWorkArea;
             if (firstFit)
             {
-                // CoreMatrix 是第一个可选子控件。Form 已 Show 后直接缩高，
-                // WinForms 会为了让它可见而自动滚到正文中段。首次拟合前
-                // 先把焦点放在固定 footer，正文才能稳定留在顶部。
+                // CoreMatrix 是第一个可选子控件 Form 已 Show 后直接缩高
+                // WinForms 会为了让它可见而自动滚到正文中段 首次拟合前
+                // 先把焦点放在固定 footer 正文才能稳定留在顶部
                 try { ActiveControl = btnCancel; btnCancel.Select(); } catch { }
             }
             int keepScrollY = fittedToWorkArea
@@ -481,8 +481,8 @@ namespace PaviseApp
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);
-            // base.OnShown 会按 Tab 顺序选中滚动区里的 CoreMatrix。先移到
-            // 固定 footer，否则随后的工作区限高会自动跳过顶部风险信息。
+            // base.OnShown 会按 Tab 顺序选中滚动区里的 CoreMatrix 先移到
+            // 固定 footer 否则随后的工作区限高会自动跳过顶部风险信息
             try { ActiveControl = btnCancel; btnCancel.Select(); } catch { }
             // 内容自适应后弹窗可能较高:居中显示时把整窗夹回工作区 保证底部开关/按钮不被屏幕边缘切掉
             // 截图路径用 Manual 定位(-20000 离屏) 不参与夹取 免得把离屏窗拽回可见区
@@ -518,8 +518,8 @@ namespace PaviseApp
             {
                 Native.ReleaseCapture();
                 Native.SendMessage(Handle, Native.WM_NCLBUTTONDOWN, (IntPtr)Native.HT_CAPTION, IntPtr.Zero);
-                // SendMessage 在原生移动循环结束后才返回。若从高屏拖到较矮副屏，按目标屏
-                // 重新压缩正文视口，不能只依赖首次 OnShown 的那一次夹取。
+                // SendMessage 在原生移动循环结束后才返回 若从高屏拖到较矮副屏 按目标屏
+                // 重新压缩正文视口 不能只依赖首次 OnShown 的那一次夹取
                 if (StartPosition != FormStartPosition.Manual) ClampToWorkArea();
             }
         }

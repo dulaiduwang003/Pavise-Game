@@ -5,6 +5,8 @@ using System.Collections.Generic;
 
 namespace PaviseApp
 {
+    // 结论区把前面各段采到的事实翻成给用户的建议
+    //   这里不做任何测量也不写系统 只读 Facts 和已生成的行
     internal static partial class SystemAudit
     {
         private static void BuildVerdicts(AuditReport report, Facts facts, int hzCur, int hzBest)
@@ -90,44 +92,17 @@ namespace PaviseApp
                 });
             }
 
-            report.Verdicts.Add(new AuditRow
-            {
-                Name = Lang.T("t.systemauditverdicts.20"),
-                Value = Lang.T("t.systemauditverdicts.21"),
-                Note = Lang.T("t.systemauditverdicts.22"),
-                Evidence = EvMeasuredBench,
-                Warn = false
-            });
-
-            report.Verdicts.Add(new AuditRow
-            {
-                Name = Lang.T("cfg.group.bg"),
-                Value = facts.SuppressOn ? Lang.T("t.systemauditverdicts.23") : Lang.T("t.systemauditverdicts.24"),
-                Note = Lang.T("t.systemauditverdicts.25"),
-                Evidence = EvMeasuredBench,
-                Warn = false
-            });
-
-            report.Verdicts.Add(new AuditRow
-            {
-                Name = Lang.T("t.systemauditverdicts.26"),
-                Value = facts.GameMode ? Lang.T("t.systemauditverdicts.23") : Lang.T("t.systemauditverdicts.24"),
-                Note = Lang.T("t.systemauditverdicts.27"),
-                Evidence = EvMechanism,
-                Warn = false
-            });
-
-            report.Verdicts.Add(new AuditRow
-            {
-                Name = Lang.T("t.systemauditverdicts.28"),
-                Value = facts.Nv ? Lang.T("t.systemauditverdicts.29") : Lang.T("t.systemauditverdicts.30"),
-                Note = facts.Nv ? Lang.T("t.systemauditverdicts.31")
-                    : facts.IntegratedOnly
-                        ? Lang.T("t.systemauditverdicts.32")
-                        : Lang.T("t.systemauditverdicts.33"),
-                Evidence = EvMeasuredLocal,
-                Warn = false
-            });
+            // 结论区只收"有事要说"的行 状态陈述归机器/持久区 通用科普不属于体检
+            //   后台压制建议只在关闭时给 开着时"已开启无需处理"是占位废话
+            if (!facts.SuppressOn)
+                report.Verdicts.Add(new AuditRow
+                {
+                    Name = Lang.T("cfg.group.bg"),
+                    Value = Lang.T("t.systemauditverdicts.24"),
+                    Note = Lang.T("t.systemauditverdicts.25"),
+                    Evidence = EvMeasuredBench,
+                    Warn = false
+                });
 
             if (facts.Dvr)
             {
@@ -194,6 +169,17 @@ namespace PaviseApp
                     Warn = partitionActive
                 });
             }
+
+            // 全绿时明说 空区块会被当成没检查
+            if (report.Verdicts.Count == 0)
+                report.Verdicts.Add(new AuditRow
+                {
+                    Name = Lang.T("t.systemauditverdicts.60"),
+                    Value = Lang.T("t.systemauditverdicts.62"),
+                    Note = Lang.T("t.systemauditverdicts.61"),
+                    Evidence = EvMeasuredLocal,
+                    Warn = false
+                });
         }
     }
 }

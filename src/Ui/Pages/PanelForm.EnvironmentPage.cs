@@ -10,10 +10,10 @@ namespace PaviseApp
     internal partial class PanelForm
     {
         private Toggle swHags, swVbs, swGmGuard;
-        private Toggle swDevPower, swWindowedOpt;
+        private Toggle swDevPower, swWindowedOpt, swNicIm;
         private Toggle swAccessKeys, swHidPower, swSpecMit, swTimerTick, swGlobalTimer;
         private SettingCard cardVbs, cardWindowedOpt, cardSpecMit;
-        private SettingCard cardAccessKeys, cardHidPower;
+        private SettingCard cardAccessKeys, cardHidPower, cardNicIm;
         private TechTabs envTabs;
         private DBPanel[] envTabPanels;
         private int envBusy;
@@ -93,6 +93,11 @@ namespace PaviseApp
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.devpower"), Lang.T("set.devpower.n"), swDevPower, out cardH);
             sy += cardH + 8;
 
+            swNicIm = MakeSwitch(NicModerationTweak.EnabledByPavise, OnNicImToggle);
+            cardNicIm = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nicim"),
+                Lang.T("set.nicim.n"), swNicIm, out cardH);
+            sy += cardH + 8;
+
             scroll = envTabPanels[2]; sy = 2;
 
             swAccessKeys = MakeSwitch(AccessibilityKeysTweak.HasResidue(), OnAccessKeysToggle);
@@ -124,6 +129,9 @@ namespace PaviseApp
             if (cardHidPower != null)
                 cardHidPower.SetStatus(HidPowerTweak.Describe(),
                     StatusInk(!HidPowerTweak.EnabledByPavise, HidPowerTweak.EnabledByPavise));
+            if (cardNicIm != null)
+                cardNicIm.SetStatus(NicModerationTweak.Describe(),
+                    StatusInk(NicModerationTweak.ModerationActive(), NicModerationTweak.EnabledByPavise));
             if (cardWindowedOpt != null && Native.OsBuild() >= 22000)
                 cardWindowedOpt.SetStatus(WindowedOptTweak.Describe(),
                     StatusInk(!WindowedOptTweak.CurrentlyOn(), WindowedOptTweak.EnabledByPavise));
@@ -166,6 +174,18 @@ namespace PaviseApp
             swHidPower.SetSilently(HidPowerTweak.EnabledByPavise);
             if (cardHidPower != null)
                 SyncEnvStatus();
+        }
+
+        private void OnNicImToggle(object s, EventArgs e)
+        {
+            if (!RequireElevationFor(swNicIm, NicModerationTweak.EnabledByPavise)) return;
+            IrqMutationBoundary.Run(delegate
+            {
+                if (swNicIm.Checked) NicModerationTweak.Enable();
+                else NicModerationTweak.Restore();
+            });
+            swNicIm.SetSilently(NicModerationTweak.EnabledByPavise);
+            SyncEnvStatus();
         }
 
         private void OnDevPowerToggle(object s, EventArgs e)
@@ -384,6 +404,8 @@ namespace PaviseApp
             if (swTimerTick != null)
                 swTimerTick.SetSilently(TimerTickTweak.EnabledByPavise || TimerTickTweak.LastKnownOn);
             if (swGlobalTimer != null) swGlobalTimer.SetSilently(GlobalTimerResTweak.EnabledByPavise);
+            if (swNicIm != null) swNicIm.SetSilently(NicModerationTweak.EnabledByPavise);
+            SyncEnvStatus();
         }
     }
 }

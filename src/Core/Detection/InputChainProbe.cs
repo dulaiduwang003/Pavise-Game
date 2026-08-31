@@ -26,6 +26,9 @@ namespace PaviseApp
         public string UsbHardwareKey;
     }
 
+    // 筛选键粘滞键切换键在注册表里共用一套位标志
+    //   On 是功能本身开着 HotkeyActive 是那个触发热键还挂着
+    //   Available 表示系统允许这项功能 那位不归我们管 修复时必须保留
     internal static class AccessibilityFlags
     {
         public const int On = 0x01;
@@ -39,11 +42,14 @@ namespace PaviseApp
             return int.TryParse(raw.Trim(), out flags);
         }
 
+        // 功能开着要修 热键挂着也要修 后者不改延迟但会在对局中弹框打断
         public static bool NeedsFix(int flags)
         {
             return (flags & On) != 0 || (flags & HotkeyActive) != 0;
         }
 
+        // 只清 On 和 HotkeyActive 两位 其余位原样带回去
+        //   直接写 0 会把 Available 一起抹掉 那是在改用户的系统能力
         public static int Sanitize(int flags)
         {
             return flags & ~(On | HotkeyActive);
@@ -92,6 +98,9 @@ namespace PaviseApp
         internal const string MouseClassGuid = "{4d36e96f-e325-11ce-bfc1-08002be10318}";
         internal const string KeyboardClassGuid = "{4d36e96b-e325-11ce-bfc1-08002be10318}";
 
+        // 返回 0 键盘 1 鼠标 -1 都不是 类 GUID 比类名可靠
+        //   有 GUID 就只认 GUID 认不出直接判 -1 不再退回名字匹配
+        //   否则一个自称 Mouse 的第三方类会被误收进键鼠链路
         internal static int ClassifyDeviceClass(string classGuid, string className)
         {
             if (!string.IsNullOrEmpty(classGuid))
@@ -105,6 +114,8 @@ namespace PaviseApp
             return -1;
         }
 
+        // 设备描述可能是 @文件路径,-资源号 这种间接引用
+        //   我们不去加载资源 只取分号后那段兜底文本 取不到就返回 null
         internal static string CleanDesc(string raw)
         {
             if (string.IsNullOrEmpty(raw)) return null;

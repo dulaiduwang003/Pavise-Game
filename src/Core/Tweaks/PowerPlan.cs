@@ -363,8 +363,8 @@ namespace PaviseApp
             if (settledRestoreTarget.HasValue || saved != Guid.Empty || !Settings.TryLoadStr(PlanJournalKey, out pending)
                 || pending == null || pending.Length != 0)
             {
-                // A failed Set may already have switched plans. Resolve its
-                // original before taking any new snapshot on a retry.
+                // Set 失败也可能已经把方案切过去了 重试前先把它的
+                // 原始值定下来 再取新快照
                 if (!RestorePlanCore(false)) return false;
             }
             Guid tgt;
@@ -412,9 +412,9 @@ namespace PaviseApp
                 Logger.Log(Lang.T("log.powerplan.26") + RestorePlanLabel(tgt) + Lang.T("log.gpupowermax.7") + RestorePlanLabel(saved) + " ");
                 return true;
             }
-            // Set() verifies the current scheme after the native call. False
-            // can therefore mean "changed, verification unavailable".
-            // Keep both originals for the ownership-aware recovery path.
+            // Set 在原生调用之后会核实当前方案 所以 false 也可能意味着
+            // 已经改了但没法核实
+            // 两份原始值都留着 给带所有权判断的恢复路径用
             Logger.Log(Lang.T("log.powerplan.27"));
             return false;
         }
@@ -453,8 +453,8 @@ namespace PaviseApp
                 if (value.Length == 0 || (key == ChoiceKey && value == ManagedChoice)) continue;
                 Guid owned;
                 if (!TryGuid(value, out owned) || owned == Guid.Empty) { unknown = true; continue; }
-                // Current() already verified this GUID exists. Enumerating all
-                // plans again could fail and incorrectly discard a valid owner.
+                // Current 已经核实过这个 GUID 存在 再枚举一遍全部方案
+                // 可能失败 反而把一个有效的归属者错误丢弃
                 if (g == owned) return true;
             }
             return unknown ? (bool?)null : false;
@@ -502,8 +502,8 @@ namespace PaviseApp
                     return true;
                 }
 
-                // Recovery needs current ownership just as normal shutdown does.
-                // An unavailable current plan is not permission to switch it.
+                // 恢复流程和正常关闭一样 需要当前所有权
+                // 当前方案读不到 不等于可以随便切它
                 Guid? nowActive = RestoreCurrentPlan();
                 if (!nowActive.HasValue || nowActive.Value == Guid.Empty) return false;
                 if (nowActive.Value == restoreTarget) return ClearRestoredPlan(restoreTarget);
@@ -536,9 +536,9 @@ namespace PaviseApp
 
         private static bool ClearRestoredPlan(Guid restoreTarget)
         {
-            // The native restoration (or deliberate abandonment) is complete.
-            // Keep a receipt-bound RAM tombstone until cleanup is verified;
-            // a retry must not undo a later user choice, even of our own plan.
+            // 原生还原已经完成 或者是有意放弃
+            // 清理核实通过之前 保留一个绑定收据的内存墓碑
+            // 重试不能推翻用户后来的选择 哪怕他选的就是我们的方案
             active = false; tuneState = -1;
             saved = restoreTarget;
             settledRestoreTarget = restoreTarget;
@@ -582,8 +582,8 @@ namespace PaviseApp
 #if PAVISE_SELFTEST || PAVISE_PERFLAB
             return RestorePlanIsUsableForTest == null ? null : RestorePlanIsUsableForTest(scheme);
 #else
-            // A missing friendly-name value is not proof that the plan was
-            // deleted. Require a complete, successful enumeration to drop it.
+            // 读不到友好名 不能证明这套方案已经被删
+            // 要完整枚举成功之后才允许丢弃它
             for (uint index = 0; index < 128; index++)
             {
                 uint size = 16;

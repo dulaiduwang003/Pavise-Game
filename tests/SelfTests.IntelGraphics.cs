@@ -30,7 +30,8 @@ namespace PaviseApp
                 IntelAmbiguousRestoreIsNotReissued,
                 IntelSettledCleanupDoesNotTouchDriver,
                 IntelInvalidLedgerAndChangedAdapter,
-                IntelReentrancyDoesNotIssueTwice
+                IntelReentrancyDoesNotIssueTwice,
+                IntelResetAbandonsUnprovableReceipt
             };
             intelChecks = 0;
             foreach (Action test in cases) { test(); Console.WriteLine("PASS " + test.Method.Name); }
@@ -419,6 +420,32 @@ namespace PaviseApp
             IntelCheck(engine.Apply(null) && api.Writes == 1, "recursive callback changed native write count");
             api.BeforeRead = null;
             IntelCheck(engine.Restore(), "cleanup after reentrancy");
+        }
+
+        // 清除全部配置的放弃语义:发过还原写入后驱动仍是 On 的 R 收据永远无法认领
+        //   重置语境下放弃并保留驱动现状;可认领的 A 收据与瞬时失败不放弃
+        private static void IntelResetAbandonsUnprovableReceipt()
+        {
+            var ledger = new IntelFakeLedger { Value = "1|R|" + IntelTestId };
+            var api = new IntelFakeControl(ledger);
+            api.Modes[IntelTestId] = 1;
+            var engine = new IntelLowLatencyEngine(api, ledger);
+            IntelCheck(!engine.Restore(), "an unclaimable R receipt must not restore");
+            IntelCheck(engine.AbandonUnprovableForReset(), "reset must abandon the unclaimable receipt");
+            IntelCheck(!engine.HasResidue && api.Modes[IntelTestId] == 1,
+                "abandoning must clear the residue without touching the driver value");
+
+            var claimableLedger = new IntelFakeLedger { Value = "1|A|" + IntelTestId };
+            var claimableApi = new IntelFakeControl(claimableLedger);
+            claimableApi.Modes[IntelTestId] = 1;
+            claimableApi.DenyWrite = true;
+            var claimable = new IntelLowLatencyEngine(claimableApi, claimableLedger);
+            IntelCheck(!claimable.Restore(), "setup: a transient restore failure");
+            IntelCheck(!claimable.AbandonUnprovableForReset() && claimable.HasResidue,
+                "a claimable receipt must never be abandoned by reset");
+            claimableApi.DenyWrite = false;
+            IntelCheck(claimable.Restore() && !claimable.HasResidue && claimableApi.Modes[IntelTestId] == 0,
+                "the claimable receipt must still restore after the failure clears");
         }
     }
 }

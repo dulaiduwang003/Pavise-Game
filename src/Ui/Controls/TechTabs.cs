@@ -110,7 +110,7 @@ namespace PaviseApp
             {
                 if (value < 0 || value >= labels.Length || value == idx) return;
                 idx = value;
-                // 只缓动绘制的选中框；状态、文字和页面回调立即切换。
+                // 只缓动绘制的选中框 状态 文字和页面回调立即切换
                 if (CanAnimateSelection) { selection.To(idx); UiClock.Wake(); }
                 else selection.Set(idx);
                 Invalidate();

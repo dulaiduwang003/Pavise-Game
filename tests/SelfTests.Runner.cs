@@ -112,6 +112,14 @@ namespace PaviseApp
             run("OptionalServicePause", delegate { RunOptionalServicePauseRegressionTests(); });
             run("ServicePauser", delegate { RunServicePauserRegressionTests(); });
             run("StandbyListCleaner", delegate { RunStandbyListCleanerRegressionTests(); });
+            run("MemShield", delegate { RunMemShieldRegressionTests(); });
+            run("CacheWarm", delegate { RunCacheWarmRegressionTests(); });
+            run("DisplaySolo", delegate { RunDisplaySoloRegressionTests(); });
+            run("IrqAutoPilot", delegate { RunIrqAutoPilotRegressionTests(); });
+            run("AdaptiveGuard", delegate { RunAdaptiveGuardRegressionTests(); });
+            run("NicModeration", delegate { RunNicModerationRegressionTests(); });
+            run("LogWrites", delegate { RunLogWritesRegressionTests(); });
+            run("AntiCheatThrottle", delegate { RunAntiCheatThrottleRegressionTests(); });
             run("EnglishInput", delegate { RunEnglishInputRegressionTests(); });
             run("IntelGraphics", delegate { RunIntelGraphicsRegressionTests(); });
             run("AppGpuPreferences", delegate { RunAppGpuPreferencesRegressionTests(); });

@@ -58,7 +58,7 @@ namespace PaviseApp
         private readonly Motion[] cellHot = new Motion[64];
         private readonly Motion[] cellHeat = new Motion[64];
 
-        // 选核弹窗专用的同局平均负载 + 核类型叠加，其余页面保持原样。
+        // 选核弹窗专用的同局平均负载 + 核类型叠加 其余页面保持原样
         private ulong seenMask;
         public ulong ObservedGameMask { get; set; }
         private bool annotate;
@@ -108,9 +108,9 @@ namespace PaviseApp
         }
 
         // ROG 电竞负载色阶 分档明确:低=冷青(压暗) 中=黄 高=橙 极高=ROG 红(Theme.Danger 恒红)
-        //   阈值刻意压低 60% 就进「橙」段 72% 就烧成纯红 让中高负载核一眼可见地暖/红
+        //   阈值刻意压低 60% 就进 橙 段 72% 就烧成纯红 让中高负载核一眼可见地暖/红
         //   低段越接近 0 越暗 让空闲核冷下去 与繁忙红核拉开对比
-        // 本局中断落核的专用标记色：紫罗兰，区别于负载红和低载青。
+        // 本局中断落核的专用标记色 紫罗兰 区别于负载红和低载青
         private static readonly Color SeenViolet = Color.FromArgb(176, 138, 255);
         private static readonly Color RogCool = Color.FromArgb(64, 200, 240);
         private static readonly Color RogAmber = Color.FromArgb(255, 178, 44);
@@ -136,8 +136,8 @@ namespace PaviseApp
             return Col.Lerp(RogOrange, red, (t - 0.72f) / 0.13f);   // 85%+ 已是纯红
         }
 
-        // 径向霓虹辉光 让高负载核从深黑底上「跳」出来 用 PathGradientBrush 才有真正的软发光
-        //   pad 越大 光晕外溢越远 越「炸」;draw 在填充之上时用小 pad 只染内部 不糊字
+        // 径向霓虹辉光 让高负载核从深黑底上 跳 出来 用 PathGradientBrush 才有真正的软发光
+        //   pad 越大 光晕外溢越远 越 炸 ;draw 在填充之上时用小 pad 只染内部 不糊字
         private static void GlowEllipse(Graphics g, Rectangle r, Color c, float k, int centerAlpha, int pad)
         {
             if (k < 0f) k = 0f; else if (k > 1f) k = 1f;
@@ -485,7 +485,7 @@ namespace PaviseApp
             foreach (Cell c in grp.Cells)
                 if (cellOn[c.Cpu].Value > lit) lit = cellOn[c.Cpu].Value;
 
-            // 整张物理核卡的峰值负载 决定卡片是否「烧红」发光
+            // 整张物理核卡的峰值负载 决定卡片是否 烧红 发光
             float peak = 0f;
             if (annotate && HasLoads)
                 foreach (Cell c in grp.Cells)
@@ -535,7 +535,7 @@ namespace PaviseApp
             bool roomy = grp.Cells.Count > 1;
             if (annotate)
             {
-                // 选核弹窗 头标改成核类型 指引「挪去哪里」;当前落核卡片改标紫罗兰「当前」 让落点自解释
+                // 选核弹窗 头标改成核类型 指引 挪去哪里 ;当前落核卡片改标紫罗兰 当前 让落点自解释
                 bool grpSeen = (grp.Mask & seenMask) != 0;
                 CoreKind kind = KindOf(grp);
                 string ktag = grpSeen ? Lang.T("core.tag.now")
@@ -599,7 +599,7 @@ namespace PaviseApp
                     | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
         }
 
-        // 选核弹窗：边框/负载条保留辉光，数字只画一次，保证高负载时依然清晰。
+        // 选核弹窗 边框/负载条保留辉光 数字只画一次 保证高负载时依然清晰
         private void DrawCellAnno(Graphics g, Cell c)
         {
             float on = cellOn[c.Cpu].Value;
@@ -617,7 +617,7 @@ namespace PaviseApp
             // 繁忙核先在卡底铺一圈大红辉光 外溢到卡片背景上 空闲核不铺 一眼分空/忙
             if (warm) GlowEllipse(g, r, load, gk, 150, 13);
 
-            // 淡色负载底保留明暗主题的文字对比度，选中时使用强调色。
+            // 淡色负载底保留明暗主题的文字对比度 选中时使用强调色
             Color baseFill = Col.Lerp(Theme.Inset, Theme.Bg, 0.35f);
             if (hasLoad) baseFill = Col.Lerp(baseFill, load, 0.06f + 0.18f * t);
             Color fill = Col.Lerp(baseFill, Theme.Accent, on);
@@ -666,7 +666,7 @@ namespace PaviseApp
             }
             else
             {
-                // 缺少该核心的观测不等于 0%：核号仍在角落，中间显示破折号。
+                // 缺少该核心的观测不等于 0% 核号仍在角落 中间显示破折号
                 var idBox = new Rectangle(r.Left + Theme.S(3), r.Top + Theme.S(1),
                     r.Width - Theme.S(6), Theme.S(11));
                 TextRenderer.DrawText(g, c.Cpu.ToString(), Theme.Mono(6.3f), idBox,
@@ -690,7 +690,7 @@ namespace PaviseApp
             int fw = (int)(track.Width * t);
             if (fw < barH && t > 0f) fw = barH;
             var fillRect = new Rectangle(track.X, track.Y, Math.Max(fw, 0), track.Height);
-            // 繁忙条先在条身四周垫一圈辉光 让条子「亮起来」
+            // 繁忙条先在条身四周垫一圈辉光 让条子 亮起来
             if (warm && fw > 0)
             {
                 var halo = new Rectangle(fillRect.X - Theme.S(2), fillRect.Y - Theme.S(3),
@@ -712,7 +712,7 @@ namespace PaviseApp
             }
         }
 
-        // 本局观测落核：右下角紫罗兰三角，与高负载红明确区分。
+        // 本局观测落核 右下角紫罗兰三角 与高负载红明确区分
         private void DrawSeenMark(Graphics g, Rectangle r)
         {
             int s = Theme.S(9);
@@ -727,7 +727,7 @@ namespace PaviseApp
             using (var b = new SolidBrush(Col.Alpha(SeenViolet, 248))) g.FillPolygon(b, pts);
         }
 
-        // 同局游戏核范围与观测负载仅供选核参考，不宣称低平均负载能保证收益。
+        // 同局游戏核范围与观测负载仅供选核参考 不宣称低平均负载能保证收益
         private enum CoreKind { Game, Eff, PerfIdle, Perf }
 
         private CoreKind KindOf(Group grp)
@@ -760,7 +760,7 @@ namespace PaviseApp
             public string Text;
         }
 
-        // 图例：同局平均负载 / 观测落核(紫) / 低载性能核(青) / 游戏核(红) / 能效核。
+        // 图例 同局平均负载 / 观测落核(紫) / 低载性能核(青) / 游戏核(红) / 能效核
         private List<LegendItem> BuildLegendItems()
         {
             var items = new List<LegendItem>();

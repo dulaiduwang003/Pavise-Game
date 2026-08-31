@@ -164,7 +164,7 @@ namespace PaviseApp
 
         internal static string PickMainExecutable(string root, string installDirName)
         {
-            // 安装目录名只用于显示，不作为渲染角色证据；与扫描使用同一保守推荐器。
+            // 安装目录名只用于显示 不作为渲染角色证据 与扫描使用同一保守推荐器
             return ExecutableCandidateProbe.PickMainExecutable(root);
         }
     }

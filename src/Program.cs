@@ -19,7 +19,7 @@ namespace PaviseApp
     internal static class App
     {
         public const string DisplayName = "PAVISE";
-        public const string Version = "2.1.3.1";
+        public const string Version = "2.1.3.3";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string QqGroup = "1051472054";
@@ -108,8 +108,8 @@ namespace PaviseApp
                     var scMode = new GameMode(sdir, scCore);
                     if (idx == (int)PageId.Log)
                     {
-                        // Screenshot-only telemetry gives the structured log view every visual state
-                        // without touching the user's real log file.
+                        // 只有截图模式才注入这些遥测 让结构化日志视图能展示每种视觉状态
+                        // 同时不碰用户真正的日志文件
                         Logger.Log("CORE 守护服务已开启，等待游戏进程");
                         Logger.Log("GAME 已识别 NebulaStrike-Win64-Shipping.exe");
                         Logger.Log("POWER 电源计划已生效：PG 专注 5EFC");
@@ -269,11 +269,13 @@ namespace PaviseApp
             catch { }
             string dir = Paths.Data;
             Logger.LogPath = Path.Combine(dir, "Pavise.log");
+            Logger.WritesEnabled = Settings.Load(Logger.WritesEnabledKey, true);
             if (taskStaleExe)
                 Logger.Log(Lang.T("log.program.1"));
             try { WarnIfOsTooOld(); } catch { }
             Settings.Remove("EvidenceMode");
             try { VramShield.HealFromCrash(); } catch { }
+            try { MemShield.HealFromCrash(); } catch { }
             int healedSuppression = SuppressionCore.HealFromCrash(Path.Combine(dir, SuppressionCore.StateFileName));
             if (healedSuppression > 0) Logger.Log(Lang.T("log.program.2") + healedSuppression + Lang.T("log.program.3"));
             PowerPlan.HealFromCrash();
@@ -284,6 +286,7 @@ namespace PaviseApp
             try { Mmcss.HealFromCrash(); } catch { }
             try { PresenceQos.HealFromCrash(); } catch { }
             try { PowerOverlay.HealFromCrash(); } catch { }
+            try { DisplaySolo.HealFromCrash(); } catch { }
             try { GpuPowerMax.HealFromCrash(); } catch { }
             try { AdlxTweaks.HealFromCrash(); } catch { }
             try { InterruptAttribution.CleanupStaleSession(); } catch { }
@@ -291,12 +294,13 @@ namespace PaviseApp
             GpuPrefStage.HealFromCrash();
             try { AppGpuPreferences.HealFromCrash(); } catch { }
             try { IntelGraphicsTweaks.HealFromCrash(); } catch { }
-            // 已下架的 IFEO 提优/关 CFG 只剩历史残留。全局开关用户没有逐游戏
-            // 退役字段，不会触发库重置流程，这里按账本一次性收回旧写入。
+            // 已下架的 IFEO 提优/关 CFG 只剩历史残留 全局开关用户没有逐游戏
+            // 退役字段 不会触发库重置流程 这里按账本一次性收回旧写入
             try { if (IfeoBoost.HasResidue()) IfeoBoost.RestoreAll(); } catch { }
             try { if (CfgOffTweak.HasResidue()) CfgOffTweak.RestoreAll(); } catch { }
             CrashGuard.HealFromCrash();
             try { IrqRelocate.HealFromCrash(); } catch { }
+            try { IrqAutoPilot.HealFromCrash(); } catch { }
 
             bool pendingPanel = Settings.Load(PendingPanelKey, false);
             if (pendingPanel) Settings.Save(PendingPanelKey, false);
@@ -358,8 +362,8 @@ namespace PaviseApp
                     tamer.Start();
                     gameMode.Start();
                 }
-                // This can write a task XML in Paths.Data. Keep it in the joined
-                // startup lifecycle so reset cannot race an untracked callback.
+                // 这一步可能在 Paths.Data 里写任务 XML 把它留在合并后的启动
+                // 生命周期里 免得重置和一个没被跟踪的回调抢跑
                 if (elevated && !Volatile.Read(ref exiting))
                     try { TaskHelper.RefreshStartupTask(); } catch { }
             });
@@ -434,8 +438,8 @@ namespace PaviseApp
             int runtimeStopped = 0;
             Func<bool> stopRuntime = () =>
             {
-                // A second or reentrant exit must not mistake an in-progress stop
-                // for a completed one and delete live recovery state underneath it.
+                // 第二次或者重入的退出 不能把正在进行的停止误当成已完成
+                // 然后把脚下还活着的恢复状态删掉
                 if (Interlocked.CompareExchange(ref runtimeStopStarted, 1, 0) != 0)
                     return Volatile.Read(ref runtimeStopped) != 0;
                 lock (startGate)
@@ -449,8 +453,8 @@ namespace PaviseApp
                 try { icon.Visible = false; icon.Dispose(); } catch { }
                 bool stopped = true;
                 try { procNotify.Stop(); } catch { stopped = false; }
-                // Attempt both stops even if the first one fails. A timeout is a
-                // real failure, not permission to erase pending recovery records.
+                // 第一个停止失败了 第二个也要照样尝试 超时是
+                // 真的失败 不是允许抹掉待处理恢复记录的许可
                 try { if (!tamer.Stop()) stopped = false; } catch { stopped = false; }
                 try { if (!gameMode.Stop()) stopped = false; } catch { stopped = false; }
                 try
@@ -466,8 +470,8 @@ namespace PaviseApp
             Action<bool, bool> resetDataAndExit = null;
             Action doExit = () =>
             {
-                // 保存失败与普通退出同时发生时，不能让退出先关掉
-                // 消息泵而吞掉已排队的安全重置。
+                // 保存失败与普通退出同时发生时 不能让退出先关掉
+                // 消息泵而吞掉已排队的安全重置
                 if (gameMode.ProfileStoreSaveFailed && resetDataAndExit != null)
                 {
                     resetDataAndExit(true, true);
@@ -505,8 +509,8 @@ namespace PaviseApp
                 try { panel.BeginInvoke((MethodInvoker)(() => resetDataAndExit(true, true))); }
                 catch
                 {
-                    // ApplicationExit uses the same verified stop/restore path.
-                    // If invoked on a still-running worker, reset safely aborts.
+                    // ApplicationExit 走的是同一条经过核实的停止与还原路径
+                    // 如果是在工作线程还在跑的时候调用 重置会安全地中止
                     try { Application.Exit(); } catch { }
                 }
             };
@@ -516,8 +520,8 @@ namespace PaviseApp
                 resetDataAndExit(true, false);
             };
 
-            // Install the guarded fallback before subscribing/rechecking failure.
-            // No exit path is allowed to bypass restoration and force-delete data.
+            // 先装好带守卫的兜底 再去订阅和复查失败
+            // 任何一条退出路径都不许绕过还原去强删数据
             gameMode.ProfileStoreSaveFailure += requestFatalStoreReset;
             if (gameMode.ProfileStoreSaveFailed) requestFatalStoreReset();
 

@@ -20,7 +20,7 @@ namespace PaviseApp
         public Color Fill = Theme.Card;
         public Color Border = Color.Empty;
         public bool AccentEdge;
-        // 关闭时连同嵌套控件一起隔离封面，供同窗弹出组件使用。
+        // 关闭时连同嵌套控件一起隔离封面 供同窗弹出组件使用
         public bool UseBackdrop = true;
 
         public RoundPanel()

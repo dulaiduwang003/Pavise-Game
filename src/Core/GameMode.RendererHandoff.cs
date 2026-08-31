@@ -53,13 +53,13 @@ namespace PaviseApp
             int foreground = RendererForegroundPid();
             if (foreground == rendererObservedForeground) return;
             rendererObservedForeground = foreground;
-            // 复用本轮已有进程快照；不因普通后台进程出生而把全量窗口枚举变成高频轮询。
+            // 复用本轮已有进程快照 不因普通后台进程出生而把全量窗口枚举变成高频轮询
             Interlocked.Exchange(ref gameDetectionDirty, 1);
         }
 
         private void InvalidateRendererHandoff()
         {
-            // 与候选发布和游戏库提交共用 sync，失效不能穿过保存前的最终检查。
+            // 与候选发布和游戏库提交共用 sync 失效不能穿过保存前的最终检查
             lock (sync)
             {
                 Interlocked.Increment(ref rendererHandoffEpoch);
@@ -121,8 +121,8 @@ namespace PaviseApp
             return state;
         }
 
-        // 返回可进入原有 ApplyStickiness/同局交接路径的目标。null 保留旧锚，
-        // 但候选保护是独立状态，不能因为 null 被丢掉，也不能受家族开关控制。
+        // 返回可进入原有 ApplyStickiness/同局交接路径的目标 null 保留旧锚
+        // 但候选保护是独立状态 不能因为 null 被丢掉 也不能受家族开关控制
         private GameDetection ResolveRendererHandoff(ProcessSnapshot all, IList<GameProfile> library, GameDetection raw, out int epoch)
         {
             epoch = Volatile.Read(ref rendererHandoffEpoch);
@@ -146,11 +146,11 @@ namespace PaviseApp
             if (held != null && (held.Profile == null || !RendererHandoffTracker.SameProfile(
                     held.Profile, RendererProfile(library, held.Profile.Id)))) Handoff.Clear();
 
-            // 全库独立寻找当前前台：旧的 ready/Force 目标不能吞掉另一个档案的 pending 候选。
+            // 全库独立寻找当前前台 旧的 ready/Force 目标不能吞掉另一个档案的 pending 候选
             GameDetection challenger = CaptureRendererChallenger(all, library, incumbent);
             GameDetection offered = challenger;
-            // 前台归属不明确/终验失败时不能拿全局 Detect 的旧仲裁结果绕过拒绝。
-            // 这里只保留原有 learned/Force 可从后台选中的硬目标。
+            // 前台归属不明确/终验失败时不能拿全局 Detect 的旧仲裁结果绕过拒绝
+            // 这里只保留原有 learned/Force 可从后台选中的硬目标
             if (offered == null && raw != null && !raw.RendererForeground
                 && raw.RendererCandidateSelected && !raw.RequiresGpuConfirm
                 && !RendererHandoffTracker.SameIdentity(raw, incumbent)) offered = raw;
@@ -190,8 +190,8 @@ namespace PaviseApp
                 && (!confirmed.RendererForeground || RendererForegroundPid() == confirmed.RendererPid)
                 && RendererEpochCurrent(epoch)) return confirmed;
 
-            // 某些 Force/已学习目标本来允许后台选举，同时前台有 SafetyOnly challenger。
-            // 两者不能互相挤掉；硬目标尚有恢复债务时，额外保留一个身份精确的暂缓目标。
+            // 某些 Force/已学习目标本来允许后台选举 同时前台有 SafetyOnly challenger
+            // 两者不能互相挤掉 硬目标尚有恢复债务时 额外保留一个身份精确的暂缓目标
             GameDetection direct = raw != null && raw.RendererCandidateSelected
                 && !raw.RendererForeground && !raw.RequiresGpuConfirm && !raw.RendererSafetyOnly ? raw : rendererDirectPending;
             if (direct != null && !RendererHandoffTracker.SameIdentity(direct, incumbent))
@@ -344,8 +344,8 @@ namespace PaviseApp
                 if (now > selected.RendererGpuProofExpiresMs
                     || !RendererHandoffTracker.SameIdentity(proof, selected)) return false;
             }
-            // 采样/恢复/保存都有耗时，新交接必须在提交点复查前台；旧 sticky 的历史
-            // Foreground 标记不能用于此检查，Alt-Tab 不应把正在进行的对局踢掉。
+            // 采样/恢复/保存都有耗时 新交接必须在提交点复查前台 旧 sticky 的历史
+            // Foreground 标记不能用于此检查 Alt-Tab 不应把正在进行的对局踢掉
             if (selected.RendererForeground && RendererForegroundPid() != selected.RendererPid) return false;
             if (incumbent != null && incumbent.Profile != null && selected.Profile != null
                 && string.Equals(incumbent.Profile.Id, selected.Profile.Id, StringComparison.OrdinalIgnoreCase)

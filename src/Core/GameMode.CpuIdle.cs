@@ -1,4 +1,4 @@
-// Explicit CPU idle opt-in. Native writes and restoration share the power worker gate.
+// 文件用途 显式开启的禁止 CPU 空闲 原生写入和还原共用电源工作线程闸
 using System;
 using System.Threading;
 
@@ -35,8 +35,8 @@ namespace PaviseApp
         private Func<bool> CaptureCpuIdleAdmission(bool allowPowerPlan)
         {
             int generation = Volatile.Read(ref cpuIdleGeneration);
-            // Read the live profile once, before taking PowerPlan's native lock.
-            // Every user change invalidates this token, including an off/on pair.
+            // 拿 PowerPlan 的原生锁之前 先把当前档案读一次
+            // 用户每改一次这个令牌就失效 包括关了又开这种
             bool wanted = allowPowerPlan && EffDisableCpuIdle
                 && LiveCpuIdlePreference(PolicyCatalog.KeyPowerPlan);
             return delegate
@@ -54,8 +54,8 @@ namespace PaviseApp
             {
                 bool want = mayContinue();
                 lock (sync) { if (envFused.Contains("cpuidle")) want = false; }
-                // Unsupported, battery-powered and user-selected plans are skips,
-                // not failed activations. Restore any earlier owned value first.
+                // 不支持 电池供电 以及用户自选方案这三种算跳过
+                // 不是激活失败 先把之前拥有的值还原掉
                 want = want && PowerPlan.CpuIdleEligible;
                 lock (sync)
                 {
@@ -70,8 +70,8 @@ namespace PaviseApp
                 if (!want && PowerPlan.CpuIdleHasResidue) applied = true;
                 bool result = EnvStep("cpuidle", want, applied,
                     delegate { return PowerPlan.TryDisableCpuIdle(mayContinue); }, PowerPlan.RestoreCpuIdle);
-                // Successful cancellation/rollback and an already-disabled user
-                // setting do not grant Pavise ownership of a setting change.
+                // 取消或回滚成功 以及用户本来就关着这个设置
+                // 都不给 Pavise 这次设置改动的所有权
                 cpuIdleActive = want ? result && PowerPlan.CpuIdleActive : result;
             }
         }

@@ -1,5 +1,5 @@
-// Input-language consent is captured only at game entry. Live changes revoke
-// pending work, but cannot arm a second request in the current game runtime.
+// 文件用途 输入语言的同意只在入场那一刻采集 中途改动会撤销待处理的工作
+// 但不能在本次游戏运行期内再武装第二次请求
 using System;
 using System.Threading;
 
@@ -14,8 +14,8 @@ namespace PaviseApp
 
         private void InitializeEnglishInput()
         {
-            // Restarting Pavise must not treat an already-running game's Chinese
-            // input as a fresh entry. This is an OS FILETIME, like RendererCreation.
+            // 重启 Pavise 不能把一个已经在跑的游戏的中文输入
+            // 当成新入场 这是操作系统的 FILETIME 和 RendererCreation 一样
             Interlocked.Exchange(ref englishInputCreationFloor, DateTime.UtcNow.ToFileTimeUtc());
             englishInputOn = Settings.Load(PolicyCatalog.KeyEnglishInput, false);
             englishInputOnce = new EnglishInputOnce(new GameInputLanguage());
@@ -30,8 +30,8 @@ namespace PaviseApp
                 {
                     if (stopping) return;
                     InvalidateEnglishInputWork();
-                    // Failed persistence never grants a new opt-in. Disabling
-                    // stops pending work even when its save cannot complete.
+                    // 落盘失败永远不给新的开启资格 关闭时
+                    // 哪怕保存不了 也要把待处理的工作停掉
                     bool saved = Settings.Save(PolicyCatalog.KeyEnglishInput, value);
                     englishInputOn = value && saved;
                 }
@@ -41,7 +41,7 @@ namespace PaviseApp
 
         private bool LiveEnglishInputPreference()
         {
-            // Caller holds sync. IsGlobal also includes profiles with no overrides.
+            // 调用方持有 sync IsGlobal 也包含没有任何覆盖的档案
             return LiveBoolPreferenceLocked(PolicyCatalog.KeyEnglishInput, englishInputOn);
         }
 
@@ -82,12 +82,12 @@ namespace PaviseApp
                     || !string.Equals(detection.Profile.Id, id, StringComparison.OrdinalIgnoreCase)) return false;
                 bool selected = detection.RendererCandidateSelected && !detection.RendererSafetyOnly
                     && !detection.RequiresGpuConfirm;
-                // A renderer can be selected only after Begin. Apply the startup
-                // floor again at request admission so late discovery cannot bypass it.
+                // 渲染进程只能在 Begin 之后才选得出来 请求准入时把启动下限
+                // 再套一遍 免得迟到的发现绕过它
                 if (selected && detection.RendererCreation > 0 && detection.RendererCreation < creationFloor)
                     return false;
-                // An entry token follows this session's verified renderer handoffs;
-                // an individual request additionally pins its exact renderer.
+                // 入场令牌跟随本局已核实的渲染进程交接
+                // 单条请求还额外钉死它自己那个渲染进程
                 return entry || (selected && renderer.IsValid && renderer.Creation >= creationFloor
                     && detection.RendererPid == renderer.Pid
                     && detection.RendererCreation == renderer.Creation);
@@ -113,7 +113,7 @@ namespace PaviseApp
             GameInputProcess process;
             bool wanted;
             Func<bool> admission = CaptureEnglishInputAdmission(false, out profileId, out profileName, out process, out wanted);
-            // Never Begin here: enabling mid-game is an intent for the next entry.
+            // 这里绝不能 Begin 中途开启表达的是下次入场的意图
             EnglishInputOutcome result = runner.Step(profileId, process, admission);
             if (result == null) return;
             string key;

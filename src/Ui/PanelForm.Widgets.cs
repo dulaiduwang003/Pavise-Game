@@ -124,7 +124,7 @@ namespace PaviseApp
             return MakeCard(parent, x, y, w, used, title, desc, host);
         }
 
-        // Scope/consent text must remain readable when expanded, including in English.
+        // 展开后作用范围和同意说明必须仍然读得全 英文界面下也一样
         private int FullTextCardHeight(string desc, int width, Control host, int minimum)
         {
             int textWidth = Theme.S(width - 84 - CollapseChevronW)
@@ -266,7 +266,7 @@ namespace PaviseApp
             pageTabPanels[page] = panels;
             tabs.IndexChanged = delegate(int index)
             {
-                // Tab 直接切换，保留各自滚动位置，不生成过渡快照。
+                // Tab 直接切换 保留各自滚动位置 不生成过渡快照
                 for (int i = 0; i < panels.Length; i++)
                 {
                     if (i != index)

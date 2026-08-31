@@ -36,24 +36,24 @@ namespace PaviseApp
                 && !IrqSessionProbe.CanConfirmMaskShape(
                     pass.DesiredMask, allMask))
                 irqProbe.InvalidateGameMask();
-            // 已开采 epoch 必须在恢复旧 renderer 之前先绑定同一份 proof；
-            // renderer 换代或配置换 mask 时，不能让 DropStale 的恢复动作混入旧局。
+            // 已开采 epoch 必须在恢复旧 renderer 之前先绑定同一份 proof
+            // renderer 换代或配置换 mask 时 不能让 DropStale 的恢复动作混入旧局
             if (irqProbe.IsPlacementCapturing
                 && !irqProbe.ProofMatches(
                     pass.DesiredMask,
                     pass.RendererPid, pass.RendererCreation))
                 irqProbe.InvalidateGameMask();
-            // 旧 renderer 的恢复也会触发调度/GPU 写入。本轮只要发现过
-            // stale 状态，就不允许新的 IRQ epoch 起采；下轮确认已无
-            // stale 后才能开始，给恢复写入留出完整的采样边界。
+            // 旧 renderer 的恢复也会触发调度/GPU 写入 本轮只要发现过
+            // stale 状态 就不允许新的 IRQ epoch 起采 下轮确认已无
+            // stale 后才能开始 给恢复写入留出完整的采样边界
             bool staleRestoreThisPass = DropStaleBoosts(pass);
             if (!irqProbe.RequiresPlacementAudit)
                 RestoreOrphanedIrqProofHardPin(pass);
             if (irqProbe.IsPlacementCapturing)
             {
-                // 采集中先只审计身份、硬亲和与调优状态；若确实需要写，
-                // AuditActiveIrqCapture 会先 RestartCurrentEpoch 并同步停掉旧 ETW，
-                // 然后才允许本轮落入 priority/IO/GPU/QoS/lane setter。
+                // 采集中先只审计身份 硬亲和与调优状态 若确实需要写
+                // AuditActiveIrqCapture 会先 RestartCurrentEpoch 并同步停掉旧 ETW
+                // 然后才允许本轮落入 priority/IO/GPU/QoS/lane setter
                 if (AuditActiveIrqCapture(all, pass)) return;
             }
             foreach (ProcEntry p in all.Entries)
@@ -71,8 +71,8 @@ namespace PaviseApp
                     IntPtr h = OpenBoostHandle(pid, pass);
                     if (h == IntPtr.Zero)
                     {
-                        // 尚未开采时没有数据可被污染，保留 armed 等下一轮；只有已开采
-                        // 后失去读回能力，才必须永久废弃本局 epoch。
+                        // 尚未开采时没有数据可被污染 保留 armed 等下一轮 只有已开采
+                        // 后失去读回能力 才必须永久废弃本局 epoch
                         if (irqProbe.IsPlacementCapturing) irqProbe.InvalidateGameMask();
                         continue;
                     }
@@ -122,12 +122,12 @@ namespace PaviseApp
                             }
                             else
                             {
-                                // 已开采的 epoch 只要观察到一次漂移便永久废弃；尚未开采时
-                                // 清掉缓存，让本轮正常落核流程重新施加并读回验证。
+                                // 已开采的 epoch 只要观察到一次漂移便永久废弃 尚未开采时
+                                // 清掉缓存 让本轮正常落核流程重新施加并读回验证
                                 if (irqProbe.IsPlacementCapturing) irqProbe.InvalidateGameMask();
-                                // 软 CPU Sets 可以是有效的普通落核，但不足以支撑
-                                // IRQ 归因。只有普通读回也失败时才清缓存重写，
-                                // 否则保持 armed 等待，避免每 500ms 重复写 CPU Sets。
+                                // 软 CPU Sets 可以是有效的普通落核 但不足以支撑
+                                // IRQ 归因 只有普通读回也失败时才清缓存重写
+                                // 否则保持 armed 等待 避免每 500ms 重复写 CPU Sets
                                 if (!normalPlacement)
                                     lock (sync)
                                     {
@@ -137,9 +137,9 @@ namespace PaviseApp
                                             && !placementGaveUp.Contains(pid);
                                     }
                                 else if (!auditDue)
-                                    // 普通软落核稳定，只是达不到 IRQ 归因的严格
-                                    // proof。保留 armed，但不要因 placementAudit 在每次
-                                    // 进程扫描里重跑整套 boost 读写。
+                                    // 普通软落核稳定 只是达不到 IRQ 归因的严格
+                                    // proof 保留 armed 但不要因 placementAudit 在每次
+                                    // 进程扫描里重跑整套 boost 读写
                                     continue;
                             }
                         }
@@ -189,8 +189,8 @@ namespace PaviseApp
                             continue;
                         }
 
-                        // 首次 ETW 必须晚于本轮所有 Pavise 调优写入；随后再读回同一
-                        // renderer 身份与落核，避免把初始化驱动/调度产生的 DPC 算成游戏证据。
+                        // 首次 ETW 必须晚于本轮所有 Pavise 调优写入 随后再读回同一
+                        // renderer 身份与落核 避免把初始化驱动/调度产生的 DPC 算成游戏证据
                         long finalCreation;
                         bool finalIdentity = VerifyRendererIdentity(
                             h, pid, pass, out finalCreation);
@@ -210,13 +210,13 @@ namespace PaviseApp
                 }
                 catch
                 {
-                    // 无法完成本轮身份/落核复核时，宁可丢弃整局中断样本。
+                    // 无法完成本轮身份/落核复核时 宁可丢弃整局中断样本
                     if (irqProbe.IsPlacementCapturing) irqProbe.InvalidateGameMask();
                 }
             }
             if (!rendererSeen && irqProbe.IsPlacementCapturing)
-                // 快照中渲染进程消失是正常退出/短暂漏检边界，
-                // 先封存但不落盘。后续确认退出才提交，恢复则丢前缀重开。
+                // 快照中渲染进程消失是正常退出/短暂漏检边界
+                // 先封存但不落盘 后续确认退出才提交 恢复则丢前缀重开
                 SealIrqObservation();
             if (!irqProbe.IsPlacementCapturing) PruneDeadBoosts(live);
         }
@@ -353,9 +353,9 @@ namespace PaviseApp
             }
             else
             {
-                // 已跟踪 GPU 原值时，后续 CaptureAndTrack 会再查并可能
-                // 写回 High。预查失败不能 fail-open，否则该写入会落入
-                // 已开始的 IRQ epoch。
+                // 已跟踪 GPU 原值时 后续 CaptureAndTrack 会再查并可能
+                // 写回 High 预查失败不能 fail-open 否则该写入会落入
+                // 已开始的 IRQ epoch
                 lock (sync)
                     if (gameGpu.ContainsKey(pid)) return true;
             }
@@ -372,8 +372,8 @@ namespace PaviseApp
 
         internal static bool IrqLaneNeedsInitialization(LaneState state)
         {
-            // Trying 包含只读识别和每批之间一分钟的等待，不代表正在写。
-            // 真正的线程 setter 已由 Begin/EndExternalMutation 与起采共用门锁。
+            // Trying 包含只读识别和每批之间一分钟的等待 不代表正在写
+            // 真正的线程 setter 已由 Begin/EndExternalMutation 与起采共用门锁
             return state != LaneState.Trying && state != LaneState.Engaged
                 && state != LaneState.Unavailable;
         }
@@ -384,11 +384,11 @@ namespace PaviseApp
             if (h == IntPtr.Zero)
             {
                 bool noSuchProcess = Native.LastOpenProcessFailureWasNoSuchProcess();
-                // 后续保护名单处理可能写注册表；已有 IRQ capture 必须先停。
+                // 后续保护名单处理可能写注册表 已有 IRQ capture 必须先停
                 if (irqProbe.IsPlacementCapturing)
                 {
-                    // 已确认进程不存在是正常收口，不能把整局废弃；
-                    // 拒绝访问/身份不明才必须作废。
+                    // 已确认进程不存在是正常收口 不能把整局废弃
+                    // 拒绝访问/身份不明才必须作废
                     if (noSuchProcess) SealIrqObservation();
                     else irqProbe.InvalidateGameMask();
                 }
@@ -499,7 +499,7 @@ namespace PaviseApp
                     QoSControl = oqc, QoSState = oqs };
                 lock (sync) gameBoost[pid] = snap;
                 newlyTracked = true;
-                // 渲染身份确认/游戏库替换在调度前独立提交，不依赖提优句柄是否可写。
+                // 渲染身份确认/游戏库替换在调度前独立提交 不依赖提优句柄是否可写
                 gpuOk = gpuKnown && !pass.WriteDenied && ApplyAndVerifyGpuBoost(h);
                 lock (sync) { if (gpuKnown && !pass.WriteDenied) gameGpu[pid] = gpuOld; }
             }
@@ -586,10 +586,30 @@ namespace PaviseApp
                     }
                 }
             }
+            // stateOk 要求调度优先级和磁盘 IO 都到位 但这两件事的性质不同
+            //   调度优先级是提优的主体 IO 优先级拿不到不算提优没生效
+            //   写入被拒是反作弊保护游戏的预期结果 不是故障 与真的写不进去分开记
+            //   否则日志里一行"提优失败"后面跟着 0x80 就是目标值 会让人以为出了问题
+            bool prioOk = actualPriority == pass.PriorityTarget;
+            bool writeRefused = writeError == 5 || writeError == unchecked((int)0xC0000022);
             if (!stateOk && firstStateWarning && !handleStripped)
-                Logger.Log(Lang.T("log.gamemodeboost.11") + pass.RendererName + " pid " + pid + Lang.T("log.gamemodeboost.12")
-                    + actualPriority.ToString("X") + " / IO " + actualIo + Lang.T("log.gamemodeboost.13") + writeError + Lang.T("log.gamemodeboost.14"));
-            if (stateNowGaveUp && !handleStripped)
+            {
+                if (writeRefused && !prioOk)
+                {
+                    string guard = KernelAntiCheat.Describe(pass.RendererName);
+                    Logger.Log(Lang.T("log.gamemodeboost.3") + pass.RendererName + " pid " + pid
+                        + Lang.T("log.gamemodeboost.62") + (guard == null ? Lang.T("nav.tame") : guard)
+                        + Lang.T("log.gamemodeboost.63"));
+                }
+                else if (prioOk)
+                    Logger.Log(Lang.T("log.gamemodeboost.3") + pass.RendererName + " pid " + pid
+                        + Lang.T("log.gamemodeboost.64") + actualIo + Lang.T("log.gamemodeboost.65"));
+                else
+                    Logger.Log(Lang.T("log.gamemodeboost.11") + pass.RendererName + " pid " + pid + Lang.T("log.gamemodeboost.12")
+                        + actualPriority.ToString("X") + " / IO " + actualIo + Lang.T("log.gamemodeboost.13") + writeError + Lang.T("log.gamemodeboost.14"));
+            }
+            // 已经解释过原因的两种情况不再补一条"失败" 调度优先级本来就在 或写入被拒
+            if (stateNowGaveUp && !handleStripped && !prioOk && !writeRefused)
                 Logger.Log(Lang.T("log.gamemodeboost.11") + pass.RendererName + " pid " + pid
                     + Lang.T("log.gamemodeboost.55") + StateRetryMax + Lang.T("log.gamemodeboost.56"));
             return true;
@@ -633,9 +653,9 @@ namespace PaviseApp
                 if (!AttributionPlacementMatches(h, pass))
                 {
                     irqProbe.RestartCurrentEpoch();
-                    // 线程级归因 proof 比普通落核读回更严格。线程瞬时增删、
-                    // 查询被拒或显式 thread CPU Sets 都只应停掉 IRQ epoch；
-                    // 普通 placement 仍稳定时不能清缓存并每 500ms 重写设置。
+                    // 线程级归因 proof 比普通落核读回更严格 线程瞬时增删
+                    // 查询被拒或显式 thread CPU Sets 都只应停掉 IRQ epoch
+                    // 普通 placement 仍稳定时不能清缓存并每 500ms 重写设置
                     if (!PlacementMatches(h, pass))
                     {
                         lock (sync)
@@ -668,9 +688,9 @@ namespace PaviseApp
             finally { Native.CloseHandle(h); }
         }
 
-        // 这个读回只验证 Pavise 的软/硬落核是否生效，不作为中断归因证据。
-        // 线程显式 CPU Sets 可以覆盖进程默认 CPU Sets，因此后者不能证明每个
-        // 渲染线程都在 desiredMask 内。
+        // 这个读回只验证 Pavise 的软/硬落核是否生效 不作为中断归因证据
+        // 线程显式 CPU Sets 可以覆盖进程默认 CPU Sets 因此后者不能证明每个
+        // 渲染线程都在 desiredMask 内
         private bool PlacementMatches(IntPtr h, BoostPass pass)
         {
             if (h == IntPtr.Zero || pass == null
@@ -697,8 +717,8 @@ namespace PaviseApp
         {
             if (desiredMask == 0) return false;
             if (multiGroup) return cpuSetsMatch;
-            // 有目标 CPU Sets 时 hard affinity 至少要覆盖目标；否则有效集合是
-            // 两者交集。没有 CPU Sets 时则只接受精确 hard affinity。
+            // 有目标 CPU Sets 时 hard affinity 至少要覆盖目标 否则有效集合是
+            // 两者交集 没有 CPU Sets 时则只接受精确 hard affinity
             if (cpuSetsMatch)
                 return hardAffinity != 0
                     && (desiredMask & ~hardAffinity) == 0;
@@ -706,10 +726,10 @@ namespace PaviseApp
                 && hardAffinity == desiredMask;
         }
 
-        // 中断归因必须证明 renderer 的每一个当前线程实际可运行集合。
-        // 进程默认 CPU Sets 会被线程显式 CPU Sets 覆盖，只有进程硬亲和性
-        // 不能证明 desired 里的每一颗核确实仍属于 renderer。多组机器的 ulong
-        // 无法完整表示全部组，所以宁可不采样，也不做不完整的证明。
+        // 中断归因必须证明 renderer 的每一个当前线程实际可运行集合
+        // 进程默认 CPU Sets 会被线程显式 CPU Sets 覆盖 只有进程硬亲和性
+        // 不能证明 desired 里的每一颗核确实仍属于 renderer 多组机器的 ulong
+        // 无法完整表示全部组 所以宁可不采样 也不做不完整的证明
         private bool AttributionPlacementMatches(IntPtr h, BoostPass pass)
         {
             if (h == IntPtr.Zero || pass == null
@@ -738,7 +758,7 @@ namespace PaviseApp
             ulong threadHard = processHardAffinity & threadGroupAffinity;
             if (threadHard == 0 || !hasCpuSetAssignment) return threadHard;
             ulong intersection = threadHard & assignedCpuSetMask;
-            // Windows 在 CPU Set 分配与限制性硬亲和性完全冲突时以后者为准。
+            // Windows 在 CPU Set 分配与限制性硬亲和性完全冲突时以后者为准
             return intersection != 0 ? intersection : threadHard;
         }
 
@@ -763,8 +783,8 @@ namespace PaviseApp
                 assignment.Mask = mask;
                 return !assigned || mask != 0;
             }
-            // Win11 mask getter 能同时看到 Masks 与 IDs 两条设置路径；只在
-            // 老 Win10 确实没有导出时才允许回退旧 ID getter。
+            // Win11 mask getter 能同时看到 Masks 与 IDs 两条设置路径 只在
+            // 老 Win10 确实没有导出时才允许回退旧 ID getter
             if (result != Native.CpuSetMaskQueryResult.ApiUnavailable)
                 return false;
             uint[] ids = Native.QueryCpuSets(process);
@@ -874,8 +894,8 @@ namespace PaviseApp
                     threadUnion |= effective;
                 }
 
-                // 首尾必须从同一批持有句柄复查 owner、存活与线程级策略。
-                // 仅比较 TID 集不足以排除线程在证明窗口内退出或改绑。
+                // 首尾必须从同一批持有句柄复查 owner 存活与线程级策略
+                // 仅比较 TID 集不足以排除线程在证明窗口内退出或改绑
                 for (int i = 0; i < handles.Count; i++)
                 {
                     bool active;
@@ -1079,8 +1099,8 @@ namespace PaviseApp
             }
         }
 
-        // 仅用于进程已确认退出/PID 换代，或其它恢复路径已经精确读回原值后。
-        // 活进程的普通失败路径必须保留 handle 继续重试，不能只删 marker。
+        // 仅用于进程已确认退出/PID 换代 或其它恢复路径已经精确读回原值后
+        // 活进程的普通失败路径必须保留 handle 继续重试 不能只删 marker
         private void ForgetIrqProofHardPin(int pid)
         {
             lock (sync)
@@ -1104,8 +1124,8 @@ namespace PaviseApp
                     || state == IrqProofHandleState.Mismatch)
                 {
                     irqProofHardPins.Remove(pid);
-                    // 进程已退出或绑定身份不再一致时，同 PID 下的旧 proof
-                    // 缓存也必须失效；否则 PID 复用后可能误认旧 desired 已生效。
+                    // 进程已退出或绑定身份不再一致时 同 PID 下的旧 proof
+                    // 缓存也必须失效 否则 PID 复用后可能误认旧 desired 已生效
                     gamePlacement.Remove(pid);
                     gamePlacementStrict.Remove(pid);
                     if (pin.RestoreHandle != IntPtr.Zero)
@@ -1119,15 +1139,15 @@ namespace PaviseApp
                         != pin.OriginalAffinity)
                     return false;
                 irqProofHardPins.Remove(pid);
-                // 与句柄移除保持在同一个锁域：Stop 超时后仍可能有 worker
-                // 正在收尾，不能让它刚写入的新 placement 缓存被旧恢复动作误删。
+                // 与句柄移除保持在同一个锁域 Stop 超时后仍可能有 worker
+                // 正在收尾 不能让它刚写入的新 placement 缓存被旧恢复动作误删
                 gamePlacement.Remove(pid);
                 gamePlacementStrict.Remove(pid);
                 Native.CloseHandle(pin.RestoreHandle);
             }
-            // hard affinity 已撤回原值后，普通 placement 缓存也已同步清除，
-            // 不能继续假称 desired 仍成立。proof-gap 会在下一轮重施加；
-            // 已 disarm 则只保留实际仍在进程上的软 CPU Sets。
+            // hard affinity 已撤回原值后 普通 placement 缓存也已同步清除
+            // 不能继续假称 desired 仍成立 proof-gap 会在下一轮重施加
+            // 已 disarm 则只保留实际仍在进程上的软 CPU Sets
             return true;
         }
 
@@ -1198,11 +1218,11 @@ namespace PaviseApp
                 bool placementUnavailable = false;
                 if (pass.UseStrict || pass.DesiredMask != allMask)
                     soft = Native.TrySetCpuSetsVerified(h, ids);
-                // 默认 CPU Sets 会被线程显式选择覆盖，无法作为 IRQ 归因
-                // proof。用户明确开启对局观测时，在单 group 机器上再
-                // 叠加一层精确的临时进程硬亲和。写入前先复制当前可写句柄，
-                // 并与 pid+creation+原 affinity 绑定；即使反作弊随后拒绝新句柄，
-                // 仍可用这份 retained handle 恢复并读回。原值未知时绝不强写。
+                // 默认 CPU Sets 会被线程显式选择覆盖 无法作为 IRQ 归因
+                // proof 用户明确开启对局观测时 在单 group 机器上再
+                // 叠加一层精确的临时进程硬亲和 写入前先复制当前可写句柄
+                // 并与 pid+creation+原 affinity 绑定 即使反作弊随后拒绝新句柄
+                // 仍可用这份 retained handle 恢复并读回 原值未知时绝不强写
                 bool proofHardWritten = false;
                 IntPtr proofRestoreHandle = IntPtr.Zero;
                 if (soft && irqProbe.RequiresPlacementAudit
@@ -1212,9 +1232,9 @@ namespace PaviseApp
                     proofRestoreHandle = DuplicateIrqProofRestoreHandle(h);
                 if (proofRestoreHandle != IntPtr.Zero)
                 {
-                    // Stop 可能在 worker.Join 超时后并发清理。hard write 与
-                    // retained handle 登记必须处于同一锁域：要么 Stop 先令
-                    // stopping 可见，本轮完全不写；要么先登记，Stop 随后必能恢复。
+                    // Stop 可能在 worker.Join 超时后并发清理 hard write 与
+                    // retained handle 登记必须处于同一锁域 要么 Stop 先令
+                    // stopping 可见 本轮完全不写 要么先登记 Stop 随后必能恢复
                     lock (sync)
                     {
                         if (!stopping && Native.SetProcessAffinityMask(
@@ -1255,7 +1275,7 @@ namespace PaviseApp
                 }
                 if (soft) placementOk = true;
                 if (placementUnavailable) placementOk = true;
-                // 写入 API 返回成功仍不足以入账，最后再从进程句柄读回一次。
+                // 写入 API 返回成功仍不足以入账 最后再从进程句柄读回一次
                 placementVerified = PlacementMatches(h, pass);
                 if (pass.DesiredMask != allMask
                     && !placementUnavailable && !placementVerified)
@@ -1434,8 +1454,8 @@ namespace PaviseApp
                     if (tries < VanishGiveUpTries) continue;
                     abandoned++;
                 }
-                // 新 OpenProcess 即使已被反作弊拒绝，首次 hard pin 前保留的
-                // handle 仍须先恢复并读回；活进程恢复失败时不能丢掉唯一恢复句柄。
+                // 新 OpenProcess 即使已被反作弊拒绝 首次 hard pin 前保留的
+                // handle 仍须先恢复并读回 活进程恢复失败时不能丢掉唯一恢复句柄
                 if (!RestoreIrqProofHardPin(IntPtr.Zero, kv.Key)) continue;
                 if (!unopenable) CrashGuard.ReleaseBoostProcess(kv.Key, kv.Value.Creation);
                 lock (sync)
@@ -1623,9 +1643,9 @@ namespace PaviseApp
             }
             foreach (var kv in boosts)
                 if (RenderLane.IsActiveFor(kv.Key, kv.Value.Creation)) RenderLane.Release();
-            // 新 OpenProcess 可能已被反作弊剥权；优先使用首次 hard pin 前
-            // 留下的 pid+creation 绑定句柄恢复 affinity 并精确读回。失败时
-            // 保留句柄，后面的普通恢复仍可尝试，不能提前丢失唯一恢复能力。
+            // 新 OpenProcess 可能已被反作弊剥权 优先使用首次 hard pin 前
+            // 留下的 pid+creation 绑定句柄恢复 affinity 并精确读回 失败时
+            // 保留句柄 后面的普通恢复仍可尝试 不能提前丢失唯一恢复能力
             foreach (var kv in boosts)
                 RestoreIrqProofHardPin(IntPtr.Zero, kv.Key);
             foreach (var kv in boosts)
@@ -1692,8 +1712,8 @@ namespace PaviseApp
                 }
                 if (done)
                 {
-                    // RestoreValues 已精确还原该 identity 的 affinity；关闭 retained
-                    // handle 之前再移除其绑定，避免退出路径泄漏。
+                    // RestoreValues 已精确还原该 identity 的 affinity 关闭 retained
+                    // handle 之前再移除其绑定 避免退出路径泄漏
                     ForgetIrqProofHardPin(pid);
                     CrashGuard.ReleaseBoostProcess(pid, kv.Value.Creation);
                     lock (sync)
@@ -1726,8 +1746,8 @@ namespace PaviseApp
 
         public bool PanicRestore()
         {
-            // Restoration may do slow registry/native work before posting its
-            // request to Loop. Keep new purges blocked for that entire interval.
+            // 还原可能先做很慢的注册表和原生操作 才把请求投给 Loop
+            // 这整段时间内都要挡住新的清理
             Interlocked.Increment(ref standbyCleanerRestorePending);
             InvalidateStandbyCleanerWork();
             InvalidateEnglishInputWork();
@@ -1745,7 +1765,7 @@ namespace PaviseApp
             int cleared = SelfProtectedRoster.Clear();
             if (cleared > 0)
                 Logger.Log(Lang.T("log.gamemodeboost.46") + cleared + Lang.T("log.gamemodeboost.47"));
-            // 已下架的 IFEO/CFG 历史残留也归紧急恢复管；写注册表前须停 IRQ capture。
+            // 已下架的 IFEO/CFG 历史残留也归紧急恢复管 写注册表前须停 IRQ capture
             bool legacyOk = true;
             if (IfeoBoost.HasResidue())
                 legacyOk &= IrqMutationBoundary.Run<bool>(IfeoBoost.RestoreAll);
@@ -1754,8 +1774,8 @@ namespace PaviseApp
             int fusesCleared;
             lock (sync)
             {
-                // Purged cache has no restoration. Resetting other environment
-                // fuses must not revive a failed cleaner or a corrupt opt-in.
+                // 清掉的缓存没法还原 重置别的环境熔断时
+                // 不能让一个失败的清理器或者损坏的开启状态复活
                 bool keepStandbyFuse = envFused.Contains("standby");
                 fusesCleared = envFused.Count - (keepStandbyFuse ? 1 : 0);
                 envFused.Clear();
@@ -1810,20 +1830,21 @@ namespace PaviseApp
             EndEnglishInputSession();
             InvalidateIntelGraphicsWork();
             InvalidateRendererHandoff();
-            // 先封账再做任何恢复，避免把 Pavise 自己撤电源/核心/网络设置产生的 DPC
-            // 记到刚结束的游戏里。ReportFinish 内部按 Present→DPC 收口。
+            // 先封账再做任何恢复 避免把 Pavise 自己撤电源/核心/网络设置产生的 DPC
+            // 记到刚结束的游戏里 ReportFinish 内部按 Present→DPC 收口
             Exception reportFailure = null;
             try { ReportFinish(); }
             catch (Exception ex) { reportFailure = ex; }
             finally
             {
-                // ReportFinish 任何中途异常都不能把两个 ETW 探针留到下一局。
+                // ReportFinish 任何中途异常都不能把两个 ETW 探针留到下一局
                 List<long[]> abandoned;
                 try { CollectLongFrames(0, TimeSpan.Zero, out abandoned); } catch { }
                 try { irqProbe.TakeSummary(); } catch { }
             }
             PowerBudgetYieldRunner.Stop();
             VramShield.Release();
+            MemShield.Release();
             RestorePowerOverlay();
             SelfYield.Release();
             lock (sync)
@@ -1843,6 +1864,9 @@ namespace PaviseApp
             preStagedNvPath = null;
             try { cpuLimit.Stop(); } catch { }
             Interlocked.Exchange(ref sessionStartTicks, 0);
+            autoGpuScanned = false;
+            cacheWarmDone = false;
+            ResetAdaptiveGuard();
             partitionHintLogged = false;
 
             bool clean = UnboostGames();
@@ -1869,7 +1893,7 @@ namespace PaviseApp
             bool standbyClean = standbyCleaner == null || standbyCleaner.Drain(8000);
             bool inputClean = DrainEnglishInput(8000);
             bool intelClean = DrainIntelGraphics(8000);
-            // 维持旧语义：恢复动作已经完成后，再把原本会由 ReportFinish 抛出的异常交给上层。
+            // 维持旧语义 恢复动作已经完成后 再把原本会由 ReportFinish 抛出的异常交给上层
             if (reportFailure != null) throw reportFailure;
             return clean && envClean && backgroundClean && standbyClean && inputClean && intelClean;
         }

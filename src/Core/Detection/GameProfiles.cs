@@ -46,8 +46,8 @@ namespace PaviseApp
         public readonly Dictionary<string, string> Overrides =
             new Dictionary<string, string>(StringComparer.Ordinal);
 
-        // A per-game opt-in, deliberately independent of the old global switch.
-        // Absent in an existing V5 library means protected, never inherited from HKCU.
+        // 逐游戏的开关 故意和老的全局开关脱钩
+        // 现有 V5 库里没有这一项就表示受保护 绝不从 HKCU 继承
         public bool SuppressFamilyBackground
         {
             get
@@ -107,8 +107,8 @@ namespace PaviseApp
             List<GameProfile> loaded = Load();
             if (loadFailed)
             {
-                // 统一走与保存失败相同的熔断。Save 看到 loadFailed 只置故障位，
-                // 不会改写原文件；真正的精确目录清空与退出只允许 Program 执行。
+                // 统一走与保存失败相同的熔断 Save 看到 loadFailed 只置故障位
+                // 不会改写原文件 真正的精确目录清空与退出只允许 Program 执行
                 Save(loaded);
                 return new List<GameProfile>();
             }
@@ -163,8 +163,8 @@ namespace PaviseApp
         public bool LoadFailed { get { return loadFailed; } }
         public bool SaveFailed { get { return Interlocked.CompareExchange(ref saveFailed, 0, 0) != 0; } }
 
-        // 档案不使用 AtomicFile 的兼容回退：Replace 失败后绝不能备份旧档、
-        // 非原子覆盖并谎报成功。任何提交失败都由 Save 置致命故障位。
+        // 档案不使用 AtomicFile 的兼容回退 Replace 失败后绝不能备份旧档
+        // 非原子覆盖并谎报成功 任何提交失败都由 Save 置致命故障位
         private void CommitStrict(IList<string> lines)
         {
             string tmp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";

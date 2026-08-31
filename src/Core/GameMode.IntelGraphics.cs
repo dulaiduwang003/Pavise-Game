@@ -1,4 +1,4 @@
-// Intel global low latency is opt-in and scoped to verified game sessions.
+// 文件用途 Intel 全局低延迟需用户开启 作用范围限定在已核实的对局内
 using System;
 using System.Threading;
 
@@ -114,9 +114,9 @@ namespace PaviseApp
                     lock (sync) { envNextAttempt.Remove("intelll"); envFailures.Remove("intelll"); }
                 }
                 if (!admitted()) return;
-                // A driver preference is not a continuously enforced controller.
-                // One successful apply/skip per generation avoids polling the driver,
-                // restarting IRQ observations, and fighting a later manual change.
+                // 驱动偏好不是一个持续强制的控制器
+                // 每一代只成功施加或跳过一次 就不用轮询驱动
+                // 不用重启中断观测 也不会跟用户后来的手动修改顶牛
                 if (intelGraphicsSettledThisGeneration) return;
                 lock (sync)
                 {
@@ -135,7 +135,7 @@ namespace PaviseApp
                 int failures = 0;
                 lock (sync)
                 {
-                    // A slow old driver call must not disable a newer opt-in or profile.
+                    // 一次慢的旧驱动调用 不能把更新的开启状态或档案给关掉
                     if (generation != Volatile.Read(ref intelGraphicsGeneration) || !admitted()) return;
                     if (ok)
                     {

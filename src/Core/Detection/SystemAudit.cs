@@ -30,6 +30,12 @@ namespace PaviseApp
 
     internal static partial class SystemAudit
     {
+        // 每条结论都要挂一个依据等级 界面上原样显示给用户看
+        //   本机实测最硬 台架实测是别的机器上量的 机制明确只是原理推的
+        //   未验证就是还没量过 写新结论时别图省事全填最高档
+        // 每条结论都要挂一个依据等级 界面上原样显示给用户看
+        //   本机实测最硬 台架实测是别的机器上量的 机制明确只是原理推的
+        //   未验证就是还没量过 写新结论时别图省事全填最高档
         public const string EvMeasuredLocal = "本机实测";
         public const string EvMeasuredBench = "台架实测";
         public const string EvMechanism = "机制明确";
@@ -168,6 +174,12 @@ namespace PaviseApp
             public TimeSpan Cpu;
         }
 
+        // 取两次进程 CPU 时间求差 中间睡一个窗口 不用性能计数器
+        //   计数器要建查询还要预热 体检是一次性的用不上
+        //   分母乘了逻辑核数 所以比值是占整机而不是占单核
+        // 取两次进程 CPU 时间求差 中间睡一个窗口 不用性能计数器
+        //   计数器要建查询还要预热 体检是一次性的用不上
+        //   分母乘了逻辑核数 所以比值是占整机而不是占单核
         public static List<LoadEntry> TopConsumers(int windowMs, int take)
         {
             var result = new List<LoadEntry>();
@@ -180,6 +192,8 @@ namespace PaviseApp
                     {
                         try
                         {
+                            // 0 和 4 是空闲进程和 System 它们的 CPU 时间没有参考意义
+                            // 0 和 4 是空闲进程和 System 它们的 CPU 时间没有参考意义
                             if (p.Id <= 4) continue;
                             before[p.Id] = new Sample
                             {
@@ -201,6 +215,10 @@ namespace PaviseApp
                         {
                             Sample old;
                             if (!before.TryGetValue(p.Id, out old)) continue;
+                            // 两次采样之间 pid 可能被回收给了新进程 启动时间对不上就丢掉
+                            //   否则会拿新进程的累计时间去减旧进程的 算出个离谱的占用
+                            // 两次采样之间 pid 可能被回收给了新进程 启动时间对不上就丢掉
+                            //   否则会拿新进程的累计时间去减旧进程的 算出个离谱的占用
                             if (p.StartTime.Ticks != old.Started) continue;
                             double delta = (p.TotalProcessorTime - old.Cpu).TotalSeconds;
                             if (delta <= 0) continue;
@@ -330,6 +348,10 @@ namespace PaviseApp
             catch { return false; }
         }
 
+        // TotalPageFile 是物理内存加页面文件 减掉物理内存才是页面文件本身
+        //   留半 GB 余量是因为这两个值来自同一次调用但统计口径有零头
+        // TotalPageFile 是物理内存加页面文件 减掉物理内存才是页面文件本身
+        //   留半 GB 余量是因为这两个值来自同一次调用但统计口径有零头
         internal static bool PageFileLooksDisabled(double pageFileGb)
         {
             return pageFileGb < 0.5;
@@ -364,6 +386,10 @@ namespace PaviseApp
             return "none";
         }
 
+        // 体检只读不写 每个 Build 段各管一组结论 互相不依赖
+        //   采样失败只会让 MeasureOk 为 false 其余结论照常出 不整个报告作废
+        // 体检只读不写 每个 Build 段各管一组结论 互相不依赖
+        //   采样失败只会让 MeasureOk 为 false 其余结论照常出 不整个报告作废
         public static AuditReport Collect(int measureWindowMs)
         {
             var report = new AuditReport();

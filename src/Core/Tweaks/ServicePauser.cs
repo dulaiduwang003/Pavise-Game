@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// Session service pauses keep prepared, owned, restoring and settled receipts.
+// 文件用途 本局服务暂停 保留准备 已拥有 还原中 已结清四种收据
 using System;
 using System.Collections.Generic;
 
@@ -14,7 +14,7 @@ namespace PaviseApp
             internal string Name;
             internal Phase State;
             internal bool CanStart, StopObserved;
-            // 仅内存：恢复检查连续读到 Running 的次数 见 RestoreCore 的结账规则
+            // 仅内存 恢复检查连续读到 Running 的次数 见 RestoreCore 的结账规则
             internal int RunningSeen;
         }
 
@@ -27,8 +27,8 @@ namespace PaviseApp
         private bool active, loaded, busy, observationDirty;
         private string lastRead = "";
 
-        // All groups require a positively observed Running state before a stop.
-        // A failed query or an already stopped service is never ours.
+        // 所有分组在停止之前 都必须真的观察到 Running 状态
+        // 查询失败或者本来就停着的 都不算我们的
         public ServicePauser(string[] serviceNames, string flagKey)
         {
             if (serviceNames == null) throw new ArgumentNullException("serviceNames");
@@ -75,8 +75,8 @@ namespace PaviseApp
                         receipts.Add(name, receipt);
                         if (!Save())
                         {
-                            // If a denied write demonstrably left the old bytes
-                            // untouched, there is no receipt and no system debt.
+                            // 如果一次被拒绝的写入确实没动过原有字节
+                            // 那就既没有收据 也不欠系统任何东西
                             string actual;
                             if (Read(out actual) && actual == previous) receipts.Remove(name);
                             else receipt.State = Phase.Settled;
@@ -85,8 +85,8 @@ namespace PaviseApp
                             return false;
                         }
 
-                        // Persistence can be slow. A service that changed
-                        // while we recorded intent must not be stopped now.
+                        // 落盘可能很慢 记录意图期间发生变化的服务
+                        // 现在不能再去停它
                         if (Query(name) != 4)
                         {
                             Settle(receipt);
@@ -117,8 +117,8 @@ namespace PaviseApp
                         }
                         else
                         {
-                            // An observed stop is not proof that our failed
-                            // STOP request caused it. Keep it prepared/unowned.
+                            // 观察到它停了 不能证明是我们那次失败的 STOP 请求
+                            // 造成的 保持准备且未拥有状态
                             if (Query(name) == 4) receipt.State = Phase.Settled;
                             if (!FlushSettled())
                             {
@@ -164,11 +164,11 @@ namespace PaviseApp
                 if (state != 4) receipt.RunningSeen = 0;
                 if (state == 4)
                 {
-                    // 已接受但未观察到停止的 STOP：单次 Running 读数可能领先于
-                    //   STOP_PENDING 迁移，先保留债务。两次独立恢复检查都读到
-                    //   Running 说明 STOP 未生效或服务已被重启——期望终态（运行
-                    //   中）已经成立，无可恢复之物，结账；否则触发重启的服务会
-                    //   让本组暂停功能永久僵住。
+                    // 已接受但未观察到停止的 STOP 单次 Running 读数可能领先于
+                    //   STOP_PENDING 迁移 先保留债务 两次独立恢复检查都读到
+                    //   Running 说明 STOP 未生效或服务已被重启——期望终态 运行
+                    //   中 已经成立 无可恢复之物 结账 否则触发重启的服务会
+                    //   让本组暂停功能永久僵住
                     if (receipt.State == Phase.Owned && !receipt.StopObserved
                         && ++receipt.RunningSeen < 2) { ok = false; continue; }
                     Settle(receipt);
@@ -187,8 +187,8 @@ namespace PaviseApp
 
                 receipt.StopObserved = true;
                 receipt.State = Phase.Restoring;
-                // CanStart remains true only while START is known not issued.
-                // A fresh process loading R cannot infer this RAM proof.
+                // 只有确知 START 没发出去时 CanStart 才保持为真
+                // 新起的进程加载 R 时 推不出这份内存里的凭证
                 if (!Save()) { ok = false; continue; }
                 int fresh = Query(name);
                 if (fresh == 0) { ok = false; continue; }
@@ -243,8 +243,8 @@ namespace PaviseApp
                     Receipt current;
                     if (!receipts.TryGetValue(item.Key, out current)) receipts.Add(item.Key, item.Value);
                     else if (item.Value.State == Phase.Settled) Settle(current);
-                    // Keep positive in-process receipts if the acknowledged
-                    // write or a later ledger update could not be persisted.
+                    // 已确认的写入或者后续台账更新落盘失败时
+                    // 要保住进程内那些肯定性的收据
                 }
             }
             lastRead = raw;
@@ -262,9 +262,9 @@ namespace PaviseApp
                 foreach (string name in oldNames)
                 {
                     if (!allowed.Contains(name) || result.ContainsKey(name)) return false;
-                    // 旧格式由旧版本写入 其恢复契约是无条件重启账本内的服务。
-                    //   继承该契约：停着的服务允许启动 否则升级后旧版真正停掉的
-                    //   服务再也没人重启。仍按 Prepared 处理 观察到 Running 即结账。
+                    // 旧格式由旧版本写入 其恢复契约是无条件重启账本内的服务
+                    //   继承该契约 停着的服务允许启动 否则升级后旧版真正停掉的
+                    //   服务再也没人重启 仍按 Prepared 处理 观察到 Running 即结账
                     result.Add(name, new Receipt { Name = name, State = Phase.Prepared, CanStart = true });
                 }
                 return result.Count > 0;

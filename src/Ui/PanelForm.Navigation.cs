@@ -1,4 +1,4 @@
-// 主窗口内的两级导航：主界面保持简洁，深度调优区可连续切换分类。
+// 主窗口内的两级导航 主界面保持简洁 高级区可连续切换分类
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -45,7 +45,7 @@ namespace PaviseApp
                 Lang.T("nav.log"), Lang.T("nav.set"), Lang.T("nav.about"), Lang.T("nav.white"), Lang.T("v20.advanced.nav.irq") };
             var glyphs = new[] { "game", "tiles", "settings", "acshield", "gpu", "chip", "chart", "log", "gear", "info", "white", "chip" };
             var mainTitles = (string[])titles.Clone();
-            // Policy 在主侧栏是入口，在高级侧栏仍是具体的优化策略页。
+            // Policy 在主侧栏是入口 在高级侧栏仍是具体的优化策略页
             mainTitles[(int)PageId.Policy] = Lang.T("v20.advanced.entry");
             nav = new NavRail(mainTitles, glyphs,
                 new[] { (int)PageId.Overview, (int)PageId.Library, (int)PageId.Whitelist,
