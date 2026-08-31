@@ -37,6 +37,7 @@ namespace PaviseApp
                 StandbyMutationBoundaryOnlyWrapsPurge,
                 StandbyPurgeOutcomeIsNotRewritten,
                 StandbyNextPollUsesFreshMemoryAndOptions,
+                StandbyPurgeCooldownLimitsRate,
                 StandbyWorkerDoesNotOverlapOrCatchUp,
                 StandbyPauseRevokesSlowQuery,
                 StandbyCloseTimeoutKeepsWorker,
@@ -404,6 +405,36 @@ namespace PaviseApp
             StandbyCheck(StandbyPoll(engine, new StandbyCleanerOptions(8192, 4096, 4000), null)
                 == StandbyCleanerResult.Purged && control.Purges == 3,
                 "new free/list thresholds were not applied together");
+        }
+
+        // 冷却属于调度层：引擎保持纯策略（上面的测试钉死了这一点），Runner 在
+        //   成功清理后 max(60s, 8×间隔) 内跳过整轮；失败的清理不得进入冷却。
+        private static void StandbyPurgeCooldownLimitsRate(string root)
+        {
+            var control = new StandbyMemoryFake();
+            long now = 0;
+            using (var purged = new ManualResetEvent(false))
+            {
+                control.AfterPurge = delegate { purged.Set(); };
+                var runner = new StandbyCleanerRunner(new StandbyCleanerEngine(control), null,
+                    delegate { return Volatile.Read(ref now); });
+                try
+                {
+                    var options = new StandbyCleanerOptions(1024, 1024, 250);
+                    StandbyCheck(StandbyCleanerRunner.CooldownMilliseconds(options) == 60000
+                        && StandbyCleanerRunner.CooldownMilliseconds(new StandbyCleanerOptions(1024, 1024, 10000)) == 80000,
+                        "cooldown is not the larger of the floor and eight polling intervals");
+                    StandbyCheck(runner.Update(41, options, delegate { return true; }) && purged.WaitOne(3000),
+                        "cooldown fixture never reached its first purge");
+                    purged.Reset();
+                    StandbyCheck(!purged.WaitOne(1200) && control.Purges == 1,
+                        "a second purge ran inside the cooldown window");
+                    Volatile.Write(ref now, StandbyCleanerRunner.CooldownMilliseconds(options) + 1);
+                    StandbyCheck(purged.WaitOne(3000) && control.Purges == 2,
+                        "an elapsed cooldown did not allow the next purge");
+                }
+                finally { StandbyFinish(runner); }
+            }
         }
 
         private static Thread StandbyOwnedWorker(StandbyCleanerRunner runner)

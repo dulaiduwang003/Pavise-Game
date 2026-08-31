@@ -201,8 +201,8 @@ namespace PaviseApp
             toggle.CheckedChanged += delegate
             {
                 bool on = toggle.Checked;
-                // Capability loss leaves an opt-out available. Recheck after a
-                // modal warning as well; enabling the control is not authorization.
+                // 能力丢失时仍然要留出关闭的路 模态警告之后也要再查一遍
+                // 控件可点不等于已经授权
                 bool allowed = !on;
                 if (on && supported())
                     allowed = confirm == null || read() || (confirm() && supported());
@@ -224,8 +224,8 @@ namespace PaviseApp
             graphicsSync.Add(sync);
             picker.IndexChanged = delegate(int index)
             {
-                // All vendor pickers use index zero for Off. Other segments stay
-                // rejected if a previously enabled picker lost driver support.
+                // 所有厂商选择器都用索引 0 表示关闭 之前开着的选择器
+                // 一旦失去驱动支持 其它档位继续拒绝
                 if (index == 0 || (index > 0 && index < picker.Labels.Length && supported()))
                     write(index);
                 sync();

@@ -19,15 +19,15 @@ namespace PaviseApp
         public bool RendererCandidateSelected;
         public bool RendererUserSelected;
         public bool RendererLearnable;
-        // 独立前台候选可以只享有临时安全保护，不得作为已选中的 renderer。
-        // 强制接管档案里的陌生进程使用此标记；不采证接管，也不学习。
+        // 独立前台候选可以只享有临时安全保护 不得作为已选中的 renderer
+        // 强制接管档案里的陌生进程使用此标记 不采证接管 也不学习
         public bool RendererSafetyOnly;
         public bool RequiresGpuConfirm;
-        // 只随异步确认票据携带；0 表示原有全屏/精确入口等硬证据。
-        // 不能把已过期的 GPU 结果当成永久有效的提交授权。
+        // 只随异步确认票据携带 0 表示原有全屏/精确入口等硬证据
+        // 不能把已过期的 GPU 结果当成永久有效的提交授权
         public long RendererGpuProofExpiresMs;
-        // 同一个 renderer 同时被多个档案引用时，用配置锚的精确度稳定决胜，
-        // 避免最终选中哪个 profile（以及它的独立策略）取决于列表顺序。
+        // 同一个 renderer 同时被多个档案引用时 用配置锚的精确度稳定决胜
+        // 避免最终选中哪个 profile 以及它的独立策略 取决于列表顺序
         public int RendererMatchRank;
         public readonly HashSet<string> FamilyNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         public readonly HashSet<int> FamilyPids = new HashSet<int>();
@@ -180,8 +180,8 @@ namespace PaviseApp
             return true;
         }
 
-        // 热路径只看当前前台窗口，不枚举所有顶层窗口。ProcEntry 的身份来自
-        // 本轮系统快照；只有发现新的关联候选后才额外核验它仍是同一生命期。
+        // 热路径只看当前前台窗口 不枚举所有顶层窗口 ProcEntry 的身份来自
+        // 本轮系统快照 只有发现新的关联候选后才额外核验它仍是同一生命期
         internal static GameDetection CaptureForegroundCandidate(
             ProcessSnapshot processes, int ownerSession,
             GameProfile profile, GameDetection incumbent)
@@ -219,8 +219,8 @@ namespace PaviseApp
                 || windowPid != foregroundPid)
                 return null;
 
-            // 系统快照本应一 PID 一项；拒绝歧义快照，不能由 ByPid 的最后一项
-            // 替重复 PID 选择身份，尤其不能把另一个登录会话的身份拼到父链里。
+            // 系统快照本应一 PID 一项 拒绝歧义快照 不能由 ByPid 的最后一项
+            // 替重复 PID 选择身份 尤其不能把另一个登录会话的身份拼到父链里
             if (processes.ByPid.Count != processes.Count) return null;
             var snapshot = new List<GameProcessSnapshot>();
             foreach (ProcEntry entry in processes.Entries)
@@ -248,8 +248,8 @@ namespace PaviseApp
             return candidate;
         }
 
-        // 与全局选举并行的挑战者通道：旧 renderer/旧 learned 不会吞掉当前
-        // 前台的新候选。这里不改变 DetectSnapshot、BetterHit 或 sticky 的仲裁。
+        // 与全局选举并行的挑战者通道 旧 renderer/旧 learned 不会吞掉当前
+        // 前台的新候选 这里不改变 DetectSnapshot BetterHit 或 sticky 的仲裁
         internal static GameDetection FindForegroundCandidateSnapshot(
             IList<GameProcessSnapshot> snapshot,
             GameProfile profile, GameDetection incumbent,
@@ -263,8 +263,8 @@ namespace PaviseApp
             return FindForegroundCandidateInProfile(byPid, foreground, profile, familyEvidence);
         }
 
-        // 只为同一个前台身份挑明确归属，不让另一个档案的 ready/learned
-        // 目标抢先吞掉 pending。此通道不改变原有全局 Detect 的会话仲裁。
+        // 只为同一个前台身份挑明确归属 不让另一个档案的 ready/learned
+        // 目标抢先吞掉 pending 此通道不改变原有全局 Detect 的会话仲裁
         internal static GameDetection FindForegroundCandidateSnapshot(
             IList<GameProcessSnapshot> snapshot,
             IList<GameProfile> profiles, GameDetection incumbent,
@@ -318,7 +318,7 @@ namespace PaviseApp
                     continue;
                 byPid.Add(identity.Pid, identity);
                 if (!identity.Foreground) continue;
-                // 一份快照只有一个当前前台；相互矛盾的证据不能凭创建时间猜。
+                // 一份快照只有一个当前前台 相互矛盾的证据不能凭创建时间猜
                 if (foreground != null) return false;
                 foreground = identity;
             }
@@ -331,8 +331,8 @@ namespace PaviseApp
         {
             bool configured = SamePath(profile.ExecutablePath, foreground.Path)
                 || SamePath(profile.LearnedExecutablePath, foreground.Path);
-            // Force 只表示尊重用户指定的入口，不覆盖系统/反作弊安全边界。
-            // 对未知程序不按客户端、游戏或辅助程序的名字猜角色。
+            // Force 只表示尊重用户指定的入口 不覆盖系统/反作弊安全边界
+            // 对未知程序不按客户端 游戏或辅助程序的名字猜角色
             if (ElectionVetoed(foreground.Name, foreground.Path))
                 return null;
 
@@ -378,8 +378,8 @@ namespace PaviseApp
             if (current == null) return 1;
             int rank = candidate.RendererMatchRank.CompareTo(current.RendererMatchRank);
             if (rank != 0) return rank;
-            // 两个 Root 都确实包含同一规范路径时，更长的 Root 只能是更窄的
-            // 已声明子目录；不向上扩大目录，也不据启动器名称猜测归属。
+            // 两个 Root 都确实包含同一规范路径时 更长的 Root 只能是更窄的
+            // 已声明子目录 不向上扩大目录 也不据启动器名称猜测归属
             if (candidate.RendererMatchRank == 1)
             {
                 int candidateLength = candidate.Profile.Root.TrimEnd('\\').Length;
@@ -407,7 +407,7 @@ namespace PaviseApp
                 return false;
             try
             {
-                // 原生镜像路径是绝对规范路径；拒绝相对路径、.. 或名称拼接证据。
+                // 原生镜像路径是绝对规范路径 拒绝相对路径 .. 或名称拼接证据
                 if (!Path.IsPathRooted(identity.Path)
                     || !SamePath(Path.GetFullPath(identity.Path), identity.Path))
                     return false;
@@ -729,16 +729,16 @@ namespace PaviseApp
             if (candidateElected != currentElected) return candidateElected;
             if (candidate.RendererForeground != current.RendererForeground)
                 return candidate.RendererForeground;
-            // 只有两项实际指向同一进程时才用锚点精度破同分；不同 renderer 仍保持
-            // 既有的前台/创建时间选举，不让本次修复改变正常多进程会话行为。
+            // 只有两项实际指向同一进程时才用锚点精度破同分 不同 renderer 仍保持
+            // 既有的前台/创建时间选举 不让本次修复改变正常多进程会话行为
             if (candidate.RendererPid == current.RendererPid
                 && candidate.RendererCreation == current.RendererCreation)
             {
                 if (candidate.RendererMatchRank != current.RendererMatchRank)
                     return candidate.RendererMatchRank > current.RendererMatchRank;
-                // 两个档案都把同一 G 学成 Learned 时，G 真正位于谁的
-                // Root 是更强的所有权语义。若仍同分，用持久 profile 身份
-                // 稳定决胜，绝不让独立策略随列表顺序漂移。
+                // 两个档案都把同一 G 学成 Learned 时 G 真正位于谁的
+                // Root 是更强的所有权语义 若仍同分 用持久 profile 身份
+                // 稳定决胜 绝不让独立策略随列表顺序漂移
                 bool candidateOwnsPath = candidate.Profile != null
                     && candidate.Profile.ContainsPath(candidate.RendererPath);
                 bool currentOwnsPath = current.Profile != null
@@ -770,13 +770,13 @@ namespace PaviseApp
             return 0;
         }
 
-        // 这里只承担禁止把安全组件作为调优目标的边界，不承担程序角色推断。
-        // GUI、浏览器技术、文件名或安装平台都不能证明它不是游戏渲染程序。
+        // 这里只承担禁止把安全组件作为调优目标的边界 不承担程序角色推断
+        // GUI 浏览器技术 文件名或安装平台都不能证明它不是游戏渲染程序
         internal static bool IsNonGameRole(string name, string path)
         {
             string n = (name ?? "").Trim();
             if (AntiCheatCatalog.IsAntiCheatLikeName(n)) return true;
-            // 系统壳/核心组件是调优安全边界，不是游戏名单；同名外部程序不受此限制。
+            // 系统壳/核心组件是调优安全边界 不是游戏名单 同名外部程序不受此限制
             if (!string.IsNullOrEmpty(WindowsRootPrefix) && !string.IsNullOrEmpty(path)
                 && path.StartsWith(WindowsRootPrefix, StringComparison.OrdinalIgnoreCase)
                 && (SystemProcessCatalog.IsShellProcess(n)

@@ -34,7 +34,7 @@ namespace PaviseApp
         private int viewportGeneration;
         private long wheelDelta;
 
-        // Opt-in: picker hosts provide the vertical rail; other native lists stay unchanged.
+        // 需要显式开启 只有选择器宿主提供竖向滚动条 其它原生列表保持不变
         internal bool ExternalScrollBar
         {
             get { return externalScrollBar; }
@@ -108,8 +108,8 @@ namespace PaviseApp
             int generation = viewportGeneration;
             try
             {
-                // Native LB_ADDSTRING runs before the managed Items collection is updated.
-                // Coalesce until the message completes, including BeginUpdate/EndUpdate batches.
+                // 原生 LB_ADDSTRING 跑在托管 Items 集合更新之前
+                // 合并到消息处理完为止 包括 BeginUpdate 和 EndUpdate 批次
                 BeginInvoke((MethodInvoker)delegate
                 {
                     if (generation != viewportGeneration) return;
@@ -135,8 +135,8 @@ namespace PaviseApp
             var handled = e as HandledMouseEventArgs;
             if (handled != null && handled.Handled) return;
             if (handled != null) handled.Handled = true;
-            // The native LISTBOX wheel handler requires WS_VSCROLL. Replace only
-            // that part when using the external rail, preserving system settings.
+            // 原生 LISTBOX 的滚轮处理需要 WS_VSCROLL 用外部滚动条时
+            // 只替换那一部分 保留系统设置
             int lines = SystemInformation.MouseWheelScrollLines;
             if (lines == 0) return;
             int delta = SystemInformation.MouseWheelScrollDelta;

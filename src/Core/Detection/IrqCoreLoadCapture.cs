@@ -1,5 +1,5 @@
-// Per-core whole-system utilization, weighted by valid observed time. This is
-// optional evidence for the exact IRQ capture epoch, not a renderer CPU metric.
+// 文件用途 按核统计的整机利用率 按有效观测时长加权 这是给具体那一段
+// 中断采集用的可选证据 不是渲染进程的 CPU 指标
 using System;
 using System.Collections.Generic;
 
@@ -40,8 +40,8 @@ namespace PaviseApp
             try { values = source.Read(); }
             catch
             {
-                // A failed optional counter must not lose earlier valid intervals
-                // or invalidate the independently collected IRQ observation.
+                // 一个可选计数器失败 不能丢掉之前有效的区间
+                // 也不能让独立采集的中断观测作废
                 ICoreLoadSource failed = source;
                 source = null;
                 try { failed.Dispose(); } catch { }

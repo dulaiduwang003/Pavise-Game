@@ -304,14 +304,15 @@ namespace PaviseApp
             ty = 2;
             AddCfgSection(cfgTabPanels[2], Lang.T("cfg.group.mempower"), ref ty,
                 new[] { PolicyCatalog.KeyPowerPlan, PolicyCatalog.KeyPowerYield,
-                    PolicyCatalog.KeyDisableCpuIdle, PolicyCatalog.KeyStandbyCleaner });
+                    PolicyCatalog.KeyDisableCpuIdle, PolicyCatalog.KeyStandbyCleaner,
+                    PolicyCatalog.KeyMemShield, PolicyCatalog.KeyCacheWarm });
             AddCfgSection(cfgTabPanels[2], Lang.T("cfg.sub.net"), ref ty,
                 new[] { PolicyCatalog.KeyPauseDl, PolicyCatalog.KeyPauseUpdate,
                     PolicyCatalog.KeyWlanGuard });
             AddCfgSection(cfgTabPanels[2], Lang.T("cfg.group.env"), ref ty,
                 new[] { PolicyCatalog.KeyPauseServices });
             AddCfgSection(cfgTabPanels[2], Lang.T("cfg.sub.presence"), ref ty,
-                new[] { PolicyCatalog.KeyAwake });
+                new[] { PolicyCatalog.KeyAwake, PolicyCatalog.KeyDisplaySolo });
             AddCfgSection(cfgTabPanels[2], Lang.T("cfg.sub.input"), ref ty,
                 new[] { PolicyCatalog.KeyEnglishInput });
             EnableCardCollapse(cfgTabPanels[2]);
@@ -340,8 +341,10 @@ namespace PaviseApp
                     PolicyCatalog.KeyCoreMask },
                 new[] { PolicyCatalog.KeyPowerPlan, PolicyCatalog.KeyPowerYield,
                     PolicyCatalog.KeyDisableCpuIdle, PolicyCatalog.KeyStandbyCleaner,
+                    PolicyCatalog.KeyMemShield, PolicyCatalog.KeyCacheWarm,
                     PolicyCatalog.KeyPauseDl, PolicyCatalog.KeyPauseUpdate,
                     PolicyCatalog.KeyWlanGuard, PolicyCatalog.KeyPauseServices, PolicyCatalog.KeyAwake,
+                    PolicyCatalog.KeyDisplaySolo,
                     PolicyCatalog.KeyEnglishInput },
                 new[] { PolicyCatalog.KeyVramShield, PolicyCatalog.KeyNvMaxPerf,
                     PolicyCatalog.KeyNvLowLat, PolicyCatalog.KeyNvSmoothMotion,
@@ -398,6 +401,9 @@ namespace PaviseApp
                 case PolicyCatalog.KeyDisableCpuIdle: return "gm.disablecpuidle.sub";
                 case PolicyCatalog.KeyStandbyCleaner: return "gm.standbycleaner.cfgsub";
                 case PolicyCatalog.KeyVramShield: return "gm.vramshield.sub";
+                case PolicyCatalog.KeyMemShield: return "gm.memshield.sub";
+                case PolicyCatalog.KeyCacheWarm: return "gm.cachewarm.sub";
+                case PolicyCatalog.KeyDisplaySolo: return "gm.solo.sub";
                 case PolicyCatalog.KeyPauseDl: return "gm.pausedl.sub";
                 case PolicyCatalog.KeyPauseUpdate: return "gm.pausewu.sub";
                 case PolicyCatalog.KeyPauseServices: return "gm.pausesvc.sub";
@@ -561,7 +567,7 @@ namespace PaviseApp
 
             string reasonKey;
             bool supported = CfgItemSupported(item, out reasonKey);
-            // Lost capabilities must not trap an existing opt-in.
+            // 能力丢失不能把一个已经开着的选项困死在里面
             bool canTurnOff = CfgCanTurnOff(item);
             bool vendorGraphics = CfgVendorGraphicsItem(item.Key);
             string descKey = CfgDescKey(item);
@@ -639,7 +645,7 @@ namespace PaviseApp
                 {
                     picker.Index = CfgRowIndexOf(item, values);
                     // 被厂商显卡门槛挡下时要说明原因 卡片描述解释不了"为什么不能跟随全局"
-                    //   Visible 门槛：隔离回归在未显示的窗体上驱动该路径 不能弹窗
+                    //   Visible 门槛 隔离回归在未显示的窗体上驱动该路径 不能弹窗
                     string canonical = chosen == null ? null : PolicyCatalog.Canonical(key, chosen);
                     if (Visible && (chosen == null || canonical != null)
                         && !CfgVendorGraphicsChoiceAllowed(key, canonical))
@@ -659,11 +665,15 @@ namespace PaviseApp
             bool turningOn = canonical == "1";
             bool inheritingPowerYield = value == null && key == PolicyCatalog.KeyPowerYield
                 && CfgPowerYieldInheritanceNeedsConfirmation(cfgProfile);
+            // 实验类布尔项的"跟随全局"与显式拨开同权 全局开着而本游戏此前生效为关时
+            //   清掉覆盖就是启用 确认必须照弹 熔断也要跟着清
+            bool inheritingExperimental = value == null && IsGuardedExperimentalKey(key)
+                && CfgGuardedInheritanceNeedsConfirmation(cfgProfile, key);
             bool inheritingGuardedOn = value == null
                 && ((key == PolicyCatalog.KeyDisableCpuIdle && CfgCpuIdleInheritanceNeedsConfirmation(cfgProfile))
                     || (key == PolicyCatalog.KeyStandbyCleaner && CfgStandbyCleanerInheritanceNeedsConfirmation(cfgProfile))
                     || (key == PolicyCatalog.KeyIntelLowLatency && CfgIntelInheritanceNeedsConfirmation(cfgProfile))
-                    || inheritingPowerYield);
+                    || inheritingPowerYield || inheritingExperimental);
             // 在这里拨到开 等同于把全局开关打开一次 实验提示必须照弹
             //   否则从这个页面能绕开优化策略页特意加的门槛 用户全程没见过警告
             if ((turningOn || inheritingGuardedOn) && !ConfirmCfgEnable(key)) return false;
@@ -671,7 +681,10 @@ namespace PaviseApp
                 : gameMode.SetProfileOverride(cfgProfileId, key, canonical);
             // 显存驻留在这里拨到开 也等同于全局开关重开一次 熔断要跟着清掉
             //   否则上次验不过留下的熔断会让这局直接跳过 用户在这个页面无从解除
-            if (saved && turningOn && key == PolicyCatalog.KeyVramShield) VramShield.ClearFuse();
+            if (saved && (turningOn || inheritingExperimental) && key == PolicyCatalog.KeyVramShield)
+                VramShield.ClearFuse();
+            if (saved && (turningOn || inheritingExperimental) && key == PolicyCatalog.KeyMemShield)
+                MemShield.ClearFuse();
             if (saved && key == PolicyCatalog.KeyPowerYield && (turningOn || inheritingPowerYield))
                 PowerBudgetYield.ClearFuse();
             return saved;
@@ -684,6 +697,12 @@ namespace PaviseApp
             {
                 case PolicyCatalog.KeyVramShield:
                     return ConfirmVramShieldEnable();
+                case PolicyCatalog.KeyMemShield:
+                    return ConfirmMemShieldEnable();
+                case PolicyCatalog.KeyCacheWarm:
+                    return ConfirmCacheWarmEnable();
+                case PolicyCatalog.KeyDisplaySolo:
+                    return ConfirmDisplaySoloEnable();
                 case PolicyCatalog.KeyPowerYield:
                     return ConfirmPowerYieldEnable();
                 case PolicyCatalog.KeyDisableCpuIdle:
@@ -707,7 +726,7 @@ namespace PaviseApp
                 return;
             if (!ApplyCfgClearAllOverrides())
             {
-                // 确认弹窗之后不能沉默：门槛拦下时说明是哪一项挡住了整次清除。
+                // 确认弹窗之后不能沉默 门槛拦下时说明是哪一项挡住了整次清除
                 //   确认被用户自己取消的情况这里查不到被挡的键 维持无提示返回
                 string blocked = Visible ? CfgBlockedVendorInheritKey() : null;
                 if (blocked != null)
@@ -733,8 +752,8 @@ namespace PaviseApp
         {
             if (cfgProfile == null) return false;
             if (CfgBlockedVendorInheritKey() != null) return false;
-            // Resolve every opt-in before removing any override. A canceled second
-            // warning must not partially clear the profile after the first one.
+            // 移除任何覆盖之前 先把所有开启项都确认完 第二个警告被取消时
+            // 不能出现第一个已经把档案清掉一半的情况
             if (CfgCpuIdleInheritanceNeedsConfirmation(cfgProfile)
                 && !ConfirmCfgEnable(PolicyCatalog.KeyDisableCpuIdle)) return false;
             if (CfgStandbyCleanerInheritanceNeedsConfirmation(cfgProfile)
@@ -743,10 +762,21 @@ namespace PaviseApp
                 && !ConfirmCfgEnable(PolicyCatalog.KeyIntelLowLatency)) return false;
             bool powerYieldWillEnable = CfgPowerYieldInheritanceNeedsConfirmation(cfgProfile);
             if (powerYieldWillEnable && !ConfirmCfgEnable(PolicyCatalog.KeyPowerYield)) return false;
-            // Other warnings may have pumped the UI while driver availability changed.
+            // 实验类布尔项同权 全部清除等同把它们中被本游戏关着的那些拨到全局的开
+            bool vramWillEnable = false, memWillEnable = false;
+            foreach (string guarded in GuardedExperimentalKeys)
+            {
+                if (!CfgGuardedInheritanceNeedsConfirmation(cfgProfile, guarded)) continue;
+                if (!ConfirmCfgEnable(guarded)) return false;
+                if (guarded == PolicyCatalog.KeyVramShield) vramWillEnable = true;
+                if (guarded == PolicyCatalog.KeyMemShield) memWillEnable = true;
+            }
+            // 其它警告可能泵过界面消息 这期间驱动可用性会变
             if (CfgBlockedVendorInheritKey() != null) return false;
             bool cleared = gameMode.ClearProfileOverrides(cfgProfileId) > 0;
             if (cleared && powerYieldWillEnable) PowerBudgetYield.ClearFuse();
+            if (cleared && vramWillEnable) VramShield.ClearFuse();
+            if (cleared && memWillEnable) MemShield.ClearFuse();
             return cleared;
         }
 
@@ -757,9 +787,31 @@ namespace PaviseApp
             return null;
         }
 
+        // 带开启确认的实验类布尔项 "跟随全局/全部清除"要与显式拨开走同一道门
+        private static readonly string[] GuardedExperimentalKeys =
+        {
+            PolicyCatalog.KeyVramShield, PolicyCatalog.KeyMemShield,
+            PolicyCatalog.KeyCacheWarm, PolicyCatalog.KeyDisplaySolo,
+        };
+
+        private static bool IsGuardedExperimentalKey(string key)
+        {
+            foreach (string guarded in GuardedExperimentalKeys)
+                if (string.Equals(guarded, key, StringComparison.Ordinal)) return true;
+            return false;
+        }
+
+        internal static bool CfgGuardedInheritanceNeedsConfirmation(GameProfile profile, string key)
+        {
+            // 与 CpuIdle 同款判据 清掉显式的关等同选择了全局的开
+            return profile != null
+                && PolicyResolver.Read(profile, key) != "1"
+                && PolicyResolver.GlobalValue(key) == "1";
+        }
+
         internal static bool CfgCpuIdleInheritanceNeedsConfirmation(GameProfile profile)
         {
-            // Removing an explicit off can enable this option just like choosing on.
+            // 把一条显式的关闭移掉 效果和主动选开是一样的
             return profile != null
                 && PolicyResolver.Read(profile, PolicyCatalog.KeyDisableCpuIdle) != "1"
                 && PolicyResolver.GlobalValue(PolicyCatalog.KeyDisableCpuIdle) == "1";
@@ -801,7 +853,7 @@ namespace PaviseApp
             bool family = profile.Overrides.ContainsKey(PolicyCatalog.KeySuppressFamily);
             if (!family && count == 0) return null;
             if (!family) return Lang.F("cfg.clear.confirm", profile.Name, count);
-            // 家族开关并不在本页出现，但“全部清除”仍会关闭它，不能当作跟随全局。
+            // 家族开关并不在本页出现 但“全部清除”仍会关闭它 不能当作跟随全局
             return count > 0 ? Lang.F("cfg.clear.family.confirm", profile.Name, count)
                 : Lang.F("cfg.clear.family.only", profile.Name);
         }

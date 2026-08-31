@@ -16,9 +16,22 @@ namespace PaviseApp
         private static long knownLength = -1;
         private static string knownPath;
         private static bool writesSuspendedForReset;
+        // 用户可关的运行日志开关 与 writesSuspendedForReset 分开：
+        //   后者是重置流程的一次性写屏障 只有新进程才解除
+        //   这个是常态设置 随时可来回切 关闭期间不落盘也不排队补写
+        //   崩溃转储走 AppendCrash 另一条路 不受此开关影响 出事时必须留下现场
+        private static bool writesEnabled = true;
 
-        // The same lock drains append/rotation/clear work before reset removes files.
-        // Tail remains readable; only a new process normally permits writes again.
+        public const string WritesEnabledKey = "LogWritesEnabled";
+
+        public static bool WritesEnabled
+        {
+            get { lock (lk) return writesEnabled; }
+            set { lock (lk) writesEnabled = value; }
+        }
+
+        // 重置删文件之前 同一把锁会把追加 轮转和清空的活排干
+        // 尾部仍然可读 通常要等新进程起来才重新允许写入
         internal static void SuspendWritesForReset()
         {
             lock (lk) writesSuspendedForReset = true;
@@ -30,6 +43,7 @@ namespace PaviseApp
             lock (lk)
             {
                 writesSuspendedForReset = false;
+                writesEnabled = true;
                 knownLength = -1;
                 knownPath = null;
             }
@@ -42,7 +56,7 @@ namespace PaviseApp
             {
                 lock (lk)
                 {
-                    if (writesSuspendedForReset) return;
+                    if (writesSuspendedForReset || !writesEnabled) return;
                     string line = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
                         + "  " + msg + Environment.NewLine;
                     if (knownLength < 0 || !string.Equals(knownPath, LogPath, StringComparison.OrdinalIgnoreCase))

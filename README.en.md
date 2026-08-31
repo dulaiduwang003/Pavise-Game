@@ -1,229 +1,286 @@
-﻿<div align="center">
+<div align="center">
 
 <img src="docs/icon.png" width="96" height="96" alt="Pavise">
 
 # Pavise
 
-A small Windows tool that hands system resources to the game while you play
+Windows game resource scheduling and guard tool
 
-`C#` · `WinForms` · `Chinese / English`
+`C#` · `WinForms` · `Chinese / English / Japanese`
 
 [简体中文](README.md) · **English** · [日本語](README.ja.md)
 
-**v2.1.3.1 · [Release notes (Chinese)](docs/releases/v2.1.3.1.md)**
+**v2.1.3.3 · [Release notes (Chinese)](docs/releases/v2.1.3.3.md)**
 
 <br>
 
-<img src="docs/benchmark-v171.png" width="100%" alt="Benchmark">
+<img src="docs/screenshots/en/overview.png" width="100%" alt="Pavise overview">
 
 </div>
 
 ## Performance
 
-The chart above is a four-tier bench run from the v1.7.1 era. Test conditions: an i7-9750H laptop with WeChat, Clash, QQ and a music player running in the background, scored against a clean system as 100. Averaged over the three scenarios, the machine scores 59 without Pavise, 60 in Normal mode and 96 in Competitive. Normal and Competitive in that chart are today's Smart and Focus; Extreme has been retired.
+Pavise does not generate additional performance. It returns the share taken by background processes to the game. Machines with many background programs and noticeable CPU or disk contention benefit the most. A clean system, or a game entirely limited by the GPU, will see little change.
 
-Pavise does not generate additional performance. It returns the share taken by background processes to the game. Machines with many background programs and noticeable CPU or disk contention benefit the most; a clean system, or a game entirely limited by the GPU, will see little change.
+Suppression strength does not correlate with performance. The retired Extreme mode scored only 71 in the heavy-load scenario, below Competitive's 93, and that is why it was removed. The default preset is the mildest tier.
 
-Extreme scored only 71 in the heavy-load scenario, below Competitive's 93 — that is why it was retired. Suppression strength does not correlate directly with performance, and the default preset is the mildest tier.
+The existing four-tier bench figures date from v1.7.1: an i7-9750H laptop with WeChat, Clash, QQ and a music player in the background, scored against a clean system as 100, averaging 59 without Pavise, 60 in Normal and 96 in Competitive (Normal and Competitive are today's Smart and Focus). The 2.x scheduling model differs from 1.7, so treat those numbers as an order-of-magnitude reference; they have not been re-run on 2.x.
 
-Verify the effect yourself by toggling it on and off in the same game and the same scene.
-
-## Experimental: VidMm video memory residency
-
-This optional policy is implemented under Optimization Policies and is off by default. Pavise queries the actual game renderer's video-memory budget and usage. It attempts a conservative reservation only after sustained budget pressure, with a verified adapter and no existing reservation, then reads the result back.
-
-It does not add or lock VRAM, install a driver, or inject into the game. Restricted access, integrated-only systems, ambiguous adapters or unconfirmed writes cause the operation to be skipped or stopped; the actual rendering path on hybrid systems still needs hardware testing. Session exit releases Pavise's reservation; incomplete recovery keeps its record.
-
-This is not a general frame-rate guarantee. Benefits and driver compatibility still require matched real-game testing; a successful API call does not prove smoother gameplay.
+Measure the effect by toggling it on and off in the same game and the same scene.
 
 ## Usage
 
-Add a game's EXE or shortcut to the target library, or use the scan function to import games already installed through Steam, Epic, GOG, Ubisoft, Riot, WeGame, Battle.net or Xbox.
+Add a game's EXE or shortcut to the library, or use the scan function to import games already installed through Steam, Epic, GOG, Ubisoft, Riot, WeGame, Battle.net or Xbox.
 
 Protection applies for as long as the game runs; switching to the desktop or minimising does not end it. Games started through a launcher (League of Legends, for example) have their real executable remembered after the first confirmation and are recognised directly afterwards. Launchers, updaters, crash reporters and anti-cheat processes are not identified as games.
 
-Recoverable temporary session changes are restored from their records when the game exits. After an abnormal Pavise exit, the next launch retries recovery and keeps records of failures. Application GPU preferences remain saved, input-language changes are not rolled back, and purged cache contents cannot be restored.
+Session changes are restored from their records when the game exits. After an abnormal Pavise exit, the next launch retries recovery and keeps records of failures. Three exceptions: application GPU preferences remain saved, input-language changes are not rolled back, and purged cache contents cannot be restored.
 
 ## Modes
 
-| Mode | Scope of suppression |
+| Mode | Suppression scope |
 |---|---|
-| Smart | Every background process that clears the protection boundary is isolated outright the moment the match starts — no heat check, no tier-by-tier escalation. Whatever you are using, and its family, is never touched |
-| Focus | The isolation net widens to everything outside the game, windows included — even the app you alt-tab to, with only the whitelist exempt |
-| Custom | Background suppression, cores, memory and power, system environment and graphics, each picked individually |
+| Smart | Every background process that clears the protection boundary is isolated outright the moment the match starts, with no heat check and no tier-by-tier escalation. Whatever you are using, and its family, is exempt from suppression; under sustained CPU saturation (above 90% for over ten seconds) it temporarily escalates to the Focus profile, stepping back down after two stable minutes, at most three times per match |
+| Focus | The scope widens to everything outside the game, windowed apps included. Programs you use after alt-tabbing are demoted too; only the whitelist is exempt |
+| Light | Background suppression identical to Focus, with the power side left to vendor tools: no power slider, and pure power-saving items stay enabled on AC. Requires a battery; for handhelds and thin-and-light laptops |
+| Custom | Background suppression, cores, memory and power, system environment and graphics, each chosen individually |
 
-The two modes differ in which processes are eligible to be touched, not in how hard they are clamped: anything past the boundary is isolated outright, cold processes included, rather than waiting for it to burn a dozen seconds of CPU first. Isolation writes the lowest priority class, the lowest disk I/O and page priority, EcoQoS with a capped timer resolution, and disabled turbo boost; with GPU yielding on, GPU scheduling priority drops to idle as well.
+The tiers differ in which processes are eligible to be touched, not in how hard they are suppressed. Anything past the boundary is isolated directly, cold processes included, without waiting for one to consume resources for ten seconds first. Isolation writes the lowest priority, the lowest disk I/O and paging priority, EcoQoS, a timer-resolution cap and disabled turbo boost. With GPU yielding on, the GPU scheduling priority drops to minimum as well.
 
-This is the opposite of what 1.9 did, because the premise changed. Blanket isolation really was a net loss back then — the scattered timer wakeups of a hundred idle processes got packed onto two cores by affinity narrowing and queued against each other, multiplying the worst frame by 2.6. Since 2.0 the background is never given a new affinity mask; narrowing and core relocation were pulled entirely. A cold process with no ready threads costs no CPU to begin with, and when it does wake it can run on any core with no higher-priority work pending — no queue, and the cost of blanket isolation goes with it.
+This is the opposite of the 1.9-era approach, because the premise changed. Isolating everything really was a net loss back then: the scattered wake-ups of a hundred idle processes were squeezed onto two cores by affinity narrowing and queued behind each other, tripling the longest frame by 2.6×. From 2.0 on, background affinity is never modified and the entire narrowing-and-migration mechanism is gone. A cold process with no ready threads costs no CPU to begin with, and when it does wake it can run on any core without higher-priority work, so nothing queues and the cost of isolating everything disappears.
 
-In every mode, anti-cheat, the host of the running game, Windows core services, network accelerators and other logged-in accounts are never suppressed. This boundary is unaffected by any switch. Game family exemption is on by default, leaving game platforms and launchers, game-folder processes and game child processes untouched; turn it off to exempt only the game itself and the whitelist. The exemption categories can be viewed directly on the Whitelist page.
-## Per-game profiles
+In every mode, anti-cheat, Windows core services, network accelerators, the input/audio/peripheral chain, hardware control tools and other signed-in accounts are never suppressed. No switch affects this boundary.
 
-Select a game in the library and open its profile. Each game can override policies for mode, background suppression, cores, memory and power, system environment and graphics. Items without an override follow the global setting; changes save immediately and most apply to that game's next match.
+Game family exemption is on by default: game platforms, launcher shells, resident processes inside the game folder and child processes spawned by the game are all released as a family. Turning it off releases only the game itself and the whitelist; everything else is suppressed as ordinary background.
 
-- Most per-game values are selected when a match activates and apply changes next match. The optional-service pause and CPU idle switches are handled within the current session; turning them off restores their changes
-- The current core selection can be pinned to one game without affecting the others
-- A set of overrides can be cleared back to global in one click
-- The Overview page and the tray show the mode actually in effect, and which game's profile it came from
-- When consecutive driver write failures auto-disable a switch, that game's matching override is cleared as well
+## Per-game configuration
 
-Library entries can be renamed; only the display name changes, recognition is unaffected.
+Select a game in the library and open its own configuration. Each game can override the mode, background suppression, cores, memory and power, system environment and graphics policy, 33 items in total. Items not overridden follow the global setting, and changes save immediately.
+
+- Most per-game settings are resolved when the match activates and apply to the next one. Pausing nonessential services and disabling CPU idle are handled in the current session and reverted when turned off
+- The current core selection can be pinned to one game without affecting others
+- A whole override set can be cleared back to global in one action
+- The overview page and the tray show the mode actually in effect, labelled with the game its configuration came from
+- When repeated driver-write failures turn a switch off automatically, that game's override for it is cleared as well
+
+Library entries can be renamed. This changes the displayed name only and does not affect recognition.
 
 ## Features
 
-**Processes and cores**
+Features come in two kinds: in-match changes, restored automatically when the game exits, and persistent changes, collected on the System Environment page, which need a restart and can be reverted at any time. Here they are in interface order.
 
-- The game process gets high priority, raised disk I/O and GPU scheduling priority, and its own cores; background work is demoted according to the mode. The background is never given a new affinity mask — no narrowing, no relocation
-- CPU partitioning handles hybrid architectures, X3D and multiple processor groups. No core splitting on 6 cores or fewer
-- Core allocation can be drawn per logical core, with presets for all cores, no hyper-threading, P-cores only, and invert; changes need Apply to take effect. Most people never need it — the scheduler already puts game threads on P-cores
-- Smart frame guard: identifies the thread that decides the frame rate and boosts it alone. Bench-verified 77%–96% better 1% lows when the CPU is saturated
-- Smart yield: when the CPU stays saturated for ten seconds and the frame thread did not manage to take over on its own, the game process steps back to normal priority — whole-process high priority measurably worsens tail frames in that state. It returns to high priority as soon as the frame thread takes over or the CPU frees up
-- Pavise yields during a match, giving up the game cores and lowering its own scheduling weight
-- Anti-cheat compatibility list: games that refuse writes are recorded, so the priority and I/O writes certain to fail are not retried, while GPU scheduling priority and the frame thread are still attempted. The list expires on a new version, and the Anti-Cheat page can view and clear it
+### Overview and guard
 
-**Graphics**
+One guard switch decides whether Pavise takes over. With it on, nothing happens until a game is detected; with it off, nothing happens at all.
 
-- Graphics now has Common / NVIDIA / AMD / Intel tabs. Common → Application GPU preferences lets you select EXEs or running background apps and save the Windows power-saving GPU preference. Adding requires a confirmed integrated/discrete pair; Intel Arc B580 is not classified as integrated. It [applies next app launch](https://support.microsoft.com/en-US/Windows/Hardware/Display-Graphics/optimizations-for-windowed-games-in-windows-11), without moving or restarting running apps or guaranteeing exclusive game GPU use. Preferences persist after a game or Pavise exits. Removing entries or resetting all configuration restores only Pavise's changes, preserving existing power-saving settings and detected external changes. Uncertain writes or restoration retain recovery records
-- Intel → Global low latency during games is off by default, requires a warning about its global scope, and supports per-game enable overrides. Only basic On is used on DX9/DX11 paths that official IGCL explicitly reports as supporting live changes. No Boost, XeSS frame generation, overclocking or frame cap is enabled, and higher frame rates are not guaranteed. On multi-GPU systems this changes the selected Intel adapter, which is not necessarily the game's rendering GPU. Existing On/Boost settings are skipped; only confirmed owned changes are restored on exit. Uncertain writes do not grant restoration rights. Availability depends on the installed driver; see the [Intel IGCL definitions](https://github.com/intel/drivers.gpu.control-library/blob/b6c462933502e13d1537dd5024949a51be30e63d/include/igcl_api.h)
-- Background GPU yielding: when a background process uses the GPU, its GPU scheduling priority is lowered as well
-- NVIDIA per-game tuning: maximum performance power mode, low latency mode (on or ultra), Smooth Motion frame generation, unrestricted shader cache, DLSS override (latest, or a pinned J/K generation), and per-game ReBAR. Original values are snapshotted and restored when turned off
-- GPU power limit: raised to the vendor's maximum during a match, restored from the snapshot on exit
+- The overview shows the active mode, whether it comes from the global setting or a specific game's configuration, and the last session's report
+- **Session report**: play time, the number of suppressed processes and their CPU usage, the share of time spent power- or thermal-limited, and the peak shared video memory the game spilled into system RAM
+- **Feature search**: type a keyword at the top to jump straight to a switch instead of remembering which page it lives on
+- **Auto-hide**: the window collapses to the tray ten seconds after a game is detected, once per session
+- **Interface**: light and dark themes; Chinese, English and Japanese switch instantly, and newly written log lines follow
 
-**Keyboard, mouse and interrupts**
+### Library
 
-- Switch to English once at game entry: in Optimization Policies → Session Extras, off by default, with per-game overrides. During a short entry window it requests an available independent English keyboard layout once for the actual foreground game. Switching back to Chinese or returning to the game does not cause another request; exit does not restore the input method. Enabling mid-game applies next launch, and restarting Pavise skips games already running. Uses the [Windows input-language request](https://learn.microsoft.com/en-us/windows/win32/winmsg/wm-inputlangchangerequest), without simulated keys or changes to the default input method or Windows layout-sharing mode. It is not tied to an IME brand, but missing layouts, permissions or application rejection cause a skip; compatibility with every IME and game is not guaranteed
-- Filter Keys, Sticky Keys and Toggle Keys off. Microsoft's own definition of these is to ignore brief keystrokes, so leaving them on always costs latency
-- Selective suspend blocked for keyboard and mouse devices, curing the floaty first input after a short idle. Touches only keyboard and mouse — not USB drives or sound cards
-- Input queue lengths altered by other tools are repaired, and Enhance Pointer Precision (the system mouse acceleration curve) is turned off
-- Foreground time slice, three modes: system default, foreground weighted, report only. Foreground weighted is the old optimization scene's 0x26; it depends on the machine and is not a guaranteed win on the bench, so compare it yourself in the same scenario. Any other folk value is reported as an anomaly
-- GPU interrupt affinity is moved to cores near the render thread. USB and storage controller interrupt affinity was retired in 1.8.1.0 — see below
+- Add an EXE or shortcut manually, or scan to import from Steam, Epic, GOG, Ubisoft, Riot, WeGame, Battle.net and Xbox
+- **Forced takeover**: for emulators, cloud gaming and anything else that cannot be recognised, the match starts as soon as the process does
+- **Auto-add**: newly recognised games are collected automatically. A path you removed goes on an ignore list and is never auto-added again until you add it back by hand
+- **Render observation label**: marks whether GPU 3D activity has actually been seen on that EXE, which is what tells you whether family suppression is safe to enable
+- **Family background suppression**: per-game, off by default. While off, game platforms, launcher shells, resident processes in the game folder and child processes spawned by the game are released as a family
+- **Per-game configuration**: 33 policy items can be overridden per game; anything not overridden follows the global setting, and entries can be renamed
 
-**Memory and power**
+### Processes and cores
 
-- Matches switch to the Pavise managed power plan by default, created on the first match with parameters written for this processor and a name carrying the PG tag and a machine signature. You can also select any plan on the machine, in which case Pavise only switches to it and changes none of its parameters. It is set once, with no periodic polling, so it never fights other power software over the active plan
-- The managed plan has two sets. Focus writes 100% minimum processor state, no core parking, the most performance-biased energy preference and a fully raised boost policy; Smart keeps downclocking headroom, and on desktops it writes the same performance-biased energy preference and turns off clock duty cycling on AC, with a middle value for laptops
-- Disable CPU idle: in Optimization Policies → Session Extras, off by default, with a warning before each enable. Applies only during a game, on confirmed AC power, with Pavise's managed power plan active. Only the AC setting is changed; turning it off, leaving the game or switching to battery restores Pavise's change. User-selected plans are not modified. Power use, heat and fan noise may increase; some systems may lose turbo frequency or frame rate. Compare results yourself; there is no automatic performance verdict
-- Standby memory cleaner (ISLC rules): in Optimization Policies → Session Extras, off by default with confirmation before enabling. Both the list-size and true-free-memory conditions must pass before the entire standby list is purged. Parameters are global; each game can override the switch. Game and background working sets are not trimmed. Details below
-- Power budget yield: on a laptop the CPU and GPU draw from one shared power and thermal budget, so when the GPU is pinned against its limit and the CPU has headroom, the energy preference moves to a still-performance-leaning middle value to let the budget flow to the GPU. Off by default, and eligible only on a laptop, on AC, in Focus mode, with Pavise's managed power plan active and RAPL wattage readable; the decision is made once per match. Twenty seconds of observation to decide, fifteen more to verify after engaging, then an immediate revert and a stop to automatic attempts if it frees less than 3W or GPU utilization drops by more than 3%. An eligible user can confirm and enable the switch again to retry. On the author's own i7-9750H, EPP across its full range moved neither package power nor actual frequency, so machines like it will always fail verification: that is the intended behavior
-- MMCSS multimedia scheduling: the share reserved for non-multimedia work drops from 20% to 10%, and the Games task's scheduling category and file I/O are raised to high. It stays applied while game mode is on and is restored when turned off or on exit
-- Game DVR background recording stays off while game mode is on and is restored only when Pavise exits, because the system reads it the moment a game launches and it must be in place first
-- Power plan, network and notifications are all restored after the game ends
+- **Game process boost**: the renderer receives high priority and higher disk I/O, memory-page and GPU scheduling priority, restored on exit
+- **Separate render-thread boost**: the thread that determines frame rate is identified and boosted on its own. Bench testing shows a 77%-96% improvement in 1% low frames under full CPU load
+- **Smart yield**: when the CPU stays saturated for ten seconds and the frame thread did not take over, the game process steps back to normal priority. Whole-process high priority measurably worsens tail frames in that state
+- **In-match self-yield**: Pavise moves off the game cores and lowers its own scheduling weight
+- **Background suppression**: everything past the protection boundary is isolated at once, receiving the lowest priority, the lowest disk I/O and paging priority, EcoQoS, a timer-resolution cap and disabled turbo boost
+- **Background GPU priority demotion**: a background process using the GPU also has its GPU scheduling priority lowered
+- **Wider and stronger suppression**: maximum suppression of non-game background apps, including after alt-tab. Locked on in Focus and Light; whitelist your IME and device tools
+- **Game core partitioning**: background work is confined to its own cores and the rest are left to the game. Handles hybrid architectures, X3D and multiple processor groups; six cores or fewer are not partitioned
+- **Partition swap**: X3D machines can switch to the large-cache CCD
+- **Manual core selection**: draw it per core, with presets for all cores, no SMT, P-cores only and inverse. Written on Apply
+- **Whitelist**: drag an EXE in, scope determined automatically, never suppressed in any mode
 
-**System environment**
+### Anti-cheat coverage
 
-Changes that need a reboot, or that stay on the machine, are collected on this page. Every one is reversible:
+Nine anti-cheat systems are listed individually, each stating which games it protects and which of its components are kernel drivers that must not be touched: ACE (Tencent), TenProtect, Vanguard (Riot), EasyAntiCheat (Epic), BattlEye, EA Javelin, nProtect GameGuard, FACEIT and NEAC (NetEase).
 
-- Hardware-accelerated GPU scheduling (HAGS). Its effect on average frame rate is within the margin of error; what matters is that it is a prerequisite for driver-side frame generation and similar features, which are unavailable while it is off. Greyed out on machines that do not support it
-- VBS virtualization-based security off, with a risk confirmation before enabling
-- Software mitigations for CPU speculative-execution vulnerabilities unloaded, reclaiming the fixed cost of every kernel transition. Only unlocked on machines where a reclaimable cost is actually measured
-- Game mode guard, windowed game optimization, device power
+The **compatibility list** records games that refuse writes, so priority and I/O writes certain to fail are not retried while GPU scheduling priority and the frame thread are still attempted. The list expires when the game updates.
 
-**What you can see**
+**Anti-cheat suppression** (per-group switches on the Anti-Cheat page, off by default) offers no intensity choice; the profile is fixed and scan-safe: below-normal CPU priority, very low disk I/O (disk scanning is the main source of harm) and efficiency-core capping. It never drops the scanner to the lowest CPU priority, seals its timer resolution, or lowers its memory page priority — game threads can be suspended by the system during a scan and resume only when the scanner finishes, so starving it of CPU time only stretches a brief stutter into a multi-second freeze.
 
-- Checkup page: a read-only inspection of what this machine can do, with an evidence grade on every verdict. System items broken by third-party tools can be fixed on the spot, and you can see whether the GPU is currently limited by its power or thermal ceiling. The interrupt row uses kernel ETW to capture DPC and ISR time and names the top source directly
-- Session report: play time, how many processes were suppressed and their CPU share, the share of time spent against power and thermal limits, and the peak shared video memory the game spilled into system RAM
-- The library supports forced takeover for emulators, cloud gaming and anything else that cannot be recognised: the moment the process starts, a match begins
-- The whitelist has its own page; drop items in and the scope is decided automatically
+### Graphics
 
-A purely local tool: no service installed, no data uploaded, no injection into game processes, no modification of game memory or files. Every write is read back where possible, and a value that does not read back as expected is not counted as success.
+- **Application GPU preferences**: save the Windows power-saving GPU preference for chosen background apps. Applies at their next launch and never moves a running app
+- **Preselect high-performance GPU on standby**: on dual-GPU machines, preselects the high-performance GPU while idle, skips anything already set by hand, and restores on exit
+- **GPU power limit**: raised to the vendor-permitted maximum during the match and restored from the snapshot afterwards
+- **NVIDIA**: maximum performance power mode, low latency (on or ultra), Smooth Motion frame generation, unrestricted shader cache, DLSS override (latest or a pinned J/K generation), per-game ReBAR
+- **AMD**: Anti-Lag, AFMF frame generation, RSR driver-level upscaling
+- **Intel**: global low latency, only on DX9/DX11 paths the driver reports as supporting live changes. Boost and XeSS are never touched
+
+Original values are snapshotted and restored when a switch is turned off. Writes whose ownership cannot be confirmed are never overwritten.
+
+### Input devices
+
+- Turn off **Filter Keys, Sticky Keys and Toggle Keys**. Microsoft defines these features as ignoring brief keystrokes, so leaving them on necessarily adds latency
+- **Disable selective suspend for keyboards and mice**, which removes the loose first input after an idle period. Keyboards and mice only, never USB storage or audio
+- Repair **input queue length** broken by other tools and turn off **pointer precision enhancement**
+- **Foreground time slice**, three modes: system default, foreground weighted, report only. Non-standard values are reported as anomalies
+- **Switch to English once at game entry**: one English keyboard layout request to the foreground game inside a short entry window. Switching back to Chinese, alt-tabbing and returning are never intervened in
+
+### Device interrupts
+
+- **Match interrupt observation**: kernel ETW collects per-device DPC activity, accounted per match, identifying devices contending with the game's cores
+- **Manual pinning**: pick the device and the target cores. The cost is spelled out before writing, and every device keeps a receipt for reverting
+- **GPU interrupt affinity**: moved to cores near the render thread
+- The page flags cases that are not worth touching: pinning a multi-message MSI-X device can reduce parallelism, and StorPort DPCs follow the CPU that issued the I/O, so pinning them usually does nothing
+
+### Memory and power
+
+- **Managed power plan**: created on the first match with parameters written for this processor. Any plan on the machine can be selected instead, in which case Pavise only switches to it and changes none of its parameters
+- **Disable CPU idle**: only during a game, on confirmed AC power, with the managed plan active, and only the AC value is changed
+- **Standby memory cleanup**: the entire standby list is purged only when both the list-size and true-free-memory thresholds are crossed. Technical detail below
+- **MMCSS multimedia scheduling**: the share reserved for non-multimedia work drops from 20% to 10%, and the Games task's scheduling category and file I/O are raised
+- **Pause Windows Update, Delivery Optimization, nonessential services and background wireless scanning**, all resumed on exit
+- **Turn off Game DVR and Xbox background recording**, and **keep the display awake during a match**
+
+### System environment
+
+Changes on this page need a restart and persist on the machine. Every one of them is revertible:
+
+- **Hardware-accelerated GPU scheduling (HAGS)**, **disable VBS**, **remove speculative-execution mitigations**
+- **Game mode guard**, **windowed game optimisation**
+- **Constant timer tick**, **global timer resolution**
+- **Disable NIC power saving**, **disable NIC interrupt moderation** (only the standardized setting on physical wired adapters)
+- **Accessibility key interception**, **disable keyboard and mouse selective suspend**
+
+### Experimental features
+
+Eight of them, all off by default, all requiring confirmation, all per-game overridable. Every write is read back and verified; a failed verification reverts the change and stops further attempts; everything is restored at match end or on disable.
+
+- **VRAM residency**: declares a minimum reservation when video memory runs tight, reducing long frames from textures being evicted and paged back. It neither adds nor locks memory
+- **Memory residency**: pins a hard minimum working set under sustained physical-memory pressure so trimming no longer reclaims the game's pages. It allocates nothing, and machines under 16 GB do not participate
+- **Cache warm-up**: pre-reads game assets into the standby cache at the lowest disk priority after the match settles. Reading only; runs on AC power, with sufficient memory, on an SSD game drive
+- **Single display in match**: switches to primary-only so a stray click cannot steal focus, and saves the second screen's composition. Switched back afterwards; the screen blanks briefly
+- **Power budget yield**: on laptops, hands shared power budget to the GPU when it is pinned against its limit and the CPU has headroom. Verification detail below
+- **Automatic interrupt orchestration**: pins a device off the game cores once multi-match measurement identifies it, with receipts, effective after a restart, then verifies over three more matches and rolls back if ineffective
+- **Auto power-saving GPU**: enrols background apps still running 3D on the game's render GPU to use the power-saving GPU at their next launch, at most 2 per match
+- **Intel global low latency**: see the Graphics section above
+
+### System audit
+
+A read-only capability check of the machine, with 132 conclusions each labelled by evidence level: measured here, bench-tested, mechanism clear, or unverified. System items broken by third-party tools can be repaired in place, and you can see whether the GPU is currently power- or thermal-limited. The interrupt row uses kernel ETW to capture DPC and ISR activity and names the top source directly.
+
+The Settings page offers a full configuration wipe that reverts every persistent change Pavise ever made, including those left by retired features.
+
+A purely local tool. It installs no service, uploads no data, injects into no game process, and modifies no game memory or files. Every write is read back where possible, and a value that does not read back as expected is not counted as success.
+
+## How power budget yield verifies itself
+
+This feature changes the processor energy performance preference, which affects whole-machine power distribution, so it verifies more thoroughly than the others.
+
+Twenty seconds of observation to decide whether to yield, then fifteen more to verify after engaging. A failed verification reverts immediately and stops automatic attempts until the user re-enables it.
+
+A passed verification is not a one-way trip. A rolling 30-second window returns the budget when the bottleneck moves back to the processor (GPU load falling or CPU under pressure), and yields again if the GPU saturates, at most three times per match, each with a full re-observation and verification. The hysteresis band is yield at 90, release at 80, which prevents oscillation around the threshold.
+
+Verification has two tiers:
+
+- Machines with readable RAPL wattage verify by package power. Less than 3W freed, or GPU utilization dropping more than 3%, reverts and stops
+- Machines without readable power fall back to platform frequency. EPP frees power by lowering frequency, so a relative drop under 3% means EPP has no effect on that machine, and it reverts and stops likewise
+
+The two tiers are accounted separately. If CPU load shifts more than 10 points inside the verification window the result is indeterminate: it reverts without stopping and retries next match. That rule exists so a verification window landing on a cutscene or loading screen, where power falls on its own, is not mistaken for an ineffective change.
+
+On this machine's i7-9750H, EPP across its full range moved neither package power nor actual frequency, so machines like it fail both tiers. That is the intended behavior.
 
 ## Memory cleanup
 
-**Optional: standby memory cleaner (ISLC rules), off by default.** Enable it in Optimization Policies → Session Extras. The adjacent parameter dialog saves the list threshold, free-memory threshold and polling interval together. Pavise defaults to 1024 MB, 1024 MB and 4000 ms; MB means 1024² bytes. Thresholds accept 0–1048576 MB and polling accepts 250–300000 ms. These are Pavise defaults, not a claim about every ISLC release's factory settings.
+**Currently available: standby memory cleanup, off by default.** Enable it under Optimization Policies → Session Extras. The Parameters button next to it saves three values together: list-size threshold, free-memory threshold and check interval. The dialog offers Conservative, Standard and Aggressive presets that fill the fields for you. Defaults are 1024 MB, 1024 MB and 4000 ms; MB means 1024² bytes, thresholds accept 0–1048576 MB and the interval accepts 250–300000 ms.
 
-The condition is `List ≥ list threshold AND Free < free threshold`. List counts standby plus the system working set; Free counts only free and zero pages. Task Manager's Available includes standby and cannot substitute for Free. See [the ISLC author's clarification](https://www.wagnardsoft.com/forums/viewtopic.php?p=6381) and [Microsoft's counter definitions](https://learn.microsoft.com/en-us/windows/win32/api/psapi/ns-psapi-performance_information).
+The condition is `List ≥ list threshold AND Free < free threshold`. List counts the standby list plus the system working set; Free counts only Free + Zero pages and does not treat standby cache as truly free. Task Manager's Available includes standby cache and cannot stand in for Free. [Microsoft's definitions of these counters](https://learn.microsoft.com/en-us/windows/win32/api/psapi/ns-psapi-performance_information).
 
-Polling runs only during a detected game session. The sole mutation is `MemoryPurgeStandbyList`, covering all standby priorities. It never trims process/system working sets, flushes modified pages, combines pages, or changes memory compression, page files or timer resolution. A separate worker prevents overlapping or queued catch-up polls, with no hidden extra cooldown. Two consecutive query/purge failures disable the strategy; enabling it again requires confirmation.
+Polling runs only while a game session is detected. The operation is `MemoryPurgeStandbyList`, which purges standby pages of every priority. It does not trim system or process working sets, flush the modified page list, combine memory pages, or change memory compression, the page file or timer resolution. Polling uses a dedicated thread with no overlapping execution and no catch-up for missed checks. Two consecutive read or purge failures disable the policy, and re-enabling requires confirmation again.
 
-Disabling the effective strategy for the current game or ending the game/Pavise cancels pending purges. A call already inside Windows cannot be interrupted, and shutdown must wait for it; discarded cache cannot be restored. The global switch is a default: a per-game On overrides global Off. Stop that game's cleanup by disabling its override or turning off the game guard. Purging may increase disk reads, loading time or stutter. Improved frame rate and zero risk on every system are not guaranteed. Avoid running another automatic cleaner alongside it. Parameters remain global. This implements ISLC's core memory rules, not its startup management, exclusion-list interface or optional timer controls.
+The purge itself stutters the game briefly and the call cannot be interrupted. After a successful purge, cleanup cools down for at least about a minute (no less than eight check intervals). It may also increase disk reads and load times and does not guarantee higher frame rates. Running it alongside another automatic memory cleaner is not recommended.
 
-**The following measurements describe retired implementations, not a performance test of the new strategy.**
+### Why only this one
 
-The table below measures the system-level commands tools like this use, on a 64 GB machine with 40344 MB available and 16154 MB of system cache before each run:
+The table below measures the system-level commands tools in this category use. Test machine: 64 GB RAM, 40344 MB available and 16154 MB system cache before measurement.
 
 | Command | Duration | Available memory | System cache |
 |---|---|---|---|
 | Empty all process working sets | 1894.9 ms | +5191 MB | +3364 MB |
 | Purge standby list (low priority) | 13.3 ms | +144 MB | −47 MB |
-| Purge standby list (entire) | 1380.6 ms | +382 MB | −18894 MB |
+| Purge standby list (all) | 1380.6 ms | +382 MB | −18894 MB |
 | Flush modified page list | 8019.7 ms | +5845 MB | +251 MB |
 | Combine physical memory pages | 6152.1 ms | +2121 MB | +531 MB |
 
-Purging the entire standby list throws away 18894 MB of system cache for 382 MB of available memory. The standby list already counts as available memory, so purging it converts cached available memory into empty available memory — the total barely moves, while the cached content is gone and the game load that follows has to read from disk again. Flushing the modified page list takes 8 seconds and combining pages 6.2 seconds; neither belongs on the match-start path.
+Purging the entire standby list discards 18894 MB of system cache to gain 382 MB of available memory. The standby list already counts as available memory, so purging it converts cached available memory into empty available memory: the total barely moves, the cached content is gone, and the game load that follows reads from disk again. Flushing the modified page list takes 8 seconds and combining physical pages 6.2 seconds, neither of which belongs on the path into a match.
 
-**Removed: purge low-priority standby memory when memory is tight**
+These are measurements of the old implementation, not performance conclusions for the current policy. For background, see Mark Russinovich, "The Memory-Optimization Hoax" (Windows and .NET Magazine, January 2004).
 
-This one was treated as the version that had learned from the others' mistakes. Measurements on 2026-08-20 proved it fell into the same trap, just less visibly.
+## Retired features
 
-The trigger is a ratio of available memory, and available memory already counts standby pages — purging merely moves pages from the standby list to the free list, so the ratio does not change and the condition can never clear. The 45-second cooldown only set a tempo for the endless repetition. Real user logs show 14 triggers in 10 minutes, spaced exactly 45 seconds apart, never stopping.
+A feature that does not hold up under measurement is retired rather than left in the interface. Historical changes from retired features remain revertible; normal startup and version updates do not restore them, and the Settings page has a clear button.
 
-More to the point, it barely did anything: `MemoryPurgeLowPriorityStandbyList` only clears priority tier 0, which totals 1.4 MB on a 24 GB machine — 0.0 to 0.1 MB actually freed per run, at a call cost of 0.2 ms. What it saves is a few hundred nanoseconds of page-reclaim work in the memory manager, which is noise against a frame's budget.
+**Low-priority standby cleanup under memory pressure** (retired 2026-08-20)
 
-**Removed: reclaim background working sets once the match stabilizes**
+The trigger used the available-memory ratio, and available memory already counts standby pages. Purging only moves pages from the standby list to the free list, so the ratio does not change, the condition never clears, and the 45-second cooldown merely set a tempo for repeat triggers. User logs show 14 triggers in 10 minutes at exactly 45-second intervals.
 
-Calling `SetProcessWorkingSetSize` per process does not free memory. It only pushes pages from the working set to the standby list, and the dirty ones must be written to the page file first — that disk I/O lands squarely inside the match. The targets are already-suppressed background processes, exactly what the memory manager trims first under pressure; they are not suspended, so they fault the pages straight back and the whole round is undone seconds later, netting one extra read-write cycle during play.
+The effect did not hold up either: `MemoryPurgeLowPriorityStandbyList` only clears priority 0, which totals 1.4 MB on a 24 GB machine, releasing 0.0 to 0.1 MB per call. What it saves is a few hundred nanoseconds of page-reclaim work in the memory manager, which is noise against a frame's budget.
 
-**Removed: the old full-standby purge based on Available**
+**Reclaiming background working sets after the match settles**
 
-The old implementation checked `standby list ≥ 1 GB and available ≤ 1 GB` every five seconds. It used Available rather than ISLC's Free, so it did not reproduce ISLC's trigger. In the historical measurement above, one full purge took about 1380 ms, removed about 18894 MB of system cache and increased Available by only about 382 MB. That version and the low-priority variant remain retired. The new strategy uses true Free in its dual threshold, but discarded cache can still cause extra reads; a successful call is not proof of smoother gameplay.
+Calling `SetProcessWorkingSetSize` per process does not release memory. It moves pages from the working set to the standby list, and dirty pages among them must be written to the page file first, which puts that disk I/O inside the match. The targets are already-suppressed background processes, exactly what the memory manager trims first under pressure. They are not suspended, so they fault the pages back immediately, and the net effect is one extra round of reads and writes during the match.
 
-See Mark Russinovich, *The Memory-Optimization Hoax* (Windows and .NET Magazine, January 2004).
+**Driver-level frame rate cap** (retired 1.8.0.3, removed again in 2.1.3.3)
 
-## What this does not do
+Capping frame rate is more direct in the game's own settings or the GPU control panel. A second cap at the driver level tends to fight the game's own limiter and VRR, and on AMD it has to go through Radeon Chill, which is mutually exclusive with Anti-Lag: one latency optimisation traded for another.
 
-The keyboard and mouse registry tweaks that circulate mostly act on the order of a fraction of a millisecond, while the main source of latency is the render queue. Pavise reports these without changing them, Bluetooth mice and 125 Hz polling rates included — the Checkup page names them and the decision is yours.
+**USB and storage controller interrupt affinity** (retired 1.8.1.0)
 
-MSI mode, low-latency mode, background hard frame caps, game file preheating and blocking CPU 0/1 by position were all implemented and removed: measured as ineffective, risking damage to devices, or based on a misreading — the driver's background frame cap actually applies to applications that lose focus, so alt-tabbing out caps the game itself.
+On hybrid architectures with few performance cores it lands interrupts on low-clocked efficiency cores, which makes the first movement of a high-polling-rate mouse feel loose after idle. GPU interrupt affinity near the render cores is kept.
 
-Driver-level frame rate caps (NVIDIA and AMD) were retired in 1.8.0.3: capping is more direct in the game's own settings or the GPU control panel, and a second cap at the driver layer easily fights the game's own limiter and VRR. On AMD it also had to go through Radeon Chill, which is mutually exclusive with Anti-Lag — trading one latency optimization for another.
+**Others**
 
-1.8.1.0 pulled three more: USB and storage controller interrupt affinity, which on hybrid CPUs with few performance cores landed interrupts on low-clock efficiency cores and caused a floaty first click on high-polling mice after idle; the standalone in-match core-unparking override, which duplicated the parking settings in the managed power plan; and the per-game forced discrete GPU preference, since modern Windows already picks the discrete GPU for games. GPU interrupt affinity, which targets cores near the render thread, is kept.
+MSI mode, low-latency mode, background hard frame caps, game file prefetch and masking CPU 0/1 by position were all implemented and removed, either because measurement showed no effect, because of the risk of damaging a device, or because of a semantic misreading: the driver's background frame cap actually applies to applications that lose focus, so alt-tabbing out of the game caps the game itself.
 
-The Competitive preset's automatic disabling of processor idle was pulled in the same version. The current manual policy is off by default and requires risk confirmation before enabling. Presets do not enable it automatically, and the old frequency stress test is not used.
+A separate in-match core unparking override duplicated the parking settings in the managed power plan. Per-game forced discrete GPU preference is redundant on modern Windows, which already picks the discrete GPU for games. Automatic processor-idle disabling in Competitive became a manual policy instead of a preset-driven one. Extreme mode and the League of Legends section were retired in 1.8.0.2. Fallback boosting (IFEO) and per-game CFG disabling were removed entirely, with no legacy field compatibility.
 
-Extreme mode and the League of Legends spotlight were retired in 1.8.0.2; Focus is the top tier.
+## What is reported but not modified
 
-Fallback boost (IFEO) and per-game CFG disabling have been removed, including global and per-game controls, startup staging and in-session writes. No compatibility handling is added for retired fields. Libraries containing a retired per-game field follow the existing failure flow: restore system changes, automatically clear old data, show a dialog and exit. Failed cleanup retains recovery records and reports the reason.
-
-Recovery for historical changes is retained. Normal startup and upgrades do not restore them automatically; use the cleanup button on the Settings page. Incompatible libraries or read/write failures use the automatic cleanup-and-exit flow described above.
+Most of the widely shared keyboard and mouse registry tweaks act on the order of a few tenths of a millisecond, while latency comes mainly from the render queue. Pavise reports these items without modifying them, including Bluetooth mice and 125 Hz polling rates. The audit page points them out and the decision is yours.
 
 ## Interface
 
 <div align="center">
-<img src="docs/guide-overview.png" width="49%" alt="Overview">
-<img src="docs/guide-library.png" width="49%" alt="Library">
-<img src="docs/guide-policy.png" width="49%" alt="Policy">
-<img src="docs/guide-core.png" width="49%" alt="Cores">
-<img src="docs/guide-anticheat.png" width="49%" alt="Anti-cheat">
-<img src="docs/guide-audit.png" width="49%" alt="Checkup">
+<img src="docs/screenshots/en/library.png" width="49%" alt="Library">
+<img src="docs/screenshots/en/policy.png" width="49%" alt="Optimization policies">
+<img src="docs/screenshots/en/graphics.png" width="49%" alt="Graphics">
+<img src="docs/screenshots/en/interrupt.png" width="49%" alt="Device interrupts">
+<img src="docs/screenshots/en/audit.png" width="49%" alt="System audit">
 </div>
+
+A full illustrated walkthrough (Chinese, 21 screenshots) is in [docs/tutorial](docs/tutorial/README.md).
 
 ## Running and data locations
 
-Double-click `Pavise.exe` and it goes to the tray. The build is unsigned, so SmartScreen may warn — choose to run anyway. Adjusting other processes requires administrator rights. Start-up is implemented as a scheduled task. The version is checked against the official update source once at launch; no local data is uploaded.
+Double-click `Pavise.exe` to start it in the tray. The program is unsigned, so SmartScreen may prompt; choose to run it anyway. Adjusting other processes requires administrator rights. Launch at startup is implemented as a scheduled task. Pavise checks the official update source once at startup and uploads no local data.
 
-Data is stored in `%AppData%\Pavise` by default — target configuration, whitelist and run logs — while interface and feature switches live in the registry at `HKCU\Software\Pavise`. Place an empty `Pavise.portable` file next to the executable to store everything in the program directory instead.
+Data is stored in `%AppData%\Pavise` by default, including target configuration, whitelist and run logs. Interface and feature switches live in the registry under `HKCU\Software\Pavise`. Placing an empty `Pavise.portable` file next to the executable switches storage to the program directory.
 
-The Settings page offers a one-click restore.
-
-## Buy the author a coffee
-
-<div align="center">
-<img src="docs/wechat.png" width="220" alt="WeChat">
-&nbsp;&nbsp;
-<img src="docs/alipay.png" width="220" alt="Alipay">
-</div>
+The Settings page provides a one-click restore.
 
 ## Author and licence
 
-bdth ｜ 2074055628@qq.com ｜ Douyin 44601770838 (bugs, suggestions, usage questions)
+bdth ｜ 2074055628@qq.com ｜ Douyin 44601770838 (bugs, suggestions and usage questions)
 
-This project uses the [Pavise Licence](LICENSE): free to use, free to redistribute unchanged, reverse engineering forbidden, and **selling it is forbidden**.
+The project uses the [Pavise Licence](LICENSE): free to use, free to redistribute unmodified, no reverse engineering, **no selling**.
 
-Taking money in any form for distributing Pavise or a modified version is not allowed — including selling copies, activation codes or download access, bundling it into a paid product or subscription, paywalls, paid unlocks and donation gates.
+Taking money in any form for distributing Pavise or a modified version is not allowed. This includes selling copies, activation codes or download access, bundling it into a paid product or subscription, paywalls, paid unlocks and donation gates.
 
-Keep the licence and author information intact when distributing, tell recipients that selling this software is forbidden, and state the modifier and the changes when distributing a modified version.
+Distributions must keep the licence and author information intact, tell recipients that the software may not be sold, and label the modifier and the modifications when distributing a modified version.
 
-This is a personal project provided as is, with no guarantee of effect or compatibility. Anti-cheat suppression, VBS and cache clearing can all have side effects; use it only on your own machine and understand the risks first.
+Provided as is, with no guarantee of effect or compatibility. Anti-cheat suppression, VBS and cache cleanup can all have side effects. Use it only on your own machine and understand the risks first.
 
-The latest release is always free in the QQ groups: 1051472054, 1101249532 and 383761286. **If you paid for this, you were scammed** — ask for a refund and get it free from the groups.
+The latest version is always free in the QQ groups: 1051472054, 1101249532, 383761286. **If you paid for it, you were scammed.** Ask for a refund and get it free from the groups.

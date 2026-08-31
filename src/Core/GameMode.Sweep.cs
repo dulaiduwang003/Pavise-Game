@@ -66,7 +66,7 @@ namespace PaviseApp
                 || (mode == PerformancePreset.Custom && aggressiveOn);
         }
 
-        // 功耗侧默认避让：不拨电源滑块，插电也放开纯省电项；CPU 空闲由独立确认策略控制。
+        // 功耗侧默认避让 不拨电源滑块 插电也放开纯省电项 CPU 空闲由独立确认策略控制
         internal static bool IsHandheld(PerformancePreset mode)
         {
             return mode == PerformancePreset.Handheld;
@@ -83,7 +83,7 @@ namespace PaviseApp
         //   偶尔醒来也能在任何一个没有更高优先级工作的核上跑 不会被挤着排队
         //   唯一还在把关的是 BasicBackgroundEligible 那道保护边界
         //   反作弊 系统核心 输入音频外设链 加速器 硬件控制 白名单 其它登录账户一律不碰
-        //   每个游戏默认保留家族保护 按路径、同会话的有效父子身份确认成员
+        //   每个游戏默认保留家族保护 按路径 同会话的有效父子身份确认成员
         //   用户逐项开启“压制家族后台”后取消该项的家族豁免 其余安全边界不变
         //   档位差异不再体现在压制强度 只体现在哪些进程有资格被碰
         internal static SuppressionLevel BackgroundLevel()
@@ -96,10 +96,10 @@ namespace PaviseApp
             bool gameHostAncestor = false, string activeGameRoot = null, bool aggressive = false,
             bool familyExempt = true)
         {
-            // 家族是否保护由调用方按档案和本轮身份确定，不按游戏/客户端名字推断。
-            //   开启家族压制仍可能影响依赖进程的响应，所以 UI 默认关闭并提示风险。
-            //   渲染本体、待确认候选、白名单和其它档案的保护在调用方先行放行。
-            //   下面四条是独立安全边界，不随逐游戏设置取消。
+            // 家族是否保护由调用方按档案和本轮身份确定 不按游戏/客户端名字推断
+            //   开启家族压制仍可能影响依赖进程的响应 所以 UI 默认关闭并提示风险
+            //   渲染本体 待确认候选 白名单和其它档案的保护在调用方先行放行
+            //   下面四条是独立安全边界 不随逐游戏设置取消
             //   反作弊被压会心跳超时掉线 加速器被压会断流 输入音频外设链被压会卡鼠标和丢声音
             if (AntiCheatCatalog.IsAntiCheatLikeName(name)) return false;
             if (NetAcceleratorCatalog.IsAcceleratorLikeName(name)) return false;
@@ -151,7 +151,9 @@ namespace PaviseApp
             PolicySnapshot sp = sessionPolicy;
             PerformancePreset mode = sp != null ? sp.Preset : ActivePreset;
             int foregroundPid = GameSessionDetector.ForegroundPid();
-            bool aggressive = IsAggressive(mode, sp != null ? sp.Aggressive : aggressiveOn);
+            // 自适应压制升档 智能档专属 见 AdaptiveGuard 局中切走预设的过渡周期也不放行
+            bool aggressive = IsAggressive(mode, sp != null ? sp.Aggressive : aggressiveOn)
+                || (adaptiveEscalated && mode == PerformancePreset.Standard);
             WhitelistEvaluation whitelist = EvaluateWhitelist(all);
             int policyEpoch = FamilyPolicyEpoch;
             bool familyExempt = true;
@@ -172,8 +174,8 @@ namespace PaviseApp
                     if (familyExempt && activeDetection.Profile != null)
                         activeGameRoot = activeDetection.Profile.Root;
                 }
-                // Another game's default protection cannot be disabled by this
-                // game's opt-in. Ambiguous overlapping roots favor protection.
+                // 别的游戏的默认保护 不能被这个游戏的开关关掉
+                // 根目录有重叠说不清归属时 一律偏向保护
                 protectedProfiles = new List<GameProfile>();
                 foreach (GameProfile profile in profiles)
                     if (FamilyExemptFor(profile))
@@ -253,8 +255,8 @@ namespace PaviseApp
                         continue;
                     }
 
-                    // 候选保护先于一切后台写入，与家族豁免/模式/提优开关无关。
-                    // 只匹配本轮身份的 PID+创建时间+完整路径，不能把复用 PID 放行。
+                    // 候选保护先于一切后台写入 与家族豁免/模式/提优开关无关
+                    // 只匹配本轮身份的 PID+创建时间+完整路径 不能把复用 PID 放行
                     long candidateCreation = processInfo != null ? processInfo.Creation : p.Creation;
                     string candidatePath = processInfo != null ? processInfo.Path : p.Path;
                     if (IsRendererHandoffProtected(pid, candidateCreation, candidatePath))
@@ -270,7 +272,7 @@ namespace PaviseApp
                     if (boosted) continue;
 
                     bool white = whitelist.Protected.Contains(pid);
-                    // 用户开关只取消当前档案的家族保护，不取消其他档案的保护。
+                    // 用户开关只取消当前档案的家族保护 不取消其他档案的保护
                     //   上面的 boosted 只在提优真的落地时为真 提优关掉或被反作弊挡住句柄时它是假的
                     //   所以这条按 pid 的判断不能省 否则那些机器上游戏本体会被当后台压掉
                     if (IsGameOrWhitelistProtected(pid, rendererPid, white,
@@ -311,9 +313,9 @@ namespace PaviseApp
                         ReleaseBackgroundExemption(pid, nm, null);
                         continue;
                     }
-                    // Integrated platform helpers follow this game's family choice;
-                    // independent capture hosts keep their protection. Reuse the
-                    // snapshot without reading game modules or exempting whole folders.
+                    // 集成在平台里的辅助进程跟随本局游戏的家族选择
+                    // 独立的录屏宿主保持保护 直接复用快照
+                    // 不读游戏模块 也不整个文件夹放行
                     if (TryProtectOverlayHost(pid, creation, nm, ipath, familyExempt)) continue;
 
                     string containRoot = LibraryRootOf(ipath, libraryRoots);
@@ -520,18 +522,18 @@ namespace PaviseApp
             return result;
         }
 
-        // Keep window enumeration outside this pure policy step. The snapshot
-        // and profile are the same captured inputs used by this Sweep pass.
-        // Only the visible-window exemption is removed here. Renderer, explicit
-        // whitelist, other-profile and direct-foreground protection remain in
-        // their existing earlier/later decisions; this is not a suppression list.
+        // 窗口枚举放在这个纯策略步骤之外 快照和档案都是本轮 Sweep
+        // 用的同一份输入
+        // 这里只摘掉可见窗口豁免 渲染进程 显式白名单 别的档案
+        // 以及直接前台这几项保护 仍然由它们各自更早或更晚的判断负责
+        // 这不是一份压制名单
         internal static void FilterUserFacingGameFamily(HashSet<int> userFacingFamily,
             GameProfile profile, ProcessSnapshot snapshot, int rendererPid, int selfPid, int ownerSession,
             ICollection<int> gamePids, ICollection<int> gameDescendants, ICollection<int> gameHostAncestors,
             GameFamilyEvidence familyEvidence = null)
         {
-            // Competitive mode shares an empty set; never mutate it. A missing
-            // profile, a default opt-out or a missing renderer retains protection.
+            // 专注档共用同一个空集合 绝对不能改它 档案缺失 默认不压制
+            // 或者渲染进程没确认 都保留保护
             if (userFacingFamily == null || userFacingFamily.Count == 0
                 || rendererPid <= 0 || FamilyExemptFor(profile)) return;
             userFacingFamily.Remove(rendererPid);
@@ -540,11 +542,10 @@ namespace PaviseApp
             if (gamePids != null) userFacingFamily.ExceptWith(gamePids);
 
             if (userFacingFamily.Count == 0 || snapshot == null || ownerSession < 0) return;
-            // A lobby can appear after the cached renderer family was captured.
-            // Reuse this pass's snapshot, but only subtract newly proved owners:
-            // PID reuse, missing identity and cross-session entries retain the
-            // visible-window exemption. Detect duplicates before filtering so
-            // even an invalid second entry cannot make an ambiguous PID a seed.
+            // 大厅可能在缓存下渲染家族之后才出现 复用本轮快照
+            // 但只减去新证实的归属者 PID 复用 身份缺失 跨会话条目
+            // 都保留可见窗口豁免 过滤之前先查重
+            // 这样即便第二条是无效项 也不会让一个说不清的 PID 变成种子
             var current = new Dictionary<int, ProcEntry>();
             var seen = new HashSet<int>();
             foreach (ProcEntry process in snapshot.Entries)
@@ -576,16 +577,16 @@ namespace PaviseApp
                     parents.Add(process.Pid, parent.Pid);
             }
             if (seeds.Count == 0) return;
-            // Every edge above has two current, unique identities and a valid
-            // creation order; do not use cached PIDs or shared host ancestors as
-            // new roots. A Steam/WeGame sibling alone proves no game ownership.
+            // 上面每条边都有两个当前且唯一的身份 以及合法的创建先后
+            // 不要拿缓存 PID 或者共享宿主的祖先当新根 光是 Steam/WeGame
+            // 的兄弟进程 证明不了游戏归属
             userFacingFamily.ExceptWith(seeds);
             userFacingFamily.ExceptWith(WalkDescendants(parents, seeds, selfPid, 24));
         }
 
-        // The same early protection decision is shared with isolated policy tests.
-        // A per-game family opt-in never removes the renderer, explicit whitelist,
-        // or another protected library profile's independently confirmed members.
+        // 这份早期保护判断和隔离的策略测试共用同一套逻辑
+        // 逐游戏的家族开关 永远不会摘掉渲染进程 显式白名单
+        // 或者另一个受保护档案自己确认过的成员
         internal static bool IsGameOrWhitelistProtected(int pid, int rendererPid,
             bool whitelisted, bool protectedLibraryMember, bool familyExempt,
             HashSet<int> gamePids, HashSet<int> gameDescendants)
@@ -597,13 +598,13 @@ namespace PaviseApp
 
         private bool TryProtectOverlayHost(int pid, long creation, string name, string imagePath, bool familyExempt)
         {
-            // Explicit family suppression removes only the integrated platform
-            // exemption. Independent capture/communication tools remain protected.
+            // 显式的家族压制只摘掉集成平台那一层豁免
+            // 独立的录屏和通信工具照旧保护
             if (pid <= 4 || !OverlayHostCatalog.ShouldProtectProcess(name, imagePath, familyExempt))
                 return false;
 
-            // A missing or recycled identity must never release another process's
-            // record. Keep unresolved recovery debt and retry on a later snapshot.
+            // 身份缺失或者 PID 被回收时 绝不能拿去释放另一个进程的记录
+            // 把没解决的恢复欠账留着 换下一轮快照再试
             if (creation > 0 && core.ReleaseIfCreation(pid, SuppressReason.Background, creation))
                 ReportUntrack(pid);
             return true;

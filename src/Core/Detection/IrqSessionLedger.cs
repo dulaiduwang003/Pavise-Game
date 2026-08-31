@@ -61,15 +61,15 @@ namespace PaviseApp
             get { return VerdictExclusion(null, null) == IrqSessionExclusion.None; }
         }
 
-        // 判据与页内解释共享同一条路径；测试可传入固定上下文，不查询真实机器。
+        // 判据与页内解释共享同一条路径 测试可传入固定上下文 不查询真实机器
         internal IrqSessionExclusion VerdictExclusion(string currentBoot, string currentTopology)
         {
             if (DurationSeconds < MinUsableSeconds) return IrqSessionExclusion.TooShort;
             return CommonExclusion(currentBoot, currentTopology);
         }
 
-        // 60 秒是建议样本门槛，不是展示门槛。小于 1 秒的记录仍保留在台账，
-        // 但 V3 只有整数秒，不能为它伪造一个 1 秒分母来算频率。
+        // 60 秒是建议样本门槛 不是展示门槛 小于 1 秒的记录仍保留在台账
+        // 但 V3 只有整数秒 不能为它伪造一个 1 秒分母来算频率
         internal IrqSessionExclusion DisplayExclusion(string currentBoot, string currentTopology)
         {
             if (DurationSeconds <= 0) return IrqSessionExclusion.NoDuration;
@@ -81,7 +81,7 @@ namespace PaviseApp
             if (SystemMask == 0) return IrqSessionExclusion.MissingSystemMask;
             if (EventsLost != 0) return IrqSessionExclusion.LostEvents;
             if (Drivers.Count == 0) return IrqSessionExclusion.NoDrivers;
-            // IRQ affinity 修改要重启才生效；不拿重启前的观测继续建议挪核。
+            // IRQ affinity 修改要重启才生效 不拿重启前的观测继续建议挪核
             if (!IrqAffinityEngine.SameBoot(BootStamp, currentBoot ?? IrqAffinityEngine.BootStamp()))
                 return IrqSessionExclusion.DifferentBoot;
             if (!string.IsNullOrEmpty(TopologyStamp)
@@ -175,8 +175,8 @@ namespace PaviseApp
             {
                 bool safeToRewrite;
                 List<IrqSessionRecord> loaded = LoadLocked(out safeToRewrite, out issue);
-                // 只要文件有一处解析不完整，就不能把前半截当成可靠历史参与裁决。
-                // Append 同样会拒绝覆盖，原文件完整保留给诊断或人工恢复。
+                // 只要文件有一处解析不完整 就不能把前半截当成可靠历史参与裁决
+                // Append 同样会拒绝覆盖 原文件完整保留给诊断或人工恢复
                 return safeToRewrite ? loaded : new List<IrqSessionRecord>();
             }
         }
@@ -197,7 +197,7 @@ namespace PaviseApp
             }
             string[] lines;
             try { lines = File.ReadAllLines(path, StrictUtf8); }
-            // File.Exists 会把权限错误也当成不存在；只有明确缺文件才算正常空历史。
+            // File.Exists 会把权限错误也当成不存在 只有明确缺文件才算正常空历史
             catch (FileNotFoundException) { readOnlyFormat = false; return list; }
             catch (DirectoryNotFoundException) { readOnlyFormat = false; return list; }
             catch (DecoderFallbackException)
@@ -208,8 +208,8 @@ namespace PaviseApp
             string header = lines[0].Trim();
             if (string.Equals(header, ObsoleteHeader, StringComparison.Ordinal))
             {
-                // V2 lacks the per-match game mask required for a safe verdict. Invalidate it;
-                // guessing or migrating that mask could turn old observations into false advice.
+                // V2 缺少安全裁决所需的逐局游戏掩码 直接判为无效
+                // 去猜或者迁移这个掩码 会把老观测变成错误建议
                 bool removed = false;
                 try { File.Delete(path); removed = !File.Exists(path); } catch { }
                 readOnlyFormat = !removed;
@@ -232,8 +232,8 @@ namespace PaviseApp
             {
                 string[] p = lines[i].Split('|');
                 if (p.Length < 2) { safeToRewrite = false; continue; }
-                // 新会话行即使损坏，也必须先切断上一会话。否则紧随其后的 D 行会被
-                // 错接到上一局，制造一个文件里从未存在过的“有效”样本。
+                // 新会话行即使损坏 也必须先切断上一会话 否则紧随其后的 D 行会被
+                // 错接到上一局 制造一个文件里从未存在过的“有效”样本
                 if (p[0] == "S") cur = null;
                 try
                 {

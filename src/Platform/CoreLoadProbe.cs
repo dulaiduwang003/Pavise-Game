@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 对局期间读取每个逻辑核的利用率差分，供同局平均负载记录使用。
+// 文件用途 对局期间读取每个逻辑核的利用率差分 供同局平均负载记录使用
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -9,11 +9,11 @@ namespace PaviseApp
 {
     internal interface ICoreLoadSource : IDisposable
     {
-        // Average since the previous read/baseline. Null means no valid interval.
+        // 自上次读取或基线以来的平均值 null 表示没有有效区间
         Dictionary<int, double> Read();
     }
 
-    // \Processor Information(*)\% Processor Time 是标准计数器 实例名是「组,核」格式
+    // \Processor Information(*)\% Processor Time 是标准计数器 实例名是 组,核 格式
     //   单组机器 逻辑核号 = 实例里的核号 多组按组基址累加(前面各组的活动逻辑核数之和)
     //   "_Total" / "组,_Total" 是汇总行 一律跳过
     //   利用率是差分量 必须采两次 CollectQueryData 之间隔一小段 只有一次拿到的全是 0
@@ -21,8 +21,8 @@ namespace PaviseApp
     {
         internal const int DefaultIntervalMs = 250;
 
-        // One persistent query per observed match. Read never sleeps or creates
-        // a worker; successive counter deltas cover the entire observed interval.
+        // 每观察一局只建一个常驻查询 Read 不睡眠也不建工作线程
+        // 连续的计数器增量覆盖整个观测区间
         internal static ICoreLoadSource OpenSource()
         {
             var source = new CounterSource();
@@ -70,7 +70,7 @@ namespace PaviseApp
 
         // 拿一次 per-core 利用率 键是全局逻辑核号 值是 0-100
         //   同步阻塞约 intervalMs 毫秒 拿不到就返回空字典 绝不抛
-        //   保留给独立诊断测试；选核弹窗只读取已封存的同局记录。
+        //   保留给独立诊断测试 选核弹窗只读取已封存的同局记录
 #if PAVISE_SELFTEST
         // 选核弹窗截图自测专用:注入一份确定的 per-core 负载 让弹窗铺满全负载区间(含 44% / 88%)
         //   供人工核对 ROG 发光观感 空则走真实 PDH 采集
@@ -143,7 +143,7 @@ namespace PaviseApp
             finally { Marshal.FreeHGlobal(buffer); }
         }
 
-        // 把「组,核」实例名映射到全局逻辑核号 汇总行返回 -1
+        // 把 组,核 实例名映射到全局逻辑核号 汇总行返回 -1
         //   groupBase[g] = 前面各组活动逻辑核数累加 单组时恒为 0
         internal static int ParseLogical(string instanceName, int[] groupBase)
         {

@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 由安装记录补足单个 EXE 的可信安装范围；不选择渲染器、不扫描磁盘或猜游戏名称
+// 文件用途 由安装记录补足单个 EXE 的可信安装范围 不选择渲染器 不扫描磁盘或猜游戏名称
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -32,7 +32,7 @@ namespace PaviseApp
             {
                 int count = records == null ? 0 : records.Count;
                 Complete = complete && count <= MaxRecords;
-                // 批量加载档案复用这一份规范化根集合，不逐档案重读记录和系统目录。
+                // 批量加载档案复用这一份规范化根集合 不逐档案重读记录和系统目录
                 for (int i = 0; i < Math.Min(count, MaxRecords); i++)
                 {
                     string root = RootFromRecord(records[i]);
@@ -47,7 +47,7 @@ namespace PaviseApp
             }
         }
 
-        // 仅供添加/编辑和加载档案调用。快照短期复用，不进入游戏检测热循环。
+        // 仅供添加/编辑和加载档案调用 快照短期复用 不进入游戏检测热循环
         internal static string Resolve(string executablePath, string fallbackRoot)
         {
             string executable = Normalize(executablePath);
@@ -60,8 +60,8 @@ namespace PaviseApp
             catch { return fallbackRoot; }
         }
 
-        // 仅收紧原有推断范围。没有新安装证据时不扩大目录，也不能让平台/整库
-        // 根通过 Resolve 的原 fallback 契约重新进入档案。I/O 失败不猜测新范围。
+        // 仅收紧原有推断范围 没有新安装证据时不扩大目录 也不能让平台/整库
+        // 根通过 Resolve 的原 fallback 契约重新进入档案 I/O 失败不猜测新范围
         internal static string RestrictFallback(string executablePath, string fallbackRoot)
         {
             string executable = Normalize(executablePath);
@@ -79,7 +79,7 @@ namespace PaviseApp
             return root;
         }
 
-        // 纯记录选择入口：测试可注入文件系统判断，不访问注册表或启动任何程序。
+        // 纯记录选择入口 测试可注入文件系统判断 不访问注册表或启动任何程序
         internal static string SelectRoot(string executablePath, string fallbackRoot,
             IList<GameInstallRecord> records, IList<string> platformRoots,
             Func<string, bool> directoryExists, Func<string, bool> safePath)
@@ -118,14 +118,14 @@ namespace PaviseApp
         private static string RootFromRecord(GameInstallRecord record)
         {
             if (record == null) return null;
-            // 显式安装位置存在但不合法时也不降级到另一个不一致的字段。
+            // 显式安装位置存在但不合法时也不降级到另一个不一致的字段
             if (!string.IsNullOrWhiteSpace(record.InstallLocation))
                 return Normalize(record.InstallLocation);
             string source = Normalize(record.InstallSource);
             if (source == null) return null;
             string uninstall = UninstallDirectory(record.UninstallString);
-            // InstallSource 经常只是安装包目录，必须由独立的卸载路径佐证。
-            // 只要求安装目录仍存在；升级后旧卸载 EXE 的名字可以已经失效。
+            // InstallSource 经常只是安装包目录 必须由独立的卸载路径佐证
+            // 只要求安装目录仍存在 升级后旧卸载 EXE 的名字可以已经失效
             return string.Equals(source, uninstall, StringComparison.OrdinalIgnoreCase) ? source : null;
         }
 
@@ -167,7 +167,7 @@ namespace PaviseApp
             try
             {
                 string value = Environment.ExpandEnvironmentVariables(raw.Trim().Trim('"')).Replace('/', '\\');
-                // 不将相对路径、设备路径或网络共享解释成一个本机安装范围。
+                // 不将相对路径 设备路径或网络共享解释成一个本机安装范围
                 if (value.Length < 3 || !char.IsLetter(value[0]) || value[1] != ':' || value[2] != '\\') return null;
                 for (int i = 0; i < value.Length; i++)
                     if (char.IsControl(value[i]) || value[i] == '"' || value[i] == '*' || value[i] == '?'
@@ -236,7 +236,7 @@ namespace PaviseApp
                 || Under(root, KnownWindowsRoot) || KnownBroadRoots.Contains(root)) return true;
 
             string name = Path.GetFileName(root);
-            // 仅负向排除操作系统/平台的公共容器；绝不凭某个目录名推断游戏身份。
+            // 仅负向排除操作系统/平台的公共容器 绝不凭某个目录名推断游戏身份
             return string.Equals(name, "Users", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(name, "Games", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(name, "Game", StringComparison.OrdinalIgnoreCase)
@@ -259,7 +259,7 @@ namespace PaviseApp
 
         private static bool ContainsOtherInstall(string root, string executable, HashSet<string> roots)
         {
-            // 一个范围另含不属于所选 EXE 分支的独立安装项时，不把该公共范围当家族。
+            // 一个范围另含不属于所选 EXE 分支的独立安装项时 不把该公共范围当家族
             foreach (string other in roots)
                 if (Under(other, root) && !Under(executable, other)) return true;
             return false;
@@ -334,8 +334,8 @@ namespace PaviseApp
                     {
                         if (records.Count >= MaxRecords)
                         {
-                            // 多放一个空哨兵表示快照不完整，SelectRoot 会整体拒绝扩大。
-                            // 不能把缺失其他产品记录的截断快照当作可靠的公共目录边界。
+                            // 多放一个空哨兵表示快照不完整 SelectRoot 会整体拒绝扩大
+                            // 不能把缺失其他产品记录的截断快照当作可靠的公共目录边界
                             records.Add(null);
                             return;
                         }
@@ -364,7 +364,7 @@ namespace PaviseApp
 #if PAVISE_SELFTEST
         private static Snapshot testSnapshot;
 
-        // 测试必须显式给出快照；空快照也不会回退读取宿主注册表或平台配置。
+        // 测试必须显式给出快照 空快照也不会回退读取宿主注册表或平台配置
         internal static IDisposable UseSnapshotForTest(IList<GameInstallRecord> records, IList<string> platformRoots)
         {
             lock (sync)

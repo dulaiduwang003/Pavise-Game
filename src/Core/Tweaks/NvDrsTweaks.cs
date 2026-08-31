@@ -33,6 +33,8 @@ namespace PaviseApp
         internal const string ListKey = "NvDrsList";
         private const string SnapPrefix = "NvDrs_";
         public const string KeyPState = "pstate";
+        // frl 是 v1.8.0.3 下架的驱动级限帧 键名留着只为清收历史残留
+        //   不要给它加回任何写入路径
         public const string KeyFrl = "frl";
         public const string KeyPreRender = "prerender";
         public const string KeyLowLatCpl = "lowlatcpl";

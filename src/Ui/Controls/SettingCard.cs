@@ -60,7 +60,6 @@ namespace PaviseApp
         public string Desc { get { return desc; } set { string v = value ?? ""; if (desc != v) { desc = v; Invalidate(); } } }
 
         private string meta = "";
-        public int MetaReserve;
         private bool hostTop;
         public bool HostTop
         {
@@ -277,7 +276,7 @@ namespace PaviseApp
             {
                 metaPad = Theme.S(20);
                 var mr = new Rectangle(padL, Height - Theme.S(26),
-                    Math.Max(0, Width - padL - Theme.S(18) - MetaReserve), Theme.S(16));
+                    Math.Max(0, Width - padL - Theme.S(18)), Theme.S(16));
                 TextRenderer.DrawText(g, meta, Theme.Mono(7f), mr, Theme.Faint,
                     TextFormatFlags.Left | TextFormatFlags.VerticalCenter
                         | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);

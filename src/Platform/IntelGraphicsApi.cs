@@ -1,5 +1,5 @@
-// Intel IGCL ABI: drivers.gpu.control-library, commit b6c462933502e13d1537dd5024949a51be30e63d.
-// Uses the installed Intel runtime only. No driver binaries or header files are bundled.
+// 文件用途 Intel IGCL 的 ABI 对应 drivers.gpu.control-library 提交 b6c462933502e13d1537dd5024949a51be30e63d
+// 只用系统里已装的 Intel 运行时 不打包任何驱动二进制或头文件
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -52,7 +52,7 @@ namespace PaviseApp
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 108)] public byte[] Reserved;
     }
 
-    // The capability union has a 20-byte float/int member and 8-byte alignment.
+    // 能力联合体里有一个 20 字节的 float/int 成员 按 8 字节对齐
     [StructLayout(LayoutKind.Explicit, Size = 24)]
     internal struct IntelCtlPropertyInfo
     {
@@ -175,8 +175,8 @@ namespace PaviseApp
         public IntelGraphicsWriteResult TryWriteLowLatency(string adapterId, uint expected, uint value,
             Func<bool> mayContinue)
         {
-            // The only mutations are Off -> basic On and our basic On -> Off.
-            // Boost, per-app inheritance, frame generation and other settings are unreachable.
+            // 唯一允许的改动是 Off 改成基本 On 以及把我们写的基本 On 改回 Off
+            // Boost 逐应用继承 补帧和其它设置一概够不着
             if (!((expected == 0 && value == 1) || (expected == 1 && value == 0)))
                 return IntelGraphicsWriteResult.NotIssued;
             lock (gate)
@@ -212,7 +212,7 @@ namespace PaviseApp
                 ValueType = EnumValueType,
                 Set = set,
                 Value = new IntelCtlPropertyValue { EnumValue = value }
-                // Version 0, null application and length 0: documented global scope.
+                // 版本 0 应用名为空 长度 0 文档里写明这是全局范围
             };
         }
 
@@ -253,8 +253,8 @@ namespace PaviseApp
             if (match == null && !refreshCapabilities) return Find(id, true);
             if (match != null && !refreshCapabilities)
             {
-                // Active-session readback does not enumerate every 3D capability.
-                // Still verify the handle's hardware/driver identity before reading.
+                // 活动会话的回读不会枚举出每一项 3D 能力
+                // 读之前仍然要核实这个句柄的硬件和驱动身份
                 IntelCtlAdapterProperties info;
                 if (!ReadProperties(match.Handle, out info) || AdapterIdentity(info) != id)
                 { cachedDevices = null; return null; }
@@ -341,8 +341,8 @@ namespace PaviseApp
             if (info.Version < 2 || info.VendorId == 0 || info.VendorId > 0xFFFF
                 || info.PciDeviceId == 0 || info.PciDeviceId > 0xFFFF
                 || info.Device > 31 || info.Function > 7 || info.DriverVersion == 0) return null;
-            // LUID changes on reboot. PCI location/subsystem + driver version is
-            // stable across a crash and prevents replay against a different driver.
+            // LUID 重启就变 PCI 位置加子系统再加驱动版本才是跨崩溃稳定的
+            // 能防止对着另一块驱动重放
             return string.Format(CultureInfo.InvariantCulture,
                 "{0:X4}:{1:X4}:{2:X4}:{3:X4}:{4:X2}:{5:X2}:{6:X2}:{7:X16}",
                 info.VendorId, info.PciDeviceId, info.SubsystemVendorId, info.SubsystemId,

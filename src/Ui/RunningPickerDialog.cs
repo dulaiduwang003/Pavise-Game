@@ -270,8 +270,8 @@ namespace PaviseApp
         {
             lock (scanGate)
             {
-                // Closing/disposal owns any abandoned result even if this delegate
-                // never gets dispatched by the window's message loop.
+                // 就算这个委托始终没被窗口消息循环派发
+                // 关闭和释放流程也要接管那个被丢弃的结果
                 if (!ReferenceEquals(pendingScan, result)) return;
                 pendingScan = null;
                 if (closed || result.Generation != scanGeneration)

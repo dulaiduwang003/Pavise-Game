@@ -146,7 +146,7 @@ namespace PaviseApp
             RefreshWhitelist(false);
         }
 
-        // 安装平台只作信息展示；逐游戏家族设置不再有全局状态。
+        // 安装平台只作信息展示 逐游戏家族设置不再有全局状态
         internal void SyncWhitelistPlatformHint()
         {
             if (lblWhiteHint == null || lblWhiteHint.IsDisposed) return;

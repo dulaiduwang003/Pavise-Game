@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 对局期间临时暂停非必要服务；只恢复本次成功请求停止的服务。
+// 文件用途 对局期间临时暂停非必要服务 只恢复本次成功请求停止的服务
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -37,8 +37,8 @@ namespace PaviseApp
 
     internal sealed class OptionalServicePauseEngine
     {
-        // Stop dependents before their host; restoration uses the reverse order.
-        // Keep this separate from the retired SysMain/WSearch policy and its ledger.
+        // 先停依赖方再停宿主 还原时反着来
+        // 和已下架的 SysMain/WSearch 策略以及它的台账分开 别混用
         internal static readonly string[] Names =
             { "PrintNotify", "Spooler", "WSearch", "WMPNetworkSvc", "MapsBroker", "DiagTrack", "RetailDemo" };
 
@@ -51,12 +51,12 @@ namespace PaviseApp
         private readonly IOptionalServiceControl control;
         private readonly IOptionalServiceLedger ledger;
         private readonly object gate = new object();
-        // A successful STOP remains ours even if writing the receipt fails.
-        // This in-process proof must never be inferred from a Prepared disk record.
+        // STOP 发成功了这台服务就归我们管 哪怕收据没写进去
+        // 这个进程内的凭证不能从磁盘上的 Prepared 记录反推
         private readonly Dictionary<string, Entry> receipts =
             new Dictionary<string, Entry>(StringComparer.OrdinalIgnoreCase);
-        // Do not replay a stale disk receipt after a successful restore or an
-        // external configuration change, even when clearing the ledger failed.
+        // 还原成功或者外部改过配置以后 别再拿旧收据重放
+        // 台账没清干净也不行
         private readonly HashSet<string> settled = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> startNotIssued = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private bool active;
@@ -74,7 +74,7 @@ namespace PaviseApp
         internal static bool IsAllowed(string name)
         {
             if (string.IsNullOrEmpty(name)) return false;
-            // Do not derive authorization from the mutable array or a persisted name.
+            // 授权不能来自那个可变数组 也不能来自落盘的服务名
             switch (name.ToLowerInvariant())
             {
                 case "printnotify": case "spooler": case "wsearch":
@@ -105,7 +105,7 @@ namespace PaviseApp
             lock (gate)
             {
                 if (active) return true;
-                // Finish an earlier session before claiming any new services.
+                // 先把上一局收尾 再去认领新服务
                 if (!RestoreCore()) return false;
                 if (!MayContinue(mayContinue)) return true;
                 string boot;
@@ -120,8 +120,8 @@ namespace PaviseApp
                         || before.StartType == 4 || !before.AcceptsStop || before.HasActiveDependents
                         || string.IsNullOrEmpty(before.Configuration) || before.Configuration.Length > 8192) continue;
                     if (IsPrinting(name) && !PrintingIdle()) continue;
-                    // Querying a local print provider can block. Never act on its
-                    // late result after the user has disabled the policy or exited.
+                    // 查本地打印提供程序会阻塞 用户已经关掉策略或者退出之后
+                    // 迟到的结果一律不处理
                     if (!MayContinue(mayContinue)) return RestoreCore();
 
                     var entry = new Entry { Name = name, Configuration = before.Configuration };
@@ -138,15 +138,15 @@ namespace PaviseApp
                     try { accepted = control.TryStop(name, before, mayContinue); }
                     catch
                     {
-                        // A throwing adapter may have issued STOP. Its Prepared
-                        // record is deliberately not promoted without a receipt.
+                        // 适配器抛异常时 STOP 可能已经发出去了 所以它的 Prepared
+                        // 记录在拿到收据之前故意不升级
                         Warn("log.pausesvc.unowned", name);
                         RestoreCore();
                         return false;
                     }
                     if (!accepted)
                     {
-                        // Another actor stopping it first is not our ownership.
+                        // 别人先把它停了 不算我们的所有权
                         entries.Remove(entry);
                         if (!Save(entries, boot)) return AbortAfterLedgerFailure();
                         continue;
@@ -168,8 +168,8 @@ namespace PaviseApp
 
         public bool Restore() { lock (gate) return RestoreCore(); }
 
-        // Only acknowledge accepted stops, never enforce them repeatedly. Once
-        // STOPPED is observed, a later RUNNING state belongs to another actor.
+        // 只确认已被接受的停止 不反复强制 一旦观察到 STOPPED
+        // 之后再变回 RUNNING 就是别人干的
         public bool ObserveStops()
         {
             lock (gate)
@@ -210,8 +210,8 @@ namespace PaviseApp
         private bool AbortAfterLedgerFailure()
         {
             Warn("log.pausesvc.ledger", null);
-            // In-process receipts can roll back a successful STOP whose receipt
-            // could not be persisted. A fresh process has no such proof.
+            // 进程内收据能回滚那种停成功但收据没落盘的情况
+            // 新起的进程没有这份凭证
             RestoreCore();
             return false;
         }
@@ -235,8 +235,8 @@ namespace PaviseApp
             }
             string boot;
             if (!ReadBoot(out boot)) return false;
-            // Windows has already applied the user's configured startup policy
-            // on a new boot. Do not start last boot's manually running services.
+            // 新开机时 Windows 已经按用户配置的启动类型跑过一遍
+            // 别再去启动上次开机时手动运行着的服务
             if (recordedBoot != null && recordedBoot != boot)
             {
                 if (!Save(new List<Entry>(), boot)) return false;
@@ -262,15 +262,15 @@ namespace PaviseApp
                 }
                 else
                 {
-                    // Refuse a replaced/tampered receipt instead of overwriting it.
+                    // 收据被替换或者篡改过就直接拒绝 不要覆盖写
                     Warn("log.pausesvc.ledger", null);
                     return false;
                 }
             }
 
-            // A started service may remain START_PENDING; a stopped one may
-            // remain STOP_PENDING. Keep its record and let the normal retry loop
-            // check it later instead of blocking the UI or force-killing a host.
+            // 启动的服务可能一直停在 START_PENDING 停掉的可能停在 STOP_PENDING
+            // 留着记录交给正常重试轮询以后再看
+            // 不要卡住界面 也不要强杀宿主进程
             var pending = new List<string>();
             var uncertain = new List<string>();
             for (int i = entries.Count - 1; i >= 0; i--)
@@ -283,8 +283,8 @@ namespace PaviseApp
                 if (!current.Exists || current.StartType == 4
                     || !string.Equals(current.Configuration, entry.Configuration, StringComparison.Ordinal))
                 {
-                    // A user/service installer changed the configuration after
-                    // our stop. Drop ownership permanently; never undo that choice.
+                    // 我们停完之后用户或者安装程序改了配置
+                    // 永久放弃所有权 不去推翻这个选择
                     Logger.Log(Lang.F("log.pausesvc.changed", entry.Name));
                     remove = true;
                 }
@@ -304,9 +304,9 @@ namespace PaviseApp
                     entry.Restoring = true;
                     receipts[entry.Name] = entry;
                     startNotIssued.Remove(entry.Name);
-                    // Persist recovery intent before START. After a crash, an R
-                    // record never replays START against a subsequently stopped
-                    // service: the earlier restore may already have succeeded.
+                    // START 之前先把恢复意图落盘 崩溃之后
+                    // R 记录不会对一台后来被停掉的服务重放 START
+                    // 因为之前那次还原可能已经成功了
                     if (!Save(entries, boot))
                     {
                         entry.Restoring = false;
@@ -326,8 +326,8 @@ namespace PaviseApp
                     else if (startResult == OptionalServiceStartResult.NotIssued)
                     {
                         entry.Restoring = false;
-                        // The adapter has neither issued START nor observed a
-                        // user/service action that would relinquish ownership.
+                        // 适配器既没发出 START 也没观察到会让我们放弃所有权的用户或服务动作
+                        // 会让我们放弃所有权的用户或服务动作
                         startNotIssued.Add(entry.Name);
                     }
                     if (!remove)
@@ -335,9 +335,9 @@ namespace PaviseApp
                         OptionalServiceSnapshot after;
                         if (Query(entry.Name, out after))
                         {
-                            // Preserve an external decision even if it is changed
-                            // again before the next retry. A final query must not
-                            // forget evidence that our ownership was relinquished.
+                            // 外部的决定要保留 哪怕下次重试之前它又变了
+                            // 最后一次查询不能把所有权已经交出去这个证据
+                            // 给忘掉
                             bool changed = !after.Exists || after.StartType == 4
                                 || !string.Equals(after.Configuration, entry.Configuration, StringComparison.Ordinal);
                             bool externalTransition = startResult == OptionalServiceStartResult.NotIssued

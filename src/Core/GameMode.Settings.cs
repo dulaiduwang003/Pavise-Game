@@ -160,7 +160,7 @@ namespace PaviseApp
                 envNextAttempt.Remove("services");
                 envFailures.Remove("services");
             }
-            // Only wake the existing worker. Never query/stop services on the UI thread.
+            // 只唤醒已有的工作线程 绝不在界面线程上查询或停止服务
             RequestPolicyApply();
         }
 
@@ -169,7 +169,7 @@ namespace PaviseApp
             get { return disableCpuIdleOn; }
             set
             {
-                // Invalidate before persistence, which may block or fail.
+                // 先失效再落盘 落盘可能阻塞也可能失败
                 lock (sync)
                 {
                     System.Threading.Interlocked.Increment(ref cpuIdleGeneration);
@@ -188,7 +188,7 @@ namespace PaviseApp
                 envNextAttempt.Remove("cpuidle");
                 envFailures.Remove("cpuidle");
             }
-            // The UI records intent only; all power writes use the worker gate.
+            // 界面只记录意图 所有电源写入都走工作线程闸
             RequestPolicyApply();
         }
 
@@ -213,11 +213,53 @@ namespace PaviseApp
                 }
                 else
                 {
-                    // A failed preference write must not prevent an immediate
-                    // best-effort release. It cannot promise a persisted opt-out.
+                    // 偏好写入失败 不能妨碍立刻做一次尽力而为的释放
+                    // 但它没法保证退出选择已经落盘
                     vramShieldOn = false;
                     Settings.Save(VramShield.EnabledKey, false);
                     VramShield.Release();
+                }
+                RequestPolicyApply();
+            }
+        }
+
+        // 实验功能 默认关闭 语义与显存驻留一致 关掉立刻撤销 重开清熔断
+        public bool MemShieldOn
+        {
+            get { return memShieldOn; }
+            set
+            {
+                if (value)
+                {
+                    if (!Settings.Save(MemShield.EnabledKey, true)) return;
+                    memShieldOn = true;
+                    MemShield.ClearFuse();
+                }
+                else
+                {
+                    memShieldOn = false;
+                    Settings.Save(MemShield.EnabledKey, false);
+                    MemShield.Release();
+                }
+                RequestPolicyApply();
+            }
+        }
+
+        // 实验功能 默认关闭 预热是纯读取 没有需要撤销的系统状态 关掉只是不再预热
+        public bool CacheWarmOn
+        {
+            get { return cacheWarmOn; }
+            set
+            {
+                if (value)
+                {
+                    if (!Settings.Save(CacheWarm.EnabledKey, true)) return;
+                    cacheWarmOn = true;
+                }
+                else
+                {
+                    cacheWarmOn = false;
+                    Settings.Save(CacheWarm.EnabledKey, false);
                 }
                 RequestPolicyApply();
             }
@@ -263,6 +305,12 @@ namespace PaviseApp
         {
             get { return wlanGuardOn; }
             set { wlanGuardOn = value; Settings.Save("GmWlanGuard", value); if (value) ClearEnvFuse("wlanscan"); RequestPolicyApply(); }
+        }
+
+        public bool DisplaySoloOn
+        {
+            get { return displaySoloOn; }
+            set { displaySoloOn = value; Settings.Save(PolicyCatalog.KeyDisplaySolo, value); if (value) ClearEnvFuse("solo"); RequestPolicyApply(); }
         }
 
         public bool NvMaxPerf

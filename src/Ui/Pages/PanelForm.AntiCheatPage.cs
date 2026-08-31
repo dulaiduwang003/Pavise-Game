@@ -136,8 +136,9 @@ namespace PaviseApp
             RefreshAcGroupStates();
         }
 
+        // 档位选择器已移除 压制构成固定为扫描安全 见 SuppressionCore.Apply 的说明
+        //   高度不能跟着选择器减 它浮在右下不占垂直流 标题+状态+说明+进程名四层就要这么高
         private const int AcCardH = 104;
-        private const int AcTierW = 210;
 
         private int AddAcCard(string key, string title, string note, string[] procs, int y)
         {
@@ -147,15 +148,6 @@ namespace PaviseApp
             SettingCard card = MakeCard(acList, 6, y, ScrollContentW, AcCardH, title, note, sw);
             card.HostTop = true;
             card.Meta = string.Join(" · ", procs);
-            card.MetaReserve = Theme.S(AcTierW + 30);
-
-            var lvl = new TierPicker();
-            lvl.Value = tamer.GroupLevel(key);
-            lvl.Size = new Size(Theme.S(AcTierW), Theme.S(30));
-            lvl.Changed = delegate(SuppressionLevel v) { tamer.SetGroupLevel(key, v); };
-            lvl.Location = new Point(card.Width - Theme.S(18) - lvl.Width, card.Height - Theme.S(12) - lvl.Height);
-            card.Controls.Add(lvl);
-            card.TrackChildHover(lvl);
 
             acGroups.Add(new AcGroup(key, title, false, new string[0]));
             acCards.Add(card);

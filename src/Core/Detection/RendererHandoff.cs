@@ -20,8 +20,8 @@ namespace PaviseApp
         }
     }
 
-    // 探测预算和保护生命期分开：预算耗尽不等于“不是游戏”。
-    // 仍处于前台且身份/关联有效的候选只保这一份 PID，失焦后短宽限退出。
+    // 探测预算和保护生命期分开 预算耗尽不等于“不是游戏”
+    // 仍处于前台且身份/关联有效的候选只保这一份 PID 失焦后短宽限退出
     internal sealed class RendererHandoffTracker
     {
         internal const int ProbeWindowMs = 10000;
@@ -87,8 +87,8 @@ namespace PaviseApp
                 else current.Detection = Copy(detection);
                 current.Foreground = detection.RendererForeground;
                 if (current.Foreground) current.LastForegroundMs = nowMs;
-                // 保持已有 learned/Force 可见或后台目标的选举语义；
-                // 陌生窗口化候选和仅安全保护的目标永远不能借此获得后台长驻豁免。
+                // 保持已有 learned/Force 可见或后台目标的选举语义
+                // 陌生窗口化候选和仅安全保护的目标永远不能借此获得后台长驻豁免
                 current.AllowBackground = !detection.RendererForeground
                     && detection.RendererCandidateSelected && detection.RendererUserSelected
                     && !detection.RequiresGpuConfirm && !detection.RendererSafetyOnly;
@@ -220,7 +220,7 @@ namespace PaviseApp
             CancelLocked();
             generation++;
             current = null;
-            // 不重置全局冷却，也不假装尚未退出的采样任务已完成。
+            // 不重置全局冷却 也不假装尚未退出的采样任务已完成
         }
 
         private void CancelLocked() { if (inFlight != null) inFlight.Canceled = true; }

@@ -94,8 +94,8 @@ namespace PaviseApp
 
         internal static string GlobalValue(string key)
         {
-            // This option has no global setting. Old GmFamilyExempt does not migrate
-            // into an unsafe opt-in for every game in an existing library.
+            // 这个选项没有全局设置 老的 GmFamilyExempt 不会迁移成
+            // 对现有库里每个游戏都不安全的开启状态
             if (key == PolicyCatalog.KeySuppressFamily) return "0";
             PolicyItem item = PolicyCatalog.ItemOf(key);
             if (item == null) return null;
@@ -196,6 +196,9 @@ namespace PaviseApp
         public bool AmdAfmf { get { return On(PolicyCatalog.KeyAmdAfmf); } }
         public bool IntelLowLatency { get { return On(PolicyCatalog.KeyIntelLowLatency); } }
         public bool VramShield { get { return On(PolicyCatalog.KeyVramShield); } }
+        public bool MemShield { get { return On(PolicyCatalog.KeyMemShield); } }
+        public bool CacheWarm { get { return On(PolicyCatalog.KeyCacheWarm); } }
+        public bool DisplaySolo { get { return On(PolicyCatalog.KeyDisplaySolo); } }
 
         public ulong CoreMask
         {

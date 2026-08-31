@@ -39,8 +39,8 @@ namespace PaviseApp
         private bool completed = true;
         private bool sealedPending;
         private bool stopInProgress;
-        // Seal 只停 ETW 并暂存；必须等退出宽限真正结束，
-        // 才由 TakeSummary 提交。同一游戏在宽限内恢复时 Arm 会丢弃它。
+        // Seal 只停 ETW 并暂存 必须等退出宽限真正结束
+        // 才由 TakeSummary 提交 同一游戏在宽限内恢复时 Arm 会丢弃它
         private IrqSessionRecord pendingRecord;
         private string pendingSummary;
         // 上一局的逐事件 DPC 时间线 供 GameMode 取走做 present 对齐 取走即清
@@ -128,8 +128,8 @@ namespace PaviseApp
 
         private bool warnedNoAdmin;
 
-        // 开局只布防。系统观测只需确认 renderer 身份，不写游戏亲和性；
-        // 核域归因仍必须有完整的落核证明，两种证据不能混成一条记录。
+        // 开局只布防 系统观测只需确认 renderer 身份 不写游戏亲和性
+        // 核域归因仍必须有完整的落核证明 两种证据不能混成一条记录
         public void Arm(string game, ulong availableSystemMask)
         {
             Arm(game, availableSystemMask, false);
@@ -155,9 +155,9 @@ namespace PaviseApp
             StopAndDiscard(stale);
         }
 
-        // 严格核域是建议的证据要求，不是记录一局的前提。给初始化有限几轮
-        // 扫描机会；仍未起采或证明已失效时，本局单向退为系统观测。
-        // ETW/权限失败不是落核失败，不能借此每轮重新申请会话。
+        // 严格核域是建议的证据要求 不是记录一局的前提 给初始化有限几轮
+        // 扫描机会 仍未起采或证明已失效时 本局单向退为系统观测
+        // ETW/权限失败不是落核失败 不能借此每轮重新申请会话
         public bool TryFallbackToSystemObservation(string game, ulong availableSystemMask)
         {
             lock (gate)
@@ -181,7 +181,7 @@ namespace PaviseApp
             }
         }
 
-        // armed 后以及采集中都要持续核验；采集中一旦失配，整局样本永久作废。
+        // armed 后以及采集中都要持续核验 采集中一旦失配 整局样本永久作废
         public bool RequiresPlacementAudit
         {
             get { lock (gate) return !disposed && armed && !gameMaskInvalid && !systemObservation; }
@@ -258,7 +258,7 @@ namespace PaviseApp
 
         public bool ConfirmSystemObservation(int verifiedRendererPid, long verifiedRendererCreation)
         {
-            // 0 表示只观测系统中断，没有证明游戏的实际核域。
+            // 0 表示只观测系统中断 没有证明游戏的实际核域
             return ConfirmCapture(0, verifiedRendererPid, verifiedRendererCreation, true);
         }
 
@@ -281,9 +281,9 @@ namespace PaviseApp
             lock (gate)
             {
                 if (disposed || !armed || gameMaskInvalid || systemObservation != observeSystem) return false;
-                // RenderLane 等异步调优若正在写 renderer，起采必须
-                // 等它离开写区；该计数和开采在同一 gate 下，没有
-                // “回调刚查完、ETW 就开了、setter 才落下”的窗口。
+                // RenderLane 等异步调优若正在写 renderer 起采必须
+                // 等它离开写区 该计数和开采在同一 gate 下 没有
+                // “回调刚查完 ETW 就开了 setter 才落下”的窗口
                 if (!observeSystem && externalMutations > 0) return false;
                 bool identityValid = observeSystem
                     ? verifiedMask == 0 && CanObserveSystem(systemMask,
@@ -315,9 +315,9 @@ namespace PaviseApp
                         }
                         else
                         {
-                            // 超过 proof 新鲜度的空窗无法在事后补证。
-                            // 丢弃旧 ETW，但保持本局 armed，下轮从当前
-                            // 已验证落核点重新开一个干净 epoch。
+                            // 超过 proof 新鲜度的空窗无法在事后补证
+                            // 丢弃旧 ETW 但保持本局 armed 下轮从当前
+                            // 已验证落核点重新开一个干净 epoch
                             string resumeGame = gameName;
                             ulong resumeSystem = systemMask;
                             discard = InvalidateLocked();
@@ -395,9 +395,9 @@ namespace PaviseApp
             StopAndDiscard(discard);
         }
 
-        // 本局调优状态需要重写时，丢弃 live 但保留 armed。
-        // 调用方必须先等这个方法返回（旧 ETW 已停），再写入；
-        // 写完后下一个 Confirm 从新证明点起采。
+        // 本局调优状态需要重写时 丢弃 live 但保留 armed
+        // 调用方必须先等这个方法返回 旧 ETW 已停 再写入
+        // 写完后下一个 Confirm 从新证明点起采
         public void RestartCurrentEpoch()
         {
             IIrqSessionCapture discard = null;
@@ -418,9 +418,9 @@ namespace PaviseApp
             StopAndDiscard(discard);
         }
 
-        // 供 RenderLane 这类独立 worker 在真正 setter 前后标记。
-        // 若已采集，先作废旧 epoch 并保留本局 armed；写入结束后
-        // 下轮才能从新 proof 开始，不把 Pavise 自己的写入算入对局。
+        // 供 RenderLane 这类独立 worker 在真正 setter 前后标记
+        // 若已采集 先作废旧 epoch 并保留本局 armed 写入结束后
+        // 下轮才能从新 proof 开始 不把 Pavise 自己的写入算入对局
         public void BeginExternalMutation()
         {
             IIrqSessionCapture discard = null;
@@ -428,9 +428,9 @@ namespace PaviseApp
             {
                 if (disposed) return;
                 externalMutations++;
-                // 系统观测记录真实整机 DPC，本来就包括正常后台活动；
-                // 不宣称游戏核归因，因此新进程压制等写入不应把整局反复打碎。
-                // 严格核域证据仍必须排除这些写入造成的观测污染。
+                // 系统观测记录真实整机 DPC 本来就包括正常后台活动
+                // 不宣称游戏核归因 因此新进程压制等写入不应把整局反复打碎
+                // 严格核域证据仍必须排除这些写入造成的观测污染
                 if (!systemObservation && (stopInProgress
                     || (armed && !gameMaskInvalid && live != null && !completed)))
                 {
@@ -500,8 +500,8 @@ namespace PaviseApp
             }
         }
 
-        // 首次检测到游戏消失时立刻封存，避免退出宽限期里的系统 DPC 混入。
-        // 封存不消费 pending，8 秒后的 ReportFinish 仍可照常取摘要和时间线。
+        // 首次检测到游戏消失时立刻封存 避免退出宽限期里的系统 DPC 混入
+        // 封存不消费 pending 8 秒后的 ReportFinish 仍可照常取摘要和时间线
         public void Seal()
         {
             lock (takeGate) Run(false);
@@ -570,7 +570,7 @@ namespace PaviseApp
                     stopInProgress = true;
                     began = startTicks;
                     ended = now;
-                    // Freeze CPU deltas before ETW Stop, restoration, or the exit grace.
+                    // 在 ETW Stop 还原和退出宽限期之前 先把 CPU 增量冻住
                     if (coreLoads != null) coreLoads.Finish(now, loadRecord);
                     coreLoads = null;
                     epoch = generation;
@@ -602,7 +602,7 @@ namespace PaviseApp
             try
             {
                 timeline = ia.DpcTimeline;
-                // 到达内存上限或 ETW 自身丢事件，零命中都不能作为可靠的负证据。
+                // 到达内存上限或 ETW 自身丢事件 零命中都不能作为可靠的负证据
                 timelineTruncated = ia.DpcTimelineTruncated
                     || (raw != null && (raw.Lossy || raw.Incomplete));
             }
@@ -667,7 +667,7 @@ namespace PaviseApp
             string summary = IrqVerdict.SummarizeSession(rec);
             lock (gate)
             {
-                // Stop/汇总期间若发生新一局、禁用或失配，旧 epoch 绝不能留下。
+                // Stop/汇总期间若发生新一局 禁用或失配 旧 epoch 绝不能留下
                 if (!CaptureStillValidLocked(epoch, mask, available, pid, creation)) return null;
                 pendingRecord = rec;
                 pendingSummary = summary;
@@ -675,8 +675,8 @@ namespace PaviseApp
             }
         }
 
-        // gate 内调用。Append 自己有独立文件锁，这里持有小范围状态锁
-        // 保证 Arm/Invalidate 无法在“已判有效”和“落盘”之间插入新一局。
+        // gate 内调用 Append 自己有独立文件锁 这里持有小范围状态锁
+        // 保证 Arm/Invalidate 无法在“已判有效”和“落盘”之间插入新一局
         private string CommitPendingLocked()
         {
             if (pendingRecord == null)
@@ -740,8 +740,8 @@ namespace PaviseApp
                 ServiceDriverImagePaths, ReadDriverFileVersion);
         }
 
-        // One immutable lookup scope per page refresh or completed capture.
-        // Lazy snapshots avoid system queries when no driver needs verification.
+        // 每次页面刷新或者一次采集完成 只用一份不可变的查询范围
+        // 延迟取快照 这样没有驱动需要核实时就不去查系统
         internal static Func<string, string> CreateDriverVersionReader(
             string windowsDirectory, Func<List<string>> loadedImages,
             Func<List<string>> serviceImages, Func<string, string> fileVersion)
@@ -775,9 +775,9 @@ namespace PaviseApp
                         }
                         known = FindDriverImagePath(moduleName, windowsDirectory, services, out path);
                     }
-                    // An explicit loaded/registered path is authoritative. If it
-                    // disappeared, is unreadable or ambiguous, an old same-name
-                    // System32 copy must not impersonate the current driver.
+                    // 显式的已加载或已注册路径最权威 如果它消失了
+                    // 读不出来或者说不清 那就不能让 System32 下一个同名的
+                    // 旧副本冒充当前驱动
                     version = known ? DriverFileVersion(path, fileVersion)
                         : ConventionalDriverVersion(moduleName, windowsDirectory, fileVersion);
                     versions[moduleName] = version;
@@ -801,7 +801,7 @@ namespace PaviseApp
                     @"System32\drivers\" + moduleName, windowsDirectory), fileVersion);
                 string direct = DriverFileVersion(NormalizeDriverImagePath(
                     @"System32\" + moduleName, windowsDirectory), fileVersion);
-                // Two readable same-name files cannot establish which one was loaded.
+                // 两个同名文件都能读 这证明不了到底加载的是哪一个
                 return driver.Length > 0 && direct.Length > 0 ? ""
                     : driver.Length > 0 ? driver : direct;
             }
@@ -857,8 +857,8 @@ namespace PaviseApp
                     path = Path.Combine(windows, path);
                 if (path.StartsWith(@"\Device\", StringComparison.OrdinalIgnoreCase))
                     path = DosDriverImagePath(path);
-                // Never resolve drive-relative, UNC, wildcard or device paths by
-                // consulting the working directory or accessing a remote share.
+                // 驱动器相对路径 UNC 通配符和设备路径 一律不通过查工作目录
+                // 或者访问远程共享去解析
                 if (path.Length < 3 || !char.IsLetter(path[0]) || path[1] != ':' || path[2] != '\\'
                     || path.IndexOf(':', 2) >= 0 || path.IndexOfAny(new[] { '*', '?', '\0', '%' }) >= 0)
                     return "";
@@ -904,7 +904,7 @@ namespace PaviseApp
                             if (service == null) continue;
                             object kind = service.GetValue("Type");
                             if (kind == null || (Convert.ToInt32(kind) & 0x0B) == 0) continue;
-                            // A service name need not equal the driver module name.
+                            // 服务名不一定等于驱动模块名
                             string image = service.GetValue("ImagePath", null,
                                 Microsoft.Win32.RegistryValueOptions.DoNotExpandEnvironmentNames) as string;
                             if (!string.IsNullOrWhiteSpace(image)) paths.Add(image);
@@ -928,7 +928,7 @@ namespace PaviseApp
                 var after = new FileInfo(path);
                 if (!after.Exists || after.Length != length || after.LastWriteTimeUtc.Ticks != changed)
                     return "";
-                // Retain the existing identity format so valid histories remain readable.
+                // 身份格式保持原样 让已有的合法历史仍然读得出来
                 return (version.FileVersion ?? "").Trim() + "#"
                     + (changed / TimeSpan.TicksPerSecond).ToString(
                         System.Globalization.CultureInfo.InvariantCulture);
@@ -938,8 +938,8 @@ namespace PaviseApp
 
         public void Dispose()
         {
-            // 正常结束由 ReportFinish 封账；进程退出/异常 Dispose 只丢弃半局，
-            // 不把缺少最终落核复核的残片写进历史。
+            // 正常结束由 ReportFinish 封账 进程退出/异常 Dispose 只丢弃半局
+            // 不把缺少最终落核复核的残片写进历史
             lock (takeGate)
             {
                 IIrqSessionCapture discard = null;

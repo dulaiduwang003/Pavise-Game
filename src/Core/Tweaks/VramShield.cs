@@ -122,8 +122,8 @@ namespace PaviseApp
 
         public static void SampleIfDue(bool want, int rendererPid, long rendererCreation)
         {
-            // Do not overwrite the only original when a previous restoration was
-            // denied or could not be verified. Explicit release/begin can retry.
+            // 上一次还原被拒绝或者没法核实时 不要覆盖那份唯一的原始值
+            // 显式的释放或者重新开始可以重试
             lock (lk) if (recoveryBlocked) return;
             if (!want || rendererPid <= 0) { ReleaseIfAny(Lang.T("t.vramshield.3")); return; }
             bool mismatch;
@@ -269,8 +269,8 @@ namespace PaviseApp
                 BeginMutation();
                 try
                 {
-                    // Reservation writes require a confirmed, non-overwriting
-                    // recovery record, just like the process suppression journal.
+                    // 写预留和进程压制台账一样 需要一条已确认且不覆盖旧值的
+                    // 恢复记录
                     string snapshot = pid.ToString(CultureInfo.InvariantCulture)
                         + ":" + creation.ToString(CultureInfo.InvariantCulture);
                     if (Settings.LoadStr(SnapKey, "").Length != 0)
@@ -286,8 +286,8 @@ namespace PaviseApp
                     if (!after.Ok || after.CurrentReservation == 0)
                     {
                         Settings.Save(FuseKey, true);
-                        // 此刻仍是 Observing，但写入可能已经生效。
-                        // DoRelease 依据快照撤销；未确认还原时保留记录。
+                        // 此刻仍是 Observing 但写入可能已经生效
+                        // DoRelease 依据快照撤销 未确认还原时保留记录
                         DoRelease(Lang.T("t.vramshield.2"));
                         lock (lk) stage = ShieldStage.Fused;
                         Logger.Log(Lang.T("log.vramshield.8"));
@@ -385,16 +385,16 @@ namespace PaviseApp
                 if (!restored)
                 {
                     lock (lk) recoveryBlocked = true;
-                    // Normally the record already exists. Retain an in-memory
-                    // original too if an external writer removed it unexpectedly.
+                    // 正常情况下记录已经存在 万一被外部写入者意外删掉
+                    // 内存里也留一份原始值
                     if (snapshot.Length == 0 && pid > 0 && creation > 0)
                         Settings.SaveStr(SnapKey, pid.ToString(CultureInfo.InvariantCulture)
                             + ":" + creation.ToString(CultureInfo.InvariantCulture));
                     return false;
                 }
             }
-            // A changed or unwritable snapshot is not permission to clear a new
-            // recovery target. Leave it visible to the final reset verification.
+            // 快照被改过或者写不进去 不等于可以清掉一个新的恢复目标
+            // 把它留在明面上 交给最终的重置核实
             if (Settings.LoadStr(SnapKey, "") != snapshot
                 || snapshot.Length != 0 && (!Settings.SaveStr(SnapKey, "") || Settings.LoadStr(SnapKey, "").Length != 0))
             {
@@ -465,9 +465,9 @@ namespace PaviseApp
                 long cr, cpu; ulong io;
                 if (!Native.QueryProcessSample(h, out cr, out cpu, out io)) return false;
                 if (cr != creation) return true;
-                // The legacy snapshot stores no adapter identity. After a crash,
-                // today's busiest GPU does not prove which adapter was reserved.
-                // Preserve the record until that process exits instead of guessing.
+                // 老格式的快照里没有适配器身份 崩溃之后
+                // 今天最忙的那块显卡 证明不了当初预留的是哪一块
+                // 记录留着等那个进程退出 别去猜
                 if (adapter == 0) return false;
                 VramStatus before = VidMmProbe.Query(h, adapter, phys);
                 if (before == null || !before.Ok) return false;

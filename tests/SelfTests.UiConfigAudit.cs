@@ -33,6 +33,7 @@ namespace PaviseApp
                     UiConfigPowerYieldFusedRemainsEditable, UiConfigPowerYieldDescriptionRecovers,
                     UiConfigPowerYieldProfileCanRetry, UiConfigPowerYieldGlobalConsent,
                     UiConfigPowerYieldCapabilityLoss, UiConfigPowerYieldProfileConsent,
+                    UiConfigPowerYieldFreqProxy, UiConfigPowerYieldSteering,
                     UiConfigPowerYieldInheritanceAndClear, UiConfigGuardedFailedSaves,
                     UiConfigAccessibilityPartialBackupRemainsVisible,
                     UiConfigUnsupportedGraphicsRemainDisableable,
@@ -514,6 +515,140 @@ namespace PaviseApp
                     Eq(false, fixture.Pick("1"));
                     Eq("0", fixture.Family.Current(fixture.Family.First.Id).Overrides[PolicyCatalog.KeyPowerYield]);
                 }
+        }
+
+        // 方向盘 验收通过后持续盯瓶颈 瓶颈回移就还预算 再吃满可重让 封顶三次
+        private static void UiConfigPowerYieldSteering(string root)
+        {
+            // 前序用例会留下熔断 自己清干净 不依赖数组顺序
+            PowerBudgetYield.ClearFuse();
+            var state = new PowerBudgetYield();
+            state.Begin(0, true);
+            long t = 0;
+            YieldAction action = YieldAction.None;
+
+            Action<double, double, double, long> window = delegate(double gpu, double cpu, double watts, long span)
+            {
+                for (int s = 1; s <= PowerBudgetYield.MinSamples; s++)
+                    action = state.Advance(t + span * s / PowerBudgetYield.MinSamples, gpu, cpu, watts);
+                t += span;
+            };
+
+            for (int round = 1; round <= PowerBudgetYield.MaxReengage; round++)
+            {
+                window(95, 30, 50, PowerBudgetYield.ObserveTicks);
+                Eq(YieldAction.Engage, action);
+                window(95, 30, 45, PowerBudgetYield.VerifyTicks);
+                Eq(YieldAction.Keep, action);
+                Eq(YieldStage.Held, state.Stage);
+                // GPU 仍吃满 按兵不动
+                window(95, 30, 45, PowerBudgetYield.HoldWindowTicks);
+                Eq(YieldAction.None, action);
+                Eq(YieldStage.Held, state.Stage);
+                // 瓶颈移回 CPU 侧 还预算 第一轮走 GPU 掉载触发 其余走 CPU 吃紧触发
+                if (round == 1) window(60, 40, 45, PowerBudgetYield.HoldWindowTicks);
+                else window(95, 85, 45, PowerBudgetYield.HoldWindowTicks);
+                Eq(YieldAction.Release, action);
+                Eq(round < PowerBudgetYield.MaxReengage
+                    ? YieldStage.Observing : YieldStage.Skipped, state.Stage);
+            }
+            // 名额用完 之后不再有任何动作 也不熔断
+            window(95, 30, 45, PowerBudgetYield.ObserveTicks);
+            Eq(YieldAction.None, action);
+            Eq(YieldStage.Skipped, state.Stage);
+            Eq(false, PowerBudgetYield.Fused);
+        }
+
+        // 频率代理的降级验证 熔断分账 与瓦数路径互不牵连
+        private static void UiConfigPowerYieldFreqProxy(string root)
+        {
+            // 前序用例会留下熔断 自己清干净 不依赖数组顺序
+            PowerBudgetYield.ClearFuse();
+            // 频率真降了且 GPU 稳住 → 保持 不熔断
+            var state = new PowerBudgetYield();
+            state.Begin(0, true, true);
+            YieldAction action = YieldAction.None;
+            for (int s = 1; s <= PowerBudgetYield.MinSamples; s++)
+                action = state.Advance(PowerBudgetYield.ObserveTicks * s / PowerBudgetYield.MinSamples,
+                    95, 30, -1, 150);
+            Eq(YieldAction.Engage, action);
+            for (int s = 1; s <= PowerBudgetYield.MinSamples; s++)
+                action = state.Advance(PowerBudgetYield.ObserveTicks
+                    + PowerBudgetYield.VerifyTicks * s / PowerBudgetYield.MinSamples, 95, 32, -1, 138);
+            Eq(YieldAction.Keep, action);
+            Eq(YieldVerdict.Kept, state.Verdict);
+            Eq(false, PowerBudgetYield.Fused);
+            Eq(false, PowerBudgetYield.FreqFused);
+
+            // 频率纹丝不动 = EPP 死杠杆 → 熔断 但记在代理账上 瓦数账不背锅
+            state = new PowerBudgetYield();
+            state.Begin(0, true, true);
+            for (int s = 1; s <= PowerBudgetYield.MinSamples; s++)
+                action = state.Advance(PowerBudgetYield.ObserveTicks * s / PowerBudgetYield.MinSamples,
+                    95, 30, -1, 150);
+            Eq(YieldAction.Engage, action);
+            for (int s = 1; s <= PowerBudgetYield.MinSamples; s++)
+                action = state.Advance(PowerBudgetYield.ObserveTicks
+                    + PowerBudgetYield.VerifyTicks * s / PowerBudgetYield.MinSamples, 95, 31, -1, 150);
+            Eq(YieldAction.Revert, action);
+            Eq(YieldVerdict.NoGain, state.Verdict);
+            Eq(false, PowerBudgetYield.Fused);
+            Eq(true, PowerBudgetYield.FreqFused);
+            PowerBudgetYield.ClearFuse();
+            Eq(false, PowerBudgetYield.FreqFused);
+
+            // 负载漂移超过判定窗 → 退回但不熔断 那是场景变了 不是机器的错
+            state = new PowerBudgetYield();
+            state.Begin(0, true, true);
+            for (int s = 1; s <= PowerBudgetYield.MinSamples; s++)
+                action = state.Advance(PowerBudgetYield.ObserveTicks * s / PowerBudgetYield.MinSamples,
+                    95, 30, -1, 150);
+            Eq(YieldAction.Engage, action);
+            for (int s = 1; s <= PowerBudgetYield.MinSamples; s++)
+                action = state.Advance(PowerBudgetYield.ObserveTicks
+                    + PowerBudgetYield.VerifyTicks * s / PowerBudgetYield.MinSamples, 95, 55, -1, 120);
+            Eq(YieldAction.Revert, action);
+            Eq(YieldVerdict.Inconclusive, state.Verdict);
+            Eq(false, PowerBudgetYield.FreqFused);
+
+            // GPU 被拖下水 → 熔断 频率降了也不算数
+            state = new PowerBudgetYield();
+            state.Begin(0, true, true);
+            for (int s = 1; s <= PowerBudgetYield.MinSamples; s++)
+                action = state.Advance(PowerBudgetYield.ObserveTicks * s / PowerBudgetYield.MinSamples,
+                    95, 30, -1, 150);
+            Eq(YieldAction.Engage, action);
+            for (int s = 1; s <= PowerBudgetYield.MinSamples; s++)
+                action = state.Advance(PowerBudgetYield.ObserveTicks
+                    + PowerBudgetYield.VerifyTicks * s / PowerBudgetYield.MinSamples, 88, 31, -1, 130);
+            Eq(YieldAction.Revert, action);
+            Eq(YieldVerdict.GpuHarm, state.Verdict);
+            Eq(true, PowerBudgetYield.FreqFused);
+            PowerBudgetYield.ClearFuse();
+
+            // UI 无瓦数但有频率代理 → 开关可用 文案是降级说明 代理熔断后换熔断文案
+            using (var fixture = new UiConfigPowerYieldFixture(root, "power-yield-proxy"))
+            {
+                Settings.Save(PowerBudgetYieldRunner.EnabledKey, false);
+                fixture.Capabilities(true, false, true);
+                PowerBudgetYieldRunner.FreqProxyForTest = true;
+                try
+                {
+                    fixture.Refresh();
+                    Eq(true, fixture.Toggle.Enabled);
+                    Eq(Lang.T("gm.poweryield.proxysub"), fixture.Card.Desc);
+                    Settings.Save("PowerYieldFreqFuse", true);
+                    fixture.Refresh();
+                    Eq(Lang.T("gm.poweryield.fused"), fixture.Card.Desc);
+                    PowerBudgetYield.ClearFuse();
+                    // 代理探针也没有时 回到统一的不可用文案
+                    PowerBudgetYieldRunner.FreqProxyForTest = false;
+                    fixture.Refresh();
+                    Eq(false, fixture.Toggle.Enabled);
+                    Eq(true, fixture.Card.Desc.StartsWith(Lang.T("gm.poweryield.nowatt")));
+                }
+                finally { PowerBudgetYieldRunner.FreqProxyForTest = false; }
+            }
         }
 
         private static void UiConfigPowerYieldProfileConsent(string root)

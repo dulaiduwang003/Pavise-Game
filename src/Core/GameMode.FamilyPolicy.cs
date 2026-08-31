@@ -1,5 +1,5 @@
-// Per-library-entry family policy. The gate serializes publication with the last
-// background write check; a queued scan cannot reapply the policy that was closed.
+// 文件用途 逐库条目的家族策略 闸门把发布和最后一次后台写检查串起来
+// 排队中的扫描不能把已经关掉的策略再应用一遍
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -40,7 +40,7 @@ namespace PaviseApp
                         return false;
                     }
                     profiles[index] = replacement;
-                    // Refresh copies used for display/policy without changing renderer identity.
+                    // 刷新供显示和策略使用的副本 不改渲染进程身份
                     if (activeDetection != null && activeDetection.Profile != null
                         && activeDetection.Profile.Id == profileId)
                         activeDetection.Profile = replacement.Clone();
@@ -54,8 +54,8 @@ namespace PaviseApp
             }
             if (changed)
             {
-                // The worker restores only newly exempt Background reasons; no UI
-                // thread native process writes and no unrelated reason is cleared.
+                // 工作线程只还原新豁免出来的 Background reason 界面线程
+                // 不做原生进程写入 也不清任何无关的 reason
                 RequestPolicyApply();
                 RaiseLibraryChanged();
             }
@@ -82,7 +82,7 @@ namespace PaviseApp
 
         private void InvalidateFamilyPolicy()
         {
-            // Called by the worker/lifecycle as well as the UI. No process writes.
+            // 工作线程 生命周期和界面都会调它 不做进程写入
             Interlocked.Increment(ref familyPolicyEpoch);
         }
 
@@ -91,9 +91,9 @@ namespace PaviseApp
             return profile == null || !profile.SuppressFamilyBackground;
         }
 
-        // Protection belongs to every opted-out profile, not only the currently
-        // foreground game. Reuse this sweep's immutable process snapshot; never
-        // infer family ownership from a game/client executable name.
+        // 保护属于每一个选择退出的档案 不只是当前前台那个游戏
+        // 复用本轮 sweep 那份不可变进程快照 绝不能从游戏或客户端的
+        // 可执行文件名去推断家族归属
         internal static HashSet<int> CollectProtectedLibraryFamily(IList<GameProfile> configured,
             ProcessSnapshot snapshot, int selfPid, int ownerSession, GameFamilyEvidence familyEvidence = null)
         {
@@ -124,8 +124,8 @@ namespace PaviseApp
                             && familyEvidence.Contains(profile, child.Pid, child.Creation, child.Path))
                         { seeds.Add(child.Pid); break; }
                 ProcEntry parent = snapshot.Find(child.ParentPid);
-                // Do not carry the legacy PID-only fallback into these new
-                // cross-root links: missing identity or a reused PID stops here.
+                // 不要把只看 PID 的老兜底逻辑带进这些新的跨根链接
+                // 身份缺失或者 PID 被复用 就到此为止
                 if (parent == null || parent.Pid <= 4 || parent.Pid == selfPid
                     || parent.Pid == child.Pid || parent.Session != ownerSession
                     || parent.Creation <= 0 || parent.Creation > child.Creation) continue;
@@ -135,8 +135,8 @@ namespace PaviseApp
             result.UnionWith(WalkDescendants(parents, seeds, selfPid, 24));
             foreach (int seed in seeds)
                 result.UnionWith(WalkAncestorChain(parents, seed, selfPid, 24));
-            // Ancestors are protected themselves, never used as new seeds. A
-            // shared host must not exempt its unrelated siblings/other games.
+            // 祖先进程自己受保护 但绝不能当新种子 共享宿主
+            // 不能顺带豁免它那些无关的兄弟进程或者别的游戏
             return result;
         }
     }

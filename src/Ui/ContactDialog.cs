@@ -24,7 +24,9 @@ namespace PaviseApp
             Text = Lang.T("contact.title");
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.CenterParent;
-            MaximizeBox = false; MinimizeBox = false; ShowInTaskbar = false;
+            // 启动欢迎窗是当时唯一的窗口 必须进任务栏 否则被遮住后用户找不回来
+            //   关于页里作为模态弹窗时不进 与其它对话框一致
+            MaximizeBox = false; MinimizeBox = false; ShowInTaskbar = startup;
             Icon taskbarIcon = IconArt.MakeIcon(Theme.S(24));
             Icon = taskbarIcon;
             ClientSize = new Size(Theme.S(DlgW), Theme.S(DlgH));

@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// Session-owned processor idle changes; never modify a user-selected power plan.
+// 文件用途 只在本局内改处理器空闲状态 绝不动用户自选的电源方案
 using System;
 using System.Runtime.InteropServices;
 
@@ -20,8 +20,8 @@ namespace PaviseApp
 
             internal string Text(CpuIdlePhase phase)
             {
-                // A prepared write is not proof that the native call ran. Only
-                // a successful write and its readback may be replayed as owned.
+                // 写之前的准备记录 不能证明原生调用真的跑过
+                // 只有写成功并且回读通过 才允许当成已拥有重放
                 string tag = phase == CpuIdlePhase.Prepared ? "P" : phase == CpuIdlePhase.Owned ? "O"
                     : phase == CpuIdlePhase.Restoring ? "R" : "S";
                 return "2|" + Scheme.ToString("D") + "|0|" + tag;
@@ -81,7 +81,7 @@ namespace PaviseApp
                     uint value;
                     if (cpuIdleReceipt != null)
                     {
-                        // Never replace an unresolved original with a second snapshot.
+                        // 原始值还没解决的时候 不要用第二次快照去覆盖它
                         if (!cpuIdleReceipt.Applied)
                         {
                             RestoreCpuIdle();
@@ -104,7 +104,7 @@ namespace PaviseApp
                     if (!TryGetCpuIdleTarget(mayContinue, out scheme)
                         || !CpuIdleReadAc(scheme, out value) || !CpuIdleMayContinue(mayContinue)
                         || value > 1) return false;
-                    // A pre-existing 1 is not ours, even when the user requested it.
+                    // 本来就是 1 的不算我们的 哪怕用户自己也想要这个值
                     if (value == 1) return true;
 
                     var receipt = new CpuIdleReceipt { Scheme = scheme, Phase = CpuIdlePhase.Prepared };
@@ -112,8 +112,8 @@ namespace PaviseApp
                     if (!WriteCpuIdleLedgerVerified(receipt.Text(CpuIdlePhase.Prepared))
                         || !CpuIdleMayContinue(mayContinue)) return FailCpuIdleApply();
 
-                    // Saving the ledger can be slow. Recheck both the target and
-                    // the original immediately before entering the native write.
+                    // 台账落盘可能很慢 进原生写入之前 目标值和原始值
+                    // 都要立刻重新读一遍
                     Guid checkedScheme;
                     if (!TryGetCpuIdleTarget(mayContinue, out checkedScheme) || checkedScheme != scheme
                         || !CpuIdleReadAc(scheme, out value) || value != 0
@@ -121,8 +121,8 @@ namespace PaviseApp
                         || !CpuIdleMayContinue(mayContinue)) return FailCpuIdleApply();
                     receipt.ApplyAttempted = true;
                     if (!CpuIdleWriteAc(scheme, 1)) return FailCpuIdleApply();
-                    // Even a cancellation after the write must first establish
-                    // whether there is a confirmed value that needs rollback.
+                    // 就算写完之后被取消 也得先弄清楚有没有一个已确认的值
+                    // 需要回滚
                     if (!CpuIdleReadAc(scheme, out value)) return FailCpuIdleApply();
                     if (value != 1)
                     {
@@ -173,8 +173,8 @@ namespace PaviseApp
                     if (!CpuIdleReadAc(receipt.Scheme, out value)) return false;
                     if (value > 1 || (value == 1 && receipt.OriginalObserved))
                     {
-                        // A later external change is not ours to undo. Remember
-                        // this in memory even when clearing the ledger fails.
+                        // 后来外部改的值不归我们撤 台账清不掉的时候
+                        // 也要在内存里记住这件事
                         receipt.Phase = CpuIdlePhase.Settled;
                         return ClearCpuIdleReceipt();
                     }
@@ -194,8 +194,8 @@ namespace PaviseApp
                         if (!WriteCpuIdleLedgerVerified(receipt.Text(CpuIdlePhase.Restoring))) return false;
                         receipt.Phase = CpuIdlePhase.Restoring;
                     }
-                    // Recheck after the write-ahead restore record. Never infer
-                    // ownership from a newer value after observing the original.
+                    // 写前恢复记录之后再检查一次 观察到原始值以后
+                    // 不要再从更新的值反推所有权
                     if (!CpuIdleReadAc(receipt.Scheme, out value)) return false;
                     if (value > 1 || (value == 1 && receipt.OriginalObserved))
                     {
@@ -205,16 +205,16 @@ namespace PaviseApp
                     if (value == 1)
                     {
                         if (!receipt.MayRestoreValue) return false;
-                        // An exception or an unverified successful write must
-                        // not cause a second restore over a later external 1.
+                        // 抛异常 或者写成功但没验证过 都不能触发第二次还原
+                        // 把后来外部写的 1 给盖掉
                         receipt.MayRestoreValue = false;
                         if (!CpuIdleWriteAc(receipt.Scheme, 0)) return false;
                         if (!CpuIdleReadAc(receipt.Scheme, out value) || value != 0) return false;
                     }
                     receipt.OriginalObserved = true;
                     receipt.MayRestoreValue = false;
-                    // R + 0 after a crash still needs reactivation if this plan
-                    // is active: a stored zero does not prove the kernel read it.
+                    // 崩溃后看到 R + 0 如果这套方案还是活动方案就仍需重新生效
+                    // 存着的 0 不能证明内核读到过它
                     if (!ReapplyCpuIdle(receipt.Scheme, 0, false, null)) return false;
                     receipt.Phase = CpuIdlePhase.Settled;
                     return ClearCpuIdleReceipt();
@@ -236,8 +236,8 @@ namespace PaviseApp
                 || (parts[0] == "1" && parts[3] != "A" && parts[3] != "R" && parts[3] != "S")
                 || (parts[0] == "2" && parts[3] != "P" && parts[3] != "O" && parts[3] != "R" && parts[3] != "S")
                 || !Guid.TryParseExact(parts[1], "D", out scheme) || scheme == Guid.Empty) return false;
-            // Version 1 persisted A before the native write. Treat it as
-            // prepared, never as ownership merely because the current value is 1.
+            // 版本 1 是在原生写入之前就落了 A 只能当成准备状态
+            // 不能因为当前值是 1 就认成所有权
             CpuIdlePhase phase = parts[3] == "R" ? CpuIdlePhase.Restoring
                 : parts[3] == "S" ? CpuIdlePhase.Settled
                 : parts[3] == "O" ? CpuIdlePhase.Owned : CpuIdlePhase.Prepared;
@@ -251,8 +251,8 @@ namespace PaviseApp
 
         private static bool ClearCpuIdleReceipt()
         {
-            // Persist the terminal receipt first. A failed clear must not let
-            // a later process replay O after the user changes this value again.
+            // 先落终态收据 清理失败的话 不能让后面的进程在用户又改过
+            // 这个值之后还去重放 O
             if (cpuIdleReceipt == null || cpuIdleReceipt.Phase != CpuIdlePhase.Settled) return false;
             if (!WriteCpuIdleLedgerVerified(cpuIdleReceipt.Text(CpuIdlePhase.Settled))) return false;
             if (!WriteCpuIdleLedgerVerified("")) return false;
@@ -298,8 +298,8 @@ namespace PaviseApp
             }
             if (!CpuIdleMayContinue(mayContinue)) return false;
             if (requireCurrent && (!CpuIdleOnAc() || !CpuIdleMayContinue(mayContinue))) return false;
-            // Do not reactivate a stale target after the value read (or AC
-            // check) blocked while another application switched the plan.
+            // 读值或者查交流供电的时候被阻塞 期间别的程序切了方案
+            // 这种情况下不要再去激活一个过期的目标
             current = CpuIdleCurrentScheme();
             if (!CpuIdleMayContinue(mayContinue) || !current.HasValue || current.Value == Guid.Empty) return false;
             if (current.Value != scheme) return !requireCurrent;

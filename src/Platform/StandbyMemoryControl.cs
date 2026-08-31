@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// Read memory lists; the only write operation is MemoryPurgeStandbyList (80/4).
+// 文件用途 读内存列表 唯一的写操作是 MemoryPurgeStandbyList 80/4
 using System;
 using System.Runtime.InteropServices;
 
@@ -16,8 +16,8 @@ namespace PaviseApp
         bool TryPurge(Func<bool> mayContinue, out int nativeStatus);
     }
 
-    // The raw seam makes page accounting, privilege lifetime, and the exact
-    // information-class/command pair testable without touching host memory.
+    // 留这道原始接缝 是为了让页计数 特权生命周期 以及具体的
+    // 信息类和命令号组合都能被测到 不用碰宿主内存
     internal interface IStandbyMemoryNative
     {
         bool TryGetPerformanceInfo(out StandbyPerformanceInformation information);
@@ -36,8 +36,8 @@ namespace PaviseApp
         public uint HandleCount, ProcessCount, ThreadCount;
     }
 
-    // phnt/ntexapi.h, SYSTEM_MEMORY_LIST_INFORMATION. SIZE_T fields must keep
-    // pointer width on both x86 and x64; repurposed counts are cumulative, not RAM.
+    // phnt/ntexapi.h 的 SYSTEM_MEMORY_LIST_INFORMATION SIZE_T 字段在
+    // x86 和 x64 上都要保持指针宽度 复用的计数是累计值 不是内存量
     [StructLayout(LayoutKind.Sequential)]
     internal struct StandbyMemoryListInformation
     {
@@ -82,8 +82,8 @@ namespace PaviseApp
                 StandbyMemoryListInformation memory;
                 int returnedBytes;
                 int status = native.QueryMemoryList(out memory, out returnedBytes);
-                // The fields through the eight standby priorities are required;
-                // later OS versions may append fields that this reader never uses.
+                // 到八个待机优先级为止的字段是必需的
+                // 更新的系统版本可能在后面追加字段 这个读取器一概不用
                 if (status < 0 || returnedBytes < 13 * IntPtr.Size
                     || returnedBytes > Marshal.SizeOf(typeof(StandbyMemoryListInformation))
                     || memory.PageCountByPriority == null || memory.PageCountByPriority.Length != 8)
@@ -98,12 +98,12 @@ namespace PaviseApp
                     {
                         TotalBytes = performance.PhysicalTotal.ToUInt64() * pageSize,
                         AvailableBytes = performance.PhysicalAvailable.ToUInt64() * pageSize,
-                        // Available also includes standby. Subtracting SystemCache
-                        // would incorrectly subtract the system working set as well.
+                        // Available 本身就含待机 再减 SystemCache
+                        // 会把系统工作集也一起错减掉
                         FreeBytes = (memory.ZeroPageCount.ToUInt64() + memory.FreePageCount.ToUInt64()) * pageSize,
                         StandbyBytes = standbyPages * pageSize,
-                        // GetPerformanceInfo documents this as standby + system WS.
-                        // It is an observation only; system working sets are NOT purged.
+                        // GetPerformanceInfo 文档里写明这是待机加系统工作集
+                        // 这里只是观测 系统工作集不会被清理
                         ListBytes = performance.SystemCache.ToUInt64() * pageSize
                     };
                 }
@@ -129,8 +129,8 @@ namespace PaviseApp
             {
                 nativeStatus = StatusPrivilegeNotHeld;
                 if (!native.TryAcquirePurgePrivilege(out lease) || lease == null) return false;
-                // Permission acquisition can take time. Never clear for an exited
-                // game or a disabled option after the coordinator has admitted us.
+                // 拿权限可能要花时间 协调器放行之后 游戏已经退出
+                // 或者选项已经关掉的话 不要再清
                 if (!StandbyCleanerEngine.MayContinue(mayContinue))
                 {
                     nativeStatus = StandbyCleanerEngine.StatusCancelled;
@@ -151,10 +151,10 @@ namespace PaviseApp
                     try { lease.Dispose(); }
                     catch
                     {
-                        // Preserve an already observed successful purge. It cannot
-                        // be undone or relabelled as cancellation during cleanup.
-                        // The thread's privilege state is now uncertain, so this
-                        // adapter must never query or mutate native memory again.
+                        // 已经观察到的成功清理要保留 它撤不回来
+                        // 也不能在收尾时改标成取消
+                        // 此刻线程的特权状态已经不确定 这个适配层
+                        // 不能再去查询或者改动原生内存
                         unhealthy = true;
                         nativeStatus = StandbyCleanerEngine.StatusUnsuccessful;
                     }
@@ -184,8 +184,8 @@ namespace PaviseApp
             {
                 RefuseNativeInTests();
                 lease = null;
-                // phnt/ntrtl.h. Flags 0 uses a temporary thread token and preserves
-                // the original identity; do not request process-wide adjustment.
+                // phnt/ntrtl.h 标志位 0 用的是临时线程令牌 保留原身份
+                // 不要申请进程级的调整
                 var acquired = new PrivilegeLease();
                 uint privilege = 13; // SeProfileSingleProcessPrivilege only.
                 IntPtr state;
@@ -199,8 +199,8 @@ namespace PaviseApp
             public int SetSystemInformation(int informationClass, ref int command, int length)
             {
                 RefuseNativeInTests();
-                // Do not expose a route to MemoryEmptyWorkingSets, modified-page
-                // flushing, or another system information command through this seam.
+                // 不要从这道接缝里放出通往 MemoryEmptyWorkingSets 刷新修改页
+                // 或者别的系统信息命令的路
                 if (informationClass != MemoryListInformationClass || command != PurgeStandbyCommand
                     || length != sizeof(int)) return StandbyCleanerEngine.StatusInvalidParameter;
                 return NtSetSystemInformation(informationClass, ref command, length);

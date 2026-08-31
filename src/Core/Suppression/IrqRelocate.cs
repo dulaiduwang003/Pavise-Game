@@ -167,7 +167,7 @@ namespace PaviseApp
         }
 
         // 挪核重启回来的用户十有八九不知道还要打一局才能看到实测效果 启动时主动说一声
-        //   只在「已重启 且 重启后一局都没打过」时提示 打过局说明观测已经在路上 不用催
+        //   只在 已重启 且 重启后一局都没打过 时提示 打过局说明观测已经在路上 不用催
         public static void NotifyPendingVerification()
         {
             try
@@ -197,6 +197,13 @@ namespace PaviseApp
                 if (NetworkAffinityTweak.EnabledByPavise)
                     foreach (string id in NetworkAffinityTweak.EnumerateNicDeviceIds())
                         if (!Has(owned, id)) owned.Add(id);
+            }
+            catch { }
+            try
+            {
+                // 自动编排钉过的设备 手动路径不抢 想手动接管先关掉自动编排
+                foreach (string id in IrqAutoPilot.TouchedDevices())
+                    if (!Has(owned, id)) owned.Add(id);
             }
             catch { }
             return owned;

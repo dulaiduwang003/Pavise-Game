@@ -34,7 +34,8 @@ namespace PaviseApp
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics; FillBg(g); g.SmoothingMode = SmoothingMode.AntiAlias;
-            Rectangle r = new Rectangle(0, 2, Width - 1, Height - 5);
+            // 内缩量必须过 Theme.S 顶栏四个控件的可见边框才能在高 DPI 下对齐
+            Rectangle r = new Rectangle(0, Theme.S(2), Width - 1, Height - Theme.S(5));
             using (GraphicsPath p = Theme.TechPath(r, Theme.S(9)))
             {
                 using (var b = new SolidBrush(Col.Lerp(Theme.Card, Theme.CardHover, hover.Value))) g.FillPath(b, p);

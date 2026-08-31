@@ -1,4 +1,4 @@
-// One completed observation, never mixed with current desktop load or presets.
+// 文件用途 一次已完成的观测 绝不和当前桌面负载或者预设混在一起
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -28,7 +28,7 @@ namespace PaviseApp
             view.StartUtcTicks = record.StartUtcTicks;
             view.DurationSeconds = record.DurationSeconds;
             view.Exclusion = record.DisplayExclusion(boot, topology);
-            // Without a topology identity old CPU numbers cannot be mapped safely.
+            // 没有拓扑身份 老的 CPU 编号没法安全映射
             if (string.IsNullOrEmpty(record.TopologyStamp))
                 view.Exclusion = IrqSessionExclusion.DifferentTopology;
             if (view.Exclusion != IrqSessionExclusion.None) return view;

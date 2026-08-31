@@ -22,7 +22,7 @@ namespace PaviseApp
 
         internal static readonly string[] EnvKeys =
             { "do", "wlanscan", "wu", "services", "cpuidle", "standby",
-              "pqos", "awake", "rsr", "gpupower", "amdalag", "amdafmf", "intelll" };
+              "pqos", "awake", "rsr", "gpupower", "amdalag", "amdafmf", "solo", "intelll" };
 
         private static string EnvLabel(string key)
         {
@@ -40,6 +40,7 @@ namespace PaviseApp
                 case "gpupower": return Lang.T("t.gamemodeenv.6");
                 case "amdalag": return "AMD Anti-Lag";
                 case "amdafmf": return Lang.T("t.gamemodeenv.8");
+                case "solo": return Lang.T("gm.solo");
                 case "intelll": return Lang.T("set.intel.lowlatency");
                 default: return key;
             }
@@ -90,9 +91,9 @@ namespace PaviseApp
             return want ? ok : (ok ? false : active);
         }
 
-        // IRQ 对局 epoch 只接纳游戏自然运行产生的中断。所有 Pavise 主动
-        // 改系统、驱动或进程策略的动作，都必须先停掉旧 epoch；动作完成前
-        // externalMutations 保持为正，Confirm 也不能抢先重开。
+        // IRQ 对局 epoch 只接纳游戏自然运行产生的中断 所有 Pavise 主动
+        // 改系统 驱动或进程策略的动作 都必须先停掉旧 epoch 动作完成前
+        // externalMutations 保持为正 Confirm 也不能抢先重开
         private bool RunIrqIsolatedMutation(Func<bool> action)
         {
             irqProbe.BeginExternalMutation();
@@ -157,6 +158,7 @@ namespace PaviseApp
                 case "gpupower": gpuPowerMaxOn = false; Settings.Save("GmGpuPowerMax", false); break;
                 case "amdalag": amdAntiLag = false; Settings.Save("AmdAntiLag", false); break;
                 case "amdafmf": amdAfmf = false; Settings.Save("AmdAfmf", false); break;
+                case "solo": displaySoloOn = false; Settings.Save(PolicyCatalog.KeyDisplaySolo, false); break;
                 case "intelll":
                     intelLowLatencyOn = false;
                     InvalidateIntelGraphicsWork();
@@ -181,6 +183,7 @@ namespace PaviseApp
                 case "awake": return PolicyCatalog.KeyAwake;
                 case "amdalag": return PolicyCatalog.KeyAmdAntiLag;
                 case "amdafmf": return PolicyCatalog.KeyAmdAfmf;
+                case "solo": return PolicyCatalog.KeyDisplaySolo;
                 case "intelll": return PolicyCatalog.KeyIntelLowLatency;
                 default: return null;
             }
@@ -249,13 +252,19 @@ namespace PaviseApp
             ApplyOptionalServices(slowReady);
             pqosActive = EnvStep("pqos", true, pqosActive, PresenceQos.Activate, PresenceQos.Restore);
             awakeActive = EnvStep("awake", pAwake, awakeActive, DisplayAwake.Activate, DisplayAwake.Restore);
+            bool pSolo = sp != null ? sp.DisplaySolo : displaySoloOn;
+            soloActive = EnvStep("solo", pSolo, soloActive, DisplaySolo.Activate, DisplaySolo.Restore);
             rsrActive = EnvStep("rsr", rsrOn, rsrActive, AdlxTweaks.ActivateRsr, AdlxTweaks.RestoreRsr);
             gpwActive = EnvStep("gpupower", gpuPowerMaxOn, gpwActive, GpuPowerMax.Activate, GpuPowerMax.Restore);
             amdAlagActive = EnvStep("amdalag", pAmdAlag && AdlxTweaks.AntiLagSupported(),
                 amdAlagActive, AdlxTweaks.ActivateAntiLag, RestoreAmdAntiLagEnv);
             amdAfmfActive = EnvStep("amdafmf", pAmdAfmf && AdlxTweaks.AfmfSupported(), amdAfmfActive,
                 AdlxTweaks.ActivateAfmf, AdlxTweaks.RestoreAfmf);
-            bool aggressivePower = IsAggressive(mode, pAggr);
+            // 自适应压制升档时借用激进列 只在智能档发生 状态机在 AdaptiveGuard
+            //   局中切走预设时标志要到本轮末尾才被 StepAdaptiveGuard 清掉
+            //   这里再按当前档位卡一道 旧升档不许套在新档位上哪怕一个周期
+            bool aggressivePower = IsAggressive(mode, pAggr)
+                || (adaptiveEscalated && mode == PerformancePreset.Standard);
             // 掌机档也要进这个键 否则从专注切到掌机时 aggressive 两边都是真 会被当成没变过而不重写
             int powerKey = (aggressivePower ? 1 : 0) | (usePlan ? 2 : 0)
                 | (handheld ? 8 : 0);
@@ -338,18 +347,19 @@ namespace PaviseApp
         private int optionalServiceGeneration;
         private bool amdAlagActive;
         private bool amdAfmfActive;
+        private bool soloActive;
         private bool rsrActive;
 
-        // Unlike a frozen tuning snapshot, this reversible service switch must
-        // honor a user turning it off during a match. Explicit game overrides
-        // still take precedence over the global default.
+        // 和冻结的调优快照不一样 这个可还原的服务开关必须响应
+        // 用户在对局中途关掉它 逐游戏的显式覆盖仍然
+        // 优先于全局默认
         private bool EffPauseServices
         {
             get
             {
                 PolicySnapshot sp = sessionPolicy;
-                // IsGlobal means "no overrides when the snapshot was made";
-                // an identified game can still receive its first override now.
+                // IsGlobal 的意思是 做快照的那一刻还没有任何覆盖
+                // 已识别的游戏现在照样可以拿到它的第一条覆盖
                 if (sp == null || string.IsNullOrEmpty(sp.ProfileId)) return pauseServicesOn;
                 lock (sync)
                     foreach (GameProfile profile in profiles)
@@ -392,19 +402,19 @@ namespace PaviseApp
                 if (optionalServicesWanted != want)
                 {
                     optionalServicesWanted = want;
-                    // A user cancellation must not wait on an activation's
-                    // backoff. Repeated restore failures still retain theirs.
+                    // 用户主动取消不该去等激活的退避
+                    // 反复还原失败的仍然保留它们自己的退避
                     envNextAttempt.Remove("services");
                     envFailures.Remove("services");
                 }
             }
-            // A partially failed activation can leave a real restoration debt
-            // even though EnvStep returned false. Never let want==active hide it.
+            // 部分失败的激活会留下真实的还原欠账 哪怕 EnvStep 返回了 false
+            // 别让 want==active 把它掩盖过去
             if (want) applied = isApplied();
             else if (hasResidue()) applied = true;
             bool result = EnvStep("services", want, applied, activate, restore);
-            // A canceled Activate can successfully roll back and return true.
-            // That is not an applied strategy and must not suppress a later retry.
+            // 被取消的 Activate 也可能回滚成功并返回 true
+            // 那不算策略生效 不能压掉后面的重试
             return want ? result && isApplied() : result;
         }
 
@@ -440,16 +450,16 @@ namespace PaviseApp
             {
                 lock (powerApplyGate)
                 {
-                    // A queued task must not reapply a plan after its session
-                    // was restored, even if it has not started executing yet.
+                    // 排队中的任务不能在会话已经还原之后再去应用方案
+                    // 哪怕它还没开始执行
                     if (stopping || Volatile.Read(ref powerSessionGen) != genShot) return false;
                     bool planOk = RunIrqIsolatedMutation(delegate
                     {
                         if (stopping || Volatile.Read(ref powerSessionGen) != genShot) return false;
                         return apply != null && apply();
                     });
-                    // RestoreEnv / the disabled-plan path invalidate first and
-                    // restore under this gate; the stale worker must not publish.
+                    // RestoreEnv 和禁用方案那条路都是先失效再在这道闸下还原
+                    // 过期的工作线程不许发布结果
                     if (stopping || Volatile.Read(ref powerSessionGen) != genShot) return false;
                     OnPowerPlanApplied(planOk);
                     return planOk;
@@ -552,14 +562,14 @@ namespace PaviseApp
         private int envResidueGeneration = -1;
         private bool envResidueOther, envResidueNvList, envResidueGpuPref;
 
-        // 残留账本全部经由 Settings 落盘，只有本进程会写。空闲时逐轮读注册表
-        //   纯属浪费：账本判定按 Settings 写代数缓存，任何配置写入立即失效，
-        //   结果与逐轮实读完全一致；内存活动标志与字段门控仍然实时求值。
+        // 残留账本全部经由 Settings 落盘 只有本进程会写 空闲时逐轮读注册表
+        //   纯属浪费 账本判定按 Settings 写代数缓存 任何配置写入立即失效
+        //   结果与逐轮实读完全一致 内存活动标志与字段门控仍然实时求值
         private bool EnvActive()
         {
             if (doActive || wlanActive || wuActive || optionalServicesActive
                 || pqosActive || awakeActive || gpwActive || planActive || timerRaised
-                || rsrActive || amdAlagActive || amdAfmfActive
+                || rsrActive || amdAlagActive || amdAfmfActive || soloActive
                 || IntelGraphicsTweaks.Active
                 || (standbyCleaner != null && standbyCleaner.HasInFlight)) return true;
             int generation = Settings.MutationGeneration;
@@ -568,7 +578,8 @@ namespace PaviseApp
                 envResidueOther = DoTweak.HasResidue || UpdatePause.HasResidue
                     || OptionalServicePause.HasResidue || PresenceQos.HasResidue
                     || GpuPowerMax.HasResidue() || AdlxTweaks.HasResidue()
-                    || PowerPlan.HasResidue || IntelGraphicsTweaks.HasResidue;
+                    || PowerPlan.HasResidue || IntelGraphicsTweaks.HasResidue
+                    || DisplaySolo.HasResidue();
                 envResidueNvList = NvDrsTweaks.HasGameResidue;
                 envResidueGpuPref = GpuPrefStage.HasResidue;
                 envResidueGeneration = generation;
@@ -588,8 +599,8 @@ namespace PaviseApp
             return hasResidue && !(enabled && preStagedNvPath != null);
         }
 
-        // NVIDIA and GPU preference staging share the pending path, but
-        // disabling only GPU staging must still release its own receipt.
+        // NVIDIA 和显卡偏好预置共用同一条 pending 路径
+        // 但只关掉显卡预置时 仍然要释放它自己的收据
         private bool GpuPrefResidueGate(bool hasResidue)
         {
             return hasResidue && !(enabled && gpuPrefStageOn && preStagedNvPath != null);
@@ -629,6 +640,7 @@ namespace PaviseApp
             if (pqosActive || PresenceQos.HasResidue) parts.Add(Lang.T("t.gamemodeenv.33"));
             if (awakeActive) parts.Add(Lang.T("t.gamemodeenv.34"));
             if (gpwActive || GpuPowerMax.HasResidue()) parts.Add(EnvLabel("gpupower"));
+            if (soloActive || DisplaySolo.HasResidue()) parts.Add(EnvLabel("solo"));
             if (rsrActive || amdAlagActive || amdAfmfActive || AdlxTweaks.HasResidue()) parts.Add("AMD");
             if (planActive) parts.Add(Lang.T("t.gamemodeenv.35"));
             if (NvGameResidueNeedsRestore) parts.Add("NVIDIA Profile");
@@ -685,12 +697,13 @@ namespace PaviseApp
             if (OptionalServicePause.Restore()) optionalServicesActive = false; else ok = false;
             if (PresenceQos.Restore()) pqosActive = false; else ok = false;
             if (DisplayAwake.Restore()) awakeActive = false; else ok = false;
+            if (DisplaySolo.Restore()) soloActive = false; else ok = false;
             if (AdlxTweaks.RestoreRsr()) rsrActive = false; else ok = false;
             if (GpuPowerMax.Restore()) gpwActive = false; else ok = false;
             if (RestoreAmdAntiLagEnv()) amdAlagActive = false; else ok = false;
             if (AdlxTweaks.RestoreAfmf()) amdAfmfActive = false; else ok = false;
-            // Retired controls can still leave a recorded session change after
-            // a failed startup restore. Retry those owned snapshots as well.
+            // 已下架的控制项 在启动还原失败之后照样会留下会话改动记录
+            // 这些属于我们的快照也要一起重试
             if (!AdlxTweaks.RestoreEnhancedSync()) ok = false;
             if (!AdlxTweaks.RestoreRis()) ok = false;
             if (!AdlxTweaks.RestoreFrtc()) ok = false;
@@ -729,9 +742,9 @@ namespace PaviseApp
         {
             if (!operationsSucceeded || PowerPlan.HasResidue || OptionalServicePause.HasResidue
                 || IntelGraphicsTweaks.HasResidue) return false;
-            // A native restore may succeed while saving its cleared receipt
-            // fails. Require readable, empty session journals before resetting
-            // the retry backoff; persistent user preferences are not included.
+            // 可能出现原生还原成功 但清空收据保存失败的情况
+            // 重置重试退避之前 要求会话日志可读且为空
+            // 用户的持久偏好不算在内
             string[] keys = { DoTweak.BandwidthJournalKey, DoTweak.StopFlag, UpdatePause.Flag,
                 PresenceQos.JournalKey, GpuPowerMax.SnapKey, AdlxTweaks.SnapKey, NvDrsTweaks.ListKey,
                 GpuPrefStage.JournalKey, PowerPlan.PlanJournalKey,

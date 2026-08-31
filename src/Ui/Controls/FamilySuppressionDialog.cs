@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 每次开启家族压制的风险确认；默认保持关闭，完整路径可复制
+// 文件用途 每次开启家族压制的风险确认 默认保持关闭 完整路径可复制
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -57,7 +57,7 @@ namespace PaviseApp
             EnableAnyway.SetBounds(width - pad - proceedW, buttonY, proceedW, buttonH);
             ClientSize = new Size(width, buttonY + buttonH + Theme.S(24));
             Controls.AddRange(new Control[] { kicker, title, game, current, ExecutableBox, message, keepClosed, EnableAnyway });
-            // 与通用提示窗不同：Enter/Escape 都先保持关闭，Tab 后仍可明确选择开启。
+            // 与通用提示窗不同 Enter/Escape 都先保持关闭 Tab 后仍可明确选择开启
             AcceptButton = keepClosed; CancelButton = keepClosed; ActiveControl = keepClosed;
         }
         private static Label MakeLabel(string text, Font font, Color color)
@@ -86,8 +86,8 @@ namespace PaviseApp
         }
     }
 
-    // Button 本身实现 IButtonControl；不像普通自绘 Control，它正确支持 Enter/Space、
-    // 默认按钮、DialogResult、Tab 焦点及辅助技术的 Invoke 操作。
+    // Button 本身实现 IButtonControl 不像普通自绘 Control 它正确支持 Enter/Space
+    // 默认按钮 DialogResult Tab 焦点及辅助技术的 Invoke 操作
     internal sealed class LibraryDialogButton : Button
     {
         private readonly bool primary;

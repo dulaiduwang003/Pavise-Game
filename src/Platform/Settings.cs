@@ -12,9 +12,9 @@ namespace PaviseApp
         private static readonly object writeSync = new object();
         private static bool writesSuspendedForReset;
 
-        // 配置存储的写代数：任何 Save/Remove 入口都递增（无论成败）。只读缓存
-        //   （如 EnvActive 的残留判定）以此判断上次结果是否仍有效；宁可多失效
-        //   不可漏失效。
+        // 配置存储的写代数 任何 Save/Remove 入口都递增 无论成败 只读缓存
+        //    如 EnvActive 的残留判定 以此判断上次结果是否仍有效 宁可多失效
+        //   不可漏失效
         private static int mutationGeneration;
         internal static int MutationGeneration
         {
@@ -25,8 +25,8 @@ namespace PaviseApp
             System.Threading.Interlocked.Increment(ref mutationGeneration);
         }
 
-        // Call after restoration succeeds and before deleting persistent data.
-        // Returning from this barrier drains earlier writes and rejects later callbacks.
+        // 在还原成功之后 删除持久数据之前调用
+        // 从这道屏障返回时 早先的写入已排干 之后的回调一律拒绝
         internal static void SuspendWritesForReset()
         {
             lock (writeSync) writesSuspendedForReset = true;
@@ -143,8 +143,8 @@ namespace PaviseApp
         internal static Action<string> BeforeStrictStringReadForTest;
 #endif
 
-        // Recovery ledgers must distinguish an absent value from an unreadable
-        // or malformed one. Keep LoadStr's forgiving behavior for other callers.
+        // 恢复台账必须能区分值不存在 和值读不出来或者格式坏了
+        // LoadStr 对其它调用方保持原来的宽容行为
         internal static bool TryLoadStr(string name, out string value)
         {
             value = "";

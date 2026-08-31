@@ -35,6 +35,10 @@ namespace PaviseApp
 
     internal partial class PanelForm : Form
     {
+        // 截图渲染期间置位 离屏窗口不抢焦点 不打扰正在操作的用户
+        //   不要在这里改 ShowInTaskbar 会触发句柄重建 图标已被释放会抛异常
+        private bool shotMode;
+
         private readonly Tamer tamer;
         private readonly GameMode gameMode;
         private readonly bool elevated;
@@ -410,7 +414,7 @@ namespace PaviseApp
             SetSearchFlyout(false);
             SetPowerFlyout(false);
             var page = pages[index];
-            // 重复点击已激活项不重新刷新整页，也不重启尚未结束的过渡。
+            // 重复点击已激活项不重新刷新整页 也不重启尚未结束的过渡
             if (curPage == page && page.Visible) return;
             SavePagePosition(curPage);
             pageBaseLeft = Theme.S(RailW);
@@ -642,8 +646,8 @@ namespace PaviseApp
             SetModeFlyout(modeFlyout == null || !modeFlyout.Visible);
         }
 
-        // 所有用户可达入口共用同一道门。只有“勾选不再提示 + 确认进入”才持久化；
-        // 取消、关闭弹窗或单纯勾选后反悔都不能悄悄跳过下次警告。
+        // 所有用户可达入口共用同一道门 只有“勾选不再提示 + 确认进入”才持久化
+        // 取消 关闭弹窗或单纯勾选后反悔都不能悄悄跳过下次警告
         private bool ConfirmDeepTuningEntry()
         {
             if (Settings.Load(DeepTuningWarningSuppressedKey, false)) return true;
@@ -875,7 +879,7 @@ namespace PaviseApp
 
         protected override void WndProc(ref Message m)
         {
-            // ShowDialog 会在原生层禁用 owner，不一定触发托管 EnabledChanged。
+            // ShowDialog 会在原生层禁用 owner 不一定触发托管 EnabledChanged
             if (m.Msg == 0x000A && m.WParam == IntPtr.Zero) StopPageReveal();
             if (m.Msg == Native.WM_DROPFILES)
             {
@@ -997,6 +1001,7 @@ namespace PaviseApp
             if (swGame != null) swGame.SetSilently(gameMode.Enabled);
             if (swAcMaster != null) swAcMaster.SetSilently(!tamer.Paused);
             if (swAutoHide != null) swAutoHide.SetSilently(Settings.Load(AutoHideKey, AutoHideDefault));
+            if (swLogWrites != null) swLogWrites.SetSilently(Settings.Load(Logger.WritesEnabledKey, true));
             if (swPolicyBackground != null) swPolicyBackground.SetSilently(gameMode.SuppressBackground);
             for (int i = 0; i < policySync.Count; i++) policySync[i]();
             if (powerButton != null) powerButton.SetState(gameMode.PowerPlanSwitch, PowerPlanButtonLabel());
@@ -1009,6 +1014,7 @@ namespace PaviseApp
 
         public void RenderTo(string path, int pageIndex, bool showAntiCheat = false, bool showModePicker = false, string previewMode = null)
         {
+            shotMode = true;
             StartPosition = FormStartPosition.Manual;
             Location = new Point(-20000, -20000);
             Show();
@@ -1107,7 +1113,10 @@ namespace PaviseApp
                 bmp.Save(path, System.Drawing.Imaging.ImageFormat.Png);
             }
             Hide();
+            shotMode = false;
         }
+
+        protected override bool ShowWithoutActivation { get { return shotMode; } }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {

@@ -1,4 +1,4 @@
-// Temporary Intel global low latency. Ownership is journaled before each driver mutation.
+// 文件用途 临时开启 Intel 全局低延迟 每次动驱动之前先记所有权流水
 using System;
 using System.Globalization;
 using System.Threading;
@@ -32,7 +32,7 @@ namespace PaviseApp
         private readonly object gate = new object();
         private Receipt receipt;
         private bool suppressed, failedApplication, busy;
-        // 本引擎是账本唯一写入方；确认为空后不必逐轮重读注册表
+        // 本引擎是账本唯一写入方 确认为空后不必逐轮重读注册表
         private bool ledgerKnownEmpty;
 
         internal IntelLowLatencyEngine(IIntelGraphicsControl control, IIntelGraphicsLedger ledger)
@@ -65,8 +65,8 @@ namespace PaviseApp
             get { lock (gate) return receipt != null && !receipt.Settled && !receipt.CanRestore; }
         }
 
-        // 支持性查询来自 UI 线程。Apply/Restore 持锁做驱动调用可能长达数秒，
-        //   查询等不到锁时返回上次结果，别把界面冻在驱动调用上；空闲时照常实查。
+        // 支持性查询来自 UI 线程 Apply/Restore 持锁做驱动调用可能长达数秒
+        //   查询等不到锁时返回上次结果 别把界面冻在驱动调用上 空闲时照常实查
         private bool lastHasAvailable, lastLowLatencySupported;
 
         internal bool HasAvailable
@@ -129,8 +129,8 @@ namespace PaviseApp
                 if (!ReadMode(receipt.AdapterId, out value)) return false;
                 if (!IntelGraphicsApi.Continue(mayContinue)) { RestoreCore(); return false; }
                 if (value == 1) return true;
-                // An external change wins for this entire session. Do not repeatedly
-                // re-enable the option after the user turns it off in the driver UI.
+                // 外部改动在整局之内都优先 用户在驱动界面关掉之后
+                // 不要反复再把这个选项打开
                 suppressed = true;
                 return FinishReceipt();
             }
@@ -141,8 +141,8 @@ namespace PaviseApp
             if (!ReadAdapters(out adapters)) return false;
             if (!IntelGraphicsApi.Continue(mayContinue)) return false;
             IntelGraphicsAdapter target = SelectAdapter(adapters);
-            // Unsupported/mixed ambiguous hardware is a skip, never a fake success
-            // with Active=true and never permission to change another adapter.
+            // 硬件不支持或者混合显卡说不清时算跳过 绝不能伪造成
+            // Active=true 的成功 也不代表可以去改另一块适配器
             if (target == null) return true;
             uint original;
             if (!ReadMode(target.Id, out original)) return false;
@@ -162,9 +162,9 @@ namespace PaviseApp
                 FinishReceipt();
                 return false;
             }
-            // Entering the setter is not ownership. An uncertain return followed by
-            // On can be another caller's change; keep P without restoring that value.
-            // Only a confirmed write can grant this process restoration ownership.
+            // 进了 setter 不等于拥有所有权 返回值不确定之后看到 On
+            // 可能是别的调用方改的 保持 P 不要去还原那个值
+            // 只有确认写成功 才给这个进程还原的所有权
             receipt.CanRestore = result == IntelGraphicsWriteResult.Written;
             uint observed;
             if (!ReadMode(target.Id, out observed)) return false;
@@ -208,8 +208,8 @@ namespace PaviseApp
             if (current != 1) return FinishReceipt();
             if (!receipt.CanRestore) return false;
             if (receipt.Phase != 'R' && !SavePhase('R')) return false;
-            // The ledger write can block. Re-read the actual driver setting before
-            // sending the single restore, and compare again inside the adapter.
+            // 台账写入可能阻塞 发那唯一一次还原之前 重新读一遍驱动实际设置
+            // 进了适配层里面再比一次
             if (!ReadMode(receipt.AdapterId, out current)) return false;
             if (current != 1) return FinishReceipt();
             IntelGraphicsWriteResult result;
@@ -218,11 +218,36 @@ namespace PaviseApp
             if (result == IntelGraphicsWriteResult.Conflict) return FinishReceipt();
             if (result == IntelGraphicsWriteResult.NotIssued || result == IntelGraphicsWriteResult.Cancelled)
                 return false;
-            // Once a restore may have run, a later On could be a fresh user choice.
-            // R + On cannot safely retry after either a crash or a failed readback.
+            // 只要还原有可能已经跑过 后面出现的 On 就可能是用户新选的
+            // R + On 无论是崩溃后还是回读失败后 都不能安全重试
             receipt.CanRestore = false;
             if (!ReadMode(receipt.AdapterId, out current)) return false;
             return current != 1 && FinishReceipt();
+        }
+
+        // 仅供整体重置 发过写入后无法证明驱动当前 On 归属的收据(CanRestore=false)
+        //   RestoreCore 对它永远失败 唯一自愈路径是外部把值改掉 清除全部配置会被无限期拦住
+        //   用户已明确要求清空全部数据时 放弃这类恢复责任并留日志
+        //   残值只是全局低延迟停在当前值 在 Intel 显卡控制中心关闭一次即结清
+        //   可认领的收据(CanRestore=true)与瞬时失败不放弃
+        internal bool AbandonUnprovableForReset()
+        {
+            lock (gate)
+            {
+                if (busy) return false;
+                busy = true;
+                try
+                {
+                    if (!LoadReceipt()) return false;
+                    if (receipt == null) return true;
+                    if (receipt.Settled) return FinishReceipt();
+                    if (receipt.CanRestore) return false;
+                    Logger.Log(Lang.T("log.intelabandon.1"));
+                    return FinishReceipt();
+                }
+                catch { return false; }
+                finally { busy = false; }
+            }
         }
 
         private bool FinishReceipt()
@@ -231,8 +256,8 @@ namespace PaviseApp
             receipt.Active = false;
             receipt.Settled = true;
             receipt.CanRestore = false;
-            // S survives a failed clear; a later user On must not become another
-            // restoration target when the app restarts and merely retries cleanup.
+            // 清理失败时 S 会留下来 应用重启后只是重试清理
+            // 此时用户新设的 On 不能变成又一个还原目标
             if (receipt.Phase != 'S' && !SavePhase('S')) return false;
             if (!WriteVerified("")) return false;
             receipt = null;
@@ -348,6 +373,7 @@ namespace PaviseApp
         public static bool RestoreBlockedByOwnership { get { return engine.RestoreBlockedByOwnership; } }
         public static bool TryApply(Func<bool> mayContinue) { return engine.Apply(mayContinue); }
         public static bool Restore() { return engine.Restore(); }
+        public static bool AbandonUnprovableForReset() { return engine.AbandonUnprovableForReset(); }
         public static bool HealFromCrash() { return engine.Restore(); }
 
 #if PAVISE_SELFTEST || PAVISE_PERFLAB

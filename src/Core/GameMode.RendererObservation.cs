@@ -1,5 +1,5 @@
-// A badge records observed activity, never mere selection or a fullscreen window.
-// Sampling is bounded, off the UI/control loop, and shares a gate with handoff GPU work.
+// 文件用途 徽标记录的是观察到的活动 不是选中状态 也不是有个全屏窗口
+// 采样有界 不在界面和控制循环上 并且和交接的 GPU 工作共用一道闸
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -70,7 +70,7 @@ namespace PaviseApp
         {
             if (stopping || rendererObservations == null) return;
             rendererObservations.Forget(profileId);
-            // This is optional history, not a synchronous UI/profile-store transaction.
+            // 这只是可选历史 不是界面或档案存储的同步事务
             try
             {
                 ThreadPool.QueueUserWorkItem(delegate
@@ -123,8 +123,8 @@ namespace PaviseApp
 #endif
                             values = GpuEvidence.Sample3D(GpuEvidence.BurstRounds, GpuEvidence.BurstIntervalMs, canceled);
                         double utilization;
-                        // No name ranking: a badge describes this process's measured 3D
-                        // work, not a claim that it is the sole or principal game renderer.
+                        // 不做名字排序 徽标描述的是这个进程实测到的 3D 工作量
+                        // 不是在声称它就是唯一或者主要的游戏渲染进程
                         if (canceled() || values == null || !values.TryGetValue(target.RendererPid, out utilization)
                             || RendererForegroundPid() != target.RendererPid || !VerifyRendererCandidate(target)) return;
                         bool recorded = false;

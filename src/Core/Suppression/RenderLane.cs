@@ -323,8 +323,8 @@ namespace PaviseApp
         {
             lock (operationGate)
             {
-                // Checking only after SetThreadPriority is too late: shutdown may
-                // already have restored and deleted the only original snapshot.
+                // 等 SetThreadPriority 之后再检查就晚了 关闭流程可能
+                // 已经还原并删掉了那份唯一的原始快照
                 if (!GenAlive(gen)) return PinOutcome.Canceled;
                 return action();
             }
@@ -334,9 +334,9 @@ namespace PaviseApp
         {
             return RunGenerationMutation(gen, delegate
             {
-                // A failed rollback or crash recovery owns the only journal.
-                // Restore it under the same gate before admitting another pin.
-                // Do not invalidate this generation while restoring the old lane.
+                // 回滚失败或者崩溃恢复 手里握着唯一那份台账
+                // 在同一道闸下把它还原掉 再接纳下一次钉线程
+                // 还原旧 lane 期间 不要让这一代失效
                 if (!RestoreLaneLocked()) return PinOutcome.Retryable;
                 if (!GenAlive(gen)) return PinOutcome.Canceled;
                 return pin();
@@ -411,8 +411,8 @@ namespace PaviseApp
                 }
                 if (canceled)
                 {
-                    // Keep the persisted original if an attempted cancellation
-                    // cannot actually put the old priority back.
+                    // 如果一次取消尝试实际上没能把旧优先级放回去
+                    // 那就保住已经落盘的原始值
                     if (RestorePriorityVerified(readPriority, setPriority, original)) ClearJournal(journal);
                     if (logThis) Logger.Log(Lang.T("log.renderlane.14"));
                     return PinOutcome.Canceled;
@@ -492,8 +492,8 @@ namespace PaviseApp
             lock (operationGate) return ReleaseLocked();
         }
 
-        // Terminal shutdown closes future admission before attempting the bounded
-        // drain. A timeout is a failure, never proof that old native writes stopped.
+        // 终态关闭会先关掉后续准入 再去做有界的排干
+        // 超时算失败 绝不能当成旧的原生写入已经停了的证明
         internal static bool CloseForShutdown(int timeoutMs)
         {
             if (timeoutMs < 0) return false;
@@ -524,8 +524,8 @@ namespace PaviseApp
                 applied = laneApplied;
                 pid = lanePid; creation = laneCreation; tid = laneTid; original = laneOriginalPriority;
             }
-            // A canceled/incomplete pin can have a journal without laneApplied.
-            // Restore it instead of discarding the sole recovery record.
+            // 被取消或者没做完的钉线程 可能有台账但没有 laneApplied
+            // 把它还原掉 而不是把仅有的这条恢复记录丢弃
             if (!applied) return HealFromCrashLocked();
             BeginMutation();
             try

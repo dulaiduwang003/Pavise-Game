@@ -59,8 +59,8 @@ namespace PaviseApp
             bodyRect = new Rectangle(Theme.S(PadX), Theme.S(BodyTop), textW, textH);
             if (scrollBody)
             {
-                // Reset can report several locked paths. Keep its confirmation
-                // button on-screen and make the complete diagnostic copyable.
+                // 重置可能报出好几条被锁住的路径 让它的确认按钮留在屏幕内
+                // 并且整段诊断信息可复制
                 var details = Theme.MakeTextBox(bodyRect.X, bodyRect.Y, bodyRect.Width);
                 details.Name = "ScrollableDialogDetails";
                 details.Multiline = true;

@@ -84,8 +84,8 @@ namespace PaviseApp
             return false;
         }
 
-        // Keep read failures distinct from an absent token. In particular, a
-        // denied read after removal must not acknowledge restoration or clear its ledger.
+        // 读失败和令牌不存在要分开看 特别是移除之后一次被拒绝的读
+        // 不能当成还原已确认 也不能清它的台账
         private static string ReadLayer(string exePath)
         {
 #if PAVISE_SELFTEST
@@ -119,8 +119,8 @@ namespace PaviseApp
         {
             try
             {
-                // Merge against the latest layer string instead of replaying a
-                // stale value over compatibility settings written by someone else.
+                // 拿最新的图层字符串去合并 而不是把一个过期值
+                // 重放到别人写过的兼容性设置上面
                 string current = ReadLayer(exePath);
                 if (HasToken(current)) WriteLayer(exePath, RemoveToken(current));
                 if (!HasToken(ReadLayer(exePath))) Track(exePath, false);
@@ -154,12 +154,12 @@ namespace PaviseApp
                     bool tracked = IsTracked(exePath);
                     if (HasToken(current) == disableFso)
                     {
-                        // An existing user preference is not a change owned by
-                        // Pavise. A previously restored tracked entry still needs cleanup.
+                        // 用户本来就有的偏好 不算 Pavise 拥有的改动
+                        // 一条之前还原过的跟踪条目 仍然需要清理
                         return disableFso || !tracked || Track(exePath, false);
                     }
-                    // Confirm a durable recovery entry before touching Windows.
-                    // Never apply first and hope that saving ownership succeeds later.
+                    // 动 Windows 之前 先确认那条持久的恢复记录已经落地
+                    // 不要先改了再指望所有权后面能保存成功
                     if (disableFso && !tracked && !Track(exePath, true)) return false;
                     rollback = disableFso;
                     WriteLayer(exePath, disableFso ? AddToken(current) : RemoveToken(current));

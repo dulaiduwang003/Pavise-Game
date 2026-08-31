@@ -36,10 +36,11 @@ namespace PaviseApp
         public event Action<string> SessionBriefed;
 
         // 对局结束回顾式挪核建议 只在本局够长且观测开着时 基于已落盘的多局实测跑一次判定
-        //   有 Worth 驱动就把数量抛给 UI 高亮提示 绝不自动改注册表 用户仍走手动流程
+        //   有 Worth 驱动就把数量抛给 UI 高亮提示 默认不自动改注册表 用户走手动流程
+        //   唯一例外是用户明确开启并确认过的自动中断编排 由 IrqAutoPilot 在局后按裁决落收据
         public event Action<int> IrqSuggested;
 
-        // 原始记录完成与“有挪核建议”是两回事。零建议和失败也要让页面刷新。
+        // 原始记录完成与“有挪核建议”是两回事 零建议和失败也要让页面刷新
         public event Action IrqObservationUpdated;
         public string IrqObservationStatusText { get { return irqProbe.StatusText; } }
         public bool IrqObservationStatusWarning { get { return irqProbe.StatusWarning; } }
@@ -58,13 +59,15 @@ namespace PaviseApp
         private void ApplyIrqObservationSettingChange(string game)
         {
             if (System.Threading.Interlocked.Exchange(ref irqSettingChanged, 0) == 0) return;
+            // 用户局中显式动了观测开关 那是明确的本局观测请求 预算让路
+            irqObserveThisSession = true;
             ArmIrqObservation(game);
             if (IrqSessionProbe.EnabledSetting)
                 lock (sync) repIrqRequested = true;
             if (irqProbe.RequiresPlacementAudit)
             {
-                // 局中显式开启时，让普通落核缓存重新经过严格 proof 初始化。
-                // 单纯一次采样失败不会走这里，不会每轮强制重试或改写亲和性。
+                // 局中显式开启时 让普通落核缓存重新经过严格 proof 初始化
+                // 单纯一次采样失败不会走这里 不会每轮强制重试或改写亲和性
                 lock (sync)
                 {
                     int pid = activeDetection == null ? 0 : activeDetection.RendererPid;
@@ -104,9 +107,19 @@ namespace PaviseApp
                 ProtectedGameRoster.Contains(rendererName), CpuTopology.MultiGroup, desired, allMask);
         }
 
+        // 本局要不要观测 开局判一次 局内所有重挂点共用这个决定 不许中途改判
+        //   宽限恢复和封存重开走的也是 ArmIrqObservation 跳过局重挂时同样跳过
+        private bool irqObserveThisSession = true;
+        private bool irqBudgetDecided;
+
         private void ArmIrqObservation(string game)
         {
             DiscardPresentProbe();
+            if (!irqObserveThisSession)
+            {
+                NotifyIrqObservationChanged(false);
+                return;
+            }
             irqProbe.Arm(game, allMask, NeedsSystemIrqObservation());
             NotifyIrqObservationChanged(false);
         }
@@ -118,6 +131,8 @@ namespace PaviseApp
                 if (irqProbe.IsCapturing) irqProbe.InvalidateGameMask();
                 return;
             }
+            // 本局按观测预算跳过 逐 tick 的回退重挂也不许把它捡回来
+            if (!irqObserveThisSession) return;
             bool fallback = false;
             if (!irqProbe.IsSystemObservation)
             {
@@ -132,13 +147,13 @@ namespace PaviseApp
             if (fallback)
             {
                 DiscardPresentProbe();
-                // 退出专为严格 IRQ 证明设置的临时硬绑核。普通游戏调优保持原样，
-                // 还原失败的句柄仍由已有恢复路径跟进，不阻止只读系统观测。
+                // 退出专为严格 IRQ 证明设置的临时硬绑核 普通游戏调优保持原样
+                // 还原失败的句柄仍由已有恢复路径跟进 不阻止只读系统观测
                 RestoreAllIrqProofHardPins();
             }
             if (!irqProbe.CanObserveSystemNow) return;
-            // 系统观测不申请 SET 权限，更不为出现测量值而改动游戏亲和性。
-            // pid+creation 读回失败时不拿过期身份继续采样。
+            // 系统观测不申请 SET 权限 更不为出现测量值而改动游戏亲和性
+            // pid+creation 读回失败时不拿过期身份继续采样
             IntPtr handle = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION,
                 false, rendererPid);
             if (handle == IntPtr.Zero)
@@ -174,8 +189,8 @@ namespace PaviseApp
 
         private void UpdateIrqPresentProbe()
         {
-            // 系统观测不出挪核建议，无需额外抓 PRESENT。严格观测也必须先
-            // 有 DPC 窗口；换 epoch 时丢弃旧 present，不能跨窗口对齐。
+            // 系统观测不出挪核建议 无需额外抓 PRESENT 严格观测也必须先
+            // 有 DPC 窗口 换 epoch 时丢弃旧 present 不能跨窗口对齐
             if (irqProbe.HasSealedPending) return;
             if (!irqProbe.IsPlacementCapturing || !IrqSessionProbe.EnabledSetting)
             {
@@ -195,8 +210,8 @@ namespace PaviseApp
 
         private void SealIrqObservation()
         {
-            // 收口顺序与起采相反：先停 present，再停 DPC；保留 present
-            // 实例供宽限结束后的 CollectLongFrames 取数据，不继续录桌面。
+            // 收口顺序与起采相反 先停 present 再停 DPC 保留 present
+            // 实例供宽限结束后的 CollectLongFrames 取数据 不继续录桌面
             PresentProbe p = presentProbe;
             if (p != null) { try { p.RequestStop(); } catch { } }
             irqProbe.Seal();
@@ -207,8 +222,12 @@ namespace PaviseApp
             GpuThrottleProbe.Reset();
             VramSpillProbe.Reset();
             VramShield.Begin();
+            MemShield.Begin();
+            // 只读判定 记账推迟到局末 短局不配消耗观测名额
+            irqBudgetDecided = IrqSessionProbe.EnabledSetting;
+            irqObserveThisSession = !irqBudgetDecided || IrqObservationBudget.Peek();
             ArmIrqObservation(game);
-            // PRESENT 在严格核域 DPC epoch 真正起采后才开启，系统观测不需要它。
+            // PRESENT 在严格核域 DPC epoch 真正起采后才开启 系统观测不需要它
             long paviseCpu = CurrentProcessCpuTicks();
             lock (sync)
             {
@@ -222,7 +241,8 @@ namespace PaviseApp
                 repProfileId = activeDetection != null && activeDetection.Profile != null
                     ? activeDetection.Profile.Id : null;
                 repRendererPid = activeDetection != null ? activeDetection.RendererPid : 0;
-                repIrqRequested = IrqSessionProbe.EnabledSetting;
+                // 预算跳过的局不算"请求过观测" 局末不该按取消或失败报告
+                repIrqRequested = IrqSessionProbe.EnabledSetting && irqObserveThisSession;
             }
         }
 
@@ -282,9 +302,9 @@ namespace PaviseApp
             string game;
             long t0;
             long paviseCpuStart;
-            // 渲染进程 pid 用来把 present 帧收敛到游戏本体。必须取本局独立快照：
-            //   换局检测会先把 activeDetection 切到新游戏，再结算旧局。
-            //   拿不到渲染 PID 时，present 证据判为不可用，退回纯 IrqVerdict。
+            // 渲染进程 pid 用来把 present 帧收敛到游戏本体 必须取本局独立快照
+            //   换局检测会先把 activeDetection 切到新游戏 再结算旧局
+            //   拿不到渲染 PID 时 present 证据判为不可用 退回纯 IrqVerdict
             int rendererPid;
             bool irqRequested;
             lock (sync)
@@ -310,14 +330,20 @@ namespace PaviseApp
             }
             if (game == null) return;
 
-            // 主动停守护也走与游戏自然退出相同的封存边界，不能先等待
-            // PRESENT 排空，再把等待时间当成 renderer 证明失效。
+            // 主动停守护也走与游戏自然退出相同的封存边界 不能先等待
+            // PRESENT 排空 再把等待时间当成 renderer 证明失效
             SealIrqObservation();
 
             TimeSpan dur = TimeSpan.FromSeconds((double)(Stopwatch.GetTimestamp() - t0) / Stopwatch.Frequency);
-            // 采集窗口要严格包含：开始是 DPC→present，结束必须 present→DPC。
-            // 先停 DPC 去做昂贵汇总会让仍在跑的 present 多出一段无 DPC 覆盖的尾巴，
-            // 那段里的长帧会被误判成“完整零命中”。
+            // 观测预算的局末记账 短于合格门槛的局不动计数 观测名额不被闪退秒退烧掉
+            if (irqBudgetDecided)
+            {
+                IrqObservationBudget.CommitSession(irqObserveThisSession, (int)dur.TotalSeconds);
+                irqBudgetDecided = false;
+            }
+            // 采集窗口要严格包含 开始是 DPC→present 结束必须 present→DPC
+            // 先停 DPC 去做昂贵汇总会让仍在跑的 present 多出一段无 DPC 覆盖的尾巴
+            // 那段里的长帧会被误判成“完整零命中”
             List<long[]> longFrameIntervals = null;
             try { CollectLongFrames(rendererPid, dur, out longFrameIntervals); } catch { }
             foreach (var kv in cpu)
@@ -393,8 +419,8 @@ namespace PaviseApp
         // 回顾式挪核建议 复用中断页那套判定 不造新结构 不写注册表
         //   前提 对局观测开着(否则本局根本没采数据) 且样本够(沿用中断页 3 局门槛) 避免一两局的偶发噪声
         //   IrqVerdict 仍作判定之底 present↔DPC 对齐是增强证据 不替换:
-        //     只有已分离目标 swapchain 时，Worth 与 present 撞长帧才可称「证实级」
-        //   当前 Event 184 只有 PID，多流合并可填平或伪造长帧，因而只记线索不参与裁决
+        //     只有已分离目标 swapchain 时 Worth 与 present 撞长帧才可称 证实级
+        //   当前 Event 184 只有 PID 多流合并可填平或伪造长帧 因而只记线索不参与裁决
         private void MaybeSuggestIrqRelocation(PresentDpcAlignment align, bool dpcTruncated)
         {
             if (!IrqSessionProbe.EnabledSetting) return;
@@ -403,8 +429,35 @@ namespace PaviseApp
                 int hz = 0;
                 try { hz = DisplayGuard.CurrentRefreshRate(); } catch { }
                 int usedSessions;
-                List<IrqDriverVerdict> verdicts = IrqVerdict.Evaluate(
-                    IrqSessionLedger.Load(), hz, out usedSessions);
+                List<IrqSessionRecord> records = IrqSessionLedger.Load();
+                List<IrqDriverVerdict> verdicts = IrqVerdict.Evaluate(records, hz, out usedSessions);
+                // 自动中断编排在建议门槛之前跑 旧计划的验收不该被"本局没有新建议"拦住
+                //   目标掩码必须和裁决证据同源 裁决窗内各局的游戏掩码不一致说明混着玩了
+                //   不同锁核方案的游戏 按 A 的证据钉到 B 的掩码外可能正钉进 A 的游戏核
+                //   这种局面整局不编排 只验收
+                ulong autoGameMask = 0, autoSystemMask = 0;
+                int autoSeen = 0;
+                for (int i = records.Count - 1; i >= 0
+                    && autoSeen < IrqSessionLedger.VerdictWindow; i--)
+                {
+                    IrqSessionRecord rec = records[i];
+                    if (rec == null || !rec.UsableForVerdict) continue;
+                    autoSeen++;
+                    if (rec.GameMask == 0) continue;
+                    if (autoGameMask == 0)
+                    {
+                        autoGameMask = rec.GameMask;
+                        autoSystemMask = rec.SystemMask;
+                    }
+                    else if (autoGameMask != rec.GameMask || autoSystemMask != rec.SystemMask)
+                    {
+                        autoGameMask = 0;
+                        autoSystemMask = 0;
+                        break;
+                    }
+                }
+                try { IrqAutoPilot.RunAfterMatch(verdicts, usedSessions, autoGameMask, autoSystemMask); }
+                catch { }
                 if (usedSessions < IrqSessionLedger.MinSessionsForVerdict) return;
                 IrqDeviceInventory.VerifyCurrentVersions(verdicts);
                 int worth = 0;
@@ -412,9 +465,9 @@ namespace PaviseApp
                     if (v != null && v.Worth && v.VersionVerified) worth++;
                 if (worth <= 0) return;
 
-                // present 对齐的正命中可以增强 Worth；但当前 DxgKrnl 184
-                // 只给 PID/context/window，没有可靠 swapchain 身份。同 PID 辅助呈现流
-                // 可以填平主渲染流的长帧，因而默认只把它当正证据，不把零命中当反证。
+                // present 对齐的正命中可以增强 Worth 但当前 DxgKrnl 184
+                // 只给 PID/context/window 没有可靠 swapchain 身份 同 PID 辅助呈现流
+                // 可以填平主渲染流的长帧 因而默认只把它当正证据 不把零命中当反证
                 bool presentUsable = align != null && align.Ok && align.LongFrameHits != null;
                 bool swapchainIdentityReliable = presentUsable && align.SwapchainIdentityReliable;
                 bool alignmentIncomplete = dpcTruncated
@@ -452,8 +505,8 @@ namespace PaviseApp
                     }
                 }
 
-                // 只有未来能证明是单一目标 swapchain 的采集链，完整零命中
-                // 才可拦住主动提示。当前 PID 级数据的零命中回退 Worth；正命中仍有效。
+                // 只有未来能证明是单一目标 swapchain 的采集链 完整零命中
+                // 才可拦住主动提示 当前 PID 级数据的零命中回退 Worth 正命中仍有效
                 int longFrames = align == null ? 0 : align.LongFrames;
                 int reported = ResolveIrqReportedCount(
                     presentUsable, swapchainIdentityReliable, alignmentIncomplete,
@@ -472,8 +525,8 @@ namespace PaviseApp
         internal static string FormatIrqSessionResult(string summary, bool requested, string status)
         {
             if (!string.IsNullOrEmpty(summary)) return summary;
-            // 每局的失败/取消原因也挂在带游戏名和时长的结束记录下，
-            // 不能只留一条会被下一局覆盖的最新状态，更不能捏造实测数值。
+            // 每局的失败/取消原因也挂在带游戏名和时长的结束记录下
+            // 不能只留一条会被下一局覆盖的最新状态 更不能捏造实测数值
             return requested && !string.IsNullOrEmpty(status)
                 ? Lang.F("rep.irq.result", status) : "";
         }
@@ -482,12 +535,12 @@ namespace PaviseApp
             bool dpcIncomplete, int longFrames, int matched, int worth)
         {
             if (!presentUsable) return worth;
-            // PID 级多流合并既能填平长帧，也能用高频辅助流压低
-            // median 而伪造长帧。没有 swapchain 身份时，正负结果都不许缩减 Worth。
+            // PID 级多流合并既能填平长帧 也能用高频辅助流压低
+            // median 而伪造长帧 没有 swapchain 身份时 正负结果都不许缩减 Worth
             if (!swapchainIdentityReliable) return worth;
-            // present 明确没有长帧时，DPC 时间线再不完整也不可能藏住“撞长帧”。
+            // present 明确没有长帧时 DPC 时间线再不完整也不可能藏住“撞长帧”
             if (longFrames <= 0 && matched <= 0) return 0;
-            // 对齐链不完整时，已命中项不能反向否定其余 Worth 项。
+            // 对齐链不完整时 已命中项不能反向否定其余 Worth 项
             return dpcIncomplete ? worth : matched;
         }
 
@@ -513,10 +566,10 @@ namespace PaviseApp
         private const int MinPresentIntervalsForAlignment = 30;
         private const double MaxContinuousPresentGapMs = 2000.0;
 
-        // 停掉本局 present 会话 只取渲染进程的帧 算出「长帧区间」[上一帧qpc,本帧qpc] 供与 DPC 时间线求交
+        // 停掉本局 present 会话 只取渲染进程的帧 算出 长帧区间 [上一帧qpc,本帧qpc] 供与 DPC 时间线求交
         //   present↔DPC 对齐只为增强设备中断判断 不产出对局报告摘要(帧数/p99/1%low 都不要)
-        //   必须是完整排空、无截断/丢事件且渲染 pid 自身至少有 30 个有效间隔；否则返回 null，
-        //   少量或其它进程的 present 不足以建立有意义的时间对齐样本。
+        //   必须是完整排空 无截断/丢事件且渲染 pid 自身至少有 30 个有效间隔 否则返回 null
+        //   少量或其它进程的 present 不足以建立有意义的时间对齐样本
         //   区间按 QPC 递增且首尾相接 与 DPC 会话同一根 QPC 尺子(都 RawTimestamp)可直接对齐
         private void CollectLongFrames(int rendererPid, TimeSpan sessionDuration,
             out List<long[]> longFrameIntervals)
@@ -537,7 +590,7 @@ namespace PaviseApp
                 freq = p.QpcFrequency;
             }
             catch { return; }
-            // 时间对齐样本至少要覆盖半局且不少于 2 秒；只抓到开局一小撮帧时不记线索。
+            // 时间对齐样本至少要覆盖半局且不少于 2 秒 只抓到开局一小撮帧时不记线索
             double minCoverageSeconds = Math.Max(2.0, sessionDuration.TotalSeconds * 0.5);
             longFrameIntervals = BuildLongFrameIntervals(
                 frames, freq, rendererPid, minCoverageSeconds);
@@ -577,8 +630,8 @@ namespace PaviseApp
             qpcs.Sort();
 
             double msPerTick = 1000.0 / freq;
-            // Alt-Tab/最小化后几十秒不呈现不是一帧。按超大 gap 切段，只用一段
-            // 连续活跃且样本足够的呈现流，避免空窗同时伪造 coverage 和“长帧”。
+            // Alt-Tab/最小化后几十秒不呈现不是一帧 按超大 gap 切段 只用一段
+            // 连续活跃且样本足够的呈现流 避免空窗同时伪造 coverage 和“长帧”
             var segments = new List<List<long[]>>();
             var current = new List<long[]>();
             for (int i = 1; i < qpcs.Count; i++)
@@ -606,7 +659,7 @@ namespace PaviseApp
             if (active == null || activeCoverage <= 0
                 || activeCoverage / (double)freq < minCoverageSeconds) return null;
 
-            // 时间序相邻帧间隔 loQ/hiQ 保留端点 QPC 供长帧区间对齐。
+            // 时间序相邻帧间隔 loQ/hiQ 保留端点 QPC 供长帧区间对齐
             var ft = new List<double>(active.Count);
             foreach (long[] pair in active) ft.Add((pair[1] - pair[0]) * msPerTick);
             int n = ft.Count;
@@ -625,7 +678,7 @@ namespace PaviseApp
 
         // present 长帧区间 ∩ DPC 时间线 数每个长帧里落了哪些模块的 DPC 归类
         //   活跃集扫描 区间按 QPC 递增且不重叠 DPC 按有效 StartQpc 排序
-        //   产出「撞长帧 top 模块」 每模块记 撞了几帧(LongFrameHits) 与总 DPC 数(DpcCount)
+        //   产出 撞长帧 top 模块 每模块记 撞了几帧(LongFrameHits) 与总 DPC 数(DpcCount)
         internal sealed class PresentDpcAlignment
         {
             public bool Ok;
@@ -644,8 +697,8 @@ namespace PaviseApp
             List<long[]> intervals, List<InterruptAttribution.DpcTimelineEntry> dpc,
             bool swapchainIdentityReliable = false)
         {
-            // null 表示某条采集链根本不可用；非 null 空集合表示
-            // 可用于正命中对齐但结果为零。是否能作负证据由 swapchain 可靠性单独决定。
+            // null 表示某条采集链根本不可用 非 null 空集合表示
+            // 可用于正命中对齐但结果为零 是否能作负证据由 swapchain 可靠性单独决定
             if (intervals == null) return null;
 
             var r = new PresentDpcAlignment();
@@ -654,7 +707,7 @@ namespace PaviseApp
             r.LongFrames = intervals.Count;
             r.LongFrameHits = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             r.DpcCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            // present 已明确没有长帧时，DPC 探针是否可用都不可能藏住“撞长帧”。
+            // present 已明确没有长帧时 DPC 探针是否可用都不可能藏住“撞长帧”
             if (intervals.Count == 0) return r;
             if (dpc == null) return null;
             if (dpc.Count == 0) return r;
@@ -683,8 +736,8 @@ namespace PaviseApp
                 foreach (int dpcIndex in activeDpc)
                 {
                     InterruptAttribution.DpcTimelineEntry entry = dpc[dpcIndex];
-                    // 半开重叠规则：DPC.Start < frame.End && DPC.End > frame.Start。
-                    // 跨过帧边界才是最需被捕获的 DPC，只看 EndQpc 会漏掉它。
+                    // 半开重叠规则 DPC.Start < frame.End && DPC.End > frame.Start
+                    // 跨过帧边界才是最需被捕获的 DPC 只看 EndQpc 会漏掉它
                     if (entry.StartQpc >= hi || entry.EndQpc <= lo) continue;
                     string m = entry.Module;
                     if (string.IsNullOrWhiteSpace(m) || m == "?")
@@ -692,8 +745,8 @@ namespace PaviseApp
                         m = "?";
                         r.UnknownModuleInLongFrames = true;
                     }
-                    // 一条 DPC 可以横跨两个相邻长帧：帧命中应各算一次，但事件总数
-                    // 只能算一次，否则日志会把“1 条跨帧 DPC”误报成“2 条”。
+                    // 一条 DPC 可以横跨两个相邻长帧 帧命中应各算一次 但事件总数
+                    // 只能算一次 否则日志会把“1 条跨帧 DPC”误报成“2 条”
                     if (countedDpc.Add(dpcIndex))
                     {
                         int c; counts.TryGetValue(m, out c); counts[m] = c + 1;

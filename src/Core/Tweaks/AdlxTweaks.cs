@@ -20,6 +20,10 @@ namespace PaviseApp
 
         private static bool renderSkipLogged;
 
+        // ADLX 的这些设置是全局的 不分游戏 所以要先确认这台机器上
+        //   渲染确实走 A 卡 有 A 卡独显就开 只有 A 卡核显且没有别家独显也开
+        //   A 卡核显配 N 卡独显这种 改了也是白改还可能干扰别人 直接跳过
+        //   查不出适配器时按开放处理 宁可让后面的回读核验去挡
         private static bool AmdRenderGateOpen()
         {
             GpuAdapter[] all = GpuInventory.Adapters();
@@ -50,6 +54,8 @@ namespace PaviseApp
                 snapshot.Count == 0 ? "" : NvDrsTweaks.SerializeSnapshot(snapshot));
         }
 
+        // 快照的键优先用 PnP 字符串 换插槽换驱动都还认得出是同一块卡
+        //   读不到就退回下标 同时把 identityMissing 立起来让调用方降级处理
         private static string GpuKey(IntPtr gpu, int index, ref bool identityMissing)
         {
             string pnp = AdlxApi.GpuPnpString(gpu);
@@ -57,6 +63,9 @@ namespace PaviseApp
             return "id" + pnp.Replace('=', '_').Replace(';', '_');
         }
 
+        // 原值只在第一次落快照 之后一律不覆盖 覆盖等于把已改过的值当原值
+        //   legacyKey 那段是把老的下标键迁到 PnP 键 迁完删掉老的
+        //   快照存不下就返回 false 调用方必须放弃这次写入
         private static bool EnsureSnapshot(Dictionary<string, string> snapshot,
             string key, string legacyKey, string value, string label)
         {
@@ -169,6 +178,9 @@ namespace PaviseApp
                 });
         }
 
+        // Chill 和 Anti-Lag 在驱动里互斥 开 Anti-Lag 之前先把 Chill 的原值记下
+        //   只记用户本来就开着的 已经有快照的不动
+        //   这一步失败不阻断 Anti-Lag 但会少一份还原依据
         private static void SnapshotChillConflict()
         {
             if (!Available) return;
@@ -302,6 +314,9 @@ namespace PaviseApp
                 }
                 if (enabled) return true;
                 var snapshot = LoadSnap();
+                // 用户自己就开着 RSR 那不是我们改的 上面直接返回 不记快照也不动它
+                //   退局时 RestoreRsr 找不到 sys.rsr 会放过 不会去关用户开的
+                //   RSR 是全局开关不分卡 所以键不带 GPU 身份前缀
                 if (!snapshot.ContainsKey("sys.rsr"))
                 {
                     snapshot["sys.rsr"] = "0";

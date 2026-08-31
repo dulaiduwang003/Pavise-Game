@@ -1,5 +1,5 @@
-// Picker-only scroll rail. The native ListBox still owns selection, keyboard
-// navigation, wheel scrolling and TopIndex; the rail never receives row input.
+// 文件用途 只给选择器用的滚动条 选中项 键盘导航 滚轮和 TopIndex
+// 仍然归原生 ListBox 管 滚动条永远不接收行输入
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -70,7 +70,7 @@ namespace PaviseApp
                     rail.Visible = needed;
                     PerformLayout();
                 }
-                // A refreshed/filtered list can change the range underneath a drag.
+                // 列表刷新或者过滤 可能在拖动过程中把范围换掉
                 if (rangeChanged || !needed) rail.CancelDrag();
                 rail.Invalidate();
             }
@@ -82,7 +82,7 @@ namespace PaviseApp
             if (IsDisposed || Disposing || list.IsDisposed || list.Parent != this || list.Items.Count == 0) return;
             int next = Math.Max(0, Math.Min(maximumTop, top));
             if (list.TopIndex != next) list.TopIndex = next;
-            // LB_SETTOPINDEX can clamp at the native limit; paint the actual index.
+            // LB_SETTOPINDEX 可能被原生上限截断 画的时候用实际索引
             SyncViewport();
         }
 
@@ -207,7 +207,7 @@ namespace PaviseApp
                 if (e.Button != MouseButtons.Left || !owner.ScrollNeeded) return;
                 Rectangle thumb = ThumbRectangle;
                 if (thumb.IsEmpty) return;
-                // The full lane is a drag target, not just the six-pixel visual thumb.
+                // 整条轨道都是拖动目标 不只是那六像素宽的滑块
                 if (e.Y >= thumb.Top && e.Y < thumb.Bottom)
                 {
                     BeginDrag(e.Y);

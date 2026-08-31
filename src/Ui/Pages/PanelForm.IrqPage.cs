@@ -16,6 +16,11 @@ namespace PaviseApp
         private PillButton btnIrqApply, btnIrqRevert;
         private Toggle swIrqProbePage;
         private SettingCard cardIrqProbe;
+        private Toggle swIrqAuto;
+        private SettingCard cardIrqAuto;
+#if PAVISE_SELFTEST
+        internal Func<bool> IrqAutoConfirmationForTest;
+#endif
         private TechListBox lstIrqDevices;
         private List<IrqDevice> irqDevices = new List<IrqDevice>();
         private List<IrqSessionRecord> irqSessions = new List<IrqSessionRecord>();
@@ -60,6 +65,13 @@ namespace PaviseApp
                 out irqProbeCardH);
             y += irqProbeCardH + 10;
 
+            swIrqAuto = MakeSwitch(IrqAutoPilot.Enabled, OnIrqAutoToggle);
+            int irqAutoCardH;
+            cardIrqAuto = MakeAutoCard(scroll, 0, y, InnerW, 66,
+                Lang.T("irqauto.title"), Lang.T("irqauto.sub"), swIrqAuto,
+                out irqAutoCardH);
+            y += irqAutoCardH + 10;
+
             var actionDeck = MakeConsolePanel(scroll, 0, y, InnerW, 96, true);
             btnIrqApply = new PillButton(Lang.T("irq.btn.apply"), BtnKind.Primary);
             btnIrqApply.SetBounds(Theme.S(14), Theme.S(15), Theme.S(250), Theme.S(34));
@@ -69,7 +81,7 @@ namespace PaviseApp
             btnIrqRevert.SetBounds(Theme.S(272), Theme.S(15), Theme.S(250), Theme.S(34));
             btnIrqRevert.Click += OnIrqRevert;
             actionDeck.Controls.Add(btnIrqRevert);
-            // 失败原因放独立的全宽行，不能缩在两个按钮右边而只剩“暂无数据”。
+            // 失败原因放独立的全宽行 不能缩在两个按钮右边而只剩“暂无数据”
             lblIrqState = CardLabel(actionDeck, "", 14, 54, InnerW - 28, 30, 8.2f, true, Theme.Dim);
             lblIrqState.TextAlign = ContentAlignment.MiddleLeft;
             lblIrqState.AutoEllipsis = true;
@@ -100,8 +112,8 @@ namespace PaviseApp
         {
             if (lstIrqDevices == null) return;
 
-            // 重排前按设备 ID 记住选中项。按旧索引恢复会在 Worth 置顶或实测变化后
-            // 悄悄选中另一台设备，随后“选择核心”可能打开错误目标。
+            // 重排前按设备 ID 记住选中项 按旧索引恢复会在 Worth 置顶或实测变化后
+            // 悄悄选中另一台设备 随后“选择核心”可能打开错误目标
             string keepId = null;
             int oldIndex = lstIrqDevices.SelectedIndex;
             if (oldIndex >= 0 && oldIndex < lstIrqDevices.Items.Count)
@@ -124,7 +136,7 @@ namespace PaviseApp
                 {
                     verdicts = IrqVerdict.EvaluateForDisplay(irqSessions, IrqPageRefreshHz(),
                         out irqUsedSessions, out irqDisplaySessions);
-                    // 完整短局立即展示原始实测；建议仍只计原有 >=60 秒的合格局。
+                    // 完整短局立即展示原始实测 建议仍只计原有 >=60 秒的合格局
                     if (irqUsedSessions < IrqSessionLedger.MinSessionsForVerdict)
                         foreach (IrqDriverVerdict v in verdicts)
                             if (v != null) v.Worth = false;
@@ -176,6 +188,14 @@ namespace PaviseApp
                 swIrqProbePage.SetSilently(IrqSessionProbe.EnabledSetting);
                 swIrqProbePage.Enabled = admin;
             }
+            if (swIrqAuto != null)
+            {
+                swIrqAuto.SetSilently(IrqAutoPilot.Enabled);
+                swIrqAuto.Enabled = admin;
+            }
+            if (cardIrqAuto != null)
+                cardIrqAuto.SetStatus(IrqAutoPilot.Summarize(),
+                    IrqAutoPilot.Enabled ? Theme.Green : Theme.Faint);
             string captureText = gameMode.IrqObservationStatusText ?? "";
             bool captureWarning = gameMode.IrqObservationStatusWarning;
             if (cardIrqProbe != null)
@@ -249,8 +269,8 @@ namespace PaviseApp
 
         private void Flash(string text, Color c) { irqFlash = text; irqFlashColor = c; }
 
-        // 只统计已经映射到可点击设备的 Worth；驱动判定若无法映射，不能告诉用户有一条
-        // 根本找不到入口的建议。
+        // 只统计已经映射到可点击设备的 Worth 驱动判定若无法映射 不能告诉用户有一条
+        // 根本找不到入口的建议
         private int IrqWorthCount()
         {
             int n = 0;
@@ -267,8 +287,8 @@ namespace PaviseApp
             if (count > 0) NotifyIrqObservationUpdated();
         }
 
-        // 每局完成/失败都刷新，不再要求有挪核建议。与建议通知合并，隐藏时不枚举设备；
-        // 页面重新激活仍走 RefreshIrqPage，故首局零建议也不会永久显示旧的空状态。
+        // 每局完成/失败都刷新 不再要求有挪核建议 与建议通知合并 隐藏时不枚举设备
+        // 页面重新激活仍走 RefreshIrqPage 故首局零建议也不会永久显示旧的空状态
         public void NotifyIrqObservationUpdated()
         {
             try
@@ -325,7 +345,7 @@ namespace PaviseApp
                 x, ty, Dpi.S(120), Theme.Dim, true);
             x += Dpi.S(120);
 
-            // 建议标签放在设备名前面，长 PnP 名称被省略号截断时仍然可见。
+            // 建议标签放在设备名前面 长 PnP 名称被省略号截断时仍然可见
             string name = (d.ActionableWorth ? Lang.T("irq.tag.matchsuggest") + "  " : "")
                 + d.Name
                 + (d.InputRisk ? "  " + Lang.T("irq.tag.input") : "");
@@ -382,12 +402,63 @@ namespace PaviseApp
                 swIrqProbePage.SetSilently(false);
                 return;
             }
+            // 关观测时自动编排必须跟着关 观测停了就没人验收
+            //   否则待验收的注册表钉核被无限期晾着 坏钉核永远等不到回滚
+            if (!on && IrqAutoPilot.Enabled)
+            {
+                Settings.Save(IrqAutoPilot.EnabledKey, false);
+                Flash(Lang.T(IrqAutoPilot.RevertAll()
+                    ? "irqauto.offwithprobe" : "irqauto.revertfail"),
+                    IrqAutoPilot.HasResidue ? Theme.Danger : Theme.Accent);
+            }
             IrqMutationBoundary.Run(delegate
             {
                 IrqSessionProbe.EnabledSetting = on;
                 gameMode.RequestIrqObservationSettingChanged();
             });
             RefreshIrqPage();
+        }
+
+        private void OnIrqAutoToggle(object sender, EventArgs e)
+        {
+            if (swIrqAuto == null) return;
+            bool on = swIrqAuto.Checked;
+            if (on)
+            {
+                bool admin = false;
+                try { admin = Native.IsElevated(); } catch { }
+                // 没有对局观测就没有证据 也没有验收 计划会连同注册表钉核一起冻结
+                if (!admin || !IrqSessionProbe.EnabledSetting || !ConfirmIrqAutoEnable())
+                {
+                    if (!admin) Flash(Lang.T("irqmove.needadmin"), Theme.Danger);
+                    else if (!IrqSessionProbe.EnabledSetting)
+                        Flash(Lang.T("irqauto.needobserve"), Theme.Danger);
+                    swIrqAuto.SetSilently(IrqAutoPilot.Enabled);
+                    return;
+                }
+                Settings.Save(IrqAutoPilot.EnabledKey, true);
+                // 重开清熔断 与显存驻留同一条房规 明确的再试授权
+                IrqAutoPilot.ClearFuses();
+            }
+            else
+            {
+                // 关掉即退 全部自动钉核按收据还原 还原失败必须让人看见
+                //   开关已关 以后每局的入口都不再进来 没人会替它重试
+                Settings.Save(IrqAutoPilot.EnabledKey, false);
+                if (!IrqAutoPilot.RevertAll())
+                    Flash(Lang.T("irqauto.revertfail"), Theme.Danger);
+            }
+            swIrqAuto.SetSilently(IrqAutoPilot.Enabled);
+            RefreshIrqPage();
+        }
+
+        private bool ConfirmIrqAutoEnable()
+        {
+#if PAVISE_SELFTEST
+            if (IrqAutoConfirmationForTest != null) return IrqAutoConfirmationForTest();
+#endif
+            return PaviseDialog.Confirm(this, Lang.T("irqauto.title"),
+                Lang.T("irqauto.warn"), DlgKind.Warn);
         }
 
         private void OnIrqApply(object sender, EventArgs e)
@@ -435,7 +506,7 @@ namespace PaviseApp
 
     }
 
-    // 只做状态选择，无窗口、设备枚举或 ETW；可用假观测覆盖空白页的所有分支。
+    // 只做状态选择 无窗口 设备枚举或 ETW 可用假观测覆盖空白页的所有分支
     internal static class IrqPageStatus
     {
         internal static string ResolveData(int recorded, int displayable, int usable, int devicesWithInterrupts,
@@ -465,7 +536,7 @@ namespace PaviseApp
 
         internal static string CountedText(string detail, int recorded, int usable, string readIssue)
         {
-            // 读失败时数量未知，不把空的失败返回值显示成“已记录 0 局”。
+            // 读失败时数量未知 不把空的失败返回值显示成“已记录 0 局”
             if (!string.IsNullOrEmpty(readIssue)) return detail;
             string counts = Lang.F("irq.state.counts", recorded, usable);
             return string.IsNullOrEmpty(detail) ? counts : counts + " · " + detail;

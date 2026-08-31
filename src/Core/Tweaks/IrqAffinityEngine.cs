@@ -34,6 +34,20 @@ namespace PaviseApp
 
         public List<string> TouchedDevices() { return LoadTouched(); }
 
+        // 严格读 账本"读不到"和"确实为空"要分得开 孤儿判定不许把读失败当证据
+        public bool TryTouchedDevices(out List<string> ids)
+        {
+            ids = new List<string>();
+            string raw;
+            if (!Settings.TryLoadStr(TouchedKey, out raw)) return false;
+            foreach (string s in (raw ?? "").Split('\n'))
+            {
+                string id = s.Trim();
+                if (id.Length > 0 && !ids.Contains(id)) ids.Add(id);
+            }
+            return true;
+        }
+
         private sealed class Target
         {
             public string DeviceId;
@@ -159,8 +173,8 @@ namespace PaviseApp
                     }, out attempted);
                 if (!attempted)
                 {
-                    // No registry change took place, so do not restore an older
-                    // backup merely because this write's marker could not be saved.
+                    // 注册表根本没改过 所以不要仅仅因为这次写入的标记没保存成功
+                    // 就去还原一份更旧的备份
                     if (ok) anyOk = true;
                     else Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.bootstamp") + t.DeviceId);
                     continue;
@@ -251,15 +265,15 @@ namespace PaviseApp
             Func<string, bool> saveStamp, Func<string> loadStamp, Func<bool> apply, out bool attempted)
         {
             attempted = false;
-            // A no-op must neither alter a valid marker nor invent one for an external pin.
+            // 空操作既不能改动有效标记 也不能给外部的钉核凭空造一个
             if (alreadyConfigured) return true;
             long seconds;
             if (!TryParseBootStamp(stamp, out seconds)
                 || saveStamp == null || loadStamp == null || apply == null) return false;
             try
             {
-                // Persist before changing affinity. A failed save can leave an
-                // older boot marker intact; it must never describe a new write.
+                // 改亲和性之前先落盘 保存失败可能让更旧的开机标记留在原地
+                // 它绝不能被当成描述这次新写入
                 if (!saveStamp(stamp) || !string.Equals(loadStamp(), stamp, StringComparison.Ordinal))
                     return false;
             }
@@ -316,6 +330,28 @@ namespace PaviseApp
             string joined = string.Join("\n", ids.ToArray());
             Settings.SaveStr(TouchedKey, joined);
             return Settings.LoadStr(TouchedKey, "") == joined;
+        }
+
+        // 只还原指定设备 不把新 ID 并进清单 计划级的部分回滚用
+        //   与 Disable 的区别 Disable 是"收摊" 这里是"退掉其中一件"
+        public bool RestoreOnly(List<string> deviceIds)
+        {
+            if (deviceIds == null || deviceIds.Count == 0) return true;
+            List<Target> targets = BuildTargets(deviceIds);
+            var touched = LoadTouched();
+            bool allOk = true;
+            foreach (Target t in targets)
+            {
+                bool ok = t.Policy.Restore() & t.Mask.Restore();
+                if (!ok) { allOk = false; continue; }
+                ForgetBootStamp(t.DeviceId);
+                for (int i = touched.Count - 1; i >= 0; i--)
+                    if (string.Equals(touched[i], t.DeviceId, StringComparison.OrdinalIgnoreCase))
+                        touched.RemoveAt(i);
+            }
+            if (!SaveTouched(touched)) allOk = false;
+            if (allOk && touched.Count == 0) Settings.Save(settingsKey, false);
+            return allOk;
         }
 
         public bool Disable(List<string> deviceIds)

@@ -425,15 +425,19 @@ namespace PaviseApp
                     form.IntelLowLatencyConfirmationForTest = delegate { throw new InvalidOperationException("Layout requested consent"); };
                     GraphicsUiCall(form, "BuildCommonGraphicsPage", common);
                     GraphicsUiCall(form, "BuildIntelGraphicsPage", intel);
-                    GraphicsUiCheck(common.Controls.Count == 2 && intel.Controls.Count == 1,
+                    GraphicsUiCheck(common.Controls.Count == 3 && intel.Controls.Count == 1,
                         "common/Intel pages have missing or duplicate cards");
                     SettingCard appCard = (SettingCard)common.Controls[1];
+                    SettingCard autoCard = (SettingCard)common.Controls[2];
                     SettingCard intelCard = (SettingCard)intel.Controls[0];
                     GraphicsUiCheck(appCard.Title == Lang.T("set.apppref") && appCard.Desc == Lang.T("set.apppref.n")
                         && appCard.Expanded && appCard.HasStatus && intelCard.Title == Lang.T("set.intel.lowlatency"),
                         "vendor cards lost localization or hid the next-launch scope by default");
+                    GraphicsUiCheck(autoCard.Title == Lang.T("set.autogpu") && autoCard.Desc == Lang.T("set.autogpu.n")
+                        && autoCard.HasStatus, "the auto GPU preference card lost localization or its next-launch scope");
                     intelCard.Expanded = true;
-                    foreach (SettingCard card in new[] { appCard, intelCard })
+                    autoCard.Expanded = true;
+                    foreach (SettingCard card in new[] { appCard, autoCard, intelCard })
                     {
                         Control host = card.Controls[0];
                         int textWidth = card.Width - Theme.S(84) - host.Width - Theme.S(14)

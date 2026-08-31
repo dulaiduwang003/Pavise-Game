@@ -1,6 +1,6 @@
-// Optional, bounded history of observed 3D activity. Not a game-identity or safety
-// certificate. Kept separate from the strict game library so a damaged cache can
-// never invalidate the user's profiles.
+// 文件用途 可选的有界 3D 活动观测历史 它不是游戏身份证明也不是安全背书
+// 和严格的游戏库分开存 这样缓存坏掉也绝不会
+// 把用户的档案带崩
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -61,8 +61,8 @@ namespace PaviseApp
             Load();
         }
 
-        // A successful close drains an in-progress atomic save and prevents
-        // validation/Forget workers from recreating the cache during reset.
+        // 关闭成功会把正在进行的原子保存排干 并阻止校验和 Forget
+        // 工作线程在重置期间又把缓存建回来
         internal bool Close(int timeoutMs)
         {
             if (timeoutMs < 0 || Monitor.IsEntered(gate)
@@ -71,7 +71,7 @@ namespace PaviseApp
             finally { Monitor.Exit(gate); }
         }
 
-        // No filesystem access: safe for DrawItem, tooltips and UI event handlers.
+        // 不碰文件系统 所以 DrawItem 工具提示和界面事件处理里都能安全调
         internal bool Has(string profileId, string executablePath)
         {
             lock (gate)
@@ -94,15 +94,15 @@ namespace PaviseApp
             }
         }
 
-        // Call only from a background worker or an isolated test.
+        // 只能从后台工作线程或者隔离测试里调
         internal bool Validate(string profileId, string executablePath)
         {
             Record record;
             lock (gate)
                 if (closed || profileId == null || !records.TryGetValue(profileId, out record)
                     || !SamePath(record.Exe, executablePath)) return false;
-            // A queued validation of the previous executable must not invalidate
-            // an observation already recorded for its replacement.
+            // 排队中的旧可执行文件校验 不能把已经为它的替代者
+            // 记下来的观测作废
             RendererFileStamp stamp = RendererFileStamp.Read(executablePath);
             lock (gate)
             {
@@ -113,8 +113,8 @@ namespace PaviseApp
                 bool changed = record.Validated != valid;
                 record.Validated = valid;
                 record.CheckedTicks = DateTime.UtcNow.Ticks;
-                // Once a file/path changes, an old observation must not revive if
-                // a different file later happens to reuse the original timestamp.
+                // 文件或路径一旦变过 就算后来另一个文件碰巧复用了原来的时间戳
+                // 旧观测也不能复活
                 if (!valid) records.Remove(profileId);
                 return changed || !valid;
             }
@@ -163,7 +163,7 @@ namespace PaviseApp
             }
         }
 
-        // Invalidate immediately in memory; the caller may persist on a worker.
+        // 内存里立刻失效 落盘由调用方在工作线程上做
         internal void Forget(string profileId)
         {
             lock (gate) { if (!closed && profileId != null) records.Remove(profileId); }

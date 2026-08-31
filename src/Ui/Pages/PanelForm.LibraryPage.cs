@@ -139,12 +139,12 @@ namespace PaviseApp
                 if (current == null) return;
                 bool turningOn = !current.SuppressFamilyBackground;
                 string targetPath = current.ExecutablePath;
-                // 已观测渲染不代表关联后台可以安全压制；每次开启都必须确认风险。
+                // 已观测渲染不代表关联后台可以安全压制 每次开启都必须确认风险
                 if (turningOn)
                 {
                     using (var warning = new FamilySuppressionDialog(current.Name, targetPath))
                         if (ShowDim(warning) != DialogResult.OK) return;
-                    // 模态窗口仍会分发库更新。不得把旧 EXE 的风险确认套给已纠正的新目标。
+                    // 模态窗口仍会分发库更新 不得把旧 EXE 的风险确认套给已纠正的新目标
                     GameProfile after = FindLibraryProfile(keepId);
                     if (after == null) return;
                     if (!string.Equals(after.ExecutablePath, targetPath, StringComparison.OrdinalIgnoreCase))
@@ -159,7 +159,7 @@ namespace PaviseApp
             finally
             {
                 familyChangeBusy = false;
-                // AutoCheck=false：取消或保存失败都回显真实模型，不留下假开启状态。
+                // AutoCheck=false 取消或保存失败都回显真实模型 不留下假开启状态
                 RefreshGames(); SelectProfile(keepId);
             }
         }
@@ -273,7 +273,7 @@ namespace PaviseApp
                     runningByPath[row.Profile.ExecutablePath] = row.Running;
             var fresh = new List<GameLibraryItem>();
             foreach (GameProfile profile in profiles)
-                // 标签只读取已经观测到的缓存；不在 UI 线程查 EXE 或采样 GPU。
+                // 标签只读取已经观测到的缓存 不在 UI 线程查 EXE 或采样 GPU
                 fresh.Add(new GameLibraryItem(profile, RunningIn(runningByPath, profile.ExecutablePath),
                     gameMode.HasRendererObservation(profile)));
             lstGames.SetItems(fresh);

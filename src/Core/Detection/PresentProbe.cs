@@ -32,8 +32,8 @@ namespace PaviseApp
         // EnableTraceEx2 参数
         private const uint EnableProvider = 1;      // EVENT_CONTROL_CODE_ENABLE_PROVIDER
         private const byte LevelInformation = 4;    // TRACE_LEVEL_INFORMATION
-        // Present 关键词还包含 VSync/HSync、队列和同步信号等事件，不能单独作为低开销过滤器。
-        // 必须同时用 EVENT_FILTER_TYPE_EVENT_ID 在 ETW 写入前限定 184，回调再作防御性复核。
+        // Present 关键词还包含 VSync/HSync 队列和同步信号等事件 不能单独作为低开销过滤器
+        // 必须同时用 EVENT_FILTER_TYPE_EVENT_ID 在 ETW 写入前限定 184 回调再作防御性复核
         private const ulong MatchAnyKeyword = 0x8000000;
         private const uint EnableTimeoutMs = 1000;
 
@@ -105,9 +105,9 @@ namespace PaviseApp
             }
             finally { Marshal.FreeHGlobal(props); }
 
-            // DxgKrnl 是内核驱动注册的 manifest provider，不套只适用于用户态 provider 的 PID scope。
-            // 过滤参数、descriptor 和变长载荷在整个 EnableTraceEx2 调用期间由同一个 HGlobal 持有。
-            // 配置失败就放弃本轮 Present，不回退成订阅整族事件的高流量会话。
+            // DxgKrnl 是内核驱动注册的 manifest provider 不套只适用于用户态 provider 的 PID scope
+            // 过滤参数 descriptor 和变长载荷在整个 EnableTraceEx2 调用期间由同一个 HGlobal 持有
+            // 配置失败就放弃本轮 Present 不回退成订阅整族事件的高流量会话
             Guid provider = DxgKrnl;
             uint erc;
             try
@@ -185,14 +185,14 @@ namespace PaviseApp
             catch { if (!stopRequested) consumerExitedEarly = true; }
             finally
             {
-                // 正常路径只有 RequestStop 发出 ControlTrace 后消费线程才该返回；提前返回即使
-                // Join 成功、丢事件计数为 0，也只覆盖了半局，不能生成负证据。
+                // 正常路径只有 RequestStop 发出 ControlTrace 后消费线程才该返回 提前返回即使
+                // Join 成功 丢事件计数为 0 也只覆盖了半局 不能生成负证据
                 if (!stopRequested) consumerExitedEarly = true;
             }
         }
 
-        // 只收口事件来源，不等待消费线程排空。调用方可先关闭 PRESENT 窗口，
-        // 立即封存 DPC 的新鲜 proof，再在退出收尾时调用 Stop 取完整时间线。
+        // 只收口事件来源 不等待消费线程排空 调用方可先关闭 PRESENT 窗口
+        // 立即封存 DPC 的新鲜 proof 再在退出收尾时调用 Stop 取完整时间线
         public void RequestStop()
         {
             lock (stopGate)
@@ -219,7 +219,7 @@ namespace PaviseApp
             uint stopError;
             lock (stopGate)
             {
-                // 多个收尾调用共用一次排空；等待会释放锁，RequestStop 不会被 Join 阻塞。
+                // 多个收尾调用共用一次排空 等待会释放锁 RequestStop 不会被 Join 阻塞
                 while (stopFinishing) Monitor.Wait(stopGate);
                 if (!started) return;
                 stopFinishing = true;
@@ -231,8 +231,8 @@ namespace PaviseApp
             bool workerDone = drainWorker == null;
             try
             {
-                // 正常停会话后消费者自行排空；停失败则先 CloseTrace 解除消费者，
-                // 这种路径即使 Join 成功也不能算完整采集。
+                // 正常停会话后消费者自行排空 停失败则先 CloseTrace 解除消费者
+                // 这种路径即使 Join 成功也不能算完整采集
                 if (!stopSucceeded)
                     try { if (handleToClose != 0) CloseTrace(handleToClose); } catch { }
                 if (drainWorker != null)
@@ -247,7 +247,7 @@ namespace PaviseApp
                     traceHandle = 0;
                     drainCompleted = stopSucceeded && workerDone && processTraceSucceeded;
                     started = false;
-                    // 排空超时后仍可能回调，保留委托直到消费线程结束。
+                    // 排空超时后仍可能回调 保留委托直到消费线程结束
                     if (workerDone) keepAlive = null;
                     stopFinishing = false;
                     Monitor.PulseAll(stopGate);
@@ -330,8 +330,8 @@ namespace PaviseApp
             finally { Marshal.FreeHGlobal(props); }
         }
 
-        // EVENT_FILTER_EVENT_ID 的 BOOLEAN 是 1 字节，不是默认 P/Invoke BOOL 的 4 字节。
-        // 当前只订阅一个事件：sizeof(header) 4 + USHORT Events[1] 2 = 6 字节。
+        // EVENT_FILTER_EVENT_ID 的 BOOLEAN 是 1 字节 不是默认 P/Invoke BOOL 的 4 字节
+        // 当前只订阅一个事件 sizeof(header) 4 + USHORT Events[1] 2 = 6 字节
         [StructLayout(LayoutKind.Sequential)]
         internal struct EventIdFilterData
         {
@@ -349,7 +349,7 @@ namespace PaviseApp
             internal uint Type;
         }
 
-        // 仅分配/序列化内存，不调用任何 ETW API；纯自测可核验整个指针链和释放路径。
+        // 仅分配/序列化内存 不调用任何 ETW API 纯自测可核验整个指针链和释放路径
         internal sealed class EventIdFilterBuffer : IDisposable
         {
             internal const uint EventIdFilterType = 0x80000200;
@@ -358,7 +358,7 @@ namespace PaviseApp
             internal EventIdFilterBuffer()
             {
                 int parametersSize = Marshal.SizeOf(typeof(Native.EnableTraceParameters));
-                // descriptor 含 ULONGLONG，显式按 8 字节对齐，兼容 x86/x64 控制器。
+                // descriptor 含 ULONGLONG 显式按 8 字节对齐 兼容 x86/x64 控制器
                 int descriptorOffset = (parametersSize + 7) & ~7;
                 int payloadOffset = descriptorOffset + Marshal.SizeOf(typeof(EventFilterDescriptor));
                 int payloadSize = Marshal.SizeOf(typeof(EventIdFilterData));
