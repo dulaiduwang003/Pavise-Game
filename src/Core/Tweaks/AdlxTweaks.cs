@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 会话期间应用 AMD 全局 3D 设置 快照先行 回读核验 退出恢复 崩溃续还原 实验性
+// 文件用途 会话期间应用 AMD 全局 3D 设置 快照先行 回读核验 退出恢复 崩溃续还原
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -263,7 +263,7 @@ namespace PaviseApp
                 }
                 if (!AdlxApi.AfmfSet(true))
                 {
-                    Logger.Log(Lang.T("log.adlxtweaks.13"));
+                    Logger.Warn(Lang.T("log.adlxtweaks.13"));
                     return false;
                 }
                 bool vSupported, vEnabled;
@@ -329,7 +329,7 @@ namespace PaviseApp
                 }
                 if (!AdlxApi.RsrSet(true, RsrDefaultSharpness))
                 {
-                    Logger.Log(Lang.T("log.adlxtweaks.20"));
+                    Logger.Warn(Lang.T("log.adlxtweaks.20"));
                     return false;
                 }
                 bool vSupported, vEnabled;
@@ -625,11 +625,132 @@ namespace PaviseApp
 
         public static bool HasResidue() { return Settings.LoadStr(SnapKey, "").Length > 0; }
 
+        // ---- 最低核心频率 A 卡对等 NVML 锁频 只抬 min 不碰电压和 max ----
+        //   目标取当前最高频率 夹进最低频率的合法区间 轻载不再降频 功耗墙温度墙照常压
+        //   这是驱动里的全局持久值 退局必须按快照写回 崩溃后启动也要写回
+        public static bool GfxMinSupported()
+        {
+            if (!Available) return false;
+            IntPtr[] gpus = AdlxApi.GetGpus();
+            if (gpus == null || gpus.Length == 0) return false;
+            try
+            {
+                foreach (IntPtr gpu in gpus)
+                {
+                    bool supported; int min, max; AdlxIntRange range;
+                    if (AdlxApi.GfxMinGet(gpu, out supported, out min, out max, out range) && supported) return true;
+                }
+                return false;
+            }
+            finally { AdlxApi.ReleaseAll(gpus); }
+        }
+
+        internal static int GfxMinTarget(int currentMax, AdlxIntRange minRange)
+        {
+            int target = currentMax;
+            if (minRange.Max > 0 && target > minRange.Max) target = minRange.Max;
+            if (minRange.Min > 0 && target < minRange.Min) target = minRange.Min;
+            return target;
+        }
+
+        public static bool ActivateGfxMin()
+        {
+            if (!AmdRenderGateOpen()) return true;
+            if (!Available) return false;
+            lock (lk)
+            {
+                IntPtr[] gpus = AdlxApi.GetGpus();
+                if (gpus == null || gpus.Length == 0) return false;
+                try
+                {
+                    var snapshot = LoadSnap();
+                    bool idMiss = false;
+                    int applied = 0, failed = 0;
+                    for (int i = 0; i < gpus.Length; i++)
+                    {
+                        bool supported; int min, max; AdlxIntRange range;
+                        if (!AdlxApi.GfxMinGet(gpus[i], out supported, out min, out max, out range) || !supported) continue;
+                        int target = GfxMinTarget(max, range);
+                        if (target <= 0 || min >= target) { applied++; continue; }
+                        string key = GpuKey(gpus[i], i, ref idMiss) + ".gfxmin";
+                        if (!EnsureSnapshot(snapshot, key, null, min.ToString(CultureInfo.InvariantCulture),
+                            Lang.T("t.adlxtweaks.gfxmin"))) return false;
+                        if (!AdlxApi.GfxMinSet(gpus[i], target)) { failed++; continue; }
+                        bool vSupported; int vMin, vMax; AdlxIntRange vRange;
+                        if (AdlxApi.GfxMinGet(gpus[i], out vSupported, out vMin, out vMax, out vRange) && vMin >= target)
+                            applied++;
+                        else failed++;
+                    }
+                    if (applied > 0 && failed == 0)
+                    {
+                        Logger.Log("AMD " + Lang.T("t.adlxtweaks.gfxmin") + Lang.T("log.adlxtweaks.27"));
+                        return true;
+                    }
+                    if (failed > 0) Logger.Log("AMD " + Lang.T("t.adlxtweaks.gfxmin") + Lang.T("log.adlxtweaks.24") + failed + Lang.T("log.adlxtweaks.25"));
+                    else Logger.Log("AMD " + Lang.T("t.adlxtweaks.gfxmin") + Lang.T("log.adlxtweaks.26"));
+                    return false;
+                }
+                finally { AdlxApi.ReleaseAll(gpus); }
+            }
+        }
+
+        public static bool RestoreGfxMin()
+        {
+            return RestoreFeature("gfxmin", Lang.T("t.adlxtweaks.gfxmin"),
+                delegate(IntPtr gpu, string orig)
+                {
+                    int min;
+                    if (!int.TryParse(orig, NumberStyles.Integer, CultureInfo.InvariantCulture, out min)) return true;
+                    return AdlxApi.GfxMinSet(gpu, min);
+                });
+        }
+
+        public static bool HasGfxMinResidue()
+        {
+            return HasPrefix(LoadSnap(), ".gfxmin");
+        }
+
+        // ---- Smart Access Memory 全局开关 取第一张报支持的卡 ----
+        public static bool SamGet(out bool supported, out bool enabled)
+        {
+            supported = false; enabled = false;
+            if (!Available) return false;
+            IntPtr[] gpus = AdlxApi.GetGpus();
+            if (gpus == null || gpus.Length == 0) return false;
+            try
+            {
+                foreach (IntPtr gpu in gpus)
+                {
+                    bool s, e;
+                    if (AdlxApi.SamGet(gpu, out s, out e) && s) { supported = true; enabled = e; return true; }
+                }
+                return true;
+            }
+            finally { AdlxApi.ReleaseAll(gpus); }
+        }
+
+        public static bool SamSet(bool on)
+        {
+            if (!Available) return false;
+            IntPtr[] gpus = AdlxApi.GetGpus();
+            if (gpus == null || gpus.Length == 0) return false;
+            try
+            {
+                foreach (IntPtr gpu in gpus)
+                {
+                    bool s, e;
+                    if (AdlxApi.SamGet(gpu, out s, out e) && s) return AdlxApi.SamSet(gpu, on);
+                }
+                return false;
+            }
+            finally { AdlxApi.ReleaseAll(gpus); }
+        }
+
         public static void HealFromCrash()
         {
             if (Settings.LoadStr(SnapKey, "").Length == 0) return;
             bool ok = RestoreAntiLag() & RestoreEnhancedSync() & RestoreChill() & RestoreRis()
-                & RestoreFrtc() & RestoreAfmf() & RestoreRsr();
+                & RestoreFrtc() & RestoreAfmf() & RestoreRsr() & RestoreGfxMin();
             if (ok) Logger.Log(Lang.T("log.adlxtweaks.33"));
         }
 

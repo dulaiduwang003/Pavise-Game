@@ -86,6 +86,7 @@ namespace PaviseApp
                 Check(!form.UiActive, "UI refresh workers must stay paused");
                 Check(Field<object>(tamer, "worker") == null, "Tamer worker unexpectedly started");
                 Check(Field<int>(form, "lastAdvancedPage") == (int)PageId.Policy, "Invalid remembered page was not rejected");
+                CheckExtremeUnlockOrder(form);
                 int prompts = 0;
                 form.DeepTuningConfirmationForTest = delegate { prompts++; return false; };
                 form.SelectPageForTest((int)PageId.Log);
@@ -196,6 +197,12 @@ namespace PaviseApp
                 && back.Height == Theme.S(64), "Return action must replace the top brand area");
             Check(back.Bottom < (int)Call(tuning, "SlotY", 0), "Top return overlaps the first category");
             Check(back.AccessibleName == Lang.T("v20.advanced.back"), "Return action is not named for accessibility");
+        }
+
+        private static void CheckExtremeUnlockOrder(PanelForm form)
+        {
+            var card = Field<RoundPanel>(form, "cardExtreme");
+            Check(card != null && card.Top == Theme.S(2), "Extreme unlock card must be the first setting");
         }
 
         private static void CheckOverviewFooter(Control overview)

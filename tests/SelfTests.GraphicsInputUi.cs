@@ -425,11 +425,17 @@ namespace PaviseApp
                     form.IntelLowLatencyConfirmationForTest = delegate { throw new InvalidOperationException("Layout requested consent"); };
                     GraphicsUiCall(form, "BuildCommonGraphicsPage", common);
                     GraphicsUiCall(form, "BuildIntelGraphicsPage", intel);
-                    GraphicsUiCheck(common.Controls.Count == 3 && intel.Controls.Count == 1,
+                    // 公共页第四张是两家卡共用的显卡锁频 Intel 页第二张是 Endurance Gaming
+                    GraphicsUiCheck(common.Controls.Count == 4 && intel.Controls.Count == 2,
                         "common/Intel pages have missing or duplicate cards");
                     SettingCard appCard = (SettingCard)common.Controls[1];
                     SettingCard autoCard = (SettingCard)common.Controls[2];
+                    SettingCard clockCard = (SettingCard)common.Controls[3];
                     SettingCard intelCard = (SettingCard)intel.Controls[0];
+                    SettingCard enduranceCard = (SettingCard)intel.Controls[1];
+                    GraphicsUiCheck(clockCard.Title == Lang.T("set.gpuclock")
+                        && enduranceCard.Title == Lang.T("set.intel.endurance"),
+                        "the GPU clock lock and Endurance Gaming cards lost localization");
                     GraphicsUiCheck(appCard.Title == Lang.T("set.apppref") && appCard.Desc == Lang.T("set.apppref.n")
                         && appCard.Expanded && appCard.HasStatus && intelCard.Title == Lang.T("set.intel.lowlatency"),
                         "vendor cards lost localization or hid the next-launch scope by default");

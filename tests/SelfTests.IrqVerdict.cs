@@ -116,25 +116,25 @@ namespace PaviseApp
                 new InterruptAttribution.DpcTimelineEntry
                     { StartQpc = 500, EndQpc = 500, Module = "nvlddmkm.sys", Cpu = 2, DpcUs = 900 }
             };
-            GameMode.PresentDpcAlignment zero = GameMode.AlignDpcToLongFrames(intervals, outside);
+            PresentDpcAlignment zero = PresentDpcAlignment.AlignDpcToLongFrames(intervals, outside);
             if (zero == null || !zero.Ok) throw new Exception("区间外 DPC 被误判为采集不可用");
             Eq(1, zero.LongFrames);
             Eq(0, zero.TotalDpcInLongFrames);
             Eq(0, zero.LongFrameHits.Count);
 
-            GameMode.PresentDpcAlignment noLongFrames = GameMode.AlignDpcToLongFrames(
+            PresentDpcAlignment noLongFrames = PresentDpcAlignment.AlignDpcToLongFrames(
                 new List<long[]>(), outside);
             if (noLongFrames == null || !noLongFrames.Ok)
                 throw new Exception("无长帧仍是有效对齐结果 不应判不可用");
-            noLongFrames = GameMode.AlignDpcToLongFrames(new List<long[]>(), null);
+            noLongFrames = PresentDpcAlignment.AlignDpcToLongFrames(new List<long[]>(), null);
             if (noLongFrames == null || !noLongFrames.Ok)
                 throw new Exception("无长帧时不应被不可用的 DPC 探针降级");
-            GameMode.PresentDpcAlignment noDpc = GameMode.AlignDpcToLongFrames(
+            PresentDpcAlignment noDpc = PresentDpcAlignment.AlignDpcToLongFrames(
                 intervals, new List<InterruptAttribution.DpcTimelineEntry>());
             if (noDpc == null || !noDpc.Ok)
                 throw new Exception("零 DPC 仍是有效对齐结果 不应判不可用");
-            if (GameMode.AlignDpcToLongFrames(null, outside) != null
-                || GameMode.AlignDpcToLongFrames(intervals, null) != null)
+            if (PresentDpcAlignment.AlignDpcToLongFrames(null, outside) != null
+                || PresentDpcAlignment.AlignDpcToLongFrames(intervals, null) != null)
                 throw new Exception("null 采集链应保持不可用");
 
             var twoFrames = new List<long[]>
@@ -147,7 +147,7 @@ namespace PaviseApp
                 new InterruptAttribution.DpcTimelineEntry { StartQpc = 160, EndQpc = 160, Module = "NVLDDMKM.SYS" },
                 new InterruptAttribution.DpcTimelineEntry { StartQpc = 350, EndQpc = 350, Module = "nvlddmkm.sys" }
             };
-            GameMode.PresentDpcAlignment positive = GameMode.AlignDpcToLongFrames(twoFrames, hits);
+            PresentDpcAlignment positive = PresentDpcAlignment.AlignDpcToLongFrames(twoFrames, hits);
             Eq(true, positive.Ok);
             Eq(2, positive.LongFrameHits["nvlddmkm.sys"]);
             Eq(3, positive.DpcCounts["nvlddmkm.sys"]);
@@ -157,7 +157,7 @@ namespace PaviseApp
                 new InterruptAttribution.DpcTimelineEntry
                     { StartQpc = 150, EndQpc = 250, Module = "cross.sys" }
             };
-            GameMode.PresentDpcAlignment crossed = GameMode.AlignDpcToLongFrames(intervals, crossing);
+            PresentDpcAlignment crossed = PresentDpcAlignment.AlignDpcToLongFrames(intervals, crossing);
             Eq(1, crossed.LongFrameHits["cross.sys"]);
             var adjacent = new List<long[]> { new long[] { 100, 200 }, new long[] { 200, 300 } };
             var onBoundary = new List<InterruptAttribution.DpcTimelineEntry>
@@ -165,7 +165,7 @@ namespace PaviseApp
                 new InterruptAttribution.DpcTimelineEntry
                     { StartQpc = 200, EndQpc = 250, Module = "boundary.sys" }
             };
-            GameMode.PresentDpcAlignment boundary = GameMode.AlignDpcToLongFrames(adjacent, onBoundary);
+            PresentDpcAlignment boundary = PresentDpcAlignment.AlignDpcToLongFrames(adjacent, onBoundary);
             Eq(1, boundary.LongFrameHits["boundary.sys"]); // 只命中第二帧，边界不重复
 
             var spansBoth = new List<InterruptAttribution.DpcTimelineEntry>
@@ -173,7 +173,7 @@ namespace PaviseApp
                 new InterruptAttribution.DpcTimelineEntry
                     { StartQpc = 150, EndQpc = 250, Module = "spans.sys" }
             };
-            GameMode.PresentDpcAlignment both = GameMode.AlignDpcToLongFrames(adjacent, spansBoth);
+            PresentDpcAlignment both = PresentDpcAlignment.AlignDpcToLongFrames(adjacent, spansBoth);
             Eq(2, both.LongFrameHits["spans.sys"]); // 同一事件确实撞到两帧
             Eq(1, both.DpcCounts["spans.sys"]);      // 但 DPC 事件总数不能重复
             Eq(1, both.TotalDpcInLongFrames);
@@ -184,7 +184,7 @@ namespace PaviseApp
             {
                 new InterruptAttribution.DpcTimelineEntry { StartQpc = 150, EndQpc = 150, Module = "?" }
             };
-            GameMode.PresentDpcAlignment unknown = GameMode.AlignDpcToLongFrames(
+            PresentDpcAlignment unknown = PresentDpcAlignment.AlignDpcToLongFrames(
                 intervals, unknownInside);
             Eq(true, unknown.UnknownModuleInLongFrames);
             Eq(4, GameMode.ResolveIrqReportedCount(true,
@@ -193,7 +193,7 @@ namespace PaviseApp
             {
                 new InterruptAttribution.DpcTimelineEntry { StartQpc = 500, EndQpc = 500, Module = null }
             };
-            unknown = GameMode.AlignDpcToLongFrames(intervals, unknownOutside);
+            unknown = PresentDpcAlignment.AlignDpcToLongFrames(intervals, unknownOutside);
             Eq(false, unknown.UnknownModuleInLongFrames);
 
             Eq(4, GameMode.ResolveIrqReportedCount(false, false, false, 0, 0, 4)); // 探针不可用
@@ -204,18 +204,18 @@ namespace PaviseApp
             Eq(4, GameMode.ResolveIrqReportedCount(true, false, true, 1, 2, 4));   // 不可靠流不能否定其余 Worth
             Eq(4, GameMode.ResolveIrqReportedCount(true, true, true, 1, 2, 4));    // DPC 不完整也不能否定其余
             Eq(2, GameMode.ResolveIrqReportedCount(true, true, false, 1, 2, 4));   // 可靠且完整时才缩到命中项
-            Eq(true, GameMode.AlignDpcToLongFrames(intervals, outside, true)
+            Eq(true, PresentDpcAlignment.AlignDpcToLongFrames(intervals, outside, true)
                 .SwapchainIdentityReliable);
         }
 
         private static void TestPresentCaptureReliability()
         {
-            Eq(true, GameMode.PresentCaptureComplete(true, false, false, 0, 0));
-            Eq(false, GameMode.PresentCaptureComplete(false, false, false, 0, 0));
-            Eq(false, GameMode.PresentCaptureComplete(true, true, false, 0, 0));
-            Eq(false, GameMode.PresentCaptureComplete(true, false, true, 0, 0));
-            Eq(false, GameMode.PresentCaptureComplete(true, false, false, 1, 0));
-            Eq(false, GameMode.PresentCaptureComplete(true, false, false, 0, 1));
+            Eq(true, PresentDpcAlignment.PresentCaptureComplete(true, false, false, 0, 0));
+            Eq(false, PresentDpcAlignment.PresentCaptureComplete(false, false, false, 0, 0));
+            Eq(false, PresentDpcAlignment.PresentCaptureComplete(true, true, false, 0, 0));
+            Eq(false, PresentDpcAlignment.PresentCaptureComplete(true, false, true, 0, 0));
+            Eq(false, PresentDpcAlignment.PresentCaptureComplete(true, false, false, 1, 0));
+            Eq(false, PresentDpcAlignment.PresentCaptureComplete(true, false, false, 0, 1));
             Eq(true, InterruptAttribution.CaptureComplete(true, true, true, false));
             Eq(false, InterruptAttribution.CaptureComplete(false, true, true, false));
             Eq(false, InterruptAttribution.CaptureComplete(true, false, true, false));
@@ -242,17 +242,17 @@ namespace PaviseApp
             // 塞再多其它进程帧也不能拿来替代目标渲染器，避免生成伪负证据。
             for (int i = 0; i < 100; i++)
                 tooFew.Add(new PresentFrame { Pid = 88, Qpc = 1000 + i * 10 });
-            Eq<List<long[]>>(null, GameMode.BuildLongFrameIntervals(tooFew, 1000, renderer, 2.0));
-            Eq<List<long[]>>(null, GameMode.BuildLongFrameIntervals(tooFew, 1000, 0, 2.0));
+            Eq<List<long[]>>(null, PresentDpcAlignment.BuildLongFrameIntervals(tooFew, 1000, renderer, 2.0));
+            Eq<List<long[]>>(null, PresentDpcAlignment.BuildLongFrameIntervals(tooFew, 1000, 0, 2.0));
 
             // 31 帧形成 30 个稳定间隔，样本够时“没有长帧”才是非 null 空集合。
             var enough = new List<PresentFrame>();
             for (int i = 0; i <= 30; i++)
                 enough.Add(new PresentFrame { Pid = renderer, Qpc = 100L * i });
-            List<long[]> none = GameMode.BuildLongFrameIntervals(enough, 1000, renderer, 2.0);
+            List<long[]> none = PresentDpcAlignment.BuildLongFrameIntervals(enough, 1000, renderer, 2.0);
             if (none == null) throw new Exception("足量完整 present 被误判为不可用");
             Eq(0, none.Count);
-            Eq<List<long[]>>(null, GameMode.BuildLongFrameIntervals(enough, 1000, renderer, 4.0));
+            Eq<List<long[]>>(null, PresentDpcAlignment.BuildLongFrameIntervals(enough, 1000, renderer, 4.0));
 
             // 两小段呈现中间夹 Alt-Tab 空窗，空窗不得被当成一帧或 coverage。
             var splitByPause = new List<PresentFrame>();
@@ -269,7 +269,7 @@ namespace PaviseApp
                 splitQpc += 100;
             }
             Eq<List<long[]>>(null,
-                GameMode.BuildLongFrameIntervals(splitByPause, 1000, renderer, 2.0));
+                PresentDpcAlignment.BuildLongFrameIntervals(splitByPause, 1000, renderer, 2.0));
 
             // 在同一足量基线上放一个 5 倍间隔，应精确产出一段长帧区间。
             enough.Clear();
@@ -279,7 +279,7 @@ namespace PaviseApp
                 enough.Add(new PresentFrame { Pid = renderer, Qpc = qpc });
                 qpc += i == 14 ? 500 : 100;
             }
-            List<long[]> one = GameMode.BuildLongFrameIntervals(enough, 1000, renderer, 2.0);
+            List<long[]> one = PresentDpcAlignment.BuildLongFrameIntervals(enough, 1000, renderer, 2.0);
             if (one == null) throw new Exception("足量 present 未生成区间结果");
             Eq(1, one.Count);
 
@@ -298,11 +298,11 @@ namespace PaviseApp
                 }
                 mergedStreams.Add(new PresentFrame { Pid = renderer, Qpc = i * 200L + 100L });
             }
-            List<long[]> mainLong = GameMode.BuildLongFrameIntervals(
+            List<long[]> mainLong = PresentDpcAlignment.BuildLongFrameIntervals(
                 mainStream, 1000, renderer, 2.0);
             if (mainLong == null) throw new Exception("主呈现流样本被误判不足");
             Eq(1, mainLong.Count);
-            List<long[]> mergedLong = GameMode.BuildLongFrameIntervals(
+            List<long[]> mergedLong = PresentDpcAlignment.BuildLongFrameIntervals(
                 mergedStreams, 1000, renderer, 2.0);
             if (mergedLong == null) throw new Exception("合并呈现流样本被误判不足");
             Eq(0, mergedLong.Count);
@@ -317,7 +317,7 @@ namespace PaviseApp
                 burstMerged.Add(new PresentFrame { Pid = renderer, Qpc = 100L * i + 1000L });
             for (int i = 0; i < 60; i++)
                 burstMerged.Add(new PresentFrame { Pid = renderer, Qpc = i });
-            List<long[]> burstLong = GameMode.BuildLongFrameIntervals(
+            List<long[]> burstLong = PresentDpcAlignment.BuildLongFrameIntervals(
                 burstMerged, 1000, renderer, 2.0);
             if (burstLong == null || burstLong.Count == 0)
                 throw new Exception("台架未能复现多流 burst 伪长帧");
@@ -333,67 +333,67 @@ namespace PaviseApp
             Eq(false, IrqSessionProbe.CanConfirmMask(0x10000UL, 0xFFFFUL, 123, 456));
             Eq(false, IrqSessionProbe.CanConfirmMask(0xFFUL, 0xFFFFUL, 0, 456));
             Eq(false, IrqSessionProbe.CanConfirmMask(0xFFUL, 0xFFFFUL, 123, 0));
-            Eq(false, GameMode.PlacementProofMatches(0x3UL, 0x1UL, false, true, false));
-            Eq(true, GameMode.PlacementProofMatches(0x3UL, 0x7UL, false, true, false));
-            Eq(true, GameMode.PlacementProofMatches(0x3UL, 0x3UL, false, false, true));
-            Eq(false, GameMode.PlacementProofMatches(0x3UL, 0x7UL, false, false, true));
-            Eq(false, GameMode.PlacementProofMatches(0x3UL, 0x3UL, false, false, false));
-            Eq(true, GameMode.PlacementProofMatches(0x3UL, 0, true, true, false));
-            Eq(false, GameMode.PlacementProofMatches(0x3UL, 0, true, false, true));
+            Eq(false, IrqPlacementProof.PlacementProofMatches(0x3UL, 0x1UL, false, true, false));
+            Eq(true, IrqPlacementProof.PlacementProofMatches(0x3UL, 0x7UL, false, true, false));
+            Eq(true, IrqPlacementProof.PlacementProofMatches(0x3UL, 0x3UL, false, false, true));
+            Eq(false, IrqPlacementProof.PlacementProofMatches(0x3UL, 0x7UL, false, false, true));
+            Eq(false, IrqPlacementProof.PlacementProofMatches(0x3UL, 0x3UL, false, false, false));
+            Eq(true, IrqPlacementProof.PlacementProofMatches(0x3UL, 0, true, true, false));
+            Eq(false, IrqPlacementProof.PlacementProofMatches(0x3UL, 0, true, false, true));
             // 默认 CPU Sets 可被线程覆盖，必须拿到每个线程的完整有效集合；
             // union 少一颗核也不能把那颗核上的 DPC 算成游戏重叠。
-            Eq(true, GameMode.AttributionPlacementProofMatches(
+            Eq(true, IrqPlacementProof.AttributionPlacementProofMatches(
                 0x3UL, 0x3UL, false, true, 0x3UL));
-            Eq(false, GameMode.AttributionPlacementProofMatches(
+            Eq(false, IrqPlacementProof.AttributionPlacementProofMatches(
                 0x3UL, 0x3UL, false, true, 0x1UL));
-            Eq(false, GameMode.AttributionPlacementProofMatches(
+            Eq(false, IrqPlacementProof.AttributionPlacementProofMatches(
                 0x3UL, 0x3UL, false, false, 0x3UL));
-            Eq(false, GameMode.AttributionPlacementProofMatches(
+            Eq(false, IrqPlacementProof.AttributionPlacementProofMatches(
                 0x3UL, 0x7UL, false, true, 0x3UL));
-            Eq(false, GameMode.AttributionPlacementProofMatches(
+            Eq(false, IrqPlacementProof.AttributionPlacementProofMatches(
                 0x3UL, 0x3UL, true, true, 0x3UL));
-            Eq(0x3UL, GameMode.EffectiveAttributionThreadMask(
+            Eq(0x3UL, IrqPlacementProof.EffectiveAttributionThreadMask(
                 0x3UL, 0x3UL, 0, false));
-            Eq(0x1UL, GameMode.EffectiveAttributionThreadMask(
+            Eq(0x1UL, IrqPlacementProof.EffectiveAttributionThreadMask(
                 0x3UL, 0x3UL, 0x1UL, true));
-            Eq(0x1UL, GameMode.EffectiveAttributionThreadMask(
+            Eq(0x1UL, IrqPlacementProof.EffectiveAttributionThreadMask(
                 0x3UL, 0x1UL, 0x3UL, true));
             // CPU Set 与硬亲和性完全冲突时，Windows 以后者为准。
-            Eq(0x3UL, GameMode.EffectiveAttributionThreadMask(
+            Eq(0x3UL, IrqPlacementProof.EffectiveAttributionThreadMask(
                 0x3UL, 0x3UL, 0x4UL, true));
-            Eq(true, GameMode.SameAttributionThreadSnapshot(
+            Eq(true, IrqPlacementProof.SameAttributionThreadSnapshot(
                 new[] { 11, 22 }, new[] { 11, 22 }));
-            Eq(false, GameMode.SameAttributionThreadSnapshot(
+            Eq(false, IrqPlacementProof.SameAttributionThreadSnapshot(
                 new[] { 11, 22 }, new[] { 11, 23 }));
-            Eq(false, GameMode.SameAttributionThreadSnapshot(
+            Eq(false, IrqPlacementProof.SameAttributionThreadSnapshot(
                 new[] { 11 }, new[] { 11, 22 }));
-            Eq(false, GameMode.SameAttributionThreadSnapshot(
+            Eq(false, IrqPlacementProof.SameAttributionThreadSnapshot(
                 null, new[] { 11 }));
-            Eq(true, GameMode.AttributionThreadStateMatches(
+            Eq(true, IrqPlacementProof.AttributionThreadStateMatches(
                 42, 42, true, 0, 0x3UL, true, 0x3UL,
                 0, 0x3UL, true, 0x3UL));
-            Eq(true, GameMode.AttributionThreadStateMatches(
+            Eq(true, IrqPlacementProof.AttributionThreadStateMatches(
                 42, 42, true, 0, 0x3UL, false, 0,
                 0, 0x3UL, false, 0));
-            Eq(false, GameMode.AttributionThreadStateMatches(
+            Eq(false, IrqPlacementProof.AttributionThreadStateMatches(
                 42, 42, false, 0, 0x3UL, true, 0x3UL,
                 0, 0x3UL, true, 0x3UL));
-            Eq(false, GameMode.AttributionThreadStateMatches(
+            Eq(false, IrqPlacementProof.AttributionThreadStateMatches(
                 42, 43, true, 0, 0x3UL, true, 0x3UL,
                 0, 0x3UL, true, 0x3UL));
-            Eq(false, GameMode.AttributionThreadStateMatches(
+            Eq(false, IrqPlacementProof.AttributionThreadStateMatches(
                 42, 42, true, 0, 0x3UL, true, 0x3UL,
                 0, 0x1UL, true, 0x3UL));
-            Eq(false, GameMode.AttributionThreadStateMatches(
+            Eq(false, IrqPlacementProof.AttributionThreadStateMatches(
                 42, 42, true, 0, 0x3UL, true, 0x3UL,
                 1, 0x3UL, true, 0x3UL));
-            Eq(false, GameMode.AttributionThreadStateMatches(
+            Eq(false, IrqPlacementProof.AttributionThreadStateMatches(
                 42, 42, true, 0, 0x3UL, true, 0x3UL,
                 0, 0x3UL, true, 0x1UL));
-            Eq(false, GameMode.AttributionThreadStateMatches(
+            Eq(false, IrqPlacementProof.AttributionThreadStateMatches(
                 42, 42, true, 0, 0x3UL, false, 0,
                 0, 0x3UL, true, 0x3UL));
-            Eq(false, GameMode.AttributionThreadStateMatches(
+            Eq(false, IrqPlacementProof.AttributionThreadStateMatches(
                 42, 42, true, 0, 0x3UL, false, 0x1UL,
                 0, 0x3UL, false, 0x1UL));
             bool zeroActive;
@@ -508,7 +508,7 @@ namespace PaviseApp
                         bool liveProof = false;
                         for (int attempt = 0; attempt < 20 && !liveProof; attempt++)
                         {
-                            liveProof = GameMode.AttributionThreadPlacementMatches(
+                            liveProof = IrqPlacementProof.AttributionThreadPlacementMatches(
                                 selfHandle, self.Id, selfCreation,
                                 hard, false);
                             if (!liveProof)

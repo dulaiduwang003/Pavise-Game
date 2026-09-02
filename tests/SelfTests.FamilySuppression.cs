@@ -333,11 +333,11 @@ namespace PaviseApp
                 Settings.Save("GmFamilyExempt", false);
                 Settings.Save(PolicyCatalog.KeySuppressFamily, true);
                 Eq("0", PolicyResolver.GlobalValue(PolicyCatalog.KeySuppressFamily));
-                Eq(true, GameMode.FamilyExemptFor(null));
-                Eq(true, GameMode.FamilyExemptFor(f.Current(f.First.Id)));
+                Eq(true, FamilyBoundary.FamilyExemptFor(null));
+                Eq(true, FamilyBoundary.FamilyExemptFor(f.Current(f.First.Id)));
                 Eq(true, f.Mode.SetProfileFamilySuppression(f.First.Id, true));
-                Eq(false, GameMode.FamilyExemptFor(f.Current(f.First.Id)));
-                Eq(true, GameMode.FamilyExemptFor(f.Current(f.Second.Id)));
+                Eq(false, FamilyBoundary.FamilyExemptFor(f.Current(f.First.Id)));
+                Eq(true, FamilyBoundary.FamilyExemptFor(f.Current(f.Second.Id)));
                 Eq("0", PolicyResolver.Read(f.Current(f.Second.Id), PolicyCatalog.KeySuppressFamily));
             }
         }
@@ -1499,11 +1499,11 @@ namespace PaviseApp
                 // The extracted early gate retains the existing nullable family
                 // set semantics as well as the unconditional renderer boundary.
                 var member = new HashSet<int> { f.WebHelper.Pid };
-                Eq(true, GameMode.IsGameOrWhitelistProtected(f.WebHelper.Pid,
+                Eq(true, FamilyBoundary.IsGameOrWhitelistProtected(f.WebHelper.Pid,
                     f.Renderer.Pid, false, false, true, member, null));
-                Eq(true, GameMode.IsGameOrWhitelistProtected(f.WebHelper.Pid,
+                Eq(true, FamilyBoundary.IsGameOrWhitelistProtected(f.WebHelper.Pid,
                     f.Renderer.Pid, false, false, true, null, member));
-                Eq(false, GameMode.IsGameOrWhitelistProtected(f.WebHelper.Pid,
+                Eq(false, FamilyBoundary.IsGameOrWhitelistProtected(f.WebHelper.Pid,
                     f.Renderer.Pid, false, false, false, member, member));
                 Eq(0, f.Overlay.RestoreRequests.Count);
             }
@@ -1722,7 +1722,7 @@ namespace PaviseApp
                 // The aggressive path supplies the shared empty set. The pure
                 // visibility filter must leave it empty and do no native work.
                 var empty = new HashSet<int>();
-                GameMode.FilterUserFacingGameFamily(empty, f.Overlay.First,
+                FamilyBoundary.FilterUserFacingGameFamily(empty, f.Overlay.First,
                     new ProcessSnapshot(f.Processes.ToArray()), f.Renderer.Pid, 99000, 7,
                     cachedFamily, null, null, null);
                 Eq(0, empty.Count);
@@ -1750,7 +1750,7 @@ namespace PaviseApp
             internal readonly List<ProcEntry> Processes = new List<ProcEntry>();
             private readonly int selfPid, ownerSession;
             internal GameMode Mode { get { return Overlay.Mode; } }
-            internal bool FamilyExempt { get { return GameMode.FamilyExemptFor(Overlay.First); } }
+            internal bool FamilyExempt { get { return FamilyBoundary.FamilyExemptFor(Overlay.First); } }
             internal ProcEntry[] SteamHosts { get { return new[] { Steam, WebHelper, GameOverlay }; } }
 
             internal FamilyOverlayPolicyFixture(string root, string name)
@@ -1787,7 +1787,7 @@ namespace PaviseApp
 
             internal HashSet<int> ProtectedLibraryPids()
             {
-                return GameMode.CollectProtectedLibraryFamily(Mode.GetProfiles(),
+                return FamilyBoundary.CollectProtectedLibraryFamily(Mode.GetProfiles(),
                     new ProcessSnapshot(Processes.ToArray()), selfPid, ownerSession);
             }
 
@@ -1837,19 +1837,19 @@ namespace PaviseApp
                 var creations = RendererReleaseField<Dictionary<int, long>>(evaluation, "Creations");
                 var roots = new HashSet<int>(visibleRoots);
                 if (!FamilyExempt) roots.Remove(Renderer.Pid);
-                HashSet<int> visible = GameMode.ExpandUserFacingFamily(parents, names, roots);
+                HashSet<int> visible = FamilyBoundary.ExpandUserFacingFamily(parents, names, roots);
                 var seeds = new HashSet<int>(cachedFamily);
                 seeds.Add(Renderer.Pid);
-                HashSet<int> descendants = GameMode.WalkDescendants(parents, seeds, selfPid, 24, creations);
-                HashSet<int> ancestors = GameMode.WalkAncestorChain(parents, Renderer.Pid, selfPid, 24, creations);
-                GameMode.FilterUserFacingGameFamily(visible, Overlay.First, snapshot,
+                HashSet<int> descendants = FamilyBoundary.WalkDescendants(parents, seeds, selfPid, 24, creations);
+                HashSet<int> ancestors = FamilyBoundary.WalkAncestorChain(parents, Renderer.Pid, selfPid, 24, creations);
+                FamilyBoundary.FilterUserFacingGameFamily(visible, Overlay.First, snapshot,
                     Renderer.Pid, selfPid, ownerSession, cachedFamily, descendants, ancestors, evidence);
                 return visible;
             }
 
             internal bool EarlyProtected(ProcEntry process)
             {
-                return GameMode.IsGameOrWhitelistProtected(process.Pid, Renderer.Pid,
+                return FamilyBoundary.IsGameOrWhitelistProtected(process.Pid, Renderer.Pid,
                     WhitelistProtected().Contains(process.Pid), ProtectedLibraryPids().Contains(process.Pid),
                     FamilyExempt, new HashSet<int> { Renderer.Pid }, Descendants());
             }
@@ -1866,14 +1866,14 @@ namespace PaviseApp
                 if (Overlay.Protect(process.Pid, process.Creation, process.Name, process.Path, exempt)) return false;
                 var roots = new List<string>();
                 foreach (GameProfile profile in Mode.GetProfiles())
-                    if (GameMode.FamilyExemptFor(profile)) roots.Add(profile.Root);
-                string containRoot = GameMode.LibraryRootOf(process.Path, roots);
+                    if (FamilyBoundary.FamilyExemptFor(profile)) roots.Add(profile.Root);
+                string containRoot = FamilyBoundary.LibraryRootOf(process.Path, roots);
                 if (containRoot == null && exempt) containRoot = Overlay.First.Root;
                 Dictionary<int, int> parents;
                 Dictionary<int, long> creations;
                 ParentIdentities(out parents, out creations);
-                HashSet<int> ancestors = GameMode.WalkAncestorChain(parents, Renderer.Pid, selfPid, 24, creations);
-                return GameMode.BasicBackgroundEligible(process.Pid, selfPid, process.Name, process.Path,
+                HashSet<int> ancestors = FamilyBoundary.WalkAncestorChain(parents, Renderer.Pid, selfPid, 24, creations);
+                return FamilyBoundary.BasicBackgroundEligible(process.Pid, selfPid, process.Name, process.Path,
                     process.Session, ownerSession, foregroundPid, userFacing, @"C:\Windows\",
                     exempt && ancestors.Contains(process.Pid), containRoot, aggressive, exempt);
             }
@@ -1883,7 +1883,7 @@ namespace PaviseApp
                 Dictionary<int, int> parents;
                 Dictionary<int, long> creations;
                 ParentIdentities(out parents, out creations);
-                return GameMode.WalkDescendants(parents, new HashSet<int> { Renderer.Pid }, selfPid, 24, creations);
+                return FamilyBoundary.WalkDescendants(parents, new HashSet<int> { Renderer.Pid }, selfPid, 24, creations);
             }
 
             private void ParentIdentities(out Dictionary<int, int> parents, out Dictionary<int, long> creations)
@@ -1985,7 +1985,7 @@ namespace PaviseApp
 
         private static HashSet<int> FamilyProtectionCollect(IList<GameProfile> profiles, params ProcEntry[] processes)
         {
-            return GameMode.CollectProtectedLibraryFamily(profiles, new ProcessSnapshot(processes), 99000, 7);
+            return FamilyBoundary.CollectProtectedLibraryFamily(profiles, new ProcessSnapshot(processes), 99000, 7);
         }
 
         private static GameProfile FamilyProtectionProfile(string root, string id, bool suppress)

@@ -55,7 +55,7 @@ namespace PaviseApp
 
         private void RefreshStandbyCleanerPresentation()
         {
-            // 没有任何预设会强制打开这个实验项 权限不足会挡住新的开启
+            // 没有任何预设会强制打开这个开关 权限不足会挡住新的开启
             // 但不能妨碍把已经开着的关掉
             if (swPolicyStandbyCleaner != null)
             {

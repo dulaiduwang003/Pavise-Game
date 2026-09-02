@@ -43,7 +43,7 @@ namespace PaviseApp
                     }
                 }
             }
-            catch (Exception ex) { Logger.Log(Lang.T("log.networkaffinitytweak.1") + ex.Message); }
+            catch (Exception ex) { Logger.Warn(Lang.T("log.networkaffinitytweak.1") + ex.Message); }
             return ids;
         }
 
@@ -125,7 +125,7 @@ namespace PaviseApp
                     if (string.IsNullOrEmpty(g.ExecutablePath)) continue;
                     string name = SanitizePolicyName(g.Name, g.ExecutablePath);
                     if (ApplyQosPolicy(name, g.ExecutablePath)) newNames.Add(name);
-                    else Logger.Log(Lang.T("log.networkaffinitytweak.3") + g.Name + Lang.T("log.networkaffinitytweak.4"));
+                    else Logger.Warn(Lang.T("log.networkaffinitytweak.3") + g.Name + Lang.T("log.networkaffinitytweak.4"));
                 }
             }
 

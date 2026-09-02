@@ -84,9 +84,11 @@ namespace PaviseApp
                 ? Native.GpuPriorityIdle : Native.GpuPriorityBelowNormal;
         }
 
+        // 硬件调度开着时进程调度类归 GPU 管 写了没用还会记一次 gpu-write 失败
         private static int DesiredGpu(Entry e)
         {
-            return DesiredGpuClass(GpuDemoteEnabled, e.Reasons, e.BackgroundLevel, e.OrigGpu);
+            return DesiredGpuClass(GpuDemoteEnabled && !HagsTweak.SchedulingActiveCached(),
+                e.Reasons, e.BackgroundLevel, e.OrigGpu);
         }
 
         private static void ScheduleAfterMatch(Entry e, int pid)
@@ -200,6 +202,9 @@ namespace PaviseApp
             if (Native.QueryPagePriority(h) != pg) failed.Add("page-readback");
             if (Native.PowerThrottlingSupported && !EcoStateVisible(h)) failed.Add("eco-readback");
             LastApplyError = string.Join(",", failed.ToArray());
+            // 修剪放在整套旋钮全部落位之后 反作弊进程不修剪
+            //   扫描进程的页面被清掉后重新缺页 只会把扫描拖长
+            if (failed.Count == 0 && !antiCheat) WsTrim.MaybeTrim(h);
             return failed.Count == 0;
             }
             finally { EndMutation(); }

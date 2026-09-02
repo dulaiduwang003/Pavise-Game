@@ -51,6 +51,13 @@ namespace PaviseApp
                 delegate { return QuantumTweak.Describe(); },
                 delegate { return QuantumTweak.RepairedByPavise; }),
 
+            new RepairTweak("linkmetric",
+                delegate { return LinkMetricTweak.NeedsRepair(); },
+                delegate { return LinkMetricTweak.Repair(); },
+                delegate { return LinkMetricTweak.Restore(); },
+                delegate { return LinkMetricTweak.Describe(); },
+                delegate { return LinkMetricTweak.RepairedByPavise; }),
+
             new RepairTweak("fth",
                 delegate { return FthTweak.NeedsRepair(); },
                 delegate { return FthTweak.Repair(); },

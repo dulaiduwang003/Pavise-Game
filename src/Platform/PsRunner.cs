@@ -67,13 +67,13 @@ namespace PaviseApp
                     {
                         string detail;
                         lock (errBuf) detail = errBuf.ToString().Trim();
-                        Logger.Log(label + Lang.T("log.psrunner.2") + p.ExitCode + " " + detail);
+                        Logger.Warn(label + Lang.T("log.psrunner.2") + p.ExitCode + " " + detail);
                         return false;
                     }
                     return true;
                 }
             }
-            catch (Exception ex) { Logger.Log(label + Lang.T("log.psrunner.3") + ex.Message); return false; }
+            catch (Exception ex) { Logger.Warn(label + Lang.T("log.psrunner.3") + ex.Message); return false; }
         }
     }
 }

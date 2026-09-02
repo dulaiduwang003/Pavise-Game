@@ -55,6 +55,18 @@ namespace PaviseApp
 
         private const int TuneSlotIsSupportedManualPower = 11;
         private const int TuneSlotGetManualPower = 17;
+        // IADLXGPUTuningServices 的手动核心调频入口 和上面同一张虚表
+        private const int TuneSlotIsSupportedManualGfx = 8;
+        private const int TuneSlotGetManualGfx = 14;
+        // IADLXGPUTuningServices1 在父接口 18 个槽之后追加 GetSmartAccessMemory
+        private const int Tune1SlotGetSam = 18;
+        private const string TuningServices1Iid = "IADLXGPUTuningServices1";
+        // GetManualGFXTuning 返回基接口 RDNA2 起要 QueryInterface 成 2 代才有最低频率
+        private const string ManualGfx2Iid = "IADLXManualGraphicsTuning2";
+        private const int Gfx2SlotGetMinRange = 3;
+        private const int Gfx2SlotGetMin = 4;
+        private const int Gfx2SlotSetMin = 5;
+        private const int Gfx2SlotGetMax = 7;
         private const int PowerSlotGetRange = 3;
         private const int PowerSlotGetLimit = 4;
         private const int PowerSlotSetLimit = 5;
@@ -164,7 +176,7 @@ namespace PaviseApp
                 int result = init(FullVersion, out sys);
                 if (!Succeeded(result) || sys == IntPtr.Zero)
                 {
-                    Logger.Log(Lang.T("log.adlxapi.1") + result + Lang.T("log.adlxapi.2"));
+                    Logger.Warn(Lang.T("log.adlxapi.1") + result + Lang.T("log.adlxapi.2"));
                     return false;
                 }
                 system = sys;
@@ -539,6 +551,113 @@ namespace PaviseApp
             }
             catch { return IntPtr.Zero; }
             finally { Release(services); }
+        }
+
+        private static IntPtr GetTuningServices()
+        {
+            if (!Available) return IntPtr.Zero;
+            try
+            {
+                IntPtr services;
+                if (!Succeeded(VMethod<FnOutPtr>(system, SysSlotGetTuningServices)(system, out services))
+                    || services == IntPtr.Zero) return IntPtr.Zero;
+                return services;
+            }
+            catch { return IntPtr.Zero; }
+        }
+
+        private static IntPtr GetManualGfxTuning2(IntPtr gpu, out bool supported)
+        {
+            supported = false;
+            IntPtr services = GetTuningServices();
+            if (services == IntPtr.Zero) return IntPtr.Zero;
+            try
+            {
+                byte raw;
+                if (!Succeeded(VMethod<FnGpuOutByte>(services, TuneSlotIsSupportedManualGfx)(services, gpu, out raw))
+                    || raw == 0) return IntPtr.Zero;
+                IntPtr baseTuning;
+                if (!Succeeded(VMethod<FnGpuOutPtr>(services, TuneSlotGetManualGfx)(services, gpu, out baseTuning))
+                    || baseTuning == IntPtr.Zero) return IntPtr.Zero;
+                try
+                {
+                    IntPtr tuning2;
+                    if (!Succeeded(VMethod<FnQueryIface>(baseTuning, IfaceSlotQuery)(baseTuning, ManualGfx2Iid, out tuning2))
+                        || tuning2 == IntPtr.Zero) return IntPtr.Zero;
+                    supported = true;
+                    return tuning2;
+                }
+                finally { Release(baseTuning); }
+            }
+            catch { return IntPtr.Zero; }
+            finally { Release(services); }
+        }
+
+        // 最低核心频率 单位 MHz 只读最低和最高的现值以及最低频率的合法区间
+        public static bool GfxMinGet(IntPtr gpu, out bool supported, out int min, out int max, out AdlxIntRange minRange)
+        {
+            min = 0; max = 0; minRange = new AdlxIntRange();
+            IntPtr tuning = GetManualGfxTuning2(gpu, out supported);
+            if (tuning == IntPtr.Zero) return supported == false;
+            try
+            {
+                if (!Succeeded(VMethod<FnOutRange>(tuning, Gfx2SlotGetMinRange)(tuning, out minRange))) return false;
+                if (!Succeeded(VMethod<FnOutInt>(tuning, Gfx2SlotGetMin)(tuning, out min))) return false;
+                if (!Succeeded(VMethod<FnOutInt>(tuning, Gfx2SlotGetMax)(tuning, out max))) return false;
+                return true;
+            }
+            catch { return false; }
+            finally { Release(tuning); }
+        }
+
+        public static bool GfxMinSet(IntPtr gpu, int min)
+        {
+            bool supported;
+            IntPtr tuning = GetManualGfxTuning2(gpu, out supported);
+            if (tuning == IntPtr.Zero) return false;
+            try { return Succeeded(VMethod<FnInInt>(tuning, Gfx2SlotSetMin)(tuning, min)); }
+            catch { return false; }
+            finally { Release(tuning); }
+        }
+
+        private static IntPtr GetSam(IntPtr gpu)
+        {
+            IntPtr services = GetTuningServices();
+            if (services == IntPtr.Zero) return IntPtr.Zero;
+            try
+            {
+                IntPtr services1;
+                if (!Succeeded(VMethod<FnQueryIface>(services, IfaceSlotQuery)(services, TuningServices1Iid, out services1))
+                    || services1 == IntPtr.Zero) return IntPtr.Zero;
+                try
+                {
+                    IntPtr sam;
+                    if (!Succeeded(VMethod<FnGpuOutPtr>(services1, Tune1SlotGetSam)(services1, gpu, out sam)))
+                        return IntPtr.Zero;
+                    return sam;
+                }
+                finally { Release(services1); }
+            }
+            catch { return IntPtr.Zero; }
+            finally { Release(services); }
+        }
+
+        public static bool SamGet(IntPtr gpu, out bool supported, out bool enabled)
+        {
+            supported = false; enabled = false;
+            IntPtr sam = GetSam(gpu);
+            if (sam == IntPtr.Zero) return false;
+            try { return FeatureFlags(sam, out supported, out enabled); }
+            finally { Release(sam); }
+        }
+
+        public static bool SamSet(IntPtr gpu, bool on)
+        {
+            IntPtr sam = GetSam(gpu);
+            if (sam == IntPtr.Zero) return false;
+            try { return Succeeded(VMethod<FnInByte>(sam, ToggleSlotSetEnabled)(sam, on ? (byte)1 : (byte)0)); }
+            catch { return false; }
+            finally { Release(sam); }
         }
 
         public static bool PowerLimitGet(IntPtr gpu, out bool supported, out int current, out int max)

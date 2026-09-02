@@ -77,7 +77,7 @@ namespace PaviseApp
                     }
                 }
             }
-            catch (Exception ex) { Logger.Log(Lang.T("log.peripheralvendorprobe.3") + ex.Message); }
+            catch (Exception ex) { Logger.Warn(Lang.T("log.peripheralvendorprobe.3") + ex.Message); }
             var list = new List<string>(set);
             list.Sort(StringComparer.Ordinal);
             if (list.Count > MaxTokens) list.RemoveRange(MaxTokens, list.Count - MaxTokens);

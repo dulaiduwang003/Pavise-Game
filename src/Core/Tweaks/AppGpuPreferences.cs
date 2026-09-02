@@ -385,7 +385,7 @@ namespace PaviseApp
                         if (PrefFieldText.ReadField(current, "GpuPreference") != "1"
                             || (record.Phase == 'P' && current == record.Original)
                             || (record.Phase == 'R' && current == record.RestoreTarget)) continue;
-                        Logger.Log(Lang.T("log.appgpuabandon.1") + record.Name + Lang.T("log.appgpuabandon.2"));
+                        Logger.Warn(Lang.T("log.appgpuabandon.1") + record.Name + Lang.T("log.appgpuabandon.2"));
                         if (!Settle(record)) return false;
                     }
                     return records.Count == 0 && !dirty;

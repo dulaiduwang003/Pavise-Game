@@ -94,7 +94,7 @@ namespace PaviseApp
                     if (!noWifiLogged)
                     {
                         noWifiLogged = true;
-                        Logger.Log(Lang.T("log.wlanguard.1"));
+                        Logger.Warn(Lang.T("log.wlanguard.1"));
                     }
                     return true;
                 }

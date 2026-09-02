@@ -1,18 +1,13 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 对局单屏 对局中切到仅主屏拓扑 防副屏抢焦点 省一路合成 退局按快照切回
+// 文件用途 对局单屏已下架 只保留崩溃残账的拓扑还原 快照清账与残留报告
 using System;
 using System.Runtime.InteropServices;
 
 namespace PaviseApp
 {
-    // 对局单屏 面向多屏机器上的误点副屏丢焦点和多一路 DWM 合成
-    //   不序列化整套显示路径 走 Win+P 同款拓扑机制 记住当前拓扑 扩展/复制/仅外屏
-    //   对局切"仅内屏" 退局切回原拓扑 各屏的分辨率位置由 Windows 拓扑数据库自己恢复
-    //
-    // 快照就一个枚举值 先落盘再动系统 回读核实 验不过立刻切回并报失败
-    //   熔断由 Env 框架统一管 连续失败两次自动关开关
-    // 边界 单屏机器和已经是仅内屏的机器都无事可做 不落快照
-    //   退局时副屏已被拔掉 切回扩展验不出也算成功 物理世界优先
+    // 对局单屏 2.1.3.3 上架 随后下架 不再有任何激活入口
+    //   旧版本对局中崩溃会留下拓扑快照 这里负责启动时按快照切回并清账
+    //   快照坏了不盲切 保留记录交给重置流程 副屏已拔掉按物理世界收尾
     internal static class DisplaySolo
     {
         internal const string SnapKey = "DisplaySoloSnap";
@@ -31,46 +26,6 @@ namespace PaviseApp
         {
             if (RemoteSession()) return false;
             return ActivePathCount() == 1;
-        }
-
-        public static bool Activate()
-        {
-            lock (lk)
-            {
-                // 远程会话里切拓扑切的是远程桌面 无意义 整局不做
-                if (RemoteSession()) return true;
-                // 单屏无事可做 多屏才有"收成单屏"可言
-                int count = ActivePathCount();
-                if (count >= 0 && count <= 1) return true;
-                uint topology;
-                if (!TryCurrentTopology(out topology)) return false;
-                if (topology == TopologyInternal) return true;
-                if (topology != TopologyClone && topology != TopologyExtend
-                    && topology != TopologyExternal) return false;
-                // 已有快照说明上次的原拓扑还没还清 不覆盖 那才是真正的原值
-                string snapshot = Settings.LoadStr(SnapKey, "");
-                if (snapshot.Length == 0)
-                {
-                    string record = topology.ToString();
-                    if (!Settings.SaveStr(SnapKey, record)
-                        || Settings.LoadStr(SnapKey, "") != record) return false;
-                }
-                if (!TrySetTopology(TopologyInternal)) { Undo(topology); return false; }
-                // 返回码不作数 回读才作数
-                uint after;
-                if (!TryCurrentTopology(out after) || after != TopologyInternal)
-                {
-                    Undo(topology);
-                    return false;
-                }
-                Logger.Log(Lang.T("log.solo.1"));
-                return true;
-            }
-        }
-
-        private static void Undo(uint topology)
-        {
-            try { TrySetTopology(topology); } catch { }
         }
 
         public static bool Restore()

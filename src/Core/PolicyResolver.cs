@@ -147,6 +147,24 @@ namespace PaviseApp
         public string ValueOf(string key)
         {
             if (key == null) return null;
+            // 极限档覆盖 只对清单内且未被用户停用的键 用户配置原样保留 切走即恢复
+            //   先查清单再查档位 档位判定会回到 ValueOf(KeyPreset) 清单不含它 不会递归
+            if (key != PolicyCatalog.KeyPreset)
+            {
+                string forced = ExtremeMode.ForcedPolicyValue(key);
+                if (forced != null && Preset == PerformancePreset.Extreme) return forced;
+            }
+            string value;
+            if (values.TryGetValue(key, out value)) return value;
+            PolicyItem item = PolicyCatalog.ItemOf(key);
+            if (item == null) return null;
+            return PolicyResolver.GlobalValue(item.Key) ?? item.Fallback;
+        }
+
+        // 不经极限覆盖的本值 覆盖有就是覆盖 没有就是全局 给"是用户自己开的还是档位强制的"这种判断用
+        public string OwnValueOf(string key)
+        {
+            if (key == null) return null;
             string value;
             if (values.TryGetValue(key, out value)) return value;
             PolicyItem item = PolicyCatalog.ItemOf(key);
@@ -182,11 +200,13 @@ namespace PaviseApp
         public bool StandbyCleaner { get { return On(PolicyCatalog.KeyStandbyCleaner); } }
         public bool PauseDownloads { get { return On(PolicyCatalog.KeyPauseDl); } }
         public bool PauseUpdate { get { return On(PolicyCatalog.KeyPauseUpdate); } }
+        public bool PauseMaintenance { get { return On(PolicyCatalog.KeyPauseMaintenance); } }
         public bool PauseServices { get { return On(PolicyCatalog.KeyPauseServices); } }
         public bool WlanGuard { get { return On(PolicyCatalog.KeyWlanGuard); } }
         public bool Awake { get { return On(PolicyCatalog.KeyAwake); } }
         public bool EnglishInput { get { return On(PolicyCatalog.KeyEnglishInput); } }
         public bool NvMaxPerf { get { return On(PolicyCatalog.KeyNvMaxPerf); } }
+        public bool GpuClockLock { get { return On(PolicyCatalog.KeyGpuClockLock); } }
         public string NvLowLatMode { get { return ValueOf(PolicyCatalog.KeyNvLowLat); } }
         public bool NvSmoothMotion { get { return On(PolicyCatalog.KeyNvSmoothMotion); } }
         public bool NvShaderCacheMax { get { return On(PolicyCatalog.KeyNvShaderCache); } }
@@ -195,10 +215,10 @@ namespace PaviseApp
         public bool AmdAntiLag { get { return On(PolicyCatalog.KeyAmdAntiLag); } }
         public bool AmdAfmf { get { return On(PolicyCatalog.KeyAmdAfmf); } }
         public bool IntelLowLatency { get { return On(PolicyCatalog.KeyIntelLowLatency); } }
+        public bool IntelEnduranceOff { get { return On(PolicyCatalog.KeyIntelEndurance); } }
+        public bool LaptopPerf { get { return On(PolicyCatalog.KeyLaptopPerf); } }
         public bool VramShield { get { return On(PolicyCatalog.KeyVramShield); } }
-        public bool MemShield { get { return On(PolicyCatalog.KeyMemShield); } }
         public bool CacheWarm { get { return On(PolicyCatalog.KeyCacheWarm); } }
-        public bool DisplaySolo { get { return On(PolicyCatalog.KeyDisplaySolo); } }
 
         public ulong CoreMask
         {

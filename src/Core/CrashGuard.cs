@@ -214,8 +214,8 @@ namespace PaviseApp
             Settings.SaveStr(KThrottle, "");
             Settings.SaveStr(KBoost, "");
             Settings.SaveStr(KBoostNames, "");
-            if (restored > 0) Logger.Log(Lang.T("log.crashguard.1") + restored + Lang.T("log.crashguard.2"));
-            if (keep.Count > 0) Logger.Log(Lang.T("log.crashguard.3") + keep.Count + Lang.T("log.crashguard.4"));
+            if (restored > 0) Logger.Warn(Lang.T("log.crashguard.1") + restored + Lang.T("log.crashguard.2"));
+            if (keep.Count > 0) Logger.Warn(Lang.T("log.crashguard.3") + keep.Count + Lang.T("log.crashguard.4"));
         }
 
         private static BoostIdentity Identify(IntPtr h, BoostEntry entry)

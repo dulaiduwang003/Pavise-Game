@@ -234,9 +234,9 @@ namespace PaviseApp
             if (string.Equals(name, "explorer", StringComparison.OrdinalIgnoreCase)
                 && WhitelistRule.PathEquals(path, System.IO.Path.Combine(windows, "explorer.exe")))
                 return true;
-            if (UnderRoot(path, System.IO.Path.Combine(windows, "System32"))
-                || UnderRoot(path, System.IO.Path.Combine(windows, "SysWOW64"))
-                || UnderRoot(path, System.IO.Path.Combine(windows, "SystemApps")))
+            if (FamilyBoundary.UnderRoot(path, System.IO.Path.Combine(windows, "System32"))
+                || FamilyBoundary.UnderRoot(path, System.IO.Path.Combine(windows, "SysWOW64"))
+                || FamilyBoundary.UnderRoot(path, System.IO.Path.Combine(windows, "SystemApps")))
                 return true;
 
             if (string.Equals(name, "wslservice", StringComparison.OrdinalIgnoreCase)
@@ -245,7 +245,7 @@ namespace PaviseApp
             {
                 string programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
                 if (string.IsNullOrEmpty(programFiles)) return false;
-                if (UnderRoot(path, System.IO.Path.Combine(programFiles, "WindowsApps")))
+                if (FamilyBoundary.UnderRoot(path, System.IO.Path.Combine(programFiles, "WindowsApps")))
                     return true;
                 return string.Equals(name, "wslservice", StringComparison.OrdinalIgnoreCase)
                     && WhitelistRule.PathEquals(path, System.IO.Path.Combine(

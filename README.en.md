@@ -10,7 +10,7 @@ Windows game resource scheduling and guard tool
 
 [简体中文](README.md) · **English** · [日本語](README.ja.md)
 
-**v2.1.3.3 · [Release notes (Chinese)](docs/releases/v2.1.3.3.md)**
+**v2.2.0.0 · [Release notes (Chinese)](docs/releases/v2.2.0.0.md)**
 
 <br>
 
@@ -22,13 +22,15 @@ Windows game resource scheduling and guard tool
 
 Pavise does not generate additional performance. It returns the share taken by background processes to the game. Machines with many background programs and noticeable CPU or disk contention benefit the most. A clean system, or a game entirely limited by the GPU, will see little change.
 
-Suppression strength does not correlate with performance. The retired Extreme mode scored only 71 in the heavy-load scenario, below Competitive's 93, and that is why it was removed. The default preset is the mildest tier.
+Suppression strength does not correlate with performance. The 1.x-era old Extreme mode (isolate everything) scored only 71 in the heavy-load scenario, below the then-Competitive's 93, and that is why it was removed. Today's Extreme tier shares only the name: its suppression scope and strength are identical to Esports, and the difference is solely how many optional optimizations are enabled. The default preset is the mildest tier.
 
-The existing four-tier bench figures date from v1.7.1: an i7-9750H laptop with WeChat, Clash, QQ and a music player in the background, scored against a clean system as 100, averaging 59 without Pavise, 60 in Normal and 96 in Competitive (Normal and Competitive are today's Smart and Focus). The 2.x scheduling model differs from 1.7, so treat those numbers as an order-of-magnitude reference; they have not been re-run on 2.x.
+The existing four-tier bench figures date from v1.7.1: an i7-9750H laptop with WeChat, Clash, QQ and a music player in the background, scored against a clean system as 100, averaging 59 without Pavise, 60 in Normal and 96 in Competitive (Normal and Competitive are today's Smart and Esports). The 2.x scheduling model differs from 1.7, so treat those numbers as an order-of-magnitude reference; they have not been re-run on 2.x.
 
 Measure the effect by toggling it on and off in the same game and the same scene.
 
 ## Usage
+
+Requires Windows 10 2004 (build 19041) or newer; Windows 11 24H2 is preferred. On earlier builds the efficiency mode and per-process timer isolation that background suppression relies on do not exist, so scheduling would have no effect: Pavise reports this and exits, restoring any system changes left by earlier versions.
 
 Add a game's EXE or shortcut to the library, or use the scan function to import games already installed through Steam, Epic, GOG, Ubisoft, Riot, WeGame, Battle.net or Xbox.
 
@@ -40,9 +42,10 @@ Session changes are restored from their records when the game exits. After an ab
 
 | Mode | Suppression scope |
 |---|---|
-| Smart | Every background process that clears the protection boundary is isolated outright the moment the match starts, with no heat check and no tier-by-tier escalation. Whatever you are using, and its family, is exempt from suppression; under sustained CPU saturation (above 90% for over ten seconds) it temporarily escalates to the Focus profile, stepping back down after two stable minutes, at most three times per match |
-| Focus | The scope widens to everything outside the game, windowed apps included. Programs you use after alt-tabbing are demoted too; only the whitelist is exempt |
-| Light | Background suppression identical to Focus, with the power side left to vendor tools: no power slider, and pure power-saving items stay enabled on AC. Requires a battery; for handhelds and thin-and-light laptops |
+| Smart | Every background process that clears the protection boundary is isolated outright the moment the match starts, with no heat check and no tier-by-tier escalation. Whatever you are using, and its family, is exempt from suppression; under sustained CPU saturation (above 90% for over ten seconds) it temporarily escalates to the Esports profile, stepping back down after two stable minutes, at most three times per match |
+| Esports | The scope widens to everything outside the game, windowed apps included. Programs you use after alt-tabbing are demoted too; only the whitelist is exempt |
+| Extreme | Esports as the base, with every eligible optional optimization on this machine enabled automatically, persistent System Environment items included. Hidden by default; it appears only after unlocking in Settings and restarting the computer. Suppression scope and strength are identical to Esports |
+| Handheld | Background suppression identical to Esports, with the power side left to vendor tools: no power slider, and pure power-saving items stay enabled on AC. Requires a battery; for handhelds and thin-and-light laptops |
 | Custom | Background suppression, cores, memory and power, system environment and graphics, each chosen individually |
 
 The tiers differ in which processes are eligible to be touched, not in how hard they are suppressed. Anything past the boundary is isolated directly, cold processes included, without waiting for one to consume resources for ten seconds first. Isolation writes the lowest priority, the lowest disk I/O and paging priority, EcoQoS, a timer-resolution cap and disabled turbo boost. With GPU yielding on, the GPU scheduling priority drops to minimum as well.
@@ -55,7 +58,7 @@ Game family exemption is on by default: game platforms, launcher shells, residen
 
 ## Per-game configuration
 
-Select a game in the library and open its own configuration. Each game can override the mode, background suppression, cores, memory and power, system environment and graphics policy, 33 items in total. Items not overridden follow the global setting, and changes save immediately.
+Select a game in the library and open its own configuration. Each game can override the mode, background suppression, cores, memory and power, system environment and graphics policy, 37 items in total. Items not overridden follow the global setting, and changes save immediately.
 
 - Most per-game settings are resolved when the match activates and apply to the next one. Pausing nonessential services and disabling CPU idle are handled in the current session and reverted when turned off
 - The current core selection can be pinned to one game without affecting others
@@ -84,9 +87,10 @@ One guard switch decides whether Pavise takes over. With it on, nothing happens 
 - Add an EXE or shortcut manually, or scan to import from Steam, Epic, GOG, Ubisoft, Riot, WeGame, Battle.net and Xbox
 - **Forced takeover**: for emulators, cloud gaming and anything else that cannot be recognised, the match starts as soon as the process does
 - **Auto-add**: newly recognised games are collected automatically. A path you removed goes on an ignore list and is never auto-added again until you add it back by hand
+- **Suspected malware alert**: a process with no visible window outside the Windows and Program Files directories that uses a quarter or more of the logical CPUs for two minutes straight, or a suppressed process that lifts its own background core restriction, is logged and raised as a tray warning about a possible miner infection. Random-looking names use half the threshold; each name is alerted at most once a day
 - **Render observation label**: marks whether GPU 3D activity has actually been seen on that EXE, which is what tells you whether family suppression is safe to enable
 - **Family background suppression**: per-game, off by default. While off, game platforms, launcher shells, resident processes in the game folder and child processes spawned by the game are released as a family
-- **Per-game configuration**: 33 policy items can be overridden per game; anything not overridden follows the global setting, and entries can be renamed
+- **Per-game configuration**: 37 policy items can be overridden per game; anything not overridden follows the global setting, and entries can be renamed
 
 ### Processes and cores
 
@@ -96,7 +100,8 @@ One guard switch decides whether Pavise takes over. With it on, nothing happens 
 - **In-match self-yield**: Pavise moves off the game cores and lowers its own scheduling weight
 - **Background suppression**: everything past the protection boundary is isolated at once, receiving the lowest priority, the lowest disk I/O and paging priority, EcoQoS, a timer-resolution cap and disabled turbo boost
 - **Background GPU priority demotion**: a background process using the GPU also has its GPU scheduling priority lowered
-- **Wider and stronger suppression**: maximum suppression of non-game background apps, including after alt-tab. Locked on in Focus and Light; whitelist your IME and device tools
+- **Suppressed working-set trim** (Extreme tier only): empties an isolated background process's physical-memory working set once, freeing it for the game; that program's first response after switching back is slower, and anti-cheat processes are never trimmed. Off by default
+- **Wider and stronger suppression**: maximum suppression of non-game background apps, including after alt-tab. Locked on in Esports, Extreme and Handheld; whitelist your IME and device tools
 - **Game core partitioning**: background work is confined to its own cores and the rest are left to the game. Handles hybrid architectures, X3D and multiple processor groups; six cores or fewer are not partitioned
 - **Partition swap**: X3D machines can switch to the large-cache CCD
 - **Manual core selection**: draw it per core, with presets for all cores, no SMT, P-cores only and inverse. Written on Apply
@@ -115,9 +120,12 @@ The **compatibility list** records games that refuse writes, so priority and I/O
 - **Application GPU preferences**: save the Windows power-saving GPU preference for chosen background apps. Applies at their next launch and never moves a running app
 - **Preselect high-performance GPU on standby**: on dual-GPU machines, preselects the high-performance GPU while idle, skips anything already set by hand, and restores on exit
 - **GPU power limit**: raised to the vendor-permitted maximum during the match and restored from the snapshot afterwards
-- **NVIDIA**: maximum performance power mode, low latency (on or ultra), Smooth Motion frame generation, unrestricted shader cache, DLSS override (latest or a pinned J/K generation), per-game ReBAR
+- **Lock GPU core clock during play**: NVIDIA pins the core clock at the machine maximum through NVML, AMD raises the minimum core clock to the maximum through ADLX, so light scenes no longer downclock while power and thermal limits still apply; unlocked at match end. Locked on in the Esports and Extreme tiers on desktops, user-selectable elsewhere, overridable per game
+- **NVIDIA**: maximum performance power mode (also blocking the CUDA-triggered memory downclock), G-SYNC extended to windowed mode, low latency (on or ultra), Smooth Motion frame generation, unrestricted shader cache, DLSS override (latest or a pinned J/K generation), per-game ReBAR
 - **AMD**: Anti-Lag, AFMF frame generation, RSR driver-level upscaling
-- **Intel**: global low latency, only on DX9/DX11 paths the driver reports as supporting live changes. Boost and XeSS are never touched
+- **Intel**: global low latency, only on DX9/DX11 paths the driver reports as supporting live changes. Boost and XeSS are never touched; Endurance Gaming is turned off during play so battery mode no longer caps the frame rate to a fraction of the panel refresh
+- **VRAM residency**: declares a minimum reservation when video memory runs tight, reducing long frames from textures being evicted and paged back. It neither adds nor locks memory; off by default
+- **Auto power-saving GPU**: enrols background apps still running 3D on the game's render GPU to use the power-saving GPU at their next launch, at most 2 per match; off by default
 
 Original values are snapshotted and restored when a switch is turned off. Writes whose ownership cannot be confirmed are never overwritten.
 
@@ -139,34 +147,31 @@ Original values are snapshotted and restored when a switch is turned off. Writes
 ### Memory and power
 
 - **Managed power plan**: created on the first match with parameters written for this processor. Any plan on the machine can be selected instead, in which case Pavise only switches to it and changes none of its parameters
-- **Disable CPU idle**: only during a game, on confirmed AC power, with the managed plan active, and only the AC value is changed
+- **Storage kept awake in-match**: the managed plan zeroes the NVMe power-state latency tolerances and keeps the AHCI link Active, preventing the occasional hitch of an SSD waking from a low-power state; the NVMe side is relaxed on battery
+- **Disable CPU idle**: only during a game; writes both the AC and DC values of the currently active power plan and restores them at match end. On battery it noticeably shortens battery life; not offered on AMD processors
 - **Standby memory cleanup**: the entire standby list is purged only when both the list-size and true-free-memory thresholds are crossed. Technical detail below
-- **MMCSS multimedia scheduling**: the share reserved for non-multimedia work drops from 20% to 10%, and the Games task's scheduling category and file I/O are raised
-- **Pause Windows Update, Delivery Optimization, nonessential services and background wireless scanning**, all resumed on exit
+- **MMCSS multimedia scheduling**: the share reserved for non-multimedia work drops from 20% to 10%, the Games task's scheduling category and file I/O are raised, and the lazy idle-check tier is disabled
+- **Low-latency DWM composition** (Extreme tier only): registers the desktop compositor's threads into the multimedia real-time tier during a match, so borderless and windowed games keep compositing under full CPU load; exclusive fullscreen bypasses the compositor and is unaffected. Off by default
+- **Steer packet processing off game cores** (Extreme tier only): moves physical wired adapters' RSS packet-processing range onto the suppressed cores during a match, recorded per adapter and restored on exit. Off by default
+- **Pause Windows Update, Delivery Optimization, nonessential services, background wireless scanning and automatic maintenance**, all resumed on exit
+- **Vendor performance mode during play**: switches Lenovo Legion and ASUS ROG laptops to their vendor performance profile through the vendor interface and switches back at match end; locked on in the Esports and Extreme tiers on laptops, handhelds are left alone
+- **Per-game DPI awareness**: with display scaling above 100% the borderless window is sized in physical pixels instead of being stretched by the compositor
 - **Turn off Game DVR and Xbox background recording**, and **keep the display awake during a match**
+- **Low-latency audio** (Extreme tier only): opens a silent stream at the smallest audio buffer the system supports during a match, so the audio engine runs at its minimum period and sound output latency drops. Off by default; the default buffer returns on exit
+- **Cache warm-up**: pre-reads game assets into the standby cache at the lowest disk priority after the match settles. Reading only; runs on AC power, with sufficient memory, on an SSD game drive; off by default, and the Extreme tier does not force it on NVMe drives
+- **Power budget yield**: on laptops, hands shared power budget to the GPU when it is pinned against its limit and the CPU has headroom, reverting automatically when verification fails. Off by default; verification detail below
 
 ### System environment
 
 Changes on this page need a restart and persist on the machine. Every one of them is revertible:
 
-- **Hardware-accelerated GPU scheduling (HAGS)**, **disable VBS**, **remove speculative-execution mitigations**
-- **Game mode guard**, **windowed game optimisation**
+- **Hardware-accelerated GPU scheduling (HAGS)**, **AMD Smart Access Memory**, **disable VBS**, **remove speculative-execution mitigations**
+- **Game mode guard**, **windowed game optimisation**, **variable refresh rate optimisation** (lets DX11 exclusive-fullscreen games without native VRR use it)
 - **Constant timer tick**, **global timer resolution**
-- **Disable NIC power saving**, **disable NIC interrupt moderation** (only the standardized setting on physical wired adapters)
+- **Disable NIC power saving**, **disable NIC link power saving** (turns off 802.3az low-power idle, Green Ethernet and idle link-speed reduction so the link never sleeps, wakes or renegotiates between 1G and 100M; the adapter drops for a few seconds when written), **NIC interrupt-moderation experiment** (unchanged by default; explicit Off testing only on the single physical wired adapter selected by the public-IPv4 route probe, restored only after both NetCfg GUID and PnP instance identity match)
 - **Accessibility key interception**, **disable keyboard and mouse selective suspend**
-
-### Experimental features
-
-Eight of them, all off by default, all requiring confirmation, all per-game overridable. Every write is read back and verified; a failed verification reverts the change and stops further attempts; everything is restored at match end or on disable.
-
-- **VRAM residency**: declares a minimum reservation when video memory runs tight, reducing long frames from textures being evicted and paged back. It neither adds nor locks memory
-- **Memory residency**: pins a hard minimum working set under sustained physical-memory pressure so trimming no longer reclaims the game's pages. It allocates nothing, and machines under 16 GB do not participate
-- **Cache warm-up**: pre-reads game assets into the standby cache at the lowest disk priority after the match settles. Reading only; runs on AC power, with sufficient memory, on an SSD game drive
-- **Single display in match**: switches to primary-only so a stray click cannot steal focus, and saves the second screen's composition. Switched back afterwards; the screen blanks briefly
-- **Power budget yield**: on laptops, hands shared power budget to the GPU when it is pinned against its limit and the CPU has headroom. Verification detail below
-- **Automatic interrupt orchestration**: pins a device off the game cores once multi-match measurement identifies it, with receipts, effective after a restart, then verifies over three more matches and rolls back if ineffective
-- **Auto power-saving GPU**: enrols background apps still running 3D on the game's render GPU to use the power-saving GPU at their next launch, at most 2 per match
-- **Intel global low latency**: see the Graphics section above
+- **Disable memory compression and page combining** (Extreme tier only): removes the background CPU cost of the compression thread and page-combining scans; offered from 24GB of RAM
+- **Kernel reserved cores** (Extreme tier only): sets two physical cores aside that system threads and ordinary programs avoid at all times; only games in a Pavise core-partitioned match can use them
 
 ### System audit
 

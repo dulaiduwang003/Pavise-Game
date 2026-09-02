@@ -81,7 +81,7 @@ namespace PaviseApp
                     Settings.Save("InputMythRepaired", true);
                     Logger.Log(Lang.T("log.inputmythtweak.8") + SystemDefault + Lang.T("log.inputmythtweak.9"));
                 }
-                else Logger.Log(Lang.T("log.inputmythtweak.10"));
+                else Logger.Warn(Lang.T("log.inputmythtweak.10"));
                 return ok;
             }
         }

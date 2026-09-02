@@ -86,7 +86,7 @@ namespace PaviseApp
                 Guid after;
                 if (status != 0 || !TryReadActive(out after) || after != Max)
                 {
-                    Logger.Log(Lang.T("log.poweroverlay.3") + status + " ");
+                    Logger.Warn(Lang.T("log.poweroverlay.3") + status + " ");
                     return false;
                 }
                 Logger.Log(Lang.T("log.poweroverlay.4"));

@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 显存驻留 实验功能 显存吃紧时给游戏声明一份最低显存预留 退局撤销
+// 文件用途 显存驻留 显存吃紧时给游戏声明一份最低显存预留 退局撤销
 using System;
 using System.Globalization;
 
@@ -325,7 +325,7 @@ namespace PaviseApp
                 shieldAdapter = 0; shieldPhys = 0;
             }
             if (adapter != 0) VidMmProbe.CloseAdapter(adapter);
-            if (first && !string.IsNullOrEmpty(why)) Logger.Log(why);
+            if (first && !string.IsNullOrEmpty(why)) Logger.Warn(why);
         }
 
         public static bool Release()

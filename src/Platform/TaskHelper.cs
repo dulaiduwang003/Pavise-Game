@@ -151,13 +151,13 @@ namespace PaviseApp
                 string xml;
                 if (RunCore("/Query /TN " + TaskName + " /XML", true, out xml) != 0)
                 {
-                    Logger.Log(Lang.T("log.taskhelper.1"));
+                    Logger.Warn(Lang.T("log.taskhelper.1"));
                     return;
                 }
                 string target = ParseTaskCommandXml(xml);
                 if (string.IsNullOrWhiteSpace(target))
                 {
-                    Logger.Log(Lang.T("log.taskhelper.1"));
+                    Logger.Warn(Lang.T("log.taskhelper.1"));
                     return;
                 }
                 string taskArguments = ParseTaskArgumentsXml(xml);
@@ -185,7 +185,7 @@ namespace PaviseApp
                         : Lang.T("t.taskhelper.6") + AutostartArgument + Lang.T("t.taskhelper.7"));
                     int rc = CreateStartupTask();
                     if (rc != 0)
-                        Logger.Log((pathChanged ? Lang.T("log.taskhelper.8") : Lang.T("log.taskhelper.9"))
+                        Logger.Warn((pathChanged ? Lang.T("log.taskhelper.8") : Lang.T("log.taskhelper.9"))
                             + rc + DescribeSchtasksError());
                     return;
                 }
@@ -211,7 +211,7 @@ namespace PaviseApp
             fails++;
             Settings.SaveStr(RepairFailKey,
                 fails.ToString(System.Globalization.CultureInfo.InvariantCulture));
-            Logger.Log(fails >= RepairGiveUp
+            Logger.Warn(fails >= RepairGiveUp
                 ? Lang.T("log.taskhelper.11") + rc + DescribeSchtasksError() + Lang.T("t.taskhelper.12")
                 : Lang.T("log.taskhelper.13") + rc + DescribeSchtasksError());
         }

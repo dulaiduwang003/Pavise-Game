@@ -286,7 +286,7 @@ namespace PaviseApp
                     f.AssertNoRendererCandidate(profile, null, nestedGame);
                     ProcEntry nested = f.RendererProcess(nestedGame);
                     nested.ParentPid = 0;
-                    GfiRequire(GameMode.CollectProtectedLibraryFamily(new[] { profile },
+                    GfiRequire(FamilyBoundary.CollectProtectedLibraryFamily(new[] { profile },
                         new ProcessSnapshot(new[] { nested }), f.SelfPid, f.Session).Count == 0,
                         "platform directory alone protected an unrelated nested game");
                     GameProfile saved = f.OnlySavedProfile();
@@ -546,19 +546,19 @@ namespace PaviseApp
                 renderer.ParentPid = launcher.Pid;
                 ProcEntry broker = f.BrokerProcess();
                 var snapshot = new ProcessSnapshot(new[] { launcher, renderer, broker });
-                HashSet<int> protectedPids = GameMode.CollectProtectedLibraryFamily(new[] { profile }, snapshot, f.SelfPid, f.Session);
+                HashSet<int> protectedPids = FamilyBoundary.CollectProtectedLibraryFamily(new[] { profile }, snapshot, f.SelfPid, f.Session);
                 GfiRequire(protectedPids.Contains(launcher.Pid) && protectedPids.Contains(renderer.Pid)
                     && protectedPids.Contains(broker.Pid), "default family protection missed a child or sibling renderer");
                 GfiRequire(f.WhitelistProtected(mode, snapshot).Contains(broker.Pid), "exact whitelist fixture did not load");
                 GfiRequire(mode.SetProfileFamilySuppression(profile.Id, true), "family switch did not enable");
                 profile = f.OnlyProfile(mode);
-                protectedPids = GameMode.CollectProtectedLibraryFamily(new[] { profile }, snapshot, f.SelfPid, f.Session);
+                protectedPids = FamilyBoundary.CollectProtectedLibraryFamily(new[] { profile }, snapshot, f.SelfPid, f.Session);
                 GfiRequire(protectedPids.Count == 0, "family opt-in retained implicit family protection");
                 GfiRequire(f.WhitelistProtected(mode, snapshot).Contains(broker.Pid), "family switch erased explicit whitelist protection");
                 f.AssertRendererOnlyCandidate(profile, null, f.Renderer);
                 GfiRequire(mode.SetProfileFamilySuppression(profile.Id, false), "family switch did not disable");
                 profile = f.OnlyProfile(mode);
-                protectedPids = GameMode.CollectProtectedLibraryFamily(new[] { profile }, snapshot, f.SelfPid, f.Session);
+                protectedPids = FamilyBoundary.CollectProtectedLibraryFamily(new[] { profile }, snapshot, f.SelfPid, f.Session);
                 GfiRequire(protectedPids.Contains(broker.Pid) && protectedPids.Contains(renderer.Pid),
                     "closing family suppression failed to restore family protection");
             }
@@ -578,18 +578,18 @@ namespace PaviseApp
                     new[] { profile }, f.Session, 1000);
                 var snapshot = new ProcessSnapshot(new[] { renderer });
                 GameFamilyEvidence evidence = history.Capture(snapshot, new[] { profile }, f.Session, 2000);
-                GfiRequire(GameMode.CollectProtectedLibraryFamily(new[] { profile }, snapshot, f.SelfPid, f.Session, evidence).Contains(renderer.Pid),
+                GfiRequire(FamilyBoundary.CollectProtectedLibraryFamily(new[] { profile }, snapshot, f.SelfPid, f.Session, evidence).Contains(renderer.Pid),
                     "history-discovered family is unprotected while family suppression is off");
                 GfiRequire(mode.SetProfileFamilySuppression(profile.Id, true), "history fixture could not enable family suppression");
                 profile = f.OnlyProfile(mode);
-                GfiRequire(GameMode.CollectProtectedLibraryFamily(new[] { profile }, snapshot, f.SelfPid, f.Session, evidence).Count == 0,
+                GfiRequire(FamilyBoundary.CollectProtectedLibraryFamily(new[] { profile }, snapshot, f.SelfPid, f.Session, evidence).Count == 0,
                     "history bypassed the per-game opt-in");
                 // Family membership and rendering evidence are separate from a
                 // suppression policy switch; opt-in must not disable detection.
                 f.AssertRendererOnlyCandidate(profile, evidence, f.RemoteRenderer);
                 GfiRequire(mode.SetProfileFamilySuppression(profile.Id, false), "history fixture could not disable family suppression");
                 profile = f.OnlyProfile(mode);
-                GfiRequire(GameMode.CollectProtectedLibraryFamily(new[] { profile }, snapshot, f.SelfPid, f.Session, evidence).Contains(renderer.Pid),
+                GfiRequire(FamilyBoundary.CollectProtectedLibraryFamily(new[] { profile }, snapshot, f.SelfPid, f.Session, evidence).Contains(renderer.Pid),
                     "history family was not protected again after opt-out");
             }
         }

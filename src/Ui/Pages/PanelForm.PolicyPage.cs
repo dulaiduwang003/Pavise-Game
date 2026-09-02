@@ -17,12 +17,14 @@ namespace PaviseApp
         private Toggle swPolicyPauseDl, swPolicyDvr;
         private Toggle swPolicyGpuDemote, swPolicyBoost, swPolicyLane, swPolicyMmcss;
         private Toggle swPolicyVramShield;
-        private Toggle swPolicyMemShield;
+        private SettingCard cardPolicyVramShield, cardPolicyCacheWarm, cardPolicyEnglishInput;
+        private Toggle swPolicyEnglishInput;
         private Toggle swPolicyCacheWarm;
-        private Toggle swPolicyDisplaySolo;
         private Toggle swPolicyPowerYield;
         private Toggle swPolicyDisableCpuIdle;
         private Toggle swPolicyPauseWu, swPolicyPauseServices, swPolicyWlan, swPolicyAwake;
+        private Toggle swPolicyPauseMaint, swPolicyLaptopPerf;
+        private SettingCard cardPolicyPauseMaint, cardPolicyLaptopPerf;
         private SettingCard cardPolicyCores, cardPolicyAggressive;
         private SettingCard cardPolicyPauseDl, cardPolicyDvr;
         private SettingCard cardPolicyBackground, cardPolicyGpuDemote, cardPolicyBoost, cardPolicyLane, cardPolicyMmcss;
@@ -34,9 +36,7 @@ namespace PaviseApp
         internal Func<bool> DisableCpuIdleConfirmationForTest;
         internal Func<bool> PowerYieldConfirmationForTest;
         internal Func<bool> VramShieldConfirmationForTest;
-        internal Func<bool> MemShieldConfirmationForTest;
         internal Func<bool> CacheWarmConfirmationForTest;
-        internal Func<bool> DisplaySoloConfirmationForTest;
 #endif
 
         private void BuildPolicyPage()
@@ -79,10 +79,10 @@ namespace PaviseApp
             cardPolicyLane = (SettingCard)swPolicyLane.Parent;
             swPolicyVramShield = AddPolicyToggle(scroll, ref sy, Lang.T("gm.vramshield"), Lang.T("gm.vramshield.sub"),
                 delegate { return gameMode.VramShieldOn; }, delegate(bool v) { OnVramShieldToggle(v); });
-            swPolicyMemShield = AddPolicyToggle(scroll, ref sy, Lang.T("gm.memshield"), Lang.T("gm.memshield.sub"),
-                delegate { return gameMode.MemShieldOn; }, delegate(bool v) { OnMemShieldToggle(v); });
+            cardPolicyVramShield = (SettingCard)swPolicyVramShield.Parent;
             swPolicyCacheWarm = AddPolicyToggle(scroll, ref sy, Lang.T("gm.cachewarm"), Lang.T("gm.cachewarm.sub"),
                 delegate { return gameMode.CacheWarmOn; }, delegate(bool v) { OnCacheWarmToggle(v); });
+            cardPolicyCacheWarm = (SettingCard)swPolicyCacheWarm.Parent;
             swPolicyLane.CheckedChanged += delegate { RefreshPolicyPresentation(); };
 
             BuildCorePage(policyTabPanels[1]);
@@ -104,10 +104,20 @@ namespace PaviseApp
                 delegate { return Settings.Load(PowerBudgetYieldRunner.EnabledKey, false); },
                 delegate(bool v) { OnPowerYieldToggle(v); });
             cardPolicyPowerYield = (SettingCard)swPolicyPowerYield.Parent;
+            // 只有带电池且厂商接口在的机器才有这一项 台式机不显示
+            if (Native.HasSystemBattery())
+            {
+                swPolicyLaptopPerf = AddPolicyToggle(scroll, ref sy, Lang.T("gm.laptopperf"),
+                    LaptopPerfMode.SupportedCached() ? Lang.T("gm.laptopperf.sub") : Lang.T("laptopperf.unsupported"),
+                    delegate { return gameMode.LaptopPerf; }, delegate(bool v) { gameMode.LaptopPerf = v; });
+                cardPolicyLaptopPerf = (SettingCard)swPolicyLaptopPerf.Parent;
+                if (!LaptopPerfMode.SupportedCached() && !gameMode.LaptopPerf) swPolicyLaptopPerf.Enabled = false;
+            }
             scroll = policyTabPanels[3]; sy = 2;
-            AddPolicyToggle(scroll, ref sy, Lang.T("gm.englishinput"), Lang.T("gm.englishinput.sub"),
+            swPolicyEnglishInput = AddPolicyToggle(scroll, ref sy, Lang.T("gm.englishinput"), Lang.T("gm.englishinput.sub"),
                 delegate { return gameMode.EnglishInputEnabled; },
                 delegate(bool v) { gameMode.EnglishInputEnabled = v; }, 0, true);
+            cardPolicyEnglishInput = (SettingCard)swPolicyEnglishInput.Parent;
             swPolicyDisableCpuIdle = AddPolicyToggle(scroll, ref sy,
                 Lang.T("gm.disablecpuidle"), Lang.T("gm.disablecpuidle.sub"),
                 delegate { return gameMode.DisableCpuIdle; },
@@ -117,6 +127,9 @@ namespace PaviseApp
             swPolicyPauseWu = AddPolicyToggle(scroll, ref sy, Lang.T("gm.pausewu"), Lang.T("gm.pausewu.sub"),
                 delegate { return gameMode.PauseWindowsUpdate; }, delegate(bool v) { gameMode.PauseWindowsUpdate = v; });
             cardPolicyPauseWu = (SettingCard)swPolicyPauseWu.Parent;
+            swPolicyPauseMaint = AddPolicyToggle(scroll, ref sy, Lang.T("gm.pausemaint"), Lang.T("gm.pausemaint.sub"),
+                delegate { return gameMode.PauseMaintenance; }, delegate(bool v) { gameMode.PauseMaintenance = v; });
+            cardPolicyPauseMaint = (SettingCard)swPolicyPauseMaint.Parent;
             swPolicyPauseServices = AddPolicyToggle(scroll, ref sy, Lang.T("gm.pausesvc"), Lang.T("gm.pausesvc.sub"),
                 delegate { return gameMode.PauseServices; }, delegate(bool v) { gameMode.PauseServices = v; });
             cardPolicyPauseServices = (SettingCard)swPolicyPauseServices.Parent;
@@ -126,8 +139,6 @@ namespace PaviseApp
             swPolicyAwake = AddPolicyToggle(scroll, ref sy, Lang.T("set.awake"), Lang.T("set.awake.n"),
                 delegate { return gameMode.KeepAwake; }, delegate(bool v) { gameMode.KeepAwake = v; });
             cardPolicyAwake = (SettingCard)swPolicyAwake.Parent;
-            swPolicyDisplaySolo = AddPolicyToggle(scroll, ref sy, Lang.T("gm.solo"), Lang.T("gm.solo.sub"),
-                delegate { return gameMode.DisplaySoloOn; }, delegate(bool v) { OnDisplaySoloToggle(v); });
 
             EnableCardCollapse(policyTabPanels[0], cardPolicyBackground, cardPolicyBoost);
             EnableCardCollapse(policyTabPanels[2]);
@@ -352,12 +363,15 @@ namespace PaviseApp
                 policyBanner.StateColor = Theme.Accent;
             }
             PerformancePreset mode = gameMode.ActivePreset;
-            bool competitive = mode == PerformancePreset.Competitive;
+            bool competitive = mode == PerformancePreset.Competitive
+                || mode == PerformancePreset.Extreme;
             bool custom = mode == PerformancePreset.Custom;
-            // 掌机档跟专注一样锁死这两项 差别在功耗侧 不在这里
+            // 掌机档跟电竞一样锁死这两项 差别在功耗侧 不在这里 极限同口径
             bool presetForcesOn = competitive || mode == PerformancePreset.Handheld;
+            // 极限档强制的清单项在这里显示锁定 否则开关显示用户配置值 与实际生效相反
+            bool extremeTier = mode == PerformancePreset.Extreme;
             ApplyPresetPolicy(swPolicyBackground, cardPolicyBackground, Lang.T("v14.bg.master"), false, true);
-            ApplyPresetPolicy(swPolicyGpuDemote, cardPolicyGpuDemote, Lang.T("gm.gpudemote"), false, true);
+            ApplyPresetPolicy(swPolicyGpuDemote, cardPolicyGpuDemote, Lang.T("gm.gpudemote"), extremeTier, true);
             ApplyPresetPolicy(swPolicyBoost, cardPolicyBoost, Lang.T("gm.boost"), false, true);
             ApplyPresetPolicy(swPolicyLane, cardPolicyLane, Lang.T("gm.lane"), false, true);
             if (cardPolicyCores != null) cardPolicyCores.Title = Lang.T("cpu.place.title");
@@ -368,11 +382,15 @@ namespace PaviseApp
             if (swPolicyMmcss != null && !elevated)
             {
                 swPolicyMmcss.Enabled = false;
-                if (cardPolicyMmcss != null) cardPolicyMmcss.Desc = Lang.T("vbs.needadmin");
+                if (cardPolicyMmcss != null)
+                {
+                    cardPolicyMmcss.Desc = Lang.T("vbs.needadmin");
+                    cardPolicyMmcss.SetLock(Lang.T("lock.na"), false);
+                }
             }
             ApplyPresetPolicy(swPolicyPowerYield, cardPolicyPowerYield,
-                Lang.T("gm.poweryield"), false, true);
-            if (swPolicyPowerYield != null && cardPolicyPowerYield != null)
+                Lang.T("gm.poweryield"), extremeTier, true);
+            if (swPolicyPowerYield != null && cardPolicyPowerYield != null && !extremeTier)
             {
                 // 硬件或权限失败只挡住新的开启 永远不挡关闭
                 // 熔断是一张重试通知 显式关一次再开可能重新验证通过
@@ -386,20 +404,35 @@ namespace PaviseApp
                 swPolicyPowerYield.Enabled = PowerBudgetYieldRunner.EnabledSetting || reasonKey == null;
                 cardPolicyPowerYield.Desc = why ?? Lang.T(fused ? "gm.poweryield.fused"
                     : watts ? "gm.poweryield.sub" : "gm.poweryield.proxysub");
+                cardPolicyPowerYield.SetLock(swPolicyPowerYield.Enabled ? "" : Lang.T("lock.na"), false);
             }
             ApplyPresetPolicy(swPolicyDisableCpuIdle, cardPolicyDisableCpuIdle,
                 Lang.T("gm.disablecpuidle"), false, true);
             RefreshDisableCpuIdlePresentation();
             RefreshStandbyCleanerPresentation();
-            ApplyPresetPolicy(swPolicyPauseWu, cardPolicyPauseWu, Lang.T("gm.pausewu"), false, true);
-            ApplyPresetPolicy(swPolicyPauseServices, cardPolicyPauseServices, Lang.T("gm.pausesvc"), false, true);
-            ApplyPresetPolicy(swPolicyWlan, cardPolicyWlan, Lang.T("gm.wlanguard"), false, true);
+            ApplyPresetPolicy(swPolicyPauseWu, cardPolicyPauseWu, Lang.T("gm.pausewu"), extremeTier, true);
+            ApplyPresetPolicy(swPolicyPauseMaint, cardPolicyPauseMaint, Lang.T("gm.pausemaint"), extremeTier, true);
+            if (swPolicyLaptopPerf != null)
+            {
+                bool oemForced = LaptopPerfMode.ForcedByTier(mode, Native.HasSystemBattery()) && LaptopPerfMode.SupportedCached();
+                ApplyPresetPolicy(swPolicyLaptopPerf, cardPolicyLaptopPerf, Lang.T("gm.laptopperf"), oemForced, true);
+                if (!oemForced && !LaptopPerfMode.SupportedCached() && !gameMode.LaptopPerf)
+                {
+                    swPolicyLaptopPerf.Enabled = false;
+                    if (cardPolicyLaptopPerf != null) cardPolicyLaptopPerf.SetLock(Lang.T("lock.na"), false);
+                }
+            }
+            ApplyPresetPolicy(swPolicyPauseServices, cardPolicyPauseServices, Lang.T("gm.pausesvc"), extremeTier, true);
+            ApplyPresetPolicy(swPolicyWlan, cardPolicyWlan, Lang.T("gm.wlanguard"), extremeTier, true);
             if (swPolicyWlan != null && !WlanGuard.HasWirelessInterface() && !gameMode.WlanScanGuard)
             {
                 swPolicyWlan.Enabled = false;
                 if (cardPolicyWlan != null) cardPolicyWlan.Desc = Lang.T("gm.wlanguard.nowifi");
             }
             ApplyPresetPolicy(swPolicyAwake, cardPolicyAwake, Lang.T("set.awake"), false, true);
+            ApplyPresetPolicy(swPolicyVramShield, cardPolicyVramShield, Lang.T("gm.vramshield"), extremeTier, true);
+            ApplyPresetPolicy(swPolicyCacheWarm, cardPolicyCacheWarm, Lang.T("gm.cachewarm"), extremeTier, true);
+            ApplyPresetPolicy(swPolicyEnglishInput, cardPolicyEnglishInput, Lang.T("gm.englishinput"), extremeTier, true);
         }
 
         private void RefreshDisableCpuIdlePresentation()
@@ -417,6 +450,11 @@ namespace PaviseApp
 #if PAVISE_SELFTEST
             if (DisableCpuIdleConfirmationForTest != null) return DisableCpuIdleConfirmationForTest();
 #endif
+            if (PowerPlan.CpuIdleVendorBlocked)
+            {
+                PaviseDialog.Info(this, Lang.T("gm.disablecpuidle"), Lang.T("disablecpuidle.amd"));
+                return false;
+            }
             return PaviseDialog.Confirm(this, Lang.T("gm.disablecpuidle"),
                 Lang.T("disablecpuidle.warn"), DlgKind.Warn);
         }
@@ -478,7 +516,7 @@ namespace PaviseApp
             return PaviseDialog.Confirm(this, Lang.T("gm.vramshield"), Lang.T("vramshield.warn"), DlgKind.Warn);
         }
 
-        // 实验功能 开启前先把话说在前面 体感不对就关掉
+        // 开启前先把话说在前面 体感不对就关掉
         private void OnVramShieldToggle(bool on)
         {
             if (on && !ConfirmVramShieldEnable())
@@ -488,25 +526,6 @@ namespace PaviseApp
             }
             gameMode.VramShieldOn = on;
             if (swPolicyVramShield != null) swPolicyVramShield.SetSilently(gameMode.VramShieldOn);
-        }
-
-        private bool ConfirmMemShieldEnable()
-        {
-#if PAVISE_SELFTEST
-            if (MemShieldConfirmationForTest != null) return MemShieldConfirmationForTest();
-#endif
-            return PaviseDialog.Confirm(this, Lang.T("gm.memshield"), Lang.T("memshield.warn"), DlgKind.Warn);
-        }
-
-        private void OnMemShieldToggle(bool on)
-        {
-            if (on && !ConfirmMemShieldEnable())
-            {
-                if (swPolicyMemShield != null) swPolicyMemShield.SetSilently(gameMode.MemShieldOn);
-                return;
-            }
-            gameMode.MemShieldOn = on;
-            if (swPolicyMemShield != null) swPolicyMemShield.SetSilently(gameMode.MemShieldOn);
         }
 
         private bool ConfirmCacheWarmEnable()
@@ -526,25 +545,6 @@ namespace PaviseApp
             }
             gameMode.CacheWarmOn = on;
             if (swPolicyCacheWarm != null) swPolicyCacheWarm.SetSilently(gameMode.CacheWarmOn);
-        }
-
-        private bool ConfirmDisplaySoloEnable()
-        {
-#if PAVISE_SELFTEST
-            if (DisplaySoloConfirmationForTest != null) return DisplaySoloConfirmationForTest();
-#endif
-            return PaviseDialog.Confirm(this, Lang.T("gm.solo"), Lang.T("solo.warn"), DlgKind.Warn);
-        }
-
-        private void OnDisplaySoloToggle(bool on)
-        {
-            if (on && !ConfirmDisplaySoloEnable())
-            {
-                if (swPolicyDisplaySolo != null) swPolicyDisplaySolo.SetSilently(gameMode.DisplaySoloOn);
-                return;
-            }
-            gameMode.DisplaySoloOn = on;
-            if (swPolicyDisplaySolo != null) swPolicyDisplaySolo.SetSilently(gameMode.DisplaySoloOn);
         }
 
         private static void ApplyPresetPolicy(Toggle toggle, SettingCard card, string title, bool forced, bool effective)

@@ -10,6 +10,7 @@ namespace PaviseApp
     internal partial class PanelForm
     {
         private Toggle swNvMax;
+        private Toggle swNvClock, swNvVrr;
         private Toggle swNvRebar;
         private Toggle swNvSmooth, swNvShader;
         private Toggle swGpuPower;
@@ -57,9 +58,21 @@ namespace PaviseApp
 
             swNvMax = MakeSwitch(gameMode.NvMaxPerf, null);
             BindGraphicsToggle(swNvMax, delegate { return gameMode.NvMaxPerf; },
-                delegate(bool v) { gameMode.NvMaxPerf = v; }, delegate { return NvApi.Available; });
+                delegate(bool v) { gameMode.NvMaxPerf = v; }, delegate { return NvApi.Available; }, null,
+                delegate { return NvApi.Available; }, ExtremeGraphicsForced);
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvmax"),
                 nvOk ? Lang.T("set.nvmax.n") : nvNone, swNvMax, out cardH);
+            sy += cardH + 8;
+
+            // 只在用户已开 G-SYNC 且只给全屏时有东西可补 不由档位强制 部分面板窗口 VRR 会闪
+            swNvVrr = MakeSwitch(gameMode.NvVrrWindowedEnabled, null);
+            BindGraphicsToggle(swNvVrr, delegate { return gameMode.NvVrrWindowedEnabled; },
+                delegate(bool v) { gameMode.NvVrrWindowedEnabled = v; }, NvVrrWindowed.Applicable, null,
+                delegate { return NvApi.Available; });
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvvrr"),
+                !nvOk ? nvNone : NvVrrWindowed.Applicable() || gameMode.NvVrrWindowedEnabled
+                    ? Lang.T("set.nvvrr.n") : Lang.T("set.nvvrr.na"),
+                swNvVrr, out cardH);
             sy += cardH + 8;
 
             nvllPicker = new TierPicker();
@@ -86,7 +99,8 @@ namespace PaviseApp
 
             swNvShader = MakeSwitch(gameMode.NvShaderCacheMax, null);
             BindGraphicsToggle(swNvShader, delegate { return gameMode.NvShaderCacheMax; },
-                delegate(bool v) { gameMode.NvShaderCacheMax = v; }, delegate { return NvApi.Available; });
+                delegate(bool v) { gameMode.NvShaderCacheMax = v; }, delegate { return NvApi.Available; }, null,
+                delegate { return NvApi.Available; }, ExtremeGraphicsForced);
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvshader"),
                 nvOk ? Lang.T("set.nvshader.n") : nvNone, swNvShader, out cardH);
             sy += cardH + 8;
@@ -139,7 +153,8 @@ namespace PaviseApp
             swAmdAlag = MakeSwitch(gameMode.AmdAntiLag, null);
             BindGraphicsToggle(swAmdAlag, delegate { return gameMode.AmdAntiLag; },
                 delegate(bool v) { gameMode.AmdAntiLag = v; },
-                delegate { return AdlxTweaks.Available && AdlxTweaks.AntiLagSupported(); });
+                delegate { return AdlxTweaks.Available && AdlxTweaks.AntiLagSupported(); }, null,
+                delegate { return AdlxTweaks.Available && AdlxTweaks.AntiLagSupported(); }, ExtremeGraphicsForced);
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.amdalag"),
                 !amdOk ? amdNone : alagOk ? Lang.T("set.amdalag.n") : amdNoSup, swAmdAlag, out cardH);
             sy += cardH + 8;
@@ -182,22 +197,56 @@ namespace PaviseApp
             EnableCardCollapse(gfxTabPanels[2]);
         }
 
+        // 显卡页四个极限清单项共用 全局模式为极限时显示锁定
+        private bool ExtremeGraphicsForced()
+        {
+            return gameMode.ActivePreset == PerformancePreset.Extreme;
+        }
+
+        private bool TierForcedGpuClock()
+        {
+            return GpuClockLock.ForcedByTier(gameMode.ActivePreset, Native.HasSystemBattery());
+        }
+
         private void BindGraphicsToggle(Toggle toggle, Func<bool> read, Action<bool> write,
             Func<bool> supported, Func<bool> confirm = null)
         {
             BindGraphicsToggle(toggle, read, write, supported, confirm, supported);
         }
 
+        // 隔离回归按六参签名反射查找这个方法 极限锁定走独立的七参重载 别合并
         private void BindGraphicsToggle(Toggle toggle, Func<bool> read, Action<bool> write,
             Func<bool> supported, Func<bool> confirm, Func<bool> presentationSupported)
         {
+            BindGraphicsToggle(toggle, read, write, supported, confirm, presentationSupported, null);
+        }
+
+        private void BindGraphicsToggle(Toggle toggle, Func<bool> read, Action<bool> write,
+            Func<bool> supported, Func<bool> confirm, Func<bool> presentationSupported,
+            Func<bool> extremeForced)
+        {
             Action sync = delegate
             {
+                // 三种锁定全站同一套标签 档位强制"预设强制开" 本机不支持"本机不适用" 其余无标签
+                //   卡片在开关之后才创建 所以从 Parent 取 挂上父容器那一刻再同步一次
+                SettingCard card = toggle.Parent as SettingCard;
+                // 极限档强制的项显示锁定为开 否则开关显示用户配置值 与实际生效相反
+                if (extremeForced != null && extremeForced())
+                {
+                    toggle.SetSilently(true);
+                    toggle.Enabled = false;
+                    if (card != null) card.SetLock(Lang.T("v14.preset.forced.on"), true);
+                    return;
+                }
                 bool on = read();
+                bool usable = presentationSupported();
                 toggle.SetSilently(on);
-                toggle.Enabled = on || presentationSupported();
+                toggle.Enabled = on || usable;
+                if (card != null) card.SetLock(!on && !usable ? Lang.T("lock.na") : "", false);
             };
-            graphicsSync.Add(sync);
+            // 隔离回归用未初始化的窗体单独构建公共显卡页 字段初始化器没跑过 同步表可能为空
+            if (graphicsSync != null) graphicsSync.Add(sync);
+            toggle.ParentChanged += delegate { sync(); };
             toggle.CheckedChanged += delegate
             {
                 bool on = toggle.Checked;

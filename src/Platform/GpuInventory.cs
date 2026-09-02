@@ -143,7 +143,7 @@ namespace PaviseApp
                     if (key != null) keys.Add(key);
                 }
             }
-            catch (Exception ex) { Logger.Log(Lang.T("log.gpuinventory.3") + ex.Message); }
+            catch (Exception ex) { Logger.Warn(Lang.T("log.gpuinventory.3") + ex.Message); }
             return keys;
         }
 

@@ -86,58 +86,5 @@ namespace PaviseApp
             Interlocked.Increment(ref familyPolicyEpoch);
         }
 
-        internal static bool FamilyExemptFor(GameProfile profile)
-        {
-            return profile == null || !profile.SuppressFamilyBackground;
-        }
-
-        // 保护属于每一个选择退出的档案 不只是当前前台那个游戏
-        // 复用本轮 sweep 那份不可变进程快照 绝不能从游戏或客户端的
-        // 可执行文件名去推断家族归属
-        internal static HashSet<int> CollectProtectedLibraryFamily(IList<GameProfile> configured,
-            ProcessSnapshot snapshot, int selfPid, int ownerSession, GameFamilyEvidence familyEvidence = null)
-        {
-            var result = new HashSet<int>();
-            if (configured == null || snapshot == null || ownerSession < 0) return result;
-            var roots = new List<string>();
-            var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (GameProfile profile in configured)
-            {
-                if (profile == null || !FamilyExemptFor(profile)) continue;
-                if (!string.IsNullOrEmpty(profile.ExecutablePath)) paths.Add(profile.ExecutablePath);
-                if (!string.IsNullOrEmpty(profile.LearnedExecutablePath)) paths.Add(profile.LearnedExecutablePath);
-                if (SafeFamilyDir(profile.Root)) roots.Add(profile.Root);
-            }
-            if (paths.Count == 0 && roots.Count == 0) return result;
-            var parents = new Dictionary<int, int>();
-            var seeds = new HashSet<int>();
-            foreach (ProcEntry child in snapshot.Entries)
-            {
-                if (child.Pid <= 4 || child.Pid == selfPid || child.Session != ownerSession
-                    || child.Creation <= 0) continue;
-                if (!string.IsNullOrEmpty(child.Path)
-                    && (paths.Contains(child.Path) || LibraryRootOf(child.Path, roots) != null))
-                    seeds.Add(child.Pid);
-                if (familyEvidence != null)
-                    foreach (GameProfile profile in configured)
-                        if (profile != null && FamilyExemptFor(profile)
-                            && familyEvidence.Contains(profile, child.Pid, child.Creation, child.Path))
-                        { seeds.Add(child.Pid); break; }
-                ProcEntry parent = snapshot.Find(child.ParentPid);
-                // 不要把只看 PID 的老兜底逻辑带进这些新的跨根链接
-                // 身份缺失或者 PID 被复用 就到此为止
-                if (parent == null || parent.Pid <= 4 || parent.Pid == selfPid
-                    || parent.Pid == child.Pid || parent.Session != ownerSession
-                    || parent.Creation <= 0 || parent.Creation > child.Creation) continue;
-                parents[child.Pid] = parent.Pid;
-            }
-            result.UnionWith(seeds);
-            result.UnionWith(WalkDescendants(parents, seeds, selfPid, 24));
-            foreach (int seed in seeds)
-                result.UnionWith(WalkAncestorChain(parents, seed, selfPid, 24));
-            // 祖先进程自己受保护 但绝不能当新种子 共享宿主
-            // 不能顺带豁免它那些无关的兄弟进程或者别的游戏
-            return result;
-        }
     }
 }

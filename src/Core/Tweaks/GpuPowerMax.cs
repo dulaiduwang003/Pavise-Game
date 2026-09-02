@@ -28,6 +28,20 @@ namespace PaviseApp
             return true;
         }
 
+        // 极限档每轮 want 计算都要问一次 驱动查询不便宜 按进程缓存
+        //   支持性随驱动更新才会变 那种场景本来就要重启程序
+        private static int supportedCache;
+
+        public static bool SupportedCached()
+        {
+            int cached = supportedCache;
+            if (cached != 0) return cached == 1;
+            bool result;
+            try { result = Supported(); }
+            catch { result = false; }
+            supportedCache = result ? 1 : 2;
+            return result;
+        }
         public static bool Supported()
         {
             uint nvCur, nvDef, nvMax;
@@ -60,7 +74,7 @@ namespace PaviseApp
                     if (!NvApi.TrySetPowerLimit(nvMax))
                     {
                         Settings.SaveStr(SnapKey, "");
-                        Logger.Log(Lang.T("log.gpupowermax.2"));
+                        Logger.Warn(Lang.T("log.gpupowermax.2"));
                         return false;
                     }
                     Logger.Log(Lang.T("log.gpupowermax.3") + (nvMax / 1000) + Lang.T("log.gpupowermax.4")
@@ -83,7 +97,7 @@ namespace PaviseApp
                     if (!AdlxTweaks.PowerLimitSetFirst(amdMax))
                     {
                         Settings.SaveStr(SnapKey, "");
-                        Logger.Log(Lang.T("log.gpupowermax.6"));
+                        Logger.Warn(Lang.T("log.gpupowermax.6"));
                         return false;
                     }
                     Logger.Log(Lang.T("log.gpupowermax.3") + amdMax + Lang.T("log.gpupowermax.7") + amdCur + Lang.T("log.gpupowermax.8"));

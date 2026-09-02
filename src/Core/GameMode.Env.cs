@@ -22,7 +22,9 @@ namespace PaviseApp
 
         internal static readonly string[] EnvKeys =
             { "do", "wlanscan", "wu", "services", "cpuidle", "standby",
-              "pqos", "awake", "rsr", "gpupower", "amdalag", "amdafmf", "solo", "intelll" };
+              "pqos", "awake", "audiolat", "dwmboost", "rsssteer",
+              "rsr", "gpupower", "gpuclock", "amdalag", "amdafmf", "intelll", "maint",
+              "nvvrr", "intelend", "oemperf" };
 
         private static string EnvLabel(string key)
         {
@@ -36,11 +38,18 @@ namespace PaviseApp
                 case "standby": return Lang.T("gm.standbycleaner");
                 case "pqos": return Lang.T("t.gamemodeenv.4");
                 case "awake": return Lang.T("t.gamemodeenv.5");
+                case "audiolat": return Lang.T("gm.audiolat");
+                case "dwmboost": return Lang.T("gm.dwmboost");
+                case "rsssteer": return Lang.T("gm.rsssteer");
                 case "rsr": return Lang.T("set.rsr");
                 case "gpupower": return Lang.T("t.gamemodeenv.6");
+                case "gpuclock": return Lang.T("set.gpuclock");
+                case "maint": return Lang.T("gm.pausemaint");
+                case "nvvrr": return Lang.T("set.nvvrr");
+                case "intelend": return Lang.T("set.intel.endurance");
+                case "oemperf": return Lang.T("gm.laptopperf");
                 case "amdalag": return "AMD Anti-Lag";
                 case "amdafmf": return Lang.T("t.gamemodeenv.8");
-                case "solo": return Lang.T("gm.solo");
                 case "intelll": return Lang.T("set.intel.lowlatency");
                 default: return key;
             }
@@ -83,7 +92,7 @@ namespace PaviseApp
                         Settings.Save("EnvFuse_" + key, true);
                         RunIrqIsolatedMutation(restore);
                         DisableEnvSwitch(key);
-                        Logger.Log(Lang.T("log.gamemodeenv.9") + EnvLabel(key) + Lang.T("log.gamemodeenv.10") + failures
+                        Logger.Warn(Lang.T("log.gamemodeenv.9") + EnvLabel(key) + Lang.T("log.gamemodeenv.10") + failures
                             + Lang.T("log.gamemodeenv.11"));
                     }
                 }
@@ -154,11 +163,24 @@ namespace PaviseApp
                     break;
                 case "pqos": break;
                 case "awake": awakeOn = false; Settings.Save("GmAwake", false); break;
+                // 极限专属项没有全局开关可关 熔断落到退出集 管理面显示为已停用
+                case "audiolat": ExtremeMode.SetOptedOut(PolicyCatalog.KeyAudioLowLat, true); break;
+                case "dwmboost": ExtremeMode.SetOptedOut("g:dwmboost", true); break;
+                case "rsssteer": ExtremeMode.SetOptedOut("g:rsssteer", true); break;
                 case "rsr": rsrOn = false; Settings.Save("GmRsr", false); break;
-                case "gpupower": gpuPowerMaxOn = false; Settings.Save("GmGpuPowerMax", false); break;
+                case "gpupower":
+                    gpuPowerMaxOn = false;
+                    Settings.Save("GmGpuPowerMax", false);
+                    // 熔断同时体现在极限管理面 否则那里还显示跟随
+                    ExtremeMode.SetOptedOut("g:gpupower", true);
+                    break;
+                case "gpuclock": gpuClockLockOn = false; Settings.Save(PolicyCatalog.KeyGpuClockLock, false); break;
+                case "maint": pauseMaintOn = false; Settings.Save(PolicyCatalog.KeyPauseMaintenance, false); break;
+                case "nvvrr": nvVrrWindowedOn = false; Settings.Save("NvVrrWindowed", false); break;
+                case "intelend": intelEnduranceOn = false; Settings.Save(PolicyCatalog.KeyIntelEndurance, false); break;
+                case "oemperf": laptopPerfOn = false; Settings.Save(PolicyCatalog.KeyLaptopPerf, false); break;
                 case "amdalag": amdAntiLag = false; Settings.Save("AmdAntiLag", false); break;
                 case "amdafmf": amdAfmf = false; Settings.Save("AmdAfmf", false); break;
-                case "solo": displaySoloOn = false; Settings.Save(PolicyCatalog.KeyDisplaySolo, false); break;
                 case "intelll":
                     intelLowLatencyOn = false;
                     InvalidateIntelGraphicsWork();
@@ -181,9 +203,13 @@ namespace PaviseApp
                 case "cpuidle": return PolicyCatalog.KeyDisableCpuIdle;
                 case "standby": return PolicyCatalog.KeyStandbyCleaner;
                 case "awake": return PolicyCatalog.KeyAwake;
+                case "audiolat": return PolicyCatalog.KeyAudioLowLat;
+                case "gpuclock": return PolicyCatalog.KeyGpuClockLock;
+                case "maint": return PolicyCatalog.KeyPauseMaintenance;
+                case "intelend": return PolicyCatalog.KeyIntelEndurance;
+                case "oemperf": return PolicyCatalog.KeyLaptopPerf;
                 case "amdalag": return PolicyCatalog.KeyAmdAntiLag;
                 case "amdafmf": return PolicyCatalog.KeyAmdAfmf;
-                case "solo": return PolicyCatalog.KeyDisplaySolo;
                 case "intelll": return PolicyCatalog.KeyIntelLowLatency;
                 default: return null;
             }
@@ -209,7 +235,7 @@ namespace PaviseApp
                         break;
                     }
             if (cleared)
-                Logger.Log(Lang.T("log.gamemodeenv.12") + snap.ProfileName + Lang.T("log.gamemodeenv.13") + label
+                Logger.Warn(Lang.T("log.gamemodeenv.12") + snap.ProfileName + Lang.T("log.gamemodeenv.13") + label
                     + Lang.T("log.gamemodeenv.14"));
         }
 
@@ -233,29 +259,71 @@ namespace PaviseApp
             bool pPauseDl = sp != null ? sp.PauseDownloads : pauseDlOn;
             bool pWlan = sp != null ? sp.WlanGuard : wlanGuardOn;
             bool pWu = sp != null ? sp.PauseUpdate : pauseUpdateOn;
+            bool pMaint = sp != null ? sp.PauseMaintenance : pauseMaintOn;
             bool pAwake = sp != null ? sp.Awake : awakeOn;
             bool pPlan = sp != null ? sp.PowerPlanOn : planSwitch;
             bool pAggr = sp != null ? sp.Aggressive : aggressiveOn;
             bool pAmdAlag = sp != null ? sp.AmdAntiLag : amdAntiLag;
             bool pAmdAfmf = sp != null ? sp.AmdAfmf : amdAfmf;
-            bool competitive = mode == PerformancePreset.Competitive;
+            bool competitive = mode == PerformancePreset.Competitive
+                || mode == PerformancePreset.Extreme;
             bool custom = mode == PerformancePreset.Custom;
             bool handheld = IsHandheld(mode);
+            bool extreme = mode == PerformancePreset.Extreme;
             bool usePauseDl = custom ? pPauseDl : (competitive || handheld);
             bool slowReady = slowEnvAtTicks == 0 || DateTime.UtcNow.Ticks >= slowEnvAtTicks;
             usePauseDl = usePauseDl && slowReady;
             bool usePlan = ResolvePowerPlanEnabled(mode, pPlan);
             SuppressionCore.GpuDemoteEnabled = sp != null ? sp.GpuDemote : gpuDemoteOn;
+            // 极限专属四项 只由档位驱动 没有全局开关也没有逐游戏覆盖
+            WsTrim.Enabled = extreme && ExtremeMode.ForceItem(PolicyCatalog.KeyWsTrim);
             doActive = EnvStep("do", usePauseDl, doActive, DoTweak.Activate, DoTweak.Restore);
             wlanActive = EnvStep("wlanscan", pWlan, wlanActive, WlanGuard.Activate, WlanGuard.Restore);
             wuActive = EnvStep("wu", pWu && slowReady, wuActive, UpdatePause.Activate, UpdatePause.Restore);
+            // 自动维护挑空闲判定起跑 挂机和过场都算空闲 对局期先关掉 退局写回
+            maintActive = EnvStep("maint", pMaint && slowReady, maintActive,
+                MaintenancePause.Activate, MaintenancePause.Restore);
             ApplyOptionalServices(slowReady);
             pqosActive = EnvStep("pqos", true, pqosActive, PresenceQos.Activate, PresenceQos.Restore);
             awakeActive = EnvStep("awake", pAwake, awakeActive, DisplayAwake.Activate, DisplayAwake.Restore);
-            bool pSolo = sp != null ? sp.DisplaySolo : displaySoloOn;
-            soloActive = EnvStep("solo", pSolo, soloActive, DisplaySolo.Activate, DisplaySolo.Restore);
+            bool pAudioLat = extreme && ExtremeMode.ForceItem(PolicyCatalog.KeyAudioLowLat);
+            // 默认设备切走后旧流钉不住新引擎 当成没生效重开 关的方向不查漂移直接还原
+            bool audioApplied = audioLatActive;
+            if (pAudioLat && audioLatActive && AudioLowLatency.DeviceDrifted) audioApplied = false;
+            audioLatActive = EnvStep("audiolat", pAudioLat, audioApplied,
+                AudioLowLatency.Activate, AudioLowLatency.Restore);
+            dwmBoostActive = EnvStep("dwmboost",
+                extreme && ExtremeMode.ForceGlobal("dwmboost"), dwmBoostActive,
+                DwmBoost.Activate, DwmBoost.Restore);
+            // RSS 引导要跑 PowerShell 走慢速档 网卡不符合条件时成功但不留账
+            rssSteerActive = EnvStep("rsssteer",
+                extreme && ExtremeMode.ForceGlobal("rsssteer")
+                    && slowReady && RssSteer.Supported(),
+                rssSteerActive, RssSteer.Activate, RssSteer.Restore);
             rsrActive = EnvStep("rsr", rsrOn, rsrActive, AdlxTweaks.ActivateRsr, AdlxTweaks.RestoreRsr);
-            gpwActive = EnvStep("gpupower", gpuPowerMaxOn, gpwActive, GpuPowerMax.Activate, GpuPowerMax.Restore);
+            // 极限强制路径先过资格门 不支持功耗墙的显卡不硬试
+            //   用户手开路径保持原样 显式开启后失败熔断是应得的反馈
+            gpwActive = EnvStep("gpupower",
+                gpuPowerMaxOn || (extreme && ExtremeMode.ForceGlobal("gpupower")
+                    && GpuPowerMax.SupportedCached()),
+                gpwActive, GpuPowerMax.Activate, GpuPowerMax.Restore);
+            // 显卡核心频率锁定 电竞和极限档在台式机上锁定开启 其余档位按用户配置 逐游戏可覆盖
+            gpuClockActive = EnvStep("gpuclock",
+                (EffGpuClockLock || GpuClockLock.ForcedByTier(mode, Native.HasSystemBattery()))
+                    && GpuClockLock.SupportedCached(),
+                gpuClockActive, GpuClockLock.Activate, GpuClockLock.Restore);
+            // NVIDIA 窗口化 G-SYNC 只在用户已开 G-SYNC 且只给全屏时补 不由档位强制
+            nvVrrActive = EnvStep("nvvrr", nvVrrWindowedOn && NvApi.Available,
+                nvVrrActive, NvVrrWindowed.Activate, NvVrrWindowed.Restore);
+            // Endurance Gaming 只在有电池的 Intel 显卡机器上有东西可关 接电源时它本来就不起作用
+            intelEndActive = EnvStep("intelend",
+                EffIntelEnduranceOff && Native.HasSystemBattery() && IntelGraphicsTweaks.HasAvailable,
+                intelEndActive, IntelEndurance.Activate, IntelEndurance.Restore);
+            // 厂商性能档 电竞和极限档在笔记本上锁定开启 掌机不动 其余档位按用户配置
+            oemPerfActive = EnvStep("oemperf",
+                (EffLaptopPerf || LaptopPerfMode.ForcedByTier(mode, Native.HasSystemBattery()))
+                    && LaptopPerfMode.SupportedCached(),
+                oemPerfActive, LaptopPerfMode.Activate, LaptopPerfMode.Restore);
             amdAlagActive = EnvStep("amdalag", pAmdAlag && AdlxTweaks.AntiLagSupported(),
                 amdAlagActive, AdlxTweaks.ActivateAntiLag, RestoreAmdAntiLagEnv);
             amdAfmfActive = EnvStep("amdafmf", pAmdAfmf && AdlxTweaks.AfmfSupported(), amdAfmfActive,
@@ -267,7 +335,7 @@ namespace PaviseApp
                 || (adaptiveEscalated && mode == PerformancePreset.Standard);
             // 掌机档也要进这个键 否则从专注切到掌机时 aggressive 两边都是真 会被当成没变过而不重写
             int powerKey = (aggressivePower ? 1 : 0) | (usePlan ? 2 : 0)
-                | (handheld ? 8 : 0);
+                | (handheld ? 8 : 0) | (extreme ? 16 : 0);
             long nowTicks = DateTime.UtcNow.Ticks;
             if (usePlan && !stopping)
             {
@@ -279,6 +347,7 @@ namespace PaviseApp
                         int keyShot = powerKey;
                         bool aggrShot = aggressivePower;
                         bool handheldShot = handheld;
+                        bool extremeShot = extreme;
                         int genShot = Volatile.Read(ref powerSessionGen);
                         planActive = true;
                         lastPowerPolicyKey = keyShot;
@@ -289,7 +358,7 @@ namespace PaviseApp
                             queued = ThreadPool.QueueUserWorkItem(delegate
                             {
                                 RunPowerPlanApply(genShot,
-                                    delegate { return PowerPlan.Enforce(aggrShot, handheldShot); });
+                                    delegate { return PowerPlan.Enforce(aggrShot, handheldShot, extremeShot); });
                             });
                         }
                         catch { }
@@ -318,7 +387,7 @@ namespace PaviseApp
                 }
             }
 
-            ApplyCpuIdlePolicy(usePlan && slowReady);
+            ApplyCpuIdlePolicy(slowReady);
 
             if (!timerRaised)
             {
@@ -327,7 +396,18 @@ namespace PaviseApp
                 {
                     RunIrqIsolatedMutation(delegate
                     {
-                        try { Native.timeBeginPeriod(1); } catch { }
+                        // 全局分辨率项开着时请求才对整机生效 这时用 0.5ms 而不是 1ms
+                        //   实测负载下等待抖动从 1 到 2ms 三态收敛到 1.5ms 附近
+                        //   旧系统那条路 1ms 已是全局副作用 不再加码
+                        bool half = false;
+                        if (globalRes)
+                        {
+                            uint actual;
+                            try { half = Native.NtSetTimerResolution(HalfMsUnits, true, out actual) == 0; }
+                            catch { half = false; }
+                        }
+                        if (!half) try { Native.timeBeginPeriod(1); } catch { }
+                        timerHalfMs = half;
                         if (globalRes && Native.TimerExemptWanted)
                             try { Native.ApplyHighQoS(new IntPtr(-1), true); } catch { }
                     });
@@ -347,7 +427,6 @@ namespace PaviseApp
         private int optionalServiceGeneration;
         private bool amdAlagActive;
         private bool amdAfmfActive;
-        private bool soloActive;
         private bool rsrActive;
 
         // 和冻结的调优快照不一样 这个可还原的服务开关必须响应
@@ -491,7 +570,7 @@ namespace PaviseApp
                 Settings.Save("PowerPlanOn", false);
                 SaveCounter(PowerFailStreakKey, 0);
                 ClearActiveSessionOverride(PolicyCatalog.KeyPowerPlan, Lang.T("t.gamemodeenv.17"));
-                Logger.Log(Lang.T("log.gamemodeenv.18") + persistedStreak
+                Logger.Warn(Lang.T("log.gamemodeenv.18") + persistedStreak
                     + Lang.T("log.gamemodeenv.19"));
                 return;
             }
@@ -554,9 +633,12 @@ namespace PaviseApp
             else if (key == NvDrsTweaks.KeySmooth) { nvSmoothMotion = false; Settings.Save("NvSmoothMotion", false); label = Lang.T("t.gamemodeenv.27"); policyKey = PolicyCatalog.KeyNvSmoothMotion; }
             else if (key == NvDrsTweaks.KeyShaderCache) { nvShaderCacheMax = false; Settings.Save("NvShaderCache", false); label = Lang.T("set.nvshader"); policyKey = PolicyCatalog.KeyNvShaderCache; }
             else { nvLowLatMode = "off"; Settings.SaveStr("NvLowLat", "off"); label = Lang.T("set.nvll"); policyKey = PolicyCatalog.KeyNvLowLat; }
-            Logger.Log(" " + label + Lang.T("log.gamemodeenv.10") + EnvFuseAttempts
+            Logger.Warn(" " + label + Lang.T("log.gamemodeenv.10") + EnvFuseAttempts
                 + Lang.T("log.gamemodeenv.28"));
             ClearActiveSessionOverride(policyKey, label);
+            // 熔断压过模式 极限覆盖走快照层不看被翻关的全局值 必须同步记退出集
+            //   否则下一局又被强制回来 变成每几局翻一次的循环重试
+            ExtremeMode.SetOptedOut(policyKey, true);
         }
 
         private int envResidueGeneration = -1;
@@ -567,17 +649,20 @@ namespace PaviseApp
         //   结果与逐轮实读完全一致 内存活动标志与字段门控仍然实时求值
         private bool EnvActive()
         {
-            if (doActive || wlanActive || wuActive || optionalServicesActive
-                || pqosActive || awakeActive || gpwActive || planActive || timerRaised
-                || rsrActive || amdAlagActive || amdAfmfActive || soloActive
+            if (doActive || wlanActive || wuActive || maintActive || optionalServicesActive
+                || pqosActive || awakeActive || audioLatActive || dwmBoostActive || rssSteerActive
+                || gpwActive || gpuClockActive || nvVrrActive || intelEndActive || oemPerfActive
+                || planActive || timerRaised
+                || rsrActive || amdAlagActive || amdAfmfActive
                 || IntelGraphicsTweaks.Active
                 || (standbyCleaner != null && standbyCleaner.HasInFlight)) return true;
             int generation = Settings.MutationGeneration;
             if (generation != envResidueGeneration)
             {
-                envResidueOther = DoTweak.HasResidue || UpdatePause.HasResidue
+                envResidueOther = DoTweak.HasResidue || UpdatePause.HasResidue || MaintenancePause.HasResidue
                     || OptionalServicePause.HasResidue || PresenceQos.HasResidue
-                    || GpuPowerMax.HasResidue() || AdlxTweaks.HasResidue()
+                    || GpuPowerMax.HasResidue() || GpuClockLock.HasResidue || AdlxTweaks.HasResidue()
+                    || NvVrrWindowed.HasResidue || IntelEndurance.HasResidue || LaptopPerfMode.HasResidue
                     || PowerPlan.HasResidue || IntelGraphicsTweaks.HasResidue
                     || DisplaySolo.HasResidue();
                 envResidueNvList = NvDrsTweaks.HasGameResidue;
@@ -633,14 +718,22 @@ namespace PaviseApp
             if (doActive || DoTweak.HasResidue) parts.Add(Lang.T("t.gamemodeenv.31"));
             if (wlanActive) parts.Add(Lang.T("t.gamemodeenv.2"));
             if (wuActive || UpdatePause.HasResidue) parts.Add(Lang.T("t.gamemodeenv.32"));
+            if (maintActive || MaintenancePause.HasResidue) parts.Add(Lang.T("gm.pausemaint"));
             if (optionalServicesActive || OptionalServicePause.HasResidue) parts.Add(Lang.T("gm.pausesvc"));
             if (cpuIdleActive || PowerPlan.CpuIdleHasResidue) parts.Add(Lang.T("gm.disablecpuidle"));
             if (standbyCleaner != null && standbyCleaner.HasInFlight) parts.Add(Lang.T("gm.standbycleaner"));
             if (IntelGraphicsTweaks.Active || IntelGraphicsTweaks.HasResidue) parts.Add(Lang.T("set.intel.lowlatency"));
             if (pqosActive || PresenceQos.HasResidue) parts.Add(Lang.T("t.gamemodeenv.33"));
             if (awakeActive) parts.Add(Lang.T("t.gamemodeenv.34"));
+            if (audioLatActive) parts.Add(Lang.T("gm.audiolat"));
+            if (dwmBoostActive) parts.Add(Lang.T("gm.dwmboost"));
+            if (rssSteerActive || RssSteer.HasResidue) parts.Add(Lang.T("gm.rsssteer"));
             if (gpwActive || GpuPowerMax.HasResidue()) parts.Add(EnvLabel("gpupower"));
-            if (soloActive || DisplaySolo.HasResidue()) parts.Add(EnvLabel("solo"));
+            if (gpuClockActive || GpuClockLock.HasResidue) parts.Add(EnvLabel("gpuclock"));
+            if (nvVrrActive || NvVrrWindowed.HasResidue) parts.Add(EnvLabel("nvvrr"));
+            if (intelEndActive || IntelEndurance.HasResidue) parts.Add(EnvLabel("intelend"));
+            if (oemPerfActive || LaptopPerfMode.HasResidue) parts.Add(EnvLabel("oemperf"));
+            if (DisplaySolo.HasResidue()) parts.Add(Lang.T("gm.solo"));
             if (rsrActive || amdAlagActive || amdAfmfActive || AdlxTweaks.HasResidue()) parts.Add("AMD");
             if (planActive) parts.Add(Lang.T("t.gamemodeenv.35"));
             if (NvGameResidueNeedsRestore) parts.Add("NVIDIA Profile");
@@ -694,12 +787,19 @@ namespace PaviseApp
             if (DoTweak.Restore()) doActive = false; else ok = false;
             if (WlanGuard.Restore()) wlanActive = false; else ok = false;
             if (UpdatePause.Restore()) wuActive = false; else ok = false;
+            if (MaintenancePause.Restore()) maintActive = false; else ok = false;
             if (OptionalServicePause.Restore()) optionalServicesActive = false; else ok = false;
             if (PresenceQos.Restore()) pqosActive = false; else ok = false;
             if (DisplayAwake.Restore()) awakeActive = false; else ok = false;
-            if (DisplaySolo.Restore()) soloActive = false; else ok = false;
+            if (AudioLowLatency.Restore()) audioLatActive = false; else ok = false;
+            if (DwmBoost.Restore()) dwmBoostActive = false; else ok = false;
+            if (RssSteer.Restore()) rssSteerActive = false; else ok = false;
             if (AdlxTweaks.RestoreRsr()) rsrActive = false; else ok = false;
             if (GpuPowerMax.Restore()) gpwActive = false; else ok = false;
+            if (GpuClockLock.Restore()) gpuClockActive = false; else ok = false;
+            if (NvVrrWindowed.Restore()) nvVrrActive = false; else ok = false;
+            if (IntelEndurance.Restore()) intelEndActive = false; else ok = false;
+            if (LaptopPerfMode.Restore()) oemPerfActive = false; else ok = false;
             if (RestoreAmdAntiLagEnv()) amdAlagActive = false; else ok = false;
             if (AdlxTweaks.RestoreAfmf()) amdAfmfActive = false; else ok = false;
             // 已下架的控制项 在启动还原失败之后照样会留下会话改动记录
@@ -729,7 +829,14 @@ namespace PaviseApp
             {
                 try
                 {
-                    if (Native.timeEndPeriod(1) == 0) timerRaised = false;
+                    if (timerHalfMs)
+                    {
+                        uint actual;
+                        if (Native.NtSetTimerResolution(HalfMsUnits, false, out actual) == 0)
+                        { timerRaised = false; timerHalfMs = false; }
+                        else ok = false;
+                    }
+                    else if (Native.timeEndPeriod(1) == 0) timerRaised = false;
                     else ok = false;
                 }
                 catch { ok = false; }

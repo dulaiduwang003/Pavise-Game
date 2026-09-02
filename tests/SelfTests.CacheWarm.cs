@@ -29,6 +29,7 @@ namespace PaviseApp
                 CacheWarmChunkLoopHonorsAbort,
                 CacheWarmChunkLoopStopsWhenMemoryFloorBreached,
                 CacheWarmChunkLoopStopsWhenPowerUnplugged,
+                CacheWarmForcedPathSkipsNvme,
                 CacheWarmChunkLoopToleratesReadFailure
             };
             cacheWarmChecks = 0;
@@ -122,6 +123,17 @@ namespace PaviseApp
             CacheWarm.SeekPenaltyForTest = delegate { return (bool?)null; };
             result = CacheWarm.Run("C:\\Games\\Demo", null);
             WarmCheck(!result.Ran && result.SkipKey == "log.cachewarm.2", "unknown disk must skip the match");
+        }
+
+        private static void CacheWarmForcedPathSkipsNvme()
+        {
+            WarmDefaults();
+            CacheWarm.NvmeForTest = delegate { return (bool?)true; };
+            CacheWarm.WarmResult result = CacheWarm.Run("C:\\Games\\Demo", null, true);
+            WarmCheck(!result.Ran && result.SkipKey == "log.cachewarm.10", "the forced path must skip NVMe");
+            CacheWarm.NvmeForTest = delegate { return (bool?)null; };
+            result = CacheWarm.Run("C:\\Games\\Demo", null, true);
+            WarmCheck(!result.Ran && result.SkipKey == "log.cachewarm.10", "an unknown bus is skipped on the forced path");
         }
 
         private static void CacheWarmSkipsWhenNoFiles()

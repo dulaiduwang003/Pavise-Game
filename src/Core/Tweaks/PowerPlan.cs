@@ -22,7 +22,6 @@ namespace PaviseApp
         private const string DefaultPlanKey = "DefaultPlanGuid";
         private const string ManagedPlanKey = "PgPlanGuid";
         public const string ManagedChoice = "managed";
-        public const string PlanTag = "PG";
         private const string PlanNote = "由 Pavise 创建并托管 游戏结束自动切回原方案 删掉它 Pavise 会重建";
 
         private static readonly Guid Ultimate = new Guid("e9a42b02-d5df-448d-aa00-03f14749eb61");
@@ -59,7 +58,8 @@ namespace PaviseApp
 
         public static string ManagedPlanTitle
         {
-            get { return PlanTag + Lang.T("t.powerplan.2") + MachineSignature(); }
+            // 方案名是用户在电源选项里看到的 已存在的托管方案按存下的 GUID 认回后会被改成这个名
+            get { return Lang.T("t.powerplan.2") + MachineSignature(); }
         }
 
         private static readonly object lk = new object();
@@ -74,9 +74,9 @@ namespace PaviseApp
 
         // 写进方案的那套值有三种 温和 激进 激进但掌机让功耗
         //   掌机那种在 aggressive 上也是真 所以不能再用 0/1 两态记 否则切档时会被当成没变
-        private static int TuneCode(bool aggressive, bool handheld)
+        private static int TuneCode(bool aggressive, bool handheld, bool extreme)
         {
-            return !aggressive ? 0 : handheld ? 2 : 1;
+            return (!aggressive ? 0 : handheld ? 2 : 1) | (extreme ? 4 : 0);
         }
 
         public static string CurrentPlanLabel()
@@ -356,7 +356,7 @@ namespace PaviseApp
             catch { g = Guid.Empty; return false; }
         }
 
-        private static bool ActivateInner(bool aggressive, bool handheld)
+        private static bool ActivateInner(bool aggressive, bool handheld, bool extreme)
         {
             if (active) return true;
             string pending;
@@ -375,13 +375,13 @@ namespace PaviseApp
             tgt = ResolveTarget();
 #endif
             if (tgt == Guid.Empty) return false;
-            if (targetOwned && tuneState != TuneCode(aggressive, handheld))
+            if (targetOwned && tuneState != TuneCode(aggressive, handheld, extreme))
             {
 #if PAVISE_SELFTEST || PAVISE_PERFLAB
                 return false; // Activation tests must not tune native schemes.
 #else
-                if (!TuneTarget(tgt, aggressive, handheld)) return false;
-                tuneState = TuneCode(aggressive, handheld);
+                if (!TuneTarget(tgt, aggressive, handheld, extreme)) return false;
+                tuneState = TuneCode(aggressive, handheld, extreme);
 #endif
             }
             Guid? cur = RestoreCurrentPlan();
@@ -419,17 +419,17 @@ namespace PaviseApp
             return false;
         }
 
-        public static bool Enforce(bool aggressive, bool handheld)
+        public static bool Enforce(bool aggressive, bool handheld, bool extreme)
         {
             lock (lk)
             {
-                if (!active) return ActivateInner(aggressive, handheld);
+                if (!active) return ActivateInner(aggressive, handheld, extreme);
                 Guid tgt = ResolveTarget();
                 if (tgt == Guid.Empty) return false;
-                if (targetOwned && tuneState != TuneCode(aggressive, handheld))
+                if (targetOwned && tuneState != TuneCode(aggressive, handheld, extreme))
                 {
-                    if (!TuneTarget(tgt, aggressive, handheld)) return false;
-                    tuneState = TuneCode(aggressive, handheld);
+                    if (!TuneTarget(tgt, aggressive, handheld, extreme)) return false;
+                    tuneState = TuneCode(aggressive, handheld, extreme);
                     Set(tgt);
                 }
                 Guid? cur = Current();
@@ -522,7 +522,7 @@ namespace PaviseApp
                     if (usable.HasValue && !usable.Value)
                     {
                         ClearRestoredPlan(restoreTarget);
-                        Logger.Log(Lang.T("log.powerplan.30"));
+                        Logger.Warn(Lang.T("log.powerplan.30"));
                     }
                     else Logger.Log(Lang.T("log.powerplan.31"));
                     return false;
@@ -656,7 +656,7 @@ namespace PaviseApp
 
         internal static bool RestorePlanForTest(bool fromCrash) { return RestorePlanCore(!fromCrash); }
         internal static bool? ClassifyRestorePlanForTest(Guid scheme) { return IsOurActivePlan(scheme); }
-        internal static bool ActivatePlanForTest() { lock (lk) return ActivateInner(false, false); }
+        internal static bool ActivatePlanForTest() { lock (lk) return ActivateInner(false, false, false); }
 
         internal static void ResetPlanRestoreForTest()
         {

@@ -128,7 +128,7 @@ namespace PaviseApp
             {
                 r = new UpdateResult();
                 r.Error = Lang.T("t.updatechecker.4");
-                Logger.Log(Lang.T("log.updatechecker.5") + sources.Length + Lang.T("log.updatechecker.6"));
+                Logger.Warn(Lang.T("log.updatechecker.5") + sources.Length + Lang.T("log.updatechecker.6"));
                 return r;
             }
             r.Newer = IsNewer(r.Latest, App.Version);

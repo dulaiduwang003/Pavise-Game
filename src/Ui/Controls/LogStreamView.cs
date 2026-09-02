@@ -107,7 +107,7 @@ namespace PaviseApp
                 entry.Time = stamp.ToString("HH:mm:ss");
                 message = line.Substring(19).Trim();
             }
-            entry.Severity = Classify(message);
+            entry.Severity = ClassifyLine(message, out message);
             int split = message.IndexOf(' ');
             if (split > 0 && split <= 16)
             {
@@ -121,6 +121,24 @@ namespace PaviseApp
             }
             if (entry.Message.Length == 0) entry.Message = message;
             return entry;
+        }
+
+        // 带 Logger 分级标记的行按标记走 标记本身不进正文 其余行仍按下面的词表判
+        //   环境限制类的日志文案里常带"无法 失败" 这些词会被判成异常 那些调用点用 Logger.Warn 写
+        internal static LogEventSeverity ClassifyLine(string text, out string body)
+        {
+            body = text ?? "";
+            if (body.StartsWith(Logger.WarnTag, StringComparison.Ordinal))
+            {
+                body = body.Substring(Logger.WarnTag.Length).Trim();
+                return LogEventSeverity.Warning;
+            }
+            if (body.StartsWith(Logger.FailTag, StringComparison.Ordinal))
+            {
+                body = body.Substring(Logger.FailTag.Length).Trim();
+                return LogEventSeverity.Error;
+            }
+            return Classify(body);
         }
 
         // 这里的词表就是分级依据 写日志文案时得顺带想一下会被判成什么色

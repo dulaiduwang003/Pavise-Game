@@ -60,6 +60,7 @@ namespace PaviseApp
         internal static string ModeName(PerformancePreset value)
         {
             return value == PerformancePreset.Competitive ? Lang.T("preset.competitive")
+                : value == PerformancePreset.Extreme ? Lang.T("preset.extreme")
                 : value == PerformancePreset.Handheld ? Lang.T("preset.handheld")
                 : value == PerformancePreset.Custom ? Lang.T("preset.custom") : Lang.T("preset.standard");
         }
@@ -162,6 +163,7 @@ namespace PaviseApp
         private string DetailKey(PerformancePreset value)
         {
             if (value == PerformancePreset.Competitive) return Lang.T("mode.pick.competitive");
+            if (value == PerformancePreset.Extreme) return Lang.T("mode.pick.extreme");
             if (value == PerformancePreset.Handheld) return Lang.T("mode.pick.handheld");
             if (value == PerformancePreset.Custom) return Lang.T("mode.pick.custom");
             return Lang.T("mode.pick.standard");
@@ -194,12 +196,9 @@ namespace PaviseApp
             source.SetBounds(Theme.S(18), Theme.S(38), Theme.S(356), Theme.S(19));
             Controls.AddRange(new Control[] { title, source });
 
-            choices = new[] {
-                new ModeChoice(PerformancePreset.Standard),
-                new ModeChoice(PerformancePreset.Competitive),
-                new ModeChoice(PerformancePreset.Handheld),
-                new ModeChoice(PerformancePreset.Custom)
-            };
+            PerformancePreset[] order = PresetValue.VisibleOrder();
+            choices = new ModeChoice[order.Length];
+            for (int i = 0; i < order.Length; i++) choices[i] = new ModeChoice(order[i]);
             for (int i = 0; i < choices.Length; i++)
             {
                 choices[i].SetBounds(Theme.S(14), Theme.S(66 + i * 70), Theme.S(368), Theme.S(62));

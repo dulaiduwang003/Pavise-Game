@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 只在本局内改处理器空闲状态 绝不动用户自选的电源方案
+// 文件用途 只在本局内改处理器空闲状态 写当前活动方案的 AC 值 收据记账退局还原
 using System;
 using System.Runtime.InteropServices;
 
@@ -30,6 +30,43 @@ namespace PaviseApp
 
         private static CpuIdleReceipt cpuIdleReceipt;
 
+        // Ryzen 的睿频靠闲核进 CC6 让出功耗和热余量 不让空闲等于自己压自己的单核睿频
+        //   AMD 处理器不提供 已有收据的机器照常按收据还原
+        private static bool? cpuIdleVendorBlocked;
+
+        internal static bool CpuIdleVendorBlocked
+        {
+            get
+            {
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+                if (CpuIdleAmdForTest.HasValue) return CpuIdleAmdForTest.Value;
+#endif
+                // 每轮环境编排都会问 处理器不会中途换 只读一次注册表
+                bool? cached = cpuIdleVendorBlocked;
+                if (cached.HasValue) return cached.Value;
+                bool blocked = CpuIdleReadVendorBlocked();
+                cpuIdleVendorBlocked = blocked;
+                return blocked;
+            }
+        }
+
+        private static bool CpuIdleReadVendorBlocked()
+        {
+            try
+            {
+                using (var k = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
+                    @"HARDWARE\DESCRIPTION\System\CentralProcessor\0"))
+                {
+                    if (k == null) return false;
+                    string name = (k.GetValue("ProcessorNameString") as string) ?? "";
+                    string vendor = (k.GetValue("VendorIdentifier") as string) ?? "";
+                    return name.IndexOf("AMD", StringComparison.OrdinalIgnoreCase) >= 0
+                        || vendor.IndexOf("AuthenticAMD", StringComparison.OrdinalIgnoreCase) >= 0;
+                }
+            }
+            catch { return false; }
+        }
+
         internal static bool CpuIdleEligible
         {
             get
@@ -38,6 +75,7 @@ namespace PaviseApp
                 {
                     try
                     {
+                        if (CpuIdleVendorBlocked) return false;
                         Guid scheme;
                         uint value;
                         return TryGetCpuIdleTarget(null, out scheme)
@@ -51,6 +89,27 @@ namespace PaviseApp
         internal static bool CpuIdleActive
         {
             get { lock (lk) return cpuIdleReceipt != null && cpuIdleReceipt.Applied; }
+        }
+
+        // 方案被切走时旧方案上还挂着我们的值 调用方把它当未生效处理
+        //   下一轮激活会在所有权校验里发现方案不符 先按收据还原旧方案 再钉新方案
+        internal static bool CpuIdleSchemeDrifted
+        {
+            get
+            {
+                lock (lk)
+                {
+                    var receipt = cpuIdleReceipt;
+                    if (receipt == null || !receipt.Applied) return false;
+                    try
+                    {
+                        Guid? current = CpuIdleCurrentScheme();
+                        return current.HasValue && current.Value != Guid.Empty
+                            && current.Value != receipt.Scheme;
+                    }
+                    catch { return false; }
+                }
+            }
         }
 
         internal static bool CpuIdleHasResidue
@@ -117,7 +176,6 @@ namespace PaviseApp
                     Guid checkedScheme;
                     if (!TryGetCpuIdleTarget(mayContinue, out checkedScheme) || checkedScheme != scheme
                         || !CpuIdleReadAc(scheme, out value) || value != 0
-                        || !CpuIdleMayContinue(mayContinue) || !CpuIdleOnAc()
                         || !CpuIdleMayContinue(mayContinue)) return FailCpuIdleApply();
                     receipt.ApplyAttempted = true;
                     if (!CpuIdleWriteAc(scheme, 1)) return FailCpuIdleApply();
@@ -267,20 +325,16 @@ namespace PaviseApp
                 && string.Equals(actual, text, StringComparison.Ordinal);
         }
 
+        // 目标就是当前活动方案 不再要求 Pavise 托管方案 收据按方案 GUID 记账
+        //   对局中方案被切走时 所有权校验发现方案不符 先按收据还原旧方案 下轮再钉新方案
+        //   电源来源不设门 开关是用户的选择 电池上照样生效 两侧值一起写
         private static bool TryGetCpuIdleTarget(Func<bool> mayContinue, out Guid scheme)
         {
             scheme = Guid.Empty;
             if (!CpuIdleMayContinue(mayContinue)) return false;
-            string choice = CpuIdleChoice();
-            if (!CpuIdleMayContinue(mayContinue) || choice == null
-                || (choice.Length != 0 && choice != ManagedChoice)) return false;
-            Guid managed = CpuIdleManagedScheme();
-            if (!CpuIdleMayContinue(mayContinue) || managed == Guid.Empty) return false;
-            bool onAc = CpuIdleOnAc();
-            if (!CpuIdleMayContinue(mayContinue) || !onAc) return false;
             Guid? current = CpuIdleCurrentScheme();
-            if (!CpuIdleMayContinue(mayContinue) || !current.HasValue || current.Value != managed) return false;
-            scheme = managed;
+            if (!CpuIdleMayContinue(mayContinue) || !current.HasValue || current.Value == Guid.Empty) return false;
+            scheme = current.Value;
             return true;
         }
 
@@ -297,7 +351,7 @@ namespace PaviseApp
                 return false;
             }
             if (!CpuIdleMayContinue(mayContinue)) return false;
-            if (requireCurrent && (!CpuIdleOnAc() || !CpuIdleMayContinue(mayContinue))) return false;
+            if (requireCurrent && !CpuIdleMayContinue(mayContinue)) return false;
             // 读值或者查交流供电的时候被阻塞 期间别的程序切了方案
             // 这种情况下不要再去激活一个过期的目标
             current = CpuIdleCurrentScheme();
@@ -338,16 +392,6 @@ namespace PaviseApp
             catch { return false; }
         }
 
-        private static Guid CpuIdleManagedScheme()
-        {
-#if PAVISE_SELFTEST || PAVISE_PERFLAB
-            if (CpuIdleManagedSchemeForTest == null) throw CpuIdleMissingHook();
-            return CpuIdleManagedSchemeForTest();
-#else
-            return ManagedPlanGuid();
-#endif
-        }
-
         private static Guid? CpuIdleCurrentScheme()
         {
 #if PAVISE_SELFTEST || PAVISE_PERFLAB
@@ -358,13 +402,21 @@ namespace PaviseApp
 #endif
         }
 
+        // AC/DC 两侧当一个整体 电池供电时内核读的是 DC 值 只写一侧等于电池上没生效
+        //   复合值 0=两侧都 0  1=两侧都 1  其余含两侧不一致折叠成 2 走既有的外部值分支
+        //   两侧不一致说明有人手改过其中一侧 整对不接管也不归我们撤
         private static bool CpuIdleReadAc(Guid scheme, out uint value)
         {
 #if PAVISE_SELFTEST || PAVISE_PERFLAB
             if (CpuIdleReadAcForTest == null) throw CpuIdleMissingHook();
             return CpuIdleReadAcForTest(scheme, out value);
 #else
-            return ReadAc(scheme, SubProcessor, IdleDisableSet, out value);
+            value = 0;
+            uint ac, dc;
+            if (!ReadAc(scheme, SubProcessor, IdleDisableSet, out ac)
+                || !ReadDc(scheme, SubProcessor, IdleDisableSet, out dc)) return false;
+            value = ac == dc && ac <= 1 ? ac : 2;
+            return true;
 #endif
         }
 
@@ -374,7 +426,8 @@ namespace PaviseApp
             if (CpuIdleWriteAcForTest == null) throw CpuIdleMissingHook();
             return CpuIdleWriteAcForTest(scheme, value);
 #else
-            return WriteAc(scheme, SubProcessor, IdleDisableSet, value);
+            return WriteAc(scheme, SubProcessor, IdleDisableSet, value)
+                && WriteDc(scheme, SubProcessor, IdleDisableSet, value);
 #endif
         }
 
@@ -386,27 +439,6 @@ namespace PaviseApp
 #else
             return Set(scheme);
 #endif
-        }
-
-        private static bool CpuIdleOnAc()
-        {
-#if PAVISE_SELFTEST || PAVISE_PERFLAB
-            if (CpuIdleOnAcForTest == null) throw CpuIdleMissingHook();
-            return CpuIdleOnAcForTest();
-#else
-            CpuIdlePowerStatus status;
-            return CpuIdleGetSystemPowerStatus(out status) && status.AcLineStatus == 1;
-#endif
-        }
-
-        private static string CpuIdleChoice()
-        {
-#if PAVISE_SELFTEST || PAVISE_PERFLAB
-            if (CpuIdleChoiceForTest != null) return CpuIdleChoiceForTest();
-#endif
-            string choice;
-            if (!Settings.TryLoadStr(ChoiceKey, out choice)) throw new InvalidOperationException("Cannot read the power plan choice.");
-            return choice;
         }
 
         private static bool CpuIdleReadLedger(out string text)
@@ -439,13 +471,11 @@ namespace PaviseApp
 #if PAVISE_SELFTEST || PAVISE_PERFLAB
         internal delegate bool CpuIdleReadAcDelegate(Guid scheme, out uint value);
         internal delegate bool CpuIdleReadLedgerDelegate(out string text);
-        internal static Func<Guid> CpuIdleManagedSchemeForTest;
+        internal static bool? CpuIdleAmdForTest;
         internal static Func<Guid?> CpuIdleCurrentSchemeForTest;
         internal static CpuIdleReadAcDelegate CpuIdleReadAcForTest;
         internal static Func<Guid, uint, bool> CpuIdleWriteAcForTest;
         internal static Func<Guid, bool> CpuIdleSetActiveForTest;
-        internal static Func<bool> CpuIdleOnAcForTest;
-        internal static Func<string> CpuIdleChoiceForTest;
         internal static CpuIdleReadLedgerDelegate CpuIdleReadLedgerForTest;
         internal static Func<string, bool> CpuIdleWriteLedgerForTest;
 
@@ -459,13 +489,11 @@ namespace PaviseApp
             lock (lk)
             {
                 cpuIdleReceipt = null;
-                CpuIdleManagedSchemeForTest = null;
+                CpuIdleAmdForTest = null;
                 CpuIdleCurrentSchemeForTest = null;
                 CpuIdleReadAcForTest = null;
                 CpuIdleWriteAcForTest = null;
                 CpuIdleSetActiveForTest = null;
-                CpuIdleOnAcForTest = null;
-                CpuIdleChoiceForTest = null;
                 CpuIdleReadLedgerForTest = null;
                 CpuIdleWriteLedgerForTest = null;
             }

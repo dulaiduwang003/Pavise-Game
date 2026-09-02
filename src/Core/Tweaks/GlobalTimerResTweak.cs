@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 全局计时器分辨率实验开关 注册表把按进程隔离改回全局语义 重启生效
+// 文件用途 全局计时器分辨率开关 注册表把按进程隔离改回全局语义 重启生效
 using Microsoft.Win32;
 
 namespace PaviseApp

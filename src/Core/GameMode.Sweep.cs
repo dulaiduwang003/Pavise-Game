@@ -59,9 +59,11 @@ namespace PaviseApp
 
         // 掌机档的后台压制跟专注一样狠 掌机核心少 后台抢一点都更疼 而且压后台本身还省电
         //   掌机跟专注的差别全在功耗侧 不在压制侧 见 IsHandheld 的几个挂点
+        // 极限档的压制口径与电竞逐字节相同 差异全在功能开启广度 别在这里给它加狠
         internal static bool IsAggressive(PerformancePreset mode, bool aggressiveOn)
         {
             return mode == PerformancePreset.Competitive
+                || mode == PerformancePreset.Extreme
                 || mode == PerformancePreset.Handheld
                 || (mode == PerformancePreset.Custom && aggressiveOn);
         }
@@ -91,53 +93,6 @@ namespace PaviseApp
             return SuppressionLevel.Isolated;
         }
 
-        internal static bool BasicBackgroundEligible(int pid, int self, string name, string path,
-            int session, int ownerSession, int foreground, bool userFacingFamily, string windowsRoot,
-            bool gameHostAncestor = false, string activeGameRoot = null, bool aggressive = false,
-            bool familyExempt = true)
-        {
-            // 家族是否保护由调用方按档案和本轮身份确定 不按游戏/客户端名字推断
-            //   开启家族压制仍可能影响依赖进程的响应 所以 UI 默认关闭并提示风险
-            //   渲染本体 待确认候选 白名单和其它档案的保护在调用方先行放行
-            //   下面四条是独立安全边界 不随逐游戏设置取消
-            //   反作弊被压会心跳超时掉线 加速器被压会断流 输入音频外设链被压会卡鼠标和丢声音
-            if (AntiCheatCatalog.IsAntiCheatLikeName(name)) return false;
-            if (NetAcceleratorCatalog.IsAcceleratorLikeName(name)) return false;
-            if (PeripheralCatalog.IsInputChainProcess(name, path)) return false;
-            if (HardwareControlCatalog.IsHardwareControlProcess(name)) return false;
-            if (gameHostAncestor) return false;
-            if (UnderRoot(path, activeGameRoot)) return false;
-            if (pid <= 4 || pid == self || session < 0 || session != ownerSession) return false;
-
-            if (!aggressive && (pid == foreground || userFacingFamily)) return false;
-            if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(path)) return false;
-            if (aggressive) return !SystemProcessCatalog.IsCoreSystemProcess(name, path, windowsRoot);
-            return string.IsNullOrEmpty(windowsRoot) || !path.StartsWith(windowsRoot, StringComparison.OrdinalIgnoreCase);
-        }
-
-        // 语义跟原来那版一样 只是不再为每次比较拼一个前缀字符串出来
-        //   家族豁免开着时这里是 进程数×游戏数 的量级 每次分配都摊在对局的热路径上
-        internal static bool UnderRoot(string path, string root)
-        {
-            if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(root)) return false;
-            int len = root.Length;
-            while (len > 0 && root[len - 1] == '\\') len--;
-            if (len == 0 || path.Length <= len) return false;
-            if (path[len] != '\\') return false;
-            return string.Compare(path, 0, root, 0, len, StringComparison.OrdinalIgnoreCase) == 0;
-        }
-
-        internal static string LibraryRootOf(string path, IList<string> roots)
-        {
-            if (roots == null) return null;
-            foreach (string root in roots)
-            {
-                if (root == null || root.TrimEnd('\\').Length <= 2) continue;
-                if (UnderRoot(path, root)) return root;
-            }
-            return null;
-        }
-
         private void Sweep(ProcessSnapshot all, HashSet<int> gamePids)
         {
 
@@ -155,6 +110,7 @@ namespace PaviseApp
             bool aggressive = IsAggressive(mode, sp != null ? sp.Aggressive : aggressiveOn)
                 || (adaptiveEscalated && mode == PerformancePreset.Standard);
             WhitelistEvaluation whitelist = EvaluateWhitelist(all);
+            rogueTrustedPids = whitelist.Protected;
             int policyEpoch = FamilyPolicyEpoch;
             bool familyExempt = true;
             int rendererPid = 0;
@@ -170,7 +126,7 @@ namespace PaviseApp
                     GameProfile configured = activeDetection.Profile == null
                         ? null : FindProfileLocked(activeDetection.Profile.Id);
                     currentFamilyProfile = configured == null ? null : configured.Clone();
-                    familyExempt = FamilyExemptFor(currentFamilyProfile);
+                    familyExempt = FamilyBoundary.FamilyExemptFor(currentFamilyProfile);
                     if (familyExempt && activeDetection.Profile != null)
                         activeGameRoot = activeDetection.Profile.Root;
                 }
@@ -178,13 +134,13 @@ namespace PaviseApp
                 // 根目录有重叠说不清归属时 一律偏向保护
                 protectedProfiles = new List<GameProfile>();
                 foreach (GameProfile profile in profiles)
-                    if (FamilyExemptFor(profile))
+                    if (FamilyBoundary.FamilyExemptFor(profile))
                     {
                         protectedProfiles.Add(profile.Clone());
-                        if (SafeFamilyDir(profile.Root)) libraryRoots.Add(profile.Root);
+                        if (FamilyBoundary.SafeFamilyDir(profile.Root)) libraryRoots.Add(profile.Root);
                     }
             }
-            HashSet<int> protectedLibraryFamily = CollectProtectedLibraryFamily(
+            HashSet<int> protectedLibraryFamily = FamilyBoundary.CollectProtectedLibraryFamily(
                 protectedProfiles, all, selfPid, selfSession, FamilyEvidence);
             bool haveSession = rendererPid > 0;
             // 名字说的是"家族豁免在这一局生效" 不是"有没有对局" 两者只在开关关着时不同
@@ -199,7 +155,7 @@ namespace PaviseApp
             //   种子里补上 rendererPid 让对局中新生的子进程下一轮扫描就被认成家族
             //   只拿每 20 秒才刷新一次的 gamePids 当种子 同一个子进程会先被隔离再被放行
             HashSet<int> gameHostAncestors = needFamilySets
-                ? WalkAncestorChain(whitelist.Parents, rendererPid, selfPid, 24, creations)
+                ? FamilyBoundary.WalkAncestorChain(whitelist.Parents, rendererPid, selfPid, 24, creations)
                 : EmptyPidSet;
             HashSet<int> familySeeds = null;
             if (needFamilySets)
@@ -208,7 +164,7 @@ namespace PaviseApp
                 familySeeds.Add(rendererPid);
             }
             HashSet<int> gameDescendants = needFamilySets
-                ? WalkDescendants(whitelist.Parents, familySeeds, selfPid, 24, creations)
+                ? FamilyBoundary.WalkDescendants(whitelist.Parents, familySeeds, selfPid, 24, creations)
                 : EmptyPidSet;
             // 家族豁免关着时 整个家族都不能当"用户正在看的窗口"那条家族的根
             //   光排掉种子不够 本体的父进程要是个可见的自带启动器 本体会顺着父子链被加回来
@@ -220,7 +176,7 @@ namespace PaviseApp
                 ? EmptyPidSet
                 : CollectUserFacingFamily(foregroundPid, whitelist,
                     familyExempt ? 0 : rendererPid);
-            FilterUserFacingGameFamily(userFacingFamily, currentFamilyProfile, all,
+            FamilyBoundary.FilterUserFacingGameFamily(userFacingFamily, currentFamilyProfile, all,
                 rendererPid, selfPid, selfSession, gamePids, gameDescendants,
                 gameHostAncestors, FamilyEvidence);
             bool first;
@@ -275,7 +231,7 @@ namespace PaviseApp
                     // 用户开关只取消当前档案的家族保护 不取消其他档案的保护
                     //   上面的 boosted 只在提优真的落地时为真 提优关掉或被反作弊挡住句柄时它是假的
                     //   所以这条按 pid 的判断不能省 否则那些机器上游戏本体会被当后台压掉
-                    if (IsGameOrWhitelistProtected(pid, rendererPid, white,
+                    if (FamilyBoundary.IsGameOrWhitelistProtected(pid, rendererPid, white,
                         protectedLibraryFamily.Contains(pid), familyExempt, gamePids, gameDescendants))
                     {
                         if (core.Release(pid, SuppressReason.Background)) ReportUntrack(pid);
@@ -318,9 +274,9 @@ namespace PaviseApp
                     // 不读游戏模块 也不整个文件夹放行
                     if (TryProtectOverlayHost(pid, creation, nm, ipath, familyExempt)) continue;
 
-                    string containRoot = LibraryRootOf(ipath, libraryRoots);
+                    string containRoot = FamilyBoundary.LibraryRootOf(ipath, libraryRoots);
                     if (containRoot == null && familyExempt) containRoot = activeGameRoot;
-                    if (!BasicBackgroundEligible(pid, selfPid, nm, ipath,
+                    if (!FamilyBoundary.BasicBackgroundEligible(pid, selfPid, nm, ipath,
                         sameSession ? selfSession : -1, selfSession, foregroundPid,
                         userFacingFamily.Contains(pid), windowsPrefix,
                         familyExemptionActive && gameHostAncestors.Contains(pid),
@@ -448,9 +404,11 @@ namespace PaviseApp
                 if (EffSuppress)
                 {
                     string preset = mode == PerformancePreset.Competitive ? Lang.T("preset.competitive")
+                        : mode == PerformancePreset.Extreme ? Lang.T("preset.extreme")
                         : mode == PerformancePreset.Handheld ? Lang.T("preset.handheld")
                         : mode == PerformancePreset.Custom ? Lang.T("preset.custom") : Lang.T("preset.standard");
                     bool strong = mode == PerformancePreset.Competitive
+                        || mode == PerformancePreset.Extreme
                         || mode == PerformancePreset.Handheld
                         || (mode == PerformancePreset.Custom && aggressive);
                     // "后台归到后台核"那一段随移核一起删了 后台不再有专属核心
@@ -485,115 +443,8 @@ namespace PaviseApp
                 }
                 catch { }
             }
-            return ExpandUserFacingFamily(
+            return FamilyBoundary.ExpandUserFacingFamily(
                 whitelist.Parents, whitelist.Names, roots);
-        }
-
-        internal static HashSet<int> ExpandUserFacingFamily(Dictionary<int, int> parents,
-            Dictionary<int, string> names, HashSet<int> roots)
-        {
-            var result = new HashSet<int>(roots ?? new HashSet<int>());
-            var rootNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            if (names != null)
-                foreach (int pid in result)
-                {
-                    string name;
-                    if (names.TryGetValue(pid, out name) && !string.IsNullOrEmpty(name)) rootNames.Add(name);
-                }
-            if (names != null)
-                foreach (var pair in names)
-                    if (rootNames.Contains(pair.Value)) result.Add(pair.Key);
-
-            bool changed;
-            do
-            {
-                changed = false;
-                if (parents == null || names == null) break;
-                foreach (var pair in parents)
-                {
-                    if (result.Contains(pair.Key) || !result.Contains(pair.Value)) continue;
-                    string parentName;
-                    if (!names.TryGetValue(pair.Value, out parentName) || SystemProcessCatalog.IsShellProcess(parentName)) continue;
-                    result.Add(pair.Key);
-                    changed = true;
-                }
-            }
-            while (changed);
-            return result;
-        }
-
-        // 窗口枚举放在这个纯策略步骤之外 快照和档案都是本轮 Sweep
-        // 用的同一份输入
-        // 这里只摘掉可见窗口豁免 渲染进程 显式白名单 别的档案
-        // 以及直接前台这几项保护 仍然由它们各自更早或更晚的判断负责
-        // 这不是一份压制名单
-        internal static void FilterUserFacingGameFamily(HashSet<int> userFacingFamily,
-            GameProfile profile, ProcessSnapshot snapshot, int rendererPid, int selfPid, int ownerSession,
-            ICollection<int> gamePids, ICollection<int> gameDescendants, ICollection<int> gameHostAncestors,
-            GameFamilyEvidence familyEvidence = null)
-        {
-            // 专注档共用同一个空集合 绝对不能改它 档案缺失 默认不压制
-            // 或者渲染进程没确认 都保留保护
-            if (userFacingFamily == null || userFacingFamily.Count == 0
-                || rendererPid <= 0 || FamilyExemptFor(profile)) return;
-            userFacingFamily.Remove(rendererPid);
-            if (gameDescendants != null) userFacingFamily.ExceptWith(gameDescendants);
-            if (gameHostAncestors != null) userFacingFamily.ExceptWith(gameHostAncestors);
-            if (gamePids != null) userFacingFamily.ExceptWith(gamePids);
-
-            if (userFacingFamily.Count == 0 || snapshot == null || ownerSession < 0) return;
-            // 大厅可能在缓存下渲染家族之后才出现 复用本轮快照
-            // 但只减去新证实的归属者 PID 复用 身份缺失 跨会话条目
-            // 都保留可见窗口豁免 过滤之前先查重
-            // 这样即便第二条是无效项 也不会让一个说不清的 PID 变成种子
-            var current = new Dictionary<int, ProcEntry>();
-            var seen = new HashSet<int>();
-            foreach (ProcEntry process in snapshot.Entries)
-            {
-                if (process == null) continue;
-                if (!seen.Add(process.Pid)) { current.Remove(process.Pid); continue; }
-                if (process.Pid <= 4 || process.Pid == selfPid || process.Session != ownerSession
-                    || process.Creation <= 0 || string.IsNullOrEmpty(process.Name)
-                    || !GameFamilyHistory.CanonicalPath(process.Path)
-                    || !string.Equals(process.Name, Path.GetFileNameWithoutExtension(process.Path),
-                        StringComparison.OrdinalIgnoreCase)) continue;
-                current.Add(process.Pid, process);
-            }
-            bool safeRoot = SafeFamilyDir(profile.Root);
-            var seeds = new HashSet<int>();
-            var parents = new Dictionary<int, int>();
-            foreach (ProcEntry process in current.Values)
-            {
-                if (string.Equals(process.Path, profile.ExecutablePath, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(process.Path, profile.LearnedExecutablePath, StringComparison.OrdinalIgnoreCase)
-                    || (safeRoot && UnderRoot(process.Path, profile.Root))
-                    || (familyEvidence != null
-                        && familyEvidence.Contains(profile, process.Pid, process.Creation, process.Path)))
-                    seeds.Add(process.Pid);
-
-                ProcEntry parent;
-                if (process.ParentPid != process.Pid && current.TryGetValue(process.ParentPid, out parent)
-                    && parent.Creation <= process.Creation)
-                    parents.Add(process.Pid, parent.Pid);
-            }
-            if (seeds.Count == 0) return;
-            // 上面每条边都有两个当前且唯一的身份 以及合法的创建先后
-            // 不要拿缓存 PID 或者共享宿主的祖先当新根 光是 Steam/WeGame
-            // 的兄弟进程 证明不了游戏归属
-            userFacingFamily.ExceptWith(seeds);
-            userFacingFamily.ExceptWith(WalkDescendants(parents, seeds, selfPid, 24));
-        }
-
-        // 这份早期保护判断和隔离的策略测试共用同一套逻辑
-        // 逐游戏的家族开关 永远不会摘掉渲染进程 显式白名单
-        // 或者另一个受保护档案自己确认过的成员
-        internal static bool IsGameOrWhitelistProtected(int pid, int rendererPid,
-            bool whitelisted, bool protectedLibraryMember, bool familyExempt,
-            HashSet<int> gamePids, HashSet<int> gameDescendants)
-        {
-            return whitelisted || protectedLibraryMember || (rendererPid > 0 && pid == rendererPid)
-                || (familyExempt && ((gamePids != null && gamePids.Contains(pid))
-                    || (gameDescendants != null && gameDescendants.Contains(pid))));
         }
 
         private bool TryProtectOverlayHost(int pid, long creation, string name, string imagePath, bool familyExempt)
@@ -619,111 +470,5 @@ namespace PaviseApp
             }
         }
 
-        private static readonly Environment.SpecialFolder[] UnsafeRoots =
-        {
-            Environment.SpecialFolder.ProgramFiles, Environment.SpecialFolder.ProgramFilesX86,
-            Environment.SpecialFolder.CommonProgramFiles, Environment.SpecialFolder.CommonProgramFilesX86,
-            Environment.SpecialFolder.Windows, Environment.SpecialFolder.System, Environment.SpecialFolder.SystemX86,
-            Environment.SpecialFolder.UserProfile, Environment.SpecialFolder.DesktopDirectory,
-            Environment.SpecialFolder.CommonApplicationData, Environment.SpecialFolder.ApplicationData,
-            Environment.SpecialFolder.LocalApplicationData
-        };
-
-        private static bool SafeFamilyDir(string dir)
-        {
-            if (string.IsNullOrEmpty(dir)) return false;
-            string d = dir.TrimEnd('\\');
-            if (d.Length <= 2) return false;
-            foreach (Environment.SpecialFolder sf in UnsafeRoots)
-            {
-                string sd;
-                try { sd = Environment.GetFolderPath(sf); } catch { continue; }
-                if (!string.IsNullOrEmpty(sd) && string.Equals(d, sd.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
-                    return false;
-            }
-            return true;
-        }
-
-        internal static bool IsGameFamily(string path, HashSet<string> gameDirs)
-        {
-            return IsGameFamily(path, gameDirs, null);
-        }
-
-        internal static bool IsGameFamily(string path, HashSet<string> gameDirs, string processName)
-        {
-            if (string.IsNullOrEmpty(path) || gameDirs.Count == 0) return false;
-            if (GameSessionDetector.IsNonGameRole(processName, path)) return false;
-            foreach (string d in gameDirs)
-                if (UnderRoot(path, d)) return true;
-            return false;
-        }
-
-        internal static HashSet<int> WalkDescendants(
-            Dictionary<int, int> parents, ICollection<int> rootPids, int selfPid, int maxDepth)
-        {
-            return WalkDescendants(parents, rootPids, selfPid, maxDepth, null);
-        }
-
-        // 父进程退出后 PID 会被系统复用 同一份快照里的 PPID 可能指向一个后来才起的无关进程
-        //   只比 PID 会把它当成游戏后代放行 补一道创建时间校验 父必须不晚于子
-        //   拿不到时间数据的进程退回只比 PID 的老口径 宁可多放行也不要把游戏的子进程压掉
-        internal static HashSet<int> WalkDescendants(
-            Dictionary<int, int> parents, ICollection<int> rootPids, int selfPid, int maxDepth,
-            Dictionary<int, long> creations)
-        {
-            var result = new HashSet<int>();
-            if (parents == null || rootPids == null || rootPids.Count == 0) return result;
-            var roots = new HashSet<int>(rootPids);
-            foreach (KeyValuePair<int, int> kv in parents)
-            {
-                int pid = kv.Key;
-                if (pid <= 4 || pid == selfPid || roots.Contains(pid) || result.Contains(pid)) continue;
-                int current = pid;
-                for (int depth = 0; depth < maxDepth; depth++)
-                {
-                    int parent;
-                    if (!parents.TryGetValue(current, out parent) || parent <= 4 || parent == current) break;
-                    if (!ParentNotNewer(creations, parent, current)) break;
-                    if (roots.Contains(parent)) { result.Add(pid); break; }
-                    if (parent == selfPid) break;
-                    current = parent;
-                }
-            }
-            return result;
-        }
-
-        internal static HashSet<int> WalkAncestorChain(Dictionary<int, int> parents, int startPid, int selfPid, int maxHops)
-        {
-            return WalkAncestorChain(parents, startPid, selfPid, maxHops, null);
-        }
-
-        internal static HashSet<int> WalkAncestorChain(Dictionary<int, int> parents, int startPid, int selfPid,
-            int maxHops, Dictionary<int, long> creations)
-        {
-            var result = new HashSet<int>();
-            if (parents == null || startPid <= 4) return result;
-            int current = startPid;
-            for (int hop = 0; hop < maxHops; hop++)
-            {
-                int parent;
-                if (!parents.TryGetValue(current, out parent)) break;
-                if (parent <= 4 || parent == selfPid || parent == startPid || result.Contains(parent)) break;
-                if (!ParentNotNewer(creations, parent, current)) break;
-                result.Add(parent);
-                current = parent;
-            }
-            return result;
-        }
-
-        // 两边的创建时间都拿得到才判 父比子晚说明这个 PPID 指的是复用后的另一个进程
-        private static bool ParentNotNewer(Dictionary<int, long> creations, int parentPid, int childPid)
-        {
-            if (creations == null) return true;
-            long parentCreation, childCreation;
-            if (!creations.TryGetValue(parentPid, out parentCreation)
-                || !creations.TryGetValue(childPid, out childCreation)) return true;
-            if (parentCreation <= 0 || childCreation <= 0) return true;
-            return parentCreation <= childCreation;
-        }
     }
 }

@@ -17,20 +17,41 @@ namespace PaviseApp
         Standard = 0,
         Competitive = 1,
         Custom = 2,
-        Handheld = 4
+        Handheld = 4,
+        Extreme = 5
     }
 
     internal static class PresetValue
     {
-        // 取值不连续 别再写成范围判断 3 必须继续被拒
+        // 取值不连续 别再写成范围判断 3 是 1.x 旧极限的墓碑值 必须继续被拒
+        //   新极限用 5 老配置里残存的 3 永远不会复活成任何档位
         public static bool IsValid(int raw)
         {
-            return raw == 0 || raw == 1 || raw == 2 || raw == 4;
+            return raw == 0 || raw == 1 || raw == 2 || raw == 4 || raw == 5;
         }
 
+        // 极限档锁着时 指向它的存量取值解析为电竞 数据保留 解锁即恢复
         public static PerformancePreset From(int raw)
         {
+            if (raw == 5 && !ExtremeMode.Visible) return PerformancePreset.Competitive;
             return IsValid(raw) ? (PerformancePreset)raw : PerformancePreset.Standard;
+        }
+
+        // 界面档位顺序 锁着时极限不出现 与 KeyPreset 的 Choices 全集是两回事
+        public static string[] VisibleChoices()
+        {
+            return ExtremeMode.Visible
+                ? new[] { "0", "1", "5", "4", "2" }
+                : new[] { "0", "1", "4", "2" };
+        }
+
+        public static PerformancePreset[] VisibleOrder()
+        {
+            return ExtremeMode.Visible
+                ? new[] { PerformancePreset.Standard, PerformancePreset.Competitive,
+                    PerformancePreset.Extreme, PerformancePreset.Handheld, PerformancePreset.Custom }
+                : new[] { PerformancePreset.Standard, PerformancePreset.Competitive,
+                    PerformancePreset.Handheld, PerformancePreset.Custom };
         }
     }
 
@@ -80,6 +101,18 @@ namespace PaviseApp
             foreach (string s in Entries) p.Entries.Add(s);
             foreach (KeyValuePair<string, string> kv in Overrides) p.Overrides[kv.Key] = kv.Value;
             return p;
+        }
+
+        // 已下架功能的覆盖键 加载时静默丢弃 不触发库重置
+        //   两个键都随 2.1.3.3 发布过 但值只是布尔开关 丢弃即回默认 无信息可失
+        //   活档案里不该再出现它们 校验时按损坏处理
+        private static readonly string[] RetiredOverrideKeys = { "GmDisplaySolo", "GmMemShield" };
+
+        internal static bool IsRetiredOverrideKey(string key)
+        {
+            foreach (string retired in RetiredOverrideKeys)
+                if (string.Equals(retired, key, StringComparison.Ordinal)) return true;
+            return false;
         }
 
         public bool ContainsPath(string path)
@@ -211,6 +244,8 @@ namespace PaviseApp
                         throw new FormatException("invalid profile entry");
                 foreach (KeyValuePair<string, string> kv in p.Overrides)
                 {
+                    if (GameProfile.IsRetiredOverrideKey(kv.Key))
+                        throw new FormatException("retired override key in live profile");
                     string canonical = PolicyCatalog.Canonical(kv.Key, kv.Value);
                     if (canonical == null || !string.Equals(canonical, kv.Value,
                         StringComparison.Ordinal))
@@ -316,6 +351,8 @@ namespace PaviseApp
                         string value = Decode(a[3]);
                         if (string.IsNullOrWhiteSpace(id) || string.IsNullOrEmpty(key))
                             throw new FormatException("invalid O value");
+                        // 已下架的覆盖键 静默丢弃 不算库损坏 布尔开关丢弃即回默认
+                        if (GameProfile.IsRetiredOverrideKey(key)) continue;
                         string canonical = PolicyCatalog.Canonical(key, value);
                         if (canonical == null || !string.Equals(canonical, value,
                             StringComparison.Ordinal))

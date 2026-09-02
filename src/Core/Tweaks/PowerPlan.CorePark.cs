@@ -63,7 +63,7 @@ namespace PaviseApp
             if (++tries >= MaxRestoreTries)
             {
                 ClearParkSnap();
-                Logger.Log(Lang.T("log.powerplancorepark.8"));
+                Logger.Warn(Lang.T("log.powerplancorepark.8"));
                 return true;
             }
             Settings.SaveStr(ParkTriesKey, tries.ToString());

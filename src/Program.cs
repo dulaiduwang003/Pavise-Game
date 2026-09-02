@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 启动程序并处理单实例 自愈和命令行入口
+// 文件用途 程序入口 运行时装配与托盘主循环
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -19,7 +19,7 @@ namespace PaviseApp
     internal static class App
     {
         public const string DisplayName = "PAVISE";
-        public const string Version = "2.1.3.3";
+        public const string Version = "2.2.0.0";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string QqGroup = "1051472054";
@@ -53,7 +53,7 @@ namespace PaviseApp
         public static string VersionTag { get { return "v" + Version; } }
     }
 
-    internal static class Program
+    internal static partial class Program
     {
         private const string PendingPanelKey = "ShowPanelOnNextStart";
         internal const int TrayTipIdleMs = 1500;
@@ -272,7 +272,6 @@ namespace PaviseApp
             Logger.WritesEnabled = Settings.Load(Logger.WritesEnabledKey, true);
             if (taskStaleExe)
                 Logger.Log(Lang.T("log.program.1"));
-            try { WarnIfOsTooOld(); } catch { }
             Settings.Remove("EvidenceMode");
             try { VramShield.HealFromCrash(); } catch { }
             try { MemShield.HealFromCrash(); } catch { }
@@ -282,12 +281,18 @@ namespace PaviseApp
             try { PowerPlan.ClearLegacyIdleDisableOnce(); } catch { }
             try { if (PowerPlan.HasParkResidue()) PowerPlan.RestoreParkState(); } catch { }
             try { UpdatePause.HealFromCrash(); } catch { }
+            try { MaintenancePause.HealFromCrash(); } catch { }
             GameDvr.HealFromCrash();
             try { Mmcss.HealFromCrash(); } catch { }
+            try { RssSteer.HealFromCrash(); } catch { }
             try { PresenceQos.HealFromCrash(); } catch { }
             try { PowerOverlay.HealFromCrash(); } catch { }
             try { DisplaySolo.HealFromCrash(); } catch { }
             try { GpuPowerMax.HealFromCrash(); } catch { }
+            try { GpuClockLock.HealFromCrash(); } catch { }
+            try { NvVrrWindowed.HealFromCrash(); } catch { }
+            try { IntelEndurance.HealFromCrash(); } catch { }
+            try { LaptopPerfMode.HealFromCrash(); } catch { }
             try { AdlxTweaks.HealFromCrash(); } catch { }
             try { InterruptAttribution.CleanupStaleSession(); } catch { }
             RenderLane.HealFromCrash();
@@ -298,9 +303,24 @@ namespace PaviseApp
             // 退役字段 不会触发库重置流程 这里按账本一次性收回旧写入
             try { if (IfeoBoost.HasResidue()) IfeoBoost.RestoreAll(); } catch { }
             try { if (CfgOffTweak.HasResidue()) CfgOffTweak.RestoreAll(); } catch { }
+            // 2.1.3.3 的网卡策略会被极限档批量设为 Off。新策略不再把 Off
+            // 当统一最优解，启动时只按旧收据收回那一代写入；新界面的显式
+            // 单出口实验使用 V2 身份收据，不走这条迁移。
+            try
+            {
+                bool nicLegacySettled = !NicModerationTweak.HasLegacyResidue
+                    || NicModerationTweak.MigrateLegacy();
+                if (nicLegacySettled)
+                    ExtremeMode.RetireEnvLedgerToken("nicim");
+                NicModerationTweak.ReconcileStartup();
+            }
+            catch { }
             CrashGuard.HealFromCrash();
             try { IrqRelocate.HealFromCrash(); } catch { }
             try { IrqAutoPilot.HealFromCrash(); } catch { }
+
+            // 系统版本低于基线就此止步 前面的自愈已经跑完 历史改动不会被锁在机器上
+            if (BlockIfOsTooOld(dir)) return;
 
             bool pendingPanel = Settings.Load(PendingPanelKey, false);
             if (pendingPanel) Settings.Save(PendingPanelKey, false);
@@ -568,6 +588,17 @@ namespace PaviseApp
                 }
                 catch { }
             };
+            gameMode.RogueProcessSuspected += msg =>
+            {
+                try
+                {
+                    panel.BeginInvoke((MethodInvoker)(() =>
+                    {
+                        try { icon.ShowBalloonTip(15000, App.DisplayName, msg, ToolTipIcon.Warning); } catch { }
+                    }));
+                }
+                catch { }
+            };
             gameMode.LibraryChanged += () =>
             {
                 try { panel.NotifyLibraryChanged(); } catch { }
@@ -643,7 +674,7 @@ namespace PaviseApp
                         catch { }
                     }
                     else if (r.Ok) Logger.Log(Lang.T("log.program.8") + App.VersionTag + " ");
-                    else Logger.Log(Lang.T("log.program.9") + r.Error);
+                    else Logger.Warn(Lang.T("log.program.9") + r.Error);
                 });
             };
             updTimer.Start();
@@ -656,158 +687,5 @@ namespace PaviseApp
             Application.Run();
             GC.KeepAlive(mtx);
         }
-
-        private static void SignalShowPanel()
-        {
-            try
-            {
-                using (var show = EventWaitHandle.OpenExisting("Global\\Pavise_ShowPanel"))
-                {
-                    show.Set();
-                    return;
-                }
-            }
-            catch { }
-            if (IsElevated()) return;
-            try
-            {
-                if (!TaskHelper.TaskExists()) return;
-                Settings.Save(PendingPanelKey, true);
-                if (TaskHelper.Run("/Run /TN " + TaskHelper.TaskName) != 0)
-                    Settings.Save(PendingPanelKey, false);
-            }
-            catch { }
-        }
-
-        private static EventWaitHandle CreateSignalEvent(string name)
-        {
-            try
-            {
-                var sec = new EventWaitHandleSecurity();
-                sec.AddAccessRule(new EventWaitHandleAccessRule(
-                    WindowsIdentity.GetCurrent().User,
-                    EventWaitHandleRights.FullControl,
-                    AccessControlType.Allow));
-                bool createdNew;
-                return new EventWaitHandle(false, EventResetMode.AutoReset, name, out createdNew, sec);
-            }
-            catch { }
-            try { return new EventWaitHandle(false, EventResetMode.AutoReset, name); }
-            catch { return null; }
-        }
-
-        internal static int CompareVersions(string left, string right)
-        {
-            Version a, b;
-            if (!Version.TryParse(NormalizeVersion(left), out a)) a = new Version(0, 0);
-            if (!Version.TryParse(NormalizeVersion(right), out b)) b = new Version(0, 0);
-            return a.CompareTo(b);
-        }
-
-        private static string NormalizeVersion(string raw)
-        {
-            if (string.IsNullOrWhiteSpace(raw)) return "0.0.0.0";
-            string text = raw.Trim();
-            if (text.StartsWith("v", StringComparison.OrdinalIgnoreCase)) text = text.Substring(1);
-            int parts = text.Split('.').Length;
-            for (int i = parts; i < 4; i++) text += ".0";
-            return text;
-        }
-
-        private static bool TryReplaceOlderInstance()
-        {
-            Process older = null;
-            try
-            {
-                int self = Process.GetCurrentProcess().Id;
-                foreach (Process p in Process.GetProcessesByName(
-                    Path.GetFileNameWithoutExtension(Application.ExecutablePath)))
-                {
-                    if (p.Id == self) { p.Dispose(); continue; }
-                    string version = null;
-                    try { version = p.MainModule.FileVersionInfo.FileVersion; }
-                    catch { }
-                    if (version != null && CompareVersions(App.Version, version) > 0 && older == null) older = p;
-                    else p.Dispose();
-                }
-                if (older == null) return false;
-
-                try { using (var exit = EventWaitHandle.OpenExisting("Global\\Pavise_Exit")) exit.Set(); }
-                catch { return false; }
-                if (!older.WaitForExit(20000)) return false;
-                return true;
-            }
-            catch { return false; }
-            finally { if (older != null) older.Dispose(); }
-        }
-
-        internal const int OsBuildBaseline = 19041;
-        internal const int OsBuildBest = 26100;
-        private const string OsWarnedKey = "OsWarnedBuild";
-
-        internal static bool OsBelowBaseline()
-        {
-            int build = Native.OsBuild();
-            return build > 0 && build < OsBuildBaseline;
-        }
-
-        private static void WarnIfOsTooOld()
-        {
-            int build = Native.OsBuild();
-            if (!OsBelowBaseline()) return;
-            string stamp = build.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            if (Settings.LoadStr(OsWarnedKey, "") == stamp) return;
-            Settings.SaveStr(OsWarnedKey, stamp);
-            Logger.Log(Lang.T("log.program.11") + build);
-            PaviseDialog.Warn(null, App.DisplayName,
-                Lang.F("os.old.body", build, OsBuildBaseline, OsBuildBest));
-        }
-
-        private static bool IsElevated()
-        {
-            try
-            {
-                using (var id = System.Security.Principal.WindowsIdentity.GetCurrent())
-                    return new System.Security.Principal.WindowsPrincipal(id).IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
-            }
-            catch { return false; }
-        }
-
-        internal static bool TryResetUserData(string dir, Func<bool> stopRuntime,
-            out int files, out string failure)
-        {
-            files = 0;
-            failure = null;
-            if (string.IsNullOrWhiteSpace(dir))
-            {
-                failure = Lang.T("wipe.pathfail");
-                return false;
-            }
-            try
-            {
-                if (stopRuntime == null || !stopRuntime())
-                {
-                    failure = Lang.T("wipe.stopfail");
-                    return false;
-                }
-            }
-            catch (Exception ex)
-            {
-                failure = Lang.T("wipe.stopfail") + " (" + ex.GetType().Name + ")";
-                return false;
-            }
-            try
-            {
-                return LegacyPurge.WipeAll(dir, true, Lang.T("t.panelformsettingspage.3"),
-                    out files, out failure);
-            }
-            catch (Exception ex)
-            {
-                failure = Lang.T("wipe.cleanupfail") + " (" + ex.GetType().Name + ")";
-                return false;
-            }
-        }
-
     }
-
 }

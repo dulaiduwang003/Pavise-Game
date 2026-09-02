@@ -168,7 +168,7 @@ namespace PaviseApp
                 Settings.Save("EnvFuse_standby", true);
                 DisableEnvSwitch("standby");
             }
-            Logger.Log(Lang.T("log.gamemodeenv.9") + EnvLabel("standby")
+            Logger.Warn(Lang.T("log.gamemodeenv.9") + EnvLabel("standby")
                 + Lang.T("log.gamemodeenv.10")
                 + (result == StandbyCleanerResult.Purged ? "1" : "2") + Lang.T("log.gamemodeenv.11")
                 + " [" + result + ", 0x" + nativeStatus.ToString("X8", CultureInfo.InvariantCulture) + "]");

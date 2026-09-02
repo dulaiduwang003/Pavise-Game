@@ -16,11 +16,6 @@ namespace PaviseApp
         private PillButton btnIrqApply, btnIrqRevert;
         private Toggle swIrqProbePage;
         private SettingCard cardIrqProbe;
-        private Toggle swIrqAuto;
-        private SettingCard cardIrqAuto;
-#if PAVISE_SELFTEST
-        internal Func<bool> IrqAutoConfirmationForTest;
-#endif
         private TechListBox lstIrqDevices;
         private List<IrqDevice> irqDevices = new List<IrqDevice>();
         private List<IrqSessionRecord> irqSessions = new List<IrqSessionRecord>();
@@ -64,13 +59,6 @@ namespace PaviseApp
                 Lang.T("irq.sec.1"), Lang.T("irq.probe.sub"), swIrqProbePage,
                 out irqProbeCardH);
             y += irqProbeCardH + 10;
-
-            swIrqAuto = MakeSwitch(IrqAutoPilot.Enabled, OnIrqAutoToggle);
-            int irqAutoCardH;
-            cardIrqAuto = MakeAutoCard(scroll, 0, y, InnerW, 66,
-                Lang.T("irqauto.title"), Lang.T("irqauto.sub"), swIrqAuto,
-                out irqAutoCardH);
-            y += irqAutoCardH + 10;
 
             var actionDeck = MakeConsolePanel(scroll, 0, y, InnerW, 96, true);
             btnIrqApply = new PillButton(Lang.T("irq.btn.apply"), BtnKind.Primary);
@@ -188,14 +176,6 @@ namespace PaviseApp
                 swIrqProbePage.SetSilently(IrqSessionProbe.EnabledSetting);
                 swIrqProbePage.Enabled = admin;
             }
-            if (swIrqAuto != null)
-            {
-                swIrqAuto.SetSilently(IrqAutoPilot.Enabled);
-                swIrqAuto.Enabled = admin;
-            }
-            if (cardIrqAuto != null)
-                cardIrqAuto.SetStatus(IrqAutoPilot.Summarize(),
-                    IrqAutoPilot.Enabled ? Theme.Green : Theme.Faint);
             string captureText = gameMode.IrqObservationStatusText ?? "";
             bool captureWarning = gameMode.IrqObservationStatusWarning;
             if (cardIrqProbe != null)
@@ -257,12 +237,14 @@ namespace PaviseApp
             { t = Lang.F("irq.state.suggest", IrqWorthCount()); c = Theme.Accent; }
             else if (unverified > 0) { t = Lang.F("irq.state.unverified", unverified); c = Theme.Dim; }
             else t = dataText;
+            // 横幅状态舱是短状态位 只放当前状态本身 带局数的完整句在下方状态条
+            string banner = t;
             t = IrqPageStatus.CountedText(t, irqSessions.Count, irqUsedSessions, irqReadIssue);
             lblIrqState.Text = t;
             lblIrqState.ForeColor = c;
             if (irqBanner != null)
             {
-                irqBanner.State = t;
+                irqBanner.State = banner;
                 irqBanner.StateColor = c;
             }
         }
@@ -391,7 +373,6 @@ namespace PaviseApp
             btnIrqApply.Enabled = d != null && admin && !d.ManagedElsewhere;
         }
 
-
         private void OnIrqProbePageToggle(object sender, EventArgs e)
         {
             if (swIrqProbePage == null) return;
@@ -402,63 +383,12 @@ namespace PaviseApp
                 swIrqProbePage.SetSilently(false);
                 return;
             }
-            // 关观测时自动编排必须跟着关 观测停了就没人验收
-            //   否则待验收的注册表钉核被无限期晾着 坏钉核永远等不到回滚
-            if (!on && IrqAutoPilot.Enabled)
-            {
-                Settings.Save(IrqAutoPilot.EnabledKey, false);
-                Flash(Lang.T(IrqAutoPilot.RevertAll()
-                    ? "irqauto.offwithprobe" : "irqauto.revertfail"),
-                    IrqAutoPilot.HasResidue ? Theme.Danger : Theme.Accent);
-            }
             IrqMutationBoundary.Run(delegate
             {
                 IrqSessionProbe.EnabledSetting = on;
                 gameMode.RequestIrqObservationSettingChanged();
             });
             RefreshIrqPage();
-        }
-
-        private void OnIrqAutoToggle(object sender, EventArgs e)
-        {
-            if (swIrqAuto == null) return;
-            bool on = swIrqAuto.Checked;
-            if (on)
-            {
-                bool admin = false;
-                try { admin = Native.IsElevated(); } catch { }
-                // 没有对局观测就没有证据 也没有验收 计划会连同注册表钉核一起冻结
-                if (!admin || !IrqSessionProbe.EnabledSetting || !ConfirmIrqAutoEnable())
-                {
-                    if (!admin) Flash(Lang.T("irqmove.needadmin"), Theme.Danger);
-                    else if (!IrqSessionProbe.EnabledSetting)
-                        Flash(Lang.T("irqauto.needobserve"), Theme.Danger);
-                    swIrqAuto.SetSilently(IrqAutoPilot.Enabled);
-                    return;
-                }
-                Settings.Save(IrqAutoPilot.EnabledKey, true);
-                // 重开清熔断 与显存驻留同一条房规 明确的再试授权
-                IrqAutoPilot.ClearFuses();
-            }
-            else
-            {
-                // 关掉即退 全部自动钉核按收据还原 还原失败必须让人看见
-                //   开关已关 以后每局的入口都不再进来 没人会替它重试
-                Settings.Save(IrqAutoPilot.EnabledKey, false);
-                if (!IrqAutoPilot.RevertAll())
-                    Flash(Lang.T("irqauto.revertfail"), Theme.Danger);
-            }
-            swIrqAuto.SetSilently(IrqAutoPilot.Enabled);
-            RefreshIrqPage();
-        }
-
-        private bool ConfirmIrqAutoEnable()
-        {
-#if PAVISE_SELFTEST
-            if (IrqAutoConfirmationForTest != null) return IrqAutoConfirmationForTest();
-#endif
-            return PaviseDialog.Confirm(this, Lang.T("irqauto.title"),
-                Lang.T("irqauto.warn"), DlgKind.Warn);
         }
 
         private void OnIrqApply(object sender, EventArgs e)
