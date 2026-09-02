@@ -51,7 +51,7 @@ namespace PaviseApp
                     node = parent;
                 }
             }
-            catch (Exception ex) { Logger.Log(Lang.T("log.presentdevices.1") + ex.Message); }
+            catch (Exception ex) { Logger.Warn(Lang.T("log.presentdevices.1") + ex.Message); }
             return chain;
         }
 
@@ -100,7 +100,7 @@ namespace PaviseApp
                     data.cbSize = (uint)Marshal.SizeOf(typeof(SP_DEVINFO_DATA));
                 }
             }
-            catch (Exception ex) { Logger.Log(Lang.T("log.presentdevices.2") + ex.Message); }
+            catch (Exception ex) { Logger.Warn(Lang.T("log.presentdevices.2") + ex.Message); }
             finally
             {
                 if (set != IntPtr.Zero && set != new IntPtr(-1))

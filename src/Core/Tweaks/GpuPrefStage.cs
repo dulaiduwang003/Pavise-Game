@@ -175,7 +175,7 @@ namespace PaviseApp
                     try { shown = System.IO.Path.GetFileName(record.Path); } catch { }
                 }
                 if (!SaveJournal("")) return false;
-                Logger.Log(Lang.T("log.gpuprefstage.6") + (shown ?? "?") + Lang.T("log.gpuprefstage.7"));
+                Logger.Warn(Lang.T("log.gpuprefstage.6") + (shown ?? "?") + Lang.T("log.gpuprefstage.7"));
                 return true;
             }
         }

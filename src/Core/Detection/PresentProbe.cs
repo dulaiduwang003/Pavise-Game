@@ -99,7 +99,7 @@ namespace PaviseApp
                 if (rc != 0)
                 {
                     LastError = rc;
-                    Logger.Log("PRESENT StartTrace 失败 win32=" + rc);
+                    Logger.Warn("PRESENT StartTrace 失败 win32=" + rc);
                     return false;
                 }
             }
@@ -119,14 +119,14 @@ namespace PaviseApp
             catch (Exception ex)
             {
                 LastError = uint.MaxValue;
-                Logger.Log("PRESENT 事件 ID 过滤配置异常，本轮跳过，不启用宽范围采集 " + ex.GetType().Name);
+                Logger.Warn("PRESENT 事件 ID 过滤配置异常，本轮跳过，不启用宽范围采集 " + ex.GetType().Name);
                 StopStale();
                 return false;
             }
             if (erc != 0)
             {
                 LastError = erc;
-                Logger.Log("PRESENT 事件 ID 过滤启用失败，本轮跳过，不启用宽范围采集 win32=" + erc);
+                Logger.Warn("PRESENT 事件 ID 过滤启用失败，本轮跳过，不启用宽范围采集 win32=" + erc);
                 StopStale();
                 return false;
             }
@@ -141,7 +141,7 @@ namespace PaviseApp
             if (traceHandle == 0xFFFFFFFFFFFFFFFF || traceHandle == 0)
             {
                 LastError = (uint)Marshal.GetLastWin32Error();
-                Logger.Log("PRESENT OpenTrace 失败 win32=" + LastError);
+                Logger.Warn("PRESENT OpenTrace 失败 win32=" + LastError);
                 StopStale();
                 return false;
             }
@@ -255,9 +255,9 @@ namespace PaviseApp
             }
             Logger.Log("PRESENT 会话已停止 Present事件=" + frames.Count
                 + (Truncated ? "(已截断)" : "") + " 丢事件=" + EventsLost + " 丢缓冲=" + BuffersLost);
-            if (!workerDone) Logger.Log("PRESENT 会话排空超时 本局时间线作废");
-            if (!stopSucceeded) Logger.Log("PRESENT 会话停止失败 本局时间线作废 win32=" + stopError);
-            if (consumerExitedEarly) Logger.Log("PRESENT 消费线程提前退出 本局时间线作废 win32=" + LastError);
+            if (!workerDone) Logger.Warn("PRESENT 会话排空超时 本局时间线作废");
+            if (!stopSucceeded) Logger.Warn("PRESENT 会话停止失败 本局时间线作废 win32=" + stopError);
+            if (consumerExitedEarly) Logger.Warn("PRESENT 消费线程提前退出 本局时间线作废 win32=" + LastError);
         }
 
         // 唯一的消费点 在 ProcessTrace 工作线程上执行 只 append 不做别的

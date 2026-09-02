@@ -1,6 +1,7 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 构建系统环境页 集中放置需要重启且会留在机器上的内核与驱动改动
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Threading;
 using System.Windows.Forms;
@@ -10,9 +11,9 @@ namespace PaviseApp
     internal partial class PanelForm
     {
         private Toggle swHags, swVbs, swGmGuard;
-        private Toggle swDevPower, swWindowedOpt, swNicIm;
+        private Toggle swDevPower, swWindowedOpt, swNicIm, swVrrOpt, swEee, swAmdSam;
         private Toggle swAccessKeys, swHidPower, swSpecMit, swTimerTick, swGlobalTimer;
-        private SettingCard cardVbs, cardWindowedOpt, cardSpecMit;
+        private SettingCard cardVbs, cardWindowedOpt, cardSpecMit, cardVrrOpt, cardEee, cardAmdSam, cardHags;
         private SettingCard cardAccessKeys, cardHidPower, cardNicIm;
         private TechTabs envTabs;
         private DBPanel[] envTabPanels;
@@ -50,8 +51,16 @@ namespace PaviseApp
             HagsTweak.TryQueryState(out hagsSupported, out hagsOnNow);
             swHags = MakeSwitch(HagsTweak.EnabledByPavise || HagsTweak.CurrentlyOn(), OnHagsToggle);
             swHags.Enabled = hagsSupported || HagsTweak.EnabledByPavise;
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.hags"),
+            cardHags = MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.hags"),
                 swHags.Enabled ? Lang.T("set.hags.n") : Lang.T("hags.unsupported"), swHags, out cardH);
+            sy += cardH + 8;
+
+            bool samOk = AdlxTweaks.Available && AmdSamTweak.Supported();
+            swAmdSam = MakeSwitch(AmdSamTweak.EnabledByPavise || AmdSamTweak.CurrentlyOn(), OnAmdSamToggle);
+            swAmdSam.Enabled = (samOk || AmdSamTweak.EnabledByPavise)
+                && (AmdSamTweak.EnabledByPavise || !AmdSamTweak.CurrentlyOn());
+            cardAmdSam = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.amdsam"),
+                samOk || AmdSamTweak.EnabledByPavise ? Lang.T("set.amdsam.n") : Lang.T("set.amd.nosup"), swAmdSam, out cardH);
             sy += cardH + 8;
 
             swVbs = MakeSwitch(VbsTweak.DisabledByPavise, OnVbsToggle);
@@ -68,6 +77,14 @@ namespace PaviseApp
                 && (WindowedOptTweak.EnabledByPavise || !WindowedOptTweak.CurrentlyOn());
             cardWindowedOpt = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.windowedopt"),
                 win11 ? Lang.T("set.windowedopt.n") : Lang.T("windowedopt.oldos"), swWindowedOpt, out cardH);
+            sy += cardH + 8;
+
+            bool vrrOs = VrrOptTweak.OsSupported();
+            swVrrOpt = MakeSwitch(VrrOptTweak.EnabledByPavise || VrrOptTweak.CurrentlyOn(), OnVrrOptToggle);
+            swVrrOpt.Enabled = (vrrOs || VrrOptTweak.EnabledByPavise)
+                && (VrrOptTweak.EnabledByPavise || !VrrOptTweak.CurrentlyOn());
+            cardVrrOpt = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.vrropt"),
+                vrrOs ? Lang.T("set.vrropt.n") : Lang.T("windowedopt.oldos"), swVrrOpt, out cardH);
             sy += cardH + 8;
 
             SpecMitigationTweak.State specSt = SpecMitigationTweak.Query();
@@ -87,10 +104,17 @@ namespace PaviseApp
                 Lang.T("set.gtimer.n"), swGlobalTimer, out cardH);
             sy += cardH + 8;
 
+            // 只读区要接在本页尾部 sy 马上会被后面两个 tab 复用 先存下来
+            int kernelTailSy = sy;
             scroll = envTabPanels[1]; sy = 2;
 
             swDevPower = MakeSwitch(DevicePowerTweak.EnabledByPavise, OnDevPowerToggle);
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.devpower"), Lang.T("set.devpower.n"), swDevPower, out cardH);
+            sy += cardH + 8;
+
+            swEee = MakeSwitch(EeeTweak.EnabledByPavise, OnEeeToggle);
+            cardEee = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.eee"),
+                Lang.T("set.eee.n"), swEee, out cardH);
             sy += cardH + 8;
 
             swNicIm = MakeSwitch(NicModerationTweak.EnabledByPavise, OnNicImToggle);
@@ -111,8 +135,42 @@ namespace PaviseApp
                 Lang.T("set.hidpower.n"), swHidPower, out cardH);
             sy += cardH + 8;
 
+            BuildExtremeEnvReadout(envTabPanels[0], kernelTailSy);
             SyncEnvStatus();
             for (int i = 0; i < envTabPanels.Length; i++) EnableCardCollapse(envTabPanels[i]);
+        }
+
+        // 极限档写入的持久项在这里只读列出 切走档位它们不会自动回滚
+        //   重启才生效的东西 每次切档来回写等于每次都要重启一遍 那是刑罚不是功能
+        //   所以这里只负责让用户看见机器上现在有什么 开关一律在管理清单
+        private void BuildExtremeEnvReadout(Control scroll, int sy)
+        {
+            if (!ExtremeMode.Unlocked) return;
+            // 只列没有环境页开关卡的项 有卡的项状态看它自己的卡
+            //   在同一页再立一张同名卡只会让人以为出了重影
+            var switchless = new HashSet<string>(StringComparer.Ordinal) { "memcompress", "rescores" };
+            var owned = new List<ExtremeItem>();
+            foreach (ExtremeItem item in ExtremeMode.EnvItems())
+                if (switchless.Contains(item.Token) && ExtremeMode.LedgerContains(item.Token))
+                    owned.Add(item);
+            if (owned.Count == 0) return;
+
+            sy += 10;
+
+            Section(scroll, Lang.T("extreme.env.section"), 6, sy); sy += 24;
+            foreach (ExtremeItem item in owned)
+            {
+                int cardH;
+                SettingCard card = MakeAutoCard(scroll, 6, sy, ScrollContentW, 52,
+                    Lang.T(item.LangKey), Lang.T("extreme.env.managed"), null, out cardH);
+                bool live;
+                try { live = item.Active(); }
+                catch { live = false; }
+                // 生效中用语义绿 与本页其它状态章同一体系 也免掉跟随模式色的滞后问题
+                card.SetStatus(Lang.T(live ? "extreme.env.on" : "extreme.env.pending"),
+                    live ? Theme.Green : Theme.Dim);
+                sy += cardH + 8;
+            }
         }
 
         private static Color StatusInk(bool needsAction, bool doneByPavise)
@@ -121,8 +179,21 @@ namespace PaviseApp
             return needsAction ? Theme.Accent : Theme.Faint;
         }
 
+        // 环境页的锁定标签 系统里已经是开着的"系统已开启" 本机没有可改的"本机不适用" 与其它页同一套
+        private static void LockEnvCard(SettingCard card, Toggle toggle, bool externalOn)
+        {
+            if (card == null || toggle == null) return;
+            card.SetLock(externalOn ? Lang.T("lock.external") : !toggle.Enabled ? Lang.T("lock.na") : "", externalOn);
+        }
+
         private void SyncEnvStatus()
         {
+            LockEnvCard(cardHags, swHags, HagsTweak.CurrentlyOn() && !HagsTweak.EnabledByPavise);
+            LockEnvCard(cardWindowedOpt, swWindowedOpt, WindowedOptTweak.CurrentlyOn() && !WindowedOptTweak.EnabledByPavise);
+            LockEnvCard(cardVrrOpt, swVrrOpt, VrrOptTweak.CurrentlyOn() && !VrrOptTweak.EnabledByPavise);
+            LockEnvCard(cardAmdSam, swAmdSam, AdlxTweaks.Available && AmdSamTweak.CurrentlyOn() && !AmdSamTweak.EnabledByPavise);
+            LockEnvCard(cardSpecMit, swSpecMit, false);
+            LockEnvCard(cardAccessKeys, swAccessKeys, false);
             if (cardAccessKeys != null)
                 cardAccessKeys.SetStatus(AccessibilityKeysTweak.Describe(),
                     StatusInk(AccessibilityKeysTweak.NeedsFix(), AccessibilityKeysTweak.EnabledByPavise));
@@ -130,11 +201,65 @@ namespace PaviseApp
                 cardHidPower.SetStatus(HidPowerTweak.Describe(),
                     StatusInk(!HidPowerTweak.EnabledByPavise, HidPowerTweak.EnabledByPavise));
             if (cardNicIm != null)
-                cardNicIm.SetStatus(NicModerationTweak.Describe(),
-                    StatusInk(NicModerationTweak.ModerationActive(), NicModerationTweak.EnabledByPavise));
+            {
+                bool nicConfirmed, nicRecovery;
+                string nicStatus = NicModerationTweak.Describe(
+                    out nicConfirmed, out nicRecovery);
+                cardNicIm.SetStatus(nicStatus,
+                    StatusInk(nicRecovery, nicConfirmed));
+            }
             if (cardWindowedOpt != null && Native.OsBuild() >= 22000)
                 cardWindowedOpt.SetStatus(WindowedOptTweak.Describe(),
                     StatusInk(!WindowedOptTweak.CurrentlyOn(), WindowedOptTweak.EnabledByPavise));
+            if (cardVrrOpt != null && VrrOptTweak.OsSupported())
+                cardVrrOpt.SetStatus(VrrOptTweak.Describe(),
+                    StatusInk(!VrrOptTweak.CurrentlyOn(), VrrOptTweak.EnabledByPavise));
+            if (cardEee != null)
+                cardEee.SetStatus(EeeTweak.Describe(), StatusInk(!EeeTweak.EnabledByPavise, EeeTweak.EnabledByPavise));
+            if (cardAmdSam != null && AdlxTweaks.Available)
+                cardAmdSam.SetStatus(AmdSamTweak.Describe(),
+                    StatusInk(!AmdSamTweak.CurrentlyOn(), AmdSamTweak.EnabledByPavise));
+        }
+
+        private void OnAmdSamToggle(object s, EventArgs e)
+        {
+            if (!RequireElevationFor(swAmdSam, AmdSamTweak.EnabledByPavise)) return;
+            IrqMutationBoundary.Run(delegate
+            {
+                if (swAmdSam.Checked) AmdSamTweak.Enable();
+                else AmdSamTweak.Restore();
+            });
+            swAmdSam.SetSilently(AmdSamTweak.EnabledByPavise || AmdSamTweak.CurrentlyOn());
+            swAmdSam.Enabled = AmdSamTweak.EnabledByPavise || !AmdSamTweak.CurrentlyOn();
+            if (cardAmdSam != null)
+                SyncEnvStatus();
+        }
+
+        private void OnVrrOptToggle(object s, EventArgs e)
+        {
+            IrqMutationBoundary.Run(delegate
+            {
+                if (swVrrOpt.Checked) VrrOptTweak.Enable();
+                else VrrOptTweak.Restore();
+            });
+            swVrrOpt.SetSilently(VrrOptTweak.EnabledByPavise || VrrOptTweak.CurrentlyOn());
+            swVrrOpt.Enabled = VrrOptTweak.EnabledByPavise || !VrrOptTweak.CurrentlyOn();
+            if (cardVrrOpt != null)
+                SyncEnvStatus();
+        }
+
+        // 改高级属性会让网卡重新协商链路 断几秒 开关本身就是知情选择 不再弹确认
+        private void OnEeeToggle(object s, EventArgs e)
+        {
+            if (!RequireElevationFor(swEee, EeeTweak.EnabledByPavise)) return;
+            IrqMutationBoundary.Run(delegate
+            {
+                if (swEee.Checked) EeeTweak.Enable();
+                else EeeTweak.Restore();
+            });
+            swEee.SetSilently(EeeTweak.EnabledByPavise);
+            if (cardEee != null)
+                SyncEnvStatus();
         }
 
         private void OnAccessKeysToggle(object s, EventArgs e)
@@ -178,13 +303,39 @@ namespace PaviseApp
 
         private void OnNicImToggle(object s, EventArgs e)
         {
-            if (!RequireElevationFor(swNicIm, NicModerationTweak.EnabledByPavise)) return;
-            IrqMutationBoundary.Run(delegate
+            if (swNicIm.Checked)
             {
-                if (swNicIm.Checked) NicModerationTweak.Enable();
-                else NicModerationTweak.Restore();
-            });
-            swNicIm.SetSilently(NicModerationTweak.EnabledByPavise);
+                if (!RequireElevationFor(swNicIm, false)) return;
+                if (!PaviseDialog.Confirm(this, Lang.T("set.nicim"),
+                        Lang.T("nicim.warn"), DlgKind.Warn))
+                {
+                    swNicIm.SetSilently(NicModerationTweak.HasResidue());
+                    return;
+                }
+                if (!IrqMutationBoundary.Run<bool>(NicModerationTweak.Enable))
+                {
+                    swNicIm.SetSilently(NicModerationTweak.HasResidue());
+                    SyncEnvStatus();
+                    PaviseDialog.Warn(this, Lang.T("set.nicim"), Lang.T("nicim.applyfail"));
+                    return;
+                }
+                swNicIm.SetSilently(NicModerationTweak.HasResidue());
+                if (NicModerationTweak.HasResidue())
+                    PaviseDialog.Info(this, Lang.T("set.nicim"), Lang.T("nicim.reboot"));
+            }
+            else
+            {
+                if (!RequireElevationFor(swNicIm, true)) return;
+                if (!IrqMutationBoundary.Run<bool>(NicModerationTweak.Restore))
+                {
+                    swNicIm.SetSilently(NicModerationTweak.HasResidue());
+                    SyncEnvStatus();
+                    PaviseDialog.Warn(this, Lang.T("set.nicim"), Lang.T("nicim.restorefail"));
+                    return;
+                }
+                swNicIm.SetSilently(false);
+                PaviseDialog.Info(this, Lang.T("set.nicim"), Lang.T("nicim.restored"));
+            }
             SyncEnvStatus();
         }
 
@@ -400,6 +551,10 @@ namespace PaviseApp
             if (swHidPower != null) swHidPower.SetSilently(HidPowerTweak.EnabledByPavise);
             if (swWindowedOpt != null)
                 swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByPavise || WindowedOptTweak.CurrentlyOn());
+            if (swVrrOpt != null)
+                swVrrOpt.SetSilently(VrrOptTweak.EnabledByPavise || VrrOptTweak.CurrentlyOn());
+            if (swEee != null) swEee.SetSilently(EeeTweak.EnabledByPavise);
+            if (swAmdSam != null) swAmdSam.SetSilently(AmdSamTweak.EnabledByPavise || AmdSamTweak.CurrentlyOn());
             if (swSpecMit != null) swSpecMit.SetSilently(SpecMitigationTweak.DisabledByPavise);
             if (swTimerTick != null)
                 swTimerTick.SetSilently(TimerTickTweak.EnabledByPavise || TimerTickTweak.LastKnownOn);

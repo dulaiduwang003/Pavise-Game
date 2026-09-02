@@ -1639,15 +1639,10 @@ namespace PaviseApp
 
         private static void ResetFlowCpuIdleAdmission(string root)
         {
-            foreach (string reason in new[] { "battery", "ac-unknown", "managed-missing", "user-choice",
-                "different-active", "active-unknown", "read-failed", "invalid-original" })
+            // 电源来源与方案归属不再是拒绝理由 目标就是当前活动方案
+            foreach (string reason in new[] { "active-unknown", "read-failed", "invalid-original" })
             using (var f = new ResetFlowCpuIdleFixture())
             {
-                if (reason == "battery") f.OnAc = false;
-                if (reason == "ac-unknown") f.ThrowAc = true;
-                if (reason == "managed-missing") f.Managed = Guid.Empty;
-                if (reason == "user-choice") f.Choice = f.FirstScheme.ToString();
-                if (reason == "different-active") f.Current = f.SecondScheme;
                 if (reason == "active-unknown") f.Current = null;
                 if (reason == "read-failed") f.DenyRead = true;
                 if (reason == "invalid-original") f.Values[f.FirstScheme] = 2;
@@ -1665,7 +1660,7 @@ namespace PaviseApp
             {
                 f.Values[f.FirstScheme] = original;
                 ResetFlowCheck(PowerPlan.CpuIdleEligible && PowerPlan.TryDisableCpuIdle(null),
-                    "eligible managed AC fixture could not meet the idle target");
+                    "eligible fixture could not meet the idle target");
                 if (original == 1)
                 {
                     ResetFlowCheck(!PowerPlan.CpuIdleActive && !PowerPlan.CpuIdleHasResidue
@@ -1687,6 +1682,19 @@ namespace PaviseApp
                 foreach (ResetFlowCpuIdleFixture.IdleWrite write in f.Writes)
                     ResetFlowCheck(write.Scheme == f.FirstScheme, "idle wrote outside the captured AC plan");
             }
+            using (var f = new ResetFlowCpuIdleFixture())
+            {
+                // 用户自选方案同样可接管 目标就是当前活动方案 不再要求托管方案
+                f.Current = f.SecondScheme;
+                f.Values[f.SecondScheme] = 0;
+                ResetFlowCheck(PowerPlan.TryDisableCpuIdle(null) && PowerPlan.CpuIdleActive
+                    && f.Values[f.SecondScheme] == 1 && f.Values[f.FirstScheme] == 0,
+                    "a user-selected active plan could not take the idle mutation");
+                foreach (ResetFlowCpuIdleFixture.IdleWrite write in f.Writes)
+                    ResetFlowCheck(write.Scheme == f.SecondScheme, "user-plan idle wrote outside the active plan");
+                ResetFlowCheck(PowerPlan.RestoreCpuIdle() && !PowerPlan.CpuIdleHasResidue
+                    && f.Values[f.SecondScheme] == 0, "the user-plan idle mutation did not restore");
+            }
             using (var idle = new ResetFlowCpuIdleFixture())
             using (var epp = new ResetFlowEppFixture())
             {
@@ -1707,8 +1715,7 @@ namespace PaviseApp
             {
                 f.Own();
                 if (reload) f.Reload(); // Same durable ledger; discard all in-memory ownership.
-                f.Managed = f.SecondScheme; f.Current = f.SecondScheme;
-                f.Choice = f.SecondScheme.ToString(); f.OnAc = false;
+                f.Current = f.SecondScheme;
                 int activations = f.Activations.Count;
                 ResetFlowCheck(PowerPlan.CpuIdleHasResidue && PowerPlan.RestoreCpuIdle()
                     && !PowerPlan.CpuIdleHasResidue && f.Values[f.FirstScheme] == 0
@@ -1829,14 +1836,13 @@ namespace PaviseApp
 
         private static void ResetFlowCpuIdleCancellation(string root)
         {
-            foreach (string point in new[] { "initial", "read", "journal", "after-write", "battery", "plan" })
+            foreach (string point in new[] { "initial", "read", "journal", "after-write", "plan" })
             using (var f = new ResetFlowCpuIdleFixture())
             {
                 bool proceed = point != "initial";
                 if (point == "read") f.AfterRead = delegate { proceed = false; };
                 if (point == "journal") f.AfterLedgerWrite = delegate { proceed = false; };
                 if (point == "after-write") f.AfterWrite = delegate(uint value) { if (value == 1) proceed = false; };
-                if (point == "battery") f.AfterRead = delegate { f.OnAc = false; };
                 if (point == "plan") f.AfterLedgerWrite = delegate { f.Current = f.SecondScheme; };
                 PowerPlan.TryDisableCpuIdle(delegate { return proceed; });
                 ResetFlowCheck(!PowerPlan.CpuIdleActive && !PowerPlan.CpuIdleHasResidue
@@ -1905,8 +1911,9 @@ namespace PaviseApp
                     && !f.Mode.ProbeEffDisableCpuIdle && power.Writes.Count == 0 && irq.ForbiddenCalls == 0,
                     "idle failure fuse retained a live override absent from the old session snapshot");
             }
-            foreach (string trigger in new[] { "exit", "toggle", "battery", "plan-off", "user-plan",
-                "live-plan-off", "global-plan-off" })
+            // 电池与电源计划开关不再是撤销来源 电源来源是用户的选择
+            //   user-plan 现在的语义是 方案被切走先按收据还原旧方案 下轮再钉新方案
+            foreach (string trigger in new[] { "exit", "toggle", "plan-off", "user-plan" })
             using (var power = new ResetFlowCpuIdleFixture())
             using (var f = new FamilyPolicyFixture(root, "cpu-idle-revoke-" + trigger))
             {
@@ -1914,30 +1921,11 @@ namespace PaviseApp
                 FamilyPolicySetField(f.Mode, "enabled", true);
                 FamilyPolicySetField(f.Mode, "active", true);
                 f.Mode.DisableCpuIdle = true;
-                if (trigger == "live-plan-off")
-                {
-                    f.Mode.SetProfileOverride("first", PolicyCatalog.KeyPowerPlan, "1");
-                    f.Mode.ProbeSessionPolicyApply(f.Current("first"));
-                }
-                if (trigger == "global-plan-off")
-                {
-                    f.Mode.ClearProfileOverrides("first");
-                    ResetFlowCheck(f.Current("first").Overrides.Count == 0,
-                        "global power-off fixture must begin with a fully inherited profile");
-                    f.Mode.ProbeSessionPolicyApply(f.Current("first"));
-                }
-                Func<bool> request = f.Mode.CaptureCpuIdleAdmissionForTest();
                 ResetFlowCheck(f.Mode.StepCpuIdleForTest(true) && PowerPlan.CpuIdleActive,
                     "idle environment fixture could not apply before " + trigger);
                 if (trigger == "exit") FamilyPolicySetField(f.Mode, "active", false);
                 if (trigger == "toggle") f.Mode.DisableCpuIdle = false;
-                if (trigger == "battery") power.OnAc = false;
                 if (trigger == "user-plan") power.Current = power.SecondScheme;
-                if (trigger == "live-plan-off") f.Mode.SetProfileOverride("first", PolicyCatalog.KeyPowerPlan, "0");
-                if (trigger == "global-plan-off") f.Mode.PowerPlanSwitch = false;
-                if (trigger == "live-plan-off" || trigger == "global-plan-off")
-                    ResetFlowCheck(!request() && !f.Mode.CaptureCpuIdleAdmissionForTest()(),
-                        "old or new idle admission ignored a live power-plan opt-out: " + trigger);
                 ResetFlowCheck(!f.Mode.StepCpuIdleForTest(trigger != "plan-off")
                     && !PowerPlan.CpuIdleHasResidue && power.Values[power.FirstScheme] == 0,
                     "idle environment branch did not restore on " + trigger);
@@ -2405,11 +2393,10 @@ namespace PaviseApp
             internal readonly Dictionary<Guid, uint> Values = new Dictionary<Guid, uint>();
             internal readonly List<IdleWrite> Writes = new List<IdleWrite>();
             internal readonly List<Guid> Activations = new List<Guid>();
-            internal Guid Managed;
             internal Guid? Current;
-            internal string Choice = "managed", Ledger = "", LastRead = "";
-            internal bool OnAc = true, SetActiveResult = true;
-            internal bool ThrowAc, DenyRead, IgnoreWrites, DenyLedgerRead, IgnoreLedgerWrites;
+            internal string Ledger = "", LastRead = "";
+            internal bool SetActiveResult = true;
+            internal bool DenyRead, IgnoreWrites, DenyLedgerRead, IgnoreLedgerWrites;
             internal Func<Guid, uint, bool> RejectWrite;
             internal Func<string, bool> RejectLedger;
             internal Action AfterRead, AfterLedgerWrite;
@@ -2418,7 +2405,7 @@ namespace PaviseApp
 
             internal ResetFlowCpuIdleFixture()
             {
-                Managed = FirstScheme; Current = FirstScheme;
+                Current = FirstScheme;
                 Values[FirstScheme] = 0; Values[SecondScheme] = 1;
                 Reload();
             }
@@ -2426,15 +2413,9 @@ namespace PaviseApp
             internal void Reload()
             {
                 PowerPlan.ResetCpuIdleForTest();
+                PowerPlan.CpuIdleAmdForTest = false;
                 // Every native/ledger boundary is installed before production code is called.
-                PowerPlan.CpuIdleManagedSchemeForTest = delegate { return Managed; };
                 PowerPlan.CpuIdleCurrentSchemeForTest = delegate { return Current; };
-                PowerPlan.CpuIdleChoiceForTest = delegate { return Choice; };
-                PowerPlan.CpuIdleOnAcForTest = delegate
-                {
-                    if (ThrowAc) throw new InvalidOperationException("fixture AC status unavailable");
-                    return OnAc;
-                };
                 PowerPlan.CpuIdleReadAcForTest = delegate(Guid scheme, out uint value)
                 {
                     value = 0;

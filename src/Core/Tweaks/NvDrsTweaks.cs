@@ -14,12 +14,13 @@ namespace PaviseApp
         public bool ShaderCacheMax;
         public bool Rebar;
         public string DlssMode;
+        public bool WindowedVrr;
 
         public bool Empty
         {
             get
             {
-                return !MaxPerf && !Rebar
+                return !MaxPerf && !Rebar && !WindowedVrr
                     && !SmoothMotion && !ShaderCacheMax
                     && (LowLatMode == null || LowLatMode == "off")
                     && (DlssMode == null || DlssMode == "off");
@@ -47,6 +48,9 @@ namespace PaviseApp
         public const string KeyRebarSize = "rebarsize";
         public const string KeyDlssOvr = "dlssovr";
         public const string KeyDlssPreset = "dlsspreset";
+        public const string KeyForceP2 = "forcep2";
+        public const string KeyShaderOn = "shaderon";
+        public const string KeyVrrApp = "vrrapp";
 
         public static readonly string[] RebarKeys = { KeyRebarFeat, KeyRebarOpt, KeyRebarSize };
         public static readonly string[] DlssKeys = { KeyDlssOvr, KeyDlssPreset };
@@ -73,6 +77,9 @@ namespace PaviseApp
                 case KeyRebarSize: return NvApi.SettingRebarSizeLimit;
                 case KeyDlssOvr: return NvApi.SettingDlssSrOverride;
                 case KeyDlssPreset: return NvApi.SettingDlssSrPreset;
+                case KeyForceP2: return NvApi.SettingCudaForceP2;
+                case KeyShaderOn: return NvApi.SettingShaderCacheEnable;
+                case KeyVrrApp: return NvApi.SettingVrrAppOverride;
                 default: return 0;
             }
         }
@@ -166,7 +173,12 @@ namespace PaviseApp
         {
             var desired = new List<KeyValuePair<string, uint>>();
             if (plan == null) return desired;
-            if (plan.MaxPerf) desired.Add(new KeyValuePair<string, uint>(KeyPState, NvApi.PStatePreferMax));
+            if (plan.MaxPerf)
+            {
+                desired.Add(new KeyValuePair<string, uint>(KeyPState, NvApi.PStatePreferMax));
+                // 同一意图 频率不往下走 CUDA 触发的显存 P2 降频一起挡住
+                desired.Add(new KeyValuePair<string, uint>(KeyForceP2, NvApi.CudaForceP2Off));
+            }
             string lowLat = plan.LowLatMode;
             if (lowLat == "on" || lowLat == "ultra")
             {
@@ -191,7 +203,12 @@ namespace PaviseApp
                 }
             }
             if (plan.ShaderCacheMax)
+            {
+                desired.Add(new KeyValuePair<string, uint>(KeyShaderOn, NvApi.ShaderCacheOn));
                 desired.Add(new KeyValuePair<string, uint>(KeyShaderCache, NvApi.ShaderCacheUnlimited));
+            }
+            // 全局 VRR_MODE 由 NvVrrWindowed 补成全屏加窗口 逐游戏这半边只写允许 防止别的工具写成强制关
+            if (plan.WindowedVrr) desired.Add(new KeyValuePair<string, uint>(KeyVrrApp, NvApi.VrrAppAllow));
             if (plan.Rebar)
             {
                 desired.Add(new KeyValuePair<string, uint>(KeyRebarFeat, 1u));
@@ -365,7 +382,7 @@ namespace PaviseApp
                                 && (item.Key == KeyUllEnable || item.Key == KeyLowLatCpl))
                                 MarkUltraGone();
                             else
-                                Logger.Log(Lang.T("log.nvdrstweaks.9") + item.Key + Lang.T("log.nvdrstweaks.10") + exeName
+                                Logger.Warn(Lang.T("log.nvdrstweaks.9") + item.Key + Lang.T("log.nvdrstweaks.10") + exeName
                                     + Lang.T("log.nvdrstweaks.11") + status);
                         }
                     }

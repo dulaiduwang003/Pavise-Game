@@ -232,6 +232,13 @@ namespace PaviseApp
                     Fix = delegate { NetTweak.Repair(); },
                     Revert = delegate { NetTweak.Restore(); }
                 } },
+                { "linkmetric", new AuditFix
+                {
+                    CanFix = delegate { return LinkMetricTweak.NeedsRepair(); },
+                    CanRevert = delegate { return LinkMetricTweak.RepairedByPavise; },
+                    Fix = delegate { LinkMetricTweak.Repair(); },
+                    Revert = delegate { LinkMetricTweak.Restore(); }
+                } },
                 { "inputq", new AuditFix
                 {
                     CanFix = delegate { return InputMythTweak.NeedsRepair(); },

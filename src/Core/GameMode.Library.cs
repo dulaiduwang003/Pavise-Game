@@ -36,7 +36,7 @@ namespace PaviseApp
             if (!string.IsNullOrEmpty(preferredRoot))
             {
                 string normalized = NormalizeGameRoot(preferredRoot);
-                if (normalized != null && UnderRoot(resolved, normalized)) root = normalized;
+                if (normalized != null && FamilyBoundary.UnderRoot(resolved, normalized)) root = normalized;
             }
             if (root == null) root = NormalizeGameRoot(GameScan.InferGameRoot(resolved));
             root = ResolveLibraryInstallRoot(resolved, root);
@@ -163,7 +163,7 @@ namespace PaviseApp
                 || !GameSessionDetector.IsLibraryCandidate(name, resolved, windowsPrefix)) return false;
 
             string root = ResolveLibraryInstallRoot(resolved, GameScan.InferGameRoot(resolved));
-            if (root != null && !UnderRoot(resolved, root)) root = null;
+            if (root != null && !FamilyBoundary.UnderRoot(resolved, root)) root = null;
             string learnedGame;
             lock (sync)
             {
@@ -177,7 +177,7 @@ namespace PaviseApp
                 // 原范围 目标在原范围之外时 仍用上面保守推断的新 Root
                 string declaredRoot = GameInstallScope.RestrictFallback(
                     current.ExecutablePath, NormalizeGameRoot(current.Root));
-                if (declaredRoot != null && UnderRoot(resolved, declaredRoot)) root = declaredRoot;
+                if (declaredRoot != null && FamilyBoundary.UnderRoot(resolved, declaredRoot)) root = declaredRoot;
 
                 bool alreadyTarget = string.Equals(current.ExecutablePath, resolved,
                     StringComparison.OrdinalIgnoreCase);
@@ -753,7 +753,7 @@ namespace PaviseApp
             try
             {
                 string full = Path.GetFullPath(root.Trim().Trim('"')).TrimEnd('\\');
-                return SafeFamilyDir(full) ? full : null;
+                return FamilyBoundary.SafeFamilyDir(full) ? full : null;
             }
             catch { return null; }
         }

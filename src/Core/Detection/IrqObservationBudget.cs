@@ -34,7 +34,7 @@ namespace PaviseApp
         {
             try
             {
-                bool pending = IrqAutoPilot.Enabled && IrqAutoPilot.HasPendingVerification();
+                bool pending = false; // 自动编排已下架 不再有待验收钉核拉满观测
                 int usable = 0;
                 foreach (IrqSessionRecord rec in IrqSessionLedger.Load())
                     if (rec != null && rec.UsableForVerdict) usable++;

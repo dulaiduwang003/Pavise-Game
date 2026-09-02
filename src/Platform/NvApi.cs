@@ -48,6 +48,16 @@ namespace PaviseApp
         public const uint SettingRebarSizeLimit = 0x000F00FF;
         public const uint SettingDlssSrOverride = 0x10E41E01;
         public const uint SettingDlssSrPreset = 0x10E41DF3;
+        // CUDA 上下文存在时驱动把显存降到 P2 频率 关掉后显存跟核心一起留在 P0
+        //   Inspector 自定义键 值 0 关 1 开 默认开
+        public const uint SettingCudaForceP2 = 0x50166C5E;
+        // 逐游戏 VRR 覆盖 0 允许 1 强制关 2 不允许 3 ULMB 4 固定刷新 只写允许
+        public const uint SettingVrrAppOverride = 0x10A879CF;
+        public const uint VrrAppAllow = 0;
+        public const uint CudaForceP2Off = 0;
+        // 着色器磁盘缓存总开关 用户全局关了它 缓存大小无上限就是空话
+        public const uint SettingShaderCacheEnable = 0x00198FFF;
+        public const uint ShaderCacheOn = 1;
         public const uint RebarSizeDefault = 0x40000000;
         public const uint DlssPresetJ = 0x0000000A;
         public const uint DlssPresetK = 0x0000000B;

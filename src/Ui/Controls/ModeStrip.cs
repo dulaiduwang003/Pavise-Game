@@ -9,20 +9,19 @@ namespace PaviseApp
 {
     internal sealed class ModeStrip : Control
     {
-        private static readonly PerformancePreset[] Order =
-        {
-            PerformancePreset.Standard, PerformancePreset.Competitive,
-            PerformancePreset.Handheld, PerformancePreset.Custom
-        };
+        // 档位序在构造时定格 极限档锁着就不在里面 解锁要重启整机 回锁走 RebuildUi 重建本控件
+        //   下标必须与 AddCfgModeRow 传给回调的取值数组同源 两边都取 PresetValue.VisibleChoices
+        private readonly PerformancePreset[] Order = PresetValue.VisibleOrder();
 
         private int idx;
         private int hoverIdx = -1;
-        private readonly Motion[] glow = new Motion[Order.Length + 1];
+        private readonly Motion[] glow;
         private PerformancePreset global = PerformancePreset.Standard;
         public Action<int> IndexChanged;
 
         public ModeStrip()
         {
+            glow = new Motion[Order.Length + 1];
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer
                 | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
             BackColor = Theme.Card;
@@ -59,7 +58,7 @@ namespace PaviseApp
 
         // 掌机档只在带电池的机器上跟专注档有区别 台式机上两者写进方案的值一模一样
         //   给点等于让人选一个什么都不改的档 所以这一段不可点也不高亮
-        private static bool SegmentUnavailable(int index)
+        private bool SegmentUnavailable(int index)
         {
             if (index <= 0 || index > Order.Length) return false;
             return Order[index - 1] == PerformancePreset.Handheld && !Native.HasSystemBattery();

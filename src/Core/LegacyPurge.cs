@@ -109,6 +109,9 @@ namespace PaviseApp
             Step("Game DVR", GameDvr.Restore, failed);
             Step("MMCSS", Mmcss.Restore, failed);
             Step(Lang.T("t.gamemodeenv.5"), DisplayAwake.Restore, failed);
+            Step(Lang.T("gm.dwmboost"), DwmBoost.Restore, failed);
+            StepIf(Lang.T("gm.rsssteer"), delegate { return RssSteer.HasResidue; },
+                RssSteer.Restore, failed);
             Step(Lang.T("t.legacypurge.6"), PresenceQos.Restore, failed);
             Step(Lang.T("t.legacypurge.7"), PowerOverlay.Restore, failed);
             Step(Lang.T("t.gamemodeenv.6"), GpuPowerMax.Restore, failed);
@@ -121,6 +124,11 @@ namespace PaviseApp
                 TimerTickTweak.Restore, failed);
             StepIf(Lang.T("set.gtimer"), delegate { return GlobalTimerResTweak.OwnsState; },
                 GlobalTimerResTweak.Restore, failed);
+            StepIf(Lang.T("set.memcompress"), delegate { return MemCompressTweak.OwnsState; },
+                MemCompressTweak.Restore, failed);
+            StepIf(Lang.T("set.rescores"), delegate { return ReservedCoresTweak.OwnsState; },
+                ReservedCoresTweak.Restore, failed);
+            Step(Lang.T("extreme.card.title"), delegate { ExtremeMode.PurgeAll(); return true; }, failed);
             StepIf(Lang.T("set.gpupref"), delegate { return GpuPrefStage.HasResidue; },
                 delegate { return GpuPrefStage.Restore() || GpuPrefStage.AbandonUnprovableForReset(); },
                 failed);
@@ -131,13 +139,22 @@ namespace PaviseApp
                 delegate { return IntelGraphicsTweaks.Restore()
                     || IntelGraphicsTweaks.AbandonUnprovableForReset(); }, failed);
             Step(Lang.T("t.legacypurge.10"), NetTweak.Restore, failed);
-            StepIf(Lang.T("set.nicim"), NicModerationTweak.HasResidue, NicModerationTweak.Restore, failed);
+            StepIf(Lang.T("set.nicim"), NicModerationTweak.HasResidue,
+                delegate { return NicModerationTweak.Restore()
+                    || NicModerationTweak.AbandonUnprovableForReset(); }, failed);
             Step(Lang.T("t.legacypurge.11"), QuantumTweak.Restore, failed);
             Step("VBS", VbsTweak.Restore, failed);
             Step("Spectre/Meltdown", SpecMitigationTweak.Restore, failed);
             Step(Lang.T("t.legacypurge.12"), GameModeGuard.Restore, failed);
             Step(Lang.T("t.legacypurge.13"), DevicePowerTweak.Restore, failed);
             StepIf(Lang.T("set.windowedopt"), WindowedOptTweak.HasResidue, WindowedOptTweak.Restore, failed);
+            StepIf(Lang.T("set.vrropt"), VrrOptTweak.HasResidue, VrrOptTweak.Restore, failed);
+            StepIf(Lang.T("set.eee"), EeeTweak.HasResidue, EeeTweak.Restore, failed);
+            StepIf(Lang.T("set.gpuclock"), delegate { return GpuClockLock.HasResidue; }, GpuClockLock.Restore, failed);
+            StepIf(Lang.T("set.nvvrr"), delegate { return NvVrrWindowed.HasResidue; }, NvVrrWindowed.Restore, failed);
+            StepIf(Lang.T("set.intel.endurance"), delegate { return IntelEndurance.HasResidue; }, IntelEndurance.Restore, failed);
+            StepIf(Lang.T("gm.laptopperf"), delegate { return LaptopPerfMode.HasResidue; }, LaptopPerfMode.Restore, failed);
+            StepIf(Lang.T("t.linkmetric.name"), delegate { return LinkMetricTweak.RepairedByPavise; }, LinkMetricTweak.Restore, failed);
             Step(Lang.T("t.legacypurge.14"), AccessibilityKeysTweak.Restore, failed);
             Step(Lang.T("t.legacypurge.15"), HidPowerTweak.Restore, failed);
             Step(Lang.T("t.legacypurge.16"), InputMythTweak.Restore, failed);
@@ -173,10 +190,13 @@ namespace PaviseApp
 
             StepIf("HAGS", HagsTweak.HasResidue, HagsTweak.Restore, failed);
             StepIf("FSO", FsoTweak.HasResidue, FsoTweak.RestoreAll, failed);
+            StepIf("DPI", DpiTweak.HasResidue, DpiTweak.RestoreAll, failed);
+            StepIf(Lang.T("gm.pausemaint"), delegate { return MaintenancePause.HasResidue; }, MaintenancePause.Restore, failed);
+            StepIf("AMD SAM", AmdSamTweak.HasResidue, AmdSamTweak.Restore, failed);
             StepIf("FTH", delegate { return FthTweak.RepairedByPavise; }, FthTweak.Restore, failed);
             Step("CFG", CfgOffTweak.RestoreAll, failed);
             StepIf(Lang.T("t.legacypurge.29"), delegate { return IrqRelocate.HasResidue; }, IrqRelocate.Revert, failed);
-            StepIf(Lang.T("irqauto.title"), delegate { return IrqAutoPilot.HasResidue; }, delegate
+            StepIf("自动中断编排 已下架的注册表钉核清退", delegate { return IrqAutoPilot.HasResidue; }, delegate
             {
                 if (!IrqAutoPilot.RevertAll()) return false;
                 IrqAutoPilot.ClearForReset();
@@ -220,7 +240,7 @@ namespace PaviseApp
             bool boost = boostPending();
             bool suppression = suppressionPending();
             if (!boost && !suppression) return true;
-            Logger.Log(Lang.T("log.legacypurge.45"));
+            Logger.Warn(Lang.T("log.legacypurge.45"));
             return false;
         }
 

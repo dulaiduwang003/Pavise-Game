@@ -58,6 +58,17 @@ namespace PaviseApp
 
         public static bool DisabledByPavise { get { return Settings.Load("SpecMitDisabledByPavise", false); } }
 
+        // 极限档强制的门 比 RecoverableCost 严
+        //   只有两种软件缓解真吃每次内核态切换 KPTI 在跑 或 Spectre v2 走的是逐次 IBRS 的老路
+        //   Retpoline 和 eIBRS 都是近乎免费的 MbClear SSBD 那几项也便宜 卸了只剩安全代价
+        //   Zen3+ 和 Intel 10 代起硬件缓解 这里一律不强制 用户手开路径不经此门
+        public static bool WorthDisabling(State st)
+        {
+            if (!st.QueryOk) return false;
+            if (st.KvaShadowEnabled && st.KvaShadowRequired) return true;
+            return st.BpbEnabled && !st.EnhancedIbrs && !st.RetpolineEnabled;
+        }
+
         private static bool TryQueryClass(int cls, out uint flags)
         {
             flags = 0;

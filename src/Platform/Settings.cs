@@ -213,6 +213,62 @@ namespace PaviseApp
                 }
             }
         }
+
+        // 事务收据必须先于跨 hive 的系统改动稳定落盘。普通偏好设置仍走
+        // Save/SaveStr；只有恢复台账使用同步 Flush，避免把高成本扩散到全局。
+        internal static bool SaveStrDurable(string name, string val)
+        {
+            lock (writeSync)
+            {
+                BumpMutationGeneration();
+                if (writesSuspendedForReset) return false;
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+                if (TrySaveTransient(name, val ?? "")) return true;
+#endif
+                try
+                {
+                    using (var k = Registry.CurrentUser.CreateSubKey(Key))
+                    {
+                        if (k == null) throw new InvalidOperationException(Lang.T("t.settings.1"));
+                        k.SetValue(name, val ?? "", RegistryValueKind.String);
+                        k.Flush();
+                    }
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogFailure(Lang.T("log.settings.2") + name, ex);
+                    return false;
+                }
+            }
+        }
+
+        internal static bool SaveDurable(string name, bool val)
+        {
+            lock (writeSync)
+            {
+                BumpMutationGeneration();
+                if (writesSuspendedForReset) return false;
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+                if (TrySaveTransient(name, val ? 1 : 0)) return true;
+#endif
+                try
+                {
+                    using (var k = Registry.CurrentUser.CreateSubKey(Key))
+                    {
+                        if (k == null) throw new InvalidOperationException(Lang.T("t.settings.1"));
+                        k.SetValue(name, val ? 1 : 0, RegistryValueKind.DWord);
+                        k.Flush();
+                    }
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogFailure(Lang.T("log.settings.2") + name, ex);
+                    return false;
+                }
+            }
+        }
     }
 
 }

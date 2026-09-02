@@ -98,11 +98,61 @@ namespace PaviseApp
 
         public static ProcessSnapshot Capture(int pathSession)
         {
+            return Capture(pathSession, 0);
+        }
+
+        // 快照复用 全量枚举(class 5)按本机进程线程数计价 进程多的机器一次要好几毫秒
+        //   事件在场时进程集的每次变动都会走 dirty 强制重拍 兜底轮询里进程集没动过
+        //   重拍只是把同一份名单再抄一遍 复用窗口只对"事件没报告的变动"有暴露
+        //   上限取 5 秒 比 20 秒的全量兜底保守四倍 快照本体只读 跨轮共享安全
+        //   代价是这段窗口里新入压制的进程 报告用的 CPU/IO 基线最多旧 5 秒
+        internal const int ReuseMaxAgeMs = 5000;
+
+        private static ProcessSnapshot cachedSnapshot;
+        private static long cachedSnapshotTicks;
+        private static int cachedSnapshotSession = -1;
+        private static long reuseCount;
+
+        internal static long ReuseCount { get { return System.Threading.Interlocked.Read(ref reuseCount); } }
+
+        public static ProcessSnapshot Capture(int pathSession, int maxAgeMs)
+        {
+            if (maxAgeMs > 0 && pathSession >= 0)
+                lock (cacheSync)
+                {
+                    long age = (DateTime.UtcNow.Ticks - cachedSnapshotTicks)
+                        / TimeSpan.TicksPerMillisecond;
+                    if (cachedSnapshot != null && cachedSnapshotSession == pathSession
+                        && age >= 0 && age <= maxAgeMs)
+                    {
+                        System.Threading.Interlocked.Increment(ref reuseCount);
+                        return cachedSnapshot;
+                    }
+                }
             ProcEntry[] entries = Enumerate();
             if (entries == null) return null;
             if (pathSession >= 0) ResolvePaths(entries, pathSession);
             else PruneCache(entries);
-            return new ProcessSnapshot(entries);
+            var snapshot = new ProcessSnapshot(entries);
+            if (pathSession >= 0)
+                lock (cacheSync)
+                {
+                    cachedSnapshot = snapshot;
+                    cachedSnapshotTicks = DateTime.UtcNow.Ticks;
+                    cachedSnapshotSession = pathSession;
+                }
+            return snapshot;
+        }
+
+        internal static void ResetSnapshotCacheForTest()
+        {
+            lock (cacheSync)
+            {
+                cachedSnapshot = null;
+                cachedSnapshotTicks = 0;
+                cachedSnapshotSession = -1;
+                System.Threading.Interlocked.Exchange(ref reuseCount, 0);
+            }
         }
 
         private static ProcEntry[] Enumerate()

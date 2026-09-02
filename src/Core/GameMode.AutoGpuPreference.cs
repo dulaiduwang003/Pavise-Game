@@ -40,7 +40,9 @@ namespace PaviseApp
         // 每局一次 复用渲染进程选举的采样互斥 与自动入库和选举不并发跑 PDH
         private void MaybeAutoEnrollBackgroundGpu(int rendererPid)
         {
-            if (!autoGpuOn || autoGpuScanned || stopping || panicReq || rendererPid <= 0) return;
+            bool autoGpuWanted = autoGpuOn || (ActivePreset == PerformancePreset.Extreme
+                && ExtremeMode.ForceGlobal("autoecogpu"));
+            if (!autoGpuWanted || autoGpuScanned || stopping || panicReq || rendererPid <= 0) return;
             long start = Interlocked.Read(ref sessionStartTicks);
             if (start == 0 || DateTime.UtcNow.Ticks - start
                 < AutoGpuDelaySeconds * TimeSpan.TicksPerSecond) return;
@@ -159,7 +161,7 @@ namespace PaviseApp
             if (detection != null && detection.Profile != null)
             {
                 string root = detection.Profile.Root;
-                if (SafeFamilyDir(root) && UnderRoot(path, root)) return true;
+                if (FamilyBoundary.SafeFamilyDir(root) && FamilyBoundary.UnderRoot(path, root)) return true;
             }
             foreach (GameProfile profile in profiles)
                 if (SameLibraryPath(profile.ExecutablePath, path)

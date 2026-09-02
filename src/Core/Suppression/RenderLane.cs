@@ -298,7 +298,7 @@ namespace PaviseApp
             if (logThis)
             {
                 if (sampleFails >= BatchWindows)
-                    Logger.Log(Lang.T("log.renderlane.1") + (gameName ?? "?") + " pid " + pid
+                    Logger.Warn(Lang.T("log.renderlane.1") + (gameName ?? "?") + " pid " + pid
                         + Lang.T("log.renderlane.2"));
                 else if (sawSpread || last.Tid != 0)
                     Logger.Log(Lang.T("log.renderlane.3") + (gameName ?? "?") + Lang.T("log.renderlane.4")
@@ -389,7 +389,7 @@ namespace PaviseApp
                 if (!setPriority(Native.THREAD_PRIORITY_HIGHEST))
                 {
                     if (RestorePriorityVerified(readPriority, setPriority, original)) ClearJournal(journal);
-                    if (logThis) Logger.Log(Lang.T("log.renderlane.11"));
+                    if (logThis) Logger.Warn(Lang.T("log.renderlane.11"));
                     return PinOutcome.Retryable;
                 }
                 int actual = readPriority();

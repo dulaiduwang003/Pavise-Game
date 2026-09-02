@@ -72,7 +72,7 @@ namespace PaviseApp
                 Theme.Accent);
 
             int textX = Theme.S(74);
-            int stateReserve = Theme.S(260);
+            int stateReserve = Theme.S(300);
             TextRenderer.DrawText(g, code, Theme.Mono(6.2f),
                 new Rectangle(textX, Theme.S(9), Width - textX - stateReserve, Theme.S(14)), Theme.Faint,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
@@ -83,13 +83,13 @@ namespace PaviseApp
                 new Rectangle(textX, Theme.S(48), Width - textX - Theme.S(40), Theme.S(18)), Theme.Dim,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
 
-            int stateX = Width - Theme.S(236);
+            int stateX = Width - Theme.S(276);
             using (var halo = new SolidBrush(Col.Alpha(stateColor, 28)))
                 g.FillEllipse(halo, stateX, Theme.S(18), Theme.S(20), Theme.S(20));
             using (var dot = new SolidBrush(stateColor))
                 g.FillEllipse(dot, stateX + Theme.S(6), Theme.S(24), Theme.S(8), Theme.S(8));
             TextRenderer.DrawText(g, state.ToUpperInvariant(), Theme.MonoFor(state, 7.2f),
-                new Rectangle(stateX + Theme.S(28), Theme.S(15), Theme.S(190), Theme.S(28)), stateColor,
+                new Rectangle(stateX + Theme.S(28), Theme.S(15), Theme.S(230), Theme.S(28)), stateColor,
                 TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
             using (var rail = new Pen(Col.Alpha(stateColor, 128)))
                 g.DrawLine(rail, stateX + Theme.S(28), Theme.S(48), Width - Theme.S(18), Theme.S(48));

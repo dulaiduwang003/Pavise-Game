@@ -69,7 +69,7 @@ namespace PaviseApp
             if (fallback == null) fallback = NormalizeGameRoot(GameScan.InferGameRoot(executablePath));
             fallback = GameInstallScope.RestrictFallback(executablePath, fallback);
             string resolved = NormalizeGameRoot(GameInstallScope.Resolve(executablePath, fallback));
-            return resolved != null && UnderRoot(executablePath, resolved) ? resolved : fallback;
+            return resolved != null && FamilyBoundary.UnderRoot(executablePath, resolved) ? resolved : fallback;
         }
 
         // 已有条目的推断根目录可能太窄 加载时顺手把这份元数据修好
@@ -87,7 +87,7 @@ namespace PaviseApp
                 bool rejectedOldRoot = !string.IsNullOrEmpty(profile.Root) && fallback == null;
                 string resolved = NormalizeGameRoot(GameInstallScope.Resolve(
                     profile.ExecutablePath, fallback));
-                if (resolved != null && !UnderRoot(profile.ExecutablePath, resolved)) resolved = fallback;
+                if (resolved != null && !FamilyBoundary.UnderRoot(profile.ExecutablePath, resolved)) resolved = fallback;
                 if (string.Equals(resolved, profile.Root, StringComparison.OrdinalIgnoreCase)) continue;
                 // 不要收窄一个已经声明过的安装范围 也不要排除
                 // 一个已确认的渲染进程 除非旧范围本身就是
@@ -95,9 +95,9 @@ namespace PaviseApp
                 if (!rejectedOldRoot)
                 {
                     if (resolved == null) continue;
-                    if (!string.IsNullOrEmpty(profile.Root) && !UnderRoot(profile.Root, resolved)) continue;
+                    if (!string.IsNullOrEmpty(profile.Root) && !FamilyBoundary.UnderRoot(profile.Root, resolved)) continue;
                     if (!string.IsNullOrEmpty(profile.LearnedExecutablePath)
-                        && !UnderRoot(profile.LearnedExecutablePath, resolved)) continue;
+                        && !FamilyBoundary.UnderRoot(profile.LearnedExecutablePath, resolved)) continue;
                 }
                 profile.Root = resolved;
                 changed = true;

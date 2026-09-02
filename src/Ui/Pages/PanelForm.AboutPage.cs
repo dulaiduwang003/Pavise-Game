@@ -152,7 +152,7 @@ namespace PaviseApp
                             {
                                 lblUpd.ForeColor = Theme.Danger;
                                 lblUpd.Text = Lang.T("upd.fail");
-                                Logger.Log(Lang.T("log.panelformaboutpage.1") + r.Error);
+                                Logger.Warn(Lang.T("log.panelformaboutpage.1") + r.Error);
                             }
                             else if (r.Newer)
                             {

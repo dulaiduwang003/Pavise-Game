@@ -135,7 +135,7 @@ namespace PaviseApp
             List<Target> targets = BuildTargets(deviceIds);
             bool useMask = !CpuTopology.MultiGroup && preferredMask != 0 && preferredMask != CpuTopology.AllMask;
             if (CpuTopology.MultiGroup)
-                Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.5"));
+                Logger.Warn(logPrefix + Lang.T("log.irqaffinityengine.5"));
 
             var touched = LoadTouched();
 

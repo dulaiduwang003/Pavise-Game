@@ -27,6 +27,30 @@ namespace PaviseApp
 
         public static bool DisabledByPavise { get { return Settings.Load("VbsDisabledByPavise", false); } }
 
+        // 关 VBS 等于关虚拟机监控程序 Hyper-V WSL2 Docker 沙盒都跟着停
+        //   vmcompute 和 vmms 两个服务任一存在就是有人在用 Credential Guard 开着是企业机
+        //   只挡极限档的强制 用户自己手开不经此门
+        internal static bool VirtualizationInUse(bool vmcomputeInstalled, bool vmmsInstalled, int lsaCfgFlags)
+        {
+            return vmcomputeInstalled || vmmsInstalled || lsaCfgFlags > 0;
+        }
+
+        public static bool VirtualizationInUse()
+        {
+            return VirtualizationInUse(ServiceInstalled("vmcompute"), ServiceInstalled("vmms"),
+                Math.Max(ReadDword(@"SYSTEM\CurrentControlSet\Control\Lsa", "LsaCfgFlags"), 0));
+        }
+
+        private static bool ServiceInstalled(string name)
+        {
+            try
+            {
+                using (var k = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\" + name))
+                    return k != null;
+            }
+            catch { return false; }
+        }
+
         public static bool BlockedReason(out string reasonKey)
         {
             reasonKey = null;
@@ -102,7 +126,7 @@ namespace PaviseApp
                         string previous = ReadHvLaunch(out readOk);
                         if (!readOk)
                         {
-                            Logger.Log(Lang.T("log.vbstweak.1"));
+                            Logger.Warn(Lang.T("log.vbstweak.1"));
                             return false;
                         }
                         Settings.SaveStr("PrevHvLaunch", previous);

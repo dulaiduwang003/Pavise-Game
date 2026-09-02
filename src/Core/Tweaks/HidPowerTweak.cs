@@ -55,7 +55,7 @@ namespace PaviseApp
                     }
                 }
             }
-            catch (Exception ex) { Logger.Log(Lang.T("log.hidpowertweak.3") + ex.Message); }
+            catch (Exception ex) { Logger.Warn(Lang.T("log.hidpowertweak.3") + ex.Message); }
             return targets;
         }
 
@@ -171,7 +171,7 @@ namespace PaviseApp
 
                 if (done.Count == 0)
                 {
-                    Logger.Log(anyFail
+                    Logger.Warn(anyFail
                         ? Lang.T("log.hidpowertweak.15")
                         : Lang.T("log.hidpowertweak.16"));
                     if (!anyFail) Settings.Save(FlagKey, true);

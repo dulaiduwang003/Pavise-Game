@@ -88,7 +88,7 @@ namespace PaviseApp
             {
                 bool ok;
                 string[] before = ReadValues(out ok);
-                if (!ok) { Logger.Log(Lang.T("log.timerticktweak.1")); return false; }
+                if (!ok) { Logger.Warn(Lang.T("log.timerticktweak.1")); return false; }
                 if (Settings.LoadStr(SnapKey, "").Length == 0)
                 {
                     string snap = string.Join("|", before);

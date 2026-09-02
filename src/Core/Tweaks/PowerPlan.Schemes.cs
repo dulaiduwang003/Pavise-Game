@@ -56,6 +56,29 @@ namespace PaviseApp
         private static readonly Guid PcieAspm          = new Guid("ee12f906-d277-404b-b6da-e5fa1a576df5");
         private static readonly Guid UsbSelSuspend     = new Guid("48e6b7a6-50f5-4782-a5d4-53bb8f07e226");
         private static readonly Guid DiskIdle          = new Guid("6738e2c4-e8a5-4a42-b16a-e040e769756e");
+        // NVMe 非操作性电源态的唤醒是毫秒级尾延迟 抑制降档的正规杠杆是延迟容忍不是超时
+        //   超时到期后驱动只选 ENLAT+EXLAT 不超过容忍值的状态 容忍 0 等于没有状态够格
+        //   微软性能方案自己就是这么写的 超时 0 的语义没有文档定义 不碰
+        //   AHCI LPM 唤醒卡顿有 Event 129 实锤 对局保持链路 Active
+        private static readonly Guid NvmeLatTolPrimary   = new Guid("fc95af4d-40e7-4b6d-835a-56d131dbc80e");
+        private static readonly Guid NvmeLatTolSecondary = new Guid("dbc9e238-6de9-49e3-92cd-8c2b4946b472");
+        private static readonly Guid AhciLpm             = new Guid("0b2d69d7-a2a1-449c-9680-f91c70521c60");
+
+        // USB3 链路的 U1/U2 低功耗态退出是微秒到毫秒级 和选择性暂停同一路 对局关掉
+        private static readonly Guid Usb3Lpm           = new Guid("d4e98f31-5ffe-4ce1-be31-1b38b384c009");
+        // 厂商注入到方案里的显卡子组 只有装了对应驱动的机器才有 SettingPresent 读不到整项跳过
+        //   Intel 核显 0 最长续航 1 平衡 2 最高性能 掌机上它划的是核显那份预算
+        //   切换显卡 0 强制省电卡 1 优化省电 2 优化性能 3 最大性能
+        private static readonly Guid SubIntelGfx       = new Guid("44f3beca-a7c0-460e-9df2-bb8b99e0cba6");
+        private static readonly Guid IntelGfxPlan      = new Guid("3619c3f2-afb2-4afc-b0e9-e7fef372de36");
+        private static readonly Guid SubSwitchGfx      = new Guid("e276e160-7cb0-43c6-b20b-73f5dce39954");
+        private static readonly Guid SwitchGfxPolicy   = new Guid("a1662ab2-9d34-4e53-ba8b-2639b9e20857");
+
+        // 极限档专属 空闲行为侧的加码 不禁止空闲 只让退出更快进入更谨慎
+        //   这几项在多数方案上未暴露 SettingPresent 读不到就整项跳过 不写坏方案
+        private static readonly Guid IdlePromote      = new Guid("7b224883-b3cc-4d79-819f-8374152cbe7c");
+        private static readonly Guid IdleDemote       = new Guid("4b92d758-5a24-4851-a470-815d78aee119");
+        private static readonly Guid IdleScaling      = new Guid("6c2993b0-8f48-481f-bcc6-00dd2742aa06");
 
         private static readonly Guid PerfEpp           = new Guid("36687f9e-e3a5-4dbf-b1dc-15eb381c6863");
         private static readonly Guid PerfBoostPol      = new Guid("45bcc044-d885-43e2-8605-ee0ec6e96b59");
@@ -78,6 +101,18 @@ namespace PaviseApp
         private static readonly Guid PerfEpp1          = new Guid("36687f9e-e3a5-4dbf-b1dc-15eb381c6864");
         private static readonly Guid SchedPolicy       = new Guid("93b8b6dc-0698-4d1c-9ee4-0644e900c85d");
         private static readonly Guid ShortSchedPolicy  = new Guid("bae08b81-2d5e-4688-ad6a-13243356654b");
+        // 效率等级 1 那半边的升降频与延迟敏感项 GUID 末位比等级 0 大一
+        //   P 核写激进 E 核却留系统默认 游戏辅助线程落到 E 核上爬频走的就是平衡档口径
+        //   HWP 自主模式下升降频策略 时间 阈值六项是空操作 真增量是睿频策略和两项延迟敏感
+        private static readonly Guid PerfBoostPol1      = new Guid("45bcc044-d885-43e2-8605-ee0ec6e96b5a");
+        private static readonly Guid PerfIncPol1        = new Guid("465e1f50-b610-473a-ab58-00d1077dc419");
+        private static readonly Guid PerfDecPol1        = new Guid("40fbefc7-2e9d-4d25-a185-0cfd8574bac7");
+        private static readonly Guid PerfIncTime1       = new Guid("984cf492-3bed-4488-a8f9-4286c97bf5ab");
+        private static readonly Guid PerfDecTime1       = new Guid("d8edeb9b-95cf-4f95-a73c-b061973693c9");
+        private static readonly Guid PerfIncThreshold1  = new Guid("06cadf0e-64ed-448a-8927-ce7bf90eb35e");
+        private static readonly Guid PerfDecThreshold1  = new Guid("12a0ab44-fe28-4fa9-b3bd-4b64f44960a7");
+        private static readonly Guid LatencyHintPerf1   = new Guid("619b7505-003b-4e82-b7a6-4dd29c300972");
+        private static readonly Guid LatencyHintUnpark1 = new Guid("616cdaa5-695e-4545-97ad-97dc2d1bdd89");
 
         private static readonly Guid IdleDisableSet    = new Guid("5d76a2ca-e8c0-402f-a133-2158492d58ad");
 
@@ -126,6 +161,12 @@ namespace PaviseApp
             new Knob(SubProcessor, PerfDutyCycling,   0,   0,   0,  1, "t.powerplanschemes.22"),
             new Knob(SubProcessor, ProcFreqMax,       0,   0,   0,  0, "t.powerplanschemes.23"),
             new Knob(SubWireless,  WirelessPowerSave, 0,   0,   1,  2, "t.powerplanschemes.24"),
+            new Knob(SubDisk,      NvmeLatTolPrimary,   0, 0,  15,  50, "t.powerplanschemes.35"),
+            new Knob(SubDisk,      NvmeLatTolSecondary, 0, 0, 100, 100, "t.powerplanschemes.36"),
+            new Knob(SubDisk,      AhciLpm,             0, 0,   0,   1, "t.powerplanschemes.37"),
+            new Knob(SubUsb,       Usb3Lpm,             0, 0,   2,   3, "t.powerplanschemes.43"),
+            new Knob(SubIntelGfx,  IntelGfxPlan,        2, 2,   1,   1, "t.powerplanschemes.44"),
+            new Knob(SubSwitchGfx, SwitchGfxPolicy,     3, 3,   1,   1, "t.powerplanschemes.54"),
         };
 
         private static readonly Knob[] HybridKnobs = new Knob[]
@@ -137,15 +178,104 @@ namespace PaviseApp
             new Knob(SubProcessor, PerfEpp1,           0,   0,  32, 70, "t.powerplanschemes.29"),
             new Knob(SubProcessor, SchedPolicy,        2,   2,   5,  5, "t.powerplanschemes.30"),
             new Knob(SubProcessor, ShortSchedPolicy,   2,   2,   5,  5, "t.powerplanschemes.31"),
+            new Knob(SubProcessor, PerfBoostPol1,    100, 100,  60, 40, "t.powerplanschemes.45"),
+            new Knob(SubProcessor, PerfIncPol1,        2,   2,   1,  1, "t.powerplanschemes.46"),
+            new Knob(SubProcessor, PerfDecPol1,        1,   1,   2,  2, "t.powerplanschemes.47"),
+            new Knob(SubProcessor, PerfIncTime1,       1,   1,   3,  3, "t.powerplanschemes.48"),
+            new Knob(SubProcessor, PerfDecTime1,      10,  10,   5,  5, "t.powerplanschemes.49"),
+            new Knob(SubProcessor, PerfIncThreshold1, 10,  10,  30, 40, "t.powerplanschemes.50"),
+            new Knob(SubProcessor, PerfDecThreshold1,  8,   8,  20, 30, "t.powerplanschemes.51"),
+            new Knob(SubProcessor, LatencyHintPerf1, 100, 100,  75, 50, "t.powerplanschemes.52"),
+            new Knob(SubProcessor, LatencyHintUnpark1,100,100,  50, 50, "t.powerplanschemes.53"),
         };
 
+        // 极限档在电竞列之上再加的一组 只在极限档写 其余档位一律不碰
+        //   分两类 一类是把已有旋钮推到量程尽头 一类是电竞列没碰过的空闲行为
+        //   计量单位由系统定义 写入前一律经 Clamp 夹到本机允许区间
+        private static readonly Knob[] ExtremeKnobs = new Knob[]
+        {
+            // 进入更深空闲态的门槛拉到最高 退出门槛压到最低 合起来就是尽量待在浅空闲
+            new Knob(SubProcessor, IdlePromote,     100, 100, 100, 100, "t.powerplanschemes.39"),
+            new Knob(SubProcessor, IdleDemote,        0,   0,   0,   0, "t.powerplanschemes.40"),
+            // 空闲检查周期 c4581c31 曾在这里写 0 想靠 Clamp 夹到下限 本机量程 1~200000 微秒
+            //   写入从没成功过 每局固定报一项失败 内核检查周期跟定时器节拍走 写 1 和默认 50000 分不出差别
+            //   没有依据支撑它 整项撤掉 旧快照里若有它 RestoreExtremeKnobs 照样按 GUID 写回
+            // 关闭按负载缩放空闲门槛 门槛不再随负载浮动
+            new Knob(SubProcessor, IdleScaling,       0,   0,   0,   0, "t.powerplanschemes.42"),
+        };
+
+        private const string ExtremeSnapKey = "ExtremePowerKnobSnap";
+
+        // 首次写入前把四项现值按 AC,DC 记快照 已有快照不覆盖
+        //   读不到的项不记 写回时同样按 SettingPresent 跳过 方案重建后写不回也照样清账
+        private static void SnapshotExtremeKnobs(Guid scheme)
+        {
+            if (Settings.LoadStr(ExtremeSnapKey, "").Length > 0) return;
+            var parts = new List<string>();
+            foreach (Knob k in ExtremeKnobs)
+            {
+                Guid sb = k.Sub, set = k.Setting;
+                uint ac, dc;
+                if (PowerReadACValueIndex(IntPtr.Zero, ref scheme, ref sb, ref set, out ac) != 0) continue;
+                sb = k.Sub; set = k.Setting;
+                if (PowerReadDCValueIndex(IntPtr.Zero, ref scheme, ref sb, ref set, out dc) != 0) dc = ac;
+                parts.Add(k.Setting.ToString("N") + "=" + ac + "," + dc);
+            }
+            if (parts.Count > 0) Settings.SaveStr(ExtremeSnapKey, string.Join(";", parts.ToArray()));
+        }
+
+        private static void RestoreExtremeKnobs(Guid scheme)
+        {
+            string snap = Settings.LoadStr(ExtremeSnapKey, "");
+            if (snap.Length == 0) return;
+            foreach (string part in snap.Split(';'))
+            {
+                int eq = part.IndexOf('=');
+                int comma = part.IndexOf(',');
+                if (eq <= 0 || comma <= eq) continue;
+                Guid setting;
+                uint ac, dc;
+                if (!TryParseGuidN(part.Substring(0, eq), out setting)) continue;
+                if (!uint.TryParse(part.Substring(eq + 1, comma - eq - 1), out ac)) continue;
+                if (!uint.TryParse(part.Substring(comma + 1), out dc)) continue;
+                if (!SettingPresent(scheme, SubProcessor, setting)) continue;
+                WritePair(scheme, SubProcessor, setting, ac, dc);
+            }
+            Settings.SaveStr(ExtremeSnapKey, "");
+        }
+
+        private static bool TryParseGuidN(string raw, out Guid value)
+        {
+            try { value = new Guid(raw); return true; }
+            catch { value = Guid.Empty; return false; }
+        }
+
 #if PAVISE_SELFTEST
+        // 极限组的成员与取值 供回归核对 不触发任何写入
+        internal static int ExtremeKnobCountForTest { get { return ExtremeKnobs.Length; } }
+
+        internal static bool ExtremeOnlyGuidForTest(Guid setting)
+        {
+            foreach (Knob k in CoreKnobs) if (k.Setting == setting) return false;
+            foreach (Knob k in OptionalKnobs) if (k.Setting == setting) return false;
+            foreach (Knob k in HybridKnobs) if (k.Setting == setting) return false;
+            foreach (Knob k in ExtremeKnobs) if (k.Setting == setting) return true;
+            return false;
+        }
+
+        internal static Guid[] ExtremeKnobGuidsForTest()
+        {
+            var list = new List<Guid>();
+            foreach (Knob k in ExtremeKnobs) list.Add(k.Setting);
+            return list.ToArray();
+        }
         internal static List<string> DescribeKnobs()
         {
             var lines = new List<string>();
             foreach (Knob k in CoreKnobs) lines.Add(DescribeKnob(k));
             foreach (Knob k in OptionalKnobs) lines.Add(DescribeKnob(k));
             foreach (Knob k in HybridKnobs) lines.Add(DescribeKnob(k));
+            foreach (Knob k in ExtremeKnobs) lines.Add(DescribeKnob(k));
             return lines;
         }
 
@@ -176,7 +306,7 @@ namespace PaviseApp
             return cachedProfile;
         }
 
-        private static bool TuneTarget(Guid g, bool aggressive, bool handheld)
+        private static bool TuneTarget(Guid g, bool aggressive, bool handheld, bool extreme)
         {
             try
             {
@@ -196,6 +326,19 @@ namespace PaviseApp
                     if (!SettingPresent(g, k.Sub, k.Setting)) { skipped.Add(k.Label); continue; }
                     if (WriteKnob(g, k, aggressive, handheld, profile)) written++; else failed++;
                 }
+                // 极限档专属组 未暴露的项照常跳过 不影响其余旋钮的写入结果
+                //   写入前先快照现值 退出极限档重写方案时按快照写回
+                //   否则四项留在托管方案上 电竞档会白用极限的空闲策略
+                if (extreme)
+                {
+                    SnapshotExtremeKnobs(g);
+                    foreach (Knob k in ExtremeKnobs)
+                    {
+                        if (!SettingPresent(g, k.Sub, k.Setting)) { skipped.Add(k.Label); continue; }
+                        if (WriteKnob(g, k, aggressive, handheld, profile)) written++; else failed++;
+                    }
+                }
+                else RestoreExtremeKnobs(g);
                 if (CpuTopology.Hybrid && profile.WriteHetero)
                 {
                     foreach (Knob k in HybridKnobs)
@@ -212,7 +355,7 @@ namespace PaviseApp
                 if (failed > 0)
                 {
                     if (written > 0)
-                        Logger.Log(Lang.T("log.powerplanschemes.35") + failed + Lang.T("log.powerplanschemes.45"));
+                        Logger.Warn(Lang.T("log.powerplanschemes.35") + failed + Lang.T("log.powerplanschemes.45"));
                     else
                     {
                         Logger.Log(Lang.T("log.powerplanschemes.35") + failed + Lang.T("log.powerplanschemes.36"));
@@ -243,7 +386,7 @@ namespace PaviseApp
                     useArena ? ArenaDcFor(k, k.ArenaDc) : k.CalmDc, out code);
             }
             catch { }
-            Logger.Log(Lang.T("log.powerplanschemes.32") + Lang.T(k.Label)
+            Logger.Warn(Lang.T("log.powerplanschemes.32") + Lang.T(k.Label)
                 + Lang.T("log.powerplanschemes.33") + " rc=" + code);
         }
 
@@ -267,10 +410,12 @@ namespace PaviseApp
         //   不动 PcieAspm 它会独立掐显卡带宽 是少数几个确实影响游戏的电源项
         //   不动 UsbSelSuspend 那条治的是键鼠空闲后第一下发飘
         // 放开的取值直接借智能档电池那一列 免得再引一套魔数
+        // NVMe 延迟容忍随 DiskIdle 一起放开 AHCI LPM 不放 它的唤醒直接打到帧上 跟 PcieAspm 一路
         private static readonly Guid[] ArenaDcRelaxOnLaptop =
         {
             ProcThrottleMin, ProcThrottleMin1, CpMinCores, CpMinCores1,
             PerfDutyCycling, DiskIdle, WirelessPowerSave,
+            NvmeLatTolPrimary, NvmeLatTolSecondary,
         };
 
         // 笔记本插电时也不该强制一个核都不停泊
@@ -542,6 +687,18 @@ namespace PaviseApp
         {
             Guid sb = sub, st = setting;
             return PowerReadACValueIndex(IntPtr.Zero, ref scheme, ref sb, ref st, out value) == 0;
+        }
+
+        internal static bool ReadDc(Guid scheme, Guid sub, Guid setting, out uint value)
+        {
+            Guid sb = sub, st = setting;
+            return PowerReadDCValueIndex(IntPtr.Zero, ref scheme, ref sb, ref st, out value) == 0;
+        }
+
+        internal static bool WriteDc(Guid scheme, Guid sub, Guid setting, uint value)
+        {
+            Guid sb = sub, st = setting;
+            return PowerWriteDCValueIndex(IntPtr.Zero, ref scheme, ref sb, ref st, value) == 0;
         }
 
         internal static bool WriteAc(Guid scheme, Guid sub, Guid setting, uint value)

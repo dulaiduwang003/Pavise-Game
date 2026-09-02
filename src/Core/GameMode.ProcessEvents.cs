@@ -240,8 +240,11 @@ namespace PaviseApp
             return elapsedMs < 0 || elapsedMs >= DirtyScanFloorMs;
         }
 
-        private bool ShouldRunProcessScan()
+        // fallbackOnly 本轮扫描纯粹由兜底间隔触发 事件在场且进程集没有变动信号
+        //   这类轮次的快照允许在 ReuseMaxAgeMs 内复用 见 ProcessSnapshotSource.Capture
+        private bool ShouldRunProcessScan(out bool fallbackOnly)
         {
+            fallbackOnly = false;
             long now = DateTime.UtcNow.Ticks;
             long retryAfter = Interlocked.Read(
                 ref processScanRetryAfterTicks);
@@ -281,6 +284,8 @@ namespace PaviseApp
             long fallbackTicks = fallback * TimeSpan.TicksPerMillisecond;
             if (last <= 0 || elapsed < 0 || elapsed >= fallbackTicks)
             {
+                // 待选举期用的是收紧过的兜底间隔 那时选举要新数据 不算纯兜底
+                fallbackOnly = !armedAwaitingElection;
                 Interlocked.Exchange(ref transitionScanPending, 0);
                 Interlocked.Exchange(ref lastProcessScanTicks, now);
                 return true;

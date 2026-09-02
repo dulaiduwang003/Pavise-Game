@@ -270,7 +270,7 @@ namespace PaviseApp
                         try { curKind = k.GetValueKind(ExclusionValue); } catch { }
                         if (curKind != RegistryValueKind.MultiString)
                         {
-                            Logger.Log(Lang.T("log.fthtweak.6") + curKind);
+                            Logger.Warn(Lang.T("log.fthtweak.6") + curKind);
                             return false;
                         }
                     }

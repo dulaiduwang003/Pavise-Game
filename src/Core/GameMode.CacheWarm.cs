@@ -35,7 +35,7 @@ namespace PaviseApp
                 return;
             }
             // 只认游戏库档案给出的可靠目录 目录不可靠宁可整局不做 也不预读错地方
-            if (!SafeFamilyDir(root))
+            if (!FamilyBoundary.SafeFamilyDir(root))
             {
                 cacheWarmDone = true;
                 Logger.Log(Lang.T("log.cachewarm.4"));
@@ -44,6 +44,7 @@ namespace PaviseApp
             if (Interlocked.CompareExchange(ref cacheWarmBusy, 1, 0) != 0) return;
             cacheWarmDone = true;
             string dir = root;
+            bool forcedOnly = CacheWarmForcedOnly();
             // 中止条件要带会话身份 直接换局不经过 Deactivate active 全程为真
             //   没有这一条 上一局的预热会拿着旧目录在新对局里继续读 还占着 busy 名额
             long sessionStamp = start;
@@ -55,7 +56,7 @@ namespace PaviseApp
                     {
                         return stopping || panicReq || !Volatile.Read(ref active) || !EffCacheWarm
                             || Interlocked.Read(ref sessionStartTicks) != sessionStamp;
-                    });
+                    }, forcedOnly);
                 }
                 catch { }
                 finally { Interlocked.Exchange(ref cacheWarmBusy, 0); }
@@ -65,6 +66,17 @@ namespace PaviseApp
             worker.Name = "PaviseCacheWarm";
             try { worker.Start(); }
             catch { Interlocked.Exchange(ref cacheWarmBusy, 0); }
+        }
+
+        // 只有极限档强制而用户自己没开时才算强制路径 用户手开是明确选择 不加 NVMe 门
+        private bool CacheWarmForcedOnly()
+        {
+            if (EffPreset != PerformancePreset.Extreme
+                || !ExtremeMode.ForceItem(PolicyCatalog.KeyCacheWarm)) return false;
+            PolicySnapshot s = sessionPolicy;
+            string own = s != null ? s.OwnValueOf(PolicyCatalog.KeyCacheWarm)
+                : PolicyResolver.GlobalValue(PolicyCatalog.KeyCacheWarm);
+            return own != "1";
         }
     }
 }

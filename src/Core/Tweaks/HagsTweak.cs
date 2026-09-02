@@ -55,6 +55,35 @@ namespace PaviseApp
 
         public static bool EnabledByPavise { get { return Settings.Load("HagsOnByPavise", false); } }
 
+        // 后台 GPU 降级的资格门 硬件调度在跑就不写 每分钟问一次驱动
+#if !PAVISE_SELFTEST
+        private static readonly object schedLk = new object();
+        private static long schedCheckedTicks;
+        private static bool schedCached;
+#endif
+
+        public static bool SchedulingActiveCached()
+        {
+#if PAVISE_SELFTEST
+            return SchedulingActiveForTest;
+#else
+            long now = DateTime.UtcNow.Ticks;
+            lock (schedLk)
+            {
+                if (now - schedCheckedTicks < TimeSpan.TicksPerSecond * 60) return schedCached;
+                schedCheckedTicks = now;
+                bool supported, enabled;
+                try { schedCached = TryQueryState(out supported, out enabled) && enabled; }
+                catch { schedCached = false; }
+                return schedCached;
+            }
+#endif
+        }
+
+#if PAVISE_SELFTEST
+        internal static bool SchedulingActiveForTest;
+#endif
+
         public static bool TryQueryState(out bool supported, out bool enabled)
         {
             supported = false;

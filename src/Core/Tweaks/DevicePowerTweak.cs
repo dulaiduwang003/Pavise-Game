@@ -62,9 +62,10 @@ namespace PaviseApp
         {
             lock (lk)
             {
+                var adapters = Scan();
                 var done = new List<string>();
                 int failed = 0;
-                foreach (Adapter a in Scan())
+                foreach (Adapter a in adapters)
                 {
                     if (!a.CanPowerDown) continue;
                     int target = (a.PnPCapabilities.HasValue ? a.PnPCapabilities.Value : 0) | NoPowerDownBit;
@@ -73,8 +74,19 @@ namespace PaviseApp
                 }
                 if (done.Count == 0)
                 {
+                    // 全部网卡本就禁止断电(手动或其它工具改过)时 开关必须能开
+                    //   开关代表意图 记空清单置位 还原时无事可做 之前这里不置位
+                    //   开关会静默弹回 用户只看到"打不开"
+                    if (failed > 0) return false;
+                    if (adapters.Count == 0)
+                    {
+                        Logger.Log(Lang.T("log.devicepowertweak.8"));
+                        return false;
+                    }
+                    if (!Settings.SaveStr(ListKey, "")) return false;
+                    Settings.Save("DevPowerByPavise", true);
                     Logger.Log(Lang.T("log.devicepowertweak.2"));
-                    return failed == 0;
+                    return true;
                 }
                 if (!Settings.SaveStr(ListKey, string.Join(";", done.ToArray())))
                 {

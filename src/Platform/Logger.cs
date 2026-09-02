@@ -50,6 +50,16 @@ namespace PaviseApp
         }
 #endif
 
+        // 分级标记 落在时间戳之后 日志页按标记分级 没有标记的行仍按词表判 见 LogStreamView.Classify
+        //   WARN 环境限制 本机没有某个部件 权限或反作弊拦住 精简系统缺组件 换台机器就没事的那种
+        //   FAIL 功能性故障 写入 还原 落盘没成 抛了异常 数据有风险 需要有人看的那种
+        public const string WarnTag = "WARN ";
+        public const string FailTag = "FAIL ";
+
+        public static void Warn(string msg) { Log(WarnTag + msg); }
+
+        public static void Error(string msg) { Log(FailTag + msg); }
+
         public static void Log(string msg)
         {
             try
@@ -91,7 +101,7 @@ namespace PaviseApp
         {
             string detail = context + " " + error.GetType().Name + " - " + error.Message;
             Debug.WriteLine(detail);
-            Log(detail);
+            Log(FailTag + detail);
         }
 
         internal static void AppendCrash(string path, string details)

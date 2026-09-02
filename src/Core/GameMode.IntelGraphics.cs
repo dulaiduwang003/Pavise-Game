@@ -159,7 +159,7 @@ namespace PaviseApp
                 if (fused)
                 {
                     RunIrqIsolatedMutation(new Func<bool>(IntelGraphicsTweaks.Restore));
-                    Logger.Log(Lang.T("log.gamemodeenv.9") + Lang.T("set.intel.lowlatency")
+                    Logger.Warn(Lang.T("log.gamemodeenv.9") + Lang.T("set.intel.lowlatency")
                         + Lang.T("log.gamemodeenv.10") + failures + Lang.T("log.gamemodeenv.11"));
                 }
             }

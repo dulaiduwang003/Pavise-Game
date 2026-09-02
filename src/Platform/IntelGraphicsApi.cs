@@ -106,6 +106,11 @@ namespace PaviseApp
     {
         internal const uint LowLatencyFeature = 16;
         internal const uint EnumValueType = 4;
+        // Endurance Gaming 是 3D 特性 1 值走自定义块 {int32 EGControl; int32 EGMode}
+        //   控制 0 关 1 开 2 自动  模式 0 性能优先 1 均衡 2 最长续航
+        internal const uint EnduranceFeature = 1;
+        internal const uint CustomValueType = 5;
+        private const int EnduranceBlockBytes = 8;
         private const uint SearchSystem32 = 0x00000800;
         private readonly object gate = new object();
         private bool attempted;
@@ -155,6 +160,81 @@ namespace PaviseApp
                 }
                 catch { return false; }
             }
+        }
+
+        // 读第一张 Intel 卡的 Endurance Gaming 现值 写则写给全部 Intel 卡
+        public bool TryReadEndurance(out int control, out int mode)
+        {
+            control = -1; mode = -1;
+            lock (gate)
+            {
+                try
+                {
+                    RefuseNativeInTests();
+                    List<NativeAdapter> devices = cachedDevices;
+                    if (devices == null || unchecked((uint)(Environment.TickCount - cachedTick)) >= 5000)
+                        if (!Enumerate(out devices)) return false;
+                    foreach (NativeAdapter device in devices)
+                    {
+                        if (device.Description.VendorId != 0x8086) continue;
+                        int c, m;
+                        if (EnduranceCall(device.Handle, false, 0, 0, out c, out m)) { control = c; mode = m; return true; }
+                    }
+                    return false;
+                }
+                catch { return false; }
+            }
+        }
+
+        public bool TryWriteEndurance(int control, int mode)
+        {
+            lock (gate)
+            {
+                try
+                {
+                    RefuseNativeInTests();
+                    List<NativeAdapter> devices;
+                    if (!Enumerate(out devices)) return false;
+                    bool any = false;
+                    foreach (NativeAdapter device in devices)
+                    {
+                        if (device.Description.VendorId != 0x8086) continue;
+                        int c, m;
+                        if (EnduranceCall(device.Handle, true, control, mode, out c, out m)) any = true;
+                    }
+                    return any;
+                }
+                catch { return false; }
+            }
+        }
+
+        private bool EnduranceCall(IntPtr device, bool set, int control, int mode, out int outControl, out int outMode)
+        {
+            outControl = -1; outMode = -1;
+            IntPtr block = AllocateZeroed(EnduranceBlockBytes);
+            try
+            {
+                if (set)
+                {
+                    Marshal.WriteInt32(block, 0, control);
+                    Marshal.WriteInt32(block, 4, mode);
+                }
+                var request = new IntelCtlFeatureValue
+                {
+                    Size = (uint)Marshal.SizeOf(typeof(IntelCtlFeatureValue)),
+                    FeatureType = EnduranceFeature,
+                    ValueType = CustomValueType,
+                    Set = set,
+                    CustomValueSize = EnduranceBlockBytes,
+                    CustomValue = block
+                };
+                if (feature(device, ref request) != 0) return false;
+                outControl = Marshal.ReadInt32(block, 0);
+                outMode = Marshal.ReadInt32(block, 4);
+                return outControl >= 0 && outControl <= 2;
+            }
+            catch { return false; }
+            finally { Marshal.FreeHGlobal(block); }
         }
 
         public bool TryReadLowLatency(string adapterId, out uint value)

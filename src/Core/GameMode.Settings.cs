@@ -127,11 +127,16 @@ namespace PaviseApp
             }
         }
 
-
         public bool PauseWindowsUpdate
         {
             get { return pauseUpdateOn; }
             set { pauseUpdateOn = value; Settings.Save("GmPauseUpdate", value); if (value) ClearEnvFuse("wu"); RequestPolicyApply(); }
+        }
+
+        public bool PauseMaintenance
+        {
+            get { return pauseMaintOn; }
+            set { pauseMaintOn = value; Settings.Save(PolicyCatalog.KeyPauseMaintenance, value); if (value) ClearEnvFuse("maint"); RequestPolicyApply(); }
         }
 
         public bool PauseDownloads
@@ -198,7 +203,7 @@ namespace PaviseApp
             set { gpuPowerMaxOn = value; Settings.Save("GmGpuPowerMax", value); if (value) ClearEnvFuse("gpupower"); RequestPolicyApply(); }
         }
 
-        // 实验功能 默认关闭 关掉时立刻撤销可能还挂着的预留
+        // 默认关闭 关掉时立刻撤销可能还挂着的预留
         //   重新打开视为用户要再试一次 顺手清掉上次验不过留下的熔断
         public bool VramShieldOn
         {
@@ -223,29 +228,8 @@ namespace PaviseApp
             }
         }
 
-        // 实验功能 默认关闭 语义与显存驻留一致 关掉立刻撤销 重开清熔断
-        public bool MemShieldOn
-        {
-            get { return memShieldOn; }
-            set
-            {
-                if (value)
-                {
-                    if (!Settings.Save(MemShield.EnabledKey, true)) return;
-                    memShieldOn = true;
-                    MemShield.ClearFuse();
-                }
-                else
-                {
-                    memShieldOn = false;
-                    Settings.Save(MemShield.EnabledKey, false);
-                    MemShield.Release();
-                }
-                RequestPolicyApply();
-            }
-        }
 
-        // 实验功能 默认关闭 预热是纯读取 没有需要撤销的系统状态 关掉只是不再预热
+        // 默认关闭 预热是纯读取 没有需要撤销的系统状态 关掉只是不再预热
         public bool CacheWarmOn
         {
             get { return cacheWarmOn; }
@@ -307,10 +291,57 @@ namespace PaviseApp
             set { wlanGuardOn = value; Settings.Save("GmWlanGuard", value); if (value) ClearEnvFuse("wlanscan"); RequestPolicyApply(); }
         }
 
-        public bool DisplaySoloOn
+        // 属性名不能和 GpuClockLock 静态类同名 否则 GameMode 内部引用类的地方会被属性遮住
+        public bool GpuClockLockEnabled
         {
-            get { return displaySoloOn; }
-            set { displaySoloOn = value; Settings.Save(PolicyCatalog.KeyDisplaySolo, value); if (value) ClearEnvFuse("solo"); RequestPolicyApply(); }
+            get { return gpuClockLockOn; }
+            set
+            {
+                gpuClockLockOn = value;
+                Settings.Save(PolicyCatalog.KeyGpuClockLock, value);
+                if (value) ClearEnvFuse("gpuclock");
+                RequestPolicyApply();
+            }
+        }
+
+        // 属性名不能和 NvVrrWindowed 静态类同名 否则 GameMode 内部引用类的地方会被属性遮住
+        public bool NvVrrWindowedEnabled
+        {
+            get { return nvVrrWindowedOn; }
+            set
+            {
+                nvVrrWindowedOn = value;
+                Settings.Save("NvVrrWindowed", value);
+                if (!value)
+                    IrqMutationBoundary.Run(delegate { NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyVrrApp); });
+                else ClearEnvFuse("nvvrr");
+                lock (sync) tweakApplied.Clear();
+                RequestPolicyApply();
+            }
+        }
+
+        public bool IntelEnduranceOff
+        {
+            get { return intelEnduranceOn; }
+            set
+            {
+                intelEnduranceOn = value;
+                Settings.Save(PolicyCatalog.KeyIntelEndurance, value);
+                if (value) ClearEnvFuse("intelend");
+                RequestPolicyApply();
+            }
+        }
+
+        public bool LaptopPerf
+        {
+            get { return laptopPerfOn; }
+            set
+            {
+                laptopPerfOn = value;
+                Settings.Save(PolicyCatalog.KeyLaptopPerf, value);
+                if (value) ClearEnvFuse("oemperf");
+                RequestPolicyApply();
+            }
         }
 
         public bool NvMaxPerf
@@ -323,6 +354,7 @@ namespace PaviseApp
                     IrqMutationBoundary.Run(delegate
                     {
                         NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyPState);
+                        NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyForceP2);
                     });
                 else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyPState, 0);
                 lock (sync) tweakApplied.Clear();
@@ -387,6 +419,7 @@ namespace PaviseApp
                     IrqMutationBoundary.Run(delegate
                     {
                         NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyShaderCache);
+                        NvDrsTweaks.RestoreKind(NvDrsTweaks.KeyShaderOn);
                     });
                 else SaveCounter("NvFailStreak_" + NvDrsTweaks.KeyShaderCache, 0);
                 lock (sync) tweakApplied.Clear();

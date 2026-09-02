@@ -40,7 +40,7 @@ namespace PaviseApp
                             try { curKind = k.GetValueKind(valName); } catch { }
                             if (curKind != kind)
                             {
-                                Logger.Log(valName + Lang.T("log.reversiblereg.1") + curKind + Lang.T("log.reversiblereg.2"));
+                                Logger.Warn(valName + Lang.T("log.reversiblereg.1") + curKind + Lang.T("log.reversiblereg.2"));
                                 return false;
                             }
                             if (SameByKind(cur, newVal)) return true;
@@ -242,7 +242,7 @@ namespace PaviseApp
             }
             catch
             {
-                Logger.Log(Lang.T("log.suppressioncore.1") + valName + Lang.T("log.reversiblereg.11"));
+                Logger.Warn(Lang.T("log.suppressioncore.1") + valName + Lang.T("log.reversiblereg.11"));
                 return false;
             }
         }

@@ -13,7 +13,10 @@ namespace PaviseApp
         private static readonly ReversibleReg Pri   = new ReversibleReg(Registry.LocalMachine, Games, "Priority",             RegistryValueKind.DWord,  "Mmcss_Pri");
         private static readonly ReversibleReg Sched = new ReversibleReg(Registry.LocalMachine, Games, "Scheduling Category",  RegistryValueKind.String, "Mmcss_Sched");
         private static readonly ReversibleReg Sfio  = new ReversibleReg(Registry.LocalMachine, Games, "SFIO Priority",        RegistryValueKind.String, "Mmcss_Sfio");
-        private static readonly ReversibleReg[] All = { Resp, Pri, Sched, Sfio };
+        // MMCSS 空闲检测有 10ms/100ms 双档 lazy 档会让已注册线程的调度周期变钝
+        //   NoLazyMode 消掉 lazy 循环 代价是 MMCSS 自身的空闲检测更勤 功耗略升
+        private static readonly ReversibleReg Lazy  = new ReversibleReg(Registry.LocalMachine, Prof,  "NoLazyMode",           RegistryValueKind.DWord,  "Mmcss_NoLazy");
+        private static readonly ReversibleReg[] All = { Resp, Pri, Sched, Sfio, Lazy };
 
         internal const int Responsiveness = 10;
         internal const string HighCategory = "High";
@@ -27,7 +30,7 @@ namespace PaviseApp
             {
                 if (active && HasResidue()) return true;
                 if (!Native.IsElevated()) return false;
-                bool ok = Resp.Apply(Responsiveness) & Sched.Apply(HighCategory);
+                bool ok = Resp.Apply(Responsiveness) & Sched.Apply(HighCategory) & Lazy.Apply(1);
                 if (!ok)
                 {
                     foreach (ReversibleReg r in All) r.Restore();

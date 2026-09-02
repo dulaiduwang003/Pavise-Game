@@ -102,7 +102,7 @@ namespace PaviseApp
                         Kill(ref stopW);
                         DisposeTimer();
                         DrainPending();
-                        Logger.Log(Lang.T("log.procnotify.1") + ex.Message);
+                        Logger.Warn(Lang.T("log.procnotify.1") + ex.Message);
                     }
                 }
             }

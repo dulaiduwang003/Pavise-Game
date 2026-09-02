@@ -26,6 +26,10 @@ namespace PaviseApp
         public static extern int SetPreferredAppMode(int mode);
         [DllImport("winmm.dll")]
         public static extern uint timeBeginPeriod(uint ms);
+
+        // 0.5ms 只有 ntdll 这条路 winmm 的最小值是 1ms 单位 100ns
+        [DllImport("ntdll.dll")]
+        public static extern int NtSetTimerResolution(uint desired, bool set, out uint actual);
         [DllImport("winmm.dll")]
         public static extern uint timeEndPeriod(uint ms);
 

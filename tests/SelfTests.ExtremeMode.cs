@@ -1,0 +1,214 @@
+// Settings-backed state checks in the isolated selftest store; no env tweaks executed,
+// no registry outside the store, no reboot, no windows.
+// 极限档回归 重启门 取值解析 覆盖清单 退出集 不碰任何真实环境项
+#if PAVISE_SELFTEST
+using System;
+
+namespace PaviseApp
+{
+    internal static partial class SelfTests
+    {
+        private static int extremeChecks;
+
+        internal static int RunExtremeModeRegressionTests()
+        {
+            Action[] tests =
+            {
+                ExtremeRebootGateNeedsARealBoot,
+                ExtremePresetValueResolvesByVisibility,
+                ExtremeForcedValuesRespectListAndOptOut,
+                ExtremeSnapshotOverlayLeavesUserConfigUntouched,
+                ExtremeEnvLedgerDrivesTheReadout,
+                ExtremePowerKnobsAreTierExclusive,
+                ExtremeGatesFollowHardwareEvidence
+            };
+            extremeChecks = 0;
+            foreach (Action test in tests)
+            {
+                ExtremeResetState();
+                try { test(); }
+                finally { ExtremeResetState(); }
+                Console.WriteLine("PASS " + test.Method.Name);
+            }
+            Console.WriteLine("PASS extreme-mode assertions=" + extremeChecks
+                + " envtweaks=untouched reboot=none windows_shown=false");
+            return tests.Length;
+        }
+
+        private static void ExtremeResetState()
+        {
+            ExtremeMode.PurgeAll();
+            Settings.SaveStr("PerformancePreset", "0");
+        }
+
+        private static void ExtCheck(bool good, string message)
+        {
+            if (!good) throw new InvalidOperationException("Extreme mode regression: " + message);
+            extremeChecks++;
+        }
+
+        // 解锁后把解锁时刻放到当前开机点之前 等效于经历过一次重启
+        private static void ExtremeUnlockPastGate()
+        {
+            Settings.Save("ExtremeUnlocked", true);
+            Settings.SaveStr("ExtremeUnlockTicks", "1");
+        }
+
+        private static void ExtremeRebootGateNeedsARealBoot()
+        {
+            long boot = ExtremeMode.BootTicksUtc();
+            ExtCheck(ExtremeMode.RebootGatePassed(boot, boot - 1),
+                "a boot after the unlock moment passes the gate");
+            ExtCheck(!ExtremeMode.RebootGatePassed(boot, boot + TimeSpan.TicksPerMinute),
+                "an unlock after the current boot must wait for a restart");
+            ExtCheck(!ExtremeMode.RebootGatePassed(boot, 0),
+                "no recorded unlock moment never passes");
+            ExtCheck(!ExtremeMode.Visible, "locked state is invisible");
+            Settings.Save("ExtremeUnlocked", true);
+            Settings.SaveStr("ExtremeUnlockTicks",
+                DateTime.UtcNow.Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            ExtCheck(!ExtremeMode.Visible && ExtremeMode.PendingReboot,
+                "freshly unlocked shows pending until the machine restarts");
+            ExtremeUnlockPastGate();
+            ExtCheck(ExtremeMode.Visible, "after a boot newer than the unlock the tier appears");
+        }
+
+        private static void ExtremePresetValueResolvesByVisibility()
+        {
+            ExtCheck(!PresetValue.IsValid(3), "the 1.x extreme gravestone value 3 stays rejected");
+            ExtCheck(PresetValue.From(5) == PerformancePreset.Competitive,
+                "a stored 5 resolves to Competitive while locked, data preserved");
+            ExtCheck(PresetValue.VisibleChoices().Length == 4,
+                "locked machines list four tiers");
+            ExtremeUnlockPastGate();
+            ExtCheck(PresetValue.From(5) == PerformancePreset.Extreme,
+                "the same stored 5 resolves to Extreme once visible");
+            ExtCheck(PresetValue.VisibleChoices().Length == 5
+                && PresetValue.VisibleChoices()[2] == "5",
+                "unlocked machines list five tiers with extreme in the middle");
+        }
+
+        private static void ExtremeForcedValuesRespectListAndOptOut()
+        {
+            ExtremeUnlockPastGate();
+            ExtCheck(ExtremeMode.ForcedPolicyValue(PolicyCatalog.KeyAudioLowLat) == "1",
+                "a listed session key is forced on");
+            ExtCheck(ExtremeMode.ForcedPolicyValue(PolicyCatalog.KeyNvLowLat) == "on",
+                "the NVIDIA low-latency choice is forced to on, never ultra");
+            ExtCheck(ExtremeMode.ForcedPolicyValue(PolicyCatalog.KeyDisableCpuIdle) == null,
+                "CPU idle disable is excluded by decree and never forced");
+            ExtCheck(ExtremeMode.ForcedPolicyValue(PolicyCatalog.KeyStandbyCleaner) == null,
+                "the standby cleaner is excluded by the project's own bench evidence");
+            // 极限专属键没有全局开关也没有逐游戏行 目录里不该找得到它们
+            ExtCheck(PolicyCatalog.ItemOf(PolicyCatalog.KeyAudioLowLat) == null
+                && PolicyCatalog.ItemOf(PolicyCatalog.KeyWsTrim) == null,
+                "extreme-only keys must stay out of the per-game catalog");
+            ExtCheck(ExtremeMode.ForceItem(PolicyCatalog.KeyWsTrim),
+                "an extreme-only key is driven by the tier alone");
+            ExtremeMode.SetOptedOut(PolicyCatalog.KeyAudioLowLat, true);
+            ExtCheck(ExtremeMode.ForcedPolicyValue(PolicyCatalog.KeyAudioLowLat) == null,
+                "an opted-out item is no longer forced");
+            ExtremeMode.SetOptedOut(PolicyCatalog.KeyAudioLowLat, false);
+            ExtCheck(ExtremeMode.ForcedPolicyValue(PolicyCatalog.KeyAudioLowLat) == "1",
+                "following again restores the force");
+            ExtCheck(ExtremeMode.ForceGlobal("dwmboost"), "global tokens are forced too");
+            ExtremeMode.SetOptedOut("g:dwmboost", true);
+            ExtCheck(!ExtremeMode.ForceGlobal("dwmboost"), "global tokens honor the opt-out set");
+        }
+
+        // 极限组的电源旋钮不许和其它档位共用 否则电竞档会跟着被改
+        //   只读表结构 不解析也不写入任何电源方案
+        private static void ExtremePowerKnobsAreTierExclusive()
+        {
+            ExtCheck(PowerPlan.ExtremeKnobCountForTest > 0,
+                "the extreme tier must actually add power knobs of its own");
+            Guid[] guids = PowerPlan.ExtremeKnobGuidsForTest();
+            foreach (Guid g in guids)
+                ExtCheck(PowerPlan.ExtremeOnlyGuidForTest(g),
+                    "every extreme knob must be absent from the shared columns");
+            var seen = new System.Collections.Generic.HashSet<Guid>();
+            foreach (Guid g in guids)
+                ExtCheck(g != Guid.Empty && seen.Add(g),
+                    "extreme knobs must be distinct and non-empty");
+        }
+
+        // 强制门只认硬件证据 纯判定函数 不读任何真实状态
+        private static void ExtremeGatesFollowHardwareEvidence()
+        {
+            var kpti = new SpecMitigationTweak.State { QueryOk = true, KvaShadowEnabled = true, KvaShadowRequired = true };
+            ExtCheck(SpecMitigationTweak.WorthDisabling(kpti), "KPTI in use is a real per-syscall cost");
+            var legacyIbrs = new SpecMitigationTweak.State { QueryOk = true, BpbEnabled = true };
+            ExtCheck(SpecMitigationTweak.WorthDisabling(legacyIbrs),
+                "legacy IBRS without retpoline or eIBRS is worth removing");
+            var retpoline = new SpecMitigationTweak.State
+                { QueryOk = true, BpbEnabled = true, RetpolineEnabled = true, MbClearEnabled = true };
+            ExtCheck(!SpecMitigationTweak.WorthDisabling(retpoline),
+                "retpoline is near free; only the security cost would remain");
+            var eibrs = new SpecMitigationTweak.State
+                { QueryOk = true, BpbEnabled = true, EnhancedIbrs = true, SsbdSystemWide = true };
+            ExtCheck(!SpecMitigationTweak.WorthDisabling(eibrs), "hardware eIBRS must not be forced off");
+            ExtCheck(!SpecMitigationTweak.WorthDisabling(new SpecMitigationTweak.State()),
+                "an unreadable state never qualifies");
+            ExtCheck(VbsTweak.VirtualizationInUse(true, false, 0) && VbsTweak.VirtualizationInUse(false, true, 0)
+                && VbsTweak.VirtualizationInUse(false, false, 1),
+                "any hypervisor consumer blocks the forced VBS switch-off");
+            ExtCheck(!VbsTweak.VirtualizationInUse(false, false, 0), "no consumer lets the forced path proceed");
+            ulong gib = 1UL << 30;
+            ExtCheck(!WsTrim.ShouldTrim(32 * gib, 20 * gib), "plenty of free memory makes trimming pure cost");
+            ExtCheck(WsTrim.ShouldTrim(32 * gib, 3 * gib), "below the 4 GB floor the trim earns its keep");
+            ExtCheck(WsTrim.ShouldTrim(64 * gib, 12 * gib),
+                "below a quarter of total memory counts as pressure even above the floor");
+            ExtCheck(!WsTrim.ShouldTrim(0, 0), "an unreadable memory status never trims");
+            ExtCheck(CacheWarm.NvmeBlocks(true, true) && CacheWarm.NvmeBlocks(true, null),
+                "the forced warm-up path skips NVMe and unknown buses alike");
+            ExtCheck(!CacheWarm.NvmeBlocks(true, false) && !CacheWarm.NvmeBlocks(false, true),
+                "SATA passes the forced path and a user's own switch ignores the bus entirely");
+        }
+
+        // 环境页只读区按账本渲染 切档不动它 停用销账后那一行就该消失
+        //   这里只验账本这一个事实来源 不触发任何真实环境写入
+        private static void ExtremeEnvLedgerDrivesTheReadout()
+        {
+            ExtremeUnlockPastGate();
+            ExtCheck(!ExtremeMode.LedgerContains("rescores"),
+                "a fresh state claims no environment item");
+            ExtremeItem[] items = ExtremeMode.EnvItems();
+            ExtCheck(items.Length > 0, "the environment list must not be empty");
+            bool everyItemHasCopy = true;
+            foreach (ExtremeItem item in items)
+                if (string.IsNullOrEmpty(item.Token) || string.IsNullOrEmpty(item.LangKey))
+                    everyItemHasCopy = false;
+            ExtCheck(everyItemHasCopy, "every environment row needs a token and a label to render");
+            // 切档只改档位 不碰账本 这正是只读区在切档后依然列出它们的原因
+            Settings.SaveStr("PerformancePreset", "5");
+            bool beforeSwitch = ExtremeMode.LedgerContains("hags");
+            Settings.SaveStr("PerformancePreset", "1");
+            ExtCheck(ExtremeMode.LedgerContains("hags") == beforeSwitch,
+                "switching tiers never changes what the ledger claims");
+        }
+
+        private static void ExtremeSnapshotOverlayLeavesUserConfigUntouched()
+        {
+            ExtremeUnlockPastGate();
+            // 清单里仍在目录内的键 覆盖期间不改写用户自己的值 切走即恢复
+            Settings.Save(PolicyCatalog.KeyCacheWarm, false);
+            Settings.SaveStr("PerformancePreset", "5");
+            PolicySnapshot snap = PolicyResolver.Global();
+            ExtCheck(snap.Preset == PerformancePreset.Extreme, "the global snapshot carries the tier");
+            ExtCheck(snap.ValueOf(PolicyCatalog.KeyCacheWarm) == "1",
+                "the overlay forces the value while the tier is active");
+            ExtCheck(Settings.Load(PolicyCatalog.KeyCacheWarm, true) == false,
+                "the user's own configuration is never rewritten");
+            Settings.SaveStr("PerformancePreset", "1");
+            PolicySnapshot esports = PolicyResolver.Global();
+            ExtCheck(esports.ValueOf(PolicyCatalog.KeyCacheWarm) == "0",
+                "leaving the tier restores the user's own value at once");
+            // 极限专属键没有全局值可回 调用方按 档位 且 ForceItem 求值 缺一即关
+            ExtCheck(esports.Preset != PerformancePreset.Extreme,
+                "the tier really changed for the second snapshot");
+            ExtCheck(PolicyResolver.GlobalValue(PolicyCatalog.KeyAudioLowLat) == null,
+                "an extreme-only key has no global value to fall back on");
+        }
+    }
+}
+#endif

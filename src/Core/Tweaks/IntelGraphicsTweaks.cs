@@ -242,7 +242,7 @@ namespace PaviseApp
                     if (receipt == null) return true;
                     if (receipt.Settled) return FinishReceipt();
                     if (receipt.CanRestore) return false;
-                    Logger.Log(Lang.T("log.intelabandon.1"));
+                    Logger.Warn(Lang.T("log.intelabandon.1"));
                     return FinishReceipt();
                 }
                 catch { return false; }

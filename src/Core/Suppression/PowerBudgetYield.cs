@@ -486,7 +486,7 @@ namespace PaviseApp
             {
                 // 进程级探测成功不代表本局也打得开 静默夭折要留话也要收状态
                 freq.Close();
-                Logger.Log(Lang.T("log.poweryield.12"));
+                Logger.Warn(Lang.T("log.poweryield.12"));
                 lock (gate)
                     if (mine == generation)
                     {
@@ -541,7 +541,7 @@ namespace PaviseApp
                     {
                         // 这里还原失败也不重试 EppYielded 仍为真 退局 StopCore 兜底还原
                         RunCurrentMutation(mine, PowerPlan.RestoreEpp);
-                        Logger.Log(Lang.T(verdict == YieldVerdict.Inconclusive
+                        Logger.Warn(Lang.T(verdict == YieldVerdict.Inconclusive
                             ? "log.poweryield.9" : "log.poweryield.4"));
                         break;
                     }

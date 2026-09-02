@@ -20,7 +20,7 @@ namespace PaviseApp
             lock (sync)
             {
                 PolicySnapshot snapshot = sessionPolicy;
-                bool global = key == PolicyCatalog.KeyDisableCpuIdle ? disableCpuIdleOn : planSwitch;
+                bool global = disableCpuIdleOn;
                 if (snapshot == null || string.IsNullOrEmpty(snapshot.ProfileId)) return global;
                 foreach (GameProfile profile in profiles)
                     if (string.Equals(profile.Id, snapshot.ProfileId, StringComparison.OrdinalIgnoreCase))
@@ -32,13 +32,13 @@ namespace PaviseApp
             }
         }
 
-        private Func<bool> CaptureCpuIdleAdmission(bool allowPowerPlan)
+        // 不再要求开着电源计划接管 目标方案由 PowerPlan 按当前活动方案解析
+        private Func<bool> CaptureCpuIdleAdmission(bool ready)
         {
             int generation = Volatile.Read(ref cpuIdleGeneration);
             // 拿 PowerPlan 的原生锁之前 先把当前档案读一次
             // 用户每改一次这个令牌就失效 包括关了又开这种
-            bool wanted = allowPowerPlan && EffDisableCpuIdle
-                && LiveCpuIdlePreference(PolicyCatalog.KeyPowerPlan);
+            bool wanted = ready && EffDisableCpuIdle;
             return delegate
             {
                 return wanted && generation == Volatile.Read(ref cpuIdleGeneration)
@@ -46,15 +46,15 @@ namespace PaviseApp
             };
         }
 
-        private void ApplyCpuIdlePolicy(bool allowPowerPlan)
+        private void ApplyCpuIdlePolicy(bool ready)
         {
-            Func<bool> mayContinue = CaptureCpuIdleAdmission(allowPowerPlan);
+            Func<bool> mayContinue = CaptureCpuIdleAdmission(ready);
             if (!mayContinue() && !cpuIdleActive && !PowerPlan.CpuIdleHasResidue) return;
             lock (powerApplyGate)
             {
                 bool want = mayContinue();
                 lock (sync) { if (envFused.Contains("cpuidle")) want = false; }
-                // 不支持 电池供电 以及用户自选方案这三种算跳过
+                // 目标方案读不到或值被外部改过算跳过
                 // 不是激活失败 先把之前拥有的值还原掉
                 want = want && PowerPlan.CpuIdleEligible;
                 lock (sync)
@@ -66,7 +66,7 @@ namespace PaviseApp
                         envFailures.Remove("cpuidle");
                     }
                 }
-                bool applied = want ? PowerPlan.CpuIdleActive : cpuIdleActive;
+                bool applied = want ? PowerPlan.CpuIdleActive && !PowerPlan.CpuIdleSchemeDrifted : cpuIdleActive;
                 if (!want && PowerPlan.CpuIdleHasResidue) applied = true;
                 bool result = EnvStep("cpuidle", want, applied,
                     delegate { return PowerPlan.TryDisableCpuIdle(mayContinue); }, PowerPlan.RestoreCpuIdle);

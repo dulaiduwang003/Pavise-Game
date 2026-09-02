@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 缓存预热 实验功能 对局稳定后把游戏资产预读进系统待机缓存 后续加载少走磁盘
+// 文件用途 缓存预热 对局稳定后把游戏资产预读进系统待机缓存 后续加载少走磁盘
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -59,6 +59,18 @@ namespace PaviseApp
 
         public static WarmResult Run(string root, Func<bool> abort)
         {
+            return Run(root, abort, false);
+        }
+
+        // 极限强制路径排除 NVMe 加载瓶颈在解压不在读盘 预热只剩挤缓存的代价
+        //   总线判不出来也按 NVMe 处理 用户手开路径不经此门 skipNvme 为假
+        internal static bool NvmeBlocks(bool skipNvme, bool? nvme)
+        {
+            return skipNvme && nvme != false;
+        }
+
+        public static WarmResult Run(string root, Func<bool> abort, bool skipNvme)
+        {
             var result = new WarmResult();
             if (abort == null) abort = delegate { return false; };
             if (string.IsNullOrEmpty(root)) return Skip(result, "log.cachewarm.4");
@@ -68,6 +80,8 @@ namespace PaviseApp
                 return Skip(result, "log.cachewarm.3");
             // 固态确认不了就当不是 预热在机械盘上是纯伤害 宁可不做
             if (TrySeekPenalty(root) != false) return Skip(result, "log.cachewarm.2");
+            // 总线探测只在强制路径上做 用户手开一次都不问
+            if (skipNvme && NvmeBlocks(true, TryNvme(root))) return Skip(result, "log.cachewarm.10");
             // 拿不到"最低 IO 优先级 + 正常内存优先级"的组合就一个字节都不读
             //   缺前者会跟游戏抢磁盘 缺后者预热页第一批被挤掉 白读
             //   目录枚举的元数据 IO 同样砸在游戏盘上 必须也在低优先级下进行
@@ -101,7 +115,7 @@ namespace PaviseApp
         private static WarmResult Skip(WarmResult result, string key)
         {
             result.SkipKey = key;
-            Logger.Log(Lang.T(key));
+            Logger.Warn(Lang.T(key));
             return result;
         }
 
@@ -315,6 +329,42 @@ namespace PaviseApp
 #endif
         }
 
+        // true NVMe false 其它总线 null 判断不了 只在极限强制路径上用
+        private static bool? TryNvme(string root)
+        {
+#if PAVISE_SELFTEST
+            if (NvmeForTest != null) return NvmeForTest(root);
+            throw new InvalidOperationException("CacheWarm bus probing requires an injected test double.");
+#else
+            try
+            {
+                var volume = new System.Text.StringBuilder(261);
+                if (!GetVolumePathNameW(Path.GetFullPath(root), volume, volume.Capacity))
+                    return null;
+                string volumeRoot = volume.ToString();
+                if (volumeRoot.Length != 3 || volumeRoot[1] != ':' || volumeRoot[2] != '\\')
+                    return null;
+                IntPtr handle = CreateFileW("\\\\.\\" + char.ToUpperInvariant(volumeRoot[0]) + ":",
+                    0, FileShareReadWrite, IntPtr.Zero, OpenExisting, 0, IntPtr.Zero);
+                if (handle == InvalidHandle) return null;
+                try
+                {
+                    var query = new StoragePropertyQuery { PropertyId = StorageDeviceProperty };
+                    var descriptor = new byte[StorageDescriptorBytes];
+                    uint returned;
+                    if (!DeviceIoControl(handle, IoctlStorageQueryProperty,
+                            ref query, (uint)Marshal.SizeOf(typeof(StoragePropertyQuery)),
+                            descriptor, (uint)descriptor.Length, out returned, IntPtr.Zero)
+                        || returned < StorageBusTypeOffset + 4)
+                        return null;
+                    return BitConverter.ToInt32(descriptor, StorageBusTypeOffset) == BusTypeNvme;
+                }
+                finally { Native.CloseHandle(handle); }
+            }
+            catch { return null; }
+#endif
+        }
+
         private static bool TryEnterPoliteRead()
         {
 #if PAVISE_SELFTEST
@@ -355,6 +405,7 @@ namespace PaviseApp
         internal static Func<bool> PowerForTest;
         internal static MemoryStatusOverride MemoryStatusForTest;
         internal static Func<string, bool?> SeekPenaltyForTest;
+        internal static Func<string, bool?> NvmeForTest;
         internal static Func<string, List<WarmCandidate>> EnumerateForTest;
         internal static WarmFileOverride WarmFileForTest;
         internal static Func<bool> PoliteReadForTest;
@@ -365,6 +416,7 @@ namespace PaviseApp
             PowerForTest = null;
             MemoryStatusForTest = null;
             SeekPenaltyForTest = null;
+            NvmeForTest = null;
             EnumerateForTest = null;
             WarmFileForTest = null;
             PoliteReadForTest = null;
@@ -375,6 +427,11 @@ namespace PaviseApp
 #if !PAVISE_SELFTEST
         private const uint IoctlStorageQueryProperty = 0x2D1400;
         private const int StorageDeviceSeekPenaltyProperty = 7;
+        // STORAGE_DEVICE_DESCRIPTOR 的 BusType 在偏移 28 描述符只要头部 不带尾随字符串
+        private const int StorageDeviceProperty = 0;
+        private const int StorageDescriptorBytes = 64;
+        private const int StorageBusTypeOffset = 28;
+        private const int BusTypeNvme = 17;
         private const uint FileShareReadWrite = 0x3;
         private const uint OpenExisting = 3;
         private static readonly IntPtr InvalidHandle = new IntPtr(-1);
@@ -431,6 +488,11 @@ namespace PaviseApp
         private static extern bool DeviceIoControl(IntPtr device, uint code,
             ref StoragePropertyQuery input, uint inputSize,
             out DeviceSeekPenaltyDescriptor output, uint outputSize,
+            out uint returned, IntPtr overlapped);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool DeviceIoControl(IntPtr device, uint code,
+            ref StoragePropertyQuery input, uint inputSize,
+            byte[] output, uint outputSize,
             out uint returned, IntPtr overlapped);
         [DllImport("kernel32.dll")]
         private static extern IntPtr GetCurrentThread();
