@@ -21,9 +21,9 @@ namespace PaviseApp
             new HashSet<string>(StringComparer.Ordinal);
 
         internal static readonly string[] EnvKeys =
-            { "do", "wlanscan", "wu", "services", "cpuidle", "standby",
-              "pqos", "awake", "audiolat", "dwmboost", "rsssteer",
-              "rsr", "gpupower", "gpuclock", "amdalag", "amdafmf", "intelll", "maint",
+            { "do", "wu", "services", "cpuidle", "standby",
+              "pqos", "awake", "audiolat", "dwmboost",
+              "rsr", "gpupower", "amdalag", "amdafmf", "intelll", "maint",
               "nvvrr", "intelend", "oemperf" };
 
         private static string EnvLabel(string key)
@@ -31,7 +31,6 @@ namespace PaviseApp
             switch (key)
             {
                 case "do": return Lang.T("t.gamemodeenv.1");
-                case "wlanscan": return Lang.T("t.gamemodeenv.2");
                 case "wu": return Lang.T("t.gamemodeenv.3");
                 case "services": return Lang.T("gm.pausesvc");
                 case "cpuidle": return Lang.T("gm.disablecpuidle");
@@ -40,10 +39,8 @@ namespace PaviseApp
                 case "awake": return Lang.T("t.gamemodeenv.5");
                 case "audiolat": return Lang.T("gm.audiolat");
                 case "dwmboost": return Lang.T("gm.dwmboost");
-                case "rsssteer": return Lang.T("gm.rsssteer");
                 case "rsr": return Lang.T("set.rsr");
                 case "gpupower": return Lang.T("t.gamemodeenv.6");
-                case "gpuclock": return Lang.T("set.gpuclock");
                 case "maint": return Lang.T("gm.pausemaint");
                 case "nvvrr": return Lang.T("set.nvvrr");
                 case "intelend": return Lang.T("set.intel.endurance");
@@ -148,7 +145,6 @@ namespace PaviseApp
             switch (key)
             {
                 case "do": pauseDlOn = false; Settings.Save("GmPauseDl", false); break;
-                case "wlanscan": wlanGuardOn = false; Settings.Save("GmWlanGuard", false); break;
                 case "wu": pauseUpdateOn = false; Settings.Save("GmPauseUpdate", false); break;
                 case "services": pauseServicesOn = false; Settings.Save(PolicyCatalog.KeyPauseServices, false); break;
                 case "cpuidle":
@@ -166,7 +162,6 @@ namespace PaviseApp
                 // 极限专属项没有全局开关可关 熔断落到退出集 管理面显示为已停用
                 case "audiolat": ExtremeMode.SetOptedOut(PolicyCatalog.KeyAudioLowLat, true); break;
                 case "dwmboost": ExtremeMode.SetOptedOut("g:dwmboost", true); break;
-                case "rsssteer": ExtremeMode.SetOptedOut("g:rsssteer", true); break;
                 case "rsr": rsrOn = false; Settings.Save("GmRsr", false); break;
                 case "gpupower":
                     gpuPowerMaxOn = false;
@@ -174,7 +169,6 @@ namespace PaviseApp
                     // 熔断同时体现在极限管理面 否则那里还显示跟随
                     ExtremeMode.SetOptedOut("g:gpupower", true);
                     break;
-                case "gpuclock": gpuClockLockOn = false; Settings.Save(PolicyCatalog.KeyGpuClockLock, false); break;
                 case "maint": pauseMaintOn = false; Settings.Save(PolicyCatalog.KeyPauseMaintenance, false); break;
                 case "nvvrr": nvVrrWindowedOn = false; Settings.Save("NvVrrWindowed", false); break;
                 case "intelend": intelEnduranceOn = false; Settings.Save(PolicyCatalog.KeyIntelEndurance, false); break;
@@ -197,14 +191,12 @@ namespace PaviseApp
             switch (key)
             {
                 case "do": return PolicyCatalog.KeyPauseDl;
-                case "wlanscan": return PolicyCatalog.KeyWlanGuard;
                 case "wu": return PolicyCatalog.KeyPauseUpdate;
                 case "services": return PolicyCatalog.KeyPauseServices;
                 case "cpuidle": return PolicyCatalog.KeyDisableCpuIdle;
                 case "standby": return PolicyCatalog.KeyStandbyCleaner;
                 case "awake": return PolicyCatalog.KeyAwake;
                 case "audiolat": return PolicyCatalog.KeyAudioLowLat;
-                case "gpuclock": return PolicyCatalog.KeyGpuClockLock;
                 case "maint": return PolicyCatalog.KeyPauseMaintenance;
                 case "intelend": return PolicyCatalog.KeyIntelEndurance;
                 case "oemperf": return PolicyCatalog.KeyLaptopPerf;
@@ -257,7 +249,6 @@ namespace PaviseApp
             PolicySnapshot sp = sessionPolicy;
             PerformancePreset mode = sp != null ? sp.Preset : ActivePreset;
             bool pPauseDl = sp != null ? sp.PauseDownloads : pauseDlOn;
-            bool pWlan = sp != null ? sp.WlanGuard : wlanGuardOn;
             bool pWu = sp != null ? sp.PauseUpdate : pauseUpdateOn;
             bool pMaint = sp != null ? sp.PauseMaintenance : pauseMaintOn;
             bool pAwake = sp != null ? sp.Awake : awakeOn;
@@ -278,7 +269,6 @@ namespace PaviseApp
             // 极限专属四项 只由档位驱动 没有全局开关也没有逐游戏覆盖
             WsTrim.Enabled = extreme && ExtremeMode.ForceItem(PolicyCatalog.KeyWsTrim);
             doActive = EnvStep("do", usePauseDl, doActive, DoTweak.Activate, DoTweak.Restore);
-            wlanActive = EnvStep("wlanscan", pWlan, wlanActive, WlanGuard.Activate, WlanGuard.Restore);
             wuActive = EnvStep("wu", pWu && slowReady, wuActive, UpdatePause.Activate, UpdatePause.Restore);
             // 自动维护挑空闲判定起跑 挂机和过场都算空闲 对局期先关掉 退局写回
             maintActive = EnvStep("maint", pMaint && slowReady, maintActive,
@@ -295,11 +285,6 @@ namespace PaviseApp
             dwmBoostActive = EnvStep("dwmboost",
                 extreme && ExtremeMode.ForceGlobal("dwmboost"), dwmBoostActive,
                 DwmBoost.Activate, DwmBoost.Restore);
-            // RSS 引导要跑 PowerShell 走慢速档 网卡不符合条件时成功但不留账
-            rssSteerActive = EnvStep("rsssteer",
-                extreme && ExtremeMode.ForceGlobal("rsssteer")
-                    && slowReady && RssSteer.Supported(),
-                rssSteerActive, RssSteer.Activate, RssSteer.Restore);
             rsrActive = EnvStep("rsr", rsrOn, rsrActive, AdlxTweaks.ActivateRsr, AdlxTweaks.RestoreRsr);
             // 极限强制路径先过资格门 不支持功耗墙的显卡不硬试
             //   用户手开路径保持原样 显式开启后失败熔断是应得的反馈
@@ -307,11 +292,6 @@ namespace PaviseApp
                 gpuPowerMaxOn || (extreme && ExtremeMode.ForceGlobal("gpupower")
                     && GpuPowerMax.SupportedCached()),
                 gpwActive, GpuPowerMax.Activate, GpuPowerMax.Restore);
-            // 显卡核心频率锁定 电竞和极限档在台式机上锁定开启 其余档位按用户配置 逐游戏可覆盖
-            gpuClockActive = EnvStep("gpuclock",
-                (EffGpuClockLock || GpuClockLock.ForcedByTier(mode, Native.HasSystemBattery()))
-                    && GpuClockLock.SupportedCached(),
-                gpuClockActive, GpuClockLock.Activate, GpuClockLock.Restore);
             // NVIDIA 窗口化 G-SYNC 只在用户已开 G-SYNC 且只给全屏时补 不由档位强制
             nvVrrActive = EnvStep("nvvrr", nvVrrWindowedOn && NvApi.Available,
                 nvVrrActive, NvVrrWindowed.Activate, NvVrrWindowed.Restore);
@@ -319,10 +299,9 @@ namespace PaviseApp
             intelEndActive = EnvStep("intelend",
                 EffIntelEnduranceOff && Native.HasSystemBattery() && IntelGraphicsTweaks.HasAvailable,
                 intelEndActive, IntelEndurance.Activate, IntelEndurance.Restore);
-            // 厂商性能档 电竞和极限档在笔记本上锁定开启 掌机不动 其余档位按用户配置
+            // 厂商性能档只看用户配置 不随当前性能预设强制开关
             oemPerfActive = EnvStep("oemperf",
-                (EffLaptopPerf || LaptopPerfMode.ForcedByTier(mode, Native.HasSystemBattery()))
-                    && LaptopPerfMode.SupportedCached(),
+                LaptopPerfMode.ShouldActivate(EffLaptopPerf, LaptopPerfMode.SupportedCached()),
                 oemPerfActive, LaptopPerfMode.Activate, LaptopPerfMode.Restore);
             amdAlagActive = EnvStep("amdalag", pAmdAlag && AdlxTweaks.AntiLagSupported(),
                 amdAlagActive, AdlxTweaks.ActivateAntiLag, RestoreAmdAntiLagEnv);
@@ -649,9 +628,9 @@ namespace PaviseApp
         //   结果与逐轮实读完全一致 内存活动标志与字段门控仍然实时求值
         private bool EnvActive()
         {
-            if (doActive || wlanActive || wuActive || maintActive || optionalServicesActive
-                || pqosActive || awakeActive || audioLatActive || dwmBoostActive || rssSteerActive
-                || gpwActive || gpuClockActive || nvVrrActive || intelEndActive || oemPerfActive
+            if (doActive || wuActive || maintActive || optionalServicesActive
+                || pqosActive || awakeActive || audioLatActive || dwmBoostActive
+                || gpwActive || nvVrrActive || intelEndActive || oemPerfActive
                 || planActive || timerRaised
                 || rsrActive || amdAlagActive || amdAfmfActive
                 || IntelGraphicsTweaks.Active
@@ -716,7 +695,6 @@ namespace PaviseApp
             if (boostCount > 0) parts.Add(Lang.T("log.gamemodeboost.3") + boostCount + Lang.T("t.gamemodeenv.30"));
             if (core.AnyWith(SuppressReason.Background)) parts.Add(Lang.T("cfg.group.bg"));
             if (doActive || DoTweak.HasResidue) parts.Add(Lang.T("t.gamemodeenv.31"));
-            if (wlanActive) parts.Add(Lang.T("t.gamemodeenv.2"));
             if (wuActive || UpdatePause.HasResidue) parts.Add(Lang.T("t.gamemodeenv.32"));
             if (maintActive || MaintenancePause.HasResidue) parts.Add(Lang.T("gm.pausemaint"));
             if (optionalServicesActive || OptionalServicePause.HasResidue) parts.Add(Lang.T("gm.pausesvc"));
@@ -727,9 +705,9 @@ namespace PaviseApp
             if (awakeActive) parts.Add(Lang.T("t.gamemodeenv.34"));
             if (audioLatActive) parts.Add(Lang.T("gm.audiolat"));
             if (dwmBoostActive) parts.Add(Lang.T("gm.dwmboost"));
-            if (rssSteerActive || RssSteer.HasResidue) parts.Add(Lang.T("gm.rsssteer"));
+            if (RssSteer.HasResidue) parts.Add(Lang.T("gm.rsssteer"));
             if (gpwActive || GpuPowerMax.HasResidue()) parts.Add(EnvLabel("gpupower"));
-            if (gpuClockActive || GpuClockLock.HasResidue) parts.Add(EnvLabel("gpuclock"));
+            if (GpuClockLock.HasResidue) parts.Add(Lang.T("set.gpuclock"));
             if (nvVrrActive || NvVrrWindowed.HasResidue) parts.Add(EnvLabel("nvvrr"));
             if (intelEndActive || IntelEndurance.HasResidue) parts.Add(EnvLabel("intelend"));
             if (oemPerfActive || LaptopPerfMode.HasResidue) parts.Add(EnvLabel("oemperf"));
@@ -785,7 +763,6 @@ namespace PaviseApp
             bool ok = true;
             if (!RestoreIntelGraphics()) ok = false;
             if (DoTweak.Restore()) doActive = false; else ok = false;
-            if (WlanGuard.Restore()) wlanActive = false; else ok = false;
             if (UpdatePause.Restore()) wuActive = false; else ok = false;
             if (MaintenancePause.Restore()) maintActive = false; else ok = false;
             if (OptionalServicePause.Restore()) optionalServicesActive = false; else ok = false;
@@ -793,10 +770,10 @@ namespace PaviseApp
             if (DisplayAwake.Restore()) awakeActive = false; else ok = false;
             if (AudioLowLatency.Restore()) audioLatActive = false; else ok = false;
             if (DwmBoost.Restore()) dwmBoostActive = false; else ok = false;
-            if (RssSteer.Restore()) rssSteerActive = false; else ok = false;
+            if (!RssSteer.Restore()) ok = false;
             if (AdlxTweaks.RestoreRsr()) rsrActive = false; else ok = false;
             if (GpuPowerMax.Restore()) gpwActive = false; else ok = false;
-            if (GpuClockLock.Restore()) gpuClockActive = false; else ok = false;
+            if (!GpuClockLock.Restore()) ok = false;
             if (NvVrrWindowed.Restore()) nvVrrActive = false; else ok = false;
             if (IntelEndurance.Restore()) intelEndActive = false; else ok = false;
             if (LaptopPerfMode.Restore()) oemPerfActive = false; else ok = false;

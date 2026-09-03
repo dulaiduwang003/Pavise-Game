@@ -149,15 +149,6 @@ namespace PaviseApp
             }
         }
 
-        private bool EffGpuClockLock
-        {
-            get
-            {
-                PolicySnapshot s = sessionPolicy;
-                return s != null ? s.GpuClockLock : gpuClockLockOn;
-            }
-        }
-
         private bool EffIntelEnduranceOff
         {
             get

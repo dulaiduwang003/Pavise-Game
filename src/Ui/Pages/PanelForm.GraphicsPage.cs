@@ -10,7 +10,7 @@ namespace PaviseApp
     internal partial class PanelForm
     {
         private Toggle swNvMax;
-        private Toggle swNvClock, swNvVrr;
+        private Toggle swNvVrr;
         private Toggle swNvRebar;
         private Toggle swNvSmooth, swNvShader;
         private Toggle swGpuPower;
@@ -201,11 +201,6 @@ namespace PaviseApp
         private bool ExtremeGraphicsForced()
         {
             return gameMode.ActivePreset == PerformancePreset.Extreme;
-        }
-
-        private bool TierForcedGpuClock()
-        {
-            return GpuClockLock.ForcedByTier(gameMode.ActivePreset, Native.HasSystemBattery());
         }
 
         private void BindGraphicsToggle(Toggle toggle, Func<bool> read, Action<bool> write,

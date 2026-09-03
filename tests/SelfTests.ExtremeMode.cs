@@ -1,4 +1,4 @@
-// Settings-backed state checks in the isolated selftest store; no env tweaks executed,
+﻿// Settings-backed state checks in the isolated selftest store; no env tweaks executed,
 // no registry outside the store, no reboot, no windows.
 // 极限档回归 重启门 取值解析 覆盖清单 退出集 不碰任何真实环境项
 #if PAVISE_SELFTEST
@@ -20,7 +20,10 @@ namespace PaviseApp
                 ExtremeSnapshotOverlayLeavesUserConfigUntouched,
                 ExtremeEnvLedgerDrivesTheReadout,
                 ExtremePowerKnobsAreTierExclusive,
-                ExtremeGatesFollowHardwareEvidence
+                ExtremeGatesFollowHardwareEvidence,
+                ExtremeForcesEnvOnlyWhileUnlockedAndNotOptedOut,
+                ExtremeCrashFuseTripsOnRepeatedAbnormalRestarts,
+                ExtremeManageListLabelsEverySessionKey
             };
             extremeChecks = 0;
             foreach (Action test in tests)
@@ -118,20 +121,6 @@ namespace PaviseApp
 
         // 极限组的电源旋钮不许和其它档位共用 否则电竞档会跟着被改
         //   只读表结构 不解析也不写入任何电源方案
-        private static void ExtremePowerKnobsAreTierExclusive()
-        {
-            ExtCheck(PowerPlan.ExtremeKnobCountForTest > 0,
-                "the extreme tier must actually add power knobs of its own");
-            Guid[] guids = PowerPlan.ExtremeKnobGuidsForTest();
-            foreach (Guid g in guids)
-                ExtCheck(PowerPlan.ExtremeOnlyGuidForTest(g),
-                    "every extreme knob must be absent from the shared columns");
-            var seen = new System.Collections.Generic.HashSet<Guid>();
-            foreach (Guid g in guids)
-                ExtCheck(g != Guid.Empty && seen.Add(g),
-                    "extreme knobs must be distinct and non-empty");
-        }
-
         // 强制门只认硬件证据 纯判定函数 不读任何真实状态
         private static void ExtremeGatesFollowHardwareEvidence()
         {
@@ -167,10 +156,76 @@ namespace PaviseApp
 
         // 环境页只读区按账本渲染 切档不动它 停用销账后那一行就该消失
         //   这里只验账本这一个事实来源 不触发任何真实环境写入
+        private static void ExtremePowerKnobsAreTierExclusive()
+        {
+            ExtCheck(PowerPlan.ExtremeKnobCountForTest > 0,
+                "the extreme tier must actually add power knobs of its own");
+            Guid[] guids = PowerPlan.ExtremeKnobGuidsForTest();
+            foreach (Guid g in guids)
+                ExtCheck(PowerPlan.ExtremeOnlyGuidForTest(g),
+                    "every extreme knob must be absent from the shared columns");
+            var seen = new System.Collections.Generic.HashSet<Guid>();
+            foreach (Guid g in guids)
+                ExtCheck(g != Guid.Empty && seen.Add(g),
+                    "extreme knobs must be distinct and non-empty");
+        }
+
+        private static void ExtremeForcesEnvOnlyWhileUnlockedAndNotOptedOut()
+        {
+            int failed;
+            ExtCheck(!ExtremeMode.ForcesEnv("gtimer"), "a locked state forces no environment item");
+            ExtCheck(ExtremeMode.ReconcileEnvItems(out failed) == 0 && failed == 0,
+                "the startup reconcile is a no-op while locked");
+            ExtremeUnlockPastGate();
+            ExtCheck(ExtremeMode.ForcesEnv("gtimer") && ExtremeMode.ForcesEnv("timertick"),
+                "unlocking forces the timer items");
+            ExtremeMode.SetOptedOut("gtimer", true);
+            ExtCheck(!ExtremeMode.ForcesEnv("gtimer") && ExtremeMode.ForcesEnv("timertick"),
+                "an item stopped in the manage list is no longer forced");
+        }
+
+        // 极限会话键的完整性 极限专属的 WsTrim AudioLowLat 不在策略目录里 ItemOf 返回 null
+        //   守住 每个会话键要么在目录里能取到名字 要么是已知的极限专属键 不留没名字的孤儿
+        private static void ExtremeManageListLabelsEverySessionKey()
+        {
+            foreach (string key in ExtremeMode.SessionPolicyKeys)
+            {
+                PolicyItem item = PolicyCatalog.ItemOf(key);
+                if (item != null)
+                {
+                    ExtCheck(Lang.T(item.LangKey).Length > 0, "a catalog session key must resolve to a label: " + key);
+                    continue;
+                }
+                bool known = key == PolicyCatalog.KeyWsTrim || key == PolicyCatalog.KeyAudioLowLat;
+                ExtCheck(known, "a session key with no catalog item needs a manage-list fallback label: " + key);
+            }
+            ExtCheck(Lang.T("gm.wstrim").Length > 0 && Lang.T("gm.audiolat").Length > 0,
+                "the extreme-only session keys keep their fallback labels");
+        }
+
+        private static void ExtremeCrashFuseTripsOnRepeatedAbnormalRestarts()
+        {
+            ExtCheck(!ExtremeCrashFuse.ShouldTrip(0) && !ExtremeCrashFuse.ShouldTrip(1),
+                "one abnormal restart may be a pulled plug; the fuse waits");
+            ExtCheck(ExtremeCrashFuse.ShouldTrip(2) && ExtremeCrashFuse.ShouldTrip(9),
+                "two abnormal restarts since the unlock trip the fuse");
+            string q = ExtremeCrashFuse.BuildQuery(new DateTime(2026, 9, 2, 8, 30, 0, DateTimeKind.Utc));
+            ExtCheck(q.Contains("EventID=41") && q.Contains("EventID=1001") && q.Contains("EventID=6008")
+                && q.Contains("2026-09-02T08:30:00.000Z"),
+                "the query names the three abnormal-shutdown events and the unlock time");
+            ExtCheck(ExtremeCrashFuse.CountCrashesSince(0) == 0, "no unlock time means nothing to count");
+            int crashes;
+            ExtCheck(!ExtremeCrashFuse.CheckAtStartup(out crashes) && crashes == 0,
+                "a locked state never trips the fuse");
+            ExtremeItem timer = null;
+            foreach (ExtremeItem item in ExtremeMode.EnvItems()) if (item.Token == "timertick") timer = item;
+            ExtCheck(timer != null && !timer.Eligible(), "the timer tick item stays listed for rollback but is never auto-written");
+        }
+
         private static void ExtremeEnvLedgerDrivesTheReadout()
         {
             ExtremeUnlockPastGate();
-            ExtCheck(!ExtremeMode.LedgerContains("rescores"),
+            ExtCheck(!ExtremeMode.LedgerContains("memcompress"),
                 "a fresh state claims no environment item");
             ExtremeItem[] items = ExtremeMode.EnvItems();
             ExtCheck(items.Length > 0, "the environment list must not be empty");

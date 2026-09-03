@@ -19,7 +19,7 @@ namespace PaviseApp
     internal static class App
     {
         public const string DisplayName = "PAVISE";
-        public const string Version = "2.2.0.0";
+        public const string Version = "2.2.0.1";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string QqGroup = "1051472054";
@@ -55,6 +55,7 @@ namespace PaviseApp
 
     internal static partial class Program
     {
+        private static bool extremeFuseTripped;
         private const string PendingPanelKey = "ShowPanelOnNextStart";
         internal const int TrayTipIdleMs = 1500;
         internal const int TrayTipInGameMs = 6000;
@@ -65,6 +66,14 @@ namespace PaviseApp
 #if PAVISE_SELFTEST
             if (SelfTests.TryHandleRuntimeMode(args)) return;
 #endif
+
+            if (GameExtension.TryHandleArgs(args)) return;
+
+            if (args.Length > 0 && args[0] == "--uninstall")
+            {
+                Environment.ExitCode = UninstallMode.Run(args.Length >= 2 ? args[1] : null) ? 0 : 1;
+                return;
+            }
 
             if (args.Length > 0 && args[0] == "--genicon")
             {
@@ -284,6 +293,18 @@ namespace PaviseApp
             try { MaintenancePause.HealFromCrash(); } catch { }
             GameDvr.HealFromCrash();
             try { Mmcss.HealFromCrash(); } catch { }
+            // 极限解锁中的环境项启动补写 资格探测可能扫网卡 不占启动线程
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                try
+                {
+                    int reconciled = 0, reconcileFailed = 0;
+                    IrqMutationBoundary.Run(delegate { reconciled = ExtremeMode.ReconcileEnvItems(out reconcileFailed); });
+                    if (reconciled > 0 || reconcileFailed > 0)
+                        Logger.Log(Lang.F("log.extreme.6", reconciled, reconcileFailed));
+                }
+                catch { }
+            });
             try { RssSteer.HealFromCrash(); } catch { }
             try { PresenceQos.HealFromCrash(); } catch { }
             try { PowerOverlay.HealFromCrash(); } catch { }
@@ -316,6 +337,20 @@ namespace PaviseApp
             }
             catch { }
             CrashGuard.HealFromCrash();
+            // 极限崩溃保险丝 解锁后两次非正常重启就回锁 环境项按账本还原 气泡等托盘起来再弹
+            try
+            {
+                int crashes;
+                if (ExtremeCrashFuse.CheckAtStartup(out crashes))
+                {
+                    bool rolledBack = false;
+                    try { IrqMutationBoundary.Run(delegate { rolledBack = ExtremeMode.RollbackEnvItems(); }); } catch { }
+                    ExtremeMode.ClearUnlock();
+                    Logger.Error(Lang.F("log.extreme.7", crashes) + (rolledBack ? "" : Lang.T("log.extreme.8")));
+                    extremeFuseTripped = true;
+                }
+            }
+            catch { }
             try { IrqRelocate.HealFromCrash(); } catch { }
             try { IrqAutoPilot.HealFromCrash(); } catch { }
 
@@ -381,6 +416,7 @@ namespace PaviseApp
                     if (exiting) return;
                     tamer.Start();
                     gameMode.Start();
+                    GameExtension.Start();
                 }
                 // 这一步可能在 Paths.Data 里写任务 XML 把它留在合并后的启动
                 // 生命周期里 免得重置和一个没被跟踪的回调抢跑
@@ -395,7 +431,8 @@ namespace PaviseApp
             {
                 return gameMode.NeedsWhitelistParentIdentity(session)
                     || gameMode.NeedsGameFamilyIdentity(session)
-                    || gameMode.NeedsGameProcessIdentity(name, session);
+                    || gameMode.NeedsGameProcessIdentity(name, session)
+                    || GameExtension.NeedsProcessIdentity(name);
             };
             procNotify.CaptureParentIdentity =
                 delegate(int parentPid, string name, int session)
@@ -409,6 +446,7 @@ namespace PaviseApp
             {
                 gameMode.NotifyProcessChanges(batch);
                 tamer.NotifyProcessChanges(batch);
+                GameExtension.NotifyProcessChanges(batch);
             };
             SystemAudit.LibraryPaths = gameMode.LibraryExecutablePaths;
             procNotify.FastTrack = delegate(string name, int session)
@@ -473,6 +511,7 @@ namespace PaviseApp
                 try { icon.Visible = false; icon.Dispose(); } catch { }
                 bool stopped = true;
                 try { procNotify.Stop(); } catch { stopped = false; }
+                try { GameExtension.Shutdown(4000); } catch { stopped = false; }
                 // 第一个停止失败了 第二个也要照样尝试 超时是
                 // 真的失败 不是允许抹掉待处理恢复记录的许可
                 try { if (!tamer.Stop()) stopped = false; } catch { stopped = false; }
@@ -502,6 +541,14 @@ namespace PaviseApp
             };
 
             panel.ExitApp = doExit;
+            panel.UninstallApp = delegate
+            {
+                string failure;
+                if (!UninstallLauncher.TryStart(Application.ExecutablePath, out failure)) return failure;
+                // 脚本起来后自己先按正常退出流程走完 会话项在这里还原 脚本只需等进程消失 不用强杀
+                try { panel.BeginInvoke(doExit); } catch { }
+                return null;
+            };
 
             int resetStarted = 0;
             resetDataAndExit = (fatal, closeApplication) =>
@@ -681,6 +728,8 @@ namespace PaviseApp
 
             if (!elevated)
                 icon.ShowBalloonTip(8000, App.DisplayName, Lang.T("bal.noelev"), ToolTipIcon.Warning);
+            if (extremeFuseTripped)
+                icon.ShowBalloonTip(15000, App.DisplayName, Lang.T("bal.extremefuse"), ToolTipIcon.Warning);
 
             icon.DoubleClick += (s, e) => panel.ShowPanel();
 

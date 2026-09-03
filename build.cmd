@@ -13,6 +13,7 @@ chcp 65001 >nul
 :cpready
 setlocal
 cd /d "%~dp0"
+if not exist build mkdir build
 
 if /i not "%~1"=="-b" goto usage
 if /i "%~2"=="dev" goto dev
@@ -20,7 +21,7 @@ if /i "%~2"=="prod" goto prod
 goto usage
 
 :prod
-set "PROD_OUT=Pavise.exe"
+set "PROD_OUT=build\Pavise.exe"
 if not "%~3"=="" set "PROD_OUT=%~3"
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0build-protected.ps1" -Output "%PROD_OUT%" -Force
 set "BUILD_EXIT=%ERRORLEVEL%"
@@ -36,7 +37,7 @@ if not exist "%CSC%" (
 )
 
 set REFS=-reference:System.dll -reference:System.Drawing.dll -reference:System.Windows.Forms.dll -reference:System.Core.dll -reference:System.Management.dll -reference:System.Xml.dll
-set OUT=Pavise.exe
+set OUT=build\Pavise.exe
 if not "%~3"=="" set OUT=%~3
 if /i "%~4"=="--selftest" goto selftest
 
@@ -47,14 +48,14 @@ if errorlevel 1 goto err
 
 
 echo [1/3] compiling temp exe...
-"%CSC%" -nologo -target:winexe -optimize+ -codepage:65001 -out:Pavise.tmp.exe %REFS% -recurse:src\*.cs
+"%CSC%" -nologo -target:winexe -optimize+ -codepage:65001 -out:build\Pavise.tmp.exe %REFS% -recurse:src\*.cs
 if errorlevel 1 goto err
 
 echo [2/3] generating Pavise.ico...
-.\Pavise.tmp.exe --genicon
+.\build\Pavise.tmp.exe --genicon
 
 echo [3/3] compiling...
-set MANIFEST=Pavise.manifest.tmp
+set MANIFEST=build\Pavise.manifest.tmp
 >  "%MANIFEST%" echo ^<?xml version="1.0" encoding="UTF-8" standalone="yes"?^>
 >> "%MANIFEST%" echo ^<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0"^>
 >> "%MANIFEST%" echo   ^<trustInfo xmlns="urn:schemas-microsoft-com:asm.v3"^>
@@ -71,10 +72,12 @@ set MANIFEST=Pavise.manifest.tmp
 >> "%MANIFEST%" echo     ^</windowsSettings^>
 >> "%MANIFEST%" echo   ^</application^>
 >> "%MANIFEST%" echo ^</assembly^>
-"%CSC%" -nologo -target:winexe -optimize+ -codepage:65001 -win32icon:Pavise.ico -win32manifest:"%MANIFEST%" -out:"%OUT%" %REFS% -recurse:src\*.cs
+"%CSC%" -nologo -target:winexe -optimize+ -codepage:65001 -win32icon:build\Pavise.ico -win32manifest:"%MANIFEST%" -out:"%OUT%" %REFS% -recurse:src\*.cs
+if errorlevel 1 goto err
+call :copyuninstaller "%OUT%"
 if errorlevel 1 goto err
 
-del Pavise.tmp.exe "%MANIFEST%" >nul 2>&1
+del build\Pavise.tmp.exe "%MANIFEST%" >nul 2>&1
 echo.
 echo Build OK -^> %OUT%
 call :restorecp
@@ -83,7 +86,7 @@ goto :eof
 :selftest
 rem A dedicated console entry point cannot launch the normal tuning runtime.
 rem Do not rewrite the icon/version manifest or require administrator rights.
-if "%~3"=="" set OUT=Pavise.selftest.exe
+if "%~3"=="" set OUT=build\Pavise.selftest.exe
 echo [selftest] compiling isolated regression runner...
 "%CSC%" -nologo -target:exe -platform:x64 -optimize+ -codepage:65001 -define:PAVISE_SELFTEST;PAVISE_SELFTEST_RUNNER -main:PaviseApp.SelfTestRunner -out:"%OUT%" %REFS% -recurse:src\*.cs -recurse:tests\*.cs
 set BUILD_EXIT=%ERRORLEVEL%
@@ -92,7 +95,7 @@ exit /b %BUILD_EXIT%
 
 :err
 echo Build failed
-del Pavise.tmp.exe "%MANIFEST%" >nul 2>&1
+del build\Pavise.tmp.exe "%MANIFEST%" >nul 2>&1
 call :restorecp
 exit /b 1
 
@@ -106,3 +109,10 @@ exit /b 2
 if defined PAVISE_CP_OWNED goto :eof
 if defined PAVISE_OLDCP chcp %PAVISE_OLDCP% >nul 2>&1
 goto :eof
+
+:copyuninstaller
+if not exist "%~dp0Pavise-Uninstall.cmd" exit /b 1
+for %%I in ("%~1") do set "UNINSTALL_OUT=%%~dpI"
+if /i "%UNINSTALL_OUT%"=="%~dp0" exit /b 0
+copy /y "%~dp0Pavise-Uninstall.cmd" "%UNINSTALL_OUT%Pavise-Uninstall.cmd" >nul
+exit /b %errorlevel%

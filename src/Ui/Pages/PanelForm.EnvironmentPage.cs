@@ -15,6 +15,7 @@ namespace PaviseApp
         private Toggle swAccessKeys, swHidPower, swSpecMit, swTimerTick, swGlobalTimer;
         private SettingCard cardVbs, cardWindowedOpt, cardSpecMit, cardVrrOpt, cardEee, cardAmdSam, cardHags;
         private SettingCard cardAccessKeys, cardHidPower, cardNicIm;
+        private SettingCard cardGmGuard, cardTimerTick, cardGlobalTimer, cardDevPower;
         private TechTabs envTabs;
         private DBPanel[] envTabPanels;
         private int envBusy;
@@ -68,7 +69,7 @@ namespace PaviseApp
             sy += cardH + 8;
 
             swGmGuard = MakeSwitch(GameModeGuard.EnabledByPavise, OnGameModeGuardToggle);
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.gmguard"), Lang.T("set.gmguard.n"), swGmGuard, out cardH);
+            cardGmGuard = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.gmguard"), Lang.T("set.gmguard.n"), swGmGuard, out cardH);
             sy += cardH + 8;
 
             bool win11 = Native.OsBuild() >= 22000;
@@ -95,12 +96,12 @@ namespace PaviseApp
             sy += cardH + 8;
 
             swTimerTick = MakeSwitch(TimerTickTweak.EnabledByPavise || TimerTickTweak.CurrentlyOn(), OnTimerTickToggle);
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.timertick"),
+            cardTimerTick = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.timertick"),
                 Lang.T("set.timertick.n"), swTimerTick, out cardH);
             sy += cardH + 8;
 
             swGlobalTimer = MakeSwitch(GlobalTimerResTweak.EnabledByPavise, OnGlobalTimerToggle);
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.gtimer"),
+            cardGlobalTimer = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.gtimer"),
                 Lang.T("set.gtimer.n"), swGlobalTimer, out cardH);
             sy += cardH + 8;
 
@@ -109,7 +110,7 @@ namespace PaviseApp
             scroll = envTabPanels[1]; sy = 2;
 
             swDevPower = MakeSwitch(DevicePowerTweak.EnabledByPavise, OnDevPowerToggle);
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.devpower"), Lang.T("set.devpower.n"), swDevPower, out cardH);
+            cardDevPower = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.devpower"), Lang.T("set.devpower.n"), swDevPower, out cardH);
             sy += cardH + 8;
 
             swEee = MakeSwitch(EeeTweak.EnabledByPavise, OnEeeToggle);
@@ -142,13 +143,13 @@ namespace PaviseApp
 
         // 极限档写入的持久项在这里只读列出 切走档位它们不会自动回滚
         //   重启才生效的东西 每次切档来回写等于每次都要重启一遍 那是刑罚不是功能
-        //   所以这里只负责让用户看见机器上现在有什么 开关一律在管理清单
+        //   所以这里只负责让用户看见机器上现在有什么 停用只走设置页关闭解锁整体还原
         private void BuildExtremeEnvReadout(Control scroll, int sy)
         {
             if (!ExtremeMode.Unlocked) return;
             // 只列没有环境页开关卡的项 有卡的项状态看它自己的卡
             //   在同一页再立一张同名卡只会让人以为出了重影
-            var switchless = new HashSet<string>(StringComparer.Ordinal) { "memcompress", "rescores" };
+            var switchless = new HashSet<string>(StringComparer.Ordinal) { "memcompress" };
             var owned = new List<ExtremeItem>();
             foreach (ExtremeItem item in ExtremeMode.EnvItems())
                 if (switchless.Contains(item.Token) && ExtremeMode.LedgerContains(item.Token))
@@ -186,6 +187,32 @@ namespace PaviseApp
             card.SetLock(externalOn ? Lang.T("lock.external") : !toggle.Enabled ? Lang.T("lock.na") : "", externalOn);
         }
 
+        // 只在当前档位就是极限时才把环境卡锁成预设强制开 与显卡页 ExtremeGraphicsForced 同一判据
+        //   持久项解锁后一直在系统里 但切到别的档位时不该再顶着"预设强制"的锁 那会让自定义档看着莫名其妙
+        private static void ForceEnvCard(string token, SettingCard card, Toggle toggle)
+        {
+            if (card == null || toggle == null || !toggle.Checked || !ExtremeMode.ForcesEnv(token)) return;
+            card.SetLock(Lang.T("v14.preset.forced.on"), true);
+            toggle.Enabled = false;
+        }
+
+        private void SyncExtremeForcedEnv()
+        {
+            // 当前不是极限档就不锁 环境项按用户自己的开关显示 与其它档位一致
+            if (gameMode == null || gameMode.ActivePreset != PerformancePreset.Extreme) return;
+            ForceEnvCard("hags", cardHags, swHags);
+            ForceEnvCard("amdsam", cardAmdSam, swAmdSam);
+            ForceEnvCard("vbs", cardVbs, swVbs);
+            ForceEnvCard("specmit", cardSpecMit, swSpecMit);
+            ForceEnvCard("gmguard", cardGmGuard, swGmGuard);
+            ForceEnvCard("windowedopt", cardWindowedOpt, swWindowedOpt);
+            ForceEnvCard("vrropt", cardVrrOpt, swVrrOpt);
+            ForceEnvCard("devpower", cardDevPower, swDevPower);
+            ForceEnvCard("eee", cardEee, swEee);
+            ForceEnvCard("hidpower", cardHidPower, swHidPower);
+            ForceEnvCard("accesskeys", cardAccessKeys, swAccessKeys);
+        }
+
         private void SyncEnvStatus()
         {
             LockEnvCard(cardHags, swHags, HagsTweak.CurrentlyOn() && !HagsTweak.EnabledByPavise);
@@ -215,10 +242,13 @@ namespace PaviseApp
                 cardVrrOpt.SetStatus(VrrOptTweak.Describe(),
                     StatusInk(!VrrOptTweak.CurrentlyOn(), VrrOptTweak.EnabledByPavise));
             if (cardEee != null)
-                cardEee.SetStatus(EeeTweak.Describe(), StatusInk(!EeeTweak.EnabledByPavise, EeeTweak.EnabledByPavise));
+                // 未改动是中性态 只有待记账那种要人动手的才走强调色 否则红色主题下"未改动"看着像报错
+                cardEee.SetStatus(EeeTweak.Describe(), StatusInk(EeeTweak.Pending, EeeTweak.EnabledByPavise));
             if (cardAmdSam != null && AdlxTweaks.Available)
                 cardAmdSam.SetStatus(AmdSamTweak.Describe(),
                     StatusInk(!AmdSamTweak.CurrentlyOn(), AmdSamTweak.EnabledByPavise));
+            // 强制锁最后落 前面的外部与不适用锁都让位
+            SyncExtremeForcedEnv();
         }
 
         private void OnAmdSamToggle(object s, EventArgs e)

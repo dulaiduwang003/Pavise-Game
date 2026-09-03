@@ -1,4 +1,4 @@
-<div align="center">
+﻿<div align="center">
 
 <img src="docs/icon.png" width="96" height="96" alt="Pavise">
 
@@ -10,7 +10,7 @@ Windows game resource scheduling and guard tool
 
 [简体中文](README.md) · **English** · [日本語](README.ja.md)
 
-**v2.2.0.0 · [Release notes (Chinese)](docs/releases/v2.2.0.0.md)**
+**v2.2.0.1 · [Release notes (Chinese)](docs/releases/v2.2.0.1.md)**
 
 <br>
 
@@ -120,7 +120,6 @@ The **compatibility list** records games that refuse writes, so priority and I/O
 - **Application GPU preferences**: save the Windows power-saving GPU preference for chosen background apps. Applies at their next launch and never moves a running app
 - **Preselect high-performance GPU on standby**: on dual-GPU machines, preselects the high-performance GPU while idle, skips anything already set by hand, and restores on exit
 - **GPU power limit**: raised to the vendor-permitted maximum during the match and restored from the snapshot afterwards
-- **Lock GPU core clock during play**: NVIDIA pins the core clock at the machine maximum through NVML, AMD raises the minimum core clock to the maximum through ADLX, so light scenes no longer downclock while power and thermal limits still apply; unlocked at match end. Locked on in the Esports and Extreme tiers on desktops, user-selectable elsewhere, overridable per game
 - **NVIDIA**: maximum performance power mode (also blocking the CUDA-triggered memory downclock), G-SYNC extended to windowed mode, low latency (on or ultra), Smooth Motion frame generation, unrestricted shader cache, DLSS override (latest or a pinned J/K generation), per-game ReBAR
 - **AMD**: Anti-Lag, AFMF frame generation, RSR driver-level upscaling
 - **Intel**: global low latency, only on DX9/DX11 paths the driver reports as supporting live changes. Boost and XeSS are never touched; Endurance Gaming is turned off during play so battery mode no longer caps the frame rate to a fraction of the panel refresh
@@ -152,9 +151,8 @@ Original values are snapshotted and restored when a switch is turned off. Writes
 - **Standby memory cleanup**: the entire standby list is purged only when both the list-size and true-free-memory thresholds are crossed. Technical detail below
 - **MMCSS multimedia scheduling**: the share reserved for non-multimedia work drops from 20% to 10%, the Games task's scheduling category and file I/O are raised, and the lazy idle-check tier is disabled
 - **Low-latency DWM composition** (Extreme tier only): registers the desktop compositor's threads into the multimedia real-time tier during a match, so borderless and windowed games keep compositing under full CPU load; exclusive fullscreen bypasses the compositor and is unaffected. Off by default
-- **Steer packet processing off game cores** (Extreme tier only): moves physical wired adapters' RSS packet-processing range onto the suppressed cores during a match, recorded per adapter and restored on exit. Off by default
 - **Pause Windows Update, Delivery Optimization, nonessential services, background wireless scanning and automatic maintenance**, all resumed on exit
-- **Vendor performance mode during play**: switches Lenovo Legion and ASUS ROG laptops to their vendor performance profile through the vendor interface and switches back at match end; locked on in the Esports and Extreme tiers on laptops, handhelds are left alone
+- **Vendor performance mode during play**: switches Lenovo Legion and ASUS ROG laptops to their vendor performance profile through the vendor interface and switches back at match end; enabled by default, can be turned off, and is not forced by the Esports or Extreme tier
 - **Per-game DPI awareness**: with display scaling above 100% the borderless window is sized in physical pixels instead of being stretched by the compositor
 - **Turn off Game DVR and Xbox background recording**, and **keep the display awake during a match**
 - **Low-latency audio** (Extreme tier only): opens a silent stream at the smallest audio buffer the system supports during a match, so the audio engine runs at its minimum period and sound output latency drops. Off by default; the default buffer returns on exit
@@ -171,13 +169,12 @@ Changes on this page need a restart and persist on the machine. Every one of the
 - **Disable NIC power saving**, **disable NIC link power saving** (turns off 802.3az low-power idle, Green Ethernet and idle link-speed reduction so the link never sleeps, wakes or renegotiates between 1G and 100M; the adapter drops for a few seconds when written), **NIC interrupt-moderation experiment** (unchanged by default; explicit Off testing only on the single physical wired adapter selected by the public-IPv4 route probe, restored only after both NetCfg GUID and PnP instance identity match)
 - **Accessibility key interception**, **disable keyboard and mouse selective suspend**
 - **Disable memory compression and page combining** (Extreme tier only): removes the background CPU cost of the compression thread and page-combining scans; offered from 24GB of RAM
-- **Kernel reserved cores** (Extreme tier only): sets two physical cores aside that system threads and ordinary programs avoid at all times; only games in a Pavise core-partitioned match can use them
 
 ### System audit
 
 A read-only capability check of the machine, with 132 conclusions each labelled by evidence level: measured here, bench-tested, mechanism clear, or unverified. System items broken by third-party tools can be repaired in place, and you can see whether the GPU is currently power- or thermal-limited. The interrupt row uses kernel ETW to capture DPC and ISR activity and names the top source directly.
 
-The Settings page offers a full configuration wipe that reverts every persistent change Pavise ever made, including those left by retired features.
+The Settings page offers a full configuration wipe that reverts every persistent change Pavise ever made, including those left by retired features. The Uninstall Pavise button next to it runs the bundled Pavise-Uninstall.cmd: it exits the app, restores every system change from its receipts, then removes the startup task, the managed power plan, settings, the data folder and leftovers from older versions, so the machine ends up as if Pavise had never been installed. The script can also be double-clicked directly when the app no longer opens.
 
 A purely local tool. It installs no service, uploads no data, injects into no game process, and modifies no game memory or files. Every write is read back where possible, and a value that does not read back as expected is not counted as success.
 

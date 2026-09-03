@@ -1,6 +1,6 @@
 @echo off
 rem @author bdth 2074055628@qq.com
-rem file: one-shot cleanup of all Pavise data (uninstall helper)
+rem file: rescue for a machine that hard-crashes (MCE) after Extreme tier
 rem ASCII ONLY above the marker line, and CRLF line endings only. cmd
 rem decodes this file with the console startup codepage (936 or 65001);
 rem any non-ASCII byte up here shifts the parser, and bare-LF endings
@@ -14,7 +14,6 @@ exit /b
 $ErrorActionPreference = 'SilentlyContinue'
 $self = $env:PAVISE_UNINSTALL_SELF
 
-# ---- elevation: restores, scheduled task and power plan removal need admin ----
 $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
     ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $admin) {
@@ -24,30 +23,21 @@ if (-not $admin) {
 }
 
 Write-Host '============================================================'
-Write-Host ' Pavise 一键清除（相当于卸载）'
+Write-Host ' Pavise 急救（极限档后死机重启的机器专用）'
 Write-Host '============================================================'
 Write-Host ''
-Write-Host ' 将执行：退出运行中的 Pavise；按收据还原能独立还原的系统改动；'
-Write-Host ' 删除开机自启任务、托管电源方案、全部设置（注册表）与数据目录。'
+Write-Host ' 顺序：先把日志、蓝屏记录、电源与启动配置导出到桌面；'
+Write-Host ' 再退出 Pavise，按收据还原系统改动；收据缺失的项按 Windows'
+Write-Host ' 默认值复位；删除托管电源方案并把全部电源方案恢复出厂；'
+Write-Host ' 复位显卡频率锁定与功耗墙；最后删除 Pavise 的设置与数据。'
 Write-Host ''
-Write-Host ' 本脚本能还原：注册表类改动（HAGS、VBS、推测执行缓解、MMCSS、' -ForegroundColor Cyan
-Write-Host ' 网络限流、游戏模式守护、Game DVR、辅助功能按键、键鼠与网卡设备' -ForegroundColor Cyan
-Write-Host ' 电源、MSI、窗口化优化与可变刷新率优化、系统维护、DO 带宽等）、' -ForegroundColor Cyan
-Write-Host ' 启动项（计时器节拍、虚拟机监控程序）、内核保留核、内存压缩、' -ForegroundColor Cyan
-Write-Host ' 电源方案与电源模式、CPU 空闲、网卡 RSS 与链路节能、路由跃点、' -ForegroundColor Cyan
-Write-Host ' 笔记本厂商性能档、NVIDIA 频率锁定、全屏优化与 DPI 兼容层、' -ForegroundColor Cyan
-Write-Host ' 被暂停的系统服务。' -ForegroundColor Cyan
+Write-Host ' 跑完必须重启一次。之后请把桌面上生成的 Pavise-Rescue 文件夹' -ForegroundColor Cyan
+Write-Host ' 整个打包发给作者。' -ForegroundColor Cyan
 Write-Host ''
-Write-Host ' 本脚本不能还原（收据会被一并删除，之后无法自动还原）：' -ForegroundColor Yellow
-Write-Host ' NVIDIA 逐游戏配置（低延迟、着色器缓存、P2、窗口化 G-SYNC，' -ForegroundColor Yellow
-Write-Host ' 可在 NVIDIA 控制面板“恢复默认设置”）、AMD 最低频率与 SAM、' -ForegroundColor Yellow
-Write-Host ' Intel 低延迟与 Endurance Gaming、网卡中断合并、手动钉核的' -ForegroundColor Yellow
-Write-Host ' 中断亲和与优先级（设备管理器卸载重装设备可复位）。' -ForegroundColor Yellow
+Write-Host ' 本脚本会删除 Pavise 的游戏库、白名单和全部设置。' -ForegroundColor Yellow
+Write-Host ' 不会改动 HAGS、VBS 与 hypervisor 的现状，除非收据里有它们。' -ForegroundColor Yellow
 Write-Host ''
-Write-Host ' 正确做法：先在 Pavise 内使用「设置 - 清除全部配置」，它会先' -ForegroundColor Green
-Write-Host ' 完整还原系统改动再清数据。仅当程序已经无法打开时才用本脚本。' -ForegroundColor Green
-Write-Host ''
-$answer = Read-Host '输入 Y 并回车继续清除，其它任意输入取消'
+$answer = Read-Host '输入 Y 并回车开始，其它任意输入取消'
 if ($answer -ne 'Y' -and $answer -ne 'y') { Write-Host '已取消。'; Start-Sleep 1; exit }
 
 # ---- receipts live in HKCU\Software\Pavise; strings are REG_SZ, flags are DWORD ----
@@ -172,26 +162,73 @@ function Bcd([string]$bcdArgs) {
     return $p.ExitCode -eq 0
 }
 
+
+function Bcd([string]$bcdArgs) {
+    $p = Start-Process bcdedit -ArgumentList $bcdArgs -NoNewWindow -Wait -PassThru -ErrorAction SilentlyContinue
+    if ($null -eq $p) { return $false }
+    return $p.ExitCode -eq 0
+}
+
+# 没有收据时按 Windows 默认值复位 有收据的项已经在前一步按收据还原 这里跳过
+function Default-Reg([string]$slot, [string]$path, [string]$name, $value, [string]$type, [string]$what) {
+    if ((Rc $slot) -ne '') { return }
+    $ok = $true
+    try {
+        if ($null -eq $value) {
+            if (Test-Path $path) { Remove-ItemProperty -Path $path -Name $name -ErrorAction SilentlyContinue }
+        } else {
+            if (-not (Test-Path $path)) { New-Item -Path $path -Force -ErrorAction Stop | Out-Null }
+            Set-ItemProperty -Path $path -Name $name -Value $value -Type $type -ErrorAction Stop
+        }
+    } catch { $ok = $false }
+    Note ('默认值 ' + $what) $ok
+}
+
 Write-Host ''
-Write-Host '[1/9] 退出运行中的 Pavise...'
+Write-Host '[1/8] 导出证据到桌面...'
+$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+$out = Join-Path ([Environment]::GetFolderPath('Desktop')) ('Pavise-Rescue-' + $stamp)
+New-Item -ItemType Directory -Path $out -Force | Out-Null
+$data = Join-Path $env:APPDATA 'Pavise'
+foreach ($n in @('Pavise.log', 'Pavise.log.old', 'crash.log', 'Pavise.reports.log')) {
+    $p = Join-Path $data $n
+    if (Test-Path $p) { Copy-Item $p $out -Force -ErrorAction SilentlyContinue }
+}
+Get-ChildItem $data -Filter 'crash.*.log' -File -ErrorAction SilentlyContinue | Copy-Item -Destination $out -Force -ErrorAction SilentlyContinue
+if (Test-Path $hive) { reg export HKCU\Software\Pavise (Join-Path $out 'Pavise-receipts.reg') /y | Out-Null }
+wevtutil qe System '/q:*[System[Provider[@Name=''Microsoft-Windows-WHEA-Logger'']]]' /c:40 /rd:true /f:text 2>$null | Out-File (Join-Path $out 'WHEA.txt') -Encoding utf8
+wevtutil qe System '/q:*[System[(EventID=41 or EventID=1001 or EventID=6008)]]' /c:40 /rd:true /f:text 2>$null | Out-File (Join-Path $out 'BugCheck.txt') -Encoding utf8
+(powercfg /list) + '' + (powercfg /getactivescheme) | Out-File (Join-Path $out 'powercfg-list.txt') -Encoding utf8
+powercfg /q | Out-File (Join-Path $out 'powercfg-active.txt') -Encoding utf8
+bcdedit /enum | Out-File (Join-Path $out 'bcdedit.txt') -Encoding utf8
+Get-CimInstance Win32_Processor | Select-Object Name, MaxClockSpeed, NumberOfCores, NumberOfLogicalProcessors | Format-List | Out-File (Join-Path $out 'cpu.txt') -Encoding utf8
+Get-CimInstance Win32_BIOS | Select-Object Manufacturer, SMBIOSBIOSVersion, ReleaseDate | Format-List | Out-File (Join-Path $out 'bios.txt') -Encoding utf8
+Get-CimInstance Win32_BaseBoard | Select-Object Manufacturer, Product | Format-List | Out-File (Join-Path $out 'board.txt') -Encoding utf8 -Append
+Get-CimInstance Win32_VideoController | Select-Object Name, DriverVersion | Format-List | Out-File (Join-Path $out 'gpu.txt') -Encoding utf8
+$dumps = Join-Path $env:SystemRoot 'Minidump'
+if (Test-Path $dumps) {
+    Get-ChildItem $dumps -Filter '*.dmp' -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 5 |
+        Copy-Item -Destination $out -Force -ErrorAction SilentlyContinue
+}
+Write-Host ('       已导出到 ' + $out)
+
+Write-Host '[2/8] 退出运行中的 Pavise 并删除自启任务...'
 try { [System.Threading.EventWaitHandle]::OpenExisting('Global\Pavise_Exit').Set() | Out-Null } catch { }
 $waited = 0
 while ((Get-Process 'Pavise*' -ErrorAction SilentlyContinue) -and $waited -lt 8) {
     Start-Sleep 1; $waited++
 }
 Get-Process 'Pavise*' -ErrorAction SilentlyContinue | Stop-Process -Force
+schtasks /Delete /F /TN Pavise 2>$null | Out-Null
 Write-Host '       完成'
 
 $plans = @{}
 $prevPlan = ''
 $managedGuid = ''
+Write-Host '[3/8] 按收据还原系统改动...'
 if (-not (Test-Path $hive)) {
-    Write-Host '[2/9] 没有收据，跳过系统还原'
-    Write-Host '[3/9] 跳过'
-    Write-Host '[4/9] 跳过'
-    Write-Host '[5/9] 跳过'
+    Write-Host '       没有收据'
 } else {
-    Write-Host '[2/9] 按收据还原注册表改动...'
     $HKLM = 'HKLM:\'
     $HKCU = 'HKCU:\'
     $sysProfile = 'SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile'
@@ -249,7 +286,7 @@ if (-not (Test-Path $hive)) {
     Remove-LayerToken 'FsoExeList' 'DISABLEDXMAXIMIZEDWINDOWEDMODE' '全屏优化兼容层'
     Remove-LayerToken 'DpiExeList' 'HIGHDPIAWARE' 'DPI 兼容层'
 
-    Write-Host '[3/9] 还原启动项与内核项...'
+    Write-Host '   · 还原启动项与内核项...'
     $tick = Rc 'PrevTimerTick'
     if ($tick -ne '') {
         $names = @('useplatformclock', 'useplatformtick', 'disabledynamictick')
@@ -293,7 +330,7 @@ if (-not (Test-Path $hive)) {
         Note '内存压缩与页合并' $ok
     }
 
-    Write-Host '[4/9] 还原电源项...'
+    Write-Host '   · 还原电源项...'
     $idle = Rc 'CpuIdleStateV1'
     if ($idle -ne '') {
         $f = $idle -split '\|'
@@ -321,7 +358,7 @@ if (-not (Test-Path $hive)) {
         Note '电源模式' ($LASTEXITCODE -eq 0)
     }
 
-    Write-Host '[5/9] 还原网卡、笔记本、显卡与服务...'
+    Write-Host '   · 还原网卡、笔记本、显卡与服务...'
     $rss = Rc 'RssSteerReceipt'
     if ($rss -ne '') {
         $ok = $true
@@ -397,12 +434,51 @@ if (-not (Test-Path $hive)) {
     if ($script:restored -eq 0 -and $script:failed.Count -eq 0) { Write-Host '       没有需要还原的收据' }
 }
 
-Write-Host '[6/9] 删除开机自启任务...'
-schtasks /Delete /F /TN Pavise 2>$null | Out-Null
-Write-Host '       完成'
+Write-Host '[4/8] 收据缺失的项按 Windows 默认值复位...'
+$HKLM = 'HKLM:\'
+$sysProfile = 'SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile'
+$kernel = 'SYSTEM\CurrentControlSet\Control\Session Manager\kernel'
+$mm = 'SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management'
+Default-Reg 'PrevReservedCpuSets' ($HKLM + $kernel) 'ReservedCpuSets' $null 'Binary' '内核保留核（重启后生效）'
+Default-Reg 'PrevGlobalTimerRes' ($HKLM + $kernel) 'GlobalTimerResolutionRequests' $null 'DWord' '全局计时器分辨率'
+Default-Reg 'PrevSpecOverride' ($HKLM + $mm) 'FeatureSettingsOverride' $null 'DWord' '推测执行缓解 Override'
+Default-Reg 'PrevSpecMask' ($HKLM + $mm) 'FeatureSettingsOverrideMask' $null 'DWord' '推测执行缓解 Mask'
+Default-Reg 'PrevMaintDisabled' ($HKLM + 'SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\Maintenance') 'MaintenanceDisabled' $null 'DWord' '系统维护'
+Default-Reg 'PrevPresenceQos' ($HKLM + 'SYSTEM\CurrentControlSet\Control\Power\PowerThrottling') 'DisableUserPresenceQos' $null 'DWord' '在场感知 QoS'
+Default-Reg 'Mmcss_Resp' ($HKLM + $sysProfile) 'SystemResponsiveness' 20 'DWord' 'MMCSS 系统响应度'
+Default-Reg 'Mmcss_NoLazy' ($HKLM + $sysProfile) 'NoLazyMode' $null 'DWord' 'MMCSS NoLazyMode'
+Default-Reg 'Mmcss_Sched' ($HKLM + $sysProfile + '\Tasks\Games') 'Scheduling Category' 'Medium' 'String' 'MMCSS 调度类别'
+Default-Reg 'Mmcss_Sfio' ($HKLM + $sysProfile + '\Tasks\Games') 'SFIO Priority' 'Normal' 'String' 'MMCSS IO 优先级'
+Default-Reg 'Mmcss_Pri' ($HKLM + $sysProfile + '\Tasks\Games') 'Priority' 2 'DWord' 'MMCSS 游戏优先级'
+Default-Reg 'PrevNetThrottle' ($HKLM + $sysProfile) 'NetworkThrottlingIndex' 10 'DWord' '网络限流'
+Default-Reg 'PrevWin32PriSep' ($HKLM + 'SYSTEM\CurrentControlSet\Control\PriorityControl') 'Win32PrioritySeparation' 2 'DWord' '前台优先级分离'
+if ((Rc 'PrevTimerTick') -eq '') {
+    $ok = $true
+    foreach ($n in @('useplatformclock', 'useplatformtick', 'disabledynamictick')) { Bcd ('/deletevalue ' + $n) | Out-Null }
+    Note '默认值 计时器节拍（重启后生效）' $ok
+}
+if ((Rc 'PrevMMAgent') -eq '') {
+    $ok = $true
+    try { Enable-MMAgent -MemoryCompression -ErrorAction Stop } catch { $ok = $false }
+    try { Enable-MMAgent -PageCombining -ErrorAction Stop } catch { }
+    Note '默认值 内存压缩' $ok
+}
+$svcDefaults = @{ 'SysMain' = 'Automatic'; 'WSearch' = 'Automatic'; 'wuauserv' = 'Manual'; 'UsoSvc' = 'Manual'; 'DoSvc' = 'Manual' }
+$ok = $true
+foreach ($n in $svcDefaults.Keys) {
+    $svc = Get-Service -Name $n -ErrorAction SilentlyContinue
+    if ($null -eq $svc) { continue }
+    try {
+        if ($svc.StartType -eq 'Disabled') { Set-Service -Name $n -StartupType $svcDefaults[$n] -ErrorAction Stop }
+        if ($svc.Status -ne 'Running' -and $svcDefaults[$n] -eq 'Automatic') { Start-Service -Name $n -ErrorAction Stop }
+    } catch { $ok = $false }
+}
+Note '默认值 系统服务启动类型' $ok
+foreach ($k in @('PrevHwSch', 'PrevVbsEnable', 'PrevHvLaunch')) {
+    if ((Rc $k) -eq '') { Write-Host ('       未动 ' + $k + ' 没有收据 HAGS 与 VBS 保持现状') }
+}
 
-Write-Host '[7/9] 删除托管电源方案...'
-# the plan is named "由软件调度 XXXX" / "Scheduled by Pavise XXXX"; older builds used "PG ..."
+Write-Host '[5/8] 电源方案恢复出厂并切回平衡...'
 $balanced = '381b4222-f694-41f0-9685-ff5bb260df2e'
 $active = ''
 $out = powercfg /getactivescheme
@@ -432,9 +508,37 @@ foreach ($g in $doomed) {
     }
     powercfg /delete $g | Out-Null
 }
-Write-Host '       完成'
+# 极限档写进托管方案的空闲旋钮可能已经漏到别的方案 全部方案恢复出厂最省事
+powercfg -restoredefaultschemes | Out-Null
+powercfg /setactive $balanced | Out-Null
+Note '全部电源方案恢复出厂 当前平衡' ($LASTEXITCODE -eq 0)
 
-Write-Host '[8/9] 删除注册表设置与数据目录...'
+Write-Host '[6/8] 复位显卡频率锁定与功耗墙...'
+$smi = Get-Command nvidia-smi.exe -ErrorAction SilentlyContinue
+if ($null -eq $smi) {
+    $cand = Join-Path $env:ProgramFiles 'NVIDIA Corporation\NVSMI\nvidia-smi.exe'
+    if (Test-Path $cand) { $smi = Get-Item $cand }
+}
+if ($null -ne $smi) {
+    $smiPath = $smi.Source
+    if ($null -eq $smiPath) { $smiPath = $smi.FullName }
+    $p = Start-Process $smiPath -ArgumentList '-rgc' -NoNewWindow -Wait -PassThru -ErrorAction SilentlyContinue
+    Note 'NVIDIA 频率锁定解除' ($null -ne $p -and $p.ExitCode -eq 0)
+    $limits = & $smiPath --query-gpu=power.default_limit --format=csv,noheader,nounits 2>$null
+    $i = 0
+    foreach ($line in @($limits)) {
+        $w = 0.0
+        if ([double]::TryParse(([string]$line).Trim(), [ref]$w) -and $w -gt 0) {
+            $p = Start-Process $smiPath -ArgumentList ('-i ' + $i + ' -pl ' + [math]::Round($w)) -NoNewWindow -Wait -PassThru -ErrorAction SilentlyContinue
+            Note ('NVIDIA 功耗墙回默认 GPU' + $i + ' ' + [math]::Round($w) + 'W') ($null -ne $p -and $p.ExitCode -eq 0)
+        }
+        $i++
+    }
+} else {
+    Write-Host '       未找到 nvidia-smi 非 NVIDIA 显卡或驱动未装 跳过'
+}
+
+Write-Host '[7/8] 删除 Pavise 设置与数据...'
 Remove-Item $hive -Recurse -Force -ErrorAction SilentlyContinue
 $data = Join-Path $env:APPDATA 'Pavise'
 if (Test-Path $data) { Remove-Item $data -Recurse -Force -ErrorAction SilentlyContinue }
@@ -444,7 +548,7 @@ if (Test-Path $data) {
     Write-Host '       完成'
 }
 
-Write-Host '[9/9] 清理程序目录与临时文件...'
+Write-Host '[8/8] 清理程序目录与临时文件...'
 $here = Split-Path -Parent $self
 $leftovers = @('Pavise.log','Pavise.reports.log','Pavise.games.txt','Pavise.targets.txt',
     'Pavise.whitelist.txt','Pavise.profiles.dat','Pavise.renderer-observations.dat',
@@ -465,13 +569,19 @@ Write-Host '       完成'
 
 Write-Host ''
 Write-Host '============================================================'
-Write-Host (' 清除完毕。已还原 ' + $script:restored + ' 项系统改动。Pavise.exe 请自行删除。')
+Write-Host (' 急救完成。已还原或复位 ' + $script:restored + ' 项。现在请重启电脑。')
 if ($script:failed.Count -gt 0) {
-    Write-Host (' 未能还原：' + ($script:failed -join '、')) -ForegroundColor Yellow
+    Write-Host (' 未能处理：' + ($script:failed -join '、')) -ForegroundColor Yellow
 }
-if ($script:restored -gt 0) {
-    Write-Host ' 启动项与内核项的改动需要重启一次才生效。'
-}
+Write-Host ''
+Write-Host (' 证据已导出到 ' + $out) -ForegroundColor Cyan
+Write-Host ' 重启后把这个文件夹整个打包发给作者。' -ForegroundColor Cyan
+Write-Host ''
+Write-Host ' Machine Check Exception 是处理器报的硬件错误。建议：' -ForegroundColor Yellow
+Write-Host ' 1. BIOS 恢复默认设置，关闭 XMP/EXPO 与任何超频，卸载 XTU、ThrottleStop 一类降压工具；' -ForegroundColor Yellow
+Write-Host ' 2. 把 BIOS 更新到厂商最新版，笔记本顺手清一次散热；' -ForegroundColor Yellow
+Write-Host ' 3. 这台机器以后不要开极限档。' -ForegroundColor Yellow
 Write-Host '============================================================'
 Write-Host ''
+try { Start-Process explorer.exe $out } catch { }
 Read-Host '按回车键退出' | Out-Null

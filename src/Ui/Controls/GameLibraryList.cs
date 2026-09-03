@@ -150,12 +150,14 @@ namespace PaviseApp
             {
                 int width = Math.Max(1, ClientSize.Width - Padding.Horizontal);
                 int rowH = GameLibraryRowLayout.HeightForWidth(width), gap = Theme.S(10);
-                int extent = rows.Count == 0 ? 0 : rows.Count * (rowH + gap) - gap + Padding.Vertical;
+                int extent = rows.Count == 0 ? 0 : Padding.Vertical - gap;
+                foreach (GameLibraryRow row in rows) extent += rowH + row.ExtraHeight + gap;
                 if (AutoScrollMinSize.Height != extent) AutoScrollMinSize = new Size(0, extent);
                 int y = Padding.Top + AutoScrollPosition.Y;
                 foreach (GameLibraryRow row in rows)
                 {
-                    row.SetBounds(Padding.Left, y, width, rowH); y += rowH + gap;
+                    int h = rowH + row.ExtraHeight;
+                    row.SetBounds(Padding.Left, y, width, h); y += h + gap;
                 }
             }
             finally { arranging = false; }
@@ -179,6 +181,7 @@ namespace PaviseApp
         public GameLibraryItem Item { get; private set; }
         public Func<string, Bitmap> IconProvider;
         public readonly FamilySuppressionSwitch FamilySwitch;
+        public readonly GameCardExtension Extension;
         public event EventHandler SelectionRequested;
         public event EventHandler Activated;
         public event EventHandler FamilyRequested;
@@ -194,16 +197,30 @@ namespace PaviseApp
             FamilySwitch = new FamilySuppressionSwitch();
             FamilySwitch.Click += delegate { if (FamilyRequested != null) FamilyRequested(this, EventArgs.Empty); };
             FamilySwitch.Enter += delegate { if (SelectionRequested != null) SelectionRequested(this, EventArgs.Empty); };
-            Controls.Add(FamilySwitch); RefreshModel();
+            Controls.Add(FamilySwitch);
+            Extension = GameExtension.CreateCard(item != null ? item.Profile : null);
+            if (Extension != null)
+            {
+                Extension.SetSurface(Surface);
+                Extension.Enter += delegate { if (SelectionRequested != null) SelectionRequested(this, EventArgs.Empty); };
+                Controls.Add(Extension);
+            }
+            RefreshModel();
         }
+        public int ExtraHeight { get { return Extension == null ? 0 : Extension.PreferredHeight; } }
         public bool Selected
         {
             get { return selected; }
             set
             {
                 if (selected == value) return;
-                selected = value; FamilySwitch.Surface = Surface; Invalidate(); FamilySwitch.Invalidate();
+                selected = value; PushSurface(); Invalidate();
             }
+        }
+        private void PushSurface()
+        {
+            FamilySwitch.Surface = Surface; FamilySwitch.Invalidate();
+            if (Extension != null) Extension.SetSurface(Surface);
         }
         private Color Surface
         {
@@ -229,6 +246,7 @@ namespace PaviseApp
         {
             if (Item == null || Item.Profile == null) return;
             FamilySwitch.Checked = Item.Profile.SuppressFamilyBackground;
+            FamilySwitch.Gated = !Item.RendererObserved;
             FamilySwitch.Surface = Surface;
             string observed = Lang.T(Item.RendererObserved ? "lib.renderer.observed" : "lib.renderer.pending");
             string hint = Lang.T(Item.RendererObserved ? "lib.renderer.observed.tip" : "lib.renderer.pending.tip");
@@ -238,13 +256,20 @@ namespace PaviseApp
             FamilySwitch.AccessibleName = Item.Profile.Name + " · " + Lang.T("lib.family.suppress");
             FamilySwitch.AccessibleDescription = hint + "\r\n" + Lang.T("lib.family.tip");
             tips.SetToolTip(this, Item.Profile.Name + "\r\n" + path + "\r\n" + MetadataText + "\r\n\r\n" + hint);
-            tips.SetToolTip(FamilySwitch, Lang.T("lib.family.tip") + "\r\n\r\n" + hint);
+            tips.SetToolTip(FamilySwitch, (FamilySwitch.Gated && !FamilySwitch.Checked
+                ? Lang.T("lib.family.gated.body") + "\r\n\r\n" : "") + Lang.T("lib.family.tip") + "\r\n\r\n" + hint);
             Invalidate(); FamilySwitch.Invalidate();
         }
         protected override void OnLayout(LayoutEventArgs levent)
         {
             base.OnLayout(levent);
             if (FamilySwitch != null) FamilySwitch.Bounds = GameLibraryRowLayout.ForSize(ClientSize).Policy;
+            if (Extension != null)
+            {
+                int baseH = GameLibraryRowLayout.HeightForWidth(ClientSize.Width);
+                Extension.Bounds = new Rectangle(Theme.S(14), baseH, Math.Max(1, ClientSize.Width - Theme.S(28)),
+                    Math.Max(1, Extension.PreferredHeight - Theme.S(9)));
+            }
         }
         protected override bool IsInputKey(Keys keyData)
         {
@@ -278,11 +303,11 @@ namespace PaviseApp
         protected override void OnLeave(EventArgs e) { base.OnLeave(e); Invalidate(); }
         protected override void OnMouseEnter(EventArgs e)
         {
-            base.OnMouseEnter(e); hovered = true; FamilySwitch.Surface = Surface; Invalidate(); FamilySwitch.Invalidate();
+            base.OnMouseEnter(e); hovered = true; PushSurface(); Invalidate();
         }
         protected override void OnMouseLeave(EventArgs e)
         {
-            base.OnMouseLeave(e); hovered = false; FamilySwitch.Surface = Surface; Invalidate(); FamilySwitch.Invalidate();
+            base.OnMouseLeave(e); hovered = false; PushSurface(); Invalidate();
         }
         protected override void OnPaint(PaintEventArgs e)
         {
@@ -348,6 +373,8 @@ namespace PaviseApp
     internal sealed class FamilySuppressionSwitch : CheckBox
     {
         public Color Surface = Theme.Card;
+        public bool Gated;
+        private bool Locked { get { return Gated && !Checked; } }
         public FamilySuppressionSwitch()
         {
             AutoCheck = false; AutoSize = false; TabStop = true;
@@ -393,21 +420,22 @@ namespace PaviseApp
             Font titleFont = Theme.UI(8.3f, true);
             bool wrap = TextRenderer.MeasureText(g, Text, titleFont, Size.Empty,
                 TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width > tw;
+            bool locked = Locked;
             TextRenderer.DrawText(g, Text, titleFont,
-                new Rectangle(tx, Theme.S(wrap ? 8 : 14), tw, Theme.S(wrap ? 31 : 21)), Enabled ? Theme.Fg : Theme.Faint,
+                new Rectangle(tx, Theme.S(wrap ? 8 : 14), tw, Theme.S(wrap ? 31 : 21)), Enabled && !locked ? Theme.Fg : Theme.Faint,
                 wrap ? TextFormatFlags.WordBreak | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix : line);
-            TextRenderer.DrawText(g, Lang.T(Checked ? "lib.family.on" : "lib.family.off"), Theme.UI(7.6f, false),
-                new Rectangle(tx, Theme.S(40), tw, Theme.S(18)), Checked ? Theme.Accent : Theme.Dim, line);
+            TextRenderer.DrawText(g, Lang.T(Checked ? "lib.family.on" : locked ? "lib.family.gated" : "lib.family.off"), Theme.UI(7.6f, false),
+                new Rectangle(tx, Theme.S(40), tw, Theme.S(18)), Checked ? Theme.Accent : locked ? Theme.Faint : Theme.Dim, line);
             var track = new Rectangle(Width - Theme.S(56), (Height - Theme.S(22)) / 2, Theme.S(42), Theme.S(22));
             using (GraphicsPath path = Theme.TechPath(track, Theme.S(5)))
             {
-                using (var b = new SolidBrush(Checked ? Theme.Accent : Theme.TrackOff)) g.FillPath(b, path);
-                using (var p = new Pen(Checked ? Theme.Accent : Theme.StrokeHi)) g.DrawPath(p, path);
+                using (var b = new SolidBrush(Checked ? Theme.Accent : locked ? Col.Lerp(Theme.TrackOff, Surface, 0.5f) : Theme.TrackOff)) g.FillPath(b, path);
+                using (var p = new Pen(Checked ? Theme.Accent : locked ? Theme.Stroke : Theme.StrokeHi)) g.DrawPath(p, path);
             }
             int knob = Theme.S(14), pad = Theme.S(4);
             var thumb = new Rectangle(Checked ? track.Right - pad - knob : track.Left + pad, track.Top + pad, knob, knob);
             using (GraphicsPath path = Theme.TechPath(thumb, Theme.S(3)))
-            using (var b = new SolidBrush(Checked ? Theme.OnAccent : Theme.Fg)) g.FillPath(b, path);
+            using (var b = new SolidBrush(Checked ? Theme.OnAccent : locked ? Theme.Faint : Theme.Fg)) g.FillPath(b, path);
             if (Focused && ShowFocusCues)
                 ControlPaint.DrawFocusRectangle(g, Rectangle.Inflate(frame, -Theme.S(4), -Theme.S(4)), Theme.Accent, fill);
         }

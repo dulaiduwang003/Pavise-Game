@@ -22,7 +22,7 @@ namespace PaviseApp
         private Toggle swPolicyCacheWarm;
         private Toggle swPolicyPowerYield;
         private Toggle swPolicyDisableCpuIdle;
-        private Toggle swPolicyPauseWu, swPolicyPauseServices, swPolicyWlan, swPolicyAwake;
+        private Toggle swPolicyPauseWu, swPolicyPauseServices, swPolicyAwake;
         private Toggle swPolicyPauseMaint, swPolicyLaptopPerf;
         private SettingCard cardPolicyPauseMaint, cardPolicyLaptopPerf;
         private SettingCard cardPolicyCores, cardPolicyAggressive;
@@ -30,7 +30,7 @@ namespace PaviseApp
         private SettingCard cardPolicyBackground, cardPolicyGpuDemote, cardPolicyBoost, cardPolicyLane, cardPolicyMmcss;
         private SettingCard cardPolicyPowerYield;
         private SettingCard cardPolicyDisableCpuIdle;
-        private SettingCard cardPolicyPauseWu, cardPolicyPauseServices, cardPolicyWlan, cardPolicyAwake;
+        private SettingCard cardPolicyPauseWu, cardPolicyPauseServices, cardPolicyAwake;
         private readonly List<Action> policySync = new List<Action>();
 #if PAVISE_SELFTEST
         internal Func<bool> DisableCpuIdleConfirmationForTest;
@@ -133,9 +133,6 @@ namespace PaviseApp
             swPolicyPauseServices = AddPolicyToggle(scroll, ref sy, Lang.T("gm.pausesvc"), Lang.T("gm.pausesvc.sub"),
                 delegate { return gameMode.PauseServices; }, delegate(bool v) { gameMode.PauseServices = v; });
             cardPolicyPauseServices = (SettingCard)swPolicyPauseServices.Parent;
-            swPolicyWlan = AddPolicyToggle(scroll, ref sy, Lang.T("gm.wlanguard"), Lang.T("gm.wlanguard.sub"),
-                delegate { return gameMode.WlanScanGuard; }, delegate(bool v) { gameMode.WlanScanGuard = v; });
-            cardPolicyWlan = (SettingCard)swPolicyWlan.Parent;
             swPolicyAwake = AddPolicyToggle(scroll, ref sy, Lang.T("set.awake"), Lang.T("set.awake.n"),
                 delegate { return gameMode.KeepAwake; }, delegate(bool v) { gameMode.KeepAwake = v; });
             cardPolicyAwake = (SettingCard)swPolicyAwake.Parent;
@@ -217,6 +214,7 @@ namespace PaviseApp
             RevealTabFor(policyTabs, policyTabPanels, card);
             RevealTabFor(envTabs, envTabPanels, card);
             RevealTabFor(gfxTabs, gfxTabPanels, card);
+            RevealTabFor(settingsTabs, settingsTabPanels, card);
         }
 
         private static void RevealTabFor(TechTabs tabs, DBPanel[] panels, Control card)
@@ -414,21 +412,14 @@ namespace PaviseApp
             ApplyPresetPolicy(swPolicyPauseMaint, cardPolicyPauseMaint, Lang.T("gm.pausemaint"), extremeTier, true);
             if (swPolicyLaptopPerf != null)
             {
-                bool oemForced = LaptopPerfMode.ForcedByTier(mode, Native.HasSystemBattery()) && LaptopPerfMode.SupportedCached();
-                ApplyPresetPolicy(swPolicyLaptopPerf, cardPolicyLaptopPerf, Lang.T("gm.laptopperf"), oemForced, true);
-                if (!oemForced && !LaptopPerfMode.SupportedCached() && !gameMode.LaptopPerf)
+                ApplyPresetPolicy(swPolicyLaptopPerf, cardPolicyLaptopPerf, Lang.T("gm.laptopperf"), false, gameMode.LaptopPerf);
+                if (!LaptopPerfMode.SupportedCached() && !gameMode.LaptopPerf)
                 {
                     swPolicyLaptopPerf.Enabled = false;
                     if (cardPolicyLaptopPerf != null) cardPolicyLaptopPerf.SetLock(Lang.T("lock.na"), false);
                 }
             }
             ApplyPresetPolicy(swPolicyPauseServices, cardPolicyPauseServices, Lang.T("gm.pausesvc"), extremeTier, true);
-            ApplyPresetPolicy(swPolicyWlan, cardPolicyWlan, Lang.T("gm.wlanguard"), extremeTier, true);
-            if (swPolicyWlan != null && !WlanGuard.HasWirelessInterface() && !gameMode.WlanScanGuard)
-            {
-                swPolicyWlan.Enabled = false;
-                if (cardPolicyWlan != null) cardPolicyWlan.Desc = Lang.T("gm.wlanguard.nowifi");
-            }
             ApplyPresetPolicy(swPolicyAwake, cardPolicyAwake, Lang.T("set.awake"), false, true);
             ApplyPresetPolicy(swPolicyVramShield, cardPolicyVramShield, Lang.T("gm.vramshield"), extremeTier, true);
             ApplyPresetPolicy(swPolicyCacheWarm, cardPolicyCacheWarm, Lang.T("gm.cachewarm"), extremeTier, true);

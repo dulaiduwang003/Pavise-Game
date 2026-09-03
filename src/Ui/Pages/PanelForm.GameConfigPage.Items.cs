@@ -92,8 +92,7 @@ namespace PaviseApp
                     PolicyCatalog.KeyDisableCpuIdle, PolicyCatalog.KeyStandbyCleaner,
                     PolicyCatalog.KeyCacheWarm });
             AddCfgSection(cfgTabPanels[2], Lang.T("cfg.sub.net"), ref ty,
-                new[] { PolicyCatalog.KeyPauseDl, PolicyCatalog.KeyPauseUpdate, PolicyCatalog.KeyPauseMaintenance,
-                    PolicyCatalog.KeyWlanGuard });
+                new[] { PolicyCatalog.KeyPauseDl, PolicyCatalog.KeyPauseUpdate, PolicyCatalog.KeyPauseMaintenance });
             AddCfgSection(cfgTabPanels[2], Lang.T("cfg.group.env"), ref ty,
                 new[] { PolicyCatalog.KeyPauseServices });
             AddCfgSection(cfgTabPanels[2], Lang.T("cfg.sub.presence"), ref ty,
@@ -104,7 +103,7 @@ namespace PaviseApp
 
             ty = 2;
             AddCfgSection(cfgTabPanels[3], Lang.T("cfg.sub.vram"), ref ty,
-                new[] { PolicyCatalog.KeyVramShield, PolicyCatalog.KeyGpuClockLock });
+                new[] { PolicyCatalog.KeyVramShield });
             AddCfgSection(cfgTabPanels[3], "NVIDIA", ref ty,
                 new[] { PolicyCatalog.KeyNvMaxPerf, PolicyCatalog.KeyNvLowLat,
                     PolicyCatalog.KeyNvSmoothMotion, PolicyCatalog.KeyNvShaderCache,
@@ -129,10 +128,9 @@ namespace PaviseApp
                     PolicyCatalog.KeyDisableCpuIdle, PolicyCatalog.KeyStandbyCleaner,
                     PolicyCatalog.KeyCacheWarm,
                     PolicyCatalog.KeyPauseDl, PolicyCatalog.KeyPauseUpdate, PolicyCatalog.KeyPauseMaintenance,
-                    PolicyCatalog.KeyWlanGuard, PolicyCatalog.KeyPauseServices, PolicyCatalog.KeyAwake,
+                    PolicyCatalog.KeyPauseServices, PolicyCatalog.KeyAwake,
                     PolicyCatalog.KeyEnglishInput },
                 new[] { PolicyCatalog.KeyVramShield, PolicyCatalog.KeyNvMaxPerf,
-                    PolicyCatalog.KeyGpuClockLock,
                     PolicyCatalog.KeyNvLowLat, PolicyCatalog.KeyNvSmoothMotion,
                     PolicyCatalog.KeyNvShaderCache,
                     PolicyCatalog.KeyNvDlss, PolicyCatalog.KeyNvRebar,
@@ -194,11 +192,9 @@ namespace PaviseApp
                 case PolicyCatalog.KeyPauseUpdate: return "gm.pausewu.sub";
                 case PolicyCatalog.KeyPauseMaintenance: return "gm.pausemaint.sub";
                 case PolicyCatalog.KeyPauseServices: return "gm.pausesvc.sub";
-                case PolicyCatalog.KeyWlanGuard: return "gm.wlanguard.sub";
                 case PolicyCatalog.KeyAwake: return "set.awake.n";
                 case PolicyCatalog.KeyEnglishInput: return "gm.englishinput.sub";
                 case PolicyCatalog.KeyNvMaxPerf: return "set.nvmax.n";
-                case PolicyCatalog.KeyGpuClockLock: return "set.gpuclock.n";
                 case PolicyCatalog.KeyNvLowLat: return "set.nvll.n";
                 case PolicyCatalog.KeyNvSmoothMotion: return "set.nvsmooth.n";
                 case PolicyCatalog.KeyNvShaderCache: return "set.nvshader.n";
@@ -241,10 +237,6 @@ namespace PaviseApp
                 case PolicyCatalog.KeyNvSmoothMotion:
                     if (!nvOk) { reasonKey = "set.nv.none"; return false; }
                     if (!NvDrsTweaks.SmoothMotionSupported()) { reasonKey = "set.amd.nosup"; return false; }
-                    return true;
-                case PolicyCatalog.KeyGpuClockLock:
-                    if (!nvOk) { reasonKey = "set.nv.none"; return false; }
-                    if (!GpuClockLock.SupportedCached()) { reasonKey = "set.amd.nosup"; return false; }
                     return true;
                 case PolicyCatalog.KeyNvDlss:
                     if (!nvOk) { reasonKey = "set.nv.none"; return false; }
@@ -291,7 +283,6 @@ namespace PaviseApp
             switch (key)
             {
                 case PolicyCatalog.KeyNvMaxPerf:
-                case PolicyCatalog.KeyGpuClockLock:
                 case PolicyCatalog.KeyNvLowLat:
                 case PolicyCatalog.KeyNvSmoothMotion:
                 case PolicyCatalog.KeyNvShaderCache:

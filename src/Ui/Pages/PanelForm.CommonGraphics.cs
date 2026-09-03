@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Windows.Forms;
 
 namespace PaviseApp
@@ -54,15 +54,6 @@ namespace PaviseApp
             auto.SetStatus(Lang.T("apppref.nextlaunch"), Theme.Accent);
             y += height + 8;
 
-            // 两家卡共用一个开关 N 卡走 NVML 锁频 A 卡走 ADLX 最低核心频率
-            //   电竞和极限档在台式机上锁定开启 其余档位按用户配置 笔记本一律用户自选
-            swNvClock = MakeSwitch(gameMode.GpuClockLockEnabled, null);
-            BindGraphicsToggle(swNvClock, delegate { return gameMode.GpuClockLockEnabled; },
-                delegate(bool v) { gameMode.GpuClockLockEnabled = v; }, GpuClockLock.SupportedCached, null,
-                GpuClockLock.SupportedCached, TierForcedGpuClock);
-            MakeAutoCard(scroll, 6, y, ScrollContentW, 76, Lang.T("set.gpuclock"),
-                GpuClockLock.SupportedCached() ? Lang.T("set.gpuclock.n") : Lang.T("set.amd.nosup"),
-                swNvClock, out height);
             // 第一次打开这个标签页时 作用范围和下次启动生效的提示要看得见
             EnableCardCollapse(scroll, card);
         }

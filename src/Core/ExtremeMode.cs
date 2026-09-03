@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 极限档 解锁状态与重启门 覆盖清单 退出集 环境项认领账本
 using System;
 using System.Collections.Generic;
@@ -50,6 +50,8 @@ namespace PaviseApp
         private static extern ulong GetTickCount64();
 
         public static bool Unlocked { get { return Settings.Load(UnlockedKey, false); } }
+
+        internal static long UnlockTicksUtc { get { return UnlockTicks; } }
 
         private static long UnlockTicks
         {
@@ -120,7 +122,9 @@ namespace PaviseApp
             PolicyCatalog.KeyAggressive, PolicyCatalog.KeyGpuDemote, PolicyCatalog.KeyWsTrim,
             PolicyCatalog.KeyPauseDl, PolicyCatalog.KeyPauseUpdate, PolicyCatalog.KeyPauseMaintenance,
             PolicyCatalog.KeyPauseServices,
-            PolicyCatalog.KeyWlanGuard, PolicyCatalog.KeyCacheWarm, PolicyCatalog.KeyVramShield,
+            // 无线扫描抑制不再由极限强制 它给无线网卡开媒体流模式压后台信道扫描 部分驱动在这个模式下会掉线
+            //   有用户实测 极限每局掉线 电竞正常 日志里唯一能区分两档的网络项就是它 留手动开关给想开的人
+            PolicyCatalog.KeyCacheWarm, PolicyCatalog.KeyVramShield,
             PolicyCatalog.KeyAudioLowLat, PolicyCatalog.KeyEnglishInput, PolicyCatalog.KeyPowerYield,
             PolicyCatalog.KeyNvMaxPerf, PolicyCatalog.KeyNvShaderCache,
             PolicyCatalog.KeyAmdAntiLag, PolicyCatalog.KeyIntelLowLatency, PolicyCatalog.KeyIntelEndurance,
@@ -128,7 +132,7 @@ namespace PaviseApp
 
         // 全局独立开关 无逐游戏覆盖 由 ApplyEnv 侧按当前档位取用
         private static readonly string[] GlobalTokens =
-            { "dwmboost", "rsssteer", "gpupower", "gpuprefstage", "autoecogpu" };
+            { "dwmboost", "gpupower", "gpuprefstage", "autoecogpu" };
 
         public static IEnumerable<string> SessionPolicyKeys { get { return SessionKeys; } }
         public static string[] AllGlobalTokens { get { return (string[])GlobalTokens.Clone(); } }
@@ -151,6 +155,20 @@ namespace PaviseApp
         public static bool ForceItem(string key)
         {
             return ForcedPolicyValue(key) == "1";
+        }
+
+        // 解锁期间环境项按清单强制 环境页把开着的卡锁成预设强制开 停用只能走管理清单
+        public static bool ForcesEnv(string token)
+        {
+            return Unlocked && !OptedOut(token);
+        }
+
+        // 启动补写 解锁后才进清单的项 或上次没写成的项 这里再翻一次 已开着和停用的照旧跳过
+        public static int ReconcileEnvItems(out int failed)
+        {
+            failed = 0;
+            if (!Unlocked) return 0;
+            return ApplyEnvItems(out failed);
         }
 
         public static bool ForceGlobal(string token)
@@ -263,12 +281,15 @@ namespace PaviseApp
                     delegate { return VrrOptTweak.OsSupported(); },
                     delegate { return VrrOptTweak.EnabledByPavise || VrrOptTweak.CurrentlyOn(); },
                     VrrOptTweak.Enable, VrrOptTweak.Restore),
+                // 两项计时器都不再由极限自动写入 节拍改的是时钟中断怎么来 有整机卡死的公开案例
+                //   全局分辨率整机常驻 1ms 只涨功耗 没测出收益 两项默认关 想开的自己在环境页开
+                //   留在清单里只为旧账本的回滚 资格恒为否 批量解锁与启动补写都跳过
                 new ExtremeItem("timertick", "set.timertick",
-                    delegate { return true; },
+                    delegate { return false; },
                     delegate { return TimerTickTweak.EnabledByPavise || TimerTickTweak.CurrentlyOn(); },
                     TimerTickTweak.Enable, TimerTickTweak.Restore),
                 new ExtremeItem("gtimer", "set.gtimer",
-                    delegate { return true; },
+                    delegate { return false; },
                     delegate { return GlobalTimerResTweak.EnabledByPavise; },
                     GlobalTimerResTweak.Enable, GlobalTimerResTweak.Restore),
                 new ExtremeItem("devpower", "set.devpower",
@@ -306,13 +327,8 @@ namespace PaviseApp
                         || MemCompressTweak.CurrentlyOff(); },
                     MemCompressTweak.Enable, MemCompressTweak.Restore,
                     delegate { return MemCompressTweak.OwnsState; }),
-                // 相容名单里的游戏拒绝过 CPU 集合写入 保留核对它们只剩减法 有记录就不强制
-                new ExtremeItem("rescores", "set.rescores",
-                    delegate { return ReservedCoresTweak.RecommendedMask() != 0
-                        && !ReservedCoresTweak.ExternalValuePresent()
-                        && ProtectedGameRoster.Names().Length == 0; },
-                    delegate { return ReservedCoresTweak.EnabledByPavise; },
-                    ReservedCoresTweak.Enable, ReservedCoresTweak.Restore),
+                // 内核保留核已下架 内核忽略普通进程对保留集合的软 CPU 集合写入 游戏根本进不去
+                //   旧版写过的 ReservedCpuSets 由卸载与急救脚本按收据还原 代码里不再碰
             };
         }
 

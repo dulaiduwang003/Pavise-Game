@@ -1,8 +1,8 @@
-# @author bdth 2074055628@qq.com
+﻿# @author bdth 2074055628@qq.com
 # File purpose: build, protect, verify, and optionally sign the closed-source release binary.
 [CmdletBinding()]
 param(
-    [string]$Output = "Pavise.protected.exe",
+    [string]$Output = "build\Pavise.protected.exe",
     [switch]$Force,
     [switch]$KeepStage,
     [switch]$SkipSmoke,
@@ -376,6 +376,13 @@ try {
     if ($RequireSignature -and !$signed) {
         Remove-Item -LiteralPath $outputPath -Force
         throw "A signed release was required. Set PAVISE_SIGN_CERT_SHA1 and PAVISE_SIGNTOOL."
+    }
+
+    $uninstallerSource = Join-Path $repo "Pavise-Uninstall.cmd"
+    $uninstallerOutput = Join-Path $outputDir "Pavise-Uninstall.cmd"
+    if (![string]::Equals([IO.Path]::GetFullPath($uninstallerSource),
+        [IO.Path]::GetFullPath($uninstallerOutput), [StringComparison]::OrdinalIgnoreCase)) {
+        Copy-Item -LiteralPath $uninstallerSource -Destination $uninstallerOutput -Force
     }
 
     $hash = Get-Sha256 $outputPath
