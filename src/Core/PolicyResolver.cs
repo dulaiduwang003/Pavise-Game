@@ -202,11 +202,9 @@ namespace PaviseApp
         public bool PauseUpdate { get { return On(PolicyCatalog.KeyPauseUpdate); } }
         public bool PauseMaintenance { get { return On(PolicyCatalog.KeyPauseMaintenance); } }
         public bool PauseServices { get { return On(PolicyCatalog.KeyPauseServices); } }
-        public bool WlanGuard { get { return On(PolicyCatalog.KeyWlanGuard); } }
         public bool Awake { get { return On(PolicyCatalog.KeyAwake); } }
         public bool EnglishInput { get { return On(PolicyCatalog.KeyEnglishInput); } }
         public bool NvMaxPerf { get { return On(PolicyCatalog.KeyNvMaxPerf); } }
-        public bool GpuClockLock { get { return On(PolicyCatalog.KeyGpuClockLock); } }
         public string NvLowLatMode { get { return ValueOf(PolicyCatalog.KeyNvLowLat); } }
         public bool NvSmoothMotion { get { return On(PolicyCatalog.KeyNvSmoothMotion); } }
         public bool NvShaderCacheMax { get { return On(PolicyCatalog.KeyNvShaderCache); } }

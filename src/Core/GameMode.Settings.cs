@@ -285,25 +285,6 @@ namespace PaviseApp
             }
         }
 
-        public bool WlanScanGuard
-        {
-            get { return wlanGuardOn; }
-            set { wlanGuardOn = value; Settings.Save("GmWlanGuard", value); if (value) ClearEnvFuse("wlanscan"); RequestPolicyApply(); }
-        }
-
-        // 属性名不能和 GpuClockLock 静态类同名 否则 GameMode 内部引用类的地方会被属性遮住
-        public bool GpuClockLockEnabled
-        {
-            get { return gpuClockLockOn; }
-            set
-            {
-                gpuClockLockOn = value;
-                Settings.Save(PolicyCatalog.KeyGpuClockLock, value);
-                if (value) ClearEnvFuse("gpuclock");
-                RequestPolicyApply();
-            }
-        }
-
         // 属性名不能和 NvVrrWindowed 静态类同名 否则 GameMode 内部引用类的地方会被属性遮住
         public bool NvVrrWindowedEnabled
         {

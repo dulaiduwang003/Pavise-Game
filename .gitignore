@@ -92,6 +92,7 @@ tools/HeterogeneousGpuBench/bin/
 tools/VrsBench/results/
 scripts/
 *.bak
+build/
 *.exe
 *.pdb
 .app-*.txt
@@ -118,3 +119,5 @@ setup.log
 swap.log
 Pavise*.exe.sha256
 .release-protected/
+
+oss-key.ps1

@@ -35,6 +35,7 @@ namespace PaviseApp
         private int slowBusy;
         private int slowVersion, slowPending;
         private int wipeBusy;
+        private PillButton btnWipeAll, btnUninstall;
 
 #if PAVISE_SELFTEST || PAVISE_PERFLAB
         internal Func<bool> StartupTaskQueryForTest;
@@ -104,26 +105,28 @@ namespace PaviseApp
 #endif
         }
 
+        private TechTabs settingsTabs;
+        private DBPanel[] settingsTabPanels;
+
         private void BuildSettingsPage()
         {
             Interlocked.Increment(ref slowVersion);
             int y = PageHeader(pageSettings, Lang.T("nav.set"), Lang.T("set.hint"), 2);
 
-            var scroll = new DBPanel();
-            scroll.SetBounds(Theme.S(20), Theme.S(y), Theme.S(PageW - 40), Theme.S(PageH - y - 8));
-            scroll.BackColor = Theme.Bg;
-            scroll.AutoScroll = true;
-            Native.Dark(scroll);
-            pageSettings.Controls.Add(scroll);
+            settingsTabs = new TechTabs();
+            settingsTabs.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(38));
+            settingsTabs.SetTabs(
+                new[] { Lang.T("set.tab.extreme"), Lang.T("sec.app"), Lang.T("sec.maint"), Lang.T("sec.appearance") },
+                new[] { Lang.T("set.tab.extreme.h"), Lang.T("set.tab.app.h"), Lang.T("set.tab.maint.h"), Lang.T("set.tab.appearance.h") });
+            pageSettings.Controls.Add(settingsTabs);
+            y += 48;
+            settingsTabPanels = MakeTabPanels(pageSettings, settingsTabs, 4, y);
 
+            Control scroll = settingsTabPanels[0];
             int sy = 2, cardH;
-
-            // 极限模式解锁是设置页首项 让入口无需滚动即可看见
             BuildExtremeCard(scroll, ref sy);
-            sy += 10;
 
-            Section(scroll, Lang.T("sec.app"), 6, sy); sy += 24;
-
+            scroll = settingsTabPanels[1]; sy = 2;
             swAuto = MakeSwitch(TaskHelper.TaskExistsCached(), OnAutoToggle);
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.autostart"), Lang.T("set.autostart.n"), swAuto, out cardH);
             sy += cardH + 8;
@@ -143,15 +146,27 @@ namespace PaviseApp
             };
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.lang"), Lang.T("set.lang.n"), pickLang, out cardH);
             sy += cardH + 8;
+            EnableCardCollapse(scroll);
 
-            sy += 10;
-            Section(scroll, Lang.T("sec.maint"), 6, sy); sy += 24;
+            scroll = settingsTabPanels[2]; sy = 2;
+            var resetActions = new Panel();
+            resetActions.BackColor = Color.Transparent;
+            resetActions.Size = new Size(Theme.S(274), Theme.S(32));
 
-            var btnWipe = new PillButton(Lang.T("btn.wipe"), BtnKind.Danger);
-            btnWipe.Bg = Theme.Card;
-            btnWipe.Size = new Size(Theme.S(136), Theme.S(32));
-            btnWipe.Click += delegate { OnWipeAll(btnWipe); };
-            MakeAutoCard(scroll, 6, sy, ScrollContentW, 78, Lang.T("set.wipe.title"), Lang.T("set.wipe.desc"), btnWipe, out cardH);
+            btnWipeAll = new PillButton(Lang.T("btn.wipe"), BtnKind.Normal);
+            btnWipeAll.Bg = Theme.Card;
+            btnWipeAll.SetBounds(0, 0, Theme.S(136), Theme.S(32));
+            btnWipeAll.Click += delegate { OnWipeAll(); };
+            resetActions.Controls.Add(btnWipeAll);
+
+            btnUninstall = new PillButton(Lang.T("btn.uninstall"), BtnKind.Danger);
+            btnUninstall.Bg = Theme.Card;
+            btnUninstall.SetBounds(Theme.S(146), 0, Theme.S(128), Theme.S(32));
+            btnUninstall.Click += delegate { OnUninstall(); };
+            resetActions.Controls.Add(btnUninstall);
+
+            MakeAutoCard(scroll, 6, sy, ScrollContentW, 78, Lang.T("set.wipe.title"),
+                Lang.T("set.wipe.desc"), resetActions, out cardH);
             sy += cardH + 8;
 
             var btnShaderGo = new PillButton(Lang.T("btn.clean"));
@@ -161,22 +176,20 @@ namespace PaviseApp
             cardShader.Value = " ";
             sy += cardH + 8;
 
-            sy += 10;
-            BuildAppearanceSection(scroll, ref sy);
-
             var lblAbout = new Label();
             lblAbout.Text = Lang.F("set.about", App.VersionTag, Paths.Data);
             lblAbout.ForeColor = Theme.Faint; lblAbout.BackColor = Theme.Bg;
             lblAbout.Font = Theme.UI(8.25f, false);
-            lblAbout.SetBounds(Theme.S(10), Theme.S(sy), Theme.S(ScrollContentW - 10), Theme.S(18));
+            lblAbout.SetBounds(Theme.S(10), Theme.S(sy + 6), Theme.S(ScrollContentW - 10), Theme.S(18));
             scroll.Controls.Add(lblAbout);
-
             EnableCardCollapse(scroll);
+
+            scroll = settingsTabPanels[3]; sy = 2;
+            BuildAppearanceSection(scroll, ref sy);
         }
 
         private void BuildAppearanceSection(Control scroll, ref int sy)
         {
-            Section(scroll, Lang.T("sec.appearance"), 6, sy); sy += 24;
 
             // 高度随可见档位数走 极限解锁后配色区多一行
             int panelH = 184 + PresetValue.VisibleOrder().Length * 34 + 4;
@@ -387,19 +400,8 @@ namespace PaviseApp
 
             card.Controls.AddRange(new Control[] { code, state, title, desc, sw });
 
-            if (visible)
-            {
-                var manage = new PillButton(Lang.T("extreme.card.manage"));
-                manage.Bg = Theme.Card;
-                manage.Size = new Size(Theme.S(120), Theme.S(28));
-                manage.Location = new Point(card.Width - Theme.S(140), Theme.S(76));
-                manage.Click += delegate
-                {
-                    using (var form = new ExtremeManageForm()) form.ShowDialog(this);
-                };
-                card.Controls.Add(manage);
-            }
-
+            // 极限档做成原子的 解锁即全开 回锁即全关 不给逐项管理入口
+            //   某项熔断会自己退出集 崩溃保险丝两次异常重启自动回锁 手动逃生阀交给整档开关
             scroll.Controls.Add(card);
             sy += 118 + 8;
         }
@@ -595,22 +597,51 @@ namespace PaviseApp
             });
         }
 
-        private void OnWipeAll(PillButton btn)
+        private void SetResetActionsEnabled(bool enabled)
+        {
+            if (btnWipeAll != null && !btnWipeAll.IsDisposed) btnWipeAll.Enabled = enabled;
+            if (btnUninstall != null && !btnUninstall.IsDisposed) btnUninstall.Enabled = enabled;
+        }
+
+        private bool CanBeginReset(string inGameMessage, string confirmation)
         {
             if (gameMode.IsActive)
             {
-                PaviseDialog.Warn(this, App.DisplayName, Lang.T("wipe.ingame"));
-                return;
+                PaviseDialog.Warn(this, App.DisplayName, Lang.T(inGameMessage));
+                return false;
             }
-            if (!PaviseDialog.Confirm(this, App.DisplayName, Lang.T("wipe.confirm"), DlgKind.Danger)) return;
+            if (!PaviseDialog.Confirm(this, App.DisplayName, Lang.T(confirmation), DlgKind.Danger)) return false;
+            if (Interlocked.Exchange(ref wipeBusy, 1) != 0) return false;
+            SetResetActionsEnabled(false);
+            Cursor = Cursors.WaitCursor;
+            return true;
+        }
+
+        private void OnWipeAll()
+        {
             Action reset = ResetApp;
             if (reset == null) return;
-            if (Interlocked.Exchange(ref wipeBusy, 1) != 0) return;
-            btn.Enabled = false;
-            Cursor = Cursors.WaitCursor;
+            if (!CanBeginReset("wipe.ingame", "wipe.confirm")) return;
             // 永久的停止 还原 删除 退出这套顺序归 Program 管 恐慌保持
             // 会过期 否则可能在擦除过程中把优化重新拉起来
             reset();
+        }
+
+        private void OnUninstall()
+        {
+            Func<string> uninstall = UninstallApp;
+            if (uninstall == null) return;
+            if (!CanBeginReset("uninstall.ingame", "uninstall.confirm")) return;
+
+            string failure = null;
+            try { failure = uninstall(); }
+            catch (Exception ex) { failure = Lang.F("uninstall.startfailed.detail", ex.GetType().Name); }
+            if (string.IsNullOrEmpty(failure)) return;
+
+            Interlocked.Exchange(ref wipeBusy, 0);
+            SetResetActionsEnabled(true);
+            Cursor = Cursors.Default;
+            PaviseDialog.Warn(this, App.DisplayName, failure);
         }
 
         private void RefreshSlowStateAsync()

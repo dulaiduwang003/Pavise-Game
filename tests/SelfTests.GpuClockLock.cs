@@ -1,8 +1,9 @@
-// Pure decision and receipt checks; no NVML calls, no driver writes, no windows.
-// 显卡频率锁定回归 只验证档位门 钉频决策和收据编解码 不碰 NVML
+﻿// Pure decision and receipt checks; no NVML calls, no driver writes, no windows.
+// 显卡锁频已下架 这里只剩收据编解码与同批落地的会话门与 DPI 令牌回归 不碰 NVML
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 
 namespace PaviseApp
 {
@@ -14,10 +15,8 @@ namespace PaviseApp
         {
             Action[] tests =
             {
-                GpuClockTierForcesOnlyEsportsAndExtremeOnDesktops,
-                GpuClockPlanPinsBothBoundsAtMax,
                 GpuClockReceiptRoundTrips,
-                LaptopPerfTierForcesOnlyEsportsAndExtremeOnLaptops,
+                LaptopPerfDefaultsOnAndPresetsRespectTheSwitch,
                 SessionGatesAreDecidedByEvidence,
                 DpiLayerTokensMergeWithoutClobbering
             };
@@ -38,39 +37,50 @@ namespace PaviseApp
             gpuClockChecks++;
         }
 
-        private static void GpuClockTierForcesOnlyEsportsAndExtremeOnDesktops()
+        private static void LaptopPerfDefaultsOnAndPresetsRespectTheSwitch()
         {
-            GpuClockCheck(GpuClockLock.ForcedByTier(PerformancePreset.Competitive, false)
-                && GpuClockLock.ForcedByTier(PerformancePreset.Extreme, false),
-                "esports and extreme lock the switch on desktops");
-            GpuClockCheck(!GpuClockLock.ForcedByTier(PerformancePreset.Standard, false)
-                && !GpuClockLock.ForcedByTier(PerformancePreset.Handheld, false)
-                && !GpuClockLock.ForcedByTier(PerformancePreset.Custom, false),
-                "smart, handheld and custom leave it to the user");
-            GpuClockCheck(!GpuClockLock.ForcedByTier(PerformancePreset.Competitive, true)
-                && !GpuClockLock.ForcedByTier(PerformancePreset.Extreme, true),
-                "a battery means a shared power budget; no tier forces the lock there");
-        }
+            Settings.UseTransientStoreForCurrentProcess();
+            PolicyItem item = PolicyCatalog.ItemOf(PolicyCatalog.KeyLaptopPerf);
+            GpuClockCheck(PolicyCatalog.LaptopPerfDefault && item != null
+                && item.Fallback == "1" && PolicyResolver.Global().LaptopPerf,
+                "vendor performance mode defaults on in both the catalog and the global snapshot");
+            GpuClockCheck(LaptopPerfMode.ShouldActivate(true, true)
+                && !LaptopPerfMode.ShouldActivate(false, true)
+                && !LaptopPerfMode.ShouldActivate(true, false),
+                "the runtime gate did not depend only on the configured value and hardware support");
 
-        private static void GpuClockPlanPinsBothBoundsAtMax()
-        {
-            uint lo, hi;
-            GpuClockCheck(GpuClockLock.TryPlanClocks(2520, out lo, out hi) && lo == 2520 && hi == 2520,
-                "the lock pins the lower and upper bound at the machine maximum");
-            GpuClockCheck(!GpuClockLock.TryPlanClocks(0, out lo, out hi),
-                "an unreadable maximum never produces a plan");
-        }
+            Settings.Save(PolicyCatalog.KeyLaptopPerf, false);
+            foreach (PerformancePreset preset in new[]
+            {
+                PerformancePreset.Standard, PerformancePreset.Competitive,
+                PerformancePreset.Handheld, PerformancePreset.Custom
+            })
+            {
+                var profile = new GameProfile();
+                profile.Overrides[PolicyCatalog.KeyPreset] = ((int)preset).ToString();
+                PolicySnapshot snapshot = PolicyResolver.For(profile);
+                GpuClockCheck(!snapshot.LaptopPerf,
+                    preset + " overrode the user's disabled vendor performance switch");
+            }
 
-        private static void LaptopPerfTierForcesOnlyEsportsAndExtremeOnLaptops()
-        {
-            GpuClockCheck(LaptopPerfMode.ForcedByTier(PerformancePreset.Competitive, true)
-                && LaptopPerfMode.ForcedByTier(PerformancePreset.Extreme, true),
-                "esports and extreme lock the vendor performance mode on laptops");
-            GpuClockCheck(!LaptopPerfMode.ForcedByTier(PerformancePreset.Handheld, true)
-                && !LaptopPerfMode.ForcedByTier(PerformancePreset.Standard, true),
-                "handhelds and the smart tier leave the vendor mode alone");
-            GpuClockCheck(!LaptopPerfMode.ForcedByTier(PerformancePreset.Competitive, false),
-                "a desktop has no vendor performance mode to switch");
+            Settings.Save("ExtremeUnlocked", true);
+            Settings.SaveStr("ExtremeUnlockTicks", "1");
+            var extreme = new GameProfile();
+            extreme.Overrides[PolicyCatalog.KeyPreset] = ((int)PerformancePreset.Extreme).ToString();
+            PolicySnapshot extremeSnapshot = PolicyResolver.For(extreme);
+            GpuClockCheck(extremeSnapshot.Preset == PerformancePreset.Extreme && !extremeSnapshot.LaptopPerf,
+                "extreme overrode the user's disabled vendor performance switch");
+            MethodInfo uiRule = typeof(PanelForm).GetMethod("CfgPresetForces",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            object[] competitiveArgs =
+                { PolicyCatalog.KeyLaptopPerf, PerformancePreset.Competitive, false };
+            object[] extremeArgs =
+                { PolicyCatalog.KeyLaptopPerf, PerformancePreset.Extreme, false };
+            GpuClockCheck(uiRule != null
+                && !(bool)uiRule.Invoke(null, competitiveArgs)
+                && !(bool)uiRule.Invoke(null, extremeArgs),
+                "the per-game UI still locked vendor performance mode in esports or extreme");
+            Settings.UseTransientStoreForCurrentProcess();
         }
 
         private static void SessionGatesAreDecidedByEvidence()

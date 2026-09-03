@@ -1,5 +1,5 @@
-// @author bdth 2074055628@qq.com
-// 文件用途 对局中把显卡核心频率钉在本机最高档 N 卡走 NVML 锁频 A 卡走 ADLX 最低频率 退局解锁 崩溃后启动解锁
+﻿// @author bdth 2074055628@qq.com
+// 文件用途 显卡锁频已下架 只保留旧版留下的锁频收据清收 启动与清除时按收据解锁
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -8,11 +8,8 @@ using System.Text;
 
 namespace PaviseApp
 {
-    // "电源最高性能"只保 P0 状态 boost 频率仍随负载上下浮动
-    //   CPU 瓶颈的竞技游戏里 GPU 轻载时降频 下一帧重载再爬频 这一来一回就是 frametime 毛刺
-    //   NVML 的 GpuLockedClocks 把核心频率区间钉死 功耗墙和温度墙照常压 只是不再主动往下走
-    //   代价是轻载场景功耗和温度上去 所以电竞和极限档锁定开启 其余档位用户自选
-    //   笔记本不由档位强制 显卡和 CPU 共用一份功耗预算 钉死显卡等于先划走 CPU 的份 用户手开照旧
+    // 2.2.0.0 上架 随后下架 笔记本上钉死显卡等于先划走 CPU 的功耗份 实测掉帧
+    //   台式机收益没有实测支撑 整项撤掉 旧版写过的收据照旧在启动和清除时解锁
     internal static class GpuClockLock
     {
         // 会话收据 由恢复完成判定共同引用 改名必须两边一起
@@ -53,21 +50,6 @@ namespace PaviseApp
         }
 
         // 电竞和极限档锁定开启 掌机和笔记本不由档位强制
-        internal static bool ForcedByTier(PerformancePreset preset, bool hasBattery)
-        {
-            if (hasBattery) return false;
-            return preset == PerformancePreset.Competitive || preset == PerformancePreset.Extreme;
-        }
-
-        // 钉的是本机最高档 区间上下界同值
-        internal static bool TryPlanClocks(uint maxMhz, out uint minMhz, out uint lockMhz)
-        {
-            minMhz = lockMhz = 0;
-            if (maxMhz == 0) return false;
-            minMhz = lockMhz = maxMhz;
-            return true;
-        }
-
         private sealed class Device
         {
             public IntPtr Handle;
@@ -104,35 +86,6 @@ namespace PaviseApp
         }
 
         // 支持性按进程缓存 驱动更新才会变 那种场景本来就要重启程序
-        private static int supportedCache;
-
-        public static bool SupportedCached()
-        {
-            int cached = supportedCache;
-            if (cached != 0) return cached == 1;
-            bool result;
-            try { result = Supported(); }
-            catch { result = false; }
-            supportedCache = result ? 1 : 2;
-            return result;
-        }
-
-        public static bool Supported()
-        {
-            if (AdlxTweaks.GfxMinSupported()) return true;
-            var devices = new List<Device>();
-            if (!Open(devices)) return false;
-            try
-            {
-                foreach (Device d in devices)
-                {
-                    uint max;
-                    if (NvmlGetMaxClock(d.Handle, ClockGraphics, out max) == NvmlSuccess && max > 0) return true;
-                }
-                return false;
-            }
-            finally { Close(); }
-        }
 
         internal static string EncodeReceipt(IList<KeyValuePair<string, uint>> locked)
         {
@@ -156,56 +109,6 @@ namespace PaviseApp
                 list.Add(new KeyValuePair<string, uint>(part.Substring(0, bar), mhz));
             }
             return list;
-        }
-
-        public static bool Activate()
-        {
-            lock (lk)
-            {
-                if (Settings.LoadStr(ReceiptKey, "").Length > 0 || Settings.Load(AmdKey, false)) return true;
-                var devices = new List<Device>();
-                if (!Open(devices))
-                {
-                    // 没有 NVML 就看 A 卡 两家都没有才算失败
-                    if (!AdlxTweaks.GfxMinSupported()) { Logger.Log(Lang.T("log.gpuclock.1")); return false; }
-                    if (!AdlxTweaks.ActivateGfxMin()) return false;
-                    Settings.Save(AmdKey, true);
-                    return true;
-                }
-                try
-                {
-                    var locked = new List<KeyValuePair<string, uint>>();
-                    bool denied = false;
-                    foreach (Device d in devices)
-                    {
-                        uint max, lo, hi;
-                        if (NvmlGetMaxClock(d.Handle, ClockGraphics, out max) != NvmlSuccess
-                            || !TryPlanClocks(max, out lo, out hi)) continue;
-                        int rc = NvmlSetLockedClocks(d.Handle, lo, hi);
-                        if (rc == NvmlSuccess) { locked.Add(new KeyValuePair<string, uint>(d.Uuid, hi)); continue; }
-                        if (rc == NvmlNoPermission) denied = true;
-                        else if (rc != NvmlNotSupported) denied = true;
-                    }
-                    if (locked.Count == 0)
-                    {
-                        Logger.Log(Lang.T(denied ? "log.gpuclock.2" : "log.gpuclock.3"));
-                        return false;
-                    }
-                    string receipt = EncodeReceipt(locked);
-                    Settings.SaveStr(ReceiptKey, receipt);
-                    if (Settings.LoadStr(ReceiptKey, "") != receipt)
-                    {
-                        // 收据落不了盘就不能留着锁 当场解开
-                        foreach (Device d in devices) NvmlResetLockedClocks(d.Handle);
-                        Settings.SaveStr(ReceiptKey, "");
-                        Logger.Log(Lang.T("log.gpuclock.4"));
-                        return false;
-                    }
-                    Logger.Log(Lang.T("log.gpuclock.5") + locked[0].Value + " MHz");
-                    return true;
-                }
-                finally { Close(); }
-            }
         }
 
         public static bool Restore()

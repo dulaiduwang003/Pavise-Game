@@ -139,6 +139,12 @@ namespace PaviseApp
                 if (current == null) return;
                 bool turningOn = !current.SuppressFamilyBackground;
                 string targetPath = current.ExecutablePath;
+                // 没观测到渲染的条目连是不是游戏本体都不确定 只挡打开 不挡关闭
+                if (turningOn && !item.RendererObserved)
+                {
+                    PaviseDialog.Warn(this, Lang.T("lib.family.suppress"), Lang.T("lib.family.gated.body"));
+                    return;
+                }
                 // 已观测渲染不代表关联后台可以安全压制 每次开启都必须确认风险
                 if (turningOn)
                 {

@@ -79,15 +79,11 @@ namespace PaviseApp
             }
             if (previewMode == "settings-appearance" && pageIndex == (int)PageId.Settings)
             {
-                foreach (Control child in pageSettings.Controls)
-                {
-                    ScrollableControl settingsScroll = child as ScrollableControl;
-                    if (settingsScroll != null && settingsScroll.AutoScroll)
-                    {
-                        settingsScroll.AutoScrollPosition = new Point(0, Theme.S(470));
-                        break;
-                    }
-                }
+                if (settingsTabs != null) settingsTabs.Index = 3;
+            }
+            if (previewMode == "settings-maint" && pageIndex == (int)PageId.Settings)
+            {
+                if (settingsTabs != null) settingsTabs.Index = 2;
             }
             Application.DoEvents();
             StopPageReveal();

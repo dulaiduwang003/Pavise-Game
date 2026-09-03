@@ -74,9 +74,7 @@ namespace PaviseApp
         private volatile bool pauseDlOn;
         private volatile bool pauseMaintOn;
         private bool maintActive;
-        private volatile bool wlanGuardOn;
         private volatile bool nvMaxPerf;
-        private volatile bool gpuClockLockOn;
         private volatile bool nvVrrWindowedOn;
         private volatile bool intelEnduranceOn;
         private volatile bool laptopPerfOn;
@@ -97,9 +95,7 @@ namespace PaviseApp
         private bool awakeActive;
         private bool audioLatActive;
         private bool dwmBoostActive;
-        private bool rssSteerActive;
         private bool gpwActive;
-        private bool gpuClockActive;
         // 0.5ms 请求走的是 ntdll 释放也要走同一条路 记住本局用的是哪条
         private bool timerHalfMs;
         private const uint HalfMsUnits = 5000;
@@ -123,7 +119,6 @@ namespace PaviseApp
         private int panicServed;
         private volatile bool panicResult;
         private readonly ManualResetEvent panicDone = new ManualResetEvent(true);
-        private bool wlanActive;
         private bool timerRaised;
         private bool timerSkipLogged;
         private bool doActive;
@@ -216,7 +211,6 @@ namespace PaviseApp
             bgSuppressOn = Settings.Load("GmSuppress", true);
             boostOn = Settings.Load("GmBoost", true);
             pauseDlOn = Settings.Load("GmPauseDl", true);
-            wlanGuardOn = Settings.Load("GmWlanGuard", false);
             LoadCustomCoreMask();
             pauseUpdateOn = Settings.Load("GmPauseUpdate", false);
             pauseMaintOn = Settings.Load(PolicyCatalog.KeyPauseMaintenance, true);
@@ -227,10 +221,9 @@ namespace PaviseApp
             InitializeEnglishInput();
             InitializeIntelGraphics();
             nvMaxPerf = Settings.Load("NvMaxPerf", false);
-            gpuClockLockOn = Settings.Load(PolicyCatalog.KeyGpuClockLock, false);
             nvVrrWindowedOn = Settings.Load("NvVrrWindowed", false);
             intelEnduranceOn = Settings.Load(PolicyCatalog.KeyIntelEndurance, false);
-            laptopPerfOn = Settings.Load(PolicyCatalog.KeyLaptopPerf, false);
+            laptopPerfOn = Settings.Load(PolicyCatalog.KeyLaptopPerf, PolicyCatalog.LaptopPerfDefault);
             nvLowLatMode = Settings.LoadStr("NvLowLat", "off");
             nvSmoothMotion = Settings.Load("NvSmoothMotion", false);
             nvShaderCacheMax = Settings.Load("NvShaderCache", false);

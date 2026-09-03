@@ -70,6 +70,7 @@ namespace PaviseApp
         public bool RealExit;
         public Action ExitApp;
         public Action ResetApp;
+        public Func<string> UninstallApp;
 
         private DBPanel root;
         private System.Windows.Forms.Timer fitTimer;

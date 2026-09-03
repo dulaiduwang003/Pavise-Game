@@ -206,7 +206,7 @@ namespace PaviseApp
 
         private const string ExtremeSnapKey = "ExtremePowerKnobSnap";
 
-        // 首次写入前把四项现值按 AC,DC 记快照 已有快照不覆盖
+        // 首次写入前把三项现值按 AC,DC 记快照 已有快照不覆盖
         //   读不到的项不记 写回时同样按 SettingPresent 跳过 方案重建后写不回也照样清账
         private static void SnapshotExtremeKnobs(Guid scheme)
         {
@@ -324,11 +324,16 @@ namespace PaviseApp
                 foreach (Knob k in OptionalKnobs)
                 {
                     if (!SettingPresent(g, k.Sub, k.Setting)) { skipped.Add(k.Label); continue; }
-                    if (WriteKnob(g, k, aggressive, handheld, profile)) written++; else failed++;
+                    // 核显只做合成的机器 独显渲染 核显和 CPU 同一块封装共享功耗预算
+                    //   把核显钉在最高性能等于先划走 CPU 的睿频份 这类机器一律写平衡
+                    Knob effective = k.Setting == IntelGfxPlan && IntelGfxSharesPackageWithDiscrete()
+                        ? new Knob(k.Sub, k.Setting, k.CalmAc, k.CalmDc, k.CalmAc, k.CalmDc, "t.powerplanschemes.44")
+                        : k;
+                    if (WriteKnob(g, effective, aggressive, handheld, profile)) written++; else failed++;
                 }
                 // 极限档专属组 未暴露的项照常跳过 不影响其余旋钮的写入结果
                 //   写入前先快照现值 退出极限档重写方案时按快照写回
-                //   否则四项留在托管方案上 电竞档会白用极限的空闲策略
+                //   否则三项留在托管方案上 电竞档会白用极限的空闲策略
                 if (extreme)
                 {
                     SnapshotExtremeKnobs(g);
@@ -388,6 +393,30 @@ namespace PaviseApp
             catch { }
             Logger.Warn(Lang.T("log.powerplanschemes.32") + Lang.T(k.Label)
                 + Lang.T("log.powerplanschemes.33") + " rc=" + code);
+        }
+
+        private static int intelGfxSharesPackage = -1;
+
+        private static bool IntelGfxSharesPackageWithDiscrete()
+        {
+            int cached = intelGfxSharesPackage;
+            if (cached >= 0) return cached == 1;
+            bool intelIntegrated = false, otherDiscrete = false;
+            try
+            {
+                GpuAdapter[] all = GpuInventory.Adapters();
+                if (all != null)
+                    foreach (GpuAdapter a in all)
+                    {
+                        if (a.Vendor == GpuVendor.Intel && a.Integrated) intelIntegrated = true;
+                        else if (a.Vendor != GpuVendor.Intel && !a.Integrated) otherDiscrete = true;
+                    }
+            }
+            catch { }
+            bool shares = intelIntegrated && otherDiscrete;
+            if (shares) Logger.Log(Lang.T("log.powerplanschemes.igpu"));
+            intelGfxSharesPackage = shares ? 1 : 0;
+            return shares;
         }
 
         private static bool WriteKnob(Guid scheme, Knob k, bool aggressive, bool handheld, PowerPlanProfile profile)

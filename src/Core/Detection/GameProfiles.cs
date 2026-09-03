@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 严格保存与读取当前 V5 游戏配置 不迁移不修复不自删数据
 using System;
 using System.Collections.Generic;
@@ -106,7 +106,7 @@ namespace PaviseApp
         // 已下架功能的覆盖键 加载时静默丢弃 不触发库重置
         //   两个键都随 2.1.3.3 发布过 但值只是布尔开关 丢弃即回默认 无信息可失
         //   活档案里不该再出现它们 校验时按损坏处理
-        private static readonly string[] RetiredOverrideKeys = { "GmDisplaySolo", "GmMemShield" };
+        private static readonly string[] RetiredOverrideKeys = { "GmDisplaySolo", "GmMemShield", "GmGpuClockLockV1" };
 
         internal static bool IsRetiredOverrideKey(string key)
         {

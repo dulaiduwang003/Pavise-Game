@@ -21,6 +21,8 @@ namespace PaviseApp
 
         public static bool EnabledByPavise { get { return Settings.LoadStr(ReceiptKey, "").Length > 0; } }
         public static bool HasResidue() { return EnabledByPavise || Settings.Load(PendingKey, false); }
+        // 上次写入没记完账 需要用户关了再开一次 这是三种状态里唯一真要人处理的 状态色只给它用强调色
+        public static bool Pending { get { return Settings.Load(PendingKey, false) && !EnabledByPavise; } }
 
         public static int ReceiptAdapters()
         {

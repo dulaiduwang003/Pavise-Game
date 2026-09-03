@@ -41,12 +41,19 @@ namespace PaviseApp
                 Math.Max(ReadDword(@"SYSTEM\CurrentControlSet\Control\Lsa", "LsaCfgFlags"), 0));
         }
 
+        // 只认真正注册且没被禁用的服务 Hyper-V 卸载后常留一个没有 ImagePath 的空壳键 那不算在用
         private static bool ServiceInstalled(string name)
         {
             try
             {
                 using (var k = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\" + name))
-                    return k != null;
+                {
+                    if (k == null) return false;
+                    string image = k.GetValue("ImagePath") as string;
+                    if (string.IsNullOrEmpty(image)) return false;
+                    object start = k.GetValue("Start");
+                    return !(start is int) || (int)start != 4;
+                }
             }
             catch { return false; }
         }

@@ -11,7 +11,7 @@ setlocal
 set PAVISE_CP_OWNED=1
 cd /d "%~dp0"
 
-set OUT=Pavise.dev.exe
+set OUT=build\Pavise.dev.exe
 set MODE=%~1
 if /i "%MODE%"=="test" goto test
 

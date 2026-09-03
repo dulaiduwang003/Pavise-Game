@@ -39,6 +39,7 @@ namespace PaviseApp
                 ResetTreeAlreadyGoneIsIdempotent,
                 ResetInvalidPathsDoNotStartRestoration,
                 ResetLogsCannotRecreateDeletedData,
+                ResetUninstallLauncherPaths,
                 ResetRetiredIfeoEmptyCleanupClearsOptIns,
                 ResetRetiredIfeoFailureKeepsRecovery
             };
@@ -134,6 +135,44 @@ namespace PaviseApp
         private static void ResetCheck(bool condition, string message)
         {
             if (!condition) throw new Exception("Reset cleanup regression: " + message);
+        }
+
+        private static void ResetUninstallLauncherPaths(string root)
+        {
+            string fixture = ResetDirectory(root, "uninstall-launcher");
+            string adjacentDir = ResetDirectory(fixture, "portable");
+            string adjacentExe = ResetFile(adjacentDir, "Pavise.exe");
+            ResetCheck(UninstallLauncher.FindScript(adjacentExe) == null,
+                "a missing adjacent uninstall script was treated as available");
+
+            string adjacentScript = ResetFile(adjacentDir, UninstallLauncher.ScriptFileName);
+            ResetPathEquals(adjacentScript, UninstallLauncher.FindScript(adjacentExe),
+                "the uninstall script beside Pavise.exe was not selected");
+            ProcessStartInfo start = UninstallLauncher.CreateStartInfo(adjacentScript);
+            ResetPathEquals(adjacentScript, start.FileName, "the launcher changed the uninstall script path");
+            ResetPathEquals(adjacentDir, start.WorkingDirectory, "the launcher used the wrong working directory");
+            ResetCheck(start.Arguments == UninstallLauncher.ConfirmedArgument,
+                "the in-app confirmation marker was not passed exactly once");
+            ResetCheck(start.UseShellExecute && start.WindowStyle == ProcessWindowStyle.Normal,
+                "the uninstall progress console would not be visible");
+
+            string repository = ResetDirectory(fixture, "source");
+            string build = ResetDirectory(repository, "build");
+            string buildExe = ResetFile(build, "Pavise.dev.exe");
+            string repositoryScript = ResetFile(repository, UninstallLauncher.ScriptFileName);
+            ResetPathEquals(repositoryScript, UninstallLauncher.FindScript(buildExe),
+                "the explicit repository/build development layout was not recognized");
+
+            string arbitraryDir = ResetDirectory(fixture, "bin");
+            string arbitraryExe = ResetFile(arbitraryDir, "Pavise.exe");
+            ResetCheck(UninstallLauncher.FindScript(arbitraryExe) == null,
+                "the launcher searched an arbitrary parent directory");
+        }
+
+        private static void ResetPathEquals(string expected, string actual, string message)
+        {
+            ResetCheck(actual != null && string.Equals(Path.GetFullPath(expected), Path.GetFullPath(actual),
+                StringComparison.OrdinalIgnoreCase), message);
         }
 
         private static string ResetDirectory(string root, string name)

@@ -119,15 +119,12 @@ namespace PaviseApp
             Step(Lang.T("t.legacypurge.8"), SvcPause.Restore, failed);
             StepIf(Lang.T("gm.pausesvc"), delegate { return OptionalServicePause.HasResidue; },
                 OptionalServicePause.Restore, failed);
-            Step(Lang.T("t.gamemodeenv.2"), WlanGuard.Restore, failed);
             StepIf(Lang.T("set.timertick"), delegate { return TimerTickTweak.OwnsState; },
                 TimerTickTweak.Restore, failed);
             StepIf(Lang.T("set.gtimer"), delegate { return GlobalTimerResTweak.OwnsState; },
                 GlobalTimerResTweak.Restore, failed);
             StepIf(Lang.T("set.memcompress"), delegate { return MemCompressTweak.OwnsState; },
                 MemCompressTweak.Restore, failed);
-            StepIf(Lang.T("set.rescores"), delegate { return ReservedCoresTweak.OwnsState; },
-                ReservedCoresTweak.Restore, failed);
             Step(Lang.T("extreme.card.title"), delegate { ExtremeMode.PurgeAll(); return true; }, failed);
             StepIf(Lang.T("set.gpupref"), delegate { return GpuPrefStage.HasResidue; },
                 delegate { return GpuPrefStage.Restore() || GpuPrefStage.AbandonUnprovableForReset(); },
@@ -139,6 +136,7 @@ namespace PaviseApp
                 delegate { return IntelGraphicsTweaks.Restore()
                     || IntelGraphicsTweaks.AbandonUnprovableForReset(); }, failed);
             Step(Lang.T("t.legacypurge.10"), NetTweak.Restore, failed);
+            StepIf("QoS", NetworkAffinityTweak.HasResidue, NetworkAffinityTweak.Disable, failed);
             StepIf(Lang.T("set.nicim"), NicModerationTweak.HasResidue,
                 delegate { return NicModerationTweak.Restore()
                     || NicModerationTweak.AbandonUnprovableForReset(); }, failed);

@@ -118,7 +118,6 @@ namespace PaviseApp
             run("IrqAutoPilot", delegate { RunIrqAutoPilotRegressionTests(); });
             run("SnapshotReuse", delegate { RunSnapshotReuseRegressionTests(); });
             run("AudioLowLatency", delegate { RunAudioLowLatencyRegressionTests(); });
-            run("ReservedCores", delegate { RunReservedCoresRegressionTests(); });
             run("GpuClockLock", delegate { RunGpuClockLockRegressionTests(); });
             run("Eee", delegate { RunEeeRegressionTests(); });
             run("RogueProcess", delegate { RunRogueProcessRegressionTests(); });

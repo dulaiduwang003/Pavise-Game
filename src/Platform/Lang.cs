@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 集中维护界面多语言文本
 using System;
 using System.Collections.Generic;
@@ -125,8 +125,8 @@ namespace PaviseApp
             { "v20.about.standby", new[]{ "待命", "STANDBY" } },
             { "v20.about.privacy", new[]{ "隐私边界", "PRIVACY BOUNDARY" } },
             { "v20.about.privacy.value", new[]{ "0 项设备数据上传", "0 DEVICE DATA UPLOADS" } },
-            { "set.wipe.title", new[]{ "清除全部配置", "Clear All Configuration" } },
-            { "set.wipe.desc", new[]{ "删除配置和日志。先还原系统改动，失败则中止；完成后自动退出。", "Deletes settings and logs. System changes are restored first; failure aborts the wipe. Exits when done." } },
+            { "set.wipe.title", new[]{ "配置重置与卸载", "Reset or Uninstall" } },
+            { "set.wipe.desc", new[]{ "清除配置只重置本机数据；卸载会运行完整脚本并清理启动任务与历史残留。两项都会先还原系统改动并退出。", "Clear configuration resets local data. Uninstall runs the complete cleanup script and also removes startup tasks and legacy remnants. Both restore system changes first and exit." } },
             { "wipe.confirm", new[]{ "清除全部配置并退出？\r\n\r\n先停止运行并还原系统改动，再永久删除游戏库、白名单、设置和日志。还原未完成则保留恢复记录；便携版不删除程序和无关文件。", "Clear all configuration and exit?\r\n\r\nStop and restore system changes before permanently deleting the library, whitelist, settings and logs. Incomplete restoration preserves recovery records. Portable executables and unrelated files are kept." } },
             { "wipe.ingame", new[]{ "对局进行中，请先退出游戏再清除配置。", "A match is in progress. Exit the game before clearing configuration." } },
             { "wipe.done", new[]{ "已清除配置并还原系统改动，共删除 {0} 个文件。确定后退出。", "Configuration cleared and system changes restored; {0} files deleted. Confirm to exit." } },
@@ -135,6 +135,11 @@ namespace PaviseApp
             { "wipe.pathfail", new[]{ "数据阶段：数据目录无效，未开始清理。", "Data phase: invalid data directory; cleanup was not started." } },
             { "wipe.cleanupfail", new[]{ "清理阶段发生异常，未完成重置；请保留剩余配置。", "Cleanup encountered an error. Reset is incomplete; keep remaining configuration." } },
             { "wipe.regfail", new[]{ "数据已清除，但注册表残留。请重试或删除 HKCU\\Software\\Pavise。", "Data cleared, but registry settings remain. Retry or delete HKCU\\Software\\Pavise." } },
+            { "uninstall.confirm", new[]{ "卸载 Pavise 并退出？\r\n\r\n将启动随附的 Pavise-Uninstall.cmd：先停止 Pavise 并按恢复记录还原系统改动，再删除开机任务、托管电源方案、设置、日志和历史残留。\r\n\r\n卸载脚本会显示执行进度；Pavise.exe 本体仍需手动删除。", "Uninstall Pavise and exit?\r\n\r\nThe bundled Pavise-Uninstall.cmd will stop Pavise, restore recorded system changes, then remove startup tasks, managed power plans, settings, logs, and legacy remnants.\r\n\r\nThe script displays its progress. Delete Pavise.exe itself manually afterward." } },
+            { "uninstall.ingame", new[]{ "对局进行中，请先退出游戏再卸载。", "A match is in progress. Exit the game before uninstalling." } },
+            { "uninstall.scriptmissing", new[]{ "未找到 Pavise-Uninstall.cmd。请将卸载脚本放到 Pavise.exe 同目录后重试。", "Pavise-Uninstall.cmd was not found. Place the uninstall script beside Pavise.exe and try again." } },
+            { "uninstall.startfailed", new[]{ "无法启动卸载脚本。请手动运行 Pavise-Uninstall.cmd。", "The uninstall script could not be started. Run Pavise-Uninstall.cmd manually." } },
+            { "uninstall.startfailed.detail", new[]{ "无法启动卸载脚本（{0}）。请手动运行 Pavise-Uninstall.cmd。", "The uninstall script could not be started ({0}). Run Pavise-Uninstall.cmd manually." } },
             { "mode.source.global", new[]{ "全局默认", "Global default" } },
             { "mode.source.game", new[]{ "来自 {0} 的独立配置", "Per-game profile from {0}" } },
             { "col.ux.closed", new[]{ "已关闭", "Closed" } },
@@ -209,7 +214,6 @@ namespace PaviseApp
             { "extreme.card.state.locked", new[]{ "未解锁", "Locked" } },
             { "extreme.card.state.pending", new[]{ "等待重启", "Awaiting restart" } },
             { "extreme.card.state.ready", new[]{ "已解锁", "Unlocked" } },
-            { "extreme.card.manage", new[]{ "管理清单", "Manage list" } },
             { "extreme.unlock.warn", new[]{ "解锁极限模式：自动开启本机全部通过资格检查的可选优化项，包含系统环境页的持久改动，以及关闭 VBS 与卸载推测执行缓解两项安全降级。你已经自己开启的项不会被接管；关闭解锁并重启即可按记录完全还原。\r\n\r\n确认后立即写入环境改动，并在 10 秒后强制重启电脑（会关闭正在运行的程序），重启后极限档才出现在模式列表。请先保存正在编辑的内容。继续？", "Unlock Extreme mode: every eligible optional optimization on this machine is enabled automatically — persistent System Environment changes included, along with two security downgrades: disabling VBS and removing speculative-execution mitigations. Anything you already enabled yourself is never taken over; turning the unlock off and restarting restores everything from the record.\r\n\r\nConfirming writes the environment changes now and force-restarts the computer in 10 seconds, closing running programs; Extreme appears in the mode list after that restart. Save your work first. Continue?" } },
             { "extreme.unlock.restart", new[]{ "已写入 {0} 项环境改动，电脑将在 10 秒后重启。请立即保存正在编辑的内容。", "{0} environment changes written. The computer restarts in 10 seconds — save anything you are working on now." } },
             { "extreme.unlock.restartfail", new[]{ "自动重启未能启动，请手动重启电脑。重启前极限档不会出现在模式列表，已写入的环境改动也不会生效。", "The automatic restart could not be started; please restart the computer yourself. Until then Extreme does not appear in the mode list and the environment changes written are not in effect." } },
@@ -220,18 +224,17 @@ namespace PaviseApp
             { "extreme.relock.confirm", new[]{ "关闭解锁将：极限档从模式列表消失，当前使用极限的全局与逐游戏配置回落到电竞档，向导写入的环境改动按记录还原（你自己开启过的不动），重启后彻底完成。\r\n\r\n继续？", "Turning the unlock off will: remove Extreme from the mode list, drop global and per-game configurations using it back to Esports, and restore the environment changes the wizard wrote (anything you enabled yourself is untouched). A restart completes it.\r\n\r\nContinue?" } },
             { "extreme.relock.done", new[]{ "已关闭解锁并按记录还原，重启后彻底完成。", "Unlock turned off and restored from the record. A restart completes it." } },
             { "extreme.relock.partial", new[]{ "已关闭解锁，但部分环境项还原失败，记录已保留，可再次尝试；详见日志。", "Unlock turned off, but some environment items failed to restore. The record is kept for another attempt; see the log." } },
-            { "extreme.manage.title", new[]{ "极限模式清单管理", "Extreme mode list" } },
-            { "extreme.manage.sub", new[]{ "只做减法：可停用清单内的项，被证据排除的项没有入口。停用持久项会立即按记录还原并需要重启；重新跟随会重新写入。", "Subtraction only: items on the list can be disabled; items excluded by evidence have no entry here. Disabling a persistent item restores it from the record at once and needs a restart; following again rewrites it." } },
-            { "extreme.manage.reset", new[]{ "恢复全量", "Restore full list" } },
             { "extreme.env.section", new[]{ "极限模式写入的持久项", "Persistent items written by Extreme mode" } },
-            { "extreme.env.managed", new[]{ "由极限模式解锁时写入。切换模式不会撤销这些改动；要停用请在设置页的极限模式管理清单中关闭对应项，或关闭解锁开关整体还原。", "Written when Extreme mode was unlocked. Switching modes does not revert these; to disable one, turn it off in the Extreme mode list on the Settings page, or turn the unlock off to restore everything." } },
+            { "extreme.env.managed", new[]{ "由极限模式解锁时写入。切换模式不会撤销这些改动；要停用请在设置页关闭解锁开关，按记录整体还原。", "Written when Extreme mode was unlocked. Switching modes does not revert these; to stop them, turn the unlock off on the Settings page and everything is restored from the record." } },
             { "extreme.env.on", new[]{ "生效中", "In effect" } },
             { "extreme.env.pending", new[]{ "重启后生效", "Effective after restart" } },
-            { "extreme.manage.close", new[]{ "关闭", "Close" } },
             { "log.extreme.1", new[]{ "极限模式解锁 环境改动已写入 ", "Extreme mode unlocked; environment changes written: " } },
             { "log.extreme.2", new[]{ "极限模式解锁已关闭 环境改动按账本还原", "Extreme mode unlock turned off; environment changes restored from the ledger" } },
             { "log.extreme.3", new[]{ "极限清单停用 ", "Extreme list item disabled: " } },
             { "log.extreme.4", new[]{ "极限清单恢复跟随 ", "Extreme list item follows again: " } },
+            { "log.extreme.6", new[]{ "极限档解锁中 启动补写环境项 翻动 {0} 项 失败 {1} 项", "Extreme unlocked: startup reconcile flipped {0} environment items, {1} failed" } },
+            { "log.extreme.7", new[]{ "极限解锁后系统非正常重启 {0} 次 已自动回锁并按账本还原环境项 重启后完全生效", "The system restarted abnormally {0} times since the Extreme unlock; the unlock was turned off automatically and environment items were restored from the ledger, fully effective after a restart" } },
+            { "log.extreme.8", new[]{ " 部分项还原失败 账本保留 下次启动重试", " Some items failed to restore; the ledger is kept and restoration retries at the next start" } },
             { "log.extreme.5", new[]{ "极限解锁后的自动重启未能启动 shutdown rc ", "The automatic restart after unlocking Extreme did not start; shutdown rc " } },
             { "set.awake", new[]{ "对局期间阻止息屏与睡眠", "Block display-off and sleep during matches" } },
             { "set.awake.n", new[]{ "对局中阻止息屏和睡眠，退场自动解除；不修改电源计划超时。", "Prevents display-off and sleep during matches, then releases automatically. Power-plan timeouts are unchanged." } },
@@ -246,11 +249,6 @@ namespace PaviseApp
             { "log.dwmboost.1", new[]{ "DWM 合成线程已注册多媒体实时档", "DWM composition threads registered in the multimedia real-time tier" } },
             { "log.dwmboost.2", new[]{ "DWM 合成线程已退出多媒体实时档", "DWM composition threads left the multimedia real-time tier" } },
             { "gm.rsssteer", new[]{ "网络收包引离游戏核", "Steer packet processing off game cores" } },
-            { "gm.rsssteer.sub", new[]{ "极限档专属，仅对局中生效。把物理有线网卡的 RSS 收包处理区间改到压制核，游戏核不再承接收包的内核延迟过程调用。逐网卡记账退局还原；对局中后台有大流量（下载、推流）时才有感。", "Extreme tier only, active during play. Moves physical wired adapters' RSS packet-processing range onto the suppressed cores, so game cores stop servicing receive DPCs. Recorded per adapter and restored on exit; noticeable only when heavy background traffic (downloads, streaming) runs during a match." } },
-            { "log.rsssteer.1", new[]{ "RSS 引导不满足拓扑条件 未改动", "RSS steering: topology requirements not met; nothing changed" } },
-            { "log.rsssteer.2", new[]{ "RSS 引导执行失败 未入账的网卡不会被改动", "RSS steering failed to execute; adapters without a receipt are untouched" } },
-            { "log.rsssteer.3", new[]{ "RSS 引导没有符合条件的网卡 本轮跳过", "RSS steering found no eligible adapter this round" } },
-            { "log.rsssteer.4", new[]{ "RSS 收包处理已引到压制核 ", "RSS packet processing steered to suppressed cores " } },
             { "log.rsssteer.5", new[]{ "RSS 还原未完全成功 收据保留 下轮重试", "RSS restore incomplete; the receipt is kept for retry" } },
             { "log.rsssteer.6", new[]{ "RSS 收包区间已按收据还原", "RSS processing range restored from the receipt" } },
             { "gm.wstrim", new[]{ "压制后台工作集修剪", "Trim suppressed working sets" } },
@@ -263,15 +261,6 @@ namespace PaviseApp
             { "log.memcompress.4", new[]{ "内存压缩与页合并已关闭 重启后彻底生效", "Memory compression and page combining disabled; fully effective after restart" } },
             { "log.memcompress.5", new[]{ "还原内存压缩未通过校验 记录保留", "Restoring memory compression failed verification; the record is kept" } },
             { "log.memcompress.6", new[]{ "内存压缩设置已按记录还原", "Memory compression settings restored from the record" } },
-            { "set.rescores", new[]{ "内核保留核", "Kernel reserved cores" } },
-            { "set.rescores.n", new[]{ "极限档专属。预留两个物理核（避开 CPU0，混合架构选性能核），系统线程和所有普通程序全天避开它们，只有经 Pavise 核心分区对局的游戏用得上这两个核。不经 Pavise 启动的游戏同样会避开。重启生效，关闭并重启后完全还原。", "Extreme tier only. Reserves two physical cores (skipping CPU0; performance cores on hybrid CPUs). System threads and all ordinary programs avoid them at all times; only games in a Pavise core-partitioned match can use them. Games launched without Pavise avoid them too. Takes effect after a restart; switching off and restarting restores fully." } },
-            { "log.rescores.1", new[]{ "内核保留核不满足拓扑条件 未改动", "Kernel reserved cores: topology requirements not met; nothing changed" } },
-            { "log.rescores.2", new[]{ "检测到外部保留核配置 不接管", "External reserved-core configuration detected; not taking over" } },
-            { "log.rescores.3", new[]{ "保留核快照写入失败 未改动", "Writing the reserved-core snapshot failed; nothing changed" } },
-            { "log.rescores.4", new[]{ "保留核写入失败或校验不符 未生效", "Reserved-core write failed or did not verify; not in effect" } },
-            { "log.rescores.5", new[]{ "内核保留核已写入 重启生效 掩码 ", "Kernel reserved cores written; effective after restart. Mask " } },
-            { "log.rescores.6", new[]{ "保留核还原失败 记录保留", "Reserved-core restore failed; the record is kept" } },
-            { "log.rescores.7", new[]{ "保留核配置已按记录还原 重启后完全生效", "Reserved-core configuration restored from the record; fully effective after restart" } },
             { "v20.overview.sub", new[]{ "无需配置，启动游戏后自动接管", "No setup required. Pavise takes over when a game starts." } },
             { "v20.nav.report", new[]{ "报告", "Reports" } },
             { "v20.guard.detail", new[]{ "检测到游戏后自动应用策略，退出后完整还原", "Applies policies when a game is detected and fully restores them on exit" } },
@@ -349,6 +338,8 @@ namespace PaviseApp
             { "lib.family.suppress", new[]{ "压制家族后台", "Suppress family background" } },
             { "lib.family.on", new[]{ "开启 · 后台压制", "On · family suppression" } },
             { "lib.family.off", new[]{ "关闭 · 保留豁免", "Off · family protected" } },
+            { "lib.family.gated", new[]{ "待观测 · 先进一局", "Pending · play a match first" } },
+            { "lib.family.gated.body", new[]{ "这个条目还没有观测到渲染 Pavise 不确定它是不是游戏本体 先进一局 看到已观测渲染标签后再开启家族后台压制", "Rendering has not been observed for this entry yet, so Pavise cannot tell whether it is the game itself. Play a match first; once the entry shows the observed badge, family suppression can be turned on." } },
             { "lib.family.tip", new[]{ "仅对这个游戏的会话设置。关闭时保留家族及 Steam 平台辅助进程的自动保护；开启时允许符合后台规则的关联进程，以及 Steam 主程序、网页和覆盖层辅助进程被压制。游戏本体、候选、白名单及其他已确认的保护仍有效。\r\n\r\n例如用 Steam 启动 CS:GO：请选择游戏本体 EXE。需要保留 Steam 功能可将具体进程加白。OBS 等独立录屏与硬件、输入音频保护不随此项关闭。", "Applies during this game's sessions. Off retains family and Steam platform-helper protection. On allows eligible related processes, Steam, and its web/overlay helpers to be suppressed. The game itself, candidates, whitelist and other confirmed protections remain.\r\n\r\nFor example, when Steam launches CS:GO, select the game's EXE. Whitelist Steam processes you need. Independent recording tools such as OBS, hardware, input and audio protection stay enabled." } },
             { "lib.family.list.hint", new[]{ "默认保护 · 按游戏设置", "Protected by default · per game" } },
             { "lib.family.guide.title", new[]{ "先观察，再决定", "Observe, then decide" } },
@@ -659,12 +650,6 @@ namespace PaviseApp
             { "set.nvmax", new[]{ "NVIDIA 电源模式 最高性能优先", "NVIDIA power mode: prefer maximum performance" } },
             { "set.nvmax.n", new[]{ "保持 GPU 高性能状态；功耗、温度上升，散热不足可能降频。", "Keeps the GPU in its high-performance state. Raises power and heat; weak cooling may throttle." } },
             { "set.gpuclock", new[]{ "对局锁定显卡核心频率", "Lock GPU core clock during play" } },
-            { "set.gpuclock.n", new[]{ "对局中把核心频率钉在本机最高档，轻载时不再降频；功耗墙和温度墙照常生效。退局解锁。电竞档和极限档锁定开启；笔记本按此处设置。", "Pins the core clock at the machine maximum during play so light scenes no longer downclock; power and thermal limits still apply. Unlocked at match end. Locked on in the Esports and Extreme tiers; laptops follow this switch." } },
-            { "log.gpuclock.1", new[]{ "显卡频率锁定 NVML 不可用 未改动", "GPU clock lock: NVML unavailable; nothing changed" } },
-            { "log.gpuclock.2", new[]{ "显卡频率锁定 驱动拒绝写入", "GPU clock lock: the driver refused the write" } },
-            { "log.gpuclock.3", new[]{ "显卡频率锁定 本机显卡不支持", "GPU clock lock: not supported by this GPU" } },
-            { "log.gpuclock.4", new[]{ "显卡频率锁定 收据未能落盘 已解锁", "GPU clock lock: the receipt could not be saved; unlocked again" } },
-            { "log.gpuclock.5", new[]{ "显卡频率已锁定 ", "GPU clock locked at " } },
             { "log.gpuclock.6", new[]{ "显卡频率解锁失败 收据保留待重试", "GPU clock unlock failed; the receipt is kept for retry" } },
             { "log.gpuclock.7", new[]{ "显卡频率已解锁", "GPU clock unlocked" } },
             { "log.gpuclock.8", new[]{ "检测到上次未解锁的显卡频率 已解锁", "Detected a GPU clock lock left from last time; unlocked" } },
@@ -750,7 +735,7 @@ namespace PaviseApp
             { "log.intelend.5", new[]{ "Endurance Gaming 已写回", "Endurance Gaming written back" } },
             { "log.intelend.6", new[]{ "检测到上次未写回的 Endurance Gaming 已写回", "Detected an Endurance Gaming setting left from last time; written back" } },
             { "gm.laptopperf", new[]{ "对局切换厂商性能档", "Switch to the vendor performance mode during play" } },
-            { "gm.laptopperf.sub", new[]{ "通过厂商接口把笔记本切到性能档，功耗墙和风扇按厂商的性能档分配；退局切回原档。电竞档和极限档锁定开启，掌机不切。目前支持 Lenovo Legion 和 ASUS ROG。", "Switches the laptop to the vendor performance mode through its own interface, so power limits and fans follow the vendor's performance profile; switched back at match end. Locked on in the Esports and Extreme tiers; handhelds are left alone. Lenovo Legion and ASUS ROG are supported." } },
+            { "gm.laptopperf.sub", new[]{ "通过厂商接口把笔记本切到性能档，功耗墙和风扇按厂商的性能档分配；退局切回原档。默认开启，可按需关闭，不受电竞档或极限档强制。目前支持 Lenovo Legion 和 ASUS ROG。", "Switches the laptop to the vendor performance mode through its own interface, so power limits and fans follow the vendor's performance profile; switched back at match end. Enabled by default, can be turned off, and is not forced by the Esports or Extreme tier. Lenovo Legion and ASUS ROG are supported." } },
             { "laptopperf.unsupported", new[]{ "本机没有已知的厂商性能档接口", "This machine exposes no known vendor performance-mode interface" } },
             { "log.laptopperf.1", new[]{ "厂商性能档 本机没有可用接口 未改动", "Vendor performance mode: no usable interface on this machine; nothing changed" } },
             { "log.laptopperf.2", new[]{ "厂商性能档 写入失败", "Vendor performance mode: write failed" } },
@@ -938,6 +923,11 @@ namespace PaviseApp
             { "set.autostart.n", new[]{ "通过管理员计划任务实现，开机时不会弹出 UAC 确认框。", "Implemented via an administrator scheduled task, so no UAC prompt appears at boot." } },
             { "set.autohide", new[]{ "检测到游戏后自动收起窗口", "Auto-hide window when a game is detected" } },
             { "set.autohide.n", new[]{ "检测到游戏 10 秒后收回托盘；每局仅一次。", "Hides to tray 10 seconds after game detection, once per match." } },
+            { "set.tab.extreme", new[]{ "极限模式", "Extreme" } },
+            { "set.tab.extreme.h", new[]{ "解锁入口与说明", "Unlock entry and notes" } },
+            { "set.tab.app.h", new[]{ "自启 托盘 语言", "Autostart, tray, language" } },
+            { "set.tab.maint.h", new[]{ "清除配置与着色器缓存", "Reset configuration and shader cache" } },
+            { "set.tab.appearance.h", new[]{ "主题色 封面 特效", "Theme color, backdrop, effects" } },
             { "set.hint", new[]{ "应用偏好和维护工具。显卡项与系统项请到对应页面设置。", "App preferences and maintenance tools. GPU and system options are on their own pages." } },
             { "sec.pergame", new[]{ "逐游戏，对局开始时下发，结束后还原", "Per-game, applied at match start and restored afterwards" } },
             { "sec.amd", new[]{ "AMD 显卡，对局开始时全局生效，结束后还原", "AMD GPUs, applied globally at match start and restored afterwards" } },
@@ -1140,6 +1130,7 @@ namespace PaviseApp
             { "sec.env.kernel", new[]{ "内核与驱动，需重启，改动不随 Pavise 卸载消失", "Kernel and drivers — reboot required; changes do not disappear when Pavise is uninstalled" } },
             { "btn.clean", new[]{ "清理", "Clean" } },
             { "btn.wipe", new[]{ "清除全部配置", "Wipe all settings" } },
+            { "btn.uninstall", new[]{ "卸载 Pavise", "Uninstall Pavise" } },
             { "set.about", new[]{ "Pavise {0} {1} 本地配置与用户白名单", "Pavise {0} {1} local settings and user whitelist" } },
 
             { "set.hags", new[]{ "GPU 硬件加速调度 HAGS", "GPU hardware-accelerated scheduling HAGS" } },
@@ -1160,7 +1151,7 @@ namespace PaviseApp
             { "vbs.restorefail", new[]{ "还原不完整，bcdedit 可能失败；快照已保留，可重试，详见日志。", "Restore incomplete; bcdedit may have failed. The snapshot is retained—retry and check the log." } },
 
             { "set.timertick", new[]{ "计时器恒定节拍", "Constant timer tick" } },
-            { "set.timertick.n", new[]{ "计时器参数：恢复默认时钟/节拍源，关闭空闲中断合并；实测无明显差异，需重启。", "Timer settings: restore default clock/tick sources and disable idle interrupt coalescing. No clear measured gain; reboot required." } },
+            { "set.timertick.n", new[]{ "计时器参数：恢复默认时钟/节拍源，关闭空闲中断合并，需重启。", "Timer settings: restore default clock/tick sources and disable idle interrupt coalescing; reboot required." } },
             { "timertick.on", new[]{ "已写入计时器设置，重启电脑后生效。", "Timer settings written; takes effect after restarting the PC." } },
             { "timertick.off", new[]{ "已还原计时器设置，重启电脑后生效。", "Timer settings restored; takes effect after restarting the PC." } },
             { "timertick.fail", new[]{ "计时器设置未能完全写入，已尽量回退，详见日志。", "The timer settings could not be fully written; rolled back as far as possible — see the log." } },
@@ -1239,6 +1230,7 @@ namespace PaviseApp
             { "tray.armed", new[]{ "Pavise 已就位 {0}，进入对局自动接管", "Pavise ready {0}, will take over when a match starts" } },
             { "tray.noelev", new[]{ "Pavise 未提权，压制类功能无效", "Pavise not elevated, suppression features inactive" } },
             { "bal.noelev", new[]{ "当前非管理员运行，压制类功能不会生效", "Not running as administrator; suppression features will not take effect" } },
+            { "bal.extremefuse", new[]{ "极限解锁后电脑多次非正常重启，已自动关闭极限解锁并还原系统改动，请重启电脑。", "The PC restarted abnormally several times since the Extreme unlock; the unlock was turned off and system changes restored. Please restart." } },
             { "bal.rogue", new[]{ "检测到异常进程 {0} 持续占用 {1} 个核心，电脑可能感染了挖矿病毒。请下载杀毒软件全盘查杀，并在任务管理器核对该进程的文件位置。", "Abnormal process {0} has been using {1} cores continuously; this PC may be infected with a miner. Run a full antivirus scan and check that process's file location in Task Manager." } },
             { "panic.done", new[]{ "可确认的改动已还原。若游戏仍运行，数秒后会重新接管；完全停用请关闭相关开关。", "Confirmed changes are restored. A running game will be retaken in seconds; disable the related switches to stop completely." } },
             { "panic.timeout", new[]{ "部分还原尚未确认，Pavise 将继续重试；完全停用请关闭相关开关。", "Some restores remain unconfirmed and will retry. Disable the related switches to stop completely." } },
@@ -1763,7 +1755,7 @@ namespace PaviseApp
             { "t.systemaudit.87", new[]{ "有线", "Wired" } },
             { "t.systemaudit.88", new[]{ "无线 Wi-Fi", "Wireless (Wi-Fi)" } },
             { "t.systemaudit.89", new[]{ "有线加无线同时在线", "Wired and wireless both online" } },
-            { "t.systemaudit.90", new[]{ "Wi-Fi 延迟和突刺高于有线。可启用无线扫描抑制；条件允许时使用有线。", "Wi-Fi has more latency spikes than wired. Enable wireless scan suppression, or use wired where possible." } },
+            { "t.systemaudit.90", new[]{ "Wi-Fi 延迟和突刺高于有线。条件允许时优先使用有线。", "Wi-Fi has more latency spikes than wired. Prefer wired where possible." } },
             { "t.systemaudit.91", new[]{ "有线链路，延迟稳定性最佳。", "Wired link, best latency stability." } },
             { "t.systemaudit.92", new[]{ "Wi-Fi 与有线同时连接，流量取决于系统路由。要确保走有线，可临时关闭 Wi-Fi。", "Wi-Fi and Ethernet are both connected; routing chooses the path. Turn off Wi-Fi to ensure Ethernet." } },
             { "t.systemaudit.93", new[]{ "供电方式", "Power source" } },
@@ -2266,6 +2258,7 @@ namespace PaviseApp
             { "log.powerplanschemes.42", new[]{ " 核心停放保留给AMD驱动", " core parking left to the AMD driver" } },
             { "log.powerplanschemes.43", new[]{ " 本机不支持 ", " this machine does not support " } },
             { "log.powerplanschemes.44", new[]{ " 项 ", " settings " } },
+            { "log.powerplanschemes.igpu", new[]{ "核显电源方案 本机由独显渲染 核显与 CPU 共享封装功耗 保持平衡不钉最高性能", "Integrated graphics power plan: this machine renders on a discrete GPU and the iGPU shares the CPU package power budget, so it stays Balanced instead of Maximum Performance" } },
             { "log.powerplanschemes.45", new[]{ " 项未能写入 方案已切换 其余项已生效 不计为切换失败",
                 " settings failed to write; the plan did switch and the rest applied, so this is not counted as a switch failure" } },
             { "t.powerplan.1", new[]{ "卓越性能", "Ultimate Performance" } },
@@ -2492,6 +2485,13 @@ namespace PaviseApp
         public static string F(string key, params object[] args) { return string.Format(T(key), args); }
 
         public static bool HasKey(string key) { return key != null && M.ContainsKey(key); }
+
+        public static void Merge(IDictionary<string, string[]> extra)
+        {
+            if (extra == null) return;
+            foreach (KeyValuePair<string, string[]> kv in extra)
+                if (kv.Key != null && kv.Value != null && kv.Value.Length > 0) M[kv.Key] = kv.Value;
+        }
     }
 
 }

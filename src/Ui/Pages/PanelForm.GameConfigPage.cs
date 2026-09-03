@@ -103,13 +103,6 @@ namespace PaviseApp
                 case PolicyCatalog.KeyPauseDl:
                     effective = competitive;
                     return !custom;
-                // 电竞和极限档在台式机上锁定开启 其余档位用户自选 不像激进项那样在智能档锁关
-                case PolicyCatalog.KeyGpuClockLock:
-                    effective = true;
-                    return GpuClockLock.ForcedByTier(mode, Native.HasSystemBattery());
-                case PolicyCatalog.KeyLaptopPerf:
-                    effective = true;
-                    return LaptopPerfMode.ForcedByTier(mode, Native.HasSystemBattery());
                 default:
                     effective = false;
                     return false;
