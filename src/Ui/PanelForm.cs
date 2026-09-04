@@ -57,6 +57,8 @@ namespace PaviseApp
         private ModePickerPanel modeFlyout;
         private PerformancePreset visualMode;
         private bool visualEnabled;
+        private bool visualActive;
+        private string visualPolicySource;
         private bool modeVisualInitialized;
         private Label lblSub;
         private int builtLang;
@@ -106,6 +108,7 @@ namespace PaviseApp
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
+            RegisterPowerSchemeNotifications();
             Native.EnableElevatedFileDrop(Handle);
             AttachFormFrame();
             Native.RoundCorners(Handle);
@@ -118,6 +121,9 @@ namespace PaviseApp
 
         private void BuildUi(Icon appIcon)
         {
+            // Rebuild 会复用 PanelForm 实例，新控件必须强制拿到一份完整的呈现状态。
+            modeVisualInitialized = false;
+            visualPolicySource = null;
             builtLang = Lang.Cur;
             Text = App.DisplayName;
             Icon = appIcon;
@@ -160,6 +166,7 @@ namespace PaviseApp
             modeButton.SetBounds(Theme.S(PageW - 334), Theme.S(12), Theme.S(210), Theme.S(46));
             modeButton.Clicked = ToggleModeFlyout;
             modeButton.SetMode(gameMode.ActivePreset);
+            modeButton.SetSource(ModeSourceText(gameMode.SessionPolicySourceName, true));
 
             themeSwitch = new ThemeSwitch(Theme.LightMode);
             themeSwitch.SetBounds(Theme.S(PageW - 442), Theme.S(12), Theme.S(94), Theme.S(46));
@@ -340,7 +347,9 @@ namespace PaviseApp
                 delegate { RefreshGameRunningStates(); });
             pageHooks[(int)PageId.Whitelist] = new PageHook(pageWhitelist,
                 delegate(bool active) { if (active) RefreshWhitelist(true); }, null);
-            pageHooks[(int)PageId.Policy] = new PageHook(pagePolicy, null, null);
+            pageHooks[(int)PageId.Policy] = new PageHook(pagePolicy,
+                delegate(bool active) { if (active) RefreshPolicyPresentation(); },
+                RefreshPolicyPresentation);
             pageHooks[(int)PageId.AntiCheat] = new PageHook(pageAntiCheat, null, RefreshAcGroupStates);
             pageHooks[(int)PageId.Graphics] = new PageHook(pageGraphics, null, null);
             pageHooks[(int)PageId.Environment] = new PageHook(pageEnvironment,

@@ -27,6 +27,14 @@ namespace PaviseApp
             string source;
             try { source = Path.GetFullPath(Environment.ExpandEnvironmentVariables(selectedPath.Trim().Trim('"'))); }
             catch { error = Lang.T("t.gameexecutableresolver.2"); return false; }
+            // 给的是文件夹时按选举规则挑唯一的主程序 挑不出唯一的交给添加窗口列出来让用户选
+            if (Directory.Exists(source))
+            {
+                string main = ExecutableCandidateProbe.PickMainExecutable(source);
+                if (main == null) { error = Lang.T("t.gameexecutableresolver.8"); return false; }
+                suggestedName = Path.GetFileName(source.TrimEnd('\\', '/'));
+                source = main;
+            }
             if (!File.Exists(source)) { error = Lang.T("t.gameexecutableresolver.3"); return false; }
 
             string extension = Path.GetExtension(source);

@@ -89,7 +89,7 @@ namespace PaviseApp
                         if (mustWrite)
                         {
                             if (QueueApplyLocked(pid, name)) return AcquireResult.AlreadyThrottled;
-                            e.Applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost, AntiCheatThrottled(e));
+                            e.Applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost, AntiCheatThrottled(e), DesiredAffinityOf(e));
                             ScheduleAfterApply(e, e.Applied, pid);
                             if (!e.Applied && TryNeutralizeUnwritableLocked(h, pid, e))
                                 return AcquireResult.AlreadyProtected;
@@ -106,7 +106,7 @@ namespace PaviseApp
                             RecordBatchApplyResultLocked(pid, true, null);
                             return AcquireResult.AlreadyThrottled;
                         }
-                        bool matches = ThrottleMatches(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), AntiCheatThrottled(e));
+                        bool matches = ThrottleMatches(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), AntiCheatThrottled(e), DesiredAffinityOf(e));
                         if (matches)
                         {
                             ScheduleAfterMatch(e, pid);
@@ -114,7 +114,7 @@ namespace PaviseApp
                             return AcquireResult.AlreadyThrottled;
                         }
                         if (QueueApplyLocked(pid, name)) return AcquireResult.AlreadyThrottled;
-                        e.Applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost, AntiCheatThrottled(e));
+                        e.Applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost, AntiCheatThrottled(e), DesiredAffinityOf(e));
                         ScheduleAfterApply(e, e.Applied, pid);
                         if (!e.Applied && TryNeutralizeUnwritableLocked(h, pid, e))
                             return AcquireResult.AlreadyProtected;
@@ -184,7 +184,7 @@ namespace PaviseApp
                     if (!PersistJournalLocked()) return AcquireResult.ApplyFailed;
                     bool queued = QueueApplyLocked(pid, name);
                     bool applied = queued || ApplyThrottle(h, level, orig, oaff, ocpuSets, DesiredGpu(active), oboost,
-                        (reason & SuppressReason.AntiCheat) != 0);
+                        (reason & SuppressReason.AntiCheat) != 0, DesiredAffinityOf(active));
                     Entry appliedEntry;
                     if (map.TryGetValue(pid, out appliedEntry) && !queued)
                     {

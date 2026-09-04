@@ -81,7 +81,8 @@ namespace PaviseApp
 
         // 2.0 起后台只有两态 通过保护边界的一律直接隔离 不再看热度也不再从省电逐级往上爬
         //   不等它先吃十几秒资源才动手 对局一开始枚举一遍全压下去
-        //   冷进程也压 因为不再改亲和性 冷进程没有就绪线程时本来就不耗 CPU
+        //   冷进程也压 默认不改亲和性 冷进程没有就绪线程时本来就不耗 CPU
+        //   重压后台绑核开着时例外 只有热度坐实的才被限定核心 见 GameMode.HeavySqueeze
         //   偶尔醒来也能在任何一个没有更高优先级工作的核上跑 不会被挤着排队
         //   唯一还在把关的是 BasicBackgroundEligible 那道保护边界
         //   反作弊 系统核心 输入音频外设链 加速器 硬件控制 白名单 其它登录账户一律不碰
@@ -184,6 +185,7 @@ namespace PaviseApp
             int done = 0, denied = 0, retrying = 0, rosterSkipped = 0;
             var live = new HashSet<int>();
             var pending = new List<BackgroundRequest>();
+            var squeezeCandidates = new List<SqueezeCandidate>();
 
             foreach (ProcEntry p in all.Entries)
             {
@@ -295,6 +297,10 @@ namespace PaviseApp
 
                     SuppressionLevel desired = EffSuppress
                         ? BackgroundLevel() : SuppressionLevel.None;
+                    // 重压后台绑核的候选就是本轮要求隔离的这批 热度在 ApplyHeavySqueeze 里按快照时间推进
+                    if (desired != SuppressionLevel.None && creation > 0)
+                        squeezeCandidates.Add(new SqueezeCandidate
+                            { Pid = pid, Creation = creation, Name = nm, Cpu = cpu });
 
                     string tracked = core.NameOf(pid);
                     if (tracked != null)
@@ -395,6 +401,10 @@ namespace PaviseApp
                         + ApplyFailureText.Of(request.FailureDetail) + Lang.T("log.gamemodeboost.24"));
                 }
             }
+
+            // 重压后台绑核 在本轮隔离结果之上按热度决定亲和 开关关着时只负责放回
+            if (!RunBackgroundPolicy(policyEpoch, delegate
+                { ApplyHeavySqueeze(squeezeCandidates, live, all.TakenTicks); })) return;
 
             foreach (int pid in core.PidsWith(SuppressReason.Background))
                 if (!live.Contains(pid)) { if (core.Release(pid, SuppressReason.Background)) ReportUntrack(pid); }

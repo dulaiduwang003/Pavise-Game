@@ -29,6 +29,24 @@ namespace PaviseApp
             if (lang < 0 || lang >= row.Length || string.IsNullOrEmpty(row[lang])) return row[0];
             return row[lang];
         }
+
+#if PAVISE_SELFTEST
+        // 缺译检查必须看原始行 Item 在缺译时回落到中文 永远查不出缺的那一列
+        internal string RawItem(int index, int lang)
+        {
+            if (items == null || index < 0 || index >= items.Length) return null;
+            string[] row = items[index];
+            if (row == null || lang < 0 || lang >= row.Length) return null;
+            return row[lang];
+        }
+
+        internal int RawLanguages(int index)
+        {
+            if (items == null || index < 0 || index >= items.Length) return 0;
+            string[] row = items[index];
+            return row == null ? 0 : row.Length;
+        }
+#endif
     }
 
     internal static class ReleaseNotes
@@ -37,20 +55,36 @@ namespace PaviseApp
 
         public static readonly ReleaseNote[] All = new[]
         {
+            new ReleaseNote("2.2.0.2", "2026-09-04", new[]
+            {
+                new[]{ "新增 重压后台绑核 实验性 默认关 可逐游戏覆盖 对局中把连续 10 秒占用超过半个核心的后台限定到游戏不用的最少核心 空闲后台不动 负载回落 30 秒解除 退局还原", "Added heavy background core squeeze (experimental, off by default, per-game overridable): during a match, background processes using more than half a core for 10 seconds straight are confined to the fewest cores the game does not use. Idle background is left alone, the limit lifts 30 seconds after the load drops, and everything is restored on exit.", "高負荷バックグラウンドのコア収縮を追加（実験的、既定オフ、ゲーム別に上書き可）。対戦中、10 秒連続で半コア以上を使うバックグラウンドをゲームが使わない最少のコアに限定します。アイドルなものには触れず、負荷が下がって 30 秒で解除、退出時に復元。" },
+                new[]{ "新增 反作弊绑核 被压制的反作弊进程限定到游戏不用的末尾核心 写入被拒时跳过 不重试", "Added anti-cheat core pinning: suppressed anti-cheat processes are confined to the trailing cores the game does not use, and refused writes are skipped without retry.", "アンチチートのコア固定を追加。抑制中のアンチチートプロセスをゲームが使わない末尾のコアに限定し、拒否された書き込みはスキップして再試行しません。" },
+                new[]{ "新增 添加游戏支持文件夹与拖放 文件夹能挑出唯一主程序就直接加 多个候选列出来选", "Add Game now accepts folders and drag-and-drop: a folder with a single identifiable main program is added directly, and multiple candidates are listed for you to pick.", "ゲームの追加がフォルダーとドラッグ＆ドロップに対応。主プログラムを一意に特定できるフォルダーはそのまま追加し、候補が複数ある場合は一覧から選べます。" },
+                new[]{ "改进 托管电源方案改事件驱动 第三方切走立即拉回 成功后不再定时巡检", "The managed power plan is now event-driven: a switch by another program is pulled back immediately, and there is no periodic audit after a successful apply.", "管理電源プランをイベント駆動に変更。他のプログラムによる切り替えは即座に引き戻し、適用成功後の定期巡回は行いません。" },
+                new[]{ "改进 退局还原 本次会话接管过方案的 第三方在退出前切走也还原原方案", "Restore on exit: if this session took over the plan, the original plan is restored even when another program switched away just before exit.", "退出時の復元：本セッションでプランを引き継いでいれば、退出直前に他のプログラムが切り替えても元のプランへ復元します。" },
+                new[]{ "改进 自主调频开启时最低处理器状态写温和值 不再锁 100", "With autonomous frequency scaling on, the minimum processor state is written to the calm value instead of being locked at 100.", "自律的な周波数制御が有効な場合、最小プロセッサ状態は 100 固定ではなく穏やかな値を書き込みます。" },
+                new[]{ "改进 功耗让路绑定渲染进程与渲染卡 进程或显卡变化即作废基线并还原 EPP", "Power yield is bound to the renderer process and its rendering adapter; a change to either voids the baseline and restores EPP.", "電力譲渡をレンダラープロセスと描画アダプターに紐付け。いずれかが変われば基準値を破棄して EPP を復元します。" },
+                new[]{ "改进 顶栏模式按钮显示逐游戏配置来源 Ctrl+F 打开全局搜索", "The mode button in the title bar shows which per-game profile it comes from, and Ctrl+F opens the global search.", "タイトルバーのモードボタンにゲーム別設定の出所を表示。Ctrl+F でグローバル検索を開きます。" },
+                new[]{ "改进 运行开销 主循环不再有阻塞采样 功耗让路改持久查询 首页动画只在前台跑 日志页无新内容不读文件", "Runtime overhead: no blocking sampling on the main loop, power yield uses a persistent query, the home animation runs only while Pavise is in the foreground, and the log page does not read the file when there is nothing new.", "実行時オーバーヘッド：メインループでのブロッキングサンプリングを廃止、電力譲渡は持続的なクエリに変更、ホーム画面のアニメーションは前面時のみ、ログページは新規内容がなければファイルを読みません。" },
+                new[]{ "修复 极限档强制锁与解析层对齐 环境页强制锁过资格门 切走档位后开关恢复", "Fixed the Extreme forced locks to match the resolver, the Environment page forced locks now pass the eligibility gate, and switches recover after leaving the tier.", "極限の強制ロックを解決層と一致させ、環境ページの強制ロックは資格ゲートを通過するように修正。ティアを離れるとスイッチが復帰します。" },
+                new[]{ "修复 显卡页与 Intel 页的按键与本机支持判定 NVIDIA 低延迟选择器在极限档加锁", "Fixed key handling and local-support detection on the Graphics and Intel pages, and the NVIDIA low-latency selector is locked in Extreme.", "グラフィックスページと Intel ページのキー操作と本機サポート判定を修正。NVIDIA 低遅延セレクターは極限でロックします。" },
+                new[]{ "修复 英文输入与 Intel 低延迟在极限会话真正生效 Intel 低延迟熔断进退出集", "English input and Intel low latency now really take effect in an Extreme session, and the Intel low-latency fuse joins the exit set.", "英語入力と Intel 低遅延が極限セッションで実際に有効になるよう修正。Intel 低遅延のヒューズは終了セットに加わります。" },
+                new[]{ "修复 功耗让路 各卡都是 0% 时不再误判为渲染卡迁移", "Power yield no longer mistakes an all-zero utilization reading across adapters for a rendering-adapter migration.", "電力譲渡：全アダプターの使用率が 0% のとき、描画アダプターの移行と誤判定しなくなりました。" },
+            }),
             new ReleaseNote("2.2.0.1", "2026-09-03", new[]
             {
-                new[]{ "新增 英雄联盟增强 因为呼声过高回归 不再单独开页 游戏库识别到英雄联盟条目后卡片下方常驻增强区 脱壳启动 立即净化 恢复界面 借壳启动与对局真无头开关 附加层删除", "Added League of Legends enhancement back by popular demand. No separate page this time: once the library recognizes a League entry, the card grows an enhancement strip with shell-free launch, clean now, restore UI, the shell-launch and headless-match switches, and add-on deletion.", "要望が多かったためリーグ・オブ・レジェンド強化が復帰。専用ページはなく、ライブラリがエントリを認識するとカード下部に強化エリアが常駐。シェルなし起動、即時クリーン、UI 復元、シェル起動と対局ヘッドレスのスイッチ、アドオン削除。" },
-                new[]{ "新增 设置页卸载 Pavise 按钮 交给随附脚本 先退出程序并按收据还原全部系统改动 再删开机任务 托管电源方案 设置 数据目录与旧版残留 执行完相当于从未安装过", "Added an Uninstall Pavise button on the Settings page. It hands off to the bundled script: exit the app, restore every system change from its receipts, then remove the startup task, managed power plan, settings, data folder and leftovers from older versions. The machine ends up as if Pavise had never been installed.", "設定ページに Pavise をアンインストールを追加。同梱スクリプトに引き継ぎ、アプリを終了して記録どおりにシステム変更を復元し、起動タスク、管理電源プラン、設定、データフォルダー、旧版の残留物を削除。実行後は未インストール状態になる。" },
-                new[]{ "新增 卸载脚本先调用 Pavise.exe --uninstall 用程序自身的还原代码把 NVIDIA AMD Intel 显卡项 网卡中断合并 中断钉核一并还原 找不到程序时脚本按收据兜底 补上 IFEO 中断优先级 QoS 策略 功耗墙 旧名注册表与目录", "The uninstall script now calls Pavise.exe --uninstall first so the app's own restore code handles NVIDIA, AMD and Intel GPU items, NIC interrupt moderation and interrupt pinning. Without the app the script falls back to receipts and now also covers IFEO, interrupt priority, QoS policies, the GPU power limit and registry keys and folders from older names.", "アンインストールスクリプトは先に Pavise.exe --uninstall を呼び、NVIDIA・AMD・Intel の GPU 項目、NIC 割り込み調停、割り込み固定をアプリ自身のコードで復元。アプリがなければ記録に基づき IFEO、割り込み優先度、QoS ポリシー、GPU 電力上限、旧名称のレジストリとフォルダーも処理。" },
-                new[]{ "改进 设置页分成极限模式 应用自身 维护 窗口外观四个标签 搜索命中自动切标签", "The Settings page is now split into four tabs: Extreme, the app itself, maintenance and window appearance. Search hits switch to the right tab.", "設定ページを極限、アプリ自身、メンテナンス、ウィンドウ外観の 4 タブに分割。検索ヒットで該当タブに切り替え。" },
-                new[]{ "改进 家族后台压制加观测门槛 还没观测到渲染的条目不能打开 已开着的仍可关闭 打过一局并确认渲染后自动放开", "Family suppression now has an observation gate: an entry whose rendering has not been observed cannot be switched on, entries already on can still be switched off, and the gate lifts once a match confirms the renderer.", "ファミリー抑制に観測ゲートを追加。レンダリング未観測のエントリはオンにできず、オン済みはオフにできる。対局でレンダラーを確認すると解除。" },
-                new[]{ "改进 核显电源方案在独显渲染的机器上写平衡 核显与 CPU 共享封装功耗 钉最高性能会抢走睿频", "The integrated-graphics power plan now stays Balanced on machines that render on a discrete GPU; the iGPU shares the CPU package budget, and pinning it to maximum performance took turbo headroom away.", "独立 GPU で描画するマシンでは内蔵グラフィックスの電源プランをバランスに。iGPU は CPU パッケージの電力を共有し、最高性能固定はターボ余裕を奪っていた。" },
-                new[]{ "改进 极限档解锁的 VBS 关闭不再被 Hyper-V 卸载留下的空壳服务键挡住 只认真正注册且未禁用的虚拟化服务", "Turning VBS off at Extreme unlock is no longer blocked by an empty service key left behind by a Hyper-V uninstall; only registered, enabled virtualization services count.", "極限解錠時の VBS 無効化が、Hyper-V アンインストールの残した空のサービスキーに阻まれなくなった。登録済みで無効化されていない仮想化サービスのみを判定。" },
-                new[]{ "改进 厂商性能档默认开 不再由电竞与极限档强制 关了就尊重用户", "The vendor performance mode is on by default and no longer forced by Esports or Extreme; switching it off is respected.", "ベンダー性能モードは既定オン。電競・極限による強制をやめ、オフにした選択を尊重。" },
-                new[]{ "改进 全局计时器分辨率退出极限自动清单 两项计时器默认关 想开的在环境页自己开", "Global timer resolution left the Extreme auto list. Both timer items are off by default; turn them on yourself on the Environment page if you want them.", "グローバルタイマー分解能を極限の自動リストから除外。タイマー 2 項目は既定オフ。必要なら環境ページで自分でオン。" },
-                new[]{ "改进 极限档电源空闲三旋钮因部分机型有提升重新上线 带快照收据 切回其它档位按快照写回", "The three Extreme power-idle knobs are back because some machines gain from them, with a snapshot receipt; switching to another tier writes the snapshot back.", "極限の電源アイドル 3 項目は一部機種で効果があるため復帰。スナップショット付きで、他ティアに切り替えると書き戻す。" },
-                new[]{ "下架 显卡频率锁定 笔记本上钉死显卡等于先划走 CPU 的功耗份 实测掉帧 旧版留下的锁频收据启动时解锁", "Removed GPU clock lock. On laptops pinning the GPU takes the CPU's share of the power budget first and measurably drops frames. Lock receipts left by older versions are released at startup.", "GPU クロック固定を廃止。ノートでは GPU 固定が CPU の電力枠を先に奪い、実測でフレーム低下。旧版の固定記録は起動時に解除。" },
-                new[]{ "下架 网络收包引离游戏核 改 RSS 区间会让有线网卡驱动重初始化 进游戏断一下网 旧版留下的收据启动时按原区间写回", "Removed packet-processing steering. Changing the RSS range makes wired adapter drivers reinitialize and drops the link when a match starts. Receipts left by older versions are written back at startup.", "受信パケット処理退避を廃止。RSS 範囲変更で有線アダプターのドライバーが再初期化され、対局開始時にリンクが切れる。旧版の記録は起動時に書き戻す。" },
+                new[]{ "新增 英雄联盟增强回归 游戏库卡片内置 脱壳启动 立即净化 恢复界面 借壳启动 对局真无头 附加层删除", "Added League of Legends enhancement back, built into the library card: shell-free launch, clean now, restore UI, shell launch, headless match, add-on deletion.", "リーグ・オブ・レジェンド強化が復帰。ライブラリカードに内蔵：シェルなし起動、即時クリーン、UI 復元、シェル起動、対局ヘッドレス、アドオン削除。" },
+                new[]{ "新增 设置页卸载 Pavise 按钮", "Added an Uninstall Pavise button on the Settings page.", "設定ページに Pavise をアンインストールを追加。" },
+                new[]{ "改进 卸载脚本 先由程序自身按收据还原 再清任务 方案 设置 数据与旧版残留", "Uninstall script: the app restores from receipts first, then the task, plan, settings, data and old leftovers are removed.", "アンインストールスクリプト：先にアプリが記録どおり復元し、タスク、プラン、設定、データ、旧版残留物を削除。" },
+                new[]{ "改进 设置页分标签 极限模式 应用自身 维护 窗口外观", "Settings page split into tabs: Extreme, the app itself, maintenance, window appearance.", "設定ページをタブ化：極限、アプリ自身、メンテナンス、ウィンドウ外観。" },
+                new[]{ "改进 家族后台压制 未观测到渲染的条目不能打开", "Family suppression cannot be switched on for an entry whose rendering has not been observed.", "レンダリング未観測のエントリはファミリー抑制をオンにできない。" },
+                new[]{ "改进 核显电源方案 独显渲染的机器写平衡", "Integrated-graphics power plan stays Balanced on machines rendering on a discrete GPU.", "独立 GPU 描画のマシンでは内蔵グラフィックス電源プランをバランスに。" },
+                new[]{ "改进 极限档 VBS 关闭不再被 Hyper-V 残留服务键挡住", "Extreme VBS off is no longer blocked by a leftover Hyper-V service key.", "極限の VBS 無効化が Hyper-V の残留サービスキーに阻まれなくなった。" },
+                new[]{ "改进 厂商性能档默认开 不再由档位强制", "Vendor performance mode on by default, no longer forced by tier.", "ベンダー性能モードは既定オン、ティアによる強制なし。" },
+                new[]{ "改进 全局计时器分辨率退出极限自动清单 两项计时器默认关", "Global timer resolution left the Extreme auto list; both timer items off by default.", "グローバルタイマー分解能を極限自動リストから除外。タイマー 2 項目は既定オフ。" },
+                new[]{ "改进 极限档电源空闲三旋钮因部分机型有提升重新上线", "The three Extreme power-idle knobs are back because some machines gain from them.", "極限の電源アイドル 3 項目は一部機種で効果があるため復帰。" },
+                new[]{ "下架 显卡频率锁定 旧版收据启动时解锁", "Removed GPU clock lock; receipts from older versions are released at startup.", "GPU クロック固定を廃止。旧版の記録は起動時に解除。" },
+                new[]{ "下架 网络收包引离游戏核 旧版收据启动时写回", "Removed packet-processing steering; receipts from older versions are written back at startup.", "受信パケット処理退避を廃止。旧版の記録は起動時に書き戻す。" },
             }),
             new ReleaseNote("2.2.0.0", "2026-09-02", new[]
             {
@@ -484,22 +518,20 @@ namespace PaviseApp
         public static void MarkSeen() { Settings.SaveStr(SeenKey, App.Version); }
 
 #if PAVISE_SELFTEST
+        // 历史条目是双语时代写的 不回填 所以只查两件事
+        //   每条至少有中英两列 声明了第三列的不许留空
+        //   新版本必须三语齐全那条由当前版本的用例单独守 别在这里比版本号
         internal static List<string> MissingTranslations()
         {
             var bad = new List<string>();
             foreach (ReleaseNote n in All)
                 for (int i = 0; i < n.Count; i++)
                 {
-                    int prev = Lang.Cur;
-                    try
-                    {
-                        for (int lang = 0; lang < 3; lang++)
-                        {
-                            Lang.Cur = lang;
-                            if (string.IsNullOrEmpty(n.Item(i))) bad.Add(n.Version + " #" + i + " lang" + lang);
-                        }
-                    }
-                    finally { Lang.Cur = prev; }
+                    int declared = n.RawLanguages(i);
+                    int required = declared >= 3 ? 3 : 2;
+                    for (int lang = 0; lang < required; lang++)
+                        if (string.IsNullOrEmpty(n.RawItem(i, lang)))
+                            bad.Add(n.Version + " #" + i + " lang" + lang);
                 }
             return bad;
         }

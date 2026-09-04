@@ -217,6 +217,7 @@ namespace PaviseApp
         public bool LaptopPerf { get { return On(PolicyCatalog.KeyLaptopPerf); } }
         public bool VramShield { get { return On(PolicyCatalog.KeyVramShield); } }
         public bool CacheWarm { get { return On(PolicyCatalog.KeyCacheWarm); } }
+        public bool HeavySqueeze { get { return On(PolicyCatalog.KeyHeavySqueeze); } }
 
         public ulong CoreMask
         {

@@ -161,7 +161,10 @@ namespace PaviseApp
                 }
                 Check(type.GetField("btnRunning", fields) == null && type.GetMethod("PickRunning", fields) == null,
                     "Unified add-game dialog still opens a separate running-program picker");
-                Check(buttons.Count == 3, "Add-game footer must contain only Browse, Add, and Cancel");
+                Check(buttons.Count == 4, "Add-game footer must contain only Browse, Browse Folder, Add, and Cancel");
+                bool folderButton = false;
+                foreach (Control button in buttons) if (button.Text == Lang.T("scan.folder")) folderButton = true;
+                Check(folderButton, "Add-game footer lost the folder browse button");
                 foreach (Control button in buttons)
                 {
                     Check(dialog.ClientRectangle.Contains(button.Bounds), "Add-game footer button is clipped");
@@ -173,8 +176,8 @@ namespace PaviseApp
                     for (int j = i + 1; j < buttons.Count; j++)
                         Check(!buttons[i].Bounds.IntersectsWith(buttons[j].Bounds), "Add-game footer buttons overlap");
                 buttons.Sort(delegate(Control a, Control b) { return a.Left.CompareTo(b.Left); });
-                Check(buttons[0].Text == Lang.T("scan.browse") && buttons[1].Text == Lang.T("btn.add")
-                    && buttons[2].Text == Lang.T("btn.cancel"),
+                Check(buttons[0].Text == Lang.T("scan.browse") && buttons[1].Text == Lang.T("scan.folder")
+                    && buttons[2].Text == Lang.T("btn.add") && buttons[3].Text == Lang.T("btn.cancel"),
                     "Add-game footer action order changed");
                 Check(hint != null, "Install-record scan limitation hint is missing");
                 int hintHeight = TextRenderer.MeasureText(hint.Text, hint.Font,
@@ -188,7 +191,7 @@ namespace PaviseApp
                 Check(info.Text.IndexOf("\u201c正在运行\u201d", StringComparison.Ordinal) < 0
                     && info.Text.IndexOf("Select a running program", StringComparison.OrdinalIgnoreCase) < 0,
                     "Empty scan results still direct users to the removed running-program picker");
-                Check(!buttons[1].Enabled, "Add-game confirmation must start disabled without a selection");
+                Check(!buttons[2].Enabled, "Add-game confirmation must start disabled without a selection");
                 var list = (TechListBox)type.GetField("lst", fields).GetValue(dialog);
                 Check(list.Parent is TechListScrollHost && list.ExternalScrollBar,
                     "Add-game list did not opt in to the themed scroll host");

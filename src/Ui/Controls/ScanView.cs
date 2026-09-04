@@ -133,12 +133,19 @@ namespace PaviseApp
         private void OnFrame(object sender, EventArgs e)
         {
             if (!Visible) { UiClock.Frame -= OnFrame; return; }
-            phase += state == AuditScanState.Scanning ? 0.022f : 0.006f;
-            if (phase > 1000f) phase -= 1000f;
-            shown.Step();
-            fill.Step();
-            UiClock.Wake();
-            Invalidate();
+            bool moving = shown.Step();
+            moving |= fill.Step();
+            if (state == AuditScanState.Scanning)
+            {
+                phase += 0.022f;
+                if (phase > 1000f) phase -= 1000f;
+                UiClock.Wake();
+                Invalidate();
+                return;
+            }
+            // 待机态只把出场过渡走完就退订 不再自唤醒 否则体检页一直以 64 帧重画整块控件
+            if (moving) { Invalidate(); return; }
+            UiClock.Frame -= OnFrame;
         }
 
         protected override void OnPaint(PaintEventArgs e)

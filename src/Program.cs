@@ -19,7 +19,7 @@ namespace PaviseApp
     internal static class App
     {
         public const string DisplayName = "PAVISE";
-        public const string Version = "2.2.0.1";
+        public const string Version = "2.2.0.2";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string QqGroup = "1051472054";

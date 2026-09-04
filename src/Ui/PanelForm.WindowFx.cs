@@ -126,7 +126,7 @@ namespace PaviseApp
         private void UpdateAutoHide(bool gameActive)
         {
             AutoHideAction action = NextAutoHide(gameActive, ref lastGameActive, ref autoHideArmed,
-                Settings.Load(AutoHideKey, AutoHideDefault), UiActive);
+                Settings.LoadCached(AutoHideKey, AutoHideDefault), UiActive);
             if (action == AutoHideAction.Cancel) { CancelAutoHide(); return; }
             if (action != AutoHideAction.Schedule) return;
             CancelAutoHide();
@@ -226,7 +226,13 @@ namespace PaviseApp
 
         private void OnEscHide(object s, KeyEventArgs e)
         {
-            if (e.KeyCode == Keys.Escape)
+            if (e.Control && e.KeyCode == Keys.F)
+            {
+                SetSearchFlyout(true);
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+            else if (e.KeyCode == Keys.Escape)
             {
                 if (searchFlyout != null && searchFlyout.Visible) SetSearchFlyout(false);
                 else if (powerFlyout != null && powerFlyout.Visible) SetPowerFlyout(false);

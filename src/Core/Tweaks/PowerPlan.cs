@@ -507,7 +507,13 @@ namespace PaviseApp
                 Guid? nowActive = RestoreCurrentPlan();
                 if (!nowActive.HasValue || nowActive.Value == Guid.Empty) return false;
                 if (nowActive.Value == restoreTarget) return ClearRestoredPlan(restoreTarget);
-                bool? ours = RestorePlanIsOwned(nowActive.Value);
+                // 正常对局中只要本次会话确实完成过方案接管，当前方案即使
+                // 被 TS、G-Helper 或手动操作切成了别的 GUID，恢复责任仍然
+                // 属于 Pavise。否则对方恰好在退出前切换一次，就会让旧的
+                // “尊重外部选择”分支吞掉原值快照，退局停在第三方方案。
+                // 崩溃重启后 active=false，仍沿用保守所有权判断，不拿一份
+                // 历史收据覆盖用户在 Pavise 不运行期间做出的新选择。
+                bool? ours = active ? (bool?)true : RestorePlanIsOwned(nowActive.Value);
                 if (!ours.HasValue) return false;
                 if (!ours.Value)
                 {

@@ -195,10 +195,31 @@ namespace PaviseApp
             return covered * 100 >= monitorArea * FullscreenCoveragePercent;
         }
 
+        // 热路径每轮都来问 智能档的 Sweep 每 500ms 一次 结果 1.5 秒内直接复用
+        //   返回的是同一个集合 调用方只读 要改就自己拷一份
+        private static readonly object visibleCacheSync = new object();
+        private static HashSet<int> visibleCacheAll, visibleCacheShown;
+        private static long visibleCacheAllTicks, visibleCacheShownTicks;
+        private const long VisibleCacheTtlTicks = 1500 * TimeSpan.TicksPerMillisecond;
+
         internal static HashSet<int> VisibleWindowPids(bool includeMinimized)
         {
+            long now = DateTime.UtcNow.Ticks;
+            lock (visibleCacheSync)
+            {
+                HashSet<int> cached = includeMinimized ? visibleCacheAll : visibleCacheShown;
+                long stamp = includeMinimized ? visibleCacheAllTicks : visibleCacheShownTicks;
+                if (cached != null && now >= stamp && now - stamp < VisibleCacheTtlTicks) return cached;
+            }
             bool succeeded;
-            return VisibleWindowPids(includeMinimized, out succeeded);
+            HashSet<int> fresh = VisibleWindowPids(includeMinimized, out succeeded);
+            if (!succeeded) return fresh;
+            lock (visibleCacheSync)
+            {
+                if (includeMinimized) { visibleCacheAll = fresh; visibleCacheAllTicks = now; }
+                else { visibleCacheShown = fresh; visibleCacheShownTicks = now; }
+            }
+            return fresh;
         }
 
         internal static HashSet<int> VisibleWindowPids(bool includeMinimized, out bool succeeded)

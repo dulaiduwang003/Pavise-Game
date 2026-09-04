@@ -185,6 +185,7 @@ namespace PaviseApp
                                         autoGpuScanned = false;
                                         cacheWarmDone = false;
                                         ResetAdaptiveGuard();
+                                        ResetHeavySqueeze();
                                         Interlocked.Exchange(ref boostFirstStampTicks, DateTime.UtcNow.Ticks);
                                         Interlocked.Exchange(ref sessionStartTicks, DateTime.UtcNow.Ticks);
                                         try { cpuLimit.Start(); } catch { }
@@ -200,6 +201,7 @@ namespace PaviseApp
                                         autoGpuScanned = false;
                                         cacheWarmDone = false;
                                         ResetAdaptiveGuard();
+                                        ResetHeavySqueeze();
                                         Interlocked.Exchange(ref boostFirstStampTicks, DateTime.UtcNow.Ticks);
                                         Interlocked.Exchange(ref sessionStartTicks, DateTime.UtcNow.Ticks);
                                         // activeDetection 此时已经指向新 profile 旧 renderer 无法再终验
@@ -253,7 +255,8 @@ namespace PaviseApp
                                     PowerBudgetYieldRunner.Start(EffPowerYield,
                                         EffPreset == PerformancePreset.Competitive
                                             || EffPreset == PerformancePreset.Extreme
-                                            || EffPreset == PerformancePreset.Handheld);
+                                            || EffPreset == PerformancePreset.Handheld,
+                                        rendererPid, rendererCreation);
                                     ApplyIrqObservationSettingChange(running);
                                     if (EffBoost) Boost(all);
                                     else

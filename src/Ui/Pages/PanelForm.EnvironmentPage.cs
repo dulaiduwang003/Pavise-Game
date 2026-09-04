@@ -19,9 +19,11 @@ namespace PaviseApp
         private TechTabs envTabs;
         private DBPanel[] envTabPanels;
         private int envBusy;
+        private Dictionary<Toggle, bool> envForcedToggles;
 
         private void BuildEnvironmentPage()
         {
+            envForcedToggles = new Dictionary<Toggle, bool>();
             int y = PageHeader(pageEnvironment, Lang.T("nav.env"), Lang.T("v16.env.sub"), 2);
 
             var envBanner = new ModuleBanner();
@@ -189,11 +191,22 @@ namespace PaviseApp
 
         // 只在当前档位就是极限时才把环境卡锁成预设强制开 与显卡页 ExtremeGraphicsForced 同一判据
         //   持久项解锁后一直在系统里 但切到别的档位时不该再顶着"预设强制"的锁 那会让自定义档看着莫名其妙
-        private static void ForceEnvCard(string token, SettingCard card, Toggle toggle)
+        //   锁的时候记下开关原来的可用状态 切走档位或资格变了先放回去 卡片再按自己的判据重算
+        private void ForceEnvCard(string token, SettingCard card, Toggle toggle)
         {
             if (card == null || toggle == null || !toggle.Checked || !ExtremeMode.ForcesEnv(token)) return;
             card.SetLock(Lang.T("v14.preset.forced.on"), true);
+            if (envForcedToggles == null) envForcedToggles = new Dictionary<Toggle, bool>();
+            if (!envForcedToggles.ContainsKey(toggle)) envForcedToggles[toggle] = toggle.Enabled;
             toggle.Enabled = false;
+        }
+
+        private void ReleaseExtremeForcedEnv()
+        {
+            if (envForcedToggles == null) return;
+            foreach (KeyValuePair<Toggle, bool> kv in envForcedToggles)
+                if (!kv.Key.IsDisposed) kv.Key.Enabled = kv.Value;
+            envForcedToggles.Clear();
         }
 
         private void SyncExtremeForcedEnv()
@@ -215,6 +228,7 @@ namespace PaviseApp
 
         private void SyncEnvStatus()
         {
+            ReleaseExtremeForcedEnv();
             LockEnvCard(cardHags, swHags, HagsTweak.CurrentlyOn() && !HagsTweak.EnabledByPavise);
             LockEnvCard(cardWindowedOpt, swWindowedOpt, WindowedOptTweak.CurrentlyOn() && !WindowedOptTweak.EnabledByPavise);
             LockEnvCard(cardVrrOpt, swVrrOpt, VrrOptTweak.CurrentlyOn() && !VrrOptTweak.EnabledByPavise);

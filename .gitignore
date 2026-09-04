@@ -12,6 +12,10 @@ tests/*
 !tests/SelfTests.AppGpuPreferences.cs
 !tests/SelfTests.GraphicsInputUi.cs
 !tests/SelfTests.UiConfigAudit.cs
+!tests/SelfTests.PowerYieldTarget.cs
+!tests/SelfTests.HeavySqueeze.cs
+!tests/SelfTests.AddGameFolder.cs
+!tests/SelfTests.ReleaseNotes.cs
 !tests/SelfTests.UiAsyncState.cs
 !tests/SelfTests.RendererCandidate.cs
 !tests/SelfTests.RendererRelease.cs

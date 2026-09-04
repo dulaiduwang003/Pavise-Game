@@ -18,6 +18,8 @@ namespace PaviseApp
         private bool gameActive;
         private double frozenSeconds;
         private bool animationRequested;
+        // 窗口在别的程序后面时停掉 33 帧重绘 用户看不见的动画不值一个核的零点几
+        private bool foreground = true;
         private Bitmap staticLayer;
         private Color cachedAccent = Color.Empty, cachedAccent2 = Color.Empty;
 
@@ -60,6 +62,14 @@ namespace PaviseApp
             if (value) Invalidate();
         }
 
+        public void SetForeground(bool value)
+        {
+            if (foreground == value) return;
+            foreground = value;
+            SyncAnimationTimer();
+            if (value) Invalidate();
+        }
+
         protected override void OnVisibleChanged(EventArgs e)
         {
             base.OnVisibleChanged(e);
@@ -88,8 +98,14 @@ namespace PaviseApp
         internal static bool ShouldAnimate(bool requested, bool handleCreated, bool controlVisible,
             bool formVisible, FormWindowState windowState, bool gameActive)
         {
+            return ShouldAnimate(requested, handleCreated, controlVisible, formVisible, windowState, gameActive, true);
+        }
+
+        internal static bool ShouldAnimate(bool requested, bool handleCreated, bool controlVisible,
+            bool formVisible, FormWindowState windowState, bool gameActive, bool foregroundApp)
+        {
             return requested && handleCreated && controlVisible && formVisible
-                && windowState != FormWindowState.Minimized && !gameActive;
+                && windowState != FormWindowState.Minimized && !gameActive && foregroundApp;
         }
 
         internal const int FrameMs = 30;
@@ -99,7 +115,7 @@ namespace PaviseApp
             Form f = FindForm();
             return ShouldAnimate(animationRequested, IsHandleCreated, Visible,
                 f != null && f.Visible, f == null ? FormWindowState.Minimized : f.WindowState,
-                gameActive);
+                gameActive, foreground);
         }
 
         private void SyncAnimationTimer()

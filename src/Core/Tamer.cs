@@ -19,6 +19,8 @@ namespace PaviseApp
         private readonly int selfPid;
         private readonly int selfSession;
         private volatile bool paused;
+        // 反作弊绑核是压制构成的一部分 落点与重压后台绑核同源 写入被拒的进程实例本进程生命周期内不再重试
+        private readonly Dictionary<int, long> pinRefused = new Dictionary<int, long>();
         private volatile bool stopping;
         private int processEventsAvailable;
         private long panicUntilUtcTicks;
@@ -58,6 +60,41 @@ namespace PaviseApp
         {
             get { return paused; }
             set { paused = value; Poke(); }
+        }
+
+        // 压制落地之后再下落点 落点算法与重压后台绑核同一个 6 到 8 核机器上就是末尾一个物理核
+        //   写入被反作弊自身保护拒绝的 pid 记一次日志后不再重试 换了进程实例才会再来
+        private void PinAntiCheatCores(List<AcquireRequest> acquisitions)
+        {
+            if (acquisitions == null || acquisitions.Count == 0) return;
+            ulong mask;
+            try { mask = CpuTopology.MultiGroup ? 0 : CpuTopology.BackgroundSqueezeMask(); }
+            catch { mask = 0; }
+            if (mask == 0) return;
+            foreach (AcquireRequest request in acquisitions)
+            {
+                if (request.Result != AcquireResult.NewlyThrottled
+                    && request.Result != AcquireResult.AlreadyThrottled) continue;
+                long creation = core.CreationOf(request.Pid);
+                if (creation <= 0) continue;
+                lock (pinRefused)
+                {
+                    long refusedCreation;
+                    if (pinRefused.TryGetValue(request.Pid, out refusedCreation) && refusedCreation == creation) continue;
+                }
+                bool changed;
+                bool ok = core.SetSqueeze(request.Pid, creation, request.Name, mask,
+                    SuppressReason.AntiCheat, out changed);
+                if (!ok)
+                {
+                    lock (pinRefused) pinRefused[request.Pid] = creation;
+                    Logger.Log(Lang.T("log.tamer.pin.1") + request.Name + " pid " + request.Pid + Lang.T("log.tamer.pin.3"));
+                    continue;
+                }
+                if (changed)
+                    Logger.Log(Lang.T("log.tamer.pin.1") + request.Name + " pid " + request.Pid
+                        + Lang.T("log.tamer.pin.2") + CpuTopology.DescribeMask(mask));
+            }
         }
 
         public bool ProcessEventsAvailable
@@ -463,6 +500,7 @@ namespace PaviseApp
                 }
                 LogAcquireResult(request);
             }
+            PinAntiCheatCores(acquisitions);
         }
 
         private static void LogAcquireResult(AcquireRequest request)

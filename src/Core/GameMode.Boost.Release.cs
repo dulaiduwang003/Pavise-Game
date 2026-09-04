@@ -283,6 +283,7 @@ namespace PaviseApp
             autoGpuScanned = false;
             cacheWarmDone = false;
             ResetAdaptiveGuard();
+            ResetHeavySqueeze();
             partitionHintLogged = false;
 
             bool clean = UnboostGames();

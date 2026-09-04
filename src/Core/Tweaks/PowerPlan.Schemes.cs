@@ -81,6 +81,7 @@ namespace PaviseApp
         private static readonly Guid IdleScaling      = new Guid("6c2993b0-8f48-481f-bcc6-00dd2742aa06");
 
         private static readonly Guid PerfEpp           = new Guid("36687f9e-e3a5-4dbf-b1dc-15eb381c6863");
+        private static readonly Guid PerfAutonomous    = new Guid("8baa4a8a-14c6-4451-8e8b-14bdbd197537");
         private static readonly Guid PerfBoostPol      = new Guid("45bcc044-d885-43e2-8605-ee0ec6e96b59");
         private static readonly Guid PerfIncPol        = new Guid("465e1f50-b610-473a-ab58-00d1077dc418");
         private static readonly Guid PerfDecPol        = new Guid("40fbefc7-2e9d-4d25-a185-0cfd8574bac6");
@@ -311,6 +312,8 @@ namespace PaviseApp
             try
             {
                 PowerPlanProfile profile = CurrentProfile();
+                bool autonomousAc, autonomousDc;
+                ReadAutonomousScaling(g, out autonomousAc, out autonomousDc);
                 int written = 0;
                 int failed = 0;
                 var skipped = new List<string>();
@@ -318,8 +321,10 @@ namespace PaviseApp
                 foreach (Knob k in CoreKnobs)
                 {
                     if (!SettingPresent(g, k.Sub, k.Setting)) { skipped.Add(k.Label); continue; }
-                    if (WriteKnob(g, k, aggressive, handheld, profile)) written++;
-                    else { failed++; LogKnobFailure(g, k, aggressive, handheld, profile); }
+                    if (WriteKnob(g, k, aggressive, handheld, profile,
+                        autonomousAc, autonomousDc)) written++;
+                    else { failed++; LogKnobFailure(g, k, aggressive, handheld, profile,
+                        autonomousAc, autonomousDc); }
                 }
                 foreach (Knob k in OptionalKnobs)
                 {
@@ -329,7 +334,8 @@ namespace PaviseApp
                     Knob effective = k.Setting == IntelGfxPlan && IntelGfxSharesPackageWithDiscrete()
                         ? new Knob(k.Sub, k.Setting, k.CalmAc, k.CalmDc, k.CalmAc, k.CalmDc, "t.powerplanschemes.44")
                         : k;
-                    if (WriteKnob(g, effective, aggressive, handheld, profile)) written++; else failed++;
+                    if (WriteKnob(g, effective, aggressive, handheld, profile,
+                        autonomousAc, autonomousDc)) written++; else failed++;
                 }
                 // 极限档专属组 未暴露的项照常跳过 不影响其余旋钮的写入结果
                 //   写入前先快照现值 退出极限档重写方案时按快照写回
@@ -340,7 +346,8 @@ namespace PaviseApp
                     foreach (Knob k in ExtremeKnobs)
                     {
                         if (!SettingPresent(g, k.Sub, k.Setting)) { skipped.Add(k.Label); continue; }
-                        if (WriteKnob(g, k, aggressive, handheld, profile)) written++; else failed++;
+                        if (WriteKnob(g, k, aggressive, handheld, profile,
+                            autonomousAc, autonomousDc)) written++; else failed++;
                     }
                 }
                 else RestoreExtremeKnobs(g);
@@ -353,7 +360,8 @@ namespace PaviseApp
                         if (k.Setting == SchedPolicy || k.Setting == ShortSchedPolicy)
                             eff = new Knob(k.Sub, k.Setting, profile.HeteroSched, profile.HeteroSched,
                                 k.CalmAc, k.CalmDc, k.Label);
-                        if (WriteKnob(g, eff, aggressive, handheld, profile)) written++; else failed++;
+                        if (WriteKnob(g, eff, aggressive, handheld, profile,
+                            autonomousAc, autonomousDc)) written++; else failed++;
                     }
                 }
 
@@ -379,7 +387,8 @@ namespace PaviseApp
             catch { return false; }
         }
 
-        private static void LogKnobFailure(Guid scheme, Knob k, bool aggressive, bool handheld, PowerPlanProfile profile)
+        private static void LogKnobFailure(Guid scheme, Knob k, bool aggressive,
+            bool handheld, PowerPlanProfile profile, bool autonomousAc, bool autonomousDc)
         {
             uint code = 0;
             try
@@ -387,8 +396,9 @@ namespace PaviseApp
                 bool coreParking = k.Setting == CpMinCores || k.Setting == CpMaxCores;
                 bool useArena = coreParking ? profile.UseArenaCoreParking(aggressive) : aggressive;
                 WritePair(scheme, k.Sub, k.Setting,
-                    useArena ? ArenaAcFor(k, k.ArenaAc, handheld) : CalmAcFor(k, k.CalmAc, profile),
-                    useArena ? ArenaDcFor(k, k.ArenaDc) : k.CalmDc, out code);
+                    useArena ? ArenaAcFor(k, k.ArenaAc, handheld, autonomousAc)
+                        : CalmAcFor(k, k.CalmAc, profile),
+                    useArena ? ArenaDcFor(k, k.ArenaDc, autonomousDc) : k.CalmDc, out code);
             }
             catch { }
             Logger.Warn(Lang.T("log.powerplanschemes.32") + Lang.T(k.Label)
@@ -419,13 +429,42 @@ namespace PaviseApp
             return shares;
         }
 
-        private static bool WriteKnob(Guid scheme, Knob k, bool aggressive, bool handheld, PowerPlanProfile profile)
+        private static bool WriteKnob(Guid scheme, Knob k, bool aggressive,
+            bool handheld, PowerPlanProfile profile, bool autonomousAc, bool autonomousDc)
         {
             bool coreParking = k.Setting == CpMinCores || k.Setting == CpMaxCores;
             bool useArena = coreParking ? profile.UseArenaCoreParking(aggressive) : aggressive;
             return WritePair(scheme, k.Sub, k.Setting,
-                useArena ? ArenaAcFor(k, k.ArenaAc, handheld) : CalmAcFor(k, k.CalmAc, profile),
-                useArena ? ArenaDcFor(k, k.ArenaDc) : k.CalmDc);
+                useArena ? ArenaAcFor(k, k.ArenaAc, handheld, autonomousAc)
+                    : CalmAcFor(k, k.CalmAc, profile),
+                useArena ? ArenaDcFor(k, k.ArenaDc, autonomousDc) : k.CalmDc);
+        }
+
+        private static void ReadAutonomousScaling(Guid scheme, out bool ac, out bool dc)
+        {
+            ac = false; dc = false;
+            try
+            {
+                Guid sb = SubProcessor, setting = PerfAutonomous;
+                uint value;
+                if (PowerReadACValueIndex(IntPtr.Zero, ref scheme, ref sb, ref setting, out value) == 0)
+                    ac = value != 0;
+                sb = SubProcessor; setting = PerfAutonomous;
+                if (PowerReadDCValueIndex(IntPtr.Zero, ref scheme, ref sb, ref setting, out value) == 0)
+                    dc = value != 0;
+            }
+            catch { }
+        }
+
+        private static bool IsProcessorMinimum(Guid setting)
+        {
+            return setting == ProcThrottleMin || setting == ProcThrottleMin1;
+        }
+
+        private static uint AutonomousArenaValue(Knob k, uint value, bool ac, bool autonomous)
+        {
+            return autonomous && IsProcessorMinimum(k.Setting)
+                ? (ac ? k.CalmAc : k.CalmDc) : value;
         }
 
         // 笔记本的专注档 电池那一侧放开纯省电项 跟 CalmArenaAcOnDesktop 对称 方向相反
@@ -472,9 +511,10 @@ namespace PaviseApp
         //   笔记本插电只放开核心停泊 是因为那份预算还够 CPU 和独显各拿各的
         //   掌机整机十几瓦 CPU 和集显抢的是同一份 最低性能状态锁 100 等于先把预算划给 CPU
         //   放开的仍然只是纯省电项 EPP PerfBoostPol ProcThrottleMax 照写激进值 不碰帧和输入
-        private static uint ArenaAcFor(Knob k, uint ac, bool handheld)
+        private static uint ArenaAcFor(Knob k, uint ac, bool handheld, bool autonomous)
         {
-            if (!Native.HasSystemBattery()) return ac;   // 台式机保持原样
+            ac = AutonomousArenaValue(k, ac, true, autonomous);
+            if (!Native.HasSystemBattery()) return ac;   // 台式机只应用上面的自主调频放底座
             if (handheld && ArenaDcRelaxed(k.Setting)) return k.CalmAc;
             return ArenaAcRelaxed(k.Setting) ? k.CalmAc : ac;
         }
@@ -486,11 +526,20 @@ namespace PaviseApp
             return false;
         }
 
-        private static uint ArenaDcFor(Knob k, uint dc)
+        private static uint ArenaDcFor(Knob k, uint dc, bool autonomous)
         {
+            dc = AutonomousArenaValue(k, dc, false, autonomous);
             if (!Native.HasSystemBattery()) return dc;   // 台式机根本用不到电池那一列
             return ArenaDcRelaxed(k.Setting) ? k.CalmDc : dc;
         }
+
+#if PAVISE_SELFTEST
+        internal static uint AutonomousMinimumForTest(bool secondary, bool ac, bool autonomous)
+        {
+            Knob k = secondary ? HybridKnobs[0] : CoreKnobs[0];
+            return AutonomousArenaValue(k, ac ? k.ArenaAc : k.ArenaDc, ac, autonomous);
+        }
+#endif
 
         // 下架前写进去的 1 清一次 不看接管状态 清成功记个标记不再重复跑
         //   没有托管方案或方案里没这一项都算清完 拿不到写权限就留着标记下次再试

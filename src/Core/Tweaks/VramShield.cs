@@ -2,6 +2,7 @@
 // 文件用途 显存驻留 显存吃紧时给游戏声明一份最低显存预留 退局撤销
 using System;
 using System.Globalization;
+using System.Threading;
 
 namespace PaviseApp
 {
@@ -155,6 +156,46 @@ namespace PaviseApp
             }
         }
 
+        private static int adapterResolveBusy;
+        private static RenderAdapter resolvedAdapter;
+        private static int resolvedForPid;
+        private static long resolvedForCreation;
+
+        // 有现成结果且身份吻合就拿走 没有就排一次后台解析 本轮返回 null
+        private static RenderAdapter TakeResolvedAdapter(int pid, long creation)
+        {
+            lock (lk)
+            {
+                RenderAdapter ready = resolvedAdapter;
+                resolvedAdapter = null;
+                if (ready != null && resolvedForPid == pid && resolvedForCreation == creation) return ready;
+            }
+            if (Interlocked.CompareExchange(ref adapterResolveBusy, 1, 0) != 0) return null;
+            bool queued = false;
+            try
+            {
+                queued = ThreadPool.QueueUserWorkItem(delegate
+                {
+                    try
+                    {
+                        RenderAdapter ra = GpuEvidence.ResolveRenderAdapter(pid, AdapterResolveMs);
+                        if (ra != null)
+                            lock (lk)
+                            {
+                                resolvedAdapter = ra;
+                                resolvedForPid = pid;
+                                resolvedForCreation = creation;
+                            }
+                    }
+                    catch { }
+                    finally { Interlocked.Exchange(ref adapterResolveBusy, 0); }
+                });
+            }
+            catch { }
+            finally { if (!queued) Interlocked.Exchange(ref adapterResolveBusy, 0); }
+            return null;
+        }
+
         private static void Step(int pid, long creation)
         {
             lock (lk) if (recoveryBlocked) return;
@@ -183,10 +224,11 @@ namespace PaviseApp
 
                 if (adapter == 0)
                 {
-                    RenderAdapter ra = GpuEvidence.ResolveRenderAdapter(pid, AdapterResolveMs);
+                    // 解析要在 PDH 里睡 400ms 不能让扫描主循环线程陪着等 丢给线程池 结果下一轮来取
+                    RenderAdapter ra = TakeResolvedAdapter(pid, creation);
                     if (ra == null)
                     {
-                        // 这一轮没采到 3D 占用 不是错误 下一轮再看
+                        // 这一轮没采到 3D 占用或结果还没回来 不是错误 下一轮再看
                         return;
                     }
                     if (ra.Ambiguous)
@@ -487,6 +529,8 @@ namespace PaviseApp
 
         internal static void ResetRecoveryForTest()
         {
+            lock (lk) { resolvedAdapter = null; resolvedForPid = 0; resolvedForCreation = 0; }
+            Interlocked.Exchange(ref adapterResolveBusy, 0);
             lock (opLk)
             lock (lk)
             {

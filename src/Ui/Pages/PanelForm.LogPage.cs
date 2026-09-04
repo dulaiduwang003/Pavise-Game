@@ -127,9 +127,25 @@ namespace PaviseApp
             RefreshLog(false);
         }
 
+        private long logSeenVersion = -1;
+        private LogStreamView logSeenStream;
+
         private void RefreshLog(bool force)
         {
             if (logStream == null) return;
+            // 记录关掉时刷新只会看到一份不动的旧日志 不说明白会被当成卡死
+            if (lblLogStreamHint != null)
+            {
+                bool writing = Logger.WritesEnabled;
+                lblLogStreamHint.Text = writing ? Lang.T("v20.log.hint") : Lang.T("v20.log.paused");
+                lblLogStreamHint.ForeColor = writing ? Theme.Faint
+                    : LogStreamView.SeverityColor(LogEventSeverity.Warning);
+            }
+            // 没有新写入就不读文件 Tail 和 Sweep 线程的 Log 抢的是同一把锁
+            long version = Logger.Version;
+            if (!force && version == logSeenVersion && ReferenceEquals(logSeenStream, logStream)) return;
+            logSeenVersion = version;
+            logSeenStream = logStream;
             string text = Logger.Tail(220);
             bool changed = logStream.SetText(text);
             if (force && !changed) logStream.Invalidate();
@@ -139,14 +155,6 @@ namespace PaviseApp
             if (lblLogLatest != null) lblLogLatest.Text = logStream.LatestTime;
             if (logFilterTabs != null) logFilterTabs.SetHot(new[] { false,
                 logStream.WarningCount + logStream.ErrorCount > 0, logStream.ErrorCount > 0 });
-            // 记录关掉时刷新只会看到一份不动的旧日志 不说明白会被当成卡死
-            if (lblLogStreamHint != null)
-            {
-                bool writing = Logger.WritesEnabled;
-                lblLogStreamHint.Text = writing ? Lang.T("v20.log.hint") : Lang.T("v20.log.paused");
-                lblLogStreamHint.ForeColor = writing ? Theme.Faint
-                    : LogStreamView.SeverityColor(LogEventSeverity.Warning);
-            }
         }
     }
 }

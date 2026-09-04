@@ -23,10 +23,13 @@ namespace PaviseApp
     {
         public readonly ProcEntry[] Entries;
         public readonly Dictionary<int, ProcEntry> ByPid;
+        // 拍摄时刻 复用的快照带同一个时间戳 按时间差算 CPU 占用的地方靠它识别复用
+        public readonly long TakenTicks;
 
         internal ProcessSnapshot(ProcEntry[] entries)
         {
             Entries = entries ?? new ProcEntry[0];
+            TakenTicks = DateTime.UtcNow.Ticks;
             ByPid = new Dictionary<int, ProcEntry>(Entries.Length);
             foreach (ProcEntry entry in Entries) ByPid[entry.Pid] = entry;
         }

@@ -75,6 +75,29 @@ namespace PaviseApp
         }
 #endif
 
+        // 界面每 1.2 秒读一次的开关走这里 注册表只在有过写入之后才重新打开
+        //   任何 Save/Remove 都推进 MutationGeneration 缓存整体作废 宁可多失效不可漏失效
+        //   同一个键的默认值在各调用处必须一致 缓存不区分默认值
+        private static readonly object readCacheSync = new object();
+        private static readonly Dictionary<string, bool> readCache =
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        private static int readCacheGeneration = -1;
+
+        public static bool LoadCached(string name, bool def)
+        {
+            int gen = MutationGeneration;
+            lock (readCacheSync)
+            {
+                if (readCacheGeneration != gen) { readCache.Clear(); readCacheGeneration = gen; }
+                bool hit;
+                if (readCache.TryGetValue(name, out hit)) return hit;
+            }
+            bool value = Load(name, def);
+            lock (readCacheSync)
+                if (readCacheGeneration == gen) readCache[name] = value;
+            return value;
+        }
+
         public static bool Load(string name, bool def)
         {
 #if PAVISE_SELFTEST || PAVISE_PERFLAB

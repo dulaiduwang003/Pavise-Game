@@ -1,7 +1,6 @@
 ﻿// @author bdth 2074055628@qq.com
 // 文件用途 笔记本对局中把共享功耗预算从 CPU 让给 GPU 一局只决定一次 验不过就退回
 using System;
-using System.Collections.Generic;
 using System.Threading;
 
 namespace PaviseApp
@@ -296,6 +295,7 @@ namespace PaviseApp
         internal const string EnabledKey = "GmPowerYield";
         internal const int SampleIntervalMs = 2000;
         internal const int GpuWindowMs = 500;
+        internal const int SamplerReopenAfterDry = 15;
 
         private static readonly object gate = new object();
         private static readonly object operationGate = new object();
@@ -308,8 +308,10 @@ namespace PaviseApp
         private static bool stopInProgress;
         private static bool shutdownClosed;
         private static volatile bool proxyRun;
+        private static int targetPid;
+        private static long targetCreation;
 
-        public static bool EnabledSetting { get { return Settings.Load(EnabledKey, false); } }
+        public static bool EnabledSetting { get { return Settings.LoadCached(EnabledKey, false); } }
 
         // 频率代理可用性 探一次记一辈子 计数器在不在不会中途变
 #if PAVISE_SELFTEST
@@ -372,13 +374,20 @@ namespace PaviseApp
         }
 
         // 开关取值由调用方给 对局中走冻结快照 逐游戏配置能覆盖全局
-        public static void Start(bool enabled, bool competitive)
+        public static void Start(bool enabled, bool competitive, int rendererPid, long rendererCreation)
         {
+            bool retarget;
+            lock (gate)
+                retarget = running && (targetPid != rendererPid || targetCreation != rendererCreation);
+            // 启动器交接给真实 renderer 时旧窗口的 GPU/CPU 基线已经失效
+            // 先完整停掉并还原 EPP 再为新身份开一轮 不能把两进程的数据拼起来
+            if (retarget && !StopCore(3000, false)) return;
+
             lock (gate)
             {
                 if (shutdownClosed || stopInProgress || running
                     || worker != null && worker.IsAlive) return;
-                if (!enabled) return;
+                if (!enabled || rendererPid <= 0 || rendererCreation <= 0) return;
                 // 有瓦数走瓦数 没瓦数但有频率计数器走降级验证 熔断各记各的账
                 bool watts = EnergyMeter.Available;
                 bool proxy = !watts && FreqProxyAvailable;
@@ -388,6 +397,8 @@ namespace PaviseApp
                     watts ? PowerBudgetYield.Fused : PowerBudgetYield.FreqFused);
                 if (!eligible) return;
                 proxyRun = proxy;
+                targetPid = rendererPid;
+                targetCreation = rendererCreation;
                 state = new PowerBudgetYield();
                 state.Begin(DateTime.UtcNow.Ticks, true, proxy);
                 running = true;
@@ -450,6 +461,8 @@ namespace PaviseApp
                 lock (gate)
                 {
                     if (object.ReferenceEquals(worker, t)) worker = null;
+                    targetPid = 0;
+                    targetCreation = 0;
                     stopInProgress = false;
                 }
                 return ok;
@@ -481,11 +494,25 @@ namespace PaviseApp
         {
             var cpu = new CpuSaturation();
             bool proxy = proxyRun;
+            int rendererPid;
+            long rendererCreation;
+            lock (gate)
+            {
+                rendererPid = targetPid;
+                rendererCreation = targetCreation;
+            }
+            bool adapterKnown = false;
+            int adapterLuidHigh = 0;
+            uint adapterLuidLow = 0;
             var freq = new FreqSampler();
+            // GPU 占用走持久查询 整局只开一次 每轮一次采集 没有睡眠 打不开时退回一次性解析
+            var gpuSampler = new GpuEvidence.GpuEngineSampler();
+            gpuSampler.Open();
             if (proxy && !freq.Open())
             {
                 // 进程级探测成功不代表本局也打得开 静默夭折要留话也要收状态
                 freq.Close();
+                gpuSampler.Close();
                 Logger.Warn(Lang.T("log.poweryield.12"));
                 lock (gate)
                     if (mine == generation)
@@ -496,13 +523,31 @@ namespace PaviseApp
                 return;
             }
             EnergyMeter.Sample prev = proxy ? null : EnergyMeter.Take();
+            int drySamples = 0;
             try
             {
                 while (GenerationRunning(mine))
                 {
                     Thread.Sleep(SampleIntervalMs);
                     if (!GenerationRunning(mine)) break;
-                    double gpu = SampleGpuUtil();
+                    bool targetChanged;
+                    double gpu = SampleGpuUtil(gpuSampler, rendererPid, rendererCreation,
+                        ref adapterKnown, ref adapterLuidHigh, ref adapterLuidLow,
+                        out targetChanged);
+                    // 持久查询长期看不到这个进程的 3D 实例时重开一次 防止通配实例表没跟上晚起的渲染设备
+                    if (gpu < 0 && !targetChanged)
+                    {
+                        if (++drySamples >= SamplerReopenAfterDry) { drySamples = 0; gpuSampler.Open(); }
+                    }
+                    else drySamples = 0;
+                    if (targetChanged)
+                    {
+                        // PID 复用、renderer 退出或渲染迁到另一块卡后旧基线都不可继续用
+                        // 若已经让过 EPP 立即尝试还原 退局 StopCore 仍是失败兜底
+                        if (PowerPlan.EppYielded) RunCurrentMutation(mine, PowerPlan.RestoreEpp);
+                        Logger.Warn(Lang.T("log.poweryield.13"));
+                        break;
+                    }
                     double cpuPct = cpu.Sample() * 100.0;
                     double watts = -1, freqPct = -1;
                     if (proxy) freqPct = freq.Read();
@@ -558,7 +603,7 @@ namespace PaviseApp
                     }
                 }
             }
-            finally { freq.Close(); }
+            finally { freq.Close(); gpuSampler.Close(); }
         }
 
         // 平台频率百分比 与作者台架记录用的是同一个计数器 两次采集之间的均值
@@ -655,22 +700,76 @@ namespace PaviseApp
                 worker = null;
                 state = null;
                 running = stopInProgress = shutdownClosed = false;
+                targetPid = 0;
+                targetCreation = 0;
                 generation++;
             }
         }
 #endif
 
-        private static double SampleGpuUtil()
+        private static bool SameProcessIdentity(int pid, long creation)
         {
+            if (pid <= 0 || creation <= 0) return false;
+            IntPtr process = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+            if (process == IntPtr.Zero) return false;
             try
             {
-                Dictionary<int, double> byPid = GpuEvidence.Sample3D(1, GpuWindowMs, null);
-                if (byPid == null) return -1;
-                double sum = 0;
-                foreach (KeyValuePair<int, double> kv in byPid) sum += kv.Value;
-                return sum > 100.0 ? 100.0 : sum;
+                long actual, cpu;
+                ulong io;
+                return Native.QueryProcessSample(process, out actual, out cpu, out io)
+                    && actual == creation;
+            }
+            catch { return false; }
+            finally { Native.CloseHandle(process); }
+        }
+
+        private static double SampleGpuUtil(GpuEvidence.GpuEngineSampler sampler, int pid, long creation,
+            ref bool adapterKnown, ref int adapterLuidHigh, ref uint adapterLuidLow,
+            out bool targetChanged)
+        {
+            targetChanged = false;
+            if (!SameProcessIdentity(pid, creation))
+            {
+                targetChanged = true;
+                return -1;
+            }
+            try
+            {
+                RenderAdapter adapter = sampler != null && sampler.IsOpen
+                    ? sampler.Resolve(pid)
+                    : GpuEvidence.ResolveRenderAdapter(pid, GpuWindowMs);
+                return AcceptTargetAdapterSample(adapter, ref adapterKnown,
+                    ref adapterLuidHigh, ref adapterLuidLow, out targetChanged);
             }
             catch { return -1; }
+        }
+
+        // 只接受这个 renderer 唯一且稳定的渲染适配器
+        // ResolveRenderAdapter 已经按 PID 过滤 这里再锁 LUID 防止 Optimus/多卡迁移后串用旧基线
+        internal static double AcceptTargetAdapterSample(RenderAdapter adapter,
+            ref bool adapterKnown, ref int adapterLuidHigh, ref uint adapterLuidLow,
+            out bool targetChanged)
+        {
+            targetChanged = false;
+            if (adapter == null || adapter.Ambiguous) return -1;
+            if (adapter.Util < 0) return -1;
+            if (adapterKnown
+                && (adapter.LuidHigh != adapterLuidHigh || adapter.LuidLow != adapterLuidLow))
+            {
+                // 各卡都是 0% 时 PickAdapter 只是随手挑了第一块 那不是迁移 是这一轮没数据
+                if (adapter.Util < GpuEvidence.MinElectUtilization) return -1;
+                targetChanged = true;
+                return -1;
+            }
+            if (!adapterKnown)
+            {
+                // 0% 的 PDH 残留实例不能证明渲染卡 等 renderer 真正在 3D 上出力再绑定
+                if (adapter.Util < GpuEvidence.MinElectUtilization) return -1;
+                adapterKnown = true;
+                adapterLuidHigh = adapter.LuidHigh;
+                adapterLuidLow = adapter.LuidLow;
+            }
+            return adapter.Util > 100.0 ? 100.0 : adapter.Util;
         }
     }
 }

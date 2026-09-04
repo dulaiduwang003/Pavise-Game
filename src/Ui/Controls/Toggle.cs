@@ -34,7 +34,14 @@ namespace PaviseApp
             }
         }
 
-        public void SetSilently(bool v) { isOn = v; colorBlend.Set(v ? 1f : 0f); Invalidate(); }
+        public void SetSilently(bool v)
+        {
+            float target = v ? 1f : 0f;
+            if (isOn == v && colorBlend.Value == target && colorBlend.Target == target) return;
+            isOn = v;
+            colorBlend.Set(target);
+            Invalidate();
+        }
 
         protected override bool StepAll() { bool a = base.StepAll(); bool b = colorBlend.Step(); return a || b; }
         protected override void OnClick(EventArgs e) { base.OnClick(e); Checked = !isOn; }

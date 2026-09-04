@@ -192,6 +192,8 @@ namespace PaviseApp
                     return ConfirmVramShieldEnable();
                 case PolicyCatalog.KeyCacheWarm:
                     return ConfirmCacheWarmEnable();
+                case PolicyCatalog.KeyHeavySqueeze:
+                    return ConfirmHeavySqueezeEnable();
                 case PolicyCatalog.KeyPowerYield:
                     return ConfirmPowerYieldEnable();
                 case PolicyCatalog.KeyDisableCpuIdle:
@@ -279,6 +281,7 @@ namespace PaviseApp
         {
             PolicyCatalog.KeyVramShield,
             PolicyCatalog.KeyCacheWarm,
+            PolicyCatalog.KeyHeavySqueeze,
         };
 
         private static bool IsConfirmGuardedKey(string key)

@@ -71,13 +71,27 @@ namespace PaviseApp
             }
 
             if (System.Threading.Interlocked.CompareExchange(ref rendererGpuSamplingBusy, 1, 0) != 0) return;
-            Dictionary<int, double> util;
+            // 采样要在 PDH 里睡 1.4 秒 不能占着检测主循环 丢给线程池 结论回来再复核前台
+            string identityName = identity.Name;
+            bool queued = false;
             try
             {
-                util = GpuEvidence.Sample3D(GpuEvidence.BurstRounds, GpuEvidence.BurstIntervalMs,
-                    delegate { return stopping || panicReq; });
+                queued = System.Threading.ThreadPool.QueueUserWorkItem(delegate
+                {
+                    try { FinishAutoAdd(pid, path, identityName, now); }
+                    catch { }
+                    finally { System.Threading.Interlocked.Exchange(ref rendererGpuSamplingBusy, 0); }
+                });
             }
-            finally { System.Threading.Interlocked.Exchange(ref rendererGpuSamplingBusy, 0); }
+            catch { }
+            finally { if (!queued) System.Threading.Interlocked.Exchange(ref rendererGpuSamplingBusy, 0); }
+        }
+
+        private void FinishAutoAdd(int pid, string path, string identityName, long now)
+        {
+            if (stopping || panicReq || !enabled) return;
+            Dictionary<int, double> util = GpuEvidence.Sample3D(GpuEvidence.BurstRounds, GpuEvidence.BurstIntervalMs,
+                delegate { return stopping || panicReq; });
             if (util == null) { RememberAutoAddReject(path, now); return; }
             double candidate;
             if (!util.TryGetValue(pid, out candidate)) candidate = 0;
@@ -89,7 +103,10 @@ namespace PaviseApp
                 if (!IsCompositorPid(kv.Key)) { RememberAutoAddReject(path, now); return; }
             }
 
-            // 采样耗时 1.4 秒 期间前台可能已经易主 再确认一次才有资格写库
+            // 采样耗时 1.4 秒 期间前台可能已经易主或已经进局 再确认一次才有资格写库
+            bool sessionNow;
+            lock (sync) sessionNow = active;
+            if (sessionNow || stopping || panicReq) return;
             int foregroundNow;
             if (!GameSessionDetector.TryForegroundFullscreen(out foregroundNow)
                 || foregroundNow != pid)
@@ -99,7 +116,7 @@ namespace PaviseApp
             if (!AddGameExecutableCore(null, path, null, true, out error))
             { RememberAutoAddReject(path, now); return; }
             Logger.Log(Lang.T("log.autoadd.3") + (int)candidate + Lang.T("log.autoadd.4")
-                + identity.Name + Lang.T("log.autoadd.5") + path + Lang.T("log.autoadd.6"));
+                + identityName + Lang.T("log.autoadd.5") + path + Lang.T("log.autoadd.6"));
         }
 
         private void RememberAutoAddReject(string path, long now)

@@ -45,6 +45,8 @@ namespace PaviseApp
             public int OrigIo = -1;
             public int OrigPg = -1;
             public uint[] OrigCpuSets;
+            // 重压后台绑核的当前落点 0 表示未绑 不进日志 还原一律回 OrigAff
+            public ulong SqueezeAff;
             public int OrigGpu = -1;
 
             public int OrigQoSControl = -1;

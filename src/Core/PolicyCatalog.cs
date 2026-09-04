@@ -43,6 +43,8 @@ namespace PaviseApp
         public const string KeyBoost = "GmBoost";
         public const string KeyAggressive = "GmAggressive";
         public const string KeyGpuDemote = "GmGpuDemote";
+        // 带 V2 后缀 不继承 1.x GmSqueezeBg 那份默认开的旧值 实验项默认关
+        public const string KeyHeavySqueeze = "GmHeavySqueezeV2";
         public const string KeyRenderLane = "GmRenderLane";
         public const string KeyStrictCores = "GmStrictCores";
         public const string KeyCoreDomainAlt = "GmCoreDomainAlt";
@@ -93,6 +95,7 @@ namespace PaviseApp
             new PolicyItem(KeyBoost, PolicyValueKind.Bool, "1", "gm.boost", GroupBackground, null),
             new PolicyItem(KeyAggressive, PolicyValueKind.Bool, "0", "gm.aggressive", GroupBackground, null),
             new PolicyItem(KeyGpuDemote, PolicyValueKind.Bool, "0", "gm.gpudemote", GroupBackground, null),
+            new PolicyItem(KeyHeavySqueeze, PolicyValueKind.Bool, "0", "gm.squeeze", GroupBackground, null),
             new PolicyItem(KeyRenderLane, PolicyValueKind.Bool, "1", "gm.lane", GroupBackground, null),
             new PolicyItem(KeyStrictCores, PolicyValueKind.Bool, "0", "cfg.strictcores", GroupCores, null),
             new PolicyItem(KeyCoreDomainAlt, PolicyValueKind.Bool, "0", "cfg.domainalt", GroupCores, null),

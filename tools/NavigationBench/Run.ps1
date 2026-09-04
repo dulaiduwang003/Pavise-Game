@@ -19,9 +19,21 @@ $navProcess = $null
 try {
     $navProcess = Start-Process -FilePath $navExe -ArgumentList ('"' + $navOutput + '"') -WorkingDirectory $navOutput -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $navOutput 'console.log') -RedirectStandardError (Join-Path $navOutput 'stderr.log')
     if (-not $navProcess.WaitForExit(55000)) { $navProcess.Kill(); throw 'Owned navigation UI bench exceeded 55 seconds.' }
-    Get-Content -LiteralPath (Join-Path $navOutput 'console.log')
-    Get-Content -LiteralPath (Join-Path $navOutput 'stderr.log')
-    if ($navProcess.ExitCode -ne 0) { throw 'Navigation UI tests failed.' }
+    # The timed overload can leave ExitCode stale while redirected streams finish draining.
+    $navProcess.WaitForExit()
+    $navProcess.Refresh()
+    $navConsole = @(Get-Content -LiteralPath (Join-Path $navOutput 'console.log'))
+    $navErrors = @(Get-Content -LiteralPath (Join-Path $navOutput 'stderr.log'))
+    $navConsole
+    $navErrors
+    $navExitCode = $navProcess.ExitCode
+    # Some PowerShell hosts return a Process proxy whose ExitCode remains null after a redirected run.
+    # The runner emits this marker only after every assertion has completed and immediately returns 0.
+    if ($null -eq $navExitCode) {
+        $navPassed = @($navConsole | Where-Object { $_ -like 'PASS navigation assertions=*' }).Count -eq 1
+        $navExitCode = if ($navPassed -and $navErrors.Count -eq 0) { 0 } else { 1 }
+    }
+    if ($navExitCode -ne 0) { throw ('Navigation UI tests failed with exit code ' + $navExitCode + '.') }
 }
 finally {
     if ($null -ne $navProcess) { $navProcess.Dispose() }

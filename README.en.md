@@ -10,7 +10,7 @@ Windows game resource scheduling and guard tool
 
 [简体中文](README.md) · **English** · [日本語](README.ja.md)
 
-**v2.2.0.1 · [Release notes (Chinese)](docs/releases/v2.2.0.1.md)**
+**v2.2.0.2 · [Release notes (Chinese)](docs/releases/v2.2.0.2.md)**
 
 <br>
 
@@ -50,7 +50,7 @@ Session changes are restored from their records when the game exits. After an ab
 
 The tiers differ in which processes are eligible to be touched, not in how hard they are suppressed. Anything past the boundary is isolated directly, cold processes included, without waiting for one to consume resources for ten seconds first. Isolation writes the lowest priority, the lowest disk I/O and paging priority, EcoQoS, a timer-resolution cap and disabled turbo boost. With GPU yielding on, the GPU scheduling priority drops to minimum as well.
 
-This is the opposite of the 1.9-era approach, because the premise changed. Isolating everything really was a net loss back then: the scattered wake-ups of a hundred idle processes were squeezed onto two cores by affinity narrowing and queued behind each other, tripling the longest frame by 2.6×. From 2.0 on, background affinity is never modified and the entire narrowing-and-migration mechanism is gone. A cold process with no ready threads costs no CPU to begin with, and when it does wake it can run on any core without higher-priority work, so nothing queues and the cost of isolating everything disappears.
+This is the opposite of the 1.9-era approach, because the premise changed. Isolating everything really was a net loss back then: the scattered wake-ups of a hundred idle processes were squeezed onto two cores by affinity narrowing and queued behind each other, tripling the longest frame by 2.6×. From 2.0 on, background affinity is left alone by default and the entire narrowing-and-migration mechanism is gone; since 2.2 a heat-gated core squeeze is back as an experimental item, acting only on background processes that keep using CPU, while idle ones are still never touched. A cold process with no ready threads costs no CPU to begin with, and when it does wake it can run on any core without higher-priority work, so nothing queues and the cost of isolating everything disappears.
 
 In every mode, anti-cheat, Windows core services, network accelerators, the input/audio/peripheral chain, hardware control tools and other signed-in accounts are never suppressed. No switch affects this boundary.
 
@@ -58,7 +58,7 @@ Game family exemption is on by default: game platforms, launcher shells, residen
 
 ## Per-game configuration
 
-Select a game in the library and open its own configuration. Each game can override the mode, background suppression, cores, memory and power, system environment and graphics policy, 37 items in total. Items not overridden follow the global setting, and changes save immediately.
+Select a game in the library and open its own configuration. Each game can override the mode, background suppression, cores, memory and power, system environment and graphics policy, 38 items in total. Items not overridden follow the global setting, and changes save immediately.
 
 - Most per-game settings are resolved when the match activates and apply to the next one. Pausing nonessential services and disabling CPU idle are handled in the current session and reverted when turned off
 - The current core selection can be pinned to one game without affecting others
@@ -84,13 +84,13 @@ One guard switch decides whether Pavise takes over. With it on, nothing happens 
 
 ### Library
 
-- Add an EXE or shortcut manually, or scan to import from Steam, Epic, GOG, Ubisoft, Riot, WeGame, Battle.net and Xbox
+- Add an EXE, a shortcut or the game's folder manually, or drop them onto the window; when a folder holds several candidate programs they are listed for you to pick. Scanning imports from Steam, Epic, GOG, Ubisoft, Riot, WeGame, Battle.net and Xbox
 - **Forced takeover**: for emulators, cloud gaming and anything else that cannot be recognised, the match starts as soon as the process does
 - **Auto-add**: newly recognised games are collected automatically. A path you removed goes on an ignore list and is never auto-added again until you add it back by hand
 - **Suspected malware alert**: a process with no visible window outside the Windows and Program Files directories that uses a quarter or more of the logical CPUs for two minutes straight, or a suppressed process that lifts its own background core restriction, is logged and raised as a tray warning about a possible miner infection. Random-looking names use half the threshold; each name is alerted at most once a day
 - **Render observation label**: marks whether GPU 3D activity has actually been seen on that EXE, which is what tells you whether family suppression is safe to enable
 - **Family background suppression**: per-game, off by default. While off, game platforms, launcher shells, resident processes in the game folder and child processes spawned by the game are released as a family
-- **Per-game configuration**: 37 policy items can be overridden per game; anything not overridden follows the global setting, and entries can be renamed
+- **Per-game configuration**: 38 policy items can be overridden per game; anything not overridden follows the global setting, and entries can be renamed
 
 ### Processes and cores
 
@@ -100,6 +100,7 @@ One guard switch decides whether Pavise takes over. With it on, nothing happens 
 - **In-match self-yield**: Pavise moves off the game cores and lowers its own scheduling weight
 - **Background suppression**: everything past the protection boundary is isolated at once, receiving the lowest priority, the lowest disk I/O and paging priority, EcoQoS, a timer-resolution cap and disabled turbo boost
 - **Background GPU priority demotion**: a background process using the GPU also has its GPU scheduling priority lowered
+- **Heavy background core squeeze** (experimental): during a match, background processes that use more than half a core for 10 seconds straight are confined to the fewest cores the game does not use, avoiding the game's L3 block on multi-CCD parts and landing on efficiency cores on hybrid CPUs; idle background is left alone, the limit lifts 30 seconds after load drops, and everything is restored on exit. Off by default; not offered below 5 physical cores
 - **Suppressed working-set trim** (Extreme tier only): empties an isolated background process's physical-memory working set once, freeing it for the game; that program's first response after switching back is slower, and anti-cheat processes are never trimmed. Off by default
 - **Wider and stronger suppression**: maximum suppression of non-game background apps, including after alt-tab. Locked on in Esports, Extreme and Handheld; whitelist your IME and device tools
 - **Game core partitioning**: background work is confined to its own cores and the rest are left to the game. Handles hybrid architectures, X3D and multiple processor groups; six cores or fewer are not partitioned
@@ -113,7 +114,7 @@ Nine anti-cheat systems are listed individually, each stating which games it pro
 
 The **compatibility list** records games that refuse writes, so priority and I/O writes certain to fail are not retried while GPU scheduling priority and the frame thread are still attempted. The list expires when the game updates.
 
-**Anti-cheat suppression** (per-group switches on the Anti-Cheat page, off by default) offers no intensity choice; the profile is fixed and scan-safe: below-normal CPU priority, very low disk I/O (disk scanning is the main source of harm) and efficiency-core capping. It never drops the scanner to the lowest CPU priority, seals its timer resolution, or lowers its memory page priority — game threads can be suspended by the system during a scan and resume only when the scanner finishes, so starving it of CPU time only stretches a brief stutter into a multi-second freeze.
+**Anti-cheat suppression** (per-group switches on the Anti-Cheat page, off by default) offers no intensity choice; the profile is fixed and scan-safe: below-normal CPU priority, very low disk I/O (disk scanning is the main source of harm), efficiency-core capping, and confinement to the fewest cores the game does not use (the last physical core on 6- to 8-core machines, efficiency cores on hybrid CPUs, the other L3 block on multi-CCD parts; writes refused by the anti-cheat's own protection are skipped and not retried). It never drops the scanner to the lowest CPU priority, seals its timer resolution, or lowers its memory page priority — game threads can be suspended by the system during a scan and resume only when the scanner finishes, so starving it of CPU time only stretches a brief stutter into a multi-second freeze.
 
 ### Graphics
 

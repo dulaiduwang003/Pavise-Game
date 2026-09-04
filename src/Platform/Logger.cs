@@ -13,6 +13,9 @@ namespace PaviseApp
 
         private static readonly object lk = new object();
         public static string LogPath;
+        // 每次落盘递增 日志页比对它 没新内容就不再拿着同一把锁去读文件
+        private static long version;
+        public static long Version { get { return System.Threading.Interlocked.Read(ref version); } }
         private static long knownLength = -1;
         private static string knownPath;
         private static bool writesSuspendedForReset;
@@ -92,6 +95,7 @@ namespace PaviseApp
                     }
                     File.AppendAllText(LogPath, line);
                     knownLength += Encoding.UTF8.GetByteCount(line);
+                    System.Threading.Interlocked.Increment(ref version);
                 }
             }
             catch { lock (lk) knownLength = -1; }
@@ -125,6 +129,7 @@ namespace PaviseApp
                 {
                     if (writesSuspendedForReset) return;
                     File.WriteAllText(LogPath, "");
+                    System.Threading.Interlocked.Increment(ref version);
                     knownLength = 0;
                     knownPath = LogPath;
                 }
