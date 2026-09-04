@@ -147,7 +147,7 @@ namespace PaviseApp
             if (!lowLat && !SessionKeys.Contains(key)) return null;
             if (!Visible || OptedOut(key)) return null;
             // 低延迟强制到 on 不到 ultra ultra 把预渲染队列压到 1 CPU 瓶颈时掉帧率
-            //   用户自己逐游戏选了 ultra 的覆盖不改写
+            //   用户选了 ultra 的配置原样保留 极限期间照样按 on 生效 切走档位即恢复
             return lowLat ? "on" : "1";
         }
 
@@ -158,9 +158,19 @@ namespace PaviseApp
         }
 
         // 解锁期间环境项按清单强制 环境页把开着的卡锁成预设强制开 停用只能走管理清单
+        //   资格门与批量解锁同一道 本机不合格的项开着也只是用户自己开的 不能顶成预设强制
+        //   账本里有的是极限自己翻的 哪怕资格后来变了也照旧锁住 停用仍走管理清单
         public static bool ForcesEnv(string token)
         {
-            return Unlocked && !OptedOut(token);
+            if (!Unlocked || OptedOut(token)) return false;
+            if (LedgerContains(token)) return true;
+            foreach (ExtremeItem item in EnvItems())
+            {
+                if (item.Token != token) continue;
+                try { return item.Eligible(); }
+                catch { return false; }
+            }
+            return false;
         }
 
         // 启动补写 解锁后才进清单的项 或上次没写成的项 这里再翻一次 已开着和停用的照旧跳过

@@ -16,6 +16,8 @@ namespace PaviseApp
         private Toggle swPolicyBackground, swPolicyAggressive;
         private Toggle swPolicyPauseDl, swPolicyDvr;
         private Toggle swPolicyGpuDemote, swPolicyBoost, swPolicyLane, swPolicyMmcss;
+        private Toggle swPolicyHeavySqueeze;
+        private SettingCard cardPolicyHeavySqueeze;
         private Toggle swPolicyVramShield;
         private SettingCard cardPolicyVramShield, cardPolicyCacheWarm, cardPolicyEnglishInput;
         private Toggle swPolicyEnglishInput;
@@ -37,6 +39,7 @@ namespace PaviseApp
         internal Func<bool> PowerYieldConfirmationForTest;
         internal Func<bool> VramShieldConfirmationForTest;
         internal Func<bool> CacheWarmConfirmationForTest;
+        internal Func<bool> HeavySqueezeConfirmationForTest;
 #endif
 
         private void BuildPolicyPage()
@@ -71,6 +74,9 @@ namespace PaviseApp
             swPolicyGpuDemote = AddPolicyToggle(scroll, ref sy, Lang.T("gm.gpudemote"), Lang.T("gm.gpudemote.sub"),
                 delegate { return gameMode.GpuDemote; }, delegate(bool v) { gameMode.GpuDemote = v; });
             cardPolicyGpuDemote = (SettingCard)swPolicyGpuDemote.Parent;
+            swPolicyHeavySqueeze = AddPolicyToggle(scroll, ref sy, Lang.T("gm.squeeze"), Lang.T("gm.squeeze.sub"),
+                delegate { return gameMode.HeavySqueezeOn; }, delegate(bool v) { OnHeavySqueezeToggle(v); });
+            cardPolicyHeavySqueeze = (SettingCard)swPolicyHeavySqueeze.Parent;
             swPolicyBoost = AddPolicyToggle(scroll, ref sy, Lang.T("gm.boost"), Lang.T("v15.boost.sub"),
                 delegate { return gameMode.BoostGame; }, delegate(bool v) { gameMode.BoostGame = v; });
             cardPolicyBoost = (SettingCard)swPolicyBoost.Parent;
@@ -370,6 +376,14 @@ namespace PaviseApp
             bool extremeTier = mode == PerformancePreset.Extreme;
             ApplyPresetPolicy(swPolicyBackground, cardPolicyBackground, Lang.T("v14.bg.master"), false, true);
             ApplyPresetPolicy(swPolicyGpuDemote, cardPolicyGpuDemote, Lang.T("gm.gpudemote"), extremeTier, true);
+            ApplyPresetPolicy(swPolicyHeavySqueeze, cardPolicyHeavySqueeze, Lang.T("gm.squeeze"), false, true);
+            if (swPolicyHeavySqueeze != null && cardPolicyHeavySqueeze != null && !GameMode.HeavySqueezeSupported())
+            {
+                // 拓扑没有落点只挡新开启 已经开着的永远能关
+                swPolicyHeavySqueeze.Enabled = gameMode.HeavySqueezeOn;
+                cardPolicyHeavySqueeze.Desc = Lang.T("gm.squeeze.unsupported");
+                cardPolicyHeavySqueeze.SetLock(swPolicyHeavySqueeze.Enabled ? "" : Lang.T("lock.na"), false);
+            }
             ApplyPresetPolicy(swPolicyBoost, cardPolicyBoost, Lang.T("gm.boost"), false, true);
             ApplyPresetPolicy(swPolicyLane, cardPolicyLane, Lang.T("gm.lane"), false, true);
             if (cardPolicyCores != null) cardPolicyCores.Title = Lang.T("cpu.place.title");
@@ -536,6 +550,26 @@ namespace PaviseApp
             }
             gameMode.CacheWarmOn = on;
             if (swPolicyCacheWarm != null) swPolicyCacheWarm.SetSilently(gameMode.CacheWarmOn);
+        }
+
+        private bool ConfirmHeavySqueezeEnable()
+        {
+#if PAVISE_SELFTEST
+            if (HeavySqueezeConfirmationForTest != null) return HeavySqueezeConfirmationForTest();
+#endif
+            return PaviseDialog.Confirm(this, Lang.T("gm.squeeze"), Lang.T("squeeze.warn"), DlgKind.Warn);
+        }
+
+        private void OnHeavySqueezeToggle(bool on)
+        {
+            if (on && !ConfirmHeavySqueezeEnable())
+            {
+                if (swPolicyHeavySqueeze != null) swPolicyHeavySqueeze.SetSilently(gameMode.HeavySqueezeOn);
+                return;
+            }
+            gameMode.HeavySqueezeOn = on;
+            if (swPolicyHeavySqueeze != null) swPolicyHeavySqueeze.SetSilently(gameMode.HeavySqueezeOn);
+            RefreshPolicyPresentation();
         }
 
         private static void ApplyPresetPolicy(Toggle toggle, SettingCard card, string title, bool forced, bool effective)

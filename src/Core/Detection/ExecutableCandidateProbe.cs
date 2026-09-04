@@ -263,12 +263,47 @@ namespace PaviseApp
 
         internal static string PickMainExecutable(string root)
         {
+            bool complete;
+            List<ExecutableCandidateFacts> candidates = CollectFacts(root, out complete);
+            return candidates == null ? null : PickUnique(candidates, complete);
+        }
+
+        internal static int Rank(ExecutableCandidateFacts candidate)
+        {
+            if (candidate == null || !candidate.Executable) return -1;
+            return candidate.GraphicsImports || candidate.EngineDataPair ? 2 : candidate.Gui ? 1 : 0;
+        }
+
+        // 手动挑选用的候选清单 图形证据优先 其次 GUI 子系统 其余可执行文件垫底 被选举否决的名字不进
+        //   这是给用户看的列表 不是选举 所以不要求唯一 也不因为截断而放弃
+        internal static List<ExecutableCandidateFacts> ListCandidates(string root, int max)
+        {
+            bool complete;
+            List<ExecutableCandidateFacts> facts = CollectFacts(root, out complete);
+            var list = new List<ExecutableCandidateFacts>();
+            if (facts == null) return list;
+            foreach (ExecutableCandidateFacts f in facts)
+                if (f != null && f.Executable && !string.IsNullOrEmpty(f.Path)) list.Add(f);
+            list.Sort(delegate(ExecutableCandidateFacts a, ExecutableCandidateFacts b)
+            {
+                int ra = Rank(a), rb = Rank(b);
+                if (ra != rb) return rb - ra;
+                return string.Compare(a.Path, b.Path, StringComparison.OrdinalIgnoreCase);
+            });
+            if (max > 0 && list.Count > max) list.RemoveRange(max, list.Count - max);
+            return list;
+        }
+
+        // 一个目录下全部可执行文件的事实 唯一选举与手动挑选共用
+        //   目录越界 IO 出错或文件在读取中变化都返回 null 调用方自己决定怎么退
+        internal static List<ExecutableCandidateFacts> CollectFacts(string root, out bool complete)
+        {
+            complete = false;
             if (string.IsNullOrWhiteSpace(root)) return null;
             try
             {
                 root = System.IO.Path.GetFullPath(root.Trim().Trim('"'));
                 List<string> paths;
-                bool complete;
                 if (!CollectPaths(root,
                     delegate(string directory) { return Directory.EnumerateFiles(directory, "*.exe"); },
                     Directory.EnumerateDirectories, File.GetAttributes, out paths, out complete)) return null;
@@ -293,7 +328,7 @@ namespace PaviseApp
                         && Directory.Exists(System.IO.Path.Combine(dir, name + "_Data"));
                     candidates.Add(facts);
                 }
-                return PickUnique(candidates, complete);
+                return candidates;
             }
             catch { return null; }
         }

@@ -18,6 +18,7 @@ namespace PaviseApp
     {
         protected override void OnHandleDestroyed(EventArgs e)
         {
+            UnregisterPowerSchemeNotifications();
             DisposePageReveal();
             CancelAutoHide();
             outroActive = false;

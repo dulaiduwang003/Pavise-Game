@@ -179,6 +179,7 @@ namespace PaviseApp
                     intelLowLatencyOn = false;
                     InvalidateIntelGraphicsWork();
                     Settings.Save(PolicyCatalog.KeyIntelLowLatency, false);
+                    ExtremeMode.SetOptedOut(PolicyCatalog.KeyIntelLowLatency, true);
                     break;
                 case "overlay": break;
             }
@@ -497,10 +498,97 @@ namespace PaviseApp
 
         private volatile bool planActive;
         private volatile int lastPowerPolicyKey = -1;
+        // 对局里电源方案的最终所有权属于 Pavise。ThrottleStop、G-Helper
+        // 或其它程序切走方案时，由系统电源方案变更通知立即拉回。
         private long nextPowerAuditTicks;
         private int powerApplyInFlight;
+        private int powerPlanNotificationPending;
         private int powerSessionGen;
         private readonly object powerApplyGate = new object();
+
+        // UI 窗口收到 GUID_ACTIVE_POWERSCHEME 通知后只排电源方案轻量任务，
+        // 不触发进程快照、游戏检测或整套环境策略刷新。
+        internal void NotifyPowerSchemeChanged()
+        {
+            bool shouldAudit;
+            lock (sync)
+                shouldAudit = enabled && active && planActive && !stopping;
+            if (!shouldAudit) return;
+
+            Interlocked.Exchange(ref powerPlanNotificationPending, 1);
+            QueuePowerPlanNotificationAudit();
+        }
+
+        private void QueuePowerPlanNotificationAudit()
+        {
+            if (Interlocked.CompareExchange(ref powerApplyInFlight, 1, 0) != 0) return;
+
+            int keyShot;
+            int genShot;
+            lock (sync)
+            {
+                keyShot = lastPowerPolicyKey;
+                genShot = Volatile.Read(ref powerSessionGen);
+                if (!enabled || !active || !planActive || stopping
+                    || keyShot < 0 || (keyShot & 2) == 0)
+                {
+                    Interlocked.Exchange(ref powerPlanNotificationPending, 0);
+                    Interlocked.Exchange(ref powerApplyInFlight, 0);
+                    return;
+                }
+            }
+
+            Interlocked.Exchange(ref powerPlanNotificationPending, 0);
+            bool queued = false;
+            try
+            {
+                queued = ThreadPool.QueueUserWorkItem(delegate
+                {
+                    RunPowerPlanNotificationAudit(genShot, keyShot);
+                });
+            }
+            catch { }
+            if (!queued)
+            {
+                Interlocked.Exchange(ref powerPlanNotificationPending, 1);
+                Interlocked.Exchange(ref powerApplyInFlight, 0);
+            }
+        }
+
+        private bool PowerPlanNotificationStillCurrent(int genShot, int keyShot)
+        {
+            lock (sync)
+                return enabled && active && planActive && !stopping
+                    && Volatile.Read(ref powerSessionGen) == genShot
+                    && lastPowerPolicyKey == keyShot;
+        }
+
+        private void RunPowerPlanNotificationAudit(int genShot, int keyShot)
+        {
+            try
+            {
+                lock (powerApplyGate)
+                {
+                    if (!PowerPlanNotificationStillCurrent(genShot, keyShot)) return;
+                    bool ok = RunIrqIsolatedMutation(delegate
+                    {
+                        if (!PowerPlanNotificationStillCurrent(genShot, keyShot)) return false;
+                        return PowerPlan.Enforce((keyShot & 1) != 0,
+                            (keyShot & 8) != 0, (keyShot & 16) != 0);
+                    });
+                    if (!PowerPlanNotificationStillCurrent(genShot, keyShot)) return;
+                    OnPowerPlanApplied(ok);
+                }
+            }
+            catch { }
+            finally
+            {
+                Interlocked.Exchange(ref powerApplyInFlight, 0);
+                if (Interlocked.CompareExchange(
+                    ref powerPlanNotificationPending, 0, 0) != 0)
+                    QueuePowerPlanNotificationAudit();
+            }
+        }
 
         private bool RunPowerPlanApply(int genShot, Func<bool> apply)
         {
@@ -524,7 +612,15 @@ namespace PaviseApp
                 }
             }
             catch { return false; }
-            finally { Interlocked.Exchange(ref powerApplyInFlight, 0); }
+            finally
+            {
+                Interlocked.Exchange(ref powerApplyInFlight, 0);
+                // 初次应用自身也会产生一次方案变更通知；若通知到达时
+                // 应用仍在进行，结束后补跑轻量核对，不能把事件丢掉。
+                if (Interlocked.CompareExchange(
+                    ref powerPlanNotificationPending, 0, 0) != 0)
+                    QueuePowerPlanNotificationAudit();
+            }
         }
 
         private const string PowerFailStreakKey = "PowerPlanFailStreak";
@@ -537,6 +633,7 @@ namespace PaviseApp
             {
                 planFailStreak = 0;
                 if (LoadCounter(PowerFailStreakKey) != 0) SaveCounter(PowerFailStreakKey, 0);
+                // 成功后不做定时巡检；只有系统通知或策略本身变化才再次检查。
                 Interlocked.Exchange(ref nextPowerAuditTicks, long.MaxValue);
                 return;
             }

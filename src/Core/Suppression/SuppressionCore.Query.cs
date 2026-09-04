@@ -108,7 +108,7 @@ namespace PaviseApp
                         }
                     }
                     int desiredGpu = DesiredGpu(currentEntry);
-                    if (ThrottleMatches(h, level, pri, aff, cpuSets, desiredGpu, AntiCheatThrottled(currentEntry)))
+                    if (ThrottleMatches(h, level, pri, aff, cpuSets, desiredGpu, AntiCheatThrottled(currentEntry), DesiredAffinityOf(currentEntry)))
                     {
                         if (!currentEntry.Applied && currentEntry.ReconcileFailures > 0)
                             Logger.Log(Lang.T("log.suppressioncore.8") + expectedName + " pid " + pid
@@ -120,7 +120,7 @@ namespace PaviseApp
                     bool previouslyApplied = currentEntry.Applied;
                     int previousFailures = currentEntry.ReconcileFailures;
                     currentEntry.Applied = ApplyThrottle(h, level, pri, aff, cpuSets, desiredGpu,
-                        currentEntry.OrigBoost, AntiCheatThrottled(currentEntry));
+                        currentEntry.OrigBoost, AntiCheatThrottled(currentEntry), DesiredAffinityOf(currentEntry));
                     ScheduleAfterApply(currentEntry, currentEntry.Applied, pid);
                     if (currentEntry.Applied)
                     {
@@ -388,7 +388,7 @@ namespace PaviseApp
                         || !ReferenceEquals(currentEntry.OrigCpuSets, cpuSets))
                         { error = "entry-state"; return false; }
                     applied = ApplyThrottle(h, level, pri, aff, cpuSets, DesiredGpu(currentEntry),
-                        currentEntry.OrigBoost, AntiCheatThrottled(currentEntry));
+                        currentEntry.OrigBoost, AntiCheatThrottled(currentEntry), DesiredAffinityOf(currentEntry));
                     if (!applied && TryNeutralizeUnwritableLocked(h, pid, currentEntry))
                     {
                         error = SelfProtectedDetail;

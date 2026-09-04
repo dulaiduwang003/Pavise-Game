@@ -262,6 +262,64 @@ namespace PaviseApp
             finally { Marshal.FreeHGlobal(buffer); }
         }
 
+        // 持久查询 一次打开整局复用 每次 Resolve 给出与上次采集之间的平均占用
+        //   一次性版本每调一次都要开查询 睡一段 再关 放进循环等于每两秒重开一次通配查询
+        //   持久版本没有睡眠 采样窗口就是两次调用的间隔 占用数字反而更稳
+        internal sealed class GpuEngineSampler : IDisposable
+        {
+            private IntPtr query;
+            private IntPtr counter;
+            private bool primed;
+
+            public bool IsOpen { get { return query != IntPtr.Zero; } }
+
+            public bool Open()
+            {
+                Close();
+                try
+                {
+                    if (PdhOpenQueryW(null, IntPtr.Zero, out query) != 0 || query == IntPtr.Zero)
+                    {
+                        query = IntPtr.Zero;
+                        return false;
+                    }
+                    if (PdhAddEnglishCounterW(query, @"\GPU Engine(*engtype_3D)\Utilization Percentage",
+                            IntPtr.Zero, out counter) != 0)
+                    {
+                        Close();
+                        return false;
+                    }
+                    primed = PdhCollectQueryData(query) == 0;
+                    return true;
+                }
+                catch { Close(); return false; }
+            }
+
+            // 目标进程当前的渲染适配器 打开后第一次调用只做基线 返回 null
+            public RenderAdapter Resolve(int pid)
+            {
+                if (query == IntPtr.Zero || pid <= 0) return null;
+                try
+                {
+                    if (PdhCollectQueryData(query) != 0) return null;
+                    if (!primed) { primed = true; return null; }
+                    return PickAdapter(counter, pid);
+                }
+                catch { return null; }
+            }
+
+            public void Close()
+            {
+                if (query == IntPtr.Zero) return;
+                try { PdhCloseQuery(query); } catch { }
+                query = IntPtr.Zero;
+                counter = IntPtr.Zero;
+                primed = false;
+            }
+
+            public void Dispose() { Close(); }
+        }
+
         private const uint PDH_FMT_DOUBLE = 0x00000200;
         private const uint PDH_MORE_DATA = 0x800007D2;
 

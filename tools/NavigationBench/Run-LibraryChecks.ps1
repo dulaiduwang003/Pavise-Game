@@ -18,9 +18,18 @@ $libraryProcess = $null
 try {
     $libraryProcess = Start-Process -FilePath $libraryExe -ArgumentList ('"' + $libraryOutput + '"') -WorkingDirectory $libraryOutput -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $libraryOutput 'console.log') -RedirectStandardError (Join-Path $libraryOutput 'stderr.log')
     if (-not $libraryProcess.WaitForExit(55000)) { $libraryProcess.Kill(); throw 'Owned library UI bench exceeded 55 seconds.' }
-    Get-Content -LiteralPath (Join-Path $libraryOutput 'console.log')
-    Get-Content -LiteralPath (Join-Path $libraryOutput 'stderr.log')
-    if ($libraryProcess.ExitCode -ne 0) { throw 'Library UI tests failed.' }
+    $libraryProcess.WaitForExit()
+    $libraryProcess.Refresh()
+    $libraryConsole = @(Get-Content -LiteralPath (Join-Path $libraryOutput 'console.log'))
+    $libraryErrors = @(Get-Content -LiteralPath (Join-Path $libraryOutput 'stderr.log'))
+    $libraryConsole
+    $libraryErrors
+    $libraryExitCode = $libraryProcess.ExitCode
+    if ($null -eq $libraryExitCode) {
+        $libraryPassed = @($libraryConsole | Where-Object { $_ -like 'PASS add-game assertions=*' }).Count -eq 1
+        $libraryExitCode = if ($libraryPassed -and $libraryErrors.Count -eq 0) { 0 } else { 1 }
+    }
+    if ($libraryExitCode -ne 0) { throw ('Library UI tests failed with exit code ' + $libraryExitCode + '.') }
 }
 finally {
     if ($null -ne $libraryProcess) { $libraryProcess.Dispose() }

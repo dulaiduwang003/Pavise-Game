@@ -19,7 +19,9 @@ namespace PaviseApp
                 ReEnableResumesWriting,
                 ResetBarrierOutranksTheUserSwitch,
                 ClearStillWorksWhileDisabled,
-                TailStillReadableWhileDisabled
+                TailStillReadableWhileDisabled,
+                VersionAdvancesOnlyOnWrites,
+                SettingsCachedReadFollowsWrites
             };
             try
             {
@@ -129,6 +131,39 @@ namespace PaviseApp
             string tail = Logger.Tail(50);
             LogWritesCheck(tail.Contains("visible-line"),
                 "existing content became unreadable while writing was disabled");
+        }
+
+        // 日志页靠 Version 决定要不要再读文件 只有真正落盘和清空才推进 读尾部和被丢弃的写入都不动
+        private static void VersionAdvancesOnlyOnWrites(string root)
+        {
+            Logger.LogPath = Path.Combine(root, "version.log");
+            Logger.WritesEnabled = true;
+            long before = Logger.Version;
+            Logger.Log("first");
+            Eq(before + 1, Logger.Version);
+            Logger.Tail(10);
+            Eq(before + 1, Logger.Version);
+            Logger.WritesEnabled = false;
+            Logger.Log("dropped");
+            Eq(before + 1, Logger.Version);
+            Logger.WritesEnabled = true;
+            Logger.Clear();
+            Eq(before + 2, Logger.Version);
+        }
+
+        // 缓存读只在有过写入之后才回源 任何 Save/Remove 都让它重新读
+        private static void SettingsCachedReadFollowsWrites(string root)
+        {
+            const string key = "SelfTestCachedFlag";
+            Settings.Remove(key);
+            Eq(false, Settings.LoadCached(key, false));
+            Settings.Save(key, true);
+            Eq(true, Settings.LoadCached(key, false));
+            Eq(true, Settings.LoadCached(key, false));
+            Settings.Save(key, false);
+            Eq(false, Settings.LoadCached(key, false));
+            Settings.Remove(key);
+            Eq(true, Settings.LoadCached(key, true));
         }
     }
 }

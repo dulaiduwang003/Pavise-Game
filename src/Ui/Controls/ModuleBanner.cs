@@ -16,12 +16,24 @@ namespace PaviseApp
         private string glyph = "settings";
         private Color stateColor = Theme.Accent;
 
-        public string Code { get { return code; } set { code = value ?? ""; Invalidate(); } }
-        public string TitleText { get { return title; } set { title = value ?? ""; Invalidate(); } }
-        public string Detail { get { return detail; } set { detail = value ?? ""; Invalidate(); } }
-        public string State { get { return state; } set { state = value ?? ""; Invalidate(); } }
-        public string Glyph { get { return glyph; } set { glyph = value ?? "settings"; Invalidate(); } }
-        public Color StateColor { get { return stateColor; } set { stateColor = value; Invalidate(); } }
+        public string Code { get { return code; } set { SetText(ref code, value, ""); } }
+        public string TitleText { get { return title; } set { SetText(ref title, value, ""); } }
+        public string Detail { get { return detail; } set { SetText(ref detail, value, ""); } }
+        public string State { get { return state; } set { SetText(ref state, value, ""); } }
+        public string Glyph { get { return glyph; } set { SetText(ref glyph, value, "settings"); } }
+        public Color StateColor
+        {
+            get { return stateColor; }
+            set { if (stateColor == value) return; stateColor = value; Invalidate(); }
+        }
+
+        private void SetText(ref string field, string value, string fallback)
+        {
+            string next = value ?? fallback;
+            if (field == next) return;
+            field = next;
+            Invalidate();
+        }
 
         public ModuleBanner()
         {

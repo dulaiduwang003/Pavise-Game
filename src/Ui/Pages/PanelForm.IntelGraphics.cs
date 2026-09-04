@@ -79,14 +79,14 @@ namespace PaviseApp
             {
                 // 锁定标签与显卡页同一套 档位强制"预设强制开" 本机不支持"本机不适用"
                 SettingCard enduranceCard = swIntelEndurance.Parent as SettingCard;
-                if (ExtremeGraphicsForced())
+                bool usable = IntelGraphicsTweaks.HasAvailable && Native.HasSystemBattery();
+                if (ExtremeGraphicsForced(PolicyCatalog.KeyIntelEndurance, usable))
                 {
                     swIntelEndurance.SetSilently(true); swIntelEndurance.Enabled = false;
                     if (enduranceCard != null) enduranceCard.SetLock(Lang.T("v14.preset.forced.on"), true);
                 }
                 else
                 {
-                    bool usable = IntelGraphicsTweaks.HasAvailable && Native.HasSystemBattery();
                     swIntelEndurance.SetSilently(gameMode.IntelEnduranceOff);
                     swIntelEndurance.Enabled = gameMode.IntelEnduranceOff || usable;
                     if (enduranceCard != null)
@@ -95,6 +95,13 @@ namespace PaviseApp
             }
             if (swIntelLowLatency == null) return;
             SettingCard lowLatencyCard = swIntelLowLatency.Parent as SettingCard;
+            bool lowLatencySupported = IntelGraphicsTweaks.HasAvailable && IntelGraphicsTweaks.LowLatencySupported;
+            if (ExtremeGraphicsForced(PolicyCatalog.KeyIntelLowLatency, lowLatencySupported))
+            {
+                swIntelLowLatency.SetSilently(true); swIntelLowLatency.Enabled = false;
+                if (lowLatencyCard != null) lowLatencyCard.SetLock(Lang.T("v14.preset.forced.on"), true);
+                return;
+            }
             if (lowLatencyCard != null)
                 lowLatencyCard.SetLock(!gameMode.IntelLowLatency && !IntelGraphicsTweaks.LowLatencySupported
                     ? Lang.T("lock.na") : "", false);

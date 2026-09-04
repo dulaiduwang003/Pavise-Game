@@ -11,7 +11,7 @@ namespace PaviseApp
 {
     internal class AddGameDialog : Form
     {
-        private enum RowKind { Installed, Running }
+        private enum RowKind { Installed, Running, Picked }
 
         // 工作线程先把可执行文件路径解析好 再把这些不带资源的快照投给界面
         private sealed class Candidate
@@ -21,6 +21,8 @@ namespace PaviseApp
             public string Root;
             public long Memory;
             public int Count;
+            // 手动给的路径 拖进来的 浏览的 文件夹里挑出来的 唯一命中时直接勾上
+            public bool Pick;
         }
 
         private class Row
@@ -32,6 +34,8 @@ namespace PaviseApp
             public bool Already;
             public bool Installed;
             public bool Running;
+            // 用户自己给的条目 不随运行中列表的刷新被清掉
+            public bool Pinned;
             public long Memory;
             public int Count;
             public double Gpu;
@@ -50,7 +54,9 @@ namespace PaviseApp
         private ListBox lst;
         private TextBox tbFilter;
         private Label lblInfo;
-        private PillButton btnAdd, btnAll, btnBrowse;
+        private PillButton btnAdd, btnAll, btnBrowse, btnFolder;
+        private readonly List<string> seedPaths = new List<string>();
+        private int pickBusy;
         private volatile bool closed;
         private volatile bool scanning;
         private volatile bool collectingRunning;
@@ -63,8 +69,17 @@ namespace PaviseApp
         private bool selectionEdited;
 
         public AddGameDialog(IEnumerable<string> alreadyInLibrary, bool allowGpuProbe)
+            : this(alreadyInLibrary, allowGpuProbe, null)
+        {
+        }
+
+        // seeds 是主窗口上拖进来的文件夹 打开即列出里面的候选程序
+        public AddGameDialog(IEnumerable<string> alreadyInLibrary, bool allowGpuProbe, IEnumerable<string> seeds)
         {
             this.allowGpuProbe = allowGpuProbe;
+            if (seeds != null)
+                foreach (string seed in seeds)
+                    if (!string.IsNullOrEmpty(seed)) seedPaths.Add(seed);
             existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             if (alreadyInLibrary != null)
                 foreach (string p in alreadyInLibrary)
@@ -167,6 +182,10 @@ namespace PaviseApp
             btnBrowse.SetBounds(Theme.S(16), Theme.S(506), Theme.S(122), Theme.S(34));
             btnBrowse.Click += delegate { BrowseFile(); };
 
+            btnFolder = new PillButton(Lang.T("scan.folder"));
+            btnFolder.SetBounds(Theme.S(146), Theme.S(506), Theme.S(122), Theme.S(34));
+            btnFolder.Click += delegate { BrowseFolder(); };
+
             btnAdd = new PillButton(Lang.T("btn.add"), BtnKind.Primary);
             btnAdd.Enabled = false;
             btnAdd.SetBounds(Theme.S(392), Theme.S(506), Theme.S(110), Theme.S(34));
@@ -176,8 +195,12 @@ namespace PaviseApp
             btnCancel.SetBounds(Theme.S(514), Theme.S(506), Theme.S(90), Theme.S(34));
             btnCancel.Click += delegate { DialogResult = DialogResult.Cancel; };
 
-            Controls.AddRange(new Control[] { title, lblScanHint, lblClose, tbFilter, btnAll, listWrap, lblInfo, btnBrowse, btnAdd, btnCancel });
-            Load += delegate { StartTimers(); StartRunningCollect(true); StartScan(); };
+            Controls.AddRange(new Control[] { title, lblScanHint, lblClose, tbFilter, btnAll, listWrap, lblInfo, btnBrowse, btnFolder, btnAdd, btnCancel });
+            Load += delegate
+            {
+                StartTimers(); StartRunningCollect(true); StartScan();
+                if (seedPaths.Count > 0) AddDroppedPaths(seedPaths.ToArray());
+            };
             MouseDown += DragMove;
             KeyPreview = true;
             KeyDown += delegate(object s, KeyEventArgs e)
@@ -204,6 +227,19 @@ namespace PaviseApp
         {
             base.OnHandleCreated(e);
             Native.RoundCorners(Handle);
+            // 模态期间主窗口收不到拖放 这里自己收 EXE 快捷方式和文件夹都接
+            Native.EnableElevatedFileDrop(Handle);
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == Native.WM_DROPFILES)
+            {
+                AddDroppedPaths(Native.ReadDroppedFiles(m.WParam));
+                m.Result = IntPtr.Zero;
+                return;
+            }
+            base.WndProc(ref m);
         }
 
         protected override void OnShown(EventArgs e)
@@ -449,6 +485,98 @@ namespace PaviseApp
             }
         }
 
+        private void BrowseFolder()
+        {
+            using (var dlg = new FolderBrowserDialog())
+            {
+                dlg.Description = Lang.T("fbd.game");
+                dlg.ShowNewFolderButton = false;
+                if (dlg.ShowDialog(this) != DialogResult.OK) return;
+                AddDroppedPaths(new[] { dlg.SelectedPath });
+            }
+        }
+
+        // 用户直接给的路径 文件解析成候选并勾上 文件夹先按选举规则挑唯一主程序
+        //   挑不出唯一就把里面的候选都列出来让用户点 PE 读取在工作线程做 界面只收结果
+        private void AddDroppedPaths(string[] paths)
+        {
+            if (closed || paths == null || paths.Length == 0) return;
+            var files = new List<string>();
+            var folders = new List<string>();
+            foreach (string raw in paths)
+            {
+                if (string.IsNullOrWhiteSpace(raw)) continue;
+                string path = raw.Trim().Trim('"');
+                if (Directory.Exists(path)) folders.Add(path);
+                else files.Add(path);
+            }
+            if (files.Count == 0 && folders.Count == 0) return;
+            if (Interlocked.CompareExchange(ref pickBusy, 1, 0) != 0) return;
+            var worker = new Thread(delegate()
+            {
+                var hits = new List<Candidate>();
+                var emptyFolders = new List<string>();
+                string firstError = null;
+                try
+                {
+                    foreach (string file in files)
+                    {
+                        if (closed) return;
+                        string resolved, error;
+                        if (!GameExecutableResolver.TryResolve(file, out resolved, out error))
+                        {
+                            if (firstError == null && !string.IsNullOrEmpty(error)) firstError = error;
+                            continue;
+                        }
+                        hits.Add(new Candidate
+                        {
+                            Name = Path.GetFileNameWithoutExtension(resolved),
+                            Path = resolved,
+                            Root = GameScan.InferGameRoot(resolved),
+                            Pick = true
+                        });
+                    }
+                    foreach (string folder in folders)
+                    {
+                        if (closed) return;
+                        string folderName = Path.GetFileName(folder.TrimEnd('\\', '/'));
+                        string main = ExecutableCandidateProbe.PickMainExecutable(folder);
+                        if (main != null)
+                        {
+                            hits.Add(new Candidate { Name = folderName, Path = main, Root = folder, Pick = true });
+                            continue;
+                        }
+                        List<ExecutableCandidateFacts> list = ExecutableCandidateProbe.ListCandidates(folder, FolderCandidateCap);
+                        if (list.Count == 0) { emptyFolders.Add(folder); continue; }
+                        foreach (ExecutableCandidateFacts facts in list)
+                            hits.Add(new Candidate
+                            {
+                                Name = Path.GetFileNameWithoutExtension(facts.Path),
+                                Path = facts.Path,
+                                Root = folder,
+                                Pick = false
+                            });
+                    }
+                }
+                catch { }
+                finally { Interlocked.Exchange(ref pickBusy, 0); }
+                if (closed) return;
+                Post(delegate
+                {
+                    Merge(hits, RowKind.Picked);
+                    if (emptyFolders.Count > 0)
+                        PaviseDialog.Warn(this, App.DisplayName,
+                            Lang.T("scan.folder.none") + "\r\n" + string.Join("\r\n", emptyFolders.ToArray()));
+                    else if (firstError != null && hits.Count == 0)
+                        PaviseDialog.Warn(this, App.DisplayName, firstError);
+                });
+            });
+            worker.IsBackground = true;
+            worker.Start();
+        }
+
+        private const int FolderCandidateCap = 24;
+
         private void Merge(List<Candidate> hits, RowKind kind)
         {
             // 快照失败不能当成所有正在运行的程序都退出了
@@ -477,6 +605,15 @@ namespace PaviseApp
                     row.Root = hit.Root;
                 }
                 if (kind == RowKind.Installed) row.Installed = true;
+                else if (kind == RowKind.Picked)
+                {
+                    row.Pinned = true;
+                    if (hit.Pick && !row.Already && !row.Checked)
+                    {
+                        row.Checked = true;
+                        selectionEdited = true;
+                    }
+                }
                 else
                 {
                     row.Running = true;
@@ -501,8 +638,8 @@ namespace PaviseApp
                         row.RendererLike = false;
                         refill = true;
                     }
-                    // 程序关掉之后 显式挑选的条目仍然保留 已安装的条目也留着
-                    if (!row.Installed && !row.Checked)
+                    // 程序关掉之后 显式挑选的条目仍然保留 已安装的条目也留着 用户自己给的也留着
+                    if (!row.Installed && !row.Checked && !row.Pinned)
                     {
                         rows.RemoveAt(i);
                         refill = true;
@@ -533,6 +670,7 @@ namespace PaviseApp
         private static int RowGroup(Row r)
         {
             if (r.Already) return 3;
+            if (r.Pinned) return -1;
             if (r.RendererLike) return 0;
             return r.Running ? 1 : 2;
         }
@@ -704,7 +842,8 @@ namespace PaviseApp
 
             string status = r.Already ? Lang.T("scan.already")
                 : r.RendererLike ? Lang.F("scan.renderer.tag", (int)r.Gpu)
-                : r.Running ? Lang.T("scan.running.tag") : !r.Installed ? Lang.T("scan.stopped.tag") : "";
+                : r.Running ? Lang.T("scan.running.tag")
+                : r.Pinned ? Lang.T("scan.picked.tag") : !r.Installed ? Lang.T("scan.stopped.tag") : "";
             string details = r.Running ? RunningProgram.FormatMemory(r.Memory) : "";
             if (r.Running && r.Count > 1)
                 details += (details.Length > 0 ? " · " : "") + Lang.F("white.pick.procs", r.Count);

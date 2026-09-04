@@ -80,6 +80,7 @@ namespace PaviseApp
             acRosterBar.Controls.Add(lblAcRoster);
             y += 54;
             SyncAcRoster();
+
             acList = new DBPanel();
             acList.SetBounds(Theme.S(20), Theme.S(y), Theme.S(PageW - 40), Theme.S(PageH - y - 8));
             acList.BackColor = Theme.Bg; acList.AutoScroll = true; Native.Dark(acList); pageAntiCheat.Controls.Add(acList);

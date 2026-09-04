@@ -135,6 +135,10 @@ namespace PaviseApp
             run("AppGpuPreferences", delegate { RunAppGpuPreferencesRegressionTests(); });
             run("GraphicsInputUi", delegate { RunGraphicsInputUiRegressionTests(); });
             run("UiConfigAudit", delegate { RunUiConfigAuditRegressionTests(); });
+            run("PowerYieldTarget", delegate { RunPowerYieldTargetRegressionTests(); });
+            run("HeavySqueeze", delegate { RunHeavySqueezeRegressionTests(); });
+            run("AddGameFolder", delegate { RunAddGameFolderRegressionTests(); });
+            run("ReleaseNotes", delegate { RunReleaseNotesRegressionTests(); });
             run("UiAsyncState", delegate { RunUiAsyncStateRegressionTests(); });
 
             run("RendererHandoff", delegate { Eq(0, RunRendererHandoffRegressionTests()); });

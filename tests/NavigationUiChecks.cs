@@ -85,6 +85,23 @@ namespace PaviseApp
                 form.Location = new Point(-20000, -20000); form.Show();
                 Check(!form.UiActive, "UI refresh workers must stay paused");
                 Check(Field<object>(tamer, "worker") == null, "Tamer worker unexpectedly started");
+                Check(Field<ModeButton>(form, "modeButton").SourceText == Lang.T("mode.source.global"),
+                    "Top mode control does not show the global policy source");
+                Check(PanelForm.ModeSourceText("NEBULA", true) == Lang.F("mode.source.game.short", "NEBULA")
+                    && PanelForm.ModeSourceText("NEBULA", false) == Lang.F("mode.source.game", "NEBULA"),
+                    "Per-game policy source labels diverged");
+                var searchKey = new KeyEventArgs(Keys.Control | Keys.F);
+                Call(form, "OnEscHide", null, searchKey);
+                Check(Field<SearchFlyout>(form, "searchFlyout").Visible
+                    && searchKey.Handled && searchKey.SuppressKeyPress, "Ctrl+F did not open global search");
+                Call(form, "OnEscHide", null, new KeyEventArgs(Keys.Escape));
+                Check(!Field<SearchFlyout>(form, "searchFlyout").Visible, "Escape did not close global search");
+                var banner = Field<ModuleBanner>(form, "policyBanner");
+                int redundantBannerPaints = 0;
+                banner.Invalidated += delegate { redundantBannerPaints++; };
+                Call(form, "UpdateModePresentation", true);
+                Call(form, "UpdateModePresentation", true);
+                Check(redundantBannerPaints == 0, "Stable mode polling invalidated the hidden policy banner");
                 Check(Field<int>(form, "lastAdvancedPage") == (int)PageId.Policy, "Invalid remembered page was not rejected");
                 CheckExtremeUnlockOrder(form);
                 int prompts = 0;
@@ -111,6 +128,11 @@ namespace PaviseApp
                 tuning.InvokeItem((int)PageId.Graphics);
                 var gpuPanels = Field<DBPanel[]>(form, "gfxTabPanels");
                 var gpuTabs = Field<TechTabs>(form, "gfxTabs");
+                // 可见显卡功能会随测试机硬件变化；滚动保持测试自己建立确定的溢出区。
+                bool naturalGpuOverflow = gpuPanels[0].DisplayRectangle.Height > gpuPanels[0].ClientSize.Height;
+                int overflow = gpuPanels[0].ClientSize.Height + Theme.S(240);
+                if (gpuPanels[0].AutoScrollMinSize.Height < overflow)
+                    gpuPanels[0].AutoScrollMinSize = new Size(0, overflow);
                 gpuPanels[0].AutoScrollPosition = new Point(0, Theme.S(200));
                 int scrollY = gpuPanels[0].AutoScrollPosition.Y;
                 Check(scrollY < 0, "Fixture must exercise real overflow");
@@ -124,12 +146,16 @@ namespace PaviseApp
                 gpuTabs.Index = 1;
                 Theme.SetLight(!light);
                 Call(form, "RebuildUi");
+                CheckRebuildCaches(form);
                 main = Field<NavRail>(form, "nav"); tuning = Field<NavRail>(form, "tuningNav");
                 Check(main.Selected == (int)PageId.Graphics && tuning.Visible, "Rebuild left the advanced section");
                 CheckTuningHeader(form);
                 Check(Field<TechTabs>(form, "gfxTabs").Index == 1, "Rebuild lost the active sub-tab");
+                DBPanel rebuiltGpuPanel = Field<DBPanel[]>(form, "gfxTabPanels")[0];
                 Field<TechTabs>(form, "gfxTabs").Index = 0;
-                Check(Field<DBPanel[]>(form, "gfxTabPanels")[0].AutoScrollPosition.Y == scrollY, "Rebuild lost an inactive tab's scroll");
+                // 没有真实溢出时 WinForms 会把合成位置钳回 0；跨 DPI 的逻辑位置另有纯合成测试。
+                Check(!naturalGpuOverflow || rebuiltGpuPanel.AutoScrollPosition.Y == scrollY,
+                    "Rebuild lost an inactive tab's scroll");
                 Check(Field<int>(form, "mainReturnPage") == (int)PageId.Log, "Rebuild overwrote the return destination");
                 tuning.InvokeItem((int)PageId.Policy);
                 Check(Field<TechTabs>(form, "policyTabs").Index == 3, "Rebuild lost an inactive page's sub-tab");
@@ -156,6 +182,7 @@ namespace PaviseApp
 
                 Theme.SetLight(light);
                 Call(form, "RebuildUi");
+                CheckRebuildCaches(form);
                 form.SelectPageForTest((int)PageId.Policy);
                 Field<TechTabs>(form, "policyTabs").Index = 0;
                 Settle(form);
@@ -183,6 +210,18 @@ namespace PaviseApp
             Control page = Field<DBPanel>(form, "curPage");
             page.Left = Field<int>(form, "pageBaseLeft");
             form.Refresh();
+        }
+
+        private static void CheckRebuildCaches(PanelForm form)
+        {
+            Check(Field<List<GuardVeil>>(form, "guardVeils").Count == 1,
+                "Rebuild retained disposed guard veils");
+            Check(Field<List<Action>>(form, "themeRefreshers").Count == 1,
+                "Rebuild duplicated theme refresh callbacks");
+            foreach (Label label in Field<List<Label>>(form, "accentLabels"))
+                Check(label != null && !label.IsDisposed, "Rebuild retained a disposed accent label");
+            foreach (Control panel in Field<Dictionary<Control, Dictionary<Control, int>>>(form, "stackBase").Keys)
+                Check(panel != null && !panel.IsDisposed, "Rebuild retained a disposed collapsible panel");
         }
 
         private static void CheckTuningHeader(PanelForm form)

@@ -9,7 +9,7 @@ namespace PaviseApp
     internal sealed partial class SuppressionCore
     {
         private bool ThrottleMatches(IntPtr h, SuppressionLevel level, uint originalPriority, ulong originalAffinity,
-            uint[] originalCpuSets, int desiredGpu, bool antiCheat)
+            uint[] originalCpuSets, int desiredGpu, bool antiCheat, ulong desiredAffinity)
         {
             uint desiredPriority = DesiredPriority(level, originalPriority, antiCheat);
             if (Native.GetPriorityClass(h) != desiredPriority) return false;
@@ -30,17 +30,13 @@ namespace PaviseApp
                     || (qosControl & 1) == 0 || (qosState & 1) == 0) return false;
             }
 
-            // 2.0 起后台一律不改亲和性 收缩和移核整套下架 这里只负责把残留约束还原回去
-            //   下架理由是真实游戏里的手感 移核本身会造成卡顿 而收益在真实负载中并不明显
-            //   台架上那组 33 到 95 帧的数据用的是合成的内存带宽杀手负载 见 AUDIT-20260820.md
-            //   两边结论不一致是真的 保留那份报告 别以为它是错的或者被忘了
-            //   现在所有核心共用 谁先跑由优先级决定 不做物理隔离
+            // 后台亲和只在两种情况下离开当前值 目标都由 desiredAffinity 传进来
+            //   一是旧版残留 目标就是原值 这里把它还原回去
+            //   二是重压后台绑核 热度坐实的已隔离后台被限定到最窄落点 见 HeavySqueezePolicy
+            //   2.0 下架全员绑核的教训不变 空闲进程一律不改亲和 只有持续吃 CPU 的才进这条路
+            //   AUDIT-20260820.md 那组合成负载数据与 1.8.1.3 台架三场景是这条路的依据
             if (!Native.CpuSetsMatch(h, originalCpuSets ?? new uint[0])) return false;
-            if (!CpuTopology.MultiGroup)
-            {
-                ulong desiredAffinity = originalAffinity != 0 ? originalAffinity : allMask;
-                if (Native.QueryAffinity(h) != desiredAffinity) return false;
-            }
+            if (!CpuTopology.MultiGroup && Native.QueryAffinity(h) != desiredAffinity) return false;
             return true;
         }
 
@@ -82,6 +78,12 @@ namespace PaviseApp
                 || backgroundLevel < SuppressionLevel.Restrained) return origGpu;
             return backgroundLevel >= SuppressionLevel.Isolated
                 ? Native.GpuPriorityIdle : Native.GpuPriorityBelowNormal;
+        }
+
+        // 亲和目标跟着条目走 只有后台原因在场且热度坐实时才离开原值
+        private ulong DesiredAffinityOf(Entry e)
+        {
+            return HeavySqueezePolicy.DesiredAffinity(e.Reasons, e.SqueezeAff, e.OrigAff, allMask);
         }
 
         // 硬件调度开着时进程调度类归 GPU 管 写了没用还会记一次 gpu-write 失败
@@ -129,7 +131,7 @@ namespace PaviseApp
         }
 
         private bool ApplyThrottle(IntPtr h, SuppressionLevel level, uint originalPriority, ulong originalAffinity,
-            uint[] originalCpuSets, int desiredGpu, int origBoost, bool antiCheat)
+            uint[] originalCpuSets, int desiredGpu, int origBoost, bool antiCheat, ulong desiredAffinity)
         {
             BeginMutation();
             try
@@ -150,22 +152,23 @@ namespace PaviseApp
                 }
             }
 
-            // 2.0 起后台一律不改亲和性 收缩和移核整套下架 这里只负责把残留约束还原回去
-            //   下架理由是真实游戏里的手感 移核本身会造成卡顿 而收益在真实负载中并不明显
-            //   台架上那组 33 到 95 帧的数据用的是合成的内存带宽杀手负载 见 AUDIT-20260820.md
-            //   两边结论不一致是真的 保留那份报告 别以为它是错的或者被忘了
-            //   现在所有核心共用 谁先跑由优先级决定 不做物理隔离
+            // 后台亲和只在两种情况下离开当前值 目标都由 desiredAffinity 传进来
+            //   一是旧版残留 目标就是原值 这里把它还原回去
+            //   二是重压后台绑核 热度坐实的已隔离后台被限定到最窄落点 见 HeavySqueezePolicy
+            //   2.0 下架全员绑核的教训不变 空闲进程一律不改亲和 只有持续吃 CPU 的才进这条路
+            //   AUDIT-20260820.md 那组合成负载数据与 1.8.1.3 台架三场景是这条路的依据
             if (!Native.CpuSetsMatch(h, originalCpuSets)
                 && !Native.RestoreCpuSetsVerified(h, originalCpuSets))
                 failed.Add("cpu-sets-restore");
             if (!CpuTopology.MultiGroup)
             {
-                ulong desiredAffinity = originalAffinity != 0 ? originalAffinity : allMask;
+                ulong originalAllowed = originalAffinity != 0 ? originalAffinity : allMask;
+                bool squeezing = desiredAffinity != originalAllowed;
                 if (Native.QueryAffinity(h) != desiredAffinity
                     && !Native.SetProcessAffinityMask(h, (UIntPtr)desiredAffinity))
-                    failed.Add("affinity-restore");
+                    failed.Add(squeezing ? "affinity-write" : "affinity-restore");
                 if (Native.QueryAffinity(h) != desiredAffinity)
-                    failed.Add("affinity-restore-readback");
+                    failed.Add(squeezing ? "affinity-readback" : "affinity-restore-readback");
             }
             int io = DesiredIoPriority(level);
             if (Native.QueryIoPriority(h) != io

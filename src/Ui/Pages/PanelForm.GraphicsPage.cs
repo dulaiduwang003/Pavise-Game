@@ -59,7 +59,8 @@ namespace PaviseApp
             swNvMax = MakeSwitch(gameMode.NvMaxPerf, null);
             BindGraphicsToggle(swNvMax, delegate { return gameMode.NvMaxPerf; },
                 delegate(bool v) { gameMode.NvMaxPerf = v; }, delegate { return NvApi.Available; }, null,
-                delegate { return NvApi.Available; }, ExtremeGraphicsForced);
+                delegate { return NvApi.Available; },
+                delegate { return ExtremeGraphicsForced(PolicyCatalog.KeyNvMaxPerf, NvApi.Available); });
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvmax"),
                 nvOk ? Lang.T("set.nvmax.n") : nvNone, swNvMax, out cardH);
             sy += cardH + 8;
@@ -80,7 +81,8 @@ namespace PaviseApp
             nvllPicker.Labels = new[] { Lang.T("frl.off"), Lang.T("nvll.on"), Lang.T("nvll.ultra") };
             nvllPicker.Index = NvllIndexOf(gameMode.NvLowLatMode);
             BindGraphicsPicker(nvllPicker, delegate { return NvllIndexOf(gameMode.NvLowLatMode); },
-                delegate(int i) { gameMode.NvLowLatMode = NvllModeOf(i); }, delegate { return NvApi.Available; });
+                delegate(int i) { gameMode.NvLowLatMode = NvllModeOf(i); }, delegate { return NvApi.Available; },
+                delegate { return ExtremeGraphicsForced(PolicyCatalog.KeyNvLowLat, NvApi.Available) ? 1 : -1; });
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvll"),
                 nvOk ? Lang.T("set.nvll.n") : nvNone, nvllPicker, out cardH);
             sy += cardH + 8;
@@ -100,7 +102,8 @@ namespace PaviseApp
             swNvShader = MakeSwitch(gameMode.NvShaderCacheMax, null);
             BindGraphicsToggle(swNvShader, delegate { return gameMode.NvShaderCacheMax; },
                 delegate(bool v) { gameMode.NvShaderCacheMax = v; }, delegate { return NvApi.Available; }, null,
-                delegate { return NvApi.Available; }, ExtremeGraphicsForced);
+                delegate { return NvApi.Available; },
+                delegate { return ExtremeGraphicsForced(PolicyCatalog.KeyNvShaderCache, NvApi.Available); });
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.nvshader"),
                 nvOk ? Lang.T("set.nvshader.n") : nvNone, swNvShader, out cardH);
             sy += cardH + 8;
@@ -154,7 +157,12 @@ namespace PaviseApp
             BindGraphicsToggle(swAmdAlag, delegate { return gameMode.AmdAntiLag; },
                 delegate(bool v) { gameMode.AmdAntiLag = v; },
                 delegate { return AdlxTweaks.Available && AdlxTweaks.AntiLagSupported(); }, null,
-                delegate { return AdlxTweaks.Available && AdlxTweaks.AntiLagSupported(); }, ExtremeGraphicsForced);
+                delegate { return AdlxTweaks.Available && AdlxTweaks.AntiLagSupported(); },
+                delegate
+                {
+                    return ExtremeGraphicsForced(PolicyCatalog.KeyAmdAntiLag,
+                        AdlxTweaks.Available && AdlxTweaks.AntiLagSupported());
+                });
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.amdalag"),
                 !amdOk ? amdNone : alagOk ? Lang.T("set.amdalag.n") : amdNoSup, swAmdAlag, out cardH);
             sy += cardH + 8;
@@ -197,10 +205,12 @@ namespace PaviseApp
             EnableCardCollapse(gfxTabPanels[2]);
         }
 
-        // 显卡页四个极限清单项共用 全局模式为极限时显示锁定
-        private bool ExtremeGraphicsForced()
+        // 显卡页极限清单项共用 全局模式为极限且解析层仍在强制这个键才显示锁定
+        //   熔断进了退出集或本机根本不支持的项 解析层不强制 界面也不能挂预设强制的锁
+        private bool ExtremeGraphicsForced(string key, bool supported)
         {
-            return gameMode.ActivePreset == PerformancePreset.Extreme;
+            return supported && gameMode.ActivePreset == PerformancePreset.Extreme
+                && ExtremeMode.ForcedPolicyValue(key) != null;
         }
 
         private void BindGraphicsToggle(Toggle toggle, Func<bool> read, Action<bool> write,
@@ -259,13 +269,31 @@ namespace PaviseApp
         private void BindGraphicsPicker(TierPicker picker, Func<int> read, Action<int> write,
             Func<bool> supported)
         {
+            BindGraphicsPicker(picker, read, write, supported, null);
+        }
+
+        // extremeForced 返回极限档钉住的索引 负数表示不锁 选择器锁住时卡片挂预设强制的标签
+        private void BindGraphicsPicker(TierPicker picker, Func<int> read, Action<int> write,
+            Func<bool> supported, Func<int> extremeForced)
+        {
             Action sync = delegate
             {
+                SettingCard card = picker.Parent as SettingCard;
+                int forced = extremeForced != null ? extremeForced() : -1;
+                if (forced >= 0)
+                {
+                    picker.Index = forced;
+                    picker.Enabled = false;
+                    if (card != null) card.SetLock(Lang.T("v14.preset.forced.on"), true);
+                    return;
+                }
                 int index = read();
                 picker.Index = index;
                 picker.Enabled = index != 0 || supported();
+                if (extremeForced != null && card != null) card.SetLock("", false);
             };
-            graphicsSync.Add(sync);
+            if (graphicsSync != null) graphicsSync.Add(sync);
+            if (extremeForced != null) picker.ParentChanged += delegate { sync(); };
             picker.IndexChanged = delegate(int index)
             {
                 // 所有厂商选择器都用索引 0 表示关闭 之前开着的选择器

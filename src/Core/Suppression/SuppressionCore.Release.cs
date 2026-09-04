@@ -177,15 +177,22 @@ namespace PaviseApp
                     had = SameName(e.Name, expectedName);
                 if (!had) return 0;
                 SuppressionLevel previousLevel = e.Level;
+                bool hadSqueeze = e.SqueezeAff != 0;
                 e.Reasons &= ~reason;
                 if ((reason & SuppressReason.AntiCheat) != 0) e.AntiCheatLevel = SuppressionLevel.None;
-                if ((reason & SuppressReason.Background) != 0) e.BackgroundLevel = SuppressionLevel.None;
+                // 后台原因一撤 绑核落点也清掉 下次再进后台由热度重新判 不许带着旧落点直接绑上
+                //   条目仍带反作弊原因时落点归反作弊路 由那边的开关决定 这里不动
+                if ((reason & SuppressReason.Background) != 0)
+                {
+                    e.BackgroundLevel = SuppressionLevel.None;
+                    if ((e.Reasons & ~reason & SuppressReason.AntiCheat) == 0) e.SqueezeAff = 0;
+                }
                 e.Level = EffectiveLevel(e);
                 if (e.Reasons != SuppressReason.None)
                 {
                     remaining = true;
                     adjust = e.OrigPri != uint.MaxValue && e.Journaled
-                        && (previousLevel != e.Level || !e.Applied);
+                        && (previousLevel != e.Level || !e.Applied || hadSqueeze);
                     PersistJournalLocked();
                 }
                 else if (e.OrigPri == uint.MaxValue) { map.Remove(pid); PersistJournalLocked(); return 0; }
@@ -203,7 +210,7 @@ namespace PaviseApp
                 IntPtr h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_SET_LIMITED_INFORMATION
                     | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
                 bool applied = false;
-                if (h != IntPtr.Zero) { try { if (SameProcess(h, e)) applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost, AntiCheatThrottled(e)); } finally { Native.CloseHandle(h); } }
+                if (h != IntPtr.Zero) { try { if (SameProcess(h, e)) applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost, AntiCheatThrottled(e), DesiredAffinityOf(e)); } finally { Native.CloseHandle(h); } }
                 lock (sync)
                 {
                     Entry cur;
@@ -279,7 +286,7 @@ namespace PaviseApp
                 IntPtr h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_SET_LIMITED_INFORMATION
                     | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
                 bool applied = false;
-                if (h != IntPtr.Zero) { try { if (SameProcess(h, e)) applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost, AntiCheatThrottled(e)); } finally { Native.CloseHandle(h); } }
+                if (h != IntPtr.Zero) { try { if (SameProcess(h, e)) applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost, AntiCheatThrottled(e), DesiredAffinityOf(e)); } finally { Native.CloseHandle(h); } }
                 lock (sync)
                 {
                     Entry cur;

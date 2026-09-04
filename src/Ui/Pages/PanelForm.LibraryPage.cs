@@ -246,6 +246,11 @@ namespace PaviseApp
 
         private void ShowAddGameDialog()
         {
+            ShowAddGameDialog(null);
+        }
+
+        private void ShowAddGameDialog(IEnumerable<string> seeds)
+        {
             var known = new List<string>();
             foreach (GameProfile p in gameMode.GetProfiles())
             {
@@ -253,7 +258,7 @@ namespace PaviseApp
                 if (!string.IsNullOrEmpty(p.LearnedExecutablePath)) known.Add(p.LearnedExecutablePath);
             }
 
-            using (var dlg = new AddGameDialog(known, gameMode.ActiveGame == null))
+            using (var dlg = new AddGameDialog(known, gameMode.ActiveGame == null, seeds))
             {
                 if (ShowDim(dlg) != DialogResult.OK || dlg.Selected.Count == 0) return;
                 string lastError;
@@ -356,12 +361,19 @@ namespace PaviseApp
         private void AddDroppedGames(string[] files)
         {
             if (files == null) return;
+            // 文件夹不直接入库 打开添加窗口列出里面的候选程序 唯一命中的会预先勾上
+            var folders = new List<string>();
             string error = null;
             foreach (string file in files)
+            {
+                if (string.IsNullOrEmpty(file)) continue;
+                if (Directory.Exists(file)) { folders.Add(file); continue; }
                 if (!gameMode.AddGameFile(file, out error) && error != Lang.T("t.gamemodelibrary.1")) break;
+            }
             if (!string.IsNullOrEmpty(error) && error != Lang.T("t.gamemodelibrary.1"))
                 PaviseDialog.Warn(this, App.DisplayName, error);
             RefreshGames();
+            if (folders.Count > 0) ShowAddGameDialog(folders);
         }
 
         private static bool RunningIn(Dictionary<string, bool> states, string executablePath)

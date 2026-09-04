@@ -46,6 +46,8 @@ namespace PaviseApp
                 ResetFlowDriverAdmissionSealed,
                 ResetFlowDriverInFlightMustDrain,
                 ResetFlowPowerAdmissionSealed,
+                ResetFlowAutonomousMinimumPolicy,
+                ResetFlowPowerSchemeNotificationUsesLightweightAudit,
                 ResetFlowPowerLateResultIsNotPublished,
                 ResetFlowDrainRejectsLiveAndReentrantCallers,
                 ResetFlowDrainWaitsForOtherWriteGates,
@@ -552,11 +554,60 @@ namespace PaviseApp
                 int writes = 0;
                 Func<bool> apply = delegate { writes++; return true; };
                 ResetFlowCheck((bool)FamilyPolicyInvoke(f.Mode, "RunPowerPlanApply", 7, apply), "current fake power mutation was rejected");
+                long audit = (long)FamilyPolicyGetField(f.Mode, "nextPowerAuditTicks");
+                ResetFlowCheck(audit == long.MaxValue,
+                    "successful power apply left periodic ownership auditing armed");
                 ResetFlowCheck(!(bool)FamilyPolicyInvoke(f.Mode, "RunPowerPlanApply", 6, apply), "stale power generation was admitted");
                 FamilyPolicySetField(f.Mode, "stopping", true);
                 ResetFlowCheck(!(bool)FamilyPolicyInvoke(f.Mode, "RunPowerPlanApply", 7, apply), "late power apply was admitted");
                 ResetFlowCheck(writes == 1 && platform.ForbiddenCalls == 0, "power gate ran an unexpected action or capture");
             }
+        }
+
+        private static void ResetFlowPowerSchemeNotificationUsesLightweightAudit(string root)
+        {
+            using (var f = new FamilyPolicyFixture(root, "reset-power-notification"))
+            {
+                FamilyPolicySetField(f.Mode, "enabled", true);
+                FamilyPolicySetField(f.Mode, "active", true);
+                FamilyPolicySetField(f.Mode, "planActive", true);
+                FamilyPolicySetField(f.Mode, "nextPowerAuditTicks", long.MaxValue);
+                FamilyPolicySetField(f.Mode, "powerApplyInFlight", 1);
+                FamilyPolicySetField(f.Mode, "powerPlanNotificationPending", 0);
+                FamilyPolicySetField(f.Mode, "urgentProcessScan", 0);
+
+                FamilyPolicyInvoke(f.Mode, "NotifyPowerSchemeChanged");
+
+                ResetFlowCheck((int)FamilyPolicyGetField(f.Mode,
+                    "powerPlanNotificationPending") == 1,
+                    "active-plan notification was not coalesced for its lightweight audit");
+                ResetFlowCheck((long)FamilyPolicyGetField(f.Mode, "nextPowerAuditTicks") == long.MaxValue
+                    && (int)FamilyPolicyGetField(f.Mode, "urgentProcessScan") == 0,
+                    "active-plan notification woke the full process policy scan");
+
+                FamilyPolicySetField(f.Mode, "active", false);
+                FamilyPolicySetField(f.Mode, "powerApplyInFlight", 0);
+                FamilyPolicySetField(f.Mode, "powerPlanNotificationPending", 0);
+                FamilyPolicySetField(f.Mode, "nextPowerAuditTicks", long.MaxValue);
+                FamilyPolicySetField(f.Mode, "urgentProcessScan", 0);
+                FamilyPolicyInvoke(f.Mode, "NotifyPowerSchemeChanged");
+                ResetFlowCheck((long)FamilyPolicyGetField(f.Mode, "nextPowerAuditTicks") == long.MaxValue
+                    && (int)FamilyPolicyGetField(f.Mode, "urgentProcessScan") == 0,
+                    "idle notification woke power-plan ownership enforcement");
+            }
+        }
+
+        private static void ResetFlowAutonomousMinimumPolicy(string root)
+        {
+            ResetFlowCheck(PowerPlan.AutonomousMinimumForTest(false, true, false) == 100
+                && PowerPlan.AutonomousMinimumForTest(true, true, false) == 100,
+                "legacy scaling no longer preserves the aggressive minimum");
+            ResetFlowCheck(PowerPlan.AutonomousMinimumForTest(false, true, true) == 20
+                && PowerPlan.AutonomousMinimumForTest(true, true, true) == 20,
+                "autonomous AC scaling did not release the processor minimum");
+            ResetFlowCheck(PowerPlan.AutonomousMinimumForTest(false, false, true) == 10
+                && PowerPlan.AutonomousMinimumForTest(true, false, true) == 10,
+                "autonomous DC scaling did not release the processor minimum");
         }
 
         private static void ResetFlowPowerLateResultIsNotPublished(string root)
@@ -2262,6 +2313,19 @@ namespace PaviseApp
                     ResetFlowCheck(PowerPlan.RestorePlanForTest(crash) && f.Sets==0 && f.Queries==0
                         && f.OrphanCalls==(crash?0:1),"startup empty journal ran orphan recovery or shutdown omitted it");
                 }
+            }
+            // 正常会话内第三方在退出前切走方案，仍必须还原本局捕获的
+            // 原方案；只有崩溃重载后才把未知活动方案视作用户的新选择。
+            using(var f=new ResetFlowPowerPlanFixture()) {
+                Settings.SaveStr("PrevPowerPlan","");f.Current=f.Original;
+                ResetFlowCheck(PowerPlan.ActivatePlanForTest() && f.Current==f.Managed,
+                    "forced-ownership fixture could not activate managed plan");
+                f.Current=f.External;
+                int sets=f.Sets;
+                ResetFlowCheck(PowerPlan.RestorePlanForTest(false)
+                    && f.Sets==sets+1 && f.Current==f.Original
+                    && Settings.LoadStr("PrevPowerPlan","")=="",
+                    "live session surrendered restore ownership to an external plan switch");
             }
             ResetFlowPowerPlanActivationRecovery();
             ResetFlowPowerPlanSettledCleanup();

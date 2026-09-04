@@ -3,6 +3,8 @@
 // 极限档回归 重启门 取值解析 覆盖清单 退出集 不碰任何真实环境项
 #if PAVISE_SELFTEST
 using System;
+using System.Collections.Generic;
+using System.Runtime.Serialization;
 
 namespace PaviseApp
 {
@@ -22,6 +24,7 @@ namespace PaviseApp
                 ExtremePowerKnobsAreTierExclusive,
                 ExtremeGatesFollowHardwareEvidence,
                 ExtremeForcesEnvOnlyWhileUnlockedAndNotOptedOut,
+                ExtremeForcesLiveSessionPreferences,
                 ExtremeCrashFuseTripsOnRepeatedAbnormalRestarts,
                 ExtremeManageListLabelsEverySessionKey
             };
@@ -177,11 +180,41 @@ namespace PaviseApp
             ExtCheck(ExtremeMode.ReconcileEnvItems(out failed) == 0 && failed == 0,
                 "the startup reconcile is a no-op while locked");
             ExtremeUnlockPastGate();
-            ExtCheck(ExtremeMode.ForcesEnv("gtimer") && ExtremeMode.ForcesEnv("timertick"),
-                "unlocking forces the timer items");
-            ExtremeMode.SetOptedOut("gtimer", true);
-            ExtCheck(!ExtremeMode.ForcesEnv("gtimer") && ExtremeMode.ForcesEnv("timertick"),
+            ExtCheck(ExtremeMode.ForcesEnv("gmguard") && ExtremeMode.ForcesEnv("devpower"),
+                "unlocking forces the items every machine is eligible for");
+            ExtCheck(!ExtremeMode.ForcesEnv("gtimer") && !ExtremeMode.ForcesEnv("timertick"),
+                "retired timer items are never forced even while unlocked");
+            ExtremeMode.SetOptedOut("gmguard", true);
+            ExtCheck(!ExtremeMode.ForcesEnv("gmguard") && ExtremeMode.ForcesEnv("devpower"),
                 "an item stopped in the manage list is no longer forced");
+        }
+
+        // 英文输入与 Intel 低延迟走实时偏好 不经快照层 这里守住它们与快照层同一口径
+        private static void ExtremeForcesLiveSessionPreferences()
+        {
+            ExtremeUnlockPastGate();
+            var profile = new GameProfile { Id = "extreme-live", Name = "Mock game" };
+            profile.Overrides[PolicyCatalog.KeyPreset] = "5";
+            var mode = (GameMode)FormatterServices.GetUninitializedObject(typeof(GameMode));
+            FamilyPolicySetField(mode, "sync", new object());
+            FamilyPolicySetField(mode, "profiles", new List<GameProfile> { profile });
+            FamilyPolicySetField(mode, "sessionPolicy", PolicyResolver.For(profile));
+            ExtCheck((bool)FamilyPolicyInvoke(mode, "LiveBoolPreferenceLocked", PolicyCatalog.KeyEnglishInput, false),
+                "an extreme session forces english input on with the global switch off");
+            ExtCheck((bool)FamilyPolicyInvoke(mode, "LiveBoolPreferenceLocked", PolicyCatalog.KeyIntelLowLatency, false),
+                "an extreme session forces intel low latency on with the global switch off");
+            ExtCheck(!(bool)FamilyPolicyInvoke(mode, "LiveBoolPreferenceLocked", PolicyCatalog.KeyStandbyCleaner, false),
+                "keys outside the extreme list keep the global value");
+            ExtremeMode.SetOptedOut(PolicyCatalog.KeyIntelLowLatency, true);
+            ExtCheck(!(bool)FamilyPolicyInvoke(mode, "LiveBoolPreferenceLocked", PolicyCatalog.KeyIntelLowLatency, false),
+                "a stopped item is not forced in the live session either");
+            profile.Overrides[PolicyCatalog.KeyPreset] = "1";
+            FamilyPolicySetField(mode, "sessionPolicy", PolicyResolver.For(profile));
+            ExtCheck(!(bool)FamilyPolicyInvoke(mode, "LiveBoolPreferenceLocked", PolicyCatalog.KeyEnglishInput, false),
+                "an esports session leaves the global value alone");
+            FamilyPolicySetField(mode, "sessionPolicy", PolicyResolver.Global());
+            ExtCheck(!(bool)FamilyPolicyInvoke(mode, "LiveBoolPreferenceLocked", PolicyCatalog.KeyEnglishInput, false),
+                "a global session on a non-extreme tier keeps the global value");
         }
 
         // 极限会话键的完整性 极限专属的 WsTrim AudioLowLat 不在策略目录里 ItemOf 返回 null

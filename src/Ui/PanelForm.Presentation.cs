@@ -70,36 +70,54 @@ namespace PaviseApp
 
         private void UpdateModePresentation(bool animate)
         {
-            SyncGuardVeils();
             PerformancePreset effective = gameMode.ActivePreset;
             bool enabled = gameMode.Enabled;
-            bool visualChanged = !modeVisualInitialized || effective != visualMode || enabled != visualEnabled;
-            if (modeButton != null) modeButton.SetMode(effective);
-            if (lblHeroMode != null) lblHeroMode.Text = ModeButton.ModeName(effective);
-            if (lblHeroSource != null)
+            bool active = gameMode.IsActive;
+            string policySource = gameMode.SessionPolicySourceName;
+            bool first = !modeVisualInitialized;
+            bool visualChanged = first || effective != visualMode || enabled != visualEnabled;
+            bool sessionChanged = first || active != visualActive
+                || !string.Equals(policySource, visualPolicySource, StringComparison.Ordinal);
+
+            if (visualChanged)
             {
-                string policySource = gameMode.SessionPolicySourceName;
-                lblHeroSource.Text = policySource != null
-                    ? Lang.F("mode.source.game", policySource) : Lang.T("mode.source.global");
+                SyncGuardVeils();
+                if (modeButton != null) modeButton.SetMode(effective);
+                if (lblHeroMode != null) lblHeroMode.Text = ModeButton.ModeName(effective);
+                if (policyBanner != null)
+                    policyBanner.State = Lang.F("mode.policy.active", ModeButton.ModeName(effective));
             }
-            if (policyBanner != null)
-                policyBanner.State = Lang.F("mode.policy.active", ModeButton.ModeName(effective));
-            if (paviseCore != null) paviseCore.SetState(effective, enabled, gameMode.IsActive);
+            if (sessionChanged)
+            {
+                if (modeButton != null) modeButton.SetSource(ModeSourceText(policySource, true));
+                if (lblHeroSource != null) lblHeroSource.Text = ModeSourceText(policySource, false);
+            }
+            if (paviseCore != null) paviseCore.SetState(effective, enabled, active);
             if (effective != visualMode)
             {
                 visualMode = effective;
                 Theme.SetMode(effective, animate);
             }
             visualEnabled = enabled;
+            visualActive = active;
+            visualPolicySource = policySource;
             modeVisualInitialized = true;
-            RefreshModeAccentLabels();
-            RefreshExtremeCardAccent();
-            if (nav != null) nav.SetMode(effective, enabled);
-            if (tuningNav != null) tuningNav.SetMode(effective, enabled);
             if (visualChanged)
+            {
+                RefreshModeAccentLabels();
+                RefreshExtremeCardAccent();
+                if (nav != null) nav.SetMode(effective, enabled);
+                if (tuningNav != null) tuningNav.SetMode(effective, enabled);
                 using (Icon icon = IconArt.MakeMultiIcon(effective, enabled)) SetRuntimeIcon(icon);
-            RefreshPolicyPresentation();
+                RefreshPolicyPresentation();
+            }
             if (pageGameConfig != null && pageGameConfig.Visible) SyncCfgRows();
+        }
+
+        internal static string ModeSourceText(string sourceName, bool compact)
+        {
+            return string.IsNullOrEmpty(sourceName) ? Lang.T("mode.source.global")
+                : Lang.F(compact ? "mode.source.game.short" : "mode.source.game", sourceName);
         }
 
         private void OnThemeToggled(bool light)
@@ -141,6 +159,22 @@ namespace PaviseApp
             Controls.Clear();
             foreach (var c in old) c.Dispose();
             acGroups.Clear(); acCards.Clear(); acToggles.Clear();
+            // Rebuild 复用窗体实例；不要让已释放控件和捕获它们的委托跨主题/DPI 切换累积。
+            guardVeils.Clear();
+            accentLabels.Clear();
+            themeRefreshers.Clear();
+            policySync.Clear();
+            graphicsSync.Clear();
+            stackBase.Clear();
+            cfgRowSync.Clear();
+            cfgCardByKey.Clear();
+            lblCfgCount = null; lblCfgSub = null; cfgBanner = null; cfgTabs = null;
+            cfgTabPanels = null; cfgTabKeys = null;
+            for (int i = 0; i < modeAccentLabels.Length; i++)
+            {
+                modeAccentLabels[i] = null;
+                modeSwatches[i].Clear();
+            }
             BuildUi(appIcon);
             mainReturnPage = keepReturn;
             nav.Select(keep);
@@ -150,6 +184,7 @@ namespace PaviseApp
 
         protected override void WndProc(ref Message m)
         {
+            HandlePowerSchemeNotification(m);
             // ShowDialog 会在原生层禁用 owner 不一定触发托管 EnabledChanged
             if (m.Msg == 0x000A && m.WParam == IntPtr.Zero) StopPageReveal();
             if (m.Msg == Native.WM_DROPFILES)

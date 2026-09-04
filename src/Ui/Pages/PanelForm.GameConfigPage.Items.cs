@@ -78,7 +78,7 @@ namespace PaviseApp
             int ty = 2;
             AddCfgSection(cfgTabPanels[0], Lang.T("cfg.sub.range"), ref ty,
                 new[] { PolicyCatalog.KeySuppress, PolicyCatalog.KeyAggressive,
-                    PolicyCatalog.KeyGpuDemote });
+                    PolicyCatalog.KeyGpuDemote, PolicyCatalog.KeyHeavySqueeze });
             AddCfgSection(cfgTabPanels[0], Lang.T("cfg.sub.boost"), ref ty,
                 new[] { PolicyCatalog.KeyBoost,
                     PolicyCatalog.KeyRenderLane });
@@ -119,7 +119,7 @@ namespace PaviseApp
             cfgTabKeys = new[]
             {
                 new[] { PolicyCatalog.KeySuppress, PolicyCatalog.KeyAggressive,
-                    PolicyCatalog.KeyGpuDemote,
+                    PolicyCatalog.KeyGpuDemote, PolicyCatalog.KeyHeavySqueeze,
                     PolicyCatalog.KeyBoost,
                     PolicyCatalog.KeyRenderLane },
                 new[] { PolicyCatalog.KeyStrictCores, PolicyCatalog.KeyCoreDomainAlt,
@@ -181,6 +181,7 @@ namespace PaviseApp
                 case PolicyCatalog.KeyBoost: return "v15.boost.sub";
                 case PolicyCatalog.KeyAggressive: return "gm.aggressive.sub";
                 case PolicyCatalog.KeyGpuDemote: return "gm.gpudemote.sub";
+                case PolicyCatalog.KeyHeavySqueeze: return "gm.squeeze.sub";
                 case PolicyCatalog.KeyRenderLane: return "gm.lane.sub";
                 case PolicyCatalog.KeyPowerPlan: return "cfg.plan.sub";
                 case PolicyCatalog.KeyPowerYield: return "gm.poweryield.sub";

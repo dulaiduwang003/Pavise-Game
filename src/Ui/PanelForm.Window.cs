@@ -118,6 +118,7 @@ namespace PaviseApp
 
         private void SyncUiForeground(bool foreground)
         {
+            if (paviseCore != null) paviseCore.SetForeground(foreground);
             if (!foreground || !UiActive) return;
             UiClock.Wake();
             UiClock.WakeSlow();
@@ -162,8 +163,13 @@ namespace PaviseApp
             if (gameMode == null) return;
             if (lblStatus != null)
             {
-                lblStatus.Text = gameMode.StatusText;
-                FitLabelFont(lblStatus, true, StatusFontMax, StatusFontMin);
+                string status = gameMode.StatusText;
+                // 文案没变时不要每 1.2 秒重复跑多档 TextRenderer.MeasureText。
+                if (lblStatus.Text != status)
+                {
+                    lblStatus.Text = status;
+                    FitLabelFont(lblStatus, true, StatusFontMax, StatusFontMin);
+                }
             }
             bool act = gameMode.Enabled && gameMode.IsActive;
             UiClock.Frozen = act;

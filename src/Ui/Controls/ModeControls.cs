@@ -10,15 +10,26 @@ namespace PaviseApp
     internal sealed class ModeButton : FxControl
     {
         private PerformancePreset mode;
+        private string source;
         public Action Clicked;
 
-        public ModeButton() { Bg = Theme.Bg; }
+        public ModeButton() { Bg = Theme.Bg; source = Lang.T("mode.source.global"); }
 
         public void SetMode(PerformancePreset value)
         {
             if (mode == value) return;
             mode = value; Invalidate();
         }
+
+        public void SetSource(string value)
+        {
+            string next = value ?? "";
+            if (source == next) return;
+            source = next;
+            Invalidate();
+        }
+
+        internal string SourceText { get { return source; } }
 
         public void PerformClick()
         {
@@ -47,7 +58,7 @@ namespace PaviseApp
             TextRenderer.DrawText(g, ModeName(mode), Theme.UI(9.25f, true),
                 new Rectangle(Theme.S(38), Theme.S(5), Width - Theme.S(68), Theme.S(22)), Theme.Fg,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
-            TextRenderer.DrawText(g, Lang.T("mode.source.global"),
+            TextRenderer.DrawText(g, source,
                 Theme.UI(7.25f, false), new Rectangle(Theme.S(39), Theme.S(24), Width - Theme.S(72), Theme.S(15)),
                 Theme.Dim, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
             PointF[] chevron = {

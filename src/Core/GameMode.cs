@@ -238,6 +238,7 @@ namespace PaviseApp
             autoAddOn = Settings.Load("GmAutoAdd", false);
             vramShieldOn = Settings.Load(VramShield.EnabledKey, false);
             cacheWarmOn = Settings.Load(CacheWarm.EnabledKey, false);
+            heavySqueezeOn = Settings.Load(PolicyCatalog.KeyHeavySqueeze, false);
             killGameDvr = Settings.Load("GameDvrOff", true);
             mmcssOn = Settings.Load("GmMmcss", true);
             planSwitch = Settings.Load("PowerPlanOn", true);

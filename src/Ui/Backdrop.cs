@@ -182,12 +182,29 @@ namespace PaviseApp
         }
 
         // 走内存读 不能让 Image.FromFile 把数据目录里那张图一直锁住
+        // 原图常驻内存 窗口最大也就两千多像素宽 超出的分辨率只占内存不出画质 读入时先缩
+        private const int SourceMaxEdge = 2560;
+
         private static Bitmap Read(string path)
         {
             byte[] raw = File.ReadAllBytes(path);
             using (var ms = new MemoryStream(raw))
             using (var img = Image.FromStream(ms, false, true))
-                return new Bitmap(img);
+            {
+                int edge = Math.Max(img.Width, img.Height);
+                if (edge <= SourceMaxEdge) return new Bitmap(img);
+                double scale = (double)SourceMaxEdge / edge;
+                int tw = Math.Max(1, (int)Math.Round(img.Width * scale));
+                int th = Math.Max(1, (int)Math.Round(img.Height * scale));
+                var small = new Bitmap(tw, th, PixelFormat.Format32bppPArgb);
+                using (Graphics g = Graphics.FromImage(small))
+                {
+                    g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                    g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                    g.DrawImage(img, new Rectangle(0, 0, tw, th));
+                }
+                return small;
+            }
         }
 
         // 缩放只在窗口尺寸 遮罩档位 主题这三样变了才做一次 之后每个控件都是等比例直取
