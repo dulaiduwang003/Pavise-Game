@@ -113,8 +113,8 @@ namespace PaviseApp
         {
             if (acBanner != null)
             {
-                acBanner.State = tamer.Paused ? "BOUNDARY PAUSED" : "BOUNDARY ONLINE";
-                acBanner.StateColor = tamer.Paused ? Theme.Danger : Theme.Green;
+                acBanner.State = tamer.Paused ? "SUPPRESSION PAUSED" : "SUPPRESSION ENABLED";
+                acBanner.StateColor = tamer.Paused ? Theme.Dim : Theme.Green;
             }
             for (int i = 0; i < acGroups.Count && i < acCards.Count; i++)
             {
@@ -134,6 +134,14 @@ namespace PaviseApp
             int sy = 0;
             foreach (AcGroup g in AntiCheatCatalog.Groups)
                 sy += AddAcCard(g.Key, Lang.T("ac." + g.Key + ".n"), Lang.T("ac." + g.Key + ".d"), g.Procs, sy) + 8;
+            foreach (AcProtectionGroup g in AntiCheatCatalog.ProtectionOnlyGroups)
+            {
+                SettingCard card = MakeCard(acList, 6, sy, ScrollContentW, AcCardH,
+                    g.Name, Lang.T("ac." + g.Key + ".d"), null);
+                card.Meta = string.Join(" · ", g.PatternsForDisplay());
+                card.SetStatus(Lang.T("ac.protectiononly"), Theme.Green);
+                sy += AcCardH + 8;
+            }
             RefreshAcGroupStates();
         }
 

@@ -22,11 +22,16 @@ namespace PaviseApp
             new Sig { Name = "ACE-Guard",       Services = new[]{ "ACE-BASE", "ACE-GAME", "AntiCheatExpert" } },
             new Sig { Name = "nProtect GameGuard", Services = new[]{ "npggsvc" } },
             new Sig { Name = "Faceit AC",       Services = new[]{ "faceit" } },
+            new Sig { Name = "TenProtect",      Services = new[]{ "TesSafe" } },
+            new Sig { Name = "NEAC",            Services = new[]{ "NeacSafe64" } },
+            new Sig { Name = "HoYoKProtect",    Services = new[]{ "HoYoKProtect", "mhyprot3", "mhyprot2" } },
+            new Sig { Name = "B5 BBI",          Services = new[]{ "B5AntiCheat64", "B5AntiCheat32" } },
         };
 
         private static readonly string[][] ByExePrefix = new[]
         {
             new[]{ "Ricochet", "cod", "modernwarfare", "blackops", "warzone" },
+            new[]{ "HoYoKProtect", "yuanshen", "genshinimpact", "starrail", "zenlesszonezero", "bh3" },
         };
 
         private const string ServiceRoot = @"SYSTEM\CurrentControlSet\Services";

@@ -32,7 +32,7 @@ namespace PaviseApp
                 GfiLoginLayoutUsesMetadataNotNames,
                 GfiExistingProfileRepairPersistsFields,
                 GfiExistingNoRecordStaysNarrow,
-                GfiExistingRepairSaveFailureIsFatal,
+                GfiExistingRepairBusySaveRetainsOriginal,
                 GfiKnownPlatformFallbackDoesNotClaimNestedGames,
                 GfiExistingPlatformRootIsClearedAndPersisted,
                 GfiConcreteGameWithinKnownPlatformKeepsRoot,
@@ -246,7 +246,7 @@ namespace PaviseApp
             }
         }
 
-        private static void GfiExistingRepairSaveFailureIsFatal(string root)
+        private static void GfiExistingRepairBusySaveRetainsOriginal(string root)
         {
             using (var f = new GfiFixture(root, "existing-save-failure", false))
             {
@@ -257,7 +257,8 @@ namespace PaviseApp
                 using (var held = new FileStream(f.LibraryFile, FileMode.Open, FileAccess.Read, FileShare.Read))
                 {
                     GameMode reloaded = f.CreateMode(true);
-                    GfiRequire(reloaded.ProfileStoreSaveFailed, "failed load-time root commit was reported as healthy");
+                    GfiRequire(!reloaded.ProfileStoreSaveFailed, "busy root repair was incorrectly made fatal");
+                    f.AssertNarrowRoot(f.OnlyProfile(reloaded));
                     GfiRequire(before == File.ReadAllText(f.LibraryFile), "failed root repair damaged the original profile");
                 }
                 f.AssertNarrowRoot(f.OnlySavedProfile());

@@ -212,7 +212,11 @@ namespace PaviseApp
             Guid? cur = Current();
             if (cur.HasValue && cur.Value == g && !SwitchAwayFrom(g)) return false;
             Guid tmp = g;
-            if (SchemeUsable(g) && PowerDeleteScheme(IntPtr.Zero, ref tmp) != 0) return false;
+            // 不能把“方案读取失败”当作“已删除”，否则会丢掉仍需恢复的参数收据。
+            uint deleted = PowerDeleteScheme(IntPtr.Zero, ref tmp);
+            if (deleted != 0 && deleted != 2 /* ERROR_FILE_NOT_FOUND */) return false;
+            // 已删除的托管方案不再有可恢复参数；只清它自己的收据，避免阻塞下次重建。
+            if (!ForgetDeletedExtremeSnapshot(g)) return false;
             Settings.SaveStr(ManagedPlanKey, "");
             lock (lk) { resolved = false; target = Guid.Empty; targetOwned = false; tuneState = -1; }
             Logger.Log(Lang.T("log.powerplan.15") + ManagedPlanTitle);

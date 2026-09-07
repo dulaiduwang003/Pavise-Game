@@ -19,7 +19,7 @@ namespace PaviseApp
     internal static class App
     {
         public const string DisplayName = "PAVISE";
-        public const string Version = "2.2.0.2";
+        public const string Version = "2.2.1.2";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string QqGroup = "1051472054";
@@ -296,6 +296,9 @@ namespace PaviseApp
             // 极限解锁中的环境项启动补写 资格探测可能扫网卡 不占启动线程
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
+                // 处理器功耗接口证据要读系统事件日志 最坏一秒多 在这里先算好
+                //   否则第一局配置电源方案时在主循环线程上现读 压制与提优跟着一起等
+                try { ProcessorPowerPlatform.Interface warmed = ProcessorPowerPlatform.Current; } catch { }
                 try
                 {
                     int reconciled = 0, reconcileFailed = 0;
@@ -541,16 +544,23 @@ namespace PaviseApp
             };
 
             panel.ExitApp = doExit;
-            panel.UninstallApp = delegate
-            {
-                string failure;
-                if (!UninstallLauncher.TryStart(Application.ExecutablePath, out failure)) return failure;
-                // 脚本起来后自己先按正常退出流程走完 会话项在这里还原 脚本只需等进程消失 不用强杀
-                try { panel.BeginInvoke(doExit); } catch { }
-                return null;
-            };
 
             int resetStarted = 0;
+            // 卸载与清除全部配置走同一条停止 还原 删除 退出的顺序 多出来的是开机任务 旧方案与旧版本残留
+            panel.UninstallApp = delegate
+            {
+                if (Interlocked.CompareExchange(ref resetStarted, 1, 0) != 0) return;
+                string exePath = Application.ExecutablePath;
+                UninstallReport report = UninstallMode.Execute(dir, Path.GetDirectoryName(exePath), stopRuntime);
+                try
+                {
+                    if (report.Cleared)
+                        PaviseDialog.Success(null, App.DisplayName, Lang.F("uninstall.done", report.Files, exePath));
+                    else
+                        PaviseDialog.Warn(null, App.DisplayName, Lang.F("uninstall.failed", report.Failure));
+                }
+                finally { Application.Exit(); }
+            };
             resetDataAndExit = (fatal, closeApplication) =>
             {
                 if (Interlocked.CompareExchange(ref resetStarted, 1, 0) != 0) return;

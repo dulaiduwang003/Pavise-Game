@@ -12,6 +12,7 @@ namespace PaviseApp
     {
         private void ReportBegin(string game)
         {
+            ResetBoostDomainEvidence();
             GpuThrottleProbe.Reset();
             VramSpillProbe.Reset();
             VramShield.Begin();
@@ -87,6 +88,7 @@ namespace PaviseApp
 
         private void ReportFinish()
         {
+            VramSpillProbe.Seal();
             Dictionary<int, long> cpu;
             Dictionary<int, string> names;
             Dictionary<int, long> creations;

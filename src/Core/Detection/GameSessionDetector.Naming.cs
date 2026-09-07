@@ -15,7 +15,7 @@ namespace PaviseApp
         internal static bool IsNonGameRole(string name, string path)
         {
             string n = (name ?? "").Trim();
-            if (AntiCheatCatalog.IsAntiCheatLikeName(n)) return true;
+            if (AntiCheatCatalog.IsAntiCheatProcess(n, path)) return true;
             // 系统壳/核心组件是调优安全边界 不是游戏名单 同名外部程序不受此限制
             if (!string.IsNullOrEmpty(WindowsRootPrefix) && !string.IsNullOrEmpty(path)
                 && path.StartsWith(WindowsRootPrefix, StringComparison.OrdinalIgnoreCase)

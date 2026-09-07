@@ -629,19 +629,11 @@ namespace PaviseApp
 
         private void OnUninstall()
         {
-            Func<string> uninstall = UninstallApp;
+            Action uninstall = UninstallApp;
             if (uninstall == null) return;
             if (!CanBeginReset("uninstall.ingame", "uninstall.confirm")) return;
-
-            string failure = null;
-            try { failure = uninstall(); }
-            catch (Exception ex) { failure = Lang.F("uninstall.startfailed.detail", ex.GetType().Name); }
-            if (string.IsNullOrEmpty(failure)) return;
-
-            Interlocked.Exchange(ref wipeBusy, 0);
-            SetResetActionsEnabled(true);
-            Cursor = Cursors.Default;
-            PaviseDialog.Warn(this, App.DisplayName, failure);
+            // 停止 还原 删除 退出这套顺序归 Program 管 与清除全部配置同一条路
+            uninstall();
         }
 
         private void RefreshSlowStateAsync()

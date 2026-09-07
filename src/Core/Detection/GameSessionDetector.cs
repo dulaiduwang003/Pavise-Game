@@ -116,7 +116,7 @@ namespace PaviseApp
                             process.Id, ownerSession,
                             out identity))
                         continue;
-                    if (AntiCheatCatalog.IsAntiCheatLikeName(identity.Name))
+                    if (AntiCheatCatalog.IsAntiCheatProcess(identity.Name, identity.Path))
                         continue;
                     snapshot.Add(identity);
                 }
@@ -152,7 +152,7 @@ namespace PaviseApp
                 GameProcessSnapshot identity;
                 if (!TryCaptureProcessIdentity(entry, ownerSession, out identity))
                     continue;
-                if (AntiCheatCatalog.IsAntiCheatLikeName(identity.Name)) continue;
+                if (AntiCheatCatalog.IsAntiCheatProcess(identity.Name, identity.Path)) continue;
                 snapshot.Add(identity);
             }
 
@@ -209,7 +209,7 @@ namespace PaviseApp
                 return null;
 
             if (!CandidateIdentityUsable(foregroundIdentity)
-                || AntiCheatCatalog.IsAntiCheatLikeName(foregroundIdentity.Name))
+                || AntiCheatCatalog.IsAntiCheatProcess(foregroundIdentity.Name, foregroundIdentity.Path))
                 return null;
             if (ElectionVetoed(foregroundIdentity.Name, foregroundIdentity.Path)) return null;
 
@@ -314,7 +314,7 @@ namespace PaviseApp
             {
                 if (!CandidateIdentityUsable(identity)
                     || duplicatePids.Contains(identity.Pid)
-                    || AntiCheatCatalog.IsAntiCheatLikeName(identity.Name))
+                    || AntiCheatCatalog.IsAntiCheatProcess(identity.Name, identity.Path))
                     continue;
                 byPid.Add(identity.Pid, identity);
                 if (!identity.Foreground) continue;

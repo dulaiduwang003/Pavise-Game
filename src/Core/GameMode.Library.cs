@@ -20,11 +20,27 @@ namespace PaviseApp
         public bool AddGameExecutable(string name, string executablePath)
         {
             string error;
-            return AddGameExecutableCore(name, executablePath, null, true, out error);
+            return AddGameExecutableCore(name, executablePath, null, out error);
         }
 
         private bool AddGameExecutableCore(string name, string executablePath,
-            string preferredRoot, bool persist, out string error)
+            string preferredRoot, out string error)
+        {
+            error = null;
+            lock (sync)
+            {
+                if (stopping || ProfileStoreSaveFailed || !EnsureLibraryReadyLocked()) return false;
+                List<GameProfile> next = GetProfiles();
+                var nextIgnore = new HashSet<string>(autoAddIgnore, StringComparer.OrdinalIgnoreCase);
+                if (!StageGameExecutable(name, executablePath, preferredRoot, next, nextIgnore, out error)
+                    || !CommitLibraryLocked(next, nextIgnore)) return false;
+            }
+            KickLibraryChanged();
+            return true;
+        }
+
+        private bool StageGameExecutable(string name, string executablePath, string preferredRoot,
+            List<GameProfile> next, HashSet<string> nextIgnore, out string error)
         {
             string resolved, suggestedName;
             if (!GameExecutableResolver.TryResolve(executablePath, out resolved, out error, out suggestedName))
@@ -40,32 +56,25 @@ namespace PaviseApp
             }
             if (root == null) root = NormalizeGameRoot(GameScan.InferGameRoot(resolved));
             root = ResolveLibraryInstallRoot(resolved, root);
-            lock (sync)
+            foreach (GameProfile p in next)
             {
-                if (stopping) return false;
-                if (autoAddIgnore.Remove(resolved) && !SaveAutoIgnoreLocked()) return false;
-                foreach (GameProfile p in profiles)
+                if (string.Equals(p.ExecutablePath, resolved, StringComparison.OrdinalIgnoreCase)) return false;
+                if (string.Equals(p.LearnedExecutablePath, resolved, StringComparison.OrdinalIgnoreCase)) return false;
+                if (string.IsNullOrEmpty(p.ExecutablePath) && p.Entries.Contains(entry))
                 {
-                    if (string.Equals(p.ExecutablePath, resolved, StringComparison.OrdinalIgnoreCase)) return false;
-                    if (string.Equals(p.LearnedExecutablePath, resolved, StringComparison.OrdinalIgnoreCase)) return false;
-                    if (string.IsNullOrEmpty(p.ExecutablePath) && p.Entries.Contains(entry))
-                    {
-                        p.ExecutablePath = resolved;
-                        p.Root = root;
-                        p.Name = display;
-                        p.LearnedExecutablePath = null;
-                        if (persist && !PersistLibraryLocked()) return false;
-                        if (persist) KickLibraryChanged();
-                        return true;
-                    }
+                    p.ExecutablePath = resolved;
+                    p.Root = root;
+                    p.Name = display;
+                    p.LearnedExecutablePath = null;
+                    nextIgnore.Remove(resolved);
+                    return true;
                 }
-                GameProfile profile = GameProfileStore.NewProfile(display, root, resolved);
-                profile.Entries.Clear();
-                profile.Entries.Add(entry);
-                profiles.Add(profile);
-                if (persist && !PersistLibraryLocked()) return false;
             }
-            if (persist) KickLibraryChanged();
+            GameProfile profile = GameProfileStore.NewProfile(display, root, resolved);
+            profile.Entries.Clear();
+            profile.Entries.Add(entry);
+            next.Add(profile);
+            nextIgnore.Remove(resolved);
             return true;
         }
 
@@ -110,19 +119,21 @@ namespace PaviseApp
             lastError = null;
             int added = 0;
             if (hits == null) return 0;
-            foreach (ScanHit hit in hits)
+            lock (sync)
             {
-                if (hit == null || string.IsNullOrEmpty(hit.Exe)) continue;
-                string error;
-                if (AddGameExecutableCore(hit.Name, hit.Exe, hit.Root, false, out error)) added++;
-                else if (!string.IsNullOrEmpty(error)) lastError = error;
+                if (stopping || ProfileStoreSaveFailed || !EnsureLibraryReadyLocked()) return 0;
+                List<GameProfile> next = GetProfiles();
+                var nextIgnore = new HashSet<string>(autoAddIgnore, StringComparer.OrdinalIgnoreCase);
+                foreach (ScanHit hit in hits)
+                {
+                    if (hit == null || string.IsNullOrEmpty(hit.Exe)) continue;
+                    string error;
+                    if (StageGameExecutable(hit.Name, hit.Exe, hit.Root, next, nextIgnore, out error)) added++;
+                    else if (!string.IsNullOrEmpty(error)) lastError = error;
+                }
+                if (added > 0 && !CommitLibraryLocked(next, nextIgnore)) return 0;
             }
-            if (added > 0)
-            {
-                lock (sync)
-                    if (!PersistLibraryLocked()) return 0;
-                KickLibraryChanged();
-            }
+            if (added > 0) KickLibraryChanged();
             return added;
         }
 
@@ -205,10 +216,9 @@ namespace PaviseApp
                 next[index] = replacement;
                 // 路径推断与磁盘准备之后 再在与生命周期失效共用的锁内终验
                 if (stillCurrent != null && !stillCurrent()) return false;
-                // 与 SaveProfilesLocked 使用相同的首错熔断 不重试 不绕过严格提交
-                if (!profileStore.Save(next))
+                // 与 SaveProfilesLocked 共用严格提交和致命故障保护 短暂占用不发布候选
+                if (!SaveProfileSnapshotLocked(next, stillCurrent))
                 {
-                    SignalProfileStoreSaveFailure();
                     return false;
                 }
                 profiles[index] = replacement;
@@ -257,7 +267,7 @@ namespace PaviseApp
                         p.ForceTrigger = on;
                         name = p.Name;
                         changed = true;
-                        if (!PersistLibraryLocked()) return false;
+                        if (!PersistLibraryLocked()) { p.ForceTrigger = !on; return false; }
                     }
                     break;
                 }
@@ -349,13 +359,49 @@ namespace PaviseApp
                 GameProfile p = FindProfileLocked(profileId);
                 if (p != null)
                 {
+                    string before = null;
+                    bool hadValue = key != null && p.Overrides.TryGetValue(key, out before);
                     InvalidateOverrideWorkLocked(key);
                     ok = PolicyResolver.SetOverride(p, key, value);
-                    if (ok && !SaveProfilesLocked()) ok = false;
+                    if (ok && !SaveProfilesLocked())
+                    {
+                        if (hadValue) p.Overrides[key] = before;
+                        else p.Overrides.Remove(key);
+                        ok = false;
+                    }
                 }
             }
             if (ok) NotifyOverridePolicyChanged(key, PolicyCatalog.Canonical(key, value) == "1");
             return ok;
+        }
+
+        // The core picker changes three coupled keys; publish all or none.
+        internal bool SetProfileCorePlacement(string profileId, string mask, string strict, string alternate)
+        {
+            string[] keys = { PolicyCatalog.KeyCoreMask, PolicyCatalog.KeyStrictCores, PolicyCatalog.KeyCoreDomainAlt };
+            string[] values = { mask, strict, alternate };
+            lock (sync)
+            {
+                if (stopping || ProfileStoreSaveFailed) return false;
+                GameProfile current = FindProfileLocked(profileId);
+                if (current == null) return false;
+                GameProfile replacement = current.Clone();
+                for (int i = 0; i < keys.Length; i++)
+                {
+                    if (values[i] == null) replacement.Overrides.Remove(keys[i]);
+                    else if (!PolicyResolver.SetOverride(replacement, keys[i], values[i])) return false;
+                }
+                var next = new List<GameProfile>(profiles);
+                int index = profiles.IndexOf(current);
+                next[index] = replacement;
+                if (!SaveProfileSnapshotLocked(next))
+                {
+                    return false;
+                }
+                profiles[index] = replacement;
+            }
+            RequestPolicyApply();
+            return true;
         }
 
         public bool ClearProfileOverride(string profileId, string key)
@@ -368,9 +414,11 @@ namespace PaviseApp
                 GameProfile p = FindProfileLocked(profileId);
                 if (p != null && p.Overrides.ContainsKey(key))
                 {
+                    string before = p.Overrides[key];
                     InvalidateOverrideWorkLocked(key);
                     p.Overrides.Remove(key);
                     ok = SaveProfilesLocked();
+                    if (!ok) p.Overrides[key] = before;
                 }
             }
             if (ok) NotifyOverridePolicyChanged(key, GlobalPolicyOn(key));
@@ -404,9 +452,8 @@ namespace PaviseApp
                         var next = new List<GameProfile>(profiles);
                         int index = profiles.IndexOf(p);
                         next[index] = replacement;
-                        if (!profileStore.Save(next))
+                        if (!SaveProfileSnapshotLocked(next))
                         {
-                            SignalProfileStoreSaveFailure();
                             return 0;
                         }
                         profiles[index] = replacement;
@@ -453,7 +500,7 @@ namespace PaviseApp
                 if (string.Equals(p.Name, trimmed, StringComparison.Ordinal)) return true;
                 oldName = p.Name;
                 p.Name = trimmed;
-                if (!SaveProfilesLocked()) return false;
+                if (!SaveProfilesLocked()) { p.Name = oldName; return false; }
             }
             Logger.Log(Lang.T("log.gamemodelibrary.14") + oldName + Lang.T("log.gamemodelibrary.15") + trimmed + Lang.T("log.gamemodelibrary.16"));
             RaiseLibraryChanged();
@@ -465,22 +512,20 @@ namespace PaviseApp
             bool dropSession;
             lock (sync)
             {
-                if (stopping) return;
-                bool ignoreDirty = false;
+                if (stopping || ProfileStoreSaveFailed || !EnsureLibraryReadyLocked()) return;
+                var nextIgnore = new HashSet<string>(autoAddIgnore, StringComparer.OrdinalIgnoreCase);
                 foreach (GameProfile p in profiles)
                 {
                     if (!string.Equals(p.Id, profileId, StringComparison.OrdinalIgnoreCase)) continue;
-                    if (!string.IsNullOrEmpty(p.ExecutablePath) && autoAddIgnore.Add(p.ExecutablePath))
-                        ignoreDirty = true;
-                    if (!string.IsNullOrEmpty(p.LearnedExecutablePath) && autoAddIgnore.Add(p.LearnedExecutablePath))
-                        ignoreDirty = true;
+                    if (!string.IsNullOrEmpty(p.ExecutablePath)) nextIgnore.Add(p.ExecutablePath);
+                    if (!string.IsNullOrEmpty(p.LearnedExecutablePath)) nextIgnore.Add(p.LearnedExecutablePath);
                 }
-                if (ignoreDirty && !SaveAutoIgnoreLocked()) return;
+                List<GameProfile> next = GetProfiles();
+                if (next.RemoveAll(p => string.Equals(p.Id, profileId, StringComparison.OrdinalIgnoreCase)) == 0) return;
+                if (!CommitLibraryLocked(next, nextIgnore)) return;
                 InvalidateStandbyCleanerWork();
                 InvalidateEnglishInputWork();
                 InvalidateIntelGraphicsWork();
-                profiles.RemoveAll(p => string.Equals(p.Id, profileId, StringComparison.OrdinalIgnoreCase));
-                if (!PersistLibraryLocked()) return;
                 ClearFamilyDiscovery();
                 ForgetRendererObservation(profileId);
                 dropSession = activeDetection != null && activeDetection.Profile != null
@@ -643,6 +688,7 @@ namespace PaviseApp
                     whiteRules.Remove(target);
                     whiteRuleKeys.Remove(key);
                     whiteFamilyMembers.Remove(key);
+                    whiteFamilyMembersVersion++;
                     whiteRevision++;
                     RefreshWhitelistFamilyFlagLocked();
                     whitelistLastError = "";
@@ -676,6 +722,7 @@ namespace PaviseApp
                     whiteRules.Clear();
                     whiteRuleKeys.Clear();
                     whiteFamilyMembers.Clear();
+                    whiteFamilyMembersVersion++;
                     whiteRevision++;
                     RefreshWhitelistFamilyFlagLocked();
                     foreach (WhitelistRule rule in next)

@@ -74,8 +74,6 @@ set MANIFEST=build\Pavise.manifest.tmp
 >> "%MANIFEST%" echo ^</assembly^>
 "%CSC%" -nologo -target:winexe -optimize+ -codepage:65001 -win32icon:build\Pavise.ico -win32manifest:"%MANIFEST%" -out:"%OUT%" %REFS% -recurse:src\*.cs
 if errorlevel 1 goto err
-call :copyuninstaller "%OUT%"
-if errorlevel 1 goto err
 
 del build\Pavise.tmp.exe "%MANIFEST%" >nul 2>&1
 echo.
@@ -109,10 +107,3 @@ exit /b 2
 if defined PAVISE_CP_OWNED goto :eof
 if defined PAVISE_OLDCP chcp %PAVISE_OLDCP% >nul 2>&1
 goto :eof
-
-:copyuninstaller
-if not exist "%~dp0Pavise-Uninstall.cmd" exit /b 1
-for %%I in ("%~1") do set "UNINSTALL_OUT=%%~dpI"
-if /i "%UNINSTALL_OUT%"=="%~dp0" exit /b 0
-copy /y "%~dp0Pavise-Uninstall.cmd" "%UNINSTALL_OUT%Pavise-Uninstall.cmd" >nul
-exit /b %errorlevel%

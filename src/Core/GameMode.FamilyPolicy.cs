@@ -34,9 +34,8 @@ namespace PaviseApp
                     var next = new List<GameProfile>(profiles);
                     int index = profiles.IndexOf(current);
                     next[index] = replacement;
-                    if (!profileStore.Save(next))
+                    if (!SaveProfileSnapshotLocked(next))
                     {
-                        SignalProfileStoreSaveFailure();
                         return false;
                     }
                     profiles[index] = replacement;

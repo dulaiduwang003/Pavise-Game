@@ -35,6 +35,7 @@ namespace PaviseApp
                 RendererCoordinatorLifecycleResult,
                 RendererCoordinatorStaleTrackingStaysProtected,
                 RendererCoordinatorSaveFailureIsTransactional,
+                RendererCoordinatorRetryRevalidates,
                 RendererCoordinatorExpiredProofCannotCommit,
                 RendererCoordinatorProofMustStillBeHeld,
                 RendererCoordinatorForegroundRecheckedAtCommit,
@@ -309,11 +310,54 @@ namespace PaviseApp
                 f.Mode.ProfileStoreSaveFailure += delegate { failures++; };
                 using (var lease = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
                     Eq(false, f.Commit(selected, epoch));
-                Eq(true, f.Mode.ProfileStoreSaveFailed);
-                Eq(1, failures);
+                Eq(false, f.Mode.ProfileStoreSaveFailed);
+                Eq(0, failures);
                 Eq(f.Profile.ExecutablePath, f.Mode.GetProfiles()[0].ExecutablePath);
                 Eq(before, File.ReadAllText(path));
-                Eq(false, f.Protected(f.Candidate));
+                Eq(epoch, f.Epoch);
+                Eq(true, f.Protected(f.Candidate));
+                Eq(true, f.Commit(selected, epoch));
+                Eq(selected.RendererPath, new GameProfileStore(f.Directory).LoadProfiles()[0].ExecutablePath);
+            }
+        }
+
+        private static void RendererCoordinatorRetryRevalidates(string root)
+        {
+            foreach (string change in new[] { "control", "foreground", "identity", "proof", "expiry", "epoch" })
+            for (int repeat = 0; repeat < 3; repeat++)
+            using (var f = new RendererCoordinatorFixture(root, false))
+            {
+                int epoch;
+                GameDetection selected = f.Confirm(out epoch);
+                string file = Path.Combine(f.Directory, GameProfileStore.FileName), before = File.ReadAllText(file);
+                var store = RendererCoordinatorField<GameProfileStore>(f.Mode, "profileStore");
+                int retries = 0, changes = 0, failures = 0;
+                f.Mode.LibraryChanged += delegate { changes++; };
+                f.Mode.ProfileStoreSaveFailure += delegate { failures++; };
+                bool committed;
+                using (var lease = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read))
+                {
+                    store.RetryWaitForTest = delegate
+                    {
+                        retries++;
+                        if (change == "foreground") f.Foreground = 999999;
+                        else if (change == "identity") f.IdentityValid = false;
+                        else if (change == "proof") f.Tracker.Clear();
+                        else if (change == "expiry") selected.RendererGpuProofExpiresMs = RendererCoordinatorNow() - 1;
+                        else if (change == "epoch") f.Invalidate();
+                        lease.Dispose();
+                    };
+                    committed = f.Commit(selected, epoch);
+                }
+                Eq(1, retries); Eq(0, failures); Eq(false, f.Mode.ProfileStoreSaveFailed);
+                Eq(change == "control", committed);
+                Eq(change != "control", store.SaveCanceled);
+                Eq(change == "control" ? 1 : 0, changes);
+                Eq(change == "control", before != File.ReadAllText(file));
+                Eq(change == "control" ? f.Candidate.RendererPath : f.Profile.ExecutablePath,
+                    f.Mode.GetProfiles()[0].ExecutablePath);
+                Eq(true, RendererCoordinatorField<RendererObservationStore>(f.Mode, "rendererObservations").Close(3000));
+                Eq(0, Directory.GetFiles(f.Directory, "*.tmp").Length);
             }
         }
 

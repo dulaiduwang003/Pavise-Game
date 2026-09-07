@@ -221,9 +221,12 @@ namespace PaviseApp
                 foreach (GameProfile p in profiles)
                     if (string.Equals(p.Id, snap.ProfileId, StringComparison.OrdinalIgnoreCase))
                     {
-                        if (p.Overrides.Remove(policyKey))
+                        string before;
+                        if (p.Overrides.TryGetValue(policyKey, out before))
                         {
+                            p.Overrides.Remove(policyKey);
                             if (SaveProfilesLocked()) cleared = true;
+                            else p.Overrides[policyKey] = before;
                         }
                         break;
                     }

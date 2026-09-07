@@ -9,7 +9,7 @@ namespace PaviseApp
     internal sealed partial class SuppressionCore
     {
         private bool ThrottleMatches(IntPtr h, SuppressionLevel level, uint originalPriority, ulong originalAffinity,
-            uint[] originalCpuSets, int desiredGpu, bool antiCheat, ulong desiredAffinity)
+            uint[] originalCpuSets, int desiredGpu, bool antiCheat, ulong desiredAffinity, bool affinityOwned = false)
         {
             uint desiredPriority = DesiredPriority(level, originalPriority, antiCheat);
             if (Native.GetPriorityClass(h) != desiredPriority) return false;
@@ -36,7 +36,8 @@ namespace PaviseApp
             //   2.0 下架全员绑核的教训不变 空闲进程一律不改亲和 只有持续吃 CPU 的才进这条路
             //   AUDIT-20260820.md 那组合成负载数据与 1.8.1.3 台架三场景是这条路的依据
             if (!Native.CpuSetsMatch(h, originalCpuSets ?? new uint[0])) return false;
-            if (!CpuTopology.MultiGroup && Native.QueryAffinity(h) != desiredAffinity) return false;
+            // 落点被拒过的条目亲和归进程自己管 不再拿它判断是否漂移
+            if (!CpuTopology.MultiGroup && !affinityOwned && Native.QueryAffinity(h) != desiredAffinity) return false;
             return true;
         }
 
@@ -86,6 +87,51 @@ namespace PaviseApp
             return HeavySqueezePolicy.DesiredAffinity(e.Reasons, e.SqueezeAff, e.OrigAff, allMask);
         }
 
+        // 巡检重写走这里 落点被拒且只有亲和这一环失败时放弃落点 其余旋钮照常
+        //   反作弊进程会自己把亲和改回去再拒绝写入 不放弃就会每轮退避到顶后一分钟一条异常
+        private bool ApplyEntryLocked(IntPtr h, Entry e, int pid)
+        {
+            bool applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e),
+                e.OrigBoost, AntiCheatThrottled(e), DesiredAffinityOf(e), e.SqueezeRefused);
+            if (applied || e.SqueezeAff == 0 || !AffinityOnlyFailure(LastApplyError)) return applied;
+            e.SqueezeAff = 0;
+            e.SqueezeRefused = true;
+            Logger.Log(Lang.T("log.suppressioncore.squeeze.1") + e.Name + " pid " + pid
+                + Lang.T("log.suppressioncore.squeeze.2"));
+            return ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e),
+                e.OrigBoost, AntiCheatThrottled(e), DesiredAffinityOf(e), true);
+        }
+
+        // 反作弊条目写不进去就放弃 反作弊有自保护 反复重试只会刷日志 已写进去的按原值退回 退不回的退局再试
+        private bool GiveUpAntiCheatLocked(IntPtr h, int pid, Entry e)
+        {
+            if (e == null || e.GaveUp || e.OrigPri == uint.MaxValue) return false;
+            if ((e.Reasons & SuppressReason.AntiCheat) == 0 || (e.Reasons & SuppressReason.Background) != 0) return false;
+            string detail = LastApplyError;
+            bool restored = RunMutation(delegate
+            {
+                return RestoreValues(h, e.OrigPri, e.OrigAff, e.OrigIo, e.OrigPg, allMask,
+                    e.OrigCpuSets, e.OrigQoSControl, e.OrigQoSState, e.OrigGpu, e.OrigBoost);
+            });
+            e.GaveUp = true;
+            e.GaveUpRestored = restored;
+            e.Applied = false;
+            e.SqueezeAff = 0;
+            e.NextReconcileTicks = long.MaxValue;
+            Logger.Log(Lang.T("log.suppressioncore.giveup.1") + e.Name + " pid " + pid
+                + Lang.T("log.suppressioncore.giveup.2") + (string.IsNullOrEmpty(detail) ? "" : detail)
+                + Lang.T(restored ? "log.suppressioncore.giveup.3" : "log.suppressioncore.giveup.4"));
+            return true;
+        }
+
+        internal static bool AffinityOnlyFailure(string detail)
+        {
+            if (string.IsNullOrEmpty(detail)) return false;
+            foreach (string step in detail.Split(','))
+                if (step != "affinity-write" && step != "affinity-readback") return false;
+            return true;
+        }
+
         // 硬件调度开着时进程调度类归 GPU 管 写了没用还会记一次 gpu-write 失败
         private static int DesiredGpu(Entry e)
         {
@@ -131,7 +177,8 @@ namespace PaviseApp
         }
 
         private bool ApplyThrottle(IntPtr h, SuppressionLevel level, uint originalPriority, ulong originalAffinity,
-            uint[] originalCpuSets, int desiredGpu, int origBoost, bool antiCheat, ulong desiredAffinity)
+            uint[] originalCpuSets, int desiredGpu, int origBoost, bool antiCheat, ulong desiredAffinity,
+            bool affinityOwned = false)
         {
             BeginMutation();
             try
@@ -160,7 +207,8 @@ namespace PaviseApp
             if (!Native.CpuSetsMatch(h, originalCpuSets)
                 && !Native.RestoreCpuSetsVerified(h, originalCpuSets))
                 failed.Add("cpu-sets-restore");
-            if (!CpuTopology.MultiGroup)
+            // 落点被拒过的条目亲和归进程自己管 写了只会再被拒 其余旋钮照常
+            if (!CpuTopology.MultiGroup && !affinityOwned)
             {
                 ulong originalAllowed = originalAffinity != 0 ? originalAffinity : allMask;
                 bool squeezing = desiredAffinity != originalAllowed;
@@ -257,7 +305,9 @@ namespace PaviseApp
             uint desiredPriority = pri == 0 || pri == uint.MaxValue ? Native.NORMAL_PRIORITY_CLASS : pri;
             ok &= Native.SetPriorityClass(h, desiredPriority);
             ulong desiredAffinity = aff != 0 ? aff : allMask;
-            if (!CpuTopology.MultiGroup) ok &= Native.SetProcessAffinityMask(h, (UIntPtr)desiredAffinity);
+            // 已经在原值上就不写 自己改回亲和并拒写的进程不该因此判成还原失败
+            if (!CpuTopology.MultiGroup && Native.QueryAffinity(h) != desiredAffinity)
+                ok &= Native.SetProcessAffinityMask(h, (UIntPtr)desiredAffinity);
             int rio = io >= 0 ? io : 2; ok &= Native.TrySetIoPriority(h, rio);
             int rpg = pg >= 0 ? pg : 5; ok &= Native.TrySetPagePriority(h, rpg);
             if (Native.PowerThrottlingSupported)

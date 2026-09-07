@@ -106,7 +106,7 @@ namespace PaviseApp
         // 已下架功能的覆盖键 加载时静默丢弃 不触发库重置
         //   两个键都随 2.1.3.3 发布过 但值只是布尔开关 丢弃即回默认 无信息可失
         //   活档案里不该再出现它们 校验时按损坏处理
-        private static readonly string[] RetiredOverrideKeys = { "GmDisplaySolo", "GmMemShield", "GmGpuClockLockV1" };
+        private static readonly string[] RetiredOverrideKeys = { "GmDisplaySolo", "GmMemShield", "GmGpuClockLockV1", "GmCacheWarm" };
 
         internal static bool IsRetiredOverrideKey(string key)
         {
@@ -129,6 +129,7 @@ namespace PaviseApp
         private const string HeaderV5 = "PAVISE_PROFILES_V5";
         private static readonly Encoding StrictUtf8 = new UTF8Encoding(false, true);
         private readonly string path;
+        private readonly object saveSync = new object();
 
         public GameProfileStore(string dir)
         {
@@ -136,6 +137,11 @@ namespace PaviseApp
         }
 
         public List<GameProfile> LoadProfiles()
+        {
+            return LoadProfiles(true);
+        }
+
+        internal List<GameProfile> LoadProfiles(bool createIfMissing)
         {
             List<GameProfile> loaded = Load();
             if (loadFailed)
@@ -145,13 +151,25 @@ namespace PaviseApp
                 Save(loaded);
                 return new List<GameProfile>();
             }
-            if (!File.Exists(path)) Save(loaded);
+            if (createIfMissing && !File.Exists(path)) Save(loaded);
             return loaded;
         }
 
         public bool Save(IList<GameProfile> profiles)
         {
+            return Save(profiles, null);
+        }
+
+        internal bool Save(IList<GameProfile> profiles, Func<bool> canCommit)
+        {
+            lock (saveSync) return SaveCore(profiles, canCommit);
+        }
+
+        private bool SaveCore(IList<GameProfile> profiles, Func<bool> canCommit)
+        {
             if (SaveFailed) return false;
+            Interlocked.Exchange(ref retryableSaveFailure, 0);
+            Interlocked.Exchange(ref saveCanceled, 0);
             if (loadFailed)
             {
                 Logger.Log(Lang.T("log.gameprofiles.1"));
@@ -160,59 +178,145 @@ namespace PaviseApp
             }
             try
             {
-                ValidateProfiles(profiles);
-                var lines = new List<string>();
-                var learned = new List<string>();
-                var forced = new List<string>();
-                var overrides = new List<string>();
-                lines.Add(HeaderV5);
-                foreach (GameProfile p in profiles)
+                byte[] snapshot = SnapshotBytes(profiles);
+                if (!CommitStrict(snapshot, canCommit))
                 {
-                    lines.Add("P|" + B64(p.Id) + "|" + B64(p.Name) + "|" + B64(p.Root)
-                        + "|" + B64(p.ExecutablePath) + "|" + B64(Join(p.Entries)));
-                    if (!string.IsNullOrEmpty(p.LearnedExecutablePath))
-                        learned.Add("L|" + B64(p.Id) + "|" + B64(p.LearnedExecutablePath));
-                    if (p.ForceTrigger) forced.Add("F|" + B64(p.Id));
-                    foreach (KeyValuePair<string, string> kv in p.Overrides)
-                        overrides.Add("O|" + B64(p.Id) + "|" + B64(kv.Key) + "|" + B64(kv.Value));
+                    Interlocked.Exchange(ref saveCanceled, 1);
+                    return false;
                 }
-                lines.AddRange(learned);
-                lines.AddRange(forced);
-                lines.AddRange(overrides);
-                CommitStrict(lines);
                 return true;
+            }
+            catch (ProfileCommitBusyException ex)
+            {
+                Interlocked.Exchange(ref retryableSaveFailure, 1);
+                Logger.LogFailure(Lang.T("log.gameprofiles.busy"), ex.InnerException);
+                return false;
             }
             catch (Exception ex)
             {
-                Interlocked.Exchange(ref saveFailed, 1);
-                Logger.LogFailure(Lang.T("log.gameprofiles.3"), ex);
+                MarkSaveFailed(ex);
                 return false;
             }
         }
 
+        internal void MarkSaveFailed(Exception error)
+        {
+            Interlocked.Exchange(ref saveFailed, 1);
+            Logger.LogFailure(Lang.T("log.gameprofiles.3"), error);
+        }
+
+        internal static byte[] SnapshotBytes(IList<GameProfile> profiles)
+        {
+            ValidateProfiles(profiles);
+            var lines = new List<string>();
+            var learned = new List<string>();
+            var forced = new List<string>();
+            var overrides = new List<string>();
+            lines.Add(HeaderV5);
+            foreach (GameProfile p in profiles)
+            {
+                lines.Add("P|" + B64(p.Id) + "|" + B64(p.Name) + "|" + B64(p.Root)
+                    + "|" + B64(p.ExecutablePath) + "|" + B64(Join(p.Entries)));
+                if (!string.IsNullOrEmpty(p.LearnedExecutablePath))
+                    learned.Add("L|" + B64(p.Id) + "|" + B64(p.LearnedExecutablePath));
+                if (p.ForceTrigger) forced.Add("F|" + B64(p.Id));
+                foreach (KeyValuePair<string, string> kv in p.Overrides)
+                    overrides.Add("O|" + B64(p.Id) + "|" + B64(kv.Key) + "|" + B64(kv.Value));
+            }
+            lines.AddRange(learned);
+            lines.AddRange(forced);
+            lines.AddRange(overrides);
+            return StrictUtf8.GetBytes(string.Join(Environment.NewLine, lines.ToArray()) + Environment.NewLine);
+        }
+
         private bool loadFailed;
         private int saveFailed;
+        private int retryableSaveFailure;
+        private int saveCanceled;
 
         public bool LoadFailed { get { return loadFailed; } }
         public bool SaveFailed { get { return Interlocked.CompareExchange(ref saveFailed, 0, 0) != 0; } }
+        internal bool RetryableSaveFailure { get { return Volatile.Read(ref retryableSaveFailure) != 0; } }
+        internal bool SaveCanceled { get { return Volatile.Read(ref saveCanceled) != 0; } }
+
+        private static bool CommitAllowed(Func<bool> canCommit)
+        {
+            if (canCommit == null) return true;
+            try { return canCommit(); }
+            catch (Exception ex)
+            {
+                Logger.Warn("Profile commit eligibility check failed: " + ex.Message);
+                return false;
+            }
+        }
+
+        private sealed class ProfileCommitBusyException : IOException
+        {
+            internal ProfileCommitBusyException(IOException inner) : base("Profile commit busy", inner) { }
+        }
+
+        // Only errors whose documented outcome retains both file names are retried.
+        // 1176/1177 can leave a changed namespace and must remain fatal.
+        internal static bool IsRetryableReplaceError(IOException error)
+        {
+            uint hr = unchecked((uint)error.HResult);
+            if ((hr & 0xFFFF0000U) != 0x80070000U) return false;
+            uint code = hr & 0xFFFFU;
+            return code == 32 || code == 33 || code == 1175;
+        }
+
+#if PAVISE_SELFTEST
+        internal Action<int> BeforeReplaceForTest;
+        internal Action<int> RetryWaitForTest;
+#endif
 
         // 档案不使用 AtomicFile 的兼容回退 Replace 失败后绝不能备份旧档
-        // 非原子覆盖并谎报成功 任何提交失败都由 Save 置致命故障位
-        private void CommitStrict(IList<string> lines)
+        // 非原子覆盖并谎报成功 短暂占用有界重试 其他失败保留致命保护
+        private bool CommitStrict(byte[] snapshot, Func<bool> canCommit)
         {
             string tmp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
             try
             {
+                if (!CommitAllowed(canCommit)) return false;
                 using (var fs = new FileStream(tmp, FileMode.CreateNew,
                     FileAccess.Write, FileShare.None))
-                using (var sw = new StreamWriter(fs, StrictUtf8))
                 {
-                    foreach (string line in lines) sw.WriteLine(line);
-                    sw.Flush();
+                    fs.Write(snapshot, 0, snapshot.Length);
                     fs.Flush(true);
                 }
-                if (File.Exists(path)) File.Replace(tmp, path, null);
-                else File.Move(tmp, path);
+                if (!File.Exists(path))
+                {
+                    if (!CommitAllowed(canCommit)) return false;
+                    File.Move(tmp, path);
+                }
+                else
+                {
+                    int[] delays = { 25, 50, 100, 200 };
+                    for (int attempt = 0; ; attempt++)
+                    {
+                        try
+                        {
+#if PAVISE_SELFTEST
+                            if (BeforeReplaceForTest != null) BeforeReplaceForTest(attempt);
+#endif
+                            // Revalidate after preparation and every retry wait, not only at Save entry.
+                            if (!CommitAllowed(canCommit)) return false;
+                            File.Replace(tmp, path, null);
+                            break;
+                        }
+                        catch (IOException ex)
+                        {
+                            if (!IsRetryableReplaceError(ex) || !File.Exists(tmp) || !File.Exists(path)) throw;
+                            if (attempt == delays.Length) throw new ProfileCommitBusyException(ex);
+#if PAVISE_SELFTEST
+                            if (RetryWaitForTest != null) RetryWaitForTest(attempt);
+                            else
+#endif
+                                Thread.Sleep(delays[attempt]);
+                        }
+                    }
+                }
+                return true;
             }
             finally
             {

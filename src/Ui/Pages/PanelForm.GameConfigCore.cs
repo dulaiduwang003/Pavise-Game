@@ -114,24 +114,16 @@ namespace PaviseApp
             cfgCoreManualPicked = index == cfgCoreManualIndex;
             if (index == 0)
             {
-                gameMode.ClearProfileOverride(cfgProfileId, PolicyCatalog.KeyStrictCores);
-                gameMode.ClearProfileOverride(cfgProfileId, PolicyCatalog.KeyCoreDomainAlt);
-                gameMode.ClearProfileOverride(cfgProfileId, PolicyCatalog.KeyCoreMask);
+                gameMode.SetProfileCorePlacement(cfgProfileId, null, null, null);
             }
             else if (index == cfgCoreAllIndex)
             {
-                gameMode.SetProfileOverride(cfgProfileId, PolicyCatalog.KeyStrictCores, "0");
-                gameMode.SetProfileOverride(cfgProfileId, PolicyCatalog.KeyCoreMask, "");
-                gameMode.ClearProfileOverride(cfgProfileId, PolicyCatalog.KeyCoreDomainAlt);
+                gameMode.SetProfileCorePlacement(cfgProfileId, "", "0", null);
             }
             else if (index == cfgCorePartIndex || index == cfgCoreAltIndex)
             {
-                gameMode.SetProfileOverride(cfgProfileId, PolicyCatalog.KeyStrictCores, "1");
-                gameMode.SetProfileOverride(cfgProfileId, PolicyCatalog.KeyCoreMask, "");
-                if (cfgCoreThreeWay)
-                    gameMode.SetProfileOverride(cfgProfileId, PolicyCatalog.KeyCoreDomainAlt,
-                        index == cfgCoreAltIndex ? "1" : "0");
-                else gameMode.ClearProfileOverride(cfgProfileId, PolicyCatalog.KeyCoreDomainAlt);
+                gameMode.SetProfileCorePlacement(cfgProfileId, "", "1",
+                    cfgCoreThreeWay ? (index == cfgCoreAltIndex ? "1" : "0") : null);
             }
             SyncCfgRows();
         }
@@ -220,14 +212,11 @@ namespace PaviseApp
         {
             ulong clean = CpuTopology.SanitizeCustomMask(cfgCorePending, CpuTopology.AllMask);
             if (clean == 0) return;
-            gameMode.SetProfileOverride(cfgProfileId, PolicyCatalog.KeyCoreMask,
-                clean == CpuTopology.AllMask ? "" : clean.ToString("X"));
             // 自定义掩码为空表示没有自定义亲和性 不是覆盖全局的分区选择
             // 要全选就得显式声明退出
-            if (clean == CpuTopology.AllMask)
-                gameMode.SetProfileOverride(cfgProfileId, PolicyCatalog.KeyStrictCores, "0");
-            else gameMode.ClearProfileOverride(cfgProfileId, PolicyCatalog.KeyStrictCores);
-            gameMode.ClearProfileOverride(cfgProfileId, PolicyCatalog.KeyCoreDomainAlt);
+            gameMode.SetProfileCorePlacement(cfgProfileId,
+                clean == CpuTopology.AllMask ? "" : clean.ToString("X"),
+                clean == CpuTopology.AllMask ? "0" : null, null);
             SyncCfgRows();
         }
 

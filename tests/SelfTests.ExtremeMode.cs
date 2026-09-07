@@ -148,13 +148,9 @@ namespace PaviseApp
             ulong gib = 1UL << 30;
             ExtCheck(!WsTrim.ShouldTrim(32 * gib, 20 * gib), "plenty of free memory makes trimming pure cost");
             ExtCheck(WsTrim.ShouldTrim(32 * gib, 3 * gib), "below the 4 GB floor the trim earns its keep");
-            ExtCheck(WsTrim.ShouldTrim(64 * gib, 12 * gib),
-                "below a quarter of total memory counts as pressure even above the floor");
+            ExtCheck(!WsTrim.ShouldTrim(64 * gib, 12 * gib),
+                "ample absolute headroom must not be trimmed merely for its percentage");
             ExtCheck(!WsTrim.ShouldTrim(0, 0), "an unreadable memory status never trims");
-            ExtCheck(CacheWarm.NvmeBlocks(true, true) && CacheWarm.NvmeBlocks(true, null),
-                "the forced warm-up path skips NVMe and unknown buses alike");
-            ExtCheck(!CacheWarm.NvmeBlocks(true, false) && !CacheWarm.NvmeBlocks(false, true),
-                "SATA passes the forced path and a user's own switch ignores the bus entirely");
         }
 
         // 环境页只读区按账本渲染 切档不动它 停用销账后那一行就该消失
@@ -279,17 +275,17 @@ namespace PaviseApp
         {
             ExtremeUnlockPastGate();
             // 清单里仍在目录内的键 覆盖期间不改写用户自己的值 切走即恢复
-            Settings.Save(PolicyCatalog.KeyCacheWarm, false);
+            Settings.Save(PolicyCatalog.KeyPauseServices, false);
             Settings.SaveStr("PerformancePreset", "5");
             PolicySnapshot snap = PolicyResolver.Global();
             ExtCheck(snap.Preset == PerformancePreset.Extreme, "the global snapshot carries the tier");
-            ExtCheck(snap.ValueOf(PolicyCatalog.KeyCacheWarm) == "1",
+            ExtCheck(snap.ValueOf(PolicyCatalog.KeyPauseServices) == "1",
                 "the overlay forces the value while the tier is active");
-            ExtCheck(Settings.Load(PolicyCatalog.KeyCacheWarm, true) == false,
+            ExtCheck(Settings.Load(PolicyCatalog.KeyPauseServices, true) == false,
                 "the user's own configuration is never rewritten");
             Settings.SaveStr("PerformancePreset", "1");
             PolicySnapshot esports = PolicyResolver.Global();
-            ExtCheck(esports.ValueOf(PolicyCatalog.KeyCacheWarm) == "0",
+            ExtCheck(esports.ValueOf(PolicyCatalog.KeyPauseServices) == "0",
                 "leaving the tier restores the user's own value at once");
             // 极限专属键没有全局值可回 调用方按 档位 且 ForceItem 求值 缺一即关
             ExtCheck(esports.Preset != PerformancePreset.Extreme,

@@ -16,7 +16,7 @@ namespace PaviseApp
             Action[] tests =
             {
                 GpuClockReceiptRoundTrips,
-                LaptopPerfDefaultsOnAndPresetsRespectTheSwitch,
+                LaptopPerfDefaultsOffAndPresetsRespectTheSwitch,
                 SessionGatesAreDecidedByEvidence,
                 DpiLayerTokensMergeWithoutClobbering
             };
@@ -37,13 +37,13 @@ namespace PaviseApp
             gpuClockChecks++;
         }
 
-        private static void LaptopPerfDefaultsOnAndPresetsRespectTheSwitch()
+        private static void LaptopPerfDefaultsOffAndPresetsRespectTheSwitch()
         {
             Settings.UseTransientStoreForCurrentProcess();
             PolicyItem item = PolicyCatalog.ItemOf(PolicyCatalog.KeyLaptopPerf);
-            GpuClockCheck(PolicyCatalog.LaptopPerfDefault && item != null
-                && item.Fallback == "1" && PolicyResolver.Global().LaptopPerf,
-                "vendor performance mode defaults on in both the catalog and the global snapshot");
+            GpuClockCheck(!PolicyCatalog.LaptopPerfDefault && item != null
+                && item.Fallback == "0" && !PolicyResolver.Global().LaptopPerf,
+                "vendor performance mode defaults off in both the catalog and the global snapshot");
             GpuClockCheck(LaptopPerfMode.ShouldActivate(true, true)
                 && !LaptopPerfMode.ShouldActivate(false, true)
                 && !LaptopPerfMode.ShouldActivate(true, false),

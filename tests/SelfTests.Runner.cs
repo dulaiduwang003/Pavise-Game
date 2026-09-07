@@ -113,7 +113,7 @@ namespace PaviseApp
             run("ServicePauser", delegate { RunServicePauserRegressionTests(); });
             run("StandbyListCleaner", delegate { RunStandbyListCleanerRegressionTests(); });
             run("MemShield", delegate { RunMemShieldRegressionTests(); });
-            run("CacheWarm", delegate { RunCacheWarmRegressionTests(); });
+            run("OptimizationSafety", delegate { RunOptimizationSafetyTests(); });
             run("DisplaySolo", delegate { RunDisplaySoloRegressionTests(); });
             run("IrqAutoPilot", delegate { RunIrqAutoPilotRegressionTests(); });
             run("SnapshotReuse", delegate { RunSnapshotReuseRegressionTests(); });
@@ -124,12 +124,14 @@ namespace PaviseApp
             run("MemCompress", delegate { RunMemCompressRegressionTests(); });
             run("RssSteer", delegate { RunRssSteerRegressionTests(); });
             run("ExtremeMode", delegate { RunExtremeModeRegressionTests(); });
+            run("PowerPlanPolicy", delegate { RunPowerPlanPolicyRegressionTests(); });
             run("OsBaseline", delegate { RunOsBaselineRegressionTests(); });
             run("AdaptiveGuard", delegate { RunAdaptiveGuardRegressionTests(); });
             run("NicModeration", delegate { RunNicModerationRegressionTests(); });
             run("LogWrites", delegate { RunLogWritesRegressionTests(); });
             run("LogSeverity", delegate { RunLogSeverityRegressionTests(); });
             run("AntiCheatThrottle", delegate { RunAntiCheatThrottleRegressionTests(); });
+            run("AntiCheatCatalog", delegate { RunAntiCheatCatalogRegressionTests(); });
             run("EnglishInput", delegate { RunEnglishInputRegressionTests(); });
             run("IntelGraphics", delegate { RunIntelGraphicsRegressionTests(); });
             run("AppGpuPreferences", delegate { RunAppGpuPreferencesRegressionTests(); });
@@ -139,6 +141,8 @@ namespace PaviseApp
             run("HeavySqueeze", delegate { RunHeavySqueezeRegressionTests(); });
             run("AddGameFolder", delegate { RunAddGameFolderRegressionTests(); });
             run("ReleaseNotes", delegate { RunReleaseNotesRegressionTests(); });
+            run("WeGameShell", delegate { RunWeGameShellRegressionTests(); });
+            run("NegativeOptFixes", delegate { RunNegativeOptimizationFixTests(); });
             run("UiAsyncState", delegate { RunUiAsyncStateRegressionTests(); });
 
             run("RendererHandoff", delegate { Eq(0, RunRendererHandoffRegressionTests()); });

@@ -78,7 +78,7 @@ namespace PaviseApp
             int ty = 2;
             AddCfgSection(cfgTabPanels[0], Lang.T("cfg.sub.range"), ref ty,
                 new[] { PolicyCatalog.KeySuppress, PolicyCatalog.KeyAggressive,
-                    PolicyCatalog.KeyGpuDemote, PolicyCatalog.KeyHeavySqueeze });
+                    PolicyCatalog.KeyGpuDemote, PolicyCatalog.KeyHeavySqueeze, PolicyCatalog.KeyAdaptiveEscalate });
             AddCfgSection(cfgTabPanels[0], Lang.T("cfg.sub.boost"), ref ty,
                 new[] { PolicyCatalog.KeyBoost,
                     PolicyCatalog.KeyRenderLane });
@@ -89,8 +89,7 @@ namespace PaviseApp
             ty = 2;
             AddCfgSection(cfgTabPanels[2], Lang.T("cfg.group.mempower"), ref ty,
                 new[] { PolicyCatalog.KeyPowerPlan, PolicyCatalog.KeyPowerYield, PolicyCatalog.KeyLaptopPerf,
-                    PolicyCatalog.KeyDisableCpuIdle, PolicyCatalog.KeyStandbyCleaner,
-                    PolicyCatalog.KeyCacheWarm });
+                    PolicyCatalog.KeyDisableCpuIdle, PolicyCatalog.KeyStandbyCleaner });
             AddCfgSection(cfgTabPanels[2], Lang.T("cfg.sub.net"), ref ty,
                 new[] { PolicyCatalog.KeyPauseDl, PolicyCatalog.KeyPauseUpdate, PolicyCatalog.KeyPauseMaintenance });
             AddCfgSection(cfgTabPanels[2], Lang.T("cfg.group.env"), ref ty,
@@ -119,14 +118,13 @@ namespace PaviseApp
             cfgTabKeys = new[]
             {
                 new[] { PolicyCatalog.KeySuppress, PolicyCatalog.KeyAggressive,
-                    PolicyCatalog.KeyGpuDemote, PolicyCatalog.KeyHeavySqueeze,
+                    PolicyCatalog.KeyGpuDemote, PolicyCatalog.KeyHeavySqueeze, PolicyCatalog.KeyAdaptiveEscalate,
                     PolicyCatalog.KeyBoost,
                     PolicyCatalog.KeyRenderLane },
                 new[] { PolicyCatalog.KeyStrictCores, PolicyCatalog.KeyCoreDomainAlt,
                     PolicyCatalog.KeyCoreMask },
                 new[] { PolicyCatalog.KeyPowerPlan, PolicyCatalog.KeyPowerYield, PolicyCatalog.KeyLaptopPerf,
                     PolicyCatalog.KeyDisableCpuIdle, PolicyCatalog.KeyStandbyCleaner,
-                    PolicyCatalog.KeyCacheWarm,
                     PolicyCatalog.KeyPauseDl, PolicyCatalog.KeyPauseUpdate, PolicyCatalog.KeyPauseMaintenance,
                     PolicyCatalog.KeyPauseServices, PolicyCatalog.KeyAwake,
                     PolicyCatalog.KeyEnglishInput },
@@ -182,13 +180,13 @@ namespace PaviseApp
                 case PolicyCatalog.KeyAggressive: return "gm.aggressive.sub";
                 case PolicyCatalog.KeyGpuDemote: return "gm.gpudemote.sub";
                 case PolicyCatalog.KeyHeavySqueeze: return "gm.squeeze.sub";
+                case PolicyCatalog.KeyAdaptiveEscalate: return "gm.adaptive.sub";
                 case PolicyCatalog.KeyRenderLane: return "gm.lane.sub";
                 case PolicyCatalog.KeyPowerPlan: return "cfg.plan.sub";
                 case PolicyCatalog.KeyPowerYield: return "gm.poweryield.sub";
                 case PolicyCatalog.KeyDisableCpuIdle: return "gm.disablecpuidle.sub";
                 case PolicyCatalog.KeyStandbyCleaner: return "gm.standbycleaner.cfgsub";
                 case PolicyCatalog.KeyVramShield: return "gm.vramshield.sub";
-                case PolicyCatalog.KeyCacheWarm: return "gm.cachewarm.sub";
                 case PolicyCatalog.KeyPauseDl: return "gm.pausedl.sub";
                 case PolicyCatalog.KeyPauseUpdate: return "gm.pausewu.sub";
                 case PolicyCatalog.KeyPauseMaintenance: return "gm.pausemaint.sub";

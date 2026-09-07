@@ -218,19 +218,24 @@ namespace PaviseApp
                 using (var readLease = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read))
                     Eq(false, mode.TryLearnConfirmedRenderer(hit));
 
-                Eq(true, mode.ProfileStoreSaveFailed);
-                Eq(1, failures);
+                Console.WriteLine("RENDERER_BUSY fatal=" + mode.ProfileStoreSaveFailed + " failures=" + failures + " changes=" + changed);
+                Eq(false, mode.ProfileStoreSaveFailed);
+                Eq(0, failures);
                 Eq(0, changed);
-                AssertRendererLearningProfile(original, observedAtFailure);
+                Eq(null, observedAtFailure);
                 AssertRendererLearningProfile(original, mode.GetProfiles()[0]);
                 Eq(saved, File.ReadAllText(file));
-                // 写锁解除后也不能重试，第一次失败的熔断保持有效。
-                Eq(false, mode.TryLearnConfirmedRenderer(hit));
-                Eq(1, failures);
-                Eq(0, changed);
-                Eq(saved, File.ReadAllText(file));
-                AssertRendererLearningProfile(original, new GameProfileStore(dir).LoadProfiles()[0]);
-                Eq(0, Directory.GetFiles(dir, "*.tmp").Length);
+                // 短暂占用不是致命故障 写锁解除后同一实例可以提交。
+                Eq(true, mode.TryLearnConfirmedRenderer(hit));
+                Eq(0, failures);
+                Eq(1, changed);
+                Eq(hit.RendererPath, new GameProfileStore(dir).LoadProfiles()[0].ExecutablePath);
+                var observations = (RendererObservationStore)typeof(GameMode).GetField("rendererObservations",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(mode);
+                Eq(true, observations.Close(3000)); // Drain optional asynchronous history before checking owned files.
+                string[] remainingTemps = Directory.GetFiles(dir, "*.tmp");
+                if (remainingTemps.Length != 0)
+                    throw new InvalidOperationException("Profile retry left temporary files: " + string.Join(",", remainingTemps));
             }
             finally { try { Directory.Delete(dir, true); } catch { } }
         }

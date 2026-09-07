@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace PaviseApp
 {
@@ -15,36 +16,117 @@ namespace PaviseApp
         private static long nextSampleTicks;
         private static long peakShared;
         private static int samples;
+        private static int generation;
+        private static bool busy, accepting, closed;
 
         public static void Reset()
         {
-            lock (lk) { peakShared = 0; samples = 0; nextSampleTicks = 0; }
+            lock (lk)
+            {
+                generation++;
+                peakShared = 0; samples = 0; nextSampleTicks = 0;
+                accepting = !closed;
+            }
         }
 
+        public static void Seal()
+        { lock (lk) { accepting = false; generation++; } }
+
         public static void SampleIfDue(ICollection<int> gamePids)
+        { SampleIfDueAt(gamePids, DateTime.UtcNow.Ticks); }
+
+        internal static void SampleIfDueAt(ICollection<int> gamePids, long now)
         {
             if (gamePids == null || gamePids.Count == 0) return;
-            if (GpuInventory.IntegratedOnly) return;
-            long now = DateTime.UtcNow.Ticks;
             lock (lk)
             {
-                if (now < nextSampleTicks) return;
+                if (!accepting || closed || busy || now < nextSampleTicks) return;
+                int mine = generation;
+                // 冻结 PID 集合；主扫描线程此后可以修改自己的集合。
+                int[] pids = new int[gamePids.Count];
+                gamePids.CopyTo(pids, 0);
                 nextSampleTicks = now + MinIntervalSeconds * TimeSpan.TicksPerSecond;
-            }
-            Dictionary<int, double> shared = ReadSharedByPid();
-            if (shared == null) return;
-            long best = 0;
-            foreach (int pid in gamePids)
-            {
-                double bytes;
-                if (shared.TryGetValue(pid, out bytes) && bytes > best) best = (long)bytes;
-            }
-            lock (lk)
-            {
-                samples++;
-                if (best > peakShared) peakShared = best;
+                busy = true;
+                try
+                {
+                    if (ThreadPool.QueueUserWorkItem(delegate { SampleWorker(mine, pids); })) return;
+                }
+                catch { }
+                busy = false;
+                Monitor.PulseAll(lk);
             }
         }
+
+        private static void SampleWorker(int mine, int[] pids)
+        {
+            try
+            {
+                lock (lk) if (!accepting || closed || mine != generation) return;
+                Dictionary<int, double> shared;
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+                if (ReadForTest != null) shared = ReadForTest();
+                else
+#endif
+                {
+                    // 连显卡清单的首次枚举也在后台，不让只读诊断阻塞 Boost。
+                    if (GpuInventory.IntegratedOnly) return;
+                    shared = ReadSharedByPid();
+                }
+                if (shared == null) return;
+                long best = 0;
+                foreach (int pid in pids)
+                {
+                    double bytes;
+                    if (shared.TryGetValue(pid, out bytes) && !double.IsNaN(bytes)
+                        && !double.IsInfinity(bytes) && bytes > best && bytes < long.MaxValue)
+                        best = (long)bytes;
+                }
+                lock (lk)
+                {
+                    if (!accepting || closed || mine != generation) return;
+                    samples++;
+                    if (best > peakShared) peakShared = best;
+                }
+            }
+            catch { } // 诊断不可用不影响对局，也必须释放 single-flight 名额。
+            finally
+            {
+                lock (lk) { busy = false; Monitor.PulseAll(lk); }
+            }
+        }
+
+        internal static bool CloseForShutdown(int timeoutMs)
+        {
+            lock (lk) { closed = true; accepting = false; generation++; }
+            return WaitForIdle(timeoutMs);
+        }
+
+        internal static bool WaitForIdle(int timeoutMs)
+        {
+            if (timeoutMs < 0) return false;
+            var elapsed = System.Diagnostics.Stopwatch.StartNew();
+            lock (lk)
+                while (busy)
+                {
+                    int left = (int)Math.Max(0L, timeoutMs - elapsed.ElapsedMilliseconds);
+                    if (left == 0 || !Monitor.Wait(lk, left)) return !busy;
+                }
+            return true;
+        }
+
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+        internal static Func<Dictionary<int, double>> ReadForTest;
+        internal static int SamplesForTest { get { lock (lk) return samples; } }
+        internal static void ResetForTest()
+        {
+            lock (lk)
+            {
+                if (busy) throw new InvalidOperationException("VRAM worker is still active");
+                ReadForTest = null; closed = false;
+                Reset();
+            }
+        }
+#endif
 
         public static string Summarize()
         {
@@ -87,7 +169,7 @@ namespace PaviseApp
                         int pid = GpuEvidence.ParsePid(Marshal.PtrToStringUni(item.Name));
                         if (pid <= 0) continue;
                         double value = item.Value.DoubleValue;
-                        if (value < 0) continue;
+                        if (double.IsNaN(value) || double.IsInfinity(value) || value < 0) continue;
                         double sum;
                         result.TryGetValue(pid, out sum);
                         result[pid] = sum + value;

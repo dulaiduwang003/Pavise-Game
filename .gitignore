@@ -4,6 +4,9 @@ tests/
 !tests/
 tests/*
 !tests/SelfTests.Runner.cs
+!tests/AntiCheatChecks.cs
+!tests/Run-AntiCheatChecks.ps1
+!tests/SelfTests.AntiCheatCatalog.cs
 !tests/SelfTests.OptionalServicePause.cs
 !tests/SelfTests.ServicePauser.cs
 !tests/SelfTests.StandbyListCleaner.cs
@@ -16,6 +19,8 @@ tests/*
 !tests/SelfTests.HeavySqueeze.cs
 !tests/SelfTests.AddGameFolder.cs
 !tests/SelfTests.ReleaseNotes.cs
+!tests/SelfTests.WeGameShell.cs
+!tests/SelfTests.NegativeOptFixes.cs
 !tests/SelfTests.UiAsyncState.cs
 !tests/SelfTests.RendererCandidate.cs
 !tests/SelfTests.RendererRelease.cs
@@ -40,7 +45,8 @@ tests/*
 !tests/SelfTests.IrqDisplay.cs
 !tests/SelfTests.IrqPinShot.cs
 !tests/SelfTests.MemShield.cs
-!tests/SelfTests.CacheWarm.cs
+!tests/SelfTests.OptimizationSafety.cs
+!tests/SelfTests.OptimizationBoundaries.cs
 !tests/SelfTests.DisplaySolo.cs
 !tests/SelfTests.IrqAutoPilot.cs
 !tests/SelfTests.AdaptiveGuard.cs
@@ -53,6 +59,7 @@ tests/*
 !tests/SelfTests.MemCompress.cs
 !tests/SelfTests.RssSteer.cs
 !tests/SelfTests.ExtremeMode.cs
+!tests/SelfTests.PowerPlanPolicy.cs
 !tests/SelfTests.GpuClockLock.cs
 !tests/SelfTests.Eee.cs
 !tests/SelfTests.RogueProcess.cs
@@ -74,7 +81,6 @@ tools/*
 !tools/GainBench2133/**
 !tools/Sync-VersionManifest.ps1
 !tools/Publish-VersionManifest.ps1
-!tools/Pavise-Uninstall.cmd
 !tools/RendererHandoffBench/
 tools/RendererHandoffBench/*
 !tools/RendererHandoffBench/FixtureHost.cs
@@ -93,6 +99,15 @@ tools/HeterogeneousGpuBench/results/
 tools/HeterogeneousGpuBench/bin/
 !tools/VrsBench/
 !tools/VrsBench/**
+!tools/OptimizationRiskBench/
+!tools/OptimizationRiskBench/RiskBench.cs
+!tools/OptimizationRiskBench/ExtraBench.cs
+!tools/OptimizationRiskBench/ReviewBench.cs
+!tools/OptimizationRiskBench/Run-Review.ps1
+!tools/OptimizationRiskBench/Summarize-Review.ps1
+!tools/OptimizationRiskBench/Run.ps1
+!tools/OptimizationRiskBench/README.md
+!tools/OptimizationRiskBench/RESULTS.md
 tools/VrsBench/results/
 scripts/
 *.bak
@@ -110,6 +125,10 @@ Pavise.*.log
 crash.*.log
 *.7z
 Pavise.profiles.dat
+Pavise.library-ignore.txn
+Pavise.library-ignore.txn.*.tmp
+Pavise.autoignore.txt
+Pavise.autoignore.txt.*.tmp
 Pavise.renderer-observations.dat
 Pavise.reports.log
 Pavise.selftest.*.txt

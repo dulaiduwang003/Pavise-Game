@@ -724,8 +724,10 @@ namespace PaviseApp
                 string before = File.ReadAllText(fixture.Family.LibraryFile);
                 using (var lease = new FileStream(fixture.Family.LibraryFile, FileMode.Open, FileAccess.Read, FileShare.Read))
                     Eq(false, fixture.Pick("1"));
-                Eq(true, fixture.Family.Mode.ProfileStoreSaveFailed);
+                Eq(false, fixture.Family.Mode.ProfileStoreSaveFailed);
                 Eq(before, File.ReadAllText(fixture.Family.LibraryFile)); Eq(true, PowerBudgetYield.Fused);
+                Eq(false, fixture.Family.Current(fixture.Family.First.Id).Overrides.ContainsKey(PowerBudgetYieldRunner.EnabledKey));
+                Eq(true, fixture.Pick("1"));
             }
             using (var fixture = new UiConfigPowerYieldFixture(root, "vram-profile-consent"))
             {
@@ -759,8 +761,10 @@ namespace PaviseApp
                     saved = (bool)UiConfigCall(fixture.Form, "ApplyCfgPolicyChoice", PolicyCatalog.KeyVramShield, "1");
                 Console.WriteLine("VRAM_PROFILE saved=" + saved + " fuse=" + VramShield.Fused);
                 Eq(false, saved); Eq(1, prompts);
-                Eq(true, fixture.Family.Mode.ProfileStoreSaveFailed);
+                Eq(false, fixture.Family.Mode.ProfileStoreSaveFailed);
                 Eq(before, File.ReadAllText(fixture.Family.LibraryFile)); Eq(true, VramShield.Fused);
+                Eq(false, fixture.Family.Current(fixture.Family.First.Id).Overrides.ContainsKey(PolicyCatalog.KeyVramShield));
+                Eq(true, (bool)UiConfigCall(fixture.Form, "ApplyCfgPolicyChoice", PolicyCatalog.KeyVramShield, "1"));
             }
         }
 
@@ -1067,10 +1071,11 @@ namespace PaviseApp
                 using (var lease = new FileStream(fixture.Family.LibraryFile, FileMode.Open, FileAccess.Read, FileShare.Read))
                 {
                     picker.Index = 1; picker.IndexChanged(1);
-                    Eq(true, fixture.Family.Mode.ProfileStoreSaveFailed);
+                    Eq(false, fixture.Family.Mode.ProfileStoreSaveFailed);
                 }
                 Eq(before, File.ReadAllText(fixture.Family.LibraryFile));
                 Eq(3, picker.Index);
+                Eq("ultra", fixture.Family.Current(fixture.Family.First.Id).Overrides[PolicyCatalog.KeyNvLowLat]);
             }
         }
 
@@ -1108,10 +1113,10 @@ namespace PaviseApp
                 string before = File.ReadAllText(fixture.Family.LibraryFile);
                 using (var lease = new FileStream(fixture.Family.LibraryFile, FileMode.Open, FileAccess.Read, FileShare.Read))
                     UiConfigCall(fixture.Form, "ApplyCfgCoreMask");
-                Eq(true, fixture.Family.Mode.ProfileStoreSaveFailed);
+                Eq(false, fixture.Family.Mode.ProfileStoreSaveFailed);
                 Eq(before, File.ReadAllText(fixture.Family.LibraryFile));
-                // Existing multi-key APIs may retain attempted values in RAM;
-                // their save-failure gate, not a new transaction, stops application.
+                Eq(false, fixture.Family.Current(fixture.Family.First.Id).Overrides.ContainsKey("GmCoreMask"));
+                // A failed save must not publish the attempted mask or start the runtime.
                 Eq(null, FamilyPolicyGetField(fixture.Family.Mode, "worker"));
             }
         }

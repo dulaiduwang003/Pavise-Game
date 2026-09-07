@@ -236,6 +236,10 @@ namespace PaviseApp
         }
 
         public AppGpuPreferenceResult Apply(AppGpuPreferenceChange change, bool confirmExisting)
+        { return Apply(change, confirmExisting, null); }
+
+        internal AppGpuPreferenceResult Apply(AppGpuPreferenceChange change, bool confirmExisting,
+            Func<bool> stillEligible)
         {
             lock (GpuPrefStage.MutationGate)
             {
@@ -255,6 +259,9 @@ namespace PaviseApp
                     if (!string.Equals(current, change.CurrentRaw, StringComparison.Ordinal)) return AppGpuPreferenceResult.Changed;
                     if (!control.TryGetStagedOriginal(change.ExePath, out staged, out original)) return AppGpuPreferenceResult.Busy;
                     if (staged != change.Staged || (staged && original != change.StageOriginal)) return AppGpuPreferenceResult.Changed;
+                    // 锁外预检查不能作为提交凭证。等锁及所有只读准备之后重验，
+                    // 必须早于暂存释放、账本落盘和偏好写入。人工路径不传此委托。
+                    if (stillEligible != null && !stillEligible()) return AppGpuPreferenceResult.Changed;
                     if (!control.TryReleaseStage(change.ExePath)) return AppGpuPreferenceResult.Busy;
                     if (!Read(change.ExePath, out current)) return AppGpuPreferenceResult.ReadFailed;
                     if (!string.Equals(current, change.BaselineRaw, StringComparison.Ordinal)) return AppGpuPreferenceResult.Changed;

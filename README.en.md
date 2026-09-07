@@ -6,11 +6,11 @@
 
 Windows game resource scheduling and guard tool
 
-`C#` · `WinForms` · `Chinese / English / Japanese`
+`C#` · `WinForms` · `Interface: Chinese / English`
 
 [简体中文](README.md) · **English** · [日本語](README.ja.md)
 
-**v2.2.0.2 · [Release notes (Chinese)](docs/releases/v2.2.0.2.md)**
+**v2.2.1.2 · [Release notes (Chinese)](docs/releases/v2.2.1.2.md)**
 
 <br>
 
@@ -36,29 +36,29 @@ Add a game's EXE or shortcut to the library, or use the scan function to import 
 
 Protection applies for as long as the game runs; switching to the desktop or minimising does not end it. Games started through a launcher (League of Legends, for example) have their real executable remembered after the first confirmation and are recognised directly afterwards. Launchers, updaters, crash reporters and anti-cheat processes are not identified as games.
 
-Session changes are restored from their records when the game exits. After an abnormal Pavise exit, the next launch retries recovery and keeps records of failures. Three exceptions: application GPU preferences remain saved, input-language changes are not rolled back, and purged cache contents cannot be restored.
+Session changes are restored from their records when the game exits. After an abnormal exit, the next launch retries recovery and retains records of failures. Application GPU preferences, per-EXE compatibility settings and persistent system settings require separate restoration; input-language changes are not rolled back. Purged caches and manually deleted League add-ons cannot be recovered by restoring settings; the client may download add-ons again during an update or repair.
 
 ## Modes
 
 | Mode | Suppression scope |
 |---|---|
 | Smart | Every background process that clears the protection boundary is isolated outright the moment the match starts, with no heat check and no tier-by-tier escalation. Whatever you are using, and its family, is exempt from suppression; under sustained CPU saturation (above 90% for over ten seconds) it temporarily escalates to the Esports profile, stepping back down after two stable minutes, at most three times per match |
-| Esports | The scope widens to everything outside the game, windowed apps included. Programs you use after alt-tabbing are demoted too; only the whitelist is exempt |
-| Extreme | Esports as the base, with every eligible optional optimization on this machine enabled automatically, persistent System Environment items included. Hidden by default; it appears only after unlocking in Settings and restarting the computer. Suppression scope and strength are identical to Esports |
+| Esports | Widens suppression to non-game processes that pass the protection boundary, including windowed apps and apps used after alt-tab. The whitelist and built-in protection rules still apply |
+| Extreme | Starts from Esports and enables eligible, non-excluded items in the Extreme catalogue, including some persistent settings. Hidden until unlocked in Settings and the computer is restarted. Suppression scope and strength match Esports; it does not enable every optional feature |
 | Handheld | Background suppression identical to Esports, with the power side left to vendor tools: no power slider, and pure power-saving items stay enabled on AC. Requires a battery; for handhelds and thin-and-light laptops |
 | Custom | Background suppression, cores, memory and power, system environment and graphics, each chosen individually |
 
-The tiers differ in which processes are eligible to be touched, not in how hard they are suppressed. Anything past the boundary is isolated directly, cold processes included, without waiting for one to consume resources for ten seconds first. Isolation writes the lowest priority, the lowest disk I/O and paging priority, EcoQoS, a timer-resolution cap and disabled turbo boost. With GPU yielding on, the GPU scheduling priority drops to minimum as well.
+The tiers mainly differ in process eligibility and additional policies. Eligible ordinary background processes are isolated directly using Idle CPU priority, very low disk I/O priority, low paging priority, EcoQoS and a timer-resolution cap. GPU yielding also lowers GPU scheduling priority. Windows dynamic priority boosts are preserved so a background process the game is waiting on can finish its work; these boosts are distinct from processor turbo, which background suppression does not directly disable.
 
 This is the opposite of the 1.9-era approach, because the premise changed. Isolating everything really was a net loss back then: the scattered wake-ups of a hundred idle processes were squeezed onto two cores by affinity narrowing and queued behind each other, tripling the longest frame by 2.6×. From 2.0 on, background affinity is left alone by default and the entire narrowing-and-migration mechanism is gone; since 2.2 a heat-gated core squeeze is back as an experimental item, acting only on background processes that keep using CPU, while idle ones are still never touched. A cold process with no ready threads costs no CPU to begin with, and when it does wake it can run on any core without higher-priority work, so nothing queues and the cost of isolating everything disappears.
 
-In every mode, anti-cheat, Windows core services, network accelerators, the input/audio/peripheral chain, hardware control tools and other signed-in accounts are never suppressed. No switch affects this boundary.
+Ordinary background suppression always excludes anti-cheat, Windows core services, network accelerators, the input/audio/peripheral chain, hardware tools and other signed-in accounts. Separate, default-off switches on the Anti-Cheat page can suppress selected user-mode anti-cheat processes; they do not control kernel drivers.
 
 Game family exemption is on by default: game platforms, launcher shells, resident processes inside the game folder and child processes spawned by the game are all released as a family. Turning it off releases only the game itself and the whitelist; everything else is suppressed as ordinary background.
 
 ## Per-game configuration
 
-Select a game in the library and open its own configuration. Each game can override the mode, background suppression, cores, memory and power, system environment and graphics policy, 38 items in total. Items not overridden follow the global setting, and changes save immediately.
+Select a game in the library and open its configuration. The current policy catalogue contains 34 per-game overrides across modes, background suppression, cores, memory and power, environment and graphics, including the mode, family policy and core mask. Unset overrides follow global settings, and changes save immediately. Per-EXE fullscreen-optimization and DPI compatibility settings are separate from these 34 items and are not automatically restored at match exit.
 
 - Most per-game settings are resolved when the match activates and apply to the next one. Pausing nonessential services and disabling CPU idle are handled in the current session and reverted when turned off
 - The current core selection can be pinned to one game without affecting others
@@ -70,17 +70,17 @@ Library entries can be renamed. This changes the displayed name only and does no
 
 ## Features
 
-Features come in two kinds: in-match changes, restored automatically when the game exits, and persistent changes, collected on the System Environment page, which need a restart and can be reverted at any time. Here they are in interface order.
+Session changes are restored from records at match exit. Persistent settings are mainly on the System Environment page, but application GPU preferences and per-EXE compatibility settings also persist and require separate restoration. Restart requirements are stated on each item. File cleanup is a separate operation; restoring settings cannot recover deleted contents.
 
 ### Overview and guard
 
-One guard switch decides whether Pavise takes over. With it on, nothing happens until a game is detected; with it off, nothing happens at all.
+The guard switch controls general game-session scheduling: enabling it starts automatic detection and takeover; disabling it stops takeover and attempts to restore session changes. Standby staging, persistent settings and the League extension follow their own controls. Turning off the guard does not undo all changes.
 
 - The overview shows the active mode, whether it comes from the global setting or a specific game's configuration, and the last session's report
 - **Session report**: play time, the number of suppressed processes and their CPU usage, the share of time spent power- or thermal-limited, and the peak shared video memory the game spilled into system RAM
 - **Feature search**: type a keyword at the top to jump straight to a switch instead of remembering which page it lives on
 - **Auto-hide**: the window collapses to the tray ten seconds after a game is detected, once per session
-- **Interface**: light and dark themes; Chinese, English and Japanese switch instantly, and newly written log lines follow
+- **Interface**: light and dark themes, instant Chinese/English switching, and newly written logs following the selected language. Japanese is a documentation translation; the current app has no Japanese interface
 
 ### Library
 
@@ -88,22 +88,24 @@ One guard switch decides whether Pavise takes over. With it on, nothing happens 
 - **Forced takeover**: for emulators, cloud gaming and anything else that cannot be recognised, the match starts as soon as the process does
 - **Auto-add**: newly recognised games are collected automatically. A path you removed goes on an ignore list and is never auto-added again until you add it back by hand
 - **Suspected malware alert**: a process with no visible window outside the Windows and Program Files directories that uses a quarter or more of the logical CPUs for two minutes straight, or a suppressed process that lifts its own background core restriction, is logged and raised as a tray warning about a possible miner infection. Random-looking names use half the threshold; each name is alerted at most once a day
-- **Render observation label**: marks whether GPU 3D activity has actually been seen on that EXE, which is what tells you whether family suppression is safe to enable
+- **Render observation label**: records GPU 3D activity observed on an EXE. This alone does not identify the main game renderer or establish that related processes can safely be suppressed
 - **Family background suppression**: per-game, off by default. While off, game platforms, launcher shells, resident processes in the game folder and child processes spawned by the game are released as a family
-- **Per-game configuration**: 38 policy items can be overridden per game; anything not overridden follows the global setting, and entries can be renamed
+- **Per-game configuration**: 34 items in the current policy catalogue; unset overrides follow global settings, and entries can be renamed
+- **WeGame shell removal**: games launched through WeGame (CrossFire, Assault Fire, Delta Force and the like) get the same shell-removal strip under their card as League of Legends. With shell launch on, WeGame, Cross and Tencent add-on processes are ended precisely 30 seconds into a match; if the game exits within 20 seconds, automatic removal is disabled for that game on this machine; if the shell keeps respawning, removal pauses for the match. Per-game switch, off by default
+- **Voice is never suppressed**: processes with an active microphone capture session are detected through audio sessions and left alone during play in every tier, which is also what lets QQ and WeChat through while on a call (they are suppressed as usual otherwise); KOOK, YY, TeamSpeak, Mumble, Oopz and controller mappers such as DS4Windows and reWASD are also exempt by name. The Smart tier's adaptive escalation is now a separate switch, off by default
 
 ### Processes and cores
 
 - **Game process boost**: the renderer receives high priority and higher disk I/O, memory-page and GPU scheduling priority, restored on exit
-- **Separate render-thread boost**: the thread that determines frame rate is identified and boosted on its own. Bench testing shows a 77%-96% improvement in 1% low frames under full CPU load
-- **Smart yield**: when the CPU stays saturated for ten seconds and the frame thread did not take over, the game process steps back to normal priority. Whole-process high priority measurably worsens tail frames in that state
+- **Candidate thread boost**: on by default and forced on in Extreme; in other tiers a game that gets slower can turn it off per game. CPU time identifies a busy candidate, not a frame-critical thread; a wrong choice can slow the game. Sustained CPU saturation withdraws the candidate boost and returns the game process to normal priority, regardless of candidate state
+- **Smart yield**: sustained CPU saturation for ten seconds returns the game to normal priority and withdraws candidate thread boost, even if a candidate was already boosted. This is a risk control, not a universal FPS improvement
 - **In-match self-yield**: Pavise moves off the game cores and lowers its own scheduling weight
-- **Background suppression**: everything past the protection boundary is isolated at once, receiving the lowest priority, the lowest disk I/O and paging priority, EcoQoS, a timer-resolution cap and disabled turbo boost
+- **Background suppression**: directly isolates eligible ordinary background processes through CPU, I/O and paging priority, EcoQoS and timer-resolution policy, while preserving Windows dynamic priority boosts
 - **Background GPU priority demotion**: a background process using the GPU also has its GPU scheduling priority lowered
 - **Heavy background core squeeze** (experimental): during a match, background processes that use more than half a core for 10 seconds straight are confined to the fewest cores the game does not use, avoiding the game's L3 block on multi-CCD parts and landing on efficiency cores on hybrid CPUs; idle background is left alone, the limit lifts 30 seconds after load drops, and everything is restored on exit. Off by default; not offered below 5 physical cores
-- **Suppressed working-set trim** (Extreme tier only): empties an isolated background process's physical-memory working set once, freeing it for the game; that program's first response after switching back is slower, and anti-cheat processes are never trimmed. Off by default
-- **Wider and stronger suppression**: maximum suppression of non-game background apps, including after alt-tab. Locked on in Esports, Extreme and Handheld; whitelist your IME and device tools
-- **Game core partitioning**: background work is confined to its own cores and the rest are left to the game. Handles hybrid architectures, X3D and multiple processor groups; six cores or fewer are not partitioned
+- **Suppressed working-set trim** (Extreme only): enabled for Extreme sessions unless excluded in Extreme management. Attempts trimming only when available memory is both below 4 GiB and below one eighth of total memory. Subsequent page faults and slower first responses remain possible. Anti-cheat processes are excluded
+- **Wider background suppression**: covers eligible non-game background processes even after alt-tab. Forced on in Esports, Extreme and Handheld; built-in protection and the whitelist still apply
+- **Game core partitioning**: selects the cores available to the game, with support for hybrid CPUs, X3D and multiple processor groups. It neither confines all background processes to the remaining cores nor guarantees exclusivity. Background affinity changes require a separately enabled, eligible heavy-background or anti-cheat policy
 - **Partition swap**: X3D machines can switch to the large-cache CCD
 - **Manual core selection**: draw it per core, with presets for all cores, no SMT, P-cores only and inverse. Written on Apply
 - **Whitelist**: drag an EXE in, scope determined automatically, never suppressed in any mode
@@ -112,9 +114,13 @@ One guard switch decides whether Pavise takes over. With it on, nothing happens 
 
 Nine anti-cheat systems are listed individually, each stating which games it protects and which of its components are kernel drivers that must not be touched: ACE (Tencent), TenProtect, Vanguard (Riot), EasyAntiCheat (Epic), BattlEye, EA Javelin, nProtect GameGuard, FACEIT and NEAC (NetEase).
 
+Chinese arenas are listed separately: Perfect World Arena, 5E and B5. Their anti-cheat lives inside the platform client, so Pavise protects those processes and never suppresses them. NetEase NEAC gains NeacClient and OWNeacClient, Tencent TP gains TP3Helper; HoYoverse ships kernel drivers only, which are recognised for log messages.
+
+Three additional **protection-only** groups cover PunkBuster, Nexon Game Security (including BlackCipher), and Wellbia XIGNCODE3 / UNCHEATER. Names, name prefixes and dedicated directories exempt their processes from background suppression, including `.aes` components and helpers inside those directories. These groups have no suppression switches. Turning off the anti-cheat master switch does not disable background exemptions. [Recognition rules, sources and coverage limits (Chinese)](docs/anti-cheat-coverage.md).
+
 The **compatibility list** records games that refuse writes, so priority and I/O writes certain to fail are not retried while GPU scheduling priority and the frame thread are still attempted. The list expires when the game updates.
 
-**Anti-cheat suppression** (per-group switches on the Anti-Cheat page, off by default) offers no intensity choice; the profile is fixed and scan-safe: below-normal CPU priority, very low disk I/O (disk scanning is the main source of harm), efficiency-core capping, and confinement to the fewest cores the game does not use (the last physical core on 6- to 8-core machines, efficiency cores on hybrid CPUs, the other L3 block on multi-CCD parts; writes refused by the anti-cheat's own protection are skipped and not retried). It never drops the scanner to the lowest CPU priority, seals its timer resolution, or lowers its memory page priority — game threads can be suspended by the system during a scan and resume only when the scanner finishes, so starving it of CPU time only stretches a brief stutter into a multi-second freeze.
+**Anti-cheat suppression** (per-group switches on the Anti-Cheat page, off by default) offers no intensity choice; the profile is fixed and scan-safe: below-normal CPU priority, very low disk I/O (disk scanning is the main source of harm), efficiency-core capping, and confinement to the fewest cores the game does not use (the last physical core on 6- to 8-core machines, efficiency cores on hybrid CPUs, the other L3 block on multi-CCD parts; writes refused by the anti-cheat's own protection make Pavise drop the whole suppression for that run without retrying). It never drops the scanner to the lowest CPU priority, seals its timer resolution, or lowers its memory page priority — game threads can be suspended by the system during a scan and resume only when the scanner finishes, so starving it of CPU time only stretches a brief stutter into a multi-second freeze.
 
 ### Graphics
 
@@ -131,10 +137,10 @@ Original values are snapshotted and restored when a switch is turned off. Writes
 
 ### Input devices
 
-- Turn off **Filter Keys, Sticky Keys and Toggle Keys**. Microsoft defines these features as ignoring brief keystrokes, so leaving them on necessarily adds latency
+- Turn off **Filter Keys, Sticky Keys and Toggle Keys** and their activation shortcuts to avoid altered keyboard behaviour and accidental activation during play
 - **Disable selective suspend for keyboards and mice**, which removes the loose first input after an idle period. Keyboards and mice only, never USB storage or audio
-- Repair **input queue length** broken by other tools and turn off **pointer precision enhancement**
-- **Foreground time slice**, three modes: system default, foreground weighted, report only. Non-standard values are reported as anomalies
+- Repair **input queue length** changed by other tools through System Checkup. There is currently no Enhance Pointer Precision switch
+- **Foreground time slice check and repair**: System Checkup decodes the current configuration and repairs fields that meet its criteria. The three-way selector has been removed
 - **Switch to English once at game entry**: one English keyboard layout request to the foreground game inside a short entry window. Switching back to Chinese, alt-tabbing and returning are never intervened in
 
 ### Device interrupts
@@ -146,23 +152,22 @@ Original values are snapshotted and restored when a switch is turned off. Writes
 
 ### Memory and power
 
-- **Managed power plan**: created on the first match with parameters written for this processor. Any plan on the machine can be selected instead, in which case Pavise only switches to it and changes none of its parameters
+- **Managed power plan**: created at the first match and configured for the processor. Selecting an existing plan only switches plans; explicitly enabling Disable CPU idle can still temporarily change that plan's idle settings. Windows active-plan notifications trigger reapplication if another app switches plans, with no periodic fallback after success. This is not an access-control lock against other writers
 - **Storage kept awake in-match**: the managed plan zeroes the NVMe power-state latency tolerances and keeps the AHCI link Active, preventing the occasional hitch of an SSD waking from a low-power state; the NVMe side is relaxed on battery
 - **Disable CPU idle**: only during a game; writes both the AC and DC values of the currently active power plan and restores them at match end. On battery it noticeably shortens battery life; not offered on AMD processors
 - **Standby memory cleanup**: the entire standby list is purged only when both the list-size and true-free-memory thresholds are crossed. Technical detail below
 - **MMCSS multimedia scheduling**: the share reserved for non-multimedia work drops from 20% to 10%, the Games task's scheduling category and file I/O are raised, and the lazy idle-check tier is disabled
-- **Low-latency DWM composition** (Extreme tier only): registers the desktop compositor's threads into the multimedia real-time tier during a match, so borderless and windowed games keep compositing under full CPU load; exclusive fullscreen bypasses the compositor and is unaffected. Off by default
-- **Pause Windows Update, Delivery Optimization, nonessential services, background wireless scanning and automatic maintenance**, all resumed on exit
-- **Vendor performance mode during play**: switches Lenovo Legion and ASUS ROG laptops to their vendor performance profile through the vendor interface and switches back at match end; enabled by default, can be turned off, and is not forced by the Esports or Extreme tier
+- **Low-latency DWM composition** (Extreme only): requests MMCSS scheduling for DWM during play and can be excluded in Extreme management. Benefits depend on the presentation path and workload; this does not guarantee uninterrupted composition
+- **Pause Windows Update, Delivery Optimization, nonessential services and automatic maintenance**, restoring owned changes afterwards. Service pausing uses a fixed allowlist. There is no current wireless-scan suppression control
+- **Vendor performance mode during play**: switches Lenovo Legion and ASUS ROG laptops to their vendor performance profile through the vendor interface and switches back at match end; off by default, turn it on if you want it, and it is not forced by the Esports or Extreme tier
 - **Per-game DPI awareness**: with display scaling above 100% the borderless window is sized in physical pixels instead of being stretched by the compositor
 - **Turn off Game DVR and Xbox background recording**, and **keep the display awake during a match**
-- **Low-latency audio** (Extreme tier only): opens a silent stream at the smallest audio buffer the system supports during a match, so the audio engine runs at its minimum period and sound output latency drops. Off by default; the default buffer returns on exit
-- **Cache warm-up**: pre-reads game assets into the standby cache at the lowest disk priority after the match settles. Reading only; runs on AC power, with sufficient memory, on an SSD game drive; off by default, and the Extreme tier does not force it on NVMe drives
+- **Low-latency audio** (Extreme only): attempts to open a silent stream with the device's minimum supported shared buffer, requesting a shorter engine period. Enabled for Extreme sessions unless excluded in Extreme management; the stream closes on exit
 - **Power budget yield**: on laptops, hands shared power budget to the GPU when it is pinned against its limit and the CPU has headroom, reverting automatically when verification fails. Off by default; verification detail below
 
 ### System environment
 
-Changes on this page need a restart and persist on the machine. Every one of them is revertible:
+Settings on this page persist and can be restored. Some require a restart; follow the instructions for each item:
 
 - **Hardware-accelerated GPU scheduling (HAGS)**, **AMD Smart Access Memory**, **disable VBS**, **remove speculative-execution mitigations**
 - **Game mode guard**, **windowed game optimisation**, **variable refresh rate optimisation** (lets DX11 exclusive-fullscreen games without native VRR use it)
@@ -173,11 +178,19 @@ Changes on this page need a restart and persist on the machine. Every one of the
 
 ### System audit
 
-A read-only capability check of the machine, with 132 conclusions each labelled by evidence level: measured here, bench-tested, mechanism clear, or unverified. System items broken by third-party tools can be repaired in place, and you can see whether the GPU is currently power- or thermal-limited. The interrupt row uses kernel ETW to capture DPC and ISR activity and names the top source directly.
+A read-only check generates findings according to available hardware and samples, rather than a fixed count. Each finding states its evidence level: measured locally, bench-tested, mechanism clear, or unverified. Manual repairs cover abnormal time-slice settings, multimedia network throttling, input queues, wired-route metrics, FTH shims and explicitly disabled GPU MSI. GPU power/thermal limits and DPC/ISR sources are also reported.
 
-The Settings page offers a full configuration wipe that reverts every persistent change Pavise ever made, including those left by retired features. The Uninstall Pavise button next to it runs the bundled Pavise-Uninstall.cmd: it exits the app, restores every system change from its receipts, then removes the startup task, the managed power plan, settings, the data folder and leftovers from older versions, so the machine ends up as if Pavise had never been installed. The script can also be double-clicked directly when the app no longer opens.
+The Settings page offers a full configuration wipe that reverts every persistent change Pavise ever made, including those left by retired features. The Uninstall Pavise button next to it does everything inside the app: it stops the runtime, restores every system change from its receipts, then removes the startup task, the managed power plan, settings, the data folder and leftovers from older versions, so the machine ends up as if Pavise had never been installed. Delete Pavise.exe itself afterward.
 
-A purely local tool. It installs no service, uploads no data, injects into no game process, and modifies no game memory or files. Every write is read back where possible, and a value that does not read back as expected is not counted as success.
+A local tool: no installed service, no uploaded machine data, no game-process injection and no game-memory edits. General scheduling does not modify game files; the League extension separately offers add-on directory deletion after user confirmation. Writes are read back where possible, and unexpected values are not counted as success.
+
+### League of Legends enhancement
+
+The current build includes an extension card for recognised League entries:
+
+- **Shell launch / Clean now**: lets the client complete normal login, then exits identified WeGame, Cross and add-on processes after the LCU confirms the session is ready. Repeated respawning stops automatic cleanup for that match
+- **Headless match / Restore UI**: closes the lobby UI through the client API and restores it after play. It records a recovery lease and confirms a separate recovery guard before closing the UI
+- **Delete add-ons**: after the client exits and checks pass, manual confirmation deletes identified CN-client add-on directories such as AI Coach and iCreate. No backup is retained; Pavise cannot undo deletion, and the client may re-download them during update or repair
 
 ## How power budget yield verifies itself
 
@@ -222,9 +235,9 @@ Purging the entire standby list discards 18894 MB of system cache to gain 382 MB
 
 These are measurements of the old implementation, not performance conclusions for the current policy. For background, see Mark Russinovich, "The Memory-Optimization Hoax" (Windows and .NET Magazine, January 2004).
 
-## Retired features
+## Historical features and research boundaries
 
-A feature that does not hold up under measurement is retired rather than left in the interface. Historical changes from retired features remain revertible; normal startup and version updates do not restore them, and the Settings page has a clear button.
+The entries below describe retired implementations, not necessarily the status of similarly named features today. Current availability follows the feature list above; recovery code is not an activation path. Some historical changes are restored at startup, while others are reverted from their records through Clear all settings.
 
 **Low-priority standby cleanup under memory pressure** (retired 2026-08-20)
 
@@ -232,7 +245,7 @@ The trigger used the available-memory ratio, and available memory already counts
 
 The effect did not hold up either: `MemoryPurgeLowPriorityStandbyList` only clears priority 0, which totals 1.4 MB on a 24 GB machine, releasing 0.0 to 0.1 MB per call. What it saves is a few hundred nanoseconds of page-reclaim work in the memory manager, which is noise against a frame's budget.
 
-**Reclaiming background working sets after the match settles**
+**Retired implementation: reclaiming background working sets after the match settles**
 
 Calling `SetProcessWorkingSetSize` per process does not release memory. It moves pages from the working set to the standby list, and dirty pages among them must be written to the page file first, which puts that disk I/O inside the match. The targets are already-suppressed background processes, exactly what the memory manager trims first under pressure. They are not suspended, so they fault the pages back immediately, and the net effect is one extra round of reads and writes during the match.
 
@@ -246,9 +259,13 @@ On hybrid architectures with few performance cores it lands interrupts on low-cl
 
 **Others**
 
-MSI mode, low-latency mode, background hard frame caps, game file prefetch and masking CPU 0/1 by position were all implemented and removed, either because measurement showed no effect, because of the risk of damaging a device, or because of a semantic misreading: the driver's background frame cap actually applies to applications that lose focus, so alt-tabbing out of the game caps the game itself.
+Old automatic bulk MSI changes, background frame caps and position-based CPU 0/1 exclusion were removed. The current app still offers manual repair of explicitly disabled GPU `MSISupported=0`, driver low-latency controls. Cache warm-up is fully retired; legacy preferences are discarded on load. Background frame caps remain removed: the driver's background category usually means an unfocused app, which can cap the game itself after alt-tab.
 
-A separate in-match core unparking override duplicated the parking settings in the managed power plan. Per-game forced discrete GPU preference is redundant on modern Windows, which already picks the discrete GPU for games. Automatic processor-idle disabling in Competitive became a manual policy instead of a preset-driven one. Extreme mode and the League of Legends section were retired in 1.8.0.2. Fallback boosting (IFEO) and per-game CFG disabling were removed entirely, with no legacy field compatibility.
+Standalone core-unparking overrides have been replaced by managed-plan parking settings. Current GPU preferences are standby staging or persistent app preferences, neither of which migrates running processes. Disabling CPU idle remains manual, not forced by Extreme. The 1.8.0.2 removal concerned the old Extreme mode and League section; the current build includes reimplemented versions of both. IFEO fallback boosting and per-game CFG disabling have no new-write path, only historical recovery.
+
+RSS receive-core steering, GPU clock locking, system-memory residency, match-only single-display mode, automatic interrupt orchestration, process freezing, refresh-rate guarding, MPO disabling and notification quieting have no current activation path. System-memory residency is distinct from the still-available VRAM reservation feature.
+
+The heterogeneous-GPU, VRS, Thermal Exchange and Interrupt Fabric projects under `tools/` are research benches or probes, not general optimizations integrated into arbitrary games. Their throughput results must not be presented as game FPS gains.
 
 ## What is reported but not modified
 

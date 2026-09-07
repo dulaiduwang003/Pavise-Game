@@ -33,16 +33,23 @@ namespace PaviseApp
 
         private bool SaveProfilesLocked()
         {
-            // 首次落盘失败就熔断 强制清空的 UI 回调是异步的
+            return SaveProfileSnapshotLocked(profiles, null);
+        }
+
+        private bool SaveProfileSnapshotLocked(IList<GameProfile> next, Func<bool> canCommit = null)
+        {
+            // 致命落盘失败才熔断 强制清空的 UI 回调是异步的
             // 回调执行前不得再尝试写入任何游戏库数据
-            if (stopping || ProfileStoreSaveFailed) return false;
-            if (profileStore.Save(profiles)) return true;
-            SignalProfileStoreSaveFailure();
+            if (stopping || ProfileStoreSaveFailed || !EnsureLibraryReadyLocked()) return false;
+            if (profileStore.Save(next, delegate
+                { return !stopping && (canCommit == null || canCommit()); })) return true;
+            SignalProfileStoreSaveFailure(profileStore.RetryableSaveFailure);
             return false;
         }
 
-        private void SignalProfileStoreSaveFailure()
+        private void SignalProfileStoreSaveFailure(bool retryableProfileSave = false)
         {
+            if ((retryableProfileSave || profileStore.SaveCanceled) && !profileStore.SaveFailed) return;
             if (Interlocked.Exchange(ref profileSaveFailureSignaled, 1) != 0) return;
             InvalidateStandbyCleanerWork();
             InvalidateEnglishInputWork();

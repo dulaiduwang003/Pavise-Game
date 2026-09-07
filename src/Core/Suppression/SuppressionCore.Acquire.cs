@@ -69,6 +69,13 @@ namespace PaviseApp
                         }
                     }
 
+                    if (known && e.OrigPri != uint.MaxValue && e.GaveUp)
+                    {
+                        e.Reasons |= reason;
+                        SetReasonLevel(e, reason, level);
+                        if (group != null && e.Group == null) e.Group = group;
+                        return AcquireResult.AlreadyProtected;
+                    }
                     if (known && e.OrigPri != uint.MaxValue)
                     {
                         SuppressionLevel previousLevel = e.Level;
@@ -89,9 +96,11 @@ namespace PaviseApp
                         if (mustWrite)
                         {
                             if (QueueApplyLocked(pid, name)) return AcquireResult.AlreadyThrottled;
-                            e.Applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost, AntiCheatThrottled(e), DesiredAffinityOf(e));
+                            e.Applied = ApplyEntryLocked(h, e, pid);
                             ScheduleAfterApply(e, e.Applied, pid);
                             if (!e.Applied && TryNeutralizeUnwritableLocked(h, pid, e))
+                                return AcquireResult.AlreadyProtected;
+                            if (!e.Applied && GiveUpAntiCheatLocked(h, pid, e))
                                 return AcquireResult.AlreadyProtected;
                             return e.Applied ? AcquireResult.AlreadyThrottled : AcquireResult.ApplyFailed;
                         }
@@ -106,7 +115,7 @@ namespace PaviseApp
                             RecordBatchApplyResultLocked(pid, true, null);
                             return AcquireResult.AlreadyThrottled;
                         }
-                        bool matches = ThrottleMatches(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), AntiCheatThrottled(e), DesiredAffinityOf(e));
+                        bool matches = ThrottleMatches(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), AntiCheatThrottled(e), DesiredAffinityOf(e), e.SqueezeRefused);
                         if (matches)
                         {
                             ScheduleAfterMatch(e, pid);
@@ -114,9 +123,11 @@ namespace PaviseApp
                             return AcquireResult.AlreadyThrottled;
                         }
                         if (QueueApplyLocked(pid, name)) return AcquireResult.AlreadyThrottled;
-                        e.Applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost, AntiCheatThrottled(e), DesiredAffinityOf(e));
+                        e.Applied = ApplyEntryLocked(h, e, pid);
                         ScheduleAfterApply(e, e.Applied, pid);
                         if (!e.Applied && TryNeutralizeUnwritableLocked(h, pid, e))
+                            return AcquireResult.AlreadyProtected;
+                        if (!e.Applied && GiveUpAntiCheatLocked(h, pid, e))
                             return AcquireResult.AlreadyProtected;
 
                         return AcquireResult.AlreadyThrottled;
@@ -192,6 +203,8 @@ namespace PaviseApp
                         ScheduleAfterApply(appliedEntry, applied, pid);
                         if (!applied && TryNeutralizeUnwritableLocked(h, pid, appliedEntry))
                             return AcquireResult.NewlyProtected;
+                        if (!applied && GiveUpAntiCheatLocked(h, pid, appliedEntry))
+                            return AcquireResult.AlreadyProtected;
                     }
                     if (!marked) { marked = true; CrashGuard.MarkThrottle(throttleMask); }
                     return applied ? AcquireResult.NewlyThrottled : AcquireResult.ApplyFailed;

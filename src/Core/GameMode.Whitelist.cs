@@ -79,18 +79,47 @@ namespace PaviseApp
             Interlocked.Exchange(ref whiteHasFamilyRules, found);
         }
 
+        // 同一份快照 同一版规则 同一份家族成员表 评估结果不会变
+        //   对局中快照最多复用五秒 这五秒里每轮 Sweep 都重建一遍全量视图纯属浪费 六百进程一轮一毫秒
+        //   结果对象构造完只读 跨轮共享安全 三个输入任一变化就重算
+        private ProcessSnapshot whiteEvalSnapshot;
+        private WhitelistEvaluation whiteEvalCached;
+        private int whiteEvalRevision;
+        private int whiteEvalMembersVersion;
+        private int whiteFamilyMembersVersion;
+
         private WhitelistEvaluation EvaluateWhitelist(ProcessSnapshot all)
         {
             lock (whiteEvalSync)
+            {
+                if (all != null && ReferenceEquals(all, whiteEvalSnapshot) && whiteEvalCached != null)
+                {
+                    bool fresh;
+                    lock (sync)
+                        fresh = whiteEvalRevision == whiteRevision
+                            && whiteEvalMembersVersion == whiteFamilyMembersVersion;
+                    if (fresh) return whiteEvalCached;
+                }
+                WhitelistEvaluation built = EvaluateWhitelistLocked(all);
+                whiteEvalSnapshot = all;
+                whiteEvalCached = built;
+                return built;
+            }
+        }
+
+        private WhitelistEvaluation EvaluateWhitelistLocked(ProcessSnapshot all)
+        {
             {
                 var result = BuildWhitelistProcessSnapshot(all);
                 List<WhitelistRule> rules;
                 int revision;
                 Dictionary<string, Dictionary<int, long>> retained =
                     new Dictionary<string, Dictionary<int, long>>(StringComparer.OrdinalIgnoreCase);
+                int membersAtInput;
                 lock (sync)
                 {
                     revision = whiteRevision;
+                    membersAtInput = whiteFamilyMembersVersion;
                     rules = new List<WhitelistRule>(whiteRules);
                     foreach (var pair in whiteFamilyMembers)
                         retained[pair.Key] = new Dictionary<int, long>(pair.Value);
@@ -139,12 +168,19 @@ namespace PaviseApp
 
                 lock (sync)
                 {
-                    if (revision == whiteRevision)
+                    // 成员表在计算期间被别人改过 就不拿旧结果盖新表 也不缓存 下一轮重算
+                    //   现有写入方都持 whiteEvalSync 走不到这里 留着这道检查是给以后的写入方兜底
+                    bool inputsIntact = revision == whiteRevision && membersAtInput == whiteFamilyMembersVersion;
+                    if (inputsIntact)
                     {
                         whiteFamilyMembers.Clear();
                         foreach (var pair in nextFamilies)
                             whiteFamilyMembers[pair.Key] = pair.Value;
+                        whiteFamilyMembersVersion++;
                     }
+                    // 记下这份结果对应的输入版本 输入中途变了就让下一轮重算
+                    whiteEvalRevision = inputsIntact ? revision : whiteRevision - 1;
+                    whiteEvalMembersVersion = whiteFamilyMembersVersion;
                 }
                 return result;
             }
@@ -353,6 +389,7 @@ namespace PaviseApp
                             selfSession, stopIdentity))
                             newlyAdmitted[entry.Key] = entry.Value;
                     }
+                    whiteFamilyMembersVersion++;
                 }
 
                 foreach (KeyValuePair<int, long> entry in newlyAdmitted)
@@ -534,8 +571,11 @@ namespace PaviseApp
                             }
                         }
                         if (remove != null)
+                        {
                             foreach (int pid in remove)
                                 members.Remove(pid);
+                            whiteFamilyMembersVersion++;
+                        }
                     }
             }
         }

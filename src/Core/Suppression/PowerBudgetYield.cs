@@ -81,14 +81,16 @@ namespace PaviseApp
         // GPU 吃满而 CPU 有余量 才说明预算花错了地方
         internal static bool WorthYielding(double gpuUtil, double cpuUtil)
         {
-            return gpuUtil >= MinGpuUtilToYield && cpuUtil <= MaxCpuUtilToYield;
+            return ValidUtil(gpuUtil) && ValidUtil(cpuUtil)
+                && gpuUtil >= MinGpuUtilToYield && cpuUtil <= MaxCpuUtilToYield;
         }
 
         // 让路之后必须两条同时成立 封装功耗真降了 而且 GPU 没被拖下水
         internal static bool VerifyHold(double pkgBefore, double pkgAfter,
             double gpuBefore, double gpuAfter)
         {
-            if (pkgBefore <= 0 || pkgAfter <= 0) return false;
+            if (!ValidPositive(pkgBefore) || !ValidPositive(pkgAfter)
+                || !ValidUtil(gpuBefore) || !ValidUtil(gpuAfter)) return false;
             if (pkgBefore - pkgAfter < MinWattsFreed) return false;
             if (gpuBefore - gpuAfter > MaxGpuUtilDrop) return false;
             return true;
@@ -113,6 +115,8 @@ namespace PaviseApp
         // 读不到瓦数的那几次不能计进分母 否则封装功耗均值被稀释成偏低
         //   基线偏低 后面 VerifyHold 看到的降幅就偏小 会把本来有收益的机器判成没收益并熔断
         internal const int GiveUpSampleMultiple = 3;
+        internal const long EvidenceMaxAgeTicks = 10 * TimeSpan.TicksPerSecond;
+        private long lastEvidenceAt;
 
         private YieldStage stage = YieldStage.Idle;
         private long stageAt;
@@ -147,6 +151,7 @@ namespace PaviseApp
 
         private void Reset()
         {
+            lastEvidenceAt = 0;
             stage = YieldStage.Idle; stageAt = 0; samples = 0; pkgSamples = 0; freqSamples = 0;
             gpuSum = cpuSum = pkgSum = freqSum = 0; baseGpu = basePkg = baseCpu = baseFreq = 0;
             proxyMode = false; verdict = YieldVerdict.None; engagements = 0;
@@ -169,6 +174,27 @@ namespace PaviseApp
         public YieldAction Advance(long now, double gpuUtil, double cpuUtil,
             double pkgWatts, double freqPct)
         {
+            if (stage != YieldStage.Observing && stage != YieldStage.Engaged
+                && stage != YieldStage.Held) return YieldAction.None;
+            bool validLoad = ValidUtil(gpuUtil) && ValidUtil(cpuUtil);
+            bool validMeter = ValidPositive(proxyMode ? freqPct : pkgWatts);
+            // 修改过 EPP 后，无证据不能继续持有。先检查间隙，再接纳新样本，
+            // 避免长时间失联后的一个好读数洗掉失联记录。缺测不熔断硬件。
+            if ((stage == YieldStage.Engaged || stage == YieldStage.Held)
+                && (now < lastEvidenceAt || now - lastEvidenceAt >= EvidenceMaxAgeTicks))
+            {
+                stage = YieldStage.Reverted;
+                verdict = YieldVerdict.Inconclusive;
+                return YieldAction.Revert;
+            }
+            if (validLoad && (stage == YieldStage.Held || validMeter)) lastEvidenceAt = now;
+            if (stage == YieldStage.Observing && now - stageAt >= ObserveTicks * GiveUpSampleMultiple)
+            {
+                stage = YieldStage.Skipped;
+                verdict = YieldVerdict.Inconclusive;
+                return YieldAction.None;
+            }
+            if (!validLoad) return YieldAction.None;
             // 方向盘的维持段 让出去之后持续盯 30 秒滚动窗口
             //   GPU 仍吃满且 CPU 有余量就按兵不动 瓶颈移回 CPU 就把预算还回去
             if (stage == YieldStage.Held)
@@ -193,8 +219,8 @@ namespace PaviseApp
             if (stage != YieldStage.Observing && stage != YieldStage.Engaged) return YieldAction.None;
             samples++;
             gpuSum += gpuUtil; cpuSum += cpuUtil;
-            if (pkgWatts > 0) { pkgSum += pkgWatts; pkgSamples++; }
-            if (freqPct > 0) { freqSum += freqPct; freqSamples++; }
+            if (ValidPositive(pkgWatts)) { pkgSum += pkgWatts; pkgSamples++; }
+            if (ValidPositive(freqPct)) { freqSum += freqPct; freqSamples++; }
             int meterSamples = proxyMode ? freqSamples : pkgSamples;
 
             long span = now - stageAt;
@@ -208,6 +234,12 @@ namespace PaviseApp
                     stage = YieldStage.Skipped;
                     return YieldAction.None;
                 }
+                if (now - lastEvidenceAt >= EvidenceMaxAgeTicks)
+                {
+                    stage = YieldStage.Skipped;
+                    verdict = YieldVerdict.Inconclusive;
+                    return YieldAction.None;
+                }
                 double gpu = gpuSum / samples, cpu = cpuSum / samples;
                 double meter = proxyMode ? freqSum / freqSamples : pkgSum / pkgSamples;
                 if (!WorthYielding(gpu, cpu) || meter <= 0)
@@ -218,6 +250,7 @@ namespace PaviseApp
                 baseGpu = gpu; baseCpu = cpu;
                 if (proxyMode) baseFreq = meter; else basePkg = meter;
                 stage = YieldStage.Engaged; stageAt = now;
+                lastEvidenceAt = now;
                 engagements++;
                 samples = 0; pkgSamples = 0; freqSamples = 0;
                 gpuSum = cpuSum = pkgSum = freqSum = 0;
@@ -286,6 +319,12 @@ namespace PaviseApp
             }
             return keep ? YieldAction.Keep : YieldAction.Revert;
         }
+
+        internal static bool ValidUtil(double value)
+        { return !double.IsNaN(value) && !double.IsInfinity(value) && value >= 0 && value <= 100; }
+
+        private static bool ValidPositive(double value)
+        { return !double.IsNaN(value) && !double.IsInfinity(value) && value > 0; }
     }
 
     // 运行时 自带采样线程 只在对局期间活着 退场必还原 EPP
@@ -490,9 +529,33 @@ namespace PaviseApp
             }
         }
 
+        // 与隔离测试共享完整的“样本 -> 决策 -> 写入”分发；无效 GPU 也必须经过这里。
+        internal static bool ProcessSample(int mine, long now, double gpu, double cpu,
+            double watts, double freq, Func<bool> engage, Func<bool> restore,
+            out YieldAction action, out YieldVerdict verdict)
+        {
+            action = YieldAction.None; verdict = YieldVerdict.None;
+            lock (gate)
+            {
+                if (!running || mine != generation || shutdownClosed || state == null) return false;
+                action = state.Advance(now, gpu, cpu, watts, freq);
+                verdict = state.Verdict;
+                if (state.Stage == YieldStage.Skipped && action == YieldAction.None) return false;
+            }
+            if (action == YieldAction.Engage) return RunCurrentMutation(mine, engage);
+            if (action == YieldAction.Revert)
+            {
+                RunCurrentMutation(mine, restore);
+                return false; // 失败时底层 receipt 保留，StopCore 仍负责最终恢复。
+            }
+            if (action == YieldAction.Release) return RunCurrentMutation(mine, restore);
+            return GenerationRunning(mine);
+        }
+
         private static void Loop(int mine)
         {
             var cpu = new CpuSaturation();
+            cpu.Sample(); // Prime GetSystemTimes before the first measurement window.
             bool proxy = proxyRun;
             int rendererPid;
             long rendererCreation;
@@ -557,22 +620,14 @@ namespace PaviseApp
                         watts = EnergyMeter.Watts(prev, now, EnergyRail.Package);
                         if (now != null) prev = now;
                     }
-                    if (gpu < 0) continue;
-
                     YieldAction action;
                     YieldVerdict verdict;
-                    lock (gate)
-                    {
-                        if (!running || mine != generation || shutdownClosed || state == null) break;
-                        action = state.Advance(DateTime.UtcNow.Ticks, gpu, cpuPct, watts, freqPct);
-                        verdict = state.Verdict;
-                    }
+                    bool keepRunning = ProcessSample(mine, DateTime.UtcNow.Ticks, gpu, cpuPct,
+                        watts, freqPct, delegate { return PowerPlan.TryYieldEpp(PowerBudgetYield.YieldEpp); },
+                        PowerPlan.RestoreEpp, out action, out verdict);
                     if (action == YieldAction.Engage)
                     {
-                        bool ok = RunCurrentMutation(mine, delegate
-                        {
-                            return PowerPlan.TryYieldEpp(PowerBudgetYield.YieldEpp);
-                        });
+                        bool ok = keepRunning;
                         Logger.Log(proxy
                             ? Lang.F(ok ? "log.poweryield.8" : "log.poweryield.3",
                                 PowerBudgetYield.YieldEpp.ToString(),
@@ -585,7 +640,6 @@ namespace PaviseApp
                     else if (action == YieldAction.Revert)
                     {
                         // 这里还原失败也不重试 EppYielded 仍为真 退局 StopCore 兜底还原
-                        RunCurrentMutation(mine, PowerPlan.RestoreEpp);
                         Logger.Warn(Lang.T(verdict == YieldVerdict.Inconclusive
                             ? "log.poweryield.9" : "log.poweryield.4"));
                         break;
@@ -598,9 +652,10 @@ namespace PaviseApp
                     else if (action == YieldAction.Release)
                     {
                         // 还原失败不能当没事 状态已经认为还回去了 让退局的兜底还原来收尾
-                        if (!RunCurrentMutation(mine, PowerPlan.RestoreEpp)) break;
+                        if (!keepRunning) break;
                         Logger.Log(Lang.T("log.poweryield.11"));
                     }
+                    if (!keepRunning) break;
                 }
             }
             finally { freq.Close(); gpuSampler.Close(); }
@@ -670,6 +725,15 @@ namespace PaviseApp
         }
 
 #if PAVISE_SELFTEST
+        internal static void SetSampleStateForTest(int mine, PowerBudgetYield value)
+        {
+            lock (gate)
+            {
+                if (mine != generation || !running) throw new InvalidOperationException("No test generation");
+                state = value;
+            }
+        }
+
         internal static int StartShutdownWorkerForTest(Action<int> body)
         {
             lock (gate)
@@ -752,7 +816,7 @@ namespace PaviseApp
         {
             targetChanged = false;
             if (adapter == null || adapter.Ambiguous) return -1;
-            if (adapter.Util < 0) return -1;
+            if (double.IsNaN(adapter.Util) || double.IsInfinity(adapter.Util) || adapter.Util < 0) return -1;
             if (adapterKnown
                 && (adapter.LuidHigh != adapterLuidHigh || adapter.LuidLow != adapterLuidLow))
             {

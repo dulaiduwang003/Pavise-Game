@@ -1,0 +1,262 @@
+#if PAVISE_SELFTEST
+using System;
+using System.Collections.Generic;
+
+namespace PaviseApp
+{
+    internal static partial class SelfTests
+    {
+        internal static void RunPowerPlanPolicyRegressionTests()
+        {
+            Action[] tests = { PowerPlatformRequiresCompleteEvidence, PowerPlatformParsesNamedFields, PowerBootBoundaryToleratesClockCorrection,
+                PowerAutonomousPolicyIsNotHardwareState, PowerUnknownMinimumPreservesEachSide, PowerExtremeRetiresDemoteOnly,
+                PowerExtremeRestoresLegacyWhileStillExtreme, PowerExtremePartialRestoreRetainsReceipt,
+                PowerExtremeReadbackAndJournalFailuresRetainReceipt, PowerExtremeSnapshotRequiresBothSides,
+                PowerExtremeSnapshotDoesNotOverwriteOriginals, PowerExtremeRejectsWrongOwnerAndMalformedReceipt,
+                PowerExtremeDeletedPlanClearsOnlyItsReceipt };
+            foreach (Action test in tests)
+            {
+                test();
+                Console.WriteLine("PASS " + test.Method.Name);
+            }
+            Console.WriteLine("PASS power-plan-policy tests=" + tests.Length + " system_power_writes=mocked");
+        }
+
+        private static void PowerPlatformRequiresCompleteEvidence()
+        {
+            Eq(ProcessorPowerPlatform.Interface.Cppc, ProcessorPowerPlatform.Classify(new uint[] { 3, 3 }, 2));
+            Eq(ProcessorPowerPlatform.Interface.AcpiPState, ProcessorPowerPlatform.Classify(new uint[] { 1, 1 }, 2));
+            foreach (uint[] values in new[] { new uint[0], new uint[] { 3 }, new uint[] { 3, 1 },
+                new uint[] { 0, 0 }, new uint[] { 2, 2 }, new uint[] { 4, 4 }, new uint[] { 3, 3, 3 } })
+                Eq(ProcessorPowerPlatform.Interface.Unknown, ProcessorPowerPlatform.Classify(values, 2));
+            Eq(ProcessorPowerPlatform.Interface.Unknown, ProcessorPowerPlatform.Classify(new uint[] { 3 }, 0));
+        }
+
+        private static string PowerCapabilityXml()
+        {
+            return "<Event xmlns='http://schemas.microsoft.com/win/2004/08/events/event'><System>"
+                + "<Provider Name='Microsoft-Windows-Kernel-Processor-Power'/><EventID>55</EventID><Version>0</Version>"
+                + "</System><EventData><Data Name='PerformanceImplementation'>3</Data>"
+                + "<Data Name='Number'>12</Data><Data Name='Group'>1</Data></EventData></Event>";
+        }
+
+        private static void PowerPlatformParsesNamedFields()
+        {
+            string processor; uint implementation;
+            string good = PowerCapabilityXml();
+            Eq(true, ProcessorPowerPlatform.TryReadCapability(good, out processor, out implementation));
+            Eq("1:12", processor); Eq(3u, implementation);
+            foreach (string bad in new[] { "", "<broken", good.Replace("<Version>0", "<Version>1"),
+                good.Replace("<EventID>55", "<EventID>56"), good.Replace("Kernel-Processor-Power", "Other-Provider"),
+                good.Replace("Name='Group'", "Name='Missing'"), good.Replace(">12<", ">64<"),
+                good.Replace(">3<", ">no<"), good.Replace("</EventData>", "<Data Name='Group'>0</Data></EventData>") })
+                Eq(false, ProcessorPowerPlatform.TryReadCapability(bad, out processor, out implementation));
+        }
+
+        private static void PowerBootBoundaryToleratesClockCorrection()
+        {
+            DateTime boot = new DateTime(2026, 8, 18, 6, 47, 35, DateTimeKind.Utc);
+            DateTime now = boot.AddDays(18);
+            Eq(true, ProcessorPowerPlatform.BootRecordMatchesUptime(boot, boot.AddMinutes(1), now));
+            Eq(true, ProcessorPowerPlatform.BootRecordMatchesUptime(boot, boot.AddMinutes(-1), now));
+            Eq(false, ProcessorPowerPlatform.BootRecordMatchesUptime(boot, boot.AddDays(1), now));
+            Eq(false, ProcessorPowerPlatform.BootRecordMatchesUptime(now.AddMinutes(1), now, now));
+        }
+
+        private static void PowerAutonomousPolicyIsNotHardwareState()
+        {
+            Eq((bool?)true, ProcessorPowerPlatform.AutonomousMinimum(ProcessorPowerPlatform.Interface.Cppc, 1));
+            foreach (uint? value in new uint?[] { null, 0, 1, 2, uint.MaxValue })
+            {
+                Eq((bool?)null, ProcessorPowerPlatform.AutonomousMinimum(ProcessorPowerPlatform.Interface.Unknown, value));
+                Eq((bool?)false, ProcessorPowerPlatform.AutonomousMinimum(ProcessorPowerPlatform.Interface.AcpiPState, value));
+                if (value != 1)
+                    Eq((bool?)null, ProcessorPowerPlatform.AutonomousMinimum(ProcessorPowerPlatform.Interface.Cppc, value));
+            }
+            // AC 与 DC 请求不能相互代替。
+            Eq((bool?)true, ProcessorPowerPlatform.AutonomousMinimum(ProcessorPowerPlatform.Interface.Cppc, 1));
+            Eq((bool?)null, ProcessorPowerPlatform.AutonomousMinimum(ProcessorPowerPlatform.Interface.Cppc, 0));
+        }
+
+        private static void PowerUnknownMinimumPreservesEachSide()
+        {
+            uint ac, dc;
+            Eq(true, ProcessorPowerPlatform.TryResolveMinimumIndices(true, false, 20, 100,
+                delegate { throw new InvalidOperationException("Known policy must not need original values"); }, out ac, out dc));
+            Eq(20u, ac); Eq(100u, dc);
+            Eq(true, ProcessorPowerPlatform.TryResolveMinimumIndices(null, true, 100, 10,
+                delegate(bool onAc) { Eq(true, onAc); return 37; }, out ac, out dc));
+            Eq(37u, ac); Eq(10u, dc);
+            Eq(true, ProcessorPowerPlatform.TryResolveMinimumIndices(true, null, 20, 100,
+                delegate(bool onAc) { Eq(false, onAc); return 53; }, out ac, out dc));
+            Eq(20u, ac); Eq(53u, dc);
+            Eq(false, ProcessorPowerPlatform.TryResolveMinimumIndices(null, true, 100, 10,
+                delegate { return null; }, out ac, out dc));
+            Eq(false, ProcessorPowerPlatform.TryResolveMinimumIndices(null, true, 100, 10,
+                delegate { return 101; }, out ac, out dc));
+        }
+
+        private static readonly Guid powerDemote = new Guid("4b92d758-5a24-4851-a470-815d78aee119");
+        private static readonly Guid powerPromote = new Guid("7b224883-b3cc-4d79-819f-8374152cbe7c");
+        private static readonly Guid powerScaling = new Guid("6c2993b0-8f48-481f-bcc6-00dd2742aa06");
+        private static readonly Guid powerIdleCheck = new Guid("c4581c31-89ab-4597-8e2b-9c9cab440e6b");
+
+        private static void PowerExtremeRetiresDemoteOnly()
+        {
+            Guid[] knobs = PowerPlan.ExtremeKnobGuidsForTest();
+            Eq(2, knobs.Length);
+            Eq(false, Array.IndexOf(knobs, powerDemote) >= 0);
+            Eq(false, Array.IndexOf(knobs, powerIdleCheck) >= 0);
+            Eq(true, Array.IndexOf(knobs, powerPromote) >= 0);
+            Eq(true, Array.IndexOf(knobs, powerScaling) >= 0);
+        }
+
+        private sealed class PowerPolicyFixture : IDisposable
+        {
+            internal readonly Guid Scheme = new Guid("aaaaaaaa-1111-2222-3333-bbbbbbbbbbbb");
+            internal readonly Dictionary<string, uint> Values = new Dictionary<string, uint>();
+            internal int Writes;
+            internal bool FailDc, LieAboutWrite;
+            private readonly string saved = Settings.LoadStr(PowerPlan.ExtremeSnapKey, "");
+            internal PowerPolicyFixture()
+            {
+                Settings.SaveStr(PowerPlan.ExtremeSnapKey, "");
+                PowerPlan.ExtremeReadIndexForTest = delegate(Guid scheme, Guid setting, bool ac)
+                {
+                    Eq(Scheme, scheme);
+                    uint value;
+                    return Values.TryGetValue(Index(setting, ac), out value) ? (uint?)value : null;
+                };
+                PowerPlan.ExtremeWriteIndexForTest = delegate(Guid scheme, Guid setting, bool ac, uint value)
+                {
+                    Eq(Scheme, scheme); Writes++;
+                    if (!ac && FailDc) return false;
+                    if (!LieAboutWrite) Values[Index(setting, ac)] = value;
+                    return true;
+                };
+            }
+            private static string Index(Guid setting, bool ac) { return setting.ToString("N") + (ac ? "AC" : "DC"); }
+            internal void Set(Guid setting, uint ac, uint dc) { Values[Index(setting, true)] = ac; Values[Index(setting, false)] = dc; }
+            internal uint Get(Guid setting, bool ac) { return Values[Index(setting, ac)]; }
+            internal void RemoveDc(Guid setting) { Values.Remove(Index(setting, false)); }
+            internal void Receipt(string value) { Settings.SaveStr(PowerPlan.ExtremeSnapKey, value); }
+            internal string Receipt() { return Settings.LoadStr(PowerPlan.ExtremeSnapKey, ""); }
+            public void Dispose()
+            {
+                PowerPlan.ExtremeReadIndexForTest = null; PowerPlan.ExtremeWriteIndexForTest = null;
+                PowerPlan.ExtremeSaveSnapshotForTest = null;
+                Settings.SaveStr(PowerPlan.ExtremeSnapKey, saved);
+            }
+        }
+
+        private static string PowerSaved(Guid setting, uint ac, uint dc) { return setting.ToString("N") + "=" + ac + "," + dc; }
+
+        private static void PowerExtremeRestoresLegacyWhileStillExtreme()
+        {
+            using (var f = new PowerPolicyFixture())
+            {
+                f.Set(powerDemote, 0, 0); f.Set(powerPromote, 100, 100); f.Set(powerIdleCheck, 1, 1);
+                f.Receipt(PowerSaved(powerDemote, 40, 30) + ";" + PowerSaved(powerPromote, 60, 50)
+                    + ";" + PowerSaved(powerIdleCheck, 50000, 50000));
+                Eq(true, PowerPlan.RestoreExtremeForTest(f.Scheme, true));
+                Eq(40u, f.Get(powerDemote, true)); Eq(30u, f.Get(powerDemote, false));
+                Eq(50000u, f.Get(powerIdleCheck, true)); Eq(100u, f.Get(powerPromote, true));
+                Eq(true, f.Receipt().StartsWith("2|" + f.Scheme.ToString("N") + "|"));
+                Eq(false, f.Receipt().Contains(powerDemote.ToString("N")));
+                Eq(true, f.Receipt().Contains(PowerSaved(powerPromote, 60, 50)));
+                Eq(true, PowerPlan.RestoreExtremeForTest(f.Scheme, false));
+                Eq(60u, f.Get(powerPromote, true)); Eq(50u, f.Get(powerPromote, false)); Eq("", f.Receipt());
+            }
+        }
+
+        private static void PowerExtremePartialRestoreRetainsReceipt()
+        {
+            using (var f = new PowerPolicyFixture())
+            {
+                f.Set(powerDemote, 0, 0); f.Receipt(PowerSaved(powerDemote, 40, 30)); f.FailDc = true;
+                Eq(false, PowerPlan.RestoreExtremeForTest(f.Scheme, true));
+                Eq(40u, f.Get(powerDemote, true)); Eq(0u, f.Get(powerDemote, false));
+                Eq(true, f.Receipt().Contains(PowerSaved(powerDemote, 40, 30)));
+                int before = f.Writes; f.FailDc = false;
+                Eq(true, PowerPlan.RestoreExtremeForTest(f.Scheme, true));
+                Eq(before + 1, f.Writes); Eq(30u, f.Get(powerDemote, false)); Eq("", f.Receipt());
+            }
+        }
+
+        private static void PowerExtremeReadbackAndJournalFailuresRetainReceipt()
+        {
+            using (var f = new PowerPolicyFixture())
+            {
+                f.Set(powerDemote, 0, 0); f.Receipt(PowerSaved(powerDemote, 40, 30)); f.LieAboutWrite = true;
+                Eq(false, PowerPlan.RestoreExtremeForTest(f.Scheme, true));
+                Eq(true, f.Receipt().Contains(PowerSaved(powerDemote, 40, 30)));
+                f.LieAboutWrite = false;
+                PowerPlan.ExtremeSaveSnapshotForTest = delegate { return false; };
+                Eq(false, PowerPlan.RestoreExtremeForTest(f.Scheme, true));
+                Eq(true, f.Receipt().Contains(PowerSaved(powerDemote, 40, 30)));
+                int writes = f.Writes;
+                PowerPlan.ExtremeSaveSnapshotForTest = null;
+                Eq(true, PowerPlan.RestoreExtremeForTest(f.Scheme, true)); Eq(writes, f.Writes); Eq("", f.Receipt());
+            }
+        }
+
+        private static void PowerExtremeSnapshotRequiresBothSides()
+        {
+            using (var f = new PowerPolicyFixture())
+            {
+                f.Set(powerPromote, 60, 50); f.RemoveDc(powerPromote);
+                Eq(false, PowerPlan.SnapshotExtremeForTest(f.Scheme)); Eq("", f.Receipt()); Eq(0, f.Writes);
+                f.Set(powerPromote, 60, 50);
+                PowerPlan.ExtremeSaveSnapshotForTest = delegate { return false; };
+                Eq(false, PowerPlan.SnapshotExtremeForTest(f.Scheme)); Eq("", f.Receipt()); Eq(0, f.Writes);
+            }
+        }
+
+        private static void PowerExtremeSnapshotDoesNotOverwriteOriginals()
+        {
+            using (var f = new PowerPolicyFixture())
+            {
+                f.Set(powerPromote, 60, 50); f.Set(powerScaling, 1, 1);
+                Eq(true, PowerPlan.SnapshotExtremeForTest(f.Scheme)); string first = f.Receipt();
+                f.Set(powerPromote, 100, 100); f.Set(powerScaling, 0, 0);
+                Eq(true, PowerPlan.SnapshotExtremeForTest(f.Scheme)); Eq(first, f.Receipt()); Eq(0, f.Writes);
+                Eq(true, PowerPlan.RestoreExtremeForTest(f.Scheme, false));
+                Eq(60u, f.Get(powerPromote, true)); Eq(50u, f.Get(powerPromote, false)); Eq(1u, f.Get(powerScaling, false));
+            }
+        }
+
+        private static void PowerExtremeRejectsWrongOwnerAndMalformedReceipt()
+        {
+            using (var f = new PowerPolicyFixture())
+            {
+                f.Set(powerDemote, 0, 0);
+                string part = PowerSaved(powerDemote, 40, 30);
+                foreach (string bad in new[] { "invalid", part + ";invalid", part + ";" + part,
+                    PowerSaved(Guid.Empty, 1, 1), powerDemote.ToString("N") + "=40,not-a-number",
+                    "2|cccccccc-1111-2222-3333-bbbbbbbbbbbb|" + part, "3|" + f.Scheme + "|" + part })
+                {
+                    f.Receipt(bad);
+                    Eq(false, PowerPlan.RestoreExtremeForTest(f.Scheme, true)); Eq(0, f.Writes); Eq(bad, f.Receipt());
+                    Eq(false, PowerPlan.SnapshotExtremeForTest(f.Scheme)); Eq(bad, f.Receipt());
+                }
+                f.Receipt(part); f.RemoveDc(powerDemote);
+                Eq(false, PowerPlan.RestoreExtremeForTest(f.Scheme, true));
+                Eq(true, f.Receipt().Contains(part));
+            }
+        }
+
+        private static void PowerExtremeDeletedPlanClearsOnlyItsReceipt()
+        {
+            using (var f = new PowerPolicyFixture())
+            {
+                f.Receipt("2|" + f.Scheme.ToString("N") + "|" + PowerSaved(powerPromote, 60, 50));
+                string before = f.Receipt();
+                Eq(false, PowerPlan.ForgetDeletedExtremeForTest(Guid.NewGuid())); Eq(before, f.Receipt());
+                Eq(true, PowerPlan.ForgetDeletedExtremeForTest(f.Scheme)); Eq("", f.Receipt()); Eq(0, f.Writes);
+                f.Receipt(PowerSaved(powerPromote, 60, 50));
+                Eq(true, PowerPlan.ForgetDeletedExtremeForTest(f.Scheme)); Eq("", f.Receipt());
+            }
+        }
+    }
+}
+#endif
