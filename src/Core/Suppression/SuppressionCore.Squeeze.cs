@@ -30,6 +30,7 @@ namespace PaviseApp
                 target = squeezeMask == 0 ? 0 : HeavySqueezePolicy.SqueezeTarget(
                     squeezeMask, e.OrigAff, e.OrigCpuSets, allMask, CpuTopology.MultiGroup);
                 if (e.SqueezeAff == target) return true;
+                if (target != 0 && (e.SqueezeRefused || e.GaveUp)) return false;
             }
             IntPtr h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_SET_LIMITED_INFORMATION
                 | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);

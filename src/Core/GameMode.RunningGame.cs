@@ -122,6 +122,8 @@ namespace PaviseApp
                     hit.Profile != null ? hit.Profile.Id : null, hit.RendererPid);
                 activeDetection = hit;
             }
+            // 启动器交接成真实渲染进程时扩展要拿到新身份 没有活动对局时这里等于一次空通知
+            NotifyExtensionSession(true);
             MaybeObserveRendererActivity(hit);
             return hit.Profile.Name;
         }

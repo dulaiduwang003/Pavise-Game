@@ -282,16 +282,18 @@ namespace PaviseApp
                 };
                 using (var lease = new FileStream(f.LibraryFile, FileMode.Open, FileAccess.Read, FileShare.Read))
                     Eq(false, f.Mode.SetProfileFamilySuppression(f.First.Id, requested));
-                Eq(true, f.Mode.ProfileStoreSaveFailed);
-                Eq(1, failures);
-                Eq((bool?)original, atFailure);
+                Eq(false, f.Mode.ProfileStoreSaveFailed);
+                Eq(0, failures);
+                Eq(null, atFailure);
                 Eq(original, f.Current(f.First.Id).SuppressFamilyBackground);
                 Eq(false, f.Current(f.Second.Id).SuppressFamilyBackground);
                 Eq(changesBefore, f.Changes);
                 Eq(before, File.ReadAllText(f.LibraryFile));
-                Eq(false, f.Mode.SetProfileFamilySuppression(f.First.Id, requested));
-                Eq(1, failures);
-                Eq(before, File.ReadAllText(f.LibraryFile));
+                Eq(true, f.Mode.SetProfileFamilySuppression(f.First.Id, requested));
+                Eq(0, failures);
+                Eq(requested, f.Current(f.First.Id).SuppressFamilyBackground);
+                Eq(changesBefore + 1, f.Changes);
+                Eq(requested, FamilyPolicyFind(new GameProfileStore(f.DirectoryPath).LoadProfiles(), f.First.Id).SuppressFamilyBackground);
                 Eq(0, Directory.GetFiles(f.DirectoryPath, "*.tmp").Length);
             }
         }
@@ -489,12 +491,14 @@ namespace PaviseApp
                 int changes = f.Changes, epoch = f.Mode.FamilyPolicyEpoch, writes = 0;
                 using (var lease = new FileStream(f.LibraryFile, FileMode.Open, FileAccess.Read, FileShare.Read))
                     Eq(0, f.Mode.ClearProfileOverrides(f.First.Id));
-                Eq(true, f.Mode.ProfileStoreSaveFailed);
+                Eq(false, f.Mode.ProfileStoreSaveFailed);
                 Eq(snapshot, FamilyPolicyDescribe(f.Current(f.First.Id)));
                 Eq(before, File.ReadAllText(f.LibraryFile));
                 Eq(changes, f.Changes);
-                Eq(false, FamilyPolicyRunGate(f.Mode, epoch, delegate { writes++; }));
-                Eq(0, writes);
+                Eq(true, FamilyPolicyRunGate(f.Mode, epoch, delegate { writes++; }));
+                Eq(1, writes);
+                Eq(f.Current(f.First.Id).Overrides.Count, f.Mode.ClearProfileOverrides(f.First.Id));
+                Eq(false, f.Current(f.First.Id).SuppressFamilyBackground);
             }
         }
 
@@ -1414,13 +1418,15 @@ namespace PaviseApp
                 // only for this unique temporary library, never real settings.
                 using (var lease = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read))
                     Eq(false, f.Mode.SetProfileFamilySuppression(f.Overlay.First.Id, true));
-                Eq(true, f.Mode.ProfileStoreSaveFailed);
+                Eq(false, f.Mode.ProfileStoreSaveFailed);
                 Eq(false, f.Overlay.First.SuppressFamilyBackground);
                 Eq(true, f.FamilyExempt);
                 Eq(before, File.ReadAllText(file));
                 foreach (ProcEntry process in f.SteamHosts)
                     Eq(false, f.CanSuppress(process));
                 Eq(0, f.Overlay.RestoreRequests.Count);
+                f.SetSuppression(true);
+                Eq(false, f.FamilyExempt);
             }
         }
 

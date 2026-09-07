@@ -54,6 +54,7 @@ namespace PaviseApp
                 if (!map.TryGetValue(pid, out entry) || (entry.Reasons & reason) == 0
                     || entry.OrigPri == uint.MaxValue || !entry.Journaled
                     || !SameName(entry.Name, expectedName)) return false;
+                if (entry.GaveUp) return true;
                 if (!forceAudit && now < entry.NextReconcileTicks) return true;
                 pri = entry.OrigPri;
                 aff = entry.OrigAff;
@@ -108,7 +109,7 @@ namespace PaviseApp
                         }
                     }
                     int desiredGpu = DesiredGpu(currentEntry);
-                    if (ThrottleMatches(h, level, pri, aff, cpuSets, desiredGpu, AntiCheatThrottled(currentEntry), DesiredAffinityOf(currentEntry)))
+                    if (ThrottleMatches(h, level, pri, aff, cpuSets, desiredGpu, AntiCheatThrottled(currentEntry), DesiredAffinityOf(currentEntry), currentEntry.SqueezeRefused))
                     {
                         if (!currentEntry.Applied && currentEntry.ReconcileFailures > 0)
                             Logger.Log(Lang.T("log.suppressioncore.8") + expectedName + " pid " + pid
@@ -119,8 +120,7 @@ namespace PaviseApp
                     }
                     bool previouslyApplied = currentEntry.Applied;
                     int previousFailures = currentEntry.ReconcileFailures;
-                    currentEntry.Applied = ApplyThrottle(h, level, pri, aff, cpuSets, desiredGpu,
-                        currentEntry.OrigBoost, AntiCheatThrottled(currentEntry), DesiredAffinityOf(currentEntry));
+                    currentEntry.Applied = ApplyEntryLocked(h, currentEntry, pid);
                     ScheduleAfterApply(currentEntry, currentEntry.Applied, pid);
                     if (currentEntry.Applied)
                     {
@@ -387,9 +387,13 @@ namespace PaviseApp
                         || currentEntry.OrigAff != aff
                         || !ReferenceEquals(currentEntry.OrigCpuSets, cpuSets))
                         { error = "entry-state"; return false; }
-                    applied = ApplyThrottle(h, level, pri, aff, cpuSets, DesiredGpu(currentEntry),
-                        currentEntry.OrigBoost, AntiCheatThrottled(currentEntry), DesiredAffinityOf(currentEntry));
+                    applied = ApplyEntryLocked(h, currentEntry, pid);
                     if (!applied && TryNeutralizeUnwritableLocked(h, pid, currentEntry))
+                    {
+                        error = SelfProtectedDetail;
+                        return false;
+                    }
+                    if (!applied && GiveUpAntiCheatLocked(h, pid, currentEntry))
                     {
                         error = SelfProtectedDetail;
                         return false;

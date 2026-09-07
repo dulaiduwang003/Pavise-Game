@@ -140,15 +140,6 @@ namespace PaviseApp
             }
         }
 
-        private bool EffCacheWarm
-        {
-            get
-            {
-                PolicySnapshot s = sessionPolicy;
-                return s != null ? s.CacheWarm : cacheWarmOn;
-            }
-        }
-
         private bool EffIntelEnduranceOff
         {
             get

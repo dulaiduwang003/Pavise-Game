@@ -16,6 +16,8 @@ namespace PaviseApp
         private const int AutoAddRejectCacheLimit = 64;
 
         private string autoIgnorePath;
+        private readonly LibraryIgnoreTransaction libraryIgnoreTransaction;
+        private bool autoIgnoreLoadFailed;
         private volatile bool autoAddOn;
         private long autoAddGateTicks;
         private readonly HashSet<string> autoAddIgnore =
@@ -37,7 +39,8 @@ namespace PaviseApp
 
         private void TryAutoAddForegroundGame()
         {
-            if (!autoAddOn || stopping || !enabled || ProfileStoreSaveFailed) return;
+            if (!autoAddOn || stopping || !enabled || ProfileStoreSaveFailed
+                || autoIgnoreLoadFailed || libraryIgnoreTransaction.RecoveryPending) return;
             RendererHandoffTracker handoff = rendererHandoff;
             if (handoff != null && (handoff.HasCandidate || handoff.HasProbe)) return;
             bool sessionActive;
@@ -113,7 +116,7 @@ namespace PaviseApp
                 return;
 
             string error;
-            if (!AddGameExecutableCore(null, path, null, true, out error))
+            if (!AddGameExecutableCore(null, path, null, out error))
             { RememberAutoAddReject(path, now); return; }
             Logger.Log(Lang.T("log.autoadd.3") + (int)candidate + Lang.T("log.autoadd.4")
                 + identityName + Lang.T("log.autoadd.5") + path + Lang.T("log.autoadd.6"));
@@ -151,42 +154,51 @@ namespace PaviseApp
                 && string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
         }
 
-        private void LoadAutoIgnore()
+        private bool LoadAutoIgnore()
         {
             try
             {
-                if (!File.Exists(autoIgnorePath)) return;
-                foreach (string line in File.ReadAllLines(autoIgnorePath))
+                var loaded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (string line in File.Exists(autoIgnorePath) ? File.ReadAllLines(autoIgnorePath) : new string[0])
                 {
                     string t = line.Trim();
                     if (t.Length == 0 || t.StartsWith("#")) continue;
-                    autoAddIgnore.Add(t);
+                    loaded.Add(t);
                 }
+                autoAddIgnore.Clear(); autoAddIgnore.UnionWith(loaded);
+                autoIgnoreLoadFailed = false;
+                return true;
             }
-            catch { }
+            catch { autoIgnoreLoadFailed = true; return false; }
         }
 
-        private bool SaveAutoIgnoreLocked()
+        private bool EnsureLibraryReadyLocked()
         {
-            if (stopping || ProfileStoreSaveFailed) return false;
-            try
+            if (libraryIgnoreTransaction == null) return true; // Uninitialized, read-only UI fixtures.
+            if (!libraryIgnoreTransaction.RecoveryPending && !autoIgnoreLoadFailed) return true;
+            return libraryIgnoreTransaction.TryRecover() && LoadAutoIgnore();
+        }
+
+        private bool CommitLibraryLocked(List<GameProfile> next, HashSet<string> nextIgnore)
+        {
+            if (stopping || ProfileStoreSaveFailed || !EnsureLibraryReadyLocked()) return false;
+            bool saved;
+            if (autoAddIgnore.SetEquals(nextIgnore)) saved = SaveProfileSnapshotLocked(next);
+            else
             {
-                var lines = new List<string>();
-                lines.Add(Lang.T("t.autoadd.1"));
-                var sorted = new List<string>(autoAddIgnore);
+                var lines = new List<string> { Lang.T("t.autoadd.1") };
+                var sorted = new List<string>(nextIgnore);
                 sorted.Sort(StringComparer.OrdinalIgnoreCase);
                 lines.AddRange(sorted);
-                bool ok = AtomicFile.WriteLines(
-                    autoIgnorePath, lines.ToArray(), Lang.T("t.autoadd.2"));
-                if (!ok) SignalProfileStoreSaveFailure();
-                return ok;
+                byte[] snapshot = new System.Text.UTF8Encoding(false).GetBytes(
+                    string.Join(Environment.NewLine, lines.ToArray()) + Environment.NewLine);
+                saved = libraryIgnoreTransaction.Commit(next, snapshot, delegate { return !stopping; });
+                if (!saved && profileStore.SaveFailed) SignalProfileStoreSaveFailure();
             }
-            catch (Exception ex)
-            {
-                Logger.LogFailure(Lang.T("log.autoadd.7"), ex);
-                SignalProfileStoreSaveFailure();
-                return false;
-            }
+            if (!saved) return false;
+            profiles.Clear(); profiles.AddRange(next);
+            autoAddIgnore.Clear(); autoAddIgnore.UnionWith(nextIgnore);
+            return true;
         }
     }
 }

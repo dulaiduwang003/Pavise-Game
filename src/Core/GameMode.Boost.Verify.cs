@@ -79,8 +79,8 @@ namespace PaviseApp
                 }
                 dropped++;
             }
-            if (dropped > 0)
-                Logger.Warn((abandoned > 0 ? Lang.T("log.gamemodeboost.58") : Lang.T("log.gamemodeboost.57")) + dropped);
+            if (abandoned > 0) Logger.Warn(Lang.T("log.gamemodeboost.58") + dropped);
+            else if (dropped > 0) Logger.Log(Lang.T("log.gamemodeboost.57") + dropped);
             return dropped;
         }
 

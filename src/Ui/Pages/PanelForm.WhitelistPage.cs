@@ -679,12 +679,20 @@ namespace PaviseApp
                 antiCheatNames.Add(group.Name);
                 antiCheatGroups.Add(group.Name + "\r\n" + string.Join(" · ", group.Procs));
             }
+            foreach (AcProtectionGroup group in AntiCheatCatalog.ProtectionOnlyGroups)
+            {
+                antiCheatNames.Add(group.Name);
+                antiCheatGroups.Add(group.Name + " · " + Lang.T("ac.protectiononly")
+                    + "\r\n" + string.Join(" · ", group.PatternsForDisplay()));
+            }
             rows.Add(AutomaticExemption("white.auto.anticheat",
                 Lang.F("white.auto.anticheat.list", string.Join(" · ", antiCheatNames.ToArray())),
                 "acshield", Lang.T("white.auto.details.groups") + "\r\n\r\n"
                 + string.Join("\r\n\r\n", antiCheatGroups.ToArray())
                 + "\r\n\r\n" + DetailSection("white.auto.details.tokens",
-                    string.Join(" · ", AntiCheatCatalog.NameTokensForDisplay()))));
+                    string.Join(" · ", AntiCheatCatalog.NameTokensForDisplay()))
+                + "\r\n\r\n" + DetailSection("white.auto.details.anticheatdirs",
+                    string.Join(" · ", AntiCheatCatalog.DirectoryNamesForDisplay()))));
 
             string[] nameKeywords = PeripheralCatalog.NameKeywordsForDisplay();
             string[] descriptionWords = PeripheralCatalog.DescriptionWordsForDisplay();

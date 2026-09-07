@@ -71,6 +71,7 @@ namespace PaviseApp
             IrqSessionLedger.FileName,
             "Pavise.games.txt", "Pavise.whitelist.txt", "Pavise.targets.txt",
             "Pavise.autoignore.txt", GameProfileStore.FileName, RendererObservationStore.FileName,
+            LibraryIgnoreTransaction.FileName,
             "Pavise.log", "Pavise.log.old", "crash.log", "Pavise.preview.log",
             "Pavise.freeze.state", SuppressionCore.StateFileName, "backdrop.img"
         };
@@ -82,7 +83,8 @@ namespace PaviseApp
 
         private static readonly string[] UniqueTempDataFiles =
         {
-            GameProfileStore.FileName, IrqSessionLedger.FileName, RendererObservationStore.FileName
+            GameProfileStore.FileName, IrqSessionLedger.FileName, RendererObservationStore.FileName,
+            LibraryIgnoreTransaction.FileName, LibraryIgnoreTransaction.IgnoreFileName
         };
 
         private static void Step(string name, Func<bool> restore, List<string> failed)
@@ -569,6 +571,12 @@ namespace PaviseApp
                 Directory.Delete(dir, false);
             }
             catch (Exception ex) { AddFailure(failures, dir + " (" + ex.GetType().Name + ")"); }
+        }
+
+        // 卸载时清程序目录里旧版本落下的日志 图标这类归我们的文件 无关文件与程序本体不碰
+        internal static bool DeleteOwnedFiles(string dir, out int files, out string error)
+        {
+            return DeleteDataFiles(dir, out files, out error);
         }
 
         public static bool WipeAll(string dataDir, bool includeSettings, string why,

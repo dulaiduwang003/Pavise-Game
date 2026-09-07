@@ -113,7 +113,8 @@ namespace PaviseApp
                             && creation == kv.Value.Creation;
                         if (!identityKnown)
                         {
-                            done = false;
+                            // 句柄开得出来但身份读不到 多半是进程已退出只剩对象 没有东西可还原
+                            done = !Native.StillActive(h);
                         }
                         else if (identity)
                         {
@@ -243,6 +244,7 @@ namespace PaviseApp
 
         private bool Deactivate(string reason, bool quiet)
         {
+            SetAutoGpuSessionStamp(0);
             InvalidateStandbyCleanerWork();
             EndEnglishInputSession();
             InvalidateIntelGraphicsWork();
@@ -275,15 +277,15 @@ namespace PaviseApp
             gameGoneSinceTicks = 0;
             cpuSaturation.Reset();
             boostPriorityTarget = Native.HIGH_PRIORITY_CLASS;
+            ResetBoostDomainEvidence();
             Interlocked.Exchange(ref boostFirstStampTicks, 0);
             Interlocked.Exchange(ref nvTweakRetryAtTicks, 0);
             preStagedNvPath = null;
             try { cpuLimit.Stop(); } catch { }
-            Interlocked.Exchange(ref sessionStartTicks, 0);
             autoGpuScanned = false;
-            cacheWarmDone = false;
             ResetAdaptiveGuard();
             ResetHeavySqueeze();
+            voiceExemptLogged.Clear();
             partitionHintLogged = false;
 
             bool clean = UnboostGames();
@@ -307,6 +309,7 @@ namespace PaviseApp
                 transitionProbeRendererCreation = 0;
             }
             ClearSticky();
+            NotifyExtensionSession(false);
             bool standbyClean = standbyCleaner == null || standbyCleaner.Drain(8000);
             bool inputClean = DrainEnglishInput(8000);
             bool intelClean = DrainIntelGraphics(8000);

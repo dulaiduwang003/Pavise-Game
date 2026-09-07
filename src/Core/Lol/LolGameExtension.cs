@@ -9,7 +9,8 @@ namespace PaviseApp
     {
         static partial void Create(ref GameExtensionModule module)
         {
-            module = new LolGameExtension();
+            // 英雄联盟在前 它的卡片更全 其余 WeGame 游戏归通用脱壳
+            module = new CompositeGameExtension(new LolGameExtension(), new WeGameGameExtension());
         }
     }
 

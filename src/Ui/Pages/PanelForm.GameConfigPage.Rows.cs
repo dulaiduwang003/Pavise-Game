@@ -190,8 +190,6 @@ namespace PaviseApp
             {
                 case PolicyCatalog.KeyVramShield:
                     return ConfirmVramShieldEnable();
-                case PolicyCatalog.KeyCacheWarm:
-                    return ConfirmCacheWarmEnable();
                 case PolicyCatalog.KeyHeavySqueeze:
                     return ConfirmHeavySqueezeEnable();
                 case PolicyCatalog.KeyPowerYield:
@@ -280,7 +278,6 @@ namespace PaviseApp
         private static readonly string[] ConfirmGuardedKeys =
         {
             PolicyCatalog.KeyVramShield,
-            PolicyCatalog.KeyCacheWarm,
             PolicyCatalog.KeyHeavySqueeze,
         };
 

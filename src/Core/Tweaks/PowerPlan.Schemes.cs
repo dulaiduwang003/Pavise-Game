@@ -74,7 +74,7 @@ namespace PaviseApp
         private static readonly Guid SubSwitchGfx      = new Guid("e276e160-7cb0-43c6-b20b-73f5dce39954");
         private static readonly Guid SwitchGfxPolicy   = new Guid("a1662ab2-9d34-4e53-ba8b-2639b9e20857");
 
-        // 极限档专属 空闲行为侧的加码 不禁止空闲 只让退出更快进入更谨慎
+        // 极限档专属 空闲状态选择策略 不等同于硬件唤醒延迟或禁止空闲
         //   这几项在多数方案上未暴露 SettingPresent 读不到就整项跳过 不写坏方案
         private static readonly Guid IdlePromote      = new Guid("7b224883-b3cc-4d79-819f-8374152cbe7c");
         private static readonly Guid IdleDemote       = new Guid("4b92d758-5a24-4851-a470-815d78aee119");
@@ -195,61 +195,16 @@ namespace PaviseApp
         //   计量单位由系统定义 写入前一律经 Clamp 夹到本机允许区间
         private static readonly Knob[] ExtremeKnobs = new Knob[]
         {
-            // 进入更深空闲态的门槛拉到最高 退出门槛压到最低 合起来就是尽量待在浅空闲
+            // 提高选择更深空闲态的门槛；保留系统原来的降级门槛。
+            // IdleDemote 按空闲比例低于阈值触发降级，0 不能解释为“更快退出”。
+            // 不把它直接改成另一个未经实测的极端值；旧写入由快照迁移还原。
             new Knob(SubProcessor, IdlePromote,     100, 100, 100, 100, "t.powerplanschemes.39"),
-            new Knob(SubProcessor, IdleDemote,        0,   0,   0,   0, "t.powerplanschemes.40"),
             // 空闲检查周期 c4581c31 曾在这里写 0 想靠 Clamp 夹到下限 本机量程 1~200000 微秒
             //   写入从没成功过 每局固定报一项失败 内核检查周期跟定时器节拍走 写 1 和默认 50000 分不出差别
             //   没有依据支撑它 整项撤掉 旧快照里若有它 RestoreExtremeKnobs 照样按 GUID 写回
-            // 关闭按负载缩放空闲门槛 门槛不再随负载浮动
+            // 关闭按当前性能状态缩放空闲门槛，不改变硬件的 C-state 退出时延。
             new Knob(SubProcessor, IdleScaling,       0,   0,   0,   0, "t.powerplanschemes.42"),
         };
-
-        private const string ExtremeSnapKey = "ExtremePowerKnobSnap";
-
-        // 首次写入前把三项现值按 AC,DC 记快照 已有快照不覆盖
-        //   读不到的项不记 写回时同样按 SettingPresent 跳过 方案重建后写不回也照样清账
-        private static void SnapshotExtremeKnobs(Guid scheme)
-        {
-            if (Settings.LoadStr(ExtremeSnapKey, "").Length > 0) return;
-            var parts = new List<string>();
-            foreach (Knob k in ExtremeKnobs)
-            {
-                Guid sb = k.Sub, set = k.Setting;
-                uint ac, dc;
-                if (PowerReadACValueIndex(IntPtr.Zero, ref scheme, ref sb, ref set, out ac) != 0) continue;
-                sb = k.Sub; set = k.Setting;
-                if (PowerReadDCValueIndex(IntPtr.Zero, ref scheme, ref sb, ref set, out dc) != 0) dc = ac;
-                parts.Add(k.Setting.ToString("N") + "=" + ac + "," + dc);
-            }
-            if (parts.Count > 0) Settings.SaveStr(ExtremeSnapKey, string.Join(";", parts.ToArray()));
-        }
-
-        private static void RestoreExtremeKnobs(Guid scheme)
-        {
-            string snap = Settings.LoadStr(ExtremeSnapKey, "");
-            if (snap.Length == 0) return;
-            foreach (string part in snap.Split(';'))
-            {
-                int eq = part.IndexOf('=');
-                int comma = part.IndexOf(',');
-                if (eq <= 0 || comma <= eq) continue;
-                Guid setting;
-                uint ac, dc;
-                if (!TryParseGuidN(part.Substring(0, eq), out setting)) continue;
-                if (!uint.TryParse(part.Substring(eq + 1, comma - eq - 1), out ac)) continue;
-                if (!uint.TryParse(part.Substring(comma + 1), out dc)) continue;
-                if (!SettingPresent(scheme, SubProcessor, setting)) continue;
-                WritePair(scheme, SubProcessor, setting, ac, dc);
-            }
-            Settings.SaveStr(ExtremeSnapKey, "");
-        }
-
-        private static bool TryParseGuidN(string raw, out Guid value)
-        {
-            try { value = new Guid(raw); return true; }
-            catch { value = Guid.Empty; return false; }
-        }
 
 #if PAVISE_SELFTEST
         // 极限组的成员与取值 供回归核对 不触发任何写入
@@ -312,7 +267,7 @@ namespace PaviseApp
             try
             {
                 PowerPlanProfile profile = CurrentProfile();
-                bool autonomousAc, autonomousDc;
+                bool? autonomousAc, autonomousDc;
                 ReadAutonomousScaling(g, out autonomousAc, out autonomousDc);
                 int written = 0;
                 int failed = 0;
@@ -320,11 +275,12 @@ namespace PaviseApp
 
                 foreach (Knob k in CoreKnobs)
                 {
+                    if (aggressive && IsProcessorMinimum(k.Setting)
+                        && !autonomousAc.HasValue && !autonomousDc.HasValue) { skipped.Add(k.Label); continue; }
                     if (!SettingPresent(g, k.Sub, k.Setting)) { skipped.Add(k.Label); continue; }
                     if (WriteKnob(g, k, aggressive, handheld, profile,
                         autonomousAc, autonomousDc)) written++;
-                    else { failed++; LogKnobFailure(g, k, aggressive, handheld, profile,
-                        autonomousAc, autonomousDc); }
+                    else { failed++; LogKnobFailure(k); }
                 }
                 foreach (Knob k in OptionalKnobs)
                 {
@@ -339,22 +295,32 @@ namespace PaviseApp
                 }
                 // 极限档专属组 未暴露的项照常跳过 不影响其余旋钮的写入结果
                 //   写入前先快照现值 退出极限档重写方案时按快照写回
-                //   否则三项留在托管方案上 电竞档会白用极限的空闲策略
+                //   否则空闲策略留在托管方案上 电竞档会白用极限的空闲策略
+                // 旧版撤回项在极限档内也必须恢复；失败保留收据，下次配置重试。
+                if (!RestoreExtremeKnobs(g, extreme))
+                { Logger.Warn(Lang.T("log.powerplanschemes.extremePending")); return false; }
                 if (extreme)
                 {
-                    SnapshotExtremeKnobs(g);
+                    if (!SnapshotExtremeKnobs(g))
+                    { Logger.Warn(Lang.T("log.powerplanschemes.extremePending")); return false; }
+                    List<ExtremeSavedValue> snapshot;
+                    if (!ReadExtremeSnapshot(g, out snapshot)) return false;
                     foreach (Knob k in ExtremeKnobs)
                     {
+                        // 一次瞬时读失败后 SettingPresent 可能又成功；仍不能写未备份项。
+                        if (!snapshot.Exists(delegate(ExtremeSavedValue v) { return v.Setting == k.Setting; }))
+                        { skipped.Add(k.Label); continue; }
                         if (!SettingPresent(g, k.Sub, k.Setting)) { skipped.Add(k.Label); continue; }
                         if (WriteKnob(g, k, aggressive, handheld, profile,
                             autonomousAc, autonomousDc)) written++; else failed++;
                     }
                 }
-                else RestoreExtremeKnobs(g);
                 if (CpuTopology.Hybrid && profile.WriteHetero)
                 {
                     foreach (Knob k in HybridKnobs)
                     {
+                        if (aggressive && IsProcessorMinimum(k.Setting)
+                            && !autonomousAc.HasValue && !autonomousDc.HasValue) { skipped.Add(k.Label); continue; }
                         if (!SettingPresent(g, k.Sub, k.Setting)) { skipped.Add(k.Label); continue; }
                         Knob eff = k;
                         if (k.Setting == SchedPolicy || k.Setting == ShortSchedPolicy)
@@ -387,22 +353,11 @@ namespace PaviseApp
             catch { return false; }
         }
 
-        private static void LogKnobFailure(Guid scheme, Knob k, bool aggressive,
-            bool handheld, PowerPlanProfile profile, bool autonomousAc, bool autonomousDc)
+        private static void LogKnobFailure(Knob k)
         {
-            uint code = 0;
-            try
-            {
-                bool coreParking = k.Setting == CpMinCores || k.Setting == CpMaxCores;
-                bool useArena = coreParking ? profile.UseArenaCoreParking(aggressive) : aggressive;
-                WritePair(scheme, k.Sub, k.Setting,
-                    useArena ? ArenaAcFor(k, k.ArenaAc, handheld, autonomousAc)
-                        : CalmAcFor(k, k.CalmAc, profile),
-                    useArena ? ArenaDcFor(k, k.ArenaDc, autonomousDc) : k.CalmDc, out code);
-            }
-            catch { }
+            // 日志不能重新写一遍参数，否则会绕开未知平台的保留分支。
             Logger.Warn(Lang.T("log.powerplanschemes.32") + Lang.T(k.Label)
-                + Lang.T("log.powerplanschemes.33") + " rc=" + code);
+                + Lang.T("log.powerplanschemes.33"));
         }
 
         private static int intelGfxSharesPackage = -1;
@@ -430,28 +385,38 @@ namespace PaviseApp
         }
 
         private static bool WriteKnob(Guid scheme, Knob k, bool aggressive,
-            bool handheld, PowerPlanProfile profile, bool autonomousAc, bool autonomousDc)
+            bool handheld, PowerPlanProfile profile, bool? autonomousAc, bool? autonomousDc)
         {
             bool coreParking = k.Setting == CpMinCores || k.Setting == CpMaxCores;
             bool useArena = coreParking ? profile.UseArenaCoreParking(aggressive) : aggressive;
-            return WritePair(scheme, k.Sub, k.Setting,
-                useArena ? ArenaAcFor(k, k.ArenaAc, handheld, autonomousAc)
-                    : CalmAcFor(k, k.CalmAc, profile),
-                useArena ? ArenaDcFor(k, k.ArenaDc, autonomousDc) : k.CalmDc);
+            uint ac = useArena ? ArenaAcFor(k, k.ArenaAc, handheld, autonomousAc)
+                : CalmAcFor(k, k.CalmAc, profile);
+            uint dc = useArena ? ArenaDcFor(k, k.ArenaDc, autonomousDc) : k.CalmDc;
+            if (useArena && IsProcessorMinimum(k.Setting))
+            {
+                // AC/DC 独立判定。某一侧无法确认时保持那一侧原值，读失败则整项不写。
+                if (!ProcessorPowerPlatform.TryResolveMinimumIndices(autonomousAc, autonomousDc, ac, dc,
+                    delegate(bool onAc)
+                    {
+                        uint original;
+                        return (onAc ? ReadAc(scheme, k.Sub, k.Setting, out original)
+                            : ReadDc(scheme, k.Sub, k.Setting, out original)) ? (uint?)original : null;
+                    }, out ac, out dc)) return false;
+            }
+            return WritePair(scheme, k.Sub, k.Setting, ac, dc);
         }
 
-        private static void ReadAutonomousScaling(Guid scheme, out bool ac, out bool dc)
+        private static void ReadAutonomousScaling(Guid scheme, out bool? ac, out bool? dc)
         {
-            ac = false; dc = false;
+            ac = null; dc = null;
             try
             {
-                Guid sb = SubProcessor, setting = PerfAutonomous;
+                ProcessorPowerPlatform.Interface platform = ProcessorPowerPlatform.Current;
                 uint value;
-                if (PowerReadACValueIndex(IntPtr.Zero, ref scheme, ref sb, ref setting, out value) == 0)
-                    ac = value != 0;
-                sb = SubProcessor; setting = PerfAutonomous;
-                if (PowerReadDCValueIndex(IntPtr.Zero, ref scheme, ref sb, ref setting, out value) == 0)
-                    dc = value != 0;
+                uint? requestedAc = ReadAc(scheme, SubProcessor, PerfAutonomous, out value) ? (uint?)value : null;
+                uint? requestedDc = ReadDc(scheme, SubProcessor, PerfAutonomous, out value) ? (uint?)value : null;
+                ac = ProcessorPowerPlatform.AutonomousMinimum(platform, requestedAc);
+                dc = ProcessorPowerPlatform.AutonomousMinimum(platform, requestedDc);
             }
             catch { }
         }
@@ -461,9 +426,12 @@ namespace PaviseApp
             return setting == ProcThrottleMin || setting == ProcThrottleMin1;
         }
 
-        private static uint AutonomousArenaValue(Knob k, uint value, bool ac, bool autonomous)
+        // 自主调频确认开着时最低处理器状态放到温和值 由硬件自己定频
+        //   09-06 在 i7-9750H 笔记本上 A/B 过 锁 100 反而 230 到 250 帧 放开 270 到 280 帧
+        //   六核笔记本功耗和散热是一份预算 全核钉最高频 忙的核反而拿不到睿频
+        private static uint AutonomousArenaValue(Knob k, uint value, bool ac, bool? autonomous)
         {
-            return autonomous && IsProcessorMinimum(k.Setting)
+            return autonomous == true && IsProcessorMinimum(k.Setting)
                 ? (ac ? k.CalmAc : k.CalmDc) : value;
         }
 
@@ -493,7 +461,10 @@ namespace PaviseApp
         //   第二轮实际频率% 153.8 162.1 156.3 163.6
         //   两次 100 都恰好 153.8 六个放开的臂全在 156.3~164.0 零重叠
         //   也就是说强制不停泊反而让干活的核跑得更慢 封装那份预算被摊到更多活跃核上
-        //   跟专注档的意图正好相反 台式机不受这个约束 那边保持 100 不动
+        //   跟专注档的意图正好相反
+        // 台式机同样按这张表放开 功耗墙紧的小机箱和风冷高核数 CPU 上机理相同
+        //   "台式机不受约束"没有数据 而唯一一组实测指向相反方向 没有依据就不写 100
+        //   放开后写的是智能档那一列 与非对称缓存机器保留停泊是两条独立的路
         // 功耗那条没结论 两轮基线自己就漂了 6W 噪声大于效应 别拿它当依据
         private static readonly Guid[] ArenaAcRelaxOnLaptop =
         {
@@ -511,12 +482,21 @@ namespace PaviseApp
         //   笔记本插电只放开核心停泊 是因为那份预算还够 CPU 和独显各拿各的
         //   掌机整机十几瓦 CPU 和集显抢的是同一份 最低性能状态锁 100 等于先把预算划给 CPU
         //   放开的仍然只是纯省电项 EPP PerfBoostPol ProcThrottleMax 照写激进值 不碰帧和输入
-        private static uint ArenaAcFor(Knob k, uint ac, bool handheld, bool autonomous)
+        private static uint ArenaAcFor(Knob k, uint ac, bool handheld, bool? autonomous)
         {
             ac = AutonomousArenaValue(k, ac, true, autonomous);
-            if (!Native.HasSystemBattery()) return ac;   // 台式机只应用上面的自主调频放底座
-            if (handheld && ArenaDcRelaxed(k.Setting)) return k.CalmAc;
-            return ArenaAcRelaxed(k.Setting) ? k.CalmAc : ac;
+            return ResolveArenaAc(Native.HasSystemBattery(), handheld,
+                ArenaAcRelaxed(k.Setting), ArenaDcRelaxed(k.Setting), ac, k.CalmAc);
+        }
+
+        // 纯决策 插电那一列最终写什么
+        //   台式机和笔记本插电都只放开核心停泊 掌机插电按电池那张表放开纯省电项
+        internal static uint ResolveArenaAc(bool hasBattery, bool handheld,
+            bool relaxedOnAc, bool relaxedOnDc, uint arenaAc, uint calmAc)
+        {
+            if (!hasBattery) return relaxedOnAc ? calmAc : arenaAc;
+            if (handheld && relaxedOnDc) return calmAc;
+            return relaxedOnAc ? calmAc : arenaAc;
         }
 
         internal static bool ArenaDcRelaxed(Guid setting)
@@ -526,7 +506,7 @@ namespace PaviseApp
             return false;
         }
 
-        private static uint ArenaDcFor(Knob k, uint dc, bool autonomous)
+        private static uint ArenaDcFor(Knob k, uint dc, bool? autonomous)
         {
             dc = AutonomousArenaValue(k, dc, false, autonomous);
             if (!Native.HasSystemBattery()) return dc;   // 台式机根本用不到电池那一列
@@ -856,6 +836,36 @@ namespace PaviseApp
         }
 
         private const uint ErrorInvalidParameter = 87;
+
+        // 卸载时按名字清掉历史版本留下的方案 收据里那份 RemoveManagedPlan 已经删过 这里只兜旧账
+        internal static bool IsManagedPlanName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            foreach (string prefix in new[] { "PG ", "由软件调度", "Scheduled by Pavise", "Aegis", "Pavise" })
+                if (name.StartsWith(prefix, StringComparison.Ordinal)) return true;
+            return false;
+        }
+
+        internal static int DeleteManagedPlansByName()
+        {
+            int deleted = 0;
+            lock (lk)
+            {
+                Guid? cur = Current();
+                foreach (Guid g in EnumerateSchemes())
+                {
+                    if (!IsManagedPlanName(ReadName(g))) continue;
+                    if (cur.HasValue && cur.Value == g)
+                    {
+                        if (!SwitchAwayFrom(g)) continue;
+                        cur = Current();
+                    }
+                    Guid t = g;
+                    if (PowerDeleteScheme(IntPtr.Zero, ref t) == 0) deleted++;
+                }
+            }
+            return deleted;
+        }
 
         private static Guid? Current()
         {

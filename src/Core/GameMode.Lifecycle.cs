@@ -46,6 +46,8 @@ namespace PaviseApp
             catch { runnersClosed = false; }
             try { if (!PowerBudgetYieldRunner.CloseForShutdown(8000)) runnersClosed = false; }
             catch { runnersClosed = false; }
+            try { if (!VramSpillProbe.CloseForShutdown(8000)) runnersClosed = false; }
+            catch { runnersClosed = false; }
             try { if (standbyCleaner != null && !standbyCleaner.Close(8000)) runnersClosed = false; }
             catch { runnersClosed = false; }
             // 两个关闭都要试 就算其中一个失败 除非两边都确认退出
@@ -70,6 +72,7 @@ namespace PaviseApp
         {
             if (!stopping || timeoutMs < 0) return false;
             var elapsed = Stopwatch.StartNew();
+            if (!DrainShutdownGate(autoGpuCommitGate, RemainingShutdownMs(elapsed, timeoutMs))) return false;
             if (!DrainShutdownGate(driverStageGate, RemainingShutdownMs(elapsed, timeoutMs))) return false;
             if (!DrainShutdownGate(powerApplyGate, RemainingShutdownMs(elapsed, timeoutMs))) return false;
             if (!DrainShutdownGate(whiteEvalSync, RemainingShutdownMs(elapsed, timeoutMs))) return false;
@@ -183,14 +186,14 @@ namespace PaviseApp
                                         lock (sync) { active = true; activeGame = running; firstSweep = true; }
                                         Logger.Log(Lang.T("log.gamemode.45") + running);
                                         autoGpuScanned = false;
-                                        cacheWarmDone = false;
                                         ResetAdaptiveGuard();
                                         ResetHeavySqueeze();
                                         Interlocked.Exchange(ref boostFirstStampTicks, DateTime.UtcNow.Ticks);
-                                        Interlocked.Exchange(ref sessionStartTicks, DateTime.UtcNow.Ticks);
+                                        SetAutoGpuSessionStamp(DateTime.UtcNow.Ticks);
                                         try { cpuLimit.Start(); } catch { }
                                         BeginSessionPolicy();
                                         ReportBegin(running);
+                                        NotifyExtensionSession(true);
                                         slowEnvAtTicks = DateTime.UtcNow
                                             .AddSeconds(SlowEnvDelaySeconds).Ticks;
                                     }
@@ -199,11 +202,10 @@ namespace PaviseApp
                                         lock (sync) activeGame = running;
                                         Logger.Log(Lang.T("log.gamemode.46") + running);
                                         autoGpuScanned = false;
-                                        cacheWarmDone = false;
                                         ResetAdaptiveGuard();
                                         ResetHeavySqueeze();
                                         Interlocked.Exchange(ref boostFirstStampTicks, DateTime.UtcNow.Ticks);
-                                        Interlocked.Exchange(ref sessionStartTicks, DateTime.UtcNow.Ticks);
+                                        SetAutoGpuSessionStamp(DateTime.UtcNow.Ticks);
                                         // activeDetection 此时已经指向新 profile 旧 renderer 无法再终验
                                         // 直接作废旧 IRQ epoch 并且必须先结旧局 再启用新策略
                                         // 直接 A→B 时必须作废 A 的 live epoch 但 A 已在首次
@@ -214,6 +216,7 @@ namespace PaviseApp
                                         ReportFinish();
                                         BeginSessionPolicy();
                                         ReportBegin(running);
+                                        NotifyExtensionSession(true);
                                     }
                                     else if (!string.Equals(activeGame, running, StringComparison.Ordinal))
                                     {
@@ -267,7 +270,6 @@ namespace PaviseApp
                                     ObserveSystemIrq(rendererPid, rendererCreation);
                                     UpdateIrqPresentProbe();
                                     MaybeAutoEnrollBackgroundGpu(rendererPid);
-                                    MaybeWarmCache();
                                     StepAdaptiveGuard();
                                     NotifyIrqObservationChanged(false);
                                 }

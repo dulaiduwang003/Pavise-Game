@@ -19,7 +19,20 @@ namespace PaviseApp
             HeavySqueezeSnapshotReuseDoesNotAdvance();
             HeavySqueezePidReuseAndPruneReset();
             HeavySqueezeRefusalBackoff();
+            HeavySqueezeAffinityOnlyFailureDetail();
             HeavySqueezeCatalogAndDefaults();
+        }
+
+        private static void HeavySqueezeAffinityOnlyFailureDetail()
+        {
+            Eq(true, SuppressionCore.AffinityOnlyFailure("affinity-write,affinity-readback"));
+            Eq(true, SuppressionCore.AffinityOnlyFailure("affinity-write"));
+            Eq(true, SuppressionCore.AffinityOnlyFailure("affinity-readback"));
+            Eq(false, SuppressionCore.AffinityOnlyFailure("affinity-write,priority-write"));
+            Eq(false, SuppressionCore.AffinityOnlyFailure("affinity-restore,affinity-restore-readback"));
+            Eq(false, SuppressionCore.AffinityOnlyFailure("io-write"));
+            Eq(false, SuppressionCore.AffinityOnlyFailure(""));
+            Eq(false, SuppressionCore.AffinityOnlyFailure(null));
         }
 
         private static void HeavySqueezeRefusalBackoff()

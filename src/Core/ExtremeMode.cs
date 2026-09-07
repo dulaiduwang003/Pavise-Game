@@ -122,12 +122,14 @@ namespace PaviseApp
             PolicyCatalog.KeyAggressive, PolicyCatalog.KeyGpuDemote, PolicyCatalog.KeyWsTrim,
             PolicyCatalog.KeyPauseDl, PolicyCatalog.KeyPauseUpdate, PolicyCatalog.KeyPauseMaintenance,
             PolicyCatalog.KeyPauseServices,
-            // 无线扫描抑制不再由极限强制 它给无线网卡开媒体流模式压后台信道扫描 部分驱动在这个模式下会掉线
-            //   有用户实测 极限每局掉线 电竞正常 日志里唯一能区分两档的网络项就是它 留手动开关给想开的人
-            PolicyCatalog.KeyCacheWarm, PolicyCatalog.KeyVramShield,
+            // 无线扫描抑制已下架，不再提供会话或手动入口。
+            //   旧实现切换媒体流模式曾触发驱动掉线，不列入极限清单。
+            PolicyCatalog.KeyVramShield,
             PolicyCatalog.KeyAudioLowLat, PolicyCatalog.KeyEnglishInput, PolicyCatalog.KeyPowerYield,
             PolicyCatalog.KeyNvMaxPerf, PolicyCatalog.KeyNvShaderCache,
             PolicyCatalog.KeyAmdAntiLag, PolicyCatalog.KeyIntelLowLatency, PolicyCatalog.KeyIntelEndurance,
+            // 候选线程提优 09-06 实测关掉掉三十帧 极限档强制开 CPU 饱和时仍由调度保护撤回
+            PolicyCatalog.KeyRenderLane,
         };
 
         // 全局独立开关 无逐游戏覆盖 由 ApplyEnv 侧按当前档位取用

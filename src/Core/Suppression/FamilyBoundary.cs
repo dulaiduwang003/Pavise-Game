@@ -11,17 +11,14 @@ namespace PaviseApp
         internal static bool BasicBackgroundEligible(int pid, int self, string name, string path,
             int session, int ownerSession, int foreground, bool userFacingFamily, string windowsRoot,
             bool gameHostAncestor = false, string activeGameRoot = null, bool aggressive = false,
-            bool familyExempt = true)
+            bool familyExempt = true, long creation = 0)
         {
             // 家族是否保护由调用方按档案和本轮身份确定 不按游戏/客户端名字推断
             //   开启家族压制仍可能影响依赖进程的响应 所以 UI 默认关闭并提示风险
             //   渲染本体 待确认候选 白名单和其它档案的保护在调用方先行放行
             //   下面四条是独立安全边界 不随逐游戏设置取消
             //   反作弊被压会心跳超时掉线 加速器被压会断流 输入音频外设链被压会卡鼠标和丢声音
-            if (AntiCheatCatalog.IsAntiCheatLikeName(name)) return false;
-            if (NetAcceleratorCatalog.IsAcceleratorLikeName(name)) return false;
-            if (PeripheralCatalog.IsInputChainProcess(name, path)) return false;
-            if (HardwareControlCatalog.IsHardwareControlProcess(name)) return false;
+            if (CatalogProtected(pid, creation, name, path)) return false;
             if (gameHostAncestor) return false;
             if (UnderRoot(path, activeGameRoot)) return false;
             if (pid <= 4 || pid == self || session < 0 || session != ownerSession) return false;
@@ -31,6 +28,76 @@ namespace PaviseApp
             if (aggressive) return !SystemProcessCatalog.IsCoreSystemProcess(name, path, windowsRoot);
             return string.IsNullOrEmpty(windowsRoot) || !path.StartsWith(windowsRoot, StringComparison.OrdinalIgnoreCase);
         }
+
+        // 四个目录的判定只看名字 路径和在场外设词条 对同一个进程实例结果不会变
+        //   逐进程几十上百次子串匹配 六百进程的机器一轮要三毫秒 按 pid+创建时间记住结果
+        //   词条集合有代际号 换了外设重新算 名字或路径对不上也重新算 没有创建时间的调用不进缓存
+        private sealed class CatalogVerdict
+        {
+            public long Creation;
+            public string Name;
+            public string Path;
+            public int VendorGeneration;
+            public bool Protected;
+        }
+
+        private static readonly object catalogSync = new object();
+        private static readonly Dictionary<int, CatalogVerdict> catalogVerdicts = new Dictionary<int, CatalogVerdict>();
+        private const int CatalogVerdictCap = 8192;
+
+        internal static bool CatalogProtected(int pid, long creation, string name, string path)
+        {
+            // 先让词条按到期刷新 再取代际 命中与否都走这一步 刷新不依赖缓存未命中
+            int generation = PeripheralVendorProbe.CurrentGeneration();
+            if (creation > 0)
+                lock (catalogSync)
+                {
+                    CatalogVerdict hit;
+                    if (catalogVerdicts.TryGetValue(pid, out hit) && hit.Creation == creation
+                        && hit.VendorGeneration == generation
+                        && string.Equals(hit.Name, name, StringComparison.Ordinal)
+                        && string.Equals(hit.Path, path, StringComparison.Ordinal))
+                        return hit.Protected;
+                }
+            bool verdict = AntiCheatCatalog.IsAntiCheatProcess(name, path)
+                || NetAcceleratorCatalog.IsAcceleratorLikeName(name)
+                || PeripheralCatalog.IsInputChainProcess(name, path)
+                || HardwareControlCatalog.IsHardwareControlProcess(name);
+            if (creation > 0)
+                lock (catalogSync)
+                {
+                    if (catalogVerdicts.Count >= CatalogVerdictCap) catalogVerdicts.Clear();
+                    catalogVerdicts[pid] = new CatalogVerdict
+                    {
+                        Creation = creation, Name = name, Path = path,
+                        VendorGeneration = generation, Protected = verdict
+                    };
+                }
+            return verdict;
+        }
+
+        // 每轮扫完把已经不在的进程从缓存里清掉 pid 复用由创建时间兜底 这里只管不让它涨
+        internal static void PruneCatalogVerdicts(HashSet<int> live)
+        {
+            if (live == null) return;
+            lock (catalogSync)
+            {
+                if (catalogVerdicts.Count == 0) return;
+                List<int> dead = null;
+                foreach (int pid in catalogVerdicts.Keys)
+                {
+                    if (live.Contains(pid)) continue;
+                    if (dead == null) dead = new List<int>();
+                    dead.Add(pid);
+                }
+                if (dead != null) foreach (int pid in dead) catalogVerdicts.Remove(pid);
+            }
+        }
+
+#if PAVISE_SELFTEST
+        internal static int CatalogVerdictCountForTest { get { lock (catalogSync) return catalogVerdicts.Count; } }
+        internal static void ClearCatalogVerdictsForTest() { lock (catalogSync) catalogVerdicts.Clear(); }
+#endif
 
         // 语义跟原来那版一样 只是不再为每次比较拼一个前缀字符串出来
         //   家族豁免开着时这里是 进程数×游戏数 的量级 每次分配都摊在对局的热路径上

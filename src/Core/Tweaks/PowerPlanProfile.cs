@@ -25,7 +25,10 @@ namespace PaviseApp
         public static PowerPlanProfile Resolve(bool amdCpu, bool hybrid, bool asymCache,
             string partitionTag)
         {
-            if (hybrid && !amdCpu) return new PowerPlanProfile(Lang.T("t.powerplanprofile.1"), true, 2, false);
+            // Intel 大小核的长短线程调度策略写 5 自动 交给 Thread Director
+            //   曾写 2 偏好性能核 没有实测依据 会把系统短线程和游戏辅助线程一起挤上 P 核
+            //   后台已由 EcoQoS 压到小核 不需要再用全局策略抢方向盘
+            if (hybrid && !amdCpu) return new PowerPlanProfile(Lang.T("t.powerplanprofile.1"), true, 5, false);
             if (hybrid) return new PowerPlanProfile(Lang.T("t.powerplanprofile.2"), true, 0, false);
             if (asymCache) return new PowerPlanProfile(Lang.T("t.powerplanprofile.3"), false, 0, true);
             if (partitionTag == "symmetric-ccd") return new PowerPlanProfile(Lang.T("t.powerplanprofile.4"), false, 0, false);

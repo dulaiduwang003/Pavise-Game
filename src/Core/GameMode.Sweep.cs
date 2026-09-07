@@ -271,6 +271,8 @@ namespace PaviseApp
                         ReleaseBackgroundExemption(pid, nm, null);
                         continue;
                     }
+                    // 正在开麦的进程一律不碰 不分档位 名单点不到的语音软件靠这条兜底
+                    if (TryProtectVoiceSession(pid, creation, nm)) continue;
                     // 集成在平台里的辅助进程跟随本局游戏的家族选择
                     // 独立的录屏宿主保持保护 直接复用快照
                     // 不读游戏模块 也不整个文件夹放行
@@ -282,7 +284,7 @@ namespace PaviseApp
                         sameSession ? selfSession : -1, selfSession, foregroundPid,
                         userFacingFamily.Contains(pid), windowsPrefix,
                         familyExemptionActive && gameHostAncestors.Contains(pid),
-                        containRoot, aggressive, familyExempt))
+                        containRoot, aggressive, familyExempt, creation))
                     {
                         ReleaseBackgroundExemption(pid, nm, null);
                         continue;
@@ -405,6 +407,7 @@ namespace PaviseApp
             // 重压后台绑核 在本轮隔离结果之上按热度决定亲和 开关关着时只负责放回
             if (!RunBackgroundPolicy(policyEpoch, delegate
                 { ApplyHeavySqueeze(squeezeCandidates, live, all.TakenTicks); })) return;
+            FamilyBoundary.PruneCatalogVerdicts(live);
 
             foreach (int pid in core.PidsWith(SuppressReason.Background))
                 if (!live.Contains(pid)) { if (core.Release(pid, SuppressReason.Background)) ReportUntrack(pid); }
@@ -468,6 +471,23 @@ namespace PaviseApp
             // 把没解决的恢复欠账留着 换下一轮快照再试
             if (creation > 0 && core.ReleaseIfCreation(pid, SuppressReason.Background, creation))
                 ReportUntrack(pid);
+            return true;
+        }
+
+        // 音频采集会话在 Active 状态的进程 释放已有压制 每个 PID 本局只记一行日志
+        private readonly HashSet<int> voiceExemptLogged = new HashSet<int>();
+
+        private bool TryProtectVoiceSession(int pid, long creation, string name)
+        {
+            if (pid <= 4 || !VoiceSessionRoster.IsCapturing(pid, creation)) return false;
+            // 知道创建时间就按身份释放 不知道就按 pid 释放 命中语音却留着旧压制不行
+            if (creation > 0)
+            {
+                if (core.ReleaseIfCreation(pid, SuppressReason.Background, creation)) ReportUntrack(pid);
+            }
+            else ReleaseBackgroundExemption(pid, name, null);
+            if (voiceExemptLogged.Add(pid))
+                Logger.Log(Lang.T("log.voice.exempt") + name + " pid " + pid);
             return true;
         }
 

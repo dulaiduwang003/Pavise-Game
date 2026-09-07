@@ -39,7 +39,7 @@ namespace PaviseApp
                 ResetTreeAlreadyGoneIsIdempotent,
                 ResetInvalidPathsDoNotStartRestoration,
                 ResetLogsCannotRecreateDeletedData,
-                ResetUninstallLauncherPaths,
+                ResetUninstallLeftoverBoundaries,
                 ResetRetiredIfeoEmptyCleanupClearsOptIns,
                 ResetRetiredIfeoFailureKeepsRecovery
             };
@@ -137,36 +137,43 @@ namespace PaviseApp
             if (!condition) throw new Exception("Reset cleanup regression: " + message);
         }
 
-        private static void ResetUninstallLauncherPaths(string root)
+        private static void ResetUninstallLeftoverBoundaries(string root)
         {
-            string fixture = ResetDirectory(root, "uninstall-launcher");
-            string adjacentDir = ResetDirectory(fixture, "portable");
-            string adjacentExe = ResetFile(adjacentDir, "Pavise.exe");
-            ResetCheck(UninstallLauncher.FindScript(adjacentExe) == null,
-                "a missing adjacent uninstall script was treated as available");
+            string fixture = ResetDirectory(root, "uninstall-leftovers");
+            string roaming = ResetDirectory(fixture, "roaming");
+            string local = ResetDirectory(fixture, "local");
+            string common = ResetDirectory(fixture, "common");
+            string elsewhere = ResetDirectory(fixture, "program");
 
-            string adjacentScript = ResetFile(adjacentDir, UninstallLauncher.ScriptFileName);
-            ResetPathEquals(adjacentScript, UninstallLauncher.FindScript(adjacentExe),
-                "the uninstall script beside Pavise.exe was not selected");
-            ProcessStartInfo start = UninstallLauncher.CreateStartInfo(adjacentScript);
-            ResetPathEquals(adjacentScript, start.FileName, "the launcher changed the uninstall script path");
-            ResetPathEquals(adjacentDir, start.WorkingDirectory, "the launcher used the wrong working directory");
-            ResetCheck(start.Arguments == UninstallLauncher.ConfirmedArgument,
-                "the in-app confirmation marker was not passed exactly once");
-            ResetCheck(start.UseShellExecute && start.WindowStyle == ProcessWindowStyle.Normal,
-                "the uninstall progress console would not be visible");
+            List<string> dirs = UninstallMode.LegacyDataDirs(roaming, local, common, elsewhere);
+            ResetCheck(dirs.Count == 3, "all three legacy data directories were expected when the program lives elsewhere");
+            ResetPathEquals(Path.Combine(roaming, "Aegis"), dirs[0], "the legacy roaming directory was not listed");
+            ResetPathEquals(Path.Combine(local, "Pavise"), dirs[1], "the legacy local directory was not listed");
+            ResetPathEquals(Path.Combine(common, "Pavise"), dirs[2], "the legacy common directory was not listed");
 
-            string repository = ResetDirectory(fixture, "source");
-            string build = ResetDirectory(repository, "build");
-            string buildExe = ResetFile(build, "Pavise.dev.exe");
-            string repositoryScript = ResetFile(repository, UninstallLauncher.ScriptFileName);
-            ResetPathEquals(repositoryScript, UninstallLauncher.FindScript(buildExe),
-                "the explicit repository/build development layout was not recognized");
+            string localPavise = ResetDirectory(local, "Pavise");
+            dirs = UninstallMode.LegacyDataDirs(roaming, local, common, localPavise);
+            ResetCheck(dirs.Count == 2, "a legacy directory holding the program itself was still scheduled for deletion");
+            foreach (string dir in dirs)
+                ResetCheck(!string.Equals(Path.GetFullPath(dir), Path.GetFullPath(localPavise), StringComparison.OrdinalIgnoreCase),
+                    "the program directory was listed as a legacy directory");
 
-            string arbitraryDir = ResetDirectory(fixture, "bin");
-            string arbitraryExe = ResetFile(arbitraryDir, "Pavise.exe");
-            ResetCheck(UninstallLauncher.FindScript(arbitraryExe) == null,
-                "the launcher searched an arbitrary parent directory");
+            string nested = ResetDirectory(localPavise, "bin");
+            dirs = UninstallMode.LegacyDataDirs(roaming, local, common, nested);
+            ResetCheck(dirs.Count == 2, "a legacy directory above the program directory was still scheduled for deletion");
+
+            dirs = UninstallMode.LegacyDataDirs(null, "", common, elsewhere);
+            ResetCheck(dirs.Count == 1, "missing known-folder roots must be skipped rather than resolved relatively");
+
+            ResetCheck(PowerPlan.IsManagedPlanName("由软件调度 A1B2"), "the current managed plan name was not recognized");
+            ResetCheck(PowerPlan.IsManagedPlanName("Scheduled by Pavise A1B2"), "the English managed plan name was not recognized");
+            ResetCheck(PowerPlan.IsManagedPlanName("PG 3090"), "the legacy PG plan name was not recognized");
+            ResetCheck(PowerPlan.IsManagedPlanName("Aegis"), "the legacy Aegis plan name was not recognized");
+            ResetCheck(!PowerPlan.IsManagedPlanName("Balanced"), "a stock plan name was treated as managed");
+            ResetCheck(!PowerPlan.IsManagedPlanName("平衡"), "a stock Chinese plan name was treated as managed");
+            ResetCheck(!PowerPlan.IsManagedPlanName("Ultimate Performance"), "the ultimate plan was treated as managed");
+            ResetCheck(!PowerPlan.IsManagedPlanName(""), "an empty plan name was treated as managed");
+            ResetCheck(!PowerPlan.IsManagedPlanName(null), "a null plan name was treated as managed");
         }
 
         private static void ResetPathEquals(string expected, string actual, string message)
@@ -323,6 +330,9 @@ namespace PaviseApp
             {
                 "Pavise.games.txt", "Pavise.whitelist.txt", "Pavise.targets.txt", "Pavise.autoignore.txt",
                 GameProfileStore.FileName, RendererObservationStore.FileName, IrqSessionLedger.FileName,
+                LibraryIgnoreTransaction.FileName,
+                LibraryIgnoreTransaction.FileName + "." + Guid.NewGuid().ToString("N") + ".tmp",
+                LibraryIgnoreTransaction.IgnoreFileName + "." + Guid.NewGuid().ToString("N") + ".tmp",
                 "Pavise.log", "Pavise.log.old", "crash.log", "Pavise.preview.log", "Pavise.freeze.state",
                 SuppressionCore.StateFileName, "backdrop.img", "Pavise.20260827.log", "crash.20260827.log",
                 "Pavise.whitelist.txt.tmp", "Pavise.whitelist.txt.stale.bak", "Pavise.autoignore.txt.tmp",
@@ -336,6 +346,9 @@ namespace PaviseApp
             {
                 "Pavise.exe", "Pavise.portable", "user-save.sav", "unrelated.tmp", "Pavise.exe.tmp",
                 GameProfileStore.FileName + ".not-a-guid.tmp", RendererObservationStore.FileName + ".user-backup.tmp",
+                LibraryIgnoreTransaction.FileName + ".not-a-guid.tmp",
+                LibraryIgnoreTransaction.IgnoreFileName + ".user-backup.tmp",
+                LibraryIgnoreTransaction.FileName + ".user-copy",
                 "Pavise.profiles.datx", "PaviseSomething.log", "crashlog.log", "backdrop-source.png",
                 "Pavise_note.xml", "Pavise_zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz.xml",
                 "Pavise_" + Guid.NewGuid().ToString("N") + ".xml.bak"

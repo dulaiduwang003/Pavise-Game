@@ -11,11 +11,14 @@ namespace PaviseApp
         public const double ExitUtilization = 0.80;
         public const long EnterHoldTicks = TimeSpan.TicksPerSecond * 10;
         public const long ExitHoldTicks = TimeSpan.TicksPerSecond * 5;
+        // 连续读不到样本这么久就不再声称饱和 否则一次采样故障能把升档卡到退局
+        public const long StaleTicks = TimeSpan.TicksPerSecond * 10;
 
         private bool saturated;
         private const long NotTiming = -1;
         private long enterSince = NotTiming;
         private long exitSince = NotTiming;
+        private long staleSince = NotTiming;
         private long lastIdle = -1;
         private long lastTotal = -1;
 
@@ -30,8 +33,11 @@ namespace PaviseApp
             {
                 enterSince = NotTiming;
                 exitSince = NotTiming;
+                if (staleSince == NotTiming) staleSince = now;
+                else if (saturated && now - staleSince >= StaleTicks) saturated = false;
                 return saturated;
             }
+            staleSince = NotTiming;
             if (!saturated)
             {
                 if (utilization >= EnterUtilization)
@@ -60,6 +66,7 @@ namespace PaviseApp
             saturated = false;
             enterSince = NotTiming;
             exitSince = NotTiming;
+            staleSince = NotTiming;
             lastIdle = -1;
             lastTotal = -1;
         }

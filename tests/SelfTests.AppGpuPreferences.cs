@@ -113,7 +113,7 @@ namespace PaviseApp
             internal readonly AppGpuLedgerFake Ledger;
             internal bool Hardware = true, Exists = true, DenyRead, DenyWrite, IgnoreWrite;
             internal bool ThrowBeforeWrite, ThrowAfterWrite, UseRealStage, DenyStageWrite;
-            internal int Reads, Attempts, Writes, StageWrites;
+            internal int Reads, Attempts, Writes, StageWrites, StageReleases;
             internal Action BeforeWrite, AfterWrite, AfterStageWrite;
             internal AppGpuControlFake(AppGpuLedgerFake ledger) { Ledger = ledger; }
             public bool Supported { get { return Hardware; } }
@@ -128,7 +128,7 @@ namespace PaviseApp
                 return !UseRealStage || GpuPrefStage.TryGetStagedOriginal(path, out staged, out original);
             }
             public bool TryReleaseStage(string path)
-            { return !UseRealStage || GpuPrefStage.TryReleaseForManualPreference(path); }
+            { StageReleases++; return !UseRealStage || GpuPrefStage.TryReleaseForManualPreference(path); }
             public AppGpuPreferenceWriteResult CompareExchange(string path, string expected, string replacement)
             {
                 Attempts++;

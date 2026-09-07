@@ -210,7 +210,7 @@ namespace PaviseApp
                 IntPtr h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_SET_LIMITED_INFORMATION
                     | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
                 bool applied = false;
-                if (h != IntPtr.Zero) { try { if (SameProcess(h, e)) applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost, AntiCheatThrottled(e), DesiredAffinityOf(e)); } finally { Native.CloseHandle(h); } }
+                if (h != IntPtr.Zero) { try { if (SameProcess(h, e)) applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost, AntiCheatThrottled(e), DesiredAffinityOf(e), e.SqueezeRefused); } finally { Native.CloseHandle(h); } }
                 lock (sync)
                 {
                     Entry cur;
@@ -265,7 +265,7 @@ namespace PaviseApp
             if (restoreForTest != null) r = restoreForTest(pid, e.Creation, e.Name);
             else
 #endif
-                r = RestoreOne(pid, e);
+                r = e.GaveUpRestored ? RestoreResult.Restored : RestoreOne(pid, e);
             result = r;
             bool reThrottle = false;
             lock (sync)
@@ -286,7 +286,7 @@ namespace PaviseApp
                 IntPtr h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_SET_LIMITED_INFORMATION
                     | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
                 bool applied = false;
-                if (h != IntPtr.Zero) { try { if (SameProcess(h, e)) applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost, AntiCheatThrottled(e), DesiredAffinityOf(e)); } finally { Native.CloseHandle(h); } }
+                if (h != IntPtr.Zero) { try { if (SameProcess(h, e)) applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e), e.OrigBoost, AntiCheatThrottled(e), DesiredAffinityOf(e), e.SqueezeRefused); } finally { Native.CloseHandle(h); } }
                 lock (sync)
                 {
                     Entry cur;

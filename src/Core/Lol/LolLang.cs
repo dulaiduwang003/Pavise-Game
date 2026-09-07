@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 英雄联盟增强的文案表 启动时并进 Lang 中英两列 日文和主表两列条目一样回落中文
+// 文件用途 英雄联盟增强的中英文案表，启动时合并进主语言表
 using System.Collections.Generic;
 
 namespace PaviseApp

@@ -18,10 +18,11 @@ namespace PaviseApp
         private Toggle swPolicyGpuDemote, swPolicyBoost, swPolicyLane, swPolicyMmcss;
         private Toggle swPolicyHeavySqueeze;
         private SettingCard cardPolicyHeavySqueeze;
+        private Toggle swPolicyAdaptive;
+        private SettingCard cardPolicyAdaptive;
         private Toggle swPolicyVramShield;
-        private SettingCard cardPolicyVramShield, cardPolicyCacheWarm, cardPolicyEnglishInput;
+        private SettingCard cardPolicyVramShield, cardPolicyEnglishInput;
         private Toggle swPolicyEnglishInput;
-        private Toggle swPolicyCacheWarm;
         private Toggle swPolicyPowerYield;
         private Toggle swPolicyDisableCpuIdle;
         private Toggle swPolicyPauseWu, swPolicyPauseServices, swPolicyAwake;
@@ -38,7 +39,6 @@ namespace PaviseApp
         internal Func<bool> DisableCpuIdleConfirmationForTest;
         internal Func<bool> PowerYieldConfirmationForTest;
         internal Func<bool> VramShieldConfirmationForTest;
-        internal Func<bool> CacheWarmConfirmationForTest;
         internal Func<bool> HeavySqueezeConfirmationForTest;
 #endif
 
@@ -77,6 +77,9 @@ namespace PaviseApp
             swPolicyHeavySqueeze = AddPolicyToggle(scroll, ref sy, Lang.T("gm.squeeze"), Lang.T("gm.squeeze.sub"),
                 delegate { return gameMode.HeavySqueezeOn; }, delegate(bool v) { OnHeavySqueezeToggle(v); });
             cardPolicyHeavySqueeze = (SettingCard)swPolicyHeavySqueeze.Parent;
+            swPolicyAdaptive = AddPolicyToggle(scroll, ref sy, Lang.T("gm.adaptive"), Lang.T("gm.adaptive.sub"),
+                delegate { return gameMode.AdaptiveEscalateOn; }, delegate(bool v) { gameMode.AdaptiveEscalateOn = v; });
+            cardPolicyAdaptive = (SettingCard)swPolicyAdaptive.Parent;
             swPolicyBoost = AddPolicyToggle(scroll, ref sy, Lang.T("gm.boost"), Lang.T("v15.boost.sub"),
                 delegate { return gameMode.BoostGame; }, delegate(bool v) { gameMode.BoostGame = v; });
             cardPolicyBoost = (SettingCard)swPolicyBoost.Parent;
@@ -86,9 +89,6 @@ namespace PaviseApp
             swPolicyVramShield = AddPolicyToggle(scroll, ref sy, Lang.T("gm.vramshield"), Lang.T("gm.vramshield.sub"),
                 delegate { return gameMode.VramShieldOn; }, delegate(bool v) { OnVramShieldToggle(v); });
             cardPolicyVramShield = (SettingCard)swPolicyVramShield.Parent;
-            swPolicyCacheWarm = AddPolicyToggle(scroll, ref sy, Lang.T("gm.cachewarm"), Lang.T("gm.cachewarm.sub"),
-                delegate { return gameMode.CacheWarmOn; }, delegate(bool v) { OnCacheWarmToggle(v); });
-            cardPolicyCacheWarm = (SettingCard)swPolicyCacheWarm.Parent;
             swPolicyLane.CheckedChanged += delegate { RefreshPolicyPresentation(); };
 
             BuildCorePage(policyTabPanels[1]);
@@ -384,8 +384,11 @@ namespace PaviseApp
                 cardPolicyHeavySqueeze.Desc = Lang.T("gm.squeeze.unsupported");
                 cardPolicyHeavySqueeze.SetLock(swPolicyHeavySqueeze.Enabled ? "" : Lang.T("lock.na"), false);
             }
+            // 只有智能档会用到 其它档位本来就是电竞口径 开关留着但标为不生效
+            ApplyPresetPolicy(swPolicyAdaptive, cardPolicyAdaptive, Lang.T("gm.adaptive"), false,
+                mode == PerformancePreset.Standard);
             ApplyPresetPolicy(swPolicyBoost, cardPolicyBoost, Lang.T("gm.boost"), false, true);
-            ApplyPresetPolicy(swPolicyLane, cardPolicyLane, Lang.T("gm.lane"), false, true);
+            ApplyPresetPolicy(swPolicyLane, cardPolicyLane, Lang.T("gm.lane"), extremeTier, true);
             if (cardPolicyCores != null) cardPolicyCores.Title = Lang.T("cpu.place.title");
             ApplyPresetPolicy(swPolicyAggressive, cardPolicyAggressive, Lang.T("gm.aggressive"), !custom, presetForcesOn);
             ApplyPresetPolicy(swPolicyPauseDl, cardPolicyPauseDl, Lang.T("gm.pausedl"), !custom, presetForcesOn);
@@ -436,7 +439,6 @@ namespace PaviseApp
             ApplyPresetPolicy(swPolicyPauseServices, cardPolicyPauseServices, Lang.T("gm.pausesvc"), extremeTier, true);
             ApplyPresetPolicy(swPolicyAwake, cardPolicyAwake, Lang.T("set.awake"), false, true);
             ApplyPresetPolicy(swPolicyVramShield, cardPolicyVramShield, Lang.T("gm.vramshield"), extremeTier, true);
-            ApplyPresetPolicy(swPolicyCacheWarm, cardPolicyCacheWarm, Lang.T("gm.cachewarm"), extremeTier, true);
             ApplyPresetPolicy(swPolicyEnglishInput, cardPolicyEnglishInput, Lang.T("gm.englishinput"), extremeTier, true);
         }
 
@@ -531,25 +533,6 @@ namespace PaviseApp
             }
             gameMode.VramShieldOn = on;
             if (swPolicyVramShield != null) swPolicyVramShield.SetSilently(gameMode.VramShieldOn);
-        }
-
-        private bool ConfirmCacheWarmEnable()
-        {
-#if PAVISE_SELFTEST
-            if (CacheWarmConfirmationForTest != null) return CacheWarmConfirmationForTest();
-#endif
-            return PaviseDialog.Confirm(this, Lang.T("gm.cachewarm"), Lang.T("cachewarm.warn"), DlgKind.Warn);
-        }
-
-        private void OnCacheWarmToggle(bool on)
-        {
-            if (on && !ConfirmCacheWarmEnable())
-            {
-                if (swPolicyCacheWarm != null) swPolicyCacheWarm.SetSilently(gameMode.CacheWarmOn);
-                return;
-            }
-            gameMode.CacheWarmOn = on;
-            if (swPolicyCacheWarm != null) swPolicyCacheWarm.SetSilently(gameMode.CacheWarmOn);
         }
 
         private bool ConfirmHeavySqueezeEnable()

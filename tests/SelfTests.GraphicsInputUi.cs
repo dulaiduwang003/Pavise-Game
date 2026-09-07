@@ -321,9 +321,11 @@ namespace PaviseApp
                 using (var lease = new FileStream(f.Family.LibraryFile, FileMode.Open, FileAccess.Read, FileShare.Read))
                     GraphicsUiCheck(!f.Mode.SetProfileOverride("first", PolicyCatalog.KeyIntelLowLatency, "0"),
                         "locked profile save was reported successful");
-                GraphicsUiCheck(f.Mode.ProfileStoreSaveFailed && !old() && !f.Capture()()
+                GraphicsUiCheck(!f.Mode.ProfileStoreSaveFailed && !old() && f.Capture()()
                     && File.ReadAllText(f.Family.LibraryFile) == before,
-                    "failed profile commit did not block pending/new Intel changes");
+                    "busy profile commit did not cancel stale work and preserve the previous policy");
+                GraphicsUiCheck(f.Mode.SetProfileOverride("first", PolicyCatalog.KeyIntelLowLatency, "0")
+                    && !f.Capture()(), "unlocked profile save did not apply the requested Intel policy");
             }
         }
 

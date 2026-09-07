@@ -19,6 +19,9 @@ namespace PaviseApp
 
         private volatile bool autoGpuOn;
         private volatile bool autoGpuScanned;
+        // 提交/换局/关闭共用边界。GPU 锁和 sync 在自动路径上只尝试进入，
+        // 不拿着其中一把等另一把，避免与扫描、驱动暂存的锁顺序形成环。
+        private readonly object autoGpuCommitGate = new object();
 
         private void InitializeAutoGpu()
         {
@@ -30,18 +33,67 @@ namespace PaviseApp
             get { return autoGpuOn; }
             set
             {
-                if (autoGpuOn == value) return;
-                bool saved = Settings.Save("AppGpuAutoV1", value);
-                autoGpuOn = value && saved;
-                Logger.Log(Lang.T(autoGpuOn ? "log.autogpu.1" : "log.autogpu.2"));
+                lock (autoGpuCommitGate)
+                {
+                    if (autoGpuOn == value) return;
+                    bool saved = Settings.Save("AppGpuAutoV1", value);
+                    autoGpuOn = value && saved;
+                    Logger.Log(Lang.T(autoGpuOn ? "log.autogpu.1" : "log.autogpu.2"));
+                }
+            }
+        }
+
+        private bool AutoGpuWanted
+        { get { return autoGpuOn || (ActivePreset == PerformancePreset.Extreme && ExtremeMode.ForceGlobal("autoecogpu")); } }
+
+        private bool AutoGpuSessionCurrent(long stamp)
+        { return AutoGpuSessionIdentityCurrent(stamp) && AutoGpuWanted; }
+
+        private bool AutoGpuSessionIdentityCurrent(long stamp)
+        {
+            return stamp > 0 && !stopping && !panicReq && Volatile.Read(ref active)
+                && Interlocked.Read(ref sessionStartTicks) == stamp;
+        }
+
+        private void SetAutoGpuSessionStamp(long stamp)
+        {
+            // 函数返回后，旧会话的提交与 handled 记账都已结束。
+            lock (autoGpuCommitGate) Interlocked.Exchange(ref sessionStartTicks, stamp);
+        }
+
+        private AppGpuPreferenceResult CommitAutoGpu(AppGpuPreferenceManager manager, string path,
+            long stamp, Func<bool> stillEligible)
+        {
+            lock (autoGpuCommitGate)
+            {
+                // ActivePreset 可能需要 sync；先只查无锁身份，拿到 sync 后才查策略。
+                if (!AutoGpuSessionIdentityCurrent(stamp)) return AppGpuPreferenceResult.Changed;
+                if (!Monitor.TryEnter(GpuPrefStage.MutationGate)) return AppGpuPreferenceResult.Busy;
+                try
+                {
+                    if (!Monitor.TryEnter(sync)) return AppGpuPreferenceResult.Busy;
+                    try
+                    {
+                        if (!AutoGpuSessionCurrent(stamp)) return AppGpuPreferenceResult.Changed;
+                        AppGpuPreferenceResult result = AutoGpuEnroll(manager, path, delegate
+                        {
+                            return AutoGpuSessionCurrent(stamp) && stillEligible != null && stillEligible()
+                                && AutoGpuSessionCurrent(stamp);
+                        });
+                        if (result == AppGpuPreferenceResult.Success || result == AppGpuPreferenceResult.AlreadyPresent)
+                            RememberAutoGpuHandled(path);
+                        return result;
+                    }
+                    finally { Monitor.Exit(sync); }
+                }
+                finally { Monitor.Exit(GpuPrefStage.MutationGate); }
             }
         }
 
         // 每局一次 复用渲染进程选举的采样互斥 与自动入库和选举不并发跑 PDH
         private void MaybeAutoEnrollBackgroundGpu(int rendererPid)
         {
-            bool autoGpuWanted = autoGpuOn || (ActivePreset == PerformancePreset.Extreme
-                && ExtremeMode.ForceGlobal("autoecogpu"));
+            bool autoGpuWanted = AutoGpuWanted;
             if (!autoGpuWanted || autoGpuScanned || stopping || panicReq || rendererPid <= 0) return;
             long start = Interlocked.Read(ref sessionStartTicks);
             if (start == 0 || DateTime.UtcNow.Ticks - start
@@ -51,12 +103,14 @@ namespace PaviseApp
             autoGpuScanned = true;
             int pid = rendererPid;
             long stamp = start;
-            ThreadPool.QueueUserWorkItem(delegate
+            bool queued = false;
+            try { queued = ThreadPool.QueueUserWorkItem(delegate
             {
                 try { AutoEnrollBackgroundGpu(pid, stamp); }
                 catch { }
                 finally { Interlocked.Exchange(ref rendererGpuSamplingBusy, 0); }
-            });
+            }); }
+            finally { if (!queued) Interlocked.Exchange(ref rendererGpuSamplingBusy, 0); }
         }
 
         private void AutoEnrollBackgroundGpu(int rendererPid, long sessionStamp)
@@ -65,8 +119,7 @@ namespace PaviseApp
             //   残余采样窗跨局会拿旧渲染 pid 判亲子关系 把新游戏的辅助进程误登记
             Func<bool> abort = delegate
             {
-                return stopping || panicReq || !Volatile.Read(ref active)
-                    || Interlocked.Read(ref sessionStartTicks) != sessionStamp;
+                return !AutoGpuSessionCurrent(sessionStamp);
             };
             RenderAdapter adapter = GpuEvidence.ResolveRenderAdapter(rendererPid, GpuEvidence.BurstIntervalMs);
             // 渲染卡不唯一就整局不做 宁可漏也不能把程序赶去错误的卡
@@ -76,7 +129,6 @@ namespace PaviseApp
             if (util == null || abort()) return;
             // 拥有可见顶层窗口的程序不碰 副屏上正在看的播放器和浏览器就是这形态
             //   它们跑在渲染卡上恰恰因为副屏接在独显 改成省电卡会引入逐帧跨卡拷贝
-            HashSet<int> visible = CollectVisibleWindowPids();
             // 名额有限 按占用降序处理 不能让字典哈希序决定登记谁
             var ranked = new List<KeyValuePair<int, double>>(util);
             ranked.Sort(delegate(KeyValuePair<int, double> a, KeyValuePair<int, double> b)
@@ -87,7 +139,6 @@ namespace PaviseApp
                 if (enrolled >= AutoGpuMaxPerSession || abort()) break;
                 if (kv.Key == rendererPid || kv.Key == selfPid
                     || kv.Value < AutoGpuMinUtilization) continue;
-                if (visible == null || visible.Contains(kv.Key)) continue;
                 GameProcessSnapshot identity;
                 if (!GameSessionDetector.TryCaptureProcessIdentity(kv.Key, selfSession, out identity))
                     continue;
@@ -98,10 +149,21 @@ namespace PaviseApp
                 bool blocked;
                 lock (sync) blocked = AutoGpuProtectedLocked(name, path);
                 if (blocked || AutoGpuAlreadyHandled(path)) continue;
-                AppGpuPreferenceResult result = AutoGpuEnroll(AppGpuPreferences.Shared, path);
+                AppGpuPreferenceResult result = CommitAutoGpu(AppGpuPreferences.Shared, path, sessionStamp, delegate
+                {
+                    // Prepare 与实际提交之间再查一次；登记按 EXE 生效，不能只看候选 PID。
+                    if (abort()) return false;
+                    GameProcessSnapshot current;
+                    if (!GameSessionDetector.TryCaptureProcessIdentity(kv.Key, selfSession, out current)
+                        || current.Creation != identity.Creation || !SameLibraryPath(current.Path, path)) return false;
+                    ProcessSnapshot snapshot = ProcessSnapshotSource.Capture(selfSession, 0);
+                    if (!AutoGpuVisibilityAllows(current, snapshot, CollectVisibleWindowPids(), selfSession))
+                        return false;
+                    lock (sync) if (AutoGpuProtectedLocked(name, path)) return false;
+                    return !abort();
+                });
                 if (result != AppGpuPreferenceResult.Success
                     && result != AppGpuPreferenceResult.AlreadyPresent) continue;
-                RememberAutoGpuHandled(path);
                 if (result == AppGpuPreferenceResult.Success)
                 {
                     enrolled++;
@@ -118,7 +180,7 @@ namespace PaviseApp
             try
             {
                 var pids = new HashSet<int>();
-                EnumWindows(delegate(IntPtr hwnd, IntPtr lparam)
+                bool complete = EnumWindows(delegate(IntPtr hwnd, IntPtr lparam)
                 {
                     if (IsWindowVisible(hwnd))
                     {
@@ -128,9 +190,60 @@ namespace PaviseApp
                     }
                     return true;
                 }, IntPtr.Zero);
-                return pids;
+                return VisibleWindowResult(complete, pids);
             }
             catch { return null; }
+        }
+
+        internal static HashSet<int> VisibleWindowResult(bool complete, HashSet<int> pids)
+        { return complete ? pids : null; }
+
+        // 快照与窗口枚举都必须完整；可见进程及其有身份依据的后代按镜像路径保护。
+        // 这是只读准入，不声称能将窗口状态与注册表提交做成原子事务。
+        internal static bool AutoGpuVisibilityAllows(GameProcessSnapshot candidate,
+            ProcessSnapshot snapshot, HashSet<int> visible, int session)
+        {
+            if (candidate == null || snapshot == null || visible == null) return false;
+            ProcEntry found = snapshot.Find(candidate.Pid);
+            string path = WhitelistRule.NormalizeImagePath(candidate.Path);
+            if (found == null || found.Session != session || found.Creation <= 0
+                || found.Creation != candidate.Creation || string.IsNullOrEmpty(path)
+                || !string.Equals(path, WhitelistRule.NormalizeImagePath(found.Path), StringComparison.OrdinalIgnoreCase))
+                return false;
+            var protectedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (int pid in visible)
+            {
+                ProcEntry entry = snapshot.Find(pid);
+                if (entry == null || entry.Session < 0) return false;
+                if (entry.Session != session) continue;
+                string image = WhitelistRule.NormalizeImagePath(entry.Path);
+                if (entry.Creation <= 0 || string.IsNullOrEmpty(image)) return false;
+                protectedPaths.Add(image);
+            }
+            foreach (ProcEntry entry in snapshot.Entries)
+            {
+                if (entry.Session != session || entry.Creation <= 0) continue;
+                ProcEntry cursor = entry;
+                var visited = new HashSet<int>();
+                while (cursor != null && visited.Add(cursor.Pid))
+                {
+                    // Shell / 终端 / 运行时不是独立应用家族的锚点，也不能穿越。
+                    // 可见宿主自身的镜像仍由上面的 protectedPaths 保护。
+                    if (WhitelistRule.IsUnsafeFamilyAnchor(cursor.Path)) break;
+                    if (visible.Contains(cursor.Pid))
+                    {
+                        string image = WhitelistRule.NormalizeImagePath(entry.Path);
+                        if (string.IsNullOrEmpty(image)) return false;
+                        protectedPaths.Add(image);
+                        break;
+                    }
+                    ProcEntry parent = snapshot.Find(cursor.ParentPid);
+                    if (parent == null || parent.Session != session || parent.Creation <= 0
+                        || parent.Creation >= cursor.Creation) break;
+                    cursor = parent;
+                }
+            }
+            return !protectedPaths.Contains(path);
         }
 
         private delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lparam);
@@ -177,12 +290,17 @@ namespace PaviseApp
         // 只认领没有任何既有显卡偏好的程序 已有偏好值 = 用户或外部工具的明确
         //   选择 自动路径永不覆盖 人工路径才有确认弹窗可以覆盖
         internal static AppGpuPreferenceResult AutoGpuEnroll(AppGpuPreferenceManager manager, string path)
+        { return AutoGpuEnroll(manager, path, null); }
+
+        internal static AppGpuPreferenceResult AutoGpuEnroll(AppGpuPreferenceManager manager, string path,
+            Func<bool> stillEligible)
         {
             AppGpuPreferenceChange change;
             AppGpuPreferenceResult prepared = manager.Prepare(path, out change);
             if (prepared != AppGpuPreferenceResult.Success) return prepared;
             if (change.NeedsConfirmation) return AppGpuPreferenceResult.NeedsConfirmation;
-            return manager.Apply(change, false);
+            if (stillEligible != null && !stillEligible()) return AppGpuPreferenceResult.Changed;
+            return manager.Apply(change, false, stillEligible);
         }
 
         // 每个路径一生只自动登记一次 用户从管理列表移除后不会被自动加回

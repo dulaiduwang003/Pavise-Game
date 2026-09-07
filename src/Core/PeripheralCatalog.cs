@@ -18,7 +18,11 @@ namespace PaviseApp
             "steelseries", "armoury", "wooting", "keychron", "dareu", "rapoo",
             "hyperx", "ngenuity", "epos", "sennheiser", "astro", "turtlebeach",
             "edifier", "hecate", "elgato", "roccat",
-            "bloody", "a4tech", "vgn", "langtu", "gamepp"
+            "bloody", "a4tech", "vgn", "langtu", "gamepp",
+            // 手柄映射器 名字和文件描述都不含 gamepad/controller 这类词 只能按产品名点
+            //   它们靠高频轮询把手柄事件翻译成键鼠 被隔离到 IDLE 加小核限频 输入就会迟
+            "gamepad", "joystick", "ds4windows", "rewasd", "xoutput", "joytokey",
+            "x360ce", "dualsensex", "betterjoy", "antimicro", "inputmapper", "keysticks"
         };
 
         private static readonly string[] DescriptionWords =

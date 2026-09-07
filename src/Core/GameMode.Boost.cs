@@ -26,6 +26,8 @@ namespace PaviseApp
             public string RendererName;
             public bool WriteDenied;
             public uint PriorityTarget;
+            public bool CpuSaturated;
+            public long DomainGeneration;
         }
 
         private void Boost(ProcessSnapshot all)
@@ -85,6 +87,11 @@ namespace PaviseApp
                             if (irqProbe.IsPlacementCapturing) irqProbe.InvalidateGameMask();
                             continue;
                         }
+
+                        // 全机平均值看不见局部核域饥饿。读回失败或已有 CPU Sets 时
+                        // 当前渲染身份保守保持 Normal；在任何 priority / lane 写入之前收紧。
+                        uint[] currentSets = Native.QueryCpuSets(h);
+                        RecordBoostDomain(pass, Native.QueryAffinity(h), currentSets);
 
                         if (placementAudit)
                         {
@@ -152,6 +159,14 @@ namespace PaviseApp
                             irqProbe.InvalidateGameMask();
                         bool newlyTracked, gpuOk;
                         if (!CaptureAndTrack(h, pid, currentCreation, pass, known, out newlyTracked, out gpuOk)) continue;
+                        // 放置阶段会恢复原始核域（可能来自崩溃恢复账本）。恢复值同样
+                        // 必须纳入准入，不能在这里提到 High 后又把进程放回受限核域。
+                        Snap originalDomain;
+                        bool originalKnown;
+                        lock (sync) originalKnown = gameBoost.TryGetValue(pid, out originalDomain)
+                            && originalDomain.Creation == currentCreation;
+                        RecordBoostDomain(pass, originalKnown ? originalDomain.Aff : 0UL,
+                            originalKnown ? originalDomain.CpuSets : null);
                         bool stateOk, firstVerified;
                         if (!ApplyBoostStateStage(h, pid, pass, needTweak, out stateOk, out firstVerified))
                         {
@@ -263,19 +278,97 @@ namespace PaviseApp
         private readonly CpuSaturation cpuSaturation = new CpuSaturation();
         private uint boostPriorityTarget = Native.HIGH_PRIORITY_CLASS;
         private long boostFirstStampTicks;
+        private bool boostDomainRestricted;
+        private bool boostDomainKnown;
+        private int boostDomainPid;
+        private long boostDomainCreation;
+        private long boostDomainGeneration;
+        private bool boostDomainNeedsAudit = true;
+        private bool boostLaneReleasedForNormal;
+        private bool boostPriorityDecidedKnown;
 
         internal static uint BoostPriorityTarget(bool saturated, bool laneActive)
         {
-            return saturated && !laneActive
+            // A CPU-time candidate is not evidence that saturation can safely be ignored.
+            return saturated
                 ? Native.NORMAL_PRIORITY_CLASS : Native.HIGH_PRIORITY_CLASS;
+        }
+
+        internal static uint BoostPriorityTarget(bool saturated, bool laneActive,
+            ulong desiredMask, ulong allMask, bool domainRestricted)
+        {
+            // 不能用整机空闲替代游戏可运行核域的余量证明。
+            return domainRestricted || allMask == 0 || desiredMask != allMask
+                ? Native.NORMAL_PRIORITY_CLASS : BoostPriorityTarget(saturated, laneActive);
         }
 
         private void ResolvePriorityTarget(BoostPass pass)
         {
-            bool saturated = cpuSaturation.Update(cpuSaturation.Sample(), DateTime.UtcNow.Ticks);
+            pass.CpuSaturated = cpuSaturation.Update(cpuSaturation.Sample(), DateTime.UtcNow.Ticks);
+            if (pass.RendererPid != boostDomainPid || pass.RendererCreation != boostDomainCreation)
+                ResetBoostDomainEvidence();
+            boostDomainPid = pass.RendererPid;
+            boostDomainCreation = pass.RendererCreation;
+            pass.DomainGeneration = boostDomainGeneration;
+            // 包括同 PID 同创建时间的直接换局；不能复用上一局的审计缓存。
+            if (boostDomainNeedsAudit && pass.RendererPid > 0)
+                lock (sync)
+                {
+                    boostStateVerified.Remove(pass.RendererPid);
+                    gameBoostNextAudit.Remove(pass.RendererPid);
+                    boostDomainNeedsAudit = false;
+                }
+            ResolveKnownDomainPriority(pass);
+        }
+
+        private void ResetBoostDomainEvidence()
+        {
+            boostDomainKnown = false;
+            boostDomainRestricted = false;
+            boostDomainPid = 0;
+            boostDomainCreation = 0;
+            boostDomainGeneration++;
+            boostDomainNeedsAudit = true;
+            boostLaneReleasedForNormal = false;
+            boostPriorityDecidedKnown = false;
+        }
+
+        private void RecordBoostDomain(BoostPass pass, ulong affinity, uint[] cpuSets)
+        {
+            // 旧局或旧渲染进程的迟到读回不能重新认证当前核域。
+            if (pass.DomainGeneration != boostDomainGeneration || pass.RendererPid <= 0
+                || pass.RendererCreation <= 0 || pass.RendererPid != boostDomainPid
+                || pass.RendererCreation != boostDomainCreation) return;
+            boostDomainKnown = true;
+            boostDomainRestricted |= allMask == 0 || affinity != allMask
+                || cpuSets == null || cpuSets.Length != 0;
+            ResolveKnownDomainPriority(pass);
+        }
+
+        private void ResolveKnownDomainPriority(BoostPass pass)
+        {
             bool laneActive = pass.RendererPid > 0
                 && RenderLane.IsActiveFor(pass.RendererPid, pass.RendererCreation);
-            uint priorityTarget = BoostPriorityTarget(saturated, laneActive);
+            uint priorityTarget = BoostPriorityTarget(pass.CpuSaturated, laneActive,
+                pass.DesiredMask, allMask, !boostDomainKnown || boostDomainRestricted || CpuTopology.MultiGroup);
+            SetBoostPriorityTarget(pass, priorityTarget);
+        }
+
+        private void SetBoostPriorityTarget(BoostPass pass, uint priorityTarget)
+        {
+            if (priorityTarget == Native.NORMAL_PRIORITY_CLASS)
+            {
+                if (irqProbe.IsPlacementCapturing && priorityTarget != boostPriorityTarget)
+                    irqProbe.InvalidateGameMask();
+                // 成功取消后本状态内不会再启动 lane，不要每次扫描都重读恢复账本。
+                // 失败不能缓存成已恢复，后续扫描和退局仍保留恢复机会。
+                if (!boostLaneReleasedForNormal)
+                    boostLaneReleasedForNormal = RenderLane.Release();
+            }
+            else boostLaneReleasedForNormal = false;
+            // 核域读回之前的首轮判定只是保守起步 不算一次真正的升降 不记日志
+            bool previousDecidedKnown = boostPriorityDecidedKnown;
+            boostPriorityDecidedKnown = boostDomainKnown;
             if (priorityTarget != boostPriorityTarget)
             {
                 boostPriorityTarget = priorityTarget;
@@ -286,8 +379,9 @@ namespace PaviseApp
                         boostStateVerified.Remove(pass.RendererPid);
                         gameBoostNextAudit.Remove(pass.RendererPid);
                     }
-                    Logger.Log(priorityTarget == Native.NORMAL_PRIORITY_CLASS
-                        ? Lang.T("log.boostsat.1") : Lang.T("log.boostsat.2"));
+                    if (previousDecidedKnown)
+                        Logger.Log(priorityTarget == Native.NORMAL_PRIORITY_CLASS
+                            ? Lang.T("log.boostsat.1") : Lang.T("log.boostsat.2"));
                 }
             }
             pass.PriorityTarget = priorityTarget;
@@ -364,7 +458,7 @@ namespace PaviseApp
             bool ecoGaveUp;
             lock (sync) ecoGaveUp = boostEcoGaveUp.Contains(pid);
             if (!ecoGaveUp && !HighQoSVerified(h)) return true;
-            if (EffLane)
+            if (EffLane && pass.PriorityTarget == Native.HIGH_PRIORITY_CLASS)
             {
                 LaneState lane = RenderLane.StateFor(pid, creation);
                 if (IrqLaneNeedsInitialization(lane)) return true;

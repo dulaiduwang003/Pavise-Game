@@ -348,8 +348,30 @@ namespace PaviseApp
 
         public static LolProcessSnapshot Scan(string lolRoot, string weGameRoot, bool namesOnly)
         {
+            return ScanCore(lolRoot, weGameRoot, namesOnly, false);
+        }
+
+        // 通用 WeGame 游戏用这个入口 根目录只要求存在 不要求是英雄联盟的布局
+        //   客户端 游戏 大厅几项自然全假 只有 WeGame 与 Cross 的计数有意义
+        public static LolProcessSnapshot ScanShell(string gameRoot, string weGameRoot, bool namesOnly)
+        {
+            return ScanCore(gameRoot, weGameRoot, namesOnly, true);
+        }
+
+        private static string ValidatedRoot(string root, bool genericRoot)
+        {
+            if (genericRoot)
+            {
+                try { return !string.IsNullOrEmpty(root) && System.IO.Directory.Exists(root) ? root : null; }
+                catch { return null; }
+            }
+            return LolInstallDiscovery.IsValidLolRoot(root) ? root : null;
+        }
+
+        private static LolProcessSnapshot ScanCore(string lolRoot, string weGameRoot, bool namesOnly, bool genericRoot)
+        {
             var result = new LolProcessSnapshot();
-            if (!LolInstallDiscovery.IsValidLolRoot(lolRoot)) lolRoot = null;
+            lolRoot = ValidatedRoot(lolRoot, genericRoot);
             if (!LolInstallDiscovery.IsValidWeGameRoot(weGameRoot)) weGameRoot = null;
             int currentSession;
             if (!TryGetCurrentSessionId(out currentSession)) return result;
@@ -412,8 +434,22 @@ namespace PaviseApp
         public static LolCleanupResult Clean(
             string lolRoot, string weGameRoot, bool includeDownloaders)
         {
+            return CleanCore(lolRoot, weGameRoot, includeDownloaders, false);
+        }
+
+        // 通用 WeGame 游戏的脱壳 结束的只有 WeGame 目录下的壳进程 游戏目录下的 Cross 与 TCLS 会话进程
+        //   游戏本体 TCLS\Client.exe 反作弊一个都不在名单里 名单见 IsCleanupTarget
+        public static LolCleanupResult CleanShell(
+            string gameRoot, string weGameRoot, bool includeDownloaders)
+        {
+            return CleanCore(gameRoot, weGameRoot, includeDownloaders, true);
+        }
+
+        private static LolCleanupResult CleanCore(
+            string lolRoot, string weGameRoot, bool includeDownloaders, bool genericRoot)
+        {
             var result = new LolCleanupResult();
-            if (!LolInstallDiscovery.IsValidLolRoot(lolRoot)) lolRoot = null;
+            lolRoot = ValidatedRoot(lolRoot, genericRoot);
             if (!LolInstallDiscovery.IsValidWeGameRoot(weGameRoot)) weGameRoot = null;
             if (lolRoot == null && weGameRoot == null) return result;
             int currentSession;

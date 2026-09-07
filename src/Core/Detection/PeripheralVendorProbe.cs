@@ -15,6 +15,16 @@ namespace PaviseApp
         private static string[] tokens = new string[0];
         private static int stamp;
         private static bool scanned;
+        // 词条集合每变一次加一 目录判定缓存拿它当失效键 词条不变就不重算
+        private static volatile int generation;
+        internal static int Generation { get { return generation; } }
+
+        // 到期刷新不能依赖别处刚好来问词条 缓存命中路径也要走这里 否则十分钟一刷会被缓存挡住
+        internal static int CurrentGeneration()
+        {
+            Tokens();
+            return generation;
+        }
 
         private static readonly HashSet<string> StopWords = new HashSet<string>(StringComparer.Ordinal)
         {
@@ -52,6 +62,7 @@ namespace PaviseApp
                 if (!SameSet(tokens, fresh))
                 {
                     tokens = fresh;
+                    generation++;
                     Logger.Log(Lang.T("log.peripheralvendorprobe.1") + fresh.Length + Lang.T("log.peripheralvendorprobe.2") + string.Join(" ", fresh));
                 }
                 return tokens;

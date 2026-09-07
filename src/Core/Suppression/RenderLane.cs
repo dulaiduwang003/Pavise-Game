@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 识别游戏的帧关键线程并单独抬高其调度权重 独立线程连续采样 钉后定期复核
+// 文件用途 按 CPU 耗时选择候选并单独提优（不证明帧关键性） 独立线程连续采样 钉后定期复核
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;

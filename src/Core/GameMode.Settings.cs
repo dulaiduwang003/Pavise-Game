@@ -229,26 +229,6 @@ namespace PaviseApp
         }
 
 
-        // 默认关闭 预热是纯读取 没有需要撤销的系统状态 关掉只是不再预热
-        public bool CacheWarmOn
-        {
-            get { return cacheWarmOn; }
-            set
-            {
-                if (value)
-                {
-                    if (!Settings.Save(CacheWarm.EnabledKey, true)) return;
-                    cacheWarmOn = true;
-                }
-                else
-                {
-                    cacheWarmOn = false;
-                    Settings.Save(CacheWarm.EnabledKey, false);
-                }
-                RequestPolicyApply();
-            }
-        }
-
         public bool RsrUpscale
         {
             get { return rsrOn; }

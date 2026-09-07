@@ -90,7 +90,6 @@ namespace PaviseApp
         private volatile bool amdAfmf;
         private volatile bool rsrOn;
         private volatile bool vramShieldOn;
-        private volatile bool cacheWarmOn;
         private bool pqosActive;
         private bool awakeActive;
         private bool audioLatActive;
@@ -170,9 +169,10 @@ namespace PaviseApp
                 irqProbe.BeginExternalMutation,
                 irqProbe.EndExternalMutation);
             whitePath = Path.Combine(dir, "Pavise.whitelist.txt");
-            autoIgnorePath = Path.Combine(dir, "Pavise.autoignore.txt");
-            LoadAutoIgnore();
+            autoIgnorePath = Path.Combine(dir, LibraryIgnoreTransaction.IgnoreFileName);
             profileStore = new GameProfileStore(dir);
+            libraryIgnoreTransaction = new LibraryIgnoreTransaction(dir, profileStore);
+            if (libraryIgnoreTransaction.TryRecover()) LoadAutoIgnore();
             using (Process self = Process.GetCurrentProcess())
             {
                 selfPid = self.Id;
@@ -237,15 +237,17 @@ namespace PaviseApp
             rsrOn = Settings.Load("GmRsr", false);
             autoAddOn = Settings.Load("GmAutoAdd", false);
             vramShieldOn = Settings.Load(VramShield.EnabledKey, false);
-            cacheWarmOn = Settings.Load(CacheWarm.EnabledKey, false);
+            Settings.Remove("GmCacheWarm"); // Retired read-only feature: discard legacy global preference.
             heavySqueezeOn = Settings.Load(PolicyCatalog.KeyHeavySqueeze, false);
+            adaptiveEscalateOn = Settings.Load(PolicyCatalog.KeyAdaptiveEscalate, false);
             killGameDvr = Settings.Load("GameDvrOff", true);
             mmcssOn = Settings.Load("GmMmcss", true);
             planSwitch = Settings.Load("PowerPlanOn", true);
             corePartitionOn = Settings.Load("GmStrictCores", false);
             coreDomainAltOn = Settings.Load("GmCoreDomainAlt", false);
             aggressiveOn = Settings.Load("GmAggressive", false);
-            renderLaneOn = Settings.Load("GmRenderLane", true);
+            renderLaneOn = Settings.Load(PolicyCatalog.KeyRenderLane,
+                PolicyCatalog.ItemOf(PolicyCatalog.KeyRenderLane).Fallback == "1");
             gpuDemoteOn = Settings.Load("GmGpuDemote", false);
             SuppressionCore.GpuDemoteEnabled = gpuDemoteOn;
             foreach (string envKey in EnvKeys)
@@ -361,9 +363,14 @@ namespace PaviseApp
 
             try
             {
-                profiles.AddRange(profileStore.LoadProfiles());
-                if (!ProfileStoreSaveFailed && RefreshLibraryInstallRoots(profiles))
-                    profileStore.Save(profiles);
+                // An unresolved receipt must not be invalidated by seeding a missing primary.
+                profiles.AddRange(profileStore.LoadProfiles(!libraryIgnoreTransaction.RecoveryPending));
+                List<GameProfile> refreshed = GetProfiles();
+                if (!ProfileStoreSaveFailed && !libraryIgnoreTransaction.RecoveryPending
+                    && RefreshLibraryInstallRoots(refreshed) && SaveProfileSnapshotLocked(refreshed))
+                {
+                    profiles.Clear(); profiles.AddRange(refreshed);
+                }
             }
             catch { }
             InitializeRendererObservations();

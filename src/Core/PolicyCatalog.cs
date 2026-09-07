@@ -45,6 +45,7 @@ namespace PaviseApp
         public const string KeyGpuDemote = "GmGpuDemote";
         // 带 V2 后缀 不继承 1.x GmSqueezeBg 那份默认开的旧值 实验项默认关
         public const string KeyHeavySqueeze = "GmHeavySqueezeV2";
+        public const string KeyAdaptiveEscalate = "GmAdaptiveEscalateV1";
         public const string KeyRenderLane = "GmRenderLane";
         public const string KeyStrictCores = "GmStrictCores";
         public const string KeyCoreDomainAlt = "GmCoreDomainAlt";
@@ -71,9 +72,8 @@ namespace PaviseApp
         public const string KeyIntelLowLatency = "GmIntelLowLatencyV1";
         public const string KeyIntelEndurance = "GmIntelEnduranceV1";
         public const string KeyLaptopPerf = "GmLaptopPerfV1";
-        public const bool LaptopPerfDefault = true;
+        public const bool LaptopPerfDefault = false;
         public const string KeyVramShield = "GmVramShield";
-        public const string KeyCacheWarm = "GmCacheWarm";
         // 极限专属 不进目录也不进逐游戏 常量保留给极限清单引用
         public const string KeyAudioLowLat = "GmAudioLowLatV1";
         public const string KeyWsTrim = "GmWsTrimV1";
@@ -96,6 +96,7 @@ namespace PaviseApp
             new PolicyItem(KeyAggressive, PolicyValueKind.Bool, "0", "gm.aggressive", GroupBackground, null),
             new PolicyItem(KeyGpuDemote, PolicyValueKind.Bool, "0", "gm.gpudemote", GroupBackground, null),
             new PolicyItem(KeyHeavySqueeze, PolicyValueKind.Bool, "0", "gm.squeeze", GroupBackground, null),
+            new PolicyItem(KeyAdaptiveEscalate, PolicyValueKind.Bool, "0", "gm.adaptive", GroupBackground, null),
             new PolicyItem(KeyRenderLane, PolicyValueKind.Bool, "1", "gm.lane", GroupBackground, null),
             new PolicyItem(KeyStrictCores, PolicyValueKind.Bool, "0", "cfg.strictcores", GroupCores, null),
             new PolicyItem(KeyCoreDomainAlt, PolicyValueKind.Bool, "0", "cfg.domainalt", GroupCores, null),
@@ -124,7 +125,6 @@ namespace PaviseApp
             new PolicyItem(KeyIntelLowLatency, PolicyValueKind.Bool, "0", "set.intel.lowlatency", GroupGraphics, null),
             new PolicyItem(KeyIntelEndurance, PolicyValueKind.Bool, "0", "set.intel.endurance", GroupGraphics, null),
             new PolicyItem(KeyVramShield, PolicyValueKind.Bool, "0", "gm.vramshield", GroupGraphics, null),
-            new PolicyItem(KeyCacheWarm, PolicyValueKind.Bool, "0", "gm.cachewarm", GroupMemPower, null),
         };
 
         private static readonly Dictionary<string, PolicyItem> ByKey = BuildIndex();
