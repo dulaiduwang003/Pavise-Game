@@ -25,6 +25,7 @@ namespace PaviseApp
 
         private int LayoutBands(int width)
         {
+            allMask = CpuTopology.AllMask;
             bands.Clear();
             laidOutFor = width;
             ulong[] cores = CpuTopology.PhysicalCoreMasks();
@@ -161,10 +162,7 @@ namespace PaviseApp
                     foreach (Cell c in g.Cells)
                         if (c.Rect.Contains(e.Location))
                         {
-                            selected ^= 1UL << c.Cpu;
-                            SyncCells();
-                            Invalidate();
-                            if (SelectionChanged != null) SelectionChanged(selected);
+                            ToggleCpu(c.Cpu);
                             return;
                         }
         }

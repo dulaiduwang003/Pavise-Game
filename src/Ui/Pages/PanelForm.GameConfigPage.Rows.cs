@@ -190,8 +190,6 @@ namespace PaviseApp
             {
                 case PolicyCatalog.KeyVramShield:
                     return ConfirmVramShieldEnable();
-                case PolicyCatalog.KeyHeavySqueeze:
-                    return ConfirmHeavySqueezeEnable();
                 case PolicyCatalog.KeyPowerYield:
                     return ConfirmPowerYieldEnable();
                 case PolicyCatalog.KeyDisableCpuIdle:
@@ -223,7 +221,7 @@ namespace PaviseApp
                         Lang.T(PolicyCatalog.ItemOf(blocked).LangKey)));
                 return;
             }
-            cfgCoreManualPicked = false;
+            if (cfgCoreSchedulingPanel != null) cfgCoreSchedulingPanel.Reload();
             SyncCfgRows();
         }
 
@@ -278,7 +276,6 @@ namespace PaviseApp
         private static readonly string[] ConfirmGuardedKeys =
         {
             PolicyCatalog.KeyVramShield,
-            PolicyCatalog.KeyHeavySqueeze,
         };
 
         private static bool IsConfirmGuardedKey(string key)

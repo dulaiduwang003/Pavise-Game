@@ -41,6 +41,11 @@ set OUT=build\Pavise.exe
 if not "%~3"=="" set OUT=%~3
 if /i "%~4"=="--selftest" goto selftest
 
+rem Package the independently implemented window scaler in the single executable.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\Build-ScalingHost.ps1"
+if errorlevel 1 goto err
+set REFS=%REFS% -resource:build\scaling\Pavise.ScaleHost.exe,Pavise.ScaleHost.exe
+
 rem App.Version in Program.cs is the single version source. Keep the external
 rem update manifest synchronized before every development or production build.
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\Sync-VersionManifest.ps1"

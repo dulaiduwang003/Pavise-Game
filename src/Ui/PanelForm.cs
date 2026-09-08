@@ -393,29 +393,23 @@ namespace PaviseApp
 
         internal void SetCoreModeForShot(bool manual)
         {
-            coreManualPicked = manual;
-            if (pickPolicyCores != null)
-                pickPolicyCores.Index = manual ? coreManualIndex : 0;
+            if (coreSchedulingPanel != null) coreSchedulingPanel.SetIsolationExpanded(false);
             SyncCorePage();
         }
 
         internal ulong SetCoreSelectionForShot(ulong mask)
         {
-            if (coreMatrix == null) return ulong.MaxValue;
-            gameMode.CustomCoreMask = 0;
+            if (coreSchedulingPanel == null) return ulong.MaxValue;
             SetCoreModeForShot(true);
-            corePending = mask;
-            coreMatrix.Selected = mask;
+            coreSchedulingPanel.SelectMask(mask);
             SyncCorePage();
-            coreMatrix.Refresh();
-            return coreMatrix.Selected;
+            coreSchedulingPanel.Matrix.Refresh();
+            return coreSchedulingPanel.Matrix.Selected;
         }
 
         internal void CommitCoreSelectionForShot()
         {
-            ulong clean = CpuTopology.SanitizeCustomMask(corePending, CpuTopology.AllMask);
-            if (clean == 0) return;
-            gameMode.CustomCoreMask = clean == CpuTopology.AllMask ? 0 : clean;
+            if (coreSchedulingPanel != null) coreSchedulingPanel.SaveDraft();
             SyncCorePage();
         }
 

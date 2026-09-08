@@ -12,6 +12,8 @@ namespace PaviseApp
     {
         private void BeginSessionPolicy()
         {
+            isolationBlocked = !StopCoreIsolation();
+            InvalidateCacheWarm();
             Interlocked.Increment(ref optionalServiceGeneration);
             Interlocked.Increment(ref cpuIdleGeneration);
             InvalidateStandbyCleanerWork();
@@ -30,11 +32,6 @@ namespace PaviseApp
 
         private void ApplySessionCoreMask(PolicySnapshot snap)
         {
-            if (!snap.HasOverride(PolicyCatalog.KeyCoreMask))
-            {
-                RestoreGlobalCoreMask();
-                return;
-            }
             ulong wanted = snap.CoreMask;
             if (wanted == CpuTopology.CustomMask) return;
             if (wanted == 0)
@@ -51,7 +48,7 @@ namespace PaviseApp
 
         private void RestoreGlobalCoreMask()
         {
-            string raw = Settings.LoadStr(CoreMaskKey, "");
+            string raw = PolicyResolver.GlobalValue(CoreMaskKey) ?? "";
             ulong parsed;
             if (raw.Length > 0 && ulong.TryParse(raw, System.Globalization.NumberStyles.HexNumber,
                     System.Globalization.CultureInfo.InvariantCulture, out parsed)

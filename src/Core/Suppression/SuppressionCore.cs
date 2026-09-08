@@ -45,7 +45,7 @@ namespace PaviseApp
             public int OrigIo = -1;
             public int OrigPg = -1;
             public uint[] OrigCpuSets;
-            // 重压后台绑核的当前落点 0 表示未绑 不进日志 还原一律回 OrigAff
+            // 反作弊的当前落点，兼容恢复旧后台绑核；0 表示未绑，还原回 OrigAff
             public ulong SqueezeAff;
             // 落点被进程或其驱动拒绝过 本条目寿命内不再给落点 巡检也不再重写亲和
             public bool SqueezeRefused;

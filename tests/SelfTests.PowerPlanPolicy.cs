@@ -8,7 +8,7 @@ namespace PaviseApp
     {
         internal static void RunPowerPlanPolicyRegressionTests()
         {
-            Action[] tests = { PowerPlatformRequiresCompleteEvidence, PowerPlatformParsesNamedFields, PowerBootBoundaryToleratesClockCorrection,
+            Action[] tests = { IntelGraphicsPlanOnlyRelaxesConfirmedIntegratedHandheld, PowerPlatformRequiresCompleteEvidence, PowerPlatformParsesNamedFields, PowerBootBoundaryToleratesClockCorrection,
                 PowerAutonomousPolicyIsNotHardwareState, PowerUnknownMinimumPreservesEachSide, PowerExtremeRetiresDemoteOnly,
                 PowerExtremeRestoresLegacyWhileStillExtreme, PowerExtremePartialRestoreRetainsReceipt,
                 PowerExtremeReadbackAndJournalFailuresRetainReceipt, PowerExtremeSnapshotSkipsHalfReadableKnob,
@@ -22,6 +22,30 @@ namespace PaviseApp
                 Console.WriteLine("PASS " + test.Method.Name);
             }
             Console.WriteLine("PASS power-plan-policy tests=" + tests.Length + " system_power_writes=mocked");
+        }
+
+        private static void IntelGraphicsPlanOnlyRelaxesConfirmedIntegratedHandheld()
+        {
+            var intel = new GpuAdapter { Vendor = GpuVendor.Intel, Integrated = true, IntegratedKnown = true };
+            Eq(2u, PowerPlan.ResolveIntelGraphicsPlan(true, true, new[] { intel }));
+            foreach (bool aggressive in new[] { false, true })
+                foreach (bool handheld in new[] { false, true })
+                    if (!aggressive || !handheld)
+                        Eq(1u, PowerPlan.ResolveIntelGraphicsPlan(aggressive, handheld, new[] { intel }));
+            foreach (GpuAdapter[] topology in new[] {
+                null, new GpuAdapter[0], new GpuAdapter[] { null },
+                new[] { new GpuAdapter { Vendor = GpuVendor.Intel, Integrated = true } },
+                new[] { new GpuAdapter { Vendor = GpuVendor.Intel, IntegratedKnown = true } },
+                new[] { new GpuAdapter { Vendor = GpuVendor.Amd, Integrated = true, IntegratedKnown = true } },
+                new[] { new GpuAdapter { Vendor = GpuVendor.Unknown, Integrated = true, IntegratedKnown = true } },
+                new[] { intel, intel },
+                new[] { intel, new GpuAdapter { Vendor = GpuVendor.Nvidia, IntegratedKnown = true } },
+                new[] { intel, new GpuAdapter { Vendor = GpuVendor.Intel, IntegratedKnown = true } },
+                new[] { intel, new GpuAdapter { Vendor = GpuVendor.Unknown } } })
+                Eq(1u, PowerPlan.ResolveIntelGraphicsPlan(true, true, topology));
+            // 切出掌机档会重写托管方案并回到平衡 两种 CPU 调度策略独立于核显电源项
+            Eq(1u, PowerPlan.ResolveIntelGraphicsPlan(true, false, new[] { intel }));
+            Eq(5u, PowerPlanProfile.Resolve(false, true, false, null).HeteroSched);
         }
 
         private static void PowerPlatformRequiresCompleteEvidence()

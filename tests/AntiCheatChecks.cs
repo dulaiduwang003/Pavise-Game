@@ -25,10 +25,10 @@ namespace PaviseApp
                 Console.WriteLine("ISOLATION settings=transient process_writes=none application_started=false");
                 int catalog = SelfTests.RunAntiCheatCatalogRegressionTests();
                 int throttle = SelfTests.RunAntiCheatThrottleRegressionTests();
-                SelfTests.RunHeavySqueezeRegressionTests();
+                SelfTests.RunSuppressionAffinityTests();
                 int release = SelfTests.RunRendererReleaseRegressionTests();
                 Console.WriteLine("PASS catalog=" + catalog + " throttle=" + throttle
-                    + " HeavySqueeze=passed RendererRelease=" + release);
+                    + " SuppressionAffinity=passed RendererRelease=" + release);
                 return 0;
             }
             catch (Exception error)

@@ -65,6 +65,16 @@ namespace PaviseApp
 
         private static void LoadCustomCoreMask()
         {
+            if (CoreScheduling.HasGlobalRecord())
+            {
+                CoreSchedulingPlan plan = CoreScheduling.LoadGlobal();
+                ulong mask;
+                if (ulong.TryParse(CoreScheduling.Value(plan, PolicyCatalog.KeyCoreMask),
+                    System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out mask))
+                    CpuTopology.SetCustomMask(mask);
+                else CpuTopology.SetCustomMask(0);
+                return;
+            }
             string raw = Settings.LoadStr(CoreMaskKey, "");
             if (raw.Length == 0) return;
             ulong parsed;

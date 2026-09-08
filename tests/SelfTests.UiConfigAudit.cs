@@ -169,232 +169,134 @@ namespace PaviseApp
             finally { CpuTopology.RestoreTopologyForTest(topology); }
         }
 
-        private static void UiConfigManualAllOverridesGlobalPartition(string root)
-        {
-            const BindingFlags flags = BindingFlags.Static | BindingFlags.NonPublic;
-            FieldInfo bgField = typeof(CpuTopology).GetField("backgroundIds", flags);
-            FieldInfo gameField = typeof(CpuTopology).GetField("partitionGameIds", flags);
-            FieldInfo customField = typeof(CpuTopology).GetField("customSet", flags);
-            object oldBackground = bgField.GetValue(null);
-            object oldGame = gameField.GetValue(null);
-            object oldCustom = customField.GetValue(null);
-            ulong oldAll = CpuTopology.AllMask;
-            try
-            {
-                // 只用纯拓扑值 不调 SetCustomMask 和 Initialize
-                CpuTopology.AllMask = 0xFUL;
-                bgField.SetValue(null, new uint[] { 2, 3 });
-                gameField.SetValue(null, new uint[] { 0, 1 });
-                customField.SetValue(null, null);
-                using (var fixture = new FamilyPolicyFixture(root, "manual-all"))
-                {
-                    Settings.Save(PolicyCatalog.KeyStrictCores, true);
-                    FamilyPolicySetField(fixture.Mode, "gameMask", 0xFUL);
-                    FamilyPolicySetField(fixture.Mode, "strictMask", 0x3UL);
-                    var form = (PanelForm)FormatterServices.GetUninitializedObject(typeof(PanelForm));
-                    GC.SuppressFinalize(form);
-                    UiConfigSetField(form, "gameMode", fixture.Mode);
-                    UiConfigSetField(form, "cfgProfileId", fixture.First.Id);
-                    UiConfigSetField(form, "cfgProfile", fixture.Current(fixture.First.Id));
-                    UiConfigSetField(form, "cfgRowSync", new List<Action>());
-                    UiConfigSetField(form, "cfgCorePending", 0xFUL);
-                    UiConfigSetField(form, "cfgCorePartitionAvailable", true);
-                    UiConfigSetField(form, "cfgCorePartIndex", 2);
-                    UiConfigCall(form, "ApplyCfgCoreMask");
-
-                    GameProfile saved = fixture.Current(fixture.First.Id);
-                    PolicySnapshot snapshot = PolicyResolver.For(saved);
-                    object[] arguments = { snapshot, false };
-                    ulong actual = (ulong)typeof(GameMode).GetMethod("EffectiveGameMask",
-                        BindingFlags.Instance | BindingFlags.NonPublic).Invoke(fixture.Mode, arguments);
-                    string summary = (string)UiConfigCall(form, "CfgCoreSummary");
-                    Console.WriteLine("MANUAL_ALL summary=" + summary + " saved_mask='"
-                        + saved.Overrides[PolicyCatalog.KeyCoreMask] + "' inherited_strict="
-                        + snapshot.StrictCores + " actual_mask=" + actual.ToString("X"));
-                    Eq(Lang.F("cfg.core.over", Lang.T("cpu.place.all")), summary);
-                    Eq(false, snapshot.StrictCores);
-                    Eq(0xFUL, actual);
-                }
-            }
-            finally
-            {
-                CpuTopology.AllMask = oldAll;
-                bgField.SetValue(null, oldBackground);
-                gameField.SetValue(null, oldGame);
-                customField.SetValue(null, oldCustom);
-            }
-        }
-
         private sealed class UiConfigCoreFixture : IDisposable
         {
             internal readonly FamilyPolicyFixture Family;
-            internal readonly PanelForm Form;
+            internal readonly CoreSchedulingPanel Editor;
             internal readonly DBPanel Panel = new DBPanel();
             private readonly CpuTopology.TopologySnapshot topology = CpuTopology.CaptureTopologyForTest();
             private readonly Dictionary<FieldInfo, object> originals = new Dictionary<FieldInfo, object>();
+            private readonly ulong oldStrict = CpuTopology.StrictBoostMask, oldThrottle = CpuTopology.ThrottleMask;
 
             internal UiConfigCoreFixture(string root, string name)
             {
+                Settings.UseTransientStoreForCurrentProcess();
                 foreach (string field in new[] { "backgroundIds", "partitionGameIds", "customSet", "squeezeCache" })
                 {
                     FieldInfo info = typeof(CpuTopology).GetField(field, BindingFlags.Static | BindingFlags.NonPublic);
                     originals.Add(info, info.GetValue(null));
                 }
                 CpuTopology.InjectTopologyForTest(0xF, new ulong[] { 1, 2, 4, 8 }, new ulong[] { 3, 12 }, 0, 0, 0, 0, false, false);
-                typeof(CpuTopology).GetField("backgroundIds", BindingFlags.Static | BindingFlags.NonPublic)
-                    .SetValue(null, new uint[] { 2, 3 });
-                typeof(CpuTopology).GetField("partitionGameIds", BindingFlags.Static | BindingFlags.NonPublic)
-                    .SetValue(null, new uint[] { 0, 1 });
+                CpuTopology.StrictBoostMask = 3; CpuTopology.ThrottleMask = 12;
+                typeof(CpuTopology).GetField("backgroundIds", BindingFlags.Static | BindingFlags.NonPublic).SetValue(null, new uint[] { 2, 3 });
+                typeof(CpuTopology).GetField("partitionGameIds", BindingFlags.Static | BindingFlags.NonPublic).SetValue(null, new uint[] { 0, 1 });
                 Family = new FamilyPolicyFixture(root, name);
                 FamilyPolicySetField(Family.Mode, "gameMask", 0xFUL);
+                FamilyPolicySetField(Family.Mode, "allMask", 0xFUL);
                 FamilyPolicySetField(Family.Mode, "strictMask", 0x3UL);
                 Family.Mode.CorePartitionEnabled = true;
-                Form = (PanelForm)FormatterServices.GetUninitializedObject(typeof(PanelForm));
-                GC.SuppressFinalize(Form);
-                UiConfigSetField(Form, "gameMode", Family.Mode);
-                UiConfigSetField(Form, "cfgProfileId", Family.First.Id);
-                UiConfigSetField(Form, "cfgProfile", Family.Current(Family.First.Id));
-                UiConfigSetField(Form, "cfgRowSync", new List<Action>());
-                UiConfigSetField(Form, "cfgCoreAllIndex", 1);
-                UiConfigSetField(Form, "cfgCorePartIndex", 2);
-                UiConfigSetField(Form, "cfgCoreManualIndex", 3);
-                UiConfigSetField(Form, "cfgCorePartitionAvailable", true);
-                UiConfigSetField(Form, "corePending", 0xFUL);
-                UiConfigSetField(Form, "coreManualPicked", true);
-                UiConfigSetField(Form, "coreManualIndex", 2);
-                var picker = new TierPicker { Labels = new[] { "All", "Partition", "Manual" }, Index = 2 };
-                UiConfigSetField(Form, "pickPolicyCores", picker);
-                Panel.Controls.Add(picker);
-                UiConfigCall(Form, "BuildCoreManualGroup", Panel, 0xFUL);
+                // 保存下一局方案，不创建工作线程，不读写任何真实进程亲和性。
+                FamilyPolicySetField(Family.Mode, "active", true);
+                Editor = new CoreSchedulingPanel(900, null,
+                    delegate(CoreSchedulingPlan p, string global, string token, bool follow)
+                    { return Family.Mode.SaveCoreScheduling(p, global, null, false, null); }, delegate { return true; });
+                Panel.Controls.Add(Editor);
             }
 
-            internal void SetFakeCustom(ulong mask)
+            internal CoreSchedulingPanel ProfileEditor()
             {
-                Type type = typeof(CpuTopology).GetNestedType("CustomCoreSet", BindingFlags.NonPublic);
-                object custom = mask == 0 ? null : Activator.CreateInstance(type, true);
-                if (custom != null)
-                {
-                    type.GetField("Mask").SetValue(custom, mask);
-                    type.GetField("Ids").SetValue(custom, new uint[] { 0, 1 });
-                }
-                typeof(CpuTopology).GetField("customSet", BindingFlags.Static | BindingFlags.NonPublic).SetValue(null, custom);
+                var editor = new CoreSchedulingPanel(900, delegate { return Family.Current(Family.First.Id); },
+                    delegate(CoreSchedulingPlan p, string global, string token, bool follow)
+                    { return Family.Mode.SaveCoreScheduling(p, global, Family.First.Id, follow, token); }, delegate { return true; });
+                Panel.Controls.Add(editor);
+                return editor;
             }
-
-            internal PillButton ApplyButton { get { return (PillButton)UiConfigGetField(Form, "coreApplyBtn"); } }
 
             public void Dispose()
             {
-                Eq(false, Panel.IsHandleCreated);
+                Eq(null, FamilyPolicyGetField(Family.Mode, "worker"));
                 Panel.Dispose(); Family.Dispose();
                 CpuTopology.RestoreTopologyForTest(topology);
+                CpuTopology.StrictBoostMask = oldStrict; CpuTopology.ThrottleMask = oldThrottle;
                 foreach (KeyValuePair<FieldInfo, object> old in originals) old.Key.SetValue(null, old.Value);
+            }
+        }
+
+        private static void UiConfigManualAllOverridesGlobalPartition(string root)
+        {
+            using (var f = new UiConfigCoreFixture(root, "manual-all"))
+            {
+                var editor = f.ProfileEditor(); editor.FollowToggle.Checked = false; editor.SelectMask(15); editor.SaveDraft();
+                var snapshot = PolicyResolver.For(f.Family.Current(f.Family.First.Id));
+                Eq(false, snapshot.StrictCores); Eq(15UL, snapshot.CoreMask); Eq(true, snapshot.ManualPlacement);
+                Eq("0", f.Family.Current(f.Family.First.Id).Overrides[PolicyCatalog.KeyBoost]);
             }
         }
 
         private static void UiConfigGlobalManualAllIsDirty(string root)
         {
-            using (var fixture = new UiConfigCoreFixture(root, "global-manual-dirty"))
+            using (var f = new UiConfigCoreFixture(root, "global-manual-dirty"))
             {
-                UiConfigCall(fixture.Form, "SyncCorePage");
-                Console.WriteLine("GLOBAL_ALL partition=" + fixture.Family.Mode.CorePartitionEnabled
-                    + " custom=" + CpuTopology.CustomMask + " apply_enabled=" + fixture.ApplyButton.Enabled);
-                Eq(true, fixture.ApplyButton.Enabled);
+                Eq(3UL, f.Editor.Draft.GameMask);
+                f.Editor.SelectMask(15); Eq(true, f.Editor.SaveButton.Enabled);
             }
         }
 
         private static void UiConfigGlobalManualAllClearsPartition(string root)
         {
-            using (var fixture = new UiConfigCoreFixture(root, "global-manual-apply"))
+            using (var f = new UiConfigCoreFixture(root, "global-manual-apply"))
             {
-                fixture.SetFakeCustom(3);
-                UiConfigCall(fixture.Form, "SyncCorePage");
-                Eq(true, fixture.ApplyButton.Enabled);
-                // 自定义掩码为零只是把托管内存里那份掩码清掉
-                // 不会去枚举 CPU set 也不改进程亲和性
-                fixture.ApplyButton.PerformClick();
-                Console.WriteLine("GLOBAL_ALL after_apply partition=" + fixture.Family.Mode.CorePartitionEnabled
-                    + " custom=" + CpuTopology.CustomMask);
-                Eq(false, fixture.Family.Mode.CorePartitionEnabled);
-                Eq(false, Settings.Load(PolicyCatalog.KeyStrictCores, true));
-                Eq(0UL, CpuTopology.CustomMask);
+                f.Editor.SelectMask(15); f.Editor.SaveDraft();
+                Eq(false, PolicyResolver.Global().StrictCores);
+                Eq(15UL, CoreScheduling.LoadGlobal().GameMask);
+                Eq(false, f.Editor.SaveButton.Enabled);
+                Eq(null, FamilyPolicyGetField(f.Family.Mode, "worker"));
             }
         }
 
         private static void UiConfigProfilePartitionToManualAllIsDirty(string root)
         {
-            using (var fixture = new UiConfigCoreFixture(root, "profile-partition-to-all"))
+            using (var f = new UiConfigCoreFixture(root, "profile-partition-to-all"))
             {
-                UiConfigCall(fixture.Form, "ApplyCfgCorePlacement", 2);
-                var picker = new TierPicker { Labels = new[] { "Follow", "All", "Partition", "Manual" }, Index = 3 };
-                fixture.Panel.Controls.Add(picker);
-                UiConfigSetField(fixture.Form, "cfgCorePicker", picker);
-                UiConfigSetField(fixture.Form, "cfgCoreManualPicked", true);
-                UiConfigSetField(fixture.Form, "cfgCorePending", 0xFUL);
-                UiConfigCall(fixture.Form, "BuildCfgCoreManualGroup", fixture.Panel, 0);
-                UiConfigCall(fixture.Form, "SyncCfgCoreTab");
-                var apply = (PillButton)UiConfigGetField(fixture.Form, "cfgCoreApply");
-                Console.WriteLine("PROFILE_ALL from_partition apply_enabled=" + apply.Enabled);
-                Eq(true, apply.Enabled);
-                apply.PerformClick();
-                Eq(false, PolicyResolver.For(fixture.Family.Current(fixture.Family.First.Id)).StrictCores);
+                Eq(true, f.Family.Mode.SetProfileCorePlacement(f.Family.First.Id, "", "1", null));
+                var editor = f.ProfileEditor(); editor.SelectMask(15);
+                Eq(true, editor.SaveButton.Enabled); editor.SaveDraft();
+                Eq(false, PolicyResolver.For(f.Family.Current(f.Family.First.Id)).StrictCores);
+                Eq(15UL, PolicyResolver.For(f.Family.Current(f.Family.First.Id)).CoreMask);
             }
         }
 
         private static void UiConfigCorePartialFollowAndTopology(string root)
         {
-            using (var fixture = new UiConfigCoreFixture(root, "profile-core-transitions"))
+            using (var f = new UiConfigCoreFixture(root, "profile-core-transitions"))
             {
-                UiConfigSetField(fixture.Form, "cfgCorePending", 0xCUL);
-                UiConfigCall(fixture.Form, "ApplyCfgCoreMask");
-                GameProfile profile = fixture.Family.Current(fixture.Family.First.Id);
-                Eq("C", profile.Overrides[PolicyCatalog.KeyCoreMask]);
-                Eq(false, profile.Overrides.ContainsKey(PolicyCatalog.KeyStrictCores));
-                Eq("0", profile.Overrides[PolicyCatalog.KeyBoost]);
-                Eq("2", profile.Overrides[PolicyCatalog.KeyPreset]);
-                fixture.SetFakeCustom(0xC);
-                object[] args = { PolicyResolver.For(profile), false };
-                Eq(0xCUL, (ulong)FamilyPolicyInvoke(fixture.Family.Mode, "EffectiveGameMask", args));
-
-                UiConfigCall(fixture.Form, "ApplyCfgCorePlacement", 0);
-                profile = fixture.Family.Current(fixture.Family.First.Id);
-                Eq(false, profile.Overrides.ContainsKey(PolicyCatalog.KeyCoreMask));
+                var editor = f.ProfileEditor(); editor.FollowToggle.Checked = false; editor.SelectMask(12); editor.SaveDraft();
+                GameProfile profile = f.Family.Current(f.Family.First.Id);
+                Eq(12UL, PolicyResolver.For(profile).CoreMask);
+                Eq("0", profile.Overrides[PolicyCatalog.KeyBoost]); Eq("2", profile.Overrides[PolicyCatalog.KeyPreset]);
+                editor.FollowToggle.Checked = true; editor.SaveDraft();
+                profile = f.Family.Current(f.Family.First.Id);
+                Eq(false, profile.Overrides.ContainsKey(CoreScheduling.Key));
                 Eq(true, PolicyResolver.For(profile).StrictCores);
-                Eq("0", profile.Overrides[PolicyCatalog.KeyBoost]);
-                UiConfigCall(fixture.Form, "ApplyCfgCorePlacement", 1);
-                profile = fixture.Family.Current(fixture.Family.First.Id);
-                Eq("0", profile.Overrides[PolicyCatalog.KeyStrictCores]);
-                Eq("", profile.Overrides[PolicyCatalog.KeyCoreMask]);
-                Eq("0", profile.Overrides[PolicyCatalog.KeyBoost]);
-
-                // 拓扑变了之后 全核覆盖还是全核
-                // 旧机器上存下来的有限掩码不能拿来限制新机器
-                fixture.SetFakeCustom(0);
-                CpuTopology.AllMask = 0xFF;
-                FamilyPolicySetField(fixture.Family.Mode, "gameMask", 0xFFUL);
-                args = new object[] { PolicyResolver.For(profile), false };
-                Eq(0xFFUL, (ulong)FamilyPolicyInvoke(fixture.Family.Mode, "EffectiveGameMask", args));
+                editor.FollowToggle.Checked = false; editor.SelectMask(15); editor.SaveDraft();
+                profile = f.Family.Current(f.Family.First.Id);
+                CpuTopology.AllMask = 255;
+                FamilyPolicySetField(f.Family.Mode, "allMask", 255UL);
+                object[] args = { PolicyResolver.For(profile), false };
+                Eq(255UL, (ulong)FamilyPolicyInvoke(f.Family.Mode, "EffectiveGameMask", args));
+                Eq(15UL, CoreScheduling.ForProfile(profile, CoreScheduling.LoadGlobal()).GameMask);
             }
         }
 
         private static void UiConfigGlobalPartialAndAllPreset(string root)
         {
-            using (var fixture = new UiConfigCoreFixture(root, "global-core-transitions"))
+            using (var f = new UiConfigCoreFixture(root, "global-core-transitions"))
             {
-                // 对局中改的东西存的是下一局的意图 不走原生 CPU set 枚举
-                // 这个夹具里不启动游戏工作线程
-                FamilyPolicySetField(fixture.Family.Mode, "active", true);
-                UiConfigSetField(fixture.Form, "corePending", 0xCUL);
-                UiConfigCall(fixture.Form, "SyncCorePage");
-                fixture.ApplyButton.PerformClick();
-                Eq("C", Settings.LoadStr(PolicyCatalog.KeyCoreMask, ""));
-                Eq(true, fixture.Family.Mode.CorePartitionEnabled);
-                UiConfigCall(fixture.Form, "ApplyCorePlacement", 0);
-                Eq(false, fixture.Family.Mode.CorePartitionEnabled);
-                Eq("", Settings.LoadStr(PolicyCatalog.KeyCoreMask, "missing"));
-                Eq(false, (bool)UiConfigGetField(fixture.Form, "coreManualPicked"));
+                f.Editor.SelectMask(12); f.Editor.SaveDraft(); Eq(12UL, CoreScheduling.LoadGlobal().GameMask);
+                f.Editor.SelectMask(15); f.Editor.SaveDraft(); Eq(15UL, CoreScheduling.LoadGlobal().GameMask);
+                Eq(false, PolicyResolver.Global().StrictCores);
             }
         }
-
         private sealed class UiConfigPowerYieldFixture : IDisposable
         {
             internal readonly FamilyPolicyFixture Family;
@@ -512,16 +414,25 @@ namespace PaviseApp
             Settings.Save(PowerBudgetYieldRunner.EnabledKey, true);
             var state = new PowerBudgetYield();
             state.Begin(0, true);
-            YieldAction action = YieldAction.None;
-            for (int sample = 1; sample <= PowerBudgetYield.MinSamples; sample++)
-                action = state.Advance(PowerBudgetYield.ObserveTicks * sample / PowerBudgetYield.MinSamples, 95, 30, 50);
+            YieldAction action = UiConfigPowerYieldSampleWindow(state, 0,
+                PowerBudgetYield.ObserveTicks, 95, 30, 50, -1);
             Eq(YieldAction.Engage, action);
-            for (int sample = 1; sample <= PowerBudgetYield.MinSamples; sample++)
-                action = state.Advance(PowerBudgetYield.ObserveTicks
-                    + PowerBudgetYield.VerifyTicks * sample / PowerBudgetYield.MinSamples, 95, 30, 50);
+            action = UiConfigPowerYieldSampleWindow(state, PowerBudgetYield.ObserveTicks,
+                PowerBudgetYield.VerifyTicks, 95, 30, 50, -1);
             Eq(YieldAction.Revert, action);
             Eq(true, PowerBudgetYield.Fused);
             Eq(true, PowerBudgetYieldRunner.EnabledSetting);
+        }
+
+        private static YieldAction UiConfigPowerYieldSampleWindow(PowerBudgetYield state,
+            long start, long span, double gpu, double cpu, double watts, double frequency)
+        {
+            // 熔断依赖完整采样证据，沿生产的 2 秒节奏；15 秒验收在第 16 秒读数完成。
+            long interval = PowerBudgetYieldRunner.SampleIntervalMs * TimeSpan.TicksPerMillisecond;
+            YieldAction action = YieldAction.None;
+            for (long elapsed = interval; elapsed < span + interval; elapsed += interval)
+                action = state.Advance(start + elapsed, gpu, cpu, watts, frequency);
+            return action;
         }
 
         private static void UiConfigPowerYieldFusedRemainsEditable(string root)
@@ -665,14 +576,11 @@ namespace PaviseApp
             // 频率真降了且 GPU 稳住 → 保持 不熔断
             var state = new PowerBudgetYield();
             state.Begin(0, true, true);
-            YieldAction action = YieldAction.None;
-            for (int s = 1; s <= PowerBudgetYield.MinSamples; s++)
-                action = state.Advance(PowerBudgetYield.ObserveTicks * s / PowerBudgetYield.MinSamples,
-                    95, 30, -1, 150);
+            YieldAction action = UiConfigPowerYieldSampleWindow(state, 0,
+                PowerBudgetYield.ObserveTicks, 95, 30, -1, 150);
             Eq(YieldAction.Engage, action);
-            for (int s = 1; s <= PowerBudgetYield.MinSamples; s++)
-                action = state.Advance(PowerBudgetYield.ObserveTicks
-                    + PowerBudgetYield.VerifyTicks * s / PowerBudgetYield.MinSamples, 95, 32, -1, 138);
+            action = UiConfigPowerYieldSampleWindow(state, PowerBudgetYield.ObserveTicks,
+                PowerBudgetYield.VerifyTicks, 95, 32, -1, 138);
             Eq(YieldAction.Keep, action);
             Eq(YieldVerdict.Kept, state.Verdict);
             Eq(false, PowerBudgetYield.Fused);
@@ -681,13 +589,11 @@ namespace PaviseApp
             // 频率纹丝不动 = EPP 死杠杆 → 熔断 但记在代理账上 瓦数账不背锅
             state = new PowerBudgetYield();
             state.Begin(0, true, true);
-            for (int s = 1; s <= PowerBudgetYield.MinSamples; s++)
-                action = state.Advance(PowerBudgetYield.ObserveTicks * s / PowerBudgetYield.MinSamples,
-                    95, 30, -1, 150);
+            action = UiConfigPowerYieldSampleWindow(state, 0,
+                PowerBudgetYield.ObserveTicks, 95, 30, -1, 150);
             Eq(YieldAction.Engage, action);
-            for (int s = 1; s <= PowerBudgetYield.MinSamples; s++)
-                action = state.Advance(PowerBudgetYield.ObserveTicks
-                    + PowerBudgetYield.VerifyTicks * s / PowerBudgetYield.MinSamples, 95, 31, -1, 150);
+            action = UiConfigPowerYieldSampleWindow(state, PowerBudgetYield.ObserveTicks,
+                PowerBudgetYield.VerifyTicks, 95, 31, -1, 150);
             Eq(YieldAction.Revert, action);
             Eq(YieldVerdict.NoGain, state.Verdict);
             Eq(false, PowerBudgetYield.Fused);
@@ -698,13 +604,11 @@ namespace PaviseApp
             // 负载漂移超过判定窗 → 退回但不熔断 那是场景变了 不是机器的错
             state = new PowerBudgetYield();
             state.Begin(0, true, true);
-            for (int s = 1; s <= PowerBudgetYield.MinSamples; s++)
-                action = state.Advance(PowerBudgetYield.ObserveTicks * s / PowerBudgetYield.MinSamples,
-                    95, 30, -1, 150);
+            action = UiConfigPowerYieldSampleWindow(state, 0,
+                PowerBudgetYield.ObserveTicks, 95, 30, -1, 150);
             Eq(YieldAction.Engage, action);
-            for (int s = 1; s <= PowerBudgetYield.MinSamples; s++)
-                action = state.Advance(PowerBudgetYield.ObserveTicks
-                    + PowerBudgetYield.VerifyTicks * s / PowerBudgetYield.MinSamples, 95, 55, -1, 120);
+            action = UiConfigPowerYieldSampleWindow(state, PowerBudgetYield.ObserveTicks,
+                PowerBudgetYield.VerifyTicks, 95, 55, -1, 120);
             Eq(YieldAction.Revert, action);
             Eq(YieldVerdict.Inconclusive, state.Verdict);
             Eq(false, PowerBudgetYield.FreqFused);
@@ -712,13 +616,11 @@ namespace PaviseApp
             // GPU 被拖下水 → 熔断 频率降了也不算数
             state = new PowerBudgetYield();
             state.Begin(0, true, true);
-            for (int s = 1; s <= PowerBudgetYield.MinSamples; s++)
-                action = state.Advance(PowerBudgetYield.ObserveTicks * s / PowerBudgetYield.MinSamples,
-                    95, 30, -1, 150);
+            action = UiConfigPowerYieldSampleWindow(state, 0,
+                PowerBudgetYield.ObserveTicks, 95, 30, -1, 150);
             Eq(YieldAction.Engage, action);
-            for (int s = 1; s <= PowerBudgetYield.MinSamples; s++)
-                action = state.Advance(PowerBudgetYield.ObserveTicks
-                    + PowerBudgetYield.VerifyTicks * s / PowerBudgetYield.MinSamples, 88, 31, -1, 130);
+            action = UiConfigPowerYieldSampleWindow(state, PowerBudgetYield.ObserveTicks,
+                PowerBudgetYield.VerifyTicks, 88, 31, -1, 130);
             Eq(YieldAction.Revert, action);
             Eq(YieldVerdict.GpuHarm, state.Verdict);
             Eq(true, PowerBudgetYield.FreqFused);
@@ -1205,20 +1107,19 @@ namespace PaviseApp
 
         private static void UiConfigCoreFailedSave(string root)
         {
-            using (var fixture = new UiConfigCoreFixture(root, "core-profile-save-failed"))
+            using (var f = new UiConfigCoreFixture(root, "core-profile-save-failed"))
             {
-                UiConfigSetField(fixture.Form, "cfgCorePending", CpuTopology.AllMask);
-                string before = File.ReadAllText(fixture.Family.LibraryFile);
-                using (var lease = new FileStream(fixture.Family.LibraryFile, FileMode.Open, FileAccess.Read, FileShare.Read))
-                    UiConfigCall(fixture.Form, "ApplyCfgCoreMask");
-                Eq(false, fixture.Family.Mode.ProfileStoreSaveFailed);
-                Eq(before, File.ReadAllText(fixture.Family.LibraryFile));
-                Eq(false, fixture.Family.Current(fixture.Family.First.Id).Overrides.ContainsKey("GmCoreMask"));
-                // 保存失败就不能把尝试过的掩码发出去 也不能启动运行时
-                Eq(null, FamilyPolicyGetField(fixture.Family.Mode, "worker"));
+                var editor = f.ProfileEditor(); editor.FollowToggle.Checked = false; editor.SelectMask(15);
+                string before = File.ReadAllText(f.Family.LibraryFile);
+                using (var lease = new FileStream(f.Family.LibraryFile, FileMode.Open, FileAccess.Read, FileShare.Read))
+                    editor.SaveDraft();
+                Eq(false, f.Family.Mode.ProfileStoreSaveFailed);
+                Eq(before, File.ReadAllText(f.Family.LibraryFile));
+                Eq(false, f.Family.Current(f.Family.First.Id).Overrides.ContainsKey(CoreScheduling.Key));
+                Eq(true, editor.SaveButton.Enabled);
+                Eq(null, FamilyPolicyGetField(f.Family.Mode, "worker"));
             }
         }
-
         private static void UiConfigVramGlobalFailedSave(string root)
         {
             FieldInfo stage = typeof(VramShield).GetField("stage", BindingFlags.Static | BindingFlags.NonPublic);

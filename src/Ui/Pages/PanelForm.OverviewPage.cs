@@ -17,6 +17,13 @@ namespace PaviseApp
         private Label lblLastSession;
         private RogLinkButton btnNotice;
         private NoticeInfo notice;
+        private volatile bool noticeLoading;
+        private bool noticeRequested;
+
+#if PAVISE_SELFTEST
+        internal Action<Action<UpdateResult>> NoticeCheckForTest;
+        internal Action<NoticeInfo, string> NoticeDisplayForTest;
+#endif
 
         // 已读的公告 id 记在这里 换一条新的才重新亮红点
         private const string SeenNoticeKey = "LastSeenNoticeId";
@@ -151,7 +158,8 @@ namespace PaviseApp
                 if (n == null || !IsHandleCreated || IsDisposed) return;
                 BeginInvoke((MethodInvoker)delegate
                 {
-                    if (IsDisposed) return;
+                    // 用户点过后以主动获取为准 不让晚到的启动结果覆盖它
+                    if (IsDisposed || noticeRequested) return;
                     notice = n;
                     RefreshNoticeButton();
                 });
@@ -159,11 +167,16 @@ namespace PaviseApp
             catch { }
         }
 
-        // 没公告时按钮照样在 点开告诉用户当前没有 免得按钮忽隐忽现
+        // 网络请求期间保留按钮位置 立即回显状态并挡住重复点击
         private void RefreshNoticeButton()
         {
-            if (btnNotice == null) return;
+            if (btnNotice == null || btnNotice.IsDisposed) return;
+            btnNotice.Text = Lang.T(noticeLoading ? "v230.notice.loading" : "v230.notice.entry");
+            btnNotice.AccessibleName = btnNotice.Text;
+            btnNotice.Enabled = !noticeLoading;
+            btnNotice.Cursor = noticeLoading ? Cursors.WaitCursor : Cursors.Hand;
             btnNotice.Dot = notice != null && notice.Id != NoticeSeenId();
+            btnNotice.Invalidate();
         }
 
         private static string NoticeSeenId()
@@ -173,14 +186,61 @@ namespace PaviseApp
 
         private void ShowNotice()
         {
-            if (notice == null)
-            {
-                PaviseDialog.Info(this, Lang.T("v230.notice.title"), Lang.T("v230.notice.none"));
-                return;
-            }
-            using (var dlg = new NoticeDialog(notice)) dlg.ShowDialog(this);
-            Settings.SaveStr(SeenNoticeKey, notice.Id);
+            if (noticeLoading || IsDisposed || btnNotice == null || btnNotice.IsDisposed) return;
+            noticeRequested = true;
+            noticeLoading = true;
             RefreshNoticeButton();
+            try
+            {
+                Action<UpdateResult> done = delegate(UpdateResult result)
+                {
+                    try { PostUiStateResult(delegate { CompleteNoticeRequest(result); }); }
+                    catch { noticeLoading = false; }
+                };
+#if PAVISE_SELFTEST
+                if (NoticeCheckForTest == null) throw new InvalidOperationException("Notice request was not mocked");
+                NoticeCheckForTest(done);
+#else
+                UpdateChecker.CheckAsync(done);
+#endif
+            }
+            catch { CompleteNoticeRequest(null); }
+        }
+
+        private void CompleteNoticeRequest(UpdateResult result)
+        {
+            noticeLoading = false;
+            if (IsDisposed) return;
+            bool ok = result != null && result.Ok;
+            if (ok) notice = result.Notice;
+            RefreshNoticeButton();
+            // 收进托盘或退出后不再弹窗 重新打开仍可查看本次取回的公告
+            if (!UiActive) return;
+            NoticeInfo current = ok ? notice : null;
+            DisplayNotice(current, !ok ? "v230.notice.failed"
+                : current == null ? "v230.notice.none" : null);
+            if (current != null)
+            {
+                // 弹窗期间可能收到新内容 只把用户实际看过的这一条记为已读
+                Settings.SaveStr(SeenNoticeKey, current.Id);
+                RefreshNoticeButton();
+            }
+        }
+
+        private void DisplayNotice(NoticeInfo current, string messageKey)
+        {
+#if PAVISE_SELFTEST
+            if (NoticeDisplayForTest == null) throw new InvalidOperationException("Notice dialog was not mocked");
+            NoticeDisplayForTest(current, messageKey);
+#else
+            if (current != null)
+            {
+                using (var dlg = new NoticeDialog(current)) dlg.ShowDialog(this);
+            }
+            else if (messageKey == "v230.notice.failed")
+                PaviseDialog.Warn(this, Lang.T("v230.notice.title"), Lang.T(messageKey));
+            else PaviseDialog.Info(this, Lang.T("v230.notice.title"), Lang.T(messageKey));
+#endif
         }
 
         // 只放行写死在 App 里的 https 常量 不接受任何运行期拼出来的地址

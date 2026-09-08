@@ -12,7 +12,8 @@ namespace PaviseApp
     {
         private void ReportBegin(string game)
         {
-            ResetBoostDomainEvidence();
+            BeginCacheWarmSession();
+            ResetBoostIdentity();
             GpuThrottleProbe.Reset();
             VramSpillProbe.Reset();
             VramShield.Begin();

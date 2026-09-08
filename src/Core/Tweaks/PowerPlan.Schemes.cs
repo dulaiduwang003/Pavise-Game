@@ -290,7 +290,16 @@ namespace PaviseApp
                 foreach (Knob k in OptionalKnobs)
                 {
                     if (!SettingPresent(g, k.Sub, k.Setting)) { skipped.Add(k.Label); continue; }
-                    if (WriteKnob(g, k, aggressive, handheld, profile,
+                    Knob effective = k;
+                    if (k.Setting == IntelGfxPlan)
+                    {
+                        GpuAdapter[] adapters = null;
+                        if (aggressive && handheld)
+                            try { adapters = GpuInventory.Adapters(); } catch { }
+                        uint value = ResolveIntelGraphicsPlan(aggressive, handheld, adapters);
+                        effective = new Knob(k.Sub, k.Setting, value, value, value, value, k.Label);
+                    }
+                    if (WriteKnob(g, effective, aggressive, handheld, profile,
                         autonomousAc, autonomousDc)) written++; else failed++;
                 }
                 // 极限档专属组 未暴露的项照常跳过 不影响其余旋钮的写入结果
@@ -356,6 +365,17 @@ namespace PaviseApp
                 return true;
             }
             catch { return false; }
+        }
+
+        // 这是核显驱动的电源策略 与 CPU 的大小核调度和 Windows 平衡方案不同
+        // 掌机档仅在驱动确认唯一显卡为 Intel 核显时请求最高性能
+        // 搭配独显或拓扑未知时仍用平衡 保留桌面和笔记本的原有策略
+        internal static uint ResolveIntelGraphicsPlan(bool aggressive, bool handheld, GpuAdapter[] adapters)
+        {
+            if (!aggressive || !handheld || adapters == null || adapters.Length != 1) return 1;
+            GpuAdapter adapter = adapters[0];
+            return adapter != null && adapter.Vendor == GpuVendor.Intel
+                && adapter.IntegratedKnown && adapter.Integrated ? 2u : 1u;
         }
 
         private static void LogKnobFailure(Knob k)

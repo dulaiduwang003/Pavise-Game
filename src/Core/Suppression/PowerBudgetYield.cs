@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 笔记本对局中把共享功耗预算从 CPU 让给 GPU 一局只决定一次 验不过就退回
+// 文件用途 笔记本对局中把共享功耗预算从 CPU 让给 GPU 每次让出后验收 一局最多三次
 using System;
 using System.Threading;
 
@@ -14,16 +14,16 @@ namespace PaviseApp
 
     // 笔记本上 CPU 和 GPU 吃同一份功耗与散热预算 GPU 瓶颈时 CPU 多烧的每一瓦都是 GPU 少拿的
     //   固件的 Dynamic Boost / DTT / SmartShift 已经在毫秒级做这件事 我们不跟它抢方向盘
-    //   这里一局只做一次决定 做完验一次 验不过立刻退回并记住 跟"对局禁用处理器空闲"同一套路数
+    //   每次让出都重新观察和验收 证据不充分就退回 只有连续证据确认负结果才持久停用
     //
     // 为什么动 EPP 不动 ProcThrottleMin
     //   ProcThrottleMin 只决定"能不能降" EPP 决定"愿不愿意降"
     //   地板放开了但 EPP 还是 0 照样强烈偏性能 省不出多少 所以 EPP 才是真正的杠杆
     //
-    // 为什么必须能读到瓦数才参与
+    // 为什么优先使用瓦数验证
     //   验证要回答"预算真的让出来了吗" 只看 GPU 撞墙命中率会被两头骗
     //   GPU 拿到更高上限后可能照样撞墙 而把 CPU 压成瓶颈会让 GPU 利用率掉 命中率也跟着掉
-    //   看起来像成功 实际是失败 所以没有 RAPL 读数就不参与 不猜
+    //   看起来像成功 实际是失败 所以缺少功耗读数时必须另有下述频率代理证据
     //
     // 频率代理 读不到瓦数的机器的降级验证
     //   EPP 释放功耗的机制就是频率 EPP 抬高→部分负载下 CPU 愿意跑更低频→功耗跟着频率立方走
@@ -115,8 +115,16 @@ namespace PaviseApp
         // 读不到瓦数的那几次不能计进分母 否则封装功耗均值被稀释成偏低
         //   基线偏低 后面 VerifyHold 看到的降幅就偏小 会把本来有收益的机器判成没收益并熔断
         internal const int GiveUpSampleMultiple = 3;
-        internal const long EvidenceMaxAgeTicks = 10 * TimeSpan.TicksPerSecond;
+        // 驱动计数器可能在加载/切屏时短暂缺测 不再十秒就结束本局。
+        // 已经改过 EPP 的状态最多等一分钟 仍没恢复才归还预算。
+        internal const long EvidenceMaxAgeTicks = 60 * TimeSpan.TicksPerSecond;
+        // 正常两秒采样允许调度抖动；更长的回调间隔不能用于持久的硬件负收益结论。
+        internal const long EvidenceContinuityMaxGapTicks = 4 * TimeSpan.TicksPerSecond;
         private long lastEvidenceAt;
+        private long lastAdvanceAt;
+        private bool awaitingObservationData;
+        private bool observationInterrupted;
+        private bool verificationInterrupted;
 
         private YieldStage stage = YieldStage.Idle;
         private long stageAt;
@@ -145,6 +153,8 @@ namespace PaviseApp
             proxyMode = proxy;
             stage = eligible ? YieldStage.Observing : YieldStage.Skipped;
             stageAt = now;
+            lastEvidenceAt = now;
+            lastAdvanceAt = now;
         }
 
         public void End() { Reset(); }
@@ -152,6 +162,10 @@ namespace PaviseApp
         private void Reset()
         {
             lastEvidenceAt = 0;
+            lastAdvanceAt = 0;
+            awaitingObservationData = false;
+            observationInterrupted = false;
+            verificationInterrupted = false;
             stage = YieldStage.Idle; stageAt = 0; samples = 0; pkgSamples = 0; freqSamples = 0;
             gpuSum = cpuSum = pkgSum = freqSum = 0; baseGpu = basePkg = baseCpu = baseFreq = 0;
             proxyMode = false; verdict = YieldVerdict.None; engagements = 0;
@@ -163,6 +177,32 @@ namespace PaviseApp
             verdict = YieldVerdict.Kept;
             stageAt = now;
             samples = 0; gpuSum = cpuSum = 0;
+        }
+
+        private void RestartObservationWindow(long now)
+        {
+            stageAt = lastEvidenceAt = now;
+            awaitingObservationData = true;
+            observationInterrupted = false;
+            samples = pkgSamples = freqSamples = 0;
+            gpuSum = cpuSum = pkgSum = freqSum = 0;
+        }
+
+        private YieldAction RevertInconclusive()
+        {
+            stage = YieldStage.Reverted;
+            verdict = YieldVerdict.Inconclusive;
+            return YieldAction.Revert;
+        }
+
+        private YieldAction RevertNegativeVerdict(YieldVerdict negativeVerdict, string fuseKey)
+        {
+            // 缺测前后的负载可能属于不同场景。退回 EPP，但不能据此说这台机器无效。
+            if (verificationInterrupted) return RevertInconclusive();
+            stage = YieldStage.Reverted;
+            verdict = negativeVerdict;
+            Settings.Save(fuseKey, true);
+            return YieldAction.Revert;
         }
 
         // 喂一次采样 返回这一刻该做什么 负数的瓦数或频率表示这次没读到 只是不计入均值
@@ -178,23 +218,51 @@ namespace PaviseApp
                 && stage != YieldStage.Held) return YieldAction.None;
             bool validLoad = ValidUtil(gpuUtil) && ValidUtil(cpuUtil);
             bool validMeter = ValidPositive(proxyMode ? freqPct : pkgWatts);
-            // 改过 EPP 之后没证据就不能继续持有 先查间隙 再收新样本
-            // 免得失联半天来一个好读数就把失联记录洗掉 缺测不熔断硬件
-            if ((stage == YieldStage.Engaged || stage == YieldStage.Held)
-                && (now < lastEvidenceAt || now - lastEvidenceAt >= EvidenceMaxAgeTicks))
+            bool validEvidence = validLoad && (stage == YieldStage.Held || validMeter);
+            bool timeReversed = now < lastAdvanceAt;
+            long sampleGap = now - lastAdvanceAt;
+            lastAdvanceAt = now;
+            // 先查缺测间隙 再收新样本 避免一个迟到的读数掩盖长时间失联。
+            // 观察期还没改电源 可以重新等完整窗口 不因游戏晚加载而放弃整局。
+            if (timeReversed || now < lastEvidenceAt || now - lastEvidenceAt >= EvidenceMaxAgeTicks)
             {
-                stage = YieldStage.Reverted;
-                verdict = YieldVerdict.Inconclusive;
-                return YieldAction.Revert;
+                if (stage == YieldStage.Observing) RestartObservationWindow(now);
+                else return RevertInconclusive();
             }
-            if (validLoad && (stage == YieldStage.Held || validMeter)) lastEvidenceAt = now;
-            if (stage == YieldStage.Observing && now - stageAt >= ObserveTicks * GiveUpSampleMultiple)
+            // 等计数器恢复可以等一分钟，但中断了整段验证时间的旧样本不能用于硬件熔断。
+            // 零星读数也不能不断延长已改过 EPP 的未验收状态。
+            if (stage == YieldStage.Engaged
+                && (now - stageAt >= EvidenceMaxAgeTicks
+                    || validEvidence && now - lastEvidenceAt >= VerifyTicks))
+                return RevertInconclusive();
+            if (stage == YieldStage.Engaged
+                && (!validEvidence || sampleGap > EvidenceContinuityMaxGapTicks))
+                verificationInterrupted = true;
+            // 观察期不改电源。证据断档超过一个观察窗口时丢掉旧场景，继续等完整新窗口。
+            if (stage == YieldStage.Observing && now - lastEvidenceAt >= ObserveTicks)
+                RestartObservationWindow(now);
+            if (stage == YieldStage.Observing && validEvidence
+                && (awaitingObservationData || samples == 0 && now - stageAt >= ObserveTicks))
             {
-                stage = YieldStage.Skipped;
-                verdict = YieldVerdict.Inconclusive;
-                return YieldAction.None;
+                RestartObservationWindow(now);
+                awaitingObservationData = false;
             }
+            // 基线中已有证据以后出现缺测，负结论也不能当成硬件结论。
+            // 稀疏基线仍可试让路；重新收集完整观察窗才清除这份不连续标记。
+            if (stage == YieldStage.Observing && samples > 0
+                && (!validEvidence || sampleGap > EvidenceContinuityMaxGapTicks))
+                observationInterrupted = true;
+            // 维持段不再验硬件收益；恢复采样后另开滚动窗口，不能混入断档前的负载。
+            if (stage == YieldStage.Held && validLoad && now - lastEvidenceAt >= HoldWindowTicks)
+            {
+                stageAt = now;
+                samples = 0; gpuSum = cpuSum = 0;
+            }
+            if (validEvidence) lastEvidenceAt = now;
             if (!validLoad) return YieldAction.None;
+            // 基线只用完整配对的负载与 meter；零星有效 meter 可以继续积累，缺值不作零值。
+            if (stage == YieldStage.Observing && !validMeter)
+                return YieldAction.None;
             // 方向盘的维持段 让出去之后持续盯 30 秒滚动窗口
             //   GPU 仍吃满且 CPU 有余量就按兵不动 瓶颈移回 CPU 就把预算还回去
             if (stage == YieldStage.Held)
@@ -213,6 +281,7 @@ namespace PaviseApp
                     return YieldAction.Release;
                 }
                 stage = YieldStage.Observing;
+                observationInterrupted = false;
                 pkgSamples = freqSamples = 0; pkgSum = freqSum = 0;
                 return YieldAction.Release;
             }
@@ -227,19 +296,6 @@ namespace PaviseApp
             if (stage == YieldStage.Observing)
             {
                 if (span < ObserveTicks || samples < MinSamples) return YieldAction.None;
-                // 证据读得太少就别下结论 一直读不到也别干等 攒够三倍样本还不够就放弃这局
-                if (meterSamples < MinSamples)
-                {
-                    if (samples < MinSamples * GiveUpSampleMultiple) return YieldAction.None;
-                    stage = YieldStage.Skipped;
-                    return YieldAction.None;
-                }
-                if (now - lastEvidenceAt >= EvidenceMaxAgeTicks)
-                {
-                    stage = YieldStage.Skipped;
-                    verdict = YieldVerdict.Inconclusive;
-                    return YieldAction.None;
-                }
                 double gpu = gpuSum / samples, cpu = cpuSum / samples;
                 double meter = proxyMode ? freqSum / freqSamples : pkgSum / pkgSamples;
                 if (!WorthYielding(gpu, cpu) || meter <= 0)
@@ -251,6 +307,7 @@ namespace PaviseApp
                 if (proxyMode) baseFreq = meter; else basePkg = meter;
                 stage = YieldStage.Engaged; stageAt = now;
                 lastEvidenceAt = now;
+                verificationInterrupted = observationInterrupted;
                 engagements++;
                 samples = 0; pkgSamples = 0; freqSamples = 0;
                 gpuSum = cpuSum = pkgSum = freqSum = 0;
@@ -291,19 +348,11 @@ namespace PaviseApp
                     return YieldAction.Revert;
                 }
                 if (baseGpu - gpuNow > MaxGpuUtilDrop)
-                {
-                    stage = YieldStage.Reverted;
-                    verdict = YieldVerdict.GpuHarm;
-                    Settings.Save(FreqFuseKey, true);
-                    return YieldAction.Revert;
-                }
+                    return RevertNegativeVerdict(YieldVerdict.GpuHarm, FreqFuseKey);
                 if (baseFreq - freqNow < baseFreq * MinFreqDropShare)
                 {
                     // 频率纹丝不动 = 这台机器上 EPP 是死杠杆 与作者台架的 i7-9750H 同款结局
-                    stage = YieldStage.Reverted;
-                    verdict = YieldVerdict.NoGain;
-                    Settings.Save(FreqFuseKey, true);
-                    return YieldAction.Revert;
+                    return RevertNegativeVerdict(YieldVerdict.NoGain, FreqFuseKey);
                 }
                 EnterHold(now);
                 return YieldAction.Keep;
@@ -311,13 +360,8 @@ namespace PaviseApp
             double pkgNow = pkgSum / pkgSamples;
             bool keep = VerifyHold(basePkg, pkgNow, baseGpu, gpuNow);
             if (keep) EnterHold(now);
-            else
-            {
-                stage = YieldStage.Reverted;
-                verdict = YieldVerdict.NoGain;
-                Settings.Save(FuseKey, true);
-            }
-            return keep ? YieldAction.Keep : YieldAction.Revert;
+            else return RevertNegativeVerdict(YieldVerdict.NoGain, FuseKey);
+            return YieldAction.Keep;
         }
 
         internal static bool ValidUtil(double value)
@@ -349,6 +393,8 @@ namespace PaviseApp
         private static volatile bool proxyRun;
         private static int targetPid;
         private static long targetCreation;
+        private static bool policyEnabled, policyCompetitive;
+        private static Func<bool> policyAdmission;
 
         public static bool EnabledSetting { get { return Settings.LoadCached(EnabledKey, false); } }
 
@@ -356,6 +402,7 @@ namespace PaviseApp
 #if PAVISE_SELFTEST
         // 隔离测试不真探 PDH 默认按不可用 既有用例的语义分毫不变
         internal static bool FreqProxyForTest;
+        internal static Func<bool> RuntimeEnvironmentForTest;
 
         public static bool FreqProxyAvailable { get { return FreqProxyForTest; } }
 #else
@@ -412,21 +459,86 @@ namespace PaviseApp
             get { lock (gate) return state == null ? YieldStage.Idle : state.Stage; }
         }
 
-        // 开关取值由调用方给 对局中走冻结快照 逐游戏配置能覆盖全局
-        public static void Start(bool enabled, bool competitive, int rendererPid, long rendererCreation)
+        private static bool RuntimeEnvironmentEligible()
         {
-            bool retarget;
+            try
+            {
+#if PAVISE_SELFTEST
+                // 隔离 runner 用例只走显式模拟值，不读取本机电源配置。
+                Func<bool> test = RuntimeEnvironmentForTest;
+                return test == null || test();
+#else
+                return Native.HasSystemBattery() && Native.OnAcPower() && PowerPlan.ManagedPlanIsActive;
+#endif
+            }
+            catch { return false; }
+        }
+
+        private static bool RuntimeAdmissionEligible()
+        {
+            Func<bool> admission;
             lock (gate)
+            {
+                if (!policyEnabled || !policyCompetitive) return false;
+                admission = policyAdmission;
+            }
+            try { return (admission == null || admission()) && RuntimeEnvironmentEligible(); }
+            catch { return false; }
+        }
+
+        // livePolicyAdmission 不得取得 GameMode.sync，运行时会在原生写入闸内重查它。
+        public static void Start(bool enabled, bool competitive, int rendererPid, long rendererCreation,
+            Func<bool> livePolicyAdmission = null)
+        {
+            bool retarget, hadWorker, wasRunning, pendingStop;
+            int observedGeneration;
+            lock (gate)
+            {
+                if (shutdownClosed) return;
+                observedGeneration = generation;
+                wasRunning = running;
+                hadWorker = running || worker != null;
+                pendingStop = stopInProgress;
                 retarget = running && (targetPid != rendererPid || targetCreation != rendererCreation);
-            // 启动器交接给真实 renderer 时旧窗口的 GPU/CPU 基线已经失效
-            // 先完整停掉并还原 EPP 再为新身份开一轮 不能把两进程的数据拼起来
-            if (retarget && !StopCore(3000, false)) return;
+                // 新目标的准入闭包不能借给仍在运行的旧目标。先撤销旧资格，再等停止。
+                if (retarget || !enabled || !competitive || rendererPid <= 0 || rendererCreation <= 0)
+                    policyEnabled = false;
+            }
+            // 同 PID 的配置令牌也可能失效。保持旧闭包直到旧代完整停止，不能用新 true 续旧基线。
+            bool oldAdmitted = !wasRunning || RuntimeAdmissionEligible();
+            bool nextAdmitted = false;
+            try
+            {
+                nextAdmitted = enabled && competitive && rendererPid > 0 && rendererCreation > 0
+                    && (livePolicyAdmission == null || livePolicyAdmission()) && RuntimeEnvironmentEligible();
+            }
+            catch { }
+            if (hadWorker && (pendingStop || retarget || !oldAdmitted || !nextAdmitted))
+            {
+                lock (gate)
+                {
+                    if (running && generation != observedGeneration) return;
+                    policyEnabled = false;
+                }
+                if (!StopCore(3000, false)) return;
+            }
+            if (!nextAdmitted)
+            {
+                if (PowerPlan.EppYielded) StopCore(3000, false);
+                return;
+            }
+            // 上一代资格撤销后的还原失败回执不能被新一轮观察/写入覆盖。
+            if (!GenerationIsRunning() && PowerPlan.EppYielded && !StopCore(3000, false)) return;
 
             lock (gate)
             {
                 if (shutdownClosed || stopInProgress || running
                     || worker != null && worker.IsAlive) return;
                 if (!enabled || rendererPid <= 0 || rendererCreation <= 0) return;
+                // 每轮新建的委托不算策略变化；活着且仍获准的 worker 保留原闭包与原代。
+                policyEnabled = enabled;
+                policyCompetitive = competitive;
+                policyAdmission = livePolicyAdmission;
                 // 有瓦数走瓦数 没瓦数但有频率计数器走降级验证 熔断各记各的账
                 bool watts = EnergyMeter.Available;
                 bool proxy = !watts && FreqProxyAvailable;
@@ -520,6 +632,49 @@ namespace PaviseApp
             lock (gate) return running && !shutdownClosed && mine == generation;
         }
 
+        private static bool GenerationIsRunning()
+        { lock (gate) return running; }
+
+        private static bool RevokeCurrentAdmission(int mine, Func<bool> restore)
+        {
+            lock (operationGate)
+            {
+                if (!GenerationRunning(mine)) return false;
+                // 即使失败也保留底层 receipt，由 Start/StopCore 重试；旧代不能再写入。
+                RunMutation(restore);
+                lock (gate)
+                    if (mine == generation)
+                    {
+                        running = false;
+                        generation++;
+                        if (state != null) { state.End(); state = null; }
+                    }
+                return false;
+            }
+        }
+
+        private static bool EnsureRuntimeAdmission(int mine, Func<bool> restore)
+        {
+            if (!GenerationRunning(mine)) return false;
+            return RuntimeAdmissionEligible() || RevokeCurrentAdmission(mine, restore);
+        }
+
+        private static bool RunCurrentEngagement(int mine, Func<bool> engage, Func<bool> restore)
+        {
+            lock (operationGate)
+            {
+                if (!GenerationRunning(mine)) return false;
+                bool revoked = false;
+                bool applied = RunMutation(delegate
+                {
+                    // BeginMutation 可能等待其它工作；资格复核要贴着实际 EPP 写入。
+                    if (!GenerationRunning(mine) || !RuntimeAdmissionEligible()) { revoked = true; return false; }
+                    return engage != null && engage();
+                });
+                return revoked ? RevokeCurrentAdmission(mine, restore) : applied;
+            }
+        }
+
         private static bool RunCurrentMutation(int mine, Func<bool> mutation)
         {
             lock (operationGate)
@@ -535,6 +690,7 @@ namespace PaviseApp
             out YieldAction action, out YieldVerdict verdict)
         {
             action = YieldAction.None; verdict = YieldVerdict.None;
+            if (!EnsureRuntimeAdmission(mine, restore)) return false;
             lock (gate)
             {
                 if (!running || mine != generation || shutdownClosed || state == null) return false;
@@ -542,7 +698,7 @@ namespace PaviseApp
                 verdict = state.Verdict;
                 if (state.Stage == YieldStage.Skipped && action == YieldAction.None) return false;
             }
-            if (action == YieldAction.Engage) return RunCurrentMutation(mine, engage);
+            if (action == YieldAction.Engage) return RunCurrentEngagement(mine, engage, restore);
             if (action == YieldAction.Revert)
             {
                 RunCurrentMutation(mine, restore);
@@ -593,6 +749,7 @@ namespace PaviseApp
                 {
                     Thread.Sleep(SampleIntervalMs);
                     if (!GenerationRunning(mine)) break;
+                    if (!EnsureRuntimeAdmission(mine, PowerPlan.RestoreEpp)) break;
                     bool targetChanged;
                     double gpu = SampleGpuUtil(gpuSampler, rendererPid, rendererCreation,
                         ref adapterKnown, ref adapterLuidHigh, ref adapterLuidLow,
@@ -725,6 +882,18 @@ namespace PaviseApp
         }
 
 #if PAVISE_SELFTEST
+        internal static void SetRuntimeAdmissionForTest(int mine, Func<bool> admission,
+            int rendererPid = 123, long rendererCreation = 456)
+        {
+            lock (gate)
+            {
+                if (mine != generation || !running) throw new InvalidOperationException("No test generation");
+                policyAdmission = admission;
+                targetPid = rendererPid;
+                targetCreation = rendererCreation;
+            }
+        }
+
         internal static void SetSampleStateForTest(int mine, PowerBudgetYield value)
         {
             lock (gate)
@@ -741,6 +910,8 @@ namespace PaviseApp
                 if (shutdownClosed || stopInProgress || running
                     || worker != null && worker.IsAlive) return -1;
                 running = true;
+                policyEnabled = policyCompetitive = true;
+                policyAdmission = null;
                 int mine = ++generation;
                 worker = new Thread(delegate () { body(mine); });
                 worker.IsBackground = true;
@@ -766,6 +937,9 @@ namespace PaviseApp
                 running = stopInProgress = shutdownClosed = false;
                 targetPid = 0;
                 targetCreation = 0;
+                policyEnabled = policyCompetitive = false;
+                policyAdmission = null;
+                RuntimeEnvironmentForTest = null;
                 generation++;
             }
         }

@@ -1,4 +1,4 @@
-﻿// @author bdth 2074055628@qq.com
+// @author bdth 2074055628@qq.com
 // 文件用途 构建优化策略页 并按当前预设锁定或放开自定义项
 using System;
 using System.Collections.Generic;
@@ -12,12 +12,9 @@ namespace PaviseApp
         private ModuleBanner policyBanner;
         private TechTabs policyTabs;
         private DBPanel[] policyTabPanels;
-        private TierPicker pickPolicyCores;
         private Toggle swPolicyBackground, swPolicyAggressive;
         private Toggle swPolicyPauseDl, swPolicyDvr;
         private Toggle swPolicyGpuDemote, swPolicyBoost, swPolicyLane, swPolicyMmcss;
-        private Toggle swPolicyHeavySqueeze;
-        private SettingCard cardPolicyHeavySqueeze;
         private Toggle swPolicyAdaptive;
         private SettingCard cardPolicyAdaptive;
         private Toggle swPolicyVramShield;
@@ -28,7 +25,7 @@ namespace PaviseApp
         private Toggle swPolicyPauseWu, swPolicyPauseServices, swPolicyAwake;
         private Toggle swPolicyPauseMaint;
         private SettingCard cardPolicyPauseMaint;
-        private SettingCard cardPolicyCores, cardPolicyAggressive;
+        private SettingCard cardPolicyAggressive;
         private SettingCard cardPolicyPauseDl, cardPolicyDvr;
         private SettingCard cardPolicyBackground, cardPolicyGpuDemote, cardPolicyBoost, cardPolicyLane, cardPolicyMmcss;
         private SettingCard cardPolicyPowerYield;
@@ -39,7 +36,6 @@ namespace PaviseApp
         internal Func<bool> DisableCpuIdleConfirmationForTest;
         internal Func<bool> PowerYieldConfirmationForTest;
         internal Func<bool> VramShieldConfirmationForTest;
-        internal Func<bool> HeavySqueezeConfirmationForTest;
 #endif
 
         private void BuildPolicyPage()
@@ -74,9 +70,7 @@ namespace PaviseApp
             swPolicyGpuDemote = AddPolicyToggle(scroll, ref sy, Lang.T("gm.gpudemote"), Lang.T("gm.gpudemote.sub"),
                 delegate { return gameMode.GpuDemote; }, delegate(bool v) { gameMode.GpuDemote = v; });
             cardPolicyGpuDemote = (SettingCard)swPolicyGpuDemote.Parent;
-            swPolicyHeavySqueeze = AddPolicyToggle(scroll, ref sy, Lang.T("gm.squeeze"), Lang.T("gm.squeeze.sub"),
-                delegate { return gameMode.HeavySqueezeOn; }, delegate(bool v) { OnHeavySqueezeToggle(v); });
-            cardPolicyHeavySqueeze = (SettingCard)swPolicyHeavySqueeze.Parent;
+            // 游戏选核和核心隔离在核心页保存。
             swPolicyAdaptive = AddPolicyToggle(scroll, ref sy, Lang.T("gm.adaptive"), Lang.T("gm.adaptive.sub"),
                 delegate { return gameMode.AdaptiveEscalateOn; }, delegate(bool v) { gameMode.AdaptiveEscalateOn = v; });
             cardPolicyAdaptive = (SettingCard)swPolicyAdaptive.Parent;
@@ -122,6 +116,7 @@ namespace PaviseApp
                 delegate(bool v) { OnDisableCpuIdleToggle(v); });
             cardPolicyDisableCpuIdle = (SettingCard)swPolicyDisableCpuIdle.Parent;
             BuildStandbyCleanerPolicyCard(scroll, ref sy);
+            BuildCacheWarmPolicyCard(scroll, ref sy);
             swPolicyPauseWu = AddPolicyToggle(scroll, ref sy, Lang.T("gm.pausewu"), Lang.T("gm.pausewu.sub"),
                 delegate { return gameMode.PauseWindowsUpdate; }, delegate(bool v) { gameMode.PauseWindowsUpdate = v; });
             cardPolicyPauseWu = (SettingCard)swPolicyPauseWu.Parent;
@@ -223,104 +218,6 @@ namespace PaviseApp
                     if (c == panels[i]) { tabs.Index = i; return; }
         }
 
-        private int coreManualIndex;
-        private bool coreThreeWay;
-        private bool coreManualPicked;
-
-        private TierPicker AddCorePlacementPicker(Control parent, ref int y)
-        {
-            bool partition = CpuTopology.HasSafeBackgroundPartition();
-            coreThreeWay = partition && CpuTopology.HasAltPartition();
-
-            var labels = new List<string> { Lang.T("cpu.place.all") };
-            if (partition)
-            {
-                labels.Add(coreThreeWay ? PrimaryDomainLabel() : CorePartitionLabel());
-                if (coreThreeWay) labels.Add(AltDomainLabel());
-            }
-            labels.Add(Lang.T("cpu.place.manual"));
-            coreManualIndex = labels.Count - 1;
-
-            var picker = new TierPicker();
-            picker.Labels = labels.ToArray();
-            picker.SetBounds(0, 0, Theme.S(labels.Count * 88 + 12), Theme.S(34));
-            picker.Index = CorePlacementIndex();
-            picker.IndexChanged = delegate(int index) { ApplyCorePlacement(index); };
-
-            int cardH;
-            cardPolicyCores = MakeAutoCard(parent, 6, y, ScrollContentW, 88,
-                Lang.T("cpu.place.title"), CorePartitionDescription(), picker,
-                Theme.S(labels.Count * 88 + 24), out cardH);
-            y += cardH + 8;
-            policySync.Add(delegate
-            {
-                picker.Index = CorePlacementIndex();
-                if (cardPolicyCores != null)
-                    cardPolicyCores.SetValue(gameMode.CoreDomainSwitchPending
-                        ? Lang.T("cpu.place.pending") : "", Theme.Accent);
-            });
-            return picker;
-        }
-
-        private void ApplyCorePlacement(int index)
-        {
-            if (index == coreManualIndex)
-            {
-                coreManualPicked = true;
-                if (corePending == 0) corePending = CpuTopology.AllMask;
-                if (coreMatrix != null) coreMatrix.Selected = corePending;
-                SyncCorePage();
-                return;
-            }
-            coreManualPicked = false;
-            gameMode.CustomCoreMask = 0;
-            corePending = CpuTopology.AllMask;
-            if (coreMatrix != null) coreMatrix.Selected = corePending;
-            gameMode.CorePartitionEnabled = index > 0;
-            if (index > 0 && coreThreeWay) gameMode.CoreDomainAlt = index == 2;
-            SyncCorePage();
-        }
-
-        private int CorePlacementIndex()
-        {
-            if (gameMode.CustomCoreMask != 0 || coreManualPicked) return coreManualIndex;
-            if (!gameMode.CorePartitionEnabled || !CpuTopology.HasSafeBackgroundPartition()) return 0;
-            return CpuTopology.HasAltPartition() && gameMode.CoreDomainAlt ? 2 : 1;
-        }
-
-        private static string PrimaryDomainLabel()
-        {
-            if (CpuTopology.AsymCache) return Lang.T("cpu.place.cache");
-            int die = CpuTopology.AltDomainActive ? CpuTopology.AltDomainIndex : CpuTopology.GameDomainIndex;
-            return die >= 0 ? "CCD " + die : Lang.T("cpu.place.partition");
-        }
-
-        private static string AltDomainLabel()
-        {
-            if (CpuTopology.AsymCache) return Lang.T("cpu.place.freq");
-            int die = CpuTopology.AltDomainActive ? CpuTopology.GameDomainIndex : CpuTopology.AltDomainIndex;
-            return die >= 0 ? "CCD " + die : Lang.T("cpu.place.partition");
-        }
-
-        private static string CorePartitionLabel()
-        {
-            if (CpuTopology.AsymCache || CpuTopology.PartitionTag == "symmetric-ccd")
-                return Lang.T("cpu.place.ccd");
-            if (CpuTopology.Hybrid) return Lang.T("cpu.place.performance");
-            return Lang.T("cpu.place.partition");
-        }
-
-        private static string CorePartitionDescription()
-        {
-            if (CpuTopology.AsymCache)
-                return Lang.T(CpuTopology.HasAltPartition() ? "cpu.place.x3d3.desc" : "cpu.place.x3d.desc");
-            if (CpuTopology.PartitionTag == "symmetric-ccd")
-                return Lang.T(CpuTopology.HasAltPartition() ? "cpu.place.ccd3.desc" : "cpu.place.ccd.desc");
-            if (CpuTopology.Hybrid) return Lang.T("cpu.place.hybrid.desc");
-            return CpuTopology.HasSafeBackgroundPartition()
-                ? Lang.T("cpu.place.generic.desc") : Lang.T("cpu.place.unavailable.desc");
-        }
-
         private void AddPolicyLink(Control parent, ref int y, string title, string desc, Action go)
         {
             var btn = new PillButton(Lang.T("gm.goto"), BtnKind.Normal);
@@ -329,6 +226,17 @@ namespace PaviseApp
             int cardH;
             MakeAutoCard(parent, 6, y, ScrollContentW, 64, title, desc, btn, out cardH);
             y += cardH + 8;
+        }
+
+        private SettingCard BuildCacheWarmPolicyCard(Control parent, ref int y)
+        {
+            Toggle warm = AddPolicyToggle(parent, ref y, Lang.T("gm.cachewarm"), Lang.T("gm.cachewarm.sub"),
+                delegate { return gameMode.CacheWarmOn; }, delegate(bool v) { gameMode.CacheWarmOn = v; }, 0, true);
+            SettingCard card = (SettingCard)warm.Parent;
+            card.SetStatus(gameMode.CacheWarmStatus, Theme.Dim);
+            card.Height += Theme.S(SettingCard.StatusLineH); y += SettingCard.StatusLineH;
+            policySync.Add(delegate { card.SetStatus(gameMode.CacheWarmStatus, Theme.Dim); });
+            return card;
         }
 
         private Toggle AddPolicyToggle(Control parent, ref int y, string title, string desc, Func<bool> read, Action<bool> write)
@@ -368,20 +276,11 @@ namespace PaviseApp
             bool extremeTier = mode == PerformancePreset.Extreme;
             ApplyPresetPolicy(swPolicyBackground, cardPolicyBackground, Lang.T("v14.bg.master"), false, true);
             ApplyPresetPolicy(swPolicyGpuDemote, cardPolicyGpuDemote, Lang.T("gm.gpudemote"), extremeTier, true);
-            ApplyPresetPolicy(swPolicyHeavySqueeze, cardPolicyHeavySqueeze, Lang.T("gm.squeeze"), false, true);
-            if (swPolicyHeavySqueeze != null && cardPolicyHeavySqueeze != null && !GameMode.HeavySqueezeSupported())
-            {
-                // 拓扑没有落点只挡新开启 已经开着的永远能关
-                swPolicyHeavySqueeze.Enabled = gameMode.HeavySqueezeOn;
-                cardPolicyHeavySqueeze.Desc = Lang.T("gm.squeeze.unsupported");
-                cardPolicyHeavySqueeze.SetLock(swPolicyHeavySqueeze.Enabled ? "" : Lang.T("lock.na"), false);
-            }
             // 只有智能档会用到 其它档位本来就是电竞口径 开关留着但标为不生效
             ApplyPresetPolicy(swPolicyAdaptive, cardPolicyAdaptive, Lang.T("gm.adaptive"), false,
                 mode == PerformancePreset.Standard);
             ApplyPresetPolicy(swPolicyBoost, cardPolicyBoost, Lang.T("gm.boost"), false, true);
             SyncPolicyLane();
-            if (cardPolicyCores != null) cardPolicyCores.Title = Lang.T("cpu.place.title");
             ApplyPresetPolicy(swPolicyAggressive, cardPolicyAggressive, Lang.T("gm.aggressive"), !custom, presetForcesOn);
             ApplyPresetPolicy(swPolicyPauseDl, cardPolicyPauseDl, Lang.T("gm.pausedl"), !custom, presetForcesOn);
             ApplyPresetPolicy(swPolicyDvr, cardPolicyDvr, Lang.T("set.dvr"), false, true);
@@ -516,26 +415,6 @@ namespace PaviseApp
             }
             gameMode.VramShieldOn = on;
             if (swPolicyVramShield != null) swPolicyVramShield.SetSilently(gameMode.VramShieldOn);
-        }
-
-        private bool ConfirmHeavySqueezeEnable()
-        {
-#if PAVISE_SELFTEST
-            if (HeavySqueezeConfirmationForTest != null) return HeavySqueezeConfirmationForTest();
-#endif
-            return PaviseDialog.Confirm(this, Lang.T("gm.squeeze"), Lang.T("squeeze.warn"), DlgKind.Warn);
-        }
-
-        private void OnHeavySqueezeToggle(bool on)
-        {
-            if (on && !ConfirmHeavySqueezeEnable())
-            {
-                if (swPolicyHeavySqueeze != null) swPolicyHeavySqueeze.SetSilently(gameMode.HeavySqueezeOn);
-                return;
-            }
-            gameMode.HeavySqueezeOn = on;
-            if (swPolicyHeavySqueeze != null) swPolicyHeavySqueeze.SetSilently(gameMode.HeavySqueezeOn);
-            RefreshPolicyPresentation();
         }
 
         private void SyncPolicyLane()

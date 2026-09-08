@@ -108,6 +108,8 @@ namespace PaviseApp
             };
             // 显式白名单 不含真实进程矩阵 截图模式 ETW 和调优运行时
             run("ResetCleanup", delegate { RunResetCleanupRegressionTests(); });
+            run("WindowScaling", delegate { RunScalingRegressionTests(); });
+            run("CacheWarm", delegate { RunCacheWarmRegressionTests(); });
             run("ResetFlow", delegate { RunResetFlowRegressionTests(); });
             run("OptionalServicePause", delegate { RunOptionalServicePauseRegressionTests(); });
             run("ServicePauser", delegate { RunServicePauserRegressionTests(); });
@@ -137,8 +139,12 @@ namespace PaviseApp
             run("AppGpuPreferences", delegate { RunAppGpuPreferencesRegressionTests(); });
             run("GraphicsInputUi", delegate { RunGraphicsInputUiRegressionTests(); });
             run("UiConfigAudit", delegate { RunUiConfigAuditRegressionTests(); });
+            run("CoreScheduling", delegate { RunCoreSchedulingTests(output); });
+            run("CoreIsolation", delegate { RunCoreIsolationTests(); });
             run("PowerYieldTarget", delegate { RunPowerYieldTargetRegressionTests(); });
-            run("HeavySqueeze", delegate { RunHeavySqueezeRegressionTests(); });
+            run("PowerYieldRelaxation", delegate { RunPowerYieldRelaxationRegressionTests(); });
+            run("PowerYieldRuntime", delegate { RunPowerYieldRuntimeRegressionTests(); });
+            run("SuppressionAffinity", delegate { RunSuppressionAffinityTests(); });
             run("RenderLaneEligibility", delegate { RunRenderLaneEligibilityTests(); });
             run("AddGameFolder", delegate { RunAddGameFolderRegressionTests(); });
             run("ReleaseNotes", delegate { RunReleaseNotesRegressionTests(); });

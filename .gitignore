@@ -4,6 +4,13 @@ tests/
 !tests/
 tests/*
 !tests/SelfTests.Runner.cs
+!tests/SelfTests.CoreScheduling.cs
+!tests/SelfTests.CoreIsolation.cs
+!tests/CoreSchedulingIntegrationRunner.cs
+!tests/CoreIsolationIntegrationRunner.cs
+!tests/SelfTests.Scaling.cs
+!tests/SelfTests.CacheWarm.cs
+!tests/ScalingIntegrationRunner.cs
 !tests/AntiCheatChecks.cs
 !tests/Run-AntiCheatChecks.ps1
 !tests/SelfTests.AntiCheatCatalog.cs
@@ -16,6 +23,8 @@ tests/*
 !tests/SelfTests.GraphicsInputUi.cs
 !tests/SelfTests.UiConfigAudit.cs
 !tests/SelfTests.PowerYieldTarget.cs
+!tests/SelfTests.PowerYieldRelaxation.cs
+!tests/SelfTests.PowerYieldRuntime.cs
 !tests/SelfTests.HeavySqueeze.cs
 !tests/SelfTests.RenderLaneEligibility.cs
 !tests/SelfTests.AddGameFolder.cs
@@ -81,6 +90,8 @@ tools/*
 !tools/GainBench2133/
 !tools/GainBench2133/**
 !tools/Sync-VersionManifest.ps1
+!tools/Build-ScalingHost.ps1
+!tools/Test-Scaling.ps1
 !tools/Publish-VersionManifest.ps1
 !tools/RendererHandoffBench/
 tools/RendererHandoffBench/*
@@ -109,6 +120,11 @@ tools/HeterogeneousGpuBench/bin/
 !tools/OptimizationRiskBench/Run.ps1
 !tools/OptimizationRiskBench/README.md
 !tools/OptimizationRiskBench/RESULTS.md
+!tools/CpuMemoryBench/
+!tools/CpuMemoryBench/**
+!tools/Test-CoreScheduling.ps1
+tools/CpuMemoryBench/results/
+tools/CpuMemoryBench/bin/
 tools/VrsBench/results/
 scripts/
 *.bak

@@ -1,4 +1,4 @@
-﻿// @author bdth 2074055628@qq.com
+// @author bdth 2074055628@qq.com
 // 文件用途 压制核心施加分部 句柄级写入 核验 还原与不可写中和
 using System;
 using System.Collections.Generic;
@@ -30,11 +30,7 @@ namespace PaviseApp
                     || (qosControl & 1) == 0 || (qosState & 1) == 0) return false;
             }
 
-            // 后台亲和只在两种情况下离开当前值 目标都由 desiredAffinity 传进来
-            //   一是旧版残留 目标就是原值 这里把它还原回去
-            //   二是重压后台绑核 热度坐实的已隔离后台被限定到最窄落点 见 HeavySqueezePolicy
-            //   2.0 下架全员绑核的教训不变 空闲进程一律不改亲和 只有持续吃 CPU 的才进这条路
-            //   AUDIT-20260820.md 那组合成负载数据与 1.8.1.3 台架三场景是这条路的依据
+            // 反作弊按显式落点运行；后台不再绑核，只恢复旧版留下的限制。
             if (!Native.CpuSetsMatch(h, originalCpuSets ?? new uint[0])) return false;
             // 落点被拒过的条目亲和归进程自己管 不再拿它判断是否漂移
             if (!CpuTopology.MultiGroup && !affinityOwned && Native.QueryAffinity(h) != desiredAffinity) return false;
@@ -81,10 +77,10 @@ namespace PaviseApp
                 ? Native.GpuPriorityIdle : Native.GpuPriorityBelowNormal;
         }
 
-        // 亲和目标跟着条目走 只有后台原因在场且热度坐实时才离开原值
+        // 反作弊使用显式落点，普通后台及旧重压记录回到原亲和性
         private ulong DesiredAffinityOf(Entry e)
         {
-            return HeavySqueezePolicy.DesiredAffinity(e.Reasons, e.SqueezeAff, e.OrigAff, allMask);
+            return SuppressionAffinityPolicy.DesiredAffinity(e.Reasons, e.SqueezeAff, e.OrigAff, allMask);
         }
 
         // 巡检重写走这里 落点被拒且只有亲和这一环失败时放弃落点 其余旋钮照常
@@ -199,11 +195,7 @@ namespace PaviseApp
                 }
             }
 
-            // 后台亲和只在两种情况下离开当前值 目标都由 desiredAffinity 传进来
-            //   一是旧版残留 目标就是原值 这里把它还原回去
-            //   二是重压后台绑核 热度坐实的已隔离后台被限定到最窄落点 见 HeavySqueezePolicy
-            //   2.0 下架全员绑核的教训不变 空闲进程一律不改亲和 只有持续吃 CPU 的才进这条路
-            //   AUDIT-20260820.md 那组合成负载数据与 1.8.1.3 台架三场景是这条路的依据
+            // 反作弊按显式落点运行；后台不再绑核，只恢复旧版留下的限制。
             if (!Native.CpuSetsMatch(h, originalCpuSets)
                 && !Native.RestoreCpuSetsVerified(h, originalCpuSets))
                 failed.Add("cpu-sets-restore");

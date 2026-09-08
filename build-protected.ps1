@@ -184,6 +184,7 @@ function New-ProtectionProject(
 }
 
 function Compile-SmokeBinary([string]$Repo, [string]$OutputPath) {
+    & (Join-Path $Repo "tools\Build-ScalingHost.ps1")
     $csc = Get-CscPath
     $sourceFiles = Get-ChildItem -LiteralPath (Join-Path $Repo "src") -Filter "*.cs" -Recurse |
         ForEach-Object { $_.FullName }
@@ -193,7 +194,8 @@ function Compile-SmokeBinary([string]$Repo, [string]$OutputPath) {
         ("-out:" + $OutputPath),
         "-reference:System.dll", "-reference:System.Drawing.dll",
         "-reference:System.Windows.Forms.dll", "-reference:System.Core.dll",
-        "-reference:System.Management.dll", "-reference:System.Xml.dll"
+        "-reference:System.Management.dll", "-reference:System.Xml.dll",
+        ("-resource:" + (Join-Path $Repo "build\scaling\Pavise.ScaleHost.exe") + ",Pavise.ScaleHost.exe")
     ) + $sourceFiles
     Invoke-Checked $csc $arguments
 }

@@ -25,6 +25,7 @@ namespace PaviseApp
 
         private sealed class IrqProofHardPin
         {
+            public bool Manual;
             public int Pid;
             public long Creation;
             public ulong OriginalAffinity;
@@ -236,13 +237,13 @@ namespace PaviseApp
             autoAddOn = Settings.Load("GmAutoAdd", false);
             vramShieldOn = Settings.Load(VramShield.EnabledKey, false);
             Settings.Remove("GmCacheWarm"); // Retired read-only feature: discard legacy global preference.
-            heavySqueezeOn = Settings.Load(PolicyCatalog.KeyHeavySqueeze, false);
+            cacheWarmOn = Settings.Load(PolicyCatalog.KeyCacheWarm, false);
             adaptiveEscalateOn = Settings.Load(PolicyCatalog.KeyAdaptiveEscalate, false);
             killGameDvr = Settings.Load("GameDvrOff", true);
             mmcssOn = Settings.Load("GmMmcss", true);
             planSwitch = Settings.Load("PowerPlanOn", true);
-            corePartitionOn = Settings.Load("GmStrictCores", false);
-            coreDomainAltOn = Settings.Load("GmCoreDomainAlt", false);
+            corePartitionOn = PolicyResolver.GlobalValue(PolicyCatalog.KeyStrictCores) == "1";
+            coreDomainAltOn = PolicyResolver.GlobalValue(PolicyCatalog.KeyCoreDomainAlt) == "1";
             aggressiveOn = Settings.Load("GmAggressive", false);
             renderLaneOn = Settings.Load(PolicyCatalog.KeyRenderLane,
                 PolicyCatalog.ItemOf(PolicyCatalog.KeyRenderLane).Fallback == "1");
@@ -421,6 +422,7 @@ namespace PaviseApp
                     enabled = value;
                     if (changed)
                     {
+                        InvalidateCacheWarm();
                         Interlocked.Increment(ref optionalServiceGeneration);
                         Interlocked.Increment(ref cpuIdleGeneration);
                         InvalidateStandbyCleanerWork();

@@ -15,6 +15,11 @@ namespace PaviseApp
         {
             placementText = "";
             placementVerified = false;
+            if (pass.ManualPlacement && !EnsureManualIsolation(pid, pass.RendererCreation, pass.DesiredMask))
+            {
+                placementText = Lang.T("schedule.isolation.failed");
+                return false;
+            }
             if (!needPlacement)
                 placementVerified = PlacementMatches(h, pass);
             if (needPlacement)
@@ -37,7 +42,7 @@ namespace PaviseApp
                     ?? CpuTopology.AdaptiveGameCpuSetIds(pass.UseStrict);
                 bool soft = false;
                 bool placementUnavailable = false;
-                if (pass.UseStrict || pass.DesiredMask != allMask)
+                if (!pass.ManualPlacement && (pass.UseStrict || pass.DesiredMask != allMask))
                     soft = Native.TrySetCpuSetsVerified(h, ids);
                 // 默认 CPU Sets 会被线程显式选择覆盖 无法作为 IRQ 归因
                 // proof 用户明确开启对局观测时 在单 group 机器上再
@@ -46,10 +51,11 @@ namespace PaviseApp
                 // 仍可用这份 retained handle 恢复并读回 原值未知时绝不强写
                 bool proofHardWritten = false;
                 IntPtr proofRestoreHandle = IntPtr.Zero;
-                if (soft && irqProbe.RequiresPlacementAudit
+                if ((soft && irqProbe.RequiresPlacementAudit || pass.ManualPlacement && placementOk)
                     && !CpuTopology.MultiGroup
                     && pass.DesiredMask != allMask
-                    && original.Aff != 0)
+                    && original.Aff != 0
+                    && (!pass.ManualPlacement || (pass.DesiredMask & ~original.Aff) == 0))
                     proofRestoreHandle = DuplicateIrqProofRestoreHandle(h);
                 if (proofRestoreHandle != IntPtr.Zero)
                 {
@@ -62,19 +68,25 @@ namespace PaviseApp
                                 h, (UIntPtr)pass.DesiredMask))
                         {
                             RememberIrqProofHardPin(
-                                pid, pass.RendererCreation,
-                                original.Aff, proofRestoreHandle);
+                                pid, original.Creation,
+                                original.Aff, proofRestoreHandle, pass.ManualPlacement);
                             proofRestoreHandle = IntPtr.Zero;
                             proofHardWritten = Native.QueryAffinity(h)
                                 == pass.DesiredMask;
                         }
                     }
                     if (!proofHardWritten && proofRestoreHandle == IntPtr.Zero)
-                        RestoreIrqProofHardPin(IntPtr.Zero, pid);
+                        RestoreIrqProofHardPin(IntPtr.Zero, pid, true);
                 }
                 if (proofRestoreHandle != IntPtr.Zero)
                     Native.CloseHandle(proofRestoreHandle);
-                if (soft)
+                if (pass.ManualPlacement && pass.DesiredMask != allMask)
+                {
+                    placementOk = placementOk && proofHardWritten;
+                    placementText = Lang.T("t.gamemodeboost.18")
+                        + CpuTopology.CountSetBits(pass.DesiredMask) + Lang.T("t.gamemodeboost.16");
+                }
+                else if (soft)
                 {
                     placementVerified = pass.DesiredMask != allMask;
                     placementText = pass.UseStrict
@@ -101,6 +113,8 @@ namespace PaviseApp
                 if (pass.DesiredMask != allMask
                     && !placementUnavailable && !placementVerified)
                     placementOk = false;
+                if (pass.ManualPlacement && pass.DesiredMask != allMask && !placementVerified)
+                    placementText = Lang.T("schedule.placement.failed");
                 int placeTries = 0;
                 bool placementNowGaveUp = false, firstPlacementWarning = false;
                 lock (sync)
@@ -138,6 +152,11 @@ namespace PaviseApp
 
                 if (!newlyTracked && placementOk)
                     Logger.Log(Lang.T("log.gamemodeboost.19") + pass.RendererName + " pid " + pid + placementText);
+            }
+            if (pass.ManualPlacement && !placementVerified)
+            {
+                lock (sync) { gamePlacement.Remove(pid); gamePlacementStrict.Remove(pid); }
+                RollBackUnconfirmedIsolation();
             }
             return true;
         }
@@ -178,7 +197,7 @@ namespace PaviseApp
         private void EngageLaneAndReport(IntPtr h, ProcessSnapshot all, int pid, long currentCreation,
             BoostPass pass, bool stateOk, bool firstVerified, bool gpuOk, bool ecoCleared, string placementText)
         {
-            if (EffLane && LaneEligible && pass.PriorityTarget == Native.HIGH_PRIORITY_CLASS
+            if (pass.LaneAllowed && EffLane && LaneEligible && pass.PriorityTarget == Native.HIGH_PRIORITY_CLASS
                 && !pass.WriteDenied && !RenderLane.IsActiveFor(pid, currentCreation))
                 RenderLane.EnsureForGame(pid, currentCreation, pass.RendererName);
 

@@ -166,6 +166,8 @@ namespace PaviseApp
         //   账本里有的是极限自己翻的 哪怕资格后来变了也照旧锁住 停用仍走管理清单
         public static bool ForcesEnv(string token)
         {
+            // 显示优化在所有档位都由用户手开，旧恢复账本不再锁定这两个开关。
+            if (token == "windowedopt" || token == "vrropt") return false;
             if (!Unlocked || OptedOut(token)) return false;
             if (LedgerContains(token)) return true;
             foreach (ExtremeItem item in EnvItems())
@@ -287,12 +289,13 @@ namespace PaviseApp
                     delegate { return true; },
                     delegate { return GameModeGuard.EnabledByPavise; },
                     GameModeGuard.Enable, GameModeGuard.Restore),
+                // 两项显示优化全档位默认关闭；清单仅保留旧极限账本的恢复入口。
                 new ExtremeItem("windowedopt", "set.windowedopt",
-                    delegate { return Native.OsBuild() >= 22000; },
+                    delegate { return false; },
                     delegate { return WindowedOptTweak.EnabledByPavise || WindowedOptTweak.CurrentlyOn(); },
                     WindowedOptTweak.Enable, WindowedOptTweak.Restore),
                 new ExtremeItem("vrropt", "set.vrropt",
-                    delegate { return VrrOptTweak.OsSupported(); },
+                    delegate { return false; },
                     delegate { return VrrOptTweak.EnabledByPavise || VrrOptTweak.CurrentlyOn(); },
                     VrrOptTweak.Enable, VrrOptTweak.Restore),
                 // 两项计时器都不再由极限自动写入 节拍改的是时钟中断怎么来 有整机卡死的公开案例

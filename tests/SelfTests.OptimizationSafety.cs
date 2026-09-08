@@ -13,21 +13,22 @@ namespace PaviseApp
     {
         internal static int RunOptimizationSafetyTests()
         {
-            Action[] tests = { CacheWarmIsRetired, CacheWarmLegacyLibraryMigrates,
-                LaneDefaultsOnAndSaturationWins, WorkingSetTrimRequiresBothPressureSignals,
+            Action[] tests = { CacheWarmLegacyKeyStaysRetired, CacheWarmLegacyLibraryMigrates,
+                LaneDefaultsOnAndKeepsPriorityWhenSaturated, WorkingSetTrimRequiresBothPressureSignals,
                 ProfileCommitRetriesOnlySafeErrors, ProfileCommitRealLockRecovers,
                 ProfileCommitPermanentErrorsRemainFatal, ProfileBusyEditsRollBack,
-                ProfileBusyAddsRollBack, SaturationReleasesLaneAndRejectsLateWork,
+                ProfileBusyAddsRollBack, SaturationKeepsCurrentLaneButReleasesStaleLane,
+                LanePolicyChangeReleasesAndRetries,
                 ProfileCommitCancellationIsNotFatal, LibraryIgnoreBusyPairRollsBack,
                 LibraryIgnoreSecondaryFailurePreservesBoth, LibraryIgnoreRecoveryBlocksThenRetries,
                 LibraryIgnoreRestartRecoversBothOutcomes, LibraryIgnoreUnknownStateIsPreserved,
                 LibraryIgnoreInvalidInputsDoNotCreateReceipt, LibraryIgnorePendingDoesNotSeedPrimary,
-                RestrictedCpuDomainCannotPromote, PowerYieldRejectsInvalidTelemetry,
+                CorePlacementDoesNotGatePriority, PowerYieldRejectsInvalidTelemetry,
                 PowerYieldMissingTelemetryRestoresThroughRunner, AutoGpuProtectsVisibleImages,
                 VramProbeIsSingleFlightAndSessionBound, NormalPriorityDoesNotPollLaneReceipt,
                 AutoGpuRevalidatesUnderCommitLock, AutoGpuSharedHostsAreNotFamilies,
                 AutoGpuCommitSkipsContendedLocks, AutoGpuCommitDrainsAcrossBoundaries,
-                BoostDomainEvidenceIsSessionAndIdentityBound };
+                BoostPriorityIsSessionAndIdentityBound };
             foreach (Action test in tests)
             {
                 Settings.UseTransientStoreForCurrentProcess(); Lang.Init(); test();
@@ -36,16 +37,26 @@ namespace PaviseApp
             return tests.Length;
         }
 
-        private static void RestrictedCpuDomainCannotPromote()
+        private static void CorePlacementDoesNotGatePriority()
         {
-            foreach (bool lane in new[] { false, true })
+            SafetyFolder(delegate(string folder)
             {
-                Eq(Native.NORMAL_PRIORITY_CLASS, GameMode.BoostPriorityTarget(false, lane, 4, 255, false));
-                Eq(Native.NORMAL_PRIORITY_CLASS, GameMode.BoostPriorityTarget(false, lane, 255, 255, true));
-                Eq(Native.NORMAL_PRIORITY_CLASS, GameMode.BoostPriorityTarget(false, lane, 0, 0, false));
-                Eq(Native.NORMAL_PRIORITY_CLASS, GameMode.BoostPriorityTarget(true, lane, 255, 255, false));
-                Eq(Native.HIGH_PRIORITY_CLASS, GameMode.BoostPriorityTarget(false, lane, 255, 255, false));
-            }
+                RenderLane.ResetShutdownForTest();
+                var mode = new GameMode(folder, new SuppressionCore());
+                object pass = BoundaryBoostPass(mode, 101, 1000);
+                foreach (ulong mask in new[] { 0UL, 1UL, (ulong)BoundaryField(mode, "allMask") })
+                {
+                    pass.GetType().GetField("DesiredMask").SetValue(pass, mask);
+                    pass.GetType().GetField("UseStrict").SetValue(pass, true);
+                    Eq(true, (bool)BoundaryCall(mode, "RefreshBoostPriority", pass));
+                    BoundaryPriority(pass, Native.HIGH_PRIORITY_CLASS);
+                }
+                // 无需 affinity / CPU Sets 读回也能决定 High；持续饱和且无 lane 时仍须回退。
+                pass.GetType().GetField("CpuSaturated").SetValue(pass, true);
+                Eq(true, (bool)BoundaryCall(mode, "RefreshBoostPriority", pass));
+                BoundaryPriority(pass, Native.NORMAL_PRIORITY_CLASS);
+                RenderLane.ResetShutdownForTest();
+            });
         }
 
         private static void NormalPriorityDoesNotPollLaneReceipt()
@@ -56,6 +67,7 @@ namespace PaviseApp
                 var mode = new GameMode(folder, new SuppressionCore());
                 Type passType = typeof(GameMode).GetNestedType("BoostPass", BindingFlags.NonPublic);
                 object pass = Activator.CreateInstance(passType, true);
+                passType.GetField("LaneAllowed").SetValue(pass, true);
                 MethodInfo target = typeof(GameMode).GetMethod("SetBoostPriorityTarget", BindingFlags.Instance | BindingFlags.NonPublic);
                 Action<string> oldRead = Settings.BeforeStrictStringReadForTest;
                 int reads = 0;
@@ -119,13 +131,13 @@ namespace PaviseApp
                     var missing = new PowerBudgetYield(); missing.Begin(0, true, proxy);
                     for (int s = 2; s <= 60; s += 2)
                         Eq(YieldAction.None, missing.Advance(s * TimeSpan.TicksPerSecond, invalid, 40, 45, 150));
-                    Eq(YieldStage.Skipped, missing.Stage);
+                    Eq(YieldStage.Observing, missing.Stage);
                     foreach (bool held in new[] { false, true })
                     {
                         var state = SafetyYield(proxy, held);
                         int start = held ? 36 : 20;
-                        for (int delta = 2; delta <= 10; delta += 2)
-                            Eq(delta == 10 ? YieldAction.Revert : YieldAction.None,
+                        for (int delta = 2; delta <= 60; delta += 2)
+                            Eq(delta == 60 ? YieldAction.Revert : YieldAction.None,
                                 state.Advance((start + delta) * TimeSpan.TicksPerSecond, 97, invalid, 41, 140));
                         Eq(YieldStage.Reverted, state.Stage);
                         Eq(YieldVerdict.Inconclusive, state.Verdict);
@@ -138,10 +150,16 @@ namespace PaviseApp
                 var state = SafetyYield(proxy, false);
                 for (int s = 22; s <= 30; s += 2)
                     state.Advance(s * TimeSpan.TicksPerSecond, 97, 40, double.NaN, double.PositiveInfinity);
+                Eq(YieldStage.Engaged, state.Stage);
+                for (int s = 32; s <= 44; s += 2)
+                    state.Advance(s * TimeSpan.TicksPerSecond, 97, 40, double.NaN, double.PositiveInfinity);
                 Eq(YieldStage.Reverted, state.Stage);
                 Eq(YieldVerdict.Inconclusive, state.Verdict);
                 state = SafetyYield(proxy, false);
-                Eq(YieldAction.Revert, state.Advance(31 * TimeSpan.TicksPerSecond, 97, 40, 41, 140));
+                Eq(YieldAction.None, state.Advance(31 * TimeSpan.TicksPerSecond, 97, 40, 41, 140));
+                Eq(YieldStage.Engaged, state.Stage);
+                state = SafetyYield(proxy, false);
+                Eq(YieldAction.Revert, state.Advance(80 * TimeSpan.TicksPerSecond, 97, 40, 41, 140));
                 // 中间缺一次测 不能把后面完整有效的验证样本判成坏的
                 state = SafetyYield(proxy, false);
                 state.Advance(22 * TimeSpan.TicksPerSecond, -1, double.NaN, -1, -1);
@@ -175,11 +193,11 @@ namespace PaviseApp
                                 YieldAction action; YieldVerdict verdict;
                                 Func<bool> apply = delegate { applied++; receipt = true; return true; };
                                 Func<bool> restore = delegate { restored++; if (restoreWorks) receipt = false; return restoreWorks; };
-                                for (int s = 2; s <= 28; s += 2)
+                                for (int s = 2; s <= 78; s += 2)
                                     Eq(true, PowerBudgetYieldRunner.ProcessSample(generation,
                                         s * TimeSpan.TicksPerSecond, s <= 20 ? 98 : -1, 40, 45, -1,
                                         apply, restore, out action, out verdict));
-                                Eq(false, PowerBudgetYieldRunner.ProcessSample(generation, 30 * TimeSpan.TicksPerSecond,
+                                Eq(false, PowerBudgetYieldRunner.ProcessSample(generation, 80 * TimeSpan.TicksPerSecond,
                                     -1, 40, 41, -1, apply, restore, out action, out verdict));
                                 Eq(YieldAction.Revert, action); Eq(YieldVerdict.Inconclusive, verdict);
                                 Eq(1, applied); Eq(1, restored); Eq(!restoreWorks, receipt);
@@ -191,7 +209,7 @@ namespace PaviseApp
                         if (failure != null) throw new InvalidOperationException("runner sample dispatch", failure);
                         Eq(true, PowerBudgetYieldRunner.CloseForShutdown(3000));
                         YieldAction late; YieldVerdict ignored;
-                        Eq(false, PowerBudgetYieldRunner.ProcessSample(mine, 32 * TimeSpan.TicksPerSecond,
+                        Eq(false, PowerBudgetYieldRunner.ProcessSample(mine, 82 * TimeSpan.TicksPerSecond,
                             98, 40, 41, -1, delegate { throw new Exception("late apply"); },
                             delegate { throw new Exception("late restore"); }, out late, out ignored));
                     }
@@ -315,14 +333,14 @@ namespace PaviseApp
             return GameProfileStore.NewProfile("safety-fixture", folder, Path.Combine(folder, "Game.exe"));
         }
 
-        private static void CacheWarmIsRetired()
+        private static void CacheWarmLegacyKeyStaysRetired()
         {
             Eq(null, PolicyCatalog.ItemOf("GmCacheWarm"));
             Eq(null, PolicyCatalog.Canonical("GmCacheWarm", "1"));
             Eq(true, GameProfile.IsRetiredOverrideKey("GmCacheWarm"));
             foreach (string key in ExtremeMode.SessionPolicyKeys) Eq(false, key == "GmCacheWarm");
             Eq(null, typeof(GameMode).Assembly.GetType("PaviseApp.CacheWarm"));
-            Eq(null, typeof(GameMode).GetProperty("CacheWarmOn"));
+            Eq(true, typeof(GameMode).GetProperty("CacheWarmOn") != null);
             SafetyFolder(delegate(string folder)
             {
                 Settings.Save("GmCacheWarm", true);
@@ -352,12 +370,12 @@ namespace PaviseApp
             });
         }
 
-        private static void LaneDefaultsOnAndSaturationWins()
+        private static void LaneDefaultsOnAndKeepsPriorityWhenSaturated()
         {
             Eq("1", PolicyCatalog.ItemOf(PolicyCatalog.KeyRenderLane).Fallback);
             Eq(true, PolicyResolver.Global().RenderLane);
             Eq(Native.NORMAL_PRIORITY_CLASS, GameMode.BoostPriorityTarget(true, false));
-            Eq(Native.NORMAL_PRIORITY_CLASS, GameMode.BoostPriorityTarget(true, true));
+            Eq(Native.HIGH_PRIORITY_CLASS, GameMode.BoostPriorityTarget(true, true));
             Eq(Native.HIGH_PRIORITY_CLASS, GameMode.BoostPriorityTarget(false, false));
             Eq(Native.HIGH_PRIORITY_CLASS, GameMode.BoostPriorityTarget(false, true));
             bool laneForcedByExtreme = false;
@@ -469,17 +487,21 @@ namespace PaviseApp
             });
         }
 
-        private static void SaturationReleasesLaneAndRejectsLateWork()
+        private static void SaturationKeepsCurrentLaneButReleasesStaleLane()
         {
             SafetyFolder(delegate(string folder)
             {
+                var topology = CpuTopology.CaptureTopologyForTest();
                 const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
-                var mode = new GameMode(folder, new SuppressionCore());
-                mode.RenderLaneOn = true;
-                RenderLane.ResetShutdownForTest();
-                RenderLane.ConfigureMutationBoundary(null, null);
                 try
                 {
+                    CpuTopology.InjectTopologyForTest(255, new ulong[] { 1, 2, 4, 8, 16, 32, 64, 128 },
+                        new ulong[0], 255, 0, 0, 0, false, false);
+                    var mode = new GameMode(folder, new SuppressionCore());
+                    mode.Preset = PerformancePreset.Competitive;
+                    mode.RenderLaneOn = true;
+                    RenderLane.ResetShutdownForTest();
+                    RenderLane.ConfigureMutationBoundary(null, null);
                     const int pid = 2000000001, tid = 2000000002;
                     const long creation = 1234;
                     int priority = 0, restores = 0;
@@ -493,28 +515,130 @@ namespace PaviseApp
                     int generation = RenderLane.ShutdownGenerationForTest;
                     Eq(RenderLane.PinOutcome.Pinned, RenderLane.TryPinForTest(pid, creation, tid, generation,
                         delegate { return priority; }, delegate(int value) { priority = value; return true; }));
-                    var saturation = (CpuSaturation)typeof(GameMode).GetField("cpuSaturation", flags).GetValue(mode);
-                    saturation.Update(1, 0); Eq(true, saturation.Update(1, CpuSaturation.EnterHoldTicks));
                     Type passType = typeof(GameMode).GetNestedType("BoostPass", BindingFlags.NonPublic);
-                    object pass = Activator.CreateInstance(passType, true);
-                    passType.GetField("RendererPid").SetValue(pass, pid);
-                    passType.GetField("RendererCreation").SetValue(pass, creation);
-                    MethodInfo resolve = typeof(GameMode).GetMethod("ResolvePriorityTarget", flags);
-                    resolve.Invoke(mode, new[] { pass });
+                    object current = BoundaryBoostPass(mode, pid, creation);
+                    passType.GetField("CpuSaturated").SetValue(current, true);
+                    Eq(true, (bool)BoundaryCall(mode, "RefreshBoostPriority", current));
+                    BoundaryPriority(current, Native.HIGH_PRIORITY_CLASS);
+                    Eq(0, restores); Eq(true, RenderLane.IsActiveFor(pid, creation));
+
+                    // 旧 renderer 的 lane 不能替新身份豁免饱和回退；失败的清收必须继续重试。
+                    object pass = BoundaryBoostPass(mode, pid, creation + 1);
+                    passType.GetField("CpuSaturated").SetValue(pass, true);
+                    Eq(true, (bool)BoundaryCall(mode, "RefreshBoostPriority", pass));
                     Eq(Native.NORMAL_PRIORITY_CLASS, (uint)passType.GetField("PriorityTarget").GetValue(pass));
                     Eq(1, restores); Eq(true, RenderLane.HasResidue());
                     int lateWrites = 0;
                     Eq(false, RenderLane.RunShutdownMutationForTest(generation, delegate { lateWrites++; return true; }));
                     Eq(0, lateWrites);
                     canRestore = true;
-                    resolve.Invoke(mode, new[] { pass });
+                    Eq(true, (bool)BoundaryCall(mode, "RefreshBoostPriority", pass));
                     Eq(2, restores); Eq(0, priority); Eq(false, RenderLane.HasResidue());
                     Eq(false, RenderLane.IsActiveFor(pid, creation));
                     typeof(GameMode).GetMethod("EngageLaneAndReport", flags).Invoke(mode,
-                        new object[] { IntPtr.Zero, null, pid, creation, pass, false, false, false, false, "" });
-                    Eq(LaneState.Idle, RenderLane.StateFor(pid, creation));
+                        new object[] { IntPtr.Zero, null, pid, creation + 1, pass, false, false, false, false, "" });
+                    Eq(LaneState.Idle, RenderLane.StateFor(pid, creation + 1));
                 }
-                finally { RenderLane.ResetShutdownForTest(); RenderLane.ConfigureMutationBoundary(null, null); }
+                finally
+                {
+                    RenderLane.ResetShutdownForTest(); RenderLane.ConfigureMutationBoundary(null, null);
+                    CpuTopology.RestoreTopologyForTest(topology);
+                }
+            });
+        }
+
+        private static void LanePolicyChangeReleasesAndRetries()
+        {
+            SafetyFolder(delegate(string folder)
+            {
+                var topology = CpuTopology.CaptureTopologyForTest();
+                Action<string> previousRead = Settings.BeforeStrictStringReadForTest;
+                try
+                {
+                    CpuTopology.InjectTopologyForTest(255, new ulong[] { 1, 2, 4, 8, 16, 32, 64, 128 },
+                        new ulong[0], 255, 0, 0, 0, false, false);
+                    foreach (string change in new[] { "handheld", "disabled", "protected" })
+                    foreach (bool saturated in new[] { false, true })
+                    {
+                        Settings.UseTransientStoreForCurrentProcess();
+                        RenderLane.ResetShutdownForTest();
+                        var mode = new GameMode(folder, new SuppressionCore());
+                        mode.Preset = PerformancePreset.Competitive;
+                        mode.RenderLaneOn = true;
+                        mode.ProbeSessionPolicyApply(null); // 当前会话跟随全局切档/开关。
+                        RenderLane.ConfigureMutationBoundary(null, null);
+                        const int pid = 2000000001, tid = 2000000002;
+                        const long creation = 1234;
+                        int priority = 0, restores = 0;
+                        bool canRestore = false;
+                        RenderLane.RestoreThreadForTest = delegate(int p, long c, int t, int original)
+                        {
+                            Eq(pid, p); Eq(creation, c); Eq(tid, t); restores++;
+                            if (!canRestore) return false;
+                            priority = original; return true;
+                        };
+                        int generation = RenderLane.ShutdownGenerationForTest;
+                        Eq(RenderLane.PinOutcome.Pinned, RenderLane.TryPinForTest(pid, creation, tid, generation,
+                            delegate { return priority; }, delegate(int value) { priority = value; return true; }));
+                        object pass = BoundaryBoostPass(mode, pid, creation);
+                        pass.GetType().GetField("CpuSaturated").SetValue(pass, saturated);
+                        Eq(true, (bool)BoundaryCall(mode, "RefreshBoostPriority", pass));
+                        BoundaryPriority(pass, Native.HIGH_PRIORITY_CLASS);
+                        Eq(0, restores);
+
+                        if (change == "handheld") mode.Preset = PerformancePreset.Handheld;
+                        else if (change == "disabled") mode.RenderLaneOn = false;
+                        else pass.GetType().GetField("WriteDenied").SetValue(pass, true);
+                        int previousRestores = restores; // 全局关开关会先尝试一次；失败后扫描仍要重试。
+                        Eq(true, (bool)BoundaryCall(mode, "RefreshBoostPriority", pass));
+                        Eq(previousRestores + 1, restores);
+                        Eq(false, (bool)pass.GetType().GetField("LaneAllowed").GetValue(pass));
+                        BoundaryPriority(pass, saturated ? Native.NORMAL_PRIORITY_CLASS : Native.HIGH_PRIORITY_CLASS);
+                        Eq(true, RenderLane.IsActiveFor(pid, creation)); // 故意模拟还原被拒。
+                        Eq(true, RenderLane.HasResidue());
+                        int lateWrites = 0;
+                        Eq(false, RenderLane.RunShutdownMutationForTest(generation,
+                            delegate { lateWrites++; return true; }));
+                        Eq(0, lateWrites);
+
+                        canRestore = true;
+                        Eq(true, (bool)BoundaryCall(mode, "RefreshBoostPriority", pass));
+                        Eq(previousRestores + 2, restores);
+                        Eq(0, priority); Eq(false, RenderLane.IsActiveFor(pid, creation));
+                        Eq(false, RenderLane.HasResidue());
+                        FamilyPolicyInvoke(mode, "EngageLaneAndReport", IntPtr.Zero, null,
+                            pid, creation, pass, false, false, false, false, "");
+                        Eq(LaneState.Idle, RenderLane.StateFor(pid, creation));
+                        int reads = 0;
+                        Settings.BeforeStrictStringReadForTest = delegate(string key) { if (key == "RenderLane") reads++; };
+                        for (int i = 0; i < 10; i++)
+                            Eq(true, (bool)BoundaryCall(mode, "RefreshBoostPriority", pass));
+                        Eq(0, reads); // 策略仍关闭时，成功清收后不重复查账。
+                        Settings.BeforeStrictStringReadForTest = previousRead;
+
+                        // 同一局重新允许后必须能再次建立，并在下一次失去资格时正确清收。
+                        mode.Preset = PerformancePreset.Competitive; mode.RenderLaneOn = true;
+                        pass.GetType().GetField("WriteDenied").SetValue(pass, false);
+                        pass.GetType().GetField("CpuSaturated").SetValue(pass, false);
+                        Eq(true, (bool)BoundaryCall(mode, "RefreshBoostPriority", pass));
+                        Eq(true, (bool)pass.GetType().GetField("LaneAllowed").GetValue(pass));
+                        generation = RenderLane.ShutdownGenerationForTest;
+                        Eq(RenderLane.PinOutcome.Pinned, RenderLane.TryPinForTest(pid, creation, tid, generation,
+                            delegate { return priority; }, delegate(int value) { priority = value; return true; }));
+                        mode.Preset = PerformancePreset.Handheld;
+                        Eq(true, (bool)BoundaryCall(mode, "RefreshBoostPriority", pass));
+                        Eq(previousRestores + 3, restores);
+                        Eq(false, RenderLane.IsActiveFor(pid, creation));
+                        Eq(false, RenderLane.HasResidue());
+                    }
+                }
+                finally
+                {
+                    Settings.BeforeStrictStringReadForTest = previousRead;
+                    Settings.SaveStr("RenderLane", "");
+                    RenderLane.ResetShutdownForTest(); RenderLane.ConfigureMutationBoundary(null, null);
+                    CpuTopology.RestoreTopologyForTest(topology);
+                }
             });
         }
 

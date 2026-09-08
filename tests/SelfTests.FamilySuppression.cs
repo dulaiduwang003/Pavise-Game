@@ -68,6 +68,12 @@ namespace PaviseApp
                 FamilyObservationAsyncRejectsChangedActiveIdentity,
                 FamilyObservationAsyncRejectsChangedFile,
                 FamilyObservationSharedSamplingGate,
+                FamilyObservationNewTargetResetsCooldown,
+                FamilyObservationPendingWorkerDoesNotDelayNewTarget,
+                FamilyObservationPollingIsBounded,
+                FamilyObservationLogsSampleOutcome,
+                FamilyObservationRapidTargetChangesRemainBounded,
+                FamilyObservationSlowLogDoesNotBlockSampling,
                 FamilyProtectionOtherGameOptInDoesNotDisable,
                 FamilyProtectionSharedAncestorDoesNotExpandSiblings,
                 FamilyProtectionCrossRootDescendant,
@@ -928,6 +934,205 @@ namespace PaviseApp
             }
         }
 
+        private static void FamilyObservationRapidTargetChangesRemainBounded(string root)
+        {
+            foreach (bool foreground in new[] { true, false })
+                using (var f = new FamilyObservationFixture(root, "rapid-targets-" + foreground, false))
+                {
+                    string oldLog = Logger.LogPath;
+                    try
+                    {
+                        Logger.LogPath = Path.Combine(f.Library.DirectoryPath, "rapid.log");
+                        f.Utilization = 0;
+                        for (int i = 0; i < 20; i++)
+                        {
+                            var target = RendererHandoffTracker.Copy(f.Target);
+                            target.RendererPid += i % 2;
+                            FamilyObservationSelectFixtureTarget(f, target);
+                            if (!foreground) f.Mode.RendererTestForeground = delegate { return 0; };
+                            FamilyPolicyInvoke(f.Mode, "MaybeObserveRendererActivity", target);
+                            f.FinishSample();
+                        }
+                        Eq(foreground ? 1 : 0, f.Calls);
+                        Eq(foreground ? 2 : 1, File.ReadAllLines(Logger.LogPath).Length);
+                        if (foreground)
+                        {
+                            FamilyObservationSelectFixtureTarget(f, f.Target);
+                            f.NowMs += 9999;
+                            f.Observe(); f.FinishSample();
+                            Eq(1, f.Calls);
+                            f.NowMs++;
+                            f.Observe(); f.FinishSample();
+                            Eq(2, f.Calls); // 全局间隔到期后新目标立即采样，不承接旧目标的长退避。
+                        }
+                    }
+                    finally { Logger.LogPath = oldLog; }
+                }
+        }
+
+        private static void FamilyObservationNewTargetResetsCooldown(string root)
+        {
+            foreach (string change in new[] { "pid", "pid-reused", "profile", "session" })
+                using (var f = new FamilyObservationFixture(root, "fresh-observation-" + change, false))
+                {
+                    f.Utilization = 0;
+                    f.Observe(); f.WaitForSample(); f.FinishSample();
+                    // 模拟旧目标已经进入最长退避，换目标必须立即得到一次采样机会。
+                    long deadline = (long)FamilyPolicyGetField(f.Mode, "rendererActivityNextMs") + 120000L;
+                    FamilyPolicySetField(f.Mode, "rendererActivityNextMs", deadline);
+                    var target = RendererHandoffTracker.Copy(f.Target);
+                    if (change == "pid") target.RendererPid++;
+                    if (change == "pid-reused") target.RendererCreation++;
+                    if (change == "profile")
+                    {
+                        var previous = RendererHandoffTracker.Copy(f.Target);
+                        previous.Profile.Id = "old-profile";
+                        FamilyPolicySetField(f.Mode, "rendererActivityTarget", previous);
+                    }
+                    if (change == "session") FamilyPolicyInvoke(f.Mode, "InvalidateRendererHandoff");
+                    f.NowMs += 10000;
+                    FamilyObservationSelectFixtureTarget(f, target);
+                    f.Utilization = 42;
+                    FamilyPolicyInvoke(f.Mode, "MaybeObserveRendererActivity", target);
+                    f.FinishSample();
+                    Eq(2, f.Calls);
+                    Eq(1, (int)FamilyPolicyGetField(f.Mode, "rendererActivityAttempts"));
+                    Eq(true, f.Mode.HasRendererObservation(target.Profile));
+                }
+        }
+
+        private static void FamilyObservationSelectFixtureTarget(FamilyObservationFixture f, GameDetection target)
+        {
+            FamilyPolicySetField(f.Mode, "activeDetection", RendererHandoffTracker.Copy(target));
+            f.Mode.RendererTestForeground = delegate { return target.RendererPid; };
+            f.Mode.RendererTestIdentity = delegate(GameDetection value)
+                { return RendererHandoffTracker.SameIdentity(value, target); };
+        }
+
+        private static void FamilyObservationPendingWorkerDoesNotDelayNewTarget(string root)
+        {
+            using (var f = new FamilyObservationFixture(root, "pending-old-observation", false))
+            {
+                f.Observe(); f.WaitForSample();
+                var target = RendererHandoffTracker.Copy(f.Target);
+                target.RendererPid++;
+                FamilyObservationSelectFixtureTarget(f, target);
+                FamilyPolicyInvoke(f.Mode, "MaybeObserveRendererActivity", target);
+                Eq(1, f.Calls); // 旧采样未退出前不能并发再开 GPU 查询。
+                f.FinishSample();
+                Eq(false, f.Mode.HasRendererObservation(target.Profile));
+                f.NowMs += 10000;
+                FamilyPolicyInvoke(f.Mode, "MaybeObserveRendererActivity", target);
+                f.FinishSample();
+                Eq(2, f.Calls);
+                Eq(true, f.Mode.HasRendererObservation(target.Profile));
+            }
+        }
+
+        private static void FamilyObservationPollingIsBounded(string root)
+        {
+            string oldLog = Logger.LogPath;
+            try
+            {
+                foreach (string state in new[] { "foreground", "gpu-busy", "cooldown", "recorded" })
+                    using (var f = new FamilyObservationFixture(root, "observation-polling-" + state, false))
+                    {
+                        Logger.LogPath = Path.Combine(f.Library.DirectoryPath, "observation.log");
+                        if (state == "foreground") f.ForegroundPid = 0;
+                        if (state == "gpu-busy") FamilyPolicySetField(f.Mode, "rendererGpuSamplingBusy", 1);
+                        if (state == "cooldown" || state == "recorded")
+                        {
+                            if (state == "cooldown") f.Utilization = 0;
+                            f.Observe(); f.WaitForSample(); f.FinishSample();
+                        }
+                        else { f.Observe(); f.FinishSample(); }
+                        int calls = f.Calls;
+                        long logBytes = new FileInfo(Logger.LogPath).Length;
+                        for (int i = 0; i < 10000; i++) f.Observe();
+                        Eq(calls, f.Calls); // 高频状态检查不会触发重复采样。
+                        Eq(logBytes, new FileInfo(Logger.LogPath).Length); // 等待和冷却期间不会逐帧刷日志。
+                        if (state == "gpu-busy") FamilyPolicySetField(f.Mode, "rendererGpuSamplingBusy", 0);
+                    }
+            }
+            finally { Logger.LogPath = oldLog; }
+        }
+
+        private static void FamilyObservationLogsSampleOutcome(string root)
+        {
+            string oldLog = Logger.LogPath;
+            try
+            {
+                foreach (string outcome in new[] { "GpuUnavailable", "PidMissing", "BelowThreshold",
+                    "NearThreshold", "ForegroundChanged", "IdentityUnavailable", "FileUnavailable", "FileChanged", "SaveFailed", "Error", "Recorded" })
+                    using (var f = new FamilyObservationFixture(root, "observation-reason-" + outcome, false))
+                    {
+                        Logger.LogPath = Path.Combine(f.Library.DirectoryPath, "observation.log");
+                        f.ReturnNull = outcome == "GpuUnavailable";
+                        f.ReturnMissing = outcome == "PidMissing";
+                        f.ThrowSample = outcome == "Error";
+                        if (outcome == "BelowThreshold") f.Utilization = 9.99;
+                        if (outcome == "NearThreshold") f.Utilization = 9.9999999;
+                        if (outcome == "FileUnavailable") File.Delete(f.Target.RendererPath);
+                        FileStream cacheLock = null;
+                        try
+                        {
+                            if (outcome == "SaveFailed")
+                                cacheLock = new FileStream(Path.Combine(f.Library.DirectoryPath, RendererObservationStore.FileName),
+                                    FileMode.Create, FileAccess.ReadWrite, FileShare.None);
+                            f.Observe();
+                            if (outcome != "FileUnavailable") f.WaitForSample();
+                            if (outcome == "ForegroundChanged") f.ForegroundPid = 0;
+                            if (outcome == "IdentityUnavailable") f.IdentityValid = false;
+                            if (outcome == "FileChanged") File.AppendAllText(f.Target.RendererPath, "changed");
+                            f.FinishSample();
+                        }
+                        finally { if (cacheLock != null) cacheLock.Dispose(); }
+                        string log = File.ReadAllText(Logger.LogPath);
+                        Eq(true, log.Contains("[reason=Started]"));
+                        Eq(true, log.Contains("[reason=" + (outcome == "NearThreshold" ? "BelowThreshold" : outcome) + "]"));
+                        Eq(true, log.Contains("pid " + f.Target.RendererPid));
+                        Eq(true, log.Contains("profile=" + f.Target.Profile.Id));
+                        if (outcome == "BelowThreshold") Eq(true, log.Contains("gpu3d=9.99%"));
+                        if (outcome == "NearThreshold") Eq(true, log.Contains("gpu3d=9.9999999%"));
+                        if (outcome == "ForegroundChanged") Eq(true, log.Contains("foreground=0"));
+                        Eq(outcome == "Recorded", f.Mode.HasRendererObservation(f.Target.Profile));
+                    }
+            }
+            finally { Logger.LogPath = oldLog; }
+        }
+
+        private static void FamilyObservationSlowLogDoesNotBlockSampling(string root)
+        {
+            using (var f = new FamilyObservationFixture(root, "blocked-log", false))
+            {
+                object logGate = typeof(Logger).GetField("lk", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+                lock (logGate)
+                {
+                    Task request = Task.Factory.StartNew(delegate { f.Observe(); });
+                    Eq(true, request.Wait(1000)); // 日志锁不能卡住调用观测的检测线程。
+                    f.WaitForSample(); // 真正的采样也不能等日志先落盘。
+                    f.SampleReady.Set();
+                    var timer = System.Diagnostics.Stopwatch.StartNew();
+                    while ((int)FamilyPolicyGetField(f.Mode, "rendererActivityBusy") != 0 && timer.ElapsedMilliseconds < 3000)
+                        Thread.Sleep(1);
+                    Eq(0, (int)FamilyPolicyGetField(f.Mode, "rendererActivityBusy"));
+                    Eq(0, (int)FamilyPolicyGetField(f.Mode, "rendererGpuSamplingBusy"));
+                    for (int i = 0; i < 50; i++)
+                        FamilyPolicyInvoke(f.Mode, "TraceRendererObservation", f.Target, "SamplingBusy", "synthetic");
+                    object traceGate = FamilyPolicyGetField(f.Mode, "rendererObservationTraceGate");
+                    lock (traceGate)
+                    {
+                        var queued = (Queue<string>)FamilyPolicyGetField(f.Mode, "rendererObservationTraceLines");
+                        Eq(true, queued.Count <= 8);
+                        Eq(1, (int)FamilyPolicyGetField(f.Mode, "rendererObservationTraceBusy"));
+                    }
+                }
+                f.FinishSample();
+                Eq(true, f.Mode.HasRendererObservation(f.Target.Profile));
+                Eq(0, (int)FamilyPolicyGetField(f.Mode, "rendererObservationTraceBusy"));
+            }
+        }
+
         private static string FamilyObservationLearnNewTarget(FamilyPolicyFixture fixture)
         {
             string replacement = Path.Combine(fixture.DirectoryPath, "client", "ActualRender.exe");
@@ -957,8 +1162,9 @@ namespace PaviseApp
             internal volatile bool IdentityValid = true;
             internal volatile int ForegroundPid;
             internal int Calls;
+            internal long NowMs = 100000;
             internal double Utilization = 42;
-            internal bool ReturnNull, ReturnMissing;
+            internal bool ReturnNull, ReturnMissing, ThrowSample;
 
             internal FamilyObservationFixture(string root, string name, bool force)
             {
@@ -970,6 +1176,7 @@ namespace PaviseApp
                 Library.EnableFakePolicyGate();
                 FamilyPolicySetField(Mode, "activeDetection", RendererHandoffTracker.Copy(Target));
                 Mode.RendererTestForeground = delegate { return ForegroundPid; };
+                Mode.RendererTestObservationNow = delegate { return NowMs; };
                 Mode.RendererTestIdentity = delegate(GameDetection value)
                 { return IdentityValid && RendererHandoffTracker.SameIdentity(value, Target); };
                 Mode.RendererTestGpu = delegate { throw new Exception("Unexpected handoff GPU sampler in badge fixture."); };
@@ -978,6 +1185,7 @@ namespace PaviseApp
                     Interlocked.Increment(ref Calls);
                     SampleStarted.Set();
                     if (!SampleReady.WaitOne(3000)) throw new Exception("Fake activity sample was not released.");
+                    if (ThrowSample) throw new InvalidOperationException("Synthetic GPU sample failure");
                     if (ReturnNull || canceled()) return null;
                     var samples = new Dictionary<int, double>();
                     if (!ReturnMissing) samples[value.RendererPid] = Utilization;
@@ -992,9 +1200,11 @@ namespace PaviseApp
             private void Drain()
             {
                 var clock = System.Diagnostics.Stopwatch.StartNew();
-                while ((int)FamilyPolicyGetField(Mode, "rendererActivityBusy") != 0 && clock.ElapsedMilliseconds < 3000)
+                while (((int)FamilyPolicyGetField(Mode, "rendererActivityBusy") != 0
+                    || (int)FamilyPolicyGetField(Mode, "rendererObservationTraceBusy") != 0) && clock.ElapsedMilliseconds < 3000)
                     Thread.Sleep(1);
                 Eq(0, (int)FamilyPolicyGetField(Mode, "rendererActivityBusy"));
+                Eq(0, (int)FamilyPolicyGetField(Mode, "rendererObservationTraceBusy"));
             }
             public void Dispose()
             {

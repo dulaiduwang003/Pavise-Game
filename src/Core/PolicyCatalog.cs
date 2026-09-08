@@ -11,7 +11,8 @@ namespace PaviseApp
         Bool = 0,
         Enum = 1,
         Choice = 2,
-        MaskHex = 3
+        MaskHex = 3,
+        CorePlan = 4
     }
 
     internal sealed class PolicyItem
@@ -43,7 +44,7 @@ namespace PaviseApp
         public const string KeyBoost = "GmBoost";
         public const string KeyAggressive = "GmAggressive";
         public const string KeyGpuDemote = "GmGpuDemote";
-        // 带 V2 后缀 不继承 1.x GmSqueezeBg 那份默认开的旧值 实验项默认关
+        // 已退役的重压键，仅用于屏蔽旧设置和清理逐游戏覆盖
         public const string KeyHeavySqueeze = "GmHeavySqueezeV2";
         public const string KeyAdaptiveEscalate = "GmAdaptiveEscalateV1";
         public const string KeyRenderLane = "GmRenderLane";
@@ -55,6 +56,7 @@ namespace PaviseApp
         // 独立的开关 绝不继承已退役选项留下的 true 值
         public const string KeyDisableCpuIdle = "GmDisableCpuIdleV2";
         public const string KeyStandbyCleaner = "GmStandbyCleanerV2";
+        public const string KeyCacheWarm = "GmCacheWarmV2";
         public const string KeyPauseDl = "GmPauseDl";
         public const string KeyPauseUpdate = "GmPauseUpdate";
         public const string KeyPauseMaintenance = "GmPauseMaintenanceV1";
@@ -95,16 +97,17 @@ namespace PaviseApp
             new PolicyItem(KeyBoost, PolicyValueKind.Bool, "1", "gm.boost", GroupBackground, null),
             new PolicyItem(KeyAggressive, PolicyValueKind.Bool, "0", "gm.aggressive", GroupBackground, null),
             new PolicyItem(KeyGpuDemote, PolicyValueKind.Bool, "0", "gm.gpudemote", GroupBackground, null),
-            new PolicyItem(KeyHeavySqueeze, PolicyValueKind.Bool, "0", "gm.squeeze", GroupBackground, null),
             new PolicyItem(KeyAdaptiveEscalate, PolicyValueKind.Bool, "0", "gm.adaptive", GroupBackground, null),
             new PolicyItem(KeyRenderLane, PolicyValueKind.Bool, "1", "gm.lane", GroupBackground, null),
             new PolicyItem(KeyStrictCores, PolicyValueKind.Bool, "0", "cfg.strictcores", GroupCores, null),
             new PolicyItem(KeyCoreDomainAlt, PolicyValueKind.Bool, "0", "cfg.domainalt", GroupCores, null),
             new PolicyItem(KeyCoreMask, PolicyValueKind.MaskHex, "", "cfg.coremask", GroupCores, null),
+            new PolicyItem(CoreScheduling.Key, PolicyValueKind.CorePlan, "", "schedule.title", GroupCores, null),
             new PolicyItem(KeyPowerPlan, PolicyValueKind.Bool, "1", "plan.pick.title", GroupMemPower, null),
             new PolicyItem(KeyPowerYield, PolicyValueKind.Bool, "0", "gm.poweryield", GroupMemPower, null),
             new PolicyItem(KeyDisableCpuIdle, PolicyValueKind.Bool, "0", "gm.disablecpuidle", GroupMemPower, null),
             new PolicyItem(KeyStandbyCleaner, PolicyValueKind.Bool, "0", "gm.standbycleaner", GroupMemPower, null),
+            new PolicyItem(KeyCacheWarm, PolicyValueKind.Bool, "0", "gm.cachewarm", GroupMemPower, null),
             new PolicyItem(KeyPauseDl, PolicyValueKind.Bool, "1", "gm.pausedl", GroupEnvironment, null),
             new PolicyItem(KeyPauseUpdate, PolicyValueKind.Bool, "0", "gm.pausewu", GroupEnvironment, null),
             new PolicyItem(KeyPauseMaintenance, PolicyValueKind.Bool, "1", "gm.pausemaint", GroupEnvironment, null),
@@ -158,6 +161,9 @@ namespace PaviseApp
             string v = (value ?? "").Trim();
             switch (item.Kind)
             {
+                // 保留损坏/未来版本的原文，让执行层拒绝；不能清空后误继承全局落点。
+                case PolicyValueKind.CorePlan:
+                    return value ?? "";
                 case PolicyValueKind.Bool:
                     return v.Length == 0 || v == "0"
                         || v.Equals("false", StringComparison.OrdinalIgnoreCase) ? "0" : "1";

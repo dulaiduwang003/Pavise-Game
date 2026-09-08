@@ -19,7 +19,8 @@ namespace PaviseApp
                 UiAsyncSettingsRefreshesCoalesceWithoutLoss, UiAsyncSettingsInactiveAndRebuilt,
                 UiAsyncNormalWhitelistRefreshKeepsSelection, UiAsyncWhitelistRefreshesCoalesceWithoutLoss,
                 UiAsyncWhitelistInactiveAndRebuilt, UiAsyncDispatchFailuresReleaseSlots,
-                UiAsyncFailedReadsKeepKnownState };
+                UiAsyncFailedReadsKeepKnownState, UiAsyncNoticeLoadingAndRetry,
+                UiAsyncNoticeRebuildAndHiddenCompletion };
             int failed = 0;
             foreach (Action test in cases)
             {
@@ -285,6 +286,61 @@ namespace PaviseApp
             }
         }
 
+        private static void UiAsyncNoticeLoadingAndRetry()
+        {
+            for (int language = 0; language < 2; language++)
+                using (var f = new UiAsyncFixture())
+                {
+                    Lang.Cur = language;
+                    f.Call("ShowNotice"); f.Call("ShowNotice");
+                    UiAsyncCheck(f.NoticeRequests == 1 && !f.NoticeButton.Enabled
+                        && f.NoticeButton.Text == Lang.T("v230.notice.loading")
+                        && f.NoticeButton.AccessibleName == f.NoticeButton.Text,
+                        "notice click did not immediately show loading or allowed duplicate requests");
+                    f.NoticeDone(new UpdateResult { Ok = false });
+                    UiAsyncCheck(!f.NoticeButton.Enabled, "notice worker changed controls before UI dispatch");
+                    f.RunPost();
+                    UiAsyncCheck(f.NoticeButton.Enabled && f.NoticeButton.Text == Lang.T("v230.notice.entry")
+                        && f.NoticeMessage == "v230.notice.failed" && f.NoticeDisplays == 1,
+                        "failed request did not restore the button and report a retryable failure");
+
+                    f.Call("ShowNotice");
+                    var shown = new NoticeInfo { Id = "notice-test-1", Title = "Test", Body = "Body" };
+                    f.NoticeDone(new UpdateResult { Ok = true, Notice = shown }); f.RunPost();
+                    UiAsyncCheck(f.NoticeRequests == 2 && f.ShownNotice == shown
+                        && f.NoticeMessage == null && f.NoticeButton.Enabled
+                        && Settings.LoadStr("LastSeenNoticeId", "") == shown.Id && !f.NoticeButton.Dot,
+                        "retry did not display the fetched notice and mark only that notice as read");
+
+                    f.Call("ShowNotice"); f.NoticeDone(new UpdateResult { Ok = true }); f.RunPost();
+                    UiAsyncCheck(f.ShownNotice == null && f.NoticeMessage == "v230.notice.none"
+                        && !f.NoticeButton.Dot, "empty feed retained an old notice or looked like a network failure");
+                    f.Form.NoticeCheckForTest = delegate { throw new InvalidOperationException("mock dispatch failure"); };
+                    f.Call("ShowNotice");
+                    UiAsyncCheck(f.NoticeButton.Enabled && f.NoticeMessage == "v230.notice.failed",
+                        "request dispatch failure left the button stuck loading");
+                }
+        }
+
+        private static void UiAsyncNoticeRebuildAndHiddenCompletion()
+        {
+            using (var f = new UiAsyncFixture())
+            {
+                f.Call("ShowNotice");
+                RogLinkButton oldButton = f.NoticeButton;
+                f.ReplaceNoticeButton(); oldButton.Dispose();
+                Lang.Cur = 1; f.Call("RefreshNoticeButton");
+                UiAsyncCheck(!f.NoticeButton.Enabled && f.NoticeButton.Text == "Loading…",
+                    "rebuilt page lost pending notice state or used the old language");
+                f.Set("uiActive", false);
+                var unseen = new NoticeInfo { Id = "notice-test-unseen", Title = "Unseen" };
+                f.NoticeDone(new UpdateResult { Ok = true, Notice = unseen }); f.RunPost();
+                UiAsyncCheck(f.NoticeButton.Enabled && f.NoticeButton.Dot && f.NoticeDisplays == 0
+                    && Settings.LoadStr("LastSeenNoticeId", "") == "",
+                    "hidden completion opened a dialog, marked an unseen notice read or left rebuilt controls busy");
+            }
+        }
+
         private sealed class UiAsyncFixture : IDisposable
         {
             internal readonly PanelForm Form;
@@ -292,6 +348,11 @@ namespace PaviseApp
             internal SettingCard Shader;
             internal ListBox White;
             internal EmptyStatePanel WhitePanel;
+            internal RogLinkButton NoticeButton;
+            internal Action<UpdateResult> NoticeDone;
+            internal int NoticeRequests, NoticeDisplays;
+            internal NoticeInfo ShownNotice;
+            internal string NoticeMessage;
             internal readonly Queue<Action> Work = new Queue<Action>();
             internal readonly Queue<Action> Posts = new Queue<Action>();
             internal bool TaskState;
@@ -323,6 +384,10 @@ namespace PaviseApp
                 Set("uiActive", true);
                 ReplaceSettingsControls();
                 ReplaceWhitelistControls();
+                ReplaceNoticeButton();
+                Form.NoticeCheckForTest = delegate(Action<UpdateResult> done) { NoticeRequests++; NoticeDone = done; };
+                Form.NoticeDisplayForTest = delegate(NoticeInfo n, string message)
+                { NoticeDisplays++; ShownNotice = n; NoticeMessage = message; };
                 Form.StartupTaskQueryForTest = delegate { TaskReads++; return TaskState; };
                 Form.StartupTaskChangeForTest = delegate(bool enabled)
                 {
@@ -373,6 +438,12 @@ namespace PaviseApp
                 White = new ListBox(); WhitePanel = new EmptyStatePanel();
                 controls.Add(White); controls.Add(WhitePanel);
                 Set("lstWhite", White); Set("whitePanel", WhitePanel);
+            }
+
+            internal void ReplaceNoticeButton()
+            {
+                NoticeButton = new RogLinkButton(Lang.T("v230.notice.entry"), "NOTICE // 01", "pulse");
+                controls.Add(NoticeButton); Set("btnNotice", NoticeButton);
             }
 
             internal void RefreshSettings() { Call("RefreshSlowStateAsync"); }
