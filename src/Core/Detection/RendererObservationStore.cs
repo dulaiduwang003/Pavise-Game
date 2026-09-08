@@ -11,6 +11,7 @@ using System.Threading;
 namespace PaviseApp
 {
     internal enum RendererObservationEvidence { None, Window, Forced, Gpu3D }
+    internal enum RendererObservationWriteResult { Recorded, InvalidEvidence, FileChanged, Closed, SaveFailed }
 
     internal sealed class RendererFileStamp
     {
@@ -123,23 +124,30 @@ namespace PaviseApp
         internal bool RecordActivity(string profileId, string executablePath,
             RendererObservationEvidence evidence, double utilization, RendererFileStamp before)
         {
+            return RecordActivityWithResult(profileId, executablePath, evidence, utilization, before)
+                == RendererObservationWriteResult.Recorded;
+        }
+
+        internal RendererObservationWriteResult RecordActivityWithResult(string profileId, string executablePath,
+            RendererObservationEvidence evidence, double utilization, RendererFileStamp before)
+        {
             if (string.IsNullOrEmpty(profileId) || string.IsNullOrEmpty(executablePath)
                 || evidence != RendererObservationEvidence.Gpu3D
                 || double.IsNaN(utilization) || double.IsInfinity(utilization)
-                || utilization < GpuEvidence.MinElectUtilization || before == null) return false;
-            lock (gate) { if (closed) return false; }
+                || utilization < GpuEvidence.MinElectUtilization || before == null) return RendererObservationWriteResult.InvalidEvidence;
+            lock (gate) { if (closed) return RendererObservationWriteResult.Closed; }
             RendererFileStamp after = RendererFileStamp.Read(executablePath);
-            if (!before.Same(after)) return false;
+            if (!before.Same(after)) return RendererObservationWriteResult.FileChanged;
             lock (gate)
             {
-                if (closed) return false;
+                if (closed) return RendererObservationWriteResult.Closed;
                 Record old;
                 if (records.TryGetValue(profileId, out old) && SamePath(old.Exe, executablePath)
                     && old.Stamp.Same(after))
                 {
                     old.Validated = true;
                     old.CheckedTicks = DateTime.UtcNow.Ticks;
-                    return true;
+                    return RendererObservationWriteResult.Recorded;
                 }
                 var candidate = new Record
                 {
@@ -156,10 +164,10 @@ namespace PaviseApp
                         if (oldest == null || item.ObservedTicks < oldest.ObservedTicks) oldest = item;
                     if (oldest != null) next.Remove(oldest.Id);
                 }
-                if (!Save(next)) return false;
+                if (!Save(next)) return RendererObservationWriteResult.SaveFailed;
                 records.Clear();
                 foreach (var item in next) records.Add(item.Key, item.Value);
-                return true;
+                return RendererObservationWriteResult.Recorded;
             }
         }
 

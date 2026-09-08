@@ -1,4 +1,4 @@
-﻿<div align="center">
+<div align="center">
 
 <img src="docs/icon.png" width="96" height="96" alt="Pavise">
 
@@ -10,7 +10,7 @@ Windows game resource scheduling and guard tool
 
 [简体中文](README.md) · **English** · [日本語](README.ja.md)
 
-**v2.2.1.3 · [Release notes (Chinese)](docs/releases/v2.2.1.3.md)**
+**v2.2.1.4 · [Release notes (Chinese)](docs/releases/v2.2.1.4.md)**
 
 <br>
 
@@ -21,8 +21,6 @@ Windows game resource scheduling and guard tool
 ## Performance
 
 Pavise does not generate additional performance. It returns the share taken by background processes to the game. Machines with many background programs and noticeable CPU or disk contention benefit the most. A clean system, or a game entirely limited by the GPU, will see little change.
-
-The existing four-tier bench figures date from v1.7.1: an i7-9750H laptop with WeChat, Clash, QQ and a music player in the background, scored against a clean system as 100, averaging 59 without Pavise, 60 in Normal and 96 in Competitive (Normal and Competitive are today's Smart and Esports). The 2.x scheduling model differs from 1.7, so treat those numbers as an order-of-magnitude reference; they have not been re-run on 2.x.
 
 Measure the effect by toggling it on and off in the same game and the same scene.
 
@@ -58,7 +56,7 @@ When the system no longer boots or the program will not open, run `Pavise-Rescue
 
 ## Per-game configuration
 
-Select a game in the library and open its configuration. The current policy catalogue contains 33 per-game overrides across modes, background suppression, cores, memory and power, environment and graphics, including the mode, family policy and core mask. Unset overrides follow global settings, and changes save immediately. Per-EXE fullscreen-optimization and DPI compatibility settings are separate from these 33 items and are not automatically restored at match exit.
+Select a game in the library and open its configuration. The current policy catalogue contains 34 per-game overrides across modes, background suppression, cores, memory and power, environment and graphics, including the mode, family policy and core mask. Unset overrides follow global settings, and changes save immediately. Per-EXE fullscreen-optimization and DPI compatibility settings are separate from these 34 items and are not automatically restored at match exit.
 
 - Most per-game settings are resolved when the match activates and apply to the next one. Pausing nonessential services and disabling CPU idle are handled in the current session and reverted when turned off
 - The current core selection can be pinned to one game without affecting others
@@ -84,30 +82,30 @@ The guard switch controls general game-session scheduling: enabling it starts au
 
 ### Library
 
+- **Fullscreen scaling**: a per-game switch, off by default. With protection enabled, fits a lower-resolution game window to its monitor with optional sharpening and window mouse mapping. Pauses on focus loss; `Ctrl+Alt+U` stops scaling for the session. Uses Pavise's own embedded capture and scaling component; Magpie is not required. [Usage and limitations (Chinese)](docs/window-scaling.md)
 - Add an EXE, a shortcut or the game's folder manually, or drop them onto the window; when a folder holds several candidate programs they are listed for you to pick. Scanning imports from Steam, Epic, GOG, Ubisoft, Riot, WeGame, Battle.net and Xbox
 - **Forced takeover**: for emulators, cloud gaming and anything else that cannot be recognised, the match starts as soon as the process does
 - **Auto-add**: newly recognised games are collected automatically. A path you removed goes on an ignore list and is never auto-added again until you add it back by hand
 - **Suspected malware alert**: a process with no visible window outside the Windows and Program Files directories that uses a quarter or more of the logical CPUs for two minutes straight, or a suppressed process that lifts its own background core restriction, is logged and raised as a tray warning about a possible miner infection. Random-looking names use half the threshold; each name is alerted at most once a day
 - **Render observation label**: records GPU 3D activity observed on an EXE. This alone does not identify the main game renderer or establish that related processes can safely be suppressed
 - **Family background suppression**: per-game, off by default. While off, game platforms, launcher shells, resident processes in the game folder and child processes spawned by the game are released as a family
-- **Per-game configuration**: 33 items in the current policy catalogue; unset overrides follow global settings, and entries can be renamed
+- **Per-game configuration**: 34 items in the current policy catalogue; unset overrides follow global settings, and entries can be renamed
 - **WeGame shell removal**: games launched through WeGame (CrossFire, Assault Fire, Delta Force and the like) get the same shell-removal strip under their card as League of Legends. With shell launch on, WeGame, Cross and Tencent add-on processes are ended precisely 30 seconds into a match; if the game exits within 20 seconds, automatic removal is disabled for that game on this machine; if the shell keeps respawning, removal pauses for the match. Per-game switch, off by default
 - **Controller mapper protection**: controller mappers such as DS4Windows and reWASD are exempt from background suppression by name. The Smart tier's adaptive escalation is a separate switch, off by default
 
 ### Processes and cores
 
 - **Game process boost**: the renderer receives high priority and higher disk I/O, memory-page and GPU scheduling priority, restored on exit
-- **Candidate thread boost**: not available in Handheld or on machines with fewer than 6 physical cores — the boosted thread runs at priority 15 while the game's other threads stay at 13, so when runnable threads outnumber available cores it preempts the very threads it is waiting on and frame rate drops. Elsewhere it is on by default and forced on in Extreme; in other tiers a game that gets slower can turn it off per game. CPU time identifies a busy candidate, not a frame-critical thread; a wrong choice can slow the game. Sustained CPU saturation withdraws the candidate boost and returns the game process to normal priority, regardless of candidate state
-- **Smart yield**: sustained CPU saturation for ten seconds returns the game to normal priority and withdraws candidate thread boost, even if a candidate was already boosted. This is a risk control, not a universal FPS improvement
+- **Candidate thread boost**: unavailable in Handheld or on machines with fewer than 6 physical cores. Elsewhere it is on by default and forced on in Extreme; other tiers can disable it per game. CPU time identifies a busy candidate, not a frame-critical thread, so a wrong choice can slow the game. Under the restored priority rule, machine-wide CPU saturation alone does not withdraw an active candidate boost
+- **Smart yield**: ten seconds of sustained CPU saturation returns the game to Normal only when no candidate-thread boost is active. Restricted cores, CPU Sets and unknown CPU domains no longer independently block High priority; original settings are restored on exit
 - **In-match self-yield**: Pavise moves off the game cores and lowers its own scheduling weight
 - **Background suppression**: directly isolates eligible ordinary background processes through CPU, I/O and paging priority, EcoQoS and timer-resolution policy, while preserving Windows dynamic priority boosts
 - **Background GPU priority demotion**: a background process using the GPU also has its GPU scheduling priority lowered
-- **Heavy background core squeeze** (experimental): during a match, background processes that use more than half a core for 10 seconds straight are confined to the fewest cores the game does not use, avoiding the game's L3 block on multi-CCD parts and landing on efficiency cores on hybrid CPUs; idle background is left alone, the limit lifts 30 seconds after load drops, and everything is restored on exit. Off by default; not offered below 5 physical cores
 - **Suppressed working-set trim** (Extreme only): enabled for Extreme sessions unless excluded in Extreme management. Attempts trimming only when available memory is both below 4 GiB and below one eighth of total memory. Subsequent page faults and slower first responses remain possible. Anti-cheat processes are excluded
 - **Wider background suppression**: covers eligible non-game background processes even after alt-tab. Forced on in Esports, Extreme and Handheld; built-in protection and the whitelist still apply
-- **Game core partitioning**: selects the cores available to the game, with support for hybrid CPUs, X3D and multiple processor groups. It neither confines all background processes to the remaining cores nor guarantees exclusivity. Background affinity changes require a separately enabled, eligible heavy-background or anti-cheat policy
-- **Partition swap**: X3D machines can switch to the large-cache CCD
-- **Manual core selection**: draw it per core, with presets for all cores, no SMT, P-cores only, cache-cores only and inverse. Written on Apply, effective mid-match without restarting the game, restored on exit and never written to the registry. Fewer than two logical cores cannot be applied
+- **Manual core scheduling**: choose the game's logical CPUs with CCD shortcuts and No HT. Optionally enable core isolation and expand its whole-core selector so ordinary background processes avoid that range. Applies during game boost and restores on exit; interrupts may still use the cores.
+- **CCD selection**: use CCD shortcuts to manually choose the chip region for the game.
+- **Manual selection**: supports All, No HT, Clear, Invert and CCD shortcuts; select at least two logical CPUs. Save applies to the next game session, keeping the current session unchanged. Original process affinity is restored on exit.
 - **Whitelist**: drag in an EXE or shortcut, pick from running programs, or browse for one. Child processes are protected by default, command-line and script hosts protect only themselves, and the context menu switches between "this program only" and "including child processes". Built-in entries required by the system cannot be removed, and the default preset can be restored in one click. The page can expand the automatic-exemption catalogue this build actually uses, including anti-cheat group process names; GPU driver containers and power, boost and fan tools are always exempt and need no manual entry
 
 ### Anti-cheat coverage
@@ -154,6 +152,7 @@ Original values are snapshotted and restored when a switch is turned off. Writes
 
 ### Memory and power
 
+- **Cache warm-up**: restored, off by default, with per-game overrides. After 90 seconds of stable play, reads asset archives at background priority, up to 2 GiB per session and about 31 MiB/s. Requires AC power, ample memory and an SSD; yields to standby cleanup and stops on exit or memory pressure. [Details (Chinese)](docs/cache-warm-up.md)
 - **Managed power plan**: created at the first match and configured for the processor. Selecting an existing plan only switches plans; explicitly enabling Disable CPU idle can still temporarily change that plan's idle settings. Windows active-plan notifications trigger reapplication if another app switches plans, with no periodic fallback after success. This is not an access-control lock against other writers
 - **Storage kept awake in-match**: the managed plan zeroes the NVMe power-state latency tolerances and keeps the AHCI link Active, preventing the occasional hitch of an SSD waking from a low-power state; the NVMe side is relaxed on battery
 - **Disable CPU idle**: only during a game; writes both the AC and DC values of the currently active power plan and restores them at match end. On battery it noticeably shortens battery life; not offered on AMD processors
@@ -217,7 +216,9 @@ The current build includes an extension card for recognised League entries:
 
 This feature changes the processor energy performance preference, which affects whole-machine power distribution, so it verifies more thoroughly than the others.
 
-Twenty seconds of observation to decide whether to yield, then fifteen more to verify after engaging. A failed verification reverts immediately and stops automatic attempts until the user re-enables it.
+At least twenty seconds of observation to decide whether to yield, then at least fifteen more to verify after engaging. Complete evidence confirming no gain or regression reverts immediately and stops automatic attempts until the user re-enables it. Insufficient evidence reverts the change but allows observation in the next match.
+
+Observation no longer expires after 60 seconds. It counts only paired load and power/frequency readings; a 20-second evidence gap restarts baseline collection. Missing evidence can be awaited for up to 60 seconds, and initial verification also has a 60-second deadline. Verification resuming after an evidence gap of at least 15 seconds restores the setting as inconclusive. Missing readings or long sampling gaps during observation or verification also make negative results inconclusive, avoiding persistent disablement based on a scene change. During holding, a 30-second load-data gap restarts rolling statistics.
 
 A passed verification is not a one-way trip. A rolling 30-second window returns the budget when the bottleneck moves back to the processor (GPU load falling or CPU under pressure), and yields again if the GPU saturates, at most three times per match, each with a full re-observation and verification. The hysteresis band is yield at 90, release at 80, which prevents oscillation around the threshold.
 

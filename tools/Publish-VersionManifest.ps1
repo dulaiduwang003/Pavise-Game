@@ -3,9 +3,11 @@
 # 程序查的是 https://paivse.oss-cn-shanghai.aliyuncs.com/version/version.json 另有 oss-accelerate 镜像
 # 这个脚本先校验本地清单 再上传 最后从公网地址读回来确认
 #
-# 凭据二选一
-#   1 PATH 上有配好 profile 的 ossutil 或 ossutil64
-#   2 环境变量 OSS_ACCESS_KEY_ID 和 OSS_ACCESS_KEY_SECRET
+# 凭据依次查找
+#   1 当前 Windows 用户的加密凭据 %LOCALAPPDATA%\Pavise\Publishing\oss-paivse.credential.xml
+#     使用 Export-Clixml 保存的 PSCredential 密钥由 Windows 加密 仅原用户在原机器可解密
+#   2 PATH 上有配好 profile 的 ossutil 或 ossutil64
+#   3 环境变量 OSS_ACCESS_KEY_ID 和 OSS_ACCESS_KEY_SECRET
 #     一个对 paivse/version/* 有 PutObject 权限的 RAM 用户就够
 #
 # Usage:
@@ -50,10 +52,21 @@ Write-Host "Manifest OK: version $($manifest.version), $($bytes.Length) bytes"
 Write-Host "Target:      $publicUrl"
 if ($DryRun) { Write-Host "Dry run; nothing uploaded."; exit 0 }
 
+$credentialPath = Join-Path $env:LOCALAPPDATA "Pavise\Publishing\oss-paivse.credential.xml"
+$storedCredential = $null
+if (Test-Path -LiteralPath $credentialPath) {
+    try { $storedCredential = Import-Clixml -LiteralPath $credentialPath }
+    catch { throw "Cannot decrypt the saved OSS credential for this Windows user." }
+    if ($storedCredential -isnot [Management.Automation.PSCredential]) {
+        throw "The saved OSS credential is not a PSCredential."
+    }
+    Write-Host "Using the saved Windows-encrypted OSS credential."
+}
+
 function Invoke-SignedPut {
     param([byte[]]$Body)
-    $ak = $env:OSS_ACCESS_KEY_ID
-    $sk = $env:OSS_ACCESS_KEY_SECRET
+    $ak = if ($storedCredential) { $storedCredential.UserName } else { $env:OSS_ACCESS_KEY_ID }
+    $sk = if ($storedCredential) { $storedCredential.GetNetworkCredential().Password } else { $env:OSS_ACCESS_KEY_SECRET }
     if (-not $ak -or -not $sk) { return $false }
     $md5 = [Convert]::ToBase64String(([Security.Cryptography.MD5]::Create()).ComputeHash($Body))
     $contentType = "application/json"
@@ -93,10 +106,10 @@ function Invoke-OssUtil {
     return $true
 }
 
-$uploaded = Invoke-OssUtil -Path $manifestPath
+$uploaded = if ($storedCredential) { Invoke-SignedPut -Body $bytes } else { Invoke-OssUtil -Path $manifestPath }
 if (-not $uploaded) { $uploaded = Invoke-SignedPut -Body $bytes }
 if (-not $uploaded) {
-    throw "No credentials found. Install/configure ossutil, or set OSS_ACCESS_KEY_ID and OSS_ACCESS_KEY_SECRET."
+    throw "No credentials found. Save a Windows-encrypted PSCredential at $credentialPath, configure ossutil, or set OSS_ACCESS_KEY_ID and OSS_ACCESS_KEY_SECRET."
 }
 
 # 从公网地址读回来 对不上就说明写入过期或者失败了

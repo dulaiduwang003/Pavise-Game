@@ -221,6 +221,10 @@ namespace PaviseApp
                     return !NvDrsTweaks.HasSnapshotFor(k);
                 }, failed);
             }
+            Step(Lang.T("schedule.isolation"), delegate
+            {
+                return CoreIsolationWorker.Recover(new CoreIsolationSettingsStore());
+            }, failed);
             Step(Lang.T("t.legacypurge.28"), delegate
             {
                 string journal = Path.Combine(dataDir, SuppressionCore.StateFileName);

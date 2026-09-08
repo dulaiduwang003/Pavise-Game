@@ -21,6 +21,7 @@ namespace PaviseApp
         {
             var elapsed = Stopwatch.StartNew();
             stopping = true;
+            InvalidateCacheWarm();
             InvalidateStandbyCleanerWork();
             InvalidateEnglishInputWork();
             InvalidateIntelGraphicsWork();
@@ -55,6 +56,7 @@ namespace PaviseApp
             if (!runnersClosed) return false;
             // Loop 还活着的时候 不要卸掉改动守卫 也别声称重置是安全的
             bool clean = true;
+            try { if (!StopCoreIsolation()) clean = false; } catch { clean = false; }
             RenderLane.ConfigureMutationBoundary(null, null);
             PowerBudgetYieldRunner.ConfigureMutationBoundary(null, null);
             VramShield.ConfigureMutationBoundary(null, null);
@@ -72,6 +74,7 @@ namespace PaviseApp
         {
             if (!stopping || timeoutMs < 0) return false;
             var elapsed = Stopwatch.StartNew();
+            if (cacheWarm != null && !cacheWarm.Drain(RemainingShutdownMs(elapsed, timeoutMs))) return false;
             if (!DrainShutdownGate(autoGpuCommitGate, RemainingShutdownMs(elapsed, timeoutMs))) return false;
             if (!DrainShutdownGate(driverStageGate, RemainingShutdownMs(elapsed, timeoutMs))) return false;
             if (!DrainShutdownGate(powerApplyGate, RemainingShutdownMs(elapsed, timeoutMs))) return false;
@@ -187,7 +190,6 @@ namespace PaviseApp
                                         Logger.Log(Lang.T("log.gamemode.45") + running);
                                         autoGpuScanned = false;
                                         ResetAdaptiveGuard();
-                                        ResetHeavySqueeze();
                                         Interlocked.Exchange(ref boostFirstStampTicks, DateTime.UtcNow.Ticks);
                                         SetAutoGpuSessionStamp(DateTime.UtcNow.Ticks);
                                         try { cpuLimit.Start(); } catch { }
@@ -203,7 +205,6 @@ namespace PaviseApp
                                         Logger.Log(Lang.T("log.gamemode.46") + running);
                                         autoGpuScanned = false;
                                         ResetAdaptiveGuard();
-                                        ResetHeavySqueeze();
                                         Interlocked.Exchange(ref boostFirstStampTicks, DateTime.UtcNow.Ticks);
                                         SetAutoGpuSessionStamp(DateTime.UtcNow.Ticks);
                                         // activeDetection 此时已经指向新 profile 旧 renderer 无法再终验
@@ -227,6 +228,7 @@ namespace PaviseApp
                                     ApplyEnv();
                                     ApplyIntelGraphicsPolicy();
                                     ApplyStandbyCleanerPolicy();
+                                    ApplyCacheWarmPolicy();
                                     string rendererPath;
                                     int rendererPid;
                                     long rendererCreation;
@@ -255,11 +257,13 @@ namespace PaviseApp
                                         || EffPreset == PerformancePreset.Extreme);
                                     // 功耗让路掌机档照样参与 方向本来就对 掌机 CPU 和集显抢的就是同一份预算
                                     //   掌机档放开的是纯省电项 EPP 仍写专注档的激进值 让路的前提还在
-                                    PowerBudgetYieldRunner.Start(EffPowerYield,
+                                    Func<bool> powerYieldAdmission = CapturePowerYieldAdmission(rendererPid, rendererCreation);
+                                    PowerBudgetYieldRunner.Start(powerYieldAdmission(),
                                         EffPreset == PerformancePreset.Competitive
                                             || EffPreset == PerformancePreset.Extreme
                                             || EffPreset == PerformancePreset.Handheld,
-                                        rendererPid, rendererCreation);
+                                        rendererPid, rendererCreation,
+                                        powerYieldAdmission);
                                     ApplyIrqObservationSettingChange(running);
                                     if (EffBoost) Boost(all);
                                     else
@@ -280,6 +284,7 @@ namespace PaviseApp
                                     {
                                         gameGoneSinceTicks = nowTicks;
                                         InvalidateStandbyCleanerWork();
+                                        InvalidateCacheWarm();
                                         InvalidateEnglishInputWork();
                                         InvalidateIntelGraphicsWork();
                                         // 退出宽限只用于避免游戏检测抖动 不属于可验证的对局采样窗

@@ -180,7 +180,7 @@ namespace PaviseApp
                 bool hadSqueeze = e.SqueezeAff != 0;
                 e.Reasons &= ~reason;
                 if ((reason & SuppressReason.AntiCheat) != 0) e.AntiCheatLevel = SuppressionLevel.None;
-                // 后台原因一撤 绑核落点也清掉 下次再进后台由热度重新判 不许带着旧落点直接绑上
+                // 原因撤销时清理对应落点；不得把已撤销的限制带入下一次压制
                 //   条目仍带反作弊原因时落点归反作弊路 由那边的开关决定 这里不动
                 if ((reason & SuppressReason.Background) != 0)
                 {

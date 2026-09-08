@@ -49,6 +49,7 @@ namespace PaviseApp
                 lock (sync)
                 {
                     if (stopping) return;
+                    InvalidateCacheWarm();
                     InvalidateStandbyCleanerWork();
                     if (value && !standbyCleanerOptionsValid) return;
                     bool saved = Settings.Save(PolicyCatalog.KeyStandbyCleaner, value);

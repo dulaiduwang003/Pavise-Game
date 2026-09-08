@@ -315,6 +315,9 @@ namespace PaviseApp
         //   调用方须持有 sync
         private void InvalidateOverrideWorkLocked(string key)
         {
+            if (key == PolicyCatalog.KeyPowerYield || key == PolicyCatalog.KeyPreset)
+                System.Threading.Interlocked.Increment(ref powerYieldGeneration);
+            if (key == PolicyCatalog.KeyCacheWarm || key == PolicyCatalog.KeyStandbyCleaner) InvalidateCacheWarm();
             if (key == PolicyCatalog.KeyDisableCpuIdle || key == PolicyCatalog.KeyPowerPlan)
                 System.Threading.Interlocked.Increment(ref cpuIdleGeneration);
             if (key == PolicyCatalog.KeyStandbyCleaner) InvalidateStandbyCleanerWork();
@@ -330,7 +333,8 @@ namespace PaviseApp
             else if (key == PolicyCatalog.KeyDisableCpuIdle) CpuIdlePolicyChanged(effectiveOn);
             else if (key == PolicyCatalog.KeyStandbyCleaner) StandbyCleanerPolicyChanged(effectiveOn);
             else if (key == PolicyCatalog.KeyIntelLowLatency) IntelGraphicsPolicyChanged(effectiveOn);
-            else if (key == PolicyCatalog.KeyPowerPlan || key == PolicyCatalog.KeyEnglishInput)
+            else if (key == PolicyCatalog.KeyPowerPlan || key == PolicyCatalog.KeyEnglishInput
+                || key == PolicyCatalog.KeyCacheWarm || key == PolicyCatalog.KeyPowerYield)
                 RequestPolicyApply();
         }
 
@@ -339,6 +343,7 @@ namespace PaviseApp
             if (key == PolicyCatalog.KeyPauseServices) return pauseServicesOn;
             if (key == PolicyCatalog.KeyDisableCpuIdle) return disableCpuIdleOn;
             if (key == PolicyCatalog.KeyStandbyCleaner) return standbyCleanerOn;
+            if (key == PolicyCatalog.KeyCacheWarm) return cacheWarmOn;
             if (key == PolicyCatalog.KeyIntelLowLatency) return intelLowLatencyOn;
             return false;
         }
@@ -523,9 +528,11 @@ namespace PaviseApp
                 List<GameProfile> next = GetProfiles();
                 if (next.RemoveAll(p => string.Equals(p.Id, profileId, StringComparison.OrdinalIgnoreCase)) == 0) return;
                 if (!CommitLibraryLocked(next, nextIgnore)) return;
+                InvalidateCacheWarm();
                 InvalidateStandbyCleanerWork();
                 InvalidateEnglishInputWork();
                 InvalidateIntelGraphicsWork();
+                System.Threading.Interlocked.Increment(ref powerYieldGeneration);
                 ClearFamilyDiscovery();
                 ForgetRendererObservation(profileId);
                 dropSession = activeDetection != null && activeDetection.Profile != null

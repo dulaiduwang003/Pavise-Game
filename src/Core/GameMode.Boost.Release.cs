@@ -26,11 +26,12 @@ namespace PaviseApp
 
         private bool UnboostGames(int keepPid, long keepCreation, string keepName)
         {
+            bool isolationClean = keepPid > 0 || StopCoreIsolation();
             List<KeyValuePair<int, Snap>> boosts;
             Dictionary<int, int> gpus;
             lock (sync)
             {
-                if (gameBoost.Count == 0 && gameGpu.Count == 0) return true;
+                if (gameBoost.Count == 0 && gameGpu.Count == 0) return isolationClean;
                 boosts = new List<KeyValuePair<int, Snap>>();
                 foreach (KeyValuePair<int, Snap> boosted in gameBoost)
                     if (!IsKeptBoost(boosted, keepPid, keepCreation, keepName))
@@ -39,7 +40,7 @@ namespace PaviseApp
                 foreach (KeyValuePair<int, int> gpu in gameGpu)
                     if (keepPid <= 0 || gpu.Key != keepPid)
                         gpus[gpu.Key] = gpu.Value;
-                if (boosts.Count == 0 && gpus.Count == 0) return true;
+                if (boosts.Count == 0 && gpus.Count == 0) return isolationClean;
                 if (keepPid <= 0)
                 {
                     boostFail.Clear(); boostDenied.Clear(); boostStateWarned.Clear();
@@ -64,7 +65,7 @@ namespace PaviseApp
             // 留下的 pid+creation 绑定句柄恢复 affinity 并精确读回 失败时
             // 保留句柄 后面的普通恢复仍可尝试 不能提前丢失唯一恢复能力
             foreach (var kv in boosts)
-                RestoreIrqProofHardPin(IntPtr.Zero, kv.Key);
+                RestoreIrqProofHardPin(IntPtr.Zero, kv.Key, true);
             foreach (var kv in boosts)
             {
                 int pid = kv.Key;
@@ -130,6 +131,7 @@ namespace PaviseApp
                 }
                 if (done)
                 {
+                    if (coreIsolation != null && !coreIsolation.Drop(pid, kv.Value.Creation)) isolationClean = false;
                     // RestoreValues 已精确还原该 identity 的 affinity 关闭 retained
                     // handle 之前再移除其绑定 避免退出路径泄漏
                     ForgetIrqProofHardPin(pid);
@@ -142,7 +144,7 @@ namespace PaviseApp
                     }
                 }
             }
-            lock (sync) return gameBoost.Count == 0;
+            lock (sync) return isolationClean && gameBoost.Count == 0;
         }
 
         private bool partitionHintLogged;
@@ -167,6 +169,7 @@ namespace PaviseApp
             // 还原可能先做很慢的注册表和原生操作 才把请求投给 Loop
             // 这整段时间内都要挡住新的清理
             Interlocked.Increment(ref standbyCleanerRestorePending);
+            InvalidateCacheWarm();
             InvalidateStandbyCleanerWork();
             InvalidateEnglishInputWork();
             BeginIntelGraphicsRestore();
@@ -244,6 +247,7 @@ namespace PaviseApp
 
         private bool Deactivate(string reason, bool quiet)
         {
+            InvalidateCacheWarm();
             SetAutoGpuSessionStamp(0);
             InvalidateStandbyCleanerWork();
             EndEnglishInputSession();
@@ -277,14 +281,13 @@ namespace PaviseApp
             gameGoneSinceTicks = 0;
             cpuSaturation.Reset();
             boostPriorityTarget = Native.HIGH_PRIORITY_CLASS;
-            ResetBoostDomainEvidence();
+            ResetBoostIdentity();
             Interlocked.Exchange(ref boostFirstStampTicks, 0);
             Interlocked.Exchange(ref nvTweakRetryAtTicks, 0);
             preStagedNvPath = null;
             try { cpuLimit.Stop(); } catch { }
             autoGpuScanned = false;
             ResetAdaptiveGuard();
-            ResetHeavySqueeze();
             partitionHintLogged = false;
 
             bool clean = UnboostGames();
@@ -312,9 +315,10 @@ namespace PaviseApp
             bool standbyClean = standbyCleaner == null || standbyCleaner.Drain(8000);
             bool inputClean = DrainEnglishInput(8000);
             bool intelClean = DrainIntelGraphics(8000);
+            bool cacheWarmClean = cacheWarm == null || cacheWarm.Drain(8000);
             // 维持旧语义 恢复动作已经完成后 再把原本会由 ReportFinish 抛出的异常交给上层
             if (reportFailure != null) throw reportFailure;
-            return clean && envClean && backgroundClean && standbyClean && inputClean && intelClean;
+            return clean && envClean && backgroundClean && standbyClean && inputClean && intelClean && cacheWarmClean;
         }
     }
 }

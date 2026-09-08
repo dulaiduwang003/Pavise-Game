@@ -227,54 +227,51 @@ namespace PaviseApp
             BoundaryCall(mode, "ResolvePriorityTarget", pass);
             // 输入是合成的未饱和数据 免得测试跟着测试机当时的实时负载走
             type.GetField("CpuSaturated").SetValue(pass, false);
+            BoundaryCall(mode, "RefreshBoostPriority", pass);
             return pass;
         }
 
         private static void BoundaryPriority(object pass, uint expected)
         { Eq(expected, (uint)pass.GetType().GetField("PriorityTarget").GetValue(pass)); }
 
-        private static void BoostDomainEvidenceIsSessionAndIdentityBound()
+        private static void BoostPriorityIsSessionAndIdentityBound()
         {
             SafetyFolder(delegate(string folder)
             {
                 RenderLane.ResetShutdownForTest(); VramSpillProbe.ResetForTest();
                 var mode = new GameMode(folder, new SuppressionCore());
                 Eq(false, IrqSessionProbe.EnabledSetting);
-                ulong all = (ulong)BoundaryField(mode, "allMask");
-                uint openPriority = all == 0 || CpuTopology.MultiGroup ? Native.NORMAL_PRIORITY_CLASS : Native.HIGH_PRIORITY_CLASS;
                 BoundaryCall(mode, "ReportBegin", "A");
                 object a = BoundaryBoostPass(mode, 101, 1000);
-                BoundaryPriority(a, Native.NORMAL_PRIORITY_CLASS);
-                BoundaryCall(mode, "RecordBoostDomain", a, all, new uint[0]);
-                BoundaryPriority(a, openPriority);
-                // 后面要恢复的那份原始 affinity 和 CPU Sets 同样得挡住提优
-                BoundaryCall(mode, "RecordBoostDomain", a, all, new uint[] { 7 });
-                BoundaryPriority(a, Native.NORMAL_PRIORITY_CLASS);
-                BoundaryCall(mode, "RecordBoostDomain", a, all, new uint[0]);
-                BoundaryPriority(a, Native.NORMAL_PRIORITY_CLASS);
+                BoundaryPriority(a, Native.HIGH_PRIORITY_CLASS);
+                var verified = (HashSet<int>)BoundaryField(mode, "boostStateVerified");
+                verified.Add(101);
+                long generation = (long)BoundaryField(mode, "boostIdentityGeneration");
 
                 BoundaryCall(mode, "ReportFinish"); BoundaryCall(mode, "BeginSessionPolicy");
                 BoundaryCall(mode, "ReportBegin", "B"); // 真实直接换局入口，没有 Deactivate。
-                Eq(false, (bool)BoundaryField(mode, "boostDomainRestricted"));
-                object b = BoundaryBoostPass(mode, 101, 1000); // 即使进程身份相同也要新证据。
+                Eq(true, (long)BoundaryField(mode, "boostIdentityGeneration") > generation);
+                object b = BoundaryBoostPass(mode, 101, 1000); // 同身份新局也须重新审计，拒绝旧 pass。
+                Eq(false, verified.Contains(101));
+                BoundaryPriority(b, Native.HIGH_PRIORITY_CLASS);
+                a.GetType().GetField("CpuSaturated").SetValue(a, true);
+                Eq(false, (bool)BoundaryCall(mode, "RefreshBoostPriority", a));
+                Eq(Native.HIGH_PRIORITY_CLASS, (uint)BoundaryField(mode, "boostPriorityTarget"));
+                b.GetType().GetField("CpuSaturated").SetValue(b, true);
+                Eq(true, (bool)BoundaryCall(mode, "RefreshBoostPriority", b));
                 BoundaryPriority(b, Native.NORMAL_PRIORITY_CLASS);
-                BoundaryCall(mode, "RecordBoostDomain", a, all, new uint[0]);
-                Eq(false, (bool)BoundaryField(mode, "boostDomainKnown"));
-                BoundaryCall(mode, "RecordBoostDomain", b, all, new uint[0]);
-                BoundaryPriority(b, openPriority);
 
                 object reused = BoundaryBoostPass(mode, 101, 2000);
-                BoundaryPriority(reused, Native.NORMAL_PRIORITY_CLASS);
-                BoundaryCall(mode, "RecordBoostDomain", b, all, new uint[0]);
-                Eq(false, (bool)BoundaryField(mode, "boostDomainKnown"));
-                BoundaryCall(mode, "RecordBoostDomain", reused, all, null);
-                BoundaryPriority(reused, Native.NORMAL_PRIORITY_CLASS);
+                BoundaryPriority(reused, Native.HIGH_PRIORITY_CLASS);
+                Eq(false, (bool)BoundaryCall(mode, "RefreshBoostPriority", b));
+                Eq(Native.HIGH_PRIORITY_CLASS, (uint)BoundaryField(mode, "boostPriorityTarget"));
                 object other = BoundaryBoostPass(mode, 102, 2000);
-                BoundaryPriority(other, Native.NORMAL_PRIORITY_CLASS);
-                BoundaryCall(mode, "RecordBoostDomain", other, all, new uint[0]);
-                BoundaryPriority(other, openPriority);
-                BoundaryCall(mode, "RecordBoostDomain", other, 0UL, new uint[0]);
-                BoundaryPriority(other, Native.NORMAL_PRIORITY_CLASS);
+                BoundaryPriority(other, Native.HIGH_PRIORITY_CLASS);
+                Eq(false, (bool)BoundaryCall(mode, "RefreshBoostPriority", reused));
+                object unknown = BoundaryBoostPass(mode, 102, 0);
+                Eq(false, (bool)BoundaryCall(mode, "RefreshBoostPriority", unknown));
+                BoundaryPriority(unknown, Native.NORMAL_PRIORITY_CLASS);
+                Eq(false, (bool)BoundaryCall(mode, "RefreshBoostPriority", other));
                 BoundaryCall(mode, "ReportFinish");
                 RenderLane.ResetShutdownForTest(); VramSpillProbe.ResetForTest();
             });

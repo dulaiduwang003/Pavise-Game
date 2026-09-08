@@ -99,6 +99,8 @@ namespace PaviseApp
                 && Native.CpuSetsMatch(h, ids);
             bool cpuSetsUnconstrained = Native.CpuSetsMatch(h, new uint[0]);
             ulong affinity = CpuTopology.MultiGroup ? 0 : Native.QueryAffinity(h);
+            if (pass.ManualPlacement && pass.DesiredMask != allMask)
+                return !CpuTopology.MultiGroup && affinity == pass.DesiredMask;
             return IrqPlacementProof.PlacementProofMatches(
                 pass.DesiredMask, affinity,
                 CpuTopology.MultiGroup, cpuSetsMatch,
@@ -181,7 +183,7 @@ namespace PaviseApp
 
         private void RememberIrqProofHardPin(
             int pid, long creation, ulong originalAffinity,
-            IntPtr restoreHandle)
+            IntPtr restoreHandle, bool manual = false)
         {
             if (pid <= 0 || creation <= 0 || originalAffinity == 0
                 || restoreHandle == IntPtr.Zero)
@@ -208,6 +210,7 @@ namespace PaviseApp
                 irqProofHardPins[pid] = new IrqProofHardPin
                 {
                     Pid = pid,
+                    Manual = manual,
                     Creation = creation,
                     OriginalAffinity = originalAffinity,
                     RestoreHandle = restoreHandle
@@ -229,12 +232,14 @@ namespace PaviseApp
             }
         }
 
-        private bool RestoreIrqProofHardPin(IntPtr ignored, int pid)
+        private bool RestoreIrqProofHardPin(IntPtr ignored, int pid, bool includeManual = false)
         {
             lock (sync)
             {
                 IrqProofHardPin pin;
                 if (!irqProofHardPins.TryGetValue(pid, out pin)) return true;
+                // 中断观测结束只释放观测自己的硬钉；手动方案持续到真实离场/恢复。
+                if (pin.Manual && !includeManual) return true;
                 IrqProofHandleState state = IrqProofHandleStateOf(pin);
                 if (state == IrqProofHandleState.Gone
                     || state == IrqProofHandleState.Mismatch)
@@ -269,17 +274,17 @@ namespace PaviseApp
 
         private void RestoreOrphanedIrqProofHardPin(BoostPass pass)
         {
-            RestoreAllIrqProofHardPins();
+            RestoreAllIrqProofHardPins(false);
         }
 
-        private bool RestoreAllIrqProofHardPins()
+        private bool RestoreAllIrqProofHardPins(bool includeManual = true)
         {
             List<int> pids;
             lock (sync)
                 pids = new List<int>(irqProofHardPins.Keys);
             bool ok = true;
             foreach (int pid in pids)
-                if (!RestoreIrqProofHardPin(IntPtr.Zero, pid)) ok = false;
+                if (!RestoreIrqProofHardPin(IntPtr.Zero, pid, includeManual)) ok = false;
             return ok;
         }
 

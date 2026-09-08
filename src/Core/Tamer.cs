@@ -19,7 +19,7 @@ namespace PaviseApp
         private readonly int selfPid;
         private readonly int selfSession;
         private volatile bool paused;
-        // 反作弊绑核是压制构成的一部分 落点与重压后台绑核同源 写入被拒的进程实例本进程生命周期内不再重试
+        // 反作弊绑核是压制构成的一部分；写入被拒的进程实例本进程生命周期内不再重试
         private readonly Dictionary<int, long> pinRefused = new Dictionary<int, long>();
         private volatile bool stopping;
         private int processEventsAvailable;
@@ -62,7 +62,7 @@ namespace PaviseApp
             set { paused = value; Poke(); }
         }
 
-        // 压制落地之后再下落点 落点算法与重压后台绑核同一个 6 到 8 核机器上就是末尾一个物理核
+        // 压制落地之后再下落点；6 到 8 核机器上使用末尾一个物理核
         //   写入被反作弊自身保护拒绝的 pid 记一次日志后不再重试 换了进程实例才会再来
         private void PinAntiCheatCores(List<AcquireRequest> acquisitions)
         {

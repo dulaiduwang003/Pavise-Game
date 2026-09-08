@@ -246,7 +246,7 @@ namespace PaviseApp
         private void JumpToNextCfgOverride()
         {
             if (cfgProfile == null || cfgTabKeys == null || GameLibraryRow.OrdinaryOverrideCount(cfgProfile) == 0) return;
-            var cards = new List<SettingCard>();
+            var cards = new List<Control>();
             SettingCard presetCard;
             if (cfgProfile.Overrides.ContainsKey(PolicyCatalog.KeyPreset)
                 && cfgCardByKey.TryGetValue(PolicyCatalog.KeyPreset, out presetCard))
@@ -255,15 +255,17 @@ namespace PaviseApp
                 foreach (string key in tabKeys)
                 {
                     if (!cfgProfile.Overrides.ContainsKey(key)) continue;
-                    SettingCard card;
-                    if (!cfgCardByKey.TryGetValue(key, out card)) card = cfgCoreCard;
+                    SettingCard setting;
+                    Control card = cfgCardByKey.TryGetValue(key, out setting) ? (Control)setting : cfgCoreSchedulingPanel;
                     if (card != null && !card.IsDisposed && !cards.Contains(card)) cards.Add(card);
                 }
             if (cards.Count == 0) return;
-            SettingCard target = cards[cfgJumpCursor % cards.Count];
+            Control target = cards[cfgJumpCursor % cards.Count];
             cfgJumpCursor++;
             RevealTabFor(cfgTabs, cfgTabPanels, target);
-            ScrollCardIntoView(target);
+            SettingCard targetCard = target as SettingCard;
+            if (targetCard != null) ScrollCardIntoView(targetCard);
+            else if (target.Parent is ScrollableControl) ((ScrollableControl)target.Parent).ScrollControlIntoView(target);
         }
     }
 }

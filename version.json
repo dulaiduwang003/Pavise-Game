@@ -1,10 +1,10 @@
 {
-  "version": "2.2.1.3",
+  "version": "2.2.1.4",
   "url": "https://pan.quark.cn/s/3c8c986b3ea4",
   "mirror": "https://pan.quark.cn/s/3c8c986b3ea4",
-  "noticeId": "20260907-preset",
-  "noticeTitle": "用预设就够了",
-  "noticeBody": "装完打开概览页的守护开关，模式保持默认的智能档，这样就能用。\n\n高级页里的开关是给清楚自己在改什么的人准备的。不确定某一项的作用就别动它，调错了反而掉帧。\n\n真要试，一次只改一项，同一个游戏同一个场景开关对比，再决定留不留。",
+  "noticeId": "20260908-shurima-return",
+  "noticeTitle": "恕瑞玛",
+  "noticeBody": "你的皇帝回来了",
   "noticeUrl": "",
   "note": "Pavise 更新清单 version 是最新版本号 mirror 是点击下载时打开的地址 noticeId 换一个值就是一条新公告 客户端按 id 记已读 noticeTitle 留空表示当前没有公告 noticeUrl 只放行网盘和飞书域名"
 }

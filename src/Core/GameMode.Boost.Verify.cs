@@ -63,7 +63,7 @@ namespace PaviseApp
                 }
                 // 新 OpenProcess 即使已被反作弊拒绝 首次 hard pin 前保留的
                 // handle 仍须先恢复并读回 活进程恢复失败时不能丢掉唯一恢复句柄
-                if (!RestoreIrqProofHardPin(IntPtr.Zero, kv.Key)) continue;
+                if (!RestoreIrqProofHardPin(IntPtr.Zero, kv.Key, true)) continue;
                 if (!unopenable) CrashGuard.ReleaseBoostProcess(kv.Key, kv.Value.Creation);
                 lock (sync)
                 {
@@ -101,7 +101,7 @@ namespace PaviseApp
                 if (dead != null)
                     foreach (int k in dead)
                     {
-                        if (!RestoreIrqProofHardPin(IntPtr.Zero, k)) continue;
+                        if (!RestoreIrqProofHardPin(IntPtr.Zero, k, true)) continue;
                         Snap old = gameBoost[k];
                         CrashGuard.ReleaseBoostProcess(k, old.Creation);
                         gameBoost.Remove(k); gameGpu.Remove(k); gamePlacement.Remove(k); gamePlacementStrict.Remove(k);

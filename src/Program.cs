@@ -19,7 +19,7 @@ namespace PaviseApp
     internal static class App
     {
         public const string DisplayName = "PAVISE";
-        public const string Version = "2.2.1.3";
+        public const string Version = "2.2.1.4";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string QqGroup = "1051472054";
@@ -63,6 +63,7 @@ namespace PaviseApp
         [STAThread]
         private static void Main(string[] args)
         {
+            if (CoreIsolationWorker.TryHandleArgs(args)) return;
 #if PAVISE_SELFTEST
             if (SelfTests.TryHandleRuntimeMode(args)) return;
 #endif
@@ -370,6 +371,8 @@ namespace PaviseApp
                 NicModerationTweak.ReconcileStartup();
             }
             catch { }
+            if (!CoreIsolationWorker.Recover(new CoreIsolationSettingsStore()))
+                Logger.Warn(Lang.T("schedule.isolation.pending"));
             CrashGuard.HealFromCrash();
             // 极限崩溃保险丝 解锁后两次非正常重启就回锁 环境项按账本还原 气泡等托盘起来再弹
             try

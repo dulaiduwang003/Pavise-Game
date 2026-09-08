@@ -12,7 +12,10 @@ namespace PaviseApp
     //   只读展示 不接收输入 不做选中复制 公告本来就短
     internal sealed class NoticeBodyView : Control
     {
-        private const int PadX = 14, PadY = 12, RailW = 14;
+        private const int RailW = 14;
+
+        // 内边距由调用方定 正文直接排在弹窗背景上时留 0 才能跟标题左对齐
+        internal int InsetX = 14, InsetY = 12;
 
         // 行首禁则 这些字符不能落在一行开头 断行时往回收一个字
         private const string NoLineStart = "，。、；：？！）〉》」』】’”…·%";
@@ -48,14 +51,20 @@ namespace PaviseApp
             }
         }
 
-        private int ViewportH { get { return Math.Max(0, ClientSize.Height - PadY * 2); } }
+        // 空格连字符和 CJK 都可以断行 拉丁字母数字不行
+        private static bool Breakable(char c)
+        {
+            return c == ' ' || c == '\t' || c == '-' || c == '/' || c >= 0x2E80;
+        }
+
+        private int ViewportH { get { return Math.Max(0, ClientSize.Height - Theme.S(InsetY) * 2); } }
 
         // 按给定宽度量出这段文字要多高 供对话框决定窗口高度
         public int MeasureHeight(int width)
         {
             int keep = ClientSize.Width;
             if (keep != width) { Width = width; Relayout(); }
-            return ContentH + PadY * 2;
+            return ContentH + Theme.S(InsetY) * 2;
         }
 
         private int ContentH { get { return lines.Count * lineHeight; } }
@@ -75,7 +84,7 @@ namespace PaviseApp
         {
             lines.Clear();
             if (IsDisposed) return;
-            int wrapW = ClientSize.Width - PadX * 2 - Theme.S(RailW);
+            int wrapW = ClientSize.Width - Theme.S(InsetX) * 2 - Theme.S(RailW);
             if (wrapW <= 0) return;
             using (Graphics g = CreateGraphics())
             {
@@ -95,12 +104,23 @@ namespace PaviseApp
                             take++;
                         }
                         if (take < 1) take = 1;
+                        // 拉丁文字断在词边界 别把一个单词劈成两半
+                        //   中文没有空格 回退找不到就保持逐字断 回退过头也放弃
+                        if (start + take < paragraph.Length
+                            && !Breakable(paragraph[start + take]) && !Breakable(paragraph[start + take - 1]))
+                        {
+                            int back = take;
+                            while (back > 1 && !Breakable(paragraph[start + back - 1])) back--;
+                            if (back > take / 2) take = back;
+                        }
                         // 断在标点前面就往回收一个字 别让标点顶到下一行开头
                         //   一路都是禁则字符时收到 1 就停 宁可标点在行首也不能死循环
                         while (start + take < paragraph.Length && take > 1
                             && NoLineStart.IndexOf(paragraph[start + take]) >= 0) take--;
                         lines.Add(paragraph.Substring(start, take));
                         start += take;
+                        // 断点落在空格上时别把它带到下一行开头
+                        while (start < paragraph.Length && paragraph[start] == ' ') start++;
                     }
                 }
             }
@@ -114,14 +134,14 @@ namespace PaviseApp
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
             if (lineHeight <= 0) Relayout();
-            int textW = ClientSize.Width - PadX * 2 - Theme.S(RailW);
+            int textW = ClientSize.Width - Theme.S(InsetX) * 2 - Theme.S(RailW);
             int first = Math.Max(0, top / Math.Max(1, lineHeight));
-            int y = PadY - (top - first * lineHeight);
+            int y = Theme.S(InsetY) - (top - first * lineHeight);
             for (int i = first; i < lines.Count && y < ClientSize.Height; i++, y += lineHeight)
             {
                 if (lines[i].Length == 0) continue;
                 TextRenderer.DrawText(g, lines[i], Font,
-                    new Rectangle(PadX, y, Math.Max(1, textW), lineHeight), ForeColor,
+                    new Rectangle(Theme.S(InsetX), y, Math.Max(1, textW), lineHeight), ForeColor,
                     TextFormatFlags.Left | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
             }
 

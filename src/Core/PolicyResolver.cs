@@ -27,6 +27,10 @@ namespace PaviseApp
 
         public static string Read(GameProfile profile, string key)
         {
+            if (CoreScheduling.IsRetiredKey(key)) return key == CoreScheduling.HeavyMaskKey ? "" : "0";
+            if (CoreScheduling.IsPlacementKey(key) && profile != null
+                && profile.Overrides.ContainsKey(CoreScheduling.Key))
+                return CoreScheduling.Value(CoreScheduling.ForProfile(profile, CoreScheduling.LoadGlobal()), key);
             string value;
             if (profile != null && profile.Overrides.TryGetValue(key, out value)) return value;
             return GlobalValue(key);
@@ -94,6 +98,9 @@ namespace PaviseApp
 
         internal static string GlobalValue(string key)
         {
+            if (CoreScheduling.IsRetiredKey(key)) return key == CoreScheduling.HeavyMaskKey ? "" : "0";
+            if (CoreScheduling.IsPlacementKey(key) && CoreScheduling.HasGlobalRecord())
+                return CoreScheduling.Value(CoreScheduling.LoadGlobal(), key);
             // 这个选项没有全局设置 老的 GmFamilyExempt 不会迁移成
             // 对现有库里每个游戏都不安全的开启状态
             if (key == PolicyCatalog.KeySuppressFamily) return "0";
@@ -119,9 +126,19 @@ namespace PaviseApp
         private readonly HashSet<string> overridden = new HashSet<string>(StringComparer.Ordinal);
         public readonly string ProfileId;
         public readonly string ProfileName;
+        public readonly bool ManualPlacement;
+        public readonly CoreSchedulingPlan CorePlan;
 
         internal PolicySnapshot(GameProfile profile)
         {
+            // 核心方案按对局冻结，避免一次扫后台读到两份正在切换的配置。
+            bool hasGlobalRecord;
+            CoreSchedulingPlan global = CoreScheduling.LoadGlobal(out hasGlobalRecord);
+            CorePlan = CoreScheduling.ForProfile(profile, global);
+            ManualPlacement = hasGlobalRecord
+                || profile != null && profile.Overrides.ContainsKey(CoreScheduling.Key);
+            foreach (string key in CoreScheduling.PlacementKeys)
+                values[key] = hasGlobalRecord ? CoreScheduling.Value(global, key) : CoreScheduling.LegacyPolicyValue(key);
             if (profile == null) return;
             foreach (PolicyItem item in PolicyCatalog.All)
             {
@@ -130,6 +147,14 @@ namespace PaviseApp
                 string canonical = PolicyCatalog.Canonical(item.Key, value);
                 values[item.Key] = canonical ?? item.Fallback;
                 overridden.Add(item.Key);
+            }
+            if (ManualPlacement)
+            {
+                CoreSchedulingPlan plan = CoreScheduling.ForProfile(profile, global);
+                foreach (string key in CoreScheduling.PlacementKeys)
+                {
+                    values[key] = CoreScheduling.Value(plan, key);
+                }
             }
             ProfileId = profile.Id;
             ProfileName = profile.Name;
@@ -147,6 +172,7 @@ namespace PaviseApp
         public string ValueOf(string key)
         {
             if (key == null) return null;
+            if (CoreScheduling.IsRetiredKey(key)) return key == CoreScheduling.HeavyMaskKey ? "" : "0";
             // 极限档覆盖 只对清单内且未被用户停用的键 用户配置原样保留 切走即恢复
             //   先查清单再查档位 档位判定会回到 ValueOf(KeyPreset) 清单不含它 不会递归
             if (key != PolicyCatalog.KeyPreset)
@@ -165,6 +191,7 @@ namespace PaviseApp
         public string OwnValueOf(string key)
         {
             if (key == null) return null;
+            if (CoreScheduling.IsRetiredKey(key)) return key == CoreScheduling.HeavyMaskKey ? "" : "0";
             string value;
             if (values.TryGetValue(key, out value)) return value;
             PolicyItem item = PolicyCatalog.ItemOf(key);
@@ -215,7 +242,7 @@ namespace PaviseApp
         public bool IntelLowLatency { get { return On(PolicyCatalog.KeyIntelLowLatency); } }
         public bool IntelEnduranceOff { get { return On(PolicyCatalog.KeyIntelEndurance); } }
         public bool VramShield { get { return On(PolicyCatalog.KeyVramShield); } }
-        public bool HeavySqueeze { get { return On(PolicyCatalog.KeyHeavySqueeze); } }
+        public bool CacheWarm { get { return On(PolicyCatalog.KeyCacheWarm); } }
         public bool AdaptiveEscalate { get { return On(PolicyCatalog.KeyAdaptiveEscalate); } }
 
         public ulong CoreMask

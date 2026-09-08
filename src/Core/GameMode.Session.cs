@@ -148,7 +148,7 @@ namespace PaviseApp
                 DiscardPresentProbe();
                 // 退出专为严格 IRQ 证明设置的临时硬绑核 普通游戏调优保持原样
                 // 还原失败的句柄仍由已有恢复路径跟进 不阻止只读系统观测
-                RestoreAllIrqProofHardPins();
+                RestoreAllIrqProofHardPins(false);
             }
             if (!irqProbe.CanObserveSystemNow) return;
             // 系统观测不申请 SET 权限 更不为出现测量值而改动游戏亲和性

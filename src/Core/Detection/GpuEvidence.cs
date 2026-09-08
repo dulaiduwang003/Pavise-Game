@@ -2,11 +2,38 @@
 // 文件用途 GPU 3D 引擎占用的突发采样 为渲染进程选举提供硬证据
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Threading;
 
 namespace PaviseApp
 {
+    // 随一次采样返回，不使用全局错误状态，避免并行调用互相覆盖诊断。
+    internal sealed class GpuSampleDiagnostics
+    {
+        internal string FailureStage;
+        internal uint FailureStatus;
+        internal string ExceptionType;
+        internal int CollectedRounds, ValidRounds, Instances, RejectedInstances;
+        internal int TargetPid, TargetInstances, TargetRejectedInstances;
+        internal uint TargetStatus;
+
+        internal void Failure(string stage, uint status)
+        {
+            FailureStage = stage;
+            FailureStatus = status;
+        }
+
+        public override string ToString()
+        {
+            return string.Format(CultureInfo.InvariantCulture,
+                "lastFailure={0} code=0x{1:X8} collected={2} valid={3} instances={4} rejected={5}{6} targetInstances={7} targetRejected={8} targetCode=0x{9:X8}",
+                FailureStage ?? "none", FailureStatus, CollectedRounds, ValidRounds,
+                Instances, RejectedInstances, ExceptionType == null ? "" : " exception=" + ExceptionType,
+                TargetInstances, TargetRejectedInstances, TargetStatus);
+        }
+    }
+
     internal sealed class RenderAdapter
     {
         public int LuidHigh;
@@ -25,7 +52,14 @@ namespace PaviseApp
 
         public static Dictionary<int, double> Sample3D(int rounds, int intervalMs, Func<bool> canceled)
         {
-            return SampleCore(rounds, intervalMs, canceled, false, 0, 0, false);
+            return SampleCore(rounds, intervalMs, canceled, false, 0, 0, false, null);
+        }
+
+        internal static Dictionary<int, double> Sample3D(int rounds, int intervalMs, Func<bool> canceled,
+            int targetPid, out GpuSampleDiagnostics diagnostics)
+        {
+            diagnostics = new GpuSampleDiagnostics { TargetPid = targetPid };
+            return SampleCore(rounds, intervalMs, canceled, false, 0, 0, false, diagnostics);
         }
 
         // 只统计指定适配器上的 3D 占用 用于找出对局中仍在游戏渲染卡上跑的后台进程
@@ -34,31 +68,52 @@ namespace PaviseApp
         public static Dictionary<int, double> SampleAdapter3D(int luidHigh, uint luidLow,
             int rounds, int intervalMs, Func<bool> canceled)
         {
-            return SampleCore(rounds, intervalMs, canceled, true, luidHigh, luidLow, true);
+            return SampleCore(rounds, intervalMs, canceled, true, luidHigh, luidLow, true, null);
         }
 
         private static Dictionary<int, double> SampleCore(int rounds, int intervalMs, Func<bool> canceled,
-            bool filterAdapter, int luidHigh, uint luidLow, bool sustained)
+            bool filterAdapter, int luidHigh, uint luidLow, bool sustained, GpuSampleDiagnostics diagnostics)
         {
             IntPtr query = IntPtr.Zero;
             try
             {
-                if (PdhOpenQueryW(null, IntPtr.Zero, out query) != 0 || query == IntPtr.Zero) return null;
-                IntPtr counter;
-                if (PdhAddEnglishCounterW(query, @"\GPU Engine(*engtype_3D)\Utilization Percentage",
-                        IntPtr.Zero, out counter) != 0)
+                uint status = PdhOpenQueryW(null, IntPtr.Zero, out query);
+                if (status != 0 || query == IntPtr.Zero)
+                {
+                    if (diagnostics != null) diagnostics.Failure("PdhOpenQuery", status);
                     return null;
-                if (PdhCollectQueryData(query) != 0) return null;
+                }
+                IntPtr counter;
+                status = PdhAddEnglishCounterW(query, @"\GPU Engine(*engtype_3D)\Utilization Percentage",
+                    IntPtr.Zero, out counter);
+                if (status != 0)
+                {
+                    if (diagnostics != null) diagnostics.Failure("PdhAddEnglishCounter", status);
+                    return null;
+                }
+                status = PdhCollectQueryData(query);
+                if (status != 0)
+                {
+                    if (diagnostics != null) diagnostics.Failure("PdhCollectQueryData.prime", status);
+                    return null;
+                }
                 Dictionary<int, double> best = null;
                 int contributed = 0;
                 for (int round = 0; round < rounds; round++)
                 {
                     if (canceled != null && canceled()) break;
                     Thread.Sleep(intervalMs);
-                    if (PdhCollectQueryData(query) != 0) continue;
-                    Dictionary<int, double> current = ReadByPid(counter, filterAdapter, luidHigh, luidLow);
+                    status = PdhCollectQueryData(query);
+                    if (status != 0)
+                    {
+                        if (diagnostics != null) diagnostics.Failure("PdhCollectQueryData.sample", status);
+                        continue;
+                    }
+                    if (diagnostics != null) diagnostics.CollectedRounds++;
+                    Dictionary<int, double> current = ReadByPid(counter, filterAdapter, luidHigh, luidLow, diagnostics);
                     if (current == null) continue;
                     contributed++;
+                    if (diagnostics != null) diagnostics.ValidRounds++;
                     if (best == null) { best = current; continue; }
                     if (sustained)
                     {
@@ -84,34 +139,69 @@ namespace PaviseApp
                 if (sustained && contributed < 2) return null;
                 return best;
             }
-            catch { return null; }
+            catch (Exception error)
+            {
+                if (diagnostics != null) diagnostics.ExceptionType = error.GetType().Name;
+                return null;
+            }
             finally { if (query != IntPtr.Zero) { try { PdhCloseQuery(query); } catch { } } }
         }
 
         private static Dictionary<int, double> ReadByPid(IntPtr counter,
-            bool filterAdapter, int luidHigh, uint luidLow)
+            bool filterAdapter, int luidHigh, uint luidLow, GpuSampleDiagnostics diagnostics)
         {
             uint bufferSize = 0;
             uint itemCount = 0;
             uint status = PdhGetFormattedCounterArrayW(counter, PDH_FMT_DOUBLE,
                 ref bufferSize, ref itemCount, IntPtr.Zero);
-            if (status != PDH_MORE_DATA || bufferSize == 0) return null;
+            if (status != PDH_MORE_DATA || bufferSize == 0)
+            {
+                if (diagnostics != null) diagnostics.Failure("PdhGetFormattedCounterArray.size", status);
+                return null;
+            }
             IntPtr buffer = Marshal.AllocHGlobal((int)bufferSize);
             try
             {
                 status = PdhGetFormattedCounterArrayW(counter, PDH_FMT_DOUBLE,
                     ref bufferSize, ref itemCount, buffer);
-                if (status != 0) return null;
+                if (status != 0)
+                {
+                    if (diagnostics != null) diagnostics.Failure("PdhGetFormattedCounterArray.data", status);
+                    return null;
+                }
                 var result = new Dictionary<int, double>();
                 int itemSize = Marshal.SizeOf(typeof(PdhFmtCounterValueItem));
                 for (uint i = 0; i < itemCount; i++)
                 {
                     var item = (PdhFmtCounterValueItem)Marshal.PtrToStructure(
                         new IntPtr(buffer.ToInt64() + (long)i * itemSize), typeof(PdhFmtCounterValueItem));
-                    if (item.Value.CStatus > 1) continue;
+                    if (diagnostics == null && item.Value.CStatus > 1) continue;
                     string name = Marshal.PtrToStringUni(item.Name);
                     int pid = ParsePid(name);
-                    if (pid <= 0) continue;
+                    if (diagnostics != null) diagnostics.Instances++;
+                    if (diagnostics != null && pid > 0 && pid == diagnostics.TargetPid)
+                    {
+                        diagnostics.TargetInstances++;
+                        if (item.Value.CStatus > 1)
+                        {
+                            diagnostics.TargetRejectedInstances++;
+                            diagnostics.TargetStatus = item.Value.CStatus;
+                        }
+                    }
+                    if (item.Value.CStatus > 1)
+                    {
+                        if (diagnostics != null)
+                        {
+                            diagnostics.RejectedInstances++;
+                            diagnostics.Failure("counter.CStatus", item.Value.CStatus);
+                        }
+                        continue;
+                    }
+                    if (pid <= 0)
+                    {
+                        if (diagnostics != null) diagnostics.RejectedInstances++;
+                        continue;
+                    }
                     if (filterAdapter)
                     {
                         int hi; uint lo, phys;

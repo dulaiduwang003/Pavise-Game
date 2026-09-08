@@ -145,21 +145,38 @@ namespace PaviseApp
             Rectangle r = c.Rect;
             r.Inflate(-Theme.S(2), -Theme.S(2));
 
-            Color fill = Col.Lerp(Theme.Bg, Theme.Accent, on);
+            Color accent = SchedulingOverlay && !SelectionColor.IsEmpty ? SelectionColor : Theme.Accent;
+            Color fill = Col.Lerp(Theme.Bg, accent, on);
+            bool disabled = (DisabledMask & (1UL << c.Cpu)) != 0 || !Enabled;
+            if (disabled) fill = Theme.Card;
             if (hot > 0.01f)
-                fill = Col.Lerp(fill, Col.Lerp(Theme.Accent, Color.White, on),
+                fill = Col.Lerp(fill, Col.Lerp(accent, Color.White, on),
                     hot * (0.25f - on * 0.03f));
             using (GraphicsPath path = Theme.TechPath(r, Theme.S(4)))
             {
                 using (var b = new SolidBrush(fill)) g.FillPath(b, path);
-                Color border = Col.Lerp(Theme.Stroke, Col.Alpha(Theme.Accent, 235), on);
+                Color border = Col.Lerp(Theme.Stroke, Col.Alpha(accent, 235), on);
                 using (var p = new Pen(border, 1f)) g.DrawPath(p, path);
             }
 
             TextRenderer.DrawText(g, c.Cpu.ToString(), Theme.Mono(7.6f), r,
-                Col.Lerp(Col.Lerp(Theme.Dim, Theme.Fg, hot), Theme.OnAccent, on),
+                disabled ? Theme.Faint : Col.Lerp(Col.Lerp(Theme.Dim, Theme.Fg, hot), Theme.OnAccent, on),
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
                     | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+            if (SchedulingOverlay)
+            {
+                ulong bit = 1UL << c.Cpu;
+                int x = r.Left + Theme.S(3), y = r.Bottom - Theme.S(4);
+                ulong[] masks = { SchedulingGameMask, SchedulingIsolationMask };
+                Color[] colors = { GameColor, IsolationColor };
+                for (int i = 0; i < masks.Length; i++)
+                {
+                    if ((masks[i] & bit) != 0)
+                        using (var brush = new SolidBrush(colors[i]))
+                            g.FillRectangle(brush, x, y, Theme.S(5), Theme.S(2));
+                    x += Theme.S(7);
+                }
+            }
         }
 
         // 选核弹窗 边框/负载条保留辉光 数字只画一次 保证高负载时依然清晰

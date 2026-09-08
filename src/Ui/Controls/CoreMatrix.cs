@@ -69,6 +69,28 @@ namespace PaviseApp
         private const int LegendRowH = 22;
 
         public Action<ulong> SelectionChanged;
+        public bool SelectWholeCore { get; set; }
+        public ulong DisabledMask { get; set; }
+        public ulong SchedulingGameMask { get; set; }
+        public ulong SchedulingIsolationMask { get; set; }
+        public bool SchedulingOverlay { get; set; }
+        public Color SelectionColor { get; set; }
+        internal static Color GameColor { get { return Theme.Accent; } }
+        internal static Color IsolationColor { get { return Theme.Accent2; } }
+
+        internal void ToggleCpu(int cpu)
+        {
+            if (!Enabled || cpu < 0 || cpu >= 64) return;
+            ulong bit = 1UL << cpu;
+            if ((bit & allMask) == 0) return;
+            ulong target = SelectWholeCore
+                ? CoreScheduling.WholeCores(bit, CpuTopology.PhysicalCoreMasks()) : bit;
+            if ((target & DisabledMask) != 0) return;
+            selected = (selected & target) == target ? selected & ~target : selected | target;
+            SyncCells();
+            Invalidate();
+            if (SelectionChanged != null) SelectionChanged(selected);
+        }
 
         // 打开负载热力/类型标注 会多占一行图例 必须在 LayoutFor 之前设
         public bool Annotate
@@ -263,6 +285,13 @@ namespace PaviseApp
                 SyncCells();
                 Invalidate();
             }
+        }
+
+        internal void ShowSelectionImmediately(ulong mask)
+        {
+            selected = mask & allMask;
+            SnapCells();
+            Invalidate();
         }
     }
 }

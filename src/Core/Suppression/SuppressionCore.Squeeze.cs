@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 压制核心的重压绑核分部 只给已隔离的后台条目改亲和 解除与还原一律回原值
+// 文件用途 反作弊亲和性限制与旧后台绑核恢复
 using System;
 using System.Collections.Generic;
 
@@ -7,12 +7,7 @@ namespace PaviseApp
 {
     internal sealed partial class SuppressionCore
     {
-        public bool SetSqueeze(int pid, long creation, string name, ulong squeezeMask, out bool changed)
-        {
-            return SetSqueeze(pid, creation, name, squeezeMask, SuppressReason.Background, out changed);
-        }
-
-        // 目标掩码为 0 表示解除 落点校验在 HeavySqueezePolicy.SqueezeTarget
+        // 目标掩码为 0 表示解除 落点校验在 SuppressionAffinityPolicy.SqueezeTarget
         //   只认身份完全吻合的已落账条目 受保护条目 未落账的条目都不碰
         //   reason 说明这次是谁在下落点 后台路只认纯后台条目 反作弊路只认带反作弊原因的条目
         //   返回真表示条目现在处于期望状态 changed 表示这次调用真的改了亲和
@@ -20,6 +15,8 @@ namespace PaviseApp
             SuppressReason reason, out bool changed)
         {
             changed = false;
+            // 重压已退役；后台只允许恢复，不再接受新的限制。
+            if (reason != SuppressReason.AntiCheat && squeezeMask != 0) return false;
             Entry e;
             ulong target;
             lock (sync)
@@ -27,7 +24,7 @@ namespace PaviseApp
                 if (!map.TryGetValue(pid, out e) || !SqueezeOwnedBy(e, reason)
                     || e.OrigPri == uint.MaxValue || !e.Journaled || e.Creation <= 0
                     || e.Creation != creation || !SameName(e.Name, name)) return false;
-                target = squeezeMask == 0 ? 0 : HeavySqueezePolicy.SqueezeTarget(
+                target = squeezeMask == 0 ? 0 : SuppressionAffinityPolicy.SqueezeTarget(
                     squeezeMask, e.OrigAff, e.OrigCpuSets, allMask, CpuTopology.MultiGroup);
                 if (e.SqueezeAff == target) return true;
                 if (target != 0 && (e.SqueezeRefused || e.GaveUp)) return false;
@@ -51,7 +48,6 @@ namespace PaviseApp
                     {
                         // 绑不上就不记这笔账 亲和写回原值 Applied 与巡检节奏一律不动
                         //   否则一次亲和被拒会把整条压制判成失败 每轮重试还刷日志
-                        //   调用方拿到 false 后按 pid 退避 见 GameMode.ApplyHeavySqueeze
                         cur.SqueezeAff = 0;
                         ulong original = cur.OrigAff != 0 ? cur.OrigAff : allMask;
                         if (!CpuTopology.MultiGroup && Native.QueryAffinity(h) != original)
