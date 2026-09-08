@@ -1,4 +1,4 @@
-// Pure threshold checks against the real reported build; no startup, no restore, no windows.
+// 文件用途 拿真实上报的内部版本做纯阈值检查 不启动 不还原 不建窗口
 // 系统门槛回归 只验证比较规则 不触发拦截也不还原任何东西
 #if PAVISE_SELFTEST
 using System;

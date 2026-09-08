@@ -121,7 +121,7 @@ namespace PaviseApp
 
         private void BuildUi(Icon appIcon)
         {
-            // Rebuild 会复用 PanelForm 实例，新控件必须强制拿到一份完整的呈现状态。
+            // Rebuild 会复用 PanelForm 实例 新控件得强制拿一份完整的呈现状态
             modeVisualInitialized = false;
             visualPolicySource = null;
             builtLang = Lang.Cur;

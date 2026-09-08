@@ -18,7 +18,7 @@ function Get-RiskSettingsFingerprint {
     $riskRegistry = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\Pavise')
     try {
         if (-not $riskRegistry) { return 'absent' }
-        # The hash is evidence only; values (including paths/session history) are not persisted.
+        # 哈希只当证据 具体值包括路径和会话历史都不落盘
         $riskParts = foreach ($riskValueName in @($riskRegistry.GetValueNames() | Sort-Object)) {
             [pscustomobject]@{Name=$riskValueName;Kind=[string]$riskRegistry.GetValueKind($riskValueName);Value=$riskRegistry.GetValue($riskValueName)}
         }
@@ -36,7 +36,7 @@ function Invoke-RiskArm([string]$Label, [string]$Arguments) {
     $riskProcess = Start-Process -FilePath $riskExe -ArgumentList $Arguments -WindowStyle Hidden -PassThru -RedirectStandardOutput $riskOut -RedirectStandardError $riskErr
     try {
         if (-not $riskProcess.WaitForExit(50000)) {
-            # Only the exact Process object created above is eligible for emergency termination.
+            # 只有上面创建的那个 Process 对象才有资格被紧急结束
             $riskProcess.Kill()
             $riskProcess.WaitForExit()
             throw "$Label exceeded its bounded lifetime"

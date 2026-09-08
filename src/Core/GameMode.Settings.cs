@@ -293,17 +293,6 @@ namespace PaviseApp
             }
         }
 
-        public bool LaptopPerf
-        {
-            get { return laptopPerfOn; }
-            set
-            {
-                laptopPerfOn = value;
-                Settings.Save(PolicyCatalog.KeyLaptopPerf, value);
-                if (value) ClearEnvFuse("oemperf");
-                RequestPolicyApply();
-            }
-        }
 
         public bool NvMaxPerf
         {

@@ -1,4 +1,4 @@
-﻿// Pure decision and receipt checks; no NVML calls, no driver writes, no windows.
+﻿// 文件用途 纯决策和收据检查 不调 NVML 不写驱动 不建窗口
 // 显卡锁频已下架 这里只剩收据编解码与同批落地的会话门与 DPI 令牌回归 不碰 NVML
 #if PAVISE_SELFTEST
 using System;
@@ -16,7 +16,7 @@ namespace PaviseApp
             Action[] tests =
             {
                 GpuClockReceiptRoundTrips,
-                LaptopPerfDefaultsOffAndPresetsRespectTheSwitch,
+                LaptopPerfIsRetiredButStillRecoverable,
                 SessionGatesAreDecidedByEvidence,
                 DpiLayerTokensMergeWithoutClobbering
             };
@@ -37,50 +37,33 @@ namespace PaviseApp
             gpuClockChecks++;
         }
 
-        private static void LaptopPerfDefaultsOffAndPresetsRespectTheSwitch()
+        // 厂商性能档已下架 目录里不再有这一项 只留旧收据的清收路径
+        //   下架理由 它调厂商接口拨功耗档 和掌机档把功耗侧让给厂商工具是冲突的
+        //   而且判据里从来没有档位 掌机档选了也照拨
+        private static void LaptopPerfIsRetiredButStillRecoverable()
         {
             Settings.UseTransientStoreForCurrentProcess();
-            PolicyItem item = PolicyCatalog.ItemOf(PolicyCatalog.KeyLaptopPerf);
-            GpuClockCheck(!PolicyCatalog.LaptopPerfDefault && item != null
-                && item.Fallback == "0" && !PolicyResolver.Global().LaptopPerf,
-                "vendor performance mode defaults off in both the catalog and the global snapshot");
-            GpuClockCheck(LaptopPerfMode.ShouldActivate(true, true)
-                && !LaptopPerfMode.ShouldActivate(false, true)
-                && !LaptopPerfMode.ShouldActivate(true, false),
-                "the runtime gate did not depend only on the configured value and hardware support");
+            GpuClockCheck(PolicyCatalog.ItemOf(PolicyCatalog.KeyLaptopPerf) == null,
+                "vendor performance mode is still in the policy catalog after retirement");
 
-            Settings.Save(PolicyCatalog.KeyLaptopPerf, false);
-            foreach (PerformancePreset preset in new[]
-            {
-                PerformancePreset.Standard, PerformancePreset.Competitive,
-                PerformancePreset.Handheld, PerformancePreset.Custom
-            })
-            {
-                var profile = new GameProfile();
-                profile.Overrides[PolicyCatalog.KeyPreset] = ((int)preset).ToString();
-                PolicySnapshot snapshot = PolicyResolver.For(profile);
-                GpuClockCheck(!snapshot.LaptopPerf,
-                    preset + " overrode the user's disabled vendor performance switch");
-            }
+            Type mode = typeof(LaptopPerfMode);
+            foreach (string gone in new[] { "Activate", "ShouldActivate", "SupportedCached" })
+                GpuClockCheck(mode.GetMethod(gone,
+                        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static) == null,
+                    "retired vendor performance mode still exposes " + gone);
 
-            Settings.Save("ExtremeUnlocked", true);
-            Settings.SaveStr("ExtremeUnlockTicks", "1");
-            var extreme = new GameProfile();
-            extreme.Overrides[PolicyCatalog.KeyPreset] = ((int)PerformancePreset.Extreme).ToString();
-            PolicySnapshot extremeSnapshot = PolicyResolver.For(extreme);
-            GpuClockCheck(extremeSnapshot.Preset == PerformancePreset.Extreme && !extremeSnapshot.LaptopPerf,
-                "extreme overrode the user's disabled vendor performance switch");
-            MethodInfo uiRule = typeof(PanelForm).GetMethod("CfgPresetForces",
-                BindingFlags.Static | BindingFlags.NonPublic);
-            object[] competitiveArgs =
-                { PolicyCatalog.KeyLaptopPerf, PerformancePreset.Competitive, false };
-            object[] extremeArgs =
-                { PolicyCatalog.KeyLaptopPerf, PerformancePreset.Extreme, false };
-            GpuClockCheck(uiRule != null
-                && !(bool)uiRule.Invoke(null, competitiveArgs)
-                && !(bool)uiRule.Invoke(null, extremeArgs),
-                "the per-game UI still locked vendor performance mode in esports or extreme");
-            Settings.UseTransientStoreForCurrentProcess();
+            // 恢复路径必须留着 老用户机器上可能还压着一张收据
+            foreach (string kept in new[] { "Restore", "HealFromCrash" })
+                GpuClockCheck(mode.GetMethod(kept,
+                        BindingFlags.Public | BindingFlags.Static) != null,
+                    "vendor performance mode lost its recovery entry " + kept);
+            GpuClockCheck(mode.GetProperty("HasResidue",
+                    BindingFlags.Public | BindingFlags.Static) != null,
+                "vendor performance mode lost its residue probe");
+
+            // 键名保留给旧收据的清收 别顺手删掉
+            GpuClockCheck(PolicyCatalog.KeyLaptopPerf == "GmLaptopPerfV1",
+                "the retired vendor performance key changed and old receipts would be orphaned");
         }
 
         private static void SessionGatesAreDecidedByEvidence()

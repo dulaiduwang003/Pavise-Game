@@ -1,4 +1,4 @@
-// 隔离 UI 回归入口：仅构造控件，不构造 GameMode、不启动应用、不读写用户配置。
+// 隔离 UI 回归入口 只构造控件 不构造 GameMode 不启动应用 不读写用户配置
 #if PAVISE_UI_TEST
 using System;
 using System.Collections;
@@ -139,7 +139,7 @@ namespace PaviseApp
 
         private static void CheckAddGameDialog()
         {
-            // Do not create a handle or show this dialog: Load starts real install/process scanning.
+            // 别建句柄也别把这个对话框显出来 Load 会真的去扫安装记录和进程
             using (var dialog = new AddGameDialog(new string[0], false))
             {
                 Type type = typeof(AddGameDialog);
@@ -201,8 +201,8 @@ namespace PaviseApp
         private const BindingFlags InstanceFields = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         private const string FixtureRoot = @"C:\PaviseAddGameFixture";
 
-        // No test may show a window or invoke the production Load handlers that
-        // enumerate processes, install records, icons, or GPU counters.
+        // 任何一个测试都不许显示窗口 也不许调生产环境的 Load 处理器
+        // 那些东西会去枚举进程 安装记录 图标和 GPU 计数器
         private sealed class NoScanAddGameDialog : AddGameDialog
         {
             internal NoScanAddGameDialog(params string[] existing) : base(existing, false) { }
@@ -500,8 +500,8 @@ namespace PaviseApp
                 Rectangle track = ScrollProperty<Rectangle>(rail, "TrackRectangle");
                 Rectangle thumb = ScrollProperty<Rectangle>(rail, "ThumbRectangle");
                 Check(thumb.Bottom < track.Bottom, "Rail interaction fixture must have room below its thumb");
-                // Only click outside the thumb. Production thumb clicks acquire global mouse
-                // capture; the pure BeginDrag/DragTo helpers exercise that mapping safely.
+                // 只点滑块外面 生产代码里点滑块会去抢全局鼠标捕获
+                // 纯的 BeginDrag 和 DragTo 辅助方法能安全地走一遍那套映射
                 Invoke(rail, "OnMouseDown", new MouseEventArgs(MouseButtons.Left, 1,
                     rail.Width / 2, track.Bottom - 1, 0));
                 Check(list.TopIndex == host.VisibleRows, "Clicking the lower track did not advance one page");

@@ -88,7 +88,7 @@ namespace PaviseApp
 
             ty = 2;
             AddCfgSection(cfgTabPanels[2], Lang.T("cfg.group.mempower"), ref ty,
-                new[] { PolicyCatalog.KeyPowerPlan, PolicyCatalog.KeyPowerYield, PolicyCatalog.KeyLaptopPerf,
+                new[] { PolicyCatalog.KeyPowerPlan, PolicyCatalog.KeyPowerYield,
                     PolicyCatalog.KeyDisableCpuIdle, PolicyCatalog.KeyStandbyCleaner });
             AddCfgSection(cfgTabPanels[2], Lang.T("cfg.sub.net"), ref ty,
                 new[] { PolicyCatalog.KeyPauseDl, PolicyCatalog.KeyPauseUpdate, PolicyCatalog.KeyPauseMaintenance });
@@ -123,7 +123,7 @@ namespace PaviseApp
                     PolicyCatalog.KeyRenderLane },
                 new[] { PolicyCatalog.KeyStrictCores, PolicyCatalog.KeyCoreDomainAlt,
                     PolicyCatalog.KeyCoreMask },
-                new[] { PolicyCatalog.KeyPowerPlan, PolicyCatalog.KeyPowerYield, PolicyCatalog.KeyLaptopPerf,
+                new[] { PolicyCatalog.KeyPowerPlan, PolicyCatalog.KeyPowerYield,
                     PolicyCatalog.KeyDisableCpuIdle, PolicyCatalog.KeyStandbyCleaner,
                     PolicyCatalog.KeyPauseDl, PolicyCatalog.KeyPauseUpdate, PolicyCatalog.KeyPauseMaintenance,
                     PolicyCatalog.KeyPauseServices, PolicyCatalog.KeyAwake,
@@ -203,7 +203,6 @@ namespace PaviseApp
                 case PolicyCatalog.KeyAmdAfmf: return "set.amdafmf.n";
                 case PolicyCatalog.KeyIntelLowLatency: return "set.intel.lowlatency.n";
                 case PolicyCatalog.KeyIntelEndurance: return "set.intel.endurance.n";
-                case PolicyCatalog.KeyLaptopPerf: return "gm.laptopperf.sub";
                 default: return null;
             }
         }
@@ -259,9 +258,9 @@ namespace PaviseApp
                     if (!IntelGraphicsTweaks.HasAvailable) { reasonKey = "set.intel.none"; return false; }
                     if (!Native.HasSystemBattery()) { reasonKey = "set.intel.endurance.desktop"; return false; }
                     return true;
-                case PolicyCatalog.KeyLaptopPerf:
-                    if (!Native.HasSystemBattery() || !LaptopPerfMode.SupportedCached())
-                    { reasonKey = "laptopperf.unsupported"; return false; }
+                // 这一项按本局实际生效的档位判 掌机档和低核机器上开了也不启用
+                case PolicyCatalog.KeyRenderLane:
+                    if (!GameMode.LaneSupported(cfgEffMode)) { reasonKey = "gm.lane.unsupported"; return false; }
                     return true;
                 default:
                     return true;

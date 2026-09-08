@@ -178,8 +178,8 @@ namespace PaviseApp
                 && stage != YieldStage.Held) return YieldAction.None;
             bool validLoad = ValidUtil(gpuUtil) && ValidUtil(cpuUtil);
             bool validMeter = ValidPositive(proxyMode ? freqPct : pkgWatts);
-            // 修改过 EPP 后，无证据不能继续持有。先检查间隙，再接纳新样本，
-            // 避免长时间失联后的一个好读数洗掉失联记录。缺测不熔断硬件。
+            // 改过 EPP 之后没证据就不能继续持有 先查间隙 再收新样本
+            // 免得失联半天来一个好读数就把失联记录洗掉 缺测不熔断硬件
             if ((stage == YieldStage.Engaged || stage == YieldStage.Held)
                 && (now < lastEvidenceAt || now - lastEvidenceAt >= EvidenceMaxAgeTicks))
             {
@@ -529,7 +529,7 @@ namespace PaviseApp
             }
         }
 
-        // 与隔离测试共享完整的“样本 -> 决策 -> 写入”分发；无效 GPU 也必须经过这里。
+        // 和隔离测试共用整条样本到决策到写入的分发 无效 GPU 也得从这走
         internal static bool ProcessSample(int mine, long now, double gpu, double cpu,
             double watts, double freq, Func<bool> engage, Func<bool> restore,
             out YieldAction action, out YieldVerdict verdict)
@@ -605,7 +605,7 @@ namespace PaviseApp
                     else drySamples = 0;
                     if (targetChanged)
                     {
-                        // PID 复用、renderer 退出或渲染迁到另一块卡后旧基线都不可继续用
+                        // PID 复用 renderer 退出 或者渲染挪到另一块卡 旧基线都不能再用
                         // 若已经让过 EPP 立即尝试还原 退局 StopCore 仍是失败兜底
                         if (PowerPlan.EppYielded) RunCurrentMutation(mine, PowerPlan.RestoreEpp);
                         Logger.Warn(Lang.T("log.poweryield.13"));

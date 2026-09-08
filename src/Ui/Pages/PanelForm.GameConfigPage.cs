@@ -79,6 +79,13 @@ namespace PaviseApp
                 if (string.Equals(p.Id, cfgProfileId, StringComparison.OrdinalIgnoreCase))
                 {
                     cfgProfile = p;
+                    string presetOverride;
+                    int presetParsed;
+                    // 建行前就解析本游戏档位 同步和重新打开页面共用这一入口
+                    cfgEffMode = p.Overrides.TryGetValue(PolicyCatalog.KeyPreset, out presetOverride)
+                        && int.TryParse(presetOverride, out presetParsed)
+                        && PresetValue.IsValid(presetParsed)
+                        ? PresetValue.From(presetParsed) : gameMode.Preset;
                     return true;
                 }
             cfgProfile = null;
@@ -112,13 +119,6 @@ namespace PaviseApp
         private void SyncCfgRows()
         {
             if (!RefreshCfgProfile()) return;
-            string presetOverride;
-            int presetParsed;
-            // 走 From 不裸转 极限锁着时存量的 5 解析为电竞 展示跟核心同一口径
-            cfgEffMode = cfgProfile.Overrides.TryGetValue(PolicyCatalog.KeyPreset, out presetOverride)
-                && int.TryParse(presetOverride, out presetParsed)
-                && PresetValue.IsValid(presetParsed)
-                ? PresetValue.From(presetParsed) : gameMode.Preset;
             // 一轮同步内各行共享厂商可用性探测 驱动状态不会在一轮里变
             cfgSyncNvOk = NvApi.Available;
             cfgSyncAmdOk = AdlxTweaks.Available;

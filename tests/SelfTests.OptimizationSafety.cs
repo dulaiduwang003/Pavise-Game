@@ -1,4 +1,4 @@
-// Retirement and safety regressions. All files belong to temporary test folders.
+// 文件用途 下架和安全回归 所有文件都在临时测试目录里
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -142,7 +142,7 @@ namespace PaviseApp
                 Eq(YieldVerdict.Inconclusive, state.Verdict);
                 state = SafetyYield(proxy, false);
                 Eq(YieldAction.Revert, state.Advance(31 * TimeSpan.TicksPerSecond, 97, 40, 41, 140));
-                // 一次短缺测不会把之后完整有效的验证样本判坏。
+                // 中间缺一次测 不能把后面完整有效的验证样本判成坏的
                 state = SafetyYield(proxy, false);
                 state.Advance(22 * TimeSpan.TicksPerSecond, -1, double.NaN, -1, -1);
                 for (int s = 24; s <= 36; s += 2)

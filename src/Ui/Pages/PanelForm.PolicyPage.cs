@@ -26,8 +26,8 @@ namespace PaviseApp
         private Toggle swPolicyPowerYield;
         private Toggle swPolicyDisableCpuIdle;
         private Toggle swPolicyPauseWu, swPolicyPauseServices, swPolicyAwake;
-        private Toggle swPolicyPauseMaint, swPolicyLaptopPerf;
-        private SettingCard cardPolicyPauseMaint, cardPolicyLaptopPerf;
+        private Toggle swPolicyPauseMaint;
+        private SettingCard cardPolicyPauseMaint;
         private SettingCard cardPolicyCores, cardPolicyAggressive;
         private SettingCard cardPolicyPauseDl, cardPolicyDvr;
         private SettingCard cardPolicyBackground, cardPolicyGpuDemote, cardPolicyBoost, cardPolicyLane, cardPolicyMmcss;
@@ -86,6 +86,7 @@ namespace PaviseApp
             swPolicyLane = AddPolicyToggle(scroll, ref sy, Lang.T("gm.lane"), Lang.T("gm.lane.sub"),
                 delegate { return gameMode.RenderLaneOn; }, delegate(bool v) { gameMode.RenderLaneOn = v; });
             cardPolicyLane = (SettingCard)swPolicyLane.Parent;
+            policySync.Add(SyncPolicyLane);
             swPolicyVramShield = AddPolicyToggle(scroll, ref sy, Lang.T("gm.vramshield"), Lang.T("gm.vramshield.sub"),
                 delegate { return gameMode.VramShieldOn; }, delegate(bool v) { OnVramShieldToggle(v); });
             cardPolicyVramShield = (SettingCard)swPolicyVramShield.Parent;
@@ -110,15 +111,6 @@ namespace PaviseApp
                 delegate { return Settings.Load(PowerBudgetYieldRunner.EnabledKey, false); },
                 delegate(bool v) { OnPowerYieldToggle(v); });
             cardPolicyPowerYield = (SettingCard)swPolicyPowerYield.Parent;
-            // 只有带电池且厂商接口在的机器才有这一项 台式机不显示
-            if (Native.HasSystemBattery())
-            {
-                swPolicyLaptopPerf = AddPolicyToggle(scroll, ref sy, Lang.T("gm.laptopperf"),
-                    LaptopPerfMode.SupportedCached() ? Lang.T("gm.laptopperf.sub") : Lang.T("laptopperf.unsupported"),
-                    delegate { return gameMode.LaptopPerf; }, delegate(bool v) { gameMode.LaptopPerf = v; });
-                cardPolicyLaptopPerf = (SettingCard)swPolicyLaptopPerf.Parent;
-                if (!LaptopPerfMode.SupportedCached() && !gameMode.LaptopPerf) swPolicyLaptopPerf.Enabled = false;
-            }
             scroll = policyTabPanels[3]; sy = 2;
             swPolicyEnglishInput = AddPolicyToggle(scroll, ref sy, Lang.T("gm.englishinput"), Lang.T("gm.englishinput.sub"),
                 delegate { return gameMode.EnglishInputEnabled; },
@@ -388,7 +380,7 @@ namespace PaviseApp
             ApplyPresetPolicy(swPolicyAdaptive, cardPolicyAdaptive, Lang.T("gm.adaptive"), false,
                 mode == PerformancePreset.Standard);
             ApplyPresetPolicy(swPolicyBoost, cardPolicyBoost, Lang.T("gm.boost"), false, true);
-            ApplyPresetPolicy(swPolicyLane, cardPolicyLane, Lang.T("gm.lane"), extremeTier, true);
+            SyncPolicyLane();
             if (cardPolicyCores != null) cardPolicyCores.Title = Lang.T("cpu.place.title");
             ApplyPresetPolicy(swPolicyAggressive, cardPolicyAggressive, Lang.T("gm.aggressive"), !custom, presetForcesOn);
             ApplyPresetPolicy(swPolicyPauseDl, cardPolicyPauseDl, Lang.T("gm.pausedl"), !custom, presetForcesOn);
@@ -427,15 +419,6 @@ namespace PaviseApp
             RefreshStandbyCleanerPresentation();
             ApplyPresetPolicy(swPolicyPauseWu, cardPolicyPauseWu, Lang.T("gm.pausewu"), extremeTier, true);
             ApplyPresetPolicy(swPolicyPauseMaint, cardPolicyPauseMaint, Lang.T("gm.pausemaint"), extremeTier, true);
-            if (swPolicyLaptopPerf != null)
-            {
-                ApplyPresetPolicy(swPolicyLaptopPerf, cardPolicyLaptopPerf, Lang.T("gm.laptopperf"), false, gameMode.LaptopPerf);
-                if (!LaptopPerfMode.SupportedCached() && !gameMode.LaptopPerf)
-                {
-                    swPolicyLaptopPerf.Enabled = false;
-                    if (cardPolicyLaptopPerf != null) cardPolicyLaptopPerf.SetLock(Lang.T("lock.na"), false);
-                }
-            }
             ApplyPresetPolicy(swPolicyPauseServices, cardPolicyPauseServices, Lang.T("gm.pausesvc"), extremeTier, true);
             ApplyPresetPolicy(swPolicyAwake, cardPolicyAwake, Lang.T("set.awake"), false, true);
             ApplyPresetPolicy(swPolicyVramShield, cardPolicyVramShield, Lang.T("gm.vramshield"), extremeTier, true);
@@ -553,6 +536,24 @@ namespace PaviseApp
             gameMode.HeavySqueezeOn = on;
             if (swPolicyHeavySqueeze != null) swPolicyHeavySqueeze.SetSilently(gameMode.HeavySqueezeOn);
             RefreshPolicyPresentation();
+        }
+
+        private void SyncPolicyLane()
+        {
+            PerformancePreset mode = gameMode.ActivePreset;
+            bool supported = GameMode.LaneSupported(mode);
+            bool forced = mode == PerformancePreset.Extreme;
+            ApplyPresetPolicy(swPolicyLane, cardPolicyLane, Lang.T("gm.lane"), forced, true);
+            if (swPolicyLane != null)
+            {
+                swPolicyLane.Enabled = supported && !forced;
+                swPolicyLane.SetSilently(supported && (forced || gameMode.RenderLaneOn));
+            }
+            if (cardPolicyLane != null)
+            {
+                cardPolicyLane.Desc = Lang.T(supported ? "gm.lane.sub" : "gm.lane.unsupported");
+                if (!supported) cardPolicyLane.SetLock(Lang.T("lock.na"), false);
+            }
         }
 
         private static void ApplyPresetPolicy(Toggle toggle, SettingCard card, string title, bool forced, bool effective)

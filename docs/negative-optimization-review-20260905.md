@@ -125,7 +125,7 @@
 - 自检记录：`%USERPROFILE%\AppData\Local\Temp\Pavise-ReviewFix-04cc15289cbb4b9ca707c1ad847b1b6a\results-final.txt`。同目录的非 SELFTEST 生产源码临时 DLL 编译成功；未启动主程序，自检编译仅有现存未赋值测试钩子的 CS0649 警告。
 - 第一轮修复复验：`%USERPROFILE%\AppData\Local\Temp\Pavise-NegativeReview-7b23380f905d457eae23fa8500eb9325`。同核 guarded 4 个窗口均有进展，完成次数中位数 53，对照 Normal 为 52.5；这些小样本差值不宣称性能提升。真实显存查询第一笔从提交到完成约 230.34 ms，扫描侧提交约 0.576 ms。此轮在“Normal 状态恢复账本去重”补充改动之前，最终复验另列。
 - 最终四臂复验：`%USERPROFILE%\AppData\Local\Temp\Pavise-NegativeReview-85b9c432ee54464ea0ea2b7e53955951`。16 个调度窗口、20 个功耗决策、10 个可见路径探针、40 个只读开销记录完整。原始完成数及最近秩 p50/p95 已由独立 PowerShell 脚本逐行重算，结果保存在 `analysis-qa.json`；只读开销也检查了唯一键、有限非负耗时及 8 次显存观测可用。四个专用入口均退出 0，设置指纹/活动电源计划/源码测试及正式 EXE 哈希不变，无残留台架进程。
-- 最终源码的渲染交接台架 `Repeat=5`：230/230 记录通过、0 失败。结果在 `tools/RendererHandoffBench/results/run-20260905-225246-8ded4ab6/REPORT.md`；`verification.json` 确认源码/测试/台架/正式 EXE 输入不变，未超时。前一轮同样为 230/230（`run-20260905-224507-239ec345`）。`git diff --check` 通过。正式 EXE 未打包或替换，源码修改需要后续构建才进入正式程序。
+- 最终源码的渲染交接台架 `Repeat=5`：230/230 记录通过、0 失败。运行 `run-20260905-225246-8ded4ab6`；`verification.json` 确认源码/测试/台架/正式 EXE 输入不变，未超时。前一轮同样为 230/230（`run-20260905-224507-239ec345`）。`git diff --check` 通过。正式 EXE 未打包或替换，源码修改需要后续构建才进入正式程序。
 
 | 最终复验项目 | 结果 | 能证明的范围 |
 |---|---|---|
@@ -154,6 +154,6 @@
 - 核域覆盖 A→B 不经过 Deactivate、同一 PID/创建时间跨局、PID 复用、新渲染 PID、未知 CPU Sets、受限原始核域和迟到旧证据。输入为合成核域，没有对真实游戏修改优先级。
 - 自检记录：`%USERPROFILE%\AppData\Local\Temp\Pavise-BoundaryFix-64e9f7cc49d4485e821fa7e43f9e0136\selftest-results.txt`。同目录的 `Pavise.Source.dll` 为无 SELFTEST 定义的完整生产源码编译结果，编译成功；正式 EXE 未更新或启动。
 - 四组负优化台架：`%USERPROFILE%\AppData\Local\Temp\Pavise-NegativeReview-ec2a4dcf68e546c69164d78d3ae49a33`。16 个调度窗口、20 个功耗判定、10 个路径保护探针、40 个只读开销记录完整；四个入口退出码均为 0。`Summarize-Review.ps1` 重算原始完成数及最近秩分位数并核验预期断言通过。设置、活动电源计划和输入文件哈希未变，无残留台架进程。
-- 五轮渲染交接台架：`tools/RendererHandoffBench/results/run-20260906-012257-768cb556/REPORT.md`，**230/230 记录通过、0 失败**，隔离及输入哈希核验通过。`git diff --check` 通过。
+- 五轮渲染交接台架（`run-20260906-012257-768cb556`）：**230/230 记录通过、0 失败**，隔离及输入哈希核验通过。`git diff --check` 通过。
 
 边界说明：已进入实际写入的操作允许收尾，停止/换局成功返回是排空边界，不承诺撤销已经提交的偏好；超时不能声称已安全停止。窗口变化与注册表写入仍不是操作系统原子事务。台架结果用于证明这些故障路径和恢复保护，不用于证明真实游戏 FPS 或延迟收益；本轮同核 guarded / Normal 的完成数中位数分别为 36.5 / 41.5，二者均实际使用 Normal，这组小样本差异不构成性能增减的因果证据。未恢复缓存预热，未增加定时电源计划巡检，未改动真实显卡偏好或功耗限制。

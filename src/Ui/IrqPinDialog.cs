@@ -338,7 +338,7 @@ namespace PaviseApp
                 scrollBody.AutoScrollPosition = Point.Empty;
                 bool needsVertical = bodyContentHeight > scrollBody.ClientSize.Height;
                 LayoutBodyWidth(BodyViewportWidth(needsVertical));
-                // 窄屏会让核心矩阵多折几行 可能刚好从“不滚动”变成“需滚动”
+                // 窄屏会让核心矩阵多折几行 可能正好从不用滚变成得滚
                 // 第二次按最终状态永久预留滚动条宽 避免纵滚条出现后再挤出横滚条
                 bool finalNeedsVertical = bodyContentHeight > scrollBody.ClientSize.Height;
                 if (finalNeedsVertical != needsVertical)

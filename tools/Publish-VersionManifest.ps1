@@ -1,17 +1,16 @@
 # @author bdth 2074055628@qq.com
-# File purpose: publish version.json to the Aliyun OSS update endpoint.
-# The app checks https://paivse.oss-cn-shanghai.aliyuncs.com/version/version.json
-# (with an oss-accelerate mirror). This script validates the local manifest,
-# uploads it, and reads it back from the public URL to confirm.
+# 文件用途 把 version.json 发到阿里云 OSS 的更新地址
+# 程序查的是 https://paivse.oss-cn-shanghai.aliyuncs.com/version/version.json 另有 oss-accelerate 镜像
+# 这个脚本先校验本地清单 再上传 最后从公网地址读回来确认
 #
-# Credentials (either one):
-#   1) ossutil/ossutil64 on PATH with a configured profile, or
-#   2) environment variables OSS_ACCESS_KEY_ID / OSS_ACCESS_KEY_SECRET
-#      (a RAM user with PutObject on paivse/version/* is enough).
+# 凭据二选一
+#   1 PATH 上有配好 profile 的 ossutil 或 ossutil64
+#   2 环境变量 OSS_ACCESS_KEY_ID 和 OSS_ACCESS_KEY_SECRET
+#     一个对 paivse/version/* 有 PutObject 权限的 RAM 用户就够
 #
 # Usage:
-#   powershell -File tools\Publish-VersionManifest.ps1            # publish
-#   powershell -File tools\Publish-VersionManifest.ps1 -DryRun    # validate only
+#   powershell -File tools\\Publish-VersionManifest.ps1            发布
+#   powershell -File tools\\Publish-VersionManifest.ps1 -DryRun    只校验
 [CmdletBinding()]
 param(
     [switch]$DryRun
@@ -29,7 +28,7 @@ $publicUrl = "https://$bucket.$endpoint/$objectKey"
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $manifestPath = Join-Path $repo "version.json"
 
-# Keep the manifest derived from App.Version before publishing anything.
+# 发之前先让清单跟 App.Version 对上
 & (Join-Path $PSScriptRoot "Sync-VersionManifest.ps1")
 
 $bytes = [IO.File]::ReadAllBytes($manifestPath)
@@ -100,7 +99,7 @@ if (-not $uploaded) {
     throw "No credentials found. Install/configure ossutil, or set OSS_ACCESS_KEY_ID and OSS_ACCESS_KEY_SECRET."
 }
 
-# Read back from the public endpoint; a mismatch means a stale or failed write.
+# 从公网地址读回来 对不上就说明写入过期或者失败了
 $client = New-Object Net.WebClient
 try { $served = $client.DownloadData($publicUrl) } finally { $client.Dispose() }
 if ([Convert]::ToBase64String($served) -ne [Convert]::ToBase64String($bytes)) {

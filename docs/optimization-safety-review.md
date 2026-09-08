@@ -50,7 +50,7 @@
 ## 原始证据与复现
 
 - 本轮编译、自检、探针源码及日志：`%USERPROFILE%\AppData\Local\Temp\Pavise-CodeReview-c1fc138334274abf97f70f600d311304`，关键文件为 `selftest.txt`、`ReviewProbe.cs`、`review-probes.txt`。
-- 交接台架：`tools/RendererHandoffBench/results/run-20260905-202900-a7b9e599/REPORT.md`；`verification.json` 确认运行期间源码、测试、台架和正式 EXE 未变，0 超时。
+- 交接台架 `run-20260905-202900-a7b9e599`：`verification.json` 确认运行期间源码、测试、台架和正式 EXE 未变，0 超时。
 - StoreOnly：`%USERPROFILE%\AppData\Local\Temp\Pavise-RiskBench-03bb951afd1443268d223d92d9dc465b`，关键文件为 `store-lock.csv`、`verification.json`。
 - 探针通过专用 `PaviseApp.ReviewProbe` 入口编译当前 src、tests 及 ReviewProbe.cs，定义 `PAVISE_SELFTEST;PAVISE_SELFTEST_RUNNER`。使用与 build.cmd 相同的 .NET Framework 引用，不走 Program.Main。复跑应传入新建的空临时目录，避免旧夹具混入。
 
@@ -81,7 +81,7 @@
 - 重置回归补入恢复记录与 GUID 临时文件的精确删除断言，同时检查相似用户文件保留。所有删除仅针对测试自建数据。
 - 最终全量隔离自检：**66/66 套件通过**。记录：`%USERPROFILE%\AppData\Local\Temp\Pavise-TxnFix-95a484fefdfb4c21a48638463fab6e8c\regression-final.txt`。
 - 原 `ReviewProbe.cs` 原样重新编译运行：**3 个正常对照通过，15 个边界案例全部通过，失败数 0**。记录：`%USERPROFILE%\AppData\Local\Temp\Pavise-TxnFix-95a484fefdfb4c21a48638463fab6e8c\original-probe-327836cf4b7049dd9517b88d800844b4\review-probes.txt`。
-- `RendererHandoffBench -Repeat 5`：**230/230 记录通过**，其中 focused 回归组执行 1300 次全部通过；0 超时，源码/测试/台架输入和正式 EXE 在运行期间未变。记录：`tools/RendererHandoffBench/results/run-20260905-213604-985c54ba/REPORT.md`、`verification.json`。
+- `RendererHandoffBench -Repeat 5`：**230/230 记录通过**，其中 focused 回归组执行 1300 次全部通过；0 超时，源码/测试/台架输入和正式 EXE 在运行期间未变。记录：运行 `run-20260905-213604-985c54ba` 及其 `verification.json`。
 - 真实占用 `Run.ps1 -StoreOnly`：持锁保存 False、旧档完整 True、永久熔断 False、解锁后同实例重试 True、新实例重试 True。记录：`%USERPROFILE%\AppData\Local\Temp\Pavise-RiskBench-287521211e5e4d90b61aafef863e2311\store-lock.csv`、`verification.json`；Pavise 设置指纹、活动电源计划及测试期间源码未变，GPU 功耗上限仍为 390 W，无残留台架进程。
 - 非 SELFTEST 生产源码编译为临时 DLL，通过、无编译警告；测试构建只有既有未赋值钩子的 CS0649 警告。没有打包、替换或启动正式 EXE。
 

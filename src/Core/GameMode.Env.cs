@@ -24,7 +24,7 @@ namespace PaviseApp
             { "do", "wu", "services", "cpuidle", "standby",
               "pqos", "awake", "audiolat", "dwmboost",
               "rsr", "gpupower", "amdalag", "amdafmf", "intelll", "maint",
-              "nvvrr", "intelend", "oemperf" };
+              "nvvrr", "intelend" };
 
         private static string EnvLabel(string key)
         {
@@ -44,7 +44,6 @@ namespace PaviseApp
                 case "maint": return Lang.T("gm.pausemaint");
                 case "nvvrr": return Lang.T("set.nvvrr");
                 case "intelend": return Lang.T("set.intel.endurance");
-                case "oemperf": return Lang.T("gm.laptopperf");
                 case "amdalag": return "AMD Anti-Lag";
                 case "amdafmf": return Lang.T("t.gamemodeenv.8");
                 case "intelll": return Lang.T("set.intel.lowlatency");
@@ -172,7 +171,6 @@ namespace PaviseApp
                 case "maint": pauseMaintOn = false; Settings.Save(PolicyCatalog.KeyPauseMaintenance, false); break;
                 case "nvvrr": nvVrrWindowedOn = false; Settings.Save("NvVrrWindowed", false); break;
                 case "intelend": intelEnduranceOn = false; Settings.Save(PolicyCatalog.KeyIntelEndurance, false); break;
-                case "oemperf": laptopPerfOn = false; Settings.Save(PolicyCatalog.KeyLaptopPerf, false); break;
                 case "amdalag": amdAntiLag = false; Settings.Save("AmdAntiLag", false); break;
                 case "amdafmf": amdAfmf = false; Settings.Save("AmdAfmf", false); break;
                 case "intelll":
@@ -200,7 +198,6 @@ namespace PaviseApp
                 case "audiolat": return PolicyCatalog.KeyAudioLowLat;
                 case "maint": return PolicyCatalog.KeyPauseMaintenance;
                 case "intelend": return PolicyCatalog.KeyIntelEndurance;
-                case "oemperf": return PolicyCatalog.KeyLaptopPerf;
                 case "amdalag": return PolicyCatalog.KeyAmdAntiLag;
                 case "amdafmf": return PolicyCatalog.KeyAmdAfmf;
                 case "intelll": return PolicyCatalog.KeyIntelLowLatency;
@@ -303,10 +300,6 @@ namespace PaviseApp
             intelEndActive = EnvStep("intelend",
                 EffIntelEnduranceOff && Native.HasSystemBattery() && IntelGraphicsTweaks.HasAvailable,
                 intelEndActive, IntelEndurance.Activate, IntelEndurance.Restore);
-            // 厂商性能档只看用户配置 不随当前性能预设强制开关
-            oemPerfActive = EnvStep("oemperf",
-                LaptopPerfMode.ShouldActivate(EffLaptopPerf, LaptopPerfMode.SupportedCached()),
-                oemPerfActive, LaptopPerfMode.Activate, LaptopPerfMode.Restore);
             amdAlagActive = EnvStep("amdalag", pAmdAlag && AdlxTweaks.AntiLagSupported(),
                 amdAlagActive, AdlxTweaks.ActivateAntiLag, RestoreAmdAntiLagEnv);
             amdAfmfActive = EnvStep("amdafmf", pAmdAfmf && AdlxTweaks.AfmfSupported(), amdAfmfActive,
@@ -501,16 +494,16 @@ namespace PaviseApp
 
         private volatile bool planActive;
         private volatile int lastPowerPolicyKey = -1;
-        // 对局里电源方案的最终所有权属于 Pavise。ThrottleStop、G-Helper
-        // 或其它程序切走方案时，由系统电源方案变更通知立即拉回。
+        // 对局里电源方案的最终所有权归 Pavise
+        // ThrottleStop G-Helper 或者别的程序切走方案 靠系统的方案变更通知立刻拉回来
         private long nextPowerAuditTicks;
         private int powerApplyInFlight;
         private int powerPlanNotificationPending;
         private int powerSessionGen;
         private readonly object powerApplyGate = new object();
 
-        // UI 窗口收到 GUID_ACTIVE_POWERSCHEME 通知后只排电源方案轻量任务，
-        // 不触发进程快照、游戏检测或整套环境策略刷新。
+        // UI 窗口收到 GUID_ACTIVE_POWERSCHEME 只排一个电源方案的轻量任务
+        // 不去碰进程快照 游戏检测和整套环境策略刷新
         internal void NotifyPowerSchemeChanged()
         {
             bool shouldAudit;
@@ -618,8 +611,8 @@ namespace PaviseApp
             finally
             {
                 Interlocked.Exchange(ref powerApplyInFlight, 0);
-                // 初次应用自身也会产生一次方案变更通知；若通知到达时
-                // 应用仍在进行，结束后补跑轻量核对，不能把事件丢掉。
+                // 头一次应用自己也会发一条方案变更通知
+                // 通知到的时候应用还没做完 就等结束后补跑一次轻量核对 事件不能丢
                 if (Interlocked.CompareExchange(
                     ref powerPlanNotificationPending, 0, 0) != 0)
                     QueuePowerPlanNotificationAudit();
@@ -636,7 +629,7 @@ namespace PaviseApp
             {
                 planFailStreak = 0;
                 if (LoadCounter(PowerFailStreakKey) != 0) SaveCounter(PowerFailStreakKey, 0);
-                // 成功后不做定时巡检；只有系统通知或策略本身变化才再次检查。
+                // 成功之后不定时巡检 只有系统通知或者策略自己变了才再查
                 Interlocked.Exchange(ref nextPowerAuditTicks, long.MaxValue);
                 return;
             }
@@ -730,7 +723,7 @@ namespace PaviseApp
         {
             if (doActive || wuActive || maintActive || optionalServicesActive
                 || pqosActive || awakeActive || audioLatActive || dwmBoostActive
-                || gpwActive || nvVrrActive || intelEndActive || oemPerfActive
+                || gpwActive || nvVrrActive || intelEndActive
                 || planActive || timerRaised
                 || rsrActive || amdAlagActive || amdAfmfActive
                 || IntelGraphicsTweaks.Active
@@ -810,7 +803,7 @@ namespace PaviseApp
             if (GpuClockLock.HasResidue) parts.Add(Lang.T("set.gpuclock"));
             if (nvVrrActive || NvVrrWindowed.HasResidue) parts.Add(EnvLabel("nvvrr"));
             if (intelEndActive || IntelEndurance.HasResidue) parts.Add(EnvLabel("intelend"));
-            if (oemPerfActive || LaptopPerfMode.HasResidue) parts.Add(EnvLabel("oemperf"));
+            if (LaptopPerfMode.HasResidue) parts.Add(Lang.T("gm.laptopperf"));
             if (DisplaySolo.HasResidue()) parts.Add(Lang.T("gm.solo"));
             if (rsrActive || amdAlagActive || amdAfmfActive || AdlxTweaks.HasResidue()) parts.Add("AMD");
             if (planActive) parts.Add(Lang.T("t.gamemodeenv.35"));
@@ -876,7 +869,7 @@ namespace PaviseApp
             if (!GpuClockLock.Restore()) ok = false;
             if (NvVrrWindowed.Restore()) nvVrrActive = false; else ok = false;
             if (IntelEndurance.Restore()) intelEndActive = false; else ok = false;
-            if (LaptopPerfMode.Restore()) oemPerfActive = false; else ok = false;
+            if (!LaptopPerfMode.Restore()) ok = false;
             if (RestoreAmdAntiLagEnv()) amdAlagActive = false; else ok = false;
             if (AdlxTweaks.RestoreAfmf()) amdAfmfActive = false; else ok = false;
             // 已下架的控制项 在启动还原失败之后照样会留下会话改动记录

@@ -108,8 +108,8 @@
 - 隔离回归：`%USERPROFILE%\AppData\Local\Temp\Pavise-RiskRegression-4c2fba72bbe24580aa1bcff4e25d9cdf\results.txt`
 - 音频/缓存原始 CSV：`%USERPROFILE%\AppData\Local\Temp\Pavise-RiskBench-58ad8faf39c54a4fa60041d9507ef84c`
 - 存档锁实验：`%USERPROFILE%\AppData\Local\Temp\Pavise-RiskBench-024c3b367a784b1fb394710f58aaa7c2`
-- 交接台架首轮：`tools/RendererHandoffBench/results/run-20260905-185928-8bf4e5c3/REPORT.md`
-- 交接台架复跑：`tools/RendererHandoffBench/results/run-20260905-190101-729378b2/REPORT.md`
+- 交接台架首轮：`run-20260905-185928-8bf4e5c3`
+- 交接台架复跑：`run-20260905-190101-729378b2`
 
 音频/缓存与存档实验各自前后设置指纹、活动计划均未变，GPU 功耗上限保持 390W，无残留测试进程；两次交接台架确认源代码、测试及生产 EXE 未变。音频周期回读恢复。四臂共写入 2.25 GiB 自建磁盘样本，逐个精确删除，目录非递归清理；都是可重建测试数据，未删除用户文件。
 
@@ -129,7 +129,7 @@
 ### 复验结果
 
 - 全量隔离回归：66/66 套件通过；新增 OptimizationSafety 内含 10 组迁移、饱和撤回/晚到工作拒绝、修剪边界、真实占用、错误分类、状态回滚及批量入库测试。最终原始记录：`%USERPROFILE%\AppData\Local\Temp\Pavise-SafetyFix-14af994497c349afb89a333bcdd881a4\results-final.txt`。
-- 交接台架 Repeat=3 连跑两次：均 138/138 记录通过、0 失败。结果见 `tools/RendererHandoffBench/results/run-20260905-200056-f34f7947/REPORT.md` 和 `tools/RendererHandoffBench/results/run-20260905-200413-f9e3aa57/REPORT.md`。两次均验证运行期间源码、测试、台架输入及正式 EXE 未被替换。
+- 交接台架 Repeat=3 连跑两次：均 138/138 记录通过、0 失败。运行 `run-20260905-200056-f34f7947` 和 `run-20260905-200413-f9e3aa57`。两次均验证运行期间源码、测试、台架输入及正式 EXE 未被替换。
 - 非 SELFTEST 的生产源码编译通过（仅编译临时 DLL，不运行正式应用）；自检编译只有现存未赋值测试钩子的 CS0649 警告。
 - 真实占用台架 `Run.ps1 -StoreOnly` 通过：持锁保存 False、旧档完整 True、永久熔断 False、解锁后同实例重试 True、新实例重试 True。原始 CSV 与环境复核：`%USERPROFILE%\AppData\Local\Temp\Pavise-RiskBench-be2199be505e44919ad7e1ec9710a04f`。
 - 该台架前后 Pavise 设置指纹和活动电源计划未变，GPU 功耗上限仍为 390 W，无残留台架进程。删除的运行数据仅为自建临时测试文件；未删除游戏资产、系统缓存或用户存档。被移除的功能源码可从 Git 历史恢复。

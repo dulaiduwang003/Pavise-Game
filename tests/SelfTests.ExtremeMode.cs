@@ -1,5 +1,5 @@
-﻿// Settings-backed state checks in the isolated selftest store; no env tweaks executed,
-// no registry outside the store, no reboot, no windows.
+﻿// 文件用途 在隔离的自测存储里检查配置支撑的状态 不执行环境项 不碰存储之外的注册表
+// 不重启 不建窗口
 // 极限档回归 重启门 取值解析 覆盖清单 退出集 不碰任何真实环境项
 #if PAVISE_SELFTEST
 using System;

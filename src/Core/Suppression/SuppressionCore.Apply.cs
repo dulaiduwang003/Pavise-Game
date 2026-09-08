@@ -41,11 +41,11 @@ namespace PaviseApp
             return true;
         }
 
-        // 反作弊压制的强力档去掉饿死成分：扫描型反作弊（ACE 等）扫描游戏内存时会挂起游戏线程
-        //   IDLE 优先级让它在 CPU 满载时几乎分不到时间片，挂起窗口从数百毫秒拖到数秒，游戏表现为卡死
-        //   定时器精度封顶再把它的节流睡眠放大十几倍，页优先级 1 让扫描一路缺页，都是同一个放大器
-        //   优先级提升救济（Apply 里保留 boost）只救锁等待，救不了被挂起的线程，所以只能不喂这么狠
-        //   保留极低磁盘 IO（扫盘才是主要伤害）与 EcoQoS 小核限频，压制效果的核心成分不变
+        // 反作弊压制的强力档把饿死那部分去掉了 ACE 这类扫描型反作弊扫游戏内存时会挂起游戏线程
+        //   IDLE 优先级让它在 CPU 满载时几乎分不到时间片 挂起窗口从几百毫秒拖到几秒 玩家看到的就是卡死
+        //   定时器精度封顶把它的节流睡眠放大十几倍 页优先级 1 让扫描一路缺页 都是同一个放大器
+        //   Apply 里保留的优先级提升只救锁等待 救不了被挂起的线程 所以不能喂这么狠
+        //   极低磁盘 IO 留着 扫盘才是主要伤害 EcoQoS 小核限频也留着 压制的核心成分没变
         internal static uint DesiredPriority(SuppressionLevel level, uint originalPriority, bool antiCheat)
         {
             uint desired = originalPriority == 0 || originalPriority == uint.MaxValue

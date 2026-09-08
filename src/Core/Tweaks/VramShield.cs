@@ -41,7 +41,7 @@ namespace PaviseApp
             Native.PROCESS_QUERY_INFORMATION | Native.PROCESS_SET_INFORMATION;
 
         // 两把锁分工明确 不许颠倒
-        //   opLk 串行化"动作"——采样 写入 撤销 三者互斥 因为它们共用适配器句柄
+        //   opLk 把动作串起来 采样 写入 撤销三者互斥 因为它们共用适配器句柄
         //     没有它 UI 线程关开关时的撤销会和工作线程正在跑的采样打架
         //     撤销关掉句柄 而采样手里还攥着同一个句柄的副本 就是 use-after-close
         //   lk 只保护字段读写 一律短临界区 里面不许做文件或注册表 IO

@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 对局中通过厂商 WMI 把笔记本切到性能档 退局切回原档 先支持 Lenovo Legion 和 ASUS ROG
+// 文件用途 厂商性能档已下架 只保留旧版留下的收据清收 启动与清除时按收据切回原档
 using System;
 using System.Management;
 
@@ -21,10 +21,6 @@ namespace PaviseApp
 
         public static bool HasResidue { get { return Settings.LoadStr(SnapKey, "").Length > 0; } }
 
-        internal static bool ShouldActivate(bool configured, bool supported)
-        {
-            return configured && supported;
-        }
 
         private enum Vendor { None, Lenovo, Asus }
 
@@ -58,7 +54,6 @@ namespace PaviseApp
             return false;
         }
 
-        public static bool SupportedCached() { return Detect() != Vendor.None; }
 
         private static ManagementObject First(string className)
         {
@@ -152,31 +147,6 @@ namespace PaviseApp
         private static int PerformanceModeOf(Vendor vendor)
         {
             return vendor == Vendor.Lenovo ? LenovoPerformance : AsusPerformance;
-        }
-
-        public static bool Activate()
-        {
-            lock (lk)
-            {
-                if (HasResidue) return true;
-                Vendor vendor = Detect();
-                if (vendor == Vendor.None) { Logger.Log(Lang.T("log.laptopperf.1")); return false; }
-                int current;
-                if (!ReadMode(vendor, out current)) { Logger.Log(Lang.T("log.laptopperf.1")); return false; }
-                int target = PerformanceModeOf(vendor);
-                if (current == target) return true;
-                string snap = (int)vendor + "|" + current;
-                Settings.SaveStr(SnapKey, snap);
-                if (Settings.LoadStr(SnapKey, "") != snap) return false;
-                if (!WriteMode(vendor, target))
-                {
-                    Settings.SaveStr(SnapKey, "");
-                    Logger.Warn(Lang.T("log.laptopperf.2"));
-                    return false;
-                }
-                Logger.Log(Lang.T("log.laptopperf.3"));
-                return true;
-            }
         }
 
         public static bool Restore()

@@ -69,7 +69,7 @@ namespace PaviseApp
             btnIrqRevert.SetBounds(Theme.S(272), Theme.S(15), Theme.S(250), Theme.S(34));
             btnIrqRevert.Click += OnIrqRevert;
             actionDeck.Controls.Add(btnIrqRevert);
-            // 失败原因放独立的全宽行 不能缩在两个按钮右边而只剩“暂无数据”
+            // 失败原因单独占一整行 缩在两个按钮右边只会剩下暂无数据
             lblIrqState = CardLabel(actionDeck, "", 14, 54, InnerW - 28, 30, 8.2f, true, Theme.Dim);
             lblIrqState.TextAlign = ContentAlignment.MiddleLeft;
             lblIrqState.AutoEllipsis = true;
@@ -101,7 +101,7 @@ namespace PaviseApp
             if (lstIrqDevices == null) return;
 
             // 重排前按设备 ID 记住选中项 按旧索引恢复会在 Worth 置顶或实测变化后
-            // 悄悄选中另一台设备 随后“选择核心”可能打开错误目标
+            // 悄悄选中另一台设备 后面点选择核心就可能开到错的目标上
             string keepId = null;
             int oldIndex = lstIrqDevices.SelectedIndex;
             if (oldIndex >= 0 && oldIndex < lstIrqDevices.Items.Count)
@@ -466,7 +466,7 @@ namespace PaviseApp
 
         internal static string CountedText(string detail, int recorded, int usable, string readIssue)
         {
-            // 读失败时数量未知 不把空的失败返回值显示成“已记录 0 局”
+            // 读失败时数量是未知 别把空的失败返回值显示成已记录 0 局
             if (!string.IsNullOrEmpty(readIssue)) return detail;
             string counts = Lang.F("irq.state.counts", recorded, usable);
             return string.IsNullOrEmpty(detail) ? counts : counts + " · " + detail;

@@ -71,8 +71,8 @@ namespace PaviseApp
         public const string KeyAmdAfmf = "AmdAfmf";
         public const string KeyIntelLowLatency = "GmIntelLowLatencyV1";
         public const string KeyIntelEndurance = "GmIntelEnduranceV1";
+        // 厂商性能档已下架 键名保留给旧收据的清收与迁移 不再进策略目录
         public const string KeyLaptopPerf = "GmLaptopPerfV1";
-        public const bool LaptopPerfDefault = false;
         public const string KeyVramShield = "GmVramShield";
         // 极限专属 不进目录也不进逐游戏 常量保留给极限清单引用
         public const string KeyAudioLowLat = "GmAudioLowLatV1";
@@ -103,7 +103,6 @@ namespace PaviseApp
             new PolicyItem(KeyCoreMask, PolicyValueKind.MaskHex, "", "cfg.coremask", GroupCores, null),
             new PolicyItem(KeyPowerPlan, PolicyValueKind.Bool, "1", "plan.pick.title", GroupMemPower, null),
             new PolicyItem(KeyPowerYield, PolicyValueKind.Bool, "0", "gm.poweryield", GroupMemPower, null),
-            new PolicyItem(KeyLaptopPerf, PolicyValueKind.Bool, LaptopPerfDefault ? "1" : "0", "gm.laptopperf", GroupMemPower, null),
             new PolicyItem(KeyDisableCpuIdle, PolicyValueKind.Bool, "0", "gm.disablecpuidle", GroupMemPower, null),
             new PolicyItem(KeyStandbyCleaner, PolicyValueKind.Bool, "0", "gm.standbycleaner", GroupMemPower, null),
             new PolicyItem(KeyPauseDl, PolicyValueKind.Bool, "1", "gm.pausedl", GroupEnvironment, null),

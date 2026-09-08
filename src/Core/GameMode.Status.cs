@@ -119,6 +119,27 @@ namespace PaviseApp
             }
         }
 
+        // 开关是用户意图 这里是本机有没有资格 两件事分开 别混进 EffLane
+        //   候选线程被提到 THREAD_PRIORITY_HIGHEST 游戏进程本身在 HIGH 类里
+        //   于是它跑在 15 游戏其余线程留在 13 核够用时这个差没影响
+        //   可运行线程数超过可用核数时 15 会持续抢占 13 而它自己正等着那些线程喂数据
+        //   渲染线程空转 工作线程被推迟 帧时间反而变长
+        //   掌机功耗墙 15 到 30W 全核低频 最容易撞上这个 用户实测 60 掉到 45
+        //   CPU 饱和撤回那条保护在这里指望不上 掌机常卡在 GPU 或功耗墙
+        //   整机利用率够不到 90 那条门 撤回从头到尾不触发
+        private bool LaneEligible { get { return LaneSupported(EffPreset); } }
+
+        // 六核以下不给 四核八线程的笔记本上游戏线程数就已经超过核数
+        internal const int LaneMinPhysicalCores = 6;
+
+        // 策略页也要问同一个判据 免得界面说能开实际不启用
+        internal static bool LaneSupported(PerformancePreset mode)
+        {
+            if (IsHandheld(mode)) return false;
+            try { return CpuTopology.PhysicalCoreCount >= LaneMinPhysicalCores; }
+            catch { return false; }
+        }
+
         // 会话快照只冻结"有逐游戏覆盖"的键 无覆盖的键每次实时回读全局设置
         //   所以对局里关掉全局开关会立刻生效 不会被定格值重新声明
         //   带覆盖的游戏才是定格语义 覆盖值在建快照那一刻拍板 局中改覆盖走清除流程
@@ -149,13 +170,5 @@ namespace PaviseApp
             }
         }
 
-        private bool EffLaptopPerf
-        {
-            get
-            {
-                PolicySnapshot s = sessionPolicy;
-                return s != null ? s.LaptopPerf : laptopPerfOn;
-            }
-        }
     }
 }

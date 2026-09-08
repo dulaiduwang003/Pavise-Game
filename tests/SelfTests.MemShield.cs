@@ -1,5 +1,5 @@
-// All quota queries and quota writes are injected. No native process access,
-// registry or windows are used.
+// 文件用途 配额查询和配额写入全是注入的
+// 不碰原生进程接口 注册表和窗口
 // 内存驻留已下架 这里只回归崩溃残账的配额还原路径 快照由测试直接播种
 #if PAVISE_SELFTEST
 using System;

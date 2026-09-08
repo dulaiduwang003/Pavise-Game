@@ -86,7 +86,7 @@ namespace PaviseApp
                             { dialog.DrawToBitmap(bmp, dialog.ClientRectangle); bmp.Save(Path.Combine(output, name + ".png"), ImageFormat.Png); }
                         }
                         if (!missing) { view.Loads[0] = 1; Check(loads[0] == 56, "Matrix retained mutable source dictionary"); }
-                        // Missing one sibling must not label the whole physical core low-load.
+                        // 少一个同胞逻辑核 不能就把整个物理核标成低负载
                         matrix.ObservedGameMask = 0;
                         matrix.SetLoads(new Dictionary<int, double> { {0, 0}, {2, double.NaN}, {3, double.PositiveInfinity}, {64, 10} });
                         loads = (Dictionary<int, double>)typeof(CoreMatrix).GetField("loads", Private).GetValue(matrix);
@@ -191,7 +191,7 @@ namespace PaviseApp
                         else if (action == "close") warning.Close();
                         else
                         {
-                            // A page refresh while the modal is open must not erase accepted intent.
+                            // 模态框开着的时候刷新页面 不能把已经接受的意图擦掉
                             if (action == "confirm") toggle.SetSilently(false);
                             Control button = null;
                             foreach (Control control in warning.Controls)

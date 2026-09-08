@@ -1,5 +1,5 @@
-// Isolated correctness bench. Real owned identities; synthetic window/GPU/recovery evidence.
-// Program, full SelfTests, GameMode.Loop/Sweep/Boost and real GPU sampling are never run.
+// 文件用途 隔离的正确性台架 身份是真的自有身份 窗口 GPU 和恢复证据都是合成的
+// 不跑 Program 不跑完整 SelfTests 不跑 GameMode 的 Loop Sweep Boost 也不做真实 GPU 采样
 #if !PAVISE_RENDERER_BENCH || !PAVISE_SELFTEST
 #error This bench requires PAVISE_RENDERER_BENCH and PAVISE_SELFTEST.
 #endif
@@ -149,7 +149,7 @@ namespace PaviseApp
                 Check(pair.CleanExit && learned.CleanExit && !pair.CleanupUsedKill && !learned.CleanupUsedKill, "Helpers did not exit normally without kill.");
                 Record(repeat, layout, "normal-pair-exit", "PASS", "Launcher, original child and old learned all exited with code zero.", Detail("CleanupUsedKill", false));
 
-                // Root intentionally shuts down its child. Do not claim that child survived.
+                // root 是故意把子进程关掉的 别说成子进程活下来了
                 RunCase(repeat, layout, "trusted-root-after-launcher-exit", delegate
                 {
                     using (OwnedLeaf detached = OwnedLeaf.Start(rendererPath))
@@ -222,7 +222,7 @@ namespace PaviseApp
                 Check(SamePath(saved.ExecutablePath, pair.Renderer.Path) && saved.LearnedExecutablePath == null, "Old executable/learned alias survived.");
                 Check(saved.Entries.Count == 1 && saved.Entries.Contains(pair.Renderer.Name), "Historical Entries survived.");
                 Check(SamePath(saved.Root, profile.Root), "Trusted containing Root was not preserved.");
-                // Directory membership is not an exact executable/alias designation.
+                // 在同一个目录里不等于精确指认了某个可执行文件或别名
                 Check(!GameSessionDetector.IsProfileEntryName(saved, pair.Launcher.Name)
                     && !GameSessionDetector.IsProfileEntryName(saved, learned.Identity.Name), "Old entry names survived.");
                 Check(saved.Overrides.Count == profile.Overrides.Count, "Overrides were lost.");
@@ -233,7 +233,7 @@ namespace PaviseApp
                 Check(SamePath(reloaded.ExecutablePath, saved.ExecutablePath) && reloaded.LearnedExecutablePath == null && reloaded.Entries.Count == 1, "Replacement did not persist.");
                 Check(pair.PrioritiesUnchanged() && learned.PriorityUnchanged(), "Helper priority changed.");
                 Check(File.Exists(pair.Launcher.Path) && File.Exists(learned.Identity.Path) && File.Exists(pair.Renderer.Path), "An old fixture file was deleted.");
-                // A redundant save would fail under this read-only lease.
+                // 这把只读租约在手 多余的那次保存会失败
                 using (var readLease = new FileStream(c.LibraryFile, FileMode.Open, FileAccess.Read, FileShare.Read))
                     Check(SameIdentity(c.Step().Hit, pair.Renderer) && !c.Mode.ProfileStoreSaveFailed, "Idempotent confirmation attempted a save.");
                 Check(c.LibraryChanges == 1 && c.GpuCalls == 1, "Steady state repeated save/probe.");
@@ -310,12 +310,12 @@ namespace PaviseApp
                 Mode = new GameMode(LibraryDirectory, new SuppressionCore());
                 Check(Mode.SetProfileFamilySuppression(profile.Id, !family), "Cannot set the isolated profile's family policy.");
                 originalStore = File.ReadAllText(LibraryFile);
-                // Never call Enabled's side-effecting setter or Start/Loop/Stop/Sweep/Boost.
+                // 绝不调 Enabled 那个有副作用的 setter 也不调 Start Loop Stop Sweep Boost
                 Set(Mode, "enabled", true); Set(Mode, "active", true);
                 Mode.RendererTestForeground = delegate { return ForegroundPid; };
                 Mode.RendererTestCandidate = delegate(ProcessSnapshot ignored, IList<GameProfile> profiles, GameDetection incumbent)
                 { return GameSessionDetector.FindForegroundCandidateSnapshot(Snapshot, profiles, incumbent); };
-                // Identity and sticky-identity seams stay NULL: native checks inspect only owned helpers.
+                // 身份和粘性身份的接缝保持 NULL 原生检查只看自有的辅助进程
                 Mode.RendererTestRelease = delegate(int pid, long creation, string name) { Interlocked.Increment(ref ReleaseCalls); return ReleaseState; };
                 Mode.RendererTestGpu = FakeGpu;
                 Mode.LibraryChanged += delegate { LibraryChanges++; };
@@ -610,8 +610,8 @@ namespace PaviseApp
     }
 
 #if PAVISE_RENDERER_BENCH
-    // Minimal support for the explicit focused-test allowlist. This is NOT the
-    // full self-test runtime and cannot dispatch application runtime modes.
+    // 只给显式的聚焦测试白名单提供最小支持
+    // 这不是完整的自测运行时 也派发不了应用的运行模式
     internal static partial class SelfTests
     {
         private static void Eq<T>(T expected, T actual)

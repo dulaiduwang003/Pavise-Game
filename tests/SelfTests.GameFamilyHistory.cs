@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 纯内存历史亲缘回归：合成身份/事件/时钟，不启动进程、不读写注册表或游戏库。
+// 文件用途 纯内存历史亲缘回归 身份 事件 时钟都是合成的 不启动进程 不读写注册表和游戏库
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;

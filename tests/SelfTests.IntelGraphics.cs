@@ -1,4 +1,4 @@
-// Intel driver regression: fake adapters and an in-memory journal only.
+// 文件用途 Intel 驱动回归 只用假适配器和内存台账
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -116,8 +116,8 @@ namespace PaviseApp
                 if (UncertainRestore && value == 0) return IntelGraphicsWriteResult.Uncertain;
                 if (value == 1 && (UncertainApply || ThrowUncertainApply))
                 {
-                    // A failed/unconfirmed setter need not change the preference.
-                    // Another caller may choose On before the engine's readback.
+                    // setter 失败或者没确认 偏好不用跟着改
+                    // 引擎回读之前 别的调用方可能已经选了 On
                     if (AfterWrite != null) AfterWrite();
                     if (ThrowUncertainApply) throw new InvalidOperationException("unconfirmed setter");
                     return IntelGraphicsWriteResult.Uncertain;
@@ -349,7 +349,7 @@ namespace PaviseApp
                 "confirmed A not restored after restart");
             api.ApplyReadbackFailure = true;
             var incomplete = new IntelLowLatencyEngine(api, ledger);
-            // The fake's failure starts after a setter, not while capturing the original.
+            // 假实现是从某次 setter 之后才开始失败的 不是在抓原值那会儿
             api.Writes = 0;
             IntelCheck(!incomplete.Apply(null) && ledger.Value == "1|P|" + IntelTestId, "unconfirmed write lost P");
             api.ApplyReadbackFailure = false;

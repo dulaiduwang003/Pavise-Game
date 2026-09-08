@@ -23,7 +23,7 @@ namespace PaviseApp
             return false;
         }
 
-        // v2 把收据绑定到方案。兼容旧版仅有 GUID=AC,DC 的托管方案收据。
+        // v2 把收据绑到方案上 旧版只有 GUID=AC,DC 的托管方案收据也还兼容
         private static bool ReadExtremeSnapshot(Guid scheme, out List<ExtremeSavedValue> values)
         {
             values = new List<ExtremeSavedValue>();
@@ -65,7 +65,7 @@ namespace PaviseApp
             return Settings.SaveStrDurable(ExtremeSnapKey, text);
         }
 
-        // 仅由托管方案删除成功的路径调用，不执行删除，不把别的方案收据一起清掉。
+        // 只有托管方案删成功那条路径会调 这里不执行删除 也不顺手清别的方案收据
         private static bool ForgetDeletedExtremeSnapshot(Guid scheme)
         {
             List<ExtremeSavedValue> values;
@@ -73,8 +73,41 @@ namespace PaviseApp
                 && (values.Count == 0 || SaveExtremeSnapshot(scheme, new List<ExtremeSavedValue>()));
         }
 
-        private static bool SnapshotExtremeKnobs(Guid scheme)
+        // 只有完整枚举确认原方案不存在才丢收据 读取失败或未知格式都保留
+        // 正在配置的方案已有调用方确认的身份 不靠再次枚举推翻它
+        private static bool DropOrphanExtremeSnapshot(Guid configuringScheme)
         {
+            string text;
+            if (!Settings.TryLoadStr(ExtremeSnapKey, out text) || text.Length == 0) return false;
+            if (text.IndexOf('|') < 0) return false;
+            string[] header = text.Split('|');
+            Guid owner;
+            if (header.Length != 3 || header[0] != "2"
+                || !Guid.TryParse(header[1], out owner) || owner == Guid.Empty
+                || owner == configuringScheme) return false;
+            List<Guid> schemes;
+            if (!TryEnumerateSchemes(out schemes) || schemes.Contains(owner)) return false;
+            if (!SaveExtremeSnapshot(owner, new List<ExtremeSavedValue>())) return false;
+            Logger.Log(Lang.T("log.powerplanschemes.extremeOrphan"));
+            return true;
+        }
+
+        private static bool PrepareExtremeKnobs(Guid scheme, bool extreme, out List<ExtremeSavedValue> snapshot)
+        {
+            snapshot = null;
+            bool incomplete = false;
+            bool ready = RestoreExtremeKnobs(scheme, extreme);
+            if (!ready && DropOrphanExtremeSnapshot(scheme))
+                ready = RestoreExtremeKnobs(scheme, extreme);
+            if (ready && extreme)
+                ready = SnapshotExtremeKnobs(scheme, out incomplete) && ReadExtremeSnapshot(scheme, out snapshot);
+            extremeTunePending = !ready || incomplete;
+            return ready;
+        }
+
+        private static bool SnapshotExtremeKnobs(Guid scheme, out bool incomplete)
+        {
+            incomplete = false;
             List<ExtremeSavedValue> values;
             if (!ReadExtremeSnapshot(scheme, out values)) return false;
             foreach (Knob knob in ExtremeKnobs)
@@ -83,15 +116,15 @@ namespace PaviseApp
                 uint? ac = ReadExtremeIndex(scheme, knob.Setting, true);
                 uint? dc = ReadExtremeIndex(scheme, knob.Setting, false);
                 if (!ac.HasValue && !dc.HasValue) continue;
-                // 不再用 AC 冒充读取失败的 DC 原值；无完整收据就不准写。
-                if (!ac.HasValue || !dc.HasValue) return false;
+                // 单侧可读说明不能当作未暴露项 忽略本轮写入但保留重试状态
+                if (!ac.HasValue || !dc.HasValue) { incomplete = true; continue; }
                 values.Add(new ExtremeSavedValue { Setting = knob.Setting, Ac = ac.Value, Dc = dc.Value });
             }
             return SaveExtremeSnapshot(scheme, values);
         }
 
-        // retiredOnly=true 时迁移撤回项，保留当前极限项的原始收据。
-        // 每侧写后回读；部分失败留账，不能把“调用过恢复”当作“恢复完成”。
+        // retiredOnly=true 时迁移撤回项 当前极限项的原始收据留着
+        // 每一侧写完都回读 部分失败就留账 调用过恢复不等于恢复完成
         private static bool RestoreExtremeKnobs(Guid scheme, bool retiredOnly)
         {
             List<ExtremeSavedValue> values;
@@ -141,7 +174,17 @@ namespace PaviseApp
         internal static Func<Guid, Guid, bool, uint?> ExtremeReadIndexForTest;
         internal static Func<Guid, Guid, bool, uint, bool> ExtremeWriteIndexForTest;
         internal static Func<string, bool> ExtremeSaveSnapshotForTest;
-        internal static bool SnapshotExtremeForTest(Guid scheme) { return SnapshotExtremeKnobs(scheme); }
+        internal static bool SnapshotExtremeForTest(Guid scheme)
+        {
+            bool incomplete;
+            return SnapshotExtremeKnobs(scheme, out incomplete);
+        }
+        internal static bool PrepareExtremeForTest(Guid scheme, bool extreme)
+        {
+            List<ExtremeSavedValue> snapshot;
+            return PrepareExtremeKnobs(scheme, extreme, out snapshot);
+        }
+        internal static bool DropOrphanExtremeForTest(Guid scheme) { return DropOrphanExtremeSnapshot(scheme); }
         internal static bool RestoreExtremeForTest(Guid scheme, bool retiredOnly) { return RestoreExtremeKnobs(scheme, retiredOnly); }
         internal static bool ForgetDeletedExtremeForTest(Guid scheme) { return ForgetDeletedExtremeSnapshot(scheme); }
 #endif

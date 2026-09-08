@@ -1,4 +1,4 @@
-﻿// Pure classification checks; no log file, no UI, no registry.
+﻿// 文件用途 纯分类检查 不写日志文件 不碰 UI 和注册表
 // 日志分级回归 只验证标记优先和词表兜底 不写日志文件 不建窗口
 #if PAVISE_SELFTEST
 using System;

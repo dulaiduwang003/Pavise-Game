@@ -1,5 +1,5 @@
-// Pavise Heterogeneous GPU Bench
-// Explicit multi-adapter feasibility harness. No injection, driver changes, or game access.
+// 文件用途 Pavise 异构 GPU 台架 显式多适配器的可行性验证
+// 不注入 不改驱动 不碰游戏
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>

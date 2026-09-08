@@ -285,7 +285,6 @@ namespace PaviseApp
             autoGpuScanned = false;
             ResetAdaptiveGuard();
             ResetHeavySqueeze();
-            voiceExemptLogged.Clear();
             partitionHintLogged = false;
 
             bool clean = UnboostGames();

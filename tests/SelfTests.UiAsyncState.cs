@@ -1,5 +1,5 @@
-// Deterministic page-refresh races. Sources, scheduling and UI dispatch are
-// mocked; real controls stay unshown and never acquire native handles.
+// 文件用途 确定性的页面刷新竞态 数据源 调度和 UI 派发都是 mock
+// 真实控件一直不显示 也从不拿原生句柄
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -125,8 +125,8 @@ namespace PaviseApp
                     f.TaskState = initial; f.Auto.SetSilently(initial);
                     f.OnTaskChange = delegate(bool enabled)
                     {
-                        // A failed command can still observe an external change;
-                        // its fresh query, not the earlier snapshot, is authoritative.
+                        // 命令失败了照样能看到外部的变化
+                        // 以它新查的那次为准 不是之前那份快照
                         f.TaskState = !initial;
                         return 1;
                     };
@@ -228,8 +228,8 @@ namespace PaviseApp
                 f.RefreshWhitelist(true); f.RunWork();
                 ListBox oldList = f.White; EmptyStatePanel oldPanel = f.WhitePanel;
                 f.ReplaceWhitelistControls(); oldList.Dispose(); oldPanel.Dispose();
-                // Fill the replacement directly to independently verify control
-                // identity, without advancing RefreshWhitelist's generation.
+                // 直接填替换项 单独验一遍控件身份
+                // 不去推进 RefreshWhitelist 的代数
                 f.FastRows = UiAsyncRows(new[] { "beta" }, -1);
                 f.Call("FillWhitelist", f.FastRows);
                 f.RunPost();
@@ -309,8 +309,8 @@ namespace PaviseApp
             {
                 Settings.UseTransientStoreForCurrentProcess();
                 Lang.Cur = 0;
-                // Automatic exemption rows use the cached vendor names. Seed the
-                // cache so FillWhitelist never enumerates hardware in this test.
+                // 自动豁免那些行用的是缓存下来的厂商名
+                // 先把缓存填上 这个测试里 FillWhitelist 就不会去枚举硬件
                 foreach (string name in new[] { "tokens", "stamp", "scanned" })
                 {
                     FieldInfo field = typeof(PeripheralVendorProbe).GetField(name, BindingFlags.Static | BindingFlags.NonPublic);

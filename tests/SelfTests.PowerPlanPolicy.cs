@@ -11,9 +11,11 @@ namespace PaviseApp
             Action[] tests = { PowerPlatformRequiresCompleteEvidence, PowerPlatformParsesNamedFields, PowerBootBoundaryToleratesClockCorrection,
                 PowerAutonomousPolicyIsNotHardwareState, PowerUnknownMinimumPreservesEachSide, PowerExtremeRetiresDemoteOnly,
                 PowerExtremeRestoresLegacyWhileStillExtreme, PowerExtremePartialRestoreRetainsReceipt,
-                PowerExtremeReadbackAndJournalFailuresRetainReceipt, PowerExtremeSnapshotRequiresBothSides,
+                PowerExtremeReadbackAndJournalFailuresRetainReceipt, PowerExtremeSnapshotSkipsHalfReadableKnob,
                 PowerExtremeSnapshotDoesNotOverwriteOriginals, PowerExtremeRejectsWrongOwnerAndMalformedReceipt,
-                PowerExtremeDeletedPlanClearsOnlyItsReceipt };
+                PowerExtremeDeletedPlanClearsOnlyItsReceipt, PowerExtremeIncompletePreparationRetries,
+                PowerExtremePreparationRetainsFailedRestore, PowerExtremeOrphanRequiresCompleteEnumeration,
+                PowerExtremeOrphanKeepsExistingAndUnknownOwners, PowerExtremeOrphanRebuildsOnlyAfterDurableClear };
             foreach (Action test in tests)
             {
                 test();
@@ -73,7 +75,7 @@ namespace PaviseApp
                 if (value != 1)
                     Eq((bool?)null, ProcessorPowerPlatform.AutonomousMinimum(ProcessorPowerPlatform.Interface.Cppc, value));
             }
-            // AC 与 DC 请求不能相互代替。
+            // AC 和 DC 的请求不能互相顶替
             Eq((bool?)true, ProcessorPowerPlatform.AutonomousMinimum(ProcessorPowerPlatform.Interface.Cppc, 1));
             Eq((bool?)null, ProcessorPowerPlatform.AutonomousMinimum(ProcessorPowerPlatform.Interface.Cppc, 0));
         }
@@ -134,6 +136,7 @@ namespace PaviseApp
                     if (!LieAboutWrite) Values[Index(setting, ac)] = value;
                     return true;
                 };
+                PowerPlan.EnumerateSchemeForTest = delegate { throw new InvalidOperationException("Unexpected scheme enumeration"); };
             }
             private static string Index(Guid setting, bool ac) { return setting.ToString("N") + (ac ? "AC" : "DC"); }
             internal void Set(Guid setting, uint ac, uint dc) { Values[Index(setting, true)] = ac; Values[Index(setting, false)] = dc; }
@@ -145,6 +148,7 @@ namespace PaviseApp
             {
                 PowerPlan.ExtremeReadIndexForTest = null; PowerPlan.ExtremeWriteIndexForTest = null;
                 PowerPlan.ExtremeSaveSnapshotForTest = null;
+                PowerPlan.EnumerateSchemeForTest = null;
                 Settings.SaveStr(PowerPlan.ExtremeSnapKey, saved);
             }
         }
@@ -200,12 +204,13 @@ namespace PaviseApp
             }
         }
 
-        private static void PowerExtremeSnapshotRequiresBothSides()
+        private static void PowerExtremeSnapshotSkipsHalfReadableKnob()
         {
             using (var f = new PowerPolicyFixture())
             {
+                // 一侧读不到的项不进收据 后面也不会被写 但不该拖垮整份快照
                 f.Set(powerPromote, 60, 50); f.RemoveDc(powerPromote);
-                Eq(false, PowerPlan.SnapshotExtremeForTest(f.Scheme)); Eq("", f.Receipt()); Eq(0, f.Writes);
+                Eq(true, PowerPlan.SnapshotExtremeForTest(f.Scheme)); Eq("", f.Receipt()); Eq(0, f.Writes);
                 f.Set(powerPromote, 60, 50);
                 PowerPlan.ExtremeSaveSnapshotForTest = delegate { return false; };
                 Eq(false, PowerPlan.SnapshotExtremeForTest(f.Scheme)); Eq("", f.Receipt()); Eq(0, f.Writes);
@@ -255,6 +260,129 @@ namespace PaviseApp
                 Eq(true, PowerPlan.ForgetDeletedExtremeForTest(f.Scheme)); Eq("", f.Receipt()); Eq(0, f.Writes);
                 f.Receipt(PowerSaved(powerPromote, 60, 50));
                 Eq(true, PowerPlan.ForgetDeletedExtremeForTest(f.Scheme)); Eq("", f.Receipt());
+            }
+        }
+
+        private static void PowerExtremeIncompletePreparationRetries()
+        {
+            using (var f = new PowerPolicyFixture())
+            {
+                f.Set(powerPromote, 60, 50); f.RemoveDc(powerPromote); f.Set(powerScaling, 1, 1);
+                Eq(true, PowerPlan.PrepareExtremeForTest(f.Scheme, true));
+                Eq(true, PowerPlan.ExtremeTunePending); Eq(0, f.Writes);
+                Eq(false, f.Receipt().Contains(powerPromote.ToString("N")));
+                Eq(true, f.Receipt().Contains(PowerSaved(powerScaling, 1, 1)));
+                // 下一次配置补齐缺失项 不能覆盖已经写过的另一项原值
+                f.Set(powerPromote, 60, 50); f.Set(powerScaling, 0, 0);
+                Eq(true, PowerPlan.PrepareExtremeForTest(f.Scheme, true));
+                Eq(false, PowerPlan.ExtremeTunePending); Eq(0, f.Writes);
+                Eq(true, f.Receipt().Contains(PowerSaved(powerPromote, 60, 50)));
+                Eq(true, f.Receipt().Contains(PowerSaved(powerScaling, 1, 1)));
+                Eq(true, PowerPlan.RestoreExtremeForTest(f.Scheme, false));
+                Eq(1u, f.Get(powerScaling, true)); Eq(1u, f.Get(powerScaling, false));
+                Eq(60u, f.Get(powerPromote, true)); Eq(50u, f.Get(powerPromote, false));
+            }
+            using (var f = new PowerPolicyFixture())
+            {
+                // 两侧都不存在仍是可跳过的未暴露项 不制造永久重试
+                Eq(true, PowerPlan.PrepareExtremeForTest(f.Scheme, true));
+                Eq(false, PowerPlan.ExtremeTunePending); Eq("", f.Receipt());
+            }
+        }
+
+        private static void PowerExtremePreparationRetainsFailedRestore()
+        {
+            using (var f = new PowerPolicyFixture())
+            {
+                string original = PowerSaved(powerDemote, 40, 30);
+                f.Receipt("2|" + f.Scheme.ToString("N") + "|" + original);
+                f.Set(powerDemote, 0, 0); f.FailDc = true;
+                Eq(false, PowerPlan.PrepareExtremeForTest(f.Scheme, true));
+                Eq(true, PowerPlan.ExtremeTunePending); Eq(true, f.Receipt().Contains(original));
+                Eq(40u, f.Get(powerDemote, true)); Eq(0u, f.Get(powerDemote, false));
+                f.FailDc = false;
+                Eq(true, PowerPlan.PrepareExtremeForTest(f.Scheme, true));
+                Eq(false, PowerPlan.ExtremeTunePending); Eq("", f.Receipt());
+                Eq(30u, f.Get(powerDemote, false));
+            }
+        }
+
+        private static void PowerEnumerateForTest(Guid[] schemes, uint terminalCode)
+        {
+            PowerPlan.EnumerateSchemeForTest = delegate(uint index, byte[] buffer, ref uint size)
+            {
+                if (index >= schemes.Length) return terminalCode;
+                Array.Copy(schemes[index].ToByteArray(), buffer, 16); size = 16;
+                return 0;
+            };
+        }
+
+        private static void PowerExtremeOrphanRequiresCompleteEnumeration()
+        {
+            using (var f = new PowerPolicyFixture())
+            {
+                Guid owner = Guid.NewGuid();
+                string receipt = "2|" + owner.ToString("N") + "|" + PowerSaved(powerPromote, 60, 50);
+                f.Receipt(receipt);
+                foreach (uint error in new uint[] { 5, 87, 234 })
+                    foreach (Guid[] prefix in new[] { new Guid[0], new[] { f.Scheme } })
+                    {
+                        PowerEnumerateForTest(prefix, error);
+                        Eq(false, PowerPlan.DropOrphanExtremeForTest(f.Scheme)); Eq(receipt, f.Receipt());
+                    }
+                PowerPlan.EnumerateSchemeForTest = delegate { throw new InvalidOperationException("Enumeration failed"); };
+                Eq(false, PowerPlan.DropOrphanExtremeForTest(f.Scheme)); Eq(receipt, f.Receipt());
+                var many = new Guid[129];
+                for (int i = 0; i < many.Length; i++) many[i] = Guid.NewGuid();
+                many[128] = owner;
+                PowerEnumerateForTest(many, 259);
+                Eq(false, PowerPlan.DropOrphanExtremeForTest(f.Scheme)); Eq(receipt, f.Receipt());
+                PowerPlan.EnumerateSchemeForTest = delegate(uint index, byte[] buffer, ref uint size)
+                { size = 8; return 0; };
+                Eq(false, PowerPlan.DropOrphanExtremeForTest(f.Scheme)); Eq(receipt, f.Receipt());
+                Eq(0, f.Writes);
+            }
+        }
+
+        private static void PowerExtremeOrphanKeepsExistingAndUnknownOwners()
+        {
+            using (var f = new PowerPolicyFixture())
+            {
+                string part = PowerSaved(powerPromote, 60, 50);
+                // 当前目标无需枚举再次证明 存在异常也不得丢弃其原值
+                f.Receipt("2|" + f.Scheme.ToString("N") + "|" + part);
+                string before = f.Receipt();
+                Eq(false, PowerPlan.DropOrphanExtremeForTest(f.Scheme)); Eq(before, f.Receipt());
+                Guid owner = Guid.NewGuid();
+                f.Receipt("2|" + owner.ToString("N") + "|" + part); before = f.Receipt();
+                PowerEnumerateForTest(new[] { f.Scheme, owner }, 259);
+                Eq(false, PowerPlan.DropOrphanExtremeForTest(f.Scheme)); Eq(before, f.Receipt());
+                PowerEnumerateForTest(new[] { f.Scheme }, 259);
+                foreach (string malformed in new[] { "invalid", part, "2|invalid|" + part,
+                    "3|" + owner + "|" + part, "2|" + Guid.Empty + "|" + part, "2|" + owner + "|" + part + "|extra" })
+                {
+                    f.Receipt(malformed);
+                    Eq(false, PowerPlan.DropOrphanExtremeForTest(f.Scheme)); Eq(malformed, f.Receipt());
+                }
+                Eq(0, f.Writes);
+            }
+        }
+
+        private static void PowerExtremeOrphanRebuildsOnlyAfterDurableClear()
+        {
+            using (var f = new PowerPolicyFixture())
+            {
+                string old = "2|" + Guid.NewGuid().ToString("N") + "|" + PowerSaved(powerPromote, 20, 30);
+                f.Receipt(old); f.Set(powerPromote, 60, 50);
+                PowerEnumerateForTest(new[] { f.Scheme }, 259);
+                PowerPlan.ExtremeSaveSnapshotForTest = delegate { return false; };
+                Eq(false, PowerPlan.PrepareExtremeForTest(f.Scheme, true));
+                Eq(true, PowerPlan.ExtremeTunePending); Eq(old, f.Receipt());
+                PowerPlan.ExtremeSaveSnapshotForTest = null;
+                Eq(true, PowerPlan.PrepareExtremeForTest(f.Scheme, true));
+                Eq(false, PowerPlan.ExtremeTunePending);
+                Eq("2|" + f.Scheme.ToString("N") + "|" + PowerSaved(powerPromote, 60, 50), f.Receipt());
+                Eq(0, f.Writes);
             }
         }
     }

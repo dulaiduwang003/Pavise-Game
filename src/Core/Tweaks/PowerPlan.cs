@@ -212,10 +212,10 @@ namespace PaviseApp
             Guid? cur = Current();
             if (cur.HasValue && cur.Value == g && !SwitchAwayFrom(g)) return false;
             Guid tmp = g;
-            // 不能把“方案读取失败”当作“已删除”，否则会丢掉仍需恢复的参数收据。
+            // 方案读取失败不等于已删除 当成删了会丢掉还要恢复的参数收据
             uint deleted = PowerDeleteScheme(IntPtr.Zero, ref tmp);
             if (deleted != 0 && deleted != 2 /* ERROR_FILE_NOT_FOUND */) return false;
-            // 已删除的托管方案不再有可恢复参数；只清它自己的收据，避免阻塞下次重建。
+            // 已经删掉的托管方案没有可恢复参数了 只清它自己的收据 别挡着下次重建
             if (!ForgetDeletedExtremeSnapshot(g)) return false;
             Settings.SaveStr(ManagedPlanKey, "");
             lock (lk) { resolved = false; target = Guid.Empty; targetOwned = false; tuneState = -1; }
@@ -385,7 +385,8 @@ namespace PaviseApp
                 return false; // Activation tests must not tune native schemes.
 #else
                 if (!TuneTarget(tgt, aggressive, handheld, extreme)) return false;
-                tuneState = TuneCode(aggressive, handheld, extreme);
+                // 极限那组没配完就不记账 下次配置再补 其余旋钮已经写进去了
+                tuneState = extremeTunePending ? -1 : TuneCode(aggressive, handheld, extreme);
 #endif
             }
             Guid? cur = RestoreCurrentPlan();
@@ -433,7 +434,7 @@ namespace PaviseApp
                 if (targetOwned && tuneState != TuneCode(aggressive, handheld, extreme))
                 {
                     if (!TuneTarget(tgt, aggressive, handheld, extreme)) return false;
-                    tuneState = TuneCode(aggressive, handheld, extreme);
+                    tuneState = extremeTunePending ? -1 : TuneCode(aggressive, handheld, extreme);
                     Set(tgt);
                 }
                 Guid? cur = Current();
@@ -511,12 +512,11 @@ namespace PaviseApp
                 Guid? nowActive = RestoreCurrentPlan();
                 if (!nowActive.HasValue || nowActive.Value == Guid.Empty) return false;
                 if (nowActive.Value == restoreTarget) return ClearRestoredPlan(restoreTarget);
-                // 正常对局中只要本次会话确实完成过方案接管，当前方案即使
-                // 被 TS、G-Helper 或手动操作切成了别的 GUID，恢复责任仍然
-                // 属于 Pavise。否则对方恰好在退出前切换一次，就会让旧的
-                // “尊重外部选择”分支吞掉原值快照，退局停在第三方方案。
-                // 崩溃重启后 active=false，仍沿用保守所有权判断，不拿一份
-                // 历史收据覆盖用户在 Pavise 不运行期间做出的新选择。
+                // 正常对局里只要这次会话真的接管过方案 恢复责任就还在 Pavise
+                // 哪怕当前方案被 TS G-Helper 或者手动切成了别的 GUID 也一样
+                // 不然对方赶在退出前切一次 旧的尊重外部选择那条分支就会吞掉原值快照 退局停在第三方方案上
+                // 崩溃重启后 active=false 照样用保守的所有权判断
+                // 不拿一份历史收据去盖用户在 Pavise 没运行那段时间做的新选择
                 bool? ours = active ? (bool?)true : RestorePlanIsOwned(nowActive.Value);
                 if (!ours.HasValue) return false;
                 if (!ours.Value)

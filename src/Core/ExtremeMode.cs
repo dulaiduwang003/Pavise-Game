@@ -18,8 +18,8 @@ namespace PaviseApp
         public readonly Func<bool> Active;
         public readonly Func<bool> Enable;
         public readonly Func<bool> Revert;
-        // Enable 失败后仍可能留下需要恢复的收据；有收据就必须进极限账本，
-        // 否则回锁只遍历成功项会把恢复责任变成孤儿。
+        // Enable 失败也可能留下要恢复的收据 有收据就得进极限账本
+        // 否则回锁只遍历成功项 恢复责任就成了孤儿
         public readonly Func<bool> OwnsState;
 
         public ExtremeItem(string token, string langKey,
@@ -122,13 +122,15 @@ namespace PaviseApp
             PolicyCatalog.KeyAggressive, PolicyCatalog.KeyGpuDemote, PolicyCatalog.KeyWsTrim,
             PolicyCatalog.KeyPauseDl, PolicyCatalog.KeyPauseUpdate, PolicyCatalog.KeyPauseMaintenance,
             PolicyCatalog.KeyPauseServices,
-            // 无线扫描抑制已下架，不再提供会话或手动入口。
-            //   旧实现切换媒体流模式曾触发驱动掉线，不列入极限清单。
+            // 无线扫描抑制已下架 会话和手动入口都没有了
+            //   旧实现切媒体流模式会把驱动搞掉线 不进极限清单
             PolicyCatalog.KeyVramShield,
             PolicyCatalog.KeyAudioLowLat, PolicyCatalog.KeyEnglishInput, PolicyCatalog.KeyPowerYield,
             PolicyCatalog.KeyNvMaxPerf, PolicyCatalog.KeyNvShaderCache,
             PolicyCatalog.KeyAmdAntiLag, PolicyCatalog.KeyIntelLowLatency, PolicyCatalog.KeyIntelEndurance,
             // 候选线程提优 09-06 实测关掉掉三十帧 极限档强制开 CPU 饱和时仍由调度保护撤回
+            //   强制开只是开关语义 实际启不启用还要过 GameMode.LaneSupported
+            //   掌机档和物理核不足六个的机器一律不启用 那里提优是负优化
             PolicyCatalog.KeyRenderLane,
         };
 
@@ -319,8 +321,8 @@ namespace PaviseApp
                     delegate { return EeeTweak.EnabledByPavise; },
                     EeeTweak.Enable, EeeTweak.Restore),
                 new ExtremeItem("nicim", "set.nicim",
-                    // 退役的自动项仍留在清单里承担旧极限账本的恢复责任，
-                    // 但永远不再由批量解锁或“恢复全部跟随”主动关闭网卡中断合并。
+                    // 退役的自动项还留在清单里 是为了背旧极限账本的恢复责任
+                    // 但批量解锁和恢复全部跟随都不会再主动去关网卡中断合并
                     delegate { return false; },
                     delegate { return NicModerationTweak.HasLegacyResidue; },
                     NicModerationTweak.MigrateLegacy, NicModerationTweak.MigrateLegacy,
@@ -357,8 +359,8 @@ namespace PaviseApp
                     bool eligible, active;
                     try { eligible = item.Eligible(); active = item.Active(); }
                     catch { failed++; continue; }
-                    // 收据可能已落盘，而进程在 SetLedger 前退出。下次见到已接管状态
-                    // 必须先补账；外部已满足的项目 OwnsState=false，仍然只跳过。
+                    // 收据落了盘 进程却在 SetLedger 前退出 下次见到已接管状态先补账
+                    // 外部本来就满足的项 OwnsState=false 照旧跳过
                     if (active)
                     {
                         if (OwnsStateNow(item)) SetLedger(item.Token, true);
@@ -370,14 +372,14 @@ namespace PaviseApp
                     catch { ok = false; }
                     if (ok)
                     {
-                        // 有归属探针的项目只有真的拿到收据才算翻动；这也封住
-                        // Active 与 Enable 两次查询之间外部恰好完成关闭的竞态。
+                        // 有归属探针的项 拿到收据才算真翻动过
+                        // 这也堵住 Active 和 Enable 两次查询之间外部恰好关掉的竞态
                         if (item.OwnsState == null || OwnsStateNow(item))
                         { SetLedger(item.Token, true); flipped++; }
                     }
                     else
                     {
-                        // 失败若仍留下可恢复收据，也必须让回锁/管理面看得到。
+                        // 失败但留了可恢复收据 也得让回锁和管理面看见
                         if (OwnsStateNow(item)) SetLedger(item.Token, true);
                         failed++;
                     }
@@ -423,8 +425,8 @@ namespace PaviseApp
             }
         }
 
-        // 下架自动环境项完成旧账还原后清掉极限账本 token。只开放给升级迁移，
-        // 不能顺手清其它项目，否则回锁会失去恢复责任。
+        // 下架的自动环境项还完旧账就清掉极限账本 token 只给升级迁移用
+        // 别顺手清别的项 回锁会连恢复责任一起丢掉
         internal static void RetireEnvLedgerToken(string token)
         {
             if (string.IsNullOrEmpty(token)) return;

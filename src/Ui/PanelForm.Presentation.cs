@@ -159,7 +159,7 @@ namespace PaviseApp
             Controls.Clear();
             foreach (var c in old) c.Dispose();
             acGroups.Clear(); acCards.Clear(); acToggles.Clear();
-            // Rebuild 复用窗体实例；不要让已释放控件和捕获它们的委托跨主题/DPI 切换累积。
+            // Rebuild 会复用窗体实例 别让已释放的控件和抓着它们的委托跨主题和 DPI 切换攒下来
             guardVeils.Clear();
             accentLabels.Clear();
             themeRefreshers.Clear();

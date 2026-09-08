@@ -1,5 +1,5 @@
-// Renderer handoff integration regression: temporary library + synthetic identity,
-// foreground, recovery and GPU seams. Never starts GameMode.Loop/Program or mutates a process.
+// 文件用途 渲染交接的集成回归 临时游戏库加上合成的身份 前台 恢复和 GPU 接缝
+// 从不启动 GameMode.Loop 和 Program 也不改任何进程
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -57,7 +57,7 @@ namespace PaviseApp
             finally
             {
                 Logger.LogPath = previousLog;
-                // root is the unique directory just created above, never user application data.
+                // root 就是上面刚建的那个独立目录 绝不是用户的应用数据
                 try { Directory.Delete(root, true); } catch { }
             }
         }
@@ -248,7 +248,7 @@ namespace PaviseApp
                 int epoch;
                 f.Resolve(f.Old, out epoch);
                 Eq(true, f.GpuStarted.WaitOne(3000));
-                // Exercise the exact cancellation flags without invoking real global restore work.
+                // 把取消标志原样跑一遍 不去触发真正的全局还原
                 RendererCoordinatorSet(f.Mode, flag, flag != "enabled");
                 f.Invalidate();
                 f.GpuGate.Set();

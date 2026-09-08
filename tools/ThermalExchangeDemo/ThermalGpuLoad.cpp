@@ -1,4 +1,4 @@
-// Off-screen D3D9 workload used only to validate the Thermal Exchange experiment.
+// 文件用途 离屏 D3D9 负载 只用来验证 Thermal Exchange 这个实验
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>

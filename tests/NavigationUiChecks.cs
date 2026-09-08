@@ -128,7 +128,7 @@ namespace PaviseApp
                 tuning.InvokeItem((int)PageId.Graphics);
                 var gpuPanels = Field<DBPanel[]>(form, "gfxTabPanels");
                 var gpuTabs = Field<TechTabs>(form, "gfxTabs");
-                // 可见显卡功能会随测试机硬件变化；滚动保持测试自己建立确定的溢出区。
+                // 可见的显卡功能会跟着测试机硬件变 滚动这块由测试自己建一个确定的溢出区
                 bool naturalGpuOverflow = gpuPanels[0].DisplayRectangle.Height > gpuPanels[0].ClientSize.Height;
                 int overflow = gpuPanels[0].ClientSize.Height + Theme.S(240);
                 if (gpuPanels[0].AutoScrollMinSize.Height < overflow)
@@ -153,7 +153,7 @@ namespace PaviseApp
                 Check(Field<TechTabs>(form, "gfxTabs").Index == 1, "Rebuild lost the active sub-tab");
                 DBPanel rebuiltGpuPanel = Field<DBPanel[]>(form, "gfxTabPanels")[0];
                 Field<TechTabs>(form, "gfxTabs").Index = 0;
-                // 没有真实溢出时 WinForms 会把合成位置钳回 0；跨 DPI 的逻辑位置另有纯合成测试。
+                // 没有真实溢出时 WinForms 会把合成位置钳回 0 跨 DPI 的逻辑位置另有纯合成测试
                 Check(!naturalGpuOverflow || rebuiltGpuPanel.AutoScrollPosition.Y == scrollY,
                     "Rebuild lost an inactive tab's scroll");
                 Check(Field<int>(form, "mainReturnPage") == (int)PageId.Log, "Rebuild overwrote the return destination");
@@ -336,7 +336,7 @@ namespace PaviseApp
         }
     }
 
-    // The fixture must neither appear on the desktop nor steal focus while the user is working.
+    // 这个夹具不能出现在桌面上 也不能在用户干活的时候抢焦点
     internal sealed class OffscreenPanelForm : PanelForm
     {
         public OffscreenPanelForm(Tamer tamer, GameMode mode, Icon icon) : base(tamer, mode, icon, true) { }

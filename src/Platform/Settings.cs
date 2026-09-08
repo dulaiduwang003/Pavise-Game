@@ -237,8 +237,8 @@ namespace PaviseApp
             }
         }
 
-        // 事务收据必须先于跨 hive 的系统改动稳定落盘。普通偏好设置仍走
-        // Save/SaveStr；只有恢复台账使用同步 Flush，避免把高成本扩散到全局。
+        // 事务收据得赶在跨 hive 的系统改动之前稳稳落盘
+        // 普通偏好还是走 Save 和 SaveStr 只有恢复台账用同步 Flush 免得把这份开销摊到全局
         internal static bool SaveStrDurable(string name, string val)
         {
             lock (writeSync)

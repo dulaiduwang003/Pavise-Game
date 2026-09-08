@@ -178,7 +178,7 @@ namespace PaviseApp
         private void EngageLaneAndReport(IntPtr h, ProcessSnapshot all, int pid, long currentCreation,
             BoostPass pass, bool stateOk, bool firstVerified, bool gpuOk, bool ecoCleared, string placementText)
         {
-            if (EffLane && pass.PriorityTarget == Native.HIGH_PRIORITY_CLASS
+            if (EffLane && LaneEligible && pass.PriorityTarget == Native.HIGH_PRIORITY_CLASS
                 && !pass.WriteDenied && !RenderLane.IsActiveFor(pid, currentCreation))
                 RenderLane.EnsureForGame(pid, currentCreation, pass.RendererName);
 

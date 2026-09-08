@@ -1,5 +1,5 @@
-// Per-game family-policy regression. All stores are unique temporary fixtures;
-// no Program, GameMode.Loop/Sweep/Boost, real GPU, registry or scheduling writes.
+// 文件用途 逐游戏家族策略回归 所有存储都是独立的临时夹具
+// 不走 Program 不走 GameMode 的 Loop Sweep Boost 不碰真 GPU 注册表和计划任务写入
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -109,7 +109,7 @@ namespace PaviseApp
             finally
             {
                 Logger.LogPath = oldLog;
-                // Only the unique directory allocated above belongs to this suite.
+                // 只有上面分配的那个独立目录属于这套测试
                 try { Directory.Delete(root, true); } catch { }
             }
         }
@@ -131,7 +131,7 @@ namespace PaviseApp
             GameProfile first = FamilyPolicyProfile("legacy-a", dir);
             GameProfile second = FamilyPolicyProfile("legacy-b", dir);
             string file = Path.Combine(dir, GameProfileStore.FileName);
-            // A real pre-feature V5 record, not a new serializer's defaults.
+            // 这是功能上线前真实的 V5 记录 不是新序列化器的默认值
             File.WriteAllLines(file, new[]
             {
                 "PAVISE_PROFILES_V5", FamilyPolicyLegacyLine(first), FamilyPolicyLegacyLine(second)
@@ -177,8 +177,8 @@ namespace PaviseApp
                     Eq(false, store.Save(new List<GameProfile>()));
                     var mode = new GameMode(f.DirectoryPath, new SuppressionCore());
                     Eq(true, mode.ProfileStoreSaveFailed);
-                    // Program owns the ensuing reset/dialog/exit. Loading alone
-                    // must preserve the file until that cleanup flow starts.
+                    // 后面的重置 弹窗和退出归 Program 管
+                    // 光是加载得把文件留着 等那条清理流程真开始再说
                     Eq(contents, File.ReadAllText(f.LibraryFile));
                 }
             }
@@ -356,7 +356,7 @@ namespace PaviseApp
                 Eq(false, f.Mode.FamilyPolicyEpochCurrent(oldEpoch));
                 Eq(false, FamilyPolicyRunGate(f.Mode, oldEpoch, delegate { writes++; }));
                 Eq(0, writes);
-                // The new generation can still handle ordinary background processes.
+                // 换了代之后 普通后台进程照样处理得了
                 Eq(true, FamilyPolicyRunGate(f.Mode, f.Mode.FamilyPolicyEpoch, delegate { writes++; }));
                 Eq(1, writes);
                 Eq(false, f.Current(f.First.Id).SuppressFamilyBackground);
@@ -407,7 +407,7 @@ namespace PaviseApp
                         return f.Mode.SetProfileFamilySuppression(f.First.Id, false);
                     });
                     Eq(true, closeStarted.WaitOne(3000));
-                    // A closure completed while the old action owns the gate is a bug.
+                    // 闸门还在旧动作手里 闭包却完成了 这是 bug
                     Eq(false, close.Wait(50));
                 }
                 finally
@@ -599,8 +599,8 @@ namespace PaviseApp
                 Eq(true, FamilyObservationRecord(store, f.First));
                 Eq(false, store.Has(f.First.Id, f.Second.ExecutablePath));
                 Eq(false, store.Validate(f.First.Id, f.Second.ExecutablePath));
-                // The owning profile-change path explicitly forgets old evidence;
-                // an arbitrary stale validation caller has no removal authority.
+                // 持有权的那条配置变更路径会明确忘掉旧证据
+                // 随便一个过期的校验调用者没有删除的权力
                 store.Forget(f.First.Id);
                 Eq(false, store.Has(f.First.Id, f.First.ExecutablePath));
                 Eq(false, store.Has(f.First.Id, f.Second.ExecutablePath));
@@ -1118,8 +1118,8 @@ namespace PaviseApp
 
         private static void FamilyOverlayKnownHostsReleaseBackground(string root)
         {
-            // These are compatibility names, not a claim of signature verification
-            // or that an overlay is currently injected into a particular game.
+            // 这些只是兼容用的名字 不代表验过签名
+            // 也不代表某个浮层此刻真的注入进了哪个游戏
             string[] names =
             {
                 "steam", "gameoverlayui", "steamwebhelper",
@@ -1148,7 +1148,7 @@ namespace PaviseApp
                     Eq(names[i], request.Name);
                     Eq(null, f.Peek(pid));
                     f.AssertTracked(pid, false);
-                    // Another snapshot of the same host must not restore twice.
+                    // 同一个宿主再来一份快照 不能还原第二次
                     Eq(true, f.Protect(pid, creation, names[i], path));
                     Eq(i + 1, f.RestoreRequests.Count);
                 }
@@ -1173,8 +1173,8 @@ namespace PaviseApp
             {
                 for (int i = 0; i < inputs.GetLength(0); i++)
                     Eq(true, f.Protect(75200 + i, 100 + i, inputs[i, 0], inputs[i, 1]));
-                // Paths are synthetic strings; no product files or install roots
-                // need to exist, and an untracked host needs no restore operation.
+                // 路径都是合成的字符串 产品文件和安装根不需要真的存在
+                // 没被跟踪的宿主也不需要还原动作
                 Eq(0, f.RestoreRequests.Count);
                 Eq(0, f.TrackedCount);
             }
@@ -1235,7 +1235,7 @@ namespace PaviseApp
                     Eq(true, f.Core.HasReason(pid, SuppressReason.Background));
                     f.AssertTracked(pid, true);
                 }
-                // No exemption propagates from a product root to nested workers.
+                // 豁免不会从产品根往下传给嵌套的工作进程
                 Eq(false, f.Protect(75450, 200, "updater", @"C:\Portable\OBS\bin\helpers\updater.exe"));
                 Eq(1, f.RestoreRequests.Count);
             }
@@ -1301,8 +1301,8 @@ namespace PaviseApp
                 Eq(false, f.Protect(pid, 200, "updater", @"C:\Portable\updater.exe"));
                 Eq(0, f.RestoreRequests.Count);
 
-                // Model a later snapshot after the core has replaced the old
-                // identity. A delayed snapshot must not release the new owner.
+                // 模拟核心换掉旧身份之后才到的快照
+                // 迟来的快照不能把新持有者放掉
                 object current = f.Seed(pid, 200, "Discord", SuppressReason.Background);
                 Eq(true, f.Protect(pid, 100, "obs64", @"C:\Portable\obs64.exe"));
                 Eq(current, f.Peek(pid));
@@ -1323,16 +1323,16 @@ namespace PaviseApp
             {
                 Eq(true, f.Protect(75800, 100, "gameoverlayui", @"C:\Steam\gameoverlayui.exe"));
                 Eq(0, f.RestoreRequests.Count);
-                // A later arrival in a different directory is immediately known;
-                // there is no once-per-game scan result or install-root cache.
+                // 换个目录后到的也能立刻认出来
+                // 这里没有一局只扫一次的结果 也没有安装根缓存
                 f.Seed(75801, 200, "obs-browser-page", SuppressReason.Background);
                 Eq(true, f.Protect(75801, 200, "obs-browser-page", @"D:\Capture\obs-browser-page.exe"));
                 Eq(1, f.RestoreRequests.Count);
                 f.Seed(75802, 300, "OverwolfHelper64", SuppressReason.Background);
                 Eq(true, f.Protect(75802, 300, "OverwolfHelper64", @"E:\OtherGameTools\OverwolfHelper64.exe"));
                 Eq(2, f.RestoreRequests.Count);
-                // Reusing a former host PID for an ordinary program cannot inherit
-                // any prior recognition or product-directory exemption.
+                // 普通程序捡了以前宿主的 PID
+                // 继承不到之前的识别结果和产品目录豁免
                 object entry = f.Seed(75801, 400, "browser", SuppressReason.Background);
                 Eq(false, f.Protect(75801, 400, "browser", @"D:\Capture\browser.exe"));
                 Eq(entry, f.Peek(75801));
@@ -1355,8 +1355,8 @@ namespace PaviseApp
                 Eq(false, f.Core.HasReason(pid, SuppressReason.Background));
                 Eq(SuppressReason.None, RendererReleaseField<SuppressReason>(entry, "Reasons"));
                 f.AssertTracked(pid, false);
-                // Recognition remains true while recovery is pending, so callers
-                // must keep skipping Acquire/Reconcile instead of repressing it.
+                // 恢复还挂着的时候识别结果仍然是真
+                // 调用方得接着跳过 Acquire 和 Reconcile 而不是把它重新压下去
                 Eq(true, f.Protect(pid, 100, "Discord", @"C:\Portable\Discord.exe"));
                 Eq(1, f.RestoreRequests.Count);
                 Eq(entry, f.Peek(pid));
@@ -1382,14 +1382,14 @@ namespace PaviseApp
                 Eq(true, f.FamilyExempt);
                 HashSet<int> family = f.ProtectedLibraryPids();
                 Eq(true, family.Contains(f.Steam.Pid));
-                // These are siblings of the renderer, not descendants of it.
-                // Their default protection must not rely on expanding ancestors.
+                // 这几个是渲染进程的同胞 不是它的后代
+                // 它们的默认保护不能靠往上扩祖先来拿
                 Eq(false, family.Contains(f.WebHelper.Pid));
                 Eq(false, family.Contains(f.GameOverlay.Pid));
                 foreach (ProcEntry process in f.SteamHosts)
                     Eq(false, f.CanSuppress(process));
 
-                // Another entry's choice must not become this game's live value.
+                // 别的条目选的东西 不能变成这个游戏正在用的值
                 Eq(true, f.Mode.SetProfileFamilySuppression(f.Overlay.Second.Id, true));
                 Eq(true, f.FamilyExempt);
                 foreach (ProcEntry process in f.SteamHosts)
@@ -1401,8 +1401,8 @@ namespace PaviseApp
                 {
                     Eq(false, family.Contains(process.Pid));
                     Eq(false, f.EarlyProtected(process));
-                    // This assertion fails with the old unconditional overlay
-                    // gate even though the real saved family switch is on.
+                    // 换成旧的无条件浮层闸门 这条断言会挂
+                    // 哪怕真正存下来的家族开关是开着的
                     Eq(true, f.CanSuppress(process));
                 }
                 f.SetSuppression(false);
@@ -1414,8 +1414,8 @@ namespace PaviseApp
             {
                 string file = Path.Combine(f.Overlay.DirectoryPath, GameProfileStore.FileName);
                 string before = File.ReadAllText(file);
-                // The existing transactional-store fixture denies replacement
-                // only for this unique temporary library, never real settings.
+                // 现成的事务存储夹具只对这个独立临时库拒绝替换
+                // 不会碰真实设置
                 using (var lease = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read))
                     Eq(false, f.Mode.SetProfileFamilySuppression(f.Overlay.First.Id, true));
                 Eq(false, f.Mode.ProfileStoreSaveFailed);
@@ -1450,8 +1450,8 @@ namespace PaviseApp
                 int restored = 0;
                 foreach (ProcEntry process in f.SteamHosts)
                 {
-                    // Exercise the real restore-capable helper with the new
-                    // saved opt-out, not an invented "restore succeeded" flag.
+                    // 拿新存下来的退出选项去跑真正能还原的那个辅助方法
+                    // 不是自己编一个还原成功的标志
                     Eq(true, f.Overlay.Protect(process.Pid, process.Creation,
                         process.Name, process.Path, f.FamilyExempt));
                     Eq(++restored, f.Overlay.RestoreRequests.Count);
@@ -1502,8 +1502,8 @@ namespace PaviseApp
                 Eq(true, f.CanSuppress(f.Steam));
                 Eq(true, f.CanSuppress(f.GameOverlay));
 
-                // The extracted early gate retains the existing nullable family
-                // set semantics as well as the unconditional renderer boundary.
+                // 抽出来的前置闸门保留了原来可空家族集合的语义
+                // 也保留了无条件的渲染进程边界
                 var member = new HashSet<int> { f.WebHelper.Pid };
                 Eq(true, FamilyBoundary.IsGameOrWhitelistProtected(f.WebHelper.Pid,
                     f.Renderer.Pid, false, false, true, member, null));
@@ -1534,8 +1534,7 @@ namespace PaviseApp
                 Eq(false, f.CanSuppress(f.Steam));
                 Eq(false, f.CanSuppress(otherRenderer));
                 Eq(false, f.CanSuppress(f.Renderer));
-                // Protecting B's confirmed ancestor must not manufacture proof
-                // that every Steam helper sibling also belongs to B.
+                // 保护 B 已确认的祖先 不能顺手造出每个 Steam 辅助同胞也属于 B 的证据
                 Eq(true, f.CanSuppress(f.WebHelper));
                 Eq(true, f.CanSuppress(f.GameOverlay));
                 Eq(false, f.CanSuppress(f.Obs));
@@ -1575,8 +1574,8 @@ namespace PaviseApp
                     new HashSet<int> { branch[0].Pid }, cachedFamily, null);
                 foreach (ProcEntry process in branch)
                 {
-                    // A current root member and its verified cross-root child
-                    // must not wait for the older renderer family to refresh.
+                    // 当前根的成员和它验过的跨根子进程
+                    // 不该等着更老的那个渲染家族刷新
                     Eq(false, visible.Contains(process.Pid));
                     Eq(true, f.CanSuppress(process, f.Renderer.Pid, visible.Contains(process.Pid), false));
                 }
@@ -1614,8 +1613,8 @@ namespace PaviseApp
                     Path.Combine(f.Overlay.DirectoryPath, "Unrelated", "AmbiguousParentChild.exe"));
                 f.Processes.AddRange(new[] { otherGame, unrelated, olderChild,
                     otherSession, ambiguousOwned, ambiguousOther, unknownCreation, self, ambiguousChild });
-                // Neither real game UI has a window in this scenario. The
-                // existing same-name expansion reaches it from outside windows.
+                // 这个场景里两个真实游戏 UI 都没有窗口
+                // 现成的同名扩展从窗口之外就能够到它
                 HashSet<int> visible = f.FilteredVisibleFamily(
                     new HashSet<int> { otherGame.Pid, unrelated.Pid }, cachedFamily, null);
                 Eq(false, visible.Contains(branch[0].Pid));
@@ -1647,8 +1646,8 @@ namespace PaviseApp
                 var before = new List<ProcEntry>(f.Processes);
                 before.AddRange(new[] { broker, ui, child });
                 history.Capture(new ProcessSnapshot(before.ToArray()), f.Mode.GetProfiles(), 7, 1000);
-                // The owned broker has exited; only history proves this live UI
-                // belongs to the profile. Cached family/renderer ancestry cannot.
+                // 持有的 broker 已经退了 只有历史能证明这个在用的 UI 属于该配置
+                // 缓存下来的家族和渲染祖先关系证明不了
                 f.Processes.AddRange(new[] { ui, child });
                 GameFamilyEvidence evidence = history.Capture(new ProcessSnapshot(f.Processes.ToArray()),
                     f.Mode.GetProfiles(), 7, 2000);
@@ -1725,8 +1724,8 @@ namespace PaviseApp
                 Eq(false, f.CanSuppress(branch[0], branch[0].Pid, false, false));
                 Eq(false, f.CanSuppress(f.Renderer, f.Renderer.Pid, false, false));
 
-                // The aggressive path supplies the shared empty set. The pure
-                // visibility filter must leave it empty and do no native work.
+                // 激进路径给的是共享的空集合
+                // 纯可见性过滤器得让它保持空 一点原生调用都不做
                 var empty = new HashSet<int>();
                 FamilyBoundary.FilterUserFacingGameFamily(empty, f.Overlay.First,
                     new ProcessSnapshot(f.Processes.ToArray()), f.Renderer.Pid, 99000, 7,
@@ -1746,9 +1745,8 @@ namespace PaviseApp
             return new[] { ui, child };
         }
 
-        // Executes the real pure/restore-capable decisions in Sweep order,
-        // stopping before Reconcile/Acquire. All identities and window flags are
-        // supplied here; no foreground query or process enumeration is used.
+        // 按 Sweep 的顺序跑真正的纯决策和可还原决策 停在 Reconcile 和 Acquire 之前
+        // 身份和窗口标志都由这里给 不查前台 也不枚举进程
         private sealed class FamilyOverlayPolicyFixture : IDisposable
         {
             internal readonly FamilyOverlayFixture Overlay;
@@ -1762,8 +1760,8 @@ namespace PaviseApp
             internal FamilyOverlayPolicyFixture(string root, string name)
             {
                 Overlay = new FamilyOverlayFixture(root, name, true);
-                // Keep ownership checks independent of the runner's actual PID
-                // and desktop session; these fields belong only to this fixture.
+                // 所有权检查别跟测试进程真实的 PID 和桌面会话扯上关系
+                // 这几个字段只属于这个夹具
                 selfPid = 99000;
                 ownerSession = 7;
                 FamilyPolicySetField(Mode, "selfPid", selfPid);
@@ -1806,8 +1804,8 @@ namespace PaviseApp
             {
                 WhitelistRule rule;
                 Eq(true, WhitelistRule.TryCreate(kind, value, out rule));
-                // Public whitelist mutation enumerates real processes. The real
-                // no-save primitive and evaluator need only this fixture's RAM.
+                // 公开的白名单改动会去枚举真实进程
+                // 真正那个不落盘的原语和评估器只需要这个夹具的内存
                 Eq(true, (bool)FamilyPolicyInvoke(Mode, "AddWhiteRuleNoSave", rule));
             }
 
@@ -1906,10 +1904,9 @@ namespace PaviseApp
             public void Dispose() { Overlay.Dispose(); }
         }
 
-        // Reuse the renderer-release test's entry reflection helpers and fake
-        // restore constructor. No Sweep, Acquire, topology initialization or
-        // real process mutation is called. Both reason levels stay Isolated so
-        // removing Background never enters the native reapply path.
+        // 复用渲染释放测试里的条目反射辅助方法和假的还原构造函数
+        // 不调 Sweep Acquire 拓扑初始化和真实进程改动
+        // 两个原因等级都保持 Isolated 这样移除 Background 就不会走进原生重应用路径
         private sealed class FamilyOverlayFixture : IDisposable
         {
             internal readonly SuppressionCore Core;
@@ -2036,7 +2033,7 @@ namespace PaviseApp
                 Directory.CreateDirectory(secondRoot);
                 First = FamilyPolicyProfile("first", firstRoot);
                 Second = FamilyPolicyProfile("second", secondRoot);
-                // Inert bytes provide file stamps; neither file is executable or launched.
+                // 这些惰性字节只是给文件盖个戳 两个文件都不是可执行的 也不会被启动
                 File.WriteAllBytes(First.ExecutablePath, new byte[] { 1, 2, 3, 4 });
                 File.WriteAllBytes(Second.ExecutablePath, new byte[] { 5, 6, 7, 8 });
                 Eq(true, PolicyResolver.SetOverride(First, PolicyCatalog.KeyBoost, "0"));
@@ -2050,7 +2047,7 @@ namespace PaviseApp
             internal GameProfile Current(string id) { return FamilyPolicyFind(Mode.GetProfiles(), id); }
             internal void EnableFakePolicyGate()
             {
-                // Only set fields: the public lifecycle setters restore real processes.
+                // 只设字段 公开的生命周期 setter 会去还原真实进程
                 FamilyPolicySetField(Mode, "enabled", true);
                 FamilyPolicySetField(Mode, "bgSuppressOn", true);
             }

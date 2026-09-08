@@ -77,8 +77,7 @@ namespace PaviseApp
         private volatile bool nvMaxPerf;
         private volatile bool nvVrrWindowedOn;
         private volatile bool intelEnduranceOn;
-        private volatile bool laptopPerfOn;
-        private bool nvVrrActive, intelEndActive, oemPerfActive;
+        private bool nvVrrActive, intelEndActive;
         private volatile string nvLowLatMode = "off";
         private volatile bool nvSmoothMotion;
         private volatile bool nvShaderCacheMax;
@@ -223,7 +222,6 @@ namespace PaviseApp
             nvMaxPerf = Settings.Load("NvMaxPerf", false);
             nvVrrWindowedOn = Settings.Load("NvVrrWindowed", false);
             intelEnduranceOn = Settings.Load(PolicyCatalog.KeyIntelEndurance, false);
-            laptopPerfOn = Settings.Load(PolicyCatalog.KeyLaptopPerf, PolicyCatalog.LaptopPerfDefault);
             nvLowLatMode = Settings.LoadStr("NvLowLat", "off");
             nvSmoothMotion = Settings.Load("NvSmoothMotion", false);
             nvShaderCacheMax = Settings.Load("NvShaderCache", false);
@@ -363,7 +361,7 @@ namespace PaviseApp
 
             try
             {
-                // An unresolved receipt must not be invalidated by seeding a missing primary.
+                // 还没了结的收据 不能靠补一条缺失的主记录把它作废
                 profiles.AddRange(profileStore.LoadProfiles(!libraryIgnoreTransaction.RecoveryPending));
                 List<GameProfile> refreshed = GetProfiles();
                 if (!ProfileStoreSaveFailed && !libraryIgnoreTransaction.RecoveryPending

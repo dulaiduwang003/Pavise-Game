@@ -20,7 +20,7 @@ namespace PaviseApp
         }
     }
 
-    // 探测预算和保护生命期分开 预算耗尽不等于“不是游戏”
+    // 探测预算和保护生命期分开 预算花完不等于这就不是游戏
     // 仍处于前台且身份/关联有效的候选只保这一份 PID 失焦后短宽限退出
     internal sealed class RendererHandoffTracker
     {

@@ -1,5 +1,5 @@
-// Pure-function checks for the scan-safe anti-cheat throttle profile.
-// No processes are opened and no system state is touched.
+// 文件用途 扫描安全的反作弊压制构成的纯函数检查
+// 不打开任何进程 不碰系统状态
 #if PAVISE_SELFTEST
 using System;
 

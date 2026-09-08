@@ -39,7 +39,7 @@ namespace PaviseApp
         //   有 Worth 驱动就把数量抛给 UI 高亮提示 不自动改注册表 用户走手动流程
         public event Action<int> IrqSuggested;
 
-        // 原始记录完成与“有挪核建议”是两回事 零建议和失败也要让页面刷新
+        // 原始记录完成和有没有挪核建议是两回事 零建议和失败一样要刷页面
         public event Action IrqObservationUpdated;
         public string IrqObservationStatusText { get { return irqProbe.StatusText; } }
         public bool IrqObservationStatusWarning { get { return irqProbe.StatusWarning; } }

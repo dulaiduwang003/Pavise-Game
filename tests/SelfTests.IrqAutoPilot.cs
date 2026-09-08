@@ -1,5 +1,5 @@
-// All state lives in the transient settings store. No native device access,
-// registry or windows are used.
+// 文件用途 状态全放在临时设置存储里
+// 不碰原生设备接口 注册表和窗口
 // 自动中断编排已下架 这里只回归残账识别 清退记录管理与观测预算
 #if PAVISE_SELFTEST
 using System;

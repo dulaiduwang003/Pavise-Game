@@ -1,5 +1,5 @@
-// Optional service regression. Every SCM operation and ledger access below is
-// injected; no application runtime, live settings, service controller or UI runs.
+// 文件用途 非必要服务回归 下面每一个 SCM 操作和台账访问都是注入的
+// 不起应用运行时 不碰在用设置 不碰服务控制器 不跑 UI
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -538,8 +538,8 @@ namespace PaviseApp
             foreach (bool failClear in new[] { false, true })
             {
                 var f = new OptionalServiceFixture("WSearch"); f.Own();
-                // The adapter saw an external owner/configuration change. By its
-                // return the outer query can already see the original Stopped state.
+                // 适配器看见外部换了持有者或者改了配置
+                // 等它返回的时候 外层查询已经能看到原来那个 Stopped 状态了
                 f.Control.StartOwnershipChanged = true;
                 if (failClear) f.Ledger.RejectWrite = delegate(string raw) { return raw.Length == 0; };
                 OptionalCheck(f.Engine.Restore() == !failClear && f.Control.Starts.Count == 1
@@ -639,8 +639,8 @@ namespace PaviseApp
                 int starts = f.Control.Starts.Count;
                 OptionalCheck(starts == (reason == "restored" ? 1 : 0),
                     "Settling current service state issued an unexpected START: " + reason);
-                // The user stops the service again, or restores its old configuration,
-                // while the old Owned record is still on disk due to the failed clear.
+                // 用户又把服务停了 或者把旧配置还原回去
+                // 而这时候因为上次清理失败 旧的 Owned 记录还躺在盘上
                 current.Exists = true; current.State = 1; current.StartType = 3; current.Configuration = configuration;
                 f.Ledger.RejectWrite = null;
                 OptionalCheck(f.Engine.Restore() && !f.Engine.HasResidue && f.Control.Starts.Count == starts
@@ -912,7 +912,7 @@ namespace PaviseApp
             OptionalCheck(reset.RegistryCalls == 0 && f.Engine.HasResidue,
                 "Reset deleted registry/recovery data before restoration was confirmed");
             f.Control.DenyStart = false;
-            // A fresh reset callback validates the same files without assuming this is the first attempt.
+            // 新的重置回调会把同一批文件再校验一遍 不预设这是第一次尝试
             OptionalCheck(Program.TryResetUserData(reset.DirectoryPath, delegate { return true; }, out files, out failure),
                 "Reset could not retry after service recovery became available");
             reset.AssertOwnedFilesGone(); reset.AssertForeignFiles();

@@ -1,5 +1,5 @@
-// All preference, hardware and journal operations are injected. No registry,
-// application processes, graphics devices, dialogs or screenshots are used.
+// 文件用途 偏好 硬件和台账操作全是注入的
+// 不碰注册表 应用进程 显卡设备 对话框和截图
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -231,7 +231,7 @@ namespace PaviseApp
         {
             using (var f = new AppGpuFixture())
             {
-                // 全新程序：无既有偏好 自动认领成功并真正写入省电偏好
+                // 全新程序 没有既有偏好 自动认领成功 真的写进省电偏好
                 AppGpuCheck(GameMode.AutoGpuEnroll(f.Manager, AppGpuPath) == AppGpuPreferenceResult.Success
                     && PrefFieldText.ReadField(f.Control.Value(AppGpuPath), "GpuPreference") == "1",
                     "auto enroll did not claim a fresh app");
@@ -246,7 +246,7 @@ namespace PaviseApp
                 AppGpuCheck(GameMode.AutoGpuEnroll(f.Manager, other) == AppGpuPreferenceResult.NeedsConfirmation
                     && f.Control.Value(other) == "GpuPreference=2;" && f.Ledger.Value == "",
                     "auto enroll overrode an existing explicit preference");
-                // 已是省电偏好：按不拥有记录 不发注册表写
+                // 本来就是省电偏好 按不拥有记 不发注册表写
                 const string low = @"C:\AppGpuFixture\three.exe";
                 f.Control.Set(low, "GpuPreference=1;");
                 int writes = f.Control.Writes;
@@ -466,7 +466,7 @@ namespace PaviseApp
                 string raw;
                 AppGpuCheck(Settings.TryLoadStr("GpuPrefStage", out raw) && raw == prepared,
                     "temporary write lost its prepared original after ownership persistence failed");
-                // Reopen only this test's transient settings, preserving the durable P.
+                // 只把这个测试自己的临时设置重开 持久那份 P 留着
                 Settings.UseTransientStoreForCurrentProcess(); Settings.SaveStr("GpuPrefStage", raw);
                 f.Control.AfterStageWrite = null;
                 if (loseReceipt) GpuPrefStage.ForgetReceiptForTest();
