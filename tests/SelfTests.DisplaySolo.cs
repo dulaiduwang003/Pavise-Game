@@ -1,5 +1,5 @@
-// All display path counting, topology queries and topology writes are
-// injected. No native display access, registry or windows are used.
+// 文件用途 显示路径计数 拓扑查询和拓扑写入全是注入的
+// 不碰原生显示接口 注册表和窗口
 // 对局单屏已下架 这里只回归崩溃残账的还原路径 快照由测试直接播种
 #if PAVISE_SELFTEST
 using System;

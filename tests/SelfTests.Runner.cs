@@ -1,4 +1,4 @@
-// The public self-test build runs only isolated regression suites, never Program.Main.
+// 文件用途 公开的自测构建只跑隔离回归 从不走 Program.Main
 #if PAVISE_SELFTEST && PAVISE_SELFTEST_RUNNER
 using System;
 using System.Collections;
@@ -28,7 +28,7 @@ namespace PaviseApp
                 Settings.UseTransientStoreForCurrentProcess();
                 Logger.ResetWriteBarrierForTest();
                 Lang.Init();
-                // A forgotten mock must fail rather than restore or delete real user settings.
+                // 忘装 mock 的结果是失败 不是去还原或者删掉用户的真实设置
                 LegacyPurge.RestoreHook = delegate { throw new InvalidOperationException("Unmocked system restoration in self-test"); };
                 LegacyPurge.DeleteRegistryHook = delegate { throw new InvalidOperationException("Unmocked registry deletion in self-test"); };
                 int failed;
@@ -106,7 +106,7 @@ namespace PaviseApp
                     Console.WriteLine("FAIL suite " + name + ": " + error);
                 }
             };
-            // Explicit allowlist: no real-process matrix, screenshot mode, ETW or tuning runtime.
+            // 显式白名单 不含真实进程矩阵 截图模式 ETW 和调优运行时
             run("ResetCleanup", delegate { RunResetCleanupRegressionTests(); });
             run("ResetFlow", delegate { RunResetFlowRegressionTests(); });
             run("OptionalServicePause", delegate { RunOptionalServicePauseRegressionTests(); });
@@ -139,6 +139,7 @@ namespace PaviseApp
             run("UiConfigAudit", delegate { RunUiConfigAuditRegressionTests(); });
             run("PowerYieldTarget", delegate { RunPowerYieldTargetRegressionTests(); });
             run("HeavySqueeze", delegate { RunHeavySqueezeRegressionTests(); });
+            run("RenderLaneEligibility", delegate { RunRenderLaneEligibilityTests(); });
             run("AddGameFolder", delegate { RunAddGameFolderRegressionTests(); });
             run("ReleaseNotes", delegate { RunReleaseNotesRegressionTests(); });
             run("WeGameShell", delegate { RunWeGameShellRegressionTests(); });
@@ -176,7 +177,7 @@ namespace PaviseApp
             run("IrqSessionLedgerRoundtrip", delegate { TestIrqSessionLedgerRoundtrip(output); });
             run("IrqVerdictRanking", TestIrqVerdictRanking);
             run("IrqSessionSummaryPicksByImpact", TestIrqSessionSummaryPicksByImpact);
-            // IrqVerdictGuards also writes the live test process affinity; keep it outside this mock-only entry.
+            // IrqVerdictGuards 还会写测试进程自己的亲和性 别放进这个只用 mock 的入口
             Console.WriteLine("TOTAL suites=" + (passed + failed) + " passed=" + passed + " failed=" + failed);
             return failed;
         }

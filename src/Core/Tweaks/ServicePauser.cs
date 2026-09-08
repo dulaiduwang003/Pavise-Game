@@ -166,7 +166,7 @@ namespace PaviseApp
                 {
                     // 已接受但未观察到停止的 STOP 单次 Running 读数可能领先于
                     //   STOP_PENDING 迁移 先保留债务 两次独立恢复检查都读到
-                    //   Running 说明 STOP 未生效或服务已被重启——期望终态 运行
+                    //   Running 说明 STOP 没生效 或者服务已经被重启 期望终态就是运行
                     //   中 已经成立 无可恢复之物 结账 否则触发重启的服务会
                     //   让本组暂停功能永久僵住
                     if (receipt.State == Phase.Owned && !receipt.StopObserved

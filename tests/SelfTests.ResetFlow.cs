@@ -1,5 +1,5 @@
-// Reset entry-point regression. Stop/restore/registry are mocks; deletion only
-// touches validated, uniquely named temporary fixtures owned by this suite.
+// 文件用途 重置入口回归 停止 还原 注册表都是 mock
+// 删除只碰校验过的 本套测试自己拥有的独立命名临时夹具
 #if PAVISE_SELFTEST
 using System;
 using System.Collections;
@@ -118,7 +118,7 @@ namespace PaviseApp
                     Logger.LogPath = null;
                     Lang.Cur = 0;
                     LegacyPurge.SkipRegistryDelete = false;
-                    // Fail closed if a case forgets to install either mock.
+                    // 某个用例忘了装其中一个 mock 就失败关闭
                     LegacyPurge.RestoreHook = delegate { throw new InvalidOperationException("Unmocked restore in reset-flow test"); };
                     LegacyPurge.DeleteRegistryHook = delegate { throw new InvalidOperationException("Unmocked registry in reset-flow test"); };
                     test(root);
@@ -167,8 +167,8 @@ namespace PaviseApp
 
         private static void ResetFlowAmdResidueKeepsEnvironmentRecoveryArmed(string root)
         {
-            // Only exercise the production recovery predicate. No GameMode loop,
-            // ADLX call, driver restore, window or real registry access is used.
+            // 只跑生产代码里那个恢复判据
+            // 不跑 GameMode 循环 不调 ADLX 不还原驱动 不建窗口 不碰真实注册表
             GameMode mode = (GameMode)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(GameMode));
             var missed = new List<string>();
             try
@@ -176,16 +176,16 @@ namespace PaviseApp
                 ResetFlowCheck(!(bool)FamilyPolicyInvoke(mode, "EnvActive"), "empty environment reported residue");
                 foreach (string field in new[] { "rsrActive", "amdAlagActive", "amdAfmfActive" })
                 {
-                    // This is the exact state left after Deactivate clears active
-                    // and a corresponding RestoreEnv call fails to restore AMD.
+                    // 这就是 Deactivate 清掉 active 之后
+                    // 对应的 RestoreEnv 又没能还原 AMD 时留下的状态
                     FamilyPolicySetField(mode, field, true);
                     if (!(bool)FamilyPolicyInvoke(mode, "EnvActive")) missed.Add(field);
                     FamilyPolicySetField(mode, field, false);
                 }
                 foreach (string key in new[] { "sys.rsr", "sys.afmf", "g0.alag", "g0.chill", "g0.esync", "g0.ris", "g0.frtc" })
                 {
-                    // A partial activation can leave only a durable snapshot;
-                    // it must stay retryable even when no active flag was granted.
+                    // 激活到一半可能只留下一份持久快照
+                    // 哪怕 active 标志压根没给出去 它也得能重试
                     var snapshot = new Dictionary<string, string>();
                     snapshot[key] = key == "g0.chill" ? "1|48|144" : key == "g0.ris" ? "0|80"
                         : key == "g0.frtc" ? "0|144" : "0";
@@ -219,15 +219,14 @@ namespace PaviseApp
             {
                 foreach (KeyValuePair<string, string> record in records)
                 {
-                    // Mirrors an unfinished startup recovery: all runtime flags
-                    // are false, but the feature's session journal still exists.
+                    // 对应启动恢复没做完的情况 运行时标志全是 false
+                    // 但这个功能的会话台账还在
                     ResetFlowCheck(Settings.SaveStr(record.Key, record.Value), "mock session journal save failed");
                     if (!(bool)FamilyPolicyInvoke(mode, "EnvActive")) missed.Add(record.Key);
                     ResetFlowCheck(Settings.SaveStr(record.Key, ""), "mock session journal clear failed");
                 }
-                // Successful standby pre-staging is intentionally retained until
-                // a game starts or the mode is disarmed; neither vendor path may
-                // become a restore/reapply loop merely because it has a receipt.
+                // 待命预置成功之后是故意留着的 要等游戏起来或者档位撤下才动
+                // 两条厂商路径都不能因为手上有张收据 就变成还原重应用的死循环
                 foreach (string key in new[] { "GpuPrefStage", "NvDrsList" })
                 {
                     ResetFlowCheck(Settings.SaveStr(key, key == "GpuPrefStage"
@@ -261,9 +260,8 @@ namespace PaviseApp
 
         private static void ResetFlowEnvironmentCompletionRequiresSettledReceipts(string root)
         {
-            // Exercise only RestoreEnv's final receipt check, not its native
-            // actions. A successful setter is insufficient if clearing its
-            // recovery journal failed or could not be read back.
+            // 只跑 RestoreEnv 最后那道收据检查 不跑它的原生动作
+            // setter 成功了也不够 恢复台账没清掉或者回读不出来一样不算
             GameMode mode = (GameMode)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(GameMode));
             var missed = new List<string>();
             string[] keys = { "PrevDoBgBw", "PrevDoSvcStopped", "PrevUpdatePaused", "PrevPresenceQos",
@@ -284,7 +282,7 @@ namespace PaviseApp
                         if ((bool)FamilyPolicyInvoke(mode, "EnvRestoreCompleted", true)) missed.Add("unreadable:" + key);
                     }
                 }
-                // Explicit persistent app preferences are not session debt.
+                // 用户显式设的持久应用偏好不算会话欠账
                 Settings.SaveStr(AppGpuPreferences.LedgerKey, "persistent-user-choice");
                 ResetFlowCheck((bool)FamilyPolicyInvoke(mode, "EnvRestoreCompleted", true)
                     && !(bool)FamilyPolicyInvoke(mode, "EnvActive"), "persistent app preference armed session restoration");
@@ -375,8 +373,8 @@ namespace PaviseApp
             ResetFlowCheck(Program.TryResetUserData(f.DirectoryPath, f.Stop(true), out files, out failure), "ordered reset failed: " + failure);
             ResetFlowCheck(failure == null && files == f.OwnedPaths.Count, "successful reset returned an inconsistent result");
             ResetFlowCheck(string.Join(",", f.Events.ToArray()) == "stop,restore,registry", "stop/restore/registry order was wrong");
-            // File existence was checked inside restore and again inside registry,
-            // so the real deletion is proven to occur between those two callbacks.
+            // 还原里查过一次文件在不在 注册表里又查了一次
+            // 这就证明真正的删除发生在这两个回调之间
             ResetFlowCheck(f.RegistryCalls == 1 && !f.MockRegistryPresent, "registry was not deleted exactly once");
             f.AssertForeignFiles();
         }
@@ -1472,7 +1470,7 @@ namespace PaviseApp
         {
             RenderLane.ResetShutdownForTest();
             RenderLane.ConfigureMutationBoundary(null, null);
-            // Never allow an accidental record to reach real OpenThread/priority setters.
+            // 绝不让一条意外的记录摸到真实的 OpenThread 和优先级 setter
             RenderLane.RestoreThreadForTest = delegate { throw new InvalidOperationException("Unexpected thread restore in reset test"); };
         }
 
@@ -1988,7 +1986,7 @@ namespace PaviseApp
             using (var power = new ResetFlowCpuIdleFixture())
             using (var f = new FamilyPolicyFixture(root, "cpu-idle-confirm"))
             {
-                // Do not construct a Form, create handles, show a window, or enter a modal loop.
+                // 不构造 Form 不建句柄 不显示窗口 也不进模态循环
                 var form = (PanelForm)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(PanelForm));
                 GC.SuppressFinalize(form);
                 ResetFlowCpuIdleUiSet(form, "gameMode", f.Mode);
@@ -2314,8 +2312,8 @@ namespace PaviseApp
                         && f.OrphanCalls==(crash?0:1),"startup empty journal ran orphan recovery or shutdown omitted it");
                 }
             }
-            // 正常会话内第三方在退出前切走方案，仍必须还原本局捕获的
-            // 原方案；只有崩溃重载后才把未知活动方案视作用户的新选择。
+            // 正常会话里第三方赶在退出前把方案切走 照样要还原本局抓到的原方案
+            // 只有崩溃重载之后 才把未知的活动方案当成用户的新选择
             using(var f=new ResetFlowPowerPlanFixture()) {
                 Settings.SaveStr("PrevPowerPlan","");f.Current=f.Original;
                 ResetFlowCheck(PowerPlan.ActivatePlanForTest() && f.Current==f.Managed,
@@ -2369,8 +2367,8 @@ namespace PaviseApp
                 ResetFlowCheck(PowerPlan.RestorePlanForTest(crash) && f.Sets==sets && f.Queries==queries
                     && f.Current==userChoice && Settings.LoadStr("PrevPowerPlan","")=="",
                     "settled cleanup changed a user plan after writes recovered: "+label);
-                // A new session must capture its own original, not inherit the
-                // previous session's settled marker or false active flag.
+                // 新会话得自己抓一份原值
+                // 不能继承上一个会话已经了结的标记和那个假的 active 标志
                 f.Current=f.External;
                 ResetFlowCheck(PowerPlan.ActivatePlanForTest() && f.Sets==sets+1 && f.Current==f.Managed
                     && Settings.LoadStr("PrevPowerPlan","")==f.External.ToString(),"new session could not activate: "+label);
@@ -2478,7 +2476,7 @@ namespace PaviseApp
             {
                 PowerPlan.ResetCpuIdleForTest();
                 PowerPlan.CpuIdleAmdForTest = false;
-                // Every native/ledger boundary is installed before production code is called.
+                // 每一处原生和台账的边界都在调用生产代码之前装好
                 PowerPlan.CpuIdleCurrentSchemeForTest = delegate { return Current; };
                 PowerPlan.CpuIdleReadAcForTest = delegate(Guid scheme, out uint value)
                 {
@@ -2550,7 +2548,7 @@ namespace PaviseApp
                 Managed = FirstScheme; Current = FirstScheme;
                 values[Key(FirstScheme, false)] = 10; values[Key(FirstScheme, true)] = 20;
                 values[Key(SecondScheme, false)] = 71; values[Key(SecondScheme, true)] = 72;
-                // All five native boundaries are replaced before invoking production logic.
+                // 五处原生边界全部换掉之后才调生产逻辑
                 PowerPlan.EppManagedSchemeForTest = delegate { return Managed; };
                 PowerPlan.EppReadAcForTest = delegate(Guid scheme, bool secondary, out uint value)
                 {
@@ -2676,7 +2674,7 @@ namespace PaviseApp
             }
         }
 
-        // No ETW, native process mutation or IRQ journal write is available to this fake.
+        // 这个假实现拿不到 ETW 也改不了原生进程 更写不了 IRQ 台账
         private sealed class ResetFlowIrqPlatform : IIrqSessionPlatform
         {
             internal int ForbiddenCalls;
@@ -2822,8 +2820,8 @@ namespace PaviseApp
     }
 
 #if PAVISE_RENDERER_BENCH
-    // Dedicated entry point selected by Run-ResetChecks.ps1. It never invokes
-    // Program.Main, the full self-test entry point, or the owned-process matrix.
+    // Run-ResetChecks.ps1 挑的专用入口
+    // 它从不调 Program.Main 完整自测入口和自有进程矩阵
     internal static class ResetCheckRunner
     {
         private const BindingFlags Static = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;

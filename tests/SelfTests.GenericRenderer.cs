@@ -92,7 +92,7 @@ namespace PaviseApp
             var counters = new Dictionary<int, double> { { 100, 70 }, { 101, 25 } };
             double value;
             Eq(false, RendererHandoffTracker.HasGpuEvidence(candidate, counters, out value));
-            // 不因另一个程序GPU更高而把它偷换成前台候选。
+            // 不能因为另一个程序 GPU 更高 就把它偷换成前台候选
             Eq(101, candidate.RendererPid);
             counters[100] = 5;
             Eq(true, RendererHandoffTracker.HasGpuEvidence(candidate, counters, out value));
@@ -116,7 +116,7 @@ namespace PaviseApp
             if (ticket == null) throw new Exception("released generic candidate was not sampled");
             tracker.Complete(ticket, new Dictionary<int, double> { { 100, 35 }, { 101, 60 } }, true, 100);
             Eq<GameDetection>(null, tracker.Confirmed(100));
-            // 切到真正画面窗口后，新身份单独取证，旧客户端无需命名名单。
+            // 切到真正的画面窗口之后 新身份单独取证 旧客户端不需要命名名单
             shell.Foreground = false; render.Foreground = true;
             candidate = GenericCandidate(profile, shell, render);
             tracker.Offer(candidate, 200);
@@ -250,8 +250,8 @@ namespace PaviseApp
             return bytes;
         }
 
-        // MinGW can include thunks and DLL names in ImportDirectory.Size.
-        // Keep descriptors at the beginning and map the entire declared region.
+        // MinGW 会把 thunk 和 DLL 名字也算进 ImportDirectory.Size
+        // 描述符放在开头 声明的整块区域都映射进来
         private static byte[] GenericPeWithImportRegion(bool x64, bool delayed,
             int imports, int regionSize)
         {
@@ -313,8 +313,8 @@ namespace PaviseApp
             foreach (bool x64 in new[] { false, true })
                 foreach (bool delayed in new[] { false, true })
                 {
-                    // A mapped directory larger than the read budget must not be
-                    // read wholesale or mistaken for thousands of DLL descriptors.
+                    // 映射进来的目录比读取预算还大的时候 不能整块读
+                    // 也不能把它当成上千个 DLL 描述符
                     byte[] bytes = GenericPeWithImportRegion(x64, delayed, 11, 0x40000);
                     ExecutableCandidateFacts facts = GenericFacts(bytes);
                     Eq(true, facts.Executable);
@@ -330,8 +330,8 @@ namespace PaviseApp
             foreach (bool x64 in new[] { false, true })
                 foreach (bool delayed in new[] { false, true })
                 {
-                    // Preserve the existing total-descriptor budget, including
-                    // the zero terminator. A terminator beyond it is insufficient.
+                    // 保持原有的描述符总数预算 零终止符也算在里面
+                    // 终止符落在预算之外就不算数
                     Eq(true, GenericFacts(GenericPeWithImportRegion(x64, delayed,
                         ExecutableCandidateProbe.MaxImports - 1, regionSize)).Executable);
                     Eq(false, GenericFacts(GenericPeWithImportRegion(x64, delayed,
@@ -343,13 +343,13 @@ namespace PaviseApp
                     int section = 0x98 + (x64 ? 240 : 224);
                     Action<byte[]>[] corruptions =
                     {
-                        // Declared descriptor span stops before its terminator.
+                        // 声明的描述符区间在终止符之前就断了
                         delegate(byte[] b) { Put32(b, sizeAt, (uint)(11 * stride)); },
-                        // The directory extends beyond its mapped raw section.
+                        // 目录伸到了它映射的原始节区外面
                         delegate(byte[] b) { Put32(b, section + 16, regionSize - 1); },
-                        // The size would wrap the 32-bit RVA address space.
+                        // 这个大小会让 32 位 RVA 地址空间绕回去
                         delegate(byte[] b) { Put32(b, sizeAt, uint.MaxValue); },
-                        // A large valid directory does not excuse an invalid name RVA.
+                        // 目录又大又合法 也不能给一个非法的名字 RVA 开脱
                         delegate(byte[] b) { Put32(b, 0x200 + (delayed ? 4 : 12), 0x1000 + regionSize); }
                     };
                     foreach (Action<byte[]> corrupt in corruptions)
@@ -536,7 +536,7 @@ namespace PaviseApp
             {
                 string executable = fixture.WriteExecutable(Path.Combine(relative, "Anything.exe"), "d3d11.dll");
                 Eq(executable, ExecutableCandidateProbe.PickMainExecutable(fixture.Root));
-                // Depth four is included; a child at depth five must not discard it.
+                // 深度四是算数的 深度五的子项不能把它丢掉
                 Directory.CreateDirectory(Path.Combine(fixture.Root, relative, "OutsideScope"));
                 Eq(executable, ExecutableCandidateProbe.PickMainExecutable(fixture.Root));
             }
@@ -632,7 +632,7 @@ namespace PaviseApp
             string executable = Path.Combine(root, "Anything.exe");
             List<string> paths;
             bool complete;
-            // A filesystem fault is not a budget limit, even if a strong-looking path was found first.
+            // 文件系统出错不等于撞了预算上限 哪怕之前先找到过一条看着很硬的路径
             Eq(false, ExecutableCandidateProbe.CollectPaths(root,
                 delegate { return new[] { executable }; },
                 delegate { throw new IOException("fixture read fault"); },

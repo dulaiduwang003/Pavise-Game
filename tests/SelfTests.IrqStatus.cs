@@ -1,4 +1,4 @@
-// 文件用途 中断观测状态与台账读取诊断的纯测试；不创建窗口、不启动 ETW。
+// 文件用途 中断观测状态和台账读取诊断的纯测试 不建窗口 不起 ETW
 using System;
 using System.IO;
 using System.Text;
@@ -14,7 +14,7 @@ namespace PaviseApp
                 0, 0, 0, 0, "", false, "", "", "", out warning));
             Eq(false, warning);
 
-            // 开关打开不等于正在采样；真正的采集状态不能被“请先打一局”覆盖。
+            // 开关打开不等于正在采样 真正的采集状态不能被请先打一局盖掉
             string capturing = Lang.T("irq.capture.system");
             Eq(capturing, IrqPageStatus.ResolveData(
                 0, 0, 0, 0, capturing, false, "", "", "", out warning));
@@ -42,7 +42,7 @@ namespace PaviseApp
                 1, 1, 1, 0, capturing, false, "", devicesFailed, "", out warning));
             Eq(true, warning);
 
-            // 第一局即使没有任何 Worth 建议，也必须展示有效局数，而不是空白页。
+            // 第一局哪怕一条 Worth 建议都没有 也得把有效局数显示出来 不能给空白页
             Eq(Lang.F("irq.state.fewsessions", 1, IrqSessionLedger.MinSessionsForVerdict),
                 IrqPageStatus.ResolveData(1, 1, 1, 1,
                     Lang.F("irq.capture.saved.system", 1020), false, "", "", "", out warning));
@@ -120,7 +120,7 @@ namespace PaviseApp
             const string boot = "1000000";
             const string topology = "status-test-topology";
             IrqSessionRecord rec = IrqStatusRecord();
-            // 系统观测 GameMask=0 可以展示原始数据，但不在此降低挪核建议门槛。
+            // 系统观测 GameMask=0 可以展示原始数据 但挪核建议的门槛不因此放低
             Eq(IrqSessionExclusion.None, rec.VerdictExclusion(boot, topology));
             rec.GameMask = rec.SystemMask;
             Eq(IrqSessionExclusion.None, rec.VerdictExclusion(boot, topology));
@@ -147,7 +147,7 @@ namespace PaviseApp
 
         private static void TestIrqLedgerReadStatus(string dir)
         {
-            // 仅写专用测试子目录，绝不绑定或清理实际用户的 IRQ 历史。
+            // 只写专用的测试子目录 绝不绑定或者清理用户真实的 IRQ 历史
             string work = Path.Combine(Path.GetFullPath(dir), "irq-status-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(work);
             string path = Path.Combine(work, IrqSessionLedger.FileName);
@@ -193,7 +193,7 @@ namespace PaviseApp
                 Eq(false, IrqSessionLedger.Append(IrqStatusRecord()));
                 Eq(unknown, File.ReadAllText(path));
 
-                // 文件被移除后，旧 readOnlyFormat 不能永久阻止同目录的新观测。
+                // 文件被删掉之后 旧的 readOnlyFormat 不能一直挡着同目录的新观测
                 File.Delete(path);
                 Eq(true, IrqSessionLedger.Append(IrqStatusRecord()));
                 Eq(1, IrqSessionLedger.Load(out issue).Count);

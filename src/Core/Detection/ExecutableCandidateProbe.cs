@@ -255,7 +255,7 @@ namespace PaviseApp
                 else if (rank == bestRank) ambiguous = true;
             }
             // 深度/数量预算截断不抹掉已经找到的唯一图形证据 这仍只是扫描建议
-            // 不代表未扫描区域没有其它renderer 更不会产生“已观测渲染”标签
+            // 不代表没扫的地方没有别的 renderer 更不会给出已观测渲染的标签
             // 单靠GUI子系统的弱候选则必须扫描完整且只有一个有效EXE
             return best == null || ambiguous || (bestRank < 2 && (!complete || seen.Count > 1))
                 ? null : best.Path;

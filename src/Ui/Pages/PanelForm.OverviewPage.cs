@@ -15,6 +15,11 @@ namespace PaviseApp
         private Label lblOverviewBoost, lblEvidenceLive;
         private Label lblHeroMode, lblHeroSource;
         private Label lblLastSession;
+        private RogLinkButton btnNotice;
+        private NoticeInfo notice;
+
+        // 已读的公告 id 记在这里 换一条新的才重新亮红点
+        private const string SeenNoticeKey = "LastSeenNoticeId";
 
         private void BuildOverviewPage()
         {
@@ -87,22 +92,27 @@ namespace PaviseApp
             lblEvidenceLive = CardLabel(status, Lang.F("v20.ready", App.Version), 58, 22, 205, 26, 9f, true, Theme.Faint);
             lblEvidenceLive.TextAlign = ContentAlignment.MiddleLeft;
 
-            // 高级区只保留侧栏入口 底栏右侧留给三个外链
-            //   不等宽是有意的 教程那条标题最长 平分的话它会被省略号截掉
-            //   按钮内部左侧图标占 43 右端外链角标占 32 剩下才是文字可用宽度
-            int linkY = 12, linkH = 46, linkGap = 10;
-            int gx = 276;
-            int available = PageW - gx - 30 - linkGap * 2;
-            int otherW = (available - 40) / 3, guideW = available - otherW * 2;
-            AddOverviewLink(status, gx, linkY, guideW, linkH,
-                Lang.T("v211.link.guide"), "GUIDE // 01", "info", App.GuideUrl);
-            gx += guideW + linkGap;
-            AddOverviewLink(status, gx, linkY, otherW, linkH,
-                Lang.T("v211.link.survey"), "SURVEY // 02", "chart", App.SurveyUrl);
-            gx += otherW + linkGap;
-            AddOverviewLink(status, gx, linkY, otherW, linkH,
-                Lang.T("v211.link.bug"), "REPORT // 03", "search", App.BugUrl);
+            // 高级区只保留侧栏入口 底栏右侧两个入口
+            //   教程 问卷 Bug 反馈原本平铺三条 占掉大半条底栏 收进一个弹窗
+            //   腾出来的位置给公告 有没有新公告在这儿一眼看得见
+            //   两个按钮不再撑满 按内容给固定宽度 一起靠右贴着窗口边
+            //   宽度按英文标题定 Help & feedback 比中文长 中文自然也放得下
+            int linkY = 12, linkH = 46, linkGap = 10, linkW = 186;
+            int helpX = PageW - 30 - linkW;
+            int noticeX = helpX - linkGap - linkW;
+            btnNotice = AddOverviewLink(status, noticeX, linkY, linkW, linkH,
+                Lang.T("v230.notice.entry"), "NOTICE // 01", "pulse", null);
+            btnNotice.External = false;
+            btnNotice.Click += delegate { ShowNotice(); };
+            RogLinkButton help = AddOverviewLink(status, helpX, linkY, linkW, linkH,
+                Lang.T("v230.help.entry"), "SUPPORT // 02", "info", null);
+            help.External = false;
+            help.Click += delegate
+            {
+                using (var dlg = new HelpDialog()) dlg.ShowDialog(this);
+            };
 
+            RefreshNoticeButton();
             UpdateModePresentation(false);
         }
 
@@ -122,14 +132,55 @@ namespace PaviseApp
             catch { }
         }
 
-        private void AddOverviewLink(Control parent, int x, int y, int w, int h,
+        private RogLinkButton AddOverviewLink(Control parent, int x, int y, int w, int h,
             string text, string code, string glyph, string url)
         {
             var btn = new RogLinkButton(text, code, glyph);
             btn.Bg = Theme.Nav;
             btn.SetBounds(Theme.S(x), Theme.S(y), Theme.S(w), Theme.S(h));
-            btn.Click += delegate { OpenExternal(url); };
+            if (url != null) btn.Click += delegate { OpenExternal(url); };
             parent.Controls.Add(btn);
+            return btn;
+        }
+
+        // 公告由更新检查那条线带回来 主线程之外来的 统一切回 UI 线程再动控件
+        public void NotifyNotice(NoticeInfo n)
+        {
+            try
+            {
+                if (n == null || !IsHandleCreated || IsDisposed) return;
+                BeginInvoke((MethodInvoker)delegate
+                {
+                    if (IsDisposed) return;
+                    notice = n;
+                    RefreshNoticeButton();
+                });
+            }
+            catch { }
+        }
+
+        // 没公告时按钮照样在 点开告诉用户当前没有 免得按钮忽隐忽现
+        private void RefreshNoticeButton()
+        {
+            if (btnNotice == null) return;
+            btnNotice.Dot = notice != null && notice.Id != NoticeSeenId();
+        }
+
+        private static string NoticeSeenId()
+        {
+            return Settings.LoadStr(SeenNoticeKey, "");
+        }
+
+        private void ShowNotice()
+        {
+            if (notice == null)
+            {
+                PaviseDialog.Info(this, Lang.T("v230.notice.title"), Lang.T("v230.notice.none"));
+                return;
+            }
+            using (var dlg = new NoticeDialog(notice)) dlg.ShowDialog(this);
+            Settings.SaveStr(SeenNoticeKey, notice.Id);
+            RefreshNoticeButton();
         }
 
         // 只放行写死在 App 里的 https 常量 不接受任何运行期拼出来的地址

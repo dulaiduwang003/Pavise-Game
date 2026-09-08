@@ -8,7 +8,7 @@ namespace PaviseApp
 {
     internal static partial class SelfTests
     {
-        // 由总自测入口注册这一项即可；子项不依赖主窗口、设置或本机安装目录。
+        // 总自测入口把这一项注册上就行 子项不依赖主窗口 设置和本机安装目录
         private static void TestRendererCandidateDetection()
         {
             TestRendererCandidateWindowedChallenge();
@@ -99,7 +99,7 @@ namespace PaviseApp
             Eq(false, object.ReferenceEquals(profile, candidate.Profile));
             Eq(false, old.Foreground);
 
-            // 人为构造旧 learned 验证挑战者不会被其吞掉，不声称生产中自动学错。
+            // 人为造一个旧 learned 验证挑战者不会被它吞掉 这不是说生产里真会学错
             profile.LearnedExecutablePath = old.Path;
             candidate = RequireRendererCandidate(new[] { old, game }, profile, incumbent, 101);
             Eq(true, candidate.RequiresGpuConfirm);
@@ -137,7 +137,7 @@ namespace PaviseApp
             Eq(false, candidate.RendererLearnable);
             Eq(2, candidate.RendererMatchRank);
 
-            // 前台本身也是窗口证据；仅可见、未在前台的进程不是新挑战者。
+            // 前台本身就是一份窗口证据 只是可见但没在前台的进程算不上新挑战者
             game.Visible = false;
             RequireRendererCandidate(new[] { game }, profile, null, 101);
             game.Visible = true;
@@ -173,7 +173,7 @@ namespace PaviseApp
             Eq(false, learned.RequiresGpuConfirm);
             Eq(false, learned.RendererLearnable);
 
-            // 强制云游戏精确路径保留既有语义，不把允许的浏览器目标改成 SafetyOnly。
+            // 强制云游戏的精确路径保持原有语义 不把允许的浏览器目标改成 SafetyOnly
             var chrome = RendererCandidateProcess(102,
                 Path.Combine(profile.Root, "chrome.exe"), 1, 3000, true);
             profile.ExecutablePath = chrome.Path;
@@ -203,7 +203,7 @@ namespace PaviseApp
                 new[] { game }, profile, null));
             RequireRendererCandidate(new[] { parent, game }, profile, null, 101);
 
-            // 父链基于实际身份，而不是启动器或客户端的名称名单。
+            // 父链看的是实际身份 不是启动器或者客户端的名称名单
             parent.Path = Path.Combine(profile.Root, "steam.exe");
             parent.Name = "steam";
             RequireRendererCandidate(new[] { parent, game }, profile, null, 101);
@@ -299,7 +299,7 @@ namespace PaviseApp
                 Path.Combine(profile.Root, "EasyAntiCheat.exe"), 1, 2000, true);
             Eq<GameDetection>(null, GameSessionDetector.FindForegroundCandidateSnapshot(
                 new[] { antiCheat }, profile, null));
-            // 不把名字里带 Launcher 的普通游戏当成已知平台，亦不靠名字猜关联。
+            // 名字里带 Launcher 的普通游戏不算已知平台 也不靠名字去猜关联
             var generic = RendererCandidateProcess(101,
                 Path.Combine(profile.Root, "SomeGameLauncher.exe"), 1, 2000, true);
             RequireRendererCandidate(new[] { generic }, profile, null, 101);
@@ -323,7 +323,7 @@ namespace PaviseApp
             snapshot[snapshot.Count - 1].Foreground = true;
             RequireRendererCandidate(snapshot, profile, null, 724);
 
-            // 重复 PID 的父锚不能用最后一项覆盖后继续串起候选。
+            // 重复 PID 的父锚不能拿最后一项盖掉 然后接着往下串候选
             snapshot.Add(RendererCandidateProcess(700, profile.ExecutablePath, 1, 1000, false));
             Eq<GameDetection>(null, GameSessionDetector.FindForegroundCandidateSnapshot(snapshot, profile, null));
         }

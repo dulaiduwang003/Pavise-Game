@@ -1,4 +1,4 @@
-// Pure receipt parsing checks; no PowerShell execution, no adapter access, no writes.
+// 文件用途 纯收据解析检查 不跑 PowerShell 不碰网卡 不写任何东西
 // 节能以太网回归 只验证收据解析和计数 不碰网卡
 #if PAVISE_SELFTEST
 using System;

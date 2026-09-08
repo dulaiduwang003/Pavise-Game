@@ -375,7 +375,7 @@ namespace PaviseApp
             return ok;
         }
 
-        // The core picker changes three coupled keys; publish all or none.
+        // 选核器动的是三个连在一起的键 要么全发出去 要么一个都不发
         internal bool SetProfileCorePlacement(string profileId, string mask, string strict, string alternate)
         {
             string[] keys = { PolicyCatalog.KeyCoreMask, PolicyCatalog.KeyStrictCores, PolicyCatalog.KeyCoreDomainAlt };

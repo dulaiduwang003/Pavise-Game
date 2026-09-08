@@ -44,7 +44,7 @@ namespace PaviseApp
 
             double msPerTick = 1000.0 / freq;
             // Alt-Tab/最小化后几十秒不呈现不是一帧 按超大 gap 切段 只用一段
-            // 连续活跃且样本足够的呈现流 避免空窗同时伪造 coverage 和“长帧”
+            // 只认连续活跃且样本够的呈现流 免得空窗把 coverage 和长帧一起伪造出来
             var segments = new List<List<long[]>>();
             var current = new List<long[]>();
             for (int i = 1; i < qpcs.Count; i++)
@@ -103,7 +103,7 @@ namespace PaviseApp
             r.LongFrames = intervals.Count;
             r.LongFrameHits = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             r.DpcCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            // present 已明确没有长帧时 DPC 探针是否可用都不可能藏住“撞长帧”
+            // present 已经明确没长帧 DPC 探针能不能用都藏不住撞长帧
             if (intervals.Count == 0) return r;
             if (dpc == null) return null;
             if (dpc.Count == 0) return r;
@@ -142,7 +142,7 @@ namespace PaviseApp
                         r.UnknownModuleInLongFrames = true;
                     }
                     // 一条 DPC 可以横跨两个相邻长帧 帧命中应各算一次 但事件总数
-                    // 只能算一次 否则日志会把“1 条跨帧 DPC”误报成“2 条”
+                    // 只能算一次 不然日志会把 1 条跨帧 DPC 报成 2 条
                     if (countedDpc.Add(dpcIndex))
                     {
                         int c; counts.TryGetValue(m, out c); counts[m] = c + 1;

@@ -159,7 +159,7 @@ namespace PaviseApp
         }
 
         // gate 内调用 Append 自己有独立文件锁 这里持有小范围状态锁
-        // 保证 Arm/Invalidate 无法在“已判有效”和“落盘”之间插入新一局
+        // 保证 Arm 和 Invalidate 插不进已判有效和落盘之间 塞不了新一局
         private string CommitPendingLocked()
         {
             if (pendingRecord == null)

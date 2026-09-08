@@ -17,6 +17,7 @@ tests/*
 !tests/SelfTests.UiConfigAudit.cs
 !tests/SelfTests.PowerYieldTarget.cs
 !tests/SelfTests.HeavySqueeze.cs
+!tests/SelfTests.RenderLaneEligibility.cs
 !tests/SelfTests.AddGameFolder.cs
 !tests/SelfTests.ReleaseNotes.cs
 !tests/SelfTests.WeGameShell.cs

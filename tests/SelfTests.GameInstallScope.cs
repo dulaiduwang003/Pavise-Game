@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 安装范围解析隔离回归；仅内存安装记录和自有临时目录，不访问真实注册表
+// 文件用途 安装范围解析的隔离回归 只用内存安装记录和自己的临时目录 不碰真实注册表
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -295,9 +295,9 @@ namespace PaviseApp
             int calls = 0;
             Eq(false, GameInstallScope.IsSafePath(path, delegate
             { calls++; return FileAttributes.Directory; }));
-            // Legacy .NET Framework hosts may reject the >260-char path at
-            // GetDirectoryName before the explicit depth budget is exhausted.
-            // Both hosts must fail closed and never exceed that budget.
+            // 老的 .NET Framework 宿主可能在显式深度预算用完之前
+            // 就在 GetDirectoryName 这里把超过 260 字符的路径顶回来
+            // 两种宿主都得失败关闭 而且不能超出那个预算
             Eq(true, calls >= 1 && calls <= 128);
         }
 
@@ -375,7 +375,7 @@ namespace PaviseApp
                 Path = InstallScopeTitle + @"\DifferentRuntimeFolder\StillUnknown.exe", Name = "StillUnknown",
                 Foreground = true, Visible = true, FullscreenLike = true
             };
-            // 原始登录器和全部中间父进程都已退出；只留下另一个目录中的前台游戏。
+            // 原始登录器和中间那些父进程全退了 只剩另一个目录里的前台游戏
             GameDetection hit = GameSessionDetector.DetectSnapshot(new[] { renderer }, new[] { profile });
             if (hit == null) throw new Exception("Trusted install scope did not admit its sibling renderer.");
             Eq(renderer.Path, hit.RendererPath);
@@ -444,7 +444,7 @@ namespace PaviseApp
             records[1] = InstallScopeRecord(InstallScopeTitle);
             using (GameInstallScope.UseSnapshotForTest(records, null))
             {
-                // 不完整快照不能正向扩大，却仍须遵守已经明确的负向边界。
+                // 快照不完整就不能往正向扩 但已经明确的负向边界还得守
                 Eq(InstallScopeFallback, GameInstallScope.Resolve(InstallScopeEntry, InstallScopeFallback));
                 Eq<string>(null, GameInstallScope.RestrictFallback(InstallScopeEntry, @"C:\PaviseInstallScopeTests"));
                 Eq(InstallScopeFallback, GameInstallScope.RestrictFallback(InstallScopeEntry, InstallScopeFallback));

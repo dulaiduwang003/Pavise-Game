@@ -255,8 +255,8 @@ namespace PaviseApp
             internal ProfileCommitBusyException(IOException inner) : base("Profile commit busy", inner) { }
         }
 
-        // Only errors whose documented outcome retains both file names are retried.
-        // 1176/1177 can leave a changed namespace and must remain fatal.
+        // 只重试那些文档写明两个文件名都还在的错误
+        // 1176 和 1177 可能把命名空间改掉 只能当致命错误
         internal static bool IsRetryableReplaceError(IOException error)
         {
             uint hr = unchecked((uint)error.HResult);
@@ -299,7 +299,7 @@ namespace PaviseApp
 #if PAVISE_SELFTEST
                             if (BeforeReplaceForTest != null) BeforeReplaceForTest(attempt);
 #endif
-                            // Revalidate after preparation and every retry wait, not only at Save entry.
+                            // 准备完和每次重试等待之后都要重验 不能只在 Save 入口验一次
                             if (!CommitAllowed(canCommit)) return false;
                             File.Replace(tmp, path, null);
                             break;

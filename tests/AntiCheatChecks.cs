@@ -1,4 +1,4 @@
-// Dedicated entry point for the anti-cheat catalog and existing suppression regressions.
+// 文件用途 反作弊目录和现有压制回归的专用入口
 #if PAVISE_ANTICHEAT_CHECKS
 using System;
 using System.Collections.Generic;

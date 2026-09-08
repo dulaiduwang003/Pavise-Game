@@ -19,7 +19,7 @@ namespace PaviseApp
     internal static class App
     {
         public const string DisplayName = "PAVISE";
-        public const string Version = "2.2.1.2";
+        public const string Version = "2.2.1.3";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string QqGroup = "1051472054";
@@ -155,6 +155,38 @@ namespace PaviseApp
                     }
                 }
                 finally { try { Directory.Delete(sdir, true); } catch { } }
+                return;
+            }
+
+            // 公告和帮助弹窗的取图入口 用写死的样例内容 不碰网络也不读用户已读记录
+            if (args.Length >= 2 && (args[0] == "--shot-notice" || args[0] == "--shot-help"))
+            {
+                Dpi.Init(); Paths.Init(); Lang.Init();
+                if (args.Length >= 3) Lang.Cur = args[2] == "en" ? 1 : (args[2] == "ja" ? 2 : 0);
+                Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
+                Form shot;
+                if (args[0] == "--shot-help") shot = new HelpDialog();
+                else
+                {
+                    var sample = new NoticeInfo();
+                    sample.Id = "sample";
+                    sample.Title = Lang.T("v230.notice.shot.title");
+                    sample.Body = Lang.T("v230.notice.shot.body");
+                    shot = new NoticeDialog(sample);
+                }
+                using (shot)
+                {
+                    shot.StartPosition = FormStartPosition.Manual;
+                    shot.ShowInTaskbar = false;
+                    shot.Location = new Point(-20000, -20000);
+                    shot.Show();
+                    Application.DoEvents();
+                    using (var bmp = new Bitmap(shot.ClientSize.Width, shot.ClientSize.Height))
+                    {
+                        shot.DrawToBitmap(bmp, new Rectangle(0, 0, bmp.Width, bmp.Height));
+                        bmp.Save(args[1], System.Drawing.Imaging.ImageFormat.Png);
+                    }
+                }
                 return;
             }
 
@@ -327,9 +359,8 @@ namespace PaviseApp
             // 退役字段 不会触发库重置流程 这里按账本一次性收回旧写入
             try { if (IfeoBoost.HasResidue()) IfeoBoost.RestoreAll(); } catch { }
             try { if (CfgOffTweak.HasResidue()) CfgOffTweak.RestoreAll(); } catch { }
-            // 2.1.3.3 的网卡策略会被极限档批量设为 Off。新策略不再把 Off
-            // 当统一最优解，启动时只按旧收据收回那一代写入；新界面的显式
-            // 单出口实验使用 V2 身份收据，不走这条迁移。
+            // 2.1.3.3 那版极限档会把网卡批量设成 Off 新策略不再当它是最优解
+            // 启动时只按旧收据收回那一代写入 新界面的单出口实验走 V2 身份收据 不吃这条迁移
             try
             {
                 bool nicLegacySettled = !NicModerationTweak.HasLegacyResidue
@@ -716,6 +747,8 @@ namespace PaviseApp
                 UpdateChecker.CheckAsync(r =>
                 {
                     if (Volatile.Read(ref exiting)) return;
+                    // 公告和版本号走同一份清单 有没有新版都要把公告交给概览页
+                    if (r.Ok && r.Notice != null) panel.NotifyNotice(r.Notice);
                     if (r.Ok && r.Newer)
                     {
                         Logger.Log(Lang.T("log.program.6") + r.Latest

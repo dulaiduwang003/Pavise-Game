@@ -1,5 +1,5 @@
-﻿// UI/policy wiring only. Driver and registry doubles are shared with the existing suites.
-// No PanelForm constructor, Show/ShowDialog, screenshots or application runtime is used.
+﻿// 文件用途 只测 UI 和策略的接线 驱动和注册表替身跟现有几套测试共用
+// 不构造 PanelForm 不调 Show 和 ShowDialog 不截图 也不起应用运行时
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;

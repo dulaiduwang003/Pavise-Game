@@ -121,8 +121,8 @@ namespace PaviseApp
                 bool beforeCompression, beforeCombining;
                 if (!QueryState(out beforeCompression, out beforeCombining))
                 { Logger.Warn(Lang.T("log.memcompress.1")); return false; }
-                // 正常入口会先用 CurrentlyOff 跳过；这里再守一次并发变化。
-                // 不写快照和归属标记，外部已经关闭的状态仍归外部。
+                // 正常入口先用 CurrentlyOff 跳过 这里再守一道并发变化
+                // 不写快照也不写归属标记 外部已经关掉的状态还归外部
                 if (!beforeCompression && !beforeCombining) return true;
                 string snapshot;
                 if (!Settings.TryLoadStr(SnapKey, out snapshot))
@@ -142,24 +142,24 @@ namespace PaviseApp
                     { Logger.Log(Lang.T("log.memcompress.2")); return false; }
                 }
                 string output;
-                // 退出码只负责诊断，状态查询才是是否生效的事实来源。
+                // 退出码只能拿来诊断 生没生效以状态查询为准
                 RunCommand("Disable-MMAgent -MemoryCompression -PageCombining",
                     "mmagent-off", out output);
                 bool compression, combining;
                 bool postOk = QueryState(out compression, out combining);
-                // CIM/PowerShell 的退出码不是状态凭证。即使命令返回非零，只要
-                // 后验已经到达目标，就保留原快照并认领这次实际变化。
+                // CIM 和 PowerShell 的退出码不是状态凭证 命令返回非零也没关系
+                // 只要后验已经到目标 就留着原快照 认下这次实际变化
                 if (postOk && !compression && !combining)
                 {
                     Settings.Save(OnKey, true);
                     Logger.Log(Lang.T("log.memcompress.4"));
                     return true;
                 }
-                // PsRunner 已记录非零退出详情，这里只给用户稳定的功能级结论。
+                // 非零退出的详情 PsRunner 已经记了 这里只给用户一个稳定的功能级结论
                 Logger.Log(Lang.T("log.memcompress.3"));
 
-                // 若状态其实仍满足原快照，说明没有留下我们的改动，可以销账。
-                // 否则立即尝试回滚；回滚也失败时必须保留快照，由极限账本接管重试。
+                // 状态其实还满足原快照 说明我们的改动没落下 可以销账
+                // 否则立刻回滚 回滚也失败就得留着快照 交给极限账本接管重试
                 bool recovered = postOk && SnapshotRestored(snapshot, compression, combining);
                 if (!recovered) recovered = RestoreSnapshot(snapshot);
                 if (recovered)
@@ -176,7 +176,7 @@ namespace PaviseApp
             bool wantedCompression, wantedCombining;
             if (!ParseSnapshot(snapshot, out wantedCompression, out wantedCombining)) return false;
             string args = RestoreArguments(snapshot);
-            // 旧版本可能留下 0,0 收据；原本没有开启项就没有任何物理还原动作。
+            // 旧版本可能留下 0,0 收据 本来就没开启项 也就没有物理还原可做
             if (args.Length == 0) return true;
             string output;
             RunCommand("Enable-MMAgent" + args, "mmagent-restore", out output);
@@ -201,11 +201,11 @@ namespace PaviseApp
                 string snapshot = Settings.LoadStr(SnapKey, "");
                 if (snapshot.Length > 0)
                 {
-                    // 命令非零后仍以后验为准；已经恢复的幂等调用不能把收据永远卡住。
+                    // 命令非零照样看后验 已经恢复的幂等调用不能把收据永远卡在这
                     if (!RestoreSnapshot(snapshot))
                     { Logger.Log(Lang.T("log.memcompress.5")); return false; }
                 }
-                // 只有物理状态和两份归属记录都核验完成，极限层才可以安全销账。
+                // 物理状态和两份归属记录都核完 极限层才能安全销账
                 if (!ClearOwnership())
                 { Logger.Log(Lang.T("log.memcompress.5")); return false; }
                 Logger.Log(Lang.T("log.memcompress.6"));

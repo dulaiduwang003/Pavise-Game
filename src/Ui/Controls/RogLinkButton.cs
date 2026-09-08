@@ -8,11 +8,22 @@ using System.Windows.Forms;
 namespace PaviseApp
 {
     // 装甲语言与旁边的高级入口保持一致 切角框 右侧斜切光带 左侧图标插槽 底部导轨
-    //   差别只在右端角标 那里画外链标记而不是前进箭头 明示点了会打开浏览器
+    //   右端角标分两种 外链标记表示会打开浏览器 前进箭头表示在程序里开一个窗
+    //   点了跳浏览器的必须画外链标记 别让用户以为只是换个页面
     internal sealed class RogLinkButton : FxControl
     {
         private readonly string code;
         private readonly string glyph;
+        private bool dot;
+
+        public bool External = true;
+
+        // 未读红点 公告用 有新的才亮 看过就灭
+        public bool Dot
+        {
+            get { return dot; }
+            set { if (dot != value) { dot = value; Invalidate(); } }
+        }
 
         public RogLinkButton(string text, string code, string glyph)
         {
@@ -76,17 +87,22 @@ namespace PaviseApp
 
             int textX = Theme.S(43);
             int rightPad = Theme.S(36);
+            // NoPrefix 是必须的 标题里出现 & 时不能被当成助记符吃掉那个字符
+            //   Help & feedback 少了它会画成 Help _feedback
             TextRenderer.DrawText(g, code, Theme.Mono(5.5f),
                 new Rectangle(textX, Theme.S(7), Math.Max(1, Width - textX - rightPad), Theme.S(12)),
                 Theme.Faint,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter
+                    | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
             TextRenderer.DrawText(g, Text, Theme.UI(9f, true),
                 new Rectangle(textX, Theme.S(18), Math.Max(1, Width - textX - rightPad), Theme.S(22)),
                 Col.Lerp(Theme.Dim, Theme.Fg, 0.55f + hot * 0.45f),
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter
-                    | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
+                    | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
 
-            DrawExternalMark(g, hot, down);
+            if (External) DrawExternalMark(g, hot, down);
+            else DrawForwardMark(g, hot, down);
+            if (dot) DrawUnreadDot(g);
 
             int railY = Height - Theme.S(4);
             int railW = Theme.S(30) + (int)(hot * Theme.S(44));
@@ -94,6 +110,30 @@ namespace PaviseApp
                 g.DrawLine(rail, textX, railY, textX + railW, railY);
             using (var node = new SolidBrush(Theme.Accent))
                 g.FillRectangle(node, textX - Theme.S(2), railY - Theme.S(2), Theme.S(4), Theme.S(4));
+        }
+
+        // 在程序里开窗的按钮画这个 和侧栏那些进入下一层的入口同一个记号
+        private void DrawForwardMark(Graphics g, float hot, float down)
+        {
+            int side = Theme.S(9);
+            int x = Width - Theme.S(24) + (int)(hot * Theme.S(3)) - (int)(down * Theme.S(1));
+            int cy = Height / 2 + Theme.S(1);
+            using (var pen = new Pen(Col.Lerp(Theme.Dim, Theme.Accent, 0.25f + hot * 0.75f),
+                Math.Max(1.2f, Theme.S(1))))
+            {
+                g.DrawLine(pen, x, cy - side / 2, x + side / 2, cy);
+                g.DrawLine(pen, x + side / 2, cy, x, cy + side / 2);
+            }
+        }
+
+        // 红点压在右上角 未读时才画 位置避开角标本身
+        private void DrawUnreadDot(Graphics g)
+        {
+            int d = Theme.S(7);
+            var box = new Rectangle(Width - Theme.S(17), Theme.S(9), d, d);
+            using (var fill = new SolidBrush(Theme.Accent)) g.FillEllipse(fill, box);
+            using (var ring = new Pen(Col.Alpha(Theme.Accent, 90), Math.Max(1f, Theme.S(1))))
+                g.DrawEllipse(ring, Rectangle.Inflate(box, Theme.S(2), Theme.S(2)));
         }
 
         // 缺右上角的方框加一支朝右上的箭头 通用的"在浏览器中打开"记号

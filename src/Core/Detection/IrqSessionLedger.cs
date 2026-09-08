@@ -233,7 +233,7 @@ namespace PaviseApp
                 string[] p = lines[i].Split('|');
                 if (p.Length < 2) { safeToRewrite = false; continue; }
                 // 新会话行即使损坏 也必须先切断上一会话 否则紧随其后的 D 行会被
-                // 错接到上一局 制造一个文件里从未存在过的“有效”样本
+                // 错接到上一局 会造出一个文件里根本没存在过的有效样本
                 if (p[0] == "S") cur = null;
                 try
                 {

@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 纯渲染交接状态机回归；合成身份/时钟/GPU结果，不启动进程或读写游戏库。
+// 文件用途 纯渲染交接状态机回归 身份 时钟 GPU 结果都是合成的 不启动进程 不读写游戏库
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;

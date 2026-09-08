@@ -8,8 +8,8 @@ using System.Xml;
 
 namespace PaviseApp
 {
-    // 只在首次配置方案时读取本次开机的系统能力记录 不开 ETW 会话 不轮询。
-    // Event 55 的 CPPC 接口证据不是 HWP MSR 的实测状态，也不证明 CPPC v2 活动窗口可用。
+    // 只在头一次配置方案时读本次开机的系统能力记录 不开 ETW 会话 不轮询
+    // Event 55 那点 CPPC 接口证据不是 HWP MSR 的实测状态 也证明不了 CPPC v2 活动窗口能用
     internal static class ProcessorPowerPlatform
     {
         internal enum Interface { Unknown, AcpiPState, Cppc }
@@ -19,13 +19,13 @@ namespace PaviseApp
         [DllImport("kernel32.dll")]
         private static extern uint GetActiveProcessorCount(ushort groupNumber);
 
-        // null 表示没有足够依据改最低性能值，必须保留方案原值。
-        // CPPC + 请求自主模式仅用来选择较低底座，不作为“硬件已经自主运行”的证明。
+        // null 就是依据不够 改不了最低性能值 保留方案原值
+        // CPPC 加请求自主模式只用来选个低一点的底座 不能当硬件已经自主运行的证明
         internal static bool? AutonomousMinimum(Interface platform, uint? requested)
         {
             if (platform == Interface.AcpiPState) return false;
             if (platform == Interface.Cppc && requested == 1) return true;
-            // 单模式平台可以忽略请求值 0，故 CPPC 上的 0 也不等于确认关闭。
+            // 单模式平台会忽略请求值 0 所以 CPPC 上的 0 也不等于确认关闭
             return null;
         }
 
@@ -80,8 +80,8 @@ namespace PaviseApp
             Interface result = Interface.Unknown;
             foreach (uint value in implementations)
             {
-                // Windows Kernel-Processor-Power Event 55 MapPerformanceImplementation:
-                // 1 = ACPI Performance (P) States; 3 = ACPI Collaborative Processor Performance Control.
+                // Windows Kernel-Processor-Power 的 Event 55 里 MapPerformanceImplementation
+                // 1 是 ACPI Performance P States 3 是 ACPI Collaborative Processor Performance Control
                 Interface next = value == 1 ? Interface.AcpiPState : value == 3 ? Interface.Cppc : Interface.Unknown;
                 if (next == Interface.Unknown || (count > 0 && next != result)) return Interface.Unknown;
                 result = next; count++;
@@ -91,7 +91,7 @@ namespace PaviseApp
 
         internal static bool BootRecordMatchesUptime(DateTime recorded, DateTime estimated, DateTime now)
         {
-            // UTC 时钟校准会令 now - uptime 偏离真实开机记录，只作宽松的新旧校验。
+            // UTC 时钟一校准 now - uptime 就会偏离真实开机记录 这里只做宽松的新旧校验
             return recorded <= now && Math.Abs((recorded - estimated).TotalMinutes) <= 5;
         }
 

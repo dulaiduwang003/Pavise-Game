@@ -105,7 +105,7 @@ namespace PaviseApp
                     card.Desc = Lang.T(!supported ? reasonKey
                         : PowerBudgetYield.Fused ? "gm.poweryield.fused" : "gm.poweryield.sub");
                 }
-                else if (vendorGraphics)
+                else if (vendorGraphics || key == PolicyCatalog.KeyRenderLane)
                 {
                     supported = CfgItemSupported(item, out reasonKey);
                     card.Desc = !supported ? Lang.T(reasonKey)
@@ -340,7 +340,7 @@ namespace PaviseApp
             bool family = profile.Overrides.ContainsKey(PolicyCatalog.KeySuppressFamily);
             if (!family && count == 0) return null;
             if (!family) return Lang.F("cfg.clear.confirm", profile.Name, count);
-            // 家族开关并不在本页出现 但“全部清除”仍会关闭它 不能当作跟随全局
+            // 家族开关不在这一页 但全部清除照样会把它关掉 不能当成跟随全局
             return count > 0 ? Lang.F("cfg.clear.family.confirm", profile.Name, count)
                 : Lang.F("cfg.clear.family.only", profile.Name);
         }

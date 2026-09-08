@@ -1,4 +1,4 @@
-// No-window D3D12 cross-adapter capability probe for Pavise Heterogeneous GPU Bench.
+// 文件用途 Pavise 异构 GPU 台架用的无窗口 D3D12 跨适配器能力探测
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>

@@ -1,5 +1,5 @@
-// Isolated log-switch correctness: temporary log files only, no HKCU access,
-// no UI and no real optimization run.
+// 文件用途 隔离的日志开关正确性 只用临时日志文件 不碰 HKCU
+// 不碰 UI 也不跑真实优化
 #if PAVISE_SELFTEST
 using System;
 using System.IO;

@@ -1,4 +1,4 @@
-﻿// Pure decision checks; no process handles, no window enumeration, no registry.
+﻿// 文件用途 纯决策检查 不拿进程句柄 不枚举窗口 不碰注册表
 // 疑似恶意进程回归 只验证 CPU 增量判定 随机名识别和提醒台账 不碰任何进程
 #if PAVISE_SELFTEST
 using System;

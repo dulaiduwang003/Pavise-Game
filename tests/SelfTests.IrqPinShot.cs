@@ -13,7 +13,7 @@ namespace PaviseApp
 {
     internal static partial class SelfTests
     {
-        // 造一台有代表性的真实对局建议设备，核对建议说明、负载热力、核类型和当前落核标记。
+        // 造一台有代表性的真实对局建议设备 核对建议说明 负载热力 核类型和当前落核标记
         private static void RunIrqPinShot(string outPath)
         {
             string dir = Path.GetDirectoryName(Path.GetFullPath(outPath));
@@ -26,8 +26,8 @@ namespace PaviseApp
             Application.SetCompatibleTextRenderingDefault(false);
             Theme.SetLight(false);
 
-            // 落核 0x3(核 0、1)-> 显示红点「当前就压在这两个核上」
-            // 已写入核 0xF0(核 4-7)-> 预选现有设置，底部给出合法的绿字选择。
+            // 落核 0x3 也就是核 0 和 1 显示红点 意思是当前就压在这两个核上
+            // 已写入核 0xF0 也就是核 4 到 7 预选现有设置 底部给一个合法的绿字选择
             const ulong seenMask = 0x3UL;
             const ulong selectedMask = 0xF0UL;
 
@@ -74,7 +74,7 @@ namespace PaviseApp
                 dlg.Location = new Point(-20000, -20000);
                 dlg.Show();
 
-                // 固定的合成会话不采实时 PDH；仅等待入场动画完成。
+                // 固定的合成会话不采实时 PDH 只等入场动画跑完
                 for (int i = 0; i < 120; i++)
                 {
                     Application.DoEvents();

@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 确认后的渲染目标替换；仅使用测试目录，不启动游戏或正常 Program。
+// 文件用途 确认之后的渲染目标替换 只用测试目录 不启动游戏 也不走正常 Program
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -9,7 +9,7 @@ namespace PaviseApp
     internal static partial class SelfTests
     {
 #if PAVISE_RENDERER_LEARNING_SELFTEST
-        // 独立入口只运行下面三组隔离测试；不进入 Program 或完整 --selftest。
+        // 独立入口只跑下面三组隔离测试 不进 Program 也不走完整 --selftest
         private static int Main()
         {
             string testRoot = Path.Combine(Path.GetTempPath(),
@@ -100,7 +100,7 @@ namespace PaviseApp
 
                 string file = Path.Combine(dir, GameProfileStore.FileName);
                 string saved = File.ReadAllText(file);
-                // 若幂等确认再次尝试保存，这把只读共享锁将使 Replace 失败。
+                // 幂等确认要是再存一次 这把只读共享锁会让 Replace 失败
                 using (var readLease = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read))
                 {
                     Eq(true, mode.TryLearnConfirmedRenderer(hit));
@@ -170,13 +170,13 @@ namespace PaviseApp
                 }
                 Eq(false, mode.TryLearnConfirmedRenderer(RendererLearningHit(original, claimed.ExecutablePath)));
                 Eq(false, mode.TryLearnConfirmedRenderer(RendererLearningHit(original, claimed.LearnedExecutablePath)));
-                // Unsafe operating-system targets stay ineligible; client/game names do not.
+                // 不安全的操作系统目标一直没资格 客户端和游戏名字不受这条限制
                 Eq(false, mode.TryLearnConfirmedRenderer(RendererLearningHit(original, @"C:\Windows\System32\svchost.exe")));
                 GameDetection staleForce = RendererLearningHit(forced, renderer);
                 staleForce.Profile.ForceTrigger = false;
                 Eq(false, mode.TryLearnConfirmedRenderer(staleForce));
 
-                // 测试钩子保持兼容，但同样不再允许通过 Learned 绕过他档占用。
+                // 测试钩子还是兼容的 但一样不许通过 Learned 绕开别的档位的占用
                 mode.ProbeLearnRenderer(original.Id, claimed.ExecutablePath, "ClaimedRender");
                 Eq(false, mode.ProfileStoreSaveFailed);
                 Eq(0, changed);
@@ -206,7 +206,7 @@ namespace PaviseApp
                 int changed = 0, failures = 0;
                 GameProfile observedAtFailure = null;
                 mode.LibraryChanged += delegate { changed++; };
-                // 不订阅 Program 的致命处理；故障仅作用于本测试创建的存储实例。
+                // 不订阅 Program 的致命处理 故障只落在本测试自己建的存储实例上
                 mode.ProfileStoreSaveFailure += delegate
                 {
                     failures++;
@@ -225,7 +225,7 @@ namespace PaviseApp
                 Eq(null, observedAtFailure);
                 AssertRendererLearningProfile(original, mode.GetProfiles()[0]);
                 Eq(saved, File.ReadAllText(file));
-                // 短暂占用不是致命故障 写锁解除后同一实例可以提交。
+                // 短暂占用算不上致命故障 写锁一放开 同一个实例还能提交
                 Eq(true, mode.TryLearnConfirmedRenderer(hit));
                 Eq(0, failures);
                 Eq(1, changed);

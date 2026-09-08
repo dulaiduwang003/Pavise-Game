@@ -1,5 +1,5 @@
-// All input APIs are fakes. No window is created and no live input layout or
-// keyboard setting is read/changed; GameMode's application worker is not started.
+// 文件用途 输入 API 全是假的 不建窗口 不读也不改在用的输入布局和键盘设置
+// GameMode 的应用工作线程也不启动
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -75,8 +75,8 @@ namespace PaviseApp
                 delegate
                 {
                     int error;
-                    // Even if the guard regresses, false admission and a null
-                    // HWND prevent this regression check from sending real input.
+                    // 就算那道保护退化了 准入返回 false 加上 HWND 为空
+                    // 也能保证这条回归检查发不出真实输入
                     native.SendRequest(new GameInputWindow(IntPtr.Zero, IntPtr.Zero, 0, 0),
                         IntPtr.Zero, 0, delegate { sendAdmissionReached = true; return false; }, out error);
                 }
@@ -464,7 +464,7 @@ namespace PaviseApp
             var mode = (GameMode)FormatterServices.GetUninitializedObject(typeof(GameMode));
             FamilyPolicySetField(mode, "sync", new object());
             FamilyPolicySetField(mode, "profiles", new List<GameProfile> { profile });
-            // Constructor only combines a path; this fixture never loads/saves it.
+            // 构造函数只是拼个路径 这个夹具从来不加载也不保存它
             FamilyPolicySetField(mode, "profileStore", new GameProfileStore(Path.GetTempPath()));
             FamilyPolicySetField(mode, "englishInputOnce", f.Once);
             FamilyPolicySetField(mode, "englishInputCreationFloor", 1000L);
@@ -498,8 +498,8 @@ namespace PaviseApp
             var next = new EnglishFixture();
             var configured = new GameProfile { Id = "game", Name = "Mock game" };
             GameMode inherited = EnglishUninitializedMode(next, configured);
-            // Snapshot IsGlobal is true for a profile with no overrides. The live
-            // profile must still decide whether an entry captures its own opt-in.
+            // 没有覆盖项的配置 快照里 IsGlobal 是 true
+            // 但条目有没有自己那份选择 还得由在用的配置来判
             configured.Overrides[PolicyCatalog.KeyEnglishInput] = "1";
             FamilyPolicyInvoke(inherited, "BeginEnglishInputSession"); FamilyPolicyInvoke(inherited, "StepEnglishInputSession");
             EnglishCheck(!inherited.EnglishInputEnabled && next.Api.Sends == 1,
@@ -633,8 +633,8 @@ namespace PaviseApp
                         var f = new EnglishFixture();
                         FamilyPolicySetField(library.Mode, "englishInputOnce", f.Once);
                         FamilyPolicySetField(library.Mode, "englishInputCreationFloor", 1000L);
-                        // Removal's unrelated observation persistence is not part
-                        // of this input test; do not queue a filesystem worker.
+                        // 移除时那些不相干的观测落盘不归这个输入测试管
+                        // 别往队列里塞文件系统工作线程
                         FamilyPolicySetField(library.Mode, "rendererObservations", null);
                         library.Mode.EnglishInputEnabled = true;
                         EnglishCheck(library.Mode.SetProfileOverride("first", PolicyCatalog.KeyEnglishInput, "1"),

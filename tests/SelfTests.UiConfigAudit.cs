@@ -1,5 +1,5 @@
-// Headless configuration regressions: no PanelForm construction, native windows,
-// process affinity changes or real registry writes.
+// 文件用途 无界面的配置回归 不构造 PanelForm 不建原生窗口
+// 不改进程亲和性 不写真实注册表
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -42,7 +42,9 @@ namespace PaviseApp
                     UiConfigSupportedVendorProfiles, UiConfigGraphicsBindingContracts,
                     UiConfigGraphicsPresentationDoesNotProbe,
                     UiConfigGraphicsInheritanceAndFailures, UiConfigCoreFailedSave,
-                    UiConfigVramGlobalFailedSave, UiConfigVramGlobalConsentAndFailedOff };
+                    UiConfigVramGlobalFailedSave, UiConfigVramGlobalConsentAndFailedOff,
+                    UiConfigLaneFollowsPresetChanges, UiConfigLaneInitialProfileAndLowCoreSupport,
+                    UiConfigGlobalLaneRecoversAfterHandheld };
                 foreach (Action<string> test in cases)
                 {
                     try { test(root); Console.WriteLine("PASS " + test.Method.Name); }
@@ -71,6 +73,102 @@ namespace PaviseApp
             }
         }
 
+        private static void UiConfigLaneFollowsPresetChanges(string root)
+        {
+            CpuTopology.TopologySnapshot topology = CpuTopology.CaptureTopologyForTest();
+            try
+            {
+                CpuTopology.InjectTopologyForTest(63, new ulong[] { 1, 2, 4, 8, 16, 32 }, new ulong[] { 63 },
+                    0, 0, 0, 0, false, false);
+                foreach (bool startHandheld in new[] { false, true })
+                    using (var f = new UiConfigPowerYieldFixture(root, "lane-preset-" + startHandheld))
+                    {
+                        f.Family.Mode.SetProfileOverride(f.Family.First.Id, PolicyCatalog.KeyPreset, startHandheld ? "4" : "1");
+                        f.Family.Mode.SetProfileOverride(f.Family.First.Id, PolicyCatalog.KeyRenderLane, "1");
+                        f.RefreshProfile();
+                        TierPicker picker = f.BuildProfilePicker(PolicyCatalog.KeyRenderLane);
+                        var card = (SettingCard)picker.Parent;
+                        for (int i = 0; i < 3; i++)
+                        {
+                            bool handheld = i % 2 == 0 ? startHandheld : !startHandheld;
+                            f.Family.Mode.SetProfileOverride(f.Family.First.Id, PolicyCatalog.KeyPreset, handheld ? "4" : "1");
+                            f.RefreshProfile();
+                            Eq(!handheld, picker.Enabled); Eq(!handheld, picker.Visible);
+                            Eq(handheld ? 1 : 2, picker.Index);
+                            Eq(Lang.T(handheld ? "gm.lane.unsupported" : "gm.lane.sub"), card.Desc);
+                            Eq("1", f.Family.Current(f.Family.First.Id).Overrides[PolicyCatalog.KeyRenderLane]);
+                        }
+                    }
+            }
+            finally { CpuTopology.RestoreTopologyForTest(topology); }
+        }
+
+        private static void UiConfigLaneInitialProfileAndLowCoreSupport(string root)
+        {
+            CpuTopology.TopologySnapshot topology = CpuTopology.CaptureTopologyForTest();
+            try
+            {
+                foreach (bool lowCore in new[] { false, true })
+                    using (var f = new UiConfigPowerYieldFixture(root, "lane-initial-" + lowCore))
+                    {
+                        CpuTopology.InjectTopologyForTest(lowCore ? 15UL : 63UL,
+                            lowCore ? new ulong[] { 1, 2, 4, 8 } : new ulong[] { 1, 2, 4, 8, 16, 32 },
+                            new ulong[0], 0, 0, 0, 0, false, false);
+                        f.Family.Mode.SetProfileOverride(f.Family.First.Id, PolicyCatalog.KeyPreset, lowCore ? "1" : "4");
+                        // 打开页面先 RefreshCfgProfile 再建行 此处不提前调用 SyncCfgRows
+                        Eq(true, (bool)UiConfigCall(f.Form, "RefreshCfgProfile"));
+                        object[] args = { f.ProfilePanel, 0, PolicyCatalog.ItemOf(PolicyCatalog.KeyRenderLane) };
+                        UiConfigCall(f.Form, "AddCfgPickerRow", args);
+                        var card = (SettingCard)f.ProfilePanel.Controls[0];
+                        TierPicker picker = null;
+                        foreach (Control child in card.Controls) if (child is TierPicker) picker = (TierPicker)child;
+                        Eq(false, picker.Enabled); Eq(false, picker.Visible);
+                        Eq(Lang.T("gm.lane.unsupported"), card.Desc);
+                        f.Family.Mode.SetProfileOverride(f.Family.First.Id, PolicyCatalog.KeyPreset, "1");
+                        f.RefreshProfile();
+                        Eq(!lowCore, picker.Enabled);
+                    }
+            }
+            finally { CpuTopology.RestoreTopologyForTest(topology); }
+        }
+
+        private static void UiConfigGlobalLaneRecoversAfterHandheld(string root)
+        {
+            CpuTopology.TopologySnapshot topology = CpuTopology.CaptureTopologyForTest();
+            try
+            {
+                CpuTopology.InjectTopologyForTest(63, new ulong[] { 1, 2, 4, 8, 16, 32 }, new ulong[] { 63 },
+                    0, 0, 0, 0, false, false);
+                using (var f = new UiConfigPowerYieldFixture(root, "lane-global"))
+                using (var toggle = new Toggle())
+                using (var card = new SettingCard())
+                {
+                    UiConfigSetField(f.Form, "swPolicyLane", toggle);
+                    UiConfigSetField(f.Form, "cardPolicyLane", card);
+                    foreach (bool savedOn in new[] { true, false })
+                    {
+                        f.Family.Mode.RenderLaneOn = savedOn;
+                        foreach (PerformancePreset mode in new[] { PerformancePreset.Competitive,
+                            PerformancePreset.Handheld, PerformancePreset.Competitive, PerformancePreset.Extreme,
+                            PerformancePreset.Handheld, PerformancePreset.Competitive })
+                        {
+                            FamilyPolicySetField(f.Family.Mode, "preset", mode);
+                            // 模拟通用开关同步先读回用户值 随后的策略同步必须覆盖成实际显示值
+                            toggle.SetSilently(savedOn);
+                            UiConfigCall(f.Form, "SyncPolicyLane");
+                            bool supported = mode != PerformancePreset.Handheld;
+                            bool forced = mode == PerformancePreset.Extreme;
+                            Eq(supported && (forced || savedOn), toggle.Checked);
+                            Eq(supported && !forced, toggle.Enabled);
+                            Eq(Lang.T(supported ? "gm.lane.sub" : "gm.lane.unsupported"), card.Desc);
+                            Eq(savedOn, f.Family.Mode.RenderLaneOn);
+                        }
+                    }
+                }
+            }
+            finally { CpuTopology.RestoreTopologyForTest(topology); }
+        }
+
         private static void UiConfigManualAllOverridesGlobalPartition(string root)
         {
             const BindingFlags flags = BindingFlags.Static | BindingFlags.NonPublic;
@@ -83,7 +181,7 @@ namespace PaviseApp
             ulong oldAll = CpuTopology.AllMask;
             try
             {
-                // Pure topology values only. SetCustomMask/Initialize are not called.
+                // 只用纯拓扑值 不调 SetCustomMask 和 Initialize
                 CpuTopology.AllMask = 0xFUL;
                 bgField.SetValue(null, new uint[] { 2, 3 });
                 gameField.SetValue(null, new uint[] { 0, 1 });
@@ -211,8 +309,8 @@ namespace PaviseApp
                 fixture.SetFakeCustom(3);
                 UiConfigCall(fixture.Form, "SyncCorePage");
                 Eq(true, fixture.ApplyButton.Enabled);
-                // A zero custom mask only clears the managed in-memory mask; it
-                // never invokes CPU-set enumeration or changes process affinity.
+                // 自定义掩码为零只是把托管内存里那份掩码清掉
+                // 不会去枚举 CPU set 也不改进程亲和性
                 fixture.ApplyButton.PerformClick();
                 Console.WriteLine("GLOBAL_ALL after_apply partition=" + fixture.Family.Mode.CorePartitionEnabled
                     + " custom=" + CpuTopology.CustomMask);
@@ -268,8 +366,8 @@ namespace PaviseApp
                 Eq("", profile.Overrides[PolicyCatalog.KeyCoreMask]);
                 Eq("0", profile.Overrides[PolicyCatalog.KeyBoost]);
 
-                // The all-core override remains all cores after a topology change;
-                // no saved finite mask from the old machine may restrict the new one.
+                // 拓扑变了之后 全核覆盖还是全核
+                // 旧机器上存下来的有限掩码不能拿来限制新机器
                 fixture.SetFakeCustom(0);
                 CpuTopology.AllMask = 0xFF;
                 FamilyPolicySetField(fixture.Family.Mode, "gameMask", 0xFFUL);
@@ -282,8 +380,8 @@ namespace PaviseApp
         {
             using (var fixture = new UiConfigCoreFixture(root, "global-core-transitions"))
             {
-                // Active-session edits store next-session intent without native
-                // CPU-set enumeration. No game worker is started in this fixture.
+                // 对局中改的东西存的是下一局的意图 不走原生 CPU set 枚举
+                // 这个夹具里不启动游戏工作线程
                 FamilyPolicySetField(fixture.Family.Mode, "active", true);
                 UiConfigSetField(fixture.Form, "corePending", 0xCUL);
                 UiConfigCall(fixture.Form, "SyncCorePage");
@@ -310,7 +408,7 @@ namespace PaviseApp
 
             internal UiConfigPowerYieldFixture(string root, string name)
             {
-                // Seed discovery caches rather than opening system power/EMI handles.
+                // 先把探测缓存填上 不去开系统电源和 EMI 句柄
                 SetStatic(typeof(Native), "hasBattery", 1);
                 SetStatic(typeof(EnergyMeter), "probed", true);
                 SetStatic(typeof(EnergyMeter), "devicePath", "mock-energy-meter");
@@ -779,8 +877,8 @@ namespace PaviseApp
                 {
                     Settings.UseTransientStoreForCurrentProcess();
                     Settings.Save("AccessKeysByPavise", false);
-                    // A completed first registry mutation and a failed later one
-                    // leave a recovery slot without the all-success marker.
+                    // 第一次注册表改动完成了 后面那次失败
+                    // 会留下一个没有全成功标记的恢复槽
                     Settings.SaveStr(slot, "=59\u001F=58");
                     Eq(true, AccessibilityKeysTweak.HasResidue());
                     Eq(false, AccessibilityKeysTweak.EnabledByPavise);
@@ -946,8 +1044,8 @@ namespace PaviseApp
                     var toggle = (Toggle)UiConfigGetField(fixture.Form, name);
                     Console.WriteLine("AMD_STALE_SUPPORT control=" + name + " enabled=" + toggle.Enabled);
                     if (toggle.Enabled) enabled++;
-                    // These two paths have no modal confirmation. RSR is not
-                    // invoked until its API gate is known to reject the request.
+                    // 这两条路径没有模态确认
+                    // 在确定 API 门会拒绝之前 不会去调 RSR
                     if (name != "swAmdRsr") toggle.Checked = true;
                 }
                 Console.WriteLine("AMD_STALE_SUPPORT alag_on=" + fixture.Family.Mode.AmdAntiLag
@@ -1116,7 +1214,7 @@ namespace PaviseApp
                 Eq(false, fixture.Family.Mode.ProfileStoreSaveFailed);
                 Eq(before, File.ReadAllText(fixture.Family.LibraryFile));
                 Eq(false, fixture.Family.Current(fixture.Family.First.Id).Overrides.ContainsKey("GmCoreMask"));
-                // A failed save must not publish the attempted mask or start the runtime.
+                // 保存失败就不能把尝试过的掩码发出去 也不能启动运行时
                 Eq(null, FamilyPolicyGetField(fixture.Family.Mode, "worker"));
             }
         }

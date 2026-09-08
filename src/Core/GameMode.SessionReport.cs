@@ -137,7 +137,7 @@ namespace PaviseApp
             }
             // 采集窗口要严格包含 开始是 DPC→present 结束必须 present→DPC
             // 先停 DPC 去做昂贵汇总会让仍在跑的 present 多出一段无 DPC 覆盖的尾巴
-            // 那段里的长帧会被误判成“完整零命中”
+            // 那一段里的长帧会被误判成完整零命中
             List<long[]> longFrameIntervals = null;
             try { CollectLongFrames(rendererPid, dur, out longFrameIntervals); } catch { }
             foreach (var kv in cpu)
@@ -305,7 +305,7 @@ namespace PaviseApp
             // PID 级多流合并既能填平长帧 也能用高频辅助流压低
             // median 而伪造长帧 没有 swapchain 身份时 正负结果都不许缩减 Worth
             if (!swapchainIdentityReliable) return worth;
-            // present 明确没有长帧时 DPC 时间线再不完整也不可能藏住“撞长帧”
+            // present 明确没长帧的时候 DPC 时间线再残缺也藏不住撞长帧
             if (longFrames <= 0 && matched <= 0) return 0;
             // 对齐链不完整时 已命中项不能反向否定其余 Worth 项
             return dpcIncomplete ? worth : matched;

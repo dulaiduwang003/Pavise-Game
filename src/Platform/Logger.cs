@@ -19,7 +19,7 @@ namespace PaviseApp
         private static long knownLength = -1;
         private static string knownPath;
         private static bool writesSuspendedForReset;
-        // 用户可关的运行日志开关 与 writesSuspendedForReset 分开：
+        // 用户可关的运行日志开关 和 writesSuspendedForReset 分开
         //   后者是重置流程的一次性写屏障 只有新进程才解除
         //   这个是常态设置 随时可来回切 关闭期间不落盘也不排队补写
         //   崩溃转储走 AppendCrash 另一条路 不受此开关影响 出事时必须留下现场

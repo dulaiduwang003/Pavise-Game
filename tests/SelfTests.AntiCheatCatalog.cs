@@ -1,4 +1,4 @@
-// Exemption regressions: no game launch, process writes or real settings changes.
+// 文件用途 豁免回归 不启动游戏 不写进程 不改真实设置
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -117,7 +117,7 @@ namespace PaviseApp
 
         private static bool AcBackgroundEligible(string name, string path, bool aggressive, bool familyExempt)
         {
-            // Same user session, no active-game root, no foreground/whitelist/family protection.
+            // 同一个用户会话 没有活动游戏根 也没有前台 白名单和家族保护
             return FamilyBoundary.BasicBackgroundEligible(9101, 9999, name, path,
                 1, 1, 9102, false, @"C:\Windows\", false, null, aggressive, familyExempt);
         }
@@ -151,7 +151,7 @@ namespace PaviseApp
                 Settings.Save("Tame_" + group.Key, true);
                 foreach (string name in group.Procs) expected.Add(name);
             }
-            // Even stale or hand-edited keys must not turn exemption-only rules into suppression targets.
+            // 就算键是过期的或者被手改过 仅豁免的规则也不能变成压制目标
             foreach (AcProtectionGroup group in AntiCheatCatalog.ProtectionOnlyGroups)
                 Settings.Save("Tame_" + group.Key, true);
             var core = new SuppressionCore(delegate { throw new InvalidOperationException("Unexpected restore"); }, true);

@@ -26,8 +26,8 @@ namespace PaviseApp
         private static readonly Dictionary<int, long> done = new Dictionary<int, long>();
 
         // 内存不紧时修剪只有代价 被压程序切回时重缺页 游戏那边一页都没多拿到
-        //   绝对可用量低于 4 GiB 且低于总量 1/8 才修剪；任一仍充足就不动。
-        //   采样 5 秒缓存一次，不给每个进程都查。
+        //   绝对可用量低于 4 GiB 而且低于总量 1/8 才修剪 有一头还够就不动
+        //   采样 5 秒缓存一次 不给每个进程都去查一遍
         internal const ulong FloorBytes = 4UL * 1024 * 1024 * 1024;
         internal const long SampleIntervalTicks = TimeSpan.TicksPerSecond * 5;
         private static long sampledTicks;

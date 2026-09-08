@@ -18,7 +18,7 @@ namespace PaviseApp
         }
     }
 
-    // 只用于安全豁免，不进入 Tamer 的可压制目录。前缀和目录也不会变成压制目标。
+    // 只做安全豁免 不进 Tamer 的可压制目录 前缀和目录同样不会变成压制目标
     internal sealed class AcProtectionGroup
     {
         public readonly string Key;
@@ -77,7 +77,7 @@ namespace PaviseApp
                 new[] { "NeacSafe64", "NeacSafe", "nac", "NeacClient", "OWNeacClient", "NeacProtect" }),
         };
 
-        // 依据和维护边界见 docs/anti-cheat-coverage.md。不要把 .sys 驱动加入进程名单。
+        // 依据和维护边界见 docs/anti-cheat-coverage.md 不要把 .sys 驱动写进进程名单
         public static readonly AcProtectionGroup[] ProtectionOnlyGroups =
         {
             new AcProtectionGroup("punkbuster",
@@ -125,7 +125,7 @@ namespace PaviseApp
             return names;
         }
 
-        // NT 快照只去掉 .exe，.aes / .des 仍是名字的一部分，不能用任意扩展名裁剪。
+        // NT 快照只去掉 .exe 结尾 .aes 和 .des 是名字的一部分 不能按任意扩展名裁
         private static string NormalizeName(string name)
         {
             if (string.IsNullOrEmpty(name)) return "";
@@ -161,8 +161,8 @@ namespace PaviseApp
             return IsAntiCheatLikeName(name) || IsAntiCheatPath(path);
         }
 
-        // 补上专用目录内名字普通的辅助进程。只匹配完整目录段，不放行 EA/Nexon 整个厂商目录，
-        // 不把文件名当目录，也不接受相对路径或带 .. 的不确定归属。此方法不读文件、不验签、不写进程。
+        // 补上专用目录里名字普通的辅助进程 只匹配完整目录段 不放行 EA 或 Nexon 整个厂商目录
+        // 不把文件名当目录 也不收相对路径和带 .. 的不确定归属 这里不读文件 不验签 不写进程
         internal static bool IsAntiCheatPath(string path)
         {
             if (string.IsNullOrEmpty(path)) return false;
@@ -194,7 +194,7 @@ namespace PaviseApp
 
         private static bool MatchesDirectory(string[] parts, int index, string directory)
         {
-            // EA\\AC 必须连续命中两个目录，不能仅凭通用的 AC 名字放行。
+            // EA\\AC 要连续命中两个目录 光凭一个通用的 AC 名字不放行
             int slash = directory.IndexOf('\\');
             if (slash < 0) return string.Equals(parts[index], directory, StringComparison.OrdinalIgnoreCase);
             return index + 1 < parts.Length - 1

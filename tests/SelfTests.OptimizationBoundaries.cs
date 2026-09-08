@@ -1,5 +1,5 @@
-// Boundary regressions: synthetic process snapshots, fake GPU preferences and
-// transient settings only. No game loop, real GPU/power writes or real process tuning.
+// 文件用途 边界回归 只用合成的进程快照 假的显卡偏好和临时设置
+// 不跑游戏循环 不写真实 GPU 和电源 也不调真实进程
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -108,7 +108,7 @@ namespace PaviseApp
                         new GameProcessSnapshot { Pid = entry.Pid, Creation = entry.Creation, Path = entry.Path }, snapshot, visible, 1));
                 entries[0].Path = @"C:\Fixture\visibleapp.exe";
                 entries[1].Path = hostPath; visible.Remove(20);
-                // 不可穿过无窗口共享运行时，把它启动的独立 app 归给更远祖先。
+                // 不能穿过没有窗口的共享运行时 把它拉起来的独立 app 记到更远的祖先头上
                 Eq(true, GameMode.AutoGpuVisibilityAllows(new GameProcessSnapshot {
                     Pid = 30, Creation = 300, Path = entries[2].Path }, snapshot, visible, 1));
             }
@@ -137,7 +137,7 @@ namespace PaviseApp
                     GameMode mode = BoundaryAutoMode(folder);
                     foreach (object gate in new[] { GpuPrefStage.MutationGate, BoundaryField(mode, "sync") })
                     {
-                        // autoGpuOn=false 迫使旧实现读取会拿 sync 的 ActivePreset。
+                        // autoGpuOn=false 会逼着旧实现去读那个要拿 sync 的 ActivePreset
                         BoundarySet(mode, "autoGpuOn", false);
                         AppGpuPreferenceResult result = AppGpuPreferenceResult.ReadFailed;
                         Exception failure = null;
@@ -181,7 +181,7 @@ namespace PaviseApp
                             if (boundary == "session") BoundaryCall(mode, "SetAutoGpuSessionStamp", 200L);
                             else if (boundary == "disable") mode.AutoGpuPreference = false;
                             else Eq(true, (bool)BoundaryCall(mode, "DrainAsyncShutdown", 4000));
-                            // 成功返回的边界必须晚于偏好提交及 handled 记账。
+                            // 成功返回这条边界要排在偏好提交和 handled 记账后面
                             Eq(1, fixture.Control.Writes); Eq(true, GameMode.AutoGpuAlreadyHandled(AppGpuPath));
                         }
                         catch (Exception ex) { transitionError = ex; }
@@ -225,7 +225,7 @@ namespace PaviseApp
             type.GetField("RendererPid").SetValue(pass, pid);
             type.GetField("RendererCreation").SetValue(pass, creation);
             BoundaryCall(mode, "ResolvePriorityTarget", pass);
-            // 合成未饱和输入，避免测试依赖测试机恰巧的实时负载。
+            // 输入是合成的未饱和数据 免得测试跟着测试机当时的实时负载走
             type.GetField("CpuSaturated").SetValue(pass, false);
             return pass;
         }
@@ -247,7 +247,7 @@ namespace PaviseApp
                 BoundaryPriority(a, Native.NORMAL_PRIORITY_CLASS);
                 BoundaryCall(mode, "RecordBoostDomain", a, all, new uint[0]);
                 BoundaryPriority(a, openPriority);
-                // 后续将恢复的原始 affinity/CPU Sets 同样必须阻止提优。
+                // 后面要恢复的那份原始 affinity 和 CPU Sets 同样得挡住提优
                 BoundaryCall(mode, "RecordBoostDomain", a, all, new uint[] { 7 });
                 BoundaryPriority(a, Native.NORMAL_PRIORITY_CLASS);
                 BoundaryCall(mode, "RecordBoostDomain", a, all, new uint[0]);

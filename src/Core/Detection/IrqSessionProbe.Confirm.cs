@@ -60,7 +60,7 @@ namespace PaviseApp
                 if (disposed || !armed || gameMaskInvalid || systemObservation != observeSystem) return false;
                 // RenderLane 等异步调优若正在写 renderer 起采必须
                 // 等它离开写区 该计数和开采在同一 gate 下 没有
-                // “回调刚查完 ETW 就开了 setter 才落下”的窗口
+                // 回调刚查完 ETW 就开了 setter 才落下 堵的是这个窗口
                 if (!observeSystem && externalMutations > 0) return false;
                 bool identityValid = observeSystem
                     ? verifiedMask == 0 && CanObserveSystem(systemMask,

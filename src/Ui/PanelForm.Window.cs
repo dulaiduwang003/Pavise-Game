@@ -164,7 +164,7 @@ namespace PaviseApp
             if (lblStatus != null)
             {
                 string status = gameMode.StatusText;
-                // 文案没变时不要每 1.2 秒重复跑多档 TextRenderer.MeasureText。
+                // 文案没变就别每 1.2 秒把多档 TextRenderer.MeasureText 重跑一遍
                 if (lblStatus.Text != status)
                 {
                     lblStatus.Text = status;

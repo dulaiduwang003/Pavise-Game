@@ -299,7 +299,7 @@ namespace PaviseApp
             if (game != 0 && (grp.Mask & game) != 0) return CoreKind.Game;
             // E 能效核只在真混合架构上存在 且必须落在能效核簇 EffMask
             //   全大核机器(i7-9750H 等)ThrottleMask 只是后台预留 不是能效核 绝不标 E
-            //   非混合时 EffMask 恒为 0 这里自然不会命中 全部按 P / P·空闲 处理
+            //   非混合架构 EffMask 恒为 0 这里自然命中不了 全按 P 和 P 空闲处理
             if (CpuTopology.Hybrid && (grp.Mask & CpuTopology.EffMask) != 0) return CoreKind.Eff;
             if (HasLoads)
             {

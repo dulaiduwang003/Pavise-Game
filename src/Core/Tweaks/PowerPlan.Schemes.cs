@@ -67,7 +67,7 @@ namespace PaviseApp
         // USB3 链路的 U1/U2 低功耗态退出是微秒到毫秒级 和选择性暂停同一路 对局关掉
         private static readonly Guid Usb3Lpm           = new Guid("d4e98f31-5ffe-4ce1-be31-1b38b384c009");
         // 厂商注入到方案里的显卡子组 只有装了对应驱动的机器才有 SettingPresent 读不到整项跳过
-        //   Intel 核显 0 最长续航 1 平衡 2 最高性能 掌机上它划的是核显那份预算
+        //   Intel 核显 0 最长续航 1 平衡 2 最高性能 所有设备与档位的 AC/DC 统一用平衡
         //   切换显卡 0 强制省电卡 1 优化省电 2 优化性能 3 最大性能
         private static readonly Guid SubIntelGfx       = new Guid("44f3beca-a7c0-460e-9df2-bb8b99e0cba6");
         private static readonly Guid IntelGfxPlan      = new Guid("3619c3f2-afb2-4afc-b0e9-e7fef372de36");
@@ -166,7 +166,7 @@ namespace PaviseApp
             new Knob(SubDisk,      NvmeLatTolSecondary, 0, 0, 100, 100, "t.powerplanschemes.36"),
             new Knob(SubDisk,      AhciLpm,             0, 0,   0,   1, "t.powerplanschemes.37"),
             new Knob(SubUsb,       Usb3Lpm,             0, 0,   2,   3, "t.powerplanschemes.43"),
-            new Knob(SubIntelGfx,  IntelGfxPlan,        2, 2,   1,   1, "t.powerplanschemes.44"),
+            new Knob(SubIntelGfx,  IntelGfxPlan,        1, 1,   1,   1, "t.powerplanschemes.44"),
             new Knob(SubSwitchGfx, SwitchGfxPolicy,     3, 3,   1,   1, "t.powerplanschemes.54"),
         };
 
@@ -195,14 +195,14 @@ namespace PaviseApp
         //   计量单位由系统定义 写入前一律经 Clamp 夹到本机允许区间
         private static readonly Knob[] ExtremeKnobs = new Knob[]
         {
-            // 提高选择更深空闲态的门槛；保留系统原来的降级门槛。
-            // IdleDemote 按空闲比例低于阈值触发降级，0 不能解释为“更快退出”。
-            // 不把它直接改成另一个未经实测的极端值；旧写入由快照迁移还原。
+            // 抬高选更深空闲态的门槛 系统原来的降级门槛保持不动
+            // IdleDemote 是空闲比例低于阈值才降级 0 不能理解成退出更快
+            // 别把它直接改成另一个没实测过的极端值 旧写入由快照迁移还原
             new Knob(SubProcessor, IdlePromote,     100, 100, 100, 100, "t.powerplanschemes.39"),
             // 空闲检查周期 c4581c31 曾在这里写 0 想靠 Clamp 夹到下限 本机量程 1~200000 微秒
             //   写入从没成功过 每局固定报一项失败 内核检查周期跟定时器节拍走 写 1 和默认 50000 分不出差别
             //   没有依据支撑它 整项撤掉 旧快照里若有它 RestoreExtremeKnobs 照样按 GUID 写回
-            // 关闭按当前性能状态缩放空闲门槛，不改变硬件的 C-state 退出时延。
+            // 关掉按当前性能状态缩放空闲门槛 硬件的 C-state 退出时延不动
             new Knob(SubProcessor, IdleScaling,       0,   0,   0,   0, "t.powerplanschemes.42"),
         };
 
@@ -262,6 +262,11 @@ namespace PaviseApp
             return cachedProfile;
         }
 
+        // 极限那组没配完时置真 调用方据此不缓存 tuneState 下次配置再补
+        private static bool extremeTunePending;
+
+        internal static bool ExtremeTunePending { get { return extremeTunePending; } }
+
         private static bool TuneTarget(Guid g, bool aggressive, bool handheld, bool extreme)
         {
             try
@@ -285,36 +290,36 @@ namespace PaviseApp
                 foreach (Knob k in OptionalKnobs)
                 {
                     if (!SettingPresent(g, k.Sub, k.Setting)) { skipped.Add(k.Label); continue; }
-                    // 核显只做合成的机器 独显渲染 核显和 CPU 同一块封装共享功耗预算
-                    //   把核显钉在最高性能等于先划走 CPU 的睿频份 这类机器一律写平衡
-                    Knob effective = k.Setting == IntelGfxPlan && IntelGfxSharesPackageWithDiscrete()
-                        ? new Knob(k.Sub, k.Setting, k.CalmAc, k.CalmDc, k.CalmAc, k.CalmDc, "t.powerplanschemes.44")
-                        : k;
-                    if (WriteKnob(g, effective, aggressive, handheld, profile,
+                    if (WriteKnob(g, k, aggressive, handheld, profile,
                         autonomousAc, autonomousDc)) written++; else failed++;
                 }
                 // 极限档专属组 未暴露的项照常跳过 不影响其余旋钮的写入结果
                 //   写入前先快照现值 退出极限档重写方案时按快照写回
                 //   否则空闲策略留在托管方案上 电竞档会白用极限的空闲策略
-                // 旧版撤回项在极限档内也必须恢复；失败保留收据，下次配置重试。
-                if (!RestoreExtremeKnobs(g, extreme))
-                { Logger.Warn(Lang.T("log.powerplanschemes.extremePending")); return false; }
-                if (extreme)
+                // 旧版撤回项在极限档里一样要恢复 失败就留着收据 下次配置再试
+                //   极限这组是附加项 备份或恢复没做完只跳过这一组 其余旋钮和方案切换照常
+                //   之前这里直接返回假 一项收据读不全就让整套电源方案配不成 用户那边表现为方案没生效
+                List<ExtremeSavedValue> snapshot;
+                bool extremeReady = PrepareExtremeKnobs(g, extreme, out snapshot);
+                if (!extremeReady)
                 {
-                    if (!SnapshotExtremeKnobs(g))
-                    { Logger.Warn(Lang.T("log.powerplanschemes.extremePending")); return false; }
-                    List<ExtremeSavedValue> snapshot;
-                    if (!ReadExtremeSnapshot(g, out snapshot)) return false;
+                    foreach (Knob k in ExtremeKnobs) skipped.Add(k.Label);
+                }
+                if (extreme && extremeReady)
+                {
                     foreach (Knob k in ExtremeKnobs)
                     {
-                        // 一次瞬时读失败后 SettingPresent 可能又成功；仍不能写未备份项。
+                        // 一次瞬时读失败之后 SettingPresent 可能又成了 但没备份的项还是不能写
                         if (!snapshot.Exists(delegate(ExtremeSavedValue v) { return v.Setting == k.Setting; }))
                         { skipped.Add(k.Label); continue; }
-                        if (!SettingPresent(g, k.Sub, k.Setting)) { skipped.Add(k.Label); continue; }
+                        if (!SettingPresent(g, k.Sub, k.Setting))
+                        { extremeTunePending = true; skipped.Add(k.Label); continue; }
                         if (WriteKnob(g, k, aggressive, handheld, profile,
-                            autonomousAc, autonomousDc)) written++; else failed++;
+                            autonomousAc, autonomousDc)) written++;
+                        else { extremeTunePending = true; failed++; }
                     }
                 }
+                if (extremeTunePending) Logger.Warn(Lang.T("log.powerplanschemes.extremePending"));
                 if (CpuTopology.Hybrid && profile.WriteHetero)
                 {
                     foreach (Knob k in HybridKnobs)
@@ -355,33 +360,9 @@ namespace PaviseApp
 
         private static void LogKnobFailure(Knob k)
         {
-            // 日志不能重新写一遍参数，否则会绕开未知平台的保留分支。
+            // 日志别把参数再写一遍 那样会绕开未知平台的保留分支
             Logger.Warn(Lang.T("log.powerplanschemes.32") + Lang.T(k.Label)
                 + Lang.T("log.powerplanschemes.33"));
-        }
-
-        private static int intelGfxSharesPackage = -1;
-
-        private static bool IntelGfxSharesPackageWithDiscrete()
-        {
-            int cached = intelGfxSharesPackage;
-            if (cached >= 0) return cached == 1;
-            bool intelIntegrated = false, otherDiscrete = false;
-            try
-            {
-                GpuAdapter[] all = GpuInventory.Adapters();
-                if (all != null)
-                    foreach (GpuAdapter a in all)
-                    {
-                        if (a.Vendor == GpuVendor.Intel && a.Integrated) intelIntegrated = true;
-                        else if (a.Vendor != GpuVendor.Intel && !a.Integrated) otherDiscrete = true;
-                    }
-            }
-            catch { }
-            bool shares = intelIntegrated && otherDiscrete;
-            if (shares) Logger.Log(Lang.T("log.powerplanschemes.igpu"));
-            intelGfxSharesPackage = shares ? 1 : 0;
-            return shares;
         }
 
         private static bool WriteKnob(Guid scheme, Knob k, bool aggressive,
@@ -394,7 +375,7 @@ namespace PaviseApp
             uint dc = useArena ? ArenaDcFor(k, k.ArenaDc, autonomousDc) : k.CalmDc;
             if (useArena && IsProcessorMinimum(k.Setting))
             {
-                // AC/DC 独立判定。某一侧无法确认时保持那一侧原值，读失败则整项不写。
+                // AC 和 DC 各判各的 哪一侧确认不了就保持那侧原值 读失败整项都不写
                 if (!ProcessorPowerPlatform.TryResolveMinimumIndices(autonomousAc, autonomousDc, ac, dc,
                     delegate(bool onAc)
                     {
@@ -922,20 +903,42 @@ namespace PaviseApp
 
         private static List<Guid> EnumerateSchemes()
         {
-            var list = new List<Guid>();
+            List<Guid> list;
+            TryEnumerateSchemes(out list);
+            return list;
+        }
+
+        // 调用方只有拿到正常枚举结束才能用缺席证明方案不存在
+        private static bool TryEnumerateSchemes(out List<Guid> list)
+        {
+            list = new List<Guid>();
             try
             {
                 for (uint i = 0; i < 128; i++)
                 {
                     uint size = 16;
                     byte[] buf = new byte[16];
-                    if (PowerEnumerate(IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, AccessScheme, i, buf, ref size) != 0) break;
-                    list.Add(new Guid(buf));
+                    uint result;
+#if PAVISE_SELFTEST
+                    if (EnumerateSchemeForTest != null) result = EnumerateSchemeForTest(i, buf, ref size);
+                    else
+#endif
+                        result = PowerEnumerate(IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, AccessScheme, i, buf, ref size);
+                    if (result == 259) return true; // ERROR_NO_MORE_ITEMS
+                    if (result != 0 || size != 16) return false;
+                    Guid scheme = new Guid(buf);
+                    if (scheme == Guid.Empty || list.Contains(scheme)) return false;
+                    list.Add(scheme);
                 }
             }
             catch { }
-            return list;
+            return false; // 异常或达到数量上限都不是完整枚举
         }
+
+#if PAVISE_SELFTEST
+        internal delegate uint SchemeEnumeration(uint index, byte[] buffer, ref uint size);
+        internal static SchemeEnumeration EnumerateSchemeForTest;
+#endif
 
         internal static void SyncDisplayFeel(Guid src, Guid dst)
         {

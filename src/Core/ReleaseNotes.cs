@@ -55,12 +55,17 @@ namespace PaviseApp
 
         public static readonly ReleaseNote[] All = new[]
         {
-            new ReleaseNote("2.2.1.2", "2026-09-07", new[]
+            new ReleaseNote("2.2.1.3", "2026-09-07", new[]
             {
-                new[]{ "改进 候选线程提优转正 默认开 极限档强制开 部分机型对局帧率提升 30 帧左右 其它档位下帧率反而变低的游戏可逐游戏关掉", "Candidate-thread boost graduates from experimental: on by default and forced on in Extreme, worth about 30 extra frames per second on some machines. In other tiers a game that gets slower can switch it off per game.", "候補スレッド昇格が実験扱いを卒業。既定オン、極限では強制オンで、一部の機種では対戦中のフレームレートが約 30 上がります。他のモードでは遅くなるゲームだけゲーム別にオフにできます。" },
-                new[]{ "改进 厂商性能档改为默认关 任何机器都不再默认切性能档 要用的在内存电源页打开", "Vendor performance mode is now off by default on every machine; turn it on from the Memory & Power page if you want it.", "ベンダーの性能モードはすべての機種で既定オフに変更。使う場合はメモリと電源ページでオンにしてください。" },
-                new[]{ "改进 反作弊压制写入被拒即放弃 本次运行不再重试 已写入的项退回原值 只记一条日志", "Anti-cheat suppression gives up as soon as a write is refused: no retries for the rest of the run, values already written are restored, and a single log line is recorded.", "アンチチート抑制は書き込みを拒否された時点で放棄。今回の実行では再試行せず、書き込み済みの値は元に戻し、ログは 1 行のみ記録します。" },
-                new[]{ "修复 游戏退出后提优记录清理不再记成残留警告 每局开头调度保护不再连刷两条", "Boost records left by an exited game are cleaned quietly instead of being logged as a leftover warning, and the scheduling guard no longer writes two lines at the start of every match.", "終了したゲームの昇格記録は残留警告ではなく静かに片付け、スケジューリング保護は対戦開始時に 2 行連続で記録しなくなりました。" },
+                new[]{ "改进 托管电源方案中的 Intel 核显电源项统一平衡 所有设备与档位的插电和电池取值一致", "Intel integrated graphics uses Balanced in managed power plans on all devices, in every mode and on both AC and battery power.", "管理対象の電源プランでは、すべてのデバイス・モードで Intel 内蔵グラフィックスをバランスに統一。AC 接続時とバッテリー使用時の両方に適用します。" },
+                new[]{ "下架 语音软件固定豁免与麦克风采集会话动态豁免 KOOK YY Oopz TeamSpeak Mumble QQ TIM 微信回归通用后台规则", "Removed fixed exemptions for voice apps and dynamic exemptions based on microphone capture sessions. KOOK, YY, Oopz, TeamSpeak, Mumble, QQ, TIM and WeChat now follow the general background rules.", "音声アプリの固定除外とマイクのキャプチャセッションによる動的除外を廃止。KOOK、YY、Oopz、TeamSpeak、Mumble、QQ、TIM、WeChat は通常のバックグラウンド規則に従います。" },
+                new[]{ "新增 公告 随更新检查取回 有未读时概览页底栏的公告按钮亮红点", "Added announcements, fetched with the update check. The Announcements button in the Overview footer shows a dot while one is unread.", "お知らせを追加。更新確認と同時に取得し、未読があれば概要フッターのお知らせボタンに赤い点が付きます。" },
+                new[]{ "改进 候选线程提优默认开 极限档强制开 掌机档和物理核不足 6 个的机器不提供", "Candidate-thread boost is on by default and forced on in Extreme; not available in Handheld or on machines with fewer than 6 physical cores.", "候補スレッド昇格は既定オン、極限では強制オン。携帯機モードと物理コア 6 未満の環境では提供しません。" },
+                new[]{ "改进 概览页底栏的教程 问卷 Bug 反馈三个入口收进帮助与反馈一个按钮", "The guide, survey and bug-report entries in the Overview footer are now one Help & feedback button.", "概要フッターのチュートリアル・アンケート・バグ報告の 3 入口を「ヘルプとフィードバック」1 つにまとめました。" },
+                new[]{ "改进 反作弊压制写入被拒即放弃 本次运行不再重试 已写入的项退回原值", "Anti-cheat suppression gives up as soon as a write is refused: no retries for the rest of the run, and values already written are restored.", "アンチチート抑制は書き込みを拒否された時点で放棄。今回の実行では再試行せず、書き込み済みの値は元に戻します。" },
+                new[]{ "下架 对局切换厂商性能档 旧版开启过的机器启动时和清除全部配置按收据切回原档位", "Retired vendor performance mode. On machines where an older version enabled it, startup and Wipe all configuration switch the profile back from its receipt.", "対戦中のベンダー性能モードを廃止。旧バージョンで有効にした環境では、起動時と全設定の消去でレシートに従い元のプロファイルへ戻します。" },
+                new[]{ "修复 游戏退出后提优记录清理不再记成残留警告 每局开头调度保护不再连刷两条", "Boost records left by an exited game are no longer logged as a leftover warning, and the scheduling guard no longer writes two lines at the start of every match.", "終了したゲームの昇格記録を残留警告として記録しなくなり、スケジューリング保護も対戦開始時に 2 行連続で記録しなくなりました。" },
+                new[]{ "修复 英文界面下帮助与反馈显示成 Help _feedback", "Fixed Help & feedback rendering as Help _feedback in English.", "英語表示で Help & feedback が Help _feedback と表示される問題を修正。" },
             }),
             new ReleaseNote("2.2.1.1", "2026-09-06", new[]
             {

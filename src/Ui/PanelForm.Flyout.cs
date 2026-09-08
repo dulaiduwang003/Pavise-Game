@@ -30,7 +30,7 @@ namespace PaviseApp
             SetModeFlyout(opening);
         }
 
-        // 所有用户可达入口共用同一道门 只有“勾选不再提示 + 确认进入”才持久化
+        // 所有用户能走到的入口共用同一道门 只有勾了不再提示再确认进入才持久化
         // 取消 关闭弹窗或单纯勾选后反悔都不能悄悄跳过下次警告
         private bool ConfirmDeepTuningEntry()
         {

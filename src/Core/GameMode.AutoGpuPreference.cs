@@ -19,8 +19,8 @@ namespace PaviseApp
 
         private volatile bool autoGpuOn;
         private volatile bool autoGpuScanned;
-        // 提交/换局/关闭共用边界。GPU 锁和 sync 在自动路径上只尝试进入，
-        // 不拿着其中一把等另一把，避免与扫描、驱动暂存的锁顺序形成环。
+        // 提交 换局 关闭走同一道边界 GPU 锁和 sync 在自动路径上只尝试进入
+        // 不拿着一把等另一把 免得和扫描 驱动暂存的锁顺序绕成环
         private readonly object autoGpuCommitGate = new object();
 
         private void InitializeAutoGpu()
@@ -57,7 +57,7 @@ namespace PaviseApp
 
         private void SetAutoGpuSessionStamp(long stamp)
         {
-            // 函数返回后，旧会话的提交与 handled 记账都已结束。
+            // 函数一返回 旧会话的提交和 handled 记账就都结束了
             lock (autoGpuCommitGate) Interlocked.Exchange(ref sessionStartTicks, stamp);
         }
 
@@ -66,7 +66,7 @@ namespace PaviseApp
         {
             lock (autoGpuCommitGate)
             {
-                // ActivePreset 可能需要 sync；先只查无锁身份，拿到 sync 后才查策略。
+                // ActivePreset 可能要 sync 先查无锁身份 拿到 sync 再查策略
                 if (!AutoGpuSessionIdentityCurrent(stamp)) return AppGpuPreferenceResult.Changed;
                 if (!Monitor.TryEnter(GpuPrefStage.MutationGate)) return AppGpuPreferenceResult.Busy;
                 try
@@ -151,7 +151,7 @@ namespace PaviseApp
                 if (blocked || AutoGpuAlreadyHandled(path)) continue;
                 AppGpuPreferenceResult result = CommitAutoGpu(AppGpuPreferences.Shared, path, sessionStamp, delegate
                 {
-                    // Prepare 与实际提交之间再查一次；登记按 EXE 生效，不能只看候选 PID。
+                    // Prepare 到真正提交之间再查一次 登记按 EXE 生效 只看候选 PID 不够
                     if (abort()) return false;
                     GameProcessSnapshot current;
                     if (!GameSessionDetector.TryCaptureProcessIdentity(kv.Key, selfSession, out current)
@@ -198,8 +198,8 @@ namespace PaviseApp
         internal static HashSet<int> VisibleWindowResult(bool complete, HashSet<int> pids)
         { return complete ? pids : null; }
 
-        // 快照与窗口枚举都必须完整；可见进程及其有身份依据的后代按镜像路径保护。
-        // 这是只读准入，不声称能将窗口状态与注册表提交做成原子事务。
+        // 快照和窗口枚举都得完整 可见进程连同有身份依据的后代按镜像路径保护
+        // 这里只是只读准入 不敢说窗口状态和注册表提交能做成一个原子事务
         internal static bool AutoGpuVisibilityAllows(GameProcessSnapshot candidate,
             ProcessSnapshot snapshot, HashSet<int> visible, int session)
         {
@@ -227,8 +227,8 @@ namespace PaviseApp
                 var visited = new HashSet<int>();
                 while (cursor != null && visited.Add(cursor.Pid))
                 {
-                    // Shell / 终端 / 运行时不是独立应用家族的锚点，也不能穿越。
-                    // 可见宿主自身的镜像仍由上面的 protectedPaths 保护。
+                    // Shell 终端 运行时都不是独立应用家族的锚点 也不能拿来穿越
+                    // 可见宿主自己的镜像还是由上面的 protectedPaths 兜着
                     if (WhitelistRule.IsUnsafeFamilyAnchor(cursor.Path)) break;
                     if (visible.Contains(cursor.Pid))
                     {

@@ -1,5 +1,5 @@
 # @author bdth 2074055628@qq.com
-# File purpose: derive the external update manifest version from App.Version.
+# 文件用途 从 App.Version 推出外部更新清单的版本号
 [CmdletBinding()]
 param()
 

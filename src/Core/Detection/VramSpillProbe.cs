@@ -42,7 +42,7 @@ namespace PaviseApp
             {
                 if (!accepting || closed || busy || now < nextSampleTicks) return;
                 int mine = generation;
-                // 冻结 PID 集合；主扫描线程此后可以修改自己的集合。
+                // 冻结 PID 集合 之后主扫描线程改自己那份就不碍事了
                 int[] pids = new int[gamePids.Count];
                 gamePids.CopyTo(pids, 0);
                 nextSampleTicks = now + MinIntervalSeconds * TimeSpan.TicksPerSecond;
@@ -68,7 +68,7 @@ namespace PaviseApp
                 else
 #endif
                 {
-                    // 连显卡清单的首次枚举也在后台，不让只读诊断阻塞 Boost。
+                    // 显卡清单头一次枚举也放后台 不让只读诊断卡住 Boost
                     if (GpuInventory.IntegratedOnly) return;
                     shared = ReadSharedByPid();
                 }

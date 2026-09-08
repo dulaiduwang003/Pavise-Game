@@ -1,4 +1,4 @@
-﻿// Pure range/parse checks; no PowerShell execution, no adapter access, no writes.
+﻿// 文件用途 纯范围和解析检查 不跑 PowerShell 不碰网卡 不写任何东西
 // RSS 引导回归 只验证目标区间推导和收据解析 不碰网卡
 #if PAVISE_SELFTEST
 using System;

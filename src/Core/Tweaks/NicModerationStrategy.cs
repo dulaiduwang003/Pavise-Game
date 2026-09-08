@@ -6,8 +6,8 @@ using System.Text;
 
 namespace PaviseApp
 {
-    // 标准 *InterruptModeration 只有 0/1。Adaptive/Medium 属于厂商私有算法，
-    // 没有经过 PCI/驱动/INF 指纹复核时绝不能在这里猜值。
+    // 标准 *InterruptModeration 只有 0 和 1 Adaptive 和 Medium 是厂商私有算法
+    // 没做过 PCI 驱动 INF 指纹复核 就别在这猜值
     internal enum NicModerationMode
     {
         Unknown = -1,
@@ -58,8 +58,8 @@ namespace PaviseApp
         public string Service = "";
         public string InfPath = "";
         public NicModerationMode Mode = NicModerationMode.Unknown;
-        // Unknown 既可能是已成功读到私有/缺失值，也可能是读取异常；只有前者
-        // 才能视为外部接管并结清恢复收据。
+        // Unknown 有两种 一种是真读到了私有值或者值缺失 一种是读取本身出错
+        // 只有前者能算外部接管 才能结清恢复收据
         public bool ModeReadReliable = true;
         public bool LinkUp;
         public bool PhysicalWired;
@@ -161,9 +161,9 @@ namespace PaviseApp
 
             int original, desired;
             if (!int.TryParse(p[9], out original) || !int.TryParse(p[10], out desired)
-                // NIM2 只表达本版本唯一授权的方向：驱动管理(1) -> 实验 Off(0)。
-                // 语法正确但方向反转的票据也必须按损坏处理，恢复路径不能被它
-                // 诱导去执行本策略从未建立过的写入。
+                // NIM2 只表达这版唯一授权的方向 驱动管理 1 到实验 Off 0
+                // 语法对但方向反过来的票据一律按损坏处理
+                // 不能被它骗着去做本策略从来没建立过的写入
                 || original != (int)NicModerationMode.DriverManaged
                 || desired != (int)NicModerationMode.Off
                 || string.IsNullOrEmpty(r.NetCfgInstanceId)
@@ -247,9 +247,9 @@ namespace PaviseApp
             int active = 0;
             foreach (NicModerationTarget target in scan.Targets)
             {
-                // 先统计所有活动物理有线设备，再检查唯一出口是否适合写入。
-                // 不能只统计暴露 *InterruptModeration 的设备，否则第二块不支持
-                // 标准项的 USB/厂商网卡会被漏掉，错误地放行第一块。
+                // 先把活动的物理有线设备全数出来 再看唯一出口适不适合写
+                // 不能只数暴露了 *InterruptModeration 的设备
+                // 不然第二块不支持标准项的 USB 或厂商网卡会漏掉 第一块就被错放行
                 if (target == null || !target.LinkUp || !target.PhysicalWired) continue;
                 active++;
                 selected = target;
@@ -312,7 +312,7 @@ namespace PaviseApp
             if (target == null) return false;
             if (target.Mode == NicModerationMode.Off)
             {
-                // 外部已经关闭不等于 Pavise 接管，绝不制造一张假收据。
+                // 外部自己关掉的不算 Pavise 接管 别造假收据
                 issue = NicModerationScanIssue.AlreadyOff;
                 return true;
             }
@@ -333,8 +333,8 @@ namespace PaviseApp
                 receipt.Original, receipt.Desired);
             if (write != NicModerationWriteResult.Applied)
             {
-                // 这三类明确发生在写入之前，清掉 Prepared 即可；ReadbackFailed
-                // 可能已经写入，必须走同一条 CAS 恢复路径。
+                // 这三类明确发生在写入之前 清掉 Prepared 就行
+                // ReadbackFailed 有可能已经写进去了 得走同一条 CAS 恢复路径
                 bool settled;
                 if (write == NicModerationWriteResult.IdentityChanged
                     || write == NicModerationWriteResult.CurrentChanged
@@ -374,9 +374,9 @@ namespace PaviseApp
             return RestoreReceipt(receipt, out issue);
         }
 
-        // 启动对账覆盖两类崩溃窗口：Prepared 写入未确认，以及 Applied 已写回
-        // Original 但收据尚未来得及清除。Applied+Desired 是用户已建立的实验，
-        // 只确认存在，不在正常启动时擅自还原。
+        // 启动对账要盖住两类崩溃窗口 一是 Prepared 写了没确认
+        // 二是 Applied 已经写回 Original 收据还没来得及清
+        // Applied+Desired 是用户自己建立的实验 只确认它在 正常启动不擅自还原
         internal bool ReconcileStartup(out NicModerationScanIssue issue)
         {
             issue = NicModerationScanIssue.None;
@@ -406,8 +406,8 @@ namespace PaviseApp
             return RestoreReceipt(receipt, out issue);
         }
 
-        // 仅供用户明确执行“清除全部”时放弃不可读/损坏/设备已卸载的应用收据。
-        // 此动作不触碰系统网卡值；普通关闭路径从不调用它。
+        // 只在用户明确点清除全部时用 丢掉读不出来 损坏 或者设备已卸载的应用收据
+        // 这个动作不碰系统网卡值 普通关闭路径永远不会调它
         internal bool DiscardReceiptForReset()
         {
             return store.SaveAndVerify("");
@@ -446,8 +446,8 @@ namespace PaviseApp
             }
             if (current.Mode != receipt.Desired)
             {
-                // 用户、驱动或其它工具已经接管。不能拿旧收据覆盖；结清 Pavise
-                // 所有权，日志仍会保留 ExternalChanged 供诊断。
+                // 用户 驱动 或者别的工具已经接管 别拿旧收据去盖
+                // 结清 Pavise 的所有权 日志里留一条 ExternalChanged 好查
                 if (!store.SaveAndVerify(""))
                 {
                     issue = NicModerationScanIssue.ReceiptSaveFailed;
@@ -502,14 +502,14 @@ namespace PaviseApp
             {
                 if (target == null || !string.Equals(target.NetCfgInstanceId,
                         receipt.NetCfgInstanceId, StringComparison.OrdinalIgnoreCase)) continue;
-                // NetCfg GUID 只负责定位接口；完整 PnP 实例 ID 是必须匹配的第二把锁。
-                // 任一侧缺失都不能退化成“只凭 GUID”写回旧值。
+                // NetCfg GUID 只管定位接口 完整 PnP 实例 ID 是必须对上的第二把锁
+                // 哪一头缺了都不能退回成只凭 GUID 写旧值
                 if (string.IsNullOrEmpty(receipt.DeviceInstanceId)
                     || string.IsNullOrEmpty(target.DeviceInstanceId)
                     || !string.Equals(target.DeviceInstanceId, receipt.DeviceInstanceId,
                         StringComparison.OrdinalIgnoreCase)) continue;
-                // 驱动重装可能短暂留下重复类键；无法证明哪一项代表当前设备时
-                // 不能按枚举顺序任选一个写回。
+                // 驱动重装会短暂留下重复类键 证明不了哪一项是当前设备时
+                // 别按枚举顺序随手挑一个写回去
                 match = target;
                 matches++;
             }

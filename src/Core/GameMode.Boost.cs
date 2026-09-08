@@ -88,8 +88,8 @@ namespace PaviseApp
                             continue;
                         }
 
-                        // 全机平均值看不见局部核域饥饿。读回失败或已有 CPU Sets 时
-                        // 当前渲染身份保守保持 Normal；在任何 priority / lane 写入之前收紧。
+                        // 全机平均值看不见局部核域饿着 读回失败或者已经有 CPU Sets 时
+                        // 当前渲染身份保守留在 Normal 收紧要赶在任何 priority 和 lane 写入之前
                         uint[] currentSets = Native.QueryCpuSets(h);
                         RecordBoostDomain(pass, Native.QueryAffinity(h), currentSets);
 
@@ -159,8 +159,8 @@ namespace PaviseApp
                             irqProbe.InvalidateGameMask();
                         bool newlyTracked, gpuOk;
                         if (!CaptureAndTrack(h, pid, currentCreation, pass, known, out newlyTracked, out gpuOk)) continue;
-                        // 放置阶段会恢复原始核域（可能来自崩溃恢复账本）。恢复值同样
-                        // 必须纳入准入，不能在这里提到 High 后又把进程放回受限核域。
+                        // 放置阶段会恢复原始核域 有可能是从崩溃恢复账本来的 这个值一样要过准入
+                        // 不能这边刚提到 High 那边又把进程塞回受限核域
                         Snap originalDomain;
                         bool originalKnown;
                         lock (sync) originalKnown = gameBoost.TryGetValue(pid, out originalDomain)
@@ -289,7 +289,7 @@ namespace PaviseApp
 
         internal static uint BoostPriorityTarget(bool saturated, bool laneActive)
         {
-            // A CPU-time candidate is not evidence that saturation can safely be ignored.
+            // 有个 CPU 耗时候选 不等于饱和可以当没看见
             return saturated
                 ? Native.NORMAL_PRIORITY_CLASS : Native.HIGH_PRIORITY_CLASS;
         }
@@ -297,7 +297,7 @@ namespace PaviseApp
         internal static uint BoostPriorityTarget(bool saturated, bool laneActive,
             ulong desiredMask, ulong allMask, bool domainRestricted)
         {
-            // 不能用整机空闲替代游戏可运行核域的余量证明。
+            // 整机空闲不能拿来替游戏可运行核域的余量作证
             return domainRestricted || allMask == 0 || desiredMask != allMask
                 ? Native.NORMAL_PRIORITY_CLASS : BoostPriorityTarget(saturated, laneActive);
         }
@@ -310,7 +310,7 @@ namespace PaviseApp
             boostDomainPid = pass.RendererPid;
             boostDomainCreation = pass.RendererCreation;
             pass.DomainGeneration = boostDomainGeneration;
-            // 包括同 PID 同创建时间的直接换局；不能复用上一局的审计缓存。
+            // 同 PID 同创建时间的直接换局也算 上一局的审计缓存不能复用
             if (boostDomainNeedsAudit && pass.RendererPid > 0)
                 lock (sync)
                 {
@@ -335,7 +335,7 @@ namespace PaviseApp
 
         private void RecordBoostDomain(BoostPass pass, ulong affinity, uint[] cpuSets)
         {
-            // 旧局或旧渲染进程的迟到读回不能重新认证当前核域。
+            // 旧局或者旧渲染进程的迟到读回 不能拿来重新认证当前核域
             if (pass.DomainGeneration != boostDomainGeneration || pass.RendererPid <= 0
                 || pass.RendererCreation <= 0 || pass.RendererPid != boostDomainPid
                 || pass.RendererCreation != boostDomainCreation) return;
@@ -360,8 +360,8 @@ namespace PaviseApp
             {
                 if (irqProbe.IsPlacementCapturing && priorityTarget != boostPriorityTarget)
                     irqProbe.InvalidateGameMask();
-                // 成功取消后本状态内不会再启动 lane，不要每次扫描都重读恢复账本。
-                // 失败不能缓存成已恢复，后续扫描和退局仍保留恢复机会。
+                // 取消成功后这个状态里不会再起 lane 别每次扫描都去重读恢复账本
+                // 失败不能缓存成已恢复 后面的扫描和退局还得留着恢复机会
                 if (!boostLaneReleasedForNormal)
                     boostLaneReleasedForNormal = RenderLane.Release();
             }
@@ -458,7 +458,7 @@ namespace PaviseApp
             bool ecoGaveUp;
             lock (sync) ecoGaveUp = boostEcoGaveUp.Contains(pid);
             if (!ecoGaveUp && !HighQoSVerified(h)) return true;
-            if (EffLane && pass.PriorityTarget == Native.HIGH_PRIORITY_CLASS)
+            if (EffLane && LaneEligible && pass.PriorityTarget == Native.HIGH_PRIORITY_CLASS)
             {
                 LaneState lane = RenderLane.StateFor(pid, creation);
                 if (IrqLaneNeedsInitialization(lane)) return true;

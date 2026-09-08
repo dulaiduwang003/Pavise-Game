@@ -1,4 +1,4 @@
-// Pure state machine. No sampling, registry or windows are used.
+// 文件用途 纯状态机 不采样 不碰注册表 不建窗口
 #if PAVISE_SELFTEST
 using System;
 using System.Threading;

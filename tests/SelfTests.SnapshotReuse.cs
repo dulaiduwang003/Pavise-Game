@@ -1,4 +1,4 @@
-// Real read-only process enumeration; no registry, windows or process writes.
+// 文件用途 真的做只读进程枚举 不碰注册表 窗口和进程写入
 // 快照复用回归 复用只发生在 同会话+限龄+调用方明确允许 三个条件同时成立时
 #if PAVISE_SELFTEST
 using System;

@@ -39,14 +39,7 @@ namespace PaviseApp
                 // 旧模块扫描的 nahimicosd/a-volute 对应同一音频/OSD 产品链
                 "NahimicService", "NahimicSvc32", "NahimicSvc64",
 
-                "fraps",
-
-                // 纯语音软件 收进托盘后没有可见窗口 不在这里点名就会按普通后台隔离
-                //   隔离档是 IDLE 优先级加极低磁盘 IO 加小核限频 语音会断续
-                //   这些 EXE 的文件描述都不含外设词表里的词 只能按名字点
-                //   QQ TIM 微信不进名单 它们平时就是重后台 该压 通话时由 VoiceSessionRoster 按采集会话放行
-                "KOOK", "YY", "Oopz",
-                "ts3client_win64", "ts3client_win32", "TeamSpeak", "mumble"
+                "fraps"
             };
 
         // 调用方仍须核对会话及 PID/Creation 并且只解除 Background 原因

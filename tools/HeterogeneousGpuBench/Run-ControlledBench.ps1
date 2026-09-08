@@ -26,8 +26,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# This wrapper observes the machine and manages only its own benchmark process.
-# It never changes power plans, priorities, driver settings, or other processes.
+# 这层包装只观察本机 只管自己拉起的台架进程
+# 不改电源方案 不改优先级 不改驱动设置 不碰别的进程
 function Write-JsonFile {
     param([object]$Value, [string]$Path)
     [IO.File]::WriteAllText($Path, (ConvertTo-Json -InputObject $Value -Depth 16) + [Environment]::NewLine,
@@ -121,7 +121,7 @@ function Read-CpuPercent {
 }
 
 function Read-GpuActivity {
-    # Snapshot outside timed phases: CIM enumeration is too intrusive to run per frame.
+    # 快照放在计时阶段之外 CIM 枚举太重 不能每帧跑
     try {
         return @(Get-CimInstance -ClassName Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine -OperationTimeoutSec 8 |
             Where-Object { $_.UtilizationPercentage -gt 0 } | ForEach-Object {
@@ -313,10 +313,10 @@ try {
     }
     Write-JsonFile -Value $environmentBefore -Path (Join-Path $runDirectory 'environment-before.json')
 
-    # Correctness-only validation is independent of CPU idle (it is never scored).
-    # Explicit loaded screening relaxes only the CPU preflight to 50%, not the
-    # correctness, timing, gain, input, AC, temperature, or timeout gates.
-    # Background GPU activity is recorded, not silently equated with "idle".
+    # 只验正确性的那一轮不看 CPU 空闲 它本来就不计分
+    # 显式的带载筛查只把 CPU 预检放宽到 50%
+    # 正确性 计时 收益 输入 交流电 温度和超时这些门一个都不放
+    # 后台 GPU 活动是记下来 不是默认当成空闲
     $idleClock = [Diagnostics.Stopwatch]::StartNew()
     $quietSamples = 0
     while ($idleClock.Elapsed.TotalSeconds -lt $IdleTimeoutSeconds) {

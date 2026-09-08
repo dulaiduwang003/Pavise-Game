@@ -9,6 +9,15 @@ using System.Threading;
 
 namespace PaviseApp
 {
+    // 公告正文来自网络 只当纯文本用 不解析富文本 不执行 不当地址拼
+    internal sealed class NoticeInfo
+    {
+        public string Id;
+        public string Title;
+        public string Body;
+        public string Url;
+    }
+
     internal class UpdateResult
     {
         public bool Ok;
@@ -17,6 +26,7 @@ namespace PaviseApp
         public string Url;
         public string Error;
         public string Source;
+        public NoticeInfo Notice;
     }
 
     internal static class UpdateChecker
@@ -25,6 +35,9 @@ namespace PaviseApp
         private const int TotalTimeoutMs = 13000;
         private const int GraceAfterFirstHitMs = 2500;
         private const int MaxBodyBytes = 256 * 1024;
+        private const int MaxNoticeId = 64;
+        private const int MaxNoticeTitle = 60;
+        private const int MaxNoticeBody = 800;
 
         // 清单域名和下载域名共用这一份白名单 清单里读到的地址不在里面就退回官方网盘
         private static readonly string[] TrustedHosts =
@@ -34,6 +47,23 @@ namespace PaviseApp
             "123pan.com", "123pan.cn", "123684.com",
             "pan.baidu.com", "alipan.com", "aliyundrive.com", "quark.cn"
         };
+
+        // 公告里的链接单独一张表 除了下载站再放行文档和表单所在的域
+        //   概览页那三条外链就挂在这个域 公告要引到教程或表单时用得上
+        private static readonly string[] TrustedNoticeHosts = { "feishu.cn", "feishu.net" };
+
+        public static bool IsTrustedNoticeUrl(string url)
+        {
+            if (IsTrustedDownloadUrl(url)) return true;
+            if (string.IsNullOrEmpty(url)) return false;
+            Uri u;
+            if (!Uri.TryCreate(url, UriKind.Absolute, out u)) return false;
+            if (u.Scheme != Uri.UriSchemeHttps) return false;
+            string host = u.Host.ToLowerInvariant();
+            foreach (string ok in TrustedNoticeHosts)
+                if (host == ok || host.EndsWith("." + ok, StringComparison.Ordinal)) return true;
+            return false;
+        }
 
         private sealed class Source
         {
@@ -164,7 +194,49 @@ namespace PaviseApp
             r.Latest = tag;
             r.Source = source;
             r.Url = download;
+            r.Notice = ParseNotice(body);
             return r;
+        }
+
+        // 公告三个字段都在清单顶层 缺 id 或缺标题就当没有公告
+        //   id 只做已读标记 长度和字符都卡死 免得拿它当路径或注册表名使
+        internal static NoticeInfo ParseNotice(string body)
+        {
+            string id = Clean(JsonValue(body, "noticeId"), MaxNoticeId);
+            if (string.IsNullOrEmpty(id) || !IsSaneNoticeId(id)) return null;
+            string title = Clean(JsonValue(body, "noticeTitle"), MaxNoticeTitle);
+            if (string.IsNullOrEmpty(title)) return null;
+
+            var n = new NoticeInfo();
+            n.Id = id;
+            n.Title = title;
+            n.Body = Clean(JsonValue(body, "noticeBody"), MaxNoticeBody);
+            string link = JsonValue(body, "noticeUrl");
+            n.Url = IsTrustedNoticeUrl(link) ? link : null;
+            return n;
+        }
+
+        private static bool IsSaneNoticeId(string id)
+        {
+            foreach (char c in id)
+                if (!char.IsLetterOrDigit(c) && c != '-' && c != '_' && c != '.') return false;
+            return true;
+        }
+
+        // 换行留着 公告要分段 其余控制字符一律换空格 免得跑出光标控制那一套
+        private static string Clean(string s, int max)
+        {
+            if (string.IsNullOrEmpty(s)) return null;
+            var sb = new StringBuilder(s.Length);
+            foreach (char c in s)
+            {
+                if (c == '\n') { sb.Append('\n'); continue; }
+                if (c == '\r' || c == '\t') { sb.Append(' '); continue; }
+                sb.Append(char.IsControl(c) ? ' ' : c);
+            }
+            string v = sb.ToString().Trim();
+            if (v.Length == 0) return null;
+            return v.Length > max ? v.Substring(0, max) : v;
         }
 
         private static bool IsCanonicalManifestVersion(string tag)

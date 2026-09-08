@@ -1,5 +1,5 @@
-// Dedicated review entry: owned-process scheduling counterexamples and read-only probes.
-// No Program.Main, GameMode loop, Sweep, Boost, real settings, power or driver writes.
+// 文件用途 复审专用入口 自有进程的调度反例加只读探测
+// 不走 Program.Main 不跑 GameMode 循环 Sweep Boost 不碰真实设置 电源和驱动写入
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -54,7 +54,7 @@ namespace PaviseApp
                 try
                 {
                     self.ProcessorAffinity = new IntPtr(unchecked((long)mask));
-                    // Production CPU-domain gate: whole-machine spare CPU is insufficient.
+                    // 生产代码里的 CPU 核域门 整机剩余 CPU 不够用作依据
                     applied = game && boosted ? (ProcessPriorityClass)GameMode.BoostPriorityTarget(false, false,
                         mask, unchecked((ulong)originalMask.ToInt64()), false)
                         : ProcessPriorityClass.Normal;
@@ -74,8 +74,8 @@ namespace PaviseApp
                         {
                             long sent = Stopwatch.GetTimestamp();
                             view.Write(8, ++request);
-                            // Explicit synthetic busy-wait dependency across two processes.
-                            // Never claim that all games use this pattern.
+                            // 显式合成的跨进程忙等依赖
+                            // 别说成所有游戏都是这个模式
                             while (view.ReadInt32(12) != request && Stopwatch.GetTimestamp() < end)
                                 Thread.SpinWait(64);
                             long received = Stopwatch.GetTimestamp();
@@ -91,7 +91,7 @@ namespace PaviseApp
                         {
                             int requested = view.ReadInt32(8);
                             if (requested == previous) { Thread.SpinWait(64); continue; }
-                            // Fixed CPU work per reply, independent of priority and wall-clock preemption.
+                            // 每次回复的 CPU 工作量固定 跟优先级和挂钟抢占无关
                             long value = requested;
                             for (int k = 0; k < 40000; k++) value = unchecked(value * 1664525 + 1013904223);
                             Interlocked.Exchange(ref sink, value);
@@ -134,7 +134,7 @@ namespace PaviseApp
             var bits = new List<ulong>();
             for (int bit = 2; bit < 64; bit++) if ((allowed & (1UL << bit)) != 0) bits.Add(1UL << bit);
             Require(bits.Count >= 3, "need three allowed logical processors other than CPU 0/1");
-            // Spread is explicitly distinct logical CPUs, not a claim about physical-core mapping.
+            // 这里的分散指的是明确不同的逻辑 CPU 不是在说物理核怎么映射
             ulong gameMask = bits[0], separateMask = bits[2];
             Console.WriteLine("layout,arm,treatment,game_mask,helper_mask,completed,p50_reply_ms,p95_reply_ms,game_cpu_ms,helper_cpu_ms,system_cpu_percent,restored,game_priority");
             foreach (string layout in new[] { "same-logical", "separate-logical" })
@@ -212,8 +212,8 @@ namespace PaviseApp
                     && state.Verdict == YieldVerdict.Inconclusive : state.Stage == YieldStage.Held,
                     "missing telemetry was accepted or valid telemetry rejected");
             }
-            // Samples are synthetic except cold CpuSaturation.Sample; no laptop eligibility override
-            // runs through the real runner and no EPP or telemetry hardware is modified.
+            // 除了冷启的 CpuSaturation.Sample 样本都是合成的
+            // 笔记本资格覆盖不走真实 runner 也不改 EPP 和遥测硬件
         }
 
         private static void ReadCost()
@@ -240,7 +240,7 @@ namespace PaviseApp
             using (Process self = Process.GetCurrentProcess()) probePid = self.Id;
             for (int sample = 0; sample < 8; sample++)
             {
-                // Real production background query, including cold GPU inventory/PDH initialization.
+                // 真正的生产后台查询 包括冷启的 GPU 清单和 PDH 初始化
                 int before = VramSpillProbe.SamplesForTest;
                 var watch = Stopwatch.StartNew();
                 VramSpillProbe.SampleIfDueAt(new[] { probePid },
@@ -276,9 +276,9 @@ namespace PaviseApp
 
         private static void AutoGpuFilter()
         {
-            // A focused composition probe, NOT the live GPU/window/identity discovery loop.
-            // Calls the production path-visibility gate, then the production preference manager.
-            // All remaining external prerequisites are explicit synthetic assumptions.
+            // 只是一次聚焦的组合探测 不是在线的 GPU 窗口 身份发现循环
+            // 先调生产的路径可见性门 再调生产的偏好管理器
+            // 剩下那些外部前提都是显式写死的合成假设
             Console.WriteLine("repeat,case,visible_pid,candidate_pid,same_exe,passes_path_visibility,passes_production_name_filter,enroll_result,mock_low_power_written");
             for (int repeat = 0; repeat < 5; repeat++)
             foreach (bool helper in new[] { false, true })
