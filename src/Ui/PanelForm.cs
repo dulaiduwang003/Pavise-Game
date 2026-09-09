@@ -30,7 +30,8 @@ namespace PaviseApp
         About = 9,
         Whitelist = 10,
         Interrupt = 11,
-        Count = 12
+        CoreScheduling = 12,
+        Count = 13
     }
 
     internal partial class PanelForm : Form
@@ -45,7 +46,7 @@ namespace PaviseApp
 
         private DBPanel pageOverview, pagePolicy, pageAntiCheat, pageLibrary, pageLog, pageSettings, pageAbout;
         private PictureBox aboutIcon;
-        private DBPanel pageGraphics, pageEnvironment, pageWhitelist;
+        private DBPanel pageGraphics, pageEnvironment, pageWhitelist, pageCoreScheduling;
         private DBPanel[] pages;
         private NavRail nav;
         private AdvancedBackBar advBackBar;
@@ -195,6 +196,7 @@ namespace PaviseApp
             pages[(int)PageId.Library] = pageLibrary = MakePage();
             pages[(int)PageId.Whitelist] = pageWhitelist = MakePage();
             pages[(int)PageId.Policy] = pagePolicy = MakePage();
+            pages[(int)PageId.CoreScheduling] = pageCoreScheduling = MakePage();
             pages[(int)PageId.AntiCheat] = pageAntiCheat = MakePage();
             pages[(int)PageId.Graphics] = pageGraphics = MakePage();
             pages[(int)PageId.Environment] = pageEnvironment = MakePage();
@@ -207,6 +209,7 @@ namespace PaviseApp
             BuildLibraryPage();
             BuildWhitelistPage();
             BuildPolicyPage();
+            BuildCoreSchedulingPage();
             BuildAntiCheatPage();
             BuildGraphicsPage();
             BuildEnvironmentPage();
@@ -350,6 +353,8 @@ namespace PaviseApp
             pageHooks[(int)PageId.Policy] = new PageHook(pagePolicy,
                 delegate(bool active) { if (active) RefreshPolicyPresentation(); },
                 RefreshPolicyPresentation);
+            pageHooks[(int)PageId.CoreScheduling] = new PageHook(pageCoreScheduling,
+                delegate(bool active) { if (active) SyncCorePage(); }, SyncCorePage);
             pageHooks[(int)PageId.AntiCheat] = new PageHook(pageAntiCheat, null, RefreshAcGroupStates);
             pageHooks[(int)PageId.Graphics] = new PageHook(pageGraphics, null, null);
             pageHooks[(int)PageId.Environment] = new PageHook(pageEnvironment,
@@ -391,16 +396,15 @@ namespace PaviseApp
             if (policyTabs != null) { policyTabs.Index = index; policyTabs.SnapToSelection(); }
         }
 
-        internal void SetCoreModeForShot(bool manual)
+        // 分配与独占已合成一页 截图不再需要切子页 保留入口让调用方不必改
+        internal void ShowCoreTabForShot(int index)
         {
-            if (coreSchedulingPanel != null) coreSchedulingPanel.SetIsolationExpanded(false);
-            SyncCorePage();
         }
 
         internal ulong SetCoreSelectionForShot(ulong mask)
         {
             if (coreSchedulingPanel == null) return ulong.MaxValue;
-            SetCoreModeForShot(true);
+            ShowCoreTabForShot(0);
             coreSchedulingPanel.SelectMask(mask);
             SyncCorePage();
             coreSchedulingPanel.Matrix.Refresh();

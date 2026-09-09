@@ -45,7 +45,6 @@ namespace PaviseApp
                 bool identityKnown = Native.QueryProcessSample(h, out currentCreation, out sampleCpu, out sampleIo);
                 if (!identityKnown || currentCreation <= 0)
                     return AcquireResult.ApplyFailed;
-                if (ScalingService.IsHost(pid, currentCreation)) return AcquireResult.AlreadyProtected;
                 lock (sync)
                 {
                     Entry e;

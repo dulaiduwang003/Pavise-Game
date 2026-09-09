@@ -55,6 +55,7 @@ namespace PaviseApp
             switch ((PageId)index)
             {
                 case PageId.Policy:
+                case PageId.CoreScheduling:
                 case PageId.AntiCheat:
                 case PageId.Graphics:
                 case PageId.Environment:

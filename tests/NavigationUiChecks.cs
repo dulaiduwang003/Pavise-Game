@@ -1,4 +1,4 @@
-#if PAVISE_NAV_BENCH && PAVISE_SELFTEST
+﻿#if PAVISE_NAV_BENCH && PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -55,9 +55,9 @@ namespace PaviseApp
                 {
                     Settings.SaveStr("DeepTuningLastPage", stored);
                     int page = (int)typeof(PanelForm).GetMethod("LoadLastAdvancedPage", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, null);
-                    Check(page == (stored == "4" ? 4 : stored == "11" ? 11 : 2), "Remembered category validation failed: " + stored);
+                    Check(page == (stored == "4" ? 4 : stored == "11" ? 11 : stored == "12" ? 12 : 2), "Remembered category validation failed: " + stored);
                 }
-                foreach (int lang in new[] { 0, 1 })
+                foreach (int lang in new[] { 0, 1, 2 })
                 foreach (bool light in new[] { false, true }) RunWindow(args[0], lang, light);
                 CheckScaledPosition();
                 CheckScaledRail(args[0]);
@@ -72,6 +72,9 @@ namespace PaviseApp
         {
             Settings.UseTransientStoreForCurrentProcess();
             Settings.SaveStr("DeepTuningLastPage", "999999");
+            CpuTopology.InjectTopologyForTest(255, new ulong[] { 3, 12, 48, 192 }, new ulong[] { 15, 240 }, 0, 0, 0, 0, false, false);
+            Settings.SaveStr(CoreScheduling.Key, new CoreSchedulingPlan { GameMask = 12, IsolationMask = 12,
+                Topology = CoreScheduling.CurrentStamp }.Encode());
             Lang.Cur = language; Theme.SetLight(light);
             string data = Path.Combine(output, "fixture-" + language + "-" + light);
             Directory.CreateDirectory(data);
@@ -116,7 +119,8 @@ namespace PaviseApp
                 Check(main.Selected == (int)PageId.Policy && tuning.Visible && !main.Visible, "Entry did not directly open a section");
                 CheckTuningHeader(form);
                 Check(prompts == 2, "Entry warning missing");
-                foreach (PageId page in new[] { PageId.Interrupt, PageId.Environment, PageId.Graphics, PageId.AntiCheat, PageId.Policy })
+                Check(Field<int[]>(tuning, "order").Length == 6, "Advanced navigation must expose six sections");
+                foreach (PageId page in new[] { PageId.Interrupt, PageId.Environment, PageId.Graphics, PageId.AntiCheat, PageId.CoreScheduling, PageId.Policy })
                 {
                     tuning.InvokeItem((int)page);
                     Check(main.Selected == (int)page && tuning.Selected == (int)page && tuning.Visible, "Category handoff failed");
@@ -124,7 +128,15 @@ namespace PaviseApp
                 }
                 Check(prompts == 2, "In-area switching repeated the warning");
                 var policyTabs = Field<TechTabs>(form, "policyTabs");
-                policyTabs.Index = 3;
+                Check(Field<DBPanel[]>(form, "policyTabPanels").Length == 3, "Policy must retain three sub-tabs");
+                policyTabs.Index = 2;
+                tuning.InvokeItem((int)PageId.CoreScheduling);
+                var coreEditor = Field<CoreSchedulingPanel>(form, "coreSchedulingPanel");
+                // 分配与独占合成一页 没有子页可切 独占范围跟着选核走
+                Check(Field<DBPanel>(form, "coreScrollPanel") != null, "Core scheduling lost its content panel");
+                coreEditor.SelectMask(28);
+                Check(coreEditor.Matrix.Visible && coreEditor.Draft.IsolationMask == 48,
+                    "Exclusive range did not follow the game selection");
                 tuning.InvokeItem((int)PageId.Graphics);
                 var gpuPanels = Field<DBPanel[]>(form, "gfxTabPanels");
                 var gpuTabs = Field<TechTabs>(form, "gfxTabs");
@@ -139,7 +151,7 @@ namespace PaviseApp
                 gpuTabs.Index = 1; gpuTabs.Index = 0;
                 Check(gpuPanels[0].AutoScrollPosition.Y == scrollY, "Switching an inner tab lost scroll");
                 tuning.InvokeItem((int)PageId.Policy);
-                Check(policyTabs.Index == 3, "Switching category reset its sub-tab");
+                Check(policyTabs.Index == 2, "Switching category reset its sub-tab");
                 tuning.InvokeItem((int)PageId.Graphics);
                 Check(gpuPanels[0].AutoScrollPosition.Y == scrollY, "Switching category lost scroll");
 
@@ -158,7 +170,14 @@ namespace PaviseApp
                     "Rebuild lost an inactive tab's scroll");
                 Check(Field<int>(form, "mainReturnPage") == (int)PageId.Log, "Rebuild overwrote the return destination");
                 tuning.InvokeItem((int)PageId.Policy);
-                Check(Field<TechTabs>(form, "policyTabs").Index == 3, "Rebuild lost an inactive page's sub-tab");
+                Check(Field<TechTabs>(form, "policyTabs").Index == 2, "Rebuild lost an inactive page's sub-tab");
+                tuning.InvokeItem((int)PageId.CoreScheduling);
+                coreEditor = Field<CoreSchedulingPanel>(form, "coreSchedulingPanel");
+                Check(coreEditor.Draft.GameMask == 28 && coreEditor.Draft.IsolationMask == 48
+                    && coreEditor.SaveButton.Enabled,
+                    "Rebuild lost the core scheduling draft");
+                Check(CoreScheduling.LoadGlobal().GameMask == 12 && CoreScheduling.LoadGlobal().IsolationMask == 12,
+                    "Switching or rebuilding unexpectedly saved the draft");
                 tuning.InvokeItem((int)PageId.Graphics);
                 Field<AdvancedBackBar>(form, "advBackBar").BackRequested();
                 Check(main.Selected == (int)PageId.Log && main.Visible, "Return did not restore the entry page");
@@ -167,6 +186,12 @@ namespace PaviseApp
                 Check(Settings.LoadStr("DeepTuningLastPage", "") == ((int)PageId.Graphics).ToString(), "Last section was not persisted");
 
                 var hits = (List<SearchHit>)Call(form, "QuerySettingCards", "");
+                SearchHit isolationHit = hits.Find(delegate(SearchHit hit) { return hit.PageId == (int)PageId.CoreScheduling
+                    && hit.Card.Title == Lang.T("schedule.isolation.enable"); });
+                Check(isolationHit != null && isolationHit.PageName == Lang.T("nav.corescheduling"), "Isolation search is missing its standalone page");
+                Call(form, "OnSearchHitChosen", isolationHit);
+                Check(main.Selected == (int)PageId.CoreScheduling && Field<TechTabs>(form, "coreTabs").Index == 1
+                    && isolationHit.Card.Visible && prompts == 3, "Isolation search did not reveal the correct sub-tab");
                 SearchHit target = hits.Find(delegate(SearchHit hit) { return hit.PageId == (int)PageId.Environment; });
                 Check(target != null, "No search fixture target");
                 Call(form, "OnSearchHitChosen", target);
@@ -180,6 +205,8 @@ namespace PaviseApp
                 Call(form, "OnSearchHitChosen", target);
                 Check(main.Selected == (int)PageId.Environment && prompts == 4, "Don't-show-again was ignored");
 
+                CheckProfileCoreNavigation(form, mode, data);
+
                 Theme.SetLight(light);
                 Call(form, "RebuildUi");
                 CheckRebuildCaches(form);
@@ -187,6 +214,13 @@ namespace PaviseApp
                 Field<TechTabs>(form, "policyTabs").Index = 0;
                 Settle(form);
                 Save(form, Path.Combine(output, "tuning-" + language + "-" + (light ? "light" : "dark") + ".png"));
+                form.SelectPageForTest((int)PageId.CoreScheduling);
+                foreach (int tab in new[] { 0, 1 })
+                {
+                    Field<TechTabs>(form, "coreTabs").Index = tab;
+                    Settle(form);
+                    Save(form, Path.Combine(output, "core-" + (tab == 0 ? "game" : "isolation") + "-" + language + "-" + (light ? "light" : "dark") + ".png"));
+                }
                 Field<AdvancedBackBar>(form, "advBackBar").BackRequested();
                 Settle(form);
                 Save(form, Path.Combine(output, "main-" + language + "-" + (light ? "light" : "dark") + ".png"));
@@ -203,6 +237,39 @@ namespace PaviseApp
             Console.WriteLine("PASS full-window language=" + language + " light=" + light);
         }
 
+        private static void CheckProfileCoreNavigation(PanelForm form, GameMode mode, string data)
+        {
+            var profile = new GameProfile { Id = "navigation-core-profile", Name = "NAVIGATION CORE FIXTURE",
+                Root = data, ExecutablePath = Path.Combine(data, "fixture.exe") };
+            Field<List<GameProfile>>(mode, "profiles").Add(profile);
+            form.SelectPageForTest((int)PageId.Library);
+            Call(form, "ShowGameConfigPage", profile.Id);
+            Field<TechTabs>(form, "cfgTabs").Index = 1;
+            var editor = Field<CoreSchedulingPanel>(form, "cfgCoreSchedulingPanel");
+            editor.FollowToggle.Checked = false; editor.SelectMask(48);
+            // 独占只有全局一份 逐游戏页给只读摘要 不给开关
+            Check(!editor.IsolationToggle.Visible && !editor.IsolationToggle.Enabled,
+                "Profile must show the exclusive setting read-only");
+            Check(Field<DBPanel>(form, "pageGameConfig").Visible
+                && Field<NavRail>(form, "nav").Selected == (int)PageId.Library,
+                "Profile core page navigated away from the profile");
+            string globalStored = Settings.LoadStr(CoreScheduling.Key, "");
+            string profileStored = CoreScheduling.ProfileToken(mode.GetProfiles().Find(delegate(GameProfile p) { return p.Id == profile.Id; }));
+            Call(form, "RebuildUi");
+            editor = Field<CoreSchedulingPanel>(form, "cfgCoreSchedulingPanel");
+            Check(Field<DBPanel>(form, "pageGameConfig").Visible, "Rebuild hid the profile page");
+            Check(editor.Draft.GameMask == 48 && !editor.FollowToggle.Checked,
+                "Rebuild lost the profile draft: game=" + editor.Draft.GameMask + " follow=" + editor.FollowToggle.Checked);
+            Check(Field<TechTabs>(form, "cfgTabs").Index == 1,
+                "Rebuild lost the profile tab: " + Field<TechTabs>(form, "cfgTabs").Index);
+            Check(!editor.IsolationToggle.Visible, "Rebuild restored the profile exclusive switch");
+            Check(Settings.LoadStr(CoreScheduling.Key, "") == globalStored
+                && CoreScheduling.ProfileToken(mode.GetProfiles().Find(delegate(GameProfile p) { return p.Id == profile.Id; })) == profileStored,
+                "Profile rebuilding saved an uncommitted draft");
+            form.SelectPageForTest((int)PageId.Library);
+            Field<List<GameProfile>>(mode, "profiles").RemoveAll(delegate(GameProfile p) { return p.Id == profile.Id; });
+        }
+
         private static void Settle(PanelForm form)
         {
             Field<NavRail>(form, "nav").SnapToSelection();
@@ -214,7 +281,7 @@ namespace PaviseApp
 
         private static void CheckRebuildCaches(PanelForm form)
         {
-            Check(Field<List<GuardVeil>>(form, "guardVeils").Count == 1,
+            Check(Field<List<GuardVeil>>(form, "guardVeils").Count == 2,
                 "Rebuild retained disposed guard veils");
             Check(Field<List<Action>>(form, "themeRefreshers").Count == 1,
                 "Rebuild duplicated theme refresh callbacks");
@@ -248,7 +315,7 @@ namespace PaviseApp
         {
             var links = new List<Control>();
             FindOverviewLinks(overview, links);
-            Check(links.Count == 3, "Overview must retain its three help/feedback links");
+            Check(links.Count == 2, "Overview must retain its notice and help/feedback entries");
             links.Sort(delegate(Control a, Control b) { return a.Left.CompareTo(b.Left); });
             Check(links[0].Left >= Theme.S(276), "Overview links overlap readiness status");
             for (int i = 0; i < links.Count; i++)
@@ -256,7 +323,7 @@ namespace PaviseApp
                 Check(links[i].Parent.ClientRectangle.Contains(links[i].Bounds), "Overview footer link clipped");
                 if (i > 0) Check(links[i - 1].Right < links[i].Left, "Overview footer links overlap");
             }
-            Check(Math.Abs(links[2].Right - (links[2].Parent.Width - Theme.S(30))) <= 2,
+            Check(Math.Abs(links[1].Right - (links[1].Parent.Width - Theme.S(30))) <= 2,
                 "Overview still reserves an empty slot for the removed entry");
         }
 
@@ -276,11 +343,11 @@ namespace PaviseApp
         private static void CheckScaledRail(string output)
         {
             foreach (float scale in new[] { 1f, 1.25f, 1.5f, 2f, 3f })
-            foreach (int language in new[] { 0, 1 })
+            foreach (int language in new[] { 0, 1, 2 })
             {
                 Dpi.Scale = scale; Theme.DropFontCache(); Lang.Cur = language;
-                string[] names = { Lang.T("v20.advanced.nav.policy"), Lang.T("v20.advanced.nav.anticheat"), Lang.T("nav.graphics"), Lang.T("v20.advanced.nav.system"), Lang.T("v20.advanced.nav.irq") };
-                using (var rail = new NavRail(names, new[] { "settings", "acshield", "gpu", "chip", "chip" }))
+                string[] names = { Lang.T("v20.advanced.nav.policy"), Lang.T("nav.corescheduling"), Lang.T("v20.advanced.nav.anticheat"), Lang.T("nav.graphics"), Lang.T("v20.advanced.nav.system"), Lang.T("v20.advanced.nav.irq") };
+                using (var rail = new NavRail(names, new[] { "settings", "chip", "acshield", "gpu", "chip", "chip" }))
                 {
                     rail.Size = new Size(Theme.S(224), Theme.S(760));
                     rail.ShowBranding = false;
@@ -292,15 +359,15 @@ namespace PaviseApp
                     rail.ItemInvoked = delegate(int item) { selected = item; };
                     Call(rail, "OnKeyDown", new KeyEventArgs(Keys.End));
                     Call(rail, "OnKeyDown", new KeyEventArgs(Keys.Enter));
-                    Check(selected == 4, "Keyboard category activation failed");
+                    Check(selected == 5, "Keyboard category activation failed");
                     for (int i = 0; i < names.Length; i++)
                     {
                         int y = (int)Call(rail, "SlotY", i);
-                        Check(y >= Theme.S(127) && y + Theme.S(47) <= Theme.S(450), "Category overlaps title or footer");
+                        Check(y >= Theme.S(127) && y + Theme.S(47) <= Theme.S(510), "Category overlaps title or footer");
                         int textX = Theme.S(14) + Theme.S(20) + Theme.S(20) + Theme.S(16);
                         int textWidth = rail.Width - Theme.S(14) - Theme.S(10) - textX;
                         Check(TextRenderer.MeasureText(names[i], Theme.UI(8.5f, true)).Width <= textWidth,
-                            "Category title does not fit even at the minimum font: " + names[i]);
+                            "Category title does not fit even at the minimum font: " + names[i] + " scale=" + scale);
                     }
                     if (scale == 3f) Save(rail, Path.Combine(output, "rail-300-" + language + ".png"));
                 }

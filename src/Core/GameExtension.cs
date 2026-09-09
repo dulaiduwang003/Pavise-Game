@@ -124,7 +124,6 @@ namespace PaviseApp
 
         public static void Start()
         {
-            ScalingService.Start();
             try { if (Current != null) Current.Start(); }
             catch (Exception ex) { Logger.Log("扩展模块启动失败 " + ex.Message); }
         }
@@ -143,7 +142,6 @@ namespace PaviseApp
 
         public static void NotifySession(GameProfile profile, int rendererPid, long rendererCreation, bool active)
         {
-            ScalingService.NotifySession(profile, rendererPid, rendererCreation, active);
             try { if (Current != null) Current.NotifySession(profile, rendererPid, rendererCreation, active); }
             catch { }
         }
@@ -153,15 +151,13 @@ namespace PaviseApp
             try
             {
                 if (profile == null) return null;
-                GameCardExtension existing = Current != null && Current.AppliesTo(profile) ? Current.CreateCard(profile) : null;
-                return new ScalingCardPanel(profile, existing);
+                return Current != null && Current.AppliesTo(profile) ? Current.CreateCard(profile) : null;
             }
             catch (Exception ex) { Logger.Log("扩展卡片创建失败 " + ex.Message); return null; }
         }
 
         public static void Shutdown(int waitMs)
         {
-            ScalingService.Shutdown(waitMs);
             try { if (Current != null) Current.Shutdown(waitMs); }
             catch { }
         }

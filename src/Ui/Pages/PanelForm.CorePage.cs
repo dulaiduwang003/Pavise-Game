@@ -1,5 +1,5 @@
-// @author bdth 2074055628@qq.com
-// 文件用途 构建手动游戏选核与可展开的核心隔离设置页
+﻿// @author bdth 2074055628@qq.com
+// 文件用途 构建核心调度独立页面 一张选核图加游戏独占开关
 using System;
 
 using System.Drawing;
@@ -11,6 +11,7 @@ namespace PaviseApp
     internal partial class PanelForm
     {
         private CoreSchedulingPanel coreSchedulingPanel;
+        private DBPanel coreScrollPanel;
 
 #if PAVISE_SELFTEST
         internal static string CpuNameOverride;
@@ -45,18 +46,32 @@ namespace PaviseApp
                 CpuTopology.CountSetBits(CpuTopology.AllMask), smt);
         }
 
-        private void BuildCorePage(Control panel)
+        private void BuildCoreSchedulingPage()
         {
-            RoundPanel topo = MakeConsolePanel(panel, 6, 2, ScrollContentW, 62, true);
-            CardLabel(topo, CpuDisplayName(), 16, 10, ScrollContentW - 32, 20, 9.2f, true, Theme.Fg);
-            CardLabel(topo, TopologyLine(), 16, 32, ScrollContentW - 32, 18, 7.9f, false, Theme.Dim);
+            int y = PageHeader(pageCoreScheduling, Lang.T("nav.corescheduling"),
+                Lang.T("schedule.page.sub"), 2);
+            var banner = new ModuleBanner();
+            banner.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(72));
+            banner.Code = "CORE SCHEDULING // 10";
+            banner.TitleText = CpuDisplayName();
+            banner.Detail = TopologyLine();
+            banner.Glyph = "chip";
+            pageCoreScheduling.Controls.Add(banner);
+            y += 84;
+
+            // 分配与独占合成一页 选核只选一次 独占是它的附加项
+            coreScrollPanel = new DBPanel();
+            coreScrollPanel.SetBounds(Theme.S(20), Theme.S(y), Theme.S(PageW - 40), Theme.S(PageH - y - 8));
+            coreScrollPanel.BackColor = Theme.Bg; coreScrollPanel.AutoScroll = true;
+            Native.Dark(coreScrollPanel);
+            pageCoreScheduling.Controls.Add(coreScrollPanel);
+
             coreSchedulingPanel = new CoreSchedulingPanel(ScrollContentW - 16, null,
                 delegate(CoreSchedulingPlan plan, string expected, string profileToken, bool follow)
                 { return gameMode.SaveCoreScheduling(plan, expected, null, false, null); },
                 delegate { return gameMode.IsActive; });
-            coreSchedulingPanel.Location = new Point(Theme.S(14), Theme.S(76));
-            panel.Controls.Add(coreSchedulingPanel);
-            policySync.Add(SyncCorePage);
+            coreSchedulingPanel.Location = new Point(Theme.S(14), Theme.S(4));
+            coreScrollPanel.Controls.Add(coreSchedulingPanel);
         }
 
         private void SyncCorePage()

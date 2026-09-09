@@ -19,6 +19,7 @@ namespace PaviseApp
         private void BuildGuardVeils()
         {
             AddGuardVeil(pagePolicy);
+            AddGuardVeil(pageCoreScheduling);
             SyncGuardVeils();
         }
 
@@ -155,6 +156,12 @@ namespace PaviseApp
             if (pages != null) foreach (DBPanel page in pages) SavePagePosition(page);
             string keepCfg = pageGameConfig != null && !pageGameConfig.IsDisposed
                 && pageGameConfig.Visible ? cfgProfileId : null;
+            PageViewPosition keepCfgPosition = keepCfg != null
+                ? PageViewPosition.Capture(pageGameConfig, navigationScale) : null;
+            CoreSchedulingPanel.EditorState keepCoreDraft = coreSchedulingPanel != null && !coreSchedulingPanel.IsDisposed
+                ? coreSchedulingPanel.CaptureEditorState() : null;
+            CoreSchedulingPanel.EditorState keepCfgCoreDraft = keepCfg != null && cfgCoreSchedulingPanel != null
+                && !cfgCoreSchedulingPanel.IsDisposed ? cfgCoreSchedulingPanel.CaptureEditorState() : null;
             foreach (Control c in Controls) old.Add(c);
             Controls.Clear();
             foreach (var c in old) c.Dispose();
@@ -176,9 +183,18 @@ namespace PaviseApp
                 modeSwatches[i].Clear();
             }
             BuildUi(appIcon);
+            coreSchedulingPanel.RestoreEditorState(keepCoreDraft);
             mainReturnPage = keepReturn;
             nav.Select(keep);
-            if (keepCfg != null) ShowGameConfigPage(keepCfg);
+            if (keepCfg != null)
+            {
+                ShowGameConfigPage(keepCfg);
+                if (cfgProfile != null && cfgCoreSchedulingPanel != null)
+                {
+                    cfgCoreSchedulingPanel.RestoreEditorState(keepCfgCoreDraft);
+                    if (keepCfgPosition != null) keepCfgPosition.Restore(pageGameConfig, Dpi.Scale);
+                }
+            }
             if (UiActive) RefreshSlowStateAsync();
         }
 

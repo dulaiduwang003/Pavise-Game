@@ -1,4 +1,4 @@
-// 文件用途 公开的自测构建只跑隔离回归 从不走 Program.Main
+﻿// 文件用途 公开的自测构建只跑隔离回归 从不走 Program.Main
 #if PAVISE_SELFTEST && PAVISE_SELFTEST_RUNNER
 using System;
 using System.Collections;
@@ -108,7 +108,6 @@ namespace PaviseApp
             };
             // 显式白名单 不含真实进程矩阵 截图模式 ETW 和调优运行时
             run("ResetCleanup", delegate { RunResetCleanupRegressionTests(); });
-            run("WindowScaling", delegate { RunScalingRegressionTests(); });
             run("CacheWarm", delegate { RunCacheWarmRegressionTests(); });
             run("ResetFlow", delegate { RunResetFlowRegressionTests(); });
             run("OptionalServicePause", delegate { RunOptionalServicePauseRegressionTests(); });

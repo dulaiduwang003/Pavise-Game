@@ -124,7 +124,8 @@ namespace PaviseApp
             PolicyCatalog.KeyPauseServices,
             // 无线扫描抑制已下架 会话和手动入口都没有了
             //   旧实现切媒体流模式会把驱动搞掉线 不进极限清单
-            PolicyCatalog.KeyVramShield,
+            // 显存驻留也不进清单 它按显存吃紧才动作 收益取决于游戏怎么管纹理
+            //   没有跨游戏的实测支撑 默认关 想用的自己开 极限档不替用户决定
             PolicyCatalog.KeyAudioLowLat, PolicyCatalog.KeyEnglishInput, PolicyCatalog.KeyPowerYield,
             PolicyCatalog.KeyNvMaxPerf, PolicyCatalog.KeyNvShaderCache,
             PolicyCatalog.KeyAmdAntiLag, PolicyCatalog.KeyIntelLowLatency, PolicyCatalog.KeyIntelEndurance,
