@@ -8,9 +8,7 @@ tests/*
 !tests/SelfTests.CoreIsolation.cs
 !tests/CoreSchedulingIntegrationRunner.cs
 !tests/CoreIsolationIntegrationRunner.cs
-!tests/SelfTests.Scaling.cs
 !tests/SelfTests.CacheWarm.cs
-!tests/ScalingIntegrationRunner.cs
 !tests/AntiCheatChecks.cs
 !tests/Run-AntiCheatChecks.ps1
 !tests/SelfTests.AntiCheatCatalog.cs
@@ -90,8 +88,6 @@ tools/*
 !tools/GainBench2133/
 !tools/GainBench2133/**
 !tools/Sync-VersionManifest.ps1
-!tools/Build-ScalingHost.ps1
-!tools/Test-Scaling.ps1
 !tools/Publish-VersionManifest.ps1
 !tools/RendererHandoffBench/
 tools/RendererHandoffBench/*
@@ -119,6 +115,8 @@ tools/HeterogeneousGpuBench/bin/
 !tools/OptimizationRiskBench/Summarize-Review.ps1
 !tools/OptimizationRiskBench/Run.ps1
 !tools/OptimizationRiskBench/README.md
+!tools/CoreJointBench/
+!tools/CoreJointBench/**
 !tools/OptimizationRiskBench/RESULTS.md
 !tools/CpuMemoryBench/
 !tools/CpuMemoryBench/**

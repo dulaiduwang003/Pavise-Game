@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -6,27 +6,70 @@ namespace PaviseApp
 {
     internal sealed class CoreSchedulingPanel : DBPanel
     {
-        internal readonly CoreMatrix Matrix, IsolationMatrix;
+        internal readonly CoreMatrix Matrix;
+        // 独占范围由游戏选核推出 不再有第二张选核图
         internal readonly Toggle IsolationToggle, FollowToggle;
-        internal readonly PillButton SaveButton, PhysicalOnlyButton, IsolationDetailsButton;
+        internal readonly PillButton SaveButton, PhysicalOnlyButton, TrimForExclusiveButton;
         internal CoreSchedulingPlan Draft;
-        internal bool IsolationExpanded { get; private set; }
         private CoreSchedulingPlan baseline;
         private string globalVersion, profileVersion, lastMessage, matrixTopology;
         private bool syncing, savedFollow;
         private readonly bool perGame;
-        private readonly Label summary, isolationHelp, legend, status;
-        private readonly SettingCard followCard, gameCard, isolationCard;
-        private readonly RoundPanel isolationBody, footer;
-        private readonly ActionHost isolationActions;
+        private readonly Label summary, status;
+        private readonly SettingCard followCard, gameCard, exclusiveCard;
+        private readonly RoundPanel footer;
         private bool lightTheme;
         private int InnerWidth { get { return Width - Theme.S(60); } }
-        private readonly FlowLayoutPanel shortcuts, isolationShortcuts;
+        private readonly FlowLayoutPanel shortcuts;
         private readonly PillButton reloadButton;
         private readonly Func<GameProfile> readProfile;
         private readonly Func<CoreSchedulingPlan, string, string, bool, string> save;
         private readonly Func<bool> active;
         private readonly Timer runtimeRefresh;
+
+        internal sealed class EditorState
+        {
+            internal CoreSchedulingPlan Draft, Baseline;
+            internal string GlobalVersion, ProfileVersion, LastMessage;
+            internal bool FollowGlobal, SavedFollow;
+        }
+
+        internal EditorState CaptureEditorState()
+        {
+            return new EditorState { Draft = Draft.Clone(), Baseline = baseline.Clone(),
+                GlobalVersion = globalVersion, ProfileVersion = profileVersion, LastMessage = lastMessage,
+                FollowGlobal = FollowToggle.Checked, SavedFollow = savedFollow };
+        }
+
+        internal void RestoreEditorState(EditorState state)
+        {
+            if (state == null) return;
+            Draft = state.Draft.Clone(); baseline = state.Baseline.Clone();
+            globalVersion = state.GlobalVersion; profileVersion = state.ProfileVersion;
+            lastMessage = state.LastMessage; savedFollow = state.SavedFollow;
+            syncing = true; FollowToggle.SetSilently(state.FollowGlobal); syncing = false;
+            RefreshRestoredProfileIsolation();
+            RefreshView();
+        }
+
+        private void RefreshRestoredProfileIsolation()
+        {
+            if (!perGame || readProfile() == null
+                || profileVersion != CoreScheduling.ProfileToken(readProfile())) return;
+            string currentVersion = CoreScheduling.GlobalToken();
+            if (currentVersion == globalVersion || currentVersion == "unreadable") return;
+            CoreSchedulingPlan global = CoreScheduling.LoadGlobal();
+            if (global.ReadFailed || global.Topology != CoreScheduling.CurrentStamp
+                || currentVersion != CoreScheduling.GlobalToken()
+                || profileVersion != CoreScheduling.ProfileToken(readProfile())) return;
+
+            // 逐游戏只保存选核，隔离始终取全局；更新引用时保留本地草稿与跟随选择。
+            // 基线也同步隔离字段，避免仅全局隔离变化就把逐游戏页标成未保存。
+            globalVersion = currentVersion;
+            Draft.IsolationOn = baseline.IsolationOn = global.IsolationOn;
+            Draft.IsolationMask = baseline.IsolationMask = global.IsolationMask;
+            lastMessage = null;
+        }
 
         internal CoreSchedulingPanel(int width, Func<GameProfile> profile,
             Func<CoreSchedulingPlan, string, string, bool, string> savePlan, Func<bool> isActive)
@@ -43,39 +86,30 @@ namespace PaviseApp
             PhysicalOnlyButton = AddShortcut(shortcuts, Lang.T("core.preset.physical"), SelectSingleThreadPerCore);
             AddShortcut(shortcuts, Lang.T("schedule.clear"), delegate { SelectMask(0); });
             AddShortcut(shortcuts, Lang.T("core.preset.invert"), delegate { SelectMask(~Draft.GameMask & CpuTopology.AllMask); });
-            AddDieShortcuts(shortcuts, false);
-            Matrix = NewMatrix(gameCard, false); Matrix.SelectionChanged = SelectMask;
+            // 默认是全选 那样独占之外一颗核都不剩 这个按钮把选核收到刚好能独占
+            TrimForExclusiveButton = AddShortcut(shortcuts, Lang.T("core.preset.sparesystem"), delegate
+            {
+                ulong trimmed = CoreScheduling.TrimForExclusive(Draft.GameMask, CpuTopology.PhysicalCoreMasks());
+                if (trimmed != 0) SelectMask(trimmed);
+            });
+            AddDieShortcuts(shortcuts);
+            Matrix = NewMatrix(gameCard); Matrix.SelectionChanged = SelectMask;
             summary = MakeLabel(gameCard, null);
-            isolationCard = Card(perGame ? 3 : 2, "schedule.isolation.enable", "");
-            isolationActions = new ActionHost { Height = Theme.S(30),
-                Width = perGame ? Theme.S(46) : Theme.S(256), BackColor = Theme.Card };
-            isolationCard.HostTop = true; isolationCard.Host(isolationActions);
-            IsolationToggle = Switch("schedule.isolation.enable");
-            isolationActions.Controls.Add(IsolationToggle);
-            IsolationToggle.Left = isolationActions.Width - IsolationToggle.Width;
+            // 独占是游戏选核的附加项 放在同一页选核图下方 不再单开一页也不再选第二遍
+            exclusiveCard = Card(perGame ? 3 : 2, "schedule.exclusive", "");
+            IsolationToggle = Switch("schedule.exclusive");
+            exclusiveCard.Host(IsolationToggle);
+            // 独占只有全局一份 逐游戏页只读展示 免得看起来能按游戏设
+            IsolationToggle.Visible = !perGame;
             IsolationToggle.CheckedChanged += delegate
             {
-                if (syncing) return;
+                if (syncing || perGame) return;
                 Draft.IsolationOn = IsolationToggle.Checked;
-                if (Draft.IsolationOn && Draft.IsolationMask == 0) IsolationExpanded = true;
+                SyncExclusiveMask();
                 Edited();
             };
-            IsolationDetailsButton = new PillButton(Lang.T("schedule.isolation.expand"));
-            IsolationDetailsButton.Size = new Size(Theme.S(194), Theme.S(30));
-            IsolationDetailsButton.Visible = !perGame;
-            IsolationDetailsButton.Click += delegate { SetIsolationExpanded(!IsolationExpanded); };
-            isolationActions.Controls.Add(IsolationDetailsButton);
-            isolationBody = Surface();
-            isolationHelp = MakeLabel(isolationBody, "schedule.help.isolation");
-            isolationShortcuts = Shortcuts(isolationBody);
-            AddShortcut(isolationShortcuts, Lang.T("schedule.clear"), delegate { SelectIsolationMask(0); });
-            AddShortcut(isolationShortcuts, Lang.T("core.preset.invert"),
-                delegate { SelectIsolationMask(~Draft.IsolationMask & CpuTopology.AllMask); });
-            AddDieShortcuts(isolationShortcuts, true);
-            IsolationMatrix = NewMatrix(isolationBody, true); IsolationMatrix.SelectionChanged = SelectIsolationMask;
-            legend = MakeLabel(isolationBody, "schedule.legend");
             footer = Surface();
-            SaveButton = new PillButton(Lang.T("schedule.save"), BtnKind.Primary);
+            SaveButton = new PillButton(Lang.T(perGame ? "schedule.save" : "schedule.save.global"), BtnKind.Primary);
             SaveButton.Size = new Size(Theme.S(150), Theme.S(36));
             SaveButton.Bg = Theme.Card;
             SaveButton.Click += delegate { SaveDraft(); }; footer.Controls.Add(SaveButton);
@@ -93,7 +127,10 @@ namespace PaviseApp
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing && runtimeRefresh != null) runtimeRefresh.Dispose();
+            if (disposing)
+            {
+                if (runtimeRefresh != null) runtimeRefresh.Dispose();
+            }
             base.Dispose(disposing);
         }
 
@@ -103,31 +140,18 @@ namespace PaviseApp
                 Size = new Size(Theme.S(46), Theme.S(30)) };
         }
 
-        private SettingCard Card(int channel, string key, string desc)
+        private SettingCard Card(int channel, string key, string desc, Control parent = null)
         {
             var card = new SettingCard { Channel = channel, Title = Lang.T(key), Desc = desc,
                 Width = Width, HostTop = true };
-            Controls.Add(card); return card;
+            (parent ?? this).Controls.Add(card); return card;
         }
 
-        private RoundPanel Surface()
+        private RoundPanel Surface(Control parent = null)
         {
             var panel = new RoundPanel { Width = Width, Fill = Theme.Card, Border = Theme.Stroke,
                 BackColor = Theme.Bg, Radius = Theme.S(12), AccentEdge = true };
-            Controls.Add(panel); return panel;
-        }
-
-        // Like the existing settings action groups, share the card surface without adding another frame.
-        private sealed class ActionHost : RoundPanel
-        {
-            protected override void OnPaintBackground(PaintEventArgs e)
-            {
-                var card = Parent as RoundPanel;
-                Fill = card == null ? Theme.Card : card.Fill;
-                if (Backdrop.AppliesTo(this)) Backdrop.PaintOnCard(e.Graphics, this, e.ClipRectangle);
-                else using (var brush = new SolidBrush(Fill)) e.Graphics.FillRectangle(brush, e.ClipRectangle);
-            }
-            protected override void OnPaint(PaintEventArgs e) { }
+            (parent ?? this).Controls.Add(panel); return panel;
         }
 
         private Label MakeLabel(Control parent, string key)
@@ -138,11 +162,11 @@ namespace PaviseApp
             parent.Controls.Add(l); return l;
         }
 
-        private CoreMatrix NewMatrix(Control parent, bool isolation)
+        private CoreMatrix NewMatrix(Control parent)
         {
             var m = new CoreMatrix { MarkExclusive = false, SchedulingOverlay = true,
-                SelectWholeCore = isolation, SelectionColor = isolation ? CoreMatrix.IsolationColor : CoreMatrix.GameColor,
-                PrimaryTag = Lang.T(isolation ? "schedule.isolation.short" : "core.tag.game"),
+                SelectWholeCore = false, SelectionColor = CoreMatrix.GameColor,
+                PrimaryTag = Lang.T("core.tag.game"),
                 Width = InnerWidth, Left = Theme.S(42), BackColor = Theme.Card };
             parent.Controls.Add(m); return m;
         }
@@ -161,22 +185,21 @@ namespace PaviseApp
             b.Click += delegate { action(); }; panel.Controls.Add(b); return b;
         }
 
-        private void AddDieShortcuts(FlowLayoutPanel panel, bool isolation)
+        private void AddDieShortcuts(FlowLayoutPanel panel)
         {
             ulong[] dies = CpuTopology.DieMasks();
             for (int d = 0; d < dies.Length; d++)
             {
                 ulong mask = dies[d];
-                AddShortcut(panel, "CCD " + d, delegate
-                { if (isolation) SelectIsolationMask(mask); else SelectMask(mask); }).Tag = "ccd";
+                AddShortcut(panel, "CCD " + d, delegate { SelectMask(mask); }).Tag = "ccd";
             }
         }
 
-        private void RebuildDieShortcuts(FlowLayoutPanel panel, bool isolation)
+        private void RebuildDieShortcuts(FlowLayoutPanel panel)
         {
             for (int i = panel.Controls.Count - 1; i >= 0; i--)
                 if (object.Equals(panel.Controls[i].Tag, "ccd")) panel.Controls[i].Dispose();
-            AddDieShortcuts(panel, isolation);
+            AddDieShortcuts(panel);
         }
 
         private void SelectSingleThreadPerCore()
@@ -202,7 +225,6 @@ namespace PaviseApp
             savedFollow = perGame && !HasOverride(profile);
             syncing = true; FollowToggle.SetSilently(savedFollow); syncing = false;
             lastMessage = null;
-            if (!perGame && Draft.IsolationOn && Draft.IsolationMask == 0) IsolationExpanded = true;
             RefreshView();
         }
 
@@ -218,20 +240,18 @@ namespace PaviseApp
         internal void SelectMask(ulong mask)
         {
             if (CpuTopology.MultiGroup || perGame && FollowToggle.Checked) return;
-            Draft.GameMask = mask; Edited(true);
-        }
-
-        internal void SelectIsolationMask(ulong mask)
-        {
-            if (perGame || CpuTopology.MultiGroup) return;
-            ulong[] cores = CpuTopology.PhysicalCoreMasks();
-            Draft.IsolationMask = CoreScheduling.WholeCores(mask, cores) & ~CoreScheduling.WholeCores(1, cores);
+            Draft.GameMask = mask;
+            SyncExclusiveMask();
             Edited(true);
         }
 
-        internal void SetIsolationExpanded(bool expanded)
+        // 独占范围永远由当前游戏选核推出 推不出来就当没勾 免得留下一个开着却空的范围
+        private void SyncExclusiveMask()
         {
-            IsolationExpanded = !perGame && expanded; RefreshView();
+            if (perGame) return;
+            ulong exclusive = CoreScheduling.ExclusiveMaskFor(Draft.GameMask, CpuTopology.PhysicalCoreMasks());
+            Draft.IsolationMask = exclusive;
+            if (exclusive == 0) Draft.IsolationOn = false;
         }
 
         private void Edited(bool selectionChanged = false)
@@ -251,40 +271,44 @@ namespace PaviseApp
 
         internal void RefreshView()
         {
-            if (Draft == null) return;
+            if (Draft == null || IsDisposed) return;
             string topology = CoreScheduling.CurrentStamp;
             if (matrixTopology != topology)
             {
                 matrixTopology = topology;
-                Matrix.Height = Matrix.LayoutFor(InnerWidth); IsolationMatrix.Height = IsolationMatrix.LayoutFor(InnerWidth);
-                RebuildDieShortcuts(shortcuts, false); RebuildDieShortcuts(isolationShortcuts, true);
+                Matrix.Height = Matrix.LayoutFor(InnerWidth);
+                RebuildDieShortcuts(shortcuts);
             }
             bool follow = perGame && FollowToggle.Checked;
             CoreSchedulingPlan display = follow ? CoreScheduling.LoadGlobal() : Draft;
             syncing = true; IsolationToggle.SetSilently(display.IsolationOn); syncing = false;
             RefreshSurfaces();
-            Matrix.SelectionColor = CoreMatrix.GameColor; IsolationMatrix.SelectionColor = CoreMatrix.IsolationColor;
+            Matrix.SelectionColor = CoreMatrix.GameColor;
             summary.ForeColor = Theme.Accent;
             bool editable = !follow && !CpuTopology.MultiGroup;
             Matrix.Enabled = editable; shortcuts.Enabled = editable;
+            // 推不出独占范围时开关不可用 免得勾了一个空范围
+            ulong exclusive = CoreScheduling.ExclusiveMaskFor(display.GameMask, CpuTopology.PhysicalCoreMasks());
             bool selectedSiblings = false;
             foreach (ulong core in CpuTopology.PhysicalCoreMasks())
                 if (CpuTopology.CountSetBits(display.GameMask & core) > 1) { selectedSiblings = true; break; }
             PhysicalOnlyButton.Enabled = editable && selectedSiblings;
-            IsolationToggle.Enabled = !perGame && (CoreScheduling.IsolationSupported || Draft.IsolationOn);
-            IsolationMatrix.Enabled = isolationShortcuts.Enabled = !perGame && !CpuTopology.MultiGroup;
-            IsolationMatrix.DisabledMask = CoreScheduling.WholeCores(1, CpuTopology.PhysicalCoreMasks());
-            Matrix.Selected = display.GameMask; IsolationMatrix.Selected = display.IsolationMask;
-            Matrix.SchedulingGameMask = IsolationMatrix.SchedulingGameMask = display.GameMask;
+            TrimForExclusiveButton.Enabled = editable && exclusive == 0
+                && CoreScheduling.TrimForExclusive(display.GameMask, CpuTopology.PhysicalCoreMasks()) != 0;
+            IsolationToggle.Enabled = !perGame && exclusive != 0
+                && (CoreScheduling.IsolationSupported || Draft.IsolationOn);
+            Matrix.Selected = display.GameMask;
+            Matrix.SchedulingGameMask = display.GameMask;
             Matrix.SchedulingIsolationMask = display.IsolationOn ? display.IsolationMask : 0;
-            IsolationMatrix.SchedulingIsolationMask = display.IsolationMask;
-            Matrix.Invalidate(); IsolationMatrix.Invalidate();
+            Matrix.Invalidate();
             summary.Text = Lang.F("schedule.summary", CpuTopology.DescribeMask(display.GameMask));
-            isolationCard.Desc = perGame ? Lang.F("schedule.isolation.global",
-                Lang.T(display.IsolationOn ? "schedule.on" : "schedule.off"), CpuTopology.DescribeMask(display.IsolationMask))
-                : display.IsolationOn ? Lang.F("schedule.isolation.range", CpuTopology.DescribeMask(display.IsolationMask))
-                : Lang.T("schedule.isolation.off");
-            IsolationDetailsButton.Text = Lang.T(IsolationExpanded ? "schedule.isolation.collapse" : "schedule.isolation.expand");
+            exclusiveCard.Desc = perGame
+                ? Lang.F("schedule.exclusive.global", Lang.T(display.IsolationOn ? "schedule.on" : "schedule.off"),
+                    CpuTopology.DescribeMask(display.IsolationMask))
+                : !CoreScheduling.IsolationSupported ? Lang.T("schedule.error.isolationunsupported")
+                : exclusive == 0 ? ExclusiveBlockedText()
+                : display.IsolationOn ? Lang.F("schedule.exclusive.on", CpuTopology.DescribeMask(display.IsolationMask))
+                : Lang.T("schedule.exclusive.off");
             string validation = CoreScheduling.Validate(Draft);
             bool dirty = Draft.Encode() != baseline.Encode() || FollowToggle.Checked != savedFollow;
             bool globalChanged = globalVersion != CoreScheduling.GlobalToken()
@@ -292,7 +316,8 @@ namespace PaviseApp
             SaveButton.Enabled = dirty && (follow || validation == null) && !globalChanged && globalVersion != "unreadable";
             string state = globalChanged ? Lang.T("schedule.error.changed")
                 : lastMessage ?? (validation != null && !follow ? Lang.T(validation)
-                : Lang.T(dirty ? "schedule.dirty" : active() ? "schedule.stored.active" : "schedule.stored"));
+                : Lang.T(dirty ? (perGame ? "schedule.dirty" : "schedule.dirty.global")
+                    : active() ? "schedule.stored.active" : "schedule.stored"));
             string prerequisite = CoreScheduling.PrerequisiteText(perGame ? readProfile() : null);
             string runtime = Lang.T(CoreIsolationClient.State);
             if (CoreIsolationClient.State == "schedule.isolation.active")
@@ -302,6 +327,16 @@ namespace PaviseApp
                 || CoreIsolationClient.State == "schedule.isolation.pending" || CoreIsolationClient.State == "schedule.isolation.failed"
                 || validation != null && !follow ? Theme.Danger : Theme.Dim;
             LayoutContent();
+        }
+
+        // 说清为什么推不出来 以及照着做什么 光说需要一颗核在全选时会让人莫名其妙
+        private string ExclusiveBlockedText()
+        {
+            ulong[] cores = CpuTopology.PhysicalCoreMasks();
+            ulong candidate = CoreScheduling.WholeCores(Draft.GameMask, cores);
+            if (candidate == 0) return Lang.T("schedule.exclusive.needcore");
+            int spare = CoreScheduling.SpareCoresOutside(candidate, cores);
+            return Lang.F("schedule.exclusive.needspare", cores.Length, cores.Length - spare, 2 - spare);
         }
 
         private int PlaceLabel(Label label, int y, int minHeight)
@@ -322,16 +357,15 @@ namespace PaviseApp
         {
             if (lightTheme == Theme.LightMode) return;
             lightTheme = Theme.LightMode; BackColor = Theme.Bg;
-            foreach (RoundPanel card in new RoundPanel[] { followCard, gameCard, isolationCard, isolationBody, footer })
+            foreach (RoundPanel card in new RoundPanel[] { followCard, gameCard, exclusiveCard, footer })
             {
                 card.BackColor = Theme.Bg; card.Fill = Theme.Card; card.Border = Theme.Stroke; card.Invalidate();
             }
-            foreach (FxControl control in new FxControl[] { FollowToggle, IsolationToggle, IsolationDetailsButton, SaveButton, reloadButton })
+            foreach (FxControl control in new FxControl[] { FollowToggle, IsolationToggle, SaveButton, reloadButton })
             { control.Bg = Theme.Card; control.Invalidate(); }
-            foreach (FlowLayoutPanel row in new[] { shortcuts, isolationShortcuts })
-                foreach (PillButton button in row.Controls) { button.Bg = Theme.Card; button.Invalidate(); }
-            foreach (Label label in new[] { summary, isolationHelp, legend }) label.ForeColor = Theme.Dim;
-            Matrix.BackColor = IsolationMatrix.BackColor = Theme.Card;
+            foreach (PillButton button in shortcuts.Controls) { button.Bg = Theme.Card; button.Invalidate(); }
+            summary.ForeColor = Theme.Dim;
+            Matrix.BackColor = Theme.Card;
         }
 
         private int CardHeaderHeight(SettingCard card, int hostWidth)
@@ -357,26 +391,19 @@ namespace PaviseApp
             gy = PlaceShortcuts(shortcuts, gy);
             Matrix.Top = gy;
             gameCard.Height = PlaceLabel(summary, Matrix.Bottom + Theme.S(8), 24) + Theme.S(12);
-            isolationCard.Top = gameCard.Bottom + gap;
-            isolationCard.Height = CardHeaderHeight(isolationCard, isolationActions.Width);
-            y = isolationCard.Bottom;
-            bool expanded = IsolationExpanded && !perGame;
-            isolationBody.Visible = expanded;
-            if (expanded)
-            {
-                isolationBody.Top = y + Theme.S(6);
-                int iy = PlaceLabel(isolationHelp, Theme.S(14), 32) + Theme.S(8);
-                iy = PlaceShortcuts(isolationShortcuts, iy);
-                IsolationMatrix.Top = iy;
-                isolationBody.Height = PlaceLabel(legend, IsolationMatrix.Bottom + Theme.S(8), 24) + Theme.S(12);
-                y = isolationBody.Bottom;
-            }
-            footer.Top = y + gap;
-            footer.Height = Math.Max(Theme.S(76), PlaceLabel(status, Theme.S(14), 48) + Theme.S(14));
-            SaveButton.Location = new Point(Width - Theme.S(18) - SaveButton.Width, (footer.Height - SaveButton.Height) / 2);
-            reloadButton.Location = new Point(SaveButton.Left - Theme.S(10) - reloadButton.Width, SaveButton.Top);
+            exclusiveCard.Top = gameCard.Bottom + gap;
+            exclusiveCard.Height = CardHeaderHeight(exclusiveCard, perGame ? 0 : IsolationToggle.Width);
+            LayoutFooter(footer, status, SaveButton, reloadButton, exclusiveCard.Bottom + gap);
             Height = footer.Bottom + Theme.S(4);
             ResumeLayout();
+        }
+
+        private void LayoutFooter(RoundPanel surface, Label label, PillButton saveButton, PillButton readButton, int top)
+        {
+            surface.Top = top;
+            surface.Height = Math.Max(Theme.S(76), PlaceLabel(label, Theme.S(14), 48) + Theme.S(14));
+            saveButton.Location = new Point(Width - Theme.S(18) - saveButton.Width, (surface.Height - saveButton.Height) / 2);
+            readButton.Location = new Point(saveButton.Left - Theme.S(10) - readButton.Width, saveButton.Top);
         }
     }
 }

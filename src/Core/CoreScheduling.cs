@@ -1,4 +1,4 @@
-// 手动调度方案。配置是一个记录；保存不代表 Windows 已执行进程落核。
+﻿// 手动调度方案。配置是一个记录；保存不代表 Windows 已执行进程落核。
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -57,7 +57,19 @@ namespace PaviseApp
             PolicyCatalog.KeyHeavySqueeze, HeavyMaskKey };
 
         // Runtime admission and readback are rechecked by the separate lease worker.
-        public static bool IsolationSupported { get { return IntPtr.Size == 8 && Native.OsBuild() >= 19041 && !CpuTopology.MultiGroup; } }
+#if PAVISE_SELFTEST
+        internal static bool? IsolationSupportedForTest;
+#endif
+        public static bool IsolationSupported
+        {
+            get
+            {
+#if PAVISE_SELFTEST
+                if (IsolationSupportedForTest.HasValue) return IsolationSupportedForTest.Value;
+#endif
+                return IntPtr.Size == 8 && Native.OsBuild() >= 19041 && !CpuTopology.MultiGroup;
+            }
+        }
 
         public static string Stamp(ulong all, ulong[] cores)
         {
@@ -73,6 +85,47 @@ namespace PaviseApp
             ulong result = 0;
             foreach (ulong core in cores) if ((core & mask) != 0) result |= core;
             return result;
+        }
+
+        // 独占范围直接由游戏选核推出 不再让用户选第二遍
+        //   只对齐到整颗物理核 因为隔离只能按整核收走 选哪几颗由用户自己决定
+        //   CPU 0 所在核也可以独占 真正的底线是下面这条 独占之外必须留得下两颗完整物理核
+        //   推不出可用范围时返回 0 调用方据此判定独占开不起来
+        public static ulong ExclusiveMaskFor(ulong gameMask, ulong[] cores)
+        {
+            if (cores == null || cores.Length == 0) return 0;
+            ulong exclusive = WholeCores(gameMask, cores);
+            if (exclusive == 0) return 0;
+            return SpareCoresOutside(exclusive, cores) >= 2 ? exclusive : 0;
+        }
+
+        // 独占之外要留够物理核 默认是全选 那样独占会占满所有核 一颗都不剩给系统
+        //   这里把选核往回收到刚好能独占为止 从末尾的核开始让 返回调整后的游戏选核
+        //   让到空还不成立就返回 0 表示这台机器上怎么调都独占不了
+        public static ulong TrimForExclusive(ulong gameMask, ulong[] cores)
+        {
+            if (cores == null || cores.Length == 0) return 0;
+            ulong mask = gameMask;
+            while (mask != 0)
+            {
+                if (ExclusiveMaskFor(mask, cores) != 0) return mask;
+                // 让出当前选核里编号最大的那颗整核
+                ulong whole = WholeCores(mask, cores);
+                ulong last = 0;
+                foreach (ulong core in cores) if ((core & whole) != 0) last = core;
+                if (last == 0) return 0;
+                mask &= ~last;
+            }
+            return 0;
+        }
+
+        // 独占之外还剩几颗完整物理核 界面用它说清还差多少
+        public static int SpareCoresOutside(ulong exclusiveMask, ulong[] cores)
+        {
+            if (cores == null) return 0;
+            int spare = 0;
+            foreach (ulong core in cores) if ((core & exclusiveMask) == 0) spare++;
+            return spare;
         }
 
         public static string Validate(CoreSchedulingPlan p, ulong all, ulong[] cores,
@@ -93,10 +146,9 @@ namespace PaviseApp
             // 关闭时也保留选区，但拒绝损坏的部分物理核和越界数据。
             if ((p.IsolationMask & ~all) != 0
                 || WholeCores(p.IsolationMask, cores) != p.IsolationMask) return "schedule.error.whole";
-            if ((p.IsolationMask & WholeCores(1, cores)) != 0) return "schedule.error.cpu0";
-            int spare = 0;
-            foreach (ulong core in cores) if ((core & p.IsolationMask) == 0) spare++;
-            if (p.IsolationMask != 0 && spare < 2) return "schedule.error.spare";
+            // CPU 0 所在核是否独占交给用户决定 底线只有一条 独占之外留得下两颗完整物理核
+            if (p.IsolationMask != 0 && SpareCoresOutside(p.IsolationMask, cores) < 2)
+                return "schedule.error.spare";
             if (p.IsolationOn && p.IsolationMask == 0) return "schedule.error.isolationempty";
             if (p.IsolationOn && !isolationSupported) return "schedule.error.isolationunsupported";
             return null;

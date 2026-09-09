@@ -42,8 +42,9 @@ namespace PaviseApp
             navigationScale = Dpi.Scale;
             var titles = new[] { Lang.T("nav.overview"), Lang.T("nav.library"), Lang.T("v20.advanced.nav.policy"),
                 Lang.T("v20.advanced.nav.anticheat"), Lang.T("nav.graphics"), Lang.T("v20.advanced.nav.system"), Lang.T("v20.nav.report"),
-                Lang.T("nav.log"), Lang.T("nav.set"), Lang.T("nav.about"), Lang.T("nav.white"), Lang.T("v20.advanced.nav.irq") };
-            var glyphs = new[] { "game", "tiles", "settings", "acshield", "gpu", "chip", "chart", "log", "gear", "info", "white", "chip" };
+                Lang.T("nav.log"), Lang.T("nav.set"), Lang.T("nav.about"), Lang.T("nav.white"), Lang.T("v20.advanced.nav.irq"),
+                Lang.T("nav.corescheduling") };
+            var glyphs = new[] { "game", "tiles", "settings", "acshield", "gpu", "chip", "chart", "log", "gear", "info", "white", "chip", "chip" };
             var mainTitles = (string[])titles.Clone();
             // Policy 在主侧栏是入口 在高级侧栏仍是具体的优化策略页
             mainTitles[(int)PageId.Policy] = Lang.T("v20.advanced.entry");
@@ -59,7 +60,7 @@ namespace PaviseApp
                 else nav.Select(page);
             };
             tuningNav = new NavRail(titles, glyphs,
-                new[] { (int)PageId.Policy, (int)PageId.AntiCheat, (int)PageId.Graphics,
+                new[] { (int)PageId.Policy, (int)PageId.CoreScheduling, (int)PageId.AntiCheat, (int)PageId.Graphics,
                     (int)PageId.Environment, (int)PageId.Interrupt }, null, null, 0);
             tuningNav.Name = "TuningNavigation";
             tuningNav.ShowBranding = false;
@@ -78,7 +79,7 @@ namespace PaviseApp
             var hint = new Label { Name = "TuningNavigationHint", Text = Lang.T("v20.advanced.nav.hint"),
                 BackColor = Color.Transparent, ForeColor = Theme.Faint, Font = Theme.UI(8.2f, false),
                 UseCompatibleTextRendering = false };
-            hint.SetBounds(Theme.S(28), Theme.S(465), Theme.S(RailW - 56), Theme.S(56));
+            hint.SetBounds(Theme.S(28), Theme.S(521), Theme.S(RailW - 56), Theme.S(56));
             tuningNav.Controls.Add(hint);
             advBackBar = new AdvancedBackBar();
             advBackBar.SetBounds(0, 0, Theme.S(RailW), Theme.S(TopH));

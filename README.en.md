@@ -82,7 +82,6 @@ The guard switch controls general game-session scheduling: enabling it starts au
 
 ### Library
 
-- **Fullscreen scaling**: a per-game switch, off by default. With protection enabled, fits a lower-resolution game window to its monitor with optional sharpening and window mouse mapping. Pauses on focus loss; `Ctrl+Alt+U` stops scaling for the session. Uses Pavise's own embedded capture and scaling component; Magpie is not required. [Usage and limitations (Chinese)](docs/window-scaling.md)
 - Add an EXE, a shortcut or the game's folder manually, or drop them onto the window; when a folder holds several candidate programs they are listed for you to pick. Scanning imports from Steam, Epic, GOG, Ubisoft, Riot, WeGame, Battle.net and Xbox
 - **Forced takeover**: for emulators, cloud gaming and anything else that cannot be recognised, the match starts as soon as the process does
 - **Auto-add**: newly recognised games are collected automatically. A path you removed goes on an ignore list and is never auto-added again until you add it back by hand

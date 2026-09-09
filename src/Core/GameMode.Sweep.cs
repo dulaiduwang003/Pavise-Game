@@ -195,14 +195,6 @@ namespace PaviseApp
                     live.Add(pid);
                     if (pid <= 4 || pid == selfPid) continue;
 
-                    // The scaler is part of the current frame pipeline. Match a live
-                    // process identity, never a broad executable-name exemption.
-                    if (ScalingService.IsHost(pid, p.Creation))
-                    {
-                        if (core.Release(pid, SuppressReason.Background)) ReportUntrack(pid);
-                        continue;
-                    }
-
                     string nm = processInfo != null ? processInfo.Name : p.Name;
 
                     if (string.Equals(nm, selfName, StringComparison.OrdinalIgnoreCase))

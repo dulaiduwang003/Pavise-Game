@@ -68,7 +68,7 @@ namespace PaviseApp
             return RestoreIrqProofHardPin(IntPtr.Zero, pid, includeManual);
         }
 #endif
-        // 与逐游戏保存共用 sync。UI 必须带上开始编辑时读到的全局版本。
+        // 与逐游戏保存共用 sync。UI 必须带上用于校验方案的全局版本。
         internal string SaveCoreScheduling(CoreSchedulingPlan plan, string expectedGlobal,
             string profileId, bool followGlobal, string expectedProfile)
         {

@@ -962,8 +962,8 @@ namespace PaviseApp
                 CheckSidebarNavigation(form, "tuningNav", PageId.Policy, PageId.Environment);
                 using (var prints = new PrintWatch(form))
                 {
-                    foreach (PageId id in new[] { PageId.Graphics, PageId.Policy, PageId.Environment,
-                        PageId.Graphics, PageId.Policy, PageId.Environment })
+                    foreach (PageId id in new[] { PageId.Graphics, PageId.Policy, PageId.CoreScheduling, PageId.Environment,
+                        PageId.Graphics, PageId.Policy, PageId.CoreScheduling, PageId.Environment })
                     {
                         form.SelectPageForTest((int)id);
                         var page = Field<DBPanel>(form, "curPage");
@@ -978,6 +978,7 @@ namespace PaviseApp
 
                 CheckTabs(form, PageId.Graphics, "gfxTabs", "gfxTabPanels");
                 CheckTabs(form, PageId.Policy, "policyTabs", "policyTabPanels");
+                CheckTabs(form, PageId.CoreScheduling, "coreTabs", "coreTabPanels");
                 CheckTabs(form, PageId.Environment, "envTabs", "envTabPanels");
 
                 // Visible 是从父级继承的 清一个隐藏页面照样得把本地标志更新掉

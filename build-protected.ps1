@@ -184,7 +184,6 @@ function New-ProtectionProject(
 }
 
 function Compile-SmokeBinary([string]$Repo, [string]$OutputPath) {
-    & (Join-Path $Repo "tools\Build-ScalingHost.ps1")
     $csc = Get-CscPath
     $sourceFiles = Get-ChildItem -LiteralPath (Join-Path $Repo "src") -Filter "*.cs" -Recurse |
         ForEach-Object { $_.FullName }
@@ -194,8 +193,7 @@ function Compile-SmokeBinary([string]$Repo, [string]$OutputPath) {
         ("-out:" + $OutputPath),
         "-reference:System.dll", "-reference:System.Drawing.dll",
         "-reference:System.Windows.Forms.dll", "-reference:System.Core.dll",
-        "-reference:System.Management.dll", "-reference:System.Xml.dll",
-        ("-resource:" + (Join-Path $Repo "build\scaling\Pavise.ScaleHost.exe") + ",Pavise.ScaleHost.exe")
+        "-reference:System.Management.dll", "-reference:System.Xml.dll"
     ) + $sourceFiles
     Invoke-Checked $csc $arguments
 }
@@ -378,13 +376,6 @@ try {
     if ($RequireSignature -and !$signed) {
         Remove-Item -LiteralPath $outputPath -Force
         throw "A signed release was required. Set PAVISE_SIGN_CERT_SHA1 and PAVISE_SIGNTOOL."
-    }
-
-    $uninstallerSource = Join-Path $repo "Pavise-Uninstall.cmd"
-    $uninstallerOutput = Join-Path $outputDir "Pavise-Uninstall.cmd"
-    if (![string]::Equals([IO.Path]::GetFullPath($uninstallerSource),
-        [IO.Path]::GetFullPath($uninstallerOutput), [StringComparison]::OrdinalIgnoreCase)) {
-        Copy-Item -LiteralPath $uninstallerSource -Destination $uninstallerOutput -Force
     }
 
     $hash = Get-Sha256 $outputPath

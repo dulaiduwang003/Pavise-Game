@@ -50,6 +50,7 @@ namespace PaviseApp
         private string PageModuleCode(DBPanel page)
         {
             if (page == pagePolicy) return "POLICY // MODULE 01";
+            if (page == pageCoreScheduling) return "CPU SCHEDULING // MODULE 10";
             if (page == pageAntiCheat) return "DEFENSE // MODULE 02";
             if (page == pageWhitelist) return "EXCLUSION // MODULE 03";
             if (page == pageGraphics) return "GRAPHICS // MODULE 04";

@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 构建优化策略页 并按当前预设锁定或放开自定义项
 using System;
 using System.Collections.Generic;
@@ -53,14 +53,14 @@ namespace PaviseApp
             policyTabs = new TechTabs();
             policyTabs.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(38));
             policyTabs.SetTabs(
-                new[] { Lang.T("policy.tab.core"), Lang.T("policy.tab.cores"),
+                new[] { Lang.T("policy.tab.core"),
                     Lang.T("policy.tab.custom"), Lang.T("policy.tab.extras") },
-                new[] { Lang.T("v15.policy.core"), Lang.T("v15.policy.cores"),
+                new[] { Lang.T("v15.policy.core"),
                     Lang.T("v15.policy.custom"), Lang.T("v15.policy.extras") });
             pagePolicy.Controls.Add(policyTabs);
             y += 48;
 
-            policyTabPanels = MakeTabPanels(pagePolicy, policyTabs, 4, y);
+            policyTabPanels = MakeTabPanels(pagePolicy, policyTabs, 3, y);
 
             Control scroll = policyTabPanels[0];
             int sy = 2;
@@ -70,7 +70,7 @@ namespace PaviseApp
             swPolicyGpuDemote = AddPolicyToggle(scroll, ref sy, Lang.T("gm.gpudemote"), Lang.T("gm.gpudemote.sub"),
                 delegate { return gameMode.GpuDemote; }, delegate(bool v) { gameMode.GpuDemote = v; });
             cardPolicyGpuDemote = (SettingCard)swPolicyGpuDemote.Parent;
-            // 游戏选核和核心隔离在核心页保存。
+            // 游戏选核和核心隔离在独立的核心调度页保存。
             swPolicyAdaptive = AddPolicyToggle(scroll, ref sy, Lang.T("gm.adaptive"), Lang.T("gm.adaptive.sub"),
                 delegate { return gameMode.AdaptiveEscalateOn; }, delegate(bool v) { gameMode.AdaptiveEscalateOn = v; });
             cardPolicyAdaptive = (SettingCard)swPolicyAdaptive.Parent;
@@ -86,9 +86,7 @@ namespace PaviseApp
             cardPolicyVramShield = (SettingCard)swPolicyVramShield.Parent;
             swPolicyLane.CheckedChanged += delegate { RefreshPolicyPresentation(); };
 
-            BuildCorePage(policyTabPanels[1]);
-
-            scroll = policyTabPanels[2]; sy = 2;
+            scroll = policyTabPanels[1]; sy = 2;
             swPolicyAggressive = AddPolicyToggle(scroll, ref sy, Lang.T("gm.aggressive"), Lang.T("gm.aggressive.sub"),
                 delegate { return gameMode.AggressiveSuppression; }, delegate(bool v) { gameMode.AggressiveSuppression = v; });
             cardPolicyAggressive = (SettingCard)swPolicyAggressive.Parent;
@@ -105,7 +103,7 @@ namespace PaviseApp
                 delegate { return Settings.Load(PowerBudgetYieldRunner.EnabledKey, false); },
                 delegate(bool v) { OnPowerYieldToggle(v); });
             cardPolicyPowerYield = (SettingCard)swPolicyPowerYield.Parent;
-            scroll = policyTabPanels[3]; sy = 2;
+            scroll = policyTabPanels[2]; sy = 2;
             swPolicyEnglishInput = AddPolicyToggle(scroll, ref sy, Lang.T("gm.englishinput"), Lang.T("gm.englishinput.sub"),
                 delegate { return gameMode.EnglishInputEnabled; },
                 delegate(bool v) { gameMode.EnglishInputEnabled = v; }, 0, true);
@@ -131,8 +129,8 @@ namespace PaviseApp
             cardPolicyAwake = (SettingCard)swPolicyAwake.Parent;
 
             EnableCardCollapse(policyTabPanels[0], cardPolicyBackground, cardPolicyBoost);
+            EnableCardCollapse(policyTabPanels[1]);
             EnableCardCollapse(policyTabPanels[2]);
-            EnableCardCollapse(policyTabPanels[3]);
 
             RefreshPolicyPresentation();
         }
@@ -320,7 +318,7 @@ namespace PaviseApp
             ApplyPresetPolicy(swPolicyPauseMaint, cardPolicyPauseMaint, Lang.T("gm.pausemaint"), extremeTier, true);
             ApplyPresetPolicy(swPolicyPauseServices, cardPolicyPauseServices, Lang.T("gm.pausesvc"), extremeTier, true);
             ApplyPresetPolicy(swPolicyAwake, cardPolicyAwake, Lang.T("set.awake"), false, true);
-            ApplyPresetPolicy(swPolicyVramShield, cardPolicyVramShield, Lang.T("gm.vramshield"), extremeTier, true);
+            ApplyPresetPolicy(swPolicyVramShield, cardPolicyVramShield, Lang.T("gm.vramshield"), false, true);
             ApplyPresetPolicy(swPolicyEnglishInput, cardPolicyEnglishInput, Lang.T("gm.englishinput"), extremeTier, true);
         }
 

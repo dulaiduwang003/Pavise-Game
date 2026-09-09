@@ -72,6 +72,7 @@ namespace PaviseApp
                 case PageId.Overview: return Lang.T("nav.overview");
                 case PageId.Library: return Lang.T("nav.library");
                 case PageId.Policy: return Lang.T("nav.policy");
+                case PageId.CoreScheduling: return Lang.T("nav.corescheduling");
                 case PageId.AntiCheat: return Lang.T("v14.anticheat");
                 case PageId.Graphics: return Lang.T("nav.graphics");
                 case PageId.Environment: return Lang.T("nav.env");
