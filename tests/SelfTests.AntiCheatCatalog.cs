@@ -1,4 +1,4 @@
-// 文件用途 豁免回归 不启动游戏 不写进程 不改真实设置
+﻿// 文件用途 豁免回归 不启动游戏 不写进程 不改真实设置
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -149,7 +149,8 @@ namespace PaviseApp
             {
                 Eq(false, group.Default);
                 Settings.Save("Tame_" + group.Key, true);
-                foreach (string name in group.Procs) expected.Add(name);
+                // 仅保护的分组即使键被打开也不该进压制目标
+                if (group.Suppressible) foreach (string name in group.Procs) expected.Add(name);
             }
             // 就算键是过期的或者被手改过 仅豁免的规则也不能变成压制目标
             foreach (AcProtectionGroup group in AntiCheatCatalog.ProtectionOnlyGroups)
@@ -159,6 +160,14 @@ namespace PaviseApp
             MethodInfo build = typeof(Tamer).GetMethod("BuildActive", BindingFlags.Instance | BindingFlags.NonPublic);
             var actual = (Dictionary<string, string>)build.Invoke(tamer, null);
             Eq(true, expected.SetEquals(actual.Keys));
+            // 改判仅保护的分组 构造时会把老配置里开着的键说明一次再清掉 不静默失效
+            foreach (AcGroup group in AntiCheatCatalog.Groups)
+            {
+                if (group.Suppressible) continue;
+                foreach (string name in group.Procs) Eq(false, actual.ContainsKey(name));
+                Eq(false, Settings.Load("Tame_" + group.Key, false));
+                Eq(false, tamer.IsGroupEnabled(group.Key));
+            }
             foreach (string sample in AcProtectedSamples) Eq(false, actual.ContainsKey(sample));
             foreach (AcProtectionGroup group in AntiCheatCatalog.ProtectionOnlyGroups)
                 foreach (string name in group.Procs) Eq(false, actual.ContainsKey(name));

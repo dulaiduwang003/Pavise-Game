@@ -106,7 +106,6 @@ namespace PaviseApp
                 Call(form, "UpdateModePresentation", true);
                 Check(redundantBannerPaints == 0, "Stable mode polling invalidated the hidden policy banner");
                 Check(Field<int>(form, "lastAdvancedPage") == (int)PageId.Policy, "Invalid remembered page was not rejected");
-                CheckExtremeUnlockOrder(form);
                 int prompts = 0;
                 form.DeepTuningConfirmationForTest = delegate { prompts++; return false; };
                 form.SelectPageForTest((int)PageId.Log);
@@ -134,9 +133,11 @@ namespace PaviseApp
                 var coreEditor = Field<CoreSchedulingPanel>(form, "coreSchedulingPanel");
                 // 分配与独占合成一页 没有子页可切 独占范围跟着选核走
                 Check(Field<DBPanel>(form, "coreScrollPanel") != null, "Core scheduling lost its content panel");
+                // 整核向上取 选了 CPU 4 就把同核的 CPU 5 一起收走 28 推出 12|48
                 coreEditor.SelectMask(28);
-                Check(coreEditor.Matrix.Visible && coreEditor.Draft.IsolationMask == 48,
-                    "Exclusive range did not follow the game selection");
+                Check(coreEditor.Matrix.Visible && coreEditor.Draft.IsolationMask == 60,
+                    "Exclusive range did not follow the game selection: "
+                    + coreEditor.Draft.IsolationMask);
                 tuning.InvokeItem((int)PageId.Graphics);
                 var gpuPanels = Field<DBPanel[]>(form, "gfxTabPanels");
                 var gpuTabs = Field<TechTabs>(form, "gfxTabs");
@@ -173,9 +174,10 @@ namespace PaviseApp
                 Check(Field<TechTabs>(form, "policyTabs").Index == 2, "Rebuild lost an inactive page's sub-tab");
                 tuning.InvokeItem((int)PageId.CoreScheduling);
                 coreEditor = Field<CoreSchedulingPanel>(form, "coreSchedulingPanel");
-                Check(coreEditor.Draft.GameMask == 28 && coreEditor.Draft.IsolationMask == 48
+                Check(coreEditor.Draft.GameMask == 28 && coreEditor.Draft.IsolationMask == 60
                     && coreEditor.SaveButton.Enabled,
-                    "Rebuild lost the core scheduling draft");
+                    "Rebuild lost the core scheduling draft: game=" + coreEditor.Draft.GameMask
+                    + " exclusive=" + coreEditor.Draft.IsolationMask);
                 Check(CoreScheduling.LoadGlobal().GameMask == 12 && CoreScheduling.LoadGlobal().IsolationMask == 12,
                     "Switching or rebuilding unexpectedly saved the draft");
                 tuning.InvokeItem((int)PageId.Graphics);
@@ -186,12 +188,15 @@ namespace PaviseApp
                 Check(Settings.LoadStr("DeepTuningLastPage", "") == ((int)PageId.Graphics).ToString(), "Last section was not persisted");
 
                 var hits = (List<SearchHit>)Call(form, "QuerySettingCards", "");
-                SearchHit isolationHit = hits.Find(delegate(SearchHit hit) { return hit.PageId == (int)PageId.CoreScheduling
-                    && hit.Card.Title == Lang.T("schedule.isolation.enable"); });
-                Check(isolationHit != null && isolationHit.PageName == Lang.T("nav.corescheduling"), "Isolation search is missing its standalone page");
-                Call(form, "OnSearchHitChosen", isolationHit);
-                Check(main.Selected == (int)PageId.CoreScheduling && Field<TechTabs>(form, "coreTabs").Index == 1
-                    && isolationHit.Card.Visible && prompts == 3, "Isolation search did not reveal the correct sub-tab");
+                // 独占卡片跟选核同页 搜索直接落到核心调度页 没有子页要展开
+                SearchHit exclusiveHit = hits.Find(delegate(SearchHit hit) { return hit.PageId == (int)PageId.CoreScheduling
+                    && hit.Card.Title == Lang.T("schedule.exclusive"); });
+                Check(exclusiveHit != null && exclusiveHit.PageName == Lang.T("nav.corescheduling"),
+                    "Exclusive-cores search is missing its standalone page");
+                Call(form, "OnSearchHitChosen", exclusiveHit);
+                Check(main.Selected == (int)PageId.CoreScheduling
+                    && exclusiveHit.Card.Visible && prompts == 3,
+                    "Exclusive-cores search did not reveal the core scheduling page");
                 SearchHit target = hits.Find(delegate(SearchHit hit) { return hit.PageId == (int)PageId.Environment; });
                 Check(target != null, "No search fixture target");
                 Call(form, "OnSearchHitChosen", target);
@@ -215,12 +220,11 @@ namespace PaviseApp
                 Settle(form);
                 Save(form, Path.Combine(output, "tuning-" + language + "-" + (light ? "light" : "dark") + ".png"));
                 form.SelectPageForTest((int)PageId.CoreScheduling);
-                foreach (int tab in new[] { 0, 1 })
-                {
-                    Field<TechTabs>(form, "coreTabs").Index = tab;
-                    Settle(form);
-                    Save(form, Path.Combine(output, "core-" + (tab == 0 ? "game" : "isolation") + "-" + language + "-" + (light ? "light" : "dark") + ".png"));
-                }
+                Settle(form);
+                Save(form, Path.Combine(output, "core-" + language + "-" + (light ? "light" : "dark") + ".png"));
+                form.SelectPageForTest((int)PageId.AntiCheat);
+                Settle(form);
+                Save(form, Path.Combine(output, "anticheat-" + language + "-" + (light ? "light" : "dark") + ".png"));
                 Field<AdvancedBackBar>(form, "advBackBar").BackRequested();
                 Settle(form);
                 Save(form, Path.Combine(output, "main-" + language + "-" + (light ? "light" : "dark") + ".png"));
@@ -232,9 +236,33 @@ namespace PaviseApp
                 Check(Field<System.Windows.Forms.Timer>(form, "uiTimer") == null
                     || !Field<System.Windows.Forms.Timer>(form, "uiTimer").Enabled, "UI polling unexpectedly resumed");
                 TransitionUiChecks.CheckWindow(form);
+                CaptureHybridCoreCards(form, output, language, light);
                 form.Hide();
             }
             Console.WriteLine("PASS full-window language=" + language + " light=" + light);
+        }
+
+        // 混合架构的能效核是单线程卡 只有这种卡片才会暴露标签放不下的问题
+        //   台架平常注入的是清一色双线程卡 混合机器上一半的卡片从来没被渲染过
+        //   截图留在产物里 布局回归时能直接比对 别再靠某台机器临时写台架
+        private static void CaptureHybridCoreCards(PanelForm form, string output, int language, bool light)
+        {
+            CpuTopology.TopologySnapshot saved = CpuTopology.CaptureTopologyForTest();
+            try
+            {
+                // 4 颗双线程性能核 0-7 加 4 颗单线程能效核 8-11 共 12 逻辑核
+                CpuTopology.InjectTopologyForTest(0xFFF,
+                    new ulong[] { 3, 12, 48, 192, 256, 512, 1024, 2048 },
+                    new ulong[0], 0xFF, 0xF00, 0, 0, true, false);
+                form.SelectPageForTest((int)PageId.CoreScheduling);
+                var editor = Field<CoreSchedulingPanel>(form, "coreSchedulingPanel");
+                // 同时选中一颗双线程核与两颗单线程能效核 两种卡宽的选中标都要出现
+                editor.SelectMask(0x30C);
+                Settle(form);
+                Save(form, Path.Combine(output,
+                    "core-hybrid-" + language + "-" + (light ? "light" : "dark") + ".png"));
+            }
+            finally { CpuTopology.RestoreTopologyForTest(saved); }
         }
 
         private static void CheckProfileCoreNavigation(PanelForm form, GameMode mode, string data)
@@ -303,12 +331,6 @@ namespace PaviseApp
                 && back.Height == Theme.S(64), "Return action must replace the top brand area");
             Check(back.Bottom < (int)Call(tuning, "SlotY", 0), "Top return overlaps the first category");
             Check(back.AccessibleName == Lang.T("v20.advanced.back"), "Return action is not named for accessibility");
-        }
-
-        private static void CheckExtremeUnlockOrder(PanelForm form)
-        {
-            var card = Field<RoundPanel>(form, "cardExtreme");
-            Check(card != null && card.Top == Theme.S(2), "Extreme unlock card must be the first setting");
         }
 
         private static void CheckOverviewFooter(Control overview)

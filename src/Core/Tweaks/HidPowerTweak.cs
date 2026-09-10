@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 禁止系统为省电挂起键鼠所在的 USB 设备与集线器 可逆
 using System;
 using System.Collections.Generic;
@@ -19,6 +19,14 @@ namespace PaviseApp
         private static readonly object lk = new object();
 
         public static bool EnabledByPavise { get { return Settings.Load(FlagKey, false); } }
+
+        // 一个 USB 键鼠都枚举不到的机器 PS/2 或纯蓝牙 本项无从谈起
+        //   不能当成失败 否则这种机器上每次补写都报它失败 用户还没有任何办法处理
+        public static bool HasTargets()
+        {
+            try { return Scan().Count > 0; }
+            catch { return false; }
+        }
 
         internal sealed class Target
         {
@@ -158,8 +166,10 @@ namespace PaviseApp
             {
                 var done = new List<string>();
                 bool anyFail = false;
+                int scanned = 0;
                 foreach (Target t in Scan())
                 {
+                    scanned++;
                     if (!t.EpmOn && !t.SsOn) continue;
                     bool epmOk = !t.EpmOn || Epm(t.InstanceId).Apply(0);
                     bool ssOk = !t.SsOn || DisableSs(t.InstanceId);
@@ -171,11 +181,14 @@ namespace PaviseApp
 
                 if (done.Count == 0)
                 {
-                    Logger.Warn(anyFail
-                        ? Lang.T("log.hidpowertweak.15")
-                        : Lang.T("log.hidpowertweak.16"));
-                    if (!anyFail) Settings.Save(FlagKey, true);
-                    return !anyFail;
+                    // 三种情况不能混成一句 写入失败是 WARN 本来就关好了是正常结果
+                    //   一个 USB 键鼠都没枚举到时说"所有设备均已禁止挂起"是假话
+                    //   PS/2 或纯蓝牙机器就是这种 那时不该记已生效 否则界面显示接管了一件没做的事
+                    if (anyFail) { Logger.Warn(Lang.T("log.hidpowertweak.15")); return false; }
+                    if (scanned == 0) { Logger.Log(Lang.T("log.hidpowertweak.22")); return false; }
+                    Logger.Log(Lang.T("log.hidpowertweak.16"));
+                    Settings.Save(FlagKey, true);
+                    return true;
                 }
 
                 var merged = new List<string>(ParseList(Settings.LoadStr(ListKey, "")));

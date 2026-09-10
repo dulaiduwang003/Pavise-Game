@@ -236,7 +236,7 @@ namespace PaviseApp
             root.Controls.Add(tuningNav);
 
             modeFlyout = new ModePickerPanel();
-            // 高度随可见档位数走 极限解锁后多一格
+            // 高度随可见档位数走 本机不支持的档不占格
             modeFlyout.SetBounds(Theme.S(WinW - 420), Theme.S(TopH + 8), Theme.S(396),
                 Theme.S(66 + PresetValue.VisibleOrder().Length * 70 + 10));
             modeFlyout.Visible = false;

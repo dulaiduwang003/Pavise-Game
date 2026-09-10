@@ -10,6 +10,28 @@ namespace PaviseApp
 {
     internal sealed partial class CoreMatrix : Control
     {
+        internal enum HeadTag { None, Exclusive, Primary, Cache, Smt }
+
+        // 卡片右上角只放一个标签 优先级 独占 > 选中 > 大缓存 > SMT
+        //   SMT 只给多线程卡 单线程卡谈超线程本来就没意义 其余三个与卡片宽窄无关
+        //   放不放得下由调用方按实测宽度决定 不靠卡片有几个线程去猜
+        internal static HeadTag HeadTagFor(bool exclusive, bool anyOn, bool cache, bool multiThread)
+        {
+            if (exclusive) return HeadTag.Exclusive;
+            if (anyOn) return HeadTag.Primary;
+            if (cache) return HeadTag.Cache;
+            return multiThread ? HeadTag.Smt : HeadTag.None;
+        }
+
+        // 编号占左边 标签靠右 量出来放不下就不画
+        //   原先按卡片有几个线程猜 混合架构的能效核是单线程卡 选中标被一律挡掉
+        //   而独占标走的是另一条不看宽窄的路 在同样的窄卡上会与编号叠在一起
+        //   两个毛病同源 都是拿线程数当宽度的替身 改成量真宽度一起解决
+        internal static bool HeadTagFits(int headWidth, int indexWidth, int tagWidth, int gap)
+        {
+            return tagWidth > 0 && indexWidth + gap + tagWidth <= headWidth;
+        }
+
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
@@ -117,10 +139,24 @@ namespace PaviseApp
             }
             else
             {
-                string tag = exclusive ? Lang.T("core.tag.exclusive")
-                    : anyOn ? (roomy ? PrimaryTag : null)
-                    : cache ? Lang.T("core.tag.cache")
-                    : roomy ? "SMT" : null;
+                string tag;
+                switch (HeadTagFor(exclusive, anyOn, cache, roomy))
+                {
+                    case HeadTag.Exclusive: tag = Lang.T("core.tag.exclusive"); break;
+                    case HeadTag.Primary: tag = PrimaryTag; break;
+                    case HeadTag.Cache: tag = Lang.T("core.tag.cache"); break;
+                    case HeadTag.Smt: tag = "SMT"; break;
+                    default: tag = null; break;
+                }
+                if (tag != null)
+                {
+                    Font tagFont = Theme.MonoFor(tag, 6.4f);
+                    int indexW = TextRenderer.MeasureText(g, "C" + grp.Index.ToString("00"),
+                        Theme.Mono(6.9f), head.Size, TextFormatFlags.NoPadding).Width;
+                    int tagW = TextRenderer.MeasureText(g, tag, tagFont, head.Size,
+                        TextFormatFlags.NoPadding).Width;
+                    if (!HeadTagFits(head.Width, indexW, tagW, Theme.S(3))) tag = null;
+                }
                 if (tag != null)
                     TextRenderer.DrawText(g, tag, Theme.MonoFor(tag, 6.4f), head,
                         exclusive ? Theme.Accent

@@ -123,7 +123,7 @@ namespace PaviseApp
             return SaveExtremeSnapshot(scheme, values);
         }
 
-        // retiredOnly=true 时迁移撤回项 当前极限项的原始收据留着
+        // retiredOnly=true 时迁移撤回项 当前空闲策略项的原始收据留着
         // 每一侧写完都回读 部分失败就留账 调用过恢复不等于恢复完成
         private static bool RestoreExtremeKnobs(Guid scheme, bool retiredOnly)
         {

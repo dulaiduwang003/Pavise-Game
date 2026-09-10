@@ -158,15 +158,20 @@ namespace PaviseApp
                     break;
                 case "pqos": break;
                 case "awake": awakeOn = false; Settings.Save("GmAwake", false); break;
-                // 极限专属项没有全局开关可关 熔断落到退出集 管理面显示为已停用
-                case "audiolat": ExtremeMode.SetOptedOut(PolicyCatalog.KeyAudioLowLat, true); break;
-                case "dwmboost": ExtremeMode.SetOptedOut("g:dwmboost", true); break;
+                // 这两项 2.2.2 起有了自己的开关 熔断要两边都落
+                //   不关开关的话会照着那个还开着的值一直重试 界面也显示它是开的
+                case "audiolat":
+                    audioLatOn = false;
+                    Settings.Save(PolicyCatalog.KeyAudioLowLat, false);
+                    break;
+                case "dwmboost":
+                    dwmBoostOn = false;
+                    Settings.Save("GmDwmBoost", false);
+                    break;
                 case "rsr": rsrOn = false; Settings.Save("GmRsr", false); break;
                 case "gpupower":
                     gpuPowerMaxOn = false;
                     Settings.Save("GmGpuPowerMax", false);
-                    // 熔断同时体现在极限管理面 否则那里还显示跟随
-                    ExtremeMode.SetOptedOut("g:gpupower", true);
                     break;
                 case "maint": pauseMaintOn = false; Settings.Save(PolicyCatalog.KeyPauseMaintenance, false); break;
                 case "nvvrr": nvVrrWindowedOn = false; Settings.Save("NvVrrWindowed", false); break;
@@ -177,7 +182,6 @@ namespace PaviseApp
                     intelLowLatencyOn = false;
                     InvalidateIntelGraphicsWork();
                     Settings.Save(PolicyCatalog.KeyIntelLowLatency, false);
-                    ExtremeMode.SetOptedOut(PolicyCatalog.KeyIntelLowLatency, true);
                     break;
                 case "overlay": break;
             }
@@ -257,18 +261,17 @@ namespace PaviseApp
             bool pAggr = sp != null ? sp.Aggressive : aggressiveOn;
             bool pAmdAlag = sp != null ? sp.AmdAntiLag : amdAntiLag;
             bool pAmdAfmf = sp != null ? sp.AmdAfmf : amdAfmf;
-            bool competitive = mode == PerformancePreset.Competitive
-                || mode == PerformancePreset.Extreme;
+            bool competitive = mode == PerformancePreset.Competitive;
             bool custom = mode == PerformancePreset.Custom;
             bool handheld = IsHandheld(mode);
-            bool extreme = mode == PerformancePreset.Extreme;
+            bool pIdlePolicy = sp != null ? sp.IdlePolicy : idlePolicyOn;
             bool usePauseDl = custom ? pPauseDl : (competitive || handheld);
             bool slowReady = slowEnvAtTicks == 0 || DateTime.UtcNow.Ticks >= slowEnvAtTicks;
             usePauseDl = usePauseDl && slowReady;
             bool usePlan = ResolvePowerPlanEnabled(mode, pPlan);
             SuppressionCore.GpuDemoteEnabled = sp != null ? sp.GpuDemote : gpuDemoteOn;
-            // 极限专属四项 只由档位驱动 没有全局开关也没有逐游戏覆盖
-            WsTrim.Enabled = extreme && ExtremeMode.ForceItem(PolicyCatalog.KeyWsTrim);
+            // 这几项 2.2.2 起各自有开关 不再由档位驱动 有会话快照时读快照 否则读全局
+            WsTrim.Enabled = sp != null ? sp.WsTrim : wsTrimOn;
             doActive = EnvStep("do", usePauseDl, doActive, DoTweak.Activate, DoTweak.Restore);
             wuActive = EnvStep("wu", pWu && slowReady, wuActive, UpdatePause.Activate, UpdatePause.Restore);
             // 自动维护挑空闲判定起跑 挂机和过场都算空闲 对局期先关掉 退局写回
@@ -277,21 +280,18 @@ namespace PaviseApp
             ApplyOptionalServices(slowReady);
             pqosActive = EnvStep("pqos", true, pqosActive, PresenceQos.Activate, PresenceQos.Restore);
             awakeActive = EnvStep("awake", pAwake, awakeActive, DisplayAwake.Activate, DisplayAwake.Restore);
-            bool pAudioLat = extreme && ExtremeMode.ForceItem(PolicyCatalog.KeyAudioLowLat);
+            bool pAudioLat = sp != null ? sp.AudioLowLat : audioLatOn;
             // 默认设备切走后旧流钉不住新引擎 当成没生效重开 关的方向不查漂移直接还原
             bool audioApplied = audioLatActive;
             if (pAudioLat && audioLatActive && AudioLowLatency.DeviceDrifted) audioApplied = false;
             audioLatActive = EnvStep("audiolat", pAudioLat, audioApplied,
                 AudioLowLatency.Activate, AudioLowLatency.Restore);
-            dwmBoostActive = EnvStep("dwmboost",
-                extreme && ExtremeMode.ForceGlobal("dwmboost"), dwmBoostActive,
+            // 全局开关没有逐游戏覆盖 与 gpupower autoecogpu gpuprefstage 同一族
+            dwmBoostActive = EnvStep("dwmboost", dwmBoostOn, dwmBoostActive,
                 DwmBoost.Activate, DwmBoost.Restore);
             rsrActive = EnvStep("rsr", rsrOn, rsrActive, AdlxTweaks.ActivateRsr, AdlxTweaks.RestoreRsr);
-            // 极限强制路径先过资格门 不支持功耗墙的显卡不硬试
-            //   用户手开路径保持原样 显式开启后失败熔断是应得的反馈
-            gpwActive = EnvStep("gpupower",
-                gpuPowerMaxOn || (extreme && ExtremeMode.ForceGlobal("gpupower")
-                    && GpuPowerMax.SupportedCached()),
+            // 用户显式开启后失败熔断是应得的反馈 这里不再替他加资格门
+            gpwActive = EnvStep("gpupower", gpuPowerMaxOn,
                 gpwActive, GpuPowerMax.Activate, GpuPowerMax.Restore);
             // NVIDIA 窗口化 G-SYNC 只在用户已开 G-SYNC 且只给全屏时补 不由档位强制
             nvVrrActive = EnvStep("nvvrr", nvVrrWindowedOn && NvApi.Available,
@@ -311,7 +311,7 @@ namespace PaviseApp
                 || (adaptiveEscalated && mode == PerformancePreset.Standard);
             // 掌机档也要进这个键 否则从专注切到掌机时 aggressive 两边都是真 会被当成没变过而不重写
             int powerKey = (aggressivePower ? 1 : 0) | (usePlan ? 2 : 0)
-                | (handheld ? 8 : 0) | (extreme ? 16 : 0);
+                | (handheld ? 8 : 0) | (pIdlePolicy ? 16 : 0);
             long nowTicks = DateTime.UtcNow.Ticks;
             if (usePlan && !stopping)
             {
@@ -323,7 +323,7 @@ namespace PaviseApp
                         int keyShot = powerKey;
                         bool aggrShot = aggressivePower;
                         bool handheldShot = handheld;
-                        bool extremeShot = extreme;
+                        bool idleShot = pIdlePolicy;
                         int genShot = Volatile.Read(ref powerSessionGen);
                         planActive = true;
                         lastPowerPolicyKey = keyShot;
@@ -334,7 +334,7 @@ namespace PaviseApp
                             queued = ThreadPool.QueueUserWorkItem(delegate
                             {
                                 RunPowerPlanApply(genShot,
-                                    delegate { return PowerPlan.Enforce(aggrShot, handheldShot, extremeShot); });
+                                    delegate { return PowerPlan.Enforce(aggrShot, handheldShot, idleShot); });
                             });
                         }
                         catch { }
@@ -708,9 +708,6 @@ namespace PaviseApp
             Logger.Warn(" " + label + Lang.T("log.gamemodeenv.10") + EnvFuseAttempts
                 + Lang.T("log.gamemodeenv.28"));
             ClearActiveSessionOverride(policyKey, label);
-            // 熔断压过模式 极限覆盖走快照层不看被翻关的全局值 必须同步记退出集
-            //   否则下一局又被强制回来 变成每几局翻一次的循环重试
-            ExtremeMode.SetOptedOut(policyKey, true);
         }
 
         private int envResidueGeneration = -1;

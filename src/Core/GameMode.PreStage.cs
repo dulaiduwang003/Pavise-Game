@@ -54,8 +54,7 @@ namespace PaviseApp
                 DlssMode = sp.NvDlssMode,
                 WindowedVrr = nvVrrWindowedOn
             };
-            bool stageGpuPref = (gpuPrefStageOn || (ActivePreset == PerformancePreset.Extreme
-                && ExtremeMode.ForceGlobal("gpuprefstage"))) && GpuPrefStage.Supported;
+            bool stageGpuPref = gpuPrefStageOn && GpuPrefStage.Supported;
             if (plan.Empty && !stageGpuPref) return;
             string previous = preStagedNvPath;
             preStagedNvPath = path;

@@ -2,56 +2,85 @@
 // 文件用途 严格保存与读取当前 V5 游戏配置 不迁移不修复不自删数据
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Threading;
 
 namespace PaviseApp
 {
-    // 掌机跳过 3 排在 4
-    //   3 是下架掉的极限档 老配置里可能还留着 那档比专注更激进 跟掌机的方向正相反
-    //   接手这个数字等于把老用户静默切成反方向的档 所以让 3 继续走无效值回落
-    //   界面上的顺序单独排 智能 专注 掌机 自定义 跟这里的取值无关
+    // 3 和 5 都是墓碑值 不许有枚举成员认领
+    //   3 是 1.x 那个极限档 比电竞更激进 跟掌机方向正相反 接手它等于静默换档
+    //   5 是 2.2.2 砍掉的极限档 它原有的功能全部落到了各自的独立开关
+    //   界面上的顺序由 VisibleOrder 单独排 跟这里的取值无关
     internal enum PerformancePreset
     {
         Standard = 0,
         Competitive = 1,
         Custom = 2,
-        Handheld = 4,
-        Extreme = 5
+        Handheld = 4
     }
 
     internal static class PresetValue
     {
-        // 取值不连续 别再写成范围判断 3 是 1.x 旧极限的墓碑值 必须继续被拒
-        //   新极限用 5 老配置里残存的 3 永远不会复活成任何档位
+        // 取值不连续 别再写成范围判断 3 和 5 都是极限档的墓碑值 必须继续被拒
         public static bool IsValid(int raw)
         {
-            return raw == 0 || raw == 1 || raw == 2 || raw == 4 || raw == 5;
+            return raw == 0 || raw == 1 || raw == 2 || raw == 4;
         }
 
-        // 极限档锁着时 指向它的存量取值解析为电竞 数据保留 解锁即恢复
+        // 掌机档只在带电池的机器上有意义 没电池就不列出来
+        //   IsValid(4) 仍为真 存量取值原样留在盘上 换到带电池的机器立刻恢复
+        //   读不出电源状态按不支持算 宁可少列一档 也不给台式机一个什么都不改的选项
+        public static bool HandheldSupported
+        {
+            get { try { return Native.HasSystemBattery(); } catch { return false; } }
+        }
+
+        // 极限档存量取值一律解析为电竞 不落到智能
+        //   极限的压制口径与电竞逐字节相同 落到电竞不改变后台行为 落到智能会放宽范围
+        //   它原有的五项功能各自有了开关且默认关 老用户要哪一项自己开
+        //   掌机不做这种重解析 电池检测是硬件探测且失败即报无电池
+        //   GetSystemPowerStatus 失败或状态未知都算没电池 还按进程缓存一次
+        //   一次瞬时失败若把掌机重解析成电竞 就会去拨电源滑块并启用候选线程提优
+        //   那正是掌机档要防的负优化 所以掌机只在选择器里隐藏 存量语义一律不动
         public static PerformancePreset From(int raw)
         {
-            if (raw == 5 && !ExtremeMode.Visible) return PerformancePreset.Competitive;
+            if (raw == 5) return PerformancePreset.Competitive;
             return IsValid(raw) ? (PerformancePreset)raw : PerformancePreset.Standard;
         }
 
-        // 界面档位顺序 锁着时极限不出现 与 KeyPreset 的 Choices 全集是两回事
-        public static string[] VisibleChoices()
+        // 界面档位顺序 本机不适用的档不出现 与 KeyPreset 的 Choices 全集是两回事
+        //   顺序与取值两份必须同源 所以取值从顺序推 别再各写一份硬编码数组
+        private static PerformancePreset[] Order()
         {
-            return ExtremeMode.Visible
-                ? new[] { "0", "1", "5", "4", "2" }
-                : new[] { "0", "1", "4", "2" };
+            var list = new List<PerformancePreset>(5);
+            list.Add(PerformancePreset.Standard);
+            list.Add(PerformancePreset.Competitive);
+            // 本机不适用但当前就停在这一档时照样列出来 否则用户被关在一个看不见的档里换不出去
+            if (HandheldSupported || StoredIs(PerformancePreset.Handheld))
+                list.Add(PerformancePreset.Handheld);
+            list.Add(PerformancePreset.Custom);
+            return list.ToArray();
         }
 
-        public static PerformancePreset[] VisibleOrder()
+        public static string[] VisibleChoices()
         {
-            return ExtremeMode.Visible
-                ? new[] { PerformancePreset.Standard, PerformancePreset.Competitive,
-                    PerformancePreset.Extreme, PerformancePreset.Handheld, PerformancePreset.Custom }
-                : new[] { PerformancePreset.Standard, PerformancePreset.Competitive,
-                    PerformancePreset.Handheld, PerformancePreset.Custom };
+            PerformancePreset[] order = Order();
+            var choices = new string[order.Length];
+            for (int i = 0; i < order.Length; i++)
+                choices[i] = ((int)order[i]).ToString(CultureInfo.InvariantCulture);
+            return choices;
+        }
+
+        public static PerformancePreset[] VisibleOrder() { return Order(); }
+
+        // 只看盘上那个全局取值 不经 From 也不查适用性 避免与 Order 互相递归
+        private static bool StoredIs(PerformancePreset mode)
+        {
+            int parsed;
+            return int.TryParse(Settings.LoadStr(PolicyCatalog.KeyPreset, ""), NumberStyles.None,
+                CultureInfo.InvariantCulture, out parsed) && parsed == (int)mode;
         }
     }
 

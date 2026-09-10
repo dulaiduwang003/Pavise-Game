@@ -65,6 +65,8 @@ namespace PaviseApp
         private readonly HashSet<int> boostHandleStripped = new HashSet<int>();
         private readonly HashSet<int> boostEcoGaveUp = new HashSet<int>();
         private readonly Dictionary<int, int> placementFail = new Dictionary<int, int>();
+        // 手动落核连续几轮确实读到不对才撤销隔离 读不出的那几轮不计数
+        private readonly Dictionary<int, int> isolationUnconfirmed = new Dictionary<int, int>();
         private readonly HashSet<int> placementGaveUp = new HashSet<int>();
         private readonly Dictionary<int, int> boostStateFail = new Dictionary<int, int>();
         private const int BoostRetryMax = 3;
@@ -86,6 +88,11 @@ namespace PaviseApp
         private volatile string nvDlssMode = "off";
         private volatile bool awakeOn;
         private volatile bool gpuPowerMaxOn;
+        private volatile bool dwmBoostOn;
+        private volatile bool hardAffinityOn;
+        private volatile bool wsTrimOn;
+        private volatile bool idlePolicyOn;
+        private volatile bool audioLatOn;
         private volatile bool amdAntiLag;
         private volatile bool amdAfmf;
         private volatile bool rsrOn;
@@ -201,6 +208,11 @@ namespace PaviseApp
                     + Lang.T("log.gamemodesettings.7") + CpuTopology.DescribeMask(throttleMask));
             else
                 Logger.Log(Lang.T("log.gamemode.6"));
+            if (!CpuTopology.TopologySourcesAgree)
+                Logger.Warn(Lang.F("log.gamemode.sourcesplit", CpuTopology.TopologySourceCounts));
+            if (CpuTopology.AllMaskReconciled)
+                Logger.Warn(Lang.F("log.gamemode.countsplit",
+                    Environment.ProcessorCount, CpuTopology.CountSetBits(CpuTopology.AllMask)));
             if (CpuTopology.AltDomainActive)
                 Logger.Log(Lang.T("log.gamemode.7") + CpuTopology.DescribeMask(strictMask)
                     + Lang.T("log.gamemodesettings.3") + CpuTopology.DescribeMask(throttleMask));
@@ -231,6 +243,12 @@ namespace PaviseApp
             gpuPrefStageOn = Settings.Load("GpuPrefStageOn", true);
             awakeOn = Settings.Load("GmAwake", true);
             gpuPowerMaxOn = Settings.Load("GmGpuPowerMax", false);
+            dwmBoostOn = Settings.Load("GmDwmBoost", false);
+            hardAffinityOn = Settings.Load("GmHardAffinityV1", false);
+            SuppressionCore.BackgroundPinsAllowed = hardAffinityOn;
+            wsTrimOn = Settings.Load(PolicyCatalog.KeyWsTrim, false);
+            idlePolicyOn = Settings.Load(PolicyCatalog.KeyIdlePolicy, false);
+            audioLatOn = Settings.Load(PolicyCatalog.KeyAudioLowLat, false);
             amdAntiLag = Settings.Load("AmdAntiLag", false);
             amdAfmf = Settings.Load("AmdAfmf", false);
             rsrOn = Settings.Load("GmRsr", false);

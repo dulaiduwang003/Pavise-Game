@@ -7,7 +7,7 @@ namespace PaviseApp
 {
     // 笔记本的 PL1 PL2 不在 Windows 电源方案里 它们由厂商固件按"安静 均衡 性能"这类档位分配
     //   Lenovo Gamezone 接口 SetSmartFanMode 1 安静 2 均衡 3 性能  ASUS ATK 接口设备 0x120075 0 均衡 1 性能 2 安静
-    //   开关默认开启但始终尊重用户配置 不由电竞或极限档强制
+    //   开关默认开启但始终尊重用户配置 不由档位强制
     //   厂商工具自己也会改这个值 退局时读到的档位不是我们写的就不抢回来 只清账
     internal static class LaptopPerfMode
     {

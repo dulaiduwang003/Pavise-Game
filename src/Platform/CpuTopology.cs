@@ -55,10 +55,25 @@ namespace PaviseApp
         public static bool CpuSetPartitionRejected;
         public static bool StrictMaskUnsafe;
 
+        // ProcessorCount 是进程视角的数字 枚举出来的核是机器视角 正常两者一致
+        //   不一致时只取两边都认的位 多出来的一边写不进去 少掉的一边会让掩码带上不存在的核
+        //   两个方向都往窄里收 宁可少管几个核 也不让 AllMask 描述一台不存在的机器
+        internal static ulong ReconcileAllMask(ulong fromCount, ulong fromEnum, out bool mismatch)
+        {
+            mismatch = fromEnum != 0 && fromEnum != fromCount;
+            if (!mismatch) return fromCount;
+            ulong both = fromCount & fromEnum;
+            return both != 0 ? both : fromCount;
+        }
+
+        // AllMask 与枚举对不上时置位 界面与日志据此提示保存的核心方案可能失真
+        public static bool AllMaskReconciled;
+
         private static void DeriveMasks()
         {
             int nc = Environment.ProcessorCount;
-            AllMask = nc >= 64 ? ulong.MaxValue : (1UL << nc) - 1UL;
+            ulong fromCount = nc >= 64 ? ulong.MaxValue : (1UL << nc) - 1UL;
+            AllMask = ReconcileAllMask(fromCount, ParsedUnion, out AllMaskReconciled);
             if (Hybrid) { ThrottleMask = EffMask; BoostMask = AllMask; }
             else if (AsymCache) { ThrottleMask = SmallL3Mask; BoostMask = AllMask; }
 

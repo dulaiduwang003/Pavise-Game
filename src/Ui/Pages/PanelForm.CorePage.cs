@@ -42,8 +42,11 @@ namespace PaviseApp
             int smt = 0;
             foreach (ulong c in cores)
                 if (CpuTopology.CountSetBits(c & CpuTopology.AllMask) > 1) smt++;
-            return Lang.F("core.topo.line", cores.Length,
+            string line = Lang.F("core.topo.line", cores.Length,
                 CpuTopology.CountSetBits(CpuTopology.AllMask), smt);
+            // 拓扑读数自相矛盾时保存的方案随时会失效 摆在标题行上 别只写进日志
+            return CpuTopology.TopologySourcesAgree && !CpuTopology.AllMaskReconciled
+                ? line : line + Lang.T("core.topo.split");
         }
 
         private void BuildCoreSchedulingPage()
@@ -70,6 +73,9 @@ namespace PaviseApp
                 delegate(CoreSchedulingPlan plan, string expected, string profileToken, bool follow)
                 { return gameMode.SaveCoreScheduling(plan, expected, null, false, null); },
                 delegate { return gameMode.IsActive; });
+            coreSchedulingPanel.HardAffinityState = delegate { return gameMode.HardAffinityOn; };
+            coreSchedulingPanel.HardAffinityChanged = delegate(bool on) { gameMode.HardAffinityOn = on; };
+            coreSchedulingPanel.RefreshView();
             coreSchedulingPanel.Location = new Point(Theme.S(14), Theme.S(4));
             coreScrollPanel.Controls.Add(coreSchedulingPanel);
         }

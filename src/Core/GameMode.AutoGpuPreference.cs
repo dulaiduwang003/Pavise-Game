@@ -43,8 +43,7 @@ namespace PaviseApp
             }
         }
 
-        private bool AutoGpuWanted
-        { get { return autoGpuOn || (ActivePreset == PerformancePreset.Extreme && ExtremeMode.ForceGlobal("autoecogpu")); } }
+        private bool AutoGpuWanted { get { return autoGpuOn; } }
 
         private bool AutoGpuSessionCurrent(long stamp)
         { return AutoGpuSessionIdentityCurrent(stamp) && AutoGpuWanted; }

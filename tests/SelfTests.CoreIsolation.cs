@@ -41,8 +41,27 @@ namespace PaviseApp
             internal CoreIsolationEngine Engine() { return new CoreIsolationEngine(this, this); }
         }
 
+        // 落点读不出来不能等同于落点没生效 反作弊在对局中回收句柄很常见
+        //   一次读失败就撤销已生效的隔离 表现就是"玩着玩着隔离自己没了"且本局不再恢复
+        private static void IsolationWithdrawalNeedsRepeatedReadableMismatches()
+        {
+            const int max = 3;
+            // 读不出来的轮次一律不撤 计数多高都不撤
+            foreach (int misses in new[] { 0, 1, max, max + 10 })
+                Eq(false, GameMode.WithdrawsIsolation(false, true, misses, max));
+            // 确认通过的轮次不撤
+            Eq(false, GameMode.WithdrawsIsolation(true, false, max + 1, max));
+            // 读得出且确实不符 未到上限不撤 到上限才撤
+            Eq(false, GameMode.WithdrawsIsolation(false, false, 1, max));
+            Eq(false, GameMode.WithdrawsIsolation(false, false, max - 1, max));
+            Eq(true, GameMode.WithdrawsIsolation(false, false, max, max));
+            Eq(true, GameMode.WithdrawsIsolation(false, false, max + 1, max));
+            Console.WriteLine("PASS CoreIsolation: unreadable placement never withdraws; only repeated readable mismatches do");
+        }
+
         internal static void RunCoreIsolationTests()
         {
+            IsolationWithdrawalNeedsRepeatedReadableMismatches();
             var f = new IsolationFixture { Allowed = 48 };
             using (var e = f.Engine())
             {

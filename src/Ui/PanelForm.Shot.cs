@@ -32,7 +32,6 @@ namespace PaviseApp
             OnUiTick(null, EventArgs.Empty);
             if (showAntiCheat) { nav.Select((int)PageId.AntiCheat); nav.SnapToSelection(); if (curPage != null) curPage.Left = pageBaseLeft; }
             PerformancePreset? preview = previewMode == "competitive" ? PerformancePreset.Competitive
-                : previewMode == "extreme" ? PerformancePreset.Extreme
                 : previewMode == "handheld" ? PerformancePreset.Handheld
                 : previewMode == "custom" ? PerformancePreset.Custom
                 : previewMode == "standard" ? PerformancePreset.Standard : (PerformancePreset?)null;
@@ -77,13 +76,15 @@ namespace PaviseApp
                 try { RenderAudit(SystemAudit.Collect(400)); } catch { }
                 if (lblAuditStatus != null) lblAuditStatus.Text = "";
             }
+            // 设置页原来四个页签 极限解锁那页撤掉后只剩三个 下标全部前移
+            //   TechTabs.Index 对越界值静默忽略 写错不会报错 只会悄悄拍错页签
             if (previewMode == "settings-appearance" && pageIndex == (int)PageId.Settings)
             {
-                if (settingsTabs != null) settingsTabs.Index = 3;
+                if (settingsTabs != null) settingsTabs.Index = 2;
             }
             if (previewMode == "settings-maint" && pageIndex == (int)PageId.Settings)
             {
-                if (settingsTabs != null) settingsTabs.Index = 2;
+                if (settingsTabs != null) settingsTabs.Index = 1;
             }
             Application.DoEvents();
             StopPageReveal();

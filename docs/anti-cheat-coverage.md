@@ -1,8 +1,8 @@
-# 反作弊识别与保护范围
+﻿# 反作弊识别与保护范围
 
 核对日期：2026-09-06。
 
-反作弊页包含九组可选用户态压制和六组仅保护规则。仅保护名单包括 PunkBuster、Nexon Game Security、Wellbia、完美世界竞技平台、5E 和 B5。通用后台压制会跳过命中的反作弊；总开关关闭不取消这层豁免。仅保护规则不进入 `Tamer` 的压制目标，也不参与反作弊绑核。
+反作弊页包含八组可选用户态压制、一组改判仅保护的用户态分组（Vanguard）和六组仅保护规则，另有全局的压制强度三档。仅保护名单包括 PunkBuster、Nexon Game Security、Wellbia、完美世界竞技平台、5E 和 B5。通用后台压制会跳过命中的反作弊；总开关关闭不取消这层豁免。仅保护规则不进入 `Tamer` 的压制目标，也不参与反作弊绑核。
 
 ## 新增的仅保护分组
 
@@ -21,6 +21,42 @@
 目录识别按完整目录段匹配，`EA\AC` 必须是连续两段。不会因为进程位于 `EA`、`Nexon`、`AC` 或 `BlackCipherBackup` 目录就将其豁免；也不会全局豁免 `xm`、`NGService` 这类普通名字。UNC 路径中的服务器名和共享名不充当产品目录；相对路径和含 `.` / `..` 的路径不用于目录归属判断。
 
 进程名只去掉末尾 `.exe`，保留 `EAAntiCheat.GameService` 中的点以及 `.aes`、`.des` 后缀。匹配不区分大小写。后台保护与游戏候选排除共用相同识别入口，避免把目录内的安全组件选作游戏渲染进程。
+
+## 压制强度三档与分组类别
+
+补充日期：2026-09-10。
+
+### 分组类别
+
+`AcGroup` 带 `AcCategory`，判据**不是有没有内核驱动**——BattlEye 有 `BEDaisy.sys`、EAC 有 `EasyAntiCheat.sys`，但它们的用户态服务（`BEService`、`EasyAntiCheat`）压起来既有效又安全，DayZ 上有实测。
+
+真正要分开的是**这一族会不会主动反制第三方工具**：
+
+| 类别 | 进压制目标 | 进豁免名单 | 成员 |
+| --- | --- | --- | --- |
+| `Suppressible` | 是 | 是 | ace、tp、eac、battleye、eaac、gameguard、faceit、neac |
+| `ProtectOnly` | 否 | 是 | vanguard |
+
+Vanguard 单列的依据是 [Riot 官方说明](https://support.riotgames.com/riot/performance/what-is-vanguard)：Vanguard 运行时会阻止某些第三方程序在系统上加载文件，尤其是访问低层系统功能的工具（[OpenRGB 的长期 issue](https://gitlab.com/CalcProgrammer1/OpenRGB/-/issues/316) 是活例子）。压它的失败模式是**游戏起不来**，与"压了没效果"不在一个量级。`vgk` 本来就是内核驱动，用户态碰不到。
+
+改判只影响压制目标，**不影响豁免**：`ProtectOnly` 分组的进程名照旧进 `IsKnownProcess` 与 `IsAntiCheatLikeName`，通用后台压制仍会跳过它们。老配置里若 `Tame_vanguard` 还开着，`Tamer` 构造时说明一次再清掉，不静默失效。
+
+### 强度三档
+
+设置键 `AcModeV1`，默认 `isolated`——它等于本功能一直以来的行为，升级不改变已生效的设置。
+
+| | 温和 Gentle | 均衡 Balanced | 隔离 Isolated |
+| --- | --- | --- | --- |
+| EcoQoS 小核限频 | 是 | 是 | 是 |
+| 磁盘 IO | Low | Low | **VeryLow** |
+| 调度优先级 | **不动** | BelowNormal | BelowNormal |
+| 绑核到末尾物理核 | 否 | 否 | **是** |
+
+三档映射到既有的 `SuppressionLevel`（`Eco` / `Restrained` / `Isolated`），**压制构成代码一行没改**，只是把 `Tamer.ApplyBatch` 里写死的 `Isolated` 换成读档位。
+
+有效成分（EcoQoS + IO 降级）三档一档都不少，递进的只是介入深度。依据见 `SuppressionCore.Apply` 顶部注释：扫描型反作弊挂起游戏线程时若自己分不到时间片，挂起窗口会从几百毫秒拖到几秒，玩家看到的就是卡死；所以任何一档都不给反作弊喂上「饿死」那三样（IDLE 优先级、页优先级 1、计时器封顶），这三项由 `Desired*` 的 `antiCheat` 标志保护，回归里有断言逐档核对。
+
+绑核只在最高档做：它是三项写入里最容易被反作弊自身保护拒绝的，`PinAntiCheatCores` 已有被拒后不再重试的处理。
 
 ## 边界与维护
 
@@ -47,5 +83,7 @@
 | 网易 NEAC 补进程 | `NeacClient`、`OWNeacClient`、`NeacProtect` 加入 neac 组；驱动服务 `NeacSafe64` 进内核识别 | [Microsoft Q&A](https://learn.microsoft.com/zh-cn/answers/questions/3859251/neacprotect)记录 `OWNeacClient.exe` 与 `NeacProtect.exe`；[永劫无间 Steam 讨论](https://steamcommunity.com/app/1203220/discussions/0/3729575905268785715/)记录 `NeacClient.exe`；[CVE-2025-45737](https://www.sentinelone.com/vulnerability-database/cve-2025-45737/)记录 `NeacSafe64.sys`。 |
 | 腾讯 TP / ACE 补进程 | `TP3Helper`、`TPHelper` 加入 tp 组；`ACE-Service64` 加入 ace 组；驱动服务 `TesSafe` 进内核识别 | [腾讯电脑管家论坛](https://bbs.guanjia.qq.com/thread-700605-1-1.html)与 [Hybrid Analysis 样本](https://hybrid-analysis.com/sample/a54d7f37b3a19f005ad0559a46ce3beb37997cd8bd96610d7de697f153ff8e3b?environmentId=100)记录 `TP3Helper.exe` 属 TenProtect3；[Glarysoft 启动项](https://www.glarysoft.com/startups/anticheatexpertprotection/aceservice64exe/614622)记录 `ACE-Service64.exe`。 |
 | 米哈游 HoYoKProtect（仅识别） | 驱动服务 `HoYoKProtect`、`mhyprot3`、`mhyprot2`；渲染进程前缀 `YuanShen`、`GenshinImpact`、`StarRail`、`ZenlessZoneZero`、`BH3` 用于日志说明 | [知乎 mhyprot2 分析](https://zhuanlan.zhihu.com/p/644102325)与 [蓝点网报道](https://www.landiannews.com/archives/95217.html)记录 `mhyprot2.sys` / `mhyprot3.sys`；无独立用户态进程，不进保护名单。 |
+
+未收录：使命召唤 RICOCHET 没有可写入名单的独立用户态进程。[Activision 官方说明](https://support.activision.com/articles/ricochet-overview)与[Blizzard 公告](https://news.blizzard.com/en-us/article/23733251/ricochet-anti-cheat-call-of-dutys-new-anti-cheat-initiative)记录其内核驱动随游戏启动、退出即卸载，用户态检测跑在游戏进程内，没有独立的常驻服务进程；本目录只收用户态进程，游戏本体不属于反作弊分组，因此不新增条目。日志归因侧另有 `cod` 整名匹配，不受此影响。
 
 未收录的国内厂商：西山居剑网3、盛趣、巨人、畅游、库洛鸣潮均未查到可靠的独立反作弊进程名，多数直接授权腾讯 ACE 或网易 NEAC，已由现有分组覆盖。遇到新样本按上表方式补依据再入库，不要凭猜测写进程名。

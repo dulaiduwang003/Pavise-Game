@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 记录运行日志并通知界面刷新
 using System;
 using System.Diagnostics;
@@ -56,8 +56,13 @@ namespace PaviseApp
         // 分级标记 落在时间戳之后 日志页按标记分级 没有标记的行仍按词表判 见 LogStreamView.Classify
         //   WARN 环境限制 本机没有某个部件 权限或反作弊拦住 精简系统缺组件 换台机器就没事的那种
         //   FAIL 功能性故障 写入 还原 落盘没成 抛了异常 数据有风险 需要有人看的那种
+        //   INFO 明确正常 用来压过词表 结构化诊断行里常带 lastFailure= code= 这类字段名
+        //     词表按子串匹配会把 lastFailure=none 判成异常 这类行必须自己声明级别
         public const string WarnTag = "WARN ";
         public const string FailTag = "FAIL ";
+        public const string InfoTag = "INFO ";
+
+        public static void Info(string msg) { Log(InfoTag + msg); }
 
         public static void Warn(string msg) { Log(WarnTag + msg); }
 

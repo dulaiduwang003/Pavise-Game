@@ -338,7 +338,6 @@ namespace PaviseApp
             Eq(null, PolicyCatalog.ItemOf("GmCacheWarm"));
             Eq(null, PolicyCatalog.Canonical("GmCacheWarm", "1"));
             Eq(true, GameProfile.IsRetiredOverrideKey("GmCacheWarm"));
-            foreach (string key in ExtremeMode.SessionPolicyKeys) Eq(false, key == "GmCacheWarm");
             Eq(null, typeof(GameMode).Assembly.GetType("PaviseApp.CacheWarm"));
             Eq(true, typeof(GameMode).GetProperty("CacheWarmOn") != null);
             SafetyFolder(delegate(string folder)
@@ -378,9 +377,6 @@ namespace PaviseApp
             Eq(Native.HIGH_PRIORITY_CLASS, GameMode.BoostPriorityTarget(true, true));
             Eq(Native.HIGH_PRIORITY_CLASS, GameMode.BoostPriorityTarget(false, false));
             Eq(Native.HIGH_PRIORITY_CLASS, GameMode.BoostPriorityTarget(false, true));
-            bool laneForcedByExtreme = false;
-            foreach (string key in ExtremeMode.SessionPolicyKeys) if (key == PolicyCatalog.KeyRenderLane) laneForcedByExtreme = true;
-            Eq(true, laneForcedByExtreme);
             SafetyFolder(delegate(string folder)
             {
                 Eq(true, new GameMode(folder, new SuppressionCore()).RenderLaneOn);

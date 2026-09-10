@@ -15,13 +15,14 @@ namespace PaviseApp
         {
             placementText = "";
             placementVerified = false;
+            bool placementUnreadable = false;
             if (pass.ManualPlacement && !EnsureManualIsolation(pid, pass.RendererCreation, pass.DesiredMask))
             {
                 placementText = Lang.T("schedule.isolation.failed");
                 return false;
             }
             if (!needPlacement)
-                placementVerified = PlacementMatches(h, pass);
+                placementVerified = PlacementMatches(h, pass, out placementUnreadable);
             if (needPlacement)
             {
                 Snap original;
@@ -109,7 +110,7 @@ namespace PaviseApp
                 if (soft) placementOk = true;
                 if (placementUnavailable) placementOk = true;
                 // 写入 API 返回成功仍不足以入账 最后再从进程句柄读回一次
-                placementVerified = PlacementMatches(h, pass);
+                placementVerified = PlacementMatches(h, pass, out placementUnreadable);
                 if (pass.DesiredMask != allMask
                     && !placementUnavailable && !placementVerified)
                     placementOk = false;
@@ -153,12 +154,38 @@ namespace PaviseApp
                 if (!newlyTracked && placementOk)
                     Logger.Log(Lang.T("log.gamemodeboost.19") + pass.RendererName + " pid " + pid + placementText);
             }
-            if (pass.ManualPlacement && !placementVerified)
+            if (pass.ManualPlacement && placementVerified)
+                lock (sync) isolationUnconfirmed.Remove(pid);
+            // 落点确实没生效才撤隔离 核被收走而游戏用不上比不隔离更糟
+            //   但读不出来不等于没生效 反作弊回收句柄很常见 这种轮次不计数也不撤
+            //   连续读到不对达到上限才撤 口径与普通落核的重试次数一致
+            if (pass.ManualPlacement && !placementVerified && !placementUnreadable)
             {
-                lock (sync) { gamePlacement.Remove(pid); gamePlacementStrict.Remove(pid); }
-                RollBackUnconfirmedIsolation();
+                int misses;
+                lock (sync)
+                {
+                    isolationUnconfirmed.TryGetValue(pid, out misses);
+                    misses++;
+                    isolationUnconfirmed[pid] = misses;
+                }
+                if (WithdrawsIsolation(placementVerified, placementUnreadable, misses, PlacementRetryMax))
+                {
+                    lock (sync) { gamePlacement.Remove(pid); gamePlacementStrict.Remove(pid); }
+                    RollBackUnconfirmedIsolation();
+                }
+                else Logger.Log(Lang.F("log.isolation.placementretry", misses, PlacementRetryMax));
             }
+            else if (pass.ManualPlacement && placementUnreadable)
+                Logger.Log(Lang.T("log.isolation.placementunreadable"));
             return true;
+        }
+
+        // 落点没确认就撤隔离的判定 抽成纯函数是为了把三条边界钉进自测
+        //   读得出且确实不符才计数 连续到上限才撤 读不出的轮次一律不撤
+        internal static bool WithdrawsIsolation(bool verified, bool unreadable, int consecutiveMisses, int max)
+        {
+            if (verified || unreadable) return false;
+            return consecutiveMisses >= max;
         }
 
         private bool ClearEfficiencyMode(IntPtr h, int pid, BoostPass pass)

@@ -92,6 +92,9 @@ namespace PaviseApp
             SetPowerFlyout(false);
             if (powerButton != null) powerButton.SetState(gameMode.PowerPlanSwitch, PowerPlanButtonLabel());
             for (int i = 0; i < policySync.Count; i++) policySync[i]();
+            // policySync 只静默回读开关值 不重算"本机是否适用"那层
+            //   空闲策略只在托管方案上生效 换方案后必须立刻重算 否则提示一直是旧的
+            RefreshPolicyPresentation();
             if (pageGameConfig != null && pageGameConfig.Visible) SyncCfgRows();
         }
 

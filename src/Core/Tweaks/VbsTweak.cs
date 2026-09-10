@@ -29,7 +29,7 @@ namespace PaviseApp
 
         // 关 VBS 等于关虚拟机监控程序 Hyper-V WSL2 Docker 沙盒都跟着停
         //   vmcompute 和 vmms 两个服务任一存在就是有人在用 Credential Guard 开着是企业机
-        //   只挡极限档的强制 用户自己手开不经此门
+        //   原先只挡极限档的强制 极限下架后仅用于说明 用户手开不经此门
         internal static bool VirtualizationInUse(bool vmcomputeInstalled, bool vmmsInstalled, int lsaCfgFlags)
         {
             return vmcomputeInstalled || vmmsInstalled || lsaCfgFlags > 0;

@@ -35,8 +35,17 @@ namespace PaviseApp
 
         public static ulong QueryAffinity(IntPtr h)
         {
+            ulong mask;
+            return TryQueryAffinity(h, out mask) ? mask : 0UL;
+        }
+
+        // 读失败和读到 0 必须分得开 调用方拿读失败当"落点不对"会误撤销已生效的隔离
+        public static bool TryQueryAffinity(IntPtr h, out ulong mask)
+        {
             UIntPtr pm, sm;
-            return GetProcessAffinityMask(h, out pm, out sm) ? (ulong)pm : 0UL;
+            bool ok = GetProcessAffinityMask(h, out pm, out sm);
+            mask = ok ? (ulong)pm : 0UL;
+            return ok;
         }
         public static int QueryIoPriority(IntPtr h)
         {

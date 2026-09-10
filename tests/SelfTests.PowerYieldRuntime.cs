@@ -179,9 +179,14 @@ namespace PaviseApp
                 Eq(false, admission());
                 admission = (Func<bool>)BoundaryCall(mode, "CapturePowerYieldAdmission", 123, 456L);
                 Settings.Save(PolicyCatalog.KeyPowerYield, true); Eq(false, admission());
-                Settings.Save("ExtremeUnlocked", true); Settings.SaveStr("ExtremeUnlockTicks", "1");
-                Settings.SaveStr("ExtremeOptOut", "");
-                profile.Overrides[PolicyCatalog.KeyPreset] = ((int)PerformancePreset.Extreme).ToString();
+                // 逐游戏的关压过全局的开 极限档下架后没有任何档位能翻过逐游戏覆盖
+                //   换到电竞档也照旧是关 只有把覆盖本身改成开才放行
+                profile.Overrides[PolicyCatalog.KeyPreset] = ((int)PerformancePreset.Competitive).ToString();
+                mode.ProbeSessionPolicyApply(profile);
+                admission = (Func<bool>)BoundaryCall(mode, "CapturePowerYieldAdmission", 123, 456L);
+                Eq(false, admission());
+                BoundaryCall(mode, "InvalidateOverrideWorkLocked", PolicyCatalog.KeyPowerYield);
+                profile.Overrides[PolicyCatalog.KeyPowerYield] = "1";
                 mode.ProbeSessionPolicyApply(profile);
                 admission = (Func<bool>)BoundaryCall(mode, "CapturePowerYieldAdmission", 123, 456L);
                 Eq(true, admission());

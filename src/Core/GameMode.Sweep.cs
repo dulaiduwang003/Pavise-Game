@@ -59,11 +59,9 @@ namespace PaviseApp
 
         // 掌机档的后台压制跟专注一样狠 掌机核心少 后台抢一点都更疼 而且压后台本身还省电
         //   掌机跟专注的差别全在功耗侧 不在压制侧 见 IsHandheld 的几个挂点
-        // 极限档的压制口径与电竞逐字节相同 差异全在功能开启广度 别在这里给它加狠
         internal static bool IsAggressive(PerformancePreset mode, bool aggressiveOn)
         {
             return mode == PerformancePreset.Competitive
-                || mode == PerformancePreset.Extreme
                 || mode == PerformancePreset.Handheld
                 || (mode == PerformancePreset.Custom && aggressiveOn);
         }
@@ -395,10 +393,8 @@ namespace PaviseApp
                 }
             }
 
-            // 重压已移除；只清理旧后台绑核，不产生新的后台亲和性限制。
-            if (!RunBackgroundPolicy(policyEpoch, delegate
-                { if (core.SqueezedCount(SuppressReason.Background) > 0)
-                    core.ClearSqueezes(SuppressReason.Background); })) return;
+            // 硬亲和默认关 关着就只清理旧落点 不产生新的后台亲和性限制
+            if (!RunBackgroundPolicy(policyEpoch, ApplyBackgroundHardAffinity)) return;
             FamilyBoundary.PruneCatalogVerdicts(live);
 
             foreach (int pid in core.PidsWith(SuppressReason.Background))
@@ -409,11 +405,9 @@ namespace PaviseApp
                 if (EffSuppress)
                 {
                     string preset = mode == PerformancePreset.Competitive ? Lang.T("preset.competitive")
-                        : mode == PerformancePreset.Extreme ? Lang.T("preset.extreme")
                         : mode == PerformancePreset.Handheld ? Lang.T("preset.handheld")
                         : mode == PerformancePreset.Custom ? Lang.T("preset.custom") : Lang.T("preset.standard");
                     bool strong = mode == PerformancePreset.Competitive
-                        || mode == PerformancePreset.Extreme
                         || mode == PerformancePreset.Handheld
                         || (mode == PerformancePreset.Custom && aggressive);
                     // "后台归到后台核"那一段随移核一起删了 后台不再有专属核心

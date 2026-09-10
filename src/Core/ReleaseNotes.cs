@@ -55,6 +55,19 @@ namespace PaviseApp
 
         public static readonly ReleaseNote[] All = new[]
         {
+            new ReleaseNote("2.2.2.0", "2026-09-11", new[]
+            {
+                new[]{ "新增 反作弊压制强度三档 温和 均衡 隔离 默认隔离 温和只留小核限频与磁盘 IO 降级 均衡再降调度优先级 隔离再加极低 IO 与绑核", "Added three anti-cheat suppression strengths: Gentle, Balanced and Isolated, defaulting to Isolated. Gentle keeps efficiency-core capping and a lower disk I/O priority, Balanced also lowers scheduling priority, Isolated adds very low I/O and core pinning.", "アンチチート抑制に 3 段階（控えめ・バランス・隔離）を追加しました。既定は隔離です。控えめは効率コア制限と低めのディスク IO、バランスはスケジューリング優先度も下げ、隔離はさらに極低 IO とコア固定を加えます。" },
+                new[]{ "新增 把后台硬锁在独占范围之外 默认关闭 开启后给后台进程写入亲和性 挡在独占范围外", "Added a switch that hard-locks background processes outside the exclusive range, off by default. When on, an affinity mask is written onto them to keep them out.", "バックグラウンドを専有範囲の外に固定するスイッチを追加しました。既定はオフで、オンにするとアフィニティを書き込んで範囲外に留めます。" },
+                new[]{ "新增 核心方案读不出可用选核时记一条告警", "A saved core plan that yields no usable selection now logs a warning.", "保存済みのコアプランから利用可能な選択を読み取れない場合に警告を記録します。" },
+                new[]{ "改进 Vanguard 改为仅保护 不再提供压制开关 老配置里开着的会在启动时关掉", "Vanguard is now protection-only and no longer offers a suppression switch. An existing enabled setting is turned off at startup.", "Vanguard を保護専用にし、抑制スイッチを廃止しました。既存の有効な設定は起動時にオフにします。" },
+                new[]{ "改进 CPU 拓扑读数自相矛盾时往窄里收 核心调度页标题行标出", "Contradictory CPU topology readings now narrow the usable set, and the Core Scheduling page header says so.", "矛盾する CPU トポロジーの読み取りでは使用範囲を絞り込み、コアスケジューリングページのヘッダーに表示します。" },
+                new[]{ "修复 核心独占玩着玩着自己失效 且本局不再恢复", "Fixed exclusive cores switching off mid-session and never coming back.", "排他コアが対局中に無効化されたまま復帰しない問題を修正しました。" },
+                new[]{ "修复 选了全核时落核每秒被重写一遍并重复记一条日志", "Fixed placement being rewritten and logged every second when all cores are selected.", "全コア選択時に配置が毎秒書き直され、同じログが繰り返し記録される問題を修正しました。" },
+                new[]{ "修复 双 CCD 机器上核心调度页画不出 CCD 分带 快捷键也少了 CCD 按钮", "Fixed the Core Scheduling page drawing no CCD bands and missing its CCD shortcut buttons on dual-CCD machines.", "デュアル CCD 機でコアスケジューリングページに CCD の区分帯が描画されず、CCD ショートカットも表示されない問題を修正しました。" },
+                new[]{ "修复 选核卡片右上角的标签与核编号叠在一起", "Fixed the tag in a core card's top-right corner overlapping the core number.", "コアカード右上のタグがコア番号と重なる問題を修正しました。" },
+                new[]{ "移除 极限档 原先一次性开启的项目改成独立开关 一律默认关闭 优化策略页多出 DWM 合成低延迟 音频低延迟 压制后台工作集修剪 电源方案空闲策略 系统环境页多出 关闭内存压缩与页合并 这页也不再需要解锁", "Removed the Extreme tier. Everything it switched on in one go is now an independent switch, all off by default. The Policies page gains low-latency DWM composition, low-latency audio, trimming suppressed working sets and the power plan idle policy; the System Environment page gains disabling memory compression and page combining, and no longer needs an unlock.", "極限ティアを削除しました。まとめて有効化していた項目は独立したスイッチになり、既定はすべてオフです。最適化ポリシーページには低遅延 DWM コンポジション・低遅延オーディオ・抑制中ワーキングセットの削減・電源プランのアイドルポリシーが、システム環境ページにはメモリ圧縮とページ結合の無効化が加わり、解錠も不要になりました。" },
+            }),
             new ReleaseNote("2.2.1.5", "2026-09-09", new[]
             {
                 new[]{ "改进 核心调度从优化策略页独立成一页 只保留一张选核图 下方一个游戏独占这些核的开关 独占范围不再单独选 由所选核心对齐整颗物理核推出 推不出可用范围时开关停用并说明原因 逐游戏页只读展示全局设置", "Core Scheduling moves out of Optimization Policy into a page of its own: one core picker with a Give the game these cores exclusively switch beneath it. The exclusive range is no longer chosen separately - it is derived from the selected cores, snapped to whole physical cores. When no usable range can be derived the switch is disabled and says why. The per-game page shows the global setting read-only.", "コア管理を最適化ポリシーから独立した 1 ページにしました。コア選択図は 1 つだけになり、その下に「これらのコアをゲーム専用にする」スイッチを置いています。専有範囲は個別に選ぶのをやめ、選択したコアから物理コア単位に丸めて導出します。有効な範囲を導けない場合はスイッチを無効にし、理由を表示します。ゲーム個別ページはグローバル設定を読み取り専用で表示します。" },

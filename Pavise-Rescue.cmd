@@ -1,6 +1,6 @@
 @echo off
 rem @author bdth 2074055628@qq.com
-rem file: rescue for a machine that hard-crashes (MCE) after Extreme tier
+rem file: rescue for a machine that hard-crashes (MCE) after deep system writes
 rem ASCII ONLY above the marker line, and CRLF line endings only. cmd
 rem decodes this file with the console startup codepage (936 or 65001);
 rem any non-ASCII byte up here shifts the parser, and bare-LF endings
@@ -23,7 +23,7 @@ if (-not $admin) {
 }
 
 Write-Host '============================================================'
-Write-Host ' Pavise 急救（极限档后死机重启的机器专用）'
+Write-Host ' Pavise 急救（系统环境改动后死机重启的机器专用）'
 Write-Host '============================================================'
 Write-Host ''
 Write-Host ' 顺序：先把日志、蓝屏记录、电源与启动配置导出到桌面；'
@@ -508,7 +508,7 @@ foreach ($g in $doomed) {
     }
     powercfg /delete $g | Out-Null
 }
-# 极限档写进托管方案的空闲旋钮可能已经漏到别的方案 全部方案恢复出厂最省事
+# 空闲策略写进托管方案的旋钮可能已经漏到别的方案 全部方案恢复出厂最省事
 powercfg -restoredefaultschemes | Out-Null
 powercfg /setactive $balanced | Out-Null
 Note '全部电源方案恢复出厂 当前平衡' ($LASTEXITCODE -eq 0)
@@ -580,7 +580,7 @@ Write-Host ''
 Write-Host ' Machine Check Exception 是处理器报的硬件错误。建议：' -ForegroundColor Yellow
 Write-Host ' 1. BIOS 恢复默认设置，关闭 XMP/EXPO 与任何超频，卸载 XTU、ThrottleStop 一类降压工具；' -ForegroundColor Yellow
 Write-Host ' 2. 把 BIOS 更新到厂商最新版，笔记本顺手清一次散热；' -ForegroundColor Yellow
-Write-Host ' 3. 这台机器以后不要开极限档。' -ForegroundColor Yellow
+Write-Host ' 3. 这台机器以后不要开系统环境页里关闭 VBS 与卸载推测执行缓解那两项。' -ForegroundColor Yellow
 Write-Host '============================================================'
 Write-Host ''
 try { Start-Process explorer.exe $out } catch { }

@@ -1,4 +1,4 @@
-// 文件用途 徽标记录的是观察到的活动 不是选中状态 也不是有个全屏窗口
+﻿// 文件用途 徽标记录的是观察到的活动 不是选中状态 也不是有个全屏窗口
 // 采样有界 不在界面和控制循环上 并且和交接的 GPU 工作共用一道闸
 using System;
 using System.Collections.Generic;
@@ -168,6 +168,9 @@ namespace PaviseApp
                         // 不做名字排序 徽标描述的是这个进程实测到的 3D 工作量
                         // 不是在声称它就是唯一或者主要的游戏渲染进程
                         if (!values.TryGetValue(target.RendererPid, out utilization)) { outcome = "PidMissing"; return; }
+                        // 这里刻意用往返格式 阈值判定就在 10.0 上 贴着阈值的值必须显示得出与阈值的差别
+                        //   换成 F1 会打成 gpu3d=10.0% minimum=10.0% 却判 BelowThreshold 日志自相矛盾
+                        //   代价是远离阈值时会出现十七位小数 见 SelfTests.FamilySuppression 的 NearThreshold 用例
                         detail = "gpu3d=" + utilization.ToString("R", CultureInfo.InvariantCulture) + "% " + detail;
                         int currentForeground = RendererForegroundPid();
                         if (currentForeground != target.RendererPid)
@@ -231,7 +234,8 @@ namespace PaviseApp
         {
             try
             {
-                string line = Lang.F("lib.render.observation.trace", target.RendererName, target.RendererPid,
+                string line = SeverityTagFor(reason)
+                    + Lang.F("lib.render.observation.trace", target.RendererName, target.RendererPid,
                     Lang.T("lib.render.observation." + reason)) + " [reason=" + reason + "]"
                     + " profile=" + target.Profile.Id + (string.IsNullOrEmpty(detail) ? "" : " " + detail);
                 // 磁盘或全局日志锁变慢时，不阻塞检测循环，也不占着 GPU 采样闸等待日志。
@@ -252,6 +256,30 @@ namespace PaviseApp
                 }
             }
             catch { } // 日志不可用不能影响采样闸的释放和游戏运行。
+        }
+
+        // 这行日志固定带 lastFailure= 与 code= 这类字段名 词表按子串匹配会把 lastFailure=none 判成异常
+        //   于是每条渲染观测都被记成异常 不分成功失败 所以按结果自己声明级别
+        //   FAIL 只留真故障 取不到证据算环境限制走 WARN 其余都是正常时序与有效结论
+        internal static string SeverityTagFor(string reason)
+        {
+            switch (reason)
+            {
+                case "Error":
+                case "QueueFailed":
+                case "SaveFailed":
+                    return Logger.FailTag;
+                case "GpuUnavailable":
+                case "FileUnavailable":
+                case "InvalidEvidence":
+                case "FileChanged":
+                    return Logger.WarnTag;
+                default:
+                    // Started Recorded Canceled Closed PidMissing BelowThreshold
+                    // IdentityUnavailable ActiveChanged ProfileChanged ForegroundChanged
+                    // ForegroundWaiting SamplingBusy 都是正常流程或有效结论
+                    return Logger.InfoTag;
+            }
         }
 
         private void DrainRendererObservationTrace()

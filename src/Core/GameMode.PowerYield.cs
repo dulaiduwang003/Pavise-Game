@@ -36,10 +36,8 @@ namespace PaviseApp
                 if (detection == null || detection.RendererPid != rendererPid
                     || detection.RendererCreation != rendererCreation) return false;
                 PerformancePreset mode = snapshot != null ? snapshot.Preset : preset;
-                if (mode != PerformancePreset.Competitive && mode != PerformancePreset.Extreme
+                if (mode != PerformancePreset.Competitive
                     && mode != PerformancePreset.Handheld) return false;
-                if (mode == PerformancePreset.Extreme
-                    && ExtremeMode.ForcedPolicyValue(PolicyCatalog.KeyPowerYield) == "1") return true;
                 return hasOverride ? overrideOn : PowerBudgetYieldRunner.EnabledSetting;
             };
         }

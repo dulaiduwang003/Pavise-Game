@@ -17,9 +17,6 @@ namespace PaviseApp
         private BackdropPreview backdropPreview;
         private Label lblBackdropState;
         private readonly Label[] modeAccentLabels = new Label[6];
-        private Toggle swExtremeUnlock;
-        private RoundPanel cardExtreme;
-        private Label lblExtremeCode, lblExtremeState;
 
         private static readonly Color[] AccentPalette =
         {
@@ -116,17 +113,14 @@ namespace PaviseApp
             settingsTabs = new TechTabs();
             settingsTabs.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(38));
             settingsTabs.SetTabs(
-                new[] { Lang.T("set.tab.extreme"), Lang.T("sec.app"), Lang.T("sec.maint"), Lang.T("sec.appearance") },
-                new[] { Lang.T("set.tab.extreme.h"), Lang.T("set.tab.app.h"), Lang.T("set.tab.maint.h"), Lang.T("set.tab.appearance.h") });
+                new[] { Lang.T("sec.app"), Lang.T("sec.maint"), Lang.T("sec.appearance") },
+                new[] { Lang.T("set.tab.app.h"), Lang.T("set.tab.maint.h"), Lang.T("set.tab.appearance.h") });
             pageSettings.Controls.Add(settingsTabs);
             y += 48;
-            settingsTabPanels = MakeTabPanels(pageSettings, settingsTabs, 4, y);
+            settingsTabPanels = MakeTabPanels(pageSettings, settingsTabs, 3, y);
 
             Control scroll = settingsTabPanels[0];
             int sy = 2, cardH;
-            BuildExtremeCard(scroll, ref sy);
-
-            scroll = settingsTabPanels[1]; sy = 2;
             swAuto = MakeSwitch(TaskHelper.TaskExistsCached(), OnAutoToggle);
             MakeAutoCard(scroll, 6, sy, ScrollContentW, 56, Lang.T("set.autostart"), Lang.T("set.autostart.n"), swAuto, out cardH);
             sy += cardH + 8;
@@ -148,7 +142,7 @@ namespace PaviseApp
             sy += cardH + 8;
             EnableCardCollapse(scroll);
 
-            scroll = settingsTabPanels[2]; sy = 2;
+            scroll = settingsTabPanels[1]; sy = 2;
             var resetActions = new Panel();
             resetActions.BackColor = Color.Transparent;
             resetActions.Size = new Size(Theme.S(274), Theme.S(32));
@@ -184,14 +178,14 @@ namespace PaviseApp
             scroll.Controls.Add(lblAbout);
             EnableCardCollapse(scroll);
 
-            scroll = settingsTabPanels[3]; sy = 2;
+            scroll = settingsTabPanels[2]; sy = 2;
             BuildAppearanceSection(scroll, ref sy);
         }
 
         private void BuildAppearanceSection(Control scroll, ref int sy)
         {
 
-            // 高度随可见档位数走 极限解锁后配色区多一行
+            // 高度随可见档位数走 本机不支持的档不占行
             int panelH = 184 + PresetValue.VisibleOrder().Length * 34 + 4;
             var panel = MakeConsolePanel(scroll, 6, sy, ScrollContentW, panelH, true);
             int w = ScrollContentW;
@@ -346,162 +340,9 @@ namespace PaviseApp
             }
         }
 
-        // 极限模式解锁卡 常规卡片的加冕版 紫边 代码行 状态章 全部现成控件搭出来
-        private void BuildExtremeCard(Control scroll, ref int sy)
-        {
-            // 强调色跟主题走 未解锁时极限不在配色行里 模式色在这儿就是改不掉的死色
-            Color accent = Theme.Accent;
-            var card = new RoundPanel
-            {
-                Fill = Theme.Card, Border = Col.Alpha(accent, 170), BackColor = Theme.Bg,
-                Radius = Theme.S(14), AccentEdge = true
-            };
-            cardExtreme = card;
-            card.SetBounds(Theme.S(6), Theme.S(sy), Theme.S(ScrollContentW), Theme.S(118));
-
-            var code = new Label
-            {
-                Text = "EXTREME // GATED TIER", ForeColor = accent, BackColor = Theme.Card,
-                Font = Theme.Mono(7.4f)
-            };
-            code.SetBounds(Theme.S(18), Theme.S(10), Theme.S(240), Theme.S(15));
-            lblExtremeCode = code;
-
-            bool visible = ExtremeMode.Visible;
-            bool pending = ExtremeMode.PendingReboot;
-            var state = new Label
-            {
-                Text = Lang.T(visible ? "extreme.card.state.ready"
-                    : pending ? "extreme.card.state.pending" : "extreme.card.state.locked"),
-                ForeColor = visible || pending ? accent : Theme.Dim,
-                BackColor = Theme.Card, Font = Theme.Mono(7.4f),
-                TextAlign = ContentAlignment.MiddleRight
-            };
-            state.SetBounds(card.Width - Theme.S(170), Theme.S(10), Theme.S(150), Theme.S(15));
-            lblExtremeState = state;
-
-            var title = new Label
-            {
-                Text = Lang.T("extreme.card.title"), ForeColor = Theme.Fg, BackColor = Theme.Card,
-                Font = Theme.UI(10.6f, true), AutoEllipsis = true
-            };
-            title.SetBounds(Theme.S(18), Theme.S(28), Theme.S(300), Theme.S(22));
-
-            var desc = new Label
-            {
-                Text = Lang.T("extreme.card.sub"), ForeColor = Theme.Dim, BackColor = Theme.Card,
-                Font = Theme.UI(7.6f, false)
-            };
-            desc.SetBounds(Theme.S(18), Theme.S(52), card.Width - Theme.S(200), Theme.S(58));
-
-            var sw = MakeSwitch(ExtremeMode.Unlocked, OnExtremeUnlockToggle);
-            sw.Location = new Point(card.Width - Theme.S(72), Theme.S(32));
-            swExtremeUnlock = sw;
-
-            card.Controls.AddRange(new Control[] { code, state, title, desc, sw });
-
-            // 极限档做成原子的 解锁即全开 回锁即全关 不给逐项管理入口
-            //   某项熔断会自己退出集 崩溃保险丝两次异常重启自动回锁 手动逃生阀交给整档开关
-            scroll.Controls.Add(card);
-            sy += 118 + 8;
-        }
-
-        // 卡片颜色是构建时的快照 模式切换后主题强调色变了要跟着刷
-        //   取模式色终值 与配色行标签同一惯例 不跟渐变动画逐帧走
-        private void RefreshExtremeCardAccent()
-        {
-            if (cardExtreme == null || cardExtreme.IsDisposed) return;
-            Color accent = Theme.ModeColor(gameMode.ActivePreset);
-            cardExtreme.Border = Col.Alpha(accent, 170);
-            if (lblExtremeCode != null) lblExtremeCode.ForeColor = accent;
-            if (lblExtremeState != null && (ExtremeMode.Visible || ExtremeMode.PendingReboot))
-                lblExtremeState.ForeColor = accent;
-            cardExtreme.Invalidate();
-        }
-
-        private void OnExtremeUnlockToggle(object s, EventArgs e)
-        {
-            if (swExtremeUnlock.Checked)
-            {
-                if (!RequireElevationFor(swExtremeUnlock, false)) return;
-                if (!PaviseDialog.Confirm(this, App.DisplayName, Lang.T("extreme.unlock.warn"), DlgKind.Warn))
-                {
-                    swExtremeUnlock.SetSilently(false);
-                    return;
-                }
-                int failed = 0;
-                int flipped = 0;
-                Cursor = Cursors.WaitCursor;
-                try
-                {
-                    IrqMutationBoundary.Run(delegate
-                    {
-                        int failedInner;
-                        flipped = ExtremeMode.ApplyEnvItems(out failedInner);
-                        failed = failedInner;
-                    });
-                }
-                finally { Cursor = Cursors.Default; }
-                ExtremeMode.MarkUnlocked();
-                Logger.Log(Lang.T("log.extreme.1") + flipped);
-                // 解锁确认时已经说明会立即重启 这里不再给拒绝的机会
-                //   环境项已经写进系统 停在这个状态上 极限档既不出现也无法生效
-                //   用户唯一能拿到的一致状态就是重启后 所以强制走完
-                string restartNow = Lang.F("extreme.unlock.restart", flipped)
-                    + (failed > 0 ? Lang.F("extreme.unlock.failed", failed) : "");
-                PaviseDialog.Warn(this, App.DisplayName, restartNow);
-                RestartComputer();
-            }
-            else
-            {
-                if (!PaviseDialog.Confirm(this, App.DisplayName, Lang.T("extreme.relock.confirm"), DlgKind.Warn))
-                {
-                    swExtremeUnlock.SetSilently(true);
-                    return;
-                }
-                bool ok = false;
-                Cursor = Cursors.WaitCursor;
-                try { IrqMutationBoundary.Run(delegate { ok = ExtremeMode.RollbackEnvItems(); }); }
-                finally { Cursor = Cursors.Default; }
-                ExtremeMode.ClearUnlock();
-                if (gameMode.Preset == PerformancePreset.Extreme)
-                    gameMode.Preset = PerformancePreset.Competitive;
-                Logger.Log(Lang.T("log.extreme.2"));
-                PaviseDialog.Info(this, App.DisplayName, Lang.T(ok ? "extreme.relock.done" : "extreme.relock.partial"));
-                BeginInvoke((MethodInvoker)RebuildUi);
-            }
-        }
-
-        // 解锁向导承诺的立即重启 5 秒缓冲留给系统落盘
-        // 强制重启 不给应用程序否决权
-        //   不加 /f 时一个有未保存文档的程序就能把整个重启拦下来
-        //   用户在解锁确认里已经同意立即重启 这里 10 秒缓冲留给他保存东西
-        //   起不来就明说 别让用户以为已经重启完成
-        private void RestartComputer()
-        {
-            int code = -1;
-            try
-            {
-                var psi = new System.Diagnostics.ProcessStartInfo(
-                    System.IO.Path.Combine(Environment.SystemDirectory, "shutdown.exe"), "/r /f /t 10");
-                psi.CreateNoWindow = true;
-                psi.UseShellExecute = false;
-                using (System.Diagnostics.Process p = System.Diagnostics.Process.Start(psi))
-                {
-                    if (p != null && p.WaitForExit(8000)) code = p.ExitCode;
-                    else code = 0;
-                }
-            }
-            catch { code = -1; }
-            if (code == 0) return;
-            Logger.Warn(Lang.T("log.extreme.5") + code);
-            PaviseDialog.Warn(this, App.DisplayName, Lang.T("extreme.unlock.restartfail"));
-        }
-
         private static string ModeName(PerformancePreset m)
         {
             return m == PerformancePreset.Competitive ? Lang.T("preset.competitive")
-                : m == PerformancePreset.Extreme ? Lang.T("preset.extreme")
                 : m == PerformancePreset.Handheld ? Lang.T("preset.handheld")
                 : m == PerformancePreset.Custom ? Lang.T("preset.custom") : Lang.T("preset.standard");
         }

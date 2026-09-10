@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 按用户配置压制指定反作弊进程
 using System;
 using System.Collections.Generic;
@@ -19,6 +19,8 @@ namespace PaviseApp
         private readonly int selfPid;
         private readonly int selfSession;
         private volatile bool paused;
+        // 全局强度档 三档共用同一批有效成分 递进的是介入深度
+        private volatile int mode = (int)AntiCheatModes.Default;
         // 反作弊绑核是压制构成的一部分；写入被拒的进程实例本进程生命周期内不再重试
         private readonly Dictionary<int, long> pinRefused = new Dictionary<int, long>();
         private volatile bool stopping;
@@ -54,6 +56,47 @@ namespace PaviseApp
             }
             foreach (AcGroup g in AntiCheatCatalog.Groups)
                 enabled[g.Key] = Settings.Load("Tame_" + g.Key, g.Default);
+            mode = (int)AntiCheatModes.Current;
+            RetireNonSuppressibleGroups();
+        }
+
+        // 改判为仅保护的分组 老配置里可能还开着 静默失效比留着更糟 说明一次再清掉
+        private void RetireNonSuppressibleGroups()
+        {
+            foreach (AcGroup g in AntiCheatCatalog.Groups)
+            {
+                if (g.Suppressible) continue;
+                if (!Settings.Load("Tame_" + g.Key, false)) continue;
+                Settings.Save("Tame_" + g.Key, false);
+                lock (sync) enabled[g.Key] = false;
+                Logger.Info(Lang.F("log.tamer.retired", g.Name));
+            }
+        }
+
+        public AntiCheatMode Mode
+        {
+            get { return (AntiCheatMode)mode; }
+            set
+            {
+                if ((AntiCheatMode)mode == value) return;
+                bool release = AntiCheatModes.ShouldReleasePins((AntiCheatMode)mode, value);
+                mode = (int)value;
+                AntiCheatModes.Save(value);
+                // 降档只是不再新增绑核 已经绑上的必须主动放回去
+                //   SqueezeAff 不清零的话 DesiredAffinity 会一直返回落点 每轮对账又写回来
+                //   反作弊会被钉在末尾核上直到进程退出 界面上却写着这一档不绑核
+                if (release)
+                {
+                    int released = 0;
+                    try { lock (engineSync) released = core.ClearSqueezes(SuppressReason.AntiCheat); }
+                    catch { released = 0; }
+                    lock (pinRefused) pinRefused.Clear();
+                    if (released > 0) Logger.Info(Lang.F("log.tamer.unpin", released));
+                }
+                Interlocked.Exchange(ref fullSweepRequested, 1);
+                Poke();
+                Logger.Info(Lang.F("log.tamer.mode", AntiCheatModes.NameOf(value)));
+            }
         }
 
         public bool Paused
@@ -67,6 +110,8 @@ namespace PaviseApp
         private void PinAntiCheatCores(List<AcquireRequest> acquisitions)
         {
             if (acquisitions == null || acquisitions.Count == 0) return;
+            // 绑核最容易被反作弊自身保护拒绝 只有隔离档做
+            if (!AntiCheatModes.PinsCores((AntiCheatMode)mode)) return;
             ulong mask;
             try { mask = CpuTopology.MultiGroup ? 0 : CpuTopology.BackgroundSqueezeMask(); }
             catch { mask = 0; }
@@ -359,6 +404,8 @@ namespace PaviseApp
             {
                 foreach (AcGroup g in AntiCheatCatalog.Groups)
                 {
+                    // 仅保护的分组永不进压制目标 它们的进程名照旧进豁免名单
+                    if (!g.Suppressible) continue;
                     bool on;
                     if (enabled.TryGetValue(g.Key, out on) && on)
                         foreach (string p in g.Procs) active[p] = g.Key;
@@ -461,13 +508,12 @@ namespace PaviseApp
                     {
                         try
                         {
-                            // 档位选择已移除 反作弊统一走扫描安全构成
-                            //   Isolated 在 AntiCheat 原因下即 低于正常优先级+极低磁盘 IO+小核限频
-                            //   见 SuppressionCore.Apply 的四个 Desired* 函数
+                            // 强度跟全局档位走 三档的有效成分相同 递进的是介入深度
+                            //   见 SuppressionCore.Apply 的四个 Desired* 函数与 AntiCheatModes
                             request.Result = core.Acquire(
                                 request.Pid, request.Name,
                                 SuppressReason.AntiCheat, request.Group,
-                                SuppressionLevel.Isolated);
+                                AntiCheatModes.LevelOf((AntiCheatMode)mode));
                         }
                         catch { request.Result = AcquireResult.ApplyFailed; }
                     }

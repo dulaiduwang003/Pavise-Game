@@ -76,9 +76,12 @@ namespace PaviseApp
         // 厂商性能档已下架 键名保留给旧收据的清收与迁移 不再进策略目录
         public const string KeyLaptopPerf = "GmLaptopPerfV1";
         public const string KeyVramShield = "GmVramShield";
-        // 极限专属 不进目录也不进逐游戏 常量保留给极限清单引用
+        // 这两项 2.2.2 起进了目录 各有开关与逐游戏行 默认关
         public const string KeyAudioLowLat = "GmAudioLowLatV1";
         public const string KeyWsTrim = "GmWsTrimV1";
+        // 托管电源方案里两个空闲旋钮 抬高进更深 C-state 的门槛 关掉按性能状态缩放门槛
+        //   原先只由已下架的极限档驱动 现在是独立开关 默认关
+        public const string KeyIdlePolicy = "GmIdlePolicyV1";
 
         public const string GroupMode = "cfg.group.mode";
         public const string GroupBackground = "cfg.group.bg";
@@ -91,7 +94,7 @@ namespace PaviseApp
         {
             // 顺序就是界面顺序 CfgOptionLabels 和 ModeStrip.Order 都按下标对齐 别改成数值序
             new PolicyItem(KeyPreset, PolicyValueKind.Enum, "0", "cfg.mode", GroupMode,
-                new[] { "0", "1", "5", "4", "2" }),
+                new[] { "0", "1", "4", "2" }),
             new PolicyItem(KeySuppress, PolicyValueKind.Bool, "1", "v14.bg.master", GroupBackground, null),
             new PolicyItem(KeySuppressFamily, PolicyValueKind.Bool, "0", "lib.family.suppress", GroupBackground, null),
             new PolicyItem(KeyBoost, PolicyValueKind.Bool, "1", "gm.boost", GroupBackground, null),
@@ -108,12 +111,15 @@ namespace PaviseApp
             new PolicyItem(KeyDisableCpuIdle, PolicyValueKind.Bool, "0", "gm.disablecpuidle", GroupMemPower, null),
             new PolicyItem(KeyStandbyCleaner, PolicyValueKind.Bool, "0", "gm.standbycleaner", GroupMemPower, null),
             new PolicyItem(KeyCacheWarm, PolicyValueKind.Bool, "0", "gm.cachewarm", GroupMemPower, null),
+            new PolicyItem(KeyWsTrim, PolicyValueKind.Bool, "0", "gm.wstrim", GroupMemPower, null),
+            new PolicyItem(KeyIdlePolicy, PolicyValueKind.Bool, "0", "gm.idlepolicy", GroupMemPower, null),
             new PolicyItem(KeyPauseDl, PolicyValueKind.Bool, "1", "gm.pausedl", GroupEnvironment, null),
             new PolicyItem(KeyPauseUpdate, PolicyValueKind.Bool, "0", "gm.pausewu", GroupEnvironment, null),
             new PolicyItem(KeyPauseMaintenance, PolicyValueKind.Bool, "1", "gm.pausemaint", GroupEnvironment, null),
             new PolicyItem(KeyPauseServices, PolicyValueKind.Bool, "0", "gm.pausesvc", GroupEnvironment, null),
             new PolicyItem(KeyAwake, PolicyValueKind.Bool, "1", "set.awake", GroupEnvironment, null),
             new PolicyItem(KeyEnglishInput, PolicyValueKind.Bool, "0", "gm.englishinput", GroupEnvironment, null),
+            new PolicyItem(KeyAudioLowLat, PolicyValueKind.Bool, "0", "gm.audiolat", GroupEnvironment, null),
             new PolicyItem(KeyNvMaxPerf, PolicyValueKind.Bool, "0", "set.nvmax", GroupGraphics, null),
             new PolicyItem(KeyNvLowLat, PolicyValueKind.Choice, "off", "set.nvll", GroupGraphics,
                 new[] { "off", "on", "ultra" }),
@@ -174,7 +180,12 @@ namespace PaviseApp
                     string normalized = parsed.ToString(CultureInfo.InvariantCulture);
                     foreach (string choice in item.Choices)
                         if (choice == normalized) return normalized;
-                    return item.Fallback;
+                    // 档位的墓碑值必须走 PresetValue.From 那一份判定 落到 Fallback 就是智能
+                    //   GameMode 读原始设置走 From 会得到电竞 快照层走这里得到智能
+                    //   两条路一分叉 界面显示电竞而 Sweep 按智能压 老极限用户正好踩上
+                    return key == KeyPreset
+                        ? ((int)PresetValue.From(parsed)).ToString(CultureInfo.InvariantCulture)
+                        : item.Fallback;
                 case PolicyValueKind.Choice:
                     foreach (string choice in item.Choices)
                         if (string.Equals(choice, v, StringComparison.OrdinalIgnoreCase)) return choice;

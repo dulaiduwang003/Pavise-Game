@@ -1,20 +1,35 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 维护反作弊进程目录和分组配置
 using System;
 using System.Collections.Generic;
 
 namespace PaviseApp
 {
+    // 判据不是有没有内核驱动 BattlEye 和 EAC 都有 .sys 但它们的用户态服务压起来既有效又安全
+    //   真正要分开的是这一族会不会主动反制第三方工具 反制的失败模式是游戏起不来
+    //   不是压了没效果 两者不在一个量级
+    internal enum AcCategory
+    {
+        Suppressible = 0,
+        ProtectOnly = 1,
+    }
+
     internal class AcGroup
     {
         public readonly string Key;
         private readonly string nameKey;
         public readonly bool Default;
         public readonly string[] Procs;
+        public readonly AcCategory Category;
         public string Name { get { return Lang.T(nameKey); } }
+        public bool Suppressible { get { return Category == AcCategory.Suppressible; } }
         public AcGroup(string key, string name, bool def, string[] procs)
+            : this(key, name, def, procs, AcCategory.Suppressible)
         {
-            Key = key; nameKey = name; Default = def; Procs = procs;
+        }
+        public AcGroup(string key, string name, bool def, string[] procs, AcCategory category)
+        {
+            Key = key; nameKey = name; Default = def; Procs = procs; Category = category;
         }
     }
 
@@ -54,9 +69,11 @@ namespace PaviseApp
             new AcGroup("tp", "ac.tp.n",
                 false,
                 new[] { "TenSafe", "TenSafe_1", "TenSafe_2", "TASLogin", "TP3Helper", "TPHelper" }),
+            // Riot 官方说明 Vanguard 运行时会阻止访问低层系统功能的第三方程序加载文件
+            //   压它的失败模式是游戏起不来 所以只豁免不压 vgk 本来就是内核驱动碰不到
             new AcGroup("vanguard", "Vanguard (Riot)",
                 false,
-                new[] { "vgc", "vgtray" }),
+                new[] { "vgc", "vgtray" }, AcCategory.ProtectOnly),
             new AcGroup("eac", "EasyAntiCheat (Epic)",
                 false,
                 new[] { "EasyAntiCheat", "EasyAntiCheat_EOS" }),

@@ -19,7 +19,7 @@ namespace PaviseApp
     internal static class App
     {
         public const string DisplayName = "PAVISE";
-        public const string Version = "2.2.1.5";
+        public const string Version = "2.2.2.0";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string QqGroup = "1051472054";
@@ -55,7 +55,6 @@ namespace PaviseApp
 
     internal static partial class Program
     {
-        private static bool extremeFuseTripped;
         private const string PendingPanelKey = "ShowPanelOnNextStart";
         internal const int TrayTipIdleMs = 1500;
         internal const int TrayTipInGameMs = 6000;
@@ -326,20 +325,11 @@ namespace PaviseApp
             try { MaintenancePause.HealFromCrash(); } catch { }
             GameDvr.HealFromCrash();
             try { Mmcss.HealFromCrash(); } catch { }
-            // 极限解锁中的环境项启动补写 资格探测可能扫网卡 不占启动线程
+            // 处理器功耗接口证据要读系统事件日志 最坏一秒多 先在后台算好
+            //   否则第一局配置电源方案时在主循环线程上现读 压制与提优跟着一起等
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
-                // 处理器功耗接口证据要读系统事件日志 最坏一秒多 在这里先算好
-                //   否则第一局配置电源方案时在主循环线程上现读 压制与提优跟着一起等
                 try { ProcessorPowerPlatform.Interface warmed = ProcessorPowerPlatform.Current; } catch { }
-                try
-                {
-                    int reconciled = 0, reconcileFailed = 0;
-                    IrqMutationBoundary.Run(delegate { reconciled = ExtremeMode.ReconcileEnvItems(out reconcileFailed); });
-                    if (reconciled > 0 || reconcileFailed > 0)
-                        Logger.Log(Lang.F("log.extreme.6", reconciled, reconcileFailed));
-                }
-                catch { }
             });
             try { RssSteer.HealFromCrash(); } catch { }
             try { PresenceQos.HealFromCrash(); } catch { }
@@ -360,34 +350,17 @@ namespace PaviseApp
             // 退役字段 不会触发库重置流程 这里按账本一次性收回旧写入
             try { if (IfeoBoost.HasResidue()) IfeoBoost.RestoreAll(); } catch { }
             try { if (CfgOffTweak.HasResidue()) CfgOffTweak.RestoreAll(); } catch { }
-            // 2.1.3.3 那版极限档会把网卡批量设成 Off 新策略不再当它是最优解
+            // 2.1.3.3 那版的极限档会把网卡批量设成 Off 新策略不再当它是最优解
             // 启动时只按旧收据收回那一代写入 新界面的单出口实验走 V2 身份收据 不吃这条迁移
             try
             {
-                bool nicLegacySettled = !NicModerationTweak.HasLegacyResidue
-                    || NicModerationTweak.MigrateLegacy();
-                if (nicLegacySettled)
-                    ExtremeMode.RetireEnvLedgerToken("nicim");
+                if (NicModerationTweak.HasLegacyResidue) NicModerationTweak.MigrateLegacy();
                 NicModerationTweak.ReconcileStartup();
             }
             catch { }
             if (!CoreIsolationWorker.Recover(new CoreIsolationSettingsStore()))
                 Logger.Warn(Lang.T("schedule.isolation.pending"));
             CrashGuard.HealFromCrash();
-            // 极限崩溃保险丝 解锁后两次非正常重启就回锁 环境项按账本还原 气泡等托盘起来再弹
-            try
-            {
-                int crashes;
-                if (ExtremeCrashFuse.CheckAtStartup(out crashes))
-                {
-                    bool rolledBack = false;
-                    try { IrqMutationBoundary.Run(delegate { rolledBack = ExtremeMode.RollbackEnvItems(); }); } catch { }
-                    ExtremeMode.ClearUnlock();
-                    Logger.Error(Lang.F("log.extreme.7", crashes) + (rolledBack ? "" : Lang.T("log.extreme.8")));
-                    extremeFuseTripped = true;
-                }
-            }
-            catch { }
             try { IrqRelocate.HealFromCrash(); } catch { }
             try { IrqAutoPilot.HealFromCrash(); } catch { }
 
@@ -774,8 +747,6 @@ namespace PaviseApp
 
             if (!elevated)
                 icon.ShowBalloonTip(8000, App.DisplayName, Lang.T("bal.noelev"), ToolTipIcon.Warning);
-            if (extremeFuseTripped)
-                icon.ShowBalloonTip(15000, App.DisplayName, Lang.T("bal.extremefuse"), ToolTipIcon.Warning);
 
             icon.DoubleClick += (s, e) => panel.ShowPanel();
 

@@ -24,7 +24,6 @@ namespace PaviseApp
             Eq("0", PolicyCatalog.ItemOf(PolicyCatalog.KeyCacheWarm).Fallback);
             Eq(false, GameProfile.IsRetiredOverrideKey(PolicyCatalog.KeyCacheWarm));
             Eq(true, GameProfile.IsRetiredOverrideKey("GmCacheWarm"));
-            Eq(false, ExtremeMode.SessionPolicyKeys.Contains(PolicyCatalog.KeyCacheWarm));
             Eq(false, CacheWarmEngine.Asset("game.exe"));
             Eq(false, CacheWarmEngine.Asset("anticheat.dll"));
             Eq(true, CacheWarmEngine.Asset("map.wad.client"));

@@ -118,6 +118,10 @@ namespace PaviseApp
         {
             lock (lk)
             {
+                // 已经是本程序关掉的状态直接认账 收据早就在了
+                //   查一次状态要起一次 PowerShell 重复开关没必要付这个代价
+                //   原先这道守卫在极限清单的 ApplySingle 里 清单下架后挪进来
+                if (EnabledByPavise) return true;
                 bool beforeCompression, beforeCombining;
                 if (!QueryState(out beforeCompression, out beforeCombining))
                 { Logger.Warn(Lang.T("log.memcompress.1")); return false; }
@@ -159,7 +163,7 @@ namespace PaviseApp
                 Logger.Log(Lang.T("log.memcompress.3"));
 
                 // 状态其实还满足原快照 说明我们的改动没落下 可以销账
-                // 否则立刻回滚 回滚也失败就得留着快照 交给极限账本接管重试
+                // 否则立刻回滚 回滚也失败就得留着快照 交给下次还原接管重试
                 bool recovered = postOk && SnapshotRestored(snapshot, compression, combining);
                 if (!recovered) recovered = RestoreSnapshot(snapshot);
                 if (recovered)
@@ -205,7 +209,7 @@ namespace PaviseApp
                     if (!RestoreSnapshot(snapshot))
                     { Logger.Log(Lang.T("log.memcompress.5")); return false; }
                 }
-                // 物理状态和两份归属记录都核完 极限层才能安全销账
+                // 物理状态和两份归属记录都核完 才能安全销账
                 if (!ClearOwnership())
                 { Logger.Log(Lang.T("log.memcompress.5")); return false; }
                 Logger.Log(Lang.T("log.memcompress.6"));

@@ -94,14 +94,7 @@ namespace PaviseApp
 
         private static bool CfgPresetForces(string key, PerformancePreset mode, out bool effective)
         {
-            // 极限档对清单内键整体锁定 展示层与快照层同一判定来源
-            if (mode == PerformancePreset.Extreme)
-            {
-                string forced = ExtremeMode.ForcedPolicyValue(key);
-                if (forced != null) { effective = forced != "off"; return true; }
-            }
             bool competitive = mode == PerformancePreset.Competitive
-                || mode == PerformancePreset.Extreme
                 || mode == PerformancePreset.Handheld;
             bool custom = mode == PerformancePreset.Custom;
             switch (key)
