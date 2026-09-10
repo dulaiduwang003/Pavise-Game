@@ -80,7 +80,8 @@ namespace PaviseApp
         // 反作弊使用显式落点，普通后台及旧重压记录回到原亲和性
         private ulong DesiredAffinityOf(Entry e)
         {
-            return SuppressionAffinityPolicy.DesiredAffinity(e.Reasons, e.SqueezeAff, e.OrigAff, allMask);
+            return SuppressionAffinityPolicy.DesiredAffinity(
+                e.Reasons, e.SqueezeAff, e.OrigAff, allMask, BackgroundPinsAllowed);
         }
 
         // 巡检重写走这里 落点被拒且只有亲和这一环失败时放弃落点 其余旋钮照常

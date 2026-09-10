@@ -71,7 +71,6 @@ namespace PaviseApp
         internal static string ModeName(PerformancePreset value)
         {
             return value == PerformancePreset.Competitive ? Lang.T("preset.competitive")
-                : value == PerformancePreset.Extreme ? Lang.T("preset.extreme")
                 : value == PerformancePreset.Handheld ? Lang.T("preset.handheld")
                 : value == PerformancePreset.Custom ? Lang.T("preset.custom") : Lang.T("preset.standard");
         }
@@ -84,22 +83,11 @@ namespace PaviseApp
         private Motion pick;
         public Action<PerformancePreset> Chosen;
 
-        public ModeChoice(PerformancePreset value) { mode = value; Bg = Theme.Card; pick.Speed = 0.30f; }
-        public PerformancePreset Mode { get { return mode; } }
-
-        // 当前机器上跟别的档没有区别的档位 灰掉不给点 说明换成不适用
-        private bool unavailable;
-        public bool Unavailable
+        public ModeChoice(PerformancePreset value)
         {
-            get { return unavailable; }
-            set
-            {
-                if (unavailable == value) return;
-                unavailable = value;
-                Cursor = value ? Cursors.Default : Cursors.Hand;
-                Invalidate();
-            }
+            mode = value; Bg = Theme.Card; pick.Speed = 0.30f; Cursor = Cursors.Hand;
         }
+        public PerformancePreset Mode { get { return mode; } }
 
         public void SetSelected(bool value)
         {
@@ -120,15 +108,14 @@ namespace PaviseApp
         protected override void OnClick(EventArgs e)
         {
             base.OnClick(e);
-            if (unavailable) return;
             if (Chosen != null) Chosen(mode);
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics; FillBg(g); g.SmoothingMode = SmoothingMode.AntiAlias;
-            Color accent = unavailable ? Theme.Faint : Theme.ModeColor(mode);
-            float sel = unavailable ? 0f : pick.Value;
+            Color accent = Theme.ModeColor(mode);
+            float sel = pick.Value;
             Rectangle r = new Rectangle(0, 0, Width - 1, Height - 1);
             using (GraphicsPath p = Theme.TechPath(r, Theme.S(8)))
             {
@@ -140,11 +127,9 @@ namespace PaviseApp
             }
             using (var b = new SolidBrush(accent)) g.FillEllipse(b, Theme.S(15), Theme.S(15), Theme.S(8), Theme.S(8));
             TextRenderer.DrawText(g, ModeButton.ModeName(mode), Theme.UI(9.75f, true),
-                new Rectangle(Theme.S(34), Theme.S(7), Theme.S(100), Theme.S(24)),
-                unavailable ? Theme.Faint : Theme.Fg,
+                new Rectangle(Theme.S(34), Theme.S(7), Theme.S(100), Theme.S(24)), Theme.Fg,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
-            TextRenderer.DrawText(g, unavailable ? Lang.T("mode.pick.handheld.na") : DetailKey(mode),
-                Theme.UI(7.9f, false),
+            TextRenderer.DrawText(g, DetailKey(mode), Theme.UI(7.9f, false),
                 new Rectangle(Theme.S(34), Theme.S(28), Width - Theme.S(50), Height - Theme.S(30)), Theme.Dim,
                 TextFormatFlags.Left | TextFormatFlags.WordBreak | TextFormatFlags.EndEllipsis);
             if (sel > 0.01f) DrawCheck(g, accent, sel);
@@ -174,7 +159,6 @@ namespace PaviseApp
         private string DetailKey(PerformancePreset value)
         {
             if (value == PerformancePreset.Competitive) return Lang.T("mode.pick.competitive");
-            if (value == PerformancePreset.Extreme) return Lang.T("mode.pick.extreme");
             if (value == PerformancePreset.Handheld) return Lang.T("mode.pick.handheld");
             if (value == PerformancePreset.Custom) return Lang.T("mode.pick.custom");
             return Lang.T("mode.pick.standard");
@@ -214,9 +198,6 @@ namespace PaviseApp
             {
                 choices[i].SetBounds(Theme.S(14), Theme.S(66 + i * 70), Theme.S(368), Theme.S(62));
                 choices[i].Chosen = Choose;
-                // 没有电池的机器上掌机档跟专注档写的是同一套值 灰掉不给选
-                choices[i].Unavailable = choices[i].Mode == PerformancePreset.Handheld
-                    && !Native.HasSystemBattery();
                 Controls.Add(choices[i]);
             }
         }

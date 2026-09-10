@@ -34,8 +34,6 @@ namespace PaviseApp
             Eq(expected, GameMode.LaneSupported(PerformancePreset.Competitive));
             Eq(expected, GameMode.LaneSupported(PerformancePreset.Custom));
 
-            // 极限档强制开的是开关 不是启用 资格判据对它一视同仁
-            Eq(expected, GameMode.LaneSupported(PerformancePreset.Extreme));
         }
 
         // 门槛值写进界面文案 改判据时这条会先炸 提醒把文案一起改

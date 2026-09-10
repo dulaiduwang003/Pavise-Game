@@ -106,7 +106,6 @@ namespace PaviseApp
             if (visualChanged)
             {
                 RefreshModeAccentLabels();
-                RefreshExtremeCardAccent();
                 if (nav != null) nav.SetMode(effective, enabled);
                 if (tuningNav != null) tuningNav.SetMode(effective, enabled);
                 using (Icon icon = IconArt.MakeMultiIcon(effective, enabled)) SetRuntimeIcon(icon);

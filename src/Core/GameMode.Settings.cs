@@ -213,6 +213,55 @@ namespace PaviseApp
             set { gpuPowerMaxOn = value; Settings.Save("GmGpuPowerMax", value); if (value) ClearEnvFuse("gpupower"); RequestPolicyApply(); }
         }
 
+        // 下面三项 2.2.2 之前只有极限档能开 极限下架后各自有开关 默认关
+        //   DWM 合成线程进 MMCSS 只是一次 dwmapi 调用 随本进程的 DWM 连接存续 独占全屏时 DWM 自行反注册
+        // 硬亲和默认关 打开后给已压制的后台写亲和 把它们挡在独占范围之外
+        public bool HardAffinityOn
+        {
+            get { return hardAffinityOn; }
+            set
+            {
+                hardAffinityOn = value;
+                SuppressionCore.BackgroundPinsAllowed = value;
+                Settings.Save("GmHardAffinityV1", value);
+                RequestPolicyApply();
+            }
+        }
+
+        public bool DwmBoostOn
+        {
+            get { return dwmBoostOn; }
+            set { dwmBoostOn = value; Settings.Save("GmDwmBoost", value); if (value) ClearEnvFuse("dwmboost"); RequestPolicyApply(); }
+        }
+
+        // 空闲策略旋钮写在托管电源方案上 开关一动就要重写方案
+        //   关掉时 PrepareExtremeKnobs 会按快照把两个旋钮还原 不重写就一直留在方案里
+        //   这一位进 powerKey 值一变就与 lastPowerPolicyKey 不等 下一轮自然重写 不用另设失效
+        public bool IdlePolicyOn
+        {
+            get { return idlePolicyOn; }
+            set
+            {
+                idlePolicyOn = value;
+                Settings.Save(PolicyCatalog.KeyIdlePolicy, value);
+                RequestPolicyApply();
+            }
+        }
+
+        // 工作集修剪自带内存压力门 可用低于 4 GiB 且低于总量 1/8 才动手 开关只表达意图
+        public bool WsTrimOn
+        {
+            get { return wsTrimOn; }
+            set { wsTrimOn = value; Settings.Save(PolicyCatalog.KeyWsTrim, value); RequestPolicyApply(); }
+        }
+
+        // 静音流拉低共享引擎周期 不写注册表 关流即还原
+        public bool AudioLowLatOn
+        {
+            get { return audioLatOn; }
+            set { audioLatOn = value; Settings.Save(PolicyCatalog.KeyAudioLowLat, value); if (value) ClearEnvFuse("audiolat"); RequestPolicyApply(); }
+        }
+
         // 默认关闭 关掉时立刻撤销可能还挂着的预留
         //   重新打开视为用户要再试一次 顺手清掉上次验不过留下的熔断
         public bool VramShieldOn

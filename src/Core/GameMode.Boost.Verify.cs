@@ -129,7 +129,7 @@ namespace PaviseApp
 
         private void OnGameHandleStripped(int pid, string rendererName, uint granted)
         {
-            string ac = KernelAntiCheat.Describe(rendererName);
+            string ac = KernelAntiCheat.DescribeForLog(rendererName);
             Logger.Log(Lang.T("log.gamemodeboost.3") + rendererName + " pid " + pid + Lang.T("log.gamemodeboost.34")
                 + (ac == null ? Lang.T("nav.tame") : ac) + Lang.T("log.gamemodeboost.35") + granted.ToString("X")
                 + Lang.T("log.gamemodeboost.36"));

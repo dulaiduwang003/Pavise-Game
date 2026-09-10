@@ -49,7 +49,7 @@ namespace PaviseApp
             }
         }
 
-        // 电竞和极限档锁定开启 掌机和笔记本不由档位强制
+        // 电竞档锁定开启 掌机和笔记本不由档位强制
         private sealed class Device
         {
             public IntPtr Handle;

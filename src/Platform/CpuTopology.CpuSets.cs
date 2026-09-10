@@ -43,6 +43,41 @@ namespace PaviseApp
         //   中断落点的阈值要数物理 P 核 只能用这份 否则数到的永远是 0
         private static List<ulong> parsedCoreMasks = new List<ulong>();
 
+        internal static ulong[] ParsedCoreMasksForTest() { return parsedCoreMasks.ToArray(); }
+
+        internal static void SetParsedCoreMasksForTest(ulong[] cores)
+        {
+            parsedCoreMasks = new List<ulong>(cores ?? new ulong[0]);
+        }
+
+        // GLPIE 报出的全部逻辑核并集 DeriveMasks 拿它跟 ProcessorCount 对账
+        internal static ulong ParsedUnion
+        {
+            get { ulong m = 0; foreach (ulong c in parsedCoreMasks) m |= c; return m; }
+        }
+
+        private static ulong UnionOf(List<ulong> masks)
+        {
+            ulong m = 0; foreach (ulong c in masks) m |= c; return m;
+        }
+
+        // 物理核有两套来源 掩码与混合架构判定来自 GLPIE 方案戳记来自 CPU Set 枚举
+        //   两边描述的必须是同一台机器 否则保存的选核方案会因戳记不符被判无效
+        //   核数相等还不够 数目一样而位置不同照样是两台机器 所以并集也要一致
+        public static bool TopologySourcesAgree
+        {
+            get
+            {
+                return parsedCoreMasks.Count == physicalCoreMasks.Count
+                    && UnionOf(parsedCoreMasks) == UnionOf(physicalCoreMasks);
+            }
+        }
+
+        public static string TopologySourceCounts
+        {
+            get { return parsedCoreMasks.Count + " / " + physicalCoreMasks.Count; }
+        }
+
         internal static int PhysicalCountIn(List<ulong> cores, ulong logicalMask)
         {
             int n = 0;

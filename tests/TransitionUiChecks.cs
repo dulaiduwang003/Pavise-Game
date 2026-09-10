@@ -978,7 +978,6 @@ namespace PaviseApp
 
                 CheckTabs(form, PageId.Graphics, "gfxTabs", "gfxTabPanels");
                 CheckTabs(form, PageId.Policy, "policyTabs", "policyTabPanels");
-                CheckTabs(form, PageId.CoreScheduling, "coreTabs", "coreTabPanels");
                 CheckTabs(form, PageId.Environment, "envTabs", "envTabPanels");
 
                 // Visible 是从父级继承的 清一个隐藏页面照样得把本地标志更新掉

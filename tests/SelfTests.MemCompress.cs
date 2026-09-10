@@ -17,7 +17,6 @@ namespace PaviseApp
                 MemCompressParsesInvariantBoolPair,
                 MemCompressRestoresOnlyWhatWasOn,
                 MemCompressExternalOffIsSkippedWithoutOwnership,
-                MemCompressConcurrentExternalOffIsNotClaimed,
                 MemCompressOwnedStateRepairsMissingLedger,
                 MemCompressFailedCommandStillUsesVerifiedState,
                 MemCompressUnchangedFailureClearsFreshReceipt,
@@ -127,19 +126,6 @@ namespace PaviseApp
             MemCompressTweak.ResetForTest();
             Settings.Save("MemCompressOffByPavise", false);
             Settings.SaveStr("PrevMMAgent", "");
-            ExtremeMode.PurgeAll();
-        }
-
-        private static ExtremeItem MemCompressItem(bool forceEligible)
-        {
-            ExtremeItem found = null;
-            foreach (ExtremeItem item in ExtremeMode.EnvItems())
-                if (item.Token == "memcompress") { found = item; break; }
-            if (found == null) throw new InvalidOperationException("Mem compress item missing.");
-            return forceEligible
-                ? new ExtremeItem(found.Token, found.LangKey, delegate { return true; },
-                    found.Active, found.Enable, found.Revert, found.OwnsState)
-                : found;
         }
 
         private static void MemCompressExternalOffIsSkippedWithoutOwnership()
@@ -147,13 +133,12 @@ namespace PaviseApp
             var fake = new MemCompressFake();
             fake.State(true, false, false);
             fake.Install();
-            bool ok = ExtremeMode.ApplySingle(MemCompressItem(true));
+            bool ok = MemCompressTweak.Enable();
             MemCompCheck(ok, "an externally satisfied state must be accepted");
             MemCompCheck(fake.Queries == 1 && fake.Commands.Count == 0,
                 "False/False must skip Disable-MMAgent entirely");
-            MemCompCheck(!MemCompressTweak.OwnsState
-                && !ExtremeMode.LedgerContains("memcompress"),
-                "an external state must not gain a Pavise receipt or extreme ledger entry");
+            MemCompCheck(!MemCompressTweak.OwnsState,
+                "an external state must not gain a Pavise receipt");
         }
 
         private static void MemCompressFailedCommandStillUsesVerifiedState()
@@ -172,31 +157,17 @@ namespace PaviseApp
                 "a verified change must retain its exact original-state receipt");
         }
 
-        private static void MemCompressConcurrentExternalOffIsNotClaimed()
-        {
-            var fake = new MemCompressFake();
-            fake.State(true, true, true);
-            fake.State(true, false, false);
-            fake.Install();
-            bool ok = ExtremeMode.ApplySingle(MemCompressItem(true));
-            MemCompCheck(ok && fake.Commands.Count == 0,
-                "a concurrent external transition to False/False needs no command");
-            MemCompCheck(!MemCompressTweak.OwnsState
-                && !ExtremeMode.LedgerContains("memcompress"),
-                "a race between Active and Enable must still remain externally owned");
-        }
-
         private static void MemCompressOwnedStateRepairsMissingLedger()
         {
             Settings.Save("MemCompressOffByPavise", true);
             Settings.SaveStr("PrevMMAgent", "1,1");
             var fake = new MemCompressFake();
             fake.Install();
-            bool ok = ExtremeMode.ApplySingle(MemCompressItem(true));
+            bool ok = MemCompressTweak.Enable();
             MemCompCheck(ok && fake.Queries == 0 && fake.Commands.Count == 0,
                 "an already-owned state must not rerun MMAgent commands");
-            MemCompCheck(ExtremeMode.LedgerContains("memcompress"),
-                "an ownership receipt must repair a ledger lost in the crash window");
+            MemCompCheck(MemCompressTweak.OwnsState,
+                "re-enabling an owned state keeps the receipt untouched");
         }
 
         private static void MemCompressUnchangedFailureClearsFreshReceipt()
@@ -216,24 +187,23 @@ namespace PaviseApp
         private static void MemCompressPartialFailureKeepsRecoveryLedger()
         {
             var fake = new MemCompressFake();
-            // 分别是活动探测 Enable 前状态 关闭失败后状态 还原失败后状态
-            fake.State(true, true, true);
+            // 分别是 Enable 前状态 关闭失败后状态 还原失败后状态
             fake.State(true, true, true);
             fake.State(true, false, true);
             fake.State(true, false, true);
             fake.CommandResults.Enqueue(false);
             fake.CommandResults.Enqueue(false);
             fake.Install();
-            bool ok = ExtremeMode.ApplySingle(MemCompressItem(true));
+            bool ok = MemCompressTweak.Enable();
             MemCompCheck(!ok, "a partial False/True result must remain a failed apply");
-            MemCompCheck(fake.Queries == 4 && fake.Commands.Count == 2
+            MemCompCheck(fake.Queries == 3 && fake.Commands.Count == 2
                 && fake.Commands[1].StartsWith("Enable-MMAgent", StringComparison.Ordinal),
                 "a partial write must attempt immediate rollback and verify it");
             MemCompCheck(Settings.LoadStr("PrevMMAgent", "") == "1,1"
                 && MemCompressTweak.OwnsState,
                 "failed rollback must keep the original receipt");
-            MemCompCheck(ExtremeMode.LedgerContains("memcompress"),
-                "a retained recovery receipt must be reachable by extreme relock");
+            MemCompCheck(MemCompressTweak.OwnsState,
+                "a retained recovery receipt must stay reachable for the next restore");
         }
 
         private static void MemCompressRestoreUsesVerifiedState()

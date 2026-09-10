@@ -8,6 +8,66 @@ namespace PaviseApp
 {
     internal static partial class SelfTests
     {
+        // 掩码与混合架构判定来自 GLPIE 方案戳记来自 CPU Set 两套枚举各数一遍物理核
+        //   对不上时保存的选核方案会因戳记不符被判无效 静默回落成不限核 用户毫无察觉
+        //   这条跑的是本机真实拓扑 不是构造数据 失败就说明这台机器上真的对不上
+        // 混合架构的能效核是单线程卡 选中标以前被卡片宽窄挡掉
+        //   13900K 上 24 张卡有 16 张是能效核 选中后只剩填色 没有任何文字
+        //   独占标同样两个字 一直画在单线程卡上 能画独占就能画选中
+        private static void TestCoreCardHeadTag()
+        {
+            // 选中要出标 与卡片有几个线程无关 放不放得下另由实测宽度决定
+            Eq(CoreMatrix.HeadTag.Primary, CoreMatrix.HeadTagFor(false, true, false, false));
+            Eq(CoreMatrix.HeadTag.Primary, CoreMatrix.HeadTagFor(false, true, false, true));
+            // 独占压过选中 两种卡宽都一样
+            foreach (bool multi in new[] { false, true })
+                Eq(CoreMatrix.HeadTag.Exclusive, CoreMatrix.HeadTagFor(true, true, true, multi));
+            // 没选中时大缓存标压过 SMT
+            Eq(CoreMatrix.HeadTag.Cache, CoreMatrix.HeadTagFor(false, false, true, true));
+            // SMT 只给多线程卡 单线程卡谈超线程没有意义
+            Eq(CoreMatrix.HeadTag.Smt, CoreMatrix.HeadTagFor(false, false, false, true));
+            Eq(CoreMatrix.HeadTag.None, CoreMatrix.HeadTagFor(false, false, false, false));
+
+            // 放得下才画 编号加间隙加标签刚好等于头宽算放得下 多一像素就不画
+            Eq(true, CoreMatrix.HeadTagFits(46, 20, 23, 3));
+            Eq(false, CoreMatrix.HeadTagFits(46, 20, 24, 3));
+            // 宽卡有富余
+            Eq(true, CoreMatrix.HeadTagFits(92, 20, 23, 3));
+            // 没有标签就没有可画的 不能因为量得下就返回真
+            Eq(false, CoreMatrix.HeadTagFits(92, 20, 0, 3));
+        }
+
+        // ProcessorCount 与枚举对不上时 AllMask 必须往窄里收
+        //   宽了会让掩码带上机器上不存在的核 写进去必然失败还会污染方案戳记
+        private static void TestAllMaskReconcile()
+        {
+            bool bad;
+            // 一致时原样返回 不置位
+            Eq(0xFFFUL, CpuTopology.ReconcileAllMask(0xFFF, 0xFFF, out bad));
+            Eq(false, bad);
+            // 枚举读不出来时只能信 ProcessorCount 不置位
+            Eq(0xFFFUL, CpuTopology.ReconcileAllMask(0xFFF, 0, out bad));
+            Eq(false, bad);
+            // ProcessorCount 多报 收到枚举那一份
+            Eq(0xFFFFUL, CpuTopology.ReconcileAllMask(0xFFFFFF, 0xFFFF, out bad));
+            Eq(true, bad);
+            // 枚举多报 收到 ProcessorCount 那一份 两个方向都往窄里收
+            Eq(0xFFFFUL, CpuTopology.ReconcileAllMask(0xFFFF, 0xFFFFFF, out bad));
+            Eq(true, bad);
+            // 完全不相交时无法收窄 退回 ProcessorCount 不能返回空掩码
+            Eq(0x0FUL, CpuTopology.ReconcileAllMask(0x0F, 0xF0, out bad));
+            Eq(true, bad);
+            Console.WriteLine("  本机 AllMask 对账 " + (CpuTopology.AllMaskReconciled ? "不一致 已收窄" : "一致"));
+        }
+
+        private static void TestTopologySourcesAgree()
+        {
+            Console.WriteLine("  本机拓扑 逻辑核 " + CpuTopology.CountSetBits(CpuTopology.AllMask)
+                + " 物理核 GLPIE/CpuSet " + CpuTopology.TopologySourceCounts
+                + " 混合架构 " + (CpuTopology.Hybrid ? "是" : "否"));
+            Eq(true, CpuTopology.TopologySourcesAgree);
+        }
+
         internal static void RunCoreSchedulingTests(string output)
         {
             CorePlanValidation(); CorePlanSerialization(); CorePlanMergedPageDraft(output);

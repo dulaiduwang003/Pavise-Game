@@ -385,7 +385,7 @@ namespace PaviseApp
                 return false; // Activation tests must not tune native schemes.
 #else
                 if (!TuneTarget(tgt, aggressive, handheld, extreme)) return false;
-                // 极限那组没配完就不记账 下次配置再补 其余旋钮已经写进去了
+                // 空闲策略那组没配完就不记账 下次配置再补 其余旋钮已经写进去了
                 tuneState = extremeTunePending ? -1 : TuneCode(aggressive, handheld, extreme);
 #endif
             }

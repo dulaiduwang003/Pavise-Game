@@ -138,6 +138,11 @@ namespace PaviseApp
                 body = body.Substring(Logger.FailTag.Length).Trim();
                 return LogEventSeverity.Error;
             }
+            if (body.StartsWith(Logger.InfoTag, StringComparison.Ordinal))
+            {
+                body = body.Substring(Logger.InfoTag.Length).Trim();
+                return LogEventSeverity.Info;
+            }
             return Classify(body);
         }
 

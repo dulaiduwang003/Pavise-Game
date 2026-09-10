@@ -12,7 +12,7 @@ namespace PaviseApp
         private void AddCfgModeRow(Control parent, ref int y)
         {
             PolicyItem item = PolicyCatalog.ItemOf(PolicyCatalog.KeyPreset);
-            // 模式条与取值数组必须同源 极限锁着时两边都没有它
+            // 模式条与取值数组必须同源 本机不支持的档两边都没有它
             string[] values = PresetValue.VisibleChoices();
             var strip = new ModeStrip();
             strip.Index = CfgRowIndexOf(item, values);

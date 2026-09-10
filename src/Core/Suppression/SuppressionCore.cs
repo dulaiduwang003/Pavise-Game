@@ -36,6 +36,8 @@ namespace PaviseApp
     {
         public const string StateFileName = "Pavise.suppression.state";
         public static volatile bool GpuDemoteEnabled;
+        // 硬亲和开着才认后台落点 关着时旧账本里的后台落点只还原不重写
+        public static volatile bool BackgroundPinsAllowed;
         private sealed class Entry
         {
             public string Name;

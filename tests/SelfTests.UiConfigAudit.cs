@@ -149,17 +149,17 @@ namespace PaviseApp
                     {
                         f.Family.Mode.RenderLaneOn = savedOn;
                         foreach (PerformancePreset mode in new[] { PerformancePreset.Competitive,
-                            PerformancePreset.Handheld, PerformancePreset.Competitive, PerformancePreset.Extreme,
-                            PerformancePreset.Handheld, PerformancePreset.Competitive })
+                            PerformancePreset.Handheld, PerformancePreset.Competitive,
+                            PerformancePreset.Standard, PerformancePreset.Handheld,
+                            PerformancePreset.Competitive })
                         {
                             FamilyPolicySetField(f.Family.Mode, "preset", mode);
                             // 模拟通用开关同步先读回用户值 随后的策略同步必须覆盖成实际显示值
                             toggle.SetSilently(savedOn);
                             UiConfigCall(f.Form, "SyncPolicyLane");
                             bool supported = mode != PerformancePreset.Handheld;
-                            bool forced = mode == PerformancePreset.Extreme;
-                            Eq(supported && (forced || savedOn), toggle.Checked);
-                            Eq(supported && !forced, toggle.Enabled);
+                            Eq(supported && savedOn, toggle.Checked);
+                            Eq(supported, toggle.Enabled);
                             Eq(Lang.T(supported ? "gm.lane.sub" : "gm.lane.unsupported"), card.Desc);
                             Eq(savedOn, f.Family.Mode.RenderLaneOn);
                         }

@@ -26,6 +26,44 @@ namespace PaviseApp
             return false;
         }
 
+        // 硬亲和是核心独占的附加项 默认关
+        //   CPU Set 只是给调度器的提示 自己设过硬亲和的线程不受约束
+        //   打开后给已压制的后台再写一遍亲和 把它们真正挡在独占范围之外
+        //   代价见 v2.0 的实测结论 后台被挤到窄范围时 游戏等它的锁会等更久
+        //   所以默认关 且只在独占确实生效时才动手
+        private void ApplyBackgroundHardAffinity()
+        {
+            ulong target = HardAffinityTarget();
+            if (target == 0)
+            {
+                if (core.SqueezedCount(SuppressReason.Background) > 0)
+                    core.ClearSqueezes(SuppressReason.Background);
+                return;
+            }
+            foreach (int pid in core.PidsWith(SuppressReason.Background))
+            {
+                long creation = core.CreationOf(pid);
+                if (creation <= 0) continue;
+                string name = core.NameOf(pid);
+                if (string.IsNullOrEmpty(name)) continue;
+                bool changed;
+                core.SetSqueeze(pid, creation, name, target, SuppressReason.Background, out changed);
+            }
+        }
+
+        // 独占范围之外就是后台可用的核 独占没真生效就返回 0 表示这轮不写
+        //   至少留两颗逻辑核 否则后台连调度都排不开 比不隔离更糟
+        private ulong HardAffinityTarget()
+        {
+            if (!hardAffinityOn || stopping) return 0;
+            PolicySnapshot snapshot = sessionPolicy;
+            if (snapshot == null || !snapshot.CorePlan.IsolationOn) return 0;
+            if (CoreIsolationClient.State != "schedule.isolation.active") return 0;
+            ulong all = CpuTopology.AllMask;
+            ulong outside = all & ~CoreIsolationClient.ActiveMask;
+            return outside != 0 && CpuTopology.CountSetBits(outside) >= 2 ? outside : 0;
+        }
+
         private bool StopCoreIsolation()
         {
             bool clean = coreIsolation == null || coreIsolation.Stop();

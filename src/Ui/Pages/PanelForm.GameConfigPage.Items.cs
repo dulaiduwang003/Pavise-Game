@@ -88,7 +88,8 @@ namespace PaviseApp
             ty = 2;
             AddCfgSection(cfgTabPanels[2], Lang.T("cfg.group.mempower"), ref ty,
                 new[] { PolicyCatalog.KeyPowerPlan, PolicyCatalog.KeyPowerYield,
-                    PolicyCatalog.KeyDisableCpuIdle, PolicyCatalog.KeyStandbyCleaner, PolicyCatalog.KeyCacheWarm });
+                    PolicyCatalog.KeyDisableCpuIdle, PolicyCatalog.KeyStandbyCleaner, PolicyCatalog.KeyCacheWarm,
+                    PolicyCatalog.KeyWsTrim, PolicyCatalog.KeyIdlePolicy });
             AddCfgSection(cfgTabPanels[2], Lang.T("cfg.sub.net"), ref ty,
                 new[] { PolicyCatalog.KeyPauseDl, PolicyCatalog.KeyPauseUpdate, PolicyCatalog.KeyPauseMaintenance });
             AddCfgSection(cfgTabPanels[2], Lang.T("cfg.group.env"), ref ty,
@@ -97,6 +98,8 @@ namespace PaviseApp
                 new[] { PolicyCatalog.KeyAwake });
             AddCfgSection(cfgTabPanels[2], Lang.T("cfg.sub.input"), ref ty,
                 new[] { PolicyCatalog.KeyEnglishInput });
+            AddCfgSection(cfgTabPanels[2], Lang.T("cfg.sub.audio"), ref ty,
+                new[] { PolicyCatalog.KeyAudioLowLat });
             EnableCardCollapse(cfgTabPanels[2]);
 
             ty = 2;
@@ -126,7 +129,8 @@ namespace PaviseApp
                     PolicyCatalog.KeyDisableCpuIdle, PolicyCatalog.KeyStandbyCleaner, PolicyCatalog.KeyCacheWarm,
                     PolicyCatalog.KeyPauseDl, PolicyCatalog.KeyPauseUpdate, PolicyCatalog.KeyPauseMaintenance,
                     PolicyCatalog.KeyPauseServices, PolicyCatalog.KeyAwake,
-                    PolicyCatalog.KeyEnglishInput },
+                    PolicyCatalog.KeyEnglishInput, PolicyCatalog.KeyWsTrim, PolicyCatalog.KeyAudioLowLat,
+                    PolicyCatalog.KeyIdlePolicy },
                 new[] { PolicyCatalog.KeyVramShield, PolicyCatalog.KeyNvMaxPerf,
                     PolicyCatalog.KeyNvLowLat, PolicyCatalog.KeyNvSmoothMotion,
                     PolicyCatalog.KeyNvShaderCache,
@@ -148,9 +152,9 @@ namespace PaviseApp
             switch (item.Key)
             {
                 case PolicyCatalog.KeyPreset:
-                    // 顺序对齐 Choices 的 0 1 5 4 2
+                    // 顺序对齐 Choices 的 0 1 4 2
                     return new[] { Lang.T("preset.standard"), Lang.T("preset.competitive"),
-                        Lang.T("preset.extreme"), Lang.T("preset.handheld"), Lang.T("preset.custom") };
+                        Lang.T("preset.handheld"), Lang.T("preset.custom") };
                 case PolicyCatalog.KeyNvLowLat:
                     return new[] { Lang.T("frl.off"), Lang.T("nvll.on"), Lang.T("nvll.ultra") };
                 case PolicyCatalog.KeyNvDlss:
@@ -192,6 +196,9 @@ namespace PaviseApp
                 case PolicyCatalog.KeyPauseServices: return "gm.pausesvc.sub";
                 case PolicyCatalog.KeyAwake: return "set.awake.n";
                 case PolicyCatalog.KeyEnglishInput: return "gm.englishinput.sub";
+                case PolicyCatalog.KeyWsTrim: return "gm.wstrim.sub";
+                case PolicyCatalog.KeyIdlePolicy: return "gm.idlepolicy.sub";
+                case PolicyCatalog.KeyAudioLowLat: return "gm.audiolat.sub";
                 case PolicyCatalog.KeyNvMaxPerf: return "set.nvmax.n";
                 case PolicyCatalog.KeyNvLowLat: return "set.nvll.n";
                 case PolicyCatalog.KeyNvSmoothMotion: return "set.nvsmooth.n";

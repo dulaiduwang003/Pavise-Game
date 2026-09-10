@@ -11,19 +11,18 @@ namespace PaviseApp
     internal partial class PanelForm
     {
         private Toggle swHags, swVbs, swGmGuard;
-        private Toggle swDevPower, swWindowedOpt, swNicIm, swVrrOpt, swEee, swAmdSam;
+        private Toggle swDevPower, swWindowedOpt, swNicIm, swVrrOpt, swEee, swAmdSam, swMemCompress;
         private Toggle swAccessKeys, swHidPower, swSpecMit, swTimerTick, swGlobalTimer;
         private SettingCard cardVbs, cardWindowedOpt, cardSpecMit, cardVrrOpt, cardEee, cardAmdSam, cardHags;
+        private SettingCard cardMemCompress;
         private SettingCard cardAccessKeys, cardHidPower, cardNicIm;
         private SettingCard cardGmGuard, cardTimerTick, cardGlobalTimer, cardDevPower;
         private TechTabs envTabs;
         private DBPanel[] envTabPanels;
         private int envBusy;
-        private Dictionary<Toggle, bool> envForcedToggles;
 
         private void BuildEnvironmentPage()
         {
-            envForcedToggles = new Dictionary<Toggle, bool>();
             int y = PageHeader(pageEnvironment, Lang.T("nav.env"), Lang.T("v16.env.sub"), 2);
 
             var envBanner = new ModuleBanner();
@@ -107,6 +106,15 @@ namespace PaviseApp
                 Lang.T("set.gtimer.n"), swGlobalTimer, out cardH);
             sy += cardH + 8;
 
+            // 不足 24GB 的机器压缩是有用的 关掉只会多换页 开关直接停用并说明
+            bool ramOk = MemCompressTweak.RamEligible();
+            swMemCompress = MakeSwitch(MemCompressTweak.EnabledByPavise, OnMemCompressToggle);
+            swMemCompress.Enabled = ramOk || MemCompressTweak.EnabledByPavise;
+            cardMemCompress = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.memcompress"),
+                swMemCompress.Enabled ? Lang.T("set.memcompress.n") : Lang.T("memcompress.smallram"),
+                swMemCompress, out cardH);
+            sy += cardH + 8;
+
             // 只读区要接在本页尾部 sy 马上会被后面两个 tab 复用 先存下来
             int kernelTailSy = sy;
             scroll = envTabPanels[1]; sy = 2;
@@ -138,42 +146,8 @@ namespace PaviseApp
                 Lang.T("set.hidpower.n"), swHidPower, out cardH);
             sy += cardH + 8;
 
-            BuildExtremeEnvReadout(envTabPanels[0], kernelTailSy);
             SyncEnvStatus();
             for (int i = 0; i < envTabPanels.Length; i++) EnableCardCollapse(envTabPanels[i]);
-        }
-
-        // 极限档写入的持久项在这里只读列出 切走档位它们不会自动回滚
-        //   重启才生效的东西 每次切档来回写等于每次都要重启一遍 那是刑罚不是功能
-        //   所以这里只负责让用户看见机器上现在有什么 停用只走设置页关闭解锁整体还原
-        private void BuildExtremeEnvReadout(Control scroll, int sy)
-        {
-            if (!ExtremeMode.Unlocked) return;
-            // 只列没有环境页开关卡的项 有卡的项状态看它自己的卡
-            //   在同一页再立一张同名卡只会让人以为出了重影
-            var switchless = new HashSet<string>(StringComparer.Ordinal) { "memcompress" };
-            var owned = new List<ExtremeItem>();
-            foreach (ExtremeItem item in ExtremeMode.EnvItems())
-                if (switchless.Contains(item.Token) && ExtremeMode.LedgerContains(item.Token))
-                    owned.Add(item);
-            if (owned.Count == 0) return;
-
-            sy += 10;
-
-            Section(scroll, Lang.T("extreme.env.section"), 6, sy); sy += 24;
-            foreach (ExtremeItem item in owned)
-            {
-                int cardH;
-                SettingCard card = MakeAutoCard(scroll, 6, sy, ScrollContentW, 52,
-                    Lang.T(item.LangKey), Lang.T("extreme.env.managed"), null, out cardH);
-                bool live;
-                try { live = item.Active(); }
-                catch { live = false; }
-                // 生效中用语义绿 与本页其它状态章同一体系 也免掉跟随模式色的滞后问题
-                card.SetStatus(Lang.T(live ? "extreme.env.on" : "extreme.env.pending"),
-                    live ? Theme.Green : Theme.Dim);
-                sy += cardH + 8;
-            }
         }
 
         private static Color StatusInk(bool needsAction, bool doneByPavise)
@@ -189,46 +163,8 @@ namespace PaviseApp
             card.SetLock(externalOn ? Lang.T("lock.external") : !toggle.Enabled ? Lang.T("lock.na") : "", externalOn);
         }
 
-        // 只在当前档位就是极限时才把环境卡锁成预设强制开 与显卡页 ExtremeGraphicsForced 同一判据
-        //   持久项解锁后一直在系统里 但切到别的档位时不该再顶着"预设强制"的锁 那会让自定义档看着莫名其妙
-        //   锁的时候记下开关原来的可用状态 切走档位或资格变了先放回去 卡片再按自己的判据重算
-        private void ForceEnvCard(string token, SettingCard card, Toggle toggle)
-        {
-            if (card == null || toggle == null || !toggle.Checked || !ExtremeMode.ForcesEnv(token)) return;
-            card.SetLock(Lang.T("v14.preset.forced.on"), true);
-            if (envForcedToggles == null) envForcedToggles = new Dictionary<Toggle, bool>();
-            if (!envForcedToggles.ContainsKey(toggle)) envForcedToggles[toggle] = toggle.Enabled;
-            toggle.Enabled = false;
-        }
-
-        private void ReleaseExtremeForcedEnv()
-        {
-            if (envForcedToggles == null) return;
-            foreach (KeyValuePair<Toggle, bool> kv in envForcedToggles)
-                if (!kv.Key.IsDisposed) kv.Key.Enabled = kv.Value;
-            envForcedToggles.Clear();
-        }
-
-        private void SyncExtremeForcedEnv()
-        {
-            // 当前不是极限档就不锁 环境项按用户自己的开关显示 与其它档位一致
-            if (gameMode == null || gameMode.ActivePreset != PerformancePreset.Extreme) return;
-            ForceEnvCard("hags", cardHags, swHags);
-            ForceEnvCard("amdsam", cardAmdSam, swAmdSam);
-            ForceEnvCard("vbs", cardVbs, swVbs);
-            ForceEnvCard("specmit", cardSpecMit, swSpecMit);
-            ForceEnvCard("gmguard", cardGmGuard, swGmGuard);
-            ForceEnvCard("windowedopt", cardWindowedOpt, swWindowedOpt);
-            ForceEnvCard("vrropt", cardVrrOpt, swVrrOpt);
-            ForceEnvCard("devpower", cardDevPower, swDevPower);
-            ForceEnvCard("eee", cardEee, swEee);
-            ForceEnvCard("hidpower", cardHidPower, swHidPower);
-            ForceEnvCard("accesskeys", cardAccessKeys, swAccessKeys);
-        }
-
         private void SyncEnvStatus()
         {
-            ReleaseExtremeForcedEnv();
             LockEnvCard(cardHags, swHags, HagsTweak.CurrentlyOn() && !HagsTweak.EnabledByPavise);
             LockEnvCard(cardWindowedOpt, swWindowedOpt, WindowedOptTweak.CurrentlyOn() && !WindowedOptTweak.EnabledByPavise);
             LockEnvCard(cardVrrOpt, swVrrOpt, VrrOptTweak.CurrentlyOn() && !VrrOptTweak.EnabledByPavise);
@@ -261,8 +197,6 @@ namespace PaviseApp
             if (cardAmdSam != null && AdlxTweaks.Available)
                 cardAmdSam.SetStatus(AmdSamTweak.Describe(),
                     StatusInk(!AmdSamTweak.CurrentlyOn(), AmdSamTweak.EnabledByPavise));
-            // 强制锁最后落 前面的外部与不适用锁都让位
-            SyncExtremeForcedEnv();
         }
 
         private void OnAmdSamToggle(object s, EventArgs e)
@@ -293,6 +227,19 @@ namespace PaviseApp
         }
 
         // 改高级属性会让网卡重新协商链路 断几秒 开关本身就是知情选择 不再弹确认
+        // 重启才彻底生效 关掉只回启原本开着的 收据在 MemCompressTweak 自己那儿
+        private void OnMemCompressToggle(object s, EventArgs e)
+        {
+            if (!RequireElevationFor(swMemCompress, MemCompressTweak.EnabledByPavise)) return;
+            IrqMutationBoundary.Run(delegate
+            {
+                if (swMemCompress.Checked) MemCompressTweak.Enable();
+                else MemCompressTweak.Restore();
+            });
+            swMemCompress.SetSilently(MemCompressTweak.EnabledByPavise);
+            if (cardMemCompress != null) SyncEnvStatus();
+        }
+
         private void OnEeeToggle(object s, EventArgs e)
         {
             if (!RequireElevationFor(swEee, EeeTweak.EnabledByPavise)) return;
@@ -548,7 +495,13 @@ namespace PaviseApp
                 text = Lang.T("spec.state.pending");
             else if (!st.QueryOk) text = Lang.T("spec.state.unknown");
             else if (st.RecoverableCost)
+            {
                 text = Lang.T("spec.state.on") + SpecMitigationTweak.ActiveCostSummary(st);
+                // 在跑的是 retpoline 或 eIBRS 这种近乎免费的实现时 直说关掉换不到什么
+                //   这句原先是极限档强制项的资格门 现在开关由用户自己拨 更该把结论摆出来
+                if (!SpecMitigationTweak.WorthDisabling(st))
+                    text += " " + Lang.T("spec.state.cheap");
+            }
             else text = Lang.T("spec.state.off");
             cardSpecMit.Desc = text;
             if (swSpecMit != null)
@@ -604,6 +557,12 @@ namespace PaviseApp
                 swTimerTick.SetSilently(TimerTickTweak.EnabledByPavise || TimerTickTweak.LastKnownOn);
             if (swGlobalTimer != null) swGlobalTimer.SetSilently(GlobalTimerResTweak.EnabledByPavise);
             if (swNicIm != null) swNicIm.SetSilently(NicModerationTweak.EnabledByPavise);
+            if (swMemCompress != null)
+            {
+                swMemCompress.SetSilently(MemCompressTweak.EnabledByPavise);
+                // 关掉之后不足 24GB 的机器要重新变灰 开着时永远留一条关闭的路
+                swMemCompress.Enabled = MemCompressTweak.EnabledByPavise || MemCompressTweak.RamEligible();
+            }
             SyncEnvStatus();
         }
     }

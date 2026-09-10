@@ -264,6 +264,13 @@ namespace PaviseApp
             if (sp != null && sp.ManualPlacement)
             {
                 ulong selected = sp.CoreMask;
+                // 存了方案却解析不出掩码 多半是拓扑戳记对不上 本机拓扑变过
+                //   这时会静默回落成不限核 用户的选核等于白设 必须说一次
+                if (selected == 0 && !placementVoidLogged)
+                {
+                    placementVoidLogged = true;
+                    Logger.Warn(Lang.T("log.placement.void"));
+                }
                 useStrict = selected != 0 && selected != allMask;
                 return selected != 0 ? selected : allMask;
             }
@@ -673,7 +680,7 @@ namespace PaviseApp
             {
                 if (writeRefused && !prioOk)
                 {
-                    string guard = KernelAntiCheat.Describe(pass.RendererName);
+                    string guard = KernelAntiCheat.DescribeForLog(pass.RendererName);
                     Logger.Log(Lang.T("log.gamemodeboost.3") + pass.RendererName + " pid " + pid
                         + Lang.T("log.gamemodeboost.62") + (guard == null ? Lang.T("nav.tame") : guard)
                         + Lang.T("log.gamemodeboost.63"));

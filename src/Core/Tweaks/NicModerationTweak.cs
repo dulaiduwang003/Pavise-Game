@@ -119,7 +119,6 @@ namespace PaviseApp
 
         public static bool Enable()
         {
-            bool retireLegacyToken = false;
             bool result;
             lock (lk)
             {
@@ -130,7 +129,6 @@ namespace PaviseApp
                     Logger.Log(Lang.T("log.nicim.legacyfail"));
                     return false;
                 }
-                retireLegacyToken = !HasLegacyResidue;
 
                 NicModerationScanIssue issue;
                 bool ok = strategy.ApplyExperimentalOff(out issue);
@@ -146,15 +144,13 @@ namespace PaviseApp
                     Logger.Log(Lang.T("log.nicim.failed") + IssueText(issue) + label);
                 result = ok;
             }
-            // 别在 nic 锁里拿 Extreme 锁 回锁那边是先持 Extreme 锁再迁旧账 会绕成反向锁序
+            // 旧账迁移在 nic 锁外做 极限账本已下架 这里不再有跨锁顺序问题
             // 旧 token 以后也绝不能解释成 V2 实验的所有权
-            if (retireLegacyToken) ExtremeMode.RetireEnvLedgerToken("nicim");
             return result;
         }
 
         public static bool Restore()
         {
-            bool retireLegacyToken = false;
             bool result;
             lock (lk)
             {
@@ -170,10 +166,8 @@ namespace PaviseApp
                 if (all && issue != NicModerationScanIssue.ExternalChanged)
                     Logger.Log(Lang.T("log.nicim.restored"));
                 else if (!legacy) Logger.Log(Lang.T("log.nicim.legacyfail"));
-                retireLegacyToken = legacy && !HasLegacyResidue;
                 result = all;
             }
-            if (retireLegacyToken) ExtremeMode.RetireEnvLedgerToken("nicim");
             return result;
         }
 
@@ -187,7 +181,6 @@ namespace PaviseApp
                 ok = !HasLegacyResidue || RestoreLegacyLocked();
                 Logger.Log(Lang.T(ok ? "log.nicim.migrated" : "log.nicim.legacyfail"));
             }
-            if (ok) ExtremeMode.RetireEnvLedgerToken("nicim");
             return ok;
         }
 

@@ -1,4 +1,4 @@
-// @author bdth 2074055628@qq.com
+﻿// @author bdth 2074055628@qq.com
 // 文件用途 构建反作弊专项页 逐分组的压制档位与开关
 using System;
 using System.Collections.Generic;
@@ -14,6 +14,8 @@ namespace PaviseApp
         private RoundPanel acRosterBar;
         private Label lblAcRoster;
         private ModuleBanner acBanner;
+        private TierPicker acModePicker;
+        private Label lblAcModeDesc, lblAcDisclaimer;
         private readonly List<AcGroup> acGroups = new List<AcGroup>();
         private readonly List<SettingCard> acCards = new List<SettingCard>();
         private readonly List<Toggle> acToggles = new List<Toggle>();
@@ -62,6 +64,31 @@ namespace PaviseApp
             lblMaster.Text = Lang.T("tame.toggle");
             acRosterBar.Controls.Add(lblMaster);
 
+            // 强度档与总开关同属整页的闸 放在同一条工具条上 不做成分组卡片
+            var lblAcMode = new Label();
+            lblAcMode.AutoSize = false;
+            lblAcMode.BackColor = Color.Transparent;
+            lblAcMode.Font = Theme.UI(8.6f, true);
+            lblAcMode.ForeColor = Theme.Fg;
+            lblAcMode.TextAlign = ContentAlignment.MiddleLeft;
+            lblAcMode.SetBounds(Theme.S(232), 0, Theme.S(66), acRosterBar.Height);
+            lblAcMode.Text = Lang.T("ac.mode");
+            acRosterBar.Controls.Add(lblAcMode);
+
+            acModePicker = new TierPicker();
+            acModePicker.Labels = new[] { Lang.T("ac.mode.gentle"),
+                Lang.T("ac.mode.balanced"), Lang.T("ac.mode.isolated") };
+            acModePicker.Index = (int)tamer.Mode;
+            acModePicker.Size = new Size(Theme.S(210), Theme.S(28));
+            acModePicker.Location = new Point(Theme.S(300),
+                (acRosterBar.Height - Theme.S(28)) / 2);
+            acModePicker.IndexChanged = delegate(int index)
+            {
+                tamer.Mode = (AntiCheatMode)index;
+                RefreshAcGroupStates();
+            };
+            acRosterBar.Controls.Add(acModePicker);
+
             var btnRoster = new PillButton(Lang.T("btn.roster.clear"));
             btnRoster.Size = new Size(Theme.S(84), Theme.S(26));
             btnRoster.Location = new Point(
@@ -75,10 +102,38 @@ namespace PaviseApp
             lblAcRoster.BackColor = Color.Transparent;
             lblAcRoster.Font = Theme.UI(8.2f, false);
             lblAcRoster.TextAlign = ContentAlignment.MiddleRight;
-            lblAcRoster.SetBounds(Theme.S(224), 0,
-                acRosterBar.Width - Theme.S(224) - Theme.S(104), acRosterBar.Height);
+            lblAcRoster.SetBounds(Theme.S(520), 0,
+                Math.Max(Theme.S(80), acRosterBar.Width - Theme.S(520) - Theme.S(104)), acRosterBar.Height);
             acRosterBar.Controls.Add(lblAcRoster);
-            y += 54;
+            y += 50;
+
+            // 三个按钮本身说不清各档做什么 说明常驻在工具条下方 跟着当前档位走
+            lblAcModeDesc = new Label();
+            lblAcModeDesc.AutoSize = false;
+            lblAcModeDesc.BackColor = Color.Transparent;
+            lblAcModeDesc.Font = Theme.UI(8.2f, false);
+            lblAcModeDesc.ForeColor = Theme.Dim;
+            lblAcModeDesc.TextAlign = ContentAlignment.MiddleLeft;
+            lblAcModeDesc.UseCompatibleTextRendering = false;
+            lblAcModeDesc.AutoEllipsis = true;
+            lblAcModeDesc.SetBounds(Theme.S(ContentX + 2), Theme.S(y), Theme.S(ContentW - 4), Theme.S(20));
+            pageAntiCheat.Controls.Add(lblAcModeDesc);
+            y += 22;
+
+            // 免责不随档位变 单独一行用警示色 放在选档的决策点旁边而不是页首长段落末尾
+            lblAcDisclaimer = new Label();
+            lblAcDisclaimer.AutoSize = false;
+            lblAcDisclaimer.BackColor = Color.Transparent;
+            lblAcDisclaimer.Font = Theme.UI(8.2f, false);
+            lblAcDisclaimer.ForeColor = Theme.LightMode
+                ? Color.FromArgb(205, 122, 16) : Color.FromArgb(255, 174, 52);
+            lblAcDisclaimer.TextAlign = ContentAlignment.MiddleLeft;
+            lblAcDisclaimer.UseCompatibleTextRendering = false;
+            lblAcDisclaimer.AutoEllipsis = true;
+            lblAcDisclaimer.Text = Lang.T("ac.mode.disclaimer");
+            lblAcDisclaimer.SetBounds(Theme.S(ContentX + 2), Theme.S(y), Theme.S(ContentW - 4), Theme.S(20));
+            pageAntiCheat.Controls.Add(lblAcDisclaimer);
+            y += 26;
             SyncAcRoster();
 
             acList = new DBPanel();
@@ -111,6 +166,14 @@ namespace PaviseApp
 
         private void RefreshAcGroupStates()
         {
+            if (acModePicker != null && acModePicker.Index != (int)tamer.Mode)
+                acModePicker.Index = (int)tamer.Mode;
+            if (lblAcModeDesc != null)
+            {
+                string desc = Lang.T("ac.mode." + AntiCheatModes.Token(tamer.Mode) + ".d");
+                if (!string.Equals(lblAcModeDesc.Text, desc, StringComparison.Ordinal))
+                    lblAcModeDesc.Text = desc;
+            }
             if (acBanner != null)
             {
                 acBanner.State = tamer.Paused ? "SUPPRESSION PAUSED" : "SUPPRESSION ENABLED";
@@ -133,7 +196,20 @@ namespace PaviseApp
             acToggles.Clear();
             int sy = 0;
             foreach (AcGroup g in AntiCheatCatalog.Groups)
+            {
+                if (!g.Suppressible) continue;
                 sy += AddAcCard(g.Key, Lang.T("ac." + g.Key + ".n"), Lang.T("ac." + g.Key + ".d"), g.Procs, sy) + 8;
+            }
+            // 会反制第三方工具的分组只展示不给开关 免得看起来还能压
+            foreach (AcGroup g in AntiCheatCatalog.Groups)
+            {
+                if (g.Suppressible) continue;
+                SettingCard card = MakeCard(acList, 6, sy, ScrollContentW, AcCardH,
+                    Lang.T("ac." + g.Key + ".n"), Lang.T("ac." + g.Key + ".d"), null);
+                card.Meta = string.Join(" · ", g.Procs);
+                card.SetStatus(Lang.T("ac.protectonly"), Theme.Green);
+                sy += AcCardH + 8;
+            }
             foreach (AcProtectionGroup g in AntiCheatCatalog.ProtectionOnlyGroups)
             {
                 SettingCard card = MakeCard(acList, 6, sy, ScrollContentW, AcCardH,

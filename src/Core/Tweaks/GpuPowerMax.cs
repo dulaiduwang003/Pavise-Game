@@ -28,20 +28,7 @@ namespace PaviseApp
             return true;
         }
 
-        // 极限档每轮 want 计算都要问一次 驱动查询不便宜 按进程缓存
-        //   支持性随驱动更新才会变 那种场景本来就要重启程序
-        private static int supportedCache;
-
-        public static bool SupportedCached()
-        {
-            int cached = supportedCache;
-            if (cached != 0) return cached == 1;
-            bool result;
-            try { result = Supported(); }
-            catch { result = false; }
-            supportedCache = result ? 1 : 2;
-            return result;
-        }
+        // 驱动查询不便宜 调用点自己控制频率 原先的进程级缓存随极限档每轮 want 计算一起撤了
         public static bool Supported()
         {
             uint nvCur, nvDef, nvMax;

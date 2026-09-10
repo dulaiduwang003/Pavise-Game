@@ -295,17 +295,13 @@ namespace PaviseApp
         // 调用方须持有 sync 实时解析会话档案的布尔策略 无会话档案时用全局值
         //   档案已丢失按关处理 档案存在覆盖时以覆盖为准 三个实时解析的会话
         //   策略 待机清理/英文输入/Intel 低延迟 共用这一份规则
-        //   极限会话对清单内的键与快照层同一口径强制开 否则界面锁着说强制 对局里却没生效
         private bool LiveBoolPreferenceLocked(string policyKey, bool globalOn)
         {
             PolicySnapshot snapshot = sessionPolicy;
             if (snapshot == null) return globalOn;
-            bool forced = snapshot.Preset == PerformancePreset.Extreme
-                && ExtremeMode.ForcedPolicyValue(policyKey) == "1";
-            if (string.IsNullOrEmpty(snapshot.ProfileId)) return forced || globalOn;
+            if (string.IsNullOrEmpty(snapshot.ProfileId)) return globalOn;
             GameProfile profile = FindProfileLocked(snapshot.ProfileId);
             if (profile == null) return false;
-            if (forced) return true;
             string value;
             return profile.Overrides.TryGetValue(policyKey, out value) ? value == "1" : globalOn;
         }

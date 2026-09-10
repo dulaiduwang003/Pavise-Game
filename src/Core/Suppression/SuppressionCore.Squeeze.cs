@@ -15,8 +15,10 @@ namespace PaviseApp
             SuppressReason reason, out bool changed)
         {
             changed = false;
-            // 重压已退役；后台只允许恢复，不再接受新的限制。
-            if (reason != SuppressReason.AntiCheat && squeezeMask != 0) return false;
+            // 旧的按热度重压已退役 后台落点只服务于核心独占的硬亲和 且必须整块给出
+            //   调用方负责判断开关与独占是否真的生效 这里只拒绝不认识的原因
+            if (reason != SuppressReason.AntiCheat && reason != SuppressReason.Background
+                && squeezeMask != 0) return false;
             Entry e;
             ulong target;
             lock (sync)

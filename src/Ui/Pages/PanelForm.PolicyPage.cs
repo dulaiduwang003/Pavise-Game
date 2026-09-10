@@ -20,6 +20,8 @@ namespace PaviseApp
         private Toggle swPolicyVramShield;
         private SettingCard cardPolicyVramShield, cardPolicyEnglishInput;
         private Toggle swPolicyEnglishInput;
+        private Toggle swPolicyDwmBoost, swPolicyWsTrim, swPolicyAudioLat, swPolicyIdlePolicy;
+        private SettingCard cardPolicyDwmBoost, cardPolicyWsTrim, cardPolicyAudioLat, cardPolicyIdlePolicy;
         private Toggle swPolicyPowerYield;
         private Toggle swPolicyDisableCpuIdle;
         private Toggle swPolicyPauseWu, swPolicyPauseServices, swPolicyAwake;
@@ -98,6 +100,9 @@ namespace PaviseApp
             swPolicyMmcss = AddPolicyToggle(scroll, ref sy, Lang.T("gm.mmcss"), Lang.T("gm.mmcss.sub"),
                 delegate { return gameMode.MmcssOn; }, delegate(bool v) { gameMode.MmcssOn = v; });
             cardPolicyMmcss = (SettingCard)swPolicyMmcss.Parent;
+            swPolicyDwmBoost = AddPolicyToggle(scroll, ref sy, Lang.T("gm.dwmboost"), Lang.T("gm.dwmboost.sub"),
+                delegate { return gameMode.DwmBoostOn; }, delegate(bool v) { gameMode.DwmBoostOn = v; });
+            cardPolicyDwmBoost = (SettingCard)swPolicyDwmBoost.Parent;
             swPolicyPowerYield = AddPolicyToggle(scroll, ref sy,
                 Lang.T("gm.poweryield"), Lang.T("gm.poweryield.sub"),
                 delegate { return Settings.Load(PowerBudgetYieldRunner.EnabledKey, false); },
@@ -108,6 +113,9 @@ namespace PaviseApp
                 delegate { return gameMode.EnglishInputEnabled; },
                 delegate(bool v) { gameMode.EnglishInputEnabled = v; }, 0, true);
             cardPolicyEnglishInput = (SettingCard)swPolicyEnglishInput.Parent;
+            swPolicyAudioLat = AddPolicyToggle(scroll, ref sy, Lang.T("gm.audiolat"), Lang.T("gm.audiolat.sub"),
+                delegate { return gameMode.AudioLowLatOn; }, delegate(bool v) { gameMode.AudioLowLatOn = v; }, 0, true);
+            cardPolicyAudioLat = (SettingCard)swPolicyAudioLat.Parent;
             swPolicyDisableCpuIdle = AddPolicyToggle(scroll, ref sy,
                 Lang.T("gm.disablecpuidle"), Lang.T("gm.disablecpuidle.sub"),
                 delegate { return gameMode.DisableCpuIdle; },
@@ -115,6 +123,14 @@ namespace PaviseApp
             cardPolicyDisableCpuIdle = (SettingCard)swPolicyDisableCpuIdle.Parent;
             BuildStandbyCleanerPolicyCard(scroll, ref sy);
             BuildCacheWarmPolicyCard(scroll, ref sy);
+            swPolicyWsTrim = AddPolicyToggle(scroll, ref sy, Lang.T("gm.wstrim"), Lang.T("gm.wstrim.sub"),
+                delegate { return gameMode.WsTrimOn; }, delegate(bool v) { gameMode.WsTrimOn = v; }, 0, true);
+            cardPolicyWsTrim = (SettingCard)swPolicyWsTrim.Parent;
+            swPolicyIdlePolicy = AddPolicyToggle(scroll, ref sy,
+                Lang.T("gm.idlepolicy"), Lang.T("gm.idlepolicy.sub"),
+                delegate { return gameMode.IdlePolicyOn; },
+                delegate(bool v) { gameMode.IdlePolicyOn = v; }, 0, true);
+            cardPolicyIdlePolicy = (SettingCard)swPolicyIdlePolicy.Parent;
             swPolicyPauseWu = AddPolicyToggle(scroll, ref sy, Lang.T("gm.pausewu"), Lang.T("gm.pausewu.sub"),
                 delegate { return gameMode.PauseWindowsUpdate; }, delegate(bool v) { gameMode.PauseWindowsUpdate = v; });
             cardPolicyPauseWu = (SettingCard)swPolicyPauseWu.Parent;
@@ -265,15 +281,12 @@ namespace PaviseApp
                 policyBanner.StateColor = Theme.Accent;
             }
             PerformancePreset mode = gameMode.ActivePreset;
-            bool competitive = mode == PerformancePreset.Competitive
-                || mode == PerformancePreset.Extreme;
+            bool competitive = mode == PerformancePreset.Competitive;
             bool custom = mode == PerformancePreset.Custom;
-            // 掌机档跟电竞一样锁死这两项 差别在功耗侧 不在这里 极限同口径
+            // 掌机档跟电竞一样锁死这两项 差别在功耗侧 不在这里
             bool presetForcesOn = competitive || mode == PerformancePreset.Handheld;
-            // 极限档强制的清单项在这里显示锁定 否则开关显示用户配置值 与实际生效相反
-            bool extremeTier = mode == PerformancePreset.Extreme;
             ApplyPresetPolicy(swPolicyBackground, cardPolicyBackground, Lang.T("v14.bg.master"), false, true);
-            ApplyPresetPolicy(swPolicyGpuDemote, cardPolicyGpuDemote, Lang.T("gm.gpudemote"), extremeTier, true);
+            ApplyPresetPolicy(swPolicyGpuDemote, cardPolicyGpuDemote, Lang.T("gm.gpudemote"), false, true);
             // 只有智能档会用到 其它档位本来就是电竞口径 开关留着但标为不生效
             ApplyPresetPolicy(swPolicyAdaptive, cardPolicyAdaptive, Lang.T("gm.adaptive"), false,
                 mode == PerformancePreset.Standard);
@@ -293,8 +306,8 @@ namespace PaviseApp
                 }
             }
             ApplyPresetPolicy(swPolicyPowerYield, cardPolicyPowerYield,
-                Lang.T("gm.poweryield"), extremeTier, true);
-            if (swPolicyPowerYield != null && cardPolicyPowerYield != null && !extremeTier)
+                Lang.T("gm.poweryield"), false, true);
+            if (swPolicyPowerYield != null && cardPolicyPowerYield != null)
             {
                 // 硬件或权限失败只挡住新的开启 永远不挡关闭
                 // 熔断是一张重试通知 显式关一次再开可能重新验证通过
@@ -314,12 +327,33 @@ namespace PaviseApp
                 Lang.T("gm.disablecpuidle"), false, true);
             RefreshDisableCpuIdlePresentation();
             RefreshStandbyCleanerPresentation();
-            ApplyPresetPolicy(swPolicyPauseWu, cardPolicyPauseWu, Lang.T("gm.pausewu"), extremeTier, true);
-            ApplyPresetPolicy(swPolicyPauseMaint, cardPolicyPauseMaint, Lang.T("gm.pausemaint"), extremeTier, true);
-            ApplyPresetPolicy(swPolicyPauseServices, cardPolicyPauseServices, Lang.T("gm.pausesvc"), extremeTier, true);
+            ApplyPresetPolicy(swPolicyPauseWu, cardPolicyPauseWu, Lang.T("gm.pausewu"), false, true);
+            ApplyPresetPolicy(swPolicyPauseMaint, cardPolicyPauseMaint, Lang.T("gm.pausemaint"), false, true);
+            ApplyPresetPolicy(swPolicyPauseServices, cardPolicyPauseServices, Lang.T("gm.pausesvc"), false, true);
             ApplyPresetPolicy(swPolicyAwake, cardPolicyAwake, Lang.T("set.awake"), false, true);
             ApplyPresetPolicy(swPolicyVramShield, cardPolicyVramShield, Lang.T("gm.vramshield"), false, true);
-            ApplyPresetPolicy(swPolicyEnglishInput, cardPolicyEnglishInput, Lang.T("gm.englishinput"), extremeTier, true);
+            ApplyPresetPolicy(swPolicyEnglishInput, cardPolicyEnglishInput, Lang.T("gm.englishinput"), false, true);
+            // 没有档位会强制这三项 显示一律听用户自己的开关
+            ApplyPresetPolicy(swPolicyWsTrim, cardPolicyWsTrim, Lang.T("gm.wstrim"), false, true);
+            ApplyPresetPolicy(swPolicyIdlePolicy, cardPolicyIdlePolicy, Lang.T("gm.idlepolicy"), false, true);
+            RefreshIdlePolicyPresentation();
+            ApplyPresetPolicy(swPolicyAudioLat, cardPolicyAudioLat, Lang.T("gm.audiolat"), false, true);
+            ApplyPresetPolicy(swPolicyDwmBoost, cardPolicyDwmBoost, Lang.T("gm.dwmboost"), false, true);
+        }
+
+        // 空闲旋钮只写托管方案 targetOwned 为假时 TuneTarget 整个不跑
+        //   手选了自己的电源方案或关掉方案总开关 这个开关就打不出任何效果
+        //   禁止 CPU 空闲不一样 它写当前活动方案 用户自己的方案也会被改 所以两者不能共用一套提示
+        //   永远留一条关闭的路 已经开着的不许因为不适用而锁死
+        private void RefreshIdlePolicyPresentation()
+        {
+            if (swPolicyIdlePolicy == null || cardPolicyIdlePolicy == null) return;
+            bool managed = PowerPlan.EffectivePlanId == PowerPlan.ManagedChoice;
+            bool applies = managed && gameMode.PowerPlanSwitch;
+            swPolicyIdlePolicy.Enabled = applies || gameMode.IdlePolicyOn;
+            cardPolicyIdlePolicy.Desc = applies
+                ? Lang.T("gm.idlepolicy.sub") : Lang.T("gm.idlepolicy.needmanaged");
+            cardPolicyIdlePolicy.SetLock(applies ? "" : Lang.T("lock.na"), false);
         }
 
         private void RefreshDisableCpuIdlePresentation()
@@ -419,12 +453,11 @@ namespace PaviseApp
         {
             PerformancePreset mode = gameMode.ActivePreset;
             bool supported = GameMode.LaneSupported(mode);
-            bool forced = mode == PerformancePreset.Extreme;
-            ApplyPresetPolicy(swPolicyLane, cardPolicyLane, Lang.T("gm.lane"), forced, true);
+            ApplyPresetPolicy(swPolicyLane, cardPolicyLane, Lang.T("gm.lane"), false, true);
             if (swPolicyLane != null)
             {
-                swPolicyLane.Enabled = supported && !forced;
-                swPolicyLane.SetSilently(supported && (forced || gameMode.RenderLaneOn));
+                swPolicyLane.Enabled = supported;
+                swPolicyLane.SetSilently(supported && gameMode.RenderLaneOn);
             }
             if (cardPolicyLane != null)
             {

@@ -1,10 +1,10 @@
 {
-  "version": "2.2.1.5",
+  "version": "2.2.2.0",
   "url": "https://pan.quark.cn/s/3c8c986b3ea4",
   "mirror": "https://pan.quark.cn/s/3c8c986b3ea4",
-  "noticeId": "20260908-shurima-return",
-  "noticeTitle": "恕瑞玛",
-  "noticeBody": "你的皇帝回来了",
+  "noticeId": "20260909-niubi",
+  "noticeTitle": "牛逼",
+  "noticeBody": "群主说这个版本很牛逼",
   "noticeUrl": "",
   "note": "Pavise 更新清单 version 是最新版本号 mirror 是点击下载时打开的地址 noticeId 换一个值就是一条新公告 客户端按 id 记已读 noticeTitle 留空表示当前没有公告 noticeUrl 只放行网盘和飞书域名"
 }

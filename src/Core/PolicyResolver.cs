@@ -173,25 +173,6 @@ namespace PaviseApp
         {
             if (key == null) return null;
             if (CoreScheduling.IsRetiredKey(key)) return key == CoreScheduling.HeavyMaskKey ? "" : "0";
-            // 极限档覆盖 只对清单内且未被用户停用的键 用户配置原样保留 切走即恢复
-            //   先查清单再查档位 档位判定会回到 ValueOf(KeyPreset) 清单不含它 不会递归
-            if (key != PolicyCatalog.KeyPreset)
-            {
-                string forced = ExtremeMode.ForcedPolicyValue(key);
-                if (forced != null && Preset == PerformancePreset.Extreme) return forced;
-            }
-            string value;
-            if (values.TryGetValue(key, out value)) return value;
-            PolicyItem item = PolicyCatalog.ItemOf(key);
-            if (item == null) return null;
-            return PolicyResolver.GlobalValue(item.Key) ?? item.Fallback;
-        }
-
-        // 不经极限覆盖的本值 覆盖有就是覆盖 没有就是全局 给"是用户自己开的还是档位强制的"这种判断用
-        public string OwnValueOf(string key)
-        {
-            if (key == null) return null;
-            if (CoreScheduling.IsRetiredKey(key)) return key == CoreScheduling.HeavyMaskKey ? "" : "0";
             string value;
             if (values.TryGetValue(key, out value)) return value;
             PolicyItem item = PolicyCatalog.ItemOf(key);
@@ -231,6 +212,9 @@ namespace PaviseApp
         public bool PauseServices { get { return On(PolicyCatalog.KeyPauseServices); } }
         public bool Awake { get { return On(PolicyCatalog.KeyAwake); } }
         public bool EnglishInput { get { return On(PolicyCatalog.KeyEnglishInput); } }
+        public bool WsTrim { get { return On(PolicyCatalog.KeyWsTrim); } }
+        public bool IdlePolicy { get { return On(PolicyCatalog.KeyIdlePolicy); } }
+        public bool AudioLowLat { get { return On(PolicyCatalog.KeyAudioLowLat); } }
         public bool NvMaxPerf { get { return On(PolicyCatalog.KeyNvMaxPerf); } }
         public string NvLowLatMode { get { return ValueOf(PolicyCatalog.KeyNvLowLat); } }
         public bool NvSmoothMotion { get { return On(PolicyCatalog.KeyNvSmoothMotion); } }

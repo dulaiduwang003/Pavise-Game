@@ -5,7 +5,7 @@ using System;
 namespace PaviseApp
 {
     // Intel 自己的说明 电池供电时 Endurance Gaming 把帧率封在面板刷新率的一个分数上 常见落到 30 帧上下
-    //   接电源时它不起作用 所以只在有电池的机器上有意义 要不要关是续航和帧率的取舍 默认关 极限档强制
+    //   接电源时它不起作用 所以只在有电池的机器上有意义 要不要关是续航和帧率的取舍 默认关
     //   控制值 0 关 1 开 2 自动 只在读到 1 或 2 时写 0 退局写回原值
     internal static class IntelEndurance
     {

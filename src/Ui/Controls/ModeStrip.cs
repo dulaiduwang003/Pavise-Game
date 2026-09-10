@@ -9,7 +9,7 @@ namespace PaviseApp
 {
     internal sealed class ModeStrip : Control
     {
-        // 档位序在构造时定格 极限档锁着就不在里面 解锁要重启整机 回锁走 RebuildUi 重建本控件
+        // 档位序在构造时定格 本机不支持的档不在里面 变化走 RebuildUi 重建本控件
         //   下标必须与 AddCfgModeRow 传给回调的取值数组同源 两边都取 PresetValue.VisibleChoices
         private readonly PerformancePreset[] Order = PresetValue.VisibleOrder();
 
@@ -56,14 +56,6 @@ namespace PaviseApp
             set { if (value >= 0 && value <= Order.Length && value != idx) { idx = value; Invalidate(); } }
         }
 
-        // 掌机档只在带电池的机器上跟专注档有区别 台式机上两者写进方案的值一模一样
-        //   给点等于让人选一个什么都不改的档 所以这一段不可点也不高亮
-        private bool SegmentUnavailable(int index)
-        {
-            if (index <= 0 || index > Order.Length) return false;
-            return Order[index - 1] == PerformancePreset.Handheld && !Native.HasSystemBattery();
-        }
-
         public void SetGlobal(PerformancePreset value)
         {
             if (global == value) return;
@@ -100,7 +92,6 @@ namespace PaviseApp
         {
             base.OnMouseMove(e);
             int hit = HitIndex(e.Location);
-            if (SegmentUnavailable(hit)) hit = -1;
             if (hit == hoverIdx) return;
             hoverIdx = hit;
             for (int i = 0; i < glow.Length; i++) glow[i].To(i == hoverIdx ? 1f : 0f);
@@ -123,7 +114,7 @@ namespace PaviseApp
             base.OnMouseUp(e);
             if (e.Button != MouseButtons.Left) return;
             int hit = HitIndex(e.Location);
-            if (hit < 0 || hit == idx || SegmentUnavailable(hit)) return;
+            if (hit < 0 || hit == idx) return;
             idx = hit;
             Invalidate();
             if (IndexChanged != null) IndexChanged(idx);

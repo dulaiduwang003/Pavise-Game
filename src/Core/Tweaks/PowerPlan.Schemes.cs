@@ -74,7 +74,7 @@ namespace PaviseApp
         private static readonly Guid SubSwitchGfx      = new Guid("e276e160-7cb0-43c6-b20b-73f5dce39954");
         private static readonly Guid SwitchGfxPolicy   = new Guid("a1662ab2-9d34-4e53-ba8b-2639b9e20857");
 
-        // 极限档专属 空闲状态选择策略 不等同于硬件唤醒延迟或禁止空闲
+        // 空闲策略开关专属 不等同于硬件唤醒延迟或禁止空闲
         //   这几项在多数方案上未暴露 SettingPresent 读不到就整项跳过 不写坏方案
         private static readonly Guid IdlePromote      = new Guid("7b224883-b3cc-4d79-819f-8374152cbe7c");
         private static readonly Guid IdleDemote       = new Guid("4b92d758-5a24-4851-a470-815d78aee119");
@@ -190,7 +190,7 @@ namespace PaviseApp
             new Knob(SubProcessor, LatencyHintUnpark1,100,100,  50, 50, "t.powerplanschemes.53"),
         };
 
-        // 极限档在电竞列之上再加的一组 只在极限档写 其余档位一律不碰
+        // 空闲策略开关额外加的一组 只在该开关开着时写 关掉按快照还原
         //   分两类 一类是把已有旋钮推到量程尽头 一类是电竞列没碰过的空闲行为
         //   计量单位由系统定义 写入前一律经 Clamp 夹到本机允许区间
         private static readonly Knob[] ExtremeKnobs = new Knob[]
@@ -207,7 +207,7 @@ namespace PaviseApp
         };
 
 #if PAVISE_SELFTEST
-        // 极限组的成员与取值 供回归核对 不触发任何写入
+        // 空闲策略组的成员与取值 供回归核对 不触发任何写入
         internal static int ExtremeKnobCountForTest { get { return ExtremeKnobs.Length; } }
 
         internal static bool ExtremeOnlyGuidForTest(Guid setting)
@@ -262,7 +262,7 @@ namespace PaviseApp
             return cachedProfile;
         }
 
-        // 极限那组没配完时置真 调用方据此不缓存 tuneState 下次配置再补
+        // 空闲策略那组没配完时置真 调用方据此不缓存 tuneState 下次配置再补
         private static bool extremeTunePending;
 
         internal static bool ExtremeTunePending { get { return extremeTunePending; } }
@@ -302,11 +302,11 @@ namespace PaviseApp
                     if (WriteKnob(g, effective, aggressive, handheld, profile,
                         autonomousAc, autonomousDc)) written++; else failed++;
                 }
-                // 极限档专属组 未暴露的项照常跳过 不影响其余旋钮的写入结果
-                //   写入前先快照现值 退出极限档重写方案时按快照写回
-                //   否则空闲策略留在托管方案上 电竞档会白用极限的空闲策略
-                // 旧版撤回项在极限档里一样要恢复 失败就留着收据 下次配置再试
-                //   极限这组是附加项 备份或恢复没做完只跳过这一组 其余旋钮和方案切换照常
+                // 空闲策略组 未暴露的项照常跳过 不影响其余旋钮的写入结果
+                //   写入前先快照现值 关掉开关重写方案时按快照写回
+                //   否则空闲策略会一直留在托管方案上
+                // 旧版撤回项开着时一样要恢复 失败就留着收据 下次配置再试
+                //   这组是附加项 备份或恢复没做完只跳过这一组 其余旋钮和方案切换照常
                 //   之前这里直接返回假 一项收据读不全就让整套电源方案配不成 用户那边表现为方案没生效
                 List<ExtremeSavedValue> snapshot;
                 bool extremeReady = PrepareExtremeKnobs(g, extreme, out snapshot);

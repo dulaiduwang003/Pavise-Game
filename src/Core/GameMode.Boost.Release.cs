@@ -47,6 +47,7 @@ namespace PaviseApp
                     boostStateVerified.Clear(); gameBoostNextAudit.Clear();
                     tweakApplied.Clear(); boostHandleStripped.Clear(); boostEcoGaveUp.Clear();
                     placementFail.Clear(); placementGaveUp.Clear(); boostStateFail.Clear();
+                    isolationUnconfirmed.Clear();
                 }
                 else
                     foreach (KeyValuePair<int, Snap> stale in boosts)
@@ -56,6 +57,7 @@ namespace PaviseApp
                         gameBoostNextAudit.Remove(stale.Key); tweakApplied.Remove(stale.Key);
                         boostHandleStripped.Remove(stale.Key); boostEcoGaveUp.Remove(stale.Key);
                         placementFail.Remove(stale.Key); placementGaveUp.Remove(stale.Key);
+                        isolationUnconfirmed.Remove(stale.Key);
                         boostStateFail.Remove(stale.Key);
                     }
             }
@@ -148,6 +150,7 @@ namespace PaviseApp
         }
 
         private bool partitionHintLogged;
+        private bool placementVoidLogged;
 
         private void WarnIfPartitionHurtsWideGame(string name, ProcessSnapshot all, int pid, ulong mask)
         {
@@ -289,6 +292,7 @@ namespace PaviseApp
             autoGpuScanned = false;
             ResetAdaptiveGuard();
             partitionHintLogged = false;
+            placementVoidLogged = false;
 
             bool clean = UnboostGames();
             slowEnvAtTicks = 0;

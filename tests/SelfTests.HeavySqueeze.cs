@@ -58,6 +58,19 @@ namespace PaviseApp
             // 没有任何压制原因的条目不许带落点
             Eq(all, SuppressionAffinityPolicy.DesiredAffinity(SuppressReason.None, squeeze, 0, all));
             Eq(all, SuppressionAffinityPolicy.DesiredAffinity(SuppressReason.None, 0, 0, all));
+
+            // 硬亲和开着才认后台落点 这是四参重载与五参重载唯一的区别
+            //   关着时旧重压账本里的后台落点只还原不重写 上面那几条就是这个语义
+            Eq(squeeze, SuppressionAffinityPolicy.DesiredAffinity(
+                SuppressReason.Background, squeeze, 0, all, true));
+            Eq(0x0F0UL, SuppressionAffinityPolicy.DesiredAffinity(
+                SuppressReason.Background, 0, 0x0F0, all, true));
+            // 开着也不给没有压制原因的条目落点
+            Eq(all, SuppressionAffinityPolicy.DesiredAffinity(SuppressReason.None, squeeze, 0, all, true));
+            // 反作弊不受这个开关影响 两种取值都按落点走
+            foreach (bool allowed in new[] { false, true })
+                Eq(squeeze, SuppressionAffinityPolicy.DesiredAffinity(
+                    SuppressReason.AntiCheat, squeeze, 0, all, allowed));
         }
 
         private static void RetiredHeavySqueezeSettings()
@@ -81,7 +94,7 @@ namespace PaviseApp
                     Eq("", PolicyResolver.Read(profile, CoreScheduling.HeavyMaskKey));
                     Eq("0", PolicyResolver.Global().ValueOf(PolicyCatalog.KeyHeavySqueeze));
                     Eq("0", PolicyResolver.For(profile).ValueOf(PolicyCatalog.KeyHeavySqueeze));
-                    Eq("", PolicyResolver.For(profile).OwnValueOf(CoreScheduling.HeavyMaskKey));
+                    Eq("", PolicyResolver.For(profile).ValueOf(CoreScheduling.HeavyMaskKey));
                 }
                 PolicyResolver.Sanitize(profile);
                 Eq(false, profile.Overrides.ContainsKey(PolicyCatalog.KeyHeavySqueeze));

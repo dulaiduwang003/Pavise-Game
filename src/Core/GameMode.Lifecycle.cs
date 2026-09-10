@@ -253,14 +253,12 @@ namespace PaviseApp
                                     if (!EffSuppress) ReleaseBackground();
                                     SelfYield.Engage();
                                     // 电源滑块只认专注 掌机档不传真 那块的 PL 归厂商工具管 拨过去只会跟它顶
-                                    MaybeActivatePowerOverlay(EffPreset == PerformancePreset.Competitive
-                                        || EffPreset == PerformancePreset.Extreme);
+                                    MaybeActivatePowerOverlay(EffPreset == PerformancePreset.Competitive);
                                     // 功耗让路掌机档照样参与 方向本来就对 掌机 CPU 和集显抢的就是同一份预算
                                     //   掌机档放开的是纯省电项 EPP 仍写专注档的激进值 让路的前提还在
                                     Func<bool> powerYieldAdmission = CapturePowerYieldAdmission(rendererPid, rendererCreation);
                                     PowerBudgetYieldRunner.Start(powerYieldAdmission(),
                                         EffPreset == PerformancePreset.Competitive
-                                            || EffPreset == PerformancePreset.Extreme
                                             || EffPreset == PerformancePreset.Handheld,
                                         rendererPid, rendererCreation,
                                         powerYieldAdmission);

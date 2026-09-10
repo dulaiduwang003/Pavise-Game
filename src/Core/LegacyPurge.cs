@@ -127,7 +127,15 @@ namespace PaviseApp
                 GlobalTimerResTweak.Restore, failed);
             StepIf(Lang.T("set.memcompress"), delegate { return MemCompressTweak.OwnsState; },
                 MemCompressTweak.Restore, failed);
-            Step(Lang.T("extreme.card.title"), delegate { ExtremeMode.PurgeAll(); return true; }, failed);
+            // 极限档已下架 只把它留下的四个设置键清掉 功能本体各归各自的开关
+            Step("Extreme", delegate
+            {
+                bool ok = Settings.Save("ExtremeUnlocked", false);
+                ok &= Settings.SaveStr("ExtremeUnlockTicks", "");
+                ok &= Settings.SaveStr("ExtremeOptOut", "");
+                ok &= Settings.SaveStr("ExtremeEnvApplied", "");
+                return ok;
+            }, failed);
             StepIf(Lang.T("set.gpupref"), delegate { return GpuPrefStage.HasResidue; },
                 delegate { return GpuPrefStage.Restore() || GpuPrefStage.AbandonUnprovableForReset(); },
                 failed);
@@ -194,7 +202,8 @@ namespace PaviseApp
             StepIf(Lang.T("gm.pausemaint"), delegate { return MaintenancePause.HasResidue; }, MaintenancePause.Restore, failed);
             StepIf("AMD SAM", AmdSamTweak.HasResidue, AmdSamTweak.Restore, failed);
             StepIf("FTH", delegate { return FthTweak.RepairedByPavise; }, FthTweak.Restore, failed);
-            Step("CFG", CfgOffTweak.RestoreAll, failed);
+            // 早已下架 只剩历史残留恢复 没残留就别每次清除都空写一遍注册表
+            StepIf("CFG", CfgOffTweak.HasResidue, CfgOffTweak.RestoreAll, failed);
             StepIf(Lang.T("t.legacypurge.29"), delegate { return IrqRelocate.HasResidue; }, IrqRelocate.Revert, failed);
             StepIf("自动中断编排 已下架的注册表钉核清退", delegate { return IrqAutoPilot.HasResidue; }, delegate
             {

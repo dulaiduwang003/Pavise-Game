@@ -40,7 +40,6 @@ Session changes are restored from their records when the game exits. After an ab
 |---|---|
 | Smart | Every background process that clears the protection boundary is isolated outright the moment the match starts, with no heat check and no tier-by-tier escalation. Whatever you are using, and its family, is exempt from suppression. A separate adaptive-escalation switch, off by default, temporarily escalates to the Esports profile under sustained CPU saturation (above 90% for over ten seconds) and steps back down once load falls below 80% and stays calm for two minutes, at most three times per match |
 | Esports | Widens suppression to non-game processes that pass the protection boundary, including windowed apps and apps used after alt-tab. The whitelist and built-in protection rules still apply |
-| Extreme | Starts from Esports and enables eligible, non-excluded items in the Extreme catalogue, including some persistent settings. Hidden until unlocked in Settings and the computer is restarted. Suppression scope and strength match Esports; it does not enable every optional feature |
 | Handheld | Background suppression identical to Esports, with the power side left to vendor tools: no power slider, and pure power-saving items stay enabled on AC. Requires a battery; for handhelds and thin-and-light laptops |
 | Custom | Background suppression, cores, memory and power, system environment and graphics, each chosen individually |
 
@@ -50,7 +49,7 @@ Ordinary background suppression always excludes anti-cheat, Windows core service
 
 Game family exemption is on by default: game platforms, launcher shells, resident processes inside the game folder and child processes spawned by the game are all released as a family. Turning it off releases only the game itself and the whitelist; everything else is suppressed as ordinary background.
 
-Extreme rolls itself back automatically: if the system suffers two abnormal restarts (Kernel-Power 41, BugCheck 1001 or EventLog 6008) after the unlock, the next startup cancels the unlock and restores environment items from the ledger — only what Pavise recorded, never what you turned on yourself. If the system log cannot be read the count is treated as zero, so the fuse would rather not trip. A single feature blowing its own fuse only leaves the Extreme list; the rest are unaffected.
+There is no Extreme tier from 2.2.2 on. Everything it used to switch on for you in one go now has its own switch, all off by default and left to you, and the System Environment page no longer needs an unlock. Stored configurations pointing at Extreme resolve as Esports — their suppression scope and strength were byte-for-byte identical, so background behaviour does not change. Tiers the machine cannot use are not listed in the mode menu; a desktop, for example, has no Handheld tier.
 
 When the system no longer boots or the program will not open, run `Pavise-Rescue.cmd` from the repository root (it requests administrator rights on its own): it first exports logs, crash records, power and boot configuration to a Pavise-Rescue folder on the desktop, then exits Pavise and restores system changes from its receipts, resets items with no receipt to Windows defaults, deletes the managed power plan and restores all power plans to factory settings, and resets GPU clock locks and power limits. **It also deletes the game library, the whitelist and every setting**, and a restart afterwards is mandatory. HAGS, VBS and the hypervisor are left as they are unless a receipt covers them.
 
@@ -95,13 +94,13 @@ The guard switch controls general game-session scheduling: enabling it starts au
 ### Processes and cores
 
 - **Game process boost**: the renderer receives high priority and higher disk I/O, memory-page and GPU scheduling priority, restored on exit
-- **Candidate thread boost**: unavailable in Handheld or on machines with fewer than 6 physical cores. Elsewhere it is on by default and forced on in Extreme; other tiers can disable it per game. CPU time identifies a busy candidate, not a frame-critical thread, so a wrong choice can slow the game. Under the restored priority rule, machine-wide CPU saturation alone does not withdraw an active candidate boost
+- **Candidate thread boost**: unavailable in Handheld or on machines with fewer than 6 physical cores. Elsewhere it is on by default and can be disabled per game. CPU time identifies a busy candidate, not a frame-critical thread, so a wrong choice can slow the game. Under the restored priority rule, machine-wide CPU saturation alone does not withdraw an active candidate boost
 - **Smart yield**: ten seconds of sustained CPU saturation returns the game to Normal only when no candidate-thread boost is active. Restricted cores, CPU Sets and unknown CPU domains no longer independently block High priority; original settings are restored on exit
 - **In-match self-yield**: Pavise moves off the game cores and lowers its own scheduling weight
 - **Background suppression**: directly isolates eligible ordinary background processes through CPU, I/O and paging priority, EcoQoS and timer-resolution policy, while preserving Windows dynamic priority boosts
 - **Background GPU priority demotion**: a background process using the GPU also has its GPU scheduling priority lowered
-- **Suppressed working-set trim** (Extreme only): enabled for Extreme sessions unless excluded in Extreme management. Attempts trimming only when available memory is both below 4 GiB and below one eighth of total memory. Subsequent page faults and slower first responses remain possible. Anti-cheat processes are excluded
-- **Wider background suppression**: covers eligible non-game background processes even after alt-tab. Forced on in Esports, Extreme and Handheld; built-in protection and the whitelist still apply
+- **Suppressed working-set trim**: off by default, with per-game overrides. Attempts trimming only when available memory is both below 4 GiB and below one eighth of total memory. Subsequent page faults and slower first responses remain possible. Anti-cheat processes are excluded
+- **Wider background suppression**: covers eligible non-game background processes even after alt-tab. Forced on in Esports and Handheld; built-in protection and the whitelist still apply
 - **Manual core scheduling**: choose the game's logical CPUs with CCD shortcuts and No HT. Optionally enable core isolation and expand its whole-core selector so ordinary background processes avoid that range. Applies during game boost and restores on exit; interrupts may still use the cores.
 - **CCD selection**: use CCD shortcuts to manually choose the chip region for the game.
 - **Manual selection**: supports All, No HT, Clear, Invert and CCD shortcuts; select at least two logical CPUs. Save applies to the next game session, keeping the current session unchanged. Original process affinity is restored on exit.
@@ -157,11 +156,11 @@ Original values are snapshotted and restored when a switch is turned off. Writes
 - **Disable CPU idle**: only during a game; writes both the AC and DC values of the currently active power plan and restores them at match end. On battery it noticeably shortens battery life; not offered on AMD processors
 - **Standby memory cleanup**: the entire standby list is purged only when both the list-size and true-free-memory thresholds are crossed. Technical detail below
 - **MMCSS multimedia scheduling**: the share reserved for non-multimedia work drops from 20% to 10%, the Games task's scheduling category and file I/O are raised, and the lazy idle-check tier is disabled
-- **Low-latency DWM composition** (Extreme only): requests MMCSS scheduling for DWM during play and can be excluded in Extreme management. Benefits depend on the presentation path and workload; this does not guarantee uninterrupted composition
+- **Low-latency DWM composition**: off by default, with no per-game override. Requests MMCSS scheduling for DWM during play. Benefits depend on the presentation path and workload; this does not guarantee uninterrupted composition
 - **Pause Windows Update, Delivery Optimization, nonessential services and automatic maintenance**, restoring owned changes afterwards. Service pausing uses a fixed allowlist. There is no current wireless-scan suppression control
 - **Per-game DPI awareness**: with display scaling above 100% the borderless window is sized in physical pixels instead of being stretched by the compositor
 - **Turn off Game DVR and Xbox background recording**, and **keep the display awake during a match**
-- **Low-latency audio** (Extreme only): attempts to open a silent stream with the device's minimum supported shared buffer, requesting a shorter engine period. Enabled for Extreme sessions unless excluded in Extreme management; the stream closes on exit
+- **Low-latency audio**: off by default, with per-game overrides. Attempts to open a silent stream with the device's minimum supported shared buffer, requesting a shorter engine period; the stream closes on exit
 - **Power budget yield**: on laptops, hands shared power budget to the GPU when it is pinned against its limit and the CPU has headroom, reverting automatically when verification fails. Off by default; verification detail below
 
 ### System environment
@@ -173,7 +172,7 @@ Settings on this page persist and can be restored. Some require a restart; follo
 - **Constant timer tick**, **global timer resolution**
 - **Disable NIC power saving**, **disable NIC link power saving** (turns off 802.3az low-power idle, Green Ethernet and idle link-speed reduction so the link never sleeps, wakes or renegotiates between 1G and 100M; the adapter drops for a few seconds when written), **NIC interrupt-moderation experiment** (unchanged by default; explicit Off testing only on the single physical wired adapter selected by the public-IPv4 route probe, restored only after both NetCfg GUID and PnP instance identity match)
 - **Accessibility key interception**, **disable keyboard and mouse selective suspend**
-- **Disable memory compression and page combining** (Extreme tier only): removes the background CPU cost of the compression thread and page-combining scans; offered from 24GB of RAM
+- **Disable memory compression and page combining**: off by default. Removes the background CPU cost of the compression thread and page-combining scans; offered from 24GB of RAM, fully effective after a restart
 
 ### System audit
 
@@ -197,7 +196,6 @@ A local tool: no installed service, no uploaded machine data, no game-process in
 - **Interface language**: Chinese / English, effective immediately for the UI and newly written log messages
 - **Window appearance**: light and dark themes, a per-mode accent colour, a background image with adjustable intensity, and a one-click reset
 - **Clear shader cache**: for artifacts or stutter after a driver update. Each game recompiles on its next launch, which is slower that once
-- **Extreme mode**: the unlock entry and its explanation live on this page
 - **Wipe all configuration**: reverts every persistent change Pavise ever made, including those left by retired features
 - **Uninstall Pavise**: done entirely inside the app. It stops the runtime, restores every system change from its receipts, then removes the startup task, the managed power plan, settings, the data folder and leftovers from older versions, so the machine ends up as if Pavise had never been installed. Delete Pavise.exe itself afterward
 

@@ -88,8 +88,21 @@ namespace PaviseApp
         // 渲染线程都在 desiredMask 内
         private bool PlacementMatches(IntPtr h, BoostPass pass)
         {
-            if (h == IntPtr.Zero || pass == null
-                || !IrqSessionProbe.CanConfirmMask(
+            bool unreadable;
+            return PlacementMatches(h, pass, out unreadable);
+        }
+
+        // unreadable 表示这一轮读不出落点 不是读到了不对的值
+        //   反作弊在对局中回收或降权句柄很常见 一次读失败不能等同于落点没生效
+        private bool PlacementMatches(IntPtr h, BoostPass pass, out bool unreadable)
+        {
+            unreadable = false;
+            if (h == IntPtr.Zero || pass == null) return false;
+            // 不限核时没有落点要确认 本来就无事可做 不能判成没生效
+            //   判成没生效会让巡检每轮清掉落核缓存 重写一次 CPU Sets 并重复记一条日志
+            //   CanConfirmMask 拒绝全核是对的 那是 IRQ 归因的证据门槛 与落核是否生效两回事
+            if (pass.DesiredMask == allMask) return true;
+            if (!IrqSessionProbe.CanConfirmMask(
                     pass.DesiredMask, allMask,
                     pass.RendererPid, pass.RendererCreation))
                 return false;
@@ -98,9 +111,14 @@ namespace PaviseApp
             bool cpuSetsMatch = ids != null && ids.Length > 0
                 && Native.CpuSetsMatch(h, ids);
             bool cpuSetsUnconstrained = Native.CpuSetsMatch(h, new uint[0]);
-            ulong affinity = CpuTopology.MultiGroup ? 0 : Native.QueryAffinity(h);
+            ulong affinity = 0;
+            if (!CpuTopology.MultiGroup && !Native.TryQueryAffinity(h, out affinity))
+            {
+                affinity = 0;
+                unreadable = true;
+            }
             if (pass.ManualPlacement && pass.DesiredMask != allMask)
-                return !CpuTopology.MultiGroup && affinity == pass.DesiredMask;
+                return !CpuTopology.MultiGroup && !unreadable && affinity == pass.DesiredMask;
             return IrqPlacementProof.PlacementProofMatches(
                 pass.DesiredMask, affinity,
                 CpuTopology.MultiGroup, cpuSetsMatch,

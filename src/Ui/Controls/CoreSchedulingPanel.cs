@@ -16,7 +16,11 @@ namespace PaviseApp
         private bool syncing, savedFollow;
         private readonly bool perGame;
         private readonly Label summary, status;
-        private readonly SettingCard followCard, gameCard, exclusiveCard;
+        private readonly SettingCard followCard, gameCard, exclusiveCard, hardCard;
+        internal readonly Toggle HardAffinityToggle;
+        // 硬亲和不进核心方案 它是独立的全局设置 由宿主读写
+        internal Action<bool> HardAffinityChanged;
+        internal Func<bool> HardAffinityState;
         private readonly RoundPanel footer;
         private bool lightTheme;
         private int InnerWidth { get { return Width - Theme.S(60); } }
@@ -108,6 +112,18 @@ namespace PaviseApp
                 SyncExclusiveMask();
                 Edited();
             };
+            // 硬亲和是独占的附加项 只有全局一份 逐游戏页不显示
+            hardCard = Card(perGame ? 4 : 3, "schedule.hardaffinity", "");
+            HardAffinityToggle = Switch("schedule.hardaffinity");
+            hardCard.Host(HardAffinityToggle);
+            HardAffinityToggle.Visible = !perGame;
+            hardCard.Visible = !perGame;
+            HardAffinityToggle.CheckedChanged += delegate
+            {
+                if (syncing || perGame || HardAffinityChanged == null) return;
+                HardAffinityChanged(HardAffinityToggle.Checked);
+                RefreshView();
+            };
             footer = Surface();
             SaveButton = new PillButton(Lang.T(perGame ? "schedule.save" : "schedule.save.global"), BtnKind.Primary);
             SaveButton.Size = new Size(Theme.S(150), Theme.S(36));
@@ -191,7 +207,7 @@ namespace PaviseApp
             for (int d = 0; d < dies.Length; d++)
             {
                 ulong mask = dies[d];
-                AddShortcut(panel, "CCD " + d, delegate { SelectMask(mask); }).Tag = "ccd";
+                AddShortcut(panel, Lang.F("core.preset.ccd", d), delegate { SelectMask(mask); }).Tag = "ccd";
             }
         }
 
@@ -326,6 +342,11 @@ namespace PaviseApp
             status.ForeColor = globalChanged || lastMessage != null && !lastMessage.StartsWith(Lang.T("schedule.saved.prefix"))
                 || CoreIsolationClient.State == "schedule.isolation.pending" || CoreIsolationClient.State == "schedule.isolation.failed"
                 || validation != null && !follow ? Theme.Danger : Theme.Dim;
+            bool hardOn = HardAffinityState != null && HardAffinityState();
+            syncing = true; HardAffinityToggle.SetSilently(hardOn); syncing = false;
+            HardAffinityToggle.Enabled = !perGame && display.IsolationOn;
+            hardCard.Desc = Lang.T(!display.IsolationOn ? "schedule.hardaffinity.needsexclusive"
+                : hardOn ? "schedule.hardaffinity.on" : "schedule.hardaffinity.off");
             LayoutContent();
         }
 
@@ -357,7 +378,7 @@ namespace PaviseApp
         {
             if (lightTheme == Theme.LightMode) return;
             lightTheme = Theme.LightMode; BackColor = Theme.Bg;
-            foreach (RoundPanel card in new RoundPanel[] { followCard, gameCard, exclusiveCard, footer })
+            foreach (RoundPanel card in new RoundPanel[] { followCard, gameCard, exclusiveCard, hardCard, footer })
             {
                 card.BackColor = Theme.Bg; card.Fill = Theme.Card; card.Border = Theme.Stroke; card.Invalidate();
             }
@@ -393,7 +414,14 @@ namespace PaviseApp
             gameCard.Height = PlaceLabel(summary, Matrix.Bottom + Theme.S(8), 24) + Theme.S(12);
             exclusiveCard.Top = gameCard.Bottom + gap;
             exclusiveCard.Height = CardHeaderHeight(exclusiveCard, perGame ? 0 : IsolationToggle.Width);
-            LayoutFooter(footer, status, SaveButton, reloadButton, exclusiveCard.Bottom + gap);
+            int afterExclusive = exclusiveCard.Bottom + gap;
+            if (!perGame)
+            {
+                hardCard.Top = afterExclusive;
+                hardCard.Height = CardHeaderHeight(hardCard, HardAffinityToggle.Width);
+                afterExclusive = hardCard.Bottom + gap;
+            }
+            LayoutFooter(footer, status, SaveButton, reloadButton, afterExclusive);
             Height = footer.Bottom + Theme.S(4);
             ResumeLayout();
         }
