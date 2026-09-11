@@ -45,7 +45,7 @@ namespace PaviseApp
                     irqProbe.InvalidateGameMask();
                     return true;
                 }
-                if (!AttributionPlacementMatches(h, pass))
+                if (!AttributionPlacementHolds(h, pass, renderer))
                 {
                     irqProbe.RestartCurrentEpoch();
                     // 线程级归因 proof 比普通落核读回更严格 线程瞬时增删
@@ -96,7 +96,16 @@ namespace PaviseApp
         //   反作弊在对局中回收或降权句柄很常见 一次读失败不能等同于落点没生效
         private bool PlacementMatches(IntPtr h, BoostPass pass, out bool unreadable)
         {
+            ulong observed;
+            return PlacementMatches(h, pass, out unreadable, out observed);
+        }
+
+        // observed 是这轮从进程句柄读回的硬亲和性 读不出或多组机器为 0
+        //   手动落核被外部改回时要靠它判断游戏还够不够得着独占核
+        private bool PlacementMatches(IntPtr h, BoostPass pass, out bool unreadable, out ulong observed)
+        {
             unreadable = false;
+            observed = 0;
             if (h == IntPtr.Zero || pass == null) return false;
             // 不限核时没有落点要确认 本来就无事可做 不能判成没生效
             //   判成没生效会让巡检每轮清掉落核缓存 重写一次 CPU Sets 并重复记一条日志
@@ -117,6 +126,7 @@ namespace PaviseApp
                 affinity = 0;
                 unreadable = true;
             }
+            observed = affinity;
             if (pass.ManualPlacement && pass.DesiredMask != allMask)
                 return !CpuTopology.MultiGroup && !unreadable && affinity == pass.DesiredMask;
             return IrqPlacementProof.PlacementProofMatches(
@@ -139,6 +149,38 @@ namespace PaviseApp
             return IrqPlacementProof.AttributionThreadPlacementMatches(
                 h, pass.RendererPid, pass.RendererCreation,
                 pass.DesiredMask, CpuTopology.MultiGroup);
+        }
+
+        // 采集中每轮都做全量线程证明太贵 三百多线程的游戏每 500ms 开几千次句柄
+        //   改成每轮只核对进程级放置 三次系统调用 线程数变了或距上次全量超过三秒才重做全量
+        //   线程数变化也至少隔一秒 线程池抖动不能把全量打回每轮
+        private const long IrqFullProofIntervalTicks = 3 * TimeSpan.TicksPerSecond;
+        private const long IrqFullProofFloorTicks = TimeSpan.TicksPerSecond;
+        private long irqFullProofTicks, irqFullProofCreation;
+        private int irqFullProofPid, irqFullProofThreads;
+
+        private bool AttributionPlacementHolds(IntPtr h, BoostPass pass, ProcEntry renderer)
+        {
+            long now = DateTime.UtcNow.Ticks;
+            long age = now - irqFullProofTicks;
+            bool sameTarget = irqFullProofTicks > 0
+                && irqFullProofPid == pass.RendererPid && irqFullProofCreation == pass.RendererCreation;
+            int threads = renderer != null ? renderer.Threads : 0;
+            bool full = !sameTarget || age >= IrqFullProofIntervalTicks
+                || (threads != irqFullProofThreads && age >= IrqFullProofFloorTicks);
+            if (!full)
+                return IrqPlacementProof.AttributionProcessPlacementMatches(
+                    h, pass.RendererPid, pass.RendererCreation, pass.DesiredMask, CpuTopology.MultiGroup);
+            if (!AttributionPlacementMatches(h, pass))
+            {
+                irqFullProofTicks = 0;
+                return false;
+            }
+            irqFullProofTicks = now;
+            irqFullProofPid = pass.RendererPid;
+            irqFullProofCreation = pass.RendererCreation;
+            irqFullProofThreads = threads;
+            return true;
         }
 
         private bool ConfirmIrqCapture(

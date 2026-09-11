@@ -59,6 +59,12 @@ namespace PaviseApp
         private const int OffsetSessionId = 0x64;
         private const int OffsetReadTransferCount = 0xE8;
         private const int OffsetWriteTransferCount = 0xF0;
+        // x64 的 SYSTEM_PROCESS_INFORMATION 固定 0x100 字节 后面紧跟 NumberOfThreads 条 0x50 字节的线程记录
+        private const int ProcessRecordBytes = 0x100;
+        private const int ThreadRecordBytes = 0x50;
+        private const int OffsetThreadUniqueThread = 0x30;
+        private const int OffsetThreadState = 0x44;
+        private const int ThreadStateTerminated = 4;
         private const int InitialBufferBytes = 1024 * 1024;
         private const int BufferHeadroomBytes = 256 * 1024;
         private const int MaxBufferBytes = 64 * 1024 * 1024;
@@ -66,6 +72,7 @@ namespace PaviseApp
         private static readonly object bufferSync = new object();
         private static IntPtr sharedBuffer;
         private static int sharedBufferBytes;
+        private static bool sharedBufferValid;
 
         private sealed class PathCacheEntry
         {
@@ -162,39 +169,96 @@ namespace PaviseApp
         {
             lock (bufferSync)
             {
+                try { return QuerySharedBufferLocked() ? Parse(sharedBuffer) : null; }
+                catch { return null; }
+            }
+        }
+
+        // 调用方持有 bufferSync 成功后共享缓冲里是一份完整的系统进程记录
+        //   扩容或失败后缓冲内容不可信 sharedBufferValid 记着这一点
+        private static bool QuerySharedBufferLocked()
+        {
+            try
+            {
+                if (sharedBuffer == IntPtr.Zero)
+                {
+                    sharedBufferBytes = InitialBufferBytes;
+                    sharedBuffer = Marshal.AllocHGlobal(sharedBufferBytes);
+                    sharedBufferValid = false;
+                }
+                while (true)
+                {
+                    int need;
+                    int status = NtQuerySystemInformation(
+                        SystemProcessInformation, sharedBuffer, sharedBufferBytes, out need);
+                    if (status == 0) { sharedBufferValid = true; return true; }
+                    sharedBufferValid = false;
+                    if (status != StatusInfoLengthMismatch) return false;
+                    int next = need + BufferHeadroomBytes;
+                    if (next <= sharedBufferBytes) next = sharedBufferBytes * 2;
+                    if (next > MaxBufferBytes) return false;
+                    Marshal.FreeHGlobal(sharedBuffer);
+                    sharedBuffer = IntPtr.Zero;
+                    sharedBuffer = Marshal.AllocHGlobal(next);
+                    sharedBufferBytes = next;
+                }
+            }
+            catch
+            {
+                sharedBufferValid = false;
+                if (sharedBuffer != IntPtr.Zero)
+                {
+                    Marshal.FreeHGlobal(sharedBuffer);
+                    sharedBuffer = IntPtr.Zero;
+                    sharedBufferBytes = 0;
+                }
+                return false;
+            }
+        }
+
+        // 一个进程当前的线程号 已排序去重 已终止的不算 找不到该进程或创建时间不符返回 null
+        //   refresh 为 false 直接读最近一次扫描留在共享缓冲里的记录 不发查询
+        //   归因证明靠它省掉系统级线程枚举 线程记录紧跟在各自的进程记录之后
+        internal static int[] ThreadIdsOf(int pid, long creation, bool refresh)
+        {
+            if (pid <= 0) return null;
+            lock (bufferSync)
+            {
                 try
                 {
-                    if (sharedBuffer == IntPtr.Zero)
-                    {
-                        sharedBufferBytes = InitialBufferBytes;
-                        sharedBuffer = Marshal.AllocHGlobal(sharedBufferBytes);
-                    }
+                    if ((refresh || !sharedBufferValid) && !QuerySharedBufferLocked()) return null;
+                    IntPtr cursor = sharedBuffer;
                     while (true)
                     {
-                        int need;
-                        int status = NtQuerySystemInformation(
-                            SystemProcessInformation, sharedBuffer, sharedBufferBytes, out need);
-                        if (status == 0) return Parse(sharedBuffer);
-                        if (status != StatusInfoLengthMismatch) return null;
-                        int next = need + BufferHeadroomBytes;
-                        if (next <= sharedBufferBytes) next = sharedBufferBytes * 2;
-                        if (next > MaxBufferBytes) return null;
-                        Marshal.FreeHGlobal(sharedBuffer);
-                        sharedBuffer = IntPtr.Zero;
-                        sharedBuffer = Marshal.AllocHGlobal(next);
-                        sharedBufferBytes = next;
+                        int nextOffset = Marshal.ReadInt32(cursor, OffsetNextEntry);
+                        if (Marshal.ReadIntPtr(cursor, OffsetUniqueProcessId).ToInt32() == pid)
+                        {
+                            if (Marshal.ReadInt64(cursor, OffsetCreateTime) != creation) return null;
+                            int count = Marshal.ReadInt32(cursor, OffsetThreadCount);
+                            if (count <= 0) return null;
+                            long span = ProcessRecordBytes + (long)count * ThreadRecordBytes;
+                            if (nextOffset > 0 && span > nextOffset) return null;
+                            if (cursor.ToInt64() - sharedBuffer.ToInt64() + span > sharedBufferBytes) return null;
+                            var ids = new List<int>(count);
+                            for (int i = 0; i < count; i++)
+                            {
+                                IntPtr thread = new IntPtr(
+                                    cursor.ToInt64() + ProcessRecordBytes + (long)i * ThreadRecordBytes);
+                                if (Marshal.ReadInt32(thread, OffsetThreadState) == ThreadStateTerminated) continue;
+                                int tid = Marshal.ReadIntPtr(thread, OffsetThreadUniqueThread).ToInt32();
+                                if (tid > 0) ids.Add(tid);
+                            }
+                            ids.Sort();
+                            var result = new List<int>(ids.Count);
+                            foreach (int id in ids)
+                                if (result.Count == 0 || result[result.Count - 1] != id) result.Add(id);
+                            return result.ToArray();
+                        }
+                        if (nextOffset <= 0) return null;
+                        cursor = new IntPtr(cursor.ToInt64() + nextOffset);
                     }
                 }
-                catch
-                {
-                    if (sharedBuffer != IntPtr.Zero)
-                    {
-                        Marshal.FreeHGlobal(sharedBuffer);
-                        sharedBuffer = IntPtr.Zero;
-                        sharedBufferBytes = 0;
-                    }
-                    return null;
-                }
+                catch { return null; }
             }
         }
 

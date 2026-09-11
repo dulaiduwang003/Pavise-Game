@@ -134,30 +134,40 @@ namespace PaviseApp
             // 核心方案按对局冻结，避免一次扫后台读到两份正在切换的配置。
             bool hasGlobalRecord;
             CoreSchedulingPlan global = CoreScheduling.LoadGlobal(out hasGlobalRecord);
-            CorePlan = CoreScheduling.ForProfile(profile, global);
+            CoreSchedulingPlan corePlan = CoreScheduling.ForProfile(profile, global);
             ManualPlacement = hasGlobalRecord
                 || profile != null && profile.Overrides.ContainsKey(CoreScheduling.Key);
             foreach (string key in CoreScheduling.PlacementKeys)
                 values[key] = hasGlobalRecord ? CoreScheduling.Value(global, key) : CoreScheduling.LegacyPolicyValue(key);
-            if (profile == null) return;
-            foreach (PolicyItem item in PolicyCatalog.All)
+            if (profile != null)
             {
-                string value;
-                if (!profile.Overrides.TryGetValue(item.Key, out value)) continue;
-                string canonical = PolicyCatalog.Canonical(item.Key, value);
-                values[item.Key] = canonical ?? item.Fallback;
-                overridden.Add(item.Key);
-            }
-            if (ManualPlacement)
-            {
-                CoreSchedulingPlan plan = CoreScheduling.ForProfile(profile, global);
-                foreach (string key in CoreScheduling.PlacementKeys)
+                foreach (PolicyItem item in PolicyCatalog.All)
                 {
-                    values[key] = CoreScheduling.Value(plan, key);
+                    string value;
+                    if (!profile.Overrides.TryGetValue(item.Key, out value)) continue;
+                    string canonical = PolicyCatalog.Canonical(item.Key, value);
+                    values[item.Key] = canonical ?? item.Fallback;
+                    overridden.Add(item.Key);
                 }
+                if (ManualPlacement)
+                {
+                    CoreSchedulingPlan plan = CoreScheduling.ForProfile(profile, global);
+                    foreach (string key in CoreScheduling.PlacementKeys)
+                    {
+                        values[key] = CoreScheduling.Value(plan, key);
+                    }
+                }
+                ProfileId = profile.Id;
+                ProfileName = profile.Name;
             }
-            ProfileId = profile.Id;
-            ProfileName = profile.Name;
+            // 掌机档不做核心独占 核少 收走几颗给游戏独享 其余全挤在剩下的核上
+            if (Preset == PerformancePreset.Handheld && corePlan != null && corePlan.IsolationOn)
+            {
+                corePlan = corePlan.Clone();
+                corePlan.IsolationOn = false;
+                corePlan.IsolationMask = 0;
+            }
+            CorePlan = corePlan;
         }
 
         public int OverrideCount { get { return overridden.Count; } }
@@ -173,6 +183,8 @@ namespace PaviseApp
         {
             if (key == null) return null;
             if (CoreScheduling.IsRetiredKey(key)) return key == CoreScheduling.HeavyMaskKey ? "" : "0";
+            // 掌机档不提供的项 不管全局还是逐游戏开着 快照里一律是关
+            if (PolicyCatalog.IsHandheldBlocked(key) && Preset == PerformancePreset.Handheld) return "0";
             string value;
             if (values.TryGetValue(key, out value)) return value;
             PolicyItem item = PolicyCatalog.ItemOf(key);

@@ -83,6 +83,19 @@ namespace PaviseApp
         //   原先只由已下架的极限档驱动 现在是独立开关 默认关
         public const string KeyIdlePolicy = "GmIdlePolicyV1";
 
+        // 掌机档不提供的项 整机十几瓦 核少 内存和集显共用一份
+        //   对局中按快照解析一律按关 界面标预设强制关 核心独占另在快照里关
+        public static readonly string[] HandheldBlocked =
+            { KeyDisableCpuIdle, KeyIdlePolicy, KeyCacheWarm, KeyVramShield };
+
+        public static bool IsHandheldBlocked(string key)
+        {
+            if (key == null) return false;
+            foreach (string blocked in HandheldBlocked)
+                if (string.Equals(blocked, key, StringComparison.Ordinal)) return true;
+            return false;
+        }
+
         public const string GroupMode = "cfg.group.mode";
         public const string GroupBackground = "cfg.group.bg";
         public const string GroupCores = "cfg.group.core";

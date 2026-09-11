@@ -75,6 +75,9 @@ namespace PaviseApp
                 delegate { return gameMode.IsActive; });
             coreSchedulingPanel.HardAffinityState = delegate { return gameMode.HardAffinityOn; };
             coreSchedulingPanel.HardAffinityChanged = delegate(bool on) { gameMode.HardAffinityOn = on; };
+            coreSchedulingPanel.AffinityGuardState = delegate { return gameMode.AffinityGuardOn; };
+            coreSchedulingPanel.IsolationBlocked = delegate { return gameMode.ActivePreset == PerformancePreset.Handheld; };
+            coreSchedulingPanel.AffinityGuardChanged = delegate(bool on) { gameMode.AffinityGuardOn = on; };
             coreSchedulingPanel.RefreshView();
             coreSchedulingPanel.Location = new Point(Theme.S(14), Theme.S(4));
             coreScrollPanel.Controls.Add(coreSchedulingPanel);

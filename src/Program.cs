@@ -19,7 +19,7 @@ namespace PaviseApp
     internal static class App
     {
         public const string DisplayName = "PAVISE";
-        public const string Version = "2.2.2.0";
+        public const string Version = "2.2.2.2";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string QqGroup = "1051472054";
@@ -725,6 +725,7 @@ namespace PaviseApp
                     if (Volatile.Read(ref exiting)) return;
                     // 公告和版本号走同一份清单 有没有新版都要把公告交给概览页
                     if (r.Ok && r.Notice != null) panel.NotifyNotice(r.Notice);
+                    if (r.Ok && r.Donate != null) panel.NotifyDonate(r.Donate);
                     if (r.Ok && r.Newer)
                     {
                         Logger.Log(Lang.T("log.program.6") + r.Latest

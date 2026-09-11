@@ -74,7 +74,8 @@ namespace PaviseApp
             sy += cardH + 8;
 
             bool win11 = Native.OsBuild() >= 22000;
-            swWindowedOpt = MakeSwitch(WindowedOptTweak.EnabledByPavise || WindowedOptTweak.CurrentlyOn(), OnWindowedOptToggle);
+            // 开关只反映 Pavise 自己开没开 系统本来就开着的保持关闭 任何档位都不替用户开
+            swWindowedOpt = MakeSwitch(WindowedOptTweak.EnabledByPavise, OnWindowedOptToggle);
             swWindowedOpt.Enabled = (win11 || WindowedOptTweak.EnabledByPavise)
                 && (WindowedOptTweak.EnabledByPavise || !WindowedOptTweak.CurrentlyOn());
             cardWindowedOpt = MakeAutoCard(scroll, 6, sy, ScrollContentW, 76, Lang.T("set.windowedopt"),
@@ -273,7 +274,7 @@ namespace PaviseApp
                 if (swWindowedOpt.Checked) WindowedOptTweak.Enable();
                 else WindowedOptTweak.Restore();
             });
-            swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByPavise || WindowedOptTweak.CurrentlyOn());
+            swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByPavise);
             swWindowedOpt.Enabled = WindowedOptTweak.EnabledByPavise || !WindowedOptTweak.CurrentlyOn();
             if (cardWindowedOpt != null)
                 SyncEnvStatus();
@@ -547,7 +548,7 @@ namespace PaviseApp
             if (swAccessKeys != null) swAccessKeys.SetSilently(AccessibilityKeysTweak.HasResidue());
             if (swHidPower != null) swHidPower.SetSilently(HidPowerTweak.EnabledByPavise);
             if (swWindowedOpt != null)
-                swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByPavise || WindowedOptTweak.CurrentlyOn());
+                swWindowedOpt.SetSilently(WindowedOptTweak.EnabledByPavise);
             if (swVrrOpt != null)
                 swVrrOpt.SetSilently(VrrOptTweak.EnabledByPavise || VrrOptTweak.CurrentlyOn());
             if (swEee != null) swEee.SetSilently(EeeTweak.EnabledByPavise);

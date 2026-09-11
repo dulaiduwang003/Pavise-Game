@@ -2,7 +2,6 @@
 // 文件用途 中断归属的放置证明 校验渲染进程全部线程的实际可运行集合 纯查询不依赖对局状态
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 
 namespace PaviseApp
 {
@@ -100,6 +99,122 @@ namespace PaviseApp
                 || CpuTopology.TryCpuSetIdsToMask(ids, out assignment.Mask);
         }
 
+        // 进程级放置 一次身份 一次硬亲和 一次默认 CPU Sets
+        //   采集中每轮用它 全量线程证明按节奏做 线程显式 CPU Sets 逃逸由下一次全量兜住
+        internal static bool AttributionProcessPlacementMatches(
+            IntPtr processHandle, int pid, long expectedCreation,
+            ulong desiredMask, bool multiGroup)
+        {
+            if (processHandle == IntPtr.Zero || pid <= 0
+                || expectedCreation <= 0 || desiredMask == 0
+                || multiGroup)
+                return false;
+            long creation, cpu;
+            ulong io;
+            if (!Native.QueryProcessSample(
+                    processHandle, out creation, out cpu, out io)
+                || creation != expectedCreation)
+                return false;
+            if (Native.QueryAffinity(processHandle) != desiredMask) return false;
+            AttributionCpuSetAssignment processDefault;
+            return TryQueryProcessAttributionCpuSets(processHandle, out processDefault);
+        }
+
+        internal enum AttributionThreadOutcome { Live, Vanished, Fail }
+
+        // 开不出句柄 属主不是本进程 已经退出 都是线程消失 不是逃逸 消失的线程不影响证明
+        //   活跃状态查不出来是句柄本身出了问题 证明不了 只能判失败
+        internal static AttributionThreadOutcome ClassifyAttributionThread(
+            bool opened, int expectedPid, int ownerPid, bool activeKnown, bool active)
+        {
+            if (!opened) return AttributionThreadOutcome.Vanished;
+            if (expectedPid <= 0) return AttributionThreadOutcome.Fail;
+            if (ownerPid != expectedPid) return AttributionThreadOutcome.Vanished;
+            if (!activeKnown) return AttributionThreadOutcome.Fail;
+            return active ? AttributionThreadOutcome.Live : AttributionThreadOutcome.Vanished;
+        }
+
+        // 只在 after 里出现的线程号 两边都已排序去重 新线程要单独证明一次 消失的不追
+        internal static int[] NewAttributionThreads(int[] before, int[] after)
+        {
+            if (after == null) return new int[0];
+            if (before == null) return (int[])after.Clone();
+            var added = new List<int>();
+            int i = 0;
+            foreach (int id in after)
+            {
+                while (i < before.Length && before[i] < id) i++;
+                if (i >= before.Length || before[i] != id) added.Add(id);
+            }
+            return added.ToArray();
+        }
+
+        private struct AttributionThreadProof
+        {
+            public IntPtr Handle;
+            public ushort Group;
+            public ulong GroupAffinity;
+            public AttributionCpuSetAssignment Selected;
+        }
+
+        // 线程级查询失败时再看一眼它是不是刚退出 退出了就是消失 否则证明不了
+        private static AttributionThreadOutcome FailUnlessVanished(IntPtr thread)
+        {
+            bool active;
+            return Native.TryQueryThreadActive(thread, out active) && !active
+                ? AttributionThreadOutcome.Vanished : AttributionThreadOutcome.Fail;
+        }
+
+        // 证明一个线程 Live 时句柄交给 held 并把有效集合并进 union 其余情况句柄已关
+        private static AttributionThreadOutcome ProveThread(
+            int tid, int pid, ulong processHard,
+            AttributionCpuSetAssignment processDefault,
+            ref ulong union, List<AttributionThreadProof> held)
+        {
+            IntPtr thread = Native.OpenThread(
+                Native.THREAD_QUERY_LIMITED_INFORMATION | Native.SYNCHRONIZE, false, tid);
+            bool opened = thread != IntPtr.Zero;
+            int owner = opened ? Native.QueryThreadOwnerPid(thread) : -1;
+            bool active = false;
+            bool activeKnown = opened && Native.TryQueryThreadActive(thread, out active);
+            AttributionThreadOutcome outcome = ClassifyAttributionThread(opened, pid, owner, activeKnown, active);
+            if (outcome != AttributionThreadOutcome.Live)
+            {
+                if (opened) Native.CloseHandle(thread);
+                return outcome;
+            }
+            ushort group;
+            ulong groupAffinity;
+            AttributionCpuSetAssignment selected;
+            if (!Native.TryQueryThreadGroupAffinity(thread, out group, out groupAffinity)
+                || !TryQueryThreadAttributionCpuSets(thread, out selected))
+            {
+                outcome = FailUnlessVanished(thread);
+                Native.CloseHandle(thread);
+                return outcome;
+            }
+            if (group != 0)
+            {
+                Native.CloseHandle(thread);
+                return AttributionThreadOutcome.Fail;
+            }
+            AttributionCpuSetAssignment effectiveAssignment = selected.Assigned ? selected : processDefault;
+            ulong effective = EffectiveAttributionThreadMask(
+                processHard, groupAffinity, effectiveAssignment.Mask, effectiveAssignment.Assigned);
+            if (effective == 0)
+            {
+                Native.CloseHandle(thread);
+                return AttributionThreadOutcome.Fail;
+            }
+            union |= effective;
+            held.Add(new AttributionThreadProof
+            { Handle = thread, Group = group, GroupAffinity = groupAffinity, Selected = selected });
+            return AttributionThreadOutcome.Live;
+        }
+
+        // 全量线程证明 线程在证明窗口内退出或新建都不算失败 退出的忽略 新建的单独证明一次
+        //   失败只剩三种 进程级放置变了 存活线程的组或线程级 CPU Sets 变了 查询本身出错
+        //   线程号取自最近一次进程扫描留下的记录 末尾再刷新一次抓新线程 不走 .NET Process
         internal static bool AttributionThreadPlacementMatches(
             IntPtr processHandle, int pid, long expectedCreation,
             ulong desiredMask, bool multiGroup)
@@ -124,81 +239,44 @@ namespace PaviseApp
                     processHandle, out processDefault))
                 return false;
 
-            int[] firstThreads = SnapshotRendererThreadIds(
-                pid, expectedCreation);
+            int[] firstThreads = ProcessSnapshotSource.ThreadIdsOf(pid, expectedCreation, false)
+                ?? ProcessSnapshotSource.ThreadIdsOf(pid, expectedCreation, true);
             if (firstThreads == null || firstThreads.Length == 0)
                 return false;
 
-            var handles = new List<IntPtr>(firstThreads.Length);
-            var initialGroups = new ushort[firstThreads.Length];
-            var initialGroupAffinities = new ulong[firstThreads.Length];
-            var initialSelected =
-                new AttributionCpuSetAssignment[firstThreads.Length];
+            var held = new List<AttributionThreadProof>(firstThreads.Length);
             ulong threadUnion = 0;
             try
             {
-                for (int i = 0; i < firstThreads.Length; i++)
-                {
-                    IntPtr thread = Native.OpenThread(
-                        Native.THREAD_QUERY_LIMITED_INFORMATION
-                            | Native.SYNCHRONIZE,
-                        false, firstThreads[i]);
-                    if (thread == IntPtr.Zero) return false;
-                    handles.Add(thread);
+                foreach (int tid in firstThreads)
+                    if (ProveThread(tid, pid, processHard, processDefault, ref threadUnion, held)
+                        == AttributionThreadOutcome.Fail)
+                        return false;
+                if (held.Count == 0) return false;
 
-                    if (Native.QueryThreadOwnerPid(thread) != pid)
-                        return false;
+                // 从同一批持有句柄复查 仍活着的线程组与线程级策略不能变 退出的忽略
+                foreach (AttributionThreadProof proof in held)
+                {
+                    int ownerPid = Native.QueryThreadOwnerPid(proof.Handle);
                     bool active;
-                    if (!Native.TryQueryThreadActive(thread, out active)
-                        || !active)
-                        return false;
+                    bool activeKnown = Native.TryQueryThreadActive(proof.Handle, out active);
+                    AttributionThreadOutcome outcome =
+                        ClassifyAttributionThread(true, pid, ownerPid, activeKnown, active);
+                    if (outcome == AttributionThreadOutcome.Fail) return false;
+                    if (outcome == AttributionThreadOutcome.Vanished) continue;
                     ushort group;
                     ulong groupAffinity;
-                    if (!Native.TryQueryThreadGroupAffinity(
-                            thread, out group, out groupAffinity)
-                        || group != 0)
-                        return false;
-
                     AttributionCpuSetAssignment selected;
-                    if (!TryQueryThreadAttributionCpuSets(
-                            thread, out selected))
+                    if (!Native.TryQueryThreadGroupAffinity(proof.Handle, out group, out groupAffinity)
+                        || !TryQueryThreadAttributionCpuSets(proof.Handle, out selected))
+                    {
+                        if (FailUnlessVanished(proof.Handle) == AttributionThreadOutcome.Vanished) continue;
                         return false;
-                    initialGroups[i] = group;
-                    initialGroupAffinities[i] = groupAffinity;
-                    initialSelected[i] = selected;
-                    AttributionCpuSetAssignment effectiveAssignment =
-                        selected.Assigned ? selected : processDefault;
-                    ulong effective = EffectiveAttributionThreadMask(
-                        processHard, groupAffinity,
-                        effectiveAssignment.Mask,
-                        effectiveAssignment.Assigned);
-                    if (effective == 0) return false;
-                    threadUnion |= effective;
-                }
-
-                // 首尾必须从同一批持有句柄复查 owner 存活与线程级策略
-                // 仅比较 TID 集不足以排除线程在证明窗口内退出或改绑
-                for (int i = 0; i < handles.Count; i++)
-                {
-                    bool active;
-                    int ownerPid = Native.QueryThreadOwnerPid(handles[i]);
-                    if (!Native.TryQueryThreadActive(
-                            handles[i], out active))
-                        return false;
-                    ushort group;
-                    ulong groupAffinity;
-                    if (!Native.TryQueryThreadGroupAffinity(
-                            handles[i], out group, out groupAffinity))
-                        return false;
-                    AttributionCpuSetAssignment selected;
-                    if (!TryQueryThreadAttributionCpuSets(
-                            handles[i], out selected))
-                        return false;
+                    }
                     if (!AttributionThreadStateMatches(
-                            pid, ownerPid, active,
-                            initialGroups[i], initialGroupAffinities[i],
-                            initialSelected[i].Assigned,
-                            initialSelected[i].Mask,
+                            pid, ownerPid, true,
+                            proof.Group, proof.GroupAffinity,
+                            proof.Selected.Assigned, proof.Selected.Mask,
                             group, groupAffinity,
                             selected.Assigned, selected.Mask))
                         return false;
@@ -215,11 +293,12 @@ namespace PaviseApp
                         processHandle, out creation, out cpu, out io)
                     || creation != expectedCreation)
                     return false;
-                int[] finalThreads = SnapshotRendererThreadIds(
-                    pid, expectedCreation);
-                if (!SameAttributionThreadSnapshot(
-                        firstThreads, finalThreads))
-                    return false;
+                int[] finalThreads = ProcessSnapshotSource.ThreadIdsOf(pid, expectedCreation, true);
+                if (finalThreads == null) return false;
+                foreach (int tid in NewAttributionThreads(firstThreads, finalThreads))
+                    if (ProveThread(tid, pid, processHard, processDefault, ref threadUnion, held)
+                        == AttributionThreadOutcome.Fail)
+                        return false;
 
                 return AttributionPlacementProofMatches(
                     desiredMask, processHard, multiGroup,
@@ -227,46 +306,9 @@ namespace PaviseApp
             }
             finally
             {
-                for (int i = 0; i < handles.Count; i++)
-                    Native.CloseHandle(handles[i]);
+                foreach (AttributionThreadProof proof in held)
+                    Native.CloseHandle(proof.Handle);
             }
-        }
-
-        private static int[] SnapshotRendererThreadIds(
-            int pid, long expectedCreation)
-        {
-            try
-            {
-                using (Process process = Process.GetProcessById(pid))
-                {
-                    if (process.StartTime.ToFileTimeUtc()
-                        != expectedCreation)
-                        return null;
-                    ProcessThreadCollection threads = process.Threads;
-                    if (threads == null || threads.Count == 0) return null;
-                    var ids = new int[threads.Count];
-                    for (int i = 0; i < threads.Count; i++)
-                    {
-                        ids[i] = threads[i].Id;
-                        if (ids[i] <= 0) return null;
-                    }
-                    Array.Sort(ids);
-                    for (int i = 1; i < ids.Length; i++)
-                        if (ids[i] == ids[i - 1]) return null;
-                    return ids;
-                }
-            }
-            catch { return null; }
-        }
-
-        internal static bool SameAttributionThreadSnapshot(
-            int[] a, int[] b)
-        {
-            if (a == null || b == null || a.Length != b.Length)
-                return false;
-            for (int i = 0; i < a.Length; i++)
-                if (a[i] != b[i]) return false;
-            return true;
         }
 
         internal static bool AttributionThreadStateMatches(

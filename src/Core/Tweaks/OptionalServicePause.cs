@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading;
 
 namespace PaviseApp
 {
@@ -112,9 +113,17 @@ namespace PaviseApp
                 if (!ReadBoot(out boot)) return false;
                 receiptBoot = boot;
                 var entries = new List<Entry>();
+                // 停了几个服务合成一行记 中途放弃也先把已停的记上再还原
+                var stoppedNames = new List<string>();
+                Action flush = delegate
+                {
+                    if (stoppedNames.Count == 0) return;
+                    Logger.Log(Lang.F("log.pausesvc.stop", string.Join(", ", stoppedNames.ToArray())));
+                    stoppedNames.Clear();
+                };
                 foreach (string name in Names)
                 {
-                    if (!MayContinue(mayContinue)) return RestoreCore();
+                    if (!MayContinue(mayContinue)) { flush(); return RestoreCore(); }
                     OptionalServiceSnapshot before;
                     if (!Query(name, out before) || !before.Exists || before.State != 4
                         || before.StartType == 4 || !before.AcceptsStop || before.HasActiveDependents
@@ -122,14 +131,15 @@ namespace PaviseApp
                     if (IsPrinting(name) && !PrintingIdle()) continue;
                     // 查本地打印提供程序会阻塞 用户已经关掉策略或者退出之后
                     // 迟到的结果一律不处理
-                    if (!MayContinue(mayContinue)) return RestoreCore();
+                    if (!MayContinue(mayContinue)) { flush(); return RestoreCore(); }
 
                     var entry = new Entry { Name = name, Configuration = before.Configuration };
                     entries.Add(entry);
-                    if (!Save(entries, boot)) return AbortAfterLedgerFailure();
+                    if (!Save(entries, boot)) { flush(); return AbortAfterLedgerFailure(); }
                     if (!MayContinue(mayContinue))
                     {
                         entries.Remove(entry);
+                        flush();
                         if (!Save(entries, boot)) return AbortAfterLedgerFailure();
                         return RestoreCore();
                     }
@@ -140,6 +150,7 @@ namespace PaviseApp
                     {
                         // 适配器抛异常时 STOP 可能已经发出去了 所以它的 Prepared
                         // 记录在拿到收据之前故意不升级
+                        flush();
                         Warn("log.pausesvc.unowned", name);
                         RestoreCore();
                         return false;
@@ -148,7 +159,7 @@ namespace PaviseApp
                     {
                         // 别人先把它停了 不算我们的所有权
                         entries.Remove(entry);
-                        if (!Save(entries, boot)) return AbortAfterLedgerFailure();
+                        if (!Save(entries, boot)) { flush(); return AbortAfterLedgerFailure(); }
                         continue;
                     }
 
@@ -156,9 +167,10 @@ namespace PaviseApp
                     receipts[name] = entry;
                     OptionalServiceSnapshot stopped;
                     entry.StopObserved = Query(name, out stopped) && stopped.Exists && stopped.State == 1;
-                    Logger.Log(Lang.F("log.pausesvc.stop", name));
-                    if (!Save(entries, boot)) return AbortAfterLedgerFailure();
+                    stoppedNames.Add(name);
+                    if (!Save(entries, boot)) { flush(); return AbortAfterLedgerFailure(); }
                 }
+                flush();
                 if (!MayContinue(mayContinue)) return RestoreCore();
                 active = true;
                 lastWarning = null;
@@ -273,6 +285,7 @@ namespace PaviseApp
             // 不要卡住界面 也不要强杀宿主进程
             var pending = new List<string>();
             var uncertain = new List<string>();
+            var restored = new List<string>();
             for (int i = entries.Count - 1; i >= 0; i--)
             {
                 Entry entry = entries[i];
@@ -333,7 +346,12 @@ namespace PaviseApp
                     if (!remove)
                     {
                         OptionalServiceSnapshot after;
-                        if (Query(entry.Name, out after))
+                        bool queried = Query(entry.Name, out after);
+                        // START 受理后服务先停在 START_PENDING 几百毫秒 等它一小会再核对
+                        //   免得每局都留一条待重试 再靠残留重试补一轮
+                        if (queried && startResult == OptionalServiceStartResult.Accepted && after.State == 2)
+                            queried = WaitStartSettled(entry.Name, out after);
+                        if (queried)
                         {
                             // 外部的决定要保留 哪怕下次重试之前它又变了
                             // 最后一次查询不能把所有权已经交出去这个证据
@@ -346,7 +364,7 @@ namespace PaviseApp
                             {
                                 if (changed) Logger.Log(Lang.F("log.pausesvc.changed", entry.Name));
                                 else if (after.State == 4 && startResult == OptionalServiceStartResult.Accepted)
-                                    Logger.Log(Lang.F("log.pausesvc.restore", entry.Name));
+                                    restored.Add(entry.Name);
                                 remove = true;
                             }
                         }
@@ -363,6 +381,8 @@ namespace PaviseApp
                     entries.RemoveAt(i);
                 }
             }
+            if (restored.Count != 0)
+                Logger.Log(Lang.F("log.pausesvc.restore", string.Join(", ", restored.ToArray())));
             bool saved = Save(entries, boot);
             if (saved) { settled.Clear(); stopObservationDirty = false; }
             if (!saved) Warn("log.pausesvc.ledger", null);
@@ -370,6 +390,23 @@ namespace PaviseApp
             else if (pending.Count != 0) Warn("log.pausesvc.pending", string.Join(", ", pending.ToArray()));
             else lastWarning = null;
             return saved && entries.Count == 0;
+        }
+
+        // 最多等一秒半 每 100ms 查一次 离开 START_PENDING 就返回 查不到或超时按最后一次结果算
+        private const int StartSettleWaitMs = 1500;
+        private const int StartSettleStepMs = 100;
+
+        private bool WaitStartSettled(string name, out OptionalServiceSnapshot snapshot)
+        {
+            snapshot = null;
+            bool queried = false;
+            for (int waited = 0; waited < StartSettleWaitMs; waited += StartSettleStepMs)
+            {
+                Thread.Sleep(StartSettleStepMs);
+                queried = Query(name, out snapshot);
+                if (!queried || snapshot.State != 2) return queried;
+            }
+            return queried;
         }
 
         private bool Query(string name, out OptionalServiceSnapshot snapshot)

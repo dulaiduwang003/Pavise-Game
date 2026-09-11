@@ -68,8 +68,38 @@ namespace PaviseApp
             Eq(true, CpuTopology.TopologySourcesAgree);
         }
 
+        // 优选核只在最高能效档内部比评级 混合架构没有 TBM 优选核时不能把整组 P 核当优选
+        private static void FavoredCoresOnlyWithinTopEfficiencyClass()
+        {
+            // 8P+8E 单一评级 没有优选核
+            Eq(0UL, CpuTopology.FavoredMaskOf(
+                new[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 },
+                new byte[] { 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0 },
+                new byte[] { 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0 }));
+            // 8P+8E P 核里 4 5 评级更高 优选核就是 4 5
+            Eq(0x30UL, CpuTopology.FavoredMaskOf(
+                new[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 },
+                new byte[] { 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0 },
+                new byte[] { 1, 1, 1, 1, 2, 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0 }));
+            // 非混合架构 评级不同直接取最高
+            Eq(0x0CUL, CpuTopology.FavoredMaskOf(
+                new[] { 0, 1, 2, 3 }, new byte[] { 0, 0, 0, 0 }, new byte[] { 1, 1, 3, 3 }));
+            Eq(0UL, CpuTopology.FavoredMaskOf(new int[0], new byte[0], new byte[0]));
+            Eq(0UL, CpuTopology.FavoredMaskOf(new[] { 0, 1 }, new byte[] { 0 }, new byte[] { 1, 2 }));
+            // 各核明细 相邻同值合并成段 乱序输入按核号排
+            Eq("0-7:1/1 8-11:1/2 12-15:0/0", CpuTopology.DescribeCoreClasses(
+                new[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 },
+                new byte[] { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0 },
+                new byte[] { 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 0, 0, 0, 0 }));
+            Eq("0:0/1 2-3:0/1", CpuTopology.DescribeCoreClasses(
+                new[] { 3, 0, 2 }, new byte[] { 0, 0, 0 }, new byte[] { 1, 1, 1 }));
+            Eq("", CpuTopology.DescribeCoreClasses(new int[0], new byte[0], new byte[0]));
+            Console.WriteLine("PASS FavoredCores: ranked only within the top efficiency class");
+        }
+
         internal static void RunCoreSchedulingTests(string output)
         {
+            FavoredCoresOnlyWithinTopEfficiencyClass();
             CorePlanValidation(); CorePlanSerialization(); CorePlanMergedPageDraft(output);
             CorePlanProfileReturn(output); CorePlanUnsupportedIsolation(output); CorePlanUiAndPersistence(output);
         }

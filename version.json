@@ -1,10 +1,12 @@
 {
-  "version": "2.2.2.0",
+  "version": "2.2.2.2",
   "url": "https://pan.quark.cn/s/3c8c986b3ea4",
   "mirror": "https://pan.quark.cn/s/3c8c986b3ea4",
-  "noticeId": "20260909-niubi",
-  "noticeTitle": "牛逼",
-  "noticeBody": "群主说这个版本很牛逼",
+  "noticeId": "20260911-upgrade-2222",
+  "noticeTitle": "请升级到 2.2.2.2",
+  "noticeBody": "2.2.2.2 已发布 请升级到 2.2.2.2",
   "noticeUrl": "",
-  "note": "Pavise 更新清单 version 是最新版本号 mirror 是点击下载时打开的地址 noticeId 换一个值就是一条新公告 客户端按 id 记已读 noticeTitle 留空表示当前没有公告 noticeUrl 只放行网盘和飞书域名"
+  "donateId": "20260911-wechat",
+  "donateUrl": "https://paivse.oss-cn-shanghai.aliyuncs.com/version/donate.png",
+  "note": "Pavise 更新清单 version 是最新版本号 mirror 是点击下载时打开的地址 noticeId 换一个值就是一条新公告 客户端按 id 记已读 noticeTitle 留空表示当前没有公告 noticeUrl 只放行网盘和飞书域名 donateId 换一个值客户端才重新拉捐赠二维码 donateUrl 只放行信任域名 图用 tools/Publish-OssAsset.ps1 传"
 }

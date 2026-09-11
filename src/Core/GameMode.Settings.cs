@@ -228,6 +228,17 @@ namespace PaviseApp
             }
         }
 
+        // 亲和性守护默认关 关着时其他程序改了游戏亲和性就保留 开着时每轮扫描核对 被改即写回
+        public bool AffinityGuardOn
+        {
+            get { return affinityGuardOn; }
+            set
+            {
+                affinityGuardOn = value;
+                Settings.Save("GmAffinityGuardV1", value);
+            }
+        }
+
         public bool DwmBoostOn
         {
             get { return dwmBoostOn; }

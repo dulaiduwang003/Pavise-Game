@@ -2,6 +2,7 @@
 // 文件用途 构建概览页 核心动画 守护状态与仪表盘图块
 using System;
 using System.Drawing;
+using System.Threading;
 using System.Windows.Forms;
 
 namespace PaviseApp
@@ -16,6 +17,12 @@ namespace PaviseApp
         private Label lblHeroMode, lblHeroSource;
         private Label lblLastSession;
         private RogLinkButton btnNotice;
+        private RogLinkButton btnDonate;
+        private volatile bool donateLoading;
+        private DonateDialog donateDialog;
+#if PAVISE_SELFTEST
+        internal Action<Bitmap> DonateDisplayForTest;
+#endif
         private NoticeInfo notice;
         private volatile bool noticeLoading;
         private bool noticeRequested;
@@ -107,6 +114,13 @@ namespace PaviseApp
             int linkY = 12, linkH = 46, linkGap = 10, linkW = 186;
             int helpX = PageW - 30 - linkW;
             int noticeX = helpX - linkGap - linkW;
+            // 捐赠在公告左边 同一套装甲 换暖色 心形图标 跟旁边两个主题色的入口一眼分开
+            int donateX = noticeX - linkGap - linkW;
+            btnDonate = AddOverviewLink(status, donateX, linkY, linkW, linkH,
+                Lang.T("donate.entry"), "DONATE // 00", "heart", null);
+            btnDonate.External = false;
+            btnDonate.Tint = Color.FromArgb(255, 170, 60);
+            btnDonate.Click += delegate { ShowDonate(); };
             btnNotice = AddOverviewLink(status, noticeX, linkY, linkW, linkH,
                 Lang.T("v230.notice.entry"), "NOTICE // 01", "pulse", null);
             btnNotice.External = false;
@@ -165,6 +179,95 @@ namespace PaviseApp
                 });
             }
             catch { }
+        }
+
+        // 清单带回来的捐赠字段只记着 不在启动时抢网络 点开时按 id 决定拉不拉
+        public void NotifyDonate(DonateInfo d)
+        {
+            if (d != null) DonateCache.Latest = d;
+        }
+
+        private void RefreshDonateButton()
+        {
+            if (btnDonate == null || btnDonate.IsDisposed) return;
+            btnDonate.Text = Lang.T(donateLoading ? "donate.loading" : "donate.entry");
+            btnDonate.AccessibleName = btnDonate.Text;
+            btnDonate.Enabled = !donateLoading;
+            btnDonate.Cursor = donateLoading ? Cursors.WaitCursor : Cursors.Hand;
+            btnDonate.Invalidate();
+        }
+
+        // 缓存能用就直接开 一个字节都不拉 清单 id 变了或本地没图才去 OSS 取一次
+        //   有旧图时先把旧图亮出来 新图到了再换 用户不必对着空框等
+        private void ShowDonate()
+        {
+            if (donateLoading || IsDisposed || btnDonate == null || btnDonate.IsDisposed) return;
+            DonateInfo latest = DonateCache.Effective;
+            bool has = DonateCache.HasImage;
+            if (has && !DonateCache.NeedsRefresh(DonateCache.CachedId, latest.Id, true))
+            {
+                OpenDonate(DonateCache.LoadCached(), false);
+                return;
+            }
+            donateLoading = true;
+            RefreshDonateButton();
+            try
+            {
+                FetchDonateImage(delegate(byte[] bytes, DonateInfo info)
+                {
+                    try { PostUiStateResult(delegate { CompleteDonate(bytes, info); }); }
+                    catch { donateLoading = false; }
+                });
+            }
+            catch { CompleteDonate(null, null); return; }
+            OpenDonate(has ? DonateCache.LoadCached() : null, true);
+        }
+
+        // 清单在手就直接拉图 不在手先走一遍更新检查拿清单 清单没给就用内置那份 两步都在工作线程
+        private static void FetchDonateImage(Action<byte[], DonateInfo> done)
+        {
+            Action<DonateInfo> pull = delegate(DonateInfo i)
+            {
+                byte[] bytes = UpdateChecker.FetchBytes(i.Url, DonateCache.MaxImageBytes);
+                done(bytes, i);
+            };
+            DonateInfo known = DonateCache.Latest;
+            if (known != null) { ThreadPool.QueueUserWorkItem(delegate { pull(known); }); return; }
+            UpdateChecker.CheckAsync(delegate(UpdateResult r)
+            {
+                DonateInfo i = r != null && r.Ok ? r.Donate : null;
+                if (i != null) DonateCache.Latest = i;
+                pull(i ?? DonateCache.Default);
+            });
+        }
+
+        private void CompleteDonate(byte[] bytes, DonateInfo info)
+        {
+            donateLoading = false;
+            if (IsDisposed) return;
+            Bitmap fresh = null;
+            if (bytes != null && info != null && DonateCache.Store(bytes, info.Id)) fresh = DonateCache.Decode(bytes);
+            RefreshDonateButton();
+            if (donateDialog != null && !donateDialog.IsDisposed)
+            {
+                if (fresh != null) donateDialog.SetImage(fresh); else donateDialog.MarkFailed();
+            }
+            else if (fresh != null) fresh.Dispose();
+        }
+
+        private void OpenDonate(Bitmap qr, bool loading)
+        {
+#if PAVISE_SELFTEST
+            if (DonateDisplayForTest == null) throw new InvalidOperationException("Donate dialog was not mocked");
+            DonateDisplayForTest(qr);
+#else
+            using (var dlg = new DonateDialog(qr, loading))
+            {
+                donateDialog = dlg;
+                try { dlg.ShowDialog(this); }
+                finally { donateDialog = null; }
+            }
+#endif
         }
 
         // 网络请求期间保留按钮位置 立即回显状态并挡住重复点击

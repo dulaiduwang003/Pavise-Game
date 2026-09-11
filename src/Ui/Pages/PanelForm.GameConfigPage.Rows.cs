@@ -39,9 +39,19 @@ namespace PaviseApp
                     SyncCfgRows();
                     return;
                 }
+                bool wasSmart = cfgEffMode == PerformancePreset.Standard;
+                string changedId = cfgProfileId;
                 if (index <= 0) gameMode.ClearProfileOverride(cfgProfileId, PolicyCatalog.KeyPreset);
                 else gameMode.SetProfileOverride(cfgProfileId, PolicyCatalog.KeyPreset, values[index - 1]);
                 SyncCfgRows();
+                // 自适应升档那一行只在智能档存在 跨过这条线就整页重建 选择器还在自己的回调里 推到下一轮
+                if (wasSmart != (cfgEffMode == PerformancePreset.Standard))
+                    BeginInvoke((Action)delegate
+                    {
+                        if (pageGameConfig != null && pageGameConfig.Visible
+                            && string.Equals(cfgProfileId, changedId, StringComparison.OrdinalIgnoreCase))
+                            BuildGameConfigContent();
+                    });
             };
         }
 

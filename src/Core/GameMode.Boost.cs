@@ -71,6 +71,8 @@ namespace PaviseApp
                     rendererSeen = true;
                     bool known, needTweak, needPlacement;
                     bool auditDue = ComputeAuditDue(pid, pass, out known, out needTweak, out needPlacement);
+                    // 手动落核每秒用留存句柄读一次亲和性 被改回就立刻进本轮写回 不等巡检周期
+                    if (!auditDue && ManualPlacementDrifted(pid, pass)) auditDue = true;
                     bool placementAudit = irqProbe.RequiresPlacementAudit;
                     if (!auditDue && !placementAudit) continue;
                     IntPtr h = OpenBoostHandle(pid, pass);

@@ -20,7 +20,8 @@ namespace PaviseApp
         private Toggle swPolicyVramShield;
         private SettingCard cardPolicyVramShield, cardPolicyEnglishInput;
         private Toggle swPolicyEnglishInput;
-        private Toggle swPolicyDwmBoost, swPolicyWsTrim, swPolicyAudioLat, swPolicyIdlePolicy;
+        private Toggle swPolicyDwmBoost, swPolicyWsTrim, swPolicyAudioLat, swPolicyIdlePolicy, swPolicyCacheWarm;
+        private SettingCard cardPolicyCacheWarm;
         private SettingCard cardPolicyDwmBoost, cardPolicyWsTrim, cardPolicyAudioLat, cardPolicyIdlePolicy;
         private Toggle swPolicyPowerYield;
         private Toggle swPolicyDisableCpuIdle;
@@ -122,7 +123,7 @@ namespace PaviseApp
                 delegate(bool v) { OnDisableCpuIdleToggle(v); });
             cardPolicyDisableCpuIdle = (SettingCard)swPolicyDisableCpuIdle.Parent;
             BuildStandbyCleanerPolicyCard(scroll, ref sy);
-            BuildCacheWarmPolicyCard(scroll, ref sy);
+            cardPolicyCacheWarm = BuildCacheWarmPolicyCard(scroll, ref sy);
             swPolicyWsTrim = AddPolicyToggle(scroll, ref sy, Lang.T("gm.wstrim"), Lang.T("gm.wstrim.sub"),
                 delegate { return gameMode.WsTrimOn; }, delegate(bool v) { gameMode.WsTrimOn = v; }, 0, true);
             cardPolicyWsTrim = (SettingCard)swPolicyWsTrim.Parent;
@@ -191,14 +192,21 @@ namespace PaviseApp
             if (!stackBase.TryGetValue(panel, out map)) return;
 
             var shifts = new List<int[]>();
+            int gap = Theme.S(8);
             foreach (Control c in panel.Controls)
             {
                 var card = c as SettingCard;
-                if (card == null || !card.Collapsible) continue;
-                int delta = card.Height - card.ExpandedHeight;
                 int baseTop;
-                if (delta != 0 && map.TryGetValue(card, out baseTop))
-                    shifts.Add(new[] { baseTop, delta });
+                if (card == null || !map.TryGetValue(card, out baseTop)) continue;
+                // 按档位整张藏起来的卡 连同它下面的间距一起让出来 折叠与否不管
+                if (card.Suppressed)
+                {
+                    shifts.Add(new[] { baseTop, -((card.Collapsible ? card.ExpandedHeight : card.Height) + gap) });
+                    continue;
+                }
+                if (!card.Collapsible) continue;
+                int delta = card.Height - card.ExpandedHeight;
+                if (delta != 0) shifts.Add(new[] { baseTop, delta });
             }
 
             var scrollable = panel as ScrollableControl;
@@ -246,6 +254,7 @@ namespace PaviseApp
         {
             Toggle warm = AddPolicyToggle(parent, ref y, Lang.T("gm.cachewarm"), Lang.T("gm.cachewarm.sub"),
                 delegate { return gameMode.CacheWarmOn; }, delegate(bool v) { gameMode.CacheWarmOn = v; }, 0, true);
+            swPolicyCacheWarm = warm;
             SettingCard card = (SettingCard)warm.Parent;
             card.SetStatus(gameMode.CacheWarmStatus, Theme.Dim);
             card.Height += Theme.S(SettingCard.StatusLineH); y += SettingCard.StatusLineH;
@@ -287,9 +296,15 @@ namespace PaviseApp
             bool presetForcesOn = competitive || mode == PerformancePreset.Handheld;
             ApplyPresetPolicy(swPolicyBackground, cardPolicyBackground, Lang.T("v14.bg.master"), false, true);
             ApplyPresetPolicy(swPolicyGpuDemote, cardPolicyGpuDemote, Lang.T("gm.gpudemote"), false, true);
-            // 只有智能档会用到 其它档位本来就是电竞口径 开关留着但标为不生效
-            ApplyPresetPolicy(swPolicyAdaptive, cardPolicyAdaptive, Lang.T("gm.adaptive"), false,
-                mode == PerformancePreset.Standard);
+            // 只有智能档会用到 其它档位本来就是电竞口径 整张卡藏起来 下面的卡上移补位
+            bool smart = mode == PerformancePreset.Standard;
+            if (cardPolicyAdaptive != null)
+            {
+                cardPolicyAdaptive.Visible = smart;
+                cardPolicyAdaptive.Suppressed = !smart;
+            }
+            if (smart) ApplyPresetPolicy(swPolicyAdaptive, cardPolicyAdaptive, Lang.T("gm.adaptive"), false, true);
+            ReflowPolicyCoreCards();
             ApplyPresetPolicy(swPolicyBoost, cardPolicyBoost, Lang.T("gm.boost"), false, true);
             SyncPolicyLane();
             ApplyPresetPolicy(swPolicyAggressive, cardPolicyAggressive, Lang.T("gm.aggressive"), !custom, presetForcesOn);
@@ -323,20 +338,23 @@ namespace PaviseApp
                     : watts ? "gm.poweryield.sub" : "gm.poweryield.proxysub");
                 cardPolicyPowerYield.SetLock(swPolicyPowerYield.Enabled ? "" : Lang.T("lock.na"), false);
             }
+            // 掌机档不提供的四项 开关锁死标预设强制关 已开着的照样锁 对局中本来就不生效
+            bool handheld = mode == PerformancePreset.Handheld;
             ApplyPresetPolicy(swPolicyDisableCpuIdle, cardPolicyDisableCpuIdle,
-                Lang.T("gm.disablecpuidle"), false, true);
-            RefreshDisableCpuIdlePresentation();
+                Lang.T("gm.disablecpuidle"), handheld, false);
+            if (!handheld) RefreshDisableCpuIdlePresentation();
             RefreshStandbyCleanerPresentation();
+            ApplyPresetPolicy(swPolicyCacheWarm, cardPolicyCacheWarm, Lang.T("gm.cachewarm"), handheld, false);
             ApplyPresetPolicy(swPolicyPauseWu, cardPolicyPauseWu, Lang.T("gm.pausewu"), false, true);
             ApplyPresetPolicy(swPolicyPauseMaint, cardPolicyPauseMaint, Lang.T("gm.pausemaint"), false, true);
             ApplyPresetPolicy(swPolicyPauseServices, cardPolicyPauseServices, Lang.T("gm.pausesvc"), false, true);
             ApplyPresetPolicy(swPolicyAwake, cardPolicyAwake, Lang.T("set.awake"), false, true);
-            ApplyPresetPolicy(swPolicyVramShield, cardPolicyVramShield, Lang.T("gm.vramshield"), false, true);
+            ApplyPresetPolicy(swPolicyVramShield, cardPolicyVramShield, Lang.T("gm.vramshield"), handheld, false);
             ApplyPresetPolicy(swPolicyEnglishInput, cardPolicyEnglishInput, Lang.T("gm.englishinput"), false, true);
             // 没有档位会强制这三项 显示一律听用户自己的开关
             ApplyPresetPolicy(swPolicyWsTrim, cardPolicyWsTrim, Lang.T("gm.wstrim"), false, true);
-            ApplyPresetPolicy(swPolicyIdlePolicy, cardPolicyIdlePolicy, Lang.T("gm.idlepolicy"), false, true);
-            RefreshIdlePolicyPresentation();
+            ApplyPresetPolicy(swPolicyIdlePolicy, cardPolicyIdlePolicy, Lang.T("gm.idlepolicy"), handheld, false);
+            if (!handheld) RefreshIdlePolicyPresentation();
             ApplyPresetPolicy(swPolicyAudioLat, cardPolicyAudioLat, Lang.T("gm.audiolat"), false, true);
             ApplyPresetPolicy(swPolicyDwmBoost, cardPolicyDwmBoost, Lang.T("gm.dwmboost"), false, true);
         }
@@ -464,6 +482,14 @@ namespace PaviseApp
                 cardPolicyLane.Desc = Lang.T(supported ? "gm.lane.sub" : "gm.lane.unsupported");
                 if (!supported) cardPolicyLane.SetLock(Lang.T("lock.na"), false);
             }
+        }
+
+        // 第一栏有按档位整张藏起来的卡 藏与现和折叠展开走同一套摞法 两套各算各的会互相覆盖
+        //   摞法按 Suppressed 判 不看 Visible 建页和换档常发生在这页还没显示的时候 那会儿所有卡的 Visible 都是假
+        private void ReflowPolicyCoreCards()
+        {
+            if (policyTabPanels == null || policyTabPanels.Length == 0 || policyTabPanels[0] == null) return;
+            RestackCards(policyTabPanels[0]);
         }
 
         private static void ApplyPresetPolicy(Toggle toggle, SettingCard card, string title, bool forced, bool effective)

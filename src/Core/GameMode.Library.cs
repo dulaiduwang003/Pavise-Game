@@ -299,6 +299,8 @@ namespace PaviseApp
         {
             PolicySnapshot snapshot = sessionPolicy;
             if (snapshot == null) return globalOn;
+            // 掌机档不提供的项 实时解析也按关 跟快照口径一致
+            if (PolicyCatalog.IsHandheldBlocked(policyKey) && snapshot.Preset == PerformancePreset.Handheld) return false;
             if (string.IsNullOrEmpty(snapshot.ProfileId)) return globalOn;
             GameProfile profile = FindProfileLocked(snapshot.ProfileId);
             if (profile == null) return false;

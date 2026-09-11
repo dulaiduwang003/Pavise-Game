@@ -48,7 +48,7 @@ namespace PaviseApp
             foreach (Control c in root.Controls)
             {
                 var card = c as SettingCard;
-                if (card != null && card.Title.Length > 0)
+                if (card != null && !card.Suppressed && card.Title.Length > 0)
                 {
                     bool inTitle = needle.Length == 0
                         || card.Title.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0;

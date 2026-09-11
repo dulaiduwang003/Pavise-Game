@@ -361,14 +361,32 @@ namespace PaviseApp
             // CPU Set 和硬亲和性彻底冲突的时候 Windows 听后者的
             Eq(0x3UL, IrqPlacementProof.EffectiveAttributionThreadMask(
                 0x3UL, 0x3UL, 0x4UL, true));
-            Eq(true, IrqPlacementProof.SameAttributionThreadSnapshot(
-                new[] { 11, 22 }, new[] { 11, 22 }));
-            Eq(false, IrqPlacementProof.SameAttributionThreadSnapshot(
-                new[] { 11, 22 }, new[] { 11, 23 }));
-            Eq(false, IrqPlacementProof.SameAttributionThreadSnapshot(
-                new[] { 11 }, new[] { 11, 22 }));
-            Eq(false, IrqPlacementProof.SameAttributionThreadSnapshot(
-                null, new[] { 11 }));
+            // 证明窗口内线程增删不算失败 新线程要单独证明 退出的忽略
+            Eq(0, IrqPlacementProof.NewAttributionThreads(
+                new[] { 11, 22 }, new[] { 11, 22 }).Length);
+            Eq(23, IrqPlacementProof.NewAttributionThreads(
+                new[] { 11, 22 }, new[] { 11, 23 })[0]);
+            Eq(1, IrqPlacementProof.NewAttributionThreads(
+                new[] { 11, 22 }, new[] { 11, 23 }).Length);
+            Eq(0, IrqPlacementProof.NewAttributionThreads(
+                new[] { 11, 22 }, new[] { 11 }).Length);
+            Eq(2, IrqPlacementProof.NewAttributionThreads(
+                null, new[] { 11, 22 }).Length);
+            Eq(0, IrqPlacementProof.NewAttributionThreads(
+                new[] { 11 }, null).Length);
+            // 开不出 属主换了 已退出 都是消失 活跃状态查不出才是失败
+            Eq(IrqPlacementProof.AttributionThreadOutcome.Vanished,
+                IrqPlacementProof.ClassifyAttributionThread(false, 42, -1, false, false));
+            Eq(IrqPlacementProof.AttributionThreadOutcome.Vanished,
+                IrqPlacementProof.ClassifyAttributionThread(true, 42, 43, true, true));
+            Eq(IrqPlacementProof.AttributionThreadOutcome.Vanished,
+                IrqPlacementProof.ClassifyAttributionThread(true, 42, 42, true, false));
+            Eq(IrqPlacementProof.AttributionThreadOutcome.Fail,
+                IrqPlacementProof.ClassifyAttributionThread(true, 42, 42, false, false));
+            Eq(IrqPlacementProof.AttributionThreadOutcome.Fail,
+                IrqPlacementProof.ClassifyAttributionThread(true, 0, 0, true, true));
+            Eq(IrqPlacementProof.AttributionThreadOutcome.Live,
+                IrqPlacementProof.ClassifyAttributionThread(true, 42, 42, true, true));
             Eq(true, IrqPlacementProof.AttributionThreadStateMatches(
                 42, 42, true, 0, 0x3UL, true, 0x3UL,
                 0, 0x3UL, true, 0x3UL));

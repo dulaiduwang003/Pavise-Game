@@ -1,6 +1,7 @@
 // @author bdth 2074055628@qq.com
 // 文件用途 对局中每秒采一次 CPU 性能限制计数器 撞功率墙温度墙时能当场指认
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
 
@@ -53,10 +54,21 @@ namespace PaviseApp
             if (limitedSeconds > 0)
                 Logger.Log(Lang.T("log.cpulimit.1") + limitedSeconds + Lang.T("log.cpulimit.2")
                     + samples + Lang.T("log.cpulimit.3") + minLimit.ToString("F0")
-                    + Lang.T("log.cpulimit.4") + "0x" + flagsAtMin.ToString("X")
-                    + (flagsUnion != flagsAtMin ? Lang.T("log.cpulimit.5") + "0x" + flagsUnion.ToString("X") : ""));
+                    + Lang.T("log.cpulimit.4") + DescribeFlags(flagsAtMin)
+                    + (flagsUnion != flagsAtMin ? Lang.T("log.cpulimit.5") + DescribeFlags(flagsUnion) : ""));
             else
                 Logger.Log(Lang.T("log.cpulimit.6") + samples + Lang.T("log.cpulimit.7"));
+        }
+
+        // Windows 的 Performance Limit Flags 位定义 0x1 热限 0x2 功率限 0x4 域依赖 其余位原样给十六进制
+        internal static string DescribeFlags(long flags)
+        {
+            string text = "0x" + flags.ToString("X");
+            var names = new List<string>();
+            if ((flags & 0x1) != 0) names.Add(Lang.T("t.cpulimit.thermal"));
+            if ((flags & 0x2) != 0) names.Add(Lang.T("t.cpulimit.power"));
+            if ((flags & 0x4) != 0) names.Add(Lang.T("t.cpulimit.domain"));
+            return names.Count == 0 ? text : text + " " + string.Join(" ", names.ToArray());
         }
 
         private void Loop()
@@ -93,7 +105,7 @@ namespace PaviseApp
                     {
                         warned = true;
                         Logger.Log(Lang.T("log.cpulimit.8") + limit.ToString("F0")
-                            + Lang.T("log.cpulimit.9") + "0x" + flags.ToString("X")
+                            + Lang.T("log.cpulimit.9") + DescribeFlags(flags)
                             + Lang.T("log.cpulimit.10"));
                     }
                 }

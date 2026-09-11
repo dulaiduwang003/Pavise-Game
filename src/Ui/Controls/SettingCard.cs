@@ -45,6 +45,8 @@ namespace PaviseApp
         }
 
         public string Title { get { return title; } set { string v = value ?? ""; if (title != v) { title = v; Invalidate(); } } }
+        // 按档位整张藏起来的卡片 与切到别的标签页而暂时不可见不是一回事 搜索只跳过前者
+        public bool Suppressed;
 
         private string lockText = "";
         private bool lockOn;

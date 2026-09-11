@@ -15,6 +15,7 @@ namespace PaviseApp
             public byte Logical;
             public byte Core;
             public byte Efficiency;
+            public byte Scheduling;
         }
 
         private static bool RecordFits(int recordSize, int offset, int bytes)

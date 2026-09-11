@@ -164,6 +164,69 @@ namespace PaviseApp
         }
 
 
+        private static ulong ComputeFavoredMask(List<CpuSetRec> rows)
+        {
+            var logical = new List<int>(rows.Count);
+            var efficiency = new List<byte>(rows.Count);
+            var scheduling = new List<byte>(rows.Count);
+            foreach (CpuSetRec r in rows)
+            {
+                if (r.Group != 0 || r.Logical >= 64) continue;
+                logical.Add(r.Logical); efficiency.Add(r.Efficiency); scheduling.Add(r.Scheduling);
+            }
+            FavoredDetail = DescribeCoreClasses(logical.ToArray(), efficiency.ToArray(), scheduling.ToArray());
+            return FavoredMaskOf(logical.ToArray(), efficiency.ToArray(), scheduling.ToArray());
+        }
+
+        // 每个核的能效档与评级 相邻同值的合并成段 形如 0-7:1/1 8-11:1/2 12-15:0/0
+        internal static string DescribeCoreClasses(int[] logical, byte[] efficiency, byte[] scheduling)
+        {
+            if (logical == null || efficiency == null || scheduling == null || logical.Length == 0
+                || efficiency.Length != logical.Length || scheduling.Length != logical.Length) return "";
+            int[] order = new int[logical.Length];
+            for (int i = 0; i < order.Length; i++) order[i] = i;
+            Array.Sort(order, delegate(int a, int b) { return logical[a].CompareTo(logical[b]); });
+            var parts = new List<string>();
+            int start = 0;
+            for (int k = 1; k <= order.Length; k++)
+            {
+                bool split = k == order.Length
+                    || efficiency[order[k]] != efficiency[order[start]]
+                    || scheduling[order[k]] != scheduling[order[start]]
+                    || logical[order[k]] != logical[order[k - 1]] + 1;
+                if (!split) continue;
+                int from = logical[order[start]], to = logical[order[k - 1]];
+                parts.Add((from == to ? from.ToString() : from + "-" + to)
+                    + ":" + efficiency[order[start]] + "/" + scheduling[order[start]]);
+                start = k;
+            }
+            return string.Join(" ", parts.ToArray());
+        }
+
+        // 优选核只在最高能效档内部比评级 P 核比 E 核评级高是架构差异 不是优选
+        //   档内评级全相同说明本机没有优选核 返回 0
+        internal static ulong FavoredMaskOf(int[] logical, byte[] efficiency, byte[] scheduling)
+        {
+            if (logical == null || efficiency == null || scheduling == null
+                || logical.Length == 0 || efficiency.Length != logical.Length || scheduling.Length != logical.Length)
+                return 0;
+            byte topEfficiency = byte.MinValue;
+            foreach (byte e in efficiency) if (e > topEfficiency) topEfficiency = e;
+            byte min = byte.MaxValue, max = byte.MinValue;
+            for (int i = 0; i < logical.Length; i++)
+            {
+                if (efficiency[i] != topEfficiency) continue;
+                if (scheduling[i] < min) min = scheduling[i];
+                if (scheduling[i] > max) max = scheduling[i];
+            }
+            if (max <= min) return 0;
+            ulong mask = 0;
+            for (int i = 0; i < logical.Length; i++)
+                if (efficiency[i] == topEfficiency && scheduling[i] == max && logical[i] >= 0 && logical[i] < 64)
+                    mask |= 1UL << logical[i];
+            return mask;
+        }
+
         private static void BuildCpuSetPolicies()
         {
             try { MultiGroup = GetActiveProcessorGroupCount() > 1; }
@@ -193,7 +256,8 @@ namespace PaviseApp
                             Group = Marshal.ReadInt16(rec, 12),
                             Logical = Marshal.ReadByte(rec, 14),
                             Core = Marshal.ReadByte(rec, 15),
-                            Efficiency = Marshal.ReadByte(rec, 18)
+                            Efficiency = Marshal.ReadByte(rec, 18),
+                            Scheduling = size >= 21 ? Marshal.ReadByte(rec, 20) : (byte)0
                         });
                     }
                     pos += size;
@@ -219,6 +283,7 @@ namespace PaviseApp
                 byte min = byte.MaxValue, max = byte.MinValue;
                 foreach (CpuSetRec r in rows) { all.Add(r.Id); if (r.Efficiency < min) min = r.Efficiency; if (r.Efficiency > max) max = r.Efficiency; }
                 allIds = all.ToArray();
+                FavoredMask = ComputeFavoredMask(rows);
 
                 var firstByCore = new Dictionary<string, CpuSetRec>();
                 var maskByCore = new Dictionary<string, ulong>();

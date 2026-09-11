@@ -21,8 +21,30 @@ namespace PaviseApp
                 placementText = Lang.T("schedule.isolation.failed");
                 return false;
             }
+            // 手动落核读回不符且读得出 说明有别的进程改了亲和性
+            //   守护开着 本轮当场重写 relapsed 记住这是一次被改回 保留改回前的读回值
+            //   守护关着 保留它的改动 本局不再落核 改动后游戏够不着独占核才撤独占
+            bool relapsed = false;
+            ulong observedBefore = 0;
             if (!needPlacement)
-                placementVerified = PlacementMatches(h, pass, out placementUnreadable);
+            {
+                placementVerified = PlacementMatches(h, pass, out placementUnreadable, out observedBefore);
+                if (pass.ManualPlacement && pass.DesiredMask != allMask
+                    && !placementVerified && !placementUnreadable && !pass.WriteDenied)
+                {
+                    bool tracked;
+                    lock (sync)
+                        tracked = !placementGaveUp.Contains(pid) && gameBoost.ContainsKey(pid);
+                    if (tracked && !affinityGuardOn)
+                    {
+                        AcceptExternalPlacement(pid, observedBefore);
+                        return true;
+                    }
+                    relapsed = tracked;
+                    needPlacement = relapsed;
+                }
+            }
+            ulong observedAfter = 0;
             if (needPlacement)
             {
                 Snap original;
@@ -110,7 +132,7 @@ namespace PaviseApp
                 if (soft) placementOk = true;
                 if (placementUnavailable) placementOk = true;
                 // 写入 API 返回成功仍不足以入账 最后再从进程句柄读回一次
-                placementVerified = PlacementMatches(h, pass, out placementUnreadable);
+                placementVerified = PlacementMatches(h, pass, out placementUnreadable, out observedAfter);
                 if (pass.DesiredMask != allMask
                     && !placementUnavailable && !placementVerified)
                     placementOk = false;
@@ -151,41 +173,129 @@ namespace PaviseApp
                 else if (!placementOk && firstPlacementWarning)
                     Logger.Log(Lang.T("log.gamemodeboost.23") + pass.RendererName + " pid " + pid + Lang.T("log.gamemodeboost.24"));
 
-                if (!newlyTracked && placementOk)
+                if (!newlyTracked && placementOk && !relapsed)
                     Logger.Log(Lang.T("log.gamemodeboost.19") + pass.RendererName + " pid " + pid + placementText);
             }
-            if (pass.ManualPlacement && placementVerified)
-                lock (sync) isolationUnconfirmed.Remove(pid);
-            // 落点确实没生效才撤隔离 核被收走而游戏用不上比不隔离更糟
-            //   但读不出来不等于没生效 反作弊回收句柄很常见 这种轮次不计数也不撤
-            //   连续读到不对达到上限才撤 口径与普通落核的重试次数一致
-            if (pass.ManualPlacement && !placementVerified && !placementUnreadable)
+            if (!pass.ManualPlacement) return true;
+            if (placementVerified && !relapsed)
             {
-                int misses;
+                lock (sync) isolationUnconfirmed.Remove(pid);
+                return true;
+            }
+            if (placementUnreadable)
+            {
+                Logger.Log(Lang.T("log.isolation.placementunreadable"));
+                return true;
+            }
+            if (relapsed && placementVerified)
+            {
+                // 被改回且已当场写回 不算失守 不设上限 只记次数 首次记日志 退局报总数
+                int count;
                 lock (sync)
                 {
-                    isolationUnconfirmed.TryGetValue(pid, out misses);
-                    misses++;
-                    isolationUnconfirmed[pid] = misses;
+                    isolationRelapses.TryGetValue(pid, out count);
+                    count++;
+                    isolationRelapses[pid] = count;
+                    isolationUnconfirmed.Remove(pid);
                 }
-                if (WithdrawsIsolation(placementVerified, placementUnreadable, misses, PlacementRetryMax))
-                {
-                    lock (sync) { gamePlacement.Remove(pid); gamePlacementStrict.Remove(pid); }
-                    RollBackUnconfirmedIsolation();
-                }
-                else Logger.Log(Lang.F("log.isolation.placementretry", misses, PlacementRetryMax));
+                if (count == 1)
+                    Logger.Log(Lang.F("log.isolation.placementcorrected", observedBefore.ToString("X")));
+                return true;
             }
-            else if (pass.ManualPlacement && placementUnreadable)
-                Logger.Log(Lang.T("log.isolation.placementunreadable"));
+            // 重写后读回仍不对才算失守 连续到上限 游戏的亲和性仍盖住独占核就只停手 隔离保留
+            //   盖不住才撤隔离 核被收走而游戏用不上比不隔离更糟
+            int misses;
+            lock (sync)
+            {
+                isolationUnconfirmed.TryGetValue(pid, out misses);
+                misses++;
+                isolationUnconfirmed[pid] = misses;
+            }
+            ulong external = relapsed ? observedBefore : observedAfter;
+            PolicySnapshot snapshot = sessionPolicy;
+            bool isolationOn = snapshot != null && snapshot.CorePlan.IsolationOn;
+            bool covers = !isolationOn || CoversIsolation(external, snapshot.CorePlan.IsolationMask);
+            switch (IsolationVerdictOf(covers, misses, PlacementRetryMax))
+            {
+                case IsolationVerdict.Retry:
+                    Logger.Log(Lang.F("log.isolation.placementretry", misses, PlacementRetryMax));
+                    break;
+                case IsolationVerdict.StopCorrecting:
+                    lock (sync)
+                    {
+                        placementGaveUp.Add(pid);
+                        gamePlacement.Remove(pid); gamePlacementStrict.Remove(pid);
+                        isolationUnconfirmed.Remove(pid);
+                    }
+                    Logger.Log(Lang.F("log.isolation.placementyield", external.ToString("X")));
+                    break;
+                case IsolationVerdict.Withdraw:
+                    lock (sync) { gamePlacement.Remove(pid); gamePlacementStrict.Remove(pid); }
+                    Logger.Log(Lang.F("log.isolation.placementlost", external.ToString("X")));
+                    RollBackUnconfirmedIsolation();
+                    break;
+            }
             return true;
         }
 
-        // 落点没确认就撤隔离的判定 抽成纯函数是为了把三条边界钉进自测
-        //   读得出且确实不符才计数 连续到上限才撤 读不出的轮次一律不撤
-        internal static bool WithdrawsIsolation(bool verified, bool unreadable, int consecutiveMisses, int max)
+        internal enum IsolationVerdict { Retry, StopCorrecting, Withdraw }
+
+        // 游戏当前的亲和性是否还盖住整个独占区 盖住就说明独占核它够得着 隔离仍有意义
+        internal static bool CoversIsolation(ulong observed, ulong isolationMask)
         {
-            if (verified || unreadable) return false;
-            return consecutiveMisses >= max;
+            return isolationMask != 0 && observed != 0 && (observed & isolationMask) == isolationMask;
+        }
+
+        // 手动落核写入未生效后的处置 抽成纯函数是为了把边界钉进自测 读不出的轮次不进这里
+        //   被改回且当场写回成功的轮次不进这里 那不算失守
+        //   未到上限记重试 到上限 盖住独占区只停手 盖不住才撤
+        internal static IsolationVerdict IsolationVerdictOf(bool coversIsolation, int consecutiveMisses, int max)
+        {
+            if (consecutiveMisses < max) return IsolationVerdict.Retry;
+            return coversIsolation ? IsolationVerdict.StopCorrecting : IsolationVerdict.Withdraw;
+        }
+
+        // 守护关着 其他程序改了游戏亲和性就保留 本局不再落核 只记一条
+        //   改动后游戏够不着独占核 独占就没意义 撤回
+        private void AcceptExternalPlacement(int pid, ulong observed)
+        {
+            lock (sync)
+            {
+                placementGaveUp.Add(pid);
+                gamePlacement.Remove(pid); gamePlacementStrict.Remove(pid);
+                isolationUnconfirmed.Remove(pid);
+            }
+            PolicySnapshot snapshot = sessionPolicy;
+            bool isolationOn = snapshot != null && snapshot.CorePlan.IsolationOn;
+            if (!isolationOn || CoversIsolation(observed, snapshot.CorePlan.IsolationMask))
+            {
+                Logger.Log(Lang.F("log.isolation.placementaccepted", observed.ToString("X")));
+                return;
+            }
+            Logger.Log(Lang.F("log.isolation.placementlost", observed.ToString("X")));
+            RollBackUnconfirmedIsolation();
+        }
+
+        // 守护开着时每秒用首次硬钉时留存的句柄读一次亲和性 不新开句柄
+        //   反作弊后来剥权也不影响 读到和期望不符就让本轮立刻进落核阶段写回
+        private long affinityGuardCheckTicks;
+
+        private bool ManualPlacementDrifted(int pid, BoostPass pass)
+        {
+            if (!affinityGuardOn || !pass.ManualPlacement || pass.DesiredMask == allMask || pass.WriteDenied
+                || CpuTopology.MultiGroup || stopping) return false;
+            long now = DateTime.UtcNow.Ticks;
+            if (now - affinityGuardCheckTicks < TimeSpan.TicksPerSecond) return false;
+            affinityGuardCheckTicks = now;
+            lock (sync)
+            {
+                if (placementGaveUp.Contains(pid) || !gamePlacement.ContainsKey(pid)) return false;
+                IrqProofHardPin pin;
+                if (!irqProofHardPins.TryGetValue(pid, out pin) || !pin.Manual
+                    || pin.Pid != pid || pin.RestoreHandle == IntPtr.Zero) return false;
+                ulong affinity;
+                return Native.TryQueryAffinity(pin.RestoreHandle, out affinity) && affinity != pass.DesiredMask;
+            }
         }
 
         private bool ClearEfficiencyMode(IntPtr h, int pid, BoostPass pass)
