@@ -9,6 +9,16 @@ namespace PaviseApp
 {
     internal partial class PanelForm
     {
+        // 自适应升档只在智能档起作用 其它档位本来就是电竞口径 这一行干脆不建 不是建了再锁
+        private string[] CfgKeysForPreset(string[] keys)
+        {
+            if (cfgEffMode == PerformancePreset.Standard) return keys;
+            var kept = new List<string>(keys.Length);
+            foreach (string key in keys)
+                if (key != PolicyCatalog.KeyAdaptiveEscalate) kept.Add(key);
+            return kept.ToArray();
+        }
+
         private void BuildGameConfigContent()
         {
             cfgRowSync.Clear();
@@ -76,8 +86,8 @@ namespace PaviseApp
 
             int ty = 2;
             AddCfgSection(cfgTabPanels[0], Lang.T("cfg.sub.range"), ref ty,
-                new[] { PolicyCatalog.KeySuppress, PolicyCatalog.KeyAggressive,
-                    PolicyCatalog.KeyGpuDemote, PolicyCatalog.KeyAdaptiveEscalate });
+                CfgKeysForPreset(new[] { PolicyCatalog.KeySuppress, PolicyCatalog.KeyAggressive,
+                    PolicyCatalog.KeyGpuDemote, PolicyCatalog.KeyAdaptiveEscalate }));
             AddCfgSection(cfgTabPanels[0], Lang.T("cfg.sub.boost"), ref ty,
                 new[] { PolicyCatalog.KeyBoost,
                     PolicyCatalog.KeyRenderLane });
@@ -119,10 +129,10 @@ namespace PaviseApp
 
             cfgTabKeys = new[]
             {
-                new[] { PolicyCatalog.KeySuppress, PolicyCatalog.KeyAggressive,
+                CfgKeysForPreset(new[] { PolicyCatalog.KeySuppress, PolicyCatalog.KeyAggressive,
                     PolicyCatalog.KeyGpuDemote, PolicyCatalog.KeyAdaptiveEscalate,
                     PolicyCatalog.KeyBoost,
-                    PolicyCatalog.KeyRenderLane },
+                    PolicyCatalog.KeyRenderLane }),
                 new[] { PolicyCatalog.KeyStrictCores, PolicyCatalog.KeyCoreDomainAlt,
                     PolicyCatalog.KeyCoreMask, CoreScheduling.Key },
                 new[] { PolicyCatalog.KeyPowerPlan, PolicyCatalog.KeyPowerYield,

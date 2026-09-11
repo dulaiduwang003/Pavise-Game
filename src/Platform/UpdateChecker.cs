@@ -18,6 +18,13 @@ namespace PaviseApp
         public string Url;
     }
 
+    // 捐赠二维码也挂在清单上 id 变了客户端才重新拉图 图片地址只放行信任域名
+    internal sealed class DonateInfo
+    {
+        public string Id;
+        public string Url;
+    }
+
     internal class UpdateResult
     {
         public bool Ok;
@@ -27,6 +34,7 @@ namespace PaviseApp
         public string Error;
         public string Source;
         public NoticeInfo Notice;
+        public DonateInfo Donate;
     }
 
     internal static class UpdateChecker
@@ -195,6 +203,7 @@ namespace PaviseApp
             r.Source = source;
             r.Url = download;
             r.Notice = ParseNotice(body);
+            r.Donate = ParseDonate(body);
             return r;
         }
 
@@ -214,6 +223,16 @@ namespace PaviseApp
             string link = JsonValue(body, "noticeUrl");
             n.Url = IsTrustedNoticeUrl(link) ? link : null;
             return n;
+        }
+
+        // 捐赠两个字段都在清单顶层 缺 id 或地址不可信就当没有
+        internal static DonateInfo ParseDonate(string body)
+        {
+            string id = Clean(JsonValue(body, "donateId"), MaxNoticeId);
+            if (string.IsNullOrEmpty(id) || !IsSaneNoticeId(id)) return null;
+            string url = JsonValue(body, "donateUrl");
+            if (!IsTrustedDownloadUrl(url)) return null;
+            return new DonateInfo { Id = id, Url = url };
         }
 
         private static bool IsSaneNoticeId(string id)
@@ -280,6 +299,34 @@ namespace PaviseApp
                     byte[] body = mem.ToArray();
                     mem.Dispose();
                     return Encoding.UTF8.GetString(body);
+                }
+            }
+            catch { return null; }
+        }
+
+        // 二维码这类小文件走这里 上限由调用方给 超限直接丢 不落盘
+        public static byte[] FetchBytes(string url, int maxBytes)
+        {
+            try
+            {
+                HttpWebRequest req = NewRequest(url);
+                req.AllowAutoRedirect = true;
+                using (var rsp = (HttpWebResponse)req.GetResponse())
+                using (Stream raw = rsp.GetResponseStream())
+                {
+                    if (raw == null) return null;
+                    if (rsp.ContentLength > maxBytes) return null;
+                    var buf = new byte[8192];
+                    var mem = new MemoryStream();
+                    int n;
+                    while ((n = raw.Read(buf, 0, buf.Length)) > 0)
+                    {
+                        if (mem.Length + n > maxBytes) { mem.Dispose(); return null; }
+                        mem.Write(buf, 0, n);
+                    }
+                    byte[] body = mem.ToArray();
+                    mem.Dispose();
+                    return body;
                 }
             }
             catch { return null; }

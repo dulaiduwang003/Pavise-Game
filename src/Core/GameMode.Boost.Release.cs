@@ -29,6 +29,7 @@ namespace PaviseApp
             bool isolationClean = keepPid > 0 || StopCoreIsolation();
             List<KeyValuePair<int, Snap>> boosts;
             Dictionary<int, int> gpus;
+            var relapseTotals = new Dictionary<int, int>();
             lock (sync)
             {
                 if (gameBoost.Count == 0 && gameGpu.Count == 0) return isolationClean;
@@ -48,6 +49,8 @@ namespace PaviseApp
                     tweakApplied.Clear(); boostHandleStripped.Clear(); boostEcoGaveUp.Clear();
                     placementFail.Clear(); placementGaveUp.Clear(); boostStateFail.Clear();
                     isolationUnconfirmed.Clear();
+                    foreach (KeyValuePair<int, int> kv in isolationRelapses) relapseTotals[kv.Key] = kv.Value;
+                    isolationRelapses.Clear();
                 }
                 else
                     foreach (KeyValuePair<int, Snap> stale in boosts)
@@ -58,8 +61,17 @@ namespace PaviseApp
                         boostHandleStripped.Remove(stale.Key); boostEcoGaveUp.Remove(stale.Key);
                         placementFail.Remove(stale.Key); placementGaveUp.Remove(stale.Key);
                         isolationUnconfirmed.Remove(stale.Key);
+                        int relapses;
+                        if (isolationRelapses.TryGetValue(stale.Key, out relapses)) relapseTotals[stale.Key] = relapses;
+                        isolationRelapses.Remove(stale.Key);
                         boostStateFail.Remove(stale.Key);
                     }
+            }
+            foreach (KeyValuePair<int, Snap> kv in boosts)
+            {
+                int relapses;
+                if (relapseTotals.TryGetValue(kv.Key, out relapses) && relapses > 1)
+                    Logger.Log(Lang.F("log.isolation.placementcorrectedtotal", kv.Value.Name, kv.Key, relapses));
             }
             foreach (var kv in boosts)
                 if (RenderLane.IsActiveFor(kv.Key, kv.Value.Creation)) RenderLane.Release();

@@ -18,6 +18,10 @@ namespace PaviseApp
 
         public bool External = true;
 
+        // 指定后整颗按钮换成这个颜色 捐赠入口用暖色 与旁边两个主题色的入口一眼分开
+        public Color? Tint;
+        private Color AccentColor { get { return Tint ?? Theme.Accent; } }
+
         // 未读红点 公告用 有新的才亮 看过就灭
         public bool Dot
         {
@@ -46,12 +50,12 @@ namespace PaviseApp
             float down = press.Value;
             Rectangle frame = new Rectangle(0, Theme.S(2), Width - 1, Height - Theme.S(4));
             Color surface = Col.Lerp(Theme.Nav, Theme.Card, 0.72f + hot * 0.18f);
-            surface = Col.Lerp(surface, Theme.Accent, 0.025f + hot * 0.07f);
+            surface = Col.Lerp(surface, AccentColor, 0.025f + hot * 0.07f);
 
             using (GraphicsPath path = Theme.TechPath(frame, Theme.S(8)))
             {
                 using (var fill = new SolidBrush(surface)) g.FillPath(fill, path);
-                using (var border = new Pen(Col.Lerp(Theme.Stroke, Theme.Accent, 0.16f + hot * 0.58f),
+                using (var border = new Pen(Col.Lerp(Theme.Stroke, AccentColor, 0.16f + hot * 0.58f),
                     Math.Max(1f, Theme.S(1))))
                     g.DrawPath(border, path);
 
@@ -65,7 +69,7 @@ namespace PaviseApp
                 using (var wash = new LinearGradientBrush(
                     new Rectangle(Math.Max(0, bladeX - Theme.S(21)), frame.Top,
                         Math.Max(1, Width - bladeX + Theme.S(21)), frame.Height),
-                    Col.Alpha(Theme.Accent, 0), Col.Alpha(Theme.Accent, (int)(16 + hot * 38)),
+                    Col.Alpha(AccentColor, 0), Col.Alpha(AccentColor, (int)(16 + hot * 38)),
                     LinearGradientMode.Horizontal))
                     g.FillPolygon(wash, blade);
                 g.Restore(state);
@@ -77,13 +81,13 @@ namespace PaviseApp
             {
                 using (var fill = new SolidBrush(Col.Lerp(Theme.Inset, Theme.Sel, 0.22f + hot * 0.24f)))
                     g.FillPath(fill, socketPath);
-                using (var border = new Pen(Col.Alpha(Theme.Accent, (int)(78 + hot * 106))))
+                using (var border = new Pen(Col.Alpha(AccentColor, (int)(78 + hot * 106))))
                     g.DrawPath(border, socketPath);
             }
             Glyphs.Draw(g, glyph,
                 new Rectangle(socketBox.Left + Theme.S(6), socketBox.Top + Theme.S(6),
                     Theme.S(14), Theme.S(14)),
-                Theme.Accent);
+                AccentColor);
 
             int textX = Theme.S(43);
             int rightPad = Theme.S(36);
@@ -106,9 +110,9 @@ namespace PaviseApp
 
             int railY = Height - Theme.S(4);
             int railW = Theme.S(30) + (int)(hot * Theme.S(44));
-            using (var rail = new Pen(Col.Alpha(Theme.Accent, (int)(92 + hot * 120)), Math.Max(1f, Theme.S(1))))
+            using (var rail = new Pen(Col.Alpha(AccentColor, (int)(92 + hot * 120)), Math.Max(1f, Theme.S(1))))
                 g.DrawLine(rail, textX, railY, textX + railW, railY);
-            using (var node = new SolidBrush(Theme.Accent))
+            using (var node = new SolidBrush(AccentColor))
                 g.FillRectangle(node, textX - Theme.S(2), railY - Theme.S(2), Theme.S(4), Theme.S(4));
         }
 
@@ -118,7 +122,7 @@ namespace PaviseApp
             int side = Theme.S(9);
             int x = Width - Theme.S(24) + (int)(hot * Theme.S(3)) - (int)(down * Theme.S(1));
             int cy = Height / 2 + Theme.S(1);
-            using (var pen = new Pen(Col.Lerp(Theme.Dim, Theme.Accent, 0.25f + hot * 0.75f),
+            using (var pen = new Pen(Col.Lerp(Theme.Dim, AccentColor, 0.25f + hot * 0.75f),
                 Math.Max(1.2f, Theme.S(1))))
             {
                 g.DrawLine(pen, x, cy - side / 2, x + side / 2, cy);
@@ -131,8 +135,8 @@ namespace PaviseApp
         {
             int d = Theme.S(7);
             var box = new Rectangle(Width - Theme.S(17), Theme.S(9), d, d);
-            using (var fill = new SolidBrush(Theme.Accent)) g.FillEllipse(fill, box);
-            using (var ring = new Pen(Col.Alpha(Theme.Accent, 90), Math.Max(1f, Theme.S(1))))
+            using (var fill = new SolidBrush(AccentColor)) g.FillEllipse(fill, box);
+            using (var ring = new Pen(Col.Alpha(AccentColor, 90), Math.Max(1f, Theme.S(1))))
                 g.DrawEllipse(ring, Rectangle.Inflate(box, Theme.S(2), Theme.S(2)));
         }
 
@@ -143,7 +147,7 @@ namespace PaviseApp
             int x = Width - Theme.S(26) + (int)(hot * Theme.S(2)) - (int)(down * Theme.S(1));
             int y = Height / 2 - side / 2 + Theme.S(1);
             Rectangle box = new Rectangle(x, y, side, side);
-            using (var pen = new Pen(Col.Lerp(Theme.Dim, Theme.Accent, 0.25f + hot * 0.75f),
+            using (var pen = new Pen(Col.Lerp(Theme.Dim, AccentColor, 0.25f + hot * 0.75f),
                 Math.Max(1.2f, Theme.S(1))))
             {
                 int notch = Theme.S(3);

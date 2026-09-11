@@ -75,6 +75,8 @@ tests/*
 !tests/SelfTests.LogSeverity.cs
 !tests/SelfTests.PresetValue.cs
 !tests/SelfTests.DieMasks.cs
+!tests/SelfTests.Donate.cs
+!tests/SelfTests.HandheldBlock.cs
 !tests/SelfTests.OsBaseline.cs
 !tests/IrqCoreLoadUiChecks.cs
 !tests/NavigationUiChecks.cs
@@ -92,6 +94,7 @@ tools/*
 !tools/GainBench2133/**
 !tools/Sync-VersionManifest.ps1
 !tools/Publish-VersionManifest.ps1
+!tools/Publish-OssAsset.ps1
 !tools/RendererHandoffBench/
 tools/RendererHandoffBench/*
 !tools/RendererHandoffBench/FixtureHost.cs

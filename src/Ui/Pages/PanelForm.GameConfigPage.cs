@@ -92,11 +92,23 @@ namespace PaviseApp
             return false;
         }
 
+#if PAVISE_SELFTEST
+        internal static bool CfgPresetForcesForTest(string key, PerformancePreset mode, out bool effective)
+        {
+            return CfgPresetForces(key, mode, out effective);
+        }
+#endif
+
         private static bool CfgPresetForces(string key, PerformancePreset mode, out bool effective)
         {
             bool competitive = mode == PerformancePreset.Competitive
                 || mode == PerformancePreset.Handheld;
             bool custom = mode == PerformancePreset.Custom;
+            if (mode == PerformancePreset.Handheld && PolicyCatalog.IsHandheldBlocked(key))
+            {
+                effective = false;
+                return true;
+            }
             switch (key)
             {
                 case PolicyCatalog.KeyAggressive:

@@ -142,6 +142,7 @@ namespace PaviseApp
             run("GraphicsInputUi", delegate { RunGraphicsInputUiRegressionTests(); });
             run("UiConfigAudit", delegate { RunUiConfigAuditRegressionTests(); });
             run("TopologySources", TestTopologySourcesAgree);
+            run("Donate", RunDonateTests);
             run("AllMaskReconcile", TestAllMaskReconcile);
             run("CoreCardHeadTag", TestCoreCardHeadTag);
             run("CoreScheduling", delegate { RunCoreSchedulingTests(output); });
@@ -151,6 +152,7 @@ namespace PaviseApp
             run("PowerYieldRuntime", delegate { RunPowerYieldRuntimeRegressionTests(); });
             run("SuppressionAffinity", delegate { RunSuppressionAffinityTests(); });
             run("RenderLaneEligibility", delegate { RunRenderLaneEligibilityTests(); });
+            run("HandheldBlock", delegate { RunHandheldBlockTests(); });
             run("AddGameFolder", delegate { RunAddGameFolderRegressionTests(); });
             run("ReleaseNotes", delegate { RunReleaseNotesRegressionTests(); });
             run("WeGameShell", delegate { RunWeGameShellRegressionTests(); });

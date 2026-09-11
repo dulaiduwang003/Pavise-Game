@@ -211,6 +211,7 @@ namespace PaviseApp
                 Check(main.Selected == (int)PageId.Environment && prompts == 4, "Don't-show-again was ignored");
 
                 CheckProfileCoreNavigation(form, mode, data);
+                CheckAdaptiveCardFollowsPreset(form, mode);
 
                 Theme.SetLight(light);
                 Call(form, "RebuildUi");
@@ -265,6 +266,60 @@ namespace PaviseApp
             finally { CpuTopology.RestoreTopologyForTest(saved); }
         }
 
+        // 自适应升档只在智能档起作用 其它档位整张卡藏起来 下面的卡上移补位 搜索也不再列它
+        private static void CheckAdaptiveCardFollowsPreset(PanelForm form, GameMode mode)
+        {
+            form.SelectPageForTest((int)PageId.Policy);
+            Field<TechTabs>(form, "policyTabs").Index = 0;
+            var adaptive = Field<SettingCard>(form, "cardPolicyAdaptive");
+            var gpu = Field<SettingCard>(form, "cardPolicyGpuDemote");
+            var boost = Field<SettingCard>(form, "cardPolicyBoost");
+            int gap = Theme.S(8);
+            PerformancePreset saved = mode.Preset;
+            try
+            {
+                mode.Preset = PerformancePreset.Competitive;
+                Call(form, "RefreshPolicyPresentation");
+                Check(!adaptive.Visible && adaptive.Suppressed, "Adaptive card still shown outside Smart");
+                Check(boost.Top == gpu.Bottom + gap,
+                    "Cards below the hidden adaptive card did not move up: " + boost.Top + " vs " + (gpu.Bottom + gap));
+                var hits = (List<SearchHit>)Call(form, "QuerySettingCards", "");
+                Check(hits.Find(delegate(SearchHit h) { return h.Card == adaptive; }) == null,
+                    "Search still lists the hidden adaptive card");
+                mode.Preset = PerformancePreset.Standard;
+                Call(form, "RefreshPolicyPresentation");
+                Check(adaptive.Visible && !adaptive.Suppressed, "Adaptive card did not return in Smart");
+                Check(adaptive.Top == gpu.Bottom + gap && boost.Top == adaptive.Bottom + gap,
+                    "Cards did not settle back after the adaptive card returned");
+                hits = (List<SearchHit>)Call(form, "QuerySettingCards", "");
+                Check(hits.Find(delegate(SearchHit h) { return h.Card == adaptive; }) != null,
+                    "Search lost the adaptive card in Smart");
+                // 换档时策略页藏在别的页后面 所有卡的 Visible 都是假 再切回来不能留一张卡的空位
+                form.SelectPageForTest((int)PageId.Overview);
+                mode.Preset = PerformancePreset.Handheld;
+                Call(form, "RefreshPolicyPresentation");
+                form.SelectPageForTest((int)PageId.Policy);
+                Check(!adaptive.Visible && adaptive.Suppressed, "Adaptive card shown on Handheld after a hidden refresh");
+                Check(boost.Top == gpu.Bottom + gap,
+                    "Hidden-page refresh left a gap where the adaptive card was: " + boost.Top + " vs " + (gpu.Bottom + gap));
+                // 折叠展开走的是另一条摞卡路径 不能把藏掉的那张的空位又摞回来
+                bool wasExpanded = gpu.Expanded;
+                gpu.Expanded = !wasExpanded;
+                Check(boost.Top == gpu.Bottom + gap,
+                    "Collapsing a card brought the hidden adaptive card's gap back: " + boost.Top + " vs " + (gpu.Bottom + gap));
+                gpu.Expanded = wasExpanded;
+                Check(boost.Top == gpu.Bottom + gap,
+                    "Expanding a card brought the hidden adaptive card's gap back: " + boost.Top + " vs " + (gpu.Bottom + gap));
+                form.SelectPageForTest((int)PageId.Overview);
+                mode.Preset = PerformancePreset.Standard;
+                Call(form, "RefreshPolicyPresentation");
+                form.SelectPageForTest((int)PageId.Policy);
+                Check(adaptive.Visible && adaptive.Top == gpu.Bottom + gap && boost.Top == adaptive.Bottom + gap,
+                    "Hidden-page refresh back to Smart did not restack the cards");
+            }
+            finally { mode.Preset = saved; Call(form, "RefreshPolicyPresentation"); }
+        }
+
         private static void CheckProfileCoreNavigation(PanelForm form, GameMode mode, string data)
         {
             var profile = new GameProfile { Id = "navigation-core-profile", Name = "NAVIGATION CORE FIXTURE",
@@ -294,6 +349,21 @@ namespace PaviseApp
             Check(Settings.LoadStr(CoreScheduling.Key, "") == globalStored
                 && CoreScheduling.ProfileToken(mode.GetProfiles().Find(delegate(GameProfile p) { return p.Id == profile.Id; })) == profileStored,
                 "Profile rebuilding saved an uncommitted draft");
+            // 自适应升档那一行只给智能档 本游戏改成电竞后整行不建 改回来再出现
+            Check(Field<Dictionary<string, SettingCard>>(form, "cfgCardByKey").ContainsKey(PolicyCatalog.KeyAdaptiveEscalate),
+                "Profile page lost the adaptive row in Smart");
+            // 台架里游戏库没就绪 SetProfileOverride 落不了盘会回滚 直接改内存里的覆盖项 页面读的就是它
+            //   前面的保存流程可能已经把列表里的实例换过一轮 按 Id 取当前那份 别拿开头捕获的引用
+            GameProfile live = Field<List<GameProfile>>(mode, "profiles").Find(delegate(GameProfile p) { return p.Id == profile.Id; });
+            Check(live != null, "Profile fixture vanished from the library");
+            live.Overrides[PolicyCatalog.KeyPreset] = ((int)PerformancePreset.Competitive).ToString();
+            Call(form, "ShowGameConfigPage", profile.Id);
+            Check(!Field<Dictionary<string, SettingCard>>(form, "cfgCardByKey").ContainsKey(PolicyCatalog.KeyAdaptiveEscalate),
+                "Profile page still builds the adaptive row outside Smart: effMode=" + Field<PerformancePreset>(form, "cfgEffMode"));
+            live.Overrides.Remove(PolicyCatalog.KeyPreset);
+            Call(form, "ShowGameConfigPage", profile.Id);
+            Check(Field<Dictionary<string, SettingCard>>(form, "cfgCardByKey").ContainsKey(PolicyCatalog.KeyAdaptiveEscalate),
+                "Profile page did not restore the adaptive row in Smart");
             form.SelectPageForTest((int)PageId.Library);
             Field<List<GameProfile>>(mode, "profiles").RemoveAll(delegate(GameProfile p) { return p.Id == profile.Id; });
         }
@@ -337,15 +407,19 @@ namespace PaviseApp
         {
             var links = new List<Control>();
             FindOverviewLinks(overview, links);
-            Check(links.Count == 2, "Overview must retain its notice and help/feedback entries");
+            // 捐赠 公告 帮助 三个入口从左到右 捐赠换了暖色 与旁边两个主题色的入口分开
+            Check(links.Count == 3, "Overview must show donate, notice and help/feedback entries: " + links.Count);
             links.Sort(delegate(Control a, Control b) { return a.Left.CompareTo(b.Left); });
             Check(links[0].Left >= Theme.S(276), "Overview links overlap readiness status");
+            Check(links[0].Text == Lang.T("donate.entry") && ((RogLinkButton)links[0]).Tint.HasValue
+                && !((RogLinkButton)links[1]).Tint.HasValue,
+                "Donate entry must sit leftmost with its own tint");
             for (int i = 0; i < links.Count; i++)
             {
                 Check(links[i].Parent.ClientRectangle.Contains(links[i].Bounds), "Overview footer link clipped");
                 if (i > 0) Check(links[i - 1].Right < links[i].Left, "Overview footer links overlap");
             }
-            Check(Math.Abs(links[1].Right - (links[1].Parent.Width - Theme.S(30))) <= 2,
+            Check(Math.Abs(links[2].Right - (links[2].Parent.Width - Theme.S(30))) <= 2,
                 "Overview still reserves an empty slot for the removed entry");
         }
 

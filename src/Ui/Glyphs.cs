@@ -194,6 +194,18 @@ namespace PaviseApp
                         g.DrawPath(thin, path);
                     }
                 }
+                else if (name == "heart")
+                {
+                    using (var path = new GraphicsPath())
+                    {
+                        path.AddBezier(P(x,y,u,12,20.5f), P(x,y,u,3.5f,14.5f), P(x,y,u,2.5f,6.5f), P(x,y,u,7.5f,4.5f));
+                        path.AddBezier(P(x,y,u,7.5f,4.5f), P(x,y,u,10.2f,3.6f), P(x,y,u,11.6f,5.6f), P(x,y,u,12,7));
+                        path.AddBezier(P(x,y,u,12,7), P(x,y,u,12.4f,5.6f), P(x,y,u,13.8f,3.6f), P(x,y,u,16.5f,4.5f));
+                        path.AddBezier(P(x,y,u,16.5f,4.5f), P(x,y,u,21.5f,6.5f), P(x,y,u,20.5f,14.5f), P(x,y,u,12,20.5f));
+                        path.CloseFigure();
+                        g.FillPath(br, path);
+                    }
+                }
             }
             g.SmoothingMode = old;
         }

@@ -21,6 +21,9 @@ namespace PaviseApp
             {
                 PolicySnapshot snapshot = sessionPolicy;
                 bool global = disableCpuIdleOn;
+                // 掌机档不提供 实时解析也按关 跟快照口径一致
+                if (snapshot != null && snapshot.Preset == PerformancePreset.Handheld
+                    && PolicyCatalog.IsHandheldBlocked(key)) return false;
                 if (snapshot == null || string.IsNullOrEmpty(snapshot.ProfileId)) return global;
                 foreach (GameProfile profile in profiles)
                     if (string.Equals(profile.Id, snapshot.ProfileId, StringComparison.OrdinalIgnoreCase))

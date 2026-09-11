@@ -24,6 +24,10 @@ namespace PaviseApp
         //   但中断落点必须排除它 1.8.1.0 下架 USB 与硬盘中断亲和就是栽在把中断投到低频能效核
         //   只有三档以上才有值 两档时最低档就是 EffMask 本身 整体排除会把落点池清空
         public static ulong LowPowerEffMask;
+        // 调度器给每个逻辑核打的评级 SchedulingClass 里最高的那一档 Intel Turbo Boost Max 3.0 的优选核
+        //   系统会把最重的线程往这几颗上赶 评级全相同时为 0
+        public static ulong FavoredMask;
+        public static string FavoredDetail = "";
 
         public static ulong AllMask, ThrottleMask, BoostMask, StrictBoostMask, InterruptMask;
         public static ulong AltStrictBoostMask, AltThrottleMask, AltInterruptMask;

@@ -67,6 +67,8 @@ namespace PaviseApp
         private readonly Dictionary<int, int> placementFail = new Dictionary<int, int>();
         // 手动落核连续几轮确实读到不对才撤销隔离 读不出的那几轮不计数
         private readonly Dictionary<int, int> isolationUnconfirmed = new Dictionary<int, int>();
+        // 手动落核被别的进程改回并已当场写回的次数 首次记日志 退局报总数
+        private readonly Dictionary<int, int> isolationRelapses = new Dictionary<int, int>();
         private readonly HashSet<int> placementGaveUp = new HashSet<int>();
         private readonly Dictionary<int, int> boostStateFail = new Dictionary<int, int>();
         private const int BoostRetryMax = 3;
@@ -90,6 +92,7 @@ namespace PaviseApp
         private volatile bool gpuPowerMaxOn;
         private volatile bool dwmBoostOn;
         private volatile bool hardAffinityOn;
+        private volatile bool affinityGuardOn;
         private volatile bool wsTrimOn;
         private volatile bool idlePolicyOn;
         private volatile bool audioLatOn;
@@ -208,6 +211,9 @@ namespace PaviseApp
                     + Lang.T("log.gamemodesettings.7") + CpuTopology.DescribeMask(throttleMask));
             else
                 Logger.Log(Lang.T("log.gamemode.6"));
+            if (CpuTopology.FavoredMask != 0)
+                Logger.Log(Lang.T("log.gamemode.favored") + CpuTopology.DescribeMask(CpuTopology.FavoredMask)
+                    + Lang.T("log.gamemode.favored.detail") + CpuTopology.FavoredDetail);
             if (!CpuTopology.TopologySourcesAgree)
                 Logger.Warn(Lang.F("log.gamemode.sourcesplit", CpuTopology.TopologySourceCounts));
             if (CpuTopology.AllMaskReconciled)
@@ -246,6 +252,7 @@ namespace PaviseApp
             dwmBoostOn = Settings.Load("GmDwmBoost", false);
             hardAffinityOn = Settings.Load("GmHardAffinityV1", false);
             SuppressionCore.BackgroundPinsAllowed = hardAffinityOn;
+            affinityGuardOn = Settings.Load("GmAffinityGuardV1", false);
             wsTrimOn = Settings.Load(PolicyCatalog.KeyWsTrim, false);
             idlePolicyOn = Settings.Load(PolicyCatalog.KeyIdlePolicy, false);
             audioLatOn = Settings.Load(PolicyCatalog.KeyAudioLowLat, false);

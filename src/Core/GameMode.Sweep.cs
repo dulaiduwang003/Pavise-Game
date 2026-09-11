@@ -91,6 +91,8 @@ namespace PaviseApp
             return SuppressionLevel.Isolated;
         }
 
+        private const long TransientProcessTicks = 2 * TimeSpan.TicksPerSecond;
+
         private void Sweep(ProcessSnapshot all, HashSet<int> gamePids)
         {
 
@@ -182,6 +184,7 @@ namespace PaviseApp
             int done = 0, denied = 0, retrying = 0, rosterSkipped = 0;
             var live = new HashSet<int>();
             var pending = new List<BackgroundRequest>();
+            long nowFileTime = DateTime.UtcNow.ToFileTimeUtc();
 
             foreach (ProcEntry p in all.Entries)
             {
@@ -192,6 +195,9 @@ namespace PaviseApp
                     whitelist.Processes.TryGetValue(pid, out processInfo);
                     live.Add(pid);
                     if (pid <= 4 || pid == selfPid) continue;
+                    // 刚启动不到两秒的进程先不压 tasklist 这类几百毫秒就退的写到一半人没了
+                    //   活过两秒的下一轮照常纳入 已压制的进程不受影响 它们都比两秒老
+                    if (p.Creation > 0 && nowFileTime - p.Creation < TransientProcessTicks) continue;
 
                     string nm = processInfo != null ? processInfo.Name : p.Name;
 

@@ -46,17 +46,22 @@ namespace PaviseApp
         private static void IsolationWithdrawalNeedsRepeatedReadableMismatches()
         {
             const int max = 3;
-            // 读不出来的轮次一律不撤 计数多高都不撤
-            foreach (int misses in new[] { 0, 1, max, max + 10 })
-                Eq(false, GameMode.WithdrawsIsolation(false, true, misses, max));
-            // 确认通过的轮次不撤
-            Eq(false, GameMode.WithdrawsIsolation(true, false, max + 1, max));
-            // 读得出且确实不符 未到上限不撤 到上限才撤
-            Eq(false, GameMode.WithdrawsIsolation(false, false, 1, max));
-            Eq(false, GameMode.WithdrawsIsolation(false, false, max - 1, max));
-            Eq(true, GameMode.WithdrawsIsolation(false, false, max, max));
-            Eq(true, GameMode.WithdrawsIsolation(false, false, max + 1, max));
-            Console.WriteLine("PASS CoreIsolation: unreadable placement never withdraws; only repeated readable mismatches do");
+            // 写入未生效 未到上限记重试 不撤
+            Eq(GameMode.IsolationVerdict.Retry, GameMode.IsolationVerdictOf(true, 1, max));
+            Eq(GameMode.IsolationVerdict.Retry, GameMode.IsolationVerdictOf(false, max - 1, max));
+            // 到上限 游戏的亲和性仍盖住独占区 只停手 隔离保留
+            Eq(GameMode.IsolationVerdict.StopCorrecting, GameMode.IsolationVerdictOf(true, max, max));
+            Eq(GameMode.IsolationVerdict.StopCorrecting, GameMode.IsolationVerdictOf(true, max + 1, max));
+            // 到上限且盖不住独占区 才撤隔离
+            Eq(GameMode.IsolationVerdict.Withdraw, GameMode.IsolationVerdictOf(false, max, max));
+            Eq(GameMode.IsolationVerdict.Withdraw, GameMode.IsolationVerdictOf(false, max + 1, max));
+            // 盖住的判定 全核盖住 子集盖住 缺一颗独占核就不算 读不出为 0 不算
+            Eq(true, GameMode.CoversIsolation(0xFFFFUL, 0x0FF0UL));
+            Eq(true, GameMode.CoversIsolation(0x0FF0UL, 0x0FF0UL));
+            Eq(false, GameMode.CoversIsolation(0x0FE0UL, 0x0FF0UL));
+            Eq(false, GameMode.CoversIsolation(0UL, 0x0FF0UL));
+            Eq(false, GameMode.CoversIsolation(0xFFFFUL, 0UL));
+            Console.WriteLine("PASS CoreIsolation: relapses are corrected in place; isolation is withdrawn only when the game can no longer reach the isolated cores");
         }
 
         internal static void RunCoreIsolationTests()

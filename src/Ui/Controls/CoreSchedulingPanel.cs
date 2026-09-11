@@ -16,11 +16,13 @@ namespace PaviseApp
         private bool syncing, savedFollow;
         private readonly bool perGame;
         private readonly Label summary, status;
-        private readonly SettingCard followCard, gameCard, exclusiveCard, hardCard;
-        internal readonly Toggle HardAffinityToggle;
-        // 硬亲和不进核心方案 它是独立的全局设置 由宿主读写
-        internal Action<bool> HardAffinityChanged;
-        internal Func<bool> HardAffinityState;
+        private readonly SettingCard followCard, gameCard, exclusiveCard, hardCard, guardCard;
+        internal readonly Toggle HardAffinityToggle, AffinityGuardToggle;
+        // 硬亲和与亲和性守护不进核心方案 它们是独立的全局设置 由宿主读写
+        internal Action<bool> HardAffinityChanged, AffinityGuardChanged;
+        internal Func<bool> HardAffinityState, AffinityGuardState;
+        // 当前档位不提供独占时为真 掌机档 开关锁死 硬锁不出现
+        internal Func<bool> IsolationBlocked;
         private readonly RoundPanel footer;
         private bool lightTheme;
         private int InnerWidth { get { return Width - Theme.S(60); } }
@@ -122,6 +124,18 @@ namespace PaviseApp
             {
                 if (syncing || perGame || HardAffinityChanged == null) return;
                 HardAffinityChanged(HardAffinityToggle.Checked);
+                RefreshView();
+            };
+            // 亲和性守护作用于游戏自己的落核 不依赖独占 只有全局一份
+            guardCard = Card(perGame ? 5 : 4, "schedule.affinityguard", "");
+            AffinityGuardToggle = Switch("schedule.affinityguard");
+            guardCard.Host(AffinityGuardToggle);
+            AffinityGuardToggle.Visible = !perGame;
+            guardCard.Visible = !perGame;
+            AffinityGuardToggle.CheckedChanged += delegate
+            {
+                if (syncing || perGame || AffinityGuardChanged == null) return;
+                AffinityGuardChanged(AffinityGuardToggle.Checked);
                 RefreshView();
             };
             footer = Surface();
@@ -311,14 +325,16 @@ namespace PaviseApp
             PhysicalOnlyButton.Enabled = editable && selectedSiblings;
             TrimForExclusiveButton.Enabled = editable && exclusive == 0
                 && CoreScheduling.TrimForExclusive(display.GameMask, CpuTopology.PhysicalCoreMasks()) != 0;
-            IsolationToggle.Enabled = !perGame && exclusive != 0
+            bool isolationBlocked = IsolationBlocked != null && IsolationBlocked();
+            IsolationToggle.Enabled = !perGame && exclusive != 0 && !isolationBlocked
                 && (CoreScheduling.IsolationSupported || Draft.IsolationOn);
             Matrix.Selected = display.GameMask;
             Matrix.SchedulingGameMask = display.GameMask;
             Matrix.SchedulingIsolationMask = display.IsolationOn ? display.IsolationMask : 0;
             Matrix.Invalidate();
             summary.Text = Lang.F("schedule.summary", CpuTopology.DescribeMask(display.GameMask));
-            exclusiveCard.Desc = perGame
+            exclusiveCard.Desc = isolationBlocked ? Lang.T("schedule.exclusive.handheld")
+                : perGame
                 ? Lang.F("schedule.exclusive.global", Lang.T(display.IsolationOn ? "schedule.on" : "schedule.off"),
                     CpuTopology.DescribeMask(display.IsolationMask))
                 : !CoreScheduling.IsolationSupported ? Lang.T("schedule.error.isolationunsupported")
@@ -347,6 +363,15 @@ namespace PaviseApp
             HardAffinityToggle.Enabled = !perGame && display.IsolationOn;
             hardCard.Desc = Lang.T(!display.IsolationOn ? "schedule.hardaffinity.needsexclusive"
                 : hardOn ? "schedule.hardaffinity.on" : "schedule.hardaffinity.off");
+            bool guardOn = AffinityGuardState != null && AffinityGuardState();
+            syncing = true; AffinityGuardToggle.SetSilently(guardOn); syncing = false;
+            AffinityGuardToggle.Enabled = !perGame;
+            guardCard.Desc = Lang.T(guardOn ? "schedule.affinityguard.on" : "schedule.affinityguard.off");
+            // 选了全核就没有独占 硬锁 纠正可言 三张卡只在选核不是全核时出现 硬锁还要独占已开
+            bool partial = display.GameMask != 0 && display.GameMask != CpuTopology.AllMask;
+            exclusiveCard.Visible = partial;
+            hardCard.Visible = !perGame && partial && display.IsolationOn && !isolationBlocked;
+            guardCard.Visible = !perGame && partial;
             LayoutContent();
         }
 
@@ -378,7 +403,7 @@ namespace PaviseApp
         {
             if (lightTheme == Theme.LightMode) return;
             lightTheme = Theme.LightMode; BackColor = Theme.Bg;
-            foreach (RoundPanel card in new RoundPanel[] { followCard, gameCard, exclusiveCard, hardCard, footer })
+            foreach (RoundPanel card in new RoundPanel[] { followCard, gameCard, exclusiveCard, hardCard, guardCard, footer })
             {
                 card.BackColor = Theme.Bg; card.Fill = Theme.Card; card.Border = Theme.Stroke; card.Invalidate();
             }
@@ -412,16 +437,26 @@ namespace PaviseApp
             gy = PlaceShortcuts(shortcuts, gy);
             Matrix.Top = gy;
             gameCard.Height = PlaceLabel(summary, Matrix.Bottom + Theme.S(8), 24) + Theme.S(12);
-            exclusiveCard.Top = gameCard.Bottom + gap;
-            exclusiveCard.Height = CardHeaderHeight(exclusiveCard, perGame ? 0 : IsolationToggle.Width);
-            int afterExclusive = exclusiveCard.Bottom + gap;
-            if (!perGame)
+            int after = gameCard.Bottom + gap;
+            if (exclusiveCard.Visible)
             {
-                hardCard.Top = afterExclusive;
-                hardCard.Height = CardHeaderHeight(hardCard, HardAffinityToggle.Width);
-                afterExclusive = hardCard.Bottom + gap;
+                exclusiveCard.Top = after;
+                exclusiveCard.Height = CardHeaderHeight(exclusiveCard, perGame ? 0 : IsolationToggle.Width);
+                after = exclusiveCard.Bottom + gap;
             }
-            LayoutFooter(footer, status, SaveButton, reloadButton, afterExclusive);
+            if (hardCard.Visible)
+            {
+                hardCard.Top = after;
+                hardCard.Height = CardHeaderHeight(hardCard, HardAffinityToggle.Width);
+                after = hardCard.Bottom + gap;
+            }
+            if (guardCard.Visible)
+            {
+                guardCard.Top = after;
+                guardCard.Height = CardHeaderHeight(guardCard, AffinityGuardToggle.Width);
+                after = guardCard.Bottom + gap;
+            }
+            LayoutFooter(footer, status, SaveButton, reloadButton, after);
             Height = footer.Bottom + Theme.S(4);
             ResumeLayout();
         }
