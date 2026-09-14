@@ -1,19 +1,11 @@
-# Every-enable family warning UI regression
+# 家族压制提示框检查
 
-Run `./tools/FamilyWarningBench/Run.ps1` from the repository root.
+检查 压制游戏家族后台 那个警告框的界面
 
-Compiles current sources with an isolated UI entry point. Uses transient settings,
-a fresh temporary game library and synthetic renderer observations. Never starts
-the tuning runtime. Only the owned test process is terminated on the 55-second timeout.
+```powershell
+./tools/FamilyWarningBench/Run.ps1
+```
 
-Coverage:
+用当前源码单独编一个入口 设置只存内存 游戏库是临时的 不启动调优本体 55 秒没跑完就结束自己的测试进程
 
-- Both languages, both themes, 100–300% DPI: warning content, text bounds and safe default action.
-- Unobserved renderer, observed renderer, and a profile named 英雄联盟.
-- Cancel, accept, disable, re-enable, and cancel again through the actual UI handler and modal dialog.
-- Persisted library policy and renderer badge preservation.
-
-2026-08-28: 368 assertions passed (including 300 layout assertions).
-The broader pre-existing `LibraryFamilyUiChecks.Run` also was attempted and failed
-in the unrelated AddGameDialog scan-limit hint height check; this focused bench
-does not claim that broader suite passes.
+覆盖中英文 明暗主题 100% 到 300% 缩放 没观测过和观测过渲染进程两种情况 以及取消 接受 关掉 再打开 再取消这一整套点法
