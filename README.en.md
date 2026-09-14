@@ -278,4 +278,4 @@ Distributions must keep the licence and author information intact, tell recipien
 
 Provided as is, with no guarantee of effect or compatibility. Anti-cheat suppression, VBS and cache cleanup can all have side effects. Use it only on your own machine and understand the risks first.
 
-The latest version is always free in the QQ groups: 1051472054, 1101249532, 383761286. **If you paid for it, you were scammed.** Ask for a refund and get it free from the groups.
+The latest version is always free in the QQ groups: 1051472054 (full), 1101249532 (full), 383761286 (full), 166255062, 1109874913. **If you paid for it, you were scammed.** Ask for a refund and get it free from the groups.
