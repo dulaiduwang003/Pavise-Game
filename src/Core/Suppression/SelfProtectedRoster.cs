@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 记录拒绝全部策略写入的自保护进程 后续对局按名单直接跳过
+// File purpose Records self-protected processes that refuse all policy writes; later matches skip them by roster
 using System;
 using System.Collections.Generic;
 

@@ -1,5 +1,5 @@
-// 文件用途 真的做只读进程枚举 不碰注册表 窗口和进程写入
-// 快照复用回归 复用只发生在 同会话+限龄+调用方明确允许 三个条件同时成立时
+// File purpose Does real read-only process enumeration, no registry, windows or process writes
+// Snapshot reuse regression, reuse happens only when same session + age cap + caller explicitly allows all hold at once
 #if PAVISE_SELFTEST
 using System;
 using System.Threading;
@@ -67,7 +67,7 @@ namespace PaviseApp
 
         private static void SnapshotIdentityCaptureNeverTouchesCache()
         {
-            // 反作弊路径的 Capture() 不带会话 不进缓存也不吃缓存
+            // The anti-cheat path's Capture() carries no session, neither fills nor consumes the cache
             ProcessSnapshot identity = ProcessSnapshotSource.Capture();
             SnapCheck(identity != null, "the identity capture must still work");
             ProcessSnapshot cachedProbe = ProcessSnapshotSource.Capture(0, ProcessSnapshotSource.ReuseMaxAgeMs);

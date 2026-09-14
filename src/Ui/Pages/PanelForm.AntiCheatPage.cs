@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 构建反作弊专项页 逐分组的压制档位与开关
+// File purpose Build the anti-cheat page: suppression tier and switches per group
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -32,9 +32,9 @@ namespace PaviseApp
             pageAntiCheat.Controls.Add(acBanner);
             y += 84;
 
-            // 总开关是整页的闸 相容名单是运行期记录 两者都不是"一个反作弊分组"
-            //   做成和分组同款的卡片会串层级 编号还会和下面的列表各自从 01 重来
-            //   收成一条 44 高的工具条 明显矮于 104 高的分组卡片 一眼分得开
+            // The master switch gates the whole page and the compatibility list is a runtime record; neither is an anti-cheat group
+            //   Making them cards in the same style as groups would blur the hierarchy, and the numbering would restart at 01 alongside the list below
+            //   Collapsed into a 44-high toolbar, clearly shorter than the 104-high group cards, told apart at a glance
             acRosterBar = new RoundPanel();
             acRosterBar.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(44));
             acRosterBar.BackColor = Theme.Bg;
@@ -64,7 +64,7 @@ namespace PaviseApp
             lblMaster.Text = Lang.T("tame.toggle");
             acRosterBar.Controls.Add(lblMaster);
 
-            // 强度档与总开关同属整页的闸 放在同一条工具条上 不做成分组卡片
+            // The strength tier gates the whole page just like the master switch; it sits on the same toolbar, not in a group card
             var lblAcMode = new Label();
             lblAcMode.AutoSize = false;
             lblAcMode.BackColor = Color.Transparent;
@@ -107,7 +107,7 @@ namespace PaviseApp
             acRosterBar.Controls.Add(lblAcRoster);
             y += 50;
 
-            // 三个按钮本身说不清各档做什么 说明常驻在工具条下方 跟着当前档位走
+            // Three buttons cannot explain what each tier does on their own; the description stays below the toolbar and follows the current tier
             lblAcModeDesc = new Label();
             lblAcModeDesc.AutoSize = false;
             lblAcModeDesc.BackColor = Color.Transparent;
@@ -120,7 +120,7 @@ namespace PaviseApp
             pageAntiCheat.Controls.Add(lblAcModeDesc);
             y += 22;
 
-            // 免责不随档位变 单独一行用警示色 放在选档的决策点旁边而不是页首长段落末尾
+            // The disclaimer does not change with tier; its own line in warning color, placed next to the tier decision point rather than at the end of a long paragraph at the top
             lblAcDisclaimer = new Label();
             lblAcDisclaimer.AutoSize = false;
             lblAcDisclaimer.BackColor = Color.Transparent;
@@ -200,7 +200,7 @@ namespace PaviseApp
                 if (!g.Suppressible) continue;
                 sy += AddAcCard(g.Key, Lang.T("ac." + g.Key + ".n"), Lang.T("ac." + g.Key + ".d"), g.Procs, sy) + 8;
             }
-            // 会反制第三方工具的分组只展示不给开关 免得看起来还能压
+            // Groups that retaliate against third-party tools are shown without a switch, so they do not look suppressible
             foreach (AcGroup g in AntiCheatCatalog.Groups)
             {
                 if (g.Suppressible) continue;
@@ -221,8 +221,8 @@ namespace PaviseApp
             RefreshAcGroupStates();
         }
 
-        // 档位选择器已移除 压制构成固定为扫描安全 见 SuppressionCore.Apply 的说明
-        //   高度不能跟着选择器减 它浮在右下不占垂直流 标题+状态+说明+进程名四层就要这么高
+        // The tier picker was removed; the suppression composition is fixed to scan-safe, see the notes on SuppressionCore.Apply
+        //   Height must not shrink with the picker gone; it floated bottom-right outside the vertical flow, and the four layers title+status+description+process name need this much
         private const int AcCardH = 104;
 
         private int AddAcCard(string key, string title, string note, string[] procs, int y)

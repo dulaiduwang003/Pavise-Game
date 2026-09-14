@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 为注册表改动保存原值并提供可靠恢复
+// File purpose Save original values for registry changes and provide reliable restore
 using System;
 using Microsoft.Win32;
 

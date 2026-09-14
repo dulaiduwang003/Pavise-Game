@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 只读查询多平面叠加 MPO 状态 并还原 v1.7.0.5 移除的禁用开关留下的残留
+// File purpose Read-only query of multi-plane overlay (MPO) state, plus restore of residue from the disable switch removed in v1.7.0.5
 using System;
 using Microsoft.Win32;
 

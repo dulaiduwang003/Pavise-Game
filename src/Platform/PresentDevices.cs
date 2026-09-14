@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 只枚举当前真正插着的设备实例 以及沿设备树向上读取父链
+// File purpose Enumerates only device instances currently present and walks the parent chain up the device tree
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;

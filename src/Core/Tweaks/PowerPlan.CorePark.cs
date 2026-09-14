@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 检测当前电源方案核心停泊状态(体检用) 并清理旧版遗留的解停泊快照
+// File purpose Detect core parking state of the current power scheme (for health check) and clean up the legacy unpark snapshot
 using System;
 
 namespace PaviseApp

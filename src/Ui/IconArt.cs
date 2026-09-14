@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 生成程序图标和托盘图像
+// File purpose Generate the app icon and tray images
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;

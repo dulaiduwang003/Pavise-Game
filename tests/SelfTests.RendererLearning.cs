@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 确认之后的渲染目标替换 只用测试目录 不启动游戏 也不走正常 Program
+// File purpose Renderer target replacement after confirmation, test directory only, no game launch, does not go through the normal Program
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -9,7 +9,7 @@ namespace PaviseApp
     internal static partial class SelfTests
     {
 #if PAVISE_RENDERER_LEARNING_SELFTEST
-        // 独立入口只跑下面三组隔离测试 不进 Program 也不走完整 --selftest
+        // Standalone entry runs only the three isolated groups below, never enters Program or the full --selftest
         private static int Main()
         {
             string testRoot = Path.Combine(Path.GetTempPath(),
@@ -84,7 +84,7 @@ namespace PaviseApp
                 Eq(original.ForceTrigger, actual.ForceTrigger);
                 Eq(renderer, actual.ExecutablePath);
                 Eq(null, actual.LearnedExecutablePath);
-                Eq(dir, actual.Root); // 保留已声明的游戏范围，不保存旧入口别名。
+                Eq(dir, actual.Root); // keep the declared game scope, do not save the old entry alias
                 Eq(1, actual.Entries.Count);
                 Eq(true, actual.Entries.Contains("GameRender"));
                 Eq(2, actual.Overrides.Count);
@@ -100,7 +100,7 @@ namespace PaviseApp
 
                 string file = Path.Combine(dir, GameProfileStore.FileName);
                 string saved = File.ReadAllText(file);
-                // 幂等确认要是再存一次 这把只读共享锁会让 Replace 失败
+                // If the idempotent confirm saved again, this read-only shared lock would make Replace fail
                 using (var readLease = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read))
                 {
                     Eq(true, mode.TryLearnConfirmedRenderer(hit));
@@ -170,13 +170,13 @@ namespace PaviseApp
                 }
                 Eq(false, mode.TryLearnConfirmedRenderer(RendererLearningHit(original, claimed.ExecutablePath)));
                 Eq(false, mode.TryLearnConfirmedRenderer(RendererLearningHit(original, claimed.LearnedExecutablePath)));
-                // 不安全的操作系统目标一直没资格 客户端和游戏名字不受这条限制
+                // Unsafe OS targets are never eligible, client and game names are not subject to this rule
                 Eq(false, mode.TryLearnConfirmedRenderer(RendererLearningHit(original, @"C:\Windows\System32\svchost.exe")));
                 GameDetection staleForce = RendererLearningHit(forced, renderer);
                 staleForce.Profile.ForceTrigger = false;
                 Eq(false, mode.TryLearnConfirmedRenderer(staleForce));
 
-                // 测试钩子还是兼容的 但一样不许通过 Learned 绕开别的档位的占用
+                // The test hook stays compatible, but likewise may not bypass another tier's claim via Learned
                 mode.ProbeLearnRenderer(original.Id, claimed.ExecutablePath, "ClaimedRender");
                 Eq(false, mode.ProfileStoreSaveFailed);
                 Eq(0, changed);
@@ -206,7 +206,7 @@ namespace PaviseApp
                 int changed = 0, failures = 0;
                 GameProfile observedAtFailure = null;
                 mode.LibraryChanged += delegate { changed++; };
-                // 不订阅 Program 的致命处理 故障只落在本测试自己建的存储实例上
+                // Does not subscribe to Program's fatal handler, the fault lands only on the store instance this test created
                 mode.ProfileStoreSaveFailure += delegate
                 {
                     failures++;
@@ -225,14 +225,14 @@ namespace PaviseApp
                 Eq(null, observedAtFailure);
                 AssertRendererLearningProfile(original, mode.GetProfiles()[0]);
                 Eq(saved, File.ReadAllText(file));
-                // 短暂占用算不上致命故障 写锁一放开 同一个实例还能提交
+                // A brief lock is not a fatal fault, once the write lock is released the same instance can still commit
                 Eq(true, mode.TryLearnConfirmedRenderer(hit));
                 Eq(0, failures);
                 Eq(1, changed);
                 Eq(hit.RendererPath, new GameProfileStore(dir).LoadProfiles()[0].ExecutablePath);
                 var observations = (RendererObservationStore)typeof(GameMode).GetField("rendererObservations",
                     System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(mode);
-                Eq(true, observations.Close(3000)); // Drain optional asynchronous history before checking owned files.
+                Eq(true, observations.Close(3000)); // Drain optional asynchronous history before checking owned files
                 string[] remainingTemps = Directory.GetFiles(dir, "*.tmp");
                 if (remainingTemps.Length != 0)
                     throw new InvalidOperationException("Profile retry left temporary files: " + string.Join(",", remainingTemps));

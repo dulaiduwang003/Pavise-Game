@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 英雄联盟扩展专用的原生调用 按端口找 TCP 监听者进程
+// File purpose Native calls specific to the League of Legends extension: find the TCP listener process by port
 using System;
 using System.Runtime.InteropServices;
 

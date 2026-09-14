@@ -1,4 +1,4 @@
-// 2026-09-06 联合负优化复审的修复回归 纯函数与注入探针 不改设置 不开窗口
+// Fix regression for the 2026-09-06 joint negative-optimization review: pure functions and injected probes, no settings changes, no windows
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -79,7 +79,7 @@ namespace PaviseApp
             NegCheck(s.Update(double.NaN, t), "first stale sample keeps state");
             NegCheck(s.Update(double.NaN, t + CpuSaturation.StaleTicks - sec), "still saturated before stale window");
             NegCheck(!s.Update(double.NaN, t + CpuSaturation.StaleTicks), "stale window clears saturation");
-            // 样本恢复后正常判定 不受之前的失联影响
+            // Verdicts return to normal once samples recover, unaffected by the earlier stale gap
             NegCheck(!s.Update(0.1, t + CpuSaturation.StaleTicks + sec), "valid sample after stale stays calm");
             var fresh = new CpuSaturation();
             fresh.Update(double.NaN, 0);
@@ -97,10 +97,10 @@ namespace PaviseApp
 
         private static void DesktopArenaLeavesCoreParkingRelaxed()
         {
-            // 台式机 核心停泊那一项写智能档值 其它激进项照写
+            // Desktop: the core parking item writes the Smart tier value, other aggressive items are written as-is
             NegCheck(PowerPlan.ResolveArenaAc(false, false, true, false, 100, 50) == 50, "desktop core parking relaxed");
             NegCheck(PowerPlan.ResolveArenaAc(false, false, false, false, 100, 20) == 100, "desktop other knobs stay arena");
-            // 笔记本插电同上 掌机插电按电池表放开纯省电项
+            // Laptop on AC same as above, handheld on AC follows the battery table and relaxes the pure power-saving items
             NegCheck(PowerPlan.ResolveArenaAc(true, false, true, false, 100, 50) == 50, "laptop ac relaxed");
             NegCheck(PowerPlan.ResolveArenaAc(true, false, false, true, 100, 20) == 100, "laptop ac keeps dc-only items");
             NegCheck(PowerPlan.ResolveArenaAc(true, true, false, true, 100, 20) == 20, "handheld relaxes dc-table items");
@@ -111,17 +111,16 @@ namespace PaviseApp
             FamilyBoundary.ClearCatalogVerdictsForTest();
             try
             {
-                // 无创建时间不进缓存
+                // No creation time means no cache entry
                 NegCheck(!FamilyBoundary.CatalogProtected(9001, 0, "chrome", @"C:\x\chrome.exe"), "chrome not protected");
                 NegCheck(FamilyBoundary.CatalogVerdictCountForTest == 0, "no creation, no cache entry");
-                // 有创建时间的结果被记住 反作弊名字命中为保护
+                // Results with a creation time are remembered, an anti-cheat name hit counts as protected
                 NegCheck(FamilyBoundary.CatalogProtected(9002, 77, "SGuard64", @"C:\ace\SGuard64.exe"), "anti-cheat protected");
                 NegCheck(FamilyBoundary.CatalogProtected(9003, 78, "chrome", @"C:\x\chrome.exe") == false, "chrome eligible");
                 NegCheck(FamilyBoundary.CatalogVerdictCountForTest == 2, "two entries cached");
-                // 同 pid 换创建时间或换名字 必须重算 不能拿旧结论
+                // Same pid with a different creation time or name must recompute, never reuse the old verdict
                 NegCheck(!FamilyBoundary.CatalogProtected(9002, 99, "chrome", @"C:\x\chrome.exe"), "pid reuse recomputes");
                 NegCheck(FamilyBoundary.CatalogProtected(9003, 78, "DS4Windows", @"C:\x\DS4Windows.exe"), "name change recomputes");
-                // 清理只留活着的
                 FamilyBoundary.PruneCatalogVerdicts(new HashSet<int> { 9003 });
                 NegCheck(FamilyBoundary.CatalogVerdictCountForTest == 1, "prune keeps live only");
             }
@@ -147,15 +146,13 @@ namespace PaviseApp
                 object first = eval.Invoke(mode, new object[] { snapshot });
                 object second = eval.Invoke(mode, new object[] { snapshot });
                 NegCheck(ReferenceEquals(first, second), "same snapshot reuses evaluation");
-                // 规则版本变了要重算
                 revision.SetValue(mode, (int)revision.GetValue(mode) + 1);
                 object third = eval.Invoke(mode, new object[] { snapshot });
                 NegCheck(!ReferenceEquals(second, third), "rule revision change recomputes");
-                // 家族成员表变了要重算
                 members.SetValue(mode, (int)members.GetValue(mode) + 1);
                 object fourth = eval.Invoke(mode, new object[] { snapshot });
                 NegCheck(!ReferenceEquals(third, fourth), "family member change recomputes");
-                // 新快照要重算 即使内容一样
+                // A new snapshot must recompute even when the contents are identical
                 var again = new ProcessSnapshot(snapshot.Entries);
                 object fifth = eval.Invoke(mode, new object[] { again });
                 NegCheck(!ReferenceEquals(fourth, fifth), "new snapshot recomputes");

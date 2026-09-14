@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 高级区侧栏顶部的 ROG 风格返回模块
+// File purpose ROG-style back module at the top of the Advanced area sidebar
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -39,7 +39,7 @@ namespace PaviseApp
             else using (var bg = new SolidBrush(Theme.Nav)) g.FillRectangle(bg, ClientRectangle);
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-            // 与右侧顶栏底线对齐 替代高级区侧栏的品牌区
+            // Aligns with the baseline of the right top bar, replaces the brand area of the Advanced sidebar
             using (var p = new Pen(Theme.Stroke)) g.DrawLine(p, 0, Height - 1, Width, Height - 1);
 
             float hot = hover.Value;
@@ -55,7 +55,7 @@ namespace PaviseApp
                     Math.Max(1f, Theme.S(1))))
                     g.DrawPath(border, path);
 
-                // 返回是向左 光刃从左侧扫入 与入口按钮的右侧刃互为镜像
+                // Back means left, the light blade sweeps in from the left, mirroring the right-side blade of the entry button
                 GraphicsState state = g.Save();
                 g.SetClip(path);
                 int bladeX = frame.Left + Theme.S(52) - (int)(hot * Theme.S(5));
@@ -71,7 +71,7 @@ namespace PaviseApp
                 g.Restore(state);
             }
 
-            // 图标座 双雪佛龙向左
+            // Icon socket, double chevron pointing left
             int socket = Theme.S(26);
             int shift = (int)(hot * Theme.S(2)) - (int)(down * Theme.S(1));
             Rectangle socketBox = new Rectangle(frame.Left + Theme.S(8), frame.Top + (frame.Height - socket) / 2, socket, socket);
@@ -107,7 +107,7 @@ namespace PaviseApp
                 Col.Lerp(Theme.Dim, Theme.Fg, 0.55f + hot * 0.45f),
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
 
-            // 底部 rail 线 hover 时向左点亮
+            // Bottom rail line, lights up toward the left on hover
             int railY = frame.Bottom - Theme.S(1);
             int railW = Theme.S(26) + (int)(hot * Theme.S(34));
             using (var rail = new Pen(Col.Alpha(Theme.Accent, (int)(92 + hot * 120)), Math.Max(1f, Theme.S(1))))

@@ -8,7 +8,7 @@ using System.Security.Principal;
 using System.Threading;
 using System.Web.Script.Serialization;
 
-// Isolated synthetic workloads only. No game handles, drivers, MSR writes or UI.
+// Isolated synthetic workloads only No game handles drivers MSR writes or UI
 public static unsafe class CpuMemoryBench
 {
     const uint MEM_COMMIT_RESERVE = 0x3000, PAGE_READWRITE = 4;
@@ -107,7 +107,7 @@ public static unsafe class CpuMemoryBench
                 {
                     if (size < 56) throw new InvalidOperationException("Short cache record");
                     int groups = (ushort)Marshal.ReadInt16(u, 30);
-                    if (groups == 0) groups = 1; // Windows 10 single-group layout.
+                    if (groups == 0) groups = 1; // Windows 10 single-group layout
                     if (40 + groups * 16 > size) throw new InvalidOperationException("Short cache group list");
                     for (int g = 0; g < groups; g++)
                         t.caches.Add(new Cache { level = Marshal.ReadByte(u), bytes = Marshal.ReadInt32(u, 4), mask = unchecked((ulong)Marshal.ReadInt64(u, 32 + g * 16)), group = (ushort)Marshal.ReadInt16(u, 40 + g * 16) });
@@ -147,7 +147,7 @@ public static unsafe class CpuMemoryBench
         Random random = new Random(seed);
         for (int i = nodes - 1; i > 0; i--) { int j = random.Next(i + 1); int temp = order[i]; order[i] = order[j]; order[j] = temp; }
         for (int i = 0; i < nodes; i++) buffer.data[order[i] * 8] = order[(i + 1) % nodes] * 8L;
-        // Validate one complete dependent cycle before timing.
+        // Validate one complete dependent cycle before timing
         long at = 0;
         for (int i = 0; i < nodes; i++) { at = buffer.data[at]; if (at < 0 || at >= buffer.length || (at & 7) != 0 || (at == 0 && i != nodes - 1)) throw new InvalidOperationException("Invalid pointer cycle"); }
         if (at != 0) throw new InvalidOperationException("Pointer cycle did not close");
@@ -201,7 +201,7 @@ public static unsafe class CpuMemoryBench
                     }
                 }
                 checksum = value;
-                result.cpuSeconds = (ThreadCpu() - cpuStart) / 1e7; // Includes warmup; throughput uses measured counter deltas.
+                result.cpuSeconds = (ThreadCpu() - cpuStart) / 1e7; // Includes warmup throughput uses measured counter deltas
             }
             catch (Exception ex) { result.error = ex.ToString(); ready.Set(); }
             finally

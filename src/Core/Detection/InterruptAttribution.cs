@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 内核中断与 DPC 归属采样的启动与时间线
+// File purpose Kernel interrupt and DPC attribution sampling startup and timeline
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -20,6 +20,7 @@ namespace PaviseApp
         public bool CpuMaskTruncated;
         public long BadDuration;
         public long[] DpcBuckets;
+        public readonly List<IrqDriverCoreRecord> Cores = new List<IrqDriverCoreRecord>();
     }
 
     internal sealed class InterruptAttributionResult
@@ -31,6 +32,7 @@ namespace PaviseApp
         public uint EventsLost;
         public uint BuffersLost;
         public bool Incomplete;
+        public long Unmapped;
         public bool Lossy { get { return EventsLost > 0 || BuffersLost > 0; } }
     }
 
@@ -59,12 +61,12 @@ namespace PaviseApp
 
         public bool Busy { get; private set; }
 
-        // Start() 有四条各不相同的失败路径 调用方只拿到一个 false 会把它们说成同一个原因
-        //   历史上全部报成 需要管理员权限 而权限在进这个函数之前就已经查过了 只会误导
-        //   Busy 单独一路 其余三路把真实原因连错误码放这里 由调用方原样呈现
+        // Start() has four distinct failure paths; the caller only gets one false and would report them as the same cause
+        //   Historically all reported as needs administrator rights, but elevation was already checked before entering this function, so that only misleads
+        //   Busy gets its own path; the other three put the real cause plus error code here and the caller presents it verbatim
         public string FailDetail { get; private set; }
 
-        // Start() 失败后给用户看的那句话 探针被占和真失败要分开说
+        // The line shown to the user after Start() fails; probe-in-use and real failure must be told apart
         public static string StartFailureText(InterruptAttribution ia)
         {
             if (ia == null) return Lang.T("irqmove.nosession");
@@ -119,6 +121,7 @@ namespace PaviseApp
             public ulong CpuMask;
             public bool CpuMaskTruncated;
             public readonly long[] Buckets = new long[BucketCount];
+            public Dictionary<int, RoutineStat> Cores;
         }
 
         private const ushort HeaderFlag32Bit = 0x0020;
@@ -142,21 +145,21 @@ namespace PaviseApp
 
         private sealed class Module { public ulong Base; public ulong End; public string Name; public string ImagePath; }
 
-        // 逐 DPC 事件时间线 release 可用 由运行时开关控制 默认关 关时零开销
-        //   present 长帧↔DPC 因果对齐要的原料 与聚合路径完全并行 聚合逻辑一行不改
-        //   写入发生在消费线程 OnEvent 里 只 append 一个极轻的 struct(不做模块解析)
-        //   读取只在 Stop 且 worker.Join 之后 单生产单消费无需锁
-        //   曾是 #if PAVISE_SELFTEST 的证伪实验台出口 现提升为 release 常规能力
+        // Per-DPC event timeline, available in release, controlled by a runtime switch, off by default, zero cost when off
+        //   Raw material for present long-frame and DPC causal alignment; fully parallel to the aggregation path, aggregation logic unchanged
+        //   Writes happen on the consumer thread in OnEvent, only appending an ultra-light struct, no module resolution
+        //   Reads only after Stop and worker.Join; single producer single consumer, no lock needed
+        //   Was the falsification-bench exit behind #if PAVISE_SELFTEST, now promoted to a regular release capability
         internal struct DpcTimelineEntry
         {
-            public long StartQpc; // DPC 开始时刻，用于与长帧区间做真正的重叠判定
-            public long EndQpc;   // DPC 结束时刻 与 QueryPerformanceCounter 同一根 QPC 尺子
-            public string Module; // Stop 之后统一解析 热路径不碰
+            public long StartQpc; // DPC start time, used for real overlap checks against long-frame intervals
+            public long EndQpc;   // DPC end time, same QPC ruler as QueryPerformanceCounter
+            public string Module; // Resolved in one pass after Stop, hot path never touches it
             public ushort Cpu;
-            public double DpcUs;  // 本次 DPC 时长 微秒
+            public double DpcUs;  // Duration of this DPC in microseconds
         }
 
-        // 热路径只落这个更轻的原始标记 模块地址留到 Stop 后再解析 避免每个 DPC 都线性扫模块表
+        // Hot path only records this lighter raw mark; module address resolution waits until after Stop, avoiding a linear module-table scan per DPC
         private struct DpcMark
         {
             public long StartQpc;
@@ -166,30 +169,30 @@ namespace PaviseApp
             public double DpcUs;
         }
 
-        // 上限封顶止损 照 PresentProbe.FrameCap 的做法 到顶置 Truncated 停记 防长局把内存吃穿
-        //   DpcMark 约 32 字节 200 万条约 64MB 会话期占用 结束即释放
+        // Hard cap as damage control, following PresentProbe.FrameCap: at the cap set Truncated and stop recording, so a long match cannot eat all memory
+        //   DpcMark is about 32 bytes, 2 million entries roughly 64MB held for the session, released at the end
         private const int DpcTimelineCap = 2000000;
-        private volatile bool captureTimeline;      // 运行时开关 默认关
+        private volatile bool captureTimeline;      // Runtime switch, off by default
         private bool timelineTruncated;
         private List<DpcMark> dpcMarks;
         private List<DpcTimelineEntry> dpcTimeline;
 
-        // 采集前调用(Start 之前) 打开逐事件 DPC 时间线记录
+        // Call before Start, before capture, to turn on per-event DPC timeline recording
         internal void EnableDpcTimeline()
         {
             captureTimeline = true;
             timelineTruncated = false;
             dpcMarks = new List<DpcMark>(1 << 18);
         }
-        // Stop() 之后取回本局逐事件 DPC 时间线(已解析模块名) 未采到返回 null
+        // After Stop(), fetch this match's per-event DPC timeline with module names resolved; null if nothing was captured
         internal List<DpcTimelineEntry> DpcTimeline { get { return dpcTimeline; } }
-        // 时间线是否因到达上限被截断
+        // Whether the timeline was truncated by hitting the cap
         internal bool DpcTimelineTruncated { get { return timelineTruncated; } }
-        // 会话所用 QPC 频率 与 present 会话同一根尺子
+        // QPC frequency used by the session, same ruler as the present session
         internal long QpcFrequencyValue { get { return qpcFrequency; } }
 
-        // Stop 且 worker.Join 之后调用 把原始标记按模块地址解析成时间线
-        //   单次解析用小缓存 独立例程地址很少 均摊 O(条数)
+        // Call after Stop and worker.Join; resolves raw marks into a timeline by module address
+        //   Small per-resolution cache; distinct routine addresses are few, amortized O(entries)
         private void BuildDpcTimeline()
         {
             dpcTimeline = null;
@@ -213,9 +216,9 @@ namespace PaviseApp
             dpcTimeline = tl;
         }
 
-        // 只订阅 DPC 不订阅 ISR 事件量大约减半 内核侧和消费线程的负担同步减半
-        //   对局观测的台账和裁决只用 DPC 证据 ISR 计数只有体检类一次性扫描用得上
-        //   必须在 Start 之前调用
+        // Subscribe to DPC only, not ISR; event volume roughly halves, and so does the load on the kernel side and consumer thread
+        //   Match observation ledger and verdict use DPC evidence only; ISR counts are only useful to one-shot health-check scans
+        //   Must be called before Start
         public void EnableDpcOnly()
         {
             lock (gate) if (!started) dpcOnly = true;
@@ -269,9 +272,9 @@ namespace PaviseApp
                     if (rc != 0)
                     {
                         Logger.Warn(Lang.T("log.interruptattribution.2") + rc);
-                        // 代码 5 两个来源要分开说 用户拿裸代码没法行动
-                        //   未提升是最常见的 开关状态存注册表 上次提升会话开的开关
-                        //   这次普通权限启动仍显示已开启 采样一启动就被拒
+                        // Code 5 has two sources that must be told apart; the user cannot act on a bare code
+                        //   Not elevated is the most common: the switch state lives in the registry, turned on by a previous elevated session
+                        //   This non-elevated launch still shows it as enabled, and sampling is denied as soon as it starts
                         bool elevated = false;
                         try { elevated = Native.IsElevated(); } catch { }
                         FailDetail = rc == ErrorAccessDenied
@@ -307,8 +310,8 @@ namespace PaviseApp
 
                 worker = new Thread(RunProcessTrace);
                 worker.IsBackground = true;
-                // 对局中的设备中断可能短时爆发 消费回调若被调度压后 缓冲回收会变慢并丢事件
-                //   排空线程只负责读取 ETW 缓冲 大部分时间阻塞等待 提高优先级可减少采样自身造成的丢失
+                // Device interrupts during a match can burst briefly; if the consumer callback is scheduled late, buffer recycling slows down and events are lost
+                //   The drain thread only reads ETW buffers and blocks waiting most of the time; raising its priority reduces loss caused by the sampling itself
                 try { worker.Priority = ThreadPriority.Highest; } catch { }
                 stopRequested = false;
                 consumerExitedEarly = false;

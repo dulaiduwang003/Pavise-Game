@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 按会话采样游戏进程溢出到系统内存的共享显存 峰值超阈值时在结束报告归因
+// File purpose Per-session sampling of game-process shared VRAM spilled into system memory, attributed in the end-of-match report when the peak exceeds the threshold
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -42,7 +42,7 @@ namespace PaviseApp
             {
                 if (!accepting || closed || busy || now < nextSampleTicks) return;
                 int mine = generation;
-                // 冻结 PID 集合 之后主扫描线程改自己那份就不碍事了
+                // Freeze the PID set so the main scan thread mutating its own copy afterwards is harmless
                 int[] pids = new int[gamePids.Count];
                 gamePids.CopyTo(pids, 0);
                 nextSampleTicks = now + MinIntervalSeconds * TimeSpan.TicksPerSecond;
@@ -68,7 +68,7 @@ namespace PaviseApp
                 else
 #endif
                 {
-                    // 显卡清单头一次枚举也放后台 不让只读诊断卡住 Boost
+                    // The first GPU inventory enumeration also goes to the background so a read-only diagnostic never stalls Boost
                     if (GpuInventory.IntegratedOnly) return;
                     shared = ReadSharedByPid();
                 }
@@ -88,7 +88,7 @@ namespace PaviseApp
                     if (best > peakShared) peakShared = best;
                 }
             }
-            catch { } // 诊断不可用不影响对局，也必须释放 single-flight 名额。
+            catch { } // Diagnostic failure doesn't affect the match but must still release the single-flight slot
             finally
             {
                 lock (lk) { busy = false; Monitor.PulseAll(lk); }

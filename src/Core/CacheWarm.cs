@@ -48,7 +48,7 @@ namespace PaviseApp
                 using (var handle = CreateFile(@"\\.\" + drive.Substring(0, 2), 0, 3, IntPtr.Zero, 3, 0, IntPtr.Zero))
                 {
                     if (handle.IsInvalid) return false;
-                    // StorageDeviceSeekPenaltyProperty. Unknown/unsupported is ineligible.
+                    // StorageDeviceSeekPenaltyProperty Unknown/unsupported is ineligible
                     byte[] query = new byte[12], answer = new byte[12]; query[0] = 7; int count;
                     return DeviceIoControl(handle, 0x2D1400, query, query.Length, answer, answer.Length, out count, IntPtr.Zero)
                         && count >= 9 && BitConverter.ToUInt32(answer, 4) >= 9 && answer[8] == 0;
@@ -128,8 +128,8 @@ namespace PaviseApp
             files.Sort(delegate(FileInfo a, FileInfo b) { int n = b.LastAccessTimeUtc.CompareTo(a.LastAccessTimeUtc); return n != 0 ? n : StringComparer.OrdinalIgnoreCase.Compare(a.FullName, b.FullName); });
             var result = new List<string>(); foreach (var file in files) result.Add(file.FullName); return result;
         }
-        // The engine only reads ordinary asset files. No executable loading,
-        // process access, shader compilation, memory locking or cache purging.
+        // The engine only reads ordinary asset files No executable loading
+        // process access shader compilation memory locking or cache purging
         internal static long Warm(string root, long budget, Func<bool> allowed, Func<int, bool> wait, Action<long> progress)
         {
             long total = 0; byte[] buffer = new byte[ChunkBytes];
@@ -139,8 +139,8 @@ namespace PaviseApp
                 if (!CacheWarmPlatform.SafePath(path)) continue;
                 try
                 {
-                    // Do not use SequentialScan: its cache-behind eviction hint
-                    // conflicts with retaining recently read data for later use.
+                    // Do not use SequentialScan its cache-behind eviction hint
+                    // conflicts with retaining recently read data for later use
                     using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, FileOptions.None))
                     {
                         if (!CacheWarmPlatform.HandleUnder(stream, root)) continue;
@@ -150,7 +150,7 @@ namespace PaviseApp
                             int count = stream.Read(buffer, 0, (int)Math.Min(buffer.Length, Math.Min(budget - total, fileBudget - fileRead)));
                             if (count == 0) break;
                             total += count; fileRead += count; progress(total);
-                            // 1 MiB per >=32 ms, at most ~31 MiB/s excluding I/O.
+                            // 1 MiB per >=32 ms at most ~31 MiB/s excluding I/O
                             if (wait(32)) return total;
                         }
                     }
@@ -176,7 +176,7 @@ namespace PaviseApp
             {
                 if (!object.ReferenceEquals(cancel, token)) return;
                 status = "cachewarm.stopped";
-                // 取消或准入暂时失效不算完成；同一身份恢复后仍应有一次预热机会。
+                // Cancellation or a temporarily failed admission does not count as done; the same identity should get another warm-up chance after recovery
                 attempted = null;
             }
         }
@@ -188,8 +188,8 @@ namespace PaviseApp
                 {
                     if (!string.Equals(key, attempted, StringComparison.OrdinalIgnoreCase))
                     {
-                        // 新路径不能被旧任务的 90 秒等待挡住。清掉尝试标记，
-                        // 即使路径 G→H→G，取消排空后 G 也能重新启动。
+                        // A new path must not be blocked by the old task's 90 s wait, so clear the attempt marker
+                        // Even path G -> H -> G restarts G once the cancel has drained
                         if (cancel != null) cancel.Set();
                         attempted = null;
                     }
@@ -216,8 +216,8 @@ namespace PaviseApp
                         Func<bool> mayRead = delegate { return !token.WaitOne(0) && allowed() && CacheWarmPlatform.Sample().Ready; };
                         SetStatus("cachewarm.running");
                         long bytes = CacheWarmEngine.Warm(safeRoot, environment.Budget, mayRead, token.WaitOne, delegate { });
-                        // 已进入读取阶段的尝试保留去重记录，避免内存压力反复变化时
-                        // 每 90 秒重读同一批文件并重置预算。路径/会话变化仍由新 key 重试。
+                        // Attempts that reached the read phase keep their dedup record, so that fluctuating memory pressure does not
+                        // re-read the same files and reset the budget every 90 s; a path or session change still retries under a new key
                         SetStatus(mayRead() ? "cachewarm.done" : "cachewarm.stopped");
                         Logger.Log(Lang.T("gm.cachewarm") + " · " + Lang.T(Status) + " · " + (bytes / 1048576) + " MiB");
                     }

@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 将原始日志渲染成结构化战术事件流
+// File purpose Renders raw logs as a structured tactical event stream
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -123,8 +123,8 @@ namespace PaviseApp
             return entry;
         }
 
-        // 带 Logger 分级标记的行按标记走 标记本身不进正文 其余行仍按下面的词表判
-        //   环境限制类的日志文案里常带"无法 失败" 这些词会被判成异常 那些调用点用 Logger.Warn 写
+        // Lines with a Logger severity marker follow the marker, the marker itself stays out of the body, other lines are still judged by the word table below
+        //   Environment-limitation log text often contains words like unable or failed that would classify as error, those call sites write via Logger.Warn
         internal static LogEventSeverity ClassifyLine(string text, out string body)
         {
             body = text ?? "";
@@ -143,12 +143,36 @@ namespace PaviseApp
                 body = body.Substring(Logger.InfoTag.Length).Trim();
                 return LogEventSeverity.Info;
             }
+            if (body.StartsWith(Logger.SuccessTag, StringComparison.Ordinal))
+            {
+                body = body.Substring(Logger.SuccessTag.Length).Trim();
+                return LogEventSeverity.Success;
+            }
+            if (NormalizeLegacyBoostSummary(ref body))
+                return Classify(body) == LogEventSeverity.Error ? LogEventSeverity.Error : LogEventSeverity.Warning;
             return Classify(body);
         }
 
-        // 这里的词表就是分级依据 写日志文案时得顺带想一下会被判成什么色
-        //   "跳过"和 skip 不在警告里 本机没这块硬件所以不做某项 是常规结论不是出事
-        //   真要报警告得写清是什么没成 比如 未生效 不完整 不可用 被占用
+        // Old versions mixed unconfirmed core selection into the success summary, only this one known text is corrected, the raw log is kept
+        private static bool NormalizeLegacyBoostSummary(ref string body)
+        {
+            bool chinese = body.StartsWith("游戏提优已生效 ", StringComparison.Ordinal);
+            bool english = body.StartsWith("Game boost in effect ", StringComparison.Ordinal);
+            if (!chinese && !english) return false;
+            string normalized = body
+                .Replace("；手动核心分配未确认，请查看落核失败日志", "；手动选核未确认，当前状态未知")
+                .Replace("; manual core placement unconfirmed; see placement failure log", "; manual core placement unconfirmed; current state unknown")
+                .Replace("；手動コア割り当て未確認。失敗ログを確認してください", "；手動コア割り当て未確認。現在の状態は不明です");
+            if (normalized == body) return false;
+            body = chinese
+                ? "游戏优先级已生效 " + normalized.Substring("游戏提优已生效 ".Length)
+                : "Game priorities in effect " + normalized.Substring("Game boost in effect ".Length);
+            return true;
+        }
+
+        // This word table is the severity basis, when writing log text think about what color it will be classified as
+        //   skip (in either language) is not in the warnings list, skipping an item because this machine lacks the hardware is a normal conclusion, not an incident
+        //   A real warning must say what did not succeed, e.g. not applied, incomplete, unavailable, in use
         private static LogEventSeverity Classify(string text)
         {
             string lower = (text ?? "").ToLowerInvariant();
@@ -172,7 +196,7 @@ namespace PaviseApp
         {
             if (value == LogEventSeverity.Error) return Theme.Danger;
             if (value == LogEventSeverity.Warning)
-                return Theme.LightMode ? Color.FromArgb(205, 122, 16) : Color.FromArgb(255, 174, 52);
+                return Theme.Warning;
             if (value == LogEventSeverity.Success) return Theme.Green;
             return Theme.Accent;
         }

@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 构建系统环境页 集中放置需要重启且会留在机器上的内核与驱动改动
+// File purpose Build the System environment page; gathers kernel and driver changes that need a reboot and stay on the machine
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -74,7 +74,7 @@ namespace PaviseApp
             sy += cardH + 8;
 
             bool win11 = Native.OsBuild() >= 22000;
-            // 开关只反映 Pavise 自己开没开 系统本来就开着的保持关闭 任何档位都不替用户开
+            // The switch only reflects whether Pavise turned it on; if the system already had it on it stays off; no tier turns it on for the user
             swWindowedOpt = MakeSwitch(WindowedOptTweak.EnabledByPavise, OnWindowedOptToggle);
             swWindowedOpt.Enabled = (win11 || WindowedOptTweak.EnabledByPavise)
                 && (WindowedOptTweak.EnabledByPavise || !WindowedOptTweak.CurrentlyOn());
@@ -107,7 +107,7 @@ namespace PaviseApp
                 Lang.T("set.gtimer.n"), swGlobalTimer, out cardH);
             sy += cardH + 8;
 
-            // 不足 24GB 的机器压缩是有用的 关掉只会多换页 开关直接停用并说明
+            // On machines with less than 24GB compression is useful and turning it off only adds paging; the switch is disabled outright with an explanation
             bool ramOk = MemCompressTweak.RamEligible();
             swMemCompress = MakeSwitch(MemCompressTweak.EnabledByPavise, OnMemCompressToggle);
             swMemCompress.Enabled = ramOk || MemCompressTweak.EnabledByPavise;
@@ -116,7 +116,7 @@ namespace PaviseApp
                 swMemCompress, out cardH);
             sy += cardH + 8;
 
-            // 只读区要接在本页尾部 sy 马上会被后面两个 tab 复用 先存下来
+            // The read-only area attaches to the tail of this page; sy is reused by the next two tabs right away, so save it first
             int kernelTailSy = sy;
             scroll = envTabPanels[1]; sy = 2;
 
@@ -157,7 +157,7 @@ namespace PaviseApp
             return needsAction ? Theme.Accent : Theme.Faint;
         }
 
-        // 环境页的锁定标签 系统里已经是开着的"系统已开启" 本机没有可改的"本机不适用" 与其它页同一套
+        // Lock labels on the environment page: Already on in the system when the system already has it on, Not applicable here when there is nothing local to change; same set as the other pages
         private static void LockEnvCard(SettingCard card, Toggle toggle, bool externalOn)
         {
             if (card == null || toggle == null) return;
@@ -193,7 +193,7 @@ namespace PaviseApp
                 cardVrrOpt.SetStatus(VrrOptTweak.Describe(),
                     StatusInk(!VrrOptTweak.CurrentlyOn(), VrrOptTweak.EnabledByPavise));
             if (cardEee != null)
-                // 未改动是中性态 只有待记账那种要人动手的才走强调色 否则红色主题下"未改动"看着像报错
+                // Unchanged is a neutral state; only the pending kind that needs a manual step gets the accent color, otherwise Unchanged looks like an error under the red theme
                 cardEee.SetStatus(EeeTweak.Describe(), StatusInk(EeeTweak.Pending, EeeTweak.EnabledByPavise));
             if (cardAmdSam != null && AdlxTweaks.Available)
                 cardAmdSam.SetStatus(AmdSamTweak.Describe(),
@@ -227,8 +227,8 @@ namespace PaviseApp
                 SyncEnvStatus();
         }
 
-        // 改高级属性会让网卡重新协商链路 断几秒 开关本身就是知情选择 不再弹确认
-        // 重启才彻底生效 关掉只回启原本开着的 收据在 MemCompressTweak 自己那儿
+        // Changing the advanced property makes the NIC renegotiate the link, a few seconds of drop; the switch itself is an informed choice, so no more confirmation prompt
+        // Fully takes effect only after a reboot; turning off only re-enables what was on before; the receipt lives in MemCompressTweak itself
         private void OnMemCompressToggle(object s, EventArgs e)
         {
             if (!RequireElevationFor(swMemCompress, MemCompressTweak.EnabledByPavise)) return;
@@ -498,8 +498,8 @@ namespace PaviseApp
             else if (st.RecoverableCost)
             {
                 text = Lang.T("spec.state.on") + SpecMitigationTweak.ActiveCostSummary(st);
-                // 在跑的是 retpoline 或 eIBRS 这种近乎免费的实现时 直说关掉换不到什么
-                //   这句原先是极限档强制项的资格门 现在开关由用户自己拨 更该把结论摆出来
+                // When what is running is a near-free implementation like retpoline or eIBRS, say outright that disabling gains nothing
+                //   This used to be the eligibility gate for the Extreme tier forced item; now the user flips the switch themselves, all the more reason to show the conclusion
                 if (!SpecMitigationTweak.WorthDisabling(st))
                     text += " " + Lang.T("spec.state.cheap");
             }
@@ -561,7 +561,7 @@ namespace PaviseApp
             if (swMemCompress != null)
             {
                 swMemCompress.SetSilently(MemCompressTweak.EnabledByPavise);
-                // 关掉之后不足 24GB 的机器要重新变灰 开着时永远留一条关闭的路
+                // After turning off, machines under 24GB must gray out again; while on, always leave a way to turn it off
                 swMemCompress.Enabled = MemCompressTweak.EnabledByPavise || MemCompressTweak.RamEligible();
             }
             SyncEnvStatus();

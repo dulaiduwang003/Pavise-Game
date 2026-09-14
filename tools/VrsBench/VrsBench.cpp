@@ -1,5 +1,5 @@
-// 文件用途 Pavise 的 DX12 可变速率着色台架
-// 只做离屏 没有窗口 交换链 输入钩子 不碰游戏进程 不注入
+// File purpose Pavise DX12 variable rate shading bench
+// Off-screen only, no window, swap chain or input hooks, never touches game processes, no injection
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -622,7 +622,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         {"2x2", D3D12_SHADING_RATE_2X2, 0.25, {}},
     };
 
-    // 采配对样本之前 先把着色器和频率状态都热起来
+    // Warm up the shaders and clock state before taking paired samples
     for (int warmup = 0; warmup < 8; ++warmup) {
         double ignored = 0.0;
         hr = bench.Measure(modes[warmup % 4].rate, draws, &ignored);
@@ -633,7 +633,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         if (options.idleMs) Sleep(static_cast<DWORD>(options.idleMs));
     }
 
-    // 镜像顺序能减少温度和频率漂移带来的偏差 又不至于把桌面 GPU 跑满
+    // Mirrored order reduces bias from thermal and clock drift without saturating the desktop GPU
     const int order[] = {0, 1, 3, 2, 2, 3, 1, 0};
     for (int cycle = 0; cycle < options.cycles; ++cycle) {
         for (int index : order) {

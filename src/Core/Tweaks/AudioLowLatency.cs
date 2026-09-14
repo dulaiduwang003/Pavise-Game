@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 对局期间以最小共享缓冲开一条静音流 音频引擎随之按最小周期运行 关流自动还原
+// File purpose Opens a silent stream with the minimum shared buffer during the match so the audio engine runs at its minimum period; closing the stream restores automatically
 using System;
 using System.Globalization;
 using System.Runtime.InteropServices;
@@ -8,8 +8,8 @@ namespace PaviseApp
 {
     internal static class AudioLowLatency
     {
-        // 共享模式引擎周期取所有活动流请求的最小值 本流不写数据 混进输出的是静音
-        //   流随进程释放后引擎自动回到默认周期 没有注册表写入 也没有跨进程残留
+        // The shared-mode engine period is the minimum requested by all active streams; this stream writes no data, what mixes into the output is silence
+        //   Once the stream is released with the process the engine returns to the default period; no registry writes, no cross-process residue
         private const int RenderFlow = 0;
         private const int ConsoleRole = 0;
         private const int ClsCtxAll = 0x17;
@@ -36,8 +36,8 @@ namespace PaviseApp
             [PreserveSig] int GetId([MarshalAs(UnmanagedType.LPWStr)] out string id);
         }
 
-        // 三代接口共用一张虚表 必须按 IAudioClient IAudioClient2 IAudioClient3 顺序全量声明
-        //   Win10 之前的系统 Activate 拿不到这个接口 直接算不支持
+        // The three interface generations share one vtable; must be declared in full in IAudioClient IAudioClient2 IAudioClient3 order
+        //   Before Win10 Activate can't get this interface, treated as unsupported
         [ComImport, Guid("7ED4EE07-8E67-4CD4-8C1A-2B7A5987AD42"),
          InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
         private interface IAudioClient3
@@ -96,7 +96,7 @@ namespace PaviseApp
         [DllImport("ole32.dll")]
         private static extern int PropVariantClear(ref PropVariant value);
 
-        // PKEY_Device_EnumeratorName 蓝牙端点挂在 BTHENUM 或 BTHHFENUM 下
+        // PKEY_Device_EnumeratorName: Bluetooth endpoints sit under BTHENUM or BTHHFENUM
         private static readonly Guid DeviceEnumeratorNameFmt = new Guid("a45c254e-df1c-4efd-8020-67d146a850e0");
         private const int DeviceEnumeratorNamePid = 24;
         private const int StgmRead = 0;
@@ -128,7 +128,7 @@ namespace PaviseApp
             }
         }
 
-        // 蓝牙输出的缓冲由链路决定 引擎周期改了也到不了耳朵 不适用不是失败
+        // Bluetooth output buffering is set by the link; a changed engine period never reaches the ear; not applicable, not a failure
         internal static bool IsBluetoothEnumerator(string enumerator)
         {
             if (string.IsNullOrEmpty(enumerator)) return false;
@@ -179,9 +179,9 @@ namespace PaviseApp
                         return false;
                     if (!WorthApplying(def, min))
                     {
-                        // 设备不支持更小缓冲是不适用不是失败 报成功但不留任何状态
-                        //   报失败会走重试和熔断 开着这项的机器上必然刷出警告
-                        //   本局不再探测 退局还原后下一局重试 设备换了自然重新评估
+                        // A device that can't do a smaller buffer is not applicable, not a failure; report success but keep no state
+                        //   Reporting failure would go through retry and the breaker, guaranteeing warnings on machines with this enabled
+                        //   No more probing this match; retry next match after the match-end restore; a device change re-evaluates naturally
                         if (!loggedNoGain)
                         {
                             loggedNoGain = true;
@@ -222,7 +222,7 @@ namespace PaviseApp
             }
         }
 
-        // 默认设备被切走后旧流钉不住新设备的引擎 发现漂移就关旧流重开
+        // After the default device switches away the old stream can't pin the new device's engine; on drift close the old stream and reopen
         public static bool DeviceDrifted
         {
             get { lock (lk) { return active && DriftedLocked(); } }
@@ -275,7 +275,7 @@ namespace PaviseApp
             }
         }
 
-        // 设备最小周期不小于默认周期时开流只有开销没有收益
+        // When the device's minimum period isn't below the default, opening a stream is all cost and no gain
         internal static bool WorthApplying(uint defaultFrames, uint minFrames)
         {
             return minFrames != 0 && minFrames < defaultFrames;

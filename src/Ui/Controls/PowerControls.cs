@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 标题栏对局电源计划 切角按钮与选择浮层 不切换/PG托管/本机计划
+// File purpose Title-bar match power plan: chamfered button and picker overlay; Don't switch / PG managed / local plan
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -40,7 +40,7 @@ namespace PaviseApp
         {
             Graphics g = e.Graphics; FillBg(g); g.SmoothingMode = SmoothingMode.AntiAlias;
             float h = hover.Value;
-            // 内缩量必须过 Theme.S 顶栏四个控件的可见边框才能在高 DPI 下对齐
+            // The inset must go through Theme.S so the visible borders of the four title-bar controls line up at high DPI
             Rectangle r = new Rectangle(0, Theme.S(2), Width - 1, Height - Theme.S(5));
             using (GraphicsPath p = Theme.TechPath(r, Theme.S(9)))
             {

@@ -1,22 +1,22 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 呈现长帧区间构建与 DPC 对齐 找出撞长帧的驱动模块 纯计算不依赖对局状态
+// File purpose Build present long-frame intervals and align them with DPC to find driver modules hitting long frames; pure computation, independent of match state
 using System;
 using System.Collections.Generic;
 
 namespace PaviseApp
 {
-    // present 长帧区间 ∩ DPC 时间线 数每个长帧里落了哪些模块的 DPC 归类
-    //   活跃集扫描 区间按 QPC 递增且不重叠 DPC 按有效 StartQpc 排序
-    //   产出 撞长帧 top 模块 每模块记 撞了几帧(LongFrameHits) 与总 DPC 数(DpcCount)
+    // Intersect present long-frame intervals with the DPC timeline, counting which modules' DPCs landed in each long frame, grouped by module
+    //   Active-set sweep: intervals are QPC-ascending and non-overlapping, DPCs sorted by effective StartQpc
+    //   Output: top modules hitting long frames, per module the number of frames hit LongFrameHits and total DPC count DpcCount
     internal sealed class PresentDpcAlignment
     {
         public bool Ok;
         public int LongFrames;
         public int TotalDpcInLongFrames;
-        public Dictionary<string, int> LongFrameHits;   // 模块 -> 命中多少个长帧区间
-        public Dictionary<string, int> DpcCounts;       // 模块 -> 长帧内 DPC 总数
-        public bool UnknownModuleInLongFrames;          // 区间内有无法映射到驱动的 DPC 零命中不可靠
-        public bool SwapchainIdentityReliable;          // 只有已解决目标 swapchain 身份时才可置 true
+        public Dictionary<string, int> LongFrameHits;   // Module -> number of long-frame intervals hit
+        public Dictionary<string, int> DpcCounts;       // Module -> total DPCs inside long frames
+        public bool UnknownModuleInLongFrames;          // Intervals contain DPCs that cannot be mapped to a driver; zero hits unreliable
+        public bool SwapchainIdentityReliable;          // May only be set true once the target swapchain identity is resolved
         public string TopModule;
         public int TopModuleLongFrameHits;
         public int TopModuleDpcCount;
@@ -34,6 +34,15 @@ namespace PaviseApp
         internal static List<long[]> BuildLongFrameIntervals(
             List<PresentFrame> frames, long freq, int rendererPid, double minCoverageSeconds)
         {
+            IrqFrameEvidence ignored;
+            return BuildLongFrameIntervals(frames, freq, rendererPid, minCoverageSeconds, out ignored);
+        }
+
+        internal static List<long[]> BuildLongFrameIntervals(
+            List<PresentFrame> frames, long freq, int rendererPid, double minCoverageSeconds,
+            out IrqFrameEvidence evidence)
+        {
+            evidence = null;
             if (frames == null || freq <= 0 || rendererPid <= 0 || minCoverageSeconds < 0
                 || double.IsNaN(minCoverageSeconds) || double.IsInfinity(minCoverageSeconds)) return null;
 
@@ -43,8 +52,8 @@ namespace PaviseApp
             qpcs.Sort();
 
             double msPerTick = 1000.0 / freq;
-            // Alt-Tab/最小化后几十秒不呈现不是一帧 按超大 gap 切段 只用一段
-            // 只认连续活跃且样本够的呈现流 免得空窗把 coverage 和长帧一起伪造出来
+            // Tens of seconds without presents after Alt-Tab or minimize is not a frame; split into segments at huge gaps and use only one segment
+            // Accept only a continuously active present stream with enough samples, so an idle gap cannot fabricate coverage and long frames together
             var segments = new List<List<long[]>>();
             var current = new List<long[]>();
             for (int i = 1; i < qpcs.Count; i++)
@@ -72,7 +81,7 @@ namespace PaviseApp
             if (active == null || activeCoverage <= 0
                 || activeCoverage / (double)freq < minCoverageSeconds) return null;
 
-            // 时间序相邻帧间隔 loQ/hiQ 保留端点 QPC 供长帧区间对齐
+            // Time-ordered adjacent frame intervals; loQ/hiQ keep the endpoint QPCs for long-frame interval alignment
             var ft = new List<double>(active.Count);
             foreach (long[] pair in active) ft.Add((pair[1] - pair[0]) * msPerTick);
             int n = ft.Count;
@@ -82,10 +91,15 @@ namespace PaviseApp
             double median = sorted[n / 2];
             if ((n & 1) == 0) median = (sorted[n / 2 - 1] + sorted[n / 2]) / 2.0;
             double longThresh = median * 2.0;
-            // 长帧区间从时间序 ft 取(sorted 会打乱相邻关系不能用)
+            // Long-frame intervals are taken from the time-ordered ft; sorted breaks adjacency and cannot be used
             var intervals = new List<long[]>();
             for (int i = 0; i < n; i++)
                 if (ft[i] > longThresh) intervals.Add(active[i]);
+            evidence = new IrqFrameEvidence { Intervals = n, LongFrames = intervals.Count,
+                Seconds = activeCoverage / (double)freq,
+                P99Ms = sorted[Math.Min(n - 1, (int)Math.Ceiling(n * .99) - 1)],
+                P999Ms = sorted[Math.Min(n - 1, (int)Math.Ceiling(n * .999) - 1)],
+                IdentityReliable = false }; // PID-only Event 184 cannot prove one swapchain
             return intervals;
         }
 
@@ -93,8 +107,8 @@ namespace PaviseApp
             List<long[]> intervals, List<InterruptAttribution.DpcTimelineEntry> dpc,
             bool swapchainIdentityReliable = false)
         {
-            // null 表示某条采集链根本不可用 非 null 空集合表示
-            // 可用于正命中对齐但结果为零 是否能作负证据由 swapchain 可靠性单独决定
+            // null means a capture chain is unavailable altogether; a non-null empty set means
+            // it was usable for positive-hit alignment but found nothing; whether that counts as negative evidence is decided separately by swapchain reliability
             if (intervals == null) return null;
 
             var r = new PresentDpcAlignment();
@@ -103,7 +117,7 @@ namespace PaviseApp
             r.LongFrames = intervals.Count;
             r.LongFrameHits = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             r.DpcCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            // present 已经明确没长帧 DPC 探针能不能用都藏不住撞长帧
+            // present has already shown no long frames; whether the DPC probe is usable or not, no long-frame hit can be hiding
             if (intervals.Count == 0) return r;
             if (dpc == null) return null;
             if (dpc.Count == 0) return r;
@@ -120,7 +134,7 @@ namespace PaviseApp
             var activeDpc = new List<int>();
             var countedDpc = new HashSet<int>();
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (long[] iv in intervals)   // 区间已按 QPC 递增
+            foreach (long[] iv in intervals)   // Intervals already QPC-ascending
             {
                 if (iv == null || iv.Length < 2 || iv[1] <= iv[0]) return null;
                 long lo = iv[0], hi = iv[1];
@@ -132,8 +146,8 @@ namespace PaviseApp
                 foreach (int dpcIndex in activeDpc)
                 {
                     InterruptAttribution.DpcTimelineEntry entry = dpc[dpcIndex];
-                    // 半开重叠规则 DPC.Start < frame.End && DPC.End > frame.Start
-                    // 跨过帧边界才是最需被捕获的 DPC 只看 EndQpc 会漏掉它
+                    // Half-open overlap rule: DPC.Start < frame.End && DPC.End > frame.Start
+                    // A DPC straddling the frame boundary is exactly the one that most needs catching; looking only at EndQpc would miss it
                     if (entry.StartQpc >= hi || entry.EndQpc <= lo) continue;
                     string m = entry.Module;
                     if (string.IsNullOrWhiteSpace(m) || m == "?")
@@ -141,8 +155,8 @@ namespace PaviseApp
                         m = "?";
                         r.UnknownModuleInLongFrames = true;
                     }
-                    // 一条 DPC 可以横跨两个相邻长帧 帧命中应各算一次 但事件总数
-                    // 只能算一次 不然日志会把 1 条跨帧 DPC 报成 2 条
+                    // One DPC can straddle two adjacent long frames; frame hits count once each, but the event total
+                    // counts only once, otherwise the log reports 1 straddling DPC as 2
                     if (countedDpc.Add(dpcIndex))
                     {
                         int c; counts.TryGetValue(m, out c); counts[m] = c + 1;

@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 取得压制 原值快照与压制状态写入
+// File purpose Acquire suppression: original-value snapshot and suppression state write
 using System;
 using System.Collections.Generic;
 using System.Threading;

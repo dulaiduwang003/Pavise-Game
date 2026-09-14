@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 窗口边框 尺寸自适应与界面活动节流
+// File purpose Window border, adaptive sizing and UI activity throttling
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -163,8 +163,8 @@ namespace PaviseApp
             if (gameMode == null) return;
             if (lblStatus != null)
             {
-                string status = gameMode.StatusText;
-                // 文案没变就别每 1.2 秒把多档 TextRenderer.MeasureText 重跑一遍
+                string status = gameMode.ActiveGame ?? Lang.T("workflow.game.waiting");
+                // Do not rerun the multi-size TextRenderer.MeasureText every 1.2 seconds when the text has not changed
                 if (lblStatus.Text != status)
                 {
                     lblStatus.Text = status;
@@ -172,6 +172,7 @@ namespace PaviseApp
                 }
             }
             bool act = gameMode.Enabled && gameMode.IsActive;
+            if (curPage == pageOverview) RefreshOverviewAttention();
             UiClock.Frozen = act;
             if (statusDot != null)
             {

@@ -1,5 +1,5 @@
-// 文件用途 每次游戏运行期只给一次机会 不是每次前台事件都给 这个状态机
-// 没有定时器也没有工作线程 做出终态判断之后就不再看输入
+// File purpose One chance per game run, not per foreground event; this state machine
+// has no timer and no worker thread; once a terminal verdict is made it stops looking at input
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -50,8 +50,8 @@ namespace PaviseApp
         internal void Begin(string profileId, GameInputProcess process, bool enabledAtEntry, Func<bool> admission)
         {
             long deadline = clock() + ForegroundWaitMs;
-            // Begin 和 Step 在 GameMode.sync 之外跑 Cancel 和 End 只拿
-            // 那把短状态锁 锁里不做任何原生调用和回调
+            // Begin and Step run outside GameMode.sync; Cancel and End only take
+            // the short state lock; no native calls or callbacks inside the lock
             lock (operationGate)
             {
                 Session[] previous;
@@ -69,8 +69,8 @@ namespace PaviseApp
                 var gone = new List<Session>();
                 foreach (Session old in previous)
                 {
-                    // 找到可复用会话后 其余会话的探测只服务于剪枝 推迟到下次
-                    //   Begin 再清 仍要按精确身份换选 那是纯比较 不走内核
+                    // Once a reusable session is found, probing the remaining sessions only serves pruning; defer it to the next
+                    //   Begin and clear then; still reselect by exact identity, that is a pure compare with no kernel call
                     if (reuse != null)
                     {
                         foreach (GameInputProcess identity in old.Processes)
@@ -81,15 +81,15 @@ namespace PaviseApp
                     foreach (GameInputProcess identity in old.Processes)
                     {
                         if (identity.Equals(process)) { reuse = old; liveOrUnknown = true; break; }
-                        // 判活只需要一个非 Gone 结果 之后只找身份 不再探测
+                        // Liveness needs just one non-Gone result; after that only match identity, no more probing
                         if (liveOrUnknown) continue;
                         GameInputProcessState state;
                         try { state = input.Probe(identity); }
                         catch { state = GameInputProcessState.Unknown; }
                         if (state != GameInputProcessState.Gone) liveOrUnknown = true;
                     }
-                    // 旧渲染进程访问不到 不能证明这是一次全新的运行
-                    // 绝不要给启动器或家族进程的 PID 起别名 它们可能比游戏活得久
+                    // Old render process unreachable; can't prove this is a brand-new run
+                    // Never alias the launcher's or family processes' PID; they may outlive the game
                     if (!liveOrUnknown) gone.Add(old);
                     else if (reuse == null && SameProfile(old.ProfileId, profileId)) reuse = old;
                 }
@@ -105,8 +105,8 @@ namespace PaviseApp
                         Remember(reuse, process); current = reuse;
                         return;
                     }
-                    // 一旦某个身份保不住了 后面不要因为另一条历史条目过期
-                    // 就把这次跳过忘掉并重新武装
+                    // Once an identity can't be held, don't later forget this skip and re-arm
+                    // just because another history entry expired
                     if (history.Count >= MaximumHistory) historyExhausted = true;
                     Session fresh = new Session {
                         ProfileId = profileId, Deadline = deadline, Consumed = !permitted,
@@ -124,14 +124,14 @@ namespace PaviseApp
         {
             bool stateAllows;
             lock (stateGate) stateAllows = ReferenceEquals(current, session) && !session.Revoked;
-            // 持有 stateGate 时绝不回调 Invalidate 可能持有 sync
+            // Never call back while holding stateGate; Invalidate may hold sync
             return stateAllows && clock() <= session.Deadline
                 && Evaluate(session.OriginalAdmission) && Evaluate(admission);
         }
 
         internal EnglishInputOutcome Step(string profileId, GameInputProcess process, Func<bool> admission)
         {
-            if (!Monitor.TryEnter(operationGate)) return null; // No queued catch-up.
+            if (!Monitor.TryEnter(operationGate)) return null; // No queued catch-up
             try
             {
                 Session session;
@@ -139,13 +139,13 @@ namespace PaviseApp
                 {
                     session = current;
                     if (session == null || !SameProfile(session.ProfileId, profileId)) return null;
-                    Remember(session, process); // Record renderer handoffs even after the one attempt.
+                    Remember(session, process); // Record renderer handoffs even after the one attempt
                     if (session.Consumed) return null;
                 }
                 EnglishInputOutcome result;
                 if (session.HistoryFull) result = new EnglishInputOutcome(EnglishInputResult.HistoryFull);
                 else if (clock() > session.Deadline) result = new EnglishInputOutcome(EnglishInputResult.Expired);
-                else if (!process.IsValid) return null; // Await a verified renderer, with the original deadline.
+                else if (!process.IsValid) return null; // Await a verified renderer with the original deadline
                 else if (!Allowed(session, admission)) result = new EnglishInputOutcome(EnglishInputResult.Canceled);
                 else
                 {
@@ -191,7 +191,7 @@ namespace PaviseApp
             {
                 cancellationVersion++;
                 if (current != null) { current.Revoked = true; current.Consumed = true; }
-                current = null; // Retain deduplication while an earlier runtime may still be alive.
+                current = null; // Retain deduplication while an earlier runtime may still be alive
             }
         }
 

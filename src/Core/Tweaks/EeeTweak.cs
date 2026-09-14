@@ -1,18 +1,18 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 关闭物理有线网卡的链路节能 节能以太网 绿色以太网 链路降速 逐网卡逐属性记原值 按收据写回
+// File purpose Disable link power saving on physical wired NICs (Energy Efficient Ethernet, Green Ethernet, link speed downshift); record originals per NIC per property, write back by receipt
 using System;
 using System.Collections.Generic;
 
 namespace PaviseApp
 {
-    // 802.3az 让链路在低流量时进入 LPI 睡眠 唤醒是微秒到毫秒级 表现为收发抖动尖峰
-    //   改高级属性会让网卡重新协商链路 断几秒 所以这是环境页的持久项 不进会话路径
-    //   各家驱动的键名不同 按 RegistryKeyword 和 DisplayName 两路匹配 只认 0 为关闭
-    //   本机 Realtek 实测有一项 EEEMaxSupportSpeed 是速率不是开关 名字也以 EEE 开头
-    //   所以只碰合法值里含 0 且不超过三档的枚举项 速率和数值项一律不动
-    //   链路降速那几项 Realtek 的 Gigabit Lite 和 Power Saving Mode 本机实测键名 Intel 的 SipsEnabled 按文档
-    //   它们在空闲时把链路从 1G 降到 100M 再协商回来 微软文档明说切换期间网卡会短暂断连
-    //   一条记录一张收据 网卡名或键名含分隔符的跳过 不冒险
+    // 802.3az puts the link into LPI sleep at low traffic; wake-up is microseconds to milliseconds, showing up as TX/RX jitter spikes
+    //   Changing advanced properties makes the NIC renegotiate the link, dropping it for seconds, so this is a persistent System environment page item, not on the session path
+    //   Key names differ per vendor driver; match on both RegistryKeyword and DisplayName, and only accept 0 as off
+    //   On the local Realtek, EEEMaxSupportSpeed turned out to be a speed not a switch, though its name starts with EEE
+    //   So only touch enum items whose valid values include 0 and have at most three levels; speed and numeric items are never touched
+    //   Link downshift items: Realtek's Gigabit Lite and Power Saving Mode are locally verified key names, Intel's SipsEnabled is per docs
+    //   They drop the link from 1G to 100M when idle and renegotiate back; Microsoft docs state the NIC briefly disconnects during the switch
+    //   One record per receipt; skip NICs or keys whose names contain the separator, don't risk it
     internal static class EeeTweak
     {
         internal const string ReceiptKey = "EeeReceipt";
@@ -21,7 +21,7 @@ namespace PaviseApp
 
         public static bool EnabledByPavise { get { return Settings.LoadStr(ReceiptKey, "").Length > 0; } }
         public static bool HasResidue() { return EnabledByPavise || Settings.Load(PendingKey, false); }
-        // 上次写入没记完账 需要用户关了再开一次 这是三种状态里唯一真要人处理的 状态色只给它用强调色
+        // Last write didn't finish bookkeeping; the user has to toggle off and on again; the only one of three states that truly needs a human, so the status color uses the accent only for it
         public static bool Pending { get { return Settings.Load(PendingKey, false) && !EnabledByPavise; } }
 
         public static int ReceiptAdapters()
@@ -47,7 +47,7 @@ namespace PaviseApp
             lock (lk)
             {
                 if (EnabledByPavise) return true;
-                // 写之前先落一个未决标记 崩在写与记账之间时 启动能看见这里有一笔没对上的账
+                // Drop a pending marker before writing; if we crash between the write and the bookkeeping, startup can see an unreconciled entry here
                 Settings.Save(PendingKey, true);
                 string output;
                 if (!PsRunner.Run(ApplyScript, "eee-off-apply", 60000, out output))
@@ -113,8 +113,8 @@ namespace PaviseApp
             return null;
         }
 
-        // 单次往返 逐网卡逐属性 记旧值 写 0 读回校验 不过当场写回旧值不入账
-        //   改完的网卡各重启一次让值生效 -NoRestart 避免每改一项断一次链路
+        // Single round trip, per NIC per property: record old value, write 0, read back to verify; on failure write the old value back on the spot and don't record it
+        //   Restart each changed NIC once so values take effect; -NoRestart avoids dropping the link once per property
         private static readonly string ApplyScript = string.Join("\r\n", new[]
         {
             "$ErrorActionPreference = 'SilentlyContinue'",

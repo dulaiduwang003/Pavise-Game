@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 列出当前运行的用户程序 供白名单批量选取
+// File purpose List currently running user programs for bulk whitelist selection
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -270,8 +270,8 @@ namespace PaviseApp
         {
             lock (scanGate)
             {
-                // 就算这个委托始终没被窗口消息循环派发
-                // 关闭和释放流程也要接管那个被丢弃的结果
+                // Even if this delegate is never dispatched by the window message loop
+                // the close and dispose path must still take over the discarded result
                 if (!ReferenceEquals(pendingScan, result)) return;
                 pendingScan = null;
                 if (closed || result.Generation != scanGeneration)

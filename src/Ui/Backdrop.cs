@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 主窗口背景封面 一张图按窗口尺寸裁切缓存 各控件按自身绝对坐标取同一块
+// File purpose Main window backdrop, one image cropped and cached to window size, each control takes the same block by its absolute coordinates
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -9,24 +9,24 @@ using System.Windows.Forms;
 
 namespace PaviseApp
 {
-    // WinForms 的子控件没有真透明 所以不存在"底下铺一张图上面全透"这种做法
-    // 这里的办法是 只留一张按窗口尺寸裁好的位图 谁要透谁就按自己在窗口里的绝对坐标
-    // 从同一张位图上取自己那一块画下来 各控件画的是同一张图的不同部分 拼起来就是整幅
+    // WinForms child controls have no real transparency, so there is no such thing as one image underneath and everything transparent above
+    // The approach here is one bitmap cropped to window size, whoever needs transparency uses its absolute coordinates in the window
+    // to take and draw its own block from that bitmap, controls draw different parts of the same image, together they form the whole
     internal static class Backdrop
     {
         private const string DimKey = "BackdropDim";
         private const string StoreName = "backdrop.img";
 
-        // 遮罩三档 最淡一档也不给全透 否则随便一张浅色图就能让正文彻底读不出来
+        // Three dim tiers, even the lightest is not fully transparent, otherwise any pale image makes body text unreadable
         private static readonly int[] DimDark = { 120, 170, 214 };
-        // 亮色不能用白膜直接盖黑图 否则黑色只会变成一层灰雾
-        //   三档改成高亮映射的底色占比 黑色落到主题浅底 彩色仍保留色相
+        // Light mode cannot lay a white film straight over a dark image, black would just become a grey haze
+        //   The three tiers become the base-color share of the highlight mapping, black lands on the theme's light base, colors keep their hue
         private static readonly float[] LightFloorMix = { 0.90f, 0.94f, 0.97f };
 
-        // 卡片自己的底色也要留一点 纯靠遮罩压不住高频细节 文字会糊在纹理上
+        // Cards need some base color of their own too, the dim alone cannot tame high-frequency detail and text smears on the texture
         private const int CardAlphaDark = 208;
-        // 透明度不能只看本层 alpha 封面前面已经有一层 DimLight
-        //   高亮映射已经把底图抬亮 因此本层只需薄薄一层玻璃白 保留接近暗色的图案对比度
+        // Opacity is not just this layer's alpha, a DimLight layer already sits in front of the backdrop
+        //   The highlight mapping has already lifted the image, so this layer only needs a thin glass white, keeping contrast for near-dark patterns
         private const int CardAlphaLight = 100;
         private const int NavAlphaLight = 80;
         private const int LightSoftenDivisor = 2;
@@ -40,7 +40,7 @@ namespace PaviseApp
 
         public static bool Active { get { return source != null; } }
 
-        // 封面只属于主窗口内容 独立弹窗和明确禁用封面的浮层子树使用主题底色
+        // The backdrop belongs only to main window content, standalone popups and overlay subtrees that explicitly disable it use the theme base
         public static bool AppliesTo(Control control)
         {
             if (!Active) return false;
@@ -68,7 +68,7 @@ namespace PaviseApp
             }
         }
 
-        // 导航条上全是入口 一直得读得清 所以压得比卡片更狠
+        // The nav bar is all entry points and must always be readable, so it is dimmed harder than cards
         public static Color NavFill(Control control, Color baseFill)
         {
             if (!AppliesTo(control)) return baseFill;
@@ -88,7 +88,7 @@ namespace PaviseApp
             LoadFromStore();
         }
 
-        // 图存进数据目录 不记用户挑图时的原路径 否则他挪一次文件封面就没了
+        // The image is stored in the data dir, the original path the user picked is not recorded, otherwise one file move loses the backdrop
         public static bool Choose(IWin32Window owner)
         {
             using (var dlg = new OpenFileDialog())
@@ -123,7 +123,7 @@ namespace PaviseApp
             catch (Exception ex) { Logger.LogFailure(Lang.T("log.backdrop.2"), ex); }
         }
 
-        // 控件自己的背景 g 的坐标系就是 c 的客户区
+        // The control's own background, g's coordinate system is c's client area
         public static void Paint(Graphics g, Control c, Rectangle client)
         {
             if (!AppliesTo(c) || client.Width <= 0 || client.Height <= 0) return;
@@ -150,14 +150,14 @@ namespace PaviseApp
             g.PixelOffsetMode = oldP;
         }
 
-        // 设置页的小窗直接展示整张封面的裁切结果 不借主窗口坐标取片
+        // The small preview on the Settings page shows the whole cropped backdrop directly, not a slice by main window coordinates
         public static void PaintPreview(Graphics g, Rectangle target)
         {
             if (!Active || g == null || target.Width <= 0 || target.Height <= 0) return;
             GraphicsState state = g.Save();
             try
             {
-                // 交叉而不是替换 调用方多半已经按切角设过裁剪 换掉就画出边了
+                // Intersect rather than replace, the caller has most likely already clipped to the chamfer, replacing would draw outside the edge
                 g.SetClip(target, CombineMode.Intersect);
                 InterpolationMode oldI = g.InterpolationMode;
                 PixelOffsetMode oldP = g.PixelOffsetMode;
@@ -181,8 +181,8 @@ namespace PaviseApp
             catch (Exception ex) { Logger.LogFailure(Lang.T("log.backdrop.3"), ex); }
         }
 
-        // 走内存读 不能让 Image.FromFile 把数据目录里那张图一直锁住
-        // 原图常驻内存 窗口最大也就两千多像素宽 超出的分辨率只占内存不出画质 读入时先缩
+        // Read via memory, Image.FromFile must not keep the image in the data dir locked
+        // The source stays resident, the window is at most a bit over 2000 px wide, extra resolution costs memory without adding quality, downscale on load
         private const int SourceMaxEdge = 2560;
 
         private static Bitmap Read(string path)
@@ -207,7 +207,7 @@ namespace PaviseApp
             }
         }
 
-        // 缩放只在窗口尺寸 遮罩档位 主题这三样变了才做一次 之后每个控件都是等比例直取
+        // Scaling is done once only when window size, dim tier or theme changes, afterwards every control takes a 1:1 slice
         private static Bitmap Fit(Control c)
         {
             Form f = c.FindForm();
@@ -226,12 +226,12 @@ namespace PaviseApp
                 {
                     g.InterpolationMode = InterpolationMode.HighQualityBicubic;
                     g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-                    // 铺满不变形 长边溢出裁掉 居中 亮色在这里直接做高亮映射
+                    // Fill without distortion, overflow on the long edge is cropped, centered, light mode does the highlight mapping right here
                     DrawCover(g, new Rectangle(0, 0, want.Width, want.Height), Theme.LightMode);
                 }
 
-                // 亮色主题把高频纹理先缩小再放大 相当于低成本磨砂柔化
-                //   只在缓存重建时做一次 日常重绘仍然只是从 fitted 等比例取片
+                // Light theme shrinks high-frequency texture then scales it back up, a cheap frosted softening
+                //   Done once only on cache rebuild, everyday repaints still just take a 1:1 slice from fitted
                 if (Theme.LightMode)
                 {
                     int sw = Math.Max(1, want.Width / LightSoftenDivisor);
@@ -319,9 +319,9 @@ namespace PaviseApp
             if (source != null) { source.Dispose(); source = null; }
         }
 
-        // 控件自己那块底 先补上身下的封面
-        // 落在卡片上的还要再叠一层与卡面同浓度的底 否则那一小块比卡片透一截 像挖了个洞
-        // 直接摆在页面上的不能叠 叠了等于把封面又盖回去
+        // The control's own base, first fill in the backdrop beneath it
+        // Those sitting on a card also get a layer at the same density as the card face, otherwise that patch is more transparent than the card, like a hole
+        // Those placed directly on the page must not get it, that would cover the backdrop back up
         public static void PaintOnCard(Graphics g, Control c, Rectangle rect)
         {
             if (!AppliesTo(c)) return;

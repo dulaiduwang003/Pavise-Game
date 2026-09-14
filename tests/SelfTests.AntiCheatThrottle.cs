@@ -1,5 +1,5 @@
-// 文件用途 扫描安全的反作弊压制构成的纯函数检查
-// 不打开任何进程 不碰系统状态
+// File purpose Pure-function checks of the scan-safe anti-cheat suppression composition
+// Opens no process, touches no system state
 #if PAVISE_SELFTEST
 using System;
 
@@ -28,8 +28,8 @@ namespace PaviseApp
             if (!good) throw new InvalidOperationException("Anti-cheat throttle regression: " + message);
         }
 
-        // 反作弊压制构成固定(档位选择已移除 生产侧只用 Isolated+antiCheat):
-        //   不最低优先级 不封定时器 不降内存页
+        // Anti-cheat suppression composition is fixed, tier selection removed, production only uses Isolated+antiCheat
+        //   No lowest priority, no timer throttling, no memory page downgrade
         private static void AntiCheatStrongTierDropsStarvationParts()
         {
             AcThrottleCheck(SuppressionCore.DesiredPriority(
@@ -42,8 +42,8 @@ namespace PaviseApp
                 "anti-cheat Strong must not lower page priority");
         }
 
-        // 效果核心保留:极低磁盘 IO 对扫盘不放松
-        //   低档位组合无生产者 但纯函数语义仍受守护 崩溃日志恢复可能带旧档位
+        // The effect core is kept: very low disk IO, no easing on disk scans
+        //   Lower tier combinations have no producer, but pure-function semantics are still guarded, crash log recovery may carry an old tier
         private static void AntiCheatStrongTierKeepsEffectParts()
         {
             AcThrottleCheck(SuppressionCore.DesiredIoPriority(SuppressionLevel.Isolated) == 0,
@@ -58,7 +58,7 @@ namespace PaviseApp
                 "Gentle leaves the priority untouched for anti-cheat");
         }
 
-        // 普通后台压制的全部成分不因这次改动而变
+        // All ingredients of ordinary background suppression are unchanged by this change
         private static void BackgroundTiersAreUnchanged()
         {
             AcThrottleCheck(SuppressionCore.DesiredPriority(

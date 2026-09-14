@@ -1,6 +1,6 @@
-// 文件用途 状态全放在临时设置存储里
-// 不碰原生设备接口 注册表和窗口
-// 自动中断编排已下架 这里只回归残账识别 清退记录管理与观测预算
+// File purpose All state lives in a temp settings store
+// No native device interfaces, registry, or windows
+// IRQ autopilot has been retired, only residue detection, cleanup record management, and observation budget are regressed here
 #if PAVISE_SELFTEST
 using System;
 using System.Threading;
@@ -40,7 +40,7 @@ namespace PaviseApp
             Interlocked.Increment(ref irqAutoChecks);
         }
 
-        // 引擎旗标是旧版本落地收据时写下的 计划残条是"幽灵 P" 两种账都必须被认出来
+        // The engine flag was written by old versions when landing a receipt, the plan leftover is a ghost P, both kinds of ledger must be recognized
         private static void IrqAutoResidueDetection()
         {
             AutoCheck(!IrqAutoPilot.HasResidue, "a clean store must have no residue");
@@ -65,7 +65,7 @@ namespace PaviseApp
                 "reset must wipe the switch, the plan and the fuse list");
         }
 
-        // 下架后的开机清退 无残账时只静默退役开关 不碰任何设备
+        // Post-retirement boot cleanup: with no residue only silently retires the switch, touches no device
         private static void IrqAutoHealRetiresSwitchWithoutResidue()
         {
             Settings.Save(IrqAutoPilot.EnabledKey, true);
@@ -77,8 +77,8 @@ namespace PaviseApp
                 "with no residue there is nothing to revert and the fuse list is left for reset");
         }
 
-        // 观测预算仍在服役 证据不足全量观测 饱和后跳满 N-1 局观测第 N 局
-        //   verificationPending 参数保留(恒为假) 语义回归照测
+        // The observation budget is still in service: full observation while evidence is short, once saturated skip N-1 matches and observe the Nth
+        //   The verificationPending parameter stays, always false, its semantics are still regressed
         private static void IrqAutoObservationBudget()
         {
             int window = IrqSessionLedger.VerdictWindow;
@@ -93,7 +93,7 @@ namespace PaviseApp
                     IrqObservationBudget.ObserveEveryN - 1),
                 "the budgeted match must observe");
 
-            // 局末记账 短局不动计数 观测名额不被闪退秒退烧掉
+            // End-of-match accounting: short matches don't move the counter, observation slots aren't burned by instant crashes or quits
             Settings.SaveStr(IrqObservationBudget.SkipCountKey, "0");
             IrqObservationBudget.CommitSession(false, IrqSessionRecord.MinUsableSeconds - 1);
             AutoCheck(Settings.LoadStr(IrqObservationBudget.SkipCountKey, "0") == "0",

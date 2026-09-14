@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 游戏档案存取 保存失败信号与提优状态文案
+// File purpose Game profile access, save-failure signal and boost status text
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -38,8 +38,8 @@ namespace PaviseApp
 
         private bool SaveProfileSnapshotLocked(IList<GameProfile> next, Func<bool> canCommit = null)
         {
-            // 致命落盘失败才熔断 强制清空的 UI 回调是异步的
-            // 回调执行前不得再尝试写入任何游戏库数据
+            // Only a fatal disk write failure trips the breaker, the forced-clear UI callback is async
+            // no further game library writes may be attempted before that callback runs
             if (stopping || ProfileStoreSaveFailed || !EnsureLibraryReadyLocked()) return false;
             if (profileStore.Save(next, delegate
                 { return !stopping && (canCommit == null || canCommit()); })) return true;
@@ -85,7 +85,7 @@ namespace PaviseApp
                     int n = core.ThrottledCountCached();
                     int b = boostStateVerified.Count;
                     string s = Lang.F("st.active", activeGame, n);
-                    // 两段以前是直接拼的 出来是"已压制 28 个进程已提优 1" 中间没有断句
+                    // The two parts used to be concatenated directly, producing 'Suppressed 28 processes Boosted 1' with nothing separating them
                     s += Lang.T("st.sep") + Lang.F("st.boost", b, Lang.T(planSwitch ? "st.hp" : "st.pr"));
                     return s;
                 }

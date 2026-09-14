@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 自绘列表基类 拦截背景擦除并逐行离屏合成 消除滚动与悬浮闪烁
+// File purpose Owner-drawn list base class; intercepts background erase and composites row by row off-screen to kill scroll and hover flicker
 using System;
 using System.Drawing;
 using System.Runtime.InteropServices;
@@ -34,7 +34,7 @@ namespace PaviseApp
         private int viewportGeneration;
         private long wheelDelta;
 
-        // 需要显式开启 只有选择器宿主提供竖向滚动条 其它原生列表保持不变
+        // Must be enabled explicitly; only the picker host provides a vertical scrollbar, other native lists stay unchanged
         internal bool ExternalScrollBar
         {
             get { return externalScrollBar; }
@@ -80,12 +80,12 @@ namespace PaviseApp
                 case WmSetRedraw:
                 case 0x0005: // WM_SIZE
                 case 0x0100: // WM_KEYDOWN
-                case 0x0102: // WM_CHAR: native incremental search can change the viewport
+                case 0x0102: // WM_CHAR native incremental search can change the viewport
                 case 0x0115: // WM_VSCROLL
                 case 0x020A: // WM_MOUSEWHEEL
-                case 0x0200: // WM_MOUSEMOVE: native drag-selection can scroll too
+                case 0x0200: // WM_MOUSEMOVE native drag-selection can scroll too
                 case 0x0201: // WM_LBUTTONDOWN
-                case 0x0113: // WM_TIMER: native drag-selection autoscroll
+                case 0x0113: // WM_TIMER native drag-selection autoscroll
                 case 0x0180: // LB_ADDSTRING
                 case 0x0181: // LB_INSERTSTRING
                 case 0x0182: // LB_DELETESTRING
@@ -108,8 +108,8 @@ namespace PaviseApp
             int generation = viewportGeneration;
             try
             {
-                // 原生 LB_ADDSTRING 跑在托管 Items 集合更新之前
-                // 合并到消息处理完为止 包括 BeginUpdate 和 EndUpdate 批次
+                // Native LB_ADDSTRING runs before the managed Items collection is updated
+                // Coalesce until message processing is done, including BeginUpdate and EndUpdate batches
                 BeginInvoke((MethodInvoker)delegate
                 {
                     if (generation != viewportGeneration) return;
@@ -135,8 +135,8 @@ namespace PaviseApp
             var handled = e as HandledMouseEventArgs;
             if (handled != null && handled.Handled) return;
             if (handled != null) handled.Handled = true;
-            // 原生 LISTBOX 的滚轮处理需要 WS_VSCROLL 用外部滚动条时
-            // 只替换那一部分 保留系统设置
+            // Native LISTBOX wheel handling needs WS_VSCROLL; with an external scrollbar
+            // replace only that part and keep the system settings
             int lines = SystemInformation.MouseWheelScrollLines;
             if (lines == 0) return;
             int delta = SystemInformation.MouseWheelScrollDelta;

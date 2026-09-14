@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 为 LoL 无头模式记录带对局身份的跨进程恢复租约
+// File purpose Record a cross-process recovery lease carrying match identity for LoL headless mode
 
 using System;
 using System.IO;

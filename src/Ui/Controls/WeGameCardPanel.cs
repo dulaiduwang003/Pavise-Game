@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 游戏库里 WeGame 游戏卡片下方的脱壳区 一行 借壳启动开关 状态 脱壳启动与立即净化
+// File purpose Shell-removal strip under WeGame game cards in the game library: one row with the shell launch switch, status, shell-removed launch and purge now
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;

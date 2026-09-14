@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 对局期中断观测的开关同步 布防与封存
+// File purpose Switch sync, arming and sealing of interrupt observation during a match
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -23,9 +23,9 @@ namespace PaviseApp
 
         public event Action<string> SessionEnded;
 
-        // 概览页"最近一局"要的是一行能看完的短摘要 和托盘气泡那条长文不是一回事
-        //   长文带 Pavise 自身占用 显卡受限 显存溢出 中断台账 塞不进一行
-        //   这里只留游戏名 时长 压制进程数 三项 其余仍然只进日志和气泡
+        // The Overview page 'Last session' wants a short one-line summary, not the same thing as the long tray balloon text
+        //   the long text carries Pavise's own usage, GPU-bound, VRAM spill and the interrupt ledger, does not fit on one line
+        //   only three items here: game name, duration, suppressed process count, the rest still goes only to the log and balloon
         internal const string LastSessionKey = "LastSessionBrief";
 
         public static string LastSessionBrief
@@ -35,11 +35,11 @@ namespace PaviseApp
 
         public event Action<string> SessionBriefed;
 
-        // 对局结束回顾式挪核建议 只在本局够长且观测开着时 基于已落盘的多局实测跑一次判定
-        //   有 Worth 驱动就把数量抛给 UI 高亮提示 不自动改注册表 用户走手动流程
+        // Retrospective IRQ core move suggestion at match end, runs one verdict over the persisted multi-match measurements only when this match was long enough and observation was on
+        //   if any driver is Worth, hand the count to the UI for a highlighted hint, no automatic registry change, the user goes through the manual flow
         public event Action<int> IrqSuggested;
 
-        // 原始记录完成和有没有挪核建议是两回事 零建议和失败一样要刷页面
+        // Raw record completion and whether there is a core move suggestion are two different things, zero suggestions and failure both need a page refresh
         public event Action IrqObservationUpdated;
         public string IrqObservationStatusText { get { return irqProbe.StatusText; } }
         public bool IrqObservationStatusWarning { get { return irqProbe.StatusWarning; } }
@@ -58,15 +58,15 @@ namespace PaviseApp
         private void ApplyIrqObservationSettingChange(string game)
         {
             if (System.Threading.Interlocked.Exchange(ref irqSettingChanged, 0) == 0) return;
-            // 用户局中显式动了观测开关 那是明确的本局观测请求 预算让路
+            // The user explicitly toggled the observation switch mid-match, that is an explicit request to observe this match, the budget yields
             irqObserveThisSession = true;
             ArmIrqObservation(game);
             if (IrqSessionProbe.EnabledSetting)
                 lock (sync) repIrqRequested = true;
             if (irqProbe.RequiresPlacementAudit)
             {
-                // 局中显式开启时 让普通落核缓存重新经过严格 proof 初始化
-                // 单纯一次采样失败不会走这里 不会每轮强制重试或改写亲和性
+                // On explicit mid-match enable, make the normal core placement cache go through strict proof initialization again
+                // A mere sampling failure does not come through here, no forced retry or affinity rewrite every round
                 lock (sync)
                 {
                     int pid = activeDetection == null ? 0 : activeDetection.RendererPid;
@@ -106,8 +106,8 @@ namespace PaviseApp
                 ProtectedGameRoster.Contains(rendererName), CpuTopology.MultiGroup, desired, allMask);
         }
 
-        // 本局要不要观测 开局判一次 局内所有重挂点共用这个决定 不许中途改判
-        //   宽限恢复和封存重开走的也是 ArmIrqObservation 跳过局重挂时同样跳过
+        // Whether to observe this match is decided once at match start, every re-arm point in the match shares that decision, no mid-match reversal
+        //   grace recovery and seal-reopen also go through ArmIrqObservation, re-arming in a skipped match skips as well
         private bool irqObserveThisSession = true;
         private bool irqBudgetDecided;
 
@@ -120,6 +120,9 @@ namespace PaviseApp
                 return;
             }
             irqProbe.Arm(game, allMask, NeedsSystemIrqObservation());
+            PolicySnapshot irqPolicy = sessionPolicy;
+            irqProbe.SetContext(irqPolicy == null ? "" : irqPolicy.ProfileId,
+                IrqAdjustmentLedger.ConfigurationOf(irqPolicy));
             NotifyIrqObservationChanged(false);
         }
 
@@ -130,7 +133,7 @@ namespace PaviseApp
                 if (irqProbe.IsCapturing) irqProbe.InvalidateGameMask();
                 return;
             }
-            // 本局按观测预算跳过 逐 tick 的回退重挂也不许把它捡回来
+            // This match was skipped by the observation budget, the per-tick fallback re-arm must not pick it back up
             if (!irqObserveThisSession) return;
             bool fallback = false;
             if (!irqProbe.IsSystemObservation)
@@ -146,13 +149,13 @@ namespace PaviseApp
             if (fallback)
             {
                 DiscardPresentProbe();
-                // 退出专为严格 IRQ 证明设置的临时硬绑核 普通游戏调优保持原样
-                // 还原失败的句柄仍由已有恢复路径跟进 不阻止只读系统观测
+                // Exit the temporary hard core pinning set up just for strict IRQ proof, normal game tuning stays as-is
+                // Handles that failed to restore are still followed up by the existing recovery path, read-only system observation is not blocked
                 RestoreAllIrqProofHardPins(false);
             }
             if (!irqProbe.CanObserveSystemNow) return;
-            // 系统观测不申请 SET 权限 更不为出现测量值而改动游戏亲和性
-            // pid+creation 读回失败时不拿过期身份继续采样
+            // System observation requests no SET rights, let alone changes game affinity just to get a measurement
+            // If the pid+creation read-back fails, do not keep sampling with a stale identity
             IntPtr handle = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION,
                 false, rendererPid);
             if (handle == IntPtr.Zero)
@@ -188,8 +191,8 @@ namespace PaviseApp
 
         private void UpdateIrqPresentProbe()
         {
-            // 系统观测不出挪核建议 无需额外抓 PRESENT 严格观测也必须先
-            // 有 DPC 窗口 换 epoch 时丢弃旧 present 不能跨窗口对齐
+            // System observation yields no core move suggestion, no extra PRESENT capture needed, strict observation must also have
+            // a DPC window first, old present is dropped on epoch change, no alignment across windows
             if (irqProbe.HasSealedPending) return;
             if (!irqProbe.IsPlacementCapturing || !IrqSessionProbe.EnabledSetting)
             {
@@ -209,8 +212,8 @@ namespace PaviseApp
 
         private void SealIrqObservation()
         {
-            // 收口顺序与起采相反 先停 present 再停 DPC 保留 present
-            // 实例供宽限结束后的 CollectLongFrames 取数据 不继续录桌面
+            // Teardown order is the reverse of startup, stop present first then DPC, keep the present
+            // instance so CollectLongFrames can read it after the grace period ends, without recording the desktop further
             PresentProbe p = presentProbe;
             if (p != null) { try { p.RequestStop(); } catch { } }
             irqProbe.Seal();

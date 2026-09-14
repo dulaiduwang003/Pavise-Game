@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 体检行 ROG 风格自绘卡片 标题+状态徽标+证据 说明最多三行超出省略 修复按钮垂直居中且避让证据行
+// File purpose ROG-style self-drawn health check row card, title + status badge + evidence, description max three lines then ellipsis, fix button vertically centered and clear of the evidence row
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;

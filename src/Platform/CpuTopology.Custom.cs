@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 拓扑快照测试钩子 掩码描述与自定义核心选择
+// File purpose Topology snapshot test hooks, mask description and custom core selection
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -50,7 +50,7 @@ namespace PaviseApp
             AllMask = all;
             physicalCoreMasks.Clear();
             if (cores != null) physicalCoreMasks.AddRange(cores);
-            // 物理核有两套来源 注入只改一路会让一致性校验假阳性 台架截图上会挂告警
+            // Physical cores have two sources, injecting only one path gives a false positive on the consistency check and a warning on bench screenshots
             SetParsedCoreMasksForTest(cores);
             AllMaskReconciled = false;
             processorDieDomains = new List<ulong>(dies ?? new ulong[0]);
@@ -61,8 +61,8 @@ namespace PaviseApp
             squeezeCache = null;
         }
 
-        // L3 分组不进 InjectTopologyForTest 的参数表 那个签名有十三处调用点
-        //   注入过的必须由 RestoreTopologyForTest 还原 否则会漏到别的套件
+        // L3 grouping stays out of InjectTopologyForTest's parameter list, that signature has thirteen call sites
+        //   whatever is injected must be restored by RestoreTopologyForTest, otherwise it leaks into other suites
         internal static void InjectCacheDomainsForTest(KeyValuePair<uint, ulong>[] domains)
         {
             cacheDomains = new List<KeyValuePair<uint, ulong>>(
@@ -70,11 +70,11 @@ namespace PaviseApp
         }
 #endif
 
-        // Windows 基本不报 RelationProcessorDie 实测 Win10 19045 的 13900K 与
-        //   Win11 26200 的 Ryzen 9 8940HX 都是 0 条 die 记录
-        //   AMD 的 CCD 体现为每块 CCD 一组 L3 所以 die 不足两块时回落到 L3 分组
-        //   Intel 消费级整颗共享一块 L3 回落后仍是 0 组 不会凭空多出分带和快捷键
-        //   后台落点不走这里 它另有一路直接读 cacheDomains 的 L3 下标 这里只服务界面
+        // Windows basically never reports RelationProcessorDie, measured on Win10 19045 with a 13900K and
+        //   Win11 26200 with a Ryzen 9 8940HX, both give 0 die records
+        //   AMD CCDs show up as one L3 per CCD, so with fewer than two dies fall back to L3 grouping
+        //   Intel consumer parts share one L3 across the whole die, after fallback still 0 groups, no bands or hotkeys appear out of nowhere
+        //   background placement does not go through here, it has its own path reading the L3 index from cacheDomains, this only serves the UI
         public static ulong[] DieMasks()
         {
             ulong[] fromDies = DomainMasks(processorDieDomains);
@@ -84,8 +84,8 @@ namespace PaviseApp
             return DomainMasks(l3);
         }
 
-        // 掩码互不相交 直接按值升序就是按最低位升序 CCD 0 永远是编号最小的那组
-        //   枚举顺序不保证稳定 不排序的话按钮编号可能跨次启动对调
+        // Masks are disjoint, ascending by value is ascending by lowest bit, CCD 0 is always the lowest-numbered group
+        //   enumeration order is not guaranteed stable, without sorting button numbering could swap between launches
         private static ulong[] DomainMasks(List<ulong> domains)
         {
             var list = new List<ulong>();

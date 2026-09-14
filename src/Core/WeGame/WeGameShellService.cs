@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 通用 WeGame 脱壳服务 对局确认后结束壳进程 游戏随之退出即熔断 壳反复重生即本局停手
+// File purpose Generic WeGame shell removal service, ends the shell process once the match is confirmed, game exiting right after trips the breaker, shell respawning repeatedly stands down for this match
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -36,7 +36,7 @@ namespace PaviseApp
         private bool disposed;
         private string weGameRoot;
 
-        // 当前对局 由 GameMode 的会话通知喂进来 不自己扫游戏进程
+        // Current match, fed by GameMode session notifications, does not scan game processes itself
         private string sessionProfileId;
         private string sessionGameRoot;
         private int sessionPid;
@@ -49,7 +49,7 @@ namespace PaviseApp
         private readonly Queue<long> killCycles = new Queue<long>();
         private int timerGeneration;
 
-        // 卡片用的轻量状态 只按需刷新
+        // Lightweight state for the card, refreshed only on demand
         private bool weGameRunning;
         private int shellProcessCount;
         private long shellScanTicks;
@@ -65,7 +65,7 @@ namespace PaviseApp
             timer = new Timer(OnTimer, null, Timeout.Infinite, Timeout.Infinite);
         }
 
-        // ---- 逐游戏设置 ----
+        // ---- Per-game settings ----
 
         public bool IsAutoEnabled(string profileId)
         {
@@ -77,7 +77,7 @@ namespace PaviseApp
             return !string.IsNullOrEmpty(profileId) && Settings.LoadCached(FuseKeyPrefix + profileId, false);
         }
 
-        // 打开开关即视为用户重新授权 熔断一并清掉
+        // Turning the switch on counts as the user re-authorizing, the trip is cleared along with it
         public void SetAutoEnabled(string profileId, bool on)
         {
             if (string.IsNullOrEmpty(profileId)) return;
@@ -94,7 +94,7 @@ namespace PaviseApp
             RaiseChanged();
         }
 
-        // ---- 对局通知 ----
+        // ---- Match notifications ----
 
         public void NotifySession(GameProfile profile, int rendererPid, long rendererCreation, bool active)
         {
@@ -123,7 +123,7 @@ namespace PaviseApp
                     sessionGameRoot = root;
                     sessionPid = rendererPid;
                     sessionCreation = rendererCreation;
-                    // 启动器交接成真实渲染进程也从这一刻重新数稳定期
+                    // Launcher handoff to the real renderer process also restarts the stabilize period from this moment
                     sessionStartTicks = DateTime.UtcNow.Ticks;
                     if (!sameProfile)
                     {
@@ -141,7 +141,7 @@ namespace PaviseApp
             if (changed) RaiseChanged();
         }
 
-        // 收掉当前对局 若游戏是在脱壳后不久退出的 返回要熔断的档案 id
+        // Close the current match, if the game exited shortly after shell removal return the profile id to trip
         private string EndSessionLocked(bool fromNotification)
         {
             string fused = null;
@@ -226,7 +226,7 @@ namespace PaviseApp
             long now = DateTime.UtcNow.Ticks;
             if (!alive)
             {
-                // 对局结束通知还没到 游戏已经不在了 脱壳后不久就没了的算壳被依赖
+                // Match-end notification not yet arrived but the game is already gone, vanishing shortly after shell removal counts as the shell being a dependency
                 string fusedId = null;
                 lock (sync)
                 {
@@ -303,7 +303,7 @@ namespace PaviseApp
             finally { Native.CloseHandle(handle); }
         }
 
-        // ---- 手动动作 ----
+        // ---- Manual actions ----
 
         public bool LaunchWeGame()
         {
@@ -336,7 +336,7 @@ namespace PaviseApp
             }
         }
 
-        // 立即净化 不管有没有对局 连下载器一起收 对局中收的也计入熔断判断
+        // Clean immediately regardless of match state, takes the downloader too, removals during a match also count toward the trip decision
         public bool CleanNow(GameProfile profile)
         {
             string root = null;
@@ -393,7 +393,7 @@ namespace PaviseApp
             lock (sync) lastError = text ?? "";
         }
 
-        // ---- 卡片 ----
+        // ---- Card ----
 
         public void NotifyProcessChanges(ProcessChangeBatch batch)
         {

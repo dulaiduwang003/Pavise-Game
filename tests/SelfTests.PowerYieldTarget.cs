@@ -60,7 +60,7 @@ namespace PaviseApp
                 ref known, ref high, ref low, out changed));
             Eq(false, changed);
 
-            // 另一块卡 0% 只是没数据 不算迁移 基线保留
+            // The other adapter at 0% just has no data, not a migration, baseline is kept
             var idleOther = new RenderAdapter
             {
                 LuidHigh = 1,

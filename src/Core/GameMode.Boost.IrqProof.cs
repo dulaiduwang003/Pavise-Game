@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 游戏进程的中断归属证明 线程放置校验与硬钉还原
+// File purpose Interrupt attribution proof for game processes, thread placement verification and hard-pin restore
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -48,9 +48,9 @@ namespace PaviseApp
                 if (!AttributionPlacementHolds(h, pass, renderer))
                 {
                     irqProbe.RestartCurrentEpoch();
-                    // 线程级归因 proof 比普通落核读回更严格 线程瞬时增删
-                    // 查询被拒或显式 thread CPU Sets 都只应停掉 IRQ epoch
-                    // 普通 placement 仍稳定时不能清缓存并每 500ms 重写设置
+                    // Thread-level attribution proof is stricter than the ordinary placement read-back, threads come and go instantly
+                    // A denied query or explicit thread CPU Sets should only stop the IRQ epoch
+                    // While ordinary placement is still stable we must not clear the cache and rewrite settings every 500ms
                     if (!PlacementMatches(h, pass))
                     {
                         lock (sync)
@@ -83,33 +83,33 @@ namespace PaviseApp
             finally { Native.CloseHandle(h); }
         }
 
-        // 这个读回只验证 Pavise 的软/硬落核是否生效 不作为中断归因证据
-        // 线程显式 CPU Sets 可以覆盖进程默认 CPU Sets 因此后者不能证明每个
-        // 渲染线程都在 desiredMask 内
+        // This read-back only verifies whether Pavise's soft/hard placement took effect, not interrupt attribution evidence
+        // Explicit thread CPU Sets can override process default CPU Sets, so the latter can't prove every
+        // render thread sits within desiredMask
         private bool PlacementMatches(IntPtr h, BoostPass pass)
         {
             bool unreadable;
             return PlacementMatches(h, pass, out unreadable);
         }
 
-        // unreadable 表示这一轮读不出落点 不是读到了不对的值
-        //   反作弊在对局中回收或降权句柄很常见 一次读失败不能等同于落点没生效
+        // unreadable means placement couldn't be read this pass, not that a wrong value was read
+        //   Anti-cheat commonly revokes or downgrades handles mid-match, one failed read isn't the same as placement not taking effect
         private bool PlacementMatches(IntPtr h, BoostPass pass, out bool unreadable)
         {
             ulong observed;
             return PlacementMatches(h, pass, out unreadable, out observed);
         }
 
-        // observed 是这轮从进程句柄读回的硬亲和性 读不出或多组机器为 0
-        //   手动落核被外部改回时要靠它判断游戏还够不够得着独占核
+        // observed is the hard affinity read back from the process handle this pass, 0 when unreadable or on multi-group machines
+        //   When manual placement is changed back externally it decides whether the game can still reach the exclusive cores
         private bool PlacementMatches(IntPtr h, BoostPass pass, out bool unreadable, out ulong observed)
         {
             unreadable = false;
             observed = 0;
             if (h == IntPtr.Zero || pass == null) return false;
-            // 不限核时没有落点要确认 本来就无事可做 不能判成没生效
-            //   判成没生效会让巡检每轮清掉落核缓存 重写一次 CPU Sets 并重复记一条日志
-            //   CanConfirmMask 拒绝全核是对的 那是 IRQ 归因的证据门槛 与落核是否生效两回事
+            // With no core restriction there's no placement to confirm, nothing to do anyway, must not be judged as not applied
+            //   Judging it not applied would make every audit pass clear the placement cache, rewrite CPU Sets once and log a duplicate line
+            //   CanConfirmMask rejecting all cores is correct, that's the evidence threshold for IRQ attribution, separate from whether placement took effect
             if (pass.DesiredMask == allMask) return true;
             if (!IrqSessionProbe.CanConfirmMask(
                     pass.DesiredMask, allMask,
@@ -135,10 +135,10 @@ namespace PaviseApp
                 cpuSetsUnconstrained);
         }
 
-        // 中断归因必须证明 renderer 的每一个当前线程实际可运行集合
-        // 进程默认 CPU Sets 会被线程显式 CPU Sets 覆盖 只有进程硬亲和性
-        // 不能证明 desired 里的每一颗核确实仍属于 renderer 多组机器的 ulong
-        // 无法完整表示全部组 所以宁可不采样 也不做不完整的证明
+        // Interrupt attribution must prove the actual runnable set of every current renderer thread
+        // Process default CPU Sets get overridden by explicit thread CPU Sets, and process hard affinity alone
+        // can't prove every core in desired still belongs to the renderer, a ulong on multi-group machines
+        // can't represent all groups completely, so rather skip sampling than produce an incomplete proof
         private bool AttributionPlacementMatches(IntPtr h, BoostPass pass)
         {
             if (h == IntPtr.Zero || pass == null
@@ -151,9 +151,9 @@ namespace PaviseApp
                 pass.DesiredMask, CpuTopology.MultiGroup);
         }
 
-        // 采集中每轮都做全量线程证明太贵 三百多线程的游戏每 500ms 开几千次句柄
-        //   改成每轮只核对进程级放置 三次系统调用 线程数变了或距上次全量超过三秒才重做全量
-        //   线程数变化也至少隔一秒 线程池抖动不能把全量打回每轮
+        // A full thread proof every pass during capture is too expensive, a game with 300+ threads would open thousands of handles every 500ms
+        //   Changed to only checking process-level placement per pass (three syscalls), the full proof reruns only when the thread count changed or 3s passed since the last one
+        //   Thread count changes are also spaced at least 1s apart, thread pool jitter must not push the full proof back to every pass
         private const long IrqFullProofIntervalTicks = 3 * TimeSpan.TicksPerSecond;
         private const long IrqFullProofFloorTicks = TimeSpan.TicksPerSecond;
         private long irqFullProofTicks, irqFullProofCreation;
@@ -278,8 +278,8 @@ namespace PaviseApp
             }
         }
 
-        // 仅用于进程已确认退出/PID 换代 或其它恢复路径已经精确读回原值后
-        // 活进程的普通失败路径必须保留 handle 继续重试 不能只删 marker
+        // Only for a process confirmed exited/PID generation change, or after another restore path has already read back the original value exactly
+        // The ordinary failure path of a live process must keep the handle and retry, never just delete the marker
         private void ForgetIrqProofHardPin(int pid)
         {
             lock (sync)
@@ -298,15 +298,15 @@ namespace PaviseApp
             {
                 IrqProofHardPin pin;
                 if (!irqProofHardPins.TryGetValue(pid, out pin)) return true;
-                // 中断观测结束只释放观测自己的硬钉；手动方案持续到真实离场/恢复。
+                // Ending interrupt observation only releases the observation's own hard pin, the manual plan lasts until real exit or restore
                 if (pin.Manual && !includeManual) return true;
                 IrqProofHandleState state = IrqProofHandleStateOf(pin);
                 if (state == IrqProofHandleState.Gone
                     || state == IrqProofHandleState.Mismatch)
                 {
                     irqProofHardPins.Remove(pid);
-                    // 进程已退出或绑定身份不再一致时 同 PID 下的旧 proof
-                    // 缓存也必须失效 否则 PID 复用后可能误认旧 desired 已生效
+                    // When the process has exited or the bound identity no longer matches, the old proof under the same PID
+                    // cache must be invalidated too, or after PID reuse the old desired could be mistaken as applied
                     gamePlacement.Remove(pid);
                     gamePlacementStrict.Remove(pid);
                     if (pin.RestoreHandle != IntPtr.Zero)
@@ -320,15 +320,15 @@ namespace PaviseApp
                         != pin.OriginalAffinity)
                     return false;
                 irqProofHardPins.Remove(pid);
-                // 与句柄移除保持在同一个锁域 Stop 超时后仍可能有 worker
-                // 正在收尾 不能让它刚写入的新 placement 缓存被旧恢复动作误删
+                // Keep this in the same lock scope as the handle removal, after Stop times out a worker may still
+                // be winding down, its freshly written placement cache must not be deleted by an old restore action
                 gamePlacement.Remove(pid);
                 gamePlacementStrict.Remove(pid);
                 Native.CloseHandle(pin.RestoreHandle);
             }
-            // hard affinity 已撤回原值后 普通 placement 缓存也已同步清除
-            // 不能继续假称 desired 仍成立 proof-gap 会在下一轮重施加
-            // 已 disarm 则只保留实际仍在进程上的软 CPU Sets
+            // Once hard affinity has been reverted to the original, the ordinary placement cache is also cleared in sync
+            // Can't keep pretending desired still holds, the proof gap gets reapplied next pass
+            // Once disarmed only the soft CPU Sets actually still on the process are kept
             return true;
         }
 

@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 发现游戏平台安装目录 仅供安装扫描与展示 不参与渲染身份或进程豁免判定
+// File purpose Discover game platform install directories, for install scanning and display only, no part in renderer identity or process exemption decisions
 using System;
 using System.Collections.Generic;
 using System.IO;

@@ -1,4 +1,4 @@
-// 文件用途 验证短局的原始展示和严格建议是分开的 不建窗口 不起 ETW 不写系统配置
+// File purpose Verifies short-match raw display and strict recommendations are separate, no windows, no ETW, no system config writes
 using System;
 using System.Collections.Generic;
 
@@ -59,14 +59,14 @@ namespace PaviseApp
             Eq(1200.0, shortRaw[0].DpcPerMinute);
             AssertIrqScoreEqual(new IrqDriverVerdict(), shortRaw[0]);
 
-            // 用现成 Session 工厂的本次 boot 标记 这样能盖到真正的 Evaluate 入口
-            // 只查时间基准 不采硬件 设备和 ETW 数据
+            // Uses the existing Session factory's current-boot marker so the real Evaluate entry is covered
+            // Only checks the time base, no hardware, device, or ETW data collected
             var eligibleMatches = new List<IrqSessionRecord>();
             for (int i = 0; i < 3; i++)
             {
                 IrqSessionRecord rec = IrqDisplayRecord(120);
                 rec.BootStamp = IrqAffinityEngine.BootStamp();
-                rec.TopologyStamp = "";
+                rec.TopologyStamp = CpuTopology.TopologyStamp();
                 eligibleMatches.Add(rec);
             }
             List<IrqDriverVerdict> baseline = IrqVerdict.Evaluate(eligibleMatches, 60, out eligible);
@@ -77,7 +77,7 @@ namespace PaviseApp
             {
                 IrqSessionRecord rec = IrqDisplayRecord(duration);
                 rec.BootStamp = eligibleMatches[0].BootStamp;
-                rec.TopologyStamp = "";
+                rec.TopologyStamp = CpuTopology.TopologyStamp();
                 rec.Drivers[0].DpcMaxNs = 5000000;
                 eligibleMatches.Add(rec);
             }
@@ -132,7 +132,7 @@ namespace PaviseApp
             Eq(120.0, raw[0].DpcPerMinute);
             Eq(0L, raw[0].TotalOver500);
             AssertIrqScoreEqual(new IrqDriverVerdict(), raw[0]);
-            // 展示层的聚合不能反手改掉严格入口给出的结论对象
+            // The display-layer aggregation must not turn around and mutate the verdict objects from the strict entry
             Eq(true, strict[0].Worth);
             Eq(3, strict[0].SessionsSeen);
 
@@ -203,7 +203,7 @@ namespace PaviseApp
                     store.ToUpperInvariant()
                 };
             };
-            // 服务键故意跟模块的基础文件名不一样
+            // The service key deliberately differs from the module's base file name
             var servicePaths = new Dictionary<string, string>
             { { "vendor-service-with-another-name", next } };
             Func<List<string>> services = delegate
@@ -217,7 +217,7 @@ namespace PaviseApp
             Eq("loaded#2", reader("STATUS-TEST.SYS"));
             Eq("loaded#2", reader("status-test.sys"));
             Eq(1, loadedReads); Eq(0, serviceReads); Eq(1, fileReads);
-            // 一次刷新内部是自洽的 下一次刷新不能继承过期的缓存
+            // One refresh is self-consistent internally, the next refresh must not inherit a stale cache
             files[store] = "updated#4";
             Eq("loaded#2", reader("status-test.sys"));
             Eq("updated#4", IrqSessionProbe.CreateDriverVersionReader(
@@ -229,7 +229,7 @@ namespace PaviseApp
             Eq("registered#3", reader("status-test.sys"));
             Eq("registered#3", reader("STATUS-TEST.SYS"));
             Eq(1, serviceReads);
-            // 权威路径失败或者含糊不清 都不能退回去用那份过期副本
+            // When the authoritative path fails or is ambiguous, never fall back to that stale copy
             files.Remove(store);
             Func<string, string> missingReader = IrqSessionProbe.CreateDriverVersionReader(
                 windows, loaded, services, versionOf);
@@ -252,7 +252,7 @@ namespace PaviseApp
             Eq("", IrqSessionProbe.CreateDriverVersionReader(windows, loaded, services,
                 delegate { throw new UnauthorizedAccessException(); })("status-test.sys"));
 
-            // 只有在没有明确映像能指认模块的时候 才保留约定路径
+            // The conventional path is kept only when no explicit image can identify the module
             Eq("stale#1", IrqSessionProbe.CreateDriverVersionReader(
                 windows, null, null, versionOf)("status-test.sys"));
             files[direct] = "other#9";
@@ -293,7 +293,7 @@ namespace PaviseApp
             })
                 Eq("", IrqSessionProbe.NormalizeDriverImagePath(invalid, windows));
 
-            // 用带 ImagePath 的读取器把两个真实消费方都跑一遍 严格版本保持不变
+            // Run both real consumers with an ImagePath-aware reader, the strict version stays unchanged
             IrqSessionRecord record = IrqStatusRecord();
             record.Drivers[0].DriverVersion = "registered#3";
             var device = new IrqDevice { Service = "status-test" };
@@ -311,7 +311,7 @@ namespace PaviseApp
             reader = IrqSessionProbe.CreateDriverVersionReader(windows, null, services, versionOf);
             session = IrqPinSession.FromLatest(new[] { record }, device,
                 "1000000", "status-test-topology", reader);
-            Eq(true, session.Available); Eq(true, session.Driver == null); Eq(0UL, session.SeenMask);
+            Eq(false, session.Available); Eq(true, session.Driver == null); Eq(0UL, session.SeenMask);
             IrqDeviceInventory.VerifyCurrentVersions(verdicts, reader);
             Eq(false, device.Verdict.VersionVerified);
         }
@@ -327,7 +327,7 @@ namespace PaviseApp
                 "1000000", "status-test-topology", out displayed);
             Func<string, string> currentVersion = delegate { return "1.0"; };
             IrqDeviceInventory.AttachVerdicts(devices, verdicts, currentVersion);
-            // 目标从 CPU0 扩到 CPU0 加 2 里面含着旧观测 但还没生效
+            // Target widened from CPU0 to CPU0 plus 2, contains the old observation but not yet effective
             Eq(1UL, device.SeenOnCpus);
             Eq(false, device.Effective); Eq(true, device.AwaitingReboot);
             Eq(false, device.PlacementMismatch); Eq(false, device.Unverified);
@@ -355,7 +355,7 @@ namespace PaviseApp
                 Eq(false, device.PlacementMismatch);
             }
 
-            // 重启之后 上一次开机的记录不能当落核证明用
+            // After a reboot, the previous boot's record can't serve as core placement proof
             device = new IrqDevice
             { Service = "status-test", Policy = 4, Mask = 5, RebootedSincePin = true };
             devices = new List<IrqDevice> { device };
@@ -402,7 +402,7 @@ namespace PaviseApp
             int writes = 0;
             Func<bool> apply = delegate
             {
-                // 生产代码里那个辅助方法要先确认当前标记 才能去写
+                // The production helper must confirm the current marker before it writes
                 Eq(current, persisted);
                 writes++;
                 return true;
@@ -411,8 +411,8 @@ namespace PaviseApp
             Func<string> load = delegate { return persisted; };
             bool attempted;
 
-            // Enable 里已经在目标上那条分支 既保住外部钉核 也就是没有标记的那种 也保住验过的旧写入
-            // 全程不碰标记和设备回调
+            // The already-on-target branch in Enable preserves both external pins (the kind with no marker) and verified old writes
+            // Never touches the marker or device callbacks throughout
             int markerReads = 0, markerWrites = 0;
             foreach (string original in new[] { "", "900000" })
             {
@@ -424,14 +424,14 @@ namespace PaviseApp
                 Eq(0, markerReads); Eq(0, markerWrites); Eq(original, persisted);
             }
 
-            // 保存失败可能留着一个有效的旧标记 这时候不许再写新的亲和性
+            // A failed save may leave a valid old marker, no new affinity write is allowed then
             Eq(false, IrqAffinityEngine.ApplyWithBootStamp(false, current,
                 delegate { return false; }, load, apply, out attempted));
             Eq(false, attempted); Eq(0, writes); Eq("900000", persisted);
             Eq(false, IrqAffinityEngine.ApplyWithBootStamp(false, current,
                 delegate { throw new UnauthorizedAccessException(); }, load, apply, out attempted));
             Eq(false, attempted); Eq(0, writes); Eq("900000", persisted);
-            // 报了成功但回读对不上 一样不算数
+            // Reported success with a mismatched read-back doesn't count either
             Eq(false, IrqAffinityEngine.ApplyWithBootStamp(false, current,
                 delegate { return true; }, load, apply, out attempted));
             Eq(false, attempted); Eq(0, writes); Eq("900000", persisted);
@@ -450,7 +450,7 @@ namespace PaviseApp
             Eq(true, IrqAffinityEngine.RebootedSinceStamp(persisted, "2000000"));
             Eq(false, IrqAffinityEngine.ApplyWithBootStamp(false, current, save, load,
                 delegate { writes++; return false; }, out attempted));
-            // 只有真的尝试过写入 才该走进 Enable 的回滚分支
+            // Only an actual write attempt should enter Enable's rollback branch
             Eq(true, attempted); Eq(2, writes);
 
             var device = new IrqDevice

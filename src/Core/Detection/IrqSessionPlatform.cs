@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 隔离中断观测的系统边界 让生命周期回归不需要启动 ETW 或改动游戏
+// File purpose Isolate the system boundary of interrupt observation so lifecycle regressions need neither ETW nor touching the game
 using System;
 using System.Collections.Generic;
 
@@ -31,8 +31,18 @@ namespace PaviseApp
         void SaveLastResult(string result);
     }
 
-    internal sealed class WindowsIrqSessionPlatform : IIrqSessionPlatform
+    internal interface IIrqDeviceSnapshotPlatform
+    { Dictionary<string,string> DeviceConfigurations(); }
+
+    internal sealed class WindowsIrqSessionPlatform : IIrqSessionPlatform, IIrqDeviceSnapshotPlatform
     {
+        public Dictionary<string,string> DeviceConfigurations()
+        {
+            var result = new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var d in IrqDeviceInventory.Enumerate())
+                if (d.ConfigurationKnown) result[d.InstanceId] = IrqAdjustmentLedger.DeviceConfiguration(d);
+            return result;
+        }
         private const string LastResultKey = "IrqLastCaptureResultV1";
         public bool Enabled { get { return IrqSessionProbe.EnabledSetting; } }
         public bool IsElevated { get { return Native.IsElevated(); } }
@@ -52,7 +62,7 @@ namespace PaviseApp
             private readonly InterruptAttribution probe = new InterruptAttribution();
             public Capture(bool captureTimeline)
             {
-                // 对局观测只用 DPC 证据 台账不存 ISR 订阅它是白付一半的事件量
+                // Match observation uses DPC evidence only and the ledger does not store ISR; subscribing to it wastes half the event volume
                 probe.EnableDpcOnly();
                 if (captureTimeline) probe.EnableDpcTimeline();
             }

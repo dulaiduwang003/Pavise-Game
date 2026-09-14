@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 检查项目版本并返回更新地址 清单在自家对象存储 下载走网盘
+// File purpose Checks the project version and returns the update URL, manifest is hosted with the official website; downloads always open its release log
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -9,16 +9,7 @@ using System.Threading;
 
 namespace PaviseApp
 {
-    // 公告正文来自网络 只当纯文本用 不解析富文本 不执行 不当地址拼
-    internal sealed class NoticeInfo
-    {
-        public string Id;
-        public string Title;
-        public string Body;
-        public string Url;
-    }
-
-    // 捐赠二维码也挂在清单上 id 变了客户端才重新拉图 图片地址只放行信任域名
+    // The donate QR code also hangs off the manifest, the client re-fetches the image only when the id changes, image URLs allow trusted hosts only
     internal sealed class DonateInfo
     {
         public string Id;
@@ -33,7 +24,6 @@ namespace PaviseApp
         public string Url;
         public string Error;
         public string Source;
-        public NoticeInfo Notice;
         public DonateInfo Donate;
     }
 
@@ -43,35 +33,7 @@ namespace PaviseApp
         private const int TotalTimeoutMs = 13000;
         private const int GraceAfterFirstHitMs = 2500;
         private const int MaxBodyBytes = 256 * 1024;
-        private const int MaxNoticeId = 64;
-        private const int MaxNoticeTitle = 60;
-        private const int MaxNoticeBody = 800;
-
-        // 清单域名和下载域名共用这一份白名单 清单里读到的地址不在里面就退回官方网盘
-        private static readonly string[] TrustedHosts =
-        {
-            "aliyuncs.com",
-            "lanzou.com", "lanzoux.com", "lanzoui.com", "lanzouy.com", "lanzn.com",
-            "123pan.com", "123pan.cn", "123684.com",
-            "pan.baidu.com", "alipan.com", "aliyundrive.com", "quark.cn"
-        };
-
-        // 公告里的链接单独一张表 除了下载站再放行文档和表单所在的域
-        //   概览页那三条外链就挂在这个域 公告要引到教程或表单时用得上
-        private static readonly string[] TrustedNoticeHosts = { "feishu.cn", "feishu.net" };
-
-        public static bool IsTrustedNoticeUrl(string url)
-        {
-            if (IsTrustedDownloadUrl(url)) return true;
-            if (string.IsNullOrEmpty(url)) return false;
-            Uri u;
-            if (!Uri.TryCreate(url, UriKind.Absolute, out u)) return false;
-            if (u.Scheme != Uri.UriSchemeHttps) return false;
-            string host = u.Host.ToLowerInvariant();
-            foreach (string ok in TrustedNoticeHosts)
-                if (host == ok || host.EndsWith("." + ok, StringComparison.Ordinal)) return true;
-            return false;
-        }
+        private const int MaxDonateId = 64;
 
         private sealed class Source
         {
@@ -88,16 +50,16 @@ namespace PaviseApp
             });
         }
 
-        // 同一个清单的两条路 直连和传输加速 谁先回来用谁 要再加备用往数组里添就是
-        //   查询串每次都不一样 沿途缓存留住的旧版本号绕不过去 上传时压的 no-cache 是另一头
+        // Two routes to the same manifest, official domain and Cloudflare fallback, whichever returns first wins, add more backups to the array as needed
+        //   The query string differs every time, otherwise a stale version number held by caches along the way cannot be bypassed, the no-cache set at upload is the other end
         private static Source[] BuildSources()
         {
             string bust = "?t=" + DateTime.UtcNow.Ticks.ToString(
                 System.Globalization.CultureInfo.InvariantCulture);
             return new[]
             {
-                new Source { Name = Lang.T("t.updatechecker.1"), Url = App.VersionFeedUrl + bust },
-                new Source { Name = Lang.T("t.updatechecker.2"), Url = App.VersionFeedUrlAccelerate + bust }
+                new Source { Name = Lang.T("site.entry"), Url = App.VersionFeedUrl + bust },
+                new Source { Name = "Cloudflare", Url = App.VersionFeedFallbackUrl + bust }
             };
         }
 
@@ -190,59 +152,33 @@ namespace PaviseApp
             if (string.IsNullOrEmpty(tag)) return null;
             if (!IsCanonicalManifestVersion(tag)) return null;
 
-            // 下载地址写在清单里 网盘换地方只改清单 不必为此发一个新版本
-            string mirror = JsonValue(body, "mirror");
-            string url = JsonValue(body, "url");
-            string download = IsTrustedDownloadUrl(mirror) ? mirror
-                : (IsTrustedDownloadUrl(url) ? url : null);
-            if (download == null) return null;
-
             var r = new UpdateResult();
             r.Ok = true;
             r.Latest = tag;
             r.Source = source;
-            r.Url = download;
-            r.Notice = ParseNotice(body);
+            r.Url = App.ChangelogUrl;
             r.Donate = ParseDonate(body);
             return r;
         }
 
-        // 公告三个字段都在清单顶层 缺 id 或缺标题就当没有公告
-        //   id 只做已读标记 长度和字符都卡死 免得拿它当路径或注册表名使
-        internal static NoticeInfo ParseNotice(string body)
-        {
-            string id = Clean(JsonValue(body, "noticeId"), MaxNoticeId);
-            if (string.IsNullOrEmpty(id) || !IsSaneNoticeId(id)) return null;
-            string title = Clean(JsonValue(body, "noticeTitle"), MaxNoticeTitle);
-            if (string.IsNullOrEmpty(title)) return null;
-
-            var n = new NoticeInfo();
-            n.Id = id;
-            n.Title = title;
-            n.Body = Clean(JsonValue(body, "noticeBody"), MaxNoticeBody);
-            string link = JsonValue(body, "noticeUrl");
-            n.Url = IsTrustedNoticeUrl(link) ? link : null;
-            return n;
-        }
-
-        // 捐赠两个字段都在清单顶层 缺 id 或地址不可信就当没有
+        // Both donate fields are at the manifest top level, missing id or untrusted URL means none
         internal static DonateInfo ParseDonate(string body)
         {
-            string id = Clean(JsonValue(body, "donateId"), MaxNoticeId);
-            if (string.IsNullOrEmpty(id) || !IsSaneNoticeId(id)) return null;
+            string id = Clean(JsonValue(body, "donateId"), MaxDonateId);
+            if (string.IsNullOrEmpty(id) || !IsSaneDonateId(id)) return null;
             string url = JsonValue(body, "donateUrl");
-            if (!IsTrustedDownloadUrl(url)) return null;
+            if (!IsTrustedWebsiteUrl(url)) return null;
             return new DonateInfo { Id = id, Url = url };
         }
 
-        private static bool IsSaneNoticeId(string id)
+        private static bool IsSaneDonateId(string id)
         {
             foreach (char c in id)
                 if (!char.IsLetterOrDigit(c) && c != '-' && c != '_' && c != '.') return false;
             return true;
         }
 
-        // 换行留着 公告要分段 其余控制字符一律换空格 免得跑出光标控制那一套
+        // Normalize the donate cache identifier, every other control char becomes a space to keep cursor control sequences out
         private static string Clean(string s, int max)
         {
             if (string.IsNullOrEmpty(s)) return null;
@@ -304,13 +240,29 @@ namespace PaviseApp
             catch { return null; }
         }
 
-        // 二维码这类小文件走这里 上限由调用方给 超限直接丢 不落盘
+        // Small files like the QR code go through here, the caller gives the cap, over the cap is dropped, never written to disk
         public static byte[] FetchBytes(string url, int maxBytes)
+        {
+            if (!IsTrustedWebsiteUrl(url)) return null;
+            byte[] bytes = FetchImageBytes(url, maxBytes);
+            string fallback = WebsiteFallbackFor(url);
+            return bytes ?? (fallback == null ? null : FetchImageBytes(fallback, maxBytes));
+        }
+
+        internal static string WebsiteFallbackFor(string url)
+        {
+            if (!IsTrustedWebsiteUrl(url)) return null;
+            Uri source = new Uri(url);
+            if (source.Host != new Uri(App.WebsiteUrl).Host) return null;
+            return App.WebsiteFallbackUrl.TrimEnd('/') + source.PathAndQuery;
+        }
+
+        private static byte[] FetchImageBytes(string url, int maxBytes)
         {
             try
             {
                 HttpWebRequest req = NewRequest(url);
-                req.AllowAutoRedirect = true;
+                req.AllowAutoRedirect = false;
                 using (var rsp = (HttpWebResponse)req.GetResponse())
                 using (Stream raw = rsp.GetResponseStream())
                 {
@@ -383,15 +335,15 @@ namespace PaviseApp
             return null;
         }
 
-        public static bool IsTrustedDownloadUrl(string url)
+        public static bool IsTrustedWebsiteUrl(string url)
         {
             if (string.IsNullOrEmpty(url)) return false;
             Uri u;
             if (!Uri.TryCreate(url, UriKind.Absolute, out u)) return false;
             if (u.Scheme != Uri.UriSchemeHttps) return false;
             string host = u.Host.ToLowerInvariant();
-            foreach (string ok in TrustedHosts)
-                if (host == ok || host.EndsWith("." + ok, StringComparison.Ordinal)) return true;
+            if (u.IsDefaultPort && string.IsNullOrEmpty(u.UserInfo)
+                && (host == new Uri(App.WebsiteUrl).Host || host == new Uri(App.WebsiteFallbackUrl).Host)) return true;
             return false;
         }
 

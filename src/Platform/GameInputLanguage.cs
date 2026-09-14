@@ -1,5 +1,5 @@
-// 文件用途 一次有界的 Windows 输入语言请求 Pavise 不安装也不激活任何布局
-// 不模拟按键 不注入 不发私有输入法消息
+// File purpose One bounded Windows input language request, Pavise installs and activates no layout
+// no key simulation, no injection, no private IME messages
 using System;
 using System.Runtime.InteropServices;
 
@@ -54,7 +54,7 @@ namespace PaviseApp
         bool IsAlive { get; }
     }
 
-    // 每个原生操作都可注入 隔离测试从不真的调 user32 和 imm32
+    // Every native operation is injectable, isolated tests never really call user32 and imm32
     internal interface IGameInputLanguageApi
     {
         int CurrentProcessId { get; }
@@ -85,8 +85,8 @@ namespace PaviseApp
 
         private bool IsIndependentEnglish(IntPtr layout)
         {
-            // 看的是 PRIMARYLANGID 不是写死的美式布局 临时的 TSF LANGID
-            // 以及输入法自己的英文转换模式 都证明不了这个条件成立
+            // Looks at PRIMARYLANGID, not a hard-coded US layout, a transient TSF LANGID
+            // and an IME's own English conversion mode prove nothing about this condition
             return layout != IntPtr.Zero && (layout.ToInt64() & 0x3ff) == 0x09 && !api.IsIme(layout);
         }
 
@@ -117,8 +117,8 @@ namespace PaviseApp
                         ? EnglishInputResult.TargetChanged : EnglishInputResult.Unavailable);
                     if (!SameTarget(process, lease, window, mayContinue))
                         return new EnglishInputOutcome(EnglishInputResult.TargetChanged);
-                    // 检查或改动输入之前先消费掉机会 被拒绝 布局缺失
-                    // 或者游戏本来就是英文 都不再给第二次
+                    // Consume the one chance before checking or changing input, refused, layout missing
+                    // or game already English, none gets a second try
                     if (!Allowed(claim)) return new EnglishInputOutcome(EnglishInputResult.Canceled);
                     IntPtr initial = api.GetKeyboardLayout(window.ThreadId);
                     if (initial == IntPtr.Zero) return new EnglishInputOutcome(EnglishInputResult.Unavailable);
@@ -131,8 +131,8 @@ namespace PaviseApp
                     if (english == IntPtr.Zero) return new EnglishInputOutcome(EnglishInputResult.NoEnglishLayout);
                     if (!SameTarget(process, lease, window, mayContinue))
                         return new EnglishInputOutcome(EnglishInputResult.TargetChanged);
-                    // 准备期间用户手动改的优先 包括改成另一种非英文布局
-                    // 事后一律不去纠正
+                    // A manual change by the user during preparation wins, including switching to another non-English layout
+                    // never corrected afterwards
                     IntPtr beforeSend = api.GetKeyboardLayout(window.ThreadId);
                     if (beforeSend != initial)
                         return new EnglishInputOutcome(IsIndependentEnglish(beforeSend)
@@ -143,15 +143,15 @@ namespace PaviseApp
                             && api.GetKeyboardLayout(window.ThreadId) == initial;
                     };
                     int error;
-                    attempted = true; // If a native call throws, delivery is uncertain.
+                    attempted = true; // If a native call throws delivery is uncertain
                     GameInputSendResult sent = api.SendRequest(window, english, RequestTimeoutMs, finalCheck, out error);
                     if (sent == GameInputSendResult.NotIssued)
                         return new EnglishInputOutcome(EnglishInputResult.Canceled);
                     if (sent == GameInputSendResult.Failed)
                         return new EnglishInputOutcome(error == 5 ? EnglishInputResult.Denied
                             : EnglishInputResult.Unavailable, true, error);
-                    // 消息处理完不等于应用接受了 只读一次 而且只针对同一个目标
-                    // 不轮询 也不还原布局
+                    // Message processed does not mean the app accepted it, read once, and only against the same target
+                    // no polling, no restoring the layout
                     if (!SameTarget(process, lease, window, mayContinue))
                         return new EnglishInputOutcome(EnglishInputResult.Unconfirmed, true, 0);
                     bool changed = api.GetKeyboardLayout(window.ThreadId) == english;
@@ -217,7 +217,7 @@ namespace PaviseApp
             IntPtr handle = OpenProcessNative(QueryLimited | Synchronize, false, unchecked((uint)pid));
             if (handle == IntPtr.Zero)
             {
-                knownGone = Marshal.GetLastWin32Error() == 87; // Invalid PID, not access denied.
+                knownGone = Marshal.GetLastWin32Error() == 87; // Invalid PID not access denied
                 return null;
             }
             try
@@ -257,8 +257,8 @@ namespace PaviseApp
             if (mayContinue == null || !mayContinue()) return GameInputSendResult.NotIssued;
             UIntPtr result;
             SetLastError(0);
-            // 系统和应用之间的输入共享方式保持不动 超时不能撤回一条
-            // 已经在处理中的消息 更绝对不能因此重试
+            // Input sharing between the OS and the app stays untouched, a timeout cannot withdraw a message
+            // already in processing, and must absolutely not trigger a retry
             IntPtr sent = SendMessageTimeout(window.Focus, WmInputLanguageChangeRequest,
                 UIntPtr.Zero, layout, SendFlags, timeoutMs, out result);
             if (sent != IntPtr.Zero) return GameInputSendResult.Processed;
@@ -287,8 +287,8 @@ namespace PaviseApp
                     uint wait = WaitForSingleObject(handle, 0);
                     if (wait == 258) return true;
                     if (wait == 0) return false;
-                    // 进程读不出来 不等于旧的运行实例已经退出
-                    // 探测结果不确定时 保留它那份一次性历史
+                    // Failing to read the process does not mean the old running instance has exited
+                    // when the probe is inconclusive keep its one-shot history
                     throw new InvalidOperationException("Process lifetime could not be verified");
                 }
             }

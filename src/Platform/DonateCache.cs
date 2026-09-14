@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 捐赠二维码的本地缓存 清单里的 donateId 没变就不碰 OSS 变了才重新拉一次
+// File purpose Local cache of the donate QR code, untouched while the manifest's donateId is unchanged, refetched from the official website only when it changes
 using System;
 using System.Drawing;
 using System.IO;
@@ -11,14 +11,14 @@ namespace PaviseApp
         private const string IdKey = "DonateImageId";
         public const int MaxImageBytes = 2 * 1024 * 1024;
 
-        // 最近一次清单带回来的 启动检查和点公告都会更新 只是记着 不主动下载
+        // Latest one brought back by the manifest, updated by the startup check and by opening Donate, only remembered, never downloaded proactively
         public static volatile DonateInfo Latest;
 
-        // 清单还没带这两个字段时用这份 客户端不必等清单重发就能拉到码 清单一旦给了 id 以清单为准
+        // Used while the manifest lacks these two fields, the client can fetch the code without waiting for a manifest re-issue, once the manifest supplies an id the manifest wins
         public static readonly DonateInfo Default = new DonateInfo
         {
             Id = "20260911-wechat",
-            Url = "https://paivse.oss-cn-shanghai.aliyuncs.com/version/donate.png"
+            Url = App.WebsiteUrl + "assets/wechat.png"
         };
 
         public static DonateInfo Effective { get { return Latest ?? Default; } }
@@ -35,7 +35,7 @@ namespace PaviseApp
             }
         }
 
-        // 清单没给 id 就无从判断 沿用缓存 有 id 而本地没图或 id 对不上才拉
+        // Without an id from the manifest there is nothing to judge, keep the cache, fetch only when an id exists and the local image is missing or the id mismatches
         public static bool NeedsRefresh(string cachedId, string manifestId, bool hasImage)
         {
             if (string.IsNullOrEmpty(manifestId)) return false;
@@ -48,7 +48,7 @@ namespace PaviseApp
             catch { return null; }
         }
 
-        // 先解成图再收 网上拉回来的不是图片就不落盘 解出来的位图复制一份 流关了照样能画
+        // Decode into an image before accepting, do not persist a non-image pulled from the network, copy the decoded bitmap so it still paints after the stream closes
         public static Bitmap Decode(byte[] bytes)
         {
             if (bytes == null || bytes.Length == 0 || bytes.Length > MaxImageBytes) return null;

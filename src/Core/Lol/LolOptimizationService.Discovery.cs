@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 英雄联盟优化服务的安装目录发现调度
+// File purpose Install directory discovery scheduling for the League of Legends optimization service
 
 using System;
 using System.Threading;
@@ -105,7 +105,7 @@ namespace PaviseApp
                 string discoveredWeGame;
                 bool armedNow;
                 lock (stateLock) armedNow = discoveryRequested;
-                // 安装目录已知时 手动指令只做轻量刷新 不再全盘扫 没装 WeGame 的机器每次点净化都扫盘是刑罚
+                // When the install directory is known, a manual command only does a light refresh, no full disk scan; scanning the disk on every Clean click on a machine without WeGame is punishment
                 bool deep = !cacheValid || armedNow;
                 bool announce = deep;
                 Func<bool> cancelled = null;

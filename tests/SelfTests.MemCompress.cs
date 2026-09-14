@@ -1,5 +1,5 @@
-// 文件用途 隔离的假 MMAgent 检查 不跑 PowerShell 不改 MMAgent 不写系统
-// 内存压缩回归 注入状态与命令替身 验证幂等 收据 后验和失败恢复 不动系统
+// File purpose Isolated fake MMAgent checks, no PowerShell, no MMAgent changes, no system writes
+// Memory compression regression: injected state and command stand-ins, verifies idempotence, receipts, post-check and failure recovery, never touches the system
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -187,7 +187,7 @@ namespace PaviseApp
         private static void MemCompressPartialFailureKeepsRecoveryLedger()
         {
             var fake = new MemCompressFake();
-            // 分别是 Enable 前状态 关闭失败后状态 还原失败后状态
+            // In order: state before Enable, state after disable failure, state after restore failure
             fake.State(true, true, true);
             fake.State(true, false, true);
             fake.State(true, false, true);

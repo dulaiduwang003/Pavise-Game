@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 解析逐游戏覆盖与全局默认 生成对局冻结快照
+// File purpose Resolve per-game overrides against global defaults and produce the frozen match snapshot
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -101,8 +101,8 @@ namespace PaviseApp
             if (CoreScheduling.IsRetiredKey(key)) return key == CoreScheduling.HeavyMaskKey ? "" : "0";
             if (CoreScheduling.IsPlacementKey(key) && CoreScheduling.HasGlobalRecord())
                 return CoreScheduling.Value(CoreScheduling.LoadGlobal(), key);
-            // 这个选项没有全局设置 老的 GmFamilyExempt 不会迁移成
-            // 对现有库里每个游戏都不安全的开启状态
+            // This option has no global setting; the old GmFamilyExempt does not migrate into
+            // an on state that is unsafe for every game in the existing library
             if (key == PolicyCatalog.KeySuppressFamily) return "0";
             PolicyItem item = PolicyCatalog.ItemOf(key);
             if (item == null) return null;
@@ -131,7 +131,7 @@ namespace PaviseApp
 
         internal PolicySnapshot(GameProfile profile)
         {
-            // 核心方案按对局冻结，避免一次扫后台读到两份正在切换的配置。
+            // The core plan is frozen per match, so one background sweep never reads two configs mid-switch
             bool hasGlobalRecord;
             CoreSchedulingPlan global = CoreScheduling.LoadGlobal(out hasGlobalRecord);
             CoreSchedulingPlan corePlan = CoreScheduling.ForProfile(profile, global);
@@ -160,7 +160,7 @@ namespace PaviseApp
                 ProfileId = profile.Id;
                 ProfileName = profile.Name;
             }
-            // 掌机档不做核心独占 核少 收走几颗给游戏独享 其余全挤在剩下的核上
+            // Handheld tier does no exclusive cores: few cores, taking a few for the game alone crams everything else onto the rest
             if (Preset == PerformancePreset.Handheld && corePlan != null && corePlan.IsolationOn)
             {
                 corePlan = corePlan.Clone();
@@ -183,7 +183,7 @@ namespace PaviseApp
         {
             if (key == null) return null;
             if (CoreScheduling.IsRetiredKey(key)) return key == CoreScheduling.HeavyMaskKey ? "" : "0";
-            // 掌机档不提供的项 不管全局还是逐游戏开着 快照里一律是关
+            // Items the Handheld tier does not offer are off in the snapshot regardless of global or per-game being on
             if (PolicyCatalog.IsHandheldBlocked(key) && Preset == PerformancePreset.Handheld) return "0";
             string value;
             if (values.TryGetValue(key, out value)) return value;

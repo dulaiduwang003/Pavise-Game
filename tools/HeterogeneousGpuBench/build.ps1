@@ -97,7 +97,7 @@ function Find-SdkLibrary {
         Select-Object -First 1
 }
 
-# 显式给的编译器路径优先于自动发现 不下载也不安装任何东西
+# An explicitly given compiler path wins over auto-discovery, nothing is downloaded or installed
 $vcvars = $null
 $zig = $null
 if ($ZigPath) {
@@ -148,9 +148,9 @@ try {
             Add-TargetManifest -Target $target -SourceHash $sourceHash
         }
     } else {
-        # Zig 自带 MinGW 头文件和 Windows 导入库定义 所以单独装 Windows SDK 不是必须的
-        # 它捆的那份编译器导入用的是带版本号的 d3dcompiler_47
-        # 不是 SDK 里那个 d3dcompiler.lib
+        # Zig ships MinGW headers and Windows import library definitions, so a separate Windows SDK is not required
+        # Its bundled compiler import uses the versioned d3dcompiler_47
+        # not the d3dcompiler.lib from the SDK
         $sdkLibrary = Find-SdkLibrary
         $sdkArguments = @()
         $shaderCompilerLibrary = "d3dcompiler_47"

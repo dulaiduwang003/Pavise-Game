@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 提供设置页卡片控件
+// File purpose Settings page card control
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -45,7 +45,7 @@ namespace PaviseApp
         }
 
         public string Title { get { return title; } set { string v = value ?? ""; if (title != v) { title = v; Invalidate(); } } }
-        // 按档位整张藏起来的卡片 与切到别的标签页而暂时不可见不是一回事 搜索只跳过前者
+        // A card hidden whole by tier is not the same as one temporarily invisible because another tab is active; search skips only the former
         public bool Suppressed;
 
         private string lockText = "";

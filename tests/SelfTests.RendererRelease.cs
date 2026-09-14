@@ -1,5 +1,5 @@
-// 文件用途 渲染交接的恢复测试 只有内存条目和假的还原结果
-// 这些测试不打开 不压制 不还原 也不结束任何进程
+// File purpose Renderer handoff restore tests, only in-memory entries and fake restore results
+// These tests open, suppress, restore and terminate no process
 #if PAVISE_SELFTEST
 using System;
 using System.Collections;
@@ -10,8 +10,8 @@ namespace PaviseApp
 {
     internal static partial class SelfTests
     {
-        // 单跑某一组的 runner 可以直接调这个方法
-        // 不用进完整自测 不用走生产 Main 也不碰任何改系统的流程
+        // A runner that runs just one group can call this method directly
+        // No need to enter the full self-test, go through the production Main, or touch any system-modifying flow
         internal static int RunRendererReleaseRegressionTests()
         {
             string previousLog = Logger.LogPath;
@@ -102,8 +102,8 @@ namespace PaviseApp
             RendererReleaseEq(BackgroundReleaseState.Gone, fake.Release());
             RendererReleaseEq(null, fake.Peek());
             RendererReleaseEq(1, fake.RestoreCalls);
-            // 核心里没这个条目 不等于断言了它活着
-            // 交接的调用方在 Ready 之后照样要验 PID 和创建时间
+            // An entry absent from the core does not mean it asserted the process is alive
+            // Handoff callers must still verify PID and creation time after Ready
             RendererReleaseEq(BackgroundReleaseState.Ready, fake.Release());
         }
 
@@ -138,8 +138,8 @@ namespace PaviseApp
             var fake = new RendererReleaseFixture();
             object entry = fake.Seed(SuppressReason.None);
             RendererReleaseSet(entry, "Applied", false);
-            // 这模拟的是从台账恢复出来的条目 或者只还原了一半的进程
-            // 没有原因位 加上 Applied=false 并不能把这笔债抹掉
+            // This simulates an entry recovered from the ledger, or a process only half restored
+            // No reason bit plus Applied=false does not wipe out the debt
             RendererReleaseEq(BackgroundReleaseState.Pending, fake.Release());
             RendererReleaseEq(0, fake.RestoreCalls);
             RendererReleaseEq(entry, fake.Peek());
@@ -163,8 +163,8 @@ namespace PaviseApp
         {
             var fake = new RendererReleaseFixture();
             object entry = fake.Seed(SuppressReason.AntiCheat | SuppressReason.Background);
-            // 受保护的占位从来没拿到过可写的调度状态
-            // 所以这个测试不可能漏到任何原生调整上去
+            // A protected placeholder never obtained writable scheduling state
+            // so this test cannot leak into any native adjustment
             RendererReleaseSet(entry, "OrigPri", uint.MaxValue);
             RendererReleaseSet(entry, "Applied", false);
             RendererReleaseEq(BackgroundReleaseState.OtherReasonActive, fake.Release());
@@ -224,8 +224,8 @@ namespace PaviseApp
             var fake = new RendererReleaseFixture();
             fake.Seed(SuppressReason.Background);
             fake.OnRestore = delegate { fake.Seed(SuppressReason.Background); };
-            // 就算某个调用方违反租约 在还原过程中把同一个身份换掉了
-            // 也不能给它一个假的 Ready
+            // Even if some caller violates the lease and swaps the same identity mid-restore
+            // it must not be handed a fake Ready
             RendererReleaseEq(BackgroundReleaseState.Pending, fake.Release());
             RendererReleaseEq(true, fake.Core.HasReason(RendererReleaseFixture.Pid, SuppressReason.Background));
             RendererReleaseEq(1, fake.RestoreCalls);
@@ -307,8 +307,8 @@ namespace PaviseApp
             }
             var withoutSeam = new RendererReleaseFixture();
             withoutSeam.Core.RendererDiscardIdentityForTest = null;
-            // 内存核心上缺了接缝就得失败关闭
-            // 不能去打开一个碰巧跟合成数字对上的宿主 PID
+            // A missing seam on the in-memory core must fail closed
+            // must not open a host PID that happens to match the synthetic number
             RendererReleaseEq(false, withoutSeam.Discard());
             RendererReleaseEq(0, withoutSeam.IdentityCalls);
         }
@@ -522,8 +522,8 @@ namespace PaviseApp
                 {
                     current = captured;
                     RendererReleaseSet(current, "Reasons", SuppressReason.Background);
-                    // 这道保护要是退化了 Protected 仍然只是个假结果
-                    // 在测试里进不了原生的 reThrottle 路径
+                    // If this guard regresses, Protected is still just a fake result
+                    // the native reThrottle path is unreachable in tests
                     fake.Result = SuppressionCore.RestoreResult.Protected;
                 }
                 MethodInfo restore = typeof(SuppressionCore).GetMethod("TryRestore",
@@ -563,9 +563,9 @@ namespace PaviseApp
         private static void TestRendererRestoreRetryRechecksBackoff()
         {
             var fake = new RendererReleaseFixture { Result = SuppressionCore.RestoreResult.Protected };
-            // 线程 1 在该重试的时候抓住了这个 Entry 然后停住了
+            // Thread 1 grabbed this Entry when a retry was due, then stalled
             object captured = fake.Seed(SuppressReason.None);
-            // 线程 2 把整次尝试做完 发布了新的退避
+            // Thread 2 completed the whole attempt and published a new backoff
             fake.Core.RetryPending();
             RendererReleaseEq(1, fake.RestoreCalls);
             long retryAt = RendererReleaseField<long>(captured, "NextRetryTicks");
@@ -574,7 +574,7 @@ namespace PaviseApp
             MethodInfo restore = typeof(SuppressionCore).GetMethod("TryRestore",
                 BindingFlags.Instance | BindingFlags.NonPublic, null,
                 new[] { typeof(int), captured.GetType(), typeof(bool) }, null);
-            // 迟到的快照进的是同一把单飞准入锁
+            // The late snapshot enters the same single-flight admission lock
             RendererReleaseEq(false, (bool)restore.Invoke(fake.Core,
                 new object[] { RendererReleaseFixture.Pid, captured, true }));
             RendererReleaseEq(1, fake.RestoreCalls);
@@ -587,7 +587,7 @@ namespace PaviseApp
             RendererReleaseEq(2, fake.RestoreCalls);
             RendererReleaseEq(BackgroundReleaseState.Ready, fake.Release());
 
-            // 最开始那次显式的 Background 释放不算周期重试
+            // The initial explicit Background release does not count as a periodic retry
             fake = new RendererReleaseFixture();
             object initial = fake.Seed(SuppressReason.Background);
             RendererReleaseSet(initial, "NextRetryTicks", DateTime.MaxValue.Ticks);

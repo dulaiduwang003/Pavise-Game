@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 校正第三方优化工具在键鼠驱动上留下的队列长度改动 回到系统默认 可逆
+// File purpose Correct queue length changes left on keyboard/mouse drivers by third-party tuning tools, back to system default; reversible
 using System;
 using System.Collections.Generic;
 using Microsoft.Win32;

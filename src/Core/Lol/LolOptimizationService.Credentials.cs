@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 英雄联盟优化服务的凭据解析与重试调度
+// File purpose Credential parsing and retry scheduling for the League of Legends optimization service
 
 using System;
 

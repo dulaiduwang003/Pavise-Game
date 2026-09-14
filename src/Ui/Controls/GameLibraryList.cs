@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 游戏库卡片列表 独立后台策略 渲染观察标签及可访问开关
+// File purpose Game library card list, standalone background policy, renderer observation tag and accessible toggles
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -26,7 +26,7 @@ namespace PaviseApp
         public GameLibraryEventArgs(GameLibraryItem item) { Item = item; }
     }
 
-    // 卡片拥有真正的 CheckBox 保留键盘与辅助功能语义 内容未变时不重建控件
+    // Cards own a real CheckBox to keep keyboard and accessibility semantics, controls are not rebuilt when content is unchanged
     internal sealed class GameLibraryList : Panel
     {
         private readonly List<GameLibraryItem> items = new List<GameLibraryItem>();

@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 会话期间应用 AMD 全局 3D 设置 快照先行 回读核验 退出恢复 崩溃续还原
+// File purpose Applies AMD global 3D settings for the session: snapshot first, read-back verify, restore on exit, resume restore after a crash
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -8,7 +8,7 @@ namespace PaviseApp
 {
     internal static class AdlxTweaks
     {
-        // 会话日记键由恢复完成判定共同引用 改名必须两边一起
+        // The session journal key is shared with the recovery-complete check; rename both together
         internal const string SnapKey = "AmdSnap";
         public const int RisSharpness = 80;
         private static readonly object lk = new object();
@@ -20,10 +20,10 @@ namespace PaviseApp
 
         private static bool renderSkipLogged;
 
-        // ADLX 的这些设置是全局的 不分游戏 所以要先确认这台机器上
-        //   渲染确实走 A 卡 有 A 卡独显就开 只有 A 卡核显且没有别家独显也开
-        //   A 卡核显配 N 卡独显这种 改了也是白改还可能干扰别人 直接跳过
-        //   查不出适配器时按开放处理 宁可让后面的回读核验去挡
+        // These ADLX settings are global, not per game, so first confirm that on this machine
+        //   rendering really goes through the AMD GPU; open with an AMD dGPU, or with only an AMD iGPU and no other vendor's dGPU
+        //   AMD iGPU plus NVIDIA dGPU: changes are wasted and may interfere with the other card, skip outright
+        //   If adapters can't be enumerated treat as open; better to let the later read-back verify catch it
         private static bool AmdRenderGateOpen()
         {
             GpuAdapter[] all = GpuInventory.Adapters();
@@ -54,8 +54,8 @@ namespace PaviseApp
                 snapshot.Count == 0 ? "" : NvDrsTweaks.SerializeSnapshot(snapshot));
         }
 
-        // 快照的键优先用 PnP 字符串 换插槽换驱动都还认得出是同一块卡
-        //   读不到就退回下标 同时把 identityMissing 立起来让调用方降级处理
+        // Snapshot keys prefer the PnP string, so the same card is still recognized after a slot or driver change
+        //   Fall back to the index when unreadable and raise identityMissing so the caller degrades
         private static string GpuKey(IntPtr gpu, int index, ref bool identityMissing)
         {
             string pnp = AdlxApi.GpuPnpString(gpu);
@@ -63,9 +63,9 @@ namespace PaviseApp
             return "id" + pnp.Replace('=', '_').Replace(';', '_');
         }
 
-        // 原值只在第一次落快照 之后一律不覆盖 覆盖等于把已改过的值当原值
-        //   legacyKey 那段是把老的下标键迁到 PnP 键 迁完删掉老的
-        //   快照存不下就返回 false 调用方必须放弃这次写入
+        // Originals are snapshotted only the first time, never overwritten; overwriting would treat an already-changed value as original
+        //   The legacyKey part migrates old index keys to PnP keys, deleting the old one afterwards
+        //   Returns false when the snapshot can't be saved; the caller must abandon this write
         private static bool EnsureSnapshot(Dictionary<string, string> snapshot,
             string key, string legacyKey, string value, string label)
         {
@@ -178,9 +178,9 @@ namespace PaviseApp
                 });
         }
 
-        // Chill 和 Anti-Lag 在驱动里互斥 开 Anti-Lag 之前先把 Chill 的原值记下
-        //   只记用户本来就开着的 已经有快照的不动
-        //   这一步失败不阻断 Anti-Lag 但会少一份还原依据
+        // Chill and Anti-Lag are mutually exclusive in the driver; record Chill's original before enabling Anti-Lag
+        //   Record only what the user already had on; existing snapshots are untouched
+        //   Failure here doesn't block Anti-Lag but loses one restore basis
         private static void SnapshotChillConflict()
         {
             if (!Available) return;
@@ -314,9 +314,9 @@ namespace PaviseApp
                 }
                 if (enabled) return true;
                 var snapshot = LoadSnap();
-                // 用户自己就开着 RSR 那不是我们改的 上面直接返回 不记快照也不动它
-                //   退局时 RestoreRsr 找不到 sys.rsr 会放过 不会去关用户开的
-                //   RSR 是全局开关不分卡 所以键不带 GPU 身份前缀
+                // If the user already has RSR on, that's not our change; the early return above means no snapshot and no touching it
+                //   At match end RestoreRsr finds no sys.rsr and leaves it, never turning off what the user enabled
+                //   RSR is a global switch not per card, so the key carries no GPU identity prefix
                 if (!snapshot.ContainsKey("sys.rsr"))
                 {
                     snapshot["sys.rsr"] = "0";
@@ -625,9 +625,9 @@ namespace PaviseApp
 
         public static bool HasResidue() { return Settings.LoadStr(SnapKey, "").Length > 0; }
 
-        // ---- 最低核心频率 A 卡对等 NVML 锁频 只抬 min 不碰电压和 max ----
-        //   目标取当前最高频率 夹进最低频率的合法区间 轻载不再降频 功耗墙温度墙照常压
-        //   这是驱动里的全局持久值 退局必须按快照写回 崩溃后启动也要写回
+        // ---- Minimum core clock, AMD counterpart of the NVML clock lock; raises min only, no voltage or max ----
+        //   Target is the current max clock clamped into the legal min range; no down-clocking under light load, power and thermal limits still apply
+        //   This is a global persistent driver value; must be written back from the snapshot at match end and on startup after a crash
         public static bool GfxMinSupported()
         {
             if (!Available) return false;
@@ -710,7 +710,7 @@ namespace PaviseApp
             return HasPrefix(LoadSnap(), ".gfxmin");
         }
 
-        // ---- Smart Access Memory 全局开关 取第一张报支持的卡 ----
+        // ---- Smart Access Memory global switch, taken from the first card reporting support ----
         public static bool SamGet(out bool supported, out bool enabled)
         {
             supported = false; enabled = false;

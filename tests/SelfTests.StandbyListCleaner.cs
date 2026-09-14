@@ -1,5 +1,5 @@
-// 文件用途 待机列表回归 采样 清理和策略改动都是注入的
-// 这套测试不启动应用 不碰真实内存 也不建窗口
+// File purpose Standby list regression, sampling, cleanup and policy changes are all injected
+// This suite does not start the app, touch real memory, or create windows
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -407,8 +407,8 @@ namespace PaviseApp
                 "new free/list thresholds were not applied together");
         }
 
-        // 冷却是调度层的事 引擎保持纯策略 上面那些测试已经把这点钉死了
-        //   Runner 在成功清理之后的 max 60s 和 8 倍间隔那段时间里整轮跳过 失败的清理不进冷却
+        // Cooldown belongs to the scheduler layer, the engine stays pure policy, the tests above already nail that down
+        //   Runner skips the whole round for max 60s and 8x the interval after a successful cleanup, failed cleanups do not enter cooldown
         private static void StandbyPurgeCooldownLimitsRate(string root)
         {
             var control = new StandbyMemoryFake();
@@ -488,7 +488,10 @@ namespace PaviseApp
                     release.Set();
                     StandbyCheck(second.WaitOne(3000), "next sample did not resume after the slow query");
                     double delay = (next - completed) * 1000.0 / Stopwatch.Frequency;
-                    StandbyCheck(completed > 0 && delay >= 250.0,
+                    // WaitOne uses the OS timer resolution, not Stopwatch's precision.
+                    // Allow one timer tick while still rejecting an immediate catch-up poll.
+                    const double timerToleranceMs = 16.0;
+                    StandbyCheck(completed > 0 && delay >= 250.0 - timerToleranceMs,
                         "worker caught up missed ticks or restarted its cycle on identical Update; delay=" + delay);
                     StandbyCheck(control.Purges == 0, "below-threshold worker test issued a purge");
                 }
@@ -649,7 +652,7 @@ namespace PaviseApp
                 }
                 finally { StandbyFinish(runner); }
             }
-            // 清理是做了 但权限回滚失败了 再往下做就不安全
+            // Cleanup was done but the privilege rollback failed, going any further is unsafe
             var unsafeControl = new StandbyMemoryFake(); unsafeControl.NativeStatus = unchecked((int)0xC0000001);
             using (var unsafeFault = new ManualResetEvent(false))
             {
@@ -958,8 +961,8 @@ namespace PaviseApp
                         if (loaded != null) StandbyFinish((StandbyCleanerRunner)FamilyPolicyGetField(loaded, "standbyCleaner"));
                     }
                 }
-                // 设置不可用的时候 构造函数可能没能把保险状态存下来
-                // 修复得先把关闭和熔断写进去 再去换那条坏的参数记录
+                // When settings are unavailable the constructor may have failed to persist the safety state
+                // The fix must write the off and tripped state first, then replace the bad parameter record
                 Settings.Save(PolicyCatalog.KeyStandbyCleaner, true);
                 Settings.Save("EnvFuse_standby", false);
                 Settings.SaveStr(GameMode.StandbyCleanerOptionsKey, "repair-after-failed-startup-write");
@@ -1188,7 +1191,7 @@ namespace PaviseApp
 
         private static PanelForm StandbyUi(StandbyPolicyFixture fixture)
         {
-            // 不构造 Form 不建句柄 不进模态循环 不截图 不发桌面输入
+            // No Form construction, no handle, no modal loop, no screenshots, no desktop input
             var form = (PanelForm)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(PanelForm));
             GC.SuppressFinalize(form);
             ResetFlowCpuIdleUiSet(form, "gameMode", fixture.Mode);
@@ -1242,7 +1245,7 @@ namespace PaviseApp
                     && prompts == 6 && !f.Family.Current("first").Overrides.ContainsKey(PolicyCatalog.KeyStandbyCleaner),
                     "accepted inherited opt-in did not clear the override");
 
-                // 批量重置写任何东西之前 那些带保护的继承选项都得先确认过
+                // Before bulk reset writes anything, the protected inherited options must be confirmed first
                 f.Mode.SetProfileOverride("first", PolicyCatalog.KeyStandbyCleaner, "0");
                 f.Mode.DisableCpuIdle = true;
                 f.Mode.SetProfileOverride("first", PolicyCatalog.KeyDisableCpuIdle, "0");
@@ -1296,7 +1299,7 @@ namespace PaviseApp
                 StandbyCheck(!(bool)ResetFlowCpuIdleUiCall(form, "EditStandbyCleanerOptions") && edits == 1
                     && Settings.LoadStr(GameMode.StandbyCleanerOptionsKey, "") == original && !f.Mode.StandbyCleanerEnabled,
                     "canceled parameter editor changed settings or enabled cleanup");
-                // 默认值按钮只填托管的文本框 不需要构造 Form 也不需要句柄
+                // The defaults button only fills managed text boxes, needs no Form construction and no handle
                 var editor = (StandbyCleanerOptionsDialog)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(
                     typeof(StandbyCleanerOptionsDialog));
                 GC.SuppressFinalize(editor);

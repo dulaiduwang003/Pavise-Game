@@ -73,7 +73,7 @@ def hidden(args, timeout=120):
     record = {"pid": p.pid, "program": Path(str(args[0])).name, "startUtc": utc(), "createNoWindow": True}
     LAUNCHES.append(record)
     try:
-        # communicate drains redirected pipes while checking for unexpected windows.
+        # communicate drains redirected pipes while checking for unexpected windows
         while True:
             check_windows()
             if WINDOW_EVENTS:
@@ -175,7 +175,7 @@ def schedule(plan, pilot):
               for bg in ["compute", "stream"] for placement in ["unrestricted", "smt_overlap", "p_separate", "e_pack", "e_spread"]]
     orders = []
     if pilot:
-        # Cover every placement and all workloads/backgrounds, without estimating gains.
+        # Cover every placement and all workloads/backgrounds without estimating gains
         orders = [[("compute", "none", "alone"), ("cache8", "compute", "unrestricted"),
                    ("dram128", "stream", "smt_overlap"), ("compute", "stream", "p_separate"),
                    ("cache8", "stream", "e_pack"), ("dram128", "compute", "e_spread")]]

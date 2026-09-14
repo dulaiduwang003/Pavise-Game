@@ -1,4 +1,4 @@
-// 文件用途 离屏 D3D9 负载 只用来验证 Thermal Exchange 这个实验
+// File purpose Off-screen D3D9 load, used only to validate the Thermal Exchange experiment
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -106,7 +106,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
                                   -32000, -32000, width, height, nullptr, nullptr, instance, nullptr);
     if (!window) return 3;
     ShowWindow(window, SW_SHOWNOACTIVATE);
-    ShowWindow(window, SW_SHOWNOACTIVATE); // Override a hidden STARTUPINFO while keeping the window off-screen.
+    ShowWindow(window, SW_SHOWNOACTIVATE); // Override a hidden STARTUPINFO while keeping the window off-screen
     SetWindowPos(window, HWND_BOTTOM, -32000, -32000, width, height,
                  SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOSENDCHANGING);
 

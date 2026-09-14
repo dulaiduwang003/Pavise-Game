@@ -1,22 +1,22 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 逐游戏禁用 Windows 全屏优化 向 HKCU 兼容层 Layers 写入 token 可逆 写后回读核验
+// File purpose Per-game disable of Windows fullscreen optimizations, writes a token into the HKCU compat Layers key, reversible, read back to verify after write
 using System;
 using System.Collections.Generic;
 using Microsoft.Win32;
 
 namespace PaviseApp
 {
-    // 逐游戏的持久偏好 直接读写 HKCU 兼容层字符串 不走 ReversibleReg 也不参与对局快照
-    //   兼容层是 exe 启动时读的 下次启动该游戏才生效 对局临时下发这一局无效 所以不挂载不还原
+    // Per-game persistent preference; reads and writes the HKCU compat layer string directly, bypasses ReversibleReg and stays out of the match snapshot
+    //   The compat layer is read at exe launch, so it takes effect on the game's next launch; a temporary match-time write does nothing this match, hence no mount and no restore
     internal static class FsoTweak
     {
         private const string LayersKey =
             @"Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers";
-        // 禁用全屏优化的兼容层 token 首元素 ~ 是用户级兼容层标记
+        // Compat layer token for disabling fullscreen optimizations; the leading ~ marks a user-level compat layer
         private const string Token = "DISABLEDXMAXIMIZEDWINDOWEDMODE";
         private const string Marker = "~";
-        // 台账只记 Pavise 自己写过的 exe 用户自己在系统属性里关的全屏优化不进这里也不还原
-        //   分隔符用不可能出现在路径里的单元分隔符 免得跟路径里的分号空格打架
+        // The ledger only records exes Pavise itself wrote; fullscreen optimizations the user disabled in system properties are neither tracked nor restored here
+        //   Separator is the unit separator, which can't appear in a path, to avoid clashing with semicolons and spaces in paths
         private const string ListKey = "FsoExeList";
         private const char ListSep = '\u001F';
         private static readonly object sync = new object();
@@ -41,10 +41,10 @@ namespace PaviseApp
         public static bool HasResidue()
         {
             try { return TrackedExes().Length > 0; }
-            catch { return true; } // Unreadable ownership is not an empty ledger.
+            catch { return true; } // Unreadable ownership is not an empty ledger
         }
 
-        // 一键清除配置时按台账逐个撤销 撤销走的是和界面同一条 RemoveToken 路径 不碰别人的 token
+        // Wipe all settings undoes each ledger entry; the undo goes through the same RemoveToken path as the UI and doesn't touch other tokens
         public static bool RestoreAll()
         {
             lock (sync)
@@ -84,8 +84,8 @@ namespace PaviseApp
             return false;
         }
 
-        // 读失败和令牌不存在要分开看 特别是移除之后一次被拒绝的读
-        // 不能当成还原已确认 也不能清它的台账
+        // Read failure and token-absent must be told apart, especially a rejected read right after removal
+        // Can't be taken as restore confirmed, nor clear its ledger entry
         private static string ReadLayer(string exePath)
         {
 #if PAVISE_SELFTEST
@@ -119,13 +119,13 @@ namespace PaviseApp
         {
             try
             {
-                // 拿最新的图层字符串去合并 而不是把一个过期值
-                // 重放到别人写过的兼容性设置上面
+                // Merge against the latest layer string rather than replaying a stale value
+                // on top of compat settings someone else has written
                 string current = ReadLayer(exePath);
                 if (HasToken(current)) WriteLayer(exePath, RemoveToken(current));
                 if (!HasToken(ReadLayer(exePath))) Track(exePath, false);
             }
-            catch { } // A failed rollback deliberately retains the recovery ledger.
+            catch { } // A failed rollback deliberately retains the recovery ledger
         }
 
         public static bool IsDisabledForExe(string exePath)
@@ -154,12 +154,12 @@ namespace PaviseApp
                     bool tracked = IsTracked(exePath);
                     if (HasToken(current) == disableFso)
                     {
-                        // 用户本来就有的偏好 不算 Pavise 拥有的改动
-                        // 一条之前还原过的跟踪条目 仍然需要清理
+                        // A preference the user already had doesn't count as a Pavise-owned change
+                        // A tracked entry restored earlier still needs cleanup
                         return disableFso || !tracked || Track(exePath, false);
                     }
-                    // 动 Windows 之前 先确认那条持久的恢复记录已经落地
-                    // 不要先改了再指望所有权后面能保存成功
+                    // Before touching Windows, confirm the persistent restore record has landed
+                    // Don't change first and hope the ownership save succeeds later
                     if (disableFso && !tracked && !Track(exePath, true)) return false;
                     rollback = disableFso;
                     WriteLayer(exePath, disableFso ? AddToken(current) : RemoveToken(current));
@@ -193,8 +193,8 @@ namespace PaviseApp
             return false;
         }
 
-        // 收集除标记与目标 token 外的其它 token 顺带去掉重复的 ~ 保留别人的兼容层设置
-        //   已有值可能畸形 ~ 不在首位或出现多次 这里统一丢弃所有 ~ 由调用方补一个在首位
+        // Collect tokens other than the marker and the target token, dropping duplicate ~ along the way, preserving other compat layer settings
+        //   The existing value may be malformed (~ not first or repeated); drop every ~ here and let the caller put one back in front
         private static List<string> OtherTokens(string cur)
         {
             var others = new List<string>();
@@ -207,7 +207,7 @@ namespace PaviseApp
             return others;
         }
 
-        // 追加 token 保留其它 token 输出恒为 ~ 唯一且在首位 目标 token 在末尾
+        // Append the token keeping the others; output always has exactly one ~ in front and the target token at the end
         private static string AddToken(string cur)
         {
             var parts = new List<string> { Marker };
@@ -216,7 +216,7 @@ namespace PaviseApp
             return string.Join(" ", parts.ToArray());
         }
 
-        // 只移除自己这个 token 不动别人的 还有其它 token 就补回唯一的 ~ 只剩标记则清空让整个 value 被删
+        // Remove only our own token, leave the others; if other tokens remain put back the single ~, if only the marker is left return empty so the whole value gets deleted
         private static string RemoveToken(string cur)
         {
             var others = OtherTokens(cur);

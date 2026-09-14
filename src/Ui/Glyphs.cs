@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 绘制界面使用的矢量图形符号
+// File purpose Draw the vector glyphs used by the UI
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;

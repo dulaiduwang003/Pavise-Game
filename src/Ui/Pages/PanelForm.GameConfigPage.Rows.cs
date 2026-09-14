@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 逐游戏配置的行控件 覆盖写入与清除确认
+// File purpose Row controls for per-game config: override writes and clear confirmation
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -12,7 +12,7 @@ namespace PaviseApp
         private void AddCfgModeRow(Control parent, ref int y)
         {
             PolicyItem item = PolicyCatalog.ItemOf(PolicyCatalog.KeyPreset);
-            // 模式条与取值数组必须同源 本机不支持的档两边都没有它
+            // The mode strip and the value array must share a source; a tier this machine does not support is absent on both sides
             string[] values = PresetValue.VisibleChoices();
             var strip = new ModeStrip();
             strip.Index = CfgRowIndexOf(item, values);
@@ -31,7 +31,7 @@ namespace PaviseApp
             strip.IndexChanged = delegate(int index)
             {
                 if (cfgProfile == null) return;
-                // 正在对局的这个游戏锁档 改其它游戏无妨 快照冻结且下局才生效
+                // The game currently in a match has its tier locked; changing other games is fine, the snapshot is frozen and takes effect next match
                 if (gameMode.IsActive && gameMode.Enabled
                     && string.Equals(cfgProfileId, gameMode.SessionPolicyProfileId, StringComparison.OrdinalIgnoreCase))
                 {
@@ -44,7 +44,7 @@ namespace PaviseApp
                 if (index <= 0) gameMode.ClearProfileOverride(cfgProfileId, PolicyCatalog.KeyPreset);
                 else gameMode.SetProfileOverride(cfgProfileId, PolicyCatalog.KeyPreset, values[index - 1]);
                 SyncCfgRows();
-                // 自适应升档那一行只在智能档存在 跨过这条线就整页重建 选择器还在自己的回调里 推到下一轮
+                // The adaptive escalation row exists only on the Smart tier; crossing that line rebuilds the whole page, and the picker is still inside its own callback, so defer to the next round
                 if (wasSmart != (cfgEffMode == PerformancePreset.Standard))
                     BeginInvoke((Action)delegate
                     {
@@ -71,7 +71,7 @@ namespace PaviseApp
 
             string reasonKey;
             bool supported = CfgItemSupported(item, out reasonKey);
-            // 能力丢失不能把一个已经开着的选项困死在里面
+            // Losing a capability must not trap an option that is already on
             bool canTurnOff = CfgCanTurnOff(item);
             bool vendorGraphics = CfgVendorGraphicsItem(item.Key);
             string descKey = CfgDescKey(item);
@@ -135,7 +135,7 @@ namespace PaviseApp
                 if (adminNoticeKey != null)
                     card.Desc = Lang.T(key == PolicyCatalog.KeyStandbyCleaner && !gameMode.StandbyCleaningOptionsValid
                         ? "standbycleaner.config.invalid" : needsAdmin ? adminNoticeKey : descKey);
-                // 三种锁定全站同一套标签 不支持的项不再借"预设强制关"的名义
+                // Three lock kinds share one label set site-wide; unsupported items no longer borrow the Forced off by preset label
                 card.SetLock(!supported ? Lang.T("lock.na")
                     : forced ? Lang.T(forcedEffective ? "v14.preset.forced.on" : "v14.preset.forced.off")
                     : "", supported && forcedEffective);
@@ -149,8 +149,8 @@ namespace PaviseApp
                 if (!ApplyCfgPolicyChoice(key, chosen))
                 {
                     picker.Index = CfgRowIndexOf(item, values);
-                    // 被厂商显卡门槛挡下时要说明原因 卡片描述解释不了"为什么不能跟随全局"
-                    //   Visible 门槛 隔离回归在未显示的窗体上驱动该路径 不能弹窗
+                    // When the vendor GPU threshold blocks it the reason must be stated; the card description cannot explain why follow-global is not possible
+                    //   Visible gate: the isolated regression drives this path on an unshown form and must not pop a dialog
                     string canonical = chosen == null ? null : PolicyCatalog.Canonical(key, chosen);
                     if (Visible && (chosen == null || canonical != null)
                         && !CfgVendorGraphicsChoiceAllowed(key, canonical))
@@ -170,8 +170,8 @@ namespace PaviseApp
             bool turningOn = canonical == "1";
             bool inheritingPowerYield = value == null && key == PolicyCatalog.KeyPowerYield
                 && CfgPowerYieldInheritanceNeedsConfirmation(cfgProfile);
-            // 守门布尔项的"跟随全局"与显式拨开同权 全局开着而本游戏此前生效为关时
-            //   清掉覆盖就是启用 确认必须照弹 熔断也要跟着清
+            // For guarded boolean items follow-global ranks equal to an explicit switch-on; when global is on and this game was previously in effect as off,
+            //   clearing the override is enabling: the confirmation must still pop, and the circuit breaker must be cleared too
             bool inheritingGuarded = value == null && IsConfirmGuardedKey(key)
                 && CfgGuardedInheritanceNeedsConfirmation(cfgProfile, key);
             bool inheritingGuardedOn = value == null
@@ -179,13 +179,13 @@ namespace PaviseApp
                     || (key == PolicyCatalog.KeyStandbyCleaner && CfgStandbyCleanerInheritanceNeedsConfirmation(cfgProfile))
                     || (key == PolicyCatalog.KeyIntelLowLatency && CfgIntelInheritanceNeedsConfirmation(cfgProfile))
                     || inheritingPowerYield || inheritingGuarded);
-            // 在这里拨到开 等同于把全局开关打开一次 开启确认必须照弹
-            //   否则从这个页面能绕开优化策略页特意加的门槛 用户全程没见过警告
+            // Switching on here is the same as turning the global switch on once; the enable confirmation must still pop
+            //   Otherwise this page can bypass the gate the Policy page deliberately added and the user never sees the warning
             if ((turningOn || inheritingGuardedOn) && !ConfirmCfgEnable(key)) return false;
             bool saved = value == null ? gameMode.ClearProfileOverride(cfgProfileId, key)
                 : gameMode.SetProfileOverride(cfgProfileId, key, canonical);
-            // 显存驻留在这里拨到开 也等同于全局开关重开一次 熔断要跟着清掉
-            //   否则上次验不过留下的熔断会让这局直接跳过 用户在这个页面无从解除
+            // Switching VRAM residency on here also counts as re-enabling the global switch, so the circuit breaker must be cleared too
+            //   Otherwise a breaker tripped by last time's failed verification makes this match skip outright, and the user has no way to clear it from this page
             if (saved && (turningOn || inheritingGuarded) && key == PolicyCatalog.KeyVramShield)
                 VramShield.ClearFuse();
             if (saved && key == PolicyCatalog.KeyPowerYield && (turningOn || inheritingPowerYield))
@@ -193,7 +193,7 @@ namespace PaviseApp
             return saved;
         }
 
-        // 全局开关带确认的项 逐游戏覆盖到开也要走同一段提示 文案共用一份
+        // Items whose global switch needs confirmation go through the same prompt when a per-game override switches on; the copy is shared
         private bool ConfirmCfgEnable(string key)
         {
             switch (key)
@@ -223,8 +223,8 @@ namespace PaviseApp
                 return;
             if (!ApplyCfgClearAllOverrides())
             {
-                // 确认弹窗之后不能沉默 门槛拦下时说明是哪一项挡住了整次清除
-                //   确认被用户自己取消的情况这里查不到被挡的键 维持无提示返回
+                // Must not go silent after the confirmation dialog; when the gate blocks, say which item blocked the whole clear
+                //   When the user cancels the confirmation the blocked key cannot be found here; keep returning without a prompt
                 string blocked = Visible ? CfgBlockedVendorInheritKey() : null;
                 if (blocked != null)
                     PaviseDialog.Info(this, Lang.T("cfg.clear"), Lang.F("cfg.clear.blocked",
@@ -235,8 +235,8 @@ namespace PaviseApp
             SyncCfgRows();
         }
 
-        // 厂商显卡键在全局仍为开且当前设备不支持时不能改回跟随全局
-        //   否则等于替用户确认一个当前设备生效不了的全局开启
+        // A vendor GPU key cannot go back to follow-global while global is still on and the current device does not support it
+        //   Otherwise it amounts to confirming on the user's behalf a global enable that cannot take effect on the current device
         private string CfgBlockedVendorInheritKey()
         {
             if (cfgProfile == null) return null;
@@ -249,8 +249,8 @@ namespace PaviseApp
         {
             if (cfgProfile == null) return false;
             if (CfgBlockedVendorInheritKey() != null) return false;
-            // 移除任何覆盖之前 先把所有开启项都确认完 第二个警告被取消时
-            // 不能出现第一个已经把档案清掉一半的情况
+            // Before removing any override, finish confirming every enabling item; when the second warning is cancelled
+            // the first must not have already wiped half the profile
             if (CfgCpuIdleInheritanceNeedsConfirmation(cfgProfile)
                 && !ConfirmCfgEnable(PolicyCatalog.KeyDisableCpuIdle)) return false;
             if (CfgStandbyCleanerInheritanceNeedsConfirmation(cfgProfile)
@@ -259,7 +259,7 @@ namespace PaviseApp
                 && !ConfirmCfgEnable(PolicyCatalog.KeyIntelLowLatency)) return false;
             bool powerYieldWillEnable = CfgPowerYieldInheritanceNeedsConfirmation(cfgProfile);
             if (powerYieldWillEnable && !ConfirmCfgEnable(PolicyCatalog.KeyPowerYield)) return false;
-            // 守门布尔项同权 全部清除等同把它们中被本游戏关着的那些拨到全局的开
+            // Guarded boolean items rank equal; clear-all is the same as switching those this game had off over to the global on
             bool vramWillEnable = false;
             foreach (string guarded in ConfirmGuardedKeys)
             {
@@ -267,7 +267,7 @@ namespace PaviseApp
                 if (!ConfirmCfgEnable(guarded)) return false;
                 if (guarded == PolicyCatalog.KeyVramShield) vramWillEnable = true;
             }
-            // 其它警告可能泵过界面消息 这期间驱动可用性会变
+            // Other warnings may have pumped UI messages, and driver availability can change in the meantime
             if (CfgBlockedVendorInheritKey() != null) return false;
             bool cleared = gameMode.ClearProfileOverrides(cfgProfileId) > 0;
             if (cleared && powerYieldWillEnable) PowerBudgetYield.ClearFuse();
@@ -282,7 +282,7 @@ namespace PaviseApp
             return null;
         }
 
-        // 带开启确认的守门布尔项 "跟随全局/全部清除"要与显式拨开走同一道门
+        // Guarded boolean items with an enable confirmation; follow-global / clear-all must go through the same gate as an explicit switch-on
         private static readonly string[] ConfirmGuardedKeys =
         {
             PolicyCatalog.KeyVramShield,
@@ -297,7 +297,7 @@ namespace PaviseApp
 
         internal static bool CfgGuardedInheritanceNeedsConfirmation(GameProfile profile, string key)
         {
-            // 与 CpuIdle 同款判据 清掉显式的关等同选择了全局的开
+            // Same criterion as CpuIdle: clearing an explicit off is the same as choosing the global on
             return profile != null
                 && PolicyResolver.Read(profile, key) != "1"
                 && PolicyResolver.GlobalValue(key) == "1";
@@ -305,7 +305,7 @@ namespace PaviseApp
 
         internal static bool CfgCpuIdleInheritanceNeedsConfirmation(GameProfile profile)
         {
-            // 把一条显式的关闭移掉 效果和主动选开是一样的
+            // Removing an explicit off has the same effect as actively choosing on
             return profile != null
                 && PolicyResolver.Read(profile, PolicyCatalog.KeyDisableCpuIdle) != "1"
                 && PolicyResolver.GlobalValue(PolicyCatalog.KeyDisableCpuIdle) == "1";
@@ -347,7 +347,7 @@ namespace PaviseApp
             bool family = profile.Overrides.ContainsKey(PolicyCatalog.KeySuppressFamily);
             if (!family && count == 0) return null;
             if (!family) return Lang.F("cfg.clear.confirm", profile.Name, count);
-            // 家族开关不在这一页 但全部清除照样会把它关掉 不能当成跟随全局
+            // The family switch is not on this page, but clear-all turns it off just the same; it cannot be treated as follow-global
             return count > 0 ? Lang.F("cfg.clear.family.confirm", profile.Name, count)
                 : Lang.F("cfg.clear.family.only", profile.Name);
         }

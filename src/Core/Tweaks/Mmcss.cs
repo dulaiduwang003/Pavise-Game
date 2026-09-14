@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 调整 MMCSS 多媒体调度参数 游戏模式开启期间常驻 关闭或退出即还原
+// File purpose Adjust MMCSS multimedia scheduling parameters; resident while game mode is on, restored when it's turned off or on exit
 using Microsoft.Win32;
 
 namespace PaviseApp
@@ -13,8 +13,8 @@ namespace PaviseApp
         private static readonly ReversibleReg Pri   = new ReversibleReg(Registry.LocalMachine, Games, "Priority",             RegistryValueKind.DWord,  "Mmcss_Pri");
         private static readonly ReversibleReg Sched = new ReversibleReg(Registry.LocalMachine, Games, "Scheduling Category",  RegistryValueKind.String, "Mmcss_Sched");
         private static readonly ReversibleReg Sfio  = new ReversibleReg(Registry.LocalMachine, Games, "SFIO Priority",        RegistryValueKind.String, "Mmcss_Sfio");
-        // MMCSS 空闲检测有 10ms/100ms 双档 lazy 档会让已注册线程的调度周期变钝
-        //   NoLazyMode 消掉 lazy 循环 代价是 MMCSS 自身的空闲检测更勤 功耗略升
+        // MMCSS idle detection has two settings, 10ms/100ms; the lazy one dulls the scheduling period of registered threads
+        //   NoLazyMode removes the lazy loop; the cost is MMCSS's own idle detection running more often, slightly higher power
         private static readonly ReversibleReg Lazy  = new ReversibleReg(Registry.LocalMachine, Prof,  "NoLazyMode",           RegistryValueKind.DWord,  "Mmcss_NoLazy");
         private static readonly ReversibleReg[] All = { Resp, Pri, Sched, Sfio, Lazy };
 

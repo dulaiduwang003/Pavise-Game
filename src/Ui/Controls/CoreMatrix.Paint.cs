@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 核心矩阵的绘制 热度条与图例
+// File purpose Core matrix painting, heat bars and legend
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -12,9 +12,9 @@ namespace PaviseApp
     {
         internal enum HeadTag { None, Exclusive, Primary, Cache, Smt }
 
-        // 卡片右上角只放一个标签 优先级 独占 > 选中 > 大缓存 > SMT
-        //   SMT 只给多线程卡 单线程卡谈超线程本来就没意义 其余三个与卡片宽窄无关
-        //   放不放得下由调用方按实测宽度决定 不靠卡片有几个线程去猜
+        // Only one tag in the card's top-right corner, priority exclusive > selected > big cache > SMT
+        //   SMT only on multi-thread cards, hyperthreading is meaningless on a single-thread card, the other three ignore card width
+        //   Whether it fits is decided by the caller from measured width, not guessed from the card's thread count
         internal static HeadTag HeadTagFor(bool exclusive, bool anyOn, bool cache, bool multiThread)
         {
             if (exclusive) return HeadTag.Exclusive;
@@ -23,10 +23,10 @@ namespace PaviseApp
             return multiThread ? HeadTag.Smt : HeadTag.None;
         }
 
-        // 编号占左边 标签靠右 量出来放不下就不画
-        //   原先按卡片有几个线程猜 混合架构的能效核是单线程卡 选中标被一律挡掉
-        //   而独占标走的是另一条不看宽窄的路 在同样的窄卡上会与编号叠在一起
-        //   两个毛病同源 都是拿线程数当宽度的替身 改成量真宽度一起解决
+        // Index on the left, tag on the right, not drawn if measurement says it does not fit
+        //   It used to guess from the card's thread count, on hybrid parts E-cores are single-thread cards and the selected tag was always blocked
+        //   while the exclusive tag took a separate path that ignored width and overlapped the index on the same narrow cards
+        //   Both bugs share one root, thread count standing in for width, measuring real width fixes both
         internal static bool HeadTagFits(int headWidth, int indexWidth, int tagWidth, int gap)
         {
             return tagWidth > 0 && indexWidth + gap + tagWidth <= headWidth;
@@ -70,7 +70,7 @@ namespace PaviseApp
             foreach (Cell c in grp.Cells)
                 if (cellOn[c.Cpu].Value > lit) lit = cellOn[c.Cpu].Value;
 
-            // 整张物理核卡的峰值负载 决定卡片是否 烧红 发光
+            // Peak load of the whole physical core card decides whether the card glows red-hot
             float peak = 0f;
             if (annotate && HasLoads)
                 foreach (Cell c in grp.Cells)
@@ -89,7 +89,7 @@ namespace PaviseApp
                 float edgeW = exclusive ? Math.Max(1f, Theme.S(2) * 0.75f) : 1f;
                 if (annotate)
                 {
-                    // 当前落核卡片=紫罗兰霓虹边(与高负载红发光明确区分) 繁忙卡片=按峰值负载烧红外发光
+                    // Current placement card = violet neon border, clearly distinct from the high-load red glow, busy card = red-hot outer glow by peak load
                     if ((grp.Mask & seenMask) != 0)
                     {
                         edge = Col.Alpha(SeenViolet, 235);
@@ -120,7 +120,7 @@ namespace PaviseApp
             bool roomy = grp.Cells.Count > 1;
             if (annotate)
             {
-                // 选核弹窗 头标改成核类型 指引 挪去哪里 ;当前落核卡片改标紫罗兰 当前 让落点自解释
+                // Core picker dialog, head tag becomes core kind to guide where to move, the current placement card gets a violet Current tag so the placement explains itself
                 bool grpSeen = (grp.Mask & seenMask) != 0;
                 CoreKind kind = KindOf(grp);
                 string ktag = grpSeen ? Lang.T("core.tag.now")
@@ -173,7 +173,7 @@ namespace PaviseApp
             }
         }
 
-        // 非标注页(核心页 / 自定义核) 保持原样 一行不变
+        // Non-annotated pages, the Cores page and Custom cores, stay as they were, not a line changed
         private void DrawCell(Graphics g, Cell c)
         {
             float on = cellOn[c.Cpu].Value;
@@ -215,7 +215,7 @@ namespace PaviseApp
             }
         }
 
-        // 选核弹窗 边框/负载条保留辉光 数字只画一次 保证高负载时依然清晰
+        // Core picker dialog, border and load bar keep the glow, the number is drawn once, staying legible under high load
         private void DrawCellAnno(Graphics g, Cell c)
         {
             float on = cellOn[c.Cpu].Value;
@@ -225,15 +225,15 @@ namespace PaviseApp
 
             double value = 0;
             bool hasLoad = loads != null && loads.TryGetValue(c.Cpu, out value);
-            float t = cellHeat[c.Cpu].Value;                 // 平滑后的负载 0..1
+            float t = cellHeat[c.Cpu].Value;                 // Smoothed load 0..1
             Color load = LoadRog(t);
-            bool warm = hasLoad && t >= WarmT;               // 60% 起就有发光张力
+            bool warm = hasLoad && t >= WarmT;               // Glow tension starts at 60%
             float gk = GlowK(t);
 
-            // 繁忙核先在卡底铺一圈大红辉光 外溢到卡片背景上 空闲核不铺 一眼分空/忙
+            // A busy core first lays a big red glow under the card that spills onto the card background, idle cores get none, busy vs idle at a glance
             if (warm) GlowEllipse(g, r, load, gk, 150, 13);
 
-            // 淡色负载底保留明暗主题的文字对比度 选中时使用强调色
+            // Pale load base keeps text contrast in both light and dark themes, selected uses the accent color
             Color baseFill = Col.Lerp(Theme.Inset, Theme.Bg, 0.35f);
             if (hasLoad) baseFill = Col.Lerp(baseFill, load, 0.06f + 0.18f * t);
             Color fill = Col.Lerp(baseFill, Theme.Accent, on);
@@ -249,19 +249,19 @@ namespace PaviseApp
                 else if (hasLoad) border = Col.Lerp(Col.Alpha(Theme.Stroke, 210), load, 0.30f + 0.55f * t);
                 else border = Theme.Stroke;
                 float bw = warm ? Math.Max(1f, Theme.S(2) * 0.8f) : 1f;
-                // 未选中的繁忙核 多层红外发光描边
+                // Unselected busy core, multi-layer red outer glow stroke
                 if (warm && on < 0.5f) NeonEdge(g, path, load, gk);
                 using (var p = new Pen(border, bw)) g.DrawPath(p, path);
             }
 
-            // 发光负载条:填充比例=负载 低冷高红 高负载更亮更饱和 + 上方辉光
+            // Glowing load bar, fill ratio = load, cool low to red high, brighter and more saturated under high load + glow above
             if (hasLoad) DrawLoadBar(g, r, t, load, warm, gk);
 
             if ((seenMask & (1UL << c.Cpu)) != 0) DrawSeenMark(g, r);
 
             if (hasLoad)
             {
-                // 角标小核号 便于识别与点选 主视觉让给百分比
+                // Small core index in the corner for identification and clicking, the main visual goes to the percentage
                 var idBox = new Rectangle(r.Left + Theme.S(3), r.Top + Theme.S(1),
                     r.Width - Theme.S(6), Theme.S(11));
                 TextRenderer.DrawText(g, c.Cpu.ToString(), Theme.Mono(6.3f), idBox,
@@ -282,7 +282,7 @@ namespace PaviseApp
             }
             else
             {
-                // 缺少该核心的观测不等于 0% 核号仍在角落 中间显示破折号
+                // No observation for that core is not 0%, the index stays in the corner and a dash is shown in the middle
                 var idBox = new Rectangle(r.Left + Theme.S(3), r.Top + Theme.S(1),
                     r.Width - Theme.S(6), Theme.S(11));
                 TextRenderer.DrawText(g, c.Cpu.ToString(), Theme.Mono(6.3f), idBox,
@@ -295,7 +295,7 @@ namespace PaviseApp
             }
         }
 
-        // 底部发光负载条 圆角轨道 + 负载填充 + 高负载更亮更饱和 + 同色外发光
+        // Bottom glowing load bar, rounded track + load fill + brighter and more saturated at high load + same-color outer glow
         private void DrawLoadBar(Graphics g, Rectangle r, float t, Color load, bool warm, float gk)
         {
             int barH = Math.Max(Theme.S(5), 4);
@@ -306,7 +306,7 @@ namespace PaviseApp
             int fw = (int)(track.Width * t);
             if (fw < barH && t > 0f) fw = barH;
             var fillRect = new Rectangle(track.X, track.Y, Math.Max(fw, 0), track.Height);
-            // 繁忙条先在条身四周垫一圈辉光 让条子 亮起来
+            // A busy bar first pads a ring of glow around the bar body so the bar lights up
             if (warm && fw > 0)
             {
                 var halo = new Rectangle(fillRect.X - Theme.S(2), fillRect.Y - Theme.S(3),
@@ -321,14 +321,14 @@ namespace PaviseApp
             using (var fp = Theme.Rounded(fillRect, rad))
             {
                 using (var fb = new SolidBrush(barCol)) g.FillPath(fb, fp);
-                // 亮顶边 让条子有霓虹感
+                // Bright top edge gives the bar a neon feel
                 using (var hp = new Pen(Col.Lerp(load, Color.White, 0.45f), 1f))
                     g.DrawLine(hp, fillRect.X + rad, fillRect.Y + 0.5f,
                         fillRect.Right - rad, fillRect.Y + 0.5f);
             }
         }
 
-        // 本局观测落核 右下角紫罗兰三角 与高负载红明确区分
+        // Observed IRQ placement this match, violet triangle at bottom right, clearly distinct from high-load red
         private void DrawSeenMark(Graphics g, Rectangle r)
         {
             int s = Theme.S(9);
@@ -343,16 +343,16 @@ namespace PaviseApp
             using (var b = new SolidBrush(Col.Alpha(SeenViolet, 248))) g.FillPolygon(b, pts);
         }
 
-        // 同局游戏核范围与观测负载仅供选核参考 不宣称低平均负载能保证收益
+        // Game core range and observed load this match are only a core selection reference, no claim that low average load guarantees a gain
         private enum CoreKind { Game, Eff, PerfIdle, Perf }
 
         private CoreKind KindOf(Group grp)
         {
             ulong game = ObservedGameMask;
             if (game != 0 && (grp.Mask & game) != 0) return CoreKind.Game;
-            // E 能效核只在真混合架构上存在 且必须落在能效核簇 EffMask
-            //   全大核机器(i7-9750H 等)ThrottleMask 只是后台预留 不是能效核 绝不标 E
-            //   非混合架构 EffMask 恒为 0 这里自然命中不了 全按 P 和 P 空闲处理
+            // E-cores exist only on true hybrid parts and must fall inside the E-core cluster EffMask
+            //   On all-P-core machines like the i7-9750H, ThrottleMask is just the background reserve, not E-cores, never tag them E
+            //   On non-hybrid parts EffMask is always 0 so this never matches, everything is treated as P and P idle
             if (CpuTopology.Hybrid && (grp.Mask & CpuTopology.EffMask) != 0) return CoreKind.Eff;
             if (HasLoads)
             {
@@ -368,15 +368,15 @@ namespace PaviseApp
             return CoreKind.Perf;
         }
 
-        // 图例一项:负载渐变条 或 一枚圆点 + 文案 讲清面板里每个视觉元素的含义
+        // One legend item, a load gradient bar or a dot + text, explains what each visual element in the panel means
         private sealed class LegendItem
         {
-            public bool Bar;      // true=负载冷→热渐变条 false=分类圆点
+            public bool Bar;      // true=cold-to-hot load gradient bar, false=category dot
             public Color Color;
             public string Text;
         }
 
-        // 图例 同局平均负载 / 观测落核(紫) / 低载性能核(青) / 游戏核(红) / 能效核
+        // Legend, average load this match, observed placement violet, low-load P-core cyan, game core red, E-core
         private List<LegendItem> BuildLegendItems()
         {
             var items = new List<LegendItem>();
@@ -384,7 +384,7 @@ namespace PaviseApp
             items.Add(new LegendItem { Color = SeenViolet, Text = Lang.T("core.legend.seen") });
             items.Add(new LegendItem { Color = RogCool, Text = Lang.T("core.legend.pidle") });
             items.Add(new LegendItem { Color = Col.Alpha(Theme.Danger, 225), Text = Lang.T("core.legend.game") });
-            // E 能效核图例只在真混合架构显示 全大核机器不出现
+            // The E-core legend item is shown only on true hybrid parts, never on all-P-core machines
             if (CpuTopology.Hybrid && CpuTopology.EffMask != 0)
                 items.Add(new LegendItem { Color = Theme.Faint, Text = Lang.T("core.legend.e") });
             return items;
@@ -397,7 +397,7 @@ namespace PaviseApp
             return lead + tw + Theme.S(14);
         }
 
-        // 按可用宽度把图例折行 xs/rows 可空(只算行数时) 返回总行数
+        // Wraps the legend by available width, xs and rows may be null, pass null to only count rows, returns the total row count
         private int LayoutLegend(int avail, List<LegendItem> items, int[] xs, int[] rows)
         {
             int rowCount = 1, x = 0;
@@ -412,7 +412,7 @@ namespace PaviseApp
             return rowCount;
         }
 
-        // 图例实际高度(折行后) LayoutFor 用它把弹窗撑够
+        // Actual legend height after wrapping, LayoutFor uses it to size the dialog
         private int LegendHeight(int width)
         {
             var items = BuildLegendItems();
@@ -444,7 +444,7 @@ namespace PaviseApp
             int mid = row.Top + row.Height / 2;
             if (it.Bar)
             {
-                // 负载渐变条 ROG 冷青→黄橙→红 说明格内大数字的冷→热配色
+                // Load gradient bar, ROG cool cyan to yellow-orange to red, explains the cold-to-hot coloring of the big number in each cell
                 int barW = Theme.S(58), barH = Theme.S(8);
                 var bar = new Rectangle(x, mid - barH / 2, barW, barH);
                 using (var lg = new LinearGradientBrush(bar, RogCool, Theme.Danger, 0f))

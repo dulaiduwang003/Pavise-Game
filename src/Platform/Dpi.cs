@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 处理高分屏缩放和窗口坐标换算
+// File purpose Handles high-DPI scaling and window coordinate conversion
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -17,6 +17,7 @@ namespace PaviseApp
     internal static class Dpi
     {
         public static float Scale = 1f;
+        public static bool NoFit;
 
         private static int fitW, fitH;
 
@@ -39,7 +40,7 @@ namespace PaviseApp
 
         internal static float Fit(float scale)
         {
-            if (fitW <= 0 || fitH <= 0) return scale;
+            if (NoFit || fitW <= 0 || fitH <= 0) return scale;
             try
             {
                 Rectangle area = Screen.PrimaryScreen.WorkingArea;

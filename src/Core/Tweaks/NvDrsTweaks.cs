@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 按游戏写入 NVIDIA 驱动 Profile 设置 快照先行 可按项恢复
+// File purpose Write NVIDIA driver profile settings per game; snapshot first, restorable per item
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -30,12 +30,12 @@ namespace PaviseApp
 
     internal static class NvDrsTweaks
     {
-        // 会话日记键由恢复完成判定共同引用 改名必须两边一起
+        // Session journal key shared with the restore-complete check; rename both sides together
         internal const string ListKey = "NvDrsList";
         private const string SnapPrefix = "NvDrs_";
         public const string KeyPState = "pstate";
-        // frl 是 v1.8.0.3 下架的驱动级限帧 键名留着只为清收历史残留
-        //   不要给它加回任何写入路径
+        // frl is the driver-level frame limiter withdrawn in v1.8.0.3; the key name stays only to clean up historical residue
+        //   Don't add any write path back for it
         public const string KeyFrl = "frl";
         public const string KeyPreRender = "prerender";
         public const string KeyLowLatCpl = "lowlatcpl";
@@ -176,7 +176,7 @@ namespace PaviseApp
             if (plan.MaxPerf)
             {
                 desired.Add(new KeyValuePair<string, uint>(KeyPState, NvApi.PStatePreferMax));
-                // 同一意图 频率不往下走 CUDA 触发的显存 P2 降频一起挡住
+                // Same intent: clocks don't go down; also block the CUDA-triggered VRAM P2 downclock
                 desired.Add(new KeyValuePair<string, uint>(KeyForceP2, NvApi.CudaForceP2Off));
             }
             string lowLat = plan.LowLatMode;
@@ -207,7 +207,7 @@ namespace PaviseApp
                 desired.Add(new KeyValuePair<string, uint>(KeyShaderOn, NvApi.ShaderCacheOn));
                 desired.Add(new KeyValuePair<string, uint>(KeyShaderCache, NvApi.ShaderCacheUnlimited));
             }
-            // 全局 VRR_MODE 由 NvVrrWindowed 补成全屏加窗口 逐游戏这半边只写允许 防止别的工具写成强制关
+            // Global VRR_MODE is expanded to fullscreen plus windowed by NvVrrWindowed; this per-game half only writes Allow, so other tools can't write it as forced off
             if (plan.WindowedVrr) desired.Add(new KeyValuePair<string, uint>(KeyVrrApp, NvApi.VrrAppAllow));
             if (plan.Rebar)
             {

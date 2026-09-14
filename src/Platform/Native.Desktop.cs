@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 封装窗口 主题 DPI 和桌面计时器原生接口
+// File purpose Wraps native window, theme, DPI and desktop timer interfaces
 using System;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
@@ -27,7 +27,7 @@ namespace PaviseApp
         [DllImport("winmm.dll")]
         public static extern uint timeBeginPeriod(uint ms);
 
-        // 0.5ms 只有 ntdll 这条路 winmm 的最小值是 1ms 单位 100ns
+        // 0.5ms is only reachable via ntdll, winmm's minimum is 1ms, unit is 100ns
         [DllImport("ntdll.dll")]
         public static extern int NtSetTimerResolution(uint desired, bool set, out uint actual);
         [DllImport("winmm.dll")]

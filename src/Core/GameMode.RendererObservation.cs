@@ -1,5 +1,5 @@
-﻿// 文件用途 徽标记录的是观察到的活动 不是选中状态 也不是有个全屏窗口
-// 采样有界 不在界面和控制循环上 并且和交接的 GPU 工作共用一道闸
+﻿// File purpose The badge records observed activity, not selection state, nor the mere existence of a fullscreen window
+// Sampling is bounded, off the UI and control loops, and shares one gate with the handoff GPU work
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -78,7 +78,7 @@ namespace PaviseApp
         {
             if (stopping || rendererObservations == null) return;
             rendererObservations.Forget(profileId);
-            // 这只是可选历史 不是界面或档案存储的同步事务
+            // This is optional history only, not a synchronous transaction for the UI or profile store
             try
             {
                 ThreadPool.QueueUserWorkItem(delegate
@@ -95,7 +95,7 @@ namespace PaviseApp
                 || !selected.RendererCandidateSelected || selected.RendererSafetyOnly
                 || selected.RequiresGpuConfirm || !enabled || stopping || panicReq || ProfileStoreSaveFailed) return;
             int foreground = RendererForegroundPid();
-            // 后台只看内存缓存，维持原来仅在前台排队校验 EXE 的开销边界。
+            // Background only consults the in-memory cache, keeping the original overhead bound of queuing EXE verification only in the foreground
             if (foreground == selected.RendererPid ? HasRendererObservation(selected.Profile)
                 : rendererObservations.Has(selected.Profile.Id, selected.Profile.ExecutablePath)) return;
             long now = RendererNowMs();
@@ -110,7 +110,7 @@ namespace PaviseApp
             {
                 rendererActivityTarget = RendererHandoffTracker.Copy(selected);
                 rendererActivityAttempts = 0;
-                // 等待时间属于一次目标观测，不能由旧游戏或旧会话带给新目标。
+                // Wait time belongs to one target observation, must not carry over from an old game or session to a new target
                 rendererActivityNextMs = 0;
                 rendererActivityEpoch = epoch;
             }
@@ -119,7 +119,7 @@ namespace PaviseApp
                 TraceRendererObservationWait(selected, now, "ForegroundWaiting", "foreground=" + foreground);
                 return;
             }
-            // 新目标不继承旧目标的长退避，但所有目标仍共用每 10 秒一次的开销上限。
+            // A new target does not inherit the old target's long backoff, but all targets still share the once-per-10-seconds overhead cap
             if (now < rendererActivityNextMs || now < rendererActivityBudgetNextMs) return;
             if (Handoff.HasProbe)
             {
@@ -165,12 +165,12 @@ namespace PaviseApp
                         if (values == null) { outcome = "GpuUnavailable"; return; }
                         detail = "pidCount=" + values.Count + " " + detail;
                         double utilization;
-                        // 不做名字排序 徽标描述的是这个进程实测到的 3D 工作量
-                        // 不是在声称它就是唯一或者主要的游戏渲染进程
+                        // No sorting by name, the badge describes the 3D workload actually measured on this process
+                        // not a claim that it is the only or the main game renderer process
                         if (!values.TryGetValue(target.RendererPid, out utilization)) { outcome = "PidMissing"; return; }
-                        // 这里刻意用往返格式 阈值判定就在 10.0 上 贴着阈值的值必须显示得出与阈值的差别
-                        //   换成 F1 会打成 gpu3d=10.0% minimum=10.0% 却判 BelowThreshold 日志自相矛盾
-                        //   代价是远离阈值时会出现十七位小数 见 SelfTests.FamilySuppression 的 NearThreshold 用例
+                        // Round-trip format on purpose, the threshold test sits right at 10.0, values hugging the threshold must show their difference from it
+                        //   F1 would print gpu3d=10.0% minimum=10.0% yet rule BelowThreshold, a self-contradicting log
+                        //   the cost is seventeen decimal places far from the threshold, see the NearThreshold case in SelfTests.FamilySuppression
                         detail = "gpu3d=" + utilization.ToString("R", CultureInfo.InvariantCulture) + "% " + detail;
                         int currentForeground = RendererForegroundPid();
                         if (currentForeground != target.RendererPid)
@@ -224,7 +224,7 @@ namespace PaviseApp
 
         private void TraceRendererObservationWait(GameDetection target, long now, string reason, string detail)
         {
-            // 主循环可能每秒经过多次；等待状态最多每 30 秒记一条。
+            // The main loop may pass through several times a second, the waiting state is logged at most once per 30 seconds
             if (now < rendererActivityWaitLogMs) return;
             rendererActivityWaitLogMs = now + 30000L;
             TraceRendererObservation(target, reason, detail);
@@ -238,8 +238,8 @@ namespace PaviseApp
                     + Lang.F("lib.render.observation.trace", target.RendererName, target.RendererPid,
                     Lang.T("lib.render.observation." + reason)) + " [reason=" + reason + "]"
                     + " profile=" + target.Profile.Id + (string.IsNullOrEmpty(detail) ? "" : " " + detail);
-                // 磁盘或全局日志锁变慢时，不阻塞检测循环，也不占着 GPU 采样闸等待日志。
-                // 每个 GameMode 最多一个日志任务、八条待写消息，没有常驻线程。
+                // When disk or the global log lock slows down, neither block the detection loop nor hold the GPU sampling gate waiting on the log
+                // At most one log task per GameMode, eight pending messages, no resident thread
                 lock (rendererObservationTraceGate)
                 {
                     if (rendererObservationTraceLines.Count >= 8) rendererObservationTraceLines.Dequeue();
@@ -255,12 +255,12 @@ namespace PaviseApp
                     rendererObservationTraceLines.Clear();
                 }
             }
-            catch { } // 日志不可用不能影响采样闸的释放和游戏运行。
+            catch { } // log unavailable must not affect sampling gate release or the game
         }
 
-        // 这行日志固定带 lastFailure= 与 code= 这类字段名 词表按子串匹配会把 lastFailure=none 判成异常
-        //   于是每条渲染观测都被记成异常 不分成功失败 所以按结果自己声明级别
-        //   FAIL 只留真故障 取不到证据算环境限制走 WARN 其余都是正常时序与有效结论
+        // This log line always carries field names like lastFailure= and code=, substring matching in the word table would classify lastFailure=none as an error
+        //   so every renderer observation got logged as an error regardless of outcome, hence the level is declared per result here
+        //   FAIL only for real faults, no evidence counts as an environment limit and goes WARN, everything else is normal timing or a valid conclusion
         internal static string SeverityTagFor(string reason)
         {
             switch (reason)
@@ -277,7 +277,7 @@ namespace PaviseApp
                 default:
                     // Started Recorded Canceled Closed PidMissing BelowThreshold
                     // IdentityUnavailable ActiveChanged ProfileChanged ForegroundChanged
-                    // ForegroundWaiting SamplingBusy 都是正常流程或有效结论
+                    // ForegroundWaiting and SamplingBusy are normal flow or valid conclusions
                     return Logger.InfoTag;
             }
         }

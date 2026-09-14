@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 对局策略生效 会话核心掩码与核心域切换
+// File purpose Match policy activation, session core mask and core domain switching
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;

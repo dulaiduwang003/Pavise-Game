@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 按 CPU 耗时挑候选单独提优 这不证明它是帧关键线程 独立线程连续采样 钉住后定期复核
+// File purpose Picks a candidate by CPU time for a separate boost; this doesn't prove it's the frame-critical thread; a dedicated thread samples continuously and re-checks periodically after pinning
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -323,8 +323,8 @@ namespace PaviseApp
         {
             lock (operationGate)
             {
-                // 等 SetThreadPriority 之后再检查就晚了 关闭流程可能
-                // 已经还原并删掉了那份唯一的原始快照
+                // Checking after SetThreadPriority is too late; the shutdown path may have
+                // already restored and deleted the only original snapshot
                 if (!GenAlive(gen)) return PinOutcome.Canceled;
                 return action();
             }
@@ -334,9 +334,9 @@ namespace PaviseApp
         {
             return RunGenerationMutation(gen, delegate
             {
-                // 回滚失败或者崩溃恢复 手里握着唯一那份台账
-                // 在同一道闸下把它还原掉 再接纳下一次钉线程
-                // 还原旧 lane 期间 不要让这一代失效
+                // Rollback failure or crash recovery: we hold the only ledger
+                // restore it under the same gate before admitting the next thread pin
+                // while restoring the old lane, don't let this generation expire
                 if (!RestoreLaneLocked()) return PinOutcome.Retryable;
                 if (!GenAlive(gen)) return PinOutcome.Canceled;
                 return pin();
@@ -411,8 +411,8 @@ namespace PaviseApp
                 }
                 if (canceled)
                 {
-                    // 如果一次取消尝试实际上没能把旧优先级放回去
-                    // 那就保住已经落盘的原始值
+                    // If a cancel attempt didn't actually put the old priority back
+                    // keep the original value already on disk
                     if (RestorePriorityVerified(readPriority, setPriority, original)) ClearJournal(journal);
                     if (logThis) Logger.Log(Lang.T("log.renderlane.14"));
                     return PinOutcome.Canceled;
@@ -492,8 +492,8 @@ namespace PaviseApp
             lock (operationGate) return ReleaseLocked();
         }
 
-        // 终态关闭会先关掉后续准入 再去做有界的排干
-        // 超时算失败 绝不能当成旧的原生写入已经停了的证明
+        // Final shutdown closes further admission first, then does a bounded drain
+        // Timeout counts as failure, never as proof the old native writes have stopped
         internal static bool CloseForShutdown(int timeoutMs)
         {
             if (timeoutMs < 0) return false;
@@ -524,8 +524,8 @@ namespace PaviseApp
                 applied = laneApplied;
                 pid = lanePid; creation = laneCreation; tid = laneTid; original = laneOriginalPriority;
             }
-            // 被取消或者没做完的钉线程 可能有台账但没有 laneApplied
-            // 把它还原掉 而不是把仅有的这条恢复记录丢弃
+            // A canceled or unfinished thread pin may have a ledger without laneApplied
+            // restore it rather than discarding the only recovery record
             if (!applied) return HealFromCrashLocked();
             BeginMutation();
             try
@@ -594,11 +594,11 @@ namespace PaviseApp
                     if (creation > 0 && target.StartTime.ToFileTimeUtc() != creation) return true;
                 }
             }
-            catch (ArgumentException) { return true; } // GetProcessById confirms disappearance.
-            catch { return false; } // An inaccessible identity is not a restored process.
+            catch (ArgumentException) { return true; } // GetProcessById confirms disappearance
+            catch { return false; } // An inaccessible identity is not a restored process
             IntPtr h = Native.OpenThread(
                 Native.THREAD_SET_LIMITED_INFORMATION | Native.THREAD_QUERY_LIMITED_INFORMATION, false, tid);
-            if (h == IntPtr.Zero) return Marshal.GetLastWin32Error() == 87; // Thread no longer exists.
+            if (h == IntPtr.Zero) return Marshal.GetLastWin32Error() == 87; // Thread no longer exists
             try
             {
                 int owner = Native.QueryThreadOwnerPid(h);

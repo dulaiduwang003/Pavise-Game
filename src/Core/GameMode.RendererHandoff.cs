@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 局内渲染候选保护 异步确认与游戏库提交 不在采样线程执行任何调度写入
+// File purpose In-match renderer candidate protection, async confirmation and game library commit, no scheduling writes ever run on the sampling thread
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -53,13 +53,13 @@ namespace PaviseApp
             int foreground = RendererForegroundPid();
             if (foreground == rendererObservedForeground) return;
             rendererObservedForeground = foreground;
-            // 复用本轮已有进程快照 不因普通后台进程出生而把全量窗口枚举变成高频轮询
+            // Reuse this round's existing process snapshot, an ordinary background process being born must not turn full window enumeration into high-frequency polling
             Interlocked.Exchange(ref gameDetectionDirty, 1);
         }
 
         private void InvalidateRendererHandoff()
         {
-            // 与候选发布和游戏库提交共用 sync 失效不能穿过保存前的最终检查
+            // Shares sync with candidate publish and game library commit, invalidation must not slip past the final pre-save check
             lock (sync)
             {
                 Interlocked.Increment(ref rendererHandoffEpoch);
@@ -121,8 +121,8 @@ namespace PaviseApp
             return state;
         }
 
-        // 返回可进入原有 ApplyStickiness/同局交接路径的目标 null 保留旧锚
-        // 但候选保护是独立状态 不能因为 null 被丢掉 也不能受家族开关控制
+        // Returns a target eligible for the existing ApplyStickiness/same-match handoff path, null keeps the old anchor
+        // but candidate protection is independent state, must not be dropped because of null, nor governed by the family switch
         private GameDetection ResolveRendererHandoff(ProcessSnapshot all, IList<GameProfile> library, GameDetection raw, out int epoch)
         {
             epoch = Volatile.Read(ref rendererHandoffEpoch);
@@ -146,11 +146,11 @@ namespace PaviseApp
             if (held != null && (held.Profile == null || !RendererHandoffTracker.SameProfile(
                     held.Profile, RendererProfile(library, held.Profile.Id)))) Handoff.Clear();
 
-            // 全库独立寻找当前前台 旧的 ready/Force 目标不能吞掉另一个档案的 pending 候选
+            // Search the whole library independently for the current foreground, an old ready/Force target must not swallow another profile's pending candidate
             GameDetection challenger = CaptureRendererChallenger(all, library, incumbent);
             GameDetection offered = challenger;
-            // 前台归属不明确/终验失败时不能拿全局 Detect 的旧仲裁结果绕过拒绝
-            // 这里只保留原有 learned/Force 可从后台选中的硬目标
+            // When foreground ownership is unclear or the final check fails, the global Detect's stale arbitration must not be used to bypass the rejection
+            // only the existing learned/Force hard targets that may be selected from the background are kept here
             if (offered == null && raw != null && !raw.RendererForeground
                 && raw.RendererCandidateSelected && !raw.RequiresGpuConfirm
                 && !RendererHandoffTracker.SameIdentity(raw, incumbent)) offered = raw;
@@ -190,8 +190,8 @@ namespace PaviseApp
                 && (!confirmed.RendererForeground || RendererForegroundPid() == confirmed.RendererPid)
                 && RendererEpochCurrent(epoch)) return confirmed;
 
-            // 某些 Force/已学习目标本来允许后台选举 同时前台有 SafetyOnly challenger
-            // 两者不能互相挤掉 硬目标尚有恢复债务时 额外保留一个身份精确的暂缓目标
+            // Some Force/learned targets allow background election while a SafetyOnly challenger sits in the foreground
+            // neither may push the other out, while the hard target still has restore debt keep an extra identity-exact deferred target
             GameDetection direct = raw != null && raw.RendererCandidateSelected
                 && !raw.RendererForeground && !raw.RequiresGpuConfirm && !raw.RendererSafetyOnly ? raw : rendererDirectPending;
             if (direct != null && !RendererHandoffTracker.SameIdentity(direct, incumbent))
@@ -311,7 +311,7 @@ namespace PaviseApp
             if (needsReplacement)
             {
                 GameDetection toSave = RendererHandoffTracker.Copy(selected);
-                toSave.RendererLearnable = true; // 已确认的旧 learned 也升级为唯一入口，清掉旧别名。
+                toSave.RendererLearnable = true; // confirmed old learned entry also becomes the sole entry, old aliases cleared
                 if (!TryLearnConfirmedRenderer(toSave,
                         delegate { return RendererCommitEvidenceCurrent(selected, expectedEpoch); })) return false;
                 lock (sync)
@@ -344,8 +344,8 @@ namespace PaviseApp
                 if (now > selected.RendererGpuProofExpiresMs
                     || !RendererHandoffTracker.SameIdentity(proof, selected)) return false;
             }
-            // 采样/恢复/保存都有耗时 新交接必须在提交点复查前台 旧 sticky 的历史
-            // Foreground 标记不能用于此检查 Alt-Tab 不应把正在进行的对局踢掉
+            // Sampling/restore/save all take time, a new handoff must re-check the foreground at the commit point, the old sticky's historical
+            // Foreground flag cannot be used for this check, Alt-Tab must not kick out a match in progress
             if (selected.RendererForeground && RendererForegroundPid() != selected.RendererPid) return false;
             if (incumbent != null && incumbent.Profile != null && selected.Profile != null
                 && string.Equals(incumbent.Profile.Id, selected.Profile.Id, StringComparison.OrdinalIgnoreCase)

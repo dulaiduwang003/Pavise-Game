@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 构建托盘菜单并同步运行状态
+// File purpose Build the tray menu and sync running state
 using System;
 using System.Collections.Generic;
 using System.Drawing;

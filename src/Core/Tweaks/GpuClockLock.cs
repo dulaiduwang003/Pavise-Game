@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 显卡锁频已下架 只保留旧版留下的锁频收据清收 启动与清除时按收据解锁
+// File purpose GPU clock lock is withdrawn; only cleanup of receipts left by older versions remains, unlocking by receipt at startup and on wipe
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -8,11 +8,11 @@ using System.Text;
 
 namespace PaviseApp
 {
-    // 2.2.0.0 上架 随后下架 笔记本上钉死显卡等于先划走 CPU 的功耗份 实测掉帧
-    //   台式机收益没有实测支撑 整项撤掉 旧版写过的收据照旧在启动和清除时解锁
+    // Shipped in 2.2.0.0, withdrawn soon after; pinning the GPU on a laptop takes the power share away from the CPU first, dropped frames in testing
+    //   No test data backs a desktop gain; the whole item is pulled; receipts written by older versions are still unlocked at startup and on wipe
     internal static class GpuClockLock
     {
-        // 会话收据 由恢复完成判定共同引用 改名必须两边一起
+        // Session receipt shared with the restore-complete check; rename both sides together
         internal const string ReceiptKey = "GpuClockLockReceipt";
         private const int ClockGraphics = 0;
         private const int NvmlSuccess = 0;
@@ -37,7 +37,7 @@ namespace PaviseApp
         [DllImport("nvml.dll", EntryPoint = "nvmlDeviceResetGpuLockedClocks")]
         private static extern int NvmlResetLockedClocks(IntPtr device);
 
-        // A 卡走 ADLX 的最低核心频率 快照存在 AdlxTweaks 的账本里 这里只记一个"本局用了 A 卡路径"的标记
+        // AMD cards go through ADLX minimum core clock; the snapshot lives in the AdlxTweaks ledger, here we only record a 'this match used the AMD path' flag
         private const string AmdKey = "GpuClockLockAmd";
 
         public static bool HasResidue
@@ -49,14 +49,14 @@ namespace PaviseApp
             }
         }
 
-        // 电竞档锁定开启 掌机和笔记本不由档位强制
+        // Esports tier forces the lock on; Handheld and laptop are not forced by tier
         private sealed class Device
         {
             public IntPtr Handle;
             public string Uuid;
         }
 
-        // 每次操作独立 Init 和 Shutdown NVML 自己按引用计数 不占着句柄跨局
+        // Each operation does its own Init and Shutdown; NVML refcounts internally; don't hold the handle across matches
         private static bool Open(List<Device> devices)
         {
             try
@@ -85,7 +85,7 @@ namespace PaviseApp
             catch { }
         }
 
-        // 支持性按进程缓存 驱动更新才会变 那种场景本来就要重启程序
+        // Support is cached per process; only a driver update changes it, and that scenario needs an app restart anyway
 
         internal static string EncodeReceipt(IList<KeyValuePair<string, uint>> locked)
         {
@@ -133,7 +133,7 @@ namespace PaviseApp
                         Device found = null;
                         foreach (Device d in devices)
                             if (string.Equals(d.Uuid, entry.Key, StringComparison.OrdinalIgnoreCase)) { found = d; break; }
-                        // 收据里的卡已经不在机器上 锁随驱动会话一起没了 不算失败
+                        // Card in the receipt is no longer in the machine; the lock died with the driver session, not a failure
                         if (found == null) continue;
                         int rc = NvmlResetLockedClocks(found.Handle);
                         if (rc != NvmlSuccess && rc != NvmlNotSupported) ok = false;

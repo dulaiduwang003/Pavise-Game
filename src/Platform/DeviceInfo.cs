@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 只读汇总本机处理器 显卡 内存信息 供概览页展示
+// File purpose Read-only summary of this machine's CPU, GPU and memory for the Overview page
 using System;
 using System.Collections.Generic;
 using System.Management;

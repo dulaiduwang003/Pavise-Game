@@ -1,12 +1,12 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 对局中把 NVIDIA 的 G-SYNC 从"仅全屏"补成"全屏加窗口" 退局按快照写回
+// File purpose Expand NVIDIA G-SYNC from fullscreen-only to fullscreen plus windowed during a match; write back from snapshot at match end
 using System;
 
 namespace PaviseApp
 {
-    // 全局键 VRR_MODE 0 关 1 仅全屏 2 全屏加窗口 只在用户已经开了 G-SYNC 且只给全屏时才补
-    //   用户关着 G-SYNC 的不动 那是显示器层面的选择 不该被一个开关替他改
-    //   逐游戏那半边 VRR_APP_OVERRIDE 写允许 由 NvDrsTweaks 随游戏配置一起下发
+    // Global key VRR_MODE: 0 off, 1 fullscreen only, 2 fullscreen plus windowed; only expand when the user already has G-SYNC on and fullscreen-only
+    //   Leave users with G-SYNC off alone; that's a monitor-level choice a switch shouldn't change for them
+    //   The per-game half, VRR_APP_OVERRIDE, is written as Allow by NvDrsTweaks along with the game profile
     internal static class NvVrrWindowed
     {
         internal const string SnapKey = "NvVrrModeSnap";
@@ -18,7 +18,7 @@ namespace PaviseApp
 
         public static bool HasResidue { get { return Settings.LoadStr(SnapKey, "").Length > 0; } }
 
-        // 只把"仅全屏"补成"全屏加窗口" 其余取值一律不碰
+        // Only expand fullscreen-only to fullscreen plus windowed; every other value is left untouched
         internal static bool ShouldExpand(uint mode)
         {
             return mode == VrrFullscreenOnly;
@@ -56,7 +56,7 @@ namespace PaviseApp
             finally { NvApi.CloseSession(session); }
         }
 
-        // 界面用 用户已开 G-SYNC 且只给全屏才有东西可补
+        // For the UI: only when the user has G-SYNC on and fullscreen-only is there anything to expand
         public static bool Applicable()
         {
             uint mode;
@@ -70,7 +70,7 @@ namespace PaviseApp
                 if (HasResidue) return true;
                 uint mode;
                 if (!NvApi.Available || !ReadMode(out mode)) { Logger.Warn(Lang.T("log.nvvrr.1")); return false; }
-                // 关着或已经是全屏加窗口 都是不适用 报成功不留账
+                // Off or already fullscreen plus windowed means not applicable; report success without a record
                 if (!ShouldExpand(mode)) return true;
                 Settings.SaveStr(SnapKey, mode.ToString());
                 if (Settings.LoadStr(SnapKey, "") != mode.ToString()) return false;
@@ -94,7 +94,7 @@ namespace PaviseApp
                 uint original;
                 if (!uint.TryParse(raw, out original)) { Settings.SaveStr(SnapKey, ""); return true; }
                 uint now;
-                // 用户中途自己改过就不抢回来 只清账
+                // User changed it mid-match; don't take it back, just clear the record
                 if (ReadMode(out now) && now != VrrFullscreenAndWindowed)
                 {
                     Settings.SaveStr(SnapKey, "");

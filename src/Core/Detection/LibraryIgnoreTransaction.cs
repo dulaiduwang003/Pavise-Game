@@ -1,4 +1,4 @@
-// 游戏库和自动忽略表成对更新 收据落盘之后 补偿被打断也能接着做
+// Game library and auto-ignore table update as a pair; once the receipt is on disk, an interrupted compensation can resume
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -31,7 +31,7 @@ namespace PaviseApp
             RecoveryPending = File.Exists(receiptPath);
         }
 
-        // 调用方负责把这和所有游戏库改动串起来 这里不发布任何在用状态
+        // Caller is responsible for serializing this with all game library changes; nothing in-use is published here
         internal bool Commit(IList<GameProfile> next, byte[] nextIgnore, Func<bool> canCommit)
         {
             if (nextIgnore == null) return false;
@@ -44,7 +44,7 @@ namespace PaviseApp
                 byte[] previousProfiles = ReadOptional(profilePath), previousIgnore = ReadOptional(ignorePath);
                 if (Same(previousIgnore, nextIgnore)) return store.Save(next, canCommit);
                 string beforeHash = Hash(previousProfiles), afterHash = Hash(nextProfiles);
-                // 成对操作必须有一个独立的主提交标记
+                // The paired operation needs an independent primary commit marker
                 if (beforeHash == afterHash) return false;
                 string body = string.Join("\n", new[] { Header, beforeHash, afterHash,
                     Encode(previousIgnore), Encode(nextIgnore) });
@@ -54,9 +54,9 @@ namespace PaviseApp
                 RecoveryPending = true;
                 WriteAtomic(ignorePath, nextIgnore, "apply-ignore");
                 bool committed = store.Save(next, canCommit);
-                // 主提交之前就还原旧忽略表 提交之后就保留新的
-                // 清理失败会把收据留着 挡住后续写入
-                // 但配对已经完成的仍然算成功 得把新的内存状态发出去
+                // Before the primary commit, restore the old ignore table; after it, keep the new one
+                // A cleanup failure leaves the receipt in place, blocking later writes
+                // but a pair that already completed still counts as success, so the new in-memory state must be published
                 TryRecover();
                 return committed;
             }
@@ -87,7 +87,7 @@ namespace PaviseApp
                 else if (currentHash == fields[1]) desired = before;
                 else throw new IOException("Library changed outside the pending transaction; preserving receipt");
                 byte[] current = ReadOptional(ignorePath);
-                // 第三方改过的东西 两份事务快照哪个都别去盖
+                // Something modified by a third party: neither transaction snapshot may overwrite it
                 if (!Same(current, before) && !Same(current, after))
                     throw new IOException("Auto-ignore changed outside the pending transaction; preserving receipt");
                 if (!Same(current, desired))

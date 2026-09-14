@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 关闭并恢复 VBS 内存完整性和虚拟机监控程序
+// File purpose Disable and restore VBS memory integrity and the hypervisor
 using System;
 using System.Diagnostics;
 using System.Management;
@@ -27,9 +27,9 @@ namespace PaviseApp
 
         public static bool DisabledByPavise { get { return Settings.Load("VbsDisabledByPavise", false); } }
 
-        // 关 VBS 等于关虚拟机监控程序 Hyper-V WSL2 Docker 沙盒都跟着停
-        //   vmcompute 和 vmms 两个服务任一存在就是有人在用 Credential Guard 开着是企业机
-        //   原先只挡极限档的强制 极限下架后仅用于说明 用户手开不经此门
+        // Disabling VBS means disabling the hypervisor; Hyper-V, WSL2, Docker and Sandbox all stop with it
+        //   Either vmcompute or vmms service present means someone uses it; Credential Guard on means a corporate machine
+        //   Originally only blocked the Extreme tier's mandatory items; with Extreme retired it is only for the description, manual enable bypasses this gate
         internal static bool VirtualizationInUse(bool vmcomputeInstalled, bool vmmsInstalled, int lsaCfgFlags)
         {
             return vmcomputeInstalled || vmmsInstalled || lsaCfgFlags > 0;
@@ -41,7 +41,7 @@ namespace PaviseApp
                 Math.Max(ReadDword(@"SYSTEM\CurrentControlSet\Control\Lsa", "LsaCfgFlags"), 0));
         }
 
-        // 只认真正注册且没被禁用的服务 Hyper-V 卸载后常留一个没有 ImagePath 的空壳键 那不算在用
+        // Only count services that are really registered and not disabled; Hyper-V uninstall often leaves a hollow key without ImagePath, that does not count as in use
         private static bool ServiceInstalled(string name)
         {
             try

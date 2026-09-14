@@ -1,4 +1,4 @@
-// 文件用途 Intel 驱动回归 只用假适配器和内存台账
+// File purpose Intel driver regression, fake adapters and an in-memory ledger only
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -116,8 +116,8 @@ namespace PaviseApp
                 if (UncertainRestore && value == 0) return IntelGraphicsWriteResult.Uncertain;
                 if (value == 1 && (UncertainApply || ThrowUncertainApply))
                 {
-                    // setter 失败或者没确认 偏好不用跟着改
-                    // 引擎回读之前 别的调用方可能已经选了 On
+                    // Setter failed or unconfirmed, the preference need not change with it
+                    // Before the engine reads back, another caller may already have picked On
                     if (AfterWrite != null) AfterWrite();
                     if (ThrowUncertainApply) throw new InvalidOperationException("unconfirmed setter");
                     return IntelGraphicsWriteResult.Uncertain;
@@ -349,7 +349,7 @@ namespace PaviseApp
                 "confirmed A not restored after restart");
             api.ApplyReadbackFailure = true;
             var incomplete = new IntelLowLatencyEngine(api, ledger);
-            // 假实现是从某次 setter 之后才开始失败的 不是在抓原值那会儿
+            // The fake starts failing only after some setter, not while capturing the original value
             api.Writes = 0;
             IntelCheck(!incomplete.Apply(null) && ledger.Value == "1|P|" + IntelTestId, "unconfirmed write lost P");
             api.ApplyReadbackFailure = false;
@@ -422,8 +422,8 @@ namespace PaviseApp
             IntelCheck(engine.Restore(), "cleanup after reentrancy");
         }
 
-        // 清除全部配置的放弃语义:发过还原写入后驱动仍是 On 的 R 收据永远无法认领
-        //   重置语境下放弃并保留驱动现状;可认领的 A 收据与瞬时失败不放弃
+        // Abandon semantics of clear-all-config: an R receipt whose restore write was issued while the driver still reads On can never be claimed
+        //   In reset context abandon and keep the driver's current state, a claimable A receipt and transient failures are not abandoned
         private static void IntelResetAbandonsUnprovableReceipt()
         {
             var ledger = new IntelFakeLedger { Value = "1|R|" + IntelTestId };

@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 进程线程句柄 特权提升与对象信息
+// File purpose Process and thread handles, privilege elevation and object information
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;

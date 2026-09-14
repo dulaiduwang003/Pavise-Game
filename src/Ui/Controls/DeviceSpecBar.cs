@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 概览页设备规格条 斜切分段的机能面板风格
+// File purpose Device spec bar on the Overview page, slanted segmented spec-panel style
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;

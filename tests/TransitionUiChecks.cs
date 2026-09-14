@@ -103,7 +103,7 @@ namespace PaviseApp
                 using (var form = new OffscreenTestForm { ClientSize = new Size(860, 650) })
                 {
                     form.Show();
-                    // 先验探针 不然探针坏了会闷声把快照全收下
+                    // Verify the probe first, otherwise a broken probe silently accepts every snapshot
                     using (var probe = new Panel { Bounds = new Rectangle(0, 0, 20, 20) })
                     {
                         form.Controls.Add(probe);
@@ -190,7 +190,7 @@ namespace PaviseApp
 
         private static void FinishTabFrames(TechTabs tabs)
         {
-            // 允许支持范围内最慢的那个时钟步长 别让测试绑死在某个具体的缓动速度上
+            // Allow the slowest clock step in the supported range, do not tie the test to one specific easing speed
             for (int i = 0; i < 100; i++)
             {
                 Motion marker = Field<Motion>(tabs, "selection");
@@ -367,7 +367,7 @@ namespace PaviseApp
                     CheckTabSettled(tabs, "showing a tab replayed a hidden transition");
                     tabs.Index = 2; Frame(); host.Hide();
                     Check(!tabs.Visible, "parent-hide fixture left its tab visible");
-                    // 框架把父级藏起来的时候 不一定会同步通知不可见的子级
+                    // When the framework hides the parent it does not necessarily notify invisible children synchronously
                     Frame();
                     CheckTabSettled(tabs, "hidden tab indicator did not settle on its next frame");
                     tabs.Index = 0;
@@ -379,7 +379,7 @@ namespace PaviseApp
                     tabs.Index = 2; Frame();
                     Check(Field<Motion>(tabs, "selection").Value < 2,
                         "parent-reopen fixture did not enter an indicator transition");
-                    // 隐藏期间不出帧也不改选中项 光是重新打开就得把第一帧对齐
+                    // No frames and no selection change while hidden, merely reopening must align the first frame
                     host.Hide(); host.Show();
                     using (var picture = PaintSurface(tabs))
                         CheckTabSettled(tabs, "rapid parent reopen replayed its interrupted tab transition");
@@ -600,7 +600,7 @@ namespace PaviseApp
 
         private static object TrackedDialogFade(Form dialog)
         {
-            // 抓真实的条目对象只是为了断言定时器有没有释放 公开入口在下面查
+            // Grabbing the real entry object is only to assert whether the timer was released, the public entry is checked below
             Type entry = typeof(Fx).GetNestedType("FormEntry", BindingFlags.NonPublic);
             return Activator.CreateInstance(entry, new object[] { dialog });
         }
@@ -619,7 +619,7 @@ namespace PaviseApp
                 PumpUntil(delegate { return dialog.Opacity > 0; }, "dialog fade did not produce a visible frame");
                 Check(dialog.Bounds == bounds && dialog.Opacity < 1, "dialog failed to fade in place");
 
-                // 对话框正在淡出的时候打开主窗口 后面不能把它的时钟挂起
+                // Opening the main window while the dialog is fading out must not suspend its clock afterwards
                 UiClock.Suspended = false;
                 PumpUntil(delegate { return dialog.Opacity == 1; }, "dialog fade did not finish");
                 Check(!dialog.AllowTransparency && !UiClock.Suspended && ListenerCount() == listeners,
@@ -698,8 +698,8 @@ namespace PaviseApp
             Rectangle full = page.Parent.RectangleToScreen(page.Bounds);
             var source = new Rectangle(reveal.Left - full.Left, reveal.Top - full.Top,
                 reveal.Width, reveal.Height);
-            // 先独立画完整的源 再裁剪 在这里把遮罩那套平移再来一遍
-            // 只会把平移后的 GDI 文字 裁剪和背景坐标里的 bug 盖住
+            // Paint the complete source standalone first, then crop, redoing the mask's translation here
+            // would only cover up bugs in the translated GDI text, clip and background coordinates
             using (Bitmap complete = PaintSurface(page))
             using (Bitmap expected = complete.Clone(source, PixelFormat.Format32bppArgb))
             using (Bitmap actual = PaintSurface(reveal))
@@ -717,8 +717,8 @@ namespace PaviseApp
                 using (var page = new WorkspacePanel { Bounds = new Rectangle(-18, -11, 430, 300), Visible = false })
                 using (var next = new WorkspacePanel { Bounds = new Rectangle(10, 10, 370, 240), Visible = false })
                 using (var label = new Label { Text = "Live content", Bounds = new Rectangle(32, 35, 170, 28) })
-                // 系统主题的 TextBox 边框会向父级要 WM_PRINTCLIENT 来画自己的背景
-                // 用应用自己那套无边框搜索框样式 快照探针才不会含糊
+                // A system-themed TextBox border asks the parent for WM_PRINTCLIENT to paint its own background
+                // Use the app's own borderless search box style so the snapshot probe is unambiguous
                 using (var text = new TextBox { Text = "Native child", Bounds = new Rectangle(32, 75, 170, 28),
                     BorderStyle = BorderStyle.None, BackColor = Theme.Inset, ForeColor = Theme.Fg })
                 using (var reveal = new PageReveal(form))
@@ -751,8 +751,8 @@ namespace PaviseApp
                         page.Visible = true;
                         int paintsBeforeReveal = prints.Paints;
                         reveal.Reveal();
-                        // 完全在屏幕外的 GDI 子控件可见区域是空的 会直接跳过托管的 Paint 事件
-                        // 所以这里不显示窗口 只观察原生绘制有没有派发下来
+                        // A GDI child fully off-screen has an empty visible region and skips the managed Paint event entirely
+                        // so the window is not shown here, only observe whether native painting gets dispatched
                         Check(reveal.Fading && FrameListenersFor(reveal) == 1
                             && prints.Paints > paintsBeforeReveal && prints.AllPainted,
                             "page reveal started without requesting a native paint for the entire child tree");
@@ -828,7 +828,7 @@ namespace PaviseApp
                     BeginReveal(reveal, next);
                     reveal.Dispose();
                     CheckRevealStopped(reveal, "veil disposal");
-                    form.Left++; // Disposed veils must not remain subscribed to their old owner.
+                    form.Left++; // Disposed veils must not remain subscribed to their old owner
                 }
                 Check(ListenerCount() == listeners, "page reveal lifecycle retained global frame listeners");
             }
@@ -980,7 +980,7 @@ namespace PaviseApp
                 CheckTabs(form, PageId.Policy, "policyTabs", "policyTabPanels");
                 CheckTabs(form, PageId.Environment, "envTabs", "envTabPanels");
 
-                // Visible 是从父级继承的 清一个隐藏页面照样得把本地标志更新掉
+                // Visible is inherited from the parent, clearing a hidden page must still update the local flag
                 Field<PillButton>(form, "btnAuditQuick").Visible = true;
                 Field<PillButton>(form, "btnAuditPrecise").Visible = true;
                 Field<PillButton>(form, "btnAuditFixAll").Visible = true;
@@ -999,7 +999,10 @@ namespace PaviseApp
                 Call(form, "BeginIntro"); Call(form, "StartIntro"); Frame();
                 Check(form.Bounds == window && form.Opacity > 0 && form.Opacity < 1,
                     "main window entry moved or failed to fade");
-                FinishFrames();
+                // DeltaScale may be at its supported minimum after native message pumping.
+                // Advance until settled, allowing enough frames for the slowest clock step.
+                for (int i = 0; i < 120 && Field<bool>(form, "introActive"); i++) Frame();
+                UiClock.Running = false;
                 Check(!Field<bool>(form, "introActive") && form.Opacity == 1 && !form.AllowTransparency,
                     "main window intro left an unfinished layered window");
                 Call(form, "BeginOutro"); Call(form, "OnOutroTick", null, EventArgs.Empty);
@@ -1062,7 +1065,7 @@ namespace PaviseApp
                 MouseUp(tabs, (Rectangle)Call(tabs, "TabRect", 0));
                 FinishTabFrames(tabs);
 
-                // 两次点击之间不出动画帧也不泵消息 中间每个状态都得是当场算出来的
+                // No animation frames and no message pumping between the two clicks, every intermediate state must be computed on the spot
                 for (int pass = 0; pass < 3; pass++)
                 for (int index = panels.Length - 1; index >= 0; index--)
                 {
@@ -1116,7 +1119,7 @@ namespace PaviseApp
             return (T)typeof(Backdrop).GetField(name, BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
         }
 
-        // 跑真正的托管绘制路径 但不显示真的模态窗口 也不动焦点
+        // Runs the real managed paint path without showing a real modal window or moving focus
         private static Bitmap PaintSurface(Control control)
         {
             var bitmap = new Bitmap(control.Width, control.Height);
@@ -1132,7 +1135,7 @@ namespace PaviseApp
 
         private static Bitmap PaintList(TechListBox list)
         {
-            // 把原生缓冲的行合成和 WM_ERASEBKGND 那段收尾实现都跑一遍
+            // Runs the native buffered row composition and the WM_ERASEBKGND finishing implementation end to end
             var bitmap = new Bitmap(list.ClientSize.Width, list.ClientSize.Height);
             using (Graphics graphics = Graphics.FromImage(bitmap))
             {
@@ -1189,7 +1192,7 @@ namespace PaviseApp
                     mainCard.Controls.AddRange(new Control[] { mainLabel, movable, excluded });
                     excluded.Controls.Add(excludedLabel);
                     extra.Controls.Add(list);
-                    dialog.Owner = form; // Ownership is not ancestry and must not inherit the owner's cover.
+                    dialog.Owner = form; // Ownership is not ancestry and must not inherit the cover from its owner
                     list.Items.Add("One row with an empty tail");
                     int rowsDrawn = 0;
                     list.DrawItem += delegate(object sender, DrawItemEventArgs e)
@@ -1203,7 +1206,7 @@ namespace PaviseApp
                     var power = Field<PowerFlyout>(form, "powerFlyout");
                     var search = Field<SearchFlyout>(form, "searchFlyout");
                     powerRow.SetBounds(Theme.S(14), Theme.S(66), Theme.S(368), Theme.S(44));
-                    power.Controls.Add(powerRow); // Do not enumerate or change real power plans.
+                    power.Controls.Add(powerRow); // Do not enumerate or change real power plans
                     var modeChoice = Field<ModeChoice[]>(modes, "choices")[0];
                     var modeLabel = Field<Label>(modes, "source");
                     var powerLabel = Field<Label>(power, "title");
@@ -1325,7 +1328,7 @@ namespace PaviseApp
             }
         }
 
-        // 渲染回归里绝不调 Init Choose Clear 和那个会落盘的 Dim setter
+        // Rendering regression never calls Init, Choose, Clear or the Dim setter that persists to disk
         private sealed class MemoryBackdrop : IDisposable
         {
             private readonly string[] names = { "source", "fitted", "fittedFor", "fittedDim", "fittedLight", "dim" };
@@ -1336,7 +1339,7 @@ namespace PaviseApp
             {
                 saved = new object[names.Length];
                 for (int i = 0; i < names.Length; i++) saved[i] = Field(names[i]).GetValue(null);
-                Field("fitted").SetValue(null, null); // Detach, never dispose the caller's cache.
+                Field("fitted").SetValue(null, null); // Detach never dispose the cache owned by the caller
                 Field("dim").SetValue(null, 0);
                 Use(-1);
             }
@@ -1413,7 +1416,7 @@ namespace PaviseApp
             public void Dispose() { foreach (PrintWatch window in windows) window.Dispose(); windows.Clear(); }
         }
 
-        // DrawToBitmap 会发 WM_PRINT 和 WM_PRINTCLIENT 观察这段工作 别加跟时序相关的限制
+        // DrawToBitmap sends WM_PRINT and WM_PRINTCLIENT, observe that work, do not add timing-dependent constraints
         private sealed class PrintWatch : NativeWindow, IDisposable
         {
             public int Count;

@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 按多局真实观测判断某个驱动的中断值不值得挪核
+// File purpose Judge from multiple real match observations whether a driver's interrupts are worth an IRQ core move
 using System;
 using System.Collections.Generic;
 
@@ -51,8 +51,8 @@ namespace PaviseApp
             v.StructuralConflict = false;
             v.Collisions = 0;
             if (v.OverlapCpuMask == 0 || v.ScoredSeconds <= 0) return;
-            // 挪核建议必须知道游戏核与完整落核掩码 并且同一驱动要在多局都实际越线
-            // 全局凑够三局不等于这个驱动也稳定复现 一局偶发尖峰不能升级成建议
+            // An IRQ core move suggestion needs the game cores and the full placement mask, and the same driver must actually cross the line in multiple matches
+            // Three matches overall does not mean this driver reproduces stably; a one-match spike must not be escalated into a suggestion
             if (v.MaskTruncated) return;
             if (v.SessionsSeen < IrqSessionLedger.MinSessionsForVerdict
                 || v.SessionsOverThreshold < IrqSessionLedger.MinSessionsForVerdict) return;
@@ -95,8 +95,8 @@ namespace PaviseApp
             var dpcTotals = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
             var newestVersion = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-            // 窗口按从新到旧排 某个驱动版本一旦出现过 同一模块的更老版本
-            // 在更新之后就不能再继承或者贡献推荐结论
+            // The window is sorted newest to oldest; once a driver version has appeared, an older version of the same module
+            // that comes after the newer one can no longer inherit or contribute to the recommendation
             foreach (IrqSessionRecord s in window)
             {
                 var sessionDrivers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -112,8 +112,8 @@ namespace PaviseApp
                         continue;
                     IrqDriverVerdict v;
                     string key = d.Identity;
-                    // 合法的探测每个驱动只写一条记录 台账损坏时忽略重复记录
-                    // 免得一场对局冒充成好几局
+                    // A valid probe writes one record per driver; duplicates are ignored when the ledger is corrupt
+                    // so one match cannot pose as several
                     if (!sessionDrivers.Add(key)) continue;
                     if (!byDriver.TryGetValue(key, out v))
                     {
@@ -125,20 +125,19 @@ namespace PaviseApp
                         dpcTotals[key] = 0;
                     }
                     v.SessionsSeen++;
-                    // 台账里只有一份聚合的延迟分布加一个 CPU 掩码
-                    // 它证明不了慢 DPC 是哪个 CPU 产生的 只有当这个驱动被观察到的
-                    // 每一个 CPU 都落在游戏掩码里 这一局才计分
-                    bool provenOnGameCores = s.GameMask != 0
-                        && s.SystemMask != 0 && s.GameMask != s.SystemMask
-                        && (s.GameMask & ~s.SystemMask) == 0 && d.CpuMask != 0
-                        && (d.CpuMask & ~s.GameMask) == 0;
-                    if (provenOnGameCores)
+                    bool validGame = s.GameMask != 0 && s.GameMask != s.SystemMask
+                        && (s.GameMask & ~s.SystemMask) == 0;
+                    bool detailed = d.ValidCores(s.SystemMask);
+                    bool legacy = d.Cores.Count == 0 && !d.MaskTruncated
+                        && d.CpuMask != 0 && (d.CpuMask & ~s.GameMask) == 0;
+                    if (validGame && (detailed || legacy))
                     {
-                        if (d.Over500Us > 0) v.SessionsOverThreshold++;
-                        v.OverlapOver500 += d.Over500Us;
-                        if (d.DpcMaxUs > v.OverlapWorstMaxUs)
-                            v.OverlapWorstMaxUs = d.DpcMaxUs;
-                        v.OverlapCpuMask |= d.CpuMask;
+                        IrqDriverCoreRecord relevant = detailed ? d.OnCores(s.GameMask)
+                            : new IrqDriverCoreRecord { Over500Us = d.Over500Us, MaxNs = d.DpcMaxNs };
+                        if (relevant.Over500Us > 0) v.SessionsOverThreshold++;
+                        v.OverlapOver500 += relevant.Over500Us;
+                        v.OverlapWorstMaxUs = Math.Max(v.OverlapWorstMaxUs, relevant.MaxNs / 1000.0);
+                        v.OverlapCpuMask |= d.CpuMask & s.GameMask;
                         v.ScoredSeconds += s.DurationSeconds;
                     }
                     if (d.DpcMaxUs > v.WorstMaxUs) v.WorstMaxUs = d.DpcMaxUs;
@@ -177,8 +176,8 @@ namespace PaviseApp
             return result;
         }
 
-        // 展示与裁决分离 完整短局可以展示原始分布 但所有建议字段只取严格
-        // Evaluate 的结果 绝不把短局计入 SessionsSeen ScoredSeconds 或碰撞评分
+        // Display and verdict are separated: complete short matches may show the raw distribution, but every suggestion field takes only the strict
+        // Evaluate result, never counting short matches into SessionsSeen, ScoredSeconds, or the collision score
         public static List<IrqDriverVerdict> EvaluateForDisplay(List<IrqSessionRecord> all,
             int hz, out int usedSessions, out int displaySessions)
         {
@@ -199,8 +198,8 @@ namespace PaviseApp
             var seconds = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
             var newestVersion = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-            // 台账最多保留 12 局 展示这一有界历史内的完整记录 不让短局挤走
-            // 仍在严格五局窗口中的证据 旧 boot/topology 丢事件和零秒记录不混入
+            // The ledger keeps at most 12 matches; show complete records within this bounded history without letting short matches crowd out
+            // evidence still in the strict five-match window; old boot/topology, dropped-event, and zero-second records stay out
             int first = Math.Max(0, all.Count - IrqSessionLedger.KeepSessions);
             for (int i = all.Count - 1; i >= first; i--)
             {
@@ -218,7 +217,7 @@ namespace PaviseApp
                         newestVersion[d.Driver] = version;
                     else if (!string.Equals(currentVersion, version, StringComparison.OrdinalIgnoreCase))
                         continue;
-                    // 每局每个驱动只接纳一份 同一驱动的新旧版本不能混算
+                    // Each match accepts one entry per driver; old and new versions of the same driver must not be pooled
                     if (!sessionDrivers.Add(d.Driver)) continue;
                     IrqDriverVerdict v;
                     if (!byDriver.TryGetValue(d.Driver, out v))
@@ -245,7 +244,7 @@ namespace PaviseApp
                 List<double> m = maxima[kv.Key];
                 m.Sort();
                 v.MedianMaxUs = m.Count == 0 ? 0 : m[m.Count / 2];
-                // 分子 分母只来自该驱动同一版本 具有正实测时长的记录
+                // Numerator and denominator come only from that driver's same-version records with a positive measured duration
                 v.DpcPerMinute = dpcTotals[kv.Key] / (seconds[kv.Key] / 60.0);
                 if (strict != null)
                     foreach (IrqDriverVerdict scored in strict)

@@ -1,32 +1,32 @@
-# CPU / memory experiment protocol — 2026-09-08
+# CPU 与内存台架的测试规则
 
-Scope: isolated synthetic executables, no game access, injection, hooks, driver installation, elevation, UI, global power or registry changes. All binaries are Windows GUI-subsystem executables without a UI; every subprocess uses CREATE_NO_WINDOW. Existing user edits are preserved.
+全程只跑自己的测试程序 不碰游戏 不注入 不装驱动 不提权 不改全局设置 子进程一律无窗口
 
-## Experiment 1: hardware prefetch controls
+## 预取器
 
-Perform a read-only capability audit first. A measured hardware comparison requires a verified, model-aware privileged MSR backend, independent read-back, preservation of unrelated/reserved bits, and verified restoration. P and E core registers and scopes must be handled separately. If unavailable, status is NOT_TESTED_NO_PRIVILEGED_BACKEND. Do not substitute software prefetch, assume default state is enabled, or report a hardware benefit from unchanged-state memory tests.
+先只读探测能力 真要测必须有按 CPU 型号区分的特权 MSR 后端 写完回读 测完还原 没有就记 NOT_TESTED_NO_PRIVILEGED_BACKEND
 
-## Experiment 2: core placement / shared-resource contention
+## 核心摆放
 
-Discover physical core masks, efficiency classes, and L2 sharing through GetLogicalProcessorInformationEx. Require a single supported processor group, at least six P cores, an SMT sibling for the selected foreground P core, and four E-core L2 groups with at least four E cores in the selected packed group. Fail explicitly if the topology does not match this protocol.
+拓扑从 GetLogicalProcessorInformationEx 读 要求单处理器组 至少 6 个 P 核 前台核有 SMT 兄弟 四组 E 核 L2 不满足直接报错
 
-Foreground stays on one P-core logical CPU in every arm. Background has four normal-priority threads. These are continuous synthetic competitors, with their own completed-work counters. Background placements:
+前台一个线程钉在一个 P 核逻辑处理器 后台四个普通优先级线程 摆法六种
 
-- alone: no background workers;
-- unrestricted: all process-allowed CPUs (only background placement is unrestricted);
-- smt_overlap: one worker on the foreground SMT sibling, three on separate P cores; an engineered adverse control;
-- p_separate: four separate P physical cores excluding foreground;
-- e_pack: four E cores within one observed shared L2;
-- e_spread: one E core from each of four observed L2 groups.
+- alone 没有后台
+- unrestricted 后台不限核
+- smt_overlap 一个后台和前台共用物理核 故意找茬的对照
+- p_separate 四个独立 P 核
+- e_pack 挤在同一组 L2 的四个 E 核
+- e_spread 四组 L2 各出一个 E 核
 
-Foreground workloads: integer recurrence (compute), dependent random pointer chase over 8 MiB (cache8), and 128 MiB (dram128). Nodes occupy 64 bytes. The random cycle is validated before timing. Background types: integer recurrence or sequential reads of four private 64 MiB buffers. Buffers are allocated, initialized and touched before timing. No game workload or FPS is measured. Logical load throughput is not a hardware DRAM bandwidth counter.
+前台负载三种 整数递推 8 MiB 随机指针链 128 MiB 随机指针链 后台两种 整数递推 或者连续读四块各 64 MiB 的私有缓冲
 
-Fixed main matrix: 3 foreground workloads × [1 alone + 2 background types × 5 placements] × 6 rounds = **198 arms**. Each arm: 0.7 s foreground warmup after all backgrounds become ready, then 2.5 s measurement. Each consecutive pair of rounds uses a seeded random order and its reverse; seeds and schedule are saved before the first main arm. Pointer layout seed is fixed. Pilot checks are excluded from the main results and do not choose workloads or change success criteria.
+三种前台 各配一个 alone 加两种后台五种摆法 每种六轮 一共 198 组 每组先热 0.7 秒再测 2.5 秒 轮次顺序用固定种子随机 再倒着来一遍 顺序开跑前就存好
 
-Primary comparisons: e_spread versus unrestricted and e_spread versus p_separate, matched by foreground, background and round. Report other placements descriptively. Primary outcome: foreground completed steps per elapsed second. Tail outcome: p99 fixed-work batch duration (not frame time or 1% low). Record competitor work per elapsed second, system CPU activity and thread affinity read-back/restoration. Timed background counters have a boundary granularity of one 32,768-step compute batch / 4,096-load stream batch per worker.
+主对照 e_spread 对 unrestricted 和 e_spread 对 p_separate 按前台 后台 轮次配对 看前台每秒完成步数 p99 单批耗时 后台吞吐
 
-Strict candidate criterion (exploratory, not proof for games): median paired foreground improvement ≥3%, at least 5/6 positive pairs, median paired background throughput retention ≥95%, and median paired p99 batch-duration ratio ≤1.05. All six primary workload/background combinations and both comparators must be reported, including failures; no selective headline of the best comparison. SMT-overlap recovery must never be presented as ordinary-user uplift. No PMU, clock or CPU temperature read-back is available: mechanisms and thermal confounding remain limitations. Moving work onto slower cores may trade background performance for foreground time, which is not free acceleration.
+达标线 前台配对中位数至少 +3% 六轮至少五轮为正 后台保住 95% 以上 p99 比值不超过 1.05
 
-Validation: verify all 198 arms completed exactly once; duration/sample totals and checksum/cycle checks; masks and restoration; no measured process windows observed; all owned children exit; source hashes, production source/binary hashes, Pavise registry snapshot and power scheme unchanged. Keep raw batch timings, schedule, capability audit, source hashes, per-arm JSON, and analysis output. Report unsupported experiments honestly.
+跑完核对 198 组各跑一次 校验和 指针环 亲和回读和还原 没有弹窗 源码和二进制哈希没变
 
-Hardware references: [Intel Atom prefetch-control specification (Gracemont/Raptor Lake E cores)](https://cdrdv2-public.intel.com/795247/357930-Hardware-Prefetch-Controls-for-Intel-Atom-Cores.pdf), [Windows processor relationships](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-processor_relationship).
+参考 [Intel Atom 预取控制](https://cdrdv2-public.intel.com/795247/357930-Hardware-Prefetch-Controls-for-Intel-Atom-Cores.pdf) [Windows 处理器关系](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-processor_relationship)

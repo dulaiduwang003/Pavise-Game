@@ -1,25 +1,25 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 观测降频 证据饱和后按预算抽局观测 证据不足或有待验收时全量观测
+// File purpose Observation throttling: once evidence is saturated, observe matches on a budget; observe every match while evidence is short or verification is pending
 using System;
 using System.Globalization;
 
 namespace PaviseApp
 {
-    // 对局观测是全家最重的探针 每个 DPC 都要写事件 消费线程整局解码
-    //   台账只留 12 局 裁决只看 5 局窗口 证据饱和之后继续每局全程观测
-    //   信息增量趋近于零 开销照付 这里按预算抽局 四局观测一局
+    // Match observation is the heaviest probe in the family: every DPC writes an event and the consumer thread decodes for the whole match
+    //   The ledger keeps only 12 matches and the verdict looks at a 5-match window; observing every match in full after evidence saturates
+    //   yields near-zero new information at full cost, so this samples matches on a budget: observe one in every four
     //
-    // 三种情况永远全量 判据缺一不可
-    //   本 boot 的合格局还不够裁决窗口 证据还在攒
-    //   自动编排有待重启或验收中的钉核 验收就等着这些局
-    //   判定过程任何一步出错 宁可全量观测也不能少证据
-    // 重启或拓扑变化后台账合格局自动清零 全量观测自动恢复 不用任何显式复位
+    // Three cases always observe in full; each criterion is required
+    //   Usable matches from this boot are still short of the verdict window, evidence is still accumulating
+    //   Autopilot has pinning awaiting reboot or under verification; verification is waiting on these matches
+    //   Any step of the decision errors out; better to observe in full than to lose evidence
+    // After a reboot or topology change the ledger's usable-match count resets on its own and full observation resumes; no explicit reset needed
     internal static class IrqObservationBudget
     {
         internal const int ObserveEveryN = 4;
         internal const string SkipCountKey = "IrqObserveSkipsV1";
 
-        // 纯判定 隔离测试直接喂参数
+        // Pure decision; isolated tests feed parameters directly
         internal static bool ShouldObserve(int bootUsableSessions, bool verificationPending, int skips)
         {
             if (verificationPending) return true;
@@ -27,14 +27,14 @@ namespace PaviseApp
             return skips >= ObserveEveryN - 1;
         }
 
-        // 开局只读判定 不动计数 记账推迟到局末
-        //   开局就记账的话 闪退和秒退这类不合格局会烧掉观测名额
-        //   最坏情况短局与真对局交替相位锁死 观测的全是废局 真对局一直被跳
+        // Read-only decision at match start, counters untouched; bookkeeping is deferred to match end
+        //   Booking at match start would let crash-outs and instant quits, which are not usable matches, burn observation slots
+        //   Worst case, short matches alternate with real ones in phase lock: every observed match is junk and real matches keep getting skipped
         public static bool Peek()
         {
             try
             {
-                bool pending = false; // 自动编排已下架 不再有待验收钉核拉满观测
+                bool pending = false; // Autopilot has been removed; no more pending-verification pinning forcing full observation
                 int usable = 0;
                 foreach (IrqSessionRecord rec in IrqSessionLedger.Load())
                     if (rec != null && rec.UsableForVerdict) usable++;
@@ -48,8 +48,8 @@ namespace PaviseApp
             catch { return true; }
         }
 
-        // 局末记账 短于合格门槛的局不动计数 无论它观测没观测
-        //   跳过的真对局记一笔 观测过的真对局清零
+        // Match-end bookkeeping; matches shorter than the usable threshold leave counters untouched, observed or not
+        //   A skipped real match counts one; an observed real match resets to zero
         public static void CommitSession(bool observed, int durationSeconds)
         {
             try

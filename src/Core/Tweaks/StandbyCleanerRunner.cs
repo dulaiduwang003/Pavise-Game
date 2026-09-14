@@ -1,4 +1,4 @@
-// 文件用途 待机列表清理的会话内调度 不重叠也不补发漏掉的轮询
+// File purpose In-session scheduling for standby list cleanup, no overlap and no catch-up for missed polls
 using System;
 using System.Threading;
 
@@ -21,9 +21,9 @@ namespace PaviseApp
             }
         }
 
-        // 成功清理后的强制冷却 清理调用会让游戏卡一下且无法中断 列表被系统
-        //   工作集撑住或缓存被高速回填时 不允许逐轮连清 失败的清理不进入
-        //   冷却 保留"连续失败尽快熔断"的既有语义 冷却跨代数保留
+        // Mandatory cooldown after a successful purge; the purge call stalls the game briefly and cannot be interrupted; when the list is held up by system
+        //   working sets or the cache refills rapidly, back-to-back purges every round are not allowed; failed purges do not enter
+        //   the cooldown, keeping the existing semantics of tripping fast on consecutive failures; the cooldown survives generation changes
         internal const int PurgeCooldownFloorMilliseconds = 60000;
         internal const int PurgeCooldownIntervals = 8;
 
@@ -40,7 +40,7 @@ namespace PaviseApp
         private int faultedGeneration;
         private int inFlight;
         private Thread worker;
-        // 仅工作线程读写
+        // Read and written by the worker thread only
         private bool purgeCooldownArmed;
         private long lastPurgeMilliseconds;
 
@@ -65,8 +65,8 @@ namespace PaviseApp
                 (long)options.PollingMilliseconds * PurgeCooldownIntervals);
         }
 
-        // 每次意图或配置变化 调用方都要给一个新的代号
-        // 反复的游戏扫描不能重启倒计时 也不能让故障复活
+        // Every change of intent or configuration needs a new generation from the caller
+        // Repeated game sweeps must not restart the countdown or revive a fault
         internal bool Update(int generation, StandbyCleanerOptions options, Func<bool> mayContinue)
         {
             lock (gate)
@@ -135,8 +135,8 @@ namespace PaviseApp
                     wake.WaitOne();
                     continue;
                 }
-                // 每次轮询或变更之后都等满一个间隔 慢的原生调用
-                // 既不会排队补发漏掉的 tick 也不会和另一次并发
+                // Wait a full interval after every poll or change; a slow native call
+                // neither queues up missed ticks nor runs concurrently with another
                 if (wake.WaitOne(request.Options.PollingMilliseconds)) continue;
                 if (!Admitted(request))
                 {
@@ -144,7 +144,7 @@ namespace PaviseApp
                         if (ReferenceEquals(current, request)) current = null;
                     continue;
                 }
-                // 冷却期内整轮跳过 不查询也不清理 到期后按正常节奏继续
+                // During cooldown the whole round is skipped, no query and no purge; after expiry continue at the normal cadence
                 if (purgeCooldownArmed
                     && clock() - lastPurgeMilliseconds < CooldownMilliseconds(request.Options))
                     continue;
@@ -195,7 +195,7 @@ namespace PaviseApp
                     }
                     else request.Failures = 0;
                 }
-                // 回调进 GameMode 或者设置时 两道闸都不许持有
+                // Callbacks into GameMode or settings must hold neither gate
                 if (fault && onFault != null)
                     try { onFault(request.Generation, result, status); } catch { }
             }
@@ -203,8 +203,8 @@ namespace PaviseApp
 
         internal bool HasInFlight { get { return Volatile.Read(ref inFlight) != 0; } }
 
-        // 暂停会撤销待准入的请求 这里排干的是已经进去的那次调用
-        // Windows 没给正在进行的待机清理提供取消手段
+        // Pause revokes requests waiting for admission; what gets drained here is the call already inside
+        // Windows offers no way to cancel a standby purge in progress
         internal bool Drain(int timeoutMs)
         {
             if (timeoutMs < 0 || Monitor.IsEntered(operationGate)
@@ -224,8 +224,8 @@ namespace PaviseApp
                 wake.Set();
                 pending = worker;
             }
-            // 超时或者自连接时 句柄和事件都留着 后面的 Close 必须
-            // 仍然能观察到并排干同一个工作线程 重置才允许删数据
+            // On timeout or self-join, keep the handle and event; a later Close must
+            // still be able to observe and drain the same worker thread; only a reset may delete data
             if (timeoutMs < 0 || pending == Thread.CurrentThread
                 || (pending != null && !pending.Join(timeoutMs))) return false;
             lock (gate)

@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 集中管理颜色 字体 尺寸和主题资源
+// File purpose Central management of colors, fonts, sizes and theme resources
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -54,6 +54,7 @@ namespace PaviseApp
         public static Color Faint     { get { return light ? Color.FromArgb(124, 139, 159) : Color.FromArgb(91, 100, 113); } }
         public static Color Green     { get { return light ? Color.FromArgb(16, 150, 92)   : Color.FromArgb(69, 224, 154); } }
         public static Color Danger    { get { return light ? Color.FromArgb(208, 30, 50)   : Color.FromArgb(255, 72, 88); } }
+        public static Color Warning   { get { return light ? Color.FromArgb(155, 94, 0) : Color.FromArgb(255, 190, 75); } }
         public static Color TrackOff  { get { return light ? Color.FromArgb(200, 206, 215) : Color.FromArgb(43, 48, 57); } }
         private static Color accent = Color.FromArgb(52, 208, 148);
         private static Color accent2 = Color.FromArgb(20, 136, 94);
@@ -62,8 +63,8 @@ namespace PaviseApp
         private static float themeT = 1f;
         private static PerformancePreset currentMode = PerformancePreset.Standard;
 
-        // 下标就是档位取值 最大的掌机是 4 所以留五格 3 是极限档的墓碑 空着不用
-        //   第六格留着 老配置里可能存过 5 号极限的配色 数组短了回读会越界
+        // Index is the tier value; Handheld is the largest at 4 so five slots, 3 is the tombstone of the Extreme tier and stays unused
+        //   Sixth slot kept: old configs may have stored the color for Extreme as 5, a shorter array would go out of range on read-back
         private static readonly Color[] modeOverride =
             { Color.Empty, Color.Empty, Color.Empty, Color.Empty, Color.Empty, Color.Empty };
 

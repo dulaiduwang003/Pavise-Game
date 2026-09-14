@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 只读查询游戏在实际渲染显卡上的显存预算与占用 走用户态 WDDM 接口
+// File purpose Read-only query of the game's VRAM budget and usage on the GPU actually rendering, via the user-mode WDDM interface
 using System;
 
 namespace PaviseApp
@@ -12,15 +12,15 @@ namespace PaviseApp
         public ulong CurrentReservation;
         public ulong AvailableForReservation;
 
-        // 占用贴着预算跑是动作的前提 预算读不到时一律当作不吃紧
+        // Usage running right up against the budget is the precondition for action; when the budget is unreadable, always treat it as not tight
         public double UsageShare
         {
             get { return Budget > 0 ? (double)CurrentUsage / Budget : 0; }
         }
     }
 
-    // 适配器句柄有寿命 TDR 之后旧句柄失效 必须重开
-    //   句柄只在需要时开 用完即关 不常驻 避免驱动重置时留下不可用的引用
+    // Adapter handles have a lifetime; after a TDR the old handle is invalid and must be reopened
+    //   Open the handle only when needed and close it right after, never resident, so a driver reset leaves no unusable reference behind
     internal static class VidMmProbe
     {
         public static bool TryOpenAdapter(int luidHigh, uint luidLow, out uint hAdapter)
@@ -50,8 +50,8 @@ namespace PaviseApp
             catch { }
         }
 
-        // hProcess 传目标进程句柄 传 IntPtr.Zero 则查询本进程
-        //   句柄要 PROCESS_QUERY_LIMITED_INFORMATION 反作弊拒绝时调用方直接跳过
+        // hProcess takes the target process handle; IntPtr.Zero queries this process
+        //   The handle needs PROCESS_QUERY_LIMITED_INFORMATION; when anti-cheat denies it the caller just skips
         public static VramStatus Query(IntPtr hProcess, uint hAdapter, uint phys)
         {
             var status = new VramStatus();
@@ -76,10 +76,10 @@ namespace PaviseApp
             catch { return status; }
         }
 
-        // 预留是给显存管理器的提示 不是把显存锁死
-        //   写 0 即撤销 返回 false 时调用方仍要当作"可能已经写进去了"走还原路径
-        //   hProcess 在头文件里类型是 UINT64 但字段名带 h 前缀 按进程句柄传
-        //     写完必须回读 CurrentReservation 核实 不能只看返回值
+        // A reservation is a hint to the VRAM manager, not a hard lock on VRAM
+        //   Writing 0 revokes it; when it returns false the caller must still assume it may have been written and go through the restore path
+        //   hProcess is typed UINT64 in the header but the field name has the h prefix, so pass it as a process handle
+        //     Written value must be verified by reading back CurrentReservation; the return value alone is not enough
         public static bool SetReservation(IntPtr hProcess, uint hAdapter, uint phys, ulong bytes)
         {
             if (hAdapter == 0 || hProcess == IntPtr.Zero) return false;

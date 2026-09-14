@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 CPU 拓扑探测 掩码推导与安全校验
+// File purpose CPU topology probing, mask derivation and safety validation
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -19,13 +19,13 @@ namespace PaviseApp
         public static bool AsymCache;
         public static bool MultiGroup;
         public static ulong PerfMask, EffMask, BigL3Mask, SmallL3Mask;
-        // 三档混合架构里最低的那一档 Core Ultra 的 LP-E 核就是它 SoC tile 上 时钟最低
-        //   仍然留在 EffMask 里 后台压制往那儿赶是对的
-        //   但中断落点必须排除它 1.8.1.0 下架 USB 与硬盘中断亲和就是栽在把中断投到低频能效核
-        //   只有三档以上才有值 两档时最低档就是 EffMask 本身 整体排除会把落点池清空
+        // The lowest class in a three-class hybrid layout, Core Ultra's LP-E cores are it, on the SoC tile with the lowest clocks
+        //   still stays inside EffMask, pushing background suppression there is right
+        //   but interrupt placement must exclude it, 1.8.1.0 pulled USB and disk interrupt affinity precisely because interrupts landed on low-clock efficiency cores
+        //   only set with three or more classes, with two the lowest class is EffMask itself and excluding it would empty the placement pool
         public static ulong LowPowerEffMask;
-        // 调度器给每个逻辑核打的评级 SchedulingClass 里最高的那一档 Intel Turbo Boost Max 3.0 的优选核
-        //   系统会把最重的线程往这几颗上赶 评级全相同时为 0
+        // The scheduler's per-logical-core rating, the highest tier in SchedulingClass, Intel Turbo Boost Max 3.0 favored cores
+        //   the OS pushes the heaviest threads onto these, 0 when all ratings are equal
         public static ulong FavoredMask;
         public static string FavoredDetail = "";
 
@@ -59,9 +59,9 @@ namespace PaviseApp
         public static bool CpuSetPartitionRejected;
         public static bool StrictMaskUnsafe;
 
-        // ProcessorCount 是进程视角的数字 枚举出来的核是机器视角 正常两者一致
-        //   不一致时只取两边都认的位 多出来的一边写不进去 少掉的一边会让掩码带上不存在的核
-        //   两个方向都往窄里收 宁可少管几个核 也不让 AllMask 描述一台不存在的机器
+        // ProcessorCount is the process's view, enumerated cores are the machine's view, normally they agree
+        //   on mismatch keep only bits both sides agree on, extras on one side cannot be written, missing ones would put non-existent cores in the mask
+        //   narrow in both directions, better to manage a few cores less than let AllMask describe a machine that does not exist
         internal static ulong ReconcileAllMask(ulong fromCount, ulong fromEnum, out bool mismatch)
         {
             mismatch = fromEnum != 0 && fromEnum != fromCount;
@@ -70,7 +70,7 @@ namespace PaviseApp
             return both != 0 ? both : fromCount;
         }
 
-        // AllMask 与枚举对不上时置位 界面与日志据此提示保存的核心方案可能失真
+        // Set when AllMask disagrees with enumeration, UI and log use it to warn that the saved core plan may be off
         public static bool AllMaskReconciled;
 
         private static void DeriveMasks()
@@ -88,17 +88,17 @@ namespace PaviseApp
                 LowPowerEffMask, ParsedPhysicalIn(PerfMask));
         }
 
-        // P 核够多就把中断放 P 核 靠近渲染线程 不够就让开 别抢游戏仅有的那几个 P 核
-        //   阈值必须数物理核 老写法数的是逻辑核 那是 P 核必然带超线程的年代写的
-        //   Arrow Lake 取消超线程后 6 个物理 P 核只剩 6 个逻辑位 同样的机器判定会翻面
-        //   实测过的对照 Raptor 6P 带 HT 是 12 个逻辑位走 P 核 Arrow-H 6P 无 HT 是 6 个直接退到能效核
+        // With enough P-cores put interrupts on P-cores, close to the render thread, otherwise yield, do not fight the game for its few P-cores
+        //   the threshold must count physical cores, the old code counted logical ones, written when P-cores always had hyper-threading
+        //   Arrow Lake dropped hyper-threading, 6 physical P-cores leave just 6 logical bits, the same machine would flip the decision
+        //   measured comparison: Raptor 6P with HT is 12 logical bits and goes to P-cores, Arrow-H 6P without HT is 6 and falls straight to efficiency cores
         internal const int MinPerfPhysicalForInterrupts = 4;
 
         internal static ulong DeriveInterruptMask(bool hybrid, ulong perfMask, ulong throttle,
             ulong lowPower, int perfPhysicalCores)
         {
             if (!hybrid || perfMask == 0) return throttle;
-            // 退让时也不许落到最低一档能效核 那是全机器时钟最低的核
+            // Even when yielding never land on the lowest efficiency class, those are the lowest-clocked cores in the machine
             ulong fallback = throttle & ~lowPower;
             if (fallback == 0) fallback = throttle;
             ulong pool = perfPhysicalCores >= MinPerfPhysicalForInterrupts ? perfMask

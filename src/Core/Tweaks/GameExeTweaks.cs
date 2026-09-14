@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 按游戏程序图形偏好的字段读取 写入路径均已退役 不再有还原逻辑
+// File purpose Field reads of per-game-exe graphics preferences; all write paths are retired, no restore logic remains
 using System;
 using System.Collections.Generic;
 using Microsoft.Win32;

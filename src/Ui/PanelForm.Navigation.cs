@@ -1,4 +1,4 @@
-// 主窗口内的两级导航 主界面保持简洁 高级区可连续切换分类
+// Two-level navigation inside the main window: main UI stays simple, Advanced area switches categories freely
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -46,7 +46,7 @@ namespace PaviseApp
                 Lang.T("nav.corescheduling") };
             var glyphs = new[] { "game", "tiles", "settings", "acshield", "gpu", "chip", "chart", "log", "gear", "info", "white", "chip", "chip" };
             var mainTitles = (string[])titles.Clone();
-            // Policy 在主侧栏是入口 在高级侧栏仍是具体的优化策略页
+            // Policy is the entry point in the main sidebar, but still the concrete optimization policy page in the Advanced sidebar
             mainTitles[(int)PageId.Policy] = Lang.T("v20.advanced.entry");
             nav = new NavRail(mainTitles, glyphs,
                 new[] { (int)PageId.Overview, (int)PageId.Library, (int)PageId.Whitelist,

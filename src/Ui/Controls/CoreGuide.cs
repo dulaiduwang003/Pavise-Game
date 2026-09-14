@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 核心分配的使用说明 编号步骤加一条脚注 高度按实际文本量算
+// File purpose Guide for core allocation, numbered steps plus one footnote, height computed from actual text
 using System;
 using System.Collections.Generic;
 using System.Drawing;

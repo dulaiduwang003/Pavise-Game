@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 限制传递优化并管理相关服务状态
+// File purpose Limits Delivery Optimization and manages related service state
 using System;
 using System.Collections.Generic;
 using Microsoft.Win32;
@@ -8,7 +8,7 @@ namespace PaviseApp
 {
     internal static class DoTweak
     {
-        // 会话日记键由恢复完成判定共同引用 改名必须两边一起
+        // The session journal key is shared with the recovery-complete check; rename both together
         internal const string BandwidthJournalKey = "PrevDoBgBw";
         internal const string StopFlag = "PrevDoSvcStopped";
         private static readonly ReversibleReg BgBw = new ReversibleReg(

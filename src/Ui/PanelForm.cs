@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 主面板构建 页面注册与页面切换
+// File purpose Main panel construction, page registration and page switching
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -36,8 +36,8 @@ namespace PaviseApp
 
     internal partial class PanelForm : Form
     {
-        // 截图渲染期间置位 离屏窗口不抢焦点 不打扰正在操作的用户
-        //   不要在这里改 ShowInTaskbar 会触发句柄重建 图标已被释放会抛异常
+        // Set while rendering screenshots: the off-screen window does not steal focus or disturb a user who is working
+        //   Do not change ShowInTaskbar here, it triggers a handle rebuild and throws once the icon has been disposed
         private bool shotMode;
 
         private readonly Tamer tamer;
@@ -122,7 +122,7 @@ namespace PaviseApp
 
         private void BuildUi(Icon appIcon)
         {
-            // Rebuild 会复用 PanelForm 实例 新控件得强制拿一份完整的呈现状态
+            // Rebuild reuses the PanelForm instance, new controls must be forced to take a full copy of the presentation state
             modeVisualInitialized = false;
             visualPolicySource = null;
             builtLang = Lang.Cur;
@@ -236,7 +236,7 @@ namespace PaviseApp
             root.Controls.Add(tuningNav);
 
             modeFlyout = new ModePickerPanel();
-            // 高度随可见档位数走 本机不支持的档不占格
+            // Height follows the number of visible tiers, tiers unsupported on this machine take no slot
             modeFlyout.SetBounds(Theme.S(WinW - 420), Theme.S(TopH + 8), Theme.S(396),
                 Theme.S(66 + PresetValue.VisibleOrder().Length * 70 + 10));
             modeFlyout.Visible = false;
@@ -277,7 +277,7 @@ namespace PaviseApp
             SyncUiActivity();
         }
 
-        // 换图换档后整窗重画 卡片和各控件取的是同一张图的不同块 少刷一个就露馅
+        // Repaint the whole window after an image or tier change; cards and controls sample different blocks of the same image, missing one shows
         private void RefreshBackdrop()
         {
             StopPageReveal();
@@ -286,7 +286,7 @@ namespace PaviseApp
             Update();
         }
 
-        // 标签自己顶着一块纯色底 有封面时就成了补丁 改成透明交给父控件把图画进来
+        // Labels carry their own solid background, which becomes a patch once a cover exists; make them transparent and let the parent paint the image
         private static void ApplyBackdropLabels(Control host)
         {
             if (!Backdrop.AppliesTo(host)) return;
@@ -344,7 +344,8 @@ namespace PaviseApp
         {
             pageHooks = new PageHook[(int)PageId.Count];
             pageHooks[(int)PageId.Overview] = new PageHook(pageOverview,
-                delegate(bool active) { if (paviseCore != null) paviseCore.SetAnimationEnabled(active); }, null);
+                delegate(bool active) { if (paviseCore != null) paviseCore.SetAnimationEnabled(active);
+                    if (active) RefreshOverviewAttention(); }, null);
             pageHooks[(int)PageId.Library] = new PageHook(pageLibrary,
                 delegate(bool active) { if (active) RefreshGames(); },
                 delegate { RefreshGameRunningStates(); });
@@ -396,7 +397,7 @@ namespace PaviseApp
             if (policyTabs != null) { policyTabs.Index = index; policyTabs.SnapToSelection(); }
         }
 
-        // 分配与独占已合成一页 截图不再需要切子页 保留入口让调用方不必改
+        // Assignment and exclusive cores are merged into one page, screenshots no longer switch sub-pages, entry kept so callers need not change
         internal void ShowCoreTabForShot(int index)
         {
         }
@@ -424,7 +425,7 @@ namespace PaviseApp
             SetSearchFlyout(false);
             SetPowerFlyout(false);
             var page = pages[index];
-            // 重复点击已激活项不重新刷新整页 也不重启尚未结束的过渡
+            // Clicking the already active item again neither refreshes the whole page nor restarts an unfinished transition
             if (curPage == page && page.Visible) return;
             SavePagePosition(curPage);
             pageBaseLeft = Theme.S(RailW);

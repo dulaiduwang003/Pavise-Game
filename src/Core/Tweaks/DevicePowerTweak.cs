@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 阻止系统为省电关闭网卡 免除唤醒延迟造成的对局卡顿
+// File purpose Stops the system powering down network adapters to save energy, avoiding wake-up latency stutter in matches
 using System;
 using System.Collections.Generic;
 using Microsoft.Win32;
@@ -74,9 +74,9 @@ namespace PaviseApp
                 }
                 if (done.Count == 0)
                 {
-                    // 全部网卡本就禁止断电(手动或其它工具改过)时 开关必须能开
-                    //   开关代表意图 记空清单置位 还原时无事可做 之前这里不置位
-                    //   开关会静默弹回 用户只看到"打不开"
+                    // When manual edits or other tools already forbid power-down on every adapter, the switch must still turn on
+                    //   The switch expresses intent: record an empty list and set the flag, nothing to do on restore; previously the flag wasn't set here
+                    //   so the switch silently bounced back and the user just saw "won't turn on"
                     if (failed > 0) return false;
                     if (adapters.Count == 0)
                     {

@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 提供圆角胶囊按钮控件
+// File purpose Rounded pill button control
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -13,12 +13,33 @@ namespace PaviseApp
     {
         public BtnKind Kind = BtnKind.Normal;
 
-        public PillButton(string text) { Text = text; Height = Dpi.S(34); Font = Theme.UI(9f, false); ForeColor = Theme.Fg; }
+        public PillButton(string text)
+        {
+            Text = text; Height = Dpi.S(34); Font = Theme.UI(9f, false); ForeColor = Theme.Fg;
+            TabStop = true; AccessibleRole = AccessibleRole.PushButton;
+            GotFocus += delegate { Invalidate(); };
+            LostFocus += delegate { Invalidate(); };
+        }
         public PillButton(string text, BtnKind kind) : this(text) { Kind = kind; }
 
         public void PerformClick()
         {
             if (Enabled) OnClick(EventArgs.Empty);
+        }
+
+        protected override bool IsInputKey(Keys keyData)
+        {
+            if (keyData == Keys.Enter || keyData == Keys.Space) return true;
+            return base.IsInputKey(keyData);
+        }
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            base.OnKeyDown(e);
+            if (e.Handled || !Enabled || e.Modifiers != Keys.None
+                || (e.KeyCode != Keys.Enter && e.KeyCode != Keys.Space)) return;
+            e.SuppressKeyPress = true;
+            PerformClick();
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -79,10 +100,13 @@ namespace PaviseApp
                 : Kind == BtnKind.Primary ? Theme.OnAccent
                 : Kind == BtnKind.Danger ? Col.Lerp(Theme.Danger, Color.White, Theme.LightMode ? 0f : h * 0.45f)
                 : (Theme.LightMode ? Theme.Fg : Col.Lerp(Theme.Fg, Color.White, h * 0.2f));
-            // VerticalCenter 必须搭 SingleLine 才生效 缺了它 DT_VCENTER 被忽略 文字会顶到上边
+            // VerticalCenter only works together with SingleLine; without it DT_VCENTER is ignored and the text sticks to the top edge
             TextRenderer.DrawText(g, Text, Kind == BtnKind.Primary ? Theme.UI(9f, true) : Font, ClientRectangle, txt,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
                 | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
+            if (Focused && ShowFocusCues && Enabled)
+                ControlPaint.DrawFocusRectangle(g, Rectangle.Inflate(ClientRectangle, -Theme.S(5), -Theme.S(5)),
+                    Kind == BtnKind.Primary ? Theme.OnAccent : Theme.Fg, EffBg);
         }
     }
 

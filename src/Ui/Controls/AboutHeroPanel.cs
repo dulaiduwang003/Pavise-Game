@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 绘制关于页的全宽品牌主舱与低饱和战术纹理
+// File purpose Draws the About page's full-width brand hero and low-saturation tactical texture
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;

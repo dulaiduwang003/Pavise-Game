@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 统一管理进程压制 快照 回读和恢复
+// File purpose Central management of process suppression: snapshot, read-back and recovery
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -36,7 +36,7 @@ namespace PaviseApp
     {
         public const string StateFileName = "Pavise.suppression.state";
         public static volatile bool GpuDemoteEnabled;
-        // 硬亲和开着才认后台落点 关着时旧账本里的后台落点只还原不重写
+        // Background placement is honored only with hard affinity on; when off, background placements in the old ledger are restored, never rewritten
         public static volatile bool BackgroundPinsAllowed;
         private sealed class Entry
         {
@@ -47,11 +47,11 @@ namespace PaviseApp
             public int OrigIo = -1;
             public int OrigPg = -1;
             public uint[] OrigCpuSets;
-            // 反作弊的当前落点，兼容恢复旧后台绑核；0 表示未绑，还原回 OrigAff
+            // Current anti-cheat placement, also covers restoring old background pins; 0 means not pinned, restore goes to OrigAff
             public ulong SqueezeAff;
-            // 落点被进程或其驱动拒绝过 本条目寿命内不再给落点 巡检也不再重写亲和
+            // Placement was refused by the process or its driver; no placement for the rest of this entry's life, patrol stops rewriting affinity
             public bool SqueezeRefused;
-            // 反作弊条目压制写入失败后放弃 本条目寿命内不再写也不再巡检 原值仍在 退局照常还原
+            // Anti-cheat entry gave up after a failed suppression write; no writes or patrol for the rest of this entry's life, originals kept, restored at match end as usual
             public bool GaveUp;
             public bool GaveUpRestored;
             public int OrigGpu = -1;
@@ -84,8 +84,8 @@ namespace PaviseApp
         private readonly Func<int, long, string, RestoreResult> restoreForTest;
         internal Func<int, long, string, bool> RendererDiscardIdentityForTest;
 
-        // 渲染进程释放的回归测试只用内存台账和假的还原结果
-        // 不要初始化拓扑 恢复流程或者任何系统状态
+        // Renderer release regression tests use only the in-memory ledger and fake restore results
+        // don't initialize topology, the recovery flow or any system state
         internal SuppressionCore(
             Func<int, long, string, RestoreResult> restoreForTest, bool inMemoryOnly)
         {

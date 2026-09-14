@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 计算名称 精确路径和应用家族白名单的当前进程边界
+// File purpose Compute the current process boundary for name, exact-path and app-family whitelists
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -21,9 +21,9 @@ namespace PaviseApp
             public ulong Io;
         }
 
-        // 不变量 这个结构在 EvaluateWhitelist 里一次构造完成 返回之后所有字典只读
-        //   压制侧在 whiteEvalSync 下读 规则视图那条路却是在 sync 下读 ByRule
-        //   两把锁不互斥 全靠"构造后不再改"这条撑着 谁要是在返回后往里写就会变成真竞争
+        // Invariant: this structure is built in one go inside EvaluateWhitelist, all dictionaries are read-only after it returns
+        //   The suppression side reads under whiteEvalSync, but the rule view path reads ByRule under sync
+        //   The two locks do not exclude each other; "no writes after construction" is all that holds it up, anyone writing after return creates a real race
         private sealed class WhitelistEvaluation
         {
             public readonly HashSet<int> Protected = new HashSet<int>();
@@ -33,9 +33,9 @@ namespace PaviseApp
                 new Dictionary<int, WhitelistProcessInfo>();
             public readonly Dictionary<int, int> Parents = new Dictionary<int, int>();
             public readonly Dictionary<int, string> Names = new Dictionary<int, string>();
-            // 白名单家族判定本来就要按创建时间认亲 这份表顺手挂出来给压制侧共用
-            //   两边都是每轮全量进程遍历 各建一份等于把同一件事做两遍
-            //   跟上面几个一样 构造完就不许再写 详见类头那条不变量
+            // Whitelist family matching already has to recognize kin by creation time, so this table is exposed for the suppression side to share
+            //   Both sides walk every process each round, building one copy each does the same work twice
+            //   Like the ones above, no writes after construction, see the invariant in the class header
             public readonly Dictionary<int, long> Creations = new Dictionary<int, long>();
         }
 
@@ -79,9 +79,9 @@ namespace PaviseApp
             Interlocked.Exchange(ref whiteHasFamilyRules, found);
         }
 
-        // 同一份快照 同一版规则 同一份家族成员表 评估结果不会变
-        //   对局中快照最多复用五秒 这五秒里每轮 Sweep 都重建一遍全量视图纯属浪费 六百进程一轮一毫秒
-        //   结果对象构造完只读 跨轮共享安全 三个输入任一变化就重算
+        // Same snapshot, same rule version, same family member table, the evaluation result cannot change
+        //   Mid-match the snapshot is reused for up to five seconds; rebuilding the full view every Sweep within those five seconds is pure waste, 1ms per round at six hundred processes
+        //   The result object is read-only once built, safe to share across rounds, recomputed when any of the three inputs changes
         private ProcessSnapshot whiteEvalSnapshot;
         private WhitelistEvaluation whiteEvalCached;
         private int whiteEvalRevision;
@@ -168,8 +168,8 @@ namespace PaviseApp
 
                 lock (sync)
                 {
-                    // 成员表在计算期间被别人改过 就不拿旧结果盖新表 也不缓存 下一轮重算
-                    //   现有写入方都持 whiteEvalSync 走不到这里 留着这道检查是给以后的写入方兜底
+                    // If the member table changed while we were computing, do not overwrite the new table with the stale result and do not cache it, recompute next round
+                    //   Every current writer holds whiteEvalSync and cannot reach here; this check stays as a fallback for future writers
                     bool inputsIntact = revision == whiteRevision && membersAtInput == whiteFamilyMembersVersion;
                     if (inputsIntact)
                     {
@@ -178,7 +178,7 @@ namespace PaviseApp
                             whiteFamilyMembers[pair.Key] = pair.Value;
                         whiteFamilyMembersVersion++;
                     }
-                    // 记下这份结果对应的输入版本 输入中途变了就让下一轮重算
+                    // Record the input version this result corresponds to; if inputs changed midway, force a recompute next round
                     whiteEvalRevision = inputsIntact ? revision : whiteRevision - 1;
                     whiteEvalMembersVersion = whiteFamilyMembersVersion;
                 }

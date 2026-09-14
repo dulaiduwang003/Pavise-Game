@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 修复被显式关闭的显卡消息信号中断 MSISupported=0 时一键写回 还原时回到原值
+// File purpose Repair explicitly disabled GPU message-signaled interrupts; one-click write back when MSISupported=0, restore returns the original value
 using System;
 using System.Collections.Generic;
 using Microsoft.Win32;

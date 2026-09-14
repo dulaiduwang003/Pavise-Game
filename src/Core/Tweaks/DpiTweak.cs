@@ -1,15 +1,15 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 逐游戏声明 DPI 感知 向 HKCU 兼容层 Layers 写入 token 可逆 写后回读核验
+// File purpose Per-game DPI awareness declaration, writes a token into the HKCU compat Layers key, reversible, read back to verify after write
 using System;
 using System.Collections.Generic;
 using Microsoft.Win32;
 
 namespace PaviseApp
 {
-    // 系统缩放不是 100% 时 DPI-unaware 游戏的无边框窗口被 DWM 按位图拉伸
-    //   缓冲尺寸和屏幕不一致 就走不到 Independent Flip 只能合成 多一层拷贝多一帧延迟
-    //   HIGHDPIAWARE 让系统把它当已感知处理 窗口按物理像素给 缓冲和屏幕对上
-    //   自带 DPI 处理的游戏 UI 会缩小 所以只做逐游戏手选 和 FsoTweak 同一个键同一种写法
+    // When system scaling isn't 100%, a DPI-unaware game's borderless window gets bitmap-stretched by DWM
+    //   Buffer size mismatches the screen so it never reaches Independent Flip, only composition: one extra copy, one extra frame of latency
+    //   HIGHDPIAWARE makes the system treat it as aware; the window is sized in physical pixels and the buffer matches the screen
+    //   Games with their own DPI handling get a shrunken UI, so this is per-game manual only; same key and same write style as FsoTweak
     internal static class DpiTweak
     {
         private const string LayersKey =
@@ -52,7 +52,7 @@ namespace PaviseApp
             }
         }
 
-        // 缩放 100% 时这个 token 什么都不改变 界面拿它判断要不要提示无意义
+        // At 100% scaling this token changes nothing; the UI uses this to decide whether prompting is pointless
         public static bool ScalingActive()
         {
             try

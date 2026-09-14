@@ -1,5 +1,5 @@
-// 文件用途 Intel IGCL 的 ABI 对应 drivers.gpu.control-library 提交 b6c462933502e13d1537dd5024949a51be30e63d
-// 只用系统里已装的 Intel 运行时 不打包任何驱动二进制或头文件
+// File purpose Intel IGCL ABI, matches drivers.gpu.control-library commit b6c462933502e13d1537dd5024949a51be30e63d
+// Uses only the Intel runtime already installed on the system, bundles no driver binaries or headers
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -52,7 +52,7 @@ namespace PaviseApp
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 108)] public byte[] Reserved;
     }
 
-    // 能力联合体里有一个 20 字节的 float/int 成员 按 8 字节对齐
+    // The capability union has a 20-byte float/int member, aligned to 8 bytes
     [StructLayout(LayoutKind.Explicit, Size = 24)]
     internal struct IntelCtlPropertyInfo
     {
@@ -106,8 +106,8 @@ namespace PaviseApp
     {
         internal const uint LowLatencyFeature = 16;
         internal const uint EnumValueType = 4;
-        // Endurance Gaming 是 3D 特性 1 值走自定义块 {int32 EGControl; int32 EGMode}
-        //   控制 0 关 1 开 2 自动  模式 0 性能优先 1 均衡 2 最长续航
+        // Endurance Gaming is 3D feature 1, value goes through the custom block {int32 EGControl; int32 EGMode}
+        //   control 0 off 1 on 2 auto, mode 0 performance 1 balanced 2 max battery
         internal const uint EnduranceFeature = 1;
         internal const uint CustomValueType = 5;
         private const int EnduranceBlockBytes = 8;
@@ -162,7 +162,7 @@ namespace PaviseApp
             }
         }
 
-        // 读第一张 Intel 卡的 Endurance Gaming 现值 写则写给全部 Intel 卡
+        // Reads the Endurance Gaming current value from the first Intel card, writes go to all Intel cards
         public bool TryReadEndurance(out int control, out int mode)
         {
             control = -1; mode = -1;
@@ -255,8 +255,8 @@ namespace PaviseApp
         public IntelGraphicsWriteResult TryWriteLowLatency(string adapterId, uint expected, uint value,
             Func<bool> mayContinue)
         {
-            // 唯一允许的改动是 Off 改成基本 On 以及把我们写的基本 On 改回 Off
-            // Boost 逐应用继承 补帧和其它设置一概够不着
+            // The only permitted changes are Off to basic On, and our own basic On back to Off
+            // Boost is left to per-app inheritance, frame generation and other settings are out of reach entirely
             if (!((expected == 0 && value == 1) || (expected == 1 && value == 0)))
                 return IntelGraphicsWriteResult.NotIssued;
             lock (gate)
@@ -292,7 +292,7 @@ namespace PaviseApp
                 ValueType = EnumValueType,
                 Set = set,
                 Value = new IntelCtlPropertyValue { EnumValue = value }
-                // 版本 0 应用名为空 长度 0 文档里写明这是全局范围
+                // Version 0, empty app name, length 0, the docs state this means global scope
             };
         }
 
@@ -333,8 +333,8 @@ namespace PaviseApp
             if (match == null && !refreshCapabilities) return Find(id, true);
             if (match != null && !refreshCapabilities)
             {
-                // 活动会话的回读不会枚举出每一项 3D 能力
-                // 读之前仍然要核实这个句柄的硬件和驱动身份
+                // Read-back on an active session does not enumerate every 3D capability
+                // the handle's hardware and driver identity must still be verified before reading
                 IntelCtlAdapterProperties info;
                 if (!ReadProperties(match.Handle, out info) || AdapterIdentity(info) != id)
                 { cachedDevices = null; return null; }
@@ -421,8 +421,8 @@ namespace PaviseApp
             if (info.Version < 2 || info.VendorId == 0 || info.VendorId > 0xFFFF
                 || info.PciDeviceId == 0 || info.PciDeviceId > 0xFFFF
                 || info.Device > 31 || info.Function > 7 || info.DriverVersion == 0) return null;
-            // LUID 重启就变 PCI 位置加子系统再加驱动版本才是跨崩溃稳定的
-            // 能防止对着另一块驱动重放
+            // LUID changes on reboot, PCI location plus subsystem plus driver version is what stays stable across crashes
+            // and prevents replaying against another card or driver
             return string.Format(CultureInfo.InvariantCulture,
                 "{0:X4}:{1:X4}:{2:X4}:{3:X4}:{4:X2}:{5:X2}:{6:X2}:{7:X16}",
                 info.VendorId, info.PciDeviceId, info.SubsystemVendorId, info.SubsystemId,

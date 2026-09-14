@@ -1,12 +1,12 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 后台压制的等级定义与对应文案
+// File purpose Background suppression level definitions and their labels
 using System;
 
 namespace PaviseApp
 {
-    // 2.0 起后台侧只用 None 和 Isolated 两态 中间两档留着是因为反作弊那套还在用
-    //   Tamer 的逐组压制等级会持久化成 eco / res 标签 删掉枚举值会读不回旧配置
-    //   Frozen 随对局冻结功能一并下架 压制只到 Isolated 为止 不再挂起任何进程
+    // Since 2.0 the background side uses only None and Isolated; the two middle levels stay because the anti-cheat side still uses them
+    //   Tamer's per-group suppression levels persist as eco / res tags; removing enum values would break reading old config
+    //   Frozen was removed together with the match-freeze feature; suppression stops at Isolated, no process is ever suspended
     internal enum SuppressionLevel
     {
         None = 0,

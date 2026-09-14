@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 英雄联盟优化服务的工作循环与恢复核心
+// File purpose Work loop and recovery core of the League of Legends optimization service
 
 using System;
 using System.Threading;

@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 卸载 CPU 推测执行漏洞的软件缓解 回收每次内核态切换的固定开销
+// File purpose Unload the software mitigations for CPU speculative-execution vulnerabilities, reclaiming the fixed cost of every kernel transition
 using System;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
@@ -58,10 +58,10 @@ namespace PaviseApp
 
         public static bool DisabledByPavise { get { return Settings.Load("SpecMitDisabledByPavise", false); } }
 
-        // 只有两种软件缓解真吃每次内核态切换 KPTI 在跑 或 Spectre v2 走的是逐次 IBRS 的老路
-        //   Retpoline 和 eIBRS 都是近乎免费的 MbClear SSBD 那几项也便宜 关了只剩安全代价
-        //   原先是极限档强制项的资格门 极限下架后改成界面上给用户的一句实话
-        //   拒绝写入仍由 BlockedReason 的 RecoverableCost 负责 这里只影响说明文字
+        // Only two software mitigations really cost every kernel transition: KPTI running, or Spectre v2 on the legacy per-transition IBRS path
+        //   Retpoline and eIBRS are nearly free, MbClear SSBD and friends are cheap too; disabling those leaves only the security cost
+        //   Originally the eligibility gate for the Extreme tier's mandatory items; with Extreme retired it is now just an honest line shown to the user in the UI
+        //   Refusing writes is still handled by BlockedReason's RecoverableCost; this only affects the description text
         public static bool WorthDisabling(State st)
         {
             if (!st.QueryOk) return false;

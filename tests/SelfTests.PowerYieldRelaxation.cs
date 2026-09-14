@@ -65,7 +65,7 @@ namespace PaviseApp
         {
             var state = new PowerBudgetYield();
             state.Begin(0, true, proxy);
-            // A loading scene must not dilute the new scene after a long telemetry gap.
+            // A loading scene must not dilute the new scene after a long telemetry gap
             for (int second = 2; second <= 8; second += 2)
                 state.Advance(second * TimeSpan.TicksPerSecond, 70, 40, 80, 200);
             for (int second = 10; second <= 80; second += 2)
@@ -98,7 +98,7 @@ namespace PaviseApp
                 Eq(YieldAction.None, state.Advance(second * TimeSpan.TicksPerSecond, 97, 40, 41, 140));
             Eq(YieldStage.Held, state.Stage);
 
-            // A brief meter outage is skipped, never included as zero watts/frequency.
+            // A brief meter outage is skipped never included as zero watts/frequency
             state = RelaxedYield(proxy, false);
             for (int second = 22; second <= 30; second += 2)
                 Eq(YieldAction.None, state.Advance(second * TimeSpan.TicksPerSecond, 97, 40, double.NaN, -1));
@@ -122,12 +122,12 @@ namespace PaviseApp
                 Eq(false, PowerBudgetYield.FreqFused);
 
                 state = RelaxedYield(proxy, held);
-                // A late valid sample cannot conceal a full minute without evidence.
+                // A late valid sample cannot conceal a full minute without evidence
                 Eq(YieldAction.Revert, state.Advance((start + 60) * TimeSpan.TicksPerSecond, 97, 40, 41, 140));
                 Eq(YieldVerdict.Inconclusive, state.Verdict);
             }
 
-            // The old bounded verification requirement still applies when only the meter fails.
+            // The old bounded verification requirement still applies when only the meter fails
             var missingMeter = RelaxedYield(proxy, false);
             for (int second = 22; second <= 42; second += 2)
                 Eq(YieldAction.None, missingMeter.Advance(second * TimeSpan.TicksPerSecond, 97, 40, -1, -1));
@@ -178,7 +178,7 @@ namespace PaviseApp
                 for (int second = 28; second < recovery; second += 2)
                     Eq(YieldAction.None, state.Advance(second * TimeSpan.TicksPerSecond,
                         onlyMeterMissing ? 97 : -1, 40, -1, -1));
-                // Three old samples plus this changed scene used to set a persistent hardware fuse.
+                // Three old samples plus this changed scene used to set a persistent hardware fuse
                 AssertYieldInconclusive(state, state.Advance(recovery * TimeSpan.TicksPerSecond,
                     70, 40, 41, 140));
             }
@@ -200,8 +200,8 @@ namespace PaviseApp
         private static void PowerYieldIntermittentVerificationIsBounded(bool proxy)
         {
             var state = RelaxedYield(proxy, false);
-            // Each successful sample is less than one verification-window gap from its predecessor.
-            // They must not keep an unverified EPP change alive indefinitely.
+            // Each successful sample is less than one verification-window gap from its predecessor
+            // They must not keep an unverified EPP change alive indefinitely
             for (int second = 22; second < 80; second += 2)
             {
                 bool complete = second == 34 || second == 48 || second == 62;
@@ -262,7 +262,7 @@ namespace PaviseApp
                 var state = RelaxedYield(proxy, held);
                 int start = held ? 36 : 20;
                 Eq(YieldAction.None, state.Advance((start + 10) * TimeSpan.TicksPerSecond, -1, 40, -1, -1));
-                // Still later than the last valid evidence, but earlier than the last callback.
+                // Still later than the last valid evidence but earlier than the last callback
                 AssertYieldInconclusive(state, state.Advance((start + 8) * TimeSpan.TicksPerSecond, 97, 40, 41, 140));
             }
             var observing = new PowerBudgetYield(); observing.Begin(0, true, proxy);
@@ -298,7 +298,7 @@ namespace PaviseApp
                 Eq(second == 56 ? YieldAction.Engage : YieldAction.None, action);
                 if (second < 56) Eq(YieldStage.Observing, state.Stage);
             }
-            // Invalid meter samples must not dilute either the meter or its paired load baseline.
+            // Invalid meter samples must not dilute either the meter or its paired load baseline
             Eq(YieldStage.Engaged, state.Stage);
             Eq(98.0, state.BaselineGpuUtil);
             if (!proxy) Eq(45.0, state.BaselineWatts);
@@ -337,7 +337,7 @@ namespace PaviseApp
                         state.Advance(22 * TimeSpan.TicksPerSecond, -1, 40, 41, 140);
                     else if (interruption == 1)
                         state.Advance(22 * TimeSpan.TicksPerSecond, 97, 40, -1, -1);
-                    else firstValid = 26; // Worker paused without delivering an invalid callback.
+                    else firstValid = 26; // Worker paused without delivering an invalid callback
                     YieldAction action = YieldAction.None;
                     for (int second = firstValid; second <= 36; second += 2)
                         action = state.Advance(second * TimeSpan.TicksPerSecond,
@@ -363,14 +363,14 @@ namespace PaviseApp
                     Eq(second == 56 ? YieldAction.Engage : YieldAction.None, action);
                 }
                 if (!proxy) Eq(26.25, state.BaselineWatts);
-                // 最新场景的 45→41W / 150→140% 有收益，但稀疏旧基线更低；
-                // 即使验证连续，也不能据混合场景写入永久硬件熔断。
+                // Latest scenario 45 down to 41W / 150 down to 140% shows a gain, but the sparse old baseline is lower
+                // Even with consecutive verification, a mixed scenario must not write a permanent hardware circuit-breaker trip
                 for (int second = 58; second < 72; second += 2)
                     Eq(YieldAction.None, state.Advance(second * TimeSpan.TicksPerSecond, 97, 40, 41, 140));
                 AssertYieldInconclusive(state, state.Advance(72 * TimeSpan.TicksPerSecond, 97, 40, 41, 140));
             }
 
-            // 旧观察窗被丢弃后，新连续窗口的真实负结果仍应熔断。
+            // After the old observation window is discarded, a real negative result in a fresh consecutive window must still trip
             PowerBudgetYield.ClearFuse();
             var fresh = new PowerBudgetYield(); fresh.Begin(0, true, proxy);
             fresh.Advance(2 * TimeSpan.TicksPerSecond, 98, 40, 45, 150);
@@ -392,7 +392,7 @@ namespace PaviseApp
                 PowerBudgetYield.ClearFuse();
                 var state = RelaxedYield(proxy, false);
                 YieldAction action = YieldAction.None;
-                // Three-second scheduling intervals are ordinary jitter, not interrupted evidence.
+                // Three-second scheduling intervals are ordinary jitter not interrupted evidence
                 for (int second = 23; second <= 35; second += 3)
                     action = state.Advance(second * TimeSpan.TicksPerSecond,
                         gpuHarm ? 94 : 97, 40, gpuHarm ? 41 : 45, gpuHarm ? 140 : 150);

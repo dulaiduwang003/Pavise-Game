@@ -1,16 +1,17 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 游戏扫描平台清单分部 Steam Epic GOG 育碧 Riot WeGame 战网 Xbox 商店
+// File purpose Game scan platform manifest partial: Steam, Epic, GOG, Ubisoft, Riot, WeGame, Battle.net, Xbox Store
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Win32;
 
 namespace PaviseApp
 {
-    // 各平台只读它自己的清单文件或注册表 不做全盘遍历
-    //   roots 用来去重 同一个游戏被两个平台收录时只留一条
-    //   任何一个平台解析失败都只影响它自己 不能让整次扫描中断
+    // Each platform reads only its own manifest files or registry; no full-disk walk
+    //   roots is for dedup: a game listed by two platforms keeps one entry
+    //   A parse failure on any platform affects only that platform and never aborts the whole scan
     internal static partial class GameScan
     {
         private static void FromSteam(string root, List<ScanHit> hits, HashSet<string> roots)
@@ -28,15 +29,34 @@ namespace PaviseApp
             var libs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             libs.Add(steam);
             string vdf = Path.Combine(steam, "steamapps\\libraryfolders.vdf");
-            if (File.Exists(vdf))
-                foreach (Match m in Regex.Matches(File.ReadAllText(vdf), "\"path\"\\s+\"([^\"]+)\""))
-                    libs.Add(m.Groups[1].Value.Replace("\\\\", "\\"));
+            // Still scan the default library while Steam is writing the library manifest; supports old manifests where numeric keys hold the path directly
+            try
+            {
+                if (File.Exists(vdf))
+                    foreach (Match m in Regex.Matches(File.ReadAllText(vdf),
+                        "\"(?:path|[0-9]+)\"\\s+\"((?:\\\\.|[^\"\\\\])*)\"", RegexOptions.IgnoreCase))
+                    {
+                        try
+                        {
+                            string library = m.Groups[1].Value.Replace("\\\\", "\\").Replace('/', '\\');
+                            // The new-format apps node also has numeric keys; values like capacity are not library paths
+                            if (Path.IsPathRooted(library)) libs.Add(library);
+                        }
+                        catch { }
+                    }
+            }
+            catch { }
 
             foreach (string lib in libs)
             {
-                string sa = Path.Combine(lib, "steamapps");
+                string sa;
                 string[] acfs;
-                try { acfs = Directory.GetFiles(sa, "appmanifest_*.acf"); } catch { continue; }
+                try
+                {
+                    sa = Path.Combine(lib, "steamapps");
+                    acfs = Directory.GetFiles(sa, "appmanifest_*.acf");
+                }
+                catch { continue; }
                 foreach (string acf in acfs)
                 {
                     try
@@ -53,17 +73,79 @@ namespace PaviseApp
             }
         }
 
-        private static string JsonStr(string json, string key)
+        internal static string JsonStr(string json, string key)
         {
-            Match m = Regex.Match(json, "\"" + key + "\"\\s*:\\s*\"([^\"]*)\"");
-            if (!m.Success) return null;
-            return m.Groups[1].Value.Replace("\\\\", "\\").Replace("\\/", "/");
+            if (string.IsNullOrEmpty(json) || key == null) return null;
+            for (int i = 0; i < json.Length; i++)
+            {
+                if (json[i] != '"') continue;
+                string token;
+                if (!ReadJsonString(json, ref i, out token)) return null;
+                if (!string.Equals(token, key, StringComparison.Ordinal)) { i--; continue; }
+                int next = i;
+                while (next < json.Length && char.IsWhiteSpace(json[next])) next++;
+                if (next >= json.Length || json[next] != ':') { i--; continue; }
+                next++;
+                while (next < json.Length && char.IsWhiteSpace(json[next])) next++;
+                string value;
+                return ReadJsonString(json, ref next, out value) ? value : null;
+            }
+            return null;
+        }
+
+        // Reads JSON strings only; an escaped quote is not a terminator and Unicode paths are not left as literals
+        private static bool ReadJsonString(string json, ref int offset, out string value)
+        {
+            value = null;
+            if (offset >= json.Length || json[offset] != '"') return false;
+            offset++;
+            var result = new StringBuilder();
+            while (offset < json.Length)
+            {
+                char current = json[offset++];
+                if (current == '"') { value = result.ToString(); return true; }
+                if (current < 32) return false;
+                if (current != '\\') { result.Append(current); continue; }
+                if (offset >= json.Length) return false;
+                switch (json[offset++])
+                {
+                    case '"': result.Append('"'); break;
+                    case '\\': result.Append('\\'); break;
+                    case '/': result.Append('/'); break;
+                    case 'b': result.Append('\b'); break;
+                    case 'f': result.Append('\f'); break;
+                    case 'n': result.Append('\n'); break;
+                    case 'r': result.Append('\r'); break;
+                    case 't': result.Append('\t'); break;
+                    case 'u':
+                        if (json.Length - offset < 4) return false;
+                        int decoded = 0;
+                        for (int digit = 0; digit < 4; digit++)
+                        {
+                            char hex = json[offset++];
+                            int number = hex >= '0' && hex <= '9' ? hex - '0'
+                                : hex >= 'a' && hex <= 'f' ? hex - 'a' + 10
+                                : hex >= 'A' && hex <= 'F' ? hex - 'A' + 10 : -1;
+                            if (number < 0) return false;
+                            decoded = decoded * 16 + number;
+                        }
+                        result.Append((char)decoded);
+                        break;
+                    default: return false;
+                }
+            }
+            return false;
         }
 
         private static void FromEpic(string root, List<ScanHit> hits, HashSet<string> roots)
         {
             string mdir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
                 "Epic\\EpicGamesLauncher\\Data\\Manifests");
+            FromEpicManifests(mdir, root, hits, roots);
+        }
+
+        internal static void FromEpicManifests(string mdir, string root, List<ScanHit> hits, HashSet<string> roots)
+        {
             string[] items;
             try { items = Directory.GetFiles(mdir, "*.item"); } catch { return; }
             foreach (string f in items)

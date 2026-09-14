@@ -10,7 +10,7 @@ $null = New-Item -ItemType Directory -Path $runDirectory
 $compiler = Join-Path ([Environment]::GetFolderPath('Windows')) 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 if (-not (Test-Path -LiteralPath $compiler)) { throw 'The .NET Framework x64 C# compiler is required.' }
 
-# 精确白名单 不含完整 SelfTests 运行时和无关的被忽略测试文件
+# Exact whitelist, excludes the full SelfTests runtime and unrelated ignored test files
 $testNames = @('Candidate', 'Release', 'Handoff', 'Learning', 'Coordinator')
 $testFiles = @($testNames | ForEach-Object { Get-Item -LiteralPath (Join-Path $repositoryRoot ('tests\SelfTests.Renderer' + $_ + '.cs')) })
 $testFiles += Get-Item -LiteralPath (Join-Path $repositoryRoot 'tests\SelfTests.FamilySuppression.cs')
@@ -37,7 +37,7 @@ $benchTimedOut = $false
 $benchProcess = $null
 
 try {
-    # 各自独立的控制台入口 不走 build.cmd 不走生产 EXE 也不走 Program.Main
+    # Independent console entries, bypass build.cmd, the production EXE and Program.Main
     $helperOutput = Join-Path $runDirectory 'FixtureHost.exe'
     $helperArgs = @('-nologo', '-target:exe', '-platform:x64', '-langversion:5', '-optimize+', '-codepage:65001',
         ('-out:' + $helperOutput), '-reference:System.dll', '-reference:System.Core.dll', (Join-Path $benchDirectory 'FixtureHost.cs'))
@@ -76,7 +76,7 @@ try {
     while (-not $benchProcess.WaitForExit(500)) {
         if ([DateTime]::UtcNow -gt $deadline) {
             $benchTimedOut = $true
-            # 只管上面创建的这个进程 辅助进程的 stdin 会关掉 它们自己的超时也是有界的
+            # Only manages the process created above, the helpers' stdin gets closed and their own timeouts are bounded
             if ($benchProcess.Handle -eq $ownedBenchHandle -and -not $benchProcess.HasExited) { $benchProcess.Kill() }
             $null = $benchProcess.WaitForExit(3000)
             throw 'The isolated bench exceeded its bounded runtime.'

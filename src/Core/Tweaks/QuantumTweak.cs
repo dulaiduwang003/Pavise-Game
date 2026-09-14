@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 解码前台时间片的实际调度语义 判据只认微软有文档的低两位取到 Maximum 修复也只改这两位 高四位原样不动
+// File purpose Decode the actual scheduling semantics of the foreground quantum; the check trusts only Microsoft's documented low two bits, fixing to Maximum changes only those two bits, the high four stay as-is
 using System;
 using System.Globalization;
 using Microsoft.Win32;

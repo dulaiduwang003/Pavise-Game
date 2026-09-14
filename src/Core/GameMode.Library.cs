@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 游戏列表 配置档案与白名单的持久化操作
+// File purpose Game list, profile and whitelist persistence
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -137,8 +137,8 @@ namespace PaviseApp
             return added;
         }
 
-        // 只由交接确认后的提交点调用 现场 PID/创建时间与 epoch 由调用方复核
-        // 学习与 Boost 成功与否无关 候选 SafetyOnly 和强制入口都不能改写游戏库
+        // Called only from the commit point after handoff confirmation, caller re-checks live PID/creation time and epoch
+        // Learning is independent of whether Boost succeeded, SafetyOnly candidates and forced entries must never rewrite the game library
         internal bool TryLearnConfirmedRenderer(GameDetection hit)
         {
             return TryLearnConfirmedRenderer(hit, null);
@@ -164,7 +164,7 @@ namespace PaviseApp
             string resolved = GameProfileStore.NormalizePath(suppliedPath);
             if (resolved == null || !Path.IsPathRooted(suppliedPath)) return false;
             string volume = Path.GetPathRoot(suppliedPath);
-            // 盘符相对与根相对路径依赖当前工作目录 不是完整的进程身份
+            // Drive-relative and root-relative paths depend on the current working directory, not a complete process identity
             if (string.IsNullOrEmpty(volume) || volume.Length < 3
                 || (!volume.EndsWith("\\", StringComparison.Ordinal)
                     && !volume.EndsWith("/", StringComparison.Ordinal))) return false;
@@ -183,17 +183,17 @@ namespace PaviseApp
                 if (current == null || current.ForceTrigger
                     || RendererPathClaimedLocked(current, resolved)) return false;
 
-                // 入口替换不应把已声明的游戏目录缩成 Menu/某个子渲染器目录
-                // 否则随后启动的兄弟 EXE 会丢失关联 仅保留合法且确实包含目标的
-                // 原范围 目标在原范围之外时 仍用上面保守推断的新 Root
+                // Entry replacement must not shrink the declared game directory down to Menu/ or some sub-renderer directory
+                // otherwise sibling EXEs launched later lose their association, keep the original scope only when it is valid
+                // and actually contains the target, when the target lies outside it still use the conservatively inferred new Root above
                 string declaredRoot = GameInstallScope.RestrictFallback(
                     current.ExecutablePath, NormalizeGameRoot(current.Root));
                 if (declaredRoot != null && FamilyBoundary.UnderRoot(resolved, declaredRoot)) root = declaredRoot;
 
                 bool alreadyTarget = string.Equals(current.ExecutablePath, resolved,
                     StringComparison.OrdinalIgnoreCase);
-                // UI 可在确认等待中删除 重建或修改档案 旧观察不得覆盖新入口
-                // 同一路径的重复确认允许幂等返回 不需要再次落盘
+                // UI may delete, recreate or edit the profile while confirmation is pending, a stale observation must not overwrite the new entry
+                // Repeated confirmation of the same path returns idempotently, no need to write to disk again
                 if (!alreadyTarget && observedProfile != null
                     && (!string.Equals(current.ExecutablePath, observedProfile.ExecutablePath, StringComparison.OrdinalIgnoreCase)
                         || !string.Equals(current.LearnedExecutablePath, observedProfile.LearnedExecutablePath, StringComparison.OrdinalIgnoreCase)
@@ -203,8 +203,8 @@ namespace PaviseApp
                     && string.Equals(current.Root, root, StringComparison.OrdinalIgnoreCase)
                     && current.Entries.Count == 1 && current.Entries.Contains(name)) return true;
 
-                // 直接替换目标 不留旧入口或 Learned 别名 ID 用户名称与配置原样保留
-                // 先保存独立候选 成功后才发布到内存 失败时原档案从未被改动
+                // Replace the target outright, no old entry or Learned alias left behind, ID, user name and config kept as-is
+                // Save a standalone candidate first, publish to memory only on success, on failure the original profile was never touched
                 GameProfile replacement = current.Clone();
                 replacement.ExecutablePath = resolved;
                 replacement.LearnedExecutablePath = null;
@@ -214,9 +214,9 @@ namespace PaviseApp
                 int index = profiles.IndexOf(current);
                 var next = new List<GameProfile>(profiles);
                 next[index] = replacement;
-                // 路径推断与磁盘准备之后 再在与生命周期失效共用的锁内终验
+                // After path inference and disk preparation, run the final check inside the lock shared with lifecycle invalidation
                 if (stillCurrent != null && !stillCurrent()) return false;
-                // 与 SaveProfilesLocked 共用严格提交和致命故障保护 短暂占用不发布候选
+                // Shares strict commit and fatal-failure protection with SaveProfilesLocked, a transient file lock does not publish the candidate
                 if (!SaveProfileSnapshotLocked(next, stillCurrent))
                 {
                     return false;
@@ -292,14 +292,14 @@ namespace PaviseApp
             return null;
         }
 
-        // 调用方须持有 sync 实时解析会话档案的布尔策略 无会话档案时用全局值
-        //   档案已丢失按关处理 档案存在覆盖时以覆盖为准 三个实时解析的会话
-        //   策略 待机清理/英文输入/Intel 低延迟 共用这一份规则
+        // Caller must hold sync, resolves the session profile's bool policy live, uses the global value when there is no session profile
+        //   a missing profile counts as off, an existing override wins, the three live-resolved session
+        //   policies (standby cleanup/English input/Intel low latency) share this one rule
         private bool LiveBoolPreferenceLocked(string policyKey, bool globalOn)
         {
             PolicySnapshot snapshot = sessionPolicy;
             if (snapshot == null) return globalOn;
-            // 掌机档不提供的项 实时解析也按关 跟快照口径一致
+            // Items not offered on the Handheld tier resolve as off live too, matching the snapshot criteria
             if (PolicyCatalog.IsHandheldBlocked(policyKey) && snapshot.Preset == PerformancePreset.Handheld) return false;
             if (string.IsNullOrEmpty(snapshot.ProfileId)) return globalOn;
             GameProfile profile = FindProfileLocked(snapshot.ProfileId);
@@ -308,9 +308,9 @@ namespace PaviseApp
             return profile.Overrides.TryGetValue(policyKey, out value) ? value == "1" : globalOn;
         }
 
-        // 会话策略键的失效钩子 set 与 clear 及批量清除共用这一份 新增实时
-        //   解析的策略键在这里登记一次即可 漏接的表现是静默应用过期偏好
-        //   调用方须持有 sync
+        // Invalidation hook for session policy keys, shared by set, clear and bulk clear, a newly added live-resolved
+        //   policy key only needs registering here once, a missed hookup shows up as silently applying a stale preference
+        //   Caller must hold sync
         private void InvalidateOverrideWorkLocked(string key)
         {
             if (key == PolicyCatalog.KeyPowerYield || key == PolicyCatalog.KeyPreset)
@@ -323,8 +323,8 @@ namespace PaviseApp
             if (key == PolicyCatalog.KeyIntelLowLatency) InvalidateIntelGraphicsWork();
         }
 
-        // 覆盖写入成功后的变更通知 effectiveOn 是该键此刻生效的布尔值
-        //   设置时来自新覆盖值 清除时回落到全局开关
+        // Change notification after an override write succeeds, effectiveOn is the bool value in effect for that key right now
+        //   from the new override value on set, falling back to the global switch on clear
         private void NotifyOverridePolicyChanged(string key, bool effectiveOn)
         {
             if (key == PolicyCatalog.KeyPauseServices) PauseServicesPolicyChanged(effectiveOn);
@@ -378,7 +378,7 @@ namespace PaviseApp
             return ok;
         }
 
-        // 选核器动的是三个连在一起的键 要么全发出去 要么一个都不发
+        // The core selector touches three linked keys, either all of them go out or none
         internal bool SetProfileCorePlacement(string profileId, string mask, string strict, string alternate)
         {
             string[] keys = { PolicyCatalog.KeyCoreMask, PolicyCatalog.KeyStrictCores, PolicyCatalog.KeyCoreDomainAlt };
@@ -654,8 +654,8 @@ namespace PaviseApp
                     AddWhiteRuleNoSave(rule);
                     whitelistLastError = "";
                 }
-                // 把还原工作一起算进 Stop 的白名单排干里 不能只算文件提交
-                // 任何原生释放都不许拖在一次成功的停止后面
+                // Count the restore work into Stop's whitelist drain too, not just the file commit
+                // No native release may trail behind a successful stop
                 freed = ReleaseCurrentWhitelistMatches(out matched);
             }
             Logger.Log(Lang.T("log.gamemodelibrary.17") + rule.Kind + " " + rule.Value + Lang.T("log.gamemodelibrary.18") + matched

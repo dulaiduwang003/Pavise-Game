@@ -1,8 +1,8 @@
 @rem @author bdth 2074055628@qq.com
-@rem file: dev loop - kill running instance, rebuild, relaunch
-@rem ASCII ONLY. cmd decodes this file with the codepage the console had at
-@rem startup (936 here) and chcp does NOT change that. One UTF-8 CJK char
-@rem shifts the parser and comment text gets executed as a command.
+@rem file dev loop - kill running instance rebuild relaunch
+@rem ASCII ONLY cmd decodes this file with the codepage the console had at
+@rem startup 936 here and chcp does NOT change that One UTF-8 CJK char
+@rem shifts the parser and comment text gets executed as a command
 @echo off
 for /f "tokens=2 delims=:" %%a in ('chcp') do set "PAVISE_OLDCP=%%a"
 set "PAVISE_OLDCP=%PAVISE_OLDCP: =%"
@@ -15,10 +15,10 @@ set OUT=build\Pavise.dev.exe
 set MODE=%~1
 if /i "%MODE%"=="test" goto test
 
-rem kill the running instance first: the global single-instance mutex makes a
-rem new one exit silently, and the locked exe blocks the build output.
-rem prefer the global exit event (graceful restore chain, no elevation);
-rem fall back to an elevated force-kill if it does not respond.
+rem kill the running instance first the global single-instance mutex makes a
+rem new one exit silently and the locked exe blocks the build output
+rem prefer the global exit event graceful restore chain no elevation
+rem fall back to an elevated force-kill if it does not respond
 powershell -NoProfile -Command "try{[System.Threading.EventWaitHandle]::OpenExisting('Global\Pavise_Exit').Set()}catch{}" >nul 2>&1
 set /a WAITED=0
 :waitexit
@@ -45,7 +45,7 @@ call :restorecp
 exit /b 0
 
 :test
-rem Tests own a fresh output directory and must not stop a running application.
+rem Tests own a fresh output directory and must not stop a running application
 set "TESTDIR=%TEMP%\PaviseSelftest-%RANDOM%-%RANDOM%"
 if exist "%TESTDIR%" goto test
 mkdir "%TESTDIR%"
@@ -70,7 +70,7 @@ call :restorecp
 exit /b %TEST_EXIT%
 
 :restorecp
-rem restore the host codepage: leaving the console on 65001 makes the
-rem PSReadLine input thread of an interactive PowerShell host throw and die.
+rem restore the host codepage leaving the console on 65001 makes the
+rem PSReadLine input thread of an interactive PowerShell host throw and die
 if defined PAVISE_OLDCP chcp %PAVISE_OLDCP% >nul 2>&1
 goto :eof

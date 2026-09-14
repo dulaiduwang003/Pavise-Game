@@ -1,5 +1,5 @@
-// 文件用途 按核统计的整机利用率 按有效观测时长加权 这是给具体那一段
-// 中断采集用的可选证据 不是渲染进程的 CPU 指标
+// File purpose Per-core whole-machine utilization weighted by effective observation time, this is optional evidence for
+// that specific interrupt capture window, not a CPU metric of the renderer process
 using System;
 using System.Collections.Generic;
 
@@ -11,6 +11,7 @@ namespace PaviseApp
         public double AveragePercent;
         public long ObservedTicks;
         public int Samples;
+        public long BusyTicks = -1; // -1 legacy/unknown not zero load
     }
 
     internal sealed class IrqCoreLoadCapture : IDisposable
@@ -22,6 +23,7 @@ namespace PaviseApp
         private long previous;
         private readonly double[] weighted = new double[64];
         private readonly long[] observed = new long[64];
+        private readonly long[] busy = new long[64];
         private readonly int[] samples = new int[64];
         private bool closed;
 
@@ -40,8 +42,8 @@ namespace PaviseApp
             try { values = source.Read(); }
             catch
             {
-                // 一个可选计数器失败 不能丢掉之前有效的区间
-                // 也不能让独立采集的中断观测作废
+                // One optional counter failing must not discard the intervals that were already valid
+                // nor invalidate the independently captured interrupt observation
                 ICoreLoadSource failed = source;
                 source = null;
                 try { failed.Dispose(); } catch { }
@@ -55,6 +57,7 @@ namespace PaviseApp
                 if (cpu < 0 || cpu >= 64 || (systemMask & (1UL << cpu)) == 0
                     || double.IsNaN(value) || double.IsInfinity(value) || value < 0 || value > 100
                     || long.MaxValue - observed[cpu] < duration || samples[cpu] == int.MaxValue) continue;
+                if (value >= 80) busy[cpu] += duration;
                 weighted[cpu] += value * duration;
                 observed[cpu] += duration;
                 samples[cpu]++;
@@ -73,7 +76,7 @@ namespace PaviseApp
                     if (observed[cpu] > 0 && samples[cpu] > 0)
                         target.CoreLoads.Add(new IrqCoreLoadRecord { Cpu = cpu,
                             AveragePercent = weighted[cpu] / observed[cpu],
-                            ObservedTicks = observed[cpu], Samples = samples[cpu] });
+                            ObservedTicks = observed[cpu], Samples = samples[cpu], BusyTicks = busy[cpu] });
             }
             finally { Dispose(); }
         }
