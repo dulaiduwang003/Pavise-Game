@@ -1,15 +1,15 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 疑似恶意进程判定 按连续快照的 CPU 增量识别长时间吃满核心的无窗口后台进程
+// File purpose Suspected malicious process detection: identify windowless background processes that saturate cores for a long time from CPU deltas across consecutive snapshots
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 
 namespace PaviseApp
 {
-    // 只认两类证据 一是被压到后台核的进程跑出了超过后台核数的 CPU 量 说明它自己改回了亲和
-    //   二是没有可见窗口 不在系统目录和 Program Files 里的进程 连续两分钟占用四分之一以上的逻辑核
-    //   随机名进程第二类门槛减半 每个进程名一生只报一次 报的是"可能" 由用户核对文件位置和杀毒结果
-    //   这里不开句柄不碰注册表 输入全来自主循环已有的进程快照 纯判定 便于回归
+    // Only two kinds of evidence count: one, a process suppressed to background cores ran more CPU than the background core count allows, meaning it changed its own affinity back
+    //   two, a process with no visible window and outside the system directories and Program Files holding over a quarter of the logical cores for two straight minutes
+    //   Random-named processes get half the second threshold; each process name is reported once ever, as "possible", the user verifies the file location and antivirus result
+    //   No handles opened and no registry touched here; input comes entirely from the main loop's existing process snapshot, pure decision logic, easy to regression-test
     internal sealed class RogueProcessWatch
     {
         internal sealed class Sample
@@ -62,8 +62,8 @@ namespace PaviseApp
             return Math.Max(1.5, HogCores(logicalCpus) / 2.0);
         }
 
-        // 随机名 只含字母数字 且要么数字大小写三样齐 要么大小写来回切换四次以上
-        //   yIgaJZfC 1TNnr Hnvw40 这类命中 OneDrive WerFault SDXHelper 这类不命中
+        // Random name: alphanumeric only, and either all three of digits, upper and lower case present, or case flips four or more times
+        //   yIgaJZfC 1TNnr Hnvw40 hit; OneDrive WerFault SDXHelper do not
         internal static bool LooksRandom(string name)
         {
             if (string.IsNullOrEmpty(name)) return false;
@@ -137,7 +137,7 @@ namespace PaviseApp
             tracks.Clear();
         }
 
-        // 提醒台账 name|utcTicks 分号分隔 一天内同名不再提醒 写回时顺手把过期条目丢掉
+        // Alert ledger, name|utcTicks separated by semicolons; same name not alerted again within a day, expired entries dropped on write-back
         internal static bool LedgerRecent(string ledger, string name, long now, long repeatTicks)
         {
             if (string.IsNullOrEmpty(ledger) || string.IsNullOrEmpty(name)) return false;

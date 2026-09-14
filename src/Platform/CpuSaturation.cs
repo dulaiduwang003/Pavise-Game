@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 系统级 CPU 饱和判定 时间窗滞回 供提优决定本体优先级档位
+// File purpose System-wide CPU saturation decision with time-window hysteresis, used by boost to pick the main process priority tier
 using System;
 using System.Runtime.InteropServices;
 
@@ -11,7 +11,7 @@ namespace PaviseApp
         public const double ExitUtilization = 0.80;
         public const long EnterHoldTicks = TimeSpan.TicksPerSecond * 10;
         public const long ExitHoldTicks = TimeSpan.TicksPerSecond * 5;
-        // 连续读不到样本这么久就不再声称饱和 否则一次采样故障能把升档卡到退局
+        // Stop claiming saturation after this long without samples, otherwise one sampling failure could pin tier escalation until match end
         public const long StaleTicks = TimeSpan.TicksPerSecond * 10;
 
         private bool saturated;

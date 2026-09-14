@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 扫描本机游戏并维护游戏库目录
+// File purpose Scans local games and maintains the game library catalog
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -13,6 +13,7 @@ namespace PaviseApp
         public string Proc;
         public string Root;
         public string Exe;
+        public bool NeedsChoice;
     }
 
     internal static partial class GameScan
@@ -94,6 +95,8 @@ namespace PaviseApp
             try { FromMicrosoftStore(root, hits, roots); } catch { }
             if (Stop(canceled)) return;
             try { FromInstalled(root, hits, roots, canceled); } catch { }
+            if (Stop(canceled)) return;
+            try { FromShortcuts(root, hits, roots, canceled); } catch { }
         }
 
         private static bool Stop(Func<bool> canceled)
@@ -108,26 +111,75 @@ namespace PaviseApp
             return dir != null && (dir.TrimEnd('\\') + "\\").StartsWith(r, StringComparison.OrdinalIgnoreCase);
         }
 
-        private static void AddManifestHit(string root, List<ScanHit> hits, HashSet<string> roots,
+        internal static void AddManifestHit(string root, List<ScanHit> hits, HashSet<string> roots,
             string name, string dir, string exePath)
         {
+            dir = CleanDir(dir);
             if (dir == null) return;
-            dir = dir.Replace('/', '\\').TrimEnd('\\');
             if (!UnderRoot(dir, root) || !Directory.Exists(dir)) return;
             if (roots.Contains(dir)) return;
-            string exe = exePath != null && File.Exists(exePath) ? exePath : PickMainExe(dir);
-            if (exe == null) return;
-            roots.Add(dir);
             if (string.IsNullOrEmpty(name)) name = Path.GetFileName(dir);
-            hits.Add(new ScanHit { Name = name, Proc = Path.GetFileNameWithoutExtension(exe), Root = dir, Exe = exe });
+            string exe = null, error;
+            if (!string.IsNullOrWhiteSpace(exePath))
+            {
+                try
+                {
+                    string candidate = Environment.ExpandEnvironmentVariables(exePath.Trim().Trim('"')).Replace('/', '\\');
+                    if (!Path.IsPathRooted(candidate)) candidate = Path.Combine(dir, candidate);
+                    candidate = Path.GetFullPath(candidate);
+                    if (UnderRoot(candidate, dir)
+                        && string.Equals(Path.GetExtension(candidate), ".exe", StringComparison.OrdinalIgnoreCase)
+                        && !IsJunkName(candidate))
+                        GameExecutableResolver.TryResolve(candidate, out exe, out error);
+                }
+                catch { }
+            }
+            List<ExecutableCandidateFacts> candidates = null;
+            if (exe == null)
+                candidates = ExecutableCandidateProbe.ListCandidates(dir, 24, out exe);
+            bool found = exe != null;
+            if (exe != null)
+                AddUniqueManifestEntry(hits, name, dir, exe, false);
+            else
+            {
+                // Install record found but entry not unique: keep the candidates for the user to choose so the game does not vanish
+                foreach (ExecutableCandidateFacts candidate in candidates)
+                    if (ExecutableCandidateProbe.Rank(candidate) > 0)
+                    {
+                        found = true;
+                        AddUniqueManifestEntry(hits, name, dir, candidate.Path, true);
+                    }
+            }
+            // The same EXE may be found via both a platform Content root and an uninstall record's parent directory; keep the earlier source's metadata
+            // A duplicate entry still means this directory is recognized; do not go on to try the record's install source
+            if (found) roots.Add(dir);
+        }
+
+        private static void AddUniqueManifestEntry(List<ScanHit> hits, string name, string dir,
+            string exe, bool needsChoice)
+        {
+            foreach (ScanHit hit in hits)
+                if (string.Equals(hit.Exe, exe, StringComparison.OrdinalIgnoreCase)) return;
+            hits.Add(new ScanHit { Name = name, Proc = Path.GetFileNameWithoutExtension(exe),
+                Root = dir, Exe = exe, NeedsChoice = needsChoice });
         }
 
         private static void FromInstalled(string root, List<ScanHit> hits, HashSet<string> roots, Func<bool> canceled)
         {
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            ScanUninstallHive(Registry.LocalMachine, @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall", root, hits, roots, seen, canceled);
-            ScanUninstallHive(Registry.LocalMachine, @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall", root, hits, roots, seen, canceled);
-            ScanUninstallHive(Registry.CurrentUser, @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall", root, hits, roots, seen, canceled);
+            RegistryKey[] hives = { Registry.LocalMachine, Registry.LocalMachine, Registry.CurrentUser };
+            string[] paths =
+            {
+                @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+                @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+                @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
+            };
+            for (int i = 0; i < hives.Length; i++)
+            {
+                if (Stop(canceled)) return;
+                try { ScanUninstallHive(hives[i], paths[i], root, hits, roots, seen, canceled); }
+                catch { }
+            }
         }
 
         internal static void ScanUninstallHive(RegistryKey hive, string path, string root,
@@ -147,25 +199,13 @@ namespace PaviseApp
                             if (g.GetValue("SystemComponent") is int && (int)g.GetValue("SystemComponent") != 0) continue;
                             if (g.GetValue("ParentKeyName") != null) continue;
 
-                            string name = g.GetValue("DisplayName") as string;
-
-                            string dir = CleanDir(g.GetValue("InstallLocation") as string);
-                            bool derived = false;
-                            if (dir == null)
-                            {
-                                derived = true;
-                                dir = CleanDir(ExeDir(g.GetValue("DisplayIcon") as string));
-                                if (dir == null) dir = CleanDir(ExeDir(g.GetValue("UninstallString") as string));
-                                if (dir == null) dir = CleanDir(g.GetValue("InstallSource") as string);
-                            }
-                            if (dir == null || dir.Length < 4 || !seen.Add(dir)) continue;
-                            if (roots.Contains(dir) || !Directory.Exists(dir)) continue;
-                            if (IsSystemOrTooBroad(dir)) continue;
-                            if (derived && SameNameAlreadyHit(hits, name)) continue;
-                            // 发布商 产品名和目录里的客户端字样都不是游戏身份依据
-                            if (!LooksLikeGameDir(dir, 3)) continue;
-
-                            AddManifestHit(root, hits, roots, name, dir, null);
+                            string[] candidates = InstalledDirectoryCandidates(
+                                g.GetValue("InstallLocation") as string,
+                                g.GetValue("DisplayIcon") as string,
+                                g.GetValue("UninstallString") as string,
+                                g.GetValue("InstallSource") as string);
+                            ScanInstalledRecord(g.GetValue("DisplayName") as string, candidates,
+                                root, hits, roots, seen, canceled);
                         }
                     }
                     catch { }
@@ -173,37 +213,111 @@ namespace PaviseApp
             }
         }
 
+        internal static string[] InstalledDirectoryCandidates(string installLocation, string displayIcon,
+            string uninstallString, string installSource)
+        {
+            var candidates = new List<string>();
+            var unique = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            AddInstalledDirectoryCandidate(installLocation, candidates, unique);
+            AddInstalledCommandDirectories(displayIcon, candidates, unique);
+            AddInstalledCommandDirectories(uninstallString, candidates, unique);
+            AddInstalledDirectoryCandidate(installSource, candidates, unique);
+            return candidates.ToArray();
+        }
+
+        private static void AddInstalledDirectoryCandidate(string value,
+            List<string> candidates, HashSet<string> unique)
+        {
+            string dir = CleanDir(value);
+            if (dir != null && unique.Add(dir)) candidates.Add(dir);
+        }
+
+        private static void AddInstalledCommandDirectories(string command,
+            List<string> candidates, HashSet<string> unique)
+        {
+            string target = InstalledCommandTarget(command);
+            if (target == null) return;
+            // The icon or uninstaller may sit in a subdirectory like Bin or Binaries; recover the install root first, keep the original directory as fallback
+            AddInstalledDirectoryCandidate(InferGameRoot(target), candidates, unique);
+            AddInstalledDirectoryCandidate(Path.GetDirectoryName(target), candidates, unique);
+        }
+
+        internal static void ScanInstalledRecord(string name, string[] candidates, string root,
+            List<ScanHit> hits, HashSet<string> roots, HashSet<string> seen, Func<bool> canceled)
+        {
+            if (candidates == null) return;
+            foreach (string value in candidates)
+            {
+                if (Stop(canceled)) return;
+                try
+                {
+                    string dir = CleanDir(value);
+                    if (dir == null || !UnderRoot(dir, root) || !Directory.Exists(dir)) continue;
+                    if (IsSystemOrTooBroad(dir) || IsSystemWideDirName(Path.GetFileName(dir))) continue;
+                    // When the platform manifest already gives the install root, the inner directory derived from the icon does not override its name and root
+                    foreach (ScanHit hit in hits)
+                        if (!string.IsNullOrEmpty(hit.Root) && UnderRoot(dir, hit.Root)) return;
+                    if (roots.Contains(dir))
+                    {
+                        foreach (ScanHit hit in hits)
+                            if (!string.IsNullOrEmpty(hit.Exe) && UnderRoot(hit.Exe, dir)) return;
+                        continue;
+                    }
+                    if (!seen.Add(dir)) continue;
+                    // Publisher, product name and client wording in the directory are not evidence of game identity
+                    if (!LooksLikeGameDir(dir, 3)) continue;
+                    AddManifestHit(root, hits, roots, name, dir, null);
+                    // Non-empty, existing or engine signals do not mean an entry was found; on failure continue with the same record's fallback paths
+                    if (roots.Contains(dir)) return;
+                }
+                catch { }
+            }
+        }
+
         private static string CleanDir(string value)
         {
             if (string.IsNullOrEmpty(value)) return null;
-            string dir = value.Trim().Trim('"').Replace('/', '\\').TrimEnd('\\');
-            return dir.Length >= 4 ? dir : null;
-        }
-
-        private static string ExeDir(string command)
-        {
-            if (string.IsNullOrEmpty(command)) return null;
-            string s = command.Trim();
-            if (s.StartsWith("\""))
+            try
             {
-                int end = s.IndexOf('"', 1);
-                if (end > 1) s = s.Substring(1, end - 1);
+                string dir = Environment.ExpandEnvironmentVariables(value.Trim().Trim('"')).Replace('/', '\\');
+                if (!Path.IsPathRooted(dir)) return null;
+                dir = Path.GetFullPath(dir).TrimEnd('\\');
+                return dir.Length >= 4 ? dir : null;
             }
-            else
-            {
-                int exe = s.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
-                if (exe > 0) s = s.Substring(0, exe + 4);
-            }
-            try { return Path.GetDirectoryName(s.Trim()); }
             catch { return null; }
         }
 
-        private static bool SameNameAlreadyHit(List<ScanHit> hits, string name)
+        private static string InstalledCommandTarget(string command)
         {
-            if (string.IsNullOrEmpty(name)) return false;
-            foreach (ScanHit h in hits)
-                if (string.Equals(h.Name, name, StringComparison.OrdinalIgnoreCase)) return true;
-            return false;
+            if (string.IsNullOrEmpty(command)) return null;
+            try
+            {
+                string s = Environment.ExpandEnvironmentVariables(command.Trim());
+                if (s.StartsWith("\""))
+                {
+                    int end = s.IndexOf('"', 1);
+                    if (end <= 1) return null;
+                    s = s.Substring(1, end - 1);
+                }
+                else
+                {
+                    for (int start = 0; start < s.Length;)
+                    {
+                        int exe = s.IndexOf(".exe", start, StringComparison.OrdinalIgnoreCase);
+                        if (exe < 0) break;
+                        int end = exe + 4;
+                        if (end == s.Length || char.IsWhiteSpace(s[end]) || s[end] == ',')
+                        { s = s.Substring(0, end); break; }
+                        start = end;
+                    }
+                    int comma = s.LastIndexOf(',');
+                    int iconIndex;
+                    if (comma > 0 && int.TryParse(s.Substring(comma + 1).Trim(), out iconIndex))
+                        s = s.Substring(0, comma);
+                }
+                return CleanDir(s);
+            }
+            catch { return null; }
         }
 
         private static bool IsSystemOrTooBroad(string dir)
@@ -237,10 +351,14 @@ namespace PaviseApp
             return string.Equals(a.TrimEnd('\\'), b.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
         }
 
-        private static bool LooksLikeGameDir(string dir, int depth)
+        internal static bool LooksLikeGameDir(string dir, int depth)
         {
             string[] files, subs;
-            try { files = Directory.GetFiles(dir); subs = Directory.GetDirectories(dir); }
+            try
+            {
+                if ((File.GetAttributes(dir) & FileAttributes.ReparsePoint) != 0) return false;
+                files = Directory.GetFiles(dir); subs = Directory.GetDirectories(dir);
+            }
             catch { return false; }
             if (HasGameSignals(files, subs)) return true;
             if (depth <= 1) return false;
@@ -335,8 +453,8 @@ namespace PaviseApp
                 Path.GetFileNameWithoutExtension(name ?? ""), null);
         }
 
-        // 扫描只推荐有唯一静态证据的入口 无法区分多个图形程序时交给用户选择
-        // 不按游戏名 客户端角色 EXE 大小或目录里的 launcher/client 字样决胜
+        // The scan only recommends an entry with unique static evidence; when several graphics programs cannot be told apart, the user chooses
+        // No tie-breaking by game name, client role, EXE size or launcher and client wording in the directory
         internal static string PickMainExe(string dir)
         {
             return ExecutableCandidateProbe.PickMainExecutable(dir);

@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 体检报告装配 BypassIO 与能力项结论
+// File purpose Health check report assembly, BypassIO, and capability verdicts
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -10,8 +10,8 @@ namespace PaviseApp
 {
     internal static partial class SystemAudit
     {
-        // 体检只读不写 每个 Build 段各管一组结论 互相不依赖
-        //   采样失败只会让 MeasureOk 为 false 其余结论照常出 不整个报告作废
+        // The health check is read-only; each Build section owns one group of verdicts, independent of the others
+        //   A sampling failure only sets MeasureOk to false; the other verdicts still come out and the whole report is not voided
         public static AuditReport Collect(int measureWindowMs)
         {
             var report = new AuditReport();

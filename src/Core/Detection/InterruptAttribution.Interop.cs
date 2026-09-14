@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 ETW 会话停止与内核采样的互操作声明
+// File purpose Interop declarations for ETW session stop and kernel sampling
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;

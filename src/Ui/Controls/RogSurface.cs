@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 为导航栏与主工作区绘制统一的低对比 ROG 装甲底纹
+// File purpose Draw the unified low-contrast ROG armor texture for the navigation rail and the main workspace
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -12,8 +12,8 @@ namespace PaviseApp
         public static void Draw(Graphics g, Rectangle bounds, bool navigation)
         {
             if (bounds.Width <= 0 || bounds.Height <= 0) return;
-            // 框架的 TextRenderer 可能把一个已平移的 Graphics.Save 上下文套两次
-            // 只保留这里改过的属性 让页脚和几何图形共用同一个偏移
+            // The framework's TextRenderer may nest an already-translated Graphics.Save context twice
+            // Restore only the properties changed here so the footer and the geometry share the same offset
             SmoothingMode smoothing = g.SmoothingMode;
             PixelOffsetMode pixels = g.PixelOffsetMode;
             using (Region clip = g.Clip)
@@ -181,7 +181,7 @@ namespace PaviseApp
 
         internal void PaintSurface(Graphics graphics, Rectangle clip)
         {
-            // 有封面就让位 封面已经够花了 装甲底纹再叠上去只会更脏
+            // Yield when there is a backdrop; it is busy enough already and stacking the armor texture on top only makes it dirtier
             if (Backdrop.AppliesTo(this)) { Backdrop.Paint(graphics, this, clip); return; }
             using (var fill = new SolidBrush(Theme.Bg)) graphics.FillRectangle(fill, ClientRectangle);
             RogSurface.Draw(graphics, ClientRectangle, false);

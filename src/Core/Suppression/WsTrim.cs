@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 压制后台进程的一次性工作集修剪 页面移入待机列表 物理内存腾给游戏
+// File purpose One-time working set trim of suppressed background processes; pages move to the standby list, physical memory goes to the game
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -25,9 +25,9 @@ namespace PaviseApp
         private static readonly object lk = new object();
         private static readonly Dictionary<int, long> done = new Dictionary<int, long>();
 
-        // 内存不紧时修剪只有代价 被压程序切回时重缺页 游戏那边一页都没多拿到
-        //   绝对可用量低于 4 GiB 而且低于总量 1/8 才修剪 有一头还够就不动
-        //   采样 5 秒缓存一次 不给每个进程都去查一遍
+        // With memory not tight, trimming is pure cost: the suppressed app re-faults on switch-back and the game gets not one extra page
+        //   Trim only when absolute available is below 4 GiB and below 1/8 of total; if either side is enough, leave it
+        //   Sample cached for 5 seconds, no per-process query
         internal const ulong FloorBytes = 4UL * 1024 * 1024 * 1024;
         internal const long SampleIntervalTicks = TimeSpan.TicksPerSecond * 5;
         private static long sampledTicks;
@@ -76,9 +76,9 @@ namespace PaviseApp
             }
         }
 
-        // 每个进程实例只修剪一次 修剪后再涨的工作集说明它真的又跑过
-        //   用户主动用过的内存不重复清 反作弊进程由调用方挡在外面
-        //   压制句柄没有 SET_QUOTA 权限 单独开一个短命句柄 开不了就跳过
+        // Trim each process instance once; a working set that grows again after trimming means it really ran again
+        //   Memory the user actively used is not cleared again; anti-cheat processes are kept out by the caller
+        //   The suppression handle lacks SET_QUOTA; open a separate short-lived handle, skip if it won't open
         public static void MaybeTrim(IntPtr suppressedHandle)
         {
             if (!Enabled || suppressedHandle == IntPtr.Zero) return;

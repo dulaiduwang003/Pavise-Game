@@ -7,17 +7,17 @@ using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 
-// 无害的短命进程树夹具 编译一次 在隔离的台架运行里把同一个二进制
-// 复制成 GameLauncher.exe 和 GameRenderer.exe
-// 这个辅助程序不检查 不启动 也不修改任何生产进程
-// 协议
-//   GameLauncher.exe --root --renderer 后面跟 GameRenderer.exe 的绝对路径
-//     子进程就绪后 stdout 输出 READY|launcherPid|rendererPid
+// Harmless short-lived process tree fixture, compiled once, the isolated bench run copies the same binary
+// as GameLauncher.exe and GameRenderer.exe
+// This helper never inspects, launches or modifies any production process
+// Protocol
+//   GameLauncher.exe --root --renderer followed by the absolute path of GameRenderer.exe
+//     prints READY|launcherPid|rendererPid to stdout once the child is ready
 //   GameRenderer.exe --leaf
-//     stdout 输出 READY|pid
-//   两者都接受 stdin 的 exit 不分大小写 或者 EOF 表示请求干净退出
-//     其余输入行忽略 出错走 stderr 的 ERROR|message
-//   每个进程最多等 40 秒 root 的清理再多等 2 秒
+//     prints READY|pid to stdout
+//   Both accept a case-insensitive exit on stdin, or EOF, as a request for clean shutdown
+//     other input lines are ignored, errors go to stderr as ERROR|message
+//   Each process waits at most 40 seconds, root cleanup waits 2 seconds more
 internal static class FixtureHost
 {
     private const int LifetimeMilliseconds = 40000;
@@ -81,8 +81,8 @@ internal static class FixtureHost
                 RedirectStandardError = false
             };
 
-            // 创建期间一直攥着只读租约 这样校验过的副本
-            // 就没法在内容检查和 Process.Start 之间被掉包
+            // Hold the read-only lease throughout creation so the verified copy
+            // cannot be swapped out between the content check and Process.Start
             using (FileStream rendererFile = new FileStream(
                 rendererPath, FileMode.Open, FileAccess.Read, FileShare.Read))
             {
@@ -95,8 +95,8 @@ internal static class FixtureHost
                 throw new InvalidOperationException("Could not start the owned renderer fixture.");
             }
 
-            // 留住 Start 给的那个原生进程句柄 清理时不重新打开 PID
-            // 也不按可执行文件名去找进程
+            // Keep the native process handle Start returned, cleanup never reopens by PID
+            // nor looks the process up by executable name
             ownedHandle = child.Handle;
             int rendererPid = child.Id;
             Task<string> readyLine = ReadReadyLine(child);
@@ -146,7 +146,7 @@ internal static class FixtureHost
             throw new ArgumentException("Renderer path must be a nonempty absolute local path.");
         }
 
-        // UNC 和网络路径不收 C:foo.exe 这种盘符相对路径也不收
+        // UNC and network paths are rejected, so are drive-relative paths like C:foo.exe
         string volume = Path.GetPathRoot(suppliedPath);
         if (volume.Length != 3 || volume[1] != ':' ||
             (volume[2] != Path.DirectorySeparatorChar && volume[2] != Path.AltDirectorySeparatorChar))

@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 关闭系统内存压缩与页合并 大内存机器专用 重启彻底生效 收据只回启原本开着的
+// File purpose Disable system memory compression and page combining; large-memory machines only, fully effective after reboot; the receipt re-enables only what was on
 using System;
 using System.Runtime.InteropServices;
 
@@ -9,7 +9,7 @@ namespace PaviseApp
     {
         private const string OnKey = "MemCompressOffByPavise";
         private const string SnapKey = "PrevMMAgent";
-        // 名义 24GB 减去硬件保留后仍稳在 23.5GB 之上 16GB 机器够不到
+        // Nominal 24GB stays above 23.5GB after hardware reservation; a 16GB machine can't reach it
         private const double MinTotalBytes = 23.5 * 1073741824.0;
         private static readonly object lk = new object();
 
@@ -39,7 +39,7 @@ namespace PaviseApp
             catch { return false; }
         }
 
-        // Get-MMAgent 属性是 .NET bool 的 ToString 不随系统语言变
+        // Get-MMAgent properties are .NET bool ToString, unaffected by system language
         internal static bool ParseState(string output, out bool compression, out bool combining)
         {
             compression = combining = false;
@@ -72,7 +72,7 @@ namespace PaviseApp
                 && (!wantedCombining || combining);
         }
 
-        // 快照格式 1,0 表示当时压缩开着 合并关着 还原只回启当时开着的
+        // Snapshot format 1,0 means compression was on and combining off at the time; restore re-enables only what was on
         internal static string RestoreArguments(string snapshot)
         {
             bool compression, combining;
@@ -118,15 +118,15 @@ namespace PaviseApp
         {
             lock (lk)
             {
-                // 已经是本程序关掉的状态直接认账 收据早就在了
-                //   查一次状态要起一次 PowerShell 重复开关没必要付这个代价
-                //   原先这道守卫在极限清单的 ApplySingle 里 清单下架后挪进来
+                // Already in the state this program disabled: accept it as is, the receipt has been there all along
+                //   One state query spawns one PowerShell; repeated toggling shouldn't pay that cost
+                //   This guard used to sit in the Extreme manifest's ApplySingle; moved here when the manifest was withdrawn
                 if (EnabledByPavise) return true;
                 bool beforeCompression, beforeCombining;
                 if (!QueryState(out beforeCompression, out beforeCombining))
                 { Logger.Warn(Lang.T("log.memcompress.1")); return false; }
-                // 正常入口先用 CurrentlyOff 跳过 这里再守一道并发变化
-                // 不写快照也不写归属标记 外部已经关掉的状态还归外部
+                // The normal entry skips via CurrentlyOff first; this guards once more against a concurrent change
+                // Write neither the snapshot nor the ownership flag; a state already disabled externally stays external
                 if (!beforeCompression && !beforeCombining) return true;
                 string snapshot;
                 if (!Settings.TryLoadStr(SnapKey, out snapshot))
@@ -146,24 +146,24 @@ namespace PaviseApp
                     { Logger.Log(Lang.T("log.memcompress.2")); return false; }
                 }
                 string output;
-                // 退出码只能拿来诊断 生没生效以状态查询为准
+                // Exit code is for diagnostics only; whether it took effect is decided by the state query
                 RunCommand("Disable-MMAgent -MemoryCompression -PageCombining",
                     "mmagent-off", out output);
                 bool compression, combining;
                 bool postOk = QueryState(out compression, out combining);
-                // CIM 和 PowerShell 的退出码不是状态凭证 命令返回非零也没关系
-                // 只要后验已经到目标 就留着原快照 认下这次实际变化
+                // CIM and PowerShell exit codes aren't proof of state; a nonzero return is fine
+                // As long as the post-check reached the target, keep the original snapshot and own the actual change
                 if (postOk && !compression && !combining)
                 {
                     Settings.Save(OnKey, true);
                     Logger.Log(Lang.T("log.memcompress.4"));
                     return true;
                 }
-                // 非零退出的详情 PsRunner 已经记了 这里只给用户一个稳定的功能级结论
+                // PsRunner already logged the nonzero exit details; give the user only a stable feature-level verdict here
                 Logger.Log(Lang.T("log.memcompress.3"));
 
-                // 状态其实还满足原快照 说明我们的改动没落下 可以销账
-                // 否则立刻回滚 回滚也失败就得留着快照 交给下次还原接管重试
+                // State still matches the original snapshot, so our change didn't land; safe to close the record
+                // Otherwise roll back immediately; if rollback fails too, keep the snapshot and let the next restore take over and retry
                 bool recovered = postOk && SnapshotRestored(snapshot, compression, combining);
                 if (!recovered) recovered = RestoreSnapshot(snapshot);
                 if (recovered)
@@ -180,7 +180,7 @@ namespace PaviseApp
             bool wantedCompression, wantedCombining;
             if (!ParseSnapshot(snapshot, out wantedCompression, out wantedCombining)) return false;
             string args = RestoreArguments(snapshot);
-            // 旧版本可能留下 0,0 收据 本来就没开启项 也就没有物理还原可做
+            // Older versions may have left a 0,0 receipt; nothing was on, so there's no physical restore to do
             if (args.Length == 0) return true;
             string output;
             RunCommand("Enable-MMAgent" + args, "mmagent-restore", out output);
@@ -205,11 +205,11 @@ namespace PaviseApp
                 string snapshot = Settings.LoadStr(SnapKey, "");
                 if (snapshot.Length > 0)
                 {
-                    // 命令非零照样看后验 已经恢复的幂等调用不能把收据永远卡在这
+                    // Nonzero command still goes by the post-check; an idempotent call that already restored must not pin the receipt here forever
                     if (!RestoreSnapshot(snapshot))
                     { Logger.Log(Lang.T("log.memcompress.5")); return false; }
                 }
-                // 物理状态和两份归属记录都核完 才能安全销账
+                // Only close the record once the physical state and both ownership records have been verified
                 if (!ClearOwnership())
                 { Logger.Log(Lang.T("log.memcompress.5")); return false; }
                 Logger.Log(Lang.T("log.memcompress.6"));

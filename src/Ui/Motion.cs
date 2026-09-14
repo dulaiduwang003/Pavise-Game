@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 统一管理界面动画时钟 只有对局期间整体冻结为静态 其余一律全速
+// File purpose Central UI animation clock; frozen static as a whole only during a match, full speed otherwise
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -49,13 +49,13 @@ namespace PaviseApp
 
     internal static class UiClock
     {
-        // WinForms Timer 走 WM_TIMER 粒度就是系统时钟跳 15.6ms 请求再小也拿不到更快
-        //   本机实测每档 200 次投递 请求 10ms 和 15ms 的均值都是 15.6ms 都是 64 FPS
-        //   timeBeginPeriod(1) 对 WM_TIMER 无效 实测提不提精度均值一样
-        //   老写法请求 10ms 并在动画期间常驻提精度 一帧都没多拿到 却把全局系统时钟拉到 1ms
-        //   15 卡在一跳之内 每跳必发 投递也最规律 中位数 15.58ms 而 10ms 档中位数 12.51ms 抖动明显
-        //   不要改成 16 一跳 15.6ms 不够 16 会等到下一跳 实测掉到 40 FPS 中位数 27.67ms
-        //   动画快慢由 Motion.StepFraction 按 DeltaScale 归一 换帧率不改观感
+        // WinForms Timer goes through WM_TIMER; granularity is the system clock tick, 15.6ms; asking for less never gets faster
+        //   Measured locally with 200 posts per setting: requests of 10ms and 15ms both average 15.6ms, both 64 FPS
+        //   timeBeginPeriod(1) has no effect on WM_TIMER; measured average is the same with or without raised resolution
+        //   The old code requested 10ms and kept raised resolution for the whole animation: not one extra frame, but it dragged the global system clock to 1ms
+        //   15 stays inside one tick, fires every tick and posts most regularly: median 15.58ms, while the 10ms setting has a median of 12.51ms with visible jitter
+        //   Do not change to 16: one tick of 15.6ms is not enough for 16 so it waits for the next tick; measured drop to 40 FPS, median 27.67ms
+        //   Animation speed is normalized by Motion.StepFraction via DeltaScale; changing the frame rate does not change the look
         internal const int FrameMs = 15;
         internal const int SlowMs = 200;
 

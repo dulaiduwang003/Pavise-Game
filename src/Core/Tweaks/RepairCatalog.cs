@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 把被教程改坏的系统值改回去 这一族的统一目录
+// File purpose Unified catalog of the family that reverts system values broken by tutorials
 using System;
 using System.Collections.Generic;
 

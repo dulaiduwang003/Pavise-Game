@@ -1,5 +1,5 @@
-﻿// 文件用途 纯决策和收据检查 不调 NVML 不写驱动 不建窗口
-// 显卡锁频已下架 这里只剩收据编解码与同批落地的会话门与 DPI 令牌回归 不碰 NVML
+﻿// File purpose Pure decisions and receipt checks, no NVML calls, no driver writes, no windows
+// GPU clock lock has been retired, only receipt codec plus the session gate and DPI token regression that landed in the same batch remain, no NVML
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -37,9 +37,9 @@ namespace PaviseApp
             gpuClockChecks++;
         }
 
-        // 厂商性能档已下架 目录里不再有这一项 只留旧收据的清收路径
-        //   下架理由 它调厂商接口拨功耗档 和掌机档把功耗侧让给厂商工具是冲突的
-        //   而且判据里从来没有档位 掌机档选了也照拨
+        // Vendor performance mode has been retired, the catalog no longer has this item, only the old-receipt cleanup path remains
+        //   Retirement reason: it dialed the power tier through vendor APIs, which conflicts with Handheld tier ceding the power side to vendor tools
+        //   And its criteria never included the tier, it dialed even with Handheld tier selected
         private static void LaptopPerfIsRetiredButStillRecoverable()
         {
             Settings.UseTransientStoreForCurrentProcess();
@@ -52,7 +52,7 @@ namespace PaviseApp
                         BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static) == null,
                     "retired vendor performance mode still exposes " + gone);
 
-            // 恢复路径必须留着 老用户机器上可能还压着一张收据
+            // The restore path must stay, an old user's machine may still hold a receipt
             foreach (string kept in new[] { "Restore", "HealFromCrash" })
                 GpuClockCheck(mode.GetMethod(kept,
                         BindingFlags.Public | BindingFlags.Static) != null,
@@ -61,7 +61,7 @@ namespace PaviseApp
                     BindingFlags.Public | BindingFlags.Static) != null,
                 "vendor performance mode lost its residue probe");
 
-            // 键名保留给旧收据的清收 别顺手删掉
+            // The key name is reserved for old-receipt cleanup, don't delete it in passing
             GpuClockCheck(PolicyCatalog.KeyLaptopPerf == "GmLaptopPerfV1",
                 "the retired vendor performance key changed and old receipts would be orphaned");
         }

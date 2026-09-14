@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 游戏配置页运行模式覆盖条 跟随全局与四档模式彩色分段 选中态即时反馈
+// File purpose Run-mode override strip on the game config page: follow-global plus four color-coded tier segments, selected state gives instant feedback
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -9,8 +9,8 @@ namespace PaviseApp
 {
     internal sealed class ModeStrip : Control
     {
-        // 档位序在构造时定格 本机不支持的档不在里面 变化走 RebuildUi 重建本控件
-        //   下标必须与 AddCfgModeRow 传给回调的取值数组同源 两边都取 PresetValue.VisibleChoices
+        // Tier order is fixed at construction; tiers this machine does not support are not in it; changes go through RebuildUi, which rebuilds this control
+        //   Indices must share a source with the value array AddCfgModeRow passes to the callback; both sides take PresetValue.VisibleChoices
         private readonly PerformancePreset[] Order = PresetValue.VisibleOrder();
 
         private int idx;
@@ -48,8 +48,8 @@ namespace PaviseApp
             if (moved) Invalidate();
         }
 
-        // 上界跟着档位数走 0 是跟随全局 1..Order.Length 是各档
-        //   写死 4 的时候自定义档回填会被挡掉 页面刷新后选中块停在上一个位置
+        // Upper bound follows the tier count: 0 is follow-global, 1..Order.Length are the tiers
+        //   With a hard-coded 4 the Custom tier write-back got rejected and the selected block stayed at its previous position after a page refresh
         public int Index
         {
             get { return idx; }
@@ -68,8 +68,8 @@ namespace PaviseApp
             return index == 0 ? Theme.Accent : Theme.ModeColor(Order[index - 1]);
         }
 
-        // 档位段宽按档位数摊 别再写死 加一档就把"跟随全局"那段挤没了
-        //   给跟随段留够两行字的地儿 剩下的等分 每段再兜一个下限
+        // Segment width is split by tier count, never hard-code it again; adding a tier squeezed the follow-global segment out
+        //   Leave the follow-global segment room for two lines of text, split the rest evenly, and floor each segment at a minimum
         private Rectangle SegmentRect(int index)
         {
             int gap = Theme.S(6);

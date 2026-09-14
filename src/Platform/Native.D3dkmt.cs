@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 D3DKMT 适配器与显存互操作
+// File purpose D3DKMT adapter and VRAM interop
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;

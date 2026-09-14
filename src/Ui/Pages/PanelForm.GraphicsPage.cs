@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 构建显卡页 逐游戏的驱动项与全局呈现路径开关
+// File purpose Build the GPU page: per-game driver items and global presentation path switches
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -64,7 +64,7 @@ namespace PaviseApp
                 nvOk ? Lang.T("set.nvmax.n") : nvNone, swNvMax, out cardH);
             sy += cardH + 8;
 
-            // 只在用户已开 G-SYNC 且只给全屏时有东西可补 不由档位强制 部分面板窗口 VRR 会闪
+            // Only has something to add when the user already enabled G-SYNC and only for fullscreen; not forced by tier, windowed VRR flickers on some panels
             swNvVrr = MakeSwitch(gameMode.NvVrrWindowedEnabled, null);
             BindGraphicsToggle(swNvVrr, delegate { return gameMode.NvVrrWindowedEnabled; },
                 delegate(bool v) { gameMode.NvVrrWindowedEnabled = v; }, NvVrrWindowed.Applicable, null,
@@ -181,7 +181,7 @@ namespace PaviseApp
                 !amdOk ? amdNone : rsrOk ? Lang.T("set.rsr.n") : amdNoSup, swAmdRsr, out cardH);
             sy += cardH + 8;
 
-            // 功耗墙两家都支持 挂在有驱动那家的页签底部
+            // Power limit is supported by both vendors; hangs at the bottom of whichever vendor tab has a driver
             Control powerScroll = nvOk ? gfxTabPanels[1] : gfxTabPanels[2];
             int powerY = nvOk ? nvTabBottom : sy;
             bool powerOk = GpuPowerMax.Supported();
@@ -203,14 +203,14 @@ namespace PaviseApp
             BindGraphicsToggle(toggle, read, write, supported, confirm, supported);
         }
 
-        // 隔离回归按六参签名反射查找这个方法 别改参数个数
+        // The isolated regression finds this method by reflection on its six-parameter signature; do not change the parameter count
         private void BindGraphicsToggle(Toggle toggle, Func<bool> read, Action<bool> write,
             Func<bool> supported, Func<bool> confirm, Func<bool> presentationSupported)
         {
             Action sync = delegate
             {
-                // 两种锁定全站同一套标签 本机不支持"本机不适用" 其余无标签
-                //   卡片在开关之后才创建 所以从 Parent 取 挂上父容器那一刻再同步一次
+                // Two lock kinds share one label set site-wide: Not supported here and Not applicable here; everything else unlabeled
+                //   The card is created after the switch, so take it from Parent and sync once more the moment it is attached to the parent container
                 SettingCard card = toggle.Parent as SettingCard;
                 bool on = read();
                 bool usable = presentationSupported();
@@ -218,14 +218,14 @@ namespace PaviseApp
                 toggle.Enabled = on || usable;
                 if (card != null) card.SetLock(!on && !usable ? Lang.T("lock.na") : "", false);
             };
-            // 隔离回归用未初始化的窗体单独构建公共显卡页 字段初始化器没跑过 同步表可能为空
+            // The isolated regression builds the common GPU page alone on an uninitialized form; field initializers never ran, so the sync table may be null
             if (graphicsSync != null) graphicsSync.Add(sync);
             toggle.ParentChanged += delegate { sync(); };
             toggle.CheckedChanged += delegate
             {
                 bool on = toggle.Checked;
-                // 能力丢失时仍然要留出关闭的路 模态警告之后也要再查一遍
-                // 控件可点不等于已经授权
+                // A lost capability must still leave a way to turn off; re-check after the modal warning too
+                // A clickable control does not mean authorization was granted
                 bool allowed = !on;
                 if (on && supported())
                     allowed = confirm == null || read() || (confirm() && supported());
@@ -235,8 +235,8 @@ namespace PaviseApp
             sync();
         }
 
-        // 原先还有一个极限档钉住索引的重载 极限档下架后没有调用点 连同锁定分支一并撤掉
-        //   挂父容器时重新同步与清锁改成两个选择器一致 与 BindGraphicsToggle 同形
+        // There used to be an overload that pinned the index for the Extreme tier; with the Extreme tier retired it had no callers, removed along with the lock branch
+        //   Re-sync and lock clearing on parent attach now match across both pickers, same shape as BindGraphicsToggle
         private void BindGraphicsPicker(TierPicker picker, Func<int> read, Action<int> write,
             Func<bool> supported)
         {
@@ -252,8 +252,8 @@ namespace PaviseApp
             picker.ParentChanged += delegate { sync(); };
             picker.IndexChanged = delegate(int index)
             {
-                // 所有厂商选择器都用索引 0 表示关闭 之前开着的选择器
-                // 一旦失去驱动支持 其它档位继续拒绝
+                // All vendor pickers use index 0 for off; a picker that was previously on
+                // keeps refusing the other tiers once driver support is lost
                 if (index == 0 || (index > 0 && index < picker.Labels.Length && supported()))
                     write(index);
                 sync();

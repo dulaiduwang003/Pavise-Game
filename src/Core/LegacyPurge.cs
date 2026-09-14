@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 设置页那颗清除全部按钮的实现 把所有写过的东西还原再删掉本机数据
+// File purpose Implementation of the Wipe all button on the Settings page: restore everything we wrote, then delete local data
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -53,8 +53,8 @@ namespace PaviseApp
                     if (parent != null)
                     {
                         bool exists;
-                        // 探测用的句柄还开着 删掉的注册表键会一直挂在待删状态
-                        // 先关掉再删 然后另开一个句柄去核实
+                        // With the probe handle still open, the deleted registry key stays in pending-delete state
+                        // Close first, then delete, then open another handle to verify
                         using (RegistryKey probe = parent.OpenSubKey("Pavise"))
                             exists = probe != null;
                         if (exists) parent.DeleteSubKeyTree("Pavise", false);
@@ -127,7 +127,7 @@ namespace PaviseApp
                 GlobalTimerResTweak.Restore, failed);
             StepIf(Lang.T("set.memcompress"), delegate { return MemCompressTweak.OwnsState; },
                 MemCompressTweak.Restore, failed);
-            // 极限档已下架 只把它留下的四个设置键清掉 功能本体各归各自的开关
+            // Extreme tier is retired; only clear the four settings keys it left behind, the features themselves belong to their own toggles
             Step("Extreme", delegate
             {
                 bool ok = Settings.Save("ExtremeUnlocked", false);
@@ -185,7 +185,7 @@ namespace PaviseApp
             Step("DisplaySolo 显示拓扑未还原", delegate
             {
                 if (DisplaySolo.HealFromCrash()) return !DisplaySolo.HasResidue();
-                // 解析不出来或不是合法拓扑值的快照永远还原不了 重置流程里放弃这份记录
+                // A snapshot that cannot be parsed or is not a valid topology value can never be restored, the reset flow gives up on that record
                 uint topology;
                 string snap = Settings.LoadStr(DisplaySolo.SnapKey, "");
                 if (snap.Length != 0 && (!uint.TryParse(snap, out topology)
@@ -202,7 +202,7 @@ namespace PaviseApp
             StepIf(Lang.T("gm.pausemaint"), delegate { return MaintenancePause.HasResidue; }, MaintenancePause.Restore, failed);
             StepIf("AMD SAM", AmdSamTweak.HasResidue, AmdSamTweak.Restore, failed);
             StepIf("FTH", delegate { return FthTweak.RepairedByPavise; }, FthTweak.Restore, failed);
-            // 早已下架 只剩历史残留恢复 没残留就别每次清除都空写一遍注册表
+            // Long retired, only legacy residue restore remains; with no residue do not blank-write the registry on every wipe
             StepIf("CFG", CfgOffTweak.HasResidue, CfgOffTweak.RestoreAll, failed);
             StepIf(Lang.T("t.legacypurge.29"), delegate { return IrqRelocate.HasResidue; }, IrqRelocate.Revert, failed);
             StepIf("自动中断编排 已下架的注册表钉核清退", delegate { return IrqAutoPilot.HasResidue; }, delegate
@@ -283,8 +283,8 @@ namespace PaviseApp
                 Guid ignored;
                 if (Guid.TryParseExact(name.Substring(prefix.Length, 32), "N", out ignored)) return true;
             }
-            // TaskHelper 管的就是这一种临时启动任务 XML 格式
-            // 便携模式的清理不要扩大到用户自己建的 XML
+            // TaskHelper manages exactly this one kind of temporary launch task XML format
+            // Portable mode cleanup must not expand to XML the user created themselves
             if (name.Length == 7 + 32 + 4
                 && name.StartsWith("Pavise_", StringComparison.OrdinalIgnoreCase)
                 && name.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
@@ -297,10 +297,10 @@ namespace PaviseApp
                 && name.EndsWith(".log", StringComparison.OrdinalIgnoreCase);
         }
 
-        // 只认 %AppData%\Pavise 这一个目录 别的一概不整树删
-        //   便携版 Paths.Data 就是 exe 所在目录 递归删会连 Pavise.exe 一起删掉
-        //   所以不问"是不是 Paths.Data" 只问"是不是恰好等于那个路径"
-        //   目录本身是重解析点也不碰 junction 会把删除带到别处去
+        // Only recognize the one directory %AppData%\Pavise, never tree-delete anything else
+        //   In the portable build Paths.Data is the exe's own directory, a recursive delete would take Pavise.exe with it
+        //   So do not ask "is it Paths.Data", ask "is it exactly equal to that path"
+        //   Leave the directory alone if it is itself a reparse point, a junction would carry the delete elsewhere
         internal static bool IsRoamingDataDir(string dir)
         {
             if (string.IsNullOrEmpty(dir)) return false;
@@ -392,8 +392,8 @@ namespace PaviseApp
             else if (failures.Count == 8) failures.Add("另有未能清理的项目");
         }
 
-        // 动子项之前 先把认可根目录下的每一级父目录都核实一遍
-        // 枚举一次只下一层 目录链接一律不跟进
+        // Before touching children, verify every parent directory level under the accepted root
+        // Each enumeration goes only one level down, directory links are never followed
         private static bool CheckChildParents(string root, string path, out string error)
         {
             error = null;
@@ -446,7 +446,7 @@ namespace PaviseApp
             }
             try
             {
-                // 隔着文件符号链接改属性 可能改到它指向的目标
+                // Changing attributes through a file symlink may change the target it points to
                 if ((attributes & (FileAttributes.ReadOnly | FileAttributes.ReparsePoint)) == FileAttributes.ReadOnly)
                     File.SetAttributes(path, attributes & ~FileAttributes.ReadOnly);
                 File.Delete(path);
@@ -473,8 +473,8 @@ namespace PaviseApp
             }
             catch (Exception ex) { AddFailure(failures, normalized + " (" + ex.GetType().Name + ")"); }
 
-            // 不要拿 Delete 的返回值当成功 要能识别出被锁 权限拒绝
-            // 占用了同名的目录 以及并发重建这几种情况
+            // Do not treat Delete returning as success; must recognize locked, access denied,
+            // a directory occupying the same name, and concurrent recreation
             string remainingRoot;
             string probeError;
             if (!TryDataRoot(normalized, out remainingRoot, out exists, out probeError)) AddFailure(failures, probeError);
@@ -491,9 +491,9 @@ namespace PaviseApp
             return failures.Count == 0;
         }
 
-        // 整个目录归不归我们 仍然由调用方决定 这个辅助函数只负责
-        // 拒掉根目录和链接 并如实报告残留 而不是把一次尽力而为的
-        // 部分删除谎报成重置完成
+        // Whether the whole directory is ours is still the caller's call; this helper only
+        // rejects the root directory and links and reports leftovers truthfully, instead of passing off
+        // a best-effort partial delete as a completed reset
         internal static bool TryDeleteDataTree(string dir, out int files, out string error)
         {
             files = 0;
@@ -549,8 +549,8 @@ namespace PaviseApp
                 AddFailure(failures, "数据目录结构已改变: " + dir);
                 return;
             }
-            // 根目录如果是链接 上面已经拒掉了 子链接只删链接本身
-            // 用非递归删除
+            // If the root is a link it was already rejected above; child links delete only the link itself
+            // using a non-recursive delete
             if ((attributes & FileAttributes.ReparsePoint) == 0)
             {
                 try
@@ -578,7 +578,7 @@ namespace PaviseApp
             }
             try
             {
-                // 绝不修改目录链接所指向的外部目标的属性
+                // Never modify attributes of the external target a directory link points to
                 if ((attributes & (FileAttributes.ReadOnly | FileAttributes.ReparsePoint)) == FileAttributes.ReadOnly)
                     File.SetAttributes(dir, attributes & ~FileAttributes.ReadOnly);
                 Directory.Delete(dir, false);
@@ -586,7 +586,7 @@ namespace PaviseApp
             catch (Exception ex) { AddFailure(failures, dir + " (" + ex.GetType().Name + ")"); }
         }
 
-        // 卸载时清程序目录里旧版本落下的日志 图标这类归我们的文件 无关文件与程序本体不碰
+        // On uninstall, clear files owned by us that old versions left in the program directory, logs and icons; unrelated files and the program itself are untouched
         internal static bool DeleteOwnedFiles(string dir, out int files, out string error)
         {
             return DeleteDataFiles(dir, out files, out error);
@@ -617,13 +617,13 @@ namespace PaviseApp
             }
 
             bool wipeDir = includeSettings && IsRoamingDataDir(root);
-            // 删除前的最后一条日志 便携目录下 删完哪怕再写一行
-            // 都会把 Pavise.log 重新造出来 让这次重置作废
+            // Last log line before deletion; in a portable directory, writing even one more line after deletion
+            // recreates Pavise.log and voids this reset
             Logger.Log(why + " 系统还原已确认，开始清理本机数据");
             if (includeSettings)
             {
-                // 恢复成功是持久原始值的最后一个写入者
-                // 迟到的界面回调不能在删除之后把这两个存储又建回来
+                // A successful restore is the last writer of the persisted original values
+                // A late UI callback must not recreate these two stores after deletion
                 Settings.SuspendWritesForReset();
                 Logger.SuspendWritesForReset();
             }

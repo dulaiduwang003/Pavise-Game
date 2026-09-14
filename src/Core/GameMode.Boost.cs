@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 游戏进程提优主流程 句柄获取 身份校验与状态写入
+// File purpose Main game process boost flow, handle acquisition, identity verification and state writes
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -41,24 +41,24 @@ namespace PaviseApp
                 && !IrqSessionProbe.CanConfirmMaskShape(
                     pass.DesiredMask, allMask))
                 irqProbe.InvalidateGameMask();
-            // 已开采 epoch 必须在恢复旧 renderer 之前先绑定同一份 proof
-            // renderer 换代或配置换 mask 时 不能让 DropStale 的恢复动作混入旧局
+            // An epoch already capturing must bind to the same proof before the old renderer is restored
+            // When the renderer changes generation or config changes the mask, DropStale's restore actions must not mix into the old match
             if (irqProbe.IsPlacementCapturing
                 && !irqProbe.ProofMatches(
                     pass.DesiredMask,
                     pass.RendererPid, pass.RendererCreation))
                 irqProbe.InvalidateGameMask();
-            // 旧 renderer 的恢复也会触发调度/GPU 写入 本轮只要发现过
-            // stale 状态 就不允许新的 IRQ epoch 起采 下轮确认已无
-            // stale 后才能开始 给恢复写入留出完整的采样边界
+            // Restoring the old renderer also triggers scheduling/GPU writes, once any stale state
+            // is seen this pass no new IRQ epoch may start capturing, it starts only after the next pass confirms
+            // no stale remains, giving the restore writes a complete sampling boundary
             bool staleRestoreThisPass = DropStaleBoosts(pass);
             if (!irqProbe.RequiresPlacementAudit)
                 RestoreOrphanedIrqProofHardPin(pass);
             if (irqProbe.IsPlacementCapturing)
             {
-                // 采集中先只审计身份 硬亲和与调优状态 若确实需要写
-                // AuditActiveIrqCapture 会先 RestartCurrentEpoch 并同步停掉旧 ETW
-                // 然后才允许本轮落入 priority/IO/GPU/QoS/lane setter
+                // During capture only audit identity, hard affinity and tuning state first, if a write is really needed
+                // AuditActiveIrqCapture first calls RestartCurrentEpoch and synchronously stops the old ETW
+                // only then may this pass fall through to the priority/IO/GPU/QoS/lane setters
                 if (AuditActiveIrqCapture(all, pass)) return;
             }
             foreach (ProcEntry p in all.Entries)
@@ -71,15 +71,15 @@ namespace PaviseApp
                     rendererSeen = true;
                     bool known, needTweak, needPlacement;
                     bool auditDue = ComputeAuditDue(pid, pass, out known, out needTweak, out needPlacement);
-                    // 手动落核每秒用留存句柄读一次亲和性 被改回就立刻进本轮写回 不等巡检周期
+                    // Manual placement reads affinity once per second via the retained handle, if changed back it goes straight into this pass's rewrite without waiting for the audit period
                     if (!auditDue && ManualPlacementDrifted(pid, pass)) auditDue = true;
                     bool placementAudit = irqProbe.RequiresPlacementAudit;
                     if (!auditDue && !placementAudit) continue;
                     IntPtr h = OpenBoostHandle(pid, pass);
                     if (h == IntPtr.Zero)
                     {
-                        // 尚未开采时没有数据可被污染 保留 armed 等下一轮 只有已开采
-                        // 后失去读回能力 才必须永久废弃本局 epoch
+                        // Before capture starts there's no data to pollute, stay armed and wait for the next pass, only losing read-back
+                        // ability after capture started forces permanent abandonment of this match's epoch
                         if (irqProbe.IsPlacementCapturing) irqProbe.InvalidateGameMask();
                         continue;
                     }
@@ -92,7 +92,7 @@ namespace PaviseApp
                             continue;
                         }
 
-                        // 核心放置不再决定提优资格 但上一局或旧 renderer 的 pass 不能继续写入
+                        // Core placement no longer decides boost eligibility, but a pass from the previous match or an old renderer must not keep writing
                         if (!RefreshBoostPriority(pass)) continue;
 
                         if (placementAudit)
@@ -132,12 +132,12 @@ namespace PaviseApp
                             }
                             else
                             {
-                                // 已开采的 epoch 只要观察到一次漂移便永久废弃 尚未开采时
-                                // 清掉缓存 让本轮正常落核流程重新施加并读回验证
+                                // An epoch already capturing is permanently abandoned on the first observed drift, before capture starts
+                                // clear the cache and let this pass's normal placement flow reapply and verify by read-back
                                 if (irqProbe.IsPlacementCapturing) irqProbe.InvalidateGameMask();
-                                // 软 CPU Sets 可以是有效的普通落核 但不足以支撑
-                                // IRQ 归因 只有普通读回也失败时才清缓存重写
-                                // 否则保持 armed 等待 避免每 500ms 重复写 CPU Sets
+                                // Soft CPU Sets can be valid ordinary placement but aren't enough to support
+                                // IRQ attribution, clear the cache and rewrite only when the ordinary read-back fails too
+                                // otherwise stay armed and wait, avoiding a CPU Sets rewrite every 500ms
                                 if (!normalPlacement)
                                     lock (sync)
                                     {
@@ -147,9 +147,9 @@ namespace PaviseApp
                                             && !placementGaveUp.Contains(pid);
                                     }
                                 else if (!auditDue)
-                                    // 普通软落核稳定 只是达不到 IRQ 归因的严格
-                                    // proof 保留 armed 但不要因 placementAudit 在每次
-                                    // 进程扫描里重跑整套 boost 读写
+                                    // Ordinary soft placement is stable, it just doesn't meet the strict IRQ attribution
+                                    // proof, stay armed but don't let placementAudit rerun the whole set of
+                                    // boost reads and writes on every process scan
                                     continue;
                             }
                         }
@@ -181,7 +181,7 @@ namespace PaviseApp
                                 irqProbe.InvalidateGameMask();
                         }
                         bool ecoCleared = ClearEfficiencyMode(h, pid, pass);
-                        EngageLaneAndReport(h, all, pid, currentCreation, pass, stateOk, firstVerified, gpuOk, ecoCleared, placementText);
+                        EngageLaneAndReport(h, all, pid, currentCreation, pass, stateOk, firstVerified, gpuOk, ecoCleared, placementText, placementVerified);
                         ApplyGameTweaks(h, pid, pass, needTweak);
 
                         bool tuningPending;
@@ -199,8 +199,8 @@ namespace PaviseApp
                             continue;
                         }
 
-                        // 首次 ETW 必须晚于本轮所有 Pavise 调优写入 随后再读回同一
-                        // renderer 身份与落核 避免把初始化驱动/调度产生的 DPC 算成游戏证据
+                        // The first ETW must come after all of this pass's Pavise tuning writes, then read back the same
+                        // renderer identity and placement, so DPCs from driver/scheduler initialization aren't counted as game evidence
                         long finalCreation;
                         bool finalIdentity = VerifyRendererIdentity(
                             h, pid, pass, out finalCreation);
@@ -220,13 +220,13 @@ namespace PaviseApp
                 }
                 catch
                 {
-                    // 无法完成本轮身份/落核复核时 宁可丢弃整局中断样本
+                    // If this pass's identity/placement re-check can't complete, rather discard the whole match's interrupt samples
                     if (irqProbe.IsPlacementCapturing) irqProbe.InvalidateGameMask();
                 }
             }
             if (!rendererSeen && irqProbe.IsPlacementCapturing)
-                // 快照中渲染进程消失是正常退出/短暂漏检边界
-                // 先封存但不落盘 后续确认退出才提交 恢复则丢前缀重开
+                // A renderer vanishing from the snapshot is the normal exit/brief missed-detection boundary
+                // Seal first without persisting, commit only once exit is confirmed, if it comes back drop the prefix and restart
                 SealIrqObservation();
             if (!irqProbe.IsPlacementCapturing) PruneDeadBoosts(live);
         }
@@ -266,8 +266,8 @@ namespace PaviseApp
             if (sp != null && sp.ManualPlacement)
             {
                 ulong selected = sp.CoreMask;
-                // 存了方案却解析不出掩码 多半是拓扑戳记对不上 本机拓扑变过
-                //   这时会静默回落成不限核 用户的选核等于白设 必须说一次
+                // A saved plan whose mask can't be resolved most likely has a topology stamp mismatch, this machine's topology changed
+                //   It then silently falls back to no core restriction and the user's core selection is wasted, must say so once
                 if (selected == 0 && !placementVoidLogged)
                 {
                     placementVoidLogged = true;
@@ -295,7 +295,7 @@ namespace PaviseApp
 
         internal static uint BoostPriorityTarget(bool saturated, bool laneActive)
         {
-            // 恢复旧版规则 已启用候选线程提优时维持 High 其余在持续饱和时回退
+            // Restores the old rule: keep High when candidate thread boost is enabled, otherwise fall back under sustained saturation
             return saturated && !laneActive
                 ? Native.NORMAL_PRIORITY_CLASS : Native.HIGH_PRIORITY_CLASS;
         }
@@ -308,7 +308,7 @@ namespace PaviseApp
             boostIdentityPid = pass.RendererPid;
             boostIdentityCreation = pass.RendererCreation;
             pass.IdentityGeneration = boostIdentityGeneration;
-            // 同 PID 同创建时间的直接换局也算 上一局的审计缓存不能复用
+            // A direct match switch with the same PID and creation time counts too, the previous match's audit cache can't be reused
             if (boostIdentityNeedsAudit && pass.RendererPid > 0)
                 lock (sync)
                 {
@@ -331,12 +331,12 @@ namespace PaviseApp
 
         private bool RefreshBoostPriority(BoostPass pass)
         {
-            // 只核验局次与进程身份 不把 affinity / CPU Sets 读数当成提优门槛
+            // Only verify match generation and process identity, affinity / CPU Sets readings are not a boost gate
             if (pass.IdentityGeneration != boostIdentityGeneration || pass.RendererPid <= 0
                 || pass.RendererCreation <= 0 || pass.RendererPid != boostIdentityPid
                 || pass.RendererCreation != boostIdentityCreation) return false;
             pass.LaneAllowed = EffLane && LaneEligible && !pass.WriteDenied;
-            // 切掌机档或关掉开关后，残留 lane 即使还原暂时失败也不能豁免饱和回退。
+            // After switching to Handheld tier or turning the switch off, a leftover lane must not exempt the saturation fallback even if restore temporarily failed
             bool laneActive = pass.LaneAllowed
                 && RenderLane.IsActiveFor(pass.RendererPid, pass.RendererCreation);
             SetBoostPriorityTarget(pass, BoostPriorityTarget(pass.CpuSaturated, laneActive));
@@ -350,13 +350,13 @@ namespace PaviseApp
                 if (priorityTarget == Native.NORMAL_PRIORITY_CLASS
                     && irqProbe.IsPlacementCapturing && priorityTarget != boostPriorityTarget)
                     irqProbe.InvalidateGameMask();
-                // Normal 或策略不允许时都不会再起 lane，成功后不再每次重读恢复账本。
-                // 失败不能缓存成已恢复 后面的扫描和退局还得留着恢复机会
+                // Under Normal or when policy disallows, the lane never starts again, after success stop re-reading the restore ledger every time
+                // Failure must not be cached as restored, later scans and match end still need their restore chance
                 if (!boostLaneReleased)
                     boostLaneReleased = RenderLane.Release();
             }
             else boostLaneReleased = false;
-            // 新局或新 renderer 的初始判定不计作一次升降
+            // The initial decision for a new match or new renderer doesn't count as a raise/lower
             bool previousDecided = boostPriorityDecided;
             boostPriorityDecided = true;
             if (priorityTarget != boostPriorityTarget)
@@ -439,9 +439,9 @@ namespace PaviseApp
             }
             else
             {
-                // 已跟踪 GPU 原值时 后续 CaptureAndTrack 会再查并可能
-                // 写回 High 预查失败不能 fail-open 否则该写入会落入
-                // 已开始的 IRQ epoch
+                // When the GPU original is already tracked, a later CaptureAndTrack re-checks and may
+                // write High back, a failed pre-check can't fail-open or that write would land inside
+                // an already started IRQ epoch
                 lock (sync)
                     if (gameGpu.ContainsKey(pid)) return true;
             }
@@ -458,8 +458,8 @@ namespace PaviseApp
 
         internal static bool IrqLaneNeedsInitialization(LaneState state)
         {
-            // Trying 包含只读识别和每批之间一分钟的等待 不代表正在写
-            // 真正的线程 setter 已由 Begin/EndExternalMutation 与起采共用门锁
+            // Trying covers read-only identification and the one-minute wait between batches, not an active write
+            // The real thread setter already shares the gate lock with capture start via Begin/EndExternalMutation
             return state != LaneState.Trying && state != LaneState.Engaged
                 && state != LaneState.Unavailable;
         }
@@ -470,11 +470,11 @@ namespace PaviseApp
             if (h == IntPtr.Zero)
             {
                 bool noSuchProcess = Native.LastOpenProcessFailureWasNoSuchProcess();
-                // 后续保护名单处理可能写注册表 已有 IRQ capture 必须先停
+                // Later protected-list handling may write the registry, an existing IRQ capture must stop first
                 if (irqProbe.IsPlacementCapturing)
                 {
-                    // 已确认进程不存在是正常收口 不能把整局废弃
-                    // 拒绝访问/身份不明才必须作废
+                    // A confirmed nonexistent process is a normal close-out, don't abandon the whole match
+                    // Only access denied/unknown identity forces abandonment
                     if (noSuchProcess) SealIrqObservation();
                     else irqProbe.InvalidateGameMask();
                 }
@@ -585,7 +585,7 @@ namespace PaviseApp
                     QoSControl = oqc, QoSState = oqs };
                 lock (sync) gameBoost[pid] = snap;
                 newlyTracked = true;
-                // 渲染身份确认/游戏库替换在调度前独立提交 不依赖提优句柄是否可写
+                // Renderer identity confirmation/game library replacement commit independently before scheduling, regardless of whether the boost handle is writable
                 gpuOk = gpuKnown && !pass.WriteDenied && ApplyAndVerifyGpuBoost(h);
                 lock (sync) { if (gpuKnown && !pass.WriteDenied) gameGpu[pid] = gpuOld; }
             }
@@ -672,10 +672,10 @@ namespace PaviseApp
                     }
                 }
             }
-            // stateOk 要求调度优先级和磁盘 IO 都到位 但这两件事的性质不同
-            //   调度优先级是提优的主体 IO 优先级拿不到不算提优没生效
-            //   写入被拒是反作弊保护游戏的预期结果 不是故障 与真的写不进去分开记
-            //   否则日志里一行"提优失败"后面跟着 0x80 就是目标值 会让人以为出了问题
+            // stateOk requires both scheduling priority and disk IO in place, but the two differ in nature
+            //   Scheduling priority is the substance of the boost, failing to get IO priority doesn't mean the boost didn't apply
+            //   A refused write is the expected result of anti-cheat protecting the game, not a fault, log it separately from a real write failure
+            //   Otherwise the log shows a boost failed line followed by 0x80, which is the target value, and it looks like something broke
             bool prioOk = actualPriority == pass.PriorityTarget;
             bool writeRefused = writeError == 5 || writeError == unchecked((int)0xC0000022);
             if (!stateOk && firstStateWarning && !handleStripped)
@@ -694,7 +694,7 @@ namespace PaviseApp
                     Logger.Log(Lang.T("log.gamemodeboost.11") + pass.RendererName + " pid " + pid + Lang.T("log.gamemodeboost.12")
                         + actualPriority.ToString("X") + " / IO " + actualIo + Lang.T("log.gamemodeboost.13") + writeError + Lang.T("log.gamemodeboost.14"));
             }
-            // 已经解释过原因的两种情况不再补一条"失败" 调度优先级本来就在 或写入被拒
+            // The two cases already explained get no extra failure line: scheduling priority was already there, or the write was refused
             if (stateNowGaveUp && !handleStripped && !prioOk && !writeRefused)
                 Logger.Log(Lang.T("log.gamemodeboost.11") + pass.RendererName + " pid " + pid
                     + Lang.T("log.gamemodeboost.55") + StateRetryMax + Lang.T("log.gamemodeboost.56"));

@@ -7,12 +7,14 @@ namespace PaviseApp
 {
     internal static partial class SelfTests
     {
-        // 文件夹入库 唯一命中直接解析 多个候选交给列表 空文件夹给错误
+        // Adding a folder to the library: a single hit resolves directly, multiple candidates go to the list, an empty folder is an error
         internal static void RunAddGameFolderRegressionTests()
         {
             AddGameFolderUniqueMainResolves();
             AddGameFolderAmbiguousListsCandidates();
             AddGameFolderEmptyAndMissing();
+            AddGameFolderLockedExecutableKeepsReadableCandidates();
+            AddGameFolderDeeplyNestedExecutableResolves();
         }
 
         private static void AddGameFolderUniqueMainResolves()
@@ -25,7 +27,7 @@ namespace PaviseApp
 
                 List<ExecutableCandidateFacts> list = ExecutableCandidateProbe.ListCandidates(fixture.Root, 24);
                 Eq(2, list.Count);
-                // 图形证据排在 GUI 子系统前面
+                // Graphics evidence ranks ahead of the GUI subsystem
                 Eq(game, list[0].Path);
                 Eq(tool, list[1].Path);
                 Eq(2, ExecutableCandidateProbe.Rank(list[0]));
@@ -36,7 +38,7 @@ namespace PaviseApp
                 Eq(true, GameExecutableResolver.TryResolve(fixture.Root, out resolved, out error, out suggested));
                 Eq(game, resolved);
                 Eq(Path.GetFileName(fixture.Root), suggested);
-                // 带尾斜杠和引号的文件夹路径同样接受
+                // Folder paths with trailing slash and quotes are accepted too
                 Eq(true, GameExecutableResolver.TryResolve("\"" + fixture.Root + "\\\"", out resolved, out error));
                 Eq(game, resolved);
             }
@@ -53,6 +55,10 @@ namespace PaviseApp
                 Eq(2, list.Count);
                 Eq(a, list[0].Path);
                 Eq(b, list[1].Path);
+
+                string recommended;
+                Eq(1, ExecutableCandidateProbe.ListCandidates(fixture.Root, 1, out recommended).Count);
+                Eq<string>(null, recommended);
 
                 string resolved, error;
                 Eq(false, GameExecutableResolver.TryResolve(fixture.Root, out resolved, out error));
@@ -77,6 +83,45 @@ namespace PaviseApp
                 Eq(Lang.T("t.gameexecutableresolver.3"), error);
                 Eq(0, ExecutableCandidateProbe.ListCandidates(missing, 24).Count);
                 Eq(0, ExecutableCandidateProbe.ListCandidates(null, 24).Count);
+            }
+        }
+
+        private static void AddGameFolderLockedExecutableKeepsReadableCandidates()
+        {
+            using (var fixture = new GenericExecutableFixture())
+            {
+                string locked = fixture.WriteExecutable("Unreadable.exe", "kernel32.dll");
+                string game = fixture.WriteExecutable(@"Binaries\Win64\Game.exe", "d3d11.dll");
+                using (var file = new FileStream(locked, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                {
+                    bool complete;
+                    Eq<List<ExecutableCandidateFacts>>(null, ExecutableCandidateProbe.CollectFacts(fixture.Root, out complete));
+                    Eq(false, complete);
+                    Eq<string>(null, ExecutableCandidateProbe.PickMainExecutable(fixture.Root));
+                    string recommended;
+                    List<ExecutableCandidateFacts> list = ExecutableCandidateProbe.ListCandidates(fixture.Root, 24, out recommended);
+                    Eq(1, list.Count); Eq(game, list[0].Path);
+                    Eq<string>(null, recommended);
+                    Eq(1, ExecutableCandidateProbe.ListCandidates(fixture.Root, 24).Count);
+                }
+                string unlockedRecommendation;
+                Eq(2, ExecutableCandidateProbe.ListCandidates(fixture.Root, 24, out unlockedRecommendation).Count);
+                Eq(game, unlockedRecommendation);
+            }
+        }
+
+        private static void AddGameFolderDeeplyNestedExecutableResolves()
+        {
+            using (var fixture = new GenericExecutableFixture())
+            {
+                string game = fixture.WriteExecutable(@"Client\Content\Releases\Current\Game\Binaries\Win64\Game.exe", "d3d12.dll");
+                string recommended;
+                List<ExecutableCandidateFacts> list = ExecutableCandidateProbe.ListCandidates(fixture.Root, 24, out recommended);
+                Eq(1, list.Count); Eq(game, list[0].Path); Eq(game, recommended);
+                Eq(game, ExecutableCandidateProbe.PickMainExecutable(fixture.Root));
+                string resolved, error;
+                Eq(true, GameExecutableResolver.TryResolve(fixture.Root, out resolved, out error));
+                Eq(game, resolved);
             }
         }
     }

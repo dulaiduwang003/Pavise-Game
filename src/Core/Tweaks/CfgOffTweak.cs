@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 已下架的关闭 CFG 功能仅保留历史策略恢复 不再关闭控制流保护
+// File purpose Retired CFG-off feature; keeps only legacy policy recovery, no longer disables Control Flow Guard
 using System;
 using Microsoft.Win32;
 
@@ -32,7 +32,7 @@ namespace PaviseApp
                 ValName, RegistryValueKind.Binary, "CfgOpt_" + exe);
         }
 
-        // 账本或旧开关任一存在即为残留 恢复入口据此决定要不要动注册表
+        // Either the ledger or the old switch existing counts as residue; the recovery entry decides from this whether to touch the registry
         public static bool HasResidue()
         {
             return Settings.LoadStr(ListKey, "").Length != 0

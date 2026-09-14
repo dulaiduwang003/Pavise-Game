@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 对局期间优化器自己让出游戏核心并降低调度权重 状态只写自身 进程消亡即自动清零无残留
+// File purpose During a match the optimizer itself vacates game cores and lowers its scheduling weight; state written only to self, cleared automatically on process death, no residue
 using System;
 
 namespace PaviseApp

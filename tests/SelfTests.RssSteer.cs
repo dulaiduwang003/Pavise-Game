@@ -1,5 +1,5 @@
-﻿// 文件用途 纯范围和解析检查 不跑 PowerShell 不碰网卡 不写任何东西
-// RSS 引导回归 只验证目标区间推导和收据解析 不碰网卡
+﻿// File purpose Pure range and parsing checks, no PowerShell, no NIC, no writes
+// RSS steering regression, only verifies target range derivation and receipt parsing, no NIC
 #if PAVISE_SELFTEST
 using System;
 

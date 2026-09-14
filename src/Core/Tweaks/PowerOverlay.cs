@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 专注模式切换电源滑块到最佳性能 原值取自注册表 退出还原
+// File purpose In Esports tier switch the power slider to Best performance, original value read from the registry, restored on exit
 using System;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
@@ -55,11 +55,11 @@ namespace PaviseApp
             catch { return false; }
         }
 
-        // 只有笔记本值得动这个滑块 台式机没有 DTT / DPTF 拨过去基本空转
-        //   它通过 GUID_POWER_SAVING_STATUS 通知 Intel DTT 放宽 CPU 功耗限制
-        //   并减少外壳温度触发的降频 这是笔记本上少数几个 OS 侧真能影响 PL 的口子
-        //   1.8.0.2 曾经全局启用后下架 这次只在笔记本 插电 专注档三条同时成立时用
-        //   电池上不动 那跟专注档电池分支放开省电项的方向正好相反
+        // Only laptops are worth touching this slider; desktops have no DTT / DPTF so flipping it is mostly a no-op
+        //   It signals Intel DTT via GUID_POWER_SAVING_STATUS to relax the CPU power limits
+        //   and reduce skin-temperature throttling, one of the few OS-side knobs on a laptop that really affects PL
+        //   1.8.0.2 enabled it globally and was later pulled; now only when laptop, on AC and Esports tier all hold at once
+        //   Untouched on battery, that would run opposite to the Esports-tier battery branch relaxing power-saving items
         internal static bool ShouldActivate(bool laptop, bool onAc, bool competitive)
         {
             return laptop && onAc && competitive;

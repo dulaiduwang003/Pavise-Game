@@ -1,5 +1,5 @@
-﻿// 文件用途 只测 UI 和策略的接线 驱动和注册表替身跟现有几套测试共用
-// 不构造 PanelForm 不调 Show 和 ShowDialog 不截图 也不起应用运行时
+﻿// File purpose Tests only the UI-to-policy wiring, driver and registry stand-ins are shared with the existing test suites
+// No PanelForm construction, no Show or ShowDialog, no screenshots, no app runtime startup
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -427,7 +427,7 @@ namespace PaviseApp
                     form.IntelLowLatencyConfirmationForTest = delegate { throw new InvalidOperationException("Layout requested consent"); };
                     GraphicsUiCall(form, "BuildCommonGraphicsPage", common);
                     GraphicsUiCall(form, "BuildIntelGraphicsPage", intel);
-                    // 公共页三张卡 Intel 页第二张是 Endurance Gaming
+                    // Common page has three cards, Intel page's second is Endurance Gaming
                     GraphicsUiCheck(common.Controls.Count == 3 && intel.Controls.Count == 2,
                         "common/Intel pages have missing or duplicate cards");
                     SettingCard appCard = (SettingCard)common.Controls[1];

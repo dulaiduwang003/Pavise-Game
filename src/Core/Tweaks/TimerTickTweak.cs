@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 计时器恒定节拍开关 三项启动配置一起写 重启生效
+// File purpose Timer constant tick toggle; writes all three boot config items together, takes effect after reboot
 using System;
 using System.Collections.Generic;
 

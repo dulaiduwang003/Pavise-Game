@@ -1,7 +1,7 @@
-// 文件用途 用真的 AddGameExecutable 和 AddScannedGames 做游戏库与家族的端到端回归
-// 所有 EXE 都是这个测试程序集的惰性副本 从不执行
-// 安装记录 进程身份 白名单和数据文件全归夹具所有
-// 不走 Program.Main 不碰 GameMode 的 Enabled Start Stop Loop Sweep 也不碰 GPU 和原生调优
+// File purpose End-to-end game library and family regression using the real AddGameExecutable and AddScannedGames
+// Every EXE is an inert copy of this test assembly, never executed
+// Install records, process identities, whitelist, and data files are all owned by the fixture
+// No Program.Main, no GameMode Enabled Start Stop Loop Sweep, no GPU or native tuning
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -49,8 +49,8 @@ namespace PaviseApp
             };
             try
             {
-                // 故意注入空的 别的测试在跑的时候
-                // 任何辅助方法都不许退回去读宿主机的注册表和平台目录
+                // Deliberately inject empties so that while other tests run
+                // no helper may fall back to reading the host machine's registry and platform directories
                 using (GameInstallScope.UseSnapshotForTest(null, null))
                     foreach (Action<string> test in tests)
                     {
@@ -164,8 +164,8 @@ namespace PaviseApp
 
         private static void GfiLoginLayoutUsesMetadataNotNames(string root)
         {
-            // 这是具体上报的形状 配上上面那些随机命名的同胞测试
-            // 结论是没有哪个游戏或启动器的可执行文件名能凭名字入伙
+            // This is the concrete reported shape, paired with the randomly named sibling tests above
+            // The conclusion: no game or launcher executable name gets into the family by name alone
             using (var f = new GfiFixture(root, "login-layout", true))
             using (GameInstallScope.UseSnapshotForTest(new[] { f.SourceRecord() }, new string[0]))
             {
@@ -362,8 +362,8 @@ namespace PaviseApp
                     GfiRequire(GfiSamePath(reloaded.ExecutablePath, f.Launcher),
                         "concrete game inside a platform lost its exact selected EXE");
                 }
-                // 就算没有安装元数据
-                // 一个已经很具体的子目录也不能被当成共享平台本身
+                // Even without install metadata
+                // an already-specific subdirectory must not be treated as the shared platform itself
                 using (GameInstallScope.UseSnapshotForTest(null, new[] { platformRoot }))
                 {
                     GameProfile reloaded = f.OnlyProfile(f.CreateMode());
@@ -522,7 +522,7 @@ namespace PaviseApp
                 renderer.ParentPid = broker.Pid;
                 var history = new GameFamilyHistory();
                 history.Capture(new ProcessSnapshot(new[] { launcher }), new[] { profile }, f.Session, 1000);
-                // 精确父进程的创建时间对不上 不能靠 PID 把它救回来
+                // The exact parent's creation time doesn't match, it can't be rescued by PID
                 history.ObserveEvents(new ProcessChangeBatch(new[]
                 {
                     GfiChange(broker, launcher.Creation + 100000, ProcessChangeKind.Started, 1),
@@ -585,8 +585,8 @@ namespace PaviseApp
                 profile = f.OnlyProfile(mode);
                 GfiRequire(FamilyBoundary.CollectProtectedLibraryFamily(new[] { profile }, snapshot, f.SelfPid, f.Session, evidence).Count == 0,
                     "history bypassed the per-game opt-in");
-                // 家族归属和渲染证据跟压制策略开关是两码事
-                // 用户选不选都不该把检测关掉
+                // Family membership and renderer evidence are separate from the suppression policy switch
+                // The user's choice must not turn detection off either way
                 f.AssertRendererOnlyCandidate(profile, evidence, f.RemoteRenderer);
                 GfiRequire(mode.SetProfileFamilySuppression(profile.Id, false), "history fixture could not disable family suppression");
                 profile = f.OnlyProfile(mode);
@@ -749,8 +749,8 @@ namespace PaviseApp
 
             internal HashSet<int> WhitelistProtected(GameMode mode, ProcessSnapshot snapshot)
             {
-                // 公开的改动 API 会去检查和释放真实进程
-                // 现成的这个纯评估器只看得到我们合成的身份
+                // The public mutation API checks and releases real processes
+                // The existing pure evaluator only sees the identities we synthesized
                 MethodInfo evaluate = typeof(GameMode).GetMethod("EvaluateWhitelist", BindingFlags.Instance | BindingFlags.NonPublic);
                 object result = evaluate.Invoke(mode, new object[] { snapshot });
                 return (HashSet<int>)result.GetType().GetField("Protected").GetValue(result);

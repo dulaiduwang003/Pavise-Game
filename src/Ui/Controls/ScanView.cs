@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 系统体检扫描过程的待机与运行动画
+// File purpose Idle and running animation for the system health check scan
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -143,7 +143,7 @@ namespace PaviseApp
                 Invalidate();
                 return;
             }
-            // 待机态只把出场过渡走完就退订 不再自唤醒 否则体检页一直以 64 帧重画整块控件
+            // Idle state only finishes the entrance transition and then unsubscribes, no self-wake; otherwise the health check page keeps repainting the whole control at 64 fps
             if (moving) { Invalidate(); return; }
             UiClock.Frame -= OnFrame;
         }

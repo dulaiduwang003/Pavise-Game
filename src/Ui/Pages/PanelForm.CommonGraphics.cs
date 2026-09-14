@@ -54,7 +54,7 @@ namespace PaviseApp
             auto.SetStatus(Lang.T("apppref.nextlaunch"), Theme.Accent);
             y += height + 8;
 
-            // 第一次打开这个标签页时 作用范围和下次启动生效的提示要看得见
+            // The first time this tab opens, the scope and the takes-effect-next-launch hint must be visible
             EnableCardCollapse(scroll, card);
         }
 

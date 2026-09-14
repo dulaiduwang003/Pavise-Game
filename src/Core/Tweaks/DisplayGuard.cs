@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 只读查询主显示器刷新率 并还原旧版刷新率守护留下的残留
+// File purpose Read-only query of the primary display refresh rate, plus restore of residue from the old refresh-rate guard
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;

@@ -71,7 +71,7 @@ namespace PaviseApp
         }
         private void Check()
         {
-            // Avoid piling up timer callbacks while another command is pending.
+            // Avoid piling up timer callbacks while another command is pending
             if (!Monitor.TryEnter(gate)) return;
             try { if (active && !Command("PING")) Break(LastError); }
             finally { Monitor.Exit(gate); }
@@ -100,15 +100,15 @@ namespace PaviseApp
             if (worker != null)
             {
                 if (requestStop) clean = Command("STOP");
-                // EOF tells the worker to restore. Never kill the recovery worker.
+                // EOF tells the worker to restore Never kill the recovery worker
                 try { worker.StandardInput.Close(); } catch { }
                 try { if (!worker.WaitForExit(5000)) return false; }
                 catch { clean = false; }
                 try { clean &= worker.ExitCode == 0; } catch { clean = false; }
                 worker.Dispose(); worker = null;
             }
-            // A crashed helper leaves a durable receipt. Once its mutex is free,
-            // recover it here, including failures after native writes succeeded.
+            // A crashed helper leaves a durable receipt Once its mutex is free
+            // recover it here including failures after native writes succeeded
             return CoreIsolationWorker.Recover(journal) && (clean || !HasReceipt());
         }
         private bool HasReceipt()

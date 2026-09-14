@@ -1,13 +1,13 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 自动中断编排已下架 只保留按收据清退历史钉核 残留报告与清除流程接口
+// File purpose IRQ autopilot is withdrawn; only receipt-based cleanup of historical pins, the residue report and the wipe flow interfaces remain
 using System;
 using System.Collections.Generic;
 
 namespace PaviseApp
 {
-    // 自动中断编排 2.1.3.3 上架 随后下架 挪核只走中断页的手动流程
-    //   旧版本按裁决写过的注册表钉核仍在机器上 这里负责启动时按收据全部还原
-    //   还原失败下次启动重试 清除流程兜底 计划与熔断记录一并清空
+    // IRQ autopilot shipped in 2.1.3.3 and was withdrawn soon after; IRQ core moves only go through the manual flow on the interrupt page
+    //   Registry pins written by older versions per verdict are still on the machine; this restores them all by receipt at startup
+    //   A failed restore retries at next startup, the wipe flow is the fallback; plan and circuit breaker records are cleared too
     internal static class IrqAutoPilot
     {
         internal const string EnabledKey = "IrqAutoOn";
@@ -23,7 +23,7 @@ namespace PaviseApp
             get { return engine.HasResidue || Settings.LoadStr(PlanKey, "").Length != 0; }
         }
 
-        // 手动挪核页要把仍未清退的自动钉核当成已被管理 不许二次接管
+        // The manual IRQ core move page must treat auto pins not yet cleaned up as already managed; no double takeover
         public static List<string> TouchedDevices() { return engine.TouchedDevices(); }
 
         public static bool RevertAll()
@@ -31,13 +31,13 @@ namespace PaviseApp
             lock (lk)
             {
                 bool ok = IrqMutationBoundary.Run(delegate { return engine.Disable(null); });
-                // 计划清不掉也算失败 残留条目会一直被当成未清退的账
+                // Failing to clear the plan counts as failure too; leftover entries would be treated as unsettled records forever
                 if (ok && !Settings.SaveStr(PlanKey, "")) ok = false;
                 return ok;
             }
         }
 
-        // 下架后的开机清退 开关静默退役 有账就还 直到还清
+        // Post-withdrawal boot cleanup; the switch is silently retired; restore whatever is on the books until it's clear
         public static void HealFromCrash()
         {
             try

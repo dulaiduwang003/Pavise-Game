@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 统一的自绘弹窗 机能面板风格 UI 层不直接调用 MessageBox
+// File purpose Unified owner-drawn dialog in the tech panel style, the UI layer never calls MessageBox directly
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -59,8 +59,8 @@ namespace PaviseApp
             bodyRect = new Rectangle(Theme.S(PadX), Theme.S(BodyTop), textW, textH);
             if (scrollBody)
             {
-                // 重置可能报出好几条被锁住的路径 让它的确认按钮留在屏幕内
-                // 并且整段诊断信息可复制
+                // Reset may report several locked paths, keep its confirm button on screen
+                // and the whole diagnostic text stays copyable
                 var details = Theme.MakeTextBox(bodyRect.X, bodyRect.Y, bodyRect.Width);
                 details.Name = "ScrollableDialogDetails";
                 details.Multiline = true;

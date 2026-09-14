@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 从 DPC 时长直方图折出近似分位
+// File purpose Derive approximate percentiles from the DPC duration histogram
 using System;
 
 namespace PaviseApp

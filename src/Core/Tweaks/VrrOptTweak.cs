@@ -1,12 +1,12 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 开启关闭并恢复 Windows 可变刷新率优化 让不支持 VRR 的 DX11 独占全屏游戏也走 VRR
+// File purpose Enable, disable and restore Windows variable refresh rate optimization so DX11 exclusive fullscreen games without VRR support still get VRR
 using System;
 using Microsoft.Win32;
 
 namespace PaviseApp
 {
-    // 和窗口化游戏优化写同一个注册表值串 只是字段不同 系统默认没有这个字段 等于关
-    //   显示器不支持 VRR 时这个字段没有作用 写了也无害 所以不设显示器门 只设系统版本门
+    // Writes the same registry value string as optimizations for windowed games, just a different field, absent by default which equals off
+    //   the field has no effect when the monitor lacks VRR, writing it is harmless, so gate only on OS version, not on the monitor
     internal static class VrrOptTweak
     {
         private const string GpuKey = @"SOFTWARE\Microsoft\DirectX\UserGpuPreferences";

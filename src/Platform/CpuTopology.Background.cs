@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 后台让核掩码 L3 分组与 CPU 集合策略
+// File purpose Background core-yield mask, L3 grouping and CPU Sets policy
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -178,7 +178,7 @@ namespace PaviseApp
             return FavoredMaskOf(logical.ToArray(), efficiency.ToArray(), scheduling.ToArray());
         }
 
-        // 每个核的能效档与评级 相邻同值的合并成段 形如 0-7:1/1 8-11:1/2 12-15:0/0
+        // Efficiency class and rating per core, adjacent equal values merged into segments, like 0-7:1/1 8-11:1/2 12-15:0/0
         internal static string DescribeCoreClasses(int[] logical, byte[] efficiency, byte[] scheduling)
         {
             if (logical == null || efficiency == null || scheduling == null || logical.Length == 0
@@ -203,8 +203,8 @@ namespace PaviseApp
             return string.Join(" ", parts.ToArray());
         }
 
-        // 优选核只在最高能效档内部比评级 P 核比 E 核评级高是架构差异 不是优选
-        //   档内评级全相同说明本机没有优选核 返回 0
+        // Favored cores compare rating only within the highest efficiency class, P-cores rating above E-cores is an architecture difference, not favoring
+        //   identical ratings within the class mean this machine has no favored cores, return 0
         internal static ulong FavoredMaskOf(int[] logical, byte[] efficiency, byte[] scheduling)
         {
             if (logical == null || efficiency == null || scheduling == null
@@ -542,7 +542,7 @@ namespace PaviseApp
                     if (perf != 0 && eff != 0)
                     {
                         PerfMask = perf; EffMask = eff; Hybrid = true;
-                        // 两档时 lowest 就等于 eff 排除它等于清空落点池 只有三档以上才认
+                        // With two classes lowest equals eff, excluding it would empty the placement pool, only honored with three or more classes
                         if (classes.Count >= 3) LowPowerEffMask = lowest;
                     }
                 }

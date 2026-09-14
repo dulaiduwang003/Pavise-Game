@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 截图渲染与关闭拦截
+// File purpose Screenshot rendering and close interception
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -76,8 +76,8 @@ namespace PaviseApp
                 try { RenderAudit(SystemAudit.Collect(400)); } catch { }
                 if (lblAuditStatus != null) lblAuditStatus.Text = "";
             }
-            // 设置页原来四个页签 极限解锁那页撤掉后只剩三个 下标全部前移
-            //   TechTabs.Index 对越界值静默忽略 写错不会报错 只会悄悄拍错页签
+            // Settings page used to have four tabs; after the Extreme unlock tab was removed only three remain, all indexes shift down
+            //   TechTabs.Index silently ignores out-of-range values, a wrong index does not throw, it just quietly shoots the wrong tab
             if (previewMode == "settings-appearance" && pageIndex == (int)PageId.Settings)
             {
                 if (settingsTabs != null) settingsTabs.Index = 2;
@@ -88,6 +88,21 @@ namespace PaviseApp
             }
             Application.DoEvents();
             StopPageReveal();
+            // Demo games live in the temp dir whose path contains the local user name, screenshots only draw a fake path
+            if (lstGames != null)
+            {
+                bool masked = false;
+                foreach (GameLibraryItem shotRow in lstGames.Items)
+                    if (shotRow.Profile != null && shotRow.Profile.ExecutablePath != null
+                        && shotRow.Profile.ExecutablePath.IndexOf("PaviseShot_", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        const string fake = @"D:\Games\NebulaStrike\Binaries\Win64\NebulaStrike-Win64-Shipping.exe";
+                        gameIconCache[fake] = GameIcon(shotRow.Profile.ExecutablePath);
+                        shotRow.Profile.ExecutablePath = fake;
+                        masked = true;
+                    }
+                if (masked) { lstGames.Invalidate(true); Application.DoEvents(); }
+            }
             using (var bmp = new Bitmap(ClientSize.Width, ClientSize.Height))
             {
                 DrawToBitmap(bmp, new Rectangle(0, 0, ClientSize.Width, ClientSize.Height));

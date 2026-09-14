@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 按会话累计 NVIDIA GPU 降频原因采样 归因功耗墙温度墙电池限制
+// File purpose Accumulates NVIDIA GPU clock throttle reason samples per session; attributes power wall, thermal wall and battery limits
 using System;
 using System.Collections.Generic;
 

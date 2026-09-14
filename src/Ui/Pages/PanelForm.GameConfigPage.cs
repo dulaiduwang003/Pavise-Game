@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 逐游戏配置页的进出 刷新与分节构建
+// File purpose Per-game config page: enter/leave, refresh and section building
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -27,7 +27,7 @@ namespace PaviseApp
 #endif
 
         private PerformancePreset cfgEffMode;
-        // 仅一轮 SyncCfgRows 内有效的厂商可用性快照 为 null 时实查
+        // Vendor availability snapshot valid only within one SyncCfgRows round; null means probe for real
         private bool? cfgSyncNvOk, cfgSyncAmdOk;
 
         private void ShowGameConfigPage(string profileId)
@@ -81,7 +81,7 @@ namespace PaviseApp
                     cfgProfile = p;
                     string presetOverride;
                     int presetParsed;
-                    // 建行前就解析本游戏档位 同步和重新打开页面共用这一入口
+                    // Resolve this game's tier before building rows; sync and reopening the page share this entry
                     cfgEffMode = p.Overrides.TryGetValue(PolicyCatalog.KeyPreset, out presetOverride)
                         && int.TryParse(presetOverride, out presetParsed)
                         && PresetValue.IsValid(presetParsed)
@@ -124,7 +124,7 @@ namespace PaviseApp
         private void SyncCfgRows()
         {
             if (!RefreshCfgProfile()) return;
-            // 一轮同步内各行共享厂商可用性探测 驱动状态不会在一轮里变
+            // Rows in one sync round share the vendor availability probe; driver state does not change within a round
             cfgSyncNvOk = NvApi.Available;
             cfgSyncAmdOk = AdlxTweaks.Available;
             try { foreach (Action sync in cfgRowSync) sync(); }
@@ -172,8 +172,8 @@ namespace PaviseApp
             y += 6;
         }
 
-        // 逐游戏禁用全屏优化 不是对局临时下发 而是立即持久写该 exe 的兼容层
-        //   所以不进 PolicyCatalog 不走 Overrides 直接读写 HKCU 兼容层字符串 拨开即写 拨关即删
+        // Per-game disable of fullscreen optimizations is not a temporary match-time push; it writes the exe's compatibility layer persistently and immediately
+        //   So it is not in PolicyCatalog and does not go through Overrides; it reads and writes the HKCU compatibility-layer string directly, on writes and off deletes
         private string CfgExePath()
         {
             if (cfgProfile == null) return null;
@@ -202,7 +202,7 @@ namespace PaviseApp
                     return FsoTweak.SetForExe(p, want);
                 });
                 sw.SetSilently(FsoTweak.IsDisabledForExe(p));
-                // 兼容层写不进去只有日志里有 界面上开关自己弹回来 看着像开关坏了
+                // A failed compatibility-layer write only shows in the log; the switch snaps back on its own in the UI and looks broken
                 if (!ok) PaviseDialog.Warn(this, App.DisplayName, Lang.T("cfg.fso.fail"));
             };
             cfgRowSync.Add(delegate
@@ -214,7 +214,7 @@ namespace PaviseApp
             });
         }
 
-        // 逐游戏 DPI 感知 和全屏优化同一个兼容层键 缩放 100% 时行文案提示无意义
+        // Per-game DPI awareness shares the compatibility-layer key with fullscreen optimizations; at 100% scaling the row copy notes it is pointless
         private void AddCfgDpiRow(Control parent, ref int y)
         {
             string exe = CfgExePath();

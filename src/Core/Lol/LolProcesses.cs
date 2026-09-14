@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 英雄联盟相关进程的扫描 识别与清理
+// File purpose Scan, identify and clean up League of Legends related processes
 
 using System;
 using System.Collections.Generic;
@@ -351,8 +351,8 @@ namespace PaviseApp
             return ScanCore(lolRoot, weGameRoot, namesOnly, false);
         }
 
-        // 通用 WeGame 游戏用这个入口 根目录只要求存在 不要求是英雄联盟的布局
-        //   客户端 游戏 大厅几项自然全假 只有 WeGame 与 Cross 的计数有意义
+        // Generic WeGame games use this entry; the root only needs to exist, no League of Legends layout required
+        //   Client, game and lobby flags are naturally all false, only the WeGame and Cross counts mean anything
         public static LolProcessSnapshot ScanShell(string gameRoot, string weGameRoot, bool namesOnly)
         {
             return ScanCore(gameRoot, weGameRoot, namesOnly, true);
@@ -437,8 +437,8 @@ namespace PaviseApp
             return CleanCore(lolRoot, weGameRoot, includeDownloaders, false);
         }
 
-        // 通用 WeGame 游戏的脱壳 结束的只有 WeGame 目录下的壳进程 游戏目录下的 Cross 与 TCLS 会话进程
-        //   游戏本体 TCLS\Client.exe 反作弊一个都不在名单里 名单见 IsCleanupTarget
+        // Shell removal for generic WeGame games: only ends the shell processes under the WeGame directory and the Cross and TCLS session processes under the game directory
+        //   The game itself, TCLS\Client.exe and anti-cheat are all off the list, see IsCleanupTarget for the list
         public static LolCleanupResult CleanShell(
             string gameRoot, string weGameRoot, bool includeDownloaders)
         {

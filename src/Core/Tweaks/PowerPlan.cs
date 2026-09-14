@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 对局时切换电源计划 退出还原
+// File purpose Switch the power plan during the match, restore on exit
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -16,7 +16,7 @@ namespace PaviseApp
 
     internal static partial class PowerPlan
     {
-        // 会话日记键由恢复完成判定共同引用 改名必须两边一起
+        // Session journal key is shared with the restore-complete check, rename both sides together
         internal const string PlanJournalKey = "PrevPowerPlan";
         private const string ChoiceKey = "PowerPlanChoice";
         private const string DefaultPlanKey = "DefaultPlanGuid";
@@ -58,7 +58,7 @@ namespace PaviseApp
 
         public static string ManagedPlanTitle
         {
-            // 方案名是用户在电源选项里看到的 已存在的托管方案按存下的 GUID 认回后会被改成这个名
+            // Scheme name as the user sees it in Power Options; an existing managed scheme recognized by its stored GUID gets renamed to this
             get { return Lang.T("t.powerplan.2") + MachineSignature(); }
         }
 
@@ -72,8 +72,8 @@ namespace PaviseApp
         private static bool targetOwned;
         private static int tuneState = -1;
 
-        // 写进方案的那套值有三种 温和 激进 激进但掌机让功耗
-        //   掌机那种在 aggressive 上也是真 所以不能再用 0/1 两态记 否则切档时会被当成没变
+        // Three value sets get written into the scheme: gentle, aggressive, and aggressive with handheld power yield
+        //   Handheld is also true on aggressive, so a 0/1 two-state record no longer works, a tier switch would look like no change
         private static int TuneCode(bool aggressive, bool handheld, bool extreme)
         {
             return (!aggressive ? 0 : handheld ? 2 : 1) | (extreme ? 4 : 0);
@@ -212,10 +212,10 @@ namespace PaviseApp
             Guid? cur = Current();
             if (cur.HasValue && cur.Value == g && !SwitchAwayFrom(g)) return false;
             Guid tmp = g;
-            // 方案读取失败不等于已删除 当成删了会丢掉还要恢复的参数收据
+            // A scheme read failure is not a deletion; treating it as deleted would lose the parameter receipts still awaiting restore
             uint deleted = PowerDeleteScheme(IntPtr.Zero, ref tmp);
             if (deleted != 0 && deleted != 2 /* ERROR_FILE_NOT_FOUND */) return false;
-            // 已经删掉的托管方案没有可恢复参数了 只清它自己的收据 别挡着下次重建
+            // An already-deleted managed scheme has no parameters left to restore; clear only its own receipt, do not block the next rebuild
             if (!ForgetDeletedExtremeSnapshot(g)) return false;
             Settings.SaveStr(ManagedPlanKey, "");
             lock (lk) { resolved = false; target = Guid.Empty; targetOwned = false; tuneState = -1; }
@@ -367,8 +367,8 @@ namespace PaviseApp
             if (settledRestoreTarget.HasValue || saved != Guid.Empty || !Settings.TryLoadStr(PlanJournalKey, out pending)
                 || pending == null || pending.Length != 0)
             {
-                // Set 失败也可能已经把方案切过去了 重试前先把它的
-                // 原始值定下来 再取新快照
+                // A failed Set may still have switched the scheme; before retrying, settle its
+                // original value first, then take a fresh snapshot
                 if (!RestorePlanCore(false)) return false;
             }
             Guid tgt;
@@ -382,10 +382,10 @@ namespace PaviseApp
             if (targetOwned && tuneState != TuneCode(aggressive, handheld, extreme))
             {
 #if PAVISE_SELFTEST || PAVISE_PERFLAB
-                return false; // Activation tests must not tune native schemes.
+                return false; // Activation tests must not tune native schemes
 #else
                 if (!TuneTarget(tgt, aggressive, handheld, extreme)) return false;
-                // 空闲策略那组没配完就不记账 下次配置再补 其余旋钮已经写进去了
+                // If the idle policy group is not fully configured, skip the bookkeeping and finish on the next configure; the other knobs are already written
                 tuneState = extremeTunePending ? -1 : TuneCode(aggressive, handheld, extreme);
 #endif
             }
@@ -417,9 +417,9 @@ namespace PaviseApp
                 Logger.Log(Lang.T("log.powerplan.26") + RestorePlanLabel(tgt) + Lang.T("log.gpupowermax.7") + RestorePlanLabel(saved) + " ");
                 return true;
             }
-            // Set 在原生调用之后会核实当前方案 所以 false 也可能意味着
-            // 已经改了但没法核实
-            // 两份原始值都留着 给带所有权判断的恢复路径用
+            // Set verifies the current scheme after the native call, so false may also mean
+            // it changed but could not be verified
+            // Keep both original values for the ownership-aware restore path
             Logger.Log(Lang.T("log.powerplan.27"));
             return false;
         }
@@ -458,8 +458,8 @@ namespace PaviseApp
                 if (value.Length == 0 || (key == ChoiceKey && value == ManagedChoice)) continue;
                 Guid owned;
                 if (!TryGuid(value, out owned) || owned == Guid.Empty) { unknown = true; continue; }
-                // Current 已经核实过这个 GUID 存在 再枚举一遍全部方案
-                // 可能失败 反而把一个有效的归属者错误丢弃
+                // Current already verified this GUID exists; enumerating all schemes again
+                // could fail and wrongly discard a valid owner
                 if (g == owned) return true;
             }
             return unknown ? (bool?)null : false;
@@ -507,16 +507,16 @@ namespace PaviseApp
                     return true;
                 }
 
-                // 恢复流程和正常关闭一样 需要当前所有权
-                // 当前方案读不到 不等于可以随便切它
+                // The restore flow needs current ownership just like a normal shutdown
+                // Failing to read the current scheme does not license switching it freely
                 Guid? nowActive = RestoreCurrentPlan();
                 if (!nowActive.HasValue || nowActive.Value == Guid.Empty) return false;
                 if (nowActive.Value == restoreTarget) return ClearRestoredPlan(restoreTarget);
-                // 正常对局里只要这次会话真的接管过方案 恢复责任就还在 Pavise
-                // 哪怕当前方案被 TS G-Helper 或者手动切成了别的 GUID 也一样
-                // 不然对方赶在退出前切一次 旧的尊重外部选择那条分支就会吞掉原值快照 退局停在第三方方案上
-                // 崩溃重启后 active=false 照样用保守的所有权判断
-                // 不拿一份历史收据去盖用户在 Pavise 没运行那段时间做的新选择
+                // In a normal match, as long as this session really took over the scheme, restore responsibility stays with Pavise
+                // even if the current scheme was switched to another GUID by TS G-Helper or by hand
+                // Otherwise a switch by the other party right before exit lets the old respect-external-choice branch swallow the original snapshot, leaving the match end on a third-party scheme
+                // After a crash restart active=false still uses the conservative ownership check
+                // Never let a historical receipt override a choice the user made while Pavise was not running
                 bool? ours = active ? (bool?)true : RestorePlanIsOwned(nowActive.Value);
                 if (!ours.HasValue) return false;
                 if (!ours.Value)
@@ -546,9 +546,9 @@ namespace PaviseApp
 
         private static bool ClearRestoredPlan(Guid restoreTarget)
         {
-            // 原生还原已经完成 或者是有意放弃
-            // 清理核实通过之前 保留一个绑定收据的内存墓碑
-            // 重试不能推翻用户后来的选择 哪怕他选的就是我们的方案
+            // Native restore is complete, or was deliberately abandoned
+            // Keep an in-memory tombstone bound to the receipt until cleanup is verified
+            // Retries must not overturn the user's later choice, even if what they chose is our scheme
             active = false; tuneState = -1;
             saved = restoreTarget;
             settledRestoreTarget = restoreTarget;
@@ -592,8 +592,8 @@ namespace PaviseApp
 #if PAVISE_SELFTEST || PAVISE_PERFLAB
             return RestorePlanIsUsableForTest == null ? null : RestorePlanIsUsableForTest(scheme);
 #else
-            // 读不到友好名 不能证明这套方案已经被删
-            // 要完整枚举成功之后才允许丢弃它
+            // Failing to read the friendly name does not prove this scheme was deleted
+            // Only a complete successful enumeration permits discarding it
             for (uint index = 0; index < 128; index++)
             {
                 uint size = 16;

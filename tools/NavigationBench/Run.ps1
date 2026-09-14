@@ -19,7 +19,7 @@ $navProcess = $null
 try {
     $navProcess = Start-Process -FilePath $navExe -ArgumentList ('"' + $navOutput + '"') -WorkingDirectory $navOutput -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $navOutput 'console.log') -RedirectStandardError (Join-Path $navOutput 'stderr.log')
     if (-not $navProcess.WaitForExit(55000)) { $navProcess.Kill(); throw 'Owned navigation UI bench exceeded 55 seconds.' }
-    # 带超时那个重载会在重定向流排空的时候把 ExitCode 留成旧值
+    # The timeout overload leaves ExitCode stale while the redirected streams drain
     $navProcess.WaitForExit()
     $navProcess.Refresh()
     $navConsole = @(Get-Content -LiteralPath (Join-Path $navOutput 'console.log'))
@@ -27,8 +27,8 @@ try {
     $navConsole
     $navErrors
     $navExitCode = $navProcess.ExitCode
-    # 有些 PowerShell 宿主重定向跑完之后 返回的 Process 代理里 ExitCode 还是 null
-    # runner 要等所有断言都跑完才打这个标记 打完立刻返回 0
+    # On some PowerShell hosts ExitCode is still null on the returned Process proxy after redirection finishes
+    # The runner prints this marker only after every assertion has run, then returns 0 immediately
     if ($null -eq $navExitCode) {
         $navPassed = @($navConsole | Where-Object { $_ -like 'PASS navigation assertions=*' }).Count -eq 1
         $navExitCode = if ($navPassed -and $navErrors.Count -eq 0) { 0 } else { 1 }

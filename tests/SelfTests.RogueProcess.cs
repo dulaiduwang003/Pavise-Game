@@ -1,5 +1,5 @@
-﻿// 文件用途 纯决策检查 不拿进程句柄 不枚举窗口 不碰注册表
-// 疑似恶意进程回归 只验证 CPU 增量判定 随机名识别和提醒台账 不碰任何进程
+﻿// File purpose Pure decision checks, no process handles, no window enumeration, no registry
+// Suspected malicious process regression, verifies only the CPU delta verdict, random-name detection and the alert ledger, touches no process
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -49,7 +49,7 @@ namespace PaviseApp
             };
         }
 
-        // 每 5 秒一步 进程按 cores 个核的速度累计 CPU 返回首次出结论的秒数 没出返回 -1
+        // One step per 5 seconds, the process accumulates CPU at the rate of cores full cores, returns the second of the first verdict, -1 if none
         private static int RogueRunUntilVerdict(RogueProcessWatch watch, string name, double cores, bool confined,
             bool visible, bool trusted, int logical, int confinedCpus, int seconds, out RogueProcessWatch.Verdict verdict)
         {

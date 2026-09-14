@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 驱动版本解析与驱动映像路径归一
+// File purpose Driver version resolution and driver image path normalization
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -21,8 +21,8 @@ namespace PaviseApp
                 ServiceDriverImagePaths, ReadDriverFileVersion);
         }
 
-        // 每次页面刷新或者一次采集完成 只用一份不可变的查询范围
-        // 延迟取快照 这样没有驱动需要核实时就不去查系统
+        // Each page refresh or completed capture uses one immutable query scope
+        // Snapshot is taken lazily, so the system is not queried when no driver needs verifying
         internal static Func<string, string> CreateDriverVersionReader(
             string windowsDirectory, Func<List<string>> loadedImages,
             Func<List<string>> serviceImages, Func<string, string> fileVersion)
@@ -56,9 +56,9 @@ namespace PaviseApp
                         }
                         known = FindDriverImagePath(moduleName, windowsDirectory, services, out path);
                     }
-                    // 显式的已加载或已注册路径最权威 如果它消失了
-                    // 读不出来或者说不清 那就不能让 System32 下一个同名的
-                    // 旧副本冒充当前驱动
+                    // An explicit loaded or registered path is the most authoritative; if it is gone,
+                    // unreadable, or ambiguous, a same-named old copy under System32
+                    // must not pass itself off as the current driver
                     version = known ? DriverFileVersion(path, fileVersion)
                         : ConventionalDriverVersion(moduleName, windowsDirectory, fileVersion);
                     versions[moduleName] = version;
@@ -82,7 +82,7 @@ namespace PaviseApp
                     @"System32\drivers\" + moduleName, windowsDirectory), fileVersion);
                 string direct = DriverFileVersion(NormalizeDriverImagePath(
                     @"System32\" + moduleName, windowsDirectory), fileVersion);
-                // 两个同名文件都能读 这证明不了到底加载的是哪一个
+                // Both same-named files are readable, which proves nothing about which one is loaded
                 return driver.Length > 0 && direct.Length > 0 ? ""
                     : driver.Length > 0 ? driver : direct;
             }
@@ -138,8 +138,8 @@ namespace PaviseApp
                     path = Path.Combine(windows, path);
                 if (path.StartsWith(@"\Device\", StringComparison.OrdinalIgnoreCase))
                     path = DosDriverImagePath(path);
-                // 驱动器相对路径 UNC 通配符和设备路径 一律不通过查工作目录
-                // 或者访问远程共享去解析
+                // Drive-relative paths, UNC, wildcards, and device paths are never resolved by consulting the working directory
+                // or by accessing a remote share
                 if (path.Length < 3 || !char.IsLetter(path[0]) || path[1] != ':' || path[2] != '\\'
                     || path.IndexOf(':', 2) >= 0 || path.IndexOfAny(new[] { '*', '?', '\0', '%' }) >= 0)
                     return "";
@@ -185,7 +185,7 @@ namespace PaviseApp
                             if (service == null) continue;
                             object kind = service.GetValue("Type");
                             if (kind == null || (Convert.ToInt32(kind) & 0x0B) == 0) continue;
-                            // 服务名不一定等于驱动模块名
+                            // Service name is not necessarily the driver module name
                             string image = service.GetValue("ImagePath", null,
                                 Microsoft.Win32.RegistryValueOptions.DoNotExpandEnvironmentNames) as string;
                             if (!string.IsNullOrWhiteSpace(image)) paths.Add(image);
@@ -209,7 +209,7 @@ namespace PaviseApp
                 var after = new FileInfo(path);
                 if (!after.Exists || after.Length != length || after.LastWriteTimeUtc.Ticks != changed)
                     return "";
-                // 身份格式保持原样 让已有的合法历史仍然读得出来
+                // Identity format stays unchanged so existing valid history remains readable
                 return (version.FileVersion ?? "").Trim() + "#"
                     + (changed / TimeSpan.TicksPerSecond).ToString(
                         System.Globalization.CultureInfo.InvariantCulture);
@@ -219,8 +219,8 @@ namespace PaviseApp
 
         public void Dispose()
         {
-            // 正常结束由 ReportFinish 封账 进程退出/异常 Dispose 只丢弃半局
-            // 不把缺少最终落核复核的残片写进历史
+            // Normal end is closed out by ReportFinish; process exit or exception Dispose only drops the half match
+            // and never writes a fragment lacking the final placement re-check into history
             lock (takeGate)
             {
                 IIrqSessionCapture discard = null;

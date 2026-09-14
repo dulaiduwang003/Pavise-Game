@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 名称无关的候选与静态入口回归 只用快照/内存PE/自有临时目录 不运行程序或更改系统
+// File purpose Name-agnostic candidate and static entry regression, only snapshots, in-memory PE, and its own temp directory, no program runs, no system changes
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -25,7 +25,8 @@ namespace PaviseApp
                 TestGenericExecutableIncomplete, TestGenericRendererRootInference,
                 TestGenericExecutableDeepDataTree, TestGenericExecutableDepthBoundary,
                 TestGenericExecutableLazyBudgets, TestGenericExecutableBreadthFirst,
-                TestGenericExecutableSearchFaults
+                TestGenericExecutableSearchFaults, TestGenericExecutableSearchFaultRecovery,
+                TestGenericExecutableFaultBudgets
             };
             foreach (Action test in tests) test();
             return tests.Length;
@@ -92,7 +93,7 @@ namespace PaviseApp
             var counters = new Dictionary<int, double> { { 100, 70 }, { 101, 25 } };
             double value;
             Eq(false, RendererHandoffTracker.HasGpuEvidence(candidate, counters, out value));
-            // 不能因为另一个程序 GPU 更高 就把它偷换成前台候选
+            // Another program having higher GPU load must not swap it in as the foreground candidate
             Eq(101, candidate.RendererPid);
             counters[100] = 5;
             Eq(true, RendererHandoffTracker.HasGpuEvidence(candidate, counters, out value));
@@ -116,7 +117,7 @@ namespace PaviseApp
             if (ticket == null) throw new Exception("released generic candidate was not sampled");
             tracker.Complete(ticket, new Dictionary<int, double> { { 100, 35 }, { 101, 60 } }, true, 100);
             Eq<GameDetection>(null, tracker.Confirmed(100));
-            // 切到真正的画面窗口之后 新身份单独取证 旧客户端不需要命名名单
+            // After switching to the real render window, the new identity is evidenced on its own, the old client needs no name list
             shell.Foreground = false; render.Foreground = true;
             candidate = GenericCandidate(profile, shell, render);
             tracker.Offer(candidate, 200);
@@ -250,8 +251,8 @@ namespace PaviseApp
             return bytes;
         }
 
-        // MinGW 会把 thunk 和 DLL 名字也算进 ImportDirectory.Size
-        // 描述符放在开头 声明的整块区域都映射进来
+        // MinGW counts thunks and DLL names into ImportDirectory.Size too
+        // Descriptors sit at the front, the whole declared region gets mapped in
         private static byte[] GenericPeWithImportRegion(bool x64, bool delayed,
             int imports, int regionSize)
         {
@@ -313,8 +314,8 @@ namespace PaviseApp
             foreach (bool x64 in new[] { false, true })
                 foreach (bool delayed in new[] { false, true })
                 {
-                    // 映射进来的目录比读取预算还大的时候 不能整块读
-                    // 也不能把它当成上千个 DLL 描述符
+                    // When the mapped directory exceeds the read budget, don't read it as one block
+                    // And don't treat it as thousands of DLL descriptors
                     byte[] bytes = GenericPeWithImportRegion(x64, delayed, 11, 0x40000);
                     ExecutableCandidateFacts facts = GenericFacts(bytes);
                     Eq(true, facts.Executable);
@@ -330,8 +331,8 @@ namespace PaviseApp
             foreach (bool x64 in new[] { false, true })
                 foreach (bool delayed in new[] { false, true })
                 {
-                    // 保持原有的描述符总数预算 零终止符也算在里面
-                    // 终止符落在预算之外就不算数
+                    // Keep the original total descriptor budget, the zero terminator counts against it
+                    // A terminator outside the budget doesn't count
                     Eq(true, GenericFacts(GenericPeWithImportRegion(x64, delayed,
                         ExecutableCandidateProbe.MaxImports - 1, regionSize)).Executable);
                     Eq(false, GenericFacts(GenericPeWithImportRegion(x64, delayed,
@@ -343,13 +344,13 @@ namespace PaviseApp
                     int section = 0x98 + (x64 ? 240 : 224);
                     Action<byte[]>[] corruptions =
                     {
-                        // 声明的描述符区间在终止符之前就断了
+                        // The declared descriptor range ends before the terminator
                         delegate(byte[] b) { Put32(b, sizeAt, (uint)(11 * stride)); },
-                        // 目录伸到了它映射的原始节区外面
+                        // The directory extends past the raw section it maps to
                         delegate(byte[] b) { Put32(b, section + 16, regionSize - 1); },
-                        // 这个大小会让 32 位 RVA 地址空间绕回去
+                        // This size wraps the 32-bit RVA address space
                         delegate(byte[] b) { Put32(b, sizeAt, uint.MaxValue); },
-                        // 目录又大又合法 也不能给一个非法的名字 RVA 开脱
+                        // A large valid directory does not excuse an invalid name RVA
                         delegate(byte[] b) { Put32(b, 0x200 + (delayed ? 4 : 12), 0x1000 + regionSize); }
                     };
                     foreach (Action<byte[]> corrupt in corruptions)
@@ -511,10 +512,13 @@ namespace PaviseApp
 
         private static void TestGenericExecutableDeepDataTree()
         {
+            string relative = "Data";
+            for (int i = 1; i <= ExecutableCandidateProbe.MaxDirectoryDepth; i++)
+                relative = Path.Combine(relative, "Level" + i);
             using (var fixture = new GenericExecutableFixture())
             {
                 string executable = fixture.WriteExecutable("Anything.exe", "d3d12.dll");
-                Directory.CreateDirectory(Path.Combine(fixture.Root, @"Data\One\Two\Three\Four"));
+                Directory.CreateDirectory(Path.Combine(fixture.Root, relative));
                 Eq(executable, ExecutableCandidateProbe.PickMainExecutable(fixture.Root));
                 fixture.WriteExecutable("client.exe", "d3d11.dll");
                 Eq<string>(null, ExecutableCandidateProbe.PickMainExecutable(fixture.Root));
@@ -522,7 +526,7 @@ namespace PaviseApp
             using (var fixture = new GenericExecutableFixture())
             {
                 fixture.WriteExecutable("OnlyGui.exe", "kernel32.dll");
-                Directory.CreateDirectory(Path.Combine(fixture.Root, @"Data\One\Two\Three\Four"));
+                Directory.CreateDirectory(Path.Combine(fixture.Root, relative));
                 Eq<string>(null, ExecutableCandidateProbe.PickMainExecutable(fixture.Root));
             }
         }
@@ -536,7 +540,7 @@ namespace PaviseApp
             {
                 string executable = fixture.WriteExecutable(Path.Combine(relative, "Anything.exe"), "d3d11.dll");
                 Eq(executable, ExecutableCandidateProbe.PickMainExecutable(fixture.Root));
-                // 深度四是算数的 深度五的子项不能把它丢掉
+                // The boundary level is still included, children one level deeper must not drop it
                 Directory.CreateDirectory(Path.Combine(fixture.Root, relative, "OutsideScope"));
                 Eq(executable, ExecutableCandidateProbe.PickMainExecutable(fixture.Root));
             }
@@ -632,7 +636,7 @@ namespace PaviseApp
             string executable = Path.Combine(root, "Anything.exe");
             List<string> paths;
             bool complete;
-            // 文件系统出错不等于撞了预算上限 哪怕之前先找到过一条看着很硬的路径
+            // A file system error is not a budget-cap hit, even after a hard-looking path was found first
             Eq(false, ExecutableCandidateProbe.CollectPaths(root,
                 delegate { return new[] { executable }; },
                 delegate { throw new IOException("fixture read fault"); },
@@ -647,6 +651,80 @@ namespace PaviseApp
                 delegate { return new string[0]; }, delegate { return new string[0]; },
                 delegate { return FileAttributes.ReparsePoint; }, out paths, out complete));
             Eq(false, complete);
+        }
+
+        private static IEnumerable<string> GenericPathsThenFault(string first)
+        {
+            yield return first;
+            throw new IOException("fixture deferred enumeration fault");
+        }
+
+        private static void TestGenericExecutableSearchFaultRecovery()
+        {
+            const string root = @"C:\VirtualScan";
+            string denied = Path.Combine(root, "Denied"), link = Path.Combine(root, "Link");
+            string broken = Path.Combine(root, "Broken"), sibling = Path.Combine(root, "Sibling");
+            string badFile = Path.Combine(root, "Unreadable.exe"), rootFile = Path.Combine(root, "RootGame.exe");
+            string partialFile = Path.Combine(broken, "PartialGame.exe"), game = Path.Combine(sibling, "Game.exe");
+            var visits = new List<string>();
+            List<string> paths;
+            bool complete;
+            Eq(false, ExecutableCandidateProbe.CollectPaths(root,
+                delegate(string directory)
+                {
+                    visits.Add(directory);
+                    if (directory == root) return new[] { badFile, rootFile };
+                    if (directory == denied) throw new UnauthorizedAccessException("fixture denied directory");
+                    if (directory == broken) return GenericPathsThenFault(partialFile);
+                    return directory == sibling ? new[] { game } : new string[0];
+                }, delegate(string directory)
+                {
+                    return directory == root ? new[] { denied, link, broken, sibling } : new string[0];
+                }, delegate(string path)
+                {
+                    if (path == badFile) throw new IOException("fixture missing file");
+                    return path == link ? FileAttributes.ReparsePoint : FileAttributes.Normal;
+                }, out paths, out complete));
+            Eq(false, complete); Eq(3, paths.Count);
+            Eq(rootFile, paths[0]); Eq(partialFile, paths[1]); Eq(game, paths[2]);
+            Eq(false, visits.Contains(link));
+            Eq(true, visits.Contains(sibling));
+
+            // When the subdirectory enumerator fails midway, sibling directories already queued must still be read
+            Eq(false, ExecutableCandidateProbe.CollectPaths(root,
+                delegate(string directory) { return directory == sibling ? new[] { game } : new string[0]; },
+                delegate(string directory)
+                { return directory == root ? GenericPathsThenFault(sibling) : new string[0]; },
+                delegate { return FileAttributes.Normal; }, out paths, out complete));
+            Eq(false, complete); Eq(1, paths.Count); Eq(game, paths[0]);
+        }
+
+        private static void TestGenericExecutableFaultBudgets()
+        {
+            const string root = @"C:\VirtualScan";
+            int yielded = 0;
+            List<string> paths;
+            bool complete;
+            Eq(false, ExecutableCandidateProbe.CollectPaths(root,
+                delegate { return GenericLazyChildren(root, 100000, delegate { yielded++; }, true); },
+                delegate { return new string[0]; },
+                delegate(string path)
+                {
+                    if (path != root) throw new IOException("fixture unreadable executable");
+                    return FileAttributes.Normal;
+                }, out paths, out complete));
+            Eq(false, complete); Eq(0, paths.Count);
+            Eq(ExecutableCandidateProbe.MaxExecutables + 1, yielded);
+
+            yielded = 0;
+            Eq(false, ExecutableCandidateProbe.CollectPaths(root,
+                delegate { return new string[0]; },
+                delegate(string directory)
+                { return GenericLazyChildren(root, 100000, delegate { yielded++; }, false); },
+                delegate(string path) { return path == root ? FileAttributes.Normal : FileAttributes.ReparsePoint; },
+                out paths, out complete));
+            Eq(false, complete); Eq(0, paths.Count);
+            Eq(ExecutableCandidateProbe.MaxDirectories, yielded);
         }
     }
 }

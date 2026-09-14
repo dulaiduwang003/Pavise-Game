@@ -1,5 +1,5 @@
-// 文件用途 逐库条目的家族策略 闸门把发布和最后一次后台写检查串起来
-// 排队中的扫描不能把已经关掉的策略再应用一遍
+// File purpose Per-library-entry family policy, the gate chains publishing with the last background write check
+// A queued scan must not reapply a policy that's already been turned off
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -39,7 +39,7 @@ namespace PaviseApp
                         return false;
                     }
                     profiles[index] = replacement;
-                    // 刷新供显示和策略使用的副本 不改渲染进程身份
+                    // Refresh the copy used for display and policy, renderer identity unchanged
                     if (activeDetection != null && activeDetection.Profile != null
                         && activeDetection.Profile.Id == profileId)
                         activeDetection.Profile = replacement.Clone();
@@ -53,8 +53,8 @@ namespace PaviseApp
             }
             if (changed)
             {
-                // 工作线程只还原新豁免出来的 Background reason 界面线程
-                // 不做原生进程写入 也不清任何无关的 reason
+                // The worker thread only restores the newly exempted Background reason, the UI thread
+                // does no native process writes and clears no unrelated reason
                 RequestPolicyApply();
                 RaiseLibraryChanged();
             }
@@ -81,7 +81,7 @@ namespace PaviseApp
 
         private void InvalidateFamilyPolicy()
         {
-            // 工作线程 生命周期和界面都会调它 不做进程写入
+            // Called by the worker thread, lifecycle and UI alike, no process writes
             Interlocked.Increment(ref familyPolicyEpoch);
         }
 

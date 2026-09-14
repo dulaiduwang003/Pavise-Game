@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 定位 测量并清理显卡着色器缓存
+// File purpose Locate, measure and clear GPU shader caches
 using System;
 using System.Collections.Generic;
 using System.IO;

@@ -1,13 +1,13 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 对局单屏已下架 只保留崩溃残账的拓扑还原 快照清账与残留报告
+// File purpose Match single-display is retired; keeps only topology restore for crash residue, snapshot cleanup and residue reporting
 using System;
 using System.Runtime.InteropServices;
 
 namespace PaviseApp
 {
-    // 对局单屏 2.1.3.3 上架 随后下架 不再有任何激活入口
-    //   旧版本对局中崩溃会留下拓扑快照 这里负责启动时按快照切回并清账
-    //   快照坏了不盲切 保留记录交给重置流程 副屏已拔掉按物理世界收尾
+    // Match single-display shipped in 2.1.3.3 and was pulled right after; no activation entry remains
+    //   A crash mid-match on old versions leaves a topology snapshot; this switches back per snapshot at startup and clears the ledger
+    //   A corrupt snapshot is never applied blindly, the record is kept for the reset flow; a secondary already unplugged settles per the physical world
     internal static class DisplaySolo
     {
         internal const string SnapKey = "DisplaySoloSnap";
@@ -19,9 +19,9 @@ namespace PaviseApp
 
         private static readonly object lk = new object();
 
-        // 单屏结算证明 恰好一条活动路径才算数 0 是重配置瞬间的过渡态不作数
-        //   远程会话里路径数说的是远程桌面不是物理机 崩溃后经 RDP 启动补撤时
-        //   若按远程的"单屏"结账 物理机的原拓扑记录就丢了 只能手动 Win+P
+        // Single-display settlement proof: exactly one active path counts; 0 is a transient during reconfiguration and doesn't count
+        //   In a remote session the path count describes the remote desktop, not the physical machine; when a post-crash makeup runs over RDP
+        //   settling on the remote "single display" would lose the physical machine's original topology record, leaving only manual Win+P
         private static bool SettledAsSingleDisplay()
         {
             if (RemoteSession()) return false;
@@ -39,11 +39,11 @@ namespace PaviseApp
                     || (topology != TopologyClone && topology != TopologyExtend
                         && topology != TopologyExternal))
                 {
-                    // 快照坏了没法安全恢复 保留记录不清 由重置流程处置
+                    // Corrupt snapshot can't be restored safely; keep the record, leave it to the reset flow
                     return false;
                 }
-                // 副屏可能已经被拔掉 单屏机器切多屏拓扑要么被 API 直接拒绝
-                //   要么写成功但验不出 两种失败形态都按物理世界收尾 否则快照永远还不清
+                // The secondary may already be unplugged; switching a single-display machine to a multi-display topology is either refused by the API outright
+                //   or written but unverifiable; both failure shapes settle per the physical world, else the snapshot never clears
                 if (!TrySetTopology(topology))
                 {
                     if (!SettledAsSingleDisplay()) return false;
@@ -61,7 +61,7 @@ namespace PaviseApp
             }
         }
 
-        // Pavise 异常退出时拓扑还停在仅内屏 下次启动按快照切回
+        // After an abnormal Pavise exit the topology is still internal-only; next startup switches back per snapshot
         public static bool HealFromCrash()
         {
             return Restore();
@@ -72,8 +72,8 @@ namespace PaviseApp
             return Settings.LoadStr(SnapKey, "").Length != 0;
         }
 
-        // 三个原语 隔离测试必须注入 生产走原生调用
-        //   活动路径数 -1 表示读不出来 调用方按多屏处理 宁可多做检查
+        // Three primitives: isolated tests must inject them, production uses native calls
+        //   Active path count -1 means unreadable; the caller treats it as multi-display, better to over-check
         private static int ActivePathCount()
         {
 #if PAVISE_SELFTEST
@@ -139,7 +139,7 @@ namespace PaviseApp
             if (RemoteForTest != null) return RemoteForTest();
             throw new InvalidOperationException("DisplaySolo session probing requires an injected test double.");
 #else
-            // 判不了就当远程 宁可不动不结算
+            // Can't tell, assume remote; better to leave it unsettled
             try { return GetSystemMetrics(SmRemoteSession) != 0; }
             catch { return true; }
 #endif

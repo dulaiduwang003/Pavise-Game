@@ -1,11 +1,11 @@
 @rem @author bdth 2074055628@qq.com
-@rem file: dev compiler and protected production build dispatcher
-@rem ASCII ONLY. cmd decodes this file with the codepage the console had at
-@rem startup (936 here) and chcp does NOT change that. One UTF-8 CJK char
-@rem shifts the parser and comment text gets executed as a command.
+@rem file compiler for the release exe and the self-test runner
+@rem ASCII ONLY cmd decodes this file with the codepage the console had at
+@rem startup 936 here and chcp does NOT change that One UTF-8 CJK char
+@rem shifts the parser and comment text gets executed as a command
 @echo off
-rem when called from dev.cmd it owns the codepage; do not restore it early
-rem or the caller's remaining output lands on the wrong codepage.
+rem when called from dev.cmd it owns the codepage do not restore it early
+rem or the callers remaining output lands on the wrong codepage
 if defined PAVISE_CP_OWNED goto cpready
 for /f "tokens=2 delims=:" %%a in ('chcp') do set "PAVISE_OLDCP=%%a"
 set "PAVISE_OLDCP=%PAVISE_OLDCP: =%"
@@ -17,16 +17,8 @@ if not exist build mkdir build
 
 if /i not "%~1"=="-b" goto usage
 if /i "%~2"=="dev" goto dev
-if /i "%~2"=="prod" goto prod
+if /i "%~2"=="prod" goto dev
 goto usage
-
-:prod
-set "PROD_OUT=build\Pavise.exe"
-if not "%~3"=="" set "PROD_OUT=%~3"
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0build-protected.ps1" -Output "%PROD_OUT%" -Force
-set "BUILD_EXIT=%ERRORLEVEL%"
-call :restorecp
-exit /b %BUILD_EXIT%
 
 :dev
 set CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe
@@ -40,11 +32,6 @@ set REFS=-reference:System.dll -reference:System.Drawing.dll -reference:System.W
 set OUT=build\Pavise.exe
 if not "%~3"=="" set OUT=%~3
 if /i "%~4"=="--selftest" goto selftest
-
-rem App.Version in Program.cs is the single version source. Keep the external
-rem update manifest synchronized before every development or production build.
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\Sync-VersionManifest.ps1"
-if errorlevel 1 goto err
 
 
 echo [1/3] compiling temp exe...
@@ -82,11 +69,13 @@ call :restorecp
 goto :eof
 
 :selftest
-rem A dedicated console entry point cannot launch the normal tuning runtime.
-rem Do not rewrite the icon/version manifest or require administrator rights.
+rem A dedicated console entry point cannot launch the normal tuning runtime
+rem Do not rewrite the icon/version manifest or require administrator rights
+rem Explicit sources keep ignored legacy probes out of the isolated runner
+rem Register new tests in tests\SelfTest.sources.rsp and SelfTests.Runner.cs
 if "%~3"=="" set OUT=build\Pavise.selftest.exe
 echo [selftest] compiling isolated regression runner...
-"%CSC%" -nologo -target:exe -platform:x64 -optimize+ -codepage:65001 -define:PAVISE_SELFTEST;PAVISE_SELFTEST_RUNNER -main:PaviseApp.SelfTestRunner -out:"%OUT%" %REFS% -recurse:src\*.cs -recurse:tests\*.cs
+"%CSC%" -nologo -target:exe -platform:x64 -optimize+ -codepage:65001 -define:PAVISE_SELFTEST;PAVISE_SELFTEST_RUNNER -main:PaviseApp.SelfTestRunner -out:"%OUT%" %REFS% -recurse:src\*.cs @tests\SelfTest.sources.rsp
 set BUILD_EXIT=%ERRORLEVEL%
 call :restorecp
 exit /b %BUILD_EXIT%
@@ -99,7 +88,7 @@ exit /b 1
 
 :usage
 echo Usage: build.cmd -b dev [output.exe] [--selftest]
-echo        build.cmd -b prod [output.exe]
+echo        prod is the same build the exe is shipped as compiled
 call :restorecp
 exit /b 2
 

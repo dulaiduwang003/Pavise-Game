@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 封装 ETW 实时会话接口 用于低延迟接收内核进程创建事件
+// File purpose Wraps the ETW real-time session interface for low-latency receipt of kernel process creation events
 using System;
 using System.Runtime.InteropServices;
 

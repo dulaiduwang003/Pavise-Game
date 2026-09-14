@@ -1,4 +1,4 @@
-// 文件用途 纯状态机 不采样 不碰注册表 不建窗口
+// File purpose Pure state machine, no sampling, no registry, no windows
 #if PAVISE_SELFTEST
 using System;
 using System.Threading;
@@ -65,7 +65,7 @@ namespace PaviseApp
             var guard = new AdaptiveGuard();
             AdaptiveCheck(guard.Step(true, 10) == 1, "escalate for the relax test");
             AdaptiveCheck(guard.Step(false, 20) == 0, "calm starts the timer");
-            // 稳定期没满又饱和 计时清零 之后必须重新攒满整段稳定期
+            // Saturating before the stable period completes resets the timer, a full stable period must accumulate again
             AdaptiveCheck(guard.Step(true, 20 + AdaptiveGuard.RelaxTicks / 2) == 0 && guard.Escalated,
                 "re-saturation inside the calm window must keep the escalation");
             long again = AdaptiveGuard.RelaxTicks * 2;

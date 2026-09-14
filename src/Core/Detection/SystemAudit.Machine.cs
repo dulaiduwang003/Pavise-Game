@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 本机项结论 CPU 显示 显卡 电源 内存 网络与电池
+// File purpose Local machine verdicts: CPU, display, GPU, power, memory, network, and battery
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -203,7 +203,7 @@ namespace PaviseApp
                     Evidence = EvMeasuredLocal,
                     Warn = wifiOnly
                 });
-                // 双链路时默认路由可能走无线 有线跃点压低是唯一的修法 修过的也在这里看得到
+                // With dual links the default route may go wireless; lowering the wired metric is the only fix, and repaired ones show up here too
                 if (facts.Link == "both" || LinkMetricTweak.RepairedByPavise)
                 {
                     bool metricBad = false;

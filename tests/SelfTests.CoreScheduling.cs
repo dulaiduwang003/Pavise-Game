@@ -8,53 +8,53 @@ namespace PaviseApp
 {
     internal static partial class SelfTests
     {
-        // 掩码与混合架构判定来自 GLPIE 方案戳记来自 CPU Set 两套枚举各数一遍物理核
-        //   对不上时保存的选核方案会因戳记不符被判无效 静默回落成不限核 用户毫无察觉
-        //   这条跑的是本机真实拓扑 不是构造数据 失败就说明这台机器上真的对不上
-        // 混合架构的能效核是单线程卡 选中标以前被卡片宽窄挡掉
-        //   13900K 上 24 张卡有 16 张是能效核 选中后只剩填色 没有任何文字
-        //   独占标同样两个字 一直画在单线程卡上 能画独占就能画选中
+        // Masks and hybrid detection come from GLPIE, the plan stamp from CPU Sets, two enumerations each counting physical cores
+        //   When they disagree the saved core plan is judged invalid by stamp mismatch and silently falls back to unrestricted cores, the user never notices
+        //   This one runs on the real local topology, not synthetic data; a failure means they really disagree on this machine
+        // On hybrid CPUs the E-cores are single-thread cards, the selected tag used to be dropped by card width
+        //   On a 13900K 16 of 24 cards are E-cores, selecting left only a fill color and no text at all
+        //   The exclusive tag is also two characters and has always drawn on single-thread cards; if exclusive fits, selected fits
         private static void TestCoreCardHeadTag()
         {
-            // 选中要出标 与卡片有几个线程无关 放不放得下另由实测宽度决定
+            // Selected must show a tag regardless of thread count, whether it fits is decided separately by measured width
             Eq(CoreMatrix.HeadTag.Primary, CoreMatrix.HeadTagFor(false, true, false, false));
             Eq(CoreMatrix.HeadTag.Primary, CoreMatrix.HeadTagFor(false, true, false, true));
-            // 独占压过选中 两种卡宽都一样
+            // Exclusive beats selected, same on both card widths
             foreach (bool multi in new[] { false, true })
                 Eq(CoreMatrix.HeadTag.Exclusive, CoreMatrix.HeadTagFor(true, true, true, multi));
-            // 没选中时大缓存标压过 SMT
+            // When not selected the big-cache tag beats SMT
             Eq(CoreMatrix.HeadTag.Cache, CoreMatrix.HeadTagFor(false, false, true, true));
-            // SMT 只给多线程卡 单线程卡谈超线程没有意义
+            // SMT only for multi-thread cards, hyper-threading is meaningless on a single-thread card
             Eq(CoreMatrix.HeadTag.Smt, CoreMatrix.HeadTagFor(false, false, false, true));
             Eq(CoreMatrix.HeadTag.None, CoreMatrix.HeadTagFor(false, false, false, false));
 
-            // 放得下才画 编号加间隙加标签刚好等于头宽算放得下 多一像素就不画
+            // Draw only if it fits: number plus gap plus tag exactly equal to head width fits, one pixel more does not draw
             Eq(true, CoreMatrix.HeadTagFits(46, 20, 23, 3));
             Eq(false, CoreMatrix.HeadTagFits(46, 20, 24, 3));
-            // 宽卡有富余
+            // Wide card has room to spare
             Eq(true, CoreMatrix.HeadTagFits(92, 20, 23, 3));
-            // 没有标签就没有可画的 不能因为量得下就返回真
+            // No tag means nothing to draw, must not return true just because it measures as fitting
             Eq(false, CoreMatrix.HeadTagFits(92, 20, 0, 3));
         }
 
-        // ProcessorCount 与枚举对不上时 AllMask 必须往窄里收
-        //   宽了会让掩码带上机器上不存在的核 写进去必然失败还会污染方案戳记
+        // When ProcessorCount and the enumeration disagree, AllMask must shrink to the narrower one
+        //   Too wide puts cores that do not exist on this machine into the mask, the write is bound to fail and it pollutes the plan stamp
         private static void TestAllMaskReconcile()
         {
             bool bad;
-            // 一致时原样返回 不置位
+            // Consistent: returned as is, flag not set
             Eq(0xFFFUL, CpuTopology.ReconcileAllMask(0xFFF, 0xFFF, out bad));
             Eq(false, bad);
-            // 枚举读不出来时只能信 ProcessorCount 不置位
+            // When the enumeration is unreadable only ProcessorCount can be trusted, flag not set
             Eq(0xFFFUL, CpuTopology.ReconcileAllMask(0xFFF, 0, out bad));
             Eq(false, bad);
-            // ProcessorCount 多报 收到枚举那一份
+            // ProcessorCount over-reports: shrink to the enumeration's value
             Eq(0xFFFFUL, CpuTopology.ReconcileAllMask(0xFFFFFF, 0xFFFF, out bad));
             Eq(true, bad);
-            // 枚举多报 收到 ProcessorCount 那一份 两个方向都往窄里收
+            // Enumeration over-reports: shrink to ProcessorCount's value, both directions shrink to the narrower
             Eq(0xFFFFUL, CpuTopology.ReconcileAllMask(0xFFFF, 0xFFFFFF, out bad));
             Eq(true, bad);
-            // 完全不相交时无法收窄 退回 ProcessorCount 不能返回空掩码
+            // Fully disjoint cannot be narrowed, fall back to ProcessorCount, never return an empty mask
             Eq(0x0FUL, CpuTopology.ReconcileAllMask(0x0F, 0xF0, out bad));
             Eq(true, bad);
             Console.WriteLine("  本机 AllMask 对账 " + (CpuTopology.AllMaskReconciled ? "不一致 已收窄" : "一致"));
@@ -68,25 +68,25 @@ namespace PaviseApp
             Eq(true, CpuTopology.TopologySourcesAgree);
         }
 
-        // 优选核只在最高能效档内部比评级 混合架构没有 TBM 优选核时不能把整组 P 核当优选
+        // Favored cores compare ratings only within the top efficiency class; a hybrid CPU without TBM favored cores must not treat the whole P-core group as favored
         private static void FavoredCoresOnlyWithinTopEfficiencyClass()
         {
-            // 8P+8E 单一评级 没有优选核
+            // 8P+8E with a single rating: no favored cores
             Eq(0UL, CpuTopology.FavoredMaskOf(
                 new[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 },
                 new byte[] { 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0 },
                 new byte[] { 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0 }));
-            // 8P+8E P 核里 4 5 评级更高 优选核就是 4 5
+            // 8P+8E where P-cores 4 and 5 rate higher: favored cores are 4 and 5
             Eq(0x30UL, CpuTopology.FavoredMaskOf(
                 new[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 },
                 new byte[] { 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0 },
                 new byte[] { 1, 1, 1, 1, 2, 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0 }));
-            // 非混合架构 评级不同直接取最高
+            // Non-hybrid with differing ratings: take the highest directly
             Eq(0x0CUL, CpuTopology.FavoredMaskOf(
                 new[] { 0, 1, 2, 3 }, new byte[] { 0, 0, 0, 0 }, new byte[] { 1, 1, 3, 3 }));
             Eq(0UL, CpuTopology.FavoredMaskOf(new int[0], new byte[0], new byte[0]));
             Eq(0UL, CpuTopology.FavoredMaskOf(new[] { 0, 1 }, new byte[] { 0 }, new byte[] { 1, 2 }));
-            // 各核明细 相邻同值合并成段 乱序输入按核号排
+            // Per-core detail: adjacent equal values merge into ranges, unordered input sorts by core number
             Eq("0-7:1/1 8-11:1/2 12-15:0/0", CpuTopology.DescribeCoreClasses(
                 new[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 },
                 new byte[] { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0 },
@@ -122,7 +122,7 @@ namespace PaviseApp
             Eq(12UL, p.IsolationMask); Eq(68UL, p.GameMask);
             p = SampleCorePlan(); p.IsolationMask = 64; Eq("schedule.error.whole", ValidateSample(p));
             p.IsolationMask = 1024; Eq("schedule.error.whole", ValidateSample(p));
-            // CPU 0 所在核可以独占 由用户决定 底线只剩独占之外留两颗完整物理核
+            // The core holding CPU 0 may be exclusive, the user decides; the only floor left is two whole physical cores outside the exclusive range
             p = SampleCorePlan(); p.IsolationMask = 3; Eq(null, ValidateSample(p));
             p = SampleCorePlan(); p.IsolationMask = 252; Eq("schedule.error.spare", ValidateSample(p));
             p = SampleCorePlan(); p.IsolationOn = true; Eq("schedule.error.isolationunsupported", ValidateSample(p));
@@ -147,7 +147,7 @@ namespace PaviseApp
             }
             original.GameMask = 1UL << 63;
             Eq(true, CoreSchedulingPlan.TryParse(original.Encode(), out parsed)); Eq(1UL << 63, parsed.GameMask);
-            // Previously enabled, empty, conflicting, partial or obsolete heavy ranges do not block migration.
+            // Previously enabled empty conflicting partial or obsolete heavy ranges do not block migration
             original = SampleCorePlan();
             foreach (string heavy in new[] { "0", "C", "C0", "40", "FFFFFFFFFFFFFFFF" })
             {
@@ -173,18 +173,18 @@ namespace PaviseApp
                 Eq("0", legacySession.ValueOf(PolicyCatalog.KeyHeavySqueeze));
                 f.Editor.Reload();
                 Eq(false, f.Editor.SaveButton.Enabled);
-                // 分配与独占合成一页 只剩一张选核图 独占范围由它推出
+                // Assignment and exclusive cores merged into one page, only one core selection matrix remains and the exclusive range derives from it
                 Eq(true, f.Editor.Matrix.Visible);
                 Eq(true, f.Editor.Contains(f.Editor.Matrix));
                 Eq(12UL, f.Editor.Draft.GameMask);
                 f.Editor.Matrix.ToggleCpu(4); Eq(28UL, f.Editor.Draft.GameMask);
-                // 28 是 bit2,3,4 覆盖 12 和 48 两颗核 对齐整核得 60 不含核 3
+                // 28 is bit2 bit3 bit4, spanning the two cores 12 and 48, aligned to whole cores gives 60, core 3 excluded
                 Eq(60UL, f.Editor.Draft.IsolationMask); Eq(true, f.Editor.SaveButton.Enabled);
                 Eq(CoreScheduling.IsolationSupported, f.Editor.IsolationToggle.Enabled);
                 Eq(28UL, f.Editor.Matrix.Selected);
                 Eq(CoreMatrix.GameColor, f.Editor.Matrix.SelectionColor);
                 Eq(false, f.Editor.Matrix.SelectWholeCore);
-                // CPU 0 所在核也能独占 选它就是它
+                // The core holding CPU 0 can be exclusive too, selecting it means exactly it
                 f.Editor.SelectMask(3);
                 Eq(3UL, f.Editor.Draft.IsolationMask);
 
@@ -192,7 +192,7 @@ namespace PaviseApp
                 Eq(80UL, f.Editor.Draft.GameMask); Eq(240UL, f.Editor.Draft.IsolationMask);
                 Eq(false, f.Editor.PhysicalOnlyButton.Enabled);
                 f.Editor.SelectMask(160); f.Editor.PhysicalOnlyButton.PerformClick();
-                Eq(160UL, f.Editor.Draft.GameMask); // preserve selected SMT sibling, no new CCD
+                Eq(160UL, f.Editor.Draft.GameMask); // preserve selected SMT sibling no new CCD
                 f.Editor.SelectMask(28);
                 string before = Settings.LoadStr(CoreScheduling.Key, "");
                 Settings.SuspendWritesForReset();
@@ -215,7 +215,7 @@ namespace PaviseApp
                 Eq(48UL, f.Editor.Draft.GameMask); f.Editor.Reload();
 
                 var profileEditor = f.ProfileEditor(); profileEditor.FollowToggle.Checked = false;
-                // 独占只有全局一份 逐游戏页不给开关 选核也不改独占范围
+                // Exclusive cores exist only globally, the per-game page has no toggle and its core selection does not change the exclusive range
                 Eq(false, profileEditor.IsolationToggle.Enabled);
                 Eq(false, profileEditor.IsolationToggle.Visible);
                 profileEditor.SelectMask(12);
@@ -234,7 +234,7 @@ namespace PaviseApp
                 Eq(48UL, profileEditor.Draft.GameMask); Eq(48UL, profileEditor.Matrix.Selected);
                 profileEditor.SelectMask(240); profileEditor.PhysicalOnlyButton.PerformClick(); Eq(80UL, profileEditor.Draft.GameMask);
 
-                // Legacy heavy overrides must neither block global edits nor survive a profile save.
+                // Legacy heavy overrides must neither block global edits nor survive a profile save
                 var second = FamilyPolicyFind((System.Collections.Generic.List<GameProfile>)
                     FamilyPolicyGetField(f.Family.Mode, "profiles"), f.Family.First.Id);
                 second.Overrides[PolicyCatalog.KeyHeavySqueeze] = "1";
@@ -259,11 +259,11 @@ namespace PaviseApp
                 f.Editor.SaveDraft(); Eq(false, CoreScheduling.LoadGlobal().IsolationOn);
                 if (CoreScheduling.IsolationSupported)
                 {
-                    // 全选时独占之外一颗不剩 勾不上也存不了空范围
+                    // With all selected nothing is left outside exclusive, cannot be checked and an empty range cannot be saved
                     f.Editor.SelectMask(255);
                     f.Editor.IsolationToggle.Checked = true;
                     Eq(false, f.Editor.Draft.IsolationOn); Eq(0UL, f.Editor.Draft.IsolationMask);
-                    // 换成能推出范围的选核 独占才立得住
+                    // Exclusive only holds once the selection can derive a range
                     f.Editor.SelectMask(12);
                     f.Editor.IsolationToggle.Checked = true;
                     Eq(true, f.Editor.Draft.IsolationOn); Eq(12UL, f.Editor.Draft.IsolationMask);
@@ -279,27 +279,27 @@ namespace PaviseApp
             Console.WriteLine("PASS CorePlanUiAndPersistence: separate game/isolation pages, No HT, migration, frozen session, failed writes, CAS");
         }
 
-        // 默认选核是全选 独占会占满所有核 一颗都不留给系统 开关会灰掉
-        //   这是用户实际撞到的状态 必须能一键让出并且提示说得清
+        // Default selection is all cores, exclusive would take every core and leave none for the system, the toggle grays out
+        //   This is a state users actually hit, one click must yield cores and the hint must explain it clearly
         private static void CorePlanExclusiveFromFullSelection()
         {
             ulong[] cores = new ulong[] { 3, 12, 48, 192 };
-            // 全选时推不出独占范围
+            // All selected derives no exclusive range
             Eq(0UL, CoreScheduling.ExclusiveMaskFor(255, cores));
-            // 让出编号最大的两颗整核之后成立
+            // Holds after yielding the two highest-numbered whole cores
             ulong trimmed = CoreScheduling.TrimForExclusive(255, cores);
             Eq(15UL, trimmed);
             Eq(15UL, CoreScheduling.ExclusiveMaskFor(trimmed, cores));
             Eq(2, CoreScheduling.SpareCoresOutside(15, cores));
 
-            // CPU 0 所在核可以独占 是否选它由用户决定
+            // The core holding CPU 0 may be exclusive, whether to select it is the user's call
             Eq(3UL, CoreScheduling.ExclusiveMaskFor(3, cores));
             Eq(3UL, CoreScheduling.TrimForExclusive(3, cores));
-            // 已经成立的选核不该被动 让出只在需要时发生
+            // An already valid selection must not be touched, yielding only happens when needed
             Eq(12UL, CoreScheduling.TrimForExclusive(12, cores));
             Eq(0UL, CoreScheduling.TrimForExclusive(0, cores));
 
-            // 本机同构的混合拓扑 24 颗物理核 全选后让出一颗即可
+            // Hybrid topology like this machine with 24 physical cores, after selecting all yielding one is enough
             var many = new System.Collections.Generic.List<ulong>();
             ulong all = 0;
             for (int i = 0; i < 8; i++) { ulong c = 3UL << (i * 2); many.Add(c); all |= c; }
@@ -311,7 +311,7 @@ namespace PaviseApp
             Eq(true, CoreScheduling.ExclusiveMaskFor(hybridTrimmed, hybrid) != 0);
             Eq(2, CoreScheduling.SpareCoresOutside(
                 CoreScheduling.ExclusiveMaskFor(hybridTrimmed, hybrid), hybrid));
-            // 让出的是末尾的核 CPU 0 所在核仍在独占里 用户没主动取消就不动它
+            // The tail cores are yielded, the core holding CPU 0 stays exclusive, untouched unless the user deselects it
             Eq(3UL, CoreScheduling.ExclusiveMaskFor(hybridTrimmed, hybrid) & 3UL);
             Console.WriteLine("PASS CorePlanExclusiveFromFullSelection: default full selection can be trimmed into a usable exclusive range");
         }
@@ -324,7 +324,7 @@ namespace PaviseApp
                 Settings.SaveStr(CoreScheduling.Key, SampleCorePlan().Encode());
                 f.Editor.Reload();
 
-                // 选核一变 独占范围立刻跟着推出来 不需要再选第二遍
+                // As soon as the selection changes the exclusive range is derived immediately, no second selection needed
                 f.Editor.SelectMask(28);
                 Eq(28UL, f.Editor.Draft.GameMask); Eq(60UL, f.Editor.Draft.IsolationMask);
                 Eq(28UL, f.Editor.Matrix.SchedulingGameMask);
@@ -335,21 +335,21 @@ namespace PaviseApp
                 f.Editor.SelectMask(48); f.Editor.SaveButton.PerformClick();
                 Eq(48UL, CoreScheduling.LoadGlobal().GameMask); Eq(48UL, CoreScheduling.LoadGlobal().IsolationMask);
 
-                // 显式重载才丢弃草稿
+                // Only an explicit reload discards the draft
                 f.Editor.SelectMask(28);
                 ((PillButton)typeof(CoreSchedulingPanel).GetField("reloadButton",
                     System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(f.Editor)).PerformClick();
                 Eq(48UL, f.Editor.Draft.GameMask); Eq(48UL, f.Editor.Draft.IsolationMask);
                 Eq(48UL, f.Editor.Matrix.Selected);
 
-                // 选核不合法就存不了 独占范围同时退回空
+                // An invalid selection cannot be saved and the exclusive range falls back to empty at the same time
                 string stored = Settings.LoadStr(CoreScheduling.Key, "");
                 f.Editor.SelectMask(1);
                 Eq(3UL, f.Editor.Draft.IsolationMask);
                 Eq(false, f.Editor.SaveButton.Enabled);
                 f.Editor.SaveButton.PerformClick(); Eq(stored, Settings.LoadStr(CoreScheduling.Key, ""));
 
-                // 外部改动造成版本冲突时保留草稿 直到用户显式重载
+                // On a version conflict from an external change keep the draft until the user explicitly reloads
                 f.Editor.SelectMask(28);
                 var external = CoreScheduling.LoadGlobal(); external.GameMask = 192; external.IsolationMask = 192;
                 Settings.SaveStr(CoreScheduling.Key, external.Encode());
@@ -380,7 +380,7 @@ namespace PaviseApp
                     editor.FollowToggle.Checked = false; editor.SelectMask(28); editor.SaveDraft();
                     Eq(false, editor.SaveButton.Enabled);
 
-                    // Refresh inherited isolation and its baseline without turning an unchanged local plan dirty.
+                    // Refresh inherited isolation and its baseline without turning an unchanged local plan dirty
                     var clean = editor.CaptureEditorState();
                     var global = CoreScheduling.LoadGlobal();
                     global.GameMask = 192; global.IsolationOn = true; global.IsolationMask = 48;
@@ -393,7 +393,7 @@ namespace PaviseApp
                         CoreEditorField<SettingCard>(editor, "exclusiveCard").Desc);
                     Eq(true, CoreEditorField<Label>(editor, "status").Text.StartsWith(Lang.T("schedule.stored.active")));
 
-                    // A follow-global edit is also preserved while the inherited range changes.
+                    // A follow-global edit is also preserved while the inherited range changes
                     editor.FollowToggle.Checked = true;
                     var following = editor.CaptureEditorState();
                     global.IsolationMask = 12; Settings.SaveStr(CoreScheduling.Key, global.Encode());
@@ -403,7 +403,7 @@ namespace PaviseApp
                     Eq(true, editor.SaveButton.Enabled);
                     editor.FollowToggle.Checked = false;
 
-                    // A broken global game selection does not invalidate a valid per-game selection.
+                    // A broken global game selection does not invalidate a valid per-game selection
                     var beforeGlobalGameEdit = editor.CaptureEditorState();
                     global.GameMask = 1; global.IsolationMask = 48;
                     Settings.SaveStr(CoreScheduling.Key, global.Encode());
@@ -415,7 +415,7 @@ namespace PaviseApp
                     global.GameMask = 192; global.IsolationMask = 12;
                     Settings.SaveStr(CoreScheduling.Key, global.Encode()); editor.Reload();
 
-                    // A genuine profile edit must still conflict even when global isolation also changed.
+                    // A genuine profile edit must still conflict even when global isolation also changed
                     editor.SelectMask(28);
                     var dirty = editor.CaptureEditorState();
                     var external = CoreScheduling.LoadGlobal(); external.GameMask = 192;
@@ -428,7 +428,7 @@ namespace PaviseApp
                     Eq(true, CoreEditorField<Label>(editor, "status").Text.StartsWith(Lang.T("schedule.error.changed")));
                     editor.SaveDraft(); Eq(192UL, PolicyResolver.For(f.Family.Current(f.Family.First.Id)).CoreMask);
 
-                    // Following global cannot bypass an unreadable global record on return.
+                    // Following global cannot bypass an unreadable global record on return
                     editor.Reload(); editor.FollowToggle.Checked = true;
                     var beforeCorruption = editor.CaptureEditorState();
                     Settings.SaveStr(CoreScheduling.Key, "broken record");
@@ -438,7 +438,7 @@ namespace PaviseApp
                     Eq(true, CoreEditorField<Label>(editor, "status").Text.StartsWith(Lang.T("schedule.error.changed")));
                     editor.SaveDraft(); Eq("broken record", Settings.LoadStr(CoreScheduling.Key, ""));
 
-                    // A different physical layout must not be rebased onto this profile's current topology.
+                    // A different physical layout must not be rebased onto the current topology of this profile
                     global.Topology = "old-topology"; Settings.SaveStr(CoreScheduling.Key, global.Encode());
                     editor.RestoreEditorState(beforeCorruption);
                     Eq(192UL, editor.Draft.GameMask); Eq(48UL, editor.Draft.IsolationMask);
@@ -465,7 +465,7 @@ namespace PaviseApp
                     Eq(Lang.T("schedule.error.isolationunsupported"), card.Desc);
                     Eq(false, f.Editor.IsolationToggle.Enabled);
 
-                    // Existing enabled settings can still be turned off on an unsupported system.
+                    // Existing enabled settings can still be turned off on an unsupported system
                     var global = CoreScheduling.LoadGlobal(); global.IsolationOn = true;
                     Settings.SaveStr(CoreScheduling.Key, global.Encode()); f.Editor.Reload();
                     Eq(Lang.T("schedule.error.isolationunsupported"), card.Desc);
@@ -507,7 +507,7 @@ namespace PaviseApp
                 foreach (bool screenshotLight in new[] { false, true })
                 {
                     Dpi.Scale = screenshotScale; Theme.DropFontCache(); Lang.Cur = screenshotLanguage; Theme.SetLight(screenshotLight);
-                    // Recreate after topology, language and scale changes so all labels and bounds match.
+                    // Recreate after topology language and scale changes so all labels and bounds match
                     using (var editor = new CoreSchedulingPanel(900, null, delegate { return null; }, delegate { return false; }))
                     {
                         f.Panel.Controls.Add(editor);
@@ -519,7 +519,7 @@ namespace PaviseApp
                             editor.DrawToBitmap(bitmap, new Rectangle(Point.Empty, bitmap.Size));
                             bitmap.Save(Path.Combine(output, "core-scheduling-game" + suffix + ".png"));
                         }
-                        // 合成一页之后的纵向次序 选核图在上 独占开关在下 保存在最后
+                        // Vertical order after the merge: selection matrix on top, exclusive toggle below, save last
                         Eq(true, CoreEditorBounds(editor, editor.Matrix).Bottom
                             < CoreEditorBounds(editor, editor.IsolationToggle).Top);
                         Eq(true, CoreEditorBounds(editor, editor.IsolationToggle).Bottom

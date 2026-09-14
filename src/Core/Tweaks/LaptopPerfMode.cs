@@ -1,14 +1,14 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 厂商性能档已下架 只保留旧版留下的收据清收 启动与清除时按收据切回原档
+// File purpose Vendor performance mode is withdrawn; only cleanup of receipts left by older versions remains, switching back to the original mode by receipt at startup and on wipe
 using System;
 using System.Management;
 
 namespace PaviseApp
 {
-    // 笔记本的 PL1 PL2 不在 Windows 电源方案里 它们由厂商固件按"安静 均衡 性能"这类档位分配
-    //   Lenovo Gamezone 接口 SetSmartFanMode 1 安静 2 均衡 3 性能  ASUS ATK 接口设备 0x120075 0 均衡 1 性能 2 安静
-    //   开关默认开启但始终尊重用户配置 不由档位强制
-    //   厂商工具自己也会改这个值 退局时读到的档位不是我们写的就不抢回来 只清账
+    // Laptop PL1 and PL2 aren't in the Windows power scheme; vendor firmware assigns them per modes like quiet, balanced, performance
+    //   Lenovo Gamezone interface SetSmartFanMode 1 quiet 2 balanced 3 performance; ASUS ATK interface device 0x120075 0 balanced 1 performance 2 quiet
+    //   Switch defaults to on but always respects the user setting; not forced by tier
+    //   Vendor tools change this value too; if the mode read at match end isn't what we wrote, don't take it back, just clear the record
     internal static class LaptopPerfMode
     {
         internal const string SnapKey = "LaptopPerfSnap";
@@ -93,7 +93,7 @@ namespace PaviseApp
                             {
                                 if (result == null) return false;
                                 uint status = Convert.ToUInt32(result["device_status"]);
-                                // 高位是支持标志 低八位才是档位 未支持时高位为 0
+                                // High bits are the support flag; only the low eight bits are the mode; high bits are 0 when unsupported
                                 if ((status & 0x00010000u) == 0) return false;
                                 mode = (int)(status & 0xFF);
                                 return true;
@@ -163,7 +163,7 @@ namespace PaviseApp
                 int now;
                 if (ReadMode(vendor, out now) && now != PerformanceModeOf(vendor))
                 {
-                    // 厂商工具或用户中途改过 不抢回来 只清账
+                    // Vendor tool or user changed it mid-match; don't take it back, just clear the record
                     Settings.SaveStr(SnapKey, "");
                     Logger.Log(Lang.T("log.laptopperf.5"));
                     return true;

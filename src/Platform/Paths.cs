@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 提供程序数据 日志和配置文件路径
+// File purpose Provides program data, log and config file paths
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;

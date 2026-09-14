@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 构建系统体检页 手动触发检测 展示能力 实测数据 持久设置与结论
+// File purpose Build the system health check page: manual detection, capability display, measured data, persisted settings and verdict
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;

@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 AMD ADLX 手写 vtable 互操作 无 SDK 依赖 驱动缺失时整体降级 按 1.5.0.124 头文件布局
+// File purpose AMD ADLX hand-written vtable interop, no SDK dependency, degrades as a whole when the driver is missing, follows the 1.5.0.124 header layout
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -55,13 +55,13 @@ namespace PaviseApp
 
         private const int TuneSlotIsSupportedManualPower = 11;
         private const int TuneSlotGetManualPower = 17;
-        // IADLXGPUTuningServices 的手动核心调频入口 和上面同一张虚表
+        // Manual core clock tuning entries of IADLXGPUTuningServices, same vtable as above
         private const int TuneSlotIsSupportedManualGfx = 8;
         private const int TuneSlotGetManualGfx = 14;
-        // IADLXGPUTuningServices1 在父接口 18 个槽之后追加 GetSmartAccessMemory
+        // IADLXGPUTuningServices1 appends GetSmartAccessMemory after the parent interface's 18 slots
         private const int Tune1SlotGetSam = 18;
         private const string TuningServices1Iid = "IADLXGPUTuningServices1";
-        // GetManualGFXTuning 返回基接口 RDNA2 起要 QueryInterface 成 2 代才有最低频率
+        // GetManualGFXTuning returns the base interface, from RDNA2 on it must be QueryInterface'd to gen 2 to get the minimum frequency
         private const string ManualGfx2Iid = "IADLXManualGraphicsTuning2";
         private const int Gfx2SlotGetMinRange = 3;
         private const int Gfx2SlotGetMin = 4;
@@ -593,7 +593,7 @@ namespace PaviseApp
             finally { Release(services); }
         }
 
-        // 最低核心频率 单位 MHz 只读最低和最高的现值以及最低频率的合法区间
+        // Minimum core frequency in MHz, reads only the current min and max values plus the legal range of the minimum frequency
         public static bool GfxMinGet(IntPtr gpu, out bool supported, out int min, out int max, out AdlxIntRange minRange)
         {
             min = 0; max = 0; minRange = new AdlxIntRange();

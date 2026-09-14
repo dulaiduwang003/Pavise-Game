@@ -1,4 +1,4 @@
-// 文件用途 有界的反例集 不是游戏跑分 只改本进程
+// File purpose Bounded counterexample set, not a game benchmark, only modifies this process
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -47,7 +47,7 @@ namespace PaviseApp
 
         private static int Main(string[] args)
         {
-            // 不走 Program.Main 不构造 GameMode 不起它的运行时 不用生产日志和真实设置
+            // Bypasses Program.Main, never constructs GameMode or starts its runtime, no production log or real settings
             Settings.UseTransientStoreForCurrentProcess();
             Logger.WritesEnabled = false;
             using (var watchdog = new Timer(delegate { Environment.Exit(124); }, null, 45000, Timeout.Infinite))
@@ -181,7 +181,7 @@ namespace PaviseApp
             public bool FrameAffinityRestored, BurnerAffinityRestored, PriorityRestored;
         }
 
-        // 工作量固定 不是按截止时间空转 被抢占不能算成干完了活
+        // Fixed workload, not spinning until a deadline, being preempted must not count as work done
         private static void Work(int iterations)
         {
             ulong value = 0x9e3779b97f4a7c15UL;
@@ -288,7 +288,7 @@ namespace PaviseApp
                 {
                     Require(load.FrameReady.WaitOne(2000) && load.BurnerReady.WaitOne(2000), "worker ready");
                     if (load.Error != null) throw load.Error;
-                    // 这就是生产的 CPU 耗时采样器和生产的确认判据
+                    // This is the production CPU-time sampler and the production confirmation criteria
                     for (int i = 0; i < 3; i++)
                     {
                         RenderLane.Candidate candidate;

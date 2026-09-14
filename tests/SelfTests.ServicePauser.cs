@@ -1,5 +1,5 @@
-// 文件用途 旧的更新 预读取和传递优化服务回归
-// 服务操作 台账访问和带宽改动全是注入的
+// File purpose Legacy update, prefetch and delivery optimization service regression
+// Service operations, ledger access and bandwidth changes are all injected
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -354,9 +354,9 @@ namespace PaviseApp
             SessionServiceCheck(observed.Restore() && observed.Starts.Count == 0 && !observed.Engine.HasResidue,
                 "externally restarted observed stop was taken over");
 
-            // STOP 被接受了服务却一直 Running 第一次检查先留着债务
-            //   读数有可能跑在 STOP_PENDING 迁移前面
-            //   第二次独立检查判定期望终态已经成立 结账 暂停功能不会再被触发重启的服务卡死
+            // STOP accepted but the service stays Running, the first check keeps the debt
+            //   the reading may run ahead of the STOP_PENDING transition
+            //   the second independent check finds the expected end state reached and settles, the pause feature no longer hangs on a service restarted by a trigger
             var lost = new SessionServiceFake("wuauserv"); lost.StopState = 4;
             SessionServiceCheck(lost.Activate() && lost.LastStopped.Count == 1, "lost STOP fixture failed");
             SessionServiceCheck(!lost.Restore() && lost.Engine.HasResidue && lost.Starts.Count == 0,
@@ -383,7 +383,7 @@ namespace PaviseApp
 
         private static void SessionServicesPreparedCrashIsUnowned()
         {
-            // 旧格式账本沿用旧版恢复即重启那套契约 停着的服务要启动并结账
+            // Old-format ledger keeps the legacy restore-means-restart contract, stopped services get started and settled
             {
                 var legacy = new SessionServiceFake("wuauserv"); legacy.Ledger = "wuauserv"; legacy.States["wuauserv"] = 1;
                 SessionServiceCheck(legacy.Restore() && legacy.Starts.Count == 1 && legacy.States["wuauserv"] == 4
@@ -395,7 +395,7 @@ namespace PaviseApp
                 SessionServiceCheck(legacy.Restore() && legacy.Starts.Count == 0 && legacy.Ledger == "",
                     "already-running legacy state could not be safely settled");
             }
-            // 新格式 P 记录写在 STOP 发出之前 证明不了是本应用停的 维持失败关闭
+            // New-format P record is written before STOP is issued, cannot prove this app stopped it, stays fail-closed
             {
                 var f = new SessionServiceFake("wuauserv"); f.Ledger = "2\nP\twuauserv\t0"; f.States["wuauserv"] = 1;
                 SessionServiceCheck(!f.Restore() && f.Starts.Count == 0 && f.Engine.HasResidue,
@@ -409,7 +409,7 @@ namespace PaviseApp
             capture.BeforeStop = delegate { throw new IOException("crash before native STOP"); };
             SessionServiceCheck(capture.Activate() && capture.Stops.Count == 0,
                 "pre-STOP crash fixture accidentally dispatched STOP");
-            // 保留回调之前回读出来的那份真实 prepared 字节
+            // Keep the real prepared bytes read back before the callback
             string prepared = null;
             foreach (string write in capture.Writes)
                 if (write.StartsWith("2\nP\t", StringComparison.Ordinal)) { prepared = write; break; }
@@ -680,7 +680,7 @@ namespace PaviseApp
             DoTweak.BandwidthHasBackupForTest = delegate { return false; };
             f.Ledger = "1"; f.States["DoSvc"] = 1;
             DoTweak.HealFromCrash();
-            // 旧版那个 1 标记按旧版契约处理 崩溃自愈直接重启 DoSvc 并结清账本
+            // The legacy 1 marker follows the legacy contract, crash self-heal restarts DoSvc directly and settles the ledger
             SessionServiceCheck(f.Starts.Count == 1 && !DoTweak.HasResidue && DoTweak.Restore(),
                 "DO crash recovery did not honor the legacy restart contract");
             DoTweak.ResetForTest(); f = new SessionServiceFake("DoSvc"); f.Bind(DoTweak.PauserForTest);
@@ -704,7 +704,7 @@ namespace PaviseApp
             backup = true;
             DoTweak.BandwidthHasBackupForTest = delegate { return backup; };
             DoTweak.BandwidthRestoreForTest = delegate { backup = false; return true; };
-            // 新格式 P 记录保持失败关闭 用它承载"服务侧仍未解决"的部分恢复场景
+            // New-format P record stays fail-closed, it carries the service-side-unresolved partial recovery scenario
             f.Ledger = "2\nP\tDoSvc\t0"; f.States["DoSvc"] = 1;
             Logger.Clear();
             SessionServiceCheck(!DoTweak.Restore() && DoTweak.HasResidue && !backup && f.Starts.Count == 0,

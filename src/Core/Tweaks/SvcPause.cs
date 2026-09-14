@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 暂停并恢复索引和预取服务 账目逻辑走 ServicePauser 这里只留本组的名单与说法
+// File purpose Pause and resume indexing and prefetch services; bookkeeping goes through ServicePauser, only this group's names and wording live here
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;

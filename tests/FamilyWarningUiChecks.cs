@@ -109,12 +109,12 @@ namespace PaviseApp
                 form.ShowInTaskbar = false; form.StartPosition = FormStartPosition.Manual;
                 form.Location = new Point(-20000, -20000); form.Show();
                 Check(!form.UiActive, "UI workers unexpectedly started");
-                Toggle(form, mode, true, false); // Cancel must keep protection.
+                Toggle(form, mode, true, false); // Cancel must keep protection
                 Toggle(form, mode, true, true);
-                Toggle(form, mode, false, false); // Turning off must not prompt.
-                Toggle(form, mode, true, true); // Prior acceptance must not skip confirmation.
+                Toggle(form, mode, false, false); // Turning off must not prompt
+                Toggle(form, mode, true, true); // Prior acceptance must not skip confirmation
                 Toggle(form, mode, false, false);
-                Toggle(form, mode, true, false); // Cancellation still works after earlier acceptance.
+                Toggle(form, mode, true, false); // Cancellation still works after earlier acceptance
                 Check(mode.HasRendererObservation(mode.GetProfiles()[0]) == observed, "Toggle changed renderer badge");
                 Check(typeof(Tamer).GetField("worker", Hidden).GetValue(tamer) == null,
                     "Background worker unexpectedly started");

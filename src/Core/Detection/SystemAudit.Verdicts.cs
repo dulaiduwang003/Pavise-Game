@@ -1,12 +1,12 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 系统体检结论分部 汇总事实生成带依据的处理建议
+// File purpose Health check verdict section: aggregates facts into evidence-backed recommendations
 using System;
 using System.Collections.Generic;
 
 namespace PaviseApp
 {
-    // 结论区把前面各段采到的事实翻成给用户的建议
-    //   这里不做任何测量也不写系统 只读 Facts 和已生成的行
+    // The verdict section translates facts collected by the earlier sections into user-facing recommendations
+    //   No measurement and no system writes here; only reads Facts and the already generated lines
     internal static partial class SystemAudit
     {
         private static void BuildVerdicts(AuditReport report, Facts facts, int hzCur, int hzBest)
@@ -92,8 +92,8 @@ namespace PaviseApp
                 });
             }
 
-            // 结论区只收"有事要说"的行 状态陈述归机器/持久区 通用科普不属于体检
-            //   后台压制建议只在关闭时给 开着时"已开启无需处理"是占位废话
+            // The verdict section takes only lines that have something to say; state statements belong to the machine/persistent sections, generic explainers are not part of the health check
+            //   The background suppression recommendation is given only when it is off; when on, an already-enabled-nothing-to-do line is placeholder filler
             if (!facts.SuppressOn)
                 report.Verdicts.Add(new AuditRow
                 {
@@ -170,7 +170,7 @@ namespace PaviseApp
                 });
             }
 
-            // 全绿时明说 空区块会被当成没检查
+            // Say so explicitly when all green; an empty block reads as not checked
             if (report.Verdicts.Count == 0)
                 report.Verdicts.Add(new AuditRow
                 {

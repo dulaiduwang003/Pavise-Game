@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 显存驻留 显存吃紧时给游戏声明一份最低显存预留 退局撤销
+// File purpose VRAM residency, declares a minimum VRAM reservation for the game when VRAM is tight, revoked at match end
 using System;
 using System.Globalization;
 using System.Threading;
@@ -8,44 +8,44 @@ namespace PaviseApp
 {
     internal enum ShieldStage { Idle = 0, Observing = 1, Engaged = 2, Skipped = 3, Fused = 4 }
 
-    // 显存驻留 面向显存预算吃紧时的长帧
-    //   读 D3DKMTQueryVideoMemoryInfo 确认游戏持续贴着预算跑 再用
-    //   D3DKMTChangeVideoMemoryReservation 声明一份保守的最低物理显存需求
-    //   这不是增加显存 也不是把显存锁给游戏 Reservation 只是显存管理器判断
-    //   进程最低工作集的提示 目标是减少纹理被挤出显存再调回造成的长帧
+    // VRAM residency, targets long frames when the VRAM budget is tight
+    //   read D3DKMTQueryVideoMemoryInfo to confirm the game keeps running right at the budget, then use
+    //   D3DKMTChangeVideoMemoryReservation to declare a conservative minimum physical VRAM requirement
+    //   this neither adds VRAM nor locks VRAM to the game, Reservation is only a hint the VRAM manager uses
+    //   to judge the process's minimum working set, goal is fewer long frames from textures being evicted and paged back
     //
-    // 为什么必须回读核实
-    //   ChangeVideoMemoryReservation 的正常用法是进程给自己声明
-    //   跨进程给别人声明 API 形状上支持 但显存管理器采不采纳没有公开说明
-    //   所以写完一定要回读 CurrentReservation 非零才算数 返回码成功不算数
-    //   回读不到就说明这台机器上这条路不通 直接熔断 不再浪费对局
+    // Why the read-back verification is mandatory
+    //   the normal use of ChangeVideoMemoryReservation is a process declaring for itself
+    //   declaring on behalf of another process is supported by the API shape, but whether the VRAM manager honors it is undocumented
+    //   so always read back after writing, only a non-zero CurrentReservation counts, a success return code does not
+    //   if the read-back shows nothing this path is dead on this machine, trip the circuit breaker and stop wasting matches
     //
-    // 边界 全部直接跳过 不猜
-    //   句柄被反作弊拒绝 渲染显卡无法唯一确认 游戏自己已有非零预留
-    //   核显统一内存 预算读不到 可预留额度为零
+    // Edge cases all skip outright, no guessing
+    //   handle refused by anti-cheat, rendering GPU cannot be uniquely identified, game already has a non-zero reservation of its own
+    //   iGPU unified memory, budget unreadable, reservable quota is zero
     internal static class VramShield
     {
         internal const string EnabledKey = "GmVramShield";
         private const string SnapKey = "VramShieldSnap";
         private const string FuseKey = "VramShieldFuse";
 
-        // 判据 都取保守值 宁可不做
-        internal const double EngageUsageShare = 0.90;   // 占用贴到预算九成才算吃紧
-        internal const int EngageSamples = 3;            // 连续三次采样都吃紧才动手
-        internal const double ReserveFactor = 0.80;      // 只声明当前占用的八成 不是全要
+        // Criteria all take conservative values, better to do nothing
+        internal const double EngageUsageShare = 0.90;   // usage must reach 90% of budget to count as tight
+        internal const int EngageSamples = 3;            // three consecutive tight samples before acting
+        internal const double ReserveFactor = 0.80;      // declare only 80% of current usage, not all of it
         internal const int SampleIntervalSeconds = 10;
         internal const int AdapterResolveMs = 400;
 
-        // 查询要 QUERY_INFORMATION 写入要 SET_INFORMATION 本机实测 QUERY_LIMITED 两样都被拒
+        // query needs QUERY_INFORMATION, write needs SET_INFORMATION, QUERY_LIMITED is refused for both on this machine
         internal const int ShieldAccess =
             Native.PROCESS_QUERY_INFORMATION | Native.PROCESS_SET_INFORMATION;
 
-        // 两把锁分工明确 不许颠倒
-        //   opLk 把动作串起来 采样 写入 撤销三者互斥 因为它们共用适配器句柄
-        //     没有它 UI 线程关开关时的撤销会和工作线程正在跑的采样打架
-        //     撤销关掉句柄 而采样手里还攥着同一个句柄的副本 就是 use-after-close
-        //   lk 只保护字段读写 一律短临界区 里面不许做文件或注册表 IO
-        //     Stage 和 Summarize 会被 UI 线程读 持锁做 IO 会把界面拖住
+        // Two locks with a clear division of labor, never invert them
+        //   opLk serializes the actions: sampling, write and revoke are mutually exclusive because they share the adapter handle
+        //     without it the revoke from the UI thread toggling the switch would race the sampling running on the worker thread
+        //     revoke closes the handle while sampling still holds a copy of the same handle, that is use-after-close
+        //   lk only guards field reads/writes, always a short critical section, no file or registry IO inside
+        //     Stage and Summarize are read by the UI thread, doing IO under the lock would stall the UI
         private static readonly object opLk = new object();
         private static readonly object lk = new object();
         private static Action mutationBegin;
@@ -86,9 +86,9 @@ namespace PaviseApp
             if (callback != null) try { callback(); } catch { }
         }
 
-        // 熔断同时记在注册表和 stage 上 只清注册表的话 stage 里那个 Fused 出不来
-        //   DoRelease 特意不动 Fused 免得换局把本机级结论冲掉 所以只能在这里清
-        //   不清就等于日志里那句"关掉开关再打开可重试"是假的 得重启进程才复活
+        // The trip is recorded both in the registry and in stage, clearing only the registry leaves stage stuck at Fused
+        //   DoRelease deliberately leaves Fused alone so a match change does not wipe the machine-level verdict, so this is the only place to clear it
+        //   without clearing, the log line saying toggle the switch off and on to retry is a lie, it would take a process restart to revive
         public static void ClearFuse()
         {
             if (Fused) Settings.Save(FuseKey, false);
@@ -107,10 +107,10 @@ namespace PaviseApp
             }
         }
 
-        // 换局走的是 ReportFinish + ReportBegin 不经过 Deactivate 所以这里必须自己撤干净
-        //   只重置 stage 是不够的 上一局的 shieldPid 和适配器句柄会留下来
-        //   留下来的后果有两个 旧预留一直挂在上一个游戏进程上撤不掉
-        //   以及下一局看到 shieldAdapter 非零直接复用 双显卡机器上会去查错的那块卡
+        // A match change goes through ReportFinish + ReportBegin without Deactivate, so this must clean up fully on its own
+        //   resetting stage alone is not enough, the previous match's shieldPid and adapter handle would linger
+        //   two consequences of lingering: the old reservation stays attached to the previous game process and cannot be revoked
+        //   and the next match sees a non-zero shieldAdapter and reuses it, querying the wrong card on dual-GPU machines
         public static bool Begin()
         {
             lock (opLk)
@@ -123,21 +123,21 @@ namespace PaviseApp
 
         public static void SampleIfDue(bool want, int rendererPid, long rendererCreation)
         {
-            // 上一次还原被拒绝或者没法核实时 不要覆盖那份唯一的原始值
-            // 显式的释放或者重新开始可以重试
+            // When the last restore was refused or could not be verified, do not overwrite that single original value
+            // an explicit release or a fresh begin may retry
             lock (lk) if (recoveryBlocked) return;
             if (!want || rendererPid <= 0) { ReleaseIfAny(Lang.T("t.vramshield.3")); return; }
             bool mismatch;
             lock (lk)
             {
-                // shieldPid 记的是当前适配器句柄和观察计数属于哪个进程 解析出句柄时就写
-                //   不能只在 engage 成功后才认 换渲染进程不一定发生在已挂上的时候
-                //   同一个游戏内部换渲染进程时不会走 Begin 若这里漏判
-                //   旧句柄会被新进程接着用 双显卡机器上就是查错那块卡
+                // shieldPid records which process the current adapter handle and observation count belong to, set as soon as the handle is resolved
+                //   cannot wait until engage succeeds, a renderer process switch does not necessarily happen while engaged
+                //   a renderer process switch inside the same game does not go through Begin, if missed here
+                //   the old handle gets reused by the new process, on dual-GPU machines that means querying the wrong card
                 mismatch = shieldPid != 0
                     && (rendererPid != shieldPid || rendererCreation != shieldCreation);
                 if (stage == ShieldStage.Fused) return;
-                // 跳过是"这个进程本局跳过" 换了进程就该重新判一次
+                // Skipped means this process is skipped for this match, a process change warrants re-evaluation
                 if (stage == ShieldStage.Skipped && !mismatch) return;
                 long now = DateTime.UtcNow.Ticks;
                 if (now < nextSampleTicks) return;
@@ -148,7 +148,7 @@ namespace PaviseApp
                 try
                 {
                     lock (lk) if (recoveryBlocked) return;
-                    // 渲染进程换了 先把旧的撤掉再重新观察
+                    // Renderer process changed, revoke the old one first then observe again
                     if (mismatch && !DoRelease(Lang.T("t.vramshield.1"))) return;
                     Step(rendererPid, rendererCreation);
                 }
@@ -161,7 +161,7 @@ namespace PaviseApp
         private static int resolvedForPid;
         private static long resolvedForCreation;
 
-        // 有现成结果且身份吻合就拿走 没有就排一次后台解析 本轮返回 null
+        // Take the ready result if identity matches, otherwise queue one background resolve and return null this round
         private static RenderAdapter TakeResolvedAdapter(int pid, long creation)
         {
             lock (lk)
@@ -224,11 +224,11 @@ namespace PaviseApp
 
                 if (adapter == 0)
                 {
-                    // 解析要在 PDH 里睡 400ms 不能让扫描主循环线程陪着等 丢给线程池 结果下一轮来取
+                    // Resolving sleeps 400ms inside PDH, the sweep main loop thread must not wait along, hand it to the thread pool and pick up the result next round
                     RenderAdapter ra = TakeResolvedAdapter(pid, creation);
                     if (ra == null)
                     {
-                        // 这一轮没采到 3D 占用或结果还没回来 不是错误 下一轮再看
+                        // No 3D usage sampled this round or result not back yet, not an error, check again next round
                         return;
                     }
                     if (ra.Ambiguous)
@@ -252,10 +252,10 @@ namespace PaviseApp
                 VramStatus st = VidMmProbe.Query(h, adapter, phys);
                 if (!st.Ok || st.Budget == 0)
                 {
-                    // 驱动重置 TDR 之后适配器句柄失效 这不是"本机不采纳" 绝不能熔断
-                    //   已经挂上时必须把状态一并归零 只丢句柄是不够的
-                    //   否则下一轮重开句柄后仍是 Engaged 而 TDR 已经把预留清了
-                    //   就会把一次瞬时驱动重置当成"预留被外力清除"去熔断
+                    // After a driver reset (TDR) the adapter handle is invalid, this is not the machine refusing to honor it, never trip the breaker
+                    //   when already engaged the state must be zeroed along with it, dropping the handle alone is not enough
+                    //   otherwise after reopening the handle next round it is still Engaged while TDR has already cleared the reservation
+                    //   and a momentary driver reset would be taken as the reservation being cleared externally and trip the breaker
                     if (engaged) DoRelease(Lang.T("t.vramshield.5"));
                     else
                     {
@@ -268,7 +268,7 @@ namespace PaviseApp
 
                 if (engaged)
                 {
-                    // 已经挂上 只做存活核实 预留被外力清掉就熔断 不反复重写
+                    // Already engaged, only verify liveness, trip the breaker if the reservation was cleared externally, never rewrite repeatedly
                     if (st.CurrentReservation == 0)
                     {
                         Settings.Save(FuseKey, true);
@@ -311,8 +311,8 @@ namespace PaviseApp
                 BeginMutation();
                 try
                 {
-                    // 写预留和进程压制台账一样 需要一条已确认且不覆盖旧值的
-                    // 恢复记录
+                    // Writing the reservation, like the process suppression ledger, needs one confirmed
+                    // Restore record
                     string snapshot = pid.ToString(CultureInfo.InvariantCulture)
                         + ":" + creation.ToString(CultureInfo.InvariantCulture);
                     if (Settings.LoadStr(SnapKey, "").Length != 0)
@@ -323,13 +323,13 @@ namespace PaviseApp
                     if (!Settings.SaveStr(SnapKey, snapshot) || Settings.LoadStr(SnapKey, "") != snapshot) return;
                     VidMmProbe.SetReservation(h, adapter, phys, target);
 
-                    // 返回码不作数 回读 CurrentReservation 才作数
+                    // return code does not count, only the read-back CurrentReservation counts
                     after = VidMmProbe.Query(h, adapter, phys);
                     if (!after.Ok || after.CurrentReservation == 0)
                     {
                         Settings.Save(FuseKey, true);
-                        // 此刻仍是 Observing 但写入可能已经生效
-                        // DoRelease 依据快照撤销 未确认还原时保留记录
+                        // still Observing at this point, but the write may already have taken effect
+                        // DoRelease revokes based on the snapshot, keeps the record when the restore is unconfirmed
                         DoRelease(Lang.T("t.vramshield.2"));
                         lock (lk) stage = ShieldStage.Fused;
                         Logger.Log(Lang.T("log.vramshield.8"));
@@ -354,7 +354,7 @@ namespace PaviseApp
             finally { Native.CloseHandle(h); }
         }
 
-        // 跳过之后本局不会再进 Step 适配器句柄留着没有意义 顺手关掉
+        // After a skip Step is not entered again this match, keeping the adapter handle is pointless, close it while here
         private static void SkipOnce(string why)
         {
             bool first;
@@ -375,8 +375,8 @@ namespace PaviseApp
             lock (opLk) return DoRelease(Lang.T("t.vramshield.3"));
         }
 
-        // 无事可做时一个字节都不碰 这个函数在对局中每秒被调一次
-        //   功能默认关闭 若不先快速判空 就是每秒白读一次注册表
+        // Touch nothing when there is nothing to do, this function is called once per second during a match
+        //   the feature is off by default, without a fast empty check it is a wasted registry read every second
         private static bool ReleaseIfAny(string reason)
         {
             lock (lk)
@@ -386,7 +386,7 @@ namespace PaviseApp
             lock (opLk) return DoRelease(reason);
         }
 
-        // 必须在 opLk 内调用 IO 一律放在 lk 之外
+        // Must be called under opLk, IO always stays outside lk
         private static bool DoRelease(string reason)
         {
             int pid;
@@ -427,16 +427,16 @@ namespace PaviseApp
                 if (!restored)
                 {
                     lock (lk) recoveryBlocked = true;
-                    // 正常情况下记录已经存在 万一被外部写入者意外删掉
-                    // 内存里也留一份原始值
+                    // Normally the record already exists, in case an external writer deleted it by accident
+                    // keep a copy of the original value in memory too
                     if (snapshot.Length == 0 && pid > 0 && creation > 0)
                         Settings.SaveStr(SnapKey, pid.ToString(CultureInfo.InvariantCulture)
                             + ":" + creation.ToString(CultureInfo.InvariantCulture));
                     return false;
                 }
             }
-            // 快照被改过或者写不进去 不等于可以清掉一个新的恢复目标
-            // 把它留在明面上 交给最终的重置核实
+            // A modified or unwritable snapshot does not mean a new restore target may be cleared
+            // leave it in plain sight for the final reset verification
             if (Settings.LoadStr(SnapKey, "") != snapshot
                 || snapshot.Length != 0 && (!Settings.SaveStr(SnapKey, "") || Settings.LoadStr(SnapKey, "").Length != 0))
             {
@@ -458,8 +458,8 @@ namespace PaviseApp
             return true;
         }
 
-        // Pavise 异常退出时预留还挂在游戏进程上 下次启动补撤
-        //   预留随进程退出自然消失 所以只有游戏仍在跑且身份吻合才需要动手
+        // If Pavise exits abnormally the reservation stays attached to the game process, revoke it on next launch
+        //   the reservation vanishes with process exit, so action is only needed if the game is still running and identity matches
         public static bool HealFromCrash()
         {
             lock (opLk) return DoRelease(Lang.T("t.vramshield.3"));
@@ -507,9 +507,9 @@ namespace PaviseApp
                 long cr, cpu; ulong io;
                 if (!Native.QueryProcessSample(h, out cr, out cpu, out io)) return false;
                 if (cr != creation) return true;
-                // 老格式的快照里没有适配器身份 崩溃之后
-                // 今天最忙的那块显卡 证明不了当初预留的是哪一块
-                // 记录留着等那个进程退出 别去猜
+                // Old-format snapshots carry no adapter identity, after a crash
+                // today's busiest GPU proves nothing about which card the reservation was placed on
+                // keep the record until that process exits, do not guess
                 if (adapter == 0) return false;
                 VramStatus before = VidMmProbe.Query(h, adapter, phys);
                 if (before == null || !before.Ok) return false;

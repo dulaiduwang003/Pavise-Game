@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 通用 WeGame 脱壳接进扩展模块槽 经 WeGame 启动的非英雄联盟游戏在卡片下方挂脱壳区
+// File purpose Generic WeGame shell removal plugged into the extension module slot, non-League of Legends games launched via WeGame get a shell removal area under the card
 using System;
 using System.Collections.Generic;
 
@@ -27,7 +27,7 @@ namespace PaviseApp
             }
         }
 
-        // 英雄联盟有自己的模块 这里只认其余带 WeGame 启动链标记的目录
+        // League of Legends has its own module, this only accepts other directories carrying the WeGame launch chain marker
         internal static bool AppliesToProfile(GameProfile profile, out string gameRoot)
         {
             gameRoot = null;
@@ -61,7 +61,7 @@ namespace PaviseApp
 
         public override void NotifySession(GameProfile profile, int rendererPid, long rendererCreation, bool active)
         {
-            // 没有对局且服务还没建 不为了发一条"没对局"把服务建起来
+            // No match and the service is not built yet, do not build the service just to deliver a no-match notice
             if (!active)
             {
                 WeGameShellService current;

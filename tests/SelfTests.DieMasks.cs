@@ -1,9 +1,9 @@
-// 文件用途 CCD 分组来源回归 纯判定 只注入拓扑快照 不读真实硬件
-//   界面的 CCD 分带与快捷键都取 CpuTopology.DieMasks()
-//   Windows 基本不报 RelationProcessorDie 实测两台机器都是 0 条：
+// File purpose CCD grouping source regression, pure decisions, only injects topology snapshots, no real hardware reads
+//   The UI's CCD bands and shortcuts both come from CpuTopology.DieMasks()
+//   Windows basically never reports RelationProcessorDie, both measured machines returned 0 entries
 //     Win10 19045 / i9-13900K   cores=24 dies=0 L3groups=1
-//     Win11 26200 / Ryzen 9 8940HX cores=16 dies=0 L3groups=2（两块 32MiB）
-//   所以 die 不足两块时要回落到 L3 分组 否则 AMD 双 CCD 上一个分带都画不出来
+//     Win11 26200 / Ryzen 9 8940HX cores=16 dies=0 L3groups=2 two 32MiB blocks
+//   So with fewer than two dies fall back to L3 grouping, otherwise no band is drawn at all on dual-CCD AMD
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -48,7 +48,7 @@ namespace PaviseApp
             return cores.ToArray();
         }
 
-        // 8940HX 的真实形状 32 个逻辑核 两块等容量 L3 各占一半 没有 die 记录
+        // The real shape of the 8940HX: 32 logical cores, two equal-size L3 blocks each holding half, no die records
         private static void DieMasksFallBackToL3WhenWindowsReportsNoDie()
         {
             const ulong all = 0xFFFFFFFFUL;
@@ -61,7 +61,7 @@ namespace PaviseApp
             Eq(0xFFFF0000UL, dies[1]);
         }
 
-        // 真报了 die 就用 die 别被 L3 顶掉 多 die 且每 die 多块 L3 的机器按 die 分带才对
+        // When dies are really reported use them, do not let L3 override; machines with multiple dies and multiple L3 blocks per die must band by die
         private static void DieMasksPreferRealDiesWhenReported()
         {
             const ulong all = 0xFFFFFFFFUL;
@@ -74,7 +74,7 @@ namespace PaviseApp
             Eq(0x0000FFFFUL, dies[0]);
         }
 
-        // Intel 消费级整颗共享一块 L3 回落之后仍是空 不能凭空多出分带
+        // Consumer Intel shares one L3 across the whole chip, still empty after the fallback, no band may appear out of nowhere
         private static void DieMasksStayEmptyOnSingleL3()
         {
             const ulong all = 0xFFFFFFFFUL;
@@ -82,13 +82,13 @@ namespace PaviseApp
                 0, 0, 0, 0, false, false);
             CpuTopology.InjectCacheDomainsForTest(L3(0xFFFFFFFFUL));
             Eq(0, CpuTopology.DieMasks().Length);
-            // 一条都没有的机器同样是空
+            // A machine with no entries at all is empty too
             CpuTopology.InjectCacheDomainsForTest(L3());
             Eq(0, CpuTopology.DieMasks().Length);
         }
 
-        // 枚举顺序不保证稳定 CCD 0 必须永远是编号最小的那组 否则按钮编号会跨次启动对调
-        //   掩码还要先与 AllMask 求交 越界位和重复项都不能进
+        // Enumeration order is not stable, CCD 0 must always be the lowest-numbered group or button numbers swap across launches
+        //   Masks are also intersected with AllMask first, out-of-range bits and duplicates must not get in
         private static void DieMasksAreSortedAndDeduplicated()
         {
             const ulong all = 0x0000FFFFUL;
@@ -97,7 +97,7 @@ namespace PaviseApp
             CpuTopology.InjectCacheDomainsForTest(L3(0xFF00UL, 0x00FFUL, 0xFF00UL,
                 0xFFFF0000UL));
             ulong[] dies = CpuTopology.DieMasks();
-            // 高位那组整个落在 AllMask 之外 求交后为零被丢掉 重复的 0xFF00 只留一份
+            // The high group lies entirely outside AllMask, intersects to zero and is dropped; the duplicate 0xFF00 is kept once
             Eq(2, dies.Length);
             Eq(0x00FFUL, dies[0]);
             Eq(0xFF00UL, dies[1]);

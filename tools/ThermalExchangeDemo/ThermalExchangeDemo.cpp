@@ -1,5 +1,5 @@
-// 文件用途 Pavise Thermal Exchange 演示 CPU 和 GPU 共享热预算的进程外实验
-// 不打开游戏进程 不注入 不装驱动 不改 GPU 状态
+// File purpose Pavise Thermal Exchange demo, out-of-process experiment on CPU and GPU sharing a thermal budget
+// Never opens game processes, no injection, no driver install, no GPU state changes
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -244,7 +244,7 @@ public:
         DWORD rc = WritePair(kProcessorMax, percent);
         if (rc != ERROR_SUCCESS) return Fail(error, L"write CPU maximum", rc);
 
-        // 混合架构会多暴露一个最高性能设置 缺了也没关系
+        // Hybrid parts expose an extra processor maximum setting, fine if it is missing
         WritePair(kProcessorMaxClass1, percent);
         rc = PowerSetActiveScheme(nullptr, &temporary_);
         if (rc != ERROR_SUCCESS) return Fail(error, L"apply CPU maximum", rc);

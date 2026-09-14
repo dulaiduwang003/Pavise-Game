@@ -63,7 +63,7 @@ namespace PaviseApp
                             int mine = RuntimeYieldWorker(RuntimeYieldState(phase));
                             bool environment = reason != 2;
                             PowerBudgetYieldRunner.RuntimeEnvironmentForTest = delegate { return environment; };
-                            // All four paths fail before Start can create any real sampling worker.
+                            // All four paths fail before Start can create any real sampling worker
                             PowerBudgetYieldRunner.Start(reason != 0, reason != 1, 123, 456,
                                 delegate { return reason != 3; });
                             Eq(YieldStage.Idle, PowerBudgetYieldRunner.Stage);
@@ -179,8 +179,8 @@ namespace PaviseApp
                 Eq(false, admission());
                 admission = (Func<bool>)BoundaryCall(mode, "CapturePowerYieldAdmission", 123, 456L);
                 Settings.Save(PolicyCatalog.KeyPowerYield, true); Eq(false, admission());
-                // 逐游戏的关压过全局的开 极限档下架后没有任何档位能翻过逐游戏覆盖
-                //   换到电竞档也照旧是关 只有把覆盖本身改成开才放行
+                // Per-game off overrides global on, with Extreme retired no tier can flip a per-game override
+                //   switching to Esports keeps it off, only changing the override itself to on lets it through
                 profile.Overrides[PolicyCatalog.KeyPreset] = ((int)PerformancePreset.Competitive).ToString();
                 mode.ProbeSessionPolicyApply(profile);
                 admission = (Func<bool>)BoundaryCall(mode, "CapturePowerYieldAdmission", 123, 456L);
@@ -214,8 +214,8 @@ namespace PaviseApp
                         for (int second = 2; second < 20; second += 2)
                             state.Advance(second * TimeSpan.TicksPerSecond, 98, 40, 45, 150);
                         int mine = RuntimeYieldWorker(state);
-                        // Same PID: an override generation invalidated the previous closure.
-                        // Retarget: the old closure itself still returns true; the target change must revoke it.
+                        // Same PID an override generation invalidated the previous closure
+                        // Retarget the old closure itself still returns true the target change must revoke it
                         PowerBudgetYieldRunner.SetRuntimeAdmissionForTest(mine, delegate { return retarget; }, 123, 456);
                         int nextCalls = 0;
                         Func<bool> nextAdmission = delegate
@@ -223,7 +223,7 @@ namespace PaviseApp
                             if (Interlocked.Increment(ref nextCalls) != 1) return true;
                             nextChecked.Set();
                             if (!releaseNext.WaitOne(3000)) throw new TimeoutException("replacement admission held");
-                            // End the fake Start without ever creating a real sampling worker.
+                            // End the fake Start without ever creating a real sampling worker
                             return false;
                         };
                         starter = new Thread(delegate()

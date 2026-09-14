@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 保存并恢复游戏提优留下的可查询进程状态
+// File purpose Saves and restores the queryable process state left by game boost
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -70,8 +70,8 @@ namespace PaviseApp
                 cpuSets, qosControl, qosState, out ignored);
         }
 
-        // 提优之前先把原值记进注册表 崩溃后下次启动照着还原
-        //   pid 会被系统回收 所以身份一律是 pid 加创建时间戳两件套
+        // Record the original values in the registry before boosting, so the next launch after a crash can restore from them
+        //   The system recycles pids, so identity is always the pid plus creation timestamp pair
         internal static bool MarkBoostProcess(int pid, long creation, string name,
             uint priority, ulong affinity, int io, int page, int gpu, uint[] cpuSets,
             int qosControl, int qosState, out OriginalBoostState recovered)
@@ -81,14 +81,14 @@ namespace PaviseApp
             lock (sync)
             {
                 List<BoostEntry> entries = LoadEntries();
-                // 同一个进程被提优第二次时 台账里已有的那份才是真原值
-                //   这里把旧值原样交回去 绝不能拿当前这份已经被提过优的值覆盖
-                //   否则还原会把进程留在提优状态上
+                // When the same process is boosted a second time, the copy already in the ledger is the real original
+                //   Hand the old values back as-is; never overwrite them with the current, already-boosted values,
+                //   otherwise restore would leave the process in the boosted state
                 foreach (BoostEntry old in entries)
                     if (old.Pid == pid && old.Creation == creation)
                     {
-                        // pid 和创建时间都对上 名字却不一样 说明台账已经不可信
-                        //   拒绝认领 让这条记录留着 交给启动时的还原流程处理
+                        // pid and creation time match but the name differs, so the ledger can no longer be trusted
+                        //   Refuse to claim it; leave the record for the startup restore flow to handle
                         if (!string.Equals(
                                 old.Name, name,
                                 StringComparison.OrdinalIgnoreCase))
@@ -110,7 +110,7 @@ namespace PaviseApp
                         };
                         return true;
                     }
-                // 同 pid 但创建时间不同的旧条目是 pid 回收留下的残渣 直接丢掉
+                // Old entries with the same pid but a different creation time are leftovers from pid recycling; drop them
                 entries.RemoveAll(e => e.Pid == pid);
                 entries.Add(new BoostEntry
                 {
@@ -119,8 +119,8 @@ namespace PaviseApp
                     QoSControl = qosControl, QoSState = qosState
                 });
                 bool saved = SaveEntries(entries);
-                // 台账真的落盘了才认所有权 写失败就当没提过优
-                //   宁可少还原一次 也不能让内存说有账而磁盘上没有
+                // Ownership is only claimed once the ledger actually hits disk; a failed write counts as never boosted
+                //   Better to restore one time too few than to have memory claim a record that is not on disk
                 if (saved) owned[pid] = creation; else owned.Remove(pid);
                 return saved;
             }
@@ -132,7 +132,7 @@ namespace PaviseApp
             {
                 long mine;
                 if (!owned.TryGetValue(pid, out mine)) return;
-                // 创建时间对不上说明这个 pid 已经换了主人 别去释放别人的记录
+                // A creation time mismatch means this pid has changed owner; do not release someone else's record
                 if (creation > 0 && mine != creation) return;
                 owned.Remove(pid);
                 List<BoostEntry> entries = LoadEntries();
@@ -154,8 +154,8 @@ namespace PaviseApp
 
         public static bool UncleanThrottleAtLaunch { get; private set; }
 
-        // 上次异常退出遗留的提优在这里收回 三种身份判定各走各的路
-        //   对不上就丢弃 拿不准就留着下次再试 对得上才真还原
+        // Boosts left behind by the last abnormal exit are reclaimed here; the three identity verdicts each take their own path
+        //   Mismatch: discard; uncertain: keep and retry next time; match: actually restore
         public static void HealFromCrash()
         {
             UncleanThrottleAtLaunch |= Settings.LoadStr(KThrottle, "").Length > 0;
@@ -179,7 +179,7 @@ namespace PaviseApp
                         }
                         finally { Native.CloseHandle(query); }
                     }
-                    // 打不开且不是进程已消失 那多半是权限问题 记录留着别删
+                    // Cannot open and it is not a vanished process, so most likely a permission issue; keep the record
                     else if (!Native.LastOpenProcessFailureWasNoSuchProcess())
                     {
                         keep.Add(entry);
@@ -191,7 +191,7 @@ namespace PaviseApp
                 {
                     BoostIdentity identity = Identify(h, entry);
                     if (identity == BoostIdentity.Mismatch) continue;
-                    // 身份查不出来不等于身份不对 留着等下次启动 不还原也不丢弃
+                    // Identity unresolvable is not identity mismatch; keep it for the next launch, neither restore nor discard
                     if (identity == BoostIdentity.Unknown)
                     {
                         keep.Add(entry);
@@ -209,7 +209,7 @@ namespace PaviseApp
                 finally { Native.CloseHandle(h); }
             }
 
-            // keep 里是这轮没还原成的欠账 原样写回去 下次启动接着试
+            // keep holds the debts not restored this pass; write them back as-is and retry on the next launch
             lock (sync) SaveEntries(keep);
             Settings.SaveStr(KThrottle, "");
             Settings.SaveStr(KBoost, "");

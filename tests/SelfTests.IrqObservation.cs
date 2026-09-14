@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 系统级中断观测和已证明游戏核归因的边界回归 全是合成数据 不起 ETW
+// File purpose Boundary regression for system-level interrupt observation and proven game-core attribution, all synthetic data, no ETW
 using System;
 using System.Collections.Generic;
 
@@ -16,7 +16,7 @@ namespace PaviseApp
 
         private static void TestIrqObservationRawRecordsStayVisible()
         {
-            // 新的系统观测拿 0 表示游戏核未知 旧的全核记录也只能展示 不能提挪核建议
+            // New system observation uses 0 for unknown game cores, old all-core records are display-only too, no IRQ core move advice
             foreach (ulong observedMask in new ulong[] { 0UL, 0xFFFFUL })
             {
                 var records = new List<IrqSessionRecord>();
@@ -53,7 +53,7 @@ namespace PaviseApp
 
         private static void TestIrqObservationCannotSupplyMissingScopedSession()
         {
-            // 手上只有两局严格证据 全系统慢 DPC 再多也凑不出三局游戏核冲突
+            // Only two matches of strict evidence in hand, no amount of system-wide slow DPC adds up to three matches of game-core conflict
             var records = new List<IrqSessionRecord>();
             for (int i = 0; i < 2; i++)
                 records.Add(SessionWithMask(300, 0xFFUL,
@@ -92,7 +92,7 @@ namespace PaviseApp
             Eq(true, baseline[0].Worth);
             Eq(true, baseline[0].StructuralConflict);
 
-            // 系统记录可以进展示窗口 但它那些长时长 慢尖峰和更多 CPU 不许污染归因统计
+            // System records may enter the display window, but their long durations, slow spikes, and extra CPUs must not pollute attribution stats
             var mixed = new List<IrqSessionRecord>(scoped);
             foreach (ulong observedMask in new ulong[] { 0UL, 0xFFFFUL })
                 mixed.Add(SessionWithMask(3600, observedMask,
@@ -171,7 +171,7 @@ namespace PaviseApp
             public bool DpcTimelineTruncated { get { return TimelineRequested && Truncated; } }
         }
 
-        private sealed class ObservationTestPlatform : IIrqSessionPlatform
+        private sealed class ObservationTestPlatform : IIrqSessionPlatform, IIrqDeviceSnapshotPlatform
         {
             internal bool EnabledValue = true;
             internal bool ElevatedValue = true;
@@ -189,6 +189,9 @@ namespace PaviseApp
             public long UtcTicks { get { return Now; } }
             public string BootStamp { get { return "test-boot"; } }
             public string TopologyStamp { get { return "test-topology"; } }
+            internal Func<Dictionary<string,string>> DeviceSnapshot;
+            public Dictionary<string,string> DeviceConfigurations()
+            { return DeviceSnapshot == null ? new Dictionary<string,string>() : DeviceSnapshot(); }
             internal Func<ICoreLoadSource> CoreLoadFactory;
             public ICoreLoadSource OpenCoreLoadSource() { return CoreLoadFactory == null ? null : CoreLoadFactory(); }
             public IIrqSessionCapture CreateCapture(bool captureTimeline)
@@ -252,7 +255,7 @@ namespace PaviseApp
                     Eq(0, platform.Captures.Count);
                 }
 
-                // 新局不继承上一局的等待次数 重新给一次完整的初始化机会
+                // A new match doesn't inherit the previous match's wait count, it gets a full fresh initialization chance
                 probe.Arm("new match", ObservationSystemMask);
                 for (int i = 1; i < IrqSessionProbe.PlacementInitializationScans; i++)
                     Eq(false, probe.TryFallbackToSystemObservation("new match", ObservationSystemMask));
@@ -264,7 +267,7 @@ namespace PaviseApp
                 Eq(true, probe.CanObserveSystemNow);
                 Eq(0, platform.Captures.Count);
 
-                // 降级只是换证据级别 照样要真实 renderer 身份确认过才开始采
+                // Downgrading only changes the evidence level, sampling still needs the real renderer identity confirmed first
                 Eq(false, probe.ConfirmGameMask(ObservationStrictMask,
                     ObservationRendererPid, ObservationRendererCreation));
                 Eq(true, probe.ConfirmSystemObservation(
@@ -290,7 +293,7 @@ namespace PaviseApp
             using (var probe = new IrqSessionProbe(platform))
             {
                 probe.Arm("strict proof available", ObservationSystemMask);
-                // 每次成功起采都把等待计数清零 短暂重布防几次不能攒成超时降级
+                // Every successful capture start resets the wait counter, a few brief re-arms must not accumulate into a timeout downgrade
                 for (int restart = 0; restart < 4; restart++)
                 {
                     for (int scan = 1; scan < IrqSessionProbe.PlacementInitializationScans; scan++)
@@ -340,7 +343,7 @@ namespace PaviseApp
                 Eq(1, platform.Captures[0].StopCalls);
                 Eq(0, platform.AppendCalls);
                 long discardedEpoch = probe.CaptureEpoch;
-                // 已经知道严格证据失效就不用再等三轮 旧的 61 秒和逐事件时间线不能补写成系统记录
+                // Once strict evidence is known invalid there's no waiting three more rounds, the old 61 seconds and per-event timeline can't be rewritten as a system record
                 Eq(true, probe.TryFallbackToSystemObservation("proof later unavailable", ObservationSystemMask));
                 Eq(true, probe.CaptureEpoch > discardedEpoch);
                 Eq(true, probe.ConfirmSystemObservation(
@@ -415,8 +418,8 @@ namespace PaviseApp
                 AdvanceIrqObservation(platform, probe, 5, true);
                 platform.Captures[0].OnStop = delegate
                 {
-                    // 模拟 Stop 还没返回 异步调优就把旧 epoch 弄失效了
-                    // 这时候虽然回到 waiting 也不能再起第二个系统采集器
+                    // Simulate async tuning invalidating the old epoch before Stop has returned
+                    // Even back in waiting, a second system collector must not start
                     probe.BeginExternalMutation();
                     probe.EndExternalMutation();
                     for (int i = 0; i < 6; i++)
@@ -459,7 +462,7 @@ namespace PaviseApp
                 Eq(false, probe.IsSystemObservation);
                 Eq(1, platform.Captures.Count);
                 probe.EndExternalMutation();
-                // 写区里的扫描不吃配额 最外层写区结束之后还得连续三轮没起采才降级
+                // Scans inside a mutation region don't consume quota, after the outermost region ends it still takes three consecutive rounds without capture to downgrade
                 for (int i = 1; i < IrqSessionProbe.PlacementInitializationScans; i++)
                     Eq(false, probe.TryFallbackToSystemObservation("nested strict mutation", ObservationSystemMask));
                 Eq(true, probe.TryFallbackToSystemObservation("nested strict mutation", ObservationSystemMask));
@@ -516,7 +519,7 @@ namespace PaviseApp
                     Eq(1234000L, record.Drivers[0].DpcMaxNs);
                     Eq(2L, record.Drivers[0].Over500Us);
                     Eq(1L, record.Drivers[0].Over1Ms);
-                    // 存下真实短局不代表归因门槛可以放松 更不能给它补成 60 秒
+                    // Storing a real short match doesn't relax the attribution threshold, let alone padding it to 60 seconds
                     Eq(IrqSessionExclusion.TooShort,
                         record.VerdictExclusion(platform.BootStamp, platform.TopologyStamp));
                     Eq(summary, GameMode.FormatIrqSessionResult(summary, true, "must not replace measurements"));
@@ -577,13 +580,13 @@ namespace PaviseApp
                 Eq(false, string.IsNullOrEmpty(status));
                 string rendered = GameMode.FormatIrqSessionResult(summary, true, status);
                 Eq(Lang.F("rep.irq.result", status), rendered);
-                // 不能只吐一个缺失的本地化 key 更不能把默认 fake 指标包装成成功摘要
+                // Must not just emit a missing localization key, let alone wrap the default fake metrics as a success summary
                 Eq(true, rendered.IndexOf(status, StringComparison.Ordinal) >= 0);
                 Eq(false, rendered.IndexOf("observation.sys", StringComparison.OrdinalIgnoreCase) >= 0);
                 Eq("", GameMode.FormatIrqSessionResult(summary, false, status));
 
-                // invalidated 属于允许转系统的那种证明失败
-                // 其余终止状态都不能靠 fallback 每轮重新去要 ETW 权限不足 已占用 丢事件 保存失败都算
+                // invalidated is the kind of proof failure that allows switching to system
+                // Every other terminal state must not re-request ETW via fallback each round: insufficient permission, already in use, lost events, save failure all count
                 if (failure != 8)
                 {
                     int captures = platform.Captures.Count;
@@ -650,7 +653,7 @@ namespace PaviseApp
         private static void AdvanceIrqObservation(ObservationTestPlatform platform,
             IrqSessionProbe probe, int seconds, bool strict)
         {
-            // 虚拟时钟续证 不等真实时间 也不枚举线程和读真实进程
+            // Virtual clock re-proof, no waiting on real time, no thread enumeration or real process reads
             for (int i = 0; i < seconds; i++)
             {
                 platform.Now += TimeSpan.TicksPerSecond;
@@ -789,7 +792,7 @@ namespace PaviseApp
             var platform = new ObservationTestPlatform();
             using (var probe = new IrqSessionProbe(platform))
             {
-                // 系统记录描述的是整段对局期间的中断 不能把正常后台和调优活动伪装成归因证据
+                // System records describe interrupts across the whole match, normal background and tuning activity must not be disguised as attribution evidence
                 StartIrqObservation(platform, probe, "system activity stays in observation");
                 AdvanceIrqObservation(platform, probe, 10, false);
                 probe.BeginExternalMutation();
@@ -813,7 +816,7 @@ namespace PaviseApp
             var strictPlatform = new ObservationTestPlatform();
             using (var probe = new IrqSessionProbe(strictPlatform))
             {
-                // 严格落核归因不能跨过 Pavise 自己的 setter 嵌套写区没结束也不能起采
+                // Strict core placement attribution can't cross Pavise's own setter, no capture while a nested mutation region is open
                 probe.Arm("strict mutation boundary", ObservationSystemMask);
                 Eq(true, probe.ConfirmGameMask(ObservationStrictMask,
                     ObservationRendererPid, ObservationRendererCreation));
@@ -881,7 +884,7 @@ namespace PaviseApp
                 Eq(true, platform.Captures[0].TimelineRequested);
                 AdvanceIrqObservation(platform, probe, 62, true);
 
-                // 等级一变就得明确重新布防 旧的严格片段不能混进系统观测记录
+                // A level change requires an explicit re-arm, old strict fragments must not mix into system observation records
                 StartIrqObservation(platform, probe, "system source");
                 AdvanceIrqObservation(platform, probe, 63, false);
                 probe.TakeSummary();
@@ -943,7 +946,7 @@ namespace PaviseApp
                     if (failure < 3 && timeline != null) Eq(true, truncated);
                 }
             }
-            // 逐事件时间线到容量上限 不代表聚合结果丢了事件 原始统计照样能存
+            // A per-event timeline hitting its capacity cap doesn't mean the aggregate lost events, raw stats still get stored
             var cappedTimeline = new ObservationTestPlatform();
             cappedTimeline.Queued.Enqueue(new ObservationTestCapture { Truncated = true });
             using (var probe = new IrqSessionProbe(cappedTimeline))

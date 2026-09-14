@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 设置页窗口外观组合面板里的背景封面实时预览
+// File purpose Live backdrop preview inside the window appearance group on the Settings page
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
@@ -21,7 +21,7 @@ namespace PaviseApp
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
-            // 切角落在卡片上 那几块得跟卡面同款 封面开着时卡片是半透明的 糊一块实色会显出四个角
+            // Chamfers land on the card and must match the card face, with the backdrop on the card is translucent and a solid patch would show four corners
             if (Backdrop.AppliesTo(this)) Backdrop.PaintOnCard(g, this, ClientRectangle);
             else using (var bg = new SolidBrush(BackColor)) g.FillRectangle(bg, ClientRectangle);
             g.SmoothingMode = SmoothingMode.AntiAlias;

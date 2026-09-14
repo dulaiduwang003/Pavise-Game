@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 纯用户态读 CPU 功耗 走 Windows 能量计量接口 EMI 不需要内核驱动
+// File purpose Pure user-mode CPU power reading via the Windows Energy Metering Interface (EMI), no kernel driver needed
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -9,12 +9,12 @@ namespace PaviseApp
 {
     internal enum EnergyRail { Package = 0, Dram = 1, Cores = 2, Uncore = 3 }
 
-    // 微软的 PPM 驱动会把 Intel RAPL 暴露成 EMI 通道 于是不装内核驱动也能读到瓦数
-    //   本机实测通道名 dRAPL_Package0_PKG / _DRAM / _PP0 / _PP1
-    //   PKG 45.35W PP0 38.64W DRAM 3.23W PP1 1.38W 三个子域相加不超过 PKG 自洽
-    // 这条路要 OEM 或平台驱动确实发布了通道 不是每台机器都有 没有就老实报不支持
-    //   RAPL 的 MSR 路要 msr.sys 越不过内核边界 PDH 的 Power Meter 面向整机且推导方式未规定
-    //   都不能替代 所以探不到 EMI 就没有别的用户态办法 不要用别的数据硬凑瓦数
+    // Microsoft's PPM driver exposes Intel RAPL as EMI channels, so wattage is readable without installing a kernel driver
+    //   channel names measured on this machine dRAPL_Package0_PKG / _DRAM / _PP0 / _PP1
+    //   PKG 45.35W PP0 38.64W DRAM 3.23W PP1 1.38W, the three sub-domains sum to no more than PKG, self-consistent
+    // This path needs the OEM or platform driver to actually publish channels, not every machine has them, report unsupported honestly when absent
+    //   the RAPL MSR path needs msr.sys and cannot cross the kernel boundary, PDH's Power Meter is machine-wide with an unspecified derivation
+    //   neither can substitute, so without EMI there is no other user-mode way, do not fake wattage from other data
     internal static class EnergyMeter
     {
         private static readonly Guid DeviceEnergyMeter =
@@ -24,16 +24,16 @@ namespace PaviseApp
         private const uint GenericRead = 0x80000000;
         private const uint ShareReadWrite = 3, OpenExisting = 3;
 
-        // CTL_CODE 参数依次是 FILE_DEVICE_UNKNOWN=0x22 功能号 METHOD_BUFFERED=0 FILE_READ_ACCESS=1
+        // CTL_CODE arguments in order: FILE_DEVICE_UNKNOWN=0x22, function number, METHOD_BUFFERED=0, FILE_READ_ACCESS=1
         private const uint IoctlVersion = 0x224000;
         private const uint IoctlMetadataSize = 0x224004;
         private const uint IoctlMetadata = 0x224008;
         private const uint IoctlMeasurement = 0x22400C;
 
-        // EMI_CHANNEL_MEASUREMENT_DATA 是 8 字节累计能量 pWh 加 8 字节绝对时间 100ns
+        // EMI_CHANNEL_MEASUREMENT_DATA is 8 bytes of accumulated energy in pWh plus 8 bytes of absolute time in 100ns
         internal const int ChannelStride = 16;
 
-        // 瓦 = pWh 换 J 乘 3.6e-9 再除以 100ns 换秒的 1e-7 合起来就是 0.036
+        // Watts = pWh to J times 3.6e-9, divided by 100ns to seconds 1e-7, combined that is 0.036
         internal const double PicoWattHoursPerHundredNsToWatts = 0.036;
 
         [StructLayout(LayoutKind.Sequential)]
@@ -71,10 +71,10 @@ namespace PaviseApp
         private static string devicePath;
         private static bool unreadable;
         private static string[] channelNames = new string[0];
-        // 设备上报的全部名字 认不认得出都留着
-        //   通道命名是各家自己定的 这套后缀是照 Intel 的 dRAPL_Package0_PKG 写的
-        //   AMD 或别家换个叫法就会全部落到 -1 明明能读却被判成读不到
-        //   把原始名字留下来并写进日志 拿到真机名字再补进 ClassifyRail 比在这里猜强
+        // All names reported by the device, kept whether recognized or not
+        //   channel naming is vendor-specific, this suffix set was written after Intel's dRAPL_Package0_PKG
+        //   AMD or another vendor with different naming would all land on -1, readable yet judged unreadable
+        //   keep the raw names and log them, adding real-machine names to ClassifyRail later beats guessing here
         private static string[] rawChannelNames = new string[0];
         private static int[] railIndex = new int[4] { -1, -1, -1, -1 };
 
@@ -85,7 +85,7 @@ namespace PaviseApp
                 lock (sync)
                 {
                     EnsureProbedLocked();
-                    // 功耗让路验证的是封装瓦数 只有单核通道等于验不了 不算可用
+                    // Power yield verifies package wattage, having only per-core channels means it cannot verify, not counted as usable
                     return devicePath != null && !unreadable
                         && railIndex[(int)EnergyRail.Package] >= 0;
                 }
@@ -106,17 +106,17 @@ namespace PaviseApp
             lock (sync) { EnsureProbedLocked(); return railIndex[(int)rail] >= 0; }
         }
 
-        // 认通道名 EMI 本身不规定含义 Intel RAPL 的域名才是判据
-        //   PKG 封装总 PP0 核心 PP1 核显 DRAM 内存 名字大小写和前缀各家不同 只看结尾的域
-        //   按包含匹配而不是后缀 通道命名各家不同 只认后缀会把换了叫法的平台整个漏掉
-        //   顺序必须先具体后笼统 dRAPL_Package0_DRAM 同时含 PACKAGE 和 DRAM 先判 DRAM 才对
-        //   宁可漏认也不许错认 认错轨等于读了别的东西的瓦数 后面的判定全建在错数上
+        // Recognize channel names, EMI itself defines no semantics, Intel RAPL domain names are the criteria
+        //   PKG package total, PP0 cores, PP1 iGPU, DRAM memory, case and prefix differ per vendor, only the trailing domain matters
+        //   match by containment rather than suffix, channel naming differs per vendor, suffix-only would miss a whole platform with different naming
+        //   order must go specific before general, dRAPL_Package0_DRAM contains both PACKAGE and DRAM, DRAM must be tested first
+        //   better to miss than to misidentify, the wrong rail means reading something else's wattage and every later decision builds on bad numbers
         private static bool Has(string n, string token)
         {
             return n.IndexOf(token, StringComparison.Ordinal) >= 0;
         }
 
-        // 认出 dRAPL_Package0_Core7_CORE 这类逐核通道 CORE 后面紧跟数字才算
+        // Recognize per-core channels like dRAPL_Package0_Core7_CORE, only counts when CORE is immediately followed by a digit
         internal static bool IsPerCore(string upper)
         {
             int at = upper.IndexOf("CORE", StringComparison.Ordinal);
@@ -134,7 +134,7 @@ namespace PaviseApp
             if (string.IsNullOrEmpty(name)) return -1;
             string n = name.ToUpperInvariant();
             if (Has(n, "DRAM") || Has(n, "MEMORY")) return (int)EnergyRail.Dram;
-            // CoreN_ 是某一个核的功耗 不是核心总功耗 认成 Cores 会让人拿单核当全部
+            // CoreN_ is the power of one core, not total core power, treating it as Cores would pass a single core off as the whole
             if (IsPerCore(n)) return -1;
             if (Has(n, "PP0") || Has(n, "CORE")) return (int)EnergyRail.Cores;
             if (Has(n, "PP1") || Has(n, "_GT") || Has(n, "IGPU")) return (int)EnergyRail.Uncore;
@@ -151,7 +151,7 @@ namespace PaviseApp
                 * (energyAfter - energyBefore) / (double)(timeAfter - timeBefore);
         }
 
-        // 一次采样的原始快照 相邻两次相减才是功率
+        // Raw snapshot of one sample, power is the difference between two adjacent ones
         public sealed class Sample
         {
             internal readonly byte[] Raw;
@@ -177,7 +177,7 @@ namespace PaviseApp
             }
         }
 
-        // 两次快照之间某条轨的平均功率 读不到给 -1
+        // Average power of one rail between two snapshots, -1 when unreadable
         public static double Watts(Sample before, Sample after, EnergyRail rail)
         {
             if (before == null || after == null) return -1;
@@ -214,14 +214,14 @@ namespace PaviseApp
             return string.Join(", ", channelNames);
         }
 
-        // 必须枚举全部设备 不能只看 index 0
-        //   Intel 只发布一个 EMI 设备 恰好第一个就是对的
-        //   AMD 8940HX 实测发布 16 个 每个物理核一个 只有其中一个带封装通道
-        //     设备 #0 dRAPL_Package0_PKG | dRAPL_Package0_Core0_CORE 封装 17.94W
-        //     设备 #2 dRAPL_Package0_Core1_CORE 只有单核 0.13W
-        //     其余 14 个同理 各带一个 CoreN
-        //   SetupAPI 的返回顺序不保证 只取第一个会拿到只含单核的设备 于是判成读不到
-        //   功耗让路要的是封装瓦数 所以挑设备的判据就是有没有封装通道
+        // All devices must be enumerated, not just index 0
+        //   Intel publishes a single EMI device, the first one happens to be right
+        //   AMD 8940HX measured publishing 16, one per physical core, only one of them carries the package channel
+        //     device #0 dRAPL_Package0_PKG | dRAPL_Package0_Core0_CORE package 17.94W
+        //     device #2 dRAPL_Package0_Core1_CORE single core only 0.13W
+        //     the other 14 likewise, each carrying one CoreN
+        //   SetupAPI return order is not guaranteed, taking the first would pick a single-core-only device and judge it unreadable
+        //   power yield wants package wattage, so the device criterion is whether it has a package channel
         private static void ProbeLocked()
         {
             Guid guid = DeviceEnergyMeter;
@@ -255,12 +255,12 @@ namespace PaviseApp
                     unreadable = false;
                     ReadChannelsLocked();
                     foreach (string n in rawChannelNames) if (!seen.Contains(n)) seen.Add(n);
-                    if (!unreadable && railIndex[(int)EnergyRail.Package] >= 0) return;   // 就是它
+                    if (!unreadable && railIndex[(int)EnergyRail.Package] >= 0) return;   // this is the one
                 }
             }
             finally { SetupDiDestroyDeviceInfoList(set); }
 
-            // 一个带封装通道的都没有 保留看到过的全部名字 好让日志说清楚是什么情况
+            // None carries a package channel, keep every name seen so the log can state clearly what happened
             devicePath = null;
             channelNames = new string[0];
             rawChannelNames = seen.ToArray();
@@ -276,8 +276,8 @@ namespace PaviseApp
             {
                 byte[] ver = Ioctl(h, IoctlVersion, 2);
                 if (ver == null || ver.Length < 2) { unreadable = true; return; }
-                // EMI_METADATA_SIZE 是一个 UINT32 不是 UINT64
-                //   驱动只写 4 字节 按 8 字节读会把后面的未初始化内存当高位 拿到垃圾长度
+                // EMI_METADATA_SIZE is a UINT32, not a UINT64
+                //   the driver writes only 4 bytes, reading 8 takes the uninitialized memory after it as the high half and yields a garbage length
                 byte[] sizeBuf = Ioctl(h, IoctlMetadataSize, 8);
                 if (sizeBuf == null || sizeBuf.Length < 4) { unreadable = true; return; }
                 long mdSize = sizeBuf.Length >= 8
@@ -286,8 +286,8 @@ namespace PaviseApp
                 byte[] md = Ioctl(h, IoctlMetadata, (int)mdSize);
                 if (md == null) { unreadable = true; return; }
 
-                // 元数据结构逐版本不同 不硬解析 只扫出 UTF-16 名字再按 RAPL 域名归类
-                //   通道顺序就是测量块里的顺序 名字里能认出域的才建立映射
+                // Metadata layout differs per version, no hard parsing, just scan out UTF-16 names and classify by RAPL domain name
+                //   channel order is the order in the measurement block, mappings are built only for names whose domain is recognized
                 var all = new List<string>();
                 var names = new List<string>();
                 foreach (string s in Utf16Strings(md, 3))

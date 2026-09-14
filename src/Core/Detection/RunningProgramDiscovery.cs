@@ -1,5 +1,5 @@
-// 文件用途 游戏和白名单选择器共用的只读发现 界面资源各自持有
-// 快照失败或被取消 和快照为空是两回事
+// File purpose Read-only discovery shared by the game and whitelist pickers; UI resources are owned by each side
+// A failed or cancelled snapshot and an empty snapshot are two different things
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -89,8 +89,8 @@ namespace PaviseApp
                         }
                         catch { }
                     }
-                    // 整体成功的快照里 个别进程可能中途退出或者拒绝查询
-                    // 它们不会让其它条目失效
+                    // In an overall successful snapshot, individual processes may exit midway or refuse queries
+                    // they do not invalidate the other entries
                     catch { }
                     finally
                     {

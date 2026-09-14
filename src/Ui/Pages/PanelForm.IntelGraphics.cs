@@ -1,4 +1,4 @@
-// 文件用途 Intel 厂商页 用户开启的是临时的全局驱动改动 不是 XeSS 注入
+// File purpose Intel vendor page; what the user enables is a temporary global driver change, not XeSS injection
 using System;
 using System.Windows.Forms;
 
@@ -37,8 +37,8 @@ namespace PaviseApp
                 Lang.T("set.intel.lowlatency"), detail,
                 swIntelLowLatency, out height);
 
-            // Endurance Gaming 只在有电池的 Intel 显卡机器上有东西可关 台式机这一行只解释为什么不可用
-            //   这一页在隔离回归里单独构建 没有图形页的同步表 开关和低延迟那只一样手接
+            // Endurance Gaming only has something to turn off on Intel GPU machines with a battery; on desktops this row only explains why it is unavailable
+            //   This page is built alone in the isolated regression without the GPU page's sync table; the switch is wired by hand like the low-latency one
             bool enduranceOk = available && Native.HasSystemBattery();
             swIntelEndurance = MakeSwitch(gameMode.IntelEnduranceOff, null);
             swIntelEndurance.Enabled = enduranceOk || gameMode.IntelEnduranceOff;
@@ -77,7 +77,7 @@ namespace PaviseApp
         {
             if (swIntelEndurance != null)
             {
-                // 没有档位会强制这项 只剩"本机不适用"这一种锁
+                // No tier forces this item, so Not applicable here is the only remaining lock
                 SettingCard enduranceCard = swIntelEndurance.Parent as SettingCard;
                 bool usable = IntelGraphicsTweaks.HasAvailable && Native.HasSystemBattery();
                 swIntelEndurance.SetSilently(gameMode.IntelEnduranceOff);

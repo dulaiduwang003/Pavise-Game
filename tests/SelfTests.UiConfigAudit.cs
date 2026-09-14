@@ -1,5 +1,5 @@
-// 文件用途 无界面的配置回归 不构造 PanelForm 不建原生窗口
-// 不改进程亲和性 不写真实注册表
+// File purpose Headless configuration regression, no PanelForm construction, no native windows
+// No process affinity changes, no real registry writes
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -115,7 +115,7 @@ namespace PaviseApp
                             lowCore ? new ulong[] { 1, 2, 4, 8 } : new ulong[] { 1, 2, 4, 8, 16, 32 },
                             new ulong[0], 0, 0, 0, 0, false, false);
                         f.Family.Mode.SetProfileOverride(f.Family.First.Id, PolicyCatalog.KeyPreset, lowCore ? "1" : "4");
-                        // 打开页面先 RefreshCfgProfile 再建行 此处不提前调用 SyncCfgRows
+                        // Opening the page calls RefreshCfgProfile before building rows, do not call SyncCfgRows early here
                         Eq(true, (bool)UiConfigCall(f.Form, "RefreshCfgProfile"));
                         object[] args = { f.ProfilePanel, 0, PolicyCatalog.ItemOf(PolicyCatalog.KeyRenderLane) };
                         UiConfigCall(f.Form, "AddCfgPickerRow", args);
@@ -154,7 +154,7 @@ namespace PaviseApp
                             PerformancePreset.Competitive })
                         {
                             FamilyPolicySetField(f.Family.Mode, "preset", mode);
-                            // 模拟通用开关同步先读回用户值 随后的策略同步必须覆盖成实际显示值
+                            // Simulates the generic toggle sync reading back the user value first, the following policy sync must overwrite it with the actual displayed value
                             toggle.SetSilently(savedOn);
                             UiConfigCall(f.Form, "SyncPolicyLane");
                             bool supported = mode != PerformancePreset.Handheld;
@@ -195,7 +195,7 @@ namespace PaviseApp
                 FamilyPolicySetField(Family.Mode, "allMask", 0xFUL);
                 FamilyPolicySetField(Family.Mode, "strictMask", 0x3UL);
                 Family.Mode.CorePartitionEnabled = true;
-                // 保存下一局方案，不创建工作线程，不读写任何真实进程亲和性。
+                // Saves the next-match scheme, no worker thread, no real process affinity read or write
                 FamilyPolicySetField(Family.Mode, "active", true);
                 Editor = new CoreSchedulingPanel(900, null,
                     delegate(CoreSchedulingPlan p, string global, string token, bool follow)
@@ -310,7 +310,7 @@ namespace PaviseApp
 
             internal UiConfigPowerYieldFixture(string root, string name)
             {
-                // 先把探测缓存填上 不去开系统电源和 EMI 句柄
+                // Fill the probe cache first, do not open system power and EMI handles
                 SetStatic(typeof(Native), "hasBattery", 1);
                 SetStatic(typeof(EnergyMeter), "probed", true);
                 SetStatic(typeof(EnergyMeter), "devicePath", "mock-energy-meter");
@@ -427,7 +427,7 @@ namespace PaviseApp
         private static YieldAction UiConfigPowerYieldSampleWindow(PowerBudgetYield state,
             long start, long span, double gpu, double cpu, double watts, double frequency)
         {
-            // 熔断依赖完整采样证据，沿生产的 2 秒节奏；15 秒验收在第 16 秒读数完成。
+            // The circuit breaker needs complete sampling evidence, at the production 2s cadence the 15s acceptance completes on the 16s reading
             long interval = PowerBudgetYieldRunner.SampleIntervalMs * TimeSpan.TicksPerMillisecond;
             YieldAction action = YieldAction.None;
             for (long elapsed = interval; elapsed < span + interval; elapsed += interval)
@@ -526,10 +526,10 @@ namespace PaviseApp
                 }
         }
 
-        // 方向盘 验收通过后持续盯瓶颈 瓶颈回移就还预算 再吃满可重让 封顶三次
+        // Steering: after acceptance keep watching the bottleneck, give budget back when it moves back, yield again when saturated again, capped at three
         private static void UiConfigPowerYieldSteering(string root)
         {
-            // 前序用例会留下熔断 自己清干净 不依赖数组顺序
+            // Earlier cases leave a trip behind, clean it up ourselves, do not depend on array order
             PowerBudgetYield.ClearFuse();
             var state = new PowerBudgetYield();
             state.Begin(0, true);
@@ -550,30 +550,30 @@ namespace PaviseApp
                 window(95, 30, 45, PowerBudgetYield.VerifyTicks);
                 Eq(YieldAction.Keep, action);
                 Eq(YieldStage.Held, state.Stage);
-                // GPU 仍吃满 按兵不动
+                // GPU still saturated, hold
                 window(95, 30, 45, PowerBudgetYield.HoldWindowTicks);
                 Eq(YieldAction.None, action);
                 Eq(YieldStage.Held, state.Stage);
-                // 瓶颈移回 CPU 侧 还预算 第一轮走 GPU 掉载触发 其余走 CPU 吃紧触发
+                // Bottleneck moves back to the CPU side, return budget, round one triggers via GPU load drop, the rest via CPU pressure
                 if (round == 1) window(60, 40, 45, PowerBudgetYield.HoldWindowTicks);
                 else window(95, 85, 45, PowerBudgetYield.HoldWindowTicks);
                 Eq(YieldAction.Release, action);
                 Eq(round < PowerBudgetYield.MaxReengage
                     ? YieldStage.Observing : YieldStage.Skipped, state.Stage);
             }
-            // 名额用完 之后不再有任何动作 也不熔断
+            // Quota used up, no further action afterwards and no trip
             window(95, 30, 45, PowerBudgetYield.ObserveTicks);
             Eq(YieldAction.None, action);
             Eq(YieldStage.Skipped, state.Stage);
             Eq(false, PowerBudgetYield.Fused);
         }
 
-        // 频率代理的降级验证 熔断分账 与瓦数路径互不牵连
+        // Degraded verification via the frequency proxy, trips are accounted separately, independent of the wattage path
         private static void UiConfigPowerYieldFreqProxy(string root)
         {
-            // 前序用例会留下熔断 自己清干净 不依赖数组顺序
+            // Earlier cases leave a trip behind, clean it up ourselves, do not depend on array order
             PowerBudgetYield.ClearFuse();
-            // 频率真降了且 GPU 稳住 → 保持 不熔断
+            // Frequency really dropped and the GPU held steady, keep it, no trip
             var state = new PowerBudgetYield();
             state.Begin(0, true, true);
             YieldAction action = UiConfigPowerYieldSampleWindow(state, 0,
@@ -586,7 +586,7 @@ namespace PaviseApp
             Eq(false, PowerBudgetYield.Fused);
             Eq(false, PowerBudgetYield.FreqFused);
 
-            // 频率纹丝不动 = EPP 死杠杆 → 熔断 但记在代理账上 瓦数账不背锅
+            // Frequency does not budge = EPP is a dead lever, trip, but charge it to the proxy account, not the wattage account
             state = new PowerBudgetYield();
             state.Begin(0, true, true);
             action = UiConfigPowerYieldSampleWindow(state, 0,
@@ -601,7 +601,7 @@ namespace PaviseApp
             PowerBudgetYield.ClearFuse();
             Eq(false, PowerBudgetYield.FreqFused);
 
-            // 负载漂移超过判定窗 → 退回但不熔断 那是场景变了 不是机器的错
+            // Load drift beyond the verdict window backs off without tripping, the scenario changed, not the machine's fault
             state = new PowerBudgetYield();
             state.Begin(0, true, true);
             action = UiConfigPowerYieldSampleWindow(state, 0,
@@ -613,7 +613,7 @@ namespace PaviseApp
             Eq(YieldVerdict.Inconclusive, state.Verdict);
             Eq(false, PowerBudgetYield.FreqFused);
 
-            // GPU 被拖下水 → 熔断 频率降了也不算数
+            // GPU dragged down, trip, a frequency drop does not count
             state = new PowerBudgetYield();
             state.Begin(0, true, true);
             action = UiConfigPowerYieldSampleWindow(state, 0,
@@ -626,7 +626,7 @@ namespace PaviseApp
             Eq(true, PowerBudgetYield.FreqFused);
             PowerBudgetYield.ClearFuse();
 
-            // UI 无瓦数但有频率代理 → 开关可用 文案是降级说明 代理熔断后换熔断文案
+            // UI with no wattage but a frequency proxy: toggle available, copy is the degraded note, after a proxy trip it switches to the tripped copy
             using (var fixture = new UiConfigPowerYieldFixture(root, "power-yield-proxy"))
             {
                 Settings.Save(PowerBudgetYieldRunner.EnabledKey, false);
@@ -641,7 +641,7 @@ namespace PaviseApp
                     fixture.Refresh();
                     Eq(Lang.T("gm.poweryield.fused"), fixture.Card.Desc);
                     PowerBudgetYield.ClearFuse();
-                    // 代理探针也没有时 回到统一的不可用文案
+                    // With no proxy probe either, back to the unified unavailable copy
                     PowerBudgetYieldRunner.FreqProxyForTest = false;
                     fixture.Refresh();
                     Eq(false, fixture.Toggle.Enabled);
@@ -779,8 +779,8 @@ namespace PaviseApp
                 {
                     Settings.UseTransientStoreForCurrentProcess();
                     Settings.Save("AccessKeysByPavise", false);
-                    // 第一次注册表改动完成了 后面那次失败
-                    // 会留下一个没有全成功标记的恢复槽
+                    // The first registry change completed, the later one failed
+                    // leaving a recovery slot without the all-succeeded marker
                     Settings.SaveStr(slot, "=59\u001F=58");
                     Eq(true, AccessibilityKeysTweak.HasResidue());
                     Eq(false, AccessibilityKeysTweak.EnabledByPavise);
@@ -921,7 +921,7 @@ namespace PaviseApp
                     Eq(0, fixture.Family.Current(fixture.Family.First.Id).Overrides.Count);
                     fixture.RefreshProfile();
                     supported = false; fixture.RefreshProfile();
-                    Eq(true, picker.Enabled); // Inherited On still has an Off exit.
+                    Eq(true, picker.Enabled); // Inherited On still has an Off exit
                     picker.Index = 1; picker.IndexChanged(1);
                     Eq(choices[0], fixture.Family.Current(fixture.Family.First.Id).Overrides[item.Key]);
                     Eq(false, picker.Enabled);
@@ -946,8 +946,8 @@ namespace PaviseApp
                     var toggle = (Toggle)UiConfigGetField(fixture.Form, name);
                     Console.WriteLine("AMD_STALE_SUPPORT control=" + name + " enabled=" + toggle.Enabled);
                     if (toggle.Enabled) enabled++;
-                    // 这两条路径没有模态确认
-                    // 在确定 API 门会拒绝之前 不会去调 RSR
+                    // These two paths have no modal confirmation
+                    // RSR is not called before the API gate is confirmed to refuse
                     if (name != "swAmdRsr") toggle.Checked = true;
                 }
                 Console.WriteLine("AMD_STALE_SUPPORT alag_on=" + fixture.Family.Mode.AmdAntiLag
@@ -1183,8 +1183,8 @@ namespace PaviseApp
                     Settings.SuspendWritesForReset();
                     UiConfigCall(fixture.Form, "OnVramShieldToggle", false);
                     Eq(false, toggle.Checked); Eq(false, fixture.Family.Mode.VramShieldOn); Eq(1, released);
-                    Eq(true, Settings.Load(VramShield.EnabledKey, false)); // Not a durable opt-out.
-                    Eq("87001:42", Settings.LoadStr("VramShieldSnap", "")); // Failed receipt cleanup is retained.
+                    Eq(true, Settings.Load(VramShield.EnabledKey, false)); // Not a durable opt-out
+                    Eq("87001:42", Settings.LoadStr("VramShieldSnap", "")); // Failed receipt cleanup is retained
                 }
             }
             finally { VramShield.ResetRecoveryForTest(); VramShield.RestoreReservationForTest = oldRestore; }

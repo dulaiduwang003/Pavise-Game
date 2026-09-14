@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 家族成员判定与游戏本体选举
+// File purpose Family membership verdicts and game main-process election
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -291,16 +291,16 @@ namespace PaviseApp
             if (candidateElected != currentElected) return candidateElected;
             if (candidate.RendererForeground != current.RendererForeground)
                 return candidate.RendererForeground;
-            // 只有两项实际指向同一进程时才用锚点精度破同分 不同 renderer 仍保持
-            // 既有的前台/创建时间选举 不让本次修复改变正常多进程会话行为
+            // Anchor precision breaks the tie only when both actually point to the same process; different renderers keep
+            // the existing foreground and creation-time election, so this fix does not change normal multi-process session behavior
             if (candidate.RendererPid == current.RendererPid
                 && candidate.RendererCreation == current.RendererCreation)
             {
                 if (candidate.RendererMatchRank != current.RendererMatchRank)
                     return candidate.RendererMatchRank > current.RendererMatchRank;
-                // 两个档案都把同一 G 学成 Learned 时 G 真正位于谁的
-                // Root 是更强的所有权语义 若仍同分 用持久 profile 身份
-                // 稳定决胜 绝不让独立策略随列表顺序漂移
+                // When two profiles both learned the same G as Learned, whose Root G actually
+                // lives in is the stronger ownership semantic; if still tied, use the persistent profile identity
+                // as a stable tie-break; independent policy must never drift with list order
                 bool candidateOwnsPath = candidate.Profile != null
                     && candidate.Profile.ContainsPath(candidate.RendererPath);
                 bool currentOwnsPath = current.Profile != null

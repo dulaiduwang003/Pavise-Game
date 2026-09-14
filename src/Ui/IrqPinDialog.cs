@@ -1,5 +1,4 @@
-﻿// @author bdth 2074055628@qq.com
-// 文件用途 选一台设备之后 在这里挑它的中断要落到哪几个核上
+// File purpose Core selection and observation details shown separately; action results and the apply entry stay visible
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -9,519 +8,446 @@ namespace PaviseApp
 {
     internal sealed class IrqPinDialog : Form
     {
-        private const int DlgW = 620;
-
+        private const int DlgW = 700, DlgH = 690;
         private readonly CoreMatrix matrix;
-        private readonly Label lblPick;
-        private readonly PillButton btnOk;
-        private readonly PillButton btnCancel;
+        private readonly Label lblPick, footerHint, titleLabel, deviceLabel, closeLabel;
+        private readonly PillButton btnOk, btnCancel, tabCores, tabEvidence, advancedToggle;
+        private readonly PillButton clearSelection, resetSelection;
         private readonly Toggle swPriority;
-        private readonly Panel scrollBody;
-        private readonly Label titleLabel, closeLabel;
-        private readonly int headerHeight, footerHeight, naturalClientHeight;
-        private readonly Dictionary<Control, int> afterMatrixOffsets =
-            new Dictionary<Control, int>();
-        private readonly Dictionary<Label, int> labelLogicalLeft =
-            new Dictionary<Label, int>();
-        private readonly List<Label> beforeMatrixLabels = new List<Label>();
-        private readonly Dictionary<Label, Rectangle> beforeMatrixBounds = new Dictionary<Label, Rectangle>();
-        private int bodyContentHeight, bodyTailPadding, matrixLogicalTop;
-        private bool fittedToWorkArea;
-        private bool clockWasSuspended;
+        private readonly Panel scrollBody, corePage, evidencePage, summaryCard, advancedPanel;
+        private readonly Panel observationCard, verificationCard, deviceCard;
+        private readonly Label metricDpc, metricCurrent, metricStatus, benefitLabel, riskLabel, howto;
+        private readonly Label coreHeading, candidateHeading, candidateHint, priorityLabel;
+        private readonly Label sourceLabel, coverageLabel, statLabel, extraLabel, coreDetails, candidateDetails;
+        private readonly Label verificationLabel, deviceDetails;
+        private readonly PillButton historyPicker;
+        private readonly ContextMenuStrip historyMenu;
+        private readonly PillButton[] optionButtons = new PillButton[3];
+        private readonly List<IrqCoreOption> options = new List<IrqCoreOption>();
+        private readonly ToolTip hints = new ToolTip();
+        private readonly IrqDevice device;
+        private readonly IList<IrqPinSession> history;
+        private readonly IList<IrqSessionRecord> allSessions;
+        private int bodyContentHeight;
+        private bool fittedToWorkArea, clockWasSuspended, layingOut;
+        private string readOnlyReason;
 
         public ulong Chosen { get; private set; }
-        public bool RaisePriority { get { return swPriority != null && swPriority.Checked; } }
+        public bool RaisePriority { get { return swPriority.Checked; } }
+        internal int SelectedHistoryIndex { get; private set; }
+        internal int SelectedPage { get; private set; }
+        internal bool AdvancedExpanded { get; private set; }
+        internal IrqPinSession CurrentSession { get; private set; }
 
-        public IrqPinDialog(IrqDevice d) : this(d, null) { }
-
-        internal IrqPinDialog(IrqDevice d, IrqPinSession session)
+        public IrqPinDialog(IrqDevice d) : this(d,new IrqPinSession()) { }
+        internal IrqPinDialog(IrqDevice d, IrqPinSession session) : this(d,session,null,null) { }
+        internal IrqPinDialog(IrqDevice d, IrqPinSession session,
+            IList<IrqPinSession> choices, IList<IrqSessionRecord> records)
         {
+            device = d; allSessions = records;
             session = session ?? new IrqPinSession();
-            IrqDriverRecord driver = session.Driver;
-            var measured = new IrqDevice { Dpc = driver == null ? 0 : driver.Dpc,
-                MaxUs = driver == null ? 0 : driver.DpcMaxUs };
-            Text = Lang.T("irqpin.title");
+            history = choices ?? new List<IrqPinSession> { session };
+            SelectedHistoryIndex = history.Count - 1;
+            Text = Lang.T("irq.ui.dialog");
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.CenterParent;
-            MaximizeBox = false; MinimizeBox = false; ShowInTaskbar = false;
-            BackColor = Theme.Bg; ForeColor = Theme.Fg; Font = Theme.UI(9.5f, false);
+            MaximizeBox = MinimizeBox = ShowInTaskbar = false;
             AutoScaleMode = AutoScaleMode.None;
             DoubleBuffered = true;
-
-            int y = 18;
-            titleLabel = new Label();
-            titleLabel.Text = Lang.T("irqpin.title");
-            titleLabel.ForeColor = Theme.Fg; titleLabel.BackColor = Theme.Bg; titleLabel.Font = Theme.UI(14f, true);
-            titleLabel.UseCompatibleTextRendering = false;
-            titleLabel.SetBounds(Theme.S(22), Theme.S(y), Theme.S(DlgW - 100), Theme.S(30));
-            titleLabel.MouseDown += DragMove;
-            Controls.Add(titleLabel);
-
-            closeLabel = new Label();
-            closeLabel.Text = "✕";
-            closeLabel.ForeColor = Theme.Dim; closeLabel.BackColor = Theme.Bg;
-            closeLabel.TextAlign = ContentAlignment.MiddleCenter;
-            closeLabel.Cursor = Cursors.Hand;
-            closeLabel.SetBounds(Theme.S(DlgW - 46), Theme.S(16), Theme.S(26), Theme.S(26));
+            BackColor = Theme.Bg; ForeColor = Theme.Fg; Font = Theme.UI(9.5f,false);
+            titleLabel = LabelFor(this,"",Text,15,true,Theme.Fg);
+            deviceLabel = LabelFor(this,"irqDeviceName",d == null ? "" : d.Name,9,false,Theme.Dim);
+            deviceLabel.AutoEllipsis = true;
+            hints.SetToolTip(deviceLabel,deviceLabel.Text);
+            closeLabel = LabelFor(this,"","×",17,false,Theme.Dim);
+            closeLabel.TextAlign = ContentAlignment.MiddleCenter; closeLabel.Cursor = Cursors.Hand;
             closeLabel.Click += delegate { Close(); };
-            Controls.Add(closeLabel);
-            y += 34;
-
-            headerHeight = Theme.S(y);
-            footerHeight = Theme.S(52);
-            scrollBody = new Panel();
-            scrollBody.Name = "irqPinScrollBody";
-            scrollBody.BackColor = Theme.Bg;
-            scrollBody.AutoScroll = true;
-            scrollBody.TabStop = true;
+            titleLabel.MouseDown += DragMove; deviceLabel.MouseDown += DragMove;
+            tabCores = ButtonFor(this,"irqTabCores",Lang.T("irq.ui.tab.cores"),delegate { SelectPage(0); });
+            tabEvidence = ButtonFor(this,"irqTabEvidence",Lang.T("irq.ui.tab.evidence"),delegate { SelectPage(1); });
+            historyMenu = new ContextMenuStrip { Renderer = new TechMenuRenderer(),
+                ShowImageMargin = false, Font = Theme.UI(9,false) };
+            historyPicker = ButtonFor(this,"irqSessionPicker","",delegate {
+                historyMenu.Show(historyPicker,new Point(0,historyPicker.Height)); });
+            for (int i = 0; i < history.Count; i++)
+            {
+                int index = i;
+                var choice = new ToolStripMenuItem(SessionTitle(history[i]));
+                choice.ForeColor = Theme.Fg;
+                choice.Click += delegate { SelectHistory(index); };
+                historyMenu.Items.Add(choice);
+            }
+            historyPicker.Enabled = history.Count > 0;
+            scrollBody = new Panel { Name = "irqPinScrollBody", BackColor = Theme.Bg, AutoScroll = true };
+            Native.Dark(scrollBody);
             Controls.Add(scrollBody);
-            y = 0;
-
-            scrollBody.Controls.Add(Line(d == null ? "" : d.Name, y, 22, Theme.UI(10f, true), Theme.Fg, 24));
-            y += 26;
-            string stat = driver != null
-                ? Lang.F("irqpin.stat", driver.DpcMaxUs.ToString("F0"),
-                    IrqDeviceInventory.GradeText(IrqDeviceInventory.Grade(measured)),
-                    IrqRelocate.MaskText(session.SeenMask))
-                : Lang.T("irqpin.session.nodevice");
-            scrollBody.Controls.Add(Line(stat, y, 22, Theme.UI(8.8f, false), Theme.Dim, 22));
-            y += 26;
-
-            // 预算占比 + 超时次数 + 驱动汇总/框架汇总 原来挂在中断页 lblIrqDetail 上 现在搬进这里
-            if (d != null && driver != null)
+            corePage = new Panel { Name = "irqCorePage", BackColor = Theme.Bg };
+            evidencePage = new Panel { Name = "irqEvidencePage", BackColor = Theme.Bg };
+            scrollBody.Controls.Add(corePage); scrollBody.Controls.Add(evidencePage);
+            summaryCard = Card(corePage,"irqSummary");
+            LabelFor(summaryCard,"metricDpcTitle",Lang.T("irq.ui.metric.dpc"),8,false,Theme.Dim);
+            LabelFor(summaryCard,"metricCurrentTitle",Lang.T("irq.ui.metric.current"),8,false,Theme.Dim);
+            LabelFor(summaryCard,"metricStatusTitle",Lang.T("irq.ui.metric.status"),8,false,Theme.Dim);
+            metricDpc = LabelFor(summaryCard,"irqMetricDpc","—",13,true,Theme.Fg);
+            metricCurrent = LabelFor(summaryCard,"irqMetricCurrent","—",11,true,Theme.Fg);
+            metricStatus = LabelFor(summaryCard,"irqMetricStatus","—",10,true,Theme.Accent);
+            benefitLabel = LabelFor(summaryCard,"irqBenefit",Lang.T("irq.flow.benefit"),8.3f,false,Theme.Dim);
+            riskLabel = LabelFor(corePage,"irqRisk","",8.5f,false,Theme.Danger);
+            coreHeading = LabelFor(corePage,"",Lang.T("irq.ui.coreheading"),10,true,Theme.Fg);
+            resetSelection = ButtonFor(corePage,"irqResetSelection",Lang.T("irq.ui.reset"),delegate {
+                SetSelection(device != null && device.IsPinned ? device.Mask : 0); });
+            clearSelection = ButtonFor(corePage,"irqClearSelection",Lang.T("irq.ui.clear"),delegate { SetSelection(0); });
+            resetSelection.Enabled = d != null && d.IsPinned;
+            howto = LabelFor(corePage,"irqSessionHowto",Lang.T("irq.ui.howto"),8.5f,false,Theme.Dim);
+            matrix = new CoreMatrix { Name = "irqCoreMatrix", Annotate = true, BackColor = Theme.Bg };
+            matrix.LayoutFor(Theme.S(DlgW - 62));
+            matrix.Selected = d != null && d.IsPinned ? d.Mask : 0;
+            Chosen = matrix.Selected; matrix.SelectionChanged = OnPicked;
+            corePage.Controls.Add(matrix);
+            candidateHeading = LabelFor(corePage,"",Lang.T("irq.ui.candidates"),9,true,Theme.Fg);
+            candidateHint = LabelFor(corePage,"irqCandidateHint","",8.3f,false,Theme.Dim);
+            for (int i = 0; i < optionButtons.Length; i++)
             {
-                var extra = new System.Text.StringBuilder();
-                extra.Append(IrqDeviceInventory.BudgetText(driver.DpcMaxUs));
-                if (driver.Over1Ms > 0) extra.Append("  ").Append(Lang.F("irq.d.over1ms", driver.Over1Ms));
-                else if (driver.Over500Us > 0) extra.Append("  ").Append(Lang.F("irq.d.over500", driver.Over500Us));
-                if (d.SharedStats) extra.Append("  ").Append(Lang.T("irq.d.shared"));
-                scrollBody.Controls.Add(Line(extra.ToString(), y, 22, Theme.UI(8.3f, false), Theme.Dim, 22));
-                y += 24;
-                if (d.FrameworkStats)
-                {
-                    scrollBody.Controls.Add(Line(Lang.F("irq.d.framework", d.StatsDriver), y, 22,
-                        Theme.UI(8.3f, false), Theme.Faint, 22));
-                    y += 24;
-                }
+                int index = i;
+                optionButtons[i] = ButtonFor(corePage,"irqOption" + i,"",delegate {
+                    if (index < options.Count) SetSelection(options[index].Mask); });
             }
-
-            string worth = null;
-            Color worthColor = Theme.Faint;
-            if (d != null && driver != null)
-            {
-                if (d.ActionableWorth)
-                {
-                    worth = Lang.T("irqpin.matchsuggest");
-                    worthColor = Theme.Accent;
-                }
-                else
-                {
-                    IrqGrade gr = IrqDeviceInventory.Grade(measured);
-                    if (gr == IrqGrade.Fine) worth = Lang.T("irqpin.notworth");
-                    else if (gr == IrqGrade.Long) worth = Lang.T("irqpin.maybe");
-                }
-            }
-            if (worth != null)
-            {
-                scrollBody.Controls.Add(Line(worth, y, 22, Theme.UI(8.3f, false), worthColor, 22));
-                y += 28;
-            }
-
-            if (d != null && d.InputRisk)
-            {
-                scrollBody.Controls.Add(Line(Lang.T("irq.d.input"), y, 22, Theme.UI(8.3f, false), Theme.Danger, 22));
-                y += 26;
-            }
-
-            // MSI-X/RSS 多消息 与 StorPort 跟随发起核 两种 钉核可能无效 的提示
-            if (d != null && d.MultiMessageRisk)
-            {
-                scrollBody.Controls.Add(Line(d.MessageCount > 1 ? Lang.F("irq.d.multimsg", d.MessageCount)
-                        : Lang.T("irq.d.multimsg.unknown"),
-                    y, 22, Theme.UI(8.3f, false), Theme.Dim, 22));
-                y += 24;
-            }
-            if (d != null && d.CompletionFollowsIssuer)
-            {
-                scrollBody.Controls.Add(Line(Lang.T("irq.d.storagedpc"), y, 22, Theme.UI(8.3f, false), Theme.Dim, 22));
-                y += 24;
-            }
-
-            // 已钉住设备的落点状态 由系统环境页管理 / 已生效 / 已写入待验证(附落点提示)
-            if (d != null && d.ManagedElsewhere)
-            {
-                scrollBody.Controls.Add(Line(Lang.T("irq.d.owned"), y, 22, Theme.UI(8.3f, false), Theme.Faint, 22));
-                y += 24;
-            }
-            else if (d != null && d.IsPinned)
-            {
-                if (d.Effective)
-                {
-                    scrollBody.Controls.Add(Line(Lang.F("irq.d.effective", IrqRelocate.MaskText(d.Mask)),
-                        y, 22, Theme.UI(8.8f, false), Theme.Accent, 22));
-                    y += 24;
-                }
-                else if (d.PlacementMismatch)
-                {
-                    scrollBody.Controls.Add(Line(Lang.F("irq.d.written", IrqRelocate.MaskText(d.Mask)),
-                        y, 22, Theme.UI(8.8f, false), Theme.Danger, 40));
-                    y += 42;
-                    scrollBody.Controls.Add(Line(Lang.T("irq.tip.mismatch"), y, 22,
-                        Theme.UI(8.3f, false), Theme.Danger, 40));
-                    y += 42;
-                }
-                else if (d.Unverified)
-                {
-                    bool unknownBoot = d.RebootState == IrqRebootState.Unknown;
-                    scrollBody.Controls.Add(Line(unknownBoot ? IrqDeviceInventory.PolicyText(d)
-                        : Lang.F("irq.d.written", IrqRelocate.MaskText(d.Mask)),
-                        y, 22, Theme.UI(8.8f, false), Theme.Faint, 40));
-                    y += 42;
-                    // 对局观测关着的话打多少局都不会记录 待验证会一直挂着 这里把坑说破
-                    scrollBody.Controls.Add(Line(Lang.T(unknownBoot
-                            ? "irq.tip.bootunknown" : IrqSessionProbe.EnabledSetting
-                                ? "irq.tip.unverified" : "irq.tip.unverified.probeoff"),
-                        y, 22, Theme.UI(8.3f, false), Theme.Faint, 40));
-                    y += 42;
-                }
-                else
-                {
-                    scrollBody.Controls.Add(Line(Lang.F("irq.d.written", IrqRelocate.MaskText(d.Mask)),
-                        y, 22, Theme.UI(8.8f, false), Theme.Danger, 40));
-                    y += 42;
-                }
-            }
-
-            string when = "—";
-            try { when = new DateTime(session.StartUtcTicks, DateTimeKind.Utc).ToLocalTime().ToString("MM-dd HH:mm"); }
-            catch { }
-            Label sourceLabel = Line(session.Available
-                ? Lang.F("irqpin.session.source", session.GameName, when, session.DurationSeconds)
-                : Lang.T("irqpin.session.none"), y, 22, Theme.UI(8.8f, true), Theme.Dim, 24);
-            sourceLabel.Name = "irqLoadSource";
-            sourceLabel.AutoEllipsis = true;
-            scrollBody.Controls.Add(sourceLabel);
-            y += 26;
-            string coverage = !session.Available && session.Exclusion != IrqSessionExclusion.None
-                ? IrqPageStatus.ExclusionText(session.Exclusion)
-                : session.Loads.Count == 0 ? Lang.T("irqpin.session.noload")
-                : Lang.F("irqpin.session.coverage", session.MinimumCoverage.ToString("F0"),
-                    session.MaximumCoverage.ToString("F0"));
-            Label coverageLabel = Line(coverage, y, 22, Theme.UI(8.3f, false), Theme.Faint, 36);
-            coverageLabel.Name = "irqLoadCoverage";
-            scrollBody.Controls.Add(coverageLabel);
-            y += 38;
-            scrollBody.Controls.Add(Line(Lang.T("irqpin.howto") + (session.GameMask == 0
-                ? "\n" + Lang.T("irqpin.session.unknownmask") : ""),
-                y, 22, Theme.UI(8.3f, false), Theme.Faint, 36));
-            y += 40;
-
-            matrix = new CoreMatrix();
-            matrix.PrimaryTag = Lang.T("irq.tag.target");
-            matrix.MarkExclusive = false;
-            // 固定的同局观测 不采桌面负载 也不拿当前模式推测历史游戏核
-            matrix.Annotate = true;
-            matrix.SeenMask = session.SeenMask;
-            matrix.ObservedGameMask = session.GameMask;
-            matrix.SetLoads(session.Loads);
-            int mtxW = Theme.S(DlgW - 44);
-            int mtxH = matrix.LayoutFor(mtxW);
-            matrix.SetBounds(Theme.S(22), Theme.S(y), mtxW, mtxH);
-            ulong start = d != null && d.IsPinned ? d.Mask : 0UL;
-            matrix.Selected = start;
-            Chosen = start;
-            matrix.SelectionChanged = OnPicked;
-            scrollBody.Controls.Add(matrix);
-            y += Dpi.U(mtxH) + 10;
-
-            lblPick = Line("", y, 22, Theme.UI(8.8f, false), Theme.Dim, 22);
-            scrollBody.Controls.Add(lblPick);
-            y += 30;
-
+            advancedToggle = ButtonFor(corePage,"irqAdvancedToggle","",delegate { SetAdvanced(!AdvancedExpanded); });
+            advancedPanel = Card(corePage,"irqAdvancedPanel");
             swPriority = new Toggle();
-            swPriority.Checked = d != null
-                && (d.DevicePriorityHigh || IrqPriorityTweak.AppliedTo(d.InstanceId));
+            swPriority.Checked = d != null && (d.DevicePriorityHigh || IrqPriorityTweak.AppliedTo(d.InstanceId));
             swPriority.Enabled = d != null && !d.DevicePriorityHigh;
-            swPriority.Location = new Point(Theme.S(22), Theme.S(y));
-            scrollBody.Controls.Add(swPriority);
-            scrollBody.Controls.Add(Line(d != null && d.DevicePriorityHigh
-                    ? Lang.T("irqpin.prio.already") : Lang.T("irqpin.prio"),
-                y + 4, 76, Theme.UI(8.5f, false), Theme.Dim, 30));
-            y += 38;
+            advancedPanel.Controls.Add(swPriority);
+            priorityLabel = LabelFor(advancedPanel,"",Lang.T("irqpin.prio"),9,false,Theme.Fg);
 
+            observationCard = Card(evidencePage,"irqObservationCard");
+            LabelFor(observationCard,"cardTitle",Lang.T("irq.ui.observation"),10,true,Theme.Fg);
+            sourceLabel = LabelFor(observationCard,"irqLoadSource","",9,true,Theme.Fg);
+            coverageLabel = LabelFor(observationCard,"irqLoadCoverage","",8.5f,false,Theme.Dim);
+            statLabel = LabelFor(observationCard,"irqSessionStat","",8.5f,false,Theme.Dim);
+            extraLabel = LabelFor(observationCard,"irqSessionExtra","",8.5f,false,Theme.Dim);
+            coreDetails = LabelFor(observationCard,"irqCoreDetails","",8.5f,false,Theme.Dim);
+            candidateDetails = LabelFor(observationCard,"irqCandidate","",8.5f,false,Theme.Dim);
+            verificationCard = Card(evidencePage,"irqVerificationCard");
+            LabelFor(verificationCard,"cardTitle",Lang.T("irq.ui.verification"),10,true,Theme.Fg);
+            verificationLabel = LabelFor(verificationCard,"irqVerification","",8.5f,false,Theme.Dim);
+            deviceCard = Card(evidencePage,"irqDeviceCard");
+            LabelFor(deviceCard,"cardTitle",Lang.T("irq.ui.device"),10,true,Theme.Fg);
+            deviceDetails = LabelFor(deviceCard,"irqDeviceDetails","",8.5f,false,Theme.Dim);
+            lblPick = LabelFor(this,"irqChosenSummary","",9,true,Theme.Fg);
+            footerHint = LabelFor(this,"irqApplyHint",Lang.T("irq.ui.apply.hint"),8.3f,false,Theme.Dim);
+            btnCancel = ButtonFor(this,"irqCancel",Lang.T("irqpin.cancel"),delegate { Close(); });
+            btnOk = ButtonFor(this,"irqApply",Lang.T("irq.ui.apply"),delegate {
+                if (!btnOk.Enabled) return;
+                DialogResult = DialogResult.OK; Close(); });
+            btnOk.Kind = BtnKind.Primary;
+            swPriority.CheckedChanged += delegate {
+                advancedToggle.Text = (AdvancedExpanded ? "−  " : "+  ") + Lang.T("irq.ui.advanced")
+                    + (RaisePriority ? "  ·  " + Lang.T("irq.ui.priority.on") : ""); };
+            ClientSize = new Size(Theme.S(DlgW),Theme.S(DlgH));
+            UpdateSession(session); SelectPage(0); SetAdvanced(false); OnPicked(Chosen);
+        }
 
-            btnCancel = new PillButton(Lang.T("irqpin.cancel"), BtnKind.Normal);
-            btnCancel.Bg = Theme.Bg;
-            btnCancel.Click += delegate { Close(); };
-            Controls.Add(btnCancel);
+        private static Label LabelFor(Control parent, string name, string text, float size, bool bold, Color color)
+        {
+            var label = new Label { Name = name, Text = text, Font = Theme.UI(size,bold),
+                ForeColor = color, BackColor = parent.BackColor, UseCompatibleTextRendering = false };
+            parent.Controls.Add(label); return label;
+        }
+        private static PillButton ButtonFor(Control parent, string name, string text, Action click)
+        {
+            var button = new PillButton(text,BtnKind.Normal) { Name = name, Bg = parent.BackColor,
+                AccessibleRole = AccessibleRole.PushButton };
+            button.Click += delegate { click(); };
+            parent.Controls.Add(button); return button;
+        }
+        private static Panel Card(Control parent, string name)
+        {
+            var panel = new DBPanel { Name = name, BackColor = Theme.Card };
+            panel.Paint += delegate(object sender,PaintEventArgs e) {
+                using (var pen = new Pen(Theme.Stroke))
+                    e.Graphics.DrawRectangle(pen,0,0,Math.Max(0,panel.Width - 1),Math.Max(0,panel.Height - 1)); };
+            parent.Controls.Add(panel); return panel;
+        }
+        private static string SessionTitle(IrqPinSession session)
+        {
+            if (session == null || !session.Available) return Lang.T("irqpin.session.none");
+            string time = session.StartUtcTicks > 0
+                ? new DateTime(session.StartUtcTicks,DateTimeKind.Utc).ToLocalTime().ToString("MM-dd HH:mm") : "—";
+            return session.GameName + "  ·  " + time + "  ·  " + session.DurationSeconds + "s";
+        }
 
-            btnOk = new PillButton(Lang.T("irqpin.ok"), BtnKind.Primary);
-            btnOk.Bg = Theme.Bg;
-            btnOk.Click += delegate { DialogResult = DialogResult.OK; Close(); };
-            Controls.Add(btnOk);
+        internal void SelectPage(int page)
+        {
+            if (page < 0 || page > 1) return;
+            SelectedPage = page;
+            corePage.Visible = page == 0; evidencePage.Visible = page == 1;
+            tabCores.Kind = page == 0 ? BtnKind.Primary : BtnKind.Normal;
+            tabEvidence.Kind = page == 1 ? BtnKind.Primary : BtnKind.Normal;
+            tabCores.Invalidate(); tabEvidence.Invalidate();
+            LayoutViewportAndFooter(0);
+        }
+        internal void SetAdvanced(bool expanded)
+        {
+            int scroll = Math.Max(0,-scrollBody.AutoScrollPosition.Y);
+            AdvancedExpanded = expanded; advancedPanel.Visible = expanded;
+            advancedToggle.Text = (expanded ? "−  " : "+  ") + Lang.T("irq.ui.advanced")
+                + (RaisePriority ? "  ·  " + Lang.T("irq.ui.priority.on") : "");
+            LayoutViewportAndFooter(scroll);
+            if (expanded && SelectedPage == 0 && advancedPanel.Bottom > scroll + scrollBody.ClientSize.Height)
+                scrollBody.AutoScrollPosition = new Point(0,advancedPanel.Bottom - scrollBody.ClientSize.Height + Theme.S(10));
+        }
+        internal void SelectHistory(int index)
+        {
+            if (index < 0 || index >= history.Count) return;
+            SelectedHistoryIndex = index; UpdateSession(history[index]);
+        }
 
-            bodyContentHeight = Theme.S(y);
-            matrixLogicalTop = matrix.Top;
-            int initialMatrixBottom = matrix.Bottom;
-            int deepestBottom = 0;
-            foreach (Control control in scrollBody.Controls)
+        private void UpdateSession(IrqPinSession session)
+        {
+            CurrentSession = session;
+            historyPicker.Text = Lang.T("irq.ui.reference") + "  " + SessionTitle(session)
+                + (history.Count > 0 ? "  ▾" : "");
+            hints.SetToolTip(historyPicker,historyPicker.Text);
+            for (int i = 0; i < historyMenu.Items.Count; i++)
+                ((ToolStripMenuItem)historyMenu.Items[i]).Checked = i == SelectedHistoryIndex;
+            matrix.SeenMask = session.SeenMask; matrix.ObservedGameMask = session.GameMask;
+            matrix.SetLoads(session.Loads);
+            var driver = session.Driver;
+            metricDpc.Text = driver == null ? "—" : driver.DpcMaxUs.ToString("F0") + " µs";
+            metricCurrent.Text = IrqUiState.LogicalCpus(device != null && device.IsPinned ? device.Mask : 0);
+            sourceLabel.Text = SessionTitle(session)
+                + (session.CurrentBoot || !session.Available ? "" : "\n" + Lang.T("irq.session.previousboot"));
+            coverageLabel.Text = session.Loads.Count == 0 ? Lang.T("irqpin.session.noload")
+                : Lang.F("irqpin.session.coverage",session.MinimumCoverage.ToString("F0"),session.MaximumCoverage.ToString("F0"));
+            statLabel.Text = driver == null ? Lang.T("irqpin.session.nodevice")
+                : Lang.F("irqpin.stat",driver.DpcMaxUs.ToString("F0"),
+                    IrqDeviceInventory.GradeText(IrqDeviceInventory.Grade(new IrqDevice { Dpc = driver.Dpc,MaxUs = driver.DpcMaxUs })),
+                    IrqRelocate.MaskText(session.SeenMask));
+            extraLabel.Text = driver == null ? "" : IrqDeviceInventory.BudgetText(driver.DpcMaxUs)
+                + " · " + Lang.F("irq.d.over500",driver.Over500Us)
+                + (device != null && device.SharedStats ? " · " + Lang.T("irq.d.shared") : "");
+            coreDetails.Text = (driver == null ? "" : Lang.F("irq.driver.identity",driver.Driver,driver.DriverVersion) + "\n")
+                + IrqCoreRecommendation.CoreDetails(session);
+            var plan = IrqCorePlan.Build(session,history,device,CpuTopology.PhysicalCoreMasks(),CpuTopology.MultiGroup);
+            candidateDetails.Text = plan.Details;
+            options.Clear();
+            options.AddRange(plan.Options);
+            candidateHeading.Text = plan.Heading;
+            for (int i = 0; i < optionButtons.Length; i++)
             {
-                var label = control as Label;
-                if (label != null)
-                {
-                    labelLogicalLeft[label] = label.Left;
-                    if (label.Top < matrixLogicalTop)
-                    { beforeMatrixLabels.Add(label); beforeMatrixBounds[label] = label.Bounds; }
-                }
-                if (control != matrix && control.Top >= initialMatrixBottom)
-                    afterMatrixOffsets[control] = control.Top - initialMatrixBottom;
-                if (control.Bottom > deepestBottom) deepestBottom = control.Bottom;
+                optionButtons[i].Visible = i < options.Count;
+                if (i >= options.Count) continue;
+                var option = options[i];
+                optionButtons[i].Text = Lang.F("irq.plan.option",IrqRelocate.MaskText(option.Mask),
+                    option.AveragePercent.ToString("F0"),option.EvidenceSessions);
+                hints.SetToolTip(optionButtons[i],Lang.F("irq.plan.option.detail",IrqRelocate.MaskText(option.Mask),
+                    option.EvidenceSessions,option.AveragePercent.ToString("F0"),option.BusyPercent.ToString("F0")));
             }
-            bodyTailPadding = Math.Max(0, bodyContentHeight - deepestBottom);
-            beforeMatrixLabels.Sort(delegate(Label a, Label b) {
-                return beforeMatrixBounds[a].Top.CompareTo(beforeMatrixBounds[b].Top); });
-            scrollBody.AutoScrollMinSize = new Size(0, bodyContentHeight);
-            naturalClientHeight = headerHeight + bodyContentHeight + footerHeight;
-            ClientSize = new Size(Theme.S(DlgW), naturalClientHeight);
-            LayoutViewportAndFooter(0);
-            naturalClientHeight = headerHeight + bodyContentHeight + footerHeight;
-            ClientSize = new Size(Theme.S(DlgW), naturalClientHeight);
-            LayoutViewportAndFooter(0);
-            MouseDown += DragMove;
+            candidateHint.Text = plan.Summary;
+            riskLabel.Text = RiskText();
+            deviceDetails.Text = device == null ? "" : device.Name + "\n"
+                + Lang.F("irq.device.identity",EmptyAsUnknown(device.DriverVersion),
+                    EmptyAsUnknown(device.ParentController),EmptyAsUnknown(device.Location)) + "\n" + device.Attribution
+                + (device.FrameworkStats ? "\n" + Lang.F("irq.d.framework",device.StatsDriver) : "");
+            string issue; var changes = IrqAdjustmentLedger.Load(out issue);
+            string verification = issue;
+            IrqAdjustment current = null;
+            if (issue.Length == 0)
+            {
+                verification = IrqAdjustmentVerification.DescribeHistory(changes,device,allSessions,
+                    IrqAffinityEngine.BootStamp(),CpuTopology.TopologyStamp(),out current);
+                if (current != null && !IrqAdjustmentLedger.Save(current)) verification += "\n" + Lang.T("irq.adjust.savefailed");
+            }
+            string placement = current == null ? device == null ? null : device.AdjustmentPlacement : current.Placement;
+            string state = issue.Length > 0 ? "unknown" : placement ?? IrqUiState.Placement(device);
+            metricStatus.Text = IrqUiState.Text(state);
+            metricStatus.ForeColor = IrqUiState.ColorFor(state);
+            benefitLabel.Text = current == null || string.IsNullOrEmpty(current.Performance)
+                ? Lang.T("irq.flow.benefit") : Lang.T("irq.performance." + current.Performance);
+            if (verification.Length == 0) verification = Lang.T("irq.ui.noadjustment");
+            if (session.Record != null && session.Record.Frames != null)
+            {
+                var f = session.Record.Frames;
+                verification += "\n\n" + Lang.F("irq.frame.clue",f.P99Ms.ToString("F2"),f.P999Ms.ToString("F2"),
+                    f.LongFrames,f.Intervals,(100 * Math.Min(1,f.Seconds / session.DurationSeconds)).ToString("F0"),
+                    f.AlignmentModule,f.AlignmentHits)
+                    + (verification.Contains(Lang.T("irq.compare.caution")) ? "" : "\n" + Lang.T("irq.compare.caution"))
+                    + (f.AlignmentComplete ? "" : "\n" + Lang.T("irq.frame.incomplete"));
+            }
+            verificationLabel.Text = verification;
+            OnPicked(Chosen); LayoutViewportAndFooter(0);
+        }
+        private static string EmptyAsUnknown(string value) { return string.IsNullOrEmpty(value) ? "—" : value; }
+        private string RiskText()
+        {
+            var lines = new List<string>();
+            if (device != null)
+            {
+                if (device.ManagedElsewhere) lines.Add(Lang.T("irq.d.owned"));
+                if (device.InputRisk) lines.Add(Lang.T("irq.d.input"));
+                if (device.MultiMessageRisk) lines.Add(device.MessageCount > 1
+                    ? Lang.F("irq.d.multimsg",device.MessageCount) : Lang.T("irq.d.multimsg.unknown"));
+                if (device.CompletionFollowsIssuer) lines.Add(Lang.T("irq.d.storagedpc"));
+                if (device.SharedStats) lines.Add(Lang.T("irq.ui.shared"));
+            }
+            return string.Join("\n",lines.ToArray());
+        }
+        private void SetSelection(ulong mask) { matrix.Selected = mask; OnPicked(matrix.Selected); }
+        internal void SetReadOnly(string reason)
+        {
+            readOnlyReason = reason;
+            swPriority.Enabled = false;
             OnPicked(Chosen);
         }
-
-        private static Label Line(string text, int y, int x, Font f, Color c, int h)
+        private void OnPicked(ulong mask)
         {
-            var l = new Label();
-            l.Text = text; l.Font = f; l.ForeColor = c; l.BackColor = Theme.Bg;
-            l.UseCompatibleTextRendering = false;
-            l.SetBounds(Theme.S(x), Theme.S(y), Theme.S(DlgW - x * 2), Theme.S(h));
-            return l;
+            Chosen = IrqRelocate.Sanitize(mask);
+            btnOk.Enabled = readOnlyReason == null && Chosen != 0 && !CpuTopology.MultiGroup && (device == null || !device.ManagedElsewhere);
+            lblPick.Text = CpuTopology.MultiGroup ? Lang.T("irq.exact.unsupported")
+                : Lang.F("irq.flow.change", IrqUiState.LogicalCpus(device != null && device.IsPinned ? device.Mask : 0),
+                    Chosen == 0 ? Lang.T("irq.ui.choose") : IrqUiState.LogicalCpus(Chosen));
+            hints.SetToolTip(lblPick,lblPick.Text);
+            lblPick.ForeColor = CpuTopology.MultiGroup ? Theme.Danger : Chosen == 0 ? Theme.Dim : Theme.Fg;
+            footerHint.Text = readOnlyReason ?? (CurrentSession != null && (Chosen & CurrentSession.GameMask) != 0
+                ? Lang.T("irq.ui.overlap") : Lang.T("irq.ui.apply.hint"));
+            foreach (var button in optionButtons) button.Kind = BtnKind.Normal;
+            for (int i = 0; i < Math.Min(options.Count,optionButtons.Length); i++)
+                if (options[i].Mask == Chosen) optionButtons[i].Kind = BtnKind.Primary;
+            foreach (var button in optionButtons) button.Invalidate();
         }
 
+        private static int PlaceLabel(Label label, int x, int y, int width, int minimum)
+        {
+            int h = Math.Max(Theme.S(minimum),TextRenderer.MeasureText(label.Text,label.Font,
+                new Size(Math.Max(1,width),int.MaxValue),TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix).Height);
+            label.SetBounds(x,y,Math.Max(1,width),h); return y + h;
+        }
         private void LayoutViewportAndFooter(int keepScrollY)
         {
-            int viewH = Math.Max(1, ClientSize.Height - headerHeight - footerHeight);
-            scrollBody.SetBounds(0, headerHeight, ClientSize.Width, viewH);
-            LayoutBodyForViewport(keepScrollY);
-
-            int margin = Math.Min(Theme.S(22), Math.Max(0, ClientSize.Width / 10));
-            int gap = Math.Min(Theme.S(10), Math.Max(0, ClientSize.Width / 30));
-            int right = Math.Max(0, ClientSize.Width - margin);
-            int footerY = ClientSize.Height - footerHeight;
-            int available = Math.Max(0, right - margin - gap);
-            int okW = Math.Min(Theme.S(140), available * 14 / 27);
-            int cancelW = Math.Min(Theme.S(130), Math.Max(0, available - okW));
-            // 宽度够时维持原设计宽 窄屏则同比收缩 任何情况下都不让取消键跑到负坐标
-            if (available >= Theme.S(270))
-            {
-                okW = Theme.S(140);
-                cancelW = Theme.S(130);
-            }
-            btnOk.SetBounds(right - okW, footerY, okW, Theme.S(34));
-            btnCancel.SetBounds(right - okW - gap - cancelW, footerY, cancelW, Theme.S(34));
-
-            closeLabel.Left = Math.Max(0, ClientSize.Width - Theme.S(46));
-            titleLabel.Width = Math.Max(1, closeLabel.Left - titleLabel.Left - Theme.S(12));
-        }
-
-        private void LayoutBodyForViewport(int keepScrollY)
-        {
-            if (matrix == null || scrollBody.ClientSize.Width <= 0) return;
-
-            scrollBody.SuspendLayout();
+            if (layingOut || matrix == null || btnOk == null || ClientSize.Width == 0) return;
+            layingOut = true;
             try
             {
-                // WinForms 会在 Form 缩高时自动把活动 CoreMatrix 滚进视口 布局必须先回到
-                // 逻辑原点 否则 control.Top/Bottom 是减过滚动量的显示坐标 会把内容高度算短
-                scrollBody.AutoScrollPosition = Point.Empty;
-                bool needsVertical = bodyContentHeight > scrollBody.ClientSize.Height;
-                LayoutBodyWidth(BodyViewportWidth(needsVertical));
-                // 窄屏会让核心矩阵多折几行 可能正好从不用滚变成得滚
-                // 第二次按最终状态永久预留滚动条宽 避免纵滚条出现后再挤出横滚条
-                bool finalNeedsVertical = bodyContentHeight > scrollBody.ClientSize.Height;
-                if (finalNeedsVertical != needsVertical)
-                    LayoutBodyWidth(BodyViewportWidth(finalNeedsVertical));
-
+                int margin = Theme.S(22), width = Math.Max(1,ClientSize.Width - margin * 2);
+                titleLabel.SetBounds(margin,Theme.S(16),Math.Max(1,width - Theme.S(34)),Theme.S(30));
+                deviceLabel.SetBounds(margin,Theme.S(49),width,Theme.S(23));
+                closeLabel.SetBounds(ClientSize.Width - Theme.S(48),Theme.S(12),Theme.S(30),Theme.S(32));
+                int tabWidth = Math.Max(1,(width - Theme.S(8)) / 2);
+                tabCores.SetBounds(margin,Theme.S(81),tabWidth,Theme.S(32));
+                tabEvidence.SetBounds(margin + tabWidth + Theme.S(8),Theme.S(81),tabWidth,Theme.S(32));
+                historyPicker.SetBounds(margin,Theme.S(122),width,Theme.S(32));
+                int footerH = Theme.S(112), footerTop = Math.Max(Theme.S(166),ClientSize.Height - footerH);
+                scrollBody.SetBounds(0,Theme.S(166),ClientSize.Width,Math.Max(1,footerTop - Theme.S(166)));
+                lblPick.SetBounds(margin,footerTop + Theme.S(8),width,Theme.S(45));
+                int buttonW = Math.Min(Theme.S(130),width / 3), gap = Theme.S(8);
+                btnOk.SetBounds(ClientSize.Width - margin - buttonW,footerTop + Theme.S(65),buttonW,Theme.S(35));
+                btnCancel.SetBounds(btnOk.Left - gap - buttonW,btnOk.Top,buttonW,btnOk.Height);
+                footerHint.SetBounds(margin,btnOk.Top,Math.Max(1,btnCancel.Left - margin - Theme.S(12)),Theme.S(40));
+                scrollBody.SuspendLayout(); scrollBody.AutoScrollPosition = Point.Empty;
+                int pageW = Math.Max(1,scrollBody.Width - SystemInformation.VerticalScrollBarWidth);
+                int coreH = LayoutCorePage(pageW), evidenceH = LayoutEvidencePage(pageW);
+                corePage.SetBounds(0,0,pageW,coreH); evidencePage.SetBounds(0,0,pageW,evidenceH);
+                bodyContentHeight = SelectedPage == 0 ? coreH : evidenceH;
+                scrollBody.AutoScrollMinSize = new Size(0,bodyContentHeight);
+                scrollBody.ResumeLayout(true); scrollBody.PerformLayout();
+                scrollBody.AutoScrollPosition = new Point(0,Math.Min(Math.Max(0,keepScrollY),
+                    Math.Max(0,bodyContentHeight - scrollBody.ClientSize.Height)));
             }
-            finally { scrollBody.ResumeLayout(true); }
-
-            // ResumeLayout(false) 会把旧宽屏的 DisplayRectangle.Width 留下来
-            // 即使所有子控件已经收窄也会伪造横向滚动条 先让 AutoScroll
-            // 按新控件边界完整重算 再使用最终 ClientSize 恢复/夹取纵向位置
-            scrollBody.PerformLayout();
-            int maxScrollY = Math.Max(0, bodyContentHeight - scrollBody.ClientSize.Height);
-            scrollBody.AutoScrollPosition = new Point(0,
-                Math.Min(Math.Max(0, keepScrollY), maxScrollY));
-            scrollBody.PerformLayout();
+            finally { layingOut = false; }
         }
-
-        private int BodyViewportWidth(bool reserveVerticalScrollbar)
+        private int LayoutCorePage(int pageWidth)
         {
-            int width = scrollBody.ClientSize.Width;
-            if (reserveVerticalScrollbar) width -= SystemInformation.VerticalScrollBarWidth;
-            return Math.Max(1, width);
+            int x = Theme.S(22), w = Math.Max(1,pageWidth - x * 2), y = Theme.S(10), pad = Theme.S(14);
+            int column = Math.Max(1,(w - pad * 2) / 3), summaryH = 0;
+            string[] titles = { "metricDpcTitle","metricCurrentTitle","metricStatusTitle" };
+            Label[] metrics = { metricDpc,metricCurrent,metricStatus };
+            for (int i = 0; i < 3; i++)
+            {
+                int left = pad + column * i;
+                int titleBottom = PlaceLabel((Label)summaryCard.Controls[titles[i]],left,Theme.S(11),column - Theme.S(8),16);
+                summaryH = Math.Max(summaryH,PlaceLabel(metrics[i],left,titleBottom + Theme.S(7),column - Theme.S(8),25));
+            }
+            summaryH = PlaceLabel(benefitLabel,pad,summaryH + Theme.S(8),w - pad * 2,18);
+            summaryCard.SetBounds(x,y,w,summaryH + Theme.S(12)); y = summaryCard.Bottom + Theme.S(12);
+            riskLabel.Visible = riskLabel.Text.Length > 0;
+            if (riskLabel.Text.Length > 0) y = PlaceLabel(riskLabel,x,y,w,20) + Theme.S(10);
+            y = PlaceLabel(candidateHeading,x,y,w,20) + Theme.S(5);
+            int count = Math.Min(optionButtons.Length,options.Count);
+            int optionW = count == 0 ? 1 : (w - Theme.S(8) * (count - 1)) / count;
+            for (int i = 0; i < count; i++)
+                optionButtons[i].SetBounds(x + i * (optionW + Theme.S(8)),y,optionW,Theme.S(36));
+            if (count > 0) y += Theme.S(44);
+            y = PlaceLabel(candidateHint,x,y,w,20) + Theme.S(16);
+            int resetW = Theme.S(104), clearW = Theme.S(64);
+            resetSelection.SetBounds(x + w - resetW - clearW - Theme.S(8),y,resetW,Theme.S(28));
+            clearSelection.SetBounds(x + w - clearW,y,clearW,Theme.S(28));
+            coreHeading.SetBounds(x,y,Math.Max(1,w - resetW - clearW - Theme.S(18)),Theme.S(28));
+            y += Theme.S(35); y = PlaceLabel(howto,x,y,w,20) + Theme.S(8);
+            int matrixH = matrix.LayoutFor(w); matrix.SetBounds(x,y,w,matrixH); y += matrixH + Theme.S(12);
+            advancedToggle.SetBounds(x,y,w,Theme.S(31)); y += Theme.S(39);
+            if (AdvancedExpanded)
+            {
+                swPriority.Location = new Point(pad,Theme.S(15));
+                int end = PlaceLabel(priorityLabel,Theme.S(80),Theme.S(13),Math.Max(1,w - Theme.S(94)),35);
+                advancedPanel.SetBounds(x,y,w,Math.Max(Theme.S(60),end + Theme.S(12)));
+                y = advancedPanel.Bottom + Theme.S(10);
+            }
+            return y + Theme.S(10);
         }
-
-        private void LayoutBodyWidth(int viewportWidth)
+        private static int FlowCard(Panel card, int x, int y, int width, params Label[] labels)
         {
-            // DPI 缩放或者窄屏下文字会折行 从原始坐标重新排
-            // 不要在上一次布局的偏移上继续累加
-            foreach (KeyValuePair<Label, int> item in labelLogicalLeft)
+            int pad = Theme.S(14), cy = Theme.S(12);
+            cy = PlaceLabel((Label)card.Controls["cardTitle"],pad,cy,width - pad * 2,23) + Theme.S(9);
+            foreach (var label in labels)
             {
-                int left = Math.Min(item.Value, Math.Max(0, viewportWidth - 1));
-                item.Key.Left = left;
-                item.Key.Width = Math.Max(1, viewportWidth - left - Math.Min(item.Value, Theme.S(76)));
+                label.Visible = label.Text.Length > 0;
+                if (label.Text.Length > 0) cy = PlaceLabel(label,pad,cy,width - pad * 2,20) + Theme.S(9);
             }
-            int extraHeight = 0;
-            foreach (Label label in beforeMatrixLabels)
-            {
-                Rectangle original = beforeMatrixBounds[label];
-                int needed = label.AutoEllipsis ? original.Height : TextRenderer.MeasureText(label.Text,
-                    label.Font, new Size(label.Width, int.MaxValue), TextFormatFlags.WordBreak).Height;
-                label.Top = original.Top + extraHeight;
-                label.Height = Math.Max(original.Height, needed);
-                extraHeight += label.Height - original.Height;
-            }
-            int inset = Math.Min(Theme.S(22), Math.Max(0, (viewportWidth - 1) / 2));
-            int matrixWidth = Math.Max(1, viewportWidth - inset * 2);
-            int matrixHeight = matrix.LayoutFor(matrixWidth);
-            matrix.SetBounds(inset, matrixLogicalTop + extraHeight, matrixWidth, matrixHeight);
-
-            foreach (KeyValuePair<Control, int> item in afterMatrixOffsets)
-                item.Key.Top = matrix.Bottom + item.Value;
-
-            int deepestBottom = 0;
-            foreach (Control control in scrollBody.Controls)
-            {
-                var label = control as Label;
-                if (label != null)
-                {
-                    int originalLeft;
-                    if (!labelLogicalLeft.TryGetValue(label, out originalLeft))
-                        originalLeft = label.Left;
-                    int left = Math.Min(originalLeft, Math.Max(0, viewportWidth - 1));
-                    label.Left = left;
-                    label.Width = Math.Max(1,
-                        viewportWidth - left - Math.Min(originalLeft, Theme.S(76)));
-                }
-                // 即使 WinForms 因活动控件临时滚动 仍按逻辑坐标计算内容底部
-                int logicalBottom = control.Bottom - scrollBody.AutoScrollPosition.Y;
-                if (logicalBottom > deepestBottom) deepestBottom = logicalBottom;
-            }
-            bodyContentHeight = deepestBottom + bodyTailPadding;
-            scrollBody.AutoScrollMinSize = new Size(0, bodyContentHeight);
+            card.SetBounds(x,y,width,cy + Theme.S(4)); return card.Bottom + Theme.S(12);
         }
-
-        // 固定标题和底部操作区 只压缩中间滚动视口 工作区与控件尺寸都已经是设备像素
-        // 这里不能再套 Theme.S 否则高 DPI 下会二次缩放并重新越界
+        private int LayoutEvidencePage(int pageWidth)
+        {
+            int x = Theme.S(22), w = Math.Max(1,pageWidth - x * 2), y = Theme.S(10);
+            y = FlowCard(observationCard,x,y,w,sourceLabel,coverageLabel,statLabel,extraLabel,coreDetails,candidateDetails);
+            y = FlowCard(verificationCard,x,y,w,verificationLabel);
+            y = FlowCard(deviceCard,x,y,w,deviceDetails); return y + Theme.S(8);
+        }
         internal void FitToWorkingArea(Rectangle workArea)
         {
             if (workArea.Width <= 0 || workArea.Height <= 0) return;
-
-            // 第一次显示永远从设备说明顶部开始 用户已经滚动后跨屏/重排则保留并夹取位置
-            bool firstFit = !fittedToWorkArea;
-            if (firstFit)
-            {
-                // CoreMatrix 是第一个可选子控件 Form 已 Show 后直接缩高
-                // WinForms 会为了让它可见而自动滚到正文中段 首次拟合前
-                // 先把焦点放在固定 footer 正文才能稳定留在顶部
-                try { ActiveControl = btnCancel; btnCancel.Select(); } catch { }
-            }
-            int keepScrollY = fittedToWorkArea
-                ? Math.Max(0, -scrollBody.AutoScrollPosition.Y) : 0;
-            int chromeW = Math.Max(0, Width - ClientSize.Width);
-            int chromeH = Math.Max(0, Height - ClientSize.Height);
-            int maxClientW = Math.Max(1, workArea.Width - chromeW);
-            int maxClientH = Math.Max(1, workArea.Height - chromeH);
-            int targetW = Math.Min(Theme.S(DlgW), maxClientW);
-            int targetH = Math.Min(naturalClientHeight, maxClientH);
-            if (ClientSize.Width != targetW || ClientSize.Height != targetH)
-                ClientSize = new Size(targetW, targetH);
-            LayoutViewportAndFooter(keepScrollY);
-            if (firstFit)
-            {
-                try
-                {
-                    ActiveControl = btnCancel;
-                    btnCancel.Select();
-                    scrollBody.AutoScrollPosition = Point.Empty;
-                    scrollBody.PerformLayout();
-                }
-                catch { }
-            }
-            fittedToWorkArea = true;
-
-            int left = Left, top = Top;
-            if (left + Width > workArea.Right) left = workArea.Right - Width;
-            if (top + Height > workArea.Bottom) top = workArea.Bottom - Height;
-            if (left < workArea.Left) left = workArea.Left;
-            if (top < workArea.Top) top = workArea.Top;
-            if (left != Left || top != Top) Location = new Point(left, top);
+            int scroll = fittedToWorkArea ? Math.Max(0,-scrollBody.AutoScrollPosition.Y) : 0;
+            if (!fittedToWorkArea) { try { ActiveControl = btnCancel; btnCancel.Select(); } catch { } }
+            ClientSize = new Size(Math.Min(Theme.S(DlgW),workArea.Width),Math.Min(Theme.S(DlgH),workArea.Height));
+            LayoutViewportAndFooter(scroll);
+            int left = Math.Max(workArea.Left,Math.Min(Left,workArea.Right - Width));
+            int top = Math.Max(workArea.Top,Math.Min(Top,workArea.Bottom - Height));
+            Location = new Point(left,top); fittedToWorkArea = true;
         }
-
-        private void OnPicked(ulong mask)
-        {
-            ulong keep = IrqRelocate.Sanitize(mask);
-            Chosen = keep;
-            btnOk.Enabled = keep != 0;
-            lblPick.Text = keep != 0
-                ? Lang.F("irqpin.picked", IrqRelocate.MaskText(keep))
-                : Lang.T("irqpin.badpick");
-            lblPick.ForeColor = keep != 0 ? Theme.Accent : Theme.Danger;
-        }
-
         protected override void OnHandleCreated(EventArgs e)
-        {
-            base.OnHandleCreated(e);
-            Native.RoundCorners(Handle);
-        }
-
+        { base.OnHandleCreated(e); Native.RoundCorners(Handle); }
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);
-            // base.OnShown 会按 Tab 顺序选中滚动区里的 CoreMatrix 先移到
-            // 固定 footer 否则随后的工作区限高会自动跳过顶部风险信息
             try { ActiveControl = btnCancel; btnCancel.Select(); } catch { }
-            // 内容自适应后弹窗可能较高:居中显示时把整窗夹回工作区 保证底部开关/按钮不被屏幕边缘切掉
-            // 截图路径用 Manual 定位(-20000 离屏) 不参与夹取 免得把离屏窗拽回可见区
             if (StartPosition != FormStartPosition.Manual) ClampToWorkArea();
-            clockWasSuspended = UiClock.Borrow();
-            Fx.EnterForm(this);
+            clockWasSuspended = UiClock.Borrow(); Fx.EnterForm(this);
         }
-
         private void ClampToWorkArea()
-        {
-            try
-            {
-                FitToWorkingArea(Screen.FromControl(this).WorkingArea);
-            }
-            catch { }
-        }
-
+        { try { FitToWorkingArea(Screen.FromControl(this).WorkingArea); } catch { } }
         protected override void OnFormClosed(FormClosedEventArgs e)
-        {
-            UiClock.Return(clockWasSuspended);
-            base.OnFormClosed(e);
-        }
-
+        { historyMenu.Dispose(); hints.Dispose(); UiClock.Return(clockWasSuspended); base.OnFormClosed(e); }
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
             if (keyData == Keys.Escape) { Close(); return true; }
-            return base.ProcessCmdKey(ref msg, keyData);
+            if (keyData == (Keys.Control | Keys.Tab)) { SelectPage(1 - SelectedPage); return true; }
+            return base.ProcessCmdKey(ref msg,keyData);
         }
-
-        private void DragMove(object s, MouseEventArgs e)
+        private void DragMove(object sender, MouseEventArgs e)
         {
-            if (e.Button == MouseButtons.Left)
-            {
-                Native.ReleaseCapture();
-                Native.SendMessage(Handle, Native.WM_NCLBUTTONDOWN, (IntPtr)Native.HT_CAPTION, IntPtr.Zero);
-                // SendMessage 在原生移动循环结束后才返回 若从高屏拖到较矮副屏 按目标屏
-                // 重新压缩正文视口 不能只依赖首次 OnShown 的那一次夹取
-                if (StartPosition != FormStartPosition.Manual) ClampToWorkArea();
-            }
+            if (e.Button != MouseButtons.Left) return;
+            Native.ReleaseCapture(); Native.SendMessage(Handle,Native.WM_NCLBUTTONDOWN,(IntPtr)Native.HT_CAPTION,IntPtr.Zero);
+            if (StartPosition != FormStartPosition.Manual) ClampToWorkArea();
         }
     }
 }

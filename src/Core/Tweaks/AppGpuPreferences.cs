@@ -1,4 +1,4 @@
-// 文件用途 显式且持久的逐 EXE Windows 显卡偏好 不迁移进程也不做强制
+// File purpose Explicit, persistent per-EXE Windows GPU preference; no process migration and no forcing
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -161,8 +161,8 @@ namespace PaviseApp
                         string current;
                         if (!Read(key, path, out current)) return AppGpuPreferenceWriteResult.NotIssued;
                         if (!string.Equals(current, expected, StringComparison.Ordinal)) return AppGpuPreferenceWriteResult.Changed;
-                        // 注册表没有条件写值的接口 本进程共用预置闸
-                        // 靠一次新鲜比对加上调用方的回读来发现变化
+                        // The registry has no conditional-write API; this process shares the staging gate
+                        // a fresh compare plus the caller's read-back detect changes
                         issued = true;
                         if (replacement == null) key.DeleteValue(path, false);
                         else key.SetValue(path, replacement, RegistryValueKind.String);
@@ -259,8 +259,8 @@ namespace PaviseApp
                     if (!string.Equals(current, change.CurrentRaw, StringComparison.Ordinal)) return AppGpuPreferenceResult.Changed;
                     if (!control.TryGetStagedOriginal(change.ExePath, out staged, out original)) return AppGpuPreferenceResult.Busy;
                     if (staged != change.Staged || (staged && original != change.StageOriginal)) return AppGpuPreferenceResult.Changed;
-                    // 锁外那次预检查不算提交凭证 等到锁和所有只读准备做完要重验一次
-                    // 重验得赶在暂存释放 账本落盘和偏好写入之前 人工路径不传这个委托
+                    // The pre-check outside the lock isn't a commit credential; re-verify after the lock and all read-only prep are done
+                    // The re-check must come before the stage is released, the ledger is saved and the preference is written; the manual path passes no delegate
                     if (stillEligible != null && !stillEligible()) return AppGpuPreferenceResult.Changed;
                     if (!control.TryReleaseStage(change.ExePath)) return AppGpuPreferenceResult.Busy;
                     if (!Read(change.ExePath, out current)) return AppGpuPreferenceResult.ReadFailed;
@@ -371,10 +371,10 @@ namespace PaviseApp
             }
         }
 
-        // 仅供整体重置 崩溃窗口留下的 P(无收据)/R 记录 当前值已被外部改写为高性能
-        //   RemoveRecord 对它们永远返回 RecoveryPending 清除全部配置会被无限期拦住
-        //   用户已明确要求清空全部数据时 按界面"仅移除记录"的语义结清 保留系统现状并留日志
-        //   可认领的 O/U 记录与瞬时失败(读写失败 台账失败)不放弃
+        // Reset-only: receipt-less P records and R records left by a crash window whose current value was externally rewritten to high performance
+        //   RemoveRecord always returns RecoveryPending for them, blocking clear-all-config indefinitely
+        //   When the user explicitly asked to wipe all data, settle with the UI's "remove record only" semantics: keep the system as is and log it
+        //   Claimable O/U records and transient failures (read/write failure, ledger failure) are not abandoned
         public bool AbandonUnprovableForReset()
         {
             lock (GpuPrefStage.MutationGate)
@@ -401,8 +401,8 @@ namespace PaviseApp
             }
         }
 
-        // 启动时只做收据对账和清理 正常的 O 和 U 记录保持不动
-        // 这里绝不重新施加节能偏好 也不撤销用户长期的选择
+        // Startup only reconciles receipts and cleans up; normal O and U records are left alone
+        // never re-applies the power-saving preference here, nor revokes the user's long-term choice
         public bool HealFromCrash()
         {
             lock (GpuPrefStage.MutationGate)
@@ -454,14 +454,14 @@ namespace PaviseApp
                 return Settle(record) ? AppGpuPreferenceResult.Success : AppGpuPreferenceResult.JournalFailed;
             if (record.Phase == 'R' || (record.Phase == 'P' && !record.Receipt))
                 return AppGpuPreferenceResult.RecoveryPending;
-            // 只改我们自己那个字段 现有的 WindowedOpt AutoHDR 和未知字段都保留
+            // Change only our own field; existing WindowedOpt, AutoHDR and unknown fields are preserved
             string restored = RestoreText(current, record.Original);
             record.RestoreTarget = restored;
             record.Phase = 'R';
             if (!Save())
             {
-                // 这个实例知道自己没发出过还原写入 重新加载出来的 R
-                // 没法这么假设 但当前活着的调用方可以安全重试
+                // This instance knows it never issued the restore write; a reloaded R
+                // can't assume that, but the live caller can safely retry
                 record.Phase = 'O'; record.RestoreTarget = null;
                 return AppGpuPreferenceResult.JournalFailed;
             }
@@ -476,8 +476,8 @@ namespace PaviseApp
                 if (!Read(record.Path, out current)) return AppGpuPreferenceResult.ReadFailed;
                 if (PrefFieldText.ReadField(current, "GpuPreference") != "1")
                     return Settle(record) ? AppGpuPreferenceResult.Success : AppGpuPreferenceResult.JournalFailed;
-                // 变的只是另一个共享字符串字段 保住所有权 让重试
-                // 能在不丢那处编辑的前提下还原显卡偏好
+                // Only another shared string field changed; keep ownership so a retry
+                // can restore the GPU preference without losing that edit
                 record.Phase = 'O'; record.RestoreTarget = null;
                 return Save() ? AppGpuPreferenceResult.Changed : AppGpuPreferenceResult.JournalFailed;
             }
@@ -494,7 +494,7 @@ namespace PaviseApp
             int index = records.IndexOf(record);
             records.Remove(record);
             if (Save()) return true;
-            // 清理失败之后 墓碑在磁盘和内存里都要留一份
+            // After a failed cleanup the tombstone must stay both on disk and in memory
             records.Insert(Math.Min(index, records.Count), record);
             dirty = true;
             return false;

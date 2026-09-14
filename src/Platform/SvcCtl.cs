@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 控制 Windows 服务并等待目标状态
+// File purpose Controls Windows services and waits for the target state
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;

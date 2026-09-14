@@ -1,7 +1,7 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 自适应压制的会话编排 采样喂状态机 升降档只翻一个布尔 两个执行点自取
-//   智能档专属 有开关默认关 升档后带可见窗口的程序也会被隔离 副屏视频和开着窗口的语音都受影响
-//   智能档的承诺是不碰用户正在用的东西 所以这条不能默认开 也不能没有开关
+// File purpose Session orchestration for adaptive suppression, sampling feeds the state machine, escalate/de-escalate flips one bool that the two execution points read on their own
+//   Smart tier only, has a switch, off by default, after escalation programs with visible windows get isolated too, second-screen video and voice apps with open windows are affected
+//   The Smart tier promise is not to touch what the user is actively using, so this can't default on and can't lack a switch
 using System;
 
 namespace PaviseApp
@@ -33,7 +33,7 @@ namespace PaviseApp
             }
         }
 
-        // 主循环每轮喂一次 独立的饱和度实例 不与智能让位的采样抢差分
+        // Fed once per main loop pass, own saturation instance so it doesn't compete with smart-yield sampling for deltas
         private void StepAdaptiveGuard()
         {
             bool want = EffPreset == PerformancePreset.Standard && EffAdaptiveEscalate
@@ -44,7 +44,7 @@ namespace PaviseApp
                 if (adaptiveEscalated)
                 {
                     adaptiveEscalated = false;
-                    // 走到这里不是负载恢复 是档位切走或会话在收尾 日志按实说
+                    // Reaching here isn't load recovery, it's a tier switch or session wind-down, log it as such
                     Logger.Log(Lang.T("log.adaptive.3"));
                 }
                 return;

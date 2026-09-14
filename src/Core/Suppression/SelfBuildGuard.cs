@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 认出同一产品的其它构建 免得 Pavise 压制自己的另一个可执行文件
+// File purpose Recognizes other builds of the same product so Pavise doesn't suppress another executable of itself
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -8,15 +8,15 @@ using System.Reflection;
 
 namespace PaviseApp
 {
-    // 单实例锁挡不住运行模式子进程 TryHandleRuntimeMode 在拿锁之前就 return 了
-    //   所以 --selftest --cpu-burn 这些会以另一个文件名和主实例并存
-    //   扫描里只按进程名等于 selfName 排除自己 换个文件名就排不掉 实测被压到隔离档
-    //   后果不只是烦 这些子进程本来就是拿来测量的 被压了测出来的数就是错的
+    // The single-instance lock doesn't catch runtime-mode child processes; TryHandleRuntimeMode returns before taking the lock
+    //   so --selftest --cpu-burn and friends coexist with the main instance under a different file name
+    //   The scan excludes self only by process name == selfName; a different file name slips through, observed being suppressed to the isolated level
+    //   Worse than annoying: these children exist to measure, and suppressed measurements are wrong
     //
-    // 判据取版本信息的 ProductName 所有构建都是 AssemblyProduct("Pavise")
-    //   改文件名 改目录 改版本号都不影响 比按文件名前缀硬
-    // 名字前缀只当预筛 不当判据 为的是别给几百个无关进程都读一次版本资源
-    //   代价是把构建改名成完全不含本名前缀的样子就认不出来 那是刻意改名 不管
+    // Criterion is ProductName from version info; every build is AssemblyProduct("Pavise")
+    //   Renaming the file, moving the directory or changing the version doesn't affect it; sturdier than a file-name prefix
+    // The name prefix is only a pre-filter, not the criterion, so hundreds of unrelated processes don't each get a version-resource read
+    //   Cost: a build renamed to something without the base prefix goes unrecognized; that's a deliberate rename, ignored
     internal static class SelfBuildGuard
     {
         private const int MaxCached = 512;
@@ -44,7 +44,7 @@ namespace PaviseApp
             }
         }
 
-        // 自己进程名第一个点之前的那段 Pavise.dev 和 Pavise.selftest.work 都归到 Pavise
+        // Segment of our own process name before the first dot; Pavise.dev and Pavise.selftest.work both map to Pavise
         internal static string PrefixOf(string processName)
         {
             if (string.IsNullOrEmpty(processName)) return "";

@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 记录被内核反作弊拒绝整进程写入的游戏 只跳过必然失败的那几项写入 换版本自动重试
+// File purpose Records games where kernel anti-cheat refuses process-wide writes; skips only the writes bound to fail, retries automatically on a version change
 using System;
 using System.Collections.Generic;
 

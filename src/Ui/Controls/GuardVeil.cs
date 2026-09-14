@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 守护未开启时盖住那些开了也不生效的页面 并说清该去哪开
+// File purpose Veils pages that have no effect while guard is off and says where to enable it
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;

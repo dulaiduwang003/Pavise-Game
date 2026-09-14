@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 逐游戏配置项的取值 文案与可用性判定
+// File purpose Values, copy and availability checks for per-game config items
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -9,7 +9,7 @@ namespace PaviseApp
 {
     internal partial class PanelForm
     {
-        // 自适应升档只在智能档起作用 其它档位本来就是电竞口径 这一行干脆不建 不是建了再锁
+        // Adaptive tier escalation only works on the Smart tier; other tiers are already Esports criteria, so the row is simply not built rather than built and locked
         private string[] CfgKeysForPreset(string[] keys)
         {
             if (cfgEffMode == PerformancePreset.Standard) return keys;
@@ -162,7 +162,7 @@ namespace PaviseApp
             switch (item.Key)
             {
                 case PolicyCatalog.KeyPreset:
-                    // 顺序对齐 Choices 的 0 1 4 2
+                    // Order aligned with Choices 0 1 4 2
                     return new[] { Lang.T("preset.standard"), Lang.T("preset.competitive"),
                         Lang.T("preset.handheld"), Lang.T("preset.custom") };
                 case PolicyCatalog.KeyNvLowLat:
@@ -238,7 +238,7 @@ namespace PaviseApp
             bool amdOk = cfgSyncAmdOk ?? AdlxTweaks.Available;
             switch (item.Key)
             {
-                // 门槛跟优化策略页那份一模一样 缺哪条就说哪条 别让人在这里开了之后干等着不生效
+                // Thresholds are identical to the Policy page's; name whichever one is missing, so nobody turns it on here and waits for nothing to happen
                 case PolicyCatalog.KeyPowerYield:
                     reasonKey = PowerYieldUnavailableReasonKey();
                     return reasonKey == null;
@@ -274,7 +274,7 @@ namespace PaviseApp
                     if (!IntelGraphicsTweaks.HasAvailable) { reasonKey = "set.intel.none"; return false; }
                     if (!Native.HasSystemBattery()) { reasonKey = "set.intel.endurance.desktop"; return false; }
                     return true;
-                // 这一项按本局实际生效的档位判 掌机档和低核机器上开了也不启用
+                // This item is judged by the tier actually in effect this match; on the Handheld tier and low-core machines it does not engage even when on
                 case PolicyCatalog.KeyRenderLane:
                     if (!GameMode.LaneSupported(cfgEffMode)) { reasonKey = "gm.lane.unsupported"; return false; }
                     return true;

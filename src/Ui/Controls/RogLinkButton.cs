@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 绘制概览页底部的 ROG 风格外链按钮 教程与问卷共用
+// File purpose ROG-style external link button at the bottom of the Overview page, shared by the guide and the survey
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -7,9 +7,9 @@ using System.Windows.Forms;
 
 namespace PaviseApp
 {
-    // 装甲语言与旁边的高级入口保持一致 切角框 右侧斜切光带 左侧图标插槽 底部导轨
-    //   右端角标分两种 外链标记表示会打开浏览器 前进箭头表示在程序里开一个窗
-    //   点了跳浏览器的必须画外链标记 别让用户以为只是换个页面
+    // Armor language matches the advanced entry next to it: chamfered frame, slanted light band on the right, icon slot on the left, rail at the bottom
+    //   Two kinds of corner mark on the right end: the external-link mark means a browser opens, the forward arrow means a window opens inside the app
+    //   Anything that jumps to the browser must draw the external-link mark; do not let users think it is just another page
     internal sealed class RogLinkButton : FxControl
     {
         private readonly string code;
@@ -18,11 +18,11 @@ namespace PaviseApp
 
         public bool External = true;
 
-        // 指定后整颗按钮换成这个颜色 捐赠入口用暖色 与旁边两个主题色的入口一眼分开
+        // When set the whole button switches to this color; the donate entry uses a warm tint so it stands apart from the two accent-colored entries beside it
         public Color? Tint;
         private Color AccentColor { get { return Tint ?? Theme.Accent; } }
 
-        // 未读红点 公告用 有新的才亮 看过就灭
+        // Unread red dot, used by announcements; lights only when there is a new one, goes out once seen
         public bool Dot
         {
             get { return dot; }
@@ -91,8 +91,8 @@ namespace PaviseApp
 
             int textX = Theme.S(43);
             int rightPad = Theme.S(36);
-            // NoPrefix 是必须的 标题里出现 & 时不能被当成助记符吃掉那个字符
-            //   Help & feedback 少了它会画成 Help _feedback
+            // NoPrefix is required: an & in the title must not be eaten as a mnemonic
+            //   Without it Help & feedback is drawn as Help _feedback
             TextRenderer.DrawText(g, code, Theme.Mono(5.5f),
                 new Rectangle(textX, Theme.S(7), Math.Max(1, Width - textX - rightPad), Theme.S(12)),
                 Theme.Faint,
@@ -116,7 +116,7 @@ namespace PaviseApp
                 g.FillRectangle(node, textX - Theme.S(2), railY - Theme.S(2), Theme.S(4), Theme.S(4));
         }
 
-        // 在程序里开窗的按钮画这个 和侧栏那些进入下一层的入口同一个记号
+        // Drawn on buttons that open a window inside the app; same mark as the sidebar entries that go one level deeper
         private void DrawForwardMark(Graphics g, float hot, float down)
         {
             int side = Theme.S(9);
@@ -130,7 +130,7 @@ namespace PaviseApp
             }
         }
 
-        // 红点压在右上角 未读时才画 位置避开角标本身
+        // Red dot pressed into the top-right corner, drawn only when unread; positioned clear of the corner mark itself
         private void DrawUnreadDot(Graphics g)
         {
             int d = Theme.S(7);
@@ -140,7 +140,7 @@ namespace PaviseApp
                 g.DrawEllipse(ring, Rectangle.Inflate(box, Theme.S(2), Theme.S(2)));
         }
 
-        // 缺右上角的方框加一支朝右上的箭头 通用的"在浏览器中打开"记号
+        // A box missing its top-right corner plus an arrow pointing up-right; the generic open-in-browser mark
         private void DrawExternalMark(Graphics g, float hot, float down)
         {
             int side = Theme.S(9);

@@ -17,7 +17,7 @@ try {
     $common = @('-nologo', '-target:exe', '-platform:x64', '-optimize+', '-codepage:65001',
         '-define:PAVISE_SELFTEST;PAVISE_SELFTEST_RUNNER', '-reference:System.dll',
         '-reference:System.Drawing.dll', '-reference:System.Windows.Forms.dll', '-reference:System.Core.dll',
-        '-reference:System.Management.dll', '-reference:System.Xml.dll', '-recurse:src\*.cs', '-recurse:tests\*.cs')
+        '-reference:System.Management.dll', '-reference:System.Xml.dll', '-recurse:src\*.cs', '@tests\SelfTest.sources.rsp')
     & $compiler '-main:PaviseApp.CoreSchedulingIntegrationRunner' '-out:build\Pavise.core-integration.exe' @common
     if ($LASTEXITCODE -ne 0) { throw 'Placement integration build failed.' }
     & .\build\Pavise.core-integration.exe --integration *> build\core-scheduling-integration.txt

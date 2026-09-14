@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 提供分段选择控件 段数与文字由 Labels 决定
+// File purpose Segmented picker control; segment count and text come from Labels
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;

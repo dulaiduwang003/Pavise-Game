@@ -1,4 +1,4 @@
-// 文件用途 双阈值待机内存清理 需用户开启 只在已核实的当前对局内生效
+// File purpose Dual-threshold standby memory cleanup, user opt-in, active only within a verified current match
 using System;
 using System.Globalization;
 using System.Threading;
@@ -17,7 +17,7 @@ namespace PaviseApp
 
         private void InitializeStandbyCleaner()
         {
-            // 已退役的 GmStandbyGuard 和 GmStandbySweep 取值 一律不视为同意
+            // Values of the retired GmStandbyGuard and GmStandbySweep never count as consent
             standbyCleanerOn = Settings.Load(PolicyCatalog.KeyStandbyCleaner, false);
             string raw;
             StandbyCleanerOptions parsed;
@@ -28,8 +28,8 @@ namespace PaviseApp
                 standbyCleanerOptions = parsed;
             if (!standbyCleanerOptionsValid)
             {
-                // 参数损坏时原样留着供排查 但绝不能在保存损坏之后
-                // 拿悄悄替换过的阈值继续跑
+                // Corrupt parameters are left as-is for troubleshooting, but after saving the corruption
+                // never keep running with silently substituted thresholds
                 standbyCleanerOn = false;
                 envFused.Add("standby");
                 Settings.Save("EnvFuse_standby", true);
@@ -53,8 +53,8 @@ namespace PaviseApp
                     InvalidateStandbyCleanerWork();
                     if (value && !standbyCleanerOptionsValid) return;
                     bool saved = Settings.Save(PolicyCatalog.KeyStandbyCleaner, value);
-                    // 开启失败不算同意 关闭失败也必须立刻
-                    // 把正在跑的工作线程停掉
+                    // A failed enable is not consent, a failed disable must still immediately
+                    // stop the running worker thread
                     standbyCleanerOn = value && saved;
                     if (standbyCleanerOn) ClearEnvFuse("standby");
                 }
@@ -75,16 +75,16 @@ namespace PaviseApp
                 InvalidateStandbyCleanerWork();
                 if (!standbyCleanerOptionsValid)
                 {
-                    // 最初那次把配置损坏锁定落盘的尝试可能已经失败
-                    // 所以要在写有效参数之前先提交这个锁定
-                    // 否则重启后可能悄悄复活一条旧的逐游戏开关
+                    // The initial attempt to persist the config-corruption lockout may have failed
+                    // so commit this lockout before writing valid parameters
+                    // otherwise a restart could silently revive an old per-game switch
                     envFused.Add("standby");
                     standbyCleanerOn = false;
                     if (!Settings.Save("EnvFuse_standby", true)
                         || !Settings.Save(PolicyCatalog.KeyStandbyCleaner, false)) return false;
                 }
-                // 三个参数共用一个注册表值作为提交边界
-                // 取消或者写失败 都不会让它们部分发布出去
+                // The three parameters share one registry value as the commit boundary
+                // neither cancel nor a failed write can publish them partially
                 saved = Settings.SaveStr(StandbyCleanerOptionsKey, value.Serialize());
                 if (saved)
                 {
@@ -111,7 +111,7 @@ namespace PaviseApp
 
         private bool LiveStandbyCleanerPreference()
         {
-            // 持有 sync 时调用 且在进入任何原生或 runner 闸门之前
+            // Called while holding sync, and before entering any native or runner gate
             return LiveBoolPreferenceLocked(PolicyCatalog.KeyStandbyCleaner, standbyCleanerOn);
         }
 
@@ -133,8 +133,8 @@ namespace PaviseApp
                     && (snapshot == null || string.IsNullOrEmpty(snapshot.ProfileId)
                         || string.Equals(snapshot.ProfileId, profileId, StringComparison.OrdinalIgnoreCase));
             }
-            // 原生准入只读原子量和不可变身份 特别注意
-            // 它绝不能在持有原生闸或中断改动闸的时候再去拿 sync
+            // Native admission reads only atomics and immutable identity, note especially
+            // it must never take sync while holding the native gate or the interrupt change gate
             return delegate
             {
                 if (!wanted || capturedGeneration != Volatile.Read(ref standbyCleanerGeneration)

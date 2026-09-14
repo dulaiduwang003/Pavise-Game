@@ -1,11 +1,11 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 开启 AMD Smart Access Memory 重启生效 关闭开关按记录关回
+// File purpose Enables AMD Smart Access Memory, effective after reboot; turning the switch off reverts per record
 using System;
 
 namespace PaviseApp
 {
-    // SAM 就是 AMD 侧的 Resizable BAR NVIDIA 那边逐游戏写驱动配置 AMD 这边是全局开关且要重启
-    //   ADLX 报支持才提供 用户本来就开着的不记账 关闭开关时只关 Pavise 自己开的
+    // SAM is AMD's Resizable BAR; NVIDIA writes per-game driver config, AMD is a global switch that needs a reboot
+    //   Offered only when ADLX reports support; not ledgered if the user already had it on; turning the switch off only disables what Pavise enabled
     internal static class AmdSamTweak
     {
         private const string OnKey = "AmdSamByPavise";

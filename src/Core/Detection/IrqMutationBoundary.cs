@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 隔离 Pavise 自身系统写入与游戏 IRQ 观测 epoch
+// File purpose Isolate Pavise's own system writes from the game IRQ observation epoch
 using System;
 
 namespace PaviseApp

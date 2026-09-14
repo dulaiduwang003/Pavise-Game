@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 进程名与路径的角色判别 不做程序用途推断
+// File purpose Role classification of process names and paths; no inference of program purpose
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -10,13 +10,13 @@ namespace PaviseApp
 {
     internal static partial class GameSessionDetector
     {
-        // 这里只承担禁止把安全组件作为调优目标的边界 不承担程序角色推断
-        // GUI 浏览器技术 文件名或安装平台都不能证明它不是游戏渲染程序
+        // This only enforces the boundary that security components are never tuning targets; it does not infer program roles
+        // GUI, browser technology, file name or install platform cannot prove something is not a game renderer
         internal static bool IsNonGameRole(string name, string path)
         {
             string n = (name ?? "").Trim();
             if (AntiCheatCatalog.IsAntiCheatProcess(n, path)) return true;
-            // 系统壳/核心组件是调优安全边界 不是游戏名单 同名外部程序不受此限制
+            // The system shell and core components are a tuning safety boundary, not a game list; external programs with the same name are unaffected
             if (!string.IsNullOrEmpty(WindowsRootPrefix) && !string.IsNullOrEmpty(path)
                 && path.StartsWith(WindowsRootPrefix, StringComparison.OrdinalIgnoreCase)
                 && (SystemProcessCatalog.IsShellProcess(n)

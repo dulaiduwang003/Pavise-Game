@@ -1,12 +1,12 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 对局中关闭 Intel Endurance Gaming 电池下不再按面板刷新率封顶帧率 退局按快照写回
+// File purpose Disable Intel Endurance Gaming during a match so frame rate is no longer capped at the panel refresh rate on battery; write back from snapshot at match end
 using System;
 
 namespace PaviseApp
 {
-    // Intel 自己的说明 电池供电时 Endurance Gaming 把帧率封在面板刷新率的一个分数上 常见落到 30 帧上下
-    //   接电源时它不起作用 所以只在有电池的机器上有意义 要不要关是续航和帧率的取舍 默认关
-    //   控制值 0 关 1 开 2 自动 只在读到 1 或 2 时写 0 退局写回原值
+    // Per Intel's own docs, on battery Endurance Gaming caps frame rate at a fraction of the panel refresh rate, commonly landing around 30 fps
+    //   It does nothing on AC power, so it only matters on machines with a battery; disabling is a battery-life vs frame-rate tradeoff, default off
+    //   Control value: 0 off, 1 on, 2 auto; write 0 only when 1 or 2 is read, write the original back at match end
     internal static class IntelEndurance
     {
         internal const string SnapKey = "IntelEnduranceSnap";
@@ -64,7 +64,7 @@ namespace PaviseApp
                 int now, nowMode;
                 if (api.TryReadEndurance(out now, out nowMode) && now != ControlOff)
                 {
-                    // 用户或 Intel 的工具中途改过 不抢回来 只清账
+                    // User or Intel's tool changed it mid-match; don't take it back, just clear the record
                     Settings.SaveStr(SnapKey, "");
                     return true;
                 }

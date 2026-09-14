@@ -1,6 +1,6 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 自动后台节能显卡 对局中占用游戏渲染卡的后台程序 登记为下次启动用节能显卡
-//   偏好只影响下次启动 不迁移不重启任何进程 每个程序一生只自动登记一次
+// File purpose Auto background power-saving GPU, background programs occupying the game's render GPU during a match are enrolled to use the power-saving GPU on next launch
+//   The preference only affects the next launch, no process is migrated or restarted, each program is auto-enrolled only once ever
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -9,9 +9,9 @@ namespace PaviseApp
 {
     internal partial class GameMode
     {
-        // 5% 起判 视频播放和动画渲染这类真实占用都在其上 瞬时噪声在其下
+        // Judge from 5%, real usage like video playback and animation rendering sits above it, transient noise below
         private const double AutoGpuMinUtilization = 5.0;
-        // 对局稳定后再采样 大厅切换和加载期的占用不算数
+        // Sample only after the match has settled, lobby switches and loading-phase usage don't count
         private const int AutoGpuDelaySeconds = 60;
         private const int AutoGpuMaxPerSession = 2;
         internal const string AutoGpuHandledKey = "AppGpuAutoHandledV1";
@@ -19,8 +19,8 @@ namespace PaviseApp
 
         private volatile bool autoGpuOn;
         private volatile bool autoGpuScanned;
-        // 提交 换局 关闭走同一道边界 GPU 锁和 sync 在自动路径上只尝试进入
-        // 不拿着一把等另一把 免得和扫描 驱动暂存的锁顺序绕成环
+        // Commit, match switch and shutdown share one boundary, on the auto path the GPU lock and sync are only try-entered
+        // Never hold one while waiting for the other, or the lock order loops with the scan and driver staging locks
         private readonly object autoGpuCommitGate = new object();
 
         private void InitializeAutoGpu()
@@ -56,7 +56,7 @@ namespace PaviseApp
 
         private void SetAutoGpuSessionStamp(long stamp)
         {
-            // 函数一返回 旧会话的提交和 handled 记账就都结束了
+            // Once this returns, the old session's commits and handled bookkeeping are all over
             lock (autoGpuCommitGate) Interlocked.Exchange(ref sessionStartTicks, stamp);
         }
 
@@ -65,7 +65,7 @@ namespace PaviseApp
         {
             lock (autoGpuCommitGate)
             {
-                // ActivePreset 可能要 sync 先查无锁身份 拿到 sync 再查策略
+                // ActivePreset may need sync, check lock-free identity first, then take sync and check policy
                 if (!AutoGpuSessionIdentityCurrent(stamp)) return AppGpuPreferenceResult.Changed;
                 if (!Monitor.TryEnter(GpuPrefStage.MutationGate)) return AppGpuPreferenceResult.Busy;
                 try
@@ -89,7 +89,7 @@ namespace PaviseApp
             }
         }
 
-        // 每局一次 复用渲染进程选举的采样互斥 与自动入库和选举不并发跑 PDH
+        // Once per match, reuses the renderer election sampling mutex so PDH never runs concurrently with auto add or election
         private void MaybeAutoEnrollBackgroundGpu(int rendererPid)
         {
             bool autoGpuWanted = AutoGpuWanted;
@@ -114,21 +114,21 @@ namespace PaviseApp
 
         private void AutoEnrollBackgroundGpu(int rendererPid, long sessionStamp)
         {
-            // 中止条件带会话身份 直接换局不经过 Deactivate active 全程为真
-            //   残余采样窗跨局会拿旧渲染 pid 判亲子关系 把新游戏的辅助进程误登记
+            // The abort condition carries session identity, a direct match switch skips Deactivate and active stays true throughout
+            //   A leftover sampling window spanning matches would judge parent/child with the old renderer pid and mis-enroll the new game's helper processes
             Func<bool> abort = delegate
             {
                 return !AutoGpuSessionCurrent(sessionStamp);
             };
             RenderAdapter adapter = GpuEvidence.ResolveRenderAdapter(rendererPid, GpuEvidence.BurstIntervalMs);
-            // 渲染卡不唯一就整局不做 宁可漏也不能把程序赶去错误的卡
+            // If the render GPU isn't unique skip the whole match, better to miss than push a program onto the wrong GPU
             if (adapter == null || adapter.Ambiguous || abort()) return;
             Dictionary<int, double> util = GpuEvidence.SampleAdapter3D(
                 adapter.LuidHigh, adapter.LuidLow, 3, GpuEvidence.BurstIntervalMs, abort);
             if (util == null || abort()) return;
-            // 拥有可见顶层窗口的程序不碰 副屏上正在看的播放器和浏览器就是这形态
-            //   它们跑在渲染卡上恰恰因为副屏接在独显 改成省电卡会引入逐帧跨卡拷贝
-            // 名额有限 按占用降序处理 不能让字典哈希序决定登记谁
+            // Programs owning a visible top-level window are untouched, the player or browser being watched on a second screen is exactly that shape
+            //   They run on the render GPU precisely because the second screen is wired to the dGPU, switching them to the power-saving GPU would add a per-frame cross-GPU copy
+            // Slots are limited, process in descending usage order, dictionary hash order must not decide who gets enrolled
             var ranked = new List<KeyValuePair<int, double>>(util);
             ranked.Sort(delegate(KeyValuePair<int, double> a, KeyValuePair<int, double> b)
             { return b.Value.CompareTo(a.Value); });
@@ -141,7 +141,7 @@ namespace PaviseApp
                 GameProcessSnapshot identity;
                 if (!GameSessionDetector.TryCaptureProcessIdentity(kv.Key, selfSession, out identity))
                     continue;
-                // 游戏自己直接拉起的辅助进程不碰 不论装在哪个目录
+                // Helper processes launched directly by the game are untouched regardless of install directory
                 if (identity.ParentPid == rendererPid) continue;
                 string path = identity.Path, name = identity.Name;
                 if (!AutoGpuEligible(name, path, windowsPrefix)) continue;
@@ -150,7 +150,7 @@ namespace PaviseApp
                 if (blocked || AutoGpuAlreadyHandled(path)) continue;
                 AppGpuPreferenceResult result = CommitAutoGpu(AppGpuPreferences.Shared, path, sessionStamp, delegate
                 {
-                    // Prepare 到真正提交之间再查一次 登记按 EXE 生效 只看候选 PID 不够
+                    // Re-check between Prepare and the actual commit, enrollment applies per EXE so checking only the candidate PID isn't enough
                     if (abort()) return false;
                     GameProcessSnapshot current;
                     if (!GameSessionDetector.TryCaptureProcessIdentity(kv.Key, selfSession, out current)
@@ -172,8 +172,8 @@ namespace PaviseApp
             }
         }
 
-        // 有可见顶层窗口的进程集合 枚举失败返回 null
-        //   调用方把 null 当"全部可见"处理 本局一个都不登记 宁可漏也不误伤在用的程序
+        // Set of processes with a visible top-level window, returns null when enumeration fails
+        //   Callers treat null as everything visible and enroll nothing this match, better to miss than hit a program in use
         private static HashSet<int> CollectVisibleWindowPids()
         {
             try
@@ -197,8 +197,8 @@ namespace PaviseApp
         internal static HashSet<int> VisibleWindowResult(bool complete, HashSet<int> pids)
         { return complete ? pids : null; }
 
-        // 快照和窗口枚举都得完整 可见进程连同有身份依据的后代按镜像路径保护
-        // 这里只是只读准入 不敢说窗口状态和注册表提交能做成一个原子事务
+        // Both the snapshot and the window enumeration must be complete, visible processes and descendants with identity evidence are protected by image path
+        // This is read-only admission only, no claim that window state and the registry commit form one atomic transaction
         internal static bool AutoGpuVisibilityAllows(GameProcessSnapshot candidate,
             ProcessSnapshot snapshot, HashSet<int> visible, int session)
         {
@@ -226,8 +226,8 @@ namespace PaviseApp
                 var visited = new HashSet<int>();
                 while (cursor != null && visited.Add(cursor.Pid))
                 {
-                    // Shell 终端 运行时都不是独立应用家族的锚点 也不能拿来穿越
-                    // 可见宿主自己的镜像还是由上面的 protectedPaths 兜着
+                    // Shells, terminals and runtimes are not anchors of an independent app family and can't be traversed through either
+                    // The visible host's own image is still covered by protectedPaths above
                     if (WhitelistRule.IsUnsafeFamilyAnchor(cursor.Path)) break;
                     if (visible.Contains(cursor.Pid))
                     {
@@ -253,8 +253,8 @@ namespace PaviseApp
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
 
-        // 纯过滤 不碰任何状态 隔离测试直接调用
-        //   录屏/通信/覆盖层宿主要用独显编码 硬件与外设链动不得 系统目录不碰
+        // Pure filter, touches no state, isolated tests call it directly
+        //   Recording, communication and overlay hosts need the dGPU for encoding, hardware and peripheral chains are untouchable, system directories are off limits
         internal static bool AutoGpuEligible(string name, string path, string windowsPrefix)
         {
             if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(path)) return false;
@@ -266,7 +266,7 @@ namespace PaviseApp
             return true;
         }
 
-        // 调用方须持有 sync 游戏库任一档案的成员和白名单都不自动改偏好
+        // Caller must hold sync, members of any game library profile and whitelist entries never get their preference auto-changed
         private bool AutoGpuProtectedLocked(string name, string path)
         {
             GameDetection detection = activeDetection;
@@ -286,8 +286,8 @@ namespace PaviseApp
             return false;
         }
 
-        // 只认领没有任何既有显卡偏好的程序 已有偏好值 = 用户或外部工具的明确
-        //   选择 自动路径永不覆盖 人工路径才有确认弹窗可以覆盖
+        // Only claim programs with no existing GPU preference at all, an existing value = an explicit choice by the user or an external tool
+        //   The auto path never overrides, only the manual path has a confirmation dialog that can
         internal static AppGpuPreferenceResult AutoGpuEnroll(AppGpuPreferenceManager manager, string path)
         { return AutoGpuEnroll(manager, path, null); }
 
@@ -302,8 +302,8 @@ namespace PaviseApp
             return manager.Apply(change, false, stillEligible);
         }
 
-        // 每个路径一生只自动登记一次 用户从管理列表移除后不会被自动加回
-        //   想再登记走人工添加 列表按先进先出封顶 不缓存 每次实读配置
+        // Each path is auto-enrolled only once ever, once the user removes it from the management list it won't be auto-added back
+        //   Re-enrolling goes through manual add, the list is capped FIFO, not cached, config is read for real every time
         internal static bool AutoGpuAlreadyHandled(string path)
         {
             string raw = Settings.LoadStr(AutoGpuHandledKey, "");

@@ -1,4 +1,4 @@
-// 文件用途 Pavise 无窗口 D3D12 异构 GPU 计算台架
+// File purpose Pavise windowless D3D12 heterogeneous GPU compute bench
 
 #define WIN32_LEAN_AND_MEAN
 #ifndef NOMINMAX
@@ -506,8 +506,8 @@ UINT RgbError(UINT a, UINT b) {
     return error;
 }
 
-// 着色器算的是 8 位通道值的加权平均 整数运算给一份独立参考
-// 固定的 1 个码位容差用来吃掉 GPU 的舍入
+// The shader computes a weighted average of 8-bit channel values, integer math gives an independent reference
+// A fixed 1-code tolerance absorbs GPU rounding
 UINT ReferencePost(const std::vector<UINT>& source, UINT width, UINT height, UINT loops, size_t id) {
     UINT64 sums[3] = {};
     auto add = [&](size_t index) {
@@ -753,7 +753,7 @@ public:
     double Precondition(UINT seconds) {
         if (!seconds) return 0.0;
         const auto begin = std::chrono::steady_clock::now();
-        // 镜像等长批次要跑完整 ABBA 跑一半不许停
+        // Mirrored equal-length batches must run the full ABBA, no stopping halfway
         do {
             Run(0, false, 8, false);
             Run(0, true, 8, false);
@@ -1038,8 +1038,8 @@ private:
         Check(s.secondaryList->Reset(s.secondaryAllocator.Get(), nullptr), "Reset secondary list");
         auto* q = s.secondaryList.Get();
         q->SetComputeRootSignature(secondary_.root.Get());
-        // 两种模式都从这里开始计时 本地输入的暂存 包括它的拷贝和屏障
-        // 都算进 post_gpu_ms 走同一条完成和栅栏链
+        // Both modes start timing here, staging of the local input including its copy and barriers
+        // all counts toward post_gpu_ms and goes through the same completion and fence chain
         q->EndQuery(s.secondaryQueries.heap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, 0);
         ID3D12Resource* postInput = SecondarySource(s);
         if (options_.secondaryInput == SecondaryInputMode::Local) {

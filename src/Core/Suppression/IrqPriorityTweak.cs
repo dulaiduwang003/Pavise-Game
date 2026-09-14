@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 设备中断优先级 DevicePriority 提到 High 每设备快照 单独或整批还原
+// File purpose Device interrupt priority: raise DevicePriority to High, per-device snapshot, restore individually or in bulk
 using System;
 using System.Collections.Generic;
 using Microsoft.Win32;
@@ -27,6 +27,13 @@ namespace PaviseApp
 
         public static bool Apply(string deviceId)
         {
+            bool unchanged;
+            return Apply(deviceId,out unchanged);
+        }
+
+        internal static bool Apply(string deviceId, out bool unchanged)
+        {
+            unchanged = false;
             if (string.IsNullOrEmpty(deviceId) || !Native.IsElevated()) return false;
             lock (lk)
             {
@@ -37,9 +44,12 @@ namespace PaviseApp
                     {
                         if (k == null) return false;
                         object cur = k.GetValue(ValueName);
+                        if (cur != null && !(cur is int)) return false;
                         int curVal = cur is int ? (int)cur : -1;
-                        if (curVal == High) return true;
-                        List<KeyValuePair<string, string>> journal = ReadJournal();
+                        if (curVal == High) { unchanged = true; return true; }
+                        string raw;
+                        List<KeyValuePair<string, string>> journal;
+                        if (!Settings.TryLoadStr(JournalKey,out raw) || !TryJournal(raw,out journal)) return false;
                         bool known = false;
                         foreach (KeyValuePair<string, string> kv in journal)
                             if (string.Equals(kv.Key, deviceId, StringComparison.OrdinalIgnoreCase))
@@ -53,6 +63,7 @@ namespace PaviseApp
                                 || Settings.LoadStr(JournalKey, "") != line) return false;
                         }
                         k.SetValue(ValueName, High, RegistryValueKind.DWord);
+                        if (!object.Equals(k.GetValue(ValueName), High)) return false;
                         Logger.Log(Lang.T("log.irqprio.1") + deviceId + Lang.T("log.irqprio.2"));
                         return true;
                     }
@@ -61,20 +72,65 @@ namespace PaviseApp
             }
         }
 
-        public static bool RestoreAll()
+        public static bool RestoreOnly(string deviceId)
+        { return !string.IsNullOrEmpty(deviceId) && RestoreScope(deviceId); }
+
+        public static bool RestoreAll() { return RestoreScope(null); }
+
+        internal static bool TryTouchedDevices(out List<string> deviceIds)
         {
             lock (lk)
             {
-                List<KeyValuePair<string, string>> journal = ReadJournal();
-                if (journal.Count == 0) { Settings.SaveStr(JournalKey, ""); return true; }
-                var remain = new List<KeyValuePair<string, string>>();
-                foreach (KeyValuePair<string, string> kv in journal)
-                    if (!RestoreOne(kv.Key, kv.Value)) remain.Add(kv);
-                Settings.SaveStr(JournalKey, EncodeJournal(remain));
-                if (remain.Count == 0) { Logger.Log(Lang.T("log.irqprio.3")); return true; }
-                Logger.Log(Lang.T("log.irqprio.4") + remain.Count);
-                return false;
+                deviceIds = new List<string>();
+                string raw;
+                List<KeyValuePair<string,string>> entries;
+                if (!Settings.TryLoadStr(JournalKey,out raw) || !TryJournal(raw,out entries)) return false;
+                foreach (var entry in entries) deviceIds.Add(entry.Key);
+                return true;
             }
+        }
+
+        private static bool RestoreScope(string deviceId)
+        {
+            lock (lk)
+            {
+                string raw, remaining;
+                if (!Settings.TryLoadStr(JournalKey,out raw)) return false;
+                bool ok = RestoreJournal(raw,deviceId,RestoreOne,out remaining);
+                // Even partial restores preserve every failed and unrelated receipt
+                return Settings.SaveStr(JournalKey,remaining) && Settings.LoadStr(JournalKey,"") == remaining && ok;
+            }
+        }
+
+        private static bool TryJournal(string raw, out List<KeyValuePair<string,string>> entries)
+        {
+            entries = DecodeJournal(raw);
+            if (!string.IsNullOrEmpty(raw) && entries.Count != raw.Split(';').Length) return false;
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in entries)
+            {
+                int value;
+                if (!seen.Add(entry.Key) || (entry.Value != "-" && !int.TryParse(entry.Value,out value))) return false;
+            }
+            return true;
+        }
+
+        internal static bool RestoreJournal(string raw, string selected,
+            Func<string,string,bool> restore, out string remaining)
+        {
+            remaining = raw ?? "";
+            List<KeyValuePair<string,string>> entries;
+            if (!TryJournal(raw,out entries)) return false;
+            bool ok = true;
+            for (int i = entries.Count - 1; i >= 0; i--)
+                if (selected == null || string.Equals(entries[i].Key,selected,StringComparison.OrdinalIgnoreCase))
+                {
+                    bool restored = false;
+                    try { restored = restore(entries[i].Key,entries[i].Value); } catch { }
+                    if (restored) entries.RemoveAt(i); else ok = false;
+                }
+            remaining = EncodeJournal(entries);
+            return ok;
         }
 
         private static bool RestoreOne(string deviceId, string original)
@@ -84,13 +140,15 @@ namespace PaviseApp
                 using (RegistryKey k = Registry.LocalMachine.OpenSubKey(
                     EnumRoot + deviceId + PolicySub, true))
                 {
-                    if (k == null) return true;
-                    int back;
-                    if (original == "-" || !int.TryParse(original, out back))
+                    if (k == null) return false; // Missing device keep receipt for a later retry
+                    int back = 0;
+                    if (original != "-" && !int.TryParse(original, out back)) return false;
+                    if (original == "-")
                         k.DeleteValue(ValueName, false);
                     else
                         k.SetValue(ValueName, back, RegistryValueKind.DWord);
-                    return true;
+                    return original == "-" ? k.GetValue(ValueName) == null
+                        : object.Equals(k.GetValue(ValueName), back);
                 }
             }
             catch { return false; }

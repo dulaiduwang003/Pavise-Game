@@ -26,11 +26,11 @@ namespace PaviseApp
             return false;
         }
 
-        // 硬亲和是核心独占的附加项 默认关
-        //   CPU Set 只是给调度器的提示 自己设过硬亲和的线程不受约束
-        //   打开后给已压制的后台再写一遍亲和 把它们真正挡在独占范围之外
-        //   代价见 v2.0 的实测结论 后台被挤到窄范围时 游戏等它的锁会等更久
-        //   所以默认关 且只在独占确实生效时才动手
+        // Hard affinity is an add-on to exclusive cores, off by default
+        //   CPU Sets are only a hint to the scheduler, threads that set their own hard affinity aren't constrained
+        //   When on, write affinity once more to already-suppressed background processes to really keep them out of the exclusive range
+        //   Cost per the v2.0 measurements: with background squeezed into a narrow range, the game waits longer on its locks
+        //   Hence off by default and only applied when exclusivity has actually taken effect
         private void ApplyBackgroundHardAffinity()
         {
             ulong target = HardAffinityTarget();
@@ -51,8 +51,8 @@ namespace PaviseApp
             }
         }
 
-        // 独占范围之外就是后台可用的核 独占没真生效就返回 0 表示这轮不写
-        //   至少留两颗逻辑核 否则后台连调度都排不开 比不隔离更糟
+        // Outside the exclusive range is what background can use, returns 0 when exclusivity hasn't really taken effect, meaning no write this pass
+        //   Leave at least two logical cores, otherwise background can't even be scheduled, worse than no isolation
         private ulong HardAffinityTarget()
         {
             if (!hardAffinityOn || stopping) return 0;
@@ -89,7 +89,7 @@ namespace PaviseApp
             coreIsolation = new CoreIsolationClient(); coreIsolation.UseTestWorker();
         }
         internal bool ProbeStopIsolationWorker() { return StopCoreIsolation(); }
-        // 仅独立集成测试对自己启动的子进程调用，不由正常自测启动真实进程。
+        // Called only by standalone integration tests on child processes they launched, normal self-tests never start real processes
         internal bool ProbeManualPlacement(IntPtr handle, int pid, long creation, ulong original, ulong target)
         {
             uint[] ids = Native.QueryCpuSets(handle);
@@ -106,7 +106,7 @@ namespace PaviseApp
             return RestoreIrqProofHardPin(IntPtr.Zero, pid, includeManual);
         }
 #endif
-        // 与逐游戏保存共用 sync。UI 必须带上用于校验方案的全局版本。
+        // Shares sync with per-game save, UI must pass the global version used to validate the plan
         internal string SaveCoreScheduling(CoreSchedulingPlan plan, string expectedGlobal,
             string profileId, bool followGlobal, string expectedProfile)
         {
@@ -140,7 +140,7 @@ namespace PaviseApp
                         local.IsolationMask = global.IsolationMask;
                         string error = CoreScheduling.Validate(local);
                         if (error != null) return Lang.T(error);
-                        // 全局隔离不复制进游戏的持久化覆盖。
+                        // Global isolation isn't copied into the game's persisted override
                         local.IsolationOn = false;
                         local.IsolationMask = 0;
                         replacement.Overrides[CoreScheduling.Key] = local.Encode();

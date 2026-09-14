@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 掌机档不提供的五项 快照 实时解析 核心方案 策略页 逐游戏页 核心调度页都按关
+// File purpose The five items Handheld tier doesn't provide: snapshot, live resolution, core plan, Policy page, per-game page, Core Scheduling page all read as off
 #if PAVISE_SELFTEST
 using System;
 using System.IO;
@@ -31,9 +31,9 @@ namespace PaviseApp
                 {
                     GameMode mode = f.Mode;
                     GameProfile profile = f.First;
-                    // 夹具给第一个游戏预设了自定义档 这里让档位跟全局走 后面再单独试逐游戏改档
+                    // The fixture presets a custom tier for the first game, follow the global tier here and test per-game tier changes separately later
                     profile.Overrides.Remove(PolicyCatalog.KeyPreset);
-                    // 全局四项全开 逐游戏再把两项覆盖成开 全局核心方案开着独占
+                    // All four on globally, per-game overrides two more to on, global core plan has exclusive on
                     foreach (string key in blocked) Settings.Save(key, true);
                     FamilyPolicySetField(mode, "disableCpuIdleOn", true);
                     profile.Overrides[PolicyCatalog.KeyDisableCpuIdle] = "1";
@@ -41,7 +41,7 @@ namespace PaviseApp
                     var plan = new CoreSchedulingPlan { Topology = CoreScheduling.CurrentStamp, GameMask = 0xF0, IsolationOn = true, IsolationMask = 0xF0 };
                     Settings.SaveStr(CoreScheduling.Key, plan.Encode());
 
-                    // 电竞档 五项照常
+                    // Esports tier: all five as usual
                     mode.Preset = PerformancePreset.Competitive;
                     PolicySnapshot s = PolicyResolver.For(profile);
                     Eq(PerformancePreset.Competitive, s.Preset);
@@ -53,7 +53,7 @@ namespace PaviseApp
                     Eq(true, HandheldLiveBool(mode, PolicyCatalog.KeyCacheWarm));
                     Eq(true, HandheldLiveBool(mode, PolicyCatalog.KeyVramShield));
 
-                    // 掌机档 快照一律关 实时解析也关 独占关掉 选核本身不动 没被点名的项不受牵连
+                    // Handheld tier: snapshot all off, live resolution off, exclusive off, core selection itself untouched, items not named are unaffected
                     mode.Preset = PerformancePreset.Handheld;
                     s = PolicyResolver.For(profile);
                     Eq(PerformancePreset.Handheld, s.Preset);
@@ -73,7 +73,7 @@ namespace PaviseApp
                     foreach (string key in blocked) Eq("0", global.ValueOf(key));
                     Eq(false, global.CorePlan.IsolationOn);
 
-                    // 用户自己的开关没被改写 切回电竞档全部回来 独占也回来
+                    // The user's own switches were not rewritten, switching back to Esports tier brings everything back, exclusive too
                     foreach (string key in blocked) Eq(true, Settings.Load(key, false));
                     Eq(true, profile.Overrides.ContainsKey(PolicyCatalog.KeyVramShield));
                     Eq(plan.Encode(), Settings.LoadStr(CoreScheduling.Key, ""));
@@ -83,7 +83,7 @@ namespace PaviseApp
                     Eq(true, s.CorePlan.IsolationOn);
                     Eq(0xF0UL, s.CorePlan.IsolationMask);
 
-                    // 全局电竞 本游戏单独改成掌机档 对这局同样按关 全局快照不受影响
+                    // Global Esports, this game alone changed to Handheld tier, off for this match likewise, global snapshot unaffected
                     profile.Overrides[PolicyCatalog.KeyPreset] = ((int)PerformancePreset.Handheld).ToString();
                     s = PolicyResolver.For(profile);
                     Eq(PerformancePreset.Handheld, s.Preset);
@@ -95,7 +95,7 @@ namespace PaviseApp
                     Eq(true, global.CorePlan.IsolationOn);
                     profile.Overrides.Remove(PolicyCatalog.KeyPreset);
 
-                    // 逐游戏页 掌机档四项标预设强制关 别的档位不碰
+                    // Per-game page: under Handheld tier the four items are marked preset-forced off, other tiers untouched
                     bool effective;
                     foreach (string key in blocked)
                     {
@@ -106,7 +106,7 @@ namespace PaviseApp
                     }
                     Eq(false, PanelForm.CfgPresetForcesForTest(PolicyCatalog.KeyStandbyCleaner, PerformancePreset.Handheld, out effective));
 
-                    // 策略页 四个开关锁死标预设强制关 已开着的照样锁 切回去解锁
+                    // Policy page: the four switches lock as preset-forced off, already-on ones lock too, switching back unlocks
                     FamilyPolicySetField(mode, "sessionPolicy", null);
                     var form = (PanelForm)FormatterServices.GetUninitializedObject(typeof(PanelForm));
                     GC.SuppressFinalize(form);
@@ -149,7 +149,7 @@ namespace PaviseApp
                         foreach (SettingCard c in cards) c.Dispose();
                     }
 
-                    // 核心调度页 独占开关锁死 描述改成掌机档不提供 硬锁卡不出现 解封后都回来
+                    // Core Scheduling page: exclusive toggle locked, description changes to not provided on Handheld tier, hard-lock card hidden, all back after unblocking
                     using (var panel = new CoreSchedulingPanel(900, null, delegate { return null; }, delegate { return false; }))
                     {
                         panel.Draft = plan.Clone();

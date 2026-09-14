@@ -23,9 +23,9 @@ namespace PaviseApp
         void Close(IntPtr handle);
     }
 
-    // 168 takes one UINT64 mask per group (no WorkloadClass prefix).
-    // 67 uses the same group masks; CPU Set IDs are NOT bit positions.
-    // All operations are confined to one processor group and verified by readback.
+    // 168 takes one UINT64 mask per group no WorkloadClass prefix
+    // 67 uses the same group masks CPU Set IDs are NOT bit positions
+    // All operations are confined to one processor group and verified by readback
     internal sealed class CoreIsolationNative : ICoreIsolationPlatform
     {
         [DllImport("ntdll.dll")] private static extern int NtSetSystemInformation(int c, byte[] b, int n);

@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 可选游戏扩展模块槽 模块不在编译里时所有入口静默返回空 卡片和运行时都不变
+// File purpose Optional game extension module slot, when the module isn't compiled in every entry silently returns empty and neither card nor runtime changes
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -19,14 +19,14 @@ namespace PaviseApp
         public virtual void Start() { }
         public virtual bool NeedsProcessIdentity(string name) { return false; }
         public virtual void NotifyProcessChanges(ProcessChangeBatch batch) { }
-        // 对局开始 渲染进程更替 对局结束 都从这里进来 profile 为空表示没有对局
+        // Match start, renderer process handover and match end all come through here, null profile means no match
         public virtual void NotifySession(GameProfile profile, int rendererPid, long rendererCreation, bool active) { }
         public virtual bool AppliesTo(GameProfile profile) { return false; }
         public virtual GameCardExtension CreateCard(GameProfile profile) { return null; }
         public virtual void Shutdown(int waitMs) { }
     }
 
-    // 多个模块串在一个槽里 卡片给第一个认领的模块 其余入口全部广播
+    // Multiple modules chained in one slot, the card goes to the first module that claims it, every other entry is broadcast
     internal sealed class CompositeGameExtension : GameExtensionModule
     {
         private readonly GameExtensionModule[] modules;
@@ -85,7 +85,7 @@ namespace PaviseApp
             return owner == null ? null : owner.CreateCard(profile);
         }
 
-        // 谁先认领归谁 英雄联盟排在通用 WeGame 前面 它的卡片更全
+        // First claim wins, League of Legends is ordered before generic WeGame since its card is more complete
         internal GameExtensionModule Owner(GameProfile profile)
         {
             if (profile == null) return null;

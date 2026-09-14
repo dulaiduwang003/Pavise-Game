@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 标题栏设置搜索 按钮与结果弹层 跨页面定位设置卡片
+// File purpose Title-bar settings search: button and results popup; locates setting cards across pages
 using System;
 using System.Collections.Generic;
 using System.Drawing;

@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 句柄销毁清理 窗口拖动 显示与开关同步
+// File purpose Handle-destroy cleanup, window drag, show/hide and toggle sync
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;

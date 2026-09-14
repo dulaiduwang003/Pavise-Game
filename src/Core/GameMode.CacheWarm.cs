@@ -30,7 +30,7 @@ namespace PaviseApp
         {
             lock (sync)
             {
-                // 首次提优计时戳会在成功后清零；预热必须使用整局稳定的独立身份。
+                // The first-boost timestamp is zeroed after success, warm-up must use an independent identity stable for the whole match
                 Interlocked.Increment(ref cacheWarmSessionId);
                 InvalidateCacheWarm();
             }
@@ -48,7 +48,7 @@ namespace PaviseApp
                 profileEntry = d != null && d.Profile != null ? d.Profile.ExecutablePath : null;
                 session = Interlocked.Read(ref cacheWarmSessionId);
                 generation = cacheWarmGeneration;
-                // 学习新 renderer 可保留档案 ID 却改变安装目录；旧任务不能沿用旧路径。
+                // Learning a new renderer can keep the profile ID yet change the install directory, old tasks must not reuse the old path
                 key = profileId + ":" + session + ":" + generation
                     + "|" + installRoot + "|" + rendererPath + "|" + profileEntry;
             }

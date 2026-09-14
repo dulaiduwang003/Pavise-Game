@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 呈现探针 长帧采集与 DPC 对齐
+// File purpose Present probe, long frame capture and DPC alignment
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -10,8 +10,8 @@ namespace PaviseApp
 {
     internal partial class GameMode
     {
-        // present 采集按局起停 每局新建实例(PresentProbe.frames 不自清 复用会跨局累积)
-        //   需要管理员 非管理员或 Start 失败(内部已记日志)就不留引用 优雅跳过不崩
+        // Present capture starts and stops per match, new instance each match, PresentProbe.frames never self-clears so reuse would accumulate across matches
+        //   needs admin, if not admin or Start fails (already logged internally) keep no reference, skip gracefully without crashing
         private void StartPresentProbe()
         {
             try
@@ -29,15 +29,18 @@ namespace PaviseApp
             catch { presentProbe = null; }
         }
 
-        // 停掉本局 present 会话 只取渲染进程的帧 算出 长帧区间 [上一帧qpc,本帧qpc] 供与 DPC 时间线求交
-        //   present↔DPC 对齐只为增强设备中断判断 不产出对局报告摘要(帧数/p99/1%low 都不要)
-        //   必须是完整排空 无截断/丢事件且渲染 pid 自身至少有 30 个有效间隔 否则返回 null
-        //   少量或其它进程的 present 不足以建立有意义的时间对齐样本
-        //   区间按 QPC 递增且首尾相接 与 DPC 会话同一根 QPC 尺子(都 RawTimestamp)可直接对齐
+        // Stop this match's present session, take only the renderer process frames, compute long frame intervals (previous frame qpc to this frame qpc) for intersecting with the DPC timeline
+        //   present/DPC alignment exists only to strengthen the device interrupt verdict, produces no match report summary, no frame count, p99 or 1% low
+        //   must be a complete drain, no truncation/lost events, and the renderer pid itself must have at least 30 valid intervals, otherwise returns null
+        //   a handful of presents, or presents from other processes, are not enough for a meaningful time-alignment sample
+        //   intervals are QPC-ascending and contiguous, same QPC ruler as the DPC session, both RawTimestamp, so they align directly
+        private IrqFrameEvidence irqFrameEvidence;
+
         private void CollectLongFrames(int rendererPid, TimeSpan sessionDuration,
             out List<long[]> longFrameIntervals)
         {
             longFrameIntervals = null;
+            irqFrameEvidence = null;
             PresentProbe p = presentProbe;
             presentProbe = null;
             if (p == null) return;
@@ -53,10 +56,13 @@ namespace PaviseApp
                 freq = p.QpcFrequency;
             }
             catch { return; }
-            // 时间对齐样本至少要覆盖半局且不少于 2 秒 只抓到开局一小撮帧时不记线索
-            double minCoverageSeconds = Math.Max(2.0, sessionDuration.TotalSeconds * 0.5);
+            // The alignment sample must cover at least half the match and no less than 2 seconds, a handful of frames from match start is not recorded as a clue
+            long begin, end;
+            if (!irqProbe.FrameWindow(out begin, out end) || freq <= 0) return;
+            frames = frames.FindAll(delegate(PresentFrame f) { return f.Qpc >= begin && f.Qpc <= end; });
+            double minCoverageSeconds = Math.Max(2.0, (end - begin) / (double)freq * 0.5);
             longFrameIntervals = PresentDpcAlignment.BuildLongFrameIntervals(
-                frames, freq, rendererPid, minCoverageSeconds);
+                frames, freq, rendererPid, minCoverageSeconds, out irqFrameEvidence);
         }
 
         internal static int UpdateSessionRendererPid(string sessionProfileId, int currentPid,

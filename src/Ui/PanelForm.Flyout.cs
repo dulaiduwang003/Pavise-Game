@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 模式与电源浮层 高级页进入确认
+// File purpose Mode and power flyouts, Advanced page entry confirmation
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -19,9 +19,9 @@ namespace PaviseApp
         private void ToggleModeFlyout()
         {
             bool opening = modeFlyout == null || !modeFlyout.Visible;
-            // 对局中模式锁定 切换会把电源方案 压制范围和环境步整套还原再重写
-            //   关闭方向不拦 弹窗开着时开局了还能收回去
-            // 守护已关时立即放行 会话收尾由工作线程自己走完 不拿它扣住用户
+            // Mode is locked during a match: switching would restore and rewrite the whole set of power scheme, suppression scope and environment steps
+            //   Closing is not blocked, so the flyout can still be dismissed if a match starts while it is open
+            // Guard already off: let through immediately, session teardown finishes on the worker thread, do not hold the user on it
             if (opening && gameMode.IsActive && gameMode.Enabled)
             {
                 PaviseDialog.Info(this, App.DisplayName, Lang.T("mode.locked.ingame"));
@@ -30,8 +30,8 @@ namespace PaviseApp
             SetModeFlyout(opening);
         }
 
-        // 所有用户能走到的入口共用同一道门 只有勾了不再提示再确认进入才持久化
-        // 取消 关闭弹窗或单纯勾选后反悔都不能悄悄跳过下次警告
+        // Every user-reachable entry shares this one gate; only persist when "Don't show this again" is checked and entry is confirmed
+        // Cancel, closing the dialog, or checking then backing out must never silently skip the next warning
         private bool ConfirmDeepTuningEntry()
         {
             if (Settings.Load(DeepTuningWarningSuppressedKey, false)) return true;
@@ -92,8 +92,8 @@ namespace PaviseApp
             SetPowerFlyout(false);
             if (powerButton != null) powerButton.SetState(gameMode.PowerPlanSwitch, PowerPlanButtonLabel());
             for (int i = 0; i < policySync.Count; i++) policySync[i]();
-            // policySync 只静默回读开关值 不重算"本机是否适用"那层
-            //   空闲策略只在托管方案上生效 换方案后必须立刻重算 否则提示一直是旧的
+            // policySync only silently re-reads toggle values, it does not recompute the "applies on this machine" layer
+            //   Idle policy only takes effect on the managed scheme, must recompute right after a scheme change or the hint stays stale
             RefreshPolicyPresentation();
             if (pageGameConfig != null && pageGameConfig.Visible) SyncCfgRows();
         }
@@ -125,7 +125,7 @@ namespace PaviseApp
 
         private void ChooseGlobalMode(PerformancePreset mode)
         {
-            // 兜底 弹窗开着的瞬间恰好进了对局 点选也不放行
+            // Fallback: if a match started while the flyout was open, a click still does not go through
             if (gameMode.IsActive && gameMode.Enabled)
             {
                 SetModeFlyout(false);

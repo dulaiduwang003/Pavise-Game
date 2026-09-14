@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 写入 Windows 文件属性使用的产品和版本信息
+// File purpose Product and version info written into the Windows file properties
 using System.Reflection;
 using System.Runtime.InteropServices;
 

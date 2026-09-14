@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 驱动调优的预置写入 释放与待命状态播报
+// File purpose Pre-staged writes for driver tuning, release and standby status broadcast
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -21,8 +21,8 @@ namespace PaviseApp
                 bool applied = false;
                 IrqMutationBoundary.Run(delegate
                 {
-                    // 起中断边界可能要花时间 第一次原生写入之前再查一遍
-                    // Stop 排的也是这同一道闸
+                    // Entering the interrupt boundary may take time, re-check before the first native write
+                    // Stop drains this same gate
                     if (stopping || IsActive) return;
                     mutation();
                     applied = true;

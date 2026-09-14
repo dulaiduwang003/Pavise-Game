@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 统一的添加游戏对话框 打开即扫描已安装游戏并混排运行中的候选进程 浏览文件兜底
+// File purpose Unified add-game dialog, scans installed games on open and mixes in running candidate processes, browse-for-file as fallback
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -13,7 +13,7 @@ namespace PaviseApp
     {
         private enum RowKind { Installed, Running, Picked }
 
-        // 工作线程先把可执行文件路径解析好 再把这些不带资源的快照投给界面
+        // The worker thread resolves executable paths first, then posts these resource-free snapshots to the UI
         private sealed class Candidate
         {
             public string Name;
@@ -21,8 +21,9 @@ namespace PaviseApp
             public string Root;
             public long Memory;
             public int Count;
-            // 手动给的路径 拖进来的 浏览的 文件夹里挑出来的 唯一命中时直接勾上
+            // Manually given paths, dropped, browsed or picked from a folder, checked directly when it is the only hit
             public bool Pick;
+            public bool NeedsChoice;
         }
 
         private class Row
@@ -33,8 +34,9 @@ namespace PaviseApp
             public bool Checked;
             public bool Already;
             public bool Installed;
+            public bool NeedsChoice;
             public bool Running;
-            // 用户自己给的条目 不随运行中列表的刷新被清掉
+            // Entries the user gave themselves, not cleared when the running list refreshes
             public bool Pinned;
             public long Memory;
             public int Count;
@@ -73,7 +75,7 @@ namespace PaviseApp
         {
         }
 
-        // seeds 是主窗口上拖进来的文件夹 打开即列出里面的候选程序
+        // seeds are folders dropped onto the main window, their candidate programs are listed on open
         public AddGameDialog(IEnumerable<string> alreadyInLibrary, bool allowGpuProbe, IEnumerable<string> seeds)
         {
             this.allowGpuProbe = allowGpuProbe;
@@ -104,7 +106,7 @@ namespace PaviseApp
             lblScanHint.ForeColor = Theme.Dim;
             lblScanHint.BackColor = Theme.Bg;
             lblScanHint.Font = Theme.UI(8.25f, false);
-            lblScanHint.SetBounds(Theme.S(16), Theme.S(42), Theme.S(588), Theme.S(36));
+            lblScanHint.SetBounds(Theme.S(16), Theme.S(42), Theme.S(588), Theme.S(40));
 
             var lblClose = new Label();
             lblClose.Text = "✕";
@@ -227,7 +229,7 @@ namespace PaviseApp
         {
             base.OnHandleCreated(e);
             Native.RoundCorners(Handle);
-            // 模态期间主窗口收不到拖放 这里自己收 EXE 快捷方式和文件夹都接
+            // The main window gets no drag-drop while modal, receive it here, EXE, shortcut and folder all accepted
             Native.EnableElevatedFileDrop(Handle);
         }
 
@@ -453,7 +455,11 @@ namespace PaviseApp
                         if (closed) return;
                         if (hit == null || string.IsNullOrEmpty(hit.Root)) continue;
                         Candidate candidate = ResolveCandidate(hit.Exe, hit.Name, hit.Root);
-                        if (candidate != null) hits.Add(candidate);
+                        if (candidate != null)
+                        {
+                            candidate.NeedsChoice = hit.NeedsChoice;
+                            hits.Add(candidate);
+                        }
                     }
                 }
                 catch { }
@@ -496,8 +502,8 @@ namespace PaviseApp
             }
         }
 
-        // 用户直接给的路径 文件解析成候选并勾上 文件夹先按选举规则挑唯一主程序
-        //   挑不出唯一就把里面的候选都列出来让用户点 PE 读取在工作线程做 界面只收结果
+        // Paths given directly by the user, a file resolves to a candidate and gets checked, a folder first picks the unique main program by election rules
+        //   If no unique pick, list all candidates inside for the user to click, PE reading is done on the worker thread, the UI only receives results
         private void AddDroppedPaths(string[] paths)
         {
             if (closed || paths == null || paths.Length == 0) return;
@@ -540,13 +546,13 @@ namespace PaviseApp
                     {
                         if (closed) return;
                         string folderName = Path.GetFileName(folder.TrimEnd('\\', '/'));
-                        string main = ExecutableCandidateProbe.PickMainExecutable(folder);
+                        string main;
+                        List<ExecutableCandidateFacts> list = ExecutableCandidateProbe.ListCandidates(folder, FolderCandidateCap, out main);
                         if (main != null)
                         {
                             hits.Add(new Candidate { Name = folderName, Path = main, Root = folder, Pick = true });
                             continue;
                         }
-                        List<ExecutableCandidateFacts> list = ExecutableCandidateProbe.ListCandidates(folder, FolderCandidateCap);
                         if (list.Count == 0) { emptyFolders.Add(folder); continue; }
                         foreach (ExecutableCandidateFacts facts in list)
                             hits.Add(new Candidate
@@ -554,6 +560,7 @@ namespace PaviseApp
                                 Name = Path.GetFileNameWithoutExtension(facts.Path),
                                 Path = facts.Path,
                                 Root = folder,
+                                NeedsChoice = true,
                                 Pick = false
                             });
                     }
@@ -579,7 +586,7 @@ namespace PaviseApp
 
         private void Merge(List<Candidate> hits, RowKind kind)
         {
-            // 快照失败不能当成所有正在运行的程序都退出了
+            // A failed snapshot must not be taken as every running program having exited
             if (closed || hits == null) { if (!closed) UpdateInfoLabel(); return; }
             var byPath = new Dictionary<string, Row>(StringComparer.OrdinalIgnoreCase);
             foreach (Row row in rows) byPath[row.Path] = row;
@@ -603,6 +610,8 @@ namespace PaviseApp
                 {
                     row.Name = string.IsNullOrEmpty(hit.Name) ? Path.GetFileNameWithoutExtension(hit.Path) : hit.Name;
                     row.Root = hit.Root;
+                    if (row.NeedsChoice != hit.NeedsChoice) refill = true;
+                    row.NeedsChoice = hit.NeedsChoice;
                 }
                 if (kind == RowKind.Installed) row.Installed = true;
                 else if (kind == RowKind.Picked)
@@ -638,7 +647,7 @@ namespace PaviseApp
                         row.RendererLike = false;
                         refill = true;
                     }
-                    // 程序关掉之后 显式挑选的条目仍然保留 已安装的条目也留着 用户自己给的也留着
+                    // After a program exits, explicitly picked entries stay, installed entries stay, user-given entries stay too
                     if (!row.Installed && !row.Checked && !row.Pinned)
                     {
                         rows.RemoveAt(i);
@@ -663,7 +672,8 @@ namespace PaviseApp
                 int ga = RowGroup(a);
                 int gb = RowGroup(b);
                 if (ga != gb) return ga - gb;
-                return string.Compare(a.Name, b.Name, StringComparison.CurrentCultureIgnoreCase);
+                int name = string.Compare(a.Name, b.Name, StringComparison.CurrentCultureIgnoreCase);
+                return name != 0 ? name : string.Compare(a.Path, b.Path, StringComparison.OrdinalIgnoreCase);
             });
         }
 
@@ -702,11 +712,9 @@ namespace PaviseApp
                 shown.Clear();
                 foreach (Row r in rows)
                 {
-                    if (f.Length > 0
-                        && r.Name.IndexOf(f, StringComparison.CurrentCultureIgnoreCase) < 0
-                        && r.Path.IndexOf(f, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                    if (!GameSearchMatcher.Matches(f, r.Name, r.Path)) continue;
                     shown.Add(r);
-                    lst.Items.Add(r.Name);
+                    lst.Items.Add(DisplayRowName(r));
                 }
                 if (keep != null) lst.SelectedIndex = shown.IndexOf(keep);
                 int topIndex = keepTop == null ? -1 : shown.IndexOf(keepTop);
@@ -720,6 +728,12 @@ namespace PaviseApp
         private void ToggleSelected()
         {
             ToggleAt(lst.SelectedIndex);
+        }
+
+        private static string DisplayRowName(Row row)
+        {
+            return row.NeedsChoice && row.Installed
+                ? row.Name + " · " + Path.GetFileName(row.Path) : row.Name;
         }
 
         private void ToggleAt(int i)
@@ -737,8 +751,11 @@ namespace PaviseApp
         {
             selectionEdited = true;
             bool anyUnchecked = false;
-            foreach (Row r in shown) if (!r.Already && !r.Checked) { anyUnchecked = true; break; }
-            foreach (Row r in shown) if (!r.Already) r.Checked = anyUnchecked;
+            foreach (Row r in shown)
+                if (!r.Already && !r.NeedsChoice && !r.Checked) { anyUnchecked = true; break; }
+            // Pending entries must be picked one by one, select-all would add several entries of the same game to the library
+            foreach (Row r in shown)
+                if (!r.Already && (!anyUnchecked || !r.NeedsChoice)) r.Checked = anyUnchecked;
             lst.Invalidate();
             UpdateAddButton();
         }
@@ -779,7 +796,7 @@ namespace PaviseApp
             });
         }
 
-        // 就算正在关闭也要接管所有权 不能让某张位图只被排队中的界面回调持有
+        // Take ownership even while closing, no bitmap may be held only by a queued UI callback
         private void CacheIcon(string path, Bitmap bitmap)
         {
             lock (iconGate)
@@ -843,6 +860,7 @@ namespace PaviseApp
             string status = r.Already ? Lang.T("scan.already")
                 : r.RendererLike ? Lang.F("scan.renderer.tag", (int)r.Gpu)
                 : r.Running ? Lang.T("scan.running.tag")
+                : r.NeedsChoice ? Lang.T("scan.choice.tag")
                 : r.Pinned ? Lang.T("scan.picked.tag") : !r.Installed ? Lang.T("scan.stopped.tag") : "";
             string details = r.Running ? RunningProgram.FormatMemory(r.Memory) : "";
             if (r.Running && r.Count > 1)
@@ -870,7 +888,7 @@ namespace PaviseApp
                 else Glyphs.Draw(g, "game", layout.Icon, r.Already ? Theme.Faint : Theme.Accent);
             }
             var flags = TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix;
-            TextRenderer.DrawText(g, r.Name, Theme.UI(9.2f, true), layout.Name,
+            TextRenderer.DrawText(g, DisplayRowName(r), Theme.UI(9.2f, true), layout.Name,
                 r.Already ? Theme.Faint : Theme.Fg, flags | TextFormatFlags.EndEllipsis);
             TextRenderer.DrawText(g, r.Path, Theme.UI(7.6f, false), layout.Path,
                 Theme.Dim, flags | TextFormatFlags.PathEllipsis);

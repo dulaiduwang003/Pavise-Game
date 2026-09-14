@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 电源方案的 powrprof 机械层 枚举 名称读写 创建删除 与托管方案的逐项写入
+// File purpose powrprof mechanical layer for power schemes: enumeration, name read/write, create/delete, and per-item writes to the managed scheme
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -56,26 +56,26 @@ namespace PaviseApp
         private static readonly Guid PcieAspm          = new Guid("ee12f906-d277-404b-b6da-e5fa1a576df5");
         private static readonly Guid UsbSelSuspend     = new Guid("48e6b7a6-50f5-4782-a5d4-53bb8f07e226");
         private static readonly Guid DiskIdle          = new Guid("6738e2c4-e8a5-4a42-b16a-e040e769756e");
-        // NVMe 非操作性电源态的唤醒是毫秒级尾延迟 抑制降档的正规杠杆是延迟容忍不是超时
-        //   超时到期后驱动只选 ENLAT+EXLAT 不超过容忍值的状态 容忍 0 等于没有状态够格
-        //   微软性能方案自己就是这么写的 超时 0 的语义没有文档定义 不碰
-        //   AHCI LPM 唤醒卡顿有 Event 129 实锤 对局保持链路 Active
+        // Waking NVMe from non-operational power states is millisecond-scale tail latency; the proper lever against demotion is latency tolerance, not the timeout
+        //   After the timeout expires the driver only picks states whose ENLAT+EXLAT fits within the tolerance; tolerance 0 means no state qualifies
+        //   Microsoft's own High performance scheme is written this way; timeout 0 semantics are undocumented, leave it alone
+        //   AHCI LPM wake stutter is confirmed by Event 129; keep the link Active during the match
         private static readonly Guid NvmeLatTolPrimary   = new Guid("fc95af4d-40e7-4b6d-835a-56d131dbc80e");
         private static readonly Guid NvmeLatTolSecondary = new Guid("dbc9e238-6de9-49e3-92cd-8c2b4946b472");
         private static readonly Guid AhciLpm             = new Guid("0b2d69d7-a2a1-449c-9680-f91c70521c60");
 
-        // USB3 链路的 U1/U2 低功耗态退出是微秒到毫秒级 和选择性暂停同一路 对局关掉
+        // USB3 link U1/U2 low-power exit is microsecond-to-millisecond scale, same path as selective suspend; off during the match
         private static readonly Guid Usb3Lpm           = new Guid("d4e98f31-5ffe-4ce1-be31-1b38b384c009");
-        // 厂商注入到方案里的显卡子组 只有装了对应驱动的机器才有 SettingPresent 读不到整项跳过
-        //   Intel 核显 0 最长续航 1 平衡 2 最高性能 所有设备与档位的 AC/DC 统一用平衡
-        //   切换显卡 0 强制省电卡 1 优化省电 2 优化性能 3 最大性能
+        // Vendor-injected graphics subgroup in the scheme, present only on machines with the matching driver; skip the whole item when SettingPresent is unreadable
+        //   Intel iGPU: 0 max battery, 1 balanced, 2 max performance; all devices and tiers use balanced for both AC/DC
+        //   Switchable graphics: 0 force power-saving GPU, 1 optimize power, 2 optimize performance, 3 max performance
         private static readonly Guid SubIntelGfx       = new Guid("44f3beca-a7c0-460e-9df2-bb8b99e0cba6");
         private static readonly Guid IntelGfxPlan      = new Guid("3619c3f2-afb2-4afc-b0e9-e7fef372de36");
         private static readonly Guid SubSwitchGfx      = new Guid("e276e160-7cb0-43c6-b20b-73f5dce39954");
         private static readonly Guid SwitchGfxPolicy   = new Guid("a1662ab2-9d34-4e53-ba8b-2639b9e20857");
 
-        // 空闲策略开关专属 不等同于硬件唤醒延迟或禁止空闲
-        //   这几项在多数方案上未暴露 SettingPresent 读不到就整项跳过 不写坏方案
+        // Exclusive to the idle policy toggle, not the same as hardware wake latency or disabling idle
+        //   These items are unexposed on most schemes; skip the whole item when SettingPresent is unreadable, do not corrupt the scheme
         private static readonly Guid IdlePromote      = new Guid("7b224883-b3cc-4d79-819f-8374152cbe7c");
         private static readonly Guid IdleDemote       = new Guid("4b92d758-5a24-4851-a470-815d78aee119");
         private static readonly Guid IdleScaling      = new Guid("6c2993b0-8f48-481f-bcc6-00dd2742aa06");
@@ -102,9 +102,9 @@ namespace PaviseApp
         private static readonly Guid PerfEpp1          = new Guid("36687f9e-e3a5-4dbf-b1dc-15eb381c6864");
         private static readonly Guid SchedPolicy       = new Guid("93b8b6dc-0698-4d1c-9ee4-0644e900c85d");
         private static readonly Guid ShortSchedPolicy  = new Guid("bae08b81-2d5e-4688-ad6a-13243356654b");
-        // 效率等级 1 那半边的升降频与延迟敏感项 GUID 末位比等级 0 大一
-        //   P 核写激进 E 核却留系统默认 游戏辅助线程落到 E 核上爬频走的就是平衡档口径
-        //   HWP 自主模式下升降频策略 时间 阈值六项是空操作 真增量是睿频策略和两项延迟敏感
+        // Efficiency class 1 half of the perf increase/decrease and latency-sensitivity items, GUID last digit one higher than class 0
+        //   Writing P-cores aggressive while E-cores keep the system default means game helper threads landing on E-cores ramp under Balanced criteria
+        //   Under HWP autonomous mode the six increase/decrease policy, time and threshold items are no-ops; the real delta is boost policy and the two latency-sensitivity items
         private static readonly Guid PerfBoostPol1      = new Guid("45bcc044-d885-43e2-8605-ee0ec6e96b5a");
         private static readonly Guid PerfIncPol1        = new Guid("465e1f50-b610-473a-ab58-00d1077dc419");
         private static readonly Guid PerfDecPol1        = new Guid("40fbefc7-2e9d-4d25-a185-0cfd8574bac7");
@@ -190,24 +190,24 @@ namespace PaviseApp
             new Knob(SubProcessor, LatencyHintUnpark1,100,100,  50, 50, "t.powerplanschemes.53"),
         };
 
-        // 空闲策略开关额外加的一组 只在该开关开着时写 关掉按快照还原
-        //   分两类 一类是把已有旋钮推到量程尽头 一类是电竞列没碰过的空闲行为
-        //   计量单位由系统定义 写入前一律经 Clamp 夹到本机允许区间
+        // Extra set added by the idle policy toggle; written only while it is on, restored from snapshot when turned off
+        //   Two kinds: pushing existing knobs to the end of their range, and idle behaviors the Esports column never touched
+        //   Units are system-defined; every write goes through Clamp to this machine's allowed range
         private static readonly Knob[] ExtremeKnobs = new Knob[]
         {
-            // 抬高选更深空闲态的门槛 系统原来的降级门槛保持不动
-            // IdleDemote 是空闲比例低于阈值才降级 0 不能理解成退出更快
-            // 别把它直接改成另一个没实测过的极端值 旧写入由快照迁移还原
+            // Raise the threshold for promoting to deeper idle states; leave the system's original demotion threshold alone
+            // IdleDemote demotes only when idle ratio drops below the threshold; 0 does not mean faster exit
+            // Do not flip it to another untested extreme value; old writes are restored by snapshot migration
             new Knob(SubProcessor, IdlePromote,     100, 100, 100, 100, "t.powerplanschemes.39"),
-            // 空闲检查周期 c4581c31 曾在这里写 0 想靠 Clamp 夹到下限 本机量程 1~200000 微秒
-            //   写入从没成功过 每局固定报一项失败 内核检查周期跟定时器节拍走 写 1 和默认 50000 分不出差别
-            //   没有依据支撑它 整项撤掉 旧快照里若有它 RestoreExtremeKnobs 照样按 GUID 写回
-            // 关掉按当前性能状态缩放空闲门槛 硬件的 C-state 退出时延不动
+            // Idle check period: c4581c31 once wrote 0 here hoping Clamp would floor it, this machine's range is 1~200000 microseconds
+            //   The write never succeeded, one item failed every match; the kernel check period follows the timer tick, so 1 vs default 50000 makes no measurable difference
+            //   Nothing supports it, item removed; if an old snapshot has it, RestoreExtremeKnobs still writes it back by GUID
+            // Disable scaling the idle threshold by current performance state; hardware C-state exit latency is untouched
             new Knob(SubProcessor, IdleScaling,       0,   0,   0,   0, "t.powerplanschemes.42"),
         };
 
 #if PAVISE_SELFTEST
-        // 空闲策略组的成员与取值 供回归核对 不触发任何写入
+        // Members and values of the idle policy group, for regression checks, triggers no writes
         internal static int ExtremeKnobCountForTest { get { return ExtremeKnobs.Length; } }
 
         internal static bool ExtremeOnlyGuidForTest(Guid setting)
@@ -262,7 +262,7 @@ namespace PaviseApp
             return cachedProfile;
         }
 
-        // 空闲策略那组没配完时置真 调用方据此不缓存 tuneState 下次配置再补
+        // Set when the idle policy group is not fully configured; callers then skip caching tuneState and finish on the next configure
         private static bool extremeTunePending;
 
         internal static bool ExtremeTunePending { get { return extremeTunePending; } }
@@ -302,12 +302,12 @@ namespace PaviseApp
                     if (WriteKnob(g, effective, aggressive, handheld, profile,
                         autonomousAc, autonomousDc)) written++; else failed++;
                 }
-                // 空闲策略组 未暴露的项照常跳过 不影响其余旋钮的写入结果
-                //   写入前先快照现值 关掉开关重写方案时按快照写回
-                //   否则空闲策略会一直留在托管方案上
-                // 旧版撤回项开着时一样要恢复 失败就留着收据 下次配置再试
-                //   这组是附加项 备份或恢复没做完只跳过这一组 其余旋钮和方案切换照常
-                //   之前这里直接返回假 一项收据读不全就让整套电源方案配不成 用户那边表现为方案没生效
+                // Idle policy group: unexposed items are skipped as usual and do not affect the write results of the other knobs
+                //   Snapshot current values before writing; when the toggle is turned off and the scheme rewritten, write back from the snapshot
+                //   otherwise the idle policy would stay on the managed scheme forever
+                // Legacy retired items are restored the same way while on; on failure keep the receipt and retry on next configure
+                //   This group is an add-on; an unfinished backup or restore skips only this group, other knobs and the scheme switch proceed as usual
+                //   Previously this returned false, so one incomplete receipt blocked the whole power scheme configure, seen by the user as the scheme not taking effect
                 List<ExtremeSavedValue> snapshot;
                 bool extremeReady = PrepareExtremeKnobs(g, extreme, out snapshot);
                 if (!extremeReady)
@@ -318,7 +318,7 @@ namespace PaviseApp
                 {
                     foreach (Knob k in ExtremeKnobs)
                     {
-                        // 一次瞬时读失败之后 SettingPresent 可能又成了 但没备份的项还是不能写
+                        // After a transient read failure SettingPresent may succeed again, but items without a backup still must not be written
                         if (!snapshot.Exists(delegate(ExtremeSavedValue v) { return v.Setting == k.Setting; }))
                         { skipped.Add(k.Label); continue; }
                         if (!SettingPresent(g, k.Sub, k.Setting))
@@ -367,9 +367,9 @@ namespace PaviseApp
             catch { return false; }
         }
 
-        // 这是核显驱动的电源策略 与 CPU 的大小核调度和 Windows 平衡方案不同
-        // 掌机档仅在驱动确认唯一显卡为 Intel 核显时请求最高性能
-        // 搭配独显或拓扑未知时仍用平衡 保留桌面和笔记本的原有策略
+        // This is the iGPU driver's power policy, distinct from CPU P-core/E-core scheduling and the Windows Balanced scheme
+        // Handheld tier requests max performance only when the driver confirms the sole GPU is an Intel iGPU
+        // With a dGPU present or unknown topology stay on balanced, preserving the existing desktop and laptop policy
         internal static uint ResolveIntelGraphicsPlan(bool aggressive, bool handheld, GpuAdapter[] adapters)
         {
             if (!aggressive || !handheld || adapters == null || adapters.Length != 1) return 1;
@@ -380,7 +380,7 @@ namespace PaviseApp
 
         private static void LogKnobFailure(Knob k)
         {
-            // 日志别把参数再写一遍 那样会绕开未知平台的保留分支
+            // Do not log the parameters again here, that would bypass the preserve branch for unknown platforms
             Logger.Warn(Lang.T("log.powerplanschemes.32") + Lang.T(k.Label)
                 + Lang.T("log.powerplanschemes.33"));
         }
@@ -395,7 +395,7 @@ namespace PaviseApp
             uint dc = useArena ? ArenaDcFor(k, k.ArenaDc, autonomousDc) : k.CalmDc;
             if (useArena && IsProcessorMinimum(k.Setting))
             {
-                // AC 和 DC 各判各的 哪一侧确认不了就保持那侧原值 读失败整项都不写
+                // AC and DC are judged separately; whichever side cannot be confirmed keeps its original value; a read failure skips the whole item
                 if (!ProcessorPowerPlatform.TryResolveMinimumIndices(autonomousAc, autonomousDc, ac, dc,
                     delegate(bool onAc)
                     {
@@ -427,27 +427,27 @@ namespace PaviseApp
             return setting == ProcThrottleMin || setting == ProcThrottleMin1;
         }
 
-        // 自主调频确认开着时最低处理器状态放到温和值 由硬件自己定频
-        //   09-06 在 i7-9750H 笔记本上 A/B 过 锁 100 反而 230 到 250 帧 放开 270 到 280 帧
-        //   六核笔记本功耗和散热是一份预算 全核钉最高频 忙的核反而拿不到睿频
+        // When autonomous frequency control is confirmed on, minimum processor state goes to a gentle value and the hardware picks the frequency
+        //   09-06 A/B on an i7-9750H laptop: locked at 100 gave 230 to 250 fps, relaxed gave 270 to 280 fps
+        //   On a six-core laptop power and thermals are one budget; pinning all cores at max frequency starves the busy cores of boost
         private static uint AutonomousArenaValue(Knob k, uint value, bool ac, bool? autonomous)
         {
             return autonomous == true && IsProcessorMinimum(k.Setting)
                 ? (ac ? k.CalmAc : k.CalmDc) : value;
         }
 
-        // 笔记本的专注档 电池那一侧放开纯省电项 跟 CalmArenaAcOnDesktop 对称 方向相反
-        //   长期以来专注档 31 个旋钮插电和电池写的是同一套值 台式机分流只服务台式机
-        //   拔了电还照着插电的口径写 最低性能状态 100 不停泊核心 一切省电全关 没人受益
+        // Esports tier on laptops: the battery side relaxes pure power-saving items, symmetric to CalmArenaAcOnDesktop in the opposite direction
+        //   For a long time the Esports tier's 31 knobs wrote the same values on AC and battery; the desktop split only served desktops
+        //   Unplugged still wrote the AC criteria: minimum performance state 100, no core parking, all power saving off, nobody benefited
         //
-        // 只放开纯省电项 不碰会影响帧和输入的
-        //   不动 ProcThrottleMax PerfEpp PerfBoostPol 这些负载中决定频率的
-        //     实测 EPP 全量程扫描频率纹丝不动 而 PL1 才是笔记本上的真天花板
-        //     另外这块归 Dynamic Boost 和 Intel DTT 管 抢方向盘只会更糟
-        //   不动 PcieAspm 它会独立掐显卡带宽 是少数几个确实影响游戏的电源项
-        //   不动 UsbSelSuspend 那条治的是键鼠空闲后第一下发飘
-        // 放开的取值直接借智能档电池那一列 免得再引一套魔数
-        // NVMe 延迟容忍随 DiskIdle 一起放开 AHCI LPM 不放 它的唤醒直接打到帧上 跟 PcieAspm 一路
+        // Relax only pure power-saving items, leave anything that affects frames and input alone
+        //   Do not touch ProcThrottleMax PerfEpp PerfBoostPol, the ones that decide frequency under load
+        //     Measured: a full-range EPP sweep did not move frequency at all, PL1 is the real ceiling on laptops
+        //     Also this area belongs to Dynamic Boost and Intel DTT, fighting them for the wheel only makes it worse
+        //   Do not touch PcieAspm, it independently chokes GPU bandwidth, one of the few power items that really affect games
+        //   Do not touch UsbSelSuspend, that one fixes the first jittery input after keyboard/mouse idle
+        // Relaxed values borrow the Smart tier battery column directly, avoiding another set of magic numbers
+        // NVMe latency tolerance is relaxed together with DiskIdle; AHCI LPM is not, its wake hits frames directly, same path as PcieAspm
         private static readonly Guid[] ArenaDcRelaxOnLaptop =
         {
             ProcThrottleMin, ProcThrottleMin1, CpMinCores, CpMinCores1,
@@ -455,18 +455,18 @@ namespace PaviseApp
             NvmeLatTolPrimary, NvmeLatTolSecondary,
         };
 
-        // 笔记本插电时也不该强制一个核都不停泊
-        //   本机台架 12 逻辑核 3 线程稳态负载 同一台机器两轮独立测量
-        //   不停泊最小核心% 100 50 20 5
-        //   第一轮实际频率% 153.8 157.8 164.0 157.8
-        //   第二轮实际频率% 153.8 162.1 156.3 163.6
-        //   两次 100 都恰好 153.8 六个放开的臂全在 156.3~164.0 零重叠
-        //   也就是说强制不停泊反而让干活的核跑得更慢 封装那份预算被摊到更多活跃核上
-        //   跟专注档的意图正好相反
-        // 台式机同样按这张表放开 功耗墙紧的小机箱和风冷高核数 CPU 上机理相同
-        //   "台式机不受约束"没有数据 而唯一一组实测指向相反方向 没有依据就不写 100
-        //   放开后写的是智能档那一列 与非对称缓存机器保留停泊是两条独立的路
-        // 功耗那条没结论 两轮基线自己就漂了 6W 噪声大于效应 别拿它当依据
+        // Laptops on AC should not force zero core parking either
+        //   Local bench: 12 logical cores, 3-thread steady-state load, two independent runs on the same machine
+        //   Unparked minimum cores %: 100 50 20 5
+        //   Run 1 actual frequency %: 153.8 157.8 164.0 157.8
+        //   Run 2 actual frequency %: 153.8 162.1 156.3 163.6
+        //   Both 100 runs landed exactly on 153.8; all six relaxed arms sit in 156.3~164.0, zero overlap
+        //   So forcing no parking actually makes the working cores run slower, the package budget is spread across more active cores
+        //   the exact opposite of what the Esports tier intends
+        // Desktops relax by the same table; the mechanism is the same on power-limited small cases and air-cooled high-core-count CPUs
+        //   Desktops have no constraint data, and the only measured set points the other way; without evidence do not write 100
+        //   Relaxed writes use the Smart tier column; keeping parking on asymmetric-cache machines is a separate path
+        // The power draw side is inconclusive, the two baselines drifted 6W on their own, noise exceeds effect, do not use it as evidence
         private static readonly Guid[] ArenaAcRelaxOnLaptop =
         {
             CpMinCores, CpMinCores1,
@@ -479,10 +479,10 @@ namespace PaviseApp
             return false;
         }
 
-        // 掌机档插电时按电池那一列的口径放开 借的就是 ArenaDcRelaxOnLaptop 那张表
-        //   笔记本插电只放开核心停泊 是因为那份预算还够 CPU 和独显各拿各的
-        //   掌机整机十几瓦 CPU 和集显抢的是同一份 最低性能状态锁 100 等于先把预算划给 CPU
-        //   放开的仍然只是纯省电项 EPP PerfBoostPol ProcThrottleMax 照写激进值 不碰帧和输入
+        // Handheld tier on AC relaxes by the battery column's criteria, borrowing the ArenaDcRelaxOnLaptop table
+        //   Laptops on AC relax only core parking because that budget is still enough for CPU and dGPU to each take their share
+        //   A handheld is a dozen-odd watts total, CPU and iGPU fight over the same budget; locking minimum performance state at 100 hands the budget to the CPU first
+        //   Still only pure power-saving items are relaxed; EPP PerfBoostPol ProcThrottleMax keep their aggressive values, frames and input untouched
         private static uint ArenaAcFor(Knob k, uint ac, bool handheld, bool? autonomous)
         {
             ac = AutonomousArenaValue(k, ac, true, autonomous);
@@ -490,8 +490,8 @@ namespace PaviseApp
                 ArenaAcRelaxed(k.Setting), ArenaDcRelaxed(k.Setting), ac, k.CalmAc);
         }
 
-        // 纯决策 插电那一列最终写什么
-        //   台式机和笔记本插电都只放开核心停泊 掌机插电按电池那张表放开纯省电项
+        // Pure decision: what the AC column finally writes
+        //   Desktop and laptop on AC relax only core parking; handheld on AC relaxes pure power-saving items per the battery table
         internal static uint ResolveArenaAc(bool hasBattery, bool handheld,
             bool relaxedOnAc, bool relaxedOnDc, uint arenaAc, uint calmAc)
         {
@@ -510,7 +510,7 @@ namespace PaviseApp
         private static uint ArenaDcFor(Knob k, uint dc, bool? autonomous)
         {
             dc = AutonomousArenaValue(k, dc, false, autonomous);
-            if (!Native.HasSystemBattery()) return dc;   // 台式机根本用不到电池那一列
+            if (!Native.HasSystemBattery()) return dc;   // Desktops never use the battery column
             return ArenaDcRelaxed(k.Setting) ? k.CalmDc : dc;
         }
 
@@ -522,8 +522,8 @@ namespace PaviseApp
         }
 #endif
 
-        // 下架前写进去的 1 清一次 不看接管状态 清成功记个标记不再重复跑
-        //   没有托管方案或方案里没这一项都算清完 拿不到写权限就留着标记下次再试
+        // Clear once the 1 written before retirement, regardless of takeover state; on success set a flag so it never runs again
+        //   No managed scheme, or the item missing from the scheme, both count as cleared; without write access keep the flag unset and retry next time
         internal static bool ClearLegacyIdleDisableOnce()
         {
             lock (lk)
@@ -545,8 +545,8 @@ namespace PaviseApp
                     return true;
                 }
                 if (!WritePair(g, SubProcessor, IdleDisableSet, 0u, 0u)) return false;
-                // 托管方案正是当前活动方案时 得重新激活一次内核才会重读这个值
-                //   激活没成就别记标记 下次启动再清一遍 记死了就再也没有第二次机会
+                // When the managed scheme is the active one, it must be re-activated for the kernel to re-read this value
+                //   If activation fails do not set the flag, clear again on next launch; once the flag is set there is no second chance
                 Guid? cur = Current();
                 if (cur.HasValue && cur.Value == g && !Set(g)) return false;
                 Settings.Save(IdleDisableClearedKey, true);
@@ -573,13 +573,13 @@ namespace PaviseApp
             return ac;
         }
 
-        // 对局中把能效偏好临时抬高 让出共享功耗预算 只动托管方案的 AC 值 退场必还原
-        //   EPP 才是 HWP 平台上真正控制功耗与响应折中的旋钮
-        //   ProcThrottleMin 只决定"能不能降" 地板放开了 EPP 仍为 0 的话照样不会降
-        //   混合架构上 E 核那份 PerfEpp1 必须一起动 否则只改到一个能效等级
-        // 让路的写入来自采样线程 还原可能同时来自采样线程和对局退出那条路
-        //   Stop 里是先 Join 再查 EppYielded 正常不会撞上 但 Join 超时就会
-        //   撞上的后果是重复写或读到写了一半的快照 加把锁比推理便宜
+        // Temporarily raise EPP during the match to yield shared power budget; touches only the managed scheme's AC value, always restored on exit
+        //   EPP is the knob that really controls the power/responsiveness trade-off on HWP platforms
+        //   ProcThrottleMin only decides whether it can go down; with the floor relaxed but EPP still 0 it never will
+        //   On hybrid architectures the E-core PerfEpp1 must move together, otherwise only one efficiency class changes
+        // The yield write comes from the sampling thread; restore may come from both the sampling thread and the match-exit path
+        //   Stop does Join before checking EppYielded so normally they never collide, but a Join timeout will
+        //   A collision means a duplicate write or reading a half-written snapshot; a lock is cheaper than reasoning about it
         private static readonly object eppLk = new object();
         private static bool eppYielded;
         private static bool eppApplied;
@@ -593,8 +593,8 @@ namespace PaviseApp
         {
             lock (eppLk)
             {
-                // 待恢复不算让出成功 它的原始值也不能被
-                // 第二次尝试的快照顶掉
+                // Pending restore does not count as a successful yield, and its original value must not be
+                // clobbered by a second attempt's snapshot
                 if (eppYielded) return eppApplied;
                 try
                 {
@@ -602,8 +602,8 @@ namespace PaviseApp
                     if (g == Guid.Empty) return false;
                     uint savedAc, savedAc1;
                     if (!EppReadAc(g, false, out savedAc)) return false;
-                    // 有些系统没有第二个能效等级 取不到原始值的设置项
-                    // 一律不写
+                    // Some systems have no second efficiency class; settings whose original value cannot be read
+                    // are never written
                     bool hasSecondary = EppReadAc(g, true, out savedAc1);
                     eppSavedScheme = g;
                     eppSavedAc = savedAc;
@@ -615,8 +615,8 @@ namespace PaviseApp
                     bool ok = EppWriteVerified(g, false, epp);
                     if (ok && hasSecondary)
                     {
-                        // 进原生代码之前先把这次要写的记下来
-                        // 因为它可能在改了一半设置之后失败
+                        // Record what this write will touch before entering native code
+                        // because it may fail halfway through changing the settings
                         eppSaved1 = true;
                         ok = EppWriteVerified(g, true, epp);
                     }
@@ -639,8 +639,8 @@ namespace PaviseApp
             {
                 if (!eppYielded) return true;
                 eppApplied = false;
-                // 托管方案的引用从写入到现在可能已经变了
-                // 这些原始值只属于当时捕获的那套方案
+                // The managed scheme reference may have changed since the write
+                // These original values belong only to the scheme captured at the time
                 Guid g = eppSavedScheme;
                 if (g == Guid.Empty || !eppSaved) return false;
                 try
@@ -655,7 +655,7 @@ namespace PaviseApp
             }
         }
 
-        // 方案正在生效时改值要重新 SetActive 一次 否则内核不会重新读
+        // Changing values on the active scheme needs another SetActive, otherwise the kernel will not re-read
         private static bool EppReapplyVerified(Guid scheme)
         {
             Guid? cur = EppCurrentScheme();
@@ -838,7 +838,7 @@ namespace PaviseApp
 
         private const uint ErrorInvalidParameter = 87;
 
-        // 卸载时按名字清掉历史版本留下的方案 收据里那份 RemoveManagedPlan 已经删过 这里只兜旧账
+        // On uninstall remove schemes left by older versions by name; the RemoveManagedPlan in the receipt already deleted its own, this only settles old debts
         internal static bool IsManagedPlanName(string name)
         {
             if (string.IsNullOrEmpty(name)) return false;
@@ -928,7 +928,7 @@ namespace PaviseApp
             return list;
         }
 
-        // 调用方只有拿到正常枚举结束才能用缺席证明方案不存在
+        // Callers may use absence as proof a scheme does not exist only after a normal end of enumeration
         private static bool TryEnumerateSchemes(out List<Guid> list)
         {
             list = new List<Guid>();
@@ -952,7 +952,7 @@ namespace PaviseApp
                 }
             }
             catch { }
-            return false; // 异常或达到数量上限都不是完整枚举
+            return false; // An exception or hitting the count cap is not a complete enumeration
         }
 
 #if PAVISE_SELFTEST

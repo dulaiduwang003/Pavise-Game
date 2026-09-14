@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 启动和关于页的联系方式弹窗
+// File purpose Optional contact popup opened from the About page
 using System;
 using System.Diagnostics;
 using System.Drawing;
@@ -10,7 +10,7 @@ namespace PaviseApp
 {
     internal sealed class ContactDialog : Form
     {
-        private const int DlgW = 640, DlgH = 520;
+        private const int DlgW = 640, DlgH = 578;
         private const int RailW = 190;
         private const int RailSlant = 32;
         private const int BodyX = RailW + 26;
@@ -19,14 +19,12 @@ namespace PaviseApp
         private Bitmap logo;
         private bool clockWasSuspended;
 
-        public ContactDialog(bool startup = false)
+        public ContactDialog()
         {
             Text = Lang.T("contact.title");
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.CenterParent;
-            // 启动欢迎窗是当时唯一的窗口 必须进任务栏 否则被遮住后用户找不回来
-            //   关于页里作为模态弹窗时不进 与其它对话框一致
-            MaximizeBox = false; MinimizeBox = false; ShowInTaskbar = startup;
+            MaximizeBox = false; MinimizeBox = false; ShowInTaskbar = false;
             Icon taskbarIcon = IconArt.MakeIcon(Theme.S(24));
             Icon = taskbarIcon;
             ClientSize = new Size(Theme.S(DlgW), Theme.S(DlgH));
@@ -72,8 +70,11 @@ namespace PaviseApp
             AddRow(rightX, y, half, Lang.T("contact.qq4"), App.QqGroup4,
                 CopyAction(App.QqGroup4), Lang.T("contact.copy"));
             y += 58;
-            AddRow(BodyX, y, BodyW, Lang.T("contact.pan"), Lang.T("contact.pan.value"),
-                OpenAction(App.PanUrl), Lang.T("contact.open"));
+            AddRow(BodyX, y, half, Lang.T("contact.qq5"), App.QqGroup5,
+                CopyAction(App.QqGroup5), Lang.T("contact.copy"));
+            y += 58;
+            AddRow(BodyX, y, BodyW, Lang.T("site.entry"), "pavise.club",
+                OpenAction(App.WebsiteUrl), Lang.T("contact.open"));
             y += 70;
 
             BuildUpdateArea(BodyX, y, BodyW);
@@ -86,7 +87,7 @@ namespace PaviseApp
             freeNote.SetBounds(Theme.S(BodyX + 2), Theme.S(DlgH - 110), Theme.S(BodyW - 4), Theme.S(44));
             Controls.Add(freeNote);
 
-            var ok = new PillButton(Lang.T(startup ? "contact.enter" : "contact.close"), BtnKind.Primary);
+            var ok = new PillButton(Lang.T("contact.close"), BtnKind.Primary);
             ok.SetBounds(Theme.S(DlgW - 176), Theme.S(DlgH - 58), Theme.S(146), Theme.S(38));
             ok.Click += delegate { Finish(); };
             Controls.Add(ok);
@@ -133,62 +134,11 @@ namespace PaviseApp
             ver.SetBounds(Theme.S(x + 2), Theme.S(y + 8), Theme.S(180), Theme.S(22));
             Controls.Add(ver);
 
-            int btnW = 96;
-            var status = new Label();
-            status.ForeColor = Theme.Dim; status.BackColor = Theme.Bg;
-            status.Font = Theme.UI(7.6f, false);
-            status.UseCompatibleTextRendering = false;
-            status.AutoEllipsis = true;
-            status.SetBounds(Theme.S(x + 2), Theme.S(y + 34), Theme.S(w - 4), Theme.S(16));
-            Controls.Add(status);
-
-            var btn = new PillButton(Lang.T("contact.update.check"));
+            var btn = new PillButton(Lang.T("site.download"));
+            btn.Name = "contactWebsiteDownload";
             btn.Bg = Theme.Bg;
-            btn.SetBounds(Theme.S(x + w - btnW), Theme.S(y + 2), Theme.S(btnW), Theme.S(32));
-            string dlUrl = null;
-            btn.Click += delegate
-            {
-                if (dlUrl != null)
-                {
-                    if (UpdateChecker.IsTrustedDownloadUrl(dlUrl))
-                        try { using (Process.Start(dlUrl)) { } } catch { }
-                    return;
-                }
-                btn.Enabled = false;
-                status.ForeColor = Theme.Dim;
-                status.Text = Lang.T("upd.checking");
-                UpdateChecker.CheckAsync(delegate(UpdateResult r)
-                {
-                    try
-                    {
-                        BeginInvoke((MethodInvoker)delegate
-                        {
-                            if (btn.IsDisposed) return;
-                            btn.Enabled = true;
-                            if (!r.Ok)
-                            {
-                                status.ForeColor = Theme.Dim;
-                                status.Text = Lang.T("upd.fail");
-                            }
-                            else if (r.Newer)
-                            {
-                                dlUrl = r.Url;
-                                btn.Text = Lang.T("btn.download");
-                                status.ForeColor = Theme.Green;
-                                status.Text = Lang.F("upd.newver", r.Latest, App.VersionTag)
-                                    + " " + Lang.F("upd.route", r.Source);
-                            }
-                            else
-                            {
-                                status.ForeColor = Theme.Green;
-                                status.Text = Lang.F("upd.latest", App.VersionTag)
-                                    + " " + Lang.F("upd.route", r.Source);
-                            }
-                        });
-                    }
-                    catch { }
-                });
-            };
+            btn.SetBounds(Theme.S(x + w - 154), Theme.S(y + 2), Theme.S(154), Theme.S(32));
+            btn.Click += delegate { try { using (Process.Start(App.ChangelogUrl)) { } } catch { } };
             Controls.Add(btn);
         }
 

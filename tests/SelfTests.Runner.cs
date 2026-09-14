@@ -1,4 +1,4 @@
-﻿// 文件用途 公开的自测构建只跑隔离回归 从不走 Program.Main
+// File purpose The public self-test build runs only isolated regressions, never goes through Program.Main
 #if PAVISE_SELFTEST && PAVISE_SELFTEST_RUNNER
 using System;
 using System.Collections;
@@ -28,7 +28,7 @@ namespace PaviseApp
                 Settings.UseTransientStoreForCurrentProcess();
                 Logger.ResetWriteBarrierForTest();
                 Lang.Init();
-                // 忘装 mock 的结果是失败 不是去还原或者删掉用户的真实设置
+                // A forgotten mock fails instead of restoring or deleting the user's real settings
                 LegacyPurge.RestoreHook = delegate { throw new InvalidOperationException("Unmocked system restoration in self-test"); };
                 LegacyPurge.DeleteRegistryHook = delegate { throw new InvalidOperationException("Unmocked registry deletion in self-test"); };
                 int failed;
@@ -106,7 +106,7 @@ namespace PaviseApp
                     Console.WriteLine("FAIL suite " + name + ": " + error);
                 }
             };
-            // 显式白名单 不含真实进程矩阵 截图模式 ETW 和调优运行时
+            // Explicit whitelist, excludes the real process matrix, screenshot mode, ETW and the tuning runtime
             run("ResetCleanup", delegate { RunResetCleanupRegressionTests(); });
             run("CacheWarm", delegate { RunCacheWarmRegressionTests(); });
             run("ResetFlow", delegate { RunResetFlowRegressionTests(); });
@@ -130,6 +130,7 @@ namespace PaviseApp
             run("NicModeration", delegate { RunNicModerationRegressionTests(); });
             run("LogWrites", delegate { RunLogWritesRegressionTests(); });
             run("LogSeverity", delegate { RunLogSeverityRegressionTests(); });
+            run("UiWorkflow", delegate { RunUiWorkflowRegressionTests(); });
             run("PresetValue", delegate { RunPresetValueRegressionTests(); });
             run("DieMasks", delegate { RunDieMaskRegressionTests(); });
             run("AntiCheatThrottle", delegate { RunAntiCheatThrottleRegressionTests(); });
@@ -143,6 +144,7 @@ namespace PaviseApp
             run("UiConfigAudit", delegate { RunUiConfigAuditRegressionTests(); });
             run("TopologySources", TestTopologySourcesAgree);
             run("Donate", RunDonateTests);
+            run("WebsiteUpdate", RunWebsiteUpdateTests);
             run("AllMaskReconcile", TestAllMaskReconcile);
             run("CoreCardHeadTag", TestCoreCardHeadTag);
             run("CoreScheduling", delegate { RunCoreSchedulingTests(output); });
@@ -154,6 +156,11 @@ namespace PaviseApp
             run("RenderLaneEligibility", delegate { RunRenderLaneEligibilityTests(); });
             run("HandheldBlock", delegate { RunHandheldBlockTests(); });
             run("AddGameFolder", delegate { RunAddGameFolderRegressionTests(); });
+            run("GameScan", delegate { RunGameScanRegressionTests(); });
+            run("GameScanPlatforms", delegate { RunGameScanPlatformRegressionTests(); });
+            run("GameScanShortcuts", delegate { RunGameScanShortcutRegressionTests(); });
+            run("GameScanInstalled", delegate { RunGameScanInstalledRegressionTests(); });
+            run("GameSearch", delegate { RunGameSearchRegressionTests(); });
             run("ReleaseNotes", delegate { RunReleaseNotesRegressionTests(); });
             run("WeGameShell", delegate { RunWeGameShellRegressionTests(); });
             run("NegativeOptFixes", delegate { RunNegativeOptimizationFixTests(); });
@@ -171,6 +178,14 @@ namespace PaviseApp
             run("RendererReplacement", delegate { TestConfirmedRendererReplacement(output); });
             run("RendererLearningGuards", delegate { TestConfirmedRendererLearningGuards(output); });
             run("RendererSaveFailure", delegate { TestConfirmedRendererSaveFailure(output); });
+            run("IrqEnhancedCapturePath", TestIrqEnhancedCapturePath);
+            run("IrqEnhancedCoreEvidence", TestIrqEnhancedCoreEvidence);
+            run("IrqCorePlan", TestIrqCorePlan);
+            run("IrqEnhancedTransactions", TestIrqEnhancedTransactions);
+            run("IrqEnhancedPersistence", delegate { TestIrqEnhancedPersistence(output); });
+            run("IrqEnhancedComparison", TestIrqEnhancedComparison);
+            run("IrqAdjustmentHistory", delegate { TestIrqAdjustmentHistory(output); });
+            run("IrqRestoreResults", TestIrqRestoreResults);
             run("IrqCoreLoadWeighted", TestIrqCoreLoadWeighted);
             run("IrqCoreLoadMissingAndFailure", TestIrqCoreLoadMissingAndFailure);
             run("IrqCoreLoadLifecycle", TestIrqCoreLoadLifecycle);
@@ -190,7 +205,7 @@ namespace PaviseApp
             run("IrqSessionLedgerRoundtrip", delegate { TestIrqSessionLedgerRoundtrip(output); });
             run("IrqVerdictRanking", TestIrqVerdictRanking);
             run("IrqSessionSummaryPicksByImpact", TestIrqSessionSummaryPicksByImpact);
-            // IrqVerdictGuards 还会写测试进程自己的亲和性 别放进这个只用 mock 的入口
+            // IrqVerdictGuards also writes the test process's own affinity, keep it out of this mock-only entry
             Console.WriteLine("TOTAL suites=" + (passed + failed) + " passed=" + passed + " failed=" + failed);
             return failed;
         }

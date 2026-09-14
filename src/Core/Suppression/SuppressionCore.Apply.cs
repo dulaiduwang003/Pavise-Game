@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 压制核心施加分部 句柄级写入 核验 还原与不可写中和
+// File purpose Suppression core apply partial: handle-level write, verify, restore and non-writable neutralization
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -30,18 +30,18 @@ namespace PaviseApp
                     || (qosControl & 1) == 0 || (qosState & 1) == 0) return false;
             }
 
-            // 反作弊按显式落点运行；后台不再绑核，只恢复旧版留下的限制。
+            // Anti-cheat runs on explicit placement; background no longer pins cores, only restores limits left by older versions
             if (!Native.CpuSetsMatch(h, originalCpuSets ?? new uint[0])) return false;
-            // 落点被拒过的条目亲和归进程自己管 不再拿它判断是否漂移
+            // Entries whose placement was refused leave affinity to the process itself; no longer used to judge drift
             if (!CpuTopology.MultiGroup && !affinityOwned && Native.QueryAffinity(h) != desiredAffinity) return false;
             return true;
         }
 
-        // 反作弊压制的强力档把饿死那部分去掉了 ACE 这类扫描型反作弊扫游戏内存时会挂起游戏线程
-        //   IDLE 优先级让它在 CPU 满载时几乎分不到时间片 挂起窗口从几百毫秒拖到几秒 玩家看到的就是卡死
-        //   定时器精度封顶把它的节流睡眠放大十几倍 页优先级 1 让扫描一路缺页 都是同一个放大器
-        //   Apply 里保留的优先级提升只救锁等待 救不了被挂起的线程 所以不能喂这么狠
-        //   极低磁盘 IO 留着 扫盘才是主要伤害 EcoQoS 小核限频也留着 压制的核心成分没变
+        // The strong anti-cheat suppression level dropped the starvation part; scanning anti-cheats like ACE suspend game threads while scanning game memory
+        //   IDLE priority gives it almost no time slice under full CPU load, stretching the suspend window from hundreds of ms to seconds; the player sees a freeze
+        //   Timer resolution capping amplifies its throttle sleeps a dozen-fold, page priority 1 makes the scan page-fault all the way; all the same amplifier
+        //   The priority boost kept in Apply only rescues lock waits, not suspended threads, so it can't be fed this hard
+        //   Very-low disk IO stays, disk scanning is the main harm; EcoQoS and E-core frequency cap stay, the core ingredients of suppression are unchanged
         internal static uint DesiredPriority(SuppressionLevel level, uint originalPriority, bool antiCheat)
         {
             uint desired = originalPriority == 0 || originalPriority == uint.MaxValue
@@ -77,15 +77,15 @@ namespace PaviseApp
                 ? Native.GpuPriorityIdle : Native.GpuPriorityBelowNormal;
         }
 
-        // 反作弊使用显式落点，普通后台及旧重压记录回到原亲和性
+        // Anti-cheat uses explicit placement; plain background and old heavy-load records return to original affinity
         private ulong DesiredAffinityOf(Entry e)
         {
             return SuppressionAffinityPolicy.DesiredAffinity(
                 e.Reasons, e.SqueezeAff, e.OrigAff, allMask, BackgroundPinsAllowed);
         }
 
-        // 巡检重写走这里 落点被拒且只有亲和这一环失败时放弃落点 其余旋钮照常
-        //   反作弊进程会自己把亲和改回去再拒绝写入 不放弃就会每轮退避到顶后一分钟一条异常
+        // Patrol rewrite comes through here; when placement was refused and affinity is the only failing step, drop the placement and keep the other knobs
+        //   Anti-cheat processes reset their own affinity then refuse the write; without giving up it backs off to the cap then logs one exception a minute
         private bool ApplyEntryLocked(IntPtr h, Entry e, int pid)
         {
             bool applied = ApplyThrottle(h, e.Level, e.OrigPri, e.OrigAff, e.OrigCpuSets, DesiredGpu(e),
@@ -99,7 +99,7 @@ namespace PaviseApp
                 e.OrigBoost, AntiCheatThrottled(e), DesiredAffinityOf(e), true);
         }
 
-        // 反作弊条目写不进去就放弃 反作弊有自保护 反复重试只会刷日志 已写进去的按原值退回 退不回的退局再试
+        // Give up when an anti-cheat entry won't take writes: it self-protects, retrying only spams the log; what was written reverts to original, what won't revert retries at match end
         private bool GiveUpAntiCheatLocked(IntPtr h, int pid, Entry e)
         {
             if (e == null || e.GaveUp || e.OrigPri == uint.MaxValue) return false;
@@ -129,7 +129,7 @@ namespace PaviseApp
             return true;
         }
 
-        // 硬件调度开着时进程调度类归 GPU 管 写了没用还会记一次 gpu-write 失败
+        // With hardware scheduling on, the process scheduling class belongs to the GPU; writing does nothing and logs a gpu-write failure
         private static int DesiredGpu(Entry e)
         {
             return DesiredGpuClass(GpuDemoteEnabled && !HagsTweak.SchedulingActiveCached(),
@@ -196,11 +196,11 @@ namespace PaviseApp
                 }
             }
 
-            // 反作弊按显式落点运行；后台不再绑核，只恢复旧版留下的限制。
+            // Anti-cheat runs on explicit placement; background no longer pins cores, only restores limits left by older versions
             if (!Native.CpuSetsMatch(h, originalCpuSets)
                 && !Native.RestoreCpuSetsVerified(h, originalCpuSets))
                 failed.Add("cpu-sets-restore");
-            // 落点被拒过的条目亲和归进程自己管 写了只会再被拒 其余旋钮照常
+            // Entries whose placement was refused leave affinity to the process itself; writing just gets refused again, other knobs as usual
             if (!CpuTopology.MultiGroup && !affinityOwned)
             {
                 ulong originalAllowed = originalAffinity != 0 ? originalAffinity : allMask;
@@ -231,10 +231,10 @@ namespace PaviseApp
                     && !Native.ApplyEcoQoS(h, sealTimer))
                     failed.Add("eco-write");
             }
-            // 2.0.1 起隔离不再关闭动态优先级提升 只把早前版本关掉的还原回来
-            //   那是 Windows 对优先级反转的快速救济 游戏等被隔离进程放锁时靠它瞬间抬人跑完
-            //   关掉之后只剩每秒一轮的反饥饿兜底 用户看到的就是偶发约一秒的整帧冻结
-            //   提升幅度一到八级 从 IDLE 抬完仍低于游戏的 HIGH 抢不走游戏正在用的核
+            // Since 2.0.1 isolation no longer disables dynamic priority boost; only restores what earlier versions turned off
+            //   That's Windows' quick relief for priority inversion; when the game waits on an isolated process's lock it instantly lifts it to finish
+            //   With it off only the once-a-second anti-starvation fallback remains; the user sees occasional ~1s whole-frame freezes
+            //   Boost is one to eight levels; lifted from IDLE it still sits below the game's HIGH, can't steal a core the game is using
             if (origBoost == 0)
             {
                 int boostNow = Native.QueryBoostDisabled(h);
@@ -246,8 +246,8 @@ namespace PaviseApp
             if (Native.QueryPagePriority(h) != pg) failed.Add("page-readback");
             if (Native.PowerThrottlingSupported && !EcoStateVisible(h)) failed.Add("eco-readback");
             LastApplyError = string.Join(",", failed.ToArray());
-            // 修剪放在整套旋钮全部落位之后 反作弊进程不修剪
-            //   扫描进程的页面被清掉后重新缺页 只会把扫描拖长
+            // Trim after the whole set of knobs has landed; anti-cheat processes are not trimmed
+            //   A scanning process whose pages were dropped just re-faults, which only makes the scan longer
             if (failed.Count == 0 && !antiCheat) WsTrim.MaybeTrim(h);
             return failed.Count == 0;
             }
@@ -298,7 +298,7 @@ namespace PaviseApp
             uint desiredPriority = pri == 0 || pri == uint.MaxValue ? Native.NORMAL_PRIORITY_CLASS : pri;
             ok &= Native.SetPriorityClass(h, desiredPriority);
             ulong desiredAffinity = aff != 0 ? aff : allMask;
-            // 已经在原值上就不写 自己改回亲和并拒写的进程不该因此判成还原失败
+            // Skip the write when already at the original value; a process that resets its own affinity and refuses writes must not be judged a restore failure
             if (!CpuTopology.MultiGroup && Native.QueryAffinity(h) != desiredAffinity)
                 ok &= Native.SetProcessAffinityMask(h, (UIntPtr)desiredAffinity);
             int rio = io >= 0 ? io : 2; ok &= Native.TrySetIoPriority(h, rio);

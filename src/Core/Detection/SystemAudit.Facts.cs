@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 体检事实采集 页面文件与链路类型
+// File purpose Health check fact collection: page file and link type
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -124,10 +124,8 @@ namespace PaviseApp
             catch { return false; }
         }
 
-        // TotalPageFile 是物理内存加页面文件 减掉物理内存才是页面文件本身
-        //   留半 GB 余量是因为这两个值来自同一次调用但统计口径有零头
-        // TotalPageFile 是物理内存加页面文件 减掉物理内存才是页面文件本身
-        //   留半 GB 余量是因为这两个值来自同一次调用但统计口径有零头
+        // TotalPageFile is physical memory plus page file; subtracting physical memory gives the page file itself
+        //   Half a GB of slack because the two values come from one call but their accounting criteria differ by a remainder
         internal static bool PageFileLooksDisabled(double pageFileGb)
         {
             return pageFileGb < 0.5;

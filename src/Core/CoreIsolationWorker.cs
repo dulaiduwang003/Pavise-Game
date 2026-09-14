@@ -135,8 +135,8 @@ namespace PaviseApp
     }
 
 #if PAVISE_SELFTEST
-    // Live integration runs use a separate durable receipt beside the test exe.
-    // They never touch the user's HKCU settings or normal crash recovery journal.
+    // Live integration runs use a separate durable receipt beside the test exe
+    // They never touch user HKCU settings or the normal crash recovery journal
     internal sealed class CoreIsolationTestStore : ICoreIsolationStore
     {
         internal static string PathName { get { return typeof(CoreIsolationTestStore).Assembly.Location + ".isolation-journal"; } }

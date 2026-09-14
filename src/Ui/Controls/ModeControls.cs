@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 提供性能模式选择控件
+// File purpose Provides the performance mode selection control
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -45,7 +45,7 @@ namespace PaviseApp
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics; FillBg(g); g.SmoothingMode = SmoothingMode.AntiAlias;
-            // 内缩量必须过 Theme.S 顶栏四个控件的可见边框才能在高 DPI 下对齐
+            // The inset must go through Theme.S so the visible borders of the four top bar controls align at high DPI
             Rectangle r = new Rectangle(0, Theme.S(2), Width - 1, Height - Theme.S(5));
             using (GraphicsPath p = Theme.TechPath(r, Theme.S(9)))
             {

@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 构建设置页 只放应用自身的偏好与维护工具
+// File purpose Build the Settings page; only the app's own preferences and maintenance tools
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -185,7 +185,7 @@ namespace PaviseApp
         private void BuildAppearanceSection(Control scroll, ref int sy)
         {
 
-            // 高度随可见档位数走 本机不支持的档不占行
+            // Height follows the visible tier count; tiers this machine does not support take no row
             int panelH = 184 + PresetValue.VisibleOrder().Length * 34 + 4;
             var panel = MakeConsolePanel(scroll, 6, sy, ScrollContentW, panelH, true);
             int w = ScrollContentW;
@@ -249,7 +249,7 @@ namespace PaviseApp
             RefreshBackdrop();
         }
 
-        // 第一档就是不要封面 连图一起删掉 关掉的东西不留残留是这套的老规矩
+        // The first level means no backdrop, delete the image along with it; things turned off leave no residue, the old rule of this codebase
         private void OnBackdropDim(int index)
         {
             if (index <= 0)
@@ -384,13 +384,13 @@ namespace PaviseApp
         private void OnAutoToggle(object s, EventArgs e)
         {
             if (IsDisposed || swAuto == null || swAuto.IsDisposed) return;
-            // 在这条命令之前发起的延迟读 不能推翻成功的选择
-            // 也不能推翻失败路径上那次新鲜回读
+            // A delayed read started before this command must not overturn a successful choice
+            // nor the fresh read-back on the failure path
             Interlocked.Increment(ref slowVersion);
             int rc = ChangeStartupTask(swAuto.Checked);
             if (rc != 0)
             {
-                // 先把原因取出来 TaskExists 会再跑一次 schtasks 把它冲掉
+                // Grab the reason first; TaskExists runs schtasks again and would wipe it
                 string reason = TaskHelper.LastSchtasksError;
                 swAuto.SetSilently(QueryStartupTaskState());
                 WarnStartupTaskFailure(reason);
@@ -463,8 +463,8 @@ namespace PaviseApp
             Action reset = ResetApp;
             if (reset == null) return;
             if (!CanBeginReset("wipe.ingame", "wipe.confirm")) return;
-            // 永久的停止 还原 删除 退出这套顺序归 Program 管 恐慌保持
-            // 会过期 否则可能在擦除过程中把优化重新拉起来
+            // The permanent stop, restore, delete, exit sequence belongs to Program; the panic hold
+            // expires, and otherwise optimizations could get pulled back up in the middle of the wipe
             reset();
         }
 
@@ -473,7 +473,7 @@ namespace PaviseApp
             Action uninstall = UninstallApp;
             if (uninstall == null) return;
             if (!CanBeginReset("uninstall.ingame", "uninstall.confirm")) return;
-            // 停止 还原 删除 退出这套顺序归 Program 管 与清除全部配置同一条路
+            // The stop, restore, delete, exit sequence belongs to Program; same path as Wipe all settings
             uninstall();
         }
 
@@ -505,8 +505,8 @@ namespace PaviseApp
                             {
                                 if (IsDisposed || !UiActive
                                     || !ReferenceEquals(auto, swAuto) || !ReferenceEquals(shader, cardShader)) return;
-                                // 启动项命令只让它自己那次任务读失效
-                                // 缓存测量和这个选择无关
+                                // The startup-task command invalidates only its own task read
+                                // the cache measurement is unrelated to that choice
                                 if (version == Volatile.Read(ref slowVersion)
                                     && auto != null && !auto.IsDisposed && taskKnown) auto.SetSilently(task);
                                 if (shader != null && !shader.IsDisposed && !shaderCleaning && shaderBytes >= 0)
@@ -523,8 +523,8 @@ namespace PaviseApp
 
         private void FinishSlowStateRefresh()
         {
-            // 槽位留到它的界面结果被消费掉为止 免得排队的结果
-            // 互相超车 被挡住的请求合并成一次
+            // The slot is held until its UI result is consumed, so queued results
+            // cannot overtake each other; blocked requests coalesce into one
             Interlocked.Exchange(ref slowBusy, 0);
             if (Interlocked.Exchange(ref slowPending, 0) != 0 && !IsDisposed && UiActive)
                 RefreshSlowStateAsync();

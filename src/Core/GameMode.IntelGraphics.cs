@@ -1,4 +1,4 @@
-// 文件用途 Intel 全局低延迟需用户开启 作用范围限定在已核实的对局内
+// File purpose Intel global low latency requires the user to enable it, scope limited to verified matches
 using System;
 using System.Threading;
 
@@ -114,9 +114,9 @@ namespace PaviseApp
                     lock (sync) { envNextAttempt.Remove("intelll"); envFailures.Remove("intelll"); }
                 }
                 if (!admitted()) return;
-                // 驱动偏好不是一个持续强制的控制器
-                // 每一代只成功施加或跳过一次 就不用轮询驱动
-                // 不用重启中断观测 也不会跟用户后来的手动修改顶牛
+                // The driver preference isn't a continuously enforced controller
+                // Apply or skip successfully once per generation, then no driver polling
+                // no interrupt observation restart, and no fighting the user's later manual changes
                 if (intelGraphicsSettledThisGeneration) return;
                 lock (sync)
                 {
@@ -135,7 +135,7 @@ namespace PaviseApp
                 int failures = 0;
                 lock (sync)
                 {
-                    // 一次慢的旧驱动调用 不能把更新的开启状态或档案给关掉
+                    // One slow old driver call must not turn off a newer enabled state or profile
                     if (generation != Volatile.Read(ref intelGraphicsGeneration) || !admitted()) return;
                     if (ok)
                     {
@@ -178,7 +178,7 @@ namespace PaviseApp
             }
         }
 
-        // 无法认领的账本只能等外部关闭后自动结账 提示一次告诉用户出口 不刷屏
+        // An unclaimable ledger can only settle itself once closed externally, hint once to tell the user the way out, don't spam
         private void MaybeLogIntelResidueHint()
         {
             if (intelResidueHintLogged || !IntelGraphicsTweaks.RestoreBlockedByOwnership) return;

@@ -1,13 +1,13 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 维护反作弊进程目录和分组配置
+// File purpose Maintains the anti-cheat process catalog and group config
 using System;
 using System.Collections.Generic;
 
 namespace PaviseApp
 {
-    // 判据不是有没有内核驱动 BattlEye 和 EAC 都有 .sys 但它们的用户态服务压起来既有效又安全
-    //   真正要分开的是这一族会不会主动反制第三方工具 反制的失败模式是游戏起不来
-    //   不是压了没效果 两者不在一个量级
+    // The criterion is not whether there is a kernel driver: BattlEye and EAC both ship a .sys, yet suppressing their user-mode services is both effective and safe
+    //   What actually needs separating is whether the family actively fights third-party tools; that failure mode is the game not launching,
+    //   not suppression having no effect, and the two are not in the same league
     internal enum AcCategory
     {
         Suppressible = 0,
@@ -33,7 +33,7 @@ namespace PaviseApp
         }
     }
 
-    // 只做安全豁免 不进 Tamer 的可压制目录 前缀和目录同样不会变成压制目标
+    // Safety exemption only, never enters Tamer's suppressible catalog; prefixes and directories never become suppression targets either
     internal sealed class AcProtectionGroup
     {
         public readonly string Key;
@@ -62,15 +62,15 @@ namespace PaviseApp
         {
             new AcGroup("ace", "ac.ace.n",
                 false,
-                // 本目录只收用户态进程 内核驱动写在这里永远扫不到 只会让界面显得能压驱动
-                //   ACE 的驱动是 ACE-*.sys 装在 System32\drivers 下 本机实测有 ACE-BASE.sys ACE-ADVT.sys
-                //   ACE-BASE / ACE-BASE64 属于驱动族 已移除 ACE-Tray 与 ACE-Helper 是真进程 日志里出现过
+                // This catalog holds user-mode processes only; kernel drivers listed here are never scanned and only make the UI look like it can suppress drivers
+                //   ACE drivers are ACE-*.sys under System32\drivers; seen on this machine: ACE-BASE.sys, ACE-ADVT.sys
+                //   ACE-BASE / ACE-BASE64 belong to the driver family and were removed; ACE-Tray and ACE-Helper are real processes, seen in logs
                 new[] { "SGuard64", "SGuardSvc64", "ACE-Tray", "ACE-PC", "ACE-Helper", "ACE-Service64", "SGuard", "SGuardSvc", "AntiCheatExpert", "AntiCheatExpert.Service" }),
             new AcGroup("tp", "ac.tp.n",
                 false,
                 new[] { "TenSafe", "TenSafe_1", "TenSafe_2", "TASLogin", "TP3Helper", "TPHelper" }),
-            // Riot 官方说明 Vanguard 运行时会阻止访问低层系统功能的第三方程序加载文件
-            //   压它的失败模式是游戏起不来 所以只豁免不压 vgk 本来就是内核驱动碰不到
+            // Per Riot's official note, a running Vanguard blocks third-party programs that access low-level system features from loading files
+            //   Its failure mode under suppression is the game not launching, so exempt-only, no suppression; vgk is a kernel driver and out of reach anyway
             new AcGroup("vanguard", "Vanguard (Riot)",
                 false,
                 new[] { "vgc", "vgtray" }, AcCategory.ProtectOnly),
@@ -94,7 +94,7 @@ namespace PaviseApp
                 new[] { "NeacSafe64", "NeacSafe", "nac", "NeacClient", "OWNeacClient", "NeacProtect" }),
         };
 
-        // 依据和维护边界见 docs/anti-cheat-coverage.md 不要把 .sys 驱动写进进程名单
+        // Never put .sys drivers in the process list
         public static readonly AcProtectionGroup[] ProtectionOnlyGroups =
         {
             new AcProtectionGroup("punkbuster",
@@ -142,7 +142,7 @@ namespace PaviseApp
             return names;
         }
 
-        // NT 快照只去掉 .exe 结尾 .aes 和 .des 是名字的一部分 不能按任意扩展名裁
+        // The NT snapshot only strips a trailing .exe; .aes and .des are part of the name, so never trim arbitrary extensions
         private static string NormalizeName(string name)
         {
             if (string.IsNullOrEmpty(name)) return "";
@@ -178,8 +178,8 @@ namespace PaviseApp
             return IsAntiCheatLikeName(name) || IsAntiCheatPath(path);
         }
 
-        // 补上专用目录里名字普通的辅助进程 只匹配完整目录段 不放行 EA 或 Nexon 整个厂商目录
-        // 不把文件名当目录 也不收相对路径和带 .. 的不确定归属 这里不读文件 不验签 不写进程
+        // Covers helper processes with ordinary names inside dedicated directories; matches whole directory segments only, never releases an entire vendor directory like EA or Nexon
+        // A file name is not treated as a directory; relative paths and paths with .. of uncertain ownership are rejected; no file reads, no signature checks, no process writes here
         internal static bool IsAntiCheatPath(string path)
         {
             if (string.IsNullOrEmpty(path)) return false;
@@ -195,7 +195,7 @@ namespace PaviseApp
             bool unc = normalized.StartsWith("\\\\", StringComparison.Ordinal);
             if (!driveRooted && !unc || normalized.EndsWith("\\", StringComparison.Ordinal)) return false;
             string[] parts = normalized.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries);
-            int firstDirectory = driveRooted ? 1 : 2; // UNC 的服务器和共享名不算产品目录
+            int firstDirectory = driveRooted ? 1 : 2; // UNC server and share names do not count as product directories
             if (parts.Length <= firstDirectory) return false;
             foreach (string part in parts) if (part == "." || part == "..") return false;
             for (int i = firstDirectory; i < parts.Length - 1; i++)
@@ -211,7 +211,7 @@ namespace PaviseApp
 
         private static bool MatchesDirectory(string[] parts, int index, string directory)
         {
-            // EA\\AC 要连续命中两个目录 光凭一个通用的 AC 名字不放行
+            // EA\\AC must hit two consecutive directories; a generic AC name alone is not released
             int slash = directory.IndexOf('\\');
             if (slash < 0) return string.Equals(parts[index], directory, StringComparison.OrdinalIgnoreCase);
             return index + 1 < parts.Length - 1

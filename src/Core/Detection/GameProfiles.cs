@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 严格保存与读取当前 V5 游戏配置 不迁移不修复不自删数据
+// File purpose Strictly saves and loads the current V5 game config; no migration, no repair, no self-deletion of data
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -9,10 +9,10 @@ using System.Threading;
 
 namespace PaviseApp
 {
-    // 3 和 5 都是墓碑值 不许有枚举成员认领
-    //   3 是 1.x 那个极限档 比电竞更激进 跟掌机方向正相反 接手它等于静默换档
-    //   5 是 2.2.2 砍掉的极限档 它原有的功能全部落到了各自的独立开关
-    //   界面上的顺序由 VisibleOrder 单独排 跟这里的取值无关
+    // 3 and 5 are tombstone values; no enum member may claim them
+    //   3 is the 1.x Extreme tier, more aggressive than Esports and the opposite of Handheld; adopting it would be a silent tier switch
+    //   5 is the Extreme tier cut in 2.2.2; all of its features moved to their own independent switches
+    //   UI order is handled separately by VisibleOrder and is unrelated to the values here
     internal enum PerformancePreset
     {
         Standard = 0,
@@ -23,41 +23,41 @@ namespace PaviseApp
 
     internal static class PresetValue
     {
-        // 取值不连续 别再写成范围判断 3 和 5 都是极限档的墓碑值 必须继续被拒
+        // Values are not contiguous, never write this as a range check; 3 and 5 are Extreme tier tombstones and must keep being rejected
         public static bool IsValid(int raw)
         {
             return raw == 0 || raw == 1 || raw == 2 || raw == 4;
         }
 
-        // 掌机档只在带电池的机器上有意义 没电池就不列出来
-        //   IsValid(4) 仍为真 存量取值原样留在盘上 换到带电池的机器立刻恢复
-        //   读不出电源状态按不支持算 宁可少列一档 也不给台式机一个什么都不改的选项
+        // The Handheld tier only makes sense on a machine with a battery; without one it is not listed
+        //   IsValid(4) stays true; stored values stay on disk as-is and come back immediately on a battery-equipped machine
+        //   Unreadable power state counts as unsupported; better to list one tier fewer than to give a desktop an option that changes nothing
         public static bool HandheldSupported
         {
             get { try { return Native.HasSystemBattery(); } catch { return false; } }
         }
 
-        // 极限档存量取值一律解析为电竞 不落到智能
-        //   极限的压制口径与电竞逐字节相同 落到电竞不改变后台行为 落到智能会放宽范围
-        //   它原有的五项功能各自有了开关且默认关 老用户要哪一项自己开
-        //   掌机不做这种重解析 电池检测是硬件探测且失败即报无电池
-        //   GetSystemPowerStatus 失败或状态未知都算没电池 还按进程缓存一次
-        //   一次瞬时失败若把掌机重解析成电竞 就会去拨电源滑块并启用候选线程提优
-        //   那正是掌机档要防的负优化 所以掌机只在选择器里隐藏 存量语义一律不动
+        // Stored Extreme tier values always parse as Esports, never Smart
+        //   Extreme's suppression criteria are byte-for-byte the same as Esports, so landing on Esports leaves background behavior unchanged while Smart would loosen the scope
+        //   Its former five features each have their own switch, default off; veterans enable whichever they want
+        //   Handheld gets no such reinterpretation: battery detection is a hardware probe that reports no battery on failure
+        //   GetSystemPowerStatus failure or unknown state both count as no battery, and it is cached once per process
+        //   If one transient failure reinterpreted Handheld as Esports, it would move the power slider and enable candidate thread boost,
+        //   exactly the negative optimization the Handheld tier guards against; so Handheld is only hidden in the picker and stored semantics never change
         public static PerformancePreset From(int raw)
         {
             if (raw == 5) return PerformancePreset.Competitive;
             return IsValid(raw) ? (PerformancePreset)raw : PerformancePreset.Standard;
         }
 
-        // 界面档位顺序 本机不适用的档不出现 与 KeyPreset 的 Choices 全集是两回事
-        //   顺序与取值两份必须同源 所以取值从顺序推 别再各写一份硬编码数组
+        // UI tier order; tiers not applicable on this machine are absent; distinct from the full Choices set of KeyPreset
+        //   Order and values must share one source, so values derive from the order; do not hand-write another array
         private static PerformancePreset[] Order()
         {
             var list = new List<PerformancePreset>(5);
             list.Add(PerformancePreset.Standard);
             list.Add(PerformancePreset.Competitive);
-            // 本机不适用但当前就停在这一档时照样列出来 否则用户被关在一个看不见的档里换不出去
+            // A tier not applicable here but currently selected is still listed, otherwise the user is locked in an invisible tier with no way out
             if (HandheldSupported || StoredIs(PerformancePreset.Handheld))
                 list.Add(PerformancePreset.Handheld);
             list.Add(PerformancePreset.Custom);
@@ -75,7 +75,7 @@ namespace PaviseApp
 
         public static PerformancePreset[] VisibleOrder() { return Order(); }
 
-        // 只看盘上那个全局取值 不经 From 也不查适用性 避免与 Order 互相递归
+        // Only looks at the stored global value on disk; bypasses From and applicability checks to avoid mutual recursion with Order
         private static bool StoredIs(PerformancePreset mode)
         {
             int parsed;
@@ -96,8 +96,8 @@ namespace PaviseApp
         public readonly Dictionary<string, string> Overrides =
             new Dictionary<string, string>(StringComparer.Ordinal);
 
-        // 逐游戏的开关 故意和老的全局开关脱钩
-        // 现有 V5 库里没有这一项就表示受保护 绝不从 HKCU 继承
+        // Per-game switch, deliberately decoupled from the old global switch
+        // Absence in an existing V5 library means protected; never inherited from HKCU
         public bool SuppressFamilyBackground
         {
             get
@@ -132,9 +132,9 @@ namespace PaviseApp
             return p;
         }
 
-        // 已下架功能的覆盖键 加载时静默丢弃 不触发库重置
-        //   两个键都随 2.1.3.3 发布过 但值只是布尔开关 丢弃即回默认 无信息可失
-        //   活档案里不该再出现它们 校验时按损坏处理
+        // Override keys of retired features; silently dropped on load, no library reset
+        //   Both keys shipped with 2.1.3.3, but the values were plain booleans; dropping them just restores the default, nothing is lost
+        //   They should never appear in a live profile; validation treats them as corruption
         private static readonly string[] RetiredOverrideKeys = { "GmDisplaySolo", "GmMemShield", "GmGpuClockLockV1", "GmCacheWarm" };
 
         internal static bool IsRetiredOverrideKey(string key)
@@ -175,8 +175,8 @@ namespace PaviseApp
             List<GameProfile> loaded = Load();
             if (loadFailed)
             {
-                // 统一走与保存失败相同的熔断 Save 看到 loadFailed 只置故障位
-                // 不会改写原文件 真正的精确目录清空与退出只允许 Program 执行
+                // Goes through the same circuit breaker as a save failure; Save seeing loadFailed only sets the fault bit
+                // and never rewrites the original file; the actual precise directory wipe and exit are allowed only in Program
                 Save(loaded);
                 return new List<GameProfile>();
             }
@@ -284,8 +284,8 @@ namespace PaviseApp
             internal ProfileCommitBusyException(IOException inner) : base("Profile commit busy", inner) { }
         }
 
-        // 只重试那些文档写明两个文件名都还在的错误
-        // 1176 和 1177 可能把命名空间改掉 只能当致命错误
+        // Only retry errors that the docs say leave both file names in place
+        // 1176 and 1177 may have altered the namespace, so they can only be fatal
         internal static bool IsRetryableReplaceError(IOException error)
         {
             uint hr = unchecked((uint)error.HResult);
@@ -299,8 +299,8 @@ namespace PaviseApp
         internal Action<int> RetryWaitForTest;
 #endif
 
-        // 档案不使用 AtomicFile 的兼容回退 Replace 失败后绝不能备份旧档
-        // 非原子覆盖并谎报成功 短暂占用有界重试 其他失败保留致命保护
+        // Profiles do not use AtomicFile's compatibility fallback; after a failed Replace the old file must never be backed up,
+        // overwritten non-atomically and reported as success; brief sharing violations get bounded retries, other failures keep the fatal protection
         private bool CommitStrict(byte[] snapshot, Func<bool> canCommit)
         {
             string tmp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
@@ -328,7 +328,7 @@ namespace PaviseApp
 #if PAVISE_SELFTEST
                             if (BeforeReplaceForTest != null) BeforeReplaceForTest(attempt);
 #endif
-                            // 准备完和每次重试等待之后都要重验 不能只在 Save 入口验一次
+                            // Re-verify after preparation and after every retry wait, not just once at the Save entry
                             if (!CommitAllowed(canCommit)) return false;
                             File.Replace(tmp, path, null);
                             break;
@@ -484,7 +484,7 @@ namespace PaviseApp
                         string value = Decode(a[3]);
                         if (string.IsNullOrWhiteSpace(id) || string.IsNullOrEmpty(key))
                             throw new FormatException("invalid O value");
-                        // 已下架的覆盖键 静默丢弃 不算库损坏 布尔开关丢弃即回默认
+                        // Retired override keys are silently dropped, not library corruption; a dropped boolean just restores the default
                         if (GameProfile.IsRetiredOverrideKey(key)) continue;
                         string canonical = PolicyCatalog.Canonical(key, value);
                         if (canonical == null || !string.Equals(canonical, value,

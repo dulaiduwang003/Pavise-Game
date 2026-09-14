@@ -7,7 +7,7 @@ namespace PaviseApp
 {
     internal static partial class SelfTests
     {
-        // WeGame 脱壳 目录识别 时机规则 熔断 复合扩展槽的归属 以及清理名单在通用根下的边界
+        // WeGame shell removal: directory detection, timing rules, circuit breaker, composite extension slot ownership, and cleanup list boundaries under a generic root
         internal static void RunWeGameShellRegressionTests()
         {
             WeGameShellRootDetection();
@@ -66,7 +66,7 @@ namespace PaviseApp
                 Eq(false, WeGameShell.IsWeGameGameRoot(Path.Combine(f.Root, "missing")));
                 Eq(false, WeGameShell.IsWeGameGameRoot(null));
                 Eq(false, WeGameShell.IsWeGameGameRoot(""));
-                // WeGameApps 本身是仓库 不是游戏根 游戏内部更深的目录也不是
+                // WeGameApps itself is the repository, not a game root, and deeper directories inside a game are not either
                 Eq(false, WeGameShell.UnderAppsFolder(Path.Combine(f.Root, "WeGameApps")));
                 Eq(true, WeGameShell.UnderAppsFolder(apps));
                 Eq(false, WeGameShell.IsWeGameGameRoot(Path.Combine(f.Root, "WeGameApps")));
@@ -80,18 +80,18 @@ namespace PaviseApp
             {
                 string root = f.Dir("CF"); f.Dir(@"CF\TCLS");
                 string exe = f.File(@"CF\Bin\Win64\crossfire.exe");
-                // 档案 Root 可信时直接用 否则从 EXE 往上找标记
+                // Use the profile Root directly when trusted, otherwise walk up from the EXE looking for the marker
                 Eq(root, WeGameShell.ResolveGameRoot(root, exe));
                 Eq(root, WeGameShell.ResolveGameRoot(null, exe));
                 Eq(root, WeGameShell.ResolveGameRoot(Path.Combine(f.Root, "nope"), exe));
-                // WeGameApps 下没有标记的游戏 以 WeGameApps 的直接子目录为根
+                // An unmarked game under WeGameApps uses the direct child directory of WeGameApps as its root
                 string game = f.Dir(@"WeGameApps\Game");
                 string deep = f.File(@"WeGameApps\Game\Bin\x64\game.exe");
                 Eq(game, WeGameShell.ResolveGameRoot(null, deep));
-                // 超过四层就不再往上爬
+                // Stops climbing beyond four levels
                 string far = f.File(@"CF\a\b\c\d\e\deep.exe");
                 Eq<string>(null, WeGameShell.ResolveGameRoot(null, far));
-                // 普通目录里的游戏不是 WeGame 游戏
+                // A game in an ordinary directory is not a WeGame game
                 string other = f.File(@"Other\game.exe");
                 Eq<string>(null, WeGameShell.ResolveGameRoot(null, other));
                 Eq<string>(null, WeGameShell.ResolveGameRoot(null, null));
@@ -105,7 +105,7 @@ namespace PaviseApp
             Eq(false, WeGameShell.ShouldClean(start, start + 10 * s, false, false, false, true));
             Eq(false, WeGameShell.ShouldClean(start, start + (WeGameShell.StabilizeSeconds - 1) * s, false, false, false, true));
             Eq(true, WeGameShell.ShouldClean(start, start + WeGameShell.StabilizeSeconds * s, false, false, false, true));
-            // 已脱过 熔断 停手 开关关 任一为真都不再动手
+            // Already removed, tripped, stopped, toggle off: any one true means no further action
             Eq(false, WeGameShell.ShouldClean(start, start + 60 * s, true, false, false, true));
             Eq(false, WeGameShell.ShouldClean(start, start + 60 * s, false, true, false, true));
             Eq(false, WeGameShell.ShouldClean(start, start + 60 * s, false, false, true, true));
@@ -116,7 +116,7 @@ namespace PaviseApp
             Eq(true, WeGameShell.ExitBlamesCleanup(cleaned, cleaned + 5 * s, false));
             Eq(true, WeGameShell.ExitBlamesCleanup(cleaned, cleaned + WeGameShell.ExitFuseSeconds * s, false));
             Eq(false, WeGameShell.ExitBlamesCleanup(cleaned, cleaned + (WeGameShell.ExitFuseSeconds + 1) * s, false));
-            // 结束通知带宽限 窗口更长
+            // Exit notification gets a grace period, longer window
             Eq(true, WeGameShell.ExitBlamesCleanup(cleaned, cleaned + WeGameShell.ExitFuseNotifySeconds * s, true));
             Eq(false, WeGameShell.ExitBlamesCleanup(cleaned, cleaned + (WeGameShell.ExitFuseNotifySeconds + 1) * s, true));
             Eq(false, WeGameShell.ExitBlamesCleanup(0, cleaned, false));
@@ -127,7 +127,7 @@ namespace PaviseApp
             Eq(false, WeGameShell.RegisterKillCycle(cycles, t));
             Eq(false, WeGameShell.RegisterKillCycle(cycles, t + 60 * s));
             Eq(true, WeGameShell.RegisterKillCycle(cycles, t + 120 * s));
-            // 窗口外的旧记录滚出去后重新计数
+            // Old records outside the window roll off and counting restarts
             var again = new Queue<long>();
             WeGameShell.RegisterKillCycle(again, t);
             WeGameShell.RegisterKillCycle(again, t + 60 * s);
@@ -138,7 +138,7 @@ namespace PaviseApp
             Eq(WeGameShell.RespawnCheckSeconds * 1000, WeGameShell.NextCheckDelayMs(false));
         }
 
-        // 通用根下 只有 WeGame 目录的壳 游戏目录的 Cross 与 TCLS 会话进程会被结束
+        // Under a generic root only the WeGame directory's shell and the game directory's Cross and TCLS session processes are terminated
         private static void WeGameShellCleanupTargetsOnGenericRoot()
         {
             using (var f = new WeGameFixture())
@@ -157,13 +157,13 @@ namespace PaviseApp
                 Eq(true, target(@"CF\Cross\crossproxy.exe"));
                 Eq(true, target(@"CF\TCLS\rail.exe"));
                 Eq(true, target(@"CF\TCLS\tcls_core.exe"));
-                // 游戏本体 TCLS 启动器 反作弊 都不在名单里
+                // Game binary, TCLS launcher, anti-cheat are all off the list
                 Eq(false, target(@"CF\crossfire.exe"));
                 Eq(false, target(@"CF\Bin\Win64\crossfire.exe"));
                 Eq(false, target(@"CF\TCLS\Client.exe"));
                 Eq(false, target(@"CF\TenProtect\TenSafe_1.exe"));
                 Eq(false, target(@"Elsewhere\wegame.exe"));
-                // 下载器只有手动净化才收
+                // The downloader is collected only by manual purge
                 Eq(false, target(@"WeGame\teniodl.exe"));
                 Eq(true, LolRuntimeProcesses.IsCleanupTarget(Path.Combine(f.Root, @"WeGame\teniodl.exe"), "teniodl.exe", game, weGame, true));
             }
@@ -195,13 +195,13 @@ namespace PaviseApp
             Eq(2, composite.Modules.Length);
             var pa = new GameProfile { Id = "1", Name = "Alpha" };
             var pb = new GameProfile { Id = "2", Name = "Beta" };
-            // 谁先认领归谁 前面的模块优先
+            // First claim wins, earlier modules take priority
             Eq(true, ReferenceEquals(a, composite.Owner(pa)));
             Eq(true, ReferenceEquals(all, composite.Owner(pb)));
             Eq(true, composite.AppliesTo(pa) && composite.AppliesTo(pb));
             Eq<GameExtensionModule>(null, composite.Owner(null));
             Eq(false, composite.AppliesTo(null));
-            // 会话通知广播给全部模块
+            // Session notifications broadcast to all modules
             composite.NotifySession(pb, 7, 9, true);
             Eq(1, a.Sessions); Eq(1, all.Sessions);
             Eq(true, ReferenceEquals(pb, a.LastProfile));
@@ -220,10 +220,10 @@ namespace PaviseApp
                 string got;
                 Eq(true, WeGameGameExtension.AppliesToProfile(new GameProfile { Id = "cf", Name = "CF", ExecutablePath = exe, Root = root }, out got));
                 Eq(root, got);
-                // 英雄联盟归它自己的模块 通用模块不认
+                // League of Legends belongs to its own module, the generic module does not claim it
                 Eq(false, WeGameGameExtension.AppliesToProfile(new GameProfile { Id = "lol", Name = "League of Legends", ExecutablePath = lolExe, Root = lolRoot }, out got));
                 Eq(false, WeGameGameExtension.AppliesToProfile(new GameProfile { Id = "lol2", Name = "英雄联盟", ExecutablePath = lolExe }, out got));
-                // 学习到的路径也能定位
+                // The learned path can locate it too
                 Eq(true, WeGameGameExtension.AppliesToProfile(new GameProfile { Id = "cf2", Name = "CF", LearnedExecutablePath = exe }, out got));
                 Eq(false, WeGameGameExtension.AppliesToProfile(null, out got));
                 Eq(false, WeGameGameExtension.AppliesToProfile(new GameProfile { Id = "x", Name = "Plain", ExecutablePath = f.File(@"Other\game.exe") }, out got));

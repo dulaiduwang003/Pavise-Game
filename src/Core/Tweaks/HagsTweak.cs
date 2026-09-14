@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 开启 关闭并恢复硬件加速 GPU 调度 状态优先读注册表配置 缺省时按驱动能力判定
+// File purpose Enable, disable and restore hardware-accelerated GPU scheduling; state comes from the registry setting first, falling back to driver capability when unset
 using System;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
@@ -55,7 +55,7 @@ namespace PaviseApp
 
         public static bool EnabledByPavise { get { return Settings.Load("HagsOnByPavise", false); } }
 
-        // 后台 GPU 降级的资格门 硬件调度在跑就不写 每分钟问一次驱动
+        // Eligibility gate for background GPU demotion: skip the write while hardware scheduling is running; ask the driver once a minute
 #if !PAVISE_SELFTEST
         private static readonly object schedLk = new object();
         private static long schedCheckedTicks;
