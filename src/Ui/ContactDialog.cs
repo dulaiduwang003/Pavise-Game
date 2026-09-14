@@ -10,7 +10,7 @@ namespace PaviseApp
 {
     internal sealed class ContactDialog : Form
     {
-        private const int DlgW = 640, DlgH = 520;
+        private const int DlgW = 640, DlgH = 578;
         private const int RailW = 190;
         private const int RailSlant = 32;
         private const int BodyX = RailW + 26;
@@ -69,6 +69,9 @@ namespace PaviseApp
                 CopyAction(App.QqGroup3), Lang.T("contact.copy"));
             AddRow(rightX, y, half, Lang.T("contact.qq4"), App.QqGroup4,
                 CopyAction(App.QqGroup4), Lang.T("contact.copy"));
+            y += 58;
+            AddRow(BodyX, y, half, Lang.T("contact.qq5"), App.QqGroup5,
+                CopyAction(App.QqGroup5), Lang.T("contact.copy"));
             y += 58;
             AddRow(BodyX, y, BodyW, Lang.T("site.entry"), "pavise.club",
                 OpenAction(App.WebsiteUrl), Lang.T("contact.open"));

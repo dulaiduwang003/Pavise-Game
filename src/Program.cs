@@ -26,6 +26,7 @@ namespace PaviseApp
         public const string QqGroup2 = "1101249532";
         public const string QqGroup3 = "383761286";
         public const string QqGroup4 = "166255062";
+        public const string QqGroup5 = "1109874913";
         public const string Douyin = "44601770838";
         public const string WebsiteUrl = "https://pavise.club/";
         public const string WebsiteFallbackUrl = "https://pavise-website.2074055628.workers.dev/";
