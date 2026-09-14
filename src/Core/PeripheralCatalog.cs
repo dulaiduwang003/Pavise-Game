@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 键鼠输入链与音频外设进程识别名单 命中即豁免后台压制 进程名子串 文件描述 在场设备厂商词条三层匹配
+// File purpose Process name list for the keyboard/mouse input chain and audio peripherals, a hit exempts from background suppression; three-layer match on process name substring, file description and present device vendor terms
 using System;
 using System.Collections.Generic;
 
@@ -19,8 +19,8 @@ namespace PaviseApp
             "hyperx", "ngenuity", "epos", "sennheiser", "astro", "turtlebeach",
             "edifier", "hecate", "elgato", "roccat",
             "bloody", "a4tech", "vgn", "langtu", "gamepp",
-            // 手柄映射器 名字和文件描述都不含 gamepad/controller 这类词 只能按产品名点
-            //   它们靠高频轮询把手柄事件翻译成键鼠 被隔离到 IDLE 加小核限频 输入就会迟
+            // Gamepad remappers: neither name nor file description contains words like gamepad/controller, can only be named by product
+            //   They rely on high-frequency polling to translate gamepad events into keyboard/mouse; isolated to IDLE plus an E-core frequency cap, input gets laggy
             "gamepad", "joystick", "ds4windows", "rewasd", "xoutput", "joytokey",
             "x360ce", "dualsensex", "betterjoy", "antimicro", "inputmapper", "keysticks"
         };

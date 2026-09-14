@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 设置搜索浮层 收集各页设置卡 命中后跳页定位并高亮
+// File purpose Settings search flyout, collects setting cards from every page, jumps to and highlights the hit
 using System;
 using System.Collections.Generic;
 using System.Windows.Forms;
@@ -88,7 +88,7 @@ namespace PaviseApp
         private void OnSearchHitChosen(SearchHit hit)
         {
             if (hit == null || hit.Card == null || hit.Card.IsDisposed) return;
-            // 搜索能直接命中高级区页面 不能绕过概览入口的风险警告
+            // Search can land directly on Advanced pages, but must not bypass the risk warning of the Overview entry
             if (hit.PageId >= 0 && IsAdvancedPage(hit.PageId)
                 && !CanEnterDeepTuning()) return;
             SetSearchFlyout(false);

@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 枚举本机显示适配器 优先按驱动报告区分核显与独显 排除虚拟适配器
+// File purpose Enumerates this machine's display adapters, separates iGPU from dGPU by driver report first, excludes virtual adapters
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -22,8 +22,8 @@ namespace PaviseApp
         public string HardwareId;
         public GpuVendor Vendor;
         public bool Integrated;
-        // false 表示显示出来的类型是用老的总线和显存启发式猜的
-        // 新的 GPU 路由写入必须拿到驱动的权威答复
+        // false means the displayed type was guessed with the old bus and VRAM heuristics
+        // new GPU routing writes must get the driver's authoritative answer
         public bool IntegratedKnown;
         public long VideoMemoryBytes;
         public int BusNumber = -1;

@@ -1,5 +1,5 @@
-// 文件用途 隔离的日志开关正确性 只用临时日志文件 不碰 HKCU
-// 不碰 UI 也不跑真实优化
+// File purpose Isolated log switch correctness, temp log files only, no HKCU
+// No UI and no real optimizations run
 #if PAVISE_SELFTEST
 using System;
 using System.IO;
@@ -95,7 +95,7 @@ namespace PaviseApp
             LogWritesCheck(text.Contains("after-resume"), "writing did not resume");
         }
 
-        // 用户开关不能盖过重置写屏障 重置流程要删文件 期间任何补写都会把目录又建出来
+        // The user switch must not override the reset write barrier, the reset flow deletes files, any patch write meanwhile would recreate the directory
         private static void ResetBarrierOutranksTheUserSwitch(string root)
         {
             string path = FreshLog(root);
@@ -133,7 +133,7 @@ namespace PaviseApp
                 "existing content became unreadable while writing was disabled");
         }
 
-        // 日志页靠 Version 决定要不要再读文件 只有真正落盘和清空才推进 读尾部和被丢弃的写入都不动
+        // The log page relies on Version to decide whether to re-read the file, only a real disk write or clear advances it, tail reads and dropped writes don't
         private static void VersionAdvancesOnlyOnWrites(string root)
         {
             Logger.LogPath = Path.Combine(root, "version.log");
@@ -151,7 +151,7 @@ namespace PaviseApp
             Eq(before + 2, Logger.Version);
         }
 
-        // 缓存读只在有过写入之后才回源 任何 Save/Remove 都让它重新读
+        // Cached reads go back to source only after a write, any Save/Remove forces a re-read
         private static void SettingsCachedReadFollowsWrites(string root)
         {
             const string key = "SelfTestCachedFlag";

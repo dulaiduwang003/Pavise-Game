@@ -1,21 +1,21 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 自适应压制的升降级状态机 余量塌了临时升到专注口径 稳定两分钟降回
+// File purpose Escalation/de-escalation state machine for adaptive suppression: when headroom collapses, temporarily step up to Esports criteria, step back after two stable minutes
 using System;
 
 namespace PaviseApp
 {
-    // 自适应压制 智能档专属 面向"平时安静 掉帧时狠"的折中
-    //   智能档的压制范围和电源口径是保守列 余量充足时那是对的 省电安静
-    //   CPU 持续饱和说明余量塌了 这时临时借用专注档的两样东西
-    //   激进压制范围和电源激进列 塌因若是后台抢食 升档直接治本
+    // Adaptive suppression, Smart tier only, a compromise aimed at "quiet normally, hard when frames drop"
+    //   Smart tier's suppression scope and power criteria are the conservative column; with ample headroom that is right, power-saving and quiet
+    //   Sustained CPU saturation means headroom has collapsed, then temporarily borrow two things from the Esports tier
+    //   the aggressive suppression scope and the aggressive power column; if background contention caused the collapse, escalating fixes the root cause
     //
-    // 为什么传感器用 CPU 饱和而不是帧时间
-    //   帧时间探针是批处理契约 逐帧时间线要退局才能读 局中拿不到
-    //   CPU 饱和判定自带滞回(90% 进 10 秒 80% 出 5 秒) 是已经在给智能让位用的成熟信号
-    //   GPU 瓶颈升压制档也无益 压后台救不了 GPU 所以只认 CPU 侧的塌方
+    // Why the sensor is CPU saturation rather than frame time
+    //   The frame time probe is a batch contract, the per-frame timeline is readable only at match end, unavailable mid-match
+    //   CPU saturation detection has built-in hysteresis, 90% in after 10s, 80% out after 5s, a mature signal already used for Smart yield
+    //   Escalating the suppression tier does nothing for a GPU bottleneck, suppressing background cannot save the GPU, so only CPU-side collapse counts
     //
-    // 防振荡三件套 进出滞回(传感器自带) 降级要稳定两分钟 每局最多升三次
-    //   没有熔断 这两个执行器都是用户本来就能手动开的档位 升错了代价是费点电 不是伤害
+    // Three anti-oscillation measures: entry/exit hysteresis built into the sensor, de-escalation needs two stable minutes, at most three escalations per match
+    //   No circuit breaker: both actuators are tiers the user could switch on manually anyway, a wrong escalation costs some power, not damage
     internal sealed class AdaptiveGuard
     {
         public const long RelaxTicks = TimeSpan.TicksPerSecond * 120;
@@ -28,7 +28,7 @@ namespace PaviseApp
         public bool Escalated { get { return escalated; } }
         public int Episodes { get { return episodes; } }
 
-        // 返回 +1 本次升档 -1 本次降档 0 无变化 调用方只负责喂饱和判定和打日志
+        // Returns +1 escalated this step, -1 de-escalated, 0 no change; the caller only feeds the saturation verdict and logs
         public int Step(bool saturated, long now)
         {
             if (!escalated)

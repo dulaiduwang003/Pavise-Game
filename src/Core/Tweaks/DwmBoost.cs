@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 对局期间让 DWM 合成线程注册进 MMCSS 实时档 纯会话级 进程退出自动失效
+// File purpose Register the DWM composition thread into the MMCSS realtime class during a match; session-only, expires when the process exits
 using System;
 using System.Runtime.InteropServices;
 
@@ -7,9 +7,9 @@ namespace PaviseApp
 {
     internal static class DwmBoost
     {
-        // 无边框和窗口化的每一帧都过 DWM 合成 游戏自己吃满 CPU 时合成线程
-        //   被抢占就是掉帧 这个调用让 DWM 和 csrss 拿到 MMCSS 保护
-        //   注册随本进程的 DWM 连接存续 独占全屏时 DWM 自行反注册 无害
+        // Every frame of borderless and windowed goes through DWM composition; when the game saturates the CPU the composition thread
+        //   getting preempted means dropped frames; this call gives DWM and csrss MMCSS protection
+        //   Registration lives as long as this process's DWM connection; DWM deregisters itself in exclusive fullscreen, harmless
         [DllImport("dwmapi.dll")]
         private static extern int DwmEnableMMCSS(bool enable);
 

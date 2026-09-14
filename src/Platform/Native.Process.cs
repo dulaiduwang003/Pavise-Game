@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 进程采样 IO 与页面优先级 映像路径与父进程
+// File purpose Process sampling, IO and page priority, image path and parent process
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -39,7 +39,7 @@ namespace PaviseApp
             return TryQueryAffinity(h, out mask) ? mask : 0UL;
         }
 
-        // 读失败和读到 0 必须分得开 调用方拿读失败当"落点不对"会误撤销已生效的隔离
+        // Read failure and reading 0 must stay distinguishable, a caller treating read failure as wrong placement would wrongly revoke an isolation already in effect
         public static bool TryQueryAffinity(IntPtr h, out ulong mask)
         {
             UIntPtr pm, sm;
@@ -136,10 +136,10 @@ namespace PaviseApp
         [DllImport("gdi32.dll")] public static extern int D3DKMTGetProcessSchedulingPriorityClass(IntPtr h, out int cls);
         [DllImport("gdi32.dll")] public static extern int D3DKMTSetProcessSchedulingPriorityClass(IntPtr h, int cls);
 
-        // WDDM 显存查询与预留 全部走 gdi32 的用户态 D3DKMT 接口 不装驱动 不注入 不读游戏内存
-        //   MemorySegmentGroup 0 是本地显存 1 是非本地(系统内存那份) 护盾只关心 0
-        //   注意 Query 的 hProcess 是 HANDLE 而 Change 的 hProcess 在头文件里是 UINT64
-        //     x64 上宽度一样 但类型照抄头文件 免得将来有人按 HANDLE 去改 Change 那个
+        // WDDM VRAM query and reservation all go through gdi32's user-mode D3DKMT interface, no driver install, no injection, no reading game memory
+        //   MemorySegmentGroup 0 is local VRAM, 1 is non-local (the system memory share), the shield only cares about 0
+        //   note Query's hProcess is a HANDLE while Change's hProcess is a UINT64 in the header
+        //     same width on x64, but the types copy the header so nobody later changes Change's to HANDLE
         public const uint D3DKMT_MEMORY_SEGMENT_GROUP_LOCAL = 0;
     }
 }

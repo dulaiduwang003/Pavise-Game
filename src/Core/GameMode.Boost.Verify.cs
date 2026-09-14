@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 提优目标探测 消失进程清退与提优状态回读校验
+// File purpose Boost target probing, evicting vanished processes and boost state read-back verification
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -61,8 +61,8 @@ namespace PaviseApp
                     if (tries < VanishGiveUpTries) continue;
                     abandoned++;
                 }
-                // 新 OpenProcess 即使已被反作弊拒绝 首次 hard pin 前保留的
-                // handle 仍须先恢复并读回 活进程恢复失败时不能丢掉唯一恢复句柄
+                // Even if a new OpenProcess is already denied by anti-cheat, the handle retained before the first
+                // hard pin must still restore and read back first, a live process whose restore failed must not lose its only restore handle
                 if (!RestoreIrqProofHardPin(IntPtr.Zero, kv.Key, true)) continue;
                 if (!unopenable) CrashGuard.ReleaseBoostProcess(kv.Key, kv.Value.Creation);
                 lock (sync)

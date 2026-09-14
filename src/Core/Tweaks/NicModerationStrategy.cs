@@ -1,13 +1,13 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 网卡中断合并实验策略的纯状态机 收据先行 身份核对 回读与保守回滚
+// File purpose Pure state machine for the NIC interrupt moderation experiment policy: receipt first, identity check, read-back and conservative rollback
 using System;
 using System.Collections.Generic;
 using System.Text;
 
 namespace PaviseApp
 {
-    // 标准 *InterruptModeration 只有 0 和 1 Adaptive 和 Medium 是厂商私有算法
-    // 没做过 PCI 驱动 INF 指纹复核 就别在这猜值
+    // Standard *InterruptModeration only has 0 and 1; Adaptive and Medium are vendor-private algorithms
+    // Without a PCI driver INF fingerprint review, don't guess values here
     internal enum NicModerationMode
     {
         Unknown = -1,
@@ -58,8 +58,8 @@ namespace PaviseApp
         public string Service = "";
         public string InfPath = "";
         public NicModerationMode Mode = NicModerationMode.Unknown;
-        // Unknown 有两种 一种是真读到了私有值或者值缺失 一种是读取本身出错
-        // 只有前者能算外部接管 才能结清恢复收据
+        // Unknown comes in two kinds: a private value or missing value actually read, versus the read itself failing
+        // Only the former counts as external takeover and can settle the restore receipt
         public bool ModeReadReliable = true;
         public bool LinkUp;
         public bool PhysicalWired;
@@ -161,9 +161,9 @@ namespace PaviseApp
 
             int original, desired;
             if (!int.TryParse(p[9], out original) || !int.TryParse(p[10], out desired)
-                // NIM2 只表达这版唯一授权的方向 驱动管理 1 到实验 Off 0
-                // 语法对但方向反过来的票据一律按损坏处理
-                // 不能被它骗着去做本策略从来没建立过的写入
+                // NIM2 expresses only the one direction this version authorizes: driver-managed 1 to experimental Off 0
+                // A ticket with valid syntax but the reverse direction is treated as corrupted
+                // It must not trick us into a write this policy never established
                 || original != (int)NicModerationMode.DriverManaged
                 || desired != (int)NicModerationMode.Off
                 || string.IsNullOrEmpty(r.NetCfgInstanceId)
@@ -247,9 +247,9 @@ namespace PaviseApp
             int active = 0;
             foreach (NicModerationTarget target in scan.Targets)
             {
-                // 先把活动的物理有线设备全数出来 再看唯一出口适不适合写
-                // 不能只数暴露了 *InterruptModeration 的设备
-                // 不然第二块不支持标准项的 USB 或厂商网卡会漏掉 第一块就被错放行
+                // First count all active physical wired devices, then check whether the sole egress is fit to write
+                // Don't count only devices exposing *InterruptModeration
+                // or a second USB or vendor NIC without the standard item slips through and the first gets wrongly cleared
                 if (target == null || !target.LinkUp || !target.PhysicalWired) continue;
                 active++;
                 selected = target;
@@ -312,7 +312,7 @@ namespace PaviseApp
             if (target == null) return false;
             if (target.Mode == NicModerationMode.Off)
             {
-                // 外部自己关掉的不算 Pavise 接管 别造假收据
+                // Disabled externally doesn't count as a Pavise takeover; don't forge a receipt
                 issue = NicModerationScanIssue.AlreadyOff;
                 return true;
             }
@@ -333,8 +333,8 @@ namespace PaviseApp
                 receipt.Original, receipt.Desired);
             if (write != NicModerationWriteResult.Applied)
             {
-                // 这三类明确发生在写入之前 清掉 Prepared 就行
-                // ReadbackFailed 有可能已经写进去了 得走同一条 CAS 恢复路径
+                // These three clearly happen before the write; clearing Prepared is enough
+                // ReadbackFailed may already have written through; it must take the same CAS restore path
                 bool settled;
                 if (write == NicModerationWriteResult.IdentityChanged
                     || write == NicModerationWriteResult.CurrentChanged
@@ -374,9 +374,9 @@ namespace PaviseApp
             return RestoreReceipt(receipt, out issue);
         }
 
-        // 启动对账要盖住两类崩溃窗口 一是 Prepared 写了没确认
-        // 二是 Applied 已经写回 Original 收据还没来得及清
-        // Applied+Desired 是用户自己建立的实验 只确认它在 正常启动不擅自还原
+        // Startup reconciliation must cover two crash windows: one, Prepared written but not confirmed
+        // two, Applied already written back to Original but the receipt not yet cleared
+        // Applied+Desired is an experiment the user set up himself; only confirm it's there, a normal startup doesn't restore on its own
         internal bool ReconcileStartup(out NicModerationScanIssue issue)
         {
             issue = NicModerationScanIssue.None;
@@ -406,8 +406,8 @@ namespace PaviseApp
             return RestoreReceipt(receipt, out issue);
         }
 
-        // 只在用户明确点清除全部时用 丢掉读不出来 损坏 或者设备已卸载的应用收据
-        // 这个动作不碰系统网卡值 普通关闭路径永远不会调它
+        // Only used when the user explicitly clicks wipe all; discards apply receipts that are unreadable, corrupted, or whose device was uninstalled
+        // This action never touches the system NIC value; the normal disable path never calls it
         internal bool DiscardReceiptForReset()
         {
             return store.SaveAndVerify("");
@@ -446,8 +446,8 @@ namespace PaviseApp
             }
             if (current.Mode != receipt.Desired)
             {
-                // 用户 驱动 或者别的工具已经接管 别拿旧收据去盖
-                // 结清 Pavise 的所有权 日志里留一条 ExternalChanged 好查
+                // User, driver or another tool has taken over; don't overwrite with the old receipt
+                // Settle Pavise's ownership and leave an ExternalChanged line in the log for lookup
                 if (!store.SaveAndVerify(""))
                 {
                     issue = NicModerationScanIssue.ReceiptSaveFailed;
@@ -502,14 +502,14 @@ namespace PaviseApp
             {
                 if (target == null || !string.Equals(target.NetCfgInstanceId,
                         receipt.NetCfgInstanceId, StringComparison.OrdinalIgnoreCase)) continue;
-                // NetCfg GUID 只管定位接口 完整 PnP 实例 ID 是必须对上的第二把锁
-                // 哪一头缺了都不能退回成只凭 GUID 写旧值
+                // The NetCfg GUID only locates the interface; the full PnP instance ID is the second lock that must match
+                // If either end is missing, never fall back to writing the old value by GUID alone
                 if (string.IsNullOrEmpty(receipt.DeviceInstanceId)
                     || string.IsNullOrEmpty(target.DeviceInstanceId)
                     || !string.Equals(target.DeviceInstanceId, receipt.DeviceInstanceId,
                         StringComparison.OrdinalIgnoreCase)) continue;
-                // 驱动重装会短暂留下重复类键 证明不了哪一项是当前设备时
-                // 别按枚举顺序随手挑一个写回去
+                // A driver reinstall briefly leaves duplicate class keys; when it can't be proven which is the current device
+                // don't just pick one by enumeration order and write back
                 match = target;
                 matches++;
             }

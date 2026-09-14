@@ -1,5 +1,5 @@
-// 文件用途 Pavise Interrupt Fabric 只读的现场可行性探测器
-// 不调中断 不装驱动 不注入 不改游戏状态
+// File purpose Pavise Interrupt Fabric read-only field feasibility probe
+// No interrupt tuning, no driver install, no injection, no game state changes
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -563,8 +563,8 @@ private:
         const WORD id = event->EventHeader.EventDescriptor.Id;
         const FrameEventKind kind = ClassifyFrameEvent(event->EventHeader.ProviderId, id);
         const bool runtime = kind == FrameEventKind::Runtime;
-        // 没有 DXGI 和 D3D9 运行时事件的 API 内核侧的正确起点是 PresentHistory_Start 171
-        // Present_Info 184 是结束和关联事件 不能当成进程自有的帧来源
+        // For APIs without DXGI or D3D9 runtime events the correct kernel-side start is PresentHistory_Start 171
+        // Present_Info 184 is a completion and correlation event, not a process-owned frame source
         const bool kernel = kind == FrameEventKind::Kernel;
         if (!runtime && !kernel) return;
         const DWORD pid = event->EventHeader.ProcessId;

@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 渲染交接的有界候选状态 不启动线程 不修改进程 不读写配置
+// File purpose Bounded candidate state for renderer handoff; starts no threads, modifies no process, reads or writes no config
 using System;
 using System.Collections.Generic;
 
@@ -20,8 +20,8 @@ namespace PaviseApp
         }
     }
 
-    // 探测预算和保护生命期分开 预算花完不等于这就不是游戏
-    // 仍处于前台且身份/关联有效的候选只保这一份 PID 失焦后短宽限退出
+    // Probe budget and protection lifetime are separate; a spent budget does not mean this is not a game
+    // Only one candidate is kept, the one still in the foreground with valid identity/association; after the PID loses focus it exits after a short grace period
     internal sealed class RendererHandoffTracker
     {
         internal const int ProbeWindowMs = 10000;
@@ -87,8 +87,8 @@ namespace PaviseApp
                 else current.Detection = Copy(detection);
                 current.Foreground = detection.RendererForeground;
                 if (current.Foreground) current.LastForegroundMs = nowMs;
-                // 保持已有 learned/Force 可见或后台目标的选举语义
-                // 陌生窗口化候选和仅安全保护的目标永远不能借此获得后台长驻豁免
+                // Keep the existing election semantics for learned/Force visible or background targets
+                // Unknown windowed candidates and safety-only targets must never gain a background long-residency exemption through this
                 current.AllowBackground = !detection.RendererForeground
                     && detection.RendererCandidateSelected && detection.RendererUserSelected
                     && !detection.RequiresGpuConfirm && !detection.RendererSafetyOnly;
@@ -220,7 +220,7 @@ namespace PaviseApp
             CancelLocked();
             generation++;
             current = null;
-            // 不重置全局冷却 也不假装尚未退出的采样任务已完成
+            // Does not reset the global cooldown, nor pretend a sampling task that has not exited is complete
         }
 
         private void CancelLocked() { if (inFlight != null) inFlight.Canceled = true; }

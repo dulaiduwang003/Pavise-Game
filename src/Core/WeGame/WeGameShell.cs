@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 WeGame 脱壳的纯规则 识别 WeGame 游戏目录 决定何时脱壳 何时熔断 不碰进程不读注册表
+// File purpose Pure rules for WeGame shell removal, identifies WeGame game directories, decides when to remove the shell and when to trip the breaker, touches no process and reads no registry
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -8,15 +8,15 @@ namespace PaviseApp
 {
     internal static class WeGameShell
     {
-        // 对局确认运行这么久之后才动手 启动器交接 反作弊初始化 首屏加载都过去了再收壳
+        // Act only after the match has been confirmed running this long, launcher handoff, anti-cheat init and first-screen loading are all over before the shell is taken down
         public const int StabilizeSeconds = 30;
-        // 脱壳之后游戏在这个窗口内退出 就认定壳被这个游戏依赖 本机停用该游戏的自动脱壳
+        // If the game exits within this window after shell removal, the shell is deemed a dependency of this game, auto shell removal for it is disabled on this machine
         public const int ExitFuseSeconds = 20;
-        // 对局结束通知比进程退出晚一段宽限 通知到达时距上次脱壳不超过这个数也算
+        // The match-end notification arrives a grace period after process exit, it also counts if the notification arrives within this many seconds of the last shell removal
         public const int ExitFuseNotifySeconds = 45;
-        // 脱壳后先在这个时刻复查游戏还在不在 之后按 RespawnCheckSeconds 看壳有没有重生
+        // After shell removal first re-check at this moment whether the game is still there, then watch for shell respawn every RespawnCheckSeconds
         public const int RespawnCheckSeconds = 60;
-        // 壳进程反复重生 五分钟内结束三轮就本局停手 不和 WeGame 的自我拉起打架
+        // Shell process keeps respawning, three rounds ending within five minutes means stand down for this match, do not fight WeGame's self-relaunch
         public const int RespawnWindowSeconds = 300;
         public const int RespawnLimit = 3;
 
@@ -24,7 +24,7 @@ namespace PaviseApp
         private const string AppsFolderName = "WeGameApps";
         private const int MaxParentWalk = 4;
 
-        // 目录里带 WeGame 的启动链标记 或者它就是 WeGameApps 的直接子目录
+        // Directory carries the WeGame launch chain marker, or it is a direct child of WeGameApps
         public static bool IsWeGameGameRoot(string root)
         {
             if (string.IsNullOrEmpty(root)) return false;
@@ -45,7 +45,7 @@ namespace PaviseApp
             return false;
         }
 
-        // 只有 WeGameApps 的直接子目录才是游戏根 更深的目录属于游戏内部
+        // Only direct children of WeGameApps are game roots, deeper directories belong to the game's internals
         internal static bool DirectChildOfAppsFolder(string full)
         {
             if (string.IsNullOrEmpty(full)) return false;
@@ -64,8 +64,8 @@ namespace PaviseApp
             return false;
         }
 
-        // 先信档案里的 Root 再从可执行文件往上找 最多四层
-        //   带标记的目录直接算根 没标记的一路爬到 WeGameApps 的直接子目录为止
+        // Trust the profile's Root first, then walk up from the executable, at most four levels
+        //   a directory with the marker counts as root directly, without the marker climb until a direct child of WeGameApps
         public static string ResolveGameRoot(string profileRoot, string executablePath)
         {
             if (IsWeGameGameRoot(profileRoot)) return NormalizeDir(profileRoot);
@@ -90,7 +90,7 @@ namespace PaviseApp
             catch { return null; }
         }
 
-        // 什么时候可以动手 对局在跑 已过稳定期 本局没脱过 没熔断 没停手
+        // When action is allowed: match running, past the stabilize period, not removed this match, not tripped, not stood down
         public static bool ShouldClean(long sessionStartTicks, long nowTicks, bool cleanedThisSession,
             bool fused, bool circuitOpen, bool autoEnabled)
         {
@@ -99,7 +99,7 @@ namespace PaviseApp
             return nowTicks - sessionStartTicks >= StabilizeSeconds * TimeSpan.TicksPerSecond;
         }
 
-        // 游戏在脱壳后这么快就没了 算壳被依赖 timer 复查用短窗 结束通知用带宽限的长窗
+        // Game vanished this soon after shell removal, count the shell as a dependency, timer re-check uses the short window, end notification uses the long window with grace
         public static bool ExitBlamesCleanup(long cleanedTicks, long exitTicks, bool fromNotification)
         {
             if (cleanedTicks <= 0 || exitTicks < cleanedTicks) return false;
@@ -107,7 +107,7 @@ namespace PaviseApp
             return exitTicks - cleanedTicks <= window;
         }
 
-        // 记一轮真正结束了进程的脱壳 五分钟内满三轮返回真 表示壳在反复重生
+        // Record one shell removal round that actually ended the process, returns true at three rounds within five minutes, meaning the shell keeps respawning
         public static bool RegisterKillCycle(Queue<long> cycles, long nowTicks)
         {
             if (cycles == null) return false;
@@ -117,7 +117,7 @@ namespace PaviseApp
             return cycles.Count >= RespawnLimit;
         }
 
-        // 下一次该在什么时候复查 刚脱完先看游戏还活着没 之后按重生周期
+        // When the next re-check is due, right after removal check the game is still alive first, then follow the respawn period
         public static int NextCheckDelayMs(bool justCleaned)
         {
             return (justCleaned ? ExitFuseSeconds : RespawnCheckSeconds) * 1000;

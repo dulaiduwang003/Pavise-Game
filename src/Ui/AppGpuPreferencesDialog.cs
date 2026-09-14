@@ -5,7 +5,7 @@ using System.Windows.Forms;
 
 namespace PaviseApp
 {
-    // 文件用途 持久的 Windows 偏好属于用户的显式操作 不是对局期的活
+    // File purpose Persistent Windows preferences are the user's explicit action, not match-time work
     internal sealed class AppGpuPreferencesDialog : Form
     {
         private readonly AppGpuPreferenceManager manager;
@@ -87,8 +87,8 @@ namespace PaviseApp
         private void LayoutContent()
         {
             if (browse == null) return;
-            // 小屏桌面或者很高的 DPI 下 让整个对话框滚动
-            // 而不是让列表和确认按钮叠在一起
+            // On small desktops or very high DPI let the whole dialog scroll
+            // rather than let the list and the OK button overlap
             int canvasWidth = Math.Max(ClientSize.Width, Theme.S(620));
             int canvasHeight = Math.Max(ClientSize.Height, Theme.S(460));
             AutoScrollMinSize = new Size(canvasWidth == ClientSize.Width ? 0 : canvasWidth,

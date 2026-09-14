@@ -1,4 +1,4 @@
-// 文件用途 走生产的音频和存储路径 资源严格自有 不声称任何游戏 FPS 收益
+// File purpose Exercises the production audio and storage paths, strictly self-owned resources, claims no game FPS gain
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -26,8 +26,8 @@ namespace PaviseApp
                 string before = File.ReadAllText(file);
                 GameProfile changed = profile.Clone(); changed.Name = "owned-lock-probe-changed";
                 bool deniedSave;
-                // 故意攥着自己的读句柄 不给删除共享 这是一个确定性的反例
-                // 不能拿来证明现实里是哪个进程锁着文件
+                // Deliberately holds its own read handle without delete sharing, a deterministic counterexample
+                // cannot be used to prove which process is locking a file in reality
                 using (var lease = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read))
                     deniedSave = store.Save(new[] { changed });
                 bool intactAfterFailure = File.ReadAllText(file) == before;
@@ -101,7 +101,7 @@ namespace PaviseApp
             }
             finally
             {
-                // 只释放本进程的流 不去重置别的音频客户端和服务
+                // Only releases this process's streams, does not reset other audio clients or the service
                 restored = AudioLowLatency.Restore()
                     && !(bool)typeof(AudioLowLatency).GetField("active", PrivateStatic).GetValue(null);
                 Thread.Sleep(300);

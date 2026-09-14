@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 提供标题栏亮暗主题切换控件
+// File purpose Title-bar light/dark theme switch control
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;

@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 有界只读的安装入口推荐 不运行或加载候选文件 不把静态依赖当作渲染观测
+// File purpose Bounded read-only install entry recommendation; never runs or loads candidate files, never treats static dependencies as renderer observation
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -23,8 +23,8 @@ namespace PaviseApp
         internal const int MaxSections = 96;
         internal const int MaxImports = 256;
         internal const int MaxReadBytes = 192 * 1024;
-        // 根目录算第 0 层 第 4 层目录里的文件仍然收录
-        internal const int MaxDirectoryDepth = 4;
+        // The root is depth 0; files in depth-8 directories are still collected
+        internal const int MaxDirectoryDepth = 8;
 
         private sealed class DirectoryWork
         {
@@ -83,7 +83,7 @@ namespace PaviseApp
                         || delta + count > section.RawSize) continue;
                     ulong offset = section.RawPointer + delta;
                     if (offset + count > (ulong)Length) continue;
-                    // 同一 RVA 映射多个区域的文件不当作可靠静态证据
+                    // A file whose one RVA maps to multiple sections is not treated as reliable static evidence
                     if (result >= 0) return -1;
                     result = (long)offset;
                 }
@@ -117,8 +117,8 @@ namespace PaviseApp
             }
         }
 
-        // 所有名称都来自平台图形 API 的 ABI 而不是任何游戏或客户端名单
-        // 导入表只能帮助挑选安装入口 不能证明本次实际提交过游戏画面
+        // Every name comes from the platform graphics API ABI, not from any game or client list
+        // The import table only helps pick an install entry; it cannot prove that game frames were actually presented this time
         private static bool GraphicsDependency(string module)
         {
             if (string.IsNullOrEmpty(module)) return false;
@@ -138,6 +138,13 @@ namespace PaviseApp
 
         internal static ExecutableCandidateFacts ReadFacts(Stream stream)
         {
+            bool readFailed;
+            return ReadFacts(stream, out readFailed);
+        }
+
+        private static ExecutableCandidateFacts ReadFacts(Stream stream, out bool readFailed)
+        {
+            readFailed = false;
             var facts = new ExecutableCandidateFacts();
             try
             {
@@ -189,6 +196,8 @@ namespace PaviseApp
                 facts.GraphicsImports = graphics;
                 return facts;
             }
+            catch (IOException) { readFailed = true; return new ExecutableCandidateFacts(); }
+            catch (UnauthorizedAccessException) { readFailed = true; return new ExecutableCandidateFacts(); }
             catch { return new ExecutableCandidateFacts(); }
         }
 
@@ -197,9 +206,9 @@ namespace PaviseApp
         {
             if (address == 0 && size == 0) return true;
             int stride = delayed ? 32 : 20;
-            // Size 可能覆盖整个 .idata 区 包括 thunk 和名字表
-            // 不只是 DLL 描述符 校验这块区域但不去读它
-            // 实际访问到的描述符要有上界 并且必须遇到终止符
+            // Size may cover the whole .idata section, including thunks and the name table,
+            // not just the DLL descriptors; validate the region but do not read it
+            // Descriptors actually visited need an upper bound and must hit the terminator
             if (address == 0 || size < stride || reader.FileOffset(address, size) < 0) return false;
             int limit = (int)Math.Min((uint)MaxImports, size / (uint)stride);
             for (int i = 0; i < limit; i++)
@@ -222,7 +231,7 @@ namespace PaviseApp
                 if (name == null) return false;
                 if (GraphicsDependency(name)) graphics = true;
             }
-            // 导入目录截断或没有终止项 不沿用已经看到的一半结果
+            // Import directory truncated or missing its terminator; do not keep the half result already seen
             return false;
         }
 
@@ -254,9 +263,9 @@ namespace PaviseApp
                 if (rank > bestRank) { best = candidate; bestRank = rank; ambiguous = false; }
                 else if (rank == bestRank) ambiguous = true;
             }
-            // 深度/数量预算截断不抹掉已经找到的唯一图形证据 这仍只是扫描建议
-            // 不代表没扫的地方没有别的 renderer 更不会给出已观测渲染的标签
-            // 单靠GUI子系统的弱候选则必须扫描完整且只有一个有效EXE
+            // Depth and count budget cutoffs do not erase the unique graphics evidence already found; this is still only a scan suggestion,
+            // it does not claim unscanned areas hold no other renderer, and it never yields an observed-renderer label
+            // A weak candidate backed only by the GUI subsystem requires a complete scan and exactly one valid EXE
             return best == null || ambiguous || (bestRank < 2 && (!complete || seen.Count > 1))
                 ? null : best.Path;
         }
@@ -274,12 +283,21 @@ namespace PaviseApp
             return candidate.GraphicsImports || candidate.EngineDataPair ? 2 : candidate.Gui ? 1 : 0;
         }
 
-        // 手动挑选用的候选清单 图形证据优先 其次 GUI 子系统 其余可执行文件垫底 被选举否决的名字不进
-        //   这是给用户看的列表 不是选举 所以不要求唯一 也不因为截断而放弃
+        // Candidate list for manual picking: graphics evidence first, then GUI subsystem, other executables last; names vetoed by the election are excluded
+        //   This list is for the user, not an election, so uniqueness is not required and truncation does not abort it
         internal static List<ExecutableCandidateFacts> ListCandidates(string root, int max)
         {
-            bool complete;
-            List<ExecutableCandidateFacts> facts = CollectFacts(root, out complete);
+            string recommended;
+            return ListCandidates(root, max, out recommended);
+        }
+
+        internal static List<ExecutableCandidateFacts> ListCandidates(string root, int max,
+            out string recommended)
+        {
+            bool complete, valid;
+            List<ExecutableCandidateFacts> facts = CollectFacts(root, true, out complete, out valid);
+            // The recommendation rests on all facts read; the list display cap must not turn several candidates into a unique one
+            recommended = valid && facts != null ? PickUnique(facts, complete) : null;
             var list = new List<ExecutableCandidateFacts>();
             if (facts == null) return list;
             foreach (ExecutableCandidateFacts f in facts)
@@ -294,50 +312,75 @@ namespace PaviseApp
             return list;
         }
 
-        // 一个目录下全部可执行文件的事实 唯一选举与手动挑选共用
-        //   目录越界 IO 出错或文件在读取中变化都返回 null 调用方自己决定怎么退
+        // Auto recommendation still requires no IO faults; manual candidates keep the remaining readable files
         internal static List<ExecutableCandidateFacts> CollectFacts(string root, out bool complete)
         {
+            bool valid;
+            return CollectFacts(root, false, out complete, out valid);
+        }
+
+        private static List<ExecutableCandidateFacts> CollectFacts(string root, bool keepReadable,
+            out bool complete, out bool valid)
+        {
             complete = false;
+            valid = false;
             if (string.IsNullOrWhiteSpace(root)) return null;
             try
             {
                 root = System.IO.Path.GetFullPath(root.Trim().Trim('"'));
                 List<string> paths;
-                if (!CollectPaths(root,
+                valid = CollectPaths(root,
                     delegate(string directory) { return Directory.EnumerateFiles(directory, "*.exe"); },
-                    Directory.EnumerateDirectories, File.GetAttributes, out paths, out complete)) return null;
+                    Directory.EnumerateDirectories, File.GetAttributes, out paths, out complete);
+                if (!valid && !keepReadable) return null;
                 var candidates = new List<ExecutableCandidateFacts>();
                 foreach (string path in paths)
                 {
-                    string name = System.IO.Path.GetFileNameWithoutExtension(path);
-                    if (GameSessionDetector.ElectionVetoed(name, path)) continue;
-                    var before = new FileInfo(path);
-                    long length = before.Length;
-                    DateTime modified = before.LastWriteTimeUtc;
-                    ExecutableCandidateFacts facts;
-                    using (var file = new FileStream(path, FileMode.Open, FileAccess.Read,
-                        FileShare.ReadWrite | FileShare.Delete)) facts = ReadFacts(file);
-                    var after = new FileInfo(path);
-                    if (after.Length != length || after.LastWriteTimeUtc != modified) return null;
-                    facts.Path = path;
-                    string dir = System.IO.Path.GetDirectoryName(path);
-                    // 命名配对属于引擎文件格式 不是按特定游戏名选举 仍只作扫描建议
-                    facts.EngineDataPair = facts.Executable
-                        && File.Exists(System.IO.Path.Combine(dir, "UnityPlayer.dll"))
-                        && Directory.Exists(System.IO.Path.Combine(dir, name + "_Data"));
-                    candidates.Add(facts);
+                    try
+                    {
+                        string name = System.IO.Path.GetFileNameWithoutExtension(path);
+                        if (GameSessionDetector.ElectionVetoed(name, path)) continue;
+                        var before = new FileInfo(path);
+                        long length = before.Length;
+                        DateTime modified = before.LastWriteTimeUtc;
+                        ExecutableCandidateFacts facts;
+                        bool readFailed;
+                        using (var file = new FileStream(path, FileMode.Open, FileAccess.Read,
+                            FileShare.ReadWrite | FileShare.Delete)) facts = ReadFacts(file, out readFailed);
+                        var after = new FileInfo(path);
+                        if (readFailed || after.Length != length || after.LastWriteTimeUtc != modified)
+                        {
+                            valid = false;
+                            complete = false;
+                            if (!keepReadable) return null;
+                            continue;
+                        }
+                        facts.Path = path;
+                        string dir = System.IO.Path.GetDirectoryName(path);
+                        // The name pairing is an engine file format, not an election by a specific game name; still only a scan suggestion
+                        facts.EngineDataPair = facts.Executable
+                            && File.Exists(System.IO.Path.Combine(dir, "UnityPlayer.dll"))
+                            && Directory.Exists(System.IO.Path.Combine(dir, name + "_Data"));
+                        candidates.Add(facts);
+                    }
+                    catch
+                    {
+                        valid = false;
+                        complete = false;
+                        if (!keepReadable) return null;
+                    }
                 }
                 return candidates;
             }
-            catch { return null; }
+            catch { complete = false; valid = false; return null; }
         }
 
-        // 惰性广度优先让浅层的可执行文件先拿到机会 免得一棵深的
-        // 资源目录把预算吃光 用委托还能搭出一个有界的虚拟文件系统夹具
-        // 不用真去建几百个目录
-        // false 表示 IO 或重解析点出错 true 加 complete=false 只是
-        // 碰到了深度或数量上限 只有后一种才允许保留强推荐
+        // Lazy breadth-first gives shallow executables the first chance, so one deep
+        // asset tree cannot eat the whole budget; delegates also allow a bounded virtual file system fixture
+        // without really creating hundreds of directories
+        // Local IO faults and reparse points only skip the current item; the remaining readable paths still go to the manual candidate list
+        // false means an IO or reparse point error; true with complete=false only means
+        // the depth or count cap was hit, and only the latter may keep a strong recommendation
         internal static bool CollectPaths(string root,
             Func<string, IEnumerable<string>> files,
             Func<string, IEnumerable<string>> directories,
@@ -351,36 +394,54 @@ namespace PaviseApp
                 complete = false;
                 return false;
             }
+            bool valid = true;
             try
             {
                 var queue = new Queue<DirectoryWork>();
                 var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                int executableCount = 0, directoryCount = 1;
                 known.Add(root);
                 queue.Enqueue(new DirectoryWork { Path = root, Depth = 0 });
                 while (queue.Count > 0)
                 {
                     DirectoryWork current = queue.Dequeue();
-                    if ((attributes(current.Path) & FileAttributes.ReparsePoint) != 0)
-                    { complete = false; return false; }
-                    foreach (string file in files(current.Path))
+                    try
                     {
-                        if (paths.Count >= MaxExecutables) { complete = false; return true; }
-                        if ((attributes(file) & FileAttributes.ReparsePoint) != 0)
-                        { complete = false; return false; }
-                        paths.Add(file);
+                        if ((attributes(current.Path) & FileAttributes.ReparsePoint) != 0)
+                        { complete = false; valid = false; continue; }
                     }
-                    foreach (string sub in directories(current.Path))
+                    catch { complete = false; valid = false; continue; }
+                    try
                     {
-                        if (current.Depth >= MaxDirectoryDepth)
-                        { complete = false; break; }
-                        if (known.Contains(sub)) continue;
-                        if (known.Count >= MaxDirectories)
-                        { complete = false; break; }
-                        known.Add(sub);
-                        queue.Enqueue(new DirectoryWork { Path = sub, Depth = current.Depth + 1 });
+                        foreach (string file in files(current.Path))
+                        {
+                            // Failed items also consume budget, so masses of unreadable files cannot cause an unbounded walk
+                            if (executableCount >= MaxExecutables) { complete = false; return valid; }
+                            executableCount++;
+                            try
+                            {
+                                if ((attributes(file) & FileAttributes.ReparsePoint) != 0)
+                                { complete = false; valid = false; continue; }
+                                paths.Add(file);
+                            }
+                            catch { complete = false; valid = false; }
+                        }
                     }
+                    catch { complete = false; valid = false; }
+                    try
+                    {
+                        foreach (string sub in directories(current.Path))
+                        {
+                            if (current.Depth >= MaxDirectoryDepth || directoryCount >= MaxDirectories)
+                            { complete = false; break; }
+                            directoryCount++;
+                            if (!known.Add(sub)) continue;
+                            queue.Enqueue(new DirectoryWork { Path = sub, Depth = current.Depth + 1 });
+                        }
+                    }
+                    catch { complete = false; valid = false; }
                 }
-                return true;
+                return valid;
             }
             catch { complete = false; return false; }
         }

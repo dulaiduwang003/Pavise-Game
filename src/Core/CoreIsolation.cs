@@ -18,8 +18,8 @@ namespace PaviseApp
         public bool Write(string value) { return Settings.SaveStrDurable(Key, value); }
     }
 
-    // Single owner: the isolated worker owns the system lease and retained process
-    // handles. It restores even when the UI/normal runtime crashes or is killed.
+    // Single owner the isolated worker owns the system lease and retained process
+    // handles It restores even when the UI/normal runtime crashes or is killed
     internal sealed class CoreIsolationEngine : IDisposable
     {
         private sealed class Entry
@@ -53,9 +53,9 @@ namespace PaviseApp
             return store.Write(s.ToString());
         }
 
-        // Recover is called only while holding the machine-wide lease mutex.
-        // System masks do not survive reboot: a different boot ID discards the
-        // receipt without writing masks or targeting recycled process IDs.
+        // Recover is called only while holding the machine-wide lease mutex
+        // System masks do not survive reboot a different boot ID discards the
+        // receipt without writing masks or targeting recycled process IDs
         internal bool Recover()
         {
             string raw;
@@ -111,15 +111,15 @@ namespace PaviseApp
             var plan = new CoreSchedulingPlan { GameMask = gameMask, IsolationOn = true, IsolationMask = mask,
                 Topology = CoreScheduling.Stamp(state.All, state.Physical) };
             if (CoreScheduling.Validate(plan, state.All, state.Physical, false, true) != null) return Fail("invalid-range");
-            // Existing allocations can be owned by another tool or the OS. Never
-            // treat them as ours or reset them to the full machine mask.
+            // Existing allocations can be owned by another tool or the OS Never
+            // treat them as ours or reset them to the full machine mask
             if (state.Allocated != 0) return Fail("external-allocation");
             boot = currentBoot; all = state.All; isolated = mask;
             if (!Persist()) { Reset(); return Fail("journal-write"); }
             if (!Allow(pid, creation, gameMask)) { Restore(); return false; }
-            // Admission can take time. Check the global baseline again before
-            // preparing the system write, so a failed grant cannot reset a mask
-            // installed meanwhile by a different owner.
+            // Admission can take time Check the global baseline again before
+            // preparing the system write so a failed grant cannot reset a mask
+            // installed meanwhile by a different owner
             state = os.ReadSystem(IntPtr.Zero);
             if (state == null || state.All != all || state.Allocated != 0)
             { Fail("system-state-changed"); Restore(); return false; }
@@ -202,8 +202,8 @@ namespace PaviseApp
                 e.Handle = os.Open(e.Pid, e.Creation);
                 if (e.Handle == IntPtr.Zero)
                 {
-                    // Open failure alone does not prove exit; a query handle can
-                    // distinguish PID reuse from a temporarily protected process.
+                    // Open failure alone does not prove exit a query handle can
+                    // distinguish PID reuse from a temporarily protected process
                     return os.Gone(e.Pid, e.Creation);
                 }
             }

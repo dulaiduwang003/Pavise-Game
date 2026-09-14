@@ -1,11 +1,11 @@
 @echo off
 rem @author bdth 2074055628@qq.com
-rem file: rescue for a machine that hard-crashes (MCE) after deep system writes
-rem ASCII ONLY above the marker line, and CRLF line endings only. cmd
-rem decodes this file with the console startup codepage (936 or 65001);
-rem any non-ASCII byte up here shifts the parser, and bare-LF endings
-rem break batch parsing outright. All logic and Chinese text live in the
-rem PowerShell block below, read back as UTF-8 and never parsed by cmd.
+rem file rescue for a machine that hard-crashes MCE after deep system writes
+rem ASCII ONLY above the marker line and CRLF line endings only cmd
+rem decodes this file with the console startup codepage 936 or 65001
+rem any non-ASCII byte up here shifts the parser and bare-LF endings
+rem break batch parsing outright All logic and Chinese text live in the
+rem PowerShell block below read back as UTF-8 and never parsed by cmd
 set "PAVISE_UNINSTALL_SELF=%~f0"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$m=[IO.File]::ReadAllText($env:PAVISE_UNINSTALL_SELF,(New-Object Text.UTF8Encoding($false)));$i=$m.IndexOf([string][char]10+'#PSBEGIN');Invoke-Expression $m.Substring($i)"
 exit /b
@@ -40,7 +40,7 @@ Write-Host ''
 $answer = Read-Host '输入 Y 并回车开始，其它任意输入取消'
 if ($answer -ne 'Y' -and $answer -ne 'y') { Write-Host '已取消。'; Start-Sleep 1; exit }
 
-# ---- receipts live in HKCU\Software\Pavise; strings are REG_SZ, flags are DWORD ----
+# ---- receipts live in HKCU\Software\Pavise strings are REG_SZ flags are DWORD ----
 $hive = 'HKCU:\Software\Pavise'
 $Absent = '__pavise_absent__'
 $US = [string][char]31
@@ -58,7 +58,7 @@ function Note([string]$what, [bool]$ok) {
     else { $script:failed += $what; Write-Host ('       失败 ' + $what) -ForegroundColor Yellow }
 }
 
-# ReversibleReg slot: original [US applied]; original is __pavise_absent__, b<base64> or =<value>
+# ReversibleReg slot original [US applied] original is __pavise_absent__ b<base64> or =<value>
 function Restore-Slot([string]$slot, [string]$path, [string]$name, [string]$kind, [string]$what) {
     $raw = Rc $slot
     if ($raw -eq '') { return }
@@ -87,7 +87,7 @@ function Restore-Slot([string]$slot, [string]$path, [string]$name, [string]$kind
     Note $what $ok
 }
 
-# one field inside HKCU DirectX UserGpuPreferences; the slot holds the whole original string
+# one field inside HKCU DirectX UserGpuPreferences the slot holds the whole original string
 function Restore-DxField([string]$slot, [string]$field, [string]$what) {
     $raw = Rc $slot
     if ($raw -eq '') { return }
@@ -113,7 +113,7 @@ function Restore-DxField([string]$slot, [string]$field, [string]$what) {
     Note $what $ok
 }
 
-# AppCompat layer token per exe; empty remainder deletes the value
+# AppCompat layer token per exe empty remainder deletes the value
 function Remove-LayerToken([string]$listSlot, [string]$token, [string]$what) {
     $raw = Rc $listSlot
     if ($raw -eq '') { return }
@@ -132,7 +132,7 @@ function Remove-LayerToken([string]$listSlot, [string]$token, [string]$what) {
     Note $what $ok
 }
 
-# service ledger: "2\n<phase>\t<name>\t<flag>" lines, or legacy "1" / "a|b"; start what we stopped
+# service ledger 2\n<phase>\t<name>\t<flag> lines or legacy 1 / a|b start what we stopped
 function Resume-Services([string]$flag, [string[]]$names, [string]$what) {
     $raw = Rc $flag
     if ($raw -eq '') { return }

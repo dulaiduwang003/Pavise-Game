@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 双阈值待机清理策略 调度归 GameMode 管 不在这个引擎里
+// File purpose Dual-threshold standby cleanup policy; scheduling belongs to GameMode, not this engine
 using System;
 using System.Globalization;
 
@@ -11,12 +11,12 @@ namespace PaviseApp
         public const int MinimumPollingMilliseconds = 250;
         public const int MaximumPollingMilliseconds = 300000;
 
-        // 这是 Pavise 自己的默认值 不要说成某个第三方清理工具
-        // 验证过的出厂设置
+        // These are Pavise's own defaults, do not describe them as some third-party cleanup tool's
+        // Verified factory settings
         private static readonly StandbyCleanerOptions defaults =
             new StandbyCleanerOptions(1024, 1024, 4000);
-        // 参数弹窗的一键档位 仅填入输入框 保存仍走同一提交边界
-        //   保守 = 缓存很大且空闲确实吃紧才清 激进 = 提早且更勤地清
+        // One-click presets in the parameters dialog; they only fill the input boxes, saving still goes through the same commit boundary
+        //   Conservative = purge only when the cache is huge and free memory is genuinely tight; Aggressive = purge earlier and more often
         private static readonly StandbyCleanerOptions conservative =
             new StandbyCleanerOptions(2048, 512, 8000);
         private static readonly StandbyCleanerOptions aggressive =
@@ -111,8 +111,8 @@ namespace PaviseApp
             {
                 snapshot = null;
                 nativeStatus = 0;
-                // Monitor 是可重入的 协调器或者测试回调不能在同一轮轮询里
-                // 递归采样并再发一次清理
+                // Monitor is reentrant; the coordinator or test callbacks must not, within the same poll round,
+                // sample recursively and issue another purge
                 if (polling) return Cancelled(out nativeStatus);
                 polling = true;
                 try
@@ -151,9 +151,9 @@ namespace PaviseApp
             if (snapshot.ListBytes < listLimit || snapshot.FreeBytes >= freeLimit)
                 return StandbyCleanerResult.BelowThreshold;
 
-            // 改动协调器必须同步调用它 等待中断期间 它可能
-            // 拒掉一个已取消或过期的游戏代号
-            // 就算取消紧随其后 已观察到的原生结果也要保留
+            // The change coordinator must call it synchronously; while waiting for the interrupt it may
+            // reject a cancelled or stale game generation
+            // Even if cancellation follows immediately, the observed native result is kept
             bool called = false, purged = false;
             int status = StatusCancelled;
             Func<bool> purge = delegate
@@ -191,8 +191,8 @@ namespace PaviseApp
             return snapshot.AvailableBytes <= total && snapshot.FreeBytes <= total
                 && snapshot.StandbyBytes <= total && snapshot.ListBytes <= total
                 && snapshot.FreeBytes <= total - snapshot.StandbyBytes;
-            // Available/List 和 Free/Standby 来自两次相邻的查询
-            // 不要要求跨查询的顺序关系 比如 Free 小于等于 Available
+            // Available/List and Free/Standby come from two adjacent queries
+            // Do not require ordering across queries, e.g. Free less than or equal to Available
         }
 
         internal static bool MayContinue(Func<bool> mayContinue)

@@ -1,5 +1,5 @@
-// 文件用途 只测纯策略和注入的平台
-// 从不碰 Windows 注册表 路由表 网卡和持久化的 Settings 存储
+// File purpose Only tests pure policy and the injected platform
+// Never touches the Windows registry, routing table, NICs or the persisted Settings store
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;

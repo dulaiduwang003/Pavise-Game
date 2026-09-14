@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 识别显卡驱动容器与硬件电源散热控制工具 使其免于后台压制
+// File purpose Identify GPU driver containers and hardware power/thermal control tools so they are exempt from background suppression
 using System;
 using System.Collections.Generic;
 
@@ -28,9 +28,9 @@ namespace PaviseApp
             "MSICenter", "MSICenterService", "DragonCenter",
             "FanControl", "SpeedFan", "HWiNFO64", "HWiNFO32",
 
-            // 掌机的整机管理软件 掌机档把后台压得跟专注一样狠 这些要是被压掉
-            //   风扇曲线和 TDP 就没人管了 比压掉一个后台下载严重得多
-            //   名字按各家常见进程名收的 没有逐台实机核对 发现漏的往这里补
+            // Handheld whole-device management software; Handheld tier suppresses background as hard as Esports, and if these get suppressed
+            //   nobody manages the fan curve and TDP, far worse than suppressing a background download
+            //   Names collected from each vendor's common process names, not verified unit by unit, add missing ones here
             "ArmouryCrate", "ArmouryCrate.UserSessionHelper", "ArmourySwAgent",
             "AsusAppService", "AsusOSD", "LegionGoQuickSettings",
             "AYASpace", "AYASpaceII", "OneXConsole", "OneXPlayerManager",
@@ -50,7 +50,7 @@ namespace PaviseApp
             "fancontrol", "speedfan", "hwinfo", "hwmonitor",
             "afterburner", "rivatuner", "rtss",
 
-            // 掌机侧走子串更稳 各家版本号和后缀花样太多 精确名单赶不上
+            // Substring matching is more robust on the handheld side, too many version numbers and suffix variations across vendors for an exact list to keep up
             "armoury", "ayaspace", "onexconsole", "onexplayer",
             "gpdwin", "legionspace", "legionzone", "clawcenter"
         };

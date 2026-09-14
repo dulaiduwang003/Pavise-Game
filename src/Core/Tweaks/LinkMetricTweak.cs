@@ -1,15 +1,15 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 有线加无线并存时把有线口的接口跃点压低 让默认路由走有线 记原值可写回
+// File purpose With wired and wireless both present, lower the wired interface metric so the default route goes over wired; original recorded and writable back
 using System;
 using System.Collections.Generic;
 using System.Net.NetworkInformation;
 
 namespace PaviseApp
 {
-    // Windows 自动跃点按链路速率算 有线 200Mb 到 2Gb 是 25 Wi-Fi 报 2Gb 以上也是 25
-    //   Wi-Fi 6E 和 7 常报 2.4Gbps 千兆有线和它打平 默认路由可能走无线
-    //   只在"有线口有默认网关且已连通 默认路由却在无线口"时才算需要修
-    //   修法是把该有线口 IPv4 和 IPv6 的跃点写成 5 关闭开关时恢复自动跃点
+    // Windows automatic metric goes by link speed: wired 200Mb to 2Gb is 25, Wi-Fi reporting above 2Gb is also 25
+    //   Wi-Fi 6E and 7 commonly report 2.4Gbps, tying with gigabit wired, so the default route may go wireless
+    //   Only counts as needing a fix when the wired port has a default gateway and is connected yet the default route sits on the wireless port
+    //   The fix writes metric 5 on that wired port's IPv4 and IPv6; turning the switch off restores the automatic metric
     internal static class LinkMetricTweak
     {
         private const string ReceiptKey = "LinkMetricReceipt";
@@ -57,7 +57,7 @@ namespace PaviseApp
                 else if (kind == NetworkInterfaceType.Ethernet || kind == NetworkInterfaceType.GigabitEthernet
                     || kind == NetworkInterfaceType.FastEthernetT || kind == NetworkInterfaceType.FastEthernetFx)
                 {
-                    // 多张有线口都带网关时不猜 谁是出口说不清 不修
+                    // Multiple wired ports with gateways: don't guess; can't tell which is the egress, so don't fix
                     if (probe.WiredIndex > 0) { probe.WiredIndex = -2; continue; }
                     probe.WiredIndex = index;
                 }
@@ -73,7 +73,7 @@ namespace PaviseApp
             try
             {
                 uint index;
-                // 8.8.8.8 只是拿来问路由表 不发任何包
+                // 8.8.8.8 is only used to query the routing table; no packet is sent
                 if (GetBestInterface(0x08080808u, out index) == 0) return (int)index;
             }
             catch { }

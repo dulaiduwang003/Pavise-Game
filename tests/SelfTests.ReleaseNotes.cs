@@ -7,8 +7,8 @@ namespace PaviseApp
 {
     internal static partial class SelfTests
     {
-        // 更新说明是发版时最容易漏的一环 这里卡住三件事
-        //   版本号涨了却没写说明 说明缺一门语言 以及最新一条不在表首
+        // Release notes are the easiest thing to miss at release time, this pins three things
+        //   version bumped without notes, notes missing a language, and the latest entry not at the head of the table
         internal static void RunReleaseNotesRegressionTests()
         {
             ReleaseNotesCoverCurrentVersion();
@@ -23,7 +23,7 @@ namespace PaviseApp
             Eq(App.Version, current.Version);
             Eq(true, current.Count > 0);
             Eq("v" + App.Version, current.Tag);
-            // 当前版本必须三语齐全 界面按 Lang.Cur 取的就是这一条
+            // The current version must have all three languages, this is the entry the UI fetches by Lang.Cur
             for (int i = 0; i < current.Count; i++)
             {
                 Eq(3, current.RawLanguages(i));
@@ -39,7 +39,7 @@ namespace PaviseApp
                 throw new InvalidOperationException(
                     "release notes missing translations: " + string.Join(", ", missing.ToArray()));
 
-            // Item 在缺译时回落中文 所以缺译只能靠 RawItem 查 这里守住这个前提
+            // Item falls back to Chinese when a translation is missing, so missing translations can only be detected via RawItem, guard that premise here
             int prev = Lang.Cur;
             try
             {
@@ -65,7 +65,7 @@ namespace PaviseApp
                 DateTime date;
                 Eq(true, DateTime.TryParseExact(note.Date, "yyyy-MM-dd",
                     CultureInfo.InvariantCulture, DateTimeStyles.None, out date));
-                // 表首最新 日期只许持平或更早
+                // Latest at the head, dates may only stay equal or go earlier
                 Eq(true, date <= previous);
                 previous = date;
             }

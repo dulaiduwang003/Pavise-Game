@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 构建结构化日志事件流并提供筛选 打开 刷新与清空
+// File purpose Build the structured log event stream with filtering, open, refresh and clear
 using System;
 using System.Diagnostics;
 using System.Drawing;
@@ -65,13 +65,13 @@ namespace PaviseApp
             logWrap.Controls.Add(logStream);
 
             var openLog = new PillButton(Lang.T("btn.openlog"));
-            openLog.SetBounds(Theme.S(ContentX), Theme.S(bottomY), Theme.S(178), Theme.S(36));
+            openLog.SetBounds(Theme.S(ContentX + 178), Theme.S(bottomY), Theme.S(128), Theme.S(36));
             openLog.Click += delegate { OpenTextFile(Logger.LogPath); };
             var refreshLog = new PillButton(Lang.T("v20.log.refresh"));
-            refreshLog.SetBounds(Theme.S(ContentX + 190), Theme.S(bottomY), Theme.S(132), Theme.S(36));
+            refreshLog.SetBounds(Theme.S(ContentX + 316), Theme.S(bottomY), Theme.S(96), Theme.S(36));
             refreshLog.Click += delegate { RefreshLog(true); };
             var clearLog = new PillButton(Lang.T("rep.clear.log"), BtnKind.Danger);
-            clearLog.SetBounds(Theme.S(ContentX + 334), Theme.S(bottomY), Theme.S(142), Theme.S(36));
+            clearLog.SetBounds(Theme.S(ContentX + 422), Theme.S(bottomY), Theme.S(112), Theme.S(36));
             clearLog.Click += delegate
             {
                 if (!PaviseDialog.Confirm(this, App.DisplayName, Lang.T("rep.clear.ask"), DlgKind.Warn)) return;
@@ -79,6 +79,9 @@ namespace PaviseApp
                 Logger.Log(Lang.T("log.panelformlogpage.1"));
                 RefreshLog(true);
             };
+            var diagnostics = new PillButton(Lang.T("workflow.diagnostic.copy"),BtnKind.Primary) { Name = "copyDiagnostics" };
+            diagnostics.SetBounds(Theme.S(ContentX),Theme.S(bottomY),Theme.S(168),Theme.S(36));
+            diagnostics.Click += delegate { CopyDiagnosticSummary(); };
 
             swLogWrites = MakeSwitch(Settings.Load(Logger.WritesEnabledKey, true), OnLogWritesToggle);
             swLogWrites.Location = new Point(Theme.S(ContentX + ContentW) - swLogWrites.Width,
@@ -87,15 +90,35 @@ namespace PaviseApp
             lblLogWrites.Text = Lang.T("set.logwrites");
             lblLogWrites.ForeColor = Theme.Dim; lblLogWrites.BackColor = Theme.Bg;
             lblLogWrites.Font = Theme.UI(8.6f, false); lblLogWrites.TextAlign = ContentAlignment.MiddleRight;
-            lblLogWrites.SetBounds(Theme.S(ContentX + ContentW - 260) - swLogWrites.Width, Theme.S(bottomY),
-                Theme.S(250), Theme.S(36));
+            lblLogWrites.SetBounds(Theme.S(ContentX + ContentW - 162) - swLogWrites.Width, Theme.S(bottomY),
+                Theme.S(152), Theme.S(36));
 
-            pageLog.Controls.AddRange(new Control[] { logWrap, openLog, refreshLog, clearLog, lblLogWrites, swLogWrites });
+            pageLog.Controls.AddRange(new Control[] { logWrap, diagnostics, openLog, refreshLog, clearLog, lblLogWrites, swLogWrites });
             RefreshLog(true);
         }
 
-        // 关闭前先把这条落盘 否则日志的最后一行会停在无关的动作上 看不出是被主动关的
-        //   开启则先放开写入再记 顺序反了这两条都会丢
+        private long diagnosticCopiedUntil;
+#if PAVISE_SELFTEST
+        internal Action<string> CopyDiagnosticForTest;
+#endif
+        private void CopyDiagnosticSummary()
+        {
+            try
+            {
+                string report = DiagnosticSummary.Build(gameMode,elevated,Logger.Tail(220));
+#if PAVISE_SELFTEST
+                if (CopyDiagnosticForTest != null) CopyDiagnosticForTest(report);
+                else
+#endif
+                    Clipboard.SetText(report);
+                diagnosticCopiedUntil = DateTime.UtcNow.AddSeconds(6).Ticks;
+                RefreshLog(true);
+            }
+            catch { PaviseDialog.Warn(this,Lang.T("workflow.diagnostic.title"),Lang.T("workflow.diagnostic.failed")); }
+        }
+
+        // Flush this entry to disk before turning off; otherwise the last log line stops on an unrelated action and nothing shows it was turned off on purpose
+        //   When turning on, reopen writes first and then log; in the wrong order both entries are lost
         private void OnLogWritesToggle(object s, EventArgs e)
         {
             if (IsDisposed || swLogWrites == null || swLogWrites.IsDisposed) return;
@@ -133,15 +156,16 @@ namespace PaviseApp
         private void RefreshLog(bool force)
         {
             if (logStream == null) return;
-            // 记录关掉时刷新只会看到一份不动的旧日志 不说明白会被当成卡死
+            // With logging off a refresh only shows the same old unchanging log; without saying so it looks frozen
             if (lblLogStreamHint != null)
             {
                 bool writing = Logger.WritesEnabled;
-                lblLogStreamHint.Text = writing ? Lang.T("v20.log.hint") : Lang.T("v20.log.paused");
+                lblLogStreamHint.Text = DateTime.UtcNow.Ticks < diagnosticCopiedUntil ? Lang.T("workflow.diagnostic.copied")
+                    : writing ? Lang.T("v20.log.hint") : Lang.T("v20.log.paused");
                 lblLogStreamHint.ForeColor = writing ? Theme.Faint
                     : LogStreamView.SeverityColor(LogEventSeverity.Warning);
             }
-            // 没有新写入就不读文件 Tail 和 Sweep 线程的 Log 抢的是同一把锁
+            // Do not read the file without new writes; Tail and the Sweep thread's Log contend for the same lock
             long version = Logger.Version;
             if (!force && version == logSeenVersion && ReferenceEquals(logSeenStream, logStream)) return;
             logSeenVersion = version;

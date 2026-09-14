@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 监听活动电源方案变更并唤醒 Pavise 所有权审计
+// File purpose Watch active power scheme changes and wake the Pavise ownership audit
 using System;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;

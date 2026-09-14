@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 检测 ReBAR 是否开启 读取独显 PCI 已分配的最大显存直通窗口 无驱动依赖
+// File purpose Detects whether ReBAR is on, reads the largest VRAM passthrough window assigned to the dGPU PCI, no driver dependency
 using System;
 using System.Runtime.InteropServices;
 using System.Text;

@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 合并进程事件并限制游戏模式全量扫描频率
+// File purpose Coalesce process events and cap the game mode full-scan rate
 using System;
 using System.Threading;
 
@@ -23,16 +23,16 @@ namespace PaviseApp
         private const int PollingSweepIntervalMs = 4000;
         private const int EventBackedSweepIntervalMs = 20000;
         internal const int ActiveGameSweepIntervalMs = 500;
-        // ETW 事件在场时的对局底噪轮询
-        //   2.0 删掉热度采样之后 底噪轮询只用来兜底发现新进程 不再需要对齐采样窗
-        //   进程集真变动时由 processSetDirty 驱动扫描 不靠这个底噪兜底
-        //   台架模拟 600 秒对局 平均 10 秒冒一个新进程 单次快照按本机实测 2.19ms 计
-        //     500ms 固定轮询 1200 次 一个核 0.438% 发现延迟均 241ms 最坏 490ms
-        //     1000ms + dirty 621 次 一个核 0.227% 发现延迟均 86ms 最坏 460ms
-        //     1000ms 不接 dirty 600 次 一个核 0.219% 发现延迟均 517ms 最坏 990ms
-        //   放宽轮询和接上 dirty 必须一起做 只放宽不接的那一档延迟烂一倍
+        // Baseline polling during a match when ETW events are present
+        //   since 2.0 dropped heat sampling, baseline polling only serves as a fallback for discovering new processes, no need to align with a sampling window anymore
+        //   real process-set changes drive the scan via processSetDirty, not this baseline fallback
+        //   bench simulated a 600 s match with a new process every 10 s on average, one snapshot costed at the locally measured 2.19ms
+        //     500ms fixed polling: 1200 scans, 0.438% of one core, discovery latency avg 241ms worst 490ms
+        //     1000ms + dirty: 621 scans, 0.227% of one core, discovery latency avg 86ms worst 460ms
+        //     1000ms without dirty: 600 scans, 0.219% of one core, discovery latency avg 517ms worst 990ms
+        //   relaxing the poll and wiring up dirty must go together, relaxing alone doubles the latency
         internal const int EventBackedActiveGameSweepIntervalMs = 1000;
-        // 进程集变动驱动扫描的最小间隔 取 500 是为了扫描率永远不高于放宽之前
+        // Minimum interval for process-set-change-driven scans, 500 so the scan rate never exceeds what it was before relaxing
         internal const int DirtyScanFloorMs = 500;
         private const int FullGameDetectionIntervalMs = 20000;
         internal const int GameTransitionScanIntervalMs = 5000;
@@ -156,7 +156,7 @@ namespace PaviseApp
             if (!relevant) return;
             Interlocked.Exchange(ref processSetDirty, 1);
 
-            // 进程集变动本身就是扫描信号 一律唤醒主循环 真扫不扫由 DirtyScanDue 的地板决定
+            // A process-set change is itself a scan signal, always wake the main loop, whether it actually scans is decided by the DirtyScanDue floor
             kick.Set();
         }
 
@@ -231,17 +231,17 @@ namespace PaviseApp
             return ProcessScanIntervalMs(eventsAvailable);
         }
 
-        // 进程集变动是否已经够格触发一次扫描
-        //   没有事件源时 processSetDirty 只由扫描失败重排置位 那条路自己会置 urgentProcessScan
-        //   所以这里只认事件在场的情况 没有事件源时行为一个字节都不变
+        // Whether the process-set change qualifies to trigger a scan yet
+        //   without an event source processSetDirty is only set by the scan-failure reschedule, and that path sets urgentProcessScan itself
+        //   so only the events-present case counts here, behavior without an event source is unchanged
         internal static bool DirtyScanDue(bool eventsAvailable, bool dirty, long elapsedMs)
         {
             if (!eventsAvailable || !dirty) return false;
             return elapsedMs < 0 || elapsedMs >= DirtyScanFloorMs;
         }
 
-        // fallbackOnly 本轮扫描纯粹由兜底间隔触发 事件在场且进程集没有变动信号
-        //   这类轮次的快照允许在 ReuseMaxAgeMs 内复用 见 ProcessSnapshotSource.Capture
+        // fallbackOnly means this scan round was triggered purely by the fallback interval, events present and no process-set change signal
+        //   snapshots for such rounds may be reused within ReuseMaxAgeMs, see ProcessSnapshotSource.Capture
         private bool ShouldRunProcessScan(out bool fallbackOnly)
         {
             fallbackOnly = false;
@@ -284,7 +284,7 @@ namespace PaviseApp
             long fallbackTicks = fallback * TimeSpan.TicksPerMillisecond;
             if (last <= 0 || elapsed < 0 || elapsed >= fallbackTicks)
             {
-                // 待选举期用的是收紧过的兜底间隔 那时选举要新数据 不算纯兜底
+                // While awaiting election the tightened fallback interval is used, election needs fresh data then, so it does not count as pure fallback
                 fallbackOnly = !armedAwaitingElection;
                 Interlocked.Exchange(ref transitionScanPending, 0);
                 Interlocked.Exchange(ref lastProcessScanTicks, now);

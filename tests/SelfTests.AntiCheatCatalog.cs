@@ -1,4 +1,4 @@
-﻿// 文件用途 豁免回归 不启动游戏 不写进程 不改真实设置
+﻿// File purpose Exemption regression, no game launch, no process writes, no real settings changes
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -117,7 +117,7 @@ namespace PaviseApp
 
         private static bool AcBackgroundEligible(string name, string path, bool aggressive, bool familyExempt)
         {
-            // 同一个用户会话 没有活动游戏根 也没有前台 白名单和家族保护
+            // Same user session, no active game root, no foreground, whitelist or family protection
             return FamilyBoundary.BasicBackgroundEligible(9101, 9999, name, path,
                 1, 1, 9102, false, @"C:\Windows\", false, null, aggressive, familyExempt);
         }
@@ -149,18 +149,18 @@ namespace PaviseApp
             {
                 Eq(false, group.Default);
                 Settings.Save("Tame_" + group.Key, true);
-                // 仅保护的分组即使键被打开也不该进压制目标
+                // Protect-only groups must not become suppression targets even when their key is turned on
                 if (group.Suppressible) foreach (string name in group.Procs) expected.Add(name);
             }
-            // 就算键是过期的或者被手改过 仅豁免的规则也不能变成压制目标
+            // Even with a stale or hand-edited key, an exempt-only rule must never turn into a suppression target
             foreach (AcProtectionGroup group in AntiCheatCatalog.ProtectionOnlyGroups)
                 Settings.Save("Tame_" + group.Key, true);
             var core = new SuppressionCore(delegate { throw new InvalidOperationException("Unexpected restore"); }, true);
-            var tamer = new Tamer(core); // Never start the worker.
+            var tamer = new Tamer(core); // Never start the worker
             MethodInfo build = typeof(Tamer).GetMethod("BuildActive", BindingFlags.Instance | BindingFlags.NonPublic);
             var actual = (Dictionary<string, string>)build.Invoke(tamer, null);
             Eq(true, expected.SetEquals(actual.Keys));
-            // 改判仅保护的分组 构造时会把老配置里开着的键说明一次再清掉 不静默失效
+            // Groups reclassified as protect-only explain the key left on in old configs once at construction, then clear it, no silent disabling
             foreach (AcGroup group in AntiCheatCatalog.Groups)
             {
                 if (group.Suppressible) continue;

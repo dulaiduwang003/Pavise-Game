@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 笔记本对局中把共享功耗预算从 CPU 让给 GPU 每次让出后验收 一局最多三次
+// File purpose Laptop in-match yield of the shared power budget from CPU to GPU, verified after each yield, at most three per match
 using System;
 using System.Threading;
 
@@ -9,54 +9,54 @@ namespace PaviseApp
 
     internal enum YieldAction { None = 0, Engage = 1, Keep = 2, Revert = 3, Release = 4 }
 
-    // 验证结论 只用于日志分流 Inconclusive 不熔断 下局可以再试
+    // Verdict only routes logging; Inconclusive does not trip the breaker, next match can retry
     internal enum YieldVerdict { None = 0, Kept = 1, NoGain = 2, GpuHarm = 3, Inconclusive = 4 }
 
-    // 笔记本上 CPU 和 GPU 吃同一份功耗与散热预算 GPU 瓶颈时 CPU 多烧的每一瓦都是 GPU 少拿的
-    //   固件的 Dynamic Boost / DTT / SmartShift 已经在毫秒级做这件事 我们不跟它抢方向盘
-    //   每次让出都重新观察和验收 证据不充分就退回 只有连续证据确认负结果才持久停用
+    // On laptops CPU and GPU share one power and thermal budget; when GPU-bound, every watt the CPU burns is a watt the GPU loses
+    //   Firmware Dynamic Boost / DTT / SmartShift already does this at millisecond scale; we don't fight it for the wheel
+    //   Every yield is re-observed and re-verified; revert on weak evidence, persist-disable only on consecutive confirmed negative results
     //
-    // 为什么动 EPP 不动 ProcThrottleMin
-    //   ProcThrottleMin 只决定"能不能降" EPP 决定"愿不愿意降"
-    //   地板放开了但 EPP 还是 0 照样强烈偏性能 省不出多少 所以 EPP 才是真正的杠杆
+    // Why touch EPP instead of ProcThrottleMin
+    //   ProcThrottleMin only decides whether it can drop; EPP decides whether it wants to
+    //   With the floor open but EPP still 0 it stays strongly performance-biased and saves little, so EPP is the real lever
     //
-    // 为什么优先使用瓦数验证
-    //   验证要回答"预算真的让出来了吗" 只看 GPU 撞墙命中率会被两头骗
-    //   GPU 拿到更高上限后可能照样撞墙 而把 CPU 压成瓶颈会让 GPU 利用率掉 命中率也跟着掉
-    //   看起来像成功 实际是失败 所以缺少功耗读数时必须另有下述频率代理证据
+    // Why watt-based verification comes first
+    //   Verification must answer "was budget actually freed"; GPU wall-hit rate alone can lie both ways
+    //   GPU may still hit the wall with a higher cap, and squeezing the CPU into the bottleneck drops GPU utilization and the hit rate with it
+    //   Looks like success, actually failure, so without a power reading the frequency proxy evidence below is required
     //
-    // 频率代理 读不到瓦数的机器的降级验证
-    //   EPP 释放功耗的机制就是频率 EPP 抬高→部分负载下 CPU 愿意跑更低频→功耗跟着频率立方走
-    //   所以频率降没降是"预算让没让"的次一级证据 频率纹丝不动 = EPP 是死杠杆 熔断是对的
-    //   降级验证多一个坑 频率同时受负载影响 验证窗和观察窗的 CPU 占用差太多就没法比
-    //   这种情况退回但不熔断 那是场景变了 不是机器的错 下局再试
-    //   频率代理的熔断单独记账 换了台有 EMI 的机器或修好了 EMI 驱动 瓦数路径不受牵连
+    // Frequency proxy: degraded verification for machines with no watt reading
+    //   EPP frees power through frequency: with EPP raised, under partial load the CPU is willing to run lower clocks, and power follows frequency cubed
+    //   So whether frequency dropped is second-tier evidence for whether budget was yielded; frequency unchanged = EPP is a dead lever, tripping is correct
+    //   Degraded verification has one more pitfall: frequency also depends on load, so if CPU utilization differs too much between verify and observe windows there is no comparison
+    //   That case reverts without tripping; the scenario changed, not the machine's fault, retry next match
+    //   The frequency-proxy breaker is tracked separately; on a machine with EMI or after the EMI driver is fixed the watt path is unaffected
     internal sealed class PowerBudgetYield
     {
-        // 本机台架结果 i7-9750H Coffee Lake-H 笔记本 6 线程 40% 占空比负载
-        //   EPP 取值范围 0~100 逐档写入读回全部吻合 说明写是写进去了
-        //   EPP 档位 0 32 48 84 100
-        //   封装功耗 47.57 47.02 49.01 48.54 47.40 W 无趋势 正负 1.5W 是噪声
-        //   实际频率 153.8 153.8 153.8 153.9 153.8 % 跨全量程纹丝不动
-        //   也就是说这台机器上 OS 侧的 EPP 根本没作用到硬件 这个杠杆是死的
-        // 所以本功能默认关闭 而且在这类机器上验证必然不通过 会自动退回并熔断 那是对的行为
-        //   2019 年的 Coffee Lake-H 不代表全部 Alder Lake 之后的 HWP 平台要重新量过才知道
-        //   另外这份负载是占空比脉冲 对 EPP 未必是好探针 换稳态部分负载值得再测一次
+        // Local bench result: i7-9750H Coffee Lake-H laptop, 6-thread 40% duty-cycle load
+        //   EPP range 0~100, each step written and read back matched, so the writes did land
+        //   EPP steps 0 32 48 84 100
+        //   Package power 47.57 47.02 49.01 48.54 47.40 W, no trend, +/-1.5W is noise
+        //   Actual frequency 153.8 153.8 153.8 153.9 153.8 %, flat across the whole range
+        //   Meaning OS-side EPP never reaches the hardware on this machine; the lever is dead
+        // So this feature is off by default, and on such machines verification necessarily fails, reverts and trips; that is correct behavior
+        //   A 2019 Coffee Lake-H doesn't represent everything; HWP platforms from Alder Lake on need re-measuring
+        //   Also this load is a duty-cycle pulse, not necessarily a good probe for EPP; worth re-testing with steady partial load
         internal const double MinGpuUtilToYield = 90.0;
         internal const double MaxCpuUtilToYield = 65.0;
         internal const long ObserveTicks = TimeSpan.TicksPerSecond * 20;
         internal const long VerifyTicks = TimeSpan.TicksPerSecond * 15;
-        internal const uint YieldEpp = 48;          // 0 最偏性能 255 最偏能效 48 仍然偏性能
+        internal const uint YieldEpp = 48;          // 0 most performance-biased, 255 most efficiency-biased, 48 still leans performance
         internal const double MinWattsFreed = 3.0;
         internal const double MaxGpuUtilDrop = 3.0;
         internal const int MinSamples = 4;
-        // 频率代理判据 相对降幅 3% 起判 负载漂移超过 10 个百分点就不下结论
+        // Frequency proxy criteria: relative drop of 3% counts, load drift over 10 percentage points means no verdict
         internal const double MinFreqDropShare = 0.03;
         internal const double MaxCpuUtilShift = 10.0;
 
-        // 方向盘判据 验收通过后持续盯着 瓶颈移回 CPU 就把预算还回去
-        //   释放阈值与参与阈值拉开迟滞带 90 让 80 收 防止在边界上来回打摆
-        //   还回去之后 GPU 再吃满可以重新让 重新让要走完整的观察加验收 那就是天然冷却
+        // Steering criteria: keep watching after verification passes, hand budget back when the bottleneck moves back to CPU
+        //   Release and entry thresholds form a hysteresis band, yield at 90 release at 80, to avoid flapping at the boundary
+        //   After handing back, the GPU saturating again allows a re-yield, which must go through full observation plus verification; that is natural cooldown
         internal const double ReleaseGpuUtil = 80.0;
         internal const double ReleaseCpuUtil = 75.0;
         internal const long HoldWindowTicks = TimeSpan.TicksPerSecond * 30;
@@ -65,27 +65,27 @@ namespace PaviseApp
         private const string FuseKey = "PowerYieldFuse";
         private const string FreqFuseKey = "PowerYieldFreqFuse";
 
-        // 参与的硬门槛 少一条都不参与 判错的代价落在对局里 宁可不做
+        // Hard entry gates, all required; a wrong call costs the match, better to do nothing
         internal static bool Eligible(bool laptop, bool onAc, bool competitive,
             bool managedPlanActive, bool wattsReadable, bool fused)
         {
-            if (fused) return false;               // 这台机器验过不吃这套
-            if (!laptop) return false;             // 台式机没有共享预算可让
-            if (!onAc) return false;               // 电池上用户要的是明确的续航或性能 不掺和
-            if (!competitive) return false;        // 只有专注档写的是最激进的 CPU 侧设置
-            if (!managedPlanActive) return false;  // 不碰用户自己选的电源方案
-            if (!wattsReadable) return false;      // 验不了就不做
+            if (fused) return false;               // this machine has been proven not to respond
+            if (!laptop) return false;             // desktops have no shared budget to yield
+            if (!onAc) return false;               // on battery the user wants explicit battery life or performance, stay out
+            if (!competitive) return false;        // only the Esports tier writes the most aggressive CPU-side settings
+            if (!managedPlanActive) return false;  // don't touch a power scheme the user chose
+            if (!wattsReadable) return false;      // can't verify, don't do it
             return true;
         }
 
-        // GPU 吃满而 CPU 有余量 才说明预算花错了地方
+        // Only GPU saturated with CPU headroom shows the budget is spent in the wrong place
         internal static bool WorthYielding(double gpuUtil, double cpuUtil)
         {
             return ValidUtil(gpuUtil) && ValidUtil(cpuUtil)
                 && gpuUtil >= MinGpuUtilToYield && cpuUtil <= MaxCpuUtilToYield;
         }
 
-        // 让路之后必须两条同时成立 封装功耗真降了 而且 GPU 没被拖下水
+        // After yielding both must hold: package power actually dropped and the GPU wasn't dragged down
         internal static bool VerifyHold(double pkgBefore, double pkgAfter,
             double gpuBefore, double gpuAfter)
         {
@@ -112,13 +112,13 @@ namespace PaviseApp
             if (FreqFused) Settings.Save(FreqFuseKey, false);
         }
 
-        // 读不到瓦数的那几次不能计进分母 否则封装功耗均值被稀释成偏低
-        //   基线偏低 后面 VerifyHold 看到的降幅就偏小 会把本来有收益的机器判成没收益并熔断
+        // Samples with no watt reading must not count in the denominator, or the package power mean is diluted low
+        //   A low baseline makes the drop VerifyHold sees too small, judging a machine that does gain as no-gain and tripping
         internal const int GiveUpSampleMultiple = 3;
-        // 驱动计数器可能在加载/切屏时短暂缺测 不再十秒就结束本局。
-        // 已经改过 EPP 的状态最多等一分钟 仍没恢复才归还预算。
+        // Driver counters can briefly go missing during loading/screen switches; no longer end the match after ten seconds
+        // Once EPP has been changed wait at most one minute; hand the budget back only if still not recovered
         internal const long EvidenceMaxAgeTicks = 60 * TimeSpan.TicksPerSecond;
-        // 正常两秒采样允许调度抖动；更长的回调间隔不能用于持久的硬件负收益结论。
+        // Normal two-second sampling tolerates scheduling jitter; longer callback gaps must not feed a persistent hardware no-gain verdict
         internal const long EvidenceContinuityMaxGapTicks = 4 * TimeSpan.TicksPerSecond;
         private long lastEvidenceAt;
         private long lastAdvanceAt;
@@ -197,7 +197,7 @@ namespace PaviseApp
 
         private YieldAction RevertNegativeVerdict(YieldVerdict negativeVerdict, string fuseKey)
         {
-            // 缺测前后的负载可能属于不同场景。退回 EPP，但不能据此说这台机器无效。
+            // Load before and after the gap may belong to different scenarios; revert EPP but this can't declare the machine ineffective
             if (verificationInterrupted) return RevertInconclusive();
             stage = YieldStage.Reverted;
             verdict = negativeVerdict;
@@ -205,7 +205,7 @@ namespace PaviseApp
             return YieldAction.Revert;
         }
 
-        // 喂一次采样 返回这一刻该做什么 负数的瓦数或频率表示这次没读到 只是不计入均值
+        // Feed one sample and return what to do now; negative watts or frequency mean not read this time, just excluded from the mean
         public YieldAction Advance(long now, double gpuUtil, double cpuUtil, double pkgWatts)
         {
             return Advance(now, gpuUtil, cpuUtil, pkgWatts, -1);
@@ -222,15 +222,15 @@ namespace PaviseApp
             bool timeReversed = now < lastAdvanceAt;
             long sampleGap = now - lastAdvanceAt;
             lastAdvanceAt = now;
-            // 先查缺测间隙 再收新样本 避免一个迟到的读数掩盖长时间失联。
-            // 观察期还没改电源 可以重新等完整窗口 不因游戏晚加载而放弃整局。
+            // Check the evidence gap before taking the new sample, so one late reading can't mask a long outage
+            // In observation the power plan is untouched, so a full window can be re-awaited; a late-loading game doesn't forfeit the match
             if (timeReversed || now < lastEvidenceAt || now - lastEvidenceAt >= EvidenceMaxAgeTicks)
             {
                 if (stage == YieldStage.Observing) RestartObservationWindow(now);
                 else return RevertInconclusive();
             }
-            // 等计数器恢复可以等一分钟，但中断了整段验证时间的旧样本不能用于硬件熔断。
-            // 零星读数也不能不断延长已改过 EPP 的未验收状态。
+            // Waiting for counters to recover may take a minute, but old samples spanning an interrupted verification can't feed a hardware trip
+            // Sporadic readings must not keep extending an unverified state where EPP is already changed
             if (stage == YieldStage.Engaged
                 && (now - stageAt >= EvidenceMaxAgeTicks
                     || validEvidence && now - lastEvidenceAt >= VerifyTicks))
@@ -238,7 +238,7 @@ namespace PaviseApp
             if (stage == YieldStage.Engaged
                 && (!validEvidence || sampleGap > EvidenceContinuityMaxGapTicks))
                 verificationInterrupted = true;
-            // 观察期不改电源。证据断档超过一个观察窗口时丢掉旧场景，继续等完整新窗口。
+            // Observation doesn't touch power; when the evidence gap exceeds one observe window drop the old scenario and wait for a full new one
             if (stage == YieldStage.Observing && now - lastEvidenceAt >= ObserveTicks)
                 RestartObservationWindow(now);
             if (stage == YieldStage.Observing && validEvidence
@@ -247,12 +247,12 @@ namespace PaviseApp
                 RestartObservationWindow(now);
                 awaitingObservationData = false;
             }
-            // 基线中已有证据以后出现缺测，负结论也不能当成硬件结论。
-            // 稀疏基线仍可试让路；重新收集完整观察窗才清除这份不连续标记。
+            // A gap after the baseline already has evidence means a negative verdict can't count as a hardware verdict
+            // A sparse baseline can still try yielding; the discontinuity flag clears only after a full fresh observe window
             if (stage == YieldStage.Observing && samples > 0
                 && (!validEvidence || sampleGap > EvidenceContinuityMaxGapTicks))
                 observationInterrupted = true;
-            // 维持段不再验硬件收益；恢复采样后另开滚动窗口，不能混入断档前的负载。
+            // Held stage no longer verifies hardware gain; after sampling resumes open a new rolling window, never mix in pre-gap load
             if (stage == YieldStage.Held && validLoad && now - lastEvidenceAt >= HoldWindowTicks)
             {
                 stageAt = now;
@@ -260,11 +260,11 @@ namespace PaviseApp
             }
             if (validEvidence) lastEvidenceAt = now;
             if (!validLoad) return YieldAction.None;
-            // 基线只用完整配对的负载与 meter；零星有效 meter 可以继续积累，缺值不作零值。
+            // Baseline uses only fully paired load and meter; sporadic valid meter readings keep accumulating, missing values are not zero
             if (stage == YieldStage.Observing && !validMeter)
                 return YieldAction.None;
-            // 方向盘的维持段 让出去之后持续盯 30 秒滚动窗口
-            //   GPU 仍吃满且 CPU 有余量就按兵不动 瓶颈移回 CPU 就把预算还回去
+            // Steering Held stage: after yielding keep watching a 30-second rolling window
+            //   GPU still saturated with CPU headroom means hold; bottleneck back on CPU means hand the budget back
             if (stage == YieldStage.Held)
             {
                 samples++;
@@ -273,8 +273,8 @@ namespace PaviseApp
                 double gpuAvg = gpuSum / samples, cpuAvg = cpuSum / samples;
                 samples = 0; gpuSum = cpuSum = 0; stageAt = now;
                 if (gpuAvg >= ReleaseGpuUtil && cpuAvg <= ReleaseCpuUtil) return YieldAction.None;
-                // 还回去 名额没用完就回到观察期 GPU 再吃满可以重新让
-                //   重新让必须重走完整观察和验收 那就是天然的振荡冷却
+                // Hand it back; if engagements remain, return to observing, GPU saturating again allows a re-yield
+                //   A re-yield must redo full observation and verification; that is natural oscillation cooldown
                 if (engagements >= MaxReengage)
                 {
                     stage = YieldStage.Skipped;
@@ -315,7 +315,7 @@ namespace PaviseApp
             }
 
             if (span < VerifyTicks || samples < MinSamples) return YieldAction.None;
-            // 验证期同理 读不到证据就不能判 但这里已经改过 EPP 攒不够样本必须退回而不是干等
+            // Same in verification: no evidence means no verdict, but EPP is already changed here, so too few samples must revert instead of idling
             if (meterSamples < MinSamples)
             {
                 if (samples < MinSamples * GiveUpSampleMultiple) return YieldAction.None;
@@ -326,9 +326,9 @@ namespace PaviseApp
             double gpuNow = gpuSum / samples;
             if (!proxyMode)
             {
-                // 瓦数路径同样吃负载漂移守卫 验证窗撞上过场或加载屏时
-                //   功耗自然回落会被误判成"没让出来" 方向盘一局最多三个验证窗
-                //   误熔断的暴露面是老行为的三倍 不能再靠运气
+                // The watt path gets the same load-drift guard; when the verify window lands on a cutscene or loading screen
+                //   the natural power drop is misread as "not yielded"; steering allows up to three verify windows per match
+                //   so false-trip exposure is three times the old behavior, can't rely on luck anymore
                 double cpuShift = Math.Abs(cpuSum / samples - baseCpu);
                 if (cpuShift > MaxCpuUtilShift)
                 {
@@ -340,7 +340,7 @@ namespace PaviseApp
             if (proxyMode)
             {
                 double cpuNow = cpuSum / samples, freqNow = freqSum / freqSamples;
-                // 负载漂移大就没法比 退回但不熔断 那是场景变了不是机器的错
+                // Large load drift means no comparison; revert without tripping, the scenario changed, not the machine's fault
                 if (Math.Abs(cpuNow - baseCpu) > MaxCpuUtilShift)
                 {
                     stage = YieldStage.Reverted;
@@ -351,7 +351,7 @@ namespace PaviseApp
                     return RevertNegativeVerdict(YieldVerdict.GpuHarm, FreqFuseKey);
                 if (baseFreq - freqNow < baseFreq * MinFreqDropShare)
                 {
-                    // 频率纹丝不动 = 这台机器上 EPP 是死杠杆 与作者台架的 i7-9750H 同款结局
+                    // Frequency unchanged = EPP is a dead lever on this machine, same ending as the author's i7-9750H bench
                     return RevertNegativeVerdict(YieldVerdict.NoGain, FreqFuseKey);
                 }
                 EnterHold(now);
@@ -371,8 +371,8 @@ namespace PaviseApp
         { return !double.IsNaN(value) && !double.IsInfinity(value) && value > 0; }
     }
 
-    // 运行时 自带采样线程 只在对局期间活着 退场必还原 EPP
-    //   采样放独立线程 不占扫描循环 每 2 秒一次 一局最多做一次决定
+    // Runtime: own sampling thread, alive only during the match, always restores EPP on exit
+    //   Sampling on a dedicated thread, not the scan loop, every 2 seconds, at most one decision per match
     internal static class PowerBudgetYieldRunner
     {
         internal const string EnabledKey = "GmPowerYield";
@@ -398,9 +398,9 @@ namespace PaviseApp
 
         public static bool EnabledSetting { get { return Settings.LoadCached(EnabledKey, false); } }
 
-        // 频率代理可用性 探一次记一辈子 计数器在不在不会中途变
+        // Frequency proxy availability: probe once, remember forever, counter presence doesn't change mid-run
 #if PAVISE_SELFTEST
-        // 隔离测试不真探 PDH 默认按不可用 既有用例的语义分毫不变
+        // Isolated tests don't really probe PDH, default unavailable, existing cases keep exactly the same semantics
         internal static bool FreqProxyForTest;
         internal static Func<bool> RuntimeEnvironmentForTest;
 
@@ -464,7 +464,7 @@ namespace PaviseApp
             try
             {
 #if PAVISE_SELFTEST
-                // 隔离 runner 用例只走显式模拟值，不读取本机电源配置。
+                // Isolated runner cases use explicit simulated values only, never read this machine's power config
                 Func<bool> test = RuntimeEnvironmentForTest;
                 return test == null || test();
 #else
@@ -486,7 +486,7 @@ namespace PaviseApp
             catch { return false; }
         }
 
-        // livePolicyAdmission 不得取得 GameMode.sync，运行时会在原生写入闸内重查它。
+        // livePolicyAdmission must not take GameMode.sync; the runtime re-checks it inside the native write gate
         public static void Start(bool enabled, bool competitive, int rendererPid, long rendererCreation,
             Func<bool> livePolicyAdmission = null)
         {
@@ -500,11 +500,11 @@ namespace PaviseApp
                 hadWorker = running || worker != null;
                 pendingStop = stopInProgress;
                 retarget = running && (targetPid != rendererPid || targetCreation != rendererCreation);
-                // 新目标的准入闭包不能借给仍在运行的旧目标。先撤销旧资格，再等停止。
+                // The new target's admission closure must not be lent to a still-running old target; revoke old eligibility first, then wait for stop
                 if (retarget || !enabled || !competitive || rendererPid <= 0 || rendererCreation <= 0)
                     policyEnabled = false;
             }
-            // 同 PID 的配置令牌也可能失效。保持旧闭包直到旧代完整停止，不能用新 true 续旧基线。
+            // A config token for the same PID can also expire; keep the old closure until the old generation fully stops, a new true must not extend the old baseline
             bool oldAdmitted = !wasRunning || RuntimeAdmissionEligible();
             bool nextAdmitted = false;
             try
@@ -527,7 +527,7 @@ namespace PaviseApp
                 if (PowerPlan.EppYielded) StopCore(3000, false);
                 return;
             }
-            // 上一代资格撤销后的还原失败回执不能被新一轮观察/写入覆盖。
+            // A failed-restore receipt from the previous generation's revocation must not be overwritten by a new observe/write round
             if (!GenerationIsRunning() && PowerPlan.EppYielded && !StopCore(3000, false)) return;
 
             lock (gate)
@@ -535,11 +535,11 @@ namespace PaviseApp
                 if (shutdownClosed || stopInProgress || running
                     || worker != null && worker.IsAlive) return;
                 if (!enabled || rendererPid <= 0 || rendererCreation <= 0) return;
-                // 每轮新建的委托不算策略变化；活着且仍获准的 worker 保留原闭包与原代。
+                // A delegate rebuilt each round isn't a policy change; a live, still-admitted worker keeps its closure and generation
                 policyEnabled = enabled;
                 policyCompetitive = competitive;
                 policyAdmission = livePolicyAdmission;
-                // 有瓦数走瓦数 没瓦数但有频率计数器走降级验证 熔断各记各的账
+                // Watts if available, else degraded verification via the frequency counter; each path trips its own breaker
                 bool watts = EnergyMeter.Available;
                 bool proxy = !watts && FreqProxyAvailable;
                 bool eligible = PowerBudgetYield.Eligible(
@@ -575,8 +575,8 @@ namespace PaviseApp
 
         private static bool StopCore(int timeoutMs, bool terminal)
         {
-            // 不管这一局有没有起过采样线程 都要查一次 EPP 有没有还原
-            //   上一局还原失败留下的残值 不能因为这一局没参与就漏掉
+            // Whether or not this match started a sampling thread, always check that EPP was restored
+            //   Residue from a failed restore last match must not be missed just because this match didn't participate
             if (timeoutMs < 0) return false;
             var elapsed = System.Diagnostics.Stopwatch.StartNew();
             Thread t;
@@ -589,8 +589,8 @@ namespace PaviseApp
                 t = worker;
                 if (state != null) { state.End(); state = null; }
             }
-            // join 失败时线程引用要留着 清掉它会让后面最终那次停止
-            // 误报成根本没有工作线程
+            // Keep the thread ref on join failure; clearing it would make the final stop later
+            // falsely report there was no worker thread at all
             if (t != null)
             {
                 try
@@ -640,7 +640,7 @@ namespace PaviseApp
             lock (operationGate)
             {
                 if (!GenerationRunning(mine)) return false;
-                // 即使失败也保留底层 receipt，由 Start/StopCore 重试；旧代不能再写入。
+                // Even on failure keep the underlying receipt for Start/StopCore to retry; the old generation may no longer write
                 RunMutation(restore);
                 lock (gate)
                     if (mine == generation)
@@ -667,7 +667,7 @@ namespace PaviseApp
                 bool revoked = false;
                 bool applied = RunMutation(delegate
                 {
-                    // BeginMutation 可能等待其它工作；资格复核要贴着实际 EPP 写入。
+                    // BeginMutation may wait on other work; eligibility re-check must sit right next to the actual EPP write
                     if (!GenerationRunning(mine) || !RuntimeAdmissionEligible()) { revoked = true; return false; }
                     return engage != null && engage();
                 });
@@ -684,7 +684,7 @@ namespace PaviseApp
             }
         }
 
-        // 和隔离测试共用整条样本到决策到写入的分发 无效 GPU 也得从这走
+        // Shares the whole sample-to-decision-to-write dispatch with isolated tests; an invalid GPU must go through here too
         internal static bool ProcessSample(int mine, long now, double gpu, double cpu,
             double watts, double freq, Func<bool> engage, Func<bool> restore,
             out YieldAction action, out YieldVerdict verdict)
@@ -702,7 +702,7 @@ namespace PaviseApp
             if (action == YieldAction.Revert)
             {
                 RunCurrentMutation(mine, restore);
-                return false; // 失败时底层 receipt 保留，StopCore 仍负责最终恢复。
+                return false; // on failure the underlying receipt stays, StopCore still owns final restore
             }
             if (action == YieldAction.Release) return RunCurrentMutation(mine, restore);
             return GenerationRunning(mine);
@@ -711,7 +711,7 @@ namespace PaviseApp
         private static void Loop(int mine)
         {
             var cpu = new CpuSaturation();
-            cpu.Sample(); // Prime GetSystemTimes before the first measurement window.
+            cpu.Sample(); // Prime GetSystemTimes before the first measurement window
             bool proxy = proxyRun;
             int rendererPid;
             long rendererCreation;
@@ -724,12 +724,12 @@ namespace PaviseApp
             int adapterLuidHigh = 0;
             uint adapterLuidLow = 0;
             var freq = new FreqSampler();
-            // GPU 占用走持久查询 整局只开一次 每轮一次采集 没有睡眠 打不开时退回一次性解析
+            // GPU utilization via a persistent query, opened once per match, one collect per round, no sleep; fall back to one-shot parsing if it won't open
             var gpuSampler = new GpuEvidence.GpuEngineSampler();
             gpuSampler.Open();
             if (proxy && !freq.Open())
             {
-                // 进程级探测成功不代表本局也打得开 静默夭折要留话也要收状态
+                // A successful process-level probe doesn't mean this match can open it; a silent early death must log and still collect state
                 freq.Close();
                 gpuSampler.Close();
                 Logger.Warn(Lang.T("log.poweryield.12"));
@@ -754,7 +754,7 @@ namespace PaviseApp
                     double gpu = SampleGpuUtil(gpuSampler, rendererPid, rendererCreation,
                         ref adapterKnown, ref adapterLuidHigh, ref adapterLuidLow,
                         out targetChanged);
-                    // 持久查询长期看不到这个进程的 3D 实例时重开一次 防止通配实例表没跟上晚起的渲染设备
+                    // Reopen once when the persistent query hasn't seen this process's 3D instance for a long time, in case the wildcard instance table missed a late renderer device
                     if (gpu < 0 && !targetChanged)
                     {
                         if (++drySamples >= SamplerReopenAfterDry) { drySamples = 0; gpuSampler.Open(); }
@@ -762,8 +762,8 @@ namespace PaviseApp
                     else drySamples = 0;
                     if (targetChanged)
                     {
-                        // PID 复用 renderer 退出 或者渲染挪到另一块卡 旧基线都不能再用
-                        // 若已经让过 EPP 立即尝试还原 退局 StopCore 仍是失败兜底
+                        // PID reuse, renderer exit, or rendering moving to another GPU: the old baseline is unusable either way
+                        // If EPP was already yielded try restoring immediately; StopCore at match end remains the failure fallback
                         if (PowerPlan.EppYielded) RunCurrentMutation(mine, PowerPlan.RestoreEpp);
                         Logger.Warn(Lang.T("log.poweryield.13"));
                         break;
@@ -796,19 +796,19 @@ namespace PaviseApp
                     }
                     else if (action == YieldAction.Revert)
                     {
-                        // 这里还原失败也不重试 EppYielded 仍为真 退局 StopCore 兜底还原
+                        // No retry on restore failure here, EppYielded stays true, StopCore at match end is the fallback restore
                         Logger.Warn(Lang.T(verdict == YieldVerdict.Inconclusive
                             ? "log.poweryield.9" : "log.poweryield.4"));
                         break;
                     }
                     else if (action == YieldAction.Keep)
                     {
-                        // 验收通过不收工 方向盘上路 瓶颈移回 CPU 时把预算还回去
+                        // Verification passing doesn't end the job; steering starts, hand the budget back when the bottleneck moves back to CPU
                         Logger.Log(Lang.T(proxy ? "log.poweryield.10" : "log.poweryield.7"));
                     }
                     else if (action == YieldAction.Release)
                     {
-                        // 还原失败不能当没事 状态已经认为还回去了 让退局的兜底还原来收尾
+                        // Restore failure can't be ignored: state already assumes it was handed back, let the match-end fallback restore finish it
                         if (!keepRunning) break;
                         Logger.Log(Lang.T("log.poweryield.11"));
                     }
@@ -818,7 +818,7 @@ namespace PaviseApp
             finally { freq.Close(); gpuSampler.Close(); }
         }
 
-        // 平台频率百分比 与作者台架记录用的是同一个计数器 两次采集之间的均值
+        // Platform frequency percent, same counter the author's bench used, averaged between two collects
         private sealed class FreqSampler
         {
             private IntPtr query;
@@ -982,8 +982,8 @@ namespace PaviseApp
             catch { return -1; }
         }
 
-        // 只接受这个 renderer 唯一且稳定的渲染适配器
-        // ResolveRenderAdapter 已经按 PID 过滤 这里再锁 LUID 防止 Optimus/多卡迁移后串用旧基线
+        // Accept only this renderer's single, stable render adapter
+        // ResolveRenderAdapter already filters by PID; locking the LUID here too prevents reusing an old baseline after Optimus/multi-GPU migration
         internal static double AcceptTargetAdapterSample(RenderAdapter adapter,
             ref bool adapterKnown, ref int adapterLuidHigh, ref uint adapterLuidLow,
             out bool targetChanged)
@@ -994,14 +994,14 @@ namespace PaviseApp
             if (adapterKnown
                 && (adapter.LuidHigh != adapterLuidHigh || adapter.LuidLow != adapterLuidLow))
             {
-                // 各卡都是 0% 时 PickAdapter 只是随手挑了第一块 那不是迁移 是这一轮没数据
+                // When every GPU is at 0% PickAdapter just grabbed the first one; that's not migration, this round has no data
                 if (adapter.Util < GpuEvidence.MinElectUtilization) return -1;
                 targetChanged = true;
                 return -1;
             }
             if (!adapterKnown)
             {
-                // 0% 的 PDH 残留实例不能证明渲染卡 等 renderer 真正在 3D 上出力再绑定
+                // A 0% leftover PDH instance doesn't prove the render GPU; bind only once the renderer is really working on 3D
                 if (adapter.Util < GpuEvidence.MinElectUtilization) return -1;
                 adapterKnown = true;
                 adapterLuidHigh = adapter.LuidHigh;

@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 启动前置检查 版本比较 单实例替换 系统基线与数据重置
+// File purpose Startup pre-checks, version comparison, single-instance replacement, system baseline and data reset
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -102,10 +102,10 @@ namespace PaviseApp
             finally { if (older != null) older.Dispose(); }
         }
 
-        // 19041 是硬门槛不是建议值 调度面的三根支柱都在这条线上或之后
-        //   EcoQoS 压制 1809 起 逐进程计时器分辨率隔离 2004 起
-        //   低于它的系统上 timeBeginPeriod 是全局副作用 压制拿不到能效档
-        //   自身也拿不到 IAudioClient3 与部分 QoS 掩码 装上只会写一堆改动却换不来调度
+        // 19041 is a hard floor, not a recommendation, all three pillars of the scheduling side sit on or after this line
+        //   EcoQoS suppression since 1809, per-process timer resolution isolation since 2004
+        //   Below it timeBeginPeriod is a global side effect and suppression cannot get the efficiency class
+        //   We ourselves cannot get IAudioClient3 or some QoS masks either, installing would only write a pile of changes and buy no scheduling
         internal const int OsBuildBaseline = 19041;
         internal const int OsBuildBest = 26100;
 
@@ -115,9 +115,9 @@ namespace PaviseApp
             return build > 0 && build < OsBuildBaseline;
         }
 
-        // 读不到版本号按放行 RtlGetVersion 失败返回 0 不能拿这个把人挡在门外
-        //   拦截点在崩溃自愈之后 老系统上装过的历史改动先还原干净再退出
-        //   否则用户既进不去界面 也没有任何入口撤回 Pavise 留下的系统改动
+        // Unreadable version means pass, RtlGetVersion failure returns 0 and must not lock people out
+        //   The block point is after crash self-heal, historical changes made on the old system are restored cleanly before exiting
+        //   Otherwise the user can neither enter the UI nor has any entry to undo the system changes Pavise left behind
         private static bool BlockIfOsTooOld(string dataDir)
         {
             int build = Native.OsBuild();

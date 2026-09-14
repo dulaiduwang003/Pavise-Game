@@ -1,12 +1,12 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 把对局的开始 渲染进程更替与结束通知给扩展模块 扩展不自己扫游戏进程
+// File purpose Notifies extension modules of match start, renderer process handover and match end, extensions don't scan game processes themselves
 using System;
 
 namespace PaviseApp
 {
     internal partial class GameMode
     {
-        // active 为真时带上当前档案与渲染进程身份 没有活动对局一律发一次"无对局"
+        // active true carries the current profile and renderer identity, with no active match always send one no-match notification
         private void NotifyExtensionSession(bool active)
         {
             GameProfile profile = null;

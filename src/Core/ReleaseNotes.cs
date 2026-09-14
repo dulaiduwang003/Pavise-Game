@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 维护内置的三语版本说明并记录已读版本
+// File purpose Maintain the built-in trilingual release notes and record the last read version
 using System;
 using System.Collections.Generic;
 
@@ -31,7 +31,7 @@ namespace PaviseApp
         }
 
 #if PAVISE_SELFTEST
-        // 缺译检查必须看原始行 Item 在缺译时回落到中文 永远查不出缺的那一列
+        // Missing-translation checks must look at the raw row; Item falls back to Chinese when a translation is missing and would never reveal the missing column
         internal string RawItem(int index, int lang)
         {
             if (items == null || index < 0 || index >= items.Length) return null;
@@ -55,6 +55,23 @@ namespace PaviseApp
 
         public static readonly ReleaseNote[] All = new[]
         {
+            new ReleaseNote("2.2.2.3", "2026-09-13", new[]
+            {
+                new[]{ "新增 游戏库扫描补上 Microsoft Store 已安装程序卸载记录 桌面和开始菜单快捷方式三个来源 快捷方式只当线索 目录里要有游戏证据才入库", "Added three scan sources to the game library: Microsoft Store, installed-program uninstall records, and desktop and Start Menu shortcuts. Shortcuts are only hints; a directory still needs game evidence before it is added.", "ゲームライブラリのスキャンに Microsoft Store、インストール済みプログラムのアンインストール記録、デスクトップとスタートメニューのショートカットの 3 つの取得元を追加しました。ショートカットは手がかりに過ぎず、ディレクトリにゲームの証拠がなければ追加しません。" },
+                new[]{ "新增 扫描到同一游戏多个入口时逐项选 不再一次全选把启动器也塞进库", "When a scan finds several entry points for one game, you now pick them one by one instead of select-all pulling the launcher into the library too.", "スキャンで同じゲームに複数の起動ファイルが見つかった場合、一括選択でランチャーまで登録されないよう、1 つずつ選ぶようにしました。" },
+                new[]{ "新增 游戏库搜索容错 全角半角 大小写 空格和标点都不计 多个词各自命中即可", "Library search is now tolerant: full-width and half-width, letter case, spaces and punctuation are ignored, and multiple words only need to match individually.", "ライブラリ検索が寛容になりました。全角半角、大文字小文字、空白と句読点を無視し、複数の語はそれぞれ一致すれば十分です。" },
+                new[]{ "新增 设备中断页改成三步 开启观测 挑设备 看结果设核心 设备按输入 存储 网络 显示 音频分组 可搜索", "The device interrupt page is now three steps: turn on observation, pick a device, review results and set cores. Devices are grouped as input, storage, network, display and audio, and can be searched.", "デバイス割り込みページを「観測をオン、デバイスを選ぶ、結果を見てコアを設定」の 3 ステップにしました。デバイスは入力、ストレージ、ネットワーク、表示、オーディオに分類され、検索できます。" },
+                new[]{ "新增 设备中断候选核心 按同游戏同配置的多局观测筛出持续空闲的核 每核采样覆盖八成以上 平均负载六成以下 忙碌两成以下 排除游戏物理核 不足三局标初步参考", "Device interrupt candidate cores: sessions of the same game and configuration are combined to find cores that stay idle. Each core needs at least 80% sample coverage, at most 60% average load and at most 20% busy time; the game's physical cores are excluded. Fewer than three sessions is marked as preliminary.", "デバイス割り込みの候補コアを追加しました。同じゲーム・同じ構成の複数対局を合わせて、空き続けるコアを選びます。各コアはサンプル網羅 80% 以上、平均負荷 60% 以下、ビジー率 20% 以下が必要で、ゲームの物理コアは除外します。3 対局未満は暫定として表示します。" },
+                new[]{ "新增 设备中断调整验证 重启后再打一局 与基线各三局对比游戏核慢 DPC 长帧和目标核负载 给出改善 无明确改善或证据不足 每条排除原因都写明", "Device interrupt adjustment verification: after a reboot and one more session, three sessions on each side are compared on slow DPCs on game cores, long frames and target core load, reporting improved, no clear improvement, or insufficient evidence. Every exclusion reason is spelled out.", "デバイス割り込み調整の検証を追加しました。再起動後にもう 1 対局すると、前後それぞれ 3 対局でゲームコアの遅い DPC、長いフレーム、対象コアの負荷を比較し、改善、明確な改善なし、証拠不足のいずれかを示します。除外理由はすべて明記します。" },
+                new[]{ "新增 设备中断调整历史 保留每次写入时间与基线 可单独恢复一台设备", "Device interrupt adjustment history keeps the write time and baseline of every change, and a single device can be restored on its own.", "デバイス割り込み調整の履歴を追加しました。各変更の書き込み時刻と基準値を保持し、デバイス 1 台だけを復元できます。" },
+                new[]{ "新增 概览页 需要处理 区 守护关着 配置没保存 缺管理员权限 最近有警告或异常 各给一个直达按钮", "Added a Needs attention area to the Overview page: guard off, unsaved game configuration, missing administrator rights, and recent warnings or errors each get a direct button.", "概要ページに「要対応」欄を追加しました。ガードがオフ、ゲーム設定が未保存、管理者権限がない、最近の警告や異常のそれぞれに直接移動するボタンを用意しています。" },
+                new[]{ "新增 概览页一键复制诊断摘要 带版本 游戏 相关设置和近期日志 直接粘给作者", "Added one-click diagnostic summary copying on the Overview page with version, game, related settings and recent logs, ready to paste to the author.", "概要ページに診断サマリーのワンクリックコピーを追加しました。バージョン、ゲーム、関連設定、最近のログを含み、そのまま作者に貼り付けられます。" },
+                new[]{ "改进 概览页显示当前游戏 上一局和当前策略 游戏库选中游戏后直接进游戏设置", "The Overview page now shows the current game, the last session and the current policy; selecting a game in the library goes straight to its settings.", "概要ページに現在のゲーム、前回の対局、現在のポリシーを表示するようにしました。ライブラリでゲームを選ぶとそのまま設定に進みます。" },
+                new[]{ "改进 状态色跟随明暗主题和自定义强调色 警告用单独的琥珀色", "Status colors now follow the light and dark themes and custom accent colors; warnings use their own amber.", "状態の色が明暗テーマとカスタムのアクセント色に追従するようになりました。警告は独自の琥珀色を使います。" },
+                new[]{ "修复 重复应用设备中断设置后验证记录丢失", "Fixed the verification record being lost after reapplying device interrupt settings.", "デバイス割り込み設定を再適用すると検証記録が失われる問題を修正しました。" },
+                new[]{ "修复 批量恢复设备中断后状态误报成功", "Fixed batch device interrupt restoration reporting success incorrectly.", "デバイス割り込みの一括復元後に状態が誤って成功と表示される問題を修正しました。" },
+                new[]{ "修复 手动选核未确认时提优日志误报", "Fixed misleading boost logs when manual core placement is unconfirmed.", "手動コア配置が未確認のときにブーストのログが誤って表示される問題を修正しました。" },
+            }),
             new ReleaseNote("2.2.2.2", "2026-09-11", new[]
             {
                 new[]{ "新增 检测到其他进程调整亲和性 立即纠正 核心调度页 默认关闭 开启后游戏亲和性被其他进程调整时立即写回所选范围", "Added Correct immediately when another process changes affinity on the Core Scheduling page, off by default. When on, the game's affinity is written back to the selected range as soon as another process changes it.", "コアスケジューリングページに「他のプロセスによるアフィニティ変更を検出したら直ちに修正」を追加。既定はオフ。オンにすると、他のプロセスが変更したら直ちに選択範囲へ書き戻します。" },
@@ -599,9 +616,9 @@ namespace PaviseApp
         public static void MarkSeen() { Settings.SaveStr(SeenKey, App.Version); }
 
 #if PAVISE_SELFTEST
-        // 历史条目是双语时代写的 不回填 所以只查两件事
-        //   每条至少有中英两列 声明了第三列的不许留空
-        //   新版本必须三语齐全那条由当前版本的用例单独守 别在这里比版本号
+        // Historical entries were written in the bilingual era and are not backfilled, so only two things are checked
+        //   Every entry has at least the Chinese and English columns, and a declared third column must not be empty
+        //   "New versions must have all three languages" is guarded separately by the current-version test case, do not compare version numbers here
         internal static List<string> MissingTranslations()
         {
             var bad = new List<string>();

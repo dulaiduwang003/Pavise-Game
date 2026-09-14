@@ -1,5 +1,5 @@
-// 文件用途 渲染交接的集成回归 临时游戏库加上合成的身份 前台 恢复和 GPU 接缝
-// 从不启动 GameMode.Loop 和 Program 也不改任何进程
+// File purpose Integration regression for renderer handoff: temporary game library plus synthetic identity, foreground, restore and GPU seams
+// Never starts GameMode.Loop or Program, and never modifies any process
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -57,7 +57,7 @@ namespace PaviseApp
             finally
             {
                 Logger.LogPath = previousLog;
-                // root 就是上面刚建的那个独立目录 绝不是用户的应用数据
+                // root is the standalone directory just created above, never the user's app data
                 try { Directory.Delete(root, true); } catch { }
             }
         }
@@ -199,7 +199,7 @@ namespace PaviseApp
                 GameDetection result = f.Resolve(f.Old, out epoch);
                 Eq(f.Old.RendererPid, result.RendererPid);
                 Eq(0, f.GpuCalls);
-                Eq(true, f.Protected(f.Candidate)); // short focus-loss grace, not an election
+                Eq(true, f.Protected(f.Candidate)); // short focus-loss grace not an election
                 Eq(null, f.Tracker.Confirmed(RendererCoordinatorNow()));
             }
         }
@@ -248,7 +248,7 @@ namespace PaviseApp
                 int epoch;
                 f.Resolve(f.Old, out epoch);
                 Eq(true, f.GpuStarted.WaitOne(3000));
-                // 把取消标志原样跑一遍 不去触发真正的全局还原
+                // Run the cancel flags through as-is without triggering the real global restore
                 RendererCoordinatorSet(f.Mode, flag, flag != "enabled");
                 f.Invalidate();
                 f.GpuGate.Set();
@@ -398,7 +398,7 @@ namespace PaviseApp
             {
                 int epoch;
                 GameDetection selected = f.Confirm(out epoch);
-                f.Tracker.Clear(); // invalidate only the candidate generation, not the whole session
+                f.Tracker.Clear(); // invalidate only the candidate generation not the whole session
                 Eq(epoch, f.Epoch);
                 Eq(false, f.Commit(selected, epoch));
                 Eq(f.Profile.ExecutablePath, f.Mode.GetProfiles()[0].ExecutablePath);

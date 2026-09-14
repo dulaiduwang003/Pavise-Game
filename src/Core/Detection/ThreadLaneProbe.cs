@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 采样游戏各线程的 CPU 占用找出帧关键线程 并探测其调度句柄 全程只读不写
+// File purpose Sample the game's per-thread CPU usage to find frame-critical threads and probe their scheduling handles; read-only throughout
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;

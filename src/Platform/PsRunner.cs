@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 以隐藏窗口方式执行 PowerShell 脚本并回收输出
+// File purpose Runs PowerShell scripts with a hidden window and collects output
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;

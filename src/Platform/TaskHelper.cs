@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 创建和移除登录启动计划任务
+// File purpose Creates and removes the logon startup scheduled task
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -34,12 +34,12 @@ namespace PaviseApp
 
         public const string AutostartArgument = "--autostart";
 
-        // schtasks 的失败原因只在 stderr 里 退出码本身分辨不出是权限还是 XML 读不到
+        // schtasks failure reasons are only in stderr, the exit code alone cannot tell permission from an unreadable XML
         [ThreadStatic] private static string lastSchtasksError;
 
         public static string LastSchtasksError { get { return lastSchtasksError; } }
 
-        // ONLOGON 兜底建出来的任务缺电池与运行时限设置 补不上就退避 别每次开机白重建一遍
+        // A task built by the ONLOGON fallback lacks the battery and run-time-limit settings, back off if repair fails, do not rebuild in vain on every boot
         private const string RepairFailKey = "AutostartRepairFails";
         private const int RepairGiveUp = 3;
 
@@ -53,7 +53,7 @@ namespace PaviseApp
             {
                 cachedExists = 1;
                 Settings.SaveStr("AutostartExe", Application.ExecutablePath);
-                // 手动开关过就给补齐重新来一次机会
+                // A manual toggle gives the repair another chance
                 Settings.SaveStr(RepairFailKey, "0");
             }
             return rc;
@@ -76,7 +76,7 @@ namespace PaviseApp
                     fs.Write(body, 0, body.Length);
                     fs.Flush();
                 }
-                // 必须先放掉自己的写句柄 schtasks 读 XML 时不共享 攥着句柄调用它只会拿到 rc=1
+                // Must release our own write handle first, schtasks reads the XML without sharing, calling it while holding the handle only yields rc=1
                 return Run("/Create /F /TN " + TaskName + " /XML \"" + path + "\"");
             }
             catch (Exception ex) { lastSchtasksError = ex.Message; return -1; }
@@ -194,7 +194,7 @@ namespace PaviseApp
             catch { }
         }
 
-        // 只补电池与运行时限那三项 补不上就退避 别每次开机刷同一条错
+        // Only repair the three battery and run-time-limit items, back off if that fails, do not spam the same error on every boot
         private static void RepairStartupTaskSettings(string cur)
         {
             int fails = RepairFailCount();
@@ -247,9 +247,9 @@ namespace PaviseApp
 
         private static bool SettingEquals(System.Xml.XmlNode settings, string name, string expected)
         {
-            // 整个 Settings 读不出来是解析异常 当作不需要动 别拿一次读失败去触发重建
+            // Whole Settings unreadable means a parse exception, treat as nothing to do, do not trigger a rebuild on one failed read
             if (settings == null) return true;
-            // 单项缺失是真的缺 任务计划导出时会省略取默认值的项 例如 ExecutionTimeLimit 默认 PT72H
+            // A single missing item is a real gap, the task export omits items at their default, e.g. ExecutionTimeLimit defaults to PT72H
             System.Xml.XmlNode node = settings.SelectSingleNode("*[local-name()='" + name + "']");
             if (node == null) return false;
             return string.Equals(

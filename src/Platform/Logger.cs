@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 记录运行日志并通知界面刷新
+// File purpose Writes the runtime log and notifies the UI to refresh
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -13,16 +13,16 @@ namespace PaviseApp
 
         private static readonly object lk = new object();
         public static string LogPath;
-        // 每次落盘递增 日志页比对它 没新内容就不再拿着同一把锁去读文件
+        // Incremented on every flush, the log page compares it and skips re-reading the file under the same lock when nothing is new
         private static long version;
         public static long Version { get { return System.Threading.Interlocked.Read(ref version); } }
         private static long knownLength = -1;
         private static string knownPath;
         private static bool writesSuspendedForReset;
-        // 用户可关的运行日志开关 和 writesSuspendedForReset 分开
-        //   后者是重置流程的一次性写屏障 只有新进程才解除
-        //   这个是常态设置 随时可来回切 关闭期间不落盘也不排队补写
-        //   崩溃转储走 AppendCrash 另一条路 不受此开关影响 出事时必须留下现场
+        // User-toggleable runtime log switch, separate from writesSuspendedForReset
+        //   the latter is the reset flow's one-shot write barrier, lifted only by a new process
+        //   this one is a regular setting, toggled back and forth any time, nothing is flushed or queued for later while off
+        //   crash dumps go through AppendCrash on a separate path, unaffected by this switch, the scene must be preserved when things break
         private static bool writesEnabled = true;
 
         public const string WritesEnabledKey = "LogWritesEnabled";
@@ -33,8 +33,8 @@ namespace PaviseApp
             set { lock (lk) writesEnabled = value; }
         }
 
-        // 重置删文件之前 同一把锁会把追加 轮转和清空的活排干
-        // 尾部仍然可读 通常要等新进程起来才重新允许写入
+        // Before reset deletes the files the same lock drains pending append, rotate and clear work
+        // the tail stays readable, writes are normally re-allowed only once the new process is up
         internal static void SuspendWritesForReset()
         {
             lock (lk) writesSuspendedForReset = true;
@@ -53,14 +53,16 @@ namespace PaviseApp
         }
 #endif
 
-        // 分级标记 落在时间戳之后 日志页按标记分级 没有标记的行仍按词表判 见 LogStreamView.Classify
-        //   WARN 环境限制 本机没有某个部件 权限或反作弊拦住 精简系统缺组件 换台机器就没事的那种
-        //   FAIL 功能性故障 写入 还原 落盘没成 抛了异常 数据有风险 需要有人看的那种
-        //   INFO 明确正常 用来压过词表 结构化诊断行里常带 lastFailure= code= 这类字段名
-        //     词表按子串匹配会把 lastFailure=none 判成异常 这类行必须自己声明级别
+        // Level tags placed after the timestamp, the log page classifies by tag, untagged lines still go by the word list, see LogStreamView.Classify
+        //   WARN environment limits: this machine lacks a component, blocked by permissions or anti-cheat, stripped-down OS missing parts, the kind that goes away on another machine
+        //   FAIL functional faults: a write, restore or flush failed, an exception was thrown, data at risk, the kind someone must look at
+        //   INFO explicitly normal, overrides the word list, structured diagnostic lines often carry field names like lastFailure= code=
+        //     substring matching on the word list would flag lastFailure=none as an error, such lines must declare their own level
+        //   PASS confirmed effective items, keeps words like error in process names from affecting classification
         public const string WarnTag = "WARN ";
         public const string FailTag = "FAIL ";
         public const string InfoTag = "INFO ";
+        public const string SuccessTag = "PASS ";
 
         public static void Info(string msg) { Log(InfoTag + msg); }
 

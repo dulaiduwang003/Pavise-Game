@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 下拉/浮层菜单的共享渲染件:菜单项徽标 MenuBadge 与统一深色菜单渲染器 TechMenuRenderer
+// File purpose Shared rendering pieces for dropdown/overlay menus: menu item badge MenuBadge and the unified dark menu renderer TechMenuRenderer
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;

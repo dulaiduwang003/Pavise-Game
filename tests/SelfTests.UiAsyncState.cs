@@ -1,5 +1,5 @@
-// 文件用途 确定性的页面刷新竞态 数据源 调度和 UI 派发都是 mock
-// 真实控件一直不显示 也从不拿原生句柄
+// File purpose Deterministic page refresh races, data source, scheduling and UI dispatch are all mocked
+// Real controls are never shown and never acquire native handles
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -19,8 +19,7 @@ namespace PaviseApp
                 UiAsyncSettingsRefreshesCoalesceWithoutLoss, UiAsyncSettingsInactiveAndRebuilt,
                 UiAsyncNormalWhitelistRefreshKeepsSelection, UiAsyncWhitelistRefreshesCoalesceWithoutLoss,
                 UiAsyncWhitelistInactiveAndRebuilt, UiAsyncDispatchFailuresReleaseSlots,
-                UiAsyncFailedReadsKeepKnownState, UiAsyncNoticeLoadingAndRetry,
-                UiAsyncNoticeRebuildAndHiddenCompletion };
+                UiAsyncFailedReadsKeepKnownState, UiAsyncUpdateHintStateAndRebuild };
             int failed = 0;
             foreach (Action test in cases)
             {
@@ -126,8 +125,8 @@ namespace PaviseApp
                     f.TaskState = initial; f.Auto.SetSilently(initial);
                     f.OnTaskChange = delegate(bool enabled)
                     {
-                        // 命令失败了照样能看到外部的变化
-                        // 以它新查的那次为准 不是之前那份快照
+                        // Even after a failed command the external change is still visible
+                        // the fresh query wins, not the earlier snapshot
                         f.TaskState = !initial;
                         return 1;
                     };
@@ -168,7 +167,7 @@ namespace PaviseApp
                 Toggle oldAuto = f.Auto; SettingCard oldShader = f.Shader;
                 f.ReplaceSettingsControls(); oldAuto.Dispose(); oldShader.Dispose();
                 f.Auto.SetSilently(true);
-                f.RefreshSettings(); // Requests a fresh read for the replacement view.
+                f.RefreshSettings(); // Requests a fresh read for the replacement view
                 f.RunPost();
                 UiAsyncCheck(f.Auto.Checked && f.Shader.Value == "untouched", "old snapshot wrote into rebuilt settings");
                 f.TaskState = true; f.Drain();
@@ -229,8 +228,8 @@ namespace PaviseApp
                 f.RefreshWhitelist(true); f.RunWork();
                 ListBox oldList = f.White; EmptyStatePanel oldPanel = f.WhitePanel;
                 f.ReplaceWhitelistControls(); oldList.Dispose(); oldPanel.Dispose();
-                // 直接填替换项 单独验一遍控件身份
-                // 不去推进 RefreshWhitelist 的代数
+                // Fill the replacement items directly and verify control identity separately
+                // without advancing the RefreshWhitelist generation
                 f.FastRows = UiAsyncRows(new[] { "beta" }, -1);
                 f.Call("FillWhitelist", f.FastRows);
                 f.RunPost();
@@ -286,58 +285,27 @@ namespace PaviseApp
             }
         }
 
-        private static void UiAsyncNoticeLoadingAndRetry()
-        {
-            for (int language = 0; language < 2; language++)
-                using (var f = new UiAsyncFixture())
-                {
-                    Lang.Cur = language;
-                    f.Call("ShowNotice"); f.Call("ShowNotice");
-                    UiAsyncCheck(f.NoticeRequests == 1 && !f.NoticeButton.Enabled
-                        && f.NoticeButton.Text == Lang.T("v230.notice.loading")
-                        && f.NoticeButton.AccessibleName == f.NoticeButton.Text,
-                        "notice click did not immediately show loading or allowed duplicate requests");
-                    f.NoticeDone(new UpdateResult { Ok = false });
-                    UiAsyncCheck(!f.NoticeButton.Enabled, "notice worker changed controls before UI dispatch");
-                    f.RunPost();
-                    UiAsyncCheck(f.NoticeButton.Enabled && f.NoticeButton.Text == Lang.T("v230.notice.entry")
-                        && f.NoticeMessage == "v230.notice.failed" && f.NoticeDisplays == 1,
-                        "failed request did not restore the button and report a retryable failure");
-
-                    f.Call("ShowNotice");
-                    var shown = new NoticeInfo { Id = "notice-test-1", Title = "Test", Body = "Body" };
-                    f.NoticeDone(new UpdateResult { Ok = true, Notice = shown }); f.RunPost();
-                    UiAsyncCheck(f.NoticeRequests == 2 && f.ShownNotice == shown
-                        && f.NoticeMessage == null && f.NoticeButton.Enabled
-                        && Settings.LoadStr("LastSeenNoticeId", "") == shown.Id && !f.NoticeButton.Dot,
-                        "retry did not display the fetched notice and mark only that notice as read");
-
-                    f.Call("ShowNotice"); f.NoticeDone(new UpdateResult { Ok = true }); f.RunPost();
-                    UiAsyncCheck(f.ShownNotice == null && f.NoticeMessage == "v230.notice.none"
-                        && !f.NoticeButton.Dot, "empty feed retained an old notice or looked like a network failure");
-                    f.Form.NoticeCheckForTest = delegate { throw new InvalidOperationException("mock dispatch failure"); };
-                    f.Call("ShowNotice");
-                    UiAsyncCheck(f.NoticeButton.Enabled && f.NoticeMessage == "v230.notice.failed",
-                        "request dispatch failure left the button stuck loading");
-                }
-        }
-
-        private static void UiAsyncNoticeRebuildAndHiddenCompletion()
+        private static void UiAsyncUpdateHintStateAndRebuild()
         {
             using (var f = new UiAsyncFixture())
             {
-                f.Call("ShowNotice");
-                RogLinkButton oldButton = f.NoticeButton;
-                f.ReplaceNoticeButton(); oldButton.Dispose();
-                Lang.Cur = 1; f.Call("RefreshNoticeButton");
-                UiAsyncCheck(!f.NoticeButton.Enabled && f.NoticeButton.Text == "Loading…",
-                    "rebuilt page lost pending notice state or used the old language");
+                f.Call("RefreshUpdatePresentation");
+                UiAsyncCheck(!f.UpdateButton.Visible, "unchecked version showed an update");
+                f.Form.NotifyUpdate(new UpdateResult { Ok = true, Latest = App.Version }); f.RunPost();
+                UiAsyncCheck(!f.UpdateButton.Visible, "current version showed an update");
                 f.Set("uiActive", false);
-                var unseen = new NoticeInfo { Id = "notice-test-unseen", Title = "Unseen" };
-                f.NoticeDone(new UpdateResult { Ok = true, Notice = unseen }); f.RunPost();
-                UiAsyncCheck(f.NoticeButton.Enabled && f.NoticeButton.Dot && f.NoticeDisplays == 0
-                    && Settings.LoadStr("LastSeenNoticeId", "") == "",
-                    "hidden completion opened a dialog, marked an unseen notice read or left rebuilt controls busy");
+                f.Form.NotifyUpdate(new UpdateResult { Ok = true, Latest = "99.0.0.0" });
+                UiAsyncCheck(!f.UpdateButton.Visible, "worker wrote controls before UI dispatch");
+                f.RunPost();
+                UiAsyncCheck(f.UpdateButton.Visible && f.UpdateButton.Text == "v99.0.0.0 · 查看更新", "hidden completion lost the version hint");
+                f.Form.NotifyUpdate(new UpdateResult { Ok = false }); f.RunPost();
+                f.Form.NotifyUpdate(new UpdateResult { Ok = true, Latest = App.Version }); f.RunPost();
+                UiAsyncCheck(f.UpdateButton.Visible, "failure or older late response erased the known update");
+                LinkLabel old = f.UpdateButton; f.ReplaceUpdateButton(); old.Dispose();
+                Lang.Cur = 1; f.Call("RefreshUpdatePresentation");
+                UiAsyncCheck(f.UpdateButton.Visible && f.UpdateButton.Text == "v99.0.0.0 · What's new", "rebuild lost the update or language");
+                Lang.Cur = 2; f.Call("RefreshUpdatePresentation");
+                UiAsyncCheck(f.UpdateButton.Text == "v99.0.0.0 · 更新内容", "Japanese update hint missing");
             }
         }
 
@@ -348,11 +316,7 @@ namespace PaviseApp
             internal SettingCard Shader;
             internal ListBox White;
             internal EmptyStatePanel WhitePanel;
-            internal RogLinkButton NoticeButton;
-            internal Action<UpdateResult> NoticeDone;
-            internal int NoticeRequests, NoticeDisplays;
-            internal NoticeInfo ShownNotice;
-            internal string NoticeMessage;
+            internal LinkLabel UpdateButton;
             internal readonly Queue<Action> Work = new Queue<Action>();
             internal readonly Queue<Action> Posts = new Queue<Action>();
             internal bool TaskState;
@@ -370,8 +334,8 @@ namespace PaviseApp
             {
                 Settings.UseTransientStoreForCurrentProcess();
                 Lang.Cur = 0;
-                // 自动豁免那些行用的是缓存下来的厂商名
-                // 先把缓存填上 这个测试里 FillWhitelist 就不会去枚举硬件
+                // Auto-exempt rows use the cached vendor name
+                // Fill the cache first so FillWhitelist does not enumerate hardware in this test
                 foreach (string name in new[] { "tokens", "stamp", "scanned" })
                 {
                     FieldInfo field = typeof(PeripheralVendorProbe).GetField(name, BindingFlags.Static | BindingFlags.NonPublic);
@@ -384,10 +348,7 @@ namespace PaviseApp
                 Set("uiActive", true);
                 ReplaceSettingsControls();
                 ReplaceWhitelistControls();
-                ReplaceNoticeButton();
-                Form.NoticeCheckForTest = delegate(Action<UpdateResult> done) { NoticeRequests++; NoticeDone = done; };
-                Form.NoticeDisplayForTest = delegate(NoticeInfo n, string message)
-                { NoticeDisplays++; ShownNotice = n; NoticeMessage = message; };
+                ReplaceUpdateButton();
                 Form.StartupTaskQueryForTest = delegate { TaskReads++; return TaskState; };
                 Form.StartupTaskChangeForTest = delegate(bool enabled)
                 {
@@ -440,10 +401,10 @@ namespace PaviseApp
                 Set("lstWhite", White); Set("whitePanel", WhitePanel);
             }
 
-            internal void ReplaceNoticeButton()
+            internal void ReplaceUpdateButton()
             {
-                NoticeButton = new RogLinkButton(Lang.T("v230.notice.entry"), "NOTICE // 01", "pulse");
-                controls.Add(NoticeButton); Set("btnNotice", NoticeButton);
+                UpdateButton = new LinkLabel();
+                controls.Add(UpdateButton); Set("btnUpdateHint", UpdateButton);
             }
 
             internal void RefreshSettings() { Call("RefreshSlowStateAsync"); }

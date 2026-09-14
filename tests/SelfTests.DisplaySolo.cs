@@ -1,6 +1,6 @@
-// 文件用途 显示路径计数 拓扑查询和拓扑写入全是注入的
-// 不碰原生显示接口 注册表和窗口
-// 对局单屏已下架 这里只回归崩溃残账的还原路径 快照由测试直接播种
+// File purpose Display path count, topology query and topology write are all injected
+// No native display APIs, registry or windows
+// Single display in match has been retired, this only regresses the restore path for crash residue, the snapshot is seeded directly by the test
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -44,7 +44,7 @@ namespace PaviseApp
             Interlocked.Increment(ref displaySoloChecks);
         }
 
-        // 旧版本对局中崩溃后的机器假件 拓扑停在仅内屏 写入会真的改变后续查询到的拓扑
+        // Fake of a machine after an old version crashed mid-match: topology stuck at internal-only, writes really change the topology later queries return
         private sealed class DisplaySoloFake
         {
             internal int Paths = 1;
@@ -68,7 +68,7 @@ namespace PaviseApp
             }
         }
 
-        // 快照播种 = 旧版本单屏激活期间崩溃留下的残账
+        // Snapshot seeding = residue left by an old version crashing while single display was active
         private static void SeedCrashSnapshot(uint original)
         {
             Settings.SaveStr(DisplaySolo.SnapKey, original.ToString());
@@ -88,7 +88,7 @@ namespace PaviseApp
 
         private static void DisplaySoloRestoreAcceptsUnpluggedSecondDisplay()
         {
-            // 副屏拔了 切回扩展验不出扩展 但机器已是单屏 物理世界优先
+            // Secondary display unplugged: switching back to extend cannot verify extend, but the machine is single-display now, the physical world wins
             var fake = new DisplaySoloFake { IgnoreSet = true };
             fake.Install();
             SeedCrashSnapshot(DisplaySolo.TopologyExtend);
@@ -98,7 +98,7 @@ namespace PaviseApp
 
         private static void DisplaySoloRestoreAcceptsRejectedWriteOnSingleDisplay()
         {
-            // 副屏拔掉后 API 可能直接拒绝写多屏拓扑 与"写成功验不出"同样按单屏收尾
+            // After unplugging the secondary the API may reject the multi-display topology write outright; same as "write succeeded but unverifiable", settle as single-display
             var fake = new DisplaySoloFake { SetFail = true };
             fake.Install();
             SeedCrashSnapshot(DisplaySolo.TopologyExtend);
@@ -106,7 +106,7 @@ namespace PaviseApp
             SoloCheck(!DisplaySolo.HasResidue(), "the settled restore must clear the journal");
         }
 
-        // 崩溃残账 + 经 RDP 启动补撤 + 远程只有一条路径:不许按"单屏"把物理机的原拓扑记录清掉
+        // Crash residue + catch-up restore at startup over RDP + remote has only one path: must not treat it as single-display and wipe the physical machine's original topology record
         private static void DisplaySoloRemoteSessionDoesNotSettle()
         {
             var fake = new DisplaySoloFake { Remote = true, IgnoreSet = true };
@@ -114,7 +114,7 @@ namespace PaviseApp
             SeedCrashSnapshot(DisplaySolo.TopologyExtend);
             SoloCheck(!DisplaySolo.Restore() && DisplaySolo.HasResidue(),
                 "a remote session settled the snapshot against the remote display config");
-            // 回到物理机 才能按真实路径数结账
+            // Only back on the physical machine can it settle by the real path count
             fake.Remote = false;
             fake.IgnoreSet = false;
             fake.Paths = 2;

@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 已下架的后备提优仅保留历史 IFEO 快照恢复 不再预置或施加
+// File purpose Withdrawn fallback boost; only restore of historical IFEO snapshots remains, no more presetting or applying
 using System;
 using Microsoft.Win32;
 
@@ -49,7 +49,7 @@ namespace PaviseApp
                 "PagePriority", RegistryValueKind.DWord, "IfeoPg_" + exe);
         }
 
-        // 账本或旧开关任一存在即为残留 恢复入口据此决定要不要动注册表
+        // Either the ledger or the old switch existing counts as residue; the restore entry uses this to decide whether to touch the registry
         public static bool HasResidue()
         {
             return Settings.LoadStr(ListKey, "").Length != 0

@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 设置页模式主题色的可点色块 选中画高亮环 默认 块中心画空心圈以区分
+// File purpose Clickable color swatch for mode theme colors on the Settings page, selected draws a highlight ring, the default block draws a hollow circle at center to distinguish it
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;

@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 核心矩阵的分带布局与鼠标交互
+// File purpose Band layout and mouse interaction of the core matrix
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -17,7 +17,7 @@ namespace PaviseApp
             if (annotate && h > Theme.S(40))
             {
                 legendY = h + Theme.S(RowGap);
-                // 图例按实际折行行数算高度 再撑进弹窗 避免多行图例被裁 / 底部内容被挤出对话框
+                // Legend height uses the actual wrapped line count and is pushed into the dialog, so multi-line legends are not clipped and bottom content is not pushed out
                 h = legendY + LegendHeight(width);
             }
             return h;

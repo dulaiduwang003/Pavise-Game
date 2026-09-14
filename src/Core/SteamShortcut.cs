@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 解析 Steam 桌面快捷方式 url 定位游戏安装目录与主程序
+// File purpose Parse Steam desktop shortcut url files to locate the game install directory and main executable
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -164,7 +164,7 @@ namespace PaviseApp
 
         internal static string PickMainExecutable(string root, string installDirName)
         {
-            // 安装目录名只用于显示 不作为渲染角色证据 与扫描使用同一保守推荐器
+            // Install directory name is for display only, not renderer role evidence; uses the same conservative recommender as the scan
             return ExecutableCandidateProbe.PickMainExecutable(root);
         }
     }

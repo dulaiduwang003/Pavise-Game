@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 LCU 本地接口客户端与界面收放
+// File purpose LCU local API client and UI show/hide
 
 using System;
 using System.IO;

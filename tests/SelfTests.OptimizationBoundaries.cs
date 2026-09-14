@@ -1,5 +1,5 @@
-// 文件用途 边界回归 只用合成的进程快照 假的显卡偏好和临时设置
-// 不跑游戏循环 不写真实 GPU 和电源 也不调真实进程
+// File purpose Boundary regression using only synthetic process snapshots, fake GPU preferences and temporary settings
+// Does not run the game loop, write real GPU or power state, or tune real processes
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -63,7 +63,7 @@ namespace PaviseApp
                 try
                 {
                     Eq(true, validated.WaitOne(5000));
-                    Volatile.Write(ref eligible, 0); // 窗口/会话资格在锁等待期间失效。
+                    Volatile.Write(ref eligible, 0); // window/session eligibility lapses while waiting on the lock
                 }
                 finally
                 {
@@ -102,13 +102,13 @@ namespace PaviseApp
                 foreach (ProcEntry entry in entries)
                     Eq(entry.Pid != 10, GameMode.AutoGpuVisibilityAllows(
                         new GameProcessSnapshot { Pid = entry.Pid, Creation = entry.Creation, Path = entry.Path }, snapshot, visible, 1));
-                visible.Add(20); // 正常可见应用和它自己的辅助进程仍需保护。
+                visible.Add(20); // normal visible apps and their own helper processes still need protection
                 foreach (ProcEntry entry in entries)
                     Eq(entry.Pid == 40, GameMode.AutoGpuVisibilityAllows(
                         new GameProcessSnapshot { Pid = entry.Pid, Creation = entry.Creation, Path = entry.Path }, snapshot, visible, 1));
                 entries[0].Path = @"C:\Fixture\visibleapp.exe";
                 entries[1].Path = hostPath; visible.Remove(20);
-                // 不能穿过没有窗口的共享运行时 把它拉起来的独立 app 记到更远的祖先头上
+                // Must not walk through a windowless shared runtime and charge the standalone app it launched to a more distant ancestor
                 Eq(true, GameMode.AutoGpuVisibilityAllows(new GameProcessSnapshot {
                     Pid = 30, Creation = 300, Path = entries[2].Path }, snapshot, visible, 1));
             }
@@ -137,7 +137,7 @@ namespace PaviseApp
                     GameMode mode = BoundaryAutoMode(folder);
                     foreach (object gate in new[] { GpuPrefStage.MutationGate, BoundaryField(mode, "sync") })
                     {
-                        // autoGpuOn=false 会逼着旧实现去读那个要拿 sync 的 ActivePreset
+                        // autoGpuOn=false forces the old implementation to read ActivePreset, which needs sync
                         BoundarySet(mode, "autoGpuOn", false);
                         AppGpuPreferenceResult result = AppGpuPreferenceResult.ReadFailed;
                         Exception failure = null;
@@ -181,7 +181,7 @@ namespace PaviseApp
                             if (boundary == "session") BoundaryCall(mode, "SetAutoGpuSessionStamp", 200L);
                             else if (boundary == "disable") mode.AutoGpuPreference = false;
                             else Eq(true, (bool)BoundaryCall(mode, "DrainAsyncShutdown", 4000));
-                            // 成功返回这条边界要排在偏好提交和 handled 记账后面
+                            // The success-return boundary must come after the preference commit and the handled bookkeeping
                             Eq(1, fixture.Control.Writes); Eq(true, GameMode.AutoGpuAlreadyHandled(AppGpuPath));
                         }
                         catch (Exception ex) { transitionError = ex; }
@@ -225,7 +225,7 @@ namespace PaviseApp
             type.GetField("RendererPid").SetValue(pass, pid);
             type.GetField("RendererCreation").SetValue(pass, creation);
             BoundaryCall(mode, "ResolvePriorityTarget", pass);
-            // 输入是合成的未饱和数据 免得测试跟着测试机当时的实时负载走
+            // Input is synthetic unsaturated data so the test does not follow the test machine's live load at the time
             type.GetField("CpuSaturated").SetValue(pass, false);
             BoundaryCall(mode, "RefreshBoostPriority", pass);
             return pass;
@@ -249,9 +249,9 @@ namespace PaviseApp
                 long generation = (long)BoundaryField(mode, "boostIdentityGeneration");
 
                 BoundaryCall(mode, "ReportFinish"); BoundaryCall(mode, "BeginSessionPolicy");
-                BoundaryCall(mode, "ReportBegin", "B"); // 真实直接换局入口，没有 Deactivate。
+                BoundaryCall(mode, "ReportBegin", "B"); // real direct match-switch entry, no Deactivate
                 Eq(true, (long)BoundaryField(mode, "boostIdentityGeneration") > generation);
-                object b = BoundaryBoostPass(mode, 101, 1000); // 同身份新局也须重新审计，拒绝旧 pass。
+                object b = BoundaryBoostPass(mode, 101, 1000); // a new match under the same identity must re-audit, old pass rejected
                 Eq(false, verified.Contains(101));
                 BoundaryPriority(b, Native.HIGH_PRIORITY_CLASS);
                 a.GetType().GetField("CpuSaturated").SetValue(a, true);

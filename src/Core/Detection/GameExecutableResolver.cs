@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 解析游戏程序和快捷方式的真实路径
+// File purpose Resolves the real path of game executables and shortcuts
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -27,7 +27,7 @@ namespace PaviseApp
             string source;
             try { source = Path.GetFullPath(Environment.ExpandEnvironmentVariables(selectedPath.Trim().Trim('"'))); }
             catch { error = Lang.T("t.gameexecutableresolver.2"); return false; }
-            // 给的是文件夹时按选举规则挑唯一的主程序 挑不出唯一的交给添加窗口列出来让用户选
+            // Given a folder, pick the unique main executable by the election rules; if no unique one emerges, the add dialog lists them for the user to choose
             if (Directory.Exists(source))
             {
                 string main = ExecutableCandidateProbe.PickMainExecutable(source);

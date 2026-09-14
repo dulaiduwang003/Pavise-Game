@@ -1,5 +1,5 @@
-// 文件用途 拿真实上报的内部版本做纯阈值检查 不启动 不还原 不建窗口
-// 系统门槛回归 只验证比较规则 不触发拦截也不还原任何东西
+// File purpose Pure threshold checks against the real reported build number, no startup, no restore, no windows
+// OS baseline regression, only verifies the comparison rules, triggers no blocking and restores nothing
 #if PAVISE_SELFTEST
 using System;
 
@@ -39,7 +39,7 @@ namespace PaviseApp
                 "the floor is Windows 10 2004, where per-process timer isolation arrives");
             OsCheck(Program.OsBuildBest > Program.OsBuildBaseline,
                 "the preferred build must sit above the floor");
-            // 本机跑得起自测就说明它在门槛之上 拦截不会误伤开发机
+            // If the self-test runs on this machine it is above the baseline, the block will not hit the dev machine
             OsCheck(!Program.OsBelowBaseline(),
                 "a machine running these tests must be at or above the baseline");
         }

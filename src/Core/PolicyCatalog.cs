@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 逐游戏独立配置的键目录与取值规范化
+// File purpose Key catalog and value normalization for per-game independent configuration
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -44,7 +44,7 @@ namespace PaviseApp
         public const string KeyBoost = "GmBoost";
         public const string KeyAggressive = "GmAggressive";
         public const string KeyGpuDemote = "GmGpuDemote";
-        // 已退役的重压键，仅用于屏蔽旧设置和清理逐游戏覆盖
+        // Retired heavy squeeze key, only used to mask old settings and clean per-game overrides
         public const string KeyHeavySqueeze = "GmHeavySqueezeV2";
         public const string KeyAdaptiveEscalate = "GmAdaptiveEscalateV1";
         public const string KeyRenderLane = "GmRenderLane";
@@ -53,7 +53,7 @@ namespace PaviseApp
         public const string KeyCoreMask = "GmCoreMask";
         public const string KeyPowerPlan = "PowerPlanOn";
         public const string KeyPowerYield = "GmPowerYield";
-        // 独立的开关 绝不继承已退役选项留下的 true 值
+        // Independent toggle, never inherits a true value left by a retired option
         public const string KeyDisableCpuIdle = "GmDisableCpuIdleV2";
         public const string KeyStandbyCleaner = "GmStandbyCleanerV2";
         public const string KeyCacheWarm = "GmCacheWarmV2";
@@ -73,18 +73,18 @@ namespace PaviseApp
         public const string KeyAmdAfmf = "AmdAfmf";
         public const string KeyIntelLowLatency = "GmIntelLowLatencyV1";
         public const string KeyIntelEndurance = "GmIntelEnduranceV1";
-        // 厂商性能档已下架 键名保留给旧收据的清收与迁移 不再进策略目录
+        // Vendor performance mode is retired; key name kept for reclaiming and migrating old receipts, no longer in the policy catalog
         public const string KeyLaptopPerf = "GmLaptopPerfV1";
         public const string KeyVramShield = "GmVramShield";
-        // 这两项 2.2.2 起进了目录 各有开关与逐游戏行 默认关
+        // These two entered the catalog in 2.2.2, each with a toggle and a per-game row, off by default
         public const string KeyAudioLowLat = "GmAudioLowLatV1";
         public const string KeyWsTrim = "GmWsTrimV1";
-        // 托管电源方案里两个空闲旋钮 抬高进更深 C-state 的门槛 关掉按性能状态缩放门槛
-        //   原先只由已下架的极限档驱动 现在是独立开关 默认关
+        // Two idle knobs in the managed power scheme: raise the threshold for entering deeper C-states, turn off scaling the threshold by performance state
+        //   Originally driven only by the retired Extreme tier, now an independent toggle, off by default
         public const string KeyIdlePolicy = "GmIdlePolicyV1";
 
-        // 掌机档不提供的项 整机十几瓦 核少 内存和集显共用一份
-        //   对局中按快照解析一律按关 界面标预设强制关 核心独占另在快照里关
+        // Items the Handheld tier does not offer: the whole device runs on a dozen-odd watts, few cores, memory shared with the iGPU
+        //   Mid-match snapshot resolution treats them as off, the UI marks them preset-forced off, exclusive cores are turned off separately in the snapshot
         public static readonly string[] HandheldBlocked =
             { KeyDisableCpuIdle, KeyIdlePolicy, KeyCacheWarm, KeyVramShield };
 
@@ -105,7 +105,7 @@ namespace PaviseApp
 
         private static readonly PolicyItem[] Items =
         {
-            // 顺序就是界面顺序 CfgOptionLabels 和 ModeStrip.Order 都按下标对齐 别改成数值序
+            // Order is the UI order, CfgOptionLabels and ModeStrip.Order align by index, do not change to numeric order
             new PolicyItem(KeyPreset, PolicyValueKind.Enum, "0", "cfg.mode", GroupMode,
                 new[] { "0", "1", "4", "2" }),
             new PolicyItem(KeySuppress, PolicyValueKind.Bool, "1", "v14.bg.master", GroupBackground, null),
@@ -180,7 +180,7 @@ namespace PaviseApp
             string v = (value ?? "").Trim();
             switch (item.Kind)
             {
-                // 保留损坏/未来版本的原文，让执行层拒绝；不能清空后误继承全局落点。
+                // Keep the raw text of corrupt or future-version values so the execution layer rejects it; do not blank it and wrongly inherit the global placement
                 case PolicyValueKind.CorePlan:
                     return value ?? "";
                 case PolicyValueKind.Bool:
@@ -193,9 +193,9 @@ namespace PaviseApp
                     string normalized = parsed.ToString(CultureInfo.InvariantCulture);
                     foreach (string choice in item.Choices)
                         if (choice == normalized) return normalized;
-                    // 档位的墓碑值必须走 PresetValue.From 那一份判定 落到 Fallback 就是智能
-                    //   GameMode 读原始设置走 From 会得到电竞 快照层走这里得到智能
-                    //   两条路一分叉 界面显示电竞而 Sweep 按智能压 老极限用户正好踩上
+                    // A tier tombstone value must go through the PresetValue.From decision, landing on Fallback means Smart
+                    //   GameMode reads raw settings via From and gets Esports, the snapshot layer comes here and gets Smart
+                    //   Once the two paths diverge, the UI shows Esports while Sweep suppresses as Smart, exactly what old Extreme users hit
                     return key == KeyPreset
                         ? ((int)PresetValue.From(parsed)).ToString(CultureInfo.InvariantCulture)
                         : item.Fallback;

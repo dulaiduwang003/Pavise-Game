@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 Windows 系统进程名单 白名单预设与退役项 核心系统进程 桌面壳进程
+// File purpose Windows system process roster: whitelist presets and retired items, core system processes, desktop shell processes
 using System;
 using System.Collections.Generic;
 

@@ -28,6 +28,8 @@ namespace PaviseApp
             try
             {
                 string[] cases = {
+                    "TestIrqEnhancedCapturePath", "TestIrqEnhancedCoreEvidence", "TestIrqEnhancedTransactions", "TestIrqEnhancedPersistence", "TestIrqEnhancedComparison",
+                    "TestIrqAdjustmentHistory", "TestIrqRestoreResults", "TestIrqCorePlan",
                     "TestIrqCoreLoadWeighted", "TestIrqCoreLoadMissingAndFailure", "TestIrqCoreLoadLifecycle",
                     "TestIrqCoreLoadDiscardAndRearm", "TestIrqCoreLoadLedger", "TestIrqPinSessionSources",
                     "TestIrqObservationLifecycle", "TestIrqEveryMatchFallback",

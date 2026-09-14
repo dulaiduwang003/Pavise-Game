@@ -1,13 +1,13 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 反作弊压制的全局强度档 三档共用同一批有效成分 递进的只是介入深度
+// File purpose Global strength tier for anti-cheat suppression; all three tiers share the same active ingredients, only the depth of intervention escalates
 using System;
 
 namespace PaviseApp
 {
-    // 有效成分是 EcoQoS 小核限频与磁盘 IO 降级 三档一档都不少
-    //   递进的是介入深度 温和不动调度优先级 均衡降到低于正常 隔离再加极低 IO 与绑核
-    //   见 SuppressionCore.Apply 顶部那段注释 压反作弊不能喂到饿死
-    //   扫描型反作弊挂起游戏线程时自己分不到时间片 挂起窗口会从几百毫秒拖到几秒
+    // The active ingredients are EcoQoS, E-core frequency cap and disk IO downgrade; every tier has all of them
+    //   What escalates is the depth: Gentle leaves scheduling priority alone, Balanced drops it below normal, Isolated adds very low IO and core pinning
+    //   See the comment at the top of SuppressionCore.Apply: anti-cheat suppression must not starve it
+    //   A scanning anti-cheat that suspends game threads gets no time slice itself, and the suspend window stretches from hundreds of ms to seconds
     internal enum AntiCheatMode
     {
         Gentle = 0,
@@ -18,7 +18,7 @@ namespace PaviseApp
     internal static class AntiCheatModes
     {
         public const string Key = "AcModeV1";
-        // 默认保持隔离 它等于本功能一直以来的行为 升级不改变已生效的设置
+        // Default stays Isolated; it equals what this feature has always done, so upgrades never change settings already in effect
         public const AntiCheatMode Default = AntiCheatMode.Isolated;
 
         public static AntiCheatMode Current
@@ -38,7 +38,7 @@ namespace PaviseApp
             }
         }
 
-        // 读不出或读到不认识的值都退回默认 不猜用户想要哪一档
+        // Unreadable or unrecognized values fall back to the default; never guess which tier the user wanted
         internal static AntiCheatMode Parse(string raw)
         {
             if (string.IsNullOrEmpty(raw)) return Default;
@@ -51,8 +51,8 @@ namespace PaviseApp
             }
         }
 
-        // 温和只降 IO 不动优先级 均衡降优先级 隔离再加极低 IO
-        //   这三个值恰好是既有的 SuppressionLevel 压制构成代码一行不用改
+        // Gentle only lowers IO and leaves priority alone; Balanced lowers priority; Isolated adds very low IO
+        //   These three values are exactly the existing SuppressionLevel, so the suppression composition code needs no change
         public static SuppressionLevel LevelOf(AntiCheatMode mode)
         {
             switch (mode)
@@ -63,11 +63,11 @@ namespace PaviseApp
             }
         }
 
-        // 绑核是三项里最容易被反作弊自身保护拒绝的 只在最高档做
+        // Core pinning is the one of the three most likely to be refused by the anti-cheat's self-protection, so only the top tier does it
         public static bool PinsCores(AntiCheatMode mode) { return mode == AntiCheatMode.Isolated; }
 
-        // 从绑核的档降到不绑核的档时 已有落点必须主动释放
-        //   只停止新增是不够的 SqueezeAff 不清零 DesiredAffinity 会一直返回落点 每轮对账又写回来
+        // Dropping from a pinning tier to a non-pinning one must actively release existing placements
+        //   Merely stopping new ones is not enough: unless SqueezeAff zeroes DesiredAffinity it keeps returning the placement and every reconcile pass writes it back
         public static bool ShouldReleasePins(AntiCheatMode from, AntiCheatMode to)
         {
             return PinsCores(from) && !PinsCores(to);

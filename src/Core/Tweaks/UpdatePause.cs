@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 对局期间暂停 Windows 更新相关服务并在结束后恢复 账目逻辑走 ServicePauser
+// File purpose Pause Windows Update related services during the match and resume afterwards; bookkeeping goes through ServicePauser
 using System.Collections.Generic;
 
 namespace PaviseApp
@@ -7,7 +7,7 @@ namespace PaviseApp
     internal static class UpdatePause
     {
         private static readonly string[] Names = { "wuauserv", "UsoSvc" };
-        // 会话日记键由恢复完成判定共同引用 改名必须两边一起
+        // Session journal key is shared with the restore-complete check, rename both sides together
         internal const string Flag = "PrevUpdatePaused";
 
         private static readonly ServicePauser pauser = new ServicePauser(Names, Flag);

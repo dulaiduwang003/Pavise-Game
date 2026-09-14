@@ -1,5 +1,5 @@
-﻿// @author bdth 2074055628@qq.com
-// 文件用途 量出哪个驱动的中断最长 并把设备的中断钉到指定的几个核上
+// @author bdth 2074055628@qq.com
+// File purpose Measure which driver's interrupts run longest and pin a device's interrupts to specified cores
 
 using System;
 using System.Collections.Generic;
@@ -43,6 +43,40 @@ namespace PaviseApp
 
         internal const double MinMaxUsToOffer = 200.0;
 
+        internal static IrqWriteResult LastWriteResult { get { return engine.LastResult; } }
+        public static bool Owns(string id)
+        {
+            foreach (string touched in engine.TouchedDevices())
+                if (string.Equals(touched, id, StringComparison.OrdinalIgnoreCase)) return true;
+            return IrqPriorityTweak.AppliedTo(id);
+        }
+        public static bool RestoreOnly(string id)
+        {
+            if (string.IsNullOrEmpty(id) || !Native.IsElevated()) return false;
+            foreach (string owner in OwnedElsewhere())
+                if (string.Equals(owner, id, StringComparison.OrdinalIgnoreCase)) return false;
+            return engine.RestoreOnly(new List<string> { id });
+        }
+
+        internal static IrqRestoreResult RestoreDevices(string selected)
+        {
+            if (!Native.IsElevated()) return new IrqRestoreResult();
+            var result = IrqRestoreResult.Run(selected,engine.TryTouchedDevices,IrqPriorityTweak.TryTouchedDevices,
+                OwnedElsewhere,delegate(string id) { return engine.RestoreOnly(new List<string> { id }); },
+                IrqPriorityTweak.RestoreOnly);
+            if (selected == null && result.ScopeReadSucceeded)
+            {
+                bool affinityPresent = false;
+                foreach (var device in result.Devices) affinityPresent |= device.AffinityRequested;
+                // An older no-op may have left only the global enabled flag
+                // Clear it as full restore always did without inventing a device outcome
+                if (!affinityPresent)
+                    try { result.AffinityFinalized = engine.Disable(null); }
+                    catch { result.AffinityFinalized = false; }
+            }
+            return result;
+        }
+
         public static bool Applied { get { return engine.EnabledByPavise; } }
         public static bool HasResidue { get { return engine.HasResidue; } }
         public static bool RebootedSinceWrite(string deviceId) { return engine.RebootedSinceWrite(deviceId); }
@@ -65,9 +99,10 @@ namespace PaviseApp
 
         public static bool ApplyDevice(string deviceId, ulong mask)
         {
+            engine.LastResult = new IrqWriteResult { Failed = 1,Failure = Lang.T("irq.exact.unsupported") };
             if (string.IsNullOrEmpty(deviceId)) return false;
             ulong keep = Sanitize(mask);
-            if (keep == 0) return false;
+            if (keep == 0 || CpuTopology.MultiGroup || keep != mask) return false;
             if (!Native.IsElevated()) { Logger.Log(Lang.T("irqmove.needadmin")); return false; }
             foreach (string g in OwnedByOtherTweaks())
                 if (string.Equals(g, deviceId, StringComparison.OrdinalIgnoreCase))
@@ -166,8 +201,8 @@ namespace PaviseApp
             try { if (engine.HasResidue && !engine.EnabledByPavise) Revert(); } catch { }
         }
 
-        // 挪核重启回来的用户十有八九不知道还要打一局才能看到实测效果 启动时主动说一声
-        //   只在 已重启 且 重启后一局都没打过 时提示 打过局说明观测已经在路上 不用催
+        // Users coming back from an IRQ core move reboot mostly do not know they still need to play a match to see measured results, say so proactively at startup
+        //   Prompt only when "rebooted" and "no match played since reboot"; a match played means observation is already underway, no need to nag
         public static void NotifyPendingVerification()
         {
             try
@@ -201,7 +236,7 @@ namespace PaviseApp
             catch { }
             try
             {
-                // 自动编排钉过的设备 手动路径不抢 想手动接管先关掉自动编排
+                // Devices pinned by IRQ autopilot are not taken over by the manual path; to take over manually, turn off autopilot first
                 foreach (string id in IrqAutoPilot.TouchedDevices())
                     if (!Has(owned, id)) owned.Add(id);
             }

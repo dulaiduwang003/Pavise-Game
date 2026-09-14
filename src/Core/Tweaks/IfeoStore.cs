@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 已下架 IFEO 功能的历史名单与空键清理 不提供新策略写入
+// File purpose Historical list and empty-key cleanup for the withdrawn IFEO feature; no new policy writes
 using System;
 using System.Collections.Generic;
 using Microsoft.Win32;

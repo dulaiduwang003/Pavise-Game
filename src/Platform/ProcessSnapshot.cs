@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 一次系统调用取全部进程身份并缓存进程生命期内不变的镜像路径
+// File purpose Fetches all process identities in one syscall and caches image paths, which never change during a process lifetime
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -23,7 +23,7 @@ namespace PaviseApp
     {
         public readonly ProcEntry[] Entries;
         public readonly Dictionary<int, ProcEntry> ByPid;
-        // 拍摄时刻 复用的快照带同一个时间戳 按时间差算 CPU 占用的地方靠它识别复用
+        // Capture time, reused snapshots carry the same timestamp, CPU usage by time delta relies on it to detect reuse
         public readonly long TakenTicks;
 
         internal ProcessSnapshot(ProcEntry[] entries)
@@ -59,7 +59,7 @@ namespace PaviseApp
         private const int OffsetSessionId = 0x64;
         private const int OffsetReadTransferCount = 0xE8;
         private const int OffsetWriteTransferCount = 0xF0;
-        // x64 的 SYSTEM_PROCESS_INFORMATION 固定 0x100 字节 后面紧跟 NumberOfThreads 条 0x50 字节的线程记录
+        // x64 SYSTEM_PROCESS_INFORMATION is a fixed 0x100 bytes, followed by NumberOfThreads thread records of 0x50 bytes each
         private const int ProcessRecordBytes = 0x100;
         private const int ThreadRecordBytes = 0x50;
         private const int OffsetThreadUniqueThread = 0x30;
@@ -111,11 +111,11 @@ namespace PaviseApp
             return Capture(pathSession, 0);
         }
 
-        // 快照复用 全量枚举(class 5)按本机进程线程数计价 进程多的机器一次要好几毫秒
-        //   事件在场时进程集的每次变动都会走 dirty 强制重拍 兜底轮询里进程集没动过
-        //   重拍只是把同一份名单再抄一遍 复用窗口只对"事件没报告的变动"有暴露
-        //   上限取 5 秒 比 20 秒的全量兜底保守四倍 快照本体只读 跨轮共享安全
-        //   代价是这段窗口里新入压制的进程 报告用的 CPU/IO 基线最多旧 5 秒
+        // Snapshot reuse, the full class 5 enumeration costs by local process and thread count, several ms on machines with many processes
+        //   With events present every process set change goes through dirty and forces a retake, in the fallback poll the process set has not changed
+        //   so a retake just copies the same list again, the reuse window is only exposed to changes the events did not report
+        //   Cap at 5 s, four times more conservative than the 20 s full fallback, snapshot body is read-only so sharing across rounds is safe
+        //   Cost is that processes newly suppressed in this window get a CPU/IO report baseline up to 5 s stale
         internal const int ReuseMaxAgeMs = 5000;
 
         private static ProcessSnapshot cachedSnapshot;
@@ -174,8 +174,8 @@ namespace PaviseApp
             }
         }
 
-        // 调用方持有 bufferSync 成功后共享缓冲里是一份完整的系统进程记录
-        //   扩容或失败后缓冲内容不可信 sharedBufferValid 记着这一点
+        // Caller holds bufferSync, on success the shared buffer holds one complete system process record set
+        //   After a grow or failure the buffer contents are untrustworthy, sharedBufferValid tracks that
         private static bool QuerySharedBufferLocked()
         {
             try
@@ -216,9 +216,9 @@ namespace PaviseApp
             }
         }
 
-        // 一个进程当前的线程号 已排序去重 已终止的不算 找不到该进程或创建时间不符返回 null
-        //   refresh 为 false 直接读最近一次扫描留在共享缓冲里的记录 不发查询
-        //   归因证明靠它省掉系统级线程枚举 线程记录紧跟在各自的进程记录之后
+        // A process's current thread ids, sorted and deduped, terminated ones excluded, null if the process is not found or creation time mismatches
+        //   refresh false reads the record the last scan left in the shared buffer without issuing a query
+        //   Attribution proof relies on it to skip system-wide thread enumeration, thread records follow their process record
         internal static int[] ThreadIdsOf(int pid, long creation, bool refresh)
         {
             if (pid <= 0) return null;

@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 退优 恐慌还原与对局停用
+// File purpose Boost release, panic restore and match deactivation
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -75,9 +75,9 @@ namespace PaviseApp
             }
             foreach (var kv in boosts)
                 if (RenderLane.IsActiveFor(kv.Key, kv.Value.Creation)) RenderLane.Release();
-            // 新 OpenProcess 可能已被反作弊剥权 优先使用首次 hard pin 前
-            // 留下的 pid+creation 绑定句柄恢复 affinity 并精确读回 失败时
-            // 保留句柄 后面的普通恢复仍可尝试 不能提前丢失唯一恢复能力
+            // A new OpenProcess may already be stripped by anti-cheat, prefer the pid+creation bound handle
+            // retained before the first hard pin to restore affinity and read back exactly, on failure
+            // keep the handle so the later ordinary restore can still try, never lose the only restore capability early
             foreach (var kv in boosts)
                 RestoreIrqProofHardPin(IntPtr.Zero, kv.Key, true);
             foreach (var kv in boosts)
@@ -128,7 +128,7 @@ namespace PaviseApp
                             && creation == kv.Value.Creation;
                         if (!identityKnown)
                         {
-                            // 句柄开得出来但身份读不到 多半是进程已退出只剩对象 没有东西可还原
+                            // Handle opens but identity can't be read, most likely the process exited leaving only the object, nothing to restore
                             done = !Native.StillActive(h);
                         }
                         else if (identity)
@@ -146,8 +146,8 @@ namespace PaviseApp
                 if (done)
                 {
                     if (coreIsolation != null && !coreIsolation.Drop(pid, kv.Value.Creation)) isolationClean = false;
-                    // RestoreValues 已精确还原该 identity 的 affinity 关闭 retained
-                    // handle 之前再移除其绑定 避免退出路径泄漏
+                    // RestoreValues has restored that identity's affinity exactly, remove its binding before closing the retained
+                    // handle to avoid a leak on the exit path
                     ForgetIrqProofHardPin(pid);
                     CrashGuard.ReleaseBoostProcess(pid, kv.Value.Creation);
                     lock (sync)
@@ -181,8 +181,8 @@ namespace PaviseApp
 
         public bool PanicRestore()
         {
-            // 还原可能先做很慢的注册表和原生操作 才把请求投给 Loop
-            // 这整段时间内都要挡住新的清理
+            // Restore may do slow registry and native work before posting the request to Loop
+            // New cleanups must be blocked for that whole span
             Interlocked.Increment(ref standbyCleanerRestorePending);
             InvalidateCacheWarm();
             InvalidateStandbyCleanerWork();
@@ -201,7 +201,7 @@ namespace PaviseApp
             int cleared = SelfProtectedRoster.Clear();
             if (cleared > 0)
                 Logger.Log(Lang.T("log.gamemodeboost.46") + cleared + Lang.T("log.gamemodeboost.47"));
-            // 已下架的 IFEO/CFG 历史残留也归紧急恢复管 写注册表前须停 IRQ capture
+            // Retired IFEO/CFG legacy leftovers also fall under emergency restore, IRQ capture must stop before writing the registry
             bool legacyOk = true;
             if (IfeoBoost.HasResidue())
                 legacyOk &= IrqMutationBoundary.Run<bool>(IfeoBoost.RestoreAll);
@@ -210,8 +210,8 @@ namespace PaviseApp
             int fusesCleared;
             lock (sync)
             {
-                // 清掉的缓存没法还原 重置别的环境熔断时
-                // 不能让一个失败的清理器或者损坏的开启状态复活
+                // A cleared cache can't be restored, when resetting other environment circuit breakers
+                // don't let a failed cleaner or a corrupted enabled state come back to life
                 bool keepStandbyFuse = envFused.Contains("standby");
                 fusesCleared = envFused.Count - (keepStandbyFuse ? 1 : 0);
                 envFused.Clear();
@@ -268,14 +268,14 @@ namespace PaviseApp
             EndEnglishInputSession();
             InvalidateIntelGraphicsWork();
             InvalidateRendererHandoff();
-            // 先封账再做任何恢复 避免把 Pavise 自己撤电源/核心/网络设置产生的 DPC
-            // 记到刚结束的游戏里 ReportFinish 内部按 Present→DPC 收口
+            // Close the books before any restore, so DPCs from Pavise withdrawing its own power/core/network settings
+            // aren't charged to the game that just ended, ReportFinish closes out internally from Present to DPC
             Exception reportFailure = null;
             try { ReportFinish(); }
             catch (Exception ex) { reportFailure = ex; }
             finally
             {
-                // ReportFinish 任何中途异常都不能把两个 ETW 探针留到下一局
+                // No mid-way exception in ReportFinish may leave the two ETW probes over to the next match
                 List<long[]> abandoned;
                 try { CollectLongFrames(0, TimeSpan.Zero, out abandoned); } catch { }
                 try { irqProbe.TakeSummary(); } catch { }
@@ -332,7 +332,7 @@ namespace PaviseApp
             bool inputClean = DrainEnglishInput(8000);
             bool intelClean = DrainIntelGraphics(8000);
             bool cacheWarmClean = cacheWarm == null || cacheWarm.Drain(8000);
-            // 维持旧语义 恢复动作已经完成后 再把原本会由 ReportFinish 抛出的异常交给上层
+            // Keep the old semantics, once restore actions are complete hand the exception ReportFinish would have thrown up to the caller
             if (reportFailure != null) throw reportFailure;
             return clean && envClean && backgroundClean && standbyClean && inputClean && intelClean && cacheWarmClean;
         }

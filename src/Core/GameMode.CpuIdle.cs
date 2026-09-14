@@ -1,4 +1,4 @@
-// 文件用途 显式开启的禁止 CPU 空闲 原生写入和还原共用电源工作线程闸
+// File purpose Explicitly enabled Disable CPU idle, native write and restore share the power worker thread gate
 using System;
 using System.Threading;
 
@@ -21,7 +21,7 @@ namespace PaviseApp
             {
                 PolicySnapshot snapshot = sessionPolicy;
                 bool global = disableCpuIdleOn;
-                // 掌机档不提供 实时解析也按关 跟快照口径一致
+                // Not offered on Handheld tier, live resolution also reads as off, consistent with the snapshot criteria
                 if (snapshot != null && snapshot.Preset == PerformancePreset.Handheld
                     && PolicyCatalog.IsHandheldBlocked(key)) return false;
                 if (snapshot == null || string.IsNullOrEmpty(snapshot.ProfileId)) return global;
@@ -35,12 +35,12 @@ namespace PaviseApp
             }
         }
 
-        // 不再要求开着电源计划接管 目标方案由 PowerPlan 按当前活动方案解析
+        // No longer requires power plan takeover to be on, the target scheme is resolved by PowerPlan from the currently active scheme
         private Func<bool> CaptureCpuIdleAdmission(bool ready)
         {
             int generation = Volatile.Read(ref cpuIdleGeneration);
-            // 拿 PowerPlan 的原生锁之前 先把当前档案读一次
-            // 用户每改一次这个令牌就失效 包括关了又开这种
+            // Read the current profile once before taking PowerPlan's native lock
+            // Every user change invalidates this token, including off-then-on
             bool wanted = ready && EffDisableCpuIdle;
             return delegate
             {
@@ -57,8 +57,8 @@ namespace PaviseApp
             {
                 bool want = mayContinue();
                 lock (sync) { if (envFused.Contains("cpuidle")) want = false; }
-                // 目标方案读不到或值被外部改过算跳过
-                // 不是激活失败 先把之前拥有的值还原掉
+                // Target scheme unreadable or value changed externally counts as skipped
+                // not an activation failure, restore the previously owned value first
                 want = want && PowerPlan.CpuIdleEligible;
                 lock (sync)
                 {
@@ -73,8 +73,8 @@ namespace PaviseApp
                 if (!want && PowerPlan.CpuIdleHasResidue) applied = true;
                 bool result = EnvStep("cpuidle", want, applied,
                     delegate { return PowerPlan.TryDisableCpuIdle(mayContinue); }, PowerPlan.RestoreCpuIdle);
-                // 取消或回滚成功 以及用户本来就关着这个设置
-                // 都不给 Pavise 这次设置改动的所有权
+                // Cancelled or rolled back successfully, and the user having this setting off to begin with
+                // none of them give Pavise ownership of this setting change
                 cpuIdleActive = want ? result && PowerPlan.CpuIdleActive : result;
             }
         }

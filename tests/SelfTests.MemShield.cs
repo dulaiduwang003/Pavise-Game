@@ -1,6 +1,6 @@
-// 文件用途 配额查询和配额写入全是注入的
-// 不碰原生进程接口 注册表和窗口
-// 内存驻留已下架 这里只回归崩溃残账的配额还原路径 快照由测试直接播种
+// File purpose Quota queries and quota writes are all injected
+// Never touches native process APIs, the registry or windows
+// Memory residency has been retired, this only regresses the crash-residue quota restore path, snapshots are seeded directly by the test
 #if PAVISE_SELFTEST
 using System;
 using System.Threading;
@@ -45,7 +45,7 @@ namespace PaviseApp
             Interlocked.Increment(ref memShieldChecks);
         }
 
-        // 旧版本对局中崩溃后的目标进程假件 配额上还挂着硬下限 写入会真的改变后续查询
+        // Fake of a target process left over from an old-version in-match crash: quota still carries the hard minimum, writes really change later queries
         private sealed class MemShieldFake
         {
             internal bool Gone;
@@ -73,7 +73,7 @@ namespace PaviseApp
             }
         }
 
-        // 快照播种 = 旧版本锁定期间崩溃留下的残账 记录目标身份与原配额
+        // Snapshot seeding = residue left by a crash during old-version locking, records target identity and original quota
         private static void SeedCrashSnapshot(int pid, long creation)
         {
             Settings.SaveStr(MemShield.SnapKey,
@@ -112,7 +112,7 @@ namespace PaviseApp
 
         private static void MemShieldHealClearsOnPidReuse()
         {
-            // PID 被系统复用 创建时间对不上 绝不能把配额写到无关进程身上
+            // PID reused by the system, creation time mismatches, must never write the quota onto an unrelated process
             var fake = new MemShieldFake { Creation = 9 };
             fake.Install();
             SeedCrashSnapshot(4242, 7);
@@ -123,7 +123,7 @@ namespace PaviseApp
 
         private static void MemShieldHealClearsWhenQuotaAlreadyUnlocked()
         {
-            // 硬下限已被外力清掉 无债可还
+            // Hard minimum already cleared by an outside party, no debt left to repay
             var fake = new MemShieldFake { Flags = 0 };
             fake.Install();
             SeedCrashSnapshot(4242, 7);
@@ -144,7 +144,7 @@ namespace PaviseApp
 
         private static void MemShieldFailedRestoreKeepsDebt()
         {
-            // 写入被拒 回读仍是锁定态 记录必须保留给下次启动
+            // Write rejected, read-back still shows the locked state, the record must be kept for the next startup
             var fake = new MemShieldFake { IgnoreSet = true };
             fake.Install();
             SeedCrashSnapshot(4242, 7);

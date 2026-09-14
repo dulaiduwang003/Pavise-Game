@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 网络收包引离游戏核已下架 只保留旧版留下的 RSS 收据清收 启动与清除时按收据写回
+// File purpose Steering network receive off game cores is retired; only cleanup of legacy RSS receipts remains, written back per receipt on launch and on clear
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -8,8 +8,8 @@ namespace PaviseApp
 {
     internal static class RssSteer
     {
-        // 2.1.3.4 上架 随后下架 改 RSS 区间会让有线网卡驱动重初始化 链路断一下 每局两次 用户反馈进游戏断网
-        //   收据键与写回脚本保留 旧版写过的机器启动时按收据写回 之后清账
+        // Shipped in 2.1.3.4 and pulled right after: changing the RSS range makes wired NIC drivers reinitialize, dropping the link briefly, twice per match; users reported losing network in game
+        //   Receipt key and write-back script kept; machines the old version wrote to get written back per receipt on launch, then the ledger is cleared
         private const string ReceiptKey = "RssSteerReceipt";
         private static readonly object lk = new object();
 

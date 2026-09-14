@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 对局报告的登记 封存与结束汇总
+// File purpose Match report registration, sealing and end summary
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -17,11 +17,11 @@ namespace PaviseApp
             GpuThrottleProbe.Reset();
             VramSpillProbe.Reset();
             VramShield.Begin();
-            // 只读判定 记账推迟到局末 短局不配消耗观测名额
+            // Read-only decision, accounting is deferred to match end, a short match does not deserve to consume an observation slot
             irqBudgetDecided = IrqSessionProbe.EnabledSetting;
             irqObserveThisSession = !irqBudgetDecided || IrqObservationBudget.Peek();
             ArmIrqObservation(game);
-            // PRESENT 在严格核域 DPC epoch 真正起采后才开启 系统观测不需要它
+            // PRESENT starts only after the strict core domain DPC epoch actually begins sampling, system observation does not need it
             long paviseCpu = CurrentProcessCpuTicks();
             lock (sync)
             {
@@ -35,7 +35,7 @@ namespace PaviseApp
                 repProfileId = activeDetection != null && activeDetection.Profile != null
                     ? activeDetection.Profile.Id : null;
                 repRendererPid = activeDetection != null ? activeDetection.RendererPid : 0;
-                // 预算跳过的局不算"请求过观测" 局末不该按取消或失败报告
+                // A match skipped by budget does not count as having requested observation, match end must not report it as cancelled or failed
                 repIrqRequested = IrqSessionProbe.EnabledSetting && irqObserveThisSession;
             }
         }
@@ -97,9 +97,9 @@ namespace PaviseApp
             string game;
             long t0;
             long paviseCpuStart;
-            // 渲染进程 pid 用来把 present 帧收敛到游戏本体 必须取本局独立快照
-            //   换局检测会先把 activeDetection 切到新游戏 再结算旧局
-            //   拿不到渲染 PID 时 present 证据判为不可用 退回纯 IrqVerdict
+            // The renderer pid narrows present frames to the game itself, must come from this match's own snapshot
+            //   match switch detection moves activeDetection to the new game first, then settles the old match
+            //   without a renderer PID the present evidence is ruled unusable, falling back to pure IrqVerdict
             int rendererPid;
             bool irqRequested;
             lock (sync)
@@ -125,20 +125,20 @@ namespace PaviseApp
             }
             if (game == null) return;
 
-            // 主动停守护也走与游戏自然退出相同的封存边界 不能先等待
-            // PRESENT 排空 再把等待时间当成 renderer 证明失效
+            // Stopping the guard manually goes through the same seal boundary as a natural game exit, must not first wait for
+            // the PRESENT drain and then count the wait time as renderer proof expiry
             SealIrqObservation();
 
             TimeSpan dur = TimeSpan.FromSeconds((double)(Stopwatch.GetTimestamp() - t0) / Stopwatch.Frequency);
-            // 观测预算的局末记账 短于合格门槛的局不动计数 观测名额不被闪退秒退烧掉
+            // Match-end accounting for the observation budget, matches shorter than the qualifying threshold leave the count alone, so crashes and instant exits do not burn observation slots
             if (irqBudgetDecided)
             {
                 IrqObservationBudget.CommitSession(irqObserveThisSession, (int)dur.TotalSeconds);
                 irqBudgetDecided = false;
             }
-            // 采集窗口要严格包含 开始是 DPC→present 结束必须 present→DPC
-            // 先停 DPC 去做昂贵汇总会让仍在跑的 present 多出一段无 DPC 覆盖的尾巴
-            // 那一段里的长帧会被误判成完整零命中
+            // The capture window must strictly contain: DPC starts before present, and present must stop before DPC
+            // Stopping DPC first for the expensive summary leaves the still-running present with a tail no DPC covers
+            // long frames in that tail would be misjudged as a complete zero-hit
             List<long[]> longFrameIntervals = null;
             try { CollectLongFrames(rendererPid, dur, out longFrameIntervals); } catch { }
             foreach (var kv in cpu)
@@ -183,21 +183,28 @@ namespace PaviseApp
             if (throttle != null) msg += Lang.F("rep.gputhrottle", throttle);
             string spill = VramSpillProbe.Summarize();
             if (spill != null) msg += Lang.F("rep.vramspill", spill);
+            // present/DPC alignment exists only to strengthen the device interrupt verdict, no present content goes into the match report
+            //   intersect this match's per-event DPC timeline with the present long frame intervals, the result feeds only the core move suggestion on the IRQ page, if either is unavailable fall back to pure IrqVerdict
+            List<InterruptAttribution.DpcTimelineEntry> dpcTimeline = null;
+            bool dpcTimelineTruncated = false;
+            try { dpcTimeline = irqProbe.TakeDpcTimeline(out dpcTimelineTruncated, false); } catch { }
+            PresentDpcAlignment align = null;
+            try { align = PresentDpcAlignment.AlignDpcToLongFrames(longFrameIntervals, dpcTimeline); } catch { align = null; }
+
+            if (irqFrameEvidence != null)
+            {
+                irqFrameEvidence.AlignmentComplete = !dpcTimelineTruncated && align != null && align.Ok;
+                irqFrameEvidence.AlignmentModule = align == null ? "" : align.TopModule ?? "";
+                irqFrameEvidence.AlignmentHits = align == null ? 0 : align.TopModuleLongFrameHits;
+            }
+            irqProbe.SetFrameEvidence(irqFrameEvidence);
             string irq = irqProbe.TakeSummary();
             msg += FormatIrqSessionResult(irq, irqRequested, irqProbe.StatusText);
             NotifyIrqObservationChanged(true);
             Logger.Log(Lang.T("log.gamemodesession.1") + msg);
 
-            // present↔DPC 对齐只为增强设备中断判断 不往对局报告塞任何 present 内容
-            //   本局逐事件 DPC 时间线 ∩ present 长帧区间 结果只喂给挪核建议(IRQ 页) 任一不可用则退回纯 IrqVerdict
-            List<InterruptAttribution.DpcTimelineEntry> dpcTimeline = null;
-            bool dpcTimelineTruncated = false;
-            try { dpcTimeline = irqProbe.TakeDpcTimeline(out dpcTimelineTruncated); } catch { }
-            PresentDpcAlignment align = null;
-            try { align = PresentDpcAlignment.AlignDpcToLongFrames(longFrameIntervals, dpcTimeline); } catch { align = null; }
-
-            // 60 秒门槛沿用气泡那条 不另立标准
-            //   短于一分钟的多半是启动器闪一下造成的误判 摆到首页只会让人以为坏了
+            // The 60 second threshold follows the balloon rule, no separate standard
+            //   anything under a minute is mostly a launcher flash misdetected, showing it on the home page would only look broken
             if (dur.TotalSeconds >= 60)
             {
                 string brief = Lang.F("rep.brief", game, FmtDur(dur), used.Count);
@@ -211,11 +218,11 @@ namespace PaviseApp
             }
         }
 
-        // 回顾式挪核建议 复用中断页那套判定 不造新结构 不写注册表
-        //   前提 对局观测开着(否则本局根本没采数据) 且样本够(沿用中断页 3 局门槛) 避免一两局的偶发噪声
-        //   IrqVerdict 仍作判定之底 present↔DPC 对齐是增强证据 不替换:
-        //     只有已分离目标 swapchain 时 Worth 与 present 撞长帧才可称 证实级
-        //   当前 Event 184 只有 PID 多流合并可填平或伪造长帧 因而只记线索不参与裁决
+        // Retrospective IRQ core move suggestion, reuses the Interrupts page verdict logic, no new structures, no registry writes
+        //   preconditions: match observation on (otherwise nothing was sampled this match) and enough samples, following the Interrupts page 3-match threshold to avoid noise from one or two matches
+        //   IrqVerdict remains the base of the verdict, present/DPC alignment is reinforcing evidence, not a replacement
+        //     only with the target swapchain isolated can Worth colliding with a present long frame be called confirmed-grade
+        //   Event 184 currently gives only the PID, multi-stream merging can fill in or fake long frames, so it is recorded as a clue only and takes no part in the ruling
         private void MaybeSuggestIrqRelocation(PresentDpcAlignment align, bool dpcTruncated)
         {
             if (!IrqSessionProbe.EnabledSetting) return;
@@ -233,9 +240,9 @@ namespace PaviseApp
                     if (v != null && v.Worth && v.VersionVerified) worth++;
                 if (worth <= 0) return;
 
-                // present 对齐的正命中可以增强 Worth 但当前 DxgKrnl 184
-                // 只给 PID/context/window 没有可靠 swapchain 身份 同 PID 辅助呈现流
-                // 可以填平主渲染流的长帧 因而默认只把它当正证据 不把零命中当反证
+                // A positive present alignment hit can reinforce Worth, but DxgKrnl 184 currently
+                // gives only PID/context/window with no reliable swapchain identity, auxiliary present streams on the same PID
+                // can fill in the main render stream's long frames, so by default it only counts as positive evidence, zero hits are not counter-evidence
                 bool presentUsable = align != null && align.Ok && align.LongFrameHits != null;
                 bool swapchainIdentityReliable = presentUsable && align.SwapchainIdentityReliable;
                 bool alignmentIncomplete = dpcTruncated
@@ -273,8 +280,8 @@ namespace PaviseApp
                     }
                 }
 
-                // 只有未来能证明是单一目标 swapchain 的采集链 完整零命中
-                // 才可拦住主动提示 当前 PID 级数据的零命中回退 Worth 正命中仍有效
+                // Only a future capture chain proven to be a single target swapchain may let a complete zero-hit
+                // block the proactive hint, with current PID-level data a zero-hit falls back to Worth while positive hits still count
                 int longFrames = align == null ? 0 : align.LongFrames;
                 int reported = ResolveIrqReportedCount(
                     presentUsable, swapchainIdentityReliable, alignmentIncomplete,
@@ -293,8 +300,8 @@ namespace PaviseApp
         internal static string FormatIrqSessionResult(string summary, bool requested, string status)
         {
             if (!string.IsNullOrEmpty(summary)) return summary;
-            // 每局的失败/取消原因也挂在带游戏名和时长的结束记录下
-            // 不能只留一条会被下一局覆盖的最新状态 更不能捏造实测数值
+            // Each match's failure/cancel reason also hangs under the end record carrying game name and duration
+            // not just one latest status that the next match overwrites, and never fabricated measurements
             return requested && !string.IsNullOrEmpty(status)
                 ? Lang.F("rep.irq.result", status) : "";
         }
@@ -303,12 +310,12 @@ namespace PaviseApp
             bool dpcIncomplete, int longFrames, int matched, int worth)
         {
             if (!presentUsable) return worth;
-            // PID 级多流合并既能填平长帧 也能用高频辅助流压低
-            // median 而伪造长帧 没有 swapchain 身份时 正负结果都不许缩减 Worth
+            // PID-level multi-stream merging can both fill in long frames and use a high-rate auxiliary stream to pull down
+            // the median and fake long frames, without swapchain identity neither positive nor negative results may reduce Worth
             if (!swapchainIdentityReliable) return worth;
-            // present 明确没长帧的时候 DPC 时间线再残缺也藏不住撞长帧
+            // When present clearly has no long frames, even a broken DPC timeline cannot hide a long frame collision
             if (longFrames <= 0 && matched <= 0) return 0;
-            // 对齐链不完整时 已命中项不能反向否定其余 Worth 项
+            // With an incomplete alignment chain, the matched items must not negate the remaining Worth items
             return dpcIncomplete ? worth : matched;
         }
     }

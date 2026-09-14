@@ -80,7 +80,7 @@ namespace PaviseApp
             Directory.CreateDirectory(data);
             var core = new SuppressionCore();
             var tamer = new Tamer(core);
-            var mode = new GameMode(data, core); // Fresh temporary library; never Start/Stop or tune processes.
+            var mode = new GameMode(data, core); // Fresh temporary library never Start/Stop or tune processes
             using (var icon = IconArt.MakeIcon(24))
             using (var form = new OffscreenPanelForm(tamer, mode, icon))
             {
@@ -131,9 +131,9 @@ namespace PaviseApp
                 policyTabs.Index = 2;
                 tuning.InvokeItem((int)PageId.CoreScheduling);
                 var coreEditor = Field<CoreSchedulingPanel>(form, "coreSchedulingPanel");
-                // 分配与独占合成一页 没有子页可切 独占范围跟着选核走
+                // Assignment and exclusive cores merged into one page, no sub-page to switch, the exclusive range follows core selection
                 Check(Field<DBPanel>(form, "coreScrollPanel") != null, "Core scheduling lost its content panel");
-                // 整核向上取 选了 CPU 4 就把同核的 CPU 5 一起收走 28 推出 12|48
+                // Round up to whole cores: selecting CPU 4 also takes its sibling CPU 5, 28 derives 12|48
                 coreEditor.SelectMask(28);
                 Check(coreEditor.Matrix.Visible && coreEditor.Draft.IsolationMask == 60,
                     "Exclusive range did not follow the game selection: "
@@ -141,7 +141,7 @@ namespace PaviseApp
                 tuning.InvokeItem((int)PageId.Graphics);
                 var gpuPanels = Field<DBPanel[]>(form, "gfxTabPanels");
                 var gpuTabs = Field<TechTabs>(form, "gfxTabs");
-                // 可见的显卡功能会跟着测试机硬件变 滚动这块由测试自己建一个确定的溢出区
+                // Visible GPU features vary with the test machine hardware, so the test builds its own deterministic overflow area for scrolling
                 bool naturalGpuOverflow = gpuPanels[0].DisplayRectangle.Height > gpuPanels[0].ClientSize.Height;
                 int overflow = gpuPanels[0].ClientSize.Height + Theme.S(240);
                 if (gpuPanels[0].AutoScrollMinSize.Height < overflow)
@@ -166,7 +166,7 @@ namespace PaviseApp
                 Check(Field<TechTabs>(form, "gfxTabs").Index == 1, "Rebuild lost the active sub-tab");
                 DBPanel rebuiltGpuPanel = Field<DBPanel[]>(form, "gfxTabPanels")[0];
                 Field<TechTabs>(form, "gfxTabs").Index = 0;
-                // 没有真实溢出时 WinForms 会把合成位置钳回 0 跨 DPI 的逻辑位置另有纯合成测试
+                // Without real overflow WinForms clamps the composed position back to 0; cross-DPI logical position has its own pure composition test
                 Check(!naturalGpuOverflow || rebuiltGpuPanel.AutoScrollPosition.Y == scrollY,
                     "Rebuild lost an inactive tab's scroll");
                 Check(Field<int>(form, "mainReturnPage") == (int)PageId.Log, "Rebuild overwrote the return destination");
@@ -188,7 +188,7 @@ namespace PaviseApp
                 Check(Settings.LoadStr("DeepTuningLastPage", "") == ((int)PageId.Graphics).ToString(), "Last section was not persisted");
 
                 var hits = (List<SearchHit>)Call(form, "QuerySettingCards", "");
-                // 独占卡片跟选核同页 搜索直接落到核心调度页 没有子页要展开
+                // The exclusive card shares the page with core selection, search lands directly on the Core Scheduling page, no sub-page to expand
                 SearchHit exclusiveHit = hits.Find(delegate(SearchHit hit) { return hit.PageId == (int)PageId.CoreScheduling
                     && hit.Card.Title == Lang.T("schedule.exclusive"); });
                 Check(exclusiveHit != null && exclusiveHit.PageName == Lang.T("nav.corescheduling"),
@@ -233,6 +233,29 @@ namespace PaviseApp
                 CheckOverviewFooter(Field<DBPanel>(form, "pageOverview"));
                 Settle(form);
                 Save(form, Path.Combine(output, "overview-" + language + "-" + (light ? "light" : "dark") + ".png"));
+                Call(form, "ApplyUpdateResult", new UpdateResult { Ok = true, Latest = App.Version });
+                Check(!Field<DBPanel>(form, "updateBadge").Visible,
+                    "Current version must not show a NEW badge");
+                form.SelectPageForTest((int)PageId.About);
+                Settle(form);
+                Save(form, Path.Combine(output, "about-" + language + "-" + (light ? "light" : "dark") + ".png"));
+                form.SelectPageForTest((int)PageId.Overview);
+                Settle(form);
+                Call(form, "ApplyUpdateResult", new UpdateResult { Ok = true, Latest = "99.0.0.0" });
+                var updateLink = Field<LinkLabel>(form, "btnUpdateHint");
+                Check(updateLink.Visible, "New version hint is not visible");
+                var updateBadge = Field<DBPanel>(form, "updateBadge");
+                Check(updateBadge.Visible && updateLink.Text.Contains("99.0.0.0"),
+                    "Update hint must show both NEW badge and latest version");
+                Check(updateBadge.Right < updateLink.Left
+                    && updateLink.Right < Field<RogLinkButton>(form, "btnDonate").Left,
+                    "Update hint overlaps adjacent footer controls");
+                Check(updateLink.Left > Field<Label>(form, "lblEvidenceLive").Right,
+                    "Update link overlaps the readiness label's hit area");
+                Save(form, Path.Combine(output, "overview-update-" + language + "-" + (light ? "light" : "dark") + ".png"));
+                form.SelectPageForTest((int)PageId.About);
+                Settle(form);
+                Save(form, Path.Combine(output, "about-update-" + language + "-" + (light ? "light" : "dark") + ".png"));
                 Check(!form.UiActive && Field<object>(tamer, "worker") == null, "Navigation started runtime workers");
                 Check(Field<System.Windows.Forms.Timer>(form, "uiTimer") == null
                     || !Field<System.Windows.Forms.Timer>(form, "uiTimer").Enabled, "UI polling unexpectedly resumed");
@@ -243,21 +266,21 @@ namespace PaviseApp
             Console.WriteLine("PASS full-window language=" + language + " light=" + light);
         }
 
-        // 混合架构的能效核是单线程卡 只有这种卡片才会暴露标签放不下的问题
-        //   台架平常注入的是清一色双线程卡 混合机器上一半的卡片从来没被渲染过
-        //   截图留在产物里 布局回归时能直接比对 别再靠某台机器临时写台架
+        // On hybrid CPUs the E-cores are single-thread cards, only those expose the label-does-not-fit problem
+        //   The bench normally injects nothing but dual-thread cards, half the cards on a hybrid machine were never rendered
+        //   Screenshots stay in the build output so layout regressions can be compared directly, no more ad-hoc bench on some machine
         private static void CaptureHybridCoreCards(PanelForm form, string output, int language, bool light)
         {
             CpuTopology.TopologySnapshot saved = CpuTopology.CaptureTopologyForTest();
             try
             {
-                // 4 颗双线程性能核 0-7 加 4 颗单线程能效核 8-11 共 12 逻辑核
+                // 4 dual-thread P-cores 0-7 plus 4 single-thread E-cores 8-11, 12 logical cores total
                 CpuTopology.InjectTopologyForTest(0xFFF,
                     new ulong[] { 3, 12, 48, 192, 256, 512, 1024, 2048 },
                     new ulong[0], 0xFF, 0xF00, 0, 0, true, false);
                 form.SelectPageForTest((int)PageId.CoreScheduling);
                 var editor = Field<CoreSchedulingPanel>(form, "coreSchedulingPanel");
-                // 同时选中一颗双线程核与两颗单线程能效核 两种卡宽的选中标都要出现
+                // Select one dual-thread core and two single-thread E-cores at once, the selected tag must appear on both card widths
                 editor.SelectMask(0x30C);
                 Settle(form);
                 Save(form, Path.Combine(output,
@@ -266,7 +289,7 @@ namespace PaviseApp
             finally { CpuTopology.RestoreTopologyForTest(saved); }
         }
 
-        // 自适应升档只在智能档起作用 其它档位整张卡藏起来 下面的卡上移补位 搜索也不再列它
+        // Adaptive tier escalation only works in the Smart tier; other tiers hide the whole card, cards below move up, and search no longer lists it
         private static void CheckAdaptiveCardFollowsPreset(PanelForm form, GameMode mode)
         {
             form.SelectPageForTest((int)PageId.Policy);
@@ -294,7 +317,7 @@ namespace PaviseApp
                 hits = (List<SearchHit>)Call(form, "QuerySettingCards", "");
                 Check(hits.Find(delegate(SearchHit h) { return h.Card == adaptive; }) != null,
                     "Search lost the adaptive card in Smart");
-                // 换档时策略页藏在别的页后面 所有卡的 Visible 都是假 再切回来不能留一张卡的空位
+                // During a tier change the Policy page is hidden behind another page and every card's Visible is false; switching back must not leave a card-sized gap
                 form.SelectPageForTest((int)PageId.Overview);
                 mode.Preset = PerformancePreset.Handheld;
                 Call(form, "RefreshPolicyPresentation");
@@ -302,7 +325,7 @@ namespace PaviseApp
                 Check(!adaptive.Visible && adaptive.Suppressed, "Adaptive card shown on Handheld after a hidden refresh");
                 Check(boost.Top == gpu.Bottom + gap,
                     "Hidden-page refresh left a gap where the adaptive card was: " + boost.Top + " vs " + (gpu.Bottom + gap));
-                // 折叠展开走的是另一条摞卡路径 不能把藏掉的那张的空位又摞回来
+                // Collapse/expand goes through a different card-stacking path, it must not stack the hidden card's gap back in
                 bool wasExpanded = gpu.Expanded;
                 gpu.Expanded = !wasExpanded;
                 Check(boost.Top == gpu.Bottom + gap,
@@ -330,7 +353,7 @@ namespace PaviseApp
             Field<TechTabs>(form, "cfgTabs").Index = 1;
             var editor = Field<CoreSchedulingPanel>(form, "cfgCoreSchedulingPanel");
             editor.FollowToggle.Checked = false; editor.SelectMask(48);
-            // 独占只有全局一份 逐游戏页给只读摘要 不给开关
+            // Exclusive cores exist only globally, the per-game page shows a read-only summary, no toggle
             Check(!editor.IsolationToggle.Visible && !editor.IsolationToggle.Enabled,
                 "Profile must show the exclusive setting read-only");
             Check(Field<DBPanel>(form, "pageGameConfig").Visible
@@ -349,11 +372,11 @@ namespace PaviseApp
             Check(Settings.LoadStr(CoreScheduling.Key, "") == globalStored
                 && CoreScheduling.ProfileToken(mode.GetProfiles().Find(delegate(GameProfile p) { return p.Id == profile.Id; })) == profileStored,
                 "Profile rebuilding saved an uncommitted draft");
-            // 自适应升档那一行只给智能档 本游戏改成电竞后整行不建 改回来再出现
+            // The adaptive escalation row is Smart tier only; once this game switches to Esports the row is not built, and it reappears on switching back
             Check(Field<Dictionary<string, SettingCard>>(form, "cfgCardByKey").ContainsKey(PolicyCatalog.KeyAdaptiveEscalate),
                 "Profile page lost the adaptive row in Smart");
-            // 台架里游戏库没就绪 SetProfileOverride 落不了盘会回滚 直接改内存里的覆盖项 页面读的就是它
-            //   前面的保存流程可能已经把列表里的实例换过一轮 按 Id 取当前那份 别拿开头捕获的引用
+            // The game library is not ready on the bench, SetProfileOverride cannot persist and rolls back, so edit the in-memory override directly, the page reads that
+            //   The earlier save flow may have already swapped the instances in the list, fetch the current one by Id, not the reference captured at the start
             GameProfile live = Field<List<GameProfile>>(mode, "profiles").Find(delegate(GameProfile p) { return p.Id == profile.Id; });
             Check(live != null, "Profile fixture vanished from the library");
             live.Overrides[PolicyCatalog.KeyPreset] = ((int)PerformancePreset.Competitive).ToString();
@@ -407,8 +430,8 @@ namespace PaviseApp
         {
             var links = new List<Control>();
             FindOverviewLinks(overview, links);
-            // 捐赠 公告 帮助 三个入口从左到右 捐赠换了暖色 与旁边两个主题色的入口分开
-            Check(links.Count == 3, "Overview must show donate, notice and help/feedback entries: " + links.Count);
+            // The footer has Donate and Website; the update hint is a separate text link.
+            Check(links.Count == 2, "Overview must show donate and website entries: " + links.Count);
             links.Sort(delegate(Control a, Control b) { return a.Left.CompareTo(b.Left); });
             Check(links[0].Left >= Theme.S(276), "Overview links overlap readiness status");
             Check(links[0].Text == Lang.T("donate.entry") && ((RogLinkButton)links[0]).Tint.HasValue
@@ -419,7 +442,9 @@ namespace PaviseApp
                 Check(links[i].Parent.ClientRectangle.Contains(links[i].Bounds), "Overview footer link clipped");
                 if (i > 0) Check(links[i - 1].Right < links[i].Left, "Overview footer links overlap");
             }
-            Check(Math.Abs(links[2].Right - (links[2].Parent.Width - Theme.S(30))) <= 2,
+            Check(links[1].Text == Lang.T("site.entry") && ((RogLinkButton)links[1]).External,
+                "Website entry should open the browser");
+            Check(Math.Abs(links[1].Right - (links[1].Parent.Width - Theme.S(30))) <= 2,
                 "Overview still reserves an empty slot for the removed entry");
         }
 
@@ -499,7 +524,7 @@ namespace PaviseApp
         }
     }
 
-    // 这个夹具不能出现在桌面上 也不能在用户干活的时候抢焦点
+    // This fixture must never appear on the desktop or steal focus while the user is working
     internal sealed class OffscreenPanelForm : PanelForm
     {
         public OffscreenPanelForm(Tamer tamer, GameMode mode, Icon icon) : base(tamer, mode, icon, true) { }

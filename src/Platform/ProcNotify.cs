@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 监听系统进程启动事件并唤醒调度线程
+// File purpose Listens for system process start events and wakes the scheduling thread
 using System;
 using System.Collections.Generic;
 using System.Management;
@@ -22,13 +22,13 @@ namespace PaviseApp
         public ProcessChangeKind Kind;
     }
 
-    // 进程启停按批交付而不是逐个回调 一次游戏启动会带出启动器
-    //   中转和本体好几个进程 攒成一批才能在同一份快照里认全父子关系
+    // Process starts/exits are delivered in batches, not per-event callbacks, one game launch brings out the launcher,
+    //   relay and the game itself as several processes, only a batch lets one snapshot resolve all parent-child links
     internal sealed class ProcessChangeBatch
     {
         public readonly ProcessChange[] Changes;
-        // 内核缓冲溢出过 这批漏了事件 父子关系不再可信
-        //   检测标脏走全量重扫 家族历史直接清空重来
+        // Kernel buffer overflowed, this batch missed events, parent-child links are no longer trustworthy
+        //   Detection marks dirty and does a full rescan, family history is cleared and rebuilt
         public readonly bool Overflowed;
 
         public ProcessChangeBatch(ProcessChange[] changes, bool overflowed)

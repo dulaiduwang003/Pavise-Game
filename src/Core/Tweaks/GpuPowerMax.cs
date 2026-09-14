@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 对局中把显卡功耗墙拉到厂商允许的上限 退局按快照还原
+// File purpose Raise the GPU power limit to the vendor-allowed maximum during a match; restore from snapshot at match end
 using System;
 using System.Globalization;
 
@@ -7,7 +7,7 @@ namespace PaviseApp
 {
     internal static class GpuPowerMax
     {
-        // 会话日记键由恢复完成判定共同引用 改名必须两边一起
+        // Session journal key shared with the restore-complete check; rename both sides together
         internal const string SnapKey = "GpuPowerSnap";
         private static readonly object lk = new object();
 
@@ -28,7 +28,7 @@ namespace PaviseApp
             return true;
         }
 
-        // 驱动查询不便宜 调用点自己控制频率 原先的进程级缓存随极限档每轮 want 计算一起撤了
+        // Driver query isn't cheap; callers throttle it themselves; the old per-process cache went away with the Extreme tier's per-round want computation
         public static bool Supported()
         {
             uint nvCur, nvDef, nvMax;

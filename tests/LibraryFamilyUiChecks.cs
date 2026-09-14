@@ -1,4 +1,4 @@
-// 隔离 UI 回归入口 只构造控件 不构造 GameMode 不启动应用 不读写用户配置
+// Isolated UI regression entry: builds controls only, no GameMode, no app startup, no user config read/write
 #if PAVISE_UI_TEST
 using System;
 using System.Collections;
@@ -62,6 +62,8 @@ namespace PaviseApp
                         CheckAddGameMergeOrder(true);
                         CheckAddGameRunningRefresh();
                         CheckAddGameSelection();
+                        CheckAddGameEntryChoices();
+                        CheckAddGameSearch();
                         CheckAddGameGpuSelection();
                         CheckAddGameIconLifetime();
                         CheckAddGamePostedClose();
@@ -139,7 +141,7 @@ namespace PaviseApp
 
         private static void CheckAddGameDialog()
         {
-            // 别建句柄也别把这个对话框显出来 Load 会真的去扫安装记录和进程
+            // Do not create a handle or show this dialog, Load really scans install records and processes
             using (var dialog = new AddGameDialog(new string[0], false))
             {
                 Type type = typeof(AddGameDialog);
@@ -182,7 +184,8 @@ namespace PaviseApp
                 Check(hint != null, "Install-record scan limitation hint is missing");
                 int hintHeight = TextRenderer.MeasureText(hint.Text, hint.Font,
                     new Size(hint.Width, int.MaxValue), TextFormatFlags.WordBreak).Height;
-                Check(hintHeight <= hint.Height, "Install-record scan limitation hint is clipped");
+                Check(hintHeight <= hint.Height, "Install-record scan limitation hint is clipped: scale="
+                    + Dpi.Scale + " language=" + Lang.Cur + " measured=" + hintHeight + " available=" + hint.Height);
                 type.GetMethod("UpdateInfoLabel", fields).Invoke(dialog, null);
                 Label info = (Label)type.GetField("lblInfo", fields).GetValue(dialog);
                 Check(info.Text == Lang.T("scan.none") && info.Text.IndexOf("深度扫描", StringComparison.Ordinal) < 0
@@ -201,8 +204,8 @@ namespace PaviseApp
         private const BindingFlags InstanceFields = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         private const string FixtureRoot = @"C:\PaviseAddGameFixture";
 
-        // 任何一个测试都不许显示窗口 也不许调生产环境的 Load 处理器
-        // 那些东西会去枚举进程 安装记录 图标和 GPU 计数器
+        // No test may show a window or call the production Load handler
+        // Those enumerate processes, install records, icons and GPU counters
         private sealed class NoScanAddGameDialog : AddGameDialog
         {
             internal NoScanAddGameDialog(params string[] existing) : base(existing, false) { }
@@ -500,8 +503,8 @@ namespace PaviseApp
                 Rectangle track = ScrollProperty<Rectangle>(rail, "TrackRectangle");
                 Rectangle thumb = ScrollProperty<Rectangle>(rail, "ThumbRectangle");
                 Check(thumb.Bottom < track.Bottom, "Rail interaction fixture must have room below its thumb");
-                // 只点滑块外面 生产代码里点滑块会去抢全局鼠标捕获
-                // 纯的 BeginDrag 和 DragTo 辅助方法能安全地走一遍那套映射
+                // Click outside the thumb only, clicking the thumb in production code grabs global mouse capture
+                // The pure BeginDrag and DragTo helpers can safely exercise that mapping
                 Invoke(rail, "OnMouseDown", new MouseEventArgs(MouseButtons.Left, 1,
                     rail.Width / 2, track.Bottom - 1, 0));
                 Check(list.TopIndex == host.VisibleRows, "Clicking the lower track did not advance one page");
@@ -668,7 +671,7 @@ namespace PaviseApp
                 {
                     string path = FixtureRoot + "\\Scroll" + i.ToString("D3") + @"\Game.exe";
                     candidates[i] = Candidate("Title " + i.ToString("D3"), path, FixtureRoot);
-                    Invoke(dialog, "CacheIcon", path, null); // A cached miss prevents real icon work after handle creation.
+                    Invoke(dialog, "CacheIcon", path, null); // A cached miss prevents real icon work after handle creation
                 }
                 Merge(dialog, false, candidates);
                 string chosen = FixtureRoot + @"\Scroll000\Game.exe";
@@ -850,6 +853,44 @@ namespace PaviseApp
             }
         }
 
+        private static void CheckAddGameEntryChoices()
+        {
+            string root = FixtureRoot + @"\MultipleEntries";
+            string first = root + @"\Alpha.exe", second = root + @"\Bin\Beta.exe";
+            object a = Candidate("Store title", first, root), b = Candidate("Store title", second, root);
+            SetMember(a, "NeedsChoice", true); SetMember(b, "NeedsChoice", true);
+            using (var dialog = new NoScanAddGameDialog())
+            {
+                Merge(dialog, false, a, b);
+                Check(Member<IList>(dialog, "rows").Count == 2, "Ambiguous installed entries disappeared");
+                var list = Member<ListBox>(dialog, "lst");
+                Check(list.Items[0].ToString() == "Store title · Alpha.exe"
+                    && list.Items[1].ToString() == "Store title · Beta.exe", "Entry choices need distinct display labels");
+                Check(!Member<bool>(FindRow(dialog, first), "Checked") && !Member<bool>(FindRow(dialog, second), "Checked"),
+                    "Ambiguous static entries must not be checked automatically");
+                Invoke(dialog, "ToggleAll");
+                Check(!Member<bool>(FindRow(dialog, first), "Checked") && !Member<bool>(FindRow(dialog, second), "Checked"),
+                    "Select-all must not select ambiguous entries");
+                string unique = FixtureRoot + @"\Unique\Game.exe";
+                Merge(dialog, false, Candidate("Unique title", unique, FixtureRoot + @"\Unique"));
+                Invoke(dialog, "ToggleAll");
+                Check(Member<bool>(FindRow(dialog, unique), "Checked")
+                    && !Member<bool>(FindRow(dialog, first), "Checked") && !Member<bool>(FindRow(dialog, second), "Checked"),
+                    "Select-all must select ordinary entries while leaving entry choices to the user");
+                Invoke(dialog, "ToggleAll");
+                Member<TextBox>(dialog, "tbFilter").Text = "Beta.exe";
+                Check(list.Items.Count == 1, "Entry executable must remain searchable");
+                TogglePath(dialog, second);
+                Merge(dialog, true, Candidate("Running title", second, root, 100, 1));
+                Check(Member<bool>(FindRow(dialog, second), "NeedsChoice"), "Running refresh lost installed entry metadata");
+                Invoke(dialog, "Accept");
+                Check(dialog.Selected.Count == 1 && dialog.Selected[0].Exe == second
+                    && dialog.Selected[0].Name == "Store title" && dialog.Selected[0].Root == root,
+                    "Choosing an entry must preserve the game title and install root");
+                CheckNoScans(dialog);
+            }
+        }
+
         private static void CheckAddGameSelection()
         {
             string a = FixtureRoot + @"\A\Game.exe", b = FixtureRoot + @"\B\Game.exe";
@@ -897,6 +938,42 @@ namespace PaviseApp
                 Invoke(Member<ListBox>(dialog, "lst"), "OnDoubleClick", EventArgs.Empty);
                 Check(dialog.Selected.Count == 1 && dialog.Selected[0].Exe == a,
                     "Double-click did not confirm the intended executable");
+                CheckNoScans(dialog);
+            }
+        }
+
+        private static void CheckAddGameSearch()
+        {
+            string first = FixtureRoot + @"\First\Binaries\Win64\bg3.exe";
+            string second = FixtureRoot + @"\Second\Game.exe";
+            using (var dialog = new NoScanAddGameDialog())
+            {
+                Merge(dialog, false, Candidate("Baldur’s Gate 3", first, FixtureRoot + @"\First"),
+                    Candidate("黑神话：悟空", second, FixtureRoot + @"\Second"));
+                var filter = Member<TextBox>(dialog, "tbFilter");
+                var list = Member<ListBox>(dialog, "lst");
+                filter.Text = "ＢＡＬＤＵＲＳ　ＧＡＴＥ";
+                Check(list.Items.Count == 1 && Member<string>(Member<IList>(dialog, "shown")[0], "Path") == first,
+                    "Full-width and punctuation-tolerant search lost the matching game");
+                TogglePath(dialog, first);
+                filter.Text = "gate win64 bg3";
+                Check(list.Items.Count == 1, "Search terms must match across title and executable path");
+                Merge(dialog, true, Candidate("Running title", first, FixtureRoot + @"\First", 100, 1));
+                Check(list.Items.Count == 1 && Member<bool>(FindRow(dialog, first), "Checked"),
+                    "Running refresh lost filtered results or selection");
+                filter.Text = "黑 神话悟空";
+                Check(list.Items.Count == 1 && Member<string>(Member<IList>(dialog, "shown")[0], "Path") == second,
+                    "Chinese fragments with punctuation differences must match");
+                filter.Text = "gate win32";
+                Check(list.Items.Count == 0, "Missing keyword should exclude the game");
+                filter.Text = "---";
+                Check(list.Items.Count == 0, "Punctuation-only search must not match every game");
+                filter.Text = " \t\u3000";
+                Check(list.Items.Count == 2 && Member<bool>(FindRow(dialog, first), "Checked"),
+                    "Clearing the filter must preserve hidden selections");
+                Invoke(dialog, "Accept");
+                Check(dialog.Selected.Count == 1 && dialog.Selected[0].Exe == first,
+                    "Filtering changed the selected add result");
                 CheckNoScans(dialog);
             }
         }

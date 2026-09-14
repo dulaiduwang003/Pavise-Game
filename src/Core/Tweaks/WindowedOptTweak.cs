@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 开启关闭并恢复窗口化游戏优化 DirectX 呈现路径升级
+// File purpose Enable, disable and restore optimizations for windowed games (DirectX presentation path upgrade)
 using System;
 using Microsoft.Win32;
 

@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 对局时长与 CPU 占用统计 测试探针入口
+// File purpose Match duration and CPU usage statistics, test probe entry points
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;

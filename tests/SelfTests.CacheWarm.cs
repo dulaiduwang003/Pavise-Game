@@ -70,12 +70,12 @@ namespace PaviseApp
                     FamilyPolicyInvoke(mode, "BeginCacheWarmSession");
                     Eq(false, mode.CacheWarmAdmissionForTest()());
                     Eq(true, mode.SetProfileOverride("first", PolicyCatalog.KeyCacheWarm, "1"));
-                    Eq(true, mode.CacheWarmAdmissionForTest()()); // Per-game On wins over global Off.
+                    Eq(true, mode.CacheWarmAdmissionForTest()()); // Per-game On wins over global Off
                     var old = mode.CacheWarmAdmissionForTest();
                     Eq(true, mode.SetProfileOverride("first", PolicyCatalog.KeyCacheWarm, "0"));
                     Eq(false, old());
                     mode.CacheWarmOn = true;
-                    Eq(false, mode.CacheWarmAdmissionForTest()()); // Per-game Off wins over global On.
+                    Eq(false, mode.CacheWarmAdmissionForTest()()); // Per-game Off wins over global On
                     Eq(true, mode.ClearProfileOverride("first", PolicyCatalog.KeyCacheWarm));
                     Eq(true, mode.CacheWarmAdmissionForTest()());
                     Eq(true, mode.SetProfileOverride("first", PolicyCatalog.KeyStandbyCleaner, "1"));
@@ -124,7 +124,7 @@ namespace PaviseApp
                 var runner = new CacheWarmRunner();
                 int admissions = 0;
                 // Cancellation during the 90-second delay must drain without any
-                // disk/power probe or native background-priority call.
+                // disk/power probe or native background-priority call
                 try
                 {
                     runner.Update("one", executable, assets, delegate { Interlocked.Increment(ref admissions); return true; });
@@ -149,7 +149,7 @@ namespace PaviseApp
             using (var f = new FamilyPolicyFixture(folder, "cachewarm-session"))
             {
                 var mode = f.Mode;
-                // 只走会话登记与提优后的记账；禁用 lane，不执行 Boost/原生写入/预热 worker。
+                // Only goes through session registration and post-boost bookkeeping; a disabled lane runs neither the Boost native writes nor the warm-up worker
                 Eq(true, mode.SetProfileOverride("first", PolicyCatalog.KeyRenderLane, "0"));
                 var profile = f.Current("first");
                 mode.ProbeSessionPolicyApply(profile);
@@ -160,7 +160,7 @@ namespace PaviseApp
                 FamilyPolicySetField(mode, "enabled", true);
                 mode.CacheWarmOn = true;
                 Eq(false, IrqSessionProbe.EnabledSetting);
-                Eq(false, mode.CacheWarmAdmissionForTest()()); // 没有真实开局不能入场。
+                Eq(false, mode.CacheWarmAdmissionForTest()()); // No admission without a real match start
                 try
                 {
                     FamilyPolicySetField(mode, "boostFirstStampTicks", DateTime.UtcNow.Ticks);
@@ -174,27 +174,27 @@ namespace PaviseApp
                     passType.GetField("RendererName").SetValue(pass, target.RendererName);
                     passType.GetField("PriorityTarget").SetValue(pass, Native.HIGH_PRIORITY_CLASS);
                     FamilyPolicyInvoke(mode, "EngageLaneAndReport", IntPtr.Zero, null,
-                        target.RendererPid, target.RendererCreation, pass, true, true, false, true, "");
+                        target.RendererPid, target.RendererCreation, pass, true, true, false, true, "", true);
                     Eq(0L, (long)FamilyPolicyGetField(mode, "boostFirstStampTicks"));
                     Eq(session, (long)FamilyPolicyGetField(mode, "cacheWarmSessionId"));
                     Eq(true, admitted());
                     Eq(true, mode.CacheWarmAdmissionForTest()());
 
-                    // 同一游戏把 renderer 交给新进程仍属于本局，不重启/取消预热。
+                    // The same game handing the renderer to a new process is still this match, warm-up neither restarts nor cancels
                     var replacement = FamilyObservationTarget(profile);
                     replacement.RendererPid++; replacement.RendererCreation++;
                     FamilyPolicySetField(mode, "activeDetection", replacement);
                     Eq(true, admitted());
                     Eq(session, (long)FamilyPolicyGetField(mode, "cacheWarmSessionId"));
 
-                    // 同一游戏、同一 renderer 的下一局也必须使旧回调失效。
+                    // The next match of the same game and same renderer must still invalidate the old callback
                     mode.ProbeSessionFinish(); mode.ProbeSessionBegin("first");
                     Eq(false, admitted());
                     Eq(true, (long)FamilyPolicyGetField(mode, "cacheWarmSessionId") > session);
                     var next = mode.CacheWarmAdmissionForTest();
                     Eq(true, next());
 
-                    // 直接换游戏不经过 Deactivate，ReportBegin 仍建立新会话。
+                    // Switching games directly without Deactivate: ReportBegin still creates a new session
                     mode.ProbeSessionFinish();
                     profile = f.Current("second");
                     FamilyPolicySetField(mode, "activeDetection", FamilyObservationTarget(profile));
@@ -244,7 +244,7 @@ namespace PaviseApp
                 {
                     string originalKey, nextKey;
                     var original = CacheWarmCapture(mode, out originalKey); Eq(true, original());
-                    // 学习提交先更新档案，activeDetection 下一步才发布；这段间隙也要撤销旧路径。
+                    // A learning commit updates the profile first and publishes activeDetection a step later, the old path must be revoked in that gap too
                     var live = (GameProfile)FamilyPolicyInvoke(mode, "FindProfileLocked", "first");
                     live.Root = Path.Combine(f.DirectoryPath, "new-install");
                     live.ExecutablePath = Path.Combine(live.Root, "renderer.exe");
@@ -255,7 +255,7 @@ namespace PaviseApp
                     var next = CacheWarmCapture(mode, out nextKey); Eq(true, next());
                     Eq(false, string.Equals(originalKey, nextKey, StringComparison.OrdinalIgnoreCase));
 
-                    // 同根目录换 renderer 路径也需要新任务；仅 PID/创建时间变化则继续本局。
+                    // A renderer path change under the same root also needs a new task; only a PID or creation time change continues this match
                     replacement.RendererPath = Path.Combine(live.Root, "alternate.exe");
                     Eq(false, next());
                     string rendererKey;
@@ -264,7 +264,7 @@ namespace PaviseApp
                     replacement.RendererPid++; replacement.RendererCreation++;
                     Eq(true, renderer());
 
-                    // Windows 路径大小写变化既不撤销准入，也不产生新的任务身份。
+                    // A Windows path case change neither revokes admission nor produces a new task identity
                     live.Root = live.Root.ToUpperInvariant();
                     live.ExecutablePath = live.ExecutablePath.ToUpperInvariant();
                     replacement.Profile = live.Clone();
@@ -291,7 +291,7 @@ namespace PaviseApp
             Func<bool> allowed = delegate { Interlocked.Increment(ref admissions); return true; };
             try
             {
-                // 持有状态锁让被取消的 worker 暂停在 SetStatus，确定覆盖旧 worker 仍活着的 G→H→G。
+                // Hold the state lock so the cancelled worker pauses in SetStatus, making sure G to H and back to G is covered while the old worker is still alive
                 lock (CacheWarmRunnerField<object>(runner, "gate"))
                 {
                     runner.Update("G", executable, root, allowed);
@@ -313,12 +313,12 @@ namespace PaviseApp
                 runner.Update("H", executable, root, allowed);
                 Eq("cachewarm.waiting", runner.Status);
                 Eq("H", CacheWarmRunnerField<string>(runner, "attempted"));
-                // 即使没有观察到中间路径，新准入暂时失效所触发的 Cancel(false) 也不能挡住恢复。
+                // Even without observing the intermediate path, the Cancel(false) triggered by a temporarily failed admission must not block recovery
                 runner.Cancel(false); Eq(true, runner.Drain(2000));
                 runner.Update("H", executable, root, allowed);
                 Eq("cachewarm.waiting", runner.Status);
                 Eq("H", CacheWarmRunnerField<string>(runner, "attempted"));
-                Eq(0, admissions); // 全部取消发生在 90 秒等待内，不调用任何后台原生功能。
+                Eq(0, admissions); // All cancels happen within the 90 second wait, no background native calls
             }
             finally { runner.Cancel(true); Eq(true, runner.Drain(2000)); }
         }

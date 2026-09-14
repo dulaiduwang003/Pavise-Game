@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 DirectX UserGpuPreferences 那种 "键=值;键=值;" 串的读写工具 纯文本无状态
+// File purpose Read/write helper for DirectX UserGpuPreferences style key=value;key=value; strings, plain text and stateless
 using System;
 using System.Collections.Generic;
 

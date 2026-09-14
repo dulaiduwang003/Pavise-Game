@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 以登录用户而非管理员身份启动外部程序
+// File purpose Launches external programs as the logged-on user rather than as administrator
 using System;
 using System.Diagnostics;
 using System.IO;

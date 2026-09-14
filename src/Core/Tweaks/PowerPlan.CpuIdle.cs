@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 只在本局内改处理器空闲状态 写当前活动方案的 AC 值 收据记账退局还原
+// File purpose Change processor idle state only within the match, writing the AC value of the active scheme, receipt-tracked and restored at match end
 using System;
 using System.Runtime.InteropServices;
 
@@ -20,8 +20,8 @@ namespace PaviseApp
 
             internal string Text(CpuIdlePhase phase)
             {
-                // 写之前的准备记录 不能证明原生调用真的跑过
-                // 只有写成功并且回读通过 才允许当成已拥有重放
+                // A Prepared record written before the write cannot prove the native call actually ran
+                // Only a successful write with a verified read-back may be replayed as Owned
                 string tag = phase == CpuIdlePhase.Prepared ? "P" : phase == CpuIdlePhase.Owned ? "O"
                     : phase == CpuIdlePhase.Restoring ? "R" : "S";
                 return "2|" + Scheme.ToString("D") + "|0|" + tag;
@@ -30,8 +30,8 @@ namespace PaviseApp
 
         private static CpuIdleReceipt cpuIdleReceipt;
 
-        // Ryzen 的睿频靠闲核进 CC6 让出功耗和热余量 不让空闲等于自己压自己的单核睿频
-        //   AMD 处理器不提供 已有收据的机器照常按收据还原
+        // Ryzen boost relies on idle cores entering CC6 to free power and thermal headroom; disabling idle throttles our own single-core boost
+        //   Not offered on AMD processors; machines with an existing receipt still restore per receipt
         private static bool? cpuIdleVendorBlocked;
 
         internal static bool CpuIdleVendorBlocked
@@ -41,7 +41,7 @@ namespace PaviseApp
 #if PAVISE_SELFTEST || PAVISE_PERFLAB
                 if (CpuIdleAmdForTest.HasValue) return CpuIdleAmdForTest.Value;
 #endif
-                // 每轮环境编排都会问 处理器不会中途换 只读一次注册表
+                // Asked on every environment orchestration round; the processor never changes mid-run, so read the registry once
                 bool? cached = cpuIdleVendorBlocked;
                 if (cached.HasValue) return cached.Value;
                 bool blocked = CpuIdleReadVendorBlocked();
@@ -91,8 +91,8 @@ namespace PaviseApp
             get { lock (lk) return cpuIdleReceipt != null && cpuIdleReceipt.Applied; }
         }
 
-        // 方案被切走时旧方案上还挂着我们的值 调用方把它当未生效处理
-        //   下一轮激活会在所有权校验里发现方案不符 先按收据还原旧方案 再钉新方案
+        // When the scheme is switched away our value still hangs on the old scheme; callers treat it as not in effect
+        //   The next activation round finds the scheme mismatch in the ownership check, restores the old scheme per receipt, then pins the new one
         internal static bool CpuIdleSchemeDrifted
         {
             get
@@ -140,7 +140,7 @@ namespace PaviseApp
                     uint value;
                     if (cpuIdleReceipt != null)
                     {
-                        // 原始值还没解决的时候 不要用第二次快照去覆盖它
+                        // While the original value is still unresolved, do not overwrite it with a second snapshot
                         if (!cpuIdleReceipt.Applied)
                         {
                             RestoreCpuIdle();
@@ -163,7 +163,7 @@ namespace PaviseApp
                     if (!TryGetCpuIdleTarget(mayContinue, out scheme)
                         || !CpuIdleReadAc(scheme, out value) || !CpuIdleMayContinue(mayContinue)
                         || value > 1) return false;
-                    // 本来就是 1 的不算我们的 哪怕用户自己也想要这个值
+                    // A value that is already 1 is not ours, even if the user wanted that value anyway
                     if (value == 1) return true;
 
                     var receipt = new CpuIdleReceipt { Scheme = scheme, Phase = CpuIdlePhase.Prepared };
@@ -171,16 +171,16 @@ namespace PaviseApp
                     if (!WriteCpuIdleLedgerVerified(receipt.Text(CpuIdlePhase.Prepared))
                         || !CpuIdleMayContinue(mayContinue)) return FailCpuIdleApply();
 
-                    // 台账落盘可能很慢 进原生写入之前 目标值和原始值
-                    // 都要立刻重新读一遍
+                    // Ledger persistence can be slow; before entering the native write both the target and original values
+                    // must be re-read immediately
                     Guid checkedScheme;
                     if (!TryGetCpuIdleTarget(mayContinue, out checkedScheme) || checkedScheme != scheme
                         || !CpuIdleReadAc(scheme, out value) || value != 0
                         || !CpuIdleMayContinue(mayContinue)) return FailCpuIdleApply();
                     receipt.ApplyAttempted = true;
                     if (!CpuIdleWriteAc(scheme, 1)) return FailCpuIdleApply();
-                    // 就算写完之后被取消 也得先弄清楚有没有一个已确认的值
-                    // 需要回滚
+                    // Even if cancelled after the write, first determine whether there is a confirmed value
+                    // that needs rolling back
                     if (!CpuIdleReadAc(scheme, out value)) return FailCpuIdleApply();
                     if (value != 1)
                     {
@@ -231,8 +231,8 @@ namespace PaviseApp
                     if (!CpuIdleReadAc(receipt.Scheme, out value)) return false;
                     if (value > 1 || (value == 1 && receipt.OriginalObserved))
                     {
-                        // 后来外部改的值不归我们撤 台账清不掉的时候
-                        // 也要在内存里记住这件事
+                        // A value changed externally afterwards is not ours to revert; when the ledger cannot be cleared
+                        // remember that in memory too
                         receipt.Phase = CpuIdlePhase.Settled;
                         return ClearCpuIdleReceipt();
                     }
@@ -252,8 +252,8 @@ namespace PaviseApp
                         if (!WriteCpuIdleLedgerVerified(receipt.Text(CpuIdlePhase.Restoring))) return false;
                         receipt.Phase = CpuIdlePhase.Restoring;
                     }
-                    // 写前恢复记录之后再检查一次 观察到原始值以后
-                    // 不要再从更新的值反推所有权
+                    // Re-check after the pre-write restore record; once the original value has been observed
+                    // do not infer ownership from a newer value again
                     if (!CpuIdleReadAc(receipt.Scheme, out value)) return false;
                     if (value > 1 || (value == 1 && receipt.OriginalObserved))
                     {
@@ -263,16 +263,16 @@ namespace PaviseApp
                     if (value == 1)
                     {
                         if (!receipt.MayRestoreValue) return false;
-                        // 抛异常 或者写成功但没验证过 都不能触发第二次还原
-                        // 把后来外部写的 1 给盖掉
+                        // Neither an exception nor an unverified successful write may trigger a second restore
+                        // that would clobber a 1 written externally later
                         receipt.MayRestoreValue = false;
                         if (!CpuIdleWriteAc(receipt.Scheme, 0)) return false;
                         if (!CpuIdleReadAc(receipt.Scheme, out value) || value != 0) return false;
                     }
                     receipt.OriginalObserved = true;
                     receipt.MayRestoreValue = false;
-                    // 崩溃后看到 R + 0 如果这套方案还是活动方案就仍需重新生效
-                    // 存着的 0 不能证明内核读到过它
+                    // Seeing R + 0 after a crash still needs a re-apply if this scheme is still the active one
+                    // A stored 0 does not prove the kernel ever read it
                     if (!ReapplyCpuIdle(receipt.Scheme, 0, false, null)) return false;
                     receipt.Phase = CpuIdlePhase.Settled;
                     return ClearCpuIdleReceipt();
@@ -294,8 +294,8 @@ namespace PaviseApp
                 || (parts[0] == "1" && parts[3] != "A" && parts[3] != "R" && parts[3] != "S")
                 || (parts[0] == "2" && parts[3] != "P" && parts[3] != "O" && parts[3] != "R" && parts[3] != "S")
                 || !Guid.TryParseExact(parts[1], "D", out scheme) || scheme == Guid.Empty) return false;
-            // 版本 1 是在原生写入之前就落了 A 只能当成准备状态
-            // 不能因为当前值是 1 就认成所有权
+            // Version 1 wrote A before the native write, so it can only count as Prepared
+            // Do not assume ownership just because the current value is 1
             CpuIdlePhase phase = parts[3] == "R" ? CpuIdlePhase.Restoring
                 : parts[3] == "S" ? CpuIdlePhase.Settled
                 : parts[3] == "O" ? CpuIdlePhase.Owned : CpuIdlePhase.Prepared;
@@ -309,8 +309,8 @@ namespace PaviseApp
 
         private static bool ClearCpuIdleReceipt()
         {
-            // 先落终态收据 清理失败的话 不能让后面的进程在用户又改过
-            // 这个值之后还去重放 O
+            // Persist the settled receipt first; if cleanup fails, a later process must not
+            // replay O after the user has changed this value again
             if (cpuIdleReceipt == null || cpuIdleReceipt.Phase != CpuIdlePhase.Settled) return false;
             if (!WriteCpuIdleLedgerVerified(cpuIdleReceipt.Text(CpuIdlePhase.Settled))) return false;
             if (!WriteCpuIdleLedgerVerified("")) return false;
@@ -325,9 +325,9 @@ namespace PaviseApp
                 && string.Equals(actual, text, StringComparison.Ordinal);
         }
 
-        // 目标就是当前活动方案 不再要求 Pavise 托管方案 收据按方案 GUID 记账
-        //   对局中方案被切走时 所有权校验发现方案不符 先按收据还原旧方案 下轮再钉新方案
-        //   电源来源不设门 开关是用户的选择 电池上照样生效 两侧值一起写
+        // Target is the current active scheme, no longer requires the Pavise managed scheme; receipts keyed by scheme GUID
+        //   If the scheme is switched away mid-match, the ownership check finds the mismatch, restores the old scheme per receipt, next round pins the new one
+        //   No gate on power source, the toggle is the user's choice; applies on battery too, both sides written together
         private static bool TryGetCpuIdleTarget(Func<bool> mayContinue, out Guid scheme)
         {
             scheme = Guid.Empty;
@@ -352,8 +352,8 @@ namespace PaviseApp
             }
             if (!CpuIdleMayContinue(mayContinue)) return false;
             if (requireCurrent && !CpuIdleMayContinue(mayContinue)) return false;
-            // 读值或者查交流供电的时候被阻塞 期间别的程序切了方案
-            // 这种情况下不要再去激活一个过期的目标
+            // Blocked while reading the value or checking AC power, another program switched the scheme meanwhile
+            // In that case do not activate a stale target
             current = CpuIdleCurrentScheme();
             if (!CpuIdleMayContinue(mayContinue) || !current.HasValue || current.Value == Guid.Empty) return false;
             if (current.Value != scheme) return !requireCurrent;
@@ -402,9 +402,9 @@ namespace PaviseApp
 #endif
         }
 
-        // AC/DC 两侧当一个整体 电池供电时内核读的是 DC 值 只写一侧等于电池上没生效
-        //   复合值 0=两侧都 0  1=两侧都 1  其余含两侧不一致折叠成 2 走既有的外部值分支
-        //   两侧不一致说明有人手改过其中一侧 整对不接管也不归我们撤
+        // AC/DC treated as one unit; on battery the kernel reads the DC value, writing one side only means no effect on battery
+        //   Composite value 0=both 0, 1=both 1, anything else including mismatched sides folds to 2 and takes the existing external-value branch
+        //   Mismatched sides mean someone hand-edited one of them; the pair is neither taken over nor ours to revert
         private static bool CpuIdleReadAc(Guid scheme, out uint value)
         {
 #if PAVISE_SELFTEST || PAVISE_PERFLAB

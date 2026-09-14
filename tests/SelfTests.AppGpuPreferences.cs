@@ -1,5 +1,5 @@
-// 文件用途 偏好 硬件和台账操作全是注入的
-// 不碰注册表 应用进程 显卡设备 对话框和截图
+// File purpose Preference, hardware and ledger operations are all injected
+// No registry, app processes, GPU devices, dialogs or screenshots
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -231,7 +231,7 @@ namespace PaviseApp
         {
             using (var f = new AppGpuFixture())
             {
-                // 全新程序 没有既有偏好 自动认领成功 真的写进省电偏好
+                // Brand-new program with no existing preference: auto-enroll succeeds and really writes the power-saving preference
                 AppGpuCheck(GameMode.AutoGpuEnroll(f.Manager, AppGpuPath) == AppGpuPreferenceResult.Success
                     && PrefFieldText.ReadField(f.Control.Value(AppGpuPath), "GpuPreference") == "1",
                     "auto enroll did not claim a fresh app");
@@ -240,13 +240,13 @@ namespace PaviseApp
             }
             using (var f = new AppGpuFixture())
             {
-                // 既有明确偏好是用户或外部工具的选择 自动路径永不覆盖 也不留账
+                // An existing explicit preference is the user's or an external tool's choice, the auto path never overrides it and leaves no ledger entry
                 const string other = @"C:\AppGpuFixture\two.exe";
                 f.Control.Set(other, "GpuPreference=2;");
                 AppGpuCheck(GameMode.AutoGpuEnroll(f.Manager, other) == AppGpuPreferenceResult.NeedsConfirmation
                     && f.Control.Value(other) == "GpuPreference=2;" && f.Ledger.Value == "",
                     "auto enroll overrode an existing explicit preference");
-                // 本来就是省电偏好 按不拥有记 不发注册表写
+                // Already the power-saving preference: recorded as not owned, no registry write issued
                 const string low = @"C:\AppGpuFixture\three.exe";
                 f.Control.Set(low, "GpuPreference=1;");
                 int writes = f.Control.Writes;
@@ -266,7 +266,7 @@ namespace PaviseApp
                 "the handled lookup was case sensitive");
             AppGpuCheck(!GameMode.AutoGpuAlreadyHandled(@"C:\AppGpuFixture\other.exe"),
                 "an unrelated path inherited handled state");
-            // 封顶后最老的先出 新记录保留
+            // Once capped the oldest goes first, new records are kept
             for (int i = 0; i < 300; i++)
                 AppGpuCheck(GameMode.RememberAutoGpuHandled(@"C:\AppGpuFixture\bulk" + i + ".exe"),
                     "a bulk handled save failed");
@@ -466,7 +466,7 @@ namespace PaviseApp
                 string raw;
                 AppGpuCheck(Settings.TryLoadStr("GpuPrefStage", out raw) && raw == prepared,
                     "temporary write lost its prepared original after ownership persistence failed");
-                // 只把这个测试自己的临时设置重开 持久那份 P 留着
+                // Reopen only this test's own transient settings, the persisted P record stays
                 Settings.UseTransientStoreForCurrentProcess(); Settings.SaveStr("GpuPrefStage", raw);
                 f.Control.AfterStageWrite = null;
                 if (loseReceipt) GpuPrefStage.ForgetReceiptForTest();
@@ -806,8 +806,8 @@ namespace PaviseApp
             }
         }
 
-        // 清除全部配置的放弃语义:崩溃窗口留下且被外部改写的 P 记录永远无法认领
-        //   重置语境下按仅移除记录结清 保留系统现状;可认领的 O 记录与瞬时失败不放弃
+        // Abandon semantics of Wipe all settings: a P record left by a crash window and rewritten externally can never be claimed
+        //   In the reset context settle by removing the record only, keep the system as is; claimable O records and transient failures are not abandoned
         private static void AppGpuResetAbandonsUnprovableRecords(string root)
         {
             using (var f = new AppGpuFixture())
@@ -818,7 +818,7 @@ namespace PaviseApp
                 AppGpuCheck(f.Manager.Apply(change, true) == AppGpuPreferenceResult.RecoveryPending,
                     "setup: the apply must crash into an uncertain P record");
                 f.Control.ThrowBeforeWrite = false;
-                // 外部把偏好改成节能 值既不是基线也无收据 从此无法认领
+                // External change of the preference to Power Saver: the value is neither the baseline nor has a receipt, unclaimable from here on
                 f.Control.Set(AppGpuPath, "GpuPreference=1;External=keep;");
                 AppGpuCheck(!f.Manager.RestoreAll(), "restore-all must refuse the unclaimable record");
                 AppGpuCheck(f.Manager.AbandonUnprovableForReset(), "reset must abandon the unclaimable record");

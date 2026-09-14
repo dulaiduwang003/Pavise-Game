@@ -1,4 +1,4 @@
-// 反作弊亲和性落点校验，以及已退役后台重压的原亲和性恢复。
+// Anti-cheat affinity placement validation, plus original-affinity restore for retired heavy-load background pins
 namespace PaviseApp
 {
     internal static class SuppressionAffinityPolicy
@@ -13,15 +13,15 @@ namespace PaviseApp
             return squeezeMask;
         }
 
-        // 四参重载保持旧语义 纯后台条目一律回原值
-        //   已退役的重压在账本里留下过后台落点 那些记录只能还原 不能照着再写一遍
+        // Four-arg overload keeps the old semantics: pure background entries always go back to the original value
+        //   Retired heavy-load pins left background placements in the ledger; those records may only be restored, never re-applied
         public static ulong DesiredAffinity(SuppressReason reasons, ulong squeezeAffinity,
             ulong originalAffinity, ulong allMask)
         {
             return DesiredAffinity(reasons, squeezeAffinity, originalAffinity, allMask, false);
         }
 
-        // backgroundPinsAllowed 只有硬亲和开关打开时为真 由 SuppressionCore 按当前设置传入
+        // backgroundPinsAllowed is true only with the hard-affinity switch on; SuppressionCore passes it per current settings
         public static ulong DesiredAffinity(SuppressReason reasons, ulong squeezeAffinity,
             ulong originalAffinity, ulong allMask, bool backgroundPinsAllowed)
         {

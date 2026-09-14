@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 把中断归因指认出的驱动映像名 落到能真正下手的设备实例上
+// File purpose Lands the driver image names identified by interrupt attribution on device instances that can actually be acted on
 using System;
 using System.Collections.Generic;
 using Microsoft.Win32;
@@ -28,6 +28,13 @@ namespace PaviseApp
         };
 
         private static readonly string[] AllowedBusPrefixes = { "PCI\\", "USB\\", "HDAUDIO\\", "ACPI\\" };
+
+        internal static bool IsFramework(string driver)
+        {
+            foreach (string value in NeverTouch)
+                if (string.Equals(value,driver,StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
 
         public static DriverDeviceMatch Resolve(string driverImageName)
         {

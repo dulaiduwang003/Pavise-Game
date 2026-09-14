@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 识别本机已安装的内核态反作弊 只用于说明访问受限的日志
+// File purpose Identify kernel-mode anti-cheat installed on this machine, only to explain access-denied logs
 using System;
 using System.Collections.Generic;
 using Microsoft.Win32;
@@ -31,11 +31,11 @@ namespace PaviseApp
 
         private static readonly string[][] ByExePrefix = new[]
         {
-            // 等号开头表示整名相等 cod.exe 是 Call of Duty HQ 的真实主程序名 但三个字母做前缀会命中 CodeVein
+            // Leading equals sign means whole-name equality; cod.exe is the real main executable of Call of Duty HQ, but a three-letter prefix would match CodeVein
             new[]{ "Ricochet", "=cod", "modernwarfare", "blackops", "warzone" },
             new[]{ "HoYoKProtect", "yuanshen", "genshinimpact", "starrail", "zenlesszonezero", "bh3" },
-            // 只写有实据的进程名 前缀匹配下 fc2 会吞掉 fc25 nfs 会误配 nfsclient
-            //   宁可认不出走不点名的兜底 也不能给没装 EA 反作弊的机器点名
+            // Only list process names with hard evidence; under prefix matching fc2 would swallow fc25 and nfs would mismatch nfsclient
+            //   Better to miss and take the unnamed fallback than to name it on a machine without EA anti-cheat installed
             new[]{ "EA Javelin", "bf6", "bf2042" },
         };
 
@@ -90,9 +90,9 @@ namespace PaviseApp
             return null;
         }
 
-        // 写日志用的归因 能按游戏认出来才点名 只能靠本机安装清单时不点名
-        //   InstalledName 扫的是这台机器装了哪些内核反作弊 与当前跑哪个游戏无关
-        //   拿它当肇事者写进日志会指错方向 用户会跑去关一个根本没参与的反作弊分组
+        // Attribution for the log: name it only when recognized by game; do not name it when only the local install inventory is available
+        //   InstalledName scans which kernel anti-cheats this machine has installed, unrelated to which game is running now
+        //   Logging it as the culprit points the wrong way; the user would go disable an anti-cheat group that was never involved
         public static string DescribeForLog(string rendererName)
         {
             string byExe = MatchByExe(rendererName);

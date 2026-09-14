@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 校正被优化教程改坏的多媒体网络限流值 回到系统默认
+// File purpose Correct the multimedia network throttling value broken by tuning guides, back to system default
 using System;
 using Microsoft.Win32;
 

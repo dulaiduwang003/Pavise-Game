@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 构建白名单页 支持拖放添加 运行中选取与逐条作用域调整
+// File purpose Build the whitelist page: drag-and-drop add, pick from running processes and per-entry scope adjustment
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -146,7 +146,7 @@ namespace PaviseApp
             RefreshWhitelist(false);
         }
 
-        // 安装平台只作信息展示 逐游戏家族设置不再有全局状态
+        // The install platform is informational only; per-game family settings no longer have a global state
         internal void SyncWhitelistPlatformHint()
         {
             if (lblWhiteHint == null || lblWhiteHint.IsDisposed) return;
@@ -650,9 +650,9 @@ namespace PaviseApp
 
         private static List<WhitelistItem> AutomaticExemptionItems()
         {
-            // 2.1 起游戏平台与启动器不再自动豁免 这里也不再列出它们
-            //   只有渲染进程本体和用户白名单能免于压制 平台客户端按普通后台处理
-            //   页面上留着一条已经不生效的豁免 比没有这条更糟 用户会据此判断该不该手动加白名单
+            // Since 2.1 game platforms and launchers are no longer auto-exempted, so they are no longer listed here either
+            //   Only the renderer process itself and the user whitelist escape suppression; platform clients are treated as ordinary background
+            //   Leaving a no-longer-effective exemption on the page is worse than none; users would judge from it whether to whitelist manually
             var rows = new List<WhitelistItem>();
 
             string[] acceleratorNames = NetAcceleratorCatalog.ProcessNamesForDisplay();

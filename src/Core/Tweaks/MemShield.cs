@@ -1,15 +1,15 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 内存驻留已下架 只保留崩溃残账的配额还原 快照清账与残留报告
+// File purpose Memory residency is withdrawn; only quota restore for crash leftovers, snapshot cleanup and the residue report remain
 using System;
 using System.Globalization;
 using System.Runtime.InteropServices;
 
 namespace PaviseApp
 {
-    // 内存驻留 2.1.3.3 上架 随后下架 不再有任何挂载入口
-    //   旧版本对局中崩溃会在快照里留下目标进程的原工作集配额 这里负责启动时还原并清账
-    //   配额随进程退出自然消失 游戏没了或 PID 已被复用就直接清记录
-    //   目标还活着但还原失败时保留记录 交给下次启动或重置流程
+    // Memory residency shipped in 2.1.3.3 and was withdrawn soon after; no mount entry remains
+    //   A mid-match crash in older versions leaves the target process's original working set quota in the snapshot; this restores and clears it at startup
+    //   The quota vanishes naturally when the process exits; if the game is gone or the PID was reused, just clear the record
+    //   If the target is still alive but restore fails, keep the record for the next startup or the reset flow
     internal static class MemShield
     {
         internal const string SnapKey = "MemShieldSnap";
@@ -20,7 +20,7 @@ namespace PaviseApp
         private static readonly object lk = new object();
         private static bool recoveryBlocked;
 
-        // Pavise 异常退出时配额还挂在游戏进程上 下次启动补撤
+        // Pavise exited abnormally with the quota still on the game process; undo it at next startup
         public static bool HealFromCrash()
         {
             lock (opLk)
@@ -37,7 +37,7 @@ namespace PaviseApp
                 uint flags;
                 if (!DecodeSnapshot(snapshot, out pid, out creation, out min, out max, out flags))
                 {
-                    // 快照坏了没法安全还原 保留记录不清 由重置流程处置
+                    // Corrupted snapshot can't be restored safely; keep the record, leave it to the reset flow
                     lock (lk) recoveryBlocked = true;
                     return false;
                 }
@@ -110,7 +110,7 @@ namespace PaviseApp
             return liveCreation != creation || (curFlags & HardMinEnable) == 0;
         }
 
-        // 两个原语 隔离测试必须注入 生产走原生调用
+        // Two primitives; isolated tests must inject them, production uses native calls
         private static bool TryQueryTarget(int pid, out bool gone, out long creation,
             out ulong workingSet, out ulong min, out ulong max, out uint flags)
         {

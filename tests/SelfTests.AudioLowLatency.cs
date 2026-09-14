@@ -1,5 +1,5 @@
-// 文件用途 纯决策逻辑检查 不激活 COM 不碰音频设备 不写任何东西
-// 音频低延迟回归 只验证收益判定与周期换算 不碰真实音频设备
+// File purpose Pure decision logic checks, no COM activation, no audio devices, no writes at all
+// Low-latency audio regression, only verifies the benefit decision and period conversion, no real audio devices
 #if PAVISE_SELFTEST
 using System;
 

@@ -1,5 +1,5 @@
-﻿// @author bdth 2074055628@qq.com
-// 文件用途 构建关于页 项目信息与更新检查
+﻿﻿// @author bdth 2074055628@qq.com
+// File purpose Original About layout with website navigation and automatic version status
 using System;
 using System.Diagnostics;
 using System.Drawing;
@@ -9,17 +9,19 @@ namespace PaviseApp
 {
     internal partial class PanelForm
     {
+        private Label lblAboutUpdate;
+
         private void BuildAboutPage()
         {
-            int y = PageHeader(pageAbout, Lang.T("nav.about"), Lang.T("v20.about.sub"), 1);
+            int y = PageHeader(pageAbout, Lang.T("nav.about"), Lang.T("site.about.originalSub"), 1);
 
             const int heroH = 180;
             var hero = new AboutHeroPanel();
             hero.SetBounds(Theme.S(ContentX), Theme.S(y), Theme.S(ContentW), Theme.S(heroH));
             pageAbout.Controls.Add(hero);
 
-            // 这里以前调的是写死智能档的单参重载 于是关于页的图标永远是智能档的颜色
-            //   其它三处 NavRail ContactDialog 托盘 都传的是当前档位 只有这里漏了
+            // This used to call the single-argument overload that hard-codes the Smart tier, so the About page icon was always the Smart tier color
+            //   The other three sites (NavRail, ContactDialog, tray) all pass the current tier; only this one was missed
             var pbIcon = new PictureBox();
             pbIcon.SetBounds(Theme.S(28), Theme.S(35), Theme.S(108), Theme.S(108));
             pbIcon.BackColor = Color.Transparent;
@@ -59,30 +61,10 @@ namespace PaviseApp
             }
             CardLabel(card, Lang.T("about.contact.hint"), 20, 263, infoW - 40, 54, 7.8f, false, Theme.Dim);
 
-            int halfBtnW = (infoW - 40 - 16) / 2;
-            var btnContact = new PillButton(Lang.T("contact.open.title"));
-            btnContact.Bg = Theme.Card;
-            btnContact.SetBounds(Theme.S(20), Theme.S(cardH - 58), Theme.S(halfBtnW), Theme.S(42));
-            btnContact.Click += delegate
-            {
-                using (var dlg = new ContactDialog()) dlg.ShowDialog(this);
-            };
-            card.Controls.Add(btnContact);
-
-            bool unseenNotes = ReleaseNotes.HasUnseen;
-            var btnNotes = new PillButton(Lang.T("notes.open") + (unseenNotes ? " NEW" : ""),
-                unseenNotes ? BtnKind.Primary : BtnKind.Normal);
-            btnNotes.Bg = Theme.Card;
-            btnNotes.SetBounds(Theme.S(36 + halfBtnW), Theme.S(cardH - 58), Theme.S(halfBtnW), Theme.S(42));
-            btnNotes.Click += delegate
-            {
-                using (var dlg = new ReleaseNotesDialog()) dlg.ShowDialog(this);
-                btnNotes.Text = Lang.T("notes.open");
-                btnNotes.Kind = BtnKind.Normal;
-                btnNotes.Invalidate();
-            };
-            card.Controls.Add(btnNotes);
-
+            var website = new PillButton(Lang.T("site.entry")) { Name = "aboutWebsite", Bg = Theme.Card };
+            website.SetBounds(Theme.S(20), Theme.S(cardH - 58), Theme.S(infoW - 40), Theme.S(42));
+            website.Click += delegate { OpenExternal(App.WebsiteUrl); };
+            card.Controls.Add(website);
             var update = MakeConsolePanel(pageAbout, ContentX + infoW + gap, cardsY, updateW, cardH, true);
             CardLabel(update, "RELEASE // " + Lang.T("v20.about.versionstatus").ToUpperInvariant(), 20, 15, updateW - 126, 20, 7.6f, true, Theme.Faint);
             var channelDot = new StatusDot();
@@ -100,13 +82,11 @@ namespace PaviseApp
             divider.BackColor = Theme.StrokeHi;
             divider.SetBounds(Theme.S(20), Theme.S(119), Theme.S(updateW - 40), 1);
             update.Controls.Add(divider);
-            CardLabel(update, Lang.T("v20.about.routes"), 20, 132, updateW - 40, 18, 7f, true, Theme.Faint);
+            CardLabel(update, Lang.T("site.about.source"), 20, 132, updateW - 40, 18, 7f, true, Theme.Faint);
 
-            int routeW = (updateW - 40 - 16) / 3;
-            AddAboutRoute(update, Lang.T("v20.about.direct"), "01", 20, 156, routeW, true);
-            AddAboutRoute(update, Lang.T("v20.about.raw"), "02", 28 + routeW, 156, routeW, false);
-            AddAboutRoute(update, Lang.T("v20.about.mirror"), "03", 36 + routeW * 2, 156, routeW, false);
-
+            var source = MakeConsolePanel(update, 20, 156, updateW - 40, 60, false);
+            CardLabel(source, "PAVISE // OFFICIAL WEBSITE", 14, 8, updateW - 68, 18, 7.3f, true, Theme.Faint);
+            AccentLabel(source, "pavise.club", 14, 29, updateW - 68, 25, 10f, true);
             var privacy = MakeConsolePanel(update, 20, 232, updateW - 40, 70, false);
             var privacyDot = new StatusDot();
             privacyDot.SetBounds(Theme.S(14), Theme.S(22), Theme.S(22), Theme.S(22));
@@ -115,71 +95,24 @@ namespace PaviseApp
             CardLabel(privacy, Lang.T("v20.about.privacy"), 44, 12, updateW - 116, 19, 7f, true, Theme.Faint);
             CardLabel(privacy, Lang.T("v20.about.privacy.value"), 44, 31, updateW - 116, 25, 9.4f, true, Theme.Fg);
 
-            var btnCheck = new PillButton(Lang.T("btn.checkupd"), BtnKind.Primary);
-            btnCheck.Bg = Theme.Card;
-            btnCheck.SetBounds(Theme.S(20), Theme.S(cardH - 58), Theme.S(updateW - 40), Theme.S(42));
-
-            var btnDl = new PillButton(Lang.T("btn.download"));
-            btnDl.Bg = Theme.Card;
-            btnDl.SetBounds(Theme.S(252), Theme.S(cardH - 58), Theme.S(updateW - 272), Theme.S(42));
-            btnDl.Visible = false;
-
-            // 这行是检查结果的回显位 必须锚在按钮上方 不能写死 y
-            //   写死 309 时按钮顶在 cardH-58=329 而这行占到 343 把按钮顶部盖掉 14px
-            //   被盖后按钮只露下半截 居中的字看起来就贴着顶
-            var lblUpd = CardLabel(update, App.VersionTag + "  //  " + Lang.T("v20.about.standby"),
-                20, cardH - 80, updateW - 40, 18, 7.7f, false, Theme.Faint);
-
-            string dlUrl = null;
-            btnDl.Click += (s, e) => { if (UpdateChecker.IsTrustedDownloadUrl(dlUrl)) try { using (Process.Start(dlUrl)) { } } catch { } };
-
-            btnCheck.Click += (s, e) =>
-            {
-                btnCheck.Enabled = false;
-                btnDl.Visible = false;
-                btnCheck.SetBounds(Theme.S(20), Theme.S(cardH - 58), Theme.S(updateW - 40), Theme.S(42));
-                lblUpd.ForeColor = Theme.Dim;
-                lblUpd.Text = Lang.T("upd.checking");
-                UpdateChecker.CheckAsync(r =>
-                {
-                    try
-                    {
-                        BeginInvoke((MethodInvoker)(() =>
-                        {
-                            if (btnCheck.IsDisposed) return;
-                            btnCheck.Enabled = true;
-                            if (!r.Ok)
-                            {
-                                lblUpd.ForeColor = Theme.Danger;
-                                lblUpd.Text = Lang.T("upd.fail");
-                                Logger.Warn(Lang.T("log.panelformaboutpage.1") + r.Error);
-                            }
-                            else if (r.Newer)
-                            {
-                                dlUrl = r.Url;
-                                btnCheck.SetBounds(Theme.S(20), Theme.S(cardH - 58), Theme.S(224), Theme.S(42));
-                                btnDl.Visible = true;
-                                lblUpd.ForeColor = Theme.Green;
-                                lblUpd.Text = Lang.F("upd.newver", r.Latest, App.VersionTag)
-                                    + " " + Lang.F("upd.route", r.Source);
-                                Logger.Log(Lang.T("log.panelformaboutpage.2") + r.Latest + Lang.T("log.program.7") + App.VersionTag + " ");
-                            }
-                            else
-                            {
-                                lblUpd.ForeColor = Theme.Green;
-                                lblUpd.Text = Lang.F("upd.latest", App.VersionTag)
-                                    + " " + Lang.F("upd.route", r.Source);
-                                Logger.Log(Lang.T("log.panelformaboutpage.3") + App.VersionTag + " ");
-                            }
-                        }));
-                    }
-                    catch { }
-                });
-            };
-
-            update.Controls.AddRange(new Control[] { btnCheck, btnDl });
+            lblAboutUpdate = CardLabel(update, "", 20, cardH - 80, updateW - 40, 18, 7.7f, false, Theme.Faint);
+            lblAboutUpdate.Name = "aboutUpdateStatus";
+            var download = new PillButton(Lang.T("site.about.gotoDownload"), BtnKind.Primary)
+                { Name = "aboutWebsiteDownload", Bg = Theme.Card };
+            download.SetBounds(Theme.S(20), Theme.S(cardH - 58), Theme.S(updateW - 40), Theme.S(42));
+            download.Click += delegate { OpenExternal(App.ChangelogUrl); };
+            update.Controls.Add(download);
+            RefreshAboutUpdate();
         }
 
+        private void RefreshAboutUpdate()
+        {
+            if (lblAboutUpdate == null || lblAboutUpdate.IsDisposed) return;
+            bool newer = latestUpdate != null && UpdateChecker.IsNewer(latestUpdate.Latest, App.Version);
+            lblAboutUpdate.Text = newer ? Lang.F("site.about.found", latestUpdate.Latest)
+                : latestUpdate != null ? Lang.T("site.about.latest") : Lang.T("site.about.wait");
+            lblAboutUpdate.ForeColor = newer ? Theme.Green : Theme.Faint;
+        }
         private void AddAboutMetric(Control parent, string title, string value, int x, int y, int width, bool good)
         {
             CardLabel(parent, title.ToUpperInvariant(), x, y, width, 18, 6.7f, true, Theme.Faint);
@@ -203,21 +136,8 @@ namespace PaviseApp
             return result;
         }
 
-        private void AddAboutRoute(Control parent, string title, string index, int x, int y, int width, bool live)
-        {
-            var cell = MakeConsolePanel(parent, x, y, width, 60, false);
-            var dot = new StatusDot();
-            dot.SetBounds(Theme.S(10), Theme.S(10), Theme.S(20), Theme.S(20));
-            dot.Bg = Theme.Card; dot.Color = live ? Theme.Green : Theme.Accent;
-            cell.Controls.Add(dot);
-            CardLabel(cell, title, 34, 8, width - 46, 20, 7.3f, true, Theme.Fg);
-            CardLabel(cell, live ? Lang.T("v20.about.ready") : Lang.T("v20.about.standby"),
-                12, 33, width - 48, 18, 6.6f, false, live ? Theme.Green : Theme.Faint);
-            CardLabel(cell, index, width - 34, 34, 22, 16, 6.2f, false, Theme.Faint).TextAlign = ContentAlignment.MiddleRight;
-        }
-
-        // 换档位之后重画 亮暗切换走 RebuildUi 不用管 档位切换不重建页面 得自己刷
-        //   OwnedImage 只在控件销毁时释放当前那张 换图时旧的在这里当场释放 不靠闭包攒着
+        // Repaint after a tier change; light/dark switching goes through RebuildUi and needs nothing here, but a tier switch does not rebuild the page so refresh here
+        //   OwnedImage releases only the current image when the control is destroyed; on swap the old one is released right here, not hoarded in a closure
         internal void RefreshAboutIcon()
         {
             if (aboutIcon == null || aboutIcon.IsDisposed) return;

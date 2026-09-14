@@ -75,9 +75,7 @@ source snapshots are retained in a unique `Pavise-NegativeReview-*` temporary fo
 
 `Summarize-Review.ps1 -RunDirectory <all-arms-folder>` validates expected row counts,
 unique arm keys, isolation and restoration, then recomputes every priority percentile
-from retained completed-request samples before summarizing. See
-[continued review](../../docs/negative-optimization-review-20260905.md) for findings,
-scope, open questions, and which conclusions are measured versus inferred.
+from retained completed-request samples before summarizing.
 
 The post-fix runner asserts nonzero scheduling progress and Normal readback in
 restricted-domain arms, rejection of missing CPU/GPU verification evidence, and no

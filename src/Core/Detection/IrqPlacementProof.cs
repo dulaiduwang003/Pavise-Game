@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 中断归属的放置证明 校验渲染进程全部线程的实际可运行集合 纯查询不依赖对局状态
+// File purpose Placement proof for interrupt attribution: verifies the actual runnable set of every renderer thread; pure query, independent of match state
 using System;
 using System.Collections.Generic;
 
@@ -14,8 +14,8 @@ namespace PaviseApp
         {
             if (desiredMask == 0) return false;
             if (multiGroup) return cpuSetsMatch;
-            // 有目标 CPU Sets 时 hard affinity 至少要覆盖目标 否则有效集合是
-            // 两者交集 没有 CPU Sets 时则只接受精确 hard affinity
+            // With a target CPU Sets, hard affinity must at least cover the target, otherwise the effective set is
+            // the intersection of the two; without CPU Sets only an exact hard affinity is accepted
             if (cpuSetsMatch)
                 return hardAffinity != 0
                     && (desiredMask & ~hardAffinity) == 0;
@@ -39,7 +39,7 @@ namespace PaviseApp
             ulong threadHard = processHardAffinity & threadGroupAffinity;
             if (threadHard == 0 || !hasCpuSetAssignment) return threadHard;
             ulong intersection = threadHard & assignedCpuSetMask;
-            // Windows 在 CPU Set 分配与限制性硬亲和性完全冲突时以后者为准
+            // Windows lets a restrictive hard affinity win when it fully conflicts with the CPU Set assignment
             return intersection != 0 ? intersection : threadHard;
         }
 
@@ -64,8 +64,8 @@ namespace PaviseApp
                 assignment.Mask = mask;
                 return !assigned || mask != 0;
             }
-            // Win11 mask getter 能同时看到 Masks 与 IDs 两条设置路径 只在
-            // 老 Win10 确实没有导出时才允许回退旧 ID getter
+            // The Win11 mask getter sees both the Masks and IDs setter paths; fall back to the old ID getter only
+            // when old Win10 really lacks the export
             if (result != Native.CpuSetMaskQueryResult.ApiUnavailable)
                 return false;
             uint[] ids = Native.QueryCpuSets(process);
@@ -99,8 +99,8 @@ namespace PaviseApp
                 || CpuTopology.TryCpuSetIdsToMask(ids, out assignment.Mask);
         }
 
-        // 进程级放置 一次身份 一次硬亲和 一次默认 CPU Sets
-        //   采集中每轮用它 全量线程证明按节奏做 线程显式 CPU Sets 逃逸由下一次全量兜住
+        // Process-level placement: one identity check, one hard affinity, one default CPU Sets
+        //   Used every round during capture; the full thread proof runs on its own cadence, and per-thread explicit CPU Sets escapes are caught by the next full pass
         internal static bool AttributionProcessPlacementMatches(
             IntPtr processHandle, int pid, long expectedCreation,
             ulong desiredMask, bool multiGroup)
@@ -122,8 +122,8 @@ namespace PaviseApp
 
         internal enum AttributionThreadOutcome { Live, Vanished, Fail }
 
-        // 开不出句柄 属主不是本进程 已经退出 都是线程消失 不是逃逸 消失的线程不影响证明
-        //   活跃状态查不出来是句柄本身出了问题 证明不了 只能判失败
+        // Cannot open a handle, owner is not this process, already exited: all mean the thread vanished, not escaped; vanished threads do not affect the proof
+        //   If the active state cannot be queried, the handle itself is broken; nothing can be proven, so it must fail
         internal static AttributionThreadOutcome ClassifyAttributionThread(
             bool opened, int expectedPid, int ownerPid, bool activeKnown, bool active)
         {
@@ -134,7 +134,7 @@ namespace PaviseApp
             return active ? AttributionThreadOutcome.Live : AttributionThreadOutcome.Vanished;
         }
 
-        // 只在 after 里出现的线程号 两边都已排序去重 新线程要单独证明一次 消失的不追
+        // Thread ids that appear only in after; both sides already sorted and deduplicated; new threads need their own proof, vanished ones are not chased
         internal static int[] NewAttributionThreads(int[] before, int[] after)
         {
             if (after == null) return new int[0];
@@ -157,7 +157,7 @@ namespace PaviseApp
             public AttributionCpuSetAssignment Selected;
         }
 
-        // 线程级查询失败时再看一眼它是不是刚退出 退出了就是消失 否则证明不了
+        // When a thread-level query fails, check once more whether it just exited; exited means vanished, otherwise nothing is proven
         private static AttributionThreadOutcome FailUnlessVanished(IntPtr thread)
         {
             bool active;
@@ -165,7 +165,7 @@ namespace PaviseApp
                 ? AttributionThreadOutcome.Vanished : AttributionThreadOutcome.Fail;
         }
 
-        // 证明一个线程 Live 时句柄交给 held 并把有效集合并进 union 其余情况句柄已关
+        // Prove one thread: on Live, hand the handle to held and merge its effective set into union; in every other case the handle is already closed
         private static AttributionThreadOutcome ProveThread(
             int tid, int pid, ulong processHard,
             AttributionCpuSetAssignment processDefault,
@@ -212,9 +212,9 @@ namespace PaviseApp
             return AttributionThreadOutcome.Live;
         }
 
-        // 全量线程证明 线程在证明窗口内退出或新建都不算失败 退出的忽略 新建的单独证明一次
-        //   失败只剩三种 进程级放置变了 存活线程的组或线程级 CPU Sets 变了 查询本身出错
-        //   线程号取自最近一次进程扫描留下的记录 末尾再刷新一次抓新线程 不走 .NET Process
+        // Full thread proof: threads exiting or being created inside the proof window do not count as failure; exited ones are ignored, new ones get proven once
+        //   Only three failures remain: process-level placement changed, a live thread's group or thread-level CPU Sets changed, or the query itself errored
+        //   Thread ids come from the record left by the latest process sweep, refreshed once at the end to catch new threads; no .NET Process involved
         internal static bool AttributionThreadPlacementMatches(
             IntPtr processHandle, int pid, long expectedCreation,
             ulong desiredMask, bool multiGroup)
@@ -254,7 +254,7 @@ namespace PaviseApp
                         return false;
                 if (held.Count == 0) return false;
 
-                // 从同一批持有句柄复查 仍活着的线程组与线程级策略不能变 退出的忽略
+                // Re-check from the same batch of held handles: group and thread-level policy of threads still alive must not change; exited ones are ignored
                 foreach (AttributionThreadProof proof in held)
                 {
                     int ownerPid = Native.QueryThreadOwnerPid(proof.Handle);

@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 窗口淡入与页面背景揭示 不截取页面或逐个缓存子控件
+// File purpose Window fade-in and page background reveal, without capturing the page or caching child controls one by one
 using System;
 using System.Diagnostics;
 using System.Drawing;
@@ -28,8 +28,8 @@ namespace PaviseApp
             public FormEntry(Form target)
             {
                 form = target;
-                // 对话框可能比隐藏起来的主窗口活得久 它的淡入淡出绝不能
-                // 借用或者还原主窗口那份全局动画时钟状态
+                // A dialog may outlive the hidden main window, so its fade in/out must never
+                // borrow or restore the main window's global animation clock state
                 timer = new Timer();
                 timer.Interval = UiClock.FrameMs;
                 timer.Tick += OnTick;
@@ -79,8 +79,8 @@ namespace PaviseApp
         }
     }
 
-    // 子 HWND 不支持可靠的整体透明度 这里只画页面原有背景 交给系统逐渐退去
-    // 下方仍是可立即交互的真实页面 不复制内容 不改变页面/弹窗的分层样式
+    // Child HWNDs have no reliable whole-window opacity; only the page's own background is painted here and the system fades it away
+    // Underneath is the real, immediately interactive page; no content is copied and the layered styles of pages and dialogs stay untouched
     internal sealed class PageReveal : Form
     {
         private const int DurationMs = 160;
@@ -130,7 +130,7 @@ namespace PaviseApp
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
-            // 初始 alpha=255 也必须显式初始化 否则分层窗口的首帧不会绘制
+            // Even an initial alpha=255 must be set explicitly, otherwise the layered window never paints its first frame
             layeredReady = SetAlpha(255);
         }
 
@@ -170,7 +170,7 @@ namespace PaviseApp
             }
             catch
             {
-                // 动画不可用时仍显示真实页面 不能留下遮挡层或阻断导航
+                // When animation is unavailable still show the real page, never leave a covering layer or block navigation
                 Cancel();
                 return false;
             }
@@ -180,7 +180,7 @@ namespace PaviseApp
         {
             if (surface == null || !surface.Visible || !CanReveal) { Cancel(); return; }
             WorkspacePanel target = surface;
-            // 先完成真实子窗口的首帧 计时不包含布局 列表刷新和首次绘制的耗时
+            // Finish the real child window's first frame first; timing excludes layout, list refresh and first-paint cost
             bool painted;
             try { painted = RedrawWindow(target.Handle, IntPtr.Zero, IntPtr.Zero, 0x181); }
             catch
@@ -188,7 +188,7 @@ namespace PaviseApp
                 if (surface == target) Cancel();
                 throw;
             }
-            // 同步 Paint 可能打开弹窗 关闭页面或发起下一次导航 不能复活已取消的过渡
+            // A synchronous Paint may open a dialog, close the page or start the next navigation, must not revive a cancelled transition
             if (surface != target) return;
             if (!painted || target.IsDisposed || !target.Visible || !Visible || !CanReveal)
             { Cancel(); return; }

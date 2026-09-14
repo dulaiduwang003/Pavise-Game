@@ -56,6 +56,7 @@ namespace PaviseApp
             NearLoad(50, record.CoreLoads[0].AveragePercent); Eq(3, record.CoreLoads[0].Samples);
             NearLoad(0, record.CoreLoads[1].AveragePercent); Eq(2 * second, record.CoreLoads[1].ObservedTicks);
             NearLoad(100, record.CoreLoads[2].AveragePercent); Eq(3 * second, record.CoreLoads[2].ObservedTicks);
+            Eq(2 * second, record.CoreLoads[0].BusyTicks);
             Eq(true, IrqSessionLedger.ValidCoreLoads(record));
         }
 
@@ -178,7 +179,7 @@ namespace PaviseApp
             string path = Path.Combine(work, IrqSessionLedger.FileName);
             var legacy = LoadTestRecord(5);
             Eq(true, IrqSessionLedger.Append(legacy));
-            string legacyText = File.ReadAllText(path).Replace("PAVISE_IRQ_SESSIONS_V4", "PAVISE_IRQ_SESSIONS_V3");
+            string legacyText = File.ReadAllText(path).Replace("PAVISE_IRQ_SESSIONS_V5", "PAVISE_IRQ_SESSIONS_V3");
             File.WriteAllText(path, legacyText, new UTF8Encoding(false));
             string issue; var loaded = IrqSessionLedger.Load(out issue);
             Eq("", issue); Eq(1, loaded.Count); Eq(0, loaded[0].CoreLoads.Count);
@@ -190,7 +191,7 @@ namespace PaviseApp
             Eq(0, loaded[0].CoreLoads.Count); NearLoad(81.25, loaded[1].CoreLoads[0].AveragePercent);
             Eq(4 * TimeSpan.TicksPerSecond, loaded[1].CoreLoads[0].ObservedTicks);
             string valid = File.ReadAllText(path);
-            Eq(true, valid.StartsWith("PAVISE_IRQ_SESSIONS_V4", StringComparison.Ordinal));
+            Eq(true, valid.StartsWith("PAVISE_IRQ_SESSIONS_V5", StringComparison.Ordinal));
             string row = "C|0|81.25|40000000|2";
             foreach (string invalid in new[] {
                 valid.Replace(row, "C|0|NaN|40000000|2"),
@@ -201,7 +202,7 @@ namespace PaviseApp
                 valid.Replace(row, row + "\r\n" + row),
                 valid.Replace("L|50000000", "L|60000000"),
                 valid.Replace("L|50000000\r\n", ""),
-                valid.Replace("V4", "V999") })
+                valid.Replace("V5", "V999") })
             {
                 Eq(false, invalid == valid);
                 File.WriteAllText(path, invalid, new UTF8Encoding(false));
@@ -235,19 +236,19 @@ namespace PaviseApp
             Eq(true, view.Available); Eq(0, view.Loads.Count); Eq(1UL, view.SeenMask);
             latest.EventsLost = 1;
             view = IrqPinSession.FromLatest(records, device, "1000000", "load-test", version);
-            Eq(false, view.Available); Eq(0UL, view.SeenMask); Eq(0UL, view.GameMask);
+            Eq(true, view.Available); Eq(8UL, view.SeenMask); Eq(3UL, view.GameMask);
             latest.EventsLost = 0;
             view = IrqPinSession.FromLatest(records, device, "90000000", "load-test", version);
-            Eq(false, view.Available);
+            Eq(true, view.Available); Eq(false, view.CurrentBoot);
             view = IrqPinSession.FromLatest(records, device, "1000000", "different-topology", version);
             Eq(false, view.Available);
             view = IrqPinSession.FromLatest(records, device, "1000000", "load-test", delegate { return "v2"; });
-            Eq(true, view.Available); Eq(true, view.Driver == null); Eq(0UL, view.SeenMask);
+            Eq(false, view.Available); Eq(true, view.Driver == null); Eq(0UL, view.SeenMask);
             latest.Drivers[0].MaskTruncated = true;
             view = IrqPinSession.FromLatest(records, device, "1000000", "load-test", version);
-            Eq(0UL, view.SeenMask); Eq(false, view.Driver == null);
+            Eq(8UL, view.SeenMask); Eq(false, view.Driver == null);
             latest.TopologyStamp = "";
-            Eq(false, IrqPinSession.FromLatest(records, device, "1000000", "load-test", version).Available);
+            Eq(true, IrqPinSession.FromLatest(records, device, "1000000", "load-test", version).Available);
             Eq(false, IrqPinSession.FromLatest(null, device, "1000000", "load-test", version).Available);
         }
     }

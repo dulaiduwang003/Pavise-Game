@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 测量并清理限定目录中的缓存内容
+// File purpose Measures and cleans cache content in restricted directories
 using System;
 using System.IO;
 

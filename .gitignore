@@ -1,8 +1,14 @@
 
 .claude/
+website/
 tests/
 !tests/
 tests/*
+!tests/SelfTest.sources.rsp
+!tests/SelfTests.IrqEnhancement.cs
+!tests/SelfTests.IrqCorePlan.cs
+!tests/SelfTests.IrqAdjustmentHistory.cs
+!tests/SelfTests.IrqRestoreResults.cs
 !tests/SelfTests.Runner.cs
 !tests/SelfTests.CoreScheduling.cs
 !tests/SelfTests.CoreIsolation.cs
@@ -28,6 +34,11 @@ tests/*
 !tests/SelfTests.HeavySqueeze.cs
 !tests/SelfTests.RenderLaneEligibility.cs
 !tests/SelfTests.AddGameFolder.cs
+!tests/SelfTests.GameScan.cs
+!tests/SelfTests.GameScanPlatforms.cs
+!tests/SelfTests.GameScanShortcuts.cs
+!tests/SelfTests.GameScanInstalled.cs
+!tests/SelfTests.GameSearch.cs
 !tests/SelfTests.ReleaseNotes.cs
 !tests/SelfTests.WeGameShell.cs
 !tests/SelfTests.NegativeOptFixes.cs
@@ -73,9 +84,11 @@ tests/*
 !tests/SelfTests.Eee.cs
 !tests/SelfTests.RogueProcess.cs
 !tests/SelfTests.LogSeverity.cs
+!tests/SelfTests.UiWorkflow.cs
 !tests/SelfTests.PresetValue.cs
 !tests/SelfTests.DieMasks.cs
 !tests/SelfTests.Donate.cs
+!tests/SelfTests.WebsiteUpdate.cs
 !tests/SelfTests.HandheldBlock.cs
 !tests/SelfTests.OsBaseline.cs
 !tests/IrqCoreLoadUiChecks.cs
@@ -92,9 +105,6 @@ tools/*
 !tools/FamilyWarningBench/**
 !tools/GainBench2133/
 !tools/GainBench2133/**
-!tools/Sync-VersionManifest.ps1
-!tools/Publish-VersionManifest.ps1
-!tools/Publish-OssAsset.ps1
 !tools/RendererHandoffBench/
 tools/RendererHandoffBench/*
 !tools/RendererHandoffBench/FixtureHost.cs
@@ -162,6 +172,11 @@ release-v*/
 setup.log
 swap.log
 Pavise*.exe.sha256
-.release-protected/
 
 oss-key.ps1
+
+# Local IRQ observation and adjustment history may contain game/device identities
+Pavise.irq-sessions.dat
+Pavise.irq-sessions.dat.*.tmp
+irq-adjustment-*.xml
+irq-adjustment-*.xml.*.tmp

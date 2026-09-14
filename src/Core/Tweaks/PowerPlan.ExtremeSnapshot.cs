@@ -23,7 +23,7 @@ namespace PaviseApp
             return false;
         }
 
-        // v2 把收据绑到方案上 旧版只有 GUID=AC,DC 的托管方案收据也还兼容
+        // v2 binds the receipt to the scheme; legacy managed-scheme receipts with only GUID=AC,DC are still supported
         private static bool ReadExtremeSnapshot(Guid scheme, out List<ExtremeSavedValue> values)
         {
             values = new List<ExtremeSavedValue>();
@@ -65,7 +65,7 @@ namespace PaviseApp
             return Settings.SaveStrDurable(ExtremeSnapKey, text);
         }
 
-        // 只有托管方案删成功那条路径会调 这里不执行删除 也不顺手清别的方案收据
+        // Called only on the path where the managed scheme was deleted successfully; no deletion here, and no clearing other schemes' receipts along the way
         private static bool ForgetDeletedExtremeSnapshot(Guid scheme)
         {
             List<ExtremeSavedValue> values;
@@ -73,8 +73,8 @@ namespace PaviseApp
                 && (values.Count == 0 || SaveExtremeSnapshot(scheme, new List<ExtremeSavedValue>()));
         }
 
-        // 只有完整枚举确认原方案不存在才丢收据 读取失败或未知格式都保留
-        // 正在配置的方案已有调用方确认的身份 不靠再次枚举推翻它
+        // Drop the receipt only when a complete enumeration confirms the original scheme is gone; read failures or unknown formats keep it
+        // The scheme being configured has an identity the caller already confirmed, do not overturn it by enumerating again
         private static bool DropOrphanExtremeSnapshot(Guid configuringScheme)
         {
             string text;
@@ -116,15 +116,15 @@ namespace PaviseApp
                 uint? ac = ReadExtremeIndex(scheme, knob.Setting, true);
                 uint? dc = ReadExtremeIndex(scheme, knob.Setting, false);
                 if (!ac.HasValue && !dc.HasValue) continue;
-                // 单侧可读说明不能当作未暴露项 忽略本轮写入但保留重试状态
+                // Readable on one side only cannot count as an unexposed item; skip this round's write but keep the retry state
                 if (!ac.HasValue || !dc.HasValue) { incomplete = true; continue; }
                 values.Add(new ExtremeSavedValue { Setting = knob.Setting, Ac = ac.Value, Dc = dc.Value });
             }
             return SaveExtremeSnapshot(scheme, values);
         }
 
-        // retiredOnly=true 时迁移撤回项 当前空闲策略项的原始收据留着
-        // 每一侧写完都回读 部分失败就留账 调用过恢复不等于恢复完成
+        // retiredOnly=true migrates retired items only; original receipts for current idle policy items are kept
+        // Read back after writing each side; partial failure keeps the ledger, calling restore is not the same as restore complete
         private static bool RestoreExtremeKnobs(Guid scheme, bool retiredOnly)
         {
             List<ExtremeSavedValue> values;

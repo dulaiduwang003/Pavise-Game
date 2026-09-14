@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 对局期中断采样的生命周期 布防 状态与证明比对
+// File purpose Lifecycle of in-match interrupt sampling: arming, state, and proof comparison
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -22,8 +22,32 @@ namespace PaviseApp
         private string statusDetail = "";
         private int statusSeconds;
         private long startTicks;
+        private long captureStartQpc, captureEndQpc;
+        internal bool FrameWindow(out long begin, out long end)
+        {
+            lock (gate)
+            { begin = captureStartQpc; end = captureEndQpc; return begin > 0 && end > begin && !gameMaskInvalid; }
+        }
         private long lastProofTicks;
         private string gameName = "";
+        private string stableGameId = "", configuration = "";
+        private IrqFrameEvidence frameEvidence;
+        private Dictionary<string,string> deviceConfigurations = new Dictionary<string,string>();
+
+        internal void SetContext(string gameId, string fingerprint)
+        {
+            lock (gate)
+            { stableGameId = gameId ?? ""; configuration = fingerprint ?? ""; frameEvidence = null; }
+        }
+
+        internal void SetFrameEvidence(IrqFrameEvidence evidence)
+        {
+            lock (gate)
+            {
+                frameEvidence = evidence;
+                if (pendingRecord != null) pendingRecord.Frames = evidence;
+            }
+        }
         private string bootStamp = "";
         private string topologyStamp = "";
         private ulong gameMask;
@@ -39,11 +63,11 @@ namespace PaviseApp
         private bool completed = true;
         private bool sealedPending;
         private bool stopInProgress;
-        // Seal 只停 ETW 并暂存 必须等退出宽限真正结束
-        // 才由 TakeSummary 提交 同一游戏在宽限内恢复时 Arm 会丢弃它
+        // Seal only stops ETW and stashes; it must wait for the exit grace period to truly end
+        // before TakeSummary commits; if the same game recovers within the grace period, Arm discards it
         private IrqSessionRecord pendingRecord;
         private string pendingSummary;
-        // 上一局的逐事件 DPC 时间线 供 GameMode 取走做 present 对齐 取走即清
+        // Previous match's per-event DPC timeline, for GameMode to take for present alignment; taking clears it
         private System.Collections.Generic.List<InterruptAttribution.DpcTimelineEntry> pendingTimeline;
         private bool pendingTimelineTruncated;
 
@@ -128,8 +152,8 @@ namespace PaviseApp
 
         private bool warnedNoAdmin;
 
-        // 开局只布防 系统观测只需确认 renderer 身份 不写游戏亲和性
-        // 核域归因仍必须有完整的落核证明 两种证据不能混成一条记录
+        // Match start only arms; system observation only needs the renderer identity confirmed and writes no game affinity
+        // Core-domain attribution still requires a complete placement proof; the two kinds of evidence must not be mixed into one record
         public void Arm(string game, ulong availableSystemMask)
         {
             Arm(game, availableSystemMask, false);
@@ -144,6 +168,7 @@ namespace PaviseApp
                 if (disposed) return;
                 stale = InvalidateLocked();
                 gameName = game ?? "";
+                stableGameId = configuration = ""; frameEvidence = null;
                 systemMask = availableSystemMask;
                 systemObservation = observeSystem;
                 placementWaitScans = 0;
@@ -155,9 +180,9 @@ namespace PaviseApp
             StopAndDiscard(stale);
         }
 
-        // 严格核域是建议的证据要求 不是记录一局的前提 给初始化有限几轮
-        // 扫描机会 仍未起采或证明已失效时 本局单向退为系统观测
-        // ETW/权限失败不是落核失败 不能借此每轮重新申请会话
+        // Strict core domain is the evidence requirement for suggestions, not a prerequisite for recording a match; initialization gets a few
+        // sweep chances, and if capture still has not started or the proof has lapsed, this match downgrades one-way to system observation
+        // ETW or permission failure is not a placement failure and must not be used to re-request a session every round
         public bool TryFallbackToSystemObservation(string game, ulong availableSystemMask)
         {
             lock (gate)
@@ -168,7 +193,7 @@ namespace PaviseApp
                 if (statusKey != "waiting" && statusKey != "invalidated") return false;
                 if (statusKey == "waiting"
                     && ++placementWaitScans < PlacementInitializationScans) return false;
-                InvalidateLocked(); // 上述条件保证无 live；不能把旧核域时间线带进新窗口。
+                InvalidateLocked(); // The conditions above guarantee no live; the old core-domain timeline must not be carried into the new window
                 gameName = game ?? "";
                 systemMask = availableSystemMask;
                 systemObservation = true;
@@ -181,7 +206,7 @@ namespace PaviseApp
             }
         }
 
-        // armed 后以及采集中都要持续核验 采集中一旦失配 整局样本永久作废
+        // Verification must continue after armed and throughout capture; a mismatch during capture permanently voids the whole match sample
         public bool RequiresPlacementAudit
         {
             get { lock (gate) return !disposed && armed && !gameMaskInvalid && !systemObservation; }

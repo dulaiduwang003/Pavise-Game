@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 进程身份捕获 窗口证据与全屏判定
+// File purpose Process identity capture, window evidence and fullscreen verdict
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -195,8 +195,8 @@ namespace PaviseApp
             return covered * 100 >= monitorArea * FullscreenCoveragePercent;
         }
 
-        // 热路径每轮都来问 智能档的 Sweep 每 500ms 一次 结果 1.5 秒内直接复用
-        //   返回的是同一个集合 调用方只读 要改就自己拷一份
+        // The hot path asks every pass; the Smart tier Sweep runs every 500ms, so results are reused as-is within 1.5 s
+        //   The same collection is returned; callers read only and must copy if they want to modify
         private static readonly object visibleCacheSync = new object();
         private static HashSet<int> visibleCacheAll, visibleCacheShown;
         private static long visibleCacheAllTicks, visibleCacheShownTicks;

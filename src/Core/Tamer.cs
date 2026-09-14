@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 按用户配置压制指定反作弊进程
+// File purpose Suppresses specified anti-cheat processes per user config
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -19,9 +19,9 @@ namespace PaviseApp
         private readonly int selfPid;
         private readonly int selfSession;
         private volatile bool paused;
-        // 全局强度档 三档共用同一批有效成分 递进的是介入深度
+        // Global strength tier; all three tiers share the same active ingredients, what escalates is intervention depth
         private volatile int mode = (int)AntiCheatModes.Default;
-        // 反作弊绑核是压制构成的一部分；写入被拒的进程实例本进程生命周期内不再重试
+        // Anti-cheat core pinning is part of the suppression composition; a process instance that refused the write is not retried for this process's lifetime
         private readonly Dictionary<int, long> pinRefused = new Dictionary<int, long>();
         private volatile bool stopping;
         private int processEventsAvailable;
@@ -60,7 +60,7 @@ namespace PaviseApp
             RetireNonSuppressibleGroups();
         }
 
-        // 改判为仅保护的分组 老配置里可能还开着 静默失效比留着更糟 说明一次再清掉
+        // Groups reclassified as protect-only may still be enabled in old config; a silent no-op is worse than leaving it, explain once then clear
         private void RetireNonSuppressibleGroups()
         {
             foreach (AcGroup g in AntiCheatCatalog.Groups)
@@ -82,9 +82,9 @@ namespace PaviseApp
                 bool release = AntiCheatModes.ShouldReleasePins((AntiCheatMode)mode, value);
                 mode = (int)value;
                 AntiCheatModes.Save(value);
-                // 降档只是不再新增绑核 已经绑上的必须主动放回去
-                //   SqueezeAff 不清零的话 DesiredAffinity 会一直返回落点 每轮对账又写回来
-                //   反作弊会被钉在末尾核上直到进程退出 界面上却写着这一档不绑核
+                // Lowering the tier only stops adding pins; existing pins must be actively released
+                //   If SqueezeAff isn't zeroed DesiredAffinity keeps returning the placement and each reconcile round writes it back
+                //   The anti-cheat would stay pinned to the tail cores until process exit while the UI says this tier doesn't pin
                 if (release)
                 {
                     int released = 0;
@@ -105,12 +105,12 @@ namespace PaviseApp
             set { paused = value; Poke(); }
         }
 
-        // 压制落地之后再下落点；6 到 8 核机器上使用末尾一个物理核
-        //   写入被反作弊自身保护拒绝的 pid 记一次日志后不再重试 换了进程实例才会再来
+        // Placement comes after suppression has landed; 6 to 8 core machines use the last physical core
+        //   A pid whose write is refused by the anti-cheat's own protection is logged once and not retried; only a new process instance retries
         private void PinAntiCheatCores(List<AcquireRequest> acquisitions)
         {
             if (acquisitions == null || acquisitions.Count == 0) return;
-            // 绑核最容易被反作弊自身保护拒绝 只有隔离档做
+            // Core pinning is the write most likely refused by anti-cheat self-protection; only the isolation tier does it
             if (!AntiCheatModes.PinsCores((AntiCheatMode)mode)) return;
             ulong mask;
             try { mask = CpuTopology.MultiGroup ? 0 : CpuTopology.BackgroundSqueezeMask(); }
@@ -214,8 +214,8 @@ namespace PaviseApp
         {
             stopping = true;
             kick.Set();
-            // 超时的工作线程可能还在改进程和它自己的恢复台账
-            // 工作线程真正退出之前 重置不许删那份台账
+            // A timed-out worker may still be modifying the process and its own recovery ledger
+            // reset must not delete that ledger before the worker really exits
             Thread current = worker;
             return current == null || current != Thread.CurrentThread && current.Join(6000);
         }
@@ -404,7 +404,7 @@ namespace PaviseApp
             {
                 foreach (AcGroup g in AntiCheatCatalog.Groups)
                 {
-                    // 仅保护的分组永不进压制目标 它们的进程名照旧进豁免名单
+                    // Protect-only groups never enter the suppression targets; their process names still go to the exemption list
                     if (!g.Suppressible) continue;
                     bool on;
                     if (enabled.TryGetValue(g.Key, out on) && on)
@@ -508,8 +508,8 @@ namespace PaviseApp
                     {
                         try
                         {
-                            // 强度跟全局档位走 三档的有效成分相同 递进的是介入深度
-                            //   见 SuppressionCore.Apply 的四个 Desired* 函数与 AntiCheatModes
+                            // Strength follows the global tier; the three tiers share the same active ingredients, what escalates is intervention depth
+                            //   See the four Desired* functions in SuppressionCore.Apply and AntiCheatModes
                             request.Result = core.Acquire(
                                 request.Pid, request.Name,
                                 SuppressReason.AntiCheat, request.Group,

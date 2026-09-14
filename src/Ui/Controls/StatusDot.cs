@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 绘制状态指示点控件
+// File purpose Status indicator dot control
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -23,8 +23,8 @@ namespace PaviseApp
 
         public Color Color { get { return color; } set { if (color != value) { color = value; Invalidate(); } } }
 
-        // 表示"程序在跑"这类点用主题强调色 得跟着档位换
-        //   状态语义色 绿的红的黄的 不要开这个 它们表达的是状态不是主题
+        // Dots meaning the app is running use the theme accent and must follow the tier
+        //   Do not enable this for status semantic colors (green/red/yellow); they express state, not theme
         public bool FollowAccent
         {
             get { return followAccent; }

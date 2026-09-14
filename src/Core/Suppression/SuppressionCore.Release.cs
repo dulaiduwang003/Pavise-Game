@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 解除压制 原值还原与待还原重试
+// File purpose Release suppression: original-value restore and pending-restore retry
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -25,10 +25,10 @@ namespace PaviseApp
             return had;
         }
 
-        // 调用方必须先把这个身份从新的后台 Acquire/Reconcile 里排除
-        // 并在 Ready 之后重新校验它的原生身份
-        // 清掉一个 reason 不等于原始值已经还原完
-        // Reasons=None 但条目还活着 那仍然是一笔恢复欠账
+        // Caller must first exclude this identity from new background Acquire/Reconcile
+        // and re-validate its native identity after Ready
+        // Clearing a reason doesn't mean the original values are restored
+        // Reasons=None with the entry still alive is still a recovery debt
         internal BackgroundReleaseState ReleaseBackgroundForRenderer(
             int pid, long expectedCreation, string expectedName)
         {
@@ -66,15 +66,15 @@ namespace PaviseApp
         {
             if ((entry.Reasons & ~SuppressReason.Background) != SuppressReason.None)
                 return BackgroundReleaseState.OtherReasonActive;
-            // 这里不要调 TryRestore 只有第一次释放才启动恢复
-            // 后续轮询只观察 RetryPending 和它受保护的退避
+            // Don't call TryRestore here; only the first release starts recovery
+            // later polls only observe RetryPending and its guarded backoff
             return BackgroundReleaseState.Pending;
         }
 
-        // 合法的渲染进程可能复用一个 PID 而 map 里那个进程已经死了
-        // 只忘掉这条过期账 绝不能为了删旧身份就对新进程做
-        // Acquire 或 Restore 调用方还需要 ReleaseBackgroundForRenderer
-        // 以及最后一次原生身份检查
+        // A legitimate renderer process may reuse a PID whose process in the map is already dead
+        // Forget only that stale record; never act on the new process just to delete the old identity
+        // Acquire or Restore callers still need ReleaseBackgroundForRenderer
+        // and the final native identity check
         internal bool DiscardReusedRendererTracking(int pid, long expectedCreation, string expectedName)
         {
             if (pid <= 0 || expectedCreation <= 0 || string.IsNullOrWhiteSpace(expectedName)) return false;
@@ -90,8 +90,8 @@ namespace PaviseApp
             {
                 Entry current;
                 if (!map.TryGetValue(pid, out current)) return true;
-                // 只读查询还在飞的时候 Acquire 可能替换掉一个条目
-                // 或者就地填上一个 creation=0 的占位
+                // While a read-only query is in flight Acquire may replace an entry
+                // or fill in a creation=0 placeholder in place
                 if (!ReferenceEquals(current, observed) || current.Creation != observedCreation) return false;
                 bool reused = current.Creation > 0 && current.Creation != expectedCreation;
                 bool untouched = current.Creation == 0 && current.OrigPri == uint.MaxValue
@@ -114,7 +114,7 @@ namespace PaviseApp
 #if PAVISE_SELFTEST
             if (RendererDiscardIdentityForTest != null)
                 return RendererDiscardIdentityForTest(pid, expectedCreation, expectedName);
-            // 没有身份接缝的内存夹具 必须一直留在内存里
+            // In-memory fixture with no identity seam: entries must stay in memory
             if (restoreForTest != null) return false;
 #endif
             IntPtr handle = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
@@ -180,8 +180,8 @@ namespace PaviseApp
                 bool hadSqueeze = e.SqueezeAff != 0;
                 e.Reasons &= ~reason;
                 if ((reason & SuppressReason.AntiCheat) != 0) e.AntiCheatLevel = SuppressionLevel.None;
-                // 原因撤销时清理对应落点；不得把已撤销的限制带入下一次压制
-                //   条目仍带反作弊原因时落点归反作弊路 由那边的开关决定 这里不动
+                // When a reason is revoked clear its placement; a revoked limit must not carry into the next suppression
+                //   If the entry still has the anti-cheat reason the placement belongs to the anti-cheat path, decided by that switch, untouched here
                 if ((reason & SuppressReason.Background) != 0)
                 {
                     e.BackgroundLevel = SuppressionLevel.None;
@@ -246,9 +246,9 @@ namespace PaviseApp
             lock (sync)
             {
                 Entry current;
-                // RetryPending 基于快照工作 这个条目被移除 替换或者重新获取之后
-                // 它不能再去启动一次旧的还原
-                // 也不能和同一条目上第一次 ReleaseOne 的还原叠在一起
+                // RetryPending works from a snapshot; once this entry is removed, replaced or re-acquired
+                // it must not start the old restore again
+                // nor stack on top of the first ReleaseOne restore for the same entry
                 if (!map.TryGetValue(pid, out current) || !ReferenceEquals(current, e)
                     || e.Reasons != SuppressReason.None || e.RestoreInFlight
                     || (respectBackoff && DateTime.UtcNow.Ticks < e.NextRetryTicks)) return false;

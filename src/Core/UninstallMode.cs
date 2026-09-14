@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 卸载 Pavise 的程序内实现 按收据还原系统改动 再删开机任务 托管电源方案 设置 数据与旧版本残留
+// File purpose In-app implementation of Pavise uninstall, restores system changes by receipt, then removes the startup task, managed power scheme, settings, data and old-version leftovers
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -68,7 +68,7 @@ namespace PaviseApp
             return report;
         }
 
-        // 收据还原与本机数据已经清完 这里只清历史版本留下的东西 单项失败不影响结果 只是少清一项
+        // Receipt restore and local data are already cleared, this only removes what past versions left behind, a single failure does not affect the result, just one item less cleaned
         private static int CleanLeftovers(string dataDir, string exeDir)
         {
             int cleaned = 0;
@@ -108,7 +108,7 @@ namespace PaviseApp
             return cleaned;
         }
 
-        // 旧版本用过的数据目录 程序自己所在的目录及其上级一概不碰 便携版装在这些位置时不能连程序一起删
+        // Data dirs used by old versions, the program's own directory and its parents are never touched, a portable install in those locations must not delete the program along with them
         internal static List<string> LegacyDataDirs(string roaming, string local, string common, string exeDir)
         {
             var result = new List<string>();
@@ -184,7 +184,7 @@ namespace PaviseApp
             return cleaned;
         }
 
-        // 命令行 --uninstall 结果文件 的无界面入口 给自动化用 不需要界面
+        // Headless entry for the --uninstall <result file> command line, for automation, no UI needed
         public static bool Run(string resultPath)
         {
             var report = new StringBuilder();
@@ -215,7 +215,7 @@ namespace PaviseApp
             return ok;
         }
 
-        // 还原持久项时不能有别的实例在写收据 先发退出信号 等不到就强杀
+        // No other instance may be writing receipts while persistent items are restored, send the exit signal first, force-kill if it does not comply
         private static void StopOtherInstances()
         {
             try { using (var exit = EventWaitHandle.OpenExisting("Global\\Pavise_Exit")) exit.Set(); }

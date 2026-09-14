@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 反作弊亲和性限制与旧后台绑核恢复
+// File purpose Anti-cheat affinity limits and old background core-pinning restore
 using System;
 using System.Collections.Generic;
 
@@ -7,16 +7,16 @@ namespace PaviseApp
 {
     internal sealed partial class SuppressionCore
     {
-        // 目标掩码为 0 表示解除 落点校验在 SuppressionAffinityPolicy.SqueezeTarget
-        //   只认身份完全吻合的已落账条目 受保护条目 未落账的条目都不碰
-        //   reason 说明这次是谁在下落点 后台路只认纯后台条目 反作弊路只认带反作弊原因的条目
-        //   返回真表示条目现在处于期望状态 changed 表示这次调用真的改了亲和
+        // Target mask 0 means release; placement validation lives in SuppressionAffinityPolicy.SqueezeTarget
+        //   Only ledgered entries whose identity fully matches; protected and unledgered entries are untouched
+        //   reason says who is placing; the background path takes only pure background entries, the anti-cheat path only entries with the anti-cheat reason
+        //   Returns true when the entry is now in the desired state; changed means this call actually altered affinity
         public bool SetSqueeze(int pid, long creation, string name, ulong squeezeMask,
             SuppressReason reason, out bool changed)
         {
             changed = false;
-            // 旧的按热度重压已退役 后台落点只服务于核心独占的硬亲和 且必须整块给出
-            //   调用方负责判断开关与独占是否真的生效 这里只拒绝不认识的原因
+            // The old heat-based heavy-load pinning is retired; background placement serves only exclusive-core hard affinity and must be given as a whole block
+            //   Caller is responsible for checking the switch and whether exclusive is really in effect; this only rejects unknown reasons
             if (reason != SuppressReason.AntiCheat && reason != SuppressReason.Background
                 && squeezeMask != 0) return false;
             Entry e;
@@ -48,8 +48,8 @@ namespace PaviseApp
                         DesiredGpu(cur), cur.OrigBoost, AntiCheatThrottled(cur), DesiredAffinityOf(cur));
                     if (!applied && target != 0)
                     {
-                        // 绑不上就不记这笔账 亲和写回原值 Applied 与巡检节奏一律不动
-                        //   否则一次亲和被拒会把整条压制判成失败 每轮重试还刷日志
+                        // If the pin fails, don't ledger it; write affinity back to original, Applied and patrol cadence untouched
+                        //   Otherwise one refused affinity write marks the whole suppression failed and every retry round spams the log
                         cur.SqueezeAff = 0;
                         ulong original = cur.OrigAff != 0 ? cur.OrigAff : allMask;
                         if (!CpuTopology.MultiGroup && Native.QueryAffinity(h) != original)
@@ -65,7 +65,7 @@ namespace PaviseApp
             finally { Native.CloseHandle(h); }
         }
 
-        // 带反作弊原因的条目归反作弊路 其余带后台原因的归后台路
+        // Entries with the anti-cheat reason belong to the anti-cheat path; the rest with a background reason belong to the background path
         private static bool SqueezeOwnedBy(Entry e, SuppressReason reason)
         {
             bool antiCheat = (e.Reasons & SuppressReason.AntiCheat) != 0;
@@ -73,7 +73,7 @@ namespace PaviseApp
             return !antiCheat && (e.Reasons & SuppressReason.Background) != 0;
         }
 
-        // 开关局中关掉时把这一路已经绑上的全部放回去 返回真正解除的条数
+        // When the switch is turned off mid-match, release everything this path pinned; returns the count actually released
         public int ClearSqueezes(SuppressReason reason)
         {
             var squeezed = new List<KeyValuePair<int, Entry>>();

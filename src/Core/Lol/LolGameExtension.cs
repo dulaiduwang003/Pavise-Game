@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 英雄联盟增强接进扩展模块槽 游戏库识别到英雄联盟条目时给卡片挂增强区
+// File purpose Plug the League of Legends enhancement into the extension module slot; when the game library recognizes a League entry, attach the enhancement area to its card
 using System;
 using System.Threading;
 
@@ -9,7 +9,7 @@ namespace PaviseApp
     {
         static partial void Create(ref GameExtensionModule module)
         {
-            // 英雄联盟在前 它的卡片更全 其余 WeGame 游戏归通用脱壳
+            // League of Legends first, its card is more complete; other WeGame games go to generic shell removal
             module = new CompositeGameExtension(new LolGameExtension(), new WeGameGameExtension());
         }
     }

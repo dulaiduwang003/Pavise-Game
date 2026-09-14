@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 自动入库 开关在游戏库页 前台全屏且GPU主导的陌生游戏自动加入目标库 移除即永久忽略
+// File purpose Auto add, switch on the game library page, unknown foreground fullscreen GPU-dominant games join the target library automatically, removal means permanent ignore
 
 using System;
 using System.Collections.Generic;
@@ -9,7 +9,7 @@ namespace PaviseApp
 {
     internal partial class GameMode
     {
-        // 20% 比渲染进程选举的 10% 更严 自动写库的误报代价高于漏报
+        // 20% is stricter than the 10% used by renderer election, a false positive written to the library costs more than a miss
         private const double AutoAddMinUtilization = 20.0;
         private const int AutoAddGateMs = 30000;
         private const int AutoAddRejectMinutes = 10;
@@ -74,7 +74,7 @@ namespace PaviseApp
             }
 
             if (System.Threading.Interlocked.CompareExchange(ref rendererGpuSamplingBusy, 1, 0) != 0) return;
-            // 采样要在 PDH 里睡 1.4 秒 不能占着检测主循环 丢给线程池 结论回来再复核前台
+            // Sampling sleeps 1.4s inside PDH and can't hold the detection main loop, hand it to the thread pool and re-verify the foreground when the verdict returns
             string identityName = identity.Name;
             bool queued = false;
             try
@@ -106,7 +106,7 @@ namespace PaviseApp
                 if (!IsCompositorPid(kv.Key)) { RememberAutoAddReject(path, now); return; }
             }
 
-            // 采样耗时 1.4 秒 期间前台可能已经易主或已经进局 再确认一次才有资格写库
+            // Sampling takes 1.4s, the foreground may have changed hands or a match may have started meanwhile, confirm again before it qualifies for the library
             bool sessionNow;
             lock (sync) sessionNow = active;
             if (sessionNow || stopping || panicReq) return;
@@ -174,7 +174,7 @@ namespace PaviseApp
 
         private bool EnsureLibraryReadyLocked()
         {
-            if (libraryIgnoreTransaction == null) return true; // Uninitialized, read-only UI fixtures.
+            if (libraryIgnoreTransaction == null) return true; // Uninitialized read-only UI fixtures
             if (!libraryIgnoreTransaction.RecoveryPending && !autoIgnoreLoadFailed) return true;
             return libraryIgnoreTransaction.TryRecover() && LoadAutoIgnore();
         }

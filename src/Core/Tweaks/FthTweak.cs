@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 检出系统偷偷给游戏挂上的容错堆 shim 并提供可还原的解除 只摘注册表指针 不删 sdb 文件
+// File purpose Detect the fault tolerant heap shim the system silently attaches to a game and offer a reversible removal; only unhooks the registry pointer, never deletes sdb files
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -7,8 +7,8 @@ using Microsoft.Win32;
 
 namespace PaviseApp
 {
-    // 容错堆是系统看某个程序崩多了自动挂上的兼容性 shim
-    //   它会拦下堆分配走一层额外逻辑 对游戏是净损耗
+    // Fault tolerant heap is a compat shim the system attaches automatically after seeing a program crash too often
+    //   It intercepts heap allocations through an extra layer of logic, a pure loss for a game
     internal static class FthTweak
     {
         private const string FthKey = @"SOFTWARE\Microsoft\FTH";

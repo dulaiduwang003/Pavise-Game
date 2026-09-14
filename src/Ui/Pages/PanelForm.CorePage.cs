@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 构建核心调度独立页面 一张选核图加游戏独占开关
+// File purpose Build the standalone Core Scheduling page: one core selection map plus the game exclusive-cores switch
 using System;
 
 using System.Drawing;
@@ -44,7 +44,7 @@ namespace PaviseApp
                 if (CpuTopology.CountSetBits(c & CpuTopology.AllMask) > 1) smt++;
             string line = Lang.F("core.topo.line", cores.Length,
                 CpuTopology.CountSetBits(CpuTopology.AllMask), smt);
-            // 拓扑读数自相矛盾时保存的方案随时会失效 摆在标题行上 别只写进日志
+            // When topology readings contradict each other the saved scheme can break at any time; put it on the title row, not just in the log
             return CpuTopology.TopologySourcesAgree && !CpuTopology.AllMaskReconciled
                 ? line : line + Lang.T("core.topo.split");
         }
@@ -62,7 +62,7 @@ namespace PaviseApp
             pageCoreScheduling.Controls.Add(banner);
             y += 84;
 
-            // 分配与独占合成一页 选核只选一次 独占是它的附加项
+            // Allocation and exclusive cores merged into one page; core selection happens once, exclusivity is its add-on
             coreScrollPanel = new DBPanel();
             coreScrollPanel.SetBounds(Theme.S(20), Theme.S(y), Theme.S(PageW - 40), Theme.S(PageH - y - 8));
             coreScrollPanel.BackColor = Theme.Bg; coreScrollPanel.AutoScroll = true;

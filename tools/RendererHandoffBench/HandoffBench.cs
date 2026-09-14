@@ -1,5 +1,5 @@
-// 文件用途 隔离的正确性台架 身份是真的自有身份 窗口 GPU 和恢复证据都是合成的
-// 不跑 Program 不跑完整 SelfTests 不跑 GameMode 的 Loop Sweep Boost 也不做真实 GPU 采样
+// File purpose Isolated correctness bench, identity is real self-owned identity, window, GPU and restore evidence are synthetic
+// No Program, no full SelfTests, no GameMode Loop, Sweep or Boost, and no real GPU sampling
 #if !PAVISE_RENDERER_BENCH || !PAVISE_SELFTEST
 #error This bench requires PAVISE_RENDERER_BENCH and PAVISE_SELFTEST.
 #endif
@@ -48,7 +48,7 @@ namespace PaviseApp
             if (!int.TryParse(args[1], out repeats) || repeats < 1 || repeats > 10) return 2;
             Check(SamePath(output.TrimEnd('\\'), AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\')), "Output must be this isolated executable's directory.");
             using (Process self = Process.GetCurrentProcess()) { selfPid = self.Id; session = self.SessionId; }
-            Settings.UseTransientStoreForCurrentProcess(); // Before any application constructor/test.
+            Settings.UseTransientStoreForCurrentProcess(); // Before any application constructor/test
             Lang.Init();
             Logger.LogPath = Path.Combine(output, "production-decision.log");
             DateTime started = DateTime.UtcNow;
@@ -149,7 +149,7 @@ namespace PaviseApp
                 Check(pair.CleanExit && learned.CleanExit && !pair.CleanupUsedKill && !learned.CleanupUsedKill, "Helpers did not exit normally without kill.");
                 Record(repeat, layout, "normal-pair-exit", "PASS", "Launcher, original child and old learned all exited with code zero.", Detail("CleanupUsedKill", false));
 
-                // root 是故意把子进程关掉的 别说成子进程活下来了
+                // root shuts the child down deliberately, do not describe it as the child surviving
                 RunCase(repeat, layout, "trusted-root-after-launcher-exit", delegate
                 {
                     using (OwnedLeaf detached = OwnedLeaf.Start(rendererPath))
@@ -194,9 +194,9 @@ namespace PaviseApp
             GameProfile profile = Profile(id + "-" + repeat + "-" + layout, root, pair.Launcher.Path, oldLearned ? learned.Identity.Path : null, preset, false);
             using (var c = new BenchContext(repeat, layout, id, profile, preset, family))
             {
-                profile = c.CurrentProfile; // Includes the per-game setting saved before the scenario.
+                profile = c.CurrentProfile; // Includes the per-game setting saved before the scenario
                 GameProcessSnapshot old = oldLearned ? learned.Identity : pair.Launcher;
-                c.SeedSticky(old); // Historical setup only; fresh renderer takes the entire chain.
+                c.SeedSticky(old); // Historical setup only fresh renderer takes the entire chain
                 c.Snapshot = new[] { Window(pair.Launcher, false), Window(learned.Identity, false), Window(pair.Renderer, true) };
                 c.ForegroundPid = pair.Renderer.Pid; c.ReleaseState = BackgroundReleaseState.Pending;
                 StepResult recovery = c.Step();
@@ -222,7 +222,7 @@ namespace PaviseApp
                 Check(SamePath(saved.ExecutablePath, pair.Renderer.Path) && saved.LearnedExecutablePath == null, "Old executable/learned alias survived.");
                 Check(saved.Entries.Count == 1 && saved.Entries.Contains(pair.Renderer.Name), "Historical Entries survived.");
                 Check(SamePath(saved.Root, profile.Root), "Trusted containing Root was not preserved.");
-                // 在同一个目录里不等于精确指认了某个可执行文件或别名
+                // Sharing a directory is not the same as precisely naming an executable or alias
                 Check(!GameSessionDetector.IsProfileEntryName(saved, pair.Launcher.Name)
                     && !GameSessionDetector.IsProfileEntryName(saved, learned.Identity.Name), "Old entry names survived.");
                 Check(saved.Overrides.Count == profile.Overrides.Count, "Overrides were lost.");
@@ -233,7 +233,7 @@ namespace PaviseApp
                 Check(SamePath(reloaded.ExecutablePath, saved.ExecutablePath) && reloaded.LearnedExecutablePath == null && reloaded.Entries.Count == 1, "Replacement did not persist.");
                 Check(pair.PrioritiesUnchanged() && learned.PriorityUnchanged(), "Helper priority changed.");
                 Check(File.Exists(pair.Launcher.Path) && File.Exists(learned.Identity.Path) && File.Exists(pair.Renderer.Path), "An old fixture file was deleted.");
-                // 这把只读租约在手 多余的那次保存会失败
+                // With this read-only lease held, the redundant save will fail
                 using (var readLease = new FileStream(c.LibraryFile, FileMode.Open, FileAccess.Read, FileShare.Read))
                     Check(SameIdentity(c.Step().Hit, pair.Renderer) && !c.Mode.ProfileStoreSaveFailed, "Idempotent confirmation attempted a save.");
                 Check(c.LibraryChanges == 1 && c.GpuCalls == 1, "Steady state repeated save/probe.");
@@ -310,12 +310,12 @@ namespace PaviseApp
                 Mode = new GameMode(LibraryDirectory, new SuppressionCore());
                 Check(Mode.SetProfileFamilySuppression(profile.Id, !family), "Cannot set the isolated profile's family policy.");
                 originalStore = File.ReadAllText(LibraryFile);
-                // 绝不调 Enabled 那个有副作用的 setter 也不调 Start Loop Stop Sweep Boost
+                // Never call the side-effecting Enabled setter, nor Start, Loop, Stop, Sweep or Boost
                 Set(Mode, "enabled", true); Set(Mode, "active", true);
                 Mode.RendererTestForeground = delegate { return ForegroundPid; };
                 Mode.RendererTestCandidate = delegate(ProcessSnapshot ignored, IList<GameProfile> profiles, GameDetection incumbent)
                 { return GameSessionDetector.FindForegroundCandidateSnapshot(Snapshot, profiles, incumbent); };
-                // 身份和粘性身份的接缝保持 NULL 原生检查只看自有的辅助进程
+                // Identity and sticky-identity seams stay NULL, native checks only look at self-owned helper processes
                 Mode.RendererTestRelease = delegate(int pid, long creation, string name) { Interlocked.Increment(ref ReleaseCalls); return ReleaseState; };
                 Mode.RendererTestGpu = FakeGpu;
                 Mode.LibraryChanged += delegate { LibraryChanges++; };
@@ -371,7 +371,7 @@ namespace PaviseApp
                 var evidence = new Dictionary<int, double>();
                 foreach (int pid in ticket.Detection.FamilyPids) evidence[pid] = 1;
                 evidence[ticket.Detection.RendererPid] = 38;
-                evidence[int.MaxValue] = 99; // Synthetic unrelated family; never opened as an OS PID.
+                evidence[int.MaxValue] = 99; // Synthetic unrelated family never opened as an OS PID
                 return evidence;
             }
             internal void WaitForProbeEntry() { Check(entered.WaitOne(2000), "Fake GPU worker did not reach event gate."); }
@@ -496,7 +496,7 @@ namespace PaviseApp
             try
             {
                 if (process.WaitForExit(3000)) return true;
-                usedKill = true; process.Kill(); // Only this retained owned instance, never a name search.
+                usedKill = true; process.Kill(); // Only this retained owned instance never a name search
                 return process.WaitForExit(2000);
             }
             catch (InvalidOperationException) { return true; }
@@ -577,9 +577,9 @@ namespace PaviseApp
                     Process pinned = null;
                     try
                     {
-                        pinned = Process.GetProcessById(child); // Only this verified owned child.
+                        pinned = Process.GetProcessById(child); // Only this verified owned child
                         Check(pinned.Handle != IntPtr.Zero && pinned.StartTime.ToUniversalTime().ToFileTimeUtc() == pair.Renderer.Creation, "Child changed before pinning.");
-                        pair.renderer = pinned; pinned = null; // Cleanup authority only after pinned identity validation.
+                        pair.renderer = pinned; pinned = null; // Cleanup authority only after pinned identity validation
                     }
                     finally { if (pinned != null) pinned.Dispose(); }
                     pair.launcherPriority = pair.launcher.PriorityClass; pair.rendererPriority = pair.renderer.PriorityClass;
@@ -610,8 +610,8 @@ namespace PaviseApp
     }
 
 #if PAVISE_RENDERER_BENCH
-    // 只给显式的聚焦测试白名单提供最小支持
-    // 这不是完整的自测运行时 也派发不了应用的运行模式
+    // Minimal support only for the explicit focused test whitelist
+    // This is not the full self-test runtime and cannot dispatch the app's run modes
     internal static partial class SelfTests
     {
         private static void Eq<T>(T expected, T actual)

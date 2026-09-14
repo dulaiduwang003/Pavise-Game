@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 内核模块清单加载与残留会话清理
+// File purpose Kernel module manifest loading and stale session cleanup
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -18,8 +18,8 @@ namespace PaviseApp
             return true;
         }
 
-        // 一份新鲜的只读快照同时提供驱动映像的真实路径给版本查询
-        // 不要凭名字去猜 DriverStore 里的包
+        // A fresh read-only snapshot also supplies the driver images' real paths for version queries;
+        // do not guess DriverStore packages by name
         internal static List<string> LoadedModuleImagePaths()
         {
             List<Module> loaded;
@@ -96,9 +96,9 @@ namespace PaviseApp
             p.Wnode.Flags = WnodeFlagTracedGuid;
             p.Wnode.Guid = SessionGuid;
             p.Wnode.ClientContext = 1;
-            // 池子从 4MB(32×128KB)扩到 32MB 以容纳对局中 DPC/ISR 的短时爆发
-            //   旧池耗尽时内核没有空闲缓冲只能丢事件 表现为 EventsLost 高而 BuffersLost 为 0
-            //   32MB 约可缓冲 25 万个事件 会话仅在真实对局观测时占用 结束即释放
+            // Pool grown from 4MB (32 x 128KB) to 32MB to absorb short DPC and ISR bursts during a match
+            //   When the old pool ran dry the kernel had no free buffer and could only drop events, seen as high EventsLost with BuffersLost at 0
+            //   32MB buffers roughly 250 thousand events; the session is only held during real match observation and released on end
             p.BufferSize = 128;
             p.MinimumBuffers = 64;
             p.MaximumBuffers = 256;

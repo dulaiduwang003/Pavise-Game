@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 查询 BypassIO 直通读是否被过滤驱动阻断 纯只读 供体检页点名阻断者
+// File purpose Queries whether BypassIO pass-through reads are blocked by a filter driver; read-only, lets the health check page name the blocker
 using System;
 using System.Runtime.InteropServices;
 

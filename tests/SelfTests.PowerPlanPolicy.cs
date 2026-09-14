@@ -43,7 +43,7 @@ namespace PaviseApp
                 new[] { intel, new GpuAdapter { Vendor = GpuVendor.Intel, IntegratedKnown = true } },
                 new[] { intel, new GpuAdapter { Vendor = GpuVendor.Unknown } } })
                 Eq(1u, PowerPlan.ResolveIntelGraphicsPlan(true, true, topology));
-            // 切出掌机档会重写托管方案并回到平衡 两种 CPU 调度策略独立于核显电源项
+            // Leaving the Handheld tier rewrites the managed scheme and returns to Balanced, both CPU scheduling policies are independent of the iGPU power item
             Eq(1u, PowerPlan.ResolveIntelGraphicsPlan(true, false, new[] { intel }));
             Eq(5u, PowerPlanProfile.Resolve(false, true, false, null).HeteroSched);
         }
@@ -99,7 +99,7 @@ namespace PaviseApp
                 if (value != 1)
                     Eq((bool?)null, ProcessorPowerPlatform.AutonomousMinimum(ProcessorPowerPlatform.Interface.Cppc, value));
             }
-            // AC 和 DC 的请求不能互相顶替
+            // AC and DC requests must not displace each other
             Eq((bool?)true, ProcessorPowerPlatform.AutonomousMinimum(ProcessorPowerPlatform.Interface.Cppc, 1));
             Eq((bool?)null, ProcessorPowerPlatform.AutonomousMinimum(ProcessorPowerPlatform.Interface.Cppc, 0));
         }
@@ -232,7 +232,7 @@ namespace PaviseApp
         {
             using (var f = new PowerPolicyFixture())
             {
-                // 一侧读不到的项不进收据 后面也不会被写 但不该拖垮整份快照
+                // An item unreadable on one side stays out of the receipt and is never written later, but must not sink the whole snapshot
                 f.Set(powerPromote, 60, 50); f.RemoveDc(powerPromote);
                 Eq(true, PowerPlan.SnapshotExtremeForTest(f.Scheme)); Eq("", f.Receipt()); Eq(0, f.Writes);
                 f.Set(powerPromote, 60, 50);
@@ -296,7 +296,7 @@ namespace PaviseApp
                 Eq(true, PowerPlan.ExtremeTunePending); Eq(0, f.Writes);
                 Eq(false, f.Receipt().Contains(powerPromote.ToString("N")));
                 Eq(true, f.Receipt().Contains(PowerSaved(powerScaling, 1, 1)));
-                // 下一次配置补齐缺失项 不能覆盖已经写过的另一项原值
+                // The next configure fills in the missing item, must not overwrite the already-written original value of the other item
                 f.Set(powerPromote, 60, 50); f.Set(powerScaling, 0, 0);
                 Eq(true, PowerPlan.PrepareExtremeForTest(f.Scheme, true));
                 Eq(false, PowerPlan.ExtremeTunePending); Eq(0, f.Writes);
@@ -308,7 +308,7 @@ namespace PaviseApp
             }
             using (var f = new PowerPolicyFixture())
             {
-                // 两侧都不存在仍是可跳过的未暴露项 不制造永久重试
+                // Missing on both sides is still a skippable unexposed item, no permanent retry
                 Eq(true, PowerPlan.PrepareExtremeForTest(f.Scheme, true));
                 Eq(false, PowerPlan.ExtremeTunePending); Eq("", f.Receipt());
             }
@@ -373,7 +373,7 @@ namespace PaviseApp
             using (var f = new PowerPolicyFixture())
             {
                 string part = PowerSaved(powerPromote, 60, 50);
-                // 当前目标无需枚举再次证明 存在异常也不得丢弃其原值
+                // The current target needs no re-proof via enumeration, its original value must not be dropped even when an exception occurs
                 f.Receipt("2|" + f.Scheme.ToString("N") + "|" + part);
                 string before = f.Receipt();
                 Eq(false, PowerPlan.DropOrphanExtremeForTest(f.Scheme)); Eq(before, f.Receipt());

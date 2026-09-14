@@ -23,7 +23,7 @@ def sha(path):
 
 
 def percentile(values, p):
-    # Nearest-rank percentile, no interpolation.
+    # Nearest-rank percentile no interpolation
     return values[max(0, math.ceil(len(values) * p) - 1)]
 
 

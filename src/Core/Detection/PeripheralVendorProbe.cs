@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 从在场键鼠设备提取厂商与型号词条 供后台压制豁免动态识别静态名单认不出的外设软件
+// File purpose Extract vendor and model terms from present keyboard/mouse devices so background suppression exemption can dynamically recognize peripheral software the static list misses
 using System;
 using System.Collections.Generic;
 using Microsoft.Win32;
@@ -15,11 +15,11 @@ namespace PaviseApp
         private static string[] tokens = new string[0];
         private static int stamp;
         private static bool scanned;
-        // 词条集合每变一次加一 目录判定缓存拿它当失效键 词条不变就不重算
+        // Increments on every change of the term set; the directory verdict cache uses it as the invalidation key, no recompute when terms are unchanged
         private static volatile int generation;
         internal static int Generation { get { return generation; } }
 
-        // 到期刷新不能依赖别处刚好来问词条 缓存命中路径也要走这里 否则十分钟一刷会被缓存挡住
+        // Expiry refresh cannot rely on someone happening to ask for terms; the cache-hit path must go through here too, otherwise the ten-minute refresh gets blocked by the cache
         internal static int CurrentGeneration()
         {
             Tokens();

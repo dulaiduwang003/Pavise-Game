@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 输入链路结论与持久项结论
+// File purpose Input chain verdicts and persistent-item verdicts
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;

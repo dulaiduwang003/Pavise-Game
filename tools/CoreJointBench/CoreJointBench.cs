@@ -1,6 +1,6 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 核心隔离 核心分配 中断硬钉的联合台架 非特权 不写系统范围 不启动正常运行时 无窗口
-//   隔离的系统写入需要管理员 本台架不提权 该部分只跑逻辑层 真实系统写入由 Test-CoreScheduling.ps1 -LiveIsolation 覆盖
+// File purpose Joint bench for core isolation, core assignment and IRQ hard-pinning, unprivileged, no system-wide writes, no normal runtime started, no window
+//   Isolation's system writes need admin, this bench does not elevate, that part only runs the logic layer, real system writes are covered by Test-CoreScheduling.ps1 -LiveIsolation
 #if PAVISE_SELFTEST && PAVISE_SELFTEST_RUNNER
 using System;
 using System.Collections.Generic;
@@ -12,7 +12,7 @@ using System.Threading;
 
 namespace PaviseApp
 {
-    // 只记录调用序列与掩码 不碰真实系统 CPU 范围
+    // Only records the call sequence and masks, never touches the real system CPU range
     internal sealed class JointIsolationPlatform : ICoreIsolationPlatform, ICoreIsolationStore
     {
         internal string Boot = "aabbccddaabbccddaabbccddaabbccdd", Receipt = "";
@@ -87,7 +87,7 @@ namespace PaviseApp
         internal static int Bits(ulong v) { return CpuTopology.CountSetBits(v); }
         internal static ulong[] Cores { get { return cores; } }
 
-        // ---- 1 真实拓扑 ----
+        // ---- 1 Real topology ----
         private static ulong[] cores;
         private static ulong all;
 
@@ -110,7 +110,7 @@ namespace PaviseApp
             bool disjoint = true;
             foreach (ulong core in cores) { if ((covered & core) != 0) disjoint = false; covered |= core; }
             Check(disjoint && covered == all, "physical core masks partition the machine");
-            // 混合架构上 P 核带 SMT E 核不带 两种宽度必须同时存在才算真的覆盖到混合拓扑
+            // On hybrid parts P-cores have SMT and E-cores do not, both widths must be present to truly cover hybrid topology
             if (CpuTopology.Hybrid) Check(smt > 0 && single > 0, "hybrid machine exposes both SMT and non-SMT cores");
             Line("");
         }
@@ -123,7 +123,7 @@ namespace PaviseApp
                 Topology = CoreScheduling.Stamp(all, cores) };
         }
 
-        // ---- 2 计划校验 ----
+        // ---- 2 Plan validation ----
         private static void ValidationOnRealTopology()
         {
             Line("[2] PLAN VALIDATION ON REAL TOPOLOGY");
@@ -131,7 +131,7 @@ namespace PaviseApp
             foreach (ulong core in cores) if ((core & 1UL) != 0) { cpu0Core = core; break; }
             Line("  cpu0 core=" + Hex(cpu0Core) + " width=" + Bits(cpu0Core));
 
-            // 挑两颗不含 CPU0 的整核做隔离 优先挑带 SMT 的 好验证联动
+            // Pick two whole cores excluding CPU0 to isolate, prefer SMT ones so the sibling linkage gets verified
             var picked = new List<ulong>();
             foreach (ulong core in cores)
             { if (core != cpu0Core && Bits(core) > 1 && picked.Count < 2) picked.Add(core); }
@@ -144,7 +144,7 @@ namespace PaviseApp
             ulong game = isolated;
             Check(CoreScheduling.Validate(Plan(game, true, isolated), all, cores, false, true) == null,
                 "whole-core isolation plan accepted");
-            // 半颗核不行 混合架构下要挑真的带 SMT 的核才测得到
+            // Half a core will not do, on hybrid parts only a core that really has SMT exercises this
             ulong half = 0;
             foreach (ulong core in picked)
                 if (Bits(core) > 1) { half = core & (~core + 1); break; }
@@ -156,12 +156,12 @@ namespace PaviseApp
                 "cpu0 physical core refused");
             Check(CoreScheduling.Validate(Plan(game, true, isolated | (1UL << 63)), all, cores, false, true) != null,
                 "out-of-range isolation bit refused");
-            // 只剩 cpu0 那一颗完整物理核时必须拒绝 隔离之外至少要留两颗
+            // Must refuse when only the cpu0 physical core would remain, at least two cores must stay outside isolation
             ulong greedy = 0;
             foreach (ulong core in cores) { if (core == cpu0Core) continue; greedy |= core; }
             Check(CoreScheduling.Validate(Plan(game, true, greedy), all, cores, false, true) == "schedule.error.spare",
                 "fewer than two spare physical cores refused");
-            // 正好留两颗要放行 边界不能连正确的方案一起拒了
+            // Leaving exactly two must pass, the boundary must not reject a valid plan along with the bad ones
             ulong spareTwo = 0;
             bool skipped = false;
             foreach (ulong core in cores)
@@ -189,7 +189,7 @@ namespace PaviseApp
             return picked.Count > 0 ? picked[0] : 0;
         }
 
-        // ---- 3 隔离引擎 真实拓扑 假平台 ----
+        // ---- 3 Isolation engine, real topology, fake platform ----
         private static void IsolationEngineOnRealTopology()
         {
             Line("[3] ISOLATION ENGINE ON REAL TOPOLOGY (fake platform, no system write)");
@@ -211,7 +211,7 @@ namespace PaviseApp
                 Check(os.Allowed == (all | isolated), "game admission keeps original allowed and adds isolation");
                 Check(engine.Active && engine.Pending, "engine reports active lease");
                 Check(engine.Audit(), "audit passes with matching state");
-                // PID 复用不能继承准入
+                // PID reuse must not inherit admission
                 Check(!engine.Allow(7, 101, isolated), "pid reuse refused");
                 Check(engine.Restore(), "restore succeeds");
                 Check(os.Allocated == 0, "system range fully released");
@@ -220,7 +220,7 @@ namespace PaviseApp
             }
             Line("  operations=" + string.Join(" -> ", os.Operations.ToArray()));
 
-            // 系统范围被外部占用时必须拒绝启用 不覆盖别人的掩码
+            // Must refuse to enable when the system range is held externally, never overwrite someone else's mask
             var busy = new JointIsolationPlatform { All = all, Physical = cores, Allowed = all,
                 Allocated = isolated, TargetPid = 7, TargetCreation = 100 };
             using (CoreIsolationEngine engine = busy.Engine())
@@ -244,8 +244,8 @@ namespace PaviseApp
             catch { return "(unreadable)"; }
         }
 
-        // ---- 4 联合 真实子进程 手动分配 + 中断硬钉 ----
-        //   夹具走和 CoreSchedulingIntegrationRunner 相同的 FamilyPolicyFixture 不新开一条构造路径
+        // ---- 4 Joint, real child process, manual assignment + IRQ hard-pin ----
+        //   Fixture goes through the same FamilyPolicyFixture as CoreSchedulingIntegrationRunner, no new construction path
         private static void JointPlacement()
         {
             Line("[4] JOINT: MANUAL PLACEMENT + IRQ HARD PIN (real child processes, unprivileged)");
@@ -253,11 +253,11 @@ namespace PaviseApp
             Line("");
         }
 
-        // 本机实测子进程收不到重定向 stdin 的行 命令式采样会静默卡死在 ReadLine
-        //   改成只用 stdout 子进程自己按节奏连续采样 父进程丢掉跨越改动时刻的那一行再取下一行
+        // Measured on this machine: the child never receives redirected stdin lines, command-driven sampling silently hangs in ReadLine
+        //   Switched to stdout only, the child samples continuously at its own pace, the parent drops the line spanning the change and takes the next
         internal static ulong SampleChild(Process child)
         {
-            ReadSampleLine(child); // 这一行可能横跨亲和性改动的瞬间 丢掉
+            ReadSampleLine(child); // this line may straddle the affinity change, drop it
             return ReadSampleLine(child);
         }
 
@@ -281,7 +281,7 @@ namespace PaviseApp
                 RedirectStandardOutput = true });
         }
 
-        // 父进程不发命令 结束就是直接 Kill 子进程只写 stdout 没有可等的输入
+        // Parent sends no commands, finishing is a plain Kill, the child only writes stdout and has no input to wait on
         internal static void Finish(Process p)
         {
             if (p == null) return;
@@ -290,7 +290,7 @@ namespace PaviseApp
             finally { p.Dispose(); }
         }
 
-        // 子进程 八个线程一轮转 1.2 秒 记录自己实际落在哪些逻辑 CPU 上 连续输出直到被结束
+        // Child: eight threads spin 1.2 s per round, record which logical CPUs they actually landed on, print continuously until killed
         private static void Sample()
         {
             Console.WriteLine("READY");
@@ -323,8 +323,8 @@ namespace PaviseApp
 
     internal static partial class SelfTests
     {
-        // 放在 SelfTests 里是为了复用既有的 FamilyPolicyFixture 与放置集成同一条夹具路径
-        //   GameMode 只构造不 Start 运行时循环在 Start 里 这里不启动它
+        // Lives in SelfTests to reuse the existing FamilyPolicyFixture, same fixture path as the placement integration
+        //   GameMode is only constructed, never Started, the runtime loop lives in Start and is not launched here
         internal static void RunJointPlacementBench()
         {
             string root = Path.Combine(Path.GetTempPath(), "PaviseJointBench-" + Guid.NewGuid().ToString("N"));
@@ -344,7 +344,7 @@ namespace PaviseApp
                 CoreJointBench.Line("  child pid=" + game.Id + " original affinity="
                     + CoreJointBench.Hex(original) + " lp=" + CoreJointBench.Bits(original));
 
-                // 手动选核 取两颗不含 CPU0 的整物理核
+                // Manual core selection: take two whole physical cores excluding CPU0
                 ulong[] cores = CoreJointBench.Cores;
                 ulong cpu0Core = 0;
                 foreach (ulong core in cores) if ((core & 1UL) != 0) { cpu0Core = core; break; }
@@ -363,14 +363,14 @@ namespace PaviseApp
                     CoreJointBench.Check(Native.QueryAffinity(h) == target,
                         "hard affinity equals manual target");
 
-                    // 实测落核 隔离没开 这里证明的是手动分配本身把进程关住了
+                    // Measured core placement, isolation is off, this proves manual assignment alone confines the process
                     ulong observed = CoreJointBench.SampleChild(game);
                     CoreJointBench.Line("  observed game cpus=" + CoreJointBench.Hex(observed)
                         + " lp=" + CoreJointBench.Bits(observed));
                     CoreJointBench.Check(observed != 0 && (observed & ~target) == 0,
                         "game ran only on manually assigned cpus");
 
-                    // 撤中断观测 手动绑定必须留着 这是两套恢复归属的分界
+                    // Withdraw interrupt observation, the manual binding must stay, this is the boundary between the two restore ownerships
                     CoreJointBench.Check(mode.ProbeRestoreManualPlacement(game.Id, false),
                         "IRQ observation cleanup accepted");
                     CoreJointBench.Check(Native.QueryAffinity(h) == target,
@@ -392,7 +392,7 @@ namespace PaviseApp
                     CoreJointBench.Check(CoreJointBench.Bits(afterRestore) > CoreJointBench.Bits(target),
                         "restored process reaches more cpus than the manual target");
 
-                    // 不得扩大进程原有的受限范围
+                    // Must not widen the process's pre-existing restricted range
                     CoreJointBench.Check(Native.SetProcessAffinityMask(h, (UIntPtr)target),
                         "apply pre-existing restriction");
                     CoreJointBench.Check(!mode.ProbeManualPlacement(h, game.Id, creation, target, original),

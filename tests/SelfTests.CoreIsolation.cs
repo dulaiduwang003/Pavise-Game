@@ -41,21 +41,21 @@ namespace PaviseApp
             internal CoreIsolationEngine Engine() { return new CoreIsolationEngine(this, this); }
         }
 
-        // 落点读不出来不能等同于落点没生效 反作弊在对局中回收句柄很常见
-        //   一次读失败就撤销已生效的隔离 表现就是"玩着玩着隔离自己没了"且本局不再恢复
+        // An unreadable placement is not the same as an ineffective placement, anti-cheats commonly revoke handles mid-match
+        //   Withdrawing effective isolation on a single read failure shows up as isolation vanishing mid-play and never coming back this match
         private static void IsolationWithdrawalNeedsRepeatedReadableMismatches()
         {
             const int max = 3;
-            // 写入未生效 未到上限记重试 不撤
+            // Write not effective, below the limit: count a retry, do not withdraw
             Eq(GameMode.IsolationVerdict.Retry, GameMode.IsolationVerdictOf(true, 1, max));
             Eq(GameMode.IsolationVerdict.Retry, GameMode.IsolationVerdictOf(false, max - 1, max));
-            // 到上限 游戏的亲和性仍盖住独占区 只停手 隔离保留
+            // At the limit with the game's affinity still covering the exclusive range: just stop correcting, isolation stays
             Eq(GameMode.IsolationVerdict.StopCorrecting, GameMode.IsolationVerdictOf(true, max, max));
             Eq(GameMode.IsolationVerdict.StopCorrecting, GameMode.IsolationVerdictOf(true, max + 1, max));
-            // 到上限且盖不住独占区 才撤隔离
+            // Only withdraw isolation at the limit when the exclusive range is not covered
             Eq(GameMode.IsolationVerdict.Withdraw, GameMode.IsolationVerdictOf(false, max, max));
             Eq(GameMode.IsolationVerdict.Withdraw, GameMode.IsolationVerdictOf(false, max + 1, max));
-            // 盖住的判定 全核盖住 子集盖住 缺一颗独占核就不算 读不出为 0 不算
+            // Coverage check: all cores covers, a subset covers, one missing exclusive core does not, an unreadable 0 does not
             Eq(true, GameMode.CoversIsolation(0xFFFFUL, 0x0FF0UL));
             Eq(true, GameMode.CoversIsolation(0x0FF0UL, 0x0FF0UL));
             Eq(false, GameMode.CoversIsolation(0x0FE0UL, 0x0FF0UL));
@@ -74,7 +74,7 @@ namespace PaviseApp
                 Eq("journal", f.Operations[0]); Eq("journal", f.Operations[1]);
                 Eq("process:60", f.Operations[2]); Eq("journal", f.Operations[3]); Eq("system:243", f.Operations[4]);
                 Eq(true, e.Audit()); Eq(true, e.Allow(7, 100, 12));
-                Eq(false, e.Allow(7, 101, 12)); // PID reuse cannot inherit admission.
+                Eq(false, e.Allow(7, 101, 12)); // PID reuse cannot inherit admission
                 Eq(true, e.Restore()); Eq(0UL, f.Allocated); Eq(48UL, f.Allowed); Eq("", f.Receipt);
                 Eq("system:255", f.Operations[5]); Eq("process:48", f.Operations[6]);
             }
@@ -138,7 +138,7 @@ namespace PaviseApp
             f.ReadFailure = false;
             f.Boot = null;
             using (var recovered = f.Engine()) { Eq(false, recovered.Recover()); }
-            Eq(before, f.Writes); // Dispose must not restore with unknown boot identity.
+            Eq(before, f.Writes); // Dispose must not restore with unknown boot identity
             f.Boot = "223456781234123412341234567890ab"; f.Allocated = 192;
             using (var recovered = f.Engine()) { Eq(true, recovered.Recover()); }
             Eq(before, f.Writes); Eq(192UL, f.Allocated); Eq("", f.Receipt);

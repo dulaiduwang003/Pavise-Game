@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 中断采样的确认 失效与外部变更窗口
+// File purpose Interrupt sampling confirmation, invalidation, and the external mutation window
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -35,7 +35,7 @@ namespace PaviseApp
 
         public bool ConfirmSystemObservation(int verifiedRendererPid, long verifiedRendererCreation)
         {
-            // 0 表示只观测系统中断 没有证明游戏的实际核域
+            // 0 means system interrupts are only observed, with no proof of the game's actual core domain
             return ConfirmCapture(0, verifiedRendererPid, verifiedRendererCreation, true);
         }
 
@@ -58,9 +58,9 @@ namespace PaviseApp
             lock (gate)
             {
                 if (disposed || !armed || gameMaskInvalid || systemObservation != observeSystem) return false;
-                // RenderLane 等异步调优若正在写 renderer 起采必须
-                // 等它离开写区 该计数和开采在同一 gate 下 没有
-                // 回调刚查完 ETW 就开了 setter 才落下 堵的是这个窗口
+                // If async tuning like RenderLane is mid-write on the renderer, capture start must
+                // wait until it leaves the write region; this counter and capture start sit under the same gate, so there is no
+                // window where the callback just checked, ETW started, and only then the setter landed - that is the window being blocked
                 if (!observeSystem && externalMutations > 0) return false;
                 bool identityValid = observeSystem
                     ? verifiedMask == 0 && CanObserveSystem(systemMask,
@@ -92,9 +92,9 @@ namespace PaviseApp
                         }
                         else
                         {
-                            // 超过 proof 新鲜度的空窗无法在事后补证
-                            // 丢弃旧 ETW 但保持本局 armed 下轮从当前
-                            // 已验证落核点重新开一个干净 epoch
+                            // A gap longer than the proof freshness cannot be proven after the fact
+                            // Discard the old ETW but keep this match armed; next round reopens a clean epoch
+                            // from the currently verified core placement
                             string resumeGame = gameName;
                             ulong resumeSystem = systemMask;
                             discard = InvalidateLocked();
@@ -121,6 +121,10 @@ namespace PaviseApp
                 }
                 else
                 {
+                    deviceConfigurations = new Dictionary<string,string>();
+                    var devicePlatform = platform as IIrqDeviceSnapshotPlatform;
+                    if (devicePlatform != null)
+                        try { deviceConfigurations = devicePlatform.DeviceConfigurations(); } catch { }
                     IIrqSessionCapture ia = platform.CreateCapture(!observeSystem);
                     bool started = false;
                     try { started = ia.Start(); } catch { }
@@ -139,6 +143,8 @@ namespace PaviseApp
                         rendererPid = verifiedRendererPid;
                         rendererCreation = verifiedRendererCreation;
                         startTicks = platform.UtcTicks;
+                        captureStartQpc = System.Diagnostics.Stopwatch.GetTimestamp();
+                        captureEndQpc = 0;
                         lastProofTicks = startTicks;
                         bootStamp = platform.BootStamp;
                         topologyStamp = platform.TopologyStamp;
@@ -172,9 +178,9 @@ namespace PaviseApp
             StopAndDiscard(discard);
         }
 
-        // 本局调优状态需要重写时 丢弃 live 但保留 armed
-        // 调用方必须先等这个方法返回 旧 ETW 已停 再写入
-        // 写完后下一个 Confirm 从新证明点起采
+        // When this match's tuning state needs rewriting, discard live but keep armed
+        // Caller must wait for this method to return, old ETW stopped, before writing
+        // After the write, the next Confirm starts capture from the new proof point
         public void RestartCurrentEpoch()
         {
             IIrqSessionCapture discard = null;
@@ -195,9 +201,9 @@ namespace PaviseApp
             StopAndDiscard(discard);
         }
 
-        // 供 RenderLane 这类独立 worker 在真正 setter 前后标记
-        // 若已采集 先作废旧 epoch 并保留本局 armed 写入结束后
-        // 下轮才能从新 proof 开始 不把 Pavise 自己的写入算入对局
+        // For independent workers like RenderLane to mark before and after the real setter
+        // If capturing, invalidate the old epoch first and keep this match armed; after the write ends
+        // the next round can start from a new proof, so Pavise's own writes are not counted into the match
         public void BeginExternalMutation()
         {
             IIrqSessionCapture discard = null;
@@ -205,9 +211,9 @@ namespace PaviseApp
             {
                 if (disposed) return;
                 externalMutations++;
-                // 系统观测记录真实整机 DPC 本来就包括正常后台活动
-                // 不宣称游戏核归因 因此新进程压制等写入不应把整局反复打碎
-                // 严格核域证据仍必须排除这些写入造成的观测污染
+                // System observation records real whole-machine DPC, which inherently includes normal background activity
+                // and claims no game-core attribution, so writes like new-process suppression should not keep shattering the whole match
+                // Strict core-domain evidence must still exclude observation pollution caused by those writes
                 if (!systemObservation && (stopInProgress
                     || (armed && !gameMaskInvalid && live != null && !completed)))
                 {
@@ -239,6 +245,7 @@ namespace PaviseApp
             IIrqSessionCapture discard = live;
             live = null;
             startTicks = 0;
+            captureStartQpc = captureEndQpc = 0;
             lastProofTicks = 0;
             gameMask = 0;
             systemMask = 0;
@@ -277,20 +284,23 @@ namespace PaviseApp
             }
         }
 
-        // 首次检测到游戏消失时立刻封存 避免退出宽限期里的系统 DPC 混入
-        // 封存不消费 pending 8 秒后的 ReportFinish 仍可照常取摘要和时间线
+        // Seal immediately the first time the game is seen gone, so system DPC during the exit grace period does not leak in
+        // Sealing does not consume pending; ReportFinish 8 seconds later can still take the summary and timeline as usual
         public void Seal()
         {
             lock (takeGate) Run(false);
         }
 
-        // 取走本局逐事件 DPC 时间线(取走即清) 未采到或非管理员返回 null 调用方据此优雅退回
-        //   与 TakeSummary 同源 Run() 已完成后再调是幂等的(completed 后 Run 直接返回不动 pending)
+        // Take this match's per-event DPC timeline; taking clears it; null if not captured or not admin, caller falls back gracefully
+        //   Same source as TakeSummary; calling after Run() has completed is idempotent, since Run returns without touching pending once completed
         public System.Collections.Generic.List<InterruptAttribution.DpcTimelineEntry> TakeDpcTimeline(out bool truncated)
+        { return TakeDpcTimeline(out truncated, true); }
+
+        internal List<InterruptAttribution.DpcTimelineEntry> TakeDpcTimeline(out bool truncated, bool commit)
         {
             lock (takeGate)
             {
-                Run(true);
+                Run(commit);
                 lock (gate)
                 {
                     var held = pendingTimeline;

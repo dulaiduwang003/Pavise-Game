@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 枚举这台机器上所有能改中断亲和的设备 以及它们当前的亲和策略
+// File purpose Enumerate every device on this machine whose interrupt affinity can be changed, plus their current affinity policy
 
 using System;
 using System.Collections.Generic;
@@ -16,9 +16,14 @@ namespace PaviseApp
         public string Service = "";
         public string Bus = "";
         public string ClassGuid = "";
+        public string DriverVersion = "", ParentController = "", Location = "";
+        public string Attribution { get { return Lang.T(FrameworkStats ? "irq.owner.framework"
+            : SharedStats ? "irq.owner.shared" : "irq.owner.module"); } }
         public int Policy;
         public ulong Mask;
         public bool DevicePriorityHigh;
+        internal int PriorityValue = -1; // Absent is distinct from explicitly low/normal/high
+        internal bool ConfigurationKnown;
         public double MaxUs;
         public double TotalUs;
         public long Dpc;
@@ -40,10 +45,12 @@ namespace PaviseApp
 
         public bool Effective
         {
-            get { return IsPinned && RebootedSincePin && HasPlacementEvidence
+            get { return AdjustmentPlacement != null ? AdjustmentPlacement == "matches"
+                : IsPinned && RebootedSincePin && HasPlacementEvidence
                 && (SeenOnCpus & ~Mask) == 0; }
         }
 
+        internal string AdjustmentPlacement;
         public IrqRebootState RebootState;
         public bool RebootedSincePin
         {
@@ -51,24 +58,26 @@ namespace PaviseApp
             set { RebootState = value ? IrqRebootState.Rebooted : IrqRebootState.AwaitingReboot; }
         }
 
-        // SeenOnCpus 来自本次开机已完成的记录 新的注册表写入
-        // 不能拿这些写入之前的记录当自己的证据
+        // SeenOnCpus comes from records completed during this boot; a new registry write
+        // must not use records from before that write as its own evidence
         private bool HasPlacementEvidence
         {
-            get { return SeenOnCpus != 0 && !SharedStats && Verdict != null
+            get { return SeenOnCpus != 0 && !SharedStats && !FrameworkStats && Verdict != null
                 && Verdict.VersionVerified && !Verdict.MaskTruncated; }
         }
 
         public bool AwaitingReboot
         {
-            get { return IsPinned && RebootState == IrqRebootState.AwaitingReboot; }
+            get { return AdjustmentPlacement != null ? AdjustmentPlacement == "reboot"
+                : IsPinned && RebootState == IrqRebootState.AwaitingReboot; }
         }
 
         public bool PlacementMismatch
         {
             get
             {
-                return IsPinned && RebootedSincePin && HasPlacementEvidence
+                return AdjustmentPlacement != null ? AdjustmentPlacement == "mismatch"
+                    : IsPinned && RebootedSincePin && HasPlacementEvidence
                     && (SeenOnCpus & ~Mask) != 0;
             }
         }
@@ -81,13 +90,13 @@ namespace PaviseApp
 
         public IrqDriverVerdict Verdict;
         public bool Worth { get { return Verdict != null && Verdict.Worth; } }
-        // 只有能唯一定位 由本页管理且钉核机制确实适用的设备 才允许把驱动判定
-        // 呈现成可操作建议 多消息设备可能损失并行度 StorPort 完成 DPC 又通常跟随发起核
+        // Only devices that can be uniquely located, are managed by this page, and where the pinning mechanism actually applies may have their driver verdict
+        // presented as an actionable suggestion; multi-message devices may lose parallelism, and StorPort completion DPCs usually follow the initiating core
         public bool ActionableWorth
         {
             get
             {
-                return Worth && !ManagedElsewhere && !SharedStats
+                return Worth && !ManagedElsewhere && !SharedStats && !FrameworkStats && !CpuTopology.MultiGroup
                     && Verdict != null && Verdict.VersionVerified && !Verdict.MaskTruncated
                     && !MultiMessageRisk && !CompletionFollowsIssuer;
             }
@@ -122,19 +131,28 @@ namespace PaviseApp
                 int seen = 0;
                 foreach (string hw in root.GetSubKeyNames())
                 {
-                    using (RegistryKey hwKey = root.OpenSubKey(hw))
+                    try
                     {
-                        if (hwKey == null) continue;
-                        foreach (string inst in hwKey.GetSubKeyNames())
+                        using (RegistryKey hwKey = root.OpenSubKey(hw))
                         {
-                            if (++seen > MaxPerBus) return;
-                            string id = bus + "\\" + hw + "\\" + inst;
-                            IrqDevice d = Read(id, bus);
-                            if (d != null) list.Add(d);
+                            if (hwKey == null) continue;
+                            foreach (string inst in hwKey.GetSubKeyNames())
+                            {
+                                if (++seen > MaxPerBus) return;
+                                string id = bus + "\\" + hw + "\\" + inst;
+                                AddDevice(id,bus,list,Read);
+                            }
                         }
                     }
+                    catch { /* Continue with the next hardware key */ }
                 }
             }
+        }
+
+        internal static void AddDevice(string id,string bus,List<IrqDevice> list,Func<string,string,IrqDevice> read)
+        {
+            try { IrqDevice device = read(id,bus); if (device != null) list.Add(device); }
+            catch { /* One inaccessible device must not terminate this bus */ }
         }
 
         private static IrqDevice Read(string instanceId, string bus)
@@ -167,6 +185,18 @@ namespace PaviseApp
             }
             catch { }
             if (d.Name.Length == 0) d.Name = DriverDeviceResolver.ShortId(instanceId);
+            d.Location = ReadStr(instanceId, "LocationInformation");
+            try
+            {
+                string driverKey = ReadStr(instanceId, "Driver");
+                if (driverKey.Length > 0)
+                    using (RegistryKey k = Registry.LocalMachine.OpenSubKey(
+                        @"SYSTEM\CurrentControlSet\Control\Class\" + driverKey))
+                        if (k != null) d.DriverVersion = k.GetValue("DriverVersion") as string ?? "";
+                var chain = PresentDevices.ParentChain(instanceId);
+                if (chain.Count > 0) d.ParentController = chain[0];
+            }
+            catch { }
             d.InputRisk = LooksLikeInput(d);
             d.MessageCount = ReadMessageCount(instanceId);
             d.MultiMessageRisk = LooksMultiQueue(d);
@@ -176,19 +206,23 @@ namespace PaviseApp
             {
                 using (RegistryKey a = Registry.LocalMachine.OpenSubKey(EnumRoot + instanceId + AffSuffix))
                 {
+                    d.ConfigurationKnown = true;
                     if (a != null)
                     {
                         object p = a.GetValue("DevicePolicy");
-                        if (p != null) try { d.Policy = Convert.ToInt32(p); } catch { }
-                        var raw = a.GetValue("AssignmentSetOverride") as byte[];
+                        if (p != null) { if (!(p is int)) d.ConfigurationKnown = false; else d.Policy = (int)p; }
+                        object maskValue = a.GetValue("AssignmentSetOverride");
+                        var raw = maskValue as byte[];
+                        if (maskValue != null && (raw == null || raw.Length != 8)) d.ConfigurationKnown = false;
                         if (raw != null) d.Mask = IrqAffinityEngine.BytesToMask(raw);
                         object pri = a.GetValue("DevicePriority");
                         if (pri != null)
-                            try { d.DevicePriorityHigh = Convert.ToInt32(pri) >= 3; } catch { }
+                            if (pri is int) { d.PriorityValue = (int)pri; d.DevicePriorityHigh = d.PriorityValue == 3; }
+                            else d.ConfigurationKnown = false;
                     }
                 }
             }
-            catch { }
+            catch { d.ConfigurationKnown = false; }
             return d;
         }
 
@@ -339,7 +373,7 @@ namespace PaviseApp
                     d.Dpc = DisplayDpcPerMinute(v.DpcPerMinute);
                     d.SeenOnCpus = v.CpuMask;
                     int n; perService.TryGetValue(d.Service, out n);
-                    d.SharedStats = n > 1;
+                    d.SharedStats = n > 1 || DriverDeviceResolver.IsFramework(d.Service + ".sys");
                     break;
                 }
             }
@@ -389,15 +423,15 @@ namespace PaviseApp
                     d.Dpc = DisplayDpcPerMinute(v.DpcPerMinute);
                     d.SeenOnCpus = v.CpuMask;
                     d.FrameworkStats = true; d.StatsDriver = v.Driver;
-                    d.SharedStats = members > 1;
+                    d.SharedStats = true;
                 }
             }
         }
 
         private static long DisplayDpcPerMinute(double value)
         {
-            // d.Dpc 同时告诉界面有没有真实对局数据 一个低于每分钟 1 次的
-            // 正速率不能被截断成 0 那会和一条可执行的结论自相矛盾
+            // d.Dpc also tells the UI whether real match data exists; a positive rate
+            // below 1 per minute must not be truncated to 0, that would contradict an actionable conclusion
             if (double.IsNaN(value) || value <= 0) return 0;
             if (double.IsInfinity(value) || value >= long.MaxValue) return long.MaxValue;
             long whole = (long)value;
@@ -426,7 +460,7 @@ namespace PaviseApp
                     d.MaxUs = c.MaxUs; d.TotalUs = c.TotalUs; d.Dpc = c.Dpc; d.SeenOnCpus = c.CpuMask;
                     d.Over500Us = c.Over500Us; d.Over1Ms = c.Over1Ms;
                     int n; perService.TryGetValue(d.Service, out n);
-                    d.SharedStats = n > 1;
+                    d.SharedStats = n > 1 || DriverDeviceResolver.IsFramework(d.Service + ".sys");
                     break;
                 }
             }
@@ -447,7 +481,7 @@ namespace PaviseApp
                     d.MaxUs = c.MaxUs; d.TotalUs = c.TotalUs; d.Dpc = c.Dpc; d.SeenOnCpus = c.CpuMask;
                     d.Over500Us = c.Over500Us; d.Over1Ms = c.Over1Ms;
                     d.FrameworkStats = true; d.StatsDriver = c.Driver;
-                    d.SharedStats = members > 1;
+                    d.SharedStats = true;
                 }
             }
         }
@@ -476,8 +510,8 @@ namespace PaviseApp
             if (devices == null) return;
             devices.Sort(delegate (IrqDevice a, IrqDevice b)
             {
-                // 真实对局已经达到建议门槛的设备必须排在前面 只按单次最长耗时排序
-                // 会把偶发尖峰但不值得改的设备放到用户眼前
+                // Devices that already met the suggestion threshold in real matches must sort first; sorting only by single longest duration
+                // would put devices with occasional spikes that are not worth changing in front of the user
                 if (a.ActionableWorth != b.ActionableWorth)
                     return b.ActionableWorth.CompareTo(a.ActionableWorth);
                 if (a.MaxUs != b.MaxUs) return b.MaxUs.CompareTo(a.MaxUs);

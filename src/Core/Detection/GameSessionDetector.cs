@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 游戏会话检测入口与前台候选捕获
+// File purpose Game session detection entry and foreground candidate capture
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -19,15 +19,15 @@ namespace PaviseApp
         public bool RendererCandidateSelected;
         public bool RendererUserSelected;
         public bool RendererLearnable;
-        // 独立前台候选可以只享有临时安全保护 不得作为已选中的 renderer
-        // 强制接管档案里的陌生进程使用此标记 不采证接管 也不学习
+        // An independent foreground candidate may only receive temporary safety protection, never count as the elected renderer
+        // Unknown processes in a force-takeover profile use this flag: no evidence-based takeover, no learning
         public bool RendererSafetyOnly;
         public bool RequiresGpuConfirm;
-        // 只随异步确认票据携带 0 表示原有全屏/精确入口等硬证据
-        // 不能把已过期的 GPU 结果当成永久有效的提交授权
+        // Only carried with the async confirmation ticket; 0 means hard evidence such as the existing fullscreen or exact entry
+        // An expired GPU result must not be treated as a permanent present authorization
         public long RendererGpuProofExpiresMs;
-        // 同一个 renderer 同时被多个档案引用时 用配置锚的精确度稳定决胜
-        // 避免最终选中哪个 profile 以及它的独立策略 取决于列表顺序
+        // When several profiles reference the same renderer, config anchor precision gives a stable tie-break
+        // so the final profile and its independent policy do not depend on list order
         public int RendererMatchRank;
         public readonly HashSet<string> FamilyNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         public readonly HashSet<int> FamilyPids = new HashSet<int>();
@@ -180,8 +180,8 @@ namespace PaviseApp
             return true;
         }
 
-        // 热路径只看当前前台窗口 不枚举所有顶层窗口 ProcEntry 的身份来自
-        // 本轮系统快照 只有发现新的关联候选后才额外核验它仍是同一生命期
+        // The hot path only looks at the current foreground window, never enumerates all top-level windows; ProcEntry identity comes from
+        // this pass's system snapshot, and only a newly found related candidate gets the extra check that it is still the same lifetime
         internal static GameDetection CaptureForegroundCandidate(
             ProcessSnapshot processes, int ownerSession,
             GameProfile profile, GameDetection incumbent)
@@ -219,8 +219,8 @@ namespace PaviseApp
                 || windowPid != foregroundPid)
                 return null;
 
-            // 系统快照本应一 PID 一项 拒绝歧义快照 不能由 ByPid 的最后一项
-            // 替重复 PID 选择身份 尤其不能把另一个登录会话的身份拼到父链里
+            // A system snapshot should have one entry per PID; reject ambiguous snapshots rather than let ByPid's last entry
+            // pick the identity for a duplicate PID, and never splice another logon session's identity into the parent chain
             if (processes.ByPid.Count != processes.Count) return null;
             var snapshot = new List<GameProcessSnapshot>();
             foreach (ProcEntry entry in processes.Entries)
@@ -248,8 +248,8 @@ namespace PaviseApp
             return candidate;
         }
 
-        // 与全局选举并行的挑战者通道 旧 renderer/旧 learned 不会吞掉当前
-        // 前台的新候选 这里不改变 DetectSnapshot BetterHit 或 sticky 的仲裁
+        // A challenger channel parallel to the global election, so an old renderer or old learned entry does not swallow the current
+        // foreground's new candidate; this does not change the DetectSnapshot, BetterHit or sticky arbitration
         internal static GameDetection FindForegroundCandidateSnapshot(
             IList<GameProcessSnapshot> snapshot,
             GameProfile profile, GameDetection incumbent,
@@ -263,8 +263,8 @@ namespace PaviseApp
             return FindForegroundCandidateInProfile(byPid, foreground, profile, familyEvidence);
         }
 
-        // 只为同一个前台身份挑明确归属 不让另一个档案的 ready/learned
-        // 目标抢先吞掉 pending 此通道不改变原有全局 Detect 的会话仲裁
+        // Only picks a clear owner for the same foreground identity; another profile's ready and learned
+        // target must not swallow the pending one first; this channel leaves the original global Detect session arbitration untouched
         internal static GameDetection FindForegroundCandidateSnapshot(
             IList<GameProcessSnapshot> snapshot,
             IList<GameProfile> profiles, GameDetection incumbent,
@@ -318,7 +318,7 @@ namespace PaviseApp
                     continue;
                 byPid.Add(identity.Pid, identity);
                 if (!identity.Foreground) continue;
-                // 一份快照只有一个当前前台 相互矛盾的证据不能凭创建时间猜
+                // One snapshot has exactly one current foreground; contradictory evidence is not resolved by guessing from creation time
                 if (foreground != null) return false;
                 foreground = identity;
             }
@@ -331,8 +331,8 @@ namespace PaviseApp
         {
             bool configured = SamePath(profile.ExecutablePath, foreground.Path)
                 || SamePath(profile.LearnedExecutablePath, foreground.Path);
-            // Force 只表示尊重用户指定的入口 不覆盖系统/反作弊安全边界
-            // 对未知程序不按客户端 游戏或辅助程序的名字猜角色
+            // Force only means honoring the user-specified entry; it does not override the system and anti-cheat safety boundaries
+            // Unknown programs get no role guessed from client, game or helper wording in their names
             if (ElectionVetoed(foreground.Name, foreground.Path))
                 return null;
 
@@ -378,8 +378,8 @@ namespace PaviseApp
             if (current == null) return 1;
             int rank = candidate.RendererMatchRank.CompareTo(current.RendererMatchRank);
             if (rank != 0) return rank;
-            // 两个 Root 都确实包含同一规范路径时 更长的 Root 只能是更窄的
-            // 已声明子目录 不向上扩大目录 也不据启动器名称猜测归属
+            // When both Roots really contain the same canonical path, the longer Root can only be the narrower
+            // declared subdirectory; never widen upward and never guess ownership from the launcher name
             if (candidate.RendererMatchRank == 1)
             {
                 int candidateLength = candidate.Profile.Root.TrimEnd('\\').Length;
@@ -407,7 +407,7 @@ namespace PaviseApp
                 return false;
             try
             {
-                // 原生镜像路径是绝对规范路径 拒绝相对路径 .. 或名称拼接证据
+                // The native image path is an absolute canonical path; reject relative paths, .. or name-concatenated evidence
                 if (!Path.IsPathRooted(identity.Path)
                     || !SamePath(Path.GetFullPath(identity.Path), identity.Path))
                     return false;

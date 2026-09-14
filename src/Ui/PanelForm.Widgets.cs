@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 面板各页通用的控件工厂 页眉 分节 开关与设置卡
+// File purpose Control factory shared by panel pages: headers, sections, toggles and setting cards
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -125,7 +125,7 @@ namespace PaviseApp
             return MakeCard(parent, x, y, w, used, title, desc, host);
         }
 
-        // 展开后作用范围和同意说明必须仍然读得全 英文界面下也一样
+        // Once expanded, the scope and consent text must remain fully readable, in the English UI too
         private int FullTextCardHeight(string desc, int width, Control host, int minimum)
         {
             int textWidth = Theme.S(width - 84 - CollapseChevronW)
@@ -182,9 +182,9 @@ namespace PaviseApp
             parent.Controls.Add(label); return label;
         }
 
-        // 文字放不下就逐档缩字号 缩到下限还放不下才交给省略号
-        //   状态行里带着游戏名 长度不定 光把字号调小治不了根 得按实际内容自适应
-        //   Theme.UI 有字体缓存 反复取同一档不会新建字体
+        // Step the font size down when text does not fit, only fall back to ellipsis once the minimum still does not fit
+        //   The status line carries the game name of variable length, a smaller fixed font is no real fix, it has to adapt to the actual content
+        //   Theme.UI caches fonts, fetching the same size repeatedly does not create new fonts
         internal const float StatusFontMax = 12.5f;
         internal const float StatusFontMin = 8.5f;
 
@@ -225,6 +225,13 @@ namespace PaviseApp
                 Label l = accentLabels[i];
                 if (l == null || l.IsDisposed) { accentLabels.RemoveAt(i); continue; }
                 l.ForeColor = Theme.Accent;
+                var link = l as LinkLabel;
+                if (link != null)
+                {
+                    link.LinkColor = Theme.Accent;
+                    link.VisitedLinkColor = Theme.Accent;
+                    link.ActiveLinkColor = Theme.Fg;
+                }
             }
         }
 
@@ -267,7 +274,7 @@ namespace PaviseApp
             pageTabPanels[page] = panels;
             tabs.IndexChanged = delegate(int index)
             {
-                // Tab 直接切换 保留各自滚动位置 不生成过渡快照
+                // Tabs switch directly, each keeps its own scroll position, no transition snapshot is generated
                 for (int i = 0; i < panels.Length; i++)
                 {
                     if (i != index)

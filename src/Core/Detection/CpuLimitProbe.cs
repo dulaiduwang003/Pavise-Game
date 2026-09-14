@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 对局中每秒采一次 CPU 性能限制计数器 撞功率墙温度墙时能当场指认
+// File purpose Samples the CPU performance limit counters once per second during a match, so hitting a power or thermal wall can be called out on the spot
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -60,7 +60,7 @@ namespace PaviseApp
                 Logger.Log(Lang.T("log.cpulimit.6") + samples + Lang.T("log.cpulimit.7"));
         }
 
-        // Windows 的 Performance Limit Flags 位定义 0x1 热限 0x2 功率限 0x4 域依赖 其余位原样给十六进制
+        // Windows Performance Limit Flags bit definitions: 0x1 thermal, 0x2 power, 0x4 domain dependency; other bits are shown raw in hex
         internal static string DescribeFlags(long flags)
         {
             string text = "0x" + flags.ToString("X");

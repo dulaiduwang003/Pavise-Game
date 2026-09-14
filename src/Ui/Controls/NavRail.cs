@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 绘制并管理左侧导航栏
+// File purpose Draw and manage the left navigation rail
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -147,7 +147,7 @@ namespace PaviseApp
             sel = i;
             int slot = SlotOfItem(i);
             int targetY = SlotY(slot);
-            // 页面与文字立即激活 仅缓动选中框 重复同步同一项不打断正在运行的动画
+            // Page and text activate immediately, only the selection box eases; re-syncing the same item does not interrupt a running animation
             if (changed && slot >= 0 && CanAnimateIndicator)
             {
                 indicator.To(targetY);
@@ -166,7 +166,7 @@ namespace PaviseApp
 
         public void SnapToSelection()
         {
-            // 构造期的尺寸通知可能早于导航顺序初始化
+            // Size notifications during construction may arrive before the navigation order is initialized
             if (order == null) return;
             indicator.Set(SlotY(SlotOfItem(sel)));
             Invalidate();

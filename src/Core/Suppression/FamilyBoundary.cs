@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 压制保护边界的家族圈定 进程树行走 目录归属与后台资格判定 纯函数只吃本轮快照
+// File purpose Family scoping for the suppression protection boundary, process tree walking, directory ownership and background eligibility decisions; pure functions consuming only this round's snapshot
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -13,11 +13,11 @@ namespace PaviseApp
             bool gameHostAncestor = false, string activeGameRoot = null, bool aggressive = false,
             bool familyExempt = true, long creation = 0)
         {
-            // 家族是否保护由调用方按档案和本轮身份确定 不按游戏/客户端名字推断
-            //   开启家族压制仍可能影响依赖进程的响应 所以 UI 默认关闭并提示风险
-            //   渲染本体 待确认候选 白名单和其它档案的保护在调用方先行放行
-            //   下面四条是独立安全边界 不随逐游戏设置取消
-            //   反作弊被压会心跳超时掉线 加速器被压会断流 输入音频外设链被压会卡鼠标和丢声音
+            // Whether the family is protected is decided by the caller from the profile and this round's identity, not inferred from game/client names
+            //   Enabling family suppression can still affect the responsiveness of dependent processes, so the UI defaults it off and warns of the risk
+            //   The renderer itself, pending candidates, whitelist and other profiles' protection are let through earlier by the caller
+            //   The four below are independent safety boundaries, not cancelled by per-game settings
+            //   Suppressed anti-cheat times out its heartbeat and disconnects, a suppressed accelerator drops the stream, a suppressed input/audio peripheral chain stutters the mouse and loses audio
             if (CatalogProtected(pid, creation, name, path)) return false;
             if (gameHostAncestor) return false;
             if (UnderRoot(path, activeGameRoot)) return false;
@@ -29,9 +29,9 @@ namespace PaviseApp
             return string.IsNullOrEmpty(windowsRoot) || !path.StartsWith(windowsRoot, StringComparison.OrdinalIgnoreCase);
         }
 
-        // 四个目录的判定只看名字 路径和在场外设词条 对同一个进程实例结果不会变
-        //   逐进程几十上百次子串匹配 六百进程的机器一轮要三毫秒 按 pid+创建时间记住结果
-        //   词条集合有代际号 换了外设重新算 名字或路径对不上也重新算 没有创建时间的调用不进缓存
+        // The four catalog decisions look only at name, path and present peripheral terms, the result never changes for the same process instance
+        //   Dozens to hundreds of substring matches per process, 3ms per round on a six-hundred-process machine; remember the result by pid+creation time
+        //   The term set has a generation number: recompute after a peripheral change, recompute when name or path mismatch, calls without creation time are not cached
         private sealed class CatalogVerdict
         {
             public long Creation;
@@ -47,7 +47,7 @@ namespace PaviseApp
 
         internal static bool CatalogProtected(int pid, long creation, string name, string path)
         {
-            // 先让词条按到期刷新 再取代际 命中与否都走这一步 刷新不依赖缓存未命中
+            // Let the terms refresh on expiry first, then take the generation; hit or miss both go through this step, refresh does not depend on a cache miss
             int generation = PeripheralVendorProbe.CurrentGeneration();
             if (creation > 0)
                 lock (catalogSync)
@@ -76,7 +76,7 @@ namespace PaviseApp
             return verdict;
         }
 
-        // 每轮扫完把已经不在的进程从缓存里清掉 pid 复用由创建时间兜底 这里只管不让它涨
+        // After each sweep evict processes that are gone from the cache; PID reuse is covered by creation time, this only keeps it from growing
         internal static void PruneCatalogVerdicts(HashSet<int> live)
         {
             if (live == null) return;
@@ -99,8 +99,8 @@ namespace PaviseApp
         internal static void ClearCatalogVerdictsForTest() { lock (catalogSync) catalogVerdicts.Clear(); }
 #endif
 
-        // 语义跟原来那版一样 只是不再为每次比较拼一个前缀字符串出来
-        //   家族豁免开着时这里是 进程数×游戏数 的量级 每次分配都摊在对局的热路径上
+        // Same semantics as the previous version, just no longer builds a prefix string for every comparison
+        //   With family exemption on this is on the order of process count times game count, every allocation lands on the match hot path
         internal static bool UnderRoot(string path, string root)
         {
             if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(root)) return false;
@@ -127,9 +127,9 @@ namespace PaviseApp
             return profile == null || !profile.SuppressFamilyBackground;
         }
 
-        // 保护属于每一个选择退出的档案 不只是当前前台那个游戏
-        // 复用本轮 sweep 那份不可变进程快照 绝不能从游戏或客户端的
-        // 可执行文件名去推断家族归属
+        // Protection belongs to every opted-out profile, not just the current foreground game
+        // Reuse this sweep's immutable process snapshot; never infer family membership from
+        // the game's or client's executable name
         internal static HashSet<int> CollectProtectedLibraryFamily(IList<GameProfile> configured,
             ProcessSnapshot snapshot, int selfPid, int ownerSession, GameFamilyEvidence familyEvidence = null)
         {
@@ -160,8 +160,8 @@ namespace PaviseApp
                             && familyEvidence.Contains(profile, child.Pid, child.Creation, child.Path))
                         { seeds.Add(child.Pid); break; }
                 ProcEntry parent = snapshot.Find(child.ParentPid);
-                // 不要把只看 PID 的老兜底逻辑带进这些新的跨根链接
-                // 身份缺失或者 PID 被复用 就到此为止
+                // Do not carry the old PID-only fallback logic into these new cross-root links
+                // Identity missing or PID reused, stop here
                 if (parent == null || parent.Pid <= 4 || parent.Pid == selfPid
                     || parent.Pid == child.Pid || parent.Session != ownerSession
                     || parent.Creation <= 0 || parent.Creation > child.Creation) continue;
@@ -171,8 +171,8 @@ namespace PaviseApp
             result.UnionWith(WalkDescendants(parents, seeds, selfPid, 24));
             foreach (int seed in seeds)
                 result.UnionWith(WalkAncestorChain(parents, seed, selfPid, 24));
-            // 祖先进程自己受保护 但绝不能当新种子 共享宿主
-            // 不能顺带豁免它那些无关的兄弟进程或者别的游戏
+            // The ancestor process is itself protected but must never become a new seed; a shared host
+            // must not incidentally exempt its unrelated siblings or other games
             return result;
         }
 
@@ -209,18 +209,18 @@ namespace PaviseApp
             return result;
         }
 
-        // 窗口枚举放在这个纯策略步骤之外 快照和档案都是本轮 Sweep
-        // 用的同一份输入
-        // 这里只摘掉可见窗口豁免 渲染进程 显式白名单 别的档案
-        // 以及直接前台这几项保护 仍然由它们各自更早或更晚的判断负责
-        // 这不是一份压制名单
+        // Window enumeration stays outside this pure policy step; snapshot and profiles are the same
+        // input this round's Sweep uses
+        // This only removes the visible-window exemption; renderer process, explicit whitelist, other profiles
+        // and direct foreground protections remain the responsibility of their own earlier or later checks
+        // This is not a suppression list
         internal static void FilterUserFacingGameFamily(HashSet<int> userFacingFamily,
             GameProfile profile, ProcessSnapshot snapshot, int rendererPid, int selfPid, int ownerSession,
             ICollection<int> gamePids, ICollection<int> gameDescendants, ICollection<int> gameHostAncestors,
             GameFamilyEvidence familyEvidence = null)
         {
-            // 专注档共用同一个空集合 绝对不能改它 档案缺失 默认不压制
-            // 或者渲染进程没确认 都保留保护
+            // Esports tier shares the same empty set, never mutate it; profile missing means no suppression by default
+            // or renderer unconfirmed, protection is kept either way
             if (userFacingFamily == null || userFacingFamily.Count == 0
                 || rendererPid <= 0 || FamilyExemptFor(profile)) return;
             userFacingFamily.Remove(rendererPid);
@@ -229,10 +229,10 @@ namespace PaviseApp
             if (gamePids != null) userFacingFamily.ExceptWith(gamePids);
 
             if (userFacingFamily.Count == 0 || snapshot == null || ownerSession < 0) return;
-            // 大厅可能在缓存下渲染家族之后才出现 复用本轮快照
-            // 但只减去新证实的归属者 PID 复用 身份缺失 跨会话条目
-            // 都保留可见窗口豁免 过滤之前先查重
-            // 这样即便第二条是无效项 也不会让一个说不清的 PID 变成种子
+            // The lobby may appear after the render family is cached, reuse this round's snapshot
+            // but subtract only newly confirmed members; PID reuse, missing identity, cross-session entries
+            // all keep the visible-window exemption; dedupe before filtering
+            // so even if the second entry is invalid, an ambiguous PID never becomes a seed
             var current = new Dictionary<int, ProcEntry>();
             var seen = new HashSet<int>();
             foreach (ProcEntry process in snapshot.Entries)
@@ -264,16 +264,16 @@ namespace PaviseApp
                     parents.Add(process.Pid, parent.Pid);
             }
             if (seeds.Count == 0) return;
-            // 上面每条边都有两个当前且唯一的身份 以及合法的创建先后
-            // 不要拿缓存 PID 或者共享宿主的祖先当新根 光是 Steam/WeGame
-            // 的兄弟进程 证明不了游戏归属
+            // Every edge above has two current, unique identities and a valid creation order
+            // Do not take a cached PID or a shared host's ancestor as a new root; merely being a sibling
+            // of Steam/WeGame proves no game membership
             userFacingFamily.ExceptWith(seeds);
             userFacingFamily.ExceptWith(WalkDescendants(parents, seeds, selfPid, 24));
         }
 
-        // 这份早期保护判断和隔离的策略测试共用同一套逻辑
-        // 逐游戏的家族开关 永远不会摘掉渲染进程 显式白名单
-        // 或者另一个受保护档案自己确认过的成员
+        // This early protection check shares the same logic with the isolation policy tests
+        // The per-game family toggle never removes the renderer process, the explicit whitelist
+        // or a member confirmed by another protected profile itself
         internal static bool IsGameOrWhitelistProtected(int pid, int rendererPid,
             bool whitelisted, bool protectedLibraryMember, bool familyExempt,
             HashSet<int> gamePids, HashSet<int> gameDescendants)
@@ -328,9 +328,9 @@ namespace PaviseApp
             return WalkDescendants(parents, rootPids, selfPid, maxDepth, null);
         }
 
-        // 父进程退出后 PID 会被系统复用 同一份快照里的 PPID 可能指向一个后来才起的无关进程
-        //   只比 PID 会把它当成游戏后代放行 补一道创建时间校验 父必须不晚于子
-        //   拿不到时间数据的进程退回只比 PID 的老口径 宁可多放行也不要把游戏的子进程压掉
+        // After a parent exits the system reuses its PID; a PPID in the same snapshot may point to an unrelated process started later
+        //   Comparing PID alone would let it through as a game descendant; add a creation time check, the parent must not be newer than the child
+        //   Processes with no timing data fall back to the old PID-only criteria; better to let through too much than suppress the game's child process
         internal static HashSet<int> WalkDescendants(
             Dictionary<int, int> parents, ICollection<int> rootPids, int selfPid, int maxDepth,
             Dictionary<int, long> creations)
@@ -379,7 +379,7 @@ namespace PaviseApp
             return result;
         }
 
-        // 两边的创建时间都拿得到才判 父比子晚说明这个 PPID 指的是复用后的另一个进程
+        // Decide only when both creation times are available; a parent newer than its child means this PPID refers to a different process after reuse
         private static bool ParentNotNewer(Dictionary<int, long> creations, int parentPid, int childPid)
         {
             if (creations == null) return true;

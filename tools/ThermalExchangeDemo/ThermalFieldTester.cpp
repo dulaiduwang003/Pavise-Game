@@ -1,6 +1,6 @@
-// 文件用途 Pavise Thermal Exchange 的一键现场测试器
-// 这个编译单元复用隔离的控制器 加上 Win32 界面 一套抗漂移的固定协议
-// 机器元数据和自动判定
+// File purpose One-click field tester for Pavise Thermal Exchange
+// This translation unit reuses the isolated controller and adds a Win32 UI, a drift-resistant fixed protocol
+// machine metadata and automatic verdicts
 
 #define wmain ThermalExchangeCommandMain
 #include "ThermalExchangeDemo.cpp"

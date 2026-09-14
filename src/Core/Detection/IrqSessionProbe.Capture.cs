@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 中断采样的执行 提交与有效期校验
+// File purpose Interrupt sampling execution, commit, and validity checks
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -53,7 +53,8 @@ namespace PaviseApp
                     stopInProgress = true;
                     began = startTicks;
                     ended = now;
-                    // 在 ETW Stop 还原和退出宽限期之前 先把 CPU 增量冻住
+                    captureEndQpc = System.Diagnostics.Stopwatch.GetTimestamp();
+                    // Freeze the CPU deltas before the ETW Stop restore and the exit grace period
                     if (coreLoads != null) coreLoads.Finish(now, loadRecord);
                     coreLoads = null;
                     epoch = generation;
@@ -85,7 +86,7 @@ namespace PaviseApp
             try
             {
                 timeline = ia.DpcTimeline;
-                // 到达内存上限或 ETW 自身丢事件 零命中都不能作为可靠的负证据
+                // Hitting the memory cap or ETW itself dropping events means zero hits cannot serve as reliable negative evidence
                 timelineTruncated = ia.DpcTimelineTruncated
                     || (raw != null && (raw.Lossy || raw.Incomplete));
             }
@@ -116,6 +117,8 @@ namespace PaviseApp
             rec.StartUtcTicks = began;
             rec.DurationSeconds = CaptureDurationSeconds(began, ended);
             rec.GameName = game;
+            rec.EventsLost = raw.EventsLost + (long)raw.BuffersLost;
+            rec.Unmapped = raw.Unmapped;
             rec.BootStamp = boot;
             rec.TopologyStamp = topology;
             rec.GameMask = mask;
@@ -138,6 +141,14 @@ namespace PaviseApp
                 r.Over1Ms = d.DpcOver1Ms;
                 r.CpuMask = d.CpuMask;
                 r.MaskTruncated = d.CpuMaskTruncated;
+                r.Cores.AddRange(d.Cores);
+                if (r.Cores.Count > 0 && !r.MaskTruncated)
+                {
+                    // Use one integer conversion path for totals and per-core validation
+                    r.DpcTotalNs = 0; r.DpcMaxNs = 0;
+                    foreach (var core in r.Cores)
+                    { r.DpcTotalNs += core.TotalNs; r.DpcMaxNs = Math.Max(r.DpcMaxNs, core.MaxNs); }
+                }
                 rec.Drivers.Add(r);
             }
             if (rec.Drivers.Count == 0)
@@ -150,16 +161,31 @@ namespace PaviseApp
             string summary = IrqVerdict.SummarizeSession(rec);
             lock (gate)
             {
-                // Stop/汇总期间若发生新一局 禁用或失配 旧 epoch 绝不能留下
+                // If a new match, disable, or mismatch happens during Stop/summary, the old epoch must never survive
                 if (!CaptureStillValidLocked(epoch, mask, available, pid, creation)) return null;
+                rec.GameId = stableGameId; rec.Configuration = configuration;
+                var endDevicePlatform = platform as IIrqDeviceSnapshotPlatform;
+                if (endDevicePlatform != null)
+                    try
+                    {
+                        var endDevices = endDevicePlatform.DeviceConfigurations();
+                        foreach (var pair in deviceConfigurations)
+                        {
+                            string value;
+                            if (endDevices.TryGetValue(pair.Key,out value) && value == pair.Value)
+                                rec.DeviceConfigurations[pair.Key] = pair.Value;
+                        }
+                    }
+                    catch { }
+                rec.Frames = frameEvidence;
                 pendingRecord = rec;
                 pendingSummary = summary;
                 return commit ? CommitPendingLocked() : summary;
             }
         }
 
-        // gate 内调用 Append 自己有独立文件锁 这里持有小范围状态锁
-        // 保证 Arm 和 Invalidate 插不进已判有效和落盘之间 塞不了新一局
+        // Called inside gate; Append has its own file lock, this holds a narrow state lock
+        // so Arm and Invalidate cannot slip in between the validity verdict and the disk write, and no new match can be wedged in
         private string CommitPendingLocked()
         {
             if (pendingRecord == null)

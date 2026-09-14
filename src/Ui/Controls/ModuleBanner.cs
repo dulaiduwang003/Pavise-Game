@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 为高级子页面提供统一的 ROG 模块状态舱
+// File purpose Unified ROG module status pod for the advanced sub-pages
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;

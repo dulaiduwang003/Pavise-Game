@@ -1,4 +1,4 @@
-// 文件用途 下架和安全回归 所有文件都在临时测试目录里
+// File purpose Retirement and safety regression, every file lives in a temporary test directory
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -51,7 +51,7 @@ namespace PaviseApp
                     Eq(true, (bool)BoundaryCall(mode, "RefreshBoostPriority", pass));
                     BoundaryPriority(pass, Native.HIGH_PRIORITY_CLASS);
                 }
-                // 无需 affinity / CPU Sets 读回也能决定 High；持续饱和且无 lane 时仍须回退。
+                // No affinity / CPU Sets read-back needed to decide: High must still fall back when saturation persists and there is no lane
                 pass.GetType().GetField("CpuSaturated").SetValue(pass, true);
                 Eq(true, (bool)BoundaryCall(mode, "RefreshBoostPriority", pass));
                 BoundaryPriority(pass, Native.NORMAL_PRIORITY_CLASS);
@@ -78,12 +78,12 @@ namespace PaviseApp
                     Eq(1, reads);
                     target.Invoke(mode, new[] { pass, (object)Native.HIGH_PRIORITY_CLASS });
                     target.Invoke(mode, new[] { pass, (object)Native.NORMAL_PRIORITY_CLASS });
-                    Eq(2, reads); // 再次进入保护状态必须重新取消。
+                    Eq(2, reads); // re-entering the protected state must cancel again
                     target.Invoke(mode, new[] { pass, (object)Native.HIGH_PRIORITY_CLASS });
                     Settings.SaveStr("RenderLane", "invalid-test-receipt");
                     target.Invoke(mode, new[] { pass, (object)Native.NORMAL_PRIORITY_CLASS });
                     target.Invoke(mode, new[] { pass, (object)Native.NORMAL_PRIORITY_CLASS });
-                    Eq(4, reads); // 恢复失败不得被成功缓存掩盖。
+                    Eq(4, reads); // restore failure must not be masked by a cached success
                     Settings.SaveStr("RenderLane", "");
                     target.Invoke(mode, new[] { pass, (object)Native.NORMAL_PRIORITY_CLASS });
                     target.Invoke(mode, new[] { pass, (object)Native.NORMAL_PRIORITY_CLASS });
@@ -160,7 +160,7 @@ namespace PaviseApp
                 Eq(YieldStage.Engaged, state.Stage);
                 state = SafetyYield(proxy, false);
                 Eq(YieldAction.Revert, state.Advance(80 * TimeSpan.TicksPerSecond, 97, 40, 41, 140));
-                // 中间缺一次测 不能把后面完整有效的验证样本判成坏的
+                // One missing measurement in the middle must not mark the later complete valid verification samples as bad
                 state = SafetyYield(proxy, false);
                 state.Advance(22 * TimeSpan.TicksPerSecond, -1, double.NaN, -1, -1);
                 for (int s = 24; s <= 36; s += 2)
@@ -254,7 +254,7 @@ namespace PaviseApp
                 Eq(AppGpuPreferenceResult.Changed, GameMode.AutoGpuEnroll(fixture.Manager, AppGpuPath, delegate
                 {
                     admittedAfterPrepare = fixture.Control.Reads > 0;
-                    visible.Add(40); // 模拟 Prepare 后窗口刚刚出现。
+                    visible.Add(40); // simulates the window appearing right after Prepare
                     return GameMode.AutoGpuVisibilityAllows(background, snapshot, visible, 1);
                 }));
                 Eq(true, admittedAfterPrepare); Eq(0, fixture.Control.Writes); Eq(0, fixture.Ledger.Writes);
@@ -281,11 +281,11 @@ namespace PaviseApp
                         return new Dictionary<int, double> { { 7, VramSpillProbe.WarnBytes * 2 } };
                     };
                     var pids = new List<int> { 7 };
-                    VramSpillProbe.SampleIfDueAt(pids, 0); // 必须在 release 之前返回。
+                    VramSpillProbe.SampleIfDueAt(pids, 0); // must return before release
                     Eq(true, entered.WaitOne(3000)); pids.Clear();
                     VramSpillProbe.SampleIfDueAt(new[] { 7 }, 25 * TimeSpan.TicksPerSecond);
                     Eq(1, reads); Eq(false, VramSpillProbe.WaitForIdle(0));
-                    VramSpillProbe.Reset(); // 在旧查询尚未返回时换局。
+                    VramSpillProbe.Reset(); // switch match while the old query has not returned yet
                     release.Set(); Eq(true, VramSpillProbe.WaitForIdle(3000));
                     Eq(0, VramSpillProbe.SamplesForTest); Eq(null, VramSpillProbe.Summarize());
                     for (int s = 0; s <= 20; s += 20)
@@ -295,7 +295,7 @@ namespace PaviseApp
                     }
                     Eq(2, VramSpillProbe.SamplesForTest); Eq(true, VramSpillProbe.Summarize() != null);
                     VramSpillProbe.SampleIfDueAt(new[] { 7 }, 21 * TimeSpan.TicksPerSecond);
-                    Eq(3, reads); // 20 秒限频仍在。
+                    Eq(3, reads); // 20s rate limit still in effect
                     entered.Reset(); release.Reset();
                     VramSpillProbe.SampleIfDueAt(new[] { 7 }, 40 * TimeSpan.TicksPerSecond);
                     Eq(true, entered.WaitOne(3000)); VramSpillProbe.Seal();
@@ -518,7 +518,7 @@ namespace PaviseApp
                     BoundaryPriority(current, Native.HIGH_PRIORITY_CLASS);
                     Eq(0, restores); Eq(true, RenderLane.IsActiveFor(pid, creation));
 
-                    // 旧 renderer 的 lane 不能替新身份豁免饱和回退；失败的清收必须继续重试。
+                    // The old renderer's lane must not exempt the new identity from the saturation fallback, a failed reclaim must keep retrying
                     object pass = BoundaryBoostPass(mode, pid, creation + 1);
                     passType.GetField("CpuSaturated").SetValue(pass, true);
                     Eq(true, (bool)BoundaryCall(mode, "RefreshBoostPriority", pass));
@@ -532,7 +532,7 @@ namespace PaviseApp
                     Eq(2, restores); Eq(0, priority); Eq(false, RenderLane.HasResidue());
                     Eq(false, RenderLane.IsActiveFor(pid, creation));
                     typeof(GameMode).GetMethod("EngageLaneAndReport", flags).Invoke(mode,
-                        new object[] { IntPtr.Zero, null, pid, creation + 1, pass, false, false, false, false, "" });
+                        new object[] { IntPtr.Zero, null, pid, creation + 1, pass, false, false, false, false, "", false });
                     Eq(LaneState.Idle, RenderLane.StateFor(pid, creation + 1));
                 }
                 finally
@@ -561,7 +561,7 @@ namespace PaviseApp
                         var mode = new GameMode(folder, new SuppressionCore());
                         mode.Preset = PerformancePreset.Competitive;
                         mode.RenderLaneOn = true;
-                        mode.ProbeSessionPolicyApply(null); // 当前会话跟随全局切档/开关。
+                        mode.ProbeSessionPolicyApply(null); // current session follows the global tier switch/toggle
                         RenderLane.ConfigureMutationBoundary(null, null);
                         const int pid = 2000000001, tid = 2000000002;
                         const long creation = 1234;
@@ -585,12 +585,12 @@ namespace PaviseApp
                         if (change == "handheld") mode.Preset = PerformancePreset.Handheld;
                         else if (change == "disabled") mode.RenderLaneOn = false;
                         else pass.GetType().GetField("WriteDenied").SetValue(pass, true);
-                        int previousRestores = restores; // 全局关开关会先尝试一次；失败后扫描仍要重试。
+                        int previousRestores = restores; // global toggle-off tries once first, the sweep must still retry after failure
                         Eq(true, (bool)BoundaryCall(mode, "RefreshBoostPriority", pass));
                         Eq(previousRestores + 1, restores);
                         Eq(false, (bool)pass.GetType().GetField("LaneAllowed").GetValue(pass));
                         BoundaryPriority(pass, saturated ? Native.NORMAL_PRIORITY_CLASS : Native.HIGH_PRIORITY_CLASS);
-                        Eq(true, RenderLane.IsActiveFor(pid, creation)); // 故意模拟还原被拒。
+                        Eq(true, RenderLane.IsActiveFor(pid, creation)); // deliberately simulate a rejected restore
                         Eq(true, RenderLane.HasResidue());
                         int lateWrites = 0;
                         Eq(false, RenderLane.RunShutdownMutationForTest(generation,
@@ -603,16 +603,16 @@ namespace PaviseApp
                         Eq(0, priority); Eq(false, RenderLane.IsActiveFor(pid, creation));
                         Eq(false, RenderLane.HasResidue());
                         FamilyPolicyInvoke(mode, "EngageLaneAndReport", IntPtr.Zero, null,
-                            pid, creation, pass, false, false, false, false, "");
+                            pid, creation, pass, false, false, false, false, "", false);
                         Eq(LaneState.Idle, RenderLane.StateFor(pid, creation));
                         int reads = 0;
                         Settings.BeforeStrictStringReadForTest = delegate(string key) { if (key == "RenderLane") reads++; };
                         for (int i = 0; i < 10; i++)
                             Eq(true, (bool)BoundaryCall(mode, "RefreshBoostPriority", pass));
-                        Eq(0, reads); // 策略仍关闭时，成功清收后不重复查账。
+                        Eq(0, reads); // no repeated audit after a successful reclaim while the policy stays off
                         Settings.BeforeStrictStringReadForTest = previousRead;
 
-                        // 同一局重新允许后必须能再次建立，并在下一次失去资格时正确清收。
+                        // After being re-allowed in the same match it must be re-established and reclaimed correctly the next time eligibility is lost
                         mode.Preset = PerformancePreset.Competitive; mode.RenderLaneOn = true;
                         pass.GetType().GetField("WriteDenied").SetValue(pass, false);
                         pass.GetType().GetField("CpuSaturated").SetValue(pass, false);

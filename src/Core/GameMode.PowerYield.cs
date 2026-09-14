@@ -25,7 +25,7 @@ namespace PaviseApp
                     { hasOverride = true; overrideOn = value == "1"; }
                 }
             }
-            // Runner 持有 operationGate 时也会调用，只读原子量/冻结副本，不取得 sync。
+            // Also called while Runner holds operationGate, reads only atomics/frozen copies, never takes sync
             return delegate
             {
                 if (!profileExists || captured != Volatile.Read(ref powerYieldGeneration)

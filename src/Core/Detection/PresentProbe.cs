@@ -1,9 +1,9 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 独立 ETW 会话订阅 Microsoft-Windows-DxgKrnl 只取 Present(event 184)
-//   逐帧记录 present 的 QPC 时刻与提交进程 pid 作为 present 长帧↔DPC 因果对齐的地基
-//   与 InterruptAttribution 的中断会话完全独立 只把 provider 订阅从内核 EnableFlags
-//   换成 EnableTraceEx2 按 manifest provider GUID 订阅 P/Invoke 布局照抄那边已验证的写法
-//   会话用 ProcessModeRawTimestamp 保持原始 QPC 与中断会话同一根尺子 可直接对齐
+// File purpose Independent ETW session subscribing to Microsoft-Windows-DxgKrnl, taking only Present event 184
+//   Records per frame the present's QPC time and submitting pid, as the foundation for present long-frame and DPC causal alignment
+//   Fully independent of InterruptAttribution's interrupt session; only swaps the provider subscription from kernel EnableFlags
+//   to EnableTraceEx2 by manifest provider GUID; the P/Invoke layout copies the already-verified code over there
+//   The session uses ProcessModeRawTimestamp to keep raw QPC, same ruler as the interrupt session, so they align directly
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -12,11 +12,11 @@ using System.Threading;
 
 namespace PaviseApp
 {
-    // 一帧 present 提交 与 QueryPerformanceCounter 同一根 QPC 尺子
+    // One present submission, same QPC ruler as QueryPerformanceCounter
     internal struct PresentFrame
     {
-        public long Qpc;   // 这次 present 的 QPC 时刻 会话用 RawTimestamp 时是原始 QPC
-        public int Pid;    // 提交 present 的进程 用来过滤到目标游戏
+        public long Qpc;   // QPC time of this present; raw QPC when the session uses RawTimestamp
+        public int Pid;    // Process that submitted the present, used to filter down to the target game
     }
 
     internal sealed class PresentProbe
@@ -24,30 +24,30 @@ namespace PaviseApp
         private const int WnodeFlagTracedGuid = 0x00020000;
         private const uint RealTimeMode = 0x00000100;               // EVENT_TRACE_REAL_TIME_MODE
         private const uint ProcessModeRealTime = 0x00000100;
-        private const uint ProcessModeRawTimestamp = 0x00001000;    // 关闭时间戳换算 保留原始 QPC
+        private const uint ProcessModeRawTimestamp = 0x00001000;    // Disable timestamp conversion, keep raw QPC
         private const uint ProcessModeEventRecord = 0x10000000;
         private const uint ControlStop = 1;
         private const int ErrorAlreadyExists = 183;
 
-        // EnableTraceEx2 参数
+        // EnableTraceEx2 parameters
         private const uint EnableProvider = 1;      // EVENT_CONTROL_CODE_ENABLE_PROVIDER
         private const byte LevelInformation = 4;    // TRACE_LEVEL_INFORMATION
-        // Present 关键词还包含 VSync/HSync 队列和同步信号等事件 不能单独作为低开销过滤器
-        // 必须同时用 EVENT_FILTER_TYPE_EVENT_ID 在 ETW 写入前限定 184 回调再作防御性复核
+        // The Present keyword also covers VSync/HSync queue and sync signal events, so it cannot serve alone as a low-overhead filter
+        // Must also use EVENT_FILTER_TYPE_EVENT_ID to restrict to 184 before ETW writes; the callback re-checks defensively
         private const ulong MatchAnyKeyword = 0x8000000;
         private const uint EnableTimeoutMs = 1000;
 
-        // present 事件号 从 DxgKrnl manifest 钉死
+        // present event id, pinned from the DxgKrnl manifest
         private const ushort EventPresent = 184;
 
-        // 独立会话 名与 GUID 都不碰任何现有会话(中断会话 selftest 里的 PresentTrace)
+        // Independent session; name and GUID collide with no existing session (the interrupt session, PresentTrace in selftest)
         private const string SessionName = "Pavise_PresentProbe";
         private static readonly Guid SessionGuid = new Guid("a3f6d1c4-2b58-4e7a-9c31-6f0d8b2e5a17");
         private static readonly Guid DxgKrnl = new Guid("802ec45a-1e99-4b83-9920-87c98277ba9d");
 
-        // 逐帧时间线 消费线程(ProcessTrace 回调)单独 append Stop 且 worker.Join 之后再读
-        //   单生产单消费 无需锁 与聚合无关 只做原始落点
-        private const int FrameCap = 4000000;   // 上限约 4M 帧 防长采样把内存吃穿 到顶后停记并置 Truncated
+        // Per-frame timeline; the consumer thread's ProcessTrace callback appends alone; read only after Stop and worker.Join
+        //   Single producer single consumer, no lock; unrelated to aggregation, raw landing only
+        private const int FrameCap = 4000000;   // Cap of about 4M frames so a long capture cannot eat all memory; at the cap stop recording and set Truncated
         private readonly List<PresentFrame> frames = new List<PresentFrame>(1 << 16);
 
         private ulong sessionHandle;
@@ -73,10 +73,10 @@ namespace PaviseApp
         public bool DrainCompleted { get { return drainCompleted; } }
         public bool ConsumerExitedEarly { get { return consumerExitedEarly; } }
 
-        // 会话所用 QPC 频率 与落盘 present_qpc 同一根尺子
+        // QPC frequency used by the session, same ruler as the persisted present_qpc
         public long QpcFrequency { get { return qpcFrequency; } }
 
-        // Stop 且 worker.Join 之后调用 取回逐帧时间线
+        // Call after Stop and worker.Join to fetch the per-frame timeline
         public List<PresentFrame> Frames { get { return frames; } }
 
         public bool Start()
@@ -90,7 +90,7 @@ namespace PaviseApp
                 uint rc = StartTrace(out sessionHandle, SessionName, props);
                 if (rc == ErrorAlreadyExists)
                 {
-                    // 有同名残留会话 先停掉再重建 一次
+                    // A stale session with the same name gets stopped and recreated, once
                     StopStale();
                     Marshal.FreeHGlobal(props);
                     props = AllocProps();
@@ -105,9 +105,9 @@ namespace PaviseApp
             }
             finally { Marshal.FreeHGlobal(props); }
 
-            // DxgKrnl 是内核驱动注册的 manifest provider 不套只适用于用户态 provider 的 PID scope
-            // 过滤参数 descriptor 和变长载荷在整个 EnableTraceEx2 调用期间由同一个 HGlobal 持有
-            // 配置失败就放弃本轮 Present 不回退成订阅整族事件的高流量会话
+            // DxgKrnl is a manifest provider registered by a kernel driver; do not apply the PID scope that only fits user-mode providers
+            // The filter parameters descriptor and variable-length payload are held by one HGlobal for the whole EnableTraceEx2 call
+            // On configuration failure give up Present for this round; never fall back to a high-volume session subscribing to the whole event family
             Guid provider = DxgKrnl;
             uint erc;
             try
@@ -134,7 +134,7 @@ namespace PaviseApp
             keepAlive = OnEvent;
             var logfile = new EventTraceLogfile();
             logfile.LoggerName = Marshal.StringToHGlobalUni(SessionName);
-            // RawTimestamp 保留原始 QPC 与中断会话同尺
+            // RawTimestamp keeps raw QPC, same ruler as the interrupt session
             logfile.ProcessTraceMode = ProcessModeRealTime | ProcessModeEventRecord | ProcessModeRawTimestamp;
             logfile.EventRecordCallbackPtr = Marshal.GetFunctionPointerForDelegate(keepAlive);
             traceHandle = OpenTrace(ref logfile);
@@ -185,14 +185,14 @@ namespace PaviseApp
             catch { if (!stopRequested) consumerExitedEarly = true; }
             finally
             {
-                // 正常路径只有 RequestStop 发出 ControlTrace 后消费线程才该返回 提前返回即使
-                // Join 成功 丢事件计数为 0 也只覆盖了半局 不能生成负证据
+                // On the normal path the consumer thread should return only after RequestStop issues ControlTrace; an early return, even if
+                // Join succeeds and the dropped-event count is 0, covered only half the match and cannot produce negative evidence
                 if (!stopRequested) consumerExitedEarly = true;
             }
         }
 
-        // 只收口事件来源 不等待消费线程排空 调用方可先关闭 PRESENT 窗口
-        // 立即封存 DPC 的新鲜 proof 再在退出收尾时调用 Stop 取完整时间线
+        // Only closes off the event source without waiting for the consumer thread to drain; the caller can close the PRESENT window first
+        // to seal the fresh DPC proof immediately, then call Stop during exit teardown to take the full timeline
         public void RequestStop()
         {
             lock (stopGate)
@@ -219,7 +219,7 @@ namespace PaviseApp
             uint stopError;
             lock (stopGate)
             {
-                // 多个收尾调用共用一次排空 等待会释放锁 RequestStop 不会被 Join 阻塞
+                // Multiple teardown callers share one drain; the wait releases the lock so RequestStop is never blocked by Join
                 while (stopFinishing) Monitor.Wait(stopGate);
                 if (!started) return;
                 stopFinishing = true;
@@ -231,8 +231,8 @@ namespace PaviseApp
             bool workerDone = drainWorker == null;
             try
             {
-                // 正常停会话后消费者自行排空 停失败则先 CloseTrace 解除消费者
-                // 这种路径即使 Join 成功也不能算完整采集
+                // After a normal session stop the consumer drains on its own; if stop failed, CloseTrace first to release the consumer
+                // That path does not count as a complete capture even if Join succeeds
                 if (!stopSucceeded)
                     try { if (handleToClose != 0) CloseTrace(handleToClose); } catch { }
                 if (drainWorker != null)
@@ -247,7 +247,7 @@ namespace PaviseApp
                     traceHandle = 0;
                     drainCompleted = stopSucceeded && workerDone && processTraceSucceeded;
                     started = false;
-                    // 排空超时后仍可能回调 保留委托直到消费线程结束
+                    // Callbacks may still fire after the drain times out; keep the delegate alive until the consumer thread ends
                     if (workerDone) keepAlive = null;
                     stopFinishing = false;
                     Monitor.PulseAll(stopGate);
@@ -260,10 +260,10 @@ namespace PaviseApp
             if (consumerExitedEarly) Logger.Warn("PRESENT 消费线程提前退出 本局时间线作废 win32=" + LastError);
         }
 
-        // 唯一的消费点 在 ProcessTrace 工作线程上执行 只 append 不做别的
+        // The only consumer point, runs on the ProcessTrace worker thread; append only, nothing else
         private void OnEvent(ref EventRecord record)
         {
-            // provider 已按 GUID 订阅 这里再核一遍 防同会话混入其它 provider
+            // Provider is already subscribed by GUID; re-check here in case another provider leaks into the same session
             if (record.EventHeader.ProviderId != DxgKrnl) return;
             if (record.EventHeader.EventDescriptor.Id != EventPresent) return;
             if (Truncated) return;
@@ -285,11 +285,11 @@ namespace PaviseApp
             p.Wnode.BufferSize = (uint)size;
             p.Wnode.Flags = WnodeFlagTracedGuid;
             p.Wnode.Guid = SessionGuid;
-            p.Wnode.ClientContext = 1;   // QPC 时钟
+            p.Wnode.ClientContext = 1;   // QPC clock
             p.BufferSize = 256;
             p.MinimumBuffers = 16;
             p.MaximumBuffers = 128;
-            // 普通实时会话 不设内核 EnableFlags(那是内核 logger 专用) provider 靠 EnableTraceEx2 挂
+            // Plain real-time session, no kernel EnableFlags (those are kernel logger only); the provider attaches via EnableTraceEx2
             p.LogFileMode = RealTimeMode;
             p.FlushTimer = 1;
             p.LoggerNameOffset = (uint)Marshal.SizeOf(typeof(EventTraceProperties));
@@ -330,8 +330,8 @@ namespace PaviseApp
             finally { Marshal.FreeHGlobal(props); }
         }
 
-        // EVENT_FILTER_EVENT_ID 的 BOOLEAN 是 1 字节 不是默认 P/Invoke BOOL 的 4 字节
-        // 当前只订阅一个事件 sizeof(header) 4 + USHORT Events[1] 2 = 6 字节
+        // The BOOLEAN in EVENT_FILTER_EVENT_ID is 1 byte, not the 4-byte default P/Invoke BOOL
+        // Currently only one event is subscribed: sizeof(header) 4 + USHORT Events[1] 2 = 6 bytes
         [StructLayout(LayoutKind.Sequential)]
         internal struct EventIdFilterData
         {
@@ -344,12 +344,12 @@ namespace PaviseApp
         [StructLayout(LayoutKind.Sequential)]
         internal struct EventFilterDescriptor
         {
-            internal ulong Ptr;  // ULONGLONG，在 32 位控制器里也必须是 8 字节。
+            internal ulong Ptr;  // ULONGLONG must be 8 bytes even in a 32-bit controller
             internal uint Size;
             internal uint Type;
         }
 
-        // 仅分配/序列化内存 不调用任何 ETW API 纯自测可核验整个指针链和释放路径
+        // Only allocates and serializes memory, calls no ETW API; a pure self-test can verify the whole pointer chain and release path
         internal sealed class EventIdFilterBuffer : IDisposable
         {
             internal const uint EventIdFilterType = 0x80000200;
@@ -358,7 +358,7 @@ namespace PaviseApp
             internal EventIdFilterBuffer()
             {
                 int parametersSize = Marshal.SizeOf(typeof(Native.EnableTraceParameters));
-                // descriptor 含 ULONGLONG 显式按 8 字节对齐 兼容 x86/x64 控制器
+                // The descriptor contains a ULONGLONG, so align explicitly to 8 bytes for x86/x64 controllers
                 int descriptorOffset = (parametersSize + 7) & ~7;
                 int payloadOffset = descriptorOffset + Marshal.SizeOf(typeof(EventFilterDescriptor));
                 int payloadSize = Marshal.SizeOf(typeof(EventIdFilterData));
@@ -417,7 +417,7 @@ namespace PaviseApp
             }
         }
 
-        // 以下 interop 结构与签名照抄 InterruptAttribution 已验证的布局 只是复制一份不共享
+        // The interop structs and signatures below copy InterruptAttribution's verified layout; a separate copy, not shared
         [StructLayout(LayoutKind.Sequential)]
         private struct WnodeHeader
         {
@@ -550,7 +550,7 @@ namespace PaviseApp
         private static extern uint StartTrace(out ulong handle, string name, IntPtr props);
         [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         private static extern uint ControlTrace(ulong handle, string name, IntPtr props, uint code);
-        // manifest provider 订阅入口 内核会话没有这一步 是本探针与中断会话的唯一实质差别
+        // manifest provider subscription entry; the kernel session has no such step, the only substantive difference between this probe and the interrupt session
         [DllImport("advapi32.dll", SetLastError = true)]
         private static extern uint EnableTraceEx2(ulong handle, ref Guid provider, uint controlCode,
             byte level, ulong matchAny, ulong matchAll, uint timeout, IntPtr parameters);

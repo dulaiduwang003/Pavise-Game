@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 识别网游加速器进程 使其免于后台压制
+// File purpose Identify online game accelerator processes so they are exempt from background suppression
 using System;
 using System.Collections.Generic;
 

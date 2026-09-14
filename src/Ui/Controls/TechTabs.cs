@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 ROG 风格切角标签条 页面内分组切换 选中态带 accent 刻线和 mono 序号
+// File purpose ROG-style chamfered tab strip for in-page group switching; selected state carries an accent tick and a mono index
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -110,7 +110,7 @@ namespace PaviseApp
             {
                 if (value < 0 || value >= labels.Length || value == idx) return;
                 idx = value;
-                // 只缓动绘制的选中框 状态 文字和页面回调立即切换
+                // Only the drawn selection box eases; state, text and page callback switch immediately
                 if (CanAnimateSelection) { selection.To(idx); UiClock.Wake(); }
                 else selection.Set(idx);
                 Invalidate();

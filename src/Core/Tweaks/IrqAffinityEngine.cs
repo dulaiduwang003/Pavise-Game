@@ -1,5 +1,5 @@
-﻿// @author bdth 2074055628@qq.com
-// 文件用途 中断亲和策略的通用引擎 供显卡和网卡等设备复用
+// @author bdth 2074055628@qq.com
+// File purpose Generic engine for interrupt affinity policy, reused by GPU, NIC and other devices
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -11,7 +11,6 @@ namespace PaviseApp
 
     internal sealed class IrqAffinityEngine
     {
-        private const int PolicyAllCloseProcessors = 1;
         private const int PolicySpecifiedProcessors = 4;
 
         private readonly string settingsKey;
@@ -34,7 +33,7 @@ namespace PaviseApp
 
         public List<string> TouchedDevices() { return LoadTouched(); }
 
-        // 严格读 账本"读不到"和"确实为空"要分得开 孤儿判定不许把读失败当证据
+        // Strict read: ledger unreadable and ledger truly empty must stay distinct; orphan detection must not treat a read failure as evidence
         public bool TryTouchedDevices(out List<string> ids)
         {
             ids = new List<string>();
@@ -124,8 +123,18 @@ namespace PaviseApp
             return Enable(deviceIds, CpuTopology.BoostMask);
         }
 
+        internal IrqWriteResult LastResult = new IrqWriteResult();
+
+        internal static bool SupportsExactMask(bool multiGroup, ulong mask, ulong all)
+        { return !multiGroup && mask != 0 && all != 0 && (mask & ~all) == 0; }
+
         public bool Enable(List<string> deviceIds, ulong preferredMask)
         {
+            LastResult = new IrqWriteResult();
+            // AssignmentSetOverride is a group-local KAFFINITY Never substitute a
+            // proximity policy for an explicit mask on an unsupported topology
+            if (!SupportsExactMask(CpuTopology.MultiGroup, preferredMask, CpuTopology.AllMask))
+            { LastResult.Failed = deviceIds == null ? 1 : deviceIds.Count; LastResult.Failure = Lang.T("irq.exact.unsupported"); return false; }
             ReportMsiState(deviceIds);
             if (deviceIds == null || deviceIds.Count == 0)
             {
@@ -133,22 +142,23 @@ namespace PaviseApp
                 return false;
             }
             List<Target> targets = BuildTargets(deviceIds);
-            bool useMask = !CpuTopology.MultiGroup && preferredMask != 0 && preferredMask != CpuTopology.AllMask;
-            if (CpuTopology.MultiGroup)
-                Logger.Warn(logPrefix + Lang.T("log.irqaffinityengine.5"));
 
-            var touched = LoadTouched();
+            List<string> touched;
+            if (!TryTouchedDevices(out touched))
+            { LastResult.Failed = deviceIds.Count; LastResult.Failure = Lang.T("irq.write.journalfailed"); return false; }
 
             var ledger = new List<string>(touched);
             foreach (Target t in targets) if (!ledger.Contains(t.DeviceId)) ledger.Add(t.DeviceId);
             if (!SaveTouched(ledger))
             {
+                LastResult.Failed = deviceIds.Count;
+                LastResult.Failure = Lang.T("irq.write.journalfailed");
                 Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.8"));
                 return false;
             }
 
-            object policyValue = useMask ? PolicySpecifiedProcessors : PolicyAllCloseProcessors;
-            byte[] maskBytes = useMask ? MaskToBytes(preferredMask) : null;
+            object policyValue = PolicySpecifiedProcessors;
+            byte[] maskBytes = MaskToBytes(preferredMask);
 
             bool anyOk = false;
             string stamp = BootStamp();
@@ -157,33 +167,23 @@ namespace PaviseApp
             foreach (Target t in targets)
             {
                 bool atTarget = t.Policy.Matches(policyValue)
-                    && (!useMask || t.Mask.Matches(maskBytes));
+                    && t.Mask.Matches(maskBytes);
                 bool alreadyConfigured = atTarget
                     && (touched.Contains(t.DeviceId)
-                        || (!t.Policy.HasBackup && (!useMask || !t.Mask.HasBackup)));
+                        || (!t.Policy.HasBackup && !t.Mask.HasBackup));
                 string bootKey = BootKeyFor(t.DeviceId);
                 bool attempted;
-                bool ok = ApplyWithBootStamp(alreadyConfigured, stamp,
-                    delegate(string value) { return Settings.SaveStr(bootKey, value); },
-                    delegate { return Settings.LoadStr(bootKey, ""); },
-                    delegate
-                    {
-                        return useMask ? t.Policy.Apply(policyValue) & t.Mask.Apply(maskBytes)
-                            : t.Policy.Apply(policyValue);
-                    }, out attempted);
-                if (!attempted)
-                {
-                    // 注册表根本没改过 所以不要仅仅因为这次写入的标记没保存成功
-                    // 就去还原一份更旧的备份
-                    if (ok) anyOk = true;
-                    else Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.bootstamp") + t.DeviceId);
-                    continue;
-                }
-                if (ok) { anyOk = true; applied.Add(t); }
+                int rollbackFailures = LastResult.RollbackFailed;
+                bool ok = ApplyTarget(LastResult, alreadyConfigured, stamp,
+                    delegate(string value) { return Settings.SaveStr(bootKey,value); },
+                    delegate { return Settings.LoadStr(bootKey,""); },
+                    delegate { return t.Policy.Apply(policyValue) & t.Mask.Apply(maskBytes); },
+                    delegate { return t.Policy.Restore() & t.Mask.Restore(); }, out attempted);
+                if (ok) { anyOk = true; if (attempted) applied.Add(t); }
                 else
                 {
-                    if (!(t.Policy.Restore() & t.Mask.Restore())) dirty.Add(t.DeviceId);
-                    Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.6") + t.DeviceId + Lang.T("log.irqaffinityengine.7"));
+                    if (LastResult.RollbackFailed > rollbackFailures) dirty.Add(t.DeviceId);
+                    Logger.Log(logPrefix + t.DeviceId + " " + LastResult.Describe());
                 }
             }
             if (!anyOk)
@@ -195,10 +195,10 @@ namespace PaviseApp
 
             foreach (Target t in applied) if (!touched.Contains(t.DeviceId)) touched.Add(t.DeviceId);
             foreach (string id in dirty) if (!touched.Contains(id)) touched.Add(id);
-            SaveTouched(touched);
+            bool ledgerSaved = SaveTouched(touched);
 
             Settings.Save(settingsKey, true);
-            if (!Settings.Load(settingsKey, false))
+            if (!ledgerSaved || !Settings.Load(settingsKey, false))
             {
                 var failed = new List<string>();
                 foreach (Target t in applied)
@@ -212,14 +212,19 @@ namespace PaviseApp
                     if (!wasApplied || failed.Contains(id)) remaining.Add(id);
                 }
                 SaveTouched(remaining);
+                LastResult.Failed += applied.Count;
+                LastResult.Succeeded -= applied.Count;
+                LastResult.RollbackFailed += failed.Count;
+                LastResult.RolledBack += applied.Count - failed.Count;
+                LastResult.Failure = Lang.T("irq.write.journalfailed");
                 Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.9"));
                 return false;
             }
             if (applied.Count > 0)
                 Logger.Log(logPrefix + Lang.T("log.irqaffinityengine.10") + applied.Count + Lang.T("log.irqaffinityengine.11")
-                    + (useMask ? Lang.T("log.irqaffinityengine.12") + preferredMask.ToString("X") + " " : Lang.T("log.irqaffinityengine.13"))
+                    + (Lang.T("log.irqaffinityengine.12") + preferredMask.ToString("X") + " ")
                     + Lang.T("log.irqaffinityengine.14"));
-            return true;
+            return LastResult.Failed == 0 && LastResult.RollbackFailed == 0;
         }
 
         private string TouchedKey { get { return slotPrefix + "Touched"; } }
@@ -261,19 +266,36 @@ namespace PaviseApp
                 && seconds > 0 && seconds <= DateTime.MaxValue.Ticks / TimeSpan.TicksPerSecond;
         }
 
+        internal static bool ApplyTarget(IrqWriteResult result, bool configured, string stamp,
+            Func<string,bool> save, Func<string> load, Func<bool> apply, Func<bool> restore, out bool attempted)
+        {
+            attempted = false; bool ok = false;
+            try { ok = ApplyWithBootStamp(configured,stamp,save,load,apply,out attempted); } catch { }
+            if (attempted) result.Attempted++;
+            if (ok) { result.Succeeded++; if (!attempted) result.Unchanged++; return true; }
+            result.Failed++;
+            if (attempted)
+            {
+                bool rolled = false;
+                try { rolled = restore(); } catch { }
+                if (rolled) result.RolledBack++; else result.RollbackFailed++;
+            }
+            return false;
+        }
+
         internal static bool ApplyWithBootStamp(bool alreadyConfigured, string stamp,
             Func<string, bool> saveStamp, Func<string> loadStamp, Func<bool> apply, out bool attempted)
         {
             attempted = false;
-            // 空操作既不能改动有效标记 也不能给外部的钉核凭空造一个
+            // A no-op must neither touch the active stamp nor fabricate one for an external pin
             if (alreadyConfigured) return true;
             long seconds;
             if (!TryParseBootStamp(stamp, out seconds)
                 || saveStamp == null || loadStamp == null || apply == null) return false;
             try
             {
-                // 改亲和性之前先落盘 保存失败可能让更旧的开机标记留在原地
-                // 它绝不能被当成描述这次新写入
+                // Persist before touching affinity; a failed save may leave an older boot stamp in place
+                // and that must never be taken as describing this new write
                 if (!saveStamp(stamp) || !string.Equals(loadStamp(), stamp, StringComparison.Ordinal))
                     return false;
             }
@@ -328,35 +350,59 @@ namespace PaviseApp
         private bool SaveTouched(List<string> ids)
         {
             string joined = string.Join("\n", ids.ToArray());
-            Settings.SaveStr(TouchedKey, joined);
-            return Settings.LoadStr(TouchedKey, "") == joined;
+            string actual;
+            return Settings.SaveStr(TouchedKey, joined)
+                && Settings.TryLoadStr(TouchedKey,out actual) && actual == joined;
         }
 
-        // 只还原指定设备 不把新 ID 并进清单 计划级的部分回滚用
-        //   与 Disable 的区别 Disable 是"收摊" 这里是"退掉其中一件"
+        // Restore only the given devices without merging new IDs into the list; for plan-level partial rollback
+        //   Unlike Disable, which tears everything down, this backs out just one item
         public bool RestoreOnly(List<string> deviceIds)
         {
             if (deviceIds == null || deviceIds.Count == 0) return true;
-            List<Target> targets = BuildTargets(deviceIds);
-            var touched = LoadTouched();
+            List<string> touched;
+            if (!TryTouchedDevices(out touched)) return false;
+            return RestoreTouchedScope(touched,deviceIds,delegate(string id)
+                {
+                    Target target = BuildTargets(new List<string> { id })[0];
+                    return target.Policy.Restore() & target.Mask.Restore();
+                },SaveTouched,ForgetBootStamp,delegate
+                {
+                    return Settings.Save(settingsKey,false) && !Settings.Load(settingsKey,true);
+                });
+        }
+
+        internal static bool RestoreTouchedScope(List<string> touched, List<string> selected,
+            Func<string,bool> restore, Func<List<string>,bool> save,
+            Action<string> forgetBoot, Func<bool> disable)
+        {
+            if (touched == null || selected == null) return false;
+            var remaining = new List<string>(touched);
             bool allOk = true;
-            foreach (Target t in targets)
+            foreach (string id in selected)
             {
-                bool ok = t.Policy.Restore() & t.Mask.Restore();
+                bool ok = false;
+                try { ok = restore(id); } catch { }
                 if (!ok) { allOk = false; continue; }
-                ForgetBootStamp(t.DeviceId);
-                for (int i = touched.Count - 1; i >= 0; i--)
-                    if (string.Equals(touched[i], t.DeviceId, StringComparison.OrdinalIgnoreCase))
-                        touched.RemoveAt(i);
+                try { if (forgetBoot != null) forgetBoot(id); } catch { allOk = false; continue; }
+                for (int i = remaining.Count - 1; i >= 0; i--)
+                    if (string.Equals(remaining[i],id,StringComparison.OrdinalIgnoreCase)) remaining.RemoveAt(i);
             }
-            if (!SaveTouched(touched)) allOk = false;
-            if (allOk && touched.Count == 0) Settings.Save(settingsKey, false);
+            if (allOk && remaining.Count == 0)
+            {
+                // The last device remains discoverable until the global flag
+                // has also settled If finalization fails its existing receipt
+                // index lets a later single-device or full restore retry it
+                try { if (disable == null || !disable()) return false; } catch { return false; }
+            }
+            try { if (save == null || !save(remaining)) allOk = false; } catch { allOk = false; }
             return allOk;
         }
 
         public bool Disable(List<string> deviceIds)
         {
-            var scope = LoadTouched();
+            List<string> scope;
+            if (!TryTouchedDevices(out scope)) return false;
             if (deviceIds != null)
                 foreach (string id in deviceIds)
                     if (!scope.Contains(id)) scope.Add(id);

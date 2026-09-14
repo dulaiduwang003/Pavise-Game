@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 工作线程启停 关闭排空与扫描主循环
+// File purpose Worker thread start/stop, shutdown drain and the scan main loop
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -26,8 +26,8 @@ namespace PaviseApp
             InvalidateEnglishInputWork();
             InvalidateIntelGraphicsWork();
             kick.Set();
-            // 已经在跑的提交要在 sync 下走完 之后关闭才能继续
-            // 回调停掉它自己那次提交时 必须让恢复数据完好无损
+            // A commit already in flight must finish under sync before shutdown can proceed
+            // When a callback stops its own commit, the restore data must stay intact
             if (Monitor.IsEntered(sync) || !Monitor.TryEnter(sync, 8000)) return false;
             try
             {
@@ -39,8 +39,8 @@ namespace PaviseApp
             if (current != null && (current == Thread.CurrentThread
                 || !current.Join(RemainingShutdownMs(elapsed, 8000))))
                 return false;
-            // 线程池的活可能比 Loop 活得久 先停准入 再等那些
-            // 已经进了各自闸门的原生和文件改动做完
+            // Thread-pool work may outlive Loop, close admission first, then wait for
+            // the native and file changes that already passed their gates to finish
             if (!DrainAsyncShutdown(RemainingShutdownMs(elapsed, 8000))) return false;
             bool runnersClosed = true;
             try { if (!RenderLane.CloseForShutdown(8000)) runnersClosed = false; }
@@ -51,10 +51,10 @@ namespace PaviseApp
             catch { runnersClosed = false; }
             try { if (standbyCleaner != null && !standbyCleaner.Close(8000)) runnersClosed = false; }
             catch { runnersClosed = false; }
-            // 两个关闭都要试 就算其中一个失败 除非两边都确认退出
-            // 否则它们的恢复记录和改动边界都要原样保留
+            // Try both shutdowns even if one fails, unless both confirm exit
+            // their restore records and change boundaries must be kept as-is
             if (!runnersClosed) return false;
-            // Loop 还活着的时候 不要卸掉改动守卫 也别声称重置是安全的
+            // While Loop is still alive, do not remove the change guard or claim a reset is safe
             bool clean = true;
             try { if (!StopCoreIsolation()) clean = false; } catch { clean = false; }
             RenderLane.ConfigureMutationBoundary(null, null);
@@ -65,7 +65,7 @@ namespace PaviseApp
             IrqMutationBoundary.Configure(null, null);
             try { irqProbe.Dispose(); } catch { clean = false; }
             try { if (!RestoreAllIrqProofHardPins()) clean = false; } catch { clean = false; }
-            // worker.Join 之后没有并发 Loop 收尾把可能仍开着的 present 会话关干净不泄漏
+            // No concurrent Loop after worker.Join, teardown closes any still-open present session cleanly, no leak
             try { PresentProbe p = presentProbe; presentProbe = null; if (p != null) p.Stop(); } catch { clean = false; }
             return clean;
         }
@@ -93,8 +93,8 @@ namespace PaviseApp
 
         private static bool DrainShutdownGate(object gate, int timeoutMs)
         {
-            // 从一次改动内部发起的停止 既不能等自己
-            // 也不能声称它那个还在跑的回调已经结束
+            // A stop issued from inside a change can neither wait on itself
+            // nor claim its still-running callback has finished
             if (Monitor.IsEntered(gate) || !Monitor.TryEnter(gate, timeoutMs)) return false;
             try { return true; }
             finally { Monitor.Exit(gate); }
@@ -138,8 +138,8 @@ namespace PaviseApp
                         }
                         ProcessSnapshot all = null;
                         CountProcessScan();
-                        // 对局中的纯兜底轮次复用近期快照 进程集变动由事件走 dirty 强制重拍
-                        //   对局外和轮询模式一个字节不变 见 ProcessSnapshotSource.ReuseMaxAgeMs
+                        // Pure fallback rounds during a match reuse a recent snapshot, process-set changes force a fresh capture via the event-driven dirty flag
+                        //   outside a match and in polling mode nothing changes, see ProcessSnapshotSource.ReuseMaxAgeMs
                         int snapshotReuseMs = fallbackOnly && ProcessEventsAvailable && IsActive
                             ? ProcessSnapshotSource.ReuseMaxAgeMs : 0;
                         try { all = ProcessSnapshotSource.Capture(selfSession, snapshotReuseMs); }
@@ -151,8 +151,8 @@ namespace PaviseApp
                                 HashSet<int> gamePids;
                                 string running = FindRunningGame(all, out gamePids);
                                 try { StepRogueWatch(all, gamePids); } catch { }
-                                // 确认学习可触发既有游戏库保存熔断 UI 收尾尚未执行前
-                                // 本轮也不能继续套电源 压后台或提优旧/新目标
+                                // Confirmed learning can trip the existing game library save circuit breaker, until the UI cleanup has run
+                                // this round must not apply power, suppress background or boost the old/new target either
                                 if (!enabled || stopping || panicReq || ProfileStoreSaveFailed) continue;
                                 if (running != null)
                                 {
@@ -177,9 +177,9 @@ namespace PaviseApp
                                             }
                                             if (sameGraceProfile)
                                             {
-                                                // Seal 的前缀尚未落盘 同一 profile 在宽限内
-                                                // 恢复时丢弃它 并从新 renderer 证明重开干净
-                                                // epoch 否则一次短暂漏检会把同一局拆成两条
+                                                // The sealed prefix is not on disk yet, when the same profile recovers
+                                                // within the grace period drop it and reopen a clean epoch from the new
+                                                // renderer proof, otherwise one brief missed detection splits a single match into two records
                                                 ArmIrqObservation(graceGame ?? running);
                                             }
                                         }
@@ -207,11 +207,11 @@ namespace PaviseApp
                                         ResetAdaptiveGuard();
                                         Interlocked.Exchange(ref boostFirstStampTicks, DateTime.UtcNow.Ticks);
                                         SetAutoGpuSessionStamp(DateTime.UtcNow.Ticks);
-                                        // activeDetection 此时已经指向新 profile 旧 renderer 无法再终验
-                                        // 直接作废旧 IRQ epoch 并且必须先结旧局 再启用新策略
-                                        // 直接 A→B 时必须作废 A 的 live epoch 但 A 已在首次
-                                        // 失联时 Seal 的前缀已有完整结束边界 应由紧接着的
-                                        // ReportFinish 提交 不能再被 Invalidate 清掉
+                                        // activeDetection already points at the new profile here, the old renderer can no longer be final-checked
+                                        // invalidate the old IRQ epoch outright, and the old match must be closed before the new policy is enabled
+                                        // A direct A-to-B switch must invalidate A's live epoch, but if A was already
+                                        // sealed on first loss of contact, its prefix has a complete end boundary and must be committed
+                                        // by the ReportFinish that follows, not wiped by Invalidate
                                         if (!irqProbe.HasSealedPending)
                                             irqProbe.InvalidateGameMask();
                                         ReportFinish();
@@ -221,7 +221,7 @@ namespace PaviseApp
                                     }
                                     else if (!string.Equals(activeGame, running, StringComparison.Ordinal))
                                     {
-                                        // 同一 profile 局内改名只更新展示 不能伪造一次换局
+                                        // A mid-match rename on the same profile only updates the display, must not fake a match switch
                                         lock (sync) activeGame = running;
                                     }
                                     StepEnglishInputSession();
@@ -242,20 +242,20 @@ namespace PaviseApp
                                             ? activeDetection.RendererCreation : 0;
                                     }
                                     GpuThrottleProbe.SampleIfDue(rendererPath);
-                                    // 显存溢出仍按整个家族测量 那是观测不是策略 多进程游戏的显存要合起来看
+                                    // VRAM spill is still measured over the whole family, that is observation not policy, a multi-process game's VRAM has to be summed
                                     VramSpillProbe.SampleIfDue(gamePids);
-                                    // 护盾只认渲染进程本体 预留是按进程声明的 给家族其它成员挂没有意义
+                                    // The shield only targets the renderer process itself, the reservation is declared per process, attaching it to other family members is pointless
                                     VramShield.SampleIfDue(EffVramShield, rendererPid, rendererCreation);
-                                    // 压制默认只认渲染进程本体 家族其余成员当普通后台
-                                    //   游戏库页的家族豁免开关打开后才整族放行 家族集合在 Sweep 里
-                                    //   还会拿本轮快照的父子关系补算一遍 免得子进程随检测周期忽压忽放
+                                    // Suppression by default only recognizes the renderer process itself, the rest of the family is treated as ordinary background
+                                    //   the whole family is let through only once the family exemption switch on the game library page is on, the family set in Sweep
+                                    //   is also recomputed from this round's snapshot parent-child relations so child processes do not flip between suppressed and released with each detection cycle
                                     if (EffSuppress) Sweep(all, gamePids);
                                     if (!EffSuppress) ReleaseBackground();
                                     SelfYield.Engage();
-                                    // 电源滑块只认专注 掌机档不传真 那块的 PL 归厂商工具管 拨过去只会跟它顶
+                                    // Power slider only for the Esports tier, the Handheld tier leaves it alone, the PL there belongs to the vendor tool and pushing the slider would only fight it
                                     MaybeActivatePowerOverlay(EffPreset == PerformancePreset.Competitive);
-                                    // 功耗让路掌机档照样参与 方向本来就对 掌机 CPU 和集显抢的就是同一份预算
-                                    //   掌机档放开的是纯省电项 EPP 仍写专注档的激进值 让路的前提还在
+                                    // Power yield still applies on the Handheld tier, the direction is right anyway, handheld CPU and iGPU compete for the same budget
+                                    //   what the Handheld tier relaxes are the pure power-saving items, EPP still gets the Esports tier's aggressive value, so the premise for yielding still holds
                                     Func<bool> powerYieldAdmission = CapturePowerYieldAdmission(rendererPid, rendererCreation);
                                     PowerBudgetYieldRunner.Start(powerYieldAdmission(),
                                         EffPreset == PerformancePreset.Competitive
@@ -285,8 +285,8 @@ namespace PaviseApp
                                         InvalidateCacheWarm();
                                         InvalidateEnglishInputWork();
                                         InvalidateIntelGraphicsWork();
-                                        // 退出宽限只用于避免游戏检测抖动 不属于可验证的对局采样窗
-                                        // 首次失联立即封存最近一次落核证明对应的 epoch
+                                        // The exit grace period only guards against game-detection jitter, it is not part of the verifiable match sampling window
+                                        // On first loss of contact, immediately seal the epoch matching the latest core placement proof
                                         try { SealIrqObservation(); }
                                         catch { irqProbe.InvalidateGameMask(); }
                                         Logger.Log(Lang.T("log.gamemode.47")

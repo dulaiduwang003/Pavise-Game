@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 读写当前用户的持久配置
+// File purpose Reads and writes the current user's persistent config
 using System;
 using System.Collections.Generic;
 using Microsoft.Win32;
@@ -12,9 +12,9 @@ namespace PaviseApp
         private static readonly object writeSync = new object();
         private static bool writesSuspendedForReset;
 
-        // 配置存储的写代数 任何 Save/Remove 入口都递增 无论成败 只读缓存
-        //    如 EnvActive 的残留判定 以此判断上次结果是否仍有效 宁可多失效
-        //   不可漏失效
+        // Write generation of the config store, every Save/Remove entry increments it regardless of outcome, read-only caches
+        //    such as the EnvActive residue check use it to tell whether the last result is still valid, better to invalidate too often
+        //   than to miss one
         private static int mutationGeneration;
         internal static int MutationGeneration
         {
@@ -25,8 +25,8 @@ namespace PaviseApp
             System.Threading.Interlocked.Increment(ref mutationGeneration);
         }
 
-        // 在还原成功之后 删除持久数据之前调用
-        // 从这道屏障返回时 早先的写入已排干 之后的回调一律拒绝
+        // Called after a successful restore and before deleting persistent data
+        // On return from this barrier earlier writes are drained and later callbacks are all rejected
         internal static void SuspendWritesForReset()
         {
             lock (writeSync) writesSuspendedForReset = true;
@@ -75,9 +75,9 @@ namespace PaviseApp
         }
 #endif
 
-        // 界面每 1.2 秒读一次的开关走这里 注册表只在有过写入之后才重新打开
-        //   任何 Save/Remove 都推进 MutationGeneration 缓存整体作废 宁可多失效不可漏失效
-        //   同一个键的默认值在各调用处必须一致 缓存不区分默认值
+        // Switches the UI reads every 1.2 s go through here, the registry is reopened only after a write has happened
+        //   Any Save/Remove advances MutationGeneration and invalidates the whole cache, better to invalidate too often than miss one
+        //   The default for a given key must be identical at every call site, the cache does not distinguish defaults
         private static readonly object readCacheSync = new object();
         private static readonly Dictionary<string, bool> readCache =
             new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
@@ -166,8 +166,8 @@ namespace PaviseApp
         internal static Action<string> BeforeStrictStringReadForTest;
 #endif
 
-        // 恢复台账必须能区分值不存在 和值读不出来或者格式坏了
-        // LoadStr 对其它调用方保持原来的宽容行为
+        // The restore ledger must distinguish a missing value from one that is unreadable or malformed
+        // LoadStr keeps the original lenient behavior for other callers
         internal static bool TryLoadStr(string name, out string value)
         {
             value = "";
@@ -237,8 +237,8 @@ namespace PaviseApp
             }
         }
 
-        // 事务收据得赶在跨 hive 的系统改动之前稳稳落盘
-        // 普通偏好还是走 Save 和 SaveStr 只有恢复台账用同步 Flush 免得把这份开销摊到全局
+        // Transaction receipts must land durably before the cross-hive system changes
+        // Ordinary preferences still go through Save and SaveStr, only the restore ledger uses a synchronous Flush so the cost is not spread globally
         internal static bool SaveStrDurable(string name, string val)
         {
             lock (writeSync)

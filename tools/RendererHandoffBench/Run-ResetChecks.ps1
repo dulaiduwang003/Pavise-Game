@@ -10,7 +10,7 @@ $null = New-Item -ItemType Directory -Path $resetRunDirectory
 $resetCompiler = Join-Path ([Environment]::GetFolderPath('Windows')) 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 if (-not (Test-Path -LiteralPath $resetCompiler)) { throw 'The .NET Framework x64 C# compiler is required.' }
 
-# 精确白名单 完整 SelfTests 运行时和无关测试文件都排除在外
+# Exact whitelist, the full SelfTests runtime and unrelated test files are excluded
 $resetTestNames = @(
     'SelfTests.RendererCandidate.cs', 'SelfTests.RendererRelease.cs', 'SelfTests.RendererHandoff.cs',
     'SelfTests.RendererLearning.cs', 'SelfTests.RendererCoordinator.cs',
@@ -57,8 +57,8 @@ try {
 
     $resetStdout = Join-Path $resetRunDirectory 'console.log'
     $resetStderr = Join-Path $resetRunDirectory 'stderr.log'
-    # 这个专用入口只调重置和聚焦的发现与渲染两套
-    # 不调 Program.Main 不调 GameMode.Start 和 Stop 也不碰真实进程矩阵
+    # This dedicated entry only calls the reset checks and the focused discovery and renderer suites
+    # No Program.Main, no GameMode.Start or Stop, and never touches the real process matrix
     $resetProcess = Start-Process -FilePath $resetExecutable -ArgumentList @(('"' + $resetRunDirectory + '"'), [string]$Repeat) -WorkingDirectory $resetRunDirectory -WindowStyle Hidden -PassThru -RedirectStandardOutput $resetStdout -RedirectStandardError $resetStderr
     $resetOwnedHandle = $resetProcess.Handle
     $resetDeadline = [DateTime]::UtcNow.AddSeconds([Math]::Max(45, $Repeat * 15))

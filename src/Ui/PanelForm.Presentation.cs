@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 守护遮罩 模式呈现 主题切换与 DPI 重建
+// File purpose Guard veil, mode presentation, theme switch and DPI rebuild
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -165,7 +165,7 @@ namespace PaviseApp
             Controls.Clear();
             foreach (var c in old) c.Dispose();
             acGroups.Clear(); acCards.Clear(); acToggles.Clear();
-            // Rebuild 会复用窗体实例 别让已释放的控件和抓着它们的委托跨主题和 DPI 切换攒下来
+            // Rebuild reuses the form instance; do not let disposed controls and delegates holding them pile up across theme and DPI switches
             guardVeils.Clear();
             accentLabels.Clear();
             themeRefreshers.Clear();
@@ -200,7 +200,7 @@ namespace PaviseApp
         protected override void WndProc(ref Message m)
         {
             HandlePowerSchemeNotification(m);
-            // ShowDialog 会在原生层禁用 owner 不一定触发托管 EnabledChanged
+            // ShowDialog disables the owner at the native level, which does not necessarily raise managed EnabledChanged
             if (m.Msg == 0x000A && m.WParam == IntPtr.Zero) StopPageReveal();
             if (m.Msg == Native.WM_DROPFILES)
             {

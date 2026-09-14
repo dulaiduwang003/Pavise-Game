@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 程序入口 运行时装配与托盘主循环
+// File purpose Program entry, runtime assembly and tray main loop
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -19,7 +19,7 @@ namespace PaviseApp
     internal static class App
     {
         public const string DisplayName = "PAVISE";
-        public const string Version = "2.2.2.2";
+        public const string Version = "2.2.2.3";
         public const string Author = "bdth";
         public const string AuthorEmail = "2074055628@qq.com";
         public const string QqGroup = "1051472054";
@@ -27,29 +27,14 @@ namespace PaviseApp
         public const string QqGroup3 = "383761286";
         public const string QqGroup4 = "166255062";
         public const string Douyin = "44601770838";
-        public const string PanUrl = "https://pan.quark.cn/s/3c8c986b3ea4";
-
-        // 版本清单挂在自家对象存储 换源就改这两行
-        //   两条指的是同一个文件 上海直连给国内 传输加速给境外 并发赛跑先到先用
-        //   不按地区判断走哪条 判断会误伤代理和跨境线路 让网络自己比出快的那条更准
-        public const string VersionFeedUrl =
-            "https://paivse.oss-cn-shanghai.aliyuncs.com/version/version.json";
-
-        public const string VersionFeedUrlAccelerate =
-            "https://paivse.oss-accelerate.aliyuncs.com/version/version.json";
-
+        public const string WebsiteUrl = "https://pavise.club/";
+        public const string WebsiteFallbackUrl = "https://pavise-website.2074055628.workers.dev/";
+        public const string VersionFeedUrl = WebsiteUrl + "version.json";
+        public const string VersionFeedFallbackUrl = WebsiteFallbackUrl + "version.json";
         public const string RepoName = "dulaiduwang003/Pavise-Game";
         public const string RepoUrl = "https://github.com/" + RepoName;
-        public const string ReleasesUrl = RepoUrl + "/releases";
+        public static string ChangelogUrl { get { return WebsiteUrl + (Lang.Cur == 1 ? "en/" : "") + "changelog/#latest"; } }
 
-        // 概览页底栏三个外链 都在飞书 改地址只改这里
-        //   教程是知识库页 问卷和 Bug 反馈是表单 两种地址形态不同 别互相照抄
-        public const string GuideUrl =
-            "https://ycnqux4mseky.feishu.cn/wiki/Do1jwytjmit0DJke8CvcyJEenxd?from=from_copylink";
-        public const string SurveyUrl =
-            "https://ycnqux4mseky.feishu.cn/share/base/form/shrcn8Je5doKoMrs8fqxC7kUo1G";
-        public const string BugUrl =
-            "https://ycnqux4mseky.feishu.cn/share/base/form/shrcnYFsTFhIfY93NpHZlUNEjMg";
         public static string VersionTag { get { return "v" + Version; } }
     }
 
@@ -96,18 +81,29 @@ namespace PaviseApp
 
             if (args.Length >= 2 && args[0] == "--screenshot")
             {
+                Dpi.NoFit = true;
                 Dpi.Init();
+                float shotScale;
+                if (args.Length >= 6 && float.TryParse(args[5], System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out shotScale) && shotScale >= 1f) Dpi.Scale = shotScale;
                 Paths.Init();
+                // Screenshots must not leak this machine's last match, power scheme, theme color or device adjustment records, settings go in memory, data dir points to temp
+#if PAVISE_SELFTEST || PAVISE_PERFLAB
+                Settings.UseTransientStoreForCurrentProcess();
+                Settings.SaveStr(PolicyCatalog.KeyPreset, ((int)PerformancePreset.Competitive).ToString());
+                Settings.Save("PowerPlanOn", false);
+#endif
                 Lang.Init();
                 if (args.Length >= 4) Lang.Cur = args[3] == "en" ? 1 : (args[3] == "ja" ? 2 : 0);
                 if (args.Length >= 5 && (args[4] == "light" || args[4] == "backdrop-light")) Theme.SetLight(true);
-                // 截图默认保持干净背景 只有封面专项检查才读取用户当前封面
+                // Screenshots keep a clean background by default, only the backdrop-specific check reads the user's current backdrop
                 if (args.Length >= 5 && (args[4] == "backdrop-light" || args[4] == "backdrop-dark"))
                     try { Backdrop.Init(); } catch { }
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
                 string sdir = Path.Combine(Path.GetTempPath(), "PaviseShot_" + Process.GetCurrentProcess().Id);
                 Directory.CreateDirectory(sdir);
+                Paths.Data = sdir;
                 Logger.LogPath = Path.Combine(sdir, "Pavise.log");
                 int idx = args.Length >= 3 ? int.Parse(args[2]) : 0;
                 var scCore = new SuppressionCore();
@@ -117,8 +113,8 @@ namespace PaviseApp
                     var scMode = new GameMode(sdir, scCore);
                     if (idx == (int)PageId.Log)
                     {
-                        // 只有截图模式才注入这些遥测 让结构化日志视图能展示每种视觉状态
-                        // 同时不碰用户真正的日志文件
+                        // Only screenshot mode injects this telemetry, so the structured log view can show every visual state
+                        // without touching the user's real log file
                         Logger.Log("CORE 守护服务已开启，等待游戏进程");
                         Logger.Log("GAME 已识别 NebulaStrike-Win64-Shipping.exe");
                         Logger.Log("POWER 电源计划已生效：PG 专注 5EFC");
@@ -158,43 +154,11 @@ namespace PaviseApp
                 return;
             }
 
-            // 公告和帮助弹窗的取图入口 用写死的样例内容 不碰网络也不读用户已读记录
-            if (args.Length >= 2 && (args[0] == "--shot-notice" || args[0] == "--shot-help"))
-            {
-                Dpi.Init(); Paths.Init(); Lang.Init();
-                if (args.Length >= 3) Lang.Cur = args[2] == "en" ? 1 : (args[2] == "ja" ? 2 : 0);
-                Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
-                Form shot;
-                if (args[0] == "--shot-help") shot = new HelpDialog();
-                else
-                {
-                    var sample = new NoticeInfo();
-                    sample.Id = "sample";
-                    sample.Title = Lang.T("v230.notice.shot.title");
-                    sample.Body = Lang.T("v230.notice.shot.body");
-                    shot = new NoticeDialog(sample);
-                }
-                using (shot)
-                {
-                    shot.StartPosition = FormStartPosition.Manual;
-                    shot.ShowInTaskbar = false;
-                    shot.Location = new Point(-20000, -20000);
-                    shot.Show();
-                    Application.DoEvents();
-                    using (var bmp = new Bitmap(shot.ClientSize.Width, shot.ClientSize.Height))
-                    {
-                        shot.DrawToBitmap(bmp, new Rectangle(0, 0, bmp.Width, bmp.Height));
-                        bmp.Save(args[1], System.Drawing.Imaging.ImageFormat.Png);
-                    }
-                }
-                return;
-            }
-
             if (args.Length >= 2 && args[0] == "--shot-contact")
             {
                 Dpi.Init(); Paths.Init(); Lang.Init();
                 Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
-                using (var dlg = new ContactDialog(true))
+                using (var dlg = new ContactDialog())
                 {
                     dlg.StartPosition = FormStartPosition.Manual;
                     dlg.ShowInTaskbar = false;
@@ -298,7 +262,7 @@ namespace PaviseApp
             try { Backdrop.Init(); } catch { }
             try
             {
-                // 上界跟着档位取值走 不是档位个数 掌机是 4 写死 3 会让它的配色重启后丢失
+                // The upper bound follows tier enum values, not the tier count, Handheld is 4, hard-coding 3 would lose its colors after restart
                 for (int m = 0; m <= 4; m++)
                 {
                     if (!PresetValue.IsValid(m)) continue;
@@ -325,8 +289,8 @@ namespace PaviseApp
             try { MaintenancePause.HealFromCrash(); } catch { }
             GameDvr.HealFromCrash();
             try { Mmcss.HealFromCrash(); } catch { }
-            // 处理器功耗接口证据要读系统事件日志 最坏一秒多 先在后台算好
-            //   否则第一局配置电源方案时在主循环线程上现读 压制与提优跟着一起等
+            // Processor power interface evidence reads the system event log, worst case over a second, compute it in the background first
+            //   Otherwise the first match reads it on the main loop thread while configuring the power scheme, and suppression and boost wait along with it
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
                 try { ProcessorPowerPlatform.Interface warmed = ProcessorPowerPlatform.Current; } catch { }
@@ -346,12 +310,12 @@ namespace PaviseApp
             GpuPrefStage.HealFromCrash();
             try { AppGpuPreferences.HealFromCrash(); } catch { }
             try { IntelGraphicsTweaks.HealFromCrash(); } catch { }
-            // 已下架的 IFEO 提优/关 CFG 只剩历史残留 全局开关用户没有逐游戏
-            // 退役字段 不会触发库重置流程 这里按账本一次性收回旧写入
+            // The retired IFEO boost / CFG-off only leave historical residue, they were global switches so users have no per-game
+            // retired fields and the library reset flow will not fire, reclaim the old writes here once, per the ledger
             try { if (IfeoBoost.HasResidue()) IfeoBoost.RestoreAll(); } catch { }
             try { if (CfgOffTweak.HasResidue()) CfgOffTweak.RestoreAll(); } catch { }
-            // 2.1.3.3 那版的极限档会把网卡批量设成 Off 新策略不再当它是最优解
-            // 启动时只按旧收据收回那一代写入 新界面的单出口实验走 V2 身份收据 不吃这条迁移
+            // The Extreme tier in 2.1.3.3 bulk-set NICs to Off, the new policy no longer treats that as optimal
+            // Startup only reclaims that generation's writes by the old receipts, the new UI's single-exit experiment uses V2 identity receipts and skips this migration
             try
             {
                 if (NicModerationTweak.HasLegacyResidue) NicModerationTweak.MigrateLegacy();
@@ -364,7 +328,7 @@ namespace PaviseApp
             try { IrqRelocate.HealFromCrash(); } catch { }
             try { IrqAutoPilot.HealFromCrash(); } catch { }
 
-            // 系统版本低于基线就此止步 前面的自愈已经跑完 历史改动不会被锁在机器上
+            // Stop here if the OS build is below baseline, self-heal above has already run, historical changes are not locked onto the machine
             if (BlockIfOsTooOld(dir)) return;
 
             bool pendingPanel = Settings.Load(PendingPanelKey, false);
@@ -385,13 +349,6 @@ namespace PaviseApp
             };
 
             bool showingPanel = !autoStarted || pendingPanel;
-            if (showingPanel)
-                using (var welcome = new ContactDialog(true))
-                {
-                    welcome.StartPosition = FormStartPosition.CenterScreen;
-                    welcome.ShowDialog();
-                }
-
             var core = new SuppressionCore(Path.Combine(dir, SuppressionCore.StateFileName));
             var tamer = new Tamer(core);
 
@@ -428,8 +385,8 @@ namespace PaviseApp
                     gameMode.Start();
                     GameExtension.Start();
                 }
-                // 这一步可能在 Paths.Data 里写任务 XML 把它留在合并后的启动
-                // 生命周期里 免得重置和一个没被跟踪的回调抢跑
+                // This step may write the task XML into Paths.Data, keep it inside the merged startup
+                // lifetime so a reset cannot race an untracked callback
                 if (elevated && !Volatile.Read(ref exiting))
                     try { TaskHelper.RefreshStartupTask(); } catch { }
             });
@@ -468,7 +425,7 @@ namespace PaviseApp
             gameMode.ProcessEventsAvailable = procNotify.IsActive;
             tamer.ProcessEventsAvailable = procNotify.IsActive;
 
-            // 必须在 GameMode 构造之后 台账那时才 Bind 到数据目录 提前调用会读到空账误提示
+            // Must come after GameMode is constructed, the ledger only Binds to the data dir then, calling earlier reads an empty ledger and misprompts
             ThreadPool.QueueUserWorkItem(_ => IrqRelocate.NotifyPendingVerification());
 
             PerformancePreset runtimeIconMode = gameMode.ActivePreset;
@@ -506,8 +463,8 @@ namespace PaviseApp
             int runtimeStopped = 0;
             Func<bool> stopRuntime = () =>
             {
-                // 第二次或者重入的退出 不能把正在进行的停止误当成已完成
-                // 然后把脚下还活着的恢复状态删掉
+                // A second or re-entrant exit must not mistake an in-progress stop for a completed one
+                // and then delete the restore state still live underneath it
                 if (Interlocked.CompareExchange(ref runtimeStopStarted, 1, 0) != 0)
                     return Volatile.Read(ref runtimeStopped) != 0;
                 lock (startGate)
@@ -522,8 +479,8 @@ namespace PaviseApp
                 bool stopped = true;
                 try { procNotify.Stop(); } catch { stopped = false; }
                 try { GameExtension.Shutdown(4000); } catch { stopped = false; }
-                // 第一个停止失败了 第二个也要照样尝试 超时是
-                // 真的失败 不是允许抹掉待处理恢复记录的许可
+                // If the first stop failed the second is still attempted, a timeout is
+                // a real failure, not a license to erase pending restore records
                 try { if (!tamer.Stop()) stopped = false; } catch { stopped = false; }
                 try { if (!gameMode.Stop()) stopped = false; } catch { stopped = false; }
                 try
@@ -539,8 +496,8 @@ namespace PaviseApp
             Action<bool, bool> resetDataAndExit = null;
             Action doExit = () =>
             {
-                // 保存失败与普通退出同时发生时 不能让退出先关掉
-                // 消息泵而吞掉已排队的安全重置
+                // When a save failure and a normal exit coincide, the exit must not close
+                // the message pump first and swallow the queued safe reset
                 if (gameMode.ProfileStoreSaveFailed && resetDataAndExit != null)
                 {
                     resetDataAndExit(true, true);
@@ -553,7 +510,7 @@ namespace PaviseApp
             panel.ExitApp = doExit;
 
             int resetStarted = 0;
-            // 卸载与清除全部配置走同一条停止 还原 删除 退出的顺序 多出来的是开机任务 旧方案与旧版本残留
+            // Uninstall and clear-all-config share the same stop, restore, delete, exit order, the extras are the startup task, old power scheme and old-version residue
             panel.UninstallApp = delegate
             {
                 if (Interlocked.CompareExchange(ref resetStarted, 1, 0) != 0) return;
@@ -593,8 +550,8 @@ namespace PaviseApp
                 try { panel.BeginInvoke((MethodInvoker)(() => resetDataAndExit(true, true))); }
                 catch
                 {
-                    // ApplicationExit 走的是同一条经过核实的停止与还原路径
-                    // 如果是在工作线程还在跑的时候调用 重置会安全地中止
+                    // ApplicationExit goes through the same verified stop and restore path
+                    // If called while the worker thread is still running the reset aborts safely
                     try { Application.Exit(); } catch { }
                 }
             };
@@ -604,8 +561,8 @@ namespace PaviseApp
                 resetDataAndExit(true, false);
             };
 
-            // 先装好带守卫的兜底 再去订阅和复查失败
-            // 任何一条退出路径都不许绕过还原去强删数据
+            // Install the guarded fallback first, then subscribe and re-check for failures
+            // No exit path may bypass restore and force-delete data
             gameMode.ProfileStoreSaveFailure += requestFatalStoreReset;
             if (gameMode.ProfileStoreSaveFailed) requestFatalStoreReset();
 
@@ -723,8 +680,7 @@ namespace PaviseApp
                 UpdateChecker.CheckAsync(r =>
                 {
                     if (Volatile.Read(ref exiting)) return;
-                    // 公告和版本号走同一份清单 有没有新版都要把公告交给概览页
-                    if (r.Ok && r.Notice != null) panel.NotifyNotice(r.Notice);
+                    panel.NotifyUpdate(r);
                     if (r.Ok && r.Donate != null) panel.NotifyDonate(r.Donate);
                     if (r.Ok && r.Newer)
                     {

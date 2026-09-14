@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 疑似恶意进程监视的会话接入 喂主循环快照 出结论后记日志并抛托盘气泡 同名一天只报一次
+// File purpose Session hookup for the suspected malicious process watch, fed from main loop snapshots, logs and raises a tray balloon on a verdict, same name reported once per day
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -20,11 +20,11 @@ namespace PaviseApp
         private const long RogueRepeatTicks = TimeSpan.TicksPerDay;
         private const long RogueVisibleRefreshTicks = TimeSpan.TicksPerSecond * 15;
 
-        // 系统目录 Program Files 和 Defender 目录下的进程不走"吃满核心"这条 杀软扫盘 更新安装都会长时间满核
-        //   会话 0 的进程快照里没有路径 出结论时再按句柄查一次 查到落在这些目录同样放过
+        // Processes under the system directory, Program Files and the Defender directory skip the 'saturating cores' rule, AV disk scans and update installs peg cores for long stretches
+        //   session 0 processes have no path in the snapshot, look it up again by handle at verdict time, and let it go if it lands in these directories too
         private static readonly string[] RogueTrustedRoots = BuildRogueTrustedRoots();
 
-        // 常见的合法重负载后台 游戏平台的着色器预编译和更新 系统的索引与维护 名字对上就不报
+        // Common legitimate heavy background work, game platform shader precompilation and updates, system indexing and maintenance, a name match means no report
         private static readonly HashSet<string> RogueTrustedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "System", "Registry", "Memory Compression", "svchost", "dllhost", "csrss", "dwm", "audiodg",
@@ -78,7 +78,7 @@ namespace PaviseApp
             finally { if (h != IntPtr.Zero) Native.CloseHandle(h); }
         }
 
-        // 主循环每轮喂一次 快照是现成的 只多一次后台压制名单和可见窗口集合的读取
+        // Fed once per main loop round, the snapshot is already there, only adds one read of the background suppression list and the visible window set
         private void StepRogueWatch(ProcessSnapshot all, HashSet<int> gamePids)
         {
             if (all == null) return;
@@ -102,7 +102,7 @@ namespace PaviseApp
                 {
                     Pid = e.Pid, Creation = e.Creation, Cpu = e.Cpu, Name = e.Name, Path = e.Path,
                     Confined = confined.Contains(e.Pid),
-                    // 窗口枚举失败按全部可见处理 宁可漏报也不把在用的程序当病毒
+                    // If window enumeration fails treat everything as visible, better to miss a report than flag a program in use as a virus
                     Visible = visible == null || visible.Contains(e.Pid),
                     Trusted = (trusted != null && trusted.Contains(e.Pid))
                         || RogueTrustedPath(e.Path) || RogueTrustedNames.Contains(e.Name ?? "")
@@ -117,7 +117,7 @@ namespace PaviseApp
         private void AnnounceRogue(RogueProcessWatch.Verdict v, long now)
         {
             string path = v.Path ?? RogueImagePath(v.Pid);
-            // 自行解除核心限制的不看目录 其余落在受信目录的按误报处理
+            // Processes that lifted their own core restriction ignore the directory check, the rest landing in trusted directories are treated as false positives
             if (!v.Escaped && RogueTrustedPath(path)) return;
             string ledger = Settings.LoadStr(RogueLedgerKey, "");
             if (RogueProcessWatch.LedgerRecent(ledger, v.Name, now, RogueRepeatTicks)) return;

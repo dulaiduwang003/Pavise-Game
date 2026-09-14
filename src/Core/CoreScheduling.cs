@@ -1,4 +1,4 @@
-﻿// 手动调度方案。配置是一个记录；保存不代表 Windows 已执行进程落核。
+﻿// Manual scheduling plan; the config is a record, saving it does not mean Windows has placed the process on cores
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -30,7 +30,7 @@ namespace PaviseApp
             if (!legacy && !(p.Length == 5 && p[0] == "2")) return false;
             if (p[1].Length == 0 || (p[3] != "0" && p[3] != "1")
                 || !Hex(p[2], out game) || !Hex(p[4], out isolation)) return false;
-            // V1 的重压字段只校验格式，不带入新方案，也不再参与落点校验。
+            // V1 heavy-load fields are only format-checked; they are not carried into the new plan and no longer take part in placement validation
             if (legacy && ((p[5] != "0" && p[5] != "1") || !Hex(p[6], out retiredHeavy))) return false;
             plan = new CoreSchedulingPlan { Topology = p[1], GameMask = game,
                 IsolationOn = p[3] == "1", IsolationMask = isolation };
@@ -50,13 +50,13 @@ namespace PaviseApp
     internal static class CoreScheduling
     {
         public const string Key = "GmManualCorePlanV1";
-        // 旧键仅用于停用、覆盖清理和并发编辑检查，不再作为可配置策略。
+        // Legacy key used only for disabling, override cleanup and concurrent-edit checks; no longer a configurable policy
         public const string HeavyMaskKey = "GmHeavyCoreMaskV1";
         internal static readonly string[] PlacementKeys = { PolicyCatalog.KeyCoreMask,
             PolicyCatalog.KeyStrictCores, PolicyCatalog.KeyCoreDomainAlt,
             PolicyCatalog.KeyHeavySqueeze, HeavyMaskKey };
 
-        // Runtime admission and readback are rechecked by the separate lease worker.
+        // Runtime admission and readback are rechecked by the separate lease worker
 #if PAVISE_SELFTEST
         internal static bool? IsolationSupportedForTest;
 #endif
@@ -87,10 +87,10 @@ namespace PaviseApp
             return result;
         }
 
-        // 独占范围直接由游戏选核推出 不再让用户选第二遍
-        //   只对齐到整颗物理核 因为隔离只能按整核收走 选哪几颗由用户自己决定
-        //   CPU 0 所在核也可以独占 真正的底线是下面这条 独占之外必须留得下两颗完整物理核
-        //   推不出可用范围时返回 0 调用方据此判定独占开不起来
+        // The exclusive range is derived straight from the game core selection; the user is not asked to pick twice
+        //   Aligned to whole physical cores only, since isolation can only take whole cores; which ones is the user's call
+        //   The core holding CPU 0 may be exclusive too; the real floor is the rule below: two whole physical cores must remain outside the exclusive set
+        //   Returns 0 when no usable range can be derived; callers treat that as exclusive cores unavailable
         public static ulong ExclusiveMaskFor(ulong gameMask, ulong[] cores)
         {
             if (cores == null || cores.Length == 0) return 0;
@@ -99,9 +99,9 @@ namespace PaviseApp
             return SpareCoresOutside(exclusive, cores) >= 2 ? exclusive : 0;
         }
 
-        // 独占之外要留够物理核 默认是全选 那样独占会占满所有核 一颗都不剩给系统
-        //   这里把选核往回收到刚好能独占为止 从末尾的核开始让 返回调整后的游戏选核
-        //   让到空还不成立就返回 0 表示这台机器上怎么调都独占不了
+        // Enough physical cores must remain outside the exclusive set; the default is select-all, which would make exclusive fill every core and leave none for the system
+        //   This trims the selection back until it can just be exclusive, yielding from the last cores first, and returns the adjusted game selection
+        //   Returns 0 if it still fails after yielding everything, meaning no adjustment makes exclusive possible on this machine
         public static ulong TrimForExclusive(ulong gameMask, ulong[] cores)
         {
             if (cores == null || cores.Length == 0) return 0;
@@ -109,7 +109,7 @@ namespace PaviseApp
             while (mask != 0)
             {
                 if (ExclusiveMaskFor(mask, cores) != 0) return mask;
-                // 让出当前选核里编号最大的那颗整核
+                // Yield the highest-numbered whole core in the current selection
                 ulong whole = WholeCores(mask, cores);
                 ulong last = 0;
                 foreach (ulong core in cores) if ((core & whole) != 0) last = core;
@@ -119,7 +119,7 @@ namespace PaviseApp
             return 0;
         }
 
-        // 独占之外还剩几颗完整物理核 界面用它说清还差多少
+        // How many whole physical cores remain outside the exclusive set; the UI uses it to say how many are still missing
         public static int SpareCoresOutside(ulong exclusiveMask, ulong[] cores)
         {
             if (cores == null) return 0;
@@ -143,10 +143,10 @@ namespace PaviseApp
             if (covered != all) return "schedule.error.topology";
             if ((p.GameMask & ~all) != 0 || CpuTopology.CountSetBits(p.GameMask) < CpuTopology.MinCustomCores)
                 return "schedule.error.game";
-            // 关闭时也保留选区，但拒绝损坏的部分物理核和越界数据。
+            // Keep the selection even when off, but reject corrupted partial physical cores and out-of-range data
             if ((p.IsolationMask & ~all) != 0
                 || WholeCores(p.IsolationMask, cores) != p.IsolationMask) return "schedule.error.whole";
-            // CPU 0 所在核是否独占交给用户决定 底线只有一条 独占之外留得下两颗完整物理核
+            // Whether the core holding CPU 0 is exclusive is the user's call; the only floor is two whole physical cores left outside the exclusive set
             if (p.IsolationMask != 0 && SpareCoresOutside(p.IsolationMask, cores) < 2)
                 return "schedule.error.spare";
             if (p.IsolationOn && p.IsolationMask == 0) return "schedule.error.isolationempty";
@@ -174,7 +174,7 @@ namespace PaviseApp
             CoreSchedulingPlan p;
             if (raw.Length != 0) { CoreSchedulingPlan.TryParse(raw, out p); return p; }
             present = false;
-            // 只迁移旧游戏选核；已移除的重压开关不再读取。
+            // Only migrate the old game core selection; the removed heavy-load switch is no longer read
             p = new CoreSchedulingPlan { Topology = CurrentStamp,
                 GameMask = LegacyGameMask(null) };
             return p;

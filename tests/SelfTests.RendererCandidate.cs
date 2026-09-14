@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 纯快照验证独立前台渲染候选 不启动进程 不采 GPU 不读写游戏库
+// File purpose Pure snapshot verification of standalone foreground renderer candidates, no process launch, no GPU sampling, no game library I/O
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -8,7 +8,7 @@ namespace PaviseApp
 {
     internal static partial class SelfTests
     {
-        // 总自测入口把这一项注册上就行 子项不依赖主窗口 设置和本机安装目录
+        // Just register this item at the main self-test entry, the sub-items do not depend on the main window, settings or the local install directory
         private static void TestRendererCandidateDetection()
         {
             TestRendererCandidateWindowedChallenge();
@@ -99,7 +99,7 @@ namespace PaviseApp
             Eq(false, object.ReferenceEquals(profile, candidate.Profile));
             Eq(false, old.Foreground);
 
-            // 人为造一个旧 learned 验证挑战者不会被它吞掉 这不是说生产里真会学错
+            // Deliberately plant a stale learned entry to verify the challenger is not swallowed by it, not a claim that production really learns wrong
             profile.LearnedExecutablePath = old.Path;
             candidate = RequireRendererCandidate(new[] { old, game }, profile, incumbent, 101);
             Eq(true, candidate.RequiresGpuConfirm);
@@ -137,7 +137,7 @@ namespace PaviseApp
             Eq(false, candidate.RendererLearnable);
             Eq(2, candidate.RendererMatchRank);
 
-            // 前台本身就是一份窗口证据 只是可见但没在前台的进程算不上新挑战者
+            // Foreground itself is a piece of window evidence, a process that is merely visible but not foreground is no new challenger
             game.Visible = false;
             RequireRendererCandidate(new[] { game }, profile, null, 101);
             game.Visible = true;
@@ -173,7 +173,7 @@ namespace PaviseApp
             Eq(false, learned.RequiresGpuConfirm);
             Eq(false, learned.RendererLearnable);
 
-            // 强制云游戏的精确路径保持原有语义 不把允许的浏览器目标改成 SafetyOnly
+            // The forced cloud-gaming exact path keeps its original semantics, allowed browser targets are not turned into SafetyOnly
             var chrome = RendererCandidateProcess(102,
                 Path.Combine(profile.Root, "chrome.exe"), 1, 3000, true);
             profile.ExecutablePath = chrome.Path;
@@ -203,7 +203,7 @@ namespace PaviseApp
                 new[] { game }, profile, null));
             RequireRendererCandidate(new[] { parent, game }, profile, null, 101);
 
-            // 父链看的是实际身份 不是启动器或者客户端的名称名单
+            // The parent chain looks at actual identity, not a name list of launchers or clients
             parent.Path = Path.Combine(profile.Root, "steam.exe");
             parent.Name = "steam";
             RequireRendererCandidate(new[] { parent, game }, profile, null, 101);
@@ -299,7 +299,7 @@ namespace PaviseApp
                 Path.Combine(profile.Root, "EasyAntiCheat.exe"), 1, 2000, true);
             Eq<GameDetection>(null, GameSessionDetector.FindForegroundCandidateSnapshot(
                 new[] { antiCheat }, profile, null));
-            // 名字里带 Launcher 的普通游戏不算已知平台 也不靠名字去猜关联
+            // An ordinary game with Launcher in its name is not a known platform, and no name-based guessing of relationships
             var generic = RendererCandidateProcess(101,
                 Path.Combine(profile.Root, "SomeGameLauncher.exe"), 1, 2000, true);
             RequireRendererCandidate(new[] { generic }, profile, null, 101);
@@ -323,7 +323,7 @@ namespace PaviseApp
             snapshot[snapshot.Count - 1].Foreground = true;
             RequireRendererCandidate(snapshot, profile, null, 724);
 
-            // 重复 PID 的父锚不能拿最后一项盖掉 然后接着往下串候选
+            // A parent anchor with a duplicate PID must not be overwritten by the last item and then keep chaining candidates
             snapshot.Add(RendererCandidateProcess(700, profile.ExecutablePath, 1, 1000, false));
             Eq<GameDetection>(null, GameSessionDetector.FindForegroundCandidateSnapshot(snapshot, profile, null));
         }

@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 把设备中断挪核的选核弹窗连同每核负载热力叠加渲染成 PNG 供人工核对观感
+// File purpose Renders the device interrupt IRQ core move selection dialog with the per-core load heat overlay to PNG for manual visual review
 
 using System;
 using System.Diagnostics;
@@ -13,7 +13,7 @@ namespace PaviseApp
 {
     internal static partial class SelfTests
     {
-        // 造一台有代表性的真实对局建议设备 核对建议说明 负载热力 核类型和当前落核标记
+        // Build a representative real-match advised device, check the advice text, load heat, core types, and current placement marker
         private static void RunIrqPinShot(string outPath)
         {
             string dir = Path.GetDirectoryName(Path.GetFullPath(outPath));
@@ -26,8 +26,8 @@ namespace PaviseApp
             Application.SetCompatibleTextRenderingDefault(false);
             Theme.SetLight(false);
 
-            // 落核 0x3 也就是核 0 和 1 显示红点 意思是当前就压在这两个核上
-            // 已写入核 0xF0 也就是核 4 到 7 预选现有设置 底部给一个合法的绿字选择
+            // Placement 0x3, i.e. cores 0 and 1, shows red dots meaning it's currently sitting on those two cores
+            // Written cores 0xF0, i.e. cores 4 to 7, preselect the existing setting, the bottom gets a valid green-text selection
             const ulong seenMask = 0x3UL;
             const ulong selectedMask = 0xF0UL;
 
@@ -47,15 +47,15 @@ namespace PaviseApp
                 MessageCount = 1,
                 MultiMessageRisk = false,
                 CompletionFollowsIssuer = false,
-                // 保留一份已写入掩码 让矩阵有点亮的选中态
+                // Keep a written mask so the matrix has a lit selected state
                 Policy = 4,
                 Mask = selectedMask,
                 RebootedSincePin = true,
                 Verdict = new IrqDriverVerdict { Worth = true, VersionVerified = true },
             };
 
-            // 注入确定的每核负载 让弹窗铺满全负载区间
-            //   一眼对比:繁忙核整格红色发光炸出来 空闲核冷暗
+            // Inject deterministic per-core load so the dialog spans the full load range
+            //   At a glance: busy cores glow red across the whole cell, idle cores stay cold and dark
             int[] pat = { 88, 44, 8, 22, 92, 70, 55, 12, 6, 34, 61, 79, 48, 84, 27, 15 };
             var synth = new System.Collections.Generic.Dictionary<int, double>();
             for (int cpu = 0; cpu < 64; cpu++) synth[cpu] = pat[cpu % pat.Length];
@@ -74,7 +74,7 @@ namespace PaviseApp
                 dlg.Location = new Point(-20000, -20000);
                 dlg.Show();
 
-                // 固定的合成会话不采实时 PDH 只等入场动画跑完
+                // The fixed synthetic session samples no live PDH, just waits for the entrance animation to finish
                 for (int i = 0; i < 120; i++)
                 {
                     Application.DoEvents();

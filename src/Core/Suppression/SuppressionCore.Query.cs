@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 压制状态查询 巡检回读与分组计数
+// File purpose Suppression state queries: patrol read-back and group counts
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -287,8 +287,8 @@ namespace PaviseApp
             e.Level = EffectiveLevel(e);
         }
 
-        // 反作弊压制走扫描安全构成 见 Apply 侧四个 Desired* 函数的说明
-        //   同时挂两种原因时也按反作弊算 安全边界优先于压制力度
+        // Anti-cheat suppression uses the scan-safe composition, see the four Desired* functions on the Apply side
+        //   With both reasons set it still counts as anti-cheat; safety boundary outranks suppression strength
         private static bool AntiCheatThrottled(Entry e)
         {
             return (e.Reasons & SuppressReason.AntiCheat) != 0;

@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 在进程快照里识别运行中的游戏与游戏库路径
+// File purpose Identify running games and game library paths in the process snapshot
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -56,9 +56,9 @@ namespace PaviseApp
                 UpdateArmedStatus(null, null, true);
             }
             if (hit == null) return null;
-            // 渲染锚已证实不存在时 sticky 的一轮快速重扫只是
-            // detector 内部缓冲 不能再当成一轮 running 去执行 Boost
-            // 交给主循环的 8 秒宽限处理 它会先 Seal 而不是丢局
+            // Once the renderer anchor is confirmed gone, the sticky quick rescan round is just
+            // the detector's internal buffer, must not be treated as a running round to execute Boost
+            // hand it to the main loop's 8-second grace period, which Seals first instead of dropping the match
             if (stickyGraceOnly) return null;
             foreach (int pid in hit.FamilyPids) gamePids.Add(pid);
             if (irqProbe.HasSealedPending)
@@ -74,9 +74,9 @@ namespace PaviseApp
                 }
                 if (sameSealedProfile)
                 {
-                    // renderer 可能在上轮快照后 OpenProcess 前退出
-                    // 因而已 Seal 但尚未进入 gameGone 宽限 同 profile
-                    // 新 renderer 出现时仍要丢弃旧前缀并重武装
+                    // The renderer may exit after the last snapshot but before OpenProcess
+                    // so it is already Sealed but not yet in the gameGone grace, when a new renderer
+                    // of the same profile appears the old prefix must still be dropped and observation re-armed
                     ArmIrqObservation(sealedGame ?? hit.Profile.Name);
                 }
             }
@@ -99,8 +99,8 @@ namespace PaviseApp
                         sameSessionGame = repGame;
                     }
                     irqProbe.InvalidateGameMask();
-                    // 同一局从启动器换成真实 renderer 旧片段彻底丢弃 但允许新
-                    // renderer 从零开始一个 epoch 不会把一局拆成两条台账记录
+                    // Same match switching from launcher to the real renderer, the old fragment is dropped entirely, but the new
+                    // renderer may start an epoch from zero without splitting one match into two ledger records
                     if (sameSessionProfile)
                         ArmIrqObservation(sameSessionGame ?? hit.Profile.Name);
                 }
@@ -115,14 +115,14 @@ namespace PaviseApp
                     transitionProbeRendererPid = 0;
                     transitionProbeRendererCreation = 0;
                 }
-                // 同一 profile 局内可从启动器更新为真实渲染器 换到另一个
-                // profile 时不能在旧局 ReportFinish 前把它的 present 过滤 PID 覆盖掉
+                // Within the same profile a match may update from launcher to the real renderer, when switching to another
+                // profile the old match's present filter PID must not be overwritten before its ReportFinish
                 repRendererPid = UpdateSessionRendererPid(
                     repProfileId, repRendererPid,
                     hit.Profile != null ? hit.Profile.Id : null, hit.RendererPid);
                 activeDetection = hit;
             }
-            // 启动器交接成真实渲染进程时扩展要拿到新身份 没有活动对局时这里等于一次空通知
+            // When the launcher hands off to the real renderer process the extension needs the new identity, with no active match this is a no-op notification
             NotifyExtensionSession(true);
             MaybeObserveRendererActivity(hit);
             return hit.Profile.Name;

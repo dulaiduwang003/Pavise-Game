@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 游戏模式的设置开关属性
+// File purpose Game mode settings switch properties
 using System;
 
 namespace PaviseApp
@@ -175,7 +175,7 @@ namespace PaviseApp
                 envNextAttempt.Remove("services");
                 envFailures.Remove("services");
             }
-            // 只唤醒已有的工作线程 绝不在界面线程上查询或停止服务
+            // Only wakes the existing worker thread, never queries or stops services on the UI thread
             RequestPolicyApply();
         }
 
@@ -184,7 +184,7 @@ namespace PaviseApp
             get { return disableCpuIdleOn; }
             set
             {
-                // 先失效再落盘 落盘可能阻塞也可能失败
+                // Invalidate first, then write to disk, the write may block or fail
                 lock (sync)
                 {
                     System.Threading.Interlocked.Increment(ref cpuIdleGeneration);
@@ -203,7 +203,7 @@ namespace PaviseApp
                 envNextAttempt.Remove("cpuidle");
                 envFailures.Remove("cpuidle");
             }
-            // 界面只记录意图 所有电源写入都走工作线程闸
+            // The UI only records intent, all power writes go through the worker thread gate
             RequestPolicyApply();
         }
 
@@ -213,9 +213,9 @@ namespace PaviseApp
             set { gpuPowerMaxOn = value; Settings.Save("GmGpuPowerMax", value); if (value) ClearEnvFuse("gpupower"); RequestPolicyApply(); }
         }
 
-        // 下面三项 2.2.2 之前只有极限档能开 极限下架后各自有开关 默认关
-        //   DWM 合成线程进 MMCSS 只是一次 dwmapi 调用 随本进程的 DWM 连接存续 独占全屏时 DWM 自行反注册
-        // 硬亲和默认关 打开后给已压制的后台写亲和 把它们挡在独占范围之外
+        // The three items below could only be enabled on the Extreme tier before 2.2.2, after Extreme was retired each has its own switch, default off
+        //   putting the DWM composition thread into MMCSS is a single dwmapi call, lives as long as this process's DWM connection, DWM deregisters itself in exclusive fullscreen
+        // Hard affinity defaults off, when on it writes affinity on suppressed background processes to keep them out of the exclusive range
         public bool HardAffinityOn
         {
             get { return hardAffinityOn; }
@@ -228,7 +228,7 @@ namespace PaviseApp
             }
         }
 
-        // 亲和性守护默认关 关着时其他程序改了游戏亲和性就保留 开着时每轮扫描核对 被改即写回
+        // Affinity guard defaults off, when off another program's change to the game affinity is kept, when on every scan round checks and writes it back if changed
         public bool AffinityGuardOn
         {
             get { return affinityGuardOn; }
@@ -245,9 +245,9 @@ namespace PaviseApp
             set { dwmBoostOn = value; Settings.Save("GmDwmBoost", value); if (value) ClearEnvFuse("dwmboost"); RequestPolicyApply(); }
         }
 
-        // 空闲策略旋钮写在托管电源方案上 开关一动就要重写方案
-        //   关掉时 PrepareExtremeKnobs 会按快照把两个旋钮还原 不重写就一直留在方案里
-        //   这一位进 powerKey 值一变就与 lastPowerPolicyKey 不等 下一轮自然重写 不用另设失效
+        // The idle policy knobs are written on the managed power scheme, any switch change requires rewriting the scheme
+        //   when turned off PrepareExtremeKnobs restores both knobs from the snapshot, without the rewrite they stay in the scheme forever
+        //   this bit goes into powerKey, any change makes it differ from lastPowerPolicyKey so the next round rewrites naturally, no separate invalidation needed
         public bool IdlePolicyOn
         {
             get { return idlePolicyOn; }
@@ -259,22 +259,22 @@ namespace PaviseApp
             }
         }
 
-        // 工作集修剪自带内存压力门 可用低于 4 GiB 且低于总量 1/8 才动手 开关只表达意图
+        // Working set trim has its own memory pressure gate, acts only when available is below 4 GiB and below 1/8 of total, the switch only expresses intent
         public bool WsTrimOn
         {
             get { return wsTrimOn; }
             set { wsTrimOn = value; Settings.Save(PolicyCatalog.KeyWsTrim, value); RequestPolicyApply(); }
         }
 
-        // 静音流拉低共享引擎周期 不写注册表 关流即还原
+        // A silent stream pulls down the shared engine period, no registry write, closing the stream restores it
         public bool AudioLowLatOn
         {
             get { return audioLatOn; }
             set { audioLatOn = value; Settings.Save(PolicyCatalog.KeyAudioLowLat, value); if (value) ClearEnvFuse("audiolat"); RequestPolicyApply(); }
         }
 
-        // 默认关闭 关掉时立刻撤销可能还挂着的预留
-        //   重新打开视为用户要再试一次 顺手清掉上次验不过留下的熔断
+        // Off by default, turning it off immediately revokes any reservation still attached
+        //   turning it back on counts as the user wanting another try, and clears the breaker left by the last failed verification
         public bool VramShieldOn
         {
             get { return vramShieldOn; }
@@ -288,8 +288,8 @@ namespace PaviseApp
                 }
                 else
                 {
-                    // 偏好写入失败 不能妨碍立刻做一次尽力而为的释放
-                    // 但它没法保证退出选择已经落盘
+                    // A failed preference write must not prevent an immediate best-effort release
+                    // but it cannot guarantee the opt-out choice reached disk
                     vramShieldOn = false;
                     Settings.Save(VramShield.EnabledKey, false);
                     VramShield.Release();
@@ -335,7 +335,7 @@ namespace PaviseApp
             }
         }
 
-        // 属性名不能和 NvVrrWindowed 静态类同名 否则 GameMode 内部引用类的地方会被属性遮住
+        // The property name must not match the NvVrrWindowed static class, otherwise references to the class inside GameMode get shadowed by the property
         public bool NvVrrWindowedEnabled
         {
             get { return nvVrrWindowedOn; }

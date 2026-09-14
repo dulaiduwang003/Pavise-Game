@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 提供项目通用面板控件
+// File purpose Common panel controls for the project
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -20,7 +20,7 @@ namespace PaviseApp
         public Color Fill = Theme.Card;
         public Color Border = Color.Empty;
         public bool AccentEdge;
-        // 关闭时连同嵌套控件一起隔离封面 供同窗弹出组件使用
+        // When off, isolates the backdrop together with nested controls; for popup components in the same window
         public bool UseBackdrop = true;
 
         public RoundPanel()
@@ -30,7 +30,7 @@ namespace PaviseApp
             BackColor = Theme.Bg;
         }
 
-        // 卡片要透就得自己先把身下那块封面补上 WinForms 的子控件没有真透明
+        // A card that wants to be transparent must first paint the backdrop slice beneath it; WinForms child controls have no real transparency
         protected override void OnPaintBackground(PaintEventArgs e)
         {
             if (Backdrop.AppliesTo(this)) { Backdrop.Paint(e.Graphics, this, e.ClipRectangle); return; }

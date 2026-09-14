@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 占用最高的后台进程采样
+// File purpose Sampling of the top background CPU consumers
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -23,12 +23,9 @@ namespace PaviseApp
             public TimeSpan Cpu;
         }
 
-        // 取两次进程 CPU 时间求差 中间睡一个窗口 不用性能计数器
-        //   计数器要建查询还要预热 体检是一次性的用不上
-        //   分母乘了逻辑核数 所以比值是占整机而不是占单核
-        // 取两次进程 CPU 时间求差 中间睡一个窗口 不用性能计数器
-        //   计数器要建查询还要预热 体检是一次性的用不上
-        //   分母乘了逻辑核数 所以比值是占整机而不是占单核
+        // Take process CPU time twice with a sleep window in between; no performance counters
+        //   Counters need a query built and warmed up; a one-shot health check has no use for that
+        //   The denominator is multiplied by the logical core count, so the ratio is share of the whole machine, not of one core
         public static List<LoadEntry> TopConsumers(int windowMs, int take)
         {
             var result = new List<LoadEntry>();
@@ -41,8 +38,7 @@ namespace PaviseApp
                     {
                         try
                         {
-                            // 0 和 4 是空闲进程和 System 它们的 CPU 时间没有参考意义
-                            // 0 和 4 是空闲进程和 System 它们的 CPU 时间没有参考意义
+                            // 0 and 4 are the idle process and System; their CPU time means nothing here
                             if (p.Id <= 4) continue;
                             before[p.Id] = new Sample
                             {
@@ -64,10 +60,8 @@ namespace PaviseApp
                         {
                             Sample old;
                             if (!before.TryGetValue(p.Id, out old)) continue;
-                            // 两次采样之间 pid 可能被回收给了新进程 启动时间对不上就丢掉
-                            //   否则会拿新进程的累计时间去减旧进程的 算出个离谱的占用
-                            // 两次采样之间 pid 可能被回收给了新进程 启动时间对不上就丢掉
-                            //   否则会拿新进程的累计时间去减旧进程的 算出个离谱的占用
+                            // Between the two samples a pid may be recycled to a new process; drop it if the start time does not match
+                            //   otherwise the new process's cumulative time is subtracted from the old one's, giving an absurd usage figure
                             if (p.StartTime.Ticks != old.Started) continue;
                             double delta = (p.TotalProcessorTime - old.Cpu).TotalSeconds;
                             if (delta <= 0) continue;

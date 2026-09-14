@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 对局状态字段 构造 预设写入与系统开关同步
+// File purpose Match state fields, construction, preset writes and system toggle sync
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -65,9 +65,9 @@ namespace PaviseApp
         private readonly HashSet<int> boostHandleStripped = new HashSet<int>();
         private readonly HashSet<int> boostEcoGaveUp = new HashSet<int>();
         private readonly Dictionary<int, int> placementFail = new Dictionary<int, int>();
-        // 手动落核连续几轮确实读到不对才撤销隔离 读不出的那几轮不计数
+        // Manual core placement withdraws isolation only after several consecutive rounds actually read a mismatch; rounds that cannot read do not count
         private readonly Dictionary<int, int> isolationUnconfirmed = new Dictionary<int, int>();
-        // 手动落核被别的进程改回并已当场写回的次数 首次记日志 退局报总数
+        // Count of times manual core placement was changed back by another process and rewritten on the spot; first one logged, total reported at match end
         private readonly Dictionary<int, int> isolationRelapses = new Dictionary<int, int>();
         private readonly HashSet<int> placementGaveUp = new HashSet<int>();
         private readonly Dictionary<int, int> boostStateFail = new Dictionary<int, int>();
@@ -105,7 +105,7 @@ namespace PaviseApp
         private bool audioLatActive;
         private bool dwmBoostActive;
         private bool gpwActive;
-        // 0.5ms 请求走的是 ntdll 释放也要走同一条路 记住本局用的是哪条
+        // The 0.5ms request goes through ntdll and the release must take the same path, remember which one this match used
         private bool timerHalfMs;
         private const uint HalfMsUnits = 5000;
         private volatile bool killGameDvr;
@@ -136,8 +136,8 @@ namespace PaviseApp
         private readonly ulong gameMask;
         private ulong strictMask;
         private readonly IrqSessionProbe irqProbe = new IrqSessionProbe();
-        // present 采集按局新建 与 irqProbe 内部 new InterruptAttribution 同理
-        //   每局一份 避免换局时上一局的帧残留累积(PresentProbe.frames 不自清)
+        // present capture is created per match, same reasoning as irqProbe's internal new InterruptAttribution
+        //   One per match so the previous match's frames do not pile up across matches, PresentProbe.frames does not clear itself
         private PresentProbe presentProbe;
         private PerformancePreset preset;
         private GameDetection activeDetection;
@@ -261,7 +261,7 @@ namespace PaviseApp
             rsrOn = Settings.Load("GmRsr", false);
             autoAddOn = Settings.Load("GmAutoAdd", false);
             vramShieldOn = Settings.Load(VramShield.EnabledKey, false);
-            Settings.Remove("GmCacheWarm"); // Retired read-only feature: discard legacy global preference.
+            Settings.Remove("GmCacheWarm"); // Retired read-only feature discard legacy global preference
             cacheWarmOn = Settings.Load(PolicyCatalog.KeyCacheWarm, false);
             adaptiveEscalateOn = Settings.Load(PolicyCatalog.KeyAdaptiveEscalate, false);
             killGameDvr = Settings.Load("GameDvrOff", true);
@@ -387,7 +387,7 @@ namespace PaviseApp
 
             try
             {
-                // 还没了结的收据 不能靠补一条缺失的主记录把它作废
+                // A receipt not yet settled must not be voided by filling in a missing master record
                 profiles.AddRange(profileStore.LoadProfiles(!libraryIgnoreTransaction.RecoveryPending));
                 List<GameProfile> refreshed = GetProfiles();
                 if (!ProfileStoreSaveFailed && !libraryIgnoreTransaction.RecoveryPending

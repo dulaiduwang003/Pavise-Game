@@ -1,4 +1,4 @@
-// 文件用途 临时开启 Intel 全局低延迟 每次动驱动之前先记所有权流水
+// File purpose Temporarily enable Intel global low latency; record the ownership trail before every driver change
 using System;
 using System.Globalization;
 using System.Threading;
@@ -32,7 +32,7 @@ namespace PaviseApp
         private readonly object gate = new object();
         private Receipt receipt;
         private bool suppressed, failedApplication, busy;
-        // 本引擎是账本唯一写入方 确认为空后不必逐轮重读注册表
+        // This engine is the ledger's sole writer; once confirmed empty there's no need to re-read the registry every round
         private bool ledgerKnownEmpty;
 
         internal IntelLowLatencyEngine(IIntelGraphicsControl control, IIntelGraphicsLedger ledger)
@@ -59,14 +59,14 @@ namespace PaviseApp
             }
         }
 
-        // 恢复被"无法证明当前值归属"挡住时为真 仅用于提示 不改变任何状态
+        // True when restore is blocked by 'can't prove who owns the current value'; for display only, changes no state
         internal bool RestoreBlockedByOwnership
         {
             get { lock (gate) return receipt != null && !receipt.Settled && !receipt.CanRestore; }
         }
 
-        // 支持性查询来自 UI 线程 Apply/Restore 持锁做驱动调用可能长达数秒
-        //   查询等不到锁时返回上次结果 别把界面冻在驱动调用上 空闲时照常实查
+        // Support queries come from the UI thread; Apply/Restore hold the lock while making driver calls that can take seconds
+        //   When a query can't get the lock, return the last result; don't freeze the UI on a driver call; query for real when idle
         private bool lastHasAvailable, lastLowLatencySupported;
 
         internal bool HasAvailable
@@ -129,8 +129,8 @@ namespace PaviseApp
                 if (!ReadMode(receipt.AdapterId, out value)) return false;
                 if (!IntelGraphicsApi.Continue(mayContinue)) { RestoreCore(); return false; }
                 if (value == 1) return true;
-                // 外部改动在整局之内都优先 用户在驱动界面关掉之后
-                // 不要反复再把这个选项打开
+                // External changes win for the whole match; after the user turns it off in the driver UI
+                // don't keep switching the option back on
                 suppressed = true;
                 return FinishReceipt();
             }
@@ -141,8 +141,8 @@ namespace PaviseApp
             if (!ReadAdapters(out adapters)) return false;
             if (!IntelGraphicsApi.Continue(mayContinue)) return false;
             IntelGraphicsAdapter target = SelectAdapter(adapters);
-            // 硬件不支持或者混合显卡说不清时算跳过 绝不能伪造成
-            // Active=true 的成功 也不代表可以去改另一块适配器
+            // Unsupported hardware or ambiguous hybrid graphics counts as skipped; never fake it as
+            // an Active=true success, nor does it mean we may go change another adapter
             if (target == null) return true;
             uint original;
             if (!ReadMode(target.Id, out original)) return false;
@@ -162,9 +162,9 @@ namespace PaviseApp
                 FinishReceipt();
                 return false;
             }
-            // 进了 setter 不等于拥有所有权 返回值不确定之后看到 On
-            // 可能是别的调用方改的 保持 P 不要去还原那个值
-            // 只有确认写成功 才给这个进程还原的所有权
+            // Entering the setter doesn't mean ownership; with an uncertain return value, a later On
+            // may have been set by another caller; stay at P and don't restore that value
+            // Only a confirmed successful write gives this process ownership of the restore
             receipt.CanRestore = result == IntelGraphicsWriteResult.Written;
             uint observed;
             if (!ReadMode(target.Id, out observed)) return false;
@@ -208,8 +208,8 @@ namespace PaviseApp
             if (current != 1) return FinishReceipt();
             if (!receipt.CanRestore) return false;
             if (receipt.Phase != 'R' && !SavePhase('R')) return false;
-            // 台账写入可能阻塞 发那唯一一次还原之前 重新读一遍驱动实际设置
-            // 进了适配层里面再比一次
+            // The ledger write may block; before issuing the single restore, re-read the driver's actual setting
+            // and compare once more inside the adapter layer
             if (!ReadMode(receipt.AdapterId, out current)) return false;
             if (current != 1) return FinishReceipt();
             IntelGraphicsWriteResult result;
@@ -218,18 +218,18 @@ namespace PaviseApp
             if (result == IntelGraphicsWriteResult.Conflict) return FinishReceipt();
             if (result == IntelGraphicsWriteResult.NotIssued || result == IntelGraphicsWriteResult.Cancelled)
                 return false;
-            // 只要还原有可能已经跑过 后面出现的 On 就可能是用户新选的
-            // R + On 无论是崩溃后还是回读失败后 都不能安全重试
+            // Once the restore may already have run, any On seen afterwards may be the user's new choice
+            // R + On, whether after a crash or a read-back failure, can't be retried safely
             receipt.CanRestore = false;
             if (!ReadMode(receipt.AdapterId, out current)) return false;
             return current != 1 && FinishReceipt();
         }
 
-        // 仅供整体重置 发过写入后无法证明驱动当前 On 归属的收据(CanRestore=false)
-        //   RestoreCore 对它永远失败 唯一自愈路径是外部把值改掉 清除全部配置会被无限期拦住
-        //   用户已明确要求清空全部数据时 放弃这类恢复责任并留日志
-        //   残值只是全局低延迟停在当前值 在 Intel 显卡控制中心关闭一次即结清
-        //   可认领的收据(CanRestore=true)与瞬时失败不放弃
+        // For full reset only: receipts where a write was issued but the driver's current On can't be proven ours (CanRestore=false)
+        //   RestoreCore fails on them forever; the only self-heal is an external change of the value, so wipe all settings would be blocked indefinitely
+        //   Once the user has explicitly asked to wipe all data, give up that restore duty and log it
+        //   The residue is just global low latency staying at its current value; turning it off once in Intel Graphics Command Center settles it
+        //   Claimable receipts (CanRestore=true) and transient failures are not abandoned
         internal bool AbandonUnprovableForReset()
         {
             lock (gate)
@@ -256,8 +256,8 @@ namespace PaviseApp
             receipt.Active = false;
             receipt.Settled = true;
             receipt.CanRestore = false;
-            // 清理失败时 S 会留下来 应用重启后只是重试清理
-            // 此时用户新设的 On 不能变成又一个还原目标
+            // If cleanup fails, S stays behind; after an app restart it just retries the cleanup
+            // An On the user sets in the meantime must not become yet another restore target
             if (receipt.Phase != 'S' && !SavePhase('S')) return false;
             if (!WriteVerified("")) return false;
             receipt = null;

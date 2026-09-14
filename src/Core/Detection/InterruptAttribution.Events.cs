@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 采样结果折叠 事件回调与地址归属
+// File purpose Sample result folding, event callbacks and address attribution
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -37,11 +37,11 @@ namespace PaviseApp
                 bool stopSucceeded = StopStale(out lost, out lostBuffers, out stopError);
                 result.EventsLost = lost;
                 result.BuffersLost = lostBuffers;
-                // 控制器成功停会话后 实时 ProcessTrace 会排空并自行返回 其后再 CloseTrace
-                // 停止失败只能先关消费句柄解除阻塞 这种样本必须标不完整
+                // After the controller stops the session successfully, the real-time ProcessTrace drains and returns on its own, then CloseTrace
+                // If stopping fails, closing the consumer handle first is the only way to unblock; such a sample must be marked incomplete
                 if (!stopSucceeded)
                     try { if (traceHandle != 0) CloseTrace(traceHandle); } catch { }
-                //   高事件量对局收尾时仍可能需要排空积压 2 秒会把正常收尾误判成卡死
+                //   A high-event match may still need to drain a backlog at wind-down; 2 s would misjudge a normal wind-down as a hang
                 bool workerDone = true;
                 if (worker != null) { try { workerDone = worker.Join(10000); } catch { workerDone = false; } }
                 if (stopSucceeded)
@@ -49,19 +49,19 @@ namespace PaviseApp
                 result.Incomplete = !CaptureComplete(
                     stopSucceeded, workerDone, processTraceSucceeded, consumerExitedEarly);
                 started = false;
-                // 无论排空成功与否都要交还探针所有权
-                //   早先这里直接 return 把 aliveOwned 一路留着
-                //   否则一次异常就会让后续每局都被判 观测被占 只能重启进程才恢复
+                // Hand probe ownership back whether or not the drain succeeded
+                //   This used to return directly and leave aliveOwned set all the way,
+                //   so one exception made every later match report observation busy, recoverable only by restarting the process
                 ReleaseOwnership();
                 if (!workerDone)
                 {
-                    // worker 还在写 dpcHits 这轮数据不能读 但下一轮可以正常重来
+                    // The worker is still writing dpcHits; this pass's data cannot be read, but the next pass can start over normally
                     result.Error = Lang.T("t.interruptattribution.5");
                     return result;
                 }
                 keepAlive = null;
 
-                // worker 已 Join 原始标记稳定 单线程内解析出逐事件 DPC 时间线
+                // The worker has been Joined and the raw marks are stable; parse the per-event DPC timeline on a single thread
                 BuildDpcTimeline();
 
                 var byMod = new Dictionary<string, DriverInterrupt>();
@@ -85,6 +85,9 @@ namespace PaviseApp
                     long ta = a.Dpc + a.Isr, tb = b.Dpc + b.Isr;
                     return tb.CompareTo(ta);
                 });
+                long mappedDpc = 0;
+                foreach (var driver in result.Drivers) mappedDpc += driver.Dpc;
+                result.Unmapped = Math.Max(0,dpcTotal - mappedDpc);
                 bool unmapped = (dpcTotal > 0 || isrTotal > 0) && result.Drivers.Count == 0;
                 string mappingError = unmapped
                     ? "已采集中断事件，但无法映射到驱动模块，本局中断归因不可用"
@@ -97,7 +100,7 @@ namespace PaviseApp
                 {
                     Logger.Log(Lang.F("log.interruptattribution.lossy", result.EventsLost, result.BuffersLost));
                 }
-                // 归因失败不能掩盖更高优先级的采集不完整/丢失 三种情况都不能提供有效样本
+                // Attribution failure must not mask the higher-priority incomplete capture and loss; none of the three yields a valid sample
                 if (result.Incomplete)
                     result.Error = "ETW 消费或停止未完整 win32=" + stopError;
                 else if (result.Lossy)
@@ -120,13 +123,29 @@ namespace PaviseApp
                 DriverInterrupt d;
                 if (!byMod.TryGetValue(mod, out d)) { d = new DriverInterrupt { Driver = mod }; byMod[mod] = d; }
                 RoutineStat st = kv.Value;
-                d.CpuMask |= st.CpuMask;
-                d.CpuMaskTruncated |= st.CpuMaskTruncated;
+                if (dpc) { d.CpuMask |= st.CpuMask; d.CpuMaskTruncated |= st.CpuMaskTruncated; }
                 d.BadDuration += st.BadDuration;
                 double totalUs = st.TotalTicks * usPerTick;
                 double maxUs = st.MaxTicks * usPerTick;
                 if (dpc)
                 {
+                    if (st.Cores != null)
+                        foreach (var pair in st.Cores)
+                        {
+                            IrqDriverCoreRecord core = d.Cores.Find(delegate(IrqDriverCoreRecord c) { return c.Cpu == pair.Key; });
+                            if (core == null)
+                            {
+                                core = new IrqDriverCoreRecord { Cpu = pair.Key, Buckets = new long[BucketCount] };
+                                d.Cores.Add(core);
+                            }
+                            RoutineStat value = pair.Value;
+                            core.Count += value.Count; core.BadDuration += value.BadDuration;
+                            core.TotalNs += (long)(value.TotalTicks * usPerTick * 1000);
+                            core.MaxNs = Math.Max(core.MaxNs, (long)(value.MaxTicks * usPerTick * 1000));
+                            core.Over500Us += SumFrom(value.Buckets, BucketOver500);
+                            core.Over1Ms += SumFrom(value.Buckets, BucketOver1Ms);
+                            for (int i = 0; i < BucketCount; i++) core.Buckets[i] += value.Buckets[i];
+                        }
                     d.Dpc += st.Count;
                     d.DpcTotalUs += totalUs;
                     if (maxUs > d.DpcMaxUs) d.DpcMaxUs = maxUs;
@@ -185,17 +204,30 @@ namespace PaviseApp
                 if (ticks > st.MaxTicks) st.MaxTicks = ticks;
                 st.Buckets[BucketOf(ticks)]++;
             }
+            if (dpc && cpu < 64)
+            {
+                if (st.Cores == null) st.Cores = new Dictionary<int, RoutineStat>();
+                RoutineStat core;
+                if (!st.Cores.TryGetValue(cpu, out core)) { core = new RoutineStat(); st.Cores[cpu] = core; }
+                core.Count++;
+                if (!timed) core.BadDuration++;
+                else
+                {
+                    core.TotalTicks += ticks; core.MaxTicks = Math.Max(core.MaxTicks, ticks);
+                    core.Buckets[BucketOf(ticks)]++;
+                }
+            }
             if (isr) isrTotal++; else dpcTotal++;
 
-            // 逐事件 DPC 时间线 额外多存一条 极轻 append(不解析模块 模块地址留到 Stop 后再解析)
-            //   聚合逻辑上面一行未动 这里只是并行追加 开关关时(默认)整段被首个 bool 短路 零开销
+            // Per-event DPC timeline, one extra record; ultra-light append, no module parsing; module addresses are resolved after Stop
+            //   The aggregation line above is untouched; this only appends in parallel; with the switch off (the default) the first bool short-circuits the whole block, zero overhead
             if (dpc && captureTimeline && !timelineTruncated && dpcMarks != null)
             {
                 if (dpcMarks.Count >= DpcTimelineCap) timelineTruncated = true;
                 else dpcMarks.Add(new DpcMark
                 {
-                    // ETW 已判为坏时长时不能再把不可信 start 当成一个可能横跨数秒的
-                    // 区间参与长帧对齐 退化成结束时刻的点事件 保留归因但不制造假重叠
+                    // Once ETW is judged to have bad durations, an untrusted start must no longer be treated as an interval possibly spanning seconds
+                    // for long-frame alignment; degrade to a point event at the end time, keeping attribution without fabricating overlap
                     StartQpc = SafeTimelineStart(startQpc, endQpc, sanityMaxTicks),
                     EndQpc = endQpc,
                     Routine = routine,

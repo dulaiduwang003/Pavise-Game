@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 提供支持动画刷新的控件基类
+// File purpose Provides the base control class with animation refresh support
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;

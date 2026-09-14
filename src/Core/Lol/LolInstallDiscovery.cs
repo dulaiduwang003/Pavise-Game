@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 发现英雄联盟与 WeGame 安装目录
+// File purpose Discover League of Legends and WeGame install directories
 
 using System;
 using System.Collections.Generic;

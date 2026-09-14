@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 待命阶段给游戏预选高性能显卡 双显卡机器专用 退场或撤防即还原
+// File purpose Pre-select the high performance GPU for the game during standby; dual-GPU machines only, restored on exit or disarm
 using System;
 using Microsoft.Win32;
 
@@ -8,7 +8,7 @@ namespace PaviseApp
     internal static class GpuPrefStage
     {
         private const string GpuKey = @"SOFTWARE\Microsoft\DirectX\UserGpuPreferences";
-        // 会话日记键由恢复完成判定共同引用 改名必须两边一起
+        // Session journal key shared with the restore-complete check; rename both sides together
         internal const string JournalKey = "GpuPrefStage";
         private static readonly object lk = new object();
         private static string pendingApplyReceipt;
@@ -88,8 +88,8 @@ namespace PaviseApp
                         if (written == WriteResult.NotIssued) pendingApplyNotIssued = line;
                         return false;
                     }
-                    // 光有一条 pending 记录 证明不了写入真的发生过
-                    // 所有权落盘失败时 要保住进程内的那份收据
+                    // A pending record alone can't prove the write actually happened
+                    // If persisting ownership fails, keep the in-process receipt
                     pendingApplyReceipt = line;
                     if (!SaveJournal(EncodeRecord('O', exePath, cur))) return false;
                     pendingApplyReceipt = null;
@@ -149,10 +149,10 @@ namespace PaviseApp
             lock (lk) if (HasResidue && RestoreLocked()) Logger.Log(Lang.T("log.gpuprefstage.5"));
         }
 
-        // 仅供整体重置 跨进程无法证明所有权的记录 崩溃窗口留下的 P/R 或已损坏
-        //   的记录 永远不可能被 RestoreLocked 认领 重置会因此永远失败 用户已
-        //   明确要求清空全部数据时 放弃这类恢复责任并留日志 不写注册表 残值
-        //   只是该 exe 的显卡偏好停在高性能 可证明所有权的记录与瞬时失败不放弃
+        // For full reset only: records whose ownership can't be proven across processes (P/R left by a crash window, or corrupted
+        //   records) can never be claimed by RestoreLocked, so reset would fail forever; once the user has
+        //   explicitly asked to wipe all data, give up that restore duty and log it; no registry write, the residue
+        //   is just that exe's GPU preference staying on high performance; provable records and transient failures are not abandoned
         internal static bool AbandonUnprovableForReset()
         {
             lock (lk)
@@ -187,7 +187,7 @@ namespace PaviseApp
             if (raw.Length == 0) return true;
             StageRecord record;
             if (!TryDecodeRecord(raw, out record)) return false;
-            // 已结清的收据只需要删掉 用户后来怎么改都不影响
+            // A settled receipt only needs deleting; whatever the user changes later doesn't matter
             if (record.Phase == 'S' || IsSettled(record)) return Settle(record);
             if (record.Phase == 'P' && string.Equals(raw, pendingApplyNotIssued, StringComparison.Ordinal))
                 return Settle(record);
@@ -198,24 +198,24 @@ namespace PaviseApp
             {
                 string cur;
                 if (!TryReadPreference(exePath, out cur)) return false;
-                // 后来用户或 Windows 自己设的偏好 优先于我们临时写的 2
+                // A preference the user or Windows set later wins over the 2 we wrote temporarily
                 if (PrefFieldText.ReadField(cur, "GpuPreference") != "2") return Settle(record);
                 if (!ValidPreferenceFields(cur)) return false;
-                // 跨崩溃看 P 可能表示根本没写 R 可能表示还原早就完成
-                // 而用户是之后才选的 2 这两种都不能反推所有权
+                // Across a crash, P may mean nothing was written and R may mean the restore finished long ago
+                // and the user chose 2 afterwards; neither can be used to infer ownership
                 if ((record.Phase == 'R' && !string.Equals(raw, pendingRestoreNotIssued, StringComparison.Ordinal))
                     || (record.Phase == 'P'
                     && !string.Equals(raw, pendingApplyReceipt, StringComparison.Ordinal))) return false;
                 string restoring = EncodeRecord('R', exePath, original);
-                // R 回读失败 抹不掉当时确实没派发注册表还原这个事实
-                // 新进程仍然把 R 当作未知处理
+                // An R read-back failure can't erase the fact that no registry restore was dispatched at the time
+                // A new process still treats R as unknown
                 pendingRestoreNotIssued = restoring;
                 if (!SaveJournal(restoring)) return false;
                 string before;
                 if (!TryReadPreference(exePath, out before))
                 { MarkRestoreNotIssued(record, restoring); return false; }
-                // 一旦观察到用户后来设过偏好 就不要因为他之后又选了 2
-                // 而重新认领这份所有权
+                // Once we've seen the user set a preference later, don't reclaim ownership
+                // just because he picked 2 again afterwards
                 if (PrefFieldText.ReadField(before, "GpuPreference") != "2") return Settle(record);
                 if (!ValidPreferenceFields(before) || !string.Equals(before, cur, StringComparison.Ordinal))
                 { MarkRestoreNotIssued(record, restoring); return false; }
@@ -270,8 +270,8 @@ namespace PaviseApp
                 if (!ValidExecutablePath(path) || !ValidPreferenceFields(original)) return false;
                 string preference = PrefFieldText.ReadField(original, "GpuPreference");
                 if (preference == "1" || preference == "2") return false;
-                // 旧的两列格式没有写入收据 它的恢复数据留着
-                // 但不能凭这点证据去覆盖当前的 2
+                // The old two-column format has no write receipt; keep its restore data
+                // but that evidence isn't enough to overwrite the current 2
                 record = new StageRecord { Phase = legacy ? 'P' : parts[1][0], Path = path, Original = original };
                 return true;
             }
@@ -298,8 +298,8 @@ namespace PaviseApp
 
         private static void MarkRestoreNotIssued(StageRecord record, string restoring)
         {
-            // 只有明确知道没派发的结果才保留所有权 写入结果不明的
-            // 一律停在 R 重启之后也不能当成自己拥有的 2 去重试
+            // Only a result known to be not-issued keeps ownership; a write with an unknown outcome
+            // always stays at R, and after restart it must not be retried as our own 2
             pendingRestoreNotIssued = restoring;
             if (SaveJournal(EncodeRecord('O', record.Path, record.Original))) pendingRestoreNotIssued = null;
         }

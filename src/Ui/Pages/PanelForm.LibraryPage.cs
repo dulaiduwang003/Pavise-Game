@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 构建游戏库页 并维护条目的运行状态与网络策略同步
+// File purpose Build the game library page and keep entry running state and network policy in sync
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -13,9 +13,9 @@ namespace PaviseApp
     internal partial class PanelForm
     {
         private GameLibraryList lstGames;
-        private PillButton btnForce;
         private PillButton btnGameConfig;
-        private PillButton btnRename;
+        private PillButton btnGameMore;
+        private Label lblLibrarySelection;
         private Toggle swAutoAdd;
         private Label lblLibraryHint;
         private Label lblLibraryCount;
@@ -63,39 +63,34 @@ namespace PaviseApp
             var add = new PillButton(Lang.T("v15.library.add"), BtnKind.Primary);
             add.SetBounds(Theme.S(bx), Theme.S(y), Theme.S(bw), Theme.S(bh));
             add.Click += delegate { ShowAddGameDialog(); };
-            var remove = new PillButton(Lang.T("btn.remove")); remove.SetBounds(Theme.S(bx), Theme.S(y + 50), Theme.S(bw), Theme.S(bh));
-            remove.Click += delegate
-            {
-                GameLibraryItem item = lstGames.SelectedItem as GameLibraryItem;
-                if (item != null) { gameMode.RemoveProfile(item.Profile.Id); RefreshGames(); }
-            };
-            btnForce = new PillButton(Lang.T("v15.library.force"));
-            btnForce.SetBounds(Theme.S(bx), Theme.S(y + 100), Theme.S(bw), Theme.S(bh));
-            btnForce.Click += delegate { ToggleForceTrigger(); };
-            btnGameConfig = new PillButton(Lang.T("lib.config"));
-            btnGameConfig.SetBounds(Theme.S(bx), Theme.S(y + 150), Theme.S(bw), Theme.S(bh));
+            btnGameConfig = new PillButton(Lang.T("workflow.library.settings"));
+            btnGameConfig.Name = "libraryGameSettings";
+            btnGameConfig.SetBounds(Theme.S(bx), Theme.S(y + 50), Theme.S(bw), Theme.S(bh));
             btnGameConfig.Click += delegate { OpenSelectedGameConfig(); };
-            btnRename = new PillButton(Lang.T("lib.rename"));
-            btnRename.SetBounds(Theme.S(bx), Theme.S(y + 200), Theme.S(bw), Theme.S(bh));
-            btnRename.Click += delegate { RenameSelectedGame(); };
+            btnGameMore = new PillButton(Lang.T("workflow.more")) { Name = "libraryMore" };
+            btnGameMore.SetBounds(Theme.S(bx), Theme.S(y + 100), Theme.S(bw), Theme.S(bh));
+            btnGameMore.Click += delegate { ShowLibraryMore(); };
+            lblLibrarySelection = CardLabel(pageLibrary,"",bx + 4,y + 150,bw - 8,44,9f,false,Theme.Dim);
+            lblLibrarySelection.Name = "librarySelection";
+            lblLibrarySelection.AutoEllipsis = true;
             lstGames.SelectedIndexChanged += delegate { UpdateForceButton(); };
             lstGames.ItemActivated += delegate { OpenSelectedGameConfig(); };
             var lblAutoAdd = new Label();
             lblAutoAdd.Text = Lang.T("v15.library.autoadd");
             lblAutoAdd.BackColor = Theme.Bg; lblAutoAdd.ForeColor = Theme.Fg;
             lblAutoAdd.Font = Theme.UI(9f, true);
-            lblAutoAdd.SetBounds(Theme.S(bx + 4), Theme.S(y + 256), Theme.S(bw - 62), Theme.S(22));
+            lblAutoAdd.SetBounds(Theme.S(bx + 4), Theme.S(y + 206), Theme.S(bw - 62), Theme.S(22));
             swAutoAdd = MakeSwitch(gameMode.AutoAddFullscreen,
                 delegate { gameMode.AutoAddFullscreen = swAutoAdd.Checked; });
             swAutoAdd.Bg = Theme.Bg;
-            swAutoAdd.Location = new Point(Theme.S(bx + bw - 50), Theme.S(y + 254));
+            swAutoAdd.Location = new Point(Theme.S(bx + bw - 50), Theme.S(y + 204));
             var lblAutoAddDesc = new Label();
             lblAutoAddDesc.Text = Lang.T("v15.library.autoadd.desc");
             lblAutoAddDesc.BackColor = Theme.Bg; lblAutoAddDesc.ForeColor = Theme.Dim;
             lblAutoAddDesc.Font = Theme.UI(8.2f, false);
-            lblAutoAddDesc.SetBounds(Theme.S(bx + 4), Theme.S(y + 284), Theme.S(bw - 8), Theme.S(70));
+            lblAutoAddDesc.SetBounds(Theme.S(bx + 4), Theme.S(y + 234), Theme.S(bw - 8), Theme.S(70));
             var familyGuide = new RoundPanel();
-            familyGuide.SetBounds(Theme.S(bx), Theme.S(y + 360), Theme.S(bw), Theme.S(122));
+            familyGuide.SetBounds(Theme.S(bx), Theme.S(y + 310), Theme.S(bw), Theme.S(122));
             familyGuide.Fill = Theme.Card; familyGuide.Border = Theme.Stroke; familyGuide.AccentEdge = true;
             var familyGuideTitle = new Label();
             familyGuideTitle.Text = Lang.T("lib.family.guide.title"); familyGuideTitle.Font = Theme.UI(8.8f, true);
@@ -108,9 +103,9 @@ namespace PaviseApp
             familyGuide.Controls.AddRange(new Control[] { familyGuideTitle, familyGuideBody });
             lblLibraryHint = new Label(); lblLibraryHint.BackColor = Theme.Bg;
             lblLibraryHint.Font = Theme.UI(7.9f, false); lblLibraryHint.AutoEllipsis = true;
-            lblLibraryHint.SetBounds(Theme.S(bx + 4), Theme.S(y + 496), Theme.S(bw - 8), Theme.S(60));
+            lblLibraryHint.SetBounds(Theme.S(bx + 4), Theme.S(y + 446), Theme.S(bw - 8), Theme.S(60));
             SyncLibraryHint();
-            pageLibrary.Controls.AddRange(new Control[] { listWrap, add, remove, btnForce, btnGameConfig, btnRename,
+            pageLibrary.Controls.AddRange(new Control[] { listWrap, add, btnGameConfig, btnGameMore,
                 lblAutoAdd, swAutoAdd, lblAutoAddDesc, familyGuide, lblLibraryHint });
             RefreshGames();
         }
@@ -139,18 +134,18 @@ namespace PaviseApp
                 if (current == null) return;
                 bool turningOn = !current.SuppressFamilyBackground;
                 string targetPath = current.ExecutablePath;
-                // 没观测到渲染的条目连是不是游戏本体都不确定 只挡打开 不挡关闭
+                // An entry with no renderer observed may not even be the game itself; block only turning on, never turning off
                 if (turningOn && !item.RendererObserved)
                 {
                     PaviseDialog.Warn(this, Lang.T("lib.family.suppress"), Lang.T("lib.family.gated.body"));
                     return;
                 }
-                // 已观测渲染不代表关联后台可以安全压制 每次开启都必须确认风险
+                // Renderer observed does not mean the associated background can be suppressed safely; every enable must confirm the risk
                 if (turningOn)
                 {
                     using (var warning = new FamilySuppressionDialog(current.Name, targetPath))
                         if (ShowDim(warning) != DialogResult.OK) return;
-                    // 模态窗口仍会分发库更新 不得把旧 EXE 的风险确认套给已纠正的新目标
+                    // A modal window still dispatches library updates; the risk confirmation for the old EXE must not be applied to a corrected new target
                     GameProfile after = FindLibraryProfile(keepId);
                     if (after == null) return;
                     if (!string.Equals(after.ExecutablePath, targetPath, StringComparison.OrdinalIgnoreCase))
@@ -165,7 +160,7 @@ namespace PaviseApp
             finally
             {
                 familyChangeBusy = false;
-                // AutoCheck=false 取消或保存失败都回显真实模型 不留下假开启状态
+                // AutoCheck=false: on cancel or save failure echo the real model, leaving no fake on state
                 RefreshGames(); SelectProfile(keepId);
             }
         }
@@ -179,15 +174,36 @@ namespace PaviseApp
 
         private void UpdateForceButton()
         {
-            if (btnForce == null) return;
             GameLibraryItem item = lstGames == null ? null : lstGames.SelectedItem as GameLibraryItem;
-            bool on = item != null && item.Profile != null && item.Profile.ForceTrigger;
-            btnForce.Enabled = item != null;
-            btnForce.Text = Lang.T(on ? "v15.library.force.on" : "v15.library.force");
-            btnForce.Kind = on ? BtnKind.Primary : BtnKind.Normal;
-            btnForce.Invalidate();
             if (btnGameConfig != null) btnGameConfig.Enabled = item != null;
-            if (btnRename != null) btnRename.Enabled = item != null;
+            if (btnGameMore != null) btnGameMore.Enabled = item != null;
+            if (lblLibrarySelection != null) lblLibrarySelection.Text = item == null
+                ? Lang.T("workflow.library.pick") : Lang.F("workflow.library.selected",item.Profile.Name);
+        }
+
+        private void ShowLibraryMore()
+        {
+            var selected = lstGames.SelectedItem as GameLibraryItem;
+            if (selected == null || selected.Profile == null) return;
+            string id = selected.Profile.Id;
+            var menu = new ContextMenuStrip { Renderer = new TechMenuRenderer(),
+                BackColor = Theme.Card, ForeColor = Theme.Fg, Font = Theme.UI(9f,false), ShowImageMargin = false };
+            Action<Action> invoke = delegate(Action action) {
+                if (FindLibraryProfile(id) == null) return;
+                SelectProfile(id); action(); };
+            menu.Items.Add(Lang.T("lib.rename"),null,delegate { invoke(RenameSelectedGame); });
+            var force = new ToolStripMenuItem(Lang.T(selected.Profile.ForceTrigger ? "v15.library.force.on" : "v15.library.force"));
+            force.Checked = selected.Profile.ForceTrigger;
+            force.Click += delegate { invoke(ToggleForceTrigger); };
+            menu.Items.Add(force);
+            menu.Items.Add(new ToolStripSeparator());
+            var remove = new ToolStripMenuItem(Lang.T("btn.remove")) { ForeColor = Theme.Danger };
+            remove.Click += delegate { invoke(delegate { gameMode.RemoveProfile(id); RefreshGames(); }); };
+            menu.Items.Add(remove);
+            menu.Closed += delegate {
+                try { BeginInvoke((MethodInvoker)delegate { menu.Dispose(); }); }
+                catch { menu.Dispose(); } };
+            menu.Show(btnGameMore,new Point(0,btnGameMore.Height));
         }
 
         private void OpenSelectedGameConfig()
@@ -284,7 +300,7 @@ namespace PaviseApp
                     runningByPath[row.Profile.ExecutablePath] = row.Running;
             var fresh = new List<GameLibraryItem>();
             foreach (GameProfile profile in profiles)
-                // 标签只读取已经观测到的缓存 不在 UI 线程查 EXE 或采样 GPU
+                // The tag reads only the already-observed cache; no EXE lookup or GPU sampling on the UI thread
                 fresh.Add(new GameLibraryItem(profile, RunningIn(runningByPath, profile.ExecutablePath),
                     gameMode.HasRendererObservation(profile)));
             lstGames.SetItems(fresh);
@@ -312,8 +328,8 @@ namespace PaviseApp
             if (!force && now < Interlocked.Read(ref nextRunningProbeTicks)) return;
             if (Interlocked.Exchange(ref runningBusy, 1) == 1)
             {
-                // 上一次探测还在路上 它拿的是自己启动那一刻的路径快照 刚加进来的游戏不在里面
-                //   把闸门打开让页面心跳下一拍补一次 不然新条目要等满一个探测周期才亮
+                // The previous probe is still in flight and holds the path snapshot from when it started; a game just added is not in it
+                //   Open the gate so the next page heartbeat runs a catch-up probe; otherwise the new entry waits a full probe cycle before lighting up
                 if (force) Interlocked.Exchange(ref nextRunningProbeTicks, 0);
                 return;
             }
@@ -361,7 +377,7 @@ namespace PaviseApp
         private void AddDroppedGames(string[] files)
         {
             if (files == null) return;
-            // 文件夹不直接入库 打开添加窗口列出里面的候选程序 唯一命中的会预先勾上
+            // Folders are not added directly; open the add window listing the candidate programs inside; a single hit is pre-checked
             var folders = new List<string>();
             string error = null;
             foreach (string file in files)

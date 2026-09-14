@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 对局期间读取每个逻辑核的利用率差分 供同局平均负载记录使用
+// File purpose Reads per-logical-core utilization deltas during a match, feeds the same-match average load record
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -9,20 +9,20 @@ namespace PaviseApp
 {
     internal interface ICoreLoadSource : IDisposable
     {
-        // 自上次读取或基线以来的平均值 null 表示没有有效区间
+        // Average since the last read or the baseline, null means no valid interval
         Dictionary<int, double> Read();
     }
 
-    // \Processor Information(*)\% Processor Time 是标准计数器 实例名是 组,核 格式
-    //   单组机器 逻辑核号 = 实例里的核号 多组按组基址累加(前面各组的活动逻辑核数之和)
-    //   "_Total" / "组,_Total" 是汇总行 一律跳过
-    //   利用率是差分量 必须采两次 CollectQueryData 之间隔一小段 只有一次拿到的全是 0
+    // \Processor Information(*)\% Processor Time is a standard counter, instance names are in group,core format
+    //   single-group machine: logical core id = core id in the instance, multi-group adds the group base, the sum of active logical cores of preceding groups
+    //   _Total / group,_Total are summary rows, always skipped
+    //   utilization is a delta, needs two CollectQueryData calls a short interval apart, a single one yields all zeros
     internal static class CoreLoadProbe
     {
         internal const int DefaultIntervalMs = 250;
 
-        // 每观察一局只建一个常驻查询 Read 不睡眠也不建工作线程
-        // 连续的计数器增量覆盖整个观测区间
+        // One resident query per observed match, Read neither sleeps nor spawns a worker thread
+        // consecutive counter deltas cover the whole observation interval
         internal static ICoreLoadSource OpenSource()
         {
             var source = new CounterSource();
@@ -68,12 +68,12 @@ namespace PaviseApp
             }
         }
 
-        // 拿一次 per-core 利用率 键是全局逻辑核号 值是 0-100
-        //   同步阻塞约 intervalMs 毫秒 拿不到就返回空字典 绝不抛
-        //   保留给独立诊断测试 选核弹窗只读取已封存的同局记录
+        // Grab per-core utilization once, key is the global logical core id, value is 0-100
+        //   blocks synchronously for about intervalMs ms, returns an empty dictionary on failure, never throws
+        //   reserved for standalone diagnostic tests, the core selection dialog only reads the sealed same-match record
 #if PAVISE_SELFTEST
-        // 选核弹窗截图自测专用:注入一份确定的 per-core 负载 让弹窗铺满全负载区间(含 44% / 88%)
-        //   供人工核对 ROG 发光观感 空则走真实 PDH 采集
+        // Core selection dialog screenshot self-test only, injects a deterministic per-core load so the dialog spans the full load range incl. 44% / 88%
+        //   for manual checking of the ROG glow look, empty means real PDH sampling
         internal static Dictionary<int, double> Override;
 #endif
 
@@ -134,7 +134,7 @@ namespace PaviseApp
                     double v = item.Value.DoubleValue;
                     if (double.IsNaN(v) || double.IsInfinity(v)) continue;
                     if (v < 0) v = 0; else if (v > 100) v = 100;
-                    // 同一实例只出现一次 但保险起见取最大 别被后来的 0 覆盖
+                    // Each instance appears only once, but take the max to be safe, do not let a later 0 overwrite
                     double prev;
                     if (!result.TryGetValue(logical, out prev) || v > prev) result[logical] = v;
                 }
@@ -143,8 +143,8 @@ namespace PaviseApp
             finally { Marshal.FreeHGlobal(buffer); }
         }
 
-        // 把 组,核 实例名映射到全局逻辑核号 汇总行返回 -1
-        //   groupBase[g] = 前面各组活动逻辑核数累加 单组时恒为 0
+        // Map a group,core instance name to the global logical core id, summary rows return -1
+        //   groupBase[g] = cumulative active logical cores of preceding groups, always 0 with a single group
         internal static int ParseLogical(string instanceName, int[] groupBase)
         {
             if (string.IsNullOrEmpty(instanceName)) return -1;

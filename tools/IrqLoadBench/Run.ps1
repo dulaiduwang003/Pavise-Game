@@ -3,7 +3,7 @@ Set-StrictMode -Version Latest
 $irqRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $irqOutput = Join-Path ([IO.Path]::GetTempPath()) ('PaviseIrqLoad-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [Guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $irqOutput
-$irqTests = @('SelfTests.IrqCoreLoad.cs', 'SelfTests.IrqObservation.cs', 'SelfTests.IrqVerdict.cs', 'SelfTests.IrqStatus.cs', 'SelfTests.IrqDisplay.cs', 'IrqCoreLoadUiChecks.cs')
+$irqTests = @('SelfTests.IrqEnhancement.cs', 'SelfTests.IrqCorePlan.cs', 'SelfTests.IrqAdjustmentHistory.cs', 'SelfTests.IrqRestoreResults.cs', 'SelfTests.IrqCoreLoad.cs', 'SelfTests.IrqObservation.cs', 'SelfTests.IrqVerdict.cs', 'SelfTests.IrqStatus.cs', 'SelfTests.IrqDisplay.cs', 'IrqCoreLoadUiChecks.cs')
 $irqInputs = @(Get-ChildItem -LiteralPath (Join-Path $irqRoot 'src') -Recurse -File -Filter '*.cs' | ForEach-Object { $_.FullName })
 $irqInputs += @($irqTests | ForEach-Object { Join-Path $irqRoot ('tests\' + $_) })
 $irqInputs += Join-Path $PSScriptRoot 'IrqLoadBench.cs'
@@ -16,7 +16,11 @@ $irqArgs = @('/nologo', '/target:exe', '/platform:x64', '/langversion:5', '/opti
     '/define:PAVISE_SELFTEST;PAVISE_IRQ_BENCH;PAVISE_UI_TEST', '/main:PaviseApp.IrqLoadBench', ('/out:' + $irqExe),
     '/reference:System.dll', '/reference:System.Core.dll', '/reference:System.Drawing.dll', '/reference:System.Windows.Forms.dll',
     '/reference:System.Management.dll', '/reference:System.Xml.dll', '/reference:System.Web.Extensions.dll')
-& $irqCompiler @irqArgs @irqInputs 2>&1 | Tee-Object -FilePath (Join-Path $irqOutput 'compile.log')
+$irqResponse = Join-Path $irqOutput 'compile.rsp'
+$irqResponseArgs = @($irqArgs | ForEach-Object { if ($_ -like '/out:*') { '/out:"' + $irqExe + '"' } else { $_ } })
+$irqResponseArgs += @($irqInputs | ForEach-Object { '"' + $_ + '"' })
+[IO.File]::WriteAllLines($irqResponse,$irqResponseArgs,[Text.Encoding]::UTF8)
+& $irqCompiler ('@' + $irqResponse) 2>&1 | Tee-Object -FilePath (Join-Path $irqOutput 'compile.log')
 if ($LASTEXITCODE -ne 0) { throw ('IRQ bench compilation failed. ' + $irqOutput) }
 $irqProcess = $null
 try {

@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 关掉筛选键 粘滞键 切换键的生效位与热键位 可逆
+// File purpose Turns off the active and hotkey bits of Filter Keys, Sticky Keys and Toggle Keys; reversible
 using System;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;

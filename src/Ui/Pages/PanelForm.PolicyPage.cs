@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 构建优化策略页 并按当前预设锁定或放开自定义项
+// File purpose Build the Optimization Policy page and lock or release custom items per the current preset
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -73,7 +73,7 @@ namespace PaviseApp
             swPolicyGpuDemote = AddPolicyToggle(scroll, ref sy, Lang.T("gm.gpudemote"), Lang.T("gm.gpudemote.sub"),
                 delegate { return gameMode.GpuDemote; }, delegate(bool v) { gameMode.GpuDemote = v; });
             cardPolicyGpuDemote = (SettingCard)swPolicyGpuDemote.Parent;
-            // 游戏选核和核心隔离在独立的核心调度页保存。
+            // Game core selection and core isolation are saved on the standalone Core Scheduling page
             swPolicyAdaptive = AddPolicyToggle(scroll, ref sy, Lang.T("gm.adaptive"), Lang.T("gm.adaptive.sub"),
                 delegate { return gameMode.AdaptiveEscalateOn; }, delegate(bool v) { gameMode.AdaptiveEscalateOn = v; });
             cardPolicyAdaptive = (SettingCard)swPolicyAdaptive.Parent;
@@ -198,7 +198,7 @@ namespace PaviseApp
                 var card = c as SettingCard;
                 int baseTop;
                 if (card == null || !map.TryGetValue(card, out baseTop)) continue;
-                // 按档位整张藏起来的卡 连同它下面的间距一起让出来 折叠与否不管
+                // A card hidden whole by tier gives up its spacing below along with it, collapsed or not
                 if (card.Suppressed)
                 {
                     shifts.Add(new[] { baseTop, -((card.Collapsible ? card.ExpandedHeight : card.Height) + gap) });
@@ -292,11 +292,11 @@ namespace PaviseApp
             PerformancePreset mode = gameMode.ActivePreset;
             bool competitive = mode == PerformancePreset.Competitive;
             bool custom = mode == PerformancePreset.Custom;
-            // 掌机档跟电竞一样锁死这两项 差别在功耗侧 不在这里
+            // The Handheld tier locks these two items just like Esports; the difference is on the power side, not here
             bool presetForcesOn = competitive || mode == PerformancePreset.Handheld;
             ApplyPresetPolicy(swPolicyBackground, cardPolicyBackground, Lang.T("v14.bg.master"), false, true);
             ApplyPresetPolicy(swPolicyGpuDemote, cardPolicyGpuDemote, Lang.T("gm.gpudemote"), false, true);
-            // 只有智能档会用到 其它档位本来就是电竞口径 整张卡藏起来 下面的卡上移补位
+            // Only the Smart tier uses it; other tiers are already Esports criteria; hide the whole card and the cards below move up to fill
             bool smart = mode == PerformancePreset.Standard;
             if (cardPolicyAdaptive != null)
             {
@@ -324,13 +324,13 @@ namespace PaviseApp
                 Lang.T("gm.poweryield"), false, true);
             if (swPolicyPowerYield != null && cardPolicyPowerYield != null)
             {
-                // 硬件或权限失败只挡住新的开启 永远不挡关闭
-                // 熔断是一张重试通知 显式关一次再开可能重新验证通过
+                // Hardware or permission failure only blocks a new enable, never blocks turning off
+                // The circuit breaker is a retry notice; an explicit off and on again may pass verification anew
                 string reasonKey = PowerYieldUnavailableReasonKey();
                 bool watts = EnergyMeter.Available;
                 bool fused = watts ? PowerBudgetYield.Fused : PowerBudgetYield.FreqFused;
-                // 读不到瓦数时把设备实际上报的内容一并显示 分得出"没接口"还是"名字不认识"
-                //   通道命名各家不同 认不出来的名字要让用户看得见 才好反馈回来补进 ClassifyRail
+                // When wattage cannot be read, show what the device actually reports too, to tell no interface apart from unrecognized name
+                //   Rail naming differs per vendor; unrecognized names must be visible to the user so they can be reported and added to ClassifyRail
                 string why = reasonKey == null ? null : Lang.T(reasonKey);
                 if (reasonKey == "gm.poweryield.nowatt") why += " " + EnergyMeter.Describe();
                 swPolicyPowerYield.Enabled = PowerBudgetYieldRunner.EnabledSetting || reasonKey == null;
@@ -338,7 +338,7 @@ namespace PaviseApp
                     : watts ? "gm.poweryield.sub" : "gm.poweryield.proxysub");
                 cardPolicyPowerYield.SetLock(swPolicyPowerYield.Enabled ? "" : Lang.T("lock.na"), false);
             }
-            // 掌机档不提供的四项 开关锁死标预设强制关 已开着的照样锁 对局中本来就不生效
+            // The four items the Handheld tier does not offer: switch locked with the Forced off by preset label, locked even when already on; they do not take effect in a match anyway
             bool handheld = mode == PerformancePreset.Handheld;
             ApplyPresetPolicy(swPolicyDisableCpuIdle, cardPolicyDisableCpuIdle,
                 Lang.T("gm.disablecpuidle"), handheld, false);
@@ -351,7 +351,7 @@ namespace PaviseApp
             ApplyPresetPolicy(swPolicyAwake, cardPolicyAwake, Lang.T("set.awake"), false, true);
             ApplyPresetPolicy(swPolicyVramShield, cardPolicyVramShield, Lang.T("gm.vramshield"), handheld, false);
             ApplyPresetPolicy(swPolicyEnglishInput, cardPolicyEnglishInput, Lang.T("gm.englishinput"), false, true);
-            // 没有档位会强制这三项 显示一律听用户自己的开关
+            // No tier forces these three items; display always follows the user's own switch
             ApplyPresetPolicy(swPolicyWsTrim, cardPolicyWsTrim, Lang.T("gm.wstrim"), false, true);
             ApplyPresetPolicy(swPolicyIdlePolicy, cardPolicyIdlePolicy, Lang.T("gm.idlepolicy"), handheld, false);
             if (!handheld) RefreshIdlePolicyPresentation();
@@ -359,10 +359,10 @@ namespace PaviseApp
             ApplyPresetPolicy(swPolicyDwmBoost, cardPolicyDwmBoost, Lang.T("gm.dwmboost"), false, true);
         }
 
-        // 空闲旋钮只写托管方案 targetOwned 为假时 TuneTarget 整个不跑
-        //   手选了自己的电源方案或关掉方案总开关 这个开关就打不出任何效果
-        //   禁止 CPU 空闲不一样 它写当前活动方案 用户自己的方案也会被改 所以两者不能共用一套提示
-        //   永远留一条关闭的路 已经开着的不许因为不适用而锁死
+        // The idle knob writes only the managed scheme; when targetOwned is false TuneTarget does not run at all
+        //   With a hand-picked power scheme or the scheme master switch off, this switch cannot produce any effect
+        //   Disable CPU idle is different: it writes the currently active scheme, so the user's own scheme gets changed too; the two cannot share one hint
+        //   Always leave a way to turn off; something already on must never be locked because it is not applicable
         private void RefreshIdlePolicyPresentation()
         {
             if (swPolicyIdlePolicy == null || cardPolicyIdlePolicy == null) return;
@@ -412,7 +412,7 @@ namespace PaviseApp
         private string PowerYieldUnavailableReasonKey()
         {
             if (!Native.HasSystemBattery()) return "gm.poweryield.desktop";
-            // 读不到瓦数还可以走频率代理的降级验证 两条证据链都没有才算不可用
+            // When wattage cannot be read the frequency-proxy fallback verification still works; only with neither evidence chain is it unavailable
             if (!EnergyMeter.Available && !PowerBudgetYieldRunner.FreqProxyAvailable)
                 return "gm.poweryield.nowatt";
             if (!elevated) return "vbs.needadmin";
@@ -455,7 +455,7 @@ namespace PaviseApp
             return PaviseDialog.Confirm(this, Lang.T("gm.vramshield"), Lang.T("vramshield.warn"), DlgKind.Warn);
         }
 
-        // 开启前先把话说在前面 体感不对就关掉
+        // Say it up front before enabling: if it feels wrong, turn it off
         private void OnVramShieldToggle(bool on)
         {
             if (on && !ConfirmVramShieldEnable())
@@ -484,8 +484,8 @@ namespace PaviseApp
             }
         }
 
-        // 第一栏有按档位整张藏起来的卡 藏与现和折叠展开走同一套摞法 两套各算各的会互相覆盖
-        //   摞法按 Suppressed 判 不看 Visible 建页和换档常发生在这页还没显示的时候 那会儿所有卡的 Visible 都是假
+        // The first column has cards hidden whole by tier; hide/show and collapse/expand use the same stacking, two separate ones would overwrite each other
+        //   Stacking is judged by Suppressed, not Visible; page build and tier switches often happen before this page is shown, when every card's Visible is false
         private void ReflowPolicyCoreCards()
         {
             if (policyTabPanels == null || policyTabPanels.Length == 0 || policyTabPanels[0] == null) return;

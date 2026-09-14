@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 绘制首页核心状态和动态效果
+// File purpose Draw the home page core status and dynamic effects
 using System;
 using System.Diagnostics;
 using System.Drawing;
@@ -18,7 +18,7 @@ namespace PaviseApp
         private bool gameActive;
         private double frozenSeconds;
         private bool animationRequested;
-        // 窗口在别的程序后面时停掉 33 帧重绘 用户看不见的动画不值一个核的零点几
+        // Stop the 33-frame repaint while the window is behind other programs; an animation the user cannot see is not worth a fraction of a core
         private bool foreground = true;
         private Bitmap staticLayer;
         private Color cachedAccent = Color.Empty, cachedAccent2 = Color.Empty;
@@ -173,7 +173,7 @@ namespace PaviseApp
             cachedAccent = accent; cachedAccent2 = accent2; cachedBackdrop = backdrop;
             using (Graphics g = Graphics.FromImage(staticLayer))
             {
-                // 有封面时这层留空 底在 OnPaint 里先画好了 这里再涂就把它盖了
+                // With a backdrop this layer stays empty; the base was painted in OnPaint and painting here again would cover it
                 g.Clear(backdrop ? Color.Transparent : Theme.Bg);
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.PixelOffsetMode = PixelOffsetMode.HighQuality;

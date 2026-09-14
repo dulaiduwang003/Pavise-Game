@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 定位并直接删除英雄联盟附加层目录 客户端更新会重新下载这些组件
+// File purpose Locate and directly delete the League of Legends addon layer directories; the client update re-downloads these components
 
 using System;
 using System.Collections.Generic;

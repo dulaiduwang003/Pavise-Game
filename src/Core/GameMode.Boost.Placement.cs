@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 提优的放置阶段 能效模式解除 渲染车道接入与驱动微调
+// File purpose Placement stage of the boost, efficiency mode clearing, render lane engagement and driver tweaks
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -21,9 +21,9 @@ namespace PaviseApp
                 placementText = Lang.T("schedule.isolation.failed");
                 return false;
             }
-            // 手动落核读回不符且读得出 说明有别的进程改了亲和性
-            //   守护开着 本轮当场重写 relapsed 记住这是一次被改回 保留改回前的读回值
-            //   守护关着 保留它的改动 本局不再落核 改动后游戏够不着独占核才撤独占
+            // Manual placement read-back mismatch while readable means another process changed the affinity
+            //   Guard on: rewrite on the spot this pass, relapsed records that it was changed back and keeps the pre-change read-back value
+            //   Guard off: keep its change, no more placement this match, withdraw exclusive only if the game can no longer reach the exclusive cores after the change
             bool relapsed = false;
             ulong observedBefore = 0;
             if (!needPlacement)
@@ -67,11 +67,11 @@ namespace PaviseApp
                 bool placementUnavailable = false;
                 if (!pass.ManualPlacement && (pass.UseStrict || pass.DesiredMask != allMask))
                     soft = Native.TrySetCpuSetsVerified(h, ids);
-                // 默认 CPU Sets 会被线程显式选择覆盖 无法作为 IRQ 归因
-                // proof 用户明确开启对局观测时 在单 group 机器上再
-                // 叠加一层精确的临时进程硬亲和 写入前先复制当前可写句柄
-                // 并与 pid+creation+原 affinity 绑定 即使反作弊随后拒绝新句柄
-                // 仍可用这份 retained handle 恢复并读回 原值未知时绝不强写
+                // Default CPU Sets get overridden by explicit thread choices and can't serve as IRQ attribution
+                // proof, when the user explicitly enables match observation, on single-group machines
+                // stack an extra exact temporary process hard affinity, duplicating the current writable handle first
+                // and binding it to pid+creation+original affinity, so even if anti-cheat later denies new handles
+                // this retained handle can still restore and read back, never force-write when the original is unknown
                 bool proofHardWritten = false;
                 IntPtr proofRestoreHandle = IntPtr.Zero;
                 if ((soft && irqProbe.RequiresPlacementAudit || pass.ManualPlacement && placementOk)
@@ -82,9 +82,9 @@ namespace PaviseApp
                     proofRestoreHandle = DuplicateIrqProofRestoreHandle(h);
                 if (proofRestoreHandle != IntPtr.Zero)
                 {
-                    // Stop 可能在 worker.Join 超时后并发清理 hard write 与
-                    // retained handle 登记必须处于同一锁域 要么 Stop 先令
-                    // stopping 可见 本轮完全不写 要么先登记 Stop 随后必能恢复
+                    // Stop may clean up concurrently after worker.Join times out, the hard write and
+                    // retained handle registration must share one lock scope: either Stop makes
+                    // stopping visible first and this pass writes nothing, or registration lands first and Stop can then always restore
                     lock (sync)
                     {
                         if (!stopping && Native.SetProcessAffinityMask(
@@ -131,13 +131,11 @@ namespace PaviseApp
                 }
                 if (soft) placementOk = true;
                 if (placementUnavailable) placementOk = true;
-                // 写入 API 返回成功仍不足以入账 最后再从进程句柄读回一次
+                // A successful write API return still isn't enough to book it, read back from the process handle one last time
                 placementVerified = PlacementMatches(h, pass, out placementUnreadable, out observedAfter);
                 if (pass.DesiredMask != allMask
                     && !placementUnavailable && !placementVerified)
                     placementOk = false;
-                if (pass.ManualPlacement && pass.DesiredMask != allMask && !placementVerified)
-                    placementText = Lang.T("schedule.placement.failed");
                 int placeTries = 0;
                 bool placementNowGaveUp = false, firstPlacementWarning = false;
                 lock (sync)
@@ -165,13 +163,11 @@ namespace PaviseApp
                     }
                 }
                 if (placementUnavailable)
-                    Logger.Log(Lang.T("log.gamemodeboost.19") + pass.RendererName + " pid " + pid
+                    Logger.Warn(Lang.T("log.gamemodeboost.19") + pass.RendererName + " pid " + pid
                         + Lang.T("log.gamemodeboost.20"));
-                else if (placementNowGaveUp)
-                    Logger.Log(Lang.T("log.gamemodeboost.19") + pass.RendererName + " pid " + pid + Lang.T("log.gamemodeboost.21")
-                        + PlacementRetryMax + Lang.T("log.gamemodeboost.22"));
-                else if (!placementOk && firstPlacementWarning)
-                    Logger.Log(Lang.T("log.gamemodeboost.23") + pass.RendererName + " pid " + pid + Lang.T("log.gamemodeboost.24"));
+                else if (placementNowGaveUp || !placementOk && firstPlacementWarning)
+                    Logger.Log(PlacementWarningLine(pass.RendererName, pid, pass.ManualPlacement,
+                        placementUnreadable, placementNowGaveUp));
 
                 if (!newlyTracked && placementOk && !relapsed)
                     Logger.Log(Lang.T("log.gamemodeboost.19") + pass.RendererName + " pid " + pid + placementText);
@@ -189,7 +185,7 @@ namespace PaviseApp
             }
             if (relapsed && placementVerified)
             {
-                // 被改回且已当场写回 不算失守 不设上限 只记次数 首次记日志 退局报总数
+                // Changed back and rewritten on the spot doesn't count as lost, no cap, just count, log the first time and report the total at match end
                 int count;
                 lock (sync)
                 {
@@ -202,8 +198,8 @@ namespace PaviseApp
                     Logger.Log(Lang.F("log.isolation.placementcorrected", observedBefore.ToString("X")));
                 return true;
             }
-            // 重写后读回仍不对才算失守 连续到上限 游戏的亲和性仍盖住独占核就只停手 隔离保留
-            //   盖不住才撤隔离 核被收走而游戏用不上比不隔离更糟
+            // Only a read-back still wrong after the rewrite counts as lost, once consecutive misses hit the cap, if the game's affinity still covers the exclusive cores just stop correcting and keep isolation
+            //   Withdraw isolation only when it doesn't cover them, cores taken away that the game can't use is worse than no isolation
             int misses;
             lock (sync)
             {
@@ -240,23 +236,23 @@ namespace PaviseApp
 
         internal enum IsolationVerdict { Retry, StopCorrecting, Withdraw }
 
-        // 游戏当前的亲和性是否还盖住整个独占区 盖住就说明独占核它够得着 隔离仍有意义
+        // Whether the game's current affinity still covers the whole exclusive range, if so the game can reach the exclusive cores and isolation still makes sense
         internal static bool CoversIsolation(ulong observed, ulong isolationMask)
         {
             return isolationMask != 0 && observed != 0 && (observed & isolationMask) == isolationMask;
         }
 
-        // 手动落核写入未生效后的处置 抽成纯函数是为了把边界钉进自测 读不出的轮次不进这里
-        //   被改回且当场写回成功的轮次不进这里 那不算失守
-        //   未到上限记重试 到上限 盖住独占区只停手 盖不住才撤
+        // Handling after a manual placement write fails to take effect, pulled into a pure function to pin the boundary in self-tests, unreadable passes don't come here
+        //   Passes changed back and successfully rewritten on the spot don't come here either, that doesn't count as lost
+        //   Below the cap record a retry, at the cap stop correcting if the exclusive range is covered, withdraw only if not
         internal static IsolationVerdict IsolationVerdictOf(bool coversIsolation, int consecutiveMisses, int max)
         {
             if (consecutiveMisses < max) return IsolationVerdict.Retry;
             return coversIsolation ? IsolationVerdict.StopCorrecting : IsolationVerdict.Withdraw;
         }
 
-        // 守护关着 其他程序改了游戏亲和性就保留 本局不再落核 只记一条
-        //   改动后游戏够不着独占核 独占就没意义 撤回
+        // Guard off: if another program changed the game's affinity keep it, no more placement this match, log once
+        //   If the game can't reach the exclusive cores after the change, exclusivity is pointless, withdraw it
         private void AcceptExternalPlacement(int pid, ulong observed)
         {
             lock (sync)
@@ -276,8 +272,8 @@ namespace PaviseApp
             RollBackUnconfirmedIsolation();
         }
 
-        // 守护开着时每秒用首次硬钉时留存的句柄读一次亲和性 不新开句柄
-        //   反作弊后来剥权也不影响 读到和期望不符就让本轮立刻进落核阶段写回
+        // With the guard on, read affinity once per second via the handle retained at the first hard pin, no new handle opened
+        //   Later anti-cheat privilege stripping doesn't matter, a read-back mismatch sends this pass straight into the placement stage to rewrite
         private long affinityGuardCheckTicks;
 
         private bool ManualPlacementDrifted(int pid, BoostPass pass)
@@ -332,7 +328,8 @@ namespace PaviseApp
         }
 
         private void EngageLaneAndReport(IntPtr h, ProcessSnapshot all, int pid, long currentCreation,
-            BoostPass pass, bool stateOk, bool firstVerified, bool gpuOk, bool ecoCleared, string placementText)
+            BoostPass pass, bool stateOk, bool firstVerified, bool gpuOk, bool ecoCleared,
+            string placementText, bool placementVerified)
         {
             if (pass.LaneAllowed && EffLane && LaneEligible && pass.PriorityTarget == Native.HIGH_PRIORITY_CLASS
                 && !pass.WriteDenied && !RenderLane.IsActiveFor(pid, currentCreation))
@@ -346,13 +343,29 @@ namespace PaviseApp
                         + ((DateTime.UtcNow.Ticks - stamp) / TimeSpan.TicksPerMillisecond)
                         + Lang.T("log.gamemodeboost.61"));
                 WarnIfPartitionHurtsWideGame(pass.RendererName, all, pid, pass.DesiredMask);
-                Logger.Log(Lang.T("log.gamemodeboost.27") + pass.RendererName + "(pid " + pid + ") "
-                    + (pass.PriorityTarget == Native.HIGH_PRIORITY_CLASS ? Lang.T("log.gamemodeboost.28") : Lang.T("log.gamemodeboost.29"))
-                    + placementText + Lang.T("log.gamemodeboost.30")
+                Logger.Log(BoostSuccessLine(pass.RendererName, pid,
+                    pass.PriorityTarget == Native.HIGH_PRIORITY_CLASS ? Lang.T("log.gamemodeboost.28") : Lang.T("log.gamemodeboost.29"),
+                    placementText, placementVerified, Lang.T("log.gamemodeboost.30")
                     + (gpuOk ? Lang.T("log.gamemodeboost.31") : "")
                     + (!Native.PowerThrottlingSupported ? ""
-                        : ecoCleared ? Lang.T("t.gamemodeboost.32") : EcoStateText(h)));
+                        : ecoCleared ? Lang.T("t.gamemodeboost.32") : EcoStateText(h))));
             }
+        }
+
+        internal static string BoostSuccessLine(string renderer, int pid, string priority,
+            string placement, bool placementVerified, string otherStates)
+        {
+            return Logger.SuccessTag + Lang.T("log.gamemodeboost.27") + renderer + "(pid " + pid + ") "
+                + priority + (placementVerified ? placement : "") + otherStates;
+        }
+
+        internal static string PlacementWarningLine(string renderer, int pid, bool manual,
+            bool unreadable, bool gaveUp)
+        {
+            return Logger.WarnTag + Lang.T(manual ? "schedule.placement.unconfirmed" : "log.gamemodeboost.23")
+                + renderer + " pid " + pid + " "
+                + Lang.T(unreadable ? "log.placement.unreadable" : "log.placement.unconfirmed")
+                + Lang.T(gaveUp ? "log.placement.stopped" : "log.gamemodeboost.24");
         }
 
         private long nvTweakRetryAtTicks;

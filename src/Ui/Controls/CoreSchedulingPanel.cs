@@ -7,7 +7,7 @@ namespace PaviseApp
     internal sealed class CoreSchedulingPanel : DBPanel
     {
         internal readonly CoreMatrix Matrix;
-        // 独占范围由游戏选核推出 不再有第二张选核图
+        // The exclusive range is derived from the game core selection, there is no second core picker
         internal readonly Toggle IsolationToggle, FollowToggle;
         internal readonly PillButton SaveButton, PhysicalOnlyButton, TrimForExclusiveButton;
         internal CoreSchedulingPlan Draft;
@@ -18,10 +18,10 @@ namespace PaviseApp
         private readonly Label summary, status;
         private readonly SettingCard followCard, gameCard, exclusiveCard, hardCard, guardCard;
         internal readonly Toggle HardAffinityToggle, AffinityGuardToggle;
-        // 硬亲和与亲和性守护不进核心方案 它们是独立的全局设置 由宿主读写
+        // Hard affinity and affinity guard are not part of the core scheme, they are standalone global settings read and written by the host
         internal Action<bool> HardAffinityChanged, AffinityGuardChanged;
         internal Func<bool> HardAffinityState, AffinityGuardState;
-        // 当前档位不提供独占时为真 掌机档 开关锁死 硬锁不出现
+        // True when the current tier offers no exclusive cores, Handheld tier, the toggle is locked and hard-lock does not appear
         internal Func<bool> IsolationBlocked;
         private readonly RoundPanel footer;
         private bool lightTheme;
@@ -69,8 +69,8 @@ namespace PaviseApp
                 || currentVersion != CoreScheduling.GlobalToken()
                 || profileVersion != CoreScheduling.ProfileToken(readProfile())) return;
 
-            // 逐游戏只保存选核，隔离始终取全局；更新引用时保留本地草稿与跟随选择。
-            // 基线也同步隔离字段，避免仅全局隔离变化就把逐游戏页标成未保存。
+            // Per-game only saves core selection, isolation always comes from global, keep the local draft and follow choice when updating the reference
+            // The baseline also syncs the isolation field, so a global-only isolation change does not mark the per-game page unsaved
             globalVersion = currentVersion;
             Draft.IsolationOn = baseline.IsolationOn = global.IsolationOn;
             Draft.IsolationMask = baseline.IsolationMask = global.IsolationMask;
@@ -92,7 +92,7 @@ namespace PaviseApp
             PhysicalOnlyButton = AddShortcut(shortcuts, Lang.T("core.preset.physical"), SelectSingleThreadPerCore);
             AddShortcut(shortcuts, Lang.T("schedule.clear"), delegate { SelectMask(0); });
             AddShortcut(shortcuts, Lang.T("core.preset.invert"), delegate { SelectMask(~Draft.GameMask & CpuTopology.AllMask); });
-            // 默认是全选 那样独占之外一颗核都不剩 这个按钮把选核收到刚好能独占
+            // Default is all selected, which leaves no core outside the exclusive set, this button trims the selection to just enough for exclusive
             TrimForExclusiveButton = AddShortcut(shortcuts, Lang.T("core.preset.sparesystem"), delegate
             {
                 ulong trimmed = CoreScheduling.TrimForExclusive(Draft.GameMask, CpuTopology.PhysicalCoreMasks());
@@ -101,11 +101,11 @@ namespace PaviseApp
             AddDieShortcuts(shortcuts);
             Matrix = NewMatrix(gameCard); Matrix.SelectionChanged = SelectMask;
             summary = MakeLabel(gameCard, null);
-            // 独占是游戏选核的附加项 放在同一页选核图下方 不再单开一页也不再选第二遍
+            // Exclusive is an add-on to game core selection, placed under the core picker on the same page, no separate page and no second selection
             exclusiveCard = Card(perGame ? 3 : 2, "schedule.exclusive", "");
             IsolationToggle = Switch("schedule.exclusive");
             exclusiveCard.Host(IsolationToggle);
-            // 独占只有全局一份 逐游戏页只读展示 免得看起来能按游戏设
+            // Exclusive is global-only, the per-game page shows it read-only so it does not look per-game configurable
             IsolationToggle.Visible = !perGame;
             IsolationToggle.CheckedChanged += delegate
             {
@@ -114,7 +114,7 @@ namespace PaviseApp
                 SyncExclusiveMask();
                 Edited();
             };
-            // 硬亲和是独占的附加项 只有全局一份 逐游戏页不显示
+            // Hard affinity is an add-on to exclusive, global-only, not shown on the per-game page
             hardCard = Card(perGame ? 4 : 3, "schedule.hardaffinity", "");
             HardAffinityToggle = Switch("schedule.hardaffinity");
             hardCard.Host(HardAffinityToggle);
@@ -126,7 +126,7 @@ namespace PaviseApp
                 HardAffinityChanged(HardAffinityToggle.Checked);
                 RefreshView();
             };
-            // 亲和性守护作用于游戏自己的落核 不依赖独占 只有全局一份
+            // Affinity guard acts on the game's own core placement, does not depend on exclusive, global-only
             guardCard = Card(perGame ? 5 : 4, "schedule.affinityguard", "");
             AffinityGuardToggle = Switch("schedule.affinityguard");
             guardCard.Host(AffinityGuardToggle);
@@ -275,7 +275,7 @@ namespace PaviseApp
             Edited(true);
         }
 
-        // 独占范围永远由当前游戏选核推出 推不出来就当没勾 免得留下一个开着却空的范围
+        // The exclusive range is always derived from the current game core selection, if it cannot be derived treat as unchecked, never leave an enabled but empty range
         private void SyncExclusiveMask()
         {
             if (perGame) return;
@@ -317,7 +317,7 @@ namespace PaviseApp
             summary.ForeColor = Theme.Accent;
             bool editable = !follow && !CpuTopology.MultiGroup;
             Matrix.Enabled = editable; shortcuts.Enabled = editable;
-            // 推不出独占范围时开关不可用 免得勾了一个空范围
+            // The toggle is disabled when no exclusive range can be derived, so an empty range cannot be checked
             ulong exclusive = CoreScheduling.ExclusiveMaskFor(display.GameMask, CpuTopology.PhysicalCoreMasks());
             bool selectedSiblings = false;
             foreach (ulong core in CpuTopology.PhysicalCoreMasks())
@@ -355,9 +355,10 @@ namespace PaviseApp
             if (CoreIsolationClient.State == "schedule.isolation.active")
                 runtime += " " + CpuTopology.DescribeMask(CoreIsolationClient.ActiveMask);
             status.Text = state + "\r\n" + runtime + (prerequisite.Length == 0 ? "" : "\r\n" + prerequisite);
-            status.ForeColor = globalChanged || lastMessage != null && !lastMessage.StartsWith(Lang.T("schedule.saved.prefix"))
-                || CoreIsolationClient.State == "schedule.isolation.pending" || CoreIsolationClient.State == "schedule.isolation.failed"
-                || validation != null && !follow ? Theme.Danger : Theme.Dim;
+            status.ForeColor = lastMessage != null && !lastMessage.StartsWith(Lang.T("schedule.saved.prefix"))
+                || CoreIsolationClient.State == "schedule.isolation.failed" || validation != null && !follow
+                ? Theme.Danger : globalChanged || dirty || CoreIsolationClient.State == "schedule.isolation.pending"
+                ? Theme.Warning : Theme.Dim;
             bool hardOn = HardAffinityState != null && HardAffinityState();
             syncing = true; HardAffinityToggle.SetSilently(hardOn); syncing = false;
             HardAffinityToggle.Enabled = !perGame && display.IsolationOn;
@@ -367,7 +368,7 @@ namespace PaviseApp
             syncing = true; AffinityGuardToggle.SetSilently(guardOn); syncing = false;
             AffinityGuardToggle.Enabled = !perGame;
             guardCard.Desc = Lang.T(guardOn ? "schedule.affinityguard.on" : "schedule.affinityguard.off");
-            // 选了全核就没有独占 硬锁 纠正可言 三张卡只在选核不是全核时出现 硬锁还要独占已开
+            // With all cores selected there is no exclusive, hard-lock or correction to speak of, the three cards appear only when the selection is not all cores, hard-lock also needs exclusive on
             bool partial = display.GameMask != 0 && display.GameMask != CpuTopology.AllMask;
             exclusiveCard.Visible = partial;
             hardCard.Visible = !perGame && partial && display.IsolationOn && !isolationBlocked;
@@ -375,7 +376,7 @@ namespace PaviseApp
             LayoutContent();
         }
 
-        // 说清为什么推不出来 以及照着做什么 光说需要一颗核在全选时会让人莫名其妙
+        // Explain why it cannot be derived and what to do, just saying one core is needed while everything is selected is baffling
         private string ExclusiveBlockedText()
         {
             ulong[] cores = CpuTopology.PhysicalCoreMasks();

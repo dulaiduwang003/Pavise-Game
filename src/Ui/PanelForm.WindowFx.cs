@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 主窗口入场退场动效与对局中的自动隐藏
+// File purpose Main window enter/exit animations and auto-hide during a match
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;

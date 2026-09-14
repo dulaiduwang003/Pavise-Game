@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 中断判据与对局台账的自测 数据取自真机五分钟负载实测
+// File purpose Self-test for interrupt criteria and match ledger, data from a five-minute real-machine load measurement
 using System;
 using System.Collections.Generic;
 
@@ -32,6 +32,7 @@ namespace PaviseApp
             s.StartUtcTicks = 1;
             s.DurationSeconds = seconds;
             s.GameName = "T";
+            s.TopologyStamp = CpuTopology.TopologyStamp();
             s.BootStamp = IrqAffinityEngine.BootStamp();
             s.GameMask = gameMask;
             s.SystemMask = 0xFFFFUL;
@@ -41,7 +42,7 @@ namespace PaviseApp
 
         private static void TestIrqVerdictRanking()
         {
-            // 真机五分钟实测数据 游戏核假设为低八位
+            // Five-minute real-machine data, game cores assumed to be the low eight bits
             var all = new List<IrqSessionRecord>();
             for (int i = 0; i < 3; i++)
                 all.Add(Session(300,
@@ -57,36 +58,36 @@ namespace PaviseApp
             var by = new Dictionary<string, IrqDriverVerdict>(StringComparer.OrdinalIgnoreCase);
             foreach (IrqDriverVerdict x in v) by[x.Driver] = x;
 
-            // ndis 单核绑定又落在游戏核上 必撞 属于结构性冲突
+            // ndis pinned to a single core that is also a game core: guaranteed collision, a structural conflict
             Eq(true, by["ndis.sys"].StructuralConflict);
             Eq(true, by["ndis.sys"].Worth);
-            // dxgkrnl 同时散到游戏核外 聚合数据证明不了慢 DPC 就发生在游戏核 不给建议
+            // dxgkrnl also spreads outside the game cores, aggregate data can't prove the slow DPC happened on a game core, no advice
             Eq(false, by["dxgkrnl.sys"].StructuralConflict);
             Eq(false, by["dxgkrnl.sys"].Worth);
-            // ACPI 单次最长全场第一 但五分钟才 28 次 不值得动 它还是系统关键驱动
+            // ACPI has the longest single hit overall but only 28 in five minutes, not worth moving, and it's still a system-critical driver
             Eq(false, by["ACPI.sys"].Worth);
-            // ntoskrnl 超阈值太少
+            // ntoskrnl exceeds the threshold too rarely
             Eq(false, by["ntoskrnl.exe"].Worth);
-            // ACPI 单核绑定且落在游戏核上 但频率太低 结构性成立不代表值得动
+            // ACPI single-core pinned onto a game core but far too infrequent, structural conflict doesn't mean worth moving
             Eq(true, by["ACPI.sys"].StructuralConflict);
 
-            // 排序必须把值得动的放前面 不能像旧版那样按单次最长排
-            // 旧版会让 ACPI 的 5714us 排第一 把用户引到最不该动的那台
+            // Sorting must put worth-moving first, not by longest single hit like the old version
+            // The old version would rank ACPI's 5714us first, steering the user to the one device they should never touch
             Eq(true, v[0].Worth);
             Eq(false, v[1].Worth);
             Eq(false, v[2].Worth);
             Eq(false, v[3].Worth);
-            // ACPI 单次最长全场第一 也不能挤到唯一有充分证据的建议前面
+            // ACPI's longest single hit must not squeeze ahead of the only recommendation with sufficient evidence
             if (string.Equals(v[0].Driver, "ACPI.sys", StringComparison.OrdinalIgnoreCase))
                 throw new Exception("ACPI ranked into the actionable slots on max duration alone");
         }
 
         private static void TestIrqSessionSummaryPicksByImpact()
         {
-            // 取自真机一局 114 秒的实测数据
-            //   ACPI 单次 9335us 全场最长 但一局才二十几次 DPC 零次超阈值
-            //   dxgkrnl 单次 3819us 但有超阈值记录 且 DPC 是它的三千倍
-            //   摘要必须挑 dxgkrnl 挑 ACPI 就等于日常那行天天喊最不该动的那台
+            // Data from one real-machine match of 114 seconds
+            //   ACPI single hit 9335us, longest overall, but only twenty-odd DPCs in the match and zero over threshold
+            //   dxgkrnl single hit 3819us but has over-threshold records, and its DPC count is three thousand times higher
+            //   The summary must pick dxgkrnl, picking ACPI means the daily line keeps shouting about the device that should never be touched
             IrqSessionRecord rec = Session(114,
                 Rec("ACPI.sys", 26, 17354, 9335, 0, 0x1UL),
                 Rec("dxgkrnl.sys", 87189, 21374785, 3819, 2, 0x7UL),
@@ -98,7 +99,7 @@ namespace PaviseApp
             if (s.IndexOf("ACPI.sys", StringComparison.OrdinalIgnoreCase) >= 0)
                 throw new Exception("summary picked ACPI on max duration alone: " + s);
 
-            // 全都没有超阈值时退回按单次最长挑 至少不能返回空
+            // With nothing over threshold fall back to longest single hit, at least never return empty
             IrqSessionRecord quiet = Session(114,
                 Rec("a.sys", 100, 1000, 120, 0, 0x1UL),
                 Rec("b.sys", 100, 1000, 300, 0, 0x1UL));
@@ -166,7 +167,7 @@ namespace PaviseApp
                     { StartQpc = 200, EndQpc = 250, Module = "boundary.sys" }
             };
             PresentDpcAlignment boundary = PresentDpcAlignment.AlignDpcToLongFrames(adjacent, onBoundary);
-            Eq(1, boundary.LongFrameHits["boundary.sys"]); // 只命中第二帧，边界不重复
+            Eq(1, boundary.LongFrameHits["boundary.sys"]); // Hits only the second frame, the boundary isn't double-counted
 
             var spansBoth = new List<InterruptAttribution.DpcTimelineEntry>
             {
@@ -174,12 +175,12 @@ namespace PaviseApp
                     { StartQpc = 150, EndQpc = 250, Module = "spans.sys" }
             };
             PresentDpcAlignment both = PresentDpcAlignment.AlignDpcToLongFrames(adjacent, spansBoth);
-            Eq(2, both.LongFrameHits["spans.sys"]); // 同一事件确实撞到两帧
-            Eq(1, both.DpcCounts["spans.sys"]);      // 但 DPC 事件总数不能重复
+            Eq(2, both.LongFrameHits["spans.sys"]); // The same event really straddles two frames
+            Eq(1, both.DpcCounts["spans.sys"]);      // But the DPC event total must not double-count
             Eq(1, both.TotalDpcInLongFrames);
 
-            // 长帧区间里那个未知模块 说不定就是 Worth 驱动 零命中不能拿来排除它
-            // 区间外的未知事件跟这次撞帧没关系 不该无条件把证据降级
+            // The unknown module inside the long-frame window might be the Worth driver, zero hits can't exclude it
+            // Unknown events outside the window are unrelated to this frame hit, don't downgrade evidence unconditionally
             var unknownInside = new List<InterruptAttribution.DpcTimelineEntry>
             {
                 new InterruptAttribution.DpcTimelineEntry { StartQpc = 150, EndQpc = 150, Module = "?" }
@@ -196,14 +197,14 @@ namespace PaviseApp
             unknown = PresentDpcAlignment.AlignDpcToLongFrames(intervals, unknownOutside);
             Eq(false, unknown.UnknownModuleInLongFrames);
 
-            Eq(4, GameMode.ResolveIrqReportedCount(false, false, false, 0, 0, 4)); // 探针不可用
-            Eq(4, GameMode.ResolveIrqReportedCount(true, false, false, 1, 0, 4));  // PID多流零命中不是反证
-            Eq(0, GameMode.ResolveIrqReportedCount(true, true, false, 1, 0, 4));   // 可靠单流的完整零命中
-            Eq(4, GameMode.ResolveIrqReportedCount(true, true, true, 1, 0, 4));    // 有长帧但 DPC 截断
-            Eq(0, GameMode.ResolveIrqReportedCount(true, true, true, 0, 0, 4));    // 可靠单流无长帧
-            Eq(4, GameMode.ResolveIrqReportedCount(true, false, true, 1, 2, 4));   // 不可靠流不能否定其余 Worth
-            Eq(4, GameMode.ResolveIrqReportedCount(true, true, true, 1, 2, 4));    // DPC 不完整也不能否定其余
-            Eq(2, GameMode.ResolveIrqReportedCount(true, true, false, 1, 2, 4));   // 可靠且完整时才缩到命中项
+            Eq(4, GameMode.ResolveIrqReportedCount(false, false, false, 0, 0, 4)); // Probe unavailable
+            Eq(4, GameMode.ResolveIrqReportedCount(true, false, false, 1, 0, 4));  // PID multi-stream zero hits is no counter-evidence
+            Eq(0, GameMode.ResolveIrqReportedCount(true, true, false, 1, 0, 4));   // Reliable single-stream complete zero hits
+            Eq(4, GameMode.ResolveIrqReportedCount(true, true, true, 1, 0, 4));    // Long frames present but DPC truncated
+            Eq(0, GameMode.ResolveIrqReportedCount(true, true, true, 0, 0, 4));    // Reliable single-stream, no long frames
+            Eq(4, GameMode.ResolveIrqReportedCount(true, false, true, 1, 2, 4));   // Unreliable stream can't negate the other Worth
+            Eq(4, GameMode.ResolveIrqReportedCount(true, true, true, 1, 2, 4));    // Incomplete DPC can't negate the others either
+            Eq(2, GameMode.ResolveIrqReportedCount(true, true, false, 1, 2, 4));   // Shrinks to hit items only when reliable and complete
             Eq(true, PresentDpcAlignment.AlignDpcToLongFrames(intervals, outside, true)
                 .SwapchainIdentityReliable);
         }
@@ -225,7 +226,7 @@ namespace PaviseApp
             Eq(1201L, InterruptAttribution.SafeTimelineStart(100, 1201, 1000));
             Eq(1000L, InterruptAttribution.SafeTimelineStart(2000, 1000, 1000));
 
-            // 同一个 profile 局内换渲染进程要更新 换局时新 profile 不能盖掉旧局的 PID
+            // Same profile switching renderer mid-match must update, a new profile on match change must not overwrite the old match's PID
             Eq(202, GameMode.UpdateSessionRendererPid("profile-a", 101, "PROFILE-A", 202));
             Eq(101, GameMode.UpdateSessionRendererPid("profile-a", 101, "profile-b", 303));
             Eq(101, GameMode.UpdateSessionRendererPid("profile-a", 101, "profile-a", 0));
@@ -239,13 +240,13 @@ namespace PaviseApp
                 new PresentFrame { Pid = renderer, Qpc = 100 },
                 new PresentFrame { Pid = renderer, Qpc = 200 }
             };
-            // 别的进程帧塞再多也顶不了目标渲染器 免得造出伪的负证据
+            // No matter how many frames other processes stuff in, they can't stand in for the target renderer, avoids fake negative evidence
             for (int i = 0; i < 100; i++)
                 tooFew.Add(new PresentFrame { Pid = 88, Qpc = 1000 + i * 10 });
             Eq<List<long[]>>(null, PresentDpcAlignment.BuildLongFrameIntervals(tooFew, 1000, renderer, 2.0));
             Eq<List<long[]>>(null, PresentDpcAlignment.BuildLongFrameIntervals(tooFew, 1000, 0, 2.0));
 
-            // 31 帧凑出 30 个稳定间隔 样本够的时候没有长帧才是非 null 的空集合
+            // 31 frames give 30 stable intervals, with enough samples no long frames means a non-null empty collection
             var enough = new List<PresentFrame>();
             for (int i = 0; i <= 30; i++)
                 enough.Add(new PresentFrame { Pid = renderer, Qpc = 100L * i });
@@ -254,7 +255,7 @@ namespace PaviseApp
             Eq(0, none.Count);
             Eq<List<long[]>>(null, PresentDpcAlignment.BuildLongFrameIntervals(enough, 1000, renderer, 4.0));
 
-            // 两小段呈现中间夹一个 Alt-Tab 空窗 空窗不能算成一帧 也不能算 coverage
+            // Two short present runs with an Alt-Tab gap between, the gap counts as neither a frame nor coverage
             var splitByPause = new List<PresentFrame>();
             long splitQpc = 0;
             for (int i = 0; i < 16; i++)
@@ -271,7 +272,7 @@ namespace PaviseApp
             Eq<List<long[]>>(null,
                 PresentDpcAlignment.BuildLongFrameIntervals(splitByPause, 1000, renderer, 2.0));
 
-            // 在同一条足量基线上放一个 5 倍间隔 应该正好产出一段长帧区间
+            // Put one 5x interval on the same sufficient baseline, should yield exactly one long-frame interval
             enough.Clear();
             long qpc = 0;
             for (int i = 0; i <= 30; i++)
@@ -283,9 +284,9 @@ namespace PaviseApp
             if (one == null) throw new Exception("足量 present 未生成区间结果");
             Eq(1, one.Count);
 
-            // 同一个 PID 下主 swapchain 确实缺了两帧 但辅助呈现流正好把洞填上了
-            // Event 184 没有 swapchain id 按 PID 一合并就伪造出无长帧
-            // 这种零结果只能不加分 不能反过来把 Worth 建议打掉
+            // Under the same PID the main swapchain really missed two frames, but the auxiliary present stream filled the hole exactly
+            // Event 184 carries no swapchain id, merging by PID fabricates no-long-frames
+            // Such a zero result can only withhold credit, never knock down a Worth recommendation
             var mainStream = new List<PresentFrame>();
             var mergedStreams = new List<PresentFrame>();
             for (int i = 0; i <= 40; i++)
@@ -309,9 +310,9 @@ namespace PaviseApp
             Eq(3, GameMode.ResolveIrqReportedCount(true, false, false,
                 mergedLong.Count, 0, 3));
 
-            // 辅助流那阵高频 burst 还会把合并后的 median 压得极低
-            // 主流正常的 100-tick 间隔就被大批伪造成长帧
-            // 默认多流身份不可靠的时候 这种正命中一样只是日志线索 不能拿去减 Worth 计数
+            // The auxiliary stream's high-frequency burst also drives the merged median extremely low
+            // So the main stream's normal 100-tick intervals get mass-faked into long frames
+            // While multi-stream identity is unreliable by default, such positive hits are just log clues too, never used to reduce the Worth count
             var burstMerged = new List<PresentFrame>();
             for (int i = 0; i <= 40; i++)
                 burstMerged.Add(new PresentFrame { Pid = renderer, Qpc = 100L * i + 1000L });
@@ -340,8 +341,8 @@ namespace PaviseApp
             Eq(false, IrqPlacementProof.PlacementProofMatches(0x3UL, 0x3UL, false, false, false));
             Eq(true, IrqPlacementProof.PlacementProofMatches(0x3UL, 0, true, true, false));
             Eq(false, IrqPlacementProof.PlacementProofMatches(0x3UL, 0, true, false, true));
-            // 默认 CPU Sets 会被线程覆盖 得把每个线程的完整有效集合都拿到
-            // union 少一颗核 那颗核上的 DPC 就不能算成游戏重叠
+            // Default CPU Sets get overridden per thread, must fetch each thread's full effective set
+            // If the union is missing one core, DPCs on that core can't count as game overlap
             Eq(true, IrqPlacementProof.AttributionPlacementProofMatches(
                 0x3UL, 0x3UL, false, true, 0x3UL));
             Eq(false, IrqPlacementProof.AttributionPlacementProofMatches(
@@ -358,10 +359,10 @@ namespace PaviseApp
                 0x3UL, 0x3UL, 0x1UL, true));
             Eq(0x1UL, IrqPlacementProof.EffectiveAttributionThreadMask(
                 0x3UL, 0x1UL, 0x3UL, true));
-            // CPU Set 和硬亲和性彻底冲突的时候 Windows 听后者的
+            // When CPU Set and hard affinity fully conflict, Windows follows the latter
             Eq(0x3UL, IrqPlacementProof.EffectiveAttributionThreadMask(
                 0x3UL, 0x3UL, 0x4UL, true));
-            // 证明窗口内线程增删不算失败 新线程要单独证明 退出的忽略
+            // Thread churn inside the proof window is not a failure, new threads need their own proof, exited ones are ignored
             Eq(0, IrqPlacementProof.NewAttributionThreads(
                 new[] { 11, 22 }, new[] { 11, 22 }).Length);
             Eq(23, IrqPlacementProof.NewAttributionThreads(
@@ -374,7 +375,7 @@ namespace PaviseApp
                 null, new[] { 11, 22 }).Length);
             Eq(0, IrqPlacementProof.NewAttributionThreads(
                 new[] { 11 }, null).Length);
-            // 开不出 属主换了 已退出 都是消失 活跃状态查不出才是失败
+            // Can't open, owner changed, already exited all mean vanished, only an unreadable active state is a failure
             Eq(IrqPlacementProof.AttributionThreadOutcome.Vanished,
                 IrqPlacementProof.ClassifyAttributionThread(false, 42, -1, false, false));
             Eq(IrqPlacementProof.AttributionThreadOutcome.Vanished,
@@ -538,9 +539,9 @@ namespace PaviseApp
                 }
             }
 
-            // proof hard pin 得攥着头一个可写句柄的副本 不能指望等会儿再 OpenProcess
-            // 副本在源句柄关掉之后还绑着同一个 pid+creation
-            // 身份有一项对不上就 fail-closed 对上了才允许恢复并读回
+            // proof hard pin must hold a duplicate of the first writable handle, can't count on OpenProcess later
+            // The duplicate stays bound to the same pid+creation after the source handle closes
+            // Any identity mismatch fails closed, only a match allows restore and read-back
             using (var self = System.Diagnostics.Process.GetCurrentProcess())
             {
                 IntPtr source = Native.OpenProcess(
@@ -591,7 +592,7 @@ namespace PaviseApp
                 Eq(false, disposedProbe.IsCapturing);
             }
 
-            // 重启之前的 IRQ 配置样本不许进当前这次 boot 的裁决
+            // IRQ config samples from before a reboot may not enter this boot's verdict
             long currentBoot;
             if (long.TryParse(IrqAffinityEngine.BootStamp(), out currentBoot))
             {
@@ -608,7 +609,7 @@ namespace PaviseApp
                 Eq(0, bootUsed);
             }
 
-            // 落点与游戏核没有交集 再难看也不值得挪
+            // Placement doesn't intersect the game cores, no matter how ugly it's not worth moving
             var away = new List<IrqSessionRecord>();
             for (int i = 0; i < 3; i++)
                 away.Add(Session(300, Rec("x.sys", 100000, 9000000, 4000, 900, 0xF00UL)));
@@ -617,14 +618,14 @@ namespace PaviseApp
             Eq(1, v.Count);
             Eq(false, v[0].Worth);
 
-            // 单次太短 一次都换不回一帧
+            // Single hits too short, none of them ever costs a frame
             var tiny = new List<IrqSessionRecord>();
             for (int i = 0; i < 3; i++)
                 tiny.Add(Session(300, Rec("y.sys", 500000, 9000000, 150, 900, 0x1UL)));
             v = IrqVerdict.Evaluate(tiny, 60, out used);
             Eq(false, v[0].Worth);
 
-            // 太短的局不进判断窗口
+            // Matches too short don't enter the verdict window
             var shortOnes = new List<IrqSessionRecord>();
             for (int i = 0; i < 3; i++)
                 shortOnes.Add(Session(10, Rec("z.sys", 1000, 900000, 4000, 900, 0x1UL)));
@@ -632,7 +633,7 @@ namespace PaviseApp
             Eq(0, used);
             Eq(0, v.Count);
 
-            // 掩码被截断时落点不可信 不许判结构性冲突
+            // With a truncated mask the placement is untrustworthy, no structural conflict verdict allowed
             var trunc = new List<IrqSessionRecord>();
             for (int i = 0; i < 3; i++)
             {
@@ -644,7 +645,7 @@ namespace PaviseApp
             Eq(false, v[0].StructuralConflict);
             Eq(false, v[0].Worth);
 
-            // 全局是有三局 但目标驱动只在其中一局出现 一次偶发尖峰不能说成多局建议
+            // Three matches globally, but the target driver appears in only one, a single sporadic spike can't be called multi-match advice
             var sporadic = new List<IrqSessionRecord>
             {
                 Session(300, Rec("once.sys", 100000, 9000000, 4000, 900, 0x1UL)),
@@ -658,8 +659,8 @@ namespace PaviseApp
             Eq(1, once.SessionsSeen);
             Eq(false, once.Worth);
 
-            // 驱动升级之后只认窗口里最新出现的那个版本
-            // 旧版就算已经攒够三局 也不能把建议贴到只跑过一局的新版本设备上
+            // After a driver upgrade only the newest version seen in the window counts
+            // Even if the old version already has three matches, the advice can't be pinned on a new-version device that ran only one
             var versioned = new List<IrqSessionRecord>();
             for (int i = 0; i < 3; i++)
             {
@@ -676,7 +677,7 @@ namespace PaviseApp
             Eq(1, v[0].SessionsSeen);
             Eq(false, v[0].Worth);
 
-            // 判定要按每一局真实的游戏核心来 不能拿全局 StrictBoostMask 顶
+            // The verdict must use each match's real game cores, not the global StrictBoostMask
             var customAway = new List<IrqSessionRecord>();
             var customHit = new List<IrqSessionRecord>();
             for (int i = 0; i < 3; i++)
@@ -691,8 +692,8 @@ namespace PaviseApp
             v = IrqVerdict.Evaluate(customHit, 60, out used);
             Eq(true, v[0].Worth);
 
-            // 三局里只有极低频的真实重叠 另外两局的重负载全落在游戏核外
-            // 核外数据可以展示 但别拿它把重叠评分抬成 Worth
+            // Only very low-frequency real overlap across three matches, the other two matches' heavy load lands entirely outside the game cores
+            // Off-core data may be displayed, but don't use it to lift the overlap score to Worth
             var mixedOverlap = new List<IrqSessionRecord>();
             for (int i = 0; i < 3; i++)
                 mixedOverlap.Add(SessionWithMask(300, 0x1UL,
@@ -705,8 +706,8 @@ namespace PaviseApp
             Eq(3L, v[0].OverlapOver500);
             Eq(false, v[0].Worth);
 
-            // 一局的聚合掩码同时含游戏核和核外 就证明不了慢 DPC 到底发生在哪边
-            // 数值再重也只能展示 不参与建议评分
+            // A match whose aggregate mask spans both game cores and off-core can't prove which side the slow DPC happened on
+            // However heavy the numbers, display only, no part in advice scoring
             var mixedCpus = new List<IrqSessionRecord>();
             for (int i = 0; i < 3; i++)
                 mixedCpus.Add(SessionWithMask(300, 0x1UL,
@@ -716,7 +717,7 @@ namespace PaviseApp
             Eq(0L, v[0].OverlapOver500);
             Eq(false, v[0].Worth);
 
-            // 这一局的实际游戏核没确认下来 原始数据可以展示 但不参与建议评分
+            // This match's actual game cores were never confirmed, raw data may display but takes no part in advice scoring
             var unknownGameMaskSessions = new List<IrqSessionRecord>();
             for (int i = 0; i < 3; i++)
                 unknownGameMaskSessions.Add(SessionWithMask(300, 0,
@@ -726,7 +727,7 @@ namespace PaviseApp
             Eq(1, v.Count);
             Eq(false, v[0].Worth);
 
-            // 游戏实际把所有可用核心都占了 就没有已知的核外目标 只展示 不建议挪核
+            // The game actually occupies every available core, so there's no known off-core target, display only, no IRQ core move advice
             var allCore = new List<IrqSessionRecord>();
             for (int i = 0; i < 3; i++)
             {
@@ -737,7 +738,7 @@ namespace PaviseApp
             v = IrqVerdict.Evaluate(allCore, 60, out used);
             Eq(false, v[0].Worth);
 
-            // 评分时长只统计这个驱动已证明落在游戏核里的局 不能让两局无关的长会话把它稀释掉
+            // Scoring duration counts only matches where this driver is proven on game cores, two unrelated long sessions must not dilute it
             var scoredDuration = new List<IrqSessionRecord>();
             for (int i = 0; i < 3; i++)
                 scoredDuration.Add(SessionWithMask(60, 0x1UL,
@@ -751,7 +752,7 @@ namespace PaviseApp
             Eq(180.0, durationVerdict.ScoredSeconds);
             Eq(true, durationVerdict.Worth);
 
-            // 损坏台账里同一局重复三条同驱动的记录 也只能算一局
+            // Three duplicate same-driver records for one match in a corrupt ledger still count as one match
             IrqDriverRecord duplicate = Rec("duplicate.sys", 1000, 900000, 4000, 30, 0x1UL);
             var duplicateRecords = new List<IrqSessionRecord>
             {
@@ -765,7 +766,7 @@ namespace PaviseApp
             Eq(1, duplicateVerdict.SessionsSeen);
             Eq(false, duplicateVerdict.Worth);
 
-            // 高刷屏帧预算更小 同样的中断更容易撞坏一帧
+            // High-refresh screens have a smaller frame budget, the same interrupt breaks a frame more easily
             var edge = new List<IrqSessionRecord>();
             for (int i = 0; i < 3; i++)
                 edge.Add(Session(300, Rec("e.sys", 9000, 900000, 900, 40, 0x3UL)));
@@ -800,24 +801,24 @@ namespace PaviseApp
             Eq("ndis.sys", back[0].Drivers[0].Driver);
             Eq(576L, back[0].Drivers[0].Over500Us);
             Eq(0x1UL, back[0].Drivers[0].CpuMask);
-            // 纳秒整数往返 不能因为浮点丢精度
+            // Nanosecond integers round-trip, no precision loss to floating point
             Eq(1271L * 1000L, back[0].Drivers[0].DpcMaxNs);
 
-            // 只保留最近 KeepSessions 局
+            // Keep only the most recent KeepSessions matches
             for (int i = 0; i < IrqSessionLedger.KeepSessions + 4; i++)
                 IrqSessionLedger.Append(Session(300 + i, Rec("a.sys", 1, 1, 1, 0, 1UL)));
             Eq(IrqSessionLedger.KeepSessions, IrqSessionLedger.Load().Count);
 
-            // V2 没有每局游戏核 直接作废 不猜也不做兼容迁移
+            // V2 has no per-match game cores, discard outright, no guessing and no compat migration
             string path = System.IO.Path.Combine(work, IrqSessionLedger.FileName);
             System.IO.File.WriteAllText(path, "PAVISE_IRQ_SESSIONS_V2\r\nS|1|300|xx|0|0|0|0\r\n");
             Eq(0, IrqSessionLedger.Load().Count);
             Eq(false, System.IO.File.Exists(path));
             Eq(true, IrqSessionLedger.Append(Session(300, Rec("new.sys", 1, 1, 1, 0, 1UL))));
-            if (System.IO.File.ReadAllText(path).IndexOf("PAVISE_IRQ_SESSIONS_V4", StringComparison.Ordinal) < 0)
-                throw new Exception("obsolete IRQ ledger was not replaced with V4");
+            if (System.IO.File.ReadAllText(path).IndexOf("PAVISE_IRQ_SESSIONS_V5", StringComparison.Ordinal) < 0)
+                throw new Exception("obsolete IRQ ledger was not replaced with V5");
 
-            // 刷新页的读取会和对局结束的写入撞上 V2 作废时别把另一个线程刚写出的 V4 删了
+            // The refresh page's read can collide with the match-end write, discarding V2 must not delete the V5 another thread just wrote
             for (int i = 0; i < 16; i++)
             {
                 System.IO.File.WriteAllText(path, "PAVISE_IRQ_SESSIONS_V2\r\nS|1|300|xx|0|0|0|0\r\n");
@@ -848,7 +849,7 @@ namespace PaviseApp
                 Eq(1, IrqSessionLedger.Load().Count);
             }
 
-            // 短暂的读冲突不能当成历史为空 再覆盖成只剩当前这一局
+            // A brief read conflict must not be taken as empty history and then overwritten down to just the current match
             string beforeLockedAppend = System.IO.File.ReadAllText(path);
             using (var held = new System.IO.FileStream(path, System.IO.FileMode.Open,
                 System.IO.FileAccess.Read, System.IO.FileShare.None))
@@ -860,8 +861,8 @@ namespace PaviseApp
             Eq(0, System.IO.Directory.GetFiles(work,
                 IrqSessionLedger.FileName + ".*.tmp").Length);
 
-            // 有任何一行坏了 都不许拿可解析的前半截去评分 也不许 Append 把损坏文件盖掉
-            // 坏掉的新 S 还得把上一局切断 不能让后面的 D 串到上一局去
+            // If any line is bad, neither score the parseable first half nor let Append overwrite the corrupt file
+            // A broken new S still cuts off the previous match, later D lines must not chain onto it
             string malformed = "PAVISE_IRQ_SESSIONS_V3\r\n"
                 + "S|1|300|VGVzdA==|boot|topo|0|0|FF|FFFF\r\n"
                 + "D|eC5zeXM=||1|1000|1000|1|0|1|0|\r\n"
@@ -922,7 +923,7 @@ namespace PaviseApp
                 if (invalidFileBytes[i] != keptInvalidFileBytes[i])
                     throw new Exception("invalid UTF-8 ledger was rewritten");
 
-            // 认不出的头一律只读 不许把新版数据碾成旧格式
+            // Unrecognized headers are read-only, never crush newer data into the old format
             System.IO.File.WriteAllText(path, "PAVISE_IRQ_SESSIONS_V9\r\nS|1|300|xx|0|0\r\n");
             Eq(0, IrqSessionLedger.Load().Count);
             Eq(false, IrqSessionLedger.Append(Session(300, Rec("b.sys", 1, 1, 1, 0, 1UL))));
@@ -930,7 +931,7 @@ namespace PaviseApp
             if (still.IndexOf("PAVISE_IRQ_SESSIONS_V9", StringComparison.Ordinal) < 0)
                 throw new Exception("an unknown newer ledger format was overwritten");
 
-            // A 目录那个未知新版的只读状态 不能污染随后绑定的 B 目录
+            // Directory A's unknown-newer-version read-only state must not pollute directory B bound afterwards
             string work2 = System.IO.Path.Combine(dir, "irq-ledger-second");
             System.IO.Directory.CreateDirectory(work2);
             IrqSessionLedger.Bind(work2);

@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 NVAPI 驱动配置与数码振动封装 全部函数经 QueryInterface 动态解析 驱动缺失时整体降级
+// File purpose NVAPI driver settings and Digital Vibrance wrapper, all functions resolved dynamically via QueryInterface, degrades as a whole when the driver is missing
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -48,14 +48,14 @@ namespace PaviseApp
         public const uint SettingRebarSizeLimit = 0x000F00FF;
         public const uint SettingDlssSrOverride = 0x10E41E01;
         public const uint SettingDlssSrPreset = 0x10E41DF3;
-        // CUDA 上下文存在时驱动把显存降到 P2 频率 关掉后显存跟核心一起留在 P0
-        //   Inspector 自定义键 值 0 关 1 开 默认开
+        // With a CUDA context present the driver drops VRAM to P2 clocks, turned off VRAM stays at P0 with the core
+        //   Inspector custom key, value 0 off 1 on, default on
         public const uint SettingCudaForceP2 = 0x50166C5E;
-        // 逐游戏 VRR 覆盖 0 允许 1 强制关 2 不允许 3 ULMB 4 固定刷新 只写允许
+        // Per-game VRR override, 0 allow 1 force off 2 disallow 3 ULMB 4 fixed refresh, only allow is ever written
         public const uint SettingVrrAppOverride = 0x10A879CF;
         public const uint VrrAppAllow = 0;
         public const uint CudaForceP2Off = 0;
-        // 着色器磁盘缓存总开关 用户全局关了它 缓存大小无上限就是空话
+        // Shader disk cache master switch, if the user turned it off globally, unlimited cache size is meaningless
         public const uint SettingShaderCacheEnable = 0x00198FFF;
         public const uint ShaderCacheOn = 1;
         public const uint RebarSizeDefault = 0x40000000;

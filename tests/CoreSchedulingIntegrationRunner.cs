@@ -55,7 +55,7 @@ namespace PaviseApp
 
                     Eq(true, Native.SetProcessAffinityMask(h, (UIntPtr)target));
                     Eq(false, f.Mode.ProbeManualPlacement(h, child.Id, creation, target, original));
-                    Eq(target, Native.QueryAffinity(h)); // never widen a process's pre-existing restriction
+                    Eq(target, Native.QueryAffinity(h)); // never widen a pre-existing process restriction
                     Eq(true, Native.SetProcessAffinityMask(h, (UIntPtr)original));
                     Eq(original, Native.QueryAffinity(h));
                     Console.WriteLine("PASS pre-existing affinity restriction is preserved on refused placement");

@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 CPU 集合 线程亲和查询与 EcoQoS
+// File purpose CPU Sets, thread affinity queries and EcoQoS
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -38,7 +38,7 @@ namespace PaviseApp
 
         private static readonly object cpuSetMaskApiSync = new object();
         private static volatile bool cpuSetMaskApisResolved;
-        // -1 表示连 kernel32 都无法解析 0 才表示老系统确实没有该导出
+        // -1 means even kernel32 could not be resolved, 0 means an old OS genuinely lacks the export
         private static int processCpuSetMaskApiState = -1;
         private static int threadCpuSetMaskApiState = -1;
         private static CpuSetMaskGetter getProcessDefaultCpuSetMasks;
@@ -191,8 +191,8 @@ namespace PaviseApp
             if (thread == IntPtr.Zero) return false;
             try
             {
-                // GetExitCodeThread 的 259 也可能是线程真实退出码 带
-                // SYNCHRONIZE 的句柄用零超时 wait 才能无歧义区分存活
+                // 259 from GetExitCodeThread could also be the thread's real exit code, only a zero-timeout
+                // wait on a handle with SYNCHRONIZE distinguishes liveness unambiguously
                 uint wait = WaitForSingleObject(thread, 0);
                 if (wait == WaitTimeout) { active = true; return true; }
                 if (wait == 0) return true;
@@ -218,8 +218,8 @@ namespace PaviseApp
             catch { return false; }
         }
 
-        // null 表示查询失败 空数组表示线程没有显式 CPU Set 分配
-        // 两次调用之间数量发生变化也视为未知 归因链路必须 fail-closed
+        // null means the query failed, an empty array means the thread has no explicit CPU Set assignment
+        // a count change between the two calls also counts as unknown, the attribution chain must fail closed
         public static uint[] QueryThreadSelectedCpuSets(IntPtr thread)
         {
             if (thread == IntPtr.Zero) return null;
@@ -458,8 +458,8 @@ namespace PaviseApp
         }
 
         private static int hasBattery = -1;
-        // 当前是不是交流供电 读不到就当插着电 别在判断不了的时候擅自按电池处理
-        //   AcLineStatus 0 电池 1 交流 255 未知
+        // Whether on AC power now, treat as plugged in when unreadable, never assume battery when it cannot be determined
+        //   AcLineStatus 0 battery 1 AC 255 unknown
         public static bool OnAcPower()
         {
             try
@@ -500,9 +500,9 @@ namespace PaviseApp
 
         public const int PROCESS_SET_QUOTA = 0x0100;
         public const int PROCESS_SET_INFORMATION = 0x0200;
-        // D3DKMT 的显存查询与预留不吃 QUERY_LIMITED 本机实测一律 STATUS_ACCESS_DENIED
-        //   QueryVideoMemoryInfo 要 QUERY_INFORMATION ChangeVideoMemoryReservation 要 SET_INFORMATION
-        //   两者都比 QUERY_LIMITED 更容易被反作弊拒绝 所以护盾的跳过率天然高于提优
+        // D3DKMT VRAM query and reservation do not accept QUERY_LIMITED, measured on this machine as STATUS_ACCESS_DENIED every time
+        //   QueryVideoMemoryInfo needs QUERY_INFORMATION, ChangeVideoMemoryReservation needs SET_INFORMATION
+        //   both are more readily refused by anti-cheat than QUERY_LIMITED, so the shield's skip rate is naturally higher than boost's
         public const int PROCESS_QUERY_INFORMATION = 0x0400;
         public const int PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 

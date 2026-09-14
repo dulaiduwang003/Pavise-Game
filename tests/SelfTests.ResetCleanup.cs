@@ -1,5 +1,5 @@
-// 文件用途 隔离的重置正确性 独立临时文件 还原和注册表都是 mock
-// 不删真实 HKCU 不跑优化循环 不还原进程 不启动游戏
+// File purpose Isolated reset correctness, standalone temp files, restore and registry are mocked
+// No real HKCU deletion, no optimization loop, no process restore, no game launch
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
@@ -53,8 +53,8 @@ namespace PaviseApp
                     Lang.Cur = 0;
                     LegacyPurge.RestoreHook = delegate { return new List<string>(); };
                     LegacyPurge.SkipRegistryDelete = false;
-                    // 每个场景都得显式把这个哨兵换掉
-                    // 新测试要是忘了 结果是失败 而不是摸到真的 HKCU
+                    // Every scenario must explicitly replace this sentinel
+                    // a new test that forgets fails instead of touching the real HKCU
                     LegacyPurge.DeleteRegistryHook = delegate
                     { throw new InvalidOperationException("Unexpected registry operation in isolated reset test"); };
                     test(root);
@@ -77,7 +77,7 @@ namespace PaviseApp
         private static void ResetRetiredIfeoEmptyCleanupClearsOptIns(string root)
         {
             var oldHive = IfeoStore.Hive;
-            // 就算这个测试退化了 也碰不到真实注册表
+            // Even if this test regresses it cannot reach the real registry
             IfeoStore.Hive = null;
             try
             {
@@ -100,8 +100,8 @@ namespace PaviseApp
         {
             const string exe = "retired-game.exe";
             var oldHive = IfeoStore.Hive;
-            // 用现成的测试接缝模拟 IFEO 蜂巢不可用
-            // ReversibleReg 得失败 而且不能把恢复数据删掉
+            // Use the existing test seam to simulate the IFEO hive being unavailable
+            // ReversibleReg must fail and must not delete the recovery data
             IfeoStore.Hive = null;
             try
             {
@@ -523,8 +523,8 @@ namespace PaviseApp
 
         private static void ResetCreateJunction(string link, string target)
         {
-            // 只创建 不走 cmd 和批处理删除
-            // 所有路径都分配在这套测试自己的独立临时目录下 跟用户数据没关系
+            // Create only, no cmd and no batch delete
+            // Every path is allocated under this test suite's own standalone temp directory, unrelated to user data
             string script = "New-Item -ItemType Junction -Path '" + link.Replace("'", "''")
                 + "' -Target '" + target.Replace("'", "''") + "' -ErrorAction Stop | Out-Null";
             using (Process process = Process.Start(new ProcessStartInfo

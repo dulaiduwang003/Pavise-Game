@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 LCU 凭据的解析与来源发现
+// File purpose LCU credential parsing and source discovery
 
 using System;
 using System.Collections.Generic;

@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 待机清理的显式授权与全局参数编辑 UI 不直接查询或清理内存
+// Explicit authorization and global parameter editing UI for standby list cleanup; never queries or cleans memory directly
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -55,8 +55,8 @@ namespace PaviseApp
 
         private void RefreshStandbyCleanerPresentation()
         {
-            // 没有任何预设会强制打开这个开关 权限不足会挡住新的开启
-            // 但不能妨碍把已经开着的关掉
+            // No preset forces this switch on; insufficient privilege blocks a new enable
+            // but must not prevent turning off something already on
             if (swPolicyStandbyCleaner != null)
             {
                 swPolicyStandbyCleaner.SetSilently(gameMode.StandbyCleanerEnabled);
@@ -113,16 +113,16 @@ namespace PaviseApp
 
         private bool ApplyStandbyCleanerOptions(StandbyCleanerOptions value)
         {
-            // 编辑器被取消会返回 null 无论编辑还是保存参数都不算开启
-            // 这条路径绝不能触发任何内存操作
+            // A cancelled editor returns null; neither editing nor saving parameters counts as enabling
+            // This path must never trigger any memory operation
             if (value == null || !value.IsValid || !gameMode.TrySetStandbyCleanerOptions(value)) return false;
             RefreshStandbyCleanerPresentation();
             return true;
         }
     }
 
-    // 由 RoundPanel 统一持有 两个子控件才能共用同一张卡片底
-    // 不要再给这组紧凑的按钮和开关套第二层边框
+    // Held by a single RoundPanel so the two child controls share one card background
+    // Do not wrap this compact group of buttons and switches in a second border
     internal sealed class StandbyCleanerActionHost : RoundPanel
     {
         protected override void OnPaintBackground(PaintEventArgs e)
@@ -200,7 +200,7 @@ namespace PaviseApp
             ActiveControl = listBox;
         }
 
-        // 一键档位只填入输入框 不保存也不清理 保存参数 仍是唯一提交入口
+        // One-click tiers only fill the input boxes, neither save nor clean; Save remains the only submit entry
         private int AddPresetRow(Control parent, int width, int y)
         {
             var caption = MakeLabel(Lang.T("standbycleaner.options.preset"), Theme.UI(9f, true), Theme.Fg);

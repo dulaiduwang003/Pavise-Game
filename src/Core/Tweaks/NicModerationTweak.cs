@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 物理有线默认出口的中断合并实验 仅标准 0/1 收据先行 重启生效 可逆
+// File purpose Interrupt moderation experiment on the physical wired default egress; standard 0/1 only, receipt first, takes effect after reboot, reversible
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -17,11 +17,11 @@ namespace PaviseApp
         RestoreOriginal
     }
 
-    // 微软的 *InterruptModeration 只管 Off 和 Enabled 至于 Enabled 之后走
-    // Adaptive Medium 还是厂商自家算法 都不在标准键里 这里不匹配本地化 DisplayName
-    // 也不猜私有 ITR 值 实验只在用户明确确认之后 把唯一那个物理默认出口
-    // 从 Driver-managed 暂存成 Off 驱动原值 稳定接口身份和 applied 值一起入账
-    // 恢复时按 CAS 规则来 免得盖掉用户或者别的工具的新改动
+    // Microsoft's *InterruptModeration only covers Off and Enabled; whether Enabled then goes
+    // Adaptive, Medium or a vendor's own algorithm isn't in the standard key; no matching on localized DisplayName here
+    // and no guessing private ITR values; the experiment, only after explicit user confirmation, stages the sole physical default egress
+    // from Driver-managed to Off; the driver's original value, stable interface identity and the applied value all go in the record
+    // Restore follows CAS rules so new changes by the user or other tools aren't overwritten
     internal static class NicModerationTweak
     {
         private const string ClassRoot =
@@ -30,7 +30,7 @@ namespace PaviseApp
             @"SYSTEM\CurrentControlSet\Control\Network\{4D36E972-E325-11CE-BFC1-08002BE10318}";
         private const string ModerationValue = "*InterruptModeration";
 
-        // V1 是 2.1.3.3 那版全物理有线网卡统一关闭留下的收据 只留着做升级还原
+        // V1 is the receipt left by the 2.1.3.3 version that disabled all physical wired NICs uniformly; kept only for upgrade restore
         private const string LegacyListKey = "NicImList";
         private const string LegacyFlagKey = "NicImOffByPavise";
         private const char LegacyAppliedSep = '\u001F';
@@ -122,8 +122,8 @@ namespace PaviseApp
             bool result;
             lock (lk)
             {
-                // 新策略不继承旧策略的所有权语义 先按旧账还干净 再让用户自己去开单出口实验
-                // 旧的 Off 收据不能拿来当新收据解释
+                // The new policy doesn't inherit the old policy's ownership semantics; settle the old records cleanly first, then let the user start the single-egress experiment himself
+                // An old Off receipt must not be interpreted as a new receipt
                 if (HasLegacyResidue && !RestoreLegacyLocked())
                 {
                     Logger.Log(Lang.T("log.nicim.legacyfail"));
@@ -144,8 +144,8 @@ namespace PaviseApp
                     Logger.Log(Lang.T("log.nicim.failed") + IssueText(issue) + label);
                 result = ok;
             }
-            // 旧账迁移在 nic 锁外做 极限账本已下架 这里不再有跨锁顺序问题
-            // 旧 token 以后也绝不能解释成 V2 实验的所有权
+            // Legacy migration runs outside the nic lock; the Extreme ledger is withdrawn, so no cross-lock ordering issue remains here
+            // The old token must never be interpreted as ownership of the V2 experiment either
             return result;
         }
 
@@ -171,8 +171,8 @@ namespace PaviseApp
             return result;
         }
 
-        // 升级到新策略只收回 V1 那批写入
-        // V2 是用户在新界面自己开的实验 正常启动不能替他关掉
+        // Upgrading to the new policy only takes back the V1 batch of writes
+        // V2 is an experiment the user started in the new UI; a normal startup must not turn it off for him
         public static bool MigrateLegacy()
         {
             bool ok;
@@ -184,8 +184,8 @@ namespace PaviseApp
             return ok;
         }
 
-        // 启动时对账 Prepared 顺带处理第二个崩溃窗口
-        // 就是已经写回 Original 但 Applied 收据还没清掉那种 正常的 Applied+Desired 实验不动
+        // Startup reconciliation of Prepared, also handling the second crash window
+        // the one where Original is already written back but the Applied receipt isn't cleared yet; a normal Applied+Desired experiment is left alone
         public static void ReconcileStartup()
         {
             lock (lk)
@@ -206,9 +206,9 @@ namespace PaviseApp
             return HasLegacyResidue || strategy.HasReceipt;
         }
 
-        // 清除全部是唯一允许丢恢复证据的路径 损坏或者读不出来的收据只清应用记录 不猜系统原值
-        // 设备已卸载而且稳定身份也不在了 同样可以结清
-        // 普通关闭一律留着这些收据 免得静默覆盖或者还原错
+        // Wipe all is the only path allowed to drop restore evidence; corrupted or unreadable receipts only clear the apply record, never guess the system's original value
+        // Device uninstalled with its stable identity gone can be settled the same way
+        // A normal disable always keeps these receipts to avoid a silent overwrite or a wrong restore
         public static bool AbandonUnprovableForReset()
         {
             lock (lk)
@@ -231,8 +231,8 @@ namespace PaviseApp
                     {
                         NicModerationTarget current = NicModerationStrategy.FindIdentity(
                             scan.Targets, receipt);
-                        // 目标还是 Pavise Desired 的时候清收据 会留一个没主的 Off
-                        // 只有 Original 或者外部值已经接管 才能在显式重置里结清应用记录
+                        // Clearing the receipt while the target still reads Pavise Desired would leave an ownerless Off
+                        // Only when Original or an external value has taken over may an explicit reset settle the apply record
                         if (current == null || !current.ModeReadReliable
                                 || current.Mode == receipt.Desired) return false;
                     }
@@ -249,7 +249,7 @@ namespace PaviseApp
         private static bool DiscardLegacyReceiptsForResetLocked()
         {
             List<string> ids = BuildLegacyIds();
-            // 先完整预检一遍 免得清到一半才发现还有 Pavise Desired=0 的有效旧账
+            // Full precheck first, so we don't get halfway through clearing before finding a still-valid legacy record with Pavise Desired=0
             foreach (string id in ids) if (!CanDiscardLegacySlot(id)) return false;
             bool all = true;
             foreach (string id in ids)
@@ -331,7 +331,7 @@ namespace PaviseApp
         {
             string rawReceipt;
             if (!Settings.TryLoadStr("NicIm_" + id, out rawReceipt)) return false;
-            // 清单和 flag 可能在槽结清之后才崩 空槽是可以安全收尾的孤儿信标
+            // The list and flag may crash after the slot was settled; an empty slot is an orphan beacon that's safe to finish off
             if (string.IsNullOrEmpty(rawReceipt)) return true;
             string original;
             bool originalAbsent;
@@ -343,8 +343,8 @@ namespace PaviseApp
                     ClassRoot + @"\" + id, true))
                 {
                     if (node == null) return ClearLegacySlot(slot);
-                    // V1 没有稳定身份 只能在原来那行 000x 还是物理 Ethernet
-                    // 而且当前值正好等于旧策略 Desired=0 时才做 CAS 别的值都算外部接管
+                    // V1 has no stable identity; only CAS when the original 000x row is still physical Ethernet
+                    // and the current value exactly equals the legacy policy's Desired=0; any other value counts as external takeover
                     bool rowEligible = HardwareRowEligible(node.GetValue("*IfType"),
                         node.GetValue("Characteristics"));
                     object raw = node.GetValue(ModerationValue);
@@ -474,15 +474,15 @@ namespace PaviseApp
             if (networkDirect == null)
                 return networkDirectTechnology != null;
             int value;
-            // 标准键在 但形态不认识 别把证明不了已关闭解释成这就是普通网卡
+            // Standard key present but in an unrecognized form; don't read 'can't prove it's off' as 'this is a plain NIC'
             return !TryNumeric(networkDirect, out value) || value != 0;
         }
 
         internal static bool PhysicalSourceConflict(bool wmiReadOk, bool linkUp,
             bool classPhysicalWired, bool wmiPhysical)
         {
-            // WMI 成功的时候 它是第二个独立的物理设备来源
-            // 类键说自己是物理网卡 活动接口却不在这个集合里 多半是虚拟或 VPN 驱动误报 直接失败关闭
+            // When WMI succeeds it is the second independent source of physical devices
+            // Class key claims physical NIC but the active interface isn't in that set: most likely a virtual or VPN driver misreport, fail closed
             return wmiReadOk && linkUp && classPhysicalWired && !wmiPhysical;
         }
 
@@ -494,8 +494,8 @@ namespace PaviseApp
             resolved = "";
             if (!wmiReadOk)
             {
-                // WMI 暂时用不了就留着类键身份 给旧收据做 CAS 恢复
-                // 扫描会把 LiveStateReliable 置成 false 所以这条支路不会建立新实验
+                // If WMI is temporarily unavailable, keep the class key identity so old receipts can do CAS restore
+                // The scan sets LiveStateReliable to false, so this branch never establishes a new experiment
                 if (direct.Length == 0) return false;
                 resolved = direct;
                 return true;
@@ -520,7 +520,7 @@ namespace PaviseApp
             else ids[guid] = pnp;
         }
 
-        // 行级判定只认标准 0 和 1 未知值 非字符串值 无线和非物理设备一律失败关闭
+        // Row-level check accepts only standard 0 and 1; unknown values, non-string values, wireless and non-physical devices all fail closed
         internal static bool RowEligible(object moderation, object ifType, object characteristics)
         {
             int typeValue, flags;
@@ -647,8 +647,8 @@ namespace PaviseApp
                                 bool connectionReadOk = TryConnectionKnown(netCfg,
                                     out connectionKnown);
                                 if (!connectionReadOk) liveStateReliable = false;
-                                // 两个独立来源都说不在的类键 当卸载残影处理
-                                // 只要还有一个来源看得见设备就保守留着 并且在状态可靠之前禁止新写入
+                                // A class key that both independent sources say is absent is treated as an uninstall ghost
+                                // If even one source still sees the device, keep it conservatively and forbid new writes until state is reliable
                                 if (connectionReadOk && !connectionKnown && !interfaceKnown) continue;
                                 if (!connectionKnown && interfaceKnown) liveStateReliable = false;
 
@@ -671,8 +671,8 @@ namespace PaviseApp
                                 target.DriverVersion = (node.GetValue("DriverVersion") as string) ?? "";
                                 target.Service = (node.GetValue("Service") as string) ?? "";
                                 target.InfPath = (node.GetValue("InfPath") as string) ?? "";
-                                // 值缺失或者是私有值 也照样计进活动物理网卡的数
-                                // 只是永远不能当写入目标
+                                // Missing or private values still count toward the number of active physical NICs
+                                // they just can never be a write target
                                 target.Mode = ReadMode(node, out target.ModeReadReliable);
                                 string component = (node.GetValue("ComponentId") as string) ?? "";
                                 bool aggregate = IsSoftwareAggregate(component,
@@ -715,9 +715,9 @@ namespace PaviseApp
                             }
                         }
                     }
-                    // 反过来核对一遍实时接口 WMI 确认的活动物理 Ethernet 找不到对应的可解析类键
-                    // 或者 WMI 自己挂了却冒出没映射上的活动 Ethernet
-                    // 这两种都证明不了唯一物理出口 禁止新写入
+                    // Cross-check the live interfaces the other way: an active physical Ethernet confirmed by WMI with no parseable class key
+                    // or WMI itself down yet an unmapped active Ethernet shows up
+                    // neither can prove a sole physical egress; new writes are forbidden
                     foreach (KeyValuePair<string, NetworkInterface> pair in interfaces)
                     {
                         NetworkInterface nic = pair.Value;
@@ -743,8 +743,8 @@ namespace PaviseApp
                     return NicModerationWriteResult.IdentityChanged;
                 if (desired == NicModerationMode.Off)
                 {
-                    // Prepared 落盘之后再复核一次实时出口 堵住路由或链路在扫描和注册表写入之间变掉的窗口
-                    // 恢复原值不看当前拓扑
+                    // After Prepared is persisted, recheck the live egress to close the window where the route or link changed between the scan and the registry write
+                    // Restoring the original doesn't look at the current topology
                     NicModerationScanIssue issue;
                     NicModerationTarget latest = NicModerationStrategy.SelectTarget(
                         Scan(), out issue);
@@ -776,8 +776,8 @@ namespace PaviseApp
                             wrote = true;
                             node.Flush();
                         }
-                        // SetValue 抛错不能证明一个字节都没写进去
-                        // 归到 OutcomeUnknown 留着 Prepared 走 CAS 对账
+                        // A SetValue throw can't prove not a single byte was written
+                        // Classify as OutcomeUnknown, keep Prepared and go through CAS reconciliation
                         catch { return NicModerationWriteResult.ReadbackFailed; }
 
                         RegistryValueKind actualKind;
@@ -849,9 +849,9 @@ namespace PaviseApp
                                 CultureInfo.InvariantCulture));
                             string pnp = Convert.ToString(row["PNPDeviceID"],
                                 CultureInfo.InvariantCulture) ?? "";
-                            // PNP 空也把 GUID 键留着 给活动物理接口必须映射那条核对用
-                            // 它本身过不了双身份写入检查
-                            // 同一个 GUID 出现两个不同 PNP 也折叠成空 免得按 WMI 枚举顺序随手挑一个
+                            // Keep the GUID key even with an empty PNP, for the 'every active physical interface must map' check
+                            // on its own it can't pass the dual-identity write check
+                            // Two different PNPs under the same GUID also collapse to empty, so we don't just pick one by WMI enumeration order
                             if (guid.Length > 0) MergePhysicalPnpId(ids, guid, pnp);
                         }
                     }
@@ -880,8 +880,8 @@ namespace PaviseApp
             {
                 try
                 {
-                    // GetBestInterface 只查路由表 不往 1.1.1.1 发任何数据
-                    // 这地址四个字节一样 顺带避开 host 和 network byte-order 的歧义
+                    // GetBestInterface only queries the routing table; nothing is sent to 1.1.1.1
+                    // All four bytes of this address are the same, which sidesteps the host vs network byte-order ambiguity
                     byte[] address = IPAddress.Parse("1.1.1.1").GetAddressBytes();
                     uint best;
                     return GetBestInterface(BitConverter.ToUInt32(address, 0), out best) == 0
@@ -906,7 +906,7 @@ namespace PaviseApp
                 try
                 {
                     object raw = node.GetValue(ModerationValue);
-                    // 确定不存在是个可靠的不支持 和读取 API 抛异常不是一回事
+                    // Confirmed absent is a reliable 'unsupported', not the same thing as the read API throwing
                     if (raw == null)
                     {
                         reliable = true;
@@ -919,8 +919,8 @@ namespace PaviseApp
                 catch { return NicModerationMode.Unknown; }
             }
 
-            // 只按非本地化的 ComponentId 和 Service 排除 Team Bridge Hyper-V TAP 和 Wintun
-            // 显示名称只写日志 永远不参与策略判定
+            // Exclude Team, Bridge, Hyper-V, TAP and Wintun only by the non-localized ComponentId and Service
+            // Display names go to the log only, never into policy decisions
             private static bool IsSoftwareAggregate(string component, string service)
             {
                 string raw = ((component ?? "") + " " + (service ?? "")).ToLowerInvariant();

@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 可选服务暂停策略的本地 SCM 适配层 所有权只在本局有效
+// File purpose Local SCM adapter for the pause-optional-services policy, ownership is valid only for this match
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -60,8 +60,8 @@ namespace PaviseApp
             identity = "";
             try
             {
-                // phnt/ntexapi.h 信息类 90 BootIdentifier 是
-                // SYSTEM_BOOT_ENVIRONMENT_INFORMATION 的第一个字段
+                // phnt/ntexapi.h info class 90, BootIdentifier is
+                // the first field of SYSTEM_BOOT_ENVIRONMENT_INFORMATION
                 SYSTEM_BOOT_ENVIRONMENT_INFORMATION boot;
                 uint returned;
                 uint size = (uint)Marshal.SizeOf(typeof(SYSTEM_BOOT_ENVIRONMENT_INFORMATION));
@@ -104,8 +104,8 @@ namespace PaviseApp
             if (!OptionalServicePauseEngine.IsAllowed(name) || object.ReferenceEquals(expected, null)
                 || !CanStop(expected) || string.IsNullOrEmpty(expected.Configuration)
                 || !MayContinue(mayContinue)) return false;
-            // PrintNotify 和 Spooler 都要走一遍这个检查
-            // 它只是一张空闲快照 不能锁住后续新来的打印任务
+            // Both PrintNotify and Spooler must go through this check
+            // It is only an idle snapshot, it cannot lock out print jobs that arrive later
             if (IsPrintingService(name) && !IsPrintingIdle(mayContinue)) return false;
             IntPtr scm = IntPtr.Zero, service = IntPtr.Zero;
             bool stopCallEntered = false;
@@ -123,9 +123,9 @@ namespace PaviseApp
                     return false;
                 SERVICE_STATUS status;
                 if (!MayContinue(mayContinue)) return false;
-                // 成功只代表请求被接受 不代表已经到达 STOPPED
-                // 这次调用期间就算收到取消 也不能把成功丢掉
-                // 引擎必须继续持有那个待定的停止
+                // Success only means the request was accepted, not that STOPPED was reached
+                // A cancel received during this call must not discard the success
+                // The engine must keep holding that pending stop
                 stopCallEntered = true;
                 bool accepted = ControlService(service, 1, out status);
                 int error = accepted ? 0 : Marshal.GetLastWin32Error();
@@ -135,8 +135,8 @@ namespace PaviseApp
             }
             catch
             {
-                // 原生调用一旦开始 抛异常也证明不了停止没发出去
-                // 让引擎保留它的 Prepared 记录
+                // Once the native call has started, an exception does not prove the stop was never issued
+                // Let the engine keep its Prepared record
                 if (stopCallEntered) throw;
                 return false;
             }
@@ -171,8 +171,8 @@ namespace PaviseApp
                 checkedServices.Add(name);
                 if (!DependenciesRunning(scm, configuration.Dependencies, checkedServices, 0))
                     return OptionalServiceStartResult.NotIssued;
-                // 走完依赖链之后重新检查一次 永远不改启动类型
-                // 也不能把 ALREADY_RUNNING 当成我们自己启动的
+                // Re-check after walking the dependency chain, never change the start type
+                // And never treat ALREADY_RUNNING as something we started ourselves
                 if (!TryReadStartState(service, expectedConfiguration, out configuration, out ownershipChanged))
                     return ownershipChanged ? OptionalServiceStartResult.OwnershipChanged
                         : OptionalServiceStartResult.NotIssued;
@@ -183,8 +183,8 @@ namespace PaviseApp
             }
             catch
             {
-                // 原生调用结果不确定时 引擎要保持 Restoring
-                // 不能当成可以安全重试的拒绝
+                // When the native call outcome is uncertain the engine must stay in Restoring
+                // Cannot be treated as a rejection that is safe to retry
                 if (startCallEntered) throw;
                 return OptionalServiceStartResult.NotIssued;
             }
@@ -207,9 +207,9 @@ namespace PaviseApp
             try
             {
                 uint needed, count;
-                // 级别 4 只读本地连接缓存 不去联系远程打印机
-                // 我们证明不了它们的队列是空的 所以只要存在连接
-                // 或者查询失败 整个打印分组都排除
+                // Level 4 only reads the local connection cache, does not contact remote printers
+                // We cannot prove their queues are empty, so any existing connection
+                // or a failed query excludes the whole printing group
                 bool noConnections = EnumPrintersW(PrinterEnumConnections, null, 4,
                     IntPtr.Zero, 0, out needed, out count);
                 if (!MayContinue(mayContinue) || !noConnections || count != 0) return false;
@@ -283,8 +283,8 @@ namespace PaviseApp
                 ownershipChanged = IsStartOwnershipError(Marshal.GetLastWin32Error());
                 return false;
             }
-            // 观察到外部的启动或暂停要立刻记下来 之后配置查询
-            // 或者依赖查询失败 都不能把它抹掉
+            // An observed external start or pause must be recorded immediately, a later config query
+            // or dependency query failure must not erase it
             if (status.State != ServiceStopped)
             {
                 ownershipChanged = true;
@@ -310,8 +310,8 @@ namespace PaviseApp
         private static OptionalServiceStartResult ClassifyStartFailure(int error)
         {
             if (IsStartOwnershipError(error)) return OptionalServiceStartResult.OwnershipChanged;
-            // StartServiceW 文档里说这几种是目标服务启动之前就被拒绝
-            // 依赖项失败不会让这个目标启动起来
+            // StartServiceW docs say these are rejected before the target service starts
+            // A dependency failure will not bring this target up
             switch (error)
             {
                 case ErrorPathNotFound:
@@ -325,8 +325,8 @@ namespace PaviseApp
                 case ErrorServiceRequestTimeout:
                     throw new TimeoutException("The service start request timed out; its outcome is unknown.");
                 default:
-                    // NO_THREAD 可能出现在进程已创建之后 未知错误
-                    // 包括 RPC 和注册表失败 都证明不了没启动
+                    // NO_THREAD can occur after the process was created, unknown errors
+                    // including RPC and registry failures do not prove it never started
                     throw new Win32Exception(error, "The service start request failed; its outcome is unknown.");
             }
         }
@@ -342,8 +342,8 @@ namespace PaviseApp
             if (depth > 32) return false;
             foreach (string name in dependencies)
             {
-                // 启动一个分组依赖 可能顺带拉起该分组里任意服务
-                // 这条策略绝不能隐式做这种事
+                // Starting a group dependency may pull up any service in that group
+                // This policy must never do that implicitly
                 if (string.IsNullOrEmpty(name) || name[0] == '+') return false;
                 if (checkedServices.Contains(name)) continue;
                 if (checkedServices.Count >= 128) return false;
@@ -397,8 +397,8 @@ namespace PaviseApp
                 active = count != 0;
                 return true;
             }
-            // 所需缓冲区非空就已经证明有活动的依赖方
-            // 名字不需要 因为我们从不递归去停它
+            // A non-empty required buffer already proves there are active dependents
+            // Names are not needed since we never recursively stop them
             if (Marshal.GetLastWin32Error() != ErrorMoreData || needed == 0) return false;
             active = true;
             return true;

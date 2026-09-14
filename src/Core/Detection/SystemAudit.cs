@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 体检的系统事实读取 内存 电源 版本与开关状态
+// File purpose Health check system fact reads: memory, power, version, and switch states
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -30,12 +30,9 @@ namespace PaviseApp
 
     internal static partial class SystemAudit
     {
-        // 每条结论都要挂一个依据等级 界面上原样显示给用户看
-        //   本机实测最硬 台架实测是别的机器上量的 机制明确只是原理推的
-        //   未验证就是还没量过 写新结论时别图省事全填最高档
-        // 每条结论都要挂一个依据等级 界面上原样显示给用户看
-        //   本机实测最硬 台架实测是别的机器上量的 机制明确只是原理推的
-        //   未验证就是还没量过 写新结论时别图省事全填最高档
+        // Every verdict must carry an evidence level, shown verbatim to the user in the UI
+        //   Measured locally is the strongest; bench-measured was measured on a different machine; mechanism-clear is inferred from principle only
+        //   Unverified means not measured yet; when writing new verdicts do not lazily stamp everything with the top level
         public const string EvMeasuredLocal = "本机实测";
         public const string EvMeasuredBench = "台架实测";
         public const string EvMechanism = "机制明确";

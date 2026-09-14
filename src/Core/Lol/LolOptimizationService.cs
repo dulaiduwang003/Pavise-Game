@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 英雄联盟优化服务的状态字段与控制入口
+// File purpose State fields and control entry points of the League of Legends optimization service
 
 using System;
 using System.Collections.Generic;

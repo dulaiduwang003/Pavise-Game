@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 粘滞检测 保持对局目标不抖动
+// File purpose Sticky detection, keeps the match target from flapping
 using System;
 using System.Collections.Generic;
 
@@ -186,8 +186,8 @@ namespace PaviseApp
             if (hit.RendererCreation <= 0 && fresh.TryGetValue(
                     hit.RendererPid, out rendererIdentity))
                 hit.RendererCreation = rendererIdentity.Creation;
-            // 已确认的创建时间不能被第二次查询覆写成复用 PID 的新进程
-            // 失败时也不把这份未提交的家族并入旧锚 交由原有失联宽限处理
+            // A confirmed creation time must not be overwritten by a second query with a new process reusing the PID
+            // On failure do not merge this uncommitted family into the old anchor either, leave it to the existing loss-of-contact grace period
             if (hit.RendererPid <= 0 || !fresh.ContainsKey(hit.RendererPid)) return false;
             stickyIds.Clear();
             foreach (var kv in fresh) stickyIds[kv.Key] = kv.Value;

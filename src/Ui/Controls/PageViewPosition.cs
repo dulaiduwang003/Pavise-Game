@@ -1,4 +1,4 @@
-// 只保存 UI 位置 不触碰功能开关 以控件树路径保存 重建主题/DPI 时不持有已释放控件
+// Saves UI position only, never touches feature switches; keyed by control-tree path so it holds no disposed controls across theme/DPI rebuilds
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -28,7 +28,7 @@ namespace PaviseApp
 
         internal void Restore(Control root, float scale)
         {
-            // 先恢复标签页 让对应滚动容器参与布局 再恢复位置 Index 不改变任何设置
+            // Restore the tab first so the matching scroll container takes part in layout, then restore the position; Index changes no settings
             Visit(root, "", delegate(Control control, string path)
             {
                 int index;

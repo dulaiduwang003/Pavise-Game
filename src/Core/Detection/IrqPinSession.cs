@@ -1,4 +1,4 @@
-// 文件用途 一次已完成的观测 绝不和当前桌面负载或者预设混在一起
+// File purpose One completed observation, never mixed with the current desktop load or presets
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -7,6 +7,8 @@ namespace PaviseApp
 {
     internal sealed class IrqPinSession
     {
+        internal IrqSessionRecord Record;
+        internal bool CurrentBoot;
         internal string GameName = "";
         internal long StartUtcTicks;
         internal int DurationSeconds;
@@ -20,15 +22,34 @@ namespace PaviseApp
         internal static IrqPinSession FromLatest(IList<IrqSessionRecord> records,
             IrqDevice device, string boot, string topology, Func<string, string> driverVersion)
         {
-            var view = new IrqPinSession();
-            if (records == null || records.Count == 0) return view;
-            IrqSessionRecord record = records[records.Count - 1];
+            var history = History(records, device, boot, topology, driverVersion);
+            return history.Count == 0 ? new IrqPinSession() : history[history.Count - 1];
+        }
+
+        internal static List<IrqPinSession> History(IList<IrqSessionRecord> records,
+            IrqDevice device, string boot, string topology, Func<string,string> driverVersion)
+        {
+            var result = new List<IrqPinSession>();
+            if (records != null)
+                foreach (var record in records)
+                {
+                    var view = FromRecord(record, device, boot, topology, driverVersion);
+                    if (view.Available && view.Driver != null && !view.Driver.MaskTruncated) result.Add(view);
+                }
+            return result;
+        }
+
+        internal static IrqPinSession FromRecord(IrqSessionRecord record,
+            IrqDevice device, string boot, string topology, Func<string,string> driverVersion)
+        {
+            var view = new IrqPinSession { Record = record };
             if (record == null) return view;
+            view.CurrentBoot = IrqAffinityEngine.SameBoot(record.BootStamp, boot);
             view.GameName = record.GameName;
             view.StartUtcTicks = record.StartUtcTicks;
             view.DurationSeconds = record.DurationSeconds;
-            view.Exclusion = record.DisplayExclusion(boot, topology);
-            // 没有拓扑身份 老的 CPU 编号没法安全映射
+            view.Exclusion = record.DisplayExclusion(record.BootStamp, topology);
+            // No topology identity, so old CPU numbers cannot be mapped safely
             if (string.IsNullOrEmpty(record.TopologyStamp))
                 view.Exclusion = IrqSessionExclusion.DifferentTopology;
             if (view.Exclusion != IrqSessionExclusion.None) return view;
@@ -64,7 +85,7 @@ namespace PaviseApp
                 {
                     view.Driver = null;
                     view.SeenMask = 0;
-                    return view; // Ambiguous driver identities: do not guess placement.
+                    return view; // Ambiguous driver identities do not guess placement
                 }
                 view.Driver = driver;
                 view.SeenMask = driver.MaskTruncated ? 0 : driver.CpuMask & record.SystemMask;

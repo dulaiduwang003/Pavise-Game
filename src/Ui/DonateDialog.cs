@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 捐赠弹窗 微信二维码 请作者喝杯奶茶
+// File purpose Donate dialog, WeChat QR code, buy the author a milk tea
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -21,7 +21,7 @@ namespace PaviseApp
         private float sweep;
         private int bodyTop, bodyH, qrTop, hintTop;
 
-        // 位图交给弹窗管 换图时把旧的释放掉 关窗时一起释放
+        // The bitmap is owned by the dialog; the old one is released when the image is swapped, and everything is released on close
         public DonateDialog(Bitmap qr, bool loading)
         {
             image = qr;
@@ -91,7 +91,7 @@ namespace PaviseApp
             Fx.EnterForm(this);
         }
 
-        // 新图到了就换 旧图释放 拉失败但手里还有旧图就什么都不改 用户看到的仍是能扫的码
+        // Swap in the new image when it arrives and release the old one; if the fetch fails but an old image is still held change nothing, the user still sees a scannable code
         public void SetImage(Bitmap qr)
         {
             if (qr == null) { MarkFailed(); return; }
@@ -174,7 +174,7 @@ namespace PaviseApp
                 new Rectangle(padX, bodyTop, contentW, bodyH),
                 Theme.Dim, TextFormatFlags.Left | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
 
-            // 二维码垫一块白底 深色主题下扫码更稳 图按整数比例缩 别把码点缩糊了
+            // Pad the QR code with a white background so scanning is more reliable in the dark theme; scale the image by an integer factor so the modules do not blur
             int boxSide = Theme.S(QrSize + QrPad * 2);
             var box = new Rectangle((Width - boxSide) / 2, qrTop, boxSide, boxSide);
             using (GraphicsPath card = Theme.TechPath(box, Theme.S(10)))

@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 游戏库英雄联盟卡片下方的增强区 上行状态与指令 下行两个协议开关与附加层删除
+// File purpose Enhancement area below the League of Legends card in the game library, top row status and commands, bottom row two protocol toggles and add-on layer deletion
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;

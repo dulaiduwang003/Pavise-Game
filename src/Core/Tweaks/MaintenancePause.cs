@@ -1,14 +1,14 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 对局期间关掉 Windows 自动维护 退局写回 碎片整理 NGEN 计划扫描不再挑对局中的空闲判定起跑
+// File purpose Disable Windows automatic maintenance during a match and write it back at match end; defrag, NGEN and scheduled scans no longer launch off a mid-match idle verdict
 using Microsoft.Win32;
 
 namespace PaviseApp
 {
-    // 自动维护在"空闲判定"之后启动 挂机 过场 加载屏都可能被判成空闲
-    //   MaintenanceDisabled 只挡自动触发 用户手动运行维护不受影响 退局按快照写回
+    // Automatic maintenance starts after an idle verdict; AFK, cutscenes and loading screens can all be judged idle
+    //   MaintenanceDisabled only blocks the automatic trigger; manually run maintenance is unaffected; written back from snapshot at match end
     internal static class MaintenancePause
     {
-        // 会话日记键由恢复完成判定共同引用 改名必须两边一起
+        // Session journal key shared with the restore-complete check; rename both sides together
         internal const string JournalKey = "PrevMaintDisabled";
         private static readonly ReversibleReg Disabled = new ReversibleReg(
             Registry.LocalMachine, @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\Maintenance",

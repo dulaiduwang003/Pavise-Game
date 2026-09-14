@@ -1,5 +1,5 @@
 ﻿// @author bdth 2074055628@qq.com
-// 文件用途 核心矩阵控件的单元格模型 配色与动画帧
+// File purpose Cell model, colors and animation frames of the core matrix control
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -42,7 +42,7 @@ namespace PaviseApp
         private const int BandHead = 26;
         private const int BandGap = 16;
 
-        // 选核弹窗(Annotate)把格子放大 好塞下大号负载百分比 其余页面维持原尺寸
+        // Core picker dialog Annotate enlarges cells to fit the big load percentage, other pages keep the original size
         private const int AnnCellW = 46;
         private const int AnnCellH = 42;
         private int CellWpx { get { return Theme.S(annotate ? AnnCellW : CellW); } }
@@ -58,14 +58,14 @@ namespace PaviseApp
         private readonly Motion[] cellHot = new Motion[64];
         private readonly Motion[] cellHeat = new Motion[64];
 
-        // 选核弹窗专用的同局平均负载 + 核类型叠加 其余页面保持原样
+        // Average load this match + core kind overlay, core picker dialog only, other pages unchanged
         private ulong seenMask;
         public ulong ObservedGameMask { get; set; }
         private bool annotate;
         private Dictionary<int, double> loads;
         private int legendY = -1;
 
-        // 图例每行高度 会按可用宽度折行 行数由 LegendHeight 实算 撑够弹窗
+        // Legend row height, wraps by available width, row count is computed by LegendHeight to size the dialog
         private const int LegendRowH = 22;
 
         public Action<ulong> SelectionChanged;
@@ -92,7 +92,7 @@ namespace PaviseApp
             if (SelectionChanged != null) SelectionChanged(selected);
         }
 
-        // 打开负载热力/类型标注 会多占一行图例 必须在 LayoutFor 之前设
+        // Enables load heat and kind annotation, takes one more legend row, must be set before LayoutFor
         public bool Annotate
         {
             get { return annotate; }
@@ -105,7 +105,7 @@ namespace PaviseApp
             set { if (seenMask == value) return; seenMask = value & allMask; Invalidate(); }
         }
 
-        // 采到的 per-core 负载 采集失败传空字典即可 热力自动退回不画 只留类型标注
+        // Sampled per-core load, pass an empty dictionary on sampling failure, heat falls back to not drawn and only the kind annotation remains
         public void SetLoads(Dictionary<int, double> map)
         {
             loads = new Dictionary<int, double>();
@@ -129,10 +129,10 @@ namespace PaviseApp
             return t < 0f ? 0f : t > 1f ? 1f : t;
         }
 
-        // ROG 电竞负载色阶 分档明确:低=冷青(压暗) 中=黄 高=橙 极高=ROG 红(Theme.Danger 恒红)
-        //   阈值刻意压低 60% 就进 橙 段 72% 就烧成纯红 让中高负载核一眼可见地暖/红
-        //   低段越接近 0 越暗 让空闲核冷下去 与繁忙红核拉开对比
-        // 本局中断落核的专用标记色 紫罗兰 区别于负载红和低载青
+        // ROG esports load color scale, clearly stepped, low=cool cyan darkened, mid=yellow, high=orange, extreme=ROG red, Theme.Danger is always red
+        //   Thresholds are deliberately low, 60% enters the orange band, 72% burns to pure red, so mid-high load cores read warm or red at a glance
+        //   The low band gets darker toward 0 so idle cores cool down and contrast with busy red cores
+        // Dedicated marker color for this match's IRQ placement, violet, distinct from load red and low-load cyan
         private static readonly Color SeenViolet = Color.FromArgb(176, 138, 255);
         private static readonly Color RogCool = Color.FromArgb(64, 200, 240);
         private static readonly Color RogAmber = Color.FromArgb(255, 178, 44);
@@ -140,11 +140,11 @@ namespace PaviseApp
         private static readonly Color RogYellow = Color.FromArgb(255, 216, 72);
         private static readonly Color RogOrange = Color.FromArgb(255, 122, 36);
 
-        // 发光起始阈值 与强度曲线:60% 起冒头 越往 100% 越炸
+        // Glow start threshold and intensity curve, emerges at 60%, explodes toward 100%
         private const float WarmT = 0.60f;
         private static float GlowK(float t)
         {
-            float k = (t - 0.48f) / 0.42f;   // 0.60→0.29 0.80→0.76 0.88→0.95 1.0→1
+            float k = (t - 0.48f) / 0.42f;   // 0.60 -> 0.29, 0.80 -> 0.76, 0.88 -> 0.95, 1.0 -> 1
             return k < 0f ? 0f : k > 1f ? 1f : k;
         }
 
@@ -155,11 +155,11 @@ namespace PaviseApp
             if (t < 0.38f) return Col.Lerp(Color.FromArgb(118, 150, 170), RogCyan, t / 0.38f);
             if (t < 0.55f) return Col.Lerp(RogCyan, RogYellow, (t - 0.38f) / 0.17f);
             if (t < 0.72f) return Col.Lerp(RogYellow, RogOrange, (t - 0.55f) / 0.17f);
-            return Col.Lerp(RogOrange, red, (t - 0.72f) / 0.13f);   // 85%+ 已是纯红
+            return Col.Lerp(RogOrange, red, (t - 0.72f) / 0.13f);   // 85%+ is already pure red
         }
 
-        // 径向霓虹辉光 让高负载核从深黑底上 跳 出来 用 PathGradientBrush 才有真正的软发光
-        //   pad 越大 光晕外溢越远 越 炸 ;draw 在填充之上时用小 pad 只染内部 不糊字
+        // Radial neon glow makes high-load cores pop off the deep black base, only PathGradientBrush gives a real soft glow
+        //   Larger pad spills the halo further and pops more, when drawn over the fill use a small pad to tint only the inside without blurring text
         private static void GlowEllipse(Graphics g, Rectangle r, Color c, float k, int centerAlpha, int pad)
         {
             if (k < 0f) k = 0f; else if (k > 1f) k = 1f;
@@ -180,7 +180,7 @@ namespace PaviseApp
             }
         }
 
-        // 多层递减描边模拟外发光 用于繁忙核 / 繁忙卡片的红霓虹边
+        // Multi-layer fading strokes simulate an outer glow, used for the red neon edge of busy cores and busy cards
         private static void NeonEdge(Graphics g, GraphicsPath path, Color c, float k)
         {
             if (k <= 0.001f) return; if (k > 1f) k = 1f;

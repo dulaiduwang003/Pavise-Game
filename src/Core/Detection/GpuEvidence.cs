@@ -1,5 +1,5 @@
 // @author bdth 2074055628@qq.com
-// 文件用途 GPU 3D 引擎占用的突发采样 为渲染进程选举提供硬证据
+// File purpose Burst sampling of GPU 3D engine utilization, hard evidence for renderer process election
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -8,7 +8,7 @@ using System.Threading;
 
 namespace PaviseApp
 {
-    // 随一次采样返回，不使用全局错误状态，避免并行调用互相覆盖诊断。
+    // Returned with each sample instead of global error state, so parallel calls do not overwrite each other's diagnostics
     internal sealed class GpuSampleDiagnostics
     {
         internal string FailureStage;
@@ -62,9 +62,9 @@ namespace PaviseApp
             return SampleCore(rounds, intervalMs, canceled, false, 0, 0, false, diagnostics);
         }
 
-        // 只统计指定适配器上的 3D 占用 用于找出对局中仍在游戏渲染卡上跑的后台进程
-        //   合并取各轮最小值 阈值判定要的是"每个窗口都至少这么忙"
-        //   选举场景取最大是对的 这里取最大反而放大瞬时尖峰 一次合成突发就够过线
+        // Counts 3D utilization on the given adapter only, to find background processes still running on the game's render GPU during a match
+        //   Merges by taking the minimum across passes; the threshold test asks that every window be at least this busy
+        //   Taking the maximum is right for election, but here it would amplify transient spikes: one composition burst would cross the line
         public static Dictionary<int, double> SampleAdapter3D(int luidHigh, uint luidLow,
             int rounds, int intervalMs, Func<bool> canceled)
         {
@@ -117,7 +117,7 @@ namespace PaviseApp
                     if (best == null) { best = current; continue; }
                     if (sustained)
                     {
-                        // 各轮交集取最小 任何一轮缺席或掉线的进程直接剔除
+                        // Intersection across passes takes the minimum; a process absent or dropped in any pass is removed outright
                         var kept = new Dictionary<int, double>();
                         foreach (KeyValuePair<int, double> kv in best)
                         {
@@ -134,8 +134,8 @@ namespace PaviseApp
                         if (!best.TryGetValue(kv.Key, out prev) || kv.Value > prev) best[kv.Key] = kv.Value;
                     }
                 }
-                // 持续判定至少要两轮真实数据 只剩单轮就退化成了瞬时尖峰采样
-                //   与"取各轮最小"的承诺相反 宁可这局不判
+                // A sustained verdict needs at least two passes of real data; with one pass left it degrades into a transient spike sample,
+                //   contrary to the minimum-across-passes promise; better to skip the verdict this match
                 if (sustained && contributed < 2) return null;
                 return best;
             }
@@ -229,10 +229,10 @@ namespace PaviseApp
             return int.TryParse(instanceName.Substring(4, end - 4), out pid) && pid > 0 ? pid : 0;
         }
 
-        // 实例名自带渲染适配器身份 不需要再走一遍 DXGI 枚举去配对
-        //   本机实测格式 pid_11896_luid_0x00000000_0x000101e9_phys_0_eng_0_engtype_3d
-        //   luid 后面两段分别是 HighPart 和 LowPart phys 是物理适配器索引
-        //   D3DKMTOpenAdapterFromLuid 要 LUID D3DKMTQueryVideoMemoryInfo 要 phys 这里一次拿全
+        // The instance name carries the render adapter identity, so no second DXGI enumeration is needed to pair it
+        //   Format seen on this machine: pid_11896_luid_0x00000000_0x000101e9_phys_0_eng_0_engtype_3d
+        //   The two segments after luid are HighPart and LowPart; phys is the physical adapter index
+        //   D3DKMTOpenAdapterFromLuid needs the LUID, D3DKMTQueryVideoMemoryInfo needs phys; grab all of it here at once
         internal static bool ParseAdapter(string instanceName, out int luidHigh, out uint luidLow, out uint phys)
         {
             luidHigh = 0; luidLow = 0; phys = 0;
@@ -280,9 +280,9 @@ namespace PaviseApp
             return true;
         }
 
-        // 找出目标进程实际在哪块卡上跑 3D
-        //   同一个 pid 在两块卡上都有 3D 占用时直接判定不明确 宁可不做也不猜
-        //   这正是 README 里"渲染显卡无法唯一确认就跳过"那条的实现
+        // Find which GPU the target process actually runs 3D on
+        //   If the same pid shows 3D utilization on two GPUs, call it ambiguous outright; better to do nothing than guess
+        //   This implements the README rule: skip when the render GPU cannot be uniquely confirmed
         public static RenderAdapter ResolveRenderAdapter(int pid, int intervalMs)
         {
             if (pid <= 0) return null;
@@ -345,16 +345,16 @@ namespace PaviseApp
                     if (best == null || a.Util > best.Util) { second = best; best = a; }
                     else if (second == null || a.Util > second.Util) second = a;
                 }
-                // 次高的卡也在实打实地跑 3D 就说明分不清主渲染卡
+                // If the runner-up GPU is genuinely running 3D too, the main render GPU cannot be told apart
                 best.Ambiguous = second != null && second.Util >= MinElectUtilization;
                 return best;
             }
             finally { Marshal.FreeHGlobal(buffer); }
         }
 
-        // 持久查询 一次打开整局复用 每次 Resolve 给出与上次采集之间的平均占用
-        //   一次性版本每调一次都要开查询 睡一段 再关 放进循环等于每两秒重开一次通配查询
-        //   持久版本没有睡眠 采样窗口就是两次调用的间隔 占用数字反而更稳
+        // Persistent query, opened once and reused for the whole match; each Resolve gives the average utilization since the last collection
+        //   The one-shot version opens a query, sleeps and closes on every call; in a loop that reopens a wildcard query every two seconds
+        //   The persistent version has no sleep; the sampling window is the interval between calls, and the utilization numbers are actually steadier
         internal sealed class GpuEngineSampler : IDisposable
         {
             private IntPtr query;
@@ -385,7 +385,7 @@ namespace PaviseApp
                 catch { Close(); return false; }
             }
 
-            // 目标进程当前的渲染适配器 打开后第一次调用只做基线 返回 null
+            // The target process's current render adapter; the first call after opening only takes a baseline and returns null
             public RenderAdapter Resolve(int pid)
             {
                 if (query == IntPtr.Zero || pid <= 0) return null;
