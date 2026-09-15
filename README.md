@@ -164,10 +164,10 @@ Please read the [Pavise Licence](LICENSE) before using, modifying or redistribut
 Thank you to everyone who improves Pavise through code, testing, bug reports and translations.
 
 <a href="https://github.com/dulaiduwang003/Pavise-Game/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=dulaiduwang003/Pavise-Game" alt="Pavise contributors — view the complete contributor list on GitHub">
+  <img src="https://raw.githubusercontent.com/dulaiduwang003/Pavise-Game/codex/readme-assets/contributors.svg" alt="Pavise contributors — view the complete contributor list on GitHub">
 </a>
 
-The contributor image updates from GitHub commit history. [View all contributors](https://github.com/dulaiduwang003/Pavise-Game/graphs/contributors) · [Get involved](https://github.com/dulaiduwang003/Pavise-Game/issues)
+Contributor avatars refresh automatically after changes reach the default branch and once a day via [GitHub Actions](https://github.com/dulaiduwang003/Pavise-Game/actions/workflows/contributors.yml). The image shows up to 100 contributors from GitHub commit history. [View all contributors](https://github.com/dulaiduwang003/Pavise-Game/graphs/contributors) · [Get involved](https://github.com/dulaiduwang003/Pavise-Game/issues)
 
 ## Support & community
 
