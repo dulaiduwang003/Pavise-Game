@@ -10,7 +10,7 @@ Windows 向けゲームリソース制御・保護ツール
 
 このページは日本語の説明書です。アプリ UI は中国語と英語のみのため、以下の画面は英語 UI です。
 
-[简体中文](README.md) · [English](README.en.md) · **日本語**
+[简体中文](README.zh-CN.md) · [English](README.md) · **日本語**
 
 **[公式サイト · pavise.club](https://pavise.club/)**
 
