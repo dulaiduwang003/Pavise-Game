@@ -270,12 +270,10 @@ The Settings page provides a one-click restore.
 
 bdth ｜ 2074055628@qq.com ｜ Douyin 44601770838 (bugs, suggestions and usage questions)
 
-The project uses the [Pavise Licence](LICENSE): free to use, free to redistribute unmodified, no reverse engineering, **no selling**.
+Pavise is free software licensed under the **[GNU General Public License v3.0 only](LICENSE)** (`GPL-3.0-only`). Copyright (C) 2026 bdth.
 
-Taking money in any form for distributing Pavise or a modified version is not allowed. This includes selling copies, activation codes or download access, bundling it into a paid product or subscription, paywalls, paid unlocks and donation gates.
+You may use, study, modify and redistribute Pavise, including commercially and for a fee, under GPLv3. When distributing covered works, preserve the copyright and licence notices, identify modifications and their dates, and license the covered work under GPLv3. When distributing binaries, provide recipients with the Corresponding Source as required by the licence.
 
-Distributions must keep the licence and author information intact, tell recipients that the software may not be sold, and label the modifier and the modifications when distributing a modified version.
+Pavise is provided **without any warranty**, including merchantability or fitness for a particular purpose. See [LICENSE](LICENSE) for the full terms and [NOTICE](NOTICE) for the project notice.
 
-Provided as is, with no guarantee of effect or compatibility. Anti-cheat suppression, VBS and cache cleanup can all have side effects. Use it only on your own machine and understand the risks first.
-
-The latest version is always free in the QQ groups: 1051472054 (full), 1101249532 (full), 383761286 (full), 166255062, 1109874913. **If you paid for it, you were scammed.** Ask for a refund and get it free from the groups.
+Official downloads remain free on the [Pavise website](https://pavise.club/en/changelog/#latest). Donations are optional.

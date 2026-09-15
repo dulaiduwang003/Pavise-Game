@@ -52,11 +52,13 @@ namespace PaviseApp
             for (int i = 0; i < 4; i++)
             {
                 int ry = 51 + i * 51;
-                Label lblV = AddAboutRow(card, Lang.T(rowKeys[i]).ToUpperInvariant(), rowVals[i], ry, infoW, i == 2);
-                if (i == 2)
+                Label lblV = AddAboutRow(card, Lang.T(rowKeys[i]).ToUpperInvariant(), rowVals[i], ry, infoW, i == 2 || i == 3);
+                if (i == 2 || i == 3)
                 {
+                    string targetUrl = i == 2 ? App.RepoUrl
+                        : "https://github.com/dulaiduwang003/Pavise-Game/blob/pavise2x/LICENSE";
                     lblV.Cursor = Cursors.Hand;
-                    lblV.Click += (s, e) => { try { using (Process.Start(App.RepoUrl)) { } } catch { } };
+                    lblV.Click += (s, e) => { OpenExternal(targetUrl); };
                 }
             }
             CardLabel(card, Lang.T("about.contact.hint"), 20, 263, infoW - 40, 54, 7.8f, false, Theme.Dim);
