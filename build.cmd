@@ -64,6 +64,14 @@ if errorlevel 1 goto err
 
 del build\Pavise.tmp.exe "%MANIFEST%" >nul 2>&1
 echo.
+rem Ship the licence and project notice beside the executable.
+for %%F in ("%OUT%") do set "PAVISE_OUTPUT_DIR=%%~dpF"
+if /i not "%PAVISE_OUTPUT_DIR%"=="%CD%\" (
+    copy /y "LICENSE" "%PAVISE_OUTPUT_DIR%LICENSE" >nul
+    if errorlevel 1 goto err
+    copy /y "NOTICE" "%PAVISE_OUTPUT_DIR%NOTICE" >nul
+    if errorlevel 1 goto err
+)
 echo Build OK -^> %OUT%
 call :restorecp
 goto :eof
