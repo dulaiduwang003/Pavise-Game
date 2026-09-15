@@ -1,1 +1,143 @@
+name: Update contributor image
 
+on:
+  push:
+    branches: [pavise2x]
+  schedule:
+    - cron: '23 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: readme-contributors
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Generate and publish contributor image
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+        shell: python
+        run: |
+          import base64
+          import html
+          import json
+          import os
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          repo = os.environ['GH_REPOSITORY']
+          branch = 'codex/readme-assets'
+          asset = 'contributors.svg'
+          api_root = 'https://api.github.com/repos/' + repo
+
+          def api(path, method='GET', body=None, allow_missing=False):
+              request = urllib.request.Request(
+                  api_root + path,
+                  data=None if body is None else json.dumps(body).encode(),
+                  method=method,
+                  headers={
+                      'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                      'Accept': 'application/vnd.github+json',
+                      'Content-Type': 'application/json',
+                      'X-GitHub-Api-Version': '2022-11-28',
+                      'User-Agent': 'Pavise-contributor-image',
+                  },
+              )
+              try:
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      return json.load(response)
+              except urllib.error.HTTPError as error:
+                  if allow_missing and error.code == 404:
+                      return None
+                  raise
+
+          # GitHub returns contributors in descending contribution order.
+          contributors = api('/contributors?per_page=100')
+          if not isinstance(contributors, list) or not contributors:
+              raise RuntimeError('No contributor data returned; keep the existing image.')
+
+          columns = min(10, len(contributors))
+          rows = (len(contributors) + columns - 1) // columns
+          width, height = columns * 76 + 24, rows * 86 + 24
+          parts = [
+              '<svg xmlns="http://www.w3.org/2000/svg" '
+              'xmlns:xlink="http://www.w3.org/1999/xlink" '
+              f'width="{width}" height="{height}" viewBox="0 0 {width} {height}" '
+              'role="img" aria-labelledby="title desc">',
+              '<title id="title">Pavise contributors</title>',
+              '<desc id="desc">' + html.escape(', '.join(c['login'] for c in contributors)) + '</desc>',
+              '<rect width="100%" height="100%" rx="16" fill="#10151d"/>',
+          ]
+          for index, contributor in enumerate(contributors):
+              login = contributor['login']
+              avatar = urllib.parse.urlsplit(contributor['avatar_url'])
+              # Only public GitHub avatars are fetched; the repository token is never sent here.
+              if avatar.scheme != 'https' or avatar.hostname != 'avatars.githubusercontent.com':
+                  raise RuntimeError('Unexpected avatar host; keep the existing image.')
+              query = urllib.parse.parse_qsl(avatar.query, keep_blank_values=True)
+              query = [(k, v) for k, v in query if k != 's'] + [('s', '96')]
+              avatar_url = urllib.parse.urlunsplit(avatar._replace(query=urllib.parse.urlencode(query)))
+              request = urllib.request.Request(avatar_url, headers={'User-Agent': 'Pavise-contributor-image'})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  content_type = response.headers.get_content_type()
+                  image_bytes = response.read(1024 * 1024 + 1)
+              if content_type not in ('image/png', 'image/jpeg', 'image/webp') or len(image_bytes) > 1024 * 1024:
+                  raise RuntimeError('Invalid avatar response; keep the existing image.')
+              image_uri = 'data:' + content_type + ';base64,' + base64.b64encode(image_bytes).decode()
+              x, y = 24 + (index % columns) * 76, 20 + (index // columns) * 86
+              caption = login if len(login) <= 11 else login[:10] + '\u2026'
+              parts.extend([
+                  f'<clipPath id="avatar-{index}"><circle cx="{x + 26}" cy="{y + 26}" r="26"/></clipPath>',
+                  '<g><title>' + html.escape(login) + '</title>',
+                  f'<circle cx="{x + 26}" cy="{y + 26}" r="28" fill="#d6b451"/>',
+                  f'<image x="{x}" y="{y}" width="52" height="52" clip-path="url(#avatar-{index})" xlink:href="{image_uri}"/>',
+                  f'<text x="{x + 26}" y="{y + 72}" text-anchor="middle" font-family="Arial, sans-serif" '
+                  'font-size="10" fill="#d8dee9">' + html.escape(caption) + '</text></g>',
+              ])
+          parts.append('</svg>')
+          svg = '\n'.join(parts).encode()
+          encoded = base64.b64encode(svg).decode()
+          current = api('/contents/' + asset + '?ref=' + urllib.parse.quote(branch, safe=''), allow_missing=True)
+          if current is not None:
+              if base64.b64decode(current['content']) == svg:
+                  print('Contributor image is already up to date.')
+              else:
+                  api('/contents/' + asset, 'PUT', {
+                      'message': 'chore: refresh contributor avatars',
+                      'content': encoded,
+                      'sha': current['sha'],
+                      'branch': branch,
+                  })
+                  print('Updated contributor image.')
+          else:
+              # Use an orphan asset branch. No commits are made to the protected default branch.
+              existing_ref = api('/git/ref/heads/' + branch, allow_missing=True)
+              if existing_ref is not None:
+                  api('/contents/' + asset, 'PUT', {
+                      'message': 'chore: add contributor avatars',
+                      'content': encoded,
+                      'branch': branch,
+                  })
+              else:
+                  tree = api('/git/trees', 'POST', {
+                      'tree': [{'path': asset, 'mode': '100644', 'type': 'blob', 'content': svg.decode()}],
+                  })
+                  commit = api('/git/commits', 'POST', {
+                      'message': 'chore: publish contributor avatars',
+                      'tree': tree['sha'],
+                      'parents': [],
+                  })
+                  api('/git/refs', 'POST', {'ref': 'refs/heads/' + branch, 'sha': commit['sha']})
+              print('Published contributor image.')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write(f'Contributor image refreshed for {repo}: {len(contributors)} contributors.\n')
