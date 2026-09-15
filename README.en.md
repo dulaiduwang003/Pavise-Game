@@ -2,13 +2,13 @@
 
 <img src="docs/icon.png" width="96" height="96" alt="Pavise">
 
-# Pavise
+# Pavise — Detailed Reference
 
 Windows game resource scheduling and guard tool
 
 `C#` · `WinForms` · `Interface: Chinese / English`
 
-[简体中文](README.md) · **English** · [日本語](README.ja.md)
+[English overview](README.md) · **Detailed reference** · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 
 **[Visit the website · pavise.club](https://pavise.club/en/)**
 
