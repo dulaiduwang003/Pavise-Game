@@ -13,6 +13,7 @@ per-game profiles, and automatic recovery after play.
 
 **English** · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 
+[![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0-d6b451?style=flat-square&labelColor=171a21)](LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/dulaiduwang003/Pavise-Game?style=flat-square&labelColor=171a21&color=d6b451)](https://pavise.club/en/changelog/#latest)
 [![GitHub downloads](https://img.shields.io/github/downloads/dulaiduwang003/Pavise-Game/total?style=flat-square&labelColor=171a21&color=d6b451)](https://github.com/dulaiduwang003/Pavise-Game/releases)
 [![GitHub stars](https://img.shields.io/github/stars/dulaiduwang003/Pavise-Game?style=flat-square&labelColor=171a21&color=d6b451)](https://github.com/dulaiduwang003/Pavise-Game/stargazers)
@@ -157,7 +158,7 @@ Bug reports, fixes, documentation improvements and translations are welcome.
 3. Explain what changed and how you tested it. Include screenshots for UI changes and relevant logs or regression tests for behavioral fixes.
 4. Open a pull request targeting **`pavise2x`**. The maintainer reviews and tests changes before merging.
 
-Please read the [Pavise Licence](LICENSE) before using, modifying or redistributing the code.
+Please read the [GNU GPLv3](LICENSE) before using, modifying or redistributing the code.
 
 ## Contributors
 
@@ -181,10 +182,10 @@ Created and maintained by **[bdth](https://github.com/dulaiduwang003)**.
 
 ## Licence
 
-Pavise is distributed under the custom **[Pavise Licence](LICENSE)**. Use, source study, modification and free redistribution are subject to its terms. **Selling Pavise or charging for access is prohibited.** Keep the licence and author attribution when redistributing, and follow its requirements for derivative names and marks.
+Pavise is free software licensed under the **[GNU General Public License v3.0 only](LICENSE)** (`GPL-3.0-only`). Copyright (C) 2026 bdth.
 
-The software is provided as is, without guarantees of performance or compatibility. See the licence and the feature reference for the terms and limitations.
+You may use, study, modify and redistribute Pavise, including commercially and for a fee, under GPLv3. When distributing covered works, preserve the copyright and licence notices, identify modifications and their dates, and license the covered work under GPLv3. When distributing binaries, provide recipients with the Corresponding Source as required by the licence.
 
----
+Pavise is provided **without any warranty**, including merchantability or fitness for a particular purpose. See [LICENSE](LICENSE) for the full terms and [NOTICE](NOTICE) for the project notice.
 
-<p align="center"><strong>More room for your game. Session changes restored after play.</strong><br><a href="https://pavise.club/en/changelog/#latest">Get Pavise</a> · <a href="#pavise">Back to top</a></p>
+Official downloads remain free on the [Pavise website](https://pavise.club/en/changelog/#latest). Donations are optional.

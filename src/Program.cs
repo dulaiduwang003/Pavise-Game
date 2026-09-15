@@ -1,4 +1,5 @@
-﻿// @author bdth 2074055628@qq.com
+﻿// SPDX-License-Identifier: GPL-3.0-only
+// @author bdth 2074055628@qq.com
 // File purpose Program entry, runtime assembly and tray main loop
 using System;
 using System.Collections.Generic;
