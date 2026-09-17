@@ -2697,6 +2697,7 @@ namespace PaviseApp
             { "log.gpuinventory.4", new[]{ "显卡枚举 跳过 ", "GPU enumeration: skipped " } },
             { "log.gpuinventory.5", new[]{ " 块已经不在机器上的卡 驱动类键留着历史记录 拔掉不会自己删", " card(s) no longer in this machine, the driver class keys keep historical entries and are not removed on unplug" } },
             { "log.gpuinventory.6", new[]{ "显卡枚举 DXCore 未报告核显独显属性 退回总线号与显存启发式判断 首个受影响适配器 ", "GPU enumeration: DXCore did not report integrated/discrete, falling back to bus-number and VRAM heuristics; first affected adapter " } },
+            { "log.dxcoregpuprobe.1", new[]{ "DXCore 显卡探测超时 放弃驱动报告 使用备用判定", "DXCore GPU probe timed out, dropping the driver report and using the fallback heuristic" } },
             { "log.presentdevices.1", new[]{ "设备父链读取失败 ", "Device parent chain read failed " } },
             { "log.presentdevices.2", new[]{ "在场设备枚举失败 ", "Present device enumeration failed " } },
             { "log.procnotify.1", new[]{ "进程事件订阅失败 退回轮询 ", "Process event subscription failed, falling back to polling " } },
