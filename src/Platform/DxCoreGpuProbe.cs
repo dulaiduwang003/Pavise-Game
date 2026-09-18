@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace PaviseApp
 {
@@ -25,7 +26,32 @@ namespace PaviseApp
         private static readonly Guid D3d12CoreCompute =
             new Guid("248e2800-a793-4724-abaa-23a6de1be090");
 
+        // CreateAdapterList is a COM call with no timeout of its own and a virtual display driver that
+        // ignores DXCore queries never answers it, so an unbounded wait here blocks whichever thread
+        // called GpuInventory.Adapters(), the UI thread included
+        private const int ProbeTimeoutMs = 3000;
+
         internal static Dictionary<string, bool> CollectIntegrated()
+        {
+            Dictionary<string, bool> result = null;
+            var done = new ManualResetEvent(false);
+            var worker = new Thread(delegate()
+            {
+                try { result = CollectIntegratedCore(); }
+                catch { }
+                finally { done.Set(); }
+            });
+            worker.IsBackground = true;
+            worker.Start();
+            if (!done.WaitOne(ProbeTimeoutMs))
+            {
+                Logger.Log(Lang.T("log.dxcoregpuprobe.1"));
+                return new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            }
+            return result ?? new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static Dictionary<string, bool> CollectIntegratedCore()
         {
             var result = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
             IDXCoreAdapterFactory factory = null;
