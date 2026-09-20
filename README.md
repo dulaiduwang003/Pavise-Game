@@ -63,7 +63,7 @@ It does not create extra CPU or GPU performance. The benefit depends on backgrou
 | **Diagnostics** | Inspect hardware capabilities, scheduling settings, power and thermal limits, session reports and warnings. Copy a diagnostic summary when reporting a problem. |
 | **Your workflow** | Switch between English and Chinese, choose light or dark themes, use feature search, minimize to the tray and manage a whitelist. |
 
-**[Explore every module, switch and limitation →](README.en.md#features)**
+**[Explore every module, switch and limitation →](https://pavise.club/en/docs/)**
 
 Ordinary background suppression exempts anti-cheat processes, Windows core services, the input/audio/peripheral chain, hardware tools and other signed-in accounts. Separate anti-cheat controls are off by default and cover selected user-mode processes only; they do not control kernel drivers. Game-family exemption is on by default.
 
@@ -76,7 +76,7 @@ Ordinary background suppression exempts anti-cheat processes, Windows core servi
 | **Handheld** | Uses the Esports background scope. | Same as Esports. | Leaves power control to vendor tools; requires a battery and excludes several desktop-oriented policies. |
 | **Custom** | Choose background, core, graphics, memory, power and environment policies individually. | Depends on the selected policies. | Tune globally or override settings per game. |
 
-Modes that your machine cannot use are hidden. The former Extreme mode was removed in v2.2.2; its additional controls are now separate switches, off by default. [Full mode details](README.en.md#modes).
+Modes that your machine cannot use are hidden. The former Extreme mode was removed in v2.2.2; its additional controls are now separate switches, off by default. [Full mode details](https://pavise.club/en/docs/modes/).
 
 ## Quick start
 
@@ -104,7 +104,7 @@ Turning off the guard stops general session management and attempts to restore s
 <details>
 <summary><strong>Recovery tools and local data</strong></summary>
 
-The Settings page provides restoration and uninstall controls. For a broken installation that cannot open, the repository includes [Pavise-Rescue.cmd](Pavise-Rescue.cmd). It exports diagnostics before attempting recovery, resets power plans and **deletes the game library, whitelist and settings**. A restart is required afterward; read the [recovery description](README.en.md#modes) before using it.
+The Settings page provides restoration and uninstall controls. For a broken installation that cannot open, the repository includes [Pavise-Rescue.cmd](Pavise-Rescue.cmd). It exports diagnostics before attempting recovery, resets power plans and **deletes the game library, whitelist and settings**. A restart is required afterward; read the [recovery description](https://pavise.club/en/docs/recovery/) before using it.
 
 Data normally lives in `%AppData%\Pavise`, with interface and feature settings under `HKCU\Software\Pavise`. An empty `Pavise.portable` file beside the executable enables portable storage in the program directory.
 
@@ -127,10 +127,10 @@ Data normally lives in `%AppData%\Pavise`, with interface and feature settings u
 
 | Start here | Go deeper |
 | :--- | :--- |
-| [Illustrated user guide](https://pavise.club/en/docs/) | [Complete feature reference](README.en.md#features) |
-| [Release notes & downloads](https://pavise.club/en/changelog/#latest) | [Per-game configuration](README.en.md#per-game-configuration) |
-| [Chinese documentation](README.zh-CN.md) | [Power budget verification](README.en.md#how-power-budget-yield-verifies-itself) |
-| [Japanese documentation](README.ja.md) | [Memory cleanup behavior](README.en.md#memory-cleanup) |
+| [Illustrated user guide](https://pavise.club/en/docs/) | [Modes in depth](https://pavise.club/en/docs/modes/) |
+| [Release notes & downloads](https://pavise.club/en/changelog/#latest) | [Per-game configuration](https://pavise.club/en/docs/profiles/) |
+| [Chinese documentation](README.zh-CN.md) | [How scheduling works](https://pavise.club/en/docs/mechanisms/) |
+| [Japanese documentation](README.ja.md) | [Memory and power policies](https://pavise.club/en/docs/memory-power/) |
 
 ## Build from source
 
