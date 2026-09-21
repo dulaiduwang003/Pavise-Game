@@ -11,6 +11,8 @@
 A Windows game resource manager with background process control,<br>
 per-game profiles, and automatic recovery after play.
 
+### Fully automated version in development  2026-09-21
+
 **English** · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0-d6b451?style=flat-square&labelColor=171a21)](LICENSE)
