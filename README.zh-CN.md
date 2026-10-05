@@ -165,7 +165,7 @@ build\Pavise.selftest.exe
 感谢每一位通过代码、测试、Bug 反馈和翻译改进 Pavise 的人。
 
 <a href="https://github.com/dulaiduwang003/Pavise-Game/graphs/contributors">
-  <img src="https://raw.githubusercontent.com/dulaiduwang003/Pavise-Game/codex/readme-assets/contributors.svg" alt="Pavise 贡献者：完整名单见 GitHub">
+  <img src="https://raw.githubusercontent.com/dulaiduwang003/Pavise-Game/readme-assets/contributors.svg" alt="Pavise 贡献者：完整名单见 GitHub">
 </a>
 
 贡献者头像在改动进入默认分支后以及每天一次由 [GitHub Actions](https://github.com/dulaiduwang003/Pavise-Game/actions/workflows/contributors.yml) 自动刷新。图片最多展示 GitHub 提交历史中的 100 位贡献者。[查看全部贡献者](https://github.com/dulaiduwang003/Pavise-Game/graphs/contributors) · [参与进来](https://github.com/dulaiduwang003/Pavise-Game/issues)

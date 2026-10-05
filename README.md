@@ -167,7 +167,7 @@ Please read the [GNU GPLv3](LICENSE) before using, modifying or redistributing t
 Thank you to everyone who improves Pavise through code, testing, bug reports and translations.
 
 <a href="https://github.com/dulaiduwang003/Pavise-Game/graphs/contributors">
-  <img src="https://raw.githubusercontent.com/dulaiduwang003/Pavise-Game/codex/readme-assets/contributors.svg" alt="Pavise contributors — view the complete contributor list on GitHub">
+  <img src="https://raw.githubusercontent.com/dulaiduwang003/Pavise-Game/readme-assets/contributors.svg" alt="Pavise contributors — view the complete contributor list on GitHub">
 </a>
 
 Contributor avatars refresh automatically after changes reach the default branch and once a day via [GitHub Actions](https://github.com/dulaiduwang003/Pavise-Game/actions/workflows/contributors.yml). The image shows up to 100 contributors from GitHub commit history. [View all contributors](https://github.com/dulaiduwang003/Pavise-Game/graphs/contributors) · [Get involved](https://github.com/dulaiduwang003/Pavise-Game/issues)

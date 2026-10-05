@@ -167,7 +167,7 @@ build\Pavise.selftest.exe
 コード、テスト、バグ報告、翻訳で Pavise を良くしてくださる皆さんに感謝します。
 
 <a href="https://github.com/dulaiduwang003/Pavise-Game/graphs/contributors">
-  <img src="https://raw.githubusercontent.com/dulaiduwang003/Pavise-Game/codex/readme-assets/contributors.svg" alt="Pavise のコントリビューター：完全な一覧は GitHub で">
+  <img src="https://raw.githubusercontent.com/dulaiduwang003/Pavise-Game/readme-assets/contributors.svg" alt="Pavise のコントリビューター：完全な一覧は GitHub で">
 </a>
 
 コントリビューターのアバターは、変更が既定ブランチに入ったときと 1 日 1 回、[GitHub Actions](https://github.com/dulaiduwang003/Pavise-Game/actions/workflows/contributors.yml) で自動更新されます。画像には GitHub のコミット履歴から最大 100 名を表示します。[コントリビューター一覧](https://github.com/dulaiduwang003/Pavise-Game/graphs/contributors) · [参加する](https://github.com/dulaiduwang003/Pavise-Game/issues)

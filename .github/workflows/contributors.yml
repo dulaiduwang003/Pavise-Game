@@ -36,7 +36,7 @@ jobs:
           import urllib.request
 
           repo = os.environ['GH_REPOSITORY']
-          branch = 'codex/readme-assets'
+          branch = 'readme-assets'
           asset = 'contributors.svg'
           api_root = 'https://api.github.com/repos/' + repo
 
