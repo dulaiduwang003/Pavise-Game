@@ -1,0 +1,190 @@
+﻿// 作者：bdth 2074055628@qq.com
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.IO;
+using System.Net;
+using System.Runtime.InteropServices;
+using System.Threading;
+using System.Windows.Forms;
+using Microsoft.Win32;
+
+namespace PaviseApp
+{
+    internal partial class PanelForm : Form
+    {
+        private void UpdateModePresentation(bool animate)
+        {
+            if (gameMode.ModeSwitchLocked && modeFlyout != null && modeFlyout.Visible)
+                SetModeFlyout(false);
+            PerformancePreset effective = gameMode.ActivePreset;
+            bool enabled = gameMode.Enabled;
+            bool active = gameMode.IsActive;
+            string policySource = gameMode.SessionPolicySourceName;
+            bool first = !modeVisualInitialized;
+            bool visualChanged = first || effective != visualMode || enabled != visualEnabled;
+            bool sessionChanged = first || active != visualActive
+                || !string.Equals(policySource, visualPolicySource, StringComparison.Ordinal);
+
+            if (visualChanged)
+            {
+                if (modeButton != null) modeButton.SetMode(effective);
+                if (lblHeroMode != null) lblHeroMode.Text = ModeButton.ModeName(effective);
+#if PAVISE_SELFTEST
+                if (policyBanner != null)
+                    policyBanner.State = Lang.F("mode.policy.active", ModeButton.ModeName(effective));
+#endif
+            }
+            if (sessionChanged)
+            {
+                if (modeButton != null) modeButton.SetSource(ModeSourceText(policySource, true));
+                if (lblHeroSource != null) lblHeroSource.Text = ModeSourceText(policySource, false);
+            }
+            if (paviseCore != null) paviseCore.SetState(effective, enabled, active);
+            if (effective != visualMode)
+            {
+                visualMode = effective;
+                Theme.SetMode(effective, animate);
+            }
+            visualEnabled = enabled;
+            visualActive = active;
+            visualPolicySource = policySource;
+            modeVisualInitialized = true;
+            if (visualChanged)
+            {
+                RefreshModeAccentLabels();
+                if (nav != null) nav.SetMode(effective, enabled);
+                if (tuningNav != null) tuningNav.SetMode(effective, enabled);
+                using (Icon icon = IconArt.MakeMultiIcon(effective, enabled)) SetRuntimeIcon(icon);
+                RefreshAutomationPage();
+            }
+        }
+
+        internal static string ModeSourceText(string sourceName, bool compact)
+        {
+            return string.IsNullOrEmpty(sourceName) ? Lang.T("mode.source.global")
+                : Lang.F(compact ? "mode.source.game.short" : "mode.source.game", sourceName);
+        }
+
+        private void OnThemeToggled(bool light)
+        {
+            StopPageReveal();
+            Settings.Save("UiLight", light);
+            Theme.SetLight(light);
+            Logger.Log(Lang.T("log.panelform.8") + (light ? Lang.T("log.panelform.9") : Lang.T("log.panelform.10")));
+            BeginInvoke((MethodInvoker)delegate { if (!IsDisposed) RebuildUi(); });
+        }
+
+        public void SetRuntimeIcon(Icon value)
+        {
+            if (value == null) return;
+            if (InvokeRequired) { Icon copy = (Icon)value.Clone(); BeginInvoke((MethodInvoker)delegate { using (copy) SetRuntimeIcon(copy); }); return; }
+            Icon next = (Icon)value.Clone();
+            Icon old = appIcon;
+            appIcon = next; Icon = next;
+            if (old != null) old.Dispose();
+        }
+
+        private void RebuildUi()
+        {
+            CloseMonitoringDesktopPreview();
+            DisposePageReveal();
+            if (tuningNav != null && tuningNav.Parent == null) tuningNav.Dispose();
+            CancelOutro();
+            if (uiTimer != null) { uiTimer.Stop(); uiTimer.Dispose(); uiTimer = null; }
+            uiActive = false;
+            uiActivityKnown = false;
+            UiClock.Suspended = true;
+            if (paviseCore != null) paviseCore.SetAnimationEnabled(false);
+            DetachFormFrame();
+            var old = new List<Control>();
+            int keep = pages != null && curPage != null ? Array.IndexOf(pages, curPage) : nav != null ? nav.Selected : 0;
+            if (keep < 0) keep = (int)PageId.Overview;
+            int keepReturn = mainReturnPage;
+            if (pages != null) foreach (DBPanel page in pages) SavePagePosition(page);
+            foreach (Control c in Controls) old.Add(c);
+            Controls.Clear();
+            foreach (var c in old) c.Dispose();
+            acGroups.Clear(); acCards.Clear(); acToggles.Clear();
+            // 重建前清理旧控件引用及委托。
+            accentLabels.Clear();
+            policySync.Clear();
+#if PAVISE_SELFTEST
+            graphicsSync.Clear();
+#endif
+            stackBase.Clear();
+            for (int i = 0; i < modeAccentLabels.Length; i++)
+            {
+                modeAccentLabels[i] = null;
+                modeSwatches[i].Clear();
+            }
+            BuildUi(appIcon);
+            mainReturnPage = keepReturn;
+            nav.Select(keep);
+            if (UiActive) RefreshSlowStateAsync();
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            HandlePowerSchemeNotification(m);
+            if (m.Msg == 0x001C && m.WParam == IntPtr.Zero) QueueMonitoringPreviewForegroundCheck();
+            if (m.Msg == 0x000A && m.WParam == IntPtr.Zero)
+            { StopPageReveal(); CloseMonitoringSelectors(); }
+            if (m.Msg == Native.WM_DROPFILES)
+            {
+                AddDroppedGames(Native.ReadDroppedFiles(m.WParam));
+                m.Result = IntPtr.Zero;
+                return;
+            }
+            if (m.Msg == Native.WM_ENTERSIZEMOVE) BeginMoveSizeLoop();
+            else if (m.Msg == Native.WM_EXITSIZEMOVE) EndMoveSizeLoop();
+            base.WndProc(ref m);
+        }
+
+        private void ApplyPendingDpiRebuild()
+        {
+            if (IsDisposed) return;
+            int dpi = Dpi.WindowDpi(Handle);
+            if (dpi <= 0 || !Dpi.WouldChange(dpi)) return;
+            Dpi.Update(dpi);
+            Theme.DropFontCache();
+            Logger.Log(Lang.T("log.panelform.11") + dpi);
+            RebuildUi();
+        }
+
+        private PageHook CurrentPageHook()
+        {
+            if (pageHooks == null || curPage == null) return null;
+            for (int i = 0; i < pageHooks.Length; i++)
+                if (pageHooks[i] != null && pageHooks[i].Panel == curPage) return pageHooks[i];
+            return null;
+        }
+
+        private void BeginMoveSizeLoop()
+        {
+            StopPageReveal();
+            if (moveSizeLoop) return;
+            moveSizeLoop = true;
+            if (introActive)
+            {
+                introActive = false;
+                introPending = false;
+                DropLayeredStyle();
+            }
+            if (uiTimer != null) uiTimer.Stop();
+            if (fitTimer != null) fitTimer.Stop();
+        }
+
+        private void EndMoveSizeLoop()
+        {
+            if (!moveSizeLoop) return;
+            moveSizeLoop = false;
+            if (IsDisposed || !UiActive) return;
+            if (uiTimer != null) uiTimer.Start();
+            OnUiTick(null, EventArgs.Empty);
+            if (fitDeferredByDrag) { fitDeferredByDrag = false; ScheduleFit(); }
+        }
+    }
+}

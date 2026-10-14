@@ -1,0 +1,217 @@
+// 作者：bdth 2074055628@qq.com
+using System;
+using System.Runtime.InteropServices;
+using Microsoft.Win32;
+
+namespace PaviseApp
+{
+    internal static class HagsTweak
+    {
+        private const string GfxKey = @"SYSTEM\CurrentControlSet\Control\GraphicsDrivers";
+        private const string Val = "HwSchMode";
+
+        private static readonly ReversibleReg Sch = new ReversibleReg(
+            Registry.LocalMachine, GfxKey, Val, RegistryValueKind.DWord, "PrevHwSch");
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct AdapterInfo
+        {
+            public uint HAdapter;
+            public uint LuidLow;
+            public int LuidHigh;
+            public uint NumOfSources;
+            public int PresentMoveRegionsPreferred;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct EnumAdapters
+        {
+            public uint NumAdapters;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)]
+            public AdapterInfo[] Adapters;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct QueryAdapterInfo
+        {
+            public uint HAdapter;
+            public uint Type;
+            public IntPtr PrivateDriverData;
+            public uint PrivateDriverDataSize;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct CloseAdapter
+        {
+            public uint HAdapter;
+        }
+
+        private const uint KmtQueryWddm27Caps = 70;
+
+        [DllImport("gdi32.dll")] private static extern int D3DKMTEnumAdapters(ref EnumAdapters args);
+        [DllImport("gdi32.dll")] private static extern int D3DKMTQueryAdapterInfo(ref QueryAdapterInfo args);
+        [DllImport("gdi32.dll")] private static extern int D3DKMTCloseAdapter(ref CloseAdapter args);
+
+        public static bool EnabledByPavise { get { return Settings.Load("HagsOnByPavise", false); } }
+
+#if !PAVISE_SELFTEST
+        private static readonly object schedLk = new object();
+        private static long schedCheckedTicks;
+        private static bool schedCached;
+#endif
+
+        public static bool SchedulingActiveCached()
+        {
+#if PAVISE_SELFTEST
+            return SchedulingActiveForTest;
+#else
+            long now = DateTime.UtcNow.Ticks;
+            lock (schedLk)
+            {
+                if (now - schedCheckedTicks < TimeSpan.TicksPerSecond * 60) return schedCached;
+                schedCheckedTicks = now;
+                bool supported, enabled;
+                try { schedCached = TryQueryState(out supported, out enabled) && enabled; }
+                catch { schedCached = false; }
+                return schedCached;
+            }
+#endif
+        }
+
+#if PAVISE_SELFTEST
+        internal static bool SchedulingActiveForTest;
+#endif
+
+        public static bool TryQueryState(out bool supported, out bool enabled)
+        {
+            supported = false;
+            enabled = false;
+            var list = new EnumAdapters { Adapters = new AdapterInfo[16] };
+            if (D3DKMTEnumAdapters(ref list) != 0 || list.NumAdapters == 0) return false;
+            bool any = false;
+            IntPtr buf = Marshal.AllocHGlobal(4);
+            try
+            {
+                for (int i = 0; i < list.NumAdapters && i < 16; i++)
+                {
+                    var query = new QueryAdapterInfo
+                    {
+                        HAdapter = list.Adapters[i].HAdapter,
+                        Type = KmtQueryWddm27Caps,
+                        PrivateDriverData = buf,
+                        PrivateDriverDataSize = 4
+                    };
+                    if (D3DKMTQueryAdapterInfo(ref query) == 0)
+                    {
+                        any = true;
+                        uint caps = (uint)Marshal.ReadInt32(buf);
+                        if ((caps & 1u) != 0) supported = true;
+                        if ((caps & 2u) != 0) enabled = true;
+                    }
+                }
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(buf);
+                for (int i = 0; i < list.NumAdapters && i < 16; i++)
+                {
+                    var close = new CloseAdapter { HAdapter = list.Adapters[i].HAdapter };
+                    D3DKMTCloseAdapter(ref close);
+                }
+            }
+            return any;
+        }
+
+        internal static int? ConfiguredMode()
+        {
+            try
+            {
+                using (var k = Registry.LocalMachine.OpenSubKey(GfxKey))
+                {
+                    if (k == null) return null;
+                    object v = k.GetValue(Val);
+                    return v is int ? (int?)(int)v : null;
+                }
+            }
+            catch { return null; }
+        }
+
+        public static bool CurrentlyOn()
+        {
+            int? mode = ConfiguredMode();
+            if (mode.HasValue) return mode.Value == 2;
+            bool supported, enabled;
+            return TryQueryState(out supported, out enabled) && enabled;
+        }
+
+        public static bool Enable()
+        {
+            try
+            {
+                bool supported, enabledNow;
+                if (!TryQueryState(out supported, out enabledNow) || !supported)
+                {
+                    Logger.Log(Lang.T("log.hagstweak.5"));
+                    return false;
+                }
+                if (enabledNow) return true;
+                if (!Sch.Apply(2))
+                {
+                    Logger.Log(Lang.T("log.hagstweak.1"));
+                    return false;
+                }
+                Settings.Save("HagsOnByPavise", true);
+                if (!Settings.Load("HagsOnByPavise", false))
+                {
+                    Sch.Restore();
+                    Logger.Log(Lang.T("log.hagstweak.2"));
+                    return false;
+                }
+                Logger.Log(Lang.T("log.hagstweak.3"));
+                return true;
+            }
+            catch { return false; }
+        }
+
+        public static bool HasResidue()
+        {
+            return EnabledByPavise || Sch.HasBackup;
+        }
+
+        public static bool Restore()
+        {
+            try
+            {
+                if (!Sch.HasBackup)
+                {
+                    Settings.Save("HagsOnByPavise", false);
+                    return !Settings.Load("HagsOnByPavise", true);
+                }
+                if (!Sch.Restore()) return false;
+                Settings.Save("HagsOnByPavise", false);
+                Logger.Log(Lang.T("log.hagstweak.6"));
+                return !Settings.Load("HagsOnByPavise", true);
+            }
+            catch { return false; }
+        }
+
+        public static bool Disable()
+        {
+            try
+            {
+
+                bool ok = Sch.HasBackup ? Sch.Restore() : Sch.Apply(1);
+                if (ok && CurrentlyOn()) ok = Sch.Apply(1);
+                if (ok)
+                {
+                    Settings.Save("HagsOnByPavise", false);
+                    if (Settings.Load("HagsOnByPavise", true)) return false;
+                    Logger.Log(Lang.T("log.hagstweak.4"));
+                }
+                return ok;
+            }
+            catch { return false; }
+        }
+
+    }
+}

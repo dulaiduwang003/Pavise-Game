@@ -1,0 +1,391 @@
+﻿// 作者：bdth 2074055628@qq.com
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Windows.Forms;
+
+namespace PaviseApp
+{
+    internal static class Col
+    {
+        public static Color Lerp(Color a, Color b, float t)
+        {
+            if (t < 0f) t = 0f; if (t > 1f) t = 1f;
+            return Color.FromArgb(
+                (int)(a.A + (b.A - a.A) * t),
+                (int)(a.R + (b.R - a.R) * t),
+                (int)(a.G + (b.G - a.G) * t),
+                (int)(a.B + (b.B - a.B) * t));
+        }
+        public static Color Alpha(Color c, int a) { return Color.FromArgb(a < 0 ? 0 : a > 255 ? 255 : a, c.R, c.G, c.B); }
+
+        public static string ToHex(Color c) { return c.R.ToString("X2") + c.G.ToString("X2") + c.B.ToString("X2"); }
+
+        public static bool TryHex(string s, out Color c)
+        {
+            c = Color.Empty;
+            if (string.IsNullOrEmpty(s) || s.Length != 6) return false;
+            int rgb;
+            if (!int.TryParse(s, System.Globalization.NumberStyles.HexNumber,
+                    System.Globalization.CultureInfo.InvariantCulture, out rgb)) return false;
+            c = Color.FromArgb((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
+            return true;
+        }
+    }
+
+    internal static class Theme
+    {
+        public static int S(int v) { return Dpi.S(v); }
+
+        private static bool light;
+        public static bool LightMode { get { return light; } }
+
+        public static Color Bg        { get { return light ? Color.FromArgb(238, 242, 247) : Color.FromArgb(9, 10, 12); } }
+        public static Color Nav       { get { return light ? Color.FromArgb(225, 231, 239) : Color.FromArgb(6, 7, 9); } }
+        public static Color Card      { get { return light ? Color.FromArgb(251, 252, 254) : Color.FromArgb(17, 19, 23); } }
+        public static Color CardHover { get { return light ? Color.FromArgb(245, 248, 252) : Color.FromArgb(23, 27, 33); } }
+        public static Color Inset     { get { return light ? Color.FromArgb(228, 234, 242) : Color.FromArgb(7, 8, 10); } }
+        public static Color Stroke    { get { return light ? Color.FromArgb(194, 203, 216) : Color.FromArgb(39, 44, 52); } }
+        public static Color StrokeHi  { get { return light ? Color.FromArgb(137, 150, 169) : Color.FromArgb(72, 81, 94); } }
+        public static Color Fg        { get { return light ? Color.FromArgb(17, 24, 36)    : Color.FromArgb(244, 246, 249); } }
+        public static Color Dim       { get { return light ? Color.FromArgb(76, 89, 108)   : Color.FromArgb(163, 170, 181); } }
+        public static Color Faint     { get { return light ? Color.FromArgb(124, 139, 159) : Color.FromArgb(91, 100, 113); } }
+        public static Color Green     { get { return light ? Color.FromArgb(16, 150, 92)   : Color.FromArgb(69, 224, 154); } }
+        public static Color Danger    { get { return light ? Color.FromArgb(208, 30, 50)   : Color.FromArgb(255, 72, 88); } }
+        public static Color Warning   { get { return light ? Color.FromArgb(155, 94, 0) : Color.FromArgb(255, 190, 75); } }
+        public static Color TrackOff  { get { return light ? Color.FromArgb(200, 206, 215) : Color.FromArgb(43, 48, 57); } }
+        private static Color accent = Color.FromArgb(52, 208, 148);
+        private static Color accent2 = Color.FromArgb(20, 136, 94);
+        private static Color fromAccent = accent, fromAccent2 = accent2;
+        private static Color toAccent = accent, toAccent2 = accent2;
+        private static float themeT = 1f;
+        private static PerformancePreset currentMode = PerformancePreset.Standard;
+
+        private static readonly Color[] modeOverride =
+            { Color.Empty, Color.Empty, Color.Empty, Color.Empty, Color.Empty, Color.Empty, Color.Empty };
+
+        public static Color Accent { get { return accent; } }
+        public static Color Accent2 { get { return accent2; } }
+        public static Color Sel { get { return Col.Lerp(Card, accent, 0.20f); } }
+        public static Color DimTint { get { return Col.Lerp(Dim, accent, 0.30f); } }
+        public static Color OnAccent
+        {
+            get
+            {
+                double luma = 0.299 * toAccent.R + 0.587 * toAccent.G + 0.114 * toAccent.B;
+                return luma > 150 ? Color.FromArgb(23, 19, 10) : Color.White;
+            }
+        }
+        public static PerformancePreset CurrentMode { get { return currentMode; } }
+
+        public static bool HasModeColorOverride(PerformancePreset mode)
+        {
+            int i = (int)mode;
+            return i >= 0 && i < modeOverride.Length && !modeOverride[i].IsEmpty;
+        }
+
+        public static Color ModeColor(PerformancePreset mode)
+        {
+            int i = (int)mode;
+            if (i >= 0 && i < modeOverride.Length && !modeOverride[i].IsEmpty)
+                return modeOverride[i];
+            return ModeColorBuiltin(mode);
+        }
+
+        public static Color ModeColorBuiltin(PerformancePreset mode)
+        {
+            if (mode == PerformancePreset.Extreme) return light ? Color.FromArgb(121, 55, 197) : Color.FromArgb(184, 112, 255);
+            if (mode == PerformancePreset.Competitive)
+                return light ? Color.FromArgb(222, 36, 58) : Color.FromArgb(255, 61, 82);
+            if (mode == PerformancePreset.Handheld)
+                return light ? Color.FromArgb(176, 92, 12) : Color.FromArgb(255, 148, 46);
+            return light ? Color.FromArgb(10, 136, 92) : Color.FromArgb(52, 208, 148);
+        }
+
+        public static Color ModeColor2(PerformancePreset mode)
+        {
+            int i = (int)mode;
+            if (i >= 0 && i < modeOverride.Length && !modeOverride[i].IsEmpty)
+                return Col.Lerp(modeOverride[i], Color.Black, 0.30f);
+            if (mode == PerformancePreset.Extreme) return light ? Color.FromArgb(82, 30, 148) : Color.FromArgb(115, 54, 204);
+            if (mode == PerformancePreset.Competitive)
+                return light ? Color.FromArgb(152, 14, 36) : Color.FromArgb(178, 22, 48);
+            if (mode == PerformancePreset.Handheld)
+                return light ? Color.FromArgb(122, 56, 4) : Color.FromArgb(178, 92, 16);
+            return light ? Color.FromArgb(6, 94, 62) : Color.FromArgb(20, 136, 94);
+        }
+
+        public static void SetModeColorOverride(PerformancePreset mode, Color color)
+        {
+            int i = (int)mode;
+            if (i < 0 || i >= modeOverride.Length) return;
+            modeOverride[i] = color;
+            if (mode == currentMode) ReapplyAccent();
+        }
+
+        public static void ClearModeColorOverride(PerformancePreset mode)
+        {
+            int i = (int)mode;
+            if (i < 0 || i >= modeOverride.Length) return;
+            modeOverride[i] = Color.Empty;
+            if (mode == currentMode) ReapplyAccent();
+        }
+
+        private static void ReapplyAccent()
+        {
+            Color a = ModeColor(currentMode), b = ModeColor2(currentMode);
+            if (toAccent == a && toAccent2 == b) return;
+            fromAccent = accent; fromAccent2 = accent2;
+            toAccent = a; toAccent2 = b;
+            if (!UiClock.HasFrameListeners)
+            {
+                accent = a; accent2 = b;
+                fromAccent = a; fromAccent2 = b;
+                themeT = 1f;
+                return;
+            }
+            themeT = 0f;
+            UiClock.Wake(36);
+        }
+
+        public static void SetLight(bool value)
+        {
+            if (light == value) return;
+            light = value;
+            accent = ModeColor(currentMode);
+            accent2 = ModeColor2(currentMode);
+            fromAccent = toAccent = accent;
+            fromAccent2 = toAccent2 = accent2;
+            themeT = 1f;
+        }
+
+        public static void SetMode(PerformancePreset mode, bool animate)
+        {
+            Color a = ModeColor(mode), b = ModeColor2(mode);
+            if (currentMode == mode && toAccent == a && toAccent2 == b) return;
+            currentMode = mode;
+            fromAccent = accent; fromAccent2 = accent2;
+            toAccent = a; toAccent2 = b;
+            themeT = animate ? 0f : 1f;
+            if (!animate) { accent = a; accent2 = b; }
+            else UiClock.Wake(36);
+        }
+
+        public static bool ThemeAnimating { get { return themeT < 1f; } }
+
+        public static bool StepTheme()
+        {
+            if (themeT >= 1f) return false;
+            themeT = Math.Min(1f, themeT + 0.055f);
+            float t = 1f - (float)Math.Pow(1f - themeT, 3);
+            accent = Col.Lerp(fromAccent, toAccent, t);
+            accent2 = Col.Lerp(fromAccent2, toAccent2, t);
+            return true;
+        }
+
+        private static readonly Dictionary<int, Font> fontCache = new Dictionary<int, Font>();
+        private static readonly object fontLk = new object();
+
+        public static Font UI(float size, bool bold)
+        {
+            if (size < 9f) size = Math.Min(9f, size + 0.7f);
+            int key = ((int)Math.Round(size * 100) << 1) | (bold ? 1 : 0);
+            lock (fontLk)
+            {
+                Font f;
+                if (!fontCache.TryGetValue(key, out f))
+                {
+                    f = SmoothFont("Microsoft YaHei UI", size,
+                        bold ? FontStyle.Bold : FontStyle.Regular);
+                    fontCache[key] = f;
+                }
+                return f;
+            }
+        }
+
+        public static void DropFontCache()
+        {
+            lock (fontLk) { fontCache.Clear(); monoCache.Clear(); }
+        }
+
+        private static readonly Dictionary<int, Font> monoCache = new Dictionary<int, Font>();
+
+        internal static bool HasCjk(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return false;
+            foreach (char c in s)
+                if ((c >= 0x2E80 && c <= 0x9FFF) || (c >= 0xF900 && c <= 0xFAFF)) return true;
+            return false;
+        }
+
+        public static Font MonoFor(string text, float size)
+        {
+            return HasCjk(text) ? UI(size + 0.2f, false) : Mono(size);
+        }
+
+        public static Font Mono(float size)
+        {
+            int key = (int)Math.Round(size * 100);
+            lock (fontLk)
+            {
+                Font f;
+                if (!monoCache.TryGetValue(key, out f))
+                {
+                    f = SmoothFont("Consolas", size, FontStyle.Regular);
+                    monoCache[key] = f;
+                }
+                return f;
+            }
+        }
+
+        private const byte ClearTypeQuality = 5;
+
+        private static Font SmoothFont(string family, float size, FontStyle style)
+        {
+            try
+            {
+                int pixels = (int)Math.Max(1, Math.Round(size * Dpi.Scale * 96f / 72f));
+                var lf = new LogFont();
+                lf.lfHeight = -pixels;
+                lf.lfWeight = (style & FontStyle.Bold) != 0 ? 700 : 400;
+                lf.lfItalic = (byte)((style & FontStyle.Italic) != 0 ? 1 : 0);
+                lf.lfCharSet = 1;
+                lf.lfQuality = ClearTypeQuality;
+                lf.lfFaceName = family;
+                return Font.FromLogFont(lf);
+            }
+            catch
+            {
+                return new Font(family, Dpi.CrispPoint(size), style, GraphicsUnit.Point);
+            }
+        }
+
+        [System.Runtime.InteropServices.StructLayout(
+            System.Runtime.InteropServices.LayoutKind.Sequential,
+            CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+        private class LogFont
+        {
+            public int lfHeight;
+            public int lfWidth;
+            public int lfEscapement;
+            public int lfOrientation;
+            public int lfWeight;
+            public byte lfItalic;
+            public byte lfUnderline;
+            public byte lfStrikeOut;
+            public byte lfCharSet;
+            public byte lfOutPrecision;
+            public byte lfClipPrecision;
+            public byte lfQuality;
+            public byte lfPitchAndFamily;
+            [System.Runtime.InteropServices.MarshalAs(
+                System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 32)]
+            public string lfFaceName = "";
+        }
+
+        public static GraphicsPath Rounded(Rectangle r, int rad)
+        {
+            var p = new GraphicsPath();
+            if (rad <= 0) { p.AddRectangle(r); return p; }
+            int d = rad * 2;
+            if (d > r.Width) d = r.Width;
+            if (d > r.Height) d = r.Height;
+            if (d <= 0) { p.AddRectangle(r); return p; }
+            p.AddArc(r.X, r.Y, d, d, 180, 90);
+            p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+            p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+            p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+            p.CloseFigure();
+            return p;
+        }
+
+        public static GraphicsPath TechPath(Rectangle r, int cut)
+        {
+            var p = new GraphicsPath();
+            cut = Math.Max(1, Math.Min(cut, Math.Min(r.Width, r.Height) / 3));
+            p.AddPolygon(new[] {
+                new Point(r.Left, r.Top), new Point(r.Right - cut, r.Top),
+                new Point(r.Right, r.Top + cut), new Point(r.Right, r.Bottom),
+                new Point(r.Left + cut, r.Bottom), new Point(r.Left, r.Bottom - cut)
+            });
+            p.CloseFigure();
+            return p;
+        }
+
+        public static void FillRound(Graphics g, Rectangle r, int rad, Color c)
+        {
+            using (var p = Rounded(r, rad)) using (var b = new SolidBrush(c)) g.FillPath(b, p);
+        }
+
+        public static void StyleList(ListBox lb)
+        {
+            StyleList(lb, true);
+        }
+
+        public static void StyleList(ListBox lb, bool defaultDraw)
+        {
+            lb.BackColor = Card;
+            lb.ForeColor = Fg;
+            lb.BorderStyle = BorderStyle.None;
+            lb.DrawMode = DrawMode.OwnerDrawFixed;
+            lb.ItemHeight = S(32);
+            lb.IntegralHeight = false;
+            lb.Font = UI(9.5f, false);
+            lb.Tag = -1;
+            if (defaultDraw) lb.DrawItem += DrawListItem;
+            lb.MouseMove += (s, e) =>
+            {
+                var l = (ListBox)s;
+                int idx = l.IndexFromPoint(e.Location);
+                int was = l.Tag is int ? (int)l.Tag : -1;
+                if (was == idx) return;
+                l.Tag = idx;
+                if (was >= 0 && was < l.Items.Count) l.Invalidate(l.GetItemRectangle(was));
+                if (idx >= 0 && idx < l.Items.Count) l.Invalidate(l.GetItemRectangle(idx));
+            };
+            lb.MouseLeave += (s, e) =>
+            {
+                var l = (ListBox)s;
+                int was = l.Tag is int ? (int)l.Tag : -1;
+                if (was < 0) return;
+                l.Tag = -1;
+                if (was < l.Items.Count) l.Invalidate(l.GetItemRectangle(was));
+            };
+            Native.Dark(lb);
+        }
+
+        public static int HoverIndex(ListBox lb)
+        {
+            return lb != null && lb.Tag is int ? (int)lb.Tag : -1;
+        }
+
+        private static void DrawListItem(object s, DrawItemEventArgs e)
+        {
+            var lb = (ListBox)s;
+            using (var bg = new SolidBrush(lb.BackColor)) e.Graphics.FillRectangle(bg, e.Bounds);
+            if (e.Index < 0) return;
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            bool sel = (e.State & DrawItemState.Selected) != 0;
+            int hov = (lb.Tag is int) ? (int)lb.Tag : -1;
+            var r = Rectangle.Inflate(e.Bounds, -S(4), -S(2));
+            if (sel) FillRound(e.Graphics, r, S(8), Sel);
+            else if (e.Index == hov) FillRound(e.Graphics, r, S(8), CardHover);
+            TextRenderer.DrawText(e.Graphics, lb.Items[e.Index].ToString(), lb.Font,
+                new Rectangle(e.Bounds.X + S(14), e.Bounds.Y, e.Bounds.Width - S(20), e.Bounds.Height),
+                sel ? Color.White : Fg, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+        }
+
+        public static TextBox MakeTextBox(int x, int y, int w)
+        {
+            var t = new TextBox();
+            t.SetBounds(x, y, w, S(28));
+            t.BackColor = Card;
+            t.ForeColor = Fg;
+            t.BorderStyle = BorderStyle.FixedSingle;
+            t.Font = UI(9.5f, false);
+            return t;
+        }
+    }
+
+}

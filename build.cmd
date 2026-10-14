@@ -1,0 +1,93 @@
+@echo off
+if defined PAVISE_CP_OWNED goto cpready
+for /f "tokens=2 delims=:" %%a in ('chcp') do set "PAVISE_OLDCP=%%a"
+set "PAVISE_OLDCP=%PAVISE_OLDCP: =%"
+chcp 65001 >nul
+:cpready
+setlocal
+cd /d "%~dp0"
+if not exist build mkdir build
+
+if /i not "%~1"=="-b" goto usage
+if /i "%~2"=="dev" goto dev
+if /i "%~2"=="prod" goto dev
+goto usage
+
+:dev
+set CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe
+if not exist "%CSC%" set CSC=%WINDIR%\Microsoft.NET\Framework\v4.0.30319\csc.exe
+if not exist "%CSC%" (
+    echo csc.exe not found - install .NET Framework 4.x
+    exit /b 1
+)
+
+set REFS=-unsafe+ -reference:System.dll -reference:System.Drawing.dll -reference:System.Windows.Forms.dll -reference:System.Core.dll -reference:System.Management.dll -reference:System.Xml.dll
+set OUT=build\Pavise.exe
+if not "%~3"=="" set OUT=%~3
+if /i "%~4"=="--selftest" goto selftest
+
+echo [1/3] compiling temp exe...
+"%CSC%" -nologo -target:winexe -optimize+ -codepage:65001 -define:PAVISE_STABILITY_COMPARISON -out:build\Pavise.tmp.exe %REFS% -recurse:src\*.cs
+if errorlevel 1 goto err
+
+echo [2/3] generating Pavise.ico...
+.\build\Pavise.tmp.exe --genicon
+
+echo [3/3] compiling...
+set MANIFEST=build\Pavise.manifest.tmp
+>  "%MANIFEST%" echo ^<?xml version="1.0" encoding="UTF-8" standalone="yes"?^>
+>> "%MANIFEST%" echo ^<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0"^>
+>> "%MANIFEST%" echo   ^<trustInfo xmlns="urn:schemas-microsoft-com:asm.v3"^>
+>> "%MANIFEST%" echo     ^<security^>
+>> "%MANIFEST%" echo       ^<requestedPrivileges^>
+>> "%MANIFEST%" echo         ^<requestedExecutionLevel level="requireAdministrator" uiAccess="false"/^>
+>> "%MANIFEST%" echo       ^</requestedPrivileges^>
+>> "%MANIFEST%" echo     ^</security^>
+>> "%MANIFEST%" echo   ^</trustInfo^>
+>> "%MANIFEST%" echo   ^<application xmlns="urn:schemas-microsoft-com:asm.v3"^>
+>> "%MANIFEST%" echo     ^<windowsSettings^>
+>> "%MANIFEST%" echo       ^<dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings"^>true/pm^</dpiAware^>
+>> "%MANIFEST%" echo       ^<dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings"^>PerMonitorV2^</dpiAwareness^>
+>> "%MANIFEST%" echo     ^</windowsSettings^>
+>> "%MANIFEST%" echo   ^</application^>
+>> "%MANIFEST%" echo ^</assembly^>
+"%CSC%" -nologo -target:winexe -optimize+ -codepage:65001 -define:PAVISE_STABILITY_COMPARISON -win32icon:build\Pavise.ico -win32manifest:"%MANIFEST%" -out:"%OUT%" %REFS% -recurse:src\*.cs
+if errorlevel 1 goto err
+
+del build\Pavise.tmp.exe "%MANIFEST%" >nul 2>&1
+echo.
+for %%F in ("%OUT%") do set "PAVISE_OUTPUT_DIR=%%~dpF"
+if /i not "%PAVISE_OUTPUT_DIR%"=="%CD%\" (
+    copy /y "LICENSE" "%PAVISE_OUTPUT_DIR%LICENSE" >nul
+    if errorlevel 1 goto err
+    copy /y "NOTICE" "%PAVISE_OUTPUT_DIR%NOTICE" >nul
+    if errorlevel 1 goto err
+)
+echo Build OK -^> %OUT%
+call :restorecp
+goto :eof
+
+:selftest
+if "%~3"=="" set OUT=build\Pavise.selftest.exe
+echo [selftest] compiling isolated regression runner...
+"%CSC%" -nologo -target:exe -platform:x64 -optimize+ -codepage:65001 -define:PAVISE_SELFTEST;PAVISE_SELFTEST_RUNNER -main:PaviseApp.SelfTestRunner -out:"%OUT%" %REFS% -recurse:src\*.cs @tests\SelfTest.sources.rsp
+set BUILD_EXIT=%ERRORLEVEL%
+call :restorecp
+exit /b %BUILD_EXIT%
+
+:err
+echo Build failed
+del build\Pavise.tmp.exe "%MANIFEST%" >nul 2>&1
+call :restorecp
+exit /b 1
+
+:usage
+echo Usage: build.cmd -b dev [output.exe] [--selftest]
+echo        prod is the same build the exe is shipped as compiled
+call :restorecp
+exit /b 2
+
+:restorecp
+if defined PAVISE_CP_OWNED goto :eof
+if defined PAVISE_OLDCP chcp %PAVISE_OLDCP% >nul 2>&1
+goto :eof

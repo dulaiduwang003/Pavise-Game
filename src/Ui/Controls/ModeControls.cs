@@ -1,0 +1,213 @@
+﻿// 作者：bdth 2074055628@qq.com
+using System;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Windows.Forms;
+
+namespace PaviseApp
+{
+    internal sealed class ModeButton : FxControl
+    {
+        private PerformancePreset mode;
+        private string source;
+        public Action Clicked;
+
+        public ModeButton() { Bg = Theme.Bg; source = Lang.T("mode.source.global"); }
+
+        public void SetMode(PerformancePreset value)
+        {
+            if (mode == value) return;
+            mode = value; Invalidate();
+        }
+
+        public void SetSource(string value)
+        {
+            string next = value ?? "";
+            if (source == next) return;
+            source = next;
+            Invalidate();
+        }
+
+        internal string SourceText { get { return source; } }
+
+        public void PerformClick()
+        {
+            if (Enabled) OnClick(EventArgs.Empty);
+        }
+
+        protected override void OnClick(EventArgs e)
+        {
+            base.OnClick(e);
+            if (Clicked != null) Clicked();
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics; FillBg(g); g.SmoothingMode = SmoothingMode.AntiAlias;
+            Rectangle r = new Rectangle(0, Theme.S(2), Width - 1, Height - Theme.S(5));
+            using (GraphicsPath p = Theme.TechPath(r, Theme.S(9)))
+            {
+                using (var b = new SolidBrush(Col.Lerp(Theme.Card, Theme.CardHover, hover.Value))) g.FillPath(b, p);
+                using (var pen = new Pen(Col.Lerp(Theme.Stroke, Theme.Accent, 0.38f + hover.Value * 0.45f))) g.DrawPath(pen, p);
+            }
+            using (var edge = new Pen(Theme.Accent, Math.Max(1f, Theme.S(2)))) g.DrawLine(edge, 0, Theme.S(13), 0, Height - Theme.S(14));
+            Rectangle glyph = new Rectangle(Theme.S(12), Theme.S(12), Theme.S(16), Theme.S(16));
+            Glyphs.Draw(g, "game", glyph, Theme.Accent);
+            TextRenderer.DrawText(g, ModeName(mode), Theme.UI(9.25f, true),
+                new Rectangle(Theme.S(38), Theme.S(5), Width - Theme.S(68), Theme.S(22)), Theme.Fg,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            TextRenderer.DrawText(g, source,
+                Theme.UI(7.25f, false), new Rectangle(Theme.S(39), Theme.S(24), Width - Theme.S(72), Theme.S(15)),
+                Theme.Dim, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            PointF[] chevron = {
+                new PointF(Width - Theme.S(22), Theme.S(18)),
+                new PointF(Width - Theme.S(17), Theme.S(23)),
+                new PointF(Width - Theme.S(12), Theme.S(18)) };
+            using (var pen = new Pen(Theme.Dim, Math.Max(1f, Theme.S(1)))) g.DrawLines(pen, chevron);
+        }
+
+        internal static string ModeName(PerformancePreset value)
+        {
+            return value == PerformancePreset.Extreme ? Lang.T("preset.extreme")
+                : value == PerformancePreset.Competitive ? Lang.T("preset.competitive")
+                : value == PerformancePreset.Handheld ? Lang.T("preset.handheld")
+                : Lang.T("preset.standard");
+        }
+    }
+
+    internal sealed class ModeChoice : FxControl
+    {
+        private readonly PerformancePreset mode;
+        private bool selected;
+        private Motion pick;
+        public Action<PerformancePreset> Chosen;
+
+        public ModeChoice(PerformancePreset value)
+        {
+            mode = value; Bg = Theme.Card; pick.Speed = 0.30f; Cursor = Cursors.Hand;
+        }
+        public PerformancePreset Mode { get { return mode; } }
+
+        public void SetSelected(bool value)
+        {
+            if (selected == value) return;
+            selected = value;
+            if (IsHandleCreated) { pick.To(value ? 1f : 0f); UiClock.Wake(); }
+            else pick.Set(value ? 1f : 0f);
+            Invalidate();
+        }
+
+        protected override bool StepAll()
+        {
+            bool a = base.StepAll();
+            bool b = pick.Step();
+            return a || b;
+        }
+
+        protected override void OnClick(EventArgs e)
+        {
+            base.OnClick(e);
+            if (Chosen != null) Chosen(mode);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics; FillBg(g); g.SmoothingMode = SmoothingMode.AntiAlias;
+            Color accent = Theme.ModeColor(mode);
+            float sel = pick.Value;
+            Rectangle r = new Rectangle(0, 0, Width - 1, Height - 1);
+            using (GraphicsPath p = Theme.TechPath(r, Theme.S(8)))
+            {
+                Color fill = Col.Lerp(Col.Lerp(Theme.Card, Theme.CardHover, hover.Value * 0.7f),
+                    Col.Lerp(Theme.Card, accent, 0.12f), sel);
+                using (var b = new SolidBrush(fill)) g.FillPath(b, p);
+                using (var pen = new Pen(Col.Lerp(Col.Lerp(Theme.Stroke, Theme.StrokeHi, hover.Value),
+                    Col.Alpha(accent, 210), sel))) g.DrawPath(pen, p);
+            }
+            using (var b = new SolidBrush(accent)) g.FillEllipse(b, Theme.S(15), Theme.S(15), Theme.S(8), Theme.S(8));
+            TextRenderer.DrawText(g, ModeButton.ModeName(mode), Theme.UI(9.75f, true),
+                new Rectangle(Theme.S(34), Theme.S(7), Theme.S(100), Theme.S(24)), Theme.Fg,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+            TextRenderer.DrawText(g, DetailKey(mode), Theme.UI(7.9f, false),
+                new Rectangle(Theme.S(34), Theme.S(28), Width - Theme.S(50), Height - Theme.S(30)), Theme.Dim,
+                TextFormatFlags.Left | TextFormatFlags.WordBreak | TextFormatFlags.EndEllipsis);
+            if (sel > 0.01f) DrawCheck(g, accent, sel);
+        }
+
+        private void DrawCheck(Graphics g, Color accent, float t)
+        {
+            Rectangle box = new Rectangle(Width - Theme.S(31), Theme.S(15), Theme.S(16), Theme.S(16));
+            var a = new PointF(box.X + Theme.S(2), box.Y + Theme.S(8));
+            var b = new PointF(box.X + Theme.S(6), box.Y + Theme.S(12));
+            var c = new PointF(box.X + Theme.S(14), box.Y + Theme.S(3));
+            int alpha = (int)(255 * Math.Min(1f, t * 2.5f));
+            using (var pen = new Pen(Col.Alpha(accent, alpha), Math.Max(1.4f, Theme.S(1))))
+            {
+                pen.StartCap = LineCap.Round; pen.EndCap = LineCap.Round; pen.LineJoin = LineJoin.Round;
+                if (t < 0.45f) g.DrawLine(pen, a, Between(a, b, t / 0.45f));
+                else g.DrawLines(pen, new[] { a, b, Between(b, c, (t - 0.45f) / 0.55f) });
+            }
+        }
+
+        private static PointF Between(PointF from, PointF to, float t)
+        {
+            if (t < 0f) t = 0f; else if (t > 1f) t = 1f;
+            return new PointF(from.X + (to.X - from.X) * t, from.Y + (to.Y - from.Y) * t);
+        }
+
+        private string DetailKey(PerformancePreset value)
+        {
+            if (value == PerformancePreset.Extreme) return Lang.T("mode.pick.extreme");
+            if (value == PerformancePreset.Competitive) return Lang.T("mode.pick.competitive");
+            if (value == PerformancePreset.Handheld) return Lang.T("mode.pick.handheld");
+            return Lang.T("mode.pick.standard");
+        }
+    }
+
+    internal sealed class ModePickerPanel : RoundPanel
+    {
+        private readonly ModeChoice[] choices;
+        private readonly Label source;
+        public Action<PerformancePreset> ModeChosen;
+
+        public ModePickerPanel()
+        {
+            UseBackdrop = false;
+            Fill = Theme.Card; Border = Theme.StrokeHi; BackColor = Theme.Bg; Radius = Theme.S(14); AccentEdge = true;
+            var title = new Label
+            {
+                Text = Lang.T("mode.global.title"), ForeColor = Theme.Fg, BackColor = Theme.Card,
+                Font = Theme.UI(11f, true), AutoEllipsis = true
+            };
+            title.UseCompatibleTextRendering = false;
+            title.SetBounds(Theme.S(18), Theme.S(13), Theme.S(356), Theme.S(25));
+            source = new Label
+            {
+                Text = Lang.T("mode.global.sub"), ForeColor = Theme.Dim, BackColor = Theme.Card,
+                Font = Theme.UI(7.8f, false), AutoEllipsis = true
+            };
+            source.UseCompatibleTextRendering = false;
+            source.SetBounds(Theme.S(18), Theme.S(38), Theme.S(356), Theme.S(19));
+            Controls.AddRange(new Control[] { title, source });
+
+            PerformancePreset[] order = PresetValue.VisibleOrder();
+            choices = new ModeChoice[order.Length];
+            for (int i = 0; i < order.Length; i++) choices[i] = new ModeChoice(order[i]);
+            for (int i = 0; i < choices.Length; i++)
+            {
+                choices[i].SetBounds(Theme.S(14), Theme.S(66 + i * 70), Theme.S(368), Theme.S(62));
+                choices[i].Chosen = Choose;
+                Controls.Add(choices[i]);
+            }
+        }
+
+        private void Choose(PerformancePreset mode) { if (ModeChosen != null) ModeChosen(mode); }
+
+        public void Sync(PerformancePreset global)
+        {
+            for (int i = 0; i < choices.Length; i++) choices[i].SetSelected(choices[i].Mode == global);
+            source.Text = Lang.T("mode.global.sub");
+        }
+    }
+
+}
