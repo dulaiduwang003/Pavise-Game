@@ -1,3 +1,11 @@
+## 版本与源码
+
+[1.x 早期版](https://github.com/dulaiduwang003/Pavise-Game/tree/pavise1x) · [2.x 手动版](https://github.com/dulaiduwang003/Pavise-Game/tree/pavise2x) · [3.x 自动版](https://github.com/dulaiduwang003/Pavise-Game/tree/pavise3x)
+
+2.x 按需手动设置优化策略；3.x 识别游戏后按模式自动执行。请选择对应分支查看源码。
+
+---
+
 <div align="center">
 
 <img src="docs/icon.png" width="96" height="96" alt="Pavise">

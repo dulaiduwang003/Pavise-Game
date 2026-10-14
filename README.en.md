@@ -1,3 +1,11 @@
+## Versions and source
+
+[1.x legacy](https://github.com/dulaiduwang003/Pavise-Game/tree/pavise1x) · [2.x manual](https://github.com/dulaiduwang003/Pavise-Game/tree/pavise2x) · [3.x automatic](https://github.com/dulaiduwang003/Pavise-Game/tree/pavise3x)
+
+2.x provides manual policy controls. 3.x detects games and applies the selected mode automatically. Each link opens that version's source branch.
+
+---
+
 <div align="center">
 
 <img src="docs/icon.png" width="96" height="96" alt="Pavise">
