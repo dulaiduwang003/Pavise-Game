@@ -1,0 +1,279 @@
+﻿// 作者：bdth 2074055628@qq.com
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text;
+
+namespace PaviseApp
+{
+    internal sealed partial class SuppressionCore
+    {
+        private enum JournalIdentity { Confirmed, Unknown, Mismatch }
+
+        public static bool HasPendingJournalFile(string path)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(path) || !File.Exists(path)) return false;
+                return File.ReadAllLines(path).Length > 1;
+            }
+            catch { return true; }
+        }
+
+        private bool SaveJournalLocked(bool durable = false)
+        {
+            if (string.IsNullOrEmpty(journalPath))
+            {
+                MarkJournaledLocked();
+                return true;
+            }
+            try
+            {
+                var lines = new List<string>();
+                lines.Add("PAVISE_SUPPRESSION_V1");
+                foreach (var kv in map)
+                {
+                    Entry e = kv.Value;
+                    if (e.OrigPri == uint.MaxValue) continue;
+                    if (e.AutomaticLayoutSets != null || e.AutomaticLayoutYielded) durable = true;
+                    lines.Add(kv.Key + "|" + e.Creation + "|" + B64(e.Name) + "|" + e.OrigPri + "|"
+                        + e.OrigAff + "|" + e.OrigIo + "|" + e.OrigPg + "|" + CpuSetsText(e.OrigCpuSets)
+                        + "|" + e.OrigQoSControl + "|" + e.OrigQoSState + "|" + e.OrigGpu + "|" + e.OrigBoost
+                        + (e.AutomaticLayoutSets != null || e.AutomaticLayoutYielded
+                            ? "|layout|" + CpuSetsText(e.AutomaticLayoutSets) + "|" + (e.AutomaticLayoutYielded ? "1" : "0")
+                            : e.BackgroundPlacementOwned ? "|bg|" + e.BackgroundApplied + "|" + e.BackgroundPrevious : ""));
+                }
+                if (lines.Count == 1)
+                {
+                    if (File.Exists(journalPath)) File.Delete(journalPath);
+                    MarkJournaledLocked();
+                    return true;
+                }
+                string tmp = journalPath + ".tmp";
+                using (var file = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+                {
+                    using (var writer = new StreamWriter(file, new UTF8Encoding(false), 4096, true))
+                    { foreach (string line in lines) writer.WriteLine(line); writer.Flush(); }
+                    if (durable) file.Flush(true);
+                }
+                if (File.Exists(journalPath)) File.Replace(tmp, journalPath, null);
+                else File.Move(tmp, journalPath);
+                MarkJournaledLocked();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogFailure(Lang.T("log.suppressioncorerecovery.1"), ex);
+                return false;
+            }
+        }
+
+        private void MarkJournaledLocked()
+        {
+            foreach (Entry entry in map.Values)
+                if (entry.OrigPri != uint.MaxValue) entry.Journaled = true;
+        }
+
+        private void LoadJournal()
+        {
+            if (string.IsNullOrEmpty(journalPath) || !File.Exists(journalPath)) return;
+            try
+            {
+                string[] lines = File.ReadAllLines(journalPath, Encoding.UTF8);
+                if (lines.Length == 0 || lines[0] != "PAVISE_SUPPRESSION_V1") return;
+                for (int i = 1; i < lines.Length; i++)
+                {
+                    int pid;
+                    Entry e = ParseJournalLine(lines[i], out pid);
+                    if (e == null || pid <= 0 || e.OrigPri == uint.MaxValue) continue;
+                    e.Journaled = true;
+                    map[pid] = e;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogFailure(Lang.T("log.suppressioncorerecovery.2"), ex);
+            }
+        }
+
+        private static Entry ParseJournalLine(string line, out int pid)
+        {
+            pid = 0;
+            string[] a = line.Split('|');
+            int io, pg; long creation; uint pri; ulong aff;
+            if ((a.Length != 7 && a.Length != 8 && a.Length != 10 && a.Length != 11 && a.Length != 12 && a.Length != 15)
+                || !int.TryParse(a[0], out pid) || !long.TryParse(a[1], out creation)
+                || !uint.TryParse(a[3], out pri) || !ulong.TryParse(a[4], out aff)
+                || !int.TryParse(a[5], out io) || !int.TryParse(a[6], out pg)) return null;
+            uint[] cpuSets = a.Length >= 8 ? ParseCpuSets(a[7]) : new uint[0];
+            if (cpuSets == null) return null;
+            int qosControl = -1, qosState = -1;
+            if (a.Length >= 10)
+            {
+                if (!int.TryParse(a[8], out qosControl)) qosControl = -1;
+                if (!int.TryParse(a[9], out qosState)) qosState = -1;
+            }
+            int gpu = -1;
+            if (a.Length >= 11 && !int.TryParse(a[10], out gpu)) gpu = -1;
+            int boost = -1;
+            if (a.Length >= 12 && !int.TryParse(a[11], out boost)) boost = -1;
+            if (boost < -1 || boost > 1) boost = -1;
+            ulong bgApplied = 0, bgPrevious = 0;
+            bool layout = a.Length == 15 && a[12] == "layout";
+            uint[] layoutSets = null; bool layoutYielded = false;
+            if (layout)
+            {
+                layoutSets = ParseCpuSets(a[13]);
+                if (layoutSets == null || layoutSets.Length > 64 || new HashSet<uint>(layoutSets).Count != layoutSets.Length
+                    || (a[14] != "0" && a[14] != "1")
+                    || (layoutSets.Length == 0 && a[14] == "0") || cpuSets.Length != 0) return null;
+                layoutYielded = a[14] == "1";
+                if (layoutSets.Length == 0) layoutSets = null;
+            }
+            else if (a.Length == 15 && (a[12] != "bg" || !ulong.TryParse(a[13], out bgApplied) || !ulong.TryParse(a[14], out bgPrevious))) return null;
+            string name = Un64(a[2]);
+            if (name == null) return null;
+            return new Entry
+            {
+                Name = name,
+                Creation = creation,
+                OrigPri = pri,
+                OrigAff = aff,
+                OrigIo = io,
+                OrigPg = pg,
+                OrigCpuSets = cpuSets,
+                OrigQoSControl = qosControl,
+                OrigQoSState = qosState,
+                OrigGpu = gpu,
+                OrigBoost = boost,
+                BackgroundPlacementOwned = a.Length == 15 && !layout,
+                AutomaticLayoutSets = layoutSets, AutomaticLayoutYielded = layoutYielded,
+                BackgroundApplied = bgApplied, BackgroundPrevious = bgPrevious
+            };
+        }
+
+        private static JournalIdentity IdentifyJournalEntry(IntPtr h, Entry e)
+        {
+            if (e.Creation <= 0) return JournalIdentity.Unknown;
+            string current = Native.ImageName(h);
+            if (current != null && !SameName(current, e.Name)) return JournalIdentity.Mismatch;
+            long currentCreation, cpu; ulong disk;
+            bool sampled = Native.QueryProcessSample(h, out currentCreation, out cpu, out disk);
+            if (e.Creation > 0)
+            {
+                if (!sampled) return JournalIdentity.Unknown;
+                if (currentCreation != e.Creation) return JournalIdentity.Mismatch;
+            }
+            return current == null ? JournalIdentity.Unknown : JournalIdentity.Confirmed;
+        }
+
+        public static int HealFromCrash(string statePath)
+        {
+            if (string.IsNullOrEmpty(statePath) || !File.Exists(statePath)) return 0;
+            int restored = 0;
+            var keep = new List<string>(); keep.Add("PAVISE_SUPPRESSION_V1");
+            try
+            {
+                string[] lines = File.ReadAllLines(statePath, Encoding.UTF8);
+                if (lines.Length == 0 || lines[0] != "PAVISE_SUPPRESSION_V1") return 0;
+                for (int i = 1; i < lines.Length; i++)
+                {
+                    int pid;
+                    Entry entry = ParseJournalLine(lines[i], out pid);
+                    if (entry == null)
+                    {
+                        keep.Add(lines[i]);
+                        Logger.Log(Lang.T("log.suppressioncorerecovery.3") + (i + 1) + Lang.T("log.suppressioncorerecovery.4"));
+                        continue;
+                    }
+                    IntPtr h = Native.OpenProcess(Native.PROCESS_SET_INFORMATION | Native.PROCESS_SET_LIMITED_INFORMATION
+                        | Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+                    if (h == IntPtr.Zero)
+                    {
+                        IntPtr query = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+                        if (query != IntPtr.Zero)
+                        {
+                            try
+                            {
+                                if (IdentifyJournalEntry(query, entry) != JournalIdentity.Mismatch) keep.Add(lines[i]);
+                            }
+                            finally { Native.CloseHandle(query); }
+                        }
+                        else if (!Native.LastOpenProcessFailureWasNoSuchProcess())
+                        {
+                            keep.Add(lines[i]);
+                        }
+                        continue;
+                    }
+                    try
+                    {
+                        JournalIdentity identity = IdentifyJournalEntry(h, entry);
+                        if (identity == JournalIdentity.Mismatch) continue;
+                        if (identity == JournalIdentity.Unknown) { keep.Add(lines[i]); continue; }
+                        if (SnapshotMatchesCurrent(h, entry.OrigPri, entry.OrigAff, entry.OrigIo, entry.OrigPg,
+                            entry.OrigCpuSets, entry.OrigQoSControl, entry.OrigQoSState, entry.OrigGpu, entry.OrigBoost))
+                        {
+                            restored++;
+                        }
+                        else if (RestoreBackgroundPlacement(h, entry) && RestoreValues(h, entry.OrigPri, entry.OrigAff, entry.OrigIo, entry.OrigPg, CpuTopology.AllMask,
+                            entry.OrigCpuSets, entry.OrigQoSControl, entry.OrigQoSState, entry.OrigGpu,
+                            entry.OrigBoost, !entry.BackgroundPlacementOwned && !entry.AutomaticLayoutYielded)) restored++;
+                        else keep.Add(lines[i]);
+                    }
+                    catch (Exception ex)
+                    {
+                        keep.Add(lines[i]);
+                        Logger.LogFailure(Lang.T("log.suppressioncorerecovery.5") + pid, ex);
+                    }
+                    finally { Native.CloseHandle(h); }
+                }
+                if (keep.Count == 1) File.Delete(statePath);
+                else AtomicFile.WriteLines(statePath, keep.ToArray(), Lang.T("t.suppressioncorerecovery.6"));
+            }
+            catch (Exception ex)
+            {
+                Logger.LogFailure(Lang.T("log.suppressioncorerecovery.2"), ex);
+            }
+            return restored;
+        }
+
+#if PAVISE_SELFTEST
+        internal static string ProbeJournalLine(string raw)
+        {
+            int pid;
+            Entry e = ParseJournalLine(raw, out pid);
+            if (e == null) return "null";
+            return pid + "|" + e.OrigQoSControl + "|" + e.OrigQoSState + "|" + e.OrigGpu + "|" + e.OrigBoost;
+        }
+#endif
+
+        private static string B64(string value)
+        {
+            return Convert.ToBase64String(Encoding.UTF8.GetBytes(value ?? ""));
+        }
+
+        private static string Un64(string value)
+        {
+            try { return Encoding.UTF8.GetString(Convert.FromBase64String(value)); }
+            catch { return null; }
+        }
+
+        private static string CpuSetsText(uint[] ids)
+        {
+            if (ids == null || ids.Length == 0) return "";
+            var values = new string[ids.Length];
+            for (int i = 0; i < ids.Length; i++) values[i] = ids[i].ToString();
+            return string.Join(",", values);
+        }
+
+        private static uint[] ParseCpuSets(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return new uint[0];
+            string[] parts = text.Split(',');
+            var ids = new uint[parts.Length];
+            for (int i = 0; i < parts.Length; i++)
+                if (!uint.TryParse(parts[i], out ids[i])) return null;
+            return ids;
+        }
+    }
+}
