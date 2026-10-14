@@ -1,3 +1,11 @@
+## バージョンとソース
+
+[1.x 旧版](https://github.com/dulaiduwang003/Pavise-Game/tree/pavise1x) · [2.x 手動版](https://github.com/dulaiduwang003/Pavise-Game/tree/pavise2x) · [3.x 自動版](https://github.com/dulaiduwang003/Pavise-Game/tree/pavise3x)
+
+2.x は最適化ポリシーを手動で設定する版です。3.x はゲームを検出し、選択したモードを自動適用します。各リンクから該当版のソースを確認できます。
+
+---
+
 <div align="center">
 
 <a href="https://pavise.club/en/">
