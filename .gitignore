@@ -17,3 +17,4 @@ tools/
 docs/*
 !docs/wechat.png
 !docs/alipay.png
+!docs/icon.png

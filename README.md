@@ -1,6 +1,27 @@
+<div align="center">
+
+<a href="https://pavise.club/">
+  <img src="docs/icon.png" width="96" height="96" alt="Pavise logo">
+</a>
+
+# PAVISE
+
+### Give your games room to run.
+
+A Windows game resource manager with background process control,<br>
+per-game profiles, and automatic recovery after play.
+
+### 3.x 自动版本
+
+[![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0-d6b451?style=flat-square&labelColor=171a21)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/dulaiduwang003/Pavise-Game?style=flat-square&labelColor=171a21&color=d6b451)](https://github.com/dulaiduwang003/Pavise-Game/releases/latest)
+[![GitHub downloads](https://img.shields.io/github/downloads/dulaiduwang003/Pavise-Game/total?style=flat-square&labelColor=171a21&color=d6b451)](https://github.com/dulaiduwang003/Pavise-Game/releases)
+[![GitHub stars](https://img.shields.io/github/stars/dulaiduwang003/Pavise-Game?style=flat-square&labelColor=171a21&color=d6b451)](https://github.com/dulaiduwang003/Pavise-Game/stargazers)
+[![Contributors](https://img.shields.io/github/contributors/dulaiduwang003/Pavise-Game?style=flat-square&labelColor=171a21&color=d6b451)](https://github.com/dulaiduwang003/Pavise-Game/graphs/contributors)
+
 **[官网](https://pavise.club/) · [下载与更新](https://pavise.club/changelog/#latest) · [使用教程](https://pavise.club/docs/)**
 
-# Pavise 3.x
+</div>
 
 Windows 游戏资源管理工具。3.x 是自动版本：识别游戏后按模式执行调度，退出游戏后还原有记录的对局改动。核心选择、系统环境和监测显示仍可单独设置。
 
