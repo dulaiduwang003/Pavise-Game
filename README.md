@@ -1,5 +1,3 @@
-![Pavise 3.x 3D 渲染台架：空载、智能、竞技、极限模式的平均 FPS、1% Low 与 P99 帧时间对比](docs/mode-comparison.png)
-
 **[官网](https://pavise.club/) · [下载与更新](https://pavise.club/changelog/#latest) · [使用教程](https://pavise.club/docs/)**
 
 # Pavise 3.x
@@ -11,14 +9,6 @@ Windows 游戏资源管理工具。3.x 是自动版本：识别游戏后按模�
 | 1.x | 早期版本 | [pavise1x](https://github.com/dulaiduwang003/Pavise-Game/tree/pavise1x) |
 | 2.x | 手动版本，逐项选择优化策略 | [pavise2x](https://github.com/dulaiduwang003/Pavise-Game/tree/pavise2x) |
 | **3.x** | **自动版本，本分支** | [pavise3x](https://github.com/dulaiduwang003/Pavise-Game/tree/pavise3x) |
-
-## 台架测试
-
-2026-10-15，使用 3.1.0.5 源码运行 Direct3D 11 硬件渲染台架。固定 1080p 场景包含几何体、粒子与冲击波，每帧确认 GPU 完成后计时。分别测试无额外后台负载，以及两个后台进程、共 12 条 CPU/内存工作线程的持续竞争场景。空载表示关闭 Pavise 守护，整机仍在运行相同的 3D 负载。
-
-Intel Core i7-9750H、RTX 2070 Max-Q、Windows 11 26300，使用全部 12 个逻辑处理器。每组交错跑四轮，策略稳定后预热 5 秒、测量 15 秒；柱高为四轮中位数，误差线为最小值至最大值。平均 FPS 按完成帧数/计量时间计算；1% Low 按最慢 1% 帧的平均帧时间换算；P99 为第 99 百分位帧时间。
-
-测试固定系统配置，在隔离的测试进程上运行当前模式的进程策略与实际守护引擎，并逐轮核对退出恢复。系统服务、电源/驱动改动、线程协同和后台 CPU 限额不纳入比较；常规权限下游戏 I/O 提优未生效。**图中是离屏 3D 台架数据，不等于实际游戏 FPS，也不代表完整优化包的性能排名。**
 
 ## 功能清单
 

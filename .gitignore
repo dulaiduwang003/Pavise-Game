@@ -17,4 +17,3 @@ tools/
 docs/*
 !docs/wechat.png
 !docs/alipay.png
-!docs/mode-comparison.png
