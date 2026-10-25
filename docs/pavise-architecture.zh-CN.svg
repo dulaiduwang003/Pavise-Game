@@ -1,0 +1,242 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2520" height="1680" viewBox="0 0 2520 1680" role="img" aria-labelledby="title desc">
+<title id="title">Pavise software architecture</title><desc id="desc">组件依赖与会话生命周期. 仅展示主要依赖；逻辑分组不等于 C# 命名空间。生命周期状态为对实际实现的归纳。</desc>
+<defs><marker id="open-arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M1 1L10 6L1 11" fill="none" stroke="#25282d" stroke-width="1.8"/></marker></defs>
+<style>text{font-family:Consolas,'Microsoft YaHei',monospace;font-kerning:normal}.description{font-family:'Segoe UI','Microsoft YaHei',sans-serif}</style>
+<rect x="0" y="0" width="2520" height="1680" fill="#ffffff" stroke="none" stroke-width="0" />
+<text x="64" y="86" font-size="43" fill="#25282d" font-weight="650" text-anchor="start">Pavise / Software Architecture</text>
+<text x="64" y="134" font-size="27" fill="#666b73" font-weight="400" text-anchor="start" class="description">组件依赖与会话生命周期</text>
+<text x="2456" y="81" font-size="21" fill="#666b73" font-weight="400" text-anchor="end">IMPLEMENTED SUBSYSTEMS · v3.1.0.6</text>
+<path d="M2118 129H2192" fill="none" stroke="#25282d" stroke-width="1.8" stroke-linejoin="miter" stroke-dasharray="8 6" marker-end="url(#open-arrow)"/>
+<text x="2207" y="136" font-size="20" fill="#666b73" font-weight="400" text-anchor="start" class="description">依赖 / 调用</text>
+<line x1="64" y1="172" x2="2456" y2="172" stroke="#25282d" stroke-width="1.7"/>
+<g id="package-ui" data-kind="package"><path d="M64 262V222H355V262H644V490H64Z" fill="#ffffff" stroke="#a5abb2" stroke-width="1.7"/>
+<text x="82" y="249" font-size="22" fill="#666b73" font-weight="500" text-anchor="start">presentation / 表现层</text>
+</g>
+<g id="package-intent" data-kind="package"><path d="M64 574V534H345.19999999999993V574H644V1224H64Z" fill="#ffffff" stroke="#a5abb2" stroke-width="1.7"/>
+<text x="82" y="561" font-size="22" fill="#666b73" font-weight="500" text-anchor="start">configuration / 配置</text>
+</g>
+<g id="package-runtime" data-kind="package"><path d="M744 262V222H1044.8V262H1824V1224H744Z" fill="#ffffff" stroke="#a5abb2" stroke-width="1.7"/>
+<text x="762" y="249" font-size="22" fill="#666b73" font-weight="500" text-anchor="start">application / 核心协作</text>
+</g>
+<g id="package-platform" data-kind="package"><path d="M1924 262V222H2273.6V262H2456V862H1924Z" fill="#ffffff" stroke="#a5abb2" stroke-width="1.7"/>
+<text x="1942" y="249" font-size="22" fill="#666b73" font-weight="500" text-anchor="start">native boundary / 原生边界</text>
+</g>
+<g id="package-monitor" data-kind="package"><path d="M1924 970V930H2249.2V970H2456V1224H1924Z" fill="#ffffff" stroke="#a5abb2" stroke-width="1.7"/>
+<text x="1942" y="957" font-size="22" fill="#666b73" font-weight="500" text-anchor="start">observability / 可观测性</text>
+</g>
+<g id="package-persistence" data-kind="package"><path d="M64 1360V1320H474.79999999999995V1360H2456V1578H64Z" fill="#ffffff" stroke="#a5abb2" stroke-width="1.7"/>
+<text x="82" y="1347" font-size="22" fill="#666b73" font-weight="500" text-anchor="start">persistence / 持久状态与生命周期</text>
+</g>
+<path d="M614 380H696V714H1019" fill="none" stroke="#25282d" stroke-width="1.8" stroke-linejoin="miter" stroke-dasharray="8 6" marker-end="url(#open-arrow)"/>
+<rect x="804" y="674" width="94" height="34" fill="#ffffff" stroke="none" stroke-width="0" />
+<text x="851" y="699" font-size="21" fill="#666b73" font-weight="400" text-anchor="middle" class="description">用户命令</text>
+<path d="M1165 620V527H1018V462" fill="none" stroke="#25282d" stroke-width="1.8" stroke-linejoin="miter" stroke-dasharray="8 6" marker-end="url(#open-arrow)"/>
+<rect x="971" y="483" width="94" height="34" fill="#ffffff" stroke="none" stroke-width="0" />
+<text x="1018" y="508" font-size="21" fill="#666b73" font-weight="400" text-anchor="middle" class="description">识别</text>
+<path d="M1435 620V527H1550V462" fill="none" stroke="#25282d" stroke-width="1.8" stroke-linejoin="miter" stroke-dasharray="8 6" marker-end="url(#open-arrow)"/>
+<rect x="1503" y="483" width="94" height="34" fill="#ffffff" stroke="none" stroke-width="0" />
+<text x="1550" y="508" font-size="21" fill="#666b73" font-weight="400" text-anchor="middle" class="description">解析</text>
+<path d="M1316 370H1282V196H680V662H614" fill="none" stroke="#25282d" stroke-width="1.8" stroke-linejoin="miter" stroke-dasharray="8 6" marker-end="url(#open-arrow)"/>
+<rect x="861" y="171" width="94" height="34" fill="#ffffff" stroke="none" stroke-width="0" />
+<text x="908" y="196" font-size="21" fill="#666b73" font-weight="400" text-anchor="middle" class="description">读取意图</text>
+<path d="M1020 785H718V886H614" fill="none" stroke="#25282d" stroke-width="1.8" stroke-linejoin="miter" stroke-dasharray="8 6" marker-end="url(#open-arrow)"/>
+<path d="M1285 837V922" fill="none" stroke="#25282d" stroke-width="1.8" stroke-linejoin="miter" stroke-dasharray="8 6"/>
+<rect x="1238" y="869" width="94" height="34" fill="#ffffff" stroke="none" stroke-width="0" />
+<text x="1285" y="894" font-size="21" fill="#666b73" font-weight="400" text-anchor="middle" class="description">协调执行</text>
+<path d="M949 922H1629" fill="none" stroke="#25282d" stroke-width="1.8" stroke-linejoin="miter" stroke-dasharray="8 6"/>
+<path d="M949 922V986" fill="none" stroke="#25282d" stroke-width="1.8" stroke-linejoin="miter" stroke-dasharray="8 6" marker-end="url(#open-arrow)"/>
+<path d="M1285 922V986" fill="none" stroke="#25282d" stroke-width="1.8" stroke-linejoin="miter" stroke-dasharray="8 6" marker-end="url(#open-arrow)"/>
+<path d="M1629 922V986" fill="none" stroke="#25282d" stroke-width="1.8" stroke-linejoin="miter" stroke-dasharray="8 6" marker-end="url(#open-arrow)"/>
+<path d="M949 1185V1272H1870V404H1953" fill="none" stroke="#25282d" stroke-width="1.8" stroke-linejoin="miter" stroke-dasharray="8 6" marker-end="url(#open-arrow)"/>
+<path d="M1285 1185V1272" fill="none" stroke="#25282d" stroke-width="1.8" stroke-linejoin="miter" stroke-dasharray="8 6"/>
+<path d="M1629 1185V1272" fill="none" stroke="#25282d" stroke-width="1.8" stroke-linejoin="miter" stroke-dasharray="8 6"/>
+<rect x="1687" y="1247" width="94" height="34" fill="#ffffff" stroke="none" stroke-width="0" />
+<text x="1734" y="1272" font-size="21" fill="#666b73" font-weight="400" text-anchor="middle" class="description">原生调用</text>
+<path d="M2190 505V622" fill="none" stroke="#25282d" stroke-width="1.8" stroke-linejoin="miter" stroke-dasharray="8 6" marker-end="url(#open-arrow)"/>
+<path d="M2430 1080H2480V717H2430" fill="none" stroke="#25282d" stroke-width="1.8" stroke-linejoin="miter" stroke-dasharray="8 6" marker-end="url(#open-arrow)"/>
+<rect x="2338" y="873" width="94" height="34" fill="#ffffff" stroke="none" stroke-width="0" />
+<text x="2385" y="898" font-size="20" fill="#666b73" font-weight="400" text-anchor="middle" class="description">只读</text>
+<path d="M1190 1272V1297H680V1388" fill="none" stroke="#25282d" stroke-width="1.8" stroke-linejoin="miter" stroke-dasharray="8 6" marker-end="url(#open-arrow)"/>
+<g id="component-panel" data-kind="component" data-x="94" data-y="302" data-w="520" data-h="172">
+<rect x="94" y="302" width="520" height="172" fill="#ffffff" stroke="#25282d" stroke-width="1.8" />
+<rect x="95" y="303" width="518" height="81" fill="#f6f7f8" stroke="none" stroke-width="0" />
+<text x="114" y="332" font-size="19" fill="#666b73" font-weight="400" text-anchor="start">&lt;&lt;UI&gt;&gt;</text>
+<text x="114" y="367" font-size="28" fill="#25282d" font-weight="650" text-anchor="start">PanelForm</text>
+<line x1="94" y1="384" x2="614" y2="384" stroke="#25282d" stroke-width="1.4"/>
+<rect x="577" y="317" width="21" height="27" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<rect x="571" y="322" width="11" height="6" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<rect x="571" y="333" width="11" height="6" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<text x="114" y="416" font-size="22" fill="#666b73" font-weight="400" text-anchor="start" class="description">命令 / 配置入口</text>
+<text x="114" y="449" font-size="22" fill="#666b73" font-weight="400" text-anchor="start" class="description">运行状态呈现</text>
+</g>
+<g id="component-settings" data-kind="component" data-x="94" data-y="610" data-w="520" data-h="160">
+<rect x="94" y="610" width="520" height="160" fill="#ffffff" stroke="#25282d" stroke-width="1.8" />
+<rect x="95" y="611" width="518" height="81" fill="#f6f7f8" stroke="none" stroke-width="0" />
+<text x="114" y="640" font-size="19" fill="#666b73" font-weight="400" text-anchor="start">&lt;&lt;store&gt;&gt;</text>
+<text x="114" y="675" font-size="28" fill="#25282d" font-weight="650" text-anchor="start">Settings</text>
+<line x1="94" y1="692" x2="614" y2="692" stroke="#25282d" stroke-width="1.4"/>
+<rect x="577" y="625" width="21" height="27" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<rect x="571" y="630" width="11" height="6" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<rect x="571" y="641" width="11" height="6" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<text x="114" y="724" font-size="22" fill="#666b73" font-weight="400" text-anchor="start" class="description">保存的全局偏好</text>
+<text x="114" y="757" font-size="22" fill="#666b73" font-weight="400" text-anchor="start">Load() / Save() / SaveStr()</text>
+</g>
+<g id="component-profiles" data-kind="component" data-x="94" data-y="814" data-w="520" data-h="160">
+<rect x="94" y="814" width="520" height="160" fill="#ffffff" stroke="#25282d" stroke-width="1.8" />
+<rect x="95" y="815" width="518" height="81" fill="#f6f7f8" stroke="none" stroke-width="0" />
+<text x="114" y="844" font-size="19" fill="#666b73" font-weight="400" text-anchor="start">&lt;&lt;store&gt;&gt;</text>
+<text x="114" y="879" font-size="28" fill="#25282d" font-weight="650" text-anchor="start">GameProfileStore</text>
+<line x1="94" y1="896" x2="614" y2="896" stroke="#25282d" stroke-width="1.4"/>
+<rect x="577" y="829" width="21" height="27" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<rect x="571" y="834" width="11" height="6" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<rect x="571" y="845" width="11" height="6" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<text x="114" y="928" font-size="22" fill="#666b73" font-weight="400" text-anchor="start" class="description">GameProfile + Overrides</text>
+<text x="114" y="961" font-size="22" fill="#666b73" font-weight="400" text-anchor="start" class="description">逐游戏意图持久化</text>
+</g>
+<text x="94" y="1074" font-size="25" fill="#666b73" font-weight="400" text-anchor="start" class="description">配置表达用户意图。</text>
+<text x="94" y="1118" font-size="25" fill="#666b73" font-weight="400" text-anchor="start" class="description">执行仍需运行态检查。</text>
+<g id="component-detection" data-kind="component" data-x="784" data-y="302" data-w="468" data-h="160">
+<rect x="784" y="302" width="468" height="160" fill="#ffffff" stroke="#25282d" stroke-width="1.8" />
+<rect x="785" y="303" width="466" height="81" fill="#f6f7f8" stroke="none" stroke-width="0" />
+<text x="804" y="332" font-size="19" fill="#666b73" font-weight="400" text-anchor="start">&lt;&lt;service&gt;&gt;</text>
+<text x="804" y="367" font-size="27" fill="#25282d" font-weight="650" text-anchor="start">GameSessionDetector</text>
+<line x1="784" y1="384" x2="1252" y2="384" stroke="#25282d" stroke-width="1.4"/>
+<rect x="1215" y="317" width="21" height="27" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<rect x="1209" y="322" width="11" height="6" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<rect x="1209" y="333" width="11" height="6" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<text x="804" y="416" font-size="22" fill="#666b73" font-weight="400" text-anchor="start">Detect(...) → GameDetection</text>
+<text x="804" y="449" font-size="22" fill="#666b73" font-weight="400" text-anchor="start" class="description">PID + 创建时间</text>
+</g>
+<g id="component-policy" data-kind="component" data-x="1316" data-y="302" data-w="468" data-h="160">
+<rect x="1316" y="302" width="468" height="160" fill="#ffffff" stroke="#25282d" stroke-width="1.8" />
+<rect x="1317" y="303" width="466" height="81" fill="#f6f7f8" stroke="none" stroke-width="0" />
+<text x="1336" y="332" font-size="19" fill="#666b73" font-weight="400" text-anchor="start">&lt;&lt;resolver&gt;&gt;</text>
+<text x="1336" y="367" font-size="28" fill="#25282d" font-weight="650" text-anchor="start">PolicyResolver</text>
+<line x1="1316" y1="384" x2="1784" y2="384" stroke="#25282d" stroke-width="1.4"/>
+<rect x="1747" y="317" width="21" height="27" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<rect x="1741" y="322" width="11" height="6" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<rect x="1741" y="333" width="11" height="6" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<text x="1336" y="416" font-size="22" fill="#666b73" font-weight="400" text-anchor="start">For(profile) / Global()</text>
+<text x="1336" y="449" font-size="22" fill="#666b73" font-weight="400" text-anchor="start" class="description">→ PolicySnapshot</text>
+</g>
+<g id="component-session" data-kind="component" data-x="1020" data-y="620" data-w="530" data-h="217">
+<rect x="1020" y="620" width="530" height="217" fill="#ffffff" stroke="#25282d" stroke-width="1.8" />
+<rect x="1021" y="621" width="528" height="81" fill="#f6f7f8" stroke="none" stroke-width="0" />
+<text x="1040" y="650" font-size="19" fill="#666b73" font-weight="400" text-anchor="start">&lt;&lt;coordinator&gt;&gt;</text>
+<text x="1040" y="685" font-size="31" fill="#25282d" font-weight="650" text-anchor="start">GameMode</text>
+<line x1="1020" y1="702" x2="1550" y2="702" stroke="#25282d" stroke-width="1.4"/>
+<rect x="1513" y="635" width="21" height="27" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<rect x="1507" y="640" width="11" height="6" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<rect x="1507" y="651" width="11" height="6" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<text x="1040" y="734" font-size="22" fill="#666b73" font-weight="400" text-anchor="start">sessionPolicy: PolicySnapshot</text>
+<text x="1040" y="767" font-size="22" fill="#666b73" font-weight="400" text-anchor="start">Loop() / BeginSessionPolicy()</text>
+<text x="1040" y="800" font-size="22" fill="#666b73" font-weight="400" text-anchor="start">Start() / Stop()</text>
+</g>
+<g id="component-suppression" data-kind="component" data-x="784" data-y="986" data-w="330" data-h="199">
+<rect x="784" y="986" width="330" height="199" fill="#ffffff" stroke="#25282d" stroke-width="1.8" />
+<rect x="785" y="987" width="328" height="81" fill="#f6f7f8" stroke="none" stroke-width="0" />
+<text x="804" y="1016" font-size="19" fill="#666b73" font-weight="400" text-anchor="start">&lt;&lt;executor&gt;&gt;</text>
+<text x="804" y="1051" font-size="25" fill="#25282d" font-weight="650" text-anchor="start">SuppressionCore</text>
+<line x1="784" y1="1068" x2="1114" y2="1068" stroke="#25282d" stroke-width="1.4"/>
+<rect x="1077" y="1001" width="21" height="27" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<rect x="1071" y="1006" width="11" height="6" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<rect x="1071" y="1017" width="11" height="6" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<text x="804" y="1100" font-size="20" fill="#666b73" font-weight="400" text-anchor="start">Acquire() / Release()</text>
+<text x="804" y="1133" font-size="20" fill="#666b73" font-weight="400" text-anchor="start" class="description">进程控制 / 恢复</text>
+</g>
+<g id="component-isolation" data-kind="component" data-x="1120" data-y="986" data-w="330" data-h="199">
+<rect x="1120" y="986" width="330" height="199" fill="#ffffff" stroke="#25282d" stroke-width="1.8" />
+<rect x="1121" y="987" width="328" height="81" fill="#f6f7f8" stroke="none" stroke-width="0" />
+<text x="1140" y="1016" font-size="19" fill="#666b73" font-weight="400" text-anchor="start">&lt;&lt;worker&gt;&gt;</text>
+<text x="1140" y="1051" font-size="24" fill="#25282d" font-weight="650" text-anchor="start">CoreIsolationWorker</text>
+<line x1="1120" y1="1068" x2="1450" y2="1068" stroke="#25282d" stroke-width="1.4"/>
+<rect x="1413" y="1001" width="21" height="27" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<rect x="1407" y="1006" width="11" height="6" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<rect x="1407" y="1017" width="11" height="6" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<text x="1140" y="1100" font-size="20" fill="#666b73" font-weight="400" text-anchor="start">ICoreIsolationStore</text>
+<text x="1140" y="1133" font-size="20" fill="#666b73" font-weight="400" text-anchor="start" class="description">独立工作进程 / 恢复</text>
+</g>
+<g id="component-threads" data-kind="component" data-x="1456" data-y="986" data-w="346" data-h="199">
+<rect x="1456" y="986" width="346" height="199" fill="#ffffff" stroke="#25282d" stroke-width="1.8" />
+<rect x="1457" y="987" width="344" height="81" fill="#f6f7f8" stroke="none" stroke-width="0" />
+<text x="1476" y="1016" font-size="19" fill="#666b73" font-weight="400" text-anchor="start">&lt;&lt;worker&gt;&gt;</text>
+<text x="1476" y="1051" font-size="23" fill="#25282d" font-weight="650" text-anchor="start">CriticalThreadGuardian</text>
+<line x1="1456" y1="1068" x2="1802" y2="1068" stroke="#25282d" stroke-width="1.4"/>
+<rect x="1765" y="1001" width="21" height="27" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<rect x="1759" y="1006" width="11" height="6" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<rect x="1759" y="1017" width="11" height="6" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<text x="1476" y="1100" font-size="20" fill="#666b73" font-weight="400" text-anchor="start">IHardThreadGuardian</text>
+<text x="1476" y="1133" font-size="20" fill="#666b73" font-weight="400" text-anchor="start" class="description">线程控制 / 恢复</text>
+</g>
+<g id="component-adapters" data-kind="component" data-x="1954" data-y="302" data-w="472" data-h="203">
+<rect x="1954" y="302" width="472" height="203" fill="#ffffff" stroke="#25282d" stroke-width="1.8" />
+<rect x="1955" y="303" width="470" height="81" fill="#f6f7f8" stroke="none" stroke-width="0" />
+<text x="1974" y="332" font-size="19" fill="#666b73" font-weight="400" text-anchor="start">&lt;&lt;platform&gt;&gt;</text>
+<text x="1974" y="367" font-size="28" fill="#25282d" font-weight="650" text-anchor="start">Native adapters</text>
+<line x1="1954" y1="384" x2="2426" y2="384" stroke="#25282d" stroke-width="1.4"/>
+<rect x="2389" y="317" width="21" height="27" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<rect x="2383" y="322" width="11" height="6" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<rect x="2383" y="333" width="11" height="6" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<text x="1974" y="416" font-size="22" fill="#666b73" font-weight="400" text-anchor="start" class="description">Native / CoreIsolationNative</text>
+<text x="1974" y="449" font-size="22" fill="#666b73" font-weight="400" text-anchor="start">Win32 / NT P/Invoke</text>
+</g>
+<g id="component-os" data-kind="component" data-x="1954" data-y="622" data-w="472" data-h="169">
+<rect x="1954" y="622" width="472" height="169" fill="#ffffff" stroke="#25282d" stroke-width="1.8" />
+<rect x="1955" y="623" width="470" height="81" fill="#f6f7f8" stroke="none" stroke-width="0" />
+<text x="1974" y="652" font-size="19" fill="#666b73" font-weight="400" text-anchor="start">&lt;&lt;external&gt;&gt;</text>
+<text x="1974" y="687" font-size="28" fill="#25282d" font-weight="650" text-anchor="start">Windows</text>
+<line x1="1954" y1="704" x2="2426" y2="704" stroke="#25282d" stroke-width="1.4"/>
+<rect x="2389" y="637" width="21" height="27" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<rect x="2383" y="642" width="11" height="6" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<rect x="2383" y="653" width="11" height="6" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<text x="1974" y="736" font-size="22" fill="#666b73" font-weight="400" text-anchor="start" class="description">进程 / 线程 / CPU 集</text>
+<text x="1974" y="769" font-size="22" fill="#666b73" font-weight="400" text-anchor="start" class="description">电源 / 受支持的驱动接口</text>
+</g>
+<g id="component-monitoring" data-kind="component" data-x="1954" data-y="1007" data-w="472" data-h="199">
+<rect x="1954" y="1007" width="472" height="199" fill="#ffffff" stroke="#25282d" stroke-width="1.8" />
+<rect x="1955" y="1008" width="470" height="81" fill="#f6f7f8" stroke="none" stroke-width="0" />
+<text x="1974" y="1037" font-size="19" fill="#666b73" font-weight="400" text-anchor="start">&lt;&lt;service&gt;&gt;</text>
+<text x="1974" y="1072" font-size="25" fill="#25282d" font-weight="650" text-anchor="start">PerformanceMonitoring</text>
+<line x1="1954" y1="1089" x2="2426" y2="1089" stroke="#25282d" stroke-width="1.4"/>
+<rect x="2389" y="1022" width="21" height="27" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<rect x="2383" y="1027" width="11" height="6" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<rect x="2383" y="1038" width="11" height="6" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<text x="1974" y="1121" font-size="22" fill="#666b73" font-weight="400" text-anchor="start">IMonitoringSensors.Read(...)</text>
+<text x="1974" y="1154" font-size="22" fill="#666b73" font-weight="400" text-anchor="start">IMonitoringBridge.Publish(...)</text>
+<text x="1974" y="1187" font-size="22" fill="#666b73" font-weight="400" text-anchor="start" class="description">可选 RTSS 输出</text>
+</g>
+<g id="component-journals" data-kind="component" data-x="94" data-y="1389" data-w="650" data-h="166">
+<rect x="94" y="1389" width="650" height="166" fill="#ffffff" stroke="#25282d" stroke-width="1.8" />
+<rect x="95" y="1390" width="648" height="81" fill="#f6f7f8" stroke="none" stroke-width="0" />
+<text x="114" y="1419" font-size="19" fill="#666b73" font-weight="400" text-anchor="start">&lt;&lt;persistence&gt;&gt;</text>
+<text x="114" y="1454" font-size="27" fill="#25282d" font-weight="650" text-anchor="start">Recovery journals</text>
+<line x1="94" y1="1471" x2="744" y2="1471" stroke="#25282d" stroke-width="1.4"/>
+<rect x="707" y="1404" width="21" height="27" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<rect x="701" y="1409" width="11" height="6" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<rect x="701" y="1420" width="11" height="6" fill="#ffffff" stroke="#25282d" stroke-width="1.3" />
+<text x="114" y="1503" font-size="22" fill="#666b73" font-weight="400" text-anchor="start" class="description">原值 + 目标身份</text>
+<text x="114" y="1536" font-size="22" fill="#666b73" font-weight="400" text-anchor="start" class="description">保留未完成的恢复记录</text>
+</g>
+<text x="800" y="1388" font-size="25" fill="#25282d" font-weight="600" text-anchor="start">Session lifecycle / 会话生命周期</text>
+<circle cx="817" cy="1455" r="8" fill="#25282d"/>
+<path d="M825 1455H860" fill="none" stroke="#25282d" stroke-width="1.8" stroke-linejoin="miter" marker-end="url(#open-arrow)"/>
+<rect x="866" y="1420" width="270" height="70" fill="#f6f7f8" stroke="#25282d" stroke-width="1.7" rx="8"/>
+<text x="1001" y="1464" font-size="25" fill="#25282d" font-weight="500" text-anchor="middle">Idle</text>
+<path d="M1136 1455H1203" fill="none" stroke="#25282d" stroke-width="1.8" stroke-linejoin="miter" marker-end="url(#open-arrow)"/>
+<rect x="1210" y="1420" width="270" height="70" fill="#f6f7f8" stroke="#25282d" stroke-width="1.7" rx="8"/>
+<text x="1345" y="1464" font-size="25" fill="#25282d" font-weight="500" text-anchor="middle">Active</text>
+<path d="M1480 1455H1547" fill="none" stroke="#25282d" stroke-width="1.8" stroke-linejoin="miter" marker-end="url(#open-arrow)"/>
+<rect x="1554" y="1420" width="270" height="70" fill="#f6f7f8" stroke="#25282d" stroke-width="1.7" rx="8"/>
+<text x="1689" y="1464" font-size="25" fill="#25282d" font-weight="500" text-anchor="middle">Exit grace</text>
+<path d="M1824 1455H1891" fill="none" stroke="#25282d" stroke-width="1.8" stroke-linejoin="miter" marker-end="url(#open-arrow)"/>
+<rect x="1898" y="1420" width="270" height="70" fill="#f6f7f8" stroke="#25282d" stroke-width="1.7" rx="8"/>
+<text x="2033" y="1464" font-size="25" fill="#25282d" font-weight="500" text-anchor="middle">Restore</text>
+<path d="M2033 1490V1520H1001V1490" fill="none" stroke="#25282d" stroke-width="1.8" stroke-linejoin="miter" marker-end="url(#open-arrow)"/>
+<rect x="1470" y="1501" width="94" height="34" fill="#ffffff" stroke="none" stroke-width="0" />
+<text x="1517" y="1526" font-size="20" fill="#666b73" font-weight="400" text-anchor="middle" class="description">恢复完成</text>
+<path d="M2168 1455H2220V1396H2033V1420" fill="none" stroke="#25282d" stroke-width="1.8" stroke-linejoin="miter" marker-end="url(#open-arrow)"/>
+<rect x="2241" y="1425" width="128" height="34" fill="#ffffff" stroke="none" stroke-width="0" />
+<text x="2305" y="1450" font-size="20" fill="#666b73" font-weight="400" text-anchor="middle" class="description">未完成 → 重试</text>
+<text x="64" y="1622" font-size="22" fill="#666b73" font-weight="400" text-anchor="start" class="description">仅展示主要依赖；逻辑分组不等于 C# 命名空间。生命周期状态为对实际实现的归纳。</text>
+<text x="64" y="1659" font-size="21" fill="#666b73" font-weight="400" text-anchor="start" class="description">图 01  组件依赖视图 · 保留真实代码标识，省略辅助路径。</text>
+</svg>
