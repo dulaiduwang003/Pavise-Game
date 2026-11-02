@@ -41,7 +41,10 @@ namespace PaviseApp
                 RendererCoordinatorSeparateForcedRecovery,
                 RendererCoordinatorStickyRejectsOlderBackground,
                 RendererCoordinatorStickyCannotRebindPid,
-                RendererCoordinatorLegacyRootKeepsSibling
+                RendererCoordinatorLegacyRootKeepsSibling,
+                RendererCoordinatorOlderRendererRule,
+                RendererCoordinatorOlderSiblingCommitWaitsForForeground,
+                RendererCoordinatorOlderSiblingHoldsForegroundFirst
             };
             try
             {
@@ -93,7 +96,7 @@ namespace PaviseApp
                 Eq(f.Candidate.RendererPath, saved.ExecutablePath);
                 Eq(null, saved.LearnedExecutablePath);
                 Eq(1, saved.Entries.Count);
-                Eq("0", saved.Overrides[PolicyCatalog.KeyBoost]);
+                Eq("0", saved.Overrides[PolicyCatalog.KeyGameRebar]);
                 Eq(false, GameSessionDetector.IsProfileEntryName(saved, f.Old.RendererName));
                 Eq(true, File.Exists(f.Old.RendererPath));
                 RendererCoordinatorInvoke(f.Mode, "CompleteRendererSelection", chosen);
@@ -471,7 +474,7 @@ namespace PaviseApp
                 Eq(f.Old.RendererCreation,
                     RendererCoordinatorField<GameDetection>(f.Mode, "stickyDetection").RendererCreation);
                 Eq(false, GameMode.FreshRendererMayReplaceSticky(selected, selected.RendererName,
-                    selected.RendererCreation + 1, f.Old.RendererCreation));
+                    selected.RendererCreation + 1, f.Old.RendererCreation, GameMode.OlderRendererTakeoverForegroundMs));
             }
         }
 
@@ -493,6 +496,79 @@ namespace PaviseApp
                     new[] { child }, new[] { updated }, f.Old);
                 Eq(true, candidate != null);
                 Eq(true, candidate.RequiresGpuConfirm);
+            }
+        }
+
+        private static void RendererCoordinatorOlderRendererRule(string root)
+        {
+            var fresh = new GameDetection { RendererPid = 4242, RendererName = "javaw", RendererCreation = 100, RendererForeground = true };
+            const long sticky = 200;  // the incumbent started after the fresh process
+            long dwell = GameMode.OlderRendererTakeoverForegroundMs;
+            Eq(false, GameMode.FreshRendererMayReplaceSticky(fresh, "javaw", 100, sticky, 0));
+            Eq(false, GameMode.FreshRendererMayReplaceSticky(fresh, "javaw", 100, sticky, dwell - 1));
+            Eq(true, GameMode.FreshRendererMayReplaceSticky(fresh, "javaw", 100, sticky, dwell));
+            fresh.RendererForeground = false;
+            Eq(false, GameMode.FreshRendererMayReplaceSticky(fresh, "javaw", 100, sticky, dwell));
+            Eq(true, GameMode.FreshRendererMayReplaceSticky(fresh, "javaw", 100, 50, 0));
+            fresh.RendererForeground = true; fresh.RendererGpuProofExpiresMs = 1;
+            Eq(true, GameMode.FreshRendererMayReplaceSticky(fresh, "javaw", 100, sticky, 0));
+        }
+
+        private static void RendererCoordinatorOlderSiblingCommitWaitsForForeground(string root)
+        {
+            using (var f = new RendererCoordinatorFixture(root, false))
+            {
+                f.Mode.RendererTestIdentity = delegate { return true; };
+                GameDetection sibling = RendererHandoffTracker.Copy(f.Candidate);
+                sibling.RendererCreation = f.Old.RendererCreation - 1;
+                sibling.RendererCandidateSelected = true;
+                sibling.RequiresGpuConfirm = false;
+                sibling.RendererLearnable = false;
+                f.Foreground = sibling.RendererPid;
+                RendererCoordinatorInvoke(f.Mode, "ObserveRendererForegroundChange");
+                Eq(false, f.Commit(RendererHandoffTracker.Copy(sibling), f.Epoch));
+                RendererCoordinatorSet(f.Mode, "rendererForegroundSinceMs", RendererCoordinatorNow() - GameMode.OlderRendererTakeoverForegroundMs - 1);
+                Eq(true, f.Commit(RendererHandoffTracker.Copy(sibling), f.Epoch));
+                // Leaving the foreground restarts the wait.
+                f.Foreground = 999999;
+                RendererCoordinatorInvoke(f.Mode, "ObserveRendererForegroundChange");
+                f.Foreground = sibling.RendererPid;
+                RendererCoordinatorInvoke(f.Mode, "ObserveRendererForegroundChange");
+                Eq(false, f.Commit(RendererHandoffTracker.Copy(sibling), f.Epoch));
+            }
+        }
+
+        // The game renders; an older process with the same exe (a launcher such as javaw) comes to the front.
+        private static void RendererCoordinatorOlderSiblingHoldsForegroundFirst(string root)
+        {
+            using (var f = new RendererCoordinatorFixture(root, false))
+            {
+                GameDetection game = RendererHandoffTracker.Copy(f.Old);
+                GameDetection launcher = RendererHandoffTracker.Copy(f.Old);
+                launcher.RendererPid = f.Old.RendererPid + 7;
+                launcher.RendererCreation = f.Old.RendererCreation - 10;
+                launcher.FamilyPids.Clear(); launcher.FamilyPids.Add(launcher.RendererPid);
+                var identities = new Dictionary<int, GameProcessSnapshot>();
+                foreach (GameDetection d in new[] { game, launcher })
+                    identities[d.RendererPid] = new GameProcessSnapshot { Pid = d.RendererPid, Name = d.RendererName, Creation = d.RendererCreation, Path = d.RendererPath };
+                f.Mode.RendererTestStickyIdentity = delegate(int pid) { GameProcessSnapshot s; return identities.TryGetValue(pid, out s) ? s : null; };
+                Eq(true, (bool)RendererCoordinatorInvoke(f.Mode, "RememberSticky", RendererHandoffTracker.Copy(game)));
+
+                f.Foreground = launcher.RendererPid;
+                RendererCoordinatorInvoke(f.Mode, "ObserveRendererForegroundChange");
+                GameDetection kept = (GameDetection)RendererCoordinatorInvoke(f.Mode, "ApplyStickiness", RendererHandoffTracker.Copy(launcher));
+                Eq(game.RendererPid, kept.RendererPid);
+                Eq(game.RendererPid, RendererCoordinatorField<GameDetection>(f.Mode, "stickyDetection").RendererPid);
+
+                RendererCoordinatorSet(f.Mode, "rendererForegroundSinceMs", RendererCoordinatorNow() - GameMode.OlderRendererTakeoverForegroundMs - 1);
+                GameDetection taken = (GameDetection)RendererCoordinatorInvoke(f.Mode, "ApplyStickiness", RendererHandoffTracker.Copy(launcher));
+                Eq(launcher.RendererPid, taken.RendererPid);
+
+                // Back in the game: it started after the launcher and takes over at once.
+                f.Foreground = game.RendererPid;
+                RendererCoordinatorInvoke(f.Mode, "ObserveRendererForegroundChange");
+                GameDetection back = (GameDetection)RendererCoordinatorInvoke(f.Mode, "ApplyStickiness", RendererHandoffTracker.Copy(game));
+                Eq(game.RendererPid, back.RendererPid);
             }
         }
 
@@ -549,7 +625,7 @@ namespace PaviseApp
                 Profile = GameProfileStore.NewProfile("独立配置保留", Directory, launcher);
                 Profile.ForceTrigger = force;
                 Profile.LearnedExecutablePath = legacy ? oldRenderer : null;
-                PolicyResolver.SetOverride(Profile, PolicyCatalog.KeyBoost, "0");
+                PolicyResolver.SetOverride(Profile, PolicyCatalog.KeyGameRebar, "0");
                 PolicyResolver.SetOverride(Profile, PolicyCatalog.KeySuppressFamily, "1");
                 Eq(true, new GameProfileStore(Directory).Save(new[] { Profile }));
                 Mode = new GameMode(Directory, new SuppressionCore(delegate { throw new Exception("Unexpected real core recovery"); }, true));

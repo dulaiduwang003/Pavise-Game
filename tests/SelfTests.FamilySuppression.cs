@@ -1760,7 +1760,7 @@ namespace PaviseApp
                     Eq(true, f.CanSuppress(process));
                     Eq(false, f.CanSuppress(process, process.Pid, false, false));
                     Eq(false, f.CanSuppress(process, f.Renderer.Pid, true, false));
-                    Eq(true, f.CanSuppress(process, process.Pid, true, true));
+                    Eq(false, f.CanSuppress(process, process.Pid, true, true));
                 }
                 Eq(false, f.CanSuppress(f.Renderer, f.Renderer.Pid, true, true));
                 Eq(0, f.Overlay.RestoreRequests.Count);
@@ -2223,8 +2223,9 @@ namespace PaviseApp
                 Second = FamilyPolicyProfile("second", secondRoot);
                 File.WriteAllBytes(First.ExecutablePath, new byte[] { 1, 2, 3, 4 });
                 File.WriteAllBytes(Second.ExecutablePath, new byte[] { 5, 6, 7, 8 });
-                Eq(true, PolicyResolver.SetOverride(First, PolicyCatalog.KeyBoost, "0"));
-                Eq(true, PolicyResolver.SetOverride(First, PolicyCatalog.KeyPreset, "2"));
+                Settings.Save(PolicyCatalog.KeyBoost, false);
+                Eq(true, PolicyResolver.SetOverride(First, PolicyCatalog.KeyGameRebar, "0"));
+                Eq(true, PolicyResolver.SetOverride(First, PolicyCatalog.KeyGameFullscreenOptimizations, "0"));
                 Eq(true, new GameProfileStore(DirectoryPath).Save(new[] { First, Second }));
                 Mode = new GameMode(DirectoryPath, core ?? new SuppressionCore());
                 Mode.LibraryChanged += delegate { Changes++; };

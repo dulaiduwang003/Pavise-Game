@@ -177,6 +177,7 @@ namespace PaviseApp
             FamilyPolicySetField(mode, "sync", new object());
             FamilyPolicySetField(mode, "core", new SuppressionCore());
             FamilyPolicySetField(mode, "envRestorePending", new HashSet<string>());
+            FamilyPolicySetField(mode, "dataDir", root);
             var missed = new List<string>();
             try
             {
@@ -210,6 +211,7 @@ namespace PaviseApp
             FamilyPolicySetField(mode, "sync", new object());
             FamilyPolicySetField(mode, "core", new SuppressionCore());
             FamilyPolicySetField(mode, "envRestorePending", new HashSet<string>());
+            FamilyPolicySetField(mode, "dataDir", root);
             string stagedPath = Path.Combine(root, "pending-game.exe");
             var records = new Dictionary<string, string>
             {
@@ -268,6 +270,7 @@ namespace PaviseApp
             FamilyPolicySetField(mode, "sync", new object());
             FamilyPolicySetField(mode, "core", new SuppressionCore());
             FamilyPolicySetField(mode, "envRestorePending", new HashSet<string>());
+            FamilyPolicySetField(mode, "dataDir", root);
             var missed = new List<string>();
             string[] keys = { "PrevDoBgBw", "PrevDoSvcStopped", "PrevUpdatePaused", "PrevPresenceQos",
                 "GpuPowerSnap", "AmdSnap", "NvDrsList", "GpuPrefStage", "PrevPowerPlan",
@@ -1436,7 +1439,7 @@ namespace PaviseApp
                 "retired idle activation or UI API remains");
             ResetFlowCheck(typeof(GameMode).GetProperty("IdlePolicyOn") == null
                 && typeof(GameMode).GetProperty("MmcssOn") == null
-                && typeof(PolicySnapshot).GetProperty("IdlePolicy") != null
+                && typeof(PolicySnapshot).GetProperty("IdlePolicy") == null
                 && typeof(Mmcss).GetMethod("Activate", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic) != null
                 && typeof(PanelForm).GetField("swPolicyIdlePolicy", BindingFlags.Instance | BindingFlags.NonPublic) == null
                 && typeof(PanelForm).GetField("swPolicyMmcss", BindingFlags.Instance | BindingFlags.NonPublic) == null,

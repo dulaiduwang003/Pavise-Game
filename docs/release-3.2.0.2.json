@@ -1,0 +1,82 @@
+{
+  "version": "3.2.0.2",
+  "date": "2026-11-03",
+  "baseline": "3.2.0.1",
+  "items": [
+    {
+      "zh": "帧率检测下线：由于特殊原因，目前无法继续提供帧率检测功能，悬浮 OSD、游戏运行报告及“游戏性能”页面同步下线。",
+      "en": "Frame-rate monitoring is discontinued: due to special circumstances, we can no longer provide this feature at present. The OSD, game run reports and Game performance page have also been removed.",
+      "ja": "特別な事情により、現在フレームレート監視機能の提供を継続できないため終了しました。関連するOSD、ゲーム実行レポート、「ゲーム性能」ページも終了します。"
+    },
+    {
+      "zh": "清理旧监测设置；仅自动卸载经确认由 Pavise 安装的 RTSS，用户自行安装的版本不受影响，已有个人数据保留。",
+      "en": "Retired monitoring preferences are cleared. Only an RTSS installation confirmed as installed by Pavise is automatically uninstalled; independently installed copies and existing personal data are kept.",
+      "ja": "旧監視設定を整理。Paviseが導入したと確認できるRTSSのみ自動アンインストールし、ユーザーが別途導入した版と既存の個人データは保持します。"
+    },
+    {
+      "zh": "重做托管电源：按 CPU 架构、设备类型及智能/竞技模式自动匹配完整电源方案，替代旧参数拼接方式。",
+      "en": "Reworked managed power to select complete power plans automatically by CPU architecture, device type and Smart or Competitive mode, replacing the previous parameter-by-parameter template.",
+      "ja": "管理電源を刷新。CPU構成、機器種別、スマート・競技モードに応じて完全な電源プランを自動選択し、従来の個別パラメーター合成を置き換えます。"
+    },
+    {
+      "zh": "导入电源方案时保留本机屏幕、睡眠、合盖等日常设置及全部电池设置；非对称缓存 X3D 保留停泊与调度保护。",
+      "en": "Imported power plans retain local display, sleep, lid and other daily-use preferences and all battery settings. Asymmetric-cache X3D systems retain parking and scheduling safeguards.",
+      "ja": "電源プラン導入時も画面、スリープ、ふたの動作などの日常設定と全バッテリー設定を維持。非対称キャッシュX3Dのコアパーキングと調度保護も維持します。"
+    },
+    {
+      "zh": "移除“掌机适配”开关及型号识别，掌机按 CPU 与核心结构自动匹配电源计划；智能使用通用计划，普通同构 AMD 竞技使用 AMD 低延迟，混合核心 AMD 使用通用计划。",
+      "en": "Removed the handheld adaptation switch and model detection. Handhelds now follow CPU and core-topology rules: Smart uses the universal plan, Competitive uses AMD Low Latency on ordinary homogeneous AMD CPUs, and mixed-core AMD CPUs use the universal plan.",
+      "ja": "携帯ゲームPCの適応スイッチと機種識別を削除し、CPUとコア構成で電源プランを自動選択。スマートは汎用プラン、通常の同種コアAMDの競技モードはAMD低遅延、混合コアAMDは汎用プランを使用します。"
+    },
+    {
+      "zh": "Threadripper、Xeon、EPYC 等工作站及多处理器组/多插槽设备，在智能和竞技模式下均使用通用电源计划。",
+      "en": "Threadripper, Xeon, EPYC and other workstations, along with multi-group/socket systems, now use the universal power plan in both Smart and Competitive modes.",
+      "ja": "Threadripper、Xeon、EPYCなどのワークステーションと複数プロセッサグループ・ソケット構成は、スマート・競技の両モードで汎用電源プランを使用します。"
+    },
+    {
+      "zh": "统一电源计划名称，按 CPU 类型与用途标识；同步 AI 调优说明，并调整常规设置布局。",
+      "en": "Standardized power-plan names by CPU type and purpose, updated the AI tuning descriptions and adjusted the General settings layout.",
+      "ja": "電源プラン名をCPUの種類と用途で統一。AI調整の説明と一般設定のレイアウトも更新しました。"
+    },
+    {
+      "zh": "移除电源每秒参数巡检、自动修复及隐式“最佳性能”覆盖，保留计划切换与退局恢复。",
+      "en": "Removed per-second power-parameter inspection, automatic repair and implicit Best performance overlay activation. Plan switching and restoration after games remain.",
+      "ja": "電源設定の毎秒検査、自動修復、暗黙の「最適なパフォーマンス」上書きを削除。プラン切替とゲーム終了後の復元は維持します。"
+    },
+    {
+      "zh": "实验室 CPU 空闲设置改为在电源方案生效后应用；关闭时恢复当前方案原值，方案已包含设置时明确提示。",
+      "en": "Lab CPU idle settings now apply after the power plan. Turning them off restores that plan's original values, with a clear notice when the plan already includes the requested setting.",
+      "ja": "ラボのCPUアイドル設定を電源プラン適用後に反映。無効化時は現在のプランの元の値へ戻し、プランに設定が含まれる場合はその旨を表示します。"
+    },
+    {
+      "zh": "切换电源方案、调整 CPU 空闲策略或发现外部空闲设置修改时，EPP 功耗让路先恢复再重新验证，避免沿用旧基准。",
+      "en": "EPP power yielding is restored and re-evaluated when the power plan or CPU idle policy changes, or an external idle-setting change is detected, avoiding reuse of the previous baseline.",
+      "ja": "電源プランやCPUアイドル方針の変更、外部によるアイドル設定変更の検出時は、EPP電力譲渡を復元してから再検証し、古い基準の流用を防ぎます。"
+    },
+    {
+      "zh": "概览新增本局守护统计，显示已压制进程与已暂停服务数量；只计确认生效项，复用现有扫描，不额外扫描进程。",
+      "en": "Overview now shows this session's suppressed-process and paused-service counts, using confirmed actions and existing scan results without extra process scans.",
+      "ja": "概要に現在のゲームの抑制済みプロセス数と停止済みサービス数を追加。適用確認済みの結果と既存の走査結果を使い、追加のプロセス走査を行いません。"
+    },
+    {
+      "zh": "新增软件内更新：在“关于 → 检查与更新”下载，显示进度，签名校验后原位替换；保留游戏库、白名单、偏好及自启动设置。",
+      "en": "Added in-app updates under About → Check for updates, with progress, signature verification and in-place EXE replacement. Game libraries, whitelist, preferences and autostart settings are retained.",
+      "ja": "「このアプリについて → 更新を確認」からアプリ内更新に対応。進捗表示、署名検証、本体の置換を行い、ゲーム一覧、許可リスト、設定、自動起動設定を保持します。"
+    },
+    {
+      "zh": "更新前需先退出游戏；下载与校验可取消，安装时限制退出；失败可在同窗转夸克/GitHub 手动下载。3.2.0.1 及更早版本需先手动升级一次。",
+      "en": "Leave the game before updating. Download and verification can be cancelled; exiting is restricted during installation. Failures offer Quark/GitHub manual downloads in the same dialog. Version 3.2.0.1 and earlier require a one-time manual upgrade.",
+      "ja": "更新前にゲームを終了してください。ダウンロードと検証は取消可能で、インストール中は終了を制限。失敗時は同じ画面からQuark/GitHubで手動取得できます。3.2.0.1以前からは一度手動更新が必要です。"
+    },
+    {
+      "zh": "修复更新弹窗未居中及窄窗口策略菜单的滚动与排列问题；移除无效最大化按钮。",
+      "en": "Fixed update-dialog centering and strategy-menu scrolling and layout in narrow windows; removed the non-functional maximize button.",
+      "ja": "更新画面の中央配置と狭いウィンドウでの方針メニューのスクロール・配置を修正し、無効な最大化ボタンを削除しました。"
+    },
+    {
+      "zh": "修复游戏库与白名单运行列表漏掉最小化、托盘应用的问题；白名单支持聊天软件、浏览器和开发工具，空列表不再误提示全部已加入白名单。",
+      "en": "Fixed missing minimized and tray apps in the library and whitelist running-program lists. Whitelist discovery includes chat apps, browsers and development tools; empty results no longer incorrectly claim that every app is already whitelisted.",
+      "ja": "ゲーム一覧と許可リストの実行中一覧で最小化・トレイ常駐アプリが欠落する問題を修正。許可リストではチャット、ブラウザー、開発ツールにも対応し、空の一覧で全アプリが登録済みと誤表示する問題を修正しました。"
+    }
+  ]
+}
