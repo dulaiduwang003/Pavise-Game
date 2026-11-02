@@ -1,0 +1,1458 @@
+using System;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Windows.Forms;
+
+namespace PaviseApp
+{
+	internal class NavRail : FxControl
+	{
+		private sealed class NavigationAccessibility : FxAccessibleObject
+		{
+			private readonly NavRail rail;
+
+			internal NavigationAccessibility(NavRail owner)
+				: base(owner)
+			{
+				rail = owner;
+			}
+
+			public override int GetChildCount()
+			{
+				return rail.order.Length;
+			}
+
+			public override AccessibleObject GetChild(int index)
+			{
+				if (index < 0 || index >= rail.order.Length)
+				{
+					return null;
+				}
+				return new NavigationItem(this, rail, index);
+			}
+		}
+
+		private sealed class NavigationItem : AccessibleObject
+		{
+			private readonly AccessibleObject parent;
+
+			private readonly NavRail rail;
+
+			private readonly int slot;
+
+			public override string Name
+			{
+				get
+				{
+					return rail.labels[rail.order[slot]];
+				}
+				set
+				{
+				}
+			}
+
+			public override AccessibleRole Role
+			{
+				get
+				{
+					return AccessibleRole.PageTab;
+				}
+			}
+
+			public override AccessibleObject Parent
+			{
+				get
+				{
+					return parent;
+				}
+			}
+
+			public override string DefaultAction
+			{
+				get
+				{
+					return PerformancePolicy.Text("打开", "Open");
+				}
+			}
+
+			public override Rectangle Bounds
+			{
+				get
+				{
+					Rectangle r = rail.ItemBounds(slot);
+					if (rail.FloatingDock)
+					{
+						r.Intersect(rail.ClientRectangle);
+					}
+					else
+					{
+						int num = ((slot < rail.order.Length - rail.anchorCount) ? rail.FlowBottom : (rail.Height - rail.BottomPad));
+						r.Intersect(new Rectangle(0, rail.TopPad, rail.Width, Math.Max(0, num - rail.TopPad)));
+					}
+					if (!rail.IsHandleCreated || r.Width <= 0 || r.Height <= 0)
+					{
+						return Rectangle.Empty;
+					}
+					return rail.RectangleToScreen(r);
+				}
+			}
+
+			public override AccessibleStates State
+			{
+				get
+				{
+					AccessibleStates accessibleStates = AccessibleStates.Focusable | AccessibleStates.Selectable;
+					if (!rail.CanInteract)
+					{
+						accessibleStates |= AccessibleStates.Unavailable;
+					}
+					if (rail.sel == rail.order[slot])
+					{
+						accessibleStates |= AccessibleStates.Selected;
+					}
+					if (rail.Focused && rail.order[slot] == ((rail.hoverIdx >= 0) ? rail.hoverIdx : rail.sel))
+					{
+						accessibleStates |= AccessibleStates.Focused;
+					}
+					if (!rail.Visible || Bounds.IsEmpty)
+					{
+						accessibleStates |= AccessibleStates.Offscreen;
+					}
+					return accessibleStates;
+				}
+			}
+
+			internal NavigationItem(AccessibleObject parent, NavRail rail, int slot)
+			{
+				this.parent = parent;
+				this.rail = rail;
+				this.slot = slot;
+			}
+
+			public override void DoDefaultAction()
+			{
+				rail.KeepItemVisible(rail.order[slot]);
+				rail.Focus();
+				rail.InvokeItem(rail.order[slot]);
+			}
+		}
+
+		private const float NormalDockPointSize = 9.5f;
+
+		private const float CompactDockPointSize = 9.5f;
+
+		private readonly string[] labels;
+
+		private readonly string[] glyphs;
+
+		private readonly int[] order;
+
+		private readonly int[] groupSlots;
+
+		private readonly string[] groupTexts;
+
+		private readonly int anchorCount;
+
+		private int sel;
+
+		private int hoverIdx = -1;
+
+		private Motion indicator;
+
+		private Motion indicatorCross;
+
+		private float measuredDockScale = -1f;
+
+		private int preferredDockWidth;
+
+		private int minimumDockWidth;
+
+		private int[] normalDockCells;
+
+		private int[] compactDockCells;
+
+		private Font normalDockFont;
+
+		private Font compactDockFont;
+
+		private float dockTypographyScale = -1f;
+
+		private Image logo;
+
+		private readonly ToolTip itemTip = new ToolTip();
+
+		private int scrollOffset;
+
+		private bool showBranding = true;
+
+		private PerformancePreset mode;
+
+		private bool modeEnabled = true;
+
+		public Action<int> SelectionChanged;
+
+		public Action<int> ItemInvoked;
+
+		public string SectionTitle;
+
+		public bool ShowBranding
+		{
+			get
+			{
+				return showBranding;
+			}
+			set
+			{
+				if (showBranding != value)
+				{
+					showBranding = value;
+					RefreshLogo();
+				}
+			}
+		}
+
+		public int Selected
+		{
+			get
+			{
+				return sel;
+			}
+		}
+
+		internal int ItemCount
+		{
+			get
+			{
+				return labels.Length;
+			}
+		}
+
+		private bool FloatingDock
+		{
+			get
+			{
+				if (base.Width > base.Height)
+				{
+					return base.Height > 0;
+				}
+				return false;
+			}
+		}
+
+		private int DockColumns
+		{
+			get
+			{
+				return DockColumnCount(base.Width);
+			}
+		}
+
+		private int DockRows
+		{
+			get
+			{
+				return Math.Max(1, (order.Length + DockColumns - 1) / DockColumns);
+			}
+		}
+
+		private float DockFontSize
+		{
+			get
+			{
+				EnsureDockMeasurements();
+				if (base.Width < preferredDockWidth)
+				{
+					return 9.5f;
+				}
+				return 9.5f;
+			}
+		}
+
+		private Rectangle DockBounds
+		{
+			get
+			{
+				int num = Math.Min(Dpi.S(5), Math.Max(0, base.Width / 8));
+				int val = Dpi.S(DockRows * 64 + (DockRows - 1) * 4);
+				int num2 = Math.Min(val, Math.Max(1, base.Height - Dpi.S(12)));
+				return new Rectangle(num, Dpi.S(3), Math.Max(1, base.Width - num * 2 - 1), num2);
+			}
+		}
+
+		private bool CompactRail
+		{
+			get
+			{
+				if (base.Width > 0)
+				{
+					return base.Width < Dpi.S(210);
+				}
+				return false;
+			}
+		}
+
+		private bool IconOnly
+		{
+			get
+			{
+				if (base.Width > 0)
+				{
+					return base.Width < Dpi.S(160);
+				}
+				return false;
+			}
+		}
+
+		private bool TightHeight
+		{
+			get
+			{
+				if (base.Height > 0)
+				{
+					return base.Height < Dpi.S(470);
+				}
+				return false;
+			}
+		}
+
+		private bool CompactHeight
+		{
+			get
+			{
+				if (base.Height <= 0 || order == null || order.Length == 0)
+				{
+					return false;
+				}
+				int num = Dpi.S(137 + order.Length * 47 + Math.Max(0, order.Length - 1) * 13 + GroupsAbove(order.Length - 1) * 42 + 48);
+				return base.Height < num;
+			}
+		}
+
+		private int TopPad
+		{
+			get
+			{
+				return Dpi.S((!TightHeight) ? ((!CompactHeight) ? 137 : (showBranding ? 80 : 104)) : (showBranding ? 8 : 104));
+			}
+		}
+
+		private int ItemH
+		{
+			get
+			{
+				if (!FloatingDock)
+				{
+					return Dpi.S(CompactHeight ? 44 : 47);
+				}
+				return Math.Max(1, (DockBounds.Height - Dpi.S(8 + (DockRows - 1) * 4)) / DockRows);
+			}
+		}
+
+		private int Gap
+		{
+			get
+			{
+				return Dpi.S((!TightHeight) ? (CompactHeight ? 4 : 13) : 0);
+			}
+		}
+
+		private int Pad
+		{
+			get
+			{
+				return Dpi.S(CompactRail ? 10 : 14);
+			}
+		}
+
+		private int Pitch
+		{
+			get
+			{
+				return ItemH + Gap;
+			}
+		}
+
+		private int GroupH
+		{
+			get
+			{
+				return Dpi.S((!TightHeight) ? (CompactHeight ? 12 : 42) : 0);
+			}
+		}
+
+		private int BottomPad
+		{
+			get
+			{
+				return Dpi.S(TightHeight ? 8 : (CompactHeight ? 46 : 24));
+			}
+		}
+
+		private int FlowBottom
+		{
+			get
+			{
+				return base.Height - BottomPad - anchorCount * Pitch;
+			}
+		}
+
+		private int ScrollMaximum
+		{
+			get
+			{
+				if (FloatingDock)
+				{
+					return 0;
+				}
+				int num = ((order != null) ? (order.Length - anchorCount) : 0);
+				if (num <= 0)
+				{
+					return 0;
+				}
+				return Math.Max(0, TopPad + num * ItemH + (num - 1) * Gap + GroupsAbove(num - 1) * GroupH - FlowBottom);
+			}
+		}
+
+		internal float DockLabelPointSize
+		{
+			get
+			{
+				return DockFontSize;
+			}
+		}
+
+		internal Font DockLabelFont
+		{
+			get
+			{
+				EnsureDockMeasurements();
+				if (base.Width < preferredDockWidth)
+				{
+					return compactDockFont;
+				}
+				return normalDockFont;
+			}
+		}
+
+		private bool CanAnimateIndicator
+		{
+			get
+			{
+				if (base.IsHandleCreated && base.Visible && !UiClock.Frozen)
+				{
+					return !UiClock.Suspended;
+				}
+				return false;
+			}
+		}
+
+		internal int ItemAtSlot(int slot)
+		{
+			if (slot < 0 || slot >= order.Length)
+			{
+				return -1;
+			}
+			return order[slot];
+		}
+
+		internal Size MeasureFloatingDock(int availableWidth)
+		{
+			EnsureDockMeasurements();
+			int num = Math.Max(1, Math.Min(availableWidth, preferredDockWidth));
+			int num2 = DockColumnCount(num);
+			int num3 = Math.Max(1, (order.Length + num2 - 1) / num2);
+			return new Size(num, Dpi.S(num3 * 64 + (num3 - 1) * 4 + 12));
+		}
+
+		private void EnsureDockMeasurements()
+		{
+			if (measuredDockScale != Dpi.Scale || preferredDockWidth <= 0)
+			{
+				EnsureDockTypography();
+				measuredDockScale = Dpi.Scale;
+				normalDockCells = new int[order.Length];
+				compactDockCells = new int[order.Length];
+				int num = 0;
+				int num2 = 0;
+				for (int i = 0; i < order.Length; i++)
+				{
+					string text = labels[order[i]] ?? "";
+					normalDockCells[i] = Math.Max(Dpi.S(88), TextRenderer.MeasureText(text, normalDockFont, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width + Dpi.S(20));
+					compactDockCells[i] = Math.Max(Dpi.S(82), TextRenderer.MeasureText(text, compactDockFont, Size.Empty, TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width + Dpi.S(20));
+					num += normalDockCells[i];
+					num2 += compactDockCells[i];
+				}
+				int num3 = GroupsAbove(Math.Max(0, order.Length - 1));
+				int num4 = Dpi.S(22 + Math.Max(0, order.Length - 1) * 4 + num3 * 18);
+				preferredDockWidth = Math.Max(Dpi.S(240), num + num4);
+				minimumDockWidth = Math.Max(Dpi.S(240), num2 + num4);
+			}
+		}
+
+		private void EnsureDockTypography()
+		{
+			if (dockTypographyScale == Dpi.Scale && normalDockFont != null && compactDockFont != null)
+			{
+				return;
+			}
+			DropDockTypography();
+			bool flag = false;
+			string[] array = labels;
+			foreach (string text in array)
+			{
+				if (text == null)
+				{
+					continue;
+				}
+				string text2 = text;
+				foreach (char c in text2)
+				{
+					if (c >= '㐀' && c <= '\u9fff')
+					{
+						flag = true;
+						break;
+					}
+				}
+				if (flag)
+				{
+					break;
+				}
+			}
+			string[] array2 = (flag ? new string[3] { "DengXian", "Microsoft YaHei UI", "Segoe UI" } : new string[3] { "Bahnschrift SemiBold", "Segoe UI Semibold", "Segoe UI" });
+			string[] array3 = array2;
+			foreach (string name in array3)
+			{
+				try
+				{
+					using (FontFamily fontFamily = new FontFamily(name))
+					{
+						FontStyle style = ((flag && fontFamily.IsStyleAvailable(FontStyle.Bold)) ? FontStyle.Bold : FontStyle.Regular);
+						float num = Math.Max(0.01f, Dpi.Scale) * 96f / 72f;
+						normalDockFont = new Font(fontFamily, 9.5f * num, style, GraphicsUnit.Pixel);
+						compactDockFont = new Font(fontFamily, 9.5f * num, style, GraphicsUnit.Pixel);
+					}
+				}
+				catch (ArgumentException)
+				{
+					DropDockTypography();
+					continue;
+				}
+				break;
+			}
+			if (normalDockFont == null)
+			{
+				float num2 = Math.Max(0.01f, Dpi.Scale) * 96f / 72f;
+				normalDockFont = new Font(FontFamily.GenericSansSerif, 9.5f * num2, FontStyle.Bold, GraphicsUnit.Pixel);
+				compactDockFont = new Font(FontFamily.GenericSansSerif, 9.5f * num2, FontStyle.Bold, GraphicsUnit.Pixel);
+			}
+			dockTypographyScale = Dpi.Scale;
+		}
+
+		private void DropDockTypography()
+		{
+			if (normalDockFont != null)
+			{
+				normalDockFont.Dispose();
+				normalDockFont = null;
+			}
+			if (compactDockFont != null)
+			{
+				compactDockFont.Dispose();
+				compactDockFont = null;
+			}
+			dockTypographyScale = -1f;
+		}
+
+		private int DockColumnCount(int width)
+		{
+			EnsureDockMeasurements();
+			int num = Math.Max(1, (order == null) ? 1 : order.Length);
+			if (width < minimumDockWidth && num > 4)
+			{
+				return (num + 1) / 2;
+			}
+			return num;
+		}
+
+		public NavRail(string[] names, string[] icons)
+			: this(names, icons, null, null, null, 0)
+		{
+		}
+
+		public NavRail(string[] names, string[] icons, int[] displayOrder, int[] groupBeforeSlots, string[] groupTitles, int bottomAnchored)
+		{
+			labels = names;
+			glyphs = icons;
+			if (displayOrder != null && displayOrder.Length > 0 && displayOrder.Length <= names.Length)
+			{
+				order = displayOrder;
+			}
+			else
+			{
+				order = new int[names.Length];
+				for (int i = 0; i < names.Length; i++)
+				{
+					order[i] = i;
+				}
+			}
+			if (groupTitles != null && groupBeforeSlots != null && groupTitles.Length == groupBeforeSlots.Length)
+			{
+				groupSlots = groupBeforeSlots;
+				groupTexts = groupTitles;
+			}
+			else
+			{
+				groupSlots = new int[0];
+				groupTexts = new string[0];
+			}
+			anchorCount = ((bottomAnchored >= 0) ? ((bottomAnchored > order.Length) ? order.Length : bottomAnchored) : 0);
+			Cursor = Cursors.Default;
+			base.TabStop = true;
+			base.AccessibleRole = AccessibleRole.PageTabList;
+			base.AccessibleName = PerformancePolicy.Text("导航", "Navigation");
+			indicator.Speed = 0.4f;
+			indicatorCross.Speed = 0.4f;
+			indicator.Set(SlotY(SlotOfItem(sel)));
+			logo = IconArt.Render(Dpi.S(46), mode, modeEnabled);
+		}
+
+		internal static int GroupsAbove(int slot, int[] groupBeforeSlots)
+		{
+			if (groupBeforeSlots == null)
+			{
+				return 0;
+			}
+			int num = 0;
+			for (int i = 0; i < groupBeforeSlots.Length; i++)
+			{
+				if (slot >= groupBeforeSlots[i])
+				{
+					num++;
+				}
+			}
+			return num;
+		}
+
+		private int GroupsAbove(int slot)
+		{
+			return GroupsAbove(slot, groupSlots);
+		}
+
+		private int SlotOfItem(int item)
+		{
+			for (int i = 0; i < order.Length; i++)
+			{
+				if (order[i] == item)
+				{
+					return i;
+				}
+			}
+			return -1;
+		}
+
+		private int SlotY(int slot)
+		{
+			if (FloatingDock)
+			{
+				return ItemBounds(Math.Max(0, slot)).X;
+			}
+			if (slot < 0)
+			{
+				return TopPad;
+			}
+			int num = order.Length - anchorCount;
+			if (slot >= num && base.Height > 0)
+			{
+				return base.Height - BottomPad - ItemH - (order.Length - 1 - slot) * Pitch;
+			}
+			return TopPad + slot * Pitch + GroupsAbove(slot) * GroupH - scrollOffset;
+		}
+
+		private Rectangle ItemBounds(int slot)
+		{
+			if (!FloatingDock)
+			{
+				return new Rectangle(Pad, SlotY(slot), Math.Max(1, base.Width - Pad * 2), ItemH);
+			}
+			Rectangle dockBounds = DockBounds;
+			int num = ((order != null) ? order.Length : 0);
+			if (num == 0 || slot < 0 || slot >= num)
+			{
+				return Rectangle.Empty;
+			}
+			int dockColumns = DockColumns;
+			int num2 = slot / dockColumns;
+			int num3 = slot % dockColumns;
+			int num4 = num2 * dockColumns;
+			int num5 = Math.Min(dockColumns, num - num4);
+			int num6 = Dpi.S(6);
+			int num7 = Dpi.S(4);
+			int num8 = Dpi.S(18);
+			int num9 = GroupsAbove(num4);
+			int num10 = GroupsAbove(num4 + num5 - 1) - num9;
+			int num11 = GroupsAbove(slot) - num9;
+			int num12 = Math.Max(num5, dockBounds.Width - num6 * 2 - num7 * (num5 - 1) - num10 * num8);
+			int[] array = ((base.Width >= preferredDockWidth) ? normalDockCells : compactDockCells);
+			int num13 = 0;
+			int num14 = 0;
+			for (int i = 0; i < num5; i++)
+			{
+				int num15 = array[num4 + i];
+				num13 += num15;
+				if (i < num3)
+				{
+					num14 += num15;
+				}
+			}
+			int num16 = dockBounds.Left + num6 + (int)Math.Round((double)num12 * (double)num14 / (double)Math.Max(1, num13)) + num7 * num3 + num11 * num8;
+			int num17 = dockBounds.Left + num6 + (int)Math.Round((double)num12 * (double)(num14 + array[slot]) / (double)Math.Max(1, num13)) + num7 * num3 + num11 * num8;
+			return new Rectangle(num16, dockBounds.Top + Dpi.S(4) + num2 * (ItemH + Dpi.S(4)), Math.Max(1, num17 - num16), ItemH);
+		}
+
+		internal Rectangle DockIconBounds(int slot)
+		{
+			Rectangle rectangle = ItemBounds(slot);
+			int num = Dpi.S(20);
+			return new Rectangle(rectangle.Left + (rectangle.Width - num) / 2, rectangle.Top + Dpi.S(7), num, num);
+		}
+
+		internal Rectangle DockLabelBounds(int slot)
+		{
+			Rectangle rectangle = ItemBounds(slot);
+			return new Rectangle(rectangle.Left + Dpi.S(5), rectangle.Top + Dpi.S(32), Math.Max(1, rectangle.Width - Dpi.S(10)), Math.Max(1, rectangle.Height - Dpi.S(34)));
+		}
+
+		private void KeepItemVisible(int item)
+		{
+			if (FloatingDock)
+			{
+				scrollOffset = 0;
+				return;
+			}
+			int num = SlotOfItem(item);
+			if (num >= 0 && num < order.Length - anchorCount)
+			{
+				int num2 = SlotY(num);
+				if (num2 < TopPad)
+				{
+					scrollOffset += num2 - TopPad;
+				}
+				else if (num2 + ItemH > FlowBottom)
+				{
+					scrollOffset += num2 + ItemH - FlowBottom;
+				}
+			}
+			scrollOffset = Math.Max(0, Math.Min(scrollOffset, ScrollMaximum));
+		}
+
+		protected override void OnHandleCreated(EventArgs e)
+		{
+			base.OnHandleCreated(e);
+			SnapToSelection();
+		}
+
+		protected override void OnHandleDestroyed(EventArgs e)
+		{
+			SnapToSelection();
+			if (logo != null)
+			{
+				try
+				{
+					logo.Dispose();
+				}
+				catch
+				{
+				}
+				logo = null;
+			}
+			base.OnHandleDestroyed(e);
+		}
+
+		protected override void OnVisibleChanged(EventArgs e)
+		{
+			base.OnVisibleChanged(e);
+			SnapToSelection();
+		}
+
+		protected override void OnSizeChanged(EventArgs e)
+		{
+			base.OnSizeChanged(e);
+			if (order != null)
+			{
+				KeepItemVisible(sel);
+			}
+			SnapToSelection();
+			UpdateDockRegion();
+		}
+
+		private void UpdateDockRegion()
+		{
+			if (order == null)
+			{
+				return;
+			}
+			Region region = base.Region;
+			if (FloatingDock)
+			{
+				Rectangle dockBounds = DockBounds;
+				dockBounds.Inflate(Dpi.S(4), Dpi.S(3));
+				dockBounds.Height += Dpi.S(5);
+				using (GraphicsPath path = DockPath(dockBounds, Dpi.S(16)))
+				{
+					base.Region = new Region(path);
+				}
+			}
+			else
+			{
+				base.Region = null;
+			}
+			if (region != null)
+			{
+				region.Dispose();
+			}
+		}
+
+		protected override void Dispose(bool disposing)
+		{
+			if (disposing)
+			{
+				itemTip.Dispose();
+				DropDockTypography();
+			}
+			base.Dispose(disposing);
+		}
+
+		public void Select(int i)
+		{
+			if (i >= 0 && i < labels.Length)
+			{
+				SelectSilently(i);
+				if (SelectionChanged != null)
+				{
+					SelectionChanged(i);
+				}
+			}
+		}
+
+		internal void SelectSilently(int i)
+		{
+			if (i < 0 || i >= labels.Length)
+			{
+				return;
+			}
+			bool flag = sel != i;
+			sel = i;
+			KeepItemVisible(i);
+			int num = SlotOfItem(i);
+			int num2 = SlotY(num);
+			int num3 = ((FloatingDock && num >= 0) ? ItemBounds(num).Y : 0);
+			if (flag && num >= 0 && CanAnimateIndicator)
+			{
+				indicator.To(num2);
+				indicatorCross.To(num3);
+				UiClock.Wake();
+			}
+			else
+			{
+				if (!CanAnimateIndicator || indicator.Target != (float)num2)
+				{
+					indicator.Set(num2);
+				}
+				if (!CanAnimateIndicator || indicatorCross.Target != (float)num3)
+				{
+					indicatorCross.Set(num3);
+				}
+			}
+			Invalidate();
+		}
+
+		internal void InvokeItem(int i)
+		{
+			if (base.CanInteract && SlotOfItem(i) >= 0)
+			{
+				if (ItemInvoked != null)
+				{
+					ItemInvoked(i);
+				}
+				else
+				{
+					Select(i);
+				}
+			}
+		}
+
+		public void SnapToSelection()
+		{
+			if (order != null)
+			{
+				indicator.Set(SlotY(SlotOfItem(sel)));
+				int num = SlotOfItem(sel);
+				indicatorCross.Set((FloatingDock && num >= 0) ? ItemBounds(num).Y : 0);
+				Invalidate();
+			}
+		}
+
+		public void SetMode(PerformancePreset value, bool enabled)
+		{
+			if (mode != value || modeEnabled != enabled)
+			{
+				mode = value;
+				modeEnabled = enabled;
+				RefreshLogo();
+			}
+		}
+
+		public void RefreshLogo()
+		{
+			Image image = logo;
+			logo = (showBranding ? IconArt.Render(Dpi.S(46), mode, modeEnabled) : null);
+			if (image != null)
+			{
+				image.Dispose();
+			}
+			Invalidate();
+		}
+
+		protected override bool StepAll()
+		{
+			bool flag = base.StepAll();
+			int num = SlotOfItem(sel);
+			int num2 = SlotY(num);
+			int num3 = ((FloatingDock && num >= 0) ? ItemBounds(num).Y : 0);
+			if (!CanAnimateIndicator || indicator.Target != (float)num2)
+			{
+				bool flag2 = indicator.Value != (float)num2 || indicator.Target != (float)num2;
+				indicator.Set(num2);
+				flag = flag || flag2;
+			}
+			if (!CanAnimateIndicator || indicatorCross.Target != (float)num3)
+			{
+				flag |= indicatorCross.Value != (float)num3 || indicatorCross.Target != (float)num3;
+				indicatorCross.Set(num3);
+			}
+			if (indicator.Value != indicator.Target)
+			{
+				flag |= indicator.Step();
+				if (Math.Abs(indicator.Value - indicator.Target) < 0.75f)
+				{
+					indicator.Set(indicator.Target);
+				}
+			}
+			if (indicatorCross.Value != indicatorCross.Target)
+			{
+				flag |= indicatorCross.Step();
+				if (Math.Abs(indicatorCross.Value - indicatorCross.Target) < 0.75f)
+				{
+					indicatorCross.Set(indicatorCross.Target);
+				}
+			}
+			return flag;
+		}
+
+		private int HitTest(int y)
+		{
+			for (int i = 0; i < order.Length; i++)
+			{
+				if (i >= order.Length - anchorCount || (y >= TopPad && y < FlowBottom))
+				{
+					int num = SlotY(i);
+					if (y >= num && y < num + ItemH)
+					{
+						return order[i];
+					}
+				}
+			}
+			return -1;
+		}
+
+		private int HitTestPoint(Point point)
+		{
+			if (!FloatingDock)
+			{
+				return HitTest(point.Y);
+			}
+			for (int i = 0; i < order.Length; i++)
+			{
+				if (ItemBounds(i).Contains(point))
+				{
+					return order[i];
+				}
+			}
+			return -1;
+		}
+
+		protected override void OnMouseMove(MouseEventArgs e)
+		{
+			base.OnMouseMove(e);
+			int num = HitTestPoint(e.Location);
+			Cursor = ((num >= 0) ? Cursors.Hand : Cursors.Default);
+			if (num != hoverIdx)
+			{
+				hoverIdx = num;
+				itemTip.SetToolTip(this, (num >= 0) ? labels[num] : null);
+				Invalidate();
+			}
+		}
+
+		protected override void OnMouseLeave(EventArgs e)
+		{
+			base.OnMouseLeave(e);
+			if (hoverIdx != -1)
+			{
+				hoverIdx = -1;
+				Invalidate();
+			}
+		}
+
+		protected override void OnMouseClick(MouseEventArgs e)
+		{
+			base.OnMouseClick(e);
+			if (e.Button == MouseButtons.Left)
+			{
+				int num = HitTestPoint(e.Location);
+				if (num >= 0)
+				{
+					Focus();
+					InvokeItem(num);
+				}
+			}
+		}
+
+		protected override bool IsInputKey(Keys keyData)
+		{
+			Keys keys = keyData & Keys.KeyCode;
+			if (keys != Keys.Left && keys != Keys.Right && keys != Keys.Up && keys != Keys.Down && keys != Keys.Home && keys != Keys.End)
+			{
+				return base.IsInputKey(keyData);
+			}
+			return true;
+		}
+
+		protected override void OnKeyDown(KeyEventArgs e)
+		{
+			base.OnKeyDown(e);
+			if (e.Handled || e.Modifiers != 0 || !base.CanInteract)
+			{
+				return;
+			}
+			int num = SlotOfItem((hoverIdx >= 0) ? hoverIdx : sel);
+			if (num < 0)
+			{
+				num = 0;
+			}
+			int num2 = ((!FloatingDock || DockRows <= 1) ? 1 : DockColumns);
+			if (e.KeyCode == Keys.Up)
+			{
+				num = Math.Max(0, num - num2);
+			}
+			else if (e.KeyCode == Keys.Down)
+			{
+				num = Math.Min(order.Length - 1, num + num2);
+			}
+			else if (e.KeyCode == Keys.Left)
+			{
+				num = Math.Max(0, num - 1);
+			}
+			else if (e.KeyCode == Keys.Right)
+			{
+				num = Math.Min(order.Length - 1, num + 1);
+			}
+			else if (e.KeyCode == Keys.Home)
+			{
+				num = 0;
+			}
+			else if (e.KeyCode == Keys.End)
+			{
+				num = order.Length - 1;
+			}
+			else
+			{
+				if (e.KeyCode != Keys.Return && e.KeyCode != Keys.Space)
+				{
+					return;
+				}
+				InvokeItem(order[num]);
+			}
+			hoverIdx = order[num];
+			KeepItemVisible(hoverIdx);
+			Invalidate();
+			e.Handled = true;
+			e.SuppressKeyPress = true;
+		}
+
+		protected override void OnMouseWheel(MouseEventArgs e)
+		{
+			base.OnMouseWheel(e);
+			if (ScrollMaximum > 0 && e.Delta != 0)
+			{
+				scrollOffset = Math.Max(0, Math.Min(ScrollMaximum, scrollOffset - Math.Sign(e.Delta) * Pitch));
+				hoverIdx = -1;
+				itemTip.SetToolTip(this, null);
+				SnapToSelection();
+				HandledMouseEventArgs handledMouseEventArgs = e as HandledMouseEventArgs;
+				if (handledMouseEventArgs != null)
+				{
+					handledMouseEventArgs.Handled = true;
+				}
+			}
+		}
+
+		protected override AccessibleObject CreateAccessibilityInstance()
+		{
+			return new NavigationAccessibility(this);
+		}
+
+		protected override void OnPaint(PaintEventArgs e)
+		{
+			Graphics graphics = e.Graphics;
+			if (FloatingDock)
+			{
+				PaintDock(graphics);
+				return;
+			}
+			if (Backdrop.AppliesTo(this))
+			{
+				Backdrop.Paint(graphics, this, base.ClientRectangle);
+				using (SolidBrush brush = new SolidBrush(Backdrop.NavFill(this, Theme.Nav)))
+				{
+					graphics.FillRectangle(brush, base.ClientRectangle);
+				}
+			}
+			else if (Theme.LightMode)
+			{
+				using (LinearGradientBrush brush2 = new LinearGradientBrush(base.ClientRectangle, Theme.Nav, Col.Lerp(Theme.Nav, Theme.Bg, 0.58f), LinearGradientMode.Horizontal))
+				{
+					graphics.FillRectangle(brush2, base.ClientRectangle);
+				}
+			}
+			else
+			{
+				using (SolidBrush brush3 = new SolidBrush(Theme.Nav))
+				{
+					graphics.FillRectangle(brush3, base.ClientRectangle);
+				}
+			}
+			graphics.SmoothingMode = SmoothingMode.AntiAlias;
+			DrawTechTexture(graphics);
+			using (Pen pen = new Pen(Theme.Accent, Math.Max(1f, Dpi.S(1))))
+			{
+				graphics.DrawLine(pen, 0, 0, base.Width, 0);
+			}
+			if (showBranding && !TightHeight)
+			{
+				if (logo != null)
+				{
+					graphics.DrawImage(logo, IconOnly ? ((base.Width - Dpi.S(46)) / 2) : (CompactRail ? Dpi.S(12) : Dpi.S(20)), Dpi.S(26), Dpi.S(46), Dpi.S(46));
+				}
+				if (!CompactRail)
+				{
+					TextRenderer.DrawText(graphics, "PAVISE", Theme.UI(16.5f, true), new Rectangle(Dpi.S(78), Dpi.S(24), base.Width - Dpi.S(84), Dpi.S(30)), Theme.Fg, TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+				}
+				if (!CompactRail)
+				{
+					TextRenderer.DrawText(graphics, "AUTO GUARD " + App.Version, Theme.Mono(7.5f), new Rectangle(Dpi.S(79), Dpi.S(57), base.Width - Dpi.S(84), Dpi.S(18)), Theme.Faint, TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+				}
+			}
+			if (!string.IsNullOrEmpty(SectionTitle) && !TightHeight && !IconOnly)
+			{
+				TextRenderer.DrawText(graphics, SectionTitle, Theme.UI(10f, true), new Rectangle(Pad + Dpi.S(12), TopPad - Dpi.S(34), Math.Max(1, base.Width - Pad * 2 - Dpi.S(24)), Dpi.S(24)), Theme.Dim, TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter);
+			}
+			using (Pen pen2 = new Pen(Theme.Stroke))
+			{
+				graphics.DrawLine(pen2, base.Width - 1, 0, base.Width - 1, base.Height);
+			}
+			GraphicsState gstate = graphics.Save();
+			graphics.SetClip(new Rectangle(0, TopPad, base.Width, Math.Max(0, base.Height - TopPad - BottomPad)));
+			int num = SlotOfItem(sel);
+			int num2 = SlotY(num);
+			if (!CanAnimateIndicator || indicator.Target != (float)num2)
+			{
+				indicator.Set(num2);
+			}
+			if (num >= 0)
+			{
+				int num3 = (int)Math.Round(indicator.Value);
+				Rectangle r = new Rectangle(Pad, num3, base.Width - Pad * 2, ItemH);
+				using (GraphicsPath path = Theme.TechPath(r, Dpi.S(8)))
+				{
+					using (SolidBrush brush4 = new SolidBrush(Col.Alpha(Theme.Accent, Theme.LightMode ? 38 : 22)))
+					{
+						graphics.FillPath(brush4, path);
+					}
+					using (Pen pen3 = new Pen(Col.Alpha(Theme.Accent, Theme.LightMode ? 124 : 76)))
+					{
+						graphics.DrawPath(pen3, path);
+					}
+				}
+				Rectangle r2 = new Rectangle(Pad, num3 + Dpi.S(12), Dpi.S(4), ItemH - Dpi.S(24));
+				using (GraphicsPath path2 = Theme.Rounded(r2, Dpi.S(1)))
+				{
+					using (SolidBrush brush5 = new SolidBrush(Theme.Accent))
+					{
+						graphics.FillPath(brush5, path2);
+					}
+				}
+			}
+			for (int i = 0; i < groupSlots.Length; i++)
+			{
+				if (GroupH == 0)
+				{
+					break;
+				}
+				int num4 = groupSlots[i];
+				if (num4 < 0 || num4 >= order.Length)
+				{
+					continue;
+				}
+				string text = groupTexts[i] ?? "";
+				int num5 = SlotY(num4) - GroupH;
+				Font font = Theme.MonoFor(text, 6.5f);
+				int num6 = TextRenderer.MeasureText(graphics, text, font).Width;
+				int num7 = num5 + GroupH / 2;
+				using (Pen pen4 = new Pen(Theme.Stroke))
+				{
+					if (text.Length > 0)
+					{
+						TextRenderer.DrawText(graphics, text, font, new Rectangle(Pad + Dpi.S(13), num5, base.Width - Pad * 2 - Dpi.S(13), GroupH), Theme.Faint, TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+						graphics.DrawLine(pen4, Pad + Dpi.S(17) + num6 + Dpi.S(8), num7, base.Width - Pad - Dpi.S(2), num7);
+					}
+					else
+					{
+						graphics.DrawLine(pen4, Pad + Dpi.S(6), num7, base.Width - Pad - Dpi.S(6), num7);
+					}
+				}
+			}
+			for (int j = 0; j < order.Length; j++)
+			{
+				int num8 = order[j];
+				int num9 = SlotY(j);
+				if (num9 + ItemH <= TopPad || num9 >= base.Height - BottomPad)
+				{
+					continue;
+				}
+				bool flag = num8 == sel;
+				if (!flag && num8 == hoverIdx)
+				{
+					Rectangle r3 = new Rectangle(Pad, num9, base.Width - Pad * 2, ItemH);
+					using (SolidBrush brush6 = new SolidBrush(Col.Alpha(Theme.Fg, Theme.LightMode ? 16 : 9)))
+					{
+						using (GraphicsPath path3 = Theme.TechPath(r3, Dpi.S(8)))
+						{
+							graphics.FillPath(brush6, path3);
+						}
+					}
+				}
+				Color color = ((!flag) ? ((num8 == hoverIdx) ? Theme.Fg : Theme.Dim) : (Theme.LightMode ? Theme.Accent : Color.White));
+				Rectangle b = new Rectangle(IconOnly ? ((base.Width - Dpi.S(20)) / 2) : (Pad + Dpi.S(CompactRail ? 12 : 20)), num9 + (ItemH - Dpi.S(20)) / 2, Dpi.S(20), Dpi.S(20));
+				Glyphs.Draw(graphics, glyphs[num8], b, flag ? Theme.Accent : color);
+				if (!IconOnly)
+				{
+					int num10 = b.Right + Dpi.S(CompactRail ? 10 : 16);
+					Rectangle bounds = new Rectangle(num10, num9, base.Width - Pad - Dpi.S(10) - num10, ItemH);
+					Font font2 = Theme.UI(11f, flag);
+					TextRenderer.DrawText(graphics, labels[num8], font2, bounds, color, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter);
+				}
+			}
+			graphics.Restore(gstate);
+			if (ScrollMaximum <= 0)
+			{
+				return;
+			}
+			int num11 = Math.Max(1, FlowBottom - TopPad);
+			int num12 = Math.Min(num11, Math.Max(Dpi.S(18), num11 * num11 / (num11 + ScrollMaximum)));
+			int num13 = TopPad + (num11 - num12) * scrollOffset / Math.Max(1, ScrollMaximum);
+			using (SolidBrush brush7 = new SolidBrush(Theme.Faint))
+			{
+				graphics.FillRectangle(brush7, base.Width - Dpi.S(4), num13, Math.Max(1, Dpi.S(2)), num12);
+			}
+		}
+
+		private void DrawTechTexture(Graphics g)
+		{
+			RogSurface.Draw(g, base.ClientRectangle, true);
+		}
+
+		private static GraphicsPath DockPath(Rectangle bounds, int cut)
+		{
+			int num = Math.Max(0, Math.Min(cut, Math.Min(bounds.Width, bounds.Height) / 2));
+			GraphicsPath graphicsPath = new GraphicsPath();
+			graphicsPath.AddPolygon(new Point[8]
+			{
+				new Point(bounds.Left + num, bounds.Top),
+				new Point(bounds.Right - num, bounds.Top),
+				new Point(bounds.Right, bounds.Top + num),
+				new Point(bounds.Right, bounds.Bottom - num),
+				new Point(bounds.Right - num, bounds.Bottom),
+				new Point(bounds.Left + num, bounds.Bottom),
+				new Point(bounds.Left, bounds.Bottom - num),
+				new Point(bounds.Left, bounds.Top + num)
+			});
+			graphicsPath.CloseFigure();
+			return graphicsPath;
+		}
+
+		private void PaintDock(Graphics g)
+		{
+			WorkspaceCanvasSurface.Paint(g, this, base.ClientRectangle);
+			g.SmoothingMode = SmoothingMode.AntiAlias;
+			Rectangle dockBounds = DockBounds;
+			if (dockBounds.Width < 2 || dockBounds.Height < 2)
+			{
+				return;
+			}
+			Color accent = Theme.Accent;
+			Rectangle bounds = dockBounds;
+			bounds.Offset(0, Dpi.S(4));
+			using (GraphicsPath path = DockPath(bounds, Dpi.S(13)))
+			{
+				using (SolidBrush brush = new SolidBrush(Color.FromArgb(80, 0, 0, 0)))
+				{
+					g.FillPath(brush, path);
+				}
+			}
+			int num = Dpi.S(13);
+			Point[] points = new Point[4]
+			{
+				new Point(dockBounds.Left, dockBounds.Bottom - num),
+				new Point(dockBounds.Left + num, dockBounds.Bottom),
+				new Point(dockBounds.Right - num, dockBounds.Bottom),
+				new Point(dockBounds.Right, dockBounds.Bottom - num)
+			};
+			using (Pen pen = new Pen(Col.Alpha(accent, Theme.LightMode ? 5 : 9), Dpi.S(7)))
+			{
+				g.DrawLines(pen, points);
+			}
+			using (Pen pen2 = new Pen(Col.Alpha(accent, Theme.LightMode ? 9 : 17), Dpi.S(3)))
+			{
+				g.DrawLines(pen2, points);
+			}
+			Rectangle bounds2 = dockBounds;
+			bounds2.Inflate(Dpi.S(2), Dpi.S(2));
+			using (GraphicsPath path2 = DockPath(bounds2, Dpi.S(15)))
+			{
+				using (Pen pen3 = new Pen(Col.Alpha(accent, Theme.LightMode ? 24 : 30)))
+				{
+					g.DrawPath(pen3, path2);
+				}
+			}
+			using (GraphicsPath path3 = DockPath(dockBounds, num))
+			{
+				Color color = (Theme.LightMode ? Color.FromArgb(246, 248, 251) : Color.FromArgb(21, 23, 28));
+				Color color2 = (Theme.LightMode ? Color.FromArgb(224, 230, 237) : Color.FromArgb(11, 13, 17));
+				using (LinearGradientBrush brush2 = new LinearGradientBrush(dockBounds, color, color2, LinearGradientMode.Vertical))
+				{
+					g.FillPath(brush2, path3);
+				}
+				using (Pen pen4 = new Pen(Col.Alpha(accent, Theme.LightMode ? 130 : 180)))
+				{
+					g.DrawPath(pen4, path3);
+				}
+			}
+			Rectangle bounds3 = dockBounds;
+			bounds3.Inflate(-Dpi.S(2), -Dpi.S(2));
+			using (GraphicsPath path4 = DockPath(bounds3, Dpi.S(11)))
+			{
+				using (Pen pen5 = new Pen(Col.Alpha(Theme.StrokeHi, Theme.LightMode ? 75 : 44)))
+				{
+					g.DrawPath(pen5, path4);
+				}
+			}
+			using (Pen pen6 = new Pen(Col.Alpha(accent, Theme.LightMode ? 78 : 116)))
+			{
+				g.DrawLines(pen6, points);
+			}
+			using (Pen pen7 = new Pen(Col.Alpha(accent, 170), Math.Max(1, Dpi.S(1))))
+			{
+				int num2 = Math.Min(Dpi.S(30), dockBounds.Width / 6);
+				g.DrawLine(pen7, dockBounds.Left + num, dockBounds.Top, dockBounds.Left + num + num2, dockBounds.Top);
+				g.DrawLine(pen7, dockBounds.Right - num - num2, dockBounds.Bottom, dockBounds.Right - num, dockBounds.Bottom);
+			}
+			for (int i = 0; i < groupSlots.Length; i++)
+			{
+				int num3 = groupSlots[i];
+				if (num3 <= 0 || num3 >= order.Length)
+				{
+					continue;
+				}
+				Rectangle rectangle = ItemBounds(num3 - 1);
+				Rectangle rectangle2 = ItemBounds(num3);
+				if (rectangle.Top == rectangle2.Top)
+				{
+					int num4 = (rectangle.Right + rectangle2.Left) / 2;
+					using (Pen pen8 = new Pen(Theme.LightMode ? Theme.Stroke : Color.FromArgb(50, 53, 63)))
+					{
+						g.DrawLine(pen8, num4, rectangle2.Top + Dpi.S(10), num4, rectangle2.Bottom - Dpi.S(10));
+					}
+				}
+			}
+			int num5 = SlotOfItem(sel);
+			int num6 = SlotY(num5);
+			if (!CanAnimateIndicator || indicator.Target != (float)num6)
+			{
+				indicator.Set(num6);
+			}
+			if (num5 >= 0)
+			{
+				Rectangle rectangle3 = ItemBounds(num5);
+				rectangle3.X = (int)Math.Round(indicator.Value);
+				rectangle3.Y = (int)Math.Round(indicatorCross.Value);
+				using (GraphicsPath path5 = DockPath(rectangle3, Dpi.S(7)))
+				{
+					using (LinearGradientBrush brush3 = new LinearGradientBrush(rectangle3, Col.Alpha(accent, Theme.LightMode ? 38 : 62), Col.Alpha(accent, Theme.LightMode ? 19 : 28), LinearGradientMode.Vertical))
+					{
+						g.FillPath(brush3, path5);
+					}
+					using (Pen pen9 = new Pen(Col.Alpha(accent, Theme.LightMode ? 54 : 78)))
+					{
+						g.DrawPath(pen9, path5);
+					}
+				}
+				int num7 = Math.Min(Dpi.S(54), rectangle3.Width - Dpi.S(20));
+				using (Pen pen10 = new Pen(Col.Alpha(accent, 28), Dpi.S(5)))
+				{
+					g.DrawLine(pen10, rectangle3.Left + (rectangle3.Width - num7) / 2, rectangle3.Bottom - 1, rectangle3.Left + (rectangle3.Width + num7) / 2, rectangle3.Bottom - 1);
+				}
+				using (Pen pen11 = new Pen(accent, Math.Max(1, Dpi.S(2))))
+				{
+					g.DrawLine(pen11, rectangle3.Left + (rectangle3.Width - num7) / 2, rectangle3.Bottom - 1, rectangle3.Left + (rectangle3.Width + num7) / 2, rectangle3.Bottom - 1);
+				}
+			}
+			for (int j = 0; j < order.Length; j++)
+			{
+				int num8 = order[j];
+				Rectangle rectangle4 = ItemBounds(j);
+				bool flag = num8 == sel;
+				bool flag2 = num8 == hoverIdx;
+				if (!flag && flag2)
+				{
+					using (GraphicsPath path6 = DockPath(rectangle4, Dpi.S(7)))
+					{
+						using (SolidBrush brush4 = new SolidBrush(Col.Alpha(Theme.Fg, Theme.LightMode ? 13 : 9)))
+						{
+							g.FillPath(brush4, path6);
+						}
+					}
+				}
+				Color color3 = ((flag || flag2) ? Theme.Fg : Theme.Dim);
+				Font dockLabelFont = DockLabelFont;
+				Glyphs.Draw(g, glyphs[num8], DockIconBounds(j), flag ? accent : color3);
+				TextRenderer.DrawText(g, labels[num8], dockLabelFont, DockLabelBounds(j), color3, TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+				if (!base.WantsFocusCue || num8 != ((hoverIdx >= 0) ? hoverIdx : sel))
+				{
+					continue;
+				}
+				Rectangle bounds4 = rectangle4;
+				bounds4.Inflate(-Dpi.S(3), -Dpi.S(3));
+				using (GraphicsPath path7 = DockPath(bounds4, Dpi.S(5)))
+				{
+					Pen pen12 = new Pen(Col.Alpha(accent, 175));
+					pen12.DashStyle = DashStyle.Dot;
+					using (Pen pen13 = pen12)
+					{
+						g.DrawPath(pen13, path7);
+					}
+				}
+			}
+		}
+	}
+}

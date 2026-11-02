@@ -1,4 +1,4 @@
-// 作者：bdth 2074055628@qq.com
+// Copyright (C) 2026 bdth. SPDX-License-Identifier: GPL-3.0-only
 #if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;

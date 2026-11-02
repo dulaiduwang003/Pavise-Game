@@ -19,7 +19,8 @@ namespace PaviseApp
         private static int Main(string[] args)
         {
             Console.OutputEncoding = new System.Text.UTF8Encoding(false);
-            if (args.Length != 1 || !string.Equals(Path.GetFullPath(args[0]).TrimEnd('\\'),
+            bool runningProgramsOnly = args.Length == 2 && args[1] == "--running-programs";
+            if ((args.Length != 1 && !runningProgramsOnly) || !string.Equals(Path.GetFullPath(args[0]).TrimEnd('\\'),
                 AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)) return 2;
             Settings.UseTransientStoreForCurrentProcess();
             Logger.LogPath = Path.Combine(args[0], "library-ui.log");
@@ -29,10 +30,11 @@ namespace PaviseApp
             {
                 checks = 0;
                 CheckUnifiedAddGame();
-                RunSta(args[0]);
+                if (!runningProgramsOnly) RunSta(args[0]);
                 Check(ScrollGetCapture() == IntPtr.Zero, "Isolated checks retained mouse capture");
                 Console.WriteLine("PASS add-game assertions=" + checks
-                    + " application_started=false windows_shown=false scans_started=false mouse_captured=false settings=transient rendered_card_fixtures=true");
+                    + " application_started=false windows_shown=false scans_started=false mouse_captured=false settings=transient rendered_card_fixtures=true scope="
+                    + (runningProgramsOnly ? "running-programs" : "all"));
                 return 0;
             }
             catch (Exception error) { Console.Error.WriteLine(error); return 1; }
@@ -41,6 +43,7 @@ namespace PaviseApp
 
         private static void CheckUnifiedAddGame()
         {
+            CheckRunningProgramEligibility();
             float originalScale = Dpi.Scale; int originalLang = Lang.Cur; bool originalLight = Theme.LightMode;
             try
             {
@@ -1100,6 +1103,43 @@ namespace PaviseApp
             }
         }
 
+        private static void CheckRunningProgramEligibility()
+        {
+            const string windows = @"C:\Windows\";
+            const string codex = @"C:\Program Files\WindowsApps\OpenAI.Codex_26.0.0.0_x64__test\app\ChatGPT.exe";
+            Check(!GameSessionDetector.IsLibraryCandidate("ChatGPT", codex, windows),
+                "The game library must still reject a known work package");
+            foreach (string path in new[] { codex, @"C:\Apps\QQNT\QQ.exe", @"C:\Apps\Quark\quark.exe", @"C:\Apps\VSCode\Code.exe" })
+                Check(RunningProgramDiscovery.IsWhitelistCandidate(Path.GetFileNameWithoutExtension(path), path, windows),
+                    "A normal user application was rejected by whitelist discovery: " + path);
+            foreach (string path in new[] { @"C:\Windows\explorer.exe", @"C:\Windows\System32\svchost.exe",
+                @"C:\Riot\Vanguard\vgc.exe", @"C:\Apps\not-an-executable.dll", "" })
+                Check(!RunningProgramDiscovery.IsWhitelistCandidate(Path.GetFileNameWithoutExtension(path), path, windows),
+                    "System/anti-cheat/invalid executable entered whitelist discovery: " + path);
+
+            // Window facts captured from the reported QQ, Quark and Codex processes.
+            Check(RunningProgramWindows.IsApplicationWindow(false, false, 0x04c70000, 0x00200100, true),
+                "QQ hidden main windows were lost when the app moved to the tray");
+            Check(RunningProgramWindows.IsApplicationWindow(false, false, 0x06cf0000, 0x00200100, true),
+                "Quark hidden main windows were lost behind its tool windows");
+            Check(RunningProgramWindows.IsApplicationWindow(true, false, 0x14c70000, 0x00240100, true),
+                "Codex application window was rejected");
+            Check(RunningProgramWindows.IsApplicationWindow(true, false, 0x35cf0000, 0x00000100, true),
+                "Minimized application was rejected");
+            Check(RunningProgramWindows.IsApplicationWindow(false, false, 0, 0x00040000, true),
+                "An explicit application window incorrectly required visibility or a caption");
+            Check(!RunningProgramWindows.IsApplicationWindow(true, false, 0x8c000000, 0x00000080, true),
+                "A tool/helper window qualified as an application");
+            Check(!RunningProgramWindows.IsApplicationWindow(true, true, 0x8c000000, 0, true),
+                "An owned helper window qualified as an application");
+            Check(!RunningProgramWindows.IsApplicationWindow(true, false, 0x40000000, 0x00040000, true),
+                "A child window qualified as a top-level application");
+            Check(!RunningProgramWindows.IsApplicationWindow(false, false, 0x04c70000, 0x00040000, false),
+                "A zero-area helper window qualified as an application");
+            Check(RunningProgramDiscovery.ScanForWhitelist(() => true) == null,
+                "Cancelled whitelist discovery must stop before reading windows or processes");
+        }
+
         private static object PickerResult(int generation, params RunningPickerDialog.Entry[] entries)
         {
             Type type = typeof(RunningPickerDialog).GetNestedType("ScanResult", BindingFlags.NonPublic);
@@ -1177,6 +1217,9 @@ namespace PaviseApp
                 Check(Member<IList>(dialog, "all").Count == 0 && Member<IList>(dialog, "shown").Count == 0
                     && Member<Label>(dialog, "status").Text == Lang.T("white.pick.none"),
                     "A successful empty snapshot must clear the old list");
+                Check(!Member<Label>(dialog, "status").Text.Contains("均已在白名单")
+                    && !Member<Label>(dialog, "status").Text.Contains("everything running is already whitelisted"),
+                    "An empty result must not claim every running application is whitelisted");
                 CheckDisposed(previousFirst, "Replacing picker rows leaked the first icon");
                 CheckDisposed(previousSecond, "Replacing picker rows leaked the second icon");
                 Check(!dialog.Visible && Member<int>(dialog, "scanGeneration") == 0,

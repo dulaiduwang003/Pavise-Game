@@ -1,213 +1,212 @@
 #if PAVISE_SELFTEST
 using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Reflection;
 
 namespace PaviseApp
 {
     internal static partial class SelfTests
     {
+        private static int laptopChecks;
+        private static void LaptopCheck(bool ok, string message)
+        { laptopChecks++; if (!ok) throw new InvalidOperationException("Laptop mode: " + message); }
+
         private sealed class LaptopDevice : LaptopPerfMode.IBackend, IDisposable
         {
-            internal int Vendor = 1, Mode = 2, Writes;
-            internal bool Ac = true, ReadOk = true, WriteOk = true, PartialWrite;
-            internal Action<int> AfterWrite;
-            internal readonly List<string> ReceiptsAtWrite = new List<string>();
-            public int DetectVendor() { return Vendor; }
-            public bool OnAcPower { get { return Ac; } }
-            public bool Read(int vendor, out int mode) { mode = Mode; return ReadOk && vendor == Vendor; }
+            internal int Vendor = 1, Mode = 2, Original = 2, Writes, Reads;
+            internal bool ReadOk = true, WriteOk = true, PartialWrite, Ac = true, ThrowRead, ThrowWrite;
+            internal Action AfterWrite, BeforeRead;
+            internal int Target { get { return Vendor == 1 ? 3 : 1; } }
+            public bool Read(int vendor, out int mode)
+            {
+                Reads++;
+                if (BeforeRead != null) BeforeRead();
+                if (ThrowRead) throw new InvalidOperationException("read fault");
+                mode = Mode;
+                return ReadOk && vendor == Vendor;
+            }
             public bool Write(int vendor, int mode)
             {
+                LaptopCheck(vendor == Vendor && (mode == Original || mode == Target), "write selected an unsupported firmware mode");
+                LaptopCheck(!string.IsNullOrEmpty(Settings.LoadStr(LaptopPerfMode.SnapKey, "")), "write preceded recovery evidence");
                 Writes++;
-                ReceiptsAtWrite.Add(Settings.LoadStr(LaptopPerfMode.SnapKey, ""));
-                if (vendor != Vendor) return false;
+                if (ThrowWrite) throw new InvalidOperationException("write fault");
                 if (WriteOk || PartialWrite) Mode = mode;
-                if (AfterWrite != null) AfterWrite(mode);
+                if (AfterWrite != null) AfterWrite();
                 return WriteOk;
             }
             internal LaptopDevice()
             {
-                Settings.UseTransientStoreForCurrentProcess();
-                LaptopPerfMode.BackendForTest = this;
-                LaptopPerfMode.SaveSnapshotForTest = null;
-                Settings.BeforeStrictStringReadForTest = null;
+                Settings.UseTransientStoreForCurrentProcess(); Logger.WritesEnabled = false;
+                LaptopPerfMode.ResetForTest(); LaptopPerfMode.BackendForTest = this;
+                LaptopPerfMode.OnAcPowerForTest = delegate { return Ac; };
             }
+            internal void Seed(string raw)
+            { LaptopCheck(Settings.SaveStrDurable(LaptopPerfMode.SnapKey, raw), "fixture receipt failed"); }
             public void Dispose()
-            {
-                LaptopPerfMode.BackendForTest = null;
-                LaptopPerfMode.SaveSnapshotForTest = null;
-                Settings.BeforeStrictStringReadForTest = null;
-                Settings.UseTransientStoreForCurrentProcess();
-            }
+            { LaptopPerfMode.ResetForTest(); Settings.UseTransientStoreForCurrentProcess(); }
         }
 
         internal static void RunLaptopPerformanceTests()
         {
+            laptopChecks = 0;
+            LaptopCheck(LaptopPerfMode.PreferenceKey == "AutoLaptopPerformanceV2", "new opt-in reuses a retired preference");
             foreach (int vendor in new[] { 1, 2 })
-            using (var device = new LaptopDevice { Vendor = vendor, Mode = vendor == 1 ? 2 : 0 })
+            using (var device = new LaptopDevice { Vendor = vendor, Mode = vendor == 1 ? 2 : 0, Original = vendor == 1 ? 2 : 0 })
             {
-                int original = device.Mode, target = vendor == 1 ? 3 : 1;
-                Eq(true, LaptopPerfMode.Activate(delegate { return true; }));
-                Eq(target, device.Mode); Eq(1, device.Writes);
-                Eq(vendor + "|" + original + "|" + target, device.ReceiptsAtWrite[0]);
-                Eq(true, LaptopPerfMode.Restore()); Eq(original, device.Mode);
-                Eq(false, LaptopPerfMode.HasResidue); Eq(2, device.Writes);
-                Eq(true, LaptopPerfMode.Restore()); Eq(2, device.Writes);
+                LaptopCheck(LaptopPerfMode.SupportedCached(), "supported standard firmware was rejected");
+                int reads = device.Reads;
+                for (int i = 0; i < 25; i++) LaptopCheck(LaptopPerfMode.SupportedCached(), "cached support was lost");
+                LaptopCheck(device.Reads == reads && device.Writes == 0, "support probe repeatedly read or wrote firmware");
+                LaptopCheck(LaptopPerfMode.Activate() && device.Mode == device.Target && device.Writes == 1
+                    && LaptopPerfMode.HasResidue && LaptopPerfMode.LastStatus == "applied", "opt-in activation failed");
+                for (int i = 0; i < 8; i++) LaptopCheck(LaptopPerfMode.Activate(), "owned target audit failed");
+                LaptopCheck(device.Writes == 1, "audit repeatedly rewrote the vendor mode");
+                LaptopCheck(LaptopPerfMode.Restore() && device.Mode == device.Original && device.Writes == 2 && !LaptopPerfMode.HasResidue, "owned mode did not restore");
+                LaptopCheck(LaptopPerfMode.Restore() && device.Writes == 2, "settled recovery repeated firmware write");
             }
-            using (var device = new LaptopDevice { Mode = 3 })
+
+            foreach (int vendor in new[] { 1, 2 })
+            using (var device = new LaptopDevice { Vendor = vendor, Mode = vendor == 1 ? 3 : 1, Original = vendor == 1 ? 2 : 0 })
             {
-                Eq(true, LaptopPerfMode.Activate(delegate { return true; }));
-                Eq(false, LaptopPerfMode.HasResidue); Eq(true, LaptopPerfMode.Restore()); Eq(0, device.Writes);
+                LaptopCheck(LaptopPerfMode.Activate() && LaptopPerfMode.LastStatus == "already" && device.Writes == 0 && !LaptopPerfMode.HasResidue, "already-active mode was claimed");
+                device.Mode = device.Original;
+                LaptopCheck(LaptopPerfMode.Activate() && LaptopPerfMode.LastStatus == "external" && device.Writes == 0, "external change after already-active was overridden");
+                LaptopCheck(LaptopPerfMode.Activate() && device.Writes == 0, "external choice was retaken in the same session");
+                LaptopPerfMode.EndSession();
+                LaptopCheck(LaptopPerfMode.Activate() && device.Mode == device.Target && device.Writes == 1, "new session could not opt in again");
+                LaptopCheck(LaptopPerfMode.Restore(), "new session could not restore");
             }
-            using (var device = new LaptopDevice())
-            {
-                Eq(false, LaptopPerfMode.Activate(delegate { return false; })); Eq(0, device.Writes);
-                device.Ac = false;
-                Eq(false, LaptopPerfMode.CanActivate);
-                Eq(false, LaptopPerfMode.Activate(delegate { return true; })); Eq(0, device.Writes);
-                device.Ac = true; device.ReadOk = false;
-                Eq(false, LaptopPerfMode.Activate(delegate { return true; })); Eq(0, device.Writes);
-                device.ReadOk = true; device.Vendor = 0;
-                Eq(false, LaptopPerfMode.CanActivate);
-                Eq(false, LaptopPerfMode.Activate(delegate { return true; })); Eq(0, device.Writes);
-                device.Vendor = 1; device.Mode = 255;
-                Eq(false, LaptopPerfMode.Activate(delegate { return true; })); Eq(0, device.Writes);
-            }
-            using (var device = new LaptopDevice())
-            {
-                Settings.BeforeStrictStringReadForTest = delegate(string key)
-                { if (key == LaptopPerfMode.SnapKey) throw new IOException("Unreadable receipt"); };
-                Eq(false, LaptopPerfMode.Activate(delegate { return true; }));
-                Eq(false, LaptopPerfMode.Restore()); Eq(true, LaptopPerfMode.HasResidue); Eq(0, device.Writes);
-            }
-            using (var device = new LaptopDevice())
-            {
-                LaptopPerfMode.SaveSnapshotForTest = delegate(string value) { return false; };
-                Eq(false, LaptopPerfMode.Activate(delegate { return true; })); Eq(0, device.Writes);
-                Eq(false, LaptopPerfMode.HasResidue);
-            }
-            using (var device = new LaptopDevice())
-            {
-                int admissions = 0;
-                Eq(false, LaptopPerfMode.Activate(delegate { return ++admissions == 1; }));
-                Eq(0, device.Writes); Eq(false, LaptopPerfMode.HasResidue);
-            }
-            using (var device = new LaptopDevice())
-            {
-                LaptopPerfMode.SaveSnapshotForTest = delegate(string value)
-                { device.Ac = false; return Settings.SaveStrDurable(LaptopPerfMode.SnapKey, value); };
-                Eq(false, LaptopPerfMode.Activate(delegate { return true; }));
-                Eq(0, device.Writes); Eq(false, LaptopPerfMode.HasResidue);
-            }
+
             foreach (int external in new[] { 1, 2, 255 })
             using (var device = new LaptopDevice())
             {
-                Eq(true, LaptopPerfMode.Activate(delegate { return true; }));
-                device.Mode = external;
-                Eq(true, LaptopPerfMode.Restore()); Eq(external, device.Mode); Eq(1, device.Writes);
-                Eq(false, LaptopPerfMode.HasResidue);
-            }
-            using (var device = new LaptopDevice())
-            {
-                Eq(true, LaptopPerfMode.Activate(delegate { return true; }));
-                device.ReadOk = false;
-                Eq(false, LaptopPerfMode.Restore()); Eq(true, LaptopPerfMode.HasResidue); Eq(1, device.Writes);
-                device.ReadOk = true; device.WriteOk = false;
-                Eq(false, LaptopPerfMode.Restore()); Eq(true, LaptopPerfMode.HasResidue);
-                device.WriteOk = true;
-                LaptopPerfMode.SaveSnapshotForTest = delegate(string value) { return value.Length > 0; };
-                Eq(false, LaptopPerfMode.Restore()); Eq(2, device.Mode); Eq(true, LaptopPerfMode.HasResidue);
+                LaptopCheck(LaptopPerfMode.Activate(), "external-change fixture activation failed");
                 int writes = device.Writes;
-                LaptopPerfMode.SaveSnapshotForTest = null;
-                Eq(true, LaptopPerfMode.Restore()); Eq(writes, device.Writes); Eq(false, LaptopPerfMode.HasResidue);
+                device.Mode = external;
+                LaptopCheck(LaptopPerfMode.Activate() && LaptopPerfMode.LastStatus == "external" && !LaptopPerfMode.HasResidue, "external selection was not yielded");
+                int reads = device.Reads;
+                for (int i = 0; i < 8; i++) LaptopCheck(LaptopPerfMode.Activate(), "yield audit failed");
+                LaptopCheck(device.Mode == external && device.Writes == writes && device.Reads == reads, "yielded session touched firmware again");
+                LaptopCheck(LaptopPerfMode.Restore() && device.Writes == writes, "external selection was reverted");
             }
-            using (var device = new LaptopDevice { WriteOk = false, PartialWrite = true })
+
+            foreach (int vendor in new[] { 1, 2 }) foreach (bool legacy in new[] { false, true })
+            using (var device = new LaptopDevice { Vendor = vendor, Mode = vendor == 1 ? 3 : 1, Original = vendor == 1 ? 2 : 0 })
             {
-                Eq(false, LaptopPerfMode.Activate(delegate { return true; }));
-                Eq(true, LaptopPerfMode.HasResidue);
-                device.WriteOk = true; device.PartialWrite = false;
-                Eq(true, LaptopPerfMode.Restore()); Eq(false, LaptopPerfMode.HasResidue); Eq(2, device.Mode);
+                device.Seed(vendor + "|" + device.Original + (legacy ? "" : "|" + device.Mode));
+                LaptopCheck(!LaptopPerfMode.Activate() && device.Writes == 0 && LaptopPerfMode.HasResidue, "old debt authorized a new apply");
+                LaptopCheck(LaptopPerfMode.Restore() && device.Mode == device.Original && device.Writes == 1 && !LaptopPerfMode.HasResidue, "legacy/current receipt did not restore");
             }
+            foreach (string raw in new[] { "broken", "0|2|3", "1|255|3", "1|2|1", "2|0|2", "1|2|3|extra" })
             using (var device = new LaptopDevice())
             {
-                device.AfterWrite = delegate(int written) { if (written == 3) device.ReadOk = false; };
-                Eq(false, LaptopPerfMode.Activate(delegate { return true; }));
-                Eq(3, device.Mode); Eq(true, LaptopPerfMode.HasResidue); Eq(1, device.Writes);
-                device.AfterWrite = null; device.ReadOk = true;
-                Eq(true, LaptopPerfMode.Restore()); Eq(2, device.Mode); Eq(false, LaptopPerfMode.HasResidue);
+                device.Seed(raw);
+                LaptopCheck(!LaptopPerfMode.Activate() && !LaptopPerfMode.Restore() && device.Writes == 0 && LaptopPerfMode.HasResidue, "malformed debt was used or discarded");
             }
             using (var device = new LaptopDevice { Mode = 3 })
             {
-                Settings.SaveStr(LaptopPerfMode.SnapKey, "1|2");
-                LaptopPerfMode.HealFromCrash(); Eq(2, device.Mode); Eq(false, LaptopPerfMode.HasResidue);
-                Settings.SaveStr(LaptopPerfMode.SnapKey, "broken");
-                Eq(false, LaptopPerfMode.Restore()); Eq(true, LaptopPerfMode.HasResidue); Eq(1, device.Writes);
+                device.Seed("1|3|3");
+                LaptopCheck(LaptopPerfMode.Restore() && device.Writes == 0 && !LaptopPerfMode.HasResidue, "already-original legacy receipt rewrote firmware");
             }
-            RunLaptopRuntimeTests();
-        }
-
-        private static void RunLaptopRuntimeTests()
-        {
-            string dir = Path.Combine(Path.GetTempPath(), "PaviseLaptopTest-" + Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(dir);
-            try
+            using (var device = new LaptopDevice())
             {
-                using (var device = new LaptopDevice())
-                {
-                    Settings.Save(PolicyCatalog.KeyLaptopPerf, true);
-                    var mode = new GameMode(dir, new SuppressionCore());
-                    Eq(false, mode.LaptopPerformanceEnabled);
-                    const BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Instance;
-                    Action<bool> syncPower = delegate(bool ready)
-                    { typeof(GameMode).GetMethod("SyncLaptopPerformance", flags).Invoke(mode, new object[] { ready }); };
-                    Action sync = delegate { syncPower(true); };
-                    Action<string, bool> set = delegate(string field, bool value)
-                    { typeof(GameMode).GetField(field, flags).SetValue(mode, value); };
-                    set("enabled", true); set("active", true);
-                    foreach (string preset in new[] { "0", "1", "2", "3" })
-                    {
-                        Settings.SaveStr(PolicyCatalog.KeyPreset, preset); sync(); Eq(0, device.Writes);
-                    }
-                    Eq(true, mode.TrySetLaptopPerformanceEnabled(true));
-                    syncPower(false); Eq(0, device.Writes);
-                    sync(); Eq(3, device.Mode);
-                    sync(); Eq(1, device.Writes);
-                    device.Ac = false; syncPower(false); Eq(2, device.Mode); Eq(false, LaptopPerfMode.HasResidue);
-                    device.Ac = true; sync(); Eq(3, device.Mode);
-                    Eq(true, mode.TrySetLaptopPerformanceEnabled(false)); sync(); Eq(2, device.Mode);
-                    Eq(true, mode.TrySetLaptopPerformanceEnabled(true)); sync(); Eq(3, device.Mode);
-                    set("enabled", false); sync(); Eq(2, device.Mode);
-                    set("enabled", true); sync(); Eq(3, device.Mode);
-                    set("active", false); sync(); Eq(2, device.Mode);
-                    set("active", true); sync(); Eq(3, device.Mode);
-                    set("stopping", true); sync(); Eq(2, device.Mode);
-                    Eq(false, mode.TrySetLaptopPerformanceEnabled(false));
-                    set("stopping", false);
-                    Settings.SuspendWritesForReset();
-                    Eq(false, mode.TrySetLaptopPerformanceEnabled(false)); Eq(true, mode.LaptopPerformanceEnabled);
-                }
+                LaptopCheck(LaptopPerfMode.Restore() && device.Reads == 0 && device.Writes == 0, "empty recovery touched firmware");
+                device.Seed("1|2|3"); device.Mode = 3; device.ReadOk = false;
+                LaptopCheck(!LaptopPerfMode.Restore() && device.Writes == 0 && LaptopPerfMode.HasResidue, "unreadable firmware lost debt");
+                device.ReadOk = true; device.WriteOk = false;
+                LaptopCheck(!LaptopPerfMode.Restore() && device.Writes == 1 && LaptopPerfMode.HasResidue, "failed restore discarded debt");
+                device.WriteOk = true; LaptopPerfMode.SaveSnapshotForTest = delegate { return false; };
+                LaptopCheck(!LaptopPerfMode.Restore() && device.Mode == 2 && LaptopPerfMode.HasResidue, "failed cleanup declared complete");
+                int writes = device.Writes; LaptopPerfMode.SaveSnapshotForTest = null;
+                LaptopCheck(LaptopPerfMode.Restore() && device.Writes == writes && !LaptopPerfMode.HasResidue, "cleanup retry rewrote firmware");
             }
-            finally { Directory.Delete(dir, true); }
+            using (var device = new LaptopDevice { Mode = 3, WriteOk = false, PartialWrite = true })
+            {
+                device.Seed("1|2|3");
+                LaptopCheck(!LaptopPerfMode.Restore() && LaptopPerfMode.HasResidue && device.Mode == 2, "partial restore was forgotten");
+                LaptopCheck(LaptopPerfMode.Restore() && device.Writes == 1 && !LaptopPerfMode.HasResidue, "partial restore was repeated");
+            }
+            using (var device = new LaptopDevice())
+            {
+                LaptopPerfMode.ReadSnapshotForTest = delegate { throw new InvalidOperationException("unreadable journal"); };
+                LaptopCheck(!LaptopPerfMode.Activate() && !LaptopPerfMode.Restore() && LaptopPerfMode.HasResidue
+                    && device.Reads == 0 && device.Writes == 0, "unreadable journal allowed firmware access");
+            }
+            foreach (bool lieAboutSave in new[] { false, true })
+            using (var device = new LaptopDevice())
+            {
+                LaptopPerfMode.SaveSnapshotForTest = delegate { return lieAboutSave; };
+                LaptopCheck(!LaptopPerfMode.Activate() && device.Writes == 0 && device.Mode == 2, "failed/unverified journal authorized firmware write");
+            }
+            using (var device = new LaptopDevice { Ac = false })
+            {
+                LaptopCheck(!LaptopPerfMode.Activate() && device.Reads == 0 && device.Writes == 0, "battery activation queried or wrote firmware");
+            }
+            using (var device = new LaptopDevice())
+            {
+                int admission = 0;
+                LaptopCheck(!LaptopPerfMode.Activate(delegate { return ++admission == 1; }) && device.Writes == 0 && !LaptopPerfMode.HasResidue, "cancel after journal touched firmware or lost settlement");
+            }
+            using (var device = new LaptopDevice())
+            {
+                LaptopPerfMode.SaveSnapshotForTest = delegate(string value) { bool ok = Settings.SaveStrDurable(LaptopPerfMode.SnapKey, value); device.Ac = false; return ok; };
+                LaptopCheck(!LaptopPerfMode.Activate() && device.Writes == 0 && !LaptopPerfMode.HasResidue, "AC loss after journal applied firmware");
+            }
+            using (var device = new LaptopDevice())
+            {
+                device.BeforeRead = delegate { if (device.Reads == 3) device.Mode = 1; };
+                LaptopCheck(LaptopPerfMode.Activate() && LaptopPerfMode.LastStatus == "external" && device.Mode == 1
+                    && device.Writes == 0 && !LaptopPerfMode.HasResidue, "external change before write was overwritten");
+            }
+            foreach (bool partial in new[] { false, true })
+            using (var device = new LaptopDevice { WriteOk = false, PartialWrite = partial })
+            {
+                LaptopCheck(!LaptopPerfMode.Activate() && LaptopPerfMode.HasResidue, "failed apply discarded debt");
+                int writes = device.Writes;
+                LaptopCheck(!LaptopPerfMode.Activate() && device.Writes == writes, "unconfirmed partial apply was promoted or repeated");
+                device.WriteOk = true;
+                LaptopCheck(LaptopPerfMode.Restore() && device.Mode == 2 && !LaptopPerfMode.HasResidue, "failed apply could not recover");
+            }
+            using (var device = new LaptopDevice())
+            {
+                device.AfterWrite = delegate { device.ReadOk = false; };
+                LaptopCheck(!LaptopPerfMode.Activate() && LaptopPerfMode.HasResidue, "failed apply readback accepted");
+                device.ReadOk = true; device.AfterWrite = null;
+                LaptopCheck(LaptopPerfMode.Restore() && !LaptopPerfMode.HasResidue, "unconfirmed apply could not restore");
+            }
+            using (var device = new LaptopDevice())
+            {
+                LaptopCheck(LaptopPerfMode.Activate(), "receipt tamper fixture failed");
+                device.Seed(""); int writes = device.Writes;
+                LaptopCheck(!LaptopPerfMode.Activate() && !LaptopPerfMode.Restore() && device.Writes == writes, "lost current receipt allowed further control");
+            }
+            using (var device = new LaptopDevice())
+            {
+                LaptopCheck(LaptopPerfMode.Activate(), "end session fixture failed");
+                LaptopPerfMode.EndSession();
+                LaptopCheck(!LaptopPerfMode.Activate() && LaptopPerfMode.HasResidue, "new session bypassed old recovery debt");
+                LaptopCheck(LaptopPerfMode.Restore() && !LaptopPerfMode.HasResidue, "end session erased recovery debt");
+            }
+            foreach (int invalid in new[] { -1, 0, 4, 255 })
+            using (var device = new LaptopDevice { Mode = invalid })
+                LaptopCheck(!LaptopPerfMode.Activate() && device.Writes == 0, "unknown/custom initial mode was taken over");
+            using (var device = new LaptopDevice { ThrowRead = true })
+                LaptopCheck(!LaptopPerfMode.Activate() && device.Writes == 0, "read exception reached firmware write");
+            using (var device = new LaptopDevice { ThrowWrite = true })
+                LaptopCheck(!LaptopPerfMode.Activate() && LaptopPerfMode.HasResidue, "write exception discarded journal");
+            using (var device = new LaptopDevice { Mode = 3 })
+            {
+                device.Seed("1|2"); LaptopPerfMode.HealFromCrash();
+                LaptopCheck(device.Mode == 2 && device.Writes == 1 && !LaptopPerfMode.HasResidue, "startup legacy restoration failed");
+            }
+            Console.WriteLine("PASS laptop vendor mode assertions=" + laptopChecks + " firmware=mocked settings=transient application_started=false");
         }
-
 #if PAVISE_LAPTOP_TEST_RUNNER
-        private static void Eq<T>(T expected, T actual)
-        {
-            if (!EqualityComparer<T>.Default.Equals(expected, actual))
-                throw new InvalidOperationException("Expected " + expected + ", actual " + actual);
-        }
         public static bool TryHandleRuntimeMode(string[] args)
-        { throw new InvalidOperationException("The laptop regression runner cannot start the app"); }
+        { throw new InvalidOperationException("Laptop regression runner cannot start the product"); }
         private static int Main()
         {
             Settings.UseTransientStoreForCurrentProcess(); Lang.Init();
-            try
-            {
-                RunLaptopPerformanceTests();
-                Console.WriteLine("PASS laptop performance: mocked firmware, transient settings, lifecycle and recovery");
-                return 0;
-            }
+            try { RunLaptopPerformanceTests(); return 0; }
             catch (Exception error) { Console.Error.WriteLine(error); return 1; }
         }
 #endif

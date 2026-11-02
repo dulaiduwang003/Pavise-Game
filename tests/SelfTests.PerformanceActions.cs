@@ -18,13 +18,14 @@ namespace PaviseApp
         {
             Settings.UseTransientStoreForCurrentProcess(); Logger.WritesEnabled = false; Lang.Init();
             PerformanceActionBackend.DefenderServiceForTest = delegate { return 4; };
-            PerformanceActionBackend.ResourcePlatformForTest = delegate { return "contextual"; };
             try
             {
                 ActionReceiptRoundTrip(); ActionReceiptFailureBoundaries(); ActionComponentRestore();
                 ActionRoutingAndCommands(); ActionImageCollisions(); ActionEnvironmentRebootState();
+                ActionRetiredFailureUi();
                 ActionEnvironmentPartialFailure(); ActionEnvironmentRetryStatus(); ActionEnvironmentVbs(); ActionEnvironmentBundle(); ActionEnvironmentQuantumIndependent(); ActionEnvironmentTimerConcurrency(); ActionCoordinatorLifecycle(); ActionCoordinatorMixedResults(); ActionCoordinatorBatchedRecords();
-                ActionDefenderInactive(); ActionDefenderFailureRecord(); ActionPowerShellFailures();
+                ActionEnvironmentStorageGroup(); ActionQuantumLegacyRecovery(); ActionQuantumAuditReadOnly();
+                ActionDefenderInactive(); ActionDefenderFailureRecord(); ActionDefenderRetirementMatrix(); ActionDefenderRetirementClose(); ActionPowerShellFailures();
                 ActionCoordinatorRetryBudget(); ActionDiscoveryBudget(); ActionRestoreIsolation(); ActionBackgroundTargetMoves(); ActionLoggerRecords();
                 RunEnvironmentBundleLayoutRegressionTests();
                 RunMatchVisualEffectsTests();
@@ -34,7 +35,7 @@ namespace PaviseApp
                 PerformanceActionBackend.ReadForTest = null; PerformanceActionBackend.WriteForTest = null;
                 PerformanceActionBackend.TargetsForTest = null; PerformanceTuning.BootForTest = null;
                 PerformanceActionBackend.DefenderServiceForTest = null;
-                PerformanceActionBackend.ResourcePlatformForTest = null; PerformanceActionBackend.ShortNameVolumeForTest = null;
+                PerformanceActionBackend.ShortNameVolumeForTest = null;
                 PerformanceTuning.VbsConfiguredForTest = null; PerformanceTuning.VbsChangeForTest = null;
                 PerformanceTuning.ResetForTest(); Settings.UseTransientStoreForCurrentProcess();
             }
@@ -45,6 +46,7 @@ namespace PaviseApp
             try
             {
                 ActionEnvironmentBundle(); ActionEnvironmentQuantumIndependent(); ActionQuantumProfiles();
+                ActionEnvironmentStorageGroup(); ActionQuantumLegacyRecovery(); ActionQuantumAuditReadOnly();
                 RunEnvironmentBundleLayoutRegressionTests();
             }
             finally
@@ -148,9 +150,11 @@ namespace PaviseApp
                 PerformanceEq(false, action.Key.IndexOf("Network", StringComparison.OrdinalIgnoreCase) >= 0);
                 PerformanceEq(false, action.Key.IndexOf("IdleDisable", StringComparison.OrdinalIgnoreCase) >= 0);
                 PerformanceEq(false, action.Key == PerformanceActionCatalog.LegacyDefenderSession);
+                PerformanceEq(false, action.Key == PerformanceActionCatalog.DefenderResources);
             }
-            PerformanceEq(6, automatic); PerformanceEq(7, environment);
+            PerformanceEq(5, automatic); PerformanceEq(7, environment);
             PerformanceEq(true, PerformanceActionCatalog.Find(PerformanceActionCatalog.LegacyDefenderSession) != null);
+            PerformanceEq(true, PerformanceActionCatalog.Find(PerformanceActionCatalog.DefenderResources) != null);
             foreach (string legacy in new[] { "False,False", "False,True", "True,False", "True,True" })
                 PerformanceEq(false, PerformanceActionBackend.LegacyDefenderRestoreScript(legacy).Contains("$true"));
             PerformanceEq("Set-MpPreference -DisableRealtimeMonitoring $false -DisableBehaviorMonitoring $false -ErrorAction Stop",
@@ -184,8 +188,8 @@ namespace PaviseApp
             PerformanceEq("d:259", PerformanceActionBackend.WantedRegistry(PerformanceActionCatalog.CpuMitigations, "d:256"));
             PerformanceEq("d:294", PerformanceActionBackend.WantedRegistry(PerformanceActionCatalog.Quantum, "d:256"));
             PerformanceEq("b:AAAAAA==", PerformanceActionBackend.WantedRegistry(PerformanceActionCatalog.AudioIdle, "b:AQAAAA=="));
-            PerformanceEq(true, PerformanceActionBackend.ResourceTarget("C:\\Games\\Title\\Bin\\Game.exe", "C:\\Games\\Title").StartsWith("C:\\Games\\Title\\:{Process:"));
-            PerformanceEq(null, PerformanceActionBackend.ResourceTarget("C:\\Games\\Title\\Bad{Game}.exe"));
+            PerformanceEq(false, PerformanceActionBackend.Apply(PerformanceActionCatalog.DefenderResources, @"C:\Fixture\Game", "1"));
+            PerformanceEq(false, PerformanceActionBackend.Write(PerformanceActionCatalog.DefenderResources, @"C:\Fixture\Game", "1"));
             bool rejected = false;
             try { PerformanceActionBackend.WantedRegistry(PerformanceActionCatalog.CpuMitigations, "b:AAAAAA=="); } catch (FormatException) { rejected = true; }
             PerformanceEq(true, rejected);
@@ -229,6 +233,23 @@ namespace PaviseApp
                 rules.Add(rule);
                 PerformanceEq(true, (bool)method.Invoke(fixture.Mode, new object[] { "Browser", @"C:\Different\Browser.exe" }));
             }
+        }
+        private static void ActionRetiredFailureUi()
+        {
+            Settings.UseTransientStoreForCurrentProcess();
+            foreach (string id in new[] { PerformanceActionCatalog.DefenderResources, PerformanceActionCatalog.LegacyDefenderSession })
+                ActionFailureStore.Trip(id, "legacy", "old failure");
+            ActionFailureStore.Trip(PerformanceActionCatalog.OpenGl, "current", "current failure");
+            List<MaintenanceListItem> items = PanelForm.ReadFailureItems();
+            PerformanceEq(3, items.Count);
+            foreach (MaintenanceListItem item in items)
+            {
+                bool retired = item.Key == ActionFailureStore.RecordKey(PerformanceActionCatalog.DefenderResources, "legacy")
+                    || item.Key == ActionFailureStore.RecordKey(PerformanceActionCatalog.LegacyDefenderSession, "legacy");
+                PerformanceEq(!retired, item.Retryable);
+                if (retired) PerformanceEq(true, item.Status.Contains("仅恢复") || item.Status.Contains("restore legacy"));
+            }
+            Settings.UseTransientStoreForCurrentProcess();
         }
         private static void ActionEnvironmentPartialFailure()
         {
@@ -405,8 +426,10 @@ namespace PaviseApp
                 PerformanceEq(1, PerformanceTuning.EnvironmentEnabledCount()); PerformanceEq(0, writes);
                 PerformanceEq(true, PerformanceTuning.SetEnvironmentBundle(true, delegate { done.Set(); }));
                 PerformanceEq(true, blocked.WaitOne(3000));
-                PerformanceEq(7, PerformanceTuning.EnvironmentEnabledCount()); PerformanceEq(true, PerformanceTuning.EnvironmentBundleBusy());
+                PerformanceEq(4, PerformanceTuning.EnvironmentEnabledCount()); PerformanceEq(true, PerformanceTuning.EnvironmentBundleBusy());
                 PerformanceEq(false, Settings.LoadCached(PerformanceActionCatalog.Quantum, false));
+                foreach (string storage in PerformanceTuning.StorageMembers())
+                    PerformanceEq(false, Settings.LoadCached(storage, false));
                 PerformanceEq(true, Settings.LoadCached(PerformanceTuning.EnvironmentVbsKey, false)); PerformanceEq(0, vbsWrites);
                 PerformanceEq(true, AutomaticPolicy.EnvironmentPreference(PolicyCatalog.KeyTimerTick));
                 PerformanceEq(false, AutomaticPolicy.EnvironmentPreference(PolicyCatalog.KeyGlobalTimer));
@@ -428,11 +451,17 @@ namespace PaviseApp
                     timers.TickState = timers.GlobalState = timerState;
                     PerformanceEq("pending-reboot", PerformanceTuning.EnvironmentBundleState());
                 }
-                PerformanceEq("unsupported", PerformanceTuning.State(PerformanceActionCatalog.StorageCold));
+                // 存储三项已移出整包：整包开启不读写、不记录它们。
+                foreach (string storage in PerformanceTuning.StorageMembers())
+                {
+                    PerformanceEq("", PerformanceTuning.State(storage)); PerformanceEq(false, Settings.LoadCached(storage, false));
+                }
+                PerformanceEq(originals[PerformanceActionCatalog.StorageIdle + "|device"], values[PerformanceActionCatalog.StorageIdle + "|device"]);
+                PerformanceEq("off", PerformanceTuning.StorageGroupState());
                 PerformanceEq("d:131", values[PerformanceActionCatalog.CpuMitigations + "|override"]);
                 PerformanceEq("d:11", values[PerformanceActionCatalog.CpuMitigations + "|mask"]);
                 PerformanceEq("b:AAAAAA==", values[PerformanceActionCatalog.AudioIdle + "|device"]);
-                PerformanceEq(5, PerformanceActionStore.All().Count);
+                PerformanceEq(4, PerformanceActionStore.All().Count);
                 PerformanceEq("d:256", values[PerformanceActionCatalog.Quantum + "|device"]);
                 string[] bootFields = boot.Split(':'); boot = bootFields[0] + ":" + bootFields[1] + ":2";
                 timers.Sync(true, false, 26000, DateTime.UtcNow.AddMinutes(6).Ticks);
@@ -589,6 +618,438 @@ namespace PaviseApp
                     PerformanceTuning.ResetForTest();
                 }
         }
+        // 持久存储三项：单独的高级开关。整包不再触及它们；旧版整包留下的选择与收据保持可见、不被静默恢复，可单独关闭恢复。
+        private static void ActionEnvironmentStorageGroup()
+        {
+            Settings.UseTransientStoreForCurrentProcess(); PerformanceTuning.ResetForTest();
+            string boot = BootSessionIdentity.Create(Guid.NewGuid(), 1);
+            PerformanceTuning.BootForTest = delegate { return boot; };
+            var values = new Dictionary<string, string>(); var originals = new Dictionary<string, string>(); var valueGate = new object();
+            int writes = 0; bool holdWrite = false, vbsOff = false; string failRestore = null;
+            PerformanceTuning.VbsConfiguredForTest = delegate { return vbsOff; };
+            PerformanceTuning.VbsChangeForTest = delegate(bool on) { vbsOff = on; Settings.Save("VbsDisabledByPavise", on); return true; };
+            PerformanceActionBackend.TargetsForTest = delegate(string id) {
+                if (id == PerformanceActionCatalog.StorageCold) return new string[0];
+                return id == PerformanceActionCatalog.CpuMitigations ? new[] { "override", "mask" } : new[] { "device" };
+            };
+            foreach (PerformanceAction action in PerformanceActionCatalog.All)
+                if (action.Environment) foreach (string target in PerformanceActionBackend.TargetsForTest(action.Key))
+                {
+                    string original = action.Key == PerformanceActionCatalog.AudioIdle ? "b:AQAAAA=="
+                        : action.Key == PerformanceActionCatalog.CpuMitigations ? (target == "mask" ? "d:8" : "d:128")
+                        : action.Key == PerformanceActionCatalog.Quantum ? "d:256" : action.Key == PerformanceActionCatalog.StorageRuntime ? "d:1" : "d:0";
+                    values[action.Key + "|" + target] = original; originals[action.Key + "|" + target] = original;
+                }
+            PerformanceActionBackend.ReadForTest = delegate(string id, string target) { lock (valueGate) return values[id + "|" + target]; };
+            var blocked = new ManualResetEvent(false); var release = new ManualResetEvent(false); var done = new ManualResetEvent(false);
+            PerformanceActionBackend.WriteForTest = delegate(string id, string target, string value) {
+                if (holdWrite) { blocked.Set(); release.WaitOne(3000); }
+                if (failRestore == id && value == originals[id + "|" + target]) return false;
+                Interlocked.Increment(ref writes);
+                lock (valueGate) values[id + "|" + target] = value; return true;
+            };
+            const string idle = PerformanceActionCatalog.StorageIdle + "|device";
+            Func<int> storageReceipts = delegate {
+                int count = 0;
+                foreach (PerformanceActionStore.Receipt receipt in PerformanceActionStore.All())
+                    if (PerformanceTuning.StorageMember(receipt.Id)) count++;
+                return count;
+            };
+            Action<bool> setStorage = delegate(bool on) {
+                done.Reset(); PerformanceEq(true, PerformanceTuning.SetStorageGroup(on, delegate { done.Set(); })); PerformanceEq(true, done.WaitOne(3000));
+            };
+            Action<bool> setBundle = delegate(bool on) {
+                done.Reset(); PerformanceEq(true, PerformanceTuning.SetEnvironmentBundle(on, delegate { done.Set(); })); PerformanceEq(true, done.WaitOne(3000));
+            };
+            try
+            {
+                PerformanceEq(3, PerformanceTuning.StorageMembers().Count);
+                PerformanceEq(false, PerformanceTuning.StorageGroupEnabled);
+                PerformanceEq("off", PerformanceTuning.StorageGroupState());
+                PerformanceEq(PerformanceTuning.Label("off"), PerformanceTuning.StorageGroupLabel());
+                foreach (string name in new[] { AutomaticPolicy.Text("存储空闲电源", "Storage idle power"), AutomaticPolicy.Text("存储运行时电源", "Storage runtime power"), AutomaticPolicy.Text("存储 D3Cold", "Storage D3Cold") })
+                    PerformanceEq(true, PerformanceTuning.StorageGroupDetail.Contains(name));
+                PerformanceEq(true, PerformanceTuning.EnvironmentBundleDetail.Contains(AutomaticPolicy.Text("共四项", "four settings")));
+                PerformanceEq(false, PerformanceTuning.EnvironmentBundleDetail.Contains(AutomaticPolicy.Text("七项", "seven")));
+                Settings.Save(PerformanceActionCatalog.CpuMitigations, true);
+                PerformanceEq(true, PerformanceTuning.EnvironmentBundleLabel().EndsWith("1/4"));
+                Settings.Save(PerformanceActionCatalog.CpuMitigations, false);
+
+                // 一键整包不再读写或记录存储三项。
+                setBundle(true);
+                PerformanceEq(0, storageReceipts()); PerformanceEq("off", PerformanceTuning.StorageGroupState());
+                foreach (string key in PerformanceTuning.StorageMembers()) PerformanceEq(false, Settings.LoadCached(key, false));
+                PerformanceEq(originals[idle], values[idle]);
+                setBundle(false);
+
+                // 旧版整包写下的存储偏好与收据：显示为已启用；整包关闭或开启都不静默恢复，也不丢失。
+                foreach (string key in PerformanceTuning.StorageMembers()) { Settings.Save(key, true); PerformanceTuning.ApplyEnvironment(key, true); }
+                PerformanceEq(1, storageReceipts()); PerformanceEq("d:1", values[idle]);
+                PerformanceEq(true, PerformanceTuning.StorageGroupEnabled);
+                PerformanceEq("pending-reboot", PerformanceTuning.StorageGroupState());
+                setBundle(true); setBundle(false);
+                PerformanceEq(1, storageReceipts()); PerformanceEq("d:1", values[idle]);
+                foreach (string key in PerformanceTuning.StorageMembers()) PerformanceEq(true, Settings.LoadCached(key, false));
+                PerformanceEq(true, PerformanceTuning.StorageGroupEnabled);
+                PerformanceEq(true, PerformanceTuning.StorageGroupLabel().Contains(AutomaticPolicy.Text("跳过不适用项：", "Unsupported settings skipped: ") + "1"));
+                PerformanceEq(true, PerformanceTuning.StorageGroupDetail.Contains(PerformanceTuning.Label("unsupported")));
+
+                // 单独关闭：只恢复存储收据。
+                int bundleWrites = writes;
+                setStorage(false);
+                PerformanceEq(0, storageReceipts()); PerformanceEq(originals[idle], values[idle]); PerformanceEq(bundleWrites + 1, writes);
+                PerformanceEq(false, PerformanceTuning.StorageGroupEnabled);
+                PerformanceEq("restore-pending-reboot", PerformanceTuning.StorageGroupState());
+
+                // 单独开启：写入可用项，不适用项跳过。
+                setStorage(true);
+                PerformanceEq(1, storageReceipts()); PerformanceEq("d:1", values[idle]);
+                PerformanceEq("pending-reboot", PerformanceTuning.StorageGroupState());
+                PerformanceEq("unsupported", PerformanceTuning.State(PerformanceActionCatalog.StorageCold));
+                PerformanceEq(false, PerformanceTuning.EnvironmentBundleEnabled);
+
+                // 恢复失败：收据保留、开关仍显示开启，之后关闭可重试。
+                failRestore = PerformanceActionCatalog.StorageIdle;
+                setStorage(false);
+                PerformanceEq("restore-failed", PerformanceTuning.StorageGroupState());
+                PerformanceEq(true, PerformanceTuning.StorageGroupEnabled);
+                PerformanceEq(1, storageReceipts()); PerformanceEq("d:1", values[idle]);
+                failRestore = null;
+                setStorage(false);
+                PerformanceEq(0, storageReceipts()); PerformanceEq(originals[idle], values[idle]);
+                PerformanceEq(false, PerformanceTuning.StorageGroupEnabled);
+
+                // 偏好已关闭但收据仍在、尚无失败标记（例如关闭后、恢复执行前中断）：显示为原配置待恢复，不显示已关闭，
+                // 只读恢复记录、不自动恢复；关闭此项才恢复。
+                setStorage(true);
+                PerformanceEq(1, storageReceipts());
+                foreach (string key in PerformanceTuning.StorageMembers()) Settings.Save(key, false);
+                int pendingWrites = writes;
+                string pendingText = AutomaticPolicy.Text("原配置待恢复 · 关闭此项即可恢复", "Original configuration not yet restored · switch off to restore");
+                PerformanceEq(true, PerformanceTuning.StorageGroupEnabled);
+                PerformanceEq("recovery-pending", PerformanceTuning.StorageGroupState());
+                PerformanceEq(pendingText, PerformanceTuning.StorageGroupLabel());
+                PerformanceEq(true, PerformanceTuning.StorageGroupDetail.Contains(pendingText));
+                PerformanceTuning.SetState(PerformanceActionCatalog.StorageIdle, "");
+                PerformanceEq("recovery-pending", PerformanceTuning.StorageGroupState());
+                PerformanceEq(pendingWrites, writes); PerformanceEq("d:1", values[idle]);
+                // 记录锁被写入占用时界面查询不等待，沿用上次读到的结果。
+                object storeGate = typeof(PerformanceActionStore).GetField("gate",
+                    System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic).GetValue(null);
+                using (var held = new ManualResetEvent(false))
+                using (var free = new ManualResetEvent(false))
+                {
+                    var holder = new Thread(delegate() { lock (storeGate) { held.Set(); free.WaitOne(3000); } });
+                    holder.IsBackground = true; holder.Start(); PerformanceEq(true, held.WaitOne(1000));
+                    var clock = System.Diagnostics.Stopwatch.StartNew();
+                    bool shown = PerformanceTuning.StorageGroupEnabled; string shownState = PerformanceTuning.StorageGroupState();
+                    clock.Stop(); free.Set(); PerformanceEq(true, holder.Join(3000));
+                    PerformanceEq(true, clock.ElapsedMilliseconds < 1000); PerformanceEq(true, shown); PerformanceEq("recovery-pending", shownState);
+                }
+                setStorage(false);
+                PerformanceEq(0, storageReceipts()); PerformanceEq(originals[idle], values[idle]);
+                PerformanceEq(false, PerformanceTuning.StorageGroupEnabled);
+                PerformanceEq(false, PerformanceTuning.StorageGroupState() == "recovery-pending");
+                // 恢复记录不可读：按三项都待恢复处理，不当作已关闭。
+                string corruptSlot = PerformanceActionStore.Slot("corrupt", "storage fixture");
+                Settings.SaveStr(PerformanceActionStore.ListKey, corruptSlot); Settings.SaveStr(corruptSlot, "corrupt");
+                PerformanceEq(true, PerformanceTuning.StorageGroupEnabled); PerformanceEq("recovery-pending", PerformanceTuning.StorageGroupState());
+                Settings.SaveStr(corruptSlot, ""); Settings.SaveStr(PerformanceActionStore.ListKey, "");
+                PerformanceEq(false, PerformanceTuning.StorageGroupEnabled); PerformanceEq(pendingWrites + 1, writes);
+                // 整包语义不变：只看偏好，成员收据不改变整包开关。
+                PerformanceEq(false, PerformanceTuning.EnvironmentBundleEnabled);
+
+                // 存储写入进行中：整包、时间片和存储都不准入，全部恢复也不执行。
+                holdWrite = true; done.Reset();
+                PerformanceEq(true, PerformanceTuning.SetStorageGroup(true, delegate { done.Set(); }));
+                PerformanceEq(true, blocked.WaitOne(3000));
+                PerformanceEq("working", PerformanceTuning.StorageGroupState()); PerformanceEq("working", PerformanceTuning.EnvironmentBundleState());
+                PerformanceEq(false, PerformanceTuning.SetEnvironmentBundle(true, null));
+                PerformanceEq(false, PerformanceTuning.SetStorageGroup(false, null));
+                PerformanceEq(false, PerformanceTuning.SetQuantumProfile(1, null));
+                PerformanceEq(false, PerformanceTuning.SetEnvironment(PerformanceActionCatalog.Quantum, true, null));
+                PerformanceEq(false, Settings.LoadCached(PerformanceActionCatalog.Quantum, false));
+                PerformanceEq(false, PerformanceTuning.RestoreAll());
+                holdWrite = false; release.Set(); PerformanceEq(true, done.WaitOne(3000));
+                PerformanceEq(false, PerformanceTuning.EnvironmentBundleBusy());
+                setStorage(false);
+
+                // 排队失败或抛出、部分偏好保存失败：偏好全部回滚，不写入，不残留忙碌状态。
+                int before = writes;
+                PerformanceTuning.EnvironmentQueueForTest = delegate(WaitCallback work) { return false; };
+                PerformanceEq(false, PerformanceTuning.SetStorageGroup(true, null));
+                PerformanceTuning.EnvironmentQueueForTest = delegate(WaitCallback work) { throw new InvalidOperationException("Injected storage queue failure"); };
+                PerformanceEq(false, PerformanceTuning.SetStorageGroup(true, null));
+                PerformanceTuning.EnvironmentQueueForTest = null;
+                Settings.BeforeValueWriteForTest = delegate(string name) {
+                    if (name == PerformanceActionCatalog.StorageRuntime) throw new IOException("Injected preference write failure");
+                };
+                PerformanceEq(false, PerformanceTuning.SetStorageGroup(true, null));
+                Settings.BeforeValueWriteForTest = null;
+                foreach (string key in PerformanceTuning.StorageMembers()) PerformanceEq(false, Settings.LoadCached(key, false));
+                PerformanceEq(false, PerformanceTuning.EnvironmentBundleBusy()); PerformanceEq(before, writes);
+                Settings.SuspendWritesForReset();
+                PerformanceEq(false, PerformanceTuning.SetStorageGroup(true, null)); PerformanceEq(before, writes);
+                Settings.UseTransientStoreForCurrentProcess();
+                PerformanceEq(true, PerformanceTuning.CloseEnvironmentWork(0));
+                PerformanceEq(false, PerformanceTuning.SetStorageGroup(true, null));
+                PerformanceEq(false, Settings.LoadCached(PerformanceActionCatalog.StorageIdle, false)); PerformanceEq(before, writes);
+            }
+            finally
+            {
+                release.Set(); if (PerformanceTuning.EnvironmentBundleBusy()) done.WaitOne(3000);
+                PerformanceTuning.EnvironmentQueueForTest = null; Settings.BeforeValueWriteForTest = null;
+                blocked.Dispose(); release.Dispose(); done.Dispose();
+                PerformanceTuning.ResetForTest(); Settings.UseTransientStoreForCurrentProcess();
+            }
+        }
+        // 前台时间片的三类记录（档位收据、旧版校正 PrevPrioritySep、更早的 PrevWin32PriSep）按任意先后叠放时的统一恢复。
+        // 所有读写都经过替身，真实 HKLM 不参与。
+        private sealed class QuantumLegacyFixture
+        {
+            internal string Value, ChangedValue; internal int Writes, Reads, ChangeOnRead; internal bool FailWrite, FailRead, ChangeAfterReturn;
+            internal Action<int> OnRead;
+            internal QuantumLegacyFixture(string value)
+            {
+                Settings.UseTransientStoreForCurrentProcess(); PerformanceTuning.ResetForTest();
+                Value = value;
+                string boot = BootSessionIdentity.Create(Guid.NewGuid(), 1);
+                PerformanceTuning.BootForTest = delegate { return boot; };
+                PerformanceActionBackend.TargetsForTest = delegate(string id) {
+                    return id == PerformanceActionCatalog.Quantum ? new[] { QuantumRecovery.Target } : new string[0];
+                };
+                PerformanceActionBackend.ReadForTest = delegate(string id, string target) {
+                    PerformanceEq(PerformanceActionCatalog.Quantum, id); PerformanceEq(QuantumRecovery.Target, target);
+                    Reads++; if (FailRead) throw new IOException("Injected time-slice read failure");
+                    if (OnRead != null) OnRead(Reads);
+                    string observed = Value;
+                    if (ChangeOnRead > 0 && Reads == ChangeOnRead) { Value = ChangedValue; if (!ChangeAfterReturn) observed = Value; }
+                    return observed;
+                };
+                PerformanceActionBackend.WriteForTest = delegate(string id, string target, string next) {
+                    PerformanceEq(PerformanceActionCatalog.Quantum, id); PerformanceEq(QuantumRecovery.Target, target);
+                    Writes++; if (FailWrite) return false; Value = next; return true;
+                };
+            }
+            // ReversibleReg 编码："=原值" 加可选的 "\u001F=写入值"（旧格式没有写入值）。
+            internal void Legacy(string slot, int original, int applied = -1)
+            { Settings.SaveStr(slot, "=" + original + (applied < 0 ? "" : "\u001F=" + applied)); }
+            internal void Profile(string original, string expected, bool committed)
+            {
+                var receipt = new PerformanceActionStore.Receipt { Id = PerformanceActionCatalog.Quantum, Target = QuantumRecovery.Target,
+                    Original = original, Expected = expected, Committed = committed };
+                string slot = PerformanceActionStore.Slot(receipt.Id, receipt.Target);
+                Settings.SaveStr(slot, PerformanceActionStore.Pack(receipt)); Settings.SaveStr(PerformanceActionStore.ListKey, slot);
+            }
+            internal string Stored(string slot) { return Settings.LoadStr(slot, ""); }
+            internal string ReceiptText { get { return Settings.LoadStr(PerformanceActionStore.Slot(PerformanceActionCatalog.Quantum, QuantumRecovery.Target), ""); } }
+            internal int Receipts
+            {
+                get
+                {
+                    int count = 0;
+                    foreach (PerformanceActionStore.Receipt receipt in PerformanceActionStore.All()) if (receipt.Id == PerformanceActionCatalog.Quantum) count++;
+                    return count;
+                }
+            }
+        }
+        private static void ActionQuantumLegacyRecovery()
+        {
+            const string key = PerformanceActionCatalog.Quantum, repair = QuantumRecovery.RepairSlot, boost = QuantumRecovery.BoostSlot;
+            try
+            {
+                // 只有旧版校正：「恢复原配置」写回原值并清除记录、标记和退休的模式键；再次恢复不再写入。
+                var fx = new QuantumLegacyFixture("d:38");
+                fx.Legacy(repair, 37, 38); Settings.Save(QuantumRecovery.RepairedFlag, true); Settings.SaveStr(QuantumRecovery.RetiredModeKey, "1");
+                PerformanceEq(true, QuantumRecovery.HasLegacyRecords); PerformanceEq(true, QuantumTweak.RepairedByPavise); PerformanceEq(0, fx.Writes);
+                PerformanceEq(true, PerformanceTuning.ApplyEnvironment(key, false));
+                PerformanceEq("d:37", fx.Value); PerformanceEq(1, fx.Writes); PerformanceEq("", fx.Stored(repair));
+                PerformanceEq(false, QuantumTweak.RepairedByPavise); PerformanceEq("", Settings.LoadStr(QuantumRecovery.RetiredModeKey, ""));
+                PerformanceEq("restore-pending-reboot", PerformanceTuning.State(key));
+                PerformanceEq(true, PerformanceTuning.ApplyEnvironment(key, false)); PerformanceEq(1, fx.Writes);
+                PerformanceEq(true, QuantumTweak.Restore()); PerformanceEq(1, fx.Writes);
+
+                // 重置/完整恢复入口（QuantumTweak.Restore）走同一顺序。
+                fx = new QuantumLegacyFixture("d:38"); fx.Legacy(repair, 37, 38);
+                PerformanceEq(true, QuantumTweak.Restore()); PerformanceEq("d:37", fx.Value); PerformanceEq("", fx.Stored(repair));
+
+                // 外部已改成别的有效值：尊重外部改动，只释放记录。
+                fx = new QuantumLegacyFixture("d:24"); fx.Legacy(repair, 37, 38);
+                PerformanceEq(true, QuantumTweak.Restore()); PerformanceEq("d:24", fx.Value); PerformanceEq(0, fx.Writes); PerformanceEq("", fx.Stored(repair));
+
+                // 旧格式没有写入值：无法证明当前值仍属于旧版校正，不写入、保留记录；当前值已等于原值时才清除。
+                fx = new QuantumLegacyFixture("d:38"); fx.Legacy(repair, 37);
+                PerformanceEq(false, QuantumTweak.Restore()); PerformanceEq("d:38", fx.Value); PerformanceEq(0, fx.Writes); PerformanceEq("=37", fx.Stored(repair));
+                PerformanceEq(true, QuantumRecovery.HasRecords());
+                fx = new QuantumLegacyFixture("d:37"); fx.Legacy(repair, 37);
+                PerformanceEq(true, QuantumTweak.Restore()); PerformanceEq(0, fx.Writes); PerformanceEq("", fx.Stored(repair));
+
+                // 写入值等于原值的档位收据从未改变这个值：先释放，再还原其下的旧校正。
+                fx = new QuantumLegacyFixture("d:38"); fx.Legacy(repair, 24, 38); fx.Profile("d:38", "d:38", true);
+                PerformanceEq(true, QuantumRecovery.RestoreAll()); PerformanceEq("d:24", fx.Value); PerformanceEq(1, fx.Writes);
+                PerformanceEq(false, QuantumRecovery.HasRecords());
+
+                // 判断之后旧记录或当前值被改动：写入前复核失败，不写入，记录与外部值保留。
+                fx = new QuantumLegacyFixture("d:38"); fx.Legacy(repair, 24, 38);
+                fx.OnRead = delegate(int read) { if (read == 1) Settings.SaveStr(repair, "=16\u001F=38"); };
+                PerformanceEq(false, QuantumRecovery.RestoreAll()); PerformanceEq(0, fx.Writes); PerformanceEq("d:38", fx.Value);
+                PerformanceEq("=16\u001F=38", fx.Stored(repair));
+                fx = new QuantumLegacyFixture("d:38"); fx.Legacy(repair, 24, 38);
+                fx.ChangeOnRead = 1; fx.ChangedValue = "d:37"; fx.ChangeAfterReturn = true;
+                PerformanceEq(false, QuantumRecovery.RestoreAll()); PerformanceEq(0, fx.Writes); PerformanceEq("d:37", fx.Value);
+                PerformanceEq("=24\u001F=38", fx.Stored(repair));
+
+                // 记录无法解析：不写入、不删除，状态为恢复未完成。
+                fx = new QuantumLegacyFixture("d:38"); Settings.SaveStr(repair, "=not-a-number");
+                PerformanceEq(false, PerformanceTuning.ApplyEnvironment(key, false));
+                PerformanceEq("restore-failed", PerformanceTuning.State(key));
+                PerformanceEq("=not-a-number", fx.Stored(repair)); PerformanceEq(0, fx.Writes);
+                PerformanceEq(false, QuantumTweak.Restore()); PerformanceEq("=not-a-number", fx.Stored(repair)); PerformanceEq(0, fx.Writes);
+
+                // 先校正后档位：通用收据恢复只回到校正值并保留旧记录；随后的重置入口回到最早原值。
+                fx = new QuantumLegacyFixture("d:24"); fx.Legacy(repair, 37, 38); fx.Profile("d:38", "d:24", true);
+                PerformanceEq(true, PerformanceTuning.RestoreAll());
+                PerformanceEq("d:38", fx.Value); PerformanceEq(0, fx.Receipts); PerformanceEq("=37\u001F=38", fx.Stored(repair));
+                PerformanceEq(true, QuantumTweak.Restore()); PerformanceEq("d:37", fx.Value); PerformanceEq("", fx.Stored(repair)); PerformanceEq(2, fx.Writes);
+                // 同一叠放下「恢复原配置」一次回到最早原值，不停在中间值。
+                fx = new QuantumLegacyFixture("d:24"); fx.Legacy(repair, 37, 38); fx.Profile("d:38", "d:24", true); Settings.Save(key, true);
+                PerformanceEq(true, PerformanceTuning.ApplyEnvironment(key, false));
+                PerformanceEq("d:37", fx.Value); PerformanceEq(2, fx.Writes); PerformanceEq(0, fx.Receipts); PerformanceEq("", fx.Stored(repair));
+
+                // 先档位后校正（旧版健康检查改了用户选的 0x25）：先撤销校正再撤销档位，回到最早原值。
+                fx = new QuantumLegacyFixture("d:38"); fx.Profile("d:2", "d:37", true); fx.Legacy(repair, 37, 38);
+                PerformanceEq(true, PerformanceTuning.RestoreAll());
+                PerformanceEq("d:2", fx.Value); PerformanceEq(2, fx.Writes); PerformanceEq(0, fx.Receipts); PerformanceEq("", fx.Stored(repair));
+                fx = new QuantumLegacyFixture("d:38"); fx.Profile("d:2", "d:37", true); fx.Legacy(repair, 37, 38);
+                PerformanceEq(true, PerformanceTuning.ApplyEnvironment(key, false)); PerformanceEq("d:2", fx.Value); PerformanceEq(2, fx.Writes);
+
+                // 两层都声称当前值：不猜测，不写入，所有记录保留。
+                fx = new QuantumLegacyFixture("d:24"); fx.Profile("d:2", "d:24", true); fx.Legacy(repair, 37, 24);
+                string receipt = fx.ReceiptText;
+                PerformanceEq(false, QuantumRecovery.RestoreAll()); PerformanceEq(true, QuantumRecovery.LastFailure.Contains("Several"));
+                PerformanceEq(false, PerformanceTuning.RestoreAll());
+                PerformanceEq(0, fx.Writes); PerformanceEq(receipt, fx.ReceiptText); PerformanceEq("=37\u001F=24", fx.Stored(repair));
+
+                // 旧格式记录与不在顶层的档位收据：无法排序，失败关闭。
+                fx = new QuantumLegacyFixture("d:38"); fx.Profile("d:2", "d:37", true); fx.Legacy(repair, 37);
+                PerformanceEq(false, QuantumRecovery.RestoreAll()); PerformanceEq(0, fx.Writes); PerformanceEq(1, fx.Receipts); PerformanceEq("=37", fx.Stored(repair));
+                // 旧格式记录在下、档位收据在顶：只还原自己能证明的档位层，旧格式记录不猜测、保留为待恢复。
+                fx = new QuantumLegacyFixture("d:24"); fx.Legacy(repair, 37); fx.Profile("d:38", "d:24", true);
+                PerformanceEq(false, QuantumRecovery.RestoreAll()); PerformanceEq("d:38", fx.Value); PerformanceEq(1, fx.Writes);
+                PerformanceEq(0, fx.Receipts); PerformanceEq("=37", fx.Stored(repair));
+                // 档位已回到原值后只剩旧格式记录：不能证明它仍在顶层，保留。
+                fx = new QuantumLegacyFixture("d:2"); fx.Profile("d:2", "d:37", true); fx.Legacy(repair, 37);
+                PerformanceEq(false, QuantumRecovery.RestoreAll()); PerformanceEq(0, fx.Writes); PerformanceEq("=37", fx.Stored(repair));
+                // 还原档位时值被外部改走：档位记录按原语义释放，剩下的旧格式记录不再写回，保留外部值与记录。
+                fx = new QuantumLegacyFixture("d:24"); fx.Legacy(repair, 37); fx.Profile("d:38", "d:24", true);
+                fx.ChangeOnRead = 2; fx.ChangedValue = "d:30";
+                PerformanceEq(false, QuantumRecovery.RestoreAll()); PerformanceEq(0, fx.Writes); PerformanceEq("d:30", fx.Value);
+                PerformanceEq(0, fx.Receipts); PerformanceEq("=37", fx.Stored(repair));
+
+                // 更早的 PrevWin32PriSep 在最下：逐层还原到最早原值。
+                fx = new QuantumLegacyFixture("d:38"); fx.Legacy(boost, 2, 37); fx.Legacy(repair, 37, 38);
+                PerformanceEq(true, FgBoost.HasResidue());
+                PerformanceEq(true, FgBoost.Restore()); PerformanceEq("d:2", fx.Value); PerformanceEq(2, fx.Writes);
+                PerformanceEq(false, FgBoost.HasResidue()); PerformanceEq("", fx.Stored(repair));
+
+                // 档位收据只做了准备（写入未发生）：先还原其下的旧校正，准备记录随后释放，不写入。
+                fx = new QuantumLegacyFixture("d:38"); fx.Legacy(repair, 36, 38); fx.Profile("d:38", "d:24", false);
+                PerformanceEq(true, QuantumRecovery.RestoreAll()); PerformanceEq("d:36", fx.Value); PerformanceEq(1, fx.Writes); PerformanceEq(0, fx.Receipts);
+
+                // 只有档位收据（标准目标）：原有语义不变，外部改动只释放记录。
+                fx = new QuantumLegacyFixture("d:24"); fx.Profile("d:37", "d:24", true); Settings.Save(key, true);
+                PerformanceEq(true, PerformanceTuning.ApplyEnvironment(key, false)); PerformanceEq("d:37", fx.Value); PerformanceEq(0, fx.Receipts);
+                fx = new QuantumLegacyFixture("d:30"); fx.Profile("d:37", "d:24", true);
+                PerformanceEq(true, PerformanceTuning.RestoreAll()); PerformanceEq("d:30", fx.Value); PerformanceEq(0, fx.Writes); PerformanceEq(0, fx.Receipts);
+
+                // 过期的收据快照不能恢复更新后的记录。
+                fx = new QuantumLegacyFixture("d:24"); fx.Legacy(repair, 37, 38); fx.Profile("d:38", "d:24", true);
+                PerformanceActionStore.Receipt stale = PerformanceActionStore.All()[0]; stale.Expected = "d:25";
+                PerformanceEq(false, QuantumRecovery.RestoreThrough(stale)); PerformanceEq(0, fx.Writes); PerformanceEq(1, fx.Receipts);
+
+                // 有旧版校正时选择档位：先回到最早原值，新收据记下真正的原值，再写入档位。
+                fx = new QuantumLegacyFixture("d:38"); fx.Legacy(repair, 37, 38);
+                Settings.Save(key, true); Settings.SaveStr(QuantumProfiles.SettingKey, "24");
+                PerformanceEq(true, PerformanceTuning.ApplyEnvironment(key, true));
+                PerformanceEq("d:24", fx.Value); PerformanceEq(2, fx.Writes); PerformanceEq("", fx.Stored(repair));
+                PerformanceEq("d:37", PerformanceActionStore.All()[0].Original);
+                PerformanceEq("pending-reboot", PerformanceTuning.State(key));
+                PerformanceEq(true, PerformanceTuning.ApplyEnvironment(key, false)); PerformanceEq("d:37", fx.Value);
+                // 旧记录无法排序时不写入新档位，记录保留，状态为恢复未完成且不隔离。
+                fx = new QuantumLegacyFixture("d:24"); fx.Profile("d:2", "d:24", true); fx.Legacy(repair, 37, 24);
+                receipt = fx.ReceiptText; Settings.Save(key, true); Settings.SaveStr(QuantumProfiles.SettingKey, "38");
+                PerformanceEq(false, PerformanceTuning.ApplyEnvironment(key, true));
+                PerformanceEq(0, fx.Writes); PerformanceEq("d:24", fx.Value); PerformanceEq("restore-failed", PerformanceTuning.State(key));
+                PerformanceEq(receipt, fx.ReceiptText); PerformanceEq("=37\u001F=24", fx.Stored(repair));
+                PerformanceEq(false, ActionFailureStore.IsBlocked(key, QuantumRecovery.Target));
+
+                // 写入失败或读取失败：记录保留，稍后可重试。
+                fx = new QuantumLegacyFixture("d:38"); fx.Legacy(repair, 37, 38); fx.FailWrite = true;
+                PerformanceEq(false, PerformanceTuning.ApplyEnvironment(key, false));
+                PerformanceEq("restore-failed", PerformanceTuning.State(key)); PerformanceEq("=37\u001F=38", fx.Stored(repair)); PerformanceEq("d:38", fx.Value);
+                fx.FailWrite = false;
+                PerformanceEq(true, PerformanceTuning.ApplyEnvironment(key, false)); PerformanceEq("d:37", fx.Value); PerformanceEq("", fx.Stored(repair));
+                fx = new QuantumLegacyFixture("d:38"); fx.Legacy(repair, 37, 38); fx.FailRead = true;
+                PerformanceEq(false, QuantumTweak.Restore()); PerformanceEq(0, fx.Writes); PerformanceEq("=37\u001F=38", fx.Stored(repair));
+
+                // 健康检查的旧修复入口已退休：拒绝且不写入；只读检查也不写入。
+                fx = new QuantumLegacyFixture("d:37");
+                PerformanceEq(false, QuantumTweak.NeedsRepair()); PerformanceEq(false, QuantumTweak.Repair());
+                PerformanceEq(0, fx.Writes); PerformanceEq("", fx.Stored(repair)); PerformanceEq(false, QuantumTweak.RepairedByPavise);
+                fx.Legacy(repair, 37, 38);
+                PerformanceEq(true, QuantumAudit.Inspect().OfferSetting); PerformanceEq(true, QuantumTweak.Describe().Length > 0); PerformanceEq(0, fx.Writes);
+                PerformanceEq(true, QuantumTweak.HasRetiredModeResidue());
+                PerformanceEq(true, QuantumTweak.PurgeRetiredMode()); PerformanceEq(false, QuantumTweak.HasRetiredModeResidue()); PerformanceEq(0, fx.Writes);
+            }
+            finally
+            {
+                PerformanceActionBackend.ReadForTest = null; PerformanceActionBackend.WriteForTest = null; PerformanceActionBackend.TargetsForTest = null;
+                PerformanceTuning.ResetForTest(); Settings.UseTransientStoreForCurrentProcess();
+            }
+        }
+        // 健康检查的时间片行只读：文档化取值（含 0x25、0x18 等档位）都是有效配置；只有旧版记录或未文档化取值才提示前往设置。
+        private static void ActionQuantumAuditReadOnly()
+        {
+            int previousLanguage = Lang.Cur;
+            try
+            {
+                foreach (int language in new[] { 0, 1 })
+                {
+                    Lang.Cur = language;
+                    foreach (int value in new[] { 0x25, 0x24, 0x28, 0x15, 0x14, 0x18, 0x26, 0x16, 0x2 })
+                    {
+                        QuantumAudit.Finding valid = QuantumAudit.Classify("d:" + value, null, false);
+                        PerformanceEq(false, valid.Warn); PerformanceEq(false, valid.OfferSetting);
+                        PerformanceEq(AutomaticPolicy.Text("有效配置", "Valid setting"), valid.Value);
+                        PerformanceEq(true, valid.Note.Contains("0x" + value.ToString("X")));
+                    }
+                    QuantumAudit.Finding owned = QuantumAudit.Classify("d:294", "d:294", false);
+                    PerformanceEq(false, owned.Warn || owned.OfferSetting); PerformanceEq(true, owned.Note.Contains(QuantumProfiles.Title(1)));
+                    QuantumAudit.Finding external = QuantumAudit.Classify("d:37", "d:38", false);
+                    PerformanceEq(AutomaticPolicy.Text("有效配置", "Valid setting"), external.Value);
+                    QuantumAudit.Finding undocumented = QuantumAudit.Classify("d:39", null, false);
+                    PerformanceEq(true, undocumented.Warn); PerformanceEq(true, undocumented.OfferSetting);
+                    QuantumAudit.Finding legacy = QuantumAudit.Classify("d:38", null, true);
+                    PerformanceEq(false, legacy.Warn); PerformanceEq(true, legacy.OfferSetting);
+                    QuantumAudit.Finding absent = QuantumAudit.Classify("absent", null, false);
+                    PerformanceEq(false, absent.Warn || absent.OfferSetting);
+                    QuantumAudit.Finding unreadable = QuantumAudit.Classify(null, null, false);
+                    PerformanceEq(false, unreadable.Warn || unreadable.OfferSetting);
+                }
+            }
+            finally { Lang.Cur = previousLanguage; }
+            // 健康检查修复表中的时间片项没有修复或还原写入，只能跳转，不计入一键修复。
+            var form = (PanelForm)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(PanelForm));
+            var fixes = (System.Collections.IDictionary)typeof(PanelForm).GetMethod("BuildAuditFixes",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke(form, null);
+            object quantum = fixes["quantum"]; Type fixType = quantum.GetType();
+            PerformanceEq(false, ((Func<bool>)fixType.GetField("CanFix").GetValue(quantum))());
+            PerformanceEq(false, ((Func<bool>)fixType.GetField("CanRevert").GetValue(quantum))());
+            PerformanceEq(null, fixType.GetField("Fix").GetValue(quantum));
+            PerformanceEq(null, fixType.GetField("Revert").GetValue(quantum));
+            PerformanceEq(true, fixType.GetField("Open").GetValue(quantum) != null);
+            PerformanceEq(true, ((Func<string>)fixType.GetField("OpenText").GetValue(quantum))().Length > 0);
+        }
         private static void ActionEnvironmentTimerConcurrency()
         {
             Settings.UseTransientStoreForCurrentProcess();
@@ -626,10 +1087,12 @@ namespace PaviseApp
         private static void ActionCoordinatorMixedResults()
         {
             Settings.UseTransientStoreForCurrentProcess();
+            SelectPerformanceFixtureActions(PerformanceActionCatalog.Mitigations, PerformanceActionCatalog.OpenGl);
             var values = new Dictionary<string, string>(); var valueGate = new object();
             const string first = @"C:\A\GameA.exe", second = @"C:\B\GameB.exe";
-            string resourceSecond = PerformanceActionBackend.ResourceTarget(second);
+            int retiredReads = 0;
             PerformanceActionBackend.ReadForTest = delegate(string id, string target) {
+                if (id == PerformanceActionCatalog.DefenderResources) retiredReads++;
                 lock (valueGate)
                 {
                     string value;
@@ -647,7 +1110,8 @@ namespace PaviseApp
             {
                 coordinator.Queue(true, false, new[] { first, second }, new string[0]);
                 PerformanceEq(true, coordinator.DrainForTest(3000));
-                PerformanceEq("1", PerformanceActionBackend.ReadForTest(PerformanceActionCatalog.DefenderResources, resourceSecond));
+                PerformanceEq(0, retiredReads);
+                PerformanceEq("configured", coordinator.State(PerformanceActionCatalog.OpenGl));
                 PerformanceEq("stopped", coordinator.State(PerformanceActionCatalog.Mitigations));
                 coordinator.Queue(false, false, new string[0], new string[0]);
                 PerformanceEq(true, coordinator.WaitForSessionRestore(3000));
@@ -673,6 +1137,7 @@ namespace PaviseApp
                 const string first = @"C:\A\GameA.exe", second = @"C:\B\GameB.exe";
                 string bad = failureFirst ? first : second;
                 string id = PerformanceActionCatalog.Mitigations;
+                SelectPerformanceFixtureActions(id);
                 string marker = "AUTO " + PerformanceActionCatalog.Find(id).Title + " | ";
                 string oldPath = Logger.LogPath; bool oldWrites = Logger.WritesEnabled;
                 string path = Path.Combine(Path.GetTempPath(), "PaviseBatchFixture-" + Guid.NewGuid().ToString("N") + ".log");
@@ -770,11 +1235,27 @@ namespace PaviseApp
             var coordinator = new PerformanceActionCoordinator();
             try
             {
+                // Manual control does not opt into driver/session actions merely by enabling the guard.
+                coordinator.Queue(true, true, new string[0], new[] { "C:\\Browser.exe" });
+                PerformanceEq(true, coordinator.DrainForTest(3000));
+                PerformanceEq("off", coordinator.State(PerformanceActionCatalog.BackgroundFps));
+                PerformanceEq("absent", PerformanceActionBackend.ReadForTest(PerformanceActionCatalog.BackgroundFps, "C:\\Browser.exe"));
+                PerformanceEq(0, PerformanceActionStore.All().Count);
+                SelectPerformanceFixtureActions(PerformanceActionCatalog.BackgroundFps);
                 for (int round = 0; round < 2; round++)
                 {
                     coordinator.Queue(true, true, new string[0], new[] { "C:\\Browser.exe" });
                     WaitPerformance(delegate { return coordinator.State(PerformanceActionCatalog.BackgroundFps) == "configured"; });
                     PerformanceEq("30", PerformanceActionBackend.ReadForTest(PerformanceActionCatalog.BackgroundFps, "C:\\Browser.exe"));
+                    PerformanceEq(true, Settings.Save(PerformanceActionCatalog.BackgroundFps, false));
+                    coordinator.Queue(true, true, new string[0], new[] { "C:\\Browser.exe" });
+                    PerformanceEq(true, coordinator.DrainForTest(3000));
+                    PerformanceEq("off", coordinator.State(PerformanceActionCatalog.BackgroundFps));
+                    PerformanceEq("absent", PerformanceActionBackend.ReadForTest(PerformanceActionCatalog.BackgroundFps, "C:\\Browser.exe"));
+                    PerformanceEq(0, PerformanceActionStore.All().Count);
+                    SelectPerformanceFixtureActions(PerformanceActionCatalog.BackgroundFps);
+                    coordinator.Queue(true, true, new string[0], new[] { "C:\\Browser.exe" });
+                    WaitPerformance(delegate { return coordinator.State(PerformanceActionCatalog.BackgroundFps) == "configured"; });
                     coordinator.Queue(false, false, new string[0], new string[0]);
                     PerformanceEq(true, coordinator.WaitForSessionRestore(3000));
                     PerformanceEq("absent", PerformanceActionBackend.ReadForTest(PerformanceActionCatalog.BackgroundFps, "C:\\Browser.exe"));
@@ -816,119 +1297,167 @@ namespace PaviseApp
         private static void ActionDefenderInactive()
         {
             Settings.UseTransientStoreForCurrentProcess();
-            int service = 1, defenderReads = 0, defenderWrites = 0;
-            long now = DateTime.UtcNow.Ticks;
-            var values = new Dictionary<string, string>();
-            PerformanceActionBackend.DefenderServiceForTest = delegate { return service; };
-            PerformanceActionBackend.ReadForTest = delegate(string id, string target) {
-                if (id == PerformanceActionCatalog.LegacyDefenderSession || id == PerformanceActionCatalog.DefenderResources) defenderReads++;
-                string value;
-                return values.TryGetValue(id + "|" + target, out value) ? value : ActionMockDefault(id);
+            int service = 1, serviceQueries = 0, reads = 0, writes = 0; long now = DateTime.UtcNow.Ticks;
+            const string id = PerformanceActionCatalog.DefenderResources, target = @"C:\Fixture\Game";
+            string value = "1";
+            PerformanceActionBackend.DefenderServiceForTest = delegate { serviceQueries++; return service; };
+            PerformanceActionBackend.ReadForTest = delegate(string action, string path) {
+                PerformanceEq(id, action); PerformanceEq(target, path); reads++; return value;
             };
-            PerformanceActionBackend.WriteForTest = delegate(string id, string target, string value) {
-                if (id == PerformanceActionCatalog.LegacyDefenderSession || id == PerformanceActionCatalog.DefenderResources) defenderWrites++;
-                values[id + "|" + target] = value == "off64" ? "OFF:False;OFF:False;OFF:False;OFF:False;OFF:False;NOTSET:False" : value;
-                return true;
+            PerformanceActionBackend.WriteForTest = delegate(string action, string path, string next) {
+                PerformanceEq(id, action); PerformanceEq(target, path); PerformanceEq("0", next); writes++; value = next; return true;
             };
             var coordinator = new PerformanceActionCoordinator { ClockForTest = delegate { return now; } };
-            string[] games = { @"C:\A\GameA.exe", @"C:\B\GameB.exe" };
             try
             {
-                coordinator.Queue(true, true, games, new[] { @"C:\Browser.exe" });
-                PerformanceEq(true, coordinator.DrainForTest(3000));
-                PerformanceEq("", coordinator.State(PerformanceActionCatalog.LegacyDefenderSession));
-                PerformanceEq("inactive", coordinator.State(PerformanceActionCatalog.DefenderResources));
-                PerformanceEq("configured", coordinator.State(PerformanceActionCatalog.BackgroundFps));
-                PerformanceEq(0, defenderReads); PerformanceEq(0, defenderWrites);
-                coordinator.Queue(true, false, games, new string[0]);
-                PerformanceEq(true, coordinator.DrainForTest(3000));
-                PerformanceEq("configured", coordinator.State(PerformanceActionCatalog.Mitigations));
-                PerformanceEq("configured", coordinator.State(PerformanceActionCatalog.OpenGl));
-                PerformanceEq("applied", coordinator.State(PerformanceActionCatalog.ShortNames));
-                PerformanceEq(0, defenderReads); PerformanceEq(0, defenderWrites);
-                service = 4; now += TimeSpan.FromMinutes(1).Ticks;
-                coordinator.Queue(true, false, games, new string[0]);
-                PerformanceEq(true, coordinator.DrainForTest(3000));
-                PerformanceEq("applied", coordinator.State(PerformanceActionCatalog.DefenderResources));
-                PerformanceEq(2, defenderWrites);
-                values[PerformanceActionCatalog.LegacyDefenderSession + "|Defender"] = "True,True";
-                SeedLegacyDefenderReceipt();
-                int reads = defenderReads, writes = defenderWrites;
-                foreach (int stopped in new[] { 1, 0, 3 })
+                foreach (bool guard in new[] { true, false })
                 {
-                    service = stopped; now += TimeSpan.FromMinutes(1).Ticks;
-                    coordinator.Queue(true, false, games, new string[0]);
-                    PerformanceEq(true, coordinator.DrainForTest(3000));
-                    PerformanceEq(false, coordinator.WaitForSessionRestore(3000));
-                    PerformanceEq("restore-failed", coordinator.State(PerformanceActionCatalog.LegacyDefenderSession));
-                    PerformanceEq(reads, defenderReads); PerformanceEq(writes, defenderWrites);
-                    PerformanceEq(true, PerformanceActionStore.All().Exists(delegate(PerformanceActionStore.Receipt r) { return r.Id == PerformanceActionCatalog.LegacyDefenderSession; }));
+                    coordinator.Queue(guard, true, new string[0], new string[0]); PerformanceEq(true, coordinator.DrainForTest(3000));
+                    PerformanceEq(0, serviceQueries); PerformanceEq(0, reads); PerformanceEq(0, writes);
+                }
+                string receipt = SeedRetiredResourceReceipt(target, "0", true);
+                foreach (int inactive in new[] { 1, 0, 3 })
+                {
+                    service = inactive; now += TimeSpan.FromMinutes(1).Ticks;
+                    coordinator.Queue(false, false, new string[0], new string[0]); PerformanceEq(true, coordinator.DrainForTest(3000));
+                    PerformanceEq(false, coordinator.WaitForSessionRestore(100));
+                    PerformanceEq("restore-failed", coordinator.State(id));
+                    PerformanceEq(0, reads); PerformanceEq(0, writes);
+                    PerformanceEq(receipt, Settings.LoadStr(PerformanceActionStore.Slot(id, target), ""));
                 }
                 service = 4; now += TimeSpan.FromMinutes(1).Ticks;
-                coordinator.Queue(true, false, games, new string[0]);
-                PerformanceEq(true, coordinator.DrainForTest(3000));
-                PerformanceEq(true, coordinator.WaitForSessionRestore(3000));
-                PerformanceEq("False,False", values[PerformanceActionCatalog.LegacyDefenderSession + "|Defender"]);
-                PerformanceEq("restored", coordinator.State(PerformanceActionCatalog.LegacyDefenderSession));
-                PerformanceEq(false, PerformanceActionStore.All().Exists(delegate(PerformanceActionStore.Receipt r) { return r.Id == PerformanceActionCatalog.LegacyDefenderSession; }));
-                PerformanceEq(true, coordinator.Close(3000));
-                PerformanceEq(true, PerformanceTuning.RestoreAll()); PerformanceEq(0, PerformanceActionStore.All().Count);
+                coordinator.Queue(false, false, new string[0], new string[0]); PerformanceEq(true, coordinator.DrainForTest(3000));
+                PerformanceEq(true, coordinator.WaitForSessionRestore(100)); PerformanceEq("0", value);
+                PerformanceEq(1, writes); PerformanceEq(0, PerformanceActionStore.All().Count);
+                int queried = serviceQueries;
+                now += TimeSpan.FromMinutes(1).Ticks; coordinator.Queue(false, false, new string[0], new string[0]);
+                PerformanceEq(true, coordinator.DrainForTest(3000)); PerformanceEq(queried, serviceQueries);
+                PerformanceEq(true, coordinator.Close(3000)); PerformanceEq(queried, serviceQueries);
             }
             finally { service = 4; coordinator.Close(3000); PerformanceActionBackend.DefenderServiceForTest = delegate { return 4; }; }
+        }
+        private static string SeedRetiredResourceReceipt(string target, string original, bool committed)
+        {
+            var receipt = new PerformanceActionStore.Receipt { Id = PerformanceActionCatalog.DefenderResources,
+                Target = target, Original = original, Expected = "1", Committed = committed };
+            string text = PerformanceActionStore.Pack(receipt);
+            PerformanceEq(true, Settings.SaveStrDurable(PerformanceActionStore.Slot(receipt.Id, target), text));
+            return text;
         }
         private static void ActionDefenderFailureRecord()
         {
             Settings.UseTransientStoreForCurrentProcess();
-            int service = 4, reads = 0;
-            long now = DateTime.UtcNow.Ticks;
-            string oldPath = Logger.LogPath;
-            bool oldWrites = Logger.WritesEnabled;
-            string path = Path.Combine(Path.GetTempPath(), "PaviseFailureFixture-" + Guid.NewGuid().ToString("N") + ".log");
-            var values = new Dictionary<string, string>();
-            PerformanceActionBackend.DefenderServiceForTest = delegate { return service; };
-            PerformanceActionBackend.ResourcePlatformForTest = delegate { return "contextual"; };
-            PerformanceActionBackend.ReadForTest = delegate(string id, string target) {
-                if (id == PerformanceActionCatalog.DefenderResources) { reads++; throw new IOException("provider failure 0x800106ba"); }
-                string value; return values.TryGetValue(id + "|" + target, out value) ? value : ActionMockDefault(id);
+            int reads = 0, writes = 0; bool broken = true; long now = DateTime.UtcNow.Ticks;
+            const string id = PerformanceActionCatalog.DefenderResources, target = @"C:\Fixture\ReadFailedGame";
+            string value = "1", receipt = SeedRetiredResourceReceipt(target, "0", true);
+            PerformanceActionBackend.DefenderServiceForTest = delegate { return 4; };
+            PerformanceActionBackend.ReadForTest = delegate(string action, string path) {
+                PerformanceEq(id, action); PerformanceEq(target, path); reads++;
+                if (broken) throw new IOException("provider failure 0x800106ba"); return value;
             };
-            PerformanceActionBackend.WriteForTest = delegate(string id, string target, string value) {
-                if (id == PerformanceActionCatalog.DefenderResources) throw new InvalidOperationException("A rejected query must never write");
-                values[id + "|" + target] = value == "off64" ? "OFF:False;OFF:False;OFF:False;OFF:False;OFF:False;NOTSET:False" : value; return true;
+            PerformanceActionBackend.WriteForTest = delegate(string action, string path, string next) {
+                PerformanceEq(id, action); PerformanceEq(target, path); PerformanceEq("0", next); writes++; value = next; return true;
             };
             var coordinator = new PerformanceActionCoordinator { ClockForTest = delegate { return now; } };
-            string[] games = { @"C:\A\GameA.exe" };
-            Func<int> warnings = delegate {
-                return LogStreamView.ParseEvents(File.ReadAllText(path)).FindAll(delegate(LogEventEntry e) { return e.Severity == LogEventSeverity.Warning; }).Count;
-            };
             try
             {
-                Logger.LogPath = path; Logger.WritesEnabled = true;
-                coordinator.Queue(true, false, games, new string[0]);
-                PerformanceEq(true, coordinator.DrainForTest(3000));
-                PerformanceEq("stopped", coordinator.State(PerformanceActionCatalog.DefenderResources));
-                PerformanceEq(1, reads); PerformanceEq(1, warnings());
-                PerformanceEq(true, File.ReadAllText(path).Contains("provider failure 0x800106ba"));
-                int records = File.ReadAllLines(path).Length;
-                now += TimeSpan.FromMinutes(1).Ticks;
-                coordinator.Queue(true, false, games, new string[0]);
-                PerformanceEq(true, coordinator.DrainForTest(3000)); PerformanceEq(1, reads);
-                PerformanceEq(records, File.ReadAllLines(path).Length);
-                now += TimeSpan.FromMinutes(4).Ticks;
-                coordinator.Queue(true, false, games, new string[0]);
-                PerformanceEq(true, coordinator.DrainForTest(3000)); PerformanceEq(1, reads);
-                PerformanceEq(records, File.ReadAllLines(path).Length); PerformanceEq(1, warnings());
-                PerformanceEq("stopped", coordinator.State(PerformanceActionCatalog.DefenderResources));
-                service = 1; now += TimeSpan.FromMinutes(1).Ticks;
-                coordinator.Queue(true, false, games, new string[0]);
-                PerformanceEq(true, coordinator.DrainForTest(3000));
-                PerformanceEq("inactive", coordinator.State(PerformanceActionCatalog.DefenderResources)); PerformanceEq(1, reads);
+                coordinator.Queue(false, false, new string[0], new string[0]); PerformanceEq(true, coordinator.DrainForTest(3000));
+                PerformanceEq("restore-failed", coordinator.State(id)); PerformanceEq(false, coordinator.WaitForSessionRestore(100));
+                PerformanceEq(1, reads); PerformanceEq(0, writes);
+                PerformanceEq(receipt, Settings.LoadStr(PerformanceActionStore.Slot(id, target), ""));
+                for (int i = 0; i < 100; i++)
+                {
+                    now += TimeSpan.FromMinutes(1).Ticks;
+                    coordinator.Queue(false, false, new string[0], new string[0]); PerformanceEq(true, coordinator.DrainForTest(3000));
+                }
+                PerformanceEq(true, reads < 30); PerformanceEq(0, writes);
+                PerformanceEq(receipt, Settings.LoadStr(PerformanceActionStore.Slot(id, target), ""));
+                PerformanceEq(0, ActionFailureStore.Records().Count);
+                broken = false; now += TimeSpan.FromMinutes(6).Ticks;
+                coordinator.Queue(false, false, new string[0], new string[0]); PerformanceEq(true, coordinator.DrainForTest(3000));
+                PerformanceEq(true, coordinator.WaitForSessionRestore(100)); PerformanceEq("restored", coordinator.State(id));
+                PerformanceEq(1, writes); PerformanceEq("0", value); PerformanceEq(0, PerformanceActionStore.All().Count);
                 PerformanceEq(true, coordinator.Close(3000));
             }
-            finally
+            finally { broken = false; coordinator.Close(3000); }
+        }
+        private static void ActionDefenderRetirementMatrix()
+        {
+            const string id = PerformanceActionCatalog.DefenderResources, target = @"C:\Fixture\Legacy\:{Process:C:\Fixture\Game.exe}";
+            foreach (bool committed in new[] { false, true })
+                foreach (string original in new[] { "0", "1" })
+                    foreach (string current in new[] { "0", "1", "unknown" })
+                    {
+                        Settings.UseTransientStoreForCurrentProcess();
+                        string value = current; int writes = 0;
+                        string receipt = SeedRetiredResourceReceipt(target, original, committed);
+                        PerformanceActionBackend.DefenderServiceForTest = delegate { return 4; };
+                        PerformanceActionBackend.ReadForTest = delegate(string action, string path) {
+                            PerformanceEq(id, action); PerformanceEq(target, path); return value;
+                        };
+                        PerformanceActionBackend.WriteForTest = delegate(string action, string path, string next) {
+                            PerformanceEq(id, action); PerformanceEq(target, path); PerformanceEq("0", next); writes++; value = next; return true;
+                        };
+                        bool resolves = current != "unknown" && !(original == "1" && current == "0");
+                        var coordinator = new PerformanceActionCoordinator();
+                        try
+                        {
+                            coordinator.Queue(false, false, new string[0], new string[0]); PerformanceEq(true, coordinator.DrainForTest(3000));
+                            PerformanceEq(resolves, coordinator.WaitForSessionRestore(100));
+                            PerformanceEq(resolves ? "restored" : "restore-failed", coordinator.State(id));
+                            PerformanceEq(original == "0" && current == "1" ? 1 : 0, writes);
+                            PerformanceEq(original == "0" && current == "1" ? "0" : current, value);
+                            PerformanceEq(resolves ? "" : receipt, Settings.LoadStr(PerformanceActionStore.Slot(id, target), ""));
+                            PerformanceEq(resolves, coordinator.Close(3000));
+                            PerformanceEq(resolves ? 0 : 1, PerformanceTuning.RestoreAllFailures().Count);
+                        }
+                        finally { coordinator.Close(3000); }
+                    }
+            Settings.UseTransientStoreForCurrentProcess();
+            int nativeReads = 0;
+            PerformanceActionBackend.DefenderServiceForTest = delegate { return 4; };
+            PerformanceActionBackend.ReadForTest = delegate { nativeReads++; throw new InvalidOperationException("Corrupt receipt must not authorize a native query"); };
+            string slot = PerformanceActionStore.Slot(id, target);
+            PerformanceEq(true, Settings.SaveStr(slot, "damaged"));
+            var damaged = new PerformanceActionCoordinator();
+            try
             {
-                coordinator.Close(3000); Logger.WritesEnabled = oldWrites; Logger.LogPath = oldPath;
+                damaged.Queue(false, false, new string[0], new string[0]); PerformanceEq(true, damaged.DrainForTest(3000));
+                PerformanceEq(false, damaged.WaitForSessionRestore(100)); PerformanceEq("damaged", Settings.LoadStr(slot, ""));
+                PerformanceEq(0, nativeReads); PerformanceEq(false, damaged.Close(3000));
+                PerformanceEq(true, PerformanceTuning.RestoreAllFailures().Count > 0);
+            }
+            finally { Settings.UseTransientStoreForCurrentProcess(); damaged.Close(3000); PerformanceActionBackend.DefenderServiceForTest = delegate { return 4; }; }
+        }
+        private static void ActionDefenderRetirementClose()
+        {
+            Settings.UseTransientStoreForCurrentProcess();
+            const string id = PerformanceActionCatalog.DefenderResources, target = @"C:\Fixture\ClosingGame";
+            string value = "1"; int writes = 0;
+            string receipt = SeedRetiredResourceReceipt(target, "0", true);
+            using (var entered = new ManualResetEvent(false))
+            using (var release = new ManualResetEvent(false))
+            {
                 PerformanceActionBackend.DefenderServiceForTest = delegate { return 4; };
-                if (File.Exists(path)) File.Delete(path);
+                PerformanceActionBackend.ReadForTest = delegate(string action, string path) {
+                    PerformanceEq(id, action); PerformanceEq(target, path); return value;
+                };
+                PerformanceActionBackend.WriteForTest = delegate(string action, string path, string next) {
+                    PerformanceEq(id, action); PerformanceEq(target, path); PerformanceEq("0", next);
+                    entered.Set(); if (!release.WaitOne(3000)) throw new TimeoutException("Remove fixture release timed out");
+                    writes++; value = next; return true;
+                };
+                var coordinator = new PerformanceActionCoordinator();
+                try
+                {
+                    coordinator.Queue(false, false, new string[0], new string[0]); PerformanceEq(true, entered.WaitOne(3000));
+                    PerformanceEq(false, coordinator.Close(25)); PerformanceEq("1", value);
+                    PerformanceEq(receipt, Settings.LoadStr(PerformanceActionStore.Slot(id, target), ""));
+                    release.Set(); PerformanceEq(true, coordinator.DrainForTest(3000));
+                    PerformanceEq(true, coordinator.Close(3000)); PerformanceEq(1, writes);
+                    PerformanceEq("0", value); PerformanceEq(0, PerformanceActionStore.All().Count);
+                }
+                finally { release.Set(); coordinator.Close(3000); }
             }
         }
         private static string ActionMockDefault(string id)
@@ -937,13 +1466,19 @@ namespace PaviseApp
                 : id == PerformanceActionCatalog.DefenderResources ? "0"
                 : id == PerformanceActionCatalog.Mitigations ? "NOTSET:False;NOTSET:False;NOTSET:False;NOTSET:False;NOTSET:False;NOTSET:False" : "absent";
         }
+        private static void SelectPerformanceFixtureActions(params string[] ids)
+        {
+            // Fault/recovery fixtures exercise explicit manual consent; no saved choice means off.
+            foreach (string id in ids) PerformanceEq(true, Settings.Save(id, true));
+        }
         private static void ActionCoordinatorRetryBudget()
         {
             foreach (string failingId in new[] { PerformanceActionCatalog.Mitigations, PerformanceActionCatalog.OpenGl,
-                PerformanceActionCatalog.DefenderResources, PerformanceActionCatalog.ShortNames,
+                PerformanceActionCatalog.ShortNames,
                 PerformanceActionCatalog.BackgroundFps })
             {
                 Settings.UseTransientStoreForCurrentProcess();
+                SelectPerformanceFixtureActions(failingId);
                 int reads = 0; long now = DateTime.UtcNow.Ticks;
                 bool match = failingId == PerformanceActionCatalog.BackgroundFps;
                 var values = new Dictionary<string, string>();
@@ -988,9 +1523,10 @@ namespace PaviseApp
         private static void ActionDiscoveryBudget()
         {
             Settings.UseTransientStoreForCurrentProcess();
-            int platforms = 0, volumes = 0, resourceReads = 0; long now = DateTime.UtcNow.Ticks;
+            SelectPerformanceFixtureActions(PerformanceActionCatalog.Mitigations, PerformanceActionCatalog.OpenGl, PerformanceActionCatalog.ShortNames);
+            int serviceQueries = 0, volumes = 0, resourceReads = 0; long now = DateTime.UtcNow.Ticks;
             var values = new Dictionary<string, string>();
-            PerformanceActionBackend.ResourcePlatformForTest = delegate { platforms++; throw new IOException("platform query denied"); };
+            PerformanceActionBackend.DefenderServiceForTest = delegate { serviceQueries++; throw new InvalidOperationException("No receipt should query Defender"); };
             PerformanceActionBackend.ShortNameVolumeForTest = delegate { volumes++; throw new IOException("volume query denied"); };
             PerformanceActionBackend.ReadForTest = delegate(string id, string target) {
                 if (id == PerformanceActionCatalog.DefenderResources) resourceReads++;
@@ -1004,33 +1540,36 @@ namespace PaviseApp
             try
             {
                 coordinator.Queue(true, false, games, new string[0]); PerformanceEq(true, coordinator.DrainForTest(3000));
-                PerformanceEq(1, platforms); PerformanceEq(1, volumes); PerformanceEq(0, resourceReads);
+                PerformanceEq(0, serviceQueries); PerformanceEq(1, volumes); PerformanceEq(0, resourceReads);
                 now += TimeSpan.FromMinutes(1).Ticks;
                 coordinator.Queue(true, false, games, new string[0]); PerformanceEq(true, coordinator.DrainForTest(3000));
-                PerformanceEq(1, platforms); PerformanceEq(1, volumes);
+                PerformanceEq(0, serviceQueries); PerformanceEq(1, volumes);
                 now += TimeSpan.FromMinutes(4).Ticks;
                 coordinator.Queue(true, false, games, new string[0]); PerformanceEq(true, coordinator.DrainForTest(3000));
-                PerformanceEq(2, platforms); PerformanceEq(2, volumes);
+                PerformanceEq(0, serviceQueries); PerformanceEq(2, volumes);
                 for (int i = 0; i < 100; i++)
                 {
                     now += TimeSpan.FromMinutes(10).Ticks;
                     coordinator.Queue(true, false, games, new string[0]); PerformanceEq(true, coordinator.DrainForTest(3000));
                 }
-                PerformanceEq(102, platforms); PerformanceEq(102, volumes); PerformanceEq(0, resourceReads);
-                PerformanceEq("failed", coordinator.State(PerformanceActionCatalog.DefenderResources));
+                PerformanceEq(0, serviceQueries); PerformanceEq(102, volumes); PerformanceEq(0, resourceReads);
+                PerformanceEq("", coordinator.State(PerformanceActionCatalog.DefenderResources));
                 PerformanceEq("failed", coordinator.State(PerformanceActionCatalog.ShortNames));
                 PerformanceEq(0, ActionFailureStore.Records().Count);
                 PerformanceEq("configured", coordinator.State(PerformanceActionCatalog.Mitigations));
                 PerformanceEq("configured", coordinator.State(PerformanceActionCatalog.OpenGl));
-                PerformanceActionBackend.ResourcePlatformForTest = delegate { platforms++; return ""; };
+                ActionFailureStore.Trip(PerformanceActionCatalog.DefenderResources, @"C:\A", "old resource failure");
+                ActionFailureStore.RequestRetry(ActionFailureStore.RecordKey(PerformanceActionCatalog.DefenderResources, @"C:\A"));
                 coordinator.Queue(false, false, games, new string[0]); PerformanceEq(true, coordinator.DrainForTest(3000));
                 coordinator.Queue(true, false, games, new string[0]); PerformanceEq(true, coordinator.DrainForTest(3000));
-                PerformanceEq("failed", coordinator.State(PerformanceActionCatalog.DefenderResources)); PerformanceEq(0, resourceReads);
+                PerformanceEq("", coordinator.State(PerformanceActionCatalog.DefenderResources)); PerformanceEq(0, resourceReads);
+                PerformanceEq(0, serviceQueries);
+                PerformanceEq(false, PerformanceActionStore.All().Exists(delegate(PerformanceActionStore.Receipt r) { return r.Id == PerformanceActionCatalog.DefenderResources; }));
                 PerformanceEq(true, coordinator.Close(3000)); PerformanceEq(true, PerformanceTuning.RestoreAll());
             }
             finally
             {
-                coordinator.Close(3000); PerformanceActionBackend.ResourcePlatformForTest = delegate { return "contextual"; };
+                coordinator.Close(3000); PerformanceActionBackend.DefenderServiceForTest = delegate { return 4; };
                 PerformanceActionBackend.ShortNameVolumeForTest = null;
             }
         }
@@ -1040,6 +1579,7 @@ namespace PaviseApp
             {
                 bool legacyFails = failedId == PerformanceActionCatalog.LegacyDefenderSession;
                 Settings.UseTransientStoreForCurrentProcess();
+                SelectPerformanceFixtureActions(PerformanceActionCatalog.BackgroundFps);
                 var values = new Dictionary<string, string>(); long now = DateTime.UtcNow.Ticks;
                 bool failRestore = false, differentError = false; int failedWrites = 0;
                 string oldPath = Logger.LogPath; bool oldLogging = Logger.WritesEnabled;
@@ -1097,6 +1637,7 @@ namespace PaviseApp
         private static void ActionBackgroundTargetMoves()
         {
             Settings.UseTransientStoreForCurrentProcess();
+            SelectPerformanceFixtureActions(PerformanceActionCatalog.BackgroundFps);
             var values = new Dictionary<string, string>(); int writes = 0;
             PerformanceActionBackend.ReadForTest = delegate(string id, string target) {
                 string value; return values.TryGetValue(id + "|" + target, out value) ? value : ActionMockDefault(id);

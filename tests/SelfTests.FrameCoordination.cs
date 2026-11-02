@@ -220,6 +220,21 @@ namespace PaviseApp
                 presenterOnly.PresenterOnly = false;
                 Eq(102, FrameCoordinationSampler.SelectWorker(presenterOnly, 101));
 
+                // A presenter-only session is scoped to the game, so it counts presents of threads it never
+                // enumerated; a full capture still counts only the enumerated thread set.
+                var untracked = CaptureEvidence(); untracked.PresenterOnly = true; untracked.Sample.PresenterOnly = true;
+                var enumerated = CaptureEvidence();
+                foreach (long time in new long[] { 150, 250 })
+                {
+                    var start = CaptureEvent(FrameCoordinationSampler.D3d9, 505, 103, time, 0, 1, data, 4);
+                    var end = CaptureEvent(FrameCoordinationSampler.D3d9, 505, 103, time, 0, 2, data, 4);
+                    for (int i = 0; i < 18; ++i) { untracked.Receive(ref start); untracked.Receive(ref end); enumerated.Receive(ref start); enumerated.Receive(ref end); }
+                }
+                Eq(72, untracked.RelevantCount); Eq(103, FrameCoordinationSampler.Dominant(untracked.Presents[0], 16, .7));
+                Eq(0, enumerated.RelevantCount);
+                var foreignPresent = CaptureEvent(FrameCoordinationSampler.D3d9, 777, 103, 150, 0, 1, data, 4);
+                untracked.Receive(ref foreignPresent); Eq(72, untracked.RelevantCount);
+
                 var bounded = CaptureEvidence();
                 var gameStart = CaptureEvent(FrameCoordinationSampler.D3d9, 505, 101, 150, 0, 1, data, 4);
                 for (int i = 0; i < FrameCoordinationSampler.MaxRelevantEvents; ++i) bounded.Receive(ref gameStart);
@@ -293,26 +308,26 @@ namespace PaviseApp
         {
             var retry = new FrameCoordinationRetry();
             var sample = new FrameCoordinationSample().Reject(FrameCaptureIssue.EventBudget);
-            retry.Observe(sample, 0); Eq(30000, retry.DelayMs); Eq(true, retry.ShouldLog);
-            retry.Observe(sample, 30000); Eq(60000, retry.DelayMs); Eq(false, retry.ShouldLog);
-            retry.Observe(sample, 90000); Eq(120000, retry.DelayMs); Eq(false, retry.ShouldLog);
-            retry.Observe(sample, 210000); Eq(240000, retry.DelayMs); Eq(false, retry.ShouldLog);
-            retry.Observe(sample, 450000); Eq(300000, retry.DelayMs); Eq(true, retry.ShouldLog);
-            retry.Observe(sample, 750000); Eq(300000, retry.DelayMs); Eq(true, retry.ShouldLog);
+            retry.Observe(sample, 0); Eq(10000, retry.DelayMs); Eq(true, retry.ShouldLog);
+            retry.Observe(sample, 30000); Eq(20000, retry.DelayMs); Eq(false, retry.ShouldLog);
+            retry.Observe(sample, 90000); Eq(40000, retry.DelayMs); Eq(false, retry.ShouldLog);
+            retry.Observe(sample, 210000); Eq(80000, retry.DelayMs); Eq(false, retry.ShouldLog);
+            retry.Observe(sample, 450000); Eq(160000, retry.DelayMs); Eq(true, retry.ShouldLog);
+            retry.Observe(sample, 750000); Eq(160000, retry.DelayMs); Eq(true, retry.ShouldLog);
             sample.Reject(FrameCaptureIssue.EventsLost);
-            retry.Observe(sample, 750001); Eq(true, retry.ShouldLog); Eq(300000, retry.DelayMs);
+            retry.Observe(sample, 750001); Eq(true, retry.ShouldLog); Eq(160000, retry.DelayMs);
             sample.TraceCode = 5;
             retry.Observe(sample, 750002); Eq(true, retry.ShouldLog);
             retry.Reset(); Eq(0, retry.DelayMs); Eq(false, retry.ShouldLog);
-            retry.Observe(sample, 750003); Eq(30000, retry.DelayMs); Eq(true, retry.ShouldLog);
-            retry.Observe(null, 750004); Eq(60000, retry.DelayMs); Eq(true, retry.ShouldLog);
+            retry.Observe(sample, 750003); Eq(10000, retry.DelayMs); Eq(true, retry.ShouldLog);
+            retry.Observe(null, 750004); Eq(20000, retry.DelayMs); Eq(true, retry.ShouldLog);
             sample.Reject(FrameCaptureIssue.InsufficientEvidence); sample.TraceCode = 0;
-            for (int i = 0; i < 10; ++i) { retry.Observe(sample, 800000 + i * 30000); Eq(30000, retry.DelayMs); }
+            for (int i = 0; i < 10; ++i) { retry.Observe(sample, 800000 + i * 30000); Eq(10000, retry.DelayMs); }
             sample.Reject(FrameCaptureIssue.EventBudget);
-            retry.Observe(sample, 1200000); Eq(30000, retry.DelayMs);
-            retry.Observe(sample, 1230000); Eq(60000, retry.DelayMs);
+            retry.Observe(sample, 1200000); Eq(10000, retry.DelayMs);
+            retry.Observe(sample, 1230000); Eq(20000, retry.DelayMs);
             sample.Valid = true; sample.Issue = FrameCaptureIssue.None;
-            retry.Observe(sample, 1260000); Eq(30000, retry.DelayMs);
+            retry.Observe(sample, 1260000); Eq(10000, retry.DelayMs);
         }
         private static void CheckFramePumpCpuHandle()
         {
@@ -393,6 +408,28 @@ namespace PaviseApp
                 Eq(false, trace.Stop()); Eq(true, rejectReadback);
                 Settings.BeforeStrictStringReadForTest = null;
                 Eq(true, FrameCoordinationTrace.Heal());
+                // GPU telemetry has its own ledger. Healthy in-flight observation must not
+                // look like an optimization recovery debt or block the frame sampler.
+                var identity = FrameCoordinationTrace.CleanupFixtureForTest(null, true);
+                string identityReceipt = Settings.LoadStr(FrameCoordinationTrace.IdentityTraceKey, "");
+                Eq(false, FrameCoordinationTrace.HasResidue);
+                Eq(true, FrameCoordinationTrace.Heal());
+                Eq(identityReceipt, Settings.LoadStr(FrameCoordinationTrace.IdentityTraceKey, ""));
+                trace = FrameCoordinationTrace.CleanupFixtureForTest();
+                Eq(true, FrameCoordinationTrace.HasResidue);
+                Eq(true, trace.Stop());
+                Eq(identityReceipt, Settings.LoadStr(FrameCoordinationTrace.IdentityTraceKey, ""));
+                Eq(false, FrameCoordinationTrace.HasResidue);
+                status = 5; Eq(false, identity.Stop()); Eq(true, FrameCoordinationTrace.HasResidue);
+                Eq("", Settings.LoadStr(FrameCoordinationTrace.TraceKey, ""));
+                Eq(identityReceipt, Settings.LoadStr(FrameCoordinationTrace.IdentityTraceKey, ""));
+                status = 0; Eq(true, FrameCoordinationTrace.Heal());
+                Eq("", Settings.LoadStr(FrameCoordinationTrace.IdentityTraceKey, ""));
+                Eq(false, FrameCoordinationTrace.HasResidue);
+                Settings.SaveStr(FrameCoordinationTrace.IdentityTraceKey, "unowned-session");
+                Eq(false, FrameCoordinationTrace.Heal());
+                Eq("unowned-session", Settings.LoadStr(FrameCoordinationTrace.IdentityTraceKey, ""));
+                Settings.UseTransientStoreForCurrentProcess();
             }
             finally
             {
@@ -463,6 +500,87 @@ namespace PaviseApp
             {
                 if (trace != null) trace.Stop();
                 FrameCoordinationTrace.ControlForTest = null; FrameCoordinationTrace.CloseForTest = null;
+                Settings.UseTransientStoreForCurrentProcess();
+            }
+        }
+        private static string IdentityReceipt() { return Settings.LoadStr(FrameCoordinationTrace.IdentityTraceKey, ""); }
+        // Retired monitoring captures leave only a recovery path for verified legacy identity receipts.
+        private static void CheckLegacyIdentityRecovery()
+        {
+            var stopped = new List<string>();
+            int status = 0;
+            FrameCoordinationTrace.ControlForTest = delegate(ulong handle, string name, IntPtr props, uint command)
+            { stopped.Add(handle + ":" + name + ":" + command); return status; };
+            try
+            {
+                Settings.UseTransientStoreForCurrentProcess(); FrameCoordinationTrace.UnsealIdentityForTest();
+                string frame = FrameCoordinationTrace.FrameSessionPrefix + "505." + Guid.NewGuid().ToString("N");
+                string identity = FrameCoordinationTrace.IdentitySessionPrefix + "505." + Guid.NewGuid().ToString("N");
+                Settings.SaveStr(FrameCoordinationTrace.TraceKey, identity);
+                Settings.SaveStr(FrameCoordinationTrace.IdentityTraceKey, frame);
+                Eq(false, FrameCoordinationTrace.Heal()); Eq(0, stopped.Count);
+                Eq(identity, Settings.LoadStr(FrameCoordinationTrace.TraceKey, "")); Eq(frame, IdentityReceipt());
+                Settings.UseTransientStoreForCurrentProcess();
+                Settings.SaveStr(FrameCoordinationTrace.IdentityTraceKey, "external-session");
+                Eq(false, FrameCoordinationTrace.CloseIdentity(100)); Eq(0, stopped.Count);
+                Eq("external-session", IdentityReceipt());
+                Settings.UseTransientStoreForCurrentProcess(); FrameCoordinationTrace.UnsealIdentityForTest();
+                Eq(true, Settings.SaveGpuIdentityReceipt(identity));
+                status = 5;
+                Eq(true, FrameCoordinationTrace.HasResidue); Eq(false, FrameCoordinationTrace.Heal());
+                Eq(identity, IdentityReceipt()); Eq(1, stopped.Count); Eq("0:" + identity + ":1", stopped[0]);
+                status = 0;
+                Eq(true, FrameCoordinationTrace.CloseIdentity(100)); Eq("", IdentityReceipt());
+                Eq(false, FrameCoordinationTrace.HasResidue); Eq(2, stopped.Count);
+                Eq(true, Settings.SaveGpuIdentityReceipt(identity)); status = 4201;
+                Eq(true, FrameCoordinationTrace.Heal()); Eq("", IdentityReceipt()); Eq(3, stopped.Count);
+                Console.WriteLine("PASS legacy identity recovery: crossed and unowned receipts retained, failed stop retried, owned receipts cleared after success or missing session");
+            }
+            finally
+            {
+                FrameCoordinationTrace.ControlForTest = null; FrameCoordinationTrace.UnsealIdentityForTest();
+                Settings.UseTransientStoreForCurrentProcess();
+            }
+        }
+        private static void CheckIdentityReceiptWrites()
+        {
+            try
+            {
+                Settings.UseTransientStoreForCurrentProcess();
+                string first = FrameCoordinationTrace.IdentitySessionPrefix + "505." + Guid.NewGuid().ToString("N");
+                int generation = Settings.MutationGeneration;
+                Eq(true, Settings.SaveGpuIdentityReceipt(first));
+                Eq(generation, Settings.MutationGeneration); Eq(first, IdentityReceipt());
+                Eq(true, Settings.SaveStr("FrameIdentityPreferenceFixture", "1"));
+                Eq(generation + 1, Settings.MutationGeneration);
+                generation = Settings.MutationGeneration;
+                // Only "" or an identity session name, and only into the identity key.
+                foreach (string other in new[] { FrameCoordinationTrace.FrameSessionPrefix + "505." + Guid.NewGuid().ToString("N"),
+                    "diagnostic log line", first + " ", first.ToUpperInvariant() })
+                    Eq(false, Settings.SaveGpuIdentityReceipt(other));
+                Eq(first, IdentityReceipt()); Eq("", Settings.LoadStr(FrameCoordinationTrace.TraceKey, ""));
+                // A failed write or an unreadable current value keeps the previous receipt.
+                Settings.BeforeStringWriteForTest = delegate(string key)
+                { if (key == FrameCoordinationTrace.IdentityTraceKey) throw new InvalidOperationException("Receipt write denied"); };
+                Eq(false, Settings.SaveGpuIdentityReceipt(""));
+                Settings.BeforeStringWriteForTest = null;
+                Eq(first, IdentityReceipt());
+                Settings.BeforeStrictStringReadForTest = delegate(string key)
+                { if (key == FrameCoordinationTrace.IdentityTraceKey) throw new InvalidOperationException("Receipt read denied"); };
+                Eq(false, Settings.SaveGpuIdentityReceipt(""));
+                Settings.BeforeStrictStringReadForTest = null;
+                Eq(first, IdentityReceipt());
+                Settings.SuspendWritesForReset();
+                Eq(false, Settings.SaveGpuIdentityReceipt("")); Eq(first, IdentityReceipt());
+                Eq(generation, Settings.MutationGeneration);
+                Settings.UseTransientStoreForCurrentProcess(); generation = Settings.MutationGeneration;
+                Eq(true, Settings.SaveGpuIdentityReceipt(first)); Eq(true, Settings.SaveGpuIdentityReceipt(""));
+                Eq("", IdentityReceipt()); Eq(generation, Settings.MutationGeneration);
+                Console.WriteLine("PASS identity receipt writer: single key, strict read/readback, failures keep the old value, user saves still advance the generation and receipts never do");
+            }
+            finally
+            {
+                Settings.BeforeStringWriteForTest = null; Settings.BeforeStrictStringReadForTest = null;
                 Settings.UseTransientStoreForCurrentProcess();
             }
         }
@@ -553,33 +671,52 @@ namespace PaviseApp
         private static void CheckFrameCoordinationModes(CoordinationFake fake)
         {
             Settings.UseTransientStoreForCurrentProcess();
-            Eq(false, PolicyResolver.Global().FrameCoordinationOn);
-            Settings.Save(AutomaticPolicy.VersionKey, true);
+            Settings.Save(PolicyCatalog.KeyRenderLane, false);
             var profile = new GameProfile { Id = "coordination-mode", Name = "Coordination mode fixture" };
             profile.Overrides[PolicyCatalog.KeyPreset] = "4";
-            profile.Overrides[FrameCoordination.ActionKey] = "0";
             profile.Overrides["AutoFrameCoordinationV1"] = "0";
-            foreach (bool legacy in new[] { false, true })
+            try
             {
-                Settings.Save("AutoFrameCoordinationV1", legacy);
-                foreach (string preset in new[] { "0", "1", "4", "6", "2", "5", "99", "invalid" })
+                Eq(false, PolicyResolver.Global().FrameCoordinationOn);
+                Eq(false, PolicyResolver.SetOverride(profile, FrameCoordination.ActionKey, "1"));
+                foreach (bool legacy in new[] { false, true })
                 {
-                    Settings.SaveStr(PolicyCatalog.KeyPreset, preset);
-                    bool expected = preset != "4";
-                    Eq(expected, PolicyResolver.Global().FrameCoordinationOn);
-                    Eq(expected, PolicyResolver.For(profile).FrameCoordinationOn);
+                    Settings.Save("AutoFrameCoordinationV1", legacy);
+                    foreach (string preset in new[] { "0", "1", "4", "6", "2", "5", "99", "invalid" })
+                    {
+                        Settings.SaveStr(PolicyCatalog.KeyPreset, preset);
+                        foreach (bool choice in new[] { false, true })
+                        {
+                            Settings.Save(FrameCoordination.ActionKey, choice);
+                            Eq(choice, PolicyResolver.Global().FrameCoordinationOn);
+                            Eq(choice, PolicyResolver.For(profile).FrameCoordinationOn);
+                        }
+                    }
                 }
+                Eq(true, PerformancePolicy.UsesFrameCoordination(PerformancePreset.Standard));
+                Eq(true, PerformancePolicy.UsesFrameCoordination(PerformancePreset.Competitive));
+                Eq(false, PerformancePolicy.UsesFrameCoordination((PerformancePreset)99));
+                Settings.Save(FrameCoordination.ActionKey, false);
+                fake.Writes = 0;
+                Eq(false, PolicyResolver.Global().FrameCoordinationOn);
+                Eq(false, FrameCoordination.Apply(CoordinationSample(), delegate { return PolicyResolver.Global().FrameCoordinationOn; }));
+                Eq(0, fake.Writes);
+                Eq(true, ThreadBoostSelection.Save(ThreadBoostSelection.Frame));
+                Eq(true, PolicyResolver.Global().FrameCoordinationOn);
+                Eq(true, PolicyResolver.For(profile).FrameCoordinationOn);
+                Eq(true, FrameCoordination.Apply(CoordinationSample(), delegate { return PolicyResolver.Global().FrameCoordinationOn; }));
+                Eq(15, fake.Priorities[101]); Eq(1, fake.Priorities[102]);
+                Eq(true, FrameCoordination.ReleaseExcept(0, 0));
+                Eq(0, fake.Priorities[101]); Eq(-1, fake.Priorities[102]);
+                Eq(true, ThreadBoostSelection.Save(ThreadBoostSelection.Off));
+                fake.Writes = 0;
+                Eq(false, FrameCoordination.Apply(CoordinationSample(), delegate { return PolicyResolver.Global().FrameCoordinationOn; }));
+                Eq(0, fake.Writes);
             }
-            Eq(false, AutomaticPolicy.UsesFrameCoordination((PerformancePreset)99));
-            Settings.SaveStr(PolicyCatalog.KeyPreset, "1");
-            Eq(true, FrameCoordination.Apply(CoordinationSample(), delegate { return PolicyResolver.Global().FrameCoordinationOn; }));
-            Settings.SaveStr(PolicyCatalog.KeyPreset, "4");
-            Eq(true, FrameCoordination.ReleaseExcept(0, 0));
-            Eq(0, fake.Priorities[101]); Eq(-1, fake.Priorities[102]);
-            fake.Writes = 0;
-            Eq(false, FrameCoordination.Apply(CoordinationSample(), delegate { return PolicyResolver.Global().FrameCoordinationOn; }));
-            Eq(0, fake.Writes);
-            Settings.UseTransientStoreForCurrentProcess();
+            finally
+            {
+                Settings.UseTransientStoreForCurrentProcess();
+            }
         }
         private static void PrepareFrameWorker(CoordinationFake fake)
         {
@@ -737,7 +874,7 @@ namespace PaviseApp
                     var sample = CoordinationSample(); sample.PresenterOnly = true; sample.WorkerTid = 0; return sample;
                 };
                 FrameCoordination.WaitForTest = delegate(int ms, Func<bool> alive)
-                { Eq(1000, ms); admitted = false; return false; };
+                { Eq(FrameCoordination.LeaseCheckMs, ms); admitted = false; return false; };
                 FrameCoordination.Ensure(505, 999, "presenter-only success", admission); DrainFrameWorker(); admitted = true;
                 session = FrameCoordination.CaptureSessionForTest(505, 999);
                 Eq(2, captures); Eq(false, modes[0]); Eq(true, modes[1]); Eq(0, session.Failures);
@@ -800,7 +937,7 @@ namespace PaviseApp
                 FrameCoordination.CaptureForTest = delegate { captures++; return CoordinationSample(); };
                 FrameCoordination.WaitForTest = delegate(int ms, Func<bool> alive)
                 {
-                    Eq(1000, ms); leased.Set();
+                    Eq(FrameCoordination.LeaseCheckMs, ms); leased.Set();
                     while (alive()) Thread.Sleep(1);
                     return false;
                 };
@@ -808,7 +945,7 @@ namespace PaviseApp
                 {
                     FrameCoordination.Ensure(505, 999, "owned mock lease", admission);
                     Eq(true, leased.WaitOne(5000)); Eq(1, captures);
-                    Eq(1, fake.Priorities[101]); Eq(1, fake.Priorities[102]);
+                    Eq(15, fake.Priorities[101]); Eq(1, fake.Priorities[102]);
                     Eq(true, Settings.LoadStr(FrameCoordination.JournalKey, "").Length > 0);
                     Eq(true, FrameCoordination.Close(5000)); DrainFrameWorker();
                     Eq(0, fake.Priorities[101]); Eq(-1, fake.Priorities[102]); Eq(false, FrameCoordination.HasResidue);
@@ -827,6 +964,8 @@ namespace PaviseApp
                 CheckFrameCleanupFailures();
                 CheckFrameCleanupDrain();
                 CheckFrameCleanupConcurrent();
+                CheckLegacyIdentityRecovery();
+                CheckIdentityReceiptWrites();
                 CheckFrameTraceModes();
                 CheckFrameEventBudgets();
                 CheckFrameRetry();
@@ -836,7 +975,7 @@ namespace PaviseApp
                 CheckFrameCoordinationModes(fake);
                 CheckFrameWorkerLifecycle(fake);
                 Eq(true,FrameCoordination.Apply(CoordinationSample(),delegate{return true;}));
-                Eq(1,fake.Priorities[101]);Eq(1,fake.Priorities[102]);
+                Eq(15,fake.Priorities[101]);Eq(1,fake.Priorities[102]);
                 Eq(true,FrameCoordination.Restore());Eq(0,fake.Priorities[101]);Eq(-1,fake.Priorities[102]);
                 Eq("",Settings.LoadStr(FrameCoordination.JournalKey,""));
 

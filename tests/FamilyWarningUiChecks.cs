@@ -109,12 +109,20 @@ namespace PaviseApp
                 form.ShowInTaskbar = false; form.StartPosition = FormStartPosition.Manual;
                 form.Location = new Point(-20000, -20000); form.Show();
                 Check(!form.UiActive, "UI workers unexpectedly started");
-                Toggle(form, mode, true, false);
-                Toggle(form, mode, true, true);
-                Toggle(form, mode, false, false);
-                Toggle(form, mode, true, true);
-                Toggle(form, mode, false, false);
-                Toggle(form, mode, true, false);
+                if (!observed)
+                {
+                    // 未观测到渲染时只给出门控说明，不弹风险确认，也不保存开启。
+                    for (int attempt = 0; attempt < 3; attempt++) Toggle(form, mode, false, false, true);
+                }
+                else
+                {
+                    Toggle(form, mode, true, false);
+                    Toggle(form, mode, true, true);
+                    Toggle(form, mode, false, false);
+                    Toggle(form, mode, true, true);
+                    Toggle(form, mode, false, false);
+                    Toggle(form, mode, true, false);
+                }
                 Check(mode.HasRendererObservation(mode.GetProfiles()[0]) == observed, "Toggle changed renderer badge");
                 Check(typeof(Tamer).GetField("worker", Hidden).GetValue(tamer) == null,
                     "Background worker unexpectedly started");
@@ -122,28 +130,44 @@ namespace PaviseApp
             }
         }
 
-        private static void Toggle(PanelForm form, GameMode mode, bool expectPrompt, bool accept)
+        private static void Toggle(PanelForm form, GameMode mode, bool expectPrompt, bool accept, bool expectGate = false)
         {
-            int prompts = 0;
+            int prompts = 0, gates = 0, unexpected = 0;
             GameProfile before = mode.GetProfiles()[0];
             using (var timer = new Timer { Interval = 25 })
             {
                 timer.Tick += delegate
                 {
-                    FamilySuppressionDialog warning = null;
                     foreach (Form open in Application.OpenForms)
-                        if (open is FamilySuppressionDialog) { warning = (FamilySuppressionDialog)open; break; }
-                    if (warning == null) return;
-                    prompts++;
-                    warning.Location = new Point(-20000, -20000);
-                    if (accept) warning.EnableAnyway.PerformClick();
-                    else ((Button)warning.CancelButton).PerformClick();
+                    {
+                        var warning = open as FamilySuppressionDialog;
+                        if (warning != null)
+                        {
+                            prompts++;
+                            warning.Location = new Point(-20000, -20000);
+                            if (accept) warning.EnableAnyway.PerformClick();
+                            else ((Button)warning.CancelButton).PerformClick();
+                            return;
+                        }
+                        // 其他提示框（门控说明、保存失败）也必须被关闭，不能让测试挂起。
+                        var notice = open as PaviseDialog;
+                        if (notice != null && notice.Visible)
+                        {
+                            if ((string)typeof(PaviseDialog).GetField("body", Hidden).GetValue(notice) == Lang.T("lib.family.gated.body")) gates++;
+                            else unexpected++;
+                            notice.Location = new Point(-20000, -20000);
+                            notice.DialogResult = DialogResult.OK;
+                            return;
+                        }
+                    }
                 };
                 timer.Start();
                 typeof(PanelForm).GetMethod("ToggleGameFamilySuppression", Hidden).Invoke(form,
                     new object[] { new GameLibraryItem(before, false, mode.HasRendererObservation(before)) });
                 timer.Stop();
             }
+            Check(unexpected == 0, "Unexpected notice dialog during family toggle");
+            Check(gates == (expectGate ? 1 : 0), "Wrong renderer-observation gate count");
             Check(prompts == (expectPrompt ? 1 : 0), "Wrong confirmation count");
             bool expected = expectPrompt ? accept : false;
             Check(mode.GetProfiles()[0].SuppressFamilyBackground == expected, "Incorrect saved family policy");

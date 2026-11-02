@@ -28,14 +28,24 @@ namespace PaviseApp
 
         private static void AntiCheatStrongTierDropsStarvationParts()
         {
+            // Match 2223: allow the anti-cheat to finish work that the game may be waiting for.
+            AcThrottleCheck(!SuppressionCore.SevereAntiCheat(SuppressionLevel.Isolated, true),
+                "anti-cheat Strong must not use the starvation policy");
             AcThrottleCheck(SuppressionCore.DesiredPriority(
                     SuppressionLevel.Isolated, Native.NORMAL_PRIORITY_CLASS, true)
                 == Native.BELOW_NORMAL_PRIORITY_CLASS,
-                "anti-cheat Strong must stop at below-normal priority, never idle");
+                "anti-cheat Strong must retain 2223 BelowNormal priority");
             AcThrottleCheck(!SuppressionCore.DesiredTimerSeal(SuppressionLevel.Isolated, true),
-                "anti-cheat Strong must not seal timer resolution");
+                "anti-cheat Strong must preserve timer requests");
             AcThrottleCheck(SuppressionCore.DesiredPagePriority(SuppressionLevel.Isolated, true) == 3,
-                "anti-cheat Strong must not lower page priority");
+                "anti-cheat Strong must retain page priority 3");
+            foreach (int original in new[] { -1, 0, 1 })
+                AcThrottleCheck(SuppressionCore.DesiredBoostDisabled(SuppressionLevel.Isolated, true, original) == original,
+                    "anti-cheat Strong must retain the original dynamic boost policy");
+            int current = 1, writes = 0;
+            AcThrottleCheck(SuppressionCore.ApplyBoostPolicy(SuppressionLevel.Isolated, true, 0,
+                () => current, disabled => { writes++; current = disabled ? 1 : 0; return true; }) == ""
+                && current == 0 && writes == 1, "a previously forced boost-disable must return to its captured original");
         }
 
         private static void AntiCheatStrongTierKeepsEffectParts()

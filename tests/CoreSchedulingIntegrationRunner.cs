@@ -195,8 +195,8 @@ namespace PaviseApp
                     if (CpuTopology.CountSetBits(original) < 4) throw new InvalidOperationException("Fixture needs at least four logical CPUs.");
                     long creation, cpu; ulong disk;
                     Eq(true, Native.QueryProcessSample(h, out creation, out cpu, out disk));
-                    RunCoreThreadPlacementNative(child.Id, creation, h);
                     VerifyManualCorePlacement(root, child.Id, creation, original, h);
+                    VerifyHardAffinityWithoutBoost(root, child.Id, creation, original, target, h);
                     VerifyManualBackgroundAffinity(root, child.Id, creation, original, h);
                     Eq(true, f.Mode.ProbePinExclusive(h, child.Id, creation, original, target));
                     Eq(target, Native.QueryAffinity(h));
@@ -433,6 +433,7 @@ namespace PaviseApp
                 {
                     for (int cycle = 0; cycle < 30; cycle++)
                     {
+                        FamilyPolicySetField(mode, "corePlacementStopReason", null); // 本循环模拟新对局。
                         ulong desired = cycle < 3 ? target & (~target + 1UL)
                             : cycle < 6 ? original & (~original + 1UL) : target;
                         var manual = new ManualCorePlan(desired, cycle % 3 != 0, ManualCorePlan.CurrentStamp());
@@ -455,24 +456,40 @@ namespace PaviseApp
                         Eq(manual.Isolation ? 1 : 0, isolationCalls);
                         if (success)
                         {
+                            Eq(true, AutoCores.Status.AffinityRead);
+                            Eq(true, AutoCores.Status.AffinityVerified);
+                            Eq(desired, AutoCores.Status.ExpectedMask);
+                            Eq(desired, AutoCores.Status.ObservedMask);
                             FamilyPolicyInvoke(mode, "GrowCoreCapacity", 64, 64.0);
                             Eq(desired, (ulong)FamilyPolicyGetField(mode, "coreGameMask"));
                             mode.RendererTestForeground = delegate { return 0; };
                             FamilyPolicyInvoke(mode, "StepAutoCores", pass);
                             Eq(true, mode.ProbeCoreEngaged); Eq(desired, Native.QueryAffinity(handle));
                             mode.RendererTestForeground = delegate { return pid; };
-                            if (manual.Isolation)
+                            if (manual.Isolation || cycle % 3 == 0)
                             {
-                                Eq(true, Native.SetProcessAffinityMask(handle, (UIntPtr)original));
-                                FamilyPolicySetField(mode, "exclusiveCheckTicks", 0L);
-                                FamilyPolicyInvoke(mode, "RunIndependentCorePlacement", pass);
-                                Eq(true, mode.ProbeCoreEngaged);
-                                Eq(original, Native.QueryAffinity(handle));
-                                Eq(true, Native.SetProcessAffinityMask(handle, (UIntPtr)(original & ~desired)));
+                                bool unreadable = cycle % 5 == 0;
+                                ulong externalMask = cycle % 2 == 0 ? original : original & ~desired;
+                                if (unreadable) mode.CoreAffinityReadForTest = delegate { return null; };
+                                else Eq(true, Native.SetProcessAffinityMask(handle, (UIntPtr)externalMask));
                                 FamilyPolicySetField(mode, "exclusiveCheckTicks", 0L);
                                 FamilyPolicyInvoke(mode, "RunIndependentCorePlacement", pass);
                                 Eq(false, mode.ProbeCoreEngaged);
-                                Eq(original & ~desired, Native.QueryAffinity(handle));
+                                Eq(unreadable ? "schedule.auto.affinityread" : "schedule.auto.external", AutoCores.Status.Blocked);
+                                Eq(false, AutoCores.Status.AffinityVerified);
+                                Eq(unreadable ? 0UL : externalMask, AutoCores.Status.ObservedMask);
+                                Eq(desired, AutoCores.Status.ExpectedMask);
+                                Eq(0, ((System.Collections.IDictionary)FamilyPolicyGetField(mode, "hardPins")).Count);
+                                Eq(unreadable ? original : externalMask, Native.QueryAffinity(handle));
+                                mode.CoreAffinityReadForTest = null;
+                                FamilyPolicySetField(mode, "exclusiveCheckTicks", 0L);
+                                FamilyPolicyInvoke(mode, "RunIndependentCorePlacement", pass);
+                                Eq(false, mode.ProbeCoreEngaged);
+                                Eq(unreadable ? original : externalMask, Native.QueryAffinity(handle));
+                                FamilyPolicyInvoke(mode, "ApplyGameProcessActions", null, true);
+                                object afterSwitch = FamilyPolicyInvoke(mode, "PrepareBoostPass");
+                                Eq(false, AutoPassField<bool>(afterSwitch, "Exclusive"));
+                                Eq(unreadable ? "schedule.auto.affinityread" : "schedule.auto.external", AutoCores.Status.Blocked);
                                 Eq(true, Native.SetProcessAffinityMask(handle, (UIntPtr)original));
                             }
                         }
@@ -492,7 +509,21 @@ namespace PaviseApp
                             null, Type.EmptyTypes, null).Invoke(mode, null));
                         CoreIsolationClient.State = "schedule.isolation.idle";
                     }
+                    // 显式手动选择可以替换原受限掩码，并在结束后准确恢复原受限值。
+                    ulong restricted = original & ~target;
+                    Eq(true, Native.SetProcessAffinityMask(handle, (UIntPtr)restricted));
+                    FamilyPolicySetField(mode, "coreManual", new ManualCorePlan(target, false, ManualCorePlan.CurrentStamp()));
+                    uint[] priorSets = Native.QueryCpuSets(handle);
+                    Eq(true, mode.ProbePinExclusive(handle, pid, creation, restricted, target));
+                    Eq(target, Native.QueryAffinity(handle));
+                    Eq(true, Native.CpuSetsMatch(handle, priorSets));
+                    Eq(true, mode.ProbeRestoreHardPin(pid));
+                    Eq(restricted, Native.QueryAffinity(handle));
+                    CrashGuard.ReleaseBoostProcess(pid, creation);
+                    Eq(true, Native.SetProcessAffinityMask(handle, (UIntPtr)original));
+                    Console.WriteLine("PASS explicit hard affinity replaces a prior restricted mask, preserves CPU Sets and restores the exact prior mask");
                     var pinOnly = new ManualCorePlan(target, false, ManualCorePlan.CurrentStamp());
+                    FamilyPolicySetField(mode, "corePlacementStopReason", null);
                     Eq(null, mode.SaveManualCorePlan(fixture.First.Id, ManualCorePlan.Raw(fixture.Current(fixture.First.Id)), pinOnly));
                     Eq(true, mode.SetProfileOverride(fixture.First.Id, PolicyCatalog.KeyAutoCores, "1"));
                     var frozen = PolicyResolver.For(fixture.Current(fixture.First.Id));
@@ -565,6 +596,98 @@ namespace PaviseApp
                     mode.CoreEngageForTest = null; mode.RendererTestForeground = null;
                     AutoCores.AllocatedForTest = oldAllocated; AutoCores.SupportedForTest = oldSupported;
                     CoreIsolationClient.State = "schedule.isolation.idle";
+                }
+            }
+        }
+
+        private static void VerifyHardAffinityWithoutBoost(string root, int pid, long creation, ulong original, ulong target, IntPtr handle)
+        {
+            bool oldBoost = Settings.LoadCached(PolicyCatalog.KeyBoost, true);
+            using (var fixture = new FamilyPolicyFixture(root, "hard-without-boost"))
+            {
+                GameMode mode = fixture.Mode;
+                try
+                {
+                    Eq(true, Settings.Save(PolicyCatalog.KeyBoost, false));
+                    mode.Preset = PerformancePreset.Standard;
+                    mode.RendererTestForeground = delegate { return pid; };
+                    var manual = new ManualCorePlan(target, false, ManualCorePlan.CurrentStamp());
+                    Eq(null, mode.SaveManualCorePlan(fixture.First.Id, null, manual));
+                    Eq(true, mode.SetProfileOverride(fixture.First.Id, PolicyCatalog.KeyAutoCores, "1"));
+                    var profile = fixture.Current(fixture.First.Id);
+                    var policy = PolicyResolver.For(profile);
+                    Eq(false, policy.EffBoost);
+                    FamilyPolicySetField(mode, "activeDetection", new GameDetection { Profile = profile, RendererPid = pid,
+                        RendererCreation = creation, RendererName = Native.ImageName(handle), RendererCandidateSelected = true });
+                    FamilyPolicySetField(mode, "sessionPolicy", policy);
+                    FamilyPolicyInvoke(mode, "BeginAutoCores", policy, true);
+                    uint priority = Native.GetPriorityClass(handle);
+                    uint[] cpuSets = Native.QueryCpuSets(handle);
+                    for (int turn = 0; turn < 3; turn++)
+                    {
+                        FamilyPolicyInvoke(mode, "ApplyGameProcessActions", null, false);
+                        Eq(target, Native.QueryAffinity(handle));
+                        Eq(priority, Native.GetPriorityClass(handle));
+                        Eq(true, Native.CpuSetsMatch(handle, cpuSets));
+                        Eq(true, AutoCores.Status.AffinityVerified);
+                    }
+                    FamilyPolicyInvoke(mode, "ApplyGameProcessActions", null, true);
+                    Eq(original, Native.QueryAffinity(handle));
+                    FamilyPolicyInvoke(mode, "ApplyGameProcessActions", null, false);
+                    Eq(target, Native.QueryAffinity(handle));
+                    var pins = (System.Collections.IDictionary)FamilyPolicyGetField(mode, "hardPins");
+                    object pin = pins[pid];
+                    FieldInfo restoreField = pin.GetType().GetField("RestoreHandle");
+                    IntPtr fullRestoreHandle = (IntPtr)restoreField.GetValue(pin);
+                    IntPtr unreadableHandle = Native.OpenProcess(Native.SYNCHRONIZE, false, pid);
+                    Eq(true, unreadableHandle != IntPtr.Zero);
+                    try
+                    {
+                        restoreField.SetValue(pin, unreadableHandle);
+                        FamilyPolicySetField(mode, "exclusiveCheckTicks", 0L);
+                        FamilyPolicyInvoke(mode, "ApplyGameProcessActions", null, false);
+                        Eq(false, mode.ProbeCoreEngaged);
+                        Eq(true, AutoCores.Status.Pending);
+                        Eq(false, AutoCores.Status.AffinityRead);
+                        Eq(false, AutoCores.Status.AffinityVerified);
+                        Eq(0UL, AutoCores.Status.ObservedMask);
+                        Eq(target, Native.QueryAffinity(handle));
+                        Eq(1, pins.Count);
+                        Eq(false, mode.ProbeRestoreHardPin(pid));
+                        Eq(true, CrashGuard.HasPending());
+                    }
+                    finally
+                    {
+                        restoreField.SetValue(pin, fullRestoreHandle);
+                        Native.CloseHandle(unreadableHandle);
+                    }
+                    Eq(true, (bool)FamilyPolicyInvoke(mode, "ReleaseExclusive"));
+                    Eq(original, Native.QueryAffinity(handle));
+                    FamilyPolicyInvoke(mode, "EndAutoCores");
+                    FamilyPolicyInvoke(mode, "BeginAutoCores", policy, true);
+                    FamilyPolicyInvoke(mode, "ApplyGameProcessActions", null, false);
+                    Eq(target, Native.QueryAffinity(handle));
+                    Console.WriteLine("PASS unreadable native restore handle: no false success, owned mask and durable receipt retained until verified restoration");
+                    Eq(true, Native.SetProcessAffinityMask(handle, (UIntPtr)original));
+                    FamilyPolicySetField(mode, "exclusiveCheckTicks", 0L);
+                    FamilyPolicyInvoke(mode, "ApplyGameProcessActions", null, false);
+                    Eq(false, mode.ProbeCoreEngaged);
+                    FamilyPolicyInvoke(mode, "ApplyGameProcessActions", null, true);
+                    FamilyPolicyInvoke(mode, "ApplyGameProcessActions", null, false);
+                    Eq(original, Native.QueryAffinity(handle));
+                    Eq("schedule.auto.external", AutoCores.Status.Blocked);
+                    FamilyPolicyInvoke(mode, "EndAutoCores");
+                    FamilyPolicyInvoke(mode, "BeginAutoCores", policy, true);
+                    FamilyPolicyInvoke(mode, "ApplyGameProcessActions", null, false);
+                    Eq(target, Native.QueryAffinity(handle));
+                    Console.WriteLine("PASS independent hard affinity: boost off, no priority/CPU-set writes, Smart release/resume, external-stop survives switching, new session can bind");
+                }
+                finally
+                {
+                    FamilyPolicyInvoke(mode, "ApplyGameProcessActions", null, true);
+                    FamilyPolicyInvoke(mode, "EndAutoCores");
+                    Eq(true, Native.SetProcessAffinityMask(handle, (UIntPtr)original));
+                    Settings.Save(PolicyCatalog.KeyBoost, oldBoost);
                 }
             }
         }

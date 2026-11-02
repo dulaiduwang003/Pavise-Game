@@ -188,7 +188,7 @@ namespace PaviseApp
                     GameProfile added = f.AddManual(mode);
                     f.AssertNarrowRoot(added);
                     GfiRequire(mode.SetProfileFamilySuppression(added.Id, true), "could not opt fixture into family suppression");
-                    GfiRequire(mode.SetProfileOverride(added.Id, PolicyCatalog.KeyBoost, "0"), "could not save ordinary override");
+                    GfiRequire(mode.SetProfileOverride(added.Id, PolicyCatalog.KeyGameRebar, "0"), "could not save ordinary override");
                     GfiRequire(mode.SetProfileForceTrigger(added.Id, true), "could not preserve force-entry setting");
                     GfiRequire(mode.RenameProfile(added.Id, "用户名称 · keep me"), "could not save the user name");
                     before = f.OnlyProfile(mode);
@@ -306,7 +306,7 @@ namespace PaviseApp
                     GameProfile profile = f.OnlyProfile(original);
                     GfiRequire(GfiSamePath(profile.Root, platformRoot), "fixture did not reproduce the legacy fallback root");
                     GfiRequire(original.SetProfileFamilySuppression(profile.Id, true), "could not set the platform family preference");
-                    GfiRequire(original.SetProfileOverride(profile.Id, PolicyCatalog.KeyBoost, "0"), "could not set the platform ordinary override");
+                    GfiRequire(original.SetProfileOverride(profile.Id, PolicyCatalog.KeyGameRebar, "0"), "could not set the platform ordinary override");
                     GfiRequire(original.SetProfileForceTrigger(profile.Id, true), "could not set the platform force-entry preference");
                     before = f.OnlyProfile(original);
                 }

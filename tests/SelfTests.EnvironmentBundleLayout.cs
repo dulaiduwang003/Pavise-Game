@@ -59,7 +59,63 @@ namespace PaviseApp
                         Eq(false, parent.IsHandleCreated);
                     }
                 }
+                RunStorageCardLayoutTests(form);
             } finally { PerformanceTuning.ResetForTest(); PerformanceTuning.BootForTest = null; Lang.Cur = previousLanguage; }
+        }
+        // 存储高级项位于前台时间片之后：默认关闭，逐项状态变化或旧版整包选择不会让后续卡片重叠。
+        private static void RunStorageCardLayoutTests(PanelForm form)
+        {
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            Func<string, object> field = delegate(string name) { return typeof(PanelForm).GetField(name, flags).GetValue(form); };
+            foreach (PerformanceAction action in PerformanceActionCatalog.All) if (action.Environment) PerformanceTuning.SetState(action.Key, "off");
+            PerformanceTuning.SetState(PerformanceTuning.EnvironmentVbsKey, "off");
+            try {
+                using (var parent = new Panel { Width = 1100, Height = 1600 }) {
+                    object[] args = { parent, 2 };
+                    typeof(PanelForm).GetMethod("BuildPerformanceTuningEnvironment", flags).Invoke(form, args);
+                    object[] storageArgs = { parent, args[1] };
+                    typeof(PanelForm).GetMethod("BuildPerformanceStorageEnvironment", flags).Invoke(form, storageArgs);
+                    var bundle = (SettingCard)field("cardPerformanceEnvironmentBundle");
+                    var quantum = (SettingCard)field("cardPerformanceEnvironmentQuantum");
+                    var storage = (SettingCard)field("cardPerformanceEnvironmentStorage");
+                    var toggle = (Toggle)field("swPerformanceEnvironmentStorage");
+                    Eq("environment" + PerformanceTuning.StorageGroupKey, toggle.Name);
+                    Eq(PerformanceTuning.StorageGroupTitle, toggle.AccessibleName);
+                    Eq(false, toggle.Checked);
+                    Eq(quantum.Bottom + 8, storage.Top);
+                    Eq(true, storage.Desc.Contains(PerformanceTuning.Label("off")));
+                    var next = new SettingCard { Top = storage.Bottom + 8, Width = storage.Width, Height = 80 }; parent.Controls.Add(next);
+                    typeof(PanelForm).GetMethod("EnableCardCollapse", flags).Invoke(form, new object[] { parent, new[] { bundle, storage } });
+                    int storageHeight = storage.Height, nextTop = next.Top, quantumTop = quantum.Top;
+                    foreach (string key in PerformanceTuning.StorageMembers()) PerformanceTuning.SetState(key, "restore-failed");
+                    typeof(PanelForm).GetMethod("SyncPerformanceTuningEnvironment", flags).Invoke(form, null);
+                    Eq(true, storage.Desc.Contains(PerformanceTuning.Label("restore-failed")));
+                    Eq(true, toggle.Checked);
+                    Eq(quantumTop, quantum.Top); Eq(next.Top - nextTop, storage.Height - storageHeight);
+                    storage.Expanded = false; Eq(storage.Bottom + 8, next.Top);
+                    storage.Expanded = true; Eq(storage.Bottom + 8, next.Top);
+                    // 整包说明增长时，时间片与存储卡片一起下移。
+                    int bundleHeight = bundle.Height, storageTop = storage.Top;
+                    foreach (PerformanceAction action in PerformanceActionCatalog.All)
+                        if (action.Environment && !PerformanceTuning.StorageMember(action.Key)) PerformanceTuning.SetState(action.Key, "failed");
+                    typeof(PanelForm).GetMethod("SyncPerformanceTuningEnvironment", flags).Invoke(form, null);
+                    Eq(true, bundle.Height > bundleHeight);
+                    Eq(bundle.Bottom + 8, quantum.Top); Eq(quantum.Bottom + 8, storage.Top);
+                    Eq(storage.Top - storageTop, bundle.Height - bundleHeight); Eq(storage.Bottom + 8, next.Top);
+                    foreach (PerformanceAction action in PerformanceActionCatalog.All) if (action.Environment) PerformanceTuning.SetState(action.Key, "off");
+                    typeof(PanelForm).GetMethod("SyncPerformanceTuningEnvironment", flags).Invoke(form, null);
+                    Eq(false, toggle.Checked); Eq(bundleHeight, bundle.Height); Eq(storageHeight, storage.Height); Eq(nextTop, next.Top);
+                    // 旧版整包留下的存储选择：开关显示为开启，整包开关保持各自状态。
+                    Settings.Save(PerformanceActionCatalog.StorageIdle, true);
+                    typeof(PanelForm).GetMethod("SyncPerformanceTuningEnvironment", flags).Invoke(form, null);
+                    Eq(true, toggle.Checked); Eq(false, ((Toggle)field("swPerformanceEnvironmentBundle")).Checked);
+                    Settings.Save(PerformanceActionCatalog.StorageIdle, false);
+                    Eq(false, parent.IsHandleCreated);
+                }
+            } finally {
+                foreach (PerformanceAction action in PerformanceActionCatalog.All) if (action.Environment) PerformanceTuning.SetState(action.Key, "off");
+                Settings.Save(PerformanceActionCatalog.StorageIdle, false);
+            }
         }
         private static void RunQuantumPickerInteractionTests()
         {

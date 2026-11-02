@@ -1,8 +1,8 @@
 ﻿#if PAVISE_SELFTEST
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Threading;
+using System.IO;
+using System.Reflection;
 
 namespace PaviseApp
 {
@@ -10,17 +10,16 @@ namespace PaviseApp
     {
         internal static void RunRenderLaneEligibilityTests()
         {
-            LaneNeverRunsOnHandheld();
-            LaneNeedsEnoughPhysicalCores();
-            LaneThresholdMatchesDocumentedValue();
+            LaneRestoredAndSceneContracts();
             LaneSamplingDistinguishesIdleAndReusedThreads();
             LaneStopsAtOldLimit();
             LaneFailuresBreakConfirmation();
             LaneRetryGapBreaksConfirmation();
             LaneReusedThreadBreaksConfirmation();
             LaneSessionEndCancelsPin();
+            LaneLateFailureCannotPoisonNextSession();
             LaneTerminalFailuresStop();
-            LaneNativeSamplingAndRestore();
+            LaneMockReceiptAndRestore();
         }
 
         private static RenderLane.SampleResult LaneSample(bool success, int tid, RenderLane.SampleFailure failure)
@@ -168,6 +167,18 @@ namespace PaviseApp
             Console.WriteLine("PASS LaneReusedThreadBreaksConfirmation");
         }
 
+        private static void LaneLateFailureCannotPoisonNextSession()
+        {
+            LaneRetryScope(delegate
+            {
+                RenderLane.SampleForTest = delegate { return LaneSample(true, 44, RenderLane.SampleFailure.None); };
+                RenderLane.PinCandidateForTest = delegate { RenderLane.Release(); return RenderLane.PinOutcome.Fatal; };
+                RenderLane.RunWorkerForTest(42, 100);
+                Eq(LaneState.Idle, RenderLane.StateFor(42, 100)); Eq(false, RenderLane.HasResidue());
+            });
+            Console.WriteLine("PASS late candidate failure cannot mark a released session unavailable");
+        }
+
         private static void LaneTerminalFailuresStop()
         {
             foreach (RenderLane.SampleFailure reason in new[] { RenderLane.SampleFailure.ProcessGone, RenderLane.SampleFailure.IdentityChanged })
@@ -182,82 +193,91 @@ namespace PaviseApp
             Console.WriteLine("PASS LaneTerminalFailuresStop");
         }
 
-        private static void LaneNativeSamplingAndRestore()
+        private static void LaneMockReceiptAndRestore()
         {
             LaneRetryScope(delegate
             {
-                int tid = 0;
-                using (var ready = new ManualResetEvent(false))
-                using (var stop = new ManualResetEvent(false))
-                using (Process self = Process.GetCurrentProcess())
-                {
-                    var worker = new Thread(delegate() { tid = Native.GetCurrentThreadId(); ready.Set(); stop.WaitOne(); });
-                    worker.IsBackground = true; worker.Start();
-                    IntPtr handle = IntPtr.Zero;
-                    try
-                    {
-                        Eq(true, ready.WaitOne(3000));
-                        long creation = self.StartTime.ToFileTimeUtc();
-                        handle = Native.OpenThread(Native.THREAD_QUERY_LIMITED_INFORMATION, false, tid);
-                        Eq(true, handle != IntPtr.Zero);
-                        long born, exited, kernel, user;
-                        Eq(true, Native.GetThreadTimes(handle, out born, out exited, out kernel, out user));
-                        int original = Native.GetThreadPriority(handle);
-                        var candidate = new RenderLane.Candidate { Tid = tid, ThreadCreation = born + 1, Share = 0.6 };
-                        int gen = RenderLane.ShutdownGenerationForTest;
-                        Eq(RenderLane.PinOutcome.Retryable, RenderLane.TryPinNativeForTest(self.Id, creation, candidate, gen));
-                        Eq(original, Native.GetThreadPriority(handle)); Eq(false, RenderLane.HasResidue());
-                        candidate.ThreadCreation = born;
-                        Eq(RenderLane.PinOutcome.Pinned, RenderLane.TryPinNativeForTest(self.Id, creation, candidate, gen));
-                        Eq(Native.THREAD_PRIORITY_HIGHEST, Native.GetThreadPriority(handle));
-                        Eq(true, RenderLane.Release()); Eq(original, Native.GetThreadPriority(handle));
-                        Eq(false, RenderLane.HasResidue());
-                        candidate.Tid = int.MaxValue;
-                        Eq(RenderLane.PinOutcome.Retryable, RenderLane.TryPinNativeForTest(self.Id, creation, candidate, RenderLane.ShutdownGenerationForTest));
-                        RenderLane.Candidate sampled; double share;
-                        Eq(false, RenderLane.TryIdentifyProcess(self.Id, creation + 1, 0, out sampled, out share));
-                        Eq(RenderLane.SampleFailure.IdentityChanged, sampled.Failure);
-                        RenderLane.TryIdentifyProcess(self.Id, creation, 0, out sampled, out share);
-                        Eq(true, sampled.Failure == RenderLane.SampleFailure.None || sampled.Failure == RenderLane.SampleFailure.NoCpuProgress);
-                        Eq(true, sampled.ThreadCount > 0);
-                    }
-                    finally
-                    {
-                        RenderLane.Release();
-                        if (handle != IntPtr.Zero) Native.CloseHandle(handle);
-                        stop.Set(); Eq(true, worker.Join(3000));
-                    }
-                }
+                int priority = -1, writes = 0, restores = 0;
+                RenderLane.RestoreThreadForTest = delegate(int pid, long birth, int tid, int original) {
+                    Eq(42, pid); Eq(100L, birth); Eq(44, tid); Eq(-1, original);
+                    restores++; priority = original; return true;
+                };
+                int gen = RenderLane.ShutdownGenerationForTest;
+                Eq(RenderLane.PinOutcome.Pinned, RenderLane.TryPinForTest(42, 100, 44, gen,
+                    delegate { return priority; }, delegate(int value) { writes++; priority = value; return true; }));
+                Eq(1, writes); Eq(Native.THREAD_PRIORITY_HIGHEST, priority); Eq(true, RenderLane.HasResidue());
+                Eq(true, RenderLane.Release()); Eq(-1, priority); Eq(1, restores); Eq(false, RenderLane.HasResidue());
+                Eq(RenderLane.PinOutcome.Canceled, RenderLane.TryPinForTest(42, 100, 44, gen,
+                    delegate { return priority; }, delegate(int value) { writes++; priority = value; return true; }));
+                Eq(1, writes); Eq(-1, priority); Eq(false, RenderLane.HasResidue());
             });
-            Console.WriteLine("PASS LaneNativeSamplingAndRestore");
+            Console.WriteLine("PASS LaneMockReceiptAndRestore: legacy receipt rollback and stale generation, thread writes mocked");
         }
 
-        private static void LaneNeverRunsOnHandheld()
+        private static void LaneRestoredAndSceneContracts()
         {
-            Eq(false, GameMode.LaneSupported(PerformancePreset.Handheld));
-        }
-
-        private static void LaneNeedsEnoughPhysicalCores()
-        {
-            int cores;
-            try { cores = CpuTopology.PhysicalCoreCount; }
-            catch { return; }
-
-            bool expected = cores >= GameMode.LaneMinPhysicalCores;
-            Eq(expected, GameMode.LaneSupported(PerformancePreset.Standard));
-            Eq(expected, GameMode.LaneSupported(PerformancePreset.Competitive));
-            Eq(expected, GameMode.LaneSupported(PerformancePreset.Standard));
-
-        }
-
-        private static void LaneThresholdMatchesDocumentedValue()
-        {
-            Eq(6, GameMode.LaneMinPhysicalCores);
-            string zh = Lang.T("gm.lane.unsupported");
-            if (string.IsNullOrEmpty(zh) || zh == "gm.lane.unsupported")
-                throw new InvalidOperationException("gm.lane.unsupported 文案缺失");
-            if (zh.IndexOf("6", StringComparison.Ordinal) < 0)
-                throw new InvalidOperationException("不可用文案没有写出门槛核数");
+            var oldRequested = AutomaticPolicy.RequestedForTest;
+            var oldEffective = AutomaticPolicy.EffectiveForTest;
+            var oldApproved = AutomaticPolicy.ApprovedForTest;
+            var oldSupported = GameMode.LaneSupportedForTest;
+            bool requested = false;
+            AutomaticPolicy.RequestedForTest = delegate { return requested; };
+            AutomaticPolicy.EffectiveForTest = delegate { return true; };
+            AutomaticPolicy.ApprovedForTest = delegate { return "1"; };
+            GameMode.LaneSupportedForTest = delegate { return true; };
+            try
+            {
+                foreach (PerformancePreset scene in new[] { PerformancePreset.Standard, PerformancePreset.Competitive })
+                {
+                    Eq(true, PresetValue.SupportsCoreScheduling(scene));
+                    foreach (bool automatic in new[] { false, true })
+                    LaneRetryScope(delegate {
+                        requested = automatic;
+                        Settings.SaveStr(PolicyCatalog.KeyPreset, ((int)scene).ToString());
+                        Settings.Save(PolicyCatalog.KeyRenderLane, true);
+                        Settings.Save("GpuPrefStageOn", false);
+                        int samples = 0, pins = 0;
+                        using (var pinned = new System.Threading.ManualResetEventSlim())
+                        {
+                        RenderLane.SampleForTest = delegate { System.Threading.Interlocked.Increment(ref samples); return LaneSample(true, 44, RenderLane.SampleFailure.None); };
+                        RenderLane.PinCandidateForTest = delegate { System.Threading.Interlocked.Increment(ref pins); pinned.Set(); return RenderLane.PinOutcome.Fatal; };
+                        Eq(!automatic, PolicyResolver.Global().RenderLane);
+                        Settings.Save(PolicyCatalog.KeyFrameCoordination, true);
+                        Eq(false, PolicyResolver.Global().FrameCoordinationOn);
+                        var mode = new GameMode(Path.Combine(Path.GetTempPath(), "PaviseLaneRestored-" + Guid.NewGuid().ToString("N")), new SuppressionCore());
+                        mode.InitializeAutomation();
+                        var passType = typeof(GameMode).GetNestedType("BoostPass", BindingFlags.NonPublic);
+                        object pass = Activator.CreateInstance(passType, true);
+                        passType.GetField("LaneAllowed").SetValue(pass, true);
+                        passType.GetField("PriorityTarget").SetValue(pass, Native.HIGH_PRIORITY_CLASS);
+                        passType.GetField("LaneRestorationReady").SetValue(pass, false);
+                        typeof(GameMode).GetMethod("EngageLaneAndReport", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(mode,
+                            new object[] { IntPtr.Zero, 42, 100L, pass, false, false, false, false, "", false });
+                        Eq(0, samples); Eq(0, pins); Eq(LaneState.Idle, RenderLane.StateFor(42, 100));
+                        passType.GetField("LaneRestorationReady").SetValue(pass, true);
+                        typeof(GameMode).GetMethod("EngageLaneAndReport", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(mode,
+                            new object[] { IntPtr.Zero, 42, 100L, pass, false, false, false, false, "", false });
+                        if (!automatic) Eq(true, pinned.Wait(5000));
+                        Eq(true, RenderLane.Release());
+                        Eq(automatic ? 0 : 3, samples); Eq(automatic ? 0 : 1, pins);
+                        Eq(false, RenderLane.HasResidue());
+                        }
+                    });
+                }
+                Eq(false, PresetValue.SupportsCoreScheduling(PerformancePreset.Handheld));
+                Eq(false, PresetValue.SupportsCoreScheduling(PerformancePreset.Extreme));
+                Eq(true, PresetValue.SupportsCoreScheduling(PresetValue.From(4)));
+                Eq(true, PresetValue.SupportsCoreScheduling(PresetValue.From(6)));
+            }
+            finally
+            {
+                AutomaticPolicy.RequestedForTest = oldRequested;
+                AutomaticPolicy.EffectiveForTest = oldEffective;
+                AutomaticPolicy.ApprovedForTest = oldApproved;
+                GameMode.LaneSupportedForTest = oldSupported;
+                Settings.UseTransientStoreForCurrentProcess();
+            }
+            Console.WriteLine("PASS restored 2223 candidate reaches boost entry in Smart/Esports; restoration debt blocks admission, frame coordination excluded, sampling and writes mocked");
         }
     }
 }

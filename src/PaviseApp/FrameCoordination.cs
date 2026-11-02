@@ -1,0 +1,1132 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
+using System.Threading;
+
+namespace PaviseApp
+{
+	internal static class FrameCoordination
+	{
+		private sealed class OriginalCriticalRoles
+		{
+			internal readonly int Epoch;
+
+			internal readonly int Pid;
+
+			internal readonly long Birth;
+
+			internal readonly long Observed;
+
+			internal readonly CriticalThreadRoleFact[] Facts;
+
+			internal OriginalCriticalRoles(int epoch, int pid, long birth, long observed, CriticalThreadRoleFact[] facts)
+			{
+				Epoch = epoch;
+				Pid = pid;
+				Birth = birth;
+				Observed = observed;
+				Facts = facts;
+			}
+		}
+
+		internal const string ActionKey = "FrameCoordination";
+
+		internal const string JournalKey = "FrameCoordinationJournalV1";
+
+		// TimeCritical is relative to the process class; a High process still maps this to base priority 15.
+		internal const int PresentThreadPriority = (int)ThreadPriorityLevel.TimeCritical;
+
+		internal const int LeaseCheckMs = 5000;
+
+		internal const int LeaseChecks = 120;
+
+		internal const int ObserveGapMs = 30000;
+
+		internal const string CaptureSessionKey = "FrameCoordinationCaptureSessionsV1";
+
+		internal const int MaxCaptureFailures = 3;
+
+		internal const int MaxCaptureSessions = 64;
+
+		private static readonly object sync = new object();
+
+		private static readonly object mutation = new object();
+
+		private static Thread worker;
+
+		private static int generation;
+
+		private static int pid;
+
+		private static long birth;
+
+		private static bool closed;
+
+		private static volatile int state;
+
+		private static IFrameThreads platform = new NativeFrameThreads();
+
+		[ThreadStatic]
+		private static string applyExecutionFailure;
+
+		private static bool observing;
+
+		private static readonly object captureSessionGate = new object();
+
+		private static readonly Dictionary<int, FrameCaptureSession> captureSessions = new Dictionary<int, FrameCaptureSession>();
+
+		private static bool captureSessionsLoaded;
+
+		private static bool captureSessionStoreFailed;
+
+		private static OriginalCriticalRoles criticalRoles;
+
+		internal static int State
+		{
+			get
+			{
+				return state;
+			}
+		}
+
+		internal static bool HasResidue
+		{
+			get
+			{
+				string value;
+				if (Settings.TryLoadStr("FrameCoordinationJournalV1", out value) && value.Length <= 0 && !FrameMemoryProtection.HasResidue)
+				{
+					return FrameCoordinationTrace.HasResidue;
+				}
+				return true;
+			}
+		}
+
+		internal static bool Observing
+		{
+			get
+			{
+				lock (sync)
+				{
+					return observing && worker != null && worker.IsAlive;
+				}
+			}
+		}
+
+		internal static void Ensure(int target, long created, string name, Func<bool> admitted)
+		{
+			if (target <= 0 || created <= 0 || admitted == null || !admitted())
+			{
+				return;
+			}
+			lock (sync)
+			{
+				if (closed)
+				{
+					return;
+				}
+				if (worker != null && worker.IsAlive)
+				{
+					if (pid != target || birth != created || (observing && !GameManagedLocked(target, created, name)))
+					{
+						Interlocked.Increment(ref generation);
+					}
+					return;
+				}
+				if (ActionFailureStore.IsBlocked("FrameCoordination", name))
+				{
+					state = 4;
+					return;
+				}
+				FrameCaptureSession session = CaptureSession(target, created);
+				if (session != null && session.Stopped && !session.NoChangeNeeded && ActionFailureStore.IsRetryPending("FrameCoordination", name))
+				{
+					session.Stopped = false;
+					session.Failures = 0;
+					session.Retry.Reset();
+				}
+				if ((session == null || session.Stopped) && !HasResidue)
+				{
+					state = ((session == null) ? 3 : ((!session.NoChangeNeeded) ? 4 : 0));
+					return;
+				}
+				pid = target;
+				birth = created;
+				observing = false;
+				int epoch = NextEpochLocked(target, created);
+				worker = new Thread((ThreadStart)delegate
+				{
+					Run(target, created, name, epoch, admitted, session);
+				});
+				worker.IsBackground = true;
+				worker.Name = "Pavise.FrameCoordination";
+				worker.Priority = ThreadPriority.BelowNormal;
+				worker.Start();
+			}
+		}
+
+		private static bool GameManagedLocked(int target, long created, string name)
+		{
+			if (ActionFailureStore.IsBlocked("FrameCoordination", name))
+			{
+				return false;
+			}
+			FrameCaptureSession frameCaptureSession = CaptureSession(target, created);
+			if (frameCaptureSession != null && frameCaptureSession.Stopped)
+			{
+				return frameCaptureSession.NoChangeNeeded;
+			}
+			return false;
+		}
+
+		private static bool Current(int epoch, Func<bool> admitted)
+		{
+			if (!closed && Volatile.Read(ref generation) == epoch)
+			{
+				return admitted();
+			}
+			return false;
+		}
+
+		private static bool Wait(int ms, Func<bool> alive)
+		{
+			for (int i = 0; i < ms; i += 200)
+			{
+				if (!alive())
+				{
+					return false;
+				}
+				Thread.Sleep(Math.Min(200, ms - i));
+			}
+			return alive();
+		}
+
+		internal static string WaitingLine(string name, FrameCoordinationSample sample)
+		{
+			string text = "WARN ";
+			if (sample != null && sample.Valid && sample.NoChangeNeeded)
+			{
+				text = "INFO ";
+			}
+			if (sample != null && !sample.Valid)
+			{
+				if (sample.Issue == FrameCaptureIssue.Canceled || sample.Issue == FrameCaptureIssue.TargetChanged || sample.Issue == FrameCaptureIssue.InsufficientEvidence)
+				{
+					text = "INFO ";
+				}
+				else if (sample.Issue == FrameCaptureIssue.TraceStopFailed || sample.Issue == FrameCaptureIssue.DecodeFailed || sample.Issue == FrameCaptureIssue.CaptureFailed)
+				{
+					text = "FAIL ";
+				}
+			}
+			string text2 = ((sample == null) ? PerformancePolicy.Text("采样暂不可用", "Capture is unavailable") : ((!sample.Valid) ? sample.Detail : (sample.NoChangeNeeded ? PerformancePolicy.Text("目标线程优先级由游戏控制，无需重复调整", "Target thread priorities are game-managed; no change needed") : PerformancePolicy.Text("目标线程读取或优先级写入受限，保持原调度", "Thread access or priority writes are blocked; original scheduling retained"))));
+			string text3 = ((sample == null) ? "" : string.Concat(" [reason=", sample.Issue, " traceCode=", sample.TraceCode, " lostEvents=", sample.LostEvents, " eventCount=", sample.Events, " sampleCpuMs=", sample.CpuMs.ToString("F1", CultureInfo.InvariantCulture), " systemEvents=", sample.SystemEvents, "]"));
+			return text + "FRAME " + PerformancePolicy.Text("线程协同待命：", "Coordination waiting: ") + name + " | " + text2 + text3;
+		}
+
+		private static void Run(int target, long created, string name, int epoch, Func<bool> admitted, FrameCaptureSession session)
+		{
+			Func<bool> func = () => Current(epoch, admitted);
+			Stopwatch stopwatch = Stopwatch.StartNew();
+			try
+			{
+				while (func())
+				{
+					bool flag = Restore();
+					if (!(flag & FrameCoordinationTrace.Heal()))
+					{
+						state = 3;
+						if (!Wait(30000, func))
+						{
+							break;
+						}
+						continue;
+					}
+					if (session == null || session.Stopped || CaptureProcessState(target, created) > 0)
+					{
+						break;
+					}
+					state = 1;
+					bool presenterOnly = session.PresenterOnly;
+					FrameCoordinationSample frameCoordinationSample = TakeCapture(target, created, func, presenterOnly);
+					if (!func())
+					{
+						if (frameCoordinationSample != null && !frameCoordinationSample.Valid && frameCoordinationSample.Issue != FrameCaptureIssue.Canceled && frameCoordinationSample.Issue != FrameCaptureIssue.TargetChanged)
+						{
+							ObserveCapture(session, frameCoordinationSample, false, stopwatch.ElapsedMilliseconds);
+							if (frameCoordinationSample.Issue == FrameCaptureIssue.TraceStopFailed || frameCoordinationSample.Issue == FrameCaptureIssue.DecodeFailed || frameCoordinationSample.Issue == FrameCaptureIssue.CaptureFailed)
+							{
+								Logger.Log(WaitingLine(name, frameCoordinationSample));
+							}
+						}
+						break;
+					}
+					if (frameCoordinationSample != null && (frameCoordinationSample.Issue == FrameCaptureIssue.Canceled || frameCoordinationSample.Issue == FrameCaptureIssue.TargetChanged))
+					{
+						break;
+					}
+					if (frameCoordinationSample == null || frameCoordinationSample.Issue == FrameCaptureIssue.CaptureFailed || frameCoordinationSample.Issue == FrameCaptureIssue.DecodeFailed || frameCoordinationSample.Issue == FrameCaptureIssue.TraceStopFailed)
+					{
+						ActionFailureStore.Trip("FrameCoordination", name, (frameCoordinationSample == null) ? "Thread capture returned no result" : frameCoordinationSample.Detail);
+					}
+					if (frameCoordinationSample != null && frameCoordinationSample.Valid)
+					{
+						PublishCriticalRoles(frameCoordinationSample, epoch);
+					}
+					bool flag2 = frameCoordinationSample != null && frameCoordinationSample.Valid && ApplyIsolated(frameCoordinationSample, func, name);
+					long elapsedMilliseconds = stopwatch.ElapsedMilliseconds;
+					ObserveCapture(session, frameCoordinationSample, flag2, elapsedMilliseconds);
+					if (!flag2 && ActionFailureStore.IsIsolated("FrameCoordination", name))
+					{
+						session.Stopped = true;
+						SaveCaptureSessions();
+						state = 4;
+						break;
+					}
+					if (!flag2)
+					{
+						state = ((frameCoordinationSample == null || !frameCoordinationSample.NoChangeNeeded) ? 3 : 0);
+						if (session.Stopped)
+						{
+							string text = WaitingLine(name, frameCoordinationSample);
+							if (!text.StartsWith("FAIL ", StringComparison.Ordinal))
+							{
+								text = "INFO " + text.Substring(text.IndexOf("FRAME", StringComparison.Ordinal));
+							}
+							Logger.Log(text + " | " + PerformancePolicy.Text("本进程不再重复采样，保留原调度", "Further capture stopped for this process; original scheduling retained"));
+							break;
+						}
+						if (!presenterOnly && session.PresenterOnly)
+						{
+							Logger.Info("FRAME " + name + " | " + PerformancePolicy.Text("调度采样受限，改为仅识别画面提交线程", "Scheduling capture limited; switching to presenter-only capture"));
+							continue;
+						}
+						if (session.Retry.ShouldLog)
+						{
+							Logger.Log(WaitingLine(name, frameCoordinationSample) + " retryMs=" + session.Retry.DelayMs);
+						}
+						if (!Wait(session.Retry.DelayMs, func))
+						{
+							break;
+						}
+						continue;
+					}
+					if (session.Stopped)
+					{
+						break;
+					}
+					state = 2;
+					Logger.Log("PASS FRAME " + ((Lang.Cur == 1) ? "Coordination active: " : "线程协同已执行：") + name + " pid=" + target + " present=" + frameCoordinationSample.PresentTid + " worker=" + frameCoordinationSample.WorkerTid + " sampleCpuMs=" + frameCoordinationSample.CpuMs.ToString("F1", CultureInfo.InvariantCulture));
+					for (int i = 0; i < 120; i++)
+					{
+						if (!Wait(5000, func))
+						{
+							break;
+						}
+						if (!LeaseHealthy())
+						{
+							break;
+						}
+					}
+				}
+			}
+			catch (Exception ex)
+			{
+				state = 3;
+				if (session != null)
+				{
+					ObserveCapture(session, new FrameCoordinationSample
+					{
+						Pid = target,
+						Birth = created
+					}.Reject(FrameCaptureIssue.CaptureFailed), false, stopwatch.ElapsedMilliseconds);
+					if (func())
+					{
+						ActionFailureStore.Trip("FrameCoordination", name, "Thread capture execution failed: " + ex.Message);
+						session.Stopped = true;
+						SaveCaptureSessions();
+					}
+				}
+				Logger.Error("FRAME " + ex.Message);
+			}
+			finally
+			{
+				Restore();
+				FrameCoordinationTrace.Heal();
+				if (Volatile.Read(ref generation) == epoch)
+				{
+					state = ((session != null && session.Stopped && !session.NoChangeNeeded) ? 4 : 0);
+				}
+			}
+		}
+
+		internal static bool Apply(FrameCoordinationSample sample, Func<bool> alive)
+		{
+			lock (mutation)
+			{
+				applyExecutionFailure = null;
+				if (sample != null)
+				{
+					sample.NoChangeNeeded = false;
+				}
+				if (sample == null || !sample.Valid || sample.Pid <= 0 || sample.Birth <= 0 || sample.PresentTid <= 0 || !sample.Threads.ContainsKey(sample.PresentTid) || sample.Threads[sample.PresentTid] <= 0 || !alive() || !RestoreLocked())
+				{
+					return false;
+				}
+				List<FrameThreadReceipt> list = new List<FrameThreadReceipt>();
+				int[] array = new int[2] { sample.PresentTid, sample.WorkerTid };
+				foreach (int num in array)
+				{
+					long value;
+					if ((num == sample.WorkerTid && num == sample.PresentTid && list.Count > 0) || num <= 0 || !sample.Threads.TryGetValue(num, out value))
+					{
+						continue;
+					}
+					FrameThreadReceipt frameThreadReceipt = new FrameThreadReceipt();
+					frameThreadReceipt.Pid = sample.Pid;
+					frameThreadReceipt.ProcessBirth = sample.Birth;
+					frameThreadReceipt.Tid = num;
+					frameThreadReceipt.ThreadBirth = value;
+					frameThreadReceipt.Applied = num == sample.PresentTid ? PresentThreadPriority : 1;
+					FrameThreadReceipt frameThreadReceipt2 = frameThreadReceipt;
+					int priority;
+					int num2 = platform.Read(frameThreadReceipt2, out priority);
+					if (num2 != 0)
+					{
+						if (num2 < 0)
+						{
+							applyExecutionFailure = "Thread original state could not be read";
+						}
+						return false;
+					}
+					if (priority >= -2 && priority < 1)
+					{
+						frameThreadReceipt2.Original = priority;
+						list.Add(frameThreadReceipt2);
+					}
+				}
+				if (list.Count == 0)
+				{
+					sample.NoChangeNeeded = true;
+					return false;
+				}
+				string text = Encode(list);
+				if (!alive())
+				{
+					return false;
+				}
+				string value2;
+				if (!Settings.SaveStrDurable("FrameCoordinationJournalV1", text) || !Settings.TryLoadStr("FrameCoordinationJournalV1", out value2) || value2 != text)
+				{
+					applyExecutionFailure = "Thread recovery record could not be saved or verified";
+					return false;
+				}
+				foreach (FrameThreadReceipt item in list)
+				{
+					if (!alive())
+					{
+						RestoreLocked();
+						return false;
+					}
+					if (!platform.Set(item, item.Original, item.Applied))
+					{
+						int priority2;
+						int num3 = platform.Read(item, out priority2);
+						if (num3 <= 0 && (num3 < 0 || priority2 == item.Original || priority2 == item.Applied))
+						{
+							applyExecutionFailure = "Thread priority apply or readback failed";
+						}
+						RestoreLocked();
+						return false;
+					}
+				}
+				if (!FrameMemoryProtection.Apply(list, platform as IFrameThreadMemory, alive))
+				{
+					applyExecutionFailure = FrameMemoryProtection.ExecutionFailure;
+					if (!FrameMemoryProtection.Restore())
+					{
+						applyExecutionFailure = "Thread memory protection could not be restored";
+					}
+					RestoreLocked();
+					return false;
+				}
+				if (!alive())
+				{
+					RestoreLocked();
+					return false;
+				}
+				return true;
+			}
+		}
+
+		internal static bool ApplyIsolated(FrameCoordinationSample sample, Func<bool> alive, string target)
+		{
+			if (sample == null || !sample.Valid || alive == null || !alive() || string.IsNullOrEmpty(target))
+			{
+				return false;
+			}
+			if (ActionFailureStore.IsRetryPending("FrameCoordination", target) && !Restore())
+			{
+				return false;
+			}
+			string reason;
+			if (!ActionFailureStore.TryBeginApply("FrameCoordination", target, out reason))
+			{
+				return false;
+			}
+			bool flag = false;
+			string text = null;
+			try
+			{
+				flag = Apply(sample, alive);
+				text = applyExecutionFailure;
+			}
+			catch (Exception ex)
+			{
+				text = ex.Message;
+			}
+			if (flag && ActionFailureStore.CompleteApply("FrameCoordination", target))
+			{
+				return true;
+			}
+			if (flag)
+			{
+				text = "Thread action completion could not be saved";
+			}
+			if (text == null)
+			{
+				if (Restore())
+				{
+					ActionFailureStore.CancelApply("FrameCoordination", target);
+				}
+				else
+				{
+					ActionFailureStore.Trip("FrameCoordination", target, "Thread restoration is incomplete; new applications stopped");
+				}
+			}
+			else
+			{
+				ActionFailureStore.Trip("FrameCoordination", target, text);
+				Restore();
+			}
+			return false;
+		}
+
+		private static string Encode(List<FrameThreadReceipt> receipts)
+		{
+			List<string> list = new List<string>();
+			list.Add("v2");
+			List<string> list2 = list;
+			foreach (FrameThreadReceipt receipt in receipts)
+			{
+				list2.Add(receipt.Encode() + "|" + receipt.Applied);
+			}
+			return string.Join(";", list2.ToArray());
+		}
+
+		internal static bool Parse(string text, out List<FrameThreadReceipt> result)
+		{
+			result = new List<FrameThreadReceipt>();
+			if (text == "")
+			{
+				return true;
+			}
+			string[] array = text.Split(';');
+			if (array.Length < 2 || array.Length > 3 || (array[0] != "v1" && array[0] != "v2"))
+			{
+				return false;
+			}
+			bool legacy = array[0] == "v1";
+			HashSet<int> hashSet = new HashSet<int>();
+			for (int i = 1; i < array.Length; i++)
+			{
+				string[] array2 = array[i].Split('|');
+				FrameThreadReceipt frameThreadReceipt = new FrameThreadReceipt();
+				if (array2.Length != (legacy ? 5 : 6) || !int.TryParse(array2[0], out frameThreadReceipt.Pid) || !long.TryParse(array2[1], out frameThreadReceipt.ProcessBirth) || !int.TryParse(array2[2], out frameThreadReceipt.Tid) || !long.TryParse(array2[3], out frameThreadReceipt.ThreadBirth) || !int.TryParse(array2[4], out frameThreadReceipt.Original) || (!legacy && (!int.TryParse(array2[5], out frameThreadReceipt.Applied) || (frameThreadReceipt.Applied != 1 && frameThreadReceipt.Applied != PresentThreadPriority))) || frameThreadReceipt.Pid <= 0 || frameThreadReceipt.Tid <= 0 || frameThreadReceipt.ProcessBirth <= 0 || frameThreadReceipt.ThreadBirth <= 0 || frameThreadReceipt.Original < -2 || frameThreadReceipt.Original > 0 || !hashSet.Add(frameThreadReceipt.Tid))
+				{
+					return false;
+				}
+				if (result.Count > 0 && (frameThreadReceipt.Pid != result[0].Pid || frameThreadReceipt.ProcessBirth != result[0].ProcessBirth))
+				{
+					return false;
+				}
+				result.Add(frameThreadReceipt);
+			}
+			return true;
+		}
+
+		private static bool LeaseHealthy()
+		{
+			lock (mutation)
+			{
+				string value;
+				List<FrameThreadReceipt> result;
+				if (!Settings.TryLoadStr("FrameCoordinationJournalV1", out value) || value.Length == 0 || !Parse(value, out result))
+				{
+					return false;
+				}
+				foreach (FrameThreadReceipt item in result)
+				{
+					int priority;
+					if (platform.Read(item, out priority) != 0 || priority != item.Applied)
+					{
+						return false;
+					}
+				}
+				return FrameMemoryProtection.Healthy();
+			}
+		}
+
+		internal static bool Restore()
+		{
+			lock (mutation)
+			{
+				return RestoreLocked();
+			}
+		}
+
+		private static bool RestoreLocked()
+		{
+			bool flag = FrameMemoryProtection.Restore();
+			string value;
+			List<FrameThreadReceipt> result;
+			if (!Settings.TryLoadStr("FrameCoordinationJournalV1", out value) || !Parse(value, out result))
+			{
+				return false;
+			}
+			if (value.Length == 0)
+			{
+				return flag;
+			}
+			bool flag2 = true;
+			foreach (FrameThreadReceipt item in result)
+			{
+				int priority;
+				int num = platform.Read(item, out priority);
+				if (num < 0)
+				{
+					flag2 = false;
+				}
+				else if (num == 0 && priority == item.Applied && !platform.Set(item, item.Applied, item.Original))
+				{
+					flag2 = false;
+				}
+			}
+			string value2;
+			bool flag3 = flag2 && Settings.TryLoadStr("FrameCoordinationJournalV1", out value2) && value2 == value && Settings.SaveStr("FrameCoordinationJournalV1", "") && Settings.TryLoadStr("FrameCoordinationJournalV1", out value2) && value2.Length == 0;
+			return flag && flag3;
+		}
+
+		internal static bool ReleaseExcept(int keepPid, long keepBirth)
+		{
+			lock (sync)
+			{
+				List<FrameThreadReceipt> result = null;
+				string value;
+				bool flag = keepPid > 0 && pid == keepPid && birth == keepBirth && Settings.TryLoadStr("FrameCoordinationJournalV1", out value) && Parse(value, out result);
+				if (flag)
+				{
+					foreach (FrameThreadReceipt item in result)
+					{
+						if (item.Pid != keepPid || item.ProcessBirth != keepBirth)
+						{
+							flag = false;
+						}
+					}
+					if (flag)
+					{
+						return true;
+					}
+				}
+				Interlocked.Increment(ref generation);
+				state = 0;
+			}
+			bool flag2 = Restore();
+			return flag2 & FrameCoordinationTrace.Heal();
+		}
+
+		internal static bool Close(int timeout)
+		{
+			Stopwatch stopwatch = Stopwatch.StartNew();
+			Thread thread;
+			lock (sync)
+			{
+				closed = true;
+				Interlocked.Increment(ref generation);
+				thread = worker;
+			}
+			bool result = FrameCoordinationTrace.CloseIdentity(timeout);
+			int millisecondsTimeout = Math.Max(0, timeout - (int)Math.Min(2147483647L, stopwatch.ElapsedMilliseconds));
+			if (thread != null && thread.IsAlive && (thread == Thread.CurrentThread || !thread.Join(millisecondsTimeout)))
+			{
+				return false;
+			}
+			bool flag = Restore();
+			if (flag & FrameCoordinationTrace.Heal())
+			{
+				return result;
+			}
+			return false;
+		}
+
+		internal static bool HealFromCrash()
+		{
+			return FrameCoordinationTrace.Heal() & Restore();
+		}
+
+		internal static void EnsureObserver(int target, long created, string name, Func<bool> admitted)
+		{
+			if (target <= 0 || created <= 0 || admitted == null || !admitted())
+			{
+				return;
+			}
+			lock (sync)
+			{
+				if (closed)
+				{
+					return;
+				}
+				if (worker != null && worker.IsAlive)
+				{
+					if (observing && (pid != target || birth != created))
+					{
+						Interlocked.Increment(ref generation);
+					}
+					return;
+				}
+				if (ActionFailureStore.IsBlocked("FrameCoordination", name))
+				{
+					state = 4;
+					return;
+				}
+				FrameCaptureSession session = CaptureSession(target, created);
+				if (session != null && (!session.Stopped || session.NoChangeNeeded) && session.Failures < 3)
+				{
+					pid = target;
+					birth = created;
+					observing = true;
+					int epoch = NextEpochLocked(target, created);
+					worker = new Thread((ThreadStart)delegate
+					{
+						Observe(target, created, name, epoch, admitted, session);
+					});
+					worker.IsBackground = true;
+					worker.Name = "Pavise.FrameObserver";
+					worker.Priority = ThreadPriority.BelowNormal;
+					worker.Start();
+				}
+			}
+		}
+
+		internal static void ReleaseObserver()
+		{
+			lock (sync)
+			{
+				if (observing && worker != null && worker.IsAlive)
+				{
+					Interlocked.Increment(ref generation);
+				}
+			}
+		}
+
+		internal static bool ReleaseBoost(int observedPid, long observedBirth)
+		{
+			bool flag;
+			lock (sync)
+			{
+				flag = observing && worker != null && worker.IsAlive && observedPid > 0 && pid == observedPid && birth == observedBirth;
+				if (!flag)
+				{
+					Interlocked.Increment(ref generation);
+					state = 0;
+				}
+			}
+			bool flag2 = Restore();
+			if (!flag)
+			{
+				flag2 &= FrameCoordinationTrace.Heal();
+			}
+			return flag2;
+		}
+
+		private static void Observe(int target, long created, string name, int epoch, Func<bool> admitted, FrameCaptureSession session)
+		{
+			Func<bool> func = () => Current(epoch, admitted);
+			Stopwatch stopwatch = Stopwatch.StartNew();
+			int num = -1;
+			try
+			{
+				while (func())
+				{
+					bool flag = Restore();
+					if (!(flag & FrameCoordinationTrace.Heal()))
+					{
+						state = 3;
+						if (!Wait(30000, func))
+						{
+							break;
+						}
+						continue;
+					}
+					if ((session.Stopped && !session.NoChangeNeeded) || CaptureProcessState(target, created) > 0)
+					{
+						break;
+					}
+					state = 1;
+					FrameCoordinationSample frameCoordinationSample = TakeCapture(target, created, func, true);
+					state = 0;
+					if (!func() || (frameCoordinationSample != null && (frameCoordinationSample.Issue == FrameCaptureIssue.Canceled || frameCoordinationSample.Issue == FrameCaptureIssue.TargetChanged)))
+					{
+						break;
+					}
+					if (frameCoordinationSample == null || frameCoordinationSample.Issue == FrameCaptureIssue.CaptureFailed || frameCoordinationSample.Issue == FrameCaptureIssue.DecodeFailed || frameCoordinationSample.Issue == FrameCaptureIssue.TraceStopFailed)
+					{
+						ActionFailureStore.Trip("FrameCoordination", name, (frameCoordinationSample == null) ? "Thread capture returned no result" : frameCoordinationSample.Detail);
+					}
+					bool flag2 = frameCoordinationSample != null && frameCoordinationSample.Valid;
+					long elapsedMilliseconds = stopwatch.ElapsedMilliseconds;
+					ObserveCapture(session, frameCoordinationSample, flag2, elapsedMilliseconds);
+					if (flag2)
+					{
+						PublishCriticalRoles(frameCoordinationSample, epoch);
+						if (frameCoordinationSample.PresentTid != num)
+						{
+							num = frameCoordinationSample.PresentTid;
+							Logger.Info("FRAME " + PerformancePolicy.Text("已识别渲染线程（仅观测，不改优先级）：", "Render thread identified (observation only, no priority change): ") + name + " pid=" + target + " present=" + num);
+						}
+						if (!Wait(30000, func))
+						{
+							break;
+						}
+						continue;
+					}
+					if (ActionFailureStore.IsIsolated("FrameCoordination", name) || (session.Stopped && !session.NoChangeNeeded))
+					{
+						state = 4;
+						break;
+					}
+					if (session.Failures >= 3)
+					{
+						state = 4;
+						Logger.Info("FRAME " + PerformancePolicy.Text("渲染线程连续多次未识别，本进程不再观测：", "Render thread not identified after repeated captures; observation stopped for this process: ") + name + " | " + ((frameCoordinationSample == null) ? FrameCoordinationSample.IssueText(FrameCaptureIssue.CaptureFailed) : frameCoordinationSample.Detail));
+						break;
+					}
+					if (session.Retry.ShouldLog)
+					{
+						Logger.Info("FRAME " + PerformancePolicy.Text("渲染线程识别等待：", "Render thread identification waiting: ") + name + " | " + ((frameCoordinationSample == null) ? FrameCoordinationSample.IssueText(FrameCaptureIssue.CaptureFailed) : frameCoordinationSample.Detail) + " retryMs=" + session.Retry.DelayMs);
+					}
+					if (!Wait(session.Retry.DelayMs, func))
+					{
+						break;
+					}
+				}
+			}
+			catch (Exception ex)
+			{
+				state = 3;
+				ObserveCapture(session, new FrameCoordinationSample
+				{
+					Pid = target,
+					Birth = created
+				}.Reject(FrameCaptureIssue.CaptureFailed), false, stopwatch.ElapsedMilliseconds);
+				if (func())
+				{
+					ActionFailureStore.Trip("FrameCoordination", name, "Thread capture execution failed: " + ex.Message);
+					session.Stopped = true;
+					SaveCaptureSessions();
+				}
+				Logger.Error("FRAME " + ex.Message);
+			}
+			finally
+			{
+				Restore();
+				FrameCoordinationTrace.Heal();
+				if (Volatile.Read(ref generation) == epoch)
+				{
+					state = 0;
+				}
+			}
+		}
+
+		private static FrameCaptureSession CaptureSession(int target, long created)
+		{
+			lock (captureSessionGate)
+			{
+				if (!LoadCaptureSessions())
+				{
+					return null;
+				}
+				FrameCaptureSession value;
+				if (captureSessions.TryGetValue(target, out value) && value.Birth == created)
+				{
+					return value;
+				}
+				if (value != null)
+				{
+					if (CaptureProcessState(target, created) != 0)
+					{
+						return null;
+					}
+					captureSessions.Remove(target);
+				}
+				if (captureSessions.Count >= 64)
+				{
+					List<int> list = new List<int>();
+					foreach (KeyValuePair<int, FrameCaptureSession> captureSession in captureSessions)
+					{
+						if (CaptureProcessState(captureSession.Key, captureSession.Value.Birth) > 0)
+						{
+							list.Add(captureSession.Key);
+						}
+					}
+					foreach (int item in list)
+					{
+						captureSessions.Remove(item);
+					}
+					if (captureSessions.Count >= 64)
+					{
+						return null;
+					}
+				}
+				value = new FrameCaptureSession(target, created);
+				captureSessions[target] = value;
+				return value;
+			}
+		}
+
+		private static bool LoadCaptureSessions()
+		{
+			if (captureSessionsLoaded)
+			{
+				return !captureSessionStoreFailed;
+			}
+			captureSessionsLoaded = true;
+			string value;
+			if (!Settings.TryLoadStr("FrameCoordinationCaptureSessionsV1", out value))
+			{
+				return CaptureSessionLoadFailed();
+			}
+			if (value.Length == 0)
+			{
+				return true;
+			}
+			string[] array = value.Split(';');
+			if (array[0] != "v1" || array.Length > 65)
+			{
+				return CaptureSessionLoadFailed();
+			}
+			for (int i = 1; i < array.Length; i++)
+			{
+				string[] array2 = array[i].Split('|');
+				int result;
+				long result2;
+				int result3;
+				int result4;
+				int result5;
+				int result6;
+				if (array2.Length != 6 || !int.TryParse(array2[0], out result) || result <= 0 || !long.TryParse(array2[1], out result2) || result2 <= 0 || !int.TryParse(array2[2], out result3) || (result3 != 0 && result3 != 1) || !int.TryParse(array2[3], out result4) || result4 < 0 || result4 > 3 || !int.TryParse(array2[4], out result5) || (result5 != 0 && result5 != 1) || !int.TryParse(array2[5], out result6) || (result6 != 0 && result6 != 1) || (result4 == 3 && result5 == 0) || (result6 != 0 && result5 == 0) || captureSessions.ContainsKey(result))
+				{
+					return CaptureSessionLoadFailed();
+				}
+				captureSessions[result] = new FrameCaptureSession(result, result2)
+				{
+					PresenterOnly = (result3 != 0),
+					Failures = result4,
+					Stopped = (result5 != 0),
+					NoChangeNeeded = (result6 != 0)
+				};
+			}
+			return true;
+		}
+
+		private static bool CaptureSessionLoadFailed()
+		{
+			captureSessions.Clear();
+			captureSessionStoreFailed = true;
+			Logger.Warn("FRAME " + PerformancePolicy.Text("采样状态无法读取，保留系统调度", "Capture state is unreadable; system scheduling retained"));
+			return false;
+		}
+
+		private static void SaveCaptureSessions()
+		{
+			List<string> list = new List<string>();
+			list.Add("v1");
+			List<string> list2 = list;
+			foreach (FrameCaptureSession value2 in captureSessions.Values)
+			{
+				if (value2.PresenterOnly || value2.Failures != 0 || value2.Stopped)
+				{
+					list2.Add(value2.Pid.ToString(CultureInfo.InvariantCulture) + "|" + value2.Birth.ToString(CultureInfo.InvariantCulture) + "|" + (value2.PresenterOnly ? "1" : "0") + "|" + value2.Failures.ToString(CultureInfo.InvariantCulture) + "|" + (value2.Stopped ? "1" : "0") + "|" + (value2.NoChangeNeeded ? "1" : "0"));
+				}
+			}
+			string text = ((list2.Count == 1) ? "" : string.Join(";", list2.ToArray()));
+			string value;
+			if (Settings.SaveStr("FrameCoordinationCaptureSessionsV1", text) && Settings.TryLoadStr("FrameCoordinationCaptureSessionsV1", out value) && value == text)
+			{
+				return;
+			}
+			captureSessionStoreFailed = true;
+			foreach (FrameCaptureSession value3 in captureSessions.Values)
+			{
+				value3.Stopped = true;
+			}
+		}
+
+		private static bool CapturePressure(FrameCaptureIssue issue)
+		{
+			if (issue != FrameCaptureIssue.SystemEventBudget && issue != FrameCaptureIssue.EventBudget && issue != FrameCaptureIssue.EdgeBudget && issue != FrameCaptureIssue.CpuBudget && issue != FrameCaptureIssue.EventsLost)
+			{
+				return issue == FrameCaptureIssue.TraceUnavailable;
+			}
+			return true;
+		}
+
+		private static void ObserveCapture(FrameCaptureSession session, FrameCoordinationSample sample, bool applied, long elapsedMs)
+		{
+			lock (captureSessionGate)
+			{
+				bool presenterOnly = session.PresenterOnly;
+				bool stopped = session.Stopped;
+				bool noChangeNeeded = session.NoChangeNeeded;
+				int failures = session.Failures;
+				if (sample != null && sample.Valid && (applied || sample.NoChangeNeeded))
+				{
+					session.Failures = 0;
+					session.Retry.Reset();
+					if (sample.NoChangeNeeded)
+					{
+						session.NoChangeNeeded = true;
+						session.Stopped = true;
+					}
+				}
+				else
+				{
+					session.Retry.Observe(sample, elapsedMs);
+					FrameCaptureIssue frameCaptureIssue = ((sample == null) ? FrameCaptureIssue.CaptureFailed : sample.Issue);
+					if (frameCaptureIssue == FrameCaptureIssue.Canceled || frameCaptureIssue == FrameCaptureIssue.TargetChanged)
+					{
+						return;
+					}
+					if (session.Failures < 3)
+					{
+						session.Failures++;
+					}
+					if (!session.PresenterOnly && CapturePressure(frameCaptureIssue))
+					{
+						session.PresenterOnly = true;
+					}
+					if (session.Failures >= 3)
+					{
+						session.Stopped = true;
+					}
+				}
+				if (presenterOnly != session.PresenterOnly || stopped != session.Stopped || noChangeNeeded != session.NoChangeNeeded || failures != session.Failures)
+				{
+					SaveCaptureSessions();
+				}
+			}
+		}
+
+		internal static bool IdentificationExhausted(int target, long created, string name)
+		{
+			if (target <= 0 || created <= 0 || string.IsNullOrEmpty(name))
+			{
+				return false;
+			}
+			lock (captureSessionGate)
+			{
+				FrameCaptureSession value;
+				if (!LoadCaptureSessions() || !captureSessions.TryGetValue(target, out value) || value.Birth != created || !value.Stopped || value.NoChangeNeeded)
+				{
+					return false;
+				}
+			}
+			return !ActionFailureStore.IsIsolated("FrameCoordination", name);
+		}
+
+		private static int CaptureProcessState(int target, long created)
+		{
+			return NativeFrameThreads.ProcessState(target, created);
+		}
+
+		private static FrameCoordinationSample TakeCapture(int target, long created, Func<bool> alive, bool presenterOnly)
+		{
+			return FrameCoordinationSampler.Capture(target, created, alive, presenterOnly);
+		}
+
+		private static void PublishCriticalRoles(FrameCoordinationSample original, int originalEpoch)
+		{
+			PublishCriticalRolesAt(original, originalEpoch, AutoCores.NowTicks);
+		}
+
+		private static void PublishCriticalRolesAt(FrameCoordinationSample original, int originalEpoch, long observed)
+		{
+			if (original == null || !original.Valid || original.Issue != 0 || original.LostEvents != 0)
+			{
+				return;
+			}
+			lock (sync)
+			{
+				if (closed || originalEpoch != generation || original.Pid != pid || original.Birth != birth)
+				{
+					return;
+				}
+				List<CriticalThreadRoleFact> list = new List<CriticalThreadRoleFact>();
+				long value;
+				if (original.PresentTid > 0 && original.Threads.TryGetValue(original.PresentTid, out value) && value > 0)
+				{
+					list.Add(new CriticalThreadRoleFact(original.PresentTid, value, "presentation-associated"));
+					if (original.WorkerTid > 0 && original.WorkerTid != original.PresentTid && original.Threads.TryGetValue(original.WorkerTid, out value) && value > 0)
+					{
+						list.Add(new CriticalThreadRoleFact(original.WorkerTid, value, "dependency-associated"));
+					}
+					criticalRoles = new OriginalCriticalRoles(originalEpoch, pid, birth, observed, list.ToArray());
+				}
+			}
+		}
+
+		private static int NextEpochLocked(int target, long created)
+		{
+			OriginalCriticalRoles originalCriticalRoles = criticalRoles;
+			int num = Interlocked.Increment(ref generation);
+			if (originalCriticalRoles != null && originalCriticalRoles.Epoch == num - 1 && originalCriticalRoles.Pid == target && originalCriticalRoles.Birth == created)
+			{
+				criticalRoles = new OriginalCriticalRoles(num, target, created, originalCriticalRoles.Observed, originalCriticalRoles.Facts);
+			}
+			return num;
+		}
+
+		internal static CriticalThreadRoleFact[] ReadCriticalRoles(int target, long processBirth, ThreadTimes latest, long now)
+		{
+			if (!CriticalThreadObservation.Valid(latest, processBirth, now))
+			{
+				return new CriticalThreadRoleFact[0];
+			}
+			lock (sync)
+			{
+				OriginalCriticalRoles originalCriticalRoles = criticalRoles;
+				if (closed || originalCriticalRoles == null || originalCriticalRoles.Epoch != generation || originalCriticalRoles.Pid != target || originalCriticalRoles.Birth != processBirth || pid != target || birth != processBirth || now < originalCriticalRoles.Observed || now - originalCriticalRoles.Observed > 650000000)
+				{
+					return new CriticalThreadRoleFact[0];
+				}
+				Dictionary<long, long> dictionary = new Dictionary<long, long>();
+				for (int i = 0; i < latest.Ids.Length; i++)
+				{
+					dictionary.Add(latest.Ids[i], latest.Created[i]);
+				}
+				List<CriticalThreadRoleFact> list = new List<CriticalThreadRoleFact>();
+				CriticalThreadRoleFact[] facts = originalCriticalRoles.Facts;
+				foreach (CriticalThreadRoleFact criticalThreadRoleFact in facts)
+				{
+					long value;
+					if (dictionary.TryGetValue(criticalThreadRoleFact.Tid, out value) && value == criticalThreadRoleFact.Creation)
+					{
+						list.Add(criticalThreadRoleFact);
+					}
+				}
+				return list.ToArray();
+			}
+		}
+	}
+}
